@@ -705,7 +705,7 @@ $prefStyle = sprintf(
               <button type="button" class="marketing-subtab" data-promo-view-button="settings" data-marketing-subtab="settings">推广设置</button>
             </nav>
             <section class="promo-view active" data-promo-view="dashboard">
-              <div class="promo-board-head"><div><span>营销控制台</span><h2>营销总览</h2><p>从推广状态、渠道效果、任务执行和风险客户四个维度管理推广。</p></div><button type="button" data-promo-refresh>刷新</button></div>
+              <div class="promo-board-head"><div><span>营销控制台</span><h2>营销总览</h2><p>从推广状态、渠道效果、任务执行和风险客户四个维度管理推广。</p></div><div><?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" data-promo-open-wizard>新建推广项目</button><?php endif; ?><button type="button" data-promo-refresh>刷新</button></div></div>
               <div class="promo-kpi-grid" data-promo-analytics><p>正在加载转化数据...</p></div>
               <div class="promo-linkage-grid">
                 <article><strong>邮件联动</strong><span>推广邮件、未回复、附件资料发送</span><em>执行记录</em></article>
@@ -716,7 +716,7 @@ $prefStyle = sprintf(
             </section>
             <section class="promo-view" data-promo-view="campaigns">
               <section class="promo-task-list promo-task-main-list">
-                <header><span>推广项目</span><strong>推广项目列表</strong></header>
+                <header><span>推广项目</span><strong>推广项目列表</strong><?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" data-promo-open-wizard>新建</button><?php endif; ?></header>
                 <div data-promo-tasks><p>正在加载推广任务...</p></div>
               </section>
               <section class="promo-task-list promo-task-properties">
