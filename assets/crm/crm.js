@@ -12903,6 +12903,12 @@
         return Object.prototype.hasOwnProperty.call(map, key) ? esc(map[key]) : all;
       }).replace(/@日期/g, '').replace(/@时间/g, '');
     },
+    mailExecutorLabel: function (item) {
+      item = item || {};
+      var account = item.mail_account || {};
+      if (item.executor) return item.executor.display_name || item.executor.username || ('#' + item.executor.id);
+      return account.owner_name || account.sender_name || account.username || item.mail_user_name || item.send_email || account.email_address || '未匹配';
+    },
     renderWizardMailCarousel: function (draft, plan) {
       var mailItems = (plan && plan.mailItems) || [];
       if (!mailItems.length) {
@@ -12913,7 +12919,7 @@
       var item = mailItems[index] || {};
       var subject = this.renderWizardTemplate(draft.mail_subject || '未填写邮件主题', item, draft);
       var body = this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft);
-      var executor = item.executor ? (item.executor.display_name || item.executor.username || ('#' + item.executor.id)) : '未匹配';
+      var executor = this.mailExecutorLabel(item);
       var currentEmail = this.previewTestEmail || (state.user && state.user.email) || '';
       return '<section class="promo-preview-mail promo-mail-carousel">' +
         '<header><div><strong>客户邮箱预览</strong><span>切换客户检查称呼、变量、发件箱和执行人是否正确</span></div><div class="promo-mail-carousel-nav"><button type="button" data-promo-mail-prev>← 上一位</button><span>' + (index + 1) + ' / ' + mailItems.length + '</span><button type="button" data-promo-mail-next>下一位 →</button></div></header>' +
@@ -13081,7 +13087,7 @@
         return '<span>' + esc(key) + '：' + esc(accountSummary[key]) + '封</span>';
       }).join('');
       var tableRows = rows.slice(0, 50).map(function (row) {
-        var executor = row.executor ? (row.executor.display_name || row.executor.username || ('#' + row.executor.id)) : '未匹配';
+        var executor = this.mailExecutorLabel(row);
         var localText = row.schedule_local_at ? this.formatScheduleDate(row.schedule_local_at) : '时区未知';
         var deliveredText = row.schedule_local_delivered_at ? this.formatScheduleDate(row.schedule_local_delivered_at) : this.formatScheduleDate(row.schedule_delivered_at);
         return '<tr><td>' + esc(row.schedule_index) + '</td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.variable_contact_name || row.contact_name || '-') + (row.target_level === 'customer' ? ' · 客户级目标' : '') + '</span></td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.send_email || '-') + '</td><td>' + esc(executor) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(localText) + '</td><td>' + esc(deliveredText) + '</td><td>' + esc(row.schedule_note || '-') + '</td></tr>';
