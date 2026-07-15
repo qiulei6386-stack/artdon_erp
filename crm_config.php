@@ -126,15 +126,22 @@ function crm_schema_cache_signature(): string
     return sha1(implode('|', $parts));
 }
 
+function crm_schema_cache_ttl(): int
+{
+    $ttl = (int)(getenv('CRM_SCHEMA_ENSURE_TTL') ?: 21600);
+    return max(1800, min(86400, $ttl));
+}
+
 function crm_run_schema_ensures(bool $force = false): void
 {
     static $done = false;
     if ($done && !$force) return;
     $done = true;
 
+    $start = microtime(true);
     $cacheFile = crm_schema_cache_file();
     $signature = crm_schema_cache_signature();
-    $ttl = 1800;
+    $ttl = crm_schema_cache_ttl();
     $now = time();
     if (!$force && is_file($cacheFile)) {
         $cache = json_decode((string)@file_get_contents($cacheFile), true);
@@ -160,8 +167,17 @@ function crm_run_schema_ensures(bool $force = false): void
     $payload = json_encode([
         'checked_at' => $now,
         'signature' => $signature,
+        'elapsed_ms' => (int)round((microtime(true) - $start) * 1000),
     ], JSON_UNESCAPED_UNICODE);
     if ($payload !== false) {
         @file_put_contents($cacheFile, $payload, LOCK_EX);
+    }
+    $elapsedMs = (int)round((microtime(true) - $start) * 1000);
+    if ($elapsedMs >= 100) {
+        error_log('crm_schema_ensure_perf ' . json_encode([
+            'elapsed_ms' => $elapsedMs,
+            'forced' => $force ? 1 : 0,
+            'ttl' => $ttl,
+        ], JSON_UNESCAPED_UNICODE));
     }
 }

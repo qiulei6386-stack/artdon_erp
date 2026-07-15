@@ -2714,8 +2714,9 @@
       options = options || {};
       var self = this;
       this.currentId = id;
+      if (!options.keepTab) this.activeDetailTab = 'overview';
       document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === id); });
-      return post('customer_get', { customer_id: id }).then(function (json) {
+      return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
         self.currentDetail = json.data;
         self.renderDetail(json.data);
@@ -2729,6 +2730,26 @@
         }
         self.showCustomerError(error.message || '客户详情加载失败');
       });
+    },
+    ensureFullDetail: function (targetTab) {
+      if (!this.currentId || !(this.currentDetail && Number(this.currentDetail._lazy_detail || 0))) return Promise.resolve(this.currentDetail);
+      if (this.detailFullLoading) return this.detailFullLoading;
+      var self = this;
+      var box = document.querySelector('[data-detail-panel="' + esc(targetTab || '') + '"]');
+      if (box) box.innerHTML = '<div class="visit-empty">正在读取该 Tab 的完整数据...</div>';
+      this.detailFullLoading = post('customer_get', { customer_id: this.currentId, detail: 'full' }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户详情加载失败');
+        self.currentDetail = json.data;
+        self.renderDetail(json.data);
+        if (targetTab) self.switchDetailTab(targetTab);
+        return self.currentDetail;
+      }).catch(function (error) {
+        toast(error.message || '客户详情加载失败');
+        throw error;
+      }).finally(function () {
+        self.detailFullLoading = null;
+      });
+      return this.detailFullLoading;
     },
     renderDetail: function (data) {
       var box = document.querySelector('[data-customer-detail]');
@@ -3305,6 +3326,10 @@
     },
     switchDetailTab: function (name) {
       this.activeDetailTab = name || 'overview';
+      if (this.activeDetailTab !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
+        this.ensureFullDetail(this.activeDetailTab);
+        return;
+      }
       if (this.activeDetailTab === 'overview' && this.currentDetail) {
         var oldOverview = document.querySelector('[data-detail-panel="overview"]');
         if (oldOverview) {

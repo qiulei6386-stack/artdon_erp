@@ -1410,9 +1410,11 @@ function crm_customer_overview_stats(): array
     return ['total' => (int)$totalStmt->fetchColumn(), 'countries' => $countries, 'growth' => $growth];
 }
 
-function crm_customer_get(int $id): array
+function crm_customer_get(int $id, string $detailMode = 'full'): array
 {
     crm_customer_ensure_tables();
+    $detailMode = strtolower(trim($detailMode));
+    $light = in_array($detailMode, ['overview', 'light', 'summary'], true);
     $params = [];
     $scope = crm_customer_scope_sql($params);
     array_unshift($params, $id);
@@ -1424,32 +1426,50 @@ function crm_customer_get(int $id): array
     $tabConfig = crm_customer_detail_tabs($customer);
     $linkage = crm_customer_linkage_summary($customer);
     $salesActions = crm_customer_sales_action_stats($id, $customer, $linkage);
-    return [
+    $base = [
         'customer' => $customer,
         'tab_config' => $tabConfig,
         'tabs' => $tabConfig['tabs'],
         'scores' => $scores,
-        'timeline' => crm_customer_timeline($id),
-        'relations' => crm_customer_relations($id),
         'protection' => crm_customer_protection($id),
-        'events' => crm_customer_events($id),
-        'product_preferences' => crm_customer_preference_row($id, 'crm_customer_product_preferences'),
-        'communication_preferences' => crm_customer_preference_row($id, 'crm_customer_communication_preferences'),
         'addresses' => crm_customer_addresses($id),
         'source_tags' => crm_customer_tags($id, 'crm_customer_source_tags', 'source_key'),
         'promotion_channels' => crm_customer_tags($id, 'crm_customer_promotion_channels', 'channel_key'),
         'promotion_status' => crm_customer_promotion_status($id),
         'owners' => crm_customer_owners($id),
         'contacts' => crm_contact_list(['customer_id' => $id])['rows'],
-        'chat_groups' => crm_customer_chat_groups($id),
         'groups' => crm_customer_groups_for($id),
+        'sales_actions' => $salesActions,
+        'summary' => crm_customer_summary($id, $linkage),
+        'linkage' => $linkage,
+        '_lazy_detail' => $light ? 1 : 0,
+    ];
+    if ($light) {
+        return $base + [
+            'timeline' => [],
+            'relations' => [],
+            'events' => [],
+            'product_preferences' => [],
+            'communication_preferences' => [],
+            'chat_groups' => [],
+            'followups' => [],
+            'visits' => [],
+            'sample_shipments' => [],
+            'opportunities' => [],
+            'logs' => [],
+        ];
+    }
+    return $base + [
+        'timeline' => crm_customer_timeline($id),
+        'relations' => crm_customer_relations($id),
+        'events' => crm_customer_events($id),
+        'product_preferences' => crm_customer_preference_row($id, 'crm_customer_product_preferences'),
+        'communication_preferences' => crm_customer_preference_row($id, 'crm_customer_communication_preferences'),
+        'chat_groups' => crm_customer_chat_groups($id),
         'followups' => crm_followup_list(['customer_id' => $id])['rows'],
         'visits' => function_exists('crm_visit_list') && has_permission('visit.view') ? crm_visit_list(['customer_id' => $id])['rows'] : [],
         'sample_shipments' => crm_customer_sample_shipments($id),
         'opportunities' => function_exists('crm_opportunity_list') && has_permission('opportunity.view') ? crm_opportunity_list(['customer_id' => $id])['rows'] : [],
-        'sales_actions' => $salesActions,
-        'summary' => crm_customer_summary($id, $linkage),
-        'linkage' => $linkage,
         'logs' => crm_customer_logs($id),
     ];
 }

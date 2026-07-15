@@ -1048,7 +1048,7 @@ try {
     }
     if ($action === 'customer_get') {
         crm_require('customer.view');
-        api_response(true, '', crm_customer_get((int)($_POST['customer_id'] ?? 0)));
+        api_response(true, '', crm_customer_get((int)($_POST['customer_id'] ?? 0), (string)($_POST['detail'] ?? 'full')));
     }
     if ($action === 'customer_overview_stats') {
         crm_require('customer.view');
