@@ -20512,6 +20512,109 @@ body.is-promo-task-editor-open .promo-schedule-summary article strong {
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
+body.is-promo-task-editor-open .promo-step-failure,
+body.is-promo-task-editor-open .promo-step-confirm {
+  align-content: start !important;
+}
+body.is-promo-task-editor-open .promo-failure-rule-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+body.is-promo-task-editor-open .promo-failure-rule-card,
+body.is-promo-task-editor-open .promo-failure-summary,
+body.is-promo-task-editor-open .promo-confirm-quality {
+  min-width: 0 !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px !important;
+}
+body.is-promo-task-editor-open .promo-failure-rule-card label {
+  display: grid !important;
+  gap: 6px !important;
+}
+body.is-promo-task-editor-open .promo-failure-summary {
+  display: grid !important;
+  gap: 6px !important;
+}
+body.is-promo-task-editor-open .promo-failure-summary strong,
+body.is-promo-task-editor-open .promo-confirm-quality header strong {
+  color: var(--crm-text) !important;
+  font-size: 13px !important;
+}
+body.is-promo-task-editor-open .promo-failure-summary span {
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+}
+body.is-promo-task-editor-open .promo-confirm-summary article strong {
+  overflow: hidden !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality {
+  display: grid !important;
+  gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality > div {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality article {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  padding: 8px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality article.is-warn {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality span {
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality strong {
+  color: var(--crm-text) !important;
+  font-size: 16px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-quality article.is-warn strong {
+  color: #c2410c !important;
+}
+body.is-promo-task-editor-open .promo-confirm-list .promo-step-table {
+  min-width: 980px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-actions button {
+  min-height: 34px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-text) !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-actions button[data-promo-confirm-queue] {
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
 body.is-promo-task-editor-open .promo-step-two-col {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -20748,18 +20851,86 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
   }
 }
 @media (max-width: 760px) {
+  body.is-promo-task-editor-open {
+    overflow-x: hidden !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-shell {
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-head {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    padding: 8px 10px !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-meta {
+    grid-column: 1 / -1 !important;
+    justify-content: flex-start !important;
+    overflow: auto !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-steps {
+    display: flex !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-steps button {
+    flex: 0 0 112px !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-layout,
+  body.is-promo-task-editor-open .promo-wizard-main-scroll,
+  body.is-promo-task-editor-open .promo-step-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
   body.is-promo-task-editor-open .promo-wizard-side {
     grid-template-columns: 1fr !important;
-    max-height: 180px !important;
+    max-height: 190px !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-side details {
+    max-height: 150px !important;
+    overflow: auto !important;
   }
   body.is-promo-task-editor-open .promo-step-two-col,
   body.is-promo-task-editor-open .promo-step-controls,
   body.is-promo-task-editor-open .promo-execution-top,
   body.is-promo-task-editor-open .promo-step-dist-grid,
-  body.is-promo-task-editor-open .promo-channel-cards {
+  body.is-promo-task-editor-open .promo-channel-cards,
+  body.is-promo-task-editor-open .promo-failure-rule-grid,
+  body.is-promo-task-editor-open .promo-schedule-controls,
+  body.is-promo-task-editor-open .promo-confirm-quality > div {
     grid-template-columns: 1fr !important;
   }
-  body.is-promo-task-editor-open .promo-step-mini-stats {
+  body.is-promo-task-editor-open .promo-step-mini-stats,
+  body.is-promo-task-editor-open .promo-schedule-summary,
+  body.is-promo-task-editor-open .promo-confirm-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  body.is-promo-task-editor-open .promo-step-table-wrap,
+  body.is-promo-task-editor-open .promo-schedule-table-wrap,
+  body.is-promo-task-editor-open .promo-exec-table-wrap {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+  }
+  body.is-promo-task-editor-open .promo-confirm-actions,
+  body.is-promo-task-editor-open .promo-wizard-foot {
+    grid-template-columns: 1fr !important;
+  }
+  body.is-promo-task-editor-open .promo-confirm-actions {
+    display: grid !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-foot-left,
+  body.is-promo-task-editor-open .promo-wizard-foot-right {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-foot button,
+  body.is-promo-task-editor-open .promo-confirm-actions button {
+    width: 100% !important;
+    padding: 0 8px !important;
   }
 }

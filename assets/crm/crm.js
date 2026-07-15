@@ -12226,6 +12226,9 @@
 	        self.wizardNext();
 	      });
 	      modal.querySelector('[data-promo-wizard-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
+	      modal.querySelector('[data-promo-confirm-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
+	      modal.querySelector('[data-promo-confirm-scheduled]')?.addEventListener('click', function () { self.createTaskFromWizard('scheduled'); });
+	      modal.querySelector('[data-promo-confirm-queue]')?.addEventListener('click', function () { self.createTaskFromWizard('pending', { queue: true }); });
 	      modal.querySelectorAll('[data-promo-aside-check]').forEach(function (button) {
 	        button.addEventListener('click', function () {
 	          self.collectWizard();
@@ -12484,9 +12487,9 @@
 	        return this.renderScheduleStepLayout(draft);
 	      }
       if (step === 7) {
-        return '<section class="promo-wizard-grid"><label><span>失败重试次数</span><input type="number" min="0" max="5" data-wizard-field="retry_count" value="' + esc(draft.retry_count || 0) + '"></label><label><span>失败处理</span><select data-wizard-field="failure_action"><option value="mark_failed"' + (draft.failure_action === 'mark_failed' ? ' selected' : '') + '>标记失败并进入失败处理</option><option value="create_followup"' + (draft.failure_action === 'create_followup' ? ' selected' : '') + '>生成跟进提醒</option><option value="pause_customer"' + (draft.failure_action === 'pause_customer' ? ' selected' : '') + '>暂停该客户推广</option></select></label><label><span>黑名单策略</span><select data-wizard-field="blacklist_policy"><option value="skip"' + (draft.blacklist_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="block_task"' + (draft.blacklist_policy === 'block_task' ? ' selected' : '') + '>阻止任务保存</option></select></label><label><span>无邮箱策略</span><select data-wizard-field="no_email_policy"><option value="skip"' + (draft.no_email_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="offline"' + (draft.no_email_policy === 'offline' ? ' selected' : '') + '>转线下执行</option></select></label></section>';
+        return this.renderFailureStepLayout(draft);
       }
-	      return '<section class="promo-wizard-preview"><div data-promo-wizard-preview></div></section>';
+	      return this.renderConfirmStepLayout(draft);
 	    },
     wizardGroupOptions: function (currentValue) {
       var groups = (this.data && this.data.groups) || [];
@@ -12562,6 +12565,72 @@
 	      return '<section class="promo-step-card promo-step-schedule"><section class="promo-step-controls promo-schedule-controls"><label><span>执行方式</span><select data-wizard-field="schedule_type"><option value="manual"' + (draft.schedule_type === 'manual' ? ' selected' : '') + '>手动执行</option><option value="scheduled"' + (draft.schedule_type === 'scheduled' ? ' selected' : '') + '>定时执行</option><option value="auto"' + (draft.schedule_type === 'auto' ? ' selected' : '') + '>自动执行</option></select></label><label><span>开始时间</span><input type="datetime-local" data-wizard-field="scheduled_at" value="' + esc(draft.scheduled_at || '') + '"></label><label><span>时区规则</span><select data-wizard-field="timezone_rule"><option value="business_hours"' + (draft.timezone_rule === 'business_hours' ? ' selected' : '') + '>按国家工作时间</option><option value="company_time"' + (draft.timezone_rule === 'company_time' ? ' selected' : '') + '>按公司时间</option><option value="immediate"' + (draft.timezone_rule === 'immediate' ? ' selected' : '') + '>立即执行不等时区</option></select></label><label><span>发送间隔</span><input type="number" min="1" max="240" data-wizard-field="send_interval_minutes" value="' + esc(draft.send_interval_minutes || 3) + '"></label><label><span>每小时上限</span><input type="number" min="1" max="500" data-wizard-field="hourly_limit" value="' + esc(draft.hourly_limit || 50) + '"></label><label><span>每日上限</span><input type="number" min="1" max="3000" data-wizard-field="daily_limit" value="' + esc(draft.daily_limit || 200) + '"></label></section>' +
 	        '<div class="promo-step-mini-stats promo-schedule-summary"><article><strong>' + esc(rows.length) + '</strong><span>总发送数</span></article><article><strong>' + esc(startText) + '</strong><span>预计开始时间</span></article><article><strong>' + esc(endText) + '</strong><span>预计完成时间</span></article><article><strong>' + esc(Object.keys(accountSummary).length) + '</strong><span>发件邮箱数</span></article><article><strong>' + esc(accountDist ? '已分配' : '--') + '</strong><span>各邮箱分配数量</span></article></div><div class="promo-rule-strip">' + (accountDist || '<span>暂无邮件队列</span>') + '</div>' +
 	        '<section class="promo-step-table-wrap promo-schedule-detail-table"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>客户邮箱</th><th>发件邮箱</th><th>执行人</th><th>客户当地时间</th><th>服务器时间</th><th>预计发送时间</th><th>说明</th></tr></thead><tbody>' + (tableRows || '<tr><td colspan="10">当前没有邮件队列。请检查推广渠道、客户邮箱和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">计划阶段只调整显示预览；真实定时、时区和队列生成仍使用原算法。</article></section>';
+	    },
+	    renderFailureStepLayout: function (draft) {
+	      var retryCount = draft.retry_count || 0;
+	      var retryInterval = draft.retry_interval_minutes || draft.retry_interval || 30;
+	      var failureText = draft.failure_action === 'create_followup' ? '生成跟进提醒' : (draft.failure_action === 'pause_customer' ? '暂停该客户推广' : '标记失败并进入失败处理');
+	      var blacklistText = draft.blacklist_policy === 'block_task' ? '阻止任务保存' : '跳过黑名单目标';
+	      var noEmailText = draft.no_email_policy === 'offline' ? '转线下执行' : '跳过无邮箱目标';
+	      var smtpText = draft.smtp_failure_policy === 'pause_mailbox' ? '暂停异常邮箱' : (draft.smtp_failure_policy === 'switch_mailbox' ? '切换可用邮箱' : '进入失败处理');
+	      var logText = draft.log_backfill_policy === 'failed_only' ? '仅失败回填' : (draft.log_backfill_policy === 'none' ? '不自动回填' : '成功和失败都回填');
+	      var cards = [
+	        '<label><span>失败重试次数</span><input type="number" min="0" max="5" data-wizard-field="retry_count" value="' + esc(retryCount) + '"></label>',
+	        '<label><span>重试间隔</span><input type="number" min="5" max="1440" data-wizard-field="retry_interval_minutes" value="' + esc(retryInterval) + '"></label>',
+	        '<label><span>黑名单策略</span><select data-wizard-field="blacklist_policy"><option value="skip"' + (draft.blacklist_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="block_task"' + (draft.blacklist_policy === 'block_task' ? ' selected' : '') + '>阻止任务保存</option></select></label>',
+	        '<label><span>无邮箱策略</span><select data-wizard-field="no_email_policy"><option value="skip"' + (draft.no_email_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="offline"' + (draft.no_email_policy === 'offline' ? ' selected' : '') + '>转线下执行</option></select></label>',
+	        '<label><span>SMTP失败策略</span><select data-wizard-field="smtp_failure_policy"><option value="failure_center"' + (draft.smtp_failure_policy === 'failure_center' ? ' selected' : '') + '>进入失败处理</option><option value="switch_mailbox"' + (draft.smtp_failure_policy === 'switch_mailbox' ? ' selected' : '') + '>切换可用邮箱</option><option value="pause_mailbox"' + (draft.smtp_failure_policy === 'pause_mailbox' ? ' selected' : '') + '>暂停异常邮箱</option></select></label>',
+	        '<label><span>客户日志回填策略</span><select data-wizard-field="log_backfill_policy"><option value="all"' + (draft.log_backfill_policy === 'all' ? ' selected' : '') + '>成功和失败都回填</option><option value="failed_only"' + (draft.log_backfill_policy === 'failed_only' ? ' selected' : '') + '>仅失败回填</option><option value="none"' + (draft.log_backfill_policy === 'none' ? ' selected' : '') + '>不自动回填</option></select></label>'
+	      ].map(function (html) { return '<article class="promo-failure-rule-card">' + html + '</article>'; }).join('');
+	      return '<section class="promo-step-card promo-step-failure"><div class="promo-failure-rule-grid">' + cards + '</div><article class="promo-failure-summary"><strong>当前失败处理摘要</strong><span>失败后最多重试 ' + esc(retryCount) + ' 次，间隔 ' + esc(retryInterval) + ' 分钟；' + esc(blacklistText) + '；无邮箱' + esc(noEmailText) + '；SMTP失败' + esc(smtpText) + '；客户日志' + esc(logText) + '；默认动作：' + esc(failureText) + '。</span></article><input type="hidden" data-wizard-field="failure_action" value="' + esc(draft.failure_action || 'mark_failed') + '"></section>';
+	    },
+	    renderConfirmStepLayout: function (draft) {
+	      var targets = this.resolveWizardTargets(draft);
+	      var schedule = this.buildSchedulePlan(draft);
+	      var plan = schedule.plan || this.buildExecutionPlan(draft);
+	      var rows = schedule.rows || [];
+	      var seenEmails = {};
+	      var duplicateTargets = 0;
+	      (plan.mailItems || []).forEach(function (item) {
+	        var email = String(item.email || '').trim().toLowerCase();
+	        if (!email) return;
+	        if (seenEmails[email]) duplicateTargets += 1;
+	        seenEmails[email] = true;
+	      });
+	      var noEmail = (targets.contacts || []).filter(function (row) { return !String(row.email || row.contact_email || row.primary_contact_email || '').trim(); }).length;
+	      var blacklist = (targets.skipped || []).filter(function (row) { return /黑名单/.test(String(row.reason || '')); }).length;
+	      var unassignedMail = (plan.offlineItems || []).filter(function (item) { return /无匹配发件邮箱/.test(String(item.reason || '')); }).length;
+	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile'];
+	      var varIssues = 0;
+	      String((draft.mail_subject || '') + ' ' + (draft.mail_body_html || '')).replace(/\{([^}]+)\}/g, function (_, name) {
+	        if (allowedVars.indexOf(String(name || '').trim()) < 0) varIssues += 1;
+	        return _;
+	      });
+	      var timeIssue = (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim();
+	      var startTime = rows[0] ? this.formatScheduleDate(rows[0].schedule_send_at) : (draft.scheduled_at || '--');
+	      var summary = [
+	        ['任务名称', draft.task_name || '未命名任务'],
+	        ['客户数', targets.customers.length],
+	        ['联系人数', targets.contacts.length],
+	        ['邮件目标数', (plan.mailItems || []).length],
+	        ['发件邮箱数', (plan.mailBuckets || []).length],
+	        ['计划时间', startTime]
+	      ];
+	      var checks = [
+	        ['重复目标', duplicateTargets],
+	        ['无邮箱', noEmail],
+	        ['黑名单', blacklist],
+	        ['未分配邮箱', unassignedMail],
+	        ['变量异常', varIssues],
+	        ['时间异常', timeIssue ? '未设置' : 0]
+	      ];
+	      var listRows = rows.slice(0, 120).map(function (row) {
+	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.send_email || '-') + '</td><td>' + esc(this.mailExecutorLabel(row)) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(cnChannel(row.channel || draft.channel_key || '-')) + '</td></tr>';
+	      }, this).join('');
+	      return '<section class="promo-step-card promo-step-confirm"><div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
+	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
+	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
+	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><section class="promo-confirm-actions"><button type="button" data-promo-confirm-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为已计划</button><button type="button" data-promo-confirm-queue>生成执行队列</button></section></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);
