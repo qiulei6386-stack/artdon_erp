@@ -9756,12 +9756,17 @@
       var self = this;
       this.autoRefreshTimer = window.setInterval(function () {
         if (current !== 'promotion') return;
-        if (self.currentView === 'pool' && self.currentGroupId && self.allPoolExpanded) {
+        if (!self.shouldAutoRefreshCurrentView()) return;
+        if (self.currentView === 'customer_pool' && self.currentGroupId && self.allPoolExpanded) {
           self.loadPoolView({ silent: true });
           return;
         }
         self.load({ silent: true });
       }, 45000);
+    },
+    shouldAutoRefreshCurrentView: function () {
+      return ['execution'].indexOf(this.currentView || 'dashboard') >= 0
+        || (this.currentView === 'customer_pool' && this.currentGroupId && this.allPoolExpanded);
     },
     bindEvents: function () {
       var self = this;
