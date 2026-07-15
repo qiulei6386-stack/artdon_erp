@@ -17149,6 +17149,9 @@
 	        renderGroup({ title: '推广设置', items: ['保存推广设置', '恢复默认推广设置', '刷新推广中心'] });
 	        return;
 	      }
+	      var projectBaseItems = ['新建推广项目', '刷新项目列表', '全屏项目管理', '查看执行中心', '查看效果分析', '查看已归档项目', '项目筛选设置'];
+	      if (document.body.classList.contains('is-promo-project-fullscreen')) projectBaseItems.splice(3, 0, '退出全屏');
+	      renderGroup({ title: '推广项目操作', items: projectBaseItems });
 	      var checkedTaskIds = Array.from(PromotionModule.selectedTaskIds || []).map(Number).filter(Boolean);
       if (checkedTaskIds.length > 1) {
         renderGroup({ title: '批量操作（' + checkedTaskIds.length + '）', items: ['批量暂停', '批量继续', '批量归档', '批量改负责人', '批量加标签', '批量取消标签', '批量导出', '批量复制项目', '批量重新生成执行清单', '批量重试失败队列'] });
@@ -17175,9 +17178,6 @@
         renderGroup({ title: 'AI 辅助', items: aiItems });
         renderGroup({ title: '危险操作', items: ['删除项目', '取消未发送队列'] });
       } else {
-        var baseItems = ['新建推广项目', '刷新项目列表', '全屏项目管理', '查看执行中心', '查看效果分析', '查看已归档项目', '项目筛选设置'];
-        if (document.body.classList.contains('is-promo-project-fullscreen')) baseItems.splice(3, 0, '退出全屏');
-        renderGroup({ title: '推广项目操作', items: baseItems });
       }
       return;
     }
