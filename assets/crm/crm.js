@@ -12160,7 +12160,9 @@
         failure_action: 'mark_failed',
         blacklist_policy: 'skip',
         no_contact_policy: 'skip',
-        no_email_policy: 'skip'
+        no_email_policy: 'skip',
+        manual_attachments: [],
+        datasheet_attachments: []
       };
     },
 	    openWizard: function () {
@@ -12292,7 +12294,7 @@
           '<span class="mail-toolbar-group promo-toolbar-colors"><button type="button" data-promo-rich-color="#111827" title="黑色"><i style="background:#111827"></i></button><button type="button" data-promo-rich-color="#dc2626" title="红色"><i style="background:#dc2626"></i></button><button type="button" data-promo-rich-color="#2563eb" title="蓝色"><i style="background:#2563eb"></i></button><button type="button" data-promo-rich-color="#059669" title="绿色"><i style="background:#059669"></i></button></span>' +
           '<span class="mail-toolbar-group"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label></span>' +
           '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div></section>' +
-          '<aside class="promo-compose-tools"><section class="promo-compose-tool-block"><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><label><span>附件</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label></section><section class="promo-compose-tool-block promo-compose-var-block"><strong>变量</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-compose-tool-actions"><button type="button" data-promo-attachment-manual>附件</button><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></aside></section>' +
+          '<aside class="promo-compose-tools"><section class="promo-compose-tool-block"><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><label><span>附件</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label></section><section class="promo-compose-tool-block promo-compose-var-block"><strong>变量</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-compose-tool-block promo-compose-attach-block"><strong>附件</strong><label class="visit-file-drop promo-attachment-drop" data-promo-attachment-drop><input type="file" multiple data-promo-attachment-input><b>拖入附件</b><em>或点击选择文件</em></label><div class="promo-compose-list" data-promo-attachment-list></div></section><section class="promo-compose-tool-block promo-compose-datasheet-block"><strong>资料包</strong><div class="promo-datasheet-row"><input data-promo-datasheet-model placeholder="输入型号/资料编号"><button type="button" data-promo-datasheet-search>获取</button></div><div class="promo-compose-list" data-promo-datasheet-results></div><div class="promo-compose-list" data-promo-datasheet-picked></div></section><section class="promo-compose-tool-actions"><button type="button" data-promo-attachment-manual>附件</button><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></aside></section>' +
           '</section>';
       }
       if (step === 5) {
@@ -12572,6 +12574,13 @@
       }
       if (!Array.isArray(draft.mail_account_ids)) draft.mail_account_ids = draft.mail_account_ids ? [draft.mail_account_ids] : [];
       if (!Array.isArray(draft.offline_owner_ids)) draft.offline_owner_ids = draft.offline_owner_ids ? [draft.offline_owner_ids] : [];
+      if (!Array.isArray(draft.manual_attachments)) draft.manual_attachments = [];
+      if (!Array.isArray(draft.datasheet_attachments)) draft.datasheet_attachments = [];
+      if (this.wizardAttachmentFiles && this.wizardAttachmentFiles.length) {
+        draft.manual_attachments = this.wizardAttachmentFiles.map(function (file) {
+          return { name: file.name || '附件', size: file.size || 0, type: file.type || '' };
+        });
+      }
       draft.mail_account_id = draft.mail_account_ids[0] || draft.mail_account_id || '';
       draft.offline_owner_id = draft.offline_owner_ids[0] || draft.offline_owner_id || '';
       if (['preference','customer_preference','auto_preference'].indexOf(String(draft.channel_key || '').toLowerCase()) >= 0 && draft.campaign_type === 'email') {
@@ -12585,6 +12594,117 @@
       if (selectedContactIds.length || !Array.isArray(draft.contact_ids)) draft.contact_ids = selectedContactIds;
       this.wizardDraft = draft;
       return draft;
+    },
+    renderWizardAttachmentList: function () {
+      var box = document.querySelector('[data-promo-attachment-list]');
+      if (!box) return;
+      var files = this.wizardAttachmentFiles || [];
+      if (!files.length) {
+        box.innerHTML = '<p class="visit-file-empty">未选择附件</p>';
+        return;
+      }
+      box.innerHTML = files.map(function (file, index) {
+        return '<article><strong>' + esc(file.name || '附件') + '</strong><span>' + esc(file.type || '文件') + ' · ' + esc(MailModule.fileSizeText(file.size || 0)) + '</span><button type="button" data-promo-attachment-remove="' + esc(index) + '">移除</button></article>';
+      }).join('');
+    },
+    mergeWizardAttachmentFiles: function (files) {
+      files = Array.prototype.slice.call(files || []).filter(Boolean);
+      if (!files.length) return 0;
+      var seen = {};
+      this.wizardAttachmentFiles = this.wizardAttachmentFiles || [];
+      this.wizardAttachmentFiles.forEach(function (file) { seen[MailModule.fileKey(file)] = true; });
+      var added = 0;
+      var self = this;
+      files.forEach(function (file) {
+        var key = MailModule.fileKey(file);
+        if (seen[key]) return;
+        seen[key] = true;
+        self.wizardAttachmentFiles.push(file);
+        added += 1;
+      });
+      this.renderWizardAttachmentList();
+      this.collectWizard();
+      return added;
+    },
+    removeWizardAttachment: function (index) {
+      this.wizardAttachmentFiles = (this.wizardAttachmentFiles || []).filter(function (_, i) { return i !== index; });
+      this.renderWizardAttachmentList();
+      this.collectWizard();
+    },
+    renderWizardDatasheetPicked: function () {
+      var box = document.querySelector('[data-promo-datasheet-picked]');
+      if (!box) return;
+      var draft = this.wizardDraft || {};
+      var rows = draft.datasheet_attachments || [];
+      if (!rows.length) {
+        box.innerHTML = '<p class="visit-file-empty">未选择资料包</p>';
+        return;
+      }
+      box.innerHTML = rows.map(function (item, index) {
+        return '<article><strong>' + esc(item.model_no || item.label || '-') + '</strong><span>' + esc(item.label || item.format || '资料') + '</span><button type="button" data-promo-datasheet-remove="' + esc(index) + '">移除</button></article>';
+      }).join('');
+    },
+    renderWizardDatasheetResults: function (rows) {
+      var box = document.querySelector('[data-promo-datasheet-results]');
+      if (!box) return;
+      var flat = [];
+      rows = rows || [];
+      if (!rows.length) {
+        this.wizardDatasheetResults = [];
+        box.innerHTML = '<p class="visit-file-empty">没有找到资料</p>';
+        return;
+      }
+      box.innerHTML = rows.map(function (product) {
+        var buttons = (product.attachments || []).map(function (att) {
+          var idx = flat.push(att) - 1;
+          return '<button type="button" data-promo-datasheet-add="' + esc(idx) + '"' + (Number(att.disabled || 0) ? ' disabled title="当前格式暂不可用"' : '') + '>' + esc(att.label || att.format || '资料') + '</button>';
+        }).join('');
+        return '<article><strong>' + esc(product.model_no || '-') + '</strong><span>' + esc(product.title || product.category || '') + '</span><nav>' + buttons + '</nav></article>';
+      }).join('');
+      this.wizardDatasheetResults = flat;
+    },
+    searchWizardDatasheets: function (button) {
+      var input = document.querySelector('[data-promo-datasheet-model]');
+      var q = String((input && input.value) || '').trim();
+      if (!q) return toast('请输入型号或资料编号。');
+      var self = this;
+      if (button) { button.disabled = true; button.textContent = '获取中'; }
+      post('mail_datasheet_search', { q: q }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '获取资料失败');
+        self.renderWizardDatasheetResults((json.data && json.data.products) || []);
+      }).catch(function (error) {
+        toast(error.message || '获取资料失败');
+      }).finally(function () {
+        if (button) { button.disabled = false; button.textContent = '获取'; }
+      });
+    },
+    addWizardDatasheet: function (index) {
+      var item = (this.wizardDatasheetResults || [])[index];
+      if (!item || Number(item.disabled || 0)) return;
+      var draft = this.wizardDraft || this.defaultWizardDraft();
+      var rows = draft.datasheet_attachments || [];
+      var key = [item.source, item.id || 0, item.model_no, item.format].join('|');
+      if (rows.some(function (row) { return [row.source, row.id || 0, row.model_no, row.format].join('|') === key; })) return toast('这个资料已经加入。');
+      rows.push(item);
+      draft.datasheet_attachments = rows;
+      draft.attachment_mode = 'material';
+      draft.material_package = rows.map(function (row) { return row.model_no || row.label || row.format || ''; }).filter(Boolean).join(', ');
+      this.wizardDraft = draft;
+      var mode = document.querySelector('[data-wizard-field="attachment_mode"]');
+      var code = document.querySelector('[data-wizard-field="material_package"]');
+      if (mode) mode.value = 'material';
+      if (code) code.value = draft.material_package || '';
+      this.renderWizardDatasheetPicked();
+      this.collectWizard();
+    },
+    removeWizardDatasheet: function (index) {
+      var draft = this.wizardDraft || {};
+      draft.datasheet_attachments = (draft.datasheet_attachments || []).filter(function (_, i) { return i !== index; });
+      draft.material_package = (draft.datasheet_attachments || []).map(function (row) { return row.model_no || row.label || row.format || ''; }).filter(Boolean).join(', ');
+      var code = document.querySelector('[data-wizard-field="material_package"]');
+      if (code) code.value = draft.material_package || '';
+      this.renderWizardDatasheetPicked();
+      this.collectWizard();
     },
     mergeWizardTargetPreview: function (data) {
       data = data || {};
@@ -12661,6 +12781,53 @@
       });
       toolbar?.querySelector('[data-promo-font-size]')?.addEventListener('change', function () {
         self.applyWizardFontSize(editor, this.value);
+      });
+      this.renderWizardAttachmentList();
+      this.renderWizardDatasheetPicked();
+      var attachmentInput = document.querySelector('[data-promo-attachment-input]');
+      var attachmentDrop = document.querySelector('[data-promo-attachment-drop]');
+      attachmentInput?.addEventListener('change', function (event) {
+        var added = self.mergeWizardAttachmentFiles(event.target.files || []);
+        if (added) toast('已加入 ' + added + ' 个附件。');
+        event.target.value = '';
+      });
+      if (attachmentDrop) {
+        ['dragenter', 'dragover'].forEach(function (name) {
+          attachmentDrop.addEventListener(name, function (event) {
+            event.preventDefault();
+            attachmentDrop.classList.add('is-dragover');
+          });
+        });
+        ['dragleave', 'dragend'].forEach(function (name) {
+          attachmentDrop.addEventListener(name, function () { attachmentDrop.classList.remove('is-dragover'); });
+        });
+        attachmentDrop.addEventListener('drop', function (event) {
+          event.preventDefault();
+          attachmentDrop.classList.remove('is-dragover');
+          var added = self.mergeWizardAttachmentFiles(event.dataTransfer && event.dataTransfer.files);
+          if (added) toast('已加入 ' + added + ' 个附件。');
+        });
+      }
+      document.querySelector('[data-promo-attachment-list]')?.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-promo-attachment-remove]');
+        if (button) self.removeWizardAttachment(Number(button.getAttribute('data-promo-attachment-remove') || 0));
+      });
+      document.querySelector('[data-promo-datasheet-search]')?.addEventListener('click', function (event) {
+        self.searchWizardDatasheets(event.currentTarget);
+      });
+      document.querySelector('[data-promo-datasheet-model]')?.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          self.searchWizardDatasheets(document.querySelector('[data-promo-datasheet-search]'));
+        }
+      });
+      document.querySelector('[data-promo-datasheet-results]')?.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-promo-datasheet-add]');
+        if (button) self.addWizardDatasheet(Number(button.getAttribute('data-promo-datasheet-add') || 0));
+      });
+      document.querySelector('[data-promo-datasheet-picked]')?.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-promo-datasheet-remove]');
+        if (button) self.removeWizardDatasheet(Number(button.getAttribute('data-promo-datasheet-remove') || 0));
       });
       document.querySelector('[data-promo-attachment-manual]')?.addEventListener('click', function () {
         var mode = document.querySelector('[data-wizard-field="attachment_mode"]');
@@ -13202,7 +13369,7 @@
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
         failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy }),
-        attachment_config: JSON.stringify({ attachment_mode: draft.attachment_mode, material_package: draft.material_package }),
+        attachment_config: JSON.stringify({ attachment_mode: draft.attachment_mode, material_package: draft.material_package, manual_attachments: draft.manual_attachments || [], datasheet_attachments: draft.datasheet_attachments || [] }),
         risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: targets.contacts.length, selected_chat_groups: (targets.chat_groups || []).length, skipped: targets.skipped.length, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'missing_chat_group'], linkage: draft.template_action || '' })
       };
     },
@@ -13253,7 +13420,9 @@
         no_contact_policy: failure.no_contact_policy || 'skip',
         no_email_policy: failure.no_email_policy || 'skip',
         attachment_mode: attach.attachment_mode || 'none',
-        material_package: attach.material_package || ''
+        material_package: attach.material_package || '',
+        manual_attachments: Array.isArray(attach.manual_attachments) ? attach.manual_attachments : [],
+        datasheet_attachments: Array.isArray(attach.datasheet_attachments) ? attach.datasheet_attachments : []
       });
     },
     previewExistingTask: function (taskId) {

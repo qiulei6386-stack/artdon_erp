@@ -12214,6 +12214,72 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-tool-actions button:hover {
   background: var(--crm-hover-bg) !important;
 }
+.promo-attachment-drop {
+  min-height: 76px !important;
+}
+.promo-attachment-drop.is-dragover {
+  border-color: var(--crm-primary) !important;
+  background: color-mix(in srgb, var(--crm-primary) 10%, var(--crm-card-bg)) !important;
+}
+.promo-compose-list {
+  display: grid !important;
+  gap: 6px !important;
+}
+.promo-compose-list .visit-file-empty {
+  margin: 0 !important;
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+}
+.promo-compose-list article {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 6px !important;
+  align-items: center !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  padding: 7px !important;
+}
+.promo-compose-list article strong,
+.promo-compose-list article span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.promo-compose-list article strong {
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+}
+.promo-compose-list article span {
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+}
+.promo-compose-list article nav {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+.promo-compose-list button,
+.promo-datasheet-row button {
+  min-height: 28px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 7px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-text) !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+}
+.promo-datasheet-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 58px !important;
+  gap: 6px !important;
+}
+.promo-datasheet-row input {
+  min-width: 0 !important;
+}
 @media (max-width: 980px) {
   .promo-wizard-shell.promo-visit-style .promo-compose-main {
     grid-template-columns: 1fr !important;
