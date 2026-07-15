@@ -927,6 +927,10 @@ try {
         require_csrf();
         api_response(true, '推广任务已创建', crm_marketing_task_create($_POST));
     }
+    if ($action === 'marketing_target_preview') {
+        require_csrf();
+        api_response(true, '', crm_marketing_target_preview($_POST));
+    }
     if ($action === 'marketing_queue_build') {
         require_csrf();
         api_response(true, '推广发送队列已生成', crm_marketing_queue_build($_POST));

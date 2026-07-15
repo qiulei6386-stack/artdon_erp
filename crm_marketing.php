@@ -618,6 +618,11 @@ function crm_marketing_pool(array $input = []): array
         $params[] = $groupId;
         $params[] = $groupId;
     }
+    $filterCustomerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
+    if ($filterCustomerIds) {
+        $where[] = 'c.id IN (' . implode(',', array_fill(0, count($filterCustomerIds), '?')) . ')';
+        foreach ($filterCustomerIds as $id) $params[] = $id;
+    }
     $q = trim((string)($input['q'] ?? ''));
     if ($q !== '') {
         [$countrySearchSql, $countrySearchParams] = crm_customer_country_search_sql(crm_customer_search_terms($q), 'c');
@@ -694,6 +699,8 @@ function crm_marketing_contacts(array $input = []): array
     $scope = crm_customer_scope_sql($params);
     $where = ['c.deleted_at IS NULL', 'ct.deleted_at IS NULL', $scope];
     $customerId = (int)($input['customer_id'] ?? 0);
+    $customerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
+    $contactIds = crm_mail_input_ids($input['contact_ids'] ?? '');
     $groupId = (int)($input['group_id'] ?? 0);
     $channel = trim((string)($input['channel'] ?? ''));
     $search = trim((string)($input['search'] ?? ''));
@@ -707,6 +714,14 @@ function crm_marketing_contacts(array $input = []): array
     if ($customerId > 0) {
         $where[] = 'c.id = ?';
         $params[] = $customerId;
+    }
+    if ($customerIds) {
+        $where[] = 'c.id IN (' . implode(',', array_fill(0, count($customerIds), '?')) . ')';
+        foreach ($customerIds as $id) $params[] = $id;
+    }
+    if ($contactIds) {
+        $where[] = 'ct.id IN (' . implode(',', array_fill(0, count($contactIds), '?')) . ')';
+        foreach ($contactIds as $id) $params[] = $id;
     }
     if ($groupId > 0) {
         $where[] = '(EXISTS (SELECT 1 FROM crm_marketing_group_contacts mgct WHERE mgct.contact_id = ct.id AND mgct.group_id = ?) OR EXISTS (SELECT 1 FROM crm_marketing_group_customers mgc WHERE mgc.customer_id = c.id AND mgc.group_id = ?))';
@@ -761,7 +776,7 @@ function crm_marketing_contacts(array $input = []): array
         (SELECT GROUP_CONCAT(rt.role_key ORDER BY rt.role_key) FROM crm_contact_role_tags rt WHERE rt.contact_id = ct.id) role_tags,
         (SELECT GROUP_CONCAT(CONCAT(cp.channel, ':', cp.status) ORDER BY cp.channel) FROM crm_contact_promotions cp WHERE cp.contact_id = ct.id) promotion_rules,
         (SELECT GROUP_CONCAT(g.id ORDER BY g.sort_order, g.id) FROM crm_marketing_group_contacts mgct JOIN crm_marketing_groups g ON g.id = mgct.group_id AND g.deleted_at IS NULL WHERE mgct.contact_id = ct.id) marketing_group_ids,
-        (SELECT GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.sort_order, g.id SEPARATOR ', ') FROM crm_marketing_groups g LEFT JOIN crm_marketing_group_contacts mgct ON mgct.group_id = g.id AND mgct.contact_id = ct.id LEFT JOIN crm_marketing_group_customers mgc ON mgc.group_id = g.id AND mgc.customer_id = c.id WHERE g.deleted_at IS NULL AND (mgct.id IS NOT NULL OR mgc.id IS NOT NULL)) marketing_group_names,
+        (SELECT GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.sort_order, g.id SEPARATOR ', ') FROM crm_marketing_groups g WHERE g.deleted_at IS NULL AND (EXISTS (SELECT 1 FROM crm_marketing_group_contacts mgct WHERE mgct.group_id = g.id AND mgct.contact_id = ct.id) OR EXISTS (SELECT 1 FROM crm_marketing_group_customers mgc WHERE mgc.group_id = g.id AND mgc.customer_id = c.id))) marketing_group_names,
         (SELECT MAX(touched_at) FROM crm_marketing_logs ml WHERE ml.contact_id = ct.id) last_touch_time,
         (SELECT MAX(COALESCE(sent_at, created_at)) FROM crm_mails mm WHERE mm.linked_customer_id = c.id AND mm.folder = 'sent' AND (mm.linked_contact_id = ct.id OR (COALESCE(ct.email,'') <> '' AND LOCATE(LOWER(ct.email), LOWER(COALESCE(mm.to_emails,''))) > 0))) last_mail_sent_time,
         (SELECT MAX(COALESCE(received_at, created_at)) FROM crm_mails mm WHERE mm.linked_customer_id = c.id AND mm.folder = 'inbox' AND (mm.linked_contact_id = ct.id OR (COALESCE(ct.email,'') <> '' AND LOWER(mm.from_email) = LOWER(ct.email)))) last_reply_time
@@ -888,6 +903,71 @@ function crm_marketing_pool_view(array $input = []): array
         'pool' => $groupId > 0 ? $groupPool : $allPool,
         'pool_pager' => $groupId > 0 ? $groupPager : $allPager,
         'contacts' => $contacts,
+    ];
+}
+
+function crm_marketing_target_preview(array $input = []): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.view');
+    $customerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
+    $contactIds = crm_mail_input_ids($input['contact_ids'] ?? '');
+    $customers = [];
+    $contacts = [];
+    $chatGroups = [];
+    if ($customerIds) {
+        $pool = crm_marketing_pool([
+            'customer_ids' => json_encode($customerIds),
+            'page' => 1,
+            'page_size' => min(200, max(20, count($customerIds))),
+            'skip_count' => 1,
+        ]);
+        $customers = $pool['rows'] ?? [];
+        $contacts = crm_marketing_contacts([
+            'customer_ids' => json_encode($customerIds),
+        ]);
+        $placeholders = implode(',', array_fill(0, count($customerIds), '?'));
+        $stmt = db()->prepare("SELECT g.id, g.customer_id, g.group_name, g.group_platform, c.customer_name, c.country, c.owner_user_id, COALESCE(u.real_name, u.username, '') owner_name
+            FROM crm_customer_chat_groups g
+            JOIN crm_customers c ON c.id = g.customer_id AND c.deleted_at IS NULL
+            LEFT JOIN crm_users u ON u.id = c.owner_user_id
+            WHERE g.deleted_at IS NULL AND g.status = 'active' AND g.use_for_promotion = 1 AND g.customer_id IN ({$placeholders})
+            ORDER BY c.customer_name ASC, g.id DESC");
+        $stmt->execute($customerIds);
+        $chatGroups = $stmt->fetchAll();
+    }
+    if ($contactIds) {
+        $extraContacts = crm_marketing_contacts([
+            'contact_ids' => json_encode($contactIds),
+        ]);
+        $seen = [];
+        foreach ($contacts as $row) $seen[(int)$row['id']] = true;
+        foreach ($extraContacts as $row) {
+            if (!isset($seen[(int)$row['id']])) $contacts[] = $row;
+        }
+        $extraCustomerIds = [];
+        foreach ($extraContacts as $row) $extraCustomerIds[] = (int)$row['customer_id'];
+        $extraCustomerIds = array_values(array_unique(array_filter($extraCustomerIds)));
+        if ($extraCustomerIds) {
+            $pool = crm_marketing_pool([
+                'customer_ids' => json_encode($extraCustomerIds),
+                'page' => 1,
+                'page_size' => min(200, max(20, count($extraCustomerIds))),
+                'skip_count' => 1,
+            ]);
+            $seenCustomers = [];
+            foreach ($customers as $row) $seenCustomers[(int)$row['id']] = true;
+            foreach (($pool['rows'] ?? []) as $row) {
+                if (!isset($seenCustomers[(int)$row['id']])) $customers[] = $row;
+            }
+        }
+    }
+    return [
+        'pool' => $customers,
+        'contacts' => $contacts,
+        'chat_groups' => $chatGroups,
+        'selected_customer_count' => count($customerIds),
+        'selected_contact_count' => count($contactIds),
     ];
 }
 
@@ -1259,6 +1339,7 @@ function crm_marketing_task_create(array $input): array
     };
     $targetCount = 0;
     $targetCustomerIds = $customerIds;
+    $insertedContactIds = [];
     if (!$isDraft || $customerIds || $contactIds || $chatGroupIds) {
         foreach ($contactIds as $contactId) {
             $stmt = db()->prepare('SELECT ct.*, c.owner_user_id, c.email AS customer_email, c.phone AS customer_phone, c.whatsapp AS customer_whatsapp, c.address AS customer_address
@@ -1278,6 +1359,7 @@ function crm_marketing_task_create(array $input): array
                 ];
                 $targetChannel = crm_marketing_resolve_target_channel($channel, $customerId, $contactId);
                 $insertTarget($customerId, $contactId, null, $targetChannel, $customer, $contact, []);
+                $insertedContactIds[$contactId] = true;
                 $targetCustomerIds[] = $customerId;
                 $targetCount++;
             }
@@ -1303,13 +1385,35 @@ function crm_marketing_task_create(array $input): array
             $customer = $stmt->fetch();
             if ($customer) {
                 $targetChannel = crm_marketing_resolve_target_channel($channel, $customerId, null);
+                if (crm_marketing_is_email_channel($targetChannel)) {
+                    $contactStmt = db()->prepare("SELECT * FROM crm_contacts
+                        WHERE customer_id = ? AND deleted_at IS NULL
+                          AND COALESCE(is_left,0) = 0
+                          AND COALESCE(do_not_contact,0) = 0
+                          AND COALESCE(unsubscribe_email,0) = 0
+                          AND COALESCE(email,'') <> ''
+                        ORDER BY is_primary DESC, id DESC");
+                    $contactStmt->execute([$customerId]);
+                    $expanded = 0;
+                    foreach ($contactStmt->fetchAll() as $contact) {
+                        $contactId = (int)$contact['id'];
+                        if (isset($insertedContactIds[$contactId])) continue;
+                        $insertTarget($customerId, $contactId, null, $targetChannel, $customer, $contact, []);
+                        $insertedContactIds[$contactId] = true;
+                        $targetCount++;
+                        $expanded++;
+                    }
+                    if ($expanded > 0) {
+                        continue;
+                    }
+                }
                 $insertTarget($customerId, null, null, $targetChannel, $customer, [], []);
                 $targetCount++;
             }
         }
     }
     db()->prepare('UPDATE crm_marketing_tasks SET customer_count = ?, contact_count = ?, updated_at = NOW() WHERE id = ?')
-        ->execute([count(array_unique($targetCustomerIds)), count(array_unique($contactIds)) + count(array_unique($chatGroupIds)), $taskId]);
+        ->execute([count(array_unique($targetCustomerIds)), count($insertedContactIds) + count(array_unique($chatGroupIds)), $taskId]);
     crm_log_event('promotion', $before ? 'task_save' : 'task_create', 'marketing_task', (string)$taskId, $before, [
         'channel' => $channel,
         'campaign_type' => $campaignType,
@@ -1601,7 +1705,7 @@ function crm_marketing_queue_build(array $input): array
     $failure = crm_marketing_json($task['failure_policy_json'] ?? '');
     $maxAttempts = max(1, (int)($failure['retry_count'] ?? 1) + 1);
     $targets = db()->prepare("SELECT mt.*, c.customer_name, c.country, c.owner_user_id, c.do_not_contact, COALESCE(ps.status, 'not_promoted') promotion_status,
-            ct.name contact_name, ct.email receiver_email, ct.is_left,
+            COALESCE(ct.name, '') contact_name, COALESCE(NULLIF(ct.email, ''), NULLIF(c.email, '')) receiver_email, COALESCE(ct.is_left, 0) is_left,
             COALESCE(owner.real_name, owner.username, '') owner_name
         FROM crm_marketing_task_targets mt
         JOIN crm_customers c ON c.id = mt.customer_id AND c.deleted_at IS NULL

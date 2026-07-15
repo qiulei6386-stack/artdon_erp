@@ -12170,6 +12170,7 @@
 	        this.wizardDraft = Object.assign(this.defaultWizardDraft(), this.wizardDraft || {});
 	        this.switchView('wizard');
 	        this.renderWizard();
+	        this.loadWizardTargetPreview();
 	        if (current === 'promotion') renderActions('promotion');
 	      } catch (error) {
 	        console.error(error);
@@ -12572,10 +12573,44 @@
       }
       var richEditor = document.querySelector('[data-promo-wizard-editor]');
       if (richEditor) draft.mail_body_html = MailModule.cleanRichHtml(richEditor);
-      draft.customer_ids = Array.from(this.selectedCustomerIds);
-      draft.contact_ids = Array.from(this.selectedContactIds);
+      var selectedCustomerIds = Array.from(this.selectedCustomerIds || []).map(Number).filter(Boolean);
+      var selectedContactIds = Array.from(this.selectedContactIds || []).map(Number).filter(Boolean);
+      if (selectedCustomerIds.length || !Array.isArray(draft.customer_ids)) draft.customer_ids = selectedCustomerIds;
+      if (selectedContactIds.length || !Array.isArray(draft.contact_ids)) draft.contact_ids = selectedContactIds;
       this.wizardDraft = draft;
       return draft;
+    },
+    mergeWizardTargetPreview: function (data) {
+      data = data || {};
+      if (!this.data) this.data = {};
+      var mergeRows = function (oldRows, newRows) {
+        var byId = {};
+        (oldRows || []).forEach(function (row) { if (row && row.id) byId[Number(row.id)] = row; });
+        (newRows || []).forEach(function (row) { if (row && row.id) byId[Number(row.id)] = row; });
+        return Object.keys(byId).map(function (id) { return byId[id]; });
+      };
+      this.data.pool = mergeRows(this.data.pool || [], data.pool || []);
+      this.data.contacts = mergeRows(this.data.contacts || [], data.contacts || []);
+      this.data.chat_groups = mergeRows(this.data.chat_groups || [], data.chat_groups || []);
+    },
+    loadWizardTargetPreview: function () {
+      var self = this;
+      var draft = this.wizardDraft || this.defaultWizardDraft();
+      var customerIds = (draft.customer_ids || []).map(Number).filter(Boolean);
+      var contactIds = (draft.contact_ids || []).map(Number).filter(Boolean);
+      if (!customerIds.length && !contactIds.length) return Promise.resolve();
+      return post('marketing_target_preview', {
+        customer_ids: JSON.stringify(customerIds),
+        contact_ids: JSON.stringify(contactIds),
+        channel_key: draft.channel_key || '',
+        contact_filter: draft.contact_filter || ''
+      }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '目标预览加载失败');
+        self.mergeWizardTargetPreview(json.data || {});
+        self.updateWizardPreview();
+      }).catch(function (error) {
+        console.warn('Promotion target preview failed:', error);
+      });
     },
     bindWizardContentEditor: function () {
       var editor = document.querySelector('[data-promo-wizard-editor]');
