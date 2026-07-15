@@ -12228,10 +12228,10 @@
 	        if (Number(self.wizardStep || 0) >= self.wizardSteps().length - 1) return self.createTaskFromWizard('pending', { queue: true });
 	        self.wizardNext();
 	      });
-	      modal.querySelector('[data-promo-wizard-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
-	      modal.querySelector('[data-promo-confirm-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
-	      modal.querySelector('[data-promo-confirm-scheduled]')?.addEventListener('click', function () { self.createTaskFromWizard('scheduled'); });
-	      modal.querySelector('[data-promo-confirm-queue]')?.addEventListener('click', function () { self.createTaskFromWizard('pending', { queue: true }); });
+	      modal.querySelector('[data-promo-wizard-draft]')?.addEventListener('click', function (event) { self.saveDraftFromWizard(event.currentTarget); });
+	      modal.querySelector('[data-promo-confirm-draft]')?.addEventListener('click', function (event) { self.saveDraftFromWizard(event.currentTarget); });
+	      modal.querySelector('[data-promo-confirm-scheduled]')?.addEventListener('click', function (event) { self.createTaskFromWizard('scheduled', { button: event.currentTarget }); });
+	      modal.querySelector('[data-promo-confirm-queue]')?.addEventListener('click', function (event) { self.createTaskFromWizard('pending', { queue: true, button: event.currentTarget }); });
 	      modal.querySelectorAll('[data-promo-aside-check]').forEach(function (button) {
 	        button.addEventListener('click', function () {
 	          self.collectWizard();
@@ -13600,8 +13600,11 @@
 		      var targetStatus = status || 'pending';
 		      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
 		      var submitButton = document.querySelector('[data-promo-wizard-next]');
+		      var actionButton = options.button || submitButton;
+		      var actionText = actionButton ? actionButton.textContent : '';
 		      if (statusBox) statusBox.textContent = options.queue ? '生成中...' : '保存中...';
 		      if (submitButton) { submitButton.disabled = true; submitButton.textContent = options.queue ? '生成中...' : '保存中...'; }
+		      if (actionButton && actionButton !== submitButton) { actionButton.disabled = true; actionButton.textContent = options.queue ? '生成中...' : '保存中...'; }
 		      post('marketing_task_create', this.wizardTaskPayload(draft, targets, targetStatus)).then(function (json) {
 	        if (!json.success) throw new Error(json.message || '创建推广任务失败');
 	        var savedTaskId = Number((json.data && json.data.task_id) || draft.task_id || 0);
@@ -13623,17 +13626,21 @@
 	        afterSave();
 		      }).catch(function (error) { self.showError(error.message || '创建推广任务失败'); }).finally(function () {
 		        if (statusBox) statusBox.textContent = self.wizardSaveStatusText(self.wizardDraft || draft);
-		        if (submitButton) { submitButton.disabled = false; submitButton.textContent = options.queue ? '生成执行队列' : '下一步'; }
+		        if (submitButton) { submitButton.disabled = false; submitButton.textContent = Number(self.wizardStep || 0) >= self.wizardSteps().length - 1 ? '生成执行队列' : '下一步'; }
+		        if (actionButton && actionButton !== submitButton) { actionButton.disabled = false; actionButton.textContent = actionText || (options.queue ? '生成执行队列' : '保存为已计划'); }
 		      });
 		    },
-	    saveDraftFromWizard: function () {
+	    saveDraftFromWizard: function (sourceButton) {
 	      var draft = this.collectWizard();
 	      this.applyWizardTemplate();
 	      var targets = this.resolveWizardTargets(draft);
 	      var self = this;
-	      var button = document.querySelector('[data-promo-wizard-draft]');
+	      var button = sourceButton || document.querySelector('[data-promo-wizard-draft]');
+	      var footerButton = document.querySelector('[data-promo-wizard-draft]');
+	      var buttonText = button ? button.textContent : '';
 	      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
 	      if (button) { button.disabled = true; button.textContent = '保存中...'; }
+	      if (footerButton && footerButton !== button) { footerButton.disabled = true; }
 	      if (statusBox) statusBox.textContent = '保存中...';
 	      post('marketing_task_create', this.wizardTaskPayload(draft, targets, 'draft')).then(function (json) {
         if (!json.success) throw new Error(json.message || '草稿保存失败');
@@ -13648,7 +13655,8 @@
       }).catch(function (error) {
         self.showError(error.message || '草稿保存失败');
 	      }).finally(function () {
-	        if (button) { button.disabled = false; button.textContent = '保存草稿'; }
+	        if (button) { button.disabled = false; button.textContent = buttonText || '保存草稿'; }
+	        if (footerButton && footerButton !== button) { footerButton.disabled = false; }
 	        if (statusBox) statusBox.textContent = self.wizardSaveStatusText(self.wizardDraft || draft);
 	      });
 	    },
