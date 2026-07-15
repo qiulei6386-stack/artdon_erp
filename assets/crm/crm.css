@@ -20464,6 +20464,54 @@ body.is-promo-task-editor-open .promo-step-card {
   display: grid !important;
   gap: 12px !important;
 }
+body.is-promo-task-editor-open .promo-step-execution,
+body.is-promo-task-editor-open .promo-step-schedule {
+  align-content: start !important;
+}
+body.is-promo-task-editor-open .promo-execution-top {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+body.is-promo-task-editor-open .promo-execution-pane {
+  min-width: 0 !important;
+  display: grid !important;
+  align-content: start !important;
+  gap: 10px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 12px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 12px !important;
+}
+body.is-promo-task-editor-open .promo-execution-pane header {
+  display: grid !important;
+  gap: 3px !important;
+}
+body.is-promo-task-editor-open .promo-execution-pane header strong {
+  color: var(--crm-text) !important;
+  font-size: 14px !important;
+}
+body.is-promo-task-editor-open .promo-execution-pane header span {
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+}
+body.is-promo-task-editor-open .promo-execution-preview-table .promo-step-table,
+body.is-promo-task-editor-open .promo-schedule-detail-table .promo-step-table {
+  min-width: 980px !important;
+}
+body.is-promo-task-editor-open .promo-schedule-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+body.is-promo-task-editor-open .promo-schedule-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+body.is-promo-task-editor-open .promo-schedule-summary article strong {
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
 body.is-promo-task-editor-open .promo-step-two-col {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -20706,6 +20754,7 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
   }
   body.is-promo-task-editor-open .promo-step-two-col,
   body.is-promo-task-editor-open .promo-step-controls,
+  body.is-promo-task-editor-open .promo-execution-top,
   body.is-promo-task-editor-open .promo-step-dist-grid,
   body.is-promo-task-editor-open .promo-channel-cards {
     grid-template-columns: 1fr !important;
