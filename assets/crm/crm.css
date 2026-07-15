@@ -19691,6 +19691,16 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   background: #e8f1ff !important;
   color: #2563eb !important;
 }
+.crm-module[data-crm-module="promotion"] .marketing-subtab.promo-subtab-action {
+  margin-left: auto !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+}
+.crm-module[data-crm-module="promotion"] .marketing-subtab.promo-subtab-action:hover {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+}
 .crm-module[data-crm-module="promotion"] .promo-main-tabs {
   display: none !important;
 }

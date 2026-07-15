@@ -703,6 +703,7 @@ $prefStyle = sprintf(
               <button type="button" class="marketing-subtab" data-promo-view-button="execution" data-marketing-subtab="execution">执行中心</button>
               <button type="button" class="marketing-subtab" data-promo-view-button="analytics" data-marketing-subtab="analytics">效果分析</button>
               <button type="button" class="marketing-subtab" data-promo-view-button="settings" data-marketing-subtab="settings">推广设置</button>
+              <?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" class="marketing-subtab promo-subtab-action" data-promo-open-wizard>新建推广项目</button><?php endif; ?>
             </nav>
             <section class="promo-view active" data-promo-view="dashboard">
               <div class="promo-board-head"><div><span>营销控制台</span><h2>营销总览</h2><p>从推广状态、渠道效果、任务执行和风险客户四个维度管理推广。</p></div><div><?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" data-promo-open-wizard>新建推广项目</button><?php endif; ?><button type="button" data-promo-refresh>刷新</button></div></div>
