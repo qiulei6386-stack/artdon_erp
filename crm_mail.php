@@ -3270,7 +3270,7 @@ function crm_mail_list(array $input): array
         if (!$row['summary'] && (int)$row['has_attachment'] === 1) $row['summary'] = '无正文 · 有附件';
         unset($row['tags_json'], $row['source_flags_json']);
     }
-    $includeCounts = (string)($input['include_counts'] ?? '1') !== '0';
+    $includeCounts = (string)($input['include_counts'] ?? '0') === '1';
     return ['bound' => true, 'account' => crm_mail_account_payload($account)['account'], 'rows' => $rows, 'total' => (int)$count->fetchColumn(), 'page' => $page, 'page_size' => $pageSize, 'folder_counts' => $includeCounts ? crm_mail_folder_counts($account) : null];
 }
 
@@ -3325,7 +3325,7 @@ function crm_mail_scheduled_list(array $account, array $input): array
             'tags' => [$status === 'running' ? '发送中' : '待发送'],
         ];
     }
-    $includeCounts = (string)($input['include_counts'] ?? '1') !== '0';
+    $includeCounts = (string)($input['include_counts'] ?? '0') === '1';
     return ['bound' => true, 'account' => crm_mail_account_payload($account)['account'], 'rows' => $rows, 'total' => (int)$count->fetchColumn(), 'page' => $page, 'page_size' => $pageSize, 'folder_counts' => $includeCounts ? crm_mail_folder_counts($account) : null];
 }
 
@@ -3520,8 +3520,7 @@ function crm_mail_get(int $mailId, bool $includeCrm = true): array
     if (!$mail) throw new RuntimeException('邮件不存在或无权查看。');
     $mimeStart = microtime(true);
     $mail = crm_mail_repair_stored_body($mail);
-    $mail = crm_mail_refetch_original_body($account, $mail);
-    if ($includeCrm) $mail = crm_mail_refetch_missing_attachments($account, $mail);
+    // Keep normal mail opening on cached DB data; IMAP body/attachment repair belongs to sync or repair jobs.
     $timing['mime_parse_ms'] = crm_mail_perf_ms($mimeStart);
     $attachmentStart = microtime(true);
     $visibleCountStmt = db()->prepare('SELECT COUNT(*) FROM crm_mail_attachments WHERE mail_id = ? AND user_id = ? AND COALESCE(is_inline,0) = 0 AND COALESCE(is_signature_image,0) = 0');
@@ -3993,7 +3992,8 @@ function crm_mail_sync_start(array $input = []): array
     if (!$account) throw new RuntimeException('请先绑定邮箱。');
     $days = max(0, min(30, (int)($input['sync_days'] ?? 0)));
     $isAuto = !empty($input['auto_sync']);
-    return crm_mail_sync_account($account, $days > 0 ? 300 : 30, $isAuto ? 'auto' : ($days > 0 ? 'manual_' . $days . 'd' : 'manual'), $days);
+    $limit = $days > 0 ? 300 : ($isAuto ? 10 : 30);
+    return crm_mail_sync_account($account, $limit, $isAuto ? 'auto' : ($days > 0 ? 'manual_' . $days . 'd' : 'manual'), $days);
 }
 
 function crm_mail_sync_source_uses_backoff(string $source): bool
@@ -4556,16 +4556,12 @@ function crm_mail_send_progress(string $jobId): array
     $stmt->execute([$jobId, (int)$account['user_id']]);
     $row = $stmt->fetch();
     if (!$row) throw new RuntimeException('发送任务不存在。');
-    if (($row['status'] ?? '') === 'scheduled' && !empty($row['scheduled_at']) && strtotime((string)$row['scheduled_at']) <= time()) {
-        crm_mail_send_due_jobs(5);
-        $stmt->execute([$jobId, (int)$account['user_id']]);
-        $row = $stmt->fetch();
-        if (!$row) throw new RuntimeException('发送任务不存在。');
-    }
     if (($row['status'] ?? '') === 'scheduled' && !empty($row['scheduled_at'])) {
         $remaining = max(0, strtotime((string)$row['scheduled_at']) - time());
         $row['remaining_seconds'] = $remaining;
-        $row['message'] = '等待发送，剩余约 ' . ceil($remaining / 60) . ' 分钟';
+        $row['message'] = $remaining > 0
+            ? ('等待发送，剩余约 ' . ceil($remaining / 60) . ' 分钟')
+            : '已到计划时间，等待服务器发送队列处理。';
     }
     return $row;
 }

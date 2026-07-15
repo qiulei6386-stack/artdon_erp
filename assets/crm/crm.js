@@ -5688,10 +5688,10 @@
       if (autoSync) {
         var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
         if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') {
-          savedAutoSync = '1';
-          localStorage.setItem('crm_mail_auto_sync_minutes', '1');
+          savedAutoSync = '5';
+          localStorage.setItem('crm_mail_auto_sync_minutes', '5');
         }
-        autoSync.value = savedAutoSync === null ? '1' : savedAutoSync;
+        autoSync.value = savedAutoSync === null ? '5' : savedAutoSync;
         autoSync.addEventListener('change', function () {
           localStorage.setItem('crm_mail_auto_sync_minutes', autoSync.value || '0');
           if (autoSync.value === '0') localStorage.setItem('crm_mail_auto_sync_disabled_by_user', '1');
@@ -6722,22 +6722,22 @@
       var select = document.querySelector('[data-mail-auto-sync]');
       var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
       if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') {
-        savedAutoSync = '1';
-        localStorage.setItem('crm_mail_auto_sync_minutes', '1');
-        if (select) select.value = '1';
+        savedAutoSync = '5';
+        localStorage.setItem('crm_mail_auto_sync_minutes', '5');
+        if (select) select.value = '5';
       }
-      var minutes = Number((select && select.value) || (savedAutoSync === null ? '1' : savedAutoSync) || 0);
+      var minutes = Number((select && select.value) || (savedAutoSync === null ? '5' : savedAutoSync) || 0);
       if (!minutes || minutes < 1) return;
       var self = this;
       this.autoSyncTimer = window.setInterval(function () {
         self.checkAutoSyncDue(true);
-      }, Math.max(30000, Math.min(minutes * 60 * 1000, 60000)));
+      }, Math.max(60000, Math.min(minutes * 60 * 1000, 15 * 60 * 1000)));
     },
     autoSyncMinutes: function () {
       var select = document.querySelector('[data-mail-auto-sync]');
       var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
-      if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') savedAutoSync = '1';
-      return Number((select && select.value) || (savedAutoSync === null ? '1' : savedAutoSync) || 0);
+      if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') savedAutoSync = '5';
+      return Number((select && select.value) || (savedAutoSync === null ? '5' : savedAutoSync) || 0);
     },
     checkAutoSyncDue: function (fromTimer) {
       var minutes = this.autoSyncMinutes();
@@ -6759,7 +6759,7 @@
       var self = this;
       window.setTimeout(function () {
         self.checkAutoSyncDue();
-      }, 8000);
+      }, 60000);
     },
     applyTencentTemplate: function () {
       var form = document.querySelector('[data-mail-account-form]');
@@ -6897,7 +6897,7 @@
         if (current === 'mail') renderActions('mail');
       }
       var payload = this.filters();
-      payload.include_counts = options.skipCounts ? '0' : '1';
+      payload.include_counts = options.includeCounts ? '1' : '0';
       return post('mail_list', payload).then(function (json) {
         if (serial !== self.searchSerial) return;
         if (!json.success) throw new Error(json.message || '邮件列表加载失败');
@@ -9578,7 +9578,8 @@
         if (status) status.textContent = 'success · ' + nowText;
         if (mini) mini.textContent = '最近同步：' + nowText;
         self.lastAutoSyncAt = Date.now();
-        return self.loadList({ preserveReading: keepReading, silent: true }).then(function () {
+        return self.loadList({ preserveReading: keepReading, silent: true, skipCounts: true }).then(function () {
+          self.loadFolderCounts();
           if (typeof WorkspaceModule !== 'undefined' && WorkspaceModule.initialized) WorkspaceModule.loadMailSummary();
           if (newCount > 0) {
             loadNotificationSummary({ flash: true });
