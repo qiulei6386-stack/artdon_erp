@@ -12046,6 +12046,184 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-rich-editor:focus {
   box-shadow: inset 0 0 0 1px var(--crm-primary);
 }
+.promo-wizard-shell.promo-visit-style .promo-mail-compose-step {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  min-height: 560px !important;
+  background: transparent !important;
+}
+.promo-compose-fields {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(130px, 1fr)) !important;
+  gap: 8px !important;
+}
+.promo-compose-fields label {
+  min-width: 0 !important;
+}
+.promo-compose-fields .promo-compose-subject {
+  grid-column: span 1 !important;
+}
+.promo-wizard-shell.promo-visit-style .promo-compose-main {
+  flex: 1 1 auto !important;
+  min-height: 430px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 206px !important;
+  gap: 12px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: hidden !important;
+}
+.promo-compose-editor-column {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.promo-compose-editor-column .promo-rich-toolbar {
+  height: 42px !important;
+  flex: 0 0 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  margin: 0 0 10px !important;
+  padding: 0 0 6px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--crm-border) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.promo-compose-editor-column .mail-toolbar-group {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.promo-compose-editor-column .promo-rich-toolbar button,
+.promo-compose-editor-column .promo-rich-toolbar label,
+.promo-compose-editor-column .promo-rich-toolbar select {
+  height: 30px !important;
+  min-height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+.promo-compose-editor-column .promo-rich-toolbar button,
+.promo-compose-editor-column .promo-rich-toolbar label {
+  padding: 0 8px !important;
+}
+.promo-toolbar-colors button {
+  width: 30px !important;
+  padding: 0 !important;
+}
+.promo-toolbar-colors i {
+  display: block !important;
+  width: 14px !important;
+  height: 14px !important;
+  margin: auto !important;
+  border-radius: 50% !important;
+}
+.promo-toolbar-table input[type="number"] {
+  width: 46px !important;
+}
+.promo-compose-editor-column .promo-rich-editor {
+  flex: 1 1 auto !important;
+  min-height: 360px !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 16px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 12px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+}
+.promo-compose-side {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  overflow: auto !important;
+}
+.promo-compose-side .mail-compose-side-card {
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px !important;
+}
+.promo-compose-side .mail-compose-side-card header {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  margin-bottom: 8px !important;
+}
+.promo-compose-side .mail-compose-side-card strong {
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+}
+.promo-compose-side .mail-compose-side-card span {
+  color: var(--crm-muted-text) !important;
+  font-size: 10px !important;
+}
+.promo-variable-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 6px !important;
+}
+.promo-variable-grid button {
+  width: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  min-height: 34px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+}
+.promo-variable-grid button:hover,
+.promo-material-card button:hover {
+  background: var(--crm-hover-bg) !important;
+}
+.promo-material-card {
+  display: grid !important;
+  gap: 8px !important;
+}
+.promo-material-card button {
+  min-height: 30px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+}
+@media (max-width: 980px) {
+  .promo-compose-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .promo-compose-fields .promo-compose-subject {
+    grid-column: 1 / -1 !important;
+  }
+  .promo-wizard-shell.promo-visit-style .promo-compose-main {
+    grid-template-columns: 1fr !important;
+    overflow: visible !important;
+  }
+  .promo-variable-grid {
+    grid-template-columns: repeat(7, minmax(34px, 1fr)) !important;
+  }
+}
 .promo-rich-editor table,
 .promo-mail-preview-body table {
   max-width: 100%;
