@@ -20329,7 +20329,105 @@ body.is-promo-task-editor-open .promo-wizard-steps span {
 body.is-promo-task-editor-open .promo-wizard-body {
   min-height: 0 !important;
   overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+body.is-promo-task-editor-open .promo-wizard-layout {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 290px !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .promo-wizard-main-scroll {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side {
+  min-width: 0 !important;
+  width: 290px !important;
+  max-width: 300px !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details {
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side summary {
+  min-height: 34px !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  border-bottom: 1px solid var(--crm-border) !important;
+  color: var(--crm-text) !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details:not([open]) summary {
+  border-bottom: 0 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details > div,
+body.is-promo-task-editor-open .promo-wizard-side details > nav {
+  display: grid !important;
+  gap: 6px !important;
+  padding: 8px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side article {
+  min-height: 32px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  padding: 6px 8px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side article.is-warn {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side strong {
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side article.is-warn strong {
+  color: #c2410c !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side nav button {
+  min-height: 30px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  cursor: pointer !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side nav button:hover {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
 }
 body.is-promo-task-editor-open .promo-wizard-foot {
   min-height: 56px !important;
@@ -20373,4 +20471,27 @@ body.is-promo-task-editor-open .promo-wizard-foot [data-promo-wizard-next] {
 body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
   cursor: not-allowed !important;
   opacity: .45 !important;
+}
+@media (max-width: 1180px) {
+  body.is-promo-task-editor-open .promo-wizard-layout {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-side {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 220px !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    overflow: auto !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-side details {
+    min-width: 0 !important;
+  }
+}
+@media (max-width: 760px) {
+  body.is-promo-task-editor-open .promo-wizard-side {
+    grid-template-columns: 1fr !important;
+    max-height: 180px !important;
+  }
 }

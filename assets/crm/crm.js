@@ -12208,7 +12208,7 @@
 	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
 	        '<header class="promo-wizard-head crm-modal-header"><button type="button" class="promo-wizard-close" data-promo-wizard-close>关闭</button><div class="promo-wizard-title"><span>' + (isEdit ? '编辑推广任务' : '新建推广任务') + '</span><h2 class="crm-modal-title">' + esc(draft.task_name || (isEdit ? '编辑推广任务' : '未命名推广任务')) + '</h2></div><div class="promo-wizard-meta"><b>' + esc(statusText) + '</b><em data-promo-wizard-save-status>' + esc(saveText) + '</em></div></header>' +
 	        '<nav class="promo-wizard-steps">' + this.renderWizardStepNav(steps, step) + '</nav>' +
-	        '<main class="promo-wizard-body crm-modal-body">' + this.renderWizardStep(step, draft) + '</main>' +
+	        '<main class="promo-wizard-body crm-modal-body"><div class="promo-wizard-layout"><section class="promo-wizard-main-scroll">' + this.renderWizardStep(step, draft) + '</section>' + this.renderWizardSidebar(draft) + '</div></main>' +
 	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="promo-wizard-foot-right"><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" class="primary" data-promo-wizard-next>' + esc(nextText) + '</button></div></footer>' +
 	        '</section>';
 	      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
@@ -12226,6 +12226,14 @@
 	        self.wizardNext();
 	      });
 	      modal.querySelector('[data-promo-wizard-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
+	      modal.querySelectorAll('[data-promo-aside-check]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          self.collectWizard();
+	          self.wizardStep = self.wizardSteps().length - 1;
+	          self.renderWizard();
+	          toast((button.getAttribute('data-promo-aside-check') || '检查') + '已切换到预览确认。');
+	        });
+	      });
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
         input.addEventListener('input', function () { self.collectWizard(); self.updateWizardPreview(); });
         input.addEventListener('change', function () {
@@ -12273,6 +12281,64 @@
 	        var marker = index < activeStep ? '✓' : String(index + 1);
 	        return '<button type="button" class="' + cls + '" data-promo-wizard-step="' + index + '"><b>' + esc(marker) + '</b><span>' + esc(name) + '</span></button>';
 	      }).join('');
+	    },
+	    renderWizardSidebar: function (draft) {
+	      draft = draft || this.defaultWizardDraft();
+	      var targets = this.resolveWizardTargets(draft);
+	      var plan = this.buildExecutionPlan(draft);
+	      var value = function (val) {
+	        return val === undefined || val === null || val === '' ? '--' : String(val);
+	      };
+	      var noEmailCount = (targets.contacts || []).filter(function (row) {
+	        return !String(row.email || row.contact_email || row.primary_contact_email || '').trim();
+	      }).length;
+	      var seenEmails = {};
+	      var duplicateTargets = 0;
+	      (plan.mailItems || []).forEach(function (item) {
+	        var email = String(item.email || '').trim().toLowerCase();
+	        if (!email) return;
+	        if (seenEmails[email]) duplicateTargets += 1;
+	        seenEmails[email] = true;
+	      });
+	      var blacklistTargets = (targets.skipped || []).filter(function (row) {
+	        return /黑名单/.test(String(row.reason || ''));
+	      }).length;
+	      var unassignedMail = (plan.offlineItems || []).filter(function (item) {
+	        return /无匹配发件邮箱/.test(String(item.reason || ''));
+	      }).length;
+	      var missingSchedule = (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim();
+	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile'];
+	      var varIssues = 0;
+	      String((draft.mail_subject || '') + ' ' + (draft.mail_body_html || '')).replace(/\{([^}]+)\}/g, function (_, name) {
+	        if (allowedVars.indexOf(String(name || '').trim()) < 0) varIssues += 1;
+	        return _;
+	      });
+	      var summaryRows = [
+	        ['客户数', targets.customers.length],
+	        ['联系人数', targets.contacts.length],
+	        ['邮件目标数', plan.mailItems.length],
+	        ['发件邮箱数', plan.mailBuckets.length],
+	        ['线下执行人数', plan.offlineExecutors.length],
+	        ['推广渠道', cnChannel(draft.channel_key || '') || '--'],
+	        ['计划开始时间', draft.scheduled_at || '--']
+	      ];
+	      var qualityRows = [
+	        ['无邮箱联系人', noEmailCount],
+	        ['重复目标', duplicateTargets],
+	        ['黑名单目标', blacklistTargets],
+	        ['未分配邮箱', unassignedMail],
+	        ['未设置发送时间', missingSchedule ? '未设置' : '--'],
+	        ['内容变量异常', varIssues]
+	      ];
+	      var quickRows = ['预览客户', '预览联系人', '检查邮箱', '检查黑名单', '检查重复目标'];
+	      return '<aside class="promo-wizard-side"><details open><summary>任务摘要</summary><div>' + summaryRows.map(function (row) {
+	        return '<article><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
+	      }).join('') + '</div></details><details open><summary>质量检查</summary><div>' + qualityRows.map(function (row) {
+	        var isWarn = row[1] !== '--' && row[1] !== 0 && row[1] !== '0';
+	        return '<article class="' + (isWarn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
+	      }).join('') + '</div></details><details open><summary>快捷检查</summary><nav>' + quickRows.map(function (label) {
+	        return '<button type="button" data-promo-aside-check="' + esc(label) + '">' + esc(label) + '</button>';
+	      }).join('') + '</nav></details></aside>';
 	    },
 	    wizardPrev: function () {
 	      this.collectWizard();
