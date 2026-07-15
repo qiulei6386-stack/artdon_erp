@@ -9554,9 +9554,25 @@
       var statusNode = document.querySelector('[data-mail-sync-status]');
       if (statusNode) statusNode.textContent = 'syncing · ' + startText;
       if (!options.silent) toast('正在收取邮件...');
-      var payload = options.auto ? { auto_sync: 1 } : { sync_days: 3 };
+      var payload = options.auto ? { auto_sync: 1, background: 1 } : { sync_days: 0, background: 1 };
       return post('mail_sync_start', payload).then(function (json) {
         if (!json.success) throw new Error(json.message || '同步失败');
+        if (json.data && json.data.status === 'queued') {
+          var queuedStatus = document.querySelector('[data-mail-sync-status]');
+          var queuedMini = document.querySelector('[data-mail-account-sync]');
+          if (queuedStatus) queuedStatus.textContent = 'queued · 后台收信队列';
+          if (queuedMini) queuedMini.textContent = '最近同步：后台排队中';
+          self.lastAutoSyncAt = Date.now();
+          if (!options.silent) toast(json.data.message || '已加入后台收信队列');
+          window.setTimeout(function () {
+            if (current === 'mail') {
+              self.loadList({ preserveReading: keepReading, silent: true, skipCounts: true }).then(function () {
+                self.loadFolderCounts();
+              }).catch(function () {});
+            }
+          }, 70000);
+          return null;
+        }
         if (json.data && json.data.status === 'skipped') {
           var skipped = json.data || {};
           var skippedStatus = document.querySelector('[data-mail-sync-status]');
@@ -9570,6 +9586,12 @@
       }).then(function (json) {
         if (!json || !json.success) return;
         var syncData = json.data || {};
+        if (syncData.status === 'queued' || syncData.status === 'running') {
+          var runningStatus = document.querySelector('[data-mail-sync-status]');
+          if (runningStatus) runningStatus.textContent = syncData.status + ' · ' + (syncData.message || '后台收信执行中');
+          self.lastAutoSyncAt = Date.now();
+          return;
+        }
         var newCount = Number(syncData.new_count || 0);
         var sentNewCount = Number(syncData.sent_new_count || 0);
         var status = document.querySelector('[data-mail-sync-status]');

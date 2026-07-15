@@ -3992,6 +3992,29 @@ function crm_mail_sync_start(array $input = []): array
     if (!$account) throw new RuntimeException('请先绑定邮箱。');
     $days = max(0, min(30, (int)($input['sync_days'] ?? 0)));
     $isAuto = !empty($input['auto_sync']);
+    if (!empty($input['background'])) {
+        $syncId = 'sync_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+        $source = $isAuto ? 'auto' : ($days > 0 ? 'manual_' . $days . 'd' : 'manual');
+        db()->prepare('INSERT INTO crm_mail_sync_logs (user_id, mail_account_id, sync_id, stage, percent, status, message, created_at) VALUES (?, ?, ?, "queued", 5, "queued", "已加入后台收信队列，等待服务器计划任务执行", NOW())')
+            ->execute([(int)$account['user_id'], (int)$account['id'], $syncId]);
+        db()->prepare('UPDATE crm_user_mail_accounts SET sync_status = "queued", sync_error = NULL, updated_at = NOW() WHERE id = ?')->execute([(int)$account['id']]);
+        return [
+            'sync_id' => $syncId,
+            'account_id' => (int)$account['id'],
+            'user_id' => (int)$account['user_id'],
+            'email_address' => (string)$account['email_address'],
+            'source' => $source,
+            'status' => 'queued',
+            'stage' => 'queued',
+            'percent' => 5,
+            'message' => '已加入后台收信队列，通常 1 分钟内执行。',
+            'new_count' => 0,
+            'duplicate_count' => 0,
+            'attachment_count' => 0,
+            'failed_count' => 0,
+            'sent_new_count' => 0,
+        ];
+    }
     $limit = $days > 0 ? 300 : ($isAuto ? 10 : 30);
     return crm_mail_sync_account($account, $limit, $isAuto ? 'auto' : ($days > 0 ? 'manual_' . $days . 'd' : 'manual'), $days);
 }
@@ -4117,12 +4140,15 @@ function crm_mail_notification_subjects_by_ids(array $mailIds): array
     return $subjects;
 }
 
-function crm_mail_sync_account(array $account, int $limit = 30, string $source = 'manual', int $sinceDays = 0): array
+function crm_mail_sync_account(array $account, int $limit = 30, string $source = 'manual', int $sinceDays = 0, string $syncId = ''): array
 {
+    $syncId = trim($syncId) !== '' ? trim($syncId) : ('sync_' . date('YmdHis') . '_' . bin2hex(random_bytes(3)));
     $skip = crm_mail_sync_skip_if_backoff($account, $source);
     if ($skip) {
+        db()->prepare('UPDATE crm_mail_sync_logs SET stage = ?, percent = 100, status = "skipped", message = ?, finished_at = NOW() WHERE sync_id = ? AND user_id = ? AND mail_account_id = ? AND status = "queued"')
+            ->execute([(string)($skip['stage'] ?? 'skipped'), (string)($skip['message'] ?? '同步已跳过'), $syncId, (int)$account['user_id'], (int)$account['id']]);
         return array_merge([
-            'sync_id' => '',
+            'sync_id' => $syncId,
             'account_id' => (int)$account['id'],
             'user_id' => (int)$account['user_id'],
             'email_address' => (string)$account['email_address'],
@@ -4136,9 +4162,16 @@ function crm_mail_sync_account(array $account, int $limit = 30, string $source =
             'sent_folder_name' => '',
         ], $skip);
     }
-    $syncId = 'sync_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
-    db()->prepare('INSERT INTO crm_mail_sync_logs (user_id, mail_account_id, sync_id, stage, percent, status, message, created_at) VALUES (?, ?, ?, "connect", 15, "running", "连接邮箱服务器", NOW())')
-        ->execute([(int)$account['user_id'], (int)$account['id'], $syncId]);
+    $claimed = 0;
+    if ($syncId !== '') {
+        $claim = db()->prepare('UPDATE crm_mail_sync_logs SET stage = "connect", percent = 15, status = "running", message = "连接邮箱服务器", created_at = created_at WHERE sync_id = ? AND user_id = ? AND mail_account_id = ? AND status = "queued"');
+        $claim->execute([$syncId, (int)$account['user_id'], (int)$account['id']]);
+        $claimed = $claim->rowCount();
+    }
+    if ($claimed <= 0) {
+        db()->prepare('INSERT INTO crm_mail_sync_logs (user_id, mail_account_id, sync_id, stage, percent, status, message, created_at) VALUES (?, ?, ?, "connect", 15, "running", "连接邮箱服务器", NOW())')
+            ->execute([(int)$account['user_id'], (int)$account['id'], $syncId]);
+    }
     db()->prepare('UPDATE crm_user_mail_accounts SET sync_status = "syncing", sync_error = NULL, updated_at = NOW() WHERE id = ?')->execute([(int)$account['id']]);
     try {
         $result = crm_mail_imap_fetch_recent($account, $limit, $sinceDays);
@@ -4217,12 +4250,16 @@ function crm_mail_cron_sync_due_accounts(int $intervalMinutes = 3, int $limit = 
           AND email_password_encrypted <> ''
           AND (sync_status IS NULL OR sync_status <> 'syncing' OR updated_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE))
           AND (sync_backoff_until IS NULL OR sync_backoff_until <= NOW())
-          AND (last_sync_time IS NULL OR last_sync_time <= DATE_SUB(NOW(), INTERVAL {$intervalMinutes} MINUTE))
+          AND (sync_status = 'queued' OR last_sync_time IS NULL OR last_sync_time <= DATE_SUB(NOW(), INTERVAL {$intervalMinutes} MINUTE))
         ORDER BY COALESCE(last_sync_time, '1970-01-01') ASC, id ASC
         LIMIT 20");
     $accounts = $stmt->fetchAll();
     $results = [];
     foreach ($accounts as $account) {
+        $queuedSyncId = '';
+        $queuedStmt = db()->prepare('SELECT sync_id FROM crm_mail_sync_logs WHERE user_id = ? AND mail_account_id = ? AND status = "queued" ORDER BY id ASC LIMIT 1');
+        $queuedStmt->execute([(int)$account['user_id'], (int)$account['id']]);
+        $queuedSyncId = (string)($queuedStmt->fetchColumn() ?: '');
         $account['mail_secret'] = crm_mail_decrypt($account['email_password_encrypted'] ?? '');
         unset($account['email_password_encrypted']);
         if ((string)$account['mail_secret'] === '') {
@@ -4231,7 +4268,7 @@ function crm_mail_cron_sync_due_accounts(int $intervalMinutes = 3, int $limit = 
         }
         try {
             $needsBackfill = empty($account['last_sync_time']);
-            $results[] = crm_mail_sync_account($account, $needsBackfill ? max($limit, 300) : $limit, 'cron', $needsBackfill ? 3 : 0);
+            $results[] = crm_mail_sync_account($account, $needsBackfill ? max($limit, 300) : $limit, 'cron', $needsBackfill ? 3 : 0, $queuedSyncId);
         } catch (Throwable $e) {
             $results[] = ['account_id' => (int)$account['id'], 'user_id' => (int)$account['user_id'], 'email_address' => (string)$account['email_address'], 'status' => 'failed', 'message' => $e->getMessage()];
         }
