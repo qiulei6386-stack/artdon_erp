@@ -635,7 +635,7 @@ $prefStyle = sprintf(
             <header class="mail-toolbar">
               <button type="button" data-mail-compose>写邮件</button>
               <button type="button" data-mail-sync>收取邮件</button>
-              <label class="mail-auto-sync">自动收信<select data-mail-auto-sync><option value="0">关闭</option><option value="1" selected>1分钟</option><option value="3">3分钟</option><option value="5">5分钟</option></select></label>
+              <label class="mail-auto-sync">自动收信<select data-mail-auto-sync><option value="0">关闭</option><option value="1">1分钟</option><option value="3" selected>3分钟</option><option value="5">5分钟</option></select></label>
               <label class="mail-account-switch">邮箱<select data-mail-account-switch></select></label>
               <button type="button" data-mail-add-account>添加邮箱</button>
               <div class="mail-search"><input data-mail-search placeholder="搜索主题 / 发件人 / 收件人 / 客户 / 邮箱 / 附件 / 正文关键词"></div>

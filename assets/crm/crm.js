@@ -5688,10 +5688,10 @@
       if (autoSync) {
         var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
         if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') {
-          savedAutoSync = '5';
-          localStorage.setItem('crm_mail_auto_sync_minutes', '5');
+          savedAutoSync = '3';
+          localStorage.setItem('crm_mail_auto_sync_minutes', '3');
         }
-        autoSync.value = savedAutoSync === null ? '5' : savedAutoSync;
+        autoSync.value = savedAutoSync === null ? '3' : savedAutoSync;
         autoSync.addEventListener('change', function () {
           localStorage.setItem('crm_mail_auto_sync_minutes', autoSync.value || '0');
           if (autoSync.value === '0') localStorage.setItem('crm_mail_auto_sync_disabled_by_user', '1');
@@ -6722,11 +6722,11 @@
       var select = document.querySelector('[data-mail-auto-sync]');
       var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
       if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') {
-        savedAutoSync = '5';
-        localStorage.setItem('crm_mail_auto_sync_minutes', '5');
-        if (select) select.value = '5';
+        savedAutoSync = '3';
+        localStorage.setItem('crm_mail_auto_sync_minutes', '3');
+        if (select) select.value = '3';
       }
-      var minutes = Number((select && select.value) || (savedAutoSync === null ? '5' : savedAutoSync) || 0);
+      var minutes = Number((select && select.value) || (savedAutoSync === null ? '3' : savedAutoSync) || 0);
       if (!minutes || minutes < 1) return;
       var self = this;
       this.autoSyncTimer = window.setInterval(function () {
@@ -6736,8 +6736,8 @@
     autoSyncMinutes: function () {
       var select = document.querySelector('[data-mail-auto-sync]');
       var savedAutoSync = localStorage.getItem('crm_mail_auto_sync_minutes');
-      if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') savedAutoSync = '5';
-      return Number((select && select.value) || (savedAutoSync === null ? '5' : savedAutoSync) || 0);
+      if (savedAutoSync === '0' && localStorage.getItem('crm_mail_auto_sync_disabled_by_user') !== '1') savedAutoSync = '3';
+      return Number((select && select.value) || (savedAutoSync === null ? '3' : savedAutoSync) || 0);
     },
     checkAutoSyncDue: function (fromTimer) {
       var minutes = this.autoSyncMinutes();
