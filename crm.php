@@ -290,7 +290,7 @@ $prefStyle = sprintf(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Artdon CRM - Artdon Office V18</title>
+  <title>Artdon CRM - Artdon Office V20</title>
   <link rel="stylesheet" href="assets/crm/themes.css?v=<?= filemtime(__DIR__ . '/assets/crm/themes.css') ?>">
   <link rel="stylesheet" href="assets/crm/crm.css?v=<?= filemtime(__DIR__ . '/assets/crm/crm.css') ?>">
 </head>
@@ -300,7 +300,7 @@ $prefStyle = sprintf(
       <a class="status-logo" href="index.php" title="返回 Office 首页">AD</a>
       <div class="status-brand-text">
         <strong><?= h($systemName) ?></strong>
-        <span>Artdon Office V18</span>
+        <span>Artdon Office V20</span>
       </div>
     </section>
 

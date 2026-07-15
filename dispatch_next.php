@@ -360,7 +360,7 @@ body.dark .tbl td[data-field="title"],body.dark .tbl td[data-field="title"] .tit
   <header class="crm-status-console">
     <section class="status-brand-zone">
       <a class="status-logo" href="index.php" title="返回 Office 首页">AD</a>
-      <div class="status-brand-text"><strong>Artdon Lighting Limited</strong><span>Artdon Office V18</span></div>
+      <div class="status-brand-text"><strong>Artdon Lighting Limited</strong><span>Artdon Office V20</span></div>
     </section>
     <section class="status-system-zone">
       <div class="status-dropdown">

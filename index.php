@@ -11,7 +11,7 @@ artdon_datasheet_ensure_permissions();
 
 $user = current_user();
 $portalSettings = app_settings([
-    'system_name' => 'Artdon Office V18',
+    'system_name' => 'Artdon Office V20',
     'company_name' => '中山雅大光电有限公司',
     'company_name_en' => 'Artdon Lighting Limited',
     'portal_subtitle' => '统一进入 CRM、邮箱、客户、推广、报价、PLM、BOM、派工、财务和系统管理。',

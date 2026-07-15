@@ -70,11 +70,11 @@ $defaults = [
     'db_name' => $_POST['db_name'] ?? 'artdon_new_erp',
     'db_user' => $_POST['db_user'] ?? '',
     'db_password' => $_POST['db_password'] ?? '',
-    'system_name' => $_POST['system_name'] ?? 'Artdon Office V18',
+    'system_name' => $_POST['system_name'] ?? 'Artdon Office V20',
 ];
 
 if (installed_config_exists()) {
-    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>系统已安装</title><link rel="stylesheet" href="assets/crm-v18.css"></head><body class="install-page"><main class="install-panel"><h1>系统已安装</h1><p>Artdon Office V18 已完成安装，安装器已锁定。</p><p><a class="button" href="login.php">进入登录页</a></p></main></body></html>';
+    echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>系统已安装</title><link rel="stylesheet" href="assets/crm-v18.css"></head><body class="install-page"><main class="install-panel"><h1>系统已安装</h1><p>Artdon Office V20 已完成安装，安装器已锁定。</p><p><a class="button" href="login.php">进入登录页</a></p></main></body></html>';
     exit;
 }
 
@@ -173,12 +173,12 @@ $env = [
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>安装 Artdon Office V18</title>
+  <title>安装 Artdon Office V20</title>
   <link rel="stylesheet" href="assets/crm-v18.css">
 </head>
 <body class="install-page">
 <main class="install-panel">
-  <h1>安装 Artdon Office V18</h1>
+  <h1>安装 Artdon Office V20</h1>
   <?php if ($message) install_flash($message, 'success'); ?>
   <?php if ($error) install_flash($error, 'error'); ?>
   <section>

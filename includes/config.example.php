@@ -1,7 +1,7 @@
 <?php
 return [
     'installed' => false,
-    'system_name' => 'Artdon Office V18',
+    'system_name' => 'Artdon Office V20',
     'db' => [
         'host' => '127.0.0.1',
         'port' => 3306,

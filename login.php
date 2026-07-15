@@ -10,7 +10,7 @@ if (($_GET['action'] ?? '') === 'logout') {
     redirect('login.php');
 }
 $loginSettings = app_settings([
-    'system_name' => 'Artdon Office V18',
+    'system_name' => 'Artdon Office V20',
     'portal_subtitle' => '统一进入 CRM、报价、PLM、BOM、派工、财务、权限和系统管理，保障企业内部协作安全有序。',
 ]);
 $error = '';

@@ -344,7 +344,7 @@ WHERE r.role_key = 'viewer' AND p.permission_key IN ('dashboard.view','customer.
 
 INSERT INTO crm_system_settings (setting_key, setting_value, setting_group, description)
 VALUES
-('system_name', 'Artdon Office V18', 'system', '系统名称'),
+('system_name', 'Artdon Office V20', 'system', '系统名称'),
 ('installed', '0', 'system', '安装状态'),
 ('login_lock_threshold', '5', 'security', '连续失败锁定阈值'),
 ('login_lock_minutes', '15', 'security', '临时锁定分钟数')

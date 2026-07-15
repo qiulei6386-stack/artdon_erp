@@ -9,7 +9,7 @@ function render_layout($title, $content, array $options = [])
 
 function auth_page_header($title, bool $wide = false, string $variant = '')
 {
-    $systemName = function_exists('db_config') ? (db_config()['system_name'] ?? 'Artdon Office V18') : 'Artdon Office V18';
+    $systemName = function_exists('db_config') ? (db_config()['system_name'] ?? 'Artdon Office V20') : 'Artdon Office V20';
     $panelClass = trim('login-panel' . ($wide ? ' wide' : '') . ($variant ? ' ' . $variant : ''));
     $cssVersion = @filemtime(__DIR__ . '/../assets/crm-v18.css') ?: time();
     echo '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
@@ -25,7 +25,7 @@ function auth_page_footer()
 function page_header($title, array $options = [])
 {
     $user = current_user();
-    $systemName = db_config()['system_name'] ?? 'Artdon Office V18';
+    $systemName = db_config()['system_name'] ?? 'Artdon Office V20';
     $portal = !empty($options['portal']);
     $base = layout_base_path();
     $context = layout_context($options);
@@ -169,7 +169,7 @@ function layout_type_label($uiType)
 function render_context_sidebar($uiType, $page, $base = '')
 {
     $items = layout_sidebar_items($uiType);
-    echo '<div class="sidebar-head sidebar-head-' . h($uiType) . '"><strong>' . h(layout_type_label($uiType)) . '</strong><span>Artdon Office V18</span></div>';
+    echo '<div class="sidebar-head sidebar-head-' . h($uiType) . '"><strong>' . h(layout_type_label($uiType)) . '</strong><span>Artdon Office V20</span></div>';
     echo '<nav class="sidebar-nav" aria-label="' . h(layout_type_label($uiType)) . '">';
     foreach ($items as $item) {
         if (!layout_item_allowed($item)) {
