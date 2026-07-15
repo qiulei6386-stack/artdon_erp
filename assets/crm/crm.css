@@ -16220,7 +16220,7 @@ body.is-workspace-module .workspace-widget header {
 }
 
 .promo-engine-v2 {
-  grid-template-columns: minmax(0, 1fr) 238px !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: minmax(0, 1fr) !important;
 }
 
@@ -16230,8 +16230,14 @@ body.is-workspace-module .workspace-widget header {
 }
 
 .promo-sidebar {
-  grid-column: 2 !important;
-  grid-row: 1 !important;
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
 }
 
 .promo-sidebar:has(.promo-sidebar-card:only-child),
@@ -19427,6 +19433,31 @@ body.is-promotion-module .crm-module[data-crm-module="promotion"].active {
   width: 100% !important;
   max-width: none !important;
   min-width: 0 !important;
+}
+
+/* CRM control normalization: keep checkboxes and dense tables visually consistent. */
+.crm-module input[type="checkbox"],
+.crm-actionbar input[type="checkbox"],
+.crm-modal input[type="checkbox"] {
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  vertical-align: middle !important;
+}
+.crm-module .crm-table th,
+.crm-module .crm-table td,
+.crm-module .promo-task-console-table th,
+.crm-module .promo-task-console-table td,
+.crm-module .promo-pool-table th,
+.crm-module .promo-pool-table td {
+  line-height: 1.35 !important;
+}
+.crm-module button,
+.crm-actionbar button,
+.crm-modal button {
+  letter-spacing: 0 !important;
 }
 body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   grid-template-columns: minmax(0, 1fr) 60px !important;

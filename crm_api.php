@@ -15,17 +15,7 @@ require_once __DIR__ . '/crm_settings_config.php';
 require_once __DIR__ . '/crm_ui.php';
 require_once __DIR__ . '/includes/user_admin_service.php';
 require_login();
-crm_ensure_tables();
-crm_customer_ensure_tables();
-crm_visit_ensure_tables();
-crm_task_center_ensure_tables();
-crm_opportunity_ensure_tables();
-crm_mail_ensure_tables();
-crm_marketing_ensure_tables();
-crm_ai_ensure_tables();
-radar_ensure_permissions();
-crm_settings_ensure_tables();
-crm_ui_ensure_tables();
+crm_run_schema_ensures();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? 'bootstrap';
 $crmApiPerfStart = microtime(true);

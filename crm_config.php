@@ -94,3 +94,74 @@ function crm_permission_state(array $permissions): array
     }
     return $state;
 }
+
+function crm_schema_cache_file(): string
+{
+    $dir = __DIR__ . '/storage';
+    if (!is_dir($dir) || !is_writable($dir)) {
+        return sys_get_temp_dir() . '/artdon_crm_schema_ensure.json';
+    }
+    return $dir . '/crm_schema_ensure.json';
+}
+
+function crm_schema_cache_signature(): string
+{
+    $files = [
+        __FILE__,
+        __DIR__ . '/crm_customer.php',
+        __DIR__ . '/crm_visit.php',
+        __DIR__ . '/crm_task_center.php',
+        __DIR__ . '/crm_opportunity.php',
+        __DIR__ . '/crm_mail.php',
+        __DIR__ . '/crm_marketing.php',
+        __DIR__ . '/crm_ai.php',
+        __DIR__ . '/radar.php',
+        __DIR__ . '/crm_settings_config.php',
+        __DIR__ . '/crm_ui.php',
+    ];
+    $parts = [];
+    foreach ($files as $file) {
+        $parts[] = basename($file) . ':' . (is_file($file) ? (string)filemtime($file) : '0');
+    }
+    return sha1(implode('|', $parts));
+}
+
+function crm_run_schema_ensures(bool $force = false): void
+{
+    static $done = false;
+    if ($done && !$force) return;
+    $done = true;
+
+    $cacheFile = crm_schema_cache_file();
+    $signature = crm_schema_cache_signature();
+    $ttl = 1800;
+    $now = time();
+    if (!$force && is_file($cacheFile)) {
+        $cache = json_decode((string)@file_get_contents($cacheFile), true);
+        if (is_array($cache)
+            && ($cache['signature'] ?? '') === $signature
+            && (int)($cache['checked_at'] ?? 0) > $now - $ttl) {
+            return;
+        }
+    }
+
+    crm_ensure_tables();
+    crm_customer_ensure_tables();
+    crm_visit_ensure_tables();
+    crm_task_center_ensure_tables();
+    crm_opportunity_ensure_tables();
+    crm_mail_ensure_tables();
+    crm_marketing_ensure_tables();
+    crm_ai_ensure_tables();
+    radar_ensure_permissions();
+    crm_settings_ensure_tables();
+    crm_ui_ensure_tables();
+
+    $payload = json_encode([
+        'checked_at' => $now,
+        'signature' => $signature,
+    ], JSON_UNESCAPED_UNICODE);
+    if ($payload !== false) {
+        @file_put_contents($cacheFile, $payload, LOCK_EX);
+    }
+}

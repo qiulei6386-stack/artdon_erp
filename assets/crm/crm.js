@@ -9134,9 +9134,31 @@
       });
     },
     openCompose: function (mode, mail) {
+      mail = (mail && typeof mail === 'object') ? mail : null;
+      if (mail) {
+        mail = Object.assign({
+          id: '',
+          draft_id: '',
+          reply_to_mail_id: '',
+          mode: '',
+          from_name: '',
+          from_email: '',
+          to_emails: '',
+          cc_emails: '',
+          bcc_emails: '',
+          subject: '',
+          body_html: '',
+          body_text: '',
+          attachments: [],
+          attachments_json: '',
+          draft_meta_json: ''
+        }, mail);
+        if (!Array.isArray(mail.attachments)) mail.attachments = [];
+      }
       var dialog = document.querySelector('[data-mail-compose-dialog]');
       var form = document.querySelector('[data-mail-compose-form]');
       if (!dialog || !form) return toast('写邮件弹窗未加载，请刷新页面后重试。');
+      if (!form.elements.subject) throw new Error('邮件主题输入框缺失');
       form.reset();
       form.dataset.mode = mode || 'compose';
       form.dataset.replyToMailId = mail && mail.id ? String(mail.id) : '';
@@ -9712,6 +9734,7 @@
     manualFilter: 'all',
     selectedExecution: null,
     autoRefreshTimer: null,
+    bootstrapLoadingView: '',
     taskReportLoading: {},
     wizardStep: 0,
     wizardDraft: null,
@@ -9912,7 +9935,14 @@
       });
       this.syncSidebarCard(view);
       this.renderPoolFilters();
-      if (view === 'contact_strategy') this.loadContactStrategy({ silent: true });
+      if (this.data && view === 'customer_pool' && this.data.loaded_view !== 'customer_pool') this.loadPoolView({ silent: true });
+      if (this.data && view === 'contact_strategy' && this.data.loaded_view !== 'contact_strategy') this.loadContactStrategy({ silent: true });
+      if (this.data && (view === 'execution' || view === 'analytics' || view === 'dashboard') && this.data.loaded_view !== view && this.bootstrapLoadingView !== view) {
+        this.bootstrapLoadingView = view;
+        this.load({ silent: true, view: view, noSwitch: true }).finally(function () {
+          PromotionModule.bootstrapLoadingView = '';
+        });
+      }
       if (current === 'promotion') renderActions('promotion');
     },
     poolFilterPayload: function () {
@@ -10004,6 +10034,7 @@
       var previousAllPool = keepAllPool ? (previousData.all_pool || []) : [];
       var previousAllPager = keepAllPool ? (previousData.all_pool_pager || {}) : {};
       return post('marketing_bootstrap', Object.assign({}, this.poolFilterPayload(), {
+        view: options.view || this.currentView || 'campaigns',
 	        customer_id: this.currentCustomerId || '',
         page: this.poolPage || 1,
         page_size: this.poolPageSize || 50
@@ -10016,7 +10047,7 @@
         }
         self.applyBootstrapPoolState();
         self.render();
-        self.switchView(self.currentView || 'dashboard');
+        if (!options.noSwitch) self.switchView(self.currentView || 'dashboard');
         if (keepAllPool && !previousAllPool.length && !self.allPoolLoading) {
           self.allPoolLoading = true;
           self.renderPool();
@@ -15608,7 +15639,7 @@
     }
     if (label === '删除草稿') {
       var draft = selectedMail() || {};
-      if (draft.draft_id) return pending('删除草稿');
+      if (draft.draft_id || draft.id) return MailModule.applyMailAction('mail_delete', Number(draft.draft_id || draft.id || 0));
       return toast('请先选择草稿。');
     }
     if (label === '回复' || label === '回复全部') {

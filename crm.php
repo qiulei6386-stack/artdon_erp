@@ -14,17 +14,7 @@ require_once __DIR__ . '/crm_settings_config.php';
 require_once __DIR__ . '/crm_ui.php';
 require_login();
 crm_require('dashboard.view');
-crm_ensure_tables();
-crm_customer_ensure_tables();
-crm_visit_ensure_tables();
-crm_task_center_ensure_tables();
-crm_opportunity_ensure_tables();
-crm_mail_ensure_tables();
-crm_marketing_ensure_tables();
-crm_ai_ensure_tables();
-radar_ensure_permissions();
-crm_settings_ensure_tables();
-crm_ui_ensure_tables();
+crm_run_schema_ensures();
 crm_touch_online('workspace');
 
 $user = current_user();
@@ -129,6 +119,66 @@ $actionPermissions = [
     '查看当前邮件往来' => crm_can('mail.view'),
     '转派工' => crm_can('mail.view') && $crmCanCreateDispatch,
     '邮箱设置' => crm_can('mail.account_bind_own'),
+    '新建推广项目' => crm_can('promotion.task_create'),
+    '新建推广任务' => crm_can('promotion.task_create'),
+    '批量创建推广任务' => crm_can('promotion.task_create'),
+    '创建推广任务' => crm_can('promotion.task_create'),
+    '编辑项目' => crm_can('promotion.edit_project'),
+    '编辑任务' => crm_can('promotion.edit_project'),
+    '编辑推广任务' => crm_can('promotion.edit_project'),
+    '复制项目' => crm_can('promotion.task_create'),
+    '复制推广项目' => crm_can('promotion.task_create'),
+    '启动项目' => crm_can('promotion.execute'),
+    '暂停项目' => crm_can('promotion.execute'),
+    '继续项目' => crm_can('promotion.execute'),
+    '取消项目' => crm_can('promotion.execute'),
+    '删除项目' => crm_can('promotion.delete_project'),
+    '批量删除' => crm_can('promotion.delete_project'),
+    '生成队列' => crm_can('promotion.execute'),
+    '生成执行队列' => crm_can('promotion.execute'),
+    '重新生成队列' => crm_can('promotion.execute'),
+    '重新生成执行清单' => crm_can('promotion.execute'),
+    '重试失败队列' => crm_can('promotion.execute'),
+    '取消未发送队列' => crm_can('promotion.execute'),
+    '批量暂停' => crm_can('promotion.execute'),
+    '批量继续' => crm_can('promotion.execute'),
+    '批量复制项目' => crm_can('promotion.task_create'),
+    '批量重新生成执行清单' => crm_can('promotion.execute'),
+    '批量重试失败队列' => crm_can('promotion.execute'),
+    '批量取消未发送队列' => crm_can('promotion.execute'),
+    '新建客户组' => crm_can('promotion.create_group'),
+    '管理客户组' => crm_can('promotion.edit_group'),
+    '编辑客户组' => crm_can('promotion.edit_group'),
+    '复制客户组' => crm_can('promotion.create_group'),
+    '删除客户组' => crm_can('promotion.delete_group'),
+    '停用客户组' => crm_can('promotion.edit_group'),
+    '归档客户组' => crm_can('promotion.edit_group'),
+    '添加客户到本组' => crm_can('promotion.move_customer'),
+    '从本组移出客户' => crm_can('promotion.move_customer'),
+    '批量加入客户组' => crm_can('promotion.move_customer'),
+    '批量移出客户组' => crm_can('promotion.move_customer'),
+    '批量删除客户组' => crm_can('promotion.delete_group'),
+    '设置可推广' => crm_can('promotion.manage'),
+    '设置不推广' => crm_can('promotion.manage'),
+    '加入黑名单' => crm_can('promotion.manage'),
+    '批量设置可推广' => crm_can('promotion.manage'),
+    '批量设置不推广' => crm_can('promotion.manage'),
+    '批量加入黑名单' => crm_can('promotion.manage'),
+    '批量移出黑名单' => crm_can('promotion.manage'),
+    '设置联系人角色' => crm_can('promotion.manage'),
+    '设置为主联系人' => crm_can('promotion.manage'),
+    '执行策略检查' => crm_can('promotion.manage'),
+    '标记完成' => crm_can('promotion.execute'),
+    '填写结果' => crm_can('promotion.execute'),
+    '上传截图' => crm_can('promotion.execute'),
+    '标记失败' => crm_can('promotion.execute'),
+    '标记跳过' => crm_can('promotion.execute'),
+    '批量标记跳过' => crm_can('promotion.execute'),
+    '批量改执行人' => crm_can('promotion.execute'),
+    '查看执行日志' => crm_can('promotion.view'),
+    '查看效果分析' => crm_can('promotion.analytics'),
+    '导出联系人策略' => crm_can('promotion.export'),
+    '批量导出' => crm_can('promotion.export'),
 ];
 $crmPermissionState = crm_permission_state([
     'contact.view',

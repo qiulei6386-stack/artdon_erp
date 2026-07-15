@@ -1086,6 +1086,18 @@ function crm_marketing_analytics(): array
 
 function crm_marketing_bootstrap(array $input = []): array
 {
+    $view = strtolower(trim((string)($input['view'] ?? $input['current_view'] ?? 'campaigns')));
+    if ($view === 'pool' || $view === 'customer_pool') $view = 'customer_pool';
+    if ($view === 'projects' || $view === 'campaign') $view = 'campaigns';
+    if ($view === 'contacts') $view = 'contact_strategy';
+    $heavyViews = [
+        'customer_pool' => true,
+        'contact_strategy' => true,
+        'execution' => true,
+        'analytics' => true,
+        'dashboard' => true,
+        'group_management' => true,
+    ];
     $fallbackAnalytics = ['status' => [], 'channels' => [], 'countries' => [], 'tasks' => []];
     $channels = [];
     $pool = [];
@@ -1096,20 +1108,36 @@ function crm_marketing_bootstrap(array $input = []): array
     $analytics = $fallbackAnalytics;
     try { $channels = crm_marketing_channels(); } catch (Throwable $e) { error_log('crm_marketing_channels failed: ' . $e->getMessage()); }
     $poolPager = ['total' => 0, 'page' => 1, 'page_size' => 50, 'page_count' => 1];
-    try {
-        $poolResult = crm_marketing_pool($input);
-        $pool = $poolResult['rows'] ?? [];
-        $poolPager = $poolResult;
-        unset($poolPager['rows']);
-    } catch (Throwable $e) { error_log('crm_marketing_pool failed: ' . $e->getMessage()); }
-    try { $contacts = crm_marketing_contacts($input); } catch (Throwable $e) { error_log('crm_marketing_contacts failed: ' . $e->getMessage()); }
-    try { $chatGroups = crm_marketing_chat_groups($input); } catch (Throwable $e) { error_log('crm_marketing_chat_groups failed: ' . $e->getMessage()); }
+    if ($view === 'customer_pool' || $view === 'group_management') {
+        try {
+            $poolResult = crm_marketing_pool($input);
+            $pool = $poolResult['rows'] ?? [];
+            $poolPager = $poolResult;
+            unset($poolPager['rows']);
+        } catch (Throwable $e) { error_log('crm_marketing_pool failed: ' . $e->getMessage()); }
+    }
+    if ($view === 'contact_strategy') {
+        try { $contacts = crm_marketing_contacts($input); } catch (Throwable $e) { error_log('crm_marketing_contacts failed: ' . $e->getMessage()); }
+    }
+    if ($view === 'customer_pool' || $view === 'contact_strategy' || $view === 'execution') {
+        try { $chatGroups = crm_marketing_chat_groups($input); } catch (Throwable $e) { error_log('crm_marketing_chat_groups failed: ' . $e->getMessage()); }
+    }
     try { $tasks = crm_marketing_tasks(); } catch (Throwable $e) { error_log('crm_marketing_tasks failed: ' . $e->getMessage()); }
-    try { $logs = crm_marketing_logs($input); } catch (Throwable $e) { error_log('crm_marketing_logs failed: ' . $e->getMessage()); }
-    if (crm_can('promotion.analytics')) {
+    if ($view === 'execution' || $view === 'analytics' || $view === 'dashboard') {
+        try { $logs = crm_marketing_logs($input); } catch (Throwable $e) { error_log('crm_marketing_logs failed: ' . $e->getMessage()); }
+    }
+    if (($view === 'analytics' || $view === 'dashboard') && crm_can('promotion.analytics')) {
         try { $analytics = crm_marketing_analytics(); } catch (Throwable $e) { error_log('crm_marketing_analytics failed: ' . $e->getMessage()); }
     }
+    $targets = [];
+    $failedTargets = [];
+    if ($view === 'execution' || $view === 'analytics' || !empty($input['task_id'])) {
+        try { $targets = crm_marketing_task_targets($input); } catch (Throwable $e) { error_log('crm_marketing_task_targets failed: ' . $e->getMessage()); }
+        try { $failedTargets = crm_marketing_task_targets(['status' => 'failed']); } catch (Throwable $e) { error_log('crm_marketing_failed_targets failed: ' . $e->getMessage()); }
+    }
     return [
+        'loaded_view' => $view,
+        'lazy_views' => array_keys($heavyViews),
         'channels' => $channels,
         'groups' => crm_marketing_groups(),
         'templates' => crm_marketing_templates(),
@@ -1121,9 +1149,9 @@ function crm_marketing_bootstrap(array $input = []): array
         'contacts' => $contacts,
         'chat_groups' => $chatGroups,
         'tasks' => $tasks,
-        'targets' => crm_marketing_task_targets($input),
+        'targets' => $targets,
         'logs' => $logs,
-        'failed_targets' => crm_marketing_task_targets(['status' => 'failed']),
+        'failed_targets' => $failedTargets,
         'analytics' => $analytics,
     ];
 }
