@@ -12202,11 +12202,14 @@
 	      var step = Math.max(0, Math.min(this.wizardStep, steps.length - 1));
 	      this.wizardStep = step;
 	      var isEdit = Number(draft.task_id || 0) > 0;
+	      var statusText = this.wizardDraftStatusText(draft);
+	      var saveText = this.wizardSaveStatusText(draft);
+	      var nextText = step >= steps.length - 1 ? '生成执行队列' : '下一步';
 	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
-	        '<header class="promo-wizard-head crm-modal-header"><div><span>推广任务向导</span><h2 class="crm-modal-title">' + (isEdit ? '编辑推广任务' : '创建推广任务') + '</h2><p class="crm-modal-subtitle">' + esc(steps[step]) + ' · 第 ' + (step + 1) + ' / ' + steps.length + ' 步；操作统一在右侧 ACTIONS。</p></div><button type="button" data-promo-wizard-close>关闭</button></header>' +
-	        '<nav class="promo-wizard-steps">' + steps.map(function (name, index) { return '<button type="button" class="' + (index === step ? 'active' : '') + '" data-promo-wizard-step="' + index + '"><b>' + (index + 1) + '</b><span>' + esc(name) + '</span></button>'; }).join('') + '</nav>' +
+	        '<header class="promo-wizard-head crm-modal-header"><button type="button" class="promo-wizard-close" data-promo-wizard-close>关闭</button><div class="promo-wizard-title"><span>' + (isEdit ? '编辑推广任务' : '新建推广任务') + '</span><h2 class="crm-modal-title">' + esc(draft.task_name || (isEdit ? '编辑推广任务' : '未命名推广任务')) + '</h2></div><div class="promo-wizard-meta"><b>' + esc(statusText) + '</b><em data-promo-wizard-save-status>' + esc(saveText) + '</em></div></header>' +
+	        '<nav class="promo-wizard-steps">' + this.renderWizardStepNav(steps, step) + '</nav>' +
 	        '<main class="promo-wizard-body crm-modal-body">' + this.renderWizardStep(step, draft) + '</main>' +
-	        '<footer class="promo-wizard-foot crm-modal-footer"><div data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || '配置会过滤黑名单、不推广联系人、离职联系人和无邮箱目标；本向导不会直接发送邮件。') + '</div></footer>' +
+	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="promo-wizard-foot-right"><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" class="primary" data-promo-wizard-next>' + esc(nextText) + '</button></div></footer>' +
 	        '</section>';
 	      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
 	        button.addEventListener('click', function () {
@@ -12216,6 +12219,13 @@
 	        });
 	      });
 	      modal.querySelector('[data-promo-wizard-close]')?.addEventListener('click', function () { self.closeWizard(); });
+	      modal.querySelector('[data-promo-wizard-cancel]')?.addEventListener('click', function () { self.closeWizard(); });
+	      modal.querySelector('[data-promo-wizard-prev]')?.addEventListener('click', function () { self.wizardPrev(); });
+	      modal.querySelector('[data-promo-wizard-next]')?.addEventListener('click', function () {
+	        if (Number(self.wizardStep || 0) >= self.wizardSteps().length - 1) return self.createTaskFromWizard('pending', { queue: true });
+	        self.wizardNext();
+	      });
+	      modal.querySelector('[data-promo-wizard-draft]')?.addEventListener('click', function () { self.saveDraftFromWizard(); });
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
         input.addEventListener('input', function () { self.collectWizard(); self.updateWizardPreview(); });
         input.addEventListener('change', function () {
@@ -12243,7 +12253,26 @@
       modal.querySelector('[data-promo-execution-detail]')?.addEventListener('click', function () { self.openExecutionPlanDialog(); });
 	      this.bindWizardContentEditor();
 	      this.updateWizardPreview();
-	      if (current === 'promotion') renderActions('promotion');
+		      if (current === 'promotion') renderActions('promotion');
+		    },
+	    wizardDraftStatusText: function (draft) {
+	      var status = String((draft && draft.task_status) || '').toLowerCase();
+	      if (!status && Number((draft && draft.task_id) || 0) > 0) status = 'draft';
+	      if (status === 'scheduled' || status === 'pending') return '已计划';
+	      if (status === 'running') return '执行中';
+	      if (status === 'completed') return '已完成';
+	      if (status === 'paused') return '已暂停';
+	      return '草稿';
+	    },
+	    wizardSaveStatusText: function (draft) {
+	      return Number((draft && draft.task_id) || 0) > 0 ? ('已保存 #' + draft.task_id) : '未保存';
+	    },
+	    renderWizardStepNav: function (steps, activeStep) {
+	      return steps.map(function (name, index) {
+	        var cls = index === activeStep ? 'active' : (index < activeStep ? 'done' : '');
+	        var marker = index < activeStep ? '✓' : String(index + 1);
+	        return '<button type="button" class="' + cls + '" data-promo-wizard-step="' + index + '"><b>' + esc(marker) + '</b><span>' + esc(name) + '</span></button>';
+	      }).join('');
 	    },
 	    wizardPrev: function () {
 	      this.collectWizard();
@@ -13305,14 +13334,18 @@
         '</section>';
       this.bindWizardPreviewControls(box);
     },
-    createTaskFromWizard: function (status, options) {
-      options = options || {};
-	      var draft = this.collectWizard();
-	      this.applyWizardTemplate();
-	      var targets = this.resolveWizardTargets(draft);
-	      var self = this;
-	      var targetStatus = status || 'pending';
-	      post('marketing_task_create', this.wizardTaskPayload(draft, targets, targetStatus)).then(function (json) {
+	    createTaskFromWizard: function (status, options) {
+	      options = options || {};
+		      var draft = this.collectWizard();
+		      this.applyWizardTemplate();
+		      var targets = this.resolveWizardTargets(draft);
+		      var self = this;
+		      var targetStatus = status || 'pending';
+		      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
+		      var submitButton = document.querySelector('[data-promo-wizard-next]');
+		      if (statusBox) statusBox.textContent = options.queue ? '生成中...' : '保存中...';
+		      if (submitButton) { submitButton.disabled = true; submitButton.textContent = options.queue ? '生成中...' : '保存中...'; }
+		      post('marketing_task_create', this.wizardTaskPayload(draft, targets, targetStatus)).then(function (json) {
 	        if (!json.success) throw new Error(json.message || '创建推广任务失败');
 	        var savedTaskId = Number((json.data && json.data.task_id) || draft.task_id || 0);
 	        if (savedTaskId) self.selectedTaskId = savedTaskId;
@@ -13331,16 +13364,21 @@
 	          });
 	        }
 	        afterSave();
-	      }).catch(function (error) { self.showError(error.message || '创建推广任务失败'); });
-	    },
-    saveDraftFromWizard: function () {
-      var draft = this.collectWizard();
-      this.applyWizardTemplate();
-      var targets = this.resolveWizardTargets(draft);
-      var self = this;
-      var button = document.querySelector('[data-promo-wizard-draft]');
-      if (button) { button.disabled = true; button.textContent = '保存中...'; }
-      post('marketing_task_create', this.wizardTaskPayload(draft, targets, 'draft')).then(function (json) {
+		      }).catch(function (error) { self.showError(error.message || '创建推广任务失败'); }).finally(function () {
+		        if (statusBox) statusBox.textContent = self.wizardSaveStatusText(self.wizardDraft || draft);
+		        if (submitButton) { submitButton.disabled = false; submitButton.textContent = options.queue ? '生成执行队列' : '下一步'; }
+		      });
+		    },
+	    saveDraftFromWizard: function () {
+	      var draft = this.collectWizard();
+	      this.applyWizardTemplate();
+	      var targets = this.resolveWizardTargets(draft);
+	      var self = this;
+	      var button = document.querySelector('[data-promo-wizard-draft]');
+	      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
+	      if (button) { button.disabled = true; button.textContent = '保存中...'; }
+	      if (statusBox) statusBox.textContent = '保存中...';
+	      post('marketing_task_create', this.wizardTaskPayload(draft, targets, 'draft')).then(function (json) {
         if (!json.success) throw new Error(json.message || '草稿保存失败');
         var savedTaskId = Number((json.data && json.data.task_id) || draft.task_id || 0);
         self.wizardDraft = Object.assign({}, self.wizardDraft || draft, { task_id: savedTaskId });
@@ -13352,10 +13390,11 @@
 	        self.renderWizard();
       }).catch(function (error) {
         self.showError(error.message || '草稿保存失败');
-      }).finally(function () {
-        if (button) { button.disabled = false; button.textContent = '保存草稿'; }
-      });
-    },
+	      }).finally(function () {
+	        if (button) { button.disabled = false; button.textContent = '保存草稿'; }
+	        if (statusBox) statusBox.textContent = self.wizardSaveStatusText(self.wizardDraft || draft);
+	      });
+	    },
     wizardTaskPayload: function (draft, targets, status) {
       targets = targets || { customers: [], contacts: [], chat_groups: [], skipped: [] };
       return {

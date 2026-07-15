@@ -20211,8 +20211,166 @@ body.is-promo-task-editor-open .promo-wizard-steps,
 body.is-promo-task-editor-open .promo-wizard-foot {
   flex: 0 0 auto !important;
 }
+body.is-promo-task-editor-open .promo-wizard-head {
+  min-height: 56px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 8px 14px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-close {
+  min-height: 32px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-text) !important;
+}
+body.is-promo-task-editor-open .promo-wizard-title {
+  min-width: 0 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-title span {
+  display: block !important;
+  color: var(--crm-primary) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-title h2 {
+  margin: 1px 0 0 !important;
+  overflow: hidden !important;
+  color: var(--crm-text) !important;
+  font-size: 17px !important;
+  line-height: 1.2 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-wizard-meta {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-meta b,
+body.is-promo-task-editor-open .promo-wizard-meta em {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 24px !important;
+  border-radius: 999px !important;
+  padding: 0 9px !important;
+  font-size: 12px !important;
+  font-style: normal !important;
+  font-weight: 850 !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-wizard-meta b {
+  background: var(--crm-active-bg) !important;
+  color: var(--crm-primary) !important;
+}
+body.is-promo-task-editor-open .promo-wizard-meta em {
+  background: var(--crm-hover-bg) !important;
+  color: var(--crm-muted-text) !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps {
+  height: 42px !important;
+  display: grid !important;
+  grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  padding: 6px 10px !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps button {
+  min-width: 0 !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-muted-text) !important;
+  padding: 0 6px !important;
+  font-size: 11px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps button.active {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps button.done {
+  border-color: #bfdbfe !important;
+  background: color-mix(in srgb, #eff6ff 70%, var(--crm-card-bg)) !important;
+  color: #2563eb !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps b {
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 999px !important;
+  background: var(--crm-hover-bg) !important;
+  color: inherit !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps button.active b,
+body.is-promo-task-editor-open .promo-wizard-steps button.done b {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+body.is-promo-task-editor-open .promo-wizard-steps span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
 body.is-promo-task-editor-open .promo-wizard-body {
   min-height: 0 !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot {
+  min-height: 56px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 9px 14px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot-left,
+body.is-promo-task-editor-open .promo-wizard-foot-right {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot-status {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+  text-align: center !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot button {
+  min-height: 34px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-text) !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot button.primary,
+body.is-promo-task-editor-open .promo-wizard-foot [data-promo-wizard-next] {
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
+  cursor: not-allowed !important;
+  opacity: .45 !important;
 }
