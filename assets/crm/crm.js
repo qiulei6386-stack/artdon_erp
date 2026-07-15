@@ -12289,11 +12289,12 @@
           '<section class="promo-compose-fields"><label class="promo-compose-subject"><span>主题 *</span><input data-wizard-field="mail_subject" value="' + esc(draft.mail_subject) + '" placeholder="支持变量，例如 {customer_name}"></label><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><label><span>附件</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label></section>' +
           '<section class="mail-compose-main promo-compose-main"><section class="mail-compose-editor-column promo-compose-editor-column"><div class="mail-rich-toolbar promo-rich-toolbar" data-promo-rich-toolbar>' +
           '<span class="mail-toolbar-group"><button type="button" data-promo-rich-cmd="bold" title="加粗">B</button><button type="button" data-promo-rich-cmd="italic" title="斜体">I</button><button type="button" data-promo-rich-cmd="underline" title="下划线">U</button><button type="button" data-promo-rich-cmd="insertUnorderedList" title="列表">列表</button></span>' +
-          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-link title="插入链接">链接</button><button type="button" data-promo-rich-image title="插入图片">图片</button><button type="button" data-promo-rich-table title="插入表格">表格</button><button type="button" data-promo-rich-signature title="插入签名">签名</button></span>' +
+          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-link title="插入链接">链接</button><button type="button" data-promo-rich-image title="插入图片">图片</button><button type="button" data-promo-rich-signature title="插入签名">签名</button><button type="button" data-promo-attachment-manual title="登记手动附件">附件</button><button type="button" data-promo-material-attach title="使用资料包">资料</button><button type="button" data-promo-material-open title="打开资料模块">资料模块</button></span>' +
+          '<span class="mail-toolbar-group promo-toolbar-vars">' + variableButtons + '</span>' +
           '<span class="mail-toolbar-group promo-toolbar-colors"><button type="button" data-promo-rich-color="#111827" title="黑色"><i style="background:#111827"></i></button><button type="button" data-promo-rich-color="#dc2626" title="红色"><i style="background:#dc2626"></i></button><button type="button" data-promo-rich-color="#2563eb" title="蓝色"><i style="background:#2563eb"></i></button><button type="button" data-promo-rich-color="#059669" title="绿色"><i style="background:#059669"></i></button></span>' +
-          '<span class="mail-toolbar-group promo-toolbar-table"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label><label title="表格列宽">列<input type="number" min="40" max="600" data-promo-table-col-width placeholder="宽"></label><label title="表格行高">行<input type="number" min="22" max="160" data-promo-table-row-height placeholder="高"></label><button type="button" data-promo-table-add-row title="增加行">+行</button><button type="button" data-promo-table-add-col title="增加列">+列</button><button type="button" data-promo-table-del-row title="删除行">-行</button><button type="button" data-promo-table-del-col title="删除列">-列</button></span>' +
-          '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div></section>' +
-          '<aside class="mail-compose-side-column promo-compose-side"><section class="mail-compose-side-card promo-variable-card"><header><strong>变量</strong><span>停留查看字段</span></header><div class="promo-variable-grid">' + variableButtons + '</div></section><section class="mail-compose-side-card promo-material-card"><header><strong>资料</strong><span>资料包联动</span></header><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></aside></section>' +
+          '<span class="mail-toolbar-group"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label></span>' +
+          '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div></section></section>' +
+          '<section class="promo-material-link"><div><strong>资料生成系统联动</strong><span>附件按钮登记手动附件；资料按钮切换为资料包；资料模块可生成资料包后回填编号。</span></div><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section>' +
           '</section>';
       }
       if (step === 5) {
@@ -12644,9 +12645,6 @@
         MailModule.insertRichImage(editor);
         self.collectWizard();
       });
-      toolbar?.querySelector('[data-promo-rich-table]')?.addEventListener('click', function () {
-        self.openWizardTableDialog(editor);
-      });
       toolbar?.querySelector('[data-promo-rich-signature]')?.addEventListener('click', function () {
         self.insertWizardSignature(editor);
         self.collectWizard();
@@ -12666,30 +12664,28 @@
       toolbar?.querySelector('[data-promo-font-size]')?.addEventListener('change', function () {
         self.applyWizardFontSize(editor, this.value);
       });
-      toolbar?.querySelector('[data-promo-table-col-width]')?.addEventListener('change', function () {
-        self.applyWizardTableSize(editor, 'col', this.value);
+      document.querySelector('[data-promo-attachment-manual]')?.addEventListener('click', function () {
+        var mode = document.querySelector('[data-wizard-field="attachment_mode"]');
+        var code = document.querySelector('[data-wizard-field="material_package"]');
+        if (mode) mode.value = 'manual';
+        if (code) code.focus();
+        self.collectWizard();
+        toast('已切换为登记手动附件，请填写附件或资料包编号。');
       });
-      toolbar?.querySelector('[data-promo-table-row-height]')?.addEventListener('change', function () {
-        self.applyWizardTableSize(editor, 'row', this.value);
-      });
-      toolbar?.querySelector('[data-promo-table-add-row]')?.addEventListener('click', function () { self.editWizardTable(editor, 'add_row'); });
-      toolbar?.querySelector('[data-promo-table-add-col]')?.addEventListener('click', function () { self.editWizardTable(editor, 'add_col'); });
-      toolbar?.querySelector('[data-promo-table-del-row]')?.addEventListener('click', function () { self.editWizardTable(editor, 'del_row'); });
-      toolbar?.querySelector('[data-promo-table-del-col]')?.addEventListener('click', function () { self.editWizardTable(editor, 'del_col'); });
-      document.querySelector('[data-promo-material-attach]')?.addEventListener('click', function () {
+      document.querySelectorAll('[data-promo-material-attach]').forEach(function (button) { button.addEventListener('click', function () {
         var mode = document.querySelector('[data-wizard-field="attachment_mode"]');
         var code = document.querySelector('[data-wizard-field="material_package"]');
         if (mode) mode.value = 'material';
         if (code) code.focus();
         self.collectWizard();
         toast('已切换为附加资料包，请填写资料包编号。');
-      });
-      document.querySelector('[data-promo-material-open]')?.addEventListener('click', function () {
+      }); });
+      document.querySelectorAll('[data-promo-material-open]').forEach(function (button) { button.addEventListener('click', function () {
         self.collectWizard();
         toast('已保留当前推广内容，进入资料模块后可生成资料包并回填编号。');
         self.closeWizard();
         activate('materials');
-      });
+      }); });
     },
     openWizardTableDialog: function (editor) {
       var self = this;
