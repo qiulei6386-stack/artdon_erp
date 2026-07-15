@@ -12157,10 +12157,13 @@
         hourly_limit: 50,
         daily_limit: 200,
         retry_count: 1,
+        retry_interval_minutes: 30,
         failure_action: 'mark_failed',
         blacklist_policy: 'skip',
         no_contact_policy: 'skip',
         no_email_policy: 'skip',
+        smtp_failure_policy: 'failure_center',
+        log_backfill_policy: 'all',
         manual_attachments: [],
         datasheet_attachments: []
       };
@@ -13669,7 +13672,7 @@
         audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, contact_filter: draft.contact_filter }),
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
-        failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy }),
+        failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),
         attachment_config: JSON.stringify({ attachment_mode: draft.attachment_mode, material_package: draft.material_package, manual_attachments: draft.manual_attachments || [], datasheet_attachments: draft.datasheet_attachments || [] }),
         risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: targets.contacts.length, selected_chat_groups: (targets.chat_groups || []).length, skipped: targets.skipped.length, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'missing_chat_group'], linkage: draft.template_action || '' })
       };
@@ -13716,10 +13719,13 @@
         offline_owner_id: sendRule.offline_owner_id || '',
         offline_owner_ids: Array.isArray(sendRule.offline_owner_ids) ? sendRule.offline_owner_ids : (sendRule.offline_owner_id ? [sendRule.offline_owner_id] : []),
         retry_count: failure.retry_count || 1,
+        retry_interval_minutes: failure.retry_interval_minutes || 30,
         failure_action: failure.failure_action || 'mark_failed',
         blacklist_policy: failure.blacklist_policy || 'skip',
         no_contact_policy: failure.no_contact_policy || 'skip',
         no_email_policy: failure.no_email_policy || 'skip',
+        smtp_failure_policy: failure.smtp_failure_policy || 'failure_center',
+        log_backfill_policy: failure.log_backfill_policy || 'all',
         attachment_mode: attach.attachment_mode || 'none',
         material_package: attach.material_package || '',
         manual_attachments: Array.isArray(attach.manual_attachments) ? attach.manual_attachments : [],
