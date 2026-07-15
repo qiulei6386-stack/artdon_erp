@@ -1,0 +1,30 @@
+:root {
+  --crm-bg: #f5f7fb;
+  --crm-card-bg: #ffffff;
+  --crm-topbar-bg: #ffffff;
+  --crm-tabbar-bg: #f8fafc;
+  --crm-actionbar-bg: #ffffff;
+  --crm-text: #0f172a;
+  --crm-muted-text: #64748b;
+  --crm-border: #dbe3ef;
+  --crm-primary: #2563eb;
+  --crm-danger: #dc2626;
+  --crm-success: #059669;
+  --crm-warning: #d97706;
+  --crm-hover-bg: #eff6ff;
+  --crm-active-bg: #dbeafe;
+  --crm-radius: 10px;
+  --crm-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  --crm-transition-speed: 160ms;
+}
+html[data-crm-theme="dark"] {
+  --crm-bg: #0b1120; --crm-card-bg: #111827; --crm-topbar-bg: #0f172a; --crm-tabbar-bg: #111827; --crm-actionbar-bg: #111827; --crm-text: #e5e7eb; --crm-muted-text: #94a3b8; --crm-border: #273449; --crm-primary: #60a5fa; --crm-hover-bg: #172554; --crm-active-bg: #1e3a8a; --crm-shadow: 0 14px 34px rgba(0,0,0,.35);
+}
+html[data-crm-theme="office-gray"] { --crm-bg:#f3f4f6; --crm-card-bg:#fff; --crm-topbar-bg:#f9fafb; --crm-tabbar-bg:#f3f4f6; --crm-primary:#475569; --crm-active-bg:#e5e7eb; }
+html[data-crm-theme="blue-gray"] { --crm-bg:#eef4fb; --crm-card-bg:#fff; --crm-topbar-bg:#f8fbff; --crm-primary:#1d4ed8; --crm-active-bg:#dbeafe; }
+html[data-crm-theme="mono"] { --crm-bg:#fff; --crm-card-bg:#fff; --crm-topbar-bg:#fff; --crm-text:#050505; --crm-muted-text:#525252; --crm-border:#d4d4d4; --crm-primary:#111; --crm-active-bg:#f5f5f5; }
+html[data-crm-theme="glass"] { --crm-bg:#eef6ff; --crm-card-bg:rgba(255,255,255,.72); --crm-topbar-bg:rgba(255,255,255,.72); --crm-actionbar-bg:rgba(255,255,255,.72); --crm-primary:#0ea5e9; --crm-shadow:0 18px 44px rgba(14,165,233,.14); }
+html[data-crm-theme="eye-care"] { --crm-bg:#f7f8ef; --crm-card-bg:#fffff7; --crm-topbar-bg:#fffff7; --crm-primary:#3f6212; --crm-muted-text:#66705b; --crm-active-bg:#ecfccb; }
+html[data-crm-theme="high-contrast"] { --crm-bg:#f8fafc; --crm-card-bg:#fff; --crm-text:#000; --crm-muted-text:#1f2937; --crm-border:#334155; --crm-primary:#0047ff; --crm-danger:#b00020; --crm-active-bg:#c7d2fe; }
+html[data-crm-animation="off"] { --crm-transition-speed: 0ms; }
+html[data-crm-animation="standard"] { --crm-transition-speed: 220ms; }

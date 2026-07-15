@@ -1,0 +1,31 @@
+# Runtime data
+storage/
+uploads/
+backup/
+backups/
+_codex_backups/
+_local_sync_backups/
+
+# Local and generated files
+*.log
+*.bak
+*.bak_*
+*.tmp
+tmp_*.php
+.DS_Store
+
+# Dependencies
+vendor/
+node_modules/
+
+# Local environment / secrets
+includes/config.php
+includes/install.lock
+.env
+.env.*
+
+# Archive artifacts
+*.tar
+*.tar.gz
+*.zip
+*.sql.gz
