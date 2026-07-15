@@ -20164,3 +20164,55 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
     grid-template-columns: repeat(auto-fill, minmax(300px, 320px)) !important;
   }
 }
+
+/* Step 1: promotion task editor fullscreen shell. */
+html.is-promo-task-editor-open,
+body.is-promo-task-editor-open {
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open.is-promotion-module .crm-shell,
+body.is-promo-task-editor-open.is-promotion-module .crm-shell.is-actionbar-collapsed {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+body.is-promo-task-editor-open .crm-actionbar {
+  display: none !important;
+}
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"].active {
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"] .promo-engine-v2,
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"] .promo-workspace,
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"] .promo-view[data-promo-view="wizard"],
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"] [data-promo-wizard-host] {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .crm-module[data-crm-module="promotion"] .promo-view[data-promo-view="wizard"].active {
+  display: block !important;
+}
+body.is-promo-task-editor-open .promo-wizard-shell {
+  position: fixed !important;
+  inset: 16px !important;
+  z-index: 12000 !important;
+  width: calc(100vw - 32px) !important;
+  height: calc(100vh - 32px) !important;
+  max-width: none !important;
+  max-height: none !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 14px !important;
+  background: var(--crm-bg) !important;
+  box-shadow: 0 24px 80px rgb(15 23 42 / .22) !important;
+}
+body.is-promo-task-editor-open .promo-wizard-head,
+body.is-promo-task-editor-open .promo-wizard-steps,
+body.is-promo-task-editor-open .promo-wizard-foot {
+  flex: 0 0 auto !important;
+}
+body.is-promo-task-editor-open .promo-wizard-body {
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}

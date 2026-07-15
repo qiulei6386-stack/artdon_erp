@@ -12170,6 +12170,9 @@
 	        this.renderBootstrapChannels();
 	        if (!this.wizardDraft) this.wizardStep = 0;
 	        this.wizardDraft = Object.assign(this.defaultWizardDraft(), this.wizardDraft || {});
+	        this.wizardReturnScrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+	        document.body.classList.add('is-promo-task-editor-open');
+	        document.documentElement.classList.add('is-promo-task-editor-open');
 	        this.switchView('wizard');
 	        this.renderWizard();
 	        this.loadWizardTargetPreview();
@@ -12182,9 +12185,13 @@
 	    closeWizard: function () {
 	      this.wizardDraft = null;
 	      this.wizardStep = 0;
+	      document.body.classList.remove('is-promo-task-editor-open');
+	      document.documentElement.classList.remove('is-promo-task-editor-open');
 	      var host = document.querySelector('[data-promo-wizard-host]');
 	      if (host) host.innerHTML = '<p class="promo-empty">请从右侧 ACTIONS 创建推广项目。</p>';
 	      this.switchView('campaigns');
+	      var scrollY = Number(this.wizardReturnScrollY || 0);
+	      requestAnimationFrame(function () { window.scrollTo(0, scrollY); });
 	    },
 	    renderWizard: function () {
 	      var modal = document.querySelector('[data-promo-wizard-host]');
@@ -12196,18 +12203,19 @@
 	      this.wizardStep = step;
 	      var isEdit = Number(draft.task_id || 0) > 0;
 	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
-	        '<header class="promo-wizard-head crm-modal-header"><div><span>推广任务向导</span><h2 class="crm-modal-title">' + (isEdit ? '编辑推广任务' : '创建推广任务') + '</h2><p class="crm-modal-subtitle">' + esc(steps[step]) + ' · 第 ' + (step + 1) + ' / ' + steps.length + ' 步；操作统一在右侧 ACTIONS。</p></div></header>' +
+	        '<header class="promo-wizard-head crm-modal-header"><div><span>推广任务向导</span><h2 class="crm-modal-title">' + (isEdit ? '编辑推广任务' : '创建推广任务') + '</h2><p class="crm-modal-subtitle">' + esc(steps[step]) + ' · 第 ' + (step + 1) + ' / ' + steps.length + ' 步；操作统一在右侧 ACTIONS。</p></div><button type="button" data-promo-wizard-close>关闭</button></header>' +
 	        '<nav class="promo-wizard-steps">' + steps.map(function (name, index) { return '<button type="button" class="' + (index === step ? 'active' : '') + '" data-promo-wizard-step="' + index + '"><b>' + (index + 1) + '</b><span>' + esc(name) + '</span></button>'; }).join('') + '</nav>' +
 	        '<main class="promo-wizard-body crm-modal-body">' + this.renderWizardStep(step, draft) + '</main>' +
 	        '<footer class="promo-wizard-foot crm-modal-footer"><div data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || '配置会过滤黑名单、不推广联系人、离职联系人和无邮箱目标；本向导不会直接发送邮件。') + '</div></footer>' +
 	        '</section>';
-      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
-        button.addEventListener('click', function () {
-          self.collectWizard();
-          self.wizardStep = Number(button.getAttribute('data-promo-wizard-step') || 0);
-          self.renderWizard();
-        });
-      });
+	      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          self.collectWizard();
+	          self.wizardStep = Number(button.getAttribute('data-promo-wizard-step') || 0);
+	          self.renderWizard();
+	        });
+	      });
+	      modal.querySelector('[data-promo-wizard-close]')?.addEventListener('click', function () { self.closeWizard(); });
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
         input.addEventListener('input', function () { self.collectWizard(); self.updateWizardPreview(); });
         input.addEventListener('change', function () {
@@ -17627,7 +17635,10 @@
     document.body.classList.toggle('is-mail-module', name === 'mail');
     document.body.classList.toggle('is-workspace-module', name === 'workspace');
     document.body.classList.toggle('is-promotion-module', name === 'promotion');
-    if (name !== 'promotion') document.body.classList.remove('is-promo-project-fullscreen');
+	    if (name !== 'promotion') {
+	      document.body.classList.remove('is-promo-project-fullscreen', 'is-promo-task-editor-open');
+	      document.documentElement.classList.remove('is-promo-task-editor-open');
+	    }
     try {
       if (current === 'workspace') WorkspaceModule.init();
       if (current === 'customers') CustomerModule.init();
