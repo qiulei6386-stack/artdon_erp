@@ -12454,28 +12454,29 @@
 	      if (step === 3) {
 	        return '<section class="promo-step-card promo-step-channels">' + this.renderWizardChannelCards(draft) + '<div class="promo-step-controls"><label><span>推广渠道 *</span><select data-wizard-field="channel_key">' + channelOptions + '</select></label><label><span>执行场景</span><select data-wizard-field="campaign_type"><option value="mixed"' + (draft.campaign_type === 'mixed' ? ' selected' : '') + '>混合 / 按偏好</option><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件 / EDM</option><option value="whatsapp_group"' + (draft.campaign_type === 'whatsapp_group' ? ' selected' : '') + '>WhatsApp群</option><option value="wechat_group"' + (draft.campaign_type === 'wechat_group' ? ' selected' : '') + '>微信群</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option><option value="wechat"' + (draft.campaign_type === 'wechat' ? ' selected' : '') + '>微信</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下拜访</option></select></label></div><article class="promo-wizard-note">微信群 / WhatsApp群属于人工执行渠道，任务会按客户群生成执行清单，不能自动发送。</article></section>';
 	      }
-      if (step === 4) {
-        var variableButtons = [
-          ['客', '{customer_name}', '客户/联系人称呼 {customer_name}'],
-          ['联', '{contact_name}', '联系人称呼 {contact_name}'],
-          ['司', '{company_name}', '公司名称 {company_name}'],
-          ['发', '{mail_user_name}', '发件人姓名 {mail_user_name}'],
-          ['职', '{mail_user_position}', '发件人职位 {mail_user_position}'],
-          ['箱', '{send_email}', '发件邮箱 {send_email}'],
-          ['电', '{mail_user_mobile}', '发件人电话 {mail_user_mobile}']
-        ].map(function (item) {
-          return '<button type="button" data-promo-rich-var="' + esc(item[1]) + '" title="' + esc(item[2]) + '">' + esc(item[0]) + '</button>';
-        }).join('');
-        return '<section class="promo-wizard-content promo-mail-compose-step">' +
-          '<section class="mail-compose-main promo-compose-main"><section class="mail-compose-editor-column promo-compose-editor-column"><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div></section>' +
-          '<aside class="promo-compose-tools"><section class="promo-compose-tool-block promo-compose-primary-tools"><label class="promo-compose-subject"><span>主题 *</span><input data-wizard-field="mail_subject" value="' + esc(draft.mail_subject) + '" placeholder="支持变量，例如 {customer_name}"></label><div class="mail-rich-toolbar promo-rich-toolbar" data-promo-rich-toolbar>' +
-          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-cmd="bold" title="加粗">B</button><button type="button" data-promo-rich-cmd="italic" title="斜体">I</button><button type="button" data-promo-rich-cmd="underline" title="下划线">U</button><button type="button" data-promo-rich-cmd="insertUnorderedList" title="列表">列表</button></span>' +
-          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-link title="插入链接">链接</button><button type="button" data-promo-rich-image title="插入图片">图片</button><button type="button" data-promo-rich-signature title="插入签名">签名</button></span>' +
-          '<span class="mail-toolbar-group promo-toolbar-colors"><button type="button" data-promo-rich-color="#111827" title="黑色"><i style="background:#111827"></i></button><button type="button" data-promo-rich-color="#dc2626" title="红色"><i style="background:#dc2626"></i></button><button type="button" data-promo-rich-color="#2563eb" title="蓝色"><i style="background:#2563eb"></i></button><button type="button" data-promo-rich-color="#059669" title="绿色"><i style="background:#059669"></i></button></span>' +
-          '<span class="mail-toolbar-group"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label></span>' +
-          '</div></section><section class="promo-compose-tool-block"><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><label><span>附件</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label></section><section class="promo-compose-tool-block promo-compose-var-block"><strong>变量</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-compose-tool-block promo-compose-attach-block"><strong>附件</strong><label class="visit-file-drop promo-attachment-drop" data-promo-attachment-drop><input type="file" multiple data-promo-attachment-input><b>拖入附件</b><em>或点击选择文件</em></label><div class="promo-compose-list" data-promo-attachment-list></div></section><section class="promo-compose-tool-block promo-compose-datasheet-block"><strong>资料包</strong><div class="promo-datasheet-row"><input data-promo-datasheet-model placeholder="输入型号/资料编号"><button type="button" data-promo-datasheet-search>获取</button></div><div class="promo-compose-list" data-promo-datasheet-results></div><div class="promo-compose-list" data-promo-datasheet-picked></div></section><section class="promo-compose-tool-actions"><button type="button" data-promo-attachment-manual>附件</button><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></aside></section>' +
-          '</section>';
-      }
+	      if (step === 4) {
+	        var variableButtons = [
+	          ['客户名', '{customer_name}', '客户/联系人称呼 {customer_name}'],
+	          ['联系人名', '{contact_name}', '联系人称呼 {contact_name}'],
+	          ['公司名', '{company_name}', '公司名称 {company_name}'],
+	          ['发件人', '{mail_user_name}', '发件人姓名 {mail_user_name}'],
+	          ['职位', '{mail_user_position}', '发件人职位 {mail_user_position}'],
+	          ['邮箱', '{send_email}', '发件邮箱 {send_email}'],
+	          ['电话', '{mail_user_mobile}', '发件人电话 {mail_user_mobile}']
+	        ].map(function (item) {
+	          return '<button type="button" data-promo-rich-var="' + esc(item[1]) + '" title="' + esc(item[2]) + '">' + esc(item[0]) + '</button>';
+	        }).join('');
+	        var currentEmail = esc(this.previewTestEmail || ((state.user || {}).email) || '');
+	        return '<section class="promo-wizard-content promo-mail-compose-step">' +
+	          '<section class="mail-compose-main promo-compose-main promo-compose-step5"><section class="mail-compose-editor-column promo-compose-editor-column"><label class="promo-compose-subject"><span>邮件主题 *</span><input data-wizard-field="mail_subject" value="' + esc(draft.mail_subject) + '" placeholder="支持变量，例如 {customer_name}"></label><div class="mail-rich-toolbar promo-rich-toolbar" data-promo-rich-toolbar>' +
+	          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-cmd="bold" title="加粗">B</button><button type="button" data-promo-rich-cmd="italic" title="斜体">I</button><button type="button" data-promo-rich-cmd="underline" title="下划线">U</button><button type="button" data-promo-rich-cmd="insertUnorderedList" title="列表">列表</button></span>' +
+	          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-link title="插入链接">链接</button><button type="button" data-promo-rich-image title="插入图片">图片</button><button type="button" data-promo-rich-signature title="插入签名">签名</button></span>' +
+	          '<span class="mail-toolbar-group promo-toolbar-colors"><button type="button" data-promo-rich-color="#111827" title="黑色"><i style="background:#111827"></i></button><button type="button" data-promo-rich-color="#dc2626" title="红色"><i style="background:#dc2626"></i></button><button type="button" data-promo-rich-color="#2563eb" title="蓝色"><i style="background:#2563eb"></i></button><button type="button" data-promo-rich-color="#059669" title="绿色"><i style="background:#059669"></i></button></span>' +
+	          '<span class="mail-toolbar-group"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label></span>' +
+	          '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div><section class="promo-compose-var-block promo-compose-inline-vars"><strong>变量插入</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-mail-test-row promo-mail-test-inline"><label><span>测试收件人</span><input type="email" data-promo-test-email value="' + currentEmail + '" placeholder="输入自己的邮箱"></label><button type="button" class="primary" data-promo-test-send>发送测试邮件</button></section><p class="promo-mail-test-note">测试邮件只发到上面的测试收件人，不会触发正式推广队列。</p></section>' +
+	          '<aside class="promo-compose-tools"><details class="promo-compose-tool-block" open><summary>模板</summary><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label></details><details class="promo-compose-tool-block" open><summary>签名</summary><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><button type="button" data-promo-rich-signature>插入签名</button></details><details class="promo-compose-tool-block promo-compose-attach-block" open><summary>附件</summary><label><span>附件方式</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label class="visit-file-drop promo-attachment-drop" data-promo-attachment-drop><input type="file" multiple data-promo-attachment-input><b>拖入附件</b><em>或点击选择文件</em></label><div class="promo-compose-list" data-promo-attachment-list></div><button type="button" data-promo-attachment-manual>登记手动附件</button></details><details class="promo-compose-tool-block promo-compose-datasheet-block" open><summary>资料包</summary><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label><div class="promo-datasheet-row"><input data-promo-datasheet-model placeholder="输入型号/资料编号"><button type="button" data-promo-datasheet-search>获取</button></div><div class="promo-compose-list" data-promo-datasheet-results></div><div class="promo-compose-list" data-promo-datasheet-picked></div><section class="promo-compose-tool-actions"><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></details></aside></section>' +
+	          '</section>';
+	      }
       if (step === 5) {
         return '<section class="promo-wizard-content"><div class="promo-execution-split">' +
           '<section class="promo-execution-pane"><header><strong>邮件执行</strong><span>按国家、客户第一负责人或当前选择邮箱分配</span></header><label><span>邮件分类规则</span><select data-wizard-field="mail_account_rule"><option value="group_by_country"' + (draft.mail_account_rule === 'group_by_country' ? ' selected' : '') + '>按国家分类</option><option value="owner_mailbox"' + (draft.mail_account_rule === 'owner_mailbox' ? ' selected' : '') + '>按客户第一负责人</option><option value="selected_mailbox"' + (draft.mail_account_rule === 'selected_mailbox' ? ' selected' : '') + '>按当前选择邮箱</option><option value="balanced"' + (draft.mail_account_rule === 'balanced' ? ' selected' : '') + '>多邮箱平均分配</option></select></label><label><span>邮件执行人</span><select data-wizard-field="mail_executor_rule"><option value="owner"' + (draft.mail_executor_rule === 'owner' ? ' selected' : '') + '>按客户第一负责人</option><option value="mailbox_owner"' + (draft.mail_executor_rule === 'mailbox_owner' ? ' selected' : '') + '>按发件邮箱所属人</option><option value="creator"' + (draft.mail_executor_rule === 'creator' ? ' selected' : '') + '>当前创建人</option></select></label><div class="promo-check-panel promo-check-compact promo-execution-checks"><b>可用发件邮箱</b>' + this.mailAccountCheckboxes(draft) + '</div></section>' +
@@ -12942,10 +12943,17 @@
         MailModule.insertRichImage(editor);
         self.collectWizard();
       });
-      toolbar?.querySelector('[data-promo-rich-signature]')?.addEventListener('click', function () {
-        self.insertWizardSignature(editor);
-        self.collectWizard();
-      });
+	      toolbar?.querySelector('[data-promo-rich-signature]')?.addEventListener('click', function () {
+	        self.insertWizardSignature(editor);
+	        self.collectWizard();
+	      });
+	      document.querySelectorAll('[data-promo-wizard] [data-promo-rich-signature]').forEach(function (button) {
+	        if (toolbar && toolbar.contains(button)) return;
+	        button.addEventListener('click', function () {
+	          self.insertWizardSignature(editor);
+	          self.collectWizard();
+	        });
+	      });
       document.querySelectorAll('[data-promo-wizard] [data-promo-rich-var]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.insertWizardVariable(editor, button.getAttribute('data-promo-rich-var') || '');
@@ -12958,10 +12966,16 @@
           self.collectWizard();
         });
       });
-      toolbar?.querySelector('[data-promo-font-size]')?.addEventListener('change', function () {
-        self.applyWizardFontSize(editor, this.value);
-      });
-      this.renderWizardAttachmentList();
+	      toolbar?.querySelector('[data-promo-font-size]')?.addEventListener('change', function () {
+	        self.applyWizardFontSize(editor, this.value);
+	      });
+	      document.querySelector('[data-promo-test-email]')?.addEventListener('input', function (event) {
+	        self.previewTestEmail = event.target.value || '';
+	      });
+	      document.querySelector('[data-promo-test-send]')?.addEventListener('click', function (event) {
+	        self.sendWizardTestMail(event.currentTarget);
+	      });
+	      this.renderWizardAttachmentList();
       this.renderWizardDatasheetPicked();
       var attachmentInput = document.querySelector('[data-promo-attachment-input]');
       var attachmentDrop = document.querySelector('[data-promo-attachment-drop]');

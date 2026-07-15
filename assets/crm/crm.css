@@ -12054,7 +12054,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-wizard-shell.promo-visit-style .promo-compose-main {
   min-height: 600px !important;
   display: grid !important;
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr) !important;
+  grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr) !important;
   gap: 14px !important;
   padding: 0 !important;
   border: 0 !important;
@@ -12075,6 +12075,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-subject input {
   width: 100% !important;
 }
+.promo-compose-editor-column .promo-rich-toolbar,
 .promo-compose-tools .promo-rich-toolbar {
   height: auto !important;
   flex: 0 0 auto !important;
@@ -12089,12 +12090,16 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border-radius: 0 !important;
   background: transparent !important;
 }
+.promo-compose-editor-column .mail-toolbar-group,
 .promo-compose-tools .mail-toolbar-group {
   flex: 0 0 auto !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
 }
+.promo-compose-editor-column .promo-rich-toolbar button,
+.promo-compose-editor-column .promo-rich-toolbar label,
+.promo-compose-editor-column .promo-rich-toolbar select,
 .promo-compose-tools .promo-rich-toolbar button,
 .promo-compose-tools .promo-rich-toolbar label,
 .promo-compose-tools .promo-rich-toolbar select {
@@ -12104,6 +12109,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border-radius: 8px !important;
   font-size: 12px !important;
 }
+.promo-compose-editor-column .promo-rich-toolbar button,
+.promo-compose-editor-column .promo-rich-toolbar label,
 .promo-compose-tools .promo-rich-toolbar button,
 .promo-compose-tools .promo-rich-toolbar label {
   padding: 0 8px !important;
@@ -12121,8 +12128,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-compose-editor-column .promo-rich-editor {
   flex: 1 1 auto !important;
-  min-height: 600px !important;
-  height: 600px !important;
+  min-height: 470px !important;
+  height: 470px !important;
   max-height: none !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
@@ -12147,6 +12154,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   cursor: pointer !important;
 }
 .promo-toolbar-vars button:hover,
+.promo-compose-editor-column .promo-rich-toolbar button:hover,
 .promo-compose-tools .promo-rich-toolbar button:hover {
   background: var(--crm-hover-bg) !important;
 }
@@ -12155,6 +12163,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   display: flex !important;
   flex-direction: column !important;
   gap: 10px !important;
+  overflow: auto !important;
 }
 .promo-compose-tool-block,
 .promo-compose-tool-actions {
@@ -12166,6 +12175,12 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-tool-block {
   display: grid !important;
   gap: 8px !important;
+}
+.promo-compose-tool-block summary {
+  cursor: pointer !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
 }
 .promo-compose-primary-tools {
   align-content: start !important;
@@ -12180,11 +12195,11 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-compose-var-grid {
   display: grid !important;
-  grid-template-columns: repeat(7, minmax(30px, 1fr)) !important;
+  grid-template-columns: repeat(7, minmax(64px, 1fr)) !important;
   gap: 6px !important;
 }
 .promo-compose-var-grid button {
-  min-width: 30px !important;
+  min-width: 0 !important;
   min-height: 32px !important;
   border: 1px solid var(--crm-border) !important;
   border-radius: 8px !important;
@@ -12193,6 +12208,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 13px !important;
   font-weight: 900 !important;
   cursor: pointer !important;
+  white-space: nowrap !important;
 }
 .promo-compose-var-grid button:hover {
   background: var(--crm-hover-bg) !important;
@@ -12280,6 +12296,21 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-datasheet-row input {
   min-width: 0 !important;
+}
+.promo-compose-inline-vars {
+  margin-top: 10px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 12px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px !important;
+}
+.promo-compose-inline-vars strong {
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+.promo-mail-test-inline {
+  margin-top: 10px !important;
 }
 @media (max-width: 980px) {
   .promo-wizard-shell.promo-visit-style .promo-compose-main {
