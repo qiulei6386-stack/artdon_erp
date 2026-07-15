@@ -1474,6 +1474,19 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     ];
 }
 
+function crm_customer_basic_row(int $id): array
+{
+    crm_customer_ensure_tables();
+    $params = [];
+    $scope = crm_customer_scope_sql($params);
+    array_unshift($params, $id);
+    $stmt = db()->prepare("SELECT c.*, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city, COALESCE(pa.address, c.address) AS address, u.username AS owner_name FROM crm_customers c LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1 LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1 LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id) WHERE c.id = ? AND {$scope} LIMIT 1");
+    $stmt->execute($params);
+    $customer = $stmt->fetch();
+    if (!$customer) throw new RuntimeException('客户不存在或无权查看。');
+    return $customer;
+}
+
 function crm_customer_sample_shipments(int $customerId): array
 {
     if (!db_table_exists('crm_sample_shipments')) return [];
@@ -2110,7 +2123,7 @@ function crm_customer_update(int $id, array $input): array
     crm_customer_ensure_tables();
     crm_require('customer.edit');
     if ($id <= 0) throw new RuntimeException('缺少客户 ID，无法编辑客户。');
-    $before = crm_customer_get($id)['customer'];
+    $before = crm_customer_basic_row($id);
     $data = crm_customer_validate($input, $id);
     $user = current_user();
     db()->prepare('UPDATE crm_customers SET customer_code=?, customer_name=?, customer_name_en=?, country=?, city=?, address=?, website=?, email=?, phone=?, whatsapp=?, source=?, level=?, status=?, lifecycle_key=?, risk_level=?, do_not_contact=?, owner_user_id=?, owner_department=?, updated_by=?, remark=?, updated_at=NOW() WHERE id=?')
@@ -2165,9 +2178,10 @@ function crm_customer_update(int $id, array $input): array
         }
     }
     crm_customer_set_groups($id, array_filter(array_map('intval', (array)($input['group_ids'] ?? []))));
-    $after = crm_customer_get($id);
-    crm_customer_log('customer_update', 'customer', $id, $id, $before, ['customer' => $after['customer'], 'contacts' => $initialContacts, 'created_contact_count' => $createdContactCount, 'updated_contact_count' => $updatedContactCount, 'deleted_contact_count' => $deletedContactCount], '编辑客户');
+    $afterCustomer = crm_customer_basic_row($id);
+    crm_customer_log('customer_update', 'customer', $id, $id, $before, ['customer' => $afterCustomer, 'contacts' => $initialContacts, 'created_contact_count' => $createdContactCount, 'updated_contact_count' => $updatedContactCount, 'deleted_contact_count' => $deletedContactCount], '编辑客户');
     crm_customer_timeline_add($id, 'customer_update', '编辑客户', ($createdContactCount || $updatedContactCount || $deletedContactCount) ? ('客户资料更新，联系人新增 ' . $createdContactCount . ' 个，更新 ' . $updatedContactCount . ' 个，删除 ' . $deletedContactCount . ' 个') : '客户基础资料或关系配置发生变化', 'customer', (string)$id);
+    $after = ['customer' => $afterCustomer];
     $after['created_contact_count'] = $createdContactCount;
     $after['updated_contact_count'] = $updatedContactCount;
     $after['deleted_contact_count'] = $deletedContactCount;
