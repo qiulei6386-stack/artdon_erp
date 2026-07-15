@@ -12047,29 +12047,15 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   box-shadow: inset 0 0 0 1px var(--crm-primary);
 }
 .promo-wizard-shell.promo-visit-style .promo-mail-compose-step {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 10px !important;
-  min-height: 560px !important;
+  display: block !important;
+  min-height: 620px !important;
   background: transparent !important;
 }
-.promo-compose-fields {
-  display: grid !important;
-  grid-template-columns: minmax(260px, 1.5fr) repeat(4, minmax(130px, 1fr)) !important;
-  gap: 8px !important;
-}
-.promo-compose-fields label {
-  min-width: 0 !important;
-}
-.promo-compose-fields .promo-compose-subject {
-  grid-column: span 1 !important;
-}
 .promo-wizard-shell.promo-visit-style .promo-compose-main {
-  flex: 1 1 auto !important;
-  min-height: 430px !important;
+  min-height: 600px !important;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) !important;
-  gap: 0 !important;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr) !important;
+  gap: 14px !important;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -12081,6 +12067,13 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
+}
+.promo-compose-subject {
+  flex: 0 0 auto !important;
+  margin-bottom: 8px !important;
+}
+.promo-compose-subject input {
+  width: 100% !important;
 }
 .promo-compose-editor-column .promo-rich-toolbar {
   height: 42px !important;
@@ -12130,8 +12123,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-compose-editor-column .promo-rich-editor {
   flex: 1 1 auto !important;
-  min-height: 360px !important;
-  height: auto !important;
+  min-height: 500px !important;
+  height: 500px !important;
   max-height: none !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
@@ -12159,16 +12152,76 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-editor-column .promo-rich-toolbar button:hover {
   background: var(--crm-hover-bg) !important;
 }
+.promo-compose-tools {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+.promo-compose-tool-block,
+.promo-compose-tool-actions {
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 12px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px !important;
+}
+.promo-compose-tool-block {
+  display: grid !important;
+  gap: 8px !important;
+}
+.promo-compose-tool-block label {
+  min-width: 0 !important;
+}
+.promo-compose-var-block strong {
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+.promo-compose-var-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(30px, 1fr)) !important;
+  gap: 6px !important;
+}
+.promo-compose-var-grid button {
+  min-width: 30px !important;
+  min-height: 32px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+}
+.promo-compose-var-grid button:hover {
+  background: var(--crm-hover-bg) !important;
+}
+.promo-compose-tool-actions {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+}
+.promo-compose-tool-actions button {
+  min-height: 32px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  cursor: pointer !important;
+}
+.promo-compose-tool-actions button:hover {
+  background: var(--crm-hover-bg) !important;
+}
 @media (max-width: 980px) {
-  .promo-compose-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-  .promo-compose-fields .promo-compose-subject {
-    grid-column: 1 / -1 !important;
-  }
   .promo-wizard-shell.promo-visit-style .promo-compose-main {
     grid-template-columns: 1fr !important;
     overflow: visible !important;
+  }
+  .promo-compose-editor-column .promo-rich-editor {
+    min-height: 420px !important;
+    height: 420px !important;
   }
 }
 .promo-rich-editor table,
