@@ -13349,13 +13349,42 @@
     openEditTaskDialog: function (taskId) {
       var task = this.taskById(taskId);
       if (!task) return toast('请选择推广任务');
-      this.closeDialog();
-      this.closeWizard();
-      this.wizardDraft = this.taskToWizardDraft(task);
-      this.wizardDraft.task_id = Number(task.id || taskId || 0);
-      this.wizardDraft.task_status = task.task_status || 'pending';
-      this.wizardStep = 0;
-      this.openWizard();
+      var self = this;
+      var open = function (targets) {
+        targets = targets || [];
+        var customerIds = [];
+        var contactIds = [];
+        targets.forEach(function (row) {
+          var customerId = Number(row.customer_id || 0);
+          var contactId = Number(row.contact_id || 0);
+          if (customerId && customerIds.indexOf(customerId) < 0) customerIds.push(customerId);
+          if (contactId && contactIds.indexOf(contactId) < 0) contactIds.push(contactId);
+        });
+        self.closeDialog();
+        self.closeWizard();
+        self.selectedCustomerIds = new Set(customerIds);
+        self.selectedContactIds = new Set(contactIds);
+        self.wizardDraft = self.taskToWizardDraft(task);
+        self.wizardDraft.task_id = Number(task.id || taskId || 0);
+        self.wizardDraft.task_status = task.task_status || 'pending';
+        if (customerIds.length) {
+          self.wizardDraft.group_mode = 'selected';
+          self.wizardDraft.customer_ids = customerIds;
+        }
+        if (contactIds.length) {
+          self.wizardDraft.contact_filter = 'selected';
+          self.wizardDraft.contact_ids = contactIds;
+        }
+        self.wizardStep = 0;
+        self.openWizard();
+      };
+      post('marketing_task_targets', { task_id: taskId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '目标名单加载失败');
+        open(((json.data || {}).targets || []));
+      }).catch(function (error) {
+        toast(error.message || '目标名单加载失败，将只打开项目基础信息。');
+        open([]);
+      });
     },
     openRenameTaskDialog: function (taskId) {
       var task = this.taskById(taskId);
@@ -16003,6 +16032,13 @@
     if (label === '查看项目详情') {
       ensurePromotionView('campaigns');
       document.querySelector('[data-promo-task-properties]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    if (label === '编辑项目' || label === '编辑任务' || label === '编辑推广任务') {
+      ensurePromotionView('campaigns');
+      var editTask = PromotionModule.taskById(PromotionModule.selectedTaskId);
+      if (!editTask) return toast('请先选择要编辑的推广项目。');
+      PromotionModule.openEditTaskDialog(Number(editTask.id || 0));
       return;
     }
     if (label === '编辑项目') label = '编辑推广任务';
