@@ -20429,6 +20429,185 @@ body.is-promo-task-editor-open .promo-wizard-side nav button:hover {
   background: #eff6ff !important;
   color: #2563eb !important;
 }
+body.is-promo-task-editor-open .promo-step-card {
+  display: grid !important;
+  gap: 12px !important;
+}
+body.is-promo-task-editor-open .promo-step-two-col {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+body.is-promo-task-editor-open .promo-step-two-col > section,
+body.is-promo-task-editor-open .promo-step-controls {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 10px !important;
+}
+body.is-promo-task-editor-open .promo-step-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+body.is-promo-task-editor-open .promo-step-card textarea {
+  min-height: 94px !important;
+  resize: vertical !important;
+}
+body.is-promo-task-editor-open .promo-step-note {
+  display: grid !important;
+  gap: 5px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px !important;
+}
+body.is-promo-task-editor-open .promo-step-note strong {
+  color: var(--crm-text) !important;
+  font-size: 13px !important;
+}
+body.is-promo-task-editor-open .promo-step-note span {
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+}
+body.is-promo-task-editor-open .promo-step-mini-stats {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-step-mini-stats article {
+  min-height: 58px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 3px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 9px !important;
+}
+body.is-promo-task-editor-open .promo-step-mini-stats strong {
+  color: var(--crm-text) !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+}
+body.is-promo-task-editor-open .promo-step-mini-stats span {
+  color: var(--crm-muted-text) !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+}
+body.is-promo-task-editor-open .promo-step-dist-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+body.is-promo-task-editor-open .promo-step-dist,
+body.is-promo-task-editor-open .promo-step-details {
+  min-width: 0 !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .promo-step-dist header,
+body.is-promo-task-editor-open .promo-step-details summary {
+  min-height: 34px !important;
+  display: flex !important;
+  align-items: center !important;
+  border-bottom: 1px solid var(--crm-border) !important;
+  padding: 0 10px !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-step-dist > div {
+  display: grid !important;
+  gap: 6px !important;
+  padding: 8px !important;
+}
+body.is-promo-task-editor-open .promo-step-dist span {
+  min-height: 28px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border-radius: 8px !important;
+  background: var(--crm-hover-bg) !important;
+  padding: 5px 7px !important;
+}
+body.is-promo-task-editor-open .promo-step-dist b {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-step-dist em {
+  color: var(--crm-primary) !important;
+  font-size: 12px !important;
+  font-style: normal !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-step-table-wrap {
+  min-width: 0 !important;
+  overflow: auto !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+}
+body.is-promo-task-editor-open .promo-step-details .promo-step-table-wrap {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+body.is-promo-task-editor-open .promo-step-table {
+  width: 100% !important;
+  min-width: 760px !important;
+  border-collapse: collapse !important;
+}
+body.is-promo-task-editor-open .promo-step-table th,
+body.is-promo-task-editor-open .promo-step-table td {
+  border-bottom: 1px solid var(--crm-border) !important;
+  padding: 8px 9px !important;
+  color: var(--crm-text) !important;
+  font-size: 12px !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-step-table th {
+  position: sticky !important;
+  top: 0 !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-muted-text) !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-channel-cards {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+body.is-promo-task-editor-open .promo-channel-cards button {
+  min-height: 88px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 6px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 12px !important;
+  background: var(--crm-card-bg) !important;
+  color: var(--crm-text) !important;
+  padding: 12px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+body.is-promo-task-editor-open .promo-channel-cards button.active {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+  box-shadow: inset 3px 0 0 #2563eb !important;
+}
+body.is-promo-task-editor-open .promo-channel-cards strong {
+  color: var(--crm-text) !important;
+  font-size: 15px !important;
+}
+body.is-promo-task-editor-open .promo-channel-cards span {
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+}
 body.is-promo-task-editor-open .promo-wizard-foot {
   min-height: 56px !important;
   display: grid !important;
@@ -20493,5 +20672,14 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
   body.is-promo-task-editor-open .promo-wizard-side {
     grid-template-columns: 1fr !important;
     max-height: 180px !important;
+  }
+  body.is-promo-task-editor-open .promo-step-two-col,
+  body.is-promo-task-editor-open .promo-step-controls,
+  body.is-promo-task-editor-open .promo-step-dist-grid,
+  body.is-promo-task-editor-open .promo-channel-cards {
+    grid-template-columns: 1fr !important;
+  }
+  body.is-promo-task-editor-open .promo-step-mini-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }

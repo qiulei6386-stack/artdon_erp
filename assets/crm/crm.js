@@ -12234,6 +12234,18 @@
 	          toast((button.getAttribute('data-promo-aside-check') || '检查') + '已切换到预览确认。');
 	        });
 	      });
+	      modal.querySelectorAll('[data-promo-channel-card]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          var map = { email: ['email', 'email'], social: ['whatsapp', 'whatsapp'], phone: ['phone', 'phone'], offline: ['offline', 'offline'] };
+	          var next = map[button.getAttribute('data-promo-channel-card') || ''] || null;
+	          var channel = modal.querySelector('[data-wizard-field="channel_key"]');
+	          var campaign = modal.querySelector('[data-wizard-field="campaign_type"]');
+	          if (!next || !channel || !campaign) return;
+	          channel.value = next[0];
+	          campaign.value = next[1];
+	          channel.dispatchEvent(new Event('change', { bubbles: true }));
+	        });
+	      });
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
         input.addEventListener('input', function () { self.collectWizard(); self.updateWizardPreview(); });
         input.addEventListener('change', function () {
@@ -12340,6 +12352,46 @@
 	        return '<button type="button" data-promo-aside-check="' + esc(label) + '">' + esc(label) + '</button>';
 	      }).join('') + '</nav></details></aside>';
 	    },
+	    wizardTopCounts: function (rows, getter, limit) {
+	      var map = {};
+	      rows = rows || [];
+	      rows.forEach(function (row) {
+	        var key = getter(row) || '未填';
+	        map[key] = (map[key] || 0) + 1;
+	      });
+	      var items = Object.keys(map).map(function (key) { return { key: key, count: map[key] }; }).sort(function (a, b) { return b.count - a.count; });
+	      return items.slice(0, limit || 8);
+	    },
+	    renderWizardDistribution: function (title, rows) {
+	      rows = rows || [];
+	      return '<section class="promo-step-dist"><header><strong>' + esc(title) + '</strong></header><div>' + (rows.length ? rows.map(function (row) {
+	        return '<span><b>' + esc(row.key) + '</b><em>' + esc(row.count) + '</em></span>';
+	      }).join('') : '<p>--</p>') + '</div></section>';
+	    },
+	    renderWizardMiniStats: function (items) {
+	      return '<div class="promo-step-mini-stats">' + items.map(function (item) {
+	        return '<article><strong>' + esc(item[1]) + '</strong><span>' + esc(item[0]) + '</span></article>';
+	      }).join('') + '</div>';
+	    },
+	    renderWizardCustomerRows: function (customers) {
+	      customers = customers || [];
+	      return '<details class="promo-step-details"><summary>客户明细</summary><div class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>客户</th><th>国家</th><th>负责人</th><th>来源</th><th>联系人</th><th>状态</th></tr></thead><tbody>' + (customers.slice(0, 80).map(function (row) {
+	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.owner_name || '-') + '</td><td>' + esc(row.source_tags || row.source || '-') + '</td><td>' + esc(row.contact_count || 0) + '</td><td>' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</td></tr>';
+	      }).join('') || '<tr><td colspan="6">暂无客户明细</td></tr>') + '</tbody></table></div></details>';
+	    },
+	    renderWizardChannelCards: function (draft) {
+	      var current = this.normalizePromotionChannel(draft.channel_key || draft.campaign_type || 'email');
+	      var cards = [
+	        { key: 'email', title: '邮件/EDM', channels: ['email'], mode: '自动执行' },
+	        { key: 'social', title: '微信/WhatsApp', channels: ['wechat','wechat_group','whatsapp','whatsapp_group'], mode: '人工执行' },
+	        { key: 'phone', title: '电话', channels: ['phone'], mode: '人工执行' },
+	        { key: 'offline', title: '拜访', channels: ['offline'], mode: '人工执行' }
+	      ];
+	      return '<section class="promo-channel-cards">' + cards.map(function (card) {
+	        var active = card.channels.indexOf(current) >= 0;
+	        return '<button type="button" class="' + (active ? 'active' : '') + '" data-promo-channel-card="' + esc(card.key) + '"><strong>' + esc(card.title) + '</strong><span>' + esc(card.mode) + '</span></button>';
+	      }).join('') + '</section>';
+	    },
 	    wizardPrev: function () {
 	      this.collectWizard();
 	      this.wizardStep = Math.max(0, Number(this.wizardStep || 0) - 1);
@@ -12363,21 +12415,45 @@
 	      if (channelKeys.indexOf('wechat_group') < 0) channels.push({ key: 'wechat_group', name: '微信群' });
 	      if (channelKeys.indexOf('whatsapp_group') < 0) channels.push({ key: 'whatsapp_group', name: 'WhatsApp群' });
 	      var channelOptions = '<option value="preference"' + (draft.channel_key === 'preference' ? ' selected' : '') + '>按客户/联系人偏好</option>' + channels.map(function (row) { return '<option value="' + esc(row.key) + '"' + (draft.channel_key === row.key ? ' selected' : '') + '>' + esc(row.name) + '</option>'; }).join('');
-      if (step === 0) {
-        return '<section class="promo-wizard-grid"><label><span>任务名称 *</span><input data-wizard-field="task_name" value="' + esc(draft.task_name) + '" placeholder="例如：7月印度客户 EDM"></label><label><span>任务类型</span><select data-wizard-field="campaign_type"><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件营销</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp 触达</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn 触达</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下执行</option></select></label><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label><label><span>模板操作</span><button type="button" data-promo-template-copy>复制当前模板</button></label><label><span>备注</span><input data-wizard-field="remark" value="' + esc(draft.remark || '') + '" placeholder="内部说明，可选"></label></section>';
-      }
+	      if (step === 0) {
+	        return '<section class="promo-step-card promo-step-basic"><div class="promo-step-two-col"><section><label><span>任务名称 *</span><input data-wizard-field="task_name" value="' + esc(draft.task_name) + '" placeholder="例如：7月印度客户 EDM"></label><label><span>任务类型</span><select data-wizard-field="campaign_type"><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件营销</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp 触达</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn 触达</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下执行</option></select></label><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label></section><section><label><span>复制模板</span><button type="button" data-promo-template-copy>复制当前模板</button></label><label><span>备注</span><textarea rows="4" data-wizard-field="remark" placeholder="内部说明，可选">' + esc(draft.remark || '') + '</textarea></label><article class="promo-step-note"><strong>最近修改信息</strong><span>' + esc(draft.updated_at || draft.created_at || (draft.task_id ? ('任务 #' + draft.task_id) : '未保存')) + '</span></article></section></div></section>';
+	      }
 	      if (step === 1) {
 	        var groupField = draft.group_mode === 'group'
 	          ? '<label><span>选择分组</span><select data-wizard-field="group_key">' + this.wizardGroupOptions(draft.group_key) + '</select></label>'
 	          : (draft.group_mode === 'country' ? '<label><span>国家</span><input data-wizard-field="group_key" value="' + esc(draft.group_key || '') + '" placeholder="输入国家，例如 China / India"></label>' : '<label><span>范围说明</span><input value="' + (draft.group_mode === 'selected' ? '使用当前已勾选客户' : '使用当前推广池筛选结果') + '" readonly></label>');
-	        return '<section class="promo-wizard-grid"><label><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label>' + groupField + '<article class="promo-wizard-stat"><strong>' + this.selectedCustomerIds.size + '</strong><span>当前选中客户</span></article><article class="promo-wizard-note">客户池会自动跳过黑名单、仅维护、不推广客户；详细过滤结果在预览确认中显示。</article></section>';
+		        var customerTargets = this.resolveWizardTargets(draft).customers || [];
+		        var allPool = (this.data && this.data.pool) || [];
+		        var selectedIds = {};
+		        customerTargets.forEach(function (row) { selectedIds[Number(row.id)] = true; });
+		        var scopedCustomers = customerTargets.length ? customerTargets : allPool.filter(function (row) { return selectedIds[Number(row.id)]; });
+		        var blacklistCount = scopedCustomers.filter(function (row) { return Number(row.do_not_contact || 0) || String(row.promotion_status || '') === 'blacklist'; }).length;
+		        var duplicateCount = scopedCustomers.filter(function (row) { return Number(row.duplicate_count || row.duplicate_risk || 0) > 0; }).length;
+		        var noContactCount = scopedCustomers.filter(function (row) { return Number(row.contact_count || 0) <= 0; }).length;
+		        var stoppedCount = scopedCustomers.filter(function (row) { return ['stopped','paused','disabled','no_promotion','maintenance_only'].indexOf(String(row.promotion_status || '')) >= 0; }).length;
+		        return '<section class="promo-step-card promo-step-customers"><div class="promo-step-controls"><label><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label>' + groupField + '</div>' + this.renderWizardMiniStats([['选中客户数', scopedCustomers.length || this.selectedCustomerIds.size], ['黑名单数量', blacklistCount], ['重复客户数量', duplicateCount], ['无联系人客户数量', noContactCount], ['停用客户数量', stoppedCount]]) + '<div class="promo-step-dist-grid">' + this.renderWizardDistribution('国家分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.country; })) + this.renderWizardDistribution('负责人分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.owner_name || row.primary_owner; })) + this.renderWizardDistribution('来源分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.source_tags || row.source || row.source_key; })) + '</div>' + this.renderWizardCustomerRows(scopedCustomers) + '</section>';
+		      }
+	      if (step === 2) {
+	        var targetsForContacts = this.resolveWizardTargets(draft);
+	        var contacts = targetsForContacts.contacts || [];
+	        var emailSeen = {};
+	        var duplicateContacts = 0;
+	        contacts.forEach(function (row) {
+	          var email = String(row.email || '').trim().toLowerCase();
+	          if (!email) return;
+	          if (emailSeen[email]) duplicateContacts += 1;
+	          emailSeen[email] = true;
+	        });
+	        var contactRows = contacts.slice(0, 120).map(function (row) {
+	          var status = Number(row.is_left || 0) ? '已离职' : (Number(row.can_promote || 0) === 1 ? '可推广' : '受限');
+	          var reason = row.skip_reasons || (!row.email ? '无邮箱' : (Number(row.can_promote || 0) === 1 ? '--' : '推广策略限制'));
+	          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.name || row.contact_name || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.position || row.department || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(status) + '</td><td>' + esc(reason) + '</td></tr>';
+	        }).join('');
+	        return '<section class="promo-step-card promo-step-contacts"><div class="promo-step-controls"><label><span>联系人筛选</span><select data-wizard-field="contact_filter"><option value="all_valid"' + (draft.contact_filter === 'all_valid' ? ' selected' : '') + '>全部可推广联系人</option><option value="primary"' + (draft.contact_filter === 'primary' ? ' selected' : '') + '>仅主联系人</option><option value="decision_buyer"' + (draft.contact_filter === 'decision_buyer' ? ' selected' : '') + '>决策人 / 采购</option><option value="selected"' + (draft.contact_filter === 'selected' ? ' selected' : '') + '>使用当前选中联系人</option><option value="with_email"' + (draft.contact_filter === 'with_email' ? ' selected' : '') + '>有邮箱联系人</option></select></label></div>' + this.renderWizardMiniStats([['总联系人', contacts.length], ['可用邮箱', contacts.filter(function (row) { return String(row.email || '').trim(); }).length], ['无邮箱', contacts.filter(function (row) { return !String(row.email || '').trim(); }).length], ['重复联系人', duplicateContacts], ['黑名单联系人', contacts.filter(function (row) { return /黑名单/.test(String(row.skip_reasons || '')); }).length]]) + '<div class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>职位</th><th>国家</th><th>状态</th><th>排除原因</th></tr></thead><tbody>' + (contactRows || '<tr><td colspan="7">暂无联系人明细</td></tr>') + '</tbody></table></div></section>';
 	      }
-      if (step === 2) {
-        return '<section class="promo-wizard-grid"><label><span>联系人筛选</span><select data-wizard-field="contact_filter"><option value="all_valid"' + (draft.contact_filter === 'all_valid' ? ' selected' : '') + '>全部可推广联系人</option><option value="primary"' + (draft.contact_filter === 'primary' ? ' selected' : '') + '>仅主联系人</option><option value="decision_buyer"' + (draft.contact_filter === 'decision_buyer' ? ' selected' : '') + '>决策人 / 采购</option><option value="selected"' + (draft.contact_filter === 'selected' ? ' selected' : '') + '>使用当前选中联系人</option><option value="with_email"' + (draft.contact_filter === 'with_email' ? ' selected' : '') + '>有邮箱联系人</option></select></label><article class="promo-wizard-stat"><strong>' + this.selectedContactIds.size + '</strong><span>当前选中联系人</span></article><article class="promo-wizard-note">联系人级推广策略优先生效：不推广、离职、渠道停用会被跳过。</article></section>';
-      }
-      if (step === 3) {
-        return '<section class="promo-wizard-grid"><label><span>推广渠道 *</span><select data-wizard-field="channel_key">' + channelOptions + '</select></label><label><span>执行场景</span><select data-wizard-field="campaign_type"><option value="mixed"' + (draft.campaign_type === 'mixed' ? ' selected' : '') + '>混合 / 按偏好</option><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件 / EDM</option><option value="whatsapp_group"' + (draft.campaign_type === 'whatsapp_group' ? ' selected' : '') + '>WhatsApp群</option><option value="wechat_group"' + (draft.campaign_type === 'wechat_group' ? ' selected' : '') + '>微信群</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option><option value="wechat"' + (draft.campaign_type === 'wechat' ? ' selected' : '') + '>微信</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下拜访</option></select></label><article class="promo-wizard-note">微信群 / WhatsApp群属于人工执行渠道，任务会按客户群生成执行清单，不能自动发送。</article></section>';
-      }
+	      if (step === 3) {
+	        return '<section class="promo-step-card promo-step-channels">' + this.renderWizardChannelCards(draft) + '<div class="promo-step-controls"><label><span>推广渠道 *</span><select data-wizard-field="channel_key">' + channelOptions + '</select></label><label><span>执行场景</span><select data-wizard-field="campaign_type"><option value="mixed"' + (draft.campaign_type === 'mixed' ? ' selected' : '') + '>混合 / 按偏好</option><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件 / EDM</option><option value="whatsapp_group"' + (draft.campaign_type === 'whatsapp_group' ? ' selected' : '') + '>WhatsApp群</option><option value="wechat_group"' + (draft.campaign_type === 'wechat_group' ? ' selected' : '') + '>微信群</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option><option value="wechat"' + (draft.campaign_type === 'wechat' ? ' selected' : '') + '>微信</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下拜访</option></select></label></div><article class="promo-wizard-note">微信群 / WhatsApp群属于人工执行渠道，任务会按客户群生成执行清单，不能自动发送。</article></section>';
+	      }
       if (step === 4) {
         var variableButtons = [
           ['客', '{customer_name}', '客户/联系人称呼 {customer_name}'],
