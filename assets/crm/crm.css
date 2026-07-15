@@ -12075,39 +12075,37 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-subject input {
   width: 100% !important;
 }
-.promo-compose-editor-column .promo-rich-toolbar {
-  height: 42px !important;
-  flex: 0 0 42px !important;
+.promo-compose-tools .promo-rich-toolbar {
+  height: auto !important;
+  flex: 0 0 auto !important;
   display: flex !important;
   align-items: center !important;
   gap: 6px !important;
-  flex-wrap: nowrap !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  margin: 0 0 10px !important;
-  padding: 0 0 6px !important;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0 !important;
   border: 0 !important;
-  border-bottom: 1px solid var(--crm-border) !important;
   border-radius: 0 !important;
   background: transparent !important;
 }
-.promo-compose-editor-column .mail-toolbar-group {
+.promo-compose-tools .mail-toolbar-group {
   flex: 0 0 auto !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
 }
-.promo-compose-editor-column .promo-rich-toolbar button,
-.promo-compose-editor-column .promo-rich-toolbar label,
-.promo-compose-editor-column .promo-rich-toolbar select {
+.promo-compose-tools .promo-rich-toolbar button,
+.promo-compose-tools .promo-rich-toolbar label,
+.promo-compose-tools .promo-rich-toolbar select {
   height: 30px !important;
   min-height: 30px !important;
   min-width: 30px !important;
   border-radius: 8px !important;
   font-size: 12px !important;
 }
-.promo-compose-editor-column .promo-rich-toolbar button,
-.promo-compose-editor-column .promo-rich-toolbar label {
+.promo-compose-tools .promo-rich-toolbar button,
+.promo-compose-tools .promo-rich-toolbar label {
   padding: 0 8px !important;
 }
 .promo-toolbar-colors button {
@@ -12123,8 +12121,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-compose-editor-column .promo-rich-editor {
   flex: 1 1 auto !important;
-  min-height: 500px !important;
-  height: 500px !important;
+  min-height: 600px !important;
+  height: 600px !important;
   max-height: none !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
@@ -12149,7 +12147,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   cursor: pointer !important;
 }
 .promo-toolbar-vars button:hover,
-.promo-compose-editor-column .promo-rich-toolbar button:hover {
+.promo-compose-tools .promo-rich-toolbar button:hover {
   background: var(--crm-hover-bg) !important;
 }
 .promo-compose-tools {
@@ -12168,6 +12166,9 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-compose-tool-block {
   display: grid !important;
   gap: 8px !important;
+}
+.promo-compose-primary-tools {
+  align-content: start !important;
 }
 .promo-compose-tool-block label {
   min-width: 0 !important;
