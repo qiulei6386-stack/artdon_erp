@@ -19462,6 +19462,26 @@ body.is-promotion-module .crm-module[data-crm-module="promotion"].active {
 body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   grid-template-columns: minmax(0, 1fr) 60px !important;
 }
+.crm-module[data-crm-module="promotion"] .promotion-create-toolbar {
+  display: flex !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+  margin: 0 0 10px !important;
+}
+.crm-module[data-crm-module="promotion"] .promotion-create-toolbar button {
+  min-height: 36px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 900 !important;
+  padding: 0 16px !important;
+  box-shadow: none !important;
+}
+.crm-module[data-crm-module="promotion"] .promotion-create-toolbar button:hover {
+  background: #1d4ed8 !important;
+}
 
 /* Promotion contact strategy main view */
 .promo-contact-filter-panel,

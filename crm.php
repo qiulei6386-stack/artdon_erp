@@ -694,6 +694,11 @@ $prefStyle = sprintf(
       </section>
 
       <section class="crm-module" data-crm-module="promotion">
+        <?php if ($crmActionPermissions['新建推广项目'] ?? false): ?>
+        <div class="promotion-create-toolbar">
+          <button type="button" data-promo-open-wizard>新建推广项目</button>
+        </div>
+        <?php endif; ?>
         <section class="promo-engine-v2" data-promo-engine>
           <main class="promo-workspace">
             <nav class="marketing-subtabs" data-promo-main-tabs>
