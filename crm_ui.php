@@ -1154,16 +1154,18 @@ function crm_dashboard_weather(array $input = []): array
     $force = !empty($input['force']);
     $rows = db()->query('SELECT * FROM crm_dashboard_weather_cities WHERE is_enabled = 1 ORDER BY sort_order, id LIMIT 12')->fetchAll();
     $cities = [];
+    $cacheStmt = db()->prepare('SELECT * FROM crm_dashboard_weather_cache WHERE city_key = ? LIMIT 1');
+    $upsertStmt = db()->prepare('INSERT INTO crm_dashboard_weather_cache (city_key, city_name, latitude, longitude, timezone, weather_json, fetched_at) VALUES (?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE city_name=VALUES(city_name), latitude=VALUES(latitude), longitude=VALUES(longitude), timezone=VALUES(timezone), weather_json=VALUES(weather_json), fetched_at=NOW()');
     foreach ($rows as $city) {
-        $cacheStmt = db()->prepare('SELECT * FROM crm_dashboard_weather_cache WHERE city_key = ? LIMIT 1');
         $cacheStmt->execute([$city['city_key']]);
         $cache = $cacheStmt->fetch() ?: null;
         $cachedWeather = $cache ? (json_decode((string)($cache['weather_json'] ?? ''), true) ?: null) : null;
         $fresh = $cache && strtotime((string)$cache['fetched_at']) >= time() - 3600;
-        $weather = $fresh && !$force ? $cachedWeather : null;
+        $weather = (!$force && $cachedWeather) ? $cachedWeather : null;
         if (!$weather) {
+            if (!$force) continue;
             $url = 'https://api.open-meteo.com/v1/forecast?latitude=' . rawurlencode((string)$city['latitude']) . '&longitude=' . rawurlencode((string)$city['longitude']) . '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=' . rawurlencode((string)$city['timezone']);
-            $res = crm_dashboard_http_json($url, 3);
+            $res = crm_dashboard_http_json($url, 2);
             if ($res['ok'] && !empty($res['data']['current'])) {
                 $current = $res['data']['current'];
                 $daily = $res['data']['daily'] ?? [];
@@ -1180,19 +1182,19 @@ function crm_dashboard_weather(array $input = []): array
                     'temp_min' => isset($daily['temperature_2m_min'][0]) ? round((float)$daily['temperature_2m_min'][0], 1) : null,
                     'timezone' => $city['timezone'],
                 ];
-                db()->prepare('INSERT INTO crm_dashboard_weather_cache (city_key, city_name, latitude, longitude, timezone, weather_json, fetched_at) VALUES (?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE city_name=VALUES(city_name), latitude=VALUES(latitude), longitude=VALUES(longitude), timezone=VALUES(timezone), weather_json=VALUES(weather_json), fetched_at=NOW()')
-                    ->execute([$city['city_key'], $city['city_name'], $city['latitude'], $city['longitude'], $city['timezone'], json_encode($weather, JSON_UNESCAPED_UNICODE)]);
+                $upsertStmt->execute([$city['city_key'], $city['city_name'], $city['latitude'], $city['longitude'], $city['timezone'], json_encode($weather, JSON_UNESCAPED_UNICODE)]);
             } else {
                 crm_dashboard_api_log('Open-Meteo', 'weather', $url, $res['status'], $res['error']);
                 $weather = $cachedWeather;
             }
         }
         if (is_array($weather)) {
-            $weather['fetched_at'] = $cache && $fresh && !$force ? $cache['fetched_at'] : date('Y-m-d H:i:s');
+            $weather['fetched_at'] = (!$force && $cache) || ($force && $weather === $cachedWeather && $cache) ? $cache['fetched_at'] : date('Y-m-d H:i:s');
+            $weather['is_stale'] = $cache && !$fresh ? 1 : 0;
             $cities[] = $weather;
         }
     }
-    return ['provider' => 'Open-Meteo', 'updated_at' => date('Y-m-d H:i:s'), 'from_cache' => false, 'cities' => $cities, 'warning' => $cities ? '' : '天气暂不可用'];
+    return ['provider' => 'Open-Meteo', 'updated_at' => date('Y-m-d H:i:s'), 'from_cache' => !$force, 'cities' => $cities, 'warning' => $cities ? '' : '天气暂不可用，请点击刷新天气'];
 }
 
 function crm_dashboard_unreplied_mail_items(): array
