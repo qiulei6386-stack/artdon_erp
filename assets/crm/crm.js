@@ -4070,31 +4070,104 @@
       var shipment = shipments[0] || {};
       var doc = docs[0] || {};
       var quoteDone = row.quote_no ? 'done' : 'pending';
+      var auditCode = String(row.audit_status_code || '').toLowerCase();
       var auditStatus = row.audit_status || row.review_status || row.approval_status || '';
-      var replyStatus = row.reply_status || row.customer_reply_status || '';
+      var auditUser = row.audit_user || row.review_user || '';
+      var auditTime = row.audit_time || row.review_time || '';
+      var auditReason = row.audit_reject_reason || row.reject_reason || '';
+      var workflowWarning = row.workflow_warning || '';
       var paidDone = amountRaw > 0 && paidRaw >= amountRaw;
       var depositDone = paidRaw > 0;
       var shipmentDone = /已完成|已出货|签收|delivered|shipped/i.test(String(row.shipment_status || shipment.status || ''));
       var docDone = /已生成|已完成|done|generated/i.test(String(doc.status || row.document_status || ''));
+      var auditState = 'pending';
+      var auditNote = row.quote_no || '暂无报价单';
+      if (auditCode === 'approved') {
+        auditState = 'done';
+        auditNote = [auditUser, auditTime ? String(auditTime).slice(0, 16) : ''].filter(Boolean).join(' · ') || '已审核通过';
+      } else if (auditCode === 'rejected') {
+        auditState = 'risk';
+        auditNote = auditReason ? ('原因：' + auditReason) : '报价审核已驳回';
+      } else if (auditCode === 'pending') {
+        auditState = 'current';
+        auditNote = row.quote_no ? ('报价单 ' + row.quote_no + ' 等待审核') : '等待审核';
+      } else if (auditCode === 'unsubmitted') {
+        auditState = 'pending';
+        auditStatus = auditStatus || '未提交审核';
+        auditNote = row.quote_no ? ('报价单 ' + row.quote_no + ' 未提交') : '报价未提交审核';
+      } else {
+        auditState = row.order_no ? 'risk' : 'pending';
+        auditStatus = auditStatus || '审核记录缺失';
+        auditNote = workflowWarning || '该订单未找到报价审核记录';
+      }
+      var convertState = 'pending';
+      var convertStatus = '不可转订单';
+      var convertNote = '等待审核通过';
+      if (auditCode === 'approved') {
+        convertState = row.order_no ? 'done' : 'current';
+        convertStatus = row.order_no ? '已转订单' : '可转订单';
+        convertNote = row.converted_order_no || orderNo || '审核通过';
+      } else if (auditCode === 'rejected') {
+        convertState = 'risk';
+        convertStatus = '不可转订单';
+        convertNote = '报价已驳回';
+      } else if (auditCode === 'pending') {
+        convertState = 'pending';
+        convertStatus = '待审核通过后可转订单';
+        convertNote = row.quote_no || '等待审核';
+      } else if (auditCode === 'unsubmitted') {
+        convertState = 'pending';
+        convertStatus = '不可转订单';
+        convertNote = '报价未提交审核';
+      } else if (row.order_no) {
+        convertState = 'risk';
+        convertStatus = '异常';
+        convertNote = '缺少审核记录';
+      }
       var nodes = [
         this.flowNode('报价', quoteDone, row.quote_no ? '已关联' : '暂无报价记录', row.quote_no || '暂无记录'),
-        this.flowNode('审核', auditStatus ? (/驳回|异常|reject/i.test(auditStatus) ? 'risk' : 'done') : 'pending', auditStatus || '暂无审核记录', row.review_user || row.audit_user || '暂无记录'),
-        this.flowNode('回复', replyStatus ? (/拒绝|异常|reject/i.test(replyStatus) ? 'risk' : 'current') : 'pending', replyStatus || '暂无回复记录', row.reply_note || '暂无记录'),
-        this.flowNode('转订单', row.order_no ? 'done' : 'pending', row.order_no ? '已转订单' : '暂无订单记录', String(orderNo).slice(0, 18)),
+        this.flowNode('审核', auditState, auditStatus || '审核记录缺失', auditNote),
+        this.flowNode('转订单', convertState, convertStatus, String(convertNote || '').slice(0, 36)),
         this.flowNode('定金', depositDone ? 'done' : 'risk', depositDone ? '已收' : '未收', '已收 ' + paidText),
         this.flowNode('尾款', paidDone ? 'done' : 'risk', paidDone ? '已结清' : '未收', balanceText),
         this.flowNode('出货', shipmentDone ? 'done' : (shipments.length ? 'current' : 'pending'), row.shipment_status || shipment.status || '暂无出货记录', (shipment.shipment_no || shipment.tracking_no || row.qty || '暂无记录')),
         this.flowNode('单证', docDone ? 'done' : 'pending', doc.status || row.document_status || '暂无单证记录', doc.document_no || doc.type || row.doc_title || 'PL / CI 待生成')
       ];
-      var current = balanceRaw > 0 ? '尾款 / 收款' : (shipmentDone ? '单证 / 归档' : '出货');
-      var nextAction = row.next_action || (balanceRaw > 0 ? '跟进定金/尾款收款' : (shipmentDone ? '生成或归档单证' : '跟进出货进度'));
-      var tone = balanceRaw > 0 ? 'risk' : (shipmentDone && docDone ? 'done' : 'current');
+      var current = '审核';
+      var nextAction = '提交 / 等待报价审核';
+      var shortcutButtons = [
+        '<button type="button" data-customer-action-shortcut="查看报价">查看报价</button>',
+        '<button type="button" data-customer-action-shortcut="查看审核">提交审核 / 查看审核</button>'
+      ];
+      if (auditCode === 'rejected') {
+        current = '审核驳回';
+        nextAction = '修改报价后重新审核';
+        shortcutButtons = [
+          '<button type="button" data-customer-action-shortcut="查看驳回原因">查看驳回原因</button>',
+          '<button type="button" data-customer-action-shortcut="修改报价">修改报价</button>'
+        ];
+      } else if (auditCode === 'approved' && !row.order_no) {
+        current = '转订单';
+        nextAction = '转订单';
+        shortcutButtons = ['<button type="button" data-customer-action-shortcut="转订单">转订单</button>'];
+      } else if (auditCode === 'approved' && row.order_no) {
+        current = balanceRaw > 0 ? '尾款 / 收款' : (shipmentDone ? '单证 / 归档' : '出货');
+        nextAction = row.next_action || (balanceRaw > 0 ? '跟进定金/尾款收款' : (shipmentDone ? '生成或归档单证' : '跟进出货进度'));
+        shortcutButtons = [
+          '<button type="button" data-customer-action-shortcut="标记已收定金">标记已收定金</button>',
+          '<button type="button" data-customer-action-shortcut="创建收款提醒">创建收款提醒</button>'
+        ];
+      } else if (!['pending', 'unsubmitted'].includes(auditCode)) {
+        current = '流程异常';
+        nextAction = workflowWarning || '补齐报价审核链路';
+      }
+      var tone = (auditCode === 'rejected' || workflowWarning || balanceRaw > 0) ? 'risk' : (shipmentDone && docDone ? 'done' : 'current');
       return '<article class="customer-order-preview-card ' + esc(tone) + '">' +
         '<section class="customer-order-preview-basic"><span>订单流程预览</span><strong>' + esc(orderNo) + '</strong><p>' + esc(customer.customer_name || row.customer_name || '-') + ' · ' + esc(contact) + ' · ' + esc(row.owner || row.owner_name || '-') + ' · ' + esc(row.order_date || '-日期未填') + '</p><b>' + esc(amountText) + '</b><em class="' + (balanceRaw > 0 ? 'debt-amount' : 'paid-amount') + '">' + esc(balanceRaw > 0 ? ('未收 ' + balanceText) : ('已收 ' + paidText)) + '</em></section>' +
         '<section class="customer-order-flow-preview">' + nodes.map(function (node) {
           return '<div class="order-flow-node ' + esc(node.state) + '"><i></i><strong>' + esc(node.label) + '</strong><span>' + esc(node.status) + '</span><em>' + esc(node.note) + '</em></div>';
         }).join('') + '</section>' +
-        '<section class="customer-order-preview-next"><span>当前：' + esc(current) + '</span><strong>下一步：' + esc(nextAction) + '</strong><button type="button" data-customer-action-shortcut="标记已收定金">标记已收定金</button><button type="button" data-customer-action-shortcut="创建收款提醒">创建收款提醒</button></section>' +
+        '<section class="customer-order-preview-next"><span>当前：' + esc(current) + '</span><strong>下一步：' + esc(nextAction) + '</strong>' + shortcutButtons.join('') + '</section>' +
       '</article>';
     },
     bindOrderPreviewShortcuts: function () {

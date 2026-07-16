@@ -4920,11 +4920,13 @@ function crm_customer_order_summary(array $customer): array
     $dateExpr = in_array('order_date', $cols, true) ? 'order_date' : (in_array('created_at', $cols, true) ? 'created_at' : 'id');
     $stmt = db()->prepare('SELECT * FROM quote_sales_orders WHERE (' . implode(' OR ', $where) . ') ORDER BY ' . $dateExpr . ' DESC, id DESC LIMIT 30');
     $stmt->execute($params);
+    $orderRecords = $stmt->fetchAll();
+    $auditMap = crm_customer_quote_audit_map($orderRecords);
     $rows = [];
     $open = 0;
     $amountTotal = 0.0;
     $latest = '';
-    foreach ($stmt->fetchAll() as $row) {
+    foreach ($orderRecords as $row) {
         $status = (string)($row['status'] ?? '');
         $shipmentStatus = (string)($row['shipment_status'] ?? '');
         $paymentStatus = (string)($row['payment_status'] ?? '');
@@ -4935,9 +4937,11 @@ function crm_customer_order_summary(array $customer): array
         if ($latest === '') $latest = (string)($row['order_date'] ?? ($row['created_at'] ?? ''));
         if ($canPrice && is_numeric($row['amount'] ?? null)) $amountTotal += $amountRaw;
         $paymentProgress = $amountRaw > 0 ? (int)max(0, min(100, round(($paidRaw / $amountRaw) * 100))) : (preg_match('/已收|paid|结清|完成/i', $paymentStatus) ? 100 : 0);
+        $audit = crm_customer_quote_audit_for_order($row, $auditMap);
         $rows[] = [
             'id' => (int)($row['id'] ?? 0),
             'order_no' => (string)($row['order_no'] ?? ''),
+            'quote_id' => (int)($audit['quote_id'] ?? ($row['quote_id'] ?? 0)),
             'quote_no' => (string)($row['quote_no'] ?? ''),
             'customer_name' => (string)($row['customer_name'] ?? ''),
             'order_date' => (string)($row['order_date'] ?? ($row['created_at'] ?? '')),
@@ -4959,6 +4963,15 @@ function crm_customer_order_summary(array $customer): array
             'doc_title' => (string)($row['order_doc_title'] ?? ($row['contract_title'] ?? '')),
             'note' => (string)($row['note'] ?? ''),
             'items' => crm_quote_items_from_row($row, $canPrice),
+            'audit_status_code' => (string)($audit['audit_status_code'] ?? ''),
+            'audit_status' => (string)($audit['audit_status'] ?? ''),
+            'audit_user' => (string)($audit['audit_user'] ?? ''),
+            'audit_time' => (string)($audit['audit_time'] ?? ''),
+            'audit_reject_reason' => (string)($audit['audit_reject_reason'] ?? ''),
+            'can_convert_to_order' => !empty($audit['can_convert_to_order']) ? 1 : 0,
+            'converted_order_no' => (string)($audit['converted_order_no'] ?? ($row['order_no'] ?? '')),
+            'converted_at' => (string)($audit['converted_at'] ?? ($row['order_date'] ?? ($row['created_at'] ?? ''))),
+            'workflow_warning' => (string)($audit['workflow_warning'] ?? ''),
         ];
     }
     return [
@@ -4970,6 +4983,131 @@ function crm_customer_order_summary(array $customer): array
         'rows' => $rows,
         'status' => 'connected',
         'message' => $canPrice ? '已读取订单真实数据。' : '已读取订单真实数据，金额字段按权限隐藏。',
+    ];
+}
+
+function crm_customer_order_quote_lookup_keys(array $row): array
+{
+    $keys = [];
+    $quoteId = (int)($row['quote_id'] ?? ($row['source_quote_id'] ?? 0));
+    $quoteNo = trim((string)($row['quote_no'] ?? ''));
+    if ($quoteId > 0) $keys[] = 'id:' . $quoteId;
+    if ($quoteNo !== '') $keys[] = 'no:' . $quoteNo;
+    return $keys;
+}
+
+function crm_customer_quote_audit_map(array $orders): array
+{
+    if (!crm_table_exists_safe('quote_orders')) return [];
+    $quoteCols = crm_table_columns_safe('quote_orders');
+    $ids = [];
+    $nos = [];
+    foreach ($orders as $row) {
+        $quoteId = (int)($row['quote_id'] ?? ($row['source_quote_id'] ?? 0));
+        $quoteNo = trim((string)($row['quote_no'] ?? ''));
+        if ($quoteId > 0) $ids[] = $quoteId;
+        if ($quoteNo !== '') $nos[] = $quoteNo;
+    }
+    $where = [];
+    $params = [];
+    $ids = array_values(array_unique($ids));
+    $nos = array_values(array_unique($nos));
+    if ($ids && in_array('id', $quoteCols, true)) {
+        $where[] = 'id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        foreach ($ids as $id) $params[] = $id;
+    }
+    if ($nos && in_array('quote_no', $quoteCols, true)) {
+        $where[] = 'quote_no IN (' . implode(',', array_fill(0, count($nos), '?')) . ')';
+        foreach ($nos as $no) $params[] = $no;
+    }
+    if (!$where) return [];
+    $stmt = db()->prepare('SELECT * FROM quote_orders WHERE ' . implode(' OR ', $where) . ' ORDER BY id DESC');
+    $stmt->execute($params);
+    $map = [];
+    foreach ($stmt->fetchAll() as $quote) {
+        $audit = crm_customer_quote_audit_record($quote);
+        if (!empty($quote['id'])) $map['id:' . (int)$quote['id']] = $audit;
+        if (!empty($quote['quote_no'])) $map['no:' . trim((string)$quote['quote_no'])] = $audit;
+    }
+    return $map;
+}
+
+function crm_customer_quote_audit_record(array $quote): array
+{
+    $raw = strtolower(trim((string)($quote['approval_status'] ?? ($quote['audit_status'] ?? ($quote['review_status'] ?? '')))));
+    $submittedAt = trim((string)($quote['submitted_at'] ?? ''));
+    $approvedAt = trim((string)($quote['approved_at'] ?? ''));
+    $rejectedAt = trim((string)($quote['rejected_at'] ?? ''));
+    $code = 'missing';
+    $label = '无审核记录';
+    if (preg_match('/approved|pass|通过|已审|已审核/i', $raw) || $approvedAt !== '') {
+        $code = 'approved';
+        $label = '已通过';
+    } elseif (preg_match('/reject|驳回|拒绝/i', $raw) || $rejectedAt !== '') {
+        $code = 'rejected';
+        $label = '已驳回';
+    } elseif (preg_match('/pending|review|待审|审核中/i', $raw)) {
+        $code = 'pending';
+        $label = '待审核';
+    } elseif ($raw === '' && $submittedAt === '' && $approvedAt === '' && $rejectedAt === '') {
+        $code = 'unsubmitted';
+        $label = '未提交审核';
+    } elseif ($raw !== '') {
+        $code = 'pending';
+        $label = (string)($quote['approval_status'] ?? $quote['audit_status'] ?? $quote['review_status'] ?? '待审核');
+    }
+    $user = '';
+    $time = '';
+    if ($code === 'approved') {
+        $user = (string)($quote['approved_by'] ?? '');
+        $time = $approvedAt;
+    } elseif ($code === 'rejected') {
+        $user = (string)($quote['rejected_by'] ?? '');
+        $time = $rejectedAt;
+    } else {
+        $user = (string)($quote['submitted_by'] ?? ($quote['user_name'] ?? ''));
+        $time = $submittedAt;
+    }
+    return [
+        'quote_id' => (int)($quote['id'] ?? 0),
+        'quote_no' => (string)($quote['quote_no'] ?? ''),
+        'audit_status_code' => $code,
+        'audit_status' => $label,
+        'audit_user' => $user,
+        'audit_time' => $time,
+        'audit_reject_reason' => (string)($quote['reject_reason_detail'] ?? ($quote['approval_note'] ?? ($quote['reject_reason_custom'] ?? ''))),
+        'can_convert_to_order' => $code === 'approved',
+        'converted_order_no' => (string)($quote['converted_order_no'] ?? ''),
+        'converted_at' => (string)($quote['converted_at'] ?? ($quote['order_date'] ?? '')),
+        'workflow_warning' => '',
+    ];
+}
+
+function crm_customer_quote_audit_for_order(array $order, array $auditMap): array
+{
+    foreach (crm_customer_order_quote_lookup_keys($order) as $key) {
+        if (isset($auditMap[$key])) {
+            $audit = $auditMap[$key];
+            if (empty($audit['converted_order_no'])) $audit['converted_order_no'] = (string)($order['order_no'] ?? '');
+            if (empty($audit['converted_at'])) $audit['converted_at'] = (string)($order['order_date'] ?? ($order['created_at'] ?? ''));
+            if (($audit['audit_status_code'] ?? '') !== 'approved') {
+                $audit['workflow_warning'] = '订单已存在，但报价未审核通过。';
+            }
+            return $audit;
+        }
+    }
+    return [
+        'quote_id' => 0,
+        'quote_no' => (string)($order['quote_no'] ?? ''),
+        'audit_status_code' => 'missing',
+        'audit_status' => '审核记录缺失',
+        'audit_user' => '',
+        'audit_time' => '',
+        'audit_reject_reason' => '',
+        'can_convert_to_order' => false,
+        'converted_order_no' => (string)($order['order_no'] ?? ''),
+        'converted_at' => (string)($order['order_date'] ?? ($order['created_at'] ?? '')),
+        'workflow_warning' => '异常：订单缺少审核链路',
     ];
 }
 
