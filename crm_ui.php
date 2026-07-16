@@ -214,6 +214,7 @@ function crm_widget_catalog(): array
         ['sample_shipments','样品寄送','task','card,list','list','sample.view','2x1'],
         ['sample_signed_followup','签收待跟进','task','card,list','list','sample.view','2x1'],
         ['today_quote','今日报价','quote','card,list','card','quote.view','1x1'],
+        ['quote_order_summary','报价订单摘要','quote','summary,card','summary','quote.view','2x1'],
         ['quote_amount','报价金额统计','quote','card,bar,trend','bar','quote.view','2x2'],
         ['quote_to_order','报价转订单率','quote','progress,trend','progress','quote.view','2x1'],
         ['quote_order_board','报价订单联动','quote','board,list','board','quote.view','3x2'],
@@ -272,19 +273,20 @@ function crm_seed_dashboard_widgets(): void
 function crm_dashboard_role_defaults(array $user): array
 {
     $role = $user['role_key'] ?? $user['role_name'] ?? '';
+    $standard = ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','team_sales_compare','customer_amount_rank','ar_customer_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
     if (is_super_admin() || stripos($role, 'admin') !== false || stripos($role, '老板') !== false) {
-        return ['key_reminders','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','team_sales_compare','customer_amount_rank','ar_customer_rank','customer_order_rank','customer_quote_rank','quote_order_board','team_ar_rank','ar_aging','silent_customers','customer_level_pie','customer_source_pie','country_rank','quote_amount','quote_to_order','unreplied_mail','online_people','recent_logs','team_sales_trend'];
+        return $standard;
     }
     if (stripos($role, 'manager') !== false || stripos($role, 'leader') !== false || stripos($role, '主管') !== false || stripos($role, '经理') !== false) {
-        return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','week_customers','owner_customers','today_follow','overdue_follow','unreplied_mail','promotion_pending','dispatch_overdue','material_pending','online_people','recent_logs','world_time','express_tool'];
+        return $standard;
     }
     if (stripos($role, 'sales') !== false || stripos($role, '业务') !== false) {
-        return ['tasks_today','today_visits','today_arrivals','sample_shipments','sample_signed_followup','my_customers','today_follow','overdue_follow','unreplied_mail','today_quote','quote_order_board','material_pending','dispatch_today','today_mail','recent_logs','world_time','exchange_rate'];
+        return ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','customer_amount_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
     }
     if (stripos($role, 'clerk') !== false || stripos($role, '文员') !== false || stripos($role, '跟单') !== false) {
-        return ['missing_primary_contact','missing_contact_email','material_pending','today_mail','dispatch_today','recent_logs','express_tool','flight_tool'];
+        return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','unreplied_mail','dispatch_overdue'];
     }
-    return ['tasks_today','sample_shipments','today_follow','dispatch_today','collab_customers','material_today','recent_logs','online_count','weather_tool','world_time'];
+    return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','unreplied_mail','dispatch_overdue'];
 }
 
 function crm_user_dashboard_widgets(int $userId): array
@@ -1299,7 +1301,7 @@ function crm_workspace_bootstrap(array $input = []): array
     $widgets = [];
     foreach ($rows as $row) {
         $key = (string)$row['widget_key'];
-        if (in_array($key, ['today_customers', 'month_customers', 'lead_pool'], true)) continue;
+        if (in_array($key, ['today_customers', 'month_customers'], true)) continue;
         $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value_cached($key, $range);
         $widgets[] = array_merge($row, [
             'value' => $value['value'] ?? 0,
@@ -1320,7 +1322,7 @@ function crm_workspace_bootstrap(array $input = []): array
     foreach ($widgets as $widget) $presentKeys[(string)($widget['widget_key'] ?? '')] = true;
     $virtualSort = 5;
     foreach (crm_dashboard_role_defaults($user) as $key) {
-        if (isset($presentKeys[$key]) || in_array($key, $hiddenKeys, true) || !isset($catalogByKey[$key]) || in_array($key, ['today_customers', 'month_customers', 'lead_pool'], true)) continue;
+        if (isset($presentKeys[$key]) || in_array($key, $hiddenKeys, true) || !isset($catalogByKey[$key]) || in_array($key, ['today_customers', 'month_customers'], true)) continue;
         $meta = $catalogByKey[$key];
         $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value_cached($key, $range);
         [$w, $h] = array_map('intval', explode('x', (string)($meta['default_size'] ?? '2x1')));

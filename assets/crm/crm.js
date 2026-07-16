@@ -1135,6 +1135,12 @@
     catalog: [],
     layoutEditing: false,
     draggingWidgetKey: '',
+    workspaceSections: {
+      kpi: ['today', 'mailbox_summary', 'lead_pool', 'opportunity_pipeline', 'dispatch_overdue', 'quote_order_summary', 'quote_order_summary', 'unreplied_mail'],
+      today: ['tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup'],
+      analysis: ['customer_growth_summary', 'team_sales_compare', 'customer_amount_rank', 'ar_customer_rank', 'country_rank', 'customer_quote_rank'],
+      allowed: ['lead_pool', 'tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup', 'customer_growth_summary', 'team_sales_compare', 'customer_amount_rank', 'ar_customer_rank', 'country_rank', 'customer_quote_rank', 'quote_order_summary', 'unreplied_mail', 'dispatch_overdue']
+    },
     widgets: [
       { key: 'today_customers', title: '今日新增客户', category: '客户', mode: 'card', size: 'sm', value: '0', desc: '新客户入口与暂存池联动', target: 'customers', roles: ['boss', 'sales', 'assistant'] },
       { key: 'my_customers', title: '我的客户', category: '客户', mode: 'card', size: 'sm', value: '0', desc: '点击进入客户中心', target: 'customers', roles: ['boss', 'sales', 'staff'] },
@@ -1380,7 +1386,11 @@
     },
     activeWidgets: function () {
       var rows = (this.data && this.data.widgets && this.data.widgets.length) ? this.data.widgets : this.visibleWidgets();
-      return rows.filter(function (widget) { return Number(widget.is_visible === undefined ? 1 : widget.is_visible) === 1; });
+      var allowed = this.workspaceSections.allowed;
+      return rows.filter(function (widget) {
+        var key = widget.key || widget.widget_key;
+        return allowed.indexOf(key) >= 0 && Number(widget.is_visible === undefined ? 1 : widget.is_visible) === 1;
+      });
     },
     renderWorkspaceTitle: function () {
       var subtitle = document.querySelector('[data-workspace-subtitle]');
@@ -1432,10 +1442,9 @@
       var dateText = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
       var roleText = { boss: '老板视角', manager: '主管视角', sales: '业务视角', assistant: '跟单视角', staff: '员工视角' }[role] || '工作视角';
       return '<section class="workspace-cockpit">' +
-        '<div class="workspace-status-board">' + this.renderOverview(widgets, dateText, roleText) + '</div>' +
+        this.renderOverview(widgets, dateText, roleText) +
         this.renderToolbelt() +
         this.renderAssistStrip() +
-        this.renderMetricStrip(widgets) +
         '<div class="workspace-workbench">' +
           '<section class="workspace-widget-board' + (this.layoutEditing ? ' is-layout-editing' : '') + '">' + this.renderWidgetGroups(widgets) + '</section>' +
         '</div>' +
@@ -1443,7 +1452,10 @@
       '</section>';
     },
     renderWidgetGroups: function (widgets) {
-      return this.renderWidgetGroup('', '', widgets);
+      var today = this.workspaceSections.today.map(this.widgetByKey.bind(this, widgets)).filter(function (item) { return item && (item.key || item.widget_key); });
+      var analysis = this.workspaceSections.analysis.map(this.widgetByKey.bind(this, widgets)).filter(function (item) { return item && (item.key || item.widget_key); });
+      return this.renderWidgetGroup('今日处理区', '任务、拜访、样品和签收跟进集中处理。', today) +
+        this.renderWidgetGroup('经营分析区', '只保留新增、销售、成交、应收、国家和报价 6 个分析模块。', analysis);
     },
     renderWidgetGroup: function (title, desc, rows) {
       return '<section class="workspace-widget-group"><header><div><h3>' + esc(title) + '</h3><p>' + esc(desc) + '</p></div><span>' + esc(rows.length) + ' 项</span></header><div class="workspace-widget-group-grid">' + rows.map(this.renderWidget.bind(this)).join('') + '</div></section>';
@@ -1452,19 +1464,28 @@
       return widgets.find(function (item) { return (item.key || item.widget_key) === key; }) || {};
     },
     renderOverview: function (widgets, dateText, roleText) {
+      var quote = this.widgetByKey(widgets, 'quote_order_summary');
+      var quoteRows = quote.items || [];
+      var quoteRow = quoteRows.find(function (row) { return row.label === '报价'; }) || {};
+      var orderRow = quoteRows.find(function (row) { return row.label === '订单'; }) || {};
       var keys = [
-        ['today', '今日工作台', dateText || '', roleText || '工作视角', 'blue'],
+        ['tasks_today', '今日工作', '', '今日处理', 'blue'],
         ['mailbox_summary', '未读邮件', '', '邮件提醒', 'orange'],
         ['lead_pool', '暂存池待确认', '', '线索确认', 'blue'],
         ['opportunity_pipeline', '商机阶段', '', '销售机会', 'green'],
-        ['dispatch_overdue', '逾期派工', '', '执行风险', 'red']
+        ['dispatch_overdue', '逾期派工', '', '执行风险', 'red'],
+        ['quote_order_summary:sales', '本月销售', orderRow.amount || '0', (orderRow.count || 0) + ' 个订单', 'green'],
+        ['quote_order_summary:quote', '本月报价', quoteRow.amount || '0', (quoteRow.count || 0) + ' 份报价', 'blue'],
+        ['unreplied_mail', '未回复邮件', '', '等待回复', 'orange']
       ];
       var fallback = this.widgets;
       return '<div class="workspace-overview">' + keys.map(function (item) {
-        var key = item[0];
+        var rawKey = item[0];
+        var key = rawKey.split(':')[0];
         var widget = widgets.find(function (row) { return (row.key || row.widget_key) === key; }) || fallback.find(function (row) { return row.key === key; }) || {};
-        var value = key === 'today' ? item[2] : (key === 'mailbox_summary' && WorkspaceModule.mailSummary ? (WorkspaceModule.mailSummary.unread || 0) : (widget.value || 0));
-        return '<button type="button" class="tone-' + esc(item[4]) + '" data-workspace-widget="' + esc(key) + '"><span>' + esc(item[1]) + '</span><strong>' + esc(value) + '</strong><em>' + esc(item[3] || widget.category || 'CRM') + '</em></button>';
+        var value = item[2] || (key === 'mailbox_summary' && WorkspaceModule.mailSummary ? (WorkspaceModule.mailSummary.unread || 0) : (widget.value || 0));
+        if (key === 'tasks_today') value = widget.value || dateText || 0;
+        return '<button type="button" class="tone-' + esc(item[4]) + '" data-workspace-widget="' + esc(key) + '"><span>' + esc(item[1]) + '</span><strong>' + WorkspaceModule.renderMetricValue(value) + '</strong><em>' + esc(item[3] || widget.category || roleText || 'CRM') + '</em></button>';
       }).join('') + '</div>';
     },
     renderToolbelt: function () {
@@ -1611,13 +1632,9 @@
       var catalog = {};
       (this.data.catalog || this.catalog || []).forEach(function (item) { catalog[item.widget_key] = item; });
       var groups = [
-        ['经营指标', ['target_completion','quote_to_order','ar_aging']],
-        ['客户分析', ['customer_growth_summary','customer_level_pie','customer_source_pie','country_rank','customer_amount_rank','customer_order_rank','high_potential_customers','silent_customers']],
-        ['团队分析', ['team_sales_compare','team_sales_trend','team_ar_rank','online_people']],
-        ['报价分析', ['quote_amount','customer_quote_rank']],
-        ['应收风险', ['ar_customer_rank','ar_aging','team_ar_rank']],
-        ['行动提醒', ['unreplied_mail','key_reminders','today_follow','overdue_follow','dispatch_today']],
-        ['系统辅助', ['weather_tool','world_time','exchange_rate','online_people','recent_logs']]
+        ['今日处理区', ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup']],
+        ['经营分析区', ['customer_growth_summary','team_sales_compare','customer_amount_rank','ar_customer_rank','country_rank','customer_quote_rank']],
+        ['顶部 KPI 来源', ['lead_pool','quote_order_summary','unreplied_mail','dispatch_overdue']]
       ];
       return '<aside class="workspace-settings-drawer"><header><div><span>WORKSPACE</span><strong>工作台设置</strong></div><button type="button" data-workspace-close-settings>×</button></header><section><h4>工作台布局</h4><button type="button" data-workspace-close-settings>退出布局编辑</button><button type="button" data-workspace-reset-layout>恢复默认布局</button><button type="button" data-workspace-tool="settings">进入设置中心</button></section><section class="workspace-component-manager"><h4>组件管理</h4>' +
         groups.map(function (group) {

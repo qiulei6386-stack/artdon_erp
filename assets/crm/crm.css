@@ -3158,7 +3158,7 @@ html[data-crm-animation="off"] .crm-module { animation: none; }
 .workspace-cockpit {
   min-height: 0;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .workspace-status-board {
   display: grid;
@@ -3342,7 +3342,7 @@ html[data-crm-animation="off"] .crm-module { animation: none; }
 }
 .workspace-widget-board {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 .workspace-widget-group {
   min-width: 0;
@@ -3355,7 +3355,7 @@ html[data-crm-animation="off"] .crm-module { animation: none; }
   gap: 8px;
 }
 .workspace-widget-group > header {
-  display: none;
+  display: flex;
   min-height: 0;
   align-items: center;
   justify-content: space-between;
@@ -3368,7 +3368,6 @@ html[data-crm-animation="off"] .crm-module { animation: none; }
   font-size: 13px;
 }
 .workspace-widget-group > header p {
-  display: none;
   margin: 0;
   color: var(--crm-muted-text);
   font-size: 11px;
