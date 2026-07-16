@@ -2264,6 +2264,7 @@
     selected: new Set(),
     currentDetail: null,
     activeDetailTab: 'overview',
+    selectedDetailEntity: null,
     viewMode: 'table',
     sort: 'updated_at',
     dir: 'DESC',
@@ -3196,16 +3197,19 @@
         return '<button type="button" data-summary-jump="' + esc(key) + '"><span>' + esc(item.label) + '</span><strong' + valueClass + '>' + esc(item.value) + '</strong><em>' + esc(item.hint) + '</em></button>';
       }).join('');
       var contacts = (data.contacts || []).map(function (ct) {
-        return '<tr data-contact-id="' + ct.id + '"><td>' + esc(ct.name) + (Number(ct.is_primary) ? ' <b>主</b>' : '') + '</td><td>' + esc(ct.position || '-') + '</td><td>' + esc(ct.email || '-') + '</td><td>' + esc(ct.phone || '-') + '</td><td>' + esc(ct.whatsapp || '-') + '</td></tr>';
-      }).join('') || '<tr><td colspan="5">暂无联系人</td></tr>';
+        var promoState = ct.strategy_status || ct.promotion_status || (Number(ct.do_not_promote || 0) ? '不推广' : '正常');
+        return '<tr data-detail-row="contact" data-detail-row-id="' + esc(ct.id) + '"><td>' + esc(ct.name || '-') + '</td><td>' + esc(ct.position || ct.role || '-') + '</td><td>' + esc(ct.email || '-') + '</td><td>' + esc(ct.phone || '-') + '</td><td>' + esc(ct.whatsapp || '-') + '</td><td>' + (Number(ct.is_primary) ? '是' : '否') + '</td><td>' + esc(promoState || '-') + '</td><td>' + esc(ct.last_contact_at || ct.last_touch_time || ct.updated_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="8">暂无联系人</td></tr>';
       var chatGroups = (data.chat_groups || []).map(function (group) {
         var platform = group.group_platform === 'whatsapp_group' ? 'WhatsApp群' : '微信群';
         var statusText = group.status === 'paused' ? '暂停' : (group.status === 'invalid' ? '无效' : '有效');
-        return '<article class="customer-chat-group-card"><div><strong>' + esc(group.group_name || '-') + '</strong><span>' + esc(platform) + ' · ' + esc(statusText) + ' · ' + (Number(group.use_for_promotion) ? '可推广' : '不参与推广') + '</span><em>群负责人：' + esc(group.group_owner || '-') + ' · 最近推广：' + esc(group.last_promoted_at || '暂无') + '</em><p>' + esc(group.remark || '无备注') + '</p></div><nav><button type="button" data-chat-group-edit="' + esc(group.id) + '">编辑</button><button type="button" data-chat-group-delete="' + esc(group.id) + '">删除</button></nav></article>';
-      }).join('') || '<p class="promo-empty">暂无客户群。请记录微信群、WhatsApp群、项目群、经销商群等，推广任务可生成群执行清单。</p>';
+        var typeText = platform;
+        if (String(group.group_name || '').toLowerCase().indexOf('project') >= 0 || String(group.remark || '').indexOf('项目') >= 0) typeText = '项目群';
+        return '<tr data-detail-row="chat_group" data-detail-row-id="' + esc(group.id) + '"><td>' + esc(group.group_name || '-') + '</td><td>' + esc(typeText) + '</td><td>' + esc(group.member_count || '-') + '</td><td>' + esc(group.group_owner || '-') + '</td><td>' + esc(group.last_used_at || group.last_promoted_at || '-') + '</td><td>' + esc(group.remark || statusText) + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">暂无客户群</td></tr>';
       var follows = (data.followups || []).map(function (f) {
-        return '<article class="customer-follow-card"><div><strong>' + esc(f.followup_type) + ' · ' + esc(f.followup_time) + '</strong><p>' + esc(f.content) + '</p><span>' + esc(f.creator_name || '-') + '</span></div><button type="button" class="danger-text" data-followup-delete="' + esc(f.id) + '">删除</button></article>';
-      }).join('') || '<div><span>暂无跟进</span></div>';
+        return '<tr data-detail-row="followup" data-detail-row-id="' + esc(f.id) + '"><td>' + esc(f.followup_time || '-') + '</td><td>' + esc(f.creator_name || f.owner_name || '-') + '</td><td>' + esc(f.contact_name || '-') + '</td><td>' + esc(f.followup_type || '-') + '</td><td title="' + esc(f.content || '') + '">' + esc(f.content || '-') + '</td><td>' + esc(f.next_remind_time || '-') + '</td><td>' + esc(cnStatus(f.status || 'open')) + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无跟进</td></tr>';
       var visits = (data.visits || []).map(function (v) {
         var type = v.visit_type === 'customer_arrival' ? '来访' : '拜访';
         var need = [];
@@ -3213,8 +3217,8 @@
         if (Number(v.need_material)) need.push('资料');
         if (Number(v.need_sample)) need.push('样品');
         if (Number(v.need_dispatch)) need.push('派工');
-        return '<article class="visit-card compact" data-visit-id="' + esc(v.id) + '"><div><strong>' + esc(v.title || type) + '</strong><span>' + esc(type) + ' · ' + esc(v.visit_date || '未定日期') + ' ' + esc(String(v.visit_time || '').slice(0, 5)) + ' · ' + esc(v.owner_name || '-') + '</span></div><b class="visit-status">' + esc(cnStatus(v.status || 'pending_confirm')) + '</b><small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + '</small></article>';
-      }).join('') || '<div class="visit-empty">暂无拜访 / 来访记录。右侧 ACTIONS 可新建拜访或来访。</div>';
+        return '<tr data-detail-row="visit" data-detail-row-id="' + esc(v.id) + '"><td>' + esc(type) + '</td><td>' + esc((v.visit_date || '-') + ' ' + String(v.visit_time || '').slice(0, 5)) + '</td><td>' + esc(v.location || v.address || '-') + '</td><td>' + esc(v.owner_name || '-') + '</td><td>' + esc(v.contact_name || '-') + '</td><td title="' + esc(v.summary || v.result_summary || v.title || '') + '">' + esc(v.summary || v.result_summary || v.title || '-') + '</td><td>' + esc(need.join(' / ') || cnStatus(v.status || 'pending_confirm')) + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无拜访 / 来访记录</td></tr>';
       var sampleShipments = (data.sample_shipments || []).map(function (s) {
         var statusText = ((TaskCenterModule.options || {}).sample_statuses || {})[s.status] || cnStatus(s.status || 'preparing');
         return '<article class="sample-card compact" data-customer-sample-id="' + esc(s.id) + '"><div><strong>' + esc(s.sample_name || '-') + '</strong><small>' + esc([s.product_model, s.contact_name, s.opportunity_name].filter(Boolean).join(' · ')) + '</small></div><em>' + esc(statusText) + '</em><span>' + esc(s.courier_company || '未选快递') + '</span><button type="button" data-copy-tracking="' + esc(s.tracking_no || '') + '">' + esc(s.tracking_no || '未填写单号') + '</button><b>图片 ' + esc(s.image_count || 0) + ' · 附件 ' + esc(s.attachment_count || 0) + '</b></article>';
@@ -3246,6 +3250,22 @@
       var activeTarget = this.detailResolveTarget(this.activeDetailTab || 'overview');
       var activeTab = activeTarget.group;
       var activeSubTab = activeTarget.sub;
+      var addressRows = (data.addresses || []).map(function (addr) {
+        var typeText = ({ primary: '主地址', shipping: '发货地址', billing: '账单地址', other: '其他地址' })[addr.address_type] || addr.address_type || (Number(addr.is_primary) ? '主地址' : '其他地址');
+        return '<tr data-detail-row="address" data-detail-row-id="' + esc(addr.id || addr.address_type || '') + '"><td>' + esc(typeText) + '</td><td>' + esc(addr.country || c.country || '-') + '</td><td>' + esc(addr.city || c.city || '-') + '</td><td title="' + esc(addr.address || c.address || '') + '">' + esc(addr.address || c.address || '-') + '</td><td>' + esc(addr.postal_code || addr.zip_code || c.postal_code || '-') + '</td><td>' + esc(addr.contact_name || c.contact_name || '-') + '</td><td>' + esc(addr.phone || c.phone || '-') + '</td><td>' + (Number(addr.is_primary) ? '是' : '否') + '</td></tr>';
+      }).join('');
+      if (!addressRows && (c.country || c.city || c.address)) {
+        addressRows = '<tr data-detail-row="address" data-detail-row-id="customer"><td>主地址</td><td>' + esc(c.country || '-') + '</td><td>' + esc(c.city || '-') + '</td><td title="' + esc(c.address || '') + '">' + esc(c.address || '-') + '</td><td>' + esc(c.postal_code || c.zip_code || '-') + '</td><td>' + esc(c.contact_name || '-') + '</td><td>' + esc(c.phone || '-') + '</td><td>是</td></tr>';
+      }
+      addressRows = addressRows || '<tr><td colspan="8">暂无地址</td></tr>';
+      var tagRows = [];
+      sourceTags.forEach(function (tag) { tagRows.push({ name: tag, type: '客户标签', source: '来源标签' }); });
+      (data.groups || []).forEach(function (group) { tagRows.push({ name: group.group_name || group.name || '-', type: '客户组', source: '客户分组' }); });
+      promotionChannels.forEach(function (tag) { tagRows.push({ name: tag, type: '推广标签', source: '推广方式' }); });
+      if (c.risk_status) tagRows.push({ name: c.risk_status, type: '风险标签', source: '客户状态' });
+      var tagTableRows = tagRows.map(function (tag) {
+        return '<tr data-detail-row="tag" data-detail-row-id="' + esc(tag.type + ':' + tag.name) + '"><td>' + esc(tag.name || '-') + '</td><td>' + esc(tag.type || '-') + '</td><td>' + esc(tag.source || '-') + '</td><td>' + esc(tag.created_by || '-') + '</td><td>' + esc(tag.created_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">暂无标签</td></tr>';
       var communicationItems = [];
       (data.followups || []).forEach(function (f) {
         communicationItems.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-' });
@@ -3253,31 +3273,35 @@
       (data.visits || []).forEach(function (v) {
         communicationItems.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || '', person: v.owner_name || '-' });
       });
+      if (data.mail_rows && data.mail_rows.length) {
+        data.mail_rows.forEach(function (m) { communicationItems.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || '', detail: m.direction || '', person: m.from_name || m.from_email || '-' }); });
+      }
       communicationItems.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
       var communicationAll = communicationItems.slice(0, 20).map(function (item) {
-        return '<article class="customer-communication-row"><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>' + esc(item.detail || '暂无详情') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
+        return '<article class="customer-communication-row"><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>客户：' + esc(c.customer_name || '-') + ' · ' + esc(item.detail || '暂无摘要') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
       }).join('') || '<div class="customer-tab-empty"><strong>暂无数据</strong><span>跟进、拜访、邮件和 WhatsApp/微信记录接入后会在这里汇总。</span></div>';
-      var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-field-grid"><div><span>国家</span><strong>' + esc(c.country || '未填') + '</strong></div><div><span>城市</span><strong>' + esc(c.city || '未填') + '</strong></div><div class="wide"><span>详细地址</span><strong>' + esc(c.address || '未填') + '</strong></div><div><span>邮编</span><strong>' + esc(c.postal_code || c.zip_code || '未填') + '</strong></div><div><span>常用港口</span><strong>' + esc(c.port || '未填') + '</strong></div><div><span>时区</span><strong>' + esc(c.timezone || '未填') + '</strong></div></div></section>';
-      var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tags">' + (sourceTags.concat(promotionChannels).map(function (tag) { return '<span>' + esc(tag) + '</span>'; }).join('') || '<span>暂无标签</span>') + '</div><div class="customer-tab-empty compact"><strong>标签后续细修</strong><span>第 3 步会继续整理客户标签、客户组和推广标签。</span></div></section>';
-      var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-chat-group-head"><div><strong>客户群 / 沟通群</strong><span>微信群、WhatsApp群、项目群、经销商群，推广任务会按群生成手动执行清单。</span></div><button type="button" data-chat-group-create>新增客户群</button></div><div class="customer-chat-group-list">' + chatGroups + '</div></section>';
-      var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-summary-grid"><button type="button"><span>WhatsApp</span><strong>' + esc(c.whatsapp || '未填') + '</strong><em>后续接入 WhatsApp 往来记录</em></button><button type="button"><span>微信</span><strong>' + esc(c.wechat || '未填') + '</strong><em>后续接入微信沟通记录</em></button></div></section>';
+      var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-tab-stats"><span>主地址 ' + esc((data.addresses || []).filter(function (a) { return Number(a.is_primary); }).length || (c.address ? 1 : 0)) + '</span><span>地址总数 ' + esc((data.addresses || []).length || (c.address ? 1 : 0)) + '</span><span>国家 ' + esc(c.country || '未填') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>地址类型</th><th>国家</th><th>城市</th><th>详细地址</th><th>邮编</th><th>联系人</th><th>电话</th><th>默认</th></tr></thead><tbody>' + addressRows + '</tbody></table></section>';
+      var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tab-stats"><span>客户标签 ' + esc(sourceTags.length) + '</span><span>客户组 ' + esc((data.groups || []).length) + '</span><span>推广标签 ' + esc(promotionChannels.length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>标签名</th><th>类型</th><th>来源</th><th>创建人</th><th>创建时间</th></tr></thead><tbody>' + tagTableRows + '</tbody></table></section>';
+      var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>群名称</th><th>平台</th><th>群成员数</th><th>负责人</th><th>最近使用时间</th><th>备注</th></tr></thead><tbody>' + chatGroups + '</tbody></table></section>';
+      var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 0</span><span>附件 0</span><span>未回复 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody><tr><td colspan="7">暂无该客户关联邮件。邮件接口接入后会显示往来邮件。</td></tr></tbody></table></section>';
+      var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-tab-stats"><span>WhatsApp ' + (c.whatsapp ? '1' : '0') + '</span><span>微信 ' + (c.wechat ? '1' : '0') + '</span><span>人工执行记录 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>平台</th><th>联系人</th><th>内容摘要</th><th>执行人</th><th>来源</th></tr></thead><tbody><tr><td colspan="6">接口待接入，可通过人工执行记录生成。</td></tr></tbody></table></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
         customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute"><div class="customer-summary-grid"><button type="button" data-customer-attribute-open><span>客户属性</span><strong>查看 / 编辑</strong><em>客户身份、联系方式、地区地址、来源推广、负责人权限</em></button><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc((data.contacts || []).length) + '</strong><em>联系人、客户群和沟通群</em></button></div></section>',
-        contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><table class="crm-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th></tr></thead><tbody>' + contacts + '</tbody></table></section>',
+        contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><div class="customer-tab-stats"><span>联系人 ' + esc((data.contacts || []).length) + '</span><span>主联系人 ' + esc((data.contacts || []).filter(function (ct) { return Number(ct.is_primary); }).length) + '</span><span>有邮箱 ' + esc((data.contacts || []).filter(function (ct) { return ct.email; }).length) + '</span><span>有 WhatsApp ' + esc((data.contacts || []).filter(function (ct) { return ct.whatsapp; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th><th>主联系人</th><th>推广状态</th><th>最近联系时间</th></tr></thead><tbody>' + contacts + '</tbody></table></section>',
         addresses: addressPanel,
         chat_groups: chatGroupPanel,
         tags: tagsPanel,
         communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-communication-list">' + communicationAll + '</div></section>',
-        followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-follow-list">' + follows + '</div></section>',
-        visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="visit-tab-head"><div><strong>拜访 / 来访闭环</strong><span>拜访计划、来访接待、结果、后续报价/资料/样品/派工。</span></div><button type="button" data-customer-new-visit>新建拜访</button><button type="button" data-customer-new-arrival>新建来访</button></div><div class="visit-list compact">' + visits + '</div></section>',
+        followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-tab-stats"><span>跟进 ' + esc((data.followups || []).length) + '</span><span>待继续 ' + esc((data.followups || []).filter(function (f) { return (f.status || 'open') === 'open'; }).length) + '</span><span>有提醒 ' + esc((data.followups || []).filter(function (f) { return f.next_remind_time; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>跟进人</th><th>联系人</th><th>跟进方式</th><th>跟进内容</th><th>下次提醒</th><th>状态</th></tr></thead><tbody>' + follows + '</tbody></table></section>',
+        visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type !== 'customer_arrival'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type === 'customer_arrival'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
         samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="visit-tab-head"><div><strong>样品 / 寄送</strong><span>样品任务、寄送记录、快递单号、图片附件和签收跟进。</span></div><button type="button" data-customer-new-sample>新建样品寄送</button></div><div class="sample-list compact">' + sampleShipments + '</div></section>',
         opportunities: '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="visit-tab-head"><div><strong>客户商机</strong><span>一个客户可有多个商机，分别关联报价、样品、资料、派工和订单。</span></div><button type="button" data-customer-new-opportunity>新建商机</button></div><div class="opportunity-list compact">' + opportunities + '</div></section>',
         timeline: '<section class="customer-tab-panel" data-detail-panel="timeline"><div class="customer-timeline">' + timeline + '</div></section>',
         relations: '<section class="customer-tab-panel" data-detail-panel="relations"><table class="crm-table"><thead><tr><th>关系</th><th>关联客户</th><th>备注</th><th>创建</th></tr></thead><tbody>' + relations + '</tbody></table></section>',
         events: '<section class="customer-tab-panel" data-detail-panel="events"><table class="crm-table"><thead><tr><th>类型</th><th>标题</th><th>事件时间</th><th>提醒时间</th><th>状态</th></tr></thead><tbody>' + events + '</tbody></table></section>',
         preferences: '<section class="customer-tab-panel" data-detail-panel="preferences"><div class="customer-field-grid"><div><span>意向产品分类</span><strong>' + esc(productPref.category || '未填') + '</strong></div><div><span>关注系列</span><strong>' + esc(productPref.series || '未填') + '</strong></div><div><span>常用功率/色温</span><strong>' + esc(productPref.power || '-') + ' / ' + esc(productPref.cct || '-') + '</strong></div><div><span>认证需求</span><strong>' + esc(productPref.certification || '未填') + '</strong></div><div><span>首选沟通</span><strong>' + esc(commPref.preferred_channel || '未填') + '</strong></div><div><span>语言/时区</span><strong>' + esc(commPref.language || '-') + ' / ' + esc(commPref.timezone || '-') + '</strong></div></div></section>',
-        mail: '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-summary-grid"><button type="button"><span>最近邮件</span><strong>0</strong><em>当前客户暂无邮件归档</em></button><button type="button"><span>未回复</span><strong>0</strong><em>无待处理邮件</em></button></div></section>',
+        mail: mailPanel,
         social_chat: socialPanel,
         quote: '<section class="customer-tab-panel" data-detail-panel="quote">' + this.renderQuotePanel(quoteData) + '</section>',
         plm: '<section class="customer-tab-panel" data-detail-panel="plm"><div class="customer-summary-grid"><button type="button"><span>项目</span><strong>0</strong><em>暂无项目关联</em></button><button type="button"><span>样品</span><strong>0</strong><em>暂无样品记录</em></button></div></section>',
@@ -3332,7 +3356,7 @@
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
-      this.switchDetailTab(activeTab);
+      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeSubTab);
     },
     openCustomerAttributeView: function (editMode, enlarge) {
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
@@ -4050,6 +4074,16 @@
           self.switchDetailTab(name);
         });
       });
+      document.querySelectorAll('[data-detail-row]').forEach(function (row) {
+        row.addEventListener('click', function () {
+          self.selectedDetailEntity = {
+            type: row.getAttribute('data-detail-row') || '',
+            id: row.getAttribute('data-detail-row-id') || ''
+          };
+          document.querySelectorAll('[data-detail-row]').forEach(function (item) { item.classList.toggle('selected', item === row); });
+          if (current === 'customers') renderActions('customers');
+        });
+      });
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
@@ -4142,6 +4176,7 @@
       var activeName = target.group;
       var activeSub = target.sub;
       this.rememberDetailTab(activeSub);
+      this.selectedDetailEntity = null;
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
         this.ensureFullDetail(activeSub);
         return;
@@ -4166,6 +4201,7 @@
       activeGroup.querySelectorAll('.customer-tab-subpanel').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeSub);
       });
+      if (current === 'customers') renderActions('customers');
     },
     field: function (label, name, value, attrs) {
       return '<label class="entity-field"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '" ' + (attrs || '') + '></label>';
@@ -6250,6 +6286,50 @@
         { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议', 'AI 创建确认任务'] },
         { title: '系统操作', items: ['分配客户', '加入分组', '管理分组', '公海池', '转入公海'].concat(hasCustomer ? ['批量设置推广方式', '编辑选项卡'] : []).concat(['查看日志']) }
       ];
+      if (hasCustomer) {
+        var sub = this.detailResolveTarget(this.activeDetailTab || 'overview').sub;
+        var selected = this.selectedDetailEntity || {};
+        if (sub === 'contacts') return selected.type === 'contact' ? [
+          { title: '联系人', items: ['编辑联系人', '删除联系人', '设为主联系人', '设置不推广', '加入黑名单'] },
+          { title: '客户操作', items: ['新增联系人', '导入联系人', '刷新联系人'] }
+        ] : [
+          { title: '联系人', items: ['新增联系人', '导入联系人', '刷新联系人'] }
+        ];
+        if (sub === 'addresses') return selected.type === 'address' ? [
+          { title: '地址', items: ['新增地址', '编辑地址', '删除地址', '设为默认地址'] }
+        ] : [
+          { title: '地址', items: ['新增地址', '刷新地址'] }
+        ];
+        if (sub === 'chat_groups') return selected.type === 'chat_group' ? [
+          { title: '客户群', items: ['新增客户群', '编辑客户群', '删除客户群', '创建人工执行清单'] }
+        ] : [
+          { title: '客户群', items: ['新增客户群', '刷新客户群'] }
+        ];
+        if (sub === 'tags') return selected.type === 'tag' ? [
+          { title: '标签', items: ['添加标签', '移除标签', '批量添加标签', '管理标签'] }
+        ] : [
+          { title: '标签', items: ['添加标签', '批量添加标签', '管理标签'] }
+        ];
+        if (sub === 'followups') return selected.type === 'followup' ? [
+          { title: '跟进', items: ['新建跟进', '编辑跟进', '删除跟进', '创建提醒', '转商机'] }
+        ] : [
+          { title: '跟进', items: ['新建跟进', '刷新跟进'] }
+        ];
+        if (sub === 'visits') return selected.type === 'visit' ? [
+          { title: '拜访/来访', items: ['新建拜访', '新建来访', '编辑记录', '删除记录', '创建跟进'] }
+        ] : [
+          { title: '拜访/来访', items: ['新建拜访', '新建来访', '刷新记录'] }
+        ];
+        if (sub === 'mail') return [
+          { title: '邮件', items: ['查看邮件', '回复', '转发', '写邮件', '关联客户', '保存附件'] }
+        ];
+        if (sub === 'social_chat') return [
+          { title: 'WhatsApp/微信', items: ['创建人工执行清单', '新建跟进', '刷新记录'] }
+        ];
+        if (sub === 'communication_all') return [
+          { title: '全部沟通', items: ['新建跟进', '新建拜访', '新建来访', '写邮件', '刷新沟通'] }
+        ];
+      }
       return [
         { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户', '编辑客户', '删除客户', '查看客户日志', '导入日志'] },
         { title: '布局切换', items: ['放大客户列表', '放大客户属性', '恢复默认布局'] },
@@ -6301,6 +6381,30 @@
       if (label === '公海池') return this.openPublicPoolDialog();
       if (label === '转入公海') return this.openTransferPublicDialog();
       if (label === '查看客户日志') return this.currentId ? this.switchDetailTab('logs') : this.showCustomerError('请先选择客户。');
+      if (label === '新增联系人') return this.openContactDialog(0);
+      if (label === '编辑联系人') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'contact' ? this.openContactDialog(this.selectedDetailEntity.id) : this.showCustomerError('请先选择联系人。');
+      if (label === '删除联系人') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'contact' ? this.deleteContact(this.selectedDetailEntity.id) : this.showCustomerError('请先选择联系人。');
+      if (label === '导入联系人') return this.showCustomerError('联系人导入接口待接入。');
+      if (label === '刷新联系人' || label === '刷新地址' || label === '刷新客户群' || label === '刷新跟进' || label === '刷新记录' || label === '刷新沟通') return this.loadDetail(this.currentId, { keepTab: true });
+      if (label === '设为主联系人' || label === '设置不推广' || label === '加入黑名单') return this.showCustomerError(label + '接口待接入。');
+      if (label === '新增地址' || label === '编辑地址' || label === '删除地址' || label === '设为默认地址') return this.showCustomerError(label + '接口待接入。');
+      if (label === '新增客户群') return this.openChatGroupDialog();
+      if (label === '编辑客户群') {
+        if (!this.selectedDetailEntity || this.selectedDetailEntity.type !== 'chat_group') return this.showCustomerError('请先选择客户群。');
+        var group = ((this.currentDetail || {}).chat_groups || []).find(function (item) { return Number(item.id) === Number(CustomerModule.selectedDetailEntity.id); }) || {};
+        return this.openChatGroupDialog(group);
+      }
+      if (label === '删除客户群') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'chat_group' ? this.deleteChatGroup(this.selectedDetailEntity.id) : this.showCustomerError('请先选择客户群。');
+      if (label === '创建人工执行清单') return this.showCustomerError('人工执行清单需从推广项目生成，当前客户详情入口待接入。');
+      if (label === '添加标签' || label === '移除标签' || label === '批量添加标签' || label === '管理标签') return this.showCustomerError(label + '接口待接入。');
+      if (label === '编辑跟进') return this.showCustomerError('跟进编辑接口待接入，可先删除后新建。');
+      if (label === '删除跟进') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'followup' ? this.deleteFollowup(this.selectedDetailEntity.id) : this.showCustomerError('请先选择跟进。');
+      if (label === '创建提醒') return this.showCustomerError('提醒创建接口待接入。');
+      if (label === '转商机') return OpportunityModule.openDialog();
+      if (label === '编辑记录' || label === '删除记录') return this.showCustomerError(label + '接口待接入。');
+      if (label === '创建跟进') return this.openFollowupDialog();
+      if (label === '写邮件') return MailModule.openCompose('compose');
+      if (label === '查看邮件' || label === '回复' || label === '转发' || label === '关联客户' || label === '保存附件') return this.showCustomerError('客户邮件明细接口待接入，请先在邮箱模块按客户查看。');
       if (/^AI /.test(label)) return AiModule.openFromContext(label, {
         source_type: 'customer',
         customer_id: this.currentId || 0,

@@ -6475,6 +6475,31 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-tab-empty strong { color: var(--crm-text); font-size: 13px; }
 .customer-tab-empty span { font-size: 12px; }
 .customer-tab-empty.compact { min-height: 54px; margin-top: 10px; }
+.customer-tab-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.customer-tab-stats span {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  border: 1px solid var(--crm-border);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--crm-hover-bg);
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.customer-detail-table th,
+.customer-detail-table td { text-align: left; }
+.customer-detail-table tbody tr[data-detail-row] { cursor: pointer; }
+.customer-detail-table tbody tr[data-detail-row].selected {
+  background: color-mix(in srgb, var(--crm-primary) 9%, var(--crm-card-bg));
+  outline: 1px solid color-mix(in srgb, var(--crm-primary) 28%, var(--crm-border));
+}
 .customer-communication-list { display: grid; gap: 8px; }
 .customer-communication-row {
   display: grid;
