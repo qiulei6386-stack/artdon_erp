@@ -3142,8 +3142,18 @@
       var nextId = Number(id || 0) || 0;
       var sameCustomer = previousId && nextId && previousId === nextId;
       this.currentId = id;
-      if (!options.keepTab && !sameCustomer) this.activeDetailTab = 'overview';
-      else this.activeDetailTab = this.activeDetailTab || this.restoreDetailTab(id);
+      if (!options.keepTab && !sameCustomer) {
+        this.activeDetailTab = 'overview';
+        this.selectedDetailEntity = null;
+        this.archiveEditMode = false;
+        this.attributeViewMode = false;
+        this.attributeEditMode = false;
+        this.attributeData = null;
+        this.attributeOriginalSnapshot = null;
+        if (this.layoutMode !== 'default') this.applyLayoutMode('default', false);
+      } else {
+        this.activeDetailTab = this.activeDetailTab || this.restoreDetailTab(id);
+      }
       document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === id); });
       return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
@@ -3771,7 +3781,10 @@
     returnCustomerOverview: function () {
       this.attributeViewMode = false;
       this.attributeEditMode = false;
+      this.archiveEditMode = false;
+      this.selectedDetailEntity = null;
       this.activeDetailTab = 'overview';
+      if (this.layoutMode !== 'default') this.applyLayoutMode('default', false);
       if (this.currentDetail) {
         this.renderDetail(this.currentDetail);
         this.switchDetailTab('overview');
@@ -6943,7 +6956,7 @@
       if (label === '编辑选项卡') return this.openCustomerTabQuickEditor();
       if (label === '查看日志') return this.openTodayLogsDialog();
       if (label === '清除选择') { this.selected.clear(); document.querySelectorAll('[data-customer-row-check]').forEach(function (b) { b.checked = false; }); this.renderSelection(); renderActions('customers'); return; }
-      toast(label + ' 未配置可执行逻辑，已从标准 ACTIONS 中移除。');
+      this.showCustomerError(label + '接口待接入。');
     },
     destroy: function () {
       this.closeDialog();

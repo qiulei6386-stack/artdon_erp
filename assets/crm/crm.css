@@ -6463,6 +6463,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-primary);
 }
 .customer-tab-subpanel {
+  display: block;
   padding-top: 0;
   border: 1px solid var(--crm-border);
   border-radius: 12px;
