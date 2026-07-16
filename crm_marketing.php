@@ -909,9 +909,56 @@ function crm_marketing_apply_contact_strategy_meta(array &$row): void
     $row['strategy_status'] = $canPromote ? '可推广' : ($manual ? '可转人工执行' : ($row['skip_reasons'] ?: '待确认'));
 }
 
+function crm_marketing_normalize_email(string $email): string
+{
+    return strtolower(trim($email));
+}
+
+function crm_marketing_duplicate_email_report(array &$rows): array
+{
+    $groups = [];
+    foreach ($rows as $index => $row) {
+        $email = crm_marketing_normalize_email((string)($row['email'] ?? ''));
+        if ($email === '') continue;
+        if (!isset($groups[$email])) $groups[$email] = [];
+        $groups[$email][] = $index;
+    }
+    $details = [];
+    $skipped = 0;
+    foreach ($groups as $email => $indexes) {
+        if (count($indexes) < 2) continue;
+        $keptIndex = $indexes[0];
+        $skipIndexes = array_slice($indexes, 1);
+        $skipped += count($skipIndexes);
+        foreach ($indexes as $pos => $rowIndex) {
+            $rows[$rowIndex]['duplicate_email_count'] = count($indexes);
+            $rows[$rowIndex]['duplicate_email_role'] = $pos === 0 ? 'keep' : 'skip';
+            if ($pos > 0) {
+                $reasons = array_filter(explode('、', (string)($rows[$rowIndex]['skip_reasons'] ?? '')));
+                $reasons[] = '重复邮箱';
+                $rows[$rowIndex]['skip_reasons'] = implode('、', array_values(array_unique($reasons)));
+                $rows[$rowIndex]['can_promote'] = 0;
+                if (empty($rows[$rowIndex]['can_manual'])) $rows[$rowIndex]['strategy_status'] = '重复邮箱';
+            }
+        }
+        $details[] = [
+            'email' => $email,
+            'count' => count($indexes),
+            'kept' => $rows[$keptIndex] ?? [],
+            'skipped' => array_map(static fn($i) => $rows[$i] ?? [], $skipIndexes),
+        ];
+    }
+    return [
+        'duplicate_email_count' => count($details),
+        'duplicate_email_skipped_count' => $skipped,
+        'duplicate_email_details' => array_slice($details, 0, 50),
+    ];
+}
+
 function crm_marketing_contact_strategy_view(array $input = []): array
 {
     $rows = crm_marketing_contacts($input);
+    $duplicates = crm_marketing_duplicate_email_report($rows);
     $stats = ['total' => count($rows), 'promotable' => 0, 'no_email' => 0, 'no_promotion' => 0, 'blacklist' => 0, 'manual' => 0];
     $skip = [];
     $customerIds = [];
@@ -933,8 +980,10 @@ function crm_marketing_contact_strategy_view(array $input = []): array
         'mail_contact_count' => $stats['promotable'],
         'manual_contact_count' => $stats['manual'],
         'skipped_contact_count' => max(0, count($rows) - $stats['promotable'] - $stats['manual']),
+        'duplicate_email_count' => $duplicates['duplicate_email_count'],
+        'duplicate_email_skipped_count' => $duplicates['duplicate_email_skipped_count'],
     ];
-    return ['contacts' => $rows, 'contact_stats' => $stats, 'contact_preview' => $preview, 'contact_skip_reasons' => $skip];
+    return ['contacts' => $rows, 'contact_stats' => $stats, 'contact_preview' => $preview, 'contact_skip_reasons' => $skip, 'duplicate_email_report' => $duplicates];
 }
 
 function crm_marketing_tasks(): array
@@ -1049,12 +1098,14 @@ function crm_marketing_target_preview(array $input = []): array
             }
         }
     }
+    $duplicates = crm_marketing_duplicate_email_report($contacts);
     return [
         'pool' => $customers,
         'contacts' => $contacts,
         'chat_groups' => $chatGroups,
         'selected_customer_count' => count($customerIds),
         'selected_contact_count' => count($contactIds),
+        'duplicate_email_report' => $duplicates,
     ];
 }
 
@@ -1822,21 +1873,24 @@ function crm_marketing_queue_build(array $input): array
     foreach ($accounts as $account) if (!isset($accountsByUser[(int)$account['user_id']])) $accountsByUser[(int)$account['user_id']] = $account;
     $selectedIds = array_filter(array_map('intval', $sendRule['mail_account_ids'] ?? []));
     $selectedAccounts = $selectedIds ? array_values(array_filter($accounts, fn($a) => in_array((int)$a['id'], $selectedIds, true))) : $accounts;
-    $queueCount = 0; $skipped = 0; $errors = 0; $first = null; $last = null; $index = 0; $balanced = 0;
+    $queueCount = 0; $skipped = 0; $errors = 0; $first = null; $last = null; $index = 0; $balanced = 0; $seenReceivers = [];
     foreach ($rows as $row) {
         $channel = crm_marketing_normalize_channel((string)$row['channel_key']);
         if (!crm_marketing_is_email_channel($channel)) { $skipped++; continue; }
         $receiver = trim((string)($row['receiver_email'] ?? ''));
+        $receiverKey = crm_marketing_normalize_email($receiver);
         $skipReason = '';
         if ((int)$row['do_not_contact'] || in_array((string)$row['promotion_status'], ['blacklist','maintenance_only','stopped','no_promotion'], true)) $skipReason = '客户禁止推广';
         elseif ((int)($row['is_left'] ?? 0) === 1) $skipReason = '联系人已离职';
         elseif ($receiver === '') $skipReason = '收件邮箱为空';
+        elseif ($receiverKey !== '' && isset($seenReceivers[$receiverKey])) $skipReason = '重复邮箱';
         if ($skipReason !== '') {
             $skipped++;
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_skipped", "skipped", ?, ?, ?, NOW(), NOW())')
-                ->execute([$taskId, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, $skipReason, current_user()['id'] ?? null, json_encode(['receiver_email' => $receiver], JSON_UNESCAPED_UNICODE)]);
+                ->execute([$taskId, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, $skipReason, current_user()['id'] ?? null, json_encode(['receiver_email' => $receiver, 'duplicate_of' => $seenReceivers[$receiverKey] ?? null], JSON_UNESCAPED_UNICODE)]);
             continue;
         }
+        if ($receiverKey !== '') $seenReceivers[$receiverKey] = ['customer_id' => (int)$row['customer_id'], 'contact_id' => (int)($row['contact_id'] ?? 0) ?: null];
         $account = null;
         $rule = (string)($sendRule['mail_account_rule'] ?? 'owner_mailbox');
         if ($rule === 'owner_mailbox' || $rule === 'owner_then_fallback') $account = $accountsByUser[(int)$row['owner_user_id']] ?? null;
@@ -1852,10 +1906,12 @@ function crm_marketing_queue_build(array $input): array
         $planned = crm_marketing_plan_time($index++, $schedule, (string)($row['country'] ?? ''));
         $queueSubject = crm_marketing_render_queue_template($subject, $row, $account);
         $queueBody = crm_marketing_render_queue_template($body, $row, $account);
-        $dup = db()->prepare('SELECT id FROM crm_marketing_send_queue WHERE task_id=? AND receiver_email=? AND contact_id <=> ? LIMIT 1');
-        $dup->execute([$taskId, $receiver, (int)($row['contact_id'] ?? 0) ?: null]);
+        $dup = db()->prepare('SELECT id FROM crm_marketing_send_queue WHERE task_id=? AND LOWER(receiver_email)=? LIMIT 1');
+        $dup->execute([$taskId, $receiverKey]);
         if ($dup->fetchColumn()) {
             $skipped++;
+            db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_skipped", "skipped", "重复邮箱", ?, ?, NOW(), NOW())')
+                ->execute([$taskId, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, current_user()['id'] ?? null, json_encode(['receiver_email' => $receiver, 'source' => 'existing_queue'], JSON_UNESCAPED_UNICODE)]);
             continue;
         }
         db()->prepare("INSERT INTO crm_marketing_send_queue

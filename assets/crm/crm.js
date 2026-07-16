@@ -11087,14 +11087,23 @@
           ['最终可推广联系人', preview.promotable_contact_count || 0],
           ['邮件发送联系人', preview.mail_contact_count || 0],
           ['人工执行联系人', preview.manual_contact_count || 0],
-          ['被跳过联系人', preview.skipped_contact_count || 0]
+          ['被跳过联系人', preview.skipped_contact_count || 0],
+          ['重复邮箱组', preview.duplicate_email_count || 0],
+          ['重复邮箱跳过', preview.duplicate_email_skipped_count || 0]
         ];
         previewBox.innerHTML = '<div class="promo-contact-preview-list">' + rows.map(function (row) { return '<article><span>' + esc(row[0]) + '</span><strong>' + esc(row[1]) + '</strong></article>'; }).join('') + '</div>';
       }
       if (skipBox) {
         var reasons = (this.data && this.data.contact_skip_reasons) || {};
         var keys = Object.keys(reasons);
-        skipBox.innerHTML = keys.length ? '<div class="promo-contact-skip-list">' + keys.map(function (key) { return '<article><span>' + esc(key) + '</span><strong>' + esc(reasons[key]) + '</strong></article>'; }).join('') + '</div>' : '<p class="promo-empty">暂无跳过原因。</p>';
+        var duplicateReport = (this.data && this.data.duplicate_email_report) || {};
+        var duplicateRows = (duplicateReport.duplicate_email_details || []).slice(0, 8).map(function (item) {
+          var kept = item.kept || {};
+          return '<article><span>' + esc(item.email || '-') + ' · 出现 ' + esc(item.count || 0) + ' 次</span><strong>保留：' + esc(kept.customer_name || '-') + ' / ' + esc(kept.name || '-') + '</strong></article>';
+        }).join('');
+        skipBox.innerHTML = (keys.length || duplicateRows)
+          ? '<div class="promo-contact-skip-list">' + keys.map(function (key) { return '<article><span>' + esc(key) + '</span><strong>' + esc(reasons[key]) + '</strong></article>'; }).join('') + duplicateRows + '</div>'
+          : '<p class="promo-empty">暂无跳过原因。</p>';
       }
     },
     contactRoleText: function (role) {
@@ -12184,6 +12193,28 @@
     resolveTargetEmail: function (row, customer) {
       return String(row.email || row.contact_email || row.primary_contact_email || customer.email || customer.contact_email || customer.primary_contact_email || '').trim();
     },
+    duplicateEmailReport: function (items) {
+      var groups = {};
+      (items || []).forEach(function (item, index) {
+        var email = String(item.email || item.contact_email || item.primary_contact_email || '').trim().toLowerCase();
+        if (!email) return;
+        if (!groups[email]) groups[email] = [];
+        groups[email].push(Object.assign({ _index: index }, item));
+      });
+      var details = [];
+      var skipped = 0;
+      Object.keys(groups).forEach(function (email) {
+        var rows = groups[email] || [];
+        if (rows.length < 2) return;
+        skipped += rows.length - 1;
+        details.push({ email: email, count: rows.length, kept: rows[0], skipped: rows.slice(1) });
+      });
+      return {
+        duplicate_email_count: details.length,
+        duplicate_email_skipped_count: skipped,
+        duplicate_email_details: details
+      };
+    },
     wizardSteps: function () {
       return ['基础信息', '客户/分组', '联系人', '推广渠道', '内容编辑', '发送/执行规则', '时间计划', '失败处理', '预览确认'];
     },
@@ -12228,6 +12259,7 @@
         blacklist_policy: 'skip',
         no_contact_policy: 'skip',
         no_email_policy: 'skip',
+        duplicate_email_policy: 'keep_first',
         smtp_failure_policy: 'failure_center',
         log_backfill_policy: 'all',
         manual_attachments: [],
@@ -12376,14 +12408,7 @@
 	      var noEmailCount = (targets.contacts || []).filter(function (row) {
 	        return !String(row.email || row.contact_email || row.primary_contact_email || '').trim();
 	      }).length;
-	      var seenEmails = {};
-	      var duplicateTargets = 0;
-	      (plan.mailItems || []).forEach(function (item) {
-	        var email = String(item.email || '').trim().toLowerCase();
-	        if (!email) return;
-	        if (seenEmails[email]) duplicateTargets += 1;
-	        seenEmails[email] = true;
-	      });
+	      var duplicateTargets = (plan.duplicateEmailReport || {}).duplicate_email_skipped_count || 0;
 	      var blacklistTargets = (targets.skipped || []).filter(function (row) {
 	        return /黑名单/.test(String(row.reason || ''));
 	      }).length;
@@ -12401,6 +12426,7 @@
 	        ['客户数', targets.customers.length],
 	        ['联系人数', targets.contacts.length],
 	        ['邮件目标数', plan.mailItems.length],
+	        ['重复邮箱跳过', duplicateTargets],
 	        ['发件邮箱数', plan.mailBuckets.length],
 	        ['线下执行人数', plan.offlineExecutors.length],
 	        ['推广渠道', cnChannel(draft.channel_key || '') || '--'],
@@ -12636,11 +12662,14 @@
 	        '<section class="promo-step-table-wrap promo-schedule-detail-table"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>客户邮箱</th><th>发件邮箱</th><th>执行人</th><th>客户当地时间</th><th>服务器时间</th><th>预计发送时间</th><th>说明</th></tr></thead><tbody>' + (tableRows || '<tr><td colspan="10">当前没有邮件队列。请检查推广渠道、客户邮箱和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">计划阶段只调整显示预览；真实定时、时区和队列生成仍使用原算法。</article></section>';
 	    },
 	    renderFailureStepLayout: function (draft) {
+	      var plan = this.buildExecutionPlan(draft);
+	      var duplicateReport = plan.duplicateEmailReport || {};
 	      var retryCount = draft.retry_count || 0;
 	      var retryInterval = draft.retry_interval_minutes || draft.retry_interval || 30;
 	      var failureText = draft.failure_action === 'create_followup' ? '生成跟进提醒' : (draft.failure_action === 'pause_customer' ? '暂停该客户推广' : '标记失败并进入失败处理');
 	      var blacklistText = draft.blacklist_policy === 'block_task' ? '阻止任务保存' : '跳过黑名单目标';
 	      var noEmailText = draft.no_email_policy === 'offline' ? '转线下执行' : '跳过无邮箱目标';
+	      var duplicateText = '重复邮箱只保留第一条，其余进入跳过记录';
 	      var smtpText = draft.smtp_failure_policy === 'pause_mailbox' ? '暂停异常邮箱' : (draft.smtp_failure_policy === 'switch_mailbox' ? '切换可用邮箱' : '进入失败处理');
 	      var logText = draft.log_backfill_policy === 'failed_only' ? '仅失败回填' : (draft.log_backfill_policy === 'none' ? '不自动回填' : '成功和失败都回填');
 	      var cards = [
@@ -12648,24 +12677,23 @@
 	        '<label><span>重试间隔</span><input type="number" min="5" max="1440" data-wizard-field="retry_interval_minutes" value="' + esc(retryInterval) + '"></label>',
 	        '<label><span>黑名单策略</span><select data-wizard-field="blacklist_policy"><option value="skip"' + (draft.blacklist_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="block_task"' + (draft.blacklist_policy === 'block_task' ? ' selected' : '') + '>阻止任务保存</option></select></label>',
 	        '<label><span>无邮箱策略</span><select data-wizard-field="no_email_policy"><option value="skip"' + (draft.no_email_policy === 'skip' ? ' selected' : '') + '>跳过</option><option value="offline"' + (draft.no_email_policy === 'offline' ? ' selected' : '') + '>转线下执行</option></select></label>',
+	        '<label><span>重复邮箱策略</span><select data-wizard-field="duplicate_email_policy"><option value="keep_first"' + (draft.duplicate_email_policy !== 'manual_confirm' ? ' selected' : '') + '>保留第一条，跳过重复</option><option value="manual_confirm"' + (draft.duplicate_email_policy === 'manual_confirm' ? ' selected' : '') + '>转人工确认</option></select></label>',
 	        '<label><span>SMTP失败策略</span><select data-wizard-field="smtp_failure_policy"><option value="failure_center"' + (draft.smtp_failure_policy === 'failure_center' ? ' selected' : '') + '>进入失败处理</option><option value="switch_mailbox"' + (draft.smtp_failure_policy === 'switch_mailbox' ? ' selected' : '') + '>切换可用邮箱</option><option value="pause_mailbox"' + (draft.smtp_failure_policy === 'pause_mailbox' ? ' selected' : '') + '>暂停异常邮箱</option></select></label>',
 	        '<label><span>客户日志回填策略</span><select data-wizard-field="log_backfill_policy"><option value="all"' + (draft.log_backfill_policy === 'all' ? ' selected' : '') + '>成功和失败都回填</option><option value="failed_only"' + (draft.log_backfill_policy === 'failed_only' ? ' selected' : '') + '>仅失败回填</option><option value="none"' + (draft.log_backfill_policy === 'none' ? ' selected' : '') + '>不自动回填</option></select></label>'
 	      ].map(function (html) { return '<article class="promo-failure-rule-card">' + html + '</article>'; }).join('');
-	      return '<section class="promo-step-card promo-step-failure"><div class="promo-failure-rule-grid">' + cards + '</div><article class="promo-failure-summary"><strong>当前失败处理摘要</strong><span>失败后最多重试 ' + esc(retryCount) + ' 次，间隔 ' + esc(retryInterval) + ' 分钟；' + esc(blacklistText) + '；无邮箱' + esc(noEmailText) + '；SMTP失败' + esc(smtpText) + '；客户日志' + esc(logText) + '；默认动作：' + esc(failureText) + '。</span></article><input type="hidden" data-wizard-field="failure_action" value="' + esc(draft.failure_action || 'mark_failed') + '"></section>';
+	      var duplicateRows = (duplicateReport.duplicate_email_details || []).slice(0, 10).map(function (item) {
+	        var kept = item.kept || {};
+	        return '<tr><td>' + esc(item.email || '-') + '</td><td>' + esc(item.count || 0) + '</td><td>' + esc(kept.customer_name || '-') + ' / ' + esc(kept.contact_name || kept.variable_contact_name || '-') + '</td><td>' + esc((item.skipped || []).map(function (row) { return (row.customer_name || '-') + ' / ' + (row.contact_name || row.variable_contact_name || '-'); }).join('；') || '-') + '</td></tr>';
+	      }).join('');
+	      return '<section class="promo-step-card promo-step-failure"><div class="promo-failure-rule-grid">' + cards + '</div><article class="promo-failure-summary"><strong>当前失败处理摘要</strong><span>失败后最多重试 ' + esc(retryCount) + ' 次，间隔 ' + esc(retryInterval) + ' 分钟；' + esc(blacklistText) + '；无邮箱' + esc(noEmailText) + '；' + esc(duplicateText) + '；SMTP失败' + esc(smtpText) + '；客户日志' + esc(logText) + '；默认动作：' + esc(failureText) + '。</span></article><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><input type="hidden" data-wizard-field="failure_action" value="' + esc(draft.failure_action || 'mark_failed') + '"></section>';
 	    },
 	    renderConfirmStepLayout: function (draft) {
 	      var targets = this.resolveWizardTargets(draft);
 	      var schedule = this.buildSchedulePlan(draft);
 	      var plan = schedule.plan || this.buildExecutionPlan(draft);
 	      var rows = schedule.rows || [];
-	      var seenEmails = {};
-	      var duplicateTargets = 0;
-	      (plan.mailItems || []).forEach(function (item) {
-	        var email = String(item.email || '').trim().toLowerCase();
-	        if (!email) return;
-	        if (seenEmails[email]) duplicateTargets += 1;
-	        seenEmails[email] = true;
-	      });
+	      var duplicateReport = plan.duplicateEmailReport || {};
+	      var duplicateTargets = duplicateReport.duplicate_email_skipped_count || 0;
 	      var noEmail = (targets.contacts || []).filter(function (row) { return !String(row.email || row.contact_email || row.primary_contact_email || '').trim(); }).length;
 	      var blacklist = (targets.skipped || []).filter(function (row) { return /黑名单/.test(String(row.reason || '')); }).length;
 	      var unassignedMail = (plan.offlineItems || []).filter(function (item) { return /无匹配发件邮箱/.test(String(item.reason || '')); }).length;
@@ -12681,7 +12709,8 @@
 	        ['任务名称', draft.task_name || '未命名任务'],
 	        ['客户数', targets.customers.length],
 	        ['联系人数', targets.contacts.length],
-	        ['邮件目标数', (plan.mailItems || []).length],
+	        ['原始邮件目标', plan.rawMailTargetCount || (plan.mailItems || []).length],
+	        ['去重后邮件目标', (plan.mailItems || []).length],
 	        ['发件邮箱数', (plan.mailBuckets || []).length],
 	        ['计划时间', startTime]
 	      ];
@@ -12696,10 +12725,14 @@
 	      var listRows = rows.slice(0, 120).map(function (row) {
 	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.send_email || '-') + '</td><td>' + esc(this.mailExecutorLabel(row)) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(cnChannel(row.channel || draft.channel_key || '-')) + '</td></tr>';
 	      }, this).join('');
+	      var duplicateRows = (duplicateReport.duplicate_email_details || []).slice(0, 10).map(function (item) {
+	        var kept = item.kept || {};
+	        return '<tr><td>' + esc(item.email || '-') + '</td><td>' + esc(item.count || 0) + '</td><td>' + esc(kept.customer_name || '-') + ' / ' + esc(kept.contact_name || kept.variable_contact_name || '-') + '</td><td>' + esc((item.skipped || []).map(function (row) { return (row.customer_name || '-') + ' / ' + (row.contact_name || row.variable_contact_name || '-'); }).join('；') || '-') + '</td></tr>';
+	      }).join('');
 	      return '<section class="promo-step-card promo-step-confirm"><div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
 	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
 	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
-	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><section class="promo-confirm-actions"><button type="button" data-promo-confirm-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为已计划</button><button type="button" data-promo-confirm-queue>生成执行队列</button></section></section>';
+	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><section class="promo-confirm-actions"><button type="button" data-promo-confirm-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为已计划</button><button type="button" data-promo-confirm-queue>生成执行队列</button></section></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);
@@ -12788,6 +12821,8 @@
       var buckets = {};
       var offlineBucketsMap = {};
       var mailItems = [];
+      var duplicateMailItems = [];
+      var seenTargetEmails = {};
       var offlineItems = [];
       var mailExecutorMap = {};
       var offlineExecutorMap = {};
@@ -12864,18 +12899,48 @@
           mail_user_position: account.user_position || account.position || '',
           executor: mailExecutor
         });
+        var emailKey = String(mailEntry.email || '').trim().toLowerCase();
+        if (emailKey && seenTargetEmails[emailKey]) {
+          var duplicateEntry = Object.assign({}, mailEntry, {
+            reason: '重复邮箱',
+            duplicate_of: seenTargetEmails[emailKey]
+          });
+          duplicateMailItems.push(duplicateEntry);
+          if (draft.duplicate_email_policy === 'manual_confirm') {
+            var duplicateExecutor = resolveOfflineExecutor(item);
+            var manualDuplicate = Object.assign({}, duplicateEntry, { reason: '重复邮箱，转人工确认', executor: duplicateExecutor });
+            var duplicateKey = duplicateExecutor ? duplicateExecutor.id : 'unassigned';
+            if (!offlineBucketsMap[duplicateKey]) offlineBucketsMap[duplicateKey] = { user: duplicateExecutor, items: [], channels: [] };
+            offlineBucketsMap[duplicateKey].items.push(manualDuplicate);
+            if (offlineBucketsMap[duplicateKey].channels.indexOf(item.channel) < 0) offlineBucketsMap[duplicateKey].channels.push(item.channel);
+            if (duplicateExecutor) offlineExecutorMap[duplicateExecutor.id] = duplicateExecutor;
+            offlineItems.push(manualDuplicate);
+          }
+          return;
+        }
+        if (emailKey) seenTargetEmails[emailKey] = {
+          customer_id: mailEntry.customer_id,
+          customer_name: mailEntry.customer_name,
+          contact_id: mailEntry.contact_id,
+          contact_name: mailEntry.variable_contact_name || mailEntry.contact_name,
+          email: mailEntry.email
+        };
         if (!buckets[account.id]) buckets[account.id] = { account: account, items: [], executors: [] };
         buckets[account.id].items.push(mailEntry);
         if (mailExecutor && !buckets[account.id].executors.some(function (user) { return Number(user.id) === Number(mailExecutor.id); })) buckets[account.id].executors.push(mailExecutor);
         if (mailExecutor) mailExecutorMap[mailExecutor.id] = mailExecutor;
         mailItems.push(mailEntry);
       });
+      var duplicateEmailReport = this.duplicateEmailReport(mailItems.concat(duplicateMailItems));
       return {
         targets: targets,
         items: items,
         mailExecutors: Object.keys(mailExecutorMap).map(function (id) { return mailExecutorMap[id]; }),
         offlineExecutors: Object.keys(offlineExecutorMap).map(function (id) { return offlineExecutorMap[id]; }),
         mailItems: mailItems,
+        duplicateMailItems: duplicateMailItems,
+        duplicateEmailReport: duplicateEmailReport,
+        rawMailTargetCount: mailItems.length + duplicateMailItems.length,
         offlineItems: offlineItems,
         offlineBuckets: Object.keys(offlineBucketsMap).map(function (id) { return offlineBucketsMap[id]; }),
         mailBuckets: Object.keys(buckets).map(function (id) { return buckets[id]; }),
@@ -13746,9 +13811,9 @@
         audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, contact_filter: draft.contact_filter }),
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
-        failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),
+        failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, duplicate_email_policy: draft.duplicate_email_policy || 'keep_first', smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),
         attachment_config: JSON.stringify({ attachment_mode: draft.attachment_mode, material_package: draft.material_package, manual_attachments: draft.manual_attachments || [], datasheet_attachments: draft.datasheet_attachments || [] }),
-        risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: targets.contacts.length, selected_chat_groups: (targets.chat_groups || []).length, skipped: targets.skipped.length, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'missing_chat_group'], linkage: draft.template_action || '' })
+        risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: targets.contacts.length, selected_chat_groups: (targets.chat_groups || []).length, skipped: targets.skipped.length, duplicate_email_skipped: (this.buildExecutionPlan(draft).duplicateEmailReport || {}).duplicate_email_skipped_count || 0, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'duplicate_email', 'missing_chat_group'], linkage: draft.template_action || '' })
       };
     },
     taskToWizardDraft: function (task) {
@@ -13798,6 +13863,7 @@
         blacklist_policy: failure.blacklist_policy || 'skip',
         no_contact_policy: failure.no_contact_policy || 'skip',
         no_email_policy: failure.no_email_policy || 'skip',
+        duplicate_email_policy: failure.duplicate_email_policy || 'keep_first',
         smtp_failure_policy: failure.smtp_failure_policy || 'failure_center',
         log_backfill_policy: failure.log_backfill_policy || 'all',
         attachment_mode: attach.attachment_mode || 'none',
