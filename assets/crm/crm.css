@@ -6647,7 +6647,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .customer-order-preview-card {
   position: relative;
-  z-index: 3;
+  z-index: 80;
   display: grid;
   grid-template-columns: minmax(210px, .9fr) minmax(0, 2.1fr) minmax(170px, .72fr);
   gap: 12px;
@@ -6763,8 +6763,9 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .order-flow-tooltip {
   position: absolute;
   left: 50%;
-  top: calc(100% + 8px);
-  z-index: 10000;
+  top: auto;
+  bottom: calc(100% + 10px);
+  z-index: 30000;
   width: 292px;
   max-width: min(292px, 80vw);
   display: none;
@@ -6798,12 +6799,13 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   content: '';
   position: absolute;
   left: 50%;
-  top: -6px;
+  top: auto;
+  bottom: -6px;
   width: 10px;
   height: 10px;
   transform: translateX(-50%) rotate(45deg);
-  border-left: 1px solid #dbe5f0;
-  border-top: 1px solid #dbe5f0;
+  border-right: 1px solid #dbe5f0;
+  border-bottom: 1px solid #dbe5f0;
   background: #fff;
 }
 .order-flow-node:hover .order-flow-tooltip {
