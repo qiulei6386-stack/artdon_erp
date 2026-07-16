@@ -206,6 +206,61 @@ function first_existing_val($row,$keys,$def=''){
   foreach($keys as $k){ if(array_key_exists($k,$row) && $row[$k]!==null && $row[$k]!=='') return $row[$k]; }
   return $def;
 }
+function quote_customer_normalize_address_text($v): string {
+  $s=trim(preg_replace('/\s+/u',' ',(string)($v ?? '')));
+  return $s;
+}
+function quote_crm_address_map($pdo, array $customerIds): array {
+  $customerIds=array_values(array_unique(array_filter(array_map('intval',$customerIds), fn($v)=>$v>0)));
+  if(!$customerIds || !table_exists($pdo,'crm_customer_addresses')) return [];
+  $cols=table_columns($pdo,'crm_customer_addresses');
+  if(!in_array('customer_id',$cols,true) || !in_array('address',$cols,true)) return [];
+  $out=[];
+  try{
+    foreach(array_chunk($customerIds,500) as $chunk){
+      $ph=implode(',',array_fill(0,count($chunk),'?'));
+      $where=["customer_id IN ($ph)"];
+      if(in_array('deleted_at',$cols,true)) $where[]="(deleted_at IS NULL OR deleted_at='' OR deleted_at='0000-00-00 00:00:00')";
+      $order=[];
+      if(in_array('is_primary',$cols,true)) $order[]='is_primary DESC';
+      if(in_array('address_type',$cols,true)) $order[]="FIELD(address_type,'HQ','Office','Billing','Shipping','Factory','Warehouse','Store','Project','Other')";
+      $order[]='id ASC';
+      $st=$pdo->prepare("SELECT * FROM crm_customer_addresses WHERE ".implode(' AND ',$where)." ORDER BY ".implode(',',$order)." LIMIT 20000");
+      $st->execute($chunk);
+      foreach($st->fetchAll(PDO::FETCH_ASSOC) as $r){
+        $cid=(int)($r['customer_id']??0);
+        $address=quote_customer_normalize_address_text($r['address']??'');
+        if($cid<=0 || $address==='') continue;
+        if(!isset($out[$cid])) $out[$cid]=['address1'=>'','address2'=>'','addresses'=>[]];
+        $item=[
+          'type'=>(string)($r['address_type']??''),
+          'label'=>(string)($r['address_type']??''),
+          'country'=>(string)($r['country']??''),
+          'city'=>(string)($r['city']??''),
+          'address'=>$address,
+          'is_primary'=>(int)($r['is_primary']??0),
+        ];
+        $key=function_exists('mb_strtolower') ? mb_strtolower($address,'UTF-8') : strtolower($address);
+        $exists=false;
+        foreach($out[$cid]['addresses'] as $existing){
+          $existingKey=function_exists('mb_strtolower') ? mb_strtolower((string)($existing['address']??''),'UTF-8') : strtolower((string)($existing['address']??''));
+          if($existingKey===$key){ $exists=true; break; }
+        }
+        if($exists) continue;
+        $out[$cid]['addresses'][]=$item;
+        if($out[$cid]['address1']==='') $out[$cid]['address1']=$address;
+        elseif($out[$cid]['address2']==='') $out[$cid]['address2']=$address;
+        $type=strtolower((string)($r['address_type']??''));
+        if($type==='billing' && $out[$cid]['address1']==='') $out[$cid]['address1']=$address;
+        if(in_array($type,['shipping','factory','warehouse','store','project'],true) && $out[$cid]['address2']==='') $out[$cid]['address2']=$address;
+      }
+    }
+  }catch(Throwable $e){ return []; }
+  foreach($out as $cid=>$payload){
+    $out[$cid]['addresses_json']=json_encode($payload['addresses'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  }
+  return $out;
+}
 // V6.8.2：命名中心产品 ID 保存修复。
 // 前端命名产品 ID 可能是 naming_naming_models_30，quote_orders.product_id 是 INT，
 // 保存前必须只取最后的数字 30，避免 MySQL 1366 Incorrect integer value。
@@ -478,6 +533,7 @@ function get_crm_customers($pdo){
     if((int)$rid>0) $customerIds[]=(int)$rid;
   }
   $contactMap=quote_crm_primary_contact_map($pdo,$customerIds);
+  $addressMap=quote_crm_address_map($pdo,$customerIds);
   $out=[]; $seen=[];
   foreach($rs as $r){
     $rid=first_existing_val($r,[$idc,'id','customer_id','cid'],'');
@@ -489,9 +545,13 @@ function get_crm_customers($pdo){
     $primaryEmail=first_existing_val($mainContact,['_quote_primary_email','email','mail','contact_email','email_address'],'');
     $primaryPhone=first_existing_val($mainContact,['_quote_primary_phone','phone','mobile','tel','telephone','whatsapp','contact_phone'],'');
     $email=first_existing_val($r,['email','customer_email','mail','contact_email','primary_contact_email','main_contact_email'],'') ?: $primaryEmail;
-    $dedupeKey=quote_customer_norm_key(($rid!==''?$rid:'').'||'.$code.'||'.$company.'||'.$email);
+    $dedupeKey=$code!=='' ? ('code:'.quote_customer_norm_key($code)) : quote_customer_norm_key(($rid!==''?$rid:'').'||'.$company.'||'.$email);
     if($dedupeKey!=='' && isset($seen[$dedupeKey])) continue;
     if($dedupeKey!=='') $seen[$dedupeKey]=1;
+    $crmAddress=$addressMap[(int)$rid] ?? [];
+    $address1=first_existing_val($r,['address1','office_address','office_addr','address','addr','company_address','billing_address','billing_addr'],'') ?: ($crmAddress['address1'] ?? '');
+    $address2=first_existing_val($r,['address2','factory_address','factory_addr','delivery_address','ship_address','shipping_address','shipping_addr'],'') ?: ($crmAddress['address2'] ?? '');
+    $addressesJson=first_existing_val($r,['addresses_json','address_json','addresses','address_list','more_addresses'],'') ?: ($crmAddress['addresses_json'] ?? '');
     $out[]=[
       'id'=>'crm_'.$rid,
       'source'=>'crm',
@@ -505,9 +565,9 @@ function get_crm_customers($pdo){
       'note'=>first_existing_val($r,['note','remark','memo','comments'],''),
       'owner'=>first_existing_val($r,['owner','owner_name','user_name','sales','salesman','responsible'],''),
       'website'=>first_existing_val($r,['website','web','url','site','homepage','company_website'],''),
-      'address1'=>first_existing_val($r,['address1','office_address','office_addr','address','addr','company_address','billing_address','billing_addr'],''),
-      'address2'=>first_existing_val($r,['address2','factory_address','factory_addr','delivery_address','ship_address','shipping_address','shipping_addr'],''),
-      'addresses_json'=>first_existing_val($r,['addresses_json','address_json','addresses','address_list','more_addresses'],''),
+      'address1'=>$address1,
+      'address2'=>$address2,
+      'addresses_json'=>$addressesJson,
       'primary_contact'=>$primaryName ?: first_existing_val($r,['contact','contact_name','main_contact','person','linkman','contact_person'],''),
       'primary_contact_phone'=>$primaryPhone ?: first_existing_val($r,['phone','mobile','tel','telephone','whatsapp','contact_phone'],''),
       'primary_contact_email'=>$primaryEmail ?: $email,
