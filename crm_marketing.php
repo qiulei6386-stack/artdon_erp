@@ -14,11 +14,43 @@ function crm_marketing_add_column_if_missing(string $table, string $column, stri
     }
 }
 
+function crm_marketing_schema_cache_file(): string
+{
+    $dir = __DIR__ . '/storage/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return is_dir($dir) && is_writable($dir) ? $dir . '/crm_marketing_schema_ensure.json' : sys_get_temp_dir() . '/crm_marketing_schema_ensure.json';
+}
+
+function crm_marketing_schema_cache_signature(): string
+{
+    return sha1(__FILE__ . ':' . (is_file(__FILE__) ? (string)filemtime(__FILE__) : '0'));
+}
+
+function crm_marketing_schema_cache_valid(): bool
+{
+    $file = crm_marketing_schema_cache_file();
+    if (!is_file($file)) return false;
+    $cache = json_decode((string)@file_get_contents($file), true);
+    if (!is_array($cache)) return false;
+    $ttl = 21600;
+    return ($cache['signature'] ?? '') === crm_marketing_schema_cache_signature()
+        && (int)($cache['checked_at'] ?? 0) > time() - $ttl;
+}
+
+function crm_marketing_schema_cache_write(): void
+{
+    @file_put_contents(crm_marketing_schema_cache_file(), json_encode([
+        'signature' => crm_marketing_schema_cache_signature(),
+        'checked_at' => time(),
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
 function crm_marketing_ensure_tables(): void
 {
     static $done = false;
     if ($done) return;
     $done = true;
+    if (crm_marketing_schema_cache_valid()) return;
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_marketing_tasks (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -197,6 +229,7 @@ function crm_marketing_ensure_tables(): void
     }
 
     crm_marketing_ensure_permissions();
+    crm_marketing_schema_cache_write();
 }
 
 function crm_marketing_ensure_permissions(): void
