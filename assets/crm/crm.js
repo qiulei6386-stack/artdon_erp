@@ -2350,6 +2350,21 @@
         layoutMode: this.layoutMode
       });
     },
+    detailTabStorageKey: function (id) {
+      return 'crm_customer_detail_active_tab_' + String(Number(id || this.currentId || 0) || 0);
+    },
+    restoreDetailTab: function (id, useGlobalFallback) {
+      var customerId = Number(id || this.currentId || 0) || 0;
+      if (!customerId) return readLocalString('crm_customer_detail_active_tab', 'overview') || 'overview';
+      var fallback = useGlobalFallback === false ? 'overview' : readLocalString('crm_customer_detail_active_tab', 'overview');
+      return readLocalString(this.detailTabStorageKey(customerId), fallback) || 'overview';
+    },
+    rememberDetailTab: function (name) {
+      var tab = name || 'overview';
+      this.activeDetailTab = tab;
+      writeLocalString('crm_customer_detail_active_tab', tab);
+      if (this.currentId) writeLocalString(this.detailTabStorageKey(this.currentId), tab);
+    },
     visibleColumns: function () {
       return this.layoutMode === 'default' ? this.compactColumns : this.columns;
     },
@@ -2848,8 +2863,12 @@
     loadDetail: function (id, options) {
       options = options || {};
       var self = this;
+      var previousId = Number(this.currentId || 0) || 0;
+      var nextId = Number(id || 0) || 0;
+      var sameCustomer = previousId && nextId && previousId === nextId;
       this.currentId = id;
-      if (!options.keepTab) this.activeDetailTab = 'overview';
+      if (!options.keepTab && !sameCustomer) this.activeDetailTab = this.restoreDetailTab(id, false);
+      else this.activeDetailTab = this.activeDetailTab || this.restoreDetailTab(id);
       document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === id); });
       return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
@@ -3460,24 +3479,25 @@
       });
     },
     switchDetailTab: function (name) {
-      this.activeDetailTab = name || 'overview';
-      if (this.activeDetailTab !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
-        this.ensureFullDetail(this.activeDetailTab);
+      var activeName = name || 'overview';
+      this.rememberDetailTab(activeName);
+      if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
+        this.ensureFullDetail(activeName);
         return;
       }
-      if (this.activeDetailTab === 'overview' && this.currentDetail) {
+      if (activeName === 'overview' && this.currentDetail) {
         var oldOverview = document.querySelector('[data-detail-panel="overview"]');
         if (oldOverview) {
           oldOverview.outerHTML = this.renderCustomerOverviewV2(this.currentDetail);
           this.bindCustomerPortraitOverviewEvents(document.querySelector('[data-detail-panel="overview"]') || document);
         }
       }
-      var tab = document.querySelector('[data-detail-tab="' + name + '"]');
+      var tab = document.querySelector('[data-detail-tab="' + activeName + '"]');
       var more = document.querySelector('[data-detail-more]');
       document.querySelectorAll('[data-detail-tab]').forEach(function (item) { item.classList.toggle('active', item === tab); });
-      if (more) more.value = tab ? '' : name;
+      if (more) more.value = tab ? '' : activeName;
       document.querySelectorAll('[data-detail-panel]').forEach(function (panel) {
-        panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === name);
+        panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeName);
       });
     },
     field: function (label, name, value, attrs) {
