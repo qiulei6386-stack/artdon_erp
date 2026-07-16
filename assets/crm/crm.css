@@ -6394,7 +6394,24 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-field-grid div.wide { grid-column: span 2; }
 .customer-field-grid span { display: block; color: var(--crm-muted-text); font-size: 11px; margin-bottom: 3px; }
 .customer-field-grid strong { display: block; overflow-wrap: anywhere; font-weight: 800; }
+.customer-detail-shell {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.customer-main-content {
+  min-height: 0;
+  overflow: auto;
+}
 .customer-detail-tabs { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 0 0 8px; border-bottom: 1px solid var(--crm-border); }
+.customer-main-tabs {
+  padding: 10px 12px;
+  background: var(--crm-card-bg);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
 .customer-detail-tabs button {
   height: 34px;
   padding: 0 14px;

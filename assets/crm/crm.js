@@ -3367,7 +3367,7 @@
           children.join('') +
           '</section>';
       }
-      var tabHtml = '<div class="customer-detail-tabs">' + mainTabs.map(function (tab) {
+      var tabHtml = '<div class="customer-detail-tabs customer-main-tabs">' + mainTabs.map(function (tab) {
         return '<button type="button" data-detail-tab="' + esc(tab.key) + '" class="' + (tab.key === activeTab ? 'active' : '') + '" title="' + esc(tab.label) + '"><strong>' + esc(tab.label) + '</strong></button>';
       }).join('') + '</div>';
       function groupChildren(group) {
@@ -3383,7 +3383,7 @@
         groupPanel('project', '项目', groupChildren('project'), this.detailSubTabsForGroup('project'), activeSubTab),
         groupPanel('records', '记录', groupChildren('records'), this.detailSubTabsForGroup('records'), activeSubTab)
       ].join('');
-      box.innerHTML = tabHtml + panelHtml;
+      box.innerHTML = '<div class="customer-detail-shell" data-customer-detail-shell>' + tabHtml + '<div class="customer-main-content" data-customer-main-content>' + panelHtml + '</div></div>';
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
@@ -4339,7 +4339,7 @@
         return;
       }
       if (activeName === 'overview' && this.currentDetail) {
-        var oldOverview = document.querySelector('[data-customer-detail] > [data-detail-panel="overview"]');
+        var oldOverview = document.querySelector('[data-customer-main-content] > [data-detail-panel="overview"], [data-customer-detail] > [data-detail-panel="overview"]');
         if (oldOverview) {
           oldOverview.outerHTML = this.renderCustomerOverviewV2(this.currentDetail).replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-group active"');
           this.bindCustomerPortraitOverviewEvents(document.querySelector('[data-detail-panel="overview"]') || document);
@@ -4347,10 +4347,11 @@
       }
       var tab = document.querySelector('[data-detail-tab="' + activeName + '"]');
       document.querySelectorAll('[data-detail-tab]').forEach(function (item) { item.classList.toggle('active', item === tab); });
-      document.querySelectorAll('[data-customer-detail] > .customer-tab-panel, [data-customer-detail] > .customer-tab-group').forEach(function (panel) {
+      var contentRoot = document.querySelector('[data-customer-main-content]') || document.querySelector('[data-customer-detail]');
+      contentRoot.querySelectorAll(':scope > .customer-tab-panel, :scope > .customer-tab-group').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeName);
       });
-      var activeGroup = document.querySelector('[data-customer-detail] > [data-detail-panel="' + activeName + '"]');
+      var activeGroup = contentRoot.querySelector(':scope > [data-detail-panel="' + activeName + '"]');
       if (!activeGroup) return;
       activeGroup.querySelectorAll('[data-detail-subtab]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-detail-subtab') === activeSub);
