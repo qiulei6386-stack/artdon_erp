@@ -870,16 +870,56 @@ function crm_dashboard_customer_quote_rank(array $input = []): array
 function crm_dashboard_ar_customer_rank(array $input = []): array
 {
     if (!crm_dashboard_table_exists('quote_sales_orders')) return crm_dashboard_table_result('应收数据未接入', ['客户','国家','负责人','应收金额','逾期金额','最大逾期','最近收款'], []);
+    $cols = crm_dashboard_table_columns('quote_sales_orders');
+    $currencyExpr = in_array('currency', $cols, true) ? "COALESCE(NULLIF(o.currency,''), 'USD')" : "'USD'";
     $sql = "SELECT o.customer_id, o.customer_name, COALESCE(c.country,'') AS country, COALESCE(c.owner_department,'') AS owner_name,
+        {$currencyExpr} AS currency,
         SUM(CASE WHEN o.balance_amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN o.balance_amount + 0 ELSE 0 END) AS ar_amount,
         SUM(CASE WHEN DATEDIFF(CURDATE(), COALESCE(o.order_date,o.created_at)) > 0 AND o.balance_amount > 0 THEN o.balance_amount + 0 ELSE 0 END) AS overdue_amount,
-        MAX(CASE WHEN o.balance_amount > 0 THEN DATEDIFF(CURDATE(), COALESCE(o.order_date,o.created_at)) ELSE 0 END) AS max_days
+        MAX(CASE WHEN o.balance_amount > 0 THEN DATEDIFF(CURDATE(), COALESCE(o.order_date,o.created_at)) ELSE 0 END) AS max_days,
+        MAX(COALESCE(o.updated_at, o.created_at)) AS last_payment
         FROM quote_sales_orders o LEFT JOIN crm_customers c ON c.id=o.customer_id
-        GROUP BY o.customer_id, o.customer_name, c.country, c.owner_department
-        HAVING ar_amount > 0 ORDER BY ar_amount DESC LIMIT 10";
+        GROUP BY o.customer_id, o.customer_name, c.country, c.owner_department, {$currencyExpr}
+        HAVING ar_amount > 0 ORDER BY ar_amount DESC LIMIT 80";
+    $grouped = [];
+    foreach (db()->query($sql)->fetchAll() as $r) {
+        $customerKey = (string)($r['customer_id'] ?: $r['customer_name'] ?: 'unknown');
+        $currency = crm_dashboard_normalize_currency($r['currency'] ?? 'USD');
+        if (!isset($grouped[$customerKey])) {
+            $grouped[$customerKey] = [
+                'customer' => $r['customer_name'] ?: '未命名客户',
+                'country' => $r['country'] ?: '-',
+                'owner' => $r['owner_name'] ?: '-',
+                'ar_bucket' => [],
+                'overdue_bucket' => [],
+                'days' => 0,
+                'last_payment' => '',
+                'sort_amount' => 0.0,
+            ];
+        }
+        $ar = (float)($r['ar_amount'] ?? 0);
+        $overdue = (float)($r['overdue_amount'] ?? 0);
+        $grouped[$customerKey]['ar_bucket'][$currency] = ($grouped[$customerKey]['ar_bucket'][$currency] ?? 0) + $ar;
+        $grouped[$customerKey]['overdue_bucket'][$currency] = ($grouped[$customerKey]['overdue_bucket'][$currency] ?? 0) + $overdue;
+        $grouped[$customerKey]['days'] = max((int)$grouped[$customerKey]['days'], (int)($r['max_days'] ?? 0));
+        $grouped[$customerKey]['sort_amount'] = max((float)$grouped[$customerKey]['sort_amount'], $ar);
+        $last = substr((string)($r['last_payment'] ?? ''), 0, 10);
+        if ($last !== '' && $last > (string)$grouped[$customerKey]['last_payment']) $grouped[$customerKey]['last_payment'] = $last;
+    }
+    uasort($grouped, fn($a, $b) => ($b['sort_amount'] <=> $a['sort_amount']) ?: ($b['days'] <=> $a['days']));
     $rows = [];
-    foreach (db()->query($sql)->fetchAll() as $r) $rows[] = ['customer'=>$r['customer_name'] ?: '未命名客户', 'country'=>$r['country'] ?: '-', 'owner'=>$r['owner_name'] ?: '-', 'ar'=>crm_dashboard_money_text($r['ar_amount'], 'USD'), 'overdue'=>crm_dashboard_money_text($r['overdue_amount'], 'USD'), 'days'=>(string)max(0,(int)$r['max_days']) . '天', 'last_payment'=>'-'];
-    return crm_dashboard_table_result('欠款最多客户', ['客户','国家','负责人','应收金额','逾期金额','最大逾期','最近收款'], $rows);
+    foreach (array_slice(array_values($grouped), 0, 10) as $r) {
+        $rows[] = [
+            'customer' => $r['customer'],
+            'country' => $r['country'],
+            'owner' => $r['owner'],
+            'ar' => crm_dashboard_money_bucket_text($r['ar_bucket']),
+            'overdue' => crm_dashboard_money_bucket_text($r['overdue_bucket']),
+            'days' => (string)max(0, (int)$r['days']) . '天',
+            'last_payment' => $r['last_payment'] ?: '-',
+        ];
+    }
+    return crm_dashboard_table_result('欠款最多客户，按订单原币种分别统计', ['客户','国家','负责人','应收金额','逾期金额','最大逾期','最近收款'], $rows);
 }
 
 function crm_dashboard_team_ar_rank(array $input = []): array
