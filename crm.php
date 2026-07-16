@@ -413,9 +413,19 @@ $prefStyle = sprintf(
                 <strong data-customer-count>0 条</strong>
               </div>
             </div>
-            <div class="customer-quick-filters">
-              <?php foreach (['今天新增','7天新增','我的客户','公海客户','有客户代码','有报价','有邮件','有资料'] as $filter): ?>
-              <button type="button" data-customer-filter="<?= h($filter) ?>" title="<?= h($filter) ?>"><?= h($filter) ?></button>
+            <div class="customer-quick-filters" data-customer-quick-filters>
+              <?php foreach ([
+                'all' => '全部',
+                'today' => '今天新增',
+                '7d' => '7天新增',
+                'mine' => '我的客户',
+                'public' => '公海客户',
+                'has_code' => '有客户代码',
+                'has_quote' => '有报价',
+                'has_mail' => '有邮件',
+                'has_material' => '有资料',
+              ] as $filterKey => $filterLabel): ?>
+              <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
               <?php endforeach; ?>
             </div>
           </section>

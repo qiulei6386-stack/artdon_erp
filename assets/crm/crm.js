@@ -2259,7 +2259,8 @@
     pageSize: 50,
     total: 0,
     currentId: 0,
-    quickFilter: '',
+    quickFilter: 'all',
+    filterState: null,
     selected: new Set(),
     currentDetail: null,
     activeDetailTab: 'overview',
@@ -2328,6 +2329,12 @@
       this.sort = prefs.sort || this.sort;
       this.dir = prefs.dir || this.dir;
       this.pageSize = Number(prefs.pageSize || this.pageSize);
+      this.filterState = this.defaultFilterState();
+      this.filterState.pageSize = this.pageSize;
+      this.filterState.view = this.viewMode;
+      this.filterState.sort = this.sort;
+      this.filterState.direction = this.dir;
+      this.quickFilter = 'all';
       this.columnWidths = prefs.columnWidths || {};
       this.layoutMode = prefs.layoutMode || this.layoutMode;
       this.listWidth = this.layoutMode === 'default' ? this.defaultListWidth() : (prefs.listWidth || '');
@@ -2339,6 +2346,7 @@
       if (sort) sort.value = this.sort;
       if (dir) dir.value = this.dir;
       if (pageSize) pageSize.value = String(this.pageSize);
+      this.updateFilterControls();
       this.applySplitWidth();
       this.applyLayoutMode(this.layoutMode, false);
     },
@@ -2458,6 +2466,8 @@
         search.addEventListener('input', function () {
           window.clearTimeout(self.searchTimer);
           self.searchTimer = window.setTimeout(function () {
+            self.ensureFilterState();
+            self.filterState.keyword = search.value || '';
             self.page = 1;
             self.loadList();
           }, 280);
@@ -2465,33 +2475,63 @@
         search.addEventListener('keydown', function (event) {
           if (event.key === 'Enter') {
             window.clearTimeout(self.searchTimer);
+            self.ensureFilterState();
+            self.filterState.keyword = search.value || '';
             self.page = 1;
             self.loadList();
           }
         });
       }
-      if (searchBtn) searchBtn.addEventListener('click', function () { self.page = 1; self.loadList(); });
+      if (searchBtn) searchBtn.addEventListener('click', function () {
+        self.ensureFilterState();
+        self.filterState.keyword = search ? (search.value || '') : '';
+        self.page = 1;
+        self.loadList();
+      });
       if (searchClear && search) searchClear.addEventListener('click', function () {
         search.value = '';
+        self.ensureFilterState();
+        self.filterState.keyword = '';
         search.focus();
         self.page = 1;
         self.loadList();
       });
-      if (pageSize) pageSize.addEventListener('change', function () { self.pageSize = Number(pageSize.value) || 50; self.page = 1; self.saveListPrefs(); self.loadList(); });
-      if (view) view.addEventListener('change', function () { self.viewMode = view.value || 'table'; self.applyListMode(); self.saveListPrefs(); });
+      if (pageSize) pageSize.addEventListener('change', function () {
+        self.pageSize = Number(pageSize.value) || 50;
+        self.ensureFilterState();
+        self.filterState.pageSize = self.pageSize;
+        self.page = 1;
+        self.saveListPrefs();
+        self.loadList();
+      });
+      if (view) view.addEventListener('change', function () {
+        self.viewMode = view.value || 'table';
+        self.ensureFilterState();
+        self.filterState.view = self.viewMode;
+        self.applyListMode();
+        self.saveListPrefs();
+      });
       document.querySelectorAll('[data-customer-layout]').forEach(function (button) {
         button.addEventListener('click', function () { self.applyLayoutMode(button.getAttribute('data-customer-layout') || 'default', true); });
       });
-      if (sort) sort.addEventListener('change', function () { self.sort = sort.value || 'updated_at'; self.page = 1; self.saveListPrefs(); self.loadList(); });
-      if (dir) dir.addEventListener('change', function () { self.dir = dir.value || 'DESC'; self.page = 1; self.saveListPrefs(); self.loadList(); });
+      if (sort) sort.addEventListener('change', function () {
+        self.sort = sort.value || 'updated_at';
+        self.ensureFilterState();
+        self.filterState.sort = self.sort;
+        self.page = 1;
+        self.saveListPrefs();
+        self.loadList();
+      });
+      if (dir) dir.addEventListener('change', function () {
+        self.dir = dir.value || 'DESC';
+        self.ensureFilterState();
+        self.filterState.direction = self.dir;
+        self.page = 1;
+        self.saveListPrefs();
+        self.loadList();
+      });
       if (reset) reset.addEventListener('click', function () {
-        document.querySelectorAll('[data-customer-module] input, [data-customer-filter-drawer] input').forEach(function (input) {
-          if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
-          else input.value = '';
-        });
-        document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
-        self.quickFilter = '';
-        document.querySelectorAll('[data-customer-filter]').forEach(function (item) { item.classList.remove('active'); });
+        self.resetAllFilters();
         self.page = 1;
         self.loadList();
       });
@@ -2520,32 +2560,36 @@
         if (event.key === 'Escape') self.closeLeadPool();
       });
       if (advancedApply) advancedApply.addEventListener('click', function () {
+        self.ensureFilterState();
+        self.filterState.advanced = self.readAdvancedFilters();
+        self.updateFilterControls();
         self.page = 1;
         self.loadList();
         closeAdvanced();
       });
       if (advancedReset) advancedReset.addEventListener('click', function () {
-        document.querySelectorAll('[data-customer-filter-drawer] input').forEach(function (input) {
-          if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
-          else input.value = '';
-        });
-        document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
+        self.clearAdvancedControls();
+        self.ensureFilterState();
+        self.filterState.advanced = {};
+        self.updateFilterControls();
         self.page = 1;
         self.loadList();
       });
-      document.querySelectorAll('[data-filter-country], [data-filter-city], [data-filter-level], [data-filter-lifecycle], [data-filter-status], [data-filter-deleted], [data-filter-owner], [data-filter-promotion-status], [data-filter-created-range], [data-filter-follow-range], [data-filter-source], [data-filter-business]').forEach(function (input) {
-        input.addEventListener('change', function () {
-          window.clearTimeout(self.searchTimer);
-          self.searchTimer = window.setTimeout(function () {
-            self.page = 1;
-            self.loadList();
-          }, 180);
-        });
-      });
       document.querySelectorAll('[data-customer-filter]').forEach(function (button) {
         button.addEventListener('click', function () {
-          self.quickFilter = button.getAttribute('data-customer-filter') || '';
-          document.querySelectorAll('[data-customer-filter]').forEach(function (item) { item.classList.toggle('active', item === button); });
+          var next = button.getAttribute('data-customer-filter') || 'all';
+          self.ensureFilterState();
+          if (next === 'all' || self.filterState.quick === next) {
+            self.filterState.keyword = '';
+            self.filterState.quick = 'all';
+            self.filterState.advanced = {};
+            self.quickFilter = 'all';
+            self.clearAdvancedControls();
+          } else {
+            self.filterState.quick = next;
+            self.quickFilter = next;
+          }
+          self.updateFilterControls();
           self.page = 1;
           self.loadList();
         });
@@ -2573,15 +2617,32 @@
         button.addEventListener('click', function () { self.closeDialog(); });
       });
     },
-    filters: function () {
+    defaultFilterState: function () {
+      return {
+        keyword: '',
+        quick: 'all',
+        pageSize: 50,
+        view: 'table',
+        sort: 'updated_at',
+        direction: 'DESC',
+        advanced: {}
+      };
+    },
+    ensureFilterState: function () {
+      if (!this.filterState) this.filterState = this.defaultFilterState();
+      this.filterState.pageSize = this.pageSize;
+      this.filterState.view = this.viewMode;
+      this.filterState.sort = this.sort;
+      this.filterState.direction = this.dir;
+      if (!this.filterState.quick) this.filterState.quick = 'all';
+      if (!this.filterState.advanced) this.filterState.advanced = {};
+    },
+    readAdvancedFilters: function () {
       var checkedValues = function (selector) {
         return Array.prototype.slice.call(document.querySelectorAll(selector + ':checked')).map(function (item) { return item.value; });
       };
       var business = document.querySelector('[data-filter-business]:checked');
       return {
-        q: document.querySelector('[data-customer-search]')?.value || '',
-        page: this.page,
-        page_size: this.pageSize,
         country: document.querySelector('[data-filter-country]')?.value || '',
         city: document.querySelector('[data-filter-city]')?.value || '',
         level: document.querySelector('[data-filter-level]')?.value || '',
@@ -2593,10 +2654,76 @@
         deleted: document.querySelector('[data-filter-deleted]')?.value || '',
         business_filter: business ? business.value : '',
         created_range: document.querySelector('[data-filter-created-range]')?.value || '',
-        follow_range: document.querySelector('[data-filter-follow-range]')?.value || '',
+        follow_range: document.querySelector('[data-filter-follow-range]')?.value || ''
+      };
+    },
+    clearAdvancedControls: function () {
+      document.querySelectorAll('[data-customer-filter-drawer] input').forEach(function (input) {
+        if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
+        else input.value = '';
+      });
+      document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
+    },
+    hasAdvancedFilters: function () {
+      var advanced = (this.filterState && this.filterState.advanced) || {};
+      return Object.keys(advanced).some(function (key) {
+        var value = advanced[key];
+        return Array.isArray(value) ? value.length > 0 : String(value || '') !== '';
+      });
+    },
+    resetAllFilters: function () {
+      this.filterState = this.defaultFilterState();
+      this.pageSize = this.filterState.pageSize;
+      this.viewMode = this.filterState.view;
+      this.sort = this.filterState.sort;
+      this.dir = this.filterState.direction;
+      this.quickFilter = 'all';
+      this.clearAdvancedControls();
+      this.updateFilterControls();
+      this.applyListMode();
+      this.saveListPrefs();
+    },
+    updateFilterControls: function () {
+      this.ensureFilterState();
+      var search = document.querySelector('[data-customer-search]');
+      var pageSize = document.querySelector('[data-customer-page-size]');
+      var view = document.querySelector('[data-customer-view]');
+      var sort = document.querySelector('[data-customer-sort]');
+      var dir = document.querySelector('[data-customer-dir]');
+      if (search) search.value = this.filterState.keyword || '';
+      if (pageSize) pageSize.value = String(this.filterState.pageSize || 50);
+      if (view) view.value = this.filterState.view || 'table';
+      if (sort) sort.value = this.filterState.sort || 'updated_at';
+      if (dir) dir.value = this.filterState.direction || 'DESC';
+      document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
+        item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
+      });
+      var advancedToggle = document.querySelector('[data-customer-advanced-toggle]');
+      if (advancedToggle) advancedToggle.classList.toggle('has-filter', this.hasAdvancedFilters());
+    },
+    filters: function () {
+      this.ensureFilterState();
+      var advanced = this.filterState.advanced || {};
+      this.quickFilter = this.filterState.quick || 'all';
+      return {
+        q: this.filterState.keyword || '',
+        page: this.page,
+        page_size: this.filterState.pageSize || this.pageSize,
+        country: advanced.country || '',
+        city: advanced.city || '',
+        level: advanced.level || '',
+        lifecycle: advanced.lifecycle || '',
+        source: advanced.source || [],
+        status: advanced.status || '',
+        promotion_status: advanced.promotion_status || '',
+        owner_user_id: advanced.owner_user_id || '',
+        deleted: advanced.deleted || '',
+        business_filter: advanced.business_filter || '',
+        created_range: advanced.created_range || '',
+        follow_range: advanced.follow_range || '',
         quick_filter: this.quickFilter,
-        sort: this.sort,
-        dir: this.dir
+        sort: this.filterState.sort || this.sort,
+        dir: this.filterState.direction || this.dir
       };
     },
     startColumnResize: function (event, key) {
@@ -2721,18 +2848,30 @@
     },
     describeFilters: function () {
       var parts = [];
-      var q = document.querySelector('[data-customer-search]')?.value || '';
-      var country = document.querySelector('[data-filter-country]')?.value || '';
-      var city = document.querySelector('[data-filter-city]')?.value || '';
-      var level = document.querySelector('[data-filter-level]')?.value || '';
-      var lifecycle = document.querySelector('[data-filter-lifecycle]')?.value || '';
-      var sources = Array.prototype.slice.call(document.querySelectorAll('[data-filter-source]:checked')).map(function (item) { return item.value; });
-      var status = document.querySelector('[data-filter-status]')?.value || '';
-      var promotion = document.querySelector('[data-filter-promotion-status]')?.value || '';
-      var owner = document.querySelector('[data-filter-owner]')?.value || '';
-      var business = document.querySelector('[data-filter-business]:checked')?.value || '';
-      var created = document.querySelector('[data-filter-created-range]')?.value || '';
-      var follow = document.querySelector('[data-filter-follow-range]')?.value || '';
+      this.ensureFilterState();
+      var advanced = this.filterState.advanced || {};
+      var q = this.filterState.keyword || '';
+      var country = advanced.country || '';
+      var city = advanced.city || '';
+      var level = advanced.level || '';
+      var lifecycle = advanced.lifecycle || '';
+      var sources = advanced.source || [];
+      var status = advanced.status || '';
+      var promotion = advanced.promotion_status || '';
+      var owner = advanced.owner_user_id || '';
+      var business = advanced.business_filter || '';
+      var created = advanced.created_range || '';
+      var follow = advanced.follow_range || '';
+      var quickLabels = {
+        today: '今天新增',
+        '7d': '7天新增',
+        mine: '我的客户',
+        public: '公海客户',
+        has_code: '有客户代码',
+        has_quote: '有报价',
+        has_mail: '有邮件',
+        has_material: '有资料'
+      };
       if (q) parts.push('关键词：' + q);
       if (country) parts.push('国家：' + country);
       if (city) parts.push('地区：' + city);
@@ -2745,8 +2884,8 @@
       if (business) parts.push('业务：' + business);
       if (created) parts.push('创建：' + created);
       if (follow) parts.push('跟进：' + follow);
-      if (this.quickFilter) parts.push('快捷：' + this.quickFilter);
-      return parts.length ? parts.join(' · ') : '输入即搜，280ms 自动刷新';
+      if ((this.filterState.quick || 'all') !== 'all') parts.push('快捷：' + (quickLabels[this.filterState.quick] || this.filterState.quick));
+      return parts.length ? ('已筛选 · ' + parts.join(' · ')) : '输入即搜，280ms 自动刷新';
     },
     renderRows: function (rows) {
       var self = this;

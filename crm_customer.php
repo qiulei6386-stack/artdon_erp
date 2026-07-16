@@ -1347,11 +1347,13 @@ function crm_customer_list(array $input): array
         }
     }
     $quick = trim((string)($input['quick_filter'] ?? ''));
-    if ($quick === '今天新增') {
+    if ($quick === 'all') {
+        // 明确的“全部”状态，不附加快捷筛选条件。
+    } elseif ($quick === 'today' || $quick === '今天新增') {
         $where[] = 'DATE(c.created_at) = CURDATE()';
     } elseif ($quick === '3 天新增') {
         $where[] = 'c.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY)';
-    } elseif ($quick === '7天新增' || $quick === '7 天新增') {
+    } elseif ($quick === '7d' || $quick === '7天新增' || $quick === '7 天新增') {
         $where[] = 'c.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
     } elseif ($quick === '本月新增') {
         $where[] = 'DATE_FORMAT(c.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")';
@@ -1365,21 +1367,21 @@ function crm_customer_list(array $input): array
         $where[] = 'NOT EXISTS (SELECT 1 FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL AND f.followup_time >= DATE_SUB(NOW(), INTERVAL 30 DAY))';
     } elseif ($quick === '有联系人') {
         $where[] = 'EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL)';
-    } elseif ($quick === '有客户代码' || $quick === '有代码') {
+    } elseif ($quick === 'has_code' || $quick === '有客户代码' || $quick === '有代码') {
         $where[] = 'c.customer_code IS NOT NULL AND c.customer_code <> ""';
-    } elseif ($quick === '有邮箱' || $quick === '有邮件') {
+    } elseif ($quick === 'has_mail' || $quick === '有邮箱' || $quick === '有邮件') {
         $where[] = "((c.email IS NOT NULL AND c.email <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.email IS NOT NULL AND ct.email <> ''))";
-    } elseif ($quick === '有资料' || $quick === '有资料包') {
+    } elseif ($quick === 'has_material' || $quick === '有资料' || $quick === '有资料包') {
         $where[] = 'EXISTS (SELECT 1 FROM crm_customer_files cf WHERE cf.customer_id = c.id AND cf.deleted_at IS NULL)';
-    } elseif ($quick === '有报价') {
+    } elseif ($quick === 'has_quote' || $quick === '有报价') {
         if (crm_table_exists_safe('quote_orders')) {
             $where[] = crm_customer_quote_exists_condition();
         } else {
             $where[] = '1 = 0';
         }
-    } elseif ($quick === '公海客户') {
+    } elseif ($quick === 'public' || $quick === '公海客户') {
         $where[] = 'c.owner_user_id IS NULL';
-    } elseif ($quick === '我的客户') {
+    } elseif ($quick === 'mine' || $quick === '我的客户') {
         $where[] = crm_customer_owner_match_sql((int)(current_user()['id'] ?? 0), $params);
     }
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));

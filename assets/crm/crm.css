@@ -5800,24 +5800,24 @@ body.is-actionbar-resizing * {
 .crm-module[data-crm-module="customers"] > .crm-module-head h1 { margin: 1px 0 0; font-size: 15px; }
 .crm-module[data-crm-module="customers"] > .crm-module-head p { display: none; }
 .crm-customer-page { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; height: 100%; }
-.customer-filterbar { padding: 8px; position: sticky; top: 0; z-index: 6; display: grid; gap: 7px; }
+.customer-filterbar { padding: 10px; position: sticky; top: 0; z-index: 6; display: grid; gap: 8px; }
 .customer-search-row {
   display: grid;
-  grid-template-columns: minmax(240px, 1.1fr) minmax(260px, 1.4fr) minmax(96px, auto);
+  grid-template-columns: minmax(260px, 1.05fr) minmax(520px, 1.65fr) minmax(150px, auto);
   gap: 8px;
-  align-items: end;
+  align-items: center;
   min-width: 0;
 }
 .customer-search-main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  min-height: 34px;
+  height: 34px;
   border: 1px solid color-mix(in srgb, var(--crm-primary) 16%, var(--crm-border));
   border-radius: 9px;
   background: color-mix(in srgb, var(--crm-card-bg) 97%, var(--crm-hover-bg));
-  padding: 3px 4px 3px 9px;
+  padding: 0 4px 0 10px;
 }
 .customer-search-main label,
 .customer-search-tools label,
@@ -5832,26 +5832,40 @@ body.is-actionbar-resizing * {
   min-width: 0;
   border-color: transparent;
   background: transparent;
+  height: 30px;
+  min-height: 30px;
 }
 .customer-search-main input:focus { box-shadow: none; border-color: transparent; background: transparent; }
-.customer-search-main button { min-height: 26px; padding: 0 8px; background: transparent; border-color: transparent; }
-.customer-search-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.customer-search-main button { height: 28px; min-height: 28px; padding: 0 9px; background: transparent; border-color: transparent; }
+.customer-search-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .customer-search-tools label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .customer-search-row input, .customer-search-row select, .customer-filter-group select {
   width: 100%;
-  min-height: 28px;
+  height: 34px;
+  min-height: 34px;
   border: 1px solid var(--crm-border);
-  border-radius: 7px;
+  border-radius: 9px;
   background: var(--crm-card-bg);
   color: var(--crm-text);
   padding: 0 8px;
 }
 .customer-search-tools select { width: auto; min-width: 70px; }
-.customer-search-tools button { min-height: 28px; padding: 0 9px; }
+.customer-search-tools button { height: 34px; min-height: 34px; padding: 0 10px; }
+.customer-search-tools button.has-filter::after {
+  content: "已筛选";
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--crm-primary);
+  font-size: 10px;
+  font-weight: 800;
+}
 .customer-search-meta { display: grid; justify-items: end; gap: 2px; color: var(--crm-muted-text); font-size: 11px; white-space: nowrap; }
 .customer-search-meta strong { color: var(--crm-primary); font-size: 13px; }
-.customer-quick-filters { display: flex; gap: 5px; overflow-x: auto; padding-top: 7px; }
-.customer-quick-filters button { min-height: 24px; padding: 0 8px; font-size: 11px; flex: 0 0 auto; }
+.customer-quick-filters { display: flex; flex-wrap: wrap; gap: 7px; overflow: visible; padding-top: 0; align-items: center; }
+.customer-quick-filters button { height: 28px; min-height: 28px; padding: 0 12px; font-size: 12px; border-radius: 999px; flex: 0 0 auto; background: var(--crm-card-bg); border-color: var(--crm-border); }
 .customer-quick-filters button.active { color: #fff; background: var(--crm-primary); border-color: var(--crm-primary); }
 .customer-filter-backdrop {
   position: fixed;
