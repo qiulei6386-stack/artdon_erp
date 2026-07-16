@@ -2265,6 +2265,7 @@
     currentDetail: null,
     activeDetailTab: 'overview',
     selectedDetailEntity: null,
+    expandedOrderPreviewId: '',
     viewMode: 'table',
     sort: 'updated_at',
     dir: 'DESC',
@@ -3145,6 +3146,7 @@
       if (!options.keepTab && !sameCustomer) {
         this.activeDetailTab = 'overview';
         this.selectedDetailEntity = null;
+        this.expandedOrderPreviewId = '';
         this.archiveEditMode = false;
         this.attributeViewMode = false;
         this.attributeEditMode = false;
@@ -4006,10 +4008,98 @@
     renderOrderPanel: function (data) {
       var rows = data.rows || [];
       var summaryCurrency = this.currencyFromRows(rows);
+      var selectedId = String(this.expandedOrderPreviewId || '');
       var tableRows = rows.map(function (row) {
-        return '<tr data-detail-row="order" data-detail-row-id="' + esc(row.id || row.order_id || row.order_no || '') + '"><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.order_date || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '')) + '</td><td><strong class="paid-amount">' + esc(CustomerModule.moneyWithCurrency(row.paid_amount || '0.00', row.currency || '')) + '</strong></td><td><strong class="debt-amount">' + esc(CustomerModule.moneyWithCurrency(row.balance_amount || '0.00', row.currency || '')) + '</strong></td><td>' + esc(row.owner || row.owner_name || '-') + '</td></tr>';
+        var rowId = String(row.id || row.order_id || row.order_no || '');
+        return '<tr class="' + (rowId && rowId === selectedId ? 'selected' : '') + '" data-detail-row="order" data-detail-row-id="' + esc(rowId) + '"><td data-order-open>' + esc(row.order_no || '-') + '</td><td>' + esc(row.order_date || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '')) + '</td><td><strong class="paid-amount">' + esc(CustomerModule.moneyWithCurrency(row.paid_amount || '0.00', row.currency || '')) + '</strong></td><td><strong class="debt-amount">' + esc(CustomerModule.moneyWithCurrency(row.balance_amount || '0.00', row.currency || '')) + '</strong></td><td>' + esc(row.owner || row.owner_name || '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配订单。') + '</td></tr>';
-      return '<div class="customer-tab-stats"><span>订单数量 ' + esc(data.total || rows.length || 0) + '</span><span>订单金额 ' + esc(data.price_visible ? this.moneyWithCurrency(data.amount_total || '0.00', summaryCurrency) : '***') + '</span><span>未完成订单 ' + esc(data.open || 0) + '</span><span>最近订单 ' + esc(data.latest_order_no || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>订单号</th><th>日期</th><th>状态</th><th>订单金额</th><th>已收</th><th>欠款</th><th>负责人</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+      return '<div class="customer-tab-stats"><span>订单数量 ' + esc(data.total || rows.length || 0) + '</span><span>订单金额 ' + esc(data.price_visible ? this.moneyWithCurrency(data.amount_total || '0.00', summaryCurrency) : '***') + '</span><span>未完成订单 ' + esc(data.open || 0) + '</span><span>最近订单 ' + esc(data.latest_order_no || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table customer-order-table"><thead><tr><th>订单号</th><th>日期</th><th>状态</th><th>订单金额</th><th>已收</th><th>欠款</th><th>负责人</th></tr></thead><tbody>' + tableRows + '</tbody></table><div data-order-preview-host>' + (selectedId ? this.renderCustomerOrderPreviewById(selectedId) : '') + '</div>';
+    },
+    numericAmount: function (value) {
+      if (typeof value === 'number') return value;
+      var normalized = String(value == null ? '' : value).replace(/,/g, '').replace(/[^\d.-]/g, '');
+      var parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : 0;
+    },
+    relatedOrderRows: function (type, orderNo) {
+      var linkage = ((this.currentDetail || {}).linkage || {});
+      var rows = ((linkage[type] || {}).rows || []);
+      if (!orderNo) return [];
+      return rows.filter(function (row) {
+        return String(row.order_no || row.related_order_no || '') === String(orderNo);
+      });
+    },
+    flowNode: function (label, state, status, note) {
+      return { label: label, state: state || 'pending', status: status || '未开始', note: note || '暂无记录' };
+    },
+    renderCustomerOrderPreviewById: function (rowId) {
+      var row = null;
+      var rows = (((this.currentDetail || {}).linkage || {}).orders || {}).rows || [];
+      rows.some(function (item, index) {
+        var currentId = String(item.id || item.order_id || item.order_no || index);
+        if (currentId === String(rowId || '')) {
+          row = item;
+          return true;
+        }
+        return false;
+      });
+      return row ? this.renderCustomerOrderPreview(row) : '';
+    },
+    renderCustomerOrderPreview: function (row) {
+      row = row || {};
+      var customer = ((this.currentDetail || {}).customer || {});
+      var contacts = ((this.currentDetail || {}).contacts || []);
+      var contact = row.contact_name || row.contact || ((contacts[0] || {}).name) || '-';
+      var currency = row.currency || '';
+      var amountRaw = row.amount_raw != null ? Number(row.amount_raw) : this.numericAmount(row.amount);
+      var paidRaw = row.paid_raw != null ? Number(row.paid_raw) : this.numericAmount(row.paid_amount);
+      var balanceRaw = row.balance_raw != null ? Number(row.balance_raw) : Math.max(0, amountRaw - paidRaw);
+      var amountText = this.moneyWithCurrency(row.amount || amountRaw || '0.00', currency);
+      var paidText = this.moneyWithCurrency(row.paid_amount || paidRaw || '0.00', currency);
+      var balanceText = this.moneyWithCurrency(row.balance_amount || balanceRaw || '0.00', currency);
+      var orderNo = row.order_no || row.id || '-';
+      var shipments = this.relatedOrderRows('shipments', row.order_no || '');
+      var docs = this.relatedOrderRows('documents', row.order_no || '');
+      var shipment = shipments[0] || {};
+      var doc = docs[0] || {};
+      var quoteDone = row.quote_no ? 'done' : 'pending';
+      var auditStatus = row.audit_status || row.review_status || row.approval_status || '';
+      var replyStatus = row.reply_status || row.customer_reply_status || '';
+      var paidDone = amountRaw > 0 && paidRaw >= amountRaw;
+      var depositDone = paidRaw > 0;
+      var shipmentDone = /已完成|已出货|签收|delivered|shipped/i.test(String(row.shipment_status || shipment.status || ''));
+      var docDone = /已生成|已完成|done|generated/i.test(String(doc.status || row.document_status || ''));
+      var nodes = [
+        this.flowNode('报价', quoteDone, row.quote_no ? '已关联' : '暂无报价记录', row.quote_no || '暂无记录'),
+        this.flowNode('审核', auditStatus ? (/驳回|异常|reject/i.test(auditStatus) ? 'risk' : 'done') : 'pending', auditStatus || '暂无审核记录', row.review_user || row.audit_user || '暂无记录'),
+        this.flowNode('回复', replyStatus ? (/拒绝|异常|reject/i.test(replyStatus) ? 'risk' : 'current') : 'pending', replyStatus || '暂无回复记录', row.reply_note || '暂无记录'),
+        this.flowNode('转订单', row.order_no ? 'done' : 'pending', row.order_no ? '已转订单' : '暂无订单记录', String(orderNo).slice(0, 18)),
+        this.flowNode('定金', depositDone ? 'done' : 'risk', depositDone ? '已收' : '未收', '已收 ' + paidText),
+        this.flowNode('尾款', paidDone ? 'done' : 'risk', paidDone ? '已结清' : '未收', balanceText),
+        this.flowNode('出货', shipmentDone ? 'done' : (shipments.length ? 'current' : 'pending'), row.shipment_status || shipment.status || '暂无出货记录', (shipment.shipment_no || shipment.tracking_no || row.qty || '暂无记录')),
+        this.flowNode('单证', docDone ? 'done' : 'pending', doc.status || row.document_status || '暂无单证记录', doc.document_no || doc.type || row.doc_title || 'PL / CI 待生成')
+      ];
+      var current = balanceRaw > 0 ? '尾款 / 收款' : (shipmentDone ? '单证 / 归档' : '出货');
+      var nextAction = row.next_action || (balanceRaw > 0 ? '跟进定金/尾款收款' : (shipmentDone ? '生成或归档单证' : '跟进出货进度'));
+      var tone = balanceRaw > 0 ? 'risk' : (shipmentDone && docDone ? 'done' : 'current');
+      return '<article class="customer-order-preview-card ' + esc(tone) + '">' +
+        '<section class="customer-order-preview-basic"><span>订单流程预览</span><strong>' + esc(orderNo) + '</strong><p>' + esc(customer.customer_name || row.customer_name || '-') + ' · ' + esc(contact) + ' · ' + esc(row.owner || row.owner_name || '-') + ' · ' + esc(row.order_date || '-日期未填') + '</p><b>' + esc(amountText) + '</b><em class="' + (balanceRaw > 0 ? 'debt-amount' : 'paid-amount') + '">' + esc(balanceRaw > 0 ? ('未收 ' + balanceText) : ('已收 ' + paidText)) + '</em></section>' +
+        '<section class="customer-order-flow-preview">' + nodes.map(function (node) {
+          return '<div class="order-flow-node ' + esc(node.state) + '"><i></i><strong>' + esc(node.label) + '</strong><span>' + esc(node.status) + '</span><em>' + esc(node.note) + '</em></div>';
+        }).join('') + '</section>' +
+        '<section class="customer-order-preview-next"><span>当前：' + esc(current) + '</span><strong>下一步：' + esc(nextAction) + '</strong><button type="button" data-customer-action-shortcut="标记已收定金">标记已收定金</button><button type="button" data-customer-action-shortcut="创建收款提醒">创建收款提醒</button></section>' +
+      '</article>';
+    },
+    bindOrderPreviewShortcuts: function () {
+      var self = this;
+      document.querySelectorAll('[data-customer-action-shortcut]').forEach(function (button) {
+        if (button.dataset.bound === '1') return;
+        button.dataset.bound = '1';
+        button.addEventListener('click', function (event) {
+          event.stopPropagation();
+          self.handleAction(button.getAttribute('data-customer-action-shortcut') || '');
+        });
+      });
     },
     renderReceivablePanel: function (data) {
       var rows = data.rows || [];
@@ -4209,15 +4299,39 @@
         row.addEventListener('click', function () {
           var rowType = row.getAttribute('data-detail-row') || '';
           var rowId = row.getAttribute('data-detail-row-id') || '';
+          if (rowType === 'order' && rowId && self.expandedOrderPreviewId === rowId) {
+            self.expandedOrderPreviewId = '';
+            self.selectedDetailEntity = null;
+            row.classList.remove('selected');
+            var collapseHost = document.querySelector('[data-order-preview-host]');
+            if (collapseHost) collapseHost.innerHTML = '';
+            if (current === 'customers') renderActions('customers');
+            return;
+          }
           self.selectedDetailEntity = {
             type: rowType,
             id: rowId
           };
           document.querySelectorAll('[data-detail-row]').forEach(function (item) { item.classList.toggle('selected', item === row); });
+          if (rowType === 'order' && rowId) {
+            self.expandedOrderPreviewId = rowId;
+            var host = document.querySelector('[data-order-preview-host]');
+            if (host) host.innerHTML = self.renderCustomerOrderPreviewById(rowId);
+            self.bindOrderPreviewShortcuts();
+          } else {
+            self.expandedOrderPreviewId = '';
+          }
           if (current === 'customers') renderActions('customers');
           if (rowType === 'mail' && rowId) self.openCustomerMailPreview(rowId);
         });
+        row.addEventListener('dblclick', function () {
+          if ((row.getAttribute('data-detail-row') || '') !== 'order') return;
+          var order = self.selectedSalesRow('order');
+          if (!order) return;
+          window.open('quotation.php?order_id=' + encodeURIComponent(order.id || order.order_id || '') + '&order_no=' + encodeURIComponent(order.order_no || ''), '_blank');
+        });
       });
+      this.bindOrderPreviewShortcuts();
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
@@ -4336,6 +4450,7 @@
       var activeSub = target.sub;
       this.rememberDetailTab(activeSub);
       this.selectedDetailEntity = null;
+      if (activeSub !== 'orders') this.expandedOrderPreviewId = '';
       if (activeName === 'overview' && this.layoutMode !== 'default') this.applyLayoutMode('default', false);
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
         this.ensureFullDetail(activeSub);
@@ -6721,7 +6836,7 @@
           { title: '报价', items: ['创建报价'] }
         ];
         if (sub === 'orders') return selected.type === 'order' ? [
-          { title: '订单', items: ['查看订单', '同步订单', '查看订单明细', '生成单证'] }
+          { title: '订单', items: ['查看订单', '查看订单明细', '查看收款欠款', '标记已收定金', '创建收款提醒', '查看出货进度', '生成单证', '查看订单日志'] }
         ] : [
           { title: '订单', items: ['同步订单'] }
         ];
@@ -6883,6 +6998,11 @@
       }
       if (label === '同步订单') return this.showCustomerError('订单同步接口待接入。');
       if (label === '生成单证') return this.showCustomerError('生成单证接口待接入，请先在订单/单证系统处理。');
+      if (label === '查看收款欠款') return this.switchDetailTab('receivables');
+      if (label === '查看出货进度') return this.switchDetailTab('shipments');
+      if (label === '查看订单日志') return this.switchDetailTab('logs');
+      if (label === '标记已收定金') return this.showCustomerError('标记已收定金接口待接入，请先在收款系统处理。');
+      if (label === '创建收款提醒') return this.showCustomerError('创建收款提醒接口待接入，请先在任务/收款系统创建。');
       if (label === '查看欠款明细' || label === '查看收款记录') return this.switchDetailTab('receivables');
       if (label === '登记收款') return this.showCustomerError('登记收款接口待接入。');
       if (label === '导出欠款') return this.showCustomerError('导出欠款接口待接入。');
