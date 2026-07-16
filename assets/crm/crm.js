@@ -3496,7 +3496,7 @@
         '<input type="hidden" name="customer_id" value="' + esc(this.currentId || c.id || '') + '">' +
         '<div class="entity-grid archive-attribute-grid">' +
           field('客户名称 *', 'customer_name', c.customer_name, 'required') +
-          readonly('客户代码', c.customer_code) +
+          field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
           field('国家', 'country', c.country, 'list="crm-country-options"') +
           field('城市', 'city', c.city, 'list="crm-address-region-options-filtered"') +
           field('网站', 'website', c.website, 'placeholder="https://"') +
@@ -3591,7 +3591,7 @@
         '<section class="entity-section entity-section-primary"><h3>客户身份</h3><div class="entity-grid">' +
         field('客户名称 *', 'customer_name', c.customer_name, 'required') +
         field('英文名称', 'customer_name_en', c.customer_name_en) +
-        readonlyField('客户代码', 'customer_code', c.customer_code) +
+        field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
         select('客户等级', 'level', this.optionHtml('customer_level', c.level || 'P3')) +
         select('生命周期', 'lifecycle_key', this.optionHtml('customer_lifecycle', c.lifecycle_key || 'lead')) +
         field('客户类型', 'customer_type', c.customer_type) +
@@ -6986,6 +6986,14 @@
         { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议', 'AI 创建确认任务'] },
         { title: '系统操作', items: ['分配客户', '加入分组', '管理分组', '公海池', '转入公海'].concat(hasCustomer ? ['批量设置推广方式', '编辑选项卡'] : []).concat(['查看日志']) }
       ];
+      if (this.selected && this.selected.size > 1) return [
+        { title: '批量管理（已选 ' + this.selected.size + '）', items: ['批量分配', '批量删除', '批量分组', '批量设置推广方式', '导出客户', '清除选择'] },
+        { title: '客户池操作', items: ['转入公海', '批量补全资料', '查看客户日志'] }
+      ];
+      if (!hasCustomer && this.selected && this.selected.size === 1) return [
+        { title: '客户管理（已选 1）', items: ['分配客户', '删除客户', '加入分组', '批量设置推广方式', '导出客户', '清除选择'] },
+        { title: '客户操作', items: ['新建客户', '导入客户', '查看客户日志'] }
+      ];
       if (hasCustomer) {
         var resolvedTarget = this.detailResolveTarget(this.activeDetailTab || 'overview');
         var group = resolvedTarget.group;
@@ -7165,7 +7173,7 @@
       if (label === '放大客户属性') return this.openCustomerAttributeView(false, true);
       if (label === '恢复默认布局') return this.applyLayoutMode('default', true);
       if (label === '编辑客户') return this.openCustomerDialog('edit');
-      if (label === '删除客户' || label === '批量删除') return this.deleteCustomer();
+      if (label === '删除客户' || label === '批量删除' || label === '批量删除客户') return this.deleteCustomer();
       if (label === '恢复客户') return this.restoreCustomer();
       if (label === '强制删除') return this.forceDeleteCustomer();
       if (label === '导入日志') return activate('logs');
@@ -7285,7 +7293,7 @@
       if (label === '新建分组') return this.openGroupDialog();
       if (label === '加入分组' || label === '移动分组' || label === '批量移动分组' || label === '批量分组') return this.openBatchGroupDialog();
       if (label === '管理分组') return this.openBatchGroupDialog(true);
-      if (label === '批量分配' || label === '分配客户') return this.openBatchAssignDialog();
+      if (label === '批量分配' || label === '批量分配客户' || label === '分配客户') return this.openBatchAssignDialog();
       if (label === '批量设置推广方式') return this.openBulkContactPromotionDialog();
       if (label === '公海池') return this.openPublicPoolDialog();
       if (label === '转入公海') return this.openTransferPublicDialog();
