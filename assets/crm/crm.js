@@ -2059,8 +2059,8 @@
       return '<div class="workspace-unreplied-head"><strong class="workspace-big">' + esc(count) + '</strong><span>未回复</span></div>' +
         (size === 'sm' || isMicro ? '' : '<p>' + esc(widget.hint || widget.desc || '') + '</p>') +
         '<div class="workspace-mail-mini-list compact-' + esc(size) + '">' + rows.map(function (item) {
-          if (typeof item === 'string') return '<button type="button"><b>' + esc(item) + '</b><span></span></button>';
-          return '<button type="button"><b>' + esc(item.from || '未知发件人') + '</b><span>' + esc(item.subject || '无主题') + '</span>' + (showSummary ? '<small>' + esc(item.summary || '') + '</small>' : '') + '</button>';
+          if (typeof item === 'string') return '<button type="button" data-workspace-widget="unreplied_mail"><b>' + esc(item) + '</b><span></span></button>';
+          return '<button type="button" data-workspace-widget="unreplied_mail"><b>' + esc(item.from || '未知发件人') + '</b><span>' + esc(item.subject || '无主题') + '</span>' + (showSummary ? '<small>' + esc(item.summary || '') + '</small>' : '') + '</button>';
         }).join('') + '</div>';
     },
     renderConfig: function () {
@@ -2153,6 +2153,31 @@
     },
     openWidget: function (key) {
       var widget = this.widgets.find(function (item) { return item.key === key; });
+      var routeMap = {
+        tasks_today: 'tasks',
+        tasks_overdue: 'tasks',
+        sample_shipments: 'tasks',
+        sample_signed_followup: 'tasks',
+        key_reminders: 'tasks',
+        today_visits: state.modules.visits ? 'visits' : 'tasks',
+        today_arrivals: state.modules.visits ? 'visits' : 'tasks',
+        dispatch_overdue: state.modules.linkage ? 'linkage' : 'tasks',
+        team_sales_compare: 'detail',
+        customer_amount_rank: 'detail',
+        ar_customer_rank: 'detail',
+        country_rank: 'detail',
+        customer_quote_rank: 'detail'
+      };
+      if (routeMap[key] === 'detail') {
+        this.openWidgetDetail(key);
+        post('log_event', { module: 'workspace', event: 'widget_click', target: key });
+        return;
+      }
+      if (routeMap[key]) {
+        activate(routeMap[key]);
+        post('log_event', { module: 'workspace', event: 'widget_click', target: key });
+        return;
+      }
       if (key === 'unreplied_mail') {
         activate('mail');
         window.setTimeout(function () {
@@ -2164,6 +2189,12 @@
           });
           MailModule.loadList();
         }, 120);
+        post('log_event', { module: 'workspace', event: 'widget_click', target: key });
+        return;
+      }
+      if (key === 'lead_pool') {
+        activate('customers');
+        window.setTimeout(function () { CustomerModule.openLeadPool(); }, 80);
         post('log_event', { module: 'workspace', event: 'widget_click', target: key });
         return;
       }
