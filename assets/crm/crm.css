@@ -21468,3 +21468,263 @@ body.is-workspace-module .workspace-assist-time i {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
   }
 }
+
+/* CRM workspace plain color accent layer. */
+body.is-workspace-module .crm-main,
+body.is-workspace-module .crm-module.active,
+body.is-workspace-module .workspace-console {
+  background: #F5F7FB !important;
+}
+body.is-workspace-module .workspace-hero,
+body.is-workspace-module .workspace-overview button,
+body.is-workspace-module .workspace-toolbelt button,
+body.is-workspace-module .workspace-assist-strip > div,
+body.is-workspace-module .workspace-alert-card,
+body.is-workspace-module .workspace-widget {
+  border-color: #E6ECF5 !important;
+  background: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04) !important;
+}
+body.is-workspace-module .workspace-hero h1,
+body.is-workspace-module .workspace-widget h3,
+body.is-workspace-module .workspace-widget-group > header h3 {
+  color: #0F172A !important;
+}
+body.is-workspace-module .workspace-hero p,
+body.is-workspace-module .workspace-widget-group > header p,
+body.is-workspace-module .workspace-overview em,
+body.is-workspace-module .workspace-toolbelt span,
+body.is-workspace-module .workspace-widget p {
+  color: #64748B !important;
+}
+body.is-workspace-module .workspace-overview button,
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget,
+body.is-workspace-module .workspace-reminder-list button,
+body.is-workspace-module .workspace-mail-mini-list button {
+  position: relative;
+  overflow: hidden;
+}
+body.is-workspace-module .workspace-overview button::after,
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #2563EB;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="mailbox_summary"]::after,
+body.is-workspace-module .workspace-overview [data-workspace-widget="unreplied_mail"]::after {
+  background: #F59E0B;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="lead_pool"]::after {
+  background: #7C3AED;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="opportunity_pipeline"]::after,
+body.is-workspace-module .workspace-overview [data-workspace-widget="quote_order_summary"].tone-green::after {
+  background: #16A34A;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="dispatch_overdue"]::after {
+  background: #EF4444;
+}
+body.is-workspace-module .workspace-overview span {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #EFF6FF;
+  color: #2563EB !important;
+  padding: 3px 8px;
+}
+body.is-workspace-module .workspace-overview .tone-orange span {
+  background: #FFFBEB;
+  color: #F59E0B !important;
+}
+body.is-workspace-module .workspace-overview .tone-green span {
+  background: #F0FDF4;
+  color: #16A34A !important;
+}
+body.is-workspace-module .workspace-overview .tone-red span {
+  background: #FEF2F2;
+  color: #EF4444 !important;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="lead_pool"] span {
+  background: #F5F3FF;
+  color: #7C3AED !important;
+}
+body.is-workspace-module .workspace-overview strong {
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-overview .tone-orange strong {
+  color: #F59E0B !important;
+}
+body.is-workspace-module .workspace-overview .tone-green strong {
+  color: #16A34A !important;
+}
+body.is-workspace-module .workspace-overview .tone-red strong {
+  color: #EF4444 !important;
+}
+body.is-workspace-module .workspace-overview [data-workspace-widget="lead_pool"] strong {
+  color: #7C3AED !important;
+}
+body.is-workspace-module .workspace-toolbelt i {
+  border-radius: 999px !important;
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="mail_compose"] i {
+  background: #F59E0B !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="promotion_task"] i,
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="lead_pool"] i,
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="ai_lead"] i {
+  background: #7C3AED !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="opportunity_create"] i {
+  background: #16A34A !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="visit_create"] i {
+  background: #0EA5A4 !important;
+}
+body.is-workspace-module .workspace-toolbelt button:hover {
+  background: #FAFCFF !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="mail_compose"]:hover {
+  border-color: #F59E0B !important;
+  background: #FFFDF7 !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="promotion_task"]:hover,
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="lead_pool"]:hover,
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="ai_lead"]:hover {
+  border-color: #7C3AED !important;
+  background: #FBF8FF !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="opportunity_create"]:hover {
+  border-color: #16A34A !important;
+  background: #F0FDF4 !important;
+}
+body.is-workspace-module .workspace-toolbelt [data-workspace-tool="visit_create"]:hover {
+  border-color: #0EA5A4 !important;
+  background: #F0FDFA !important;
+}
+body.is-workspace-module .workspace-assist-main span,
+body.is-workspace-module .workspace-assist-main button {
+  color: #0EA5A4 !important;
+  border-color: #0EA5A4 !important;
+}
+body.is-workspace-module .workspace-assist-time span {
+  color: #2563EB !important;
+  background: #EFF6FF;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+body.is-workspace-module .workspace-assist-time i {
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-assist-fx span {
+  color: #4F46E5 !important;
+}
+body.is-workspace-module .workspace-assist-fx strong,
+body.is-workspace-module .workspace-assist-fx button {
+  color: #1D4ED8 !important;
+  border-color: #1D4ED8 !important;
+}
+body.is-workspace-module .workspace-alert-card > header span {
+  color: #2563EB !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+}
+body.is-workspace-module .workspace-alert-card > header b {
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-alert-mail-card > header span,
+body.is-workspace-module .workspace-alert-mail-card > header b {
+  color: #F59E0B !important;
+}
+body.is-workspace-module .workspace-reminder-list button,
+body.is-workspace-module .workspace-mail-mini-list button {
+  background: #F8FAFC !important;
+  border-color: #E6ECF5 !important;
+}
+body.is-workspace-module .workspace-reminder-list button::before,
+body.is-workspace-module .workspace-mail-mini-list button::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: #2563EB;
+}
+body.is-workspace-module .workspace-mail-mini-list button::before {
+  background: #F59E0B;
+}
+body.is-workspace-module .workspace-reminder-list em,
+body.is-workspace-module .workspace-mail-mini-list button:hover b {
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="tasks_today"]::after {
+  background: #2563EB;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="tasks_overdue"]::after {
+  background: #EF4444;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="today_visits"]::after {
+  background: #0EA5A4;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="today_arrivals"]::after {
+  background: #14B8A6;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="sample_shipments"]::after {
+  background: #7C3AED;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="sample_signed_followup"]::after {
+  background: #16A34A;
+}
+body.is-workspace-module .workspace-task-tag.tag-mail {
+  background: #FFFBEB !important;
+  color: #F59E0B !important;
+}
+body.is-workspace-module .workspace-task-tag.tag-task,
+body.is-workspace-module .workspace-task-tag.tag-quote,
+body.is-workspace-module .workspace-task-tag.tag-dispatch {
+  background: #EFF6FF !important;
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-task-tag.tag-overdue {
+  background: #FEF2F2 !important;
+  color: #EF4444 !important;
+}
+body.is-workspace-module .workspace-task-tag.tag-signed {
+  background: #F0FDF4 !important;
+  color: #16A34A !important;
+}
+body.is-workspace-module .workspace-task-tag.tag-sample {
+  background: #F5F3FF !important;
+  color: #7C3AED !important;
+}
+body.is-workspace-module .workspace-task-tag.tag-visit,
+body.is-workspace-module .workspace-task-tag.tag-arrival {
+  background: #F0FDFA !important;
+  color: #0EA5A4 !important;
+}
+body.is-workspace-module .rank-no {
+  background: #EFF6FF !important;
+  color: #2563EB !important;
+}
+body.is-workspace-module .workspace-rank-item:nth-child(2) .rank-no {
+  background: #F0FDF4 !important;
+  color: #16A34A !important;
+}
+body.is-workspace-module .workspace-rank-item:nth-child(3) .rank-no {
+  background: #F5F3FF !important;
+  color: #7C3AED !important;
+}
+body.is-workspace-module .rank-value.success {
+  color: #16A34A !important;
+}
+body.is-workspace-module .rank-value.danger {
+  color: #EF4444 !important;
+}
+body.is-workspace-module .rank-value.primary,
+body.is-workspace-module .rank-progress i {
+  color: #2563EB !important;
+  background: #2563EB !important;
+}

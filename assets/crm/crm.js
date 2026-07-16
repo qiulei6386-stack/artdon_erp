@@ -1752,12 +1752,13 @@
         var text = String(item || '');
         var parts = text.split(' · ').map(function (part) { return part.trim(); }).filter(Boolean);
         var tag = WorkspaceModule.todayTaskTag(key, text);
+        var tagClass = 'tag-' + ({ '邮件': 'mail', '报价': 'quote', '客户': 'customer', '签收': 'signed', '拜访': 'visit', '来访': 'arrival', '样品': 'sample', '派工': 'dispatch', '任务': 'task', '逾期': 'overdue' }[tag] || 'task');
         var title = parts[0] || text || '未命名任务';
         var metaParts = parts.slice(1);
         var right = metaParts.length ? metaParts[metaParts.length - 1] : '查看';
         var meta = metaParts.length > 1 ? metaParts.slice(0, -1).join(' · ') : (widget.hint || '待处理');
         return '<button type="button" class="workspace-task-row" data-workspace-widget="' + esc(key) + '">' +
-          '<span class="workspace-task-tag">' + esc(tag) + '</span>' +
+          '<span class="workspace-task-tag ' + esc(tagClass) + '">' + esc(tag) + '</span>' +
           '<span class="workspace-task-main"><b title="' + esc(title) + '">' + esc(title) + '</b><small>' + esc(meta || '待处理') + '</small></span>' +
           '<span class="workspace-task-side"><em>' + esc(right || '') + '</em><i>查看</i></span>' +
         '</button>';
