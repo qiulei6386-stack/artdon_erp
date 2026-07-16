@@ -1208,8 +1208,33 @@ function qspec_is_packaging_text($txt){
   if($s==='') return false;
   return preg_match('/纸卡|纸箱|纸盒|内盒|外盒|外箱|彩盒|包装|包材|吸塑|珍珠棉|泡棉|护角|标签|贴纸|说明书|吊牌|卡纸|opp\\s*袋|pe\\s*袋|poly\\s*bag|carton|inner\\s*box|outer\\s*box|gift\\s*box|color\\s*box|packing|packaging|label|manual|k\\s*=\\s*a|k6a|牛皮色/iu',$s)===1;
 }
+function qspec_component_label_key($label){
+  $k=mb_strtolower(trim((string)$label),'UTF-8');
+  if(in_array($k,['led','芯片','cob'],true)) return 'led';
+  if(in_array($k,['driver','led driver','电源','驱动'],true)) return 'driver';
+  if(in_array($k,['optic','光学','透镜','反光杯'],true)) return 'optic';
+  if(in_array($k,['connector','接头','连接头','adapter'],true)) return 'connector';
+  if(in_array($k,['accessories','accessory','extra','附件','配件'],true)) return 'accessories';
+  return '';
+}
+function qspec_component_value_conflicts($label,$value){
+  $key=qspec_component_label_key($label);
+  $s=mb_strtolower(trim((string)$value),'UTF-8');
+  if($key==='' || $s==='') return false;
+  if(qspec_is_packaging_text($s)) return true;
+  $isDriver=preg_match('/\\bled\\s*driver\\b|\\bdriver\\b|power\\s*supply|constant\\s*current|eaglerise|lifud|tridonic|mean\\s*well|电源|驱动|伊戈尔|恒流/iu',$s)===1;
+  $isConnector=preg_match('/connector|adapter|track\\s*head|接头|转接|导轨头|连接器/iu',$s)===1;
+  $isOptic=preg_match('/optic|optics|lens|reflector|dark\\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/iu',$s)===1;
+  $isLed=preg_match('/\\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa)\\b|\\bled\\s*(chip|module|cob)\\b|\\b(chip|cob)\\s*led\\b|芯片|灯珠/iu',$s)===1;
+  if($key==='led') return $isDriver || $isConnector || $isOptic;
+  if($key==='driver') return $isConnector || $isOptic || ($isLed && !$isDriver);
+  if($key==='optic') return $isDriver || $isConnector || ($isLed && !$isOptic);
+  if($key==='connector') return $isDriver || $isOptic || $isLed;
+  if($key==='accessories') return $isDriver || $isConnector || $isOptic || $isLed;
+  return false;
+}
 function qspec_sanitize_component_value($label,$value){
-  if(qspec_is_accessory_label($label) && qspec_is_packaging_text($value)) return '';
+  if(qspec_component_value_conflicts($label,$value)) return '';
   return qspec_is_component_label($label)?qspec_brand_model_only($value,$label):qspec_clean($value);
 }
 function qspec_quote_name_of_node($node,$fallback=''){ $v=qspec_brand_model_only(is_array($node)?$node:$fallback); return $v!==''?$v:qspec_brand_model_only($fallback); }
@@ -1239,6 +1264,16 @@ function qspec_json_values_from_row($r){
   }
   return $vals;
 }
+function qspec_bom_detail_json_values_from_row($r){
+  $vals=[];
+  foreach(['rows_json','items_json','materials_json','bom_rows','bom_items','detail_json','details_json','components_json','明细','物料明细'] as $k){
+    if(isset($r[$k]) && is_string($r[$k])){
+      $x=trim($r[$k]);
+      if($x!=='' && (($x[0]??'')==='{' || ($x[0]??'')==='[')) $vals[]=$x;
+    }
+  }
+  return $vals;
+}
 function qspec_flatten_nodes($v,&$out){
   if(is_array($v)){
     $out[]=$v;
@@ -1257,13 +1292,13 @@ function qspec_classify_component($txt){
   $s=strtolower((string)$txt);
   // 包装材料不属于灯具附件，不能进入报价单 Accessories。
   if(qspec_is_packaging_text($txt)) return '';
-  // V6.8.5.4：关键件识别收紧。
-  // “光源面/光源面盖/散热器后盖”这类结构件不能被当成 LED 芯片；必须出现明确芯片/灯珠/LED/COB 或常见芯片品牌/型号。
-  if(preg_match('/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa|led)\b|芯片|灯珠/u',$s)) return 'led';
-  if(preg_match('/driver|eaglerise|lifud|tridonic|mean\s*well|电源|驱动|伊戈尔/u',$s)) return 'driver';
-  if(preg_match('/optic|lens|reflector|dark\s*series|herculux|透镜|反光|光学|恒坤/u',$s)) return 'optic';
-  if(preg_match('/connector|adapter|接头|转接|导轨头|连接器/u',$s)) return 'connector';
-  if(preg_match('/accessor|honeycomb|蜂窝|格栅|附件|配件|面环|防眩/u',$s)) return 'accessories';
+  // 先识别电源/接头/光学，再识别 LED，避免 “LED Driver” 被归到芯片。
+  if(preg_match('/\bled\s*driver\b|\bdriver\b|power\s*supply|constant\s*current|eaglerise|lifud|tridonic|mean\s*well|电源|驱动|伊戈尔|恒流/u',$s)) return 'driver';
+  if(preg_match('/connector|adapter|track\s*head|接头|转接|导轨头|连接器/u',$s)) return 'connector';
+  if(preg_match('/optic|optics|lens|reflector|dark\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/u',$s)) return 'optic';
+  // “光源面/光源面盖/散热器后盖”这类结构件不能被当成 LED 芯片；必须出现明确芯片/灯珠/LED Chip/COB 或常见芯片品牌/型号。
+  if(preg_match('/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa)\b|\bled\s*(chip|module|cob)\b|\b(chip|cob)\s*led\b|芯片|灯珠/u',$s)) return 'led';
+  if(preg_match('/accessor|附件|配件|面环|线材|吊绳|弹簧|安装件|螺丝|螺钉/u',$s)) return 'accessories';
   return '';
 }
 function qspec_guess_components_from_bom($pdo,$model){
@@ -1281,20 +1316,27 @@ function qspec_guess_components_from_bom($pdo,$model){
       $blob=json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
       $sourceHashParts[]=$t.':'.substr(sha1($blob),0,12);
       $nodes=[];
-      foreach(qspec_json_values_from_row($r) as $js){
+      foreach(qspec_bom_detail_json_values_from_row($r) as $js){
         $a=json_decode($js,true);
         if(is_array($a)) qspec_flatten_nodes($a,$nodes);
       }
-      $nodes[]=$r;
+      $usedValues=[];
       foreach($nodes as $node){
         $txt=qspec_text_of_node($node);
         if($txt==='') continue;
         $cls=qspec_classify_component($txt);
-        if($cls && empty($hits[$cls])) $hits[$cls]=qspec_quote_name_of_node($node,$txt);
+        if($cls && empty($hits[$cls])){
+          $val=qspec_quote_name_of_node($node,$txt);
+          $vk=norm_key($val);
+          if($val!=='' && ($vk==='' || empty($usedValues[$vk]))){
+            $hits[$cls]=$val;
+            if($vk!=='') $usedValues[$vk]=$cls;
+          }
+        }
       }
     }
   }
-  return ['hits'=>$hits,'source_hash'=>sha1(implode('|',array_slice($sourceHashParts,0,50)))];
+  return ['hits'=>$hits,'source_hash'=>sha1('qspec-classifier-v2|'.implode('|',array_slice($sourceHashParts,0,50)))];
 }
 
 function qspec_spec_json_from_fields($d){
@@ -1354,8 +1396,11 @@ function qspec_auto_sync_product($pdo,$p,$force=false){
     return ['ok'=>true,'created'=>false,'updated'=>false,'spec'=>null,'message'=>'没有精确整灯 BOM，不读取也不生成报价关键件'];
   }
   $existing=qspec_existing_row_for_product($pdo,$p);
-  if($existing && !$force) return ['ok'=>true,'created'=>false,'updated'=>false,'spec'=>qspec_row_to_payload_rec($existing),'message'=>'已存在报价关键件，直接读取'];
+  if($existing && !$force && empty($existing['auto_generated'])) return ['ok'=>true,'created'=>false,'updated'=>false,'spec'=>qspec_row_to_payload_rec($existing),'message'=>'已存在人工维护的报价关键件，直接读取'];
   $guess=qspec_guess_components_from_bom($pdo,$model);
+  if($existing && !$force && !empty($existing['auto_generated']) && trim((string)($existing['source_hash']??''))===trim((string)($guess['source_hash']??''))){
+    return ['ok'=>true,'created'=>false,'updated'=>false,'spec'=>qspec_row_to_payload_rec($existing),'message'=>'已存在当前 BOM 的自动报价关键件，直接读取'];
+  }
   $hits=$guess['hits']??[];
   $data=[
     'naming_id'=>(string)($p['naming_id']??''),
