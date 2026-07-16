@@ -22737,9 +22737,11 @@ body.is-workspace-module .rank-value.success {
 body.is-workspace-module .rank-value.danger {
   color: #EF4444 !important;
 }
-body.is-workspace-module .rank-value.primary,
-body.is-workspace-module .rank-progress i {
+body.is-workspace-module .rank-value.primary {
   color: #2563EB !important;
+  background: transparent !important;
+}
+body.is-workspace-module .rank-progress i {
   background: #2563EB !important;
 }
 
