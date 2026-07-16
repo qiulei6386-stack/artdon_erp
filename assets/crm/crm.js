@@ -3221,20 +3221,20 @@
       }).join('') || '<tr><td colspan="7">暂无拜访 / 来访记录</td></tr>';
       var sampleShipments = (data.sample_shipments || []).map(function (s) {
         var statusText = ((TaskCenterModule.options || {}).sample_statuses || {})[s.status] || cnStatus(s.status || 'preparing');
-        return '<article class="sample-card compact" data-customer-sample-id="' + esc(s.id) + '"><div><strong>' + esc(s.sample_name || '-') + '</strong><small>' + esc([s.product_model, s.contact_name, s.opportunity_name].filter(Boolean).join(' · ')) + '</small></div><em>' + esc(statusText) + '</em><span>' + esc(s.courier_company || '未选快递') + '</span><button type="button" data-copy-tracking="' + esc(s.tracking_no || '') + '">' + esc(s.tracking_no || '未填写单号') + '</button><b>图片 ' + esc(s.image_count || 0) + ' · 附件 ' + esc(s.attachment_count || 0) + '</b></article>';
-      }).join('') || '<div class="visit-empty">暂无样品寄送记录。任务中心可新建样品寄送。</div>';
+        return '<tr data-detail-row="sample" data-detail-row-id="' + esc(s.id || s.sample_id || '') + '"><td>' + esc(s.sample_name || '-') + '</td><td>' + esc(s.courier_company || '-') + '</td><td>' + esc(s.tracking_no || '-') + '</td><td>' + esc(statusText) + '</td><td>' + esc(s.sent_at || s.shipped_at || s.created_at || '-') + '</td><td>' + esc(s.signed_at || s.received_at || '-') + '</td><td>' + esc(s.owner_name || s.creator_name || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。暂无样品寄送记录。</td></tr>';
       var opportunityRows = (data.opportunities || []).map(function (op) {
         var stage = OpportunityModule.stageLabel(op.stage);
         return '<tr data-detail-row="opportunity" data-detail-row-id="' + esc(op.id) + '"><td>' + esc(op.opportunity_name || '-') + '</td><td>' + esc(stage || '-') + '</td><td>' + esc((op.currency || 'USD') + ' ' + (op.expected_amount || 0)) + '</td><td>' + esc(op.probability || 0) + '%</td><td>' + esc(op.expected_close_date || op.close_date || '-') + '</td><td>' + esc(op.owner_name || '-') + '</td><td>' + esc(op.last_followup_at || op.updated_at || '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无商机</td></tr>';
-      var logs = (data.logs || []).map(function (log) {
-        return CustomerModule.logCard(log);
-      }).join('') || '<div class="lead-pool-empty"><strong>暂无日志</strong><span>客户编辑、分配、分组、转公海等操作会显示在这里。</span></div>';
+      var logs = (data.logs || []).map(function (log, index) {
+        return '<tr data-detail-row="log" data-detail-row-id="' + esc(log.id || index) + '"><td>' + esc(log.created_at || log.time || '-') + '</td><td>' + esc(log.operator_name || log.username || log.created_by || '-') + '</td><td>' + esc(log.action || log.action_label || log.event_type || '-') + '</td><td title="' + esc(log.content || log.detail || log.remark || '') + '">' + esc(log.content || log.detail || log.remark || '-') + '</td><td>' + esc(log.module || log.source_module || '客户中心') + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">暂无日志。客户编辑、分配、分组、转公海等操作会显示在这里。</td></tr>';
       var timeline = (data.timeline || []).map(function (item) {
-        return '<div><strong>' + esc(item.title) + '</strong><span>' + esc(item.event_time) + ' · ' + esc(item.event_type) + '</span><p>' + esc(item.detail || '-') + '</p></div>';
+        return '<div data-detail-row="timeline" data-detail-row-id="' + esc(item.id || item.event_time || item.title || '') + '"><strong>' + esc(item.title) + '</strong><span>' + esc(item.event_time) + ' · ' + esc(item.event_type) + '</span><p>' + esc(item.detail || '-') + '</p></div>';
       }).join('') || '<div><span>暂无业务时间轴</span></div>';
       var relations = (data.relations || []).map(function (item) {
-        return '<tr><td>' + esc(item.relation_type) + '</td><td>' + esc(item.related_name || ('#' + item.related_customer_id)) + '</td><td>' + esc(item.remark || '-') + '</td><td>' + esc(item.created_at || '-') + '</td></tr>';
+        return '<tr data-detail-row="relation" data-detail-row-id="' + esc(item.id || item.related_customer_id || '') + '"><td>' + esc(item.relation_type || '-') + '</td><td>' + esc(item.related_name || ('#' + item.related_customer_id)) + '</td><td>' + esc(item.remark || '-') + '</td><td>' + esc(item.created_at || '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="4">暂无客户关系</td></tr>';
       var events = (data.events || []).map(function (item) {
         return '<tr><td>' + esc(item.event_type) + '</td><td>' + esc(item.title) + '</td><td>' + esc(item.event_time || '-') + '</td><td>' + esc(item.remind_time || '-') + '</td><td>' + esc(item.status) + '</td></tr>';
@@ -3297,26 +3297,27 @@
         communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-communication-list">' + communicationAll + '</div></section>',
         followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-tab-stats"><span>跟进 ' + esc((data.followups || []).length) + '</span><span>待继续 ' + esc((data.followups || []).filter(function (f) { return (f.status || 'open') === 'open'; }).length) + '</span><span>有提醒 ' + esc((data.followups || []).filter(function (f) { return f.next_remind_time; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>跟进人</th><th>联系人</th><th>跟进方式</th><th>跟进内容</th><th>下次提醒</th><th>状态</th></tr></thead><tbody>' + follows + '</tbody></table></section>',
         visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type !== 'customer_arrival'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type === 'customer_arrival'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
-        samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="visit-tab-head"><div><strong>样品 / 寄送</strong><span>样品任务、寄送记录、快递单号、图片附件和签收跟进。</span></div><button type="button" data-customer-new-sample>新建样品寄送</button></div><div class="sample-list compact">' + sampleShipments + '</div></section>',
+        samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="customer-tab-stats"><span>样品数量 ' + esc((data.sample_shipments || []).length) + '</span><span>已寄出 ' + esc((data.sample_shipments || []).filter(function (s) { return ['sent','shipped','delivered','signed'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.sent_at || s.shipped_at; }).length) + '</span><span>已签收 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.signed_at || s.received_at; }).length) + '</span><span>待跟进 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 && !s.followup_id; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>样品名称</th><th>快递公司</th><th>快递单号</th><th>状态</th><th>寄出时间</th><th>签收时间</th><th>负责人</th></tr></thead><tbody>' + sampleShipments + '</tbody></table></section>',
         opportunities: opportunitiesPanel,
-        timeline: '<section class="customer-tab-panel" data-detail-panel="timeline"><div class="customer-timeline">' + timeline + '</div></section>',
-        relations: '<section class="customer-tab-panel" data-detail-panel="relations"><table class="crm-table"><thead><tr><th>关系</th><th>关联客户</th><th>备注</th><th>创建</th></tr></thead><tbody>' + relations + '</tbody></table></section>',
+        timeline: '<section class="customer-tab-panel" data-detail-panel="timeline"><div class="customer-tab-stats"><span>时间轴 ' + esc((data.timeline || []).length) + '</span><span>最近记录 ' + esc(((data.timeline || [])[0] || {}).event_time || '暂无') + '</span></div><div class="customer-timeline">' + timeline + '</div></section>',
+        relations: '<section class="customer-tab-panel" data-detail-panel="relations"><div class="customer-tab-stats"><span>关联客户 ' + esc((data.relations || []).length) + '</span><span>关联联系人 ' + esc((data.contacts || []).length) + '</span><span>关联项目 ' + esc(((data.linkage || {}).plm || {}).total || 0) + '</span><span>关联客户组 ' + esc((data.groups || []).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>关系</th><th>关联客户</th><th>备注</th><th>创建</th></tr></thead><tbody>' + relations + '</tbody></table></section>',
         events: '<section class="customer-tab-panel" data-detail-panel="events"><table class="crm-table"><thead><tr><th>类型</th><th>标题</th><th>事件时间</th><th>提醒时间</th><th>状态</th></tr></thead><tbody>' + events + '</tbody></table></section>',
         preferences: '<section class="customer-tab-panel" data-detail-panel="preferences"><div class="customer-field-grid"><div><span>意向产品分类</span><strong>' + esc(productPref.category || '未填') + '</strong></div><div><span>关注系列</span><strong>' + esc(productPref.series || '未填') + '</strong></div><div><span>常用功率/色温</span><strong>' + esc(productPref.power || '-') + ' / ' + esc(productPref.cct || '-') + '</strong></div><div><span>认证需求</span><strong>' + esc(productPref.certification || '未填') + '</strong></div><div><span>首选沟通</span><strong>' + esc(commPref.preferred_channel || '未填') + '</strong></div><div><span>语言/时区</span><strong>' + esc(commPref.language || '-') + ' / ' + esc(commPref.timezone || '-') + '</strong></div></div></section>',
         mail: mailPanel,
         social_chat: socialPanel,
         quote: '<section class="customer-tab-panel" data-detail-panel="quote">' + this.renderQuotePanel(quoteData) + '</section>',
-        plm: '<section class="customer-tab-panel" data-detail-panel="plm"><div class="customer-summary-grid"><button type="button"><span>项目</span><strong>0</strong><em>暂无项目关联</em></button><button type="button"><span>样品</span><strong>0</strong><em>暂无样品记录</em></button></div></section>',
+        plm: '<section class="customer-tab-panel" data-detail-panel="plm">' + this.renderPlmPanel((data.linkage && data.linkage.plm) || {}) + '</section>',
         bom: '<section class="customer-tab-panel" data-detail-panel="bom">' + this.renderBomPanel(bomData) + '</section>',
-        dispatch: '<section class="customer-tab-panel" data-detail-panel="dispatch"><div class="customer-summary-grid"><button type="button"><span>派工</span><strong>0</strong><em>暂无派工记录</em></button><button type="button"><span>逾期</span><strong>0</strong><em>无逾期派工</em></button></div></section>',
+        dispatch: '<section class="customer-tab-panel" data-detail-panel="dispatch">' + this.renderDispatchPanel((data.linkage && data.linkage.dispatch) || data.dispatch || {}) + '</section>',
         orders: '<section class="customer-tab-panel" data-detail-panel="orders">' + this.renderOrderPanel(orderData) + '</section>',
         documents: '<section class="customer-tab-panel" data-detail-panel="documents">' + this.renderDocumentPanel(documentData) + '</section>',
         shipments: '<section class="customer-tab-panel" data-detail-panel="shipments">' + this.renderShipmentPanel(shipmentData) + '</section>',
         receivables: '<section class="customer-tab-panel" data-detail-panel="receivables">' + this.renderReceivablePanel(receivableData) + '</section>',
-        materials: '<section class="customer-tab-panel" data-detail-panel="materials"><div class="customer-summary-grid"><button type="button"><span>资料包</span><strong>0</strong><em>暂无资料包记录</em></button><button type="button"><span>发送记录</span><strong>0</strong><em>暂无发送记录</em></button></div></section>',
-        files: '<section class="customer-tab-panel" data-detail-panel="files"><div class="customer-summary-grid"><button type="button"><span>文件</span><strong>0</strong><em>暂无客户文件</em></button><button type="button"><span>空间</span><strong>0 MB</strong><em>暂无占用</em></button></div></section>',
-        logs: '<section class="customer-tab-panel" data-detail-panel="logs"><div class="customer-log-list rich">' + logs + '</div></section>',
-        duplicate: '<section class="customer-tab-panel" data-detail-panel="duplicate"><div class="customer-summary-grid"><button type="button"><span>查重信号</span><strong>名称 / 邮箱 / 电话 / 域名</strong><em>新建客户时自动扫描</em></button><button type="button"><span>处理方式</span><strong>使用已有 / 继续新建 / 进暂存池</strong><em>高风险必须选择处理方式</em></button></div></section>'
+        materials: '<section class="customer-tab-panel" data-detail-panel="materials">' + this.renderMaterialPanel((data.linkage && data.linkage.materials) || data.materials || {}) + '</section>',
+        files: '<section class="customer-tab-panel" data-detail-panel="files">' + this.renderFilePanel((data.linkage && data.linkage.files) || data.files || {}) + '</section>',
+        logs: '<section class="customer-tab-panel" data-detail-panel="logs"><div class="customer-tab-stats"><span>日志 ' + esc((data.logs || []).length) + '</span><span>最近 ' + esc(((data.logs || [])[0] || {}).created_at || '暂无') + '</span><span>来源模块 客户中心</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>操作人</th><th>操作类型</th><th>内容</th><th>来源模块</th></tr></thead><tbody>' + logs + '</tbody></table></section>',
+        duplicate: '<section class="customer-tab-panel" data-detail-panel="duplicate">' + this.renderDuplicatePanel(data.duplicates || data.duplicate_matches || []) + '</section>',
+        events: '<section class="customer-tab-panel" data-detail-panel="events">' + this.renderRestorePanel(data.restore_records || data.restore_logs || []) + '</section>'
       };
       function hasPermissionText(key) {
         return state.permissions && state.permissions[key];
@@ -3939,6 +3940,51 @@
       }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配出货进度。') + '</td></tr>';
       return '<div class="customer-tab-stats"><span>出货批次 ' + esc(data.total || rows.length || 0) + '</span><span>未完成出货 ' + esc(data.open || 0) + '</span><span>已出货 ' + esc(done) + '</span><span>最近出货 ' + esc(data.latest_shipment_no || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>出货单号</th><th>订单号</th><th>日期</th><th>快递 / 物流</th><th>单号</th><th>状态</th><th>签收时间</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
+    renderMaterialPanel: function (data) {
+      var rows = Array.isArray(data) ? data : (data.rows || []);
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="material" data-detail-row-id="' + esc(row.id || row.package_id || row.material_id || index) + '"><td>' + esc(row.name || row.package_name || row.title || '-') + '</td><td>' + esc(row.type || row.material_type || '资料包') + '</td><td>' + esc(row.product_model || row.model || '-') + '</td><td>' + esc(row.file_count || row.files_count || 0) + '</td><td>' + esc(row.created_at || row.updated_at || '-') + '</td><td>' + esc(row.created_by || row.creator_name || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">暂无数据。资料系统接口待接入。</td></tr>';
+      return '<div class="customer-tab-stats"><span>资料包 ' + esc((data.total || rows.length || 0)) + '</span><span>文件数量 ' + esc(data.file_count || 0) + '</span><span>最近资料 ' + esc(data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>资料名称</th><th>类型</th><th>产品型号</th><th>文件数量</th><th>创建时间</th><th>创建人</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
+    renderPlmPanel: function (data) {
+      var rows = data.rows || [];
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="plm" data-detail-row-id="' + esc(row.id || row.project_id || row.project_no || index) + '"><td>' + esc(row.project_no || row.project_uid || '-') + '</td><td>' + esc(row.project_name || row.name || '-') + '</td><td>' + esc(row.stage || row.status || '-') + '</td><td>' + esc(row.owner_name || row.owner || '-') + '</td><td>' + esc(row.updated_at || row.latest_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">暂无数据。PLM 接口待接入。</td></tr>';
+      return '<div class="customer-tab-stats"><span>PLM 项目数 ' + esc(data.total || rows.length || 0) + '</span><span>样品数 ' + esc(data.sample_count || 0) + '</span><span>最近项目 ' + esc(data.latest_project || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>项目编号</th><th>项目名称</th><th>阶段</th><th>负责人</th><th>最近更新</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
+    renderDispatchPanel: function (data) {
+      var rows = Array.isArray(data) ? data : (data.rows || []);
+      var running = rows.filter(function (row) { return ['doing','processing','open','pending'].indexOf(String(row.status || '').toLowerCase()) >= 0; }).length;
+      var done = rows.filter(function (row) { return ['done','completed','finished'].indexOf(String(row.status || '').toLowerCase()) >= 0; }).length;
+      var overdue = rows.filter(function (row) { return Number(row.is_overdue || 0) || String(row.status || '').toLowerCase() === 'overdue'; }).length;
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="dispatch" data-detail-row-id="' + esc(row.id || row.task_id || index) + '"><td>' + esc(row.title || row.task_title || '-') + '</td><td>' + esc(row.assignee_name || row.executor_name || '-') + '</td><td>' + esc(cnStatus(row.status || '-')) + '</td><td>' + esc(row.due_at || row.deadline || '-') + '</td><td>' + esc(row.completed_at || row.finish_time || '-') + '</td><td>' + esc(row.source || row.source_module || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">暂无数据。暂无派工记录。</td></tr>';
+      return '<div class="customer-tab-stats"><span>派工数量 ' + esc(data.total || rows.length || 0) + '</span><span>进行中 ' + esc(data.running || running) + '</span><span>已完成 ' + esc(data.done || done) + '</span><span>逾期 ' + esc(data.overdue || overdue) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>派工标题</th><th>执行人</th><th>状态</th><th>截止时间</th><th>完成时间</th><th>来源</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
+    renderFilePanel: function (data) {
+      var rows = Array.isArray(data) ? data : (data.rows || []);
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="file" data-detail-row-id="' + esc(row.id || row.file_id || index) + '"><td>' + esc(row.filename || row.file_name || '-') + '</td><td>' + esc(row.type || row.mime_type || '-') + '</td><td>' + esc(row.source || row.source_module || '-') + '</td><td>' + esc(row.file_size || row.size || '-') + '</td><td>' + esc(row.uploaded_by || row.creator_name || '-') + '</td><td>' + esc(row.uploaded_at || row.created_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">暂无数据。暂无客户文件。</td></tr>';
+      return '<div class="customer-tab-stats"><span>文件 ' + esc(data.total || rows.length || 0) + '</span><span>空间 ' + esc(data.total_size || '0 MB') + '</span><span>最近上传 ' + esc(data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>大小</th><th>上传人</th><th>上传时间</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
+    renderDuplicatePanel: function (rows) {
+      rows = rows || [];
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="duplicate" data-detail-row-id="' + esc(row.id || row.customer_id || index) + '"><td>' + esc(row.customer_name || row.name || '-') + '</td><td>' + esc(row.reason || row.match_reason || '-') + '</td><td>' + esc(row.similarity || row.score || '0') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.phone || '-') + '</td><td>' + esc(row.country || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="6">暂无数据。当前没有重复检查结果。</td></tr>';
+      return '<div class="customer-tab-stats"><span>疑似重复 ' + esc(rows.length) + '</span><span>匹配规则 名称 / 邮箱 / 电话 / 域名</span><span>处理方式 合并 / 忽略 / 查看详情</span></div><table class="crm-table customer-detail-table"><thead><tr><th>相似客户</th><th>相似原因</th><th>相似度</th><th>邮箱</th><th>电话</th><th>国家</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
+    renderRestorePanel: function (rows) {
+      rows = rows || [];
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="restore_record" data-detail-row-id="' + esc(row.id || index) + '"><td>' + esc(row.restored_at || row.created_at || '-') + '</td><td>' + esc(row.operator_name || row.created_by || '-') + '</td><td>' + esc(row.content || row.restore_content || '-') + '</td><td>' + esc(row.backup_source || row.source || '-') + '</td><td>' + esc(row.result || row.status || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="5">暂无恢复记录。</td></tr>';
+      return '<div class="customer-tab-stats"><span>恢复记录 ' + esc(rows.length) + '</span><span>最近恢复 ' + esc((rows[0] || {}).restored_at || (rows[0] || {}).created_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>恢复时间</th><th>操作人</th><th>恢复内容</th><th>来源备份</th><th>结果</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+    },
     renderLinkedItems: function (items, priceVisible) {
       if (!items || !items.length) return '<div class="linkage-empty">暂无产品明细。</div>';
       return '<div class="linkage-line-items">' + items.slice(0, 12).map(function (item) {
@@ -3990,9 +4036,9 @@
       var rows = data.rows || [];
       var summary = '<div class="customer-summary-grid"><button type="button"><span>BOM 记录</span><strong>' + esc(data.total || 0) + '</strong><em>' + esc(data.message || 'BOM 系统未返回数据') + '</em></button><button type="button"><span>成本权限</span><strong>' + (data.cost_visible ? '可见' : '隐藏') + '</strong><em>供应商：' + (data.supplier_visible ? '可见' : '隐藏') + '</em></button><button type="button"><span>成本异常</span><strong>' + esc(data.cost_alerts || 0) + '</strong><em>最近 ' + esc(data.latest_at || '暂无') + '</em></button></div>';
       if (!rows.length) return summary + '<div class="linkage-empty">暂无匹配 BOM。匹配规则：BOM 客户字段、关联标题。</div>';
-      return summary + '<div class="linkage-table-wrap"><table class="crm-table linkage-table"><thead><tr><th>BOM UID</th><th>型号</th><th>名称</th><th>客户</th><th>更新</th><th>成本</th></tr></thead><tbody>' + rows.map(function (row) {
-        return '<tr><td>' + esc(row.project_uid || '-') + '</td><td>' + esc(row.model || '-') + '</td><td>' + esc(row.name || '-') + '</td><td>' + esc(row.customer || '-') + '</td><td>' + esc(row.updated_at || '-') + '</td><td>' + esc(row.cost || '***') + '</td></tr>' +
-          (row.items && row.items.length ? '<tr class="linkage-subrow"><td colspan="6">' + row.items.slice(0, 5).map(function (item) { return '<span>' + esc(item.category || '-') + ' · ' + esc(item.name || '-') + ' · ' + esc(item.qty || '-') + esc(item.unit || '') + (data.cost_visible ? ' · ' + esc(item.amount || '') : '') + '</span>'; }).join('') + '</td></tr>' : '');
+      return summary + '<div class="linkage-table-wrap"><table class="crm-table customer-detail-table linkage-table"><thead><tr><th>BOM 编号</th><th>产品型号</th><th>成本</th><th>状态</th><th>最近更新</th></tr></thead><tbody>' + rows.map(function (row, index) {
+        return '<tr data-detail-row="bom" data-detail-row-id="' + esc(row.id || row.project_uid || row.bom_no || index) + '"><td>' + esc(row.bom_no || row.project_uid || '-') + '</td><td>' + esc(row.model || row.product_model || '-') + '</td><td>' + esc(data.cost_visible ? (row.cost || row.amount || '0.00') : '***') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.updated_at || row.latest_at || '-') + '</td></tr>' +
+          (row.items && row.items.length ? '<tr class="linkage-subrow"><td colspan="5">' + row.items.slice(0, 5).map(function (item) { return '<span>' + esc(item.category || '-') + ' · ' + esc(item.name || '-') + ' · ' + esc(item.qty || '-') + esc(item.unit || '') + (data.cost_visible ? ' · ' + esc(item.amount || '') : '') + '</span>'; }).join('') + '</td></tr>' : '');
       }).join('') + '</tbody></table></div>';
     },
     bindCustomerPortraitOverviewEvents: function (root) {
@@ -6271,6 +6317,29 @@
         });
       }) || null;
     },
+    selectedDetailRowData: function (type) {
+      var selected = this.selectedDetailEntity || {};
+      var id = String(selected.id || '');
+      if (!id || selected.type !== type) return null;
+      var detail = this.currentDetail || {};
+      var linkage = detail.linkage || {};
+      var map = {
+        sample: detail.sample_shipments || [],
+        material: Array.isArray(detail.materials) ? detail.materials : ((linkage.materials || {}).rows || []),
+        plm: (linkage.plm || {}).rows || [],
+        bom: (linkage.bom || {}).rows || [],
+        dispatch: Array.isArray(detail.dispatch) ? detail.dispatch : ((linkage.dispatch || {}).rows || []),
+        relation: detail.relations || [],
+        duplicate: detail.duplicates || detail.duplicate_matches || [],
+        file: Array.isArray(detail.files) ? detail.files : ((linkage.files || {}).rows || []),
+        restore_record: detail.restore_records || detail.restore_logs || []
+      };
+      return (map[type] || []).find(function (row, index) {
+        return [row.id, row.sample_id, row.package_id, row.material_id, row.project_id, row.project_no, row.project_uid, row.bom_no, row.task_id, row.related_customer_id, row.customer_id, row.file_id, index].some(function (value) {
+          return String(value || '') === id;
+        });
+      }) || null;
+    },
     actions: function () {
       var hasCustomer = !!(this.currentDetail && this.currentDetail.customer && this.currentId);
       if (this.attributeViewMode) {
@@ -6364,6 +6433,55 @@
           { title: '单证', items: ['查看单证', '生成单证', '下载 PDF', '下载 Excel', '重新生成'] }
         ] : [
           { title: '单证', items: ['生成单证'] }
+        ];
+        if (sub === 'samples') return selected.type === 'sample' ? [
+          { title: '样品', items: ['新建样品寄送', '查看样品', '更新快递', '创建签收跟进'] }
+        ] : [
+          { title: '样品', items: ['新建样品寄送'] }
+        ];
+        if (sub === 'materials') return selected.type === 'material' ? [
+          { title: '资料', items: ['上传资料', '生成资料包', '下载资料', '发送资料给客户'] }
+        ] : [
+          { title: '资料', items: ['上传资料', '生成资料包'] }
+        ];
+        if (sub === 'plm') return selected.type === 'plm' ? [
+          { title: 'PLM', items: ['查看 PLM', '创建 PLM 项目', '同步 PLM'] }
+        ] : [
+          { title: 'PLM', items: ['创建 PLM 项目', '同步 PLM'] }
+        ];
+        if (sub === 'bom') return selected.type === 'bom' ? [
+          { title: 'BOM', items: ['查看 BOM', '创建 BOM', '同步 BOM'] }
+        ] : [
+          { title: 'BOM', items: ['创建 BOM', '同步 BOM'] }
+        ];
+        if (sub === 'dispatch') return selected.type === 'dispatch' ? [
+          { title: '派工', items: ['创建派工', '查看派工', '创建跟进', '查看完成记录'] }
+        ] : [
+          { title: '派工', items: ['创建派工'] }
+        ];
+        if (sub === 'relations') return selected.type === 'relation' ? [
+          { title: '关系', items: ['新增关系', '删除关系', '查看关系图谱'] }
+        ] : [
+          { title: '关系', items: ['新增关系', '查看关系图谱'] }
+        ];
+        if (sub === 'logs') return [
+          { title: '日志', items: ['筛选日志', '导出日志', '查看全部日志'] }
+        ];
+        if (sub === 'duplicate') return selected.type === 'duplicate' ? [
+          { title: '查重', items: ['执行查重', '合并客户', '忽略重复', '查看重复详情'] }
+        ] : [
+          { title: '查重', items: ['执行查重'] }
+        ];
+        if (sub === 'timeline') return [
+          { title: '时间轴', items: ['刷新时间轴', '查看全部日志', '导出日志'] }
+        ];
+        if (sub === 'files') return selected.type === 'file' ? [
+          { title: '文件', items: ['上传文件', '下载文件', '删除文件', '关联资料'] }
+        ] : [
+          { title: '文件', items: ['上传文件'] }
+        ];
+        if (sub === 'events') return [
+          { title: '恢复记录', items: ['查看恢复记录', '查看全部日志'] }
         ];
       }
       return [
@@ -6468,6 +6586,44 @@
         return;
       }
       if (label === '重新生成') return this.showCustomerError('重新生成单证接口待接入。');
+      if (label === '新建样品寄送') {
+        var currentCustomer = (this.currentDetail && this.currentDetail.customer) || {};
+        return TaskCenterModule.openSampleDialog({
+          customer_id: currentCustomer.id || this.currentId || '',
+          customer_name: currentCustomer.customer_name || currentCustomer.name || '',
+          country: currentCustomer.country || '',
+          city: currentCustomer.city || '',
+          owner_name: currentCustomer.owner_name || ''
+        });
+      }
+      if (label === '查看样品') {
+        var sample = this.selectedDetailRowData('sample');
+        if (!sample) return this.showCustomerError('请先选择样品记录。');
+        return this.showCustomerError('样品详情预览接口待接入，请先在任务中心查看。');
+      }
+      if (label === '更新快递') return this.showCustomerError('更新快递接口待接入，请先在任务中心处理。');
+      if (label === '创建签收跟进') return this.openFollowupDialog();
+      if (label === '上传资料' || label === '生成资料包' || label === '下载资料' || label === '发送资料给客户') return this.showCustomerError(label + '接口待接入。');
+      if (label === '查看 PLM' || label === '创建 PLM 项目' || label === '同步 PLM') return this.showCustomerError(label + '接口待接入。');
+      if (label === '查看 BOM' || label === '创建 BOM' || label === '同步 BOM') return this.showCustomerError(label + '接口待接入。');
+      if (label === '创建派工') return this.showCustomerError('创建派工接口待接入，请先在任务中心创建。');
+      if (label === '查看派工' || label === '查看完成记录') return this.showCustomerError(label + '接口待接入。');
+      if (label === '新增关系' || label === '删除关系' || label === '查看关系图谱') return this.showCustomerError(label + '接口待接入。');
+      if (label === '筛选日志') return this.switchDetailTab('logs');
+      if (label === '导出日志') return this.showCustomerError('导出日志接口待接入。');
+      if (label === '查看全部日志') return this.switchDetailTab('logs');
+      if (label === '执行查重' || label === '合并客户' || label === '忽略重复' || label === '查看重复详情') return this.showCustomerError(label + '接口待接入。');
+      if (label === '刷新时间轴') return this.loadDetail(this.currentId, { keepTab: true });
+      if (label === '上传文件' || label === '删除文件' || label === '关联资料') return this.showCustomerError(label + '接口待接入。');
+      if (label === '下载文件') {
+        var fileRow = this.selectedDetailRowData('file');
+        if (!fileRow) return this.showCustomerError('请先选择文件。');
+        var fileUrl = fileRow.url || fileRow.file_url || fileRow.file_path || '';
+        if (!fileUrl) return this.showCustomerError('文件下载地址暂未接入。');
+        window.open(fileUrl, '_blank');
+        return;
+      }
+      if (label === '查看恢复记录') return this.switchDetailTab('events');
       if (label === '新建拜访') return VisitModule.openVisitDialog('customer_visit');
       if (label === '新建来访') return VisitModule.openVisitDialog('customer_arrival');
       if (label === '查看拜访记录' || label === '查看来访记录') return VisitModule.handleAction(label);
