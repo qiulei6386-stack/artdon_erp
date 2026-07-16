@@ -39,10 +39,20 @@ function crm_marketing_schema_cache_valid(): bool
 
 function crm_marketing_schema_cache_write(): void
 {
-    @file_put_contents(crm_marketing_schema_cache_file(), json_encode([
+    crm_marketing_cache_write_file(crm_marketing_schema_cache_file(), json_encode([
         'signature' => crm_marketing_schema_cache_signature(),
         'checked_at' => time(),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+function crm_marketing_cache_write_file(string $file, string $content): void
+{
+    $dir = dirname($file);
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $tmp = $dir . '/.' . basename($file) . '.' . getmypid() . '.tmp';
+    if (@file_put_contents($tmp, $content) === false) return;
+    @rename($tmp, $file);
+    if (is_file($tmp)) @unlink($tmp);
 }
 
 function crm_marketing_ensure_tables(): void
@@ -273,7 +283,7 @@ function crm_marketing_bootstrap_cache_get(string $key, int $ttl = 60)
 function crm_marketing_bootstrap_cache_set(string $key, array $value): array
 {
     $file = crm_marketing_bootstrap_cache_dir() . '/crm_marketing_bootstrap_' . sha1($key) . '.json';
-    @file_put_contents($file, json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    crm_marketing_cache_write_file($file, json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     return $value;
 }
 
