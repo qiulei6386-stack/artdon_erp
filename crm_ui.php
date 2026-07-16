@@ -851,20 +851,81 @@ function crm_dashboard_customer_amount_rank(array $input = []): array
 function crm_dashboard_customer_quote_rank(array $input = []): array
 {
     if (!crm_dashboard_table_exists('quote_orders')) return crm_dashboard_table_result('报价数据未接入', ['客户','国家','负责人','报价','报价金额','成交金额','转化率','最近报价'], []);
+    $quoteCols = crm_dashboard_table_columns('quote_orders');
+    $quoteCurrencyExpr = in_array('currency', $quoteCols, true) ? "COALESCE(NULLIF(q.currency,''), 'USD')" : "'USD'";
     $sql = "SELECT q.customer_id, q.customer_name, COALESCE(c.country,'') AS country, COALESCE(c.owner_department,'') AS owner_name,
+        {$quoteCurrencyExpr} AS currency,
         COUNT(*) AS quote_count, SUM(CASE WHEN q.amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN q.amount + 0 ELSE 0 END) AS quote_amount,
-        COALESCE(o.order_amount,0) AS order_amount, MAX(COALESCE(q.quote_date, q.created_at)) AS last_quote
+        MAX(COALESCE(q.quote_date, q.created_at)) AS last_quote
         FROM quote_orders q LEFT JOIN crm_customers c ON c.id = q.customer_id
-        LEFT JOIN (SELECT customer_id, SUM(CASE WHEN amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN amount + 0 ELSE 0 END) AS order_amount FROM quote_sales_orders GROUP BY customer_id) o ON o.customer_id=q.customer_id
         WHERE DATE_FORMAT(COALESCE(q.quote_date, q.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
-        GROUP BY q.customer_id, q.customer_name, c.country, c.owner_department, o.order_amount
-        ORDER BY quote_amount DESC LIMIT 10";
+        GROUP BY q.customer_id, q.customer_name, c.country, c.owner_department, {$quoteCurrencyExpr}
+        ORDER BY quote_amount DESC LIMIT 80";
+    $orderBuckets = [];
+    if (crm_dashboard_table_exists('quote_sales_orders')) {
+        $orderCols = crm_dashboard_table_columns('quote_sales_orders');
+        $orderCurrencyExpr = in_array('currency', $orderCols, true) ? "COALESCE(NULLIF(currency,''), 'USD')" : "'USD'";
+        $orderSql = "SELECT customer_id, customer_name, {$orderCurrencyExpr} AS currency,
+            SUM(CASE WHEN amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN amount + 0 ELSE 0 END) AS order_amount
+            FROM quote_sales_orders GROUP BY customer_id, customer_name, {$orderCurrencyExpr}";
+        foreach (db()->query($orderSql)->fetchAll() as $orderRow) {
+            $customerKey = (string)($orderRow['customer_id'] ?: $orderRow['customer_name'] ?: 'unknown');
+            $currency = crm_dashboard_normalize_currency($orderRow['currency'] ?? 'USD');
+            $orderBuckets[$customerKey][$currency] = ($orderBuckets[$customerKey][$currency] ?? 0) + (float)($orderRow['order_amount'] ?? 0);
+        }
+    }
+    $grouped = [];
     $rows = [];
     foreach (db()->query($sql)->fetchAll() as $r) {
-        $qa = (float)$r['quote_amount']; $oa = (float)$r['order_amount'];
-        $rows[] = ['customer'=>$r['customer_name'] ?: '未命名客户', 'country'=>$r['country'] ?: '-', 'owner'=>$r['owner_name'] ?: '-', 'quotes'=>(string)(int)$r['quote_count'], 'quote_amount'=>crm_dashboard_money_text($qa, 'USD'), 'order_amount'=>crm_dashboard_money_text($oa, 'USD'), 'rate'=>$qa ? round($oa * 100 / $qa, 1) . '%' : '0%', 'last'=>substr((string)$r['last_quote'],0,10)];
+        $customerKey = (string)($r['customer_id'] ?: $r['customer_name'] ?: 'unknown');
+        $currency = crm_dashboard_normalize_currency($r['currency'] ?? 'USD');
+        if (!isset($grouped[$customerKey])) {
+            $grouped[$customerKey] = [
+                'customer' => $r['customer_name'] ?: '未命名客户',
+                'country' => $r['country'] ?: '-',
+                'owner' => $r['owner_name'] ?: '-',
+                'quotes' => 0,
+                'quote_bucket' => [],
+                'last' => '',
+                'sort_amount' => 0.0,
+            ];
+        }
+        $amount = (float)($r['quote_amount'] ?? 0);
+        $grouped[$customerKey]['quotes'] += (int)($r['quote_count'] ?? 0);
+        $grouped[$customerKey]['quote_bucket'][$currency] = ($grouped[$customerKey]['quote_bucket'][$currency] ?? 0) + $amount;
+        $grouped[$customerKey]['sort_amount'] = max((float)$grouped[$customerKey]['sort_amount'], $amount);
+        $last = substr((string)($r['last_quote'] ?? ''), 0, 10);
+        if ($last !== '' && $last > (string)$grouped[$customerKey]['last']) $grouped[$customerKey]['last'] = $last;
     }
-    return crm_dashboard_table_result('报价金额最高但未必成交', ['客户','国家','负责人','报价','报价金额','成交金额','转化率','最近报价'], $rows);
+    uasort($grouped, fn($a, $b) => ($b['sort_amount'] <=> $a['sort_amount']) ?: ($b['quotes'] <=> $a['quotes']));
+    foreach (array_slice($grouped, 0, 10, true) as $customerKey => $r) {
+        $ordersForCustomer = $orderBuckets[$customerKey] ?? [];
+        $quoteCurrencies = array_keys($r['quote_bucket']);
+        $orderCurrencies = array_keys($ordersForCustomer);
+        $rate = '0%';
+        if ($ordersForCustomer) {
+            $sameSingleCurrency = count($quoteCurrencies) === 1 && count($orderCurrencies) === 1 && crm_dashboard_normalize_currency($quoteCurrencies[0] ?? '') === crm_dashboard_normalize_currency($orderCurrencies[0] ?? '');
+            $quoteTotal = array_sum($r['quote_bucket']);
+            $orderTotal = array_sum($ordersForCustomer);
+            $rate = $sameSingleCurrency && $quoteTotal > 0 ? round($orderTotal * 100 / $quoteTotal, 1) . '%' : '-';
+        }
+        $zeroOrderBucket = [];
+        foreach ($r['quote_bucket'] as $currency => $_amount) {
+            $zeroOrderBucket[$currency] = 0;
+            break;
+        }
+        $rows[] = [
+            'customer' => $r['customer'],
+            'country' => $r['country'],
+            'owner' => $r['owner'],
+            'quotes' => (string)(int)$r['quotes'],
+            'quote_amount' => crm_dashboard_money_bucket_text($r['quote_bucket']),
+            'order_amount' => crm_dashboard_money_bucket_text($ordersForCustomer ?: $zeroOrderBucket),
+            'rate' => $rate,
+            'last' => $r['last'] ?: '-',
+        ];
+    }
+    return crm_dashboard_table_result('报价金额最高但未必成交，按报价原币种分别统计', ['客户','国家','负责人','报价','报价金额','成交金额','转化率','最近报价'], $rows);
 }
 
 function crm_dashboard_ar_customer_rank(array $input = []): array
