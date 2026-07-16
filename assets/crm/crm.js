@@ -1651,6 +1651,10 @@
     },
     renderMetricValue: function (value) {
       var text = String(value === undefined || value === null ? '0' : value);
+      var currencyParts = text.match(/(?:RMB|USD|EUR|HKD|CNY|AED|SAR)\s*[-+]?\d[\d,.]*/gi);
+      if (currencyParts && currencyParts.length > 1) {
+        return currencyParts.map(function (part) { return '<small class="metric-money">' + esc(part.replace(/\s+/, ' ')) + '</small>'; }).join('');
+      }
       if (text.indexOf(' / ') < 0) return esc(text);
       return text.split(' / ').map(function (part) { return '<small>' + esc(part) + '</small>'; }).join('');
     },
