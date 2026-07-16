@@ -1066,6 +1066,43 @@ function crm_mail_cleanup_generated_attachments(array $attachments): void
     }
 }
 
+function cleanupCrmMailTempFiles(int $maxAgeSeconds = 43200): array
+{
+    $maxAgeSeconds = max(3600, $maxAgeSeconds);
+    $now = time();
+    $roots = [
+        sys_get_temp_dir(),
+        sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'crm_mail_attach_datasheet_' . get_current_user(),
+    ];
+    $deleted = 0;
+    $failed = 0;
+    $checked = 0;
+    $samples = [];
+    foreach (array_unique($roots) as $root) {
+        if (!is_dir($root)) continue;
+        foreach (glob($root . DIRECTORY_SEPARATOR . 'crm_mail_attach_*') ?: [] as $path) {
+            if (!is_file($path)) continue;
+            $checked++;
+            $mtime = @filemtime($path);
+            if (!$mtime || ($now - $mtime) < $maxAgeSeconds) continue;
+            if (@unlink($path)) {
+                $deleted++;
+                if (count($samples) < 8) $samples[] = $path;
+            } else {
+                $failed++;
+            }
+        }
+    }
+    if ($deleted > 0 || $failed > 0) {
+        $payload = ['checked' => $checked, 'deleted' => $deleted, 'failed' => $failed, 'age_seconds' => $maxAgeSeconds, 'samples' => $samples];
+        error_log('cleanupCrmMailTempFiles: ' . json_encode($payload, JSON_UNESCAPED_UNICODE));
+        if (function_exists('crm_log_event')) {
+            crm_log_event('mail', 'temp_cleanup', 'mail_temp', '', null, $payload, $failed === 0, $failed > 0 ? '部分临时附件删除失败' : '');
+        }
+    }
+    return ['checked' => $checked, 'deleted' => $deleted, 'failed' => $failed];
+}
+
 function crm_mail_materialize_inline_data_images(array $mail): array
 {
     $mailId = (int)($mail['id'] ?? 0);
@@ -1862,29 +1899,34 @@ function crm_mail_datasheet_attachments(array $input): array
     if (!$refs) return [];
     crm_mail_ensure_datasheet_runtime();
     $attachments = [];
-    foreach ($refs as $ref) {
-        if ($ref['source'] === 'file') {
-            $stmt = ds_db()->prepare('SELECT * FROM datasheet_files WHERE id=? AND model_no=? AND is_deleted=0 LIMIT 1');
-            $stmt->execute([(int)$ref['id'], (string)$ref['model_no']]);
-            $file = $stmt->fetch();
-            if (!$file) throw new RuntimeException('资料附件不存在或已删除：' . $ref['model_no']);
-            $path = ds_local_path((string)$file['file_path']);
-            if ($path === '' || !is_file($path)) throw new RuntimeException('资料附件文件不存在：' . (string)($file['original_name'] ?? $ref['model_no']));
-            $attachments[] = ['name' => (string)($file['original_name'] ?: basename($path)), 'tmp_name' => $path, 'size' => (int)($file['size_bytes'] ?: filesize($path)), 'type' => (string)($file['mime_type'] ?: 'application/octet-stream'), 'attachment_type' => 'datasheet'];
-            continue;
+    try {
+        foreach ($refs as $ref) {
+            if ($ref['source'] === 'file') {
+                $stmt = ds_db()->prepare('SELECT * FROM datasheet_files WHERE id=? AND model_no=? AND is_deleted=0 LIMIT 1');
+                $stmt->execute([(int)$ref['id'], (string)$ref['model_no']]);
+                $file = $stmt->fetch();
+                if (!$file) throw new RuntimeException('资料附件不存在或已删除：' . $ref['model_no']);
+                $path = ds_local_path((string)$file['file_path']);
+                if ($path === '' || !is_file($path)) throw new RuntimeException('资料附件文件不存在：' . (string)($file['original_name'] ?? $ref['model_no']));
+                $attachments[] = ['name' => (string)($file['original_name'] ?: basename($path)), 'tmp_name' => $path, 'size' => (int)($file['size_bytes'] ?: filesize($path)), 'type' => (string)($file['mime_type'] ?: 'application/octet-stream'), 'attachment_type' => 'datasheet'];
+                continue;
+            }
+            $product = ds_product_detail_fast((int)$ref['id'], (string)$ref['model_no'], true);
+            if ($ref['format'] === 'excel') {
+                $attachments[] = crm_mail_datasheet_excel_file($product);
+            } elseif ($ref['format'] === 'pdf') {
+                $attachments[] = crm_mail_datasheet_pdf_file($product);
+            }
         }
-        $product = ds_product_detail_fast((int)$ref['id'], (string)$ref['model_no'], true);
-        if ($ref['format'] === 'excel') {
-            $attachments[] = crm_mail_datasheet_excel_file($product);
-        } elseif ($ref['format'] === 'pdf') {
-            $attachments[] = crm_mail_datasheet_pdf_file($product);
+        foreach ($attachments as $attachment) {
+            $path = (string)($attachment['tmp_name'] ?? '');
+            if ($path === '' || !is_file($path) || filesize($path) <= 0) {
+                throw new RuntimeException('资料附件生成失败，请重新获取资料后再发送：' . (string)($attachment['name'] ?? '资料附件'));
+            }
         }
-    }
-    foreach ($attachments as $attachment) {
-        $path = (string)($attachment['tmp_name'] ?? '');
-        if ($path === '' || !is_file($path) || filesize($path) <= 0) {
-            throw new RuntimeException('资料附件生成失败，请重新获取资料后再发送：' . (string)($attachment['name'] ?? '资料附件'));
-        }
+    } catch (Throwable $e) {
+        crm_mail_cleanup_generated_attachments($attachments);
+        throw $e;
     }
     return $attachments;
 }
@@ -4516,6 +4558,7 @@ function crm_mail_execute_send_job(array $account, array $input, array $attachme
 
 function crm_mail_send_start(array $input, array $files = []): array
 {
+    cleanupCrmMailTempFiles();
     $mode = (string)($input['mode'] ?? 'compose');
     crm_require(in_array($mode, ['reply', 'reply_all'], true) ? 'mail.view' : 'mail.send');
     $account = crm_mail_current_account(true);
@@ -4553,12 +4596,21 @@ function crm_mail_send_start(array $input, array $files = []): array
     $inlineResult = crm_mail_extract_inline_data_attachments($body);
     $body = (string)$inlineResult['html'];
     $attachments = array_merge(crm_mail_uploaded_files($files), crm_mail_draft_attachment_files($account, $input), crm_mail_original_attachments($account, $input), crm_mail_datasheet_attachments($input), $embeddedInlineResult['attachments'], $inlineResult['attachments']);
+    register_shutdown_function(static function (array $trackedAttachments): void {
+        crm_mail_cleanup_generated_attachments($trackedAttachments);
+    }, $attachments);
     $jobId = 'send_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
     $sendInput = $input;
     $sendInput['body_html'] = $body;
     $delayMinutes = max(0, min(10, (int)($account['delay_send_minutes'] ?? 0)));
     if ($delayMinutes > 0) {
-        $queuedAttachments = crm_mail_queue_attachment_files((int)$account['user_id'], $jobId, $attachments);
+        try {
+            $queuedAttachments = crm_mail_queue_attachment_files((int)$account['user_id'], $jobId, $attachments);
+        } catch (Throwable $e) {
+            crm_mail_cleanup_generated_attachments($attachments);
+            crm_log_event('mail', 'send_schedule_attachment_failed', 'mail', $jobId, null, ['to' => $to, 'subject' => $subject, 'error' => $e->getMessage()], false, $e->getMessage());
+            throw $e;
+        }
         $scheduledAt = date('Y-m-d H:i:s', time() + $delayMinutes * 60);
         db()->prepare('INSERT INTO crm_mail_send_jobs (user_id, mail_account_id, job_id, to_emails, subject, status, stage, percent, scheduled_at, payload_json, attachments_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, "scheduled", "waiting", 5, ?, ?, ?, NOW(), NOW())')
             ->execute([(int)$account['user_id'], (int)$account['id'], $jobId, $to, $subject, $scheduledAt, json_encode(['input' => $sendInput, 'body_original' => $bodyOriginal], JSON_UNESCAPED_UNICODE), json_encode($queuedAttachments, JSON_UNESCAPED_UNICODE)]);
@@ -4606,6 +4658,7 @@ function crm_mail_send_progress(string $jobId): array
 function crm_mail_send_due_jobs(int $limit = 20): array
 {
     crm_mail_ensure_tables();
+    $tempCleanup = cleanupCrmMailTempFiles();
     $limit = max(1, min(100, $limit));
     $stmt = db()->query("SELECT * FROM crm_mail_send_jobs WHERE status = 'scheduled' AND scheduled_at <= NOW() ORDER BY scheduled_at ASC, id ASC LIMIT {$limit}");
     $jobs = $stmt->fetchAll();
@@ -4643,7 +4696,7 @@ function crm_mail_send_due_jobs(int $limit = 20): array
             $rows[] = ['job_id' => (string)$job['job_id'], 'status' => 'failed', 'message' => $e->getMessage()];
         }
     }
-    return ['checked_at' => date('Y-m-d H:i:s'), 'due_count' => count($jobs), 'sent' => $sent, 'failed' => $failed, 'rows' => $rows];
+    return ['checked_at' => date('Y-m-d H:i:s'), 'due_count' => count($jobs), 'sent' => $sent, 'failed' => $failed, 'temp_cleanup' => $tempCleanup, 'rows' => $rows];
 }
 
 function crm_mail_send_cancel(string $jobId): array
@@ -4840,7 +4893,7 @@ function crm_mail_draft_delete(array $input): array
     if (!$ids) throw new RuntimeException('请选择草稿。');
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $params = array_merge($ids, [(int)$account['user_id'], (int)$account['id']]);
-    $stmt = db()->prepare("SELECT id, subject, to_emails, cc_emails, bcc_emails, updated_at FROM crm_mail_drafts WHERE id IN ({$placeholders}) AND user_id = ? AND mail_account_id = ?");
+    $stmt = db()->prepare("SELECT id, subject, to_emails, cc_emails, bcc_emails, attachments_json, updated_at FROM crm_mail_drafts WHERE id IN ({$placeholders}) AND user_id = ? AND mail_account_id = ?");
     $stmt->execute($params);
     $beforeRows = $stmt->fetchAll();
     if (!$beforeRows) throw new RuntimeException('草稿不存在或无权删除。');
@@ -4849,6 +4902,8 @@ function crm_mail_draft_delete(array $input): array
     $deleteParams = array_merge($validIds, [(int)$account['user_id'], (int)$account['id']]);
     db()->prepare("DELETE FROM crm_mail_drafts WHERE id IN ({$validPlaceholders}) AND user_id = ? AND mail_account_id = ?")->execute($deleteParams);
     foreach ($beforeRows as $row) {
+        $attachments = json_decode((string)($row['attachments_json'] ?? '[]'), true);
+        if (is_array($attachments) && $attachments) crm_mail_cleanup_queue_files($attachments);
         crm_log_event('mail', 'draft_delete', 'mail_draft', (string)(int)$row['id'], $row, null);
     }
     $count = count($validIds);
