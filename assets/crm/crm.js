@@ -3223,9 +3223,10 @@
         var statusText = ((TaskCenterModule.options || {}).sample_statuses || {})[s.status] || cnStatus(s.status || 'preparing');
         return '<article class="sample-card compact" data-customer-sample-id="' + esc(s.id) + '"><div><strong>' + esc(s.sample_name || '-') + '</strong><small>' + esc([s.product_model, s.contact_name, s.opportunity_name].filter(Boolean).join(' · ')) + '</small></div><em>' + esc(statusText) + '</em><span>' + esc(s.courier_company || '未选快递') + '</span><button type="button" data-copy-tracking="' + esc(s.tracking_no || '') + '">' + esc(s.tracking_no || '未填写单号') + '</button><b>图片 ' + esc(s.image_count || 0) + ' · 附件 ' + esc(s.attachment_count || 0) + '</b></article>';
       }).join('') || '<div class="visit-empty">暂无样品寄送记录。任务中心可新建样品寄送。</div>';
-      var opportunities = (data.opportunities || []).map(function (op) {
-        return '<article class="opportunity-card compact" data-customer-opportunity-id="' + esc(op.id) + '"><header><strong>' + esc(op.opportunity_name || '-') + '</strong><b>' + esc(OpportunityModule.stageLabel(op.stage)) + '</b></header><p>' + esc(op.project_name || op.related_model || '未填写项目/型号') + '</p><footer><span>' + esc(op.currency || 'USD') + ' ' + esc(op.expected_amount || 0) + '</span><span>' + esc(op.probability || 0) + '%</span><span>预测 ' + esc(op.forecast_amount || 0) + '</span><span>' + esc(op.owner_name || '-') + '</span><span>图片 ' + esc(op.image_count || 0) + '</span><span>附件 ' + esc(op.attachment_count || 0) + '</span></footer></article>';
-      }).join('') || '<div class="visit-empty">暂无商机。右侧 ACTIONS 可新建商机。</div>';
+      var opportunityRows = (data.opportunities || []).map(function (op) {
+        var stage = OpportunityModule.stageLabel(op.stage);
+        return '<tr data-detail-row="opportunity" data-detail-row-id="' + esc(op.id) + '"><td>' + esc(op.opportunity_name || '-') + '</td><td>' + esc(stage || '-') + '</td><td>' + esc((op.currency || 'USD') + ' ' + (op.expected_amount || 0)) + '</td><td>' + esc(op.probability || 0) + '%</td><td>' + esc(op.expected_close_date || op.close_date || '-') + '</td><td>' + esc(op.owner_name || '-') + '</td><td>' + esc(op.last_followup_at || op.updated_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无商机</td></tr>';
       var logs = (data.logs || []).map(function (log) {
         return CustomerModule.logCard(log);
       }).join('') || '<div class="lead-pool-empty"><strong>暂无日志</strong><span>客户编辑、分配、分组、转公海等操作会显示在这里。</span></div>';
@@ -3285,6 +3286,7 @@
       var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>群名称</th><th>平台</th><th>群成员数</th><th>负责人</th><th>最近使用时间</th><th>备注</th></tr></thead><tbody>' + chatGroups + '</tbody></table></section>';
       var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 0</span><span>附件 0</span><span>未回复 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody><tr><td colspan="7">暂无该客户关联邮件。邮件接口接入后会显示往来邮件。</td></tr></tbody></table></section>';
       var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-tab-stats"><span>WhatsApp ' + (c.whatsapp ? '1' : '0') + '</span><span>微信 ' + (c.wechat ? '1' : '0') + '</span><span>人工执行记录 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>平台</th><th>联系人</th><th>内容摘要</th><th>执行人</th><th>来源</th></tr></thead><tbody><tr><td colspan="6">接口待接入，可通过人工执行记录生成。</td></tr></tbody></table></section>';
+      var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
         customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute"><div class="customer-summary-grid"><button type="button" data-customer-attribute-open><span>客户属性</span><strong>查看 / 编辑</strong><em>客户身份、联系方式、地区地址、来源推广、负责人权限</em></button><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc((data.contacts || []).length) + '</strong><em>联系人、客户群和沟通群</em></button></div></section>',
@@ -3296,7 +3298,7 @@
         followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-tab-stats"><span>跟进 ' + esc((data.followups || []).length) + '</span><span>待继续 ' + esc((data.followups || []).filter(function (f) { return (f.status || 'open') === 'open'; }).length) + '</span><span>有提醒 ' + esc((data.followups || []).filter(function (f) { return f.next_remind_time; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>跟进人</th><th>联系人</th><th>跟进方式</th><th>跟进内容</th><th>下次提醒</th><th>状态</th></tr></thead><tbody>' + follows + '</tbody></table></section>',
         visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type !== 'customer_arrival'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type === 'customer_arrival'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
         samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="visit-tab-head"><div><strong>样品 / 寄送</strong><span>样品任务、寄送记录、快递单号、图片附件和签收跟进。</span></div><button type="button" data-customer-new-sample>新建样品寄送</button></div><div class="sample-list compact">' + sampleShipments + '</div></section>',
-        opportunities: '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="visit-tab-head"><div><strong>客户商机</strong><span>一个客户可有多个商机，分别关联报价、样品、资料、派工和订单。</span></div><button type="button" data-customer-new-opportunity>新建商机</button></div><div class="opportunity-list compact">' + opportunities + '</div></section>',
+        opportunities: opportunitiesPanel,
         timeline: '<section class="customer-tab-panel" data-detail-panel="timeline"><div class="customer-timeline">' + timeline + '</div></section>',
         relations: '<section class="customer-tab-panel" data-detail-panel="relations"><table class="crm-table"><thead><tr><th>关系</th><th>关联客户</th><th>备注</th><th>创建</th></tr></thead><tbody>' + relations + '</tbody></table></section>',
         events: '<section class="customer-tab-panel" data-detail-panel="events"><table class="crm-table"><thead><tr><th>类型</th><th>标题</th><th>事件时间</th><th>提醒时间</th><th>状态</th></tr></thead><tbody>' + events + '</tbody></table></section>',
@@ -3897,27 +3899,18 @@
     },
     renderQuotePanel: function (data) {
       var rows = data.rows || [];
-      var summary = '<div class="customer-summary-grid"><button type="button"><span>报价记录</span><strong>' + esc(data.total || 0) + '</strong><em>' + esc(data.message || '报价系统未返回数据') + '</em></button><button type="button"><span>待确认</span><strong>' + esc(data.pending || 0) + '</strong><em>最近 ' + esc(data.latest_at || '暂无') + '</em></button><button type="button"><span>已发送</span><strong>' + esc(data.sent || 0) + '</strong><em>' + (data.price_visible ? '金额 ' + esc(data.amount_total || '0.00') : '价格已隐藏') + '</em></button></div>';
-      if (!rows.length) return summary + '<div class="linkage-empty">暂无匹配报价。匹配规则：客户名、英文名、客户代码、报价客户 JSON。</div>';
-      return summary + '<div class="linkage-preview-list">' + rows.map(function (row) {
-        return '<details class="linkage-preview-card"><summary><strong>' + esc(row.quote_no || '-') + '</strong><span>' + esc(row.quote_date || '-') + ' · ' + esc(row.status || '-') + ' · 负责人 ' + esc(row.owner || '-') + '</span><b>' + esc(row.currency || '') + ' ' + esc(row.amount || '***') + '</b></summary><div class="linkage-preview-meta"><span>数量：' + esc(row.qty || '-') + '</span><span>客户：' + esc(row.customer_name || '-') + '</span></div>' + CustomerModule.renderLinkedItems(row.items || [], data.price_visible) + '<footer><a href="quotation.php?quote_id=' + esc(row.id || '') + '" target="_blank">打开报价</a><a href="crm_quote_preview.php?quote_id=' + esc(row.id || '') + '" target="_blank">预览报价单</a></footer></details>';
-      }).join('') + '</div>';
+      var tableRows = rows.map(function (row) {
+        return '<tr data-detail-row="quote" data-detail-row-id="' + esc(row.id || row.quote_id || row.quote_no || '') + '"><td>' + esc(row.quote_no || '-') + '</td><td>' + esc(row.quote_date || row.created_at || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.amount || row.total_amount || '***') + '</td><td>' + esc(row.currency || '-') + '</td><td>' + esc(row.owner || row.owner_name || '-') + '</td><td>' + esc(row.conversion_status || row.convert_status || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配报价。') + '</td></tr>';
+      return '<div class="customer-tab-stats"><span>报价数量 ' + esc(data.total || rows.length || 0) + '</span><span>待确认 ' + esc(data.pending || 0) + '</span><span>已发送 ' + esc(data.sent || 0) + '</span><span>转订单金额 ' + esc(data.order_amount || data.converted_amount || '0.00') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>报价单号</th><th>日期</th><th>状态</th><th>报价金额</th><th>币种</th><th>负责人</th><th>转化状态</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
     renderOrderPanel: function (data) {
       var rows = data.rows || [];
-      var avgOrder = rows.length ? Math.round(rows.reduce(function (sum, row) { return sum + Number(row.order_progress || 0); }, 0) / rows.length) : 0;
-      var avgShipment = rows.length ? Math.round(rows.reduce(function (sum, row) { return sum + Number(row.shipment_progress || 0); }, 0) / rows.length) : 0;
-      var avgPayment = rows.length ? Math.round(rows.reduce(function (sum, row) { return sum + Number(row.payment_progress || 0); }, 0) / rows.length) : 0;
       var summaryCurrency = this.currencyFromRows(rows);
-      var summary = '<div class="customer-summary-grid"><button type="button"><span>订单</span><strong>' + esc(data.total || 0) + '</strong><em>' + esc(data.message || '订单系统未返回数据') + '</em></button><button type="button"><span>未完成</span><strong>' + esc(data.open || 0) + '</strong><em>最近 ' + esc(data.latest_at || '暂无') + '</em></button><button type="button"><span>订单金额</span><strong>' + esc(data.price_visible ? this.moneyWithCurrency(data.amount_total || '0.00', summaryCurrency) : '***') + '</strong><em>按权限显示金额</em></button></div>' +
-        this.renderBusinessFlow([{ label: '订单确认', value: (data.total || 0) + ' 张', percent: avgOrder }, { label: '出货履约', value: (data.open || 0) + ' 未完', percent: avgShipment }, { label: '收款进度', value: avgPayment + '%', percent: avgPayment }]);
-      if (!rows.length) return summary + '<div class="linkage-empty">暂无匹配订单。匹配规则：订单客户、订单客户 JSON、报价号、订单号。</div>';
-      return summary + '<div class="linkage-preview-list">' + rows.map(function (row) {
-        var rowAmount = CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '');
-        var rowPaid = CustomerModule.moneyWithCurrency(row.paid_amount || '***', row.currency || '');
-        var rowBalance = CustomerModule.moneyWithCurrency(row.balance_amount || '***', row.currency || '');
-        return '<details class="linkage-preview-card"><summary><strong>' + esc(row.order_no || '-') + '</strong><span>报价 ' + esc(row.quote_no || '-') + ' · ' + esc(row.order_date || '-') + ' · ' + esc(row.status || '-') + '</span><b>' + esc(rowAmount) + '</b></summary><div class="linkage-progress-grid">' + CustomerModule.renderProgressBar('订单', row.order_progress || 0, row.status || '-') + CustomerModule.renderProgressBar('出货', row.shipment_progress || 0, row.shipment_status || '-') + CustomerModule.renderProgressBar('收款', row.payment_progress || 0, row.payment_status || '-') + '</div><div class="linkage-preview-meta"><span>出货：' + esc(row.shipment_status || '-') + '</span><span>收款：' + esc(row.payment_status || '-') + '</span><span>已收：<b class="paid-amount">' + esc(rowPaid) + '</b></span><span>未收：<b class="debt-amount">' + esc(rowBalance) + '</b></span><span>负责人：' + esc(row.owner || '-') + '</span></div>' + CustomerModule.renderLinkedItems(row.items || [], data.price_visible) + (row.note ? '<p class="linkage-preview-note">' + esc(row.note) + '</p>' : '') + '<footer><a href="quotation.php?order_id=' + esc(row.id || '') + '#orders" target="_blank">打开订单</a></footer></details>';
-      }).join('') + '</div>';
+      var tableRows = rows.map(function (row) {
+        return '<tr data-detail-row="order" data-detail-row-id="' + esc(row.id || row.order_id || row.order_no || '') + '"><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.order_date || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '')) + '</td><td><strong class="paid-amount">' + esc(CustomerModule.moneyWithCurrency(row.paid_amount || '0.00', row.currency || '')) + '</strong></td><td><strong class="debt-amount">' + esc(CustomerModule.moneyWithCurrency(row.balance_amount || '0.00', row.currency || '')) + '</strong></td><td>' + esc(row.owner || row.owner_name || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配订单。') + '</td></tr>';
+      return '<div class="customer-tab-stats"><span>订单数量 ' + esc(data.total || rows.length || 0) + '</span><span>订单金额 ' + esc(data.price_visible ? this.moneyWithCurrency(data.amount_total || '0.00', summaryCurrency) : '***') + '</span><span>未完成订单 ' + esc(data.open || 0) + '</span><span>最近订单 ' + esc(data.latest_order_no || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>订单号</th><th>日期</th><th>状态</th><th>订单金额</th><th>已收</th><th>欠款</th><th>负责人</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
     renderReceivablePanel: function (data) {
       var rows = data.rows || [];
@@ -3926,31 +3919,25 @@
       var amountTotal = priceVisible ? this.moneyWithCurrency(data.amount_total || '0.00', summaryCurrency) : '***';
       var paidTotal = priceVisible ? this.moneyWithCurrency(data.paid_total || '0.00', summaryCurrency) : '***';
       var balanceTotal = priceVisible ? this.moneyWithCurrency(data.balance_total || '0.00', summaryCurrency) : '***';
-      var summary = '<div class="customer-summary-grid"><button type="button"><span>收款进度</span><strong>' + esc(data.paid_percent || 0) + '%</strong><em>' + esc(data.status_text || data.message || '收款系统未返回数据') + '</em></button><button type="button"><span>欠款订单</span><strong>' + esc(data.unpaid_count || 0) + '</strong><em>订单总数 ' + esc(data.total_orders || 0) + '</em></button><button type="button"><span>欠款金额</span><strong class="debt-amount">' + esc(balanceTotal) + '</strong><em>已收 <b class="paid-amount">' + esc(paidTotal) + '</b></em></button></div>' +
-        this.renderBusinessFlow([{ label: '订单总额', value: amountTotal, percent: 100 }, { label: '已收款', value: paidTotal, percent: data.paid_percent || 0, className: 'paid' }, { label: '欠款', value: balanceTotal, percent: Math.max(0, 100 - Number(data.paid_percent || 0)), className: 'debt' }]);
-      if (!rows.length) return summary + '<div class="linkage-empty">' + esc(data.message || '暂无欠款明细。') + '</div>';
-      return summary + '<div class="linkage-table-wrap"><table class="crm-table linkage-table receivable-table"><thead><tr><th>订单号</th><th>日期</th><th>状态</th><th>订单金额</th><th>已收</th><th>欠款</th><th>进度</th><th>负责人</th></tr></thead><tbody>' + rows.map(function (row) {
-        return '<tr><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.order_date || '-') + '</td><td>' + esc(row.payment_status || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '')) + '</td><td><strong class="paid-amount">' + esc(CustomerModule.moneyWithCurrency(row.paid_amount || '***', row.currency || '')) + '</strong></td><td><strong class="debt-amount">' + esc(CustomerModule.moneyWithCurrency(row.balance_amount || '***', row.currency || '')) + '</strong></td><td>' + CustomerModule.renderProgressBar('收款', row.payment_progress || 0, '') + '</td><td>' + esc(row.owner || '-') + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
+      var tableRows = rows.map(function (row) {
+        return '<tr data-detail-row="receivable" data-detail-row-id="' + esc(row.id || row.order_id || row.order_no || '') + '"><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.order_date || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || '***', row.currency || '')) + '</td><td><strong class="paid-amount">' + esc(CustomerModule.moneyWithCurrency(row.paid_amount || '0.00', row.currency || '')) + '</strong></td><td><strong class="debt-amount">' + esc(CustomerModule.moneyWithCurrency(row.balance_amount || '0.00', row.currency || '')) + '</strong></td><td>' + esc(row.overdue_days || row.no_paid_days || 0) + '</td><td>' + esc(row.owner || row.owner_name || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无欠款明细。') + '</td></tr>';
+      return '<div class="customer-tab-stats"><span>欠款金额 <b class="debt-amount">' + esc(balanceTotal) + '</b></span><span>已收金额 <b class="paid-amount">' + esc(paidTotal) + '</b></span><span>订单总金额 ' + esc(amountTotal) + '</span><span>收款进度 ' + esc(data.paid_percent || 0) + '%</span></div><table class="crm-table customer-detail-table receivable-table"><thead><tr><th>订单号</th><th>日期</th><th>订单金额</th><th>已收</th><th>欠款</th><th>逾期天数</th><th>负责人</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
     renderDocumentPanel: function (data) {
       var rows = data.rows || [];
-      var summary = '<div class="customer-summary-grid"><button type="button"><span>单证</span><strong>' + esc(data.total || 0) + '</strong><em>' + esc(data.message || '单证系统未返回数据') + '</em></button><button type="button"><span>已生成</span><strong>' + esc(data.ready || 0) + '</strong><em>最近 ' + esc(data.latest_at || '暂无') + '</em></button></div>';
-      if (!rows.length) return summary + '<div class="linkage-empty">暂无匹配单证。生成 Packing List / Commercial Invoice 后会在这里显示。</div>';
-      return summary + '<div class="linkage-table-wrap"><table class="crm-table linkage-table"><thead><tr><th>类型</th><th>单证号</th><th>订单</th><th>出货批次</th><th>状态</th><th>生成时间</th></tr></thead><tbody>' + rows.map(function (row) {
-        return '<tr><td>' + esc(row.name || row.type || '-') + '</td><td>' + esc(row.document_no || '-') + '</td><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.shipment_no || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.generated_at || '-') + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
+      var tableRows = rows.map(function (row) {
+        return '<tr data-detail-row="document" data-detail-row-id="' + esc(row.id || row.document_id || row.document_no || '') + '"><td>' + esc(row.document_no || '-') + '</td><td>' + esc(row.name || row.type || '-') + '</td><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.generated_at || row.created_at || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + (row.pdf_url ? '有' : '-') + '</td><td>' + (row.excel_url ? '有' : '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配单证。') + '</td></tr>';
+      return '<div class="customer-tab-stats"><span>PI ' + esc(rows.filter(function (r) { return /pi/i.test(String(r.type || r.name || '')); }).length) + '</span><span>Packing List ' + esc(rows.filter(function (r) { return /packing|pl/i.test(String(r.type || r.name || '')); }).length) + '</span><span>Commercial Invoice ' + esc(rows.filter(function (r) { return /invoice|ci/i.test(String(r.type || r.name || '')); }).length) + '</span><span>单证总数 ' + esc(data.total || rows.length || 0) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>单证号</th><th>类型</th><th>关联订单</th><th>日期</th><th>状态</th><th>PDF</th><th>Excel</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
     renderShipmentPanel: function (data) {
       var rows = data.rows || [];
       var done = Math.max(0, Number(data.total || 0) - Number(data.open || 0));
-      var percent = Number(data.total || 0) ? Math.round(done / Number(data.total || 0) * 100) : 0;
-      var summary = '<div class="customer-summary-grid"><button type="button"><span>出货批次</span><strong>' + esc(data.total || 0) + '</strong><em>' + esc(data.message || '出货系统未返回数据') + '</em></button><button type="button"><span>未完成</span><strong>' + esc(data.open || 0) + '</strong><em>最近 ' + esc(data.latest_at || '暂无') + '</em></button></div>' +
-        this.renderBusinessFlow([{ label: '待出货', value: esc(data.open || 0), percent: Number(data.total || 0) ? Math.max(0, 100 - percent) : 0 }, { label: '已完成', value: done + ' 批', percent: percent }, { label: '单证/装箱', value: (data.total || 0) + ' 批', percent: percent }]);
-      if (!rows.length) return summary + '<div class="linkage-empty">暂无匹配出货进度。订单创建出货批次后会在这里显示。</div>';
-      return summary + '<div class="linkage-preview-list">' + rows.map(function (row, index) {
-        return '<details class="linkage-preview-card"><summary><strong>' + esc(row.shipment_no || '-') + '</strong><span>订单 ' + esc(row.order_no || '-') + ' · ' + esc(row.ship_date || '-') + ' · ' + esc(row.status || '-') + '</span><b>' + esc(row.total_cartons || 0) + ' CTN</b></summary><div class="linkage-preview-meta"><span>货代：' + esc(row.forwarder || '-') + '</span><span>方式：' + esc(row.ship_method || '-') + '</span><span>起运：' + esc(row.port_loading || '-') + '</span><span>目的：' + esc(row.port_destination || '-') + '</span><span>数量：' + esc(row.total_qty || '-') + '</span><span>NW/GW：' + esc(row.total_nw || '-') + ' / ' + esc(row.total_gw || '-') + '</span><span>CBM：' + esc(row.total_cbm || '-') + '</span></div>' + CustomerModule.renderShipmentItems(row.items || []) + CustomerModule.renderCartons(row.cartons || []) + '<footer><button type="button" data-shipment-preview="' + esc(index) + '">预览批次</button><a href="quotation.php?order_id=' + esc(row.order_id || '') + '#orders" target="_blank">打开订单出货</a></footer></details>';
-      }).join('') + '</div>';
+      var tableRows = rows.map(function (row, index) {
+        return '<tr data-detail-row="shipment" data-detail-row-id="' + esc(row.id || row.shipment_id || row.shipment_no || index) + '"><td>' + esc(row.shipment_no || '-') + '</td><td>' + esc(row.order_no || '-') + '</td><td>' + esc(row.ship_date || row.created_at || '-') + '</td><td>' + esc(row.forwarder || row.ship_method || '-') + '</td><td>' + esc(row.tracking_no || row.logistics_no || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.signed_at || row.delivered_at || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配出货进度。') + '</td></tr>';
+      return '<div class="customer-tab-stats"><span>出货批次 ' + esc(data.total || rows.length || 0) + '</span><span>未完成出货 ' + esc(data.open || 0) + '</span><span>已出货 ' + esc(done) + '</span><span>最近出货 ' + esc(data.latest_shipment_no || data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>出货单号</th><th>订单号</th><th>日期</th><th>快递 / 物流</th><th>单号</th><th>状态</th><th>签收时间</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
     renderLinkedItems: function (items, priceVisible) {
       if (!items || !items.length) return '<div class="linkage-empty">暂无产品明细。</div>';
@@ -6265,6 +6252,25 @@
         CustomerModule.showCustomerError(error.message || '保存选项卡失败');
       });
     },
+    selectedSalesRow: function (type) {
+      var selected = this.selectedDetailEntity || {};
+      var id = String(selected.id || '');
+      if (!id || selected.type !== type) return null;
+      var detail = this.currentDetail || {};
+      var linkage = detail.linkage || {};
+      var rows = [];
+      if (type === 'opportunity') rows = detail.opportunities || [];
+      if (type === 'quote') rows = (linkage.quote || {}).rows || [];
+      if (type === 'order') rows = (linkage.orders || {}).rows || [];
+      if (type === 'receivable') rows = (linkage.receivables || {}).rows || [];
+      if (type === 'shipment') rows = (linkage.shipments || {}).rows || [];
+      if (type === 'document') rows = (linkage.documents || {}).rows || [];
+      return rows.find(function (row, index) {
+        return [row.id, row.opportunity_id, row.quote_id, row.order_id, row.shipment_id, row.document_id, row.quote_no, row.order_no, row.shipment_no, row.document_no, index].some(function (value) {
+          return String(value || '') === id;
+        });
+      }) || null;
+    },
     actions: function () {
       var hasCustomer = !!(this.currentDetail && this.currentDetail.customer && this.currentId);
       if (this.attributeViewMode) {
@@ -6329,6 +6335,36 @@
         if (sub === 'communication_all') return [
           { title: '全部沟通', items: ['新建跟进', '新建拜访', '新建来访', '写邮件', '刷新沟通'] }
         ];
+        if (sub === 'opportunities') return selected.type === 'opportunity' ? [
+          { title: '商机', items: ['新建商机', '编辑商机', '推进阶段', '转报价', '关闭商机'] }
+        ] : [
+          { title: '商机', items: ['新建商机'] }
+        ];
+        if (sub === 'quote') return selected.type === 'quote' ? [
+          { title: '报价', items: ['创建报价', '查看报价', '复制报价', '转订单', '发送报价'] }
+        ] : [
+          { title: '报价', items: ['创建报价'] }
+        ];
+        if (sub === 'orders') return selected.type === 'order' ? [
+          { title: '订单', items: ['查看订单', '同步订单', '查看订单明细', '生成单证'] }
+        ] : [
+          { title: '订单', items: ['同步订单'] }
+        ];
+        if (sub === 'receivables') return selected.type === 'receivable' ? [
+          { title: '收款欠款', items: ['查看欠款明细', '登记收款', '导出欠款', '查看收款记录'] }
+        ] : [
+          { title: '收款欠款', items: ['导出欠款'] }
+        ];
+        if (sub === 'shipments') return selected.type === 'shipment' ? [
+          { title: '出货进度', items: ['查看出货', '新建出货', '更新物流', '查看签收记录'] }
+        ] : [
+          { title: '出货进度', items: ['新建出货'] }
+        ];
+        if (sub === 'documents') return selected.type === 'document' ? [
+          { title: '单证', items: ['查看单证', '生成单证', '下载 PDF', '下载 Excel', '重新生成'] }
+        ] : [
+          { title: '单证', items: ['生成单证'] }
+        ];
       }
       return [
         { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户', '编辑客户', '删除客户', '查看客户日志', '导入日志'] },
@@ -6369,6 +6405,69 @@
       if (label === '新建跟进') return this.openFollowupDialog();
       if (label === '新建商机') return OpportunityModule.openDialog();
       if (label === '查看商机') { activate('opportunities'); OpportunityModule.query = (this.currentDetail && this.currentDetail.customer && (this.currentDetail.customer.customer_name || this.currentDetail.customer.customer_code)) || ''; return OpportunityModule.load(); }
+      if (label === '编辑商机') {
+        var opportunity = this.selectedSalesRow('opportunity');
+        if (!opportunity) return this.showCustomerError('请先选择商机。');
+        return OpportunityModule.openDialog(opportunity);
+      }
+      if (label === '推进阶段' || label === '关闭商机') return this.showCustomerError(label + '接口待接入，请先到商机中心处理。');
+      if (label === '转报价' || label === '创建报价') {
+        var quoteUrl = 'quotation.php?customer_id=' + encodeURIComponent(this.currentId || '');
+        var selectedOpportunity = this.selectedSalesRow('opportunity');
+        if (selectedOpportunity && selectedOpportunity.id) quoteUrl += '&opportunity_id=' + encodeURIComponent(selectedOpportunity.id);
+        window.open(quoteUrl, '_blank');
+        return;
+      }
+      if (label === '查看报价') {
+        var quote = this.selectedSalesRow('quote');
+        if (!quote) return this.showCustomerError('请先选择报价。');
+        window.open('quotation.php?quote_id=' + encodeURIComponent(quote.id || quote.quote_id || '') + '&quote_no=' + encodeURIComponent(quote.quote_no || ''), '_blank');
+        return;
+      }
+      if (label === '复制报价') {
+        var copyQuote = this.selectedSalesRow('quote');
+        if (!copyQuote) return this.showCustomerError('请先选择报价。');
+        window.open('quotation.php?copy_quote_id=' + encodeURIComponent(copyQuote.id || copyQuote.quote_id || '') + '&quote_no=' + encodeURIComponent(copyQuote.quote_no || ''), '_blank');
+        return;
+      }
+      if (label === '转订单') {
+        var orderQuote = this.selectedSalesRow('quote');
+        if (!orderQuote) return this.showCustomerError('请先选择报价。');
+        window.open('quotation.php?quote_id=' + encodeURIComponent(orderQuote.id || orderQuote.quote_id || '') + '#orders', '_blank');
+        return;
+      }
+      if (label === '发送报价') return this.showCustomerError('发送报价接口待接入，请先在报价系统发送。');
+      if (label === '查看订单' || label === '查看订单明细') {
+        var order = this.selectedSalesRow('order') || this.selectedSalesRow('receivable');
+        if (!order) return this.showCustomerError('请先选择订单。');
+        window.open('quotation.php?order_id=' + encodeURIComponent(order.id || order.order_id || '') + '&order_no=' + encodeURIComponent(order.order_no || ''), '_blank');
+        return;
+      }
+      if (label === '同步订单') return this.showCustomerError('订单同步接口待接入。');
+      if (label === '生成单证') return this.showCustomerError('生成单证接口待接入，请先在订单/单证系统处理。');
+      if (label === '查看欠款明细' || label === '查看收款记录') return this.switchDetailTab('receivables');
+      if (label === '登记收款') return this.showCustomerError('登记收款接口待接入。');
+      if (label === '导出欠款') return this.showCustomerError('导出欠款接口待接入。');
+      if (label === '查看出货') {
+        var shipment = this.selectedSalesRow('shipment');
+        if (!shipment) return this.showCustomerError('请先选择出货记录。');
+        return this.openShipmentPreview(shipment);
+      }
+      if (label === '新建出货' || label === '更新物流' || label === '查看签收记录') return this.showCustomerError(label + '接口待接入，请先在订单出货系统处理。');
+      if (label === '查看单证') {
+        var doc = this.selectedSalesRow('document');
+        if (!doc) return this.showCustomerError('请先选择单证。');
+        return this.showCustomerError('单证查看接口待接入。');
+      }
+      if (label === '下载 PDF' || label === '下载 Excel') {
+        var documentRow = this.selectedSalesRow('document');
+        if (!documentRow) return this.showCustomerError('请先选择单证。');
+        var url = label === '下载 PDF' ? documentRow.pdf_url : documentRow.excel_url;
+        if (!url) return this.showCustomerError(label + '文件暂未生成。');
+        window.open(url, '_blank');
+        return;
+      }
+      if (label === '重新生成') return this.showCustomerError('重新生成单证接口待接入。');
       if (label === '新建拜访') return VisitModule.openVisitDialog('customer_visit');
       if (label === '新建来访') return VisitModule.openVisitDialog('customer_arrival');
       if (label === '查看拜访记录' || label === '查看来访记录') return VisitModule.handleAction(label);
