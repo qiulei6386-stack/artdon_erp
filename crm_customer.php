@@ -2805,7 +2805,6 @@ function crm_customer_force_delete(int $id, string $reason = ''): void
     $stmt->execute([$id]);
     $before = $stmt->fetch();
     if (!$before) throw new RuntimeException('客户不存在。');
-    if (empty($before['deleted_at'])) throw new RuntimeException('请先软删除客户，再执行强制删除。');
     if (trim($reason) === '') throw new RuntimeException('请填写强制删除原因。');
 
     $counts = crm_customer_force_delete_counts($id);

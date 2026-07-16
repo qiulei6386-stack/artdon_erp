@@ -6843,17 +6843,20 @@
       var ids = this.selected.size ? Array.from(this.selected) : (this.currentId ? [this.currentId] : []);
       var self = this;
       if (!ids.length) return this.showCustomerError('请先选择客户。');
-      this.openBusinessDialog(ids.length > 1 ? '批量删除客户' : '删除客户', '<section class="business-confirm-card danger"><strong>将删除 ' + esc(ids.length) + ' 个客户</strong><span>这是软删除，客户资料、联系人、跟进和日志会保留，可通过恢复客户找回。</span></section><label class="entity-field wide"><span>删除原因 *</span><textarea name="delete_reason" rows="4" data-delete-reason required placeholder="例如：重复客户 / 无效资料 / 测试数据"></textarea></label><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-delete-final>确认删除</button></div>', '删除会写入客户日志和敏感审计。', function (root) {
+      this.openBusinessDialog(ids.length > 1 ? '批量彻底删除客户' : '彻底删除客户', '<section class="business-confirm-card danger"><strong>将彻底删除 ' + esc(ids.length) + ' 个客户</strong><span>会永久删除客户主体、联系人、地址、负责人关系、分组关系、跟进、文件和客户画像数据；操作日志和敏感审计会保留。此操作不可恢复。</span></section><label class="entity-field wide"><span>删除原因 *</span><textarea name="delete_reason" rows="4" data-delete-reason required placeholder="例如：重复客户 / 无效资料 / 测试数据"></textarea></label><label class="entity-field"><span>确认文字 *</span><input data-delete-confirm placeholder="输入 彻底删除"></label><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-delete-final>彻底删除</button></div>', '高危操作：删除后不能恢复。', function (root) {
         root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
         root.querySelector('[data-delete-final]')?.addEventListener('click', function () {
           var reason = root.querySelector('[data-delete-reason]')?.value || '';
+          var confirmText = root.querySelector('[data-delete-confirm]')?.value || '';
           if (!String(reason).trim()) return self.showCustomerError('请填写删除原因。');
-          post(ids.length > 1 ? 'customer_batch_delete' : 'customer_delete', ids.length > 1 ? { customer_ids: ids, delete_reason: reason } : { customer_id: ids[0], delete_reason: reason }).then(function (json) {
+          if (String(confirmText).trim() !== '彻底删除') return self.showCustomerError('请输入“彻底删除”确认。');
+          post(ids.length > 1 ? 'customer_batch_force_delete' : 'customer_force_delete', ids.length > 1 ? { customer_ids: ids, delete_reason: reason } : { customer_id: ids[0], delete_reason: reason }).then(function (json) {
             if (!json.success) return self.showCustomerError(json.message || '删除失败');
             self.closeDialog();
             self.selected.clear();
             self.currentId = 0;
             self.currentDetail = null;
+            toast(json.message || '客户已彻底删除');
             self.renderEmptyOverview();
             self.loadList();
           });
@@ -6893,7 +6896,7 @@
       }
       var self = this;
       var customer = this.currentDetail.customer || {};
-      this.openBusinessDialog('强制删除客户', '<section class="business-confirm-card danger"><strong>' + esc(customer.customer_name || ('#' + this.currentId)) + '</strong><span>强制删除会永久删除客户主体、联系人、地址、分组关系、跟进、文件记录、画像关系等客户数据；操作日志和敏感审计会保留。此操作不可恢复。</span></section><label class="entity-field wide"><span>强制删除原因 *</span><textarea name="delete_reason" rows="4" data-force-delete-reason required placeholder="必须说明为什么永久删除"></textarea></label><label class="entity-field"><span>确认文字 *</span><input data-force-delete-confirm placeholder="输入 强制删除"></label><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-force-delete-final>永久删除</button></div>', '高危操作：必须先软删除客户，再强制删除。', function (root) {
+      this.openBusinessDialog('强制删除客户', '<section class="business-confirm-card danger"><strong>' + esc(customer.customer_name || ('#' + this.currentId)) + '</strong><span>强制删除会永久删除客户主体、联系人、地址、分组关系、跟进、文件记录、画像关系等客户数据；操作日志和敏感审计会保留。此操作不可恢复。</span></section><label class="entity-field wide"><span>强制删除原因 *</span><textarea name="delete_reason" rows="4" data-force-delete-reason required placeholder="必须说明为什么永久删除"></textarea></label><label class="entity-field"><span>确认文字 *</span><input data-force-delete-confirm placeholder="输入 强制删除"></label><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-force-delete-final>永久删除</button></div>', '高危操作：删除后不能恢复。', function (root) {
         root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
         root.querySelector('[data-force-delete-final]')?.addEventListener('click', function () {
           var reason = root.querySelector('[data-force-delete-reason]')?.value || '';
