@@ -487,16 +487,110 @@ function crm_dashboard_customer_distribution(string $type): array
 
 function crm_dashboard_key_reminders(): array
 {
-    $task = crm_dashboard_tasks_widget('today');
-    $overdue = crm_dashboard_tasks_widget('overdue');
-    $sample = crm_dashboard_samples_widget('signed_followup');
-    $visit = crm_dashboard_visits_widget('', 'today');
-    $items = array_merge(
-        ['今日任务：' . (int)($task['value'] ?? 0), '逾期任务：' . (int)($overdue['value'] ?? 0), '签收待跟进：' . (int)($sample['value'] ?? 0), '今日拜访/来访：' . (int)($visit['value'] ?? 0)],
-        array_slice((array)($task['items'] ?? []), 0, 2),
-        array_slice((array)($sample['items'] ?? []), 0, 2)
-    );
-    return ['value' => (int)($task['value'] ?? 0) + (int)($overdue['value'] ?? 0) + (int)($sample['value'] ?? 0), 'hint' => '任务 / 逾期 / 样品 / 拜访', 'items' => array_slice($items, 0, 8)];
+    $chips = [
+        ['key' => 'today_task', 'label' => '今日任务', 'value' => 0],
+        ['key' => 'overdue', 'label' => '逾期任务', 'value' => 0],
+        ['key' => 'signed_sample', 'label' => '签收待跟进', 'value' => 0],
+        ['key' => 'visit', 'label' => '今日拜访/来访', 'value' => 0],
+        ['key' => 'mail', 'label' => '邮件任务', 'value' => 0],
+    ];
+    $items = [];
+
+    if (db_table_exists('crm_tasks') && (has_permission('task.view') || is_super_admin())) {
+        $scope = crm_dashboard_task_scope('t');
+        $taskBase = "t.deleted_at IS NULL AND {$scope} AND t.status NOT IN ('done','closed','cancelled')";
+        $chips[0]['value'] = (int)db()->query("SELECT COUNT(*) FROM crm_tasks t WHERE {$taskBase} AND DATE(t.due_at)=CURDATE()")->fetchColumn();
+        $chips[1]['value'] = (int)db()->query("SELECT COUNT(*) FROM crm_tasks t WHERE {$taskBase} AND t.due_at IS NOT NULL AND t.due_at < NOW()")->fetchColumn();
+        $taskRows = db()->query("SELECT t.id, t.title, t.task_type, t.status, t.due_at, c.customer_name
+            FROM crm_tasks t
+            LEFT JOIN crm_customers c ON c.id=t.customer_id
+            WHERE {$taskBase} AND (DATE(t.due_at)=CURDATE() OR (t.due_at IS NOT NULL AND t.due_at < NOW()))
+            ORDER BY CASE WHEN t.due_at < NOW() THEN 0 ELSE 1 END, COALESCE(t.due_at,t.created_at) ASC, t.id DESC
+            LIMIT 6")->fetchAll();
+        foreach ($taskRows as $row) {
+            $isOverdue = !empty($row['due_at']) && strtotime((string)$row['due_at']) < time();
+            $days = $isOverdue ? max(0, (int)floor((time() - strtotime((string)$row['due_at'])) / 86400)) : 0;
+            $items[] = [
+                'type' => $isOverdue ? '逾期' : '任务',
+                'group' => $isOverdue ? 'overdue' : 'today_task',
+                'title' => (string)($row['title'] ?: '未命名任务'),
+                'meta' => '客户：' . (string)($row['customer_name'] ?: '未关联') . ' · ' . ($isOverdue ? ('逾期 ' . $days . ' 天') : substr((string)($row['due_at'] ?: ''), 0, 16)),
+                'target_module' => 'tasks',
+                'target_id' => (int)$row['id'],
+                'tone' => $isOverdue ? 'red' : 'blue',
+            ];
+        }
+    }
+
+    if (db_table_exists('crm_sample_shipments') && (has_permission('sample.view') || is_super_admin())) {
+        $scope = function_exists('crm_sample_scope_sql') ? crm_sample_scope_sql('s') : (is_super_admin() || has_permission('task.view_all') ? '1=1' : ('(s.owner_user_id=' . (int)(current_user()['id'] ?? 0) . ' OR s.created_by=' . (int)(current_user()['id'] ?? 0) . ')'));
+        $where = "s.deleted_at IS NULL AND {$scope} AND s.status='signed' AND (s.followup_time IS NULL OR s.followup_time <= DATE_ADD(NOW(), INTERVAL 1 DAY))";
+        $chips[2]['value'] = (int)db()->query("SELECT COUNT(*) FROM crm_sample_shipments s WHERE {$where}")->fetchColumn();
+        $sampleRows = db()->query("SELECT s.id, s.sample_name, s.tracking_no, s.followup_time, c.customer_name
+            FROM crm_sample_shipments s
+            LEFT JOIN crm_customers c ON c.id=s.customer_id
+            WHERE {$where}
+            ORDER BY COALESCE(s.followup_time,s.updated_at) ASC, s.id DESC LIMIT 3")->fetchAll();
+        foreach ($sampleRows as $row) {
+            $items[] = [
+                'type' => '签收',
+                'group' => 'signed_sample',
+                'title' => (string)($row['customer_name'] ?: $row['sample_name'] ?: '样品已签收'),
+                'meta' => '单号：' . (string)($row['tracking_no'] ?: '-') . ' · 需要跟进',
+                'target_module' => 'sample',
+                'target_id' => (int)$row['id'],
+                'tone' => 'green',
+            ];
+        }
+    }
+
+    if (db_table_exists('crm_visit_records') && (has_permission('visit.view') || is_super_admin())) {
+        $scope = crm_dashboard_visit_scope('v');
+        $where = "v.deleted_at IS NULL AND {$scope} AND v.visit_date=CURDATE()";
+        $chips[3]['value'] = (int)db()->query("SELECT COUNT(*) FROM crm_visit_records v WHERE {$where}")->fetchColumn();
+        $visitRows = db()->query("SELECT v.id, v.title, v.visit_type, v.visit_time, c.customer_name
+            FROM crm_visit_records v
+            LEFT JOIN crm_customers c ON c.id=v.customer_id
+            WHERE {$where}
+            ORDER BY COALESCE(v.visit_time,'23:59:59') ASC, v.id DESC LIMIT 3")->fetchAll();
+        foreach ($visitRows as $row) {
+            $type = $row['visit_type'] === 'customer_arrival' ? '来访' : '拜访';
+            $items[] = [
+                'type' => $type,
+                'group' => 'visit',
+                'title' => (string)($row['title'] ?: $type . '安排'),
+                'meta' => '客户：' . (string)($row['customer_name'] ?: '未关联') . ' · ' . substr((string)($row['visit_time'] ?: ''), 0, 5),
+                'target_module' => 'visits',
+                'target_id' => (int)$row['id'],
+                'tone' => 'cyan',
+            ];
+        }
+    }
+
+    $mailItems = crm_dashboard_unreplied_mail_items(3);
+    $mailCount = 0;
+    if (function_exists('crm_mail_dashboard_summary')) {
+        $summary = crm_mail_dashboard_summary();
+        $mailCount = (int)($summary['unreplied'] ?? 0);
+    }
+    $chips[4]['value'] = $mailCount;
+    foreach ($mailItems as $mail) {
+        if (empty($mail['id'])) continue;
+        $items[] = [
+            'type' => '邮件',
+            'group' => 'mail',
+            'title' => (string)($mail['subject'] ?? '无主题'),
+            'meta' => '客户：' . (string)($mail['customer_name'] ?? '未关联') . ' · ' . (string)($mail['time_text'] ?? ''),
+            'target_module' => 'mail',
+            'target_id' => (int)$mail['id'],
+            'related_mail_id' => (int)$mail['id'],
+            'payload' => ['account_id' => (int)($mail['mail_account_id'] ?? 0)],
+            'tone' => 'orange',
+        ];
+    }
+
+    $total = array_sum(array_map(fn($chip) => (int)($chip['value'] ?? 0), $chips));
+    return ['value' => $total, 'hint' => '任务 / 逾期 / 样品 / 拜访 / 邮件', 'chips' => $chips, 'items' => array_slice($items, 0, 12)];
 }
 
 function crm_dashboard_task_scope(string $alias = 't'): string
@@ -1415,12 +1509,31 @@ function crm_dashboard_weather(array $input = []): array
     return ['provider' => 'Open-Meteo', 'updated_at' => date('Y-m-d H:i:s'), 'from_cache' => !$force, 'cities' => $cities, 'warning' => $cities ? '' : '天气暂不可用，请点击刷新天气'];
 }
 
-function crm_dashboard_unreplied_mail_items(): array
+function crm_dashboard_unreplied_mail_items(int $limit = 12): array
 {
     if (!function_exists('crm_mail_current_account')) return [];
     $account = crm_mail_current_account(false);
     if (!$account || !db_table_exists('crm_mails')) return [];
-    $stmt = db()->prepare("SELECT subject, from_email, from_name, body_text, received_at FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND is_unreplied = 1 AND is_deleted = 0 ORDER BY COALESCE(received_at, created_at) DESC, id DESC LIMIT 5");
+    $limit = max(1, min(20, $limit));
+    $customerJoin = db_table_exists('crm_customers') ? 'LEFT JOIN crm_customers c ON c.id=m.linked_customer_id' : '';
+    $contactJoin = db_table_exists('crm_contacts') ? 'LEFT JOIN crm_contacts ct ON ct.id=m.linked_contact_id' : '';
+    $accountJoin = db_table_exists('crm_user_mail_accounts') ? 'LEFT JOIN crm_user_mail_accounts a ON a.id=m.mail_account_id' : '';
+    $stmt = db()->prepare("SELECT m.id, m.mail_account_id, m.subject, m.from_email, m.from_name, m.body_text, m.received_at, m.created_at,
+            m.linked_customer_id, m.linked_contact_id, m.attachment_count, m.has_attachment, m.mail_category,
+            " . ($customerJoin ? "c.customer_name" : "'' AS customer_name") . ",
+            " . ($contactJoin ? "ct.name AS contact_name" : "'' AS contact_name") . ",
+            " . ($accountJoin ? "a.email_address AS account_email" : "'' AS account_email") . "
+        FROM crm_mails m
+        {$customerJoin}
+        {$contactJoin}
+        {$accountJoin}
+        WHERE m.user_id = ? AND m.mail_account_id = ? AND m.is_unreplied = 1 AND m.is_deleted = 0
+        ORDER BY
+            CASE WHEN m.linked_customer_id IS NOT NULL AND m.linked_customer_id > 0 AND DATEDIFF(NOW(), COALESCE(m.received_at,m.created_at)) > 3 THEN 0 ELSE 1 END,
+            CASE WHEN m.linked_customer_id IS NOT NULL AND m.linked_customer_id > 0 THEN 0 ELSE 1 END,
+            CASE WHEN m.subject REGEXP 'enquiry|inquiry|quote|quotation|price|rfq|sample|project|询价|报价|样品' THEN 0 ELSE 1 END,
+            COALESCE(m.received_at, m.created_at) DESC, m.id DESC
+        LIMIT {$limit}");
     $stmt->execute([(int)$account['user_id'], (int)$account['id']]);
     $items = [];
     foreach ($stmt->fetchAll() as $row) {
@@ -1434,13 +1547,38 @@ function crm_dashboard_unreplied_mail_items(): array
         }
         $summary = preg_replace('/\s+/u', ' ', $summary) ?: '暂无正文摘要';
         $summary = function_exists('mb_substr') ? mb_substr($summary, 0, 80) : substr($summary, 0, 80);
+        $receivedTs = strtotime((string)($row['received_at'] ?: $row['created_at'] ?: '')) ?: time();
+        $days = max(0, (int)floor((time() - $receivedTs) / 86400));
+        $labels = [];
+        $labels[] = !empty($row['linked_customer_id']) ? '已关联客户' : '未关联';
+        if ($days > 3) $labels[] = '超过3天';
+        if ((int)($row['attachment_count'] ?? 0) > 0 || (int)($row['has_attachment'] ?? 0) > 0) $labels[] = '有附件';
+        if (preg_match('/enquiry|inquiry|quote|quotation|price|rfq|sample|project|询价|报价|样品/i', $subject)) $labels[] = '询盘';
         $items[] = [
+            'id' => (int)$row['id'],
+            'mail_account_id' => (int)$row['mail_account_id'],
             'from' => $name,
+            'from_email' => (string)($row['from_email'] ?? ''),
             'subject' => $subject,
             'summary' => $summary,
+            'customer_name' => (string)($row['customer_name'] ?: '未关联'),
+            'contact_name' => (string)($row['contact_name'] ?: ''),
+            'account_email' => (string)($row['account_email'] ?: ($account['email_address'] ?? '')),
+            'time_text' => crm_dashboard_relative_time($receivedTs),
+            'no_reply_days' => $days,
+            'labels' => array_values(array_unique($labels)),
         ];
     }
     return $items ?: [['from' => '暂无未回复邮件', 'subject' => '当前没有等待回复的邮件', 'summary' => '']];
+}
+
+function crm_dashboard_relative_time(int $timestamp): string
+{
+    $diff = max(0, time() - $timestamp);
+    if ($diff < 3600) return max(1, (int)floor($diff / 60)) . '分钟前';
+    if ($diff < 86400) return (int)floor($diff / 3600) . '小时前';
+    if ($diff < 86400 * 30) return (int)floor($diff / 86400) . '天前';
+    return date('Y-m-d', $timestamp);
 }
 
 function crm_workspace_role_key(array $user): string

@@ -22674,6 +22674,142 @@ body.is-workspace-module .workspace-reminder-list em,
 body.is-workspace-module .workspace-mail-mini-list button:hover b {
   color: #2563EB !important;
 }
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list button {
+  min-height: 62px !important;
+  align-content: start !important;
+  gap: 3px !important;
+  padding: 8px 10px !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list b {
+  color: #0F172A !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list span {
+  color: #0F172A !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list small {
+  color: #64748B !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list em {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  font-style: normal;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list em i {
+  border-radius: 999px;
+  background: #FFF7ED;
+  color: #C2410C;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 6px;
+}
+body.is-workspace-module .workspace-mail-more {
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  color: #2563EB;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+}
+body.is-workspace-module .workspace-reminder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+body.is-workspace-module .workspace-reminder-chips button {
+  height: 28px;
+  border: 1px solid #E2E8F0;
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+body.is-workspace-module .workspace-reminder-chips button.active {
+  border-color: #2563EB;
+  background: #EFF6FF;
+  color: #2563EB;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button {
+  min-height: 50px !important;
+  grid-template-columns: 54px minmax(0, 1fr) 42px !important;
+  gap: 3px 8px !important;
+  padding: 8px 10px !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button i {
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: start;
+  min-width: 42px;
+  border-radius: 999px;
+  background: #EFF6FF;
+  color: #2563EB;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button.tone-red i {
+  background: #FEF2F2;
+  color: #EF4444;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button.tone-orange i {
+  background: #FFFBEB;
+  color: #F59E0B;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button.tone-green i {
+  background: #F0FDF4;
+  color: #16A34A;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button.tone-cyan i {
+  background: #F0FDFA;
+  color: #0EA5A4;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list b {
+  grid-column: 2;
+  color: #0F172A;
+  font-size: 13px;
+  font-weight: 800;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list span {
+  grid-column: 2;
+  color: #64748B;
+  font-size: 11px;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list em {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  color: #2563EB !important;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+@media (max-width: 1180px) {
+  body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list,
+  body.is-workspace-module .workspace-reminder-list {
+    grid-template-columns: 1fr !important;
+  }
+}
 body.is-workspace-module .workspace-widget-group.is-today .workspace-widget[data-workspace-widget="tasks_today"]::after {
   background: #2563EB;
 }

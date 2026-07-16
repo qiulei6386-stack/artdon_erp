@@ -1135,6 +1135,7 @@
     catalog: [],
     layoutEditing: false,
     draggingWidgetKey: '',
+    reminderFilter: 'all',
     workspaceSections: {
       kpi: ['today', 'mailbox_summary', 'lead_pool', 'opportunity_pipeline', 'dispatch_overdue', 'quote_order_summary', 'quote_order_summary', 'unreplied_mail'],
       today: ['tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup'],
@@ -1303,6 +1304,25 @@
         if (event.target.closest('[data-workspace-refresh-weather]')) {
           event.stopPropagation();
           self.loadWeather(true);
+          return;
+        }
+        var reminderFilter = event.target.closest('[data-workspace-reminder-filter]');
+        if (reminderFilter) {
+          event.stopPropagation();
+          self.reminderFilter = reminderFilter.getAttribute('data-workspace-reminder-filter') || 'all';
+          self.render();
+          return;
+        }
+        var mailRow = event.target.closest('[data-workspace-mail-id]');
+        if (mailRow) {
+          event.stopPropagation();
+          self.openWorkspaceMail(Number(mailRow.getAttribute('data-workspace-mail-id') || 0), Number(mailRow.getAttribute('data-workspace-mail-account') || 0));
+          return;
+        }
+        var reminderRow = event.target.closest('[data-workspace-reminder-target]');
+        if (reminderRow) {
+          event.stopPropagation();
+          self.openReminderTarget(reminderRow);
           return;
         }
         var sizeButton = event.target.closest('[data-workspace-size]');
@@ -1474,22 +1494,31 @@
       var reminders = this.widgetByKey(widgets, 'key_reminders');
       var mail = this.widgetByKey(widgets, 'unreplied_mail');
       return '<section class="workspace-alert-mail">' +
-        '<article class="workspace-alert-card"><header><div><span>REMINDERS</span><h3>今日关键提醒</h3></div><b>' + esc(reminders.value || 0) + '</b></header>' + this.renderReminderList(reminders, widgets) + '</article>' +
+        '<article class="workspace-alert-card workspace-reminder-card"><header><div><span>REMINDERS</span><h3>今日关键提醒</h3></div><b>' + esc(reminders.value || 0) + '</b></header>' + this.renderReminderList(reminders, widgets) + '</article>' +
         '<article class="workspace-alert-card workspace-alert-mail-card"><header><div><span>MAIL</span><h3>未回复邮件</h3></div><b>' + esc(mail.value || 0) + '</b></header>' + this.renderUnrepliedMailBody(mail, 'panel') + '</article>' +
       '</section>';
     },
     renderReminderList: function (reminders, widgets) {
-      var items = (reminders.items || []).slice(0, 6);
+      var chips = reminders.chips || [];
+      var current = this.reminderFilter || 'all';
+      var items = (reminders.items || []).slice();
+      if (current !== 'all') items = items.filter(function (item) { return (item.group || item.type || '') === current; });
       if (!items.length) {
         ['tasks_today', 'tasks_overdue', 'sample_signed_followup', 'unreplied_mail'].forEach(function (key) {
           var widget = WorkspaceModule.widgetByKey(widgets, key);
-          if (Number(widget.value || 0) > 0) items.push((widget.title || widget.widget_name || key) + '：' + widget.value);
+          if (Number(widget.value || 0) > 0) items.push({ type: '提醒', group: 'all', title: (widget.title || widget.widget_name || key), meta: widget.value + ' 条待处理', target_module: key === 'unreplied_mail' ? 'mail' : 'tasks', tone: 'blue' });
         });
       }
-      if (!items.length) return '<div class="workspace-empty-mini">暂无关键提醒</div>';
-      return '<div class="workspace-reminder-list">' + items.slice(0, 6).map(function (item) {
-        var parts = String(item || '').split(' · ');
-        return '<button type="button" data-workspace-widget="key_reminders"><b>' + esc(parts[0] || '提醒') + '</b><span>' + esc(parts.slice(1).join(' · ') || '今天') + '</span><em>查看</em></button>';
+      var chipHtml = '<div class="workspace-reminder-chips"><button type="button" class="' + (current === 'all' ? 'active' : '') + '" data-workspace-reminder-filter="all">全部 ' + esc(reminders.value || 0) + '</button>' + chips.map(function (chip) {
+        var key = chip.key || chip.group || '';
+        return '<button type="button" class="' + (current === key ? 'active' : '') + '" data-workspace-reminder-filter="' + esc(key) + '">' + esc(chip.label || key) + ' ' + esc(chip.value || 0) + '</button>';
+      }).join('') + '</div>';
+      if (!items.length) return chipHtml + '<div class="workspace-empty-mini">暂无关键提醒</div>';
+      return chipHtml + '<div class="workspace-reminder-list">' + items.slice(0, 12).map(function (item) {
+        var payload = item.payload || {};
+        var mailId = Number(item.related_mail_id || item.mail_id || (item.target_module === 'mail' ? item.target_id : 0) || 0);
+        return '<button type="button" class="tone-' + esc(item.tone || 'blue') + '" data-workspace-reminder-target="' + esc(item.target_module || 'tasks') + '" data-workspace-reminder-id="' + esc(item.target_id || '') + '" data-workspace-reminder-mail-id="' + esc(mailId || '') + '" data-workspace-reminder-account="' + esc(payload.account_id || '') + '">' +
+          '<i>' + esc(item.type || '提醒') + '</i><b title="' + esc(item.title || '') + '">' + esc(item.title || '待处理事项') + '</b><span>' + esc(item.meta || item.customer_name || '') + '</span><em>查看</em></button>';
       }).join('') + '</div>';
     },
     widgetByKey: function (widgets, key) {
@@ -2053,15 +2082,18 @@
     renderUnrepliedMailBody: function (widget, size) {
       var count = Number(widget.value || 0);
       var isMicro = size === 'micro' || size === 'microWide' || size === 'microTall';
-      var limit = isMicro || size === 'sm' ? 0 : (size === 'wide' || size === 'tall' ? 3 : 5);
-      var showSummary = size === 'chart' || size === 'panel' || size === 'full';
+      var limit = isMicro || size === 'sm' ? 0 : (size === 'wide' || size === 'tall' ? 10 : 12);
       var rows = (widget.items || []).slice(0, limit);
       return '<div class="workspace-unreplied-head"><strong class="workspace-big">' + esc(count) + '</strong><span>未回复</span></div>' +
         (size === 'sm' || isMicro ? '' : '<p>' + esc(widget.hint || widget.desc || '') + '</p>') +
         '<div class="workspace-mail-mini-list compact-' + esc(size) + '">' + rows.map(function (item) {
           if (typeof item === 'string') return '<button type="button" data-workspace-widget="unreplied_mail"><b>' + esc(item) + '</b><span></span></button>';
-          return '<button type="button" data-workspace-widget="unreplied_mail"><b>' + esc(item.from || '未知发件人') + '</b><span>' + esc(item.subject || '无主题') + '</span>' + (showSummary ? '<small>' + esc(item.summary || '') + '</small>' : '') + '</button>';
-        }).join('') + '</div>';
+          var labels = (item.labels || []).slice(0, 4).map(function (label) { return '<i>' + esc(label) + '</i>'; }).join('');
+          var fromLine = (item.from || '未知发件人') + (item.time_text ? ' · ' + item.time_text : '');
+          var meta = '客户：' + (item.customer_name || '未关联') + (item.contact_name ? ' · ' + item.contact_name : '') + ' · 未回复 ' + esc(item.no_reply_days || 0) + ' 天' + (item.account_email ? ' · ' + item.account_email : '');
+          return '<button type="button" data-workspace-mail-id="' + esc(item.id || '') + '" data-workspace-mail-account="' + esc(item.mail_account_id || '') + '">' +
+            '<b title="' + esc(fromLine) + '">' + esc(fromLine) + '</b><span title="' + esc(item.subject || '') + '">' + esc(item.subject || '无主题') + '</span><small title="' + esc(meta) + '">' + esc(meta) + '</small><em>' + labels + '</em></button>';
+        }).join('') + '</div>' + (size === 'sm' || isMicro ? '' : '<button type="button" class="workspace-mail-more" data-workspace-widget="unreplied_mail">查看全部未回复邮件</button>');
     },
     renderConfig: function () {
       var box = document.querySelector('[data-workspace-config-list]');
@@ -2150,6 +2182,70 @@
     openCustomize: function () {
       activate('settings');
       window.setTimeout(function () { SettingsConsole.switchTo('dashboard'); }, 0);
+    },
+    openWorkspaceMail: function (mailId, accountId) {
+      activate('mail');
+      window.setTimeout(function () {
+        if (!window.MailModule || !mailId) return;
+        var openMail = function () {
+          MailModule.folder = 'unreplied';
+          MailModule.quick = '';
+          MailModule.page = 1;
+          document.querySelectorAll('[data-mail-folder]').forEach(function (item) {
+            item.classList.toggle('active', item.getAttribute('data-mail-folder') === 'unreplied');
+          });
+          return MailModule.loadList({ silent: true }).then(function () {
+            MailModule.selectMail(mailId);
+          }).catch(function () {
+            MailModule.selectMail(mailId);
+          });
+        };
+        if (accountId && MailModule.switchAccount && (!MailModule.account || Number(MailModule.account.id || 0) !== accountId)) {
+          MailModule.switchAccount(accountId, { silent: true }).then(openMail).catch(openMail);
+        } else {
+          openMail();
+        }
+      }, 120);
+      post('log_event', { module: 'workspace', event: 'mail_open', target: String(mailId || '') });
+    },
+    openReminderTarget: function (button) {
+      var target = button.getAttribute('data-workspace-reminder-target') || '';
+      var id = Number(button.getAttribute('data-workspace-reminder-id') || 0);
+      var mailId = Number(button.getAttribute('data-workspace-reminder-mail-id') || 0);
+      var accountId = Number(button.getAttribute('data-workspace-reminder-account') || 0);
+      if (target === 'mail' || mailId) return this.openWorkspaceMail(mailId || id, accountId);
+      if (target === 'sample') {
+        activate('tasks');
+        window.setTimeout(function () {
+          if (window.TaskCenterModule) {
+            TaskCenterModule.view = 'sample';
+            TaskCenterModule.selectedType = 'sample';
+            TaskCenterModule.selectedId = id;
+            TaskCenterModule.load();
+          }
+        }, 80);
+        return;
+      }
+      if (target === 'visits') {
+        activate(state.modules.visits ? 'visits' : 'tasks');
+        return;
+      }
+      if (target === 'customers') {
+        activate('customers');
+        return;
+      }
+      if (target === 'quote' || target === 'receivable' || target === 'order') {
+        activate(state.modules.linkage ? 'linkage' : 'workspace');
+        return;
+      }
+      activate('tasks');
+      window.setTimeout(function () {
+        if (window.TaskCenterModule && id) {
+          TaskCenterModule.selectedType = 'task';
+          TaskCenterModule.selectedId = id;
+          TaskCenterModule.load();
+        }
+      }, 80);
     },
     openWidget: function (key) {
       var widget = this.widgets.find(function (item) { return item.key === key; });
