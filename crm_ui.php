@@ -1107,14 +1107,17 @@ function crm_dashboard_fx(array $input = []): array
     $cache = $cacheStmt->fetch() ?: null;
     $cacheRates = $cache ? (json_decode((string)($cache['rates_json'] ?? ''), true) ?: []) : [];
     $fresh = $cache && strtotime((string)$cache['fetched_at']) >= time() - 21600;
-    if ($fresh && !$force) {
-        return ['provider' => $cache['provider'] ?: 'Cache', 'base' => $base, 'date' => $cache['rate_date'], 'fetched_at' => $cache['fetched_at'], 'from_cache' => true, 'rates' => array_intersect_key($cacheRates, array_flip($symbols))];
+    if (!$force) {
+        if ($cacheRates) {
+            return ['provider' => $cache['provider'] ?: 'Cache', 'base' => $base, 'date' => $cache['rate_date'], 'fetched_at' => $cache['fetched_at'], 'from_cache' => true, 'is_stale' => $fresh ? 0 : 1, 'rates' => array_intersect_key($cacheRates, array_flip($symbols)), 'warning' => $fresh ? '' : '汇率使用上一次缓存，请点击刷新更新'];
+        }
+        return ['provider' => '', 'base' => $base, 'date' => null, 'fetched_at' => null, 'from_cache' => true, 'rates' => [], 'warning' => '汇率暂不可用，请点击刷新汇率'];
     }
     $rates = [];
     $provider = 'Frankfurter';
     $date = date('Y-m-d');
     $url = 'https://api.frankfurter.dev/v1/latest?base=' . rawurlencode($base) . '&symbols=' . rawurlencode(implode(',', $symbols));
-    $res = crm_dashboard_http_json($url, 3);
+    $res = crm_dashboard_http_json($url, 2);
     if ($res['ok'] && !empty($res['data']['rates']) && is_array($res['data']['rates'])) {
         $rates = $res['data']['rates'];
         $date = (string)($res['data']['date'] ?? $date);
@@ -1122,7 +1125,7 @@ function crm_dashboard_fx(array $input = []): array
         crm_dashboard_api_log('Frankfurter', 'fx', $url, $res['status'], $res['error']);
         $provider = 'ExchangeRate-API';
         $url = 'https://open.er-api.com/v6/latest/' . rawurlencode($base);
-        $res = crm_dashboard_http_json($url, 3);
+        $res = crm_dashboard_http_json($url, 2);
         if ($res['ok'] && !empty($res['data']['rates']) && is_array($res['data']['rates'])) {
             foreach ($symbols as $symbol) {
                 if (isset($res['data']['rates'][$symbol])) $rates[$symbol] = $res['data']['rates'][$symbol];
