@@ -5858,7 +5858,7 @@
           });
         }
       );
-      post('mail_get', { mail_id: mailId, include_crm: '0' }).then(function (json) {
+      post('customer_mail_preview', { customer_id: self.currentId || 0, mail_id: mailId }).then(function (json) {
         if (!json.success) throw new Error(json.message || '邮件读取失败');
         var mail = (json.data || {}).mail || {};
         self.renderCustomerMailPreview(mail);

@@ -1050,6 +1050,10 @@ try {
         crm_require('customer.view');
         api_response(true, '', crm_customer_get((int)($_POST['customer_id'] ?? 0), (string)($_POST['detail'] ?? 'full')));
     }
+    if ($action === 'customer_mail_preview') {
+        crm_require('customer.view');
+        api_response(true, '', crm_customer_mail_preview((int)($_POST['customer_id'] ?? 0), (int)($_POST['mail_id'] ?? 0)));
+    }
     if ($action === 'customer_attribute_get') {
         crm_require('customer.view');
         api_response(true, '', crm_customer_attribute_get((int)($_POST['customer_id'] ?? 0)));

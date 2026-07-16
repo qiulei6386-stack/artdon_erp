@@ -4608,6 +4608,67 @@ function crm_customer_mail_rows(int $customerId, int $limit = 50): array
     return $rows;
 }
 
+function crm_customer_mail_preview(int $customerId, int $mailId): array
+{
+    if ($customerId <= 0 || $mailId <= 0) throw new RuntimeException('客户或邮件无效。');
+    if (!has_permission('customer.mail_summary') && !has_permission('mail.view') && !is_super_admin()) {
+        throw new RuntimeException('没有权限查看该客户邮件正文。');
+    }
+    // Enforce customer visibility with the existing customer scope rules.
+    crm_customer_get($customerId, 'overview');
+    if (!crm_table_exists_safe('crm_mails')) throw new RuntimeException('邮件表不存在。');
+
+    $mailCols = crm_table_columns_safe('crm_mails');
+    $params = [$mailId];
+    $where = crm_customer_mail_match_scope($customerId, $mailCols, $params);
+    if (!$where) throw new RuntimeException('该客户没有可匹配的邮件。');
+    $deletedExpr = in_array('is_deleted', $mailCols, true) ? 'm.is_deleted = 0' : '1=1';
+    $stmt = db()->prepare('SELECT m.*, c.customer_name AS linked_customer_name FROM crm_mails m LEFT JOIN crm_customers c ON c.id = m.linked_customer_id WHERE m.id = ? AND ' . $deletedExpr . ' AND (' . implode(' OR ', $where) . ') LIMIT 1');
+    $stmt->execute($params);
+    $mail = $stmt->fetch();
+    if (!$mail) throw new RuntimeException('邮件不存在、未关联该客户，或无权查看。');
+
+    if (function_exists('crm_mail_clean_utf8')) {
+        $mail['body_html'] = crm_mail_clean_utf8((string)($mail['body_html'] ?? ''));
+        $mail['body_text'] = crm_mail_clean_utf8((string)($mail['body_text'] ?? ''));
+    }
+    if (trim((string)($mail['body_html'] ?? '')) === '' && trim((string)($mail['body_text'] ?? '')) !== '') {
+        $mail['body_html'] = nl2br(htmlspecialchars((string)$mail['body_text'], ENT_QUOTES, 'UTF-8'));
+    }
+    if (trim(strip_tags((string)($mail['body_html'] ?? ''))) === '' && (string)($mail['body_html'] ?? '') !== '') {
+        $mail['body_text'] = trim((string)($mail['body_text'] ?? '')) ?: '此邮件包含图片、表格或特殊格式正文。';
+    }
+
+    $attachments = [];
+    if (crm_table_exists_safe('crm_mail_attachments')) {
+        $attach = db()->prepare('SELECT id, file_name, filename, original_filename, file_path, file_size, mime_type, attachment_type, message_id, content_id, is_inline, is_signature_image, preview_status, CASE WHEN COALESCE(is_inline,0) = 0 AND COALESCE(is_signature_image,0) = 0 THEN 1 ELSE 0 END AS is_visible_attachment, CASE WHEN file_path IS NOT NULL AND file_path <> "" AND COALESCE(is_inline,0) = 0 AND COALESCE(is_signature_image,0) = 0 THEN 1 ELSE 0 END AS can_forward_file FROM crm_mail_attachments WHERE mail_id = ? AND user_id = ? ORDER BY id');
+        $attach->execute([$mailId, (int)($mail['user_id'] ?? 0)]);
+        $attachments = $attach->fetchAll();
+        if (function_exists('crm_mail_inline_body_html')) {
+            $mail['body_html'] = crm_mail_inline_body_html((string)($mail['body_html'] ?? ''), $attachments);
+        }
+    }
+    $visibleAttachmentCount = 0;
+    foreach ($attachments as $attachment) {
+        if ((int)($attachment['is_visible_attachment'] ?? 0) === 1) $visibleAttachmentCount++;
+    }
+    if ($visibleAttachmentCount > 0 && ((int)($mail['has_body'] ?? 1) === 0 || (string)($mail['body_status'] ?? '') === 'no_body_with_attachments')) {
+        $mail['body_html'] = function_exists('crm_mail_no_body_attachment_html') ? crm_mail_no_body_attachment_html() : '<div>此邮件没有正文，但包含附件。</div>';
+        $mail['body_text'] = '此邮件没有可解析正文，但包含附件。';
+        $mail['body_status'] = 'no_body_with_attachments';
+        $mail['has_body'] = 0;
+    }
+    $mail['attachments'] = $attachments;
+    $mail['has_attachment'] = $visibleAttachmentCount > 0 ? 1 : 0;
+    $mail['attachment_count'] = $visibleAttachmentCount;
+    $mail['source_flags'] = json_decode((string)($mail['source_flags_json'] ?? '[]'), true) ?: [];
+    $mail['tags'] = json_decode((string)($mail['tags_json'] ?? '[]'), true) ?: [];
+    if (function_exists('crm_log_event')) {
+        crm_log_event('customer', 'customer_mail_preview', 'mail', (string)$mailId, null, ['customer_id' => $customerId]);
+    }
+    return ['mail' => $mail];
+}
+
 function crm_customer_linkage_summary(array $customer): array
 {
     return [
