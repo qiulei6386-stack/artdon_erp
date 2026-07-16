@@ -1718,6 +1718,7 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
             'chat_groups' => [],
             'followups' => [],
             'visits' => [],
+            'mail_rows' => [],
             'sample_shipments' => [],
             'opportunities' => [],
             'logs' => [],
@@ -1732,6 +1733,7 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'chat_groups' => crm_customer_chat_groups($id),
         'followups' => crm_followup_list(['customer_id' => $id])['rows'],
         'visits' => function_exists('crm_visit_list') && has_permission('visit.view') ? crm_visit_list(['customer_id' => $id])['rows'] : [],
+        'mail_rows' => crm_customer_mail_rows($id),
         'sample_shipments' => crm_customer_sample_shipments($id),
         'opportunities' => function_exists('crm_opportunity_list') && has_permission('opportunity.view') ? crm_opportunity_list(['customer_id' => $id])['rows'] : [],
         'logs' => crm_customer_logs($id),
@@ -4498,9 +4500,11 @@ function crm_customer_mail_summary(int $customerId): array
         return ['total' => 0, 'unreplied' => 0, 'latest_at' => ''];
     }
     $scope = [$deletedExpr, '(' . implode(' OR ', $where) . ')'];
-    if (!$canAll && !is_super_admin()) {
+    if (!$canAll && !is_super_admin() && in_array('user_id', $mailCols, true)) {
         $scope[] = 'm.user_id = ?';
         $params[] = (int)(current_user()['id'] ?? 0);
+    } elseif (!$canAll && !is_super_admin()) {
+        return ['total' => 0, 'unreplied' => 0, 'latest_at' => ''];
     }
     $sql = 'SELECT COUNT(*) AS total, SUM(CASE WHEN ' . $unrepliedExpr . ' THEN 1 ELSE 0 END) AS unreplied, MAX(' . $dateExpr . ') AS latest_at FROM crm_mails m WHERE ' . implode(' AND ', $scope);
     $stmt = db()->prepare($sql);
@@ -4511,6 +4515,97 @@ function crm_customer_mail_summary(int $customerId): array
         'unreplied' => (int)($row['unreplied'] ?? 0),
         'latest_at' => (string)($row['latest_at'] ?? ''),
     ];
+}
+
+function crm_customer_mail_match_scope(int $customerId, array $mailCols, array &$params): array
+{
+    $where = [];
+    if (in_array('linked_customer_id', $mailCols, true)) {
+        $where[] = '(m.linked_customer_id = ?)';
+        $params[] = $customerId;
+    }
+
+    $emailRows = [];
+    $stmt = db()->prepare('SELECT email FROM crm_customers WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+    $stmt->execute([$customerId]);
+    $customerEmail = trim((string)$stmt->fetchColumn());
+    if ($customerEmail !== '' && filter_var($customerEmail, FILTER_VALIDATE_EMAIL)) {
+        $emailRows[] = strtolower($customerEmail);
+    }
+    $stmt = db()->prepare('SELECT email FROM crm_contacts WHERE customer_id = ? AND deleted_at IS NULL AND email IS NOT NULL AND email <> ""');
+    $stmt->execute([$customerId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $email) {
+        $email = strtolower(trim((string)$email));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $emailRows[] = $email;
+    }
+    $emails = array_values(array_unique($emailRows));
+    $emailFields = array_values(array_filter(['from_email', 'to_emails', 'cc_emails', 'bcc_emails'], fn($field) => in_array($field, $mailCols, true)));
+    foreach ($emails as $email) {
+        $parts = [];
+        foreach ($emailFields as $field) {
+            if ($field === 'from_email') {
+                $parts[] = 'LOWER(m.`from_email`) = ?';
+                $params[] = $email;
+            } else {
+                $parts[] = 'LOWER(m.`' . $field . '`) LIKE ?';
+                $params[] = '%' . $email . '%';
+            }
+        }
+        if ($parts) $where[] = '(' . implode(' OR ', $parts) . ')';
+    }
+    return $where;
+}
+
+function crm_customer_mail_rows(int $customerId, int $limit = 50): array
+{
+    if ($customerId <= 0 || !crm_table_exists_safe('crm_mails')) return [];
+    $mailCols = crm_table_columns_safe('crm_mails');
+    $canAll = has_permission('customer.mail_summary') || has_permission('mail.view');
+    $canOwn = has_permission('mail.view_own') || has_permission('mail.account_bind_own');
+    if (!$canAll && !$canOwn && !is_super_admin()) return [];
+
+    $params = [];
+    $where = crm_customer_mail_match_scope($customerId, $mailCols, $params);
+    if (!$where) return [];
+
+    $deletedExpr = in_array('is_deleted', $mailCols, true) ? 'm.is_deleted = 0' : '1=1';
+    $dateParts = array_values(array_filter(['received_at', 'sent_at', 'created_at'], fn($field) => in_array($field, $mailCols, true)));
+    $dateExpr = $dateParts ? 'COALESCE(' . implode(', ', array_map(fn($field) => 'm.`' . $field . '`', $dateParts)) . ')' : 'm.id';
+    $selects = [
+        'm.id',
+        in_array('subject', $mailCols, true) ? 'm.subject' : 'NULL AS subject',
+        in_array('from_email', $mailCols, true) ? 'm.from_email' : 'NULL AS from_email',
+        in_array('from_name', $mailCols, true) ? 'm.from_name' : 'NULL AS from_name',
+        in_array('to_emails', $mailCols, true) ? 'm.to_emails' : 'NULL AS to_emails',
+        in_array('folder', $mailCols, true) ? 'm.folder' : 'NULL AS folder',
+        in_array('received_at', $mailCols, true) ? 'm.received_at' : 'NULL AS received_at',
+        in_array('sent_at', $mailCols, true) ? 'm.sent_at' : 'NULL AS sent_at',
+        in_array('created_at', $mailCols, true) ? 'm.created_at' : 'NULL AS created_at',
+        in_array('attachment_count', $mailCols, true) ? 'm.attachment_count' : '0 AS attachment_count',
+        in_array('is_unreplied', $mailCols, true) ? 'm.is_unreplied' : '0 AS is_unreplied',
+        in_array('is_read', $mailCols, true) ? 'm.is_read' : '1 AS is_read',
+        in_array('send_status', $mailCols, true) ? 'm.send_status' : 'NULL AS send_status',
+        in_array('followup_status', $mailCols, true) ? 'm.followup_status' : 'NULL AS followup_status',
+    ];
+    $scope = [$deletedExpr, '(' . implode(' OR ', $where) . ')'];
+    if (!$canAll && !is_super_admin() && in_array('user_id', $mailCols, true)) {
+        $scope[] = 'm.user_id = ?';
+        $params[] = (int)(current_user()['id'] ?? 0);
+    } elseif (!$canAll && !is_super_admin()) {
+        return [];
+    }
+    $limit = max(1, min(100, $limit));
+    $sql = 'SELECT ' . implode(', ', $selects) . ' FROM crm_mails m WHERE ' . implode(' AND ', $scope) . ' ORDER BY ' . $dateExpr . ' DESC, m.id DESC LIMIT ' . $limit;
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$row) {
+        $folder = (string)($row['folder'] ?? '');
+        $row['direction'] = $folder === 'sent' ? '发件' : ($folder === 'draft' ? '草稿' : '收件');
+        $row['status'] = !empty($row['send_status']) ? (string)$row['send_status'] : (!empty($row['is_unreplied']) ? '未回复' : (empty($row['is_read']) ? '未读' : '已读'));
+    }
+    unset($row);
+    return $rows;
 }
 
 function crm_customer_linkage_summary(array $customer): array
