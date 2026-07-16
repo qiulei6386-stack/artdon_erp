@@ -1710,6 +1710,7 @@
       else if (key === 'unreplied_mail') body = this.renderUnrepliedMailBody(widget, size);
       else if (key === 'today_mail' || key === 'unread_mail') body = '<strong class="workspace-big">' + esc(widget.value || 0) + '</strong><p>' + esc(widget.hint || widget.desc || '') + '</p>';
       else if (mode === 'tool' || widget.status === 'pending_config') body = '<div class="workspace-tool-pending"><strong>' + esc(widget.value || '待接入') + '</strong><p>' + esc(widget.desc || widget.hint || '需要在接口配置中填写 API Key 后启用。') + '</p><span>接口配置</span></div>';
+      else if (this.isTodayTaskWidget(key)) body = this.renderTodayTaskList(widget, key);
       else if (mode === 'list') {
         var listItems = (widget.items || []).slice(0, 5);
         body = listItems.length
@@ -1722,6 +1723,41 @@
       else body = '<strong class="workspace-big">' + esc(widget.value || 0) + '</strong><p>' + esc(widget.hint || widget.desc || '') + '</p>';
       var moveNav = this.layoutEditing ? '<nav><button type="button" data-workspace-move="-1" data-workspace-move-key="' + esc(key) + '">↑</button><button type="button" data-workspace-move="1" data-workspace-move-key="' + esc(key) + '">↓</button></nav>' : '';
       return '<article class="workspace-widget size-' + esc(size) + ' mode-' + esc(mode) + ' tone-' + esc(this.widgetTone(key)) + (this.layoutEditing ? ' is-layout-editing' : '') + (collapsed ? ' is-collapsed' : '') + '" data-workspace-widget="' + esc(key) + '"' + (this.layoutEditing ? ' draggable="true"' : '') + '><header><div><span>' + esc(this.categoryLabel(category)) + '</span><h3 title="' + esc(title) + '">' + esc(title) + '</h3></div><div class="workspace-widget-actions"><em>' + esc(this.sizeLabel(size)) + '</em><button type="button" title="刷新" data-workspace-refresh-card="' + esc(key) + '">↻</button><button type="button" title="设置" data-workspace-card-settings="' + esc(key) + '">⚙</button><button type="button" class="danger" title="隐藏此版块" data-workspace-hide-key="' + esc(key) + '">×</button></div>' + moveNav + '</header>' + layoutControls + body + '</article>';
+    },
+    isTodayTaskWidget: function (key) {
+      return ['tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup'].indexOf(key) >= 0;
+    },
+    todayTaskTag: function (key, text) {
+      if (key === 'today_visits') return '拜访';
+      if (key === 'today_arrivals') return '来访';
+      if (key === 'sample_shipments') return '样品';
+      if (key === 'sample_signed_followup') return '签收';
+      if (key === 'tasks_overdue') return '任务';
+      if (/邮件|mail|RE:|FW:/i.test(text)) return '邮件';
+      if (/报价|quote|AT-/i.test(text)) return '报价';
+      if (/派工|dispatch/i.test(text)) return '派工';
+      return '任务';
+    },
+    renderTodayTaskList: function (widget, key) {
+      var items = widget.items || [];
+      var rows = items.filter(function (item) {
+        return String(item || '').replace(/\s+/g, '') !== '' && String(item || '').indexOf('暂无') !== 0;
+      });
+      if (!rows.length) return '<div class="workspace-task-list"><div class="workspace-task-empty">暂无数据</div></div>';
+      return '<div class="workspace-task-list">' + rows.slice(0, 5).map(function (item) {
+        var text = String(item || '');
+        var parts = text.split(' · ').map(function (part) { return part.trim(); }).filter(Boolean);
+        var tag = WorkspaceModule.todayTaskTag(key, text);
+        var title = parts[0] || text || '未命名任务';
+        var metaParts = parts.slice(1);
+        var right = metaParts.length ? metaParts[metaParts.length - 1] : '查看';
+        var meta = metaParts.length > 1 ? metaParts.slice(0, -1).join(' · ') : (widget.hint || '待处理');
+        return '<button type="button" class="workspace-task-row" data-workspace-widget="' + esc(key) + '">' +
+          '<span class="workspace-task-tag">' + esc(tag) + '</span>' +
+          '<span class="workspace-task-main"><b title="' + esc(title) + '">' + esc(title) + '</b><small>' + esc(meta || '待处理') + '</small></span>' +
+          '<span class="workspace-task-side"><em>' + esc(right || '') + '</em><i>查看</i></span>' +
+        '</button>';
+      }).join('') + (rows.length > 5 ? '<button type="button" class="workspace-task-more" data-workspace-detail-key="' + esc(key) + '">查看全部</button>' : '') + '</div>';
     },
     categoryLabel: function (category) {
       var map = { customer: 'CUSTOMER', quote: 'QUOTE', mail: 'MAIL', order: 'AR', sales: 'TEAM', service: 'SERVICE', follow: 'FOLLOW', dispatch: 'TASK', promotion: 'MARKETING', opportunity: 'SALES', system: 'SYSTEM', tool: 'TOOL', contact: 'CONTACT', material: 'MATERIAL', bom: 'BOM', plm: 'PLM', '客户': 'CUSTOMER', '报价': 'QUOTE', '邮件': 'MAIL', '订单': 'AR', '任务': 'TASK', '推广': 'MARKETING', '系统': 'SYSTEM' };

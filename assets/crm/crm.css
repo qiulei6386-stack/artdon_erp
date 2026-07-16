@@ -21223,3 +21223,115 @@ body.is-workspace-module .workspace-empty-mini {
     min-height: 240px !important;
   }
 }
+
+/* CRM workspace today task list refinement. */
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-list {
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  overflow: hidden;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-row {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-row:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-tag {
+  width: 46px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  justify-items: stretch;
+  text-align: left;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-main b {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-main small {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-side {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-side em {
+  max-width: 64px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-side i,
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-more {
+  color: #2563eb;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-more {
+  min-height: 32px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  text-align: center;
+}
+body.is-workspace-module .workspace-widget-group.is-today .workspace-task-empty {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
