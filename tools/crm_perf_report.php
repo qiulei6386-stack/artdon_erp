@@ -3,8 +3,39 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $defaultLog = $root . '/storage/crm_api_perf.log';
-$logFile = $argv[1] ?? $defaultLog;
-$limit = max(5, min(100, (int)($argv[2] ?? 30)));
+$logFile = $defaultLog;
+$limit = 30;
+$since = '';
+$actionFilter = '';
+
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--since=')) {
+        $since = trim(substr($arg, 8));
+    } elseif (str_starts_with($arg, '--limit=')) {
+        $limit = (int)substr($arg, 8);
+    } elseif (str_starts_with($arg, '--action=')) {
+        $actionFilter = preg_replace('/[^a-zA-Z0-9_\-]/', '', substr($arg, 9)) ?: '';
+    } elseif (str_starts_with($arg, '--log=')) {
+        $logFile = substr($arg, 6) ?: $defaultLog;
+    } elseif ($arg !== '' && $arg[0] !== '-' && $logFile === $defaultLog && is_file($arg)) {
+        $logFile = $arg;
+    } elseif ($arg !== '' && ctype_digit($arg)) {
+        $limit = (int)$arg;
+    }
+}
+$limit = max(5, min(100, $limit));
+
+$sinceTs = 0;
+if ($since !== '') {
+    if (preg_match('/^(\d+)(m|h|d)$/i', $since, $m)) {
+        $unit = strtolower($m[2]);
+        $seconds = (int)$m[1] * ($unit === 'm' ? 60 : ($unit === 'h' ? 3600 : 86400));
+        $sinceTs = time() - $seconds;
+    } else {
+        $parsed = strtotime($since);
+        if ($parsed !== false) $sinceTs = $parsed;
+    }
+}
 
 if (!is_file($logFile)) {
     fwrite(STDERR, "CRM performance log not found: {$logFile}\n");
@@ -19,14 +50,22 @@ if (!$handle) {
 
 $stats = [];
 $totalRows = 0;
+$matchedRows = 0;
 while (($line = fgets($handle)) !== false) {
     $line = trim($line);
     if ($line === '') continue;
     $row = json_decode($line, true);
     if (!is_array($row)) continue;
+    $totalRows++;
+    if ($sinceTs > 0) {
+        $rowTs = strtotime((string)($row['time'] ?? ''));
+        if ($rowTs === false || $rowTs < $sinceTs) continue;
+    }
     $action = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($row['action'] ?? 'unknown')) ?: 'unknown';
+    if ($actionFilter !== '' && $action !== $actionFilter) continue;
     $elapsed = (int)($row['elapsed_ms'] ?? 0);
     if ($elapsed <= 0) continue;
+    $matchedRows++;
     if (!isset($stats[$action])) {
         $stats[$action] = [
             'action' => $action,
@@ -46,7 +85,6 @@ while (($line = fgets($handle)) !== false) {
     $stats[$action]['last_time'] = (string)($row['time'] ?? '');
     $stats[$action]['samples'][] = $elapsed;
     $stats[$action]['memory_max_mb'] = max((float)$stats[$action]['memory_max_mb'], (float)($row['memory_mb'] ?? 0));
-    $totalRows++;
 }
 fclose($handle);
 
@@ -67,7 +105,9 @@ usort($stats, static function (array $a, array $b): int {
 
 echo "CRM API performance report\n";
 echo "Log: {$logFile}\n";
-echo "Rows: {$totalRows}\n";
+echo "Rows: {$matchedRows} matched / {$totalRows} total\n";
+if ($since !== '') echo "Since: {$since}" . ($sinceTs > 0 ? ' (' . date('Y-m-d H:i:s', $sinceTs) . ')' : '') . "\n";
+if ($actionFilter !== '') echo "Action: {$actionFilter}\n";
 echo "Top {$limit} actions by total elapsed time\n\n";
 printf("%-34s %7s %8s %8s %8s %10s %19s\n", 'action', 'count', 'avg', 'p95', 'max', 'mem_max', 'last_time');
 printf("%'-100s\n", '');
