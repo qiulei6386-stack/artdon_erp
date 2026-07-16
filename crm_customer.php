@@ -1775,7 +1775,7 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     $params = [];
     $scope = crm_customer_scope_sql($params);
     array_unshift($params, $id);
-    $stmt = db()->prepare("SELECT c.*, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city, COALESCE(pa.address, c.address) AS address, u.username AS owner_name FROM crm_customers c LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1 LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1 LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id) WHERE c.id = ? AND {$scope} LIMIT 1");
+    $stmt = db()->prepare("SELECT c.*, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city, COALESCE(pa.address, c.address) AS address, COALESCE(po.user_id, c.owner_user_id) AS owner_user_id, COALESCE(d.name, c.owner_department) AS owner_department, u.username AS owner_name FROM crm_customers c LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1 LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1 LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id) LEFT JOIN crm_departments d ON d.id = u.department_id WHERE c.id = ? AND {$scope} LIMIT 1");
     $stmt->execute($params);
     $customer = $stmt->fetch();
     if (!$customer) throw new RuntimeException('客户不存在或无权查看。');
@@ -2003,7 +2003,7 @@ function crm_customer_basic_row(int $id): array
     $params = [];
     $scope = crm_customer_scope_sql($params);
     array_unshift($params, $id);
-    $stmt = db()->prepare("SELECT c.*, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city, COALESCE(pa.address, c.address) AS address, u.username AS owner_name FROM crm_customers c LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1 LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1 LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id) WHERE c.id = ? AND {$scope} LIMIT 1");
+    $stmt = db()->prepare("SELECT c.*, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city, COALESCE(pa.address, c.address) AS address, COALESCE(po.user_id, c.owner_user_id) AS owner_user_id, COALESCE(d.name, c.owner_department) AS owner_department, u.username AS owner_name FROM crm_customers c LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1 LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1 LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id) LEFT JOIN crm_departments d ON d.id = u.department_id WHERE c.id = ? AND {$scope} LIMIT 1");
     $stmt->execute($params);
     $customer = $stmt->fetch();
     if (!$customer) throw new RuntimeException('客户不存在或无权查看。');

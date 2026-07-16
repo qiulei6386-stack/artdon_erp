@@ -3504,7 +3504,7 @@
           field('推广方式', 'promotion_channels', (data.promotion_channels || []).join(','), 'placeholder="email, whatsapp"') +
           field('客户等级', 'level', c.level || 'P3') +
           field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
-          readonly('负责人', ownerText) +
+          '<label class="entity-field" data-attribute-field="owner_user_id"><span>负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || ((owners[0] || {}).user_id || '')) + '</select></label>' +
           '<label class="entity-field wide" data-attribute-field="remark"><span>备注</span><textarea name="remark" rows="3"' + disabled + '>' + esc(c.remark || '') + '</textarea></label>' +
         '</div>' +
       '</form>';
