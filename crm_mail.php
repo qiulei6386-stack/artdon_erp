@@ -738,12 +738,24 @@ function crm_mail_add_customer_timeline_for_mail(array $mail, string $eventType,
     crm_customer_timeline_add($customerId, $eventType, $title . '：' . $subject, $body, 'mail', $mailId);
 }
 
+function crm_mail_update_unreplied_ids(array $ids, int $userId, int $accountId, int $flag): void
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($id) => $id > 0)));
+    if (!$ids) return;
+    foreach (array_chunk($ids, 300) as $chunk) {
+        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+        $params = array_merge([$flag], $chunk, [$userId, $accountId]);
+        db()->prepare("UPDATE crm_mails SET is_unreplied = ?, updated_at = NOW()
+            WHERE id IN ({$placeholders}) AND user_id = ? AND mail_account_id = ?")->execute($params);
+    }
+}
+
 function crm_mail_refresh_unreplied_flags(array $account, int $days = 3): void
 {
     $days = max(1, min(60, $days));
     $userId = (int)$account['user_id'];
     $accountId = (int)$account['id'];
-    db()->prepare("UPDATE crm_mails m SET is_unreplied = 0, updated_at = NOW()
+    $clearStmt = db()->prepare("SELECT m.id FROM crm_mails m
         WHERE m.user_id = ? AND m.mail_account_id = ? AND m.folder = 'sent'
           AND (m.is_unreplied = 1)
           AND (
@@ -761,8 +773,11 @@ function crm_mail_refresh_unreplied_flags(array $account, int $days = 3): void
               SELECT 1 FROM crm_customer_followups f
               WHERE f.related_email_id = m.id AND f.deleted_at IS NULL
             )
-          )")->execute([$userId, $accountId]);
-    db()->prepare("UPDATE crm_mails m SET is_unreplied = 1, updated_at = NOW()
+          )");
+    $clearStmt->execute([$userId, $accountId]);
+    crm_mail_update_unreplied_ids($clearStmt->fetchAll(PDO::FETCH_COLUMN), $userId, $accountId, 0);
+
+    $markStmt = db()->prepare("SELECT m.id FROM crm_mails m
         WHERE m.user_id = ? AND m.mail_account_id = ? AND m.folder = 'sent' AND m.is_deleted = 0
           AND COALESCE(m.followup_status,'open') NOT IN ('replied','done','no_follow')
           AND COALESCE(m.sent_at, m.created_at) <= DATE_SUB(NOW(), INTERVAL {$days} DAY)
@@ -778,7 +793,9 @@ function crm_mail_refresh_unreplied_flags(array $account, int $days = 3): void
           AND NOT EXISTS (
             SELECT 1 FROM crm_customer_followups f
             WHERE f.related_email_id = m.id AND f.deleted_at IS NULL
-          )")->execute([$userId, $accountId]);
+          )");
+    $markStmt->execute([$userId, $accountId]);
+    crm_mail_update_unreplied_ids($markStmt->fetchAll(PDO::FETCH_COLUMN), $userId, $accountId, 1);
 }
 
 function crm_mail_account_delete_own(int $accountId, array $input = []): array
