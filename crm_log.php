@@ -297,16 +297,19 @@ function crm_mark_online_leave(string $module = 'workspace'): void
 function crm_online_people(): array
 {
     crm_ensure_tables();
-    $rows = db()->query("SELECT * FROM crm_online_users WHERE status <> 'offline' AND last_active_time >= DATE_SUB(NOW(), INTERVAL 15 MINUTE) ORDER BY last_active_time DESC LIMIT 100")->fetchAll();
+    $rows = db()->query("SELECT ou.*, COALESCE(os.active_seconds, 0) AS online_seconds
+        FROM crm_online_users ou
+        LEFT JOIN crm_online_sessions os ON os.session_id = ou.session_id
+        WHERE ou.status <> 'offline' AND ou.last_active_time >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+        ORDER BY ou.last_active_time DESC
+        LIMIT 100")->fetchAll();
     $people = [];
     foreach ($rows as $row) {
         $key = (int)($row['user_id'] ?? 0) > 0 ? 'u' . (int)$row['user_id'] : 's' . (string)($row['session_id'] ?? '');
         if (isset($people[$key])) continue;
         $idle = time() - strtotime($row['last_active_time']);
         $row['status'] = $idle <= 300 ? ($row['is_mobile'] ? '手机在线' : '在线') : '离开';
-        $st = db()->prepare('SELECT active_seconds FROM crm_online_sessions WHERE session_id = ? LIMIT 1');
-        $st->execute([(string)($row['session_id'] ?? '')]);
-        $seconds = (int)($st->fetchColumn() ?: 0);
+        $seconds = (int)($row['online_seconds'] ?? 0);
         $row['online_seconds'] = $seconds;
         $row['online_text'] = crm_online_session_duration_text($seconds);
         $people[$key] = $row;
