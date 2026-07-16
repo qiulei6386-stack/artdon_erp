@@ -3044,14 +3044,20 @@
       if (!box) return;
       var data = this.attributeData || {};
       var c = data.customer || ((this.currentDetail || {}).customer || {});
+      var protection = data.protection || {};
       var owners = data.owners || [];
+      var groups = data.groups || [];
       var completeness = ((data.scores || {}).completeness || {});
       var missing = data.missing || completeness.missing || [];
       var ownerText = owners.length ? owners.map(function (o) { return (o.username || ('#' + o.user_id)) + '/' + (o.role_type || '-'); }).join('，') : (c.owner_name || '未分配');
       var disabled = this.attributeEditMode ? '' : ' disabled';
       var doNotContact = Number(c.do_not_contact) ? ' checked' : '';
+      var readonly = ' disabled data-attribute-readonly="1"';
       var field = function (label, name, value, attrs) {
         return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '"' + disabled + ' ' + (attrs || '') + '></label>';
+      };
+      var readonlyField = function (label, name, value) {
+        return '<label class="entity-field is-readonly" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + ' 🔒</span><input name="' + esc(name) + '" value="' + esc(value || '未填') + '"' + readonly + '></label>';
       };
       var select = function (label, name, html) {
         return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><select name="' + esc(name) + '"' + disabled + '>' + html + '</select></label>';
@@ -3059,57 +3065,192 @@
       box.innerHTML = '<form class="customer-attribute-view" data-customer-attribute-form>' +
         '<header><div><span>客户属性</span><strong>' + esc(c.customer_name || '客户属性') + '</strong><p>' + esc(c.customer_code || '未填代码') + ' · 负责人：' + esc(ownerText) + '</p></div><aside><b>完整度 ' + esc(completeness.score || 0) + '%</b><span>缺失：' + esc((missing || []).slice(0, 5).join(' / ') || '资料较完整') + '</span></aside></header>' +
         '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '">' +
-        '<section class="entity-section entity-section-primary"><h3>基础属性</h3><div class="entity-grid">' +
+        '<section class="entity-section entity-section-primary"><h3>客户身份</h3><div class="entity-grid">' +
         field('客户名称 *', 'customer_name', c.customer_name, 'required') +
         field('英文名称', 'customer_name_en', c.customer_name_en) +
-        field('客户代码', 'customer_code', c.customer_code) +
+        readonlyField('客户代码', 'customer_code', c.customer_code) +
+        select('客户等级', 'level', this.optionHtml('customer_level', c.level || 'P3')) +
+        select('生命周期', 'lifecycle_key', this.optionHtml('customer_lifecycle', c.lifecycle_key || 'lead')) +
+        field('客户类型', 'customer_type', c.customer_type) +
+        field('行业', 'industry', c.industry) +
+        field('网站', 'website', c.website, 'placeholder="https://"') +
+        '</div></section>' +
+        '<section class="entity-section"><h3>联系方式</h3><div class="entity-grid">' +
+        field('主邮箱', 'email', c.email, 'placeholder="name@example.com"') +
+        field('备用邮箱', 'backup_email', c.backup_email, 'placeholder="name@example.com"') +
+        field('电话', 'phone', c.phone, 'placeholder="+86 ..."') +
+        field('WhatsApp', 'whatsapp', c.whatsapp, 'placeholder="+86 ..."') +
+        field('微信', 'wechat', c.wechat) +
+        field('LinkedIn', 'linkedin', c.linkedin, 'placeholder="https://"') +
+        field('客户域名', 'customer_domain', c.customer_domain) +
+        '</div></section>' +
+        '<section class="entity-section"><h3>地区地址</h3><div class="entity-grid">' +
         field('国家 *', 'country', c.country, 'required list="crm-country-options"') +
         field('城市 / 地区', 'city', c.city, 'list="crm-address-region-options-filtered"') +
         field('详细地址', 'address', c.address) +
+        field('邮编', 'postal_code', c.postal_code) +
+        field('发货地址', 'shipping_address', c.shipping_address) +
+        field('账单地址', 'billing_address', c.billing_address) +
+        field('常用港口', 'common_port', c.common_port) +
+        field('时区', 'timezone', c.timezone, 'placeholder="Asia/Shanghai"') +
         '</div></section>' +
-        '<section class="entity-section"><h3>画像与状态</h3><div class="entity-grid">' +
-        select('客户等级', 'level', this.optionHtml('customer_level', c.level || 'P3')) +
+        '<section class="entity-section"><h3>来源推广</h3><div class="entity-grid">' +
         select('客户状态', 'status', this.optionHtml('customer_status', c.status || 'lead')) +
-        select('生命周期', 'lifecycle_key', this.optionHtml('customer_lifecycle', c.lifecycle_key || 'lead')) +
         select('风险等级', 'risk_level', this.optionHtml('customer_risk_level', c.risk_level || 'healthy')) +
         select('推广状态', 'promotion_status', this.optionHtml('promotion_status', data.promotion_status || c.promotion_status || 'not_promoted')) +
         '<label class="tag-chip" data-attribute-field="do_not_contact"><input type="checkbox" name="do_not_contact" value="1"' + doNotContact + disabled + '><span>黑名单 / 禁止联系</span></label>' +
-        '</div></section>' +
-        '<section class="entity-section"><h3>联系方式</h3><div class="entity-grid">' +
-        field('邮箱', 'email', c.email, 'placeholder="name@example.com"') +
-        field('电话', 'phone', c.phone) +
-        field('WhatsApp', 'whatsapp', c.whatsapp) +
-        field('网站', 'website', c.website, 'placeholder="https://"') +
+        field('不推广原因', 'no_promotion_reason', c.no_promotion_reason) +
+        field('黑名单原因', 'blacklist_reason', c.blacklist_reason) +
+        field('客户标签', 'customer_tags', c.customer_tags, 'placeholder="逗号分隔"') +
         '</div></section>' +
         '<section class="entity-section"><h3>来源与推广</h3><div class="entry-checks wide" data-attribute-field="source_tags"><strong>来源标签</strong>' + this.checkboxHtml('customer_source', 'source_tags', data.source_tags || []) + '</div><div class="entry-checks wide" data-attribute-field="promotion_channels"><strong>默认推广方式</strong>' + this.checkboxHtml('promotion_channel', 'promotion_channels', data.promotion_channels || []) + '</div></section>' +
-        '<section class="entity-section"><h3>负责人</h3><div class="entity-grid"><label class="entity-field" data-attribute-field="owner_user_id"><span>第一负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || '') + '</select></label></div><p class="entry-muted">协作负责人仍在“编辑客户”完整弹窗中维护。本视图先打通客户属性主字段。</p></section>' +
+        '<section class="entity-section"><h3>负责人权限</h3><div class="entity-grid"><label class="entity-field" data-attribute-field="owner_user_id"><span>主负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || '') + '</select></label>' +
+        field('可见范围', 'visibility_scope', c.visibility_scope, 'placeholder="public / private / team"') +
+        readonlyField('保护状态', 'protection_status', protection.protection_status || protection.protected || 'normal') +
+        readonlyField('保护到期时间', 'protected_until', protection.protected_until || '') +
+        '</div><p class="entry-muted">次负责人、协助人保留在完整编辑弹窗维护，本段先保证主负责人和可见范围可保存。当前客户组：' + esc(groups.map(function (g) { return g.group_name || ''; }).filter(Boolean).join('、') || '未分组') + '</p></section>' +
+        '<section class="entity-section"><h3>只读状态</h3><div class="entity-grid">' +
+        readonlyField('创建时间', 'created_at', c.created_at) +
+        readonlyField('最近更新时间', 'updated_at', c.updated_at) +
+        readonlyField('创建人', 'created_by', c.created_by) +
+        readonlyField('最后修改人', 'updated_by', c.updated_by) +
+        readonlyField('健康度', 'health_score', (data.scores || {}).health || '') +
+        readonlyField('活跃度', 'activity_score', (data.scores || {}).activity || '') +
+        readonlyField('成交可能', 'deal_probability', (data.scores || {}).deal_probability || '') +
+        readonlyField('跟进风险', 'follow_risk', (data.scores || {}).follow_risk || '') +
+        readonlyField('最近跟进时间', 'last_followup_at', c.last_followup_at || '') +
+        readonlyField('最近报价时间', 'last_quote_at', c.last_quote_at || '') +
+        readonlyField('最近订单时间', 'last_order_at', c.last_order_at || '') +
+        '</div></section>' +
         '<section class="entity-section entity-section-note"><h3>备注</h3><textarea name="remark" rows="4" maxlength="1000"' + disabled + '>' + esc(c.remark || '') + '</textarea></section>' +
         '<section class="entity-section" data-customer-attribute-extra><h3>修改日志</h3><div class="visit-empty">点击右侧“查看修改日志”读取。</div></section>' +
         '</form>';
       if (!this.attributeEditMode) {
         box.querySelectorAll('[data-customer-attribute-form] input[type="checkbox"]').forEach(function (input) { input.disabled = true; });
       }
+      this.bindCustomerAttributeEditEvents();
+    },
+    customerAttributeSnapshot: function (form) {
+      var data = {};
+      Array.prototype.slice.call((form || document).querySelectorAll('input[name], select[name], textarea[name]')).forEach(function (el) {
+        if (el.dataset.attributeReadonly) return;
+        var name = el.name;
+        if (!name || name === 'customer_id') return;
+        if (el.type === 'checkbox') {
+          if (name === 'source_tags' || name === 'promotion_channels' || name === 'group_ids' || name === 'owner_user_ids') {
+            if (!data[name]) data[name] = [];
+            if (el.checked) data[name].push(el.value);
+          } else {
+            data[name] = el.checked ? '1' : '';
+          }
+        } else {
+          data[name] = el.value || '';
+        }
+      });
+      ['source_tags','promotion_channels','group_ids','owner_user_ids'].forEach(function (key) {
+        if (data[key]) data[key].sort();
+      });
+      return data;
+    },
+    bindCustomerAttributeEditEvents: function () {
+      var form = document.querySelector('[data-customer-attribute-form]');
+      if (!form) return;
+      var self = this;
+      var original = this.customerAttributeSnapshot(form);
+      this.attributeOriginalSnapshot = original;
+      var updateChanged = function () {
+        var currentData = self.customerAttributeSnapshot(form);
+        document.querySelectorAll('[data-attribute-field]').forEach(function (node) { node.classList.remove('is-changed', 'has-error'); });
+        Object.keys(currentData).forEach(function (key) {
+          if (JSON.stringify(currentData[key] || '') !== JSON.stringify(original[key] || '')) {
+            var node = document.querySelector('[data-attribute-field="' + key + '"]');
+            if (node) node.classList.add('is-changed');
+          }
+        });
+      };
+      form.querySelectorAll('input, select, textarea').forEach(function (el) {
+        el.addEventListener('input', updateChanged);
+        el.addEventListener('change', updateChanged);
+      });
+      updateChanged();
     },
     collectCustomerAttributeData: function () {
       var form = document.querySelector('[data-customer-attribute-form]');
       if (!form) throw new Error('客户属性表单不存在。');
-      var data = {};
-      new FormData(form).forEach(function (value, key) {
-        if (key === 'source_tags' || key === 'promotion_channels') {
-          if (!data[key]) data[key] = [];
-          data[key].push(value);
-        } else {
-          data[key] = value;
+      var original = this.attributeOriginalSnapshot || {};
+      var currentData = this.customerAttributeSnapshot(form);
+      var data = { customer_id: this.currentId };
+      var changed = [];
+      Object.keys(currentData).forEach(function (key) {
+        if (JSON.stringify(currentData[key] || '') !== JSON.stringify(original[key] || '')) {
+          data[key] = currentData[key];
+          changed.push(key);
         }
       });
-      data.customer_id = this.currentId;
-      if (!data.do_not_contact) data.do_not_contact = '';
+      data._changed_fields = changed;
+      return data;
+    },
+    validateCustomerAttributeData: function (data) {
+      var form = document.querySelector('[data-customer-attribute-form]');
+      var original = this.attributeOriginalSnapshot || {};
+      var merged = Object.assign({}, original, data || {});
+      var mark = function (name) {
+        var node = document.querySelector('[data-attribute-field="' + name + '"]');
+        if (node) node.classList.add('has-error');
+      };
+      document.querySelectorAll('[data-attribute-field]').forEach(function (node) { node.classList.remove('has-error'); });
+      if (!String(merged.customer_name || '').trim()) {
+        mark('customer_name');
+        throw new Error('客户名称不能为空。');
+      }
+      var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (merged.email && !emailPattern.test(String(merged.email))) {
+        mark('email');
+        throw new Error('主邮箱格式不正确。');
+      }
+      if (merged.backup_email && !emailPattern.test(String(merged.backup_email))) {
+        mark('backup_email');
+        throw new Error('备用邮箱格式不正确。');
+      }
+      var urlPattern = /^https?:\/\/.+\..+/i;
+      if (merged.website && !urlPattern.test(/^https?:\/\//i.test(String(merged.website)) ? String(merged.website) : ('https://' + merged.website))) {
+        mark('website');
+        throw new Error('网站 URL 格式不正确。');
+      }
+      if (merged.linkedin && !urlPattern.test(/^https?:\/\//i.test(String(merged.linkedin)) ? String(merged.linkedin) : ('https://' + merged.linkedin))) {
+        mark('linkedin');
+        throw new Error('LinkedIn URL 格式不正确。');
+      }
+      ['phone','whatsapp'].forEach(function (key) {
+        var oldValue = String(original[key] || '');
+        var newValue = String(merged[key] || '');
+        if (/^\+\d+/.test(oldValue) && newValue && !/^\+\d+/.test(newValue)) {
+          mark(key);
+          throw new Error((key === 'phone' ? '电话' : 'WhatsApp') + '不能删除原有国家区号。');
+        }
+      });
+      var promotionChannels = Array.isArray(merged.promotion_channels) ? merged.promotion_channels : [];
+      if ((merged.promotion_status === 'no_promotion' || promotionChannels.indexOf('no_promotion') >= 0) && !String(merged.no_promotion_reason || '').trim()) {
+        mark('no_promotion_reason');
+        throw new Error('设置不推广时必须填写不推广原因。');
+      }
+      var blacklistChanged = (String(original.promotion_status || '') !== 'blacklist' && String(merged.promotion_status || '') === 'blacklist') || (!String(original.do_not_contact || '') && String(merged.do_not_contact || ''));
+      if (blacklistChanged) {
+        var ok = window.confirm('确认把该客户设为黑名单 / 禁止联系？此操作会影响推广和邮件目标。');
+        if (!ok) throw new Error('已取消黑名单状态变更。');
+        data.blacklist_confirmed = '1';
+      }
+      if (!data._changed_fields || !data._changed_fields.length) throw new Error('没有检测到需要保存的修改。');
       return data;
     },
     saveCustomerAttribute: function () {
       var self = this;
       var data;
-      try { data = this.collectCustomerAttributeData(); } catch (error) { return this.showCustomerError(error.message); }
+      try {
+        data = this.validateCustomerAttributeData(this.collectCustomerAttributeData());
+      } catch (error) {
+        return this.showCustomerError(error.message);
+      }
       return post('customer_attribute_save', data).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户属性保存失败');
         toast(json.message || '客户属性已保存');
@@ -3118,6 +3259,8 @@
         return self.loadDetail(self.currentId, { silent: true, keepTab: true }).then(function () {
           self.attributeViewMode = true;
           self.renderCustomerAttributeView();
+          self.showCustomerAttributeLogs();
+          self.loadList({ silent: true });
           renderActions('customers');
         });
       }).catch(function (error) {
@@ -3143,14 +3286,23 @@
       });
     },
     markCustomerAttributeMissing: function (missing) {
-      var map = { '客户名称': 'customer_name', '客户代码': 'customer_code', '国家': 'country', '城市': 'city', '网站': 'website', '邮箱': 'email', '电话': 'phone', 'WhatsApp': 'whatsapp', '来源': 'source_tags', '推广方式': 'promotion_channels' };
+      var map = { '客户名称': 'customer_name', '客户代码': 'customer_code', '国家': 'country', '城市': 'city', '地址': 'address', '网站': 'website', '邮箱': 'email', '联系人邮箱': 'email', '电话': 'phone', '联系人电话': 'phone', 'WhatsApp': 'whatsapp', '来源': 'source_tags', '推广方式': 'promotion_channels', '等级': 'level', '生命周期': 'lifecycle_key', '负责人': 'owner_user_id', '分组': 'group_ids' };
+      var first = null;
       document.querySelectorAll('[data-attribute-field]').forEach(function (node) { node.classList.remove('is-missing'); });
       (missing || []).forEach(function (label) {
         var key = map[label] || '';
         if (!key) return;
         var node = document.querySelector('[data-attribute-field="' + key + '"]');
-        if (node) node.classList.add('is-missing');
+        if (node) {
+          node.classList.add('is-missing');
+          if (!first) first = node;
+        }
       });
+      if (first) {
+        first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var control = first.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+        if (control) window.setTimeout(function () { control.focus(); }, 250);
+      }
     },
     showCustomerAttributeLogs: function () {
       var self = this;
@@ -3176,11 +3328,11 @@
       return post('customer_attribute_export', { customer_id: this.currentId }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户属性导出失败');
         var data = json.data || {};
-        var blob = new Blob([data.content || '{}'], { type: data.content_type || 'application/json' });
+        var blob = new Blob([data.content || ''], { type: data.content_type || 'text/csv;charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var link = document.createElement('a');
         link.href = url;
-        link.download = data.filename || ('customer_attribute_' + self.currentId + '.json');
+        link.download = data.filename || ('customer_attribute_' + self.currentId + '.csv');
         document.body.appendChild(link);
         link.click();
         link.remove();

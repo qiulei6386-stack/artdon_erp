@@ -21776,6 +21776,19 @@ body.is-workspace-module .rank-progress i {
   border-radius: 12px;
   background: #fffbeb;
 }
+.customer-attribute-view [data-attribute-field].is-changed {
+  background: #fffbeb;
+  border-radius: 12px;
+}
+.customer-attribute-view [data-attribute-field].has-error {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
+  border-radius: 12px;
+  background: #fef2f2;
+}
+.customer-attribute-view .entity-field.is-readonly span {
+  color: #64748b;
+}
 .customer-attribute-view input:disabled,
 .customer-attribute-view select:disabled,
 .customer-attribute-view textarea:disabled {

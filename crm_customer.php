@@ -88,6 +88,20 @@ function crm_customer_ensure_tables(): void
         ['crm_customers', 'risk_level', 'VARCHAR(120) NOT NULL DEFAULT "healthy"'],
         ['crm_customers', 'do_not_contact', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['crm_customers', 'blacklist_reason', 'VARCHAR(500) NULL'],
+        ['crm_customers', 'customer_type', 'VARCHAR(120) NULL'],
+        ['crm_customers', 'industry', 'VARCHAR(120) NULL'],
+        ['crm_customers', 'backup_email', 'VARCHAR(190) NULL'],
+        ['crm_customers', 'wechat', 'VARCHAR(120) NULL'],
+        ['crm_customers', 'linkedin', 'VARCHAR(255) NULL'],
+        ['crm_customers', 'customer_domain', 'VARCHAR(190) NULL'],
+        ['crm_customers', 'postal_code', 'VARCHAR(60) NULL'],
+        ['crm_customers', 'shipping_address', 'VARCHAR(500) NULL'],
+        ['crm_customers', 'billing_address', 'VARCHAR(500) NULL'],
+        ['crm_customers', 'common_port', 'VARCHAR(120) NULL'],
+        ['crm_customers', 'timezone', 'VARCHAR(120) NULL'],
+        ['crm_customers', 'no_promotion_reason', 'VARCHAR(500) NULL'],
+        ['crm_customers', 'customer_tags', 'VARCHAR(500) NULL'],
+        ['crm_customers', 'visibility_scope', 'VARCHAR(80) NULL'],
         ['crm_contacts', 'do_not_contact', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['crm_contacts', 'unsubscribe_email', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['crm_contacts', 'no_whatsapp', 'TINYINT(1) NOT NULL DEFAULT 0'],
@@ -1562,6 +1576,7 @@ function crm_customer_attribute_get(int $id): array
         'source_tags' => $detail['source_tags'] ?? [],
         'promotion_channels' => $detail['promotion_channels'] ?? [],
         'promotion_status' => $detail['promotion_status'] ?? '',
+        'protection' => $detail['protection'] ?? [],
         'owners' => $detail['owners'] ?? [],
         'addresses' => $detail['addresses'] ?? [],
         'groups' => $detail['groups'] ?? [],
@@ -1589,18 +1604,43 @@ function crm_customer_attribute_save(int $id, array $input): array
     if ($id <= 0) throw new RuntimeException('缺少客户 ID，无法保存客户属性。');
     $before = crm_customer_basic_row($id);
     $attributeBefore = crm_customer_attribute_get($id);
+    $currentPromotionStatus = (string)($attributeBefore['promotion_status'] ?? 'not_promoted');
+    $incomingPromotionStatus = array_key_exists('promotion_status', $input) ? trim((string)$input['promotion_status']) : $currentPromotionStatus;
+    $incomingDoNotContact = array_key_exists('do_not_contact', $input) ? (!empty($input['do_not_contact']) ? 1 : 0) : (int)($before['do_not_contact'] ?? 0);
+    $becomingBlacklist = ($currentPromotionStatus !== 'blacklist' && $incomingPromotionStatus === 'blacklist') || (!(int)($before['do_not_contact'] ?? 0) && $incomingDoNotContact);
+    if ($becomingBlacklist && empty($input['blacklist_confirmed'])) {
+        throw new RuntimeException('黑名单状态变更需要二次确认。');
+    }
+    $incomingPromotionChannels = array_key_exists('promotion_channels', $input) ? (array)$input['promotion_channels'] : (array)($attributeBefore['promotion_channels'] ?? []);
+    $incomingNoPromotionReason = array_key_exists('no_promotion_reason', $input) ? trim((string)$input['no_promotion_reason']) : trim((string)($before['no_promotion_reason'] ?? ''));
+    if (($incomingPromotionStatus === 'no_promotion' || in_array('no_promotion', $incomingPromotionChannels, true)) && $incomingNoPromotionReason === '') {
+        throw new RuntimeException('设置不推广时必须填写不推广原因。');
+    }
+    $mergeFields = ['customer_code','customer_name','customer_name_en','country','city','address','website','email','backup_email','phone','whatsapp','wechat','linkedin','customer_domain','customer_type','industry','postal_code','shipping_address','billing_address','common_port','timezone','no_promotion_reason','blacklist_reason','customer_tags','visibility_scope','source','level','status','lifecycle_key','risk_level','do_not_contact','owner_user_id','owner_department','remark'];
+    $merged = [];
+    foreach ($mergeFields as $field) {
+        $merged[$field] = array_key_exists($field, $input) ? $input[$field] : ($before[$field] ?? '');
+    }
+    $merged['customer_id'] = $id;
+    $merged['promotion_status'] = $incomingPromotionStatus;
+    $merged['source_tags'] = array_key_exists('source_tags', $input) ? (array)$input['source_tags'] : (array)($attributeBefore['source_tags'] ?? []);
+    $merged['promotion_channels'] = $incomingPromotionChannels;
     if (!array_key_exists('group_ids', $input)) {
-        $input['group_ids'] = array_values(array_filter(array_map(fn($row) => (int)($row['id'] ?? $row['group_id'] ?? 0), $attributeBefore['groups'] ?? [])));
+        $merged['group_ids'] = array_values(array_filter(array_map(fn($row) => (int)($row['id'] ?? $row['group_id'] ?? 0), $attributeBefore['groups'] ?? [])));
+    } else {
+        $merged['group_ids'] = (array)$input['group_ids'];
     }
     if (empty($input['owner_user_ids'])) {
         $ownerIds = array_values(array_filter(array_map(fn($row) => (int)($row['user_id'] ?? 0), $attributeBefore['owners'] ?? [])));
-        $primaryOwnerId = (int)($input['owner_user_id'] ?? 0);
+        $primaryOwnerId = (int)($merged['owner_user_id'] ?? 0);
         if ($primaryOwnerId > 0 && !in_array($primaryOwnerId, $ownerIds, true)) array_unshift($ownerIds, $primaryOwnerId);
-        if ($ownerIds) $input['owner_user_ids'] = $ownerIds;
+        if ($ownerIds) $merged['owner_user_ids'] = $ownerIds;
+    } else {
+        $merged['owner_user_ids'] = $input['owner_user_ids'];
     }
-    $result = crm_customer_update($id, $input);
+    $result = crm_customer_update($id, $merged);
     $after = crm_customer_basic_row($id);
-    $watched = ['customer_code','customer_name','customer_name_en','country','city','address','website','email','phone','whatsapp','source','level','status','lifecycle_key','risk_level','do_not_contact','owner_user_id','owner_department','remark'];
+    $watched = ['customer_code','customer_name','customer_name_en','country','city','address','website','email','backup_email','phone','whatsapp','wechat','linkedin','customer_domain','customer_type','industry','postal_code','shipping_address','billing_address','common_port','timezone','no_promotion_reason','blacklist_reason','customer_tags','visibility_scope','source','level','status','lifecycle_key','risk_level','do_not_contact','owner_user_id','owner_department','remark'];
     $changes = [];
     foreach ($watched as $field) {
         $old = (string)($before[$field] ?? '');
@@ -1619,10 +1659,57 @@ function crm_customer_attribute_export(int $id): array
 {
     $detail = crm_customer_get($id, 'full');
     crm_customer_log('customer_attribute_export', 'customer', $id, $id, null, ['customer_id' => $id], '导出客户属性');
+    $c = $detail['customer'] ?? [];
+    $rows = [
+        ['分组', '字段', '值'],
+        ['客户身份', '客户名称', $c['customer_name'] ?? ''],
+        ['客户身份', '英文名称', $c['customer_name_en'] ?? ''],
+        ['客户身份', '客户代码', $c['customer_code'] ?? ''],
+        ['客户身份', '客户等级', $c['level'] ?? ''],
+        ['客户身份', '生命周期', $c['lifecycle_key'] ?? ''],
+        ['客户身份', '客户类型', $c['customer_type'] ?? ''],
+        ['客户身份', '行业', $c['industry'] ?? ''],
+        ['联系方式', '主邮箱', $c['email'] ?? ''],
+        ['联系方式', '备用邮箱', $c['backup_email'] ?? ''],
+        ['联系方式', '电话', $c['phone'] ?? ''],
+        ['联系方式', 'WhatsApp', $c['whatsapp'] ?? ''],
+        ['联系方式', '微信', $c['wechat'] ?? ''],
+        ['联系方式', 'LinkedIn', $c['linkedin'] ?? ''],
+        ['联系方式', '网站', $c['website'] ?? ''],
+        ['联系方式', '客户域名', $c['customer_domain'] ?? ''],
+        ['地址', '国家', $c['country'] ?? ''],
+        ['地址', '城市', $c['city'] ?? ''],
+        ['地址', '详细地址', $c['address'] ?? ''],
+        ['地址', '邮编', $c['postal_code'] ?? ''],
+        ['地址', '发货地址', $c['shipping_address'] ?? ''],
+        ['地址', '账单地址', $c['billing_address'] ?? ''],
+        ['地址', '常用港口', $c['common_port'] ?? ''],
+        ['地址', '时区', $c['timezone'] ?? ''],
+        ['来源推广', '来源', implode(',', $detail['source_tags'] ?? [])],
+        ['来源推广', '推广方式', implode(',', $detail['promotion_channels'] ?? [])],
+        ['来源推广', '推广状态', $detail['promotion_status'] ?? ''],
+        ['来源推广', '是否允许联系', !empty($c['do_not_contact']) ? '否' : '是'],
+        ['来源推广', '不推广原因', $c['no_promotion_reason'] ?? ''],
+        ['来源推广', '黑名单原因', $c['blacklist_reason'] ?? ''],
+        ['来源推广', '客户组', implode(',', array_map(fn($g) => $g['group_name'] ?? '', $detail['groups'] ?? []))],
+        ['来源推广', '标签', $c['customer_tags'] ?? ''],
+        ['负责人权限', '主负责人', $c['owner_name'] ?? ''],
+        ['负责人权限', '可见范围', $c['visibility_scope'] ?? ''],
+        ['状态信息', '创建时间', $c['created_at'] ?? ''],
+        ['状态信息', '最近更新时间', $c['updated_at'] ?? ''],
+        ['状态信息', '健康度', $detail['scores']['health'] ?? ''],
+        ['状态信息', '资料完整度', $detail['scores']['completeness']['score'] ?? ''],
+    ];
+    $fp = fopen('php://temp', 'r+');
+    fwrite($fp, "\xEF\xBB\xBF");
+    foreach ($rows as $row) fputcsv($fp, $row);
+    rewind($fp);
+    $content = stream_get_contents($fp);
+    fclose($fp);
     return [
-        'filename' => 'customer_attribute_' . $id . '_' . date('Ymd_His') . '.json',
-        'content_type' => 'application/json',
-        'content' => json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+        'filename' => 'customer_attribute_' . $id . '_' . date('Ymd_His') . '.csv',
+        'content_type' => 'text/csv;charset=utf-8',
+        'content' => $content,
     ];
 }
 
@@ -1667,9 +1754,14 @@ function crm_customer_validate(array $input, int $ignoreId = 0): array
     if ($country === '') throw new RuntimeException('国家必填。');
     $email = trim((string)($input['email'] ?? ''));
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('邮箱格式不正确。');
+    $backupEmail = trim((string)($input['backup_email'] ?? ''));
+    if ($backupEmail !== '' && !filter_var($backupEmail, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('备用邮箱格式不正确。');
     $website = trim((string)($input['website'] ?? ''));
     if ($website !== '' && !preg_match('/^https?:\\/\\//i', $website)) $website = 'https://' . $website;
     if ($website !== '' && !filter_var($website, FILTER_VALIDATE_URL)) throw new RuntimeException('网站格式不正确。');
+    $linkedin = trim((string)($input['linkedin'] ?? ''));
+    if ($linkedin !== '' && !preg_match('/^https?:\\/\\//i', $linkedin)) $linkedin = 'https://' . $linkedin;
+    if ($linkedin !== '' && !filter_var($linkedin, FILTER_VALIDATE_URL)) throw new RuntimeException('LinkedIn 地址格式不正确。');
     if (!$ignoreId) {
         $dupParams = [$name];
         $dupSql = 'customer_name = ? AND deleted_at IS NULL';
@@ -1788,8 +1880,23 @@ function crm_customer_validate(array $input, int $ignoreId = 0): array
         'address' => trim((string)($input['address'] ?? '')),
         'website' => $website,
         'email' => $email,
+        'backup_email' => $backupEmail,
         'phone' => trim((string)($input['phone'] ?? '')),
         'whatsapp' => trim((string)($input['whatsapp'] ?? '')),
+        'wechat' => trim((string)($input['wechat'] ?? '')),
+        'linkedin' => $linkedin,
+        'customer_domain' => trim((string)($input['customer_domain'] ?? '')),
+        'customer_type' => trim((string)($input['customer_type'] ?? '')),
+        'industry' => trim((string)($input['industry'] ?? '')),
+        'postal_code' => trim((string)($input['postal_code'] ?? '')),
+        'shipping_address' => trim((string)($input['shipping_address'] ?? '')),
+        'billing_address' => trim((string)($input['billing_address'] ?? '')),
+        'common_port' => trim((string)($input['common_port'] ?? '')),
+        'timezone' => trim((string)($input['timezone'] ?? '')),
+        'no_promotion_reason' => trim((string)($input['no_promotion_reason'] ?? '')),
+        'blacklist_reason' => trim((string)($input['blacklist_reason'] ?? '')),
+        'customer_tags' => trim((string)($input['customer_tags'] ?? '')),
+        'visibility_scope' => trim((string)($input['visibility_scope'] ?? '')),
         'source' => $sourceTags[0] ?? 'manual',
         'level' => $level,
         'status' => $status,
@@ -2279,8 +2386,8 @@ function crm_customer_update(int $id, array $input): array
     $before = crm_customer_basic_row($id);
     $data = crm_customer_validate($input, $id);
     $user = current_user();
-    db()->prepare('UPDATE crm_customers SET customer_code=?, customer_name=?, customer_name_en=?, country=?, city=?, address=?, website=?, email=?, phone=?, whatsapp=?, source=?, level=?, status=?, lifecycle_key=?, risk_level=?, do_not_contact=?, owner_user_id=?, owner_department=?, updated_by=?, remark=?, updated_at=NOW() WHERE id=?')
-        ->execute([$data['customer_code'], $data['customer_name'], $data['customer_name_en'], $data['country'], $data['city'], $data['address'], $data['website'], $data['email'], $data['phone'], $data['whatsapp'], $data['source'], $data['level'], $data['status'], $data['lifecycle_key'], $data['risk_level'], $data['do_not_contact'], $data['owner_user_id'], $data['owner_department'], $user['id'], $data['remark'], $id]);
+    db()->prepare('UPDATE crm_customers SET customer_code=?, customer_name=?, customer_name_en=?, country=?, city=?, address=?, website=?, email=?, backup_email=?, phone=?, whatsapp=?, wechat=?, linkedin=?, customer_domain=?, customer_type=?, industry=?, postal_code=?, shipping_address=?, billing_address=?, common_port=?, timezone=?, no_promotion_reason=?, blacklist_reason=?, customer_tags=?, visibility_scope=?, source=?, level=?, status=?, lifecycle_key=?, risk_level=?, do_not_contact=?, owner_user_id=?, owner_department=?, updated_by=?, remark=?, updated_at=NOW() WHERE id=?')
+        ->execute([$data['customer_code'], $data['customer_name'], $data['customer_name_en'], $data['country'], $data['city'], $data['address'], $data['website'], $data['email'], $data['backup_email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['customer_domain'], $data['customer_type'], $data['industry'], $data['postal_code'], $data['shipping_address'], $data['billing_address'], $data['common_port'], $data['timezone'], $data['no_promotion_reason'], $data['blacklist_reason'], $data['customer_tags'], $data['visibility_scope'], $data['source'], $data['level'], $data['status'], $data['lifecycle_key'], $data['risk_level'], $data['do_not_contact'], $data['owner_user_id'], $data['owner_department'], $user['id'], $data['remark'], $id]);
     crm_customer_apply_graph($id, $data['graph']);
     $initialContacts = crm_customer_initial_contacts($input);
     $existingContactsForDelete = [];
