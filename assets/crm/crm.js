@@ -4526,6 +4526,35 @@
         });
       }
     },
+    openArchiveRowEditor: function (rowType, rowId) {
+      if (!this.archiveEditMode) return false;
+      if (['contact', 'address', 'chat_group'].indexOf(rowType) < 0) return false;
+      this.selectedDetailEntity = { type: rowType, id: rowId };
+      document.querySelectorAll('[data-detail-row]').forEach(function (item) {
+        item.classList.toggle('selected', (item.getAttribute('data-detail-row') || '') === rowType && (item.getAttribute('data-detail-row-id') || '') === rowId);
+      });
+      if (current === 'customers') renderActions('customers');
+      if (rowType === 'contact') {
+        if (!rowId) this.showCustomerError('没有找到联系人记录。');
+        else this.openContactDialog(rowId);
+        return true;
+      }
+      if (rowType === 'address') {
+        var address = this.selectedAddress();
+        if (!address) this.showCustomerError('没有找到地址记录。');
+        else this.openAddressDialog(address);
+        return true;
+      }
+      if (rowType === 'chat_group') {
+        var group = ((this.currentDetail || {}).chat_groups || []).find(function (item) {
+          return String(item.id || '') === String(rowId || '');
+        }) || null;
+        if (!group) this.showCustomerError('没有找到客户群记录。');
+        else this.openChatGroupDialog(group);
+        return true;
+      }
+      return false;
+    },
     bindDetailEvents: function () {
       var self = this;
       document.querySelectorAll('[data-detail-tab]').forEach(function (button) {
@@ -4569,8 +4598,15 @@
           if (current === 'customers') renderActions('customers');
           if (rowType === 'mail' && rowId) self.openCustomerMailPreview(rowId);
         });
-        row.addEventListener('dblclick', function () {
-          if ((row.getAttribute('data-detail-row') || '') !== 'order') return;
+        row.addEventListener('dblclick', function (event) {
+          var rowType = row.getAttribute('data-detail-row') || '';
+          var rowId = row.getAttribute('data-detail-row-id') || '';
+          if (self.openArchiveRowEditor(rowType, rowId)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          if (rowType !== 'order') return;
           var order = self.selectedSalesRow('order');
           if (!order) return;
           window.open('quotation.php?order_id=' + encodeURIComponent(order.id || order.order_id || '') + '&order_no=' + encodeURIComponent(order.order_no || ''), '_blank');
