@@ -6425,6 +6425,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-tab-panel.active { display: block; }
 .customer-tab-group { display: none; }
 .customer-tab-group.active { display: grid; gap: 12px; }
+.customer-tab-group.active > .customer-tab-subpanel { display: block; }
 .customer-tab-group-head {
   display: flex;
   justify-content: space-between;
@@ -6460,6 +6461,29 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border-radius: 12px;
   background: var(--crm-card-bg);
   padding: 12px;
+  scroll-margin-top: 18px;
+}
+.customer-tab-subpanel.active {
+  border-color: color-mix(in srgb, var(--crm-primary) 30%, var(--crm-border));
+}
+.customer-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 0 0 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--crm-border);
+}
+.customer-section-head strong {
+  color: var(--crm-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+.customer-section-head span {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 600;
 }
 .customer-tab-empty {
   display: grid;

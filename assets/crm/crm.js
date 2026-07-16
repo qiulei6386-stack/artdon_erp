@@ -3324,10 +3324,12 @@
       }
       function subPanel(key, label, active) {
         var html = panelContent[key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(label || key) + '</span><strong>0</strong><em>接口待接入</em></button></div></section>';
-        var className = 'customer-tab-panel customer-tab-subpanel' + (active ? ' active' : '');
+        var className = 'customer-tab-panel customer-tab-subpanel customer-section' + (active ? ' active' : '');
+        var sectionHead = '<header class="customer-section-head"><strong>' + esc(label || key) + '</strong><span>当前页面目录定位：' + esc(label || key) + '</span></header>';
         return html
           .replace('customer-tab-panel active"', className + '"')
-          .replace('customer-tab-panel"', className + '"');
+          .replace('customer-tab-panel"', className + '"')
+          .replace(/(<section\b[^>]*>)/, '$1' + sectionHead);
       }
       function groupPanel(key, title, children, subtabs, activeSub) {
         var subtabHtml = (subtabs || []).length ? '<nav class="customer-detail-subtabs">' + subtabs.map(function (tab) {
@@ -3359,7 +3361,7 @@
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
-      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeSubTab);
+      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeTab);
     },
     openCustomerAttributeView: function (editMode, enlarge) {
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
@@ -4210,6 +4212,7 @@
       var activeSub = target.sub;
       this.rememberDetailTab(activeSub);
       this.selectedDetailEntity = null;
+      if (activeName === 'overview' && this.layoutMode !== 'default') this.applyLayoutMode('default', false);
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
         this.ensureFullDetail(activeSub);
         return;
@@ -4234,6 +4237,14 @@
       activeGroup.querySelectorAll('.customer-tab-subpanel').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeSub);
       });
+      if (activeName !== 'overview' && name !== activeName) {
+        var section = activeGroup.querySelector('[data-detail-panel="' + activeSub + '"]');
+        if (section) {
+          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } else if (activeName !== 'overview') {
+        activeGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       if (current === 'customers') renderActions('customers');
     },
     field: function (label, name, value, attrs) {
