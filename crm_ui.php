@@ -692,6 +692,28 @@ function crm_dashboard_money_text($amount, string $currency = 'USD'): string
     return trim($currency ?: 'USD') . ' ' . crm_dashboard_format_money($amount ?? 0);
 }
 
+function crm_dashboard_normalize_currency($currency): string
+{
+    $currency = strtoupper(trim((string)$currency));
+    if ($currency === '' || $currency === '0') return 'USD';
+    if (in_array($currency, ['CNY', 'RMB¥', '￥', '¥', '人民币'], true)) return 'RMB';
+    if (in_array($currency, ['US$', '$', '美元'], true)) return 'USD';
+    return $currency;
+}
+
+function crm_dashboard_money_bucket_text(array $bucket): string
+{
+    $parts = [];
+    $firstCurrency = 'USD';
+    foreach ($bucket as $currency => $amount) {
+        $currency = crm_dashboard_normalize_currency($currency);
+        if (!$parts && $firstCurrency === 'USD') $firstCurrency = $currency;
+        if (abs((float)$amount) < 0.0001) continue;
+        $parts[] = crm_dashboard_money_text($amount, $currency);
+    }
+    return $parts ? implode(' / ', $parts) : crm_dashboard_money_text(0, $firstCurrency);
+}
+
 function crm_dashboard_table_result(string $hint, array $columns, array $rows, string $footnote = ''): array
 {
     return [
@@ -768,20 +790,62 @@ function crm_dashboard_customer_order_rank(array $input = []): array
 function crm_dashboard_customer_amount_rank(array $input = []): array
 {
     if (!crm_dashboard_table_exists('quote_sales_orders')) return crm_dashboard_table_result('订单数据未接入', ['排名','客户','国家','等级','负责人','订单','成交金额','应收'], []);
+    $cols = crm_dashboard_table_columns('quote_sales_orders');
+    $currencyExpr = in_array('currency', $cols, true) ? "COALESCE(NULLIF(o.currency,''), 'USD')" : "'USD'";
     $sql = "SELECT o.customer_id, o.customer_name, COALESCE(c.country,'') AS country, COALESCE(c.level,'') AS level_name, COALESCE(c.owner_department,'') AS owner_name,
+        {$currencyExpr} AS currency,
         COUNT(*) AS order_count, SUM(CASE WHEN o.amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN o.amount + 0 ELSE 0 END) AS order_amount,
-        SUM(CASE WHEN o.balance_amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN o.balance_amount + 0 ELSE 0 END) AS receivable_amount
+        SUM(CASE WHEN o.balance_amount REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$' THEN o.balance_amount + 0 ELSE 0 END) AS receivable_amount,
+        MAX(COALESCE(o.order_date, o.created_at)) AS last_order
         FROM quote_sales_orders o LEFT JOIN crm_customers c ON c.id = o.customer_id
         WHERE DATE_FORMAT(COALESCE(o.order_date, o.created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
-        GROUP BY o.customer_id, o.customer_name, c.country, c.level, c.owner_department
-        ORDER BY order_amount DESC LIMIT 10";
-    $rows = [];
-    $total = 0;
-    foreach (db()->query($sql)->fetchAll() as $i => $r) {
-        $total += (float)$r['order_amount'];
-        $rows[] = ['rank'=>(string)($i+1), 'customer'=>$r['customer_name'] ?: '未命名客户', 'country'=>$r['country'] ?: '-', 'level'=>$r['level_name'] ?: '未分级', 'owner'=>$r['owner_name'] ?: '-', 'orders'=>(string)(int)$r['order_count'], 'amount'=>crm_dashboard_money_text($r['order_amount'], 'USD'), 'ar'=>crm_dashboard_money_text($r['receivable_amount'], 'USD')];
+        GROUP BY o.customer_id, o.customer_name, c.country, c.level, c.owner_department, {$currencyExpr}
+        ORDER BY order_amount DESC LIMIT 80";
+    $grouped = [];
+    $totalByCurrency = [];
+    foreach (db()->query($sql)->fetchAll() as $r) {
+        $customerKey = (string)($r['customer_id'] ?: $r['customer_name'] ?: 'unknown');
+        $currency = crm_dashboard_normalize_currency($r['currency'] ?? 'USD');
+        if (!isset($grouped[$customerKey])) {
+            $grouped[$customerKey] = [
+                'customer' => $r['customer_name'] ?: '未命名客户',
+                'country' => $r['country'] ?: '-',
+                'level' => $r['level_name'] ?: '未分级',
+                'owner' => $r['owner_name'] ?: '-',
+                'orders' => 0,
+                'amount_bucket' => [],
+                'ar_bucket' => [],
+                'last' => '',
+                'sort_amount' => 0.0,
+            ];
+        }
+        $amount = (float)($r['order_amount'] ?? 0);
+        $receivable = (float)($r['receivable_amount'] ?? 0);
+        $grouped[$customerKey]['orders'] += (int)($r['order_count'] ?? 0);
+        $grouped[$customerKey]['amount_bucket'][$currency] = ($grouped[$customerKey]['amount_bucket'][$currency] ?? 0) + $amount;
+        $grouped[$customerKey]['ar_bucket'][$currency] = ($grouped[$customerKey]['ar_bucket'][$currency] ?? 0) + $receivable;
+        $grouped[$customerKey]['sort_amount'] = max($grouped[$customerKey]['sort_amount'], $amount);
+        $last = substr((string)($r['last_order'] ?? ''), 0, 10);
+        if ($last !== '' && $last > (string)$grouped[$customerKey]['last']) $grouped[$customerKey]['last'] = $last;
+        $totalByCurrency[$currency] = ($totalByCurrency[$currency] ?? 0) + $amount;
     }
-    return crm_dashboard_table_result('本月成交金额最高客户', ['排名','客户','国家','等级','负责人','订单','成交金额','应收'], $rows, 'TOP10 成交总额 USD ' . crm_dashboard_format_money($total));
+    uasort($grouped, fn($a, $b) => ($b['sort_amount'] <=> $a['sort_amount']) ?: ($b['orders'] <=> $a['orders']));
+    $rows = [];
+    foreach (array_slice(array_values($grouped), 0, 10) as $i => $r) {
+        $rows[] = [
+            'rank' => (string)($i + 1),
+            'customer' => $r['customer'],
+            'country' => $r['country'],
+            'level' => $r['level'],
+            'owner' => $r['owner'],
+            'orders' => (string)(int)$r['orders'],
+            'amount' => crm_dashboard_money_bucket_text($r['amount_bucket']),
+            'ar' => crm_dashboard_money_bucket_text($r['ar_bucket']),
+            'last' => $r['last'] ?: '-',
+        ];
+    }
+    arsort($totalByCurrency);
+    return crm_dashboard_table_result('本月成交金额最高客户，按订单原币种分别统计', ['排名','客户','国家','等级','负责人','订单','成交金额','应收'], $rows, 'TOP10 成交总额 ' . crm_dashboard_money_bucket_text($totalByCurrency));
 }
 
 function crm_dashboard_customer_quote_rank(array $input = []): array
