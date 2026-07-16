@@ -3110,12 +3110,17 @@
       var box = document.querySelector('[data-customer-detail]');
       if (!box || this.currentId) return;
       box.innerHTML = '<div class="customer-overview-empty"><header><div><span>CUSTOMER CENTER</span><strong>客户中心总览</strong><p>未选择客户时显示客户分布、增长、待处理和最近动态。</p></div><button type="button" data-overview-refresh>刷新</button></header><div class="customer-overview-loading">正在加载客户统计...</div></div>';
-      box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this));
-      this.loadOverviewStats();
+      box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this, true));
+      window.clearTimeout(this.overviewStatsTimer);
+      this.overviewStatsTimer = window.setTimeout(function () {
+        if (!CustomerModule.currentId && current === 'customers') CustomerModule.loadOverviewStats(false);
+      }, 120);
     },
-    loadOverviewStats: function () {
+    loadOverviewStats: function (force) {
       var self = this;
-      return post('customer_overview_stats', {}).then(function (json) {
+      var loading = document.querySelector('.customer-overview-loading');
+      if (loading && force) loading.textContent = '正在刷新客户统计...';
+      return post('customer_overview_stats', { force: force ? 1 : 0 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '统计加载失败');
         self.renderOverviewStats(json.data || {});
       }).catch(function (error) {
@@ -3186,7 +3191,7 @@
         '<section class="customer-overview-grid overview-distribution-grid"><article><h3>国家客户分布</h3><div class="customer-country-chart"><div class="customer-pie" style="background: conic-gradient(' + gradient + ')"><strong>' + esc(total) + '</strong><span>总客户</span></div><div class="customer-country-legend">' + countryHtml + '</div></div></article><article><h3>客户来源分布</h3><div class="customer-country-legend">' + distList(sources, 'source') + '</div></article><article><h3>负责人客户分布</h3><div class="customer-country-legend">' + distList(owners, 'owner') + '</div></article></section>' +
         '<section class="customer-overview-section"><h3>待处理客户</h3><div class="customer-overview-pending-grid">' + pending.map(pendingCard).join('') + '</div></section>' +
         '<section class="customer-overview-grid overview-recent-grid">' + recentCard('最近新增客户', recentCreated, 'created') + recentCard('最近更新客户', recentUpdated, 'updated') + '</section>';
-      box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this));
+      box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this, true));
       this.bindOverviewStats(box);
     },
     bindOverviewStats: function (box) {

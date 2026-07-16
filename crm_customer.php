@@ -1667,10 +1667,49 @@ function crm_customer_list(array $input): array
     return ['rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize];
 }
 
-function crm_customer_overview_stats(): array
+function crm_customer_overview_cache_file(): string
+{
+    $user = current_user() ?: [];
+    $scope = [
+        'uid' => (int)($user['id'] ?? 0),
+        'super' => is_super_admin() ? 1 : 0,
+        'view_all' => has_permission('customer.view_all') ? 1 : 0,
+        'view_own' => has_permission('customer.view_own') ? 1 : 0,
+        'role' => (string)($user['role_key'] ?? ''),
+    ];
+    $dir = __DIR__ . '/storage/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return $dir . '/customer_overview_' . sha1(json_encode($scope, JSON_UNESCAPED_UNICODE)) . '.json';
+}
+
+function crm_customer_overview_cache_read(string $file, int $ttl = 120): ?array
+{
+    if (!is_file($file) || filemtime($file) < time() - $ttl) return null;
+    $data = json_decode((string)@file_get_contents($file), true);
+    if (!is_array($data)) return null;
+    $data['_cache_hit'] = 1;
+    return $data;
+}
+
+function crm_customer_overview_cache_write(string $file, array $data): void
+{
+    $dir = dirname($file);
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $tmp = $file . '.tmp.' . getmypid();
+    if (@file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_UNICODE)) === false) return;
+    @chmod($tmp, 0664);
+    @rename($tmp, $file);
+}
+
+function crm_customer_overview_stats(bool $forceRefresh = false): array
 {
     crm_customer_ensure_tables();
     crm_require('customer.view');
+    $cacheFile = crm_customer_overview_cache_file();
+    if (!$forceRefresh) {
+        $cached = crm_customer_overview_cache_read($cacheFile);
+        if ($cached !== null) return $cached;
+    }
     $params = [];
     $scope = crm_customer_scope_sql($params);
     $where = implode(' AND ', ['c.deleted_at IS NULL', $scope]);
@@ -1765,9 +1804,10 @@ function crm_customer_overview_stats(): array
     $duplicateSql = "((c.email IS NOT NULL AND c.email <> '' AND EXISTS (SELECT 1 FROM crm_customers d WHERE d.deleted_at IS NULL AND d.id <> c.id AND d.email = c.email))
         OR (c.website IS NOT NULL AND c.website <> '' AND EXISTS (SELECT 1 FROM crm_customers d2 WHERE d2.deleted_at IS NULL AND d2.id <> c.id AND d2.website = c.website)))";
 
-    return [
+    $result = [
         'total' => $total,
         'refreshed_at' => date('Y-m-d H:i:s'),
+        '_cache_hit' => 0,
         'kpis' => [
             'total' => $total,
             'month_new' => $countWhere('DATE_FORMAT(c.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")'),
@@ -1791,6 +1831,8 @@ function crm_customer_overview_stats(): array
         'recent_created' => $customerRows('', [], 6, 'created'),
         'recent_updated' => $customerRows('', [], 6, 'updated'),
     ];
+    crm_customer_overview_cache_write($cacheFile, $result);
+    return $result;
 }
 
 function crm_customer_get(int $id, string $detailMode = 'full'): array

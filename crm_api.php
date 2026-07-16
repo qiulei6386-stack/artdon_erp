@@ -1072,7 +1072,7 @@ try {
     }
     if ($action === 'customer_overview_stats') {
         crm_require('customer.view');
-        api_response(true, '', crm_customer_overview_stats());
+        api_response(true, '', crm_customer_overview_stats(!empty($_POST['force'])));
     }
     if ($action === 'crm_linkage_data') {
         crm_require('customer.view');
