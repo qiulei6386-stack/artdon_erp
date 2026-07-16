@@ -2396,7 +2396,9 @@
         timeline: 'timeline',
         duplicate: 'duplicate',
         file: 'files',
-        chat_groups: 'contacts'
+        address: 'addresses',
+        tag: 'tags',
+        chat_groups: 'chat_groups'
       };
       return aliases[key] || key;
     },
@@ -2414,12 +2416,22 @@
       var key = this.detailTabAlias(name);
       var map = {
         overview: 'overview',
+        archive: 'archive',
+        communication: 'communication',
+        sales: 'sales',
+        project: 'project',
+        records: 'records',
         customer_attribute: 'archive',
         contacts: 'archive',
+        addresses: 'archive',
+        chat_groups: 'archive',
+        tags: 'archive',
         preferences: 'archive',
+        communication_all: 'communication',
         followups: 'communication',
         visits: 'communication',
         mail: 'communication',
+        social_chat: 'communication',
         whatsapp: 'communication',
         wechat: 'communication',
         opportunities: 'sales',
@@ -2441,6 +2453,59 @@
         events: 'records'
       };
       return map[key] || 'overview';
+    },
+    detailSubTabsForGroup: function (group) {
+      var tabs = {
+        archive: [
+          { key: 'customer_attribute', label: '客户属性' },
+          { key: 'contacts', label: '联系人' },
+          { key: 'addresses', label: '地址' },
+          { key: 'chat_groups', label: '客户群' },
+          { key: 'tags', label: '标签' }
+        ],
+        communication: [
+          { key: 'communication_all', label: '全部沟通' },
+          { key: 'followups', label: '跟进' },
+          { key: 'visits', label: '拜访/来访' },
+          { key: 'mail', label: '邮件' },
+          { key: 'social_chat', label: 'WhatsApp/微信' }
+        ],
+        sales: [
+          { key: 'opportunities', label: '商机' },
+          { key: 'quote', label: '报价' },
+          { key: 'orders', label: '订单' },
+          { key: 'receivables', label: '收款欠款' },
+          { key: 'shipments', label: '出货进度' },
+          { key: 'documents', label: '单证' }
+        ],
+        project: [
+          { key: 'samples', label: '样品' },
+          { key: 'materials', label: '资料' },
+          { key: 'plm', label: 'PLM' },
+          { key: 'bom', label: 'BOM' },
+          { key: 'dispatch', label: '派工' }
+        ],
+        records: [
+          { key: 'relations', label: '关系' },
+          { key: 'logs', label: '日志' },
+          { key: 'duplicate', label: '查重' },
+          { key: 'timeline', label: '时间轴' },
+          { key: 'files', label: '文件' },
+          { key: 'events', label: '恢复记录' }
+        ]
+      };
+      return tabs[group] || [];
+    },
+    detailDefaultSubTab: function (group) {
+      var tabs = this.detailSubTabsForGroup(group);
+      return tabs.length ? tabs[0].key : group;
+    },
+    detailResolveTarget: function (name) {
+      var target = this.detailTabAlias(name || 'overview');
+      var group = this.detailGroupForTab(target);
+      if (group === 'overview') return { group: 'overview', sub: 'overview' };
+      if (target === group) target = this.detailDefaultSubTab(group);
+      return { group: group, sub: target };
     },
     visibleColumns: function () {
       return this.layoutMode === 'default' ? this.compactColumns : this.columns;
@@ -3178,10 +3243,32 @@
       var shipmentData = (data.linkage && data.linkage.shipments) || {};
       var receivableData = (data.linkage && data.linkage.receivables) || {};
       var mainTabs = this.detailGroupDefinitions();
-      var activeTab = this.detailGroupForTab(this.activeDetailTab || 'overview');
+      var activeTarget = this.detailResolveTarget(this.activeDetailTab || 'overview');
+      var activeTab = activeTarget.group;
+      var activeSubTab = activeTarget.sub;
+      var communicationItems = [];
+      (data.followups || []).forEach(function (f) {
+        communicationItems.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-' });
+      });
+      (data.visits || []).forEach(function (v) {
+        communicationItems.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || '', person: v.owner_name || '-' });
+      });
+      communicationItems.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
+      var communicationAll = communicationItems.slice(0, 20).map(function (item) {
+        return '<article class="customer-communication-row"><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>' + esc(item.detail || '暂无详情') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
+      }).join('') || '<div class="customer-tab-empty"><strong>暂无数据</strong><span>跟进、拜访、邮件和 WhatsApp/微信记录接入后会在这里汇总。</span></div>';
+      var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-field-grid"><div><span>国家</span><strong>' + esc(c.country || '未填') + '</strong></div><div><span>城市</span><strong>' + esc(c.city || '未填') + '</strong></div><div class="wide"><span>详细地址</span><strong>' + esc(c.address || '未填') + '</strong></div><div><span>邮编</span><strong>' + esc(c.postal_code || c.zip_code || '未填') + '</strong></div><div><span>常用港口</span><strong>' + esc(c.port || '未填') + '</strong></div><div><span>时区</span><strong>' + esc(c.timezone || '未填') + '</strong></div></div></section>';
+      var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tags">' + (sourceTags.concat(promotionChannels).map(function (tag) { return '<span>' + esc(tag) + '</span>'; }).join('') || '<span>暂无标签</span>') + '</div><div class="customer-tab-empty compact"><strong>标签后续细修</strong><span>第 3 步会继续整理客户标签、客户组和推广标签。</span></div></section>';
+      var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-chat-group-head"><div><strong>客户群 / 沟通群</strong><span>微信群、WhatsApp群、项目群、经销商群，推广任务会按群生成手动执行清单。</span></div><button type="button" data-chat-group-create>新增客户群</button></div><div class="customer-chat-group-list">' + chatGroups + '</div></section>';
+      var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-summary-grid"><button type="button"><span>WhatsApp</span><strong>' + esc(c.whatsapp || '未填') + '</strong><em>后续接入 WhatsApp 往来记录</em></button><button type="button"><span>微信</span><strong>' + esc(c.wechat || '未填') + '</strong><em>后续接入微信沟通记录</em></button></div></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
-        contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><table class="crm-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th></tr></thead><tbody>' + contacts + '</tbody></table><div class="customer-chat-group-head"><div><strong>客户群 / 沟通群</strong><span>微信群、WhatsApp群、项目群、经销商群，推广任务会按群生成手动执行清单。</span></div><button type="button" data-chat-group-create>新增客户群</button></div><div class="customer-chat-group-list">' + chatGroups + '</div></section>',
+        customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute"><div class="customer-summary-grid"><button type="button" data-customer-attribute-open><span>客户属性</span><strong>查看 / 编辑</strong><em>客户身份、联系方式、地区地址、来源推广、负责人权限</em></button><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc((data.contacts || []).length) + '</strong><em>联系人、客户群和沟通群</em></button></div></section>',
+        contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><table class="crm-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th></tr></thead><tbody>' + contacts + '</tbody></table></section>',
+        addresses: addressPanel,
+        chat_groups: chatGroupPanel,
+        tags: tagsPanel,
+        communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-communication-list">' + communicationAll + '</div></section>',
         followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-follow-list">' + follows + '</div></section>',
         visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="visit-tab-head"><div><strong>拜访 / 来访闭环</strong><span>拜访计划、来访接待、结果、后续报价/资料/样品/派工。</span></div><button type="button" data-customer-new-visit>新建拜访</button><button type="button" data-customer-new-arrival>新建来访</button></div><div class="visit-list compact">' + visits + '</div></section>',
         samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="visit-tab-head"><div><strong>样品 / 寄送</strong><span>样品任务、寄送记录、快递单号、图片附件和签收跟进。</span></div><button type="button" data-customer-new-sample>新建样品寄送</button></div><div class="sample-list compact">' + sampleShipments + '</div></section>',
@@ -3191,6 +3278,7 @@
         events: '<section class="customer-tab-panel" data-detail-panel="events"><table class="crm-table"><thead><tr><th>类型</th><th>标题</th><th>事件时间</th><th>提醒时间</th><th>状态</th></tr></thead><tbody>' + events + '</tbody></table></section>',
         preferences: '<section class="customer-tab-panel" data-detail-panel="preferences"><div class="customer-field-grid"><div><span>意向产品分类</span><strong>' + esc(productPref.category || '未填') + '</strong></div><div><span>关注系列</span><strong>' + esc(productPref.series || '未填') + '</strong></div><div><span>常用功率/色温</span><strong>' + esc(productPref.power || '-') + ' / ' + esc(productPref.cct || '-') + '</strong></div><div><span>认证需求</span><strong>' + esc(productPref.certification || '未填') + '</strong></div><div><span>首选沟通</span><strong>' + esc(commPref.preferred_channel || '未填') + '</strong></div><div><span>语言/时区</span><strong>' + esc(commPref.language || '-') + ' / ' + esc(commPref.timezone || '-') + '</strong></div></div></section>',
         mail: '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-summary-grid"><button type="button"><span>最近邮件</span><strong>0</strong><em>当前客户暂无邮件归档</em></button><button type="button"><span>未回复</span><strong>0</strong><em>无待处理邮件</em></button></div></section>',
+        social_chat: socialPanel,
         quote: '<section class="customer-tab-panel" data-detail-panel="quote">' + this.renderQuotePanel(quoteData) + '</section>',
         plm: '<section class="customer-tab-panel" data-detail-panel="plm"><div class="customer-summary-grid"><button type="button"><span>项目</span><strong>0</strong><em>暂无项目关联</em></button><button type="button"><span>样品</span><strong>0</strong><em>暂无样品记录</em></button></div></section>',
         bom: '<section class="customer-tab-panel" data-detail-panel="bom">' + this.renderBomPanel(bomData) + '</section>',
@@ -3207,29 +3295,38 @@
       function hasPermissionText(key) {
         return state.permissions && state.permissions[key];
       }
-      function subPanel(key, label) {
+      function subPanel(key, label, active) {
         var html = panelContent[key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(label || key) + '</span><strong>0</strong><em>接口待接入</em></button></div></section>';
+        var className = 'customer-tab-panel customer-tab-subpanel' + (active ? ' active' : '');
         return html
-          .replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-subpanel active"')
-          .replace('customer-tab-panel"', 'customer-tab-panel customer-tab-subpanel active"');
+          .replace('customer-tab-panel active"', className + '"')
+          .replace('customer-tab-panel"', className + '"');
       }
-      function groupPanel(key, title, children) {
+      function groupPanel(key, title, children, subtabs, activeSub) {
+        var subtabHtml = (subtabs || []).length ? '<nav class="customer-detail-subtabs">' + subtabs.map(function (tab) {
+          return '<button type="button" data-detail-subtab="' + esc(tab.key) + '" class="' + (tab.key === activeSub ? 'active' : '') + '">' + esc(tab.label) + '</button>';
+        }).join('') + '</nav>' : '';
         return '<section class="customer-tab-panel customer-tab-group' + (key === activeTab ? ' active' : '') + '" data-detail-panel="' + esc(key) + '">' +
           (key === 'overview' ? '' : '<header class="customer-tab-group-head"><strong>' + esc(title) + '</strong><span>' + esc(children.length) + ' 个功能区</span></header>') +
+          subtabHtml +
           children.join('') +
           '</section>';
       }
-      var archiveIntro = '<section class="customer-tab-panel customer-tab-subpanel active" data-detail-panel="customer_attribute"><div class="customer-summary-grid"><button type="button" data-customer-attribute-open><span>客户属性</span><strong>查看 / 编辑</strong><em>客户身份、联系方式、地区地址、来源推广、负责人权限</em></button><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc((data.contacts || []).length) + '</strong><em>联系人、客户群和沟通群</em></button></div></section>';
       var tabHtml = '<div class="customer-detail-tabs">' + mainTabs.map(function (tab) {
         return '<button type="button" data-detail-tab="' + esc(tab.key) + '" class="' + (tab.key === activeTab ? 'active' : '') + '" title="' + esc(tab.label) + '"><strong>' + esc(tab.label) + '</strong></button>';
       }).join('') + '</div>';
+      function groupChildren(group) {
+        return CustomerModule.detailSubTabsForGroup(group).map(function (tab) {
+          return subPanel(tab.key, tab.label, group === activeTab && tab.key === activeSubTab);
+        });
+      }
       var panelHtml = [
-        groupPanel('overview', '概览', [panelContent.overview.replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-subpanel active"')]),
-        groupPanel('archive', '档案', [archiveIntro, subPanel('contacts', '联系人'), subPanel('preferences', '标签')]),
-        groupPanel('communication', '沟通', [subPanel('followups', '跟进'), subPanel('visits', '拜访 / 来访'), subPanel('mail', '邮件')]),
-        groupPanel('sales', '销售', [subPanel('opportunities', '商机'), subPanel('quote', '报价'), subPanel('orders', '订单'), subPanel('receivables', '收款欠款'), subPanel('shipments', '出货进度'), subPanel('documents', '单证')]),
-        groupPanel('project', '项目', [subPanel('samples', '样品'), subPanel('materials', '资料'), subPanel('plm', 'PLM'), subPanel('bom', 'BOM'), subPanel('dispatch', '派工')]),
-        groupPanel('records', '记录', [subPanel('relations', '关系'), subPanel('logs', '日志'), subPanel('duplicate', '查重'), subPanel('timeline', '时间轴'), subPanel('files', '文件'), subPanel('events', '恢复记录')])
+        panelContent.overview.replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-group' + (activeTab === 'overview' ? ' active' : '') + '"'),
+        groupPanel('archive', '档案', groupChildren('archive'), this.detailSubTabsForGroup('archive'), activeSubTab),
+        groupPanel('communication', '沟通', groupChildren('communication'), this.detailSubTabsForGroup('communication'), activeSubTab),
+        groupPanel('sales', '销售', groupChildren('sales'), this.detailSubTabsForGroup('sales'), activeSubTab),
+        groupPanel('project', '项目', groupChildren('project'), this.detailSubTabsForGroup('project'), activeSubTab),
+        groupPanel('records', '记录', groupChildren('records'), this.detailSubTabsForGroup('records'), activeSubTab)
       ].join('');
       box.innerHTML = tabHtml + panelHtml;
       this.attributeViewMode = false;
@@ -3906,7 +4003,7 @@
             else toast('接口待接入');
             return;
           }
-          if (key === 'chat_groups') self.switchDetailTab('contacts');
+          if (key === 'chat_groups') self.switchDetailTab('chat_groups');
         });
       });
       var followBtn = root.querySelector('[data-customer-new-followup]');
@@ -3947,6 +4044,12 @@
           self.switchDetailTab(name);
         });
       });
+      document.querySelectorAll('[data-detail-subtab]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var name = button.getAttribute('data-detail-subtab');
+          self.switchDetailTab(name);
+        });
+      });
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
@@ -3966,7 +4069,7 @@
             else toast('接口待接入');
             return;
           }
-          if (key === 'chat_groups') self.switchDetailTab('contacts');
+          if (key === 'chat_groups') self.switchDetailTab('chat_groups');
         });
       });
       document.querySelectorAll('[data-shipment-preview]').forEach(function (button) {
@@ -4035,21 +4138,18 @@
       });
     },
     switchDetailTab: function (name) {
-      var targetName = this.detailTabAlias(name || 'overview');
-      if (targetName === 'customer_attribute') {
-        this.openCustomerAttributeView(false, true);
-        return;
-      }
-      var activeName = this.detailGroupForTab(targetName);
-      this.rememberDetailTab(activeName);
+      var target = this.detailResolveTarget(name || 'overview');
+      var activeName = target.group;
+      var activeSub = target.sub;
+      this.rememberDetailTab(activeSub);
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
-        this.ensureFullDetail(activeName);
+        this.ensureFullDetail(activeSub);
         return;
       }
       if (activeName === 'overview' && this.currentDetail) {
-        var oldOverview = document.querySelector('[data-detail-panel="overview"]');
+        var oldOverview = document.querySelector('[data-customer-detail] > [data-detail-panel="overview"]');
         if (oldOverview) {
-          oldOverview.outerHTML = this.renderCustomerOverviewV2(this.currentDetail);
+          oldOverview.outerHTML = this.renderCustomerOverviewV2(this.currentDetail).replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-group active"');
           this.bindCustomerPortraitOverviewEvents(document.querySelector('[data-detail-panel="overview"]') || document);
         }
       }
@@ -4058,10 +4158,14 @@
       document.querySelectorAll('[data-customer-detail] > .customer-tab-panel, [data-customer-detail] > .customer-tab-group').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeName);
       });
-      if (targetName !== activeName) {
-        var child = document.querySelector('.customer-tab-group.active [data-detail-panel="' + targetName + '"]');
-        if (child && child.scrollIntoView) child.scrollIntoView({ block: 'nearest' });
-      }
+      var activeGroup = document.querySelector('[data-customer-detail] > [data-detail-panel="' + activeName + '"]');
+      if (!activeGroup) return;
+      activeGroup.querySelectorAll('[data-detail-subtab]').forEach(function (item) {
+        item.classList.toggle('active', item.getAttribute('data-detail-subtab') === activeSub);
+      });
+      activeGroup.querySelectorAll('.customer-tab-subpanel').forEach(function (panel) {
+        panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeSub);
+      });
     },
     field: function (label, name, value, attrs) {
       return '<label class="entity-field"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '" ' + (attrs || '') + '></label>';

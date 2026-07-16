@@ -6433,6 +6433,27 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .customer-tab-group-head strong { font-size: 15px; color: var(--crm-text); }
 .customer-tab-group-head span { font-size: 12px; color: var(--crm-muted-text); }
+.customer-detail-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.customer-detail-subtabs button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-card-bg);
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.customer-detail-subtabs button.active {
+  background: var(--crm-hover-bg);
+  border-color: color-mix(in srgb, var(--crm-primary) 35%, var(--crm-border));
+  color: var(--crm-primary);
+}
 .customer-tab-subpanel {
   padding-top: 0;
   border: 1px solid var(--crm-border);
@@ -6440,6 +6461,51 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   background: var(--crm-card-bg);
   padding: 12px;
 }
+.customer-tab-empty {
+  display: grid;
+  gap: 4px;
+  min-height: 84px;
+  align-content: center;
+  color: var(--crm-muted-text);
+  background: var(--crm-hover-bg);
+  border: 1px dashed var(--crm-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.customer-tab-empty strong { color: var(--crm-text); font-size: 13px; }
+.customer-tab-empty span { font-size: 12px; }
+.customer-tab-empty.compact { min-height: 54px; margin-top: 10px; }
+.customer-communication-list { display: grid; gap: 8px; }
+.customer-communication-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--crm-card-bg) 92%, var(--crm-hover-bg));
+}
+.customer-communication-row b {
+  height: 22px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--crm-hover-bg);
+  color: var(--crm-primary);
+  font-size: 11px;
+}
+.customer-communication-row strong,
+.customer-communication-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.customer-communication-row strong { color: var(--crm-text); font-size: 13px; }
+.customer-communication-row span,
+.customer-communication-row em { color: var(--crm-muted-text); font-size: 12px; font-style: normal; }
+.customer-communication-row em { text-align: right; }
 .customer-tab-quick-editor { display: grid; gap: 10px; }
 .customer-tab-quick-list {
   display: grid;
