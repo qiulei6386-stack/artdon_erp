@@ -2053,7 +2053,7 @@
     renderUnrepliedMailBody: function (widget, size) {
       var count = Number(widget.value || 0);
       var isMicro = size === 'micro' || size === 'microWide' || size === 'microTall';
-      var limit = isMicro || size === 'sm' ? 0 : (size === 'wide' || size === 'tall' ? 6 : 8);
+      var limit = isMicro || size === 'sm' ? 0 : (size === 'wide' || size === 'tall' ? 3 : 5);
       var showSummary = size === 'chart' || size === 'panel' || size === 'full';
       var rows = (widget.items || []).slice(0, limit);
       return '<div class="workspace-unreplied-head"><strong class="workspace-big">' + esc(count) + '</strong><span>未回复</span></div>' +
