@@ -1602,7 +1602,7 @@ $prefStyle = sprintf(
   <script>
     window.CRM_BOOTSTRAP = <?= json_encode(['csrf' => csrf_token(), 'modules' => $allModules, 'top_modules' => $modules, 'actions' => crm_action_map(), 'action_permissions' => $actionPermissions, 'permissions' => $crmPermissionState, 'preferences' => $prefs, 'config' => $crmConfig, 'module_settings' => $moduleSettings, 'users' => $customerFilterUsers, 'user' => ['id' => $user['id'], 'name' => $user['username'], 'real_name' => $user['real_name'] ?? '', 'english_name' => $user['english_name'] ?? '', 'department_name' => $user['department_name'] ?? '', 'role_name' => $user['role_name'] ?? '', 'position' => $user['position'] ?? '', 'email' => $user['email'] ?? '', 'phone' => $user['phone'] ?? '', 'is_super_admin' => is_super_admin()]], JSON_UNESCAPED_UNICODE) ?>;
   </script>
-  <?php $crmAssetBuild = 'notify-tabs-20260709-2'; ?>
+  <?php $crmAssetBuild = 'mail-temp-cleanup-20260716-1'; ?>
   <script src="assets/crm/modules.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/modules.js') ?>"></script>
   <script src="assets/crm/preferences.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/preferences.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>
