@@ -8,6 +8,15 @@ function crm_add_column_safe(string $table, string $column, string $definition):
     }
 }
 
+function crm_add_index_safe(string $table, string $index, string $definition): void
+{
+    $stmt = db()->prepare('SHOW INDEX FROM `' . $table . '` WHERE Key_name = ?');
+    $stmt->execute([$index]);
+    if (!$stmt->fetchColumn()) {
+        db()->exec("ALTER TABLE {$table} ADD KEY {$index} {$definition}");
+    }
+}
+
 function crm_customer_ensure_tables(): void
 {
     static $done = false;
@@ -443,6 +452,14 @@ function crm_customer_ensure_tables(): void
         KEY idx_file_customer (customer_id),
         KEY idx_file_deleted (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    crm_add_index_safe('crm_customers', 'idx_customer_list_updated', '(deleted_at, updated_at, id)');
+    crm_add_index_safe('crm_customers', 'idx_customer_list_created', '(deleted_at, created_at, id)');
+    crm_add_index_safe('crm_customers', 'idx_customer_lifecycle', '(lifecycle_key, deleted_at)');
+    crm_add_index_safe('crm_contacts', 'idx_contact_customer_deleted_email', '(customer_id, deleted_at, email)');
+    crm_add_index_safe('crm_contacts', 'idx_contact_search', '(customer_id, deleted_at, name, email, phone, whatsapp)');
+    crm_add_index_safe('crm_customer_followups', 'idx_follow_customer_deleted_time', '(customer_id, deleted_at, followup_time)');
+    crm_add_index_safe('crm_customer_group_relations', 'idx_customer_group_customer_group', '(customer_id, group_id)');
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_logs (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1349,11 +1366,12 @@ function crm_customer_list(array $input): array
     }
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
-    $sortMap = ['updated_at'=>'c.updated_at','customer_code'=>'c.customer_code','customer_name'=>'c.customer_name','country'=>'c.country','created_at'=>'c.created_at','last_followup'=>'last_followup_at'];
+    $sortMap = ['updated_at'=>'c.updated_at','customer_code'=>'c.customer_code','customer_name'=>'c.customer_name','country'=>'c.country','created_at'=>'c.created_at','last_followup'=>'(SELECT MAX(f.followup_time) FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL)'];
     $sort = $sortMap[$input['sort'] ?? 'updated_at'] ?? 'c.updated_at';
     $dir = strtoupper((string)($input['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
     $sqlWhere = implode(' AND ', $where);
-    $countStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c WHERE {$sqlWhere}");
+    $countJoin = ($input['promotion_status'] ?? '') !== '' ? ' LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id' : '';
+    $countStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c{$countJoin} WHERE {$sqlWhere}");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
     $offset = ($page - 1) * $pageSize;
@@ -1362,11 +1380,11 @@ function crm_customer_list(array $input): array
         COALESCE(pa.city, c.city) AS city,
         COALESCE(pa.address, c.address) AS address,
         u.username AS owner_name, c.owner_department AS owner_department_name,
-        (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL) AS contact_count,
-        (SELECT MAX(f.followup_time) FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL) AS last_followup_at,
-        (SELECT group_concat(g.group_name ORDER BY g.sort_order SEPARATOR ', ') FROM crm_customer_group_relations r JOIN crm_customer_groups g ON g.id = r.group_id AND g.deleted_at IS NULL WHERE r.customer_id = c.id) AS group_names,
-        (SELECT group_concat(s.source_key ORDER BY s.id SEPARATOR ',') FROM crm_customer_source_tags s WHERE s.customer_id = c.id) AS source_tags,
-        (SELECT group_concat(pc.channel_key ORDER BY pc.id SEPARATOR ',') FROM crm_customer_promotion_channels pc WHERE pc.customer_id = c.id) AS promotion_channels,
+        0 AS contact_count,
+        NULL AS last_followup_at,
+        '' AS group_names,
+        '' AS source_tags,
+        '' AS promotion_channels,
         COALESCE(ps.status, 'not_promoted') AS promotion_status
         FROM crm_customers c
         LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1
@@ -1377,7 +1395,46 @@ function crm_customer_list(array $input): array
         ORDER BY {$sort} {$dir}, c.id DESC LIMIT {$pageSize} OFFSET {$offset}";
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
-    return ['rows' => $stmt->fetchAll(), 'total' => $total, 'page' => $page, 'page_size' => $pageSize];
+    $rows = $stmt->fetchAll();
+    $ids = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $rows)));
+    if ($ids) {
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $contactStmt = db()->prepare("SELECT customer_id, COUNT(*) AS contact_count FROM crm_contacts WHERE customer_id IN ({$placeholders}) AND deleted_at IS NULL GROUP BY customer_id");
+        $contactStmt->execute($ids);
+        $contactCounts = [];
+        foreach ($contactStmt->fetchAll() as $row) $contactCounts[(int)$row['customer_id']] = (int)$row['contact_count'];
+
+        $followStmt = db()->prepare("SELECT customer_id, MAX(followup_time) AS last_followup_at FROM crm_customer_followups WHERE customer_id IN ({$placeholders}) AND deleted_at IS NULL GROUP BY customer_id");
+        $followStmt->execute($ids);
+        $lastFollowups = [];
+        foreach ($followStmt->fetchAll() as $row) $lastFollowups[(int)$row['customer_id']] = (string)$row['last_followup_at'];
+
+        $groupStmt = db()->prepare("SELECT r.customer_id, GROUP_CONCAT(g.group_name ORDER BY g.sort_order SEPARATOR ', ') AS group_names FROM crm_customer_group_relations r JOIN crm_customer_groups g ON g.id = r.group_id AND g.deleted_at IS NULL WHERE r.customer_id IN ({$placeholders}) GROUP BY r.customer_id");
+        $groupStmt->execute($ids);
+        $groupNames = [];
+        foreach ($groupStmt->fetchAll() as $row) $groupNames[(int)$row['customer_id']] = (string)$row['group_names'];
+
+        $sourceStmt = db()->prepare("SELECT customer_id, GROUP_CONCAT(source_key ORDER BY id SEPARATOR ',') AS source_tags FROM crm_customer_source_tags WHERE customer_id IN ({$placeholders}) GROUP BY customer_id");
+        $sourceStmt->execute($ids);
+        $sourceTags = [];
+        foreach ($sourceStmt->fetchAll() as $row) $sourceTags[(int)$row['customer_id']] = (string)$row['source_tags'];
+
+        $promotionStmt = db()->prepare("SELECT customer_id, GROUP_CONCAT(channel_key ORDER BY id SEPARATOR ',') AS promotion_channels FROM crm_customer_promotion_channels WHERE customer_id IN ({$placeholders}) GROUP BY customer_id");
+        $promotionStmt->execute($ids);
+        $promotionChannels = [];
+        foreach ($promotionStmt->fetchAll() as $row) $promotionChannels[(int)$row['customer_id']] = (string)$row['promotion_channels'];
+
+        foreach ($rows as &$row) {
+            $customerId = (int)($row['id'] ?? 0);
+            $row['contact_count'] = $contactCounts[$customerId] ?? 0;
+            $row['last_followup_at'] = $lastFollowups[$customerId] ?? null;
+            $row['group_names'] = $groupNames[$customerId] ?? '';
+            $row['source_tags'] = $sourceTags[$customerId] ?? '';
+            $row['promotion_channels'] = $promotionChannels[$customerId] ?? '';
+        }
+        unset($row);
+    }
+    return ['rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize];
 }
 
 function crm_customer_overview_stats(): array
