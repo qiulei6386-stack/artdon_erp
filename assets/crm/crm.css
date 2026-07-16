@@ -3592,6 +3592,14 @@ html[data-crm-animation="off"] .crm-module { animation: none; }
   padding: 6px 8px;
   text-align: left;
 }
+body.is-workspace-module .workspace-widget[data-workspace-widget="unreplied_mail"] .workspace-mail-mini-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow: hidden;
+}
+body.is-workspace-module .workspace-widget[data-workspace-widget="unreplied_mail"] .workspace-mail-mini-list button {
+  min-height: 38px;
+}
 .workspace-mail-mini-list.compact-sm {
   gap: 3px;
   overflow: hidden;
@@ -22669,6 +22677,11 @@ body.is-workspace-module .workspace-mail-mini-list button::before {
 }
 body.is-workspace-module .workspace-mail-mini-list button::before {
   background: #F59E0B;
+}
+@media (max-width: 900px) {
+  body.is-workspace-module .workspace-widget[data-workspace-widget="unreplied_mail"] .workspace-mail-mini-list {
+    grid-template-columns: 1fr;
+  }
 }
 body.is-workspace-module .workspace-reminder-list em,
 body.is-workspace-module .workspace-mail-mini-list button:hover b {
