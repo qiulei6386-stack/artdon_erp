@@ -3694,7 +3694,7 @@
         '<section class="entity-section entity-owner-section"><h3>负责人信息</h3><div class="entity-grid">' +
         '<label class="entity-field"><span>第一负责人</span><select name="owner_user_id" data-primary-owner-select>' + this.customerOwnerOptions(primaryOwnerId) + '</select></label>' +
         '<div class="entry-checks entry-owner-checks wide"><strong>协作负责人 / 可多人</strong>' + this.customerOwnerChecks(ownerIds, primaryOwnerId) + '</div>' +
-        '</div><p class="entry-muted">第一负责人会自动加入协作负责人；多负责人会共同拥有该客户的查看与跟进权限。</p></section>' +
+        '</div><p class="entry-muted">第一负责人保存时会自动包含；这里仅选择额外协作负责人，避免同一账号重复显示。</p></section>' +
         '<section class="entity-section"><h3>客户画像</h3><div class="entity-grid">' +
         '<label class="entity-field"><span>客户等级</span><select name="level">' + this.optionHtml('customer_level', entity.level || 'P3') + '</select></label>' +
         '<label class="entity-field"><span>生命周期</span><select name="lifecycle_key">' + this.optionHtml('customer_lifecycle', entity.lifecycle_key || 'lead') + '</select></label>' +
@@ -3729,15 +3729,18 @@
     customerOwnerChecks: function (selectedIds, primaryOwnerId) {
       selectedIds = (selectedIds || []).map(String);
       primaryOwnerId = String(primaryOwnerId || '');
-      var users = this.customerOwnerList();
-      if (primaryOwnerId && selectedIds.indexOf(primaryOwnerId) < 0) selectedIds.unshift(primaryOwnerId);
+      var users = this.customerOwnerList().filter(function (user) {
+        return String(user.id || '') !== primaryOwnerId;
+      });
+      if (!users.length) {
+        return '<p class="entry-muted owner-empty">暂无额外协作负责人可选。</p>';
+      }
       return users.map(function (user) {
         var id = String(user.id || '');
         var name = user.display_name || user.real_name || user.username || user.name || ('#' + id);
         var dept = user.department_name ? ' · ' + user.department_name : '';
         var checked = selectedIds.indexOf(id) >= 0 ? ' checked' : '';
-        var primary = primaryOwnerId === id ? '<em>第一</em>' : '';
-        return '<label class="tag-chip owner-chip"><input type="checkbox" name="owner_user_ids" value="' + esc(id) + '"' + checked + ' data-owner-member><span>' + esc(name + dept) + '</span>' + primary + '</label>';
+        return '<label class="tag-chip owner-chip"><input type="checkbox" name="owner_user_ids" value="' + esc(id) + '"' + checked + ' data-owner-member><span>' + esc(name + dept) + '</span></label>';
       }).join('');
     },
     customerOwnerList: function () {
