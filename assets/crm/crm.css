@@ -22107,7 +22107,7 @@ body.is-workspace-module .workspace-widget-group.is-analysis .workspace-widget {
 }
 body.is-workspace-module .workspace-widget-group.is-analysis .workspace-widget[data-workspace-widget="customer_growth_summary"] {
   grid-column: span 4 !important;
-  grid-row: span 3 !important;
+  grid-row: span 4 !important;
 }
 body.is-workspace-module .workspace-widget-group.is-analysis .workspace-widget[data-workspace-widget="team_sales_compare"] {
   grid-column: span 8 !important;
@@ -22168,6 +22168,7 @@ body.is-workspace-module .workspace-rank-list footer {
   font-size: 11px !important;
 }
 body.is-workspace-module .workspace-customer-growth {
+  flex: 0 0 auto !important;
   gap: 8px !important;
 }
 body.is-workspace-module .workspace-customer-growth button {
@@ -22196,11 +22197,13 @@ body.is-workspace-module .workspace-customer-growth span {
 }
 body.is-workspace-module .workspace-growth-recent {
   display: grid;
-  gap: 6px;
+  gap: 5px;
+  min-height: 0;
+  overflow: hidden;
 }
 body.is-workspace-module .workspace-growth-recent button {
   min-width: 0;
-  min-height: 42px;
+  min-height: 34px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -22209,7 +22212,7 @@ body.is-workspace-module .workspace-growth-recent button {
   border-radius: 10px;
   background: #f8fafc;
   color: #0f172a;
-  padding: 7px 9px;
+  padding: 5px 8px;
   text-align: left;
 }
 body.is-workspace-module .workspace-growth-recent b,
