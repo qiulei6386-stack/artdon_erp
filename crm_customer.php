@@ -2146,7 +2146,7 @@ function crm_customer_create_confirmed(array $input): array
             if (($leadRow['status'] ?? '') === 'confirmed' && (int)($leadRow['target_customer_id'] ?? 0) > 0) {
                 $existingId = (int)$leadRow['target_customer_id'];
                 if ($startedTx && $pdo->inTransaction()) $pdo->commit();
-                return crm_customer_get($existingId);
+                return ['customer' => crm_customer_basic_row($existingId)];
             }
             if (($leadRow['status'] ?? '') !== 'pending') {
                 throw new RuntimeException('该暂存客户已处理，不能重复加入正式库。');
@@ -2178,9 +2178,10 @@ function crm_customer_create_confirmed(array $input): array
     crm_customer_log('customer_create', 'customer', $id, $id, null, ['customer' => $data, 'graph' => $data['graph'], 'initial_contacts' => $initialContacts, 'created_contact_count' => $createdContactCount], '从暂存池确认创建客户');
     crm_customer_timeline_add($id, 'customer_create', '新建客户', '从暂存池或准入规则创建正式客户', 'customer', (string)$id);
     if ($startedTx && $pdo->inTransaction()) $pdo->commit();
-    $result = crm_customer_get($id);
-    $result['created_contact_count'] = $createdContactCount;
-    return $result;
+    return [
+        'customer' => crm_customer_basic_row($id),
+        'created_contact_count' => $createdContactCount,
+    ];
     } catch (Throwable $e) {
         if ($startedTx && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
