@@ -22171,28 +22171,21 @@ body.is-workspace-module .workspace-customer-growth {
   gap: 8px !important;
 }
 body.is-workspace-module .workspace-customer-growth button {
-  min-height: 62px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: flex-start !important;
-  justify-content: center !important;
-  gap: 4px !important;
+  min-height: 58px !important;
+  align-content: start !important;
+  gap: 5px !important;
   border-radius: 10px !important;
   background: #f8fafc !important;
-  padding: 8px 10px !important;
+  padding: 9px 10px !important;
 }
 body.is-workspace-module .workspace-customer-growth strong {
-  display: block !important;
-  font-size: 20px !important;
-  line-height: 24px !important;
+  font-size: 22px !important;
+  line-height: 1.15 !important;
 }
 body.is-workspace-module .workspace-customer-growth span {
-  display: block !important;
   font-size: 12px !important;
   line-height: 16px !important;
-  max-height: none !important;
-  overflow: visible !important;
-  white-space: nowrap !important;
+  max-height: 16px !important;
 }
 body.is-workspace-module .workspace-growth-recent {
   display: grid;
