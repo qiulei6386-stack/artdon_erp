@@ -1135,6 +1135,10 @@ try {
         require_csrf();
         api_response(true, '暂存客户已丢弃', ['lead' => crm_lead_pool_reject((int)($_POST['lead_id'] ?? 0))]);
     }
+    if ($action === 'lead_mark_no_duplicate') {
+        require_csrf();
+        api_response(true, '已标记为无重复', ['lead' => crm_lead_pool_mark_no_duplicate((int)($_POST['lead_id'] ?? 0))]);
+    }
     if ($action === 'duplicate_merge_cases') {
         require_csrf();
         api_response(true, '', crm_duplicate_merge_cases($_POST));

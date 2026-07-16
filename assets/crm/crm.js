@@ -2276,6 +2276,9 @@
     leadPage: 1,
     leadTotal: 0,
     leadRows: [],
+    leadPoolQuick: 'pending',
+    leadPoolKeyword: '',
+    selectedLeadIds: new Set(),
     selectedLeadId: 0,
     selectedLead: null,
     entryContacts: [],
@@ -5628,6 +5631,7 @@
       if (!drawer) return;
       this.selectedLeadId = 0;
       this.selectedLead = null;
+      this.selectedLeadIds = new Set();
       drawer.classList.remove('open');
       drawer.setAttribute('aria-hidden', 'true');
       if (backdrop) backdrop.hidden = true;
@@ -5636,56 +5640,184 @@
         if (!drawer.classList.contains('open')) drawer.hidden = true;
       }, 190);
     },
-    loadLeadPool: function () {
+    isLeadPoolOpen: function () {
+      var drawer = document.querySelector('[data-lead-pool-drawer]');
+      return !!(drawer && drawer.classList.contains('open'));
+    },
+    loadLeadPool: function (quick) {
       var self = this;
       var box = document.querySelector('[data-lead-pool-list]');
-      var status = document.querySelector('[data-lead-pool-status]')?.value || 'pending';
+      if (quick) this.leadPoolQuick = quick;
+      var searchInput = document.querySelector('[data-lead-pool-search]');
+      if (searchInput) this.leadPoolKeyword = searchInput.value || '';
       if (box) box.innerHTML = '<p>正在读取暂存池...</p>';
-      return post('lead_pool_list', { status: status, page: this.leadPage, page_size: 50 }).then(function (json) {
+      return post('lead_pool_list', { quick_filter: this.leadPoolQuick || 'pending', keyword: this.leadPoolKeyword || '', page: this.leadPage, page_size: 80 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '暂存池读取失败');
         self.leadTotal = Number(json.data.total || 0);
         self.leadCanProcess = !!json.data.can_process;
         self.leadRows = json.data.rows || [];
+        self.selectedLeadIds = new Set(Array.from(self.selectedLeadIds || []).filter(function (id) {
+          return self.leadRows.some(function (row) { return Number(row.id) === Number(id); });
+        }));
         if (self.selectedLeadId) {
           self.selectedLead = self.leadRows.find(function (row) { return Number(row.id) === Number(self.selectedLeadId); }) || null;
           if (!self.selectedLead) self.selectedLeadId = 0;
         }
-        self.renderLeadPool(json.data.rows || [], status);
+        if (self.selectedLeadId && !self.selectedLeadIds.has(Number(self.selectedLeadId))) self.selectedLeadId = 0;
+        if (!self.selectedLeadId && self.selectedLeadIds.size === 1) {
+          self.selectedLeadId = Array.from(self.selectedLeadIds)[0];
+          self.selectedLead = self.leadRows.find(function (row) { return Number(row.id) === Number(self.selectedLeadId); }) || null;
+        }
+        self.renderLeadPool(json.data.rows || [], json.data || {});
         renderActions('customers');
       }).catch(function (error) {
         if (box) box.innerHTML = '<p class="lead-pool-error">' + esc(error.message) + '</p>';
       });
     },
-    renderLeadPool: function (rows, status) {
+    leadStatusLabel: function (row) {
+      var status = row.status || 'pending';
+      if (status === 'confirmed') return '已确认';
+      if (status === 'merged') return '已关联';
+      if (status === 'rejected') return '已丢弃';
+      return (row.similarity_matches || []).length ? '疑似重复' : '无重复';
+    },
+    leadStatusClass: function (row) {
+      var status = row.status || 'pending';
+      if (status === 'confirmed' || status === 'merged') return 'ok';
+      if (status === 'rejected') return 'muted';
+      return (row.similarity_matches || []).length ? 'warn' : 'calm';
+    },
+    leadDisplayName: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      return row.raw_name || payload.customer_name || '未命名客户';
+    },
+    leadContactLine: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      return [row.raw_country || payload.country || '未填国家', row.raw_email || payload.email || '未填邮箱', row.raw_phone || payload.phone || '未填电话'].join(' · ');
+    },
+    leadSourceDomain: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      return row.raw_domain || payload.domain || payload.website || '未填域名';
+    },
+    renderLeadPool: function (rows, meta) {
       var box = document.querySelector('[data-lead-pool-list]');
       if (!box) return;
-      if (!rows.length) {
-        box.innerHTML = '<div class="lead-pool-empty"><strong>暂无暂存客户</strong><span>新建客户选择进入暂存池后，会在这里显示。</span></div>';
-        return;
-      }
-      box.innerHTML = '<section class="lead-pool-summary"><div><span>当前状态</span><strong>' + esc(status === 'pending' ? '待确认' : status) + '</strong></div><div><span>结果数量</span><strong>' + esc(rows.length) + '</strong></div><div><span>总数</span><strong>' + esc(CustomerModule.leadTotal || rows.length) + '</strong></div></section>' + rows.map(function (row) {
-        var payload = row.payload || {};
+      meta = meta || {};
+      var stats = meta.stats || {};
+      var quick = this.leadPoolQuick || 'pending';
+      var keyword = this.leadPoolKeyword || '';
+      var chips = [
+        ['all', '全部'],
+        ['pending', '待确认'],
+        ['duplicate', '疑似重复'],
+        ['no_duplicate', '无重复'],
+        ['confirmed', '已确认'],
+        ['rejected', '已丢弃'],
+        ['today', '今日新增'],
+        ['recent7', '最近7天']
+      ];
+      var listHtml = rows.length ? rows.map(function (row) {
         var matches = row.similarity_matches || [];
-        var best = matches[0] || null;
-        var risk = best ? (Number(best.similarity || 0) >= 90 ? '高风险重复' : (Number(best.similarity || 0) >= 70 ? '疑似重复' : '可能相似')) : '无重复';
-        var riskClass = best ? (Number(best.similarity || 0) >= 90 ? 'risk-high' : (Number(best.similarity || 0) >= 70 ? 'risk-medium' : 'risk-low')) : 'risk-none';
-        var matchHtml = matches.length
-          ? '<div class="lead-match-list">' + matches.slice(0, 3).map(function (match) {
-              var score = Math.max(0, Math.min(100, Number(match.similarity || 0)));
-              return '<div><div><b>' + esc(match.customer_name || ('客户 #' + match.customer_id)) + '</b><span>' + esc((match.reasons || []).join(', ') || '相似') + '</span></div><em>' + esc(score) + '%</em><i style="--score:' + esc(score) + '%"></i></div>';
-            }).join('') + '</div>'
-          : '<p class="lead-no-match">未发现明显重复客户，可直接确认创建。</p>';
-        var selected = Number(CustomerModule.selectedLeadId || 0) === Number(row.id || 0);
-        var actionHint = status === 'pending' && CustomerModule.leadCanProcess ? '右侧 ACTIONS 可编辑、确认入库、关联已有或丢弃' : (status === 'pending' ? '只读，无权加入正式库' : row.status);
-        return '<article class="lead-pool-card' + (selected ? ' active' : '') + '" data-lead-card="' + esc(row.id) + '">' +
-          '<header><div><span class="lead-pool-eyebrow">#' + esc(row.id) + ' · ' + esc(row.created_at || '-') + '</span><strong>' + esc(row.raw_name || payload.customer_name || '未命名客户') + '</strong><small>' + esc([row.raw_country || payload.country, row.raw_email || payload.email, row.raw_phone || payload.phone].filter(Boolean).join(' · ') || '未填联系方式') + '</small></div><em class="' + riskClass + '">' + esc(risk) + '</em></header>' +
-          '<div class="lead-pool-meta"><span>国家：' + esc(row.raw_country || payload.country || '-') + '</span><span>域名：' + esc(row.raw_domain || '-') + '</span><span>匹配：' + esc(matches.length) + '</span></div>' +
-          matchHtml + '<nav><span class="lead-status-pill">' + esc(actionHint) + '</span></nav>' +
+        var selected = CustomerModule.selectedLeadIds && CustomerModule.selectedLeadIds.has(Number(row.id || 0));
+        return '<article class="temp-pool-row' + (selected ? ' active' : '') + '" data-lead-row="' + esc(row.id) + '">' +
+          '<input type="checkbox" data-lead-check="' + esc(row.id) + '"' + (selected ? ' checked' : '') + '>' +
+          '<div class="temp-pool-row-main"><div><strong>' + esc(CustomerModule.leadDisplayName(row)) + '</strong><span class="temp-pool-status ' + esc(CustomerModule.leadStatusClass(row)) + '">' + esc(CustomerModule.leadStatusLabel(row)) + '</span></div>' +
+          '<p>' + esc(CustomerModule.leadContactLine(row)) + '</p>' +
+          '<p>' + esc(CustomerModule.leadSourceDomain(row)) + ' · 匹配 ' + esc(matches.length) + ' · ' + esc(row.created_at || '-') + '</p></div>' +
           '</article>';
+      }).join('') : '<div class="lead-pool-empty"><strong>暂无暂存客户</strong><span>当前筛选下没有数据，可切换到“全部”或清空搜索。</span></div>';
+      box.innerHTML = '<section class="temp-pool-workbench">' +
+        '<div class="temp-pool-head"><div class="temp-pool-stats">' +
+          '<button type="button" data-lead-filter="pending"><span>待确认</span><strong>' + esc(stats.pending || 0) + '</strong></button>' +
+          '<button type="button" data-lead-filter="duplicate"><span>疑似重复</span><strong>' + esc(stats.duplicate || 0) + '</strong></button>' +
+          '<button type="button" data-lead-filter="no_duplicate"><span>无重复</span><strong>' + esc(stats.no_duplicate || 0) + '</strong></button>' +
+          '<button type="button" data-lead-filter="all"><span>总数</span><strong>' + esc(stats.total || meta.total || rows.length || 0) + '</strong></button>' +
+        '</div><div class="temp-pool-filterbar"><div class="temp-pool-chips">' + chips.map(function (chip) {
+          return '<button type="button" class="' + (quick === chip[0] ? 'active' : '') + '" data-lead-filter="' + esc(chip[0]) + '">' + esc(chip[1]) + '</button>';
+        }).join('') + '</div><label><span>搜索</span><input type="search" value="' + esc(keyword) + '" placeholder="客户名 / 邮箱 / 电话 / 域名 / 国家" data-lead-pool-search></label></div></div>' +
+        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count">当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条</div><div class="temp-pool-rows">' + listHtml + '</div></aside>' +
+        '<section class="temp-pool-right" data-lead-pool-detail>' + this.renderLeadPoolDetailHtml(this.selectedLead) + '</section></div></section>';
+      this.bindLeadPoolWorkbench();
+    },
+    renderLeadPoolDetailHtml: function (lead) {
+      if (!lead) {
+        return '<div class="temp-pool-empty-detail"><strong>请选择左侧暂存客户</strong><span>选择后可查看客户资料、重复客户对比、字段差异和建议处理。多选时右侧 ACTIONS 会进入批量模式。</span></div>';
+      }
+      var payload = lead.payload || {};
+      var matches = lead.similarity_matches || [];
+      var fields = [
+        ['客户名', this.leadDisplayName(lead)],
+        ['国家', lead.raw_country || payload.country || '未填'],
+        ['邮箱', lead.raw_email || payload.email || '未填'],
+        ['电话', lead.raw_phone || payload.phone || '未填'],
+        ['WhatsApp', payload.whatsapp || '未填'],
+        ['域名', this.leadSourceDomain(lead)],
+        ['来源', payload.source || payload.source_tag || '未填'],
+        ['创建时间', lead.created_at || '未填'],
+        ['原始备注', payload.remark || payload.notes || payload.note || '未填']
+      ];
+      var matchRows = matches.length ? matches.map(function (match) {
+        var score = Math.max(0, Math.min(100, Number(match.similarity || 0)));
+        var scoreClass = score >= 90 ? 'high' : (score >= 75 ? 'medium' : 'low');
+        return '<tr><td><strong>' + esc(match.customer_name || ('客户 #' + (match.customer_id || '-'))) + '</strong><small>' + esc(match.customer_code || '') + '</small></td><td>' + esc(match.country || '-') + '</td><td>' + esc(match.email || '-') + '</td><td>' + esc(match.phone || '-') + '</td><td>' + esc(match.website || '-') + '</td><td><span class="match-score ' + scoreClass + '">' + esc(score) + '%</span></td><td>' + esc((match.reasons || []).join(', ') || '相似') + '</td><td>' + esc(score >= 90 ? '建议合并' : (score >= 75 ? '建议人工确认' : '建议关联')) + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" class="temp-pool-muted">未发现明显重复客户，可确认入库。</td></tr>';
+      var first = matches[0] || {};
+      var diffRows = [
+        ['客户名', this.leadDisplayName(lead), first.customer_name || '无匹配'],
+        ['国家', lead.raw_country || payload.country || '未填', first.country || '未填'],
+        ['邮箱', lead.raw_email || payload.email || '未填', first.email || '未填'],
+        ['电话', lead.raw_phone || payload.phone || '未填', first.phone || '未填'],
+        ['域名', this.leadSourceDomain(lead), first.website || '未填']
+      ].map(function (row) {
+        return '<tr><td>' + esc(row[0]) + '</td><td>' + esc(row[1]) + '</td><td>' + esc(row[2]) + '</td></tr>';
       }).join('');
-      box.querySelectorAll('[data-lead-card]').forEach(function (card) {
-        card.addEventListener('click', function () {
-          CustomerModule.selectLead(Number(card.getAttribute('data-lead-card')));
+      var suggestion = matches.length ? '发现 ' + matches.length + ' 个疑似重复客户，请优先关联或合并，确认不是重复后可标记无重复。' : '未发现明显重复客户，可确认入库。';
+      return '<div class="temp-pool-detail-stack"><section class="temp-pool-card"><h3>暂存客户资料</h3><div class="temp-pool-fields">' + fields.map(function (field) {
+        return '<div><span>' + esc(field[0]) + '</span><strong class="' + (field[1] === '未填' ? 'muted' : '') + '">' + esc(field[1]) + '</strong></div>';
+      }).join('') + '</div></section>' +
+        '<section class="temp-pool-card"><h3>疑似重复客户对比</h3><div class="temp-pool-table-wrap"><table class="temp-pool-table"><thead><tr><th>匹配客户</th><th>国家</th><th>邮箱</th><th>电话</th><th>域名</th><th>相似度</th><th>匹配原因</th><th>建议</th></tr></thead><tbody>' + matchRows + '</tbody></table></div></section>' +
+        '<section class="temp-pool-card temp-pool-split-card"><div><h3>字段差异</h3><table class="temp-pool-table compact"><tbody>' + diffRows + '</tbody></table></div><div><h3>建议处理</h3><p>' + esc(suggestion) + '</p></div></section></div>';
+    },
+    bindLeadPoolWorkbench: function () {
+      var self = this;
+      var box = document.querySelector('[data-lead-pool-list]');
+      if (!box) return;
+      box.querySelectorAll('[data-lead-filter]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          self.leadPoolQuick = button.getAttribute('data-lead-filter') || 'pending';
+          self.leadPage = 1;
+          self.selectedLeadId = 0;
+          self.selectedLead = null;
+          self.selectedLeadIds = new Set();
+          self.loadLeadPool();
+        });
+      });
+      var search = box.querySelector('[data-lead-pool-search]');
+      if (search) {
+        search.addEventListener('input', function () {
+          window.clearTimeout(self.leadSearchTimer);
+          self.leadSearchTimer = window.setTimeout(function () {
+            self.leadPoolKeyword = search.value || '';
+            self.leadPage = 1;
+            self.selectedLeadId = 0;
+            self.selectedLead = null;
+            self.selectedLeadIds = new Set();
+            self.loadLeadPool();
+          }, 280);
+        });
+      }
+      box.querySelectorAll('[data-lead-check]').forEach(function (input) {
+        input.addEventListener('click', function (event) {
+          event.stopPropagation();
+          self.toggleLeadSelection(Number(input.getAttribute('data-lead-check')), input.checked);
+        });
+      });
+      box.querySelectorAll('[data-lead-row]').forEach(function (row) {
+        row.addEventListener('click', function () {
+          self.selectLead(Number(row.getAttribute('data-lead-row')));
         });
       });
     },
@@ -5694,11 +5826,36 @@
       leadId = Number(leadId || 0);
       this.selectedLeadId = leadId;
       this.selectedLead = (this.leadRows || []).find(function (row) { return Number(row.id) === leadId; }) || null;
-      document.querySelectorAll('[data-lead-card]').forEach(function (card) {
-        card.classList.toggle('active', Number(card.getAttribute('data-lead-card')) === leadId);
+      this.selectedLeadIds = new Set(leadId ? [leadId] : []);
+      document.querySelectorAll('[data-lead-row]').forEach(function (row) {
+        row.classList.toggle('active', Number(row.getAttribute('data-lead-row')) === leadId);
       });
+      document.querySelectorAll('[data-lead-check]').forEach(function (input) {
+        input.checked = Number(input.getAttribute('data-lead-check')) === leadId;
+      });
+      var detail = document.querySelector('[data-lead-pool-detail]');
+      if (detail) detail.innerHTML = this.renderLeadPoolDetailHtml(this.selectedLead);
       renderActions('customers');
       if (this.selectedLead) toast('已选中暂存客户：' + (this.selectedLead.raw_name || (this.selectedLead.payload || {}).customer_name || ('#' + leadId)));
+    },
+    toggleLeadSelection: function (leadId, checked) {
+      leadId = Number(leadId || 0);
+      if (!this.selectedLeadIds) this.selectedLeadIds = new Set();
+      if (checked) this.selectedLeadIds.add(leadId);
+      else this.selectedLeadIds.delete(leadId);
+      if (this.selectedLeadIds.size === 1) {
+        this.selectedLeadId = Array.from(this.selectedLeadIds)[0];
+        this.selectedLead = (this.leadRows || []).find(function (row) { return Number(row.id) === Number(CustomerModule.selectedLeadId); }) || null;
+      } else {
+        this.selectedLeadId = 0;
+        this.selectedLead = null;
+      }
+      document.querySelectorAll('[data-lead-row]').forEach(function (row) {
+        row.classList.toggle('active', CustomerModule.selectedLeadIds.has(Number(row.getAttribute('data-lead-row'))));
+      });
+      var detail = document.querySelector('[data-lead-pool-detail]');
+      if (detail) detail.innerHTML = this.selectedLeadIds.size === 1 ? this.renderLeadPoolDetailHtml(this.selectedLead) : this.renderLeadPoolDetailHtml(null);
+      renderActions('customers');
     },
     selectedLeadPayload: function () {
       var lead = this.selectedLead || {};
@@ -5795,6 +5952,81 @@
           });
         });
       });
+    },
+    selectedLeadIdList: function () {
+      return Array.from(this.selectedLeadIds || []).map(function (id) { return Number(id); }).filter(Boolean);
+    },
+    leadBatchDialog: function (title, message, buttonText, buttonClass, callback) {
+      var self = this;
+      this.openBusinessDialog(title, '<section class="business-confirm-card' + (buttonClass === 'danger' ? ' danger' : '') + '"><strong>' + esc(title) + '</strong><span>' + esc(message) + '</span></section><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="' + esc(buttonClass || 'primary') + '" data-lead-batch-confirm>' + esc(buttonText || '确认') + '</button></div>', '批量操作会写入暂存池日志。', function (root) {
+        root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
+        root.querySelector('[data-lead-batch-confirm]')?.addEventListener('click', function () {
+          callback().then(function () {
+            self.closeDialog();
+            self.selectedLeadIds = new Set();
+            self.selectedLeadId = 0;
+            self.selectedLead = null;
+            return self.loadLeadPool();
+          }).catch(function (error) {
+            self.showCustomerError(error.message || '批量操作失败');
+          });
+        });
+      });
+    },
+    batchConfirmLeads: function () {
+      var ids = this.selectedLeadIdList();
+      if (!ids.length) return this.showCustomerError('请先选择暂存客户。');
+      var self = this;
+      this.leadBatchDialog('批量确认入库', '将选中的 ' + ids.length + ' 条暂存客户确认加入正式客户库。疑似重复客户请谨慎确认。', '确认入库', 'primary', function () {
+        return ids.reduce(function (promise, id) {
+          return promise.then(function () { return post('lead_confirm_create', { lead_id: id }).then(function (json) { if (!json.success) throw new Error(json.message || '确认入库失败'); }); });
+        }, Promise.resolve()).then(function () {
+          toast('已确认入库 ' + ids.length + ' 条暂存客户');
+          return self.loadList();
+        });
+      });
+    },
+    batchRejectLeads: function () {
+      var ids = this.selectedLeadIdList();
+      if (!ids.length) return this.showCustomerError('请先选择暂存客户。');
+      this.leadBatchDialog('批量丢弃暂存客户', '将选中的 ' + ids.length + ' 条暂存客户标记为已丢弃。不会删除正式客户资料。', '确认丢弃', 'danger', function () {
+        return ids.reduce(function (promise, id) {
+          return promise.then(function () { return post('lead_reject', { lead_id: id }).then(function (json) { if (!json.success) throw new Error(json.message || '批量丢弃失败'); }); });
+        }, Promise.resolve()).then(function () { toast('已丢弃 ' + ids.length + ' 条暂存客户'); });
+      });
+    },
+    markLeadNoDuplicate: function (leadId) {
+      leadId = Number(leadId || 0);
+      if (!leadId) return this.showCustomerError('请先选择暂存客户。');
+      var self = this;
+      return post('lead_mark_no_duplicate', { lead_id: leadId }).then(function (json) {
+        if (!json.success) return self.showCustomerError(json.message || '标记无重复失败');
+        toast('已标记为无重复');
+        self.selectedLeadIds = new Set([leadId]);
+        return self.loadLeadPool();
+      });
+    },
+    batchMarkLeadNoDuplicate: function () {
+      var ids = this.selectedLeadIdList();
+      if (!ids.length) return this.showCustomerError('请先选择暂存客户。');
+      this.leadBatchDialog('批量标记无重复', '将选中的 ' + ids.length + ' 条暂存客户清除疑似重复匹配，仅保留暂存资料。', '确认标记', 'primary', function () {
+        return ids.reduce(function (promise, id) {
+          return promise.then(function () { return post('lead_mark_no_duplicate', { lead_id: id }).then(function (json) { if (!json.success) throw new Error(json.message || '标记无重复失败'); }); });
+        }, Promise.resolve()).then(function () { toast('已标记无重复 ' + ids.length + ' 条'); });
+      });
+    },
+    showLeadRawSource: function () {
+      if (!this.selectedLead) return this.showCustomerError('请先选择暂存客户。');
+      var payload = this.selectedLead.payload || {};
+      var html = '<section class="business-confirm-card"><strong>' + esc(this.leadDisplayName(this.selectedLead)) + '</strong><span>暂存池原始来源和 payload，仅用于审核，不会修改数据。</span></section>' +
+        '<pre class="lead-raw-source">' + esc(JSON.stringify(payload, null, 2)) + '</pre>' +
+        '<div class="business-dialog-actions"><button type="button" class="primary" data-business-cancel>关闭</button></div>';
+      this.openBusinessDialog('查看原始来源', html, '来源数据来自暂存池 payload_json。', function (root) {
+        root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+      });
+    },
+    createLeadManualTodo: function () {
+      this.showCustomerError('批量补全资料 / AI 分析重复接口待接入，当前可先通过右侧详情人工审核。');
     },
     openContactDialog: function (id) {
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
@@ -7033,11 +7265,18 @@
           { title: '客户属性', items: ['编辑客户属性', '补全缺失资料', '查看修改日志', '导出客户资料', '返回客户概览'] }
         ];
       }
-      if (this.selectedLead && (this.selectedLead.status || 'pending') === 'pending') return [
-        { title: '暂存池客户', items: ['编辑暂存客户', '确认加入正式库', '关联已有客户', '丢弃暂存客户'] },
-        { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户'] },
-        { title: '布局切换', items: ['放大客户列表', '放大客户属性', '恢复默认布局'] }
-      ];
+      if (this.isLeadPoolOpen && this.isLeadPoolOpen()) {
+        var leadSelectedCount = (this.selectedLeadIds && this.selectedLeadIds.size) || 0;
+        if (leadSelectedCount > 1) return [
+          { title: '暂存池批量操作（已选 ' + leadSelectedCount + '）', items: ['批量确认入库', '批量丢弃', '批量标记无重复', '批量补全资料'] }
+        ];
+        if (leadSelectedCount === 1 && this.selectedLead && (this.selectedLead.status || 'pending') === 'pending') return [
+          { title: '暂存池客户', items: ['编辑暂存客户', '确认入库', '关联已有客户', '合并到已有客户', '丢弃暂存客户', '标记无重复', '查看原始来源', 'AI 分析重复'] }
+        ];
+        return [
+          { title: '暂存池审核', items: ['刷新暂存池', '查看疑似重复', '查看无重复', '批量补全资料', '批量确认入库'] }
+        ];
+      }
       if (this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.deleted_at) return [
         { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户', '恢复客户', '强制删除', '查看客户日志', '导入日志'] },
         { title: '布局切换', items: ['放大客户列表', '放大客户属性', '恢复默认布局'] },
@@ -7214,14 +7453,24 @@
       if (label === '返回客户概览') return this.returnCustomerOverview();
       if (label === '新建客户') return this.openCustomerDialog('create');
       if (label === '暂存池') return this.toggleLeadPool();
+      if (label === '刷新暂存池') return this.loadLeadPool();
+      if (label === '查看疑似重复') return this.loadLeadPool('duplicate');
+      if (label === '查看无重复') return this.loadLeadPool('no_duplicate');
       if (label === '编辑暂存客户') return this.openLeadEditDialog();
-      if (label === '确认加入正式库') return this.confirmLeadCreate(this.selectedLeadId);
-      if (label === '关联已有客户') {
+      if (label === '确认加入正式库' || label === '确认入库') return this.confirmLeadCreate(this.selectedLeadId);
+      if (label === '关联已有客户' || label === '合并到已有客户') {
         var best = this.selectedLead && (this.selectedLead.similarity_matches || [])[0];
         if (!best || !best.customer_id) return this.showCustomerError('当前暂存客户没有可直接关联的相似客户。');
         return this.useLeadExisting(this.selectedLeadId, best.customer_id);
       }
       if (label === '丢弃暂存客户') return this.rejectLead(this.selectedLeadId);
+      if (label === '标记无重复') return this.markLeadNoDuplicate(this.selectedLeadId);
+      if (label === '查看原始来源') return this.showLeadRawSource();
+      if (label === 'AI 分析重复') return this.createLeadManualTodo();
+      if (label === '批量确认入库') return this.batchConfirmLeads();
+      if (label === '批量丢弃') return this.batchRejectLeads();
+      if (label === '批量标记无重复') return this.batchMarkLeadNoDuplicate();
+      if (label === '批量补全资料') return this.createLeadManualTodo();
       if (label === '导入客户') return this.openCustomerImportDialog();
       if (label === '导出客户') return this.exportCustomers();
       if (label === '放大客户列表') return this.applyLayoutMode('list', true);

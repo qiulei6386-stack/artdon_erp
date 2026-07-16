@@ -2428,14 +2428,35 @@ function crm_lead_pool_list(array $input = []): array
     if (!crm_can('customer.lead_pool_view') && !crm_can('customer.lead_pool')) {
         throw new RuntimeException('无权查看暂存池客户。');
     }
-    $status = trim((string)($input['status'] ?? 'pending')) ?: 'pending';
+    $quick = trim((string)($input['quick_filter'] ?? ($input['status'] ?? 'pending'))) ?: 'pending';
+    $keyword = trim((string)($input['keyword'] ?? ''));
     $pageSize = max(20, min(100, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
     $params = [];
     $where = '1=1';
-    if (in_array($status, ['pending','confirmed','merged','rejected'], true)) {
-        $where .= ' AND status = ?';
-        $params[] = $status;
+    if ($keyword !== '') {
+        $where .= ' AND (raw_name LIKE ? OR raw_email LIKE ? OR raw_phone LIKE ? OR raw_country LIKE ? OR raw_domain LIKE ? OR payload_json LIKE ?)';
+        $like = '%' . $keyword . '%';
+        array_push($params, $like, $like, $like, $like, $like, $like);
+    }
+    if ($quick === 'pending') {
+        $where .= ' AND status = "pending"';
+    } elseif ($quick === 'duplicate') {
+        $where .= ' AND status = "pending" AND similarity_matches_json IS NOT NULL AND similarity_matches_json <> "" AND similarity_matches_json <> "[]"';
+    } elseif ($quick === 'no_duplicate') {
+        $where .= ' AND status = "pending" AND (similarity_matches_json IS NULL OR similarity_matches_json = "" OR similarity_matches_json = "[]")';
+    } elseif ($quick === 'confirmed') {
+        $where .= ' AND status IN ("confirmed","merged")';
+    } elseif ($quick === 'rejected') {
+        $where .= ' AND status = "rejected"';
+    } elseif ($quick === 'today') {
+        $where .= ' AND DATE(created_at) = CURDATE()';
+    } elseif ($quick === 'recent7') {
+        $where .= ' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+    } elseif (in_array($quick, ['all',''], true)) {
+        $where .= '';
+    } elseif (in_array($quick, ['merged'], true)) {
+        $where .= ' AND status = "merged"';
     }
     $count = db()->prepare("SELECT COUNT(*) FROM crm_lead_pool WHERE {$where}");
     $count->execute($params);
@@ -2447,7 +2468,35 @@ function crm_lead_pool_list(array $input = []): array
         $row['payload'] = json_decode((string)($row['payload_json'] ?? '{}'), true) ?: [];
         $row['similarity_matches'] = crm_lead_pool_enrich_matches(json_decode((string)($row['similarity_matches_json'] ?? '[]'), true) ?: []);
     }
-    return ['rows' => $rows, 'total' => (int)$count->fetchColumn(), 'page' => $page, 'page_size' => $pageSize, 'can_process' => crm_can('customer.lead_pool')];
+    $statWhere = '1=1';
+    $statParams = [];
+    if ($keyword !== '') {
+        $statWhere .= ' AND (raw_name LIKE ? OR raw_email LIKE ? OR raw_phone LIKE ? OR raw_country LIKE ? OR raw_domain LIKE ? OR payload_json LIKE ?)';
+        $like = '%' . $keyword . '%';
+        array_push($statParams, $like, $like, $like, $like, $like, $like);
+    }
+    $statStmt = db()->prepare("SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'pending' AND similarity_matches_json IS NOT NULL AND similarity_matches_json <> '' AND similarity_matches_json <> '[]' THEN 1 ELSE 0 END) AS duplicate,
+        SUM(CASE WHEN status = 'pending' AND (similarity_matches_json IS NULL OR similarity_matches_json = '' OR similarity_matches_json = '[]') THEN 1 ELSE 0 END) AS no_duplicate
+        FROM crm_lead_pool WHERE {$statWhere}");
+    $statStmt->execute($statParams);
+    $stats = $statStmt->fetch() ?: [];
+    return [
+        'rows' => $rows,
+        'total' => (int)$count->fetchColumn(),
+        'page' => $page,
+        'page_size' => $pageSize,
+        'quick_filter' => $quick,
+        'stats' => [
+            'total' => (int)($stats['total'] ?? 0),
+            'pending' => (int)($stats['pending'] ?? 0),
+            'duplicate' => (int)($stats['duplicate'] ?? 0),
+            'no_duplicate' => (int)($stats['no_duplicate'] ?? 0),
+        ],
+        'can_process' => crm_can('customer.lead_pool')
+    ];
 }
 
 function crm_lead_pool_enrich_matches(array $matches): array
@@ -2486,6 +2535,19 @@ function crm_lead_pool_reject(int $leadId): array
     db()->prepare('UPDATE crm_lead_pool SET status = "rejected", updated_at = NOW() WHERE id = ?')->execute([$leadId]);
     crm_customer_log('lead_reject', 'lead', $leadId, null, null, ['lead_id' => $leadId], '丢弃暂存客户');
     return crm_lead_pool_get($leadId);
+}
+
+function crm_lead_pool_mark_no_duplicate(int $leadId): array
+{
+    crm_require('customer.lead_pool');
+    $before = crm_lead_pool_get($leadId);
+    if (($before['status'] ?? '') !== 'pending') {
+        throw new RuntimeException('只有待确认的暂存客户可以标记无重复。');
+    }
+    db()->prepare('UPDATE crm_lead_pool SET similarity_matches_json = "[]", updated_at = NOW() WHERE id = ?')->execute([$leadId]);
+    $after = crm_lead_pool_get($leadId);
+    crm_customer_log('lead_mark_no_duplicate', 'lead', $leadId, null, null, ['before_matches' => $before['similarity_matches'] ?? [], 'lead_id' => $leadId], '暂存客户标记无重复');
+    return $after;
 }
 
 function crm_lead_pool_update(array $input): array
