@@ -6394,31 +6394,23 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-field-grid div.wide { grid-column: span 2; }
 .customer-field-grid span { display: block; color: var(--crm-muted-text); font-size: 11px; margin-bottom: 3px; }
 .customer-field-grid strong { display: block; overflow-wrap: anywhere; font-weight: 800; }
-.customer-detail-tabs { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 7px; border-bottom: 1px solid var(--crm-border); }
-.customer-detail-tabs button { min-height: 26px; padding: 0 8px; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; }
-.customer-detail-tabs button span {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  background: var(--crm-hover-bg);
-  color: var(--crm-primary);
-  font-size: 9px;
-  font-weight: 900;
-}
-.customer-detail-tabs select {
-  min-height: 26px;
+.customer-detail-tabs { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 0 0 8px; border-bottom: 1px solid var(--crm-border); }
+.customer-detail-tabs button {
+  height: 34px;
+  padding: 0 14px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--crm-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--crm-card-bg);
-  color: var(--crm-text);
-  padding: 0 7px;
+  color: var(--crm-muted-text);
+  font-size: 13px;
+  font-weight: 700;
 }
-.customer-detail-tabs[data-tab-label-mode="short"] button span { display: none; }
-.customer-detail-tabs[data-tab-label-mode="icon"] button strong { display: none; }
 .customer-detail-tabs button.active { color: #fff; background: var(--crm-primary); border-color: var(--crm-primary); }
-.customer-detail-tabs button.active span { background: rgba(255, 255, 255, .18); color: #fff; }
+.customer-detail-tabs select { display: none; }
 .customer-tab-diagnostics {
   margin: 7px 0;
   border: 1px dashed var(--crm-border);
@@ -6431,6 +6423,23 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-tab-diagnostics span { display: inline-flex; gap: 4px; margin: 5px 8px 0 0; padding: 3px 7px; border-radius: 999px; background: var(--crm-hover-bg); }
 .customer-tab-panel { display: none; padding-top: 9px; animation: crmFade var(--crm-transition-speed) ease both; }
 .customer-tab-panel.active { display: block; }
+.customer-tab-group { display: none; }
+.customer-tab-group.active { display: grid; gap: 12px; }
+.customer-tab-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0 0;
+}
+.customer-tab-group-head strong { font-size: 15px; color: var(--crm-text); }
+.customer-tab-group-head span { font-size: 12px; color: var(--crm-muted-text); }
+.customer-tab-subpanel {
+  padding-top: 0;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: var(--crm-card-bg);
+  padding: 12px;
+}
 .customer-tab-quick-editor { display: grid; gap: 10px; }
 .customer-tab-quick-list {
   display: grid;

@@ -2376,6 +2376,72 @@
       writeLocalString('crm_customer_detail_active_tab', tab);
       if (this.currentId) writeLocalString(this.detailTabStorageKey(this.currentId), tab);
     },
+    detailTabAlias: function (name) {
+      var key = String(name || 'overview');
+      var aliases = {
+        contact: 'contacts',
+        customer_attribute: 'customer_attribute',
+        followup: 'followups',
+        visit: 'visits',
+        opportunity: 'opportunities',
+        order: 'orders',
+        payment: 'receivables',
+        ar: 'receivables',
+        shipping: 'shipments',
+        document: 'documents',
+        sample: 'samples',
+        material: 'materials',
+        relation: 'relations',
+        log: 'logs',
+        timeline: 'timeline',
+        duplicate: 'duplicate',
+        file: 'files',
+        chat_groups: 'contacts'
+      };
+      return aliases[key] || key;
+    },
+    detailGroupDefinitions: function () {
+      return [
+        { key: 'overview', label: '概览' },
+        { key: 'archive', label: '档案' },
+        { key: 'communication', label: '沟通' },
+        { key: 'sales', label: '销售' },
+        { key: 'project', label: '项目' },
+        { key: 'records', label: '记录' }
+      ];
+    },
+    detailGroupForTab: function (name) {
+      var key = this.detailTabAlias(name);
+      var map = {
+        overview: 'overview',
+        customer_attribute: 'archive',
+        contacts: 'archive',
+        preferences: 'archive',
+        followups: 'communication',
+        visits: 'communication',
+        mail: 'communication',
+        whatsapp: 'communication',
+        wechat: 'communication',
+        opportunities: 'sales',
+        quote: 'sales',
+        orders: 'sales',
+        receivables: 'sales',
+        shipments: 'sales',
+        documents: 'sales',
+        samples: 'project',
+        materials: 'project',
+        plm: 'project',
+        bom: 'project',
+        dispatch: 'project',
+        relations: 'records',
+        logs: 'records',
+        timeline: 'records',
+        duplicate: 'records',
+        files: 'records',
+        events: 'records'
+      };
+      return map[key] || 'overview';
+    },
     visibleColumns: function () {
       return this.layoutMode === 'default' ? this.compactColumns : this.columns;
     },
@@ -3009,7 +3075,7 @@
       var nextId = Number(id || 0) || 0;
       var sameCustomer = previousId && nextId && previousId === nextId;
       this.currentId = id;
-      if (!options.keepTab && !sameCustomer) this.activeDetailTab = this.restoreDetailTab(id, false);
+      if (!options.keepTab && !sameCustomer) this.activeDetailTab = 'overview';
       else this.activeDetailTab = this.activeDetailTab || this.restoreDetailTab(id);
       document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === id); });
       return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
@@ -3111,13 +3177,8 @@
       var documentData = (data.linkage && data.linkage.documents) || {};
       var shipmentData = (data.linkage && data.linkage.shipments) || {};
       var receivableData = (data.linkage && data.linkage.receivables) || {};
-      var tabConfig = data.tab_config || {};
-      var tabs = data.tabs || [{ key: 'overview', name: '概览', short: '概览', icon: 'OV' }];
-      var tabKeys = tabs.map(function (tab) { return tab.key; });
-      var activeTab = tabKeys.indexOf(this.activeDetailTab || '') >= 0 ? this.activeDetailTab : (tabs[0] ? tabs[0].key : 'overview');
-      var overflowAfter = Number(tabConfig.overflow_after || 10);
-      var mainTabs = tabs.slice(0, overflowAfter);
-      var moreTabs = tabs.slice(overflowAfter);
+      var mainTabs = this.detailGroupDefinitions();
+      var activeTab = this.detailGroupForTab(this.activeDetailTab || 'overview');
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
         contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><table class="crm-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th></tr></thead><tbody>' + contacts + '</tbody></table><div class="customer-chat-group-head"><div><strong>客户群 / 沟通群</strong><span>微信群、WhatsApp群、项目群、经销商群，推广任务会按群生成手动执行清单。</span></div><button type="button" data-chat-group-create>新增客户群</button></div><div class="customer-chat-group-list">' + chatGroups + '</div></section>',
@@ -3146,13 +3207,30 @@
       function hasPermissionText(key) {
         return state.permissions && state.permissions[key];
       }
-      var tabHtml = '<div class="customer-detail-tabs" data-tab-label-mode="' + esc(tabConfig.label_mode || 'icon_short') + '">' + mainTabs.map(function (tab, index) {
-        return '<button data-detail-tab="' + esc(tab.key) + '" class="' + (tab.key === activeTab ? 'active' : '') + '" title="' + esc(tab.name) + '"><span>' + esc(tab.icon || '') + '</span><strong>' + esc(tab.short || tab.name) + '</strong></button>';
-      }).join('') + '<select data-detail-more><option value="">更多</option><option value="__attributes">客户属性</option>' + moreTabs.map(function (tab) { return '<option value="' + esc(tab.key) + '"' + (tab.key === activeTab ? ' selected' : '') + '>' + esc(tab.name) + '</option>'; }).join('') + '</select></div>';
-      var panelHtml = tabs.map(function (tab, index) {
-        var html = panelContent[tab.key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(tab.key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(tab.name || tab.key) + '</span><strong>0</strong><em>暂无该类客户数据</em></button></div></section>';
-        return tab.key === activeTab ? html.replace('customer-tab-panel"', 'customer-tab-panel active"') : html.replace('customer-tab-panel active"', 'customer-tab-panel"');
-      }).join('');
+      function subPanel(key, label) {
+        var html = panelContent[key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(label || key) + '</span><strong>0</strong><em>接口待接入</em></button></div></section>';
+        return html
+          .replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-subpanel active"')
+          .replace('customer-tab-panel"', 'customer-tab-panel customer-tab-subpanel active"');
+      }
+      function groupPanel(key, title, children) {
+        return '<section class="customer-tab-panel customer-tab-group' + (key === activeTab ? ' active' : '') + '" data-detail-panel="' + esc(key) + '">' +
+          (key === 'overview' ? '' : '<header class="customer-tab-group-head"><strong>' + esc(title) + '</strong><span>' + esc(children.length) + ' 个功能区</span></header>') +
+          children.join('') +
+          '</section>';
+      }
+      var archiveIntro = '<section class="customer-tab-panel customer-tab-subpanel active" data-detail-panel="customer_attribute"><div class="customer-summary-grid"><button type="button" data-customer-attribute-open><span>客户属性</span><strong>查看 / 编辑</strong><em>客户身份、联系方式、地区地址、来源推广、负责人权限</em></button><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc((data.contacts || []).length) + '</strong><em>联系人、客户群和沟通群</em></button></div></section>';
+      var tabHtml = '<div class="customer-detail-tabs">' + mainTabs.map(function (tab) {
+        return '<button type="button" data-detail-tab="' + esc(tab.key) + '" class="' + (tab.key === activeTab ? 'active' : '') + '" title="' + esc(tab.label) + '"><strong>' + esc(tab.label) + '</strong></button>';
+      }).join('') + '</div>';
+      var panelHtml = [
+        groupPanel('overview', '概览', [panelContent.overview.replace('customer-tab-panel active"', 'customer-tab-panel customer-tab-subpanel active"')]),
+        groupPanel('archive', '档案', [archiveIntro, subPanel('contacts', '联系人'), subPanel('preferences', '标签')]),
+        groupPanel('communication', '沟通', [subPanel('followups', '跟进'), subPanel('visits', '拜访 / 来访'), subPanel('mail', '邮件')]),
+        groupPanel('sales', '销售', [subPanel('opportunities', '商机'), subPanel('quote', '报价'), subPanel('orders', '订单'), subPanel('receivables', '收款欠款'), subPanel('shipments', '出货进度'), subPanel('documents', '单证')]),
+        groupPanel('project', '项目', [subPanel('samples', '样品'), subPanel('materials', '资料'), subPanel('plm', 'PLM'), subPanel('bom', 'BOM'), subPanel('dispatch', '派工')]),
+        groupPanel('records', '记录', [subPanel('relations', '关系'), subPanel('logs', '日志'), subPanel('duplicate', '查重'), subPanel('timeline', '时间轴'), subPanel('files', '文件'), subPanel('events', '恢复记录')])
+      ].join('');
       box.innerHTML = tabHtml + panelHtml;
       this.attributeViewMode = false;
       this.attributeEditMode = false;
@@ -3869,15 +3947,10 @@
           self.switchDetailTab(name);
         });
       });
-      document.querySelector('[data-detail-more]')?.addEventListener('change', function (event) {
-        var name = event.target.value;
-        if (!name) return;
-        if (name === '__attributes') {
-          event.target.value = '';
+      document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
+        button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
-          return;
-        }
-        self.switchDetailTab(name);
+        });
       });
       document.querySelectorAll('[data-summary-jump]').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -3962,7 +4035,12 @@
       });
     },
     switchDetailTab: function (name) {
-      var activeName = name || 'overview';
+      var targetName = this.detailTabAlias(name || 'overview');
+      if (targetName === 'customer_attribute') {
+        this.openCustomerAttributeView(false, true);
+        return;
+      }
+      var activeName = this.detailGroupForTab(targetName);
       this.rememberDetailTab(activeName);
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
         this.ensureFullDetail(activeName);
@@ -3976,12 +4054,14 @@
         }
       }
       var tab = document.querySelector('[data-detail-tab="' + activeName + '"]');
-      var more = document.querySelector('[data-detail-more]');
       document.querySelectorAll('[data-detail-tab]').forEach(function (item) { item.classList.toggle('active', item === tab); });
-      if (more) more.value = tab ? '' : activeName;
-      document.querySelectorAll('[data-detail-panel]').forEach(function (panel) {
+      document.querySelectorAll('[data-customer-detail] > .customer-tab-panel, [data-customer-detail] > .customer-tab-group').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeName);
       });
+      if (targetName !== activeName) {
+        var child = document.querySelector('.customer-tab-group.active [data-detail-panel="' + targetName + '"]');
+        if (child && child.scrollIntoView) child.scrollIntoView({ block: 'nearest' });
+      }
     },
     field: function (label, name, value, attrs) {
       return '<label class="entity-field"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '" ' + (attrs || '') + '></label>';
