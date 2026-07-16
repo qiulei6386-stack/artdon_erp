@@ -126,6 +126,16 @@ function crm_customer_ensure_tables(): void
         KEY idx_customer_address_country (country)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    foreach ([
+        ['crm_customer_addresses', 'postal_code', 'VARCHAR(60) NULL'],
+        ['crm_customer_addresses', 'contact_name', 'VARCHAR(120) NULL'],
+        ['crm_customer_addresses', 'phone', 'VARCHAR(80) NULL'],
+        ['crm_customer_addresses', 'deleted_at', 'DATETIME NULL'],
+        ['crm_customer_addresses', 'deleted_by', 'INT UNSIGNED NULL'],
+    ] as $columnDef) {
+        crm_add_column_safe($columnDef[0], $columnDef[1], $columnDef[2]);
+    }
+
     db()->exec("CREATE TABLE IF NOT EXISTS crm_customer_source_tags (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         customer_id INT UNSIGNED NOT NULL,
@@ -821,9 +831,76 @@ function crm_customer_owner_match_sql(int $userId, array &$params): string
 
 function crm_customer_addresses(int $customerId): array
 {
-    $stmt = db()->prepare('SELECT * FROM crm_customer_addresses WHERE customer_id = ? ORDER BY is_primary DESC, id ASC');
+    $stmt = db()->prepare('SELECT * FROM crm_customer_addresses WHERE customer_id = ? AND deleted_at IS NULL ORDER BY is_primary DESC, id ASC');
     $stmt->execute([$customerId]);
     return $stmt->fetchAll();
+}
+
+function crm_customer_address_save(array $input): array
+{
+    crm_customer_ensure_tables();
+    crm_require('customer.edit');
+    $customerId = (int)($input['customer_id'] ?? 0);
+    crm_customer_get($customerId);
+    $id = (int)($input['address_id'] ?? $input['id'] ?? 0);
+    $type = trim((string)($input['address_type'] ?? 'Other'));
+    $allowed = ['HQ','Office','Factory','Warehouse','Other'];
+    $typeMap = ['primary' => 'HQ', 'shipping' => 'Warehouse', 'billing' => 'Office', 'other' => 'Other', '主地址' => 'HQ', '发货地址' => 'Warehouse', '账单地址' => 'Office', '其他地址' => 'Other'];
+    $type = $typeMap[$type] ?? $type;
+    if (!in_array($type, $allowed, true)) $type = 'Other';
+    $payload = [
+        'customer_id' => $customerId,
+        'address_type' => $type,
+        'country' => trim((string)($input['country'] ?? '')),
+        'city' => trim((string)($input['city'] ?? '')),
+        'address' => trim((string)($input['address'] ?? '')),
+        'postal_code' => trim((string)($input['postal_code'] ?? $input['zip_code'] ?? '')),
+        'contact_name' => trim((string)($input['contact_name'] ?? '')),
+        'phone' => trim((string)($input['phone'] ?? '')),
+        'is_primary' => !empty($input['is_primary']) ? 1 : 0,
+    ];
+    if ($payload['country'] === '') throw new RuntimeException('国家不能为空。');
+    if ($payload['address'] === '') throw new RuntimeException('详细地址不能为空。');
+    $before = null;
+    if ($payload['is_primary']) {
+        db()->prepare('UPDATE crm_customer_addresses SET is_primary = 0 WHERE customer_id = ? AND deleted_at IS NULL')->execute([$customerId]);
+    }
+    if ($id > 0) {
+        $stmt = db()->prepare('SELECT * FROM crm_customer_addresses WHERE id = ? AND customer_id = ? AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([$id, $customerId]);
+        $before = $stmt->fetch();
+        if (!$before) throw new RuntimeException('地址不存在。');
+        db()->prepare('UPDATE crm_customer_addresses SET address_type=?, country=?, city=?, address=?, postal_code=?, contact_name=?, phone=?, is_primary=?, updated_by=?, updated_at=NOW() WHERE id=?')
+            ->execute([$payload['address_type'], $payload['country'], $payload['city'], $payload['address'], $payload['postal_code'], $payload['contact_name'], $payload['phone'], $payload['is_primary'], current_user()['id'] ?? null, $id]);
+        crm_customer_log('address_update', 'address', $id, $customerId, $before, $payload, '编辑客户地址');
+        crm_customer_timeline_add($customerId, 'address_update', '编辑客户地址', $payload['address'], 'address', (string)$id);
+    } else {
+        db()->prepare('INSERT INTO crm_customer_addresses (customer_id, address_type, country, city, address, postal_code, contact_name, phone, is_primary, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
+            ->execute([$customerId, $payload['address_type'], $payload['country'], $payload['city'], $payload['address'], $payload['postal_code'], $payload['contact_name'], $payload['phone'], $payload['is_primary'], current_user()['id'] ?? null, current_user()['id'] ?? null]);
+        $id = (int)db()->lastInsertId();
+        crm_customer_log('address_create', 'address', $id, $customerId, null, $payload, '新增客户地址');
+        crm_customer_timeline_add($customerId, 'address_create', '新增客户地址', $payload['address'], 'address', (string)$id);
+    }
+    return crm_customer_get($customerId, 'full');
+}
+
+function crm_customer_address_delete(array $input): array
+{
+    crm_customer_ensure_tables();
+    crm_require('customer.edit');
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $id = (int)($input['address_id'] ?? $input['id'] ?? 0);
+    if ($customerId <= 0 || $id <= 0) throw new RuntimeException('地址 ID 无效。');
+    crm_customer_get($customerId);
+    $stmt = db()->prepare('SELECT * FROM crm_customer_addresses WHERE id = ? AND customer_id = ? AND deleted_at IS NULL LIMIT 1');
+    $stmt->execute([$id, $customerId]);
+    $before = $stmt->fetch();
+    if (!$before) throw new RuntimeException('地址不存在。');
+    db()->prepare('UPDATE crm_customer_addresses SET deleted_at=NOW(), deleted_by=?, updated_by=?, updated_at=NOW() WHERE id=?')
+        ->execute([current_user()['id'] ?? null, current_user()['id'] ?? null, $id]);
+    crm_customer_log('address_delete', 'address', $id, $customerId, $before, ['deleted' => 1], '删除客户地址');
+    crm_customer_timeline_add($customerId, 'address_delete', '删除客户地址', (string)($before['address'] ?? ''), 'address', (string)$id);
+    return crm_customer_get($customerId, 'full');
 }
 
 function crm_customer_chat_groups(int $customerId): array
@@ -911,6 +988,99 @@ function crm_customer_tags(int $customerId, string $table, string $column): arra
     $stmt = db()->prepare("SELECT {$column} FROM {$table} WHERE customer_id = ? ORDER BY id");
     $stmt->execute([$customerId]);
     return array_map(fn($row) => $row[$column], $stmt->fetchAll());
+}
+
+function crm_customer_tag_list(int $customerId): array
+{
+    crm_customer_ensure_tables();
+    $detail = crm_customer_get($customerId, 'overview');
+    $customer = $detail['customer'] ?? [];
+    $custom = array_values(array_filter(array_map('trim', preg_split('/[,，;；、]+/u', (string)($customer['customer_tags'] ?? ''), -1, PREG_SPLIT_NO_EMPTY))));
+    return [
+        'customer_tags' => $custom,
+        'source_tags' => $detail['source_tags'] ?? [],
+        'promotion_channels' => $detail['promotion_channels'] ?? [],
+        'risk_tags' => array_values(array_filter([(string)($customer['risk_level'] ?? ''), !empty($customer['do_not_contact']) ? 'blacklist' : ''])),
+        'groups' => $detail['groups'] ?? [],
+    ];
+}
+
+function crm_customer_tag_save(array $input): array
+{
+    crm_customer_ensure_tables();
+    crm_require('customer.edit');
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $detail = crm_customer_get($customerId, 'overview');
+    $customer = $detail['customer'] ?? [];
+    $type = trim((string)($input['tag_type'] ?? 'customer_tag'));
+    $name = trim((string)($input['tag_name'] ?? $input['tag_key'] ?? ''));
+    if ($name === '') throw new RuntimeException('标签不能为空。');
+    $before = crm_customer_tag_list($customerId);
+    if ($type === 'customer_tag' || $type === 'risk_tag') {
+        $tags = array_values(array_unique(array_merge($before['customer_tags'] ?? [], [$name])));
+        db()->prepare('UPDATE crm_customers SET customer_tags=?, updated_by=?, updated_at=NOW() WHERE id=?')
+            ->execute([implode(',', $tags), current_user()['id'] ?? null, $customerId]);
+    } elseif ($type === 'source_tag') {
+        $keys = crm_parse_keys(array_merge($before['source_tags'] ?? [], [$name]), crm_graph_options()['source_tags']);
+        if (!in_array($name, $keys, true)) throw new RuntimeException('来源标签不在字典中。');
+        crm_customer_sync_key_table($customerId, 'crm_customer_source_tags', 'source_key', $keys);
+    } elseif ($type === 'promotion_tag') {
+        $keys = crm_parse_keys(array_merge($before['promotion_channels'] ?? [], [$name]), crm_graph_options()['promotion_channels']);
+        if (!in_array($name, $keys, true)) throw new RuntimeException('推广标签不在字典中。');
+        crm_customer_sync_key_table($customerId, 'crm_customer_promotion_channels', 'channel_key', $keys);
+    } elseif ($type === 'customer_group') {
+        $groupId = (int)($input['group_id'] ?? 0);
+        if ($groupId <= 0) {
+            $stmt = db()->prepare('SELECT id FROM crm_customer_groups WHERE group_name = ? AND deleted_at IS NULL LIMIT 1');
+            $stmt->execute([$name]);
+            $groupId = (int)$stmt->fetchColumn();
+        }
+        if ($groupId <= 0) throw new RuntimeException('客户组不存在，请先在客户组管理中创建。');
+        db()->prepare('INSERT IGNORE INTO crm_customer_group_relations (customer_id, group_id, created_by, created_at) VALUES (?, ?, ?, NOW())')
+            ->execute([$customerId, $groupId, current_user()['id'] ?? null]);
+    } else {
+        throw new RuntimeException('标签类型无效。');
+    }
+    $after = crm_customer_tag_list($customerId);
+    crm_customer_log('tag_save', 'tag', $name, $customerId, $before, $after, '添加客户标签');
+    crm_customer_timeline_add($customerId, 'tag_save', '添加客户标签', $type . ' · ' . $name, 'customer', (string)$customerId);
+    return crm_customer_get($customerId, 'full');
+}
+
+function crm_customer_tag_delete(array $input): array
+{
+    crm_customer_ensure_tables();
+    crm_require('customer.edit');
+    $customerId = (int)($input['customer_id'] ?? 0);
+    crm_customer_get($customerId, 'overview');
+    $type = trim((string)($input['tag_type'] ?? 'customer_tag'));
+    $name = trim((string)($input['tag_name'] ?? $input['tag_key'] ?? ''));
+    if ($name === '') throw new RuntimeException('标签不能为空。');
+    $before = crm_customer_tag_list($customerId);
+    if ($type === 'customer_tag' || $type === 'risk_tag') {
+        $tags = array_values(array_filter($before['customer_tags'] ?? [], fn($tag) => (string)$tag !== $name));
+        db()->prepare('UPDATE crm_customers SET customer_tags=?, updated_by=?, updated_at=NOW() WHERE id=?')
+            ->execute([implode(',', $tags), current_user()['id'] ?? null, $customerId]);
+    } elseif ($type === 'source_tag') {
+        db()->prepare('DELETE FROM crm_customer_source_tags WHERE customer_id=? AND source_key=?')->execute([$customerId, $name]);
+    } elseif ($type === 'promotion_tag') {
+        db()->prepare('DELETE FROM crm_customer_promotion_channels WHERE customer_id=? AND channel_key=?')->execute([$customerId, $name]);
+    } elseif ($type === 'customer_group') {
+        $groupId = (int)($input['group_id'] ?? 0);
+        if ($groupId <= 0) {
+            $stmt = db()->prepare('SELECT id FROM crm_customer_groups WHERE group_name = ? AND deleted_at IS NULL LIMIT 1');
+            $stmt->execute([$name]);
+            $groupId = (int)$stmt->fetchColumn();
+        }
+        if ($groupId <= 0) throw new RuntimeException('客户组不存在。');
+        db()->prepare('DELETE FROM crm_customer_group_relations WHERE customer_id=? AND group_id=?')->execute([$customerId, $groupId]);
+    } else {
+        throw new RuntimeException('标签类型无效。');
+    }
+    $after = crm_customer_tag_list($customerId);
+    crm_customer_log('tag_delete', 'tag', $name, $customerId, $before, $after, '移除客户标签');
+    crm_customer_timeline_add($customerId, 'tag_delete', '移除客户标签', $type . ' · ' . $name, 'customer', (string)$customerId);
+    return crm_customer_get($customerId, 'full');
 }
 
 function crm_customer_promotion_status(int $customerId): string

@@ -1151,9 +1151,42 @@ try {
         require_csrf();
         api_response(true, '客户群已保存', crm_customer_chat_group_save($_POST));
     }
+    if ($action === 'customer_group_list') {
+        api_response(true, '', ['rows' => crm_customer_chat_groups((int)($_POST['customer_id'] ?? 0))]);
+    }
+    if ($action === 'customer_group_save') {
+        require_csrf();
+        api_response(true, '客户群已保存', crm_customer_chat_group_save($_POST));
+    }
+    if ($action === 'customer_group_delete') {
+        require_csrf();
+        api_response(true, '客户群已删除', crm_customer_chat_group_delete($_POST));
+    }
     if ($action === 'customer_chat_group_delete') {
         require_csrf();
         api_response(true, '客户群已删除', crm_customer_chat_group_delete($_POST));
+    }
+    if ($action === 'customer_address_list') {
+        api_response(true, '', ['rows' => crm_customer_addresses((int)($_POST['customer_id'] ?? 0))]);
+    }
+    if ($action === 'customer_address_save') {
+        require_csrf();
+        api_response(true, '地址已保存', crm_customer_address_save($_POST));
+    }
+    if ($action === 'customer_address_delete') {
+        require_csrf();
+        api_response(true, '地址已删除', crm_customer_address_delete($_POST));
+    }
+    if ($action === 'customer_tag_list') {
+        api_response(true, '', crm_customer_tag_list((int)($_POST['customer_id'] ?? 0)));
+    }
+    if ($action === 'customer_tag_save') {
+        require_csrf();
+        api_response(true, '标签已保存', crm_customer_tag_save($_POST));
+    }
+    if ($action === 'customer_tag_delete') {
+        require_csrf();
+        api_response(true, '标签已移除', crm_customer_tag_delete($_POST));
     }
     if ($action === 'customer_update') {
         require_csrf();
@@ -1252,6 +1285,19 @@ try {
     if ($action === 'contact_create') {
         require_csrf();
         api_response(true, '联系人已创建', crm_contact_create($_POST));
+    }
+    if ($action === 'customer_contact_list') {
+        api_response(true, '', crm_contact_list(['customer_id' => (int)($_POST['customer_id'] ?? 0)]));
+    }
+    if ($action === 'customer_contact_save') {
+        require_csrf();
+        $contactId = (int)($_POST['contact_id'] ?? $_POST['id'] ?? 0);
+        api_response(true, $contactId ? '联系人已保存' : '联系人已创建', $contactId ? crm_contact_update($contactId, $_POST) : crm_contact_create($_POST));
+    }
+    if ($action === 'customer_contact_delete') {
+        require_csrf();
+        crm_contact_delete((int)($_POST['contact_id'] ?? $_POST['id'] ?? 0));
+        api_response(true, '联系人已删除');
     }
     if ($action === 'contact_update') {
         require_csrf();

@@ -6432,8 +6432,15 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   align-items: center;
   padding: 3px 0 0;
 }
+.customer-tab-group-head > div,
+.customer-tab-group-head > aside {
+  display: grid;
+  gap: 3px;
+}
 .customer-tab-group-head strong { font-size: 15px; color: var(--crm-text); }
 .customer-tab-group-head span { font-size: 12px; color: var(--crm-muted-text); }
+.customer-tab-group-head aside { text-align: right; }
+.customer-tab-group-head aside b { color: var(--crm-primary); font-size: 14px; }
 .customer-detail-subtabs {
   display: flex;
   flex-wrap: wrap;
@@ -6485,6 +6492,32 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px;
   font-weight: 600;
 }
+.archive-attribute-panel { display: grid; gap: 10px; }
+.archive-attribute-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.archive-attribute-toolbar button {
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--crm-border);
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 12px;
+}
+.archive-attribute-toolbar button.primary {
+  border-color: var(--crm-primary);
+  background: var(--crm-primary);
+  color: #fff;
+}
+.archive-attribute-toolbar button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.archive-attribute-grid .wide { grid-column: 1 / -1; }
 .customer-tab-empty {
   display: grid;
   gap: 4px;
