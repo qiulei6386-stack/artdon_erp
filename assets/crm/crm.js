@@ -4036,8 +4036,8 @@
         return String(row.order_no || row.related_order_no || '') === String(orderNo);
       });
     },
-    flowNode: function (label, state, status, note) {
-      return { label: label, state: state || 'pending', status: status || '未开始', note: note || '暂无记录' };
+    flowNode: function (label, state, status, note, updatedAt) {
+      return { label: label, state: state || 'pending', status: status || '未开始', note: note || '暂无记录', updated_at: updatedAt || '' };
     },
     renderCustomerOrderPreviewById: function (rowId) {
       var row = null;
@@ -4069,6 +4069,11 @@
       var docs = this.relatedOrderRows('documents', row.order_no || '');
       var shipment = shipments[0] || {};
       var doc = docs[0] || {};
+      var quoteUpdatedAt = row.quote_date || row.quote_created_at || row.created_at || row.updated_at || '';
+      var convertUpdatedAt = row.converted_at || row.order_date || row.created_at || row.updated_at || '';
+      var paymentUpdatedAt = row.payment_updated_at || row.received_at || row.paid_at || row.updated_at || row.order_date || '';
+      var shipmentUpdatedAt = shipment.updated_at || shipment.ship_date || shipment.created_at || row.shipment_updated_at || '';
+      var documentUpdatedAt = doc.updated_at || doc.created_at || row.document_updated_at || row.updated_at || '';
       var quoteDone = row.quote_no ? 'done' : 'pending';
       var auditCode = String(row.audit_status_code || '').toLowerCase();
       var auditStatus = row.audit_status || row.review_status || row.approval_status || '';
@@ -4125,13 +4130,13 @@
         convertNote = '缺少审核记录';
       }
       var nodes = [
-        this.flowNode('报价', quoteDone, row.quote_no ? '已关联' : '暂无报价记录', row.quote_no || '暂无记录'),
-        this.flowNode('审核', auditState, auditStatus || '审核记录缺失', auditNote),
-        this.flowNode('转订单', convertState, convertStatus, String(convertNote || '').slice(0, 36)),
-        this.flowNode('定金', depositDone ? 'done' : 'risk', depositDone ? '已收' : '未收', '已收 ' + paidText),
-        this.flowNode('尾款', paidDone ? 'done' : 'risk', paidDone ? '已结清' : '未收', balanceText),
-        this.flowNode('出货', shipmentDone ? 'done' : (shipments.length ? 'current' : 'pending'), row.shipment_status || shipment.status || '暂无出货记录', (shipment.shipment_no || shipment.tracking_no || row.qty || '暂无记录')),
-        this.flowNode('单证', docDone ? 'done' : 'pending', doc.status || row.document_status || '暂无单证记录', doc.document_no || doc.type || row.doc_title || 'PL / CI 待生成')
+        this.flowNode('报价', quoteDone, row.quote_no ? '已关联' : '暂无报价记录', row.quote_no || '暂无记录', quoteUpdatedAt),
+        this.flowNode('审核', auditState, auditStatus || '审核记录缺失', auditNote, auditTime || quoteUpdatedAt),
+        this.flowNode('转订单', convertState, convertStatus, String(convertNote || '').slice(0, 36), convertUpdatedAt),
+        this.flowNode('定金', depositDone ? 'done' : 'risk', depositDone ? '已收' : '未收', '已收 ' + paidText, paymentUpdatedAt),
+        this.flowNode('尾款', paidDone ? 'done' : 'risk', paidDone ? '已结清' : '未收', balanceText, paymentUpdatedAt),
+        this.flowNode('出货', shipmentDone ? 'done' : (shipments.length ? 'current' : 'pending'), row.shipment_status || shipment.status || '暂无出货记录', (shipment.shipment_no || shipment.tracking_no || row.qty || '暂无记录'), shipmentUpdatedAt),
+        this.flowNode('单证', docDone ? 'done' : 'pending', doc.status || row.document_status || '暂无单证记录', doc.document_no || doc.type || row.doc_title || 'PL / CI 待生成', documentUpdatedAt)
       ];
       var current = '审核';
       var nextAction = '提交 / 等待报价审核';
@@ -4165,7 +4170,8 @@
       return '<article class="customer-order-preview-card ' + esc(tone) + '">' +
         '<section class="customer-order-preview-basic"><span>订单流程预览</span><strong>' + esc(orderNo) + '</strong><p>' + esc(customer.customer_name || row.customer_name || '-') + ' · ' + esc(contact) + ' · ' + esc(row.owner || row.owner_name || '-') + ' · ' + esc(row.order_date || '-日期未填') + '</p><b>' + esc(amountText) + '</b><em class="' + (balanceRaw > 0 ? 'debt-amount' : 'paid-amount') + '">' + esc(balanceRaw > 0 ? ('未收 ' + balanceText) : ('已收 ' + paidText)) + '</em></section>' +
         '<section class="customer-order-flow-preview">' + nodes.map(function (node) {
-          return '<div class="order-flow-node ' + esc(node.state) + '"><i></i><strong>' + esc(node.label) + '</strong><span>' + esc(node.status) + '</span><em>' + esc(node.note) + '</em></div>';
+          var tip = node.label + '\n状态：' + (node.status || '-') + '\n说明：' + (node.note || '-') + '\n更新时间：' + (node.updated_at || '暂无');
+          return '<div class="order-flow-node ' + esc(node.state) + '" title="' + esc(tip) + '"><i></i><strong>' + esc(node.label) + '</strong><span>' + esc(node.status) + '</span><em>' + esc(node.note) + '</em></div>';
         }).join('') + '</section>' +
         '<section class="customer-order-preview-next"><span>当前：' + esc(current) + '</span><strong>下一步：' + esc(nextAction) + '</strong>' + shortcutButtons.join('') + '</section>' +
       '</article>';
