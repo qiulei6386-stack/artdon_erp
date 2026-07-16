@@ -3010,7 +3010,13 @@
         has_code: '有客户代码',
         has_quote: '有报价',
         has_mail: '有邮件',
-        has_material: '有资料'
+        has_material: '有资料',
+        no_owner: '无负责人客户',
+        incomplete: '资料不完整客户',
+        no_contact: '无联系人客户',
+        no_email: '无邮箱客户',
+        duplicate: '疑似重复客户',
+        stale_30d: '30 天未跟进客户'
       };
       if (q) parts.push('关键词：' + q);
       if (country) parts.push('国家：' + country);
@@ -3100,7 +3106,7 @@
     renderEmptyOverview: function () {
       var box = document.querySelector('[data-customer-detail]');
       if (!box || this.currentId) return;
-      box.innerHTML = '<div class="customer-overview-empty"><header><div><span>客户概览</span><strong>客户概览</strong><p>未选择客户时显示整体客户分布和新增趋势。</p></div><button type="button" data-overview-refresh>刷新</button></header><div class="customer-overview-loading">正在加载客户统计...</div></div>';
+      box.innerHTML = '<div class="customer-overview-empty"><header><div><span>CUSTOMER CENTER</span><strong>客户中心总览</strong><p>未选择客户时显示客户分布、增长、待处理和最近动态。</p></div><button type="button" data-overview-refresh>刷新</button></header><div class="customer-overview-loading">正在加载客户统计...</div></div>';
       box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this));
       this.loadOverviewStats();
     },
@@ -3118,6 +3124,12 @@
       var box = document.querySelector('.customer-overview-empty');
       if (!box || this.currentId) return;
       var countries = data.countries || [];
+      var sources = data.sources || [];
+      var owners = data.owners || [];
+      var kpis = data.kpis || {};
+      var pending = data.pending || [];
+      var recentCreated = data.recent_created || [];
+      var recentUpdated = data.recent_updated || [];
       var total = Number(data.total || 0);
       var colors = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b', '#ec4899'];
       var sum = countries.reduce(function (n, item) { return n + Number(item.value || 0); }, 0) || 1;
@@ -3131,16 +3143,82 @@
       var maxGrowth = Math.max.apply(null, (data.growth || []).map(function (item) { return Number(item.value || 0); }).concat([1]));
       var countryHtml = countries.map(function (item, index) {
         var pct = Math.round(Number(item.value || 0) / sum * 100);
-        return '<span><i style="background:' + colors[index % colors.length] + '"></i><b>' + esc(item.label) + '</b><em>' + esc(item.value) + ' · ' + pct + '%</em></span>';
+        return '<button type="button" data-overview-filter="country" data-value="' + esc(item.label) + '"><i style="background:' + colors[index % colors.length] + '"></i><b>' + esc(item.label) + '</b><em>' + esc(item.value) + ' · ' + pct + '%</em></button>';
       }).join('') || '<span>暂无国家数据</span>';
-      var growthHtml = (data.growth || []).map(function (item) {
-        var pct = Math.max(4, Math.round(Number(item.value || 0) / maxGrowth * 100));
-        return '<label><span>' + esc(item.label) + '</span><b><i style="width:' + pct + '%"></i></b><em>' + esc(item.value) + '</em></label>';
-      }).join('');
-      box.innerHTML = '<header><div><span>客户概览</span><strong>客户概览</strong><p>未选择客户时显示整体客户分布和新增趋势。</p></div><button type="button" data-overview-refresh>刷新</button></header>' +
-        '<section class="customer-overview-grid"><article><h3>国家客户数</h3><div class="customer-country-chart"><div class="customer-pie" style="background: conic-gradient(' + gradient + ')"><strong>' + esc(total) + '</strong><span>总客户</span></div><div class="customer-country-legend">' + countryHtml + '</div></div></article>' +
-        '<article><h3>新增客户</h3><div class="customer-growth-bars">' + growthHtml + '</div></article></section>';
+      function distList(rows, type) {
+        var sumValue = rows.reduce(function (n, item) { return n + Number(item.value || 0); }, 0) || 1;
+        return rows.map(function (item, index) {
+          var pct = Math.round(Number(item.value || 0) / sumValue * 100);
+          var value = type === 'owner' ? (item.owner_id || '') : item.label;
+          var extra = type === 'owner' ? ('活跃 ' + esc(item.active_count || 0) + ' · 未跟进 ' + esc(item.stale_count || 0)) : (esc(item.value || 0) + ' · ' + pct + '%');
+          return '<button type="button" data-overview-filter="' + esc(type) + '" data-value="' + esc(value) + '"><i style="background:' + colors[index % colors.length] + '"></i><b>' + esc(item.label || '未填') + '</b><em>' + extra + '</em></button>';
+        }).join('') || '<span class="overview-empty-line">暂无数据</span>';
+      }
+      function kpi(title, value, hint, filter, tone) {
+        return '<button type="button" class="customer-overview-kpi ' + esc(tone || '') + '" data-overview-filter="' + esc(filter || 'all') + '"><span>' + esc(title) + '</span><strong>' + esc(value || 0) + '</strong><em>' + esc(hint || '') + '</em></button>';
+      }
+      function pendingCard(item) {
+        var rows = item.rows || [];
+        var list = rows.map(function (row) {
+          return '<button type="button" data-overview-customer="' + esc(row.id) + '"><b>' + esc(row.customer_name || '-') + '</b><span>' + esc([row.country || '未填', row.owner_name || '未分配', item.reason || '待处理'].join(' · ')) + '</span></button>';
+        }).join('') || '<p>暂无数据</p>';
+        return '<article class="customer-overview-pending-card"><header><span>' + esc(item.title) + '</span><strong>' + esc(item.count || 0) + '</strong></header><div>' + list + '</div><button type="button" data-overview-filter="' + esc(item.key || '') + '">查看全部</button></article>';
+      }
+      function recentCard(title, rows, mode) {
+        var list = rows.map(function (row) {
+          var time = mode === 'created' ? row.created_at : row.updated_at;
+          return '<button type="button" data-overview-customer="' + esc(row.id) + '"><b>' + esc(row.customer_name || '-') + '</b><span>' + esc([row.country || '未填', row.source || 'unknown', row.owner_name || '未分配', String(time || '').slice(0, 16)].filter(Boolean).join(' · ')) + '</span></button>';
+        }).join('') || '<p>暂无数据</p>';
+        return '<article><h3>' + esc(title) + '</h3><div class="customer-overview-recent-list">' + list + '</div></article>';
+      }
+      box.innerHTML = '<header><div><span>CUSTOMER CENTER</span><strong>客户中心总览</strong><p>未选择客户时显示客户分布、增长、待处理和最近动态。</p></div><div class="customer-overview-meta"><b>客户总数 ' + esc(total) + '</b><span>已筛选 ' + (((this.filterState || {}).quick || 'all') === 'all' && !this.hasAdvancedFilters() && !((this.filterState || {}).keyword) ? '0' : esc(this.total || 0)) + '</span><em>最后刷新 ' + esc(data.refreshed_at || '-') + '</em><button type="button" data-overview-refresh>刷新</button></div></header>' +
+        '<section class="customer-overview-kpis">' +
+          kpi('客户总数', kpis.total || total, '全部客户', 'all', 'blue') +
+          kpi('本月新增', kpis.month_new || 0, '本月创建', 'month_new', 'green') +
+          kpi('暂存池', kpis.lead_pool || 0, '待确认线索', 'lead_pool', 'purple') +
+          kpi('公海客户', kpis.public || 0, '未分配客户', 'public', 'orange') +
+          kpi('无负责人客户', kpis.no_owner || 0, '需要分配', 'no_owner', 'red') +
+          kpi('资料不完整客户', kpis.incomplete || 0, '待补资料', 'incomplete', 'red') +
+        '</section>' +
+        '<section class="customer-overview-grid overview-distribution-grid"><article><h3>国家客户分布</h3><div class="customer-country-chart"><div class="customer-pie" style="background: conic-gradient(' + gradient + ')"><strong>' + esc(total) + '</strong><span>总客户</span></div><div class="customer-country-legend">' + countryHtml + '</div></div></article><article><h3>客户来源分布</h3><div class="customer-country-legend">' + distList(sources, 'source') + '</div></article><article><h3>负责人客户分布</h3><div class="customer-country-legend">' + distList(owners, 'owner') + '</div></article></section>' +
+        '<section class="customer-overview-section"><h3>待处理客户</h3><div class="customer-overview-pending-grid">' + pending.map(pendingCard).join('') + '</div></section>' +
+        '<section class="customer-overview-grid overview-recent-grid">' + recentCard('最近新增客户', recentCreated, 'created') + recentCard('最近更新客户', recentUpdated, 'updated') + '</section>';
       box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this));
+      this.bindOverviewStats(box);
+    },
+    bindOverviewStats: function (box) {
+      var self = this;
+      box.querySelectorAll('[data-overview-filter]').forEach(function (button) {
+        button.addEventListener('click', function () { self.applyOverviewFilter(button.getAttribute('data-overview-filter') || 'all', button.getAttribute('data-value') || ''); });
+      });
+      box.querySelectorAll('[data-overview-customer]').forEach(function (button) {
+        button.addEventListener('click', function () { self.loadDetail(Number(button.getAttribute('data-overview-customer') || 0)); });
+      });
+    },
+    applyOverviewFilter: function (type, value) {
+      this.ensureFilterState();
+      this.filterState.keyword = '';
+      this.filterState.advanced = {};
+      this.filterState.quick = 'all';
+      if (type === 'lead_pool') {
+        this.openLeadPool();
+        return;
+      }
+      if (type === 'month_new') this.filterState.quick = '本月新增';
+      else if (type === 'public') this.filterState.quick = 'public';
+      else if (type === 'no_owner') this.filterState.quick = 'no_owner';
+      else if (type === 'incomplete') this.filterState.quick = 'incomplete';
+      else if (type === 'no_contact') this.filterState.quick = 'no_contact';
+      else if (type === 'no_email') this.filterState.quick = 'no_email';
+      else if (type === 'duplicate') this.filterState.quick = 'duplicate';
+      else if (type === 'stale_30d') this.filterState.quick = '30 天未跟进';
+      else if (type === 'country') this.filterState.advanced = { country: value };
+      else if (type === 'source') this.filterState.advanced = { source: value ? [value] : [] };
+      else if (type === 'owner') this.filterState.advanced = value ? { owner_user_id: value } : {};
+      this.quickFilter = this.filterState.quick || 'all';
+      this.page = 1;
+      this.updateFilterControls();
+      this.loadList();
     },
     loadDetail: function (id, options) {
       options = options || {};
@@ -7044,11 +7122,9 @@
         ];
       }
       return [
-        { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户', '编辑客户', '删除客户', '查看客户日志', '导入日志'] },
-        { title: '布局切换', items: ['放大客户列表', '放大客户属性', '恢复默认布局'] },
-        { title: '业务操作', items: ['新建跟进', '新建商机', '查看商机', '新建拜访', '新建来访', '查看拜访记录', '查看来访记录', '创建接待派工'] },
-        { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议', 'AI 创建确认任务'] },
-        { title: '系统操作', items: ['分配客户', '加入分组', '管理分组', '公海池', '转入公海'].concat(hasCustomer ? ['批量设置推广方式', '编辑选项卡'] : []).concat(['查看日志']) }
+        { title: '客户操作', items: ['新建客户', '导入客户', '导出客户', '查看暂存池', '查看重复客户', '执行客户查重', '批量补全资料'] },
+        { title: '分析操作', items: ['查看国家分布', '查看来源分布', '查看负责人分布', '查看资料缺失'] },
+        { title: 'AI 辅助', items: ['AI 分析客户池', 'AI 查找重复客户', 'AI 补全客户资料建议'] }
       ];
     },
     handleAction: function (label) {
@@ -7286,7 +7362,12 @@
       });
       if (label === '编辑选项卡') return this.openCustomerTabQuickEditor();
       if (label === '查看日志') return this.openTodayLogsDialog();
-      if (label === '清除选择') { this.selected.clear(); document.querySelectorAll('[data-customer-row-check]').forEach(function (b) { b.checked = false; }); this.renderSelection(); renderActions('customers'); return; }
+      if (label === '清除选择') { this.selected.clear(); this.currentId = 0; this.currentDetail = null; document.querySelectorAll('[data-customer-row-check]').forEach(function (b) { b.checked = false; }); document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.remove('active'); }); this.renderSelection(); this.renderEmptyOverview(); renderActions('customers'); return; }
+      if (label === '查看暂存池') return this.openLeadPool();
+      if (label === '查看重复客户' || label === '执行客户查重') return this.applyOverviewFilter('duplicate');
+      if (label === '批量补全资料' || label === '查看资料缺失') return this.applyOverviewFilter('incomplete');
+      if (label === '查看国家分布' || label === '查看来源分布' || label === '查看负责人分布') { this.renderEmptyOverview(); return; }
+      if (label === 'AI 分析客户池' || label === 'AI 查找重复客户' || label === 'AI 补全客户资料建议') return AiModule.openFromContext(label, { source_type: 'customer_pool', content: '客户中心总览' });
       this.showCustomerError(label + '接口待接入。');
     },
     destroy: function () {

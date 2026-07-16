@@ -1474,7 +1474,8 @@ function crm_customer_list(array $input): array
     $sourceKeys = array_values(array_unique(array_filter(array_map('strval', $sourceKeys))));
     if ($sourceKeys) {
         $placeholders = implode(',', array_fill(0, count($sourceKeys), '?'));
-        $where[] = "EXISTS (SELECT 1 FROM crm_customer_source_tags s WHERE s.customer_id = c.id AND s.source_key IN ({$placeholders}))";
+        $where[] = "(c.source IN ({$placeholders}) OR EXISTS (SELECT 1 FROM crm_customer_source_tags s WHERE s.customer_id = c.id AND s.source_key IN ({$placeholders})))";
+        foreach ($sourceKeys as $sourceKey) $params[] = $sourceKey;
         foreach ($sourceKeys as $sourceKey) $params[] = $sourceKey;
     }
     if (($input['promotion_status'] ?? '') !== '') {
@@ -1550,7 +1551,20 @@ function crm_customer_list(array $input): array
             $where[] = '1 = 0';
         }
     } elseif ($quick === 'public' || $quick === '公海客户') {
-        $where[] = 'c.owner_user_id IS NULL';
+        $where[] = '(c.owner_user_id IS NULL AND NOT EXISTS (SELECT 1 FROM crm_customer_owners own WHERE own.customer_id = c.id))';
+    } elseif ($quick === 'no_owner' || $quick === '无负责人客户') {
+        $where[] = '(c.owner_user_id IS NULL AND NOT EXISTS (SELECT 1 FROM crm_customer_owners own WHERE own.customer_id = c.id))';
+    } elseif ($quick === 'no_contact' || $quick === '无联系人客户') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL)';
+    } elseif ($quick === 'no_email' || $quick === '无邮箱客户') {
+        $where[] = "((c.email IS NULL OR c.email = '') AND NOT EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.email IS NOT NULL AND ct.email <> ''))";
+    } elseif ($quick === 'incomplete' || $quick === '资料不完整客户' || $quick === '资料缺失客户') {
+        $noContactSql = 'NOT EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL)';
+        $noEmailSql = "((c.email IS NULL OR c.email = '') AND NOT EXISTS (SELECT 1 FROM crm_contacts ct2 WHERE ct2.customer_id = c.id AND ct2.deleted_at IS NULL AND ct2.email IS NOT NULL AND ct2.email <> ''))";
+        $where[] = "(c.city = '' OR c.city IS NULL OR {$noEmailSql} OR {$noContactSql} OR NOT EXISTS (SELECT 1 FROM crm_customer_group_relations gr WHERE gr.customer_id = c.id))";
+    } elseif ($quick === 'duplicate' || $quick === '疑似重复客户') {
+        $where[] = "((c.email IS NOT NULL AND c.email <> '' AND EXISTS (SELECT 1 FROM crm_customers d WHERE d.deleted_at IS NULL AND d.id <> c.id AND d.email = c.email))
+            OR (c.website IS NOT NULL AND c.website <> '' AND EXISTS (SELECT 1 FROM crm_customers d2 WHERE d2.deleted_at IS NULL AND d2.id <> c.id AND d2.website = c.website)))";
     } elseif ($quick === 'mine' || $quick === '我的客户') {
         $where[] = crm_customer_owner_match_sql((int)(current_user()['id'] ?? 0), $params);
     }
@@ -1634,10 +1648,73 @@ function crm_customer_overview_stats(): array
     $params = [];
     $scope = crm_customer_scope_sql($params);
     $where = implode(' AND ', ['c.deleted_at IS NULL', $scope]);
+    $baseParams = $params;
+
+    $noOwnerSql = '(c.owner_user_id IS NULL AND NOT EXISTS (SELECT 1 FROM crm_customer_owners own WHERE own.customer_id = c.id))';
+    $noContactSql = 'NOT EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL)';
+    $noEmailSql = "((c.email IS NULL OR c.email = '') AND NOT EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.email IS NOT NULL AND ct.email <> ''))";
+    $incompleteSql = "(c.city = '' OR c.city IS NULL OR {$noEmailSql} OR {$noContactSql} OR NOT EXISTS (SELECT 1 FROM crm_customer_group_relations gr WHERE gr.customer_id = c.id))";
+    $staleFollowSql = 'NOT EXISTS (SELECT 1 FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL AND f.followup_time >= DATE_SUB(NOW(), INTERVAL 30 DAY))';
+
+    $countWhere = function (string $extra = '', array $extraParams = []) use ($where, $baseParams): int {
+        $sql = "SELECT COUNT(*) FROM crm_customers c WHERE {$where}" . ($extra !== '' ? " AND ({$extra})" : '');
+        $stmt = db()->prepare($sql);
+        $stmt->execute(array_merge($baseParams, $extraParams));
+        return (int)$stmt->fetchColumn();
+    };
+    $customerRows = function (string $extra = '', array $extraParams = [], int $limit = 3, string $orderBy = 'updated') use ($where, $baseParams): array {
+        $orderSql = $orderBy === 'created' ? 'c.created_at DESC, c.id DESC' : 'COALESCE(c.updated_at, c.created_at) DESC, c.id DESC';
+        $sql = "SELECT c.id, c.customer_name, c.customer_code, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city,
+                COALESCE(u.username, c.owner_department, '') AS owner_name, COALESCE(c.source, '') AS source, c.created_at, c.updated_at
+            FROM crm_customers c
+            LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1
+            LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1
+            LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id)
+            WHERE {$where}" . ($extra !== '' ? " AND ({$extra})" : '') . "
+            ORDER BY {$orderSql}
+            LIMIT {$limit}";
+        $stmt = db()->prepare($sql);
+        $stmt->execute(array_merge($baseParams, $extraParams));
+        return array_map(static fn($row) => [
+            'id' => (int)$row['id'],
+            'customer_name' => (string)($row['customer_name'] ?: '未命名客户'),
+            'customer_code' => (string)($row['customer_code'] ?? ''),
+            'country' => (string)($row['country'] ?: '未填'),
+            'city' => (string)($row['city'] ?: ''),
+            'owner_name' => (string)($row['owner_name'] ?: '未分配'),
+            'source' => (string)($row['source'] ?: 'unknown'),
+            'created_at' => (string)($row['created_at'] ?? ''),
+            'updated_at' => (string)($row['updated_at'] ?? ''),
+        ], $stmt->fetchAll());
+    };
 
     $countryStmt = db()->prepare("SELECT COALESCE(NULLIF(c.country, ''), '未填') AS label, COUNT(*) AS value FROM crm_customers c WHERE {$where} GROUP BY COALESCE(NULLIF(c.country, ''), '未填') ORDER BY value DESC, label ASC LIMIT 8");
     $countryStmt->execute($params);
     $countries = array_map(fn($row) => ['label' => (string)$row['label'], 'value' => (int)$row['value']], $countryStmt->fetchAll());
+
+    $sourceStmt = db()->prepare("SELECT COALESCE(NULLIF(c.source, ''), 'unknown') AS label, COUNT(*) AS value FROM crm_customers c WHERE {$where} GROUP BY COALESCE(NULLIF(c.source, ''), 'unknown') ORDER BY value DESC, label ASC LIMIT 8");
+    $sourceStmt->execute($params);
+    $sources = array_map(fn($row) => ['label' => (string)$row['label'], 'value' => (int)$row['value']], $sourceStmt->fetchAll());
+
+    $ownerStmt = db()->prepare("SELECT COALESCE(u.username, c.owner_department, '未分配') AS label,
+            COALESCE(po.user_id, c.owner_user_id, 0) AS owner_id,
+            COUNT(DISTINCT c.id) AS value,
+            SUM(CASE WHEN EXISTS (SELECT 1 FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL AND f.followup_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)) THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL AND f.followup_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)) THEN 1 ELSE 0 END) AS stale_count
+        FROM crm_customers c
+        LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1
+        LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id)
+        WHERE {$where}
+        GROUP BY COALESCE(po.user_id, c.owner_user_id, 0), COALESCE(u.username, c.owner_department, '未分配')
+        ORDER BY value DESC, label ASC LIMIT 8");
+    $ownerStmt->execute($params);
+    $owners = array_map(fn($row) => [
+        'label' => (string)$row['label'],
+        'owner_id' => (int)$row['owner_id'],
+        'value' => (int)$row['value'],
+        'active_count' => (int)$row['active_count'],
+        'stale_count' => (int)$row['stale_count'],
+    ], $ownerStmt->fetchAll());
 
     $ranges = [
         ['key' => 'today', 'label' => '今天', 'sql' => 'DATE(c.created_at) = CURDATE()'],
@@ -1654,7 +1731,40 @@ function crm_customer_overview_stats(): array
     }
     $totalStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c WHERE {$where}");
     $totalStmt->execute($params);
-    return ['total' => (int)$totalStmt->fetchColumn(), 'countries' => $countries, 'growth' => $growth];
+    $total = (int)$totalStmt->fetchColumn();
+    $leadPoolCount = 0;
+    if (crm_table_exists_safe('crm_lead_pool')) {
+        $leadPoolCount = (int)db()->query("SELECT COUNT(*) FROM crm_lead_pool WHERE status = 'pending'")->fetchColumn();
+    }
+    $duplicateSql = "((c.email IS NOT NULL AND c.email <> '' AND EXISTS (SELECT 1 FROM crm_customers d WHERE d.deleted_at IS NULL AND d.id <> c.id AND d.email = c.email))
+        OR (c.website IS NOT NULL AND c.website <> '' AND EXISTS (SELECT 1 FROM crm_customers d2 WHERE d2.deleted_at IS NULL AND d2.id <> c.id AND d2.website = c.website)))";
+
+    return [
+        'total' => $total,
+        'refreshed_at' => date('Y-m-d H:i:s'),
+        'kpis' => [
+            'total' => $total,
+            'month_new' => $countWhere('DATE_FORMAT(c.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")'),
+            'lead_pool' => $leadPoolCount,
+            'public' => $countWhere($noOwnerSql),
+            'no_owner' => $countWhere($noOwnerSql),
+            'incomplete' => $countWhere($incompleteSql),
+        ],
+        'countries' => $countries,
+        'sources' => $sources,
+        'owners' => $owners,
+        'growth' => $growth,
+        'pending' => [
+            ['key' => 'lead_pool', 'title' => '暂存池待确认', 'count' => $leadPoolCount, 'rows' => [], 'reason' => '待确认入库'],
+            ['key' => 'duplicate', 'title' => '疑似重复客户', 'count' => $countWhere($duplicateSql), 'rows' => $customerRows($duplicateSql, [], 3), 'reason' => '邮箱或网站重复'],
+            ['key' => 'incomplete', 'title' => '资料缺失客户', 'count' => $countWhere($incompleteSql), 'rows' => $customerRows($incompleteSql, [], 3), 'reason' => '资料不完整'],
+            ['key' => 'no_contact', 'title' => '无联系人客户', 'count' => $countWhere($noContactSql), 'rows' => $customerRows($noContactSql, [], 3), 'reason' => '缺联系人'],
+            ['key' => 'no_email', 'title' => '无邮箱客户', 'count' => $countWhere($noEmailSql), 'rows' => $customerRows($noEmailSql, [], 3), 'reason' => '缺联系人邮箱'],
+            ['key' => 'stale_30d', 'title' => '30 天未跟进客户', 'count' => $countWhere($staleFollowSql), 'rows' => $customerRows($staleFollowSql, [], 3), 'reason' => '30 天未跟进'],
+        ],
+        'recent_created' => $customerRows('', [], 6, 'created'),
+        'recent_updated' => $customerRows('', [], 6, 'updated'),
+    ];
 }
 
 function crm_customer_get(int $id, string $detailMode = 'full'): array
