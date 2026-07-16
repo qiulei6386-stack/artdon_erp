@@ -2088,11 +2088,10 @@
         (size === 'sm' || isMicro ? '' : '<p>' + esc(widget.hint || widget.desc || '') + '</p>') +
         '<div class="workspace-mail-mini-list compact-' + esc(size) + '">' + rows.map(function (item) {
           if (typeof item === 'string') return '<button type="button" data-workspace-widget="unreplied_mail"><b>' + esc(item) + '</b><span></span></button>';
-          var labels = (item.labels || []).slice(0, 4).map(function (label) { return '<i>' + esc(label) + '</i>'; }).join('');
           var fromLine = (item.from || '未知发件人') + (item.time_text ? ' · ' + item.time_text : '');
-          var meta = '客户：' + (item.customer_name || '未关联') + (item.contact_name ? ' · ' + item.contact_name : '') + ' · 未回复 ' + esc(item.no_reply_days || 0) + ' 天' + (item.account_email ? ' · ' + item.account_email : '');
+          var meta = '客户：' + (item.customer_name || '未关联') + (item.contact_name ? ' · ' + item.contact_name : '') + (item.account_email ? ' · ' + item.account_email : '');
           return '<button type="button" data-workspace-mail-id="' + esc(item.id || '') + '" data-workspace-mail-account="' + esc(item.mail_account_id || '') + '">' +
-            '<b title="' + esc(fromLine) + '">' + esc(fromLine) + '</b><span title="' + esc(item.subject || '') + '">' + esc(item.subject || '无主题') + '</span><small title="' + esc(meta) + '">' + esc(meta) + '</small><em>' + labels + '</em></button>';
+            '<b title="' + esc(fromLine) + '">' + esc(fromLine) + '</b><span title="' + esc(item.subject || '') + '">' + esc(item.subject || '无主题') + '</span><small title="' + esc(meta) + '">' + esc(meta) + '</small></button>';
         }).join('') + '</div>' + (size === 'sm' || isMicro ? '' : '<button type="button" class="workspace-mail-more" data-workspace-widget="unreplied_mail">查看全部未回复邮件</button>');
     },
     renderConfig: function () {

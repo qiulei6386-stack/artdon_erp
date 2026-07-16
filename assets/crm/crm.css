@@ -23077,3 +23077,98 @@ body.is-workspace-module .rank-progress i {
     padding: 0 10px !important;
   }
 }
+
+/* Workspace alert/mail compact pass: reduce reminder and unreplied mail row height. */
+body.is-workspace-module .workspace-alert-mail {
+  gap: 8px !important;
+}
+body.is-workspace-module .workspace-alert-card {
+  border-radius: 12px !important;
+  padding: 10px 12px !important;
+  gap: 7px !important;
+}
+body.is-workspace-module .workspace-alert-card > header {
+  gap: 8px !important;
+  min-height: 30px;
+}
+body.is-workspace-module .workspace-alert-card > header span {
+  font-size: 10px !important;
+  letter-spacing: .04em !important;
+}
+body.is-workspace-module .workspace-alert-card > header h3 {
+  margin-top: 1px !important;
+  font-size: 14px !important;
+}
+body.is-workspace-module .workspace-alert-card > header b {
+  font-size: 21px !important;
+}
+body.is-workspace-module .workspace-reminder-chips {
+  gap: 5px !important;
+}
+body.is-workspace-module .workspace-reminder-chips button {
+  height: 24px !important;
+  font-size: 11px !important;
+  padding: 0 8px !important;
+}
+body.is-workspace-module .workspace-reminder-list {
+  gap: 6px !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button {
+  min-height: 40px !important;
+  grid-template-columns: 48px minmax(0, 1fr) 34px !important;
+  gap: 2px 6px !important;
+  border-radius: 8px !important;
+  padding: 5px 8px !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button::before {
+  height: 2px !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list button i {
+  min-width: 36px !important;
+  font-size: 10px !important;
+  line-height: 18px !important;
+  padding: 0 4px !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list b {
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list span {
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-reminder-card .workspace-reminder-list em {
+  font-size: 11px !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-unreplied-head,
+body.is-workspace-module .workspace-alert-mail-card .workspace-widget p {
+  display: none !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list {
+  gap: 6px !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list button {
+  min-height: 46px !important;
+  gap: 1px !important;
+  border-radius: 8px !important;
+  padding: 6px 8px !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list b {
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list span {
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list small {
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-alert-mail-card .workspace-mail-mini-list em {
+  display: none !important;
+}
+body.is-workspace-module .workspace-mail-more {
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+}
