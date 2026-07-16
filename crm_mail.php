@@ -3073,13 +3073,15 @@ function crm_mail_imap_select_first_sent_folder($fp): ?string
     return null;
 }
 
-function crm_mail_find_existing_sent_duplicate(array $account, array $mail, string $sentAt): ?array
+function crm_mail_find_existing_sent_duplicate(array $account, array $mail, string $sentAt, bool $includeDeleted = false): ?array
 {
     $accountId = (int)$account['id'];
     $userId = (int)$account['user_id'];
+    $folderWhere = $includeDeleted ? "(folder = 'sent' OR folder = 'deleted')" : "folder = 'sent'";
+    $deletedWhere = $includeDeleted ? 'is_deleted = 1' : 'is_deleted = 0';
     $messageId = crm_mail_normalize_message_id((string)($mail['message_id_header'] ?? ''));
     if ($messageId !== '') {
-        $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND folder = 'sent' AND is_deleted = 0 AND message_id_header IS NOT NULL AND message_id_header <> ''");
+        $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash, is_deleted FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND {$folderWhere} AND {$deletedWhere} AND message_id_header IS NOT NULL AND message_id_header <> ''");
         $stmt->execute([$userId, $accountId]);
         $messageVariants = crm_mail_message_id_variants((string)($mail['message_id_header'] ?? ''));
         foreach ($stmt->fetchAll() as $row) {
@@ -3099,13 +3101,13 @@ function crm_mail_find_existing_sent_duplicate(array $account, array $mail, stri
     if ($subject === '') return null;
     $bodyHash = (string)($mail['body_hash'] ?? crm_mail_body_hash((string)($mail['body_html'] ?? ''), (string)($mail['body_text'] ?? '')));
     if ($bodyHash !== '') {
-        $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND folder = 'sent' AND is_deleted = 0 AND subject = ? AND body_hash = ? AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(sent_at, created_at), ?)) <= 10 AND (crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' OR mail_source = 'crm_sent') ORDER BY CASE WHEN crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' THEN 0 ELSE 1 END, id DESC LIMIT 1");
+        $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash, is_deleted FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND {$folderWhere} AND {$deletedWhere} AND subject = ? AND body_hash = ? AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(sent_at, created_at), ?)) <= 10 AND (crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' OR mail_source = 'crm_sent') ORDER BY CASE WHEN crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' THEN 0 ELSE 1 END, id DESC LIMIT 1");
         $stmt->execute([$userId, $accountId, $subject, $bodyHash, $sentAt]);
         $row = $stmt->fetch();
         if ($row) return $row;
     }
     if ($to === '') return null;
-    $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND folder = 'sent' AND is_deleted = 0 AND subject = ? AND to_emails = ? AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(sent_at, created_at), ?)) <= 10 AND (crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' OR (body_hash IS NOT NULL AND body_hash <> '' AND body_hash = ?)) ORDER BY CASE WHEN crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' THEN 0 ELSE 1 END, id DESC LIMIT 1");
+    $stmt = db()->prepare("SELECT id, message_uid, message_id_header, crm_send_id, mail_source, source_flags_json, body_hash, is_deleted FROM crm_mails WHERE user_id = ? AND mail_account_id = ? AND {$folderWhere} AND {$deletedWhere} AND subject = ? AND to_emails = ? AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(sent_at, created_at), ?)) <= 10 AND (crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' OR (body_hash IS NOT NULL AND body_hash <> '' AND body_hash = ?)) ORDER BY CASE WHEN crm_send_id IS NOT NULL OR message_uid LIKE 'send\\_%' THEN 0 ELSE 1 END, id DESC LIMIT 1");
     $stmt->execute([$userId, $accountId, $subject, $to, $sentAt, $bodyHash]);
     $row = $stmt->fetch();
     return $row ?: null;
@@ -3133,9 +3135,9 @@ function crm_mail_imap_fetch_sent_recent(array $account, int $limit = 30, int $s
         if ($uids) {
             $placeholders = implode(',', array_fill(0, count($uids), '?'));
             $params = array_merge([(int)$account['id']], array_map('strval', $uids));
-            $existingStmt = db()->prepare("SELECT id, message_uid FROM crm_mails WHERE mail_account_id = ? AND folder = 'sent' AND message_uid IN ({$placeholders})");
+            $existingStmt = db()->prepare("SELECT id, message_uid, is_deleted FROM crm_mails WHERE mail_account_id = ? AND folder IN ('sent','deleted') AND message_uid IN ({$placeholders})");
             $existingStmt->execute($params);
-            foreach ($existingStmt->fetchAll() as $row) $existingUids[(string)$row['message_uid']] = (int)$row['id'];
+            foreach ($existingStmt->fetchAll() as $row) $existingUids[(string)$row['message_uid']] = ['id' => (int)$row['id'], 'is_deleted' => (int)($row['is_deleted'] ?? 0)];
         }
         $new = 0;
         $duplicate = 0;
@@ -3143,8 +3145,12 @@ function crm_mail_imap_fetch_sent_recent(array $account, int $limit = 30, int $s
         $attachments = 0;
         foreach (array_reverse($uids) as $uid) {
             if (isset($existingUids[(string)$uid])) {
+                if (!empty($existingUids[(string)$uid]['is_deleted'])) {
+                    $duplicate++;
+                    continue;
+                }
                 db()->prepare("UPDATE crm_mails SET mail_source = CASE WHEN mail_source = 'crm_sent' THEN 'crm_sent' ELSE 'imap_sent' END, source_flags_json = CASE WHEN mail_source = 'crm_sent' OR crm_send_id IS NOT NULL THEN ? ELSE ? END, send_status = COALESCE(send_status, 'sent'), updated_at = NOW() WHERE id = ? AND user_id = ?")
-                    ->execute([json_encode(['crm_sent', 'imap_sent', 'imap_synced'], JSON_UNESCAPED_UNICODE), json_encode(['imap_sent', 'imap_synced'], JSON_UNESCAPED_UNICODE), (int)$existingUids[(string)$uid], (int)$account['user_id']]);
+                    ->execute([json_encode(['crm_sent', 'imap_sent', 'imap_synced'], JSON_UNESCAPED_UNICODE), json_encode(['imap_sent', 'imap_synced'], JSON_UNESCAPED_UNICODE), (int)$existingUids[(string)$uid]['id'], (int)$account['user_id']]);
                 $duplicate++;
                 continue;
             }
@@ -3157,6 +3163,10 @@ function crm_mail_imap_fetch_sent_recent(array $account, int $limit = 30, int $s
                 $sentAt = $mail['received_at'] ?: date('Y-m-d H:i:s');
                 $bodyHash = (string)($mail['body_hash'] ?? crm_mail_body_hash((string)($mail['body_html'] ?? ''), (string)($mail['body_text'] ?? '')));
                 $existingSent = crm_mail_find_existing_sent_duplicate($account, $mail, $sentAt);
+                if (!$existingSent && crm_mail_find_existing_sent_duplicate($account, $mail, $sentAt, true)) {
+                    $duplicate++;
+                    continue;
+                }
                 if ($existingSent) {
                     $oldFlags = json_decode((string)($existingSent['source_flags_json'] ?? '[]'), true);
                     if (!is_array($oldFlags)) $oldFlags = [];
