@@ -132,6 +132,16 @@ function crm_schema_cache_ttl(): int
     return max(1800, min(86400, $ttl));
 }
 
+function crm_schema_cache_write_file(string $file, string $content): void
+{
+    $dir = dirname($file);
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $tmp = $dir . '/.' . basename($file) . '.' . getmypid() . '.tmp';
+    if (@file_put_contents($tmp, $content) === false) return;
+    @rename($tmp, $file);
+    if (is_file($tmp)) @unlink($tmp);
+}
+
 function crm_run_schema_ensures(bool $force = false): void
 {
     static $done = false;
@@ -170,7 +180,7 @@ function crm_run_schema_ensures(bool $force = false): void
         'elapsed_ms' => (int)round((microtime(true) - $start) * 1000),
     ], JSON_UNESCAPED_UNICODE);
     if ($payload !== false) {
-        @file_put_contents($cacheFile, $payload, LOCK_EX);
+        crm_schema_cache_write_file($cacheFile, $payload);
     }
     $elapsedMs = (int)round((microtime(true) - $start) * 1000);
     if ($elapsedMs >= 100) {
