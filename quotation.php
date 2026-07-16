@@ -2015,7 +2015,8 @@ function quotePaymentSummaryHtml(totalAmount, terms){
 function quoteCustomerAddressLines(c){
   c=c||{};
   const seen=new Set(), out=[];
-  const push=(v)=>{v=String(v||'').replace(/\s+/g,' ').trim(); if(!v) return; const k=v.toLowerCase(); if(seen.has(k)) return; seen.add(k); out.push(v);};
+  const norm=(v)=>String(v||'').replace(/\s+/g,' ').replace(/^[^:：]{1,24}[:：]\s*/,'').trim().toLowerCase();
+  const push=(v,keyText)=>{v=String(v||'').replace(/\s+/g,' ').trim(); if(!v) return; const k=norm(keyText||v); if(seen.has(k)) return; seen.add(k); out.push(v);};
   push(c.address1||c.office_address||c.address||c.company_address||'');
   push(c.address2||c.factory_address||c.delivery_address||'');
   let raw=c.addresses_json||c.addresses||'';
@@ -2028,7 +2029,7 @@ function quoteCustomerAddressLines(c){
         let label=String(a.label||a.name||a.type||'').trim();
         let addr=String(a.address||a.addr||a.value||a.text||'').trim();
         let note=String(a.note||'').trim();
-        if(addr){ push((label?label+': ':'')+addr+(note?' '+note:'')); }
+        if(addr){ push((label?label+': ':'')+addr+(note?' '+note:''), addr); }
       });
     }
   }catch(e){}
@@ -2421,7 +2422,7 @@ function renderCustomers(){
     const mail=c.email||c.primary_contact_email||'';
     const contact=c.contact||c.primary_contact||'';
     const phone=c.phone||c.primary_contact_phone||'';
-    const addr=[c.address1,c.address2].filter(Boolean).join(' / ');
+    const addr=quoteCustomerAddressLines(c).join(' / ');
     const row=`<b><span class="badge ${isCrm?'crm':'local'}">${customerSourceText(c)}</span> ${esc(c.code||'')} ${esc(c.company||contact||'')}${isCrm?'<span class="customer-live-note">实时CRM</span>':''}</b><small>${esc(c.country||'')} ｜ ${esc(contact)} ｜ ${esc(mail)} ${phone?'｜电话 '+esc(phone):''}${c.website?'｜网站 '+esc(c.website):''}${addr?'｜地址 '+esc(addr):''}${c.owner?'｜负责人 '+esc(c.owner):''}</small>`;
     const check=CUSTOMER_BATCH?`<input class="customer-row-check custBatchCheck" type="checkbox" value="${esc(c.id)}" ${isCrm?'disabled title="CRM实时客户不能在报价删除"':''} onclick="event.stopPropagation()">`:'';
     return `<div class="item customer-row ${CUSTOMER_BATCH?'batch-on':''}" onclick="editCustomer('${jsq(c.id)}')">${check}<div>${row}</div></div>`;
