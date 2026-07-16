@@ -3284,10 +3284,17 @@
       var communicationAll = communicationItems.slice(0, 20).map(function (item) {
         return '<article class="customer-communication-row"><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>客户：' + esc(c.customer_name || '-') + ' · ' + esc(item.detail || '暂无摘要') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
       }).join('') || '<div class="customer-tab-empty"><strong>暂无数据</strong><span>跟进、拜访、邮件和 WhatsApp/微信记录接入后会在这里汇总。</span></div>';
+      var mailRows = data.mail_rows || [];
+      var mailTableRows = mailRows.map(function (m) {
+        var when = m.received_at || m.sent_at || m.mail_time || m.created_at || '-';
+        var direction = m.direction || m.folder || '-';
+        var attachCount = Number(m.attachment_count || m.attach_count || m.attachments_count || 0);
+        return '<tr data-detail-row="mail" data-detail-row-id="' + esc(m.id || m.message_id || m.mail_id || '') + '"><td>' + esc(when) + '</td><td>' + esc(m.from_name || m.from_email || m.sender || '-') + '</td><td>' + esc(m.to_email || m.recipients || m.to_text || '-') + '</td><td title="' + esc(m.subject || '') + '">' + esc(m.subject || '(无主题)') + '</td><td>' + esc(direction) + '</td><td>' + esc(attachCount) + '</td><td>' + esc(m.status || m.read_status || '-') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">暂无该客户关联邮件。可在邮箱模块关联客户，或通过右侧 ACTIONS 写邮件。</td></tr>';
       var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-tab-stats"><span>主地址 ' + esc((data.addresses || []).filter(function (a) { return Number(a.is_primary); }).length || (c.address ? 1 : 0)) + '</span><span>地址总数 ' + esc((data.addresses || []).length || (c.address ? 1 : 0)) + '</span><span>国家 ' + esc(c.country || '未填') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>地址类型</th><th>国家</th><th>城市</th><th>详细地址</th><th>邮编</th><th>联系人</th><th>电话</th><th>默认</th></tr></thead><tbody>' + addressRows + '</tbody></table></section>';
       var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tab-stats"><span>客户标签 ' + esc(customerTags.length) + '</span><span>客户组 ' + esc((data.groups || []).length) + '</span><span>推广标签 ' + esc(promotionChannels.length) + '</span><span>风险标签 ' + esc(c.risk_status ? 1 : 0) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>标签名</th><th>类型</th><th>来源</th><th>创建人</th><th>创建时间</th></tr></thead><tbody>' + tagTableRows + '</tbody></table></section>';
       var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>群名称</th><th>平台</th><th>群成员数</th><th>负责人</th><th>最近使用时间</th><th>备注</th></tr></thead><tbody>' + chatGroups + '</tbody></table></section>';
-      var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 0</span><span>附件 0</span><span>未回复 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody><tr><td colspan="7">暂无该客户关联邮件。邮件接口接入后会显示往来邮件。</td></tr></tbody></table></section>';
+      var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 ' + esc(mailRows.length) + '</span><span>附件 ' + esc(mailRows.reduce(function (sum, m) { return sum + Number(m.attachment_count || m.attach_count || m.attachments_count || 0); }, 0)) + '</span><span>未回复 ' + esc(mailRows.filter(function (m) { return Number(m.is_unreplied || 0) || String(m.status || '').indexOf('未回复') >= 0; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody>' + mailTableRows + '</tbody></table></section>';
       var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-tab-stats"><span>WhatsApp ' + (c.whatsapp ? '1' : '0') + '</span><span>微信 ' + (c.wechat ? '1' : '0') + '</span><span>人工执行记录 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>平台</th><th>联系人</th><th>内容摘要</th><th>执行人</th><th>来源</th></tr></thead><tbody><tr><td colspan="6">接口待接入，可通过人工执行记录生成。</td></tr></tbody></table></section>';
       var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
       var panelContent = {
@@ -3297,7 +3304,7 @@
         addresses: addressPanel,
         chat_groups: chatGroupPanel,
         tags: tagsPanel,
-        communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-communication-list">' + communicationAll + '</div></section>',
+        communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-tab-stats"><span>全部沟通 ' + esc(communicationItems.length) + '</span><span>跟进 ' + esc((data.followups || []).length) + '</span><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>邮件 ' + esc(mailRows.length) + '</span></div><div class="customer-communication-list">' + communicationAll + '</div></section>',
         followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-tab-stats"><span>跟进 ' + esc((data.followups || []).length) + '</span><span>待继续 ' + esc((data.followups || []).filter(function (f) { return (f.status || 'open') === 'open'; }).length) + '</span><span>有提醒 ' + esc((data.followups || []).filter(function (f) { return f.next_remind_time; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>跟进人</th><th>联系人</th><th>跟进方式</th><th>跟进内容</th><th>下次提醒</th><th>状态</th></tr></thead><tbody>' + follows + '</tbody></table></section>',
         visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type !== 'customer_arrival'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type === 'customer_arrival'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
         samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="customer-tab-stats"><span>样品数量 ' + esc((data.sample_shipments || []).length) + '</span><span>已寄出 ' + esc((data.sample_shipments || []).filter(function (s) { return ['sent','shipped','delivered','signed'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.sent_at || s.shipped_at; }).length) + '</span><span>已签收 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.signed_at || s.received_at; }).length) + '</span><span>待跟进 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 && !s.followup_id; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>样品名称</th><th>快递公司</th><th>快递单号</th><th>状态</th><th>寄出时间</th><th>签收时间</th><th>负责人</th></tr></thead><tbody>' + sampleShipments + '</tbody></table></section>',
@@ -5401,8 +5408,9 @@
         });
       });
     },
-    openFollowupDialog: function () {
+    openFollowupDialog: function (row) {
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
+      row = row || {};
       var customer = (this.currentDetail && this.currentDetail.customer) || {};
       var contacts = (this.currentDetail && this.currentDetail.contacts) || [];
       var now = new Date();
@@ -5413,19 +5421,30 @@
       };
       var contactOptions = '<option value="">客户级跟进</option>' + contacts.map(function (ct) {
         var meta = [ct.position || ct.role || '', ct.email || '', ct.whatsapp || ct.phone || ''].filter(Boolean).join(' · ');
-        return '<option value="' + esc(ct.id) + '">' + esc((ct.name || ('联系人 #' + ct.id)) + (meta ? ' · ' + meta : '')) + '</option>';
+        return '<option value="' + esc(ct.id) + '"' + (String(row.contact_id || '') === String(ct.id || '') ? ' selected' : '') + '>' + esc((ct.name || ('联系人 #' + ct.id)) + (meta ? ' · ' + meta : '')) + '</option>';
       }).join('');
-      var html = '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '">' +
-        '<section class="entity-section followup-entry-system"><h3>客户跟进</h3><div class="business-confirm-card"><strong>' + esc(customer.customer_name || ('客户 #' + this.currentId)) + '</strong><span>保存后会写入客户跟进、客户时间轴，并按下次提醒同步任务中心。</span></div><div class="entity-grid">' +
+      var isEdit = !!row.id;
+      var typeOptions = ['邮件','电话','WhatsApp','微信','拜访','展会','样品','报价','售后','其他'].map(function (type) {
+        return '<option' + (String(row.followup_type || '') === type ? ' selected' : '') + '>' + esc(type) + '</option>';
+      }).join('');
+      var statusOptions = [
+        ['open', '待继续跟进'],
+        ['done', '本次已完成'],
+        ['closed', '无需继续']
+      ].map(function (item) {
+        return '<option value="' + esc(item[0]) + '"' + (String(row.status || 'open') === item[0] ? ' selected' : '') + '>' + esc(item[1]) + '</option>';
+      }).join('');
+      var html = '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '"><input type="hidden" name="followup_id" value="' + esc(row.id || '') + '">' +
+        '<section class="entity-section followup-entry-system"><h3>' + (isEdit ? '编辑跟进' : '客户跟进') + '</h3><div class="business-confirm-card"><strong>' + esc(customer.customer_name || ('客户 #' + this.currentId)) + '</strong><span>保存后会写入客户跟进、客户时间轴，并按下次提醒同步任务中心。</span></div><div class="entity-grid">' +
         '<label class="entity-field"><span>联系人</span><select name="contact_id">' + contactOptions + '</select></label>' +
-        '<label class="entity-field"><span>跟进方式</span><select name="followup_type"><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>拜访</option><option>展会</option><option>样品</option><option>报价</option><option>售后</option><option>其他</option></select></label>' +
-        '<label class="entity-field"><span>跟进时间</span><input name="followup_time" value="' + esc(fmt(now)) + '" placeholder="YYYY-MM-DD HH:MM"></label>' +
-        '<label class="entity-field"><span>下次提醒</span><input name="next_remind_time" value="' + esc(fmt(remind)) + '" placeholder="YYYY-MM-DD HH:MM"></label>' +
-        '<label class="entity-field"><span>跟进状态</span><select name="status"><option value="open">待继续跟进</option><option value="done">本次已完成</option><option value="closed">无需继续</option></select></label>' +
-        '<label class="entity-field wide"><span>跟进内容 *</span><textarea name="content" required rows="4" placeholder="记录客户反馈、沟通内容、需求变化或问题点。"></textarea></label>' +
-        '<label class="entity-field wide"><span>下一步计划</span><textarea name="next_plan" rows="3" placeholder="例如：明天发送报价；下周确认样品；等待客户提供项目图纸。"></textarea></label>' +
+        '<label class="entity-field"><span>跟进方式</span><select name="followup_type">' + typeOptions + '</select></label>' +
+        '<label class="entity-field"><span>跟进时间</span><input name="followup_time" value="' + esc(row.followup_time || fmt(now)) + '" placeholder="YYYY-MM-DD HH:MM"></label>' +
+        '<label class="entity-field"><span>下次提醒</span><input name="next_remind_time" value="' + esc(row.next_remind_time || fmt(remind)) + '" placeholder="YYYY-MM-DD HH:MM"></label>' +
+        '<label class="entity-field"><span>跟进状态</span><select name="status">' + statusOptions + '</select></label>' +
+        '<label class="entity-field wide"><span>跟进内容 *</span><textarea name="content" required rows="4" placeholder="记录客户反馈、沟通内容、需求变化或问题点。">' + esc(row.content || '') + '</textarea></label>' +
+        '<label class="entity-field wide"><span>下一步计划</span><textarea name="next_plan" rows="3" placeholder="例如：明天发送报价；下周确认样品；等待客户提供项目图纸。">' + esc(row.next_plan || '') + '</textarea></label>' +
         '</div><p class="entry-muted">逻辑：跟进记录进入客户详情；下次提醒进入任务中心；所有动作写入客户时间轴。</p></section>';
-      this.openDialog('新建跟进', html, 'followup_create', '保存后会刷新客户详情、跟进列表和时间轴。');
+      this.openDialog(isEdit ? '编辑跟进' : '新建跟进', html, isEdit ? 'followup_update' : 'followup_create', '保存后会刷新客户详情、跟进列表和时间轴。');
     },
     deleteFollowup: function (followupId) {
       if (!followupId || !this.currentId) return;
@@ -6329,7 +6348,7 @@
           self.openLeadPool();
           return;
         }
-        if (action === 'followup_create') {
+        if (action === 'followup_create' || action === 'followup_update') {
           var followCustomerId = Number((json.data && json.data.customer && json.data.customer.id) || self.currentId || 0);
           Promise.resolve(followCustomerId ? self.loadDetail(followCustomerId) : Promise.resolve()).then(function () {
             if (window.TaskCenterModule && typeof TaskCenterModule.load === 'function') TaskCenterModule.load();
@@ -6890,14 +6909,32 @@
       if (label === '创建人工执行清单') return this.showCustomerError('人工执行清单需从推广项目生成，当前客户详情入口待接入。');
       if (label === '添加标签' || label === '批量添加标签' || label === '管理标签') return this.openTagDialog();
       if (label === '移除标签') return this.deleteTag();
-      if (label === '编辑跟进') return this.showCustomerError('跟进编辑接口待接入，可先删除后新建。');
+      if (label === '编辑跟进') {
+        if (!this.selectedDetailEntity || this.selectedDetailEntity.type !== 'followup') return this.showCustomerError('请先选择跟进。');
+        var followup = ((this.currentDetail || {}).followups || []).find(function (item) {
+          return String(item.id || '') === String(CustomerModule.selectedDetailEntity.id || '');
+        });
+        if (!followup) return this.showCustomerError('跟进记录不存在，请刷新后重试。');
+        return this.openFollowupDialog(followup);
+      }
       if (label === '删除跟进') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'followup' ? this.deleteFollowup(this.selectedDetailEntity.id) : this.showCustomerError('请先选择跟进。');
       if (label === '创建提醒') return this.showCustomerError('提醒创建接口待接入。');
       if (label === '转商机') return OpportunityModule.openDialog();
       if (label === '编辑记录' || label === '删除记录') return this.showCustomerError(label + '接口待接入。');
       if (label === '创建跟进') return this.openFollowupDialog();
       if (label === '写邮件') return MailModule.openCompose('compose');
-      if (label === '查看邮件' || label === '回复' || label === '转发' || label === '关联客户' || label === '保存附件') return this.showCustomerError('客户邮件明细接口待接入，请先在邮箱模块按客户查看。');
+      if (label === '查看邮件') {
+        var selectedMail = this.selectedDetailEntity && this.selectedDetailEntity.type === 'mail' ? this.selectedDetailEntity.id : '';
+        activate('mail');
+        if (selectedMail) {
+          window.setTimeout(function () {
+            if (typeof MailModule !== 'undefined' && typeof MailModule.selectMail === 'function') MailModule.selectMail(selectedMail);
+            else if (typeof MailModule !== 'undefined') MailModule.currentId = selectedMail;
+          }, 80);
+        }
+        return;
+      }
+      if (label === '回复' || label === '转发' || label === '关联客户' || label === '保存附件') return this.showCustomerError('请先在邮箱模块打开具体邮件后执行“' + label + '”。客户详情只显示关联邮件列表。');
       if (/^AI /.test(label)) return AiModule.openFromContext(label, {
         source_type: 'customer',
         customer_id: this.currentId || 0,
