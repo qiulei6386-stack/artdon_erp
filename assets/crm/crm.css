@@ -7405,6 +7405,45 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-style: normal;
   font-weight: 800;
 }
+.assign-workspace-form .assign-person-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 10px;
+}
+.assign-workspace-form .assign-person-card,
+.assign-workspace-form .assign-person-card.is-selected {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 1px 2px;
+  box-shadow: none;
+}
+.assign-workspace-form .assign-member-pick {
+  min-height: 22px !important;
+  gap: 5px !important;
+}
+.assign-workspace-form .assign-member-pick span {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  align-items: center;
+}
+.assign-workspace-form .assign-member-pick b {
+  font-size: 12px;
+  font-weight: 750;
+}
+.assign-workspace-form .assign-member-pick em {
+  max-width: 86px;
+  font-size: 10px;
+  font-weight: 650;
+}
+.assign-workspace-form .assign-member-pick i {
+  color: var(--crm-primary);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .group-manager-dialog, .public-pool-dialog { display: grid; gap: 9px; font-size: 12px; }
 .group-manager-dialog > label { display: grid; gap: 5px; color: var(--crm-muted-text); font-weight: 800; }
 .group-manager-dialog select, .group-manager-dialog input, .public-pool-dialog textarea, .customer-log-tools input, .customer-log-tools select {
@@ -7873,6 +7912,34 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   background: color-mix(in srgb, var(--crm-primary) 10%, var(--crm-card-bg));
   border-color: color-mix(in srgb, var(--crm-primary) 34%, var(--crm-border));
   color: var(--crm-primary);
+}
+.entry-owner-checks {
+  gap: 4px 10px;
+}
+.entry-owner-checks .owner-chip,
+.entry-owner-checks .owner-chip:has(input:checked) {
+  min-width: 0;
+  max-width: none;
+  height: 22px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 2px !important;
+  color: var(--crm-text) !important;
+  box-shadow: none !important;
+}
+.entry-owner-checks .owner-chip span {
+  max-width: 130px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.entry-owner-checks .owner-chip em {
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--crm-primary);
+  font-size: 10px;
+  font-weight: 700;
 }
 .entry-address-grid, .entry-contact-grid { display: grid; gap: 7px; }
 .entry-address-card, .entry-contact-card-item {
