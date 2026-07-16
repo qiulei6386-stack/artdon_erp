@@ -3051,7 +3051,7 @@
         if (key === 'country') return '<td data-label="国家/地区" title="' + esc(row.country || '未填') + '">' + countryLabel(row.country) + '</td>';
         if (key === 'level') return '<td data-label="客户等级">' + esc(row.level || '-') + '</td>';
         if (key === 'source') return '<td data-label="客户来源">' + esc(row.source_tags || row.source || '-') + '</td>';
-        if (key === 'owner_name') return '<td data-label="负责人">' + esc(row.owner_name || '-') + '</td>';
+        if (key === 'owner_name') return '<td data-label="负责人" title="' + esc(row.owner_summary || row.owner_name || '') + '">' + esc(row.owner_summary || row.owner_name || '-') + '</td>';
         if (key === 'contact_count') return '<td data-label="联系人数量">' + esc(row.contact_count || 0) + '</td>';
         if (key === 'last_followup_at') return '<td data-label="最近跟进">' + esc(row.last_followup_at || '-') + '</td>';
         if (key === 'mail') return '<td data-label="最近邮件">无记录</td>';
@@ -3284,7 +3284,7 @@
       var sourceTags = data.source_tags || [];
       var promotionChannels = data.promotion_channels || [];
       var owners = data.owners || [];
-      var ownerText = owners.length ? owners.map(function (o) { return (o.username || ('#' + o.user_id)) + '/' + o.role_type; }).join('，') : (c.owner_name || '未分配');
+      var ownerText = this.ownerDisplayText(data, c);
       var scores = data.scores || {};
       var completeness = (scores.completeness || {});
       var protection = data.protection || {};
@@ -3483,7 +3483,11 @@
       var completeness = ((data.scores || {}).completeness || {});
       var missing = Array.isArray(completeness.missing) ? completeness.missing : [];
       var disabled = this.archiveEditMode ? '' : ' disabled';
-      var ownerText = owners.length ? owners.map(function (o) { return (o.username || ('#' + o.user_id)) + '/' + (o.role_type || '-'); }).join('，') : (c.owner_name || '未分配');
+      var ownerText = this.ownerDisplayText(data, c);
+      var ownerIds = owners.map(function (row) { return String(row.user_id || ''); }).filter(Boolean);
+      var primaryOwner = owners.find(function (row) { return Number(row.is_primary) === 1 || row.role_type === 'primary'; });
+      var primaryOwnerId = String((primaryOwner && primaryOwner.user_id) || c.owner_user_id || '');
+      if (primaryOwnerId && ownerIds.indexOf(primaryOwnerId) < 0) ownerIds.unshift(primaryOwnerId);
       var field = function (label, name, value, attrs) {
         return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '"' + disabled + ' ' + (attrs || '') + '></label>';
       };
@@ -3504,7 +3508,7 @@
           field('推广方式', 'promotion_channels', (data.promotion_channels || []).join(','), 'placeholder="email, whatsapp"') +
           field('客户等级', 'level', c.level || 'P3') +
           field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
-          '<label class="entity-field" data-attribute-field="owner_user_id"><span>负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || ((owners[0] || {}).user_id || '')) + '</select></label>' +
+          '<div class="entity-field wide" data-attribute-field="owner_user_ids"><span>负责人</span><div class="entry-checks entry-owner-checks">' + this.customerOwnerChecks(ownerIds, primaryOwnerId, this.archiveEditMode ? '' : 'disabled') + '</div><em class="entry-muted">先勾选的为第一负责人，后续勾选为协助人。</em></div>' +
           '<label class="entity-field wide" data-attribute-field="remark"><span>备注</span><textarea name="remark" rows="3"' + disabled + '>' + esc(c.remark || '') + '</textarea></label>' +
         '</div>' +
       '</form>';
@@ -3520,6 +3524,11 @@
       ['source_tags','promotion_channels'].forEach(function (key) {
         if (Object.prototype.hasOwnProperty.call(data, key)) data[key] = String(data[key] || '').split(/[,，\s]+/).filter(Boolean);
       });
+      var ownerIds = this.selectedOwnerIdsFromForm(form);
+      if (ownerIds.length) {
+        data.owner_user_ids = ownerIds;
+        data.owner_user_id = ownerIds[0];
+      }
       return data;
     },
     saveArchiveAttribute: function () {
@@ -3528,6 +3537,7 @@
       try {
         data = this.archiveAttributeData();
         if (!String(data.customer_name || '').trim()) throw new Error('客户名称不能为空。');
+        if (document.querySelector('[data-archive-attribute-form] [data-owner-member]') && !(Array.isArray(data.owner_user_ids) && data.owner_user_ids.length)) throw new Error('请至少勾选一个负责人。');
       } catch (error) {
         return this.showCustomerError(error.message || '档案数据无效。');
       }
@@ -3572,7 +3582,11 @@
       var groups = data.groups || [];
       var completeness = ((data.scores || {}).completeness || {});
       var missing = data.missing || completeness.missing || [];
-      var ownerText = owners.length ? owners.map(function (o) { return (o.username || ('#' + o.user_id)) + '/' + (o.role_type || '-'); }).join('，') : (c.owner_name || '未分配');
+      var ownerText = this.ownerDisplayText(data, c);
+      var ownerIds = owners.map(function (row) { return String(row.user_id || ''); }).filter(Boolean);
+      var primaryOwner = owners.find(function (row) { return Number(row.is_primary) === 1 || row.role_type === 'primary'; });
+      var primaryOwnerId = String((primaryOwner && primaryOwner.user_id) || c.owner_user_id || '');
+      if (primaryOwnerId && ownerIds.indexOf(primaryOwnerId) < 0) ownerIds.unshift(primaryOwnerId);
       var disabled = this.attributeEditMode ? '' : ' disabled';
       var doNotContact = Number(c.do_not_contact) ? ' checked' : '';
       var readonly = ' disabled data-attribute-readonly="1"';
@@ -3627,11 +3641,11 @@
         field('客户标签', 'customer_tags', c.customer_tags, 'placeholder="逗号分隔"') +
         '</div></section>' +
         '<section class="entity-section"><h3>来源与推广</h3><div class="entry-checks wide" data-attribute-field="source_tags"><strong>来源标签</strong>' + this.checkboxHtml('customer_source', 'source_tags', data.source_tags || []) + '</div><div class="entry-checks wide" data-attribute-field="promotion_channels"><strong>默认推广方式</strong>' + this.checkboxHtml('promotion_channel', 'promotion_channels', data.promotion_channels || []) + '</div></section>' +
-        '<section class="entity-section"><h3>负责人权限</h3><div class="entity-grid"><label class="entity-field" data-attribute-field="owner_user_id"><span>主负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || '') + '</select></label>' +
+        '<section class="entity-section"><h3>负责人权限</h3><div class="entity-grid"><div class="entity-field wide" data-attribute-field="owner_user_ids"><span>第一负责人 / 协助人</span><div class="entry-checks entry-owner-checks">' + this.customerOwnerChecks(ownerIds, primaryOwnerId, this.attributeEditMode ? '' : 'disabled') + '</div><em class="entry-muted">先勾选的为第一负责人，后续勾选为协助人。</em></div>' +
         field('可见范围', 'visibility_scope', c.visibility_scope, 'placeholder="public / private / team"') +
         readonlyField('保护状态', 'protection_status', protection.protection_status || protection.protected || 'normal') +
         readonlyField('保护到期时间', 'protected_until', protection.protected_until || '') +
-        '</div><p class="entry-muted">次负责人、协助人保留在完整编辑弹窗维护，本段先保证主负责人和可见范围可保存。当前客户组：' + esc(groups.map(function (g) { return g.group_name || ''; }).filter(Boolean).join('、') || '未分组') + '</p></section>' +
+        '</div><p class="entry-muted">负责人可多选，第一负责人和协助人都会显示在客户中心。当前客户组：' + esc(groups.map(function (g) { return g.group_name || ''; }).filter(Boolean).join('、') || '未分组') + '</p></section>' +
         '<section class="entity-section"><h3>只读状态</h3><div class="entity-grid">' +
         readonlyField('创建时间', 'created_at', c.created_at) +
         readonlyField('最近更新时间', 'updated_at', c.updated_at) +
@@ -3673,6 +3687,11 @@
       ['source_tags','promotion_channels','group_ids','owner_user_ids'].forEach(function (key) {
         if (data[key]) data[key].sort();
       });
+      var ownerIds = this.selectedOwnerIdsFromForm(form);
+      if (ownerIds.length || (form || document).querySelector('[data-owner-member]')) {
+        data.owner_user_ids = ownerIds;
+        data.owner_user_id = ownerIds[0] || '';
+      }
       return data;
     },
     bindCustomerAttributeEditEvents: function () {
@@ -3695,6 +3714,7 @@
         el.addEventListener('input', updateChanged);
         el.addEventListener('change', updateChanged);
       });
+      this.bindOwnerPickEvents(form, updateChanged);
       updateChanged();
     },
     collectCustomerAttributeData: function () {
@@ -3725,6 +3745,10 @@
       if (!String(merged.customer_name || '').trim()) {
         mark('customer_name');
         throw new Error('客户名称不能为空。');
+      }
+      if (form && form.querySelector('[data-owner-member]') && !(Array.isArray(merged.owner_user_ids) && merged.owner_user_ids.length)) {
+        mark('owner_user_ids');
+        throw new Error('请至少勾选一个负责人。');
       }
       var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (merged.email && !emailPattern.test(String(merged.email))) {
@@ -3919,9 +3943,7 @@
       var rawPromotion = !isBlank(c.promotion_method) ? c.promotion_method : (!isBlank(data.promotion_method) ? data.promotion_method : '');
       var name = valueText(c.customer_name || c.customer_name_en, '未命名客户');
       var initials = (name.match(/[A-Za-z0-9]/) || [name.charAt(0) || 'C'])[0].toUpperCase();
-      var ownerText = owners.length ? owners.map(function (o) {
-        return (o.username || o.real_name || ('#' + o.user_id)) + ' / ' + (o.role_type || (Number(o.is_primary) ? 'primary' : 'secondary'));
-      }).join('，') : (c.primary_owner || c.owner_name || '未分配');
+      var ownerText = this.ownerDisplayText(data, c);
       var sourceText = sourceTags.length ? sourceTags.join(' / ') : valueText(c.source);
       var promoteText = promotionChannels.length ? promotionChannels.join(' / ') : valueText(rawPromotion);
       var contactEmailMissing = !contacts.some(function (item) { return !isBlank(item.email); }) && isBlank(c.email);
@@ -4547,6 +4569,7 @@
         });
       });
       this.bindOrderPreviewShortcuts();
+      this.bindOwnerPickEvents(document.querySelector('[data-archive-attribute-form]'));
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
@@ -5126,10 +5149,7 @@
         this.regionInput('城市 / 地区', 'city', entity.city, 'data-entry-watch') +
         '<label class="entity-field"><span>状态</span><select name="status"><option value="active" ' + (entity.status === 'active' ? 'selected' : '') + '>active</option><option value="lead" ' + (entity.status !== 'active' ? 'selected' : '') + '>lead</option></select></label>' +
         '</div></section>' +
-        '<section class="entity-section entity-owner-section"><h3>负责人信息</h3><div class="entity-grid">' +
-        '<label class="entity-field"><span>第一负责人</span><select name="owner_user_id" data-primary-owner-select>' + this.customerOwnerOptions(primaryOwnerId) + '</select></label>' +
-        '<div class="entry-checks entry-owner-checks wide"><strong>协作负责人 / 可多人</strong>' + this.customerOwnerChecks(ownerIds, primaryOwnerId) + '</div>' +
-        '</div><p class="entry-muted">第一负责人保存时会自动包含；这里仅选择额外协作负责人，避免同一账号重复显示。</p></section>' +
+        '<section class="entity-section entity-owner-section"><h3>负责人信息</h3><div class="entry-checks entry-owner-checks wide"><strong>负责人（可多选）</strong>' + this.customerOwnerChecks(ownerIds, primaryOwnerId) + '</div><p class="entry-muted">先勾选的为第一负责人，后续勾选为协助人；第一负责人和协助人都会显示在客户中心。</p></section>' +
         '<section class="entity-section"><h3>客户画像</h3><div class="entity-grid">' +
         '<label class="entity-field"><span>客户等级</span><select name="level">' + this.optionHtml('customer_level', entity.level || 'P3') + '</select></label>' +
         '<label class="entity-field"><span>生命周期</span><select name="lifecycle_key">' + this.optionHtml('customer_lifecycle', entity.lifecycle_key || 'lead') + '</select></label>' +
@@ -5161,22 +5181,74 @@
         return '<option value="' + esc(id) + '"' + (selected === id ? ' selected' : '') + '>' + esc(name + dept) + '</option>';
       }).join('');
     },
-    customerOwnerChecks: function (selectedIds, primaryOwnerId) {
+    ownerDisplayText: function (data, customer) {
+      data = data || {};
+      customer = customer || {};
+      var owners = Array.isArray(data.owners) ? data.owners : [];
+      if (!owners.length) return customer.owner_summary || customer.owner_name || '未分配';
+      var primary = '';
+      var assistants = [];
+      owners.forEach(function (owner) {
+        var name = owner.real_name || owner.username || owner.owner_name || ('#' + (owner.user_id || owner.id || ''));
+        if ((Number(owner.is_primary) === 1 || owner.role_type === 'primary') && !primary) primary = name;
+        else if (name) assistants.push(name);
+      });
+      var text = primary ? ('第一：' + primary) : '';
+      assistants = assistants.filter(function (name, index) { return name && assistants.indexOf(name) === index; });
+      if (assistants.length) text += (text ? '；' : '') + '协助：' + assistants.join('、');
+      return text || customer.owner_summary || customer.owner_name || '未分配';
+    },
+    customerOwnerChecks: function (selectedIds, primaryOwnerId, disabledAttr) {
       selectedIds = (selectedIds || []).map(String);
       primaryOwnerId = String(primaryOwnerId || '');
-      var users = this.customerOwnerList().filter(function (user) {
-        return String(user.id || '') !== primaryOwnerId;
-      });
+      disabledAttr = disabledAttr ? ' disabled' : '';
+      var users = this.customerOwnerList();
       if (!users.length) {
-        return '<p class="entry-muted owner-empty">暂无额外协作负责人可选。</p>';
+        return '<p class="entry-muted owner-empty">暂无可选负责人。</p>';
       }
       return users.map(function (user) {
         var id = String(user.id || '');
         var name = user.display_name || user.real_name || user.username || user.name || ('#' + id);
         var dept = user.department_name ? ' · ' + user.department_name : '';
         var checked = selectedIds.indexOf(id) >= 0 ? ' checked' : '';
-        return '<label class="tag-chip owner-chip"><input type="checkbox" name="owner_user_ids" value="' + esc(id) + '"' + checked + ' data-owner-member><span>' + esc(name + dept) + '</span></label>';
+        var order = checked ? selectedIds.indexOf(id) : '';
+        var roleText = checked && id === primaryOwnerId ? '第一负责人' : (checked ? '协助人' : '可选');
+        return '<label class="tag-chip owner-chip"><input type="checkbox" name="owner_user_ids" value="' + esc(id) + '"' + checked + disabledAttr + ' data-owner-member data-owner-order="' + esc(order) + '"><span>' + esc(name + dept) + '</span><em data-owner-role>' + esc(roleText) + '</em></label>';
       }).join('');
+    },
+    selectedOwnerIdsFromForm: function (form, selector) {
+      var items = Array.prototype.slice.call((form || document).querySelectorAll(selector || '[data-owner-member]')).filter(function (input) {
+        return input.checked && input.value;
+      });
+      items.sort(function (a, b) {
+        var ao = Number(a.getAttribute('data-owner-order') || 999999999);
+        var bo = Number(b.getAttribute('data-owner-order') || 999999999);
+        return ao - bo;
+      });
+      return items.map(function (input) { return input.value; }).filter(function (value, index, list) { return value && list.indexOf(value) === index; });
+    },
+    bindOwnerPickEvents: function (root, onChange) {
+      var scope = root || document;
+      var refresh = function () {
+        var checked = Array.prototype.slice.call(scope.querySelectorAll('[data-owner-member]:checked')).sort(function (a, b) {
+          return Number(a.getAttribute('data-owner-order') || 999999999) - Number(b.getAttribute('data-owner-order') || 999999999);
+        });
+        var primaryValue = checked.length ? checked[0].value : '';
+        scope.querySelectorAll('[data-owner-member]').forEach(function (input) {
+          var role = input.closest('.owner-chip')?.querySelector('[data-owner-role]');
+          if (role) role.textContent = input.checked ? (input.value === primaryValue ? '第一负责人' : '协助人') : '可选';
+          input.closest('.owner-chip')?.classList.toggle('is-primary', input.checked && input.value === primaryValue);
+        });
+        if (typeof onChange === 'function') onChange();
+      };
+      scope.querySelectorAll('[data-owner-member]').forEach(function (input) {
+        input.addEventListener('change', function () {
+          if (input.checked && !input.getAttribute('data-owner-order')) input.setAttribute('data-owner-order', String(Date.now()));
+          if (!input.checked) input.setAttribute('data-owner-order', '');
+          refresh();
+        });
+      });
+      refresh();
     },
     customerOwnerList: function () {
       var users = [];
@@ -5919,15 +5991,20 @@
         var users = json.data.users || [];
         var currentOwners = ids.length === 1 && self.currentDetail ? (self.currentDetail.owners || []) : [];
         var assignedMap = {};
+        var assignedOrder = [];
         var primaryId = 0;
         currentOwners.forEach(function (owner) {
           var userId = Number(owner.user_id || owner.id || 0);
           if (!userId) return;
           assignedMap[userId] = true;
+          assignedOrder.push(userId);
           if (Number(owner.is_primary) === 1 || owner.role_type === 'primary') primaryId = userId;
         });
         if (!primaryId && self.currentDetail && self.currentDetail.customer) primaryId = Number(self.currentDetail.customer.owner_user_id || 0);
-        if (!primaryId && users.length) primaryId = Number(users[0].id || 0);
+        if (primaryId) {
+          assignedOrder = assignedOrder.filter(function (id) { return id !== primaryId; });
+          assignedOrder.unshift(primaryId);
+        }
         var rows = users.map(function (user) {
           var userId = Number(user.id || 0);
           var name = user.real_name || user.username || ('#' + user.id);
@@ -5935,17 +6012,17 @@
           var role = user.role_name || '未分配角色';
           var keyword = [name, user.username || '', dept, role].join(' ').toLowerCase();
           var checked = assignedMap[userId] || userId === primaryId ? ' checked' : '';
-          var primary = userId === primaryId ? ' checked' : '';
+          var order = checked ? assignedOrder.indexOf(userId) : '';
+          var roleText = checked && userId === primaryId ? '第一负责人' : (checked ? '协助人' : '可选');
           return '<article class="assign-person-card" data-assign-person data-assign-keyword="' + esc(keyword) + '">' +
-            '<label class="assign-primary-pick"><input type="radio" name="owner_user_id" value="' + esc(user.id) + '"' + primary + ' data-assign-primary><span>第一负责人</span></label>' +
-            '<label class="assign-member-pick"><input type="checkbox" name="owner_user_ids" value="' + esc(user.id) + '"' + checked + ' data-assign-member><span><b>' + esc(name) + '</b><em>' + esc(dept + ' · ' + role) + '</em></span></label>' +
+            '<label class="assign-member-pick"><input type="checkbox" name="owner_user_ids" value="' + esc(user.id) + '"' + checked + ' data-assign-member data-assign-order="' + esc(order) + '"><span><b>' + esc(name) + '</b><em>' + esc(dept + ' · ' + role) + '</em></span><i data-assign-role>' + esc(roleText) + '</i></label>' +
           '</article>';
         }).join('');
         if (!rows) return self.showCustomerError('没有可分配的激活员工。');
         var title = ids.length > 1 ? '批量分配客户' : '分配客户';
         var html = '<div class="visit-workspace-form assign-workspace-form" data-assign-workspace>' +
           '<input type="hidden" data-assign-customer-ids value="' + esc(ids.join(',')) + '">' +
-          '<section class="visit-work-section assign-hero-section"><div><span>客户分配</span><strong>' + esc(title) + '</strong><p>选择第一负责人，并勾选协作负责人。第一负责人会自动加入协作名单。</p></div></section>' +
+          '<section class="visit-work-section assign-hero-section"><div><span>客户分配</span><strong>' + esc(title) + '</strong><p>负责人可多选，先勾选的为第一负责人，后续勾选为协助人。</p></div></section>' +
           '<section class="visit-work-section"><h3>分配概览</h3><div class="visit-compact-grid assign-stat-grid"><article><span>可分配员工</span><strong>' + esc(users.length) + '</strong></article><article><span>本次客户</span><strong>' + esc(ids.length) + '</strong></article><article><span>已勾选协作</span><strong data-assign-checked-count>0</strong></article><article><span>第一负责人</span><strong data-assign-primary-name>-</strong></article></div></section>' +
           '<section class="visit-work-section"><h3>选择负责人</h3><label class="visit-pill-field assign-search-field"><span>搜索员工</span><input data-assign-search placeholder="输入姓名 / 账号 / 部门 / 角色"></label><div class="assign-person-grid">' + rows + '</div><p class="entry-muted" data-assign-empty hidden>没有匹配到员工。</p></section>' +
           '<section class="visit-work-section assign-help-section"><h3>规则说明</h3><div class="visit-check-grid"><label class="visit-check-pill active"><span>第一负责人</span><em>客户默认归属人</em></label><label class="visit-check-pill active"><span>协作负责人</span><em>可共同查看和跟进</em></label><label class="visit-check-pill"><span>保存后刷新</span><em>客户列表和详情同步更新</em></label></div></section>' +
@@ -5962,39 +6039,35 @@
       var box = scope.querySelector('[data-assign-workspace]');
       if (!box) return;
       var self = this;
+      var orderedAssignMembers = function () {
+        return Array.prototype.slice.call(box.querySelectorAll('[data-assign-member]:checked')).sort(function (a, b) {
+          return Number(a.getAttribute('data-assign-order') || 999999999) - Number(b.getAttribute('data-assign-order') || 999999999);
+        });
+      };
       var refreshCount = function () {
+        var checked = orderedAssignMembers();
+        var primary = checked[0] || null;
         var node = box.querySelector('[data-assign-checked-count]');
-        if (node) node.textContent = String(box.querySelectorAll('[data-assign-member]:checked').length);
-        var primary = box.querySelector('[data-assign-primary]:checked');
+        if (node) node.textContent = String(checked.length);
         var primaryName = primary ? primary.closest('[data-assign-person]')?.querySelector('.assign-member-pick b')?.textContent : '-';
         var primaryNode = box.querySelector('[data-assign-primary-name]');
         if (primaryNode) primaryNode.textContent = primaryName || '-';
         box.querySelectorAll('[data-assign-person]').forEach(function (card) {
-          var isPrimary = !!card.querySelector('[data-assign-primary]:checked');
-          var isMember = !!card.querySelector('[data-assign-member]:checked');
+          var member = card.querySelector('[data-assign-member]');
+          var isPrimary = !!(primary && member && member.value === primary.value);
+          var isMember = !!(member && member.checked);
+          var role = card.querySelector('[data-assign-role]');
+          if (role) role.textContent = isMember ? (isPrimary ? '第一负责人' : '协助人') : '可选';
           card.classList.toggle('is-primary', isPrimary);
           card.classList.toggle('is-selected', isMember);
         });
       };
-      box.querySelectorAll('[data-assign-primary]').forEach(function (primaryBox) {
-        primaryBox.addEventListener('change', function () {
-          if (primaryBox.checked) {
-            box.querySelectorAll('[data-assign-primary]').forEach(function (item) {
-              if (item !== primaryBox) item.checked = false;
-            });
-          }
-          if (!primaryBox.checked) {
-            refreshCount();
-            return;
-          }
-          var row = primaryBox.closest('[data-assign-person]');
-          var member = row ? row.querySelector('[data-assign-member]') : null;
-          if (member) member.checked = true;
+      box.querySelectorAll('[data-assign-member]').forEach(function (member) {
+        member.addEventListener('change', function () {
+          if (member.checked && !member.getAttribute('data-assign-order')) member.setAttribute('data-assign-order', String(Date.now()));
+          if (!member.checked) member.setAttribute('data-assign-order', '');
           refreshCount();
         });
-      });
-      box.querySelectorAll('[data-assign-member]').forEach(function (member) {
-        member.addEventListener('change', refreshCount);
       });
       box.querySelector('[data-assign-search]')?.addEventListener('input', function (event) {
         var q = String(event.target.value || '').trim().toLowerCase();
@@ -6010,15 +6083,14 @@
       scope.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
       scope.querySelector('[data-assign-apply]')?.addEventListener('click', function () {
         var button = this;
-        var primary = box.querySelector('[data-assign-primary]:checked');
-        var ownerIds = Array.prototype.slice.call(box.querySelectorAll('[data-assign-member]:checked')).map(function (item) { return item.value; });
-        if (!primary) return self.showCustomerError('请选择第一负责人。');
-        if (ownerIds.indexOf(primary.value) < 0) ownerIds.unshift(primary.value);
+        var ownerIds = orderedAssignMembers().map(function (item) { return item.value; });
+        var primaryId = ownerIds[0] || '';
+        if (!primaryId) return self.showCustomerError('请至少勾选一个负责人。');
         button.disabled = true;
         button.textContent = '保存中...';
         post('customer_batch_assign', {
           customer_ids: String(box.querySelector('[data-assign-customer-ids]')?.value || '').split(',').filter(Boolean),
-          owner_user_id: primary.value,
+          owner_user_id: primaryId,
           owner_user_ids: ownerIds
         }).then(function (json) {
           if (!json.success) {
@@ -6273,28 +6345,7 @@
     },
     bindOwnerSelection: function (root) {
       root = root || document;
-      var select = root.querySelector('[data-primary-owner-select]');
-      if (!select) return;
-      var sync = function () {
-        var selected = String(select.value || '');
-        root.querySelectorAll('[data-owner-member]').forEach(function (input) {
-          var isPrimary = selected && String(input.value || '') === selected;
-          var chip = input.closest('.owner-chip');
-          if (isPrimary) input.checked = true;
-          if (!chip) return;
-          var mark = chip.querySelector('em');
-          if (isPrimary && !mark) chip.insertAdjacentHTML('beforeend', '<em>第一</em>');
-          if (!isPrimary && mark) mark.remove();
-        });
-      };
-      select.addEventListener('change', sync);
-      root.querySelectorAll('[data-owner-member]').forEach(function (input) {
-        input.addEventListener('change', function () {
-          if (String(input.value || '') === String(select.value || '') && !input.checked) input.checked = true;
-          sync();
-        });
-      });
-      sync();
+      this.bindOwnerPickEvents(root);
     },
     bindEntrySystem: function () {
       var root = document.querySelector('[data-customer-entry]');
@@ -6728,6 +6779,11 @@
       if (data.owner_user_id) {
         data.owner_user_ids = Array.isArray(data.owner_user_ids) ? data.owner_user_ids : [];
         if (data.owner_user_ids.indexOf(data.owner_user_id) < 0) data.owner_user_ids.unshift(data.owner_user_id);
+      }
+      var ownerIds = this.selectedOwnerIdsFromForm(form);
+      if (ownerIds.length) {
+        data.owner_user_ids = ownerIds;
+        data.owner_user_id = ownerIds[0];
       }
       return data;
     },

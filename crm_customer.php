@@ -1092,7 +1092,7 @@ function crm_customer_promotion_status(int $customerId): string
 
 function crm_customer_owners(int $customerId): array
 {
-    $stmt = db()->prepare("SELECT co.*, u.username, d.name AS department_name FROM crm_customer_owners co LEFT JOIN crm_users u ON u.id = co.user_id LEFT JOIN crm_departments d ON d.id = u.department_id WHERE co.customer_id = ? ORDER BY co.is_primary DESC, FIELD(co.role_type, 'primary','secondary','collaborator','viewer'), co.id");
+    $stmt = db()->prepare("SELECT co.*, u.username, u.real_name, d.name AS department_name FROM crm_customer_owners co LEFT JOIN crm_users u ON u.id = co.user_id LEFT JOIN crm_departments d ON d.id = u.department_id WHERE co.customer_id = ? ORDER BY co.is_primary DESC, FIELD(co.role_type, 'primary','secondary','collaborator','viewer'), co.id");
     $stmt->execute([$customerId]);
     return $stmt->fetchAll();
 }
@@ -1628,6 +1628,24 @@ function crm_customer_list(array $input): array
         $promotionChannels = [];
         foreach ($promotionStmt->fetchAll() as $row) $promotionChannels[(int)$row['customer_id']] = (string)$row['promotion_channels'];
 
+        $ownerStmt = db()->prepare("SELECT co.customer_id, co.user_id, co.role_type, co.is_primary, COALESCE(u.real_name, u.username, CONCAT('#', co.user_id)) AS owner_label
+            FROM crm_customer_owners co
+            LEFT JOIN crm_users u ON u.id = co.user_id
+            WHERE co.customer_id IN ({$placeholders})
+            ORDER BY co.customer_id, co.is_primary DESC, FIELD(co.role_type, 'primary','secondary','collaborator','viewer'), co.id");
+        $ownerStmt->execute($ids);
+        $ownerMap = [];
+        foreach ($ownerStmt->fetchAll() as $row) {
+            $customerId = (int)$row['customer_id'];
+            if (!isset($ownerMap[$customerId])) $ownerMap[$customerId] = ['primary' => '', 'assistants' => []];
+            $label = (string)($row['owner_label'] ?? ('#' . ($row['user_id'] ?? '')));
+            if ((int)($row['is_primary'] ?? 0) === 1 || ($row['role_type'] ?? '') === 'primary') {
+                if ($ownerMap[$customerId]['primary'] === '') $ownerMap[$customerId]['primary'] = $label;
+            } else {
+                $ownerMap[$customerId]['assistants'][] = $label;
+            }
+        }
+
         foreach ($rows as &$row) {
             $customerId = (int)($row['id'] ?? 0);
             $row['contact_count'] = $contactCounts[$customerId] ?? 0;
@@ -1635,6 +1653,14 @@ function crm_customer_list(array $input): array
             $row['group_names'] = $groupNames[$customerId] ?? '';
             $row['source_tags'] = $sourceTags[$customerId] ?? '';
             $row['promotion_channels'] = $promotionChannels[$customerId] ?? '';
+            if (isset($ownerMap[$customerId])) {
+                $primaryOwner = $ownerMap[$customerId]['primary'] ?: (string)($row['owner_name'] ?? '');
+                $assistants = array_values(array_unique(array_filter($ownerMap[$customerId]['assistants'])));
+                $row['primary_owner_name'] = $primaryOwner;
+                $row['assistant_owner_names'] = implode('、', $assistants);
+                $row['owner_summary'] = trim(($primaryOwner !== '' ? ('第一：' . $primaryOwner) : '') . ($assistants ? '；协助：' . implode('、', $assistants) : ''));
+                if ($primaryOwner !== '') $row['owner_name'] = $primaryOwner;
+            }
         }
         unset($row);
     }
@@ -1784,6 +1810,19 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     $promotionChannels = crm_customer_tags($id, 'crm_customer_promotion_channels', 'channel_key');
     $promotionStatus = crm_customer_promotion_status($id);
     $owners = crm_customer_owners($id);
+    $primaryOwner = null;
+    $assistantOwnerNames = [];
+    foreach ($owners as $ownerRow) {
+        $ownerName = (string)($ownerRow['real_name'] ?: ($ownerRow['username'] ?: ('#' . ($ownerRow['user_id'] ?? ''))));
+        if ((int)($ownerRow['is_primary'] ?? 0) === 1 || ($ownerRow['role_type'] ?? '') === 'primary') {
+            if (!$primaryOwner) $primaryOwner = $ownerName;
+        } else {
+            $assistantOwnerNames[] = $ownerName;
+        }
+    }
+    $customer['primary_owner_name'] = $primaryOwner ?: (string)($customer['owner_name'] ?? '');
+    $customer['assistant_owner_names'] = implode('、', array_values(array_unique(array_filter($assistantOwnerNames))));
+    $customer['owner_summary'] = trim(($customer['primary_owner_name'] !== '' ? ('第一：' . $customer['primary_owner_name']) : '') . ($customer['assistant_owner_names'] !== '' ? '；协助：' . $customer['assistant_owner_names'] : ''));
     $contacts = crm_contact_list(['customer_id' => $id])['rows'];
     $groups = crm_customer_groups_for($id);
     $lastFollowStmt = db()->prepare('SELECT MAX(followup_time) FROM crm_customer_followups WHERE customer_id = ? AND deleted_at IS NULL');
@@ -2077,7 +2116,8 @@ function crm_customer_validate(array $input, int $ignoreId = 0): array
     if (!$promotionChannels) $promotionChannels = crm_parse_keys($defaults['promotion_channels'] ?? [], $options['promotion_channels']);
     $promotionStatus = trim((string)($input['promotion_status'] ?? ($defaults['promotion_status'] ?? crm_dictionary_default('promotion_status', 'not_promoted'))));
     if (!in_array($promotionStatus, $options['promotion_statuses'], true)) $promotionStatus = crm_dictionary_default('promotion_status', 'not_promoted');
-    $ownerId = (int)($input['owner_user_id'] ?? (current_user()['id'] ?? 0));
+    $hasOwnerIdInput = array_key_exists('owner_user_id', $input) && trim((string)$input['owner_user_id']) !== '';
+    $ownerId = $hasOwnerIdInput ? (int)$input['owner_user_id'] : 0;
     $owners = $input['owners'] ?? [];
     if (is_string($owners) && trim($owners) !== '') {
         $decodedOwners = json_decode($owners, true);
@@ -2112,6 +2152,7 @@ function crm_customer_validate(array $input, int $ignoreId = 0): array
             ];
         }
     }
+    if (!$owners && !$ownerId) $ownerId = (int)(current_user()['id'] ?? 0);
     if (!$owners && $ownerId) $owners = [['user_id' => $ownerId, 'role_type' => 'primary', 'is_primary' => 1]];
     if (!$ownerId && $owners) {
         foreach ($owners as $ownerRow) {
