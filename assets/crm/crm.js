@@ -7042,13 +7042,9 @@
         { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议', 'AI 创建确认任务'] },
         { title: '系统操作', items: ['分配客户', '加入分组', '管理分组', '公海池', '转入公海'].concat(hasCustomer ? ['批量设置推广方式', '编辑选项卡'] : []).concat(['查看日志']) }
       ];
-      if (this.selected && this.selected.size > 1) return [
+      if (this.selected && this.selected.size >= 1) return [
         { title: '批量管理（已选 ' + this.selected.size + '）', items: ['批量分配', '批量删除', '批量分组', '批量设置推广方式', '导出客户', '清除选择'] },
         { title: '客户池操作', items: ['转入公海', '批量补全资料', '查看客户日志'] }
-      ];
-      if (!hasCustomer && this.selected && this.selected.size === 1) return [
-        { title: '客户管理（已选 1）', items: ['分配客户', '删除客户', '加入分组', '批量设置推广方式', '导出客户', '清除选择'] },
-        { title: '客户操作', items: ['新建客户', '导入客户', '查看客户日志'] }
       ];
       if (hasCustomer) {
         var resolvedTarget = this.detailResolveTarget(this.activeDetailTab || 'overview');
