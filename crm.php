@@ -702,7 +702,7 @@ $prefStyle = sprintf(
         <section class="promo-engine-v2" data-promo-engine>
           <main class="promo-workspace">
             <nav class="marketing-subtabs" data-promo-main-tabs>
-              <button type="button" class="marketing-subtab" data-promo-view-button="campaigns" data-marketing-subtab="projects">推广项目</button>
+              <button type="button" class="marketing-subtab active" data-promo-view-button="campaigns" data-marketing-subtab="projects">推广项目</button>
               <button type="button" class="marketing-subtab" data-promo-view-button="customer_pool" data-marketing-subtab="pool">客户推广池</button>
               <button type="button" class="marketing-subtab" data-promo-view-button="contact_strategy" data-marketing-subtab="contacts">联系人策略</button>
               <button type="button" class="marketing-subtab" data-promo-view-button="execution" data-marketing-subtab="execution">执行中心</button>
@@ -710,7 +710,7 @@ $prefStyle = sprintf(
               <button type="button" class="marketing-subtab" data-promo-view-button="settings" data-marketing-subtab="settings">推广设置</button>
               <?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" class="marketing-subtab promo-subtab-action" data-promo-open-wizard>新建推广项目</button><?php endif; ?>
             </nav>
-            <section class="promo-view active" data-promo-view="dashboard">
+            <section class="promo-view" data-promo-view="dashboard">
               <div class="promo-board-head"><div><span>营销控制台</span><h2>营销总览</h2><p>从推广状态、渠道效果、任务执行和风险客户四个维度管理推广。</p></div><div><?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" data-promo-open-wizard>新建推广项目</button><?php endif; ?><button type="button" data-promo-refresh>刷新</button></div></div>
               <div class="promo-kpi-grid" data-promo-analytics><p>正在加载转化数据...</p></div>
               <div class="promo-linkage-grid">
@@ -720,7 +720,7 @@ $prefStyle = sprintf(
                 <article><strong>派工联动</strong><span>推广跟进任务和异常处理</span><em>异常派工</em></article>
               </div>
             </section>
-            <section class="promo-view" data-promo-view="campaigns">
+            <section class="promo-view active" data-promo-view="campaigns">
               <section class="promo-task-list promo-task-main-list">
                 <header><span>推广项目</span><strong>推广项目列表</strong><?php if ($crmActionPermissions['新建推广项目'] ?? false): ?><button type="button" data-promo-open-wizard>新建</button><?php endif; ?></header>
                 <div data-promo-tasks><p>正在加载推广任务...</p></div>

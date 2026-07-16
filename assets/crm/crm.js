@@ -9770,7 +9770,7 @@
 	    currentCustomerId: Number(readLocalJson('crm_promotion_state', {}).customerId || 0),
 	    currentGroupId: Number(readLocalJson('crm_promotion_state', {}).groupId || 0),
 	    groupPoolFilterId: Number(readLocalJson('crm_promotion_state', {}).groupPoolFilterId || 0),
-	    currentView: hashParts().module === 'promotion' && hashParts().detail ? hashParts().detail : (readLocalJson('crm_promotion_state', {}).view || 'dashboard'),
+	    currentView: hashParts().module === 'promotion' && hashParts().detail ? hashParts().detail : (readLocalJson('crm_promotion_state', {}).view || 'campaigns'),
     poolPage: Number(readLocalJson('crm_promotion_state', {}).poolPage || 1),
     poolPageSize: Number(readLocalJson('crm_promotion_state', {}).poolPageSize || 50),
     allPoolExpanded: false,
@@ -9802,7 +9802,7 @@
         this.bindEvents();
       }
       this.normalizeCampaignLayout();
-      this.switchView(this.currentView || 'dashboard');
+      this.switchView(this.currentView || 'campaigns');
       this.renderBootstrapChannels();
       this.load();
       this.setupAutoRefresh();
@@ -9821,7 +9821,7 @@
       }, 45000);
     },
     shouldAutoRefreshCurrentView: function () {
-      return ['execution'].indexOf(this.currentView || 'dashboard') >= 0
+      return ['execution'].indexOf(this.currentView || 'campaigns') >= 0
         || (this.currentView === 'customer_pool' && this.currentGroupId && this.allPoolExpanded);
     },
     bindEvents: function () {
@@ -9954,7 +9954,7 @@
     },
     saveState: function () {
       var state = {
-        view: this.currentView || 'dashboard',
+        view: this.currentView || 'campaigns',
         taskId: Number(this.selectedTaskId || 0),
         groupId: Number(this.currentGroupId || 0),
         groupPoolFilterId: Number(this.groupPoolFilterId || 0),
@@ -9976,12 +9976,12 @@
 	      if (view === 'contacts') view = 'contact_strategy';
 	      if (view === 'wizard' && !this.wizardDraft) view = 'campaigns';
 	      var panel = engine.querySelector('[data-promo-view="' + view + '"]');
-	      if (!panel) view = 'dashboard';
+	      if (!panel || view === 'dashboard') view = 'campaigns';
 	      this.currentView = view;
       if (view !== 'execution') this.selectedExecution = null;
       this.saveState();
       if (current === 'promotion') {
-        var targetHash = '#promotion' + (view && view !== 'dashboard' ? ':' + view : '');
+        var targetHash = '#promotion' + (view && view !== 'campaigns' ? ':' + view : '');
         if (window.location.hash !== targetHash) {
           if (history.replaceState) history.replaceState(null, '', targetHash);
           else window.location.hash = targetHash;
@@ -9998,7 +9998,7 @@
       this.renderPoolFilters();
       if (this.data && view === 'customer_pool' && this.data.loaded_view !== 'customer_pool') this.loadPoolView({ silent: true });
       if (this.data && view === 'contact_strategy' && this.data.loaded_view !== 'contact_strategy') this.loadContactStrategy({ silent: true });
-      if (this.data && (view === 'execution' || view === 'analytics' || view === 'dashboard') && this.data.loaded_view !== view && this.bootstrapLoadingView !== view) {
+      if (this.data && (view === 'execution' || view === 'analytics') && this.data.loaded_view !== view && this.bootstrapLoadingView !== view) {
         this.bootstrapLoadingView = view;
         this.load({ silent: true, view: view, noSwitch: true }).finally(function () {
           PromotionModule.bootstrapLoadingView = '';
@@ -10108,7 +10108,7 @@
         }
         self.applyBootstrapPoolState();
         self.render();
-        if (!options.noSwitch) self.switchView(self.currentView || 'dashboard');
+        if (!options.noSwitch) self.switchView(self.currentView || 'campaigns');
         if (keepAllPool && !previousAllPool.length && !self.allPoolLoading) {
           self.allPoolLoading = true;
           self.renderPool();
@@ -10267,9 +10267,9 @@
 	      toast('推广设置已保存。');
 	    },
 	    render: function () {
-      var view = this.currentView || 'dashboard';
+      var view = this.currentView || 'campaigns';
       this.safeRender('pool_filters', this.renderPoolFilters, '[data-promo-group-select], [data-promo-owner]');
-      if (view === 'campaigns' || view === 'dashboard' || view === 'wizard') {
+      if (view === 'campaigns' || view === 'wizard') {
         this.safeRender('tasks', this.renderTasks, '[data-promo-tasks]');
         this.safeRender('task_properties', this.renderTaskProperties, '[data-promo-task-properties]');
       } else if (view === 'customer_pool') {
@@ -16371,10 +16371,10 @@
   function handlePromotionAction(label) {
     function ensurePromotionView(view) {
       if (view === 'pool') view = 'customer_pool';
-      if ((PromotionModule.currentView || 'dashboard') !== view) PromotionModule.switchView(view);
+      if ((PromotionModule.currentView || 'campaigns') !== view) PromotionModule.switchView(view);
     }
     var promoMenuMap = {
-      '营销总览': 'dashboard',
+      '营销总览': 'campaigns',
       '推广项目': 'campaigns',
       '推广任务': 'campaigns',
       '客户与联系人': 'customer_pool',
@@ -17160,7 +17160,7 @@
     if (!engine) return;
     event.preventDefault();
     event.stopPropagation();
-    PromotionModule.switchView(button.getAttribute('data-promo-view-button') || 'dashboard');
+    PromotionModule.switchView(button.getAttribute('data-promo-view-button') || 'campaigns');
   });
 
   document.addEventListener('click', function (event) {
@@ -17552,7 +17552,7 @@
       };
       if (name === 'mail' && mailMap[label]) return MailModule.folder === mailMap[label];
       var promoMap = {
-        '营销总览': 'dashboard',
+        '营销总览': 'campaigns',
         '推广项目': 'campaigns',
         '推广任务': 'campaigns',
         '客户与联系人': 'customer_pool',
@@ -17564,7 +17564,7 @@
         '查看效果分析': 'analytics',
         '推广设置': 'settings'
       };
-      if (name === 'promotion' && promoMap[label]) return (PromotionModule.currentView || 'dashboard') === promoMap[label];
+      if (name === 'promotion' && promoMap[label]) return (PromotionModule.currentView || 'campaigns') === promoMap[label];
       var aiMap = {
         '客户雷达': 'radar',
         '智能报价': 'quote',
