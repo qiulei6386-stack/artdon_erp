@@ -4170,7 +4170,7 @@
       return '<article class="customer-order-preview-card ' + esc(tone) + '">' +
         '<section class="customer-order-preview-basic"><span>订单流程预览</span><strong>' + esc(orderNo) + '</strong><p>' + esc(customer.customer_name || row.customer_name || '-') + ' · ' + esc(contact) + ' · ' + esc(row.owner || row.owner_name || '-') + ' · ' + esc(row.order_date || '-日期未填') + '</p><b>' + esc(amountText) + '</b><em class="' + (balanceRaw > 0 ? 'debt-amount' : 'paid-amount') + '">' + esc(balanceRaw > 0 ? ('未收 ' + balanceText) : ('已收 ' + paidText)) + '</em></section>' +
         '<section class="customer-order-flow-preview">' + nodes.map(function (node) {
-          var tip = node.label + '\n状态：' + (node.status || '-') + '\n说明：' + (node.note || '-') + '\n更新时间：' + (node.updated_at || '暂无');
+          var tip = node.label + ' ｜ 状态：' + (node.status || '-') + ' ｜ 更新时间：' + (node.updated_at || '暂无');
           return '<div class="order-flow-node ' + esc(node.state) + '" title="' + esc(tip) + '"><i></i><strong>' + esc(node.label) + '</strong><span>' + esc(node.status) + '</span><em>' + esc(node.note) + '</em></div>';
         }).join('') + '</section>' +
         '<section class="customer-order-preview-next"><span>当前：' + esc(current) + '</span><strong>下一步：' + esc(nextAction) + '</strong>' + shortcutButtons.join('') + '</section>' +
