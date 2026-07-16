@@ -5246,6 +5246,14 @@
           self.openLeadPool();
           return;
         }
+        if (action === 'followup_create') {
+          var followCustomerId = Number((json.data && json.data.customer && json.data.customer.id) || self.currentId || 0);
+          Promise.resolve(followCustomerId ? self.loadDetail(followCustomerId) : Promise.resolve()).then(function () {
+            if (window.TaskCenterModule && typeof TaskCenterModule.load === 'function') TaskCenterModule.load();
+            if (current === 'customers') renderActions('customers');
+          });
+          return;
+        }
         self.loadList().then(function () {
           var detailLoad = json.data && json.data.customer ? self.loadDetail(Number(json.data.customer.id)) : (self.currentId ? self.loadDetail(self.currentId) : Promise.resolve());
           Promise.resolve(detailLoad).then(function () {

@@ -3929,8 +3929,10 @@ function crm_followup_create(array $input): array
             'created_by' => current_user()['id'] ?? 0,
         ]);
     }
-    $detail = crm_customer_get($customerId);
-    $detail['followup'] = crm_followup_get($id)['followup'];
+    $detail = [
+        'customer' => crm_customer_basic_row($customerId),
+        'followup' => crm_followup_get($id)['followup'],
+    ];
     if (db_table_exists('crm_tasks')) {
         $taskStmt = db()->prepare("SELECT id, title, status, due_at, reminder_at FROM crm_tasks WHERE source_type = 'followup' AND source_id = ? AND task_type = 'customer_followup' AND deleted_at IS NULL LIMIT 1");
         $taskStmt->execute([(string)$id]);
