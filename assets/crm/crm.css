@@ -6646,6 +6646,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 750;
 }
 .customer-order-preview-card {
+  position: relative;
+  z-index: 3;
   display: grid;
   grid-template-columns: minmax(210px, .9fr) minmax(0, 2.1fr) minmax(170px, .72fr);
   gap: 12px;
@@ -6656,6 +6658,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border-left: 4px solid var(--crm-primary);
   border-radius: 12px;
   background: var(--crm-card-bg);
+  overflow: visible;
 }
 .customer-order-preview-card.risk { border-left-color: #ef4444; }
 .customer-order-preview-card.done { border-left-color: #16a34a; }
@@ -6695,14 +6698,18 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 800;
 }
 .customer-order-flow-preview {
+  position: relative;
+  z-index: 5;
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(7, minmax(82px, 1fr));
   align-items: start;
   gap: 0;
+  overflow: visible;
 }
 .order-flow-node {
   position: relative;
+  z-index: 1;
   min-width: 0;
   display: grid;
   justify-items: center;
@@ -6710,6 +6717,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   text-align: center;
   padding: 0 4px;
 }
+.order-flow-node:hover { z-index: 100; }
 .order-flow-node::before {
   content: '';
   position: absolute;
@@ -6756,7 +6764,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   position: absolute;
   left: 50%;
   top: calc(100% + 8px);
-  z-index: 20;
+  z-index: 10000;
   width: 292px;
   max-width: min(292px, 80vw);
   display: none;
@@ -6767,6 +6775,24 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   background: #fff;
   box-shadow: 0 14px 32px rgba(15, 23, 42, .16);
   text-align: left;
+}
+.order-flow-node:first-child .order-flow-tooltip {
+  left: 0;
+  transform: translateX(0);
+}
+.order-flow-node:first-child .order-flow-tooltip::before {
+  left: 24px;
+  transform: rotate(45deg);
+}
+.order-flow-node:last-child .order-flow-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
+}
+.order-flow-node:last-child .order-flow-tooltip::before {
+  left: auto;
+  right: 24px;
+  transform: rotate(45deg);
 }
 .order-flow-tooltip::before {
   content: '';
