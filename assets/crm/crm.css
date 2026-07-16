@@ -6697,7 +6697,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .customer-order-flow-preview {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(8, minmax(74px, 1fr));
+  grid-template-columns: repeat(7, minmax(82px, 1fr));
   align-items: start;
   gap: 0;
 }
@@ -6752,6 +6752,82 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .order-flow-node.risk span { color: #dc2626; font-weight: 800; }
 .order-flow-node.done span { color: #16a34a; font-weight: 800; }
 .order-flow-node.current span { color: #2563eb; font-weight: 800; }
+.order-flow-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: 292px;
+  max-width: min(292px, 80vw);
+  display: none;
+  transform: translateX(-50%);
+  padding: 10px;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, .16);
+  text-align: left;
+}
+.order-flow-tooltip::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: 1px solid #dbe5f0;
+  border-top: 1px solid #dbe5f0;
+  background: #fff;
+}
+.order-flow-node:hover .order-flow-tooltip {
+  display: block;
+}
+.order-flow-tooltip header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.order-flow-tooltip header strong {
+  font-size: 13px;
+  color: #0f172a;
+}
+.order-flow-tooltip header span {
+  flex: 0 0 auto;
+  max-width: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 800;
+}
+.order-flow-tooltip dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.order-flow-tooltip dl div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.order-flow-tooltip dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.order-flow-tooltip dd {
+  min-width: 0;
+  margin: 0;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-word;
+}
 .customer-order-preview-next strong {
   color: var(--crm-text);
   font-size: 13px;
@@ -6774,7 +6850,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   }
   .customer-order-flow-preview {
     overflow-x: auto;
-    grid-template-columns: repeat(8, 92px);
+    grid-template-columns: repeat(7, 104px);
     padding-bottom: 2px;
   }
 }
