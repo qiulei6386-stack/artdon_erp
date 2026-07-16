@@ -346,6 +346,40 @@ function crm_dashboard_reset_layout(int $userId): array
     return ['widgets' => crm_user_dashboard_widgets($userId), 'hidden_widgets' => []];
 }
 
+function crm_workspace_cache_dir(): string
+{
+    $dir = __DIR__ . '/storage/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return is_dir($dir) && is_writable($dir) ? $dir : sys_get_temp_dir();
+}
+
+function crm_workspace_cache_get(string $key, int $ttl = 30)
+{
+    $file = crm_workspace_cache_dir() . '/crm_workspace_' . sha1($key) . '.json';
+    if (!is_file($file) || filemtime($file) < time() - $ttl) return null;
+    $data = json_decode((string)@file_get_contents($file), true);
+    return is_array($data) ? $data : null;
+}
+
+function crm_workspace_cache_set(string $key, array $value): array
+{
+    $file = crm_workspace_cache_dir() . '/crm_workspace_' . sha1($key) . '.json';
+    @file_put_contents($file, json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    return $value;
+}
+
+function crm_dashboard_widget_value_cached(string $key, string $range = 'month'): array
+{
+    if (in_array($key, ['today_mail', 'unread_mail', 'unreplied_mail'], true)) {
+        return crm_dashboard_widget_value($key);
+    }
+    $userId = (int)(current_user()['id'] ?? 0);
+    $cacheKey = 'widget:' . $key . ':range:' . $range . ':u' . $userId;
+    $cached = crm_workspace_cache_get($cacheKey);
+    if (is_array($cached)) return $cached;
+    return crm_workspace_cache_set($cacheKey, crm_dashboard_widget_value($key));
+}
+
 function crm_dashboard_widget_value(string $key): array
 {
     if ($key === 'customer_growth_summary') return crm_dashboard_customer_growth_summary();
@@ -1266,7 +1300,7 @@ function crm_workspace_bootstrap(array $input = []): array
     foreach ($rows as $row) {
         $key = (string)$row['widget_key'];
         if (in_array($key, ['today_customers', 'month_customers', 'lead_pool'], true)) continue;
-        $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value($key);
+        $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value_cached($key, $range);
         $widgets[] = array_merge($row, [
             'value' => $value['value'] ?? 0,
             'hint' => $value['hint'] ?? '',
@@ -1288,7 +1322,7 @@ function crm_workspace_bootstrap(array $input = []): array
     foreach (crm_dashboard_role_defaults($user) as $key) {
         if (isset($presentKeys[$key]) || in_array($key, $hiddenKeys, true) || !isset($catalogByKey[$key]) || in_array($key, ['today_customers', 'month_customers', 'lead_pool'], true)) continue;
         $meta = $catalogByKey[$key];
-        $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value($key);
+        $value = crm_workspace_tool_status($key) ?: crm_dashboard_widget_value_cached($key, $range);
         [$w, $h] = array_map('intval', explode('x', (string)($meta['default_size'] ?? '2x1')));
         $widgets[] = array_merge($meta, [
             'id' => 0,
