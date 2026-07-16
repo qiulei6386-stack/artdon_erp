@@ -222,6 +222,45 @@ function crm_marketing_ensure_permissions(): void
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key) SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p WHERE r.role_key IN ('viewer','finance') AND p.permission_key IN ('promotion.view')");
 }
 
+function crm_marketing_bootstrap_cache_dir(): string
+{
+    $dir = __DIR__ . '/storage/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return is_dir($dir) && is_writable($dir) ? $dir : sys_get_temp_dir();
+}
+
+function crm_marketing_bootstrap_cache_get(string $key, int $ttl = 60)
+{
+    $file = crm_marketing_bootstrap_cache_dir() . '/crm_marketing_bootstrap_' . sha1($key) . '.json';
+    if (!is_file($file) || filemtime($file) < time() - $ttl) return null;
+    $data = json_decode((string)@file_get_contents($file), true);
+    return is_array($data) ? $data : null;
+}
+
+function crm_marketing_bootstrap_cache_set(string $key, array $value): array
+{
+    $file = crm_marketing_bootstrap_cache_dir() . '/crm_marketing_bootstrap_' . sha1($key) . '.json';
+    @file_put_contents($file, json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    return $value;
+}
+
+function crm_marketing_bootstrap_cached(string $key, callable $loader): array
+{
+    $userId = (int)(current_user()['id'] ?? 0);
+    $cacheKey = $key . ':u' . $userId;
+    $cached = crm_marketing_bootstrap_cache_get($cacheKey);
+    if (is_array($cached)) return $cached;
+    $value = $loader();
+    return is_array($value) ? crm_marketing_bootstrap_cache_set($cacheKey, $value) : [];
+}
+
+function crm_marketing_bootstrap_cache_clear(): void
+{
+    foreach (glob(crm_marketing_bootstrap_cache_dir() . '/crm_marketing_bootstrap_*.json') ?: [] as $file) {
+        @unlink($file);
+    }
+}
+
 function crm_marketing_groups(): array
 {
     crm_marketing_ensure_tables();
@@ -321,6 +360,7 @@ function crm_marketing_group_save(array $input): array
         $id = (int)db()->lastInsertId();
         crm_log_event('promotion', 'group_create', 'marketing_group', (string)$id, null, ['group_name' => $name, 'group_type' => $groupType, 'owner_id' => $ownerId, 'visibility' => $visibility, 'tags' => $tags, 'status' => $status]);
     }
+    crm_marketing_bootstrap_cache_clear();
     return ['group_id' => $id, 'groups' => crm_marketing_groups()];
 }
 
@@ -336,6 +376,7 @@ function crm_marketing_group_status_update(array $input): array
     $stmt = db()->prepare("UPDATE crm_marketing_groups SET status=?, is_enabled=?, archived_at=IF(?='archived', COALESCE(archived_at, NOW()), NULL), updated_by=?, updated_at=NOW() WHERE id IN ({$placeholders}) AND deleted_at IS NULL");
     $stmt->execute(array_merge([$status, $status === 'disabled' ? 0 : 1, $status, current_user()['id'] ?? null], $ids));
     crm_log_event('promotion', 'group_status_update', 'marketing_group', implode(',', $ids), null, ['group_ids' => $ids, 'status' => $status, 'affected' => $stmt->rowCount()]);
+    crm_marketing_bootstrap_cache_clear();
     return ['groups' => crm_marketing_groups(), 'affected' => $stmt->rowCount()];
 }
 
@@ -374,6 +415,7 @@ function crm_marketing_group_copy(array $input): array
     db()->prepare('INSERT IGNORE INTO crm_marketing_group_contacts (group_id, contact_id, created_by, created_at) SELECT ?, contact_id, ?, NOW() FROM crm_marketing_group_contacts WHERE group_id = ?')
         ->execute([$newId, current_user()['id'] ?? null, $id]);
     crm_log_event('promotion', 'group_copy', 'marketing_group', (string)$newId, ['source_id' => $id, 'source_name' => $source['group_name']], ['new_id' => $newId, 'new_name' => $newName]);
+    crm_marketing_bootstrap_cache_clear();
     return ['ok' => true, 'new_id' => $newId, 'new_name' => $newName, 'message' => '客户组已复制', 'groups' => crm_marketing_groups()];
 }
 
@@ -391,6 +433,7 @@ function crm_marketing_group_delete(array $input): array
     db()->prepare('DELETE FROM crm_marketing_group_customers WHERE group_id=?')->execute([$id]);
     db()->prepare('DELETE FROM crm_marketing_group_contacts WHERE group_id=?')->execute([$id]);
     crm_log_event('promotion', 'group_delete', 'marketing_group', (string)$id, $before, ['deleted' => 1]);
+    crm_marketing_bootstrap_cache_clear();
     return ['groups' => crm_marketing_groups()];
 }
 
@@ -448,6 +491,7 @@ function crm_marketing_group_customer_update(array $input): array
     $poolResult = crm_marketing_pool($input);
     $poolPager = $poolResult;
     unset($poolPager['rows']);
+    crm_marketing_bootstrap_cache_clear();
     return ['groups' => crm_marketing_groups(), 'pool' => $poolResult['rows'] ?? [], 'pool_pager' => $poolPager];
 }
 
@@ -1186,7 +1230,7 @@ function crm_marketing_bootstrap(array $input = []): array
     $tasks = [];
     $logs = [];
     $analytics = $fallbackAnalytics;
-    try { $channels = crm_marketing_channels(); } catch (Throwable $e) { error_log('crm_marketing_channels failed: ' . $e->getMessage()); }
+    try { $channels = crm_marketing_bootstrap_cached('channels', 'crm_marketing_channels'); } catch (Throwable $e) { error_log('crm_marketing_channels failed: ' . $e->getMessage()); }
     $poolPager = ['total' => 0, 'page' => 1, 'page_size' => 50, 'page_count' => 1];
     if ($view === 'customer_pool' || $view === 'group_management') {
         try {
@@ -1219,11 +1263,11 @@ function crm_marketing_bootstrap(array $input = []): array
         'loaded_view' => $view,
         'lazy_views' => array_keys($heavyViews),
         'channels' => $channels,
-        'groups' => crm_marketing_groups(),
-        'templates' => crm_marketing_templates(),
-        'users' => crm_marketing_users(),
-        'mail_accounts' => crm_marketing_mail_accounts(),
-        'company_signature' => crm_marketing_company_signature(),
+        'groups' => crm_marketing_bootstrap_cached('groups', 'crm_marketing_groups'),
+        'templates' => crm_marketing_bootstrap_cached('templates', 'crm_marketing_templates'),
+        'users' => crm_marketing_bootstrap_cached('users', 'crm_marketing_users'),
+        'mail_accounts' => crm_marketing_bootstrap_cached('mail_accounts', 'crm_marketing_mail_accounts'),
+        'company_signature' => crm_marketing_bootstrap_cached('company_signature', 'crm_marketing_company_signature'),
         'pool' => $pool,
         'pool_pager' => $poolPager,
         'contacts' => $contacts,
