@@ -1199,7 +1199,19 @@ function qspec_brand_model_only($input,$label=''){
   $raw=qspec_clean($input); if($raw==='')return ''; $brand=qspec_brand_from_ascii_text($raw); $model=qspec_model_from_ascii_text($raw); if($brand!==''&&$model!==''&&stripos($model,$brand)===0)return $model; $out=trim(implode(' ',array_filter([$brand,$model]))); if($out!=='')return $out; $tokens=qspec_drop_material_name_tokens($raw); return $tokens?trim(implode(' ',$tokens)):$raw;
 }
 function qspec_is_component_label($label){ $k=mb_strtolower(trim((string)$label),'UTF-8'); return in_array($k,['led','芯片','cob','driver','led driver','电源','驱动','optic','光学','透镜','反光杯','accessories','accessory','extra','附件','配件','connector','接头','连接头','adapter','other'],true); }
-function qspec_sanitize_component_value($label,$value){ return qspec_is_component_label($label)?qspec_brand_model_only($value,$label):qspec_clean($value); }
+function qspec_is_accessory_label($label){
+  $k=mb_strtolower(trim((string)$label),'UTF-8');
+  return in_array($k,['accessories','accessory','extra','附件','配件'],true);
+}
+function qspec_is_packaging_text($txt){
+  $s=mb_strtolower(trim((string)$txt),'UTF-8');
+  if($s==='') return false;
+  return preg_match('/纸卡|纸箱|纸盒|内盒|外盒|外箱|彩盒|包装|包材|吸塑|珍珠棉|泡棉|护角|标签|贴纸|说明书|吊牌|卡纸|opp\\s*袋|pe\\s*袋|poly\\s*bag|carton|inner\\s*box|outer\\s*box|gift\\s*box|color\\s*box|packing|packaging|label|manual|k\\s*=\\s*a|k6a|牛皮色/iu',$s)===1;
+}
+function qspec_sanitize_component_value($label,$value){
+  if(qspec_is_accessory_label($label) && qspec_is_packaging_text($value)) return '';
+  return qspec_is_component_label($label)?qspec_brand_model_only($value,$label):qspec_clean($value);
+}
 function qspec_quote_name_of_node($node,$fallback=''){ $v=qspec_brand_model_only(is_array($node)?$node:$fallback); return $v!==''?$v:qspec_brand_model_only($fallback); }
 function qspec_payload_from_row($r){
   $spec=[];
@@ -1243,6 +1255,8 @@ function qspec_text_of_node($n){
 }
 function qspec_classify_component($txt){
   $s=strtolower((string)$txt);
+  // 包装材料不属于灯具附件，不能进入报价单 Accessories。
+  if(qspec_is_packaging_text($txt)) return '';
   // V6.8.5.4：关键件识别收紧。
   // “光源面/光源面盖/散热器后盖”这类结构件不能被当成 LED 芯片；必须出现明确芯片/灯珠/LED/COB 或常见芯片品牌/型号。
   if(preg_match('/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa|led)\b|芯片|灯珠/u',$s)) return 'led';
