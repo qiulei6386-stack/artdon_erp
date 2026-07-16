@@ -6510,6 +6510,72 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px;
   font-weight: 600;
 }
+.customer-mail-preview {
+  display: grid;
+  gap: 10px;
+  min-height: 360px;
+}
+.customer-mail-preview-head {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: var(--crm-hover-bg);
+}
+.customer-mail-preview-head span,
+.customer-mail-preview-head em {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-style: normal;
+}
+.customer-mail-preview-head strong {
+  color: var(--crm-text);
+  font-size: 16px;
+}
+.customer-mail-preview-attachments {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: var(--crm-card-bg);
+}
+.customer-mail-preview-attachments h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.customer-mail-preview-attachments div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.customer-mail-preview-attachments button {
+  max-width: 220px;
+  height: 30px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.customer-mail-preview-body {
+  min-height: 260px;
+  max-height: 56vh;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: #fff;
+}
+.customer-mail-preview-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.customer-mail-body-frame {
+  width: 100%;
+  min-height: 360px;
+  border: 0;
+}
 .archive-attribute-panel { display: grid; gap: 10px; }
 .archive-attribute-toolbar {
   display: flex;

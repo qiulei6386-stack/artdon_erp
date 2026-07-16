@@ -4207,12 +4207,15 @@
       });
       document.querySelectorAll('[data-detail-row]').forEach(function (row) {
         row.addEventListener('click', function () {
+          var rowType = row.getAttribute('data-detail-row') || '';
+          var rowId = row.getAttribute('data-detail-row-id') || '';
           self.selectedDetailEntity = {
-            type: row.getAttribute('data-detail-row') || '',
-            id: row.getAttribute('data-detail-row-id') || ''
+            type: rowType,
+            id: rowId
           };
           document.querySelectorAll('[data-detail-row]').forEach(function (item) { item.classList.toggle('selected', item === row); });
           if (current === 'customers') renderActions('customers');
+          if (rowType === 'mail' && rowId) self.openCustomerMailPreview(rowId);
         });
       });
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
@@ -5835,6 +5838,75 @@
       if (footerActions) footerActions.innerHTML = actionsHtml;
       var dialog = document.querySelector('[data-customer-dialog]');
       if (typeof binder === 'function') binder(dialog || document.querySelector('.customer-business-dialog'));
+    },
+    openCustomerMailPreview: function (mailId) {
+      mailId = Number(mailId || 0);
+      if (!mailId) return this.showCustomerError('邮件 ID 无效。');
+      var self = this;
+      this.openBusinessDialog(
+        '邮件正文预览',
+        '<section class="customer-mail-preview"><div class="mail-loading">正在读取邮件正文...</div></section><div class="business-dialog-actions"><button type="button" data-business-cancel>关闭</button><button type="button" class="primary" data-customer-mail-open>打开邮箱查看</button></div>',
+        '只读预览，不会重新解析邮件，也不会影响收发信。',
+        function (root) {
+          root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
+          root.querySelector('[data-customer-mail-open]')?.addEventListener('click', function () {
+            self.closeDialog();
+            activate('mail');
+            window.setTimeout(function () {
+              if (typeof MailModule !== 'undefined' && typeof MailModule.selectMail === 'function') MailModule.selectMail(mailId);
+            }, 80);
+          });
+        }
+      );
+      post('mail_get', { mail_id: mailId, include_crm: '0' }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '邮件读取失败');
+        var mail = (json.data || {}).mail || {};
+        self.renderCustomerMailPreview(mail);
+      }).catch(function (error) {
+        var box = document.querySelector('.customer-mail-preview');
+        if (box) box.innerHTML = '<div class="mail-error">' + esc(error.message || '邮件读取失败') + '</div>';
+      });
+    },
+    renderCustomerMailPreview: function (mail) {
+      var box = document.querySelector('.customer-mail-preview');
+      if (!box) return;
+      mail = mail || {};
+      var attachments = (mail.attachments || []).filter(function (item) {
+        if ('is_visible_attachment' in item) return Number(item.is_visible_attachment) === 1;
+        return Number(item.is_inline) !== 1 && Number(item.is_signature_image) !== 1;
+      });
+      var bodyHtml = String(mail.body_html || '');
+      if (typeof MailModule !== 'undefined' && typeof MailModule.normalizeMailBodyLocalUrls === 'function') {
+        bodyHtml = MailModule.normalizeMailBodyLocalUrls(bodyHtml);
+      }
+      var useFrame = typeof MailModule !== 'undefined' && typeof MailModule.isFullHtmlMail === 'function' && MailModule.isFullHtmlMail(mail);
+      var body = bodyHtml
+        ? (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml)
+        : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
+      if (!body && Number(mail.has_attachment || mail.attachment_count || 0)) {
+        body = '<div class="mail-no-body"><strong>此邮件没有正文，但包含附件。</strong><span>附件已正常入库，可在下方下载或预览。</span></div>';
+      }
+      if (!body) body = '<div class="mail-no-body"><strong>暂无可预览正文。</strong><span>可点击“打开邮箱查看”进入邮箱模块排查。</span></div>';
+      var attachmentHtml = attachments.length ? '<section class="customer-mail-preview-attachments"><h4>附件 ' + attachments.length + '</h4><div>' + attachments.map(function (a) {
+        var id = Number(a.id || 0);
+        var name = a.file_name || a.filename || a.original_filename || '附件';
+        return '<button type="button" data-customer-mail-attachment="' + esc(id) + '" title="' + esc(name) + '">' + esc(name) + '</button>';
+      }).join('') + '</div></section>' : '';
+      box.innerHTML = '<header class="customer-mail-preview-head"><span>' + esc(mail.from_name || mail.from_email || '-') + '</span><strong>' + esc(mail.subject || '(无主题)') + '</strong><em>收件人：' + esc(mail.to_emails || '-') + ' · 时间：' + esc(mail.received_at || mail.sent_at || '-') + '</em></header>' + attachmentHtml + '<section class="mail-body customer-mail-preview-body">' + body + '</section>';
+      if (typeof MailModule !== 'undefined') {
+        if (typeof MailModule.fixMailBodyFrames === 'function') MailModule.fixMailBodyFrames(box);
+        if (typeof MailModule.fixMailBodyImages === 'function') MailModule.fixMailBodyImages(box);
+      }
+      box.querySelectorAll('[data-customer-mail-attachment]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id = Number(button.getAttribute('data-customer-mail-attachment') || 0);
+          if (typeof MailModule !== 'undefined' && typeof MailModule.previewAttachment === 'function') {
+            MailModule.previewAttachment(id, button.textContent || '附件');
+          } else {
+            window.open('crm_api.php?action=mail_attachment_download&attachment_id=' + encodeURIComponent(id), '_blank');
+          }
+        });
+      });
     },
     showCustomerError: function (message) {
       toast(message || '操作失败');
