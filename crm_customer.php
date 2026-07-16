@@ -480,6 +480,8 @@ function crm_customer_ensure_tables(): void
     crm_add_index_safe('crm_customers', 'idx_customer_list_updated', '(deleted_at, updated_at, id)');
     crm_add_index_safe('crm_customers', 'idx_customer_list_created', '(deleted_at, created_at, id)');
     crm_add_index_safe('crm_customers', 'idx_customer_lifecycle', '(lifecycle_key, deleted_at)');
+    crm_add_index_safe('crm_customers', 'idx_customer_email_deleted', '(email, deleted_at, id)');
+    crm_add_index_safe('crm_customers', 'idx_customer_website_deleted', '(website, deleted_at, id)');
     crm_add_index_safe('crm_contacts', 'idx_contact_customer_deleted_email', '(customer_id, deleted_at, email)');
     crm_add_index_safe('crm_contacts', 'idx_contact_search', '(customer_id, deleted_at, name, email, phone, whatsapp)');
     crm_add_index_safe('crm_customer_followups', 'idx_follow_customer_deleted_time', '(customer_id, deleted_at, followup_time)');
@@ -1721,12 +1723,6 @@ function crm_customer_overview_stats(bool $forceRefresh = false): array
     $incompleteSql = "(c.city = '' OR c.city IS NULL OR {$noEmailSql} OR {$noContactSql} OR NOT EXISTS (SELECT 1 FROM crm_customer_group_relations gr WHERE gr.customer_id = c.id))";
     $staleFollowSql = 'NOT EXISTS (SELECT 1 FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL AND f.followup_time >= DATE_SUB(NOW(), INTERVAL 30 DAY))';
 
-    $countWhere = function (string $extra = '', array $extraParams = []) use ($where, $baseParams): int {
-        $sql = "SELECT COUNT(*) FROM crm_customers c WHERE {$where}" . ($extra !== '' ? " AND ({$extra})" : '');
-        $stmt = db()->prepare($sql);
-        $stmt->execute(array_merge($baseParams, $extraParams));
-        return (int)$stmt->fetchColumn();
-    };
     $customerRows = function (string $extra = '', array $extraParams = [], int $limit = 3, string $orderBy = 'updated') use ($where, $baseParams): array {
         $orderSql = $orderBy === 'created' ? 'c.created_at DESC, c.id DESC' : 'COALESCE(c.updated_at, c.created_at) DESC, c.id DESC';
         $sql = "SELECT c.id, c.customer_name, c.customer_code, COALESCE(pa.country, c.country) AS country, COALESCE(pa.city, c.city) AS city,
@@ -1752,6 +1748,27 @@ function crm_customer_overview_stats(bool $forceRefresh = false): array
             'updated_at' => (string)($row['updated_at'] ?? ''),
         ], $stmt->fetchAll());
     };
+    $duplicateSql = "((c.email IS NOT NULL AND c.email <> '' AND EXISTS (SELECT 1 FROM crm_customers d WHERE d.deleted_at IS NULL AND d.id <> c.id AND d.email = c.email))
+        OR (c.website IS NOT NULL AND c.website <> '' AND EXISTS (SELECT 1 FROM crm_customers d2 WHERE d2.deleted_at IS NULL AND d2.id <> c.id AND d2.website = c.website)))";
+
+    $summarySql = "SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN DATE_FORMAT(c.created_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m') THEN 1 ELSE 0 END) AS month_new,
+            SUM(CASE WHEN {$noOwnerSql} THEN 1 ELSE 0 END) AS no_owner,
+            SUM(CASE WHEN {$noContactSql} THEN 1 ELSE 0 END) AS no_contact,
+            SUM(CASE WHEN {$noEmailSql} THEN 1 ELSE 0 END) AS no_email,
+            SUM(CASE WHEN {$incompleteSql} THEN 1 ELSE 0 END) AS incomplete,
+            SUM(CASE WHEN {$staleFollowSql} THEN 1 ELSE 0 END) AS stale_30d,
+            SUM(CASE WHEN {$duplicateSql} THEN 1 ELSE 0 END) AS duplicate,
+            SUM(CASE WHEN DATE(c.created_at) = CURDATE() THEN 1 ELSE 0 END) AS growth_today,
+            SUM(CASE WHEN c.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS growth_3d,
+            SUM(CASE WHEN c.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS growth_7d,
+            SUM(CASE WHEN c.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS growth_1m,
+            SUM(CASE WHEN c.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH) THEN 1 ELSE 0 END) AS growth_3m
+        FROM crm_customers c WHERE {$where}";
+    $summaryStmt = db()->prepare($summarySql);
+    $summaryStmt->execute($params);
+    $summary = $summaryStmt->fetch() ?: [];
 
     $countryStmt = db()->prepare("SELECT COALESCE(NULLIF(c.country, ''), '未填') AS label, COUNT(*) AS value FROM crm_customers c WHERE {$where} GROUP BY COALESCE(NULLIF(c.country, ''), '未填') ORDER BY value DESC, label ASC LIMIT 8");
     $countryStmt->execute($params);
@@ -1781,40 +1798,29 @@ function crm_customer_overview_stats(bool $forceRefresh = false): array
         'stale_count' => (int)$row['stale_count'],
     ], $ownerStmt->fetchAll());
 
-    $ranges = [
-        ['key' => 'today', 'label' => '今天', 'sql' => 'DATE(c.created_at) = CURDATE()'],
-        ['key' => '3d', 'label' => '3天', 'sql' => 'c.created_at >= DATE_SUB(NOW(), INTERVAL 3 DAY)'],
-        ['key' => '7d', 'label' => '7天', 'sql' => 'c.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'],
-        ['key' => '1m', 'label' => '1个月', 'sql' => 'c.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)'],
-        ['key' => '3m', 'label' => '3个月', 'sql' => 'c.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)'],
+    $growth = [
+        ['key' => 'today', 'label' => '今天', 'value' => (int)($summary['growth_today'] ?? 0)],
+        ['key' => '3d', 'label' => '3天', 'value' => (int)($summary['growth_3d'] ?? 0)],
+        ['key' => '7d', 'label' => '7天', 'value' => (int)($summary['growth_7d'] ?? 0)],
+        ['key' => '1m', 'label' => '1个月', 'value' => (int)($summary['growth_1m'] ?? 0)],
+        ['key' => '3m', 'label' => '3个月', 'value' => (int)($summary['growth_3m'] ?? 0)],
     ];
-    $growth = [];
-    foreach ($ranges as $range) {
-        $stmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c WHERE {$where} AND {$range['sql']}");
-        $stmt->execute($params);
-        $growth[] = ['key' => $range['key'], 'label' => $range['label'], 'value' => (int)$stmt->fetchColumn()];
-    }
-    $totalStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c WHERE {$where}");
-    $totalStmt->execute($params);
-    $total = (int)$totalStmt->fetchColumn();
+    $total = (int)($summary['total'] ?? 0);
     $leadPoolCount = 0;
     if (crm_table_exists_safe('crm_lead_pool')) {
         $leadPoolCount = (int)db()->query("SELECT COUNT(*) FROM crm_lead_pool WHERE status = 'pending'")->fetchColumn();
     }
-    $duplicateSql = "((c.email IS NOT NULL AND c.email <> '' AND EXISTS (SELECT 1 FROM crm_customers d WHERE d.deleted_at IS NULL AND d.id <> c.id AND d.email = c.email))
-        OR (c.website IS NOT NULL AND c.website <> '' AND EXISTS (SELECT 1 FROM crm_customers d2 WHERE d2.deleted_at IS NULL AND d2.id <> c.id AND d2.website = c.website)))";
-
     $result = [
         'total' => $total,
         'refreshed_at' => date('Y-m-d H:i:s'),
         '_cache_hit' => 0,
         'kpis' => [
             'total' => $total,
-            'month_new' => $countWhere('DATE_FORMAT(c.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")'),
+            'month_new' => (int)($summary['month_new'] ?? 0),
             'lead_pool' => $leadPoolCount,
-            'public' => $countWhere($noOwnerSql),
-            'no_owner' => $countWhere($noOwnerSql),
-            'incomplete' => $countWhere($incompleteSql),
+            'public' => (int)($summary['no_owner'] ?? 0),
+            'no_owner' => (int)($summary['no_owner'] ?? 0),
+            'incomplete' => (int)($summary['incomplete'] ?? 0),
         ],
         'countries' => $countries,
         'sources' => $sources,
@@ -1822,11 +1828,11 @@ function crm_customer_overview_stats(bool $forceRefresh = false): array
         'growth' => $growth,
         'pending' => [
             ['key' => 'lead_pool', 'title' => '暂存池待确认', 'count' => $leadPoolCount, 'rows' => [], 'reason' => '待确认入库'],
-            ['key' => 'duplicate', 'title' => '疑似重复客户', 'count' => $countWhere($duplicateSql), 'rows' => $customerRows($duplicateSql, [], 3), 'reason' => '邮箱或网站重复'],
-            ['key' => 'incomplete', 'title' => '资料缺失客户', 'count' => $countWhere($incompleteSql), 'rows' => $customerRows($incompleteSql, [], 3), 'reason' => '资料不完整'],
-            ['key' => 'no_contact', 'title' => '无联系人客户', 'count' => $countWhere($noContactSql), 'rows' => $customerRows($noContactSql, [], 3), 'reason' => '缺联系人'],
-            ['key' => 'no_email', 'title' => '无邮箱客户', 'count' => $countWhere($noEmailSql), 'rows' => $customerRows($noEmailSql, [], 3), 'reason' => '缺联系人邮箱'],
-            ['key' => 'stale_30d', 'title' => '30 天未跟进客户', 'count' => $countWhere($staleFollowSql), 'rows' => $customerRows($staleFollowSql, [], 3), 'reason' => '30 天未跟进'],
+            ['key' => 'duplicate', 'title' => '疑似重复客户', 'count' => (int)($summary['duplicate'] ?? 0), 'rows' => $customerRows($duplicateSql, [], 3), 'reason' => '邮箱或网站重复'],
+            ['key' => 'incomplete', 'title' => '资料缺失客户', 'count' => (int)($summary['incomplete'] ?? 0), 'rows' => $customerRows($incompleteSql, [], 3), 'reason' => '资料不完整'],
+            ['key' => 'no_contact', 'title' => '无联系人客户', 'count' => (int)($summary['no_contact'] ?? 0), 'rows' => $customerRows($noContactSql, [], 3), 'reason' => '缺联系人'],
+            ['key' => 'no_email', 'title' => '无邮箱客户', 'count' => (int)($summary['no_email'] ?? 0), 'rows' => $customerRows($noEmailSql, [], 3), 'reason' => '缺联系人邮箱'],
+            ['key' => 'stale_30d', 'title' => '30 天未跟进客户', 'count' => (int)($summary['stale_30d'] ?? 0), 'rows' => $customerRows($staleFollowSql, [], 3), 'reason' => '30 天未跟进'],
         ],
         'recent_created' => $customerRows('', [], 6, 'created'),
         'recent_updated' => $customerRows('', [], 6, 'updated'),
