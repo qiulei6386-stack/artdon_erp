@@ -2322,9 +2322,15 @@
       this.autoSyncTimer = window.setInterval(function () {
         if (current !== 'customers') return;
         self.loadList({ silent: true }).then(function () {
-          if (self.currentId) self.loadDetail(self.currentId, { silent: true });
+          if (self.shouldAutoRefreshCurrentDetail()) self.loadDetail(self.currentId, { silent: true });
         });
       }, 60000);
+    },
+    shouldAutoRefreshCurrentDetail: function () {
+      if (!this.currentId) return false;
+      if (this.archiveEditMode || this.attributeViewMode || this.attributeEditMode) return false;
+      var target = this.detailResolveTarget(this.activeDetailTab || 'overview');
+      return target.group === 'overview';
     },
     restoreListPrefs: function () {
       var prefs = readJson('crm_customer_list_prefs', {});
@@ -3160,7 +3166,7 @@
       return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
         self.currentDetail = json.data;
-        self.renderDetail(json.data);
+        self.renderDetail(json.data, { suppressScroll: !!options.silent });
         self.renderSelection();
         if (!options.silent) renderActions('customers');
       }).catch(function (error) {
@@ -3192,7 +3198,8 @@
       });
       return this.detailFullLoading;
     },
-    renderDetail: function (data) {
+    renderDetail: function (data, options) {
+      options = options || {};
       var box = document.querySelector('[data-customer-detail]');
       if (!box) return;
       var c = data.customer;
@@ -3389,7 +3396,7 @@
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
-      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeTab);
+      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeTab, { suppressScroll: !!options.suppressScroll });
     },
     renderArchiveAttributePanel: function (data) {
       data = data || {};
@@ -4444,7 +4451,8 @@
         button.addEventListener('click', function () { self.deleteFollowup(Number(button.getAttribute('data-followup-delete') || 0)); });
       });
     },
-    switchDetailTab: function (name) {
+    switchDetailTab: function (name, options) {
+      options = options || {};
       var target = this.detailResolveTarget(name || 'overview');
       var activeName = target.group;
       var activeSub = target.sub;
@@ -4477,12 +4485,12 @@
       activeGroup.querySelectorAll('.customer-tab-subpanel').forEach(function (panel) {
         panel.classList.toggle('active', panel.getAttribute('data-detail-panel') === activeSub);
       });
-      if (activeName !== 'overview' && name !== activeName) {
+      if (!options.suppressScroll && activeName !== 'overview' && name !== activeName) {
         var section = activeGroup.querySelector('[data-detail-panel="' + activeSub + '"]');
         if (section) {
           section.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      } else if (activeName !== 'overview') {
+      } else if (!options.suppressScroll && activeName !== 'overview') {
         activeGroup.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       if (current === 'customers') renderActions('customers');
@@ -22660,7 +22668,7 @@
     loadNotificationSummary({ flash: true });
     if (current === 'customers' && CustomerModule.initialized) {
       CustomerModule.loadList({ silent: true }).then(function () {
-        if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+        if (CustomerModule.shouldAutoRefreshCurrentDetail()) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
       });
     }
     if (current === 'mail' && MailModule.inited) {
