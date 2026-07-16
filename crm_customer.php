@@ -735,13 +735,13 @@ function crm_customer_preference_row(int $customerId, string $table): array
     return $stmt->fetch() ?: [];
 }
 
-function crm_customer_completeness(int $customerId, array $customer): array
+function crm_customer_completeness(int $customerId, array $customer, array $context = []): array
 {
-    $contacts = crm_contact_list(['customer_id' => $customerId])['rows'];
-    $sourceTags = crm_customer_tags($customerId, 'crm_customer_source_tags', 'source_key');
-    $promotionChannels = crm_customer_tags($customerId, 'crm_customer_promotion_channels', 'channel_key');
-    $owners = crm_customer_owners($customerId);
-    $groups = crm_customer_groups_for($customerId);
+    $contacts = $context['contacts'] ?? crm_contact_list(['customer_id' => $customerId])['rows'];
+    $sourceTags = $context['source_tags'] ?? crm_customer_tags($customerId, 'crm_customer_source_tags', 'source_key');
+    $promotionChannels = $context['promotion_channels'] ?? crm_customer_tags($customerId, 'crm_customer_promotion_channels', 'channel_key');
+    $owners = $context['owners'] ?? crm_customer_owners($customerId);
+    $groups = $context['groups'] ?? crm_customer_groups_for($customerId);
     $checks = [
         '客户名称' => !empty($customer['customer_name']),
         '国家' => !empty($customer['country']),
@@ -763,18 +763,22 @@ function crm_customer_completeness(int $customerId, array $customer): array
     return ['score' => (int)round($done * 100 / max(1, count($checks))), 'checks' => $checks, 'missing' => array_keys(array_filter($checks, fn($ok) => !$ok))];
 }
 
-function crm_customer_scores(int $customerId, array $customer): array
+function crm_customer_scores(int $customerId, array $customer, array $context = [], bool $persist = false): array
 {
-    $completeness = crm_customer_completeness($customerId, $customer);
-    $lastFollow = db()->query('SELECT MAX(followup_time) FROM crm_customer_followups WHERE customer_id = ' . (int)$customerId . ' AND deleted_at IS NULL')->fetchColumn();
+    $completeness = crm_customer_completeness($customerId, $customer, $context);
+    $lastFollow = array_key_exists('last_followup_at', $context)
+        ? $context['last_followup_at']
+        : db()->query('SELECT MAX(followup_time) FROM crm_customer_followups WHERE customer_id = ' . (int)$customerId . ' AND deleted_at IS NULL')->fetchColumn();
     $days = $lastFollow ? floor((time() - strtotime($lastFollow)) / 86400) : 999;
     $followRisk = $days > 30 ? 90 : ($days > 15 ? 70 : ($days > 7 ? 50 : 20));
     $activity = max(10, min(100, 100 - min(90, $days * 3)));
     $health = max(10, min(100, (int)round(($completeness['score'] + $activity + (100 - $followRisk)) / 3)));
     $deal = in_array($customer['lifecycle_key'] ?? '', ['quoting','sampling','deal'], true) ? 65 : 30;
     $scores = ['health_score' => $health, 'activity_score' => $activity, 'deal_probability' => $deal, 'followup_risk' => $followRisk, 'completeness_score' => $completeness['score'], 'completeness' => $completeness];
-    db()->prepare('INSERT INTO crm_customer_scores (customer_id, health_score, activity_score, deal_probability, followup_risk, completeness_score, score_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE health_score=VALUES(health_score), activity_score=VALUES(activity_score), deal_probability=VALUES(deal_probability), followup_risk=VALUES(followup_risk), completeness_score=VALUES(completeness_score), score_json=VALUES(score_json), updated_at=NOW()')
-        ->execute([$customerId, $health, $activity, $deal, $followRisk, $completeness['score'], json_encode($scores, JSON_UNESCAPED_UNICODE)]);
+    if ($persist) {
+        db()->prepare('INSERT INTO crm_customer_scores (customer_id, health_score, activity_score, deal_probability, followup_risk, completeness_score, score_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE health_score=VALUES(health_score), activity_score=VALUES(activity_score), deal_probability=VALUES(deal_probability), followup_risk=VALUES(followup_risk), completeness_score=VALUES(completeness_score), score_json=VALUES(score_json), updated_at=NOW()')
+            ->execute([$customerId, $health, $activity, $deal, $followRisk, $completeness['score'], json_encode($scores, JSON_UNESCAPED_UNICODE)]);
+    }
     return $scores;
 }
 
@@ -1479,7 +1483,24 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     $stmt->execute($params);
     $customer = $stmt->fetch();
     if (!$customer) throw new RuntimeException('客户不存在或无权查看。');
-    $scores = crm_customer_scores($id, $customer);
+    $addresses = crm_customer_addresses($id);
+    $sourceTags = crm_customer_tags($id, 'crm_customer_source_tags', 'source_key');
+    $promotionChannels = crm_customer_tags($id, 'crm_customer_promotion_channels', 'channel_key');
+    $promotionStatus = crm_customer_promotion_status($id);
+    $owners = crm_customer_owners($id);
+    $contacts = crm_contact_list(['customer_id' => $id])['rows'];
+    $groups = crm_customer_groups_for($id);
+    $lastFollowStmt = db()->prepare('SELECT MAX(followup_time) FROM crm_customer_followups WHERE customer_id = ? AND deleted_at IS NULL');
+    $lastFollowStmt->execute([$id]);
+    $lastFollowAt = $lastFollowStmt->fetchColumn();
+    $scores = crm_customer_scores($id, $customer, [
+        'contacts' => $contacts,
+        'source_tags' => $sourceTags,
+        'promotion_channels' => $promotionChannels,
+        'owners' => $owners,
+        'groups' => $groups,
+        'last_followup_at' => $lastFollowAt,
+    ]);
     $tabConfig = crm_customer_detail_tabs($customer);
     $linkage = crm_customer_linkage_summary($customer);
     $salesActions = crm_customer_sales_action_stats($id, $customer, $linkage);
@@ -1489,13 +1510,13 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'tabs' => $tabConfig['tabs'],
         'scores' => $scores,
         'protection' => crm_customer_protection($id),
-        'addresses' => crm_customer_addresses($id),
-        'source_tags' => crm_customer_tags($id, 'crm_customer_source_tags', 'source_key'),
-        'promotion_channels' => crm_customer_tags($id, 'crm_customer_promotion_channels', 'channel_key'),
-        'promotion_status' => crm_customer_promotion_status($id),
-        'owners' => crm_customer_owners($id),
-        'contacts' => crm_contact_list(['customer_id' => $id])['rows'],
-        'groups' => crm_customer_groups_for($id),
+        'addresses' => $addresses,
+        'source_tags' => $sourceTags,
+        'promotion_channels' => $promotionChannels,
+        'promotion_status' => $promotionStatus,
+        'owners' => $owners,
+        'contacts' => $contacts,
+        'groups' => $groups,
         'sales_actions' => $salesActions,
         'summary' => crm_customer_summary($id, $linkage),
         'linkage' => $linkage,
