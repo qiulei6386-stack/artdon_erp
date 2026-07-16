@@ -22172,12 +22172,20 @@ body.is-workspace-module .workspace-customer-growth {
 }
 body.is-workspace-module .workspace-customer-growth button {
   min-height: 58px !important;
+  align-content: start !important;
+  gap: 5px !important;
   border-radius: 10px !important;
   background: #f8fafc !important;
-  padding: 9px !important;
+  padding: 9px 10px !important;
 }
 body.is-workspace-module .workspace-customer-growth strong {
   font-size: 22px !important;
+  line-height: 1.15 !important;
+}
+body.is-workspace-module .workspace-customer-growth span {
+  font-size: 12px !important;
+  line-height: 16px !important;
+  max-height: 16px !important;
 }
 body.is-workspace-module .workspace-growth-recent {
   display: grid;
