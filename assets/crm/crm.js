@@ -10267,23 +10267,28 @@
 	      toast('推广设置已保存。');
 	    },
 	    render: function () {
-      this.safeRender('channels', this.renderChannels, '[data-promo-channels]');
-      this.safeRender('groups', this.renderGroups, '[data-promo-groups]');
+      var view = this.currentView || 'dashboard';
       this.safeRender('pool_filters', this.renderPoolFilters, '[data-promo-group-select], [data-promo-owner]');
-      this.safeRender('pool', this.renderPool, '[data-promo-pool]');
-      this.safeRender('pool_mode', this.renderPoolMode, '[data-promo-pool-mode]');
-      this.safeRender('pool_pager', this.renderPoolPager, '[data-promo-pool-pager]');
-      this.safeRender('contacts', this.renderContacts, '[data-promo-contacts]');
-      this.safeRender('contact_stats', this.renderContactStats, '[data-promo-contact-stats]');
-      this.safeRender('contact_preview', this.renderContactPreview, '[data-promo-contact-preview], [data-promo-contact-skip-reasons]');
-      this.safeRender('group_management', this.renderGroupManagement, '[data-promo-group-table]');
-      this.safeRender('tasks', this.renderTasks, '[data-promo-tasks]');
-      this.safeRender('task_properties', this.renderTaskProperties, '[data-promo-task-properties]');
-      this.safeRender('execution', this.renderExecutionCenter, '[data-promo-execution-center]');
-      this.safeRender('failures', this.renderFailures, '[data-promo-failures]');
-	      this.safeRender('logs', this.renderLogs, '[data-promo-logs]');
-	      this.safeRender('analytics', this.renderAnalytics, '[data-promo-analytics], [data-promo-analytics-detail]');
-	      this.safeRender('settings', this.renderSettings, '[data-promo-settings]');
+      if (view === 'campaigns' || view === 'dashboard' || view === 'wizard') {
+        this.safeRender('tasks', this.renderTasks, '[data-promo-tasks]');
+        this.safeRender('task_properties', this.renderTaskProperties, '[data-promo-task-properties]');
+      } else if (view === 'customer_pool') {
+        this.safeRender('pool', this.renderPool, '[data-promo-pool]');
+        this.safeRender('pool_mode', this.renderPoolMode, '[data-promo-pool-mode]');
+        this.safeRender('pool_pager', this.renderPoolPager, '[data-promo-pool-pager]');
+      } else if (view === 'contact_strategy') {
+        this.safeRender('contacts', this.renderContacts, '[data-promo-contacts]');
+        this.safeRender('contact_stats', this.renderContactStats, '[data-promo-contact-stats]');
+        this.safeRender('contact_preview', this.renderContactPreview, '[data-promo-contact-preview], [data-promo-contact-skip-reasons]');
+      } else if (view === 'group_management') {
+        this.safeRender('group_management', this.renderGroupManagement, '[data-promo-group-table]');
+      } else if (view === 'execution') {
+        this.safeRender('execution', this.renderExecutionCenter, '[data-promo-execution-center]');
+      } else if (view === 'analytics') {
+        this.safeRender('analytics', this.renderAnalytics, '[data-promo-analytics], [data-promo-analytics-detail]');
+      } else if (view === 'settings') {
+        this.safeRender('settings', this.renderSettings, '[data-promo-settings]');
+      }
 	      this.safeRender('task_channels', this.renderTaskChannels, '');
 	      this.safeRender('selection_hint', this.renderSelectionHint, '');
 	    },
