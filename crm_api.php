@@ -1050,6 +1050,22 @@ try {
         crm_require('customer.view');
         api_response(true, '', crm_customer_get((int)($_POST['customer_id'] ?? 0), (string)($_POST['detail'] ?? 'full')));
     }
+    if ($action === 'customer_attribute_get') {
+        crm_require('customer.view');
+        api_response(true, '', crm_customer_attribute_get((int)($_POST['customer_id'] ?? 0)));
+    }
+    if ($action === 'customer_attribute_missing') {
+        crm_require('customer.view');
+        api_response(true, '', crm_customer_attribute_missing((int)($_POST['customer_id'] ?? 0)));
+    }
+    if ($action === 'customer_attribute_logs') {
+        crm_require('customer.view');
+        api_response(true, '', crm_customer_attribute_logs((int)($_POST['customer_id'] ?? 0)));
+    }
+    if ($action === 'customer_attribute_export') {
+        crm_require('customer.export');
+        api_response(true, '', crm_customer_attribute_export((int)($_POST['customer_id'] ?? 0)));
+    }
     if ($action === 'customer_overview_stats') {
         crm_require('customer.view');
         api_response(true, '', crm_customer_overview_stats());
@@ -1142,6 +1158,10 @@ try {
     if ($action === 'customer_update') {
         require_csrf();
         api_response(true, '客户已保存', crm_customer_update((int)($_POST['customer_id'] ?? 0), $_POST));
+    }
+    if ($action === 'customer_attribute_save') {
+        require_csrf();
+        api_response(true, '客户属性已保存', crm_customer_attribute_save((int)($_POST['customer_id'] ?? 0), $_POST));
     }
     if ($action === 'customer_delete') {
         require_csrf();

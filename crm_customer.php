@@ -1552,6 +1552,80 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     ];
 }
 
+function crm_customer_attribute_get(int $id): array
+{
+    $detail = crm_customer_get($id, 'full');
+    return [
+        'customer' => $detail['customer'] ?? [],
+        'scores' => $detail['scores'] ?? [],
+        'missing' => (($detail['scores'] ?? [])['completeness'] ?? [])['missing'] ?? [],
+        'source_tags' => $detail['source_tags'] ?? [],
+        'promotion_channels' => $detail['promotion_channels'] ?? [],
+        'promotion_status' => $detail['promotion_status'] ?? '',
+        'owners' => $detail['owners'] ?? [],
+        'addresses' => $detail['addresses'] ?? [],
+        'groups' => $detail['groups'] ?? [],
+    ];
+}
+
+function crm_customer_attribute_missing(int $id): array
+{
+    $detail = crm_customer_attribute_get($id);
+    return [
+        'customer_id' => $id,
+        'completeness' => ($detail['scores'] ?? [])['completeness'] ?? [],
+        'missing' => $detail['missing'] ?? [],
+    ];
+}
+
+function crm_customer_attribute_logs(int $id): array
+{
+    crm_customer_get($id, 'overview');
+    return ['rows' => crm_customer_logs($id)];
+}
+
+function crm_customer_attribute_save(int $id, array $input): array
+{
+    if ($id <= 0) throw new RuntimeException('缺少客户 ID，无法保存客户属性。');
+    $before = crm_customer_basic_row($id);
+    $attributeBefore = crm_customer_attribute_get($id);
+    if (!array_key_exists('group_ids', $input)) {
+        $input['group_ids'] = array_values(array_filter(array_map(fn($row) => (int)($row['id'] ?? $row['group_id'] ?? 0), $attributeBefore['groups'] ?? [])));
+    }
+    if (empty($input['owner_user_ids'])) {
+        $ownerIds = array_values(array_filter(array_map(fn($row) => (int)($row['user_id'] ?? 0), $attributeBefore['owners'] ?? [])));
+        $primaryOwnerId = (int)($input['owner_user_id'] ?? 0);
+        if ($primaryOwnerId > 0 && !in_array($primaryOwnerId, $ownerIds, true)) array_unshift($ownerIds, $primaryOwnerId);
+        if ($ownerIds) $input['owner_user_ids'] = $ownerIds;
+    }
+    $result = crm_customer_update($id, $input);
+    $after = crm_customer_basic_row($id);
+    $watched = ['customer_code','customer_name','customer_name_en','country','city','address','website','email','phone','whatsapp','source','level','status','lifecycle_key','risk_level','do_not_contact','owner_user_id','owner_department','remark'];
+    $changes = [];
+    foreach ($watched as $field) {
+        $old = (string)($before[$field] ?? '');
+        $new = (string)($after[$field] ?? '');
+        if ($old !== $new) $changes[$field] = ['old' => $old, 'new' => $new];
+    }
+    if ($changes) {
+        crm_customer_log('customer_attribute_save', 'customer', $id, $id, ['changes' => array_map(fn($v) => $v['old'], $changes)], ['changes' => array_map(fn($v) => $v['new'], $changes)], '保存客户属性');
+    }
+    $result['attribute_changes'] = $changes;
+    $result['attribute'] = crm_customer_attribute_get($id);
+    return $result;
+}
+
+function crm_customer_attribute_export(int $id): array
+{
+    $detail = crm_customer_get($id, 'full');
+    crm_customer_log('customer_attribute_export', 'customer', $id, $id, null, ['customer_id' => $id], '导出客户属性');
+    return [
+        'filename' => 'customer_attribute_' . $id . '_' . date('Ymd_His') . '.json',
+        'content_type' => 'application/json',
+        'content' => json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+    ];
+}
+
 function crm_customer_basic_row(int $id): array
 {
     crm_customer_ensure_tables();

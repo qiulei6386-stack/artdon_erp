@@ -2276,6 +2276,9 @@
     selectedLeadId: 0,
     selectedLead: null,
     entryContacts: [],
+    attributeViewMode: false,
+    attributeEditMode: false,
+    attributeData: null,
     columns: [
       { key: 'select', label: '', title: '选择', width: 34 },
       { key: 'customer_code', label: '代码', title: '客户代码', width: 92 },
@@ -3006,14 +3009,198 @@
       }
       var tabHtml = '<div class="customer-detail-tabs" data-tab-label-mode="' + esc(tabConfig.label_mode || 'icon_short') + '">' + mainTabs.map(function (tab, index) {
         return '<button data-detail-tab="' + esc(tab.key) + '" class="' + (tab.key === activeTab ? 'active' : '') + '" title="' + esc(tab.name) + '"><span>' + esc(tab.icon || '') + '</span><strong>' + esc(tab.short || tab.name) + '</strong></button>';
-      }).join('') + (moreTabs.length ? '<select data-detail-more><option value="">更多</option>' + moreTabs.map(function (tab) { return '<option value="' + esc(tab.key) + '"' + (tab.key === activeTab ? ' selected' : '') + '>' + esc(tab.name) + '</option>'; }).join('') + '</select>' : '') + '</div>';
+      }).join('') + '<select data-detail-more><option value="">更多</option><option value="__attributes">客户属性</option>' + moreTabs.map(function (tab) { return '<option value="' + esc(tab.key) + '"' + (tab.key === activeTab ? ' selected' : '') + '>' + esc(tab.name) + '</option>'; }).join('') + '</select></div>';
       var panelHtml = tabs.map(function (tab, index) {
         var html = panelContent[tab.key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(tab.key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(tab.name || tab.key) + '</span><strong>0</strong><em>暂无该类客户数据</em></button></div></section>';
         return tab.key === activeTab ? html.replace('customer-tab-panel"', 'customer-tab-panel active"') : html.replace('customer-tab-panel active"', 'customer-tab-panel"');
       }).join('');
       box.innerHTML = tabHtml + panelHtml;
+      this.attributeViewMode = false;
+      this.attributeEditMode = false;
       this.bindDetailEvents();
       this.switchDetailTab(activeTab);
+    },
+    openCustomerAttributeView: function (editMode, enlarge) {
+      if (!this.currentId) return this.showCustomerError('请先选择客户。');
+      if (enlarge) this.applyLayoutMode('detail', false);
+      var self = this;
+      this.attributeViewMode = true;
+      this.attributeEditMode = !!editMode;
+      var box = document.querySelector('[data-customer-detail]');
+      if (box) box.innerHTML = '<div class="customer-attribute-view"><header><div><span>客户属性</span><strong>客户属性</strong><p>正在读取客户基础属性...</p></div></header><div class="visit-empty">正在加载...</div></div>';
+      return post('customer_attribute_get', { customer_id: this.currentId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户属性读取失败');
+        self.attributeData = json.data || {};
+        self.renderCustomerAttributeView();
+        renderActions('customers');
+      }).catch(function (error) {
+        self.attributeViewMode = false;
+        self.showCustomerError(error.message || '客户属性读取失败');
+        renderActions('customers');
+      });
+    },
+    renderCustomerAttributeView: function () {
+      var box = document.querySelector('[data-customer-detail]');
+      if (!box) return;
+      var data = this.attributeData || {};
+      var c = data.customer || ((this.currentDetail || {}).customer || {});
+      var owners = data.owners || [];
+      var completeness = ((data.scores || {}).completeness || {});
+      var missing = data.missing || completeness.missing || [];
+      var ownerText = owners.length ? owners.map(function (o) { return (o.username || ('#' + o.user_id)) + '/' + (o.role_type || '-'); }).join('，') : (c.owner_name || '未分配');
+      var disabled = this.attributeEditMode ? '' : ' disabled';
+      var doNotContact = Number(c.do_not_contact) ? ' checked' : '';
+      var field = function (label, name, value, attrs) {
+        return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '"' + disabled + ' ' + (attrs || '') + '></label>';
+      };
+      var select = function (label, name, html) {
+        return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><select name="' + esc(name) + '"' + disabled + '>' + html + '</select></label>';
+      };
+      box.innerHTML = '<form class="customer-attribute-view" data-customer-attribute-form>' +
+        '<header><div><span>客户属性</span><strong>' + esc(c.customer_name || '客户属性') + '</strong><p>' + esc(c.customer_code || '未填代码') + ' · 负责人：' + esc(ownerText) + '</p></div><aside><b>完整度 ' + esc(completeness.score || 0) + '%</b><span>缺失：' + esc((missing || []).slice(0, 5).join(' / ') || '资料较完整') + '</span></aside></header>' +
+        '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '">' +
+        '<section class="entity-section entity-section-primary"><h3>基础属性</h3><div class="entity-grid">' +
+        field('客户名称 *', 'customer_name', c.customer_name, 'required') +
+        field('英文名称', 'customer_name_en', c.customer_name_en) +
+        field('客户代码', 'customer_code', c.customer_code) +
+        field('国家 *', 'country', c.country, 'required list="crm-country-options"') +
+        field('城市 / 地区', 'city', c.city, 'list="crm-address-region-options-filtered"') +
+        field('详细地址', 'address', c.address) +
+        '</div></section>' +
+        '<section class="entity-section"><h3>画像与状态</h3><div class="entity-grid">' +
+        select('客户等级', 'level', this.optionHtml('customer_level', c.level || 'P3')) +
+        select('客户状态', 'status', this.optionHtml('customer_status', c.status || 'lead')) +
+        select('生命周期', 'lifecycle_key', this.optionHtml('customer_lifecycle', c.lifecycle_key || 'lead')) +
+        select('风险等级', 'risk_level', this.optionHtml('customer_risk_level', c.risk_level || 'healthy')) +
+        select('推广状态', 'promotion_status', this.optionHtml('promotion_status', data.promotion_status || c.promotion_status || 'not_promoted')) +
+        '<label class="tag-chip" data-attribute-field="do_not_contact"><input type="checkbox" name="do_not_contact" value="1"' + doNotContact + disabled + '><span>黑名单 / 禁止联系</span></label>' +
+        '</div></section>' +
+        '<section class="entity-section"><h3>联系方式</h3><div class="entity-grid">' +
+        field('邮箱', 'email', c.email, 'placeholder="name@example.com"') +
+        field('电话', 'phone', c.phone) +
+        field('WhatsApp', 'whatsapp', c.whatsapp) +
+        field('网站', 'website', c.website, 'placeholder="https://"') +
+        '</div></section>' +
+        '<section class="entity-section"><h3>来源与推广</h3><div class="entry-checks wide" data-attribute-field="source_tags"><strong>来源标签</strong>' + this.checkboxHtml('customer_source', 'source_tags', data.source_tags || []) + '</div><div class="entry-checks wide" data-attribute-field="promotion_channels"><strong>默认推广方式</strong>' + this.checkboxHtml('promotion_channel', 'promotion_channels', data.promotion_channels || []) + '</div></section>' +
+        '<section class="entity-section"><h3>负责人</h3><div class="entity-grid"><label class="entity-field" data-attribute-field="owner_user_id"><span>第一负责人</span><select name="owner_user_id"' + disabled + '>' + this.customerOwnerOptions(c.owner_user_id || '') + '</select></label></div><p class="entry-muted">协作负责人仍在“编辑客户”完整弹窗中维护。本视图先打通客户属性主字段。</p></section>' +
+        '<section class="entity-section entity-section-note"><h3>备注</h3><textarea name="remark" rows="4" maxlength="1000"' + disabled + '>' + esc(c.remark || '') + '</textarea></section>' +
+        '<section class="entity-section" data-customer-attribute-extra><h3>修改日志</h3><div class="visit-empty">点击右侧“查看修改日志”读取。</div></section>' +
+        '</form>';
+      if (!this.attributeEditMode) {
+        box.querySelectorAll('[data-customer-attribute-form] input[type="checkbox"]').forEach(function (input) { input.disabled = true; });
+      }
+    },
+    collectCustomerAttributeData: function () {
+      var form = document.querySelector('[data-customer-attribute-form]');
+      if (!form) throw new Error('客户属性表单不存在。');
+      var data = {};
+      new FormData(form).forEach(function (value, key) {
+        if (key === 'source_tags' || key === 'promotion_channels') {
+          if (!data[key]) data[key] = [];
+          data[key].push(value);
+        } else {
+          data[key] = value;
+        }
+      });
+      data.customer_id = this.currentId;
+      if (!data.do_not_contact) data.do_not_contact = '';
+      return data;
+    },
+    saveCustomerAttribute: function () {
+      var self = this;
+      var data;
+      try { data = this.collectCustomerAttributeData(); } catch (error) { return this.showCustomerError(error.message); }
+      return post('customer_attribute_save', data).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户属性保存失败');
+        toast(json.message || '客户属性已保存');
+        self.attributeEditMode = false;
+        self.attributeData = (json.data && json.data.attribute) || self.attributeData;
+        return self.loadDetail(self.currentId, { silent: true, keepTab: true }).then(function () {
+          self.attributeViewMode = true;
+          self.renderCustomerAttributeView();
+          renderActions('customers');
+        });
+      }).catch(function (error) {
+        self.showCustomerError(error.message || '客户属性保存失败');
+      });
+    },
+    showCustomerAttributeMissing: function () {
+      var self = this;
+      if (!this.currentId) return this.showCustomerError('请先选择客户。');
+      return post('customer_attribute_missing', { customer_id: this.currentId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '缺失资料读取失败');
+        var missing = (json.data && json.data.missing) || [];
+        if (!self.attributeViewMode || !self.attributeEditMode) {
+          self.attributeEditMode = true;
+          self.attributeViewMode = true;
+          self.renderCustomerAttributeView();
+          renderActions('customers');
+        }
+        self.markCustomerAttributeMissing(missing);
+        toast(missing.length ? ('缺失项：' + missing.join(' / ')) : '资料较完整');
+      }).catch(function (error) {
+        self.showCustomerError(error.message || '缺失资料读取失败');
+      });
+    },
+    markCustomerAttributeMissing: function (missing) {
+      var map = { '客户名称': 'customer_name', '客户代码': 'customer_code', '国家': 'country', '城市': 'city', '网站': 'website', '邮箱': 'email', '电话': 'phone', 'WhatsApp': 'whatsapp', '来源': 'source_tags', '推广方式': 'promotion_channels' };
+      document.querySelectorAll('[data-attribute-field]').forEach(function (node) { node.classList.remove('is-missing'); });
+      (missing || []).forEach(function (label) {
+        var key = map[label] || '';
+        if (!key) return;
+        var node = document.querySelector('[data-attribute-field="' + key + '"]');
+        if (node) node.classList.add('is-missing');
+      });
+    },
+    showCustomerAttributeLogs: function () {
+      var self = this;
+      if (!this.currentId) return this.showCustomerError('请先选择客户。');
+      return post('customer_attribute_logs', { customer_id: this.currentId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户日志读取失败');
+        if (!self.attributeViewMode) {
+          self.attributeViewMode = true;
+          self.attributeEditMode = false;
+          self.renderCustomerAttributeView();
+        }
+        var rows = (json.data && json.data.rows) || [];
+        var extra = document.querySelector('[data-customer-attribute-extra]');
+        if (!extra) return;
+        extra.innerHTML = '<h3>修改日志</h3><div class="customer-log-list rich">' + (rows.length ? rows.slice(0, 30).map(function (row) { return CustomerModule.logCard(row); }).join('') : '<div class="visit-empty">暂无修改日志</div>') + '</div>';
+      }).catch(function (error) {
+        self.showCustomerError(error.message || '客户日志读取失败');
+      });
+    },
+    exportCustomerAttribute: function () {
+      var self = this;
+      if (!this.currentId) return this.showCustomerError('请先选择客户。');
+      return post('customer_attribute_export', { customer_id: this.currentId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户属性导出失败');
+        var data = json.data || {};
+        var blob = new Blob([data.content || '{}'], { type: data.content_type || 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = data.filename || ('customer_attribute_' + self.currentId + '.json');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 500);
+        toast('客户属性已导出');
+      }).catch(function (error) {
+        self.showCustomerError(error.message || '客户属性导出失败');
+      });
+    },
+    returnCustomerOverview: function () {
+      this.attributeViewMode = false;
+      this.attributeEditMode = false;
+      this.activeDetailTab = 'overview';
+      if (this.currentDetail) {
+        this.renderDetail(this.currentDetail);
+        this.switchDetailTab('overview');
+      } else if (this.currentId) {
+        this.loadDetail(this.currentId, { keepTab: true });
+      }
+      renderActions('customers');
     },
     renderCustomerOverviewV2: function (data) {
       data = data || {};
@@ -3394,6 +3581,11 @@
       document.querySelector('[data-detail-more]')?.addEventListener('change', function (event) {
         var name = event.target.value;
         if (!name) return;
+        if (name === '__attributes') {
+          event.target.value = '';
+          self.openCustomerAttributeView(false, true);
+          return;
+        }
         self.switchDetailTab(name);
       });
       document.querySelectorAll('[data-summary-jump]').forEach(function (button) {
@@ -5564,6 +5756,13 @@
     },
     actions: function () {
       var hasCustomer = !!(this.currentDetail && this.currentDetail.customer && this.currentId);
+      if (this.attributeViewMode) {
+        return this.attributeEditMode ? [
+          { title: '客户属性', items: ['保存修改', '取消修改', '恢复上次保存', '查看修改日志'] }
+        ] : [
+          { title: '客户属性', items: ['编辑客户属性', '补全缺失资料', '查看修改日志', '导出客户资料', '返回客户概览'] }
+        ];
+      }
       if (this.selectedLead && (this.selectedLead.status || 'pending') === 'pending') return [
         { title: '暂存池客户', items: ['编辑暂存客户', '确认加入正式库', '关联已有客户', '丢弃暂存客户'] },
         { title: '客户操作', items: ['新建客户', '暂存池', '导入客户', '导出客户'] },
@@ -5585,6 +5784,13 @@
       ];
     },
     handleAction: function (label) {
+      if (label === '编辑客户属性') { this.attributeEditMode = true; this.renderCustomerAttributeView(); renderActions('customers'); return; }
+      if (label === '保存修改') return this.saveCustomerAttribute();
+      if (label === '取消修改' || label === '恢复上次保存') return this.openCustomerAttributeView(false, false);
+      if (label === '补全缺失资料') return this.showCustomerAttributeMissing();
+      if (label === '查看修改日志') return this.showCustomerAttributeLogs();
+      if (label === '导出客户资料') return this.exportCustomerAttribute();
+      if (label === '返回客户概览') return this.returnCustomerOverview();
       if (label === '新建客户') return this.openCustomerDialog('create');
       if (label === '暂存池') return this.toggleLeadPool();
       if (label === '编辑暂存客户') return this.openLeadEditDialog();
@@ -5598,7 +5804,7 @@
       if (label === '导入客户') return this.openCustomerImportDialog();
       if (label === '导出客户') return this.exportCustomers();
       if (label === '放大客户列表') return this.applyLayoutMode('list', true);
-      if (label === '放大客户属性') return this.applyLayoutMode('detail', true);
+      if (label === '放大客户属性') return this.openCustomerAttributeView(false, true);
       if (label === '恢复默认布局') return this.applyLayoutMode('default', true);
       if (label === '编辑客户') return this.openCustomerDialog('edit');
       if (label === '删除客户' || label === '批量删除') return this.deleteCustomer();
@@ -17464,7 +17670,7 @@
   function renderActions(name) {
     var module = state.modules[name] || {};
     var actions = name === 'customers' ? CustomerModule.actions() : (state.actions[name] || []);
-    if (actionTitle) actionTitle.textContent = module.short || name;
+    if (actionTitle) actionTitle.textContent = name === 'customers' && CustomerModule.attributeViewMode ? '客户属性' : (module.short || name);
     if (!actionList) return;
     actionList.innerHTML = '';
     var root = document.createElement('div');
@@ -17484,6 +17690,13 @@
         '导出客户': '按当前筛选条件导出客户 Excel',
         '导入日志': '查看客户导入成功和失败记录',
         '编辑客户': '修改当前客户信息',
+        '编辑客户属性': '在当前客户属性视图中修改基础资料',
+        '保存修改': '保存当前客户属性修改并写入客户日志',
+        '取消修改': '放弃当前未保存修改，恢复查看模式',
+        '恢复上次保存': '重新读取服务器上的最新客户属性',
+        '补全缺失资料': '读取资料完整度缺失项，并定位需要补充的字段',
+        '导出客户资料': '导出当前客户属性数据',
+        '返回客户概览': '返回客户详情概览 Tab',
         '删除客户': '软删除当前客户，保留历史记录',
         '强制删除': '永久删除已软删除客户及其客户关系数据，操作不可恢复',
         '恢复客户': '恢复已软删除客户',

@@ -21728,3 +21728,58 @@ body.is-workspace-module .rank-progress i {
   color: #2563EB !important;
   background: #2563EB !important;
 }
+
+.customer-attribute-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.customer-attribute-view > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: #fff;
+}
+.customer-attribute-view > header span,
+.customer-attribute-view > header p,
+.customer-attribute-view > header aside span {
+  color: var(--crm-muted);
+  font-size: 12px;
+}
+.customer-attribute-view > header strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--crm-text);
+  font-size: 20px;
+}
+.customer-attribute-view > header aside {
+  min-width: 180px;
+  text-align: right;
+}
+.customer-attribute-view > header aside b {
+  display: block;
+  color: var(--crm-primary);
+  font-size: 18px;
+}
+.customer-attribute-view .entity-section {
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: #fff;
+}
+.customer-attribute-view [data-attribute-field].is-missing {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+.customer-attribute-view input:disabled,
+.customer-attribute-view select:disabled,
+.customer-attribute-view textarea:disabled {
+  color: #475569;
+  background: #f8fafc;
+  cursor: default;
+}
