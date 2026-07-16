@@ -882,9 +882,22 @@ function crm_dashboard_customer_growth_summary(): array
     $today = 0;
     $month = 0;
     $lead = 0;
+    $recent = [];
     if (db_table_exists('crm_customers')) {
         $today = (int)db()->query("SELECT COUNT(*) FROM crm_customers WHERE DATE(created_at)=CURDATE() AND deleted_at IS NULL")->fetchColumn();
         $month = (int)db()->query("SELECT COUNT(*) FROM crm_customers WHERE DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(CURDATE(),'%Y-%m') AND deleted_at IS NULL")->fetchColumn();
+        $cols = crm_dashboard_table_columns('crm_customers');
+        $ownerCol = crm_dashboard_first_existing_column($cols, ['owner_name', 'owner_department', 'primary_owner', 'sales_owner']);
+        $ownerExpr = $ownerCol ? "`{$ownerCol}`" : "''";
+        $rows = db()->query("SELECT customer_name, country, {$ownerExpr} AS owner, created_at FROM crm_customers WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 3")->fetchAll();
+        foreach ($rows as $row) {
+            $recent[] = [
+                'customer_name' => $row['customer_name'] ?: '未命名客户',
+                'country' => $row['country'] ?: '未填',
+                'owner' => $row['owner'] ?: '未分配',
+                'created_at' => substr((string)($row['created_at'] ?? ''), 0, 16),
+            ];
+        }
     }
     if (db_table_exists('crm_lead_pool') && (has_permission('customer.lead_pool_view') || has_permission('customer.lead_pool') || is_super_admin())) {
         $lead = (int)db()->query("SELECT COUNT(*) FROM crm_lead_pool WHERE status = 'pending'")->fetchColumn();
@@ -899,6 +912,7 @@ function crm_dashboard_customer_growth_summary(): array
             ['label' => '本月新增', 'value' => $month],
             ['label' => '暂存池', 'value' => $lead],
         ],
+        'recent' => $recent,
     ];
 }
 

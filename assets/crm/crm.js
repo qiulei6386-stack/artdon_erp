@@ -1257,6 +1257,14 @@
           self.hideDashboardCard(hideButton.getAttribute('data-workspace-hide-key') || '');
           return;
         }
+        var refreshCard = event.target.closest('[data-workspace-refresh-card]');
+        if (refreshCard) {
+          event.stopPropagation();
+          self.load();
+          toast('已刷新工作台数据');
+          post('log_event', { module: 'workspace', event: 'widget_refresh', target: refreshCard.getAttribute('data-workspace-refresh-card') || '' });
+          return;
+        }
         var showButton = event.target.closest('[data-workspace-show-key]');
         if (showButton) {
           event.stopPropagation();
@@ -1456,10 +1464,11 @@
       var today = this.workspaceSections.today.map(this.widgetByKey.bind(this, widgets)).filter(function (item) { return item && (item.key || item.widget_key); });
       var analysis = this.workspaceSections.analysis.map(this.widgetByKey.bind(this, widgets)).filter(function (item) { return item && (item.key || item.widget_key); });
       return this.renderWidgetGroup('今日处理区', '任务、拜访、样品和签收跟进集中处理。', today) +
-        this.renderWidgetGroup('经营分析区', '只保留新增、销售、成交、应收、国家和报价 6 个分析模块。', analysis);
+        this.renderWidgetGroup('经营分析', '客户新增、团队销售、成交、应收、国家和报价 6 个核心分析模块。', analysis);
     },
     renderWidgetGroup: function (title, desc, rows) {
-      return '<section class="workspace-widget-group"><header><div><h3>' + esc(title) + '</h3><p>' + esc(desc) + '</p></div><span>' + esc(rows.length) + ' 项</span></header><div class="workspace-widget-group-grid">' + rows.map(this.renderWidget.bind(this)).join('') + '</div></section>';
+      var cls = title.indexOf('经营分析') >= 0 ? ' is-analysis' : (title.indexOf('今日处理') >= 0 ? ' is-today' : '');
+      return '<section class="workspace-widget-group' + cls + '"><header><div><h3>' + esc(title) + '</h3><p>' + esc(desc) + '</p></div><span>' + esc(rows.length) + ' 项</span></header><div class="workspace-widget-group-grid">' + rows.map(this.renderWidget.bind(this)).join('') + '</div></section>';
     },
     renderReminderMailSection: function (widgets) {
       var reminders = this.widgetByKey(widgets, 'key_reminders');
@@ -1694,8 +1703,8 @@
       var collapsed = !!this.prefs().collapsed[key];
       var body = '';
       if (collapsed) body = '<div class="workspace-collapsed-note">已收起，点击右上角展开。</div>';
-      else if ((widget.table_rows || []).length) body = this.renderDashboardTable(widget, size);
       else if (key === 'customer_growth_summary') body = this.renderCustomerGrowthBody(widget, size);
+      else if ((widget.table_rows || []).length) body = this.renderDashboardTable(widget, size);
       else if (key === 'quote_order_summary') body = this.renderQuoteOrderSummaryBody(widget, size);
       else if (key === 'mailbox_summary') body = this.renderMailWidgetBody();
       else if (key === 'unreplied_mail') body = this.renderUnrepliedMailBody(widget, size);
@@ -1711,7 +1720,8 @@
       else if (mode === 'bar') body = '<div class="workspace-bars">' + (widget.bars || []).map(function (row) { return '<label><span>' + esc(row[0]) + '</span><b style="width:' + Math.min(100, Number(row[1] || 0)) + '%"></b><em>' + esc(row[2] || row[1]) + '</em></label>'; }).join('') + '</div>';
       else if (mode === 'progress') body = '<div class="workspace-progress"><b style="width:' + Math.min(100, Number(widget.progress || 0)) + '%"></b></div><strong class="workspace-big">' + esc(widget.progress || 0) + '%</strong>';
       else body = '<strong class="workspace-big">' + esc(widget.value || 0) + '</strong><p>' + esc(widget.hint || widget.desc || '') + '</p>';
-      return '<article class="workspace-widget size-' + esc(size) + ' mode-' + esc(mode) + ' tone-' + esc(this.widgetTone(key)) + (this.layoutEditing ? ' is-layout-editing' : '') + (collapsed ? ' is-collapsed' : '') + '" data-workspace-widget="' + esc(key) + '"' + (this.layoutEditing ? ' draggable="true"' : '') + '><header><div><span>' + esc(this.categoryLabel(category)) + '</span><h3 title="' + esc(title) + '">' + esc(title) + '</h3></div><div class="workspace-widget-actions"><em>' + esc(this.sizeLabel(size)) + '</em><button type="button" title="放大查看" data-workspace-detail-key="' + esc(key) + '">↗</button><button type="button" title="' + (collapsed ? '展开' : '收起') + '" data-workspace-collapse-key="' + esc(key) + '">' + (collapsed ? '＋' : '－') + '</button><button type="button" title="设置" data-workspace-card-settings="' + esc(key) + '">⚙</button><button type="button" class="danger" title="隐藏此版块" data-workspace-hide-key="' + esc(key) + '">×</button></div><nav><button type="button" data-workspace-move="-1" data-workspace-move-key="' + esc(key) + '">↑</button><button type="button" data-workspace-move="1" data-workspace-move-key="' + esc(key) + '">↓</button></nav></header>' + layoutControls + body + '</article>';
+      var moveNav = this.layoutEditing ? '<nav><button type="button" data-workspace-move="-1" data-workspace-move-key="' + esc(key) + '">↑</button><button type="button" data-workspace-move="1" data-workspace-move-key="' + esc(key) + '">↓</button></nav>' : '';
+      return '<article class="workspace-widget size-' + esc(size) + ' mode-' + esc(mode) + ' tone-' + esc(this.widgetTone(key)) + (this.layoutEditing ? ' is-layout-editing' : '') + (collapsed ? ' is-collapsed' : '') + '" data-workspace-widget="' + esc(key) + '"' + (this.layoutEditing ? ' draggable="true"' : '') + '><header><div><span>' + esc(this.categoryLabel(category)) + '</span><h3 title="' + esc(title) + '">' + esc(title) + '</h3></div><div class="workspace-widget-actions"><em>' + esc(this.sizeLabel(size)) + '</em><button type="button" title="刷新" data-workspace-refresh-card="' + esc(key) + '">↻</button><button type="button" title="设置" data-workspace-card-settings="' + esc(key) + '">⚙</button><button type="button" class="danger" title="隐藏此版块" data-workspace-hide-key="' + esc(key) + '">×</button></div>' + moveNav + '</header>' + layoutControls + body + '</article>';
     },
     categoryLabel: function (category) {
       var map = { customer: 'CUSTOMER', quote: 'QUOTE', mail: 'MAIL', order: 'AR', sales: 'TEAM', service: 'SERVICE', follow: 'FOLLOW', dispatch: 'TASK', promotion: 'MARKETING', opportunity: 'SALES', system: 'SYSTEM', tool: 'TOOL', contact: 'CONTACT', material: 'MATERIAL', bom: 'BOM', plm: 'PLM', '客户': 'CUSTOMER', '报价': 'QUOTE', '邮件': 'MAIL', '订单': 'AR', '任务': 'TASK', '推广': 'MARKETING', '系统': 'SYSTEM' };
@@ -1739,7 +1749,7 @@
       if (!rows.length) return '<div class="workspace-empty"><strong>暂无数据</strong><span>' + esc(widget.hint || '暂无经营数据') + '</span></div>';
       return '<div class="workspace-rank-list compact-' + esc(size) + '">' + rows.map(function (row, idx) {
         var summary = WorkspaceModule.rankSummary(key, row, idx);
-        return '<button type="button" class="workspace-rank-item ' + (idx === 0 ? 'top-rank' : '') + '" data-workspace-detail-key="' + esc(key) + '"><i class="rank-no">#' + esc(idx + 1) + '</i><span class="rank-main"><b class="rank-name" title="' + esc(summary.full || summary.title) + '">' + esc(summary.title) + '</b><small class="rank-sub">' + esc(summary.sub) + '</small></span><span class="rank-side"><strong class="rank-value ' + esc(summary.tone || '') + '" title="' + esc(summary.valueFull || summary.value) + '">' + esc(summary.value) + '</strong><small class="rank-meta">' + esc(summary.meta) + '</small></span></button>';
+        return '<button type="button" class="workspace-rank-item ' + (idx === 0 ? 'top-rank' : '') + '" data-workspace-detail-key="' + esc(key) + '"><i class="rank-no">#' + esc(idx + 1) + '</i><span class="rank-main"><b class="rank-name" title="' + esc(summary.full || summary.title) + '">' + esc(summary.title) + '</b><small class="rank-sub">' + esc(summary.sub) + '</small></span><span class="rank-side"><strong class="rank-value ' + esc(summary.tone || '') + '" title="' + esc(summary.valueFull || summary.value) + '">' + esc(summary.value) + '</strong><small class="rank-meta ' + esc(summary.metaTone || '') + '">' + esc(summary.meta) + '</small></span>' + (summary.progress !== undefined ? '<span class="rank-progress"><i style="width:' + Math.min(100, Math.max(0, Number(summary.progress || 0))) + '%"></i></span>' : '') + '</button>';
       }).join('') + '<footer><span>' + esc(widget.footnote || this.rankFootnote(key, rows)) + '</span><button type="button" data-workspace-detail-key="' + esc(key) + '">查看全部</button></footer></div>';
     },
     rankValue: function (row, keys, fallback) {
@@ -1756,18 +1766,20 @@
     rankSummary: function (key, row, idx) {
       var title = this.rankValue(row, ['employee', 'customer', 'country', 'name'], '未命名');
       var full = String(title);
-      var s = { title: this.rankShortName(title, key === 'team_sales_compare' ? 10 : 12), full: full, sub: '', value: '-', valueFull: '', meta: '', tone: 'primary' };
+      var s = { title: this.rankShortName(title, key === 'team_sales_compare' ? 10 : 12), full: full, sub: '', value: '-', valueFull: '', meta: '', tone: 'primary', metaTone: '', progress: undefined };
       if (key === 'team_sales_compare') {
-        s.sub = '客户 ' + this.rankValue(row, ['customers'], 0) + ' · 跟进 ' + this.rankValue(row, ['followups'], 0);
+        s.sub = '报价 ' + this.rankValue(row, ['quotes'], 0) + ' 份 · 转化 ' + this.rankValue(row, ['rate'], '0%');
         s.value = this.rankValue(row, ['order_amount'], '0');
         s.valueFull = s.value;
-        s.meta = '报价 ' + this.rankValue(row, ['quotes'], 0) + ' 份 · ' + this.rankValue(row, ['rate'], '0%');
+        s.meta = '客户 ' + this.rankValue(row, ['customers'], 0) + ' · 跟进 ' + this.rankValue(row, ['followups'], 0);
         s.tone = 'success';
+        var numeric = parseFloat(String(s.value).replace(/[^0-9.]/g, '')) || 0;
+        s.progress = Math.min(100, numeric > 0 ? 100 - idx * 12 : 0);
       } else if (key === 'customer_amount_rank') {
-        s.sub = '负责人：' + this.rankValue(row, ['owner'], '-') + ' · ' + this.rankValue(row, ['country'], '-');
+        s.sub = this.rankValue(row, ['orders'], 0) + ' 单 · 最近 ' + this.rankValue(row, ['last'], '-');
         s.value = this.rankValue(row, ['amount'], '0');
         s.valueFull = s.value;
-        s.meta = this.rankValue(row, ['orders'], 0) + ' 单';
+        s.meta = this.rankValue(row, ['country'], '-') + ' · ' + this.rankValue(row, ['owner'], '-');
         s.tone = 'success';
       } else if (key === 'customer_order_rank') {
         s.sub = '最近 ' + this.rankValue(row, ['last'], '-');
@@ -1776,10 +1788,10 @@
         s.meta = this.rankValue(row, ['orders'], 0) + ' 单';
         s.tone = 'success';
       } else if (key === 'customer_quote_rank') {
-        s.sub = '最近 ' + this.rankValue(row, ['last'], '-');
+        s.sub = this.rankValue(row, ['quotes'], 0) + ' 份 · 转化 ' + this.rankValue(row, ['rate'], '0%');
         s.value = this.rankValue(row, ['quote_amount'], '0');
         s.valueFull = s.value;
-        s.meta = this.rankValue(row, ['quotes'], 0) + ' 份 · 转化 ' + this.rankValue(row, ['rate'], '0%');
+        s.meta = '最近 ' + this.rankValue(row, ['last'], '-');
         s.tone = 'primary';
       } else if (key === 'ar_customer_rank') {
         s.sub = '负责人：' + this.rankValue(row, ['owner'], '-') + ' · ' + this.rankValue(row, ['country'], '-');
@@ -1787,6 +1799,7 @@
         s.valueFull = s.value;
         s.meta = this.rankValue(row, ['days', 'overdue'], '未逾期');
         s.tone = 'danger';
+        s.metaTone = parseInt(String(s.meta), 10) > 15 ? 'danger' : '';
       } else if (key === 'team_ar_rank') {
         s.sub = '客户 ' + this.rankValue(row, ['customers'], 0) + ' · 逾期客户 ' + this.rankValue(row, ['overdue_customers'], 0);
         s.value = this.rankValue(row, ['ar'], '0');
@@ -1798,6 +1811,7 @@
         s.value = this.rankValue(row, ['sales', 'quote'], '0');
         s.valueFull = s.value;
         s.meta = '成交金额';
+        s.tone = 'primary';
       } else {
         var keys = Object.keys(row);
         s.sub = keys.slice(1, 3).map(function (k) { return row[k]; }).join(' · ');
@@ -1980,9 +1994,13 @@
     },
     renderCustomerGrowthBody: function (widget, size) {
       var rows = widget.items || [];
+      var recent = (widget.recent || []).slice(0, 3);
       return '<div class="workspace-customer-growth size-' + esc(size) + '">' + rows.map(function (row) {
         return '<button type="button" data-workspace-tool="' + (row.label === '暂存池' ? 'lead_pool' : 'customers') + '"><strong>' + esc(row.value || 0) + '</strong><span>' + esc(row.label || '') + '</span></button>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' +
+      '<div class="workspace-growth-recent">' + (recent.length ? recent.map(function (row) {
+        return '<button type="button" data-workspace-tool="customers"><b title="' + esc(row.customer_name || row.name || '未命名客户') + '">' + esc(row.customer_name || row.name || '未命名客户') + '</b><span>' + esc(row.country || '未填') + ' · ' + esc(row.owner || '未分配') + '</span><em>' + esc(String(row.created_at || '').slice(0, 16) || '-') + '</em></button>';
+      }).join('') : '<div class="workspace-empty-mini">暂无最近新增客户</div>') + '</div>';
     },
     renderQuoteOrderSummaryBody: function (widget, size) {
       var rows = widget.items || [];
