@@ -273,7 +273,7 @@ function crm_seed_dashboard_widgets(): void
 function crm_dashboard_role_defaults(array $user): array
 {
     $role = $user['role_key'] ?? $user['role_name'] ?? '';
-    $standard = ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','team_sales_compare','customer_amount_rank','ar_customer_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
+    $standard = ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','key_reminders','customer_growth_summary','team_sales_compare','customer_amount_rank','ar_customer_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
     if (is_super_admin() || stripos($role, 'admin') !== false || stripos($role, '老板') !== false) {
         return $standard;
     }
@@ -281,12 +281,12 @@ function crm_dashboard_role_defaults(array $user): array
         return $standard;
     }
     if (stripos($role, 'sales') !== false || stripos($role, '业务') !== false) {
-        return ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','customer_amount_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
+        return ['lead_pool','tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','key_reminders','customer_growth_summary','customer_amount_rank','country_rank','customer_quote_rank','quote_order_summary','unreplied_mail','dispatch_overdue'];
     }
     if (stripos($role, 'clerk') !== false || stripos($role, '文员') !== false || stripos($role, '跟单') !== false) {
-        return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','unreplied_mail','dispatch_overdue'];
+        return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','key_reminders','customer_growth_summary','unreplied_mail','dispatch_overdue'];
     }
-    return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','customer_growth_summary','unreplied_mail','dispatch_overdue'];
+    return ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup','key_reminders','customer_growth_summary','unreplied_mail','dispatch_overdue'];
 }
 
 function crm_user_dashboard_widgets(int $userId): array

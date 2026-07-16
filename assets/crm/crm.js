@@ -1139,7 +1139,7 @@
       kpi: ['today', 'mailbox_summary', 'lead_pool', 'opportunity_pipeline', 'dispatch_overdue', 'quote_order_summary', 'quote_order_summary', 'unreplied_mail'],
       today: ['tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup'],
       analysis: ['customer_growth_summary', 'team_sales_compare', 'customer_amount_rank', 'ar_customer_rank', 'country_rank', 'customer_quote_rank'],
-      allowed: ['lead_pool', 'tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup', 'customer_growth_summary', 'team_sales_compare', 'customer_amount_rank', 'ar_customer_rank', 'country_rank', 'customer_quote_rank', 'quote_order_summary', 'unreplied_mail', 'dispatch_overdue']
+      allowed: ['lead_pool', 'tasks_today', 'tasks_overdue', 'today_visits', 'today_arrivals', 'sample_shipments', 'sample_signed_followup', 'key_reminders', 'customer_growth_summary', 'team_sales_compare', 'customer_amount_rank', 'ar_customer_rank', 'country_rank', 'customer_quote_rank', 'quote_order_summary', 'unreplied_mail', 'dispatch_overdue']
     },
     widgets: [
       { key: 'today_customers', title: '今日新增客户', category: '客户', mode: 'card', size: 'sm', value: '0', desc: '新客户入口与暂存池联动', target: 'customers', roles: ['boss', 'sales', 'assistant'] },
@@ -1445,6 +1445,7 @@
         this.renderOverview(widgets, dateText, roleText) +
         this.renderToolbelt() +
         this.renderAssistStrip() +
+        this.renderReminderMailSection(widgets) +
         '<div class="workspace-workbench">' +
           '<section class="workspace-widget-board' + (this.layoutEditing ? ' is-layout-editing' : '') + '">' + this.renderWidgetGroups(widgets) + '</section>' +
         '</div>' +
@@ -1460,6 +1461,28 @@
     renderWidgetGroup: function (title, desc, rows) {
       return '<section class="workspace-widget-group"><header><div><h3>' + esc(title) + '</h3><p>' + esc(desc) + '</p></div><span>' + esc(rows.length) + ' 项</span></header><div class="workspace-widget-group-grid">' + rows.map(this.renderWidget.bind(this)).join('') + '</div></section>';
     },
+    renderReminderMailSection: function (widgets) {
+      var reminders = this.widgetByKey(widgets, 'key_reminders');
+      var mail = this.widgetByKey(widgets, 'unreplied_mail');
+      return '<section class="workspace-alert-mail">' +
+        '<article class="workspace-alert-card"><header><div><span>REMINDERS</span><h3>今日关键提醒</h3></div><b>' + esc(reminders.value || 0) + '</b></header>' + this.renderReminderList(reminders, widgets) + '</article>' +
+        '<article class="workspace-alert-card workspace-alert-mail-card"><header><div><span>MAIL</span><h3>未回复邮件</h3></div><b>' + esc(mail.value || 0) + '</b></header>' + this.renderUnrepliedMailBody(mail, 'panel') + '</article>' +
+      '</section>';
+    },
+    renderReminderList: function (reminders, widgets) {
+      var items = (reminders.items || []).slice(0, 6);
+      if (!items.length) {
+        ['tasks_today', 'tasks_overdue', 'sample_signed_followup', 'unreplied_mail'].forEach(function (key) {
+          var widget = WorkspaceModule.widgetByKey(widgets, key);
+          if (Number(widget.value || 0) > 0) items.push((widget.title || widget.widget_name || key) + '：' + widget.value);
+        });
+      }
+      if (!items.length) return '<div class="workspace-empty-mini">暂无关键提醒</div>';
+      return '<div class="workspace-reminder-list">' + items.slice(0, 6).map(function (item) {
+        var parts = String(item || '').split(' · ');
+        return '<button type="button" data-workspace-widget="key_reminders"><b>' + esc(parts[0] || '提醒') + '</b><span>' + esc(parts.slice(1).join(' · ') || '今天') + '</span><em>查看</em></button>';
+      }).join('') + '</div>';
+    },
     widgetByKey: function (widgets, key) {
       return widgets.find(function (item) { return (item.key || item.widget_key) === key; }) || {};
     },
@@ -1469,14 +1492,14 @@
       var quoteRow = quoteRows.find(function (row) { return row.label === '报价'; }) || {};
       var orderRow = quoteRows.find(function (row) { return row.label === '订单'; }) || {};
       var keys = [
-        ['tasks_today', '今日工作', '', '今日处理', 'blue'],
-        ['mailbox_summary', '未读邮件', '', '邮件提醒', 'orange'],
+        ['tasks_today', '今日工作', dateText, roleText + ' / 今日范围', 'blue'],
+        ['mailbox_summary', '未读邮件', '', '待处理邮件', 'orange'],
         ['lead_pool', '暂存池待确认', '', '线索确认', 'blue'],
         ['opportunity_pipeline', '商机阶段', '', '销售机会', 'green'],
         ['dispatch_overdue', '逾期派工', '', '执行风险', 'red'],
         ['quote_order_summary:sales', '本月销售', orderRow.amount || '0', (orderRow.count || 0) + ' 个订单', 'green'],
-        ['quote_order_summary:quote', '本月报价', quoteRow.amount || '0', (quoteRow.count || 0) + ' 份报价', 'blue'],
-        ['unreplied_mail', '未回复邮件', '', '等待回复', 'orange']
+        ['quote_order_summary:quote', '本月报价', quoteRow.amount || '0', (quoteRow.count || 0) + ' 份报价 / 转化率待接入', 'blue'],
+        ['unreplied_mail', '未回复邮件', '', '等待回复处理', 'orange']
       ];
       var fallback = this.widgets;
       return '<div class="workspace-overview">' + keys.map(function (item) {
@@ -1484,7 +1507,6 @@
         var key = rawKey.split(':')[0];
         var widget = widgets.find(function (row) { return (row.key || row.widget_key) === key; }) || fallback.find(function (row) { return row.key === key; }) || {};
         var value = item[2] || (key === 'mailbox_summary' && WorkspaceModule.mailSummary ? (WorkspaceModule.mailSummary.unread || 0) : (widget.value || 0));
-        if (key === 'tasks_today') value = widget.value || dateText || 0;
         return '<button type="button" class="tone-' + esc(item[4]) + '" data-workspace-widget="' + esc(key) + '"><span>' + esc(item[1]) + '</span><strong>' + WorkspaceModule.renderMetricValue(value) + '</strong><em>' + esc(item[3] || widget.category || roleText || 'CRM') + '</em></button>';
       }).join('') + '</div>';
     },
@@ -1633,6 +1655,7 @@
       (this.data.catalog || this.catalog || []).forEach(function (item) { catalog[item.widget_key] = item; });
       var groups = [
         ['今日处理区', ['tasks_today','tasks_overdue','today_visits','today_arrivals','sample_shipments','sample_signed_followup']],
+        ['邮件与提醒', ['key_reminders','unreplied_mail']],
         ['经营分析区', ['customer_growth_summary','team_sales_compare','customer_amount_rank','ar_customer_rank','country_rank','customer_quote_rank']],
         ['顶部 KPI 来源', ['lead_pool','quote_order_summary','unreplied_mail','dispatch_overdue']]
       ];
@@ -1678,7 +1701,12 @@
       else if (key === 'unreplied_mail') body = this.renderUnrepliedMailBody(widget, size);
       else if (key === 'today_mail' || key === 'unread_mail') body = '<strong class="workspace-big">' + esc(widget.value || 0) + '</strong><p>' + esc(widget.hint || widget.desc || '') + '</p>';
       else if (mode === 'tool' || widget.status === 'pending_config') body = '<div class="workspace-tool-pending"><strong>' + esc(widget.value || '待接入') + '</strong><p>' + esc(widget.desc || widget.hint || '需要在接口配置中填写 API Key 后启用。') + '</p><span>接口配置</span></div>';
-      else if (mode === 'list') body = '<div class="workspace-list">' + (widget.items || []).map(function (item) { return '<button type="button">' + esc(item) + '<span>查看</span></button>'; }).join('') + '</div>';
+      else if (mode === 'list') {
+        var listItems = (widget.items || []).slice(0, 5);
+        body = listItems.length
+          ? '<div class="workspace-list">' + listItems.map(function (item) { return '<button type="button">' + esc(item) + '<span>查看</span></button>'; }).join('') + '</div>'
+          : '<div class="workspace-empty-mini">暂无数据</div>';
+      }
       else if (mode === 'pie') body = '<div class="workspace-pie" style="--a: ' + ((widget.slices || [])[0]?.[1] || 25) + '; --b: ' + ((widget.slices || [])[1]?.[1] || 25) + '; --c: ' + ((widget.slices || [])[2]?.[1] || 25) + '"></div><div class="workspace-legend">' + (widget.slices || []).map(function (row) { return '<span><i></i>' + esc(row[0]) + '<b>' + esc(row[2] || 0) + '</b><em>' + esc(row[1]) + '%</em></span>'; }).join('') + '</div>';
       else if (mode === 'bar') body = '<div class="workspace-bars">' + (widget.bars || []).map(function (row) { return '<label><span>' + esc(row[0]) + '</span><b style="width:' + Math.min(100, Number(row[1] || 0)) + '%"></b><em>' + esc(row[2] || row[1]) + '</em></label>'; }).join('') + '</div>';
       else if (mode === 'progress') body = '<div class="workspace-progress"><b style="width:' + Math.min(100, Number(widget.progress || 0)) + '%"></b></div><strong class="workspace-big">' + esc(widget.progress || 0) + '%</strong>';
