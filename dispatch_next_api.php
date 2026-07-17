@@ -1162,13 +1162,20 @@ function dn_multi_group_detail(array $in): array
     $mst = $pdo->prepare("SELECT t.id AS task_id,t.task_no,t.title,t.project,t.description,t.assigned_to,COALESCE(NULLIF(u.real_name,''),u.username) AS assigned_name,t.status,t.priority,t.progress,t.due_at,t.completed_at,t.created_at,t.updated_at FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY FIELD(t.status,'pending_accept','accepted','in_progress','paused','submitted','returned','done','cancelled'), t.id");
     $mst->execute([$groupId]);
     $members = $mst->fetchAll();
+    $uid = dn_uid();
+    $canManageGroup = dn_is_admin() || (int)($group['created_by'] ?? 0) === $uid;
     $done = 0; $pending = 0; $running = 0; $overdue = 0;
     foreach ($members as &$m) {
         $m['task_id'] = (int)$m['task_id'];
         $m['assigned_to'] = (int)$m['assigned_to'];
         $m['progress'] = (int)($m['progress'] ?? 0);
-        $m['is_current_user'] = (int)$m['assigned_to'] === dn_uid();
+        $m['is_current_user'] = (int)$m['assigned_to'] === $uid;
         $m['is_overdue'] = !in_array((string)$m['status'], ['done','cancelled'], true) && !empty($m['due_at']) && substr((string)$m['due_at'], 0, 10) < date('Y-m-d');
+        $m['can_accept'] = $m['is_current_user'] && (string)$m['status'] === 'pending_accept';
+        $m['can_complete'] = $m['is_current_user'] && (string)$m['status'] !== 'done';
+        $m['can_write_progress'] = $m['is_current_user'] && (string)$m['status'] !== 'done';
+        $m['can_admin_complete'] = $canManageGroup && !$m['is_current_user'] && (string)$m['status'] !== 'done';
+        $m['can_urge'] = $canManageGroup && !$m['is_current_user'] && (string)$m['status'] !== 'done';
         if ((string)$m['status'] === 'done') $done++;
         if ((string)$m['status'] === 'pending_accept') $pending++;
         if (in_array((string)$m['status'], ['accepted','in_progress','paused','submitted'], true)) $running++;
@@ -1195,6 +1202,88 @@ function dn_multi_group_detail(array $in): array
         $comments = $cst->fetchAll();
     }
     return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'task' => $task];
+}
+
+function dn_multi_member_task(int $id): array
+{
+    $task = dn_task($id);
+    if ((int)($task['parent_group_id'] ?? 0) <= 0 || (string)($task['dispatch_mode'] ?? '') !== 'multi') {
+        dn_fail('这不是多人派工成员任务', 400);
+    }
+    return $task;
+}
+
+function dn_multi_member_can_manage(array $task): bool
+{
+    return dn_is_admin() || (int)($task['created_by'] ?? 0) === dn_uid();
+}
+
+function dn_multi_member_payload(int $taskId, array $member = []): array
+{
+    $detail = dn_multi_group_detail(['id' => $taskId]);
+    $found = $member;
+    foreach (($detail['members'] ?? []) as $m) {
+        if ((int)($m['task_id'] ?? 0) === $taskId) {
+            $found = $m;
+            break;
+        }
+    }
+    return ['group_summary' => $detail['group'] ?? [], 'member' => $found, 'members' => $detail['members'] ?? []];
+}
+
+function dn_multi_member_accept(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    $task = dn_multi_member_task($id);
+    if ((int)($task['assigned_to'] ?? 0) !== dn_uid()) dn_fail('只能接收自己的多人派工任务', 403);
+    $old = (string)($task['status'] ?? '');
+    if ($old !== 'pending_accept') return dn_multi_member_payload($id);
+    dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET status='accepted', accepted_at=COALESCE(accepted_at,NOW()), is_read=1, read_at=COALESCE(read_at,NOW()), updated_at=NOW() WHERE id=?")->execute([$id]);
+    dn_log($id, 'status', 'status', $old, 'accepted', '多人派工成员接收任务');
+    dn_notice_mark_task_handled($id, ['new_dispatch']);
+    dn_refresh_group((int)($task['parent_group_id'] ?? 0));
+    return dn_multi_member_payload($id);
+}
+
+function dn_multi_member_complete(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    $task = dn_multi_member_task($id);
+    if ((int)($task['assigned_to'] ?? 0) !== dn_uid()) dn_fail('只能完成自己的多人派工任务', 403);
+    $old = (string)($task['status'] ?? '');
+    if ($old !== 'done') {
+        dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET status='done', progress=100, accepted_at=COALESCE(accepted_at,NOW()), is_read=1, read_at=COALESCE(read_at,NOW()), completed_at=NOW(), updated_at=NOW() WHERE id=?")->execute([$id]);
+        dn_log($id, 'status', 'status', $old, 'done', '多人派工成员完成自己的任务');
+        dn_notice_mark_task_handled($id, ['new_dispatch','due_today','overdue','urge']);
+        dn_refresh_group((int)($task['parent_group_id'] ?? 0));
+    }
+    return dn_multi_member_payload($id);
+}
+
+function dn_multi_member_admin_complete(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    $task = dn_multi_member_task($id);
+    if (!dn_multi_member_can_manage($task)) dn_fail('只有派工人或管理员可以代标完成', 403);
+    $old = (string)($task['status'] ?? '');
+    if ($old !== 'done') {
+        $assignee = dn_user_name((int)($task['assigned_to'] ?? 0));
+        dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET status='done', progress=100, completed_at=NOW(), updated_at=NOW() WHERE id=?")->execute([$id]);
+        dn_log($id, 'status', 'status', $old, 'done', '代标完成成员任务：' . $assignee);
+        dn_notice_mark_task_handled($id);
+        dn_refresh_group((int)($task['parent_group_id'] ?? 0));
+    }
+    return dn_multi_member_payload($id);
+}
+
+function dn_multi_member_urge(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    $task = dn_multi_member_task($id);
+    if ((string)($task['status'] ?? '') === 'done') dn_fail('已完成的成员任务不能催办');
+    if (!dn_multi_member_can_manage($task)) dn_fail('只有派工人或管理员可以催办', 403);
+    dn_urge_task(['id' => $id, 'note' => $in['note'] ?? '']);
+    return dn_multi_member_payload($id);
 }
 
 function dn_create_task(array $in): array
@@ -1984,14 +2073,16 @@ function dn_urge_task(array $in): array
     $exists = dispatch_next_db()->prepare("SELECT id FROM dispatch_next_notifications WHERE dedupe_key=? LIMIT 1");
     $exists->execute([$dedupe]);
     if ($exists->fetchColumn()) dn_fail('2小时内已经催办过，请稍后再催办。');
+    $note = dn_str($in['note'] ?? '请尽快处理这条派工', 500);
+    $message = trim((string)$task['title'] . ($note !== '' ? "\n" . $note : ''));
     dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET remind_count=remind_count+1,last_reminded_at=NOW(),updated_at=NOW() WHERE id=?")->execute([$id]);
-    dn_notice_event((int)$task['assigned_to'], $id, 'urge', '催办我的', (string)$task['title'], [
+    dn_notice_event((int)$task['assigned_to'], $id, 'urge', '催办我的', $message, [
         'action_required' => 1,
         'action_code' => 'respond_urge',
         'severity' => 'urgent',
         'dedupe_key' => $dedupe,
     ]);
-    dn_log($id, 'urge', 'remind_count', $task['remind_count'], ((int)$task['remind_count']) + 1, '催办任务');
+    dn_log($id, 'urge', 'remind_count', $task['remind_count'], ((int)$task['remind_count']) + 1, $note !== '' ? ('催办任务：' . $note) : '催办任务');
     return ['id' => $id];
 }
 
@@ -3313,6 +3404,10 @@ try {
         case 'detail': dn_ok(dn_detail($in));
         case 'task_detail': dn_ok(dn_detail($in));
         case 'multi_group_detail': dn_ok(dn_multi_group_detail($in));
+        case 'multi_member_accept': dn_ok(dn_multi_member_accept($in));
+        case 'multi_member_complete': dn_ok(dn_multi_member_complete($in));
+        case 'multi_member_admin_complete': dn_ok(dn_multi_member_admin_complete($in));
+        case 'multi_member_urge': dn_ok(dn_multi_member_urge($in));
         case 'create_task': dn_ok(dn_create_task($in));
         case 'update_task': dn_ok(dn_update_task($in));
         case 'delete_task': dn_ok(dn_delete_task($in));
