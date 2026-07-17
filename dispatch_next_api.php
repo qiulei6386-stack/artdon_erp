@@ -640,6 +640,52 @@ function dn_notification_counts(array $rows): array
     return $out;
 }
 
+function dn_notification_matches_keyword(array $n, string $keyword): bool
+{
+    if ($keyword === '') return true;
+    $hay = [
+        $n['title'] ?? '',
+        $n['message'] ?? '',
+        $n['event_type'] ?? $n['type'] ?? '',
+        $n['task_title'] ?? '',
+        $n['project'] ?? '',
+        $n['task_id'] ?? '',
+        $n['assignee_name'] ?? '',
+        $n['created_at'] ?? '',
+        $n['updated_at'] ?? '',
+    ];
+    $text = mb_strtolower(implode(' ', array_map('strval', $hay)), 'UTF-8');
+    return str_contains($text, mb_strtolower($keyword, 'UTF-8'));
+}
+
+function dn_notification_center_data(array $in): array
+{
+    $category = dn_str($in['category'] ?? 'pending_all', 60);
+    $keyword = dn_str($in['keyword'] ?? '', 120);
+    $page = max(1, (int)($in['page'] ?? 1));
+    $pageSize = max(10, min(50, (int)($in['page_size'] ?? 20)));
+    $rows = array_values(array_filter(dn_notification_rows(dn_uid()), fn($r) => dn_notification_matches_keyword($r, $keyword)));
+    $counts = dn_notification_counts($rows);
+    $list = array_values(array_filter($rows, fn($r) => dn_notification_in_category($r, $category)));
+    $total = count($list);
+    $totalPages = max(1, (int)ceil($total / $pageSize));
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $pageSize;
+    return [
+        'active_category' => $category,
+        'keyword' => $keyword,
+        'counts' => $counts,
+        'list' => array_slice($list, $offset, $pageSize),
+        'pagination' => [
+            'page' => $page,
+            'page_size' => $pageSize,
+            'total' => $total,
+            'total_pages' => $totalPages,
+        ],
+        'pending_count' => (int)($counts['pending_all'] ?? 0),
+    ];
+}
+
 function dn_task(int $id): array
 {
     $pdo = dispatch_next_db();
@@ -3171,6 +3217,7 @@ try {
         case 'complete_task': dn_ok(dn_set_task_status($in, 'done'));
         case 'cancel_task': dn_ok(dn_set_task_status($in, 'cancelled'));
         case 'list_notifications': dn_ok(dn_notifications(!empty($in['mark'])));
+        case 'notification_center_data': dn_ok(dn_notification_center_data($in));
         case 'merge_duplicate_notifications': dn_ok(dn_merge_duplicate_update_notifications());
         case 'notification_counts':
             $rows = dn_notification_rows(dn_uid());
