@@ -1128,7 +1128,7 @@ function dn_detail(array $in): array
     $comments->execute([$id]);
     $attachments = $pdo->prepare("SELECT a.*, (a.expires_at IS NULL OR a.expires_at>NOW()) AS is_valid, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_attachments a LEFT JOIN crm_users u ON u.id=a.user_id WHERE a.task_id=? AND a.is_deleted=0 ORDER BY a.id DESC");
     $attachments->execute([$id]);
-    $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE task_id=? ORDER BY sort_order,id");
+    $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE task_id=? AND is_deleted=0 ORDER BY sort_order,id");
     $steps->execute([$id]);
     $logs = $pdo->prepare("SELECT l.*, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_logs l LEFT JOIN crm_users u ON u.id=l.user_id WHERE l.task_id=? ORDER BY l.id DESC LIMIT 80");
     $logs->execute([$id]);
@@ -1203,8 +1203,8 @@ function dn_multi_group_detail(array $in): array
     }
     $attachments = $pdo->prepare("SELECT a.*, (a.expires_at IS NULL OR a.expires_at>NOW()) AS is_valid, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_attachments a LEFT JOIN crm_users u ON u.id=a.user_id WHERE a.task_id=? AND a.is_deleted=0 ORDER BY a.id DESC");
     $attachments->execute([$id]);
-    $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE task_id=? ORDER BY sort_order,id");
-    $steps->execute([$id]);
+    $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0 ORDER BY sort_order,id");
+    $steps->execute([$groupId]);
     return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'attachments' => $attachments->fetchAll(), 'steps' => $steps->fetchAll(), 'task' => $task];
 }
 
@@ -1663,10 +1663,89 @@ function dn_set_task_status(array $in, string $status): array
     return ['task_id' => (int)$task['id'], 'status' => $new];
 }
 
+function dn_group(int $id): array
+{
+    $st = dispatch_next_db()->prepare("SELECT * FROM dispatch_next_groups WHERE id=? LIMIT 1");
+    $st->execute([$id]);
+    $g = $st->fetch();
+    if (!$g) dn_fail('多人组不存在', 404);
+    $uid = dn_uid();
+    if (dn_is_admin() || (int)($g['created_by'] ?? 0) === $uid) return $g;
+    $m = dispatch_next_db()->prepare("SELECT id FROM dispatch_next_tasks WHERE parent_group_id=? AND assigned_to=? AND is_deleted=0 LIMIT 1");
+    $m->execute([$id, $uid]);
+    if ($m->fetch()) return $g;
+    dn_fail('没有查看该多人组的权限', 403);
+}
+
+function dn_can_edit_step_context(?array $task, ?array $group): bool
+{
+    if (dn_is_admin()) return true;
+    $uid = dn_uid();
+    if ($task) {
+        return (int)($task['created_by'] ?? 0) === $uid || (int)($task['assigned_to'] ?? 0) === $uid || dn_can_edit_task($task);
+    }
+    if ($group) return (int)($group['created_by'] ?? 0) === $uid;
+    return false;
+}
+
+function dn_step(int $id): array
+{
+    $st = dispatch_next_db()->prepare("SELECT * FROM dispatch_next_steps WHERE id=? AND is_deleted=0 LIMIT 1");
+    $st->execute([$id]);
+    $s = $st->fetch();
+    if (!$s) dn_fail('步骤不存在', 404);
+    return $s;
+}
+
+function dn_step_context(array $in, bool $requireEdit = false): array
+{
+    $taskId = (int)($in['task_id'] ?? 0);
+    $groupId = (int)($in['group_id'] ?? 0);
+    if ($taskId <= 0 && $groupId <= 0 && !empty($in['id'])) {
+        $s = dn_step((int)$in['id']);
+        $taskId = (int)($s['task_id'] ?? 0);
+        $groupId = (int)($s['group_id'] ?? 0);
+    }
+    if ($taskId <= 0 && $groupId <= 0 && !empty($in['step_id'])) {
+        $s = dn_step((int)$in['step_id']);
+        $taskId = (int)($s['task_id'] ?? 0);
+        $groupId = (int)($s['group_id'] ?? 0);
+    }
+    if ($taskId <= 0 && $groupId <= 0) dn_fail('缺少 task_id 或 group_id');
+    $task = $taskId > 0 ? dn_task($taskId) : null;
+    $group = $groupId > 0 ? dn_group($groupId) : null;
+    if ($requireEdit && !dn_can_edit_step_context($task, $group)) dn_fail('没有编辑执行步骤权限', 403);
+    return ['task' => $task, 'group' => $group, 'task_id' => $taskId, 'group_id' => $groupId];
+}
+
+function dn_step_assert_context(array $step, array $ctx): void
+{
+    $stepTask = (int)($step['task_id'] ?? 0);
+    $stepGroup = (int)($step['group_id'] ?? 0);
+    $ctxTask = (int)($ctx['task_id'] ?? 0);
+    $ctxGroup = (int)($ctx['group_id'] ?? 0);
+    if (($ctxTask > 0 && $stepTask === $ctxTask) || ($ctxGroup > 0 && $stepGroup === $ctxGroup)) return;
+    dn_fail('步骤不属于当前任务或多人组', 400);
+}
+
+function dn_list_steps(array $in): array
+{
+    $ctx = dn_step_context($in, false);
+    $task = $ctx['task'];
+    $group = $ctx['group'];
+    $where = $task ? 'task_id=?' : 'group_id=?';
+    $id = $task ? (int)$task['id'] : (int)$group['id'];
+    $st = dispatch_next_db()->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE {$where} AND is_deleted=0 ORDER BY sort_order,id");
+    $st->execute([$id]);
+    return $st->fetchAll();
+}
+
 function dn_save_step(array $in): array
 {
     dn_require('edit', '没有编辑执行步骤权限');
-    $task = dn_task((int)($in['task_id'] ?? 0));
+    $ctx = dn_step_context($in, true);
+    $task = $ctx['task'];
+    $group = $ctx['group'];
     $id = (int)($in['step_id'] ?? 0);
     $name = dn_str($in['step_name'] ?? '', 240);
     if ($name === '') dn_fail('请输入步骤名称');
@@ -1677,15 +1756,14 @@ function dn_save_step(array $in): array
     $sort = (int)($in['sort_order'] ?? 0);
     $pdo = dispatch_next_db();
     if ($id > 0) {
-        $old = $pdo->prepare("SELECT * FROM dispatch_next_steps WHERE id=? AND task_id=? LIMIT 1");
-        $old->execute([$id, (int)$task['id']]);
-        if (!$old->fetch()) dn_fail('步骤不存在', 404);
+        $old = dn_step($id);
+        dn_step_assert_context($old, $ctx);
         $pdo->prepare("UPDATE dispatch_next_steps SET step_name=?, owner_id=?, status=?, due_at=?, note=?, sort_order=?, updated_at=NOW() WHERE id=?")->execute([$name, $owner, $status, $due, $note, $sort, $id]);
-        dn_log((int)$task['id'], 'step_update', 'step', $id, $name, '修改执行步骤');
+        dn_log($task ? (int)$task['id'] : null, 'step_update', 'step', $old['step_name'], $name, $group ? ('修改组执行步骤 #' . (int)$group['id']) : '修改执行步骤');
     } else {
-        $pdo->prepare("INSERT INTO dispatch_next_steps(task_id,step_name,owner_id,status,due_at,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,NOW(),NOW())")->execute([(int)$task['id'], $name, $owner, $status, $due, $note, $sort]);
+        $pdo->prepare("INSERT INTO dispatch_next_steps(task_id,group_id,step_name,owner_id,status,due_at,note,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())")->execute([$task ? (int)$task['id'] : null, $group ? (int)$group['id'] : null, $name, $owner, $status, $due, $note, $sort, dn_uid()]);
         $id = (int)$pdo->lastInsertId();
-        dn_log((int)$task['id'], 'step_create', 'step', '', $name, '新增执行步骤');
+        dn_log($task ? (int)$task['id'] : null, 'step_create', 'step', '', $name, $group ? ('新增组执行步骤 #' . (int)$group['id']) : '新增执行步骤');
     }
     return ['step_id' => $id];
 }
@@ -1695,25 +1773,27 @@ function dn_delete_step(array $in): array
     dn_require('edit', '没有删除执行步骤权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT * FROM dispatch_next_steps WHERE id=? LIMIT 1");
-    $st->execute([$id]);
-    $s = $st->fetch();
-    if (!$s) dn_fail('步骤不存在', 404);
-    dn_task((int)$s['task_id']);
-    $pdo->prepare("DELETE FROM dispatch_next_steps WHERE id=?")->execute([$id]);
-    dn_log((int)$s['task_id'], 'step_delete', 'step', $s['step_name'], '', '删除执行步骤');
+    $s = dn_step($id);
+    $ctx = dn_step_context($s, true);
+    $pdo->prepare("UPDATE dispatch_next_steps SET is_deleted=1, updated_at=NOW() WHERE id=?")->execute([$id]);
+    dn_log($ctx['task'] ? (int)$ctx['task']['id'] : null, 'step_delete', 'step', $s['step_name'], '', $ctx['group'] ? ('删除组执行步骤 #' . (int)$ctx['group']['id']) : '删除执行步骤');
     return ['step_id' => $id];
 }
 
 function dn_reorder_steps(array $in): array
 {
     dn_require('edit', '没有排序执行步骤权限');
-    $task = dn_task((int)($in['task_id'] ?? 0));
+    $ctx = dn_step_context($in, true);
+    $task = $ctx['task'];
+    $group = $ctx['group'];
     $ids = array_values(array_filter(array_map('intval', (array)($in['step_ids'] ?? [])), fn($v) => $v > 0));
-    $st = dispatch_next_db()->prepare("UPDATE dispatch_next_steps SET sort_order=?, updated_at=NOW() WHERE id=? AND task_id=?");
-    foreach ($ids as $i => $id) $st->execute([($i + 1) * 10, $id, (int)$task['id']]);
-    dn_log((int)$task['id'], 'step_reorder', 'step', '', implode(',', $ids), '调整执行步骤顺序');
-    return ['task_id' => (int)$task['id']];
+    if (!$ids) return ['task_id' => $task ? (int)$task['id'] : null, 'group_id' => $group ? (int)$group['id'] : null];
+    $where = $task ? 'task_id=?' : 'group_id=?';
+    $scopeId = $task ? (int)$task['id'] : (int)$group['id'];
+    $st = dispatch_next_db()->prepare("UPDATE dispatch_next_steps SET sort_order=?, updated_at=NOW() WHERE id=? AND {$where} AND is_deleted=0");
+    foreach ($ids as $i => $id) $st->execute([($i + 1) * 10, $id, $scopeId]);
+    dn_log($task ? (int)$task['id'] : null, 'step_reorder', 'step', '', implode(',', $ids), $group ? ('调整组执行步骤顺序 #' . (int)$group['id']) : '调整执行步骤顺序');
+    return ['task_id' => $task ? (int)$task['id'] : null, 'group_id' => $group ? (int)$group['id'] : null];
 }
 
 function dn_set_step_status(array $in, string $status): array
@@ -1721,15 +1801,12 @@ function dn_set_step_status(array $in, string $status): array
     dn_require('edit', '没有修改执行步骤权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT * FROM dispatch_next_steps WHERE id=? LIMIT 1");
-    $st->execute([$id]);
-    $s = $st->fetch();
-    if (!$s) dn_fail('步骤不存在', 404);
-    dn_task((int)$s['task_id']);
+    $s = dn_step($id);
+    $ctx = dn_step_context($s, true);
     $new = in_array($status, ['pending','in_progress','blocked','done','cancelled'], true) ? $status : 'pending';
     $extra = $new === 'done' ? ", completed_at=NOW()" : ($new === 'in_progress' ? ", started_at=COALESCE(started_at,NOW())" : '');
     $pdo->prepare("UPDATE dispatch_next_steps SET status=?, updated_at=NOW(){$extra} WHERE id=?")->execute([$new, $id]);
-    dn_log((int)$s['task_id'], 'step_status', 'step_status', $s['status'], $new, '修改执行步骤状态');
+    dn_log($ctx['task'] ? (int)$ctx['task']['id'] : null, 'step_status', 'step_status', $s['status'], $new, $ctx['group'] ? ('修改组执行步骤状态 #' . (int)$ctx['group']['id']) : '修改执行步骤状态');
     return ['step_id' => $id, 'status' => $new];
 }
 
@@ -1738,7 +1815,7 @@ function dn_dispatch_step(array $in): array
     dn_require('create_dispatch', '没有从步骤生成派工的权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT s.*, t.title AS task_title, t.project AS task_project, t.created_by AS parent_created_by FROM dispatch_next_steps s JOIN dispatch_next_tasks t ON t.id=s.task_id WHERE s.id=? LIMIT 1");
+    $st = $pdo->prepare("SELECT s.*, t.title AS task_title, t.project AS task_project, t.created_by AS parent_created_by FROM dispatch_next_steps s JOIN dispatch_next_tasks t ON t.id=s.task_id WHERE s.id=? AND s.is_deleted=0 LIMIT 1");
     $st->execute([$id]);
     $s = $st->fetch();
     if (!$s) dn_fail('步骤不存在', 404);
@@ -1763,6 +1840,116 @@ function dn_dispatch_step(array $in): array
     $pdo->prepare("UPDATE dispatch_next_steps SET child_task_id=?, updated_at=NOW() WHERE id=?")->execute([$childId, $id]);
     dn_log((int)$s['task_id'], 'step_dispatch', 'child_task_id', '', $childId, '步骤生成子派工');
     return ['step_id' => $id, 'child_task_id' => $childId];
+}
+
+function dn_user_department_name(): string
+{
+    $uid = dn_uid();
+    if ($uid <= 0 || !artdon_sso_table_exists('crm_users')) return '';
+    $st = dispatch_next_db()->prepare("SELECT COALESCE(d.name,'') FROM crm_users u LEFT JOIN crm_departments d ON d.id=u.department_id WHERE u.id=? LIMIT 1");
+    $st->execute([$uid]);
+    return (string)($st->fetchColumn() ?: '');
+}
+
+function dn_list_step_templates(array $in = []): array
+{
+    dispatch_next_init_schema();
+    $uid = dn_uid();
+    $dept = dn_user_department_name();
+    $params = [$uid];
+    $where = "(scope='system' OR owner_id=?)";
+    if ($dept !== '') {
+        $where .= " OR (scope='department' AND department=?)";
+        $params[] = $dept;
+    }
+    $st = dispatch_next_db()->prepare("SELECT t.*, (SELECT COUNT(*) FROM dispatch_next_step_template_items i WHERE i.template_id=t.id) AS item_count FROM dispatch_next_step_templates t WHERE t.is_active=1 AND ({$where}) ORDER BY FIELD(scope,'system','department','private'), sort_order,id");
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$r) {
+        $r['id'] = (int)$r['id'];
+        $r['item_count'] = (int)($r['item_count'] ?? 0);
+        $r['is_system'] = (int)($r['is_system'] ?? 0);
+    }
+    return $rows;
+}
+
+function dn_list_step_template_items(array $in): array
+{
+    $templateId = (int)($in['template_id'] ?? 0);
+    if ($templateId <= 0) dn_fail('缺少 template_id');
+    $templates = dn_list_step_templates();
+    $allowed = false;
+    foreach ($templates as $t) {
+        if ((int)$t['id'] === $templateId) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) dn_fail('模板不存在或无权限', 404);
+    $st = dispatch_next_db()->prepare("SELECT * FROM dispatch_next_step_template_items WHERE template_id=? ORDER BY sort_order,id");
+    $st->execute([$templateId]);
+    return $st->fetchAll();
+}
+
+function dn_apply_step_template(array $in): array
+{
+    dn_require('edit', '没有套用步骤模板权限');
+    $ctx = dn_step_context($in, true);
+    $task = $ctx['task'];
+    $group = $ctx['group'];
+    $templateId = (int)($in['template_id'] ?? 0);
+    $mode = ($in['mode'] ?? 'append') === 'replace' ? 'replace' : 'append';
+    $items = dn_list_step_template_items(['template_id' => $templateId]);
+    if (!$items) dn_fail('模板没有步骤');
+    $pdo = dispatch_next_db();
+    $scopeField = $task ? 'task_id' : 'group_id';
+    $scopeId = $task ? (int)$task['id'] : (int)$group['id'];
+    if ($mode === 'replace') {
+        $pdo->prepare("UPDATE dispatch_next_steps SET is_deleted=1, updated_at=NOW() WHERE {$scopeField}=? AND is_deleted=0")->execute([$scopeId]);
+    }
+    $max = $pdo->prepare("SELECT COALESCE(MAX(sort_order),0) FROM dispatch_next_steps WHERE {$scopeField}=? AND is_deleted=0");
+    $max->execute([$scopeId]);
+    $sort = (int)$max->fetchColumn();
+    $ins = $pdo->prepare("INSERT INTO dispatch_next_steps(task_id,group_id,step_name,owner_id,status,due_at,note,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())");
+    $created = 0;
+    foreach ($items as $item) {
+        $sort += 10;
+        $due = null;
+        if ($item['default_due_offset_days'] !== null && $item['default_due_offset_days'] !== '') {
+            $due = date('Y-m-d 23:59:59', strtotime('+' . (int)$item['default_due_offset_days'] . ' days'));
+        }
+        $owner = null;
+        $role = (string)($item['default_owner_role'] ?? '');
+        if ($role === 'current_user') $owner = dn_uid();
+        elseif ($role === 'assignee' && $task) $owner = (int)($task['assigned_to'] ?? 0) ?: null;
+        elseif ($role === 'creator' && $task) $owner = (int)($task['created_by'] ?? 0) ?: null;
+        $ins->execute([$task ? (int)$task['id'] : null, $group ? (int)$group['id'] : null, (string)$item['step_name'], $owner, 'pending', $due, (string)($item['note'] ?? ''), $sort, dn_uid()]);
+        $created++;
+    }
+    dn_log($task ? (int)$task['id'] : null, 'step_template_apply', 'template_id', '', $templateId, ($group ? '多人组 ' . (int)$group['id'] . ' ' : '') . "套用步骤模板 {$created} 条");
+    return ['created' => $created, 'mode' => $mode, 'task_id' => $task ? (int)$task['id'] : null, 'group_id' => $group ? (int)$group['id'] : null];
+}
+
+function dn_save_steps_as_template(array $in): array
+{
+    dn_require('edit', '没有保存步骤模板权限');
+    $ctx = dn_step_context($in, false);
+    $task = $ctx['task'];
+    $group = $ctx['group'];
+    $name = dn_str($in['template_name'] ?? '', 160);
+    if ($name === '') dn_fail('请输入模板名称');
+    $steps = dn_list_steps($in);
+    if (!$steps) dn_fail('当前没有可保存的步骤');
+    $pdo = dispatch_next_db();
+    $pdo->prepare("INSERT INTO dispatch_next_step_templates(template_name,template_type,scope,department,owner_id,is_system,is_active,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+        ->execute([$name, 'custom', 'private', null, dn_uid(), 0, 1, 1000, dn_uid()]);
+    $templateId = (int)$pdo->lastInsertId();
+    $ins = $pdo->prepare("INSERT INTO dispatch_next_step_template_items(template_id,step_name,default_owner_role,default_due_offset_days,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,NOW(),NOW())");
+    foreach ($steps as $i => $s) {
+        $ins->execute([$templateId, (string)$s['step_name'], '', null, (string)($s['note'] ?? ''), ($i + 1) * 10]);
+    }
+    dn_log($task ? (int)$task['id'] : null, 'step_template_save', 'template_id', '', $templateId, ($group ? '多人组 ' . (int)$group['id'] . ' ' : '') . '保存为私人步骤模板');
+    return ['template_id' => $templateId, 'item_count' => count($steps)];
 }
 
 function dn_upload(array $in, string $kind): array
@@ -3455,17 +3642,21 @@ try {
         case 'delete_attachment': dn_ok(dn_delete_attachment($in));
         case 'download_attachment': dn_download_attachment($in);
         case 'preview_image': dn_download_attachment(['attachment_id' => $in['attachment_id'] ?? 0]);
-        case 'list_steps': dn_ok(dn_detail($in)['steps']);
+        case 'ensure_step_schema': dn_ok(dispatch_next_init_schema());
+        case 'list_steps': dn_ok(dn_list_steps($in));
         case 'save_step': dn_ok(dn_save_step($in));
+        case 'add_step': dn_ok(dn_save_step($in));
         case 'delete_step': dn_ok(dn_delete_step($in));
         case 'reorder_steps': dn_ok(dn_reorder_steps($in));
         case 'complete_step': dn_ok(dn_set_step_status($in, 'done'));
         case 'block_step': dn_ok(dn_set_step_status($in, 'blocked'));
         case 'dispatch_step': dn_ok(dn_dispatch_step($in));
         case 'list_task_logs': dn_ok(dn_detail($in)['logs']);
-        case 'list_step_templates': dn_ok([]);
-        case 'apply_step_template': dn_fail('步骤模板待接入', 501);
-        case 'save_step_template': dn_fail('步骤模板待接入', 501);
+        case 'list_step_templates': dn_ok(dn_list_step_templates($in));
+        case 'list_step_template_items': dn_ok(dn_list_step_template_items($in));
+        case 'apply_step_template': dn_ok(dn_apply_step_template($in));
+        case 'save_steps_as_template': dn_ok(dn_save_steps_as_template($in));
+        case 'save_step_template': dn_ok(dn_save_steps_as_template($in));
         case 'accept_task': dn_ok(dn_set_task_status($in, 'accepted'));
         case 'start_task': dn_ok(dn_set_task_status($in, 'in_progress'));
         case 'pause_task': dn_ok(dn_set_task_status($in, 'paused'));

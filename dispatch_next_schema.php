@@ -11,6 +11,62 @@ function dispatch_next_db(): PDO
     return $pdo;
 }
 
+function dispatch_next_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    $st = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1");
+    $st->execute([$table, $column]);
+    return (bool)$st->fetch();
+}
+
+function dispatch_next_add_column_if_missing(PDO $pdo, string $table, string $column, string $definition): void
+{
+    if (!dispatch_next_column_exists($pdo, $table, $column)) {
+        $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN {$definition}");
+    }
+}
+
+function dispatch_next_seed_step_templates(PDO $pdo): int
+{
+    $templates = [
+        ['个人通用', 'personal', [
+            '明确任务目标','整理所需资料','开始执行','中途检查','补充遗漏','完成并自检','记录结果','归档'
+        ]],
+        ['工程开发', 'engineering', [
+            '确认客户需求 / 样品要求','核对型号、尺寸、功率、角度、颜色','结构评估 / 安装方式确认','绘制 2D / 3D 图纸','输出 BOM / 关键物料清单','成本初算 / 与报价联动','打样 / 试装','温升测试','光学测试 / IES','问题修改','客户确认资料','资料归档'
+        ]],
+        ['采购', 'purchase', [
+            '确认采购需求','核对规格 / 型号 / 数量','查找供应商','询价 / 比价','确认样品或规格书','下采购单','跟进交期','到料检查','异常反馈','入库 / 交给对应部门','采购资料归档'
+        ]],
+        ['业务', 'sales', [
+            '确认客户需求','整理产品资料 / 图片 / 参数','确认价格基础','生成报价','发报价给客户','跟进客户反馈','样品确认','订单条件确认','付款 / 定金确认','交期确认','出货跟进','客户回访'
+        ]],
+        ['跟单', 'followup', [
+            '核对订单资料','核对型号 / 数量 / 颜色 / 包装','确认交期','跟进物料到位','跟进生产排期','跟进车间进度','包装资料确认','验货 / 拍照','出货文件准备','物流 / 快递 / 货代确认','尾款 / 回款提醒','完成归档'
+        ]],
+    ];
+    $created = 0;
+    foreach ($templates as $index => $tpl) {
+        [$name, $type, $items] = $tpl;
+        $st = $pdo->prepare("SELECT id FROM dispatch_next_step_templates WHERE template_type=? AND scope='system' AND is_system=1 LIMIT 1");
+        $st->execute([$type]);
+        $templateId = (int)$st->fetchColumn();
+        if ($templateId <= 0) {
+            $pdo->prepare("INSERT INTO dispatch_next_step_templates(template_name,template_type,scope,department,owner_id,is_system,is_active,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+                ->execute([$name, $type, 'system', null, null, 1, 1, ($index + 1) * 10, 0]);
+            $templateId = (int)$pdo->lastInsertId();
+            $created++;
+        }
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM dispatch_next_step_template_items WHERE template_id=?");
+        $cnt->execute([$templateId]);
+        if ((int)$cnt->fetchColumn() > 0) continue;
+        $ins = $pdo->prepare("INSERT INTO dispatch_next_step_template_items(template_id,step_name,default_owner_role,default_due_offset_days,note,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,NOW(),NOW())");
+        foreach ($items as $i => $stepName) {
+            $ins->execute([$templateId, $stepName, '', null, '', ($i + 1) * 10]);
+        }
+    }
+    return $created;
+}
+
 function dispatch_next_init_schema(): array
 {
     $pdo = dispatch_next_db();
@@ -113,7 +169,8 @@ function dispatch_next_init_schema(): array
 
     $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_steps (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        task_id BIGINT UNSIGNED NOT NULL,
+        task_id BIGINT UNSIGNED NULL,
+        group_id BIGINT UNSIGNED NULL,
         step_name VARCHAR(240) NOT NULL,
         owner_id INT UNSIGNED NULL,
         status ENUM('pending','in_progress','blocked','done','cancelled') NOT NULL DEFAULT 'pending',
@@ -123,9 +180,42 @@ function dispatch_next_init_schema(): array
         child_task_id BIGINT UNSIGNED NULL,
         started_at DATETIME NULL,
         completed_at DATETIME NULL,
+        created_by INT UNSIGNED NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        KEY idx_dispatch_next_steps_task (task_id, sort_order)
+        is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+        KEY idx_dispatch_next_steps_task (task_id, sort_order),
+        KEY idx_dispatch_next_steps_group (group_id, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_step_templates (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        template_name VARCHAR(160) NOT NULL,
+        template_type VARCHAR(40) NOT NULL DEFAULT 'custom',
+        scope VARCHAR(30) NOT NULL DEFAULT 'private',
+        department VARCHAR(120) NULL,
+        owner_id INT UNSIGNED NULL,
+        is_system TINYINT(1) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_by INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_dispatch_next_step_templates_type (template_type, scope, is_active),
+        KEY idx_dispatch_next_step_templates_owner (owner_id, is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_step_template_items (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        template_id BIGINT UNSIGNED NOT NULL,
+        step_name VARCHAR(240) NOT NULL,
+        default_owner_role VARCHAR(80) NULL,
+        default_due_offset_days INT NULL,
+        note TEXT NULL,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_dispatch_next_step_template_items_tpl (template_id, sort_order)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
     $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_notifications (
@@ -209,7 +299,12 @@ function dispatch_next_init_schema(): array
     foreach ($sql as $stmt) {
         $pdo->exec($stmt);
     }
-    return ['tables' => 11, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn()];
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'group_id', 'group_id BIGINT UNSIGNED NULL AFTER task_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'created_by', 'created_by INT UNSIGNED NULL AFTER completed_at');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'is_deleted', 'is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER updated_at');
+    $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
+    $seeded = dispatch_next_seed_step_templates($pdo);
+    return ['tables' => 13, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }
 
 if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'dispatch_next_schema.php') {
