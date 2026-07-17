@@ -1145,6 +1145,58 @@ function dn_detail(array $in): array
     return ['task' => $task, 'comments' => $comments->fetchAll(), 'attachments' => $attachments->fetchAll(), 'steps' => $steps->fetchAll(), 'logs' => $logs->fetchAll(), 'group' => $group, 'group_children' => $groupChildren];
 }
 
+function dn_multi_group_detail(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    $task = dn_decorate_task(dn_task($id));
+    $groupId = (int)($task['parent_group_id'] ?? 0);
+    if ($groupId <= 0 && (string)($task['dispatch_mode'] ?? '') === 'multi') {
+        $groupId = (int)($task['parent_group_id'] ?? 0);
+    }
+    if ($groupId <= 0) dn_fail('这不是多人派工任务', 400);
+    $pdo = dispatch_next_db();
+    $gst = $pdo->prepare("SELECT g.*, COALESCE(NULLIF(u.real_name,''),u.username) AS creator_name FROM dispatch_next_groups g LEFT JOIN crm_users u ON u.id=g.created_by WHERE g.id=? LIMIT 1");
+    $gst->execute([$groupId]);
+    $group = $gst->fetch();
+    if (!$group) dn_fail('多人派工组不存在', 404);
+    $mst = $pdo->prepare("SELECT t.id AS task_id,t.task_no,t.title,t.project,t.description,t.assigned_to,COALESCE(NULLIF(u.real_name,''),u.username) AS assigned_name,t.status,t.priority,t.progress,t.due_at,t.completed_at,t.created_at,t.updated_at FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY FIELD(t.status,'pending_accept','accepted','in_progress','paused','submitted','returned','done','cancelled'), t.id");
+    $mst->execute([$groupId]);
+    $members = $mst->fetchAll();
+    $done = 0; $pending = 0; $running = 0; $overdue = 0;
+    foreach ($members as &$m) {
+        $m['task_id'] = (int)$m['task_id'];
+        $m['assigned_to'] = (int)$m['assigned_to'];
+        $m['progress'] = (int)($m['progress'] ?? 0);
+        $m['is_current_user'] = (int)$m['assigned_to'] === dn_uid();
+        $m['is_overdue'] = !in_array((string)$m['status'], ['done','cancelled'], true) && !empty($m['due_at']) && substr((string)$m['due_at'], 0, 10) < date('Y-m-d');
+        if ((string)$m['status'] === 'done') $done++;
+        if ((string)$m['status'] === 'pending_accept') $pending++;
+        if (in_array((string)$m['status'], ['accepted','in_progress','paused','submitted'], true)) $running++;
+        if (!empty($m['is_overdue'])) $overdue++;
+    }
+    $total = count($members);
+    $group['id'] = (int)$group['id'];
+    $group['total_count'] = $total;
+    $group['done_count'] = $done;
+    $group['pending_count'] = $pending;
+    $group['running_count'] = $running;
+    $group['overdue_count'] = $overdue;
+    $group['progress'] = $total > 0 ? (int)floor($done * 100 / $total) : 0;
+    $ids = array_column($members, 'task_id');
+    $logs = [];
+    $comments = [];
+    if ($ids) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $lst = $pdo->prepare("SELECT l.*, COALESCE(NULLIF(u.real_name,''),u.username) AS user_name FROM dispatch_next_logs l LEFT JOIN crm_users u ON u.id=l.user_id WHERE l.task_id IN ({$ph}) ORDER BY l.id DESC LIMIT 80");
+        $lst->execute($ids);
+        $logs = $lst->fetchAll();
+        $cst = $pdo->prepare("SELECT c.*, COALESCE(NULLIF(u.real_name,''),u.username) AS user_name FROM dispatch_next_comments c LEFT JOIN crm_users u ON u.id=c.user_id WHERE c.task_id IN ({$ph}) ORDER BY c.id DESC LIMIT 40");
+        $cst->execute($ids);
+        $comments = $cst->fetchAll();
+    }
+    return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'task' => $task];
+}
+
 function dn_create_task(array $in): array
 {
     $type = in_array(($in['task_type'] ?? 'personal'), ['personal','dispatch','private'], true) ? $in['task_type'] : 'personal';
@@ -3260,6 +3312,7 @@ try {
         case 'sync_version': dn_ok(dn_sync_version());
         case 'detail': dn_ok(dn_detail($in));
         case 'task_detail': dn_ok(dn_detail($in));
+        case 'multi_group_detail': dn_ok(dn_multi_group_detail($in));
         case 'create_task': dn_ok(dn_create_task($in));
         case 'update_task': dn_ok(dn_update_task($in));
         case 'delete_task': dn_ok(dn_delete_task($in));
