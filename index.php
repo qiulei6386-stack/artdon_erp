@@ -163,7 +163,7 @@ $quickLinks = [
     ['key' => 'naming', 'label' => '型号命名系统', 'href' => 'naming.php', 'permission' => 'naming.view', 'icon' => 'model'],
     ['key' => 'quote', 'label' => '报价系统', 'href' => 'quotation.php', 'permission' => 'quote.view', 'icon' => 'quote'],
     ['key' => 'datasheet', 'label' => '资料生成', 'href' => 'datasheet.php', 'permission' => 'datasheet.view', 'icon' => 'doc'],
-    ['key' => 'plm', 'label' => 'PLM', 'href' => 'plm.php', 'permission' => 'linkage.view', 'icon' => 'plm'],
+    ['key' => 'plm', 'label' => 'PLM', 'href' => 'plm.php', 'permission' => 'plm.view', 'icon' => 'plm'],
     ['key' => 'bom', 'label' => 'BOM', 'href' => 'bom.php', 'permission' => 'bom.view', 'icon' => 'bom'],
 ];
 
@@ -177,7 +177,7 @@ $moduleGroups = [
         ['key' => 'datasheet', 'title' => '资料生成', 'en' => 'Document Pack', 'desc' => '联动当前型号命名和官网同步资料，生成客户资料包、PDF/Excel、配光曲线、高清图和配件资料。', 'href' => 'datasheet.php', 'permission' => 'datasheet.view', 'icon' => 'doc', 'accent' => 'amber', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '命名联动', '官网资料']],
     ],
     '研发 / 成本 / 生产' => [
-        ['key' => 'plm', 'title' => 'PLM 项目/研发', 'en' => 'Product Lifecycle', 'desc' => '样品开发、测试资料、问题闭环、项目文件。', 'href' => 'plm.php', 'permission' => 'linkage.view', 'icon' => 'plm', 'accent' => 'violet', 'status' => '联动入口'],
+        ['key' => 'plm', 'title' => 'PLM 项目/研发', 'en' => 'Product Lifecycle', 'desc' => '样品开发、测试资料、问题闭环、项目文件。', 'href' => 'plm.php', 'permission' => 'plm.view', 'icon' => 'plm', 'accent' => 'violet', 'status' => '联动入口'],
         ['title' => 'BOM 成本', 'en' => 'Bill of Materials', 'desc' => '物料、成本、加工、表面处理、包装损耗，并可联动当前型号命名系统。', 'href' => 'bom.php', 'permission' => 'bom.view', 'icon' => 'bom', 'accent' => 'blue', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '命名联动', '成本权限']],
         ['key' => 'naming', 'title' => '型号命名', 'en' => 'Model Naming', 'desc' => '型号规则、产品图片、尺寸图、开孔和分类管理。', 'href' => 'naming.php', 'permission' => 'naming.view', 'icon' => 'model', 'accent' => 'cyan', 'status' => '已接入权限底座', 'tags' => ['统一登录', '统一权限', '统一日志']],
         ['key' => 'dispatch', 'title' => '派工待办', 'en' => 'Work Dispatch', 'desc' => '派工任务、多人协作、附件、日志、实时同步。', 'href' => 'dispatch_next.php', 'permission' => 'dispatch.view', 'icon' => 'task', 'accent' => 'red', 'status' => '已接入权限底座', 'tags' => ['个人待办', '派工任务', '多人协作', '附件日志']],

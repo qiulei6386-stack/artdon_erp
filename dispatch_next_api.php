@@ -1330,6 +1330,12 @@ function dn_create_task(array $in): array
         'task_date' => dn_date($in['task_date'] ?? null),
         'due_at' => $dueAt,
         'is_read' => $assigned === $uid ? 1 : 0,
+        'linked_system' => dn_str($in['linked_system'] ?? '', 80) ?: null,
+        'linked_table' => dn_str($in['linked_table'] ?? '', 120) ?: null,
+        'linked_id' => dn_str($in['linked_id'] ?? '', 120) ?: null,
+        'linked_title' => dn_str($in['linked_title'] ?? '', 240) ?: null,
+        'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
+        'extra' => $in['extra'] ?? [],
     ]);
     return ['id' => $id];
 }
@@ -1339,6 +1345,26 @@ function dn_task_updated_at(int $id): string
     $st = dispatch_next_db()->prepare("SELECT updated_at FROM dispatch_next_tasks WHERE id=? LIMIT 1");
     $st->execute([$id]);
     return (string)($st->fetchColumn() ?: '');
+}
+
+function dn_plm_linked_tasks(array $in): array
+{
+    $kind = dn_str($in['kind'] ?? 'flow', 30);
+    $projectId = (int)($in['project_id'] ?? 0);
+    $stepId = (int)($in['step_id'] ?? 0);
+    $linkedId = $kind === 'project' ? ('plm_project_' . $projectId) : ('plm_step_' . $stepId);
+    if (($kind === 'project' && $projectId <= 0) || ($kind !== 'project' && $stepId <= 0)) return ['tasks' => []];
+    [$where, $params] = dn_visible_sql('t');
+    $sql = "SELECT t.*, COALESCE(NULLIF(u.real_name,''),u.username) AS assignee_name
+            FROM dispatch_next_tasks t
+            LEFT JOIN crm_users u ON u.id=t.assigned_to
+            WHERE COALESCE(t.is_deleted,0)=0 AND {$where}
+              AND t.linked_system='PLM' AND t.linked_id=?
+            ORDER BY t.id DESC
+            LIMIT 100";
+    $st = dispatch_next_db()->prepare($sql);
+    $st->execute(array_merge($params, [$linkedId]));
+    return ['tasks' => $st->fetchAll()];
 }
 
 function dn_check_task_conflict(array $task, array $in): void
@@ -4170,6 +4196,7 @@ try {
         case 'sync_version': dn_ok(dn_sync_version());
         case 'detail': dn_ok(dn_detail($in));
         case 'task_detail': dn_ok(dn_detail($in));
+        case 'plm_linked_tasks': dn_ok(dn_plm_linked_tasks($in));
         case 'multi_group_detail': dn_ok(dn_multi_group_detail($in));
         case 'multi_member_detail': dn_ok(dn_multi_member_detail($in));
         case 'multi_member_accept': dn_ok(dn_multi_member_accept($in));

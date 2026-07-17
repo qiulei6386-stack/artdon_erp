@@ -334,7 +334,7 @@ body.bom-header-collapsed main.wrap{padding-top:10px!important}
     <button onclick="goModule('quotation.php')">报价</button>
     <button onclick="goModule('datasheet.php')">资料</button>
     <button onclick="goModule('dispatch_next.php')">派工</button>
-    <button onclick="goModule('crm.php#linkage')">PLM</button>
+    <button onclick="goModule('plm.php')">PLM</button>
     <button class="active" onclick="goModule('bom.php')">BOM</button>
     <button onclick="goModule('naming.php')">命名</button>
     <button onclick="goModule('crm.php#linkage')">重量</button>

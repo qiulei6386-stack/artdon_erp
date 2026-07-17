@@ -259,6 +259,39 @@ function artdon_bom_ensure_permissions(): void
         WHERE r.role_key IN ('finance','viewer') AND p.permission_key = 'bom.view'");
 }
 
+function artdon_plm_ensure_permissions(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    $permissions = [
+        ['plm.view', 'plm', 'view', 'PLM 系统查看', 'medium'],
+        ['plm.create', 'plm', 'create', 'PLM 新增项目/样品', 'high'],
+        ['plm.edit', 'plm', 'edit', 'PLM 编辑项目/样品/流程', 'high'],
+        ['plm.delete', 'plm', 'delete', 'PLM 删除项目/样品/文件', 'dangerous'],
+        ['plm.export', 'plm', 'export', 'PLM 导出项目资料包', 'high'],
+        ['plm.admin', 'plm', 'admin', 'PLM 管理员', 'dangerous'],
+    ];
+    $stmt = db()->prepare('INSERT IGNORE INTO crm_permissions (permission_key, module, action, description, risk_level, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
+    foreach ($permissions as $permission) {
+        $stmt->execute($permission);
+    }
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key = 'super_admin' AND p.module = 'plm'");
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key = 'admin' AND p.module = 'plm'");
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key IN ('manager') AND p.permission_key IN ('plm.view','plm.create','plm.edit','plm.export')");
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key IN ('sales','marketing','finance','viewer') AND p.permission_key = 'plm.view'");
+}
+
 function artdon_datasheet_ensure_permissions(): void
 {
     static $done = false;
@@ -316,6 +349,9 @@ function artdon_sso_can(string $module, string $cap, ?array $user = null): bool
     }
     if ($module === 'bom') {
         artdon_bom_ensure_permissions();
+    }
+    if ($module === 'plm') {
+        artdon_plm_ensure_permissions();
     }
     if ($module === 'datasheet') {
         artdon_datasheet_ensure_permissions();
@@ -475,7 +511,7 @@ function artdon_perm_require_action(string $module, string $action, array $featu
 function artdon_sso_forbidden_page(string $module): void
 {
     http_response_code(403);
-    $labels = ['naming' => '型号命名系统', 'dispatch' => '派工待办', 'quote' => '报价系统', 'bom' => 'BOM 成本系统', 'datasheet' => '资料生成系统'];
+    $labels = ['naming' => '型号命名系统', 'dispatch' => '派工待办', 'quote' => '报价系统', 'bom' => 'BOM 成本系统', 'plm' => 'PLM 项目研发系统', 'datasheet' => '资料生成系统'];
     $label = $labels[$module] ?? $module;
     echo '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>权限不足</title><body style="margin:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial;color:#111827;padding:32px"><div style="max-width:680px;margin:10vh auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:26px;box-shadow:0 18px 50px rgba(15,23,42,.10)"><h1 style="margin:0 0 10px;font-size:22px">权限不足</h1><p>当前账号没有进入「' . h($label) . '」的权限。</p><p><a href="index.php">返回首页</a></p></div></body></html>';
     exit;
@@ -495,6 +531,9 @@ function artdon_sso_require_page(string $module): array
     }
     if ($module === 'bom') {
         artdon_bom_ensure_permissions();
+    }
+    if ($module === 'plm') {
+        artdon_plm_ensure_permissions();
     }
     if ($module === 'datasheet') {
         artdon_datasheet_ensure_permissions();
@@ -524,6 +563,9 @@ function artdon_sso_require_api(string $module): array
     }
     if ($module === 'bom') {
         artdon_bom_ensure_permissions();
+    }
+    if ($module === 'plm') {
+        artdon_plm_ensure_permissions();
     }
     if ($module === 'datasheet') {
         artdon_datasheet_ensure_permissions();
