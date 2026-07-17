@@ -114,6 +114,30 @@ function plm_v85_pick_user_name($u){
 function plm_v85_current_user_info(){
     $out=array('id'=>0,'username'=>'','name'=>'未识别账号','role'=>'staff','is_admin'=>false);
     try{
+        if(function_exists('artdon_sso_current_user')){
+            $u=artdon_sso_current_user(true);
+            if(is_array($u) && !empty($u['id'])){
+                $username=(string)($u['username']??'');
+                $name=(string)($u['display_name']??($u['real_name']??($u['name']??$username)));
+                $role=(string)($u['role_key']??($u['role']??($u['role_name']??'')));
+                $roleName=(string)($u['role_name']??'');
+                $dep=(string)($u['department']??($u['department_name']??''));
+                $admin=function_exists('artdon_sso_role_is_admin') ? artdon_sso_role_is_admin($u) : false;
+                if(!$admin){
+                    $raw=strtolower($role.' '.$roleName.' '.$username.' '.$name.' '.$dep);
+                    $admin=(strpos($raw,'boss')!==false||strpos($raw,'admin')!==false||strpos($raw,'owner')!==false||strpos($raw,'manager')!==false||strpos($raw,'老板')!==false||strpos($raw,'管理')!==false||strpos($raw,'管理员')!==false||strpos($raw,'超级')!==false);
+                }
+                return array(
+                    'id'=>(int)$u['id'],
+                    'username'=>$username,
+                    'name'=>$name?:$username,
+                    'role'=>$roleName?:$role,
+                    'department'=>$dep,
+                    'is_admin'=>$admin,
+                    'sso'=>true
+                );
+            }
+        }
         $pdo=plm_v85_pdo();
         $dispatchId=(int)($_SESSION['dispatch_user_id']??0);
         if($dispatchId>0 && plm_v85_table_exists('dispatch_users')){
@@ -211,6 +235,12 @@ function plm_v85_default_permissions($u=null){
 }
 function plm_v85_central_user_id($u){
     $username=trim((string)($u['username']??($u['name']??'')));
+    if(!empty($u['sso']) && (int)($u['id']??0)>0) return (int)$u['id'];
+    $loginUserId=(int)($_SESSION['user_id']??0);
+    if($loginUserId>0 && function_exists('artdon_sso_user_by_id')){
+        $cu=artdon_sso_user_by_id($loginUserId);
+        if($cu && ($username==='' || strcasecmp((string)($cu['username']??''),$username)===0 || strcasecmp((string)($cu['display_name']??''),$username)===0)) return $loginUserId;
+    }
     $sessionId=(int)($_SESSION['artdon_user_id']??0);
     $sessionName=trim((string)($_SESSION['artdon_username']??''));
     if($sessionId>0 && $username!=='' && strcasecmp($username,$sessionName)===0) return $sessionId;
@@ -262,7 +292,16 @@ function plm_v85_require_perm($perm,$label=''){
 function plm_v85_permission_users(){
     $users=array();
     try{
-        if(plm_v85_table_exists('dispatch_users')){
+        if(plm_v85_table_exists('crm_users')){
+            $rows=plm_v85_rows("SELECT u.id,u.username,COALESCE(NULLIF(u.real_name,''),u.username) name,COALESCE(r.role_name,r.role_key,'') role,COALESCE(d.name,'') department FROM crm_users u LEFT JOIN crm_roles r ON r.id=u.role_id LEFT JOIN crm_departments d ON d.id=u.department_id ORDER BY u.id ASC LIMIT 500");
+            foreach($rows as $r){
+                $u=array('id'=>(int)$r['id'],'username'=>(string)($r['username']??''),'name'=>(string)($r['name']?:($r['username']??'')),'role'=>(string)($r['role']??''),'department'=>(string)($r['department']??''),'sso'=>true);
+                $u['is_admin']=plm_v85_admin_like_user($u);
+                $u['user_key']=plm_v85_user_perm_key($u);
+                $u['permissions']=plm_v85_permissions_for($u);
+                $users[]=$u;
+            }
+        } elseif(plm_v85_table_exists('dispatch_users')){
             $cols=plm_v85_cols('dispatch_users');
             $nameCol=in_array('name',$cols,true)?'name':(in_array('display_name',$cols,true)?'display_name':'username');
             $roleCol=in_array('role',$cols,true)?'role':(in_array('role_name',$cols,true)?'role_name':"''");
@@ -621,7 +660,7 @@ function plm_v85_schema(){
         KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_type(test_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     foreach(array(
-        'project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','test_type'=>"VARCHAR(80) DEFAULT '温升'",'title'=>"VARCHAR(255) DEFAULT ''",'status'=>"VARCHAR(60) DEFAULT '待测'",'result'=>"VARCHAR(80) DEFAULT ''",'test_date'=>'DATE NULL','operator'=>"VARCHAR(120) DEFAULT ''",'ambient_temp'=>'DECIMAL(10,2) NULL','led_temp'=>'DECIMAL(10,2) NULL','driver_temp'=>'DECIMAL(10,2) NULL','shell_temp'=>'DECIMAL(10,2) NULL','max_temp'=>'DECIMAL(10,2) NULL','sphere_lumen'=>"VARCHAR(80) DEFAULT ''",'sphere_power'=>"VARCHAR(80) DEFAULT ''",'sphere_efficiency'=>"VARCHAR(80) DEFAULT ''",'cct'=>"VARCHAR(80) DEFAULT ''",'cri'=>"VARCHAR(80) DEFAULT ''",'ies_angle'=>"VARCHAR(80) DEFAULT ''",'ies_lumen'=>"VARCHAR(80) DEFAULT ''",'test_standard'=>'TEXT NULL','test_data'=>'TEXT NULL','test_conclusion'=>'TEXT NULL','retest_result'=>"VARCHAR(80) DEFAULT ''",'affect_sample'=>'TINYINT DEFAULT 0','issue_id'=>'INT DEFAULT 0','problem_generated'=>'TINYINT DEFAULT 0','template_key'=>"VARCHAR(120) DEFAULT ''",'template_name'=>"VARCHAR(160) DEFAULT ''",'template_fields_json'=>'MEDIUMTEXT NULL','note'=>'TEXT NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+        'project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','source_test_id'=>'INT NOT NULL DEFAULT 0','retest_no'=>'INT NOT NULL DEFAULT 0','test_type'=>"VARCHAR(80) DEFAULT '温升'",'title'=>"VARCHAR(255) DEFAULT ''",'status'=>"VARCHAR(60) DEFAULT '待测'",'result'=>"VARCHAR(80) DEFAULT ''",'test_date'=>'DATE NULL','operator'=>"VARCHAR(120) DEFAULT ''",'ambient_temp'=>'DECIMAL(10,2) NULL','led_temp'=>'DECIMAL(10,2) NULL','driver_temp'=>'DECIMAL(10,2) NULL','shell_temp'=>'DECIMAL(10,2) NULL','max_temp'=>'DECIMAL(10,2) NULL','sphere_lumen'=>"VARCHAR(80) DEFAULT ''",'sphere_power'=>"VARCHAR(80) DEFAULT ''",'sphere_efficiency'=>"VARCHAR(80) DEFAULT ''",'cct'=>"VARCHAR(80) DEFAULT ''",'cri'=>"VARCHAR(80) DEFAULT ''",'ies_angle'=>"VARCHAR(80) DEFAULT ''",'ies_lumen'=>"VARCHAR(80) DEFAULT ''",'test_standard'=>'TEXT NULL','test_data'=>'TEXT NULL','test_conclusion'=>'TEXT NULL','retest_result'=>"VARCHAR(80) DEFAULT ''",'affect_sample'=>'TINYINT DEFAULT 0','issue_id'=>'INT DEFAULT 0','problem_generated'=>'TINYINT DEFAULT 0','template_key'=>"VARCHAR(120) DEFAULT ''",'template_name'=>"VARCHAR(160) DEFAULT ''",'template_fields_json'=>'MEDIUMTEXT NULL','note'=>'TEXT NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
     ) as $c=>$d) plm_v85_ensure_col('plm_tests',$c,$d);
 
     // V8.5.73：测试中心导航图 + 模板基础版。模板独立保存，不破坏旧测试字段。
@@ -703,7 +742,7 @@ function plm_v85_schema(){
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_test(test_id), KEY idx_cat(category)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','test_id'=>'INT NOT NULL DEFAULT 0','step_id'=>'INT NOT NULL DEFAULT 0','category'=>"VARCHAR(100) DEFAULT ''",'title'=>"VARCHAR(255) DEFAULT ''",'original_name'=>"VARCHAR(255) DEFAULT ''",'file_name'=>"VARCHAR(255) DEFAULT ''",'file_path'=>"VARCHAR(500) DEFAULT ''",'mime_type'=>"VARCHAR(160) DEFAULT ''",'file_size'=>'INT DEFAULT 0','note'=>'TEXT NULL','customer_visible'=>'TINYINT DEFAULT 1','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_files',$c,$d);
+    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','test_id'=>'INT NOT NULL DEFAULT 0','test_run_id'=>'INT NOT NULL DEFAULT 0','step_id'=>'INT NOT NULL DEFAULT 0','issue_id'=>'INT NOT NULL DEFAULT 0','source_module'=>"VARCHAR(80) DEFAULT ''",'uploaded_by_name'=>"VARCHAR(120) DEFAULT ''",'category'=>"VARCHAR(100) DEFAULT ''",'title'=>"VARCHAR(255) DEFAULT ''",'original_name'=>"VARCHAR(255) DEFAULT ''",'file_name'=>"VARCHAR(255) DEFAULT ''",'file_path'=>"VARCHAR(500) DEFAULT ''",'mime_type'=>"VARCHAR(160) DEFAULT ''",'file_size'=>'INT DEFAULT 0','note'=>'TEXT NULL','customer_visible'=>'TINYINT DEFAULT 1','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_files',$c,$d);
     plm_v85_ensure_col('plm_files','test_run_id','INT NOT NULL DEFAULT 0');
 
     $db->exec("CREATE TABLE IF NOT EXISTS plm_logs (
@@ -964,28 +1003,28 @@ function plm_v85_make_dispatch_task_no(){
     return 'PLM'.date('ymdHis').mt_rand(100,999);
 }
 function plm_v85_dispatch_user_name_by_id($uid){
-    $uid=(int)$uid; if($uid<=0 || !plm_v85_table_exists('dispatch_users')) return '';
+    $uid=(int)$uid; if($uid<=0 || !plm_v85_table_exists('crm_users')) return '';
     try{
-        $cols=plm_v85_cols('dispatch_users');
-        $nameCol=in_array('name',$cols,true)?'name':(in_array('display_name',$cols,true)?'display_name':'username');
-        $st=plm_v85_pdo()->prepare("SELECT {$nameCol} nm, username FROM dispatch_users WHERE id=? LIMIT 1");
+        $cols=plm_v85_cols('crm_users');
+        $nameCol=in_array('real_name',$cols,true)?'real_name':(in_array('name',$cols,true)?'name':'username');
+        $st=plm_v85_pdo()->prepare("SELECT {$nameCol} nm, username FROM crm_users WHERE id=? LIMIT 1");
         $st->execute(array($uid)); $r=$st->fetch();
         return $r ? (string)(($r['nm']??'')?:($r['username']??'')) : '';
     }catch(Throwable $e){ return ''; }
 }
 function plm_v85_sync_test_rectify_dispatch_links(){
     try{
-        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_tasks')) return;
+        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_next_tasks')) return;
         $links=plm_v85_rows("SELECT * FROM plm_dispatch_links WHERE COALESCE(link_type,'')='test_rectify' AND task_id>0 ORDER BY id DESC LIMIT 500");
         foreach($links as $l){
-            $task=plm_v85_row('SELECT id,status,progress,due_at,updated_at FROM dispatch_tasks WHERE id=? LIMIT 1',array((int)$l['task_id']));
+            $task=plm_v85_row('SELECT id,status,progress,due_at,updated_at FROM dispatch_next_tasks WHERE id=? LIMIT 1',array((int)$l['task_id']));
             if(!$task) continue;
             $status=(string)($task['status']??''); $progress=(int)($task['progress']??0);
             $vals=array('status'=>$status,'progress'=>$progress,'due_at'=>$task['due_at']??null,'updated_at'=>plm_v85_now());
             plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$l['id']));
             $issueId=(int)($l['issue_id']??0); $testId=(int)($l['test_id']??0);
             if($issueId>0){
-                plm_v85_dyn_update('plm_issues',array('dispatch_task_id'=>(int)$task['id'],'dispatch_status'=>$status,'dispatch_url'=>'dispatch_todo.php?open_task='.(int)$task['id'].'&single_task=1','updated_at'=>plm_v85_now()),'id=?',array($issueId));
+                plm_v85_dyn_update('plm_issues',array('dispatch_task_id'=>(int)$task['id'],'dispatch_status'=>$status,'dispatch_url'=>'dispatch_next.php?open_task='.(int)$task['id'].'&single_task=1','updated_at'=>plm_v85_now()),'id=?',array($issueId));
             }
             $done = ($progress>=100 || in_array($status,array('done','已完成','完成','approved','已确认'),true));
             if($done){
@@ -1019,14 +1058,14 @@ function plm_v85_create_test_rectify_dispatch($testId,$issueId,$assigneeId=0,$as
     if(!$issue) throw new RuntimeException('请先生成问题闭环');
     if(plm_v85_table_exists('plm_dispatch_links')){
         $old=plm_v85_row("SELECT * FROM plm_dispatch_links WHERE link_type='test_rectify' AND issue_id=? AND task_id>0 LIMIT 1",array($issueId));
-        if($old) return array('task_id'=>(int)$old['task_id'],'task_no'=>$old['task_no']??'','url'=>$old['dispatch_url']?:('dispatch_todo.php?open_task='.(int)$old['task_id'].'&single_task=1'),'link_id'=>(int)$old['id'],'exists'=>true);
+        if($old) return array('task_id'=>(int)$old['task_id'],'task_no'=>$old['task_no']??'','url'=>$old['dispatch_url']?:('dispatch_next.php?open_task='.(int)$old['task_id'].'&single_task=1'),'link_id'=>(int)$old['id'],'exists'=>true);
     }
-    if(!plm_v85_table_exists('dispatch_tasks')) throw new RuntimeException('派工表 dispatch_tasks 不存在，请确认派工系统已安装');
+    if(!plm_v85_table_exists('dispatch_next_tasks')) throw new RuntimeException('派工表 dispatch_next_tasks 不存在，请确认派工系统已安装');
     $me=plm_v85_current_user_info();
     if($assigneeName==='') $assigneeName=plm_v85_dispatch_user_name_by_id($assigneeId);
-    if($assigneeId<=0 && plm_v85_table_exists('dispatch_users') && $assigneeName!==''){
+    if($assigneeId<=0 && plm_v85_table_exists('crm_users') && $assigneeName!==''){
         try{
-            $st=plm_v85_pdo()->prepare('SELECT id FROM dispatch_users WHERE name=? OR username=? LIMIT 1');
+            $st=plm_v85_pdo()->prepare('SELECT id FROM crm_users WHERE real_name=? OR username=? LIMIT 1');
             $st->execute(array($assigneeName,$assigneeName)); $assigneeId=(int)$st->fetchColumn();
         }catch(Throwable $e){}
     }
@@ -1051,20 +1090,20 @@ function plm_v85_create_test_rectify_dispatch($testId,$issueId,$assigneeId=0,$as
     $linkedJson=array('module'=>'PLM_TEST_RECTIFY','project_id'=>(int)$test['project_id'],'model_id'=>(int)$test['model_id'],'test_id'=>$testId,'issue_id'=>$issueId,'test_type'=>$test['test_type']??'','title'=>$test['title']??'');
     $status=($assigneeId>0 && $assigneeId!==(int)($me['id']??0))?'pending_accept':'in_progress';
     $taskVals=array(
-        'task_no'=>$taskNo,'title'=>$title,'description'=>$desc,'task_type'=>'测试整改','priority'=>'urgent','status'=>$status,'source_type'=>'dispatch','boss_private'=>0,
-        'created_by'=>(int)($me['id']??0),'assigned_to'=>$assigneeId,'helpers_json'=>'[]','customer'=>(string)($p['customer']??''),'project'=>(string)($p['name']??''),'product_model'=>(string)(($m['model']??'')?:($test['test_type']??'')),
-        'linked_system'=>'PLM','linked_table'=>'plm_issues','linked_id'=>(string)$issueId,'linked_title'=>$title,'linked_url'=>'plm.php?project_id='.(int)$test['project_id'].'&tab=tests&test_id='.$testId,
-        'linked_json'=>json_encode($linkedJson,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'task_date'=>date('Y-m-d'),'extra_json'=>json_encode(array('from'=>'PLM测试整改','issue_id'=>$issueId,'test_id'=>$testId),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'due_at'=>$dueAt?:null,'progress'=>0,'sort_order'=>0,'created_at'=>$now,'updated_at'=>$now
+        'task_no'=>$taskNo,'title'=>$title,'description'=>$desc,'task_type'=>'dispatch','dispatch_mode'=>'single','priority'=>'urgent','status'=>$status,
+        'created_by'=>(int)($me['id']??0),'assigned_to'=>$assigneeId,'helper_ids_json'=>'[]','project'=>(string)($p['name']??''),
+        'linked_system'=>'PLM','linked_table'=>'plm_issues','linked_id'=>'plm_issue_'.$issueId,'linked_title'=>$title,
+        'linked_json'=>json_encode($linkedJson,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'task_date'=>date('Y-m-d'),'extra_json'=>json_encode(array('from'=>'PLM测试整改','issue_id'=>$issueId,'test_id'=>$testId,'customer'=>(string)($p['customer']??''),'product_model'=>(string)(($m['model']??'')?:($test['test_type']??''))),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'due_at'=>$dueAt?:null,'progress'=>0,'is_read'=>$assigneeId===(int)($me['id']??0)?1:0,'sort_order'=>0,'created_at'=>$now,'updated_at'=>$now
     );
-    $taskId=plm_v85_dyn_insert('dispatch_tasks',$taskVals);
+    $taskId=plm_v85_dyn_insert('dispatch_next_tasks',$taskVals);
     if(!$taskId) throw new RuntimeException('生成整改派工失败');
-    if(plm_v85_table_exists('dispatch_task_logs')){
-        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$taskId,'user_id'=>(int)($me['id']??0),'action'=>'assign','old_status'=>'','new_status'=>$status,'note'=>'PLM测试整改派工','created_at'=>$now));
+    if(plm_v85_table_exists('dispatch_next_logs')){
+        plm_v85_dyn_insert('dispatch_next_logs',array('task_id'=>$taskId,'user_id'=>(int)($me['id']??0),'action_type'=>'create','field_name'=>'status','old_value'=>'','new_value'=>$status,'note'=>'PLM测试整改派工','created_at'=>$now));
     }
-    if(plm_v85_table_exists('dispatch_notifications') && $assigneeId>0 && $assigneeId!==(int)($me['id']??0)){
-        plm_v85_dyn_insert('dispatch_notifications',array('user_id'=>$assigneeId,'task_id'=>$taskId,'type'=>'new_dispatch','title'=>'新测试整改派工','message'=>$title,'is_read'=>0,'created_at'=>$now));
+    if(plm_v85_table_exists('dispatch_next_notifications') && $assigneeId>0 && $assigneeId!==(int)($me['id']??0)){
+        plm_v85_dyn_insert('dispatch_next_notifications',array('recipient_id'=>$assigneeId,'actor_id'=>(int)($me['id']??0),'sender_id'=>(int)($me['id']??0),'task_id'=>$taskId,'event_type'=>'new_dispatch','type'=>'new_dispatch','severity'=>'normal','title'=>'新测试整改派工','message'=>$title,'action_required'=>1,'action_code'=>'accept','status'=>'unread','dedupe_key'=>'new_dispatch:'.$taskId.':'.$assigneeId,'group_key'=>'task:'.$taskId,'is_read'=>0,'created_at'=>$now,'updated_at'=>$now,'last_event_at'=>$now));
     }
-    $url='dispatch_todo.php?open_task='.$taskId.'&single_task=1';
+    $url='dispatch_next.php?open_task='.$taskId.'&single_task=1';
     $linkVals=array('project_id'=>(int)$test['project_id'],'model_id'=>(int)$test['model_id'],'step_id'=>0,'task_id'=>$taskId,'task_no'=>$taskNo,'title'=>$title,'assignee_id'=>$assigneeId,'assignee_name'=>$assigneeName,'status'=>$status,'progress'=>0,'due_at'=>$dueAt?:null,'dispatch_url'=>$url,'linked_json'=>json_encode($linkedJson,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'issue_id'=>$issueId,'test_id'=>$testId,'test_run_id'=>0,'link_type'=>'test_rectify','created_at'=>$now,'updated_at'=>$now);
     $linkId=plm_v85_dyn_insert('plm_dispatch_links',$linkVals);
     plm_v85_dyn_update('plm_issues',array('dispatch_task_id'=>$taskId,'dispatch_status'=>$status,'dispatch_url'=>$url,'dispatch_created_at'=>$now,'status'=>'处理中','owner'=>$assigneeName,'updated_at'=>$now),'id=?',array($issueId));
@@ -1073,7 +1112,7 @@ function plm_v85_create_test_rectify_dispatch($testId,$issueId,$assigneeId=0,$as
 }
 /* ===== ARTDON_PLM_V8_5_83_TEST_RECTIFY_DISPATCH_END ===== */
 
-function plm_v85_norm_file($f){ $f['id']=(int)($f['id']??0); $f['project_id']=(int)($f['project_id']??0); $f['model_id']=(int)($f['model_id']??0); $f['test_id']=(int)($f['test_id']??0); $f['test_run_id']=(int)($f['test_run_id']??0); $f['step_id']=(int)($f['step_id']??0); return $f; }
+function plm_v85_norm_file($f){ $f['id']=(int)($f['id']??0); $f['project_id']=(int)($f['project_id']??0); $f['model_id']=(int)($f['model_id']??0); $f['test_id']=(int)($f['test_id']??0); $f['test_run_id']=(int)($f['test_run_id']??0); $f['step_id']=(int)($f['step_id']??0); $f['issue_id']=(int)($f['issue_id']??0); return $f; }
 function plm_v85_upload_file(){
     if(empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) throw new RuntimeException('没有收到文件，或文件上传失败。');
     $orig = $_FILES['file']['name'];
@@ -1121,7 +1160,7 @@ function plm_v85_create_customer_zip($project_id, $file_ids){
     if(!$ids) throw new RuntimeException('请先选择要发给客户的文件。');
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $params = array_merge(array($project_id), $ids);
-    $rows = plm_v85_rows('SELECT f.*, m.name AS model_name, m.model AS model_code FROM plm_files f LEFT JOIN plm_models m ON m.id=f.model_id WHERE f.project_id=? AND f.id IN ('.$placeholders.') ORDER BY f.model_id ASC, f.category ASC, f.id ASC', $params);
+    $rows = plm_v85_rows('SELECT f.*, m.name AS model_name, m.model AS model_code FROM plm_files f LEFT JOIN plm_models m ON m.id=f.model_id WHERE f.project_id=? AND f.customer_visible=1 AND f.id IN ('.$placeholders.') ORDER BY f.model_id ASC, f.category ASC, f.id ASC', $params);
     if(!$rows) throw new RuntimeException('没有找到可打包的文件。');
     $p = plm_v85_row('SELECT * FROM plm_projects WHERE id=?', array($project_id));
     $relDir = 'uploads/plm_customer_packages/'.date('Ym');
@@ -1540,6 +1579,99 @@ body{overflow-x:hidden!important;color:#0f172a!important;}
 .test-node-layout.clean-v8585 .test-type-quick{display:none!important;}
 @media(max-width:980px){.test-node-layout.clean-v8585 .test-node-list{margin-top:12px!important;}}
 /* ARTDON_PLM_V8_5_101_TEST_CENTER_CLEAN_END */
+
+/* ===== PLM V8.5.104 测试中心工作台重排 START ===== */
+.test-workbench{display:grid!important;gap:10px!important;}
+.test-topbar{min-height:50px!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:10px!important;padding:8px 10px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;}
+.test-top-left{display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important;}
+.test-top-left b{font-size:15px!important;color:#0f172a!important;white-space:nowrap!important;}
+.test-model-picker{width:280px!important;height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:12px!important;}
+.test-rate{height:24px!important;border:1px solid #bfdbfe!important;background:#eff6ff!important;color:#1d4ed8!important;border-radius:999px!important;padding:3px 8px!important;font-size:11px!important;font-weight:900!important;white-space:nowrap!important;}
+.test-top-actions{display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:nowrap!important;}
+.test-top-actions .btn,.test-more-menu summary{height:34px!important;min-height:34px!important;border-radius:8px!important;padding:0 10px!important;font-size:11.5px!important;white-space:nowrap!important;}
+.test-more-menu{position:relative!important;}
+.test-more-menu summary{list-style:none!important;border:1px solid #dbe4ef!important;background:#fff!important;font-weight:900!important;display:inline-flex!important;align-items:center!important;cursor:pointer!important;}
+.test-more-menu summary::-webkit-details-marker{display:none!important;}
+.test-more-menu>div{position:absolute!important;right:0!important;top:38px!important;width:170px!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:10px!important;padding:7px!important;box-shadow:0 18px 40px rgba(15,23,42,.16)!important;z-index:40!important;display:grid!important;gap:6px!important;}
+.test-statbar{min-height:50px!important;display:grid!important;grid-template-columns:repeat(auto-fit,minmax(82px,1fr))!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;overflow:hidden!important;}
+.test-statbar span{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;border-right:1px solid #e2e8f0!important;color:#64748b!important;font-size:11.5px!important;font-weight:900!important;white-space:nowrap!important;}
+.test-statbar span:last-child{border-right:0!important;}
+.test-statbar b{font-size:16px!important;color:#0f172a!important;}
+.test-statbar .good b{color:#16a34a!important}.test-statbar .bad b{color:#dc2626!important}.test-statbar .warn b{color:#ea580c!important}.test-statbar .info b{color:#2563eb!important}
+.test-stat-progress{height:6px!important;background:#e5e7eb!important;border-radius:999px!important;overflow:hidden!important;}
+.test-stat-progress i{display:block!important;height:100%!important;background:#16a34a!important;}
+.test-work-layout,.test-node-layout.clean-v8585.test-work-layout{display:grid!important;grid-template-columns:300px minmax(0,1fr)!important;gap:14px!important;align-items:start!important;}
+.test-node-left{border:1px solid #e2e8f0!important;background:#fff!important;border-radius:10px!important;padding:10px!important;position:sticky!important;top:10px!important;max-height:calc(100vh - 150px)!important;overflow:auto!important;}
+.test-node-head{display:flex!important;align-items:center!important;justify-content:space-between!important;margin:0 0 8px!important;}
+.test-node-head h3{margin:0!important;font-size:14px!important;color:#0f172a!important;}
+.test-list-tools{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;margin-bottom:9px!important;}
+.test-list-tools .test-filter-search{grid-column:1/-1!important;height:34px!important;border-radius:8px!important;font-size:12px!important;}
+.test-list-tools select,.test-list-tools .btn{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 8px!important;}
+.test-node-list{display:grid!important;gap:8px!important;margin-top:0!important;}
+.test-node{min-height:112px!important;height:112px!important;padding:10px!important;border:1px solid #e2e8f0!important;border-left:3px solid #cbd5e1!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important;display:grid!important;grid-template-rows:auto auto auto 1fr!important;gap:5px!important;overflow:hidden!important;cursor:pointer!important;}
+.test-node.active{border-color:#bfdbfe!important;border-left-color:#2563eb!important;background:#eff6ff!important;box-shadow:0 0 0 2px rgba(37,99,235,.08)!important;}
+.test-node.green,.test-node.done{border-left-color:#16a34a!important;background:#f0fdf4!important}.test-node.blue,.test-node.doing{border-left-color:#2563eb!important;background:#eff6ff!important}.test-node.red,.test-node.redo,.test-node.bad{border-left-color:#ef4444!important;background:#fef2f2!important}.test-node.orange,.test-node.pause{border-left-color:#f59e0b!important;background:#fffbeb!important}
+.test-node-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;min-width:0!important;font-size:11.5px!important;line-height:1.25!important;color:#64748b!important;font-weight:850!important;}
+.test-node-row.first b{font-size:13px!important;color:#0f172a!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;text-align:left!important;}
+.test-node-row span{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.test-node-status{position:static!important;transform:none!important;min-width:auto!important;max-width:none!important;font-size:10.5px!important;padding:2px 6px!important;border-radius:999px!important;white-space:nowrap!important;}
+.test-node-row.last{font-size:10.8px!important;}
+.test-node-row.last .mini-tag{padding:2px 6px!important;font-size:10px!important;}
+.test-issue-dot{width:7px!important;height:7px!important;border-radius:50%!important;background:#ef4444!important;display:inline-block!important;margin-right:4px!important;}
+.test-empty-small{padding:18px 10px!important;border:1px dashed #bfdbfe!important;border-radius:10px!important;background:#f8fbff!important;text-align:center!important;color:#64748b!important;font-weight:900!important;font-size:12px!important;}
+.test-node-right{min-width:0!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:10px!important;overflow:hidden!important;}
+.test-detail-head{min-height:54px!important;padding:10px 12px!important;border-bottom:1px solid #e2e8f0!important;background:#fff!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;}
+.test-detail-head h3{font-size:15px!important;line-height:1.2!important;margin:0 0 3px!important;}
+.test-detail-head .hint{font-size:11.5px!important;line-height:1.3!important;}
+.test-detail-head .actions{display:flex!important;gap:6px!important;align-items:center!important;flex-wrap:wrap!important;justify-content:flex-end!important;}
+.test-detail-head .btn,.test-detail-head .test-more-menu summary{height:30px!important;min-height:30px!important;border-radius:8px!important;font-size:11px!important;padding:0 8px!important;}
+.test-detail-form{padding:12px!important;display:grid!important;gap:10px!important;}
+.test-form-section{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:12px!important;margin:0!important;box-shadow:none!important;}
+.test-form-section h4{font-size:13px!important;margin:0 0 9px!important;padding-left:8px!important;border-left:3px solid #2563eb!important;line-height:1.15!important;}
+.test-compact-grid,.test-template-fields,.test-result-grid{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;gap:9px!important;}
+.test-compact-grid .field,.test-template-field{grid-column:span 3!important;}
+.test-compact-grid .title-field{grid-column:span 6!important;}
+.test-template-field.wide,.test-result-grid .field.wide{grid-column:1/-1!important;}
+.test-detail-form input,.test-detail-form select{height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:12px!important;padding:6px 8px!important;}
+.test-detail-form textarea{min-height:78px!important;height:78px!important;border-radius:8px!important;font-size:12px!important;line-height:1.45!important;padding:7px 8px!important;resize:vertical!important;}
+.test-detail-form label{font-size:10.8px!important;margin:0 0 3px!important;color:#475569!important;font-weight:900!important;}
+.test-upload-quick-head,.test-run-title{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:8px!important;}
+.test-upload-quick-head h4,.test-run-title h4{margin:0!important;}
+.test-upload-list,.test-run-list{display:grid!important;gap:7px!important;max-height:260px!important;overflow:auto!important;}
+.file-chip{min-height:28px!important;border-radius:8px!important;font-size:11.5px!important;padding:4px 6px!important;}
+.test-run-card{border-radius:10px!important;padding:9px!important;margin:0!important;}
+.test-run-note{font-size:11.5px!important;line-height:1.35!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;}
+.test-issue-panel{border-radius:10px!important;padding:9px!important;}
+.test-detail-empty{min-height:260px!important;display:grid!important;place-items:center!important;align-content:center!important;gap:8px!important;color:#64748b!important;text-align:center!important;padding:24px!important;}
+.test-detail-empty b{font-size:16px!important;color:#0f172a!important;}
+.test-template-drawer-mask{justify-content:flex-end!important;align-items:stretch!important;padding:0!important;}
+.test-template-drawer{width:min(620px,96vw)!important;height:100vh!important;background:#fff!important;border-left:1px solid #e2e8f0!important;box-shadow:-18px 0 45px rgba(15,23,42,.18)!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;}
+.test-template-drawer .modal-body{overflow:auto!important;padding:12px!important;}
+.test-template-drawer .test-template-editor{margin:0!important;border-radius:10px!important;}
+.test-template-drawer .test-template-editor.collapsed .tpl-editor-body{display:block!important;}
+@media(max-width:1180px){
+  .test-work-layout,.test-node-layout.clean-v8585.test-work-layout{grid-template-columns:280px minmax(0,1fr)!important;}
+  .test-compact-grid .field,.test-template-field{grid-column:span 4!important;}
+  .test-compact-grid .title-field{grid-column:span 8!important;}
+}
+@media(max-width:900px){
+  .test-topbar{align-items:flex-start!important;flex-direction:column!important;}
+  .test-top-actions{flex-wrap:wrap!important;}
+  .test-statbar{grid-template-columns:repeat(4,minmax(0,1fr))!important;}
+  .test-work-layout,.test-node-layout.clean-v8585.test-work-layout{grid-template-columns:1fr!important;}
+  .test-node-left{position:relative!important;top:auto!important;max-height:none!important;}
+  .test-compact-grid .field,.test-template-field,.test-compact-grid .title-field{grid-column:span 6!important;}
+}
+@media(max-width:620px){
+  .test-model-picker{width:100%!important;}
+  .test-top-left{width:100%!important;flex-wrap:wrap!important;}
+  .test-statbar{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .test-list-tools{grid-template-columns:1fr!important;}
+  .test-compact-grid,.test-template-fields,.test-result-grid{grid-template-columns:1fr!important;}
+  .test-compact-grid .field,.test-template-field,.test-compact-grid .title-field,.test-template-field.wide,.test-result-grid .field.wide{grid-column:1/-1!important;}
+  .test-detail-head{align-items:flex-start!important;flex-direction:column!important;}
+}
+/* ===== PLM V8.5.104 测试中心工作台重排 END ===== */
 </style>
 <style>
 /* V8.5.99：基本资料页清爽布局。暂停/恢复只保留顶部按钮，不再占用基本资料内容区。 */
@@ -2410,20 +2542,20 @@ function plm_v85_sync_step_dispatch_completion($stepId,$reason=''){
 }
 function plm_v85_sync_flow_dispatch_links(){
     try{
-        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_tasks')) return;
+        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_next_tasks')) return;
         $links=plm_v85_rows("SELECT * FROM plm_dispatch_links WHERE COALESCE(task_id,0)>0 AND COALESCE(step_id,0)>0 ORDER BY id DESC LIMIT 800");
         $stepIds=array();
         foreach($links as $l){
             $tid=(int)($l['task_id']??0); if($tid<=0) continue;
-            $t=plm_v85_row('SELECT * FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+            $t=plm_v85_row('SELECT * FROM dispatch_next_tasks WHERE id=? LIMIT 1',array($tid));
             if(!$t) continue;
             $isDone=((string)($t['status']??'')==='done')?1:0;
             $progress=$isDone?100:max(0,min(100,(int)($t['progress']??0)));
             $assignee=(int)($t['assigned_to']??0);
             $assigneeName='';
             try{
-                $u=plm_v85_row('SELECT name,username FROM dispatch_users WHERE id=? LIMIT 1',array($assignee));
-                if($u) $assigneeName=(string)(($u['name']??'')?:($u['username']??''));
+                $u=plm_v85_row('SELECT real_name,username FROM crm_users WHERE id=? LIMIT 1',array($assignee));
+                if($u) $assigneeName=(string)(($u['real_name']??'')?:($u['username']??''));
             }catch(Throwable $e){}
             $vals=array(
                 'task_no'=>(string)($t['task_no']??($l['task_no']??'')),
@@ -2440,7 +2572,7 @@ function plm_v85_sync_flow_dispatch_links(){
                 'assigned_to_name'=>$assigneeName,
                 'due_at'=>($t['due_at']??null)?:null,
                 'task_updated_at'=>($t['updated_at']??null)?:plm_v85_now(),
-                'completed_at'=>$isDone?(($t['approved_at']??null)?:plm_v85_now()):null,
+                'completed_at'=>$isDone?(($t['completed_at']??null)?:plm_v85_now()):null,
                 'updated_at'=>plm_v85_now()
             );
             plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$l['id']));
@@ -2535,16 +2667,16 @@ function plm_v85_project_pause_execute($pid,$reason,$expected,$syncFlow=true,$sy
             foreach($links as $l){
                 $tid=(int)($l['task_id']??0); if($tid<=0) continue;
                 $task=null;
-                if(plm_v85_table_exists('dispatch_tasks')) $task=plm_v85_row('SELECT * FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+                if(plm_v85_table_exists('dispatch_next_tasks')) $task=plm_v85_row('SELECT * FROM dispatch_next_tasks WHERE id=? LIMIT 1',array($tid));
                 $taskStatus=(string)(($task['status']??'')?:($l['status']??''));
                 if(in_array($taskStatus,array('done','cancelled','已完成','完成','已取消'),true) || plm_v85_paused_status($taskStatus)) continue;
                 $snapshot['dispatch_links'][]=array('id'=>(int)$l['id'],'task_id'=>$tid,'status'=>(string)($l['status']??''),'task_status'=>(string)($l['task_status']??''),'progress'=>(int)($l['progress']??0));
                 if($task) $snapshot['dispatch_tasks'][]=array('id'=>$tid,'status'=>(string)($task['status']??''),'progress'=>(int)($task['progress']??0));
                 plm_v85_dyn_update('plm_dispatch_links',array('status'=>'paused','task_status'=>'paused','status_label'=>'暂停','last_action'=>'project_pause','last_note'=>$reason,'last_event_at'=>$now,'updated_at'=>$now),'id=?',array((int)$l['id']));
-                if($task && plm_v85_table_exists('dispatch_tasks')){
-                    plm_v85_dyn_update('dispatch_tasks',array('status'=>'paused','pause_reason'=>'PLM项目暂停：'.$reason,'updated_at'=>$now),'id=?',array($tid));
-                    if(plm_v85_table_exists('dispatch_task_logs')){
-                        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action'=>'project_pause','old_status'=>(string)($task['status']??''),'new_status'=>'paused','note'=>'PLM项目暂停：'.$reason,'created_at'=>$now));
+                if($task && plm_v85_table_exists('dispatch_next_tasks')){
+                    plm_v85_dyn_update('dispatch_next_tasks',array('status'=>'paused','updated_at'=>$now),'id=?',array($tid));
+                    if(plm_v85_table_exists('dispatch_next_logs')){
+                        plm_v85_dyn_insert('dispatch_next_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action_type'=>'project_pause','field_name'=>'status','old_value'=>(string)($task['status']??''),'new_value'=>'paused','note'=>'PLM项目暂停：'.$reason,'created_at'=>$now));
                     }
                     $counts['dispatch']++;
                 }
@@ -2630,13 +2762,13 @@ function plm_v85_project_resume_execute($pid,$reason){
                 $restore=plm_v85_resume_status($l['status']??($l['task_status']??''),'in_progress');
                 plm_v85_dyn_update('plm_dispatch_links',array('status'=>$restore,'task_status'=>$restore,'status_label'=>plm_v85_dispatch_status_label($restore),'last_action'=>'project_resume','last_note'=>$reason,'last_event_at'=>$now,'updated_at'=>$now),'id=?',array($id));
             }
-            if($tid>0 && isset($taskMap[$tid]) && plm_v85_table_exists('dispatch_tasks')){
-                $task=plm_v85_row('SELECT status FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+            if($tid>0 && isset($taskMap[$tid]) && plm_v85_table_exists('dispatch_next_tasks')){
+                $task=plm_v85_row('SELECT status FROM dispatch_next_tasks WHERE id=? LIMIT 1',array($tid));
                 if($task && plm_v85_paused_status($task['status']??'')){
                     $restore=plm_v85_resume_status($taskMap[$tid]['status']??'','in_progress');
-                    plm_v85_dyn_update('dispatch_tasks',array('status'=>$restore,'pause_reason'=>'','updated_at'=>$now),'id=?',array($tid));
-                    if(plm_v85_table_exists('dispatch_task_logs')){
-                        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action'=>'project_resume','old_status'=>'paused','new_status'=>$restore,'note'=>'PLM项目恢复：'.$reason,'created_at'=>$now));
+                    plm_v85_dyn_update('dispatch_next_tasks',array('status'=>$restore,'updated_at'=>$now),'id=?',array($tid));
+                    if(plm_v85_table_exists('dispatch_next_logs')){
+                        plm_v85_dyn_insert('dispatch_next_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action_type'=>'project_resume','field_name'=>'status','old_value'=>'paused','new_value'=>$restore,'note'=>'PLM项目恢复：'.$reason,'created_at'=>$now));
                     }
                     $counts['dispatch']++;
                 }
@@ -2647,7 +2779,7 @@ function plm_v85_project_resume_execute($pid,$reason){
             foreach($rows as $r){
                 plm_v85_dyn_update('plm_dispatch_links',array('status'=>'in_progress','task_status'=>'in_progress','status_label'=>'进行中','updated_at'=>$now),'id=?',array((int)$r['id']));
                 $tid=(int)($r['task_id']??0);
-                if($tid>0 && plm_v85_table_exists('dispatch_tasks')) plm_v85_dyn_update('dispatch_tasks',array('status'=>'in_progress','pause_reason'=>'','updated_at'=>$now),'id=?',array($tid));
+                if($tid>0 && plm_v85_table_exists('dispatch_next_tasks')) plm_v85_dyn_update('dispatch_next_tasks',array('status'=>'in_progress','updated_at'=>$now),'id=?',array($tid));
                 $counts['dispatch']++;
             }
         }
@@ -3147,7 +3279,7 @@ function plm_v85_handle_api(){
 来源：PLM开发导航图 V8.5.4';
             plm_v85_dyn_update('plm_flow_steps', array('dispatch_status'=>'已生成草稿','dispatch_note'=>$text,'updated_at'=>plm_v85_now()), 'id=?', array($id));
             plm_v85_log((int)$srow['project_id'],'step',$id,'生成派工草稿',$text);
-            plm_v85_json(array('ok'=>true,'text'=>$text,'url'=>'dispatch_todo.php'));
+            plm_v85_json(array('ok'=>true,'text'=>$text,'url'=>'dispatch_next.php'));
         }
         if($action === 'save_dispatch_link'){
             plm_v85_require_perm('create_dispatch','生成派工');
@@ -3166,7 +3298,7 @@ function plm_v85_handle_api(){
                 'status'=>plm_v85_s($d['status']??'已创建',80),
                 'progress'=>(int)($d['progress']??0),
                 'due_at'=>plm_v85_s($d['due_at']??'',30) ?: null,
-                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_todo.php?task_id='.$taskId):'dispatch_todo.php'),500),
+                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_next.php?open_task='.$taskId.'&single_task=1'):'dispatch_next.php'),500),
                 'linked_json'=>json_encode($d['linked_json']??array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at'=>plm_v85_now()
             );
@@ -3207,7 +3339,7 @@ function plm_v85_handle_api(){
                 'status'=>plm_v85_s($d['status']??'已创建',80),
                 'progress'=>(int)($d['progress']??0),
                 'due_at'=>plm_v85_s($d['due_at']??'',30) ?: null,
-                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_todo.php?task_id='.$taskId):'dispatch_todo.php'),500),
+                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_next.php?open_task='.$taskId.'&single_task=1'):'dispatch_next.php'),500),
                 'linked_json'=>json_encode($d['linked_json']??array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at'=>plm_v85_now()
             );
@@ -3343,7 +3475,10 @@ function plm_v85_handle_api(){
             $tplFields=$d['template_fields_json']??($d['custom_fields']??array());
             if(is_array($tplFields)) $tplFieldsJson=json_encode($tplFields,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
             else $tplFieldsJson=plm_v85_s($tplFields,20000);
-            $vals=array('project_id'=>$pid,'model_id'=>$mid,'test_type'=>plm_v85_s($d['test_type']??'温升',80),'title'=>plm_v85_s($d['title']??'',255),'status'=>plm_v85_s($d['status']??'待测',60),'result'=>plm_v85_s($d['result']??'',80),'test_date'=>plm_v85_s($d['test_date']??'',20) ?: null,'operator'=>plm_v85_s($d['operator']??'',120),'ambient_temp'=>($d['ambient_temp']??'')===''?null:(float)$d['ambient_temp'],'led_temp'=>($d['led_temp']??'')===''?null:(float)$d['led_temp'],'driver_temp'=>($d['driver_temp']??'')===''?null:(float)$d['driver_temp'],'shell_temp'=>($d['shell_temp']??'')===''?null:(float)$d['shell_temp'],'max_temp'=>($d['max_temp']??'')===''?null:(float)$d['max_temp'],'sphere_lumen'=>plm_v85_s($d['sphere_lumen']??'',80),'sphere_power'=>plm_v85_s($d['sphere_power']??'',80),'sphere_efficiency'=>plm_v85_s($d['sphere_efficiency']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'cri'=>plm_v85_s($d['cri']??'',80),'ies_angle'=>plm_v85_s($d['ies_angle']??'',80),'ies_lumen'=>plm_v85_s($d['ies_lumen']??'',80),'test_standard'=>plm_v85_s($d['test_standard']??'',10000),'test_data'=>plm_v85_s($d['test_data']??'',10000),'test_conclusion'=>plm_v85_s($d['test_conclusion']??'',10000),'retest_result'=>plm_v85_s($d['retest_result']??'',80),'affect_sample'=>(int)($d['affect_sample']??0),'template_key'=>plm_v85_s($d['template_key']??'',120),'template_name'=>plm_v85_s($d['template_name']??'',160),'template_fields_json'=>$tplFieldsJson,'note'=>plm_v85_s($d['note']??'',10000),'updated_at'=>plm_v85_now());
+            $testType=plm_v85_s($d['test_type']??'温升测试',80);
+            $title=plm_v85_s($d['title']??'',255);
+            if($title==='') $title=$testType;
+            $vals=array('project_id'=>$pid,'model_id'=>$mid,'source_test_id'=>(int)($d['source_test_id']??0),'retest_no'=>(int)($d['retest_no']??0),'test_type'=>$testType,'title'=>$title,'status'=>plm_v85_s($d['status']??'未开始',60),'result'=>plm_v85_s($d['result']??'待判定',80),'test_date'=>plm_v85_s($d['test_date']??'',20) ?: null,'operator'=>plm_v85_s($d['operator']??'',120),'ambient_temp'=>($d['ambient_temp']??'')===''?null:(float)$d['ambient_temp'],'led_temp'=>($d['led_temp']??'')===''?null:(float)$d['led_temp'],'driver_temp'=>($d['driver_temp']??'')===''?null:(float)$d['driver_temp'],'shell_temp'=>($d['shell_temp']??'')===''?null:(float)$d['shell_temp'],'max_temp'=>($d['max_temp']??'')===''?null:(float)$d['max_temp'],'sphere_lumen'=>plm_v85_s($d['sphere_lumen']??'',80),'sphere_power'=>plm_v85_s($d['sphere_power']??'',80),'sphere_efficiency'=>plm_v85_s($d['sphere_efficiency']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'cri'=>plm_v85_s($d['cri']??'',80),'ies_angle'=>plm_v85_s($d['ies_angle']??'',80),'ies_lumen'=>plm_v85_s($d['ies_lumen']??'',80),'test_standard'=>plm_v85_s($d['test_standard']??'',10000),'test_data'=>plm_v85_s($d['test_data']??'',10000),'test_conclusion'=>plm_v85_s($d['test_conclusion']??'',10000),'retest_result'=>plm_v85_s($d['retest_result']??'',80),'affect_sample'=>(int)($d['affect_sample']??0),'template_key'=>plm_v85_s($d['template_key']??'',120),'template_name'=>plm_v85_s($d['template_name']??'',160),'template_fields_json'=>$tplFieldsJson,'note'=>plm_v85_s($d['note']??'',10000),'updated_at'=>plm_v85_now());
             if($id){ plm_v85_dyn_update('plm_tests',$vals,'id=?',array($id)); }
             else { $vals['created_at']=plm_v85_now(); $id=plm_v85_dyn_insert('plm_tests',$vals); }
             plm_v85_ensure_initial_test_run($id);
@@ -3357,6 +3492,64 @@ function plm_v85_handle_api(){
             plm_v85_update_model_test_summary($mid);
             plm_v85_log($pid,'test',$id,'保存测试',$vals['test_type'].'/'.$vals['status']);
             plm_v85_json(array('ok'=>true,'id'=>$id,'issue_id'=>$autoIssueId));
+        }
+        if($action === 'create_retest'){
+            plm_v85_require_perm('edit_test','创建复测');
+            $sourceId=(int)($d['test_id']??($d['source_test_id']??0));
+            if(!$sourceId) plm_v85_json(array('ok'=>false,'error'=>'缺少来源测试ID'));
+            $old=plm_v85_row('SELECT * FROM plm_tests WHERE id=?',array($sourceId));
+            if(!$old) plm_v85_json(array('ok'=>false,'error'=>'来源测试不存在'));
+            $pid=(int)($old['project_id']??0);
+            $mid=(int)($old['model_id']??0);
+            $row=plm_v85_row('SELECT MAX(retest_no) AS max_no FROM plm_tests WHERE source_test_id=? OR id=?',array($sourceId,$sourceId));
+            $no=max(1,(int)($row['max_no']??0)+1);
+            $title=plm_v85_s($d['title']??'',255);
+            if($title==='') $title=trim((string)($old['title']??$old['test_type']??'测试')).' 复测'.$no;
+            $tplFields=$d['template_fields_json']??($d['custom_fields']??($old['template_fields_json']??''));
+            if(is_array($tplFields)) $tplFieldsJson=json_encode($tplFields,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            else $tplFieldsJson=plm_v85_s($tplFields,20000);
+            $vals=array(
+                'project_id'=>$pid,
+                'model_id'=>(int)($d['model_id']??$mid),
+                'source_test_id'=>$sourceId,
+                'retest_no'=>$no,
+                'test_type'=>plm_v85_s($d['test_type']??($old['test_type']??'测试'),80),
+                'title'=>$title,
+                'status'=>plm_v85_s($d['status']??'未开始',60),
+                'result'=>plm_v85_s($d['result']??'待判定',80),
+                'test_date'=>plm_v85_s($d['test_date']??'',20) ?: null,
+                'operator'=>plm_v85_s($d['operator']??'',120),
+                'ambient_temp'=>($d['ambient_temp']??($old['ambient_temp']??''))===''?null:(float)($d['ambient_temp']??$old['ambient_temp']),
+                'led_temp'=>($d['led_temp']??($old['led_temp']??''))===''?null:(float)($d['led_temp']??$old['led_temp']),
+                'driver_temp'=>($d['driver_temp']??($old['driver_temp']??''))===''?null:(float)($d['driver_temp']??$old['driver_temp']),
+                'shell_temp'=>($d['shell_temp']??($old['shell_temp']??''))===''?null:(float)($d['shell_temp']??$old['shell_temp']),
+                'max_temp'=>($d['max_temp']??($old['max_temp']??''))===''?null:(float)($d['max_temp']??$old['max_temp']),
+                'sphere_lumen'=>plm_v85_s($d['sphere_lumen']??($old['sphere_lumen']??''),80),
+                'sphere_power'=>plm_v85_s($d['sphere_power']??($old['sphere_power']??''),80),
+                'sphere_efficiency'=>plm_v85_s($d['sphere_efficiency']??($old['sphere_efficiency']??''),80),
+                'cct'=>plm_v85_s($d['cct']??($old['cct']??''),80),
+                'cri'=>plm_v85_s($d['cri']??($old['cri']??''),80),
+                'ies_angle'=>plm_v85_s($d['ies_angle']??($old['ies_angle']??''),80),
+                'ies_lumen'=>plm_v85_s($d['ies_lumen']??($old['ies_lumen']??''),80),
+                'test_standard'=>plm_v85_s($d['test_standard']??($old['test_standard']??''),10000),
+                'test_data'=>plm_v85_s($d['test_data']??($old['test_data']??''),10000),
+                'test_conclusion'=>'',
+                'retest_result'=>'',
+                'affect_sample'=>0,
+                'issue_id'=>0,
+                'problem_generated'=>0,
+                'template_key'=>plm_v85_s($d['template_key']??($old['template_key']??''),120),
+                'template_name'=>plm_v85_s($d['template_name']??($old['template_name']??''),160),
+                'template_fields_json'=>$tplFieldsJson,
+                'note'=>plm_v85_s($d['note']??('来源测试ID:'.$sourceId),10000),
+                'created_at'=>plm_v85_now(),
+                'updated_at'=>plm_v85_now()
+            );
+            $newId=plm_v85_dyn_insert('plm_tests',$vals);
+            plm_v85_ensure_initial_test_run($newId);
+            plm_v85_update_model_test_summary((int)$vals['model_id']);
+            plm_v85_log($pid,'test',$newId,'创建复测','来源测试ID '.$sourceId.' / 第'.$no.'次复测');
+            plm_v85_json(array('ok'=>true,'id'=>$newId,'source_test_id'=>$sourceId,'retest_no'=>$no));
         }
         if($action === 'save_test_run'){
             plm_v85_require_perm('edit_test','新增/修改测试');
@@ -3438,7 +3631,16 @@ function plm_v85_handle_api(){
             $pid=(int)($_POST['project_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
             $file = plm_v85_upload_file();
             $cat=plm_v85_s($_POST['category']??'其它',100);
-            $id=plm_v85_dyn_insert('plm_files', array('project_id'=>$pid,'model_id'=>(int)($_POST['model_id']??0),'test_id'=>(int)($_POST['test_id']??0),'test_run_id'=>(int)($_POST['test_run_id']??0),'step_id'=>(int)($_POST['step_id']??0),'category'=>$cat,'title'=>plm_v85_s($_POST['title']??'',255),'original_name'=>$file['original_name'],'file_name'=>$file['file_name'],'file_path'=>$file['file_path'],'mime_type'=>$file['mime_type'],'file_size'=>$file['file_size'],'note'=>plm_v85_s($_POST['note']??'',5000),'customer_visible'=>(int)($_POST['customer_visible']??1),'created_at'=>plm_v85_now()));
+            $me=plm_v85_current_user_info();
+            $source=plm_v85_s($_POST['source_module']??'',80);
+            if($source===''){
+                if((int)($_POST['test_id']??0)>0) $source='test';
+                elseif((int)($_POST['issue_id']??0)>0) $source='issue';
+                elseif((int)($_POST['step_id']??0)>0) $source='flow';
+                elseif((int)($_POST['model_id']??0)>0) $source='model';
+                else $source='file';
+            }
+            $id=plm_v85_dyn_insert('plm_files', array('project_id'=>$pid,'model_id'=>(int)($_POST['model_id']??0),'test_id'=>(int)($_POST['test_id']??0),'test_run_id'=>(int)($_POST['test_run_id']??0),'step_id'=>(int)($_POST['step_id']??0),'issue_id'=>(int)($_POST['issue_id']??0),'source_module'=>$source,'uploaded_by_name'=>plm_v85_s($me['name']??($me['username']??''),120),'category'=>$cat,'title'=>plm_v85_s($_POST['title']??'',255),'original_name'=>$file['original_name'],'file_name'=>$file['file_name'],'file_path'=>$file['file_path'],'mime_type'=>$file['mime_type'],'file_size'=>$file['file_size'],'note'=>plm_v85_s($_POST['note']??'',5000),'customer_visible'=>(int)($_POST['customer_visible']??1),'created_at'=>plm_v85_now()));
             if(in_array($cat,array('产品图片','项目图片'),true) && preg_match('/^image\//', (string)$file['mime_type'])) plm_v85_dyn_update('plm_projects',array('image_path'=>$file['file_path'],'updated_at'=>plm_v85_now()),'id=?',array($pid));
             plm_v85_log($pid,'file',$id,'上传文件',$file['original_name']);
             plm_v85_json(array('ok'=>true,'id'=>$id,'file'=>$file));
@@ -3447,7 +3649,7 @@ function plm_v85_handle_api(){
             plm_v85_require_perm('upload_file','修改文件信息');
             $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少文件ID'));
             $old=plm_v85_row('SELECT project_id FROM plm_files WHERE id=?',array($id));
-            plm_v85_dyn_update('plm_files',array('category'=>plm_v85_s($d['category']??'',100),'title'=>plm_v85_s($d['title']??'',255),'note'=>plm_v85_s($d['note']??'',5000),'customer_visible'=>(int)($d['customer_visible']??1),'model_id'=>(int)($d['model_id']??0),'test_id'=>(int)($d['test_id']??0),'test_run_id'=>(int)($d['test_run_id']??0),'step_id'=>(int)($d['step_id']??0)),'id=?',array($id));
+            plm_v85_dyn_update('plm_files',array('category'=>plm_v85_s($d['category']??'',100),'title'=>plm_v85_s($d['title']??'',255),'note'=>plm_v85_s($d['note']??'',5000),'customer_visible'=>(int)($d['customer_visible']??1),'model_id'=>(int)($d['model_id']??0),'test_id'=>(int)($d['test_id']??0),'test_run_id'=>(int)($d['test_run_id']??0),'step_id'=>(int)($d['step_id']??0),'issue_id'=>(int)($d['issue_id']??0),'source_module'=>plm_v85_s($d['source_module']??'',80)),'id=?',array($id));
             plm_v85_log((int)($old['project_id']??0),'file',$id,'保存文件信息','');
             plm_v85_json(array('ok'=>true));
         }
@@ -3483,7 +3685,7 @@ function plm_v85_handle_api(){
             plm_v85_require_perm('edit_issue','新增/修改问题');
             $id=(int)($d['id']??0); $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
             $status=plm_v85_s($d['status']??'待处理',60);
-            $vals=array('project_id'=>$pid,'model_id'=>$mid,'step_id'=>(int)($d['step_id']??0),'file_id'=>(int)($d['file_id']??0),'title'=>plm_v85_s($d['title']??'',255),'source'=>plm_v85_s($d['source']??'',120),'severity'=>plm_v85_s($d['severity']??'中',60),'status'=>$status,'owner'=>plm_v85_s($d['owner']??'',120),'solution'=>plm_v85_s($d['solution']??'',10000),'note'=>plm_v85_s($d['note']??'',10000),'closed_at'=>in_array($status,array('已解决','已关闭'),true)?plm_v85_now():null,'updated_at'=>plm_v85_now());
+            $vals=array('project_id'=>$pid,'model_id'=>$mid,'step_id'=>(int)($d['step_id']??0),'file_id'=>(int)($d['file_id']??0),'test_id'=>(int)($d['test_id']??0),'title'=>plm_v85_s($d['title']??'',255),'source'=>plm_v85_s($d['source']??'',120),'severity'=>plm_v85_s($d['severity']??'中',60),'status'=>$status,'owner'=>plm_v85_s($d['owner']??'',120),'solution'=>plm_v85_s($d['solution']??'',10000),'note'=>plm_v85_s($d['note']??'',10000),'closed_at'=>in_array($status,array('已解决','已关闭'),true)?plm_v85_now():null,'updated_at'=>plm_v85_now());
             if($id){ plm_v85_dyn_update('plm_issues',$vals,'id=?',array($id)); }
             else { $vals['created_at']=plm_v85_now(); $id=plm_v85_dyn_insert('plm_issues',$vals); }
             plm_v85_log($pid,'issue',$id,'保存问题',$vals['title'].' / '.$status);
@@ -4192,6 +4394,29 @@ if (ob_get_length()) @ob_clean();
 .issue-board{display:grid;grid-template-columns:320px minmax(0,1fr);gap:12px;align-items:start}.issue-form,.issue-list-panel{background:#fff;border:1px solid #dbe3ef;border-radius:18px;padding:12px;box-shadow:0 8px 22px rgba(15,23,42,.045)}
 .issue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e5e7eb;border-left:5px solid #93c5fd;border-radius:16px;padding:10px;background:#fff;margin-bottom:8px}.issue-row.high{border-left-color:#ef4444}.issue-row.closed{opacity:.68;background:#f8fafc}.issue-title{font-weight:1000;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-meta{font-size:12px;color:#64748b;font-weight:800;line-height:1.55}.issue-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.flow-danger-mini{background:#fee2e2!important;border-color:#fecaca!important;color:#991b1b!important}.flow-node-delete{border:1px solid #fecaca;background:#fff1f2;color:#991b1b;border-radius:9px;font-size:11px;font-weight:1000;padding:3px 6px;cursor:pointer}.flow-node-delete:hover{background:#fee2e2}
 @media(max-width:980px){.issue-board{grid-template-columns:1fr}}
+
+/* ===== PLM V8.5.104 Issue Workbench START ===== */
+.issue-workbench{display:grid;gap:10px}
+.issue-topbar{min-height:52px;border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.issue-title-block{display:flex;align-items:baseline;gap:10px;min-width:0}.issue-title-block h3{margin:0;font-size:16px;color:#0f172a}.issue-title-block span{font-size:12px;color:#64748b;font-weight:900;white-space:nowrap}
+.issue-top-controls{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:nowrap}.issue-top-controls input{width:280px;height:34px;border-radius:8px}.issue-top-controls select{height:34px;border-radius:8px;max-width:180px}.issue-top-controls .btn{height:34px;min-height:34px;border-radius:8px;padding:0 10px;white-space:nowrap}
+.issue-more{position:relative}.issue-more>summary{list-style:none;height:34px;border:1px solid #dbe4ef;background:#fff;border-radius:8px;padding:0 10px;display:inline-flex;align-items:center;font-weight:900;cursor:pointer}.issue-more>summary::-webkit-details-marker{display:none}.issue-more>div{position:absolute;right:0;top:38px;width:176px;background:#fff;border:1px solid #dbe4ef;border-radius:10px;padding:7px;box-shadow:0 18px 40px rgba(15,23,42,.15);z-index:50;display:grid;gap:6px}
+.issue-filter-panel{display:none;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:10px;padding:8px}.issue-filter-panel.show{display:grid}.issue-filter-panel select,.issue-filter-panel .btn{height:32px;border-radius:8px;font-size:12px}
+.issue-statbar{min-height:48px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;overflow:hidden}.issue-statbar span{display:flex;align-items:center;justify-content:center;gap:5px;border-right:1px solid #e2e8f0;color:#64748b;font-size:12px;font-weight:900}.issue-statbar span:last-child{border-right:0}.issue-statbar b{font-size:16px;color:#0f172a}.issue-statbar .warn b{color:#ea580c}.issue-statbar .info b{color:#2563eb}.issue-statbar .good b{color:#16a34a}.issue-statbar .bad b{color:#dc2626}
+.issue-filter-tags{display:flex;gap:6px;flex-wrap:wrap}.issue-filter-tags span{display:inline-flex;align-items:center;gap:4px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:900}.issue-filter-tags button{border:0;background:transparent;color:#1d4ed8;font-weight:1000;cursor:pointer}
+.issue-board-pro{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;align-items:start}.issue-list-panel-pro,.issue-detail-panel{background:#fff;border:1px solid #dbe3ef;border-radius:10px;padding:12px}.issue-list-panel-pro{position:sticky;top:126px}.issue-list-head{display:grid;gap:8px;margin-bottom:8px}.issue-list-head>div:first-child{display:flex;justify-content:space-between;align-items:center}.issue-list-head b{font-size:14px}.issue-list-head span{font-size:11px;color:#64748b;font-weight:900}
+.issue-quick{display:flex;gap:5px;flex-wrap:wrap}.issue-quick button{border:1px solid #dbe4ef;background:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:900;color:#475569;cursor:pointer}.issue-quick button.active{border-color:#93c5fd;background:#eff6ff;color:#1d4ed8}
+.issue-list-scroll{display:grid;gap:8px;max-height:calc(100vh - 310px);overflow:auto;padding-right:2px}.issue-card{border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:9px;cursor:pointer;border-left:3px solid #cbd5e1}.issue-card:hover{border-color:#93c5fd;background:#f8fbff}.issue-card.active{border-color:#60a5fa;background:#eff6ff}.issue-card.high{border-left-color:#ef4444}.issue-card.closed{opacity:.72;background:#f8fafc}.issue-card-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start}.issue-card-top b{font-size:13px;line-height:1.35;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.issue-card-tags,.issue-card-foot{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:#64748b;font-weight:850}.issue-card-tags span:not(.tag){background:#f1f5f9;border-radius:999px;padding:2px 6px}.issue-card-link{font-size:11px;color:#475569;font-weight:850;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-card-foot{justify-content:space-between;border-top:1px solid #eef2f7;padding-top:6px}
+.issue-detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:9px;margin-bottom:10px}.issue-detail-head h3{margin:0 0 5px;font-size:17px;color:#0f172a}.issue-detail-head .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.issue-detail-head .btn{height:32px;min-height:32px;border-radius:8px;padding:0 9px;font-size:12px}
+.issue-stagebar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px}.issue-stagebar span{height:26px;border-radius:999px;background:#f1f5f9;color:#64748b;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}.issue-stagebar span.on{background:#dbeafe;color:#1d4ed8}
+.issue-detail-grid{display:grid;gap:10px}.issue-section{border:1px solid #e2e8f0;background:#fbfdff;border-radius:10px;padding:10px}.issue-section h4{margin:0 0 8px;font-size:13px;color:#0f172a;border-left:3px solid #2563eb;padding-left:7px}.issue-form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.issue-form-grid .wide{grid-column:span 2}.issue-form-grid .readonly input{background:#f8fafc;color:#64748b}.issue-section input,.issue-section select{height:34px;border-radius:8px}.issue-section textarea{min-height:86px;border-radius:8px;resize:vertical}.issue-section label{font-size:11px;margin-bottom:4px;color:#475569}
+.issue-verify-box{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px dashed #cbd5e1;background:#fff;border-radius:10px;padding:9px}.issue-verify-box b{font-size:13px}.issue-verify-box span{font-size:12px;color:#64748b;font-weight:850}
+.issue-link-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.issue-link-grid>div{border:1px solid #e2e8f0;background:#fff;border-radius:9px;padding:8px;display:grid;gap:5px}.issue-link-grid span{font-size:11px;color:#64748b;font-weight:900}.issue-link-grid b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-link-grid .btn{justify-self:start;height:26px;min-height:26px}
+.issue-file-list{display:grid;gap:7px}.issue-file-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;border:1px solid #e2e8f0;background:#fff;border-radius:9px;padding:7px}.issue-file-list span{font-size:12px;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-file-list small{display:block;font-size:11px;color:#64748b}.issue-timeline{display:grid;gap:6px}.issue-timeline-row{display:grid;grid-template-columns:130px minmax(0,1fr);gap:8px;border-left:2px solid #bfdbfe;padding:5px 0 5px 8px}.issue-timeline-row b{font-size:11px;color:#64748b}.issue-timeline-row span{font-size:12px;color:#334155;font-weight:850}
+.issue-empty{border:1px dashed #cbd5e1;border-radius:10px;padding:16px;text-align:center;color:#64748b;font-weight:900;background:#f8fafc}.issue-empty.big{min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}.issue-empty.big b{font-size:16px;color:#0f172a}
+@media(max-width:1180px){.issue-topbar{align-items:flex-start}.issue-top-controls{flex-wrap:wrap;justify-content:flex-end}.issue-board-pro{grid-template-columns:290px minmax(0,1fr)}.issue-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.issue-filter-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){.issue-board-pro{grid-template-columns:1fr}.issue-list-panel-pro{position:static}.issue-list-scroll{max-height:none}.issue-topbar{display:grid}.issue-top-controls{justify-content:flex-start}.issue-top-controls input{width:100%}.issue-statbar{grid-template-columns:repeat(2,minmax(0,1fr))}.issue-link-grid{grid-template-columns:1fr}.issue-detail-head{display:grid}.issue-form-grid .wide{grid-column:span 1}}
+/* ===== PLM V8.5.104 Issue Workbench END ===== */
 
 
 .dispatch-panel{border-color:#bfdbfe!important;background:#eff6ff!important}
@@ -6605,6 +6830,33 @@ textarea,
 .btn.danger{background:#fee2e2 !important;}
 .btn.primary{background:#2563eb !important;color:#fff !important;}
 
+/* ===== PLM V8.5.104：测试中心项目看板 + 独立附件 ===== */
+.test-project-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,410px);gap:14px;align-items:start}
+.test-project-board,.test-detail-side{min-width:0;border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:12px}
+.test-detail-side{position:sticky;top:132px;max-height:none}
+.test-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;align-items:stretch}
+.test-project-card{border:1px solid #dbe4ef;background:#fff;border-radius:12px;padding:10px;text-align:left;min-height:146px;display:flex;flex-direction:column;gap:7px;cursor:pointer;color:#0f172a}
+.test-project-card:hover{border-color:#bfdbfe;box-shadow:0 8px 20px rgba(15,23,42,.055)}
+.test-project-card.active{border-color:#2563eb;background:#eff6ff;box-shadow:inset 0 3px 0 #2563eb}
+.test-project-card.passed{background:#f7fdf9;border-color:#bbf7d0}
+.test-project-card.failed{background:#fff7f7;border-color:#fecaca}
+.test-project-card.retest{background:#fffaf2;border-color:#fed7aa}
+.test-project-card.running{background:#f8fbff;border-color:#bfdbfe}
+.test-card-title{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:7px;align-items:center}
+.test-card-title b{font-size:13px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.test-card-title em{font-style:normal;font-size:11px;font-weight:900;border:1px solid #dbe4ef;border-radius:999px;padding:2px 7px;background:#fff;color:#475569;white-space:nowrap}
+.test-type-icon{width:28px;height:28px;border-radius:8px;background:#eef2ff;color:#1d4ed8;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:1000}
+.test-card-sample{font-size:12px;font-weight:900;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.test-card-meta,.test-card-files{display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px;color:#64748b;font-weight:800}
+.test-card-result{font-size:12px;font-weight:1000;color:#64748b}.test-card-result.good{color:#15803d}.test-card-result.bad{color:#b91c1c}
+.test-template-board{border:1px dashed #bfdbfe;background:#f8fbff;border-radius:12px;padding:12px;margin-top:10px}
+.test-template-board-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.test-template-board-head b{display:block;font-size:14px}.test-template-board-head span{display:block;font-size:12px;color:#64748b;font-weight:800;margin-top:2px}
+.test-template-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px}
+.test-template-card{border:1px solid #dbe4ef;background:#fff;border-radius:12px;padding:10px;text-align:left;min-height:116px;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.test-template-card b{font-size:13px}.test-template-card span,.test-template-card em{font-size:11.5px;color:#64748b;font-style:normal;line-height:1.35}.test-template-card strong{margin-top:auto;color:#1d4ed8;font-size:12px}
+.test-attachment-tabs{display:grid;gap:7px}.test-attachment-tabs details{border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;padding:7px}.test-attachment-tabs summary{cursor:pointer;font-size:12px;font-weight:1000;color:#334155}.test-attachment-tabs .test-upload-list{padding-top:7px}
+@media(max-width:1180px){.test-project-layout{grid-template-columns:1fr}.test-detail-side{position:static}.test-card-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
 
 /* ===== PLM V8.5.69：项目列表已完成下沉 + 分类标题 ===== */
 .project-list-with-category{gap:8px!important;}
@@ -7617,6 +7869,634 @@ textarea,
   .sample-right-panel .component-simple-grid,
   .sample-content-pro .component-simple-grid{grid-template-columns:1fr!important;}
 }
+/* ===== PLM V8.5.104 样品管理重排最终覆盖 START ===== */
+.sample-workbench{
+  display:grid!important;
+  gap:16px!important;
+}
+.sample-toolbar-pro.sample-toolbar-split{
+  margin:0!important;
+  padding:14px 16px!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:12px!important;
+  align-items:center!important;
+}
+.sample-toolbar-pro h3{font-size:18px!important;line-height:1.2!important;}
+.sample-split-topline{gap:6px!important;margin-top:8px!important;}
+.sample-split-topline .key-mini{height:24px!important;padding:0 8px!important;border-radius:999px!important;font-size:11.5px!important;}
+.sample-summary{display:flex!important;gap:8px!important;align-items:center!important;justify-content:flex-end!important;flex-wrap:wrap!important;}
+.sample-summary .btn{height:34px!important;min-height:34px!important;border-radius:9px!important;padding:0 12px!important;font-size:12px!important;}
+.sample-split-layout{
+  grid-template-columns:minmax(280px,320px) minmax(0,1fr)!important;
+  gap:16px!important;
+  margin-top:0!important;
+  align-items:start!important;
+}
+.sample-left-panel,.sample-right-panel{
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  box-shadow:none!important;
+  background:#fff!important;
+}
+.sample-left-panel{
+  position:sticky!important;
+  top:12px!important;
+  max-height:calc(100vh - 190px)!important;
+  overflow:hidden!important;
+  display:grid!important;
+  grid-template-rows:auto minmax(0,1fr)!important;
+}
+.sample-left-head{padding:12px!important;background:#fff!important;border-bottom:1px solid #e2e8f0!important;}
+.sample-left-head h3{font-size:15px!important;margin:0 0 4px!important;}
+.sample-left-search{display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:7px!important;margin-top:10px!important;}
+.sample-left-search input,.sample-left-head select{height:34px!important;border-radius:9px!important;font-size:12px!important;}
+.sample-left-search .btn{height:34px!important;min-height:34px!important;border-radius:9px!important;padding:0!important;font-size:12px!important;}
+.sample-left-filter{display:grid!important;grid-template-columns:1fr!important;gap:7px!important;margin-top:8px!important;}
+.sample-node-list{
+  overflow:auto!important;
+  max-height:none!important;
+  min-height:0!important;
+  height:auto!important;
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  align-content:start!important;
+  gap:10px!important;
+  padding:12px!important;
+}
+.sample-node-card{
+  border:1px solid #e2e8f0!important;
+  border-left:3px solid transparent!important;
+  border-radius:11px!important;
+  box-shadow:none!important;
+  background:#fff!important;
+  padding:10px!important;
+  min-height:0!important;
+}
+.sample-node-card.active{
+  border-color:#bfdbfe!important;
+  border-left-color:#2563eb!important;
+  background:#eff6ff!important;
+  box-shadow:none!important;
+}
+.sample-node-title{
+  font-size:13px!important;
+  line-height:1.32!important;
+  font-weight:900!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  overflow:hidden!important;
+  margin:0!important;
+}
+.sample-node-meta{font-size:11.5px!important;line-height:1.45!important;color:#64748b!important;margin:0!important;}
+.sample-node-tags{gap:5px!important;margin:6px 0 8px!important;}
+.sample-node-tags .tag{height:22px!important;min-height:22px!important;font-size:10.5px!important;padding:0 7px!important;border-radius:999px!important;}
+.sample-node-media{grid-template-columns:1fr 1fr!important;gap:7px!important;margin-top:0!important;}
+.sample-node-media .sample-media-tile.mini{height:72px!important;min-height:72px!important;max-height:72px!important;border-radius:9px!important;background:#f8fafc!important;}
+.sample-node-media .sample-media-tile.mini img{height:72px!important;min-height:72px!important;max-height:72px!important;object-fit:contain!important;background:#f8fafc!important;}
+.sample-node-media .sample-media-tile.mini .sample-media-pdf{height:72px!important;min-height:72px!important;}
+.sample-media-tile.broken:after{content:'暂无预览'!important;background:#f8fafc!important;color:#94a3b8!important;font-size:11px!important;}
+.sample-media-name{background:rgba(15,23,42,.64)!important;padding:3px 6px!important;font-size:10px!important;}
+.sample-right-panel{min-height:0!important;overflow:visible!important;}
+.sample-right-panel .sample-pro-card.expanded{border:0!important;border-radius:12px!important;background:#fff!important;}
+.sample-right-panel .sample-head-pro{
+  position:relative!important;
+  top:auto!important;
+  padding:14px 16px!important;
+  border-bottom:1px solid #e2e8f0!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:12px!important;
+  align-items:start!important;
+}
+.sample-right-panel .sample-title-pro{display:flex!important;gap:10px!important;min-width:0!important;}
+.sample-right-panel .sample-title-pro h3{font-size:18px!important;line-height:1.25!important;margin:0 0 5px!important;}
+.sample-right-panel .sample-sub-pro{font-size:12px!important;color:#64748b!important;line-height:1.45!important;}
+.sample-right-panel .sample-actions-pro{
+  width:auto!important;
+  border-top:0!important;
+  padding-top:0!important;
+  margin-top:0!important;
+  justify-content:flex-end!important;
+  align-items:center!important;
+  max-width:440px!important;
+}
+.sample-right-panel .sample-actions-pro .btn{height:30px!important;min-height:30px!important;border-radius:8px!important;padding:0 9px!important;font-size:11.5px!important;}
+.sample-right-panel .sample-actions-pro .btn.good,
+.sample-right-panel .sample-actions-pro .btn.primary{font-weight:900!important;}
+.sample-right-panel .sample-actions-pro .btn.danger{margin-left:0!important;}
+.sample-right-panel .sample-content-pro{
+  padding:16px!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1.75fr) minmax(300px,.9fr)!important;
+  gap:16px!important;
+  align-items:start!important;
+}
+.sample-left-stack,.sample-right-stack{display:grid!important;gap:12px!important;}
+.sample-right-panel .sample-section{
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  box-shadow:none!important;
+  background:#fff!important;
+  padding:14px!important;
+}
+.sample-section h4{
+  font-size:14px!important;
+  margin:0 0 12px!important;
+  padding-left:9px!important;
+  border-left:3px solid #2563eb!important;
+  line-height:1.2!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid{
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:10px!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1){grid-column:span 5!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 5!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4){grid-column:span 3!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 3!important;}
+.sample-right-panel .compact-fields.sample-basic-grid input,
+.sample-right-panel .compact-fields.sample-basic-grid select,
+.sample-right-panel .sample-dimension-grid input,
+.sample-right-panel .sample-dimension-grid select,
+.sample-right-panel textarea{
+  border-radius:8px!important;
+  border-color:#dbe5f0!important;
+  box-shadow:none!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid input,
+.sample-right-panel .compact-fields.sample-basic-grid select,
+.sample-right-panel .sample-dimension-grid input,
+.sample-right-panel .sample-dimension-grid select{height:36px!important;min-height:36px!important;font-size:12.5px!important;padding:7px 9px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline{grid-template-columns:minmax(0,1fr) 68px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline .btn{height:36px!important;min-height:36px!important;width:68px!important;min-width:68px!important;border-radius:8px!important;}
+.sample-right-panel .sample-dimension-grid{
+  grid-column:1/-1!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:9px!important;
+  margin:2px 0 0!important;
+  padding:12px!important;
+  border-radius:10px!important;
+  border:1px solid #e6ecf5!important;
+  background:#f8fafc!important;
+}
+.sample-right-panel .sample-dim-note{font-size:11.5px!important;font-weight:700!important;color:#64748b!important;}
+.sample-right-panel .key-components-inline{padding:12px!important;border-radius:10px!important;background:#f8fafc!important;border:1px solid #e6ecf5!important;margin-top:12px!important;}
+.sample-right-panel .key-components-head{margin-bottom:10px!important;}
+.sample-right-panel .key-components-head span{font-size:11.5px!important;color:#64748b!important;}
+.sample-right-panel .component-simple-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
+.sample-right-panel .component-simple input{height:36px!important;min-height:36px!important;border-radius:8px!important;font-size:12.5px!important;}
+.sample-right-panel .component-simple .bom-dot-btn{width:36px!important;min-width:36px!important;height:36px!important;border-radius:8px!important;}
+.sample-right-panel .sample-left-stack .sample-section>.field textarea,
+.sample-right-panel .sample-note-pro textarea,
+.sample-right-panel .bom-note textarea{min-height:96px!important;border-radius:9px!important;font-size:12.5px!important;line-height:1.5!important;}
+.sample-right-panel .sample-media-section{grid-column:auto!important;}
+.sample-media-grid{grid-template-columns:1fr 1fr!important;gap:10px!important;}
+.sample-media-grid .sample-media-tile{height:190px!important;min-height:190px!important;border-radius:10px!important;background:#f8fafc!important;}
+.sample-media-grid .sample-media-tile img{height:190px!important;min-height:190px!important;object-fit:contain!important;background:#f8fafc!important;}
+.sample-upload-fold{padding:8px!important;border-radius:10px!important;background:#f8fafc!important;}
+.sample-upload-fold summary{font-size:12px!important;}
+.sample-link-summary-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+.sample-link-card{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;padding:10px!important;display:grid!important;gap:6px!important;min-height:74px!important;}
+.sample-link-card b{font-size:18px!important;line-height:1!important;color:#0f172a!important;}
+.sample-link-card span{font-size:12px!important;color:#64748b!important;font-weight:800!important;}
+.sample-link-card .btn{height:28px!important;min-height:28px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 8px!important;justify-self:start!important;}
+@media(max-width:1380px){
+  .sample-split-layout{grid-template-columns:minmax(260px,300px) minmax(0,1fr)!important;}
+  .sample-right-panel .sample-content-pro{grid-template-columns:1fr!important;}
+  .sample-right-panel .sample-right-stack{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+@media(max-width:980px){
+  .sample-split-layout{grid-template-columns:1fr!important;}
+  .sample-left-panel{position:relative!important;top:auto!important;max-height:none!important;}
+  .sample-node-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;}
+  .sample-right-panel .sample-head-pro{grid-template-columns:1fr!important;}
+  .sample-right-panel .sample-actions-pro{max-width:none!important;justify-content:flex-start!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field,
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 3!important;}
+  .sample-right-panel .sample-dimension-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .sample-right-panel .sample-right-stack{grid-template-columns:1fr!important;}
+}
+@media(max-width:640px){
+  .sample-toolbar-pro.sample-toolbar-split{grid-template-columns:1fr!important;}
+  .sample-summary{justify-content:flex-start!important;}
+  .sample-node-list{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid,
+  .sample-right-panel .sample-dimension-grid,
+  .sample-right-panel .component-simple-grid,
+  .sample-media-grid,
+  .sample-link-summary-grid{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field,
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:1/-1!important;}
+}
+/* ===== PLM V8.5.104 样品管理重排最终覆盖 END ===== */
+
+/* ===== PLM V8.5.104 样品管理工作台紧凑修正 START ===== */
+.sample-workbench{gap:10px!important;}
+.sample-toolbar-pro.sample-toolbar-split{
+  min-height:58px!important;
+  padding:10px 12px!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:10px!important;
+  align-items:center!important;
+}
+.sample-toolbar-pro.sample-toolbar-split h3{font-size:16px!important;line-height:1.15!important;}
+.sample-toolbar-pro.sample-toolbar-split .hint{font-size:11.5px!important;line-height:1.3!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-split-topline{display:flex!important;gap:5px!important;margin-top:5px!important;align-items:center!important;flex-wrap:nowrap!important;overflow:hidden!important;}
+.sample-split-topline .key-mini{height:22px!important;max-width:220px!important;padding:0 7px!important;font-size:10.8px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-summary{gap:6px!important;flex-wrap:nowrap!important;}
+.sample-summary .btn{height:32px!important;min-height:32px!important;border-radius:8px!important;padding:0 10px!important;font-size:11.5px!important;white-space:nowrap!important;}
+.sample-split-layout{
+  display:grid!important;
+  grid-template-columns:260px minmax(0,1fr)!important;
+  gap:12px!important;
+  align-items:start!important;
+}
+.sample-left-panel{max-height:calc(100vh - 175px)!important;border-radius:10px!important;}
+.sample-left-head{padding:10px!important;}
+.sample-left-head h3{font-size:14px!important;margin:0 0 2px!important;}
+.sample-left-head .hint{display:none!important;}
+.sample-left-search{grid-template-columns:minmax(0,1fr) 38px!important;gap:6px!important;margin-top:8px!important;}
+.sample-left-search input,.sample-left-head select{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11.8px!important;}
+.sample-left-search .btn{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11.5px!important;}
+.sample-left-filter{margin-top:6px!important;}
+.sample-node-list{gap:9px!important;padding:10px!important;}
+.sample-node-card{
+  min-height:150px!important;
+  max-height:164px!important;
+  padding:9px!important;
+  border-radius:10px!important;
+  border-left-width:3px!important;
+}
+.sample-node-title{font-size:12.5px!important;line-height:1.28!important;-webkit-line-clamp:2!important;}
+.sample-node-meta{font-size:10.8px!important;line-height:1.35!important;margin-top:4px!important;}
+.sample-node-tags{gap:4px!important;margin:5px 0 7px!important;max-height:22px!important;overflow:hidden!important;flex-wrap:nowrap!important;}
+.sample-node-tags .tag{height:20px!important;min-height:20px!important;font-size:10px!important;padding:0 6px!important;white-space:nowrap!important;}
+.sample-node-media{gap:6px!important;}
+.sample-node-media .sample-media-tile.mini,
+.sample-node-media .sample-media-tile.mini img,
+.sample-node-media .sample-media-tile.mini .sample-media-pdf{
+  height:56px!important;
+  min-height:56px!important;
+  max-height:56px!important;
+}
+.sample-node-media .sample-media-name{font-size:9.5px!important;padding:2px 5px!important;}
+.sample-right-panel{border:0!important;background:transparent!important;border-radius:0!important;}
+.sample-right-panel .sample-pro-card.expanded{
+  border:0!important;
+  background:transparent!important;
+  border-radius:0!important;
+}
+.sample-right-panel .sample-head-pro{
+  padding:10px 12px!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  background:#fff!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:10px!important;
+  align-items:start!important;
+}
+.sample-right-panel .sample-title-pro{gap:8px!important;align-items:flex-start!important;}
+.sample-avatar{width:34px!important;height:34px!important;border-radius:10px!important;font-size:18px!important;}
+.sample-right-panel .sample-title-pro h3{font-size:16px!important;line-height:1.2!important;margin:0 0 3px!important;}
+.sample-right-panel .sample-sub-pro{font-size:11.3px!important;line-height:1.35!important;margin-top:2px!important;}
+.sample-mini-row{gap:4px!important;margin-top:4px!important;max-height:24px!important;overflow:hidden!important;}
+.sample-mini-row .key-mini{font-size:10.5px!important;padding:2px 6px!important;height:20px!important;}
+.sample-right-panel .sample-actions-pro{
+  display:grid!important;
+  grid-template-columns:auto!important;
+  gap:5px!important;
+  justify-items:end!important;
+  align-items:start!important;
+  max-width:560px!important;
+}
+.sample-action-group{display:flex!important;gap:5px!important;justify-content:flex-end!important;align-items:center!important;flex-wrap:nowrap!important;}
+.sample-action-group .btn{height:28px!important;min-height:28px!important;border-radius:7px!important;padding:0 8px!important;font-size:11px!important;white-space:nowrap!important;}
+.sample-action-group.primary-actions .btn.good,
+.sample-action-group.primary-actions .btn.primary{font-weight:1000!important;}
+.sample-action-group.bom-actions .btn{background:#fff7ed!important;border-color:#fed7aa!important;color:#c2410c!important;}
+.sample-action-group.bom-actions .bom-link-btn{background:#f0fdf4!important;border-color:#bbf7d0!important;color:#15803d!important;}
+.sample-action-group.danger-actions .btn{background:#fff!important;border-color:#fecaca!important;color:#b91c1c!important;}
+.sample-right-panel .sample-content-pro{
+  padding:12px 0 0!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 340px!important;
+  gap:12px!important;
+  align-items:start!important;
+}
+.sample-left-stack,.sample-right-stack{gap:10px!important;}
+.sample-right-panel .sample-section{
+  padding:11px!important;
+  border-radius:10px!important;
+  background:#fff!important;
+}
+.sample-section h4{
+  font-size:13px!important;
+  margin:0 0 8px!important;
+  padding-left:8px!important;
+  line-height:1.15!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid{
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:8px 9px!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1){grid-column:span 4!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 6!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 3!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field label,
+.sample-right-panel .sample-dimension-grid label{font-size:10.8px!important;margin:0 0 3px!important;}
+.sample-right-panel .compact-fields.sample-basic-grid input,
+.sample-right-panel .compact-fields.sample-basic-grid select,
+.sample-right-panel .sample-dimension-grid input,
+.sample-right-panel .sample-dimension-grid select{height:34px!important;min-height:34px!important;font-size:12px!important;padding:6px 8px!important;border-radius:8px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline{grid-template-columns:minmax(0,1fr) 58px!important;gap:6px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline .btn{height:34px!important;min-height:34px!important;width:58px!important;min-width:58px!important;font-size:11px!important;}
+.naming-inline-meta{font-size:10.5px!important;line-height:1.25!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-right-panel .sample-dimension-grid{
+  grid-template-columns:repeat(6,minmax(0,1fr))!important;
+  gap:7px!important;
+  padding:9px!important;
+  border-radius:9px!important;
+}
+.sample-right-panel .sample-dim-note{grid-column:1/-1!important;font-size:10.5px!important;line-height:1.3!important;}
+.sample-content-pro .key-components-inline{
+  padding:10px!important;
+  margin-top:0!important;
+  border-radius:9px!important;
+}
+.sample-content-pro .key-components-head{margin-bottom:8px!important;}
+.sample-content-pro .key-components-head b{font-size:12.5px!important;}
+.sample-content-pro .key-components-head span{font-size:10.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-right-panel .component-simple-grid,
+.sample-content-pro .component-simple-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+.sample-content-pro .component-simple label{font-size:10.5px!important;margin-bottom:3px!important;}
+.sample-content-pro .component-simple input{height:34px!important;min-height:34px!important;font-size:12px!important;padding:6px 8px!important;border-radius:8px!important;}
+.sample-content-pro .component-simple .bom-dot-btn{width:32px!important;min-width:32px!important;height:34px!important;border-radius:8px!important;}
+.sample-content-pro .component-simple-meta{font-size:10.5px!important;line-height:1.25!important;margin-top:3px!important;}
+.sample-right-panel .sample-left-stack .sample-section>.field textarea{min-height:92px!important;height:92px!important;font-size:12px!important;border-radius:8px!important;resize:vertical!important;}
+.bom-hint{padding:6px 8px!important;border-radius:8px!important;font-size:10.8px!important;line-height:1.35!important;margin-top:8px!important;}
+.sample-media-grid{gap:8px!important;}
+.sample-media-grid .sample-media-tile,
+.sample-media-grid .sample-media-tile img{height:168px!important;min-height:168px!important;border-radius:9px!important;}
+.sample-media-list{display:flex!important;gap:5px!important;overflow-x:auto!important;padding-bottom:2px!important;max-height:30px!important;margin-top:7px!important;}
+.sample-file-chip{height:24px!important;min-height:24px!important;padding:0 7px!important;border-radius:999px!important;white-space:nowrap!important;flex:0 0 auto!important;font-size:10.5px!important;}
+.sample-upload-fold{padding:6px 8px!important;border-radius:8px!important;margin-top:7px!important;}
+.sample-upload-fold summary{font-size:11.5px!important;line-height:1.2!important;}
+.sample-upload-grid{gap:8px!important;}
+.sample-upload-fold .grid2{grid-template-columns:1fr!important;gap:6px!important;}
+.sample-upload-fold input[type=file]{font-size:11px!important;}
+.sample-upload-fold textarea{min-height:52px!important;height:52px!important;font-size:12px!important;}
+.sample-right-panel .sample-note-pro textarea,
+.sample-right-panel .bom-note textarea{min-height:86px!important;height:86px!important;font-size:12px!important;border-radius:8px!important;resize:vertical!important;}
+.sample-link-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;}
+.sample-link-card{min-height:60px!important;padding:8px!important;gap:4px!important;border-radius:9px!important;}
+.sample-link-card b{font-size:17px!important;}
+.sample-link-card span{font-size:11px!important;}
+.sample-link-card .btn{height:24px!important;min-height:24px!important;font-size:10.5px!important;padding:0 7px!important;border-radius:7px!important;}
+@media(max-width:1500px){
+  .sample-split-layout{grid-template-columns:250px minmax(0,1fr)!important;}
+  .sample-right-panel .sample-content-pro{grid-template-columns:minmax(0,1fr) 320px!important;}
+}
+@media(max-width:1220px){
+  .sample-right-panel .sample-content-pro{grid-template-columns:1fr!important;}
+  .sample-right-panel .sample-right-stack{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .sample-right-panel .sample-actions-pro{justify-items:start!important;}
+}
+@media(max-width:980px){
+  .sample-split-layout{grid-template-columns:1fr!important;}
+  .sample-left-panel{position:relative!important;top:auto!important;max-height:none!important;}
+  .sample-node-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;}
+  .sample-right-panel .sample-head-pro{grid-template-columns:1fr!important;}
+}
+@media(max-width:640px){
+  .sample-toolbar-pro.sample-toolbar-split{grid-template-columns:1fr!important;}
+  .sample-split-topline,.sample-summary,.sample-action-group{flex-wrap:wrap!important;}
+  .sample-node-list,.sample-right-panel .sample-right-stack{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid,
+  .sample-right-panel .sample-dimension-grid,
+  .sample-right-panel .component-simple-grid,
+  .sample-media-grid,
+  .sample-link-summary-grid{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field,
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:1/-1!important;}
+}
+/* ===== PLM V8.5.104 样品管理工作台紧凑修正 END ===== */
+
+/* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
+.flow-shell{display:grid!important;gap:12px!important;}
+.flow-workbar{
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  background:#fff!important;
+  padding:10px 12px!important;
+  display:grid!important;
+  gap:8px!important;
+}
+.flow-main-tools{
+  min-height:38px!important;
+  display:grid!important;
+  grid-template-columns:auto minmax(220px,300px) minmax(200px,260px) auto auto auto auto!important;
+  gap:8px!important;
+  align-items:center!important;
+}
+.flow-title-block{display:grid!important;gap:1px!important;min-width:138px!important;}
+.flow-title-block b{font-size:15px!important;color:#0f172a!important;line-height:1.15!important;}
+.flow-title-block span{font-size:11px!important;color:#64748b!important;font-weight:850!important;white-space:nowrap!important;}
+.flow-model-select,.flow-template-select{height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:12px!important;}
+.flow-main-tools .btn,.flow-more-menu summary{height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 10px!important;white-space:nowrap!important;}
+.flow-more-menu{position:relative!important;}
+.flow-more-menu summary{list-style:none!important;border:1px solid #dbe5f0!important;background:#fff!important;font-weight:900!important;display:inline-flex!important;align-items:center!important;cursor:pointer!important;}
+.flow-more-menu summary::-webkit-details-marker{display:none!important;}
+.flow-more-body{position:absolute!important;right:0!important;top:38px!important;width:190px!important;background:#fff!important;border:1px solid #dbe5f0!important;border-radius:10px!important;padding:6px!important;box-shadow:0 18px 40px rgba(15,23,42,.16)!important;z-index:50!important;display:grid!important;gap:6px!important;}
+.flow-more-body .btn{width:100%!important;justify-content:flex-start!important;}
+.flow-statline{
+  min-height:44px!important;
+  display:grid!important;
+  grid-template-columns:repeat(6,minmax(0,1fr))!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:9px!important;
+  background:#f8fafc!important;
+  overflow:hidden!important;
+}
+.flow-statline span{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;border-right:1px solid #e2e8f0!important;font-size:11.5px!important;font-weight:850!important;color:#64748b!important;white-space:nowrap!important;}
+.flow-statline span:last-child{border-right:0!important;}
+.flow-statline b{font-size:16px!important;color:#0f172a!important;}
+.flow-total-progress{height:6px!important;border-radius:999px!important;background:#e5e7eb!important;overflow:hidden!important;}
+.flow-total-progress i{height:100%!important;display:block!important;background:#2563eb!important;}
+.flow-stage,.flow-stage.flow-cols-5,.flow-stage.flow-cols-4,.flow-stage.drawer-collapsed{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 360px!important;
+  gap:14px!important;
+  align-items:start!important;
+}
+.flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{
+  display:grid!important;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important;
+  gap:12px!important;
+  padding:12px!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  background:#f8fafc!important;
+  min-height:0!important;
+  align-items:start!important;
+}
+@media(min-width:1520px){
+  .flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{grid-template-columns:repeat(5,minmax(180px,1fr))!important;}
+}
+@media(min-width:1180px) and (max-width:1519px){
+  .flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{grid-template-columns:repeat(4,minmax(180px,1fr))!important;}
+}
+.flow-node,.flow-stage.flow-cols-5 .flow-node,.flow-stage.flow-cols-4 .flow-node{
+  min-height:128px!important;
+  height:128px!important;
+  aspect-ratio:auto!important;
+  border:1px solid #e2e8f0!important;
+  border-top:3px solid #cbd5e1!important;
+  border-radius:10px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  padding:9px!important;
+  display:grid!important;
+  grid-template-rows:auto 1fr auto auto!important;
+  gap:6px!important;
+  overflow:hidden!important;
+  cursor:pointer!important;
+}
+.flow-node:after{display:none!important;}
+.flow-node:hover{transform:none!important;box-shadow:0 0 0 2px rgba(37,99,235,.08)!important;}
+.flow-node.active{border-color:#bfdbfe!important;border-top-color:#2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.11)!important;}
+.flow-node.done{border-color:#bbf7d0!important;border-top-color:#16a34a!important;background:#f0fdf4!important;}
+.flow-node.doing{border-color:#bfdbfe!important;border-top-color:#2563eb!important;background:#eff6ff!important;}
+.flow-node.pause{border-color:#fed7aa!important;border-top-color:#f59e0b!important;background:#fffbeb!important;}
+.flow-node.redo{border-color:#fecaca!important;border-top-color:#ef4444!important;background:#fef2f2!important;}
+.flow-node.overdue{box-shadow:0 0 0 2px rgba(245,158,11,.14)!important;}
+.flow-node.blocked{opacity:.78!important;}
+.flow-node.drop-target{outline:2px dashed #2563eb!important;outline-offset:2px!important;}
+.flow-node-top,.flow-stage.flow-cols-5 .flow-node-top{
+  display:grid!important;
+  grid-template-columns:28px minmax(0,1fr) auto 26px 26px!important;
+  gap:6px!important;
+  align-items:center!important;
+}
+.flow-index,.flow-stage.flow-cols-5 .flow-index{
+  width:26px!important;
+  height:24px!important;
+  border-radius:999px!important;
+  font-size:11px!important;
+}
+.flow-title,.flow-stage.flow-cols-5 .flow-title,.flow-stage.flow-cols-4 .flow-title{
+  font-size:13px!important;
+  line-height:1.18!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  white-space:normal!important;
+  overflow:hidden!important;
+}
+.flow-status,.flow-stage.flow-cols-5 .flow-status{font-size:10.5px!important;padding:2px 6px!important;white-space:nowrap!important;}
+.flow-handle,.flow-stage.flow-cols-5 .flow-handle{
+  width:24px!important;
+  height:24px!important;
+  padding:0!important;
+  border-radius:7px!important;
+  cursor:grab!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.flow-node-delete,.flow-stage.flow-cols-5 .flow-node-delete{
+  width:24px!important;
+  height:24px!important;
+  padding:0!important;
+  border-radius:7px!important;
+  font-size:10px!important;
+}
+.flow-card-line{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;font-size:11px!important;color:#64748b!important;font-weight:850!important;min-width:0!important;}
+.flow-card-line span,.flow-card-line b{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.flow-card-line b{color:#1d4ed8!important;font-size:10.8px!important;}
+.flow-card-foot{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;font-size:10.8px!important;font-weight:850!important;color:#64748b!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.flow-card-foot .btn{height:23px!important;min-height:23px!important;border-radius:7px!important;font-size:10px!important;padding:0 6px!important;flex:0 0 auto!important;}
+.flow-drawer,.flow-drawer.flow-drawer-collapsed{
+  width:360px!important;
+  position:sticky!important;
+  top:10px!important;
+  min-height:0!important;
+  max-height:none!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+  padding:11px!important;
+  background:#fff!important;
+}
+.flow-drawer-head{padding-bottom:8px!important;margin-bottom:9px!important;align-items:flex-start!important;}
+.flow-drawer h3{font-size:15px!important;line-height:1.25!important;margin:0 0 3px!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important;}
+.flow-drawer-nav{display:flex!important;gap:5px!important;flex-wrap:wrap!important;justify-content:flex-end!important;}
+.flow-drawer-nav .btn{height:26px!important;min-height:26px!important;font-size:10.5px!important;padding:0 7px!important;border-radius:7px!important;}
+.flow-drawer-section{border-top:1px solid #edf2f7!important;padding-top:9px!important;margin-top:9px!important;}
+.flow-drawer-section:first-of-type{border-top:0!important;padding-top:0!important;margin-top:0!important;}
+.flow-drawer-section h4{font-size:12.5px!important;line-height:1.15!important;margin:0 0 7px!important;padding-left:7px!important;border-left:3px solid #2563eb!important;}
+.flow-drawer-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;}
+.flow-drawer-grid .field.wide{grid-column:1/-1!important;}
+.flow-drawer .field label{font-size:10.8px!important;margin:0 0 3px!important;}
+.flow-drawer input,.flow-drawer select{height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:12px!important;padding:6px 8px!important;}
+.flow-drawer textarea{min-height:74px!important;height:74px!important;border-radius:8px!important;font-size:12px!important;padding:7px 8px!important;resize:vertical!important;}
+.flow-drawer .readonly input{background:#f8fafc!important;color:#64748b!important;}
+.flow-action-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:6px!important;}
+.flow-action-grid .btn{height:30px!important;min-height:30px!important;border-radius:8px!important;font-size:11px!important;padding:0 8px!important;}
+.dispatch-panel{background:#f8fafc!important;border:1px solid #e2e8f0!important;color:#0f172a!important;border-radius:9px!important;padding:9px!important;margin-top:9px!important;}
+.dispatch-panel-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:7px!important;}
+.dispatch-panel-head b{font-size:12.5px!important;}
+.dispatch-panel-head .actions{gap:5px!important;flex-wrap:nowrap!important;}
+.dispatch-panel-head .btn{height:24px!important;min-height:24px!important;font-size:10px!important;padding:0 6px!important;border-radius:7px!important;}
+.dispatch-link-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important;align-items:center!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:8px!important;padding:7px!important;margin:5px 0!important;}
+.dispatch-link-row b{display:block!important;font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.dispatch-link-row span{display:block!important;font-size:10.5px!important;color:#64748b!important;font-weight:850!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.dispatch-link-row .actions{gap:4px!important;flex-wrap:nowrap!important;}
+.dispatch-link-row .btn{height:23px!important;min-height:23px!important;font-size:10px!important;padding:0 6px!important;border-radius:7px!important;}
+.dispatch-more summary{font-size:11px!important;color:#2563eb!important;font-weight:900!important;cursor:pointer!important;margin-top:5px!important;}
+.compact-extra summary{font-size:12px!important;font-weight:900!important;cursor:pointer!important;color:#475569!important;}
+.compact-extra .uploadbox{padding:8px!important;border-radius:8px!important;margin:8px 0!important;}
+.compact-extra .uploadbox .hint{display:none!important;}
+.log-mini{max-height:150px!important;}
+.flow-empty{min-height:120px!important;border-radius:10px!important;}
+@media(max-width:1320px){
+  .flow-main-tools{grid-template-columns:minmax(0,1fr) minmax(200px,260px) minmax(180px,230px) auto auto auto!important;}
+  .flow-more-menu{grid-column:auto!important;}
+  .flow-stage,.flow-stage.flow-cols-5,.flow-stage.flow-cols-4,.flow-stage.drawer-collapsed{grid-template-columns:minmax(0,1fr) 340px!important;}
+  .flow-drawer{width:340px!important;}
+  .flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{grid-template-columns:repeat(3,minmax(180px,1fr))!important;}
+}
+@media(max-width:1080px){
+  .flow-main-tools{grid-template-columns:1fr 1fr!important;}
+  .flow-statline{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+  .flow-stage,.flow-stage.flow-cols-5,.flow-stage.flow-cols-4,.flow-stage.drawer-collapsed{grid-template-columns:1fr!important;}
+  .flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{grid-template-columns:repeat(2,minmax(180px,1fr))!important;}
+  .flow-drawer{position:relative!important;top:auto!important;width:auto!important;}
+}
+@media(max-width:680px){
+  .flow-main-tools{grid-template-columns:1fr!important;}
+  .flow-statline{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .flow-board,.flow-stage.flow-cols-5 .flow-board,.flow-stage.flow-cols-4 .flow-board{grid-template-columns:1fr!important;}
+  .flow-node{height:auto!important;min-height:126px!important;}
+  .flow-drawer-grid,.flow-action-grid{grid-template-columns:1fr!important;}
+}
+/* ===== PLM V8.5.104 开发导航图工作台重排 END ===== */
+
 /* ===== PLM V8.5.104 顶部导航 + 取消首页方框看板 START ===== */
 #stats,#focusPanel,.stats,.focus-panel{display:none!important;visibility:hidden!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}
 .top{align-items:center!important;margin-bottom:12px!important;}
@@ -7667,6 +8547,554 @@ textarea,
 @media(max-width:640px){.plm-log-filter,.plm-online-grid{grid-template-columns:1fr}.plm-quote-like-nav .btn,.plm-quote-like-nav .user-pill,.plm-quote-like-nav .notice-pill,.plm-quote-like-nav .online-pill,.plm-quote-like-nav .log-pill{width:auto!important}}
 /* ===== PLM V8.5.104 顶部导航 + 取消首页方框看板 END ===== */
 
+/* ===== PLM V8.5.104-FIRST 骨架布局 START ===== */
+html,body{background:#f5f7fb!important;}
+body{overflow:hidden!important;}
+.app{max-width:1640px!important;width:calc(100% - 32px)!important;height:calc(100vh - 40px)!important;margin:16px auto 24px!important;padding:0!important;display:grid!important;grid-template-rows:64px minmax(0,1fr)!important;row-gap:12px!important;background:transparent!important;}
+.top{height:64px!important;min-height:64px!important;margin:0!important;padding:8px 16px!important;border:1px solid #dbe5f0!important;border-radius:12px!important;box-shadow:none!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;flex-wrap:nowrap!important;background:#fff!important;z-index:30!important;}
+.top>div:first-child{min-width:0!important;display:grid!important;gap:1px!important;}
+.top .brand{font-size:13px!important;line-height:1.15!important;color:#1d4ed8!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.top h1{font-size:18px!important;line-height:1.2!important;margin:0!important;color:#0f172a!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.top .sub{display:none!important;}
+.plm-quote-like-nav{height:42px!important;min-width:0!important;flex:0 0 auto!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;background:transparent!important;display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:nowrap!important;overflow:visible!important;}
+.plm-quote-like-nav .btn,.plm-quote-like-nav .user-pill,.plm-quote-like-nav .notice-pill,.plm-quote-like-nav .online-pill,.plm-quote-like-nav .log-pill,.plm-quote-like-nav .top-more summary{height:32px!important;min-height:32px!important;padding:0 10px!important;border-radius:9px!important;font-size:12px!important;box-shadow:none!important;}
+.top-more-menu{top:38px!important;border-radius:12px!important;}
+#fatalBox{position:fixed!important;left:50%!important;top:88px!important;transform:translateX(-50%)!important;z-index:100!important;max-width:900px!important;width:min(900px,calc(100vw - 32px))!important;}
+.main.plm-shell{display:grid!important;grid-template-columns:270px minmax(0,1fr)!important;gap:16px!important;height:100%!important;min-height:0!important;align-items:stretch!important;background:transparent!important;overflow:hidden!important;}
+.main.plm-shell.project-collapsed{grid-template-columns:48px minmax(0,1fr)!important;}
+.main.plm-shell.project-collapsed .plm-project-aside .panel{display:none!important;}
+.plm-project-aside{min-width:0!important;border:1px solid #dbe5f0!important;border-radius:12px!important;background:#fff!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;height:100%!important;min-height:0!important;overflow:hidden!important;}
+.plm-workspace{min-width:0!important;height:100%!important;overflow:auto!important;padding:0!important;background:transparent!important;scroll-behavior:auto!important;}
+.plm-project-aside .panel{margin:0!important;padding:10px!important;border:0!important;border-bottom:1px solid #e2e8f0!important;border-radius:0!important;box-shadow:none!important;background:#fff!important;}
+.plm-project-aside .filters{display:grid!important;grid-template-columns:minmax(0,1fr) 86px!important;gap:8px!important;align-items:center!important;}
+.plm-project-aside .filters #q{grid-column:1/-1!important;height:34px!important;font-size:12px!important;border-radius:9px!important;}
+.plm-project-aside .filters #fStatus{height:32px!important;font-size:12px!important;border-radius:9px!important;}
+.plm-project-aside .filters #fEngineer,
+.plm-project-aside .filters #fCustomer,
+.plm-project-aside .filters #fSource,
+.plm-project-aside .filters #fPriority{display:none!important;}
+.plm-project-aside.filters-expanded .filters #fEngineer,
+.plm-project-aside.filters-expanded .filters #fCustomer,
+.plm-project-aside.filters-expanded .filters #fSource,
+.plm-project-aside.filters-expanded .filters #fPriority{display:block!important;grid-column:1/-1!important;height:32px!important;font-size:12px!important;border-radius:9px!important;}
+.plm-project-aside .filters .plm-filter-toggle{height:32px!important;padding:0 8px!important;border-radius:9px!important;font-size:12px!important;}
+.plm-project-aside .filters button[onclick="resetFilters()"]{grid-column:1/-1!important;height:30px!important;border-radius:9px!important;font-size:12px!important;padding:0 8px!important;}
+.plm-project-aside .viewbar{margin:8px 0 0!important;gap:6px!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;}
+.project-list-title-pill{box-shadow:none!important;border-radius:9px!important;padding:6px 8px!important;font-size:12px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.project-list-limit{height:30px!important;border-radius:9px!important;font-size:12px!important;padding:0 6px!important;}
+.project-collapse-btn{grid-column:1/-1!important;height:30px!important;border-radius:9px!important;font-size:12px!important;padding:0 8px!important;}
+.plm-project-aside .viewbar>.hint{display:none!important;}
+.cards.project-list-modern.project-list-compact{height:100%!important;max-height:none!important;overflow:auto!important;padding:10px!important;display:grid!important;grid-template-columns:1fr!important;align-content:start!important;gap:8px!important;background:#fff!important;}
+.project-list-compact .project-row-modern{height:104px!important;min-height:104px!important;grid-template-columns:64px minmax(0,1fr)!important;padding:9px!important;border-radius:11px!important;border-left-width:3px!important;box-shadow:none!important;gap:9px!important;}
+.project-list-compact .project-row-modern.active{background:#eff6ff!important;border-color:#93c5fd!important;border-left-color:#2563eb!important;box-shadow:none!important;}
+.project-list-compact .project-row-modern.project-paused-row{border-left-color:#f59e0b!important;}
+.project-list-compact .project-row-modern.project-done-row{border-left-color:#16a34a!important;}
+.project-list-compact .project-row-modern.risk-danger:not(.active){border-left-color:#ef4444!important;}
+.project-thumb{width:64px!important;height:64px!important;border-radius:10px!important;}
+.project-list-compact .project-title-line h2{font-size:13px!important;line-height:1.2!important;}
+.project-list-compact .project-subline{font-size:10.5px!important;margin-top:3px!important;}
+.project-list-compact .project-row-metrics{margin-top:5px!important;gap:4px!important;}
+.project-list-compact .project-row-metrics span{font-size:10px!important;padding:2px 5px!important;}
+.project-list-compact .project-risk-strip{display:none!important;}
+.project-progress-pair{margin-top:5px!important;gap:2px!important;}
+.project-mini-progress-row{grid-template-columns:14px minmax(0,1fr) 28px!important;gap:4px!important;}
+.project-mini-progress-row .bar{height:4px!important;}
+.project-list-compact .project-mini-footer{font-size:9.5px!important;margin-top:4px!important;}
+.project-list-compact .project-row-actions{display:none!important;}
+.project-list-category{height:26px!important;border-radius:8px!important;padding:0 8px!important;font-size:12px!important;margin-top:2px!important;}
+.project-list-done-note{font-size:11px!important;border-radius:9px!important;padding:8px!important;}
+.project-list-collapsed-rail{height:100%!important;max-height:none!important;overflow:hidden!important;padding:8px 5px!important;background:#fff!important;}
+.project-rail-shell{height:100%!important;display:grid!important;grid-template-rows:34px minmax(0,1fr) 28px!important;gap:8px!important;align-items:center!important;justify-items:center!important;}
+.project-rail-expand{width:34px!important;height:34px!important;border-radius:9px!important;border:1px solid #dbe5f0!important;background:#eff6ff!important;color:#2563eb!important;font-weight:900!important;cursor:pointer!important;}
+.project-rail-icons{display:grid!important;gap:7px!important;align-content:start!important;overflow:auto!important;max-height:100%!important;}
+.project-rail-icon-card{width:34px!important;height:34px!important;border-radius:9px!important;border:1px solid #e2e8f0!important;background:#f8fafc!important;color:#2563eb!important;font-size:12px!important;font-weight:900!important;overflow:hidden!important;cursor:pointer!important;padding:0!important;}
+.project-rail-icon-card img{width:100%!important;height:100%!important;object-fit:cover!important;display:block!important;}
+.project-rail-icon-card.active{border-color:#2563eb!important;background:#eff6ff!important;box-shadow:0 0 0 2px rgba(37,99,235,.14)!important;}
+.project-rail-total{font-size:11px!important;font-weight:900!important;color:#64748b!important;}
+.detail{min-height:auto!important;border:1px solid #e2e8f0!important;border-radius:14px!important;box-shadow:none!important;background:#fff!important;padding:0!important;overflow:visible!important;}
+.detail-head{position:sticky!important;top:0!important;z-index:20!important;border-bottom:1px solid #e2e8f0!important;padding:9px 12px!important;background:#fff!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important;align-items:start!important;}
+.detail-head h2{font-size:18px!important;line-height:1.15!important;margin:0 0 4px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.detail-head .tags{margin:0 0 4px!important;gap:4px!important;}
+.detail-head .tag{font-size:11px!important;padding:3px 7px!important;border-radius:999px!important;}
+.detail-head .hint{font-size:11px!important;line-height:1.4!important;}
+.detail-head .actions{justify-content:flex-end!important;gap:6px!important;max-width:420px!important;}
+.detail-head .actions .btn{height:30px!important;border-radius:8px!important;font-size:12px!important;padding:0 9px!important;}
+.project-more-menu{position:relative!important;display:inline-flex!important;}
+.project-more-menu summary{height:30px!important;border:1px solid #dbe5f0!important;background:#fff!important;border-radius:8px!important;padding:0 9px!important;font-size:12px!important;font-weight:900!important;display:inline-flex!important;align-items:center!important;cursor:pointer!important;list-style:none!important;}
+.project-more-menu summary::-webkit-details-marker{display:none!important;}
+.project-more-menu[open] summary{background:#eff6ff!important;color:#2563eb!important;border-color:#bfdbfe!important;}
+.project-more-menu-body{position:absolute!important;right:0!important;top:34px!important;width:170px!important;background:#fff!important;border:1px solid #dbe5f0!important;border-radius:12px!important;padding:6px!important;box-shadow:0 18px 44px rgba(15,23,42,.16)!important;display:grid!important;gap:5px!important;z-index:40!important;}
+.project-more-menu-body .btn{width:100%!important;justify-content:flex-start!important;}
+.tabs{height:40px!important;min-height:40px!important;padding:5px 10px!important;border-bottom:1px solid #e2e8f0!important;display:flex!important;gap:5px!important;align-items:center!important;flex-wrap:nowrap!important;overflow-x:auto!important;background:#fff!important;}
+.tab{height:30px!important;border-radius:8px!important;background:transparent!important;border:0!important;color:#475569!important;font-size:12.5px!important;font-weight:800!important;padding:0 11px!important;white-space:nowrap!important;}
+.tab.active{background:#eff6ff!important;color:#2563eb!important;box-shadow:none!important;}
+#tabbody,.tabbody{padding:10px!important;background:#fff!important;min-height:0!important;}
+.basic-clean-layout{grid-template-columns:minmax(0,1.9fr) minmax(290px,.86fr)!important;gap:12px!important;}
+.basic-pro.basic-clean-layout{display:grid!important;align-items:start!important;}
+.basic-left-stack{display:grid!important;gap:11px!important;min-width:0!important;}
+.basic-main-block,.basic-image-block{padding:12px!important;border:1px solid #e2e8f0!important;box-shadow:none!important;background:#fff!important;}
+.basic-main-block{min-height:0!important;}
+.basic-image-block{min-height:0!important;}
+.basic-main-block .section-title,.basic-image-block .section-title{margin:0 0 3px!important;font-size:14px!important;font-weight:800!important;}
+.basic-main-block .section-title i,.basic-image-block .section-title i{width:3px!important;height:17px!important;border-radius:6px!important;}
+.basic-section-desc{margin:0 0 9px!important;color:#64748b!important;font-size:11.5px!important;font-weight:700!important;line-height:1.35!important;}
+.basic-form-group{border-top:1px solid #edf2f7!important;padding-top:9px!important;margin-top:9px!important;}
+.basic-form-group:first-of-type{border-top:0!important;padding-top:0!important;margin-top:0!important;}
+.basic-group-title{font-size:11.5px!important;font-weight:900!important;color:#334155!important;margin:0 0 7px!important;display:flex!important;align-items:center!important;gap:6px!important;}
+.basic-group-title:before{content:"";width:6px;height:6px;border-radius:50%;background:#2563eb;display:inline-block;}
+.basic-form-grid{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;gap:8px 10px!important;}
+.basic-form-grid .field{min-width:0!important;margin:0!important;}
+.basic-form-grid .field.basic-col-3{grid-column:span 3!important;}
+.basic-form-grid .field.basic-col-4{grid-column:span 4!important;}
+.basic-form-grid .field.basic-col-5{grid-column:span 5!important;}
+.basic-form-grid .field.basic-col-6{grid-column:span 6!important;}
+.basic-form-grid .field.basic-col-7{grid-column:span 7!important;}
+.basic-form-grid .field.basic-col-8{grid-column:span 8!important;}
+.basic-form-grid .field.basic-col-2{grid-column:span 2!important;}
+.basic-form-grid .field.basic-col-9{grid-column:span 9!important;}
+.basic-form-grid label,.basic-image-block label{font-size:11.5px!important;line-height:1.15!important;color:#475569!important;font-weight:800!important;margin:0 0 4px!important;}
+.basic-form-grid input,.basic-form-grid select,.basic-image-block input,.basic-image-block select{height:35px!important;min-height:35px!important;border-radius:8px!important;border-color:#dbe5f0!important;background:#fff!important;font-size:12.5px!important;font-weight:500!important;padding:6px 9px!important;box-shadow:none!important;}
+.basic-form-grid input:focus,.basic-form-grid select:focus,.basic-image-block input:focus,.basic-image-block select:focus,.basic-image-block textarea:focus{border-color:#2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.1)!important;}
+.basic-image-preview{height:164px!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fbff!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;margin:6px 0 8px!important;}
+.basic-image-preview img{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important;}
+.basic-image-empty{color:#94a3b8!important;font-size:13px!important;font-weight:800!important;}
+.basic-thumb-list{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin:0 0 9px!important;}
+.basic-thumb{height:50px!important;border:1px solid #e2e8f0!important;border-radius:8px!important;background:#f8fafc!important;padding:0!important;overflow:hidden!important;cursor:pointer!important;}
+.basic-thumb.active{border-color:#2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.14)!important;}
+.basic-thumb img{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important;}
+.basic-subsection{border-top:1px solid #edf2f7!important;padding-top:9px!important;margin-top:9px!important;}
+.basic-subsection:first-child{border-top:0!important;padding-top:0!important;margin-top:0!important;}
+.basic-subtitle{font-size:12.5px!important;font-weight:900!important;color:#0f172a!important;margin:0 0 6px!important;}
+.project-image-drop{border:0!important;background:transparent!important;border-radius:0!important;padding:0!important;}
+.project-image-drop h3{display:none!important;}
+.project-image-drop .hint{margin:0 0 6px!important;font-size:11.2px!important;line-height:1.35!important;}
+.basic-image-block .project-image-drop>.grid2{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin-top:0!important;}
+.basic-image-block .project-image-drop input[type=file]{height:auto!important;min-height:35px!important;margin-top:6px!important;padding:6px!important;font-size:12px!important;}
+.basic-image-block .project-image-drop textarea{min-height:56px!important;height:56px!important;margin-top:6px!important;border-radius:8px!important;border-color:#dbe5f0!important;font-size:12.5px!important;padding:7px 9px!important;box-shadow:none!important;}
+.basic-image-block .project-image-drop label.hint{display:inline-flex!important;align-items:center!important;gap:5px!important;margin-top:6px!important;font-size:11.5px!important;color:#475569!important;}
+.basic-image-block .project-image-drop .btn.primary{height:32px!important;border-radius:8px!important;margin-top:6px!important;padding:0 11px!important;font-size:11.5px!important;}
+.basic-remark-box textarea{min-height:88px!important;height:88px!important;border-radius:8px!important;border-color:#dbe5f0!important;font-size:12.5px!important;padding:8px 9px!important;box-shadow:none!important;resize:vertical!important;}
+@media(max-width:1320px){.basic-clean-layout{grid-template-columns:minmax(0,1.6fr) minmax(290px,.9fr)!important}.basic-form-grid .field.basic-col-2,.basic-form-grid .field.basic-col-3,.basic-form-grid .field.basic-col-4{grid-column:span 4!important}.basic-form-grid .field.basic-col-5,.basic-form-grid .field.basic-col-6,.basic-form-grid .field.basic-col-7,.basic-form-grid .field.basic-col-8,.basic-form-grid .field.basic-col-9{grid-column:span 6!important}}
+@media(max-width:1080px){.basic-clean-layout{grid-template-columns:1fr!important}.basic-image-preview{height:164px!important}.basic-thumb-list{grid-template-columns:repeat(6,minmax(0,1fr))!important}}
+@media(max-width:720px){.basic-form-grid{grid-template-columns:1fr!important}.basic-form-grid .field{grid-column:auto!important}.basic-image-block .project-image-drop>.grid2{grid-template-columns:1fr!important}.basic-thumb-list{grid-template-columns:repeat(4,minmax(0,1fr))!important}.basic-main-block,.basic-image-block{padding:12px!important}}
+.basic-flow-overview{padding:12px!important;border:1px solid #e2e8f0!important;box-shadow:none!important;background:#fff!important;border-radius:10px!important;min-width:0!important;}
+.basic-flow-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important;align-items:center!important;margin-bottom:8px!important;}
+.basic-flow-head .section-title{margin:0 0 2px!important;}
+.basic-flow-head .hint{line-height:1.3!important;font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.basic-flow-head .btn{height:28px!important;min-height:28px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 9px!important;white-space:nowrap!important;}
+.basic-flow-head-controls{display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important;}
+.basic-flow-selectline{display:flex!important;align-items:center!important;gap:6px!important;margin:0!important;min-width:0!important;}
+.basic-flow-selectline b{font-size:12px!important;color:#475569!important;white-space:nowrap!important;}
+.basic-flow-selectline select{height:30px!important;min-height:30px!important;border-radius:8px!important;font-size:12px!important;width:260px!important;max-width:30vw!important;}
+.basic-flow-sample-name{font-size:12.5px!important;font-weight:900!important;color:#0f172a!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:280px!important;}
+.basic-flow-kpis{display:grid!important;grid-template-columns:1.3fr repeat(5,minmax(58px,1fr))!important;gap:0!important;margin:6px 0!important;border:1px solid #e2e8f0!important;border-radius:9px!important;background:#f8fafc!important;overflow:hidden!important;}
+.basic-flow-kpi{border:0!important;border-right:1px solid #e2e8f0!important;background:transparent!important;border-radius:0!important;padding:7px 8px!important;min-width:0!important;min-height:48px!important;}
+.basic-flow-kpi:last-child{border-right:0!important;}
+.basic-flow-kpi b{display:block!important;font-size:17px!important;line-height:1.05!important;color:#0f172a!important;}
+.basic-flow-kpi span{display:block!important;font-size:10.5px!important;color:#64748b!important;font-weight:850!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.basic-flow-kpi.good b{color:#16a34a!important}.basic-flow-kpi.blue b{color:#2563eb!important}.basic-flow-kpi.red b{color:#ef4444!important}.basic-flow-kpi.orange b{color:#f59e0b!important}
+.basic-flow-progress{display:grid!important;grid-template-columns:minmax(0,1fr) 38px!important;gap:7px!important;align-items:center!important;margin:5px 0 8px!important;}
+.basic-flow-progress .bar{height:6px!important;border-radius:999px!important;background:#e5e7eb!important;overflow:hidden!important;}
+.basic-flow-progress .bar i{height:100%!important;display:block!important;background:#2563eb!important;}
+.basic-flow-progress b{font-size:12px!important;color:#64748b!important;text-align:right!important;}
+.basic-flow-current{display:grid!important;grid-template-columns:1fr 1fr!important;gap:9px!important;margin:8px 0!important;}
+.basic-flow-current-card{border:1px solid #e2e8f0!important;background:#fff!important;border-radius:9px!important;padding:8px 9px!important;min-width:0!important;min-height:76px!important;}
+.basic-flow-current-card h4{margin:0 0 3px!important;font-size:12px!important;color:#0f172a!important;}
+.basic-flow-current-card b{display:block!important;font-size:13px!important;line-height:1.25!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;margin-bottom:2px!important;}
+.basic-flow-current-card span{display:inline!important;font-size:11px!important;color:#64748b!important;font-weight:800!important;line-height:1.45!important;margin-right:8px!important;}
+.basic-flow-current-card .btn{margin-top:5px!important;height:25px!important;min-height:25px!important;border-radius:7px!important;font-size:11px!important;padding:0 7px!important;}
+.basic-flow-scroll-wrap{display:grid!important;grid-template-columns:30px minmax(0,1fr) 30px!important;gap:5px!important;align-items:center!important;margin-top:8px!important;min-width:0!important;}
+.basic-flow-arrow{border:1px solid #dbe5f0!important;border-radius:8px!important;background:#f8fafc!important;color:#2563eb!important;font-size:17px!important;font-weight:900!important;cursor:pointer!important;padding:0!important;width:30px!important;height:56px!important;align-self:center!important;}
+.basic-flow-nodes{display:flex!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;min-width:0!important;padding:1px 1px 3px!important;cursor:grab!important;}
+.basic-flow-nodes::-webkit-scrollbar{display:none!important}.basic-flow-nodes.dragging{cursor:grabbing!important;user-select:none!important;}
+.basic-flow-node{flex:0 0 186px!important;width:186px!important;height:96px!important;border:1px solid #e2e8f0!important;border-top:3px solid #cbd5e1!important;background:#fff!important;border-radius:9px!important;padding:7px 8px!important;display:grid!important;grid-template-rows:auto auto 1fr auto!important;gap:3px!important;cursor:pointer!important;overflow:hidden!important;}
+.basic-flow-node.current{border-top-color:#2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.08)!important;}
+.basic-flow-node.done{border-color:#bbf7d0!important;border-top-color:#16a34a!important;background:#f0fdf4!important;}
+.basic-flow-node.doing{border-color:#bfdbfe!important;border-top-color:#2563eb!important;background:#eff6ff!important;}
+.basic-flow-node.redo{border-color:#fecaca!important;border-top-color:#ef4444!important;background:#fef2f2!important;}
+.basic-flow-node.pause{border-color:#fed7aa!important;border-top-color:#f59e0b!important;background:#fffbeb!important;}
+.basic-flow-node.skip{border-style:dashed!important;background:#f8fafc!important;color:#64748b!important;}
+.basic-flow-node-top{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;gap:6px!important;align-items:center!important;}
+.basic-flow-node-index{height:21px!important;border-radius:999px!important;background:#f1f5f9!important;color:#475569!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:10.5px!important;font-weight:1000!important;}
+.basic-flow-node-title{font-size:12px!important;font-weight:900!important;color:#0f172a!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.basic-flow-tags{display:flex!important;gap:4px!important;flex-wrap:nowrap!important;overflow:hidden!important;}
+.basic-flow-tags .tag{font-size:10px!important;padding:1px 5px!important;border-radius:999px!important;white-space:nowrap!important;}
+.basic-flow-node-meta{font-size:10.5px!important;color:#64748b!important;line-height:1.35!important;font-weight:800!important;overflow:hidden!important;}
+.basic-flow-node-foot{font-size:10.5px!important;color:#475569!important;font-weight:900!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.basic-flow-advice{margin-top:8px!important;border:1px solid #e2e8f0!important;background:#f8fafc!important;border-radius:9px!important;padding:7px 9px!important;display:flex!important;justify-content:space-between!important;gap:8px!important;align-items:center!important;}
+.basic-flow-advice span{font-size:11.5px!important;color:#475569!important;font-weight:850!important;line-height:1.35!important;}
+.basic-flow-advice .actions{flex-wrap:nowrap!important;gap:6px!important;}
+.basic-flow-advice .btn{height:28px!important;min-height:28px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 8px!important;}
+.basic-flow-empty{border:1px dashed #cbd5e1!important;background:#f8fafc!important;border-radius:9px!important;padding:12px!important;text-align:center!important;color:#64748b!important;font-weight:850!important;}
+@media(max-width:1320px){.basic-flow-head{grid-template-columns:1fr!important}.basic-flow-head-controls{justify-content:space-between!important}.basic-flow-selectline select{max-width:360px!important;width:260px!important}.basic-flow-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}.basic-flow-current{grid-template-columns:1fr!important}}
+@media(max-width:720px){.basic-flow-head,.basic-flow-advice{display:grid!important}.basic-flow-head-controls{display:grid!important}.basic-flow-selectline select{max-width:100%!important;width:100%!important}.basic-flow-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.basic-flow-node{flex-basis:76vw!important;width:76vw!important;height:102px!important}}
+.panel,.detail,.side-card,.model-card,.test-card,.file-card,.step,.search-card,.basic-block,.sample-section,.test-form-section{border-radius:10px!important;}
+@media(max-width:980px){
+  body{overflow:auto!important;}
+  .app{height:auto!important;min-height:100vh!important;display:block!important;width:calc(100% - 20px)!important;margin:10px auto 16px!important;}
+  .top{height:auto!important;min-height:56px!important;flex-wrap:wrap!important;}
+  .main.plm-shell,.main.plm-shell.project-collapsed{height:auto!important;display:block!important;}
+  .plm-project-aside{height:auto!important;border:1px solid #dbe5f0!important;margin-bottom:10px!important;}
+  .cards.project-list-modern.project-list-compact{max-height:340px!important;}
+  .plm-workspace{height:auto!important;overflow:visible!important;padding:10px!important;}
+  .detail-head{position:relative!important;grid-template-columns:1fr!important;}
+  .detail-head .actions{justify-content:flex-start!important;max-width:none!important;}
+}
+/* ===== PLM V8.5.104-FIRST 骨架布局 END ===== */
+
+/* ===== PLM V8.5.104 顶部横向项目导航 START ===== */
+.app{
+  grid-template-rows:64px minmax(0,1fr)!important;
+}
+.main.plm-shell.plm-top-project-shell,
+.main.plm-shell.plm-top-project-shell.project-collapsed{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  grid-template-rows:auto minmax(0,1fr)!important;
+  gap:12px!important;
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+.plm-project-nav{
+  border:1px solid #dbe5f0!important;
+  border-radius:12px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  padding:10px 12px!important;
+  display:grid!important;
+  gap:8px!important;
+  min-width:0!important;
+  z-index:18!important;
+}
+.project-nav-toolbar{
+  display:grid!important;
+  grid-template-columns:minmax(260px,360px) minmax(250px,1fr) auto auto auto auto auto!important;
+  gap:8px!important;
+  align-items:center!important;
+  min-width:0!important;
+}
+.project-nav-search,
+.project-sort-select,
+.project-list-limit,
+.project-advanced-filter select{
+  height:32px!important;
+  min-height:32px!important;
+  border-radius:8px!important;
+  font-size:12px!important;
+  padding:0 9px!important;
+}
+.project-nav-toolbar .btn{
+  height:32px!important;
+  min-height:32px!important;
+  border-radius:8px!important;
+  padding:0 10px!important;
+  font-size:12px!important;
+  white-space:nowrap!important;
+}
+.project-status-quick{
+  display:flex!important;
+  gap:6px!important;
+  overflow-x:auto!important;
+  min-width:0!important;
+  scrollbar-width:none!important;
+}
+.project-status-quick::-webkit-scrollbar{display:none!important;}
+.project-status-chip{
+  height:28px!important;
+  border:1px solid #dbe5f0!important;
+  background:#fff!important;
+  color:#475569!important;
+  border-radius:999px!important;
+  padding:0 9px!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+  cursor:pointer!important;
+}
+.project-status-chip.active{
+  background:#eff6ff!important;
+  border-color:#93c5fd!important;
+  color:#2563eb!important;
+}
+.project-advanced-filter{
+  display:none!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:8px!important;
+  padding:8px!important;
+  border:1px solid #e6ecf5!important;
+  background:#f8fafc!important;
+  border-radius:10px!important;
+}
+.plm-project-nav.filters-expanded .project-advanced-filter{display:grid!important;}
+.project-nav-scroller-wrap{
+  width:100%!important;
+  max-width:100%!important;
+  display:grid!important;
+  grid-template-columns:34px minmax(0,1fr) 34px!important;
+  gap:6px!important;
+  align-items:stretch!important;
+  min-width:0!important;
+}
+.project-nav-arrow{
+  border:1px solid #dbe5f0!important;
+  border-radius:9px!important;
+  background:#f8fafc!important;
+  color:#2563eb!important;
+  font-size:20px!important;
+  font-weight:900!important;
+  cursor:pointer!important;
+  min-height:106px!important;
+  width:34px!important;
+  padding:0!important;
+}
+.cards.project-list-modern.project-list-compact.project-nav-strip{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  flex:1 1 auto!important;
+  height:auto!important;
+  max-height:none!important;
+  min-height:116px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  display:flex!important;
+  grid-template-columns:none!important;
+  gap:12px!important;
+  padding:2px 1px 5px!important;
+  background:transparent!important;
+  scrollbar-width:none!important;
+  cursor:grab!important;
+}
+.cards.project-nav-strip::-webkit-scrollbar{display:none!important;}
+.cards.project-nav-strip.dragging{cursor:grabbing!important;user-select:none!important;}
+.project-nav-card{
+  flex:0 0 280px!important;
+  width:280px!important;
+  height:106px!important;
+  min-height:106px!important;
+  display:grid!important;
+  grid-template-columns:68px minmax(0,1fr)!important;
+  gap:11px!important;
+  align-items:center!important;
+  padding:10px!important;
+  border:1px solid #e2e8f0!important;
+  border-left:3px solid #dbeafe!important;
+  border-radius:10px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  cursor:pointer!important;
+  overflow:hidden!important;
+}
+.project-nav-card:hover{border-color:#bfdbfe!important;background:#f8fbff!important;}
+.project-nav-card.active{
+  background:#eff6ff!important;
+  border-color:#93c5fd!important;
+  border-left-color:#2563eb!important;
+}
+.project-nav-card.project-paused-row{border-left-color:#f59e0b!important;}
+.project-nav-card.project-done-row{border-left-color:#16a34a!important;opacity:.88!important;}
+.project-nav-card.risk-danger:not(.active){border-left-color:#ef4444!important;}
+.project-nav-card .project-thumb{
+  width:68px!important;
+  height:68px!important;
+  border-radius:9px!important;
+  background:#f8fafc!important;
+}
+.project-nav-card .project-thumb img{object-fit:contain!important;background:#f8fafc!important;}
+.project-nav-card .project-thumb.no span{font-size:18px!important;}
+.project-nav-card .project-thumb.no small{display:none!important;}
+.project-nav-main{min-width:0!important;}
+.project-nav-title{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:6px!important;
+  align-items:center!important;
+}
+.project-nav-title b{
+  font-size:13.5px!important;
+  color:#0f172a!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.project-nav-title .project-priority{
+  max-width:54px!important;
+  font-size:10.5px!important;
+  padding:3px 6px!important;
+  border-radius:999px!important;
+  line-height:1.1!important;
+}
+.project-nav-no{
+  margin-top:5px!important;
+  color:#64748b!important;
+  font-size:11.5px!important;
+  font-weight:850!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.project-nav-meta{
+  margin-top:5px!important;
+  color:#475569!important;
+  font-size:11px!important;
+  font-weight:850!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.project-nav-progress{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 38px!important;
+  gap:6px!important;
+  align-items:center!important;
+  margin-top:7px!important;
+}
+.project-nav-progress .bar{height:6px!important;background:#e5e7eb!important;border-radius:999px!important;}
+.project-nav-progress .bar i{background:#2563eb!important;}
+.project-nav-progress b{font-size:11px!important;color:#64748b!important;text-align:right!important;}
+.project-nav-pager{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:8px!important;
+  min-height:28px!important;
+}
+.project-nav-pager .project-list-pager{
+  width:100%!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:8px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+.project-nav-pager .project-list-pager-info,
+.project-nav-pager .project-list-page-note{
+  font-size:11.5px!important;
+  color:#64748b!important;
+  font-weight:850!important;
+}
+.project-nav-pager .project-list-pager-actions{display:flex!important;gap:5px!important;align-items:center!important;flex-wrap:nowrap!important;}
+.project-nav-pager .project-list-pager-actions button{
+  height:24px!important;
+  min-height:24px!important;
+  padding:0 7px!important;
+  border-radius:7px!important;
+  border:1px solid #dbe5f0!important;
+  background:#fff!important;
+  color:#475569!important;
+  font-size:11px!important;
+  font-weight:850!important;
+}
+.project-nav-pager .project-list-pager-actions button.active{background:#eff6ff!important;color:#2563eb!important;border-color:#93c5fd!important;}
+.plm-workspace{
+  min-width:0!important;
+  height:100%!important;
+  overflow:auto!important;
+  padding:0!important;
+}
+.detail{width:100%!important;}
+.all-project-modal .modal{
+  width:min(1180px,92vw)!important;
+  max-width:1180px!important;
+  max-height:calc(100vh - 44px)!important;
+}
+@media(min-width:1100px){
+  .all-project-modal{
+    justify-content:flex-end!important;
+    align-items:stretch!important;
+    padding:16px!important;
+  }
+  .all-project-modal .modal{
+    width:min(1080px,86vw)!important;
+    height:calc(100vh - 32px)!important;
+    max-height:calc(100vh - 32px)!important;
+    border-radius:14px!important;
+  }
+}
+@media(max-width:1320px){
+  .project-nav-toolbar{grid-template-columns:minmax(220px,1fr) minmax(220px,1.2fr) auto auto auto!important;}
+  .project-nav-toolbar .project-list-limit{display:none!important;}
+  .project-nav-card{flex-basis:260px!important;width:260px!important;}
+}
+@media(max-width:900px){
+  body{overflow:auto!important;}
+  .main.plm-shell.plm-top-project-shell{height:auto!important;display:grid!important;}
+  .project-nav-toolbar{grid-template-columns:1fr auto auto!important;}
+  .project-status-quick{grid-column:1/-1!important;}
+  .project-sort-select,.project-list-limit{display:none!important;}
+  .project-nav-card{flex-basis:78vw!important;width:78vw!important;height:108px!important;min-height:108px!important;}
+  .plm-workspace{height:auto!important;overflow:visible!important;}
+}
+/* ===== PLM V8.5.104 顶部横向项目导航 END ===== */
+
+/* ===== PLM V8.5.104 项目总览驾驶舱 START ===== */
+#tab-summary.summary-cockpit{display:grid!important;gap:14px!important;padding-top:0!important}
+.summary-top-tools{display:flex!important;justify-content:flex-end!important;min-height:0!important}
+.summary-settings{position:relative!important;justify-self:end!important}.summary-settings>summary{list-style:none!important;height:34px!important;border:1px solid #dbe4ef!important;border-radius:9px!important;background:#fff!important;padding:0 12px!important;font-size:12px!important;font-weight:1000!important;display:inline-flex!important;align-items:center!important;cursor:pointer!important}.summary-settings>summary::-webkit-details-marker{display:none!important}.summary-settings[open]>summary{background:#eff6ff!important;color:#1d4ed8!important;border-color:#93c5fd!important}
+.summary-settings-menu{position:absolute!important;right:0!important;top:40px!important;z-index:80!important;width:360px!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:12px!important;box-shadow:0 18px 44px rgba(15,23,42,.16)!important;padding:10px!important;display:grid!important;gap:10px!important}.summary-settings-menu .summary-toggle-list{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important}.summary-settings-menu .summary-toggle-chip{height:30px!important;border-radius:8px!important;justify-content:flex-start!important}
+.summary-row{display:grid!important;gap:14px!important;align-items:start!important}.summary-row-top{grid-template-columns:minmax(0,1.65fr) minmax(340px,.9fr)!important}.summary-row-mid{grid-template-columns:minmax(0,1.45fr) minmax(420px,1fr)!important}.summary-row-bottom{grid-template-columns:1fr 1fr!important}
+.summary-cockpit-card{border:1px solid #e2e8f0!important;background:#fff!important;border-radius:12px!important;padding:12px!important;box-shadow:none!important;min-width:0!important}.summary-cockpit-card.summary-wide{grid-column:1/-1!important}.summary-card-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:10px!important;margin-bottom:10px!important}.summary-card-head h3{margin:0!important;font-size:15px!important;color:#0f172a!important}.summary-card-head .hint{font-size:11.5px!important;color:#64748b!important;font-weight:850!important;margin-top:3px!important}
+.summary-project-tags{display:flex!important;gap:6px!important;flex-wrap:wrap!important;margin:6px 0 8px!important}.summary-project-tags span{border:1px solid #dbe4ef!important;background:#f8fafc!important;border-radius:999px!important;padding:3px 8px!important;font-size:11px!important;font-weight:900!important;color:#475569!important}
+.summary-metrics{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;overflow:hidden!important}.summary-metrics span{min-height:46px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;border-right:1px solid #e2e8f0!important;font-size:11.5px!important;color:#64748b!important;font-weight:900!important;white-space:nowrap!important}.summary-metrics span:last-child{border-right:0!important}.summary-metrics b{font-size:17px!important;color:#0f172a!important}.summary-metrics .bad b{color:#dc2626!important}
+.summary-progress-pair{display:grid!important;gap:8px!important;margin-top:10px!important}.summary-progress-pair>div>div{display:flex!important;justify-content:space-between!important;font-size:11.5px!important;font-weight:900!important;color:#475569!important;margin-bottom:4px!important}.summary-progress-pair i{display:block!important;height:7px!important;border-radius:999px!important;background:#e5e7eb!important;overflow:hidden!important}.summary-progress-pair em{display:block!important;height:100%!important;background:#2563eb!important}.summary-progress-pair i.green em{background:#16a34a!important}
+.summary-status-line{margin-top:10px!important;border:1px solid #e2e8f0!important;background:#f8fafc!important;border-radius:10px!important;padding:8px 10px!important;font-size:12px!important;font-weight:900!important;color:#334155!important;line-height:1.45!important}
+.summary-risk-list,.summary-list,.summary-file-list{display:grid!important;gap:7px!important}.summary-risk-mini{margin-top:5px!important}.summary-list-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-left:3px solid #cbd5e1!important;border-radius:10px!important;background:#fff!important;padding:8px!important}.summary-list-row.warn{border-left-color:#f59e0b!important;background:#fffbeb!important}.summary-list-row.danger{border-left-color:#ef4444!important;background:#fff7f7!important}.summary-list-row b{display:block!important;font-size:12px!important;color:#0f172a!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.summary-list-row span{display:block!important;font-size:11px!important;color:#64748b!important;font-weight:850!important;line-height:1.35!important;margin-top:2px!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}.summary-ok-line{border:1px solid #bbf7d0!important;background:#f0fdf4!important;color:#15803d!important;border-radius:10px!important;padding:10px!important;font-size:12px!important;font-weight:900!important}
+.summary-sample-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))!important;gap:12px!important}.summary-sample-card{border:1px solid #e2e8f0!important;border-top:3px solid #cbd5e1!important;border-radius:12px!important;padding:11px!important;background:#fff!important;display:grid!important;gap:7px!important;min-height:220px!important}.summary-sample-card.active{border-top-color:#2563eb!important;background:#f8fbff!important}.summary-sample-head{display:flex!important;justify-content:space-between!important;gap:8px!important}.summary-sample-head h4{margin:0!important;font-size:14px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}.summary-sample-head span{font-size:11px!important;color:#64748b!important;font-weight:900!important}.summary-sample-kpis{display:flex!important;flex-wrap:wrap!important;gap:5px!important}.summary-sample-kpis span{border:1px solid #e2e8f0!important;background:#f8fafc!important;border-radius:999px!important;padding:3px 7px!important;font-size:10.8px!important;font-weight:900!important;color:#475569!important}.summary-sample-kpis .bad{background:#fee2e2!important;border-color:#fecaca!important;color:#991b1b!important}.summary-mini-bar{height:6px!important;background:#e5e7eb!important;border-radius:999px!important;overflow:hidden!important}.summary-mini-bar i{display:block!important;height:100%!important;background:#2563eb!important}.summary-sample-status{display:grid!important;grid-template-columns:76px minmax(0,1fr)!important;gap:8px!important;font-size:11.5px!important}.summary-sample-status b{color:#475569!important}.summary-sample-status span{color:#0f172a!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.summary-sample-actions{display:flex!important;gap:5px!important;flex-wrap:wrap!important;margin-top:auto!important}.summary-sample-actions button{border:0!important;background:#eff6ff!important;color:#1d4ed8!important;border-radius:7px!important;height:26px!important;padding:0 7px!important;font-size:10.8px!important;font-weight:900!important;cursor:pointer!important}
+.summary-test-strip{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;overflow:hidden!important;margin-bottom:10px!important}.summary-test-strip span{height:36px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;border-right:1px solid #e2e8f0!important;font-size:11px!important;font-weight:900!important;color:#64748b!important}.summary-test-strip span:last-child{border-right:0!important}.summary-test-strip b{color:#0f172a!important}.summary-test-strip .good b{color:#16a34a!important}.summary-test-strip .bad b{color:#dc2626!important}.summary-test-strip .warn b{color:#ea580c!important}.summary-two-tabs{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important}.summary-two-tabs h4{margin:0 0 7px!important;font-size:12.5px!important;color:#334155!important}
+.summary-file-row{display:grid!important;grid-template-columns:34px minmax(0,1fr) auto!important;gap:8px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-radius:10px!important;padding:7px!important}.summary-file-row b{display:block!important;font-size:12px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.summary-file-row span{display:block!important;font-size:11px!important;color:#64748b!important;font-weight:850!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;margin-top:2px!important}.summary-empty.small{padding:12px!important;border-radius:10px!important;font-size:12px!important}
+@media(max-width:1180px){.summary-row-top,.summary-row-mid,.summary-row-bottom{grid-template-columns:1fr!important}.summary-metrics{grid-template-columns:repeat(3,minmax(0,1fr))!important}.summary-two-tabs{grid-template-columns:1fr!important}}
+@media(max-width:720px){.summary-settings-menu{right:auto!important;left:0!important;width:min(340px,92vw)!important}.summary-metrics,.summary-test-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}.summary-sample-grid{grid-template-columns:1fr!important}.summary-file-row{grid-template-columns:30px minmax(0,1fr)!important}.summary-file-row .btn{grid-column:1/-1!important}}
+/* ===== PLM V8.5.104 项目总览驾驶舱 END ===== */
+
+/* ===== PLM V8.5.104 测试中心证据工作区修正 START ===== */
+.test-project-layout{grid-template-columns:minmax(360px,.75fr) minmax(720px,1.35fr)!important;gap:16px!important;align-items:start!important;overflow:visible!important}
+.test-project-board{padding:12px!important;min-width:0!important}
+.test-detail-side{position:static!important;min-width:0!important;max-height:none!important;padding:0!important;border:1px solid #e2e8f0!important;border-radius:12px!important;overflow:hidden!important}
+.test-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+.test-project-card{min-height:132px!important;height:auto!important;padding:10px!important;border-radius:10px!important;gap:6px!important;overflow:hidden!important}
+.test-card-title{grid-template-columns:28px minmax(0,1fr) auto!important}.test-card-title b{font-size:12.5px!important}.test-type-icon{width:26px!important;height:26px!important;border-radius:7px!important}.test-card-meta,.test-card-files{gap:6px!important;font-size:11px!important}.test-card-sample{font-size:11.5px!important}
+.test-current-summary{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;border-bottom:1px solid #e2e8f0!important;background:#f8fafc!important;min-height:42px!important;overflow:hidden!important}
+.test-current-summary span,.test-current-summary button{border:0!important;border-right:1px solid #e2e8f0!important;background:transparent!important;color:#64748b!important;font-size:11.5px!important;font-weight:900!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;cursor:pointer!important}.test-current-summary b{color:#0f172a!important}
+.test-detail-main-grid{display:grid!important;grid-template-columns:minmax(0,1.65fr) minmax(330px,.9fr)!important;gap:14px!important;align-items:start!important}
+.test-data-column,.test-evidence-column{min-width:0!important;display:grid!important;gap:10px!important}
+.test-basic-grid .sample-field,.test-basic-grid .tpl-field,.test-basic-grid .title-field{grid-column:span 4!important}.test-basic-grid .small-field{grid-column:span 2!important}
+.test-template-fields .test-template-field{grid-column:span 3!important}.test-template-fields .test-template-field.wide{grid-column:1/-1!important}
+.test-evidence-panel{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:10px!important;display:grid!important;gap:9px!important}
+.test-evidence-head{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:8px!important}.test-evidence-head h4{margin:0!important;font-size:13px!important;padding-left:8px!important;border-left:3px solid #2563eb!important}.test-evidence-head span{display:block!important;margin-top:3px!important;font-size:11.5px!important;color:#64748b!important;font-weight:850!important}
+.test-evidence-tabs{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}.test-evidence-tab{height:30px!important;border:1px solid #dbe4ef!important;background:#fff!important;border-radius:8px!important;font-size:11.5px!important;font-weight:900!important;color:#475569!important;cursor:pointer!important}.test-evidence-tab.active{background:#eff6ff!important;border-color:#93c5fd!important;color:#1d4ed8!important}.test-evidence-tab b{margin-left:3px!important;color:#0f172a!important}
+.test-evidence-upload{border:1px dashed #93c5fd!important;background:#f8fbff!important;border-radius:10px!important;padding:10px!important;display:grid!important;gap:8px!important}.test-evidence-upload.dragging{background:#eff6ff!important;border-color:#2563eb!important}.test-evidence-drop-main b{display:block!important;color:#0f172a!important}.test-evidence-drop-main span{display:block!important;color:#64748b!important;font-size:11.5px!important;margin-top:2px!important}.test-evidence-upload input[type=file]{height:auto!important;border:0!important;padding:0!important;background:transparent!important}.test-evidence-upload-grid{display:grid!important;grid-template-columns:160px minmax(0,1fr)!important;gap:8px!important}.test-evidence-upload textarea{min-height:54px!important;height:54px!important}
+.test-upload-queue{display:grid!important;gap:5px!important}.test-upload-row{display:grid!important;grid-template-columns:minmax(0,1fr) 70px 88px!important;gap:6px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-radius:8px!important;background:#fff!important;padding:5px 7px!important;font-size:11.5px!important}.test-upload-row span{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-upload-row em{font-style:normal!important;color:#64748b!important;text-align:right!important}.test-upload-row.ok em{color:#16a34a!important}.test-upload-row.fail em{color:#dc2626!important}
+.test-evidence-body{min-height:180px!important;max-height:560px!important;overflow:auto!important;padding-right:2px!important}.test-evidence-empty{border:1px dashed #cbd5e1!important;border-radius:10px!important;background:#f8fafc!important;color:#64748b!important;font-size:12px!important;font-weight:900!important;padding:18px!important;text-align:center!important}
+.test-image-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}.test-image-item{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:7px!important;display:grid!important;gap:6px!important}.test-image-item button{border:0!important;background:transparent!important;padding:0!important;cursor:pointer!important}.test-image-item img{width:100%!important;height:118px!important;object-fit:contain!important;background:#f1f5f9!important;border-radius:8px!important}.test-image-item b{display:block!important;font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-image-item span{font-size:10.5px!important;color:#64748b!important}
+.test-evidence-file-list{display:grid!important;gap:7px!important}.test-evidence-file-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:8px!important}.test-evidence-file-row b{display:block!important;font-size:12px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-evidence-file-row span,.test-evidence-file-row em{display:block!important;font-size:11px!important;color:#64748b!important;font-style:normal!important;line-height:1.35!important}
+.test-lightbox{background:rgba(15,23,42,.82)!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;padding:16px!important}.test-lightbox-bar{display:flex!important;gap:8px!important;align-items:center!important;justify-content:center!important;color:#fff!important;margin-bottom:10px!important}.test-lightbox-bar b{max-width:42vw!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-lightbox-img{max-width:96vw!important;max-height:calc(100vh - 90px)!important;object-fit:contain!important;margin:auto!important;display:block!important;background:#111827!important}
+@media(max-width:1320px){.test-project-layout{grid-template-columns:minmax(320px,.8fr) minmax(0,1.25fr)!important}.test-detail-main-grid{grid-template-columns:1fr!important}.test-evidence-body{max-height:none!important}.test-card-grid{grid-template-columns:1fr!important}}
+@media(max-width:920px){.test-project-layout{grid-template-columns:1fr!important}.test-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.test-current-summary{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+@media(max-width:620px){.test-card-grid,.test-image-grid{grid-template-columns:1fr!important}.test-current-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}.test-evidence-tabs{grid-template-columns:repeat(2,minmax(0,1fr))!important}.test-evidence-upload-grid{grid-template-columns:1fr!important}}
+/* ===== PLM V8.5.104 测试中心证据工作区修正 END ===== */
+
+/* ===== PLM V8.5.104 文件中心工作台 START ===== */
+.file-center-v104{display:grid!important;gap:10px!important;min-width:0!important;overflow:visible!important}
+.file-center-toolbar{min-height:54px!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:12px!important;padding:9px 10px!important;display:grid!important;grid-template-columns:auto minmax(0,1fr) auto!important;gap:10px!important;align-items:center!important}
+.file-center-title{display:flex!important;flex-direction:column!important;gap:2px!important;min-width:160px!important}.file-center-title b{font-size:15px!important;color:#0f172a!important}.file-center-title span{font-size:11.5px!important;color:#64748b!important;font-weight:850!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:240px!important}
+.file-center-search{display:grid!important;grid-template-columns:minmax(180px,1.2fr) minmax(150px,.8fr) minmax(130px,.6fr) minmax(130px,.6fr)!important;gap:7px!important;min-width:0!important}.file-center-search input,.file-center-search select{height:34px!important;min-height:34px!important;border-radius:8px!important;font-size:12px!important}
+.file-center-actions{display:flex!important;gap:6px!important;align-items:center!important;flex-wrap:nowrap!important}.file-center-actions .btn,.file-center-actions summary{height:34px!important;min-height:34px!important;border-radius:8px!important;padding:0 10px!important;font-size:11.5px!important;white-space:nowrap!important}
+.file-statbar{min-height:46px!important;display:grid!important;grid-template-columns:repeat(auto-fit,minmax(92px,1fr))!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;overflow:hidden!important}.file-statbar span{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;border-right:1px solid #e2e8f0!important;color:#64748b!important;font-size:11.5px!important;font-weight:900!important;white-space:nowrap!important}.file-statbar span:last-child{border-right:0!important}.file-statbar b{font-size:15px!important;color:#0f172a!important}.file-statbar .good b{color:#16a34a!important}.file-statbar .warn b{color:#ea580c!important}.file-statbar .info b{color:#2563eb!important}
+.file-center-v104 .file-workbench{display:grid!important;grid-template-columns:220px minmax(0,1fr) 360px!important;gap:14px!important;align-items:start!important;overflow:visible!important;min-width:0!important}.file-center-v104 .file-tree,.file-center-v104 .file-list-pane,.file-center-v104 .file-preview-pane{border:1px solid #e2e8f0!important;background:#fff!important;border-radius:12px!important;padding:12px!important;box-shadow:none!important;min-width:0!important;overflow:visible!important}.file-center-v104 .file-tree,.file-center-v104 .file-preview-pane{position:sticky!important;top:12px!important;max-height:calc(100vh - 160px)!important;overflow:auto!important}.file-center-v104 .file-list-pane{min-height:520px!important}
+.file-filter-group{border-top:1px solid #edf2f7!important;padding-top:9px!important;margin-top:9px!important}.file-filter-group>b{display:block!important;font-size:11.5px!important;color:#475569!important;margin-bottom:6px!important}.file-center-v104 .tree-btn{min-height:30px!important;border-radius:8px!important;padding:6px 8px!important;margin:3px 0!important;font-size:11.5px!important}.file-center-v104 .tree-btn b{font-size:11px!important}
+.file-list-head{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:10px!important;margin-bottom:9px!important}.file-list-head h3{margin:0 0 3px!important;font-size:15px!important}.file-list-head .hint{font-size:11.5px!important}.file-list-head select{width:140px!important;height:32px!important;border-radius:8px!important;font-size:12px!important}
+.file-center-v104 .fm-table-wrap{max-height:calc(100vh - 300px)!important;min-height:420px!important;overflow:auto!important;border-radius:10px!important}.file-center-v104 .fm-table{min-width:980px!important;width:100%!important;table-layout:fixed!important}.file-table-v104 th,.file-table-v104 td{padding:7px!important;font-size:12px!important;line-height:1.25!important}.file-table-v104 th:nth-child(1),.file-table-v104 td:nth-child(1){width:44px!important}.file-table-v104 th:nth-child(2),.file-table-v104 td:nth-child(2){width:270px!important}.file-table-v104 th:nth-child(3),.file-table-v104 td:nth-child(3){width:130px!important}.file-table-v104 th:nth-child(4),.file-table-v104 td:nth-child(4){width:100px!important}.file-table-v104 th:nth-child(5),.file-table-v104 td:nth-child(5){width:105px!important}.file-table-v104 th:nth-child(6),.file-table-v104 td:nth-child(6){width:90px!important}.file-table-v104 th:nth-child(7),.file-table-v104 td:nth-child(7){width:76px!important}.file-table-v104 th:nth-child(8),.file-table-v104 td:nth-child(8){width:130px!important}.file-table-v104 th:nth-child(9),.file-table-v104 td:nth-child(9){width:160px!important}
+.file-row-main{display:flex!important;gap:9px!important;align-items:center!important;min-width:0!important}.file-row-text{min-width:0!important}.file-row-actions{display:flex!important;gap:5px!important;align-items:center!important}.file-row-actions .btn,.file-row-actions summary{height:26px!important;min-height:26px!important;border-radius:7px!important;padding:0 7px!important;font-size:11px!important}
+.file-center-v104 .file-preview-large{min-height:230px!important;max-height:340px!important;border-radius:10px!important}.file-center-v104 .file-preview-large img{max-height:330px!important;object-fit:contain!important}.file-center-v104 .file-preview-large iframe{height:330px!important}.file-center-v104 .step-bind{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;padding:10px!important}.file-center-v104 .step-bind .field{margin:6px 0!important}.file-center-v104 .step-bind input,.file-center-v104 .step-bind select{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:12px!important}.file-center-v104 .step-bind textarea{min-height:68px!important;height:68px!important;border-radius:8px!important;font-size:12px!important}
+.file-upload-drawer{width:min(760px,96vw)!important}.file-upload-form{display:grid!important;gap:12px!important}.file-upload-form section{border:1px solid #e2e8f0!important;border-radius:12px!important;padding:12px!important;background:#fff!important}.file-upload-form h4{margin:0 0 8px!important;font-size:13px!important}.file-upload-form input,.file-upload-form select{height:34px!important;border-radius:8px!important}.file-upload-form textarea{min-height:68px!important;border-radius:8px!important}.upload-result{font-size:12px;color:#475569;display:grid;gap:4px}
+.customer-package-modal{width:min(980px,96vw)!important}.customer-package-modal .customer-panel{box-shadow:none!important;border:0!important;padding:0!important}.customer-package-modal .file-list-wrap{max-height:48vh!important;overflow:auto!important}.customer-package-modal .copybox{min-height:120px!important}
+@media(max-width:1280px){.file-center-v104 .file-workbench{grid-template-columns:200px minmax(0,1fr) 330px!important}.file-center-toolbar{grid-template-columns:1fr!important}.file-center-actions{flex-wrap:wrap!important}.file-center-search{grid-template-columns:1fr 1fr!important}}
+@media(max-width:920px){.file-center-v104 .file-workbench{grid-template-columns:1fr!important}.file-center-v104 .file-tree,.file-center-v104 .file-preview-pane{position:relative!important;top:auto!important;max-height:none!important}.file-center-v104 .fm-table{min-width:860px!important}.file-center-search{grid-template-columns:1fr!important}}
+/* ===== PLM V8.5.104 文件中心工作台 END ===== */
+
 /* ===== PLM V8.5.103 样品基础资料排版修复 END ===== */
 
 </style>
@@ -7693,10 +9121,15 @@ textarea,
         <div class="top-more-menu">
           <button id="plmPermBtn" class="btn" onclick="openPermissionModal()" style="display:none">权限设置</button>
           <button id="plmBackupBtn" class="btn" onclick="openPlmBackupRestoreModal()" style="display:none">备份恢复</button>
-          <button class="btn" onclick="location.href='artdon_portal.php'">系统首页</button>
+          <button class="btn" onclick="location.href='index.php'">系统首页</button>
+          <button class="btn" onclick="location.href='crm.php'">CRM</button>
+          <button class="btn" onclick="location.href='mail.php'">邮箱</button>
+          <button class="btn" onclick="location.href='promotion.php'">推广</button>
           <button class="btn" onclick="location.href='bom.php'">BOM</button>
           <button class="btn" onclick="location.href='naming.php'">型号命名</button>
           <button class="btn" onclick="location.href='quotation.php'">报价</button>
+          <button class="btn" onclick="location.href='datasheet.php'">资料</button>
+          <button class="btn" onclick="location.href='dispatch_next.php'">派工</button>
           <button class="btn" onclick="openRecycleBin()">回收站</button>
           <button class="btn" onclick="showHealth()">健康检查</button>
         </div>
@@ -7704,32 +9137,51 @@ textarea,
     </div>
   </div>
   <div id="fatalBox"></div>
-  <div class="panel">
-    <div class="filters">
-      <input id="q" placeholder="搜索：项目名 / 客户 / 系列 / 型号 / 工程师" oninput="render()">
-      <select id="fEngineer" onchange="render()"><option value="">全部工程师</option></select>
-      <select id="fCustomer" onchange="render()"><option value="">全部客户</option></select>
-      <select id="fSource" onchange="render()"><option value="">全部来源</option><option>工厂自行开发</option><option>客户下单开发</option></select>
-      <select id="fPriority" onchange="render()"><option value="">全部优先级</option><option>P1 紧急</option><option>P2 正常</option><option>P3 储备</option></select>
-      <select id="fStatus" onchange="render()"><option value="">全部状态</option><option>未开始</option><option>开发中</option><option>测试中</option><option>暂停</option><option>已完成</option><option>已取消</option></select>
-      <button class="btn" onclick="resetFilters()">重置</button>
-    </div>
-    <div class="viewbar project-list-toolbar">
-      <div class="project-list-title-pill">项目列表 · 图片缩略</div>
-      <select id="projectListLimit" class="project-list-limit" onchange="setProjectListLimit(this.value)"><option value="5">显示5个</option><option value="10">显示10个</option><option value="20">显示20个</option><option value="30">显示30个</option><option value="50">显示50个</option></select>
-      <button id="projectCollapseBtn" class="project-collapse-btn" onclick="toggleProjectListCollapse()">收起项目列表</button>
-      <div class="hint">项目列表可手动折叠/展开；折叠后右侧工作区自动放大。派工核心表格不修改。</div>
-    </div>
+  <div id="mainWrap" class="main plm-shell plm-top-project-shell">
+    <section id="plmProjectNav" class="plm-project-nav">
+      <div class="project-nav-toolbar">
+        <input id="q" class="project-nav-search" placeholder="搜索项目 / 客户 / 工程师 / 项目号 / 型号" oninput="render()">
+        <div id="projectStatusQuick" class="project-status-quick"></div>
+        <button type="button" class="btn plm-filter-toggle" onclick="togglePlmProjectFilters()">高级筛选</button>
+        <select id="fSort" class="project-sort-select" onchange="renderCards()">
+          <option value="default">默认排序</option>
+          <option value="updated_desc">最近更新</option>
+          <option value="created_desc">创建时间</option>
+          <option value="priority_asc">优先级</option>
+          <option value="name_asc">项目名称</option>
+          <option value="flow_desc">工序进度</option>
+          <option value="test_desc">测试进度</option>
+          <option value="issue_desc">问题数量</option>
+        </select>
+        <button class="btn" onclick="openAllProjectsModal()">全部项目</button>
+        <button class="btn" onclick="resetFilters()">重置</button>
+      </div>
+      <div class="project-advanced-filter">
+        <select id="fEngineer" onchange="render()"><option value="">全部工程师</option></select>
+        <select id="fCustomer" onchange="render()"><option value="">全部客户</option></select>
+        <select id="fSource" onchange="render()"><option value="">全部来源</option><option>工厂自行开发</option><option>客户下单开发</option></select>
+        <select id="fPriority" onchange="render()"><option value="">全部优先级</option><option>P1 紧急</option><option>P2 正常</option><option>P3 储备</option></select>
+        <select id="fStatus" onchange="render()"><option value="">全部状态</option><option value="__active">进行中/未完成</option><option>未开始</option><option>开发中</option><option>测试中</option><option>暂停</option><option>已完成</option><option>已取消</option></select>
+      </div>
+      <div id="projectNavScrollerWrap" class="project-nav-scroller-wrap">
+        <button class="project-nav-arrow left" type="button" onclick="scrollProjectNav(-1)">‹</button>
+        <div id="cards" class="cards"></div>
+        <button class="project-nav-arrow right" type="button" onclick="scrollProjectNav(1)">›</button>
+      </div>
+    </section>
+    <main id="plmWorkspace" class="plm-workspace">
+      <div id="detail" class="detail"></div>
+    </main>
   </div>
-  <div id="mainWrap" class="main"><div id="cards" class="cards"></div><div id="detail" class="detail"></div></div>
 </div>
 <div id="toast" class="toast"></div>
 <div id="modalHost"></div>
 <script>
 const API='plm.php';
-let projects=[],models=[],tests=[],testRuns=[],testTemplates=[],files=[],steps=[],issues=[],logs=[],dispatchLinks=[],plmCurrentUser=null,plmIsAdmin=false,plmPermissions={},plmPermissionDefs=[],plmPermissionUsers=[],plmNoticeCount=0,plmOnlineCount=0,plmRecycleCounts={projects:0,models:0},selectedId=Number(localStorage.getItem('plm_v85_selected')||0),tab=localStorage.getItem('plm_v85_tab')||'basic',projectView=localStorage.getItem('plm_v85_project_view')||'list',projectCols=Number(localStorage.getItem('plm_v85_project_cols')||2),projectListLimit=Number(localStorage.getItem('plm_v85_project_limit')||10),projectListPage=Number(localStorage.getItem('plm_v85_project_page')||1),projectListLastFilterSig=null,summarySampleId=Number(localStorage.getItem('plm_v85_summary_sample_id')||0),flowModelId=Number(localStorage.getItem('plm_v85_flow_model')||0),flowCols=Number(localStorage.getItem('plm_v85_flow_cols')||3),flowSelectedStepId=Number(localStorage.getItem('plm_v85_step_id')||0),flowDrawerCollapsed=localStorage.getItem('plm_v85_drawer_collapsed')==='1',dragStepId=0;
-let customerFileSelected=new Set(), customerFileInitializedProject=0, fileSelectedId=Number(localStorage.getItem('plm_v85_file_id')||0), filePreviewCollapsed=(localStorage.getItem('plm_v855_file_preview_collapsed') ?? '0')==='1', fileFilterCollapsed=(localStorage.getItem('plm_v8529_file_filter_collapsed') ?? '0')==='1', projectListCollapsed=(localStorage.getItem('plm_v8514_project_list_collapsed')||'0')==='1';
-const TEST_TYPES=['温升','IES','积分球','EMC','老化','防水','盐雾','结构装配','包装跌落','光斑测试','IP防水','其它'];
+let projects=[],models=[],tests=[],testRuns=[],testTemplates=[],files=[],steps=[],issues=[],logs=[],dispatchLinks=[],plmCurrentUser=null,plmIsAdmin=false,plmPermissions={},plmPermissionDefs=[],plmPermissionUsers=[],plmNoticeCount=0,plmOnlineCount=0,plmRecycleCounts={projects:0,models:0},selectedId=Number(localStorage.getItem('plm_v85_selected')||0),tab=localStorage.getItem('plm_v85_tab')||'basic',projectView=localStorage.getItem('plm_v85_project_view')||'list',projectCols=Number(localStorage.getItem('plm_v85_project_cols')||2),summarySampleId=Number(localStorage.getItem('plm_v85_summary_sample_id')||0),flowModelId=Number(localStorage.getItem('plm_v85_flow_model')||0),flowCols=Number(localStorage.getItem('plm_v85_flow_cols')||3),flowSelectedStepId=Number(localStorage.getItem('plm_v85_step_id')||0),flowDrawerCollapsed=localStorage.getItem('plm_v85_drawer_collapsed')==='1',dragStepId=0;
+let issueSelectedId=Number(localStorage.getItem('plm_v85_issue_id')||0),issueCreateMode=localStorage.getItem('plm_v85_issue_create')==='1',issueSearch=localStorage.getItem('plm_v85_issue_search')||'',issueQuick=localStorage.getItem('plm_v85_issue_quick')||'all',issueModelFilter=localStorage.getItem('plm_v85_issue_model')||'',issueStatusFilter=localStorage.getItem('plm_v85_issue_status')||'',issueSeverityFilter=localStorage.getItem('plm_v85_issue_severity')||'',issueSourceFilter=localStorage.getItem('plm_v85_issue_source')||'',issueOwnerFilter=localStorage.getItem('plm_v85_issue_owner')||'',issueSort=localStorage.getItem('plm_v85_issue_sort')||'updated_desc';
+let customerFileSelected=new Set(), customerFileInitializedProject=0, fileSelectedId=Number(localStorage.getItem('plm_v85_file_id')||0), filePreviewCollapsed=(localStorage.getItem('plm_v855_file_preview_collapsed') ?? '0')==='1', fileFilterCollapsed=(localStorage.getItem('plm_v8529_file_filter_collapsed') ?? '0')==='1';
+const TEST_TYPES=['温升测试','IES配光测试','积分球测试','EMC测试','防水/IP测试','老化测试','结构/装配检查','自定义测试','盐雾测试','包装跌落测试','光斑测试','其它'];
 const FILE_CATS=['产品图片','项目图片','样品图片','尺寸图','结构图纸','加工资料','包装资料','客户资料','报价资料','BOM资料','其它文件'];
 const FLOW_TEMPLATES=['常规灯具开发流程','客户定制快速流程','结构件打样流程','光学测试流程','表面处理验证流程','简化流程'];
 const FLOW_STATUSES=['未开始','进行中','已完成','暂停','异常','退回','重来','跳过'];
@@ -7752,7 +9204,7 @@ function closeModal(){const h=$('modalHost');if(h)h.innerHTML='';document.queryS
 
 async function dispatchApi(action,data={},method='POST'){
   try{
-    let url='dispatch_api.php?action='+encodeURIComponent(action);
+    let url='dispatch_next_api.php?action='+encodeURIComponent(action);
     const opt={method,credentials:'same-origin',headers:{}};
     if(method==='GET'){
       const qs=new URLSearchParams(data||{}).toString(); if(qs)url+='&'+qs;
@@ -7762,6 +9214,10 @@ async function dispatchApi(action,data={},method='POST'){
     const r=await fetch(url,opt); const txt=await r.text(); let j;
     try{j=JSON.parse(txt)}catch(e){throw new Error('派工接口没有返回JSON：'+txt.slice(0,240));}
     if(!r.ok||j.ok===false)throw new Error(j.error||'派工接口错误');
+    if(j&&j.ok===true&&Object.prototype.hasOwnProperty.call(j,'data')){
+      if(j.data&&typeof j.data==='object'&&!Array.isArray(j.data))return Object.assign({ok:true,data:j.data},j.data);
+      return {ok:true,data:j.data};
+    }
     return j;
   }catch(e){return {ok:false,error:e.message};}
 }
@@ -7773,7 +9229,7 @@ function projectDispatchSummary(projectId){const arr=dispatchLinksByProject(proj
 function dispatchStatusText(s){const map={pending_accept:'待接收',accepted:'已接收',in_progress:'进行中',paused:'暂停',submitted:'待确认',returned:'退回',rejected:'驳回',done:'已完成',cancelled:'已取消'};return map[s]||s||'已创建'}
 function dispatchDueFromStep(s){const d=dateOnly(s.plan_end||s.plan_date||s.plan_start);return d?d+'T18:00':''}
 function dispatchTaskDateFromStep(s){return dateOnly(s.plan_start||s.plan_end||s.plan_date)||new Date().toISOString().slice(0,10)}
-function dispatchUrl(taskId){return taskId?('dispatch_todo.php?task_id='+encodeURIComponent(taskId)):'dispatch_todo.php'}
+function dispatchUrl(taskId){return taskId?('dispatch_next.php?open_task='+encodeURIComponent(taskId)+'&single_task=1'):'dispatch_next.php'}
 function currentModelName(model){return model?(model.name||model.model||('样品'+model.id)):'未绑定样品'}
 
 function dispatchTaskDone(t){const st=String(t.status||'');return ['done','已完成','完成'].includes(st)||Number(t.progress||0)>=100}
@@ -7819,7 +9275,7 @@ function renderPlmDispatchProgressModal(ctx,tasks,loading=false){
     const due=(t.due_at||'').slice(0,10)||'-';
     return `<div class="plm-progress-row ${cls}"><div style="min-width:0;flex:1"><b>${esc(t.title||'派工任务')}</b><span>负责人：${esc(ass)} ｜ 状态：${esc(dispatchStatusText(t.status))} ｜ 截止：${esc(due)} ｜ 任务ID：${esc(t.id||'')}</span><div class="plm-progress-bar"><i style="width:${pct}%"></i></div></div><div class="actions"><a class="btn small" target="_blank" href="${esc(dispatchUrl(t.id))}">打开派工</a></div></div>`;
   }).join('')||'<div class="plm-progress-empty">没有查到这个 PLM 来源的派工。<br>如果待办里已经有任务，请用新版 PLM 弹窗重新生成一次，后续会自动关联。</div>');
-  const html=`<div id="${modalId}" class="plm-dispatch-mask" onclick="if(event.target===this)closePlmDispatchProgressModal()"><div class="plm-dispatch-modal"><div class="plm-dispatch-head"><div><h3>${ctx.kind==='project'?'项目派工进度':'流程派工进度'}</h3><p>${esc(ctx.projectName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}</p></div><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div><div class="plm-dispatch-body"><div class="plm-progress-top"><span>${top}</span><button class="btn small" onclick="reloadPlmDispatchProgress()">重新查询</button></div><div class="plm-progress-list">${rows}</div></div><div class="plm-dispatch-foot"><div class="hint">这里直接读取派工系统真实任务；如果 PLM 关联丢失，会自动找回并回写。</div><div class="actions"><a class="btn" href="dispatch_todo.php" target="_blank">打开派工页面</a><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div></div></div></div>`;
+  const html=`<div id="${modalId}" class="plm-dispatch-mask" onclick="if(event.target===this)closePlmDispatchProgressModal()"><div class="plm-dispatch-modal"><div class="plm-dispatch-head"><div><h3>${ctx.kind==='project'?'项目派工进度':'流程派工进度'}</h3><p>${esc(ctx.projectName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}</p></div><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div><div class="plm-dispatch-body"><div class="plm-progress-top"><span>${top}</span><button class="btn small" onclick="reloadPlmDispatchProgress()">重新查询</button></div><div class="plm-progress-list">${rows}</div></div><div class="plm-dispatch-foot"><div class="hint">这里直接读取派工系统真实任务；如果 PLM 关联丢失，会自动找回并回写。</div><div class="actions"><a class="btn" href="dispatch_next.php" target="_blank">打开派工页面</a><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div></div></div></div>`;
   document.body.insertAdjacentHTML('beforeend',html); window.__plmProgressCtx=ctx;
 }
 function closePlmDispatchProgressModal(){document.getElementById('plmDispatchProgressModal')?.remove();window.__plmProgressCtx=null;}
@@ -7849,19 +9305,20 @@ function flowShortDateTime(v){if(!v)return'';const s=String(v).replace('T',' ');
 function setProjectView(v){projectView=v;localStorage.setItem('plm_v85_project_view',v);render()}
 function setProjectCols(v){projectCols=Number(v)||2;localStorage.setItem('plm_v85_project_cols',projectCols);renderCards()}
 function setFlowCols(v){flowCols=Number(v)||3;localStorage.setItem('plm_v85_flow_cols',flowCols);renderDetail()}
-function resetFilters(){['q','fEngineer','fCustomer','fSource','fPriority','fStatus'].forEach(id=>$(id).value='');projectListPage=1;localStorage.setItem('plm_v85_project_page','1');render()}
-function toggleProjectListCollapse(force){projectListCollapsed=(typeof force==='boolean')?force:!projectListCollapsed;localStorage.setItem('plm_v8514_project_list_collapsed',projectListCollapsed?'1':'0');renderCards();renderDetail()}
-function currentProjectFilterSig(){return ['q','fEngineer','fCustomer','fSource','fPriority','fStatus'].map(id=>String($(id)?.value||'')).join('|')}
-function setProjectListLimit(v){projectListLimit=Number(v)||5;projectListPage=1;localStorage.setItem('plm_v85_project_limit',projectListLimit);localStorage.setItem('plm_v85_project_page','1');renderCards()}
-function setProjectListPage(v){projectListPage=Math.max(1,Number(v)||1);localStorage.setItem('plm_v85_project_page',String(projectListPage));renderCards()}
-function projectPagerPages(current,total){const out=[];for(let i=1;i<=total;i++){if(i===1||i===total||Math.abs(i-current)<=1){out.push(i)}else if(out[out.length-1]!=='...'){out.push('...')}}return out}
-function renderProjectPager(total,pageSize,current,totalPages,start,count){if(totalPages<=1)return `<div class="project-list-page-note">共 ${total} 个项目，当前显示全部。</div>`;const pages=projectPagerPages(current,totalPages).map(x=>x==='...'?`<span class="pager-ellipsis">...</span>`:`<button class="${x===current?'active':''}" onclick="setProjectListPage(${x})">${x}</button>`).join('');const from=count?start+1:0,to=start+count;return `<div class="project-list-pager"><div class="project-list-pager-info">第 ${current}/${totalPages} 页 ｜ ${from}-${to} / 共 ${total} 个</div><div class="project-list-pager-actions"><button onclick="setProjectListPage(1)" ${current<=1?'disabled':''}>首页</button><button onclick="setProjectListPage(${current-1})" ${current<=1?'disabled':''}>上一页</button>${pages}<button onclick="setProjectListPage(${current+1})" ${current>=totalPages?'disabled':''}>下一页</button><button onclick="setProjectListPage(${totalPages})" ${current>=totalPages?'disabled':''}>末页</button></div></div>`}
+function resetFilters(){['q','fEngineer','fCustomer','fSource','fPriority','fStatus'].forEach(id=>{if($(id))$(id).value=''});if($('fSort'))$('fSort').value='default';render()}
+function togglePlmProjectFilters(force){
+  const nav=$('plmProjectNav');
+  if(!nav)return;
+  const next=(typeof force==='boolean')?force:!nav.classList.contains('filters-expanded');
+  nav.classList.toggle('filters-expanded',next);
+  localStorage.setItem('plm_v85104_filters_expanded',next?'1':'0');
+}
+function currentProjectFilterSig(){return ['q','fEngineer','fCustomer','fSource','fPriority','fStatus','fSort'].map(id=>String($(id)?.value||'')).join('|')}
 function renderTopInfo(){
   const name=plmCurrentUser?(plmCurrentUser.name||plmCurrentUser.username||'未识别账号'):'未识别账号';
   if($('plmUserPill')) $('plmUserPill').textContent='登录：'+name+(plmIsAdmin?' · 管理员':'');
   if($('plmNoticeBtn')){const n=Number(plmNoticeCount||0);$('plmNoticeBtn').textContent=n?'站内信 '+n:'站内信';$('plmNoticeBtn').classList.toggle('has',n>0)}
   if($('plmOnlineBtn')){const n=Number(plmOnlineCount||0);$('plmOnlineBtn').textContent=n?'谁在线 '+n:'谁在线';$('plmOnlineBtn').classList.toggle('has',n>0)}
-  if($('projectListLimit')) $('projectListLimit').value=String(projectListLimit||5);
   if($('plmPermBtn')) $('plmPermBtn').style.display=canPerm('manage_permissions')?'inline-flex':'none';
   if($('plmBackupBtn')) $('plmBackupBtn').style.display=canPerm('manage_permissions')?'inline-flex':'none';
   if($('plmLogBtn')) $('plmLogBtn').style.display=canPerm('view_logs')?'inline-flex':'none';
@@ -7976,13 +9433,29 @@ async function savePermissionSetting(){
   plmPermissionUsers=r.users||plmPermissionUsers;toast('权限已保存');openPermissionModal();
 }
 async function load(){const r=await api('bootstrap');if(!r.ok){showFatal('PLM载入失败：'+(r.error||'未知错误'));$('detail').innerHTML='<div class="empty dangerText">'+esc(r.error||'载入失败')+'</div>';return;}projects=r.projects||[];models=r.models||[];tests=r.tests||[];testRuns=r.test_runs||[];testTemplates=r.test_templates||[];files=r.files||[];steps=r.steps||[];issues=r.issues||[];logs=r.logs||[];dispatchLinks=r.dispatch_links||[];plmCurrentUser=r.current_user||null;plmIsAdmin=!!r.is_admin;plmPermissions=r.current_permissions||{};plmPermissionDefs=r.permission_defs||[];plmPermissionUsers=r.permission_users||[];plmNoticeCount=Number(r.notice_count||0);plmOnlineCount=Number(r.online_count||0);plmRecycleCounts=r.recycle_counts||{projects:0,models:0};if(!selectedId&&projects[0])selectedId=projects[0].id;if(selectedId&&!projects.some(p=>Number(p.id)===Number(selectedId))){selectedId=projects[0]?.id||0;localStorage.setItem('plm_v85_selected',selectedId)}if(!projects.length){$('detail').innerHTML='<div class="empty">暂无项目，点击右上角“新增项目”开始。</div>'}renderTopInfo();render();}
-function fillFilters(){const e=$('fEngineer').value,c=$('fCustomer').value; $('fEngineer').innerHTML='<option value="">全部工程师</option>'+uniq(projects.map(p=>p.engineer)).map(x=>`<option ${x===e?'selected':''}>${esc(x)}</option>`).join(''); $('fCustomer').innerHTML='<option value="">全部客户</option>'+uniq(projects.map(p=>p.customer)).map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join(''); if($('projectCols'))$('projectCols').value=String(projectCols); if($('projectListLimit'))$('projectListLimit').value=String(projectListLimit||5)}
+function fillFilters(){const e=$('fEngineer').value,c=$('fCustomer').value; $('fEngineer').innerHTML='<option value="">全部工程师</option>'+uniq(projects.map(p=>p.engineer)).map(x=>`<option ${x===e?'selected':''}>${esc(x)}</option>`).join(''); $('fCustomer').innerHTML='<option value="">全部客户</option>'+uniq(projects.map(p=>p.customer)).map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join(''); if($('projectCols'))$('projectCols').value=String(projectCols)}
 function isProjectDone(p){return String(p&&p.status||'').trim()==='已完成'}
 function isProjectPaused(p){return String(p&&p.status||'').trim()==='暂停'}
 function filteredProjects(){
   const q=$('q').value.trim().toLowerCase(),fe=$('fEngineer').value,fc=$('fCustomer').value,fs=$('fSource').value,fp=$('fPriority').value,ft=$('fStatus').value;
-  const base=projects.filter(p=>{const hay=[p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.project_no].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!fe||p.engineer===fe)&&(!fc||p.customer===fc)&&(!fs||p.source===fs)&&(!fp||p.priority===fp)&&(!ft||p.status===ft)});
-  // 项目列表排序：进行中/未完成 → 暂停 → 已完成；同组内保持原有顺序，避免影响已有筛选和联动。
+  const base=projects.filter(p=>{const hay=[p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.project_no].join(' ').toLowerCase();const statusHit=!ft||(ft==='__active'?!isProjectDone(p)&&!isProjectPaused(p)&&String(p.status||'')!=='已取消':p.status===ft);return(!q||hay.includes(q))&&(!fe||p.engineer===fe)&&(!fc||p.customer===fc)&&(!fs||p.source===fs)&&(!fp||p.priority===fp)&&statusHit});
+  const sort=String($('fSort')?.value||'default');
+  if(sort&&sort!=='default'){
+    const priRank=p=>String(p.priority||'').includes('P1')?1:(String(p.priority||'').includes('P2')?2:(String(p.priority||'').includes('P3')?3:9));
+    const issueCount=p=>issues.filter(x=>Number(x.project_id)===Number(p.id)&&issueIsOpen(x)).length;
+    const byStr=(a,b,k)=>String(a[k]||'').localeCompare(String(b[k]||''),'zh-Hans-CN');
+    return base.slice().sort((a,b)=>{
+      if(sort==='updated_desc')return String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+      if(sort==='created_desc')return String(b.created_at||'').localeCompare(String(a.created_at||''));
+      if(sort==='priority_asc')return priRank(a)-priRank(b)||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+      if(sort==='name_asc')return byStr(a,b,'name');
+      if(sort==='flow_desc')return prog(b.id).flowPct-prog(a.id).flowPct;
+      if(sort==='test_desc')return prog(b.id).testPct-prog(a.id).testPct;
+      if(sort==='issue_desc')return issueCount(b)-issueCount(a);
+      return 0;
+    });
+  }
+  // 默认排序：进行中/未完成 → 暂停 → 已完成；同组内保持原有顺序，避免影响已有筛选和联动。
   const rank=p=>isProjectDone(p)?2:(isProjectPaused(p)?1:0);
   return base.map((p,i)=>({p,i})).sort((a,b)=>{const ar=rank(a.p),br=rank(b.p);if(ar!==br)return ar-br;return a.i-b.i;}).map(x=>x.p);
 }
@@ -7997,7 +9470,7 @@ function openProjectTab(id,t){selectedId=Number(id)||0;tab=t||'basic';localStora
 function setStatusFilter(v){if($('fStatus'))$('fStatus').value=v||'';render()}
 function renderFocusLine(p,label,tabName){return `<div class="focus-line"><div><b>${esc(p.name||'未命名项目')}</b><small>${esc(p.customer||'-')} ｜ ${esc(label||'')}</small></div><button class="btn small" onclick="openProjectTab(${Number(p.id)||0},'${tabName||'summary'}')">处理</button></div>`}
 function renderFocusPanel(){const el=$('focusPanel');if(!el)return;const riskRows=projects.map(p=>({p,r:projectRisk(p)})).filter(x=>x.r.total>0).sort((a,b)=>b.r.total-a.r.total).slice(0,3);const urgent=projects.filter(p=>p.priority==='P1 紧急').slice(0,3);const noSample=projects.filter(p=>pModels(p.id).length===0).slice(0,3);const dueSoon=projects.filter(p=>{const d=dateOnly(p.due_date);if(!d)return false;const dd=daysBetween(todayStr(),d);return dd>=0&&dd<=7&&p.status!=='已完成'}).slice(0,3);const doingProjects=projects.filter(p=>String(p.status||'')==='开发中'||String(p.status||'')==='测试中').length;el.innerHTML=`<div class="focus-panel"><div class="focus-card primary"><h3>今日重点</h3><span>正在推进 ${doingProjects} 个项目；优先处理红色风险和 P1 项目。</span><div class="focus-list">${riskRows.map(x=>renderFocusLine(x.p,`风险 ${x.r.total} 项`,'summary')).join('')||'<small>暂无明显风险，保持推进即可。</small>'}</div></div><div class="focus-card danger"><b>${riskRows.length}</b><span>风险项目</span><button class="btn small danger" onclick="openAllProjectsModal()">查看总表</button></div><div class="focus-card warn"><b>${urgent.length}</b><span>P1 紧急项目</span><button class="btn small warn" onclick="document.getElementById('fPriority').value='P1 紧急';render()">筛选 P1</button></div><div class="focus-card good"><b>${dueSoon.length}</b><span>7天内到期</span><button class="btn small" onclick="openRndDashboardModal()">看研发看板</button></div><div class="focus-card ${noSample.length?'warn':'good'}"><b>${noSample.length}</b><span>未建样品项目</span><button class="btn small" onclick="${noSample[0]?`openProjectTab(${Number(noSample[0].id)||0},'models')`:'newProject()'}">${noSample.length?'去补样品':'新增项目'}</button></div></div>`}
-function render(){renderTopInfo();fillFilters();renderCards();renderDetail();if($('viewListBtn'))$('viewListBtn').classList.toggle('active',projectView==='list');if($('viewCardBtn'))$('viewCardBtn').classList.toggle('active',projectView==='card')}
+function render(){renderTopInfo();fillFilters();if($('plmProjectNav'))$('plmProjectNav').classList.toggle('filters-expanded',localStorage.getItem('plm_v85104_filters_expanded')==='1');renderCards();renderDetail();if($('viewListBtn'))$('viewListBtn').classList.toggle('active',projectView==='list');if($('viewCardBtn'))$('viewCardBtn').classList.toggle('active',projectView==='card')}
 function renderStats(){const total=projects.length,dev=projects.filter(p=>p.status==='开发中').length,test=projects.filter(p=>p.status==='测试中').length,done=projects.filter(p=>p.status==='已完成').length,urgent=projects.filter(p=>p.priority==='P1 紧急').length;const riskAll=projects.map(projectRisk);const overdue=riskAll.reduce((a,r)=>a+r.late,0),bad=riskAll.reduce((a,r)=>a+r.fail,0),open=riskAll.reduce((a,r)=>a+r.issues,0);$('stats').innerHTML=`<div class="stat"><b>${total}</b><span>项目总数</span></div><div class="stat orange"><b>${dev}</b><span>开发中</span></div><div class="stat purple"><b>${test}</b><span>测试中</span></div><div class="stat green"><b>${done}</b><span>已完成</span></div><div class="stat red"><b>${urgent}</b><span>P1紧急</span></div><div class="stat red"><b>${overdue+bad+open}</b><span>需关注事项</span></div>`}
 function projectStatusDot(p){const s=String(p.status||'开发中');const cls=s==='已完成'?'done':s==='暂停'?'pause':s==='已取消'?'cancel':s==='测试中'?'test':'dev';return `<span class="project-dot ${cls}"></span>`}
 function priorityBadge(p){const pri=String(p.priority||'P2 正常');const c=pri.includes('P1')?'red':pri.includes('P3')?'purple':'orange';return `<span class="project-priority ${c}">${esc(pri)}</span>`}
@@ -8027,6 +9500,29 @@ function selectProjectFromRail(id){
   localStorage.setItem('plm_v85_selected',selectedId);
   render();
 }
+function selectProjectFromNav(id){
+  const box=$('cards');
+  const keepLeft=box?box.scrollLeft:0;
+  selectedId=Number(id)||0;
+  localStorage.setItem('plm_v85_selected',selectedId);
+  render();
+  setTimeout(()=>{ensureProjectCardVisible(); if(box && !$(`project_nav_card_${selectedId}`)) box.scrollLeft=keepLeft;},40);
+}
+function visibleProjectsIgnoringStatus(){
+  const q=($('q')?.value||'').trim().toLowerCase(),fe=$('fEngineer')?.value||'',fc=$('fCustomer')?.value||'',fs=$('fSource')?.value||'',fp=$('fPriority')?.value||'';
+  return projects.filter(p=>{const hay=[p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.project_no].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!fe||p.engineer===fe)&&(!fc||p.customer===fc)&&(!fs||p.source===fs)&&(!fp||p.priority===fp)});
+}
+function renderProjectStatusQuick(){
+  const box=$('projectStatusQuick'); if(!box)return;
+  const base=visibleProjectsIgnoringStatus();
+  const total=base.length;
+  const paused=base.filter(isProjectPaused).length;
+  const done=base.filter(isProjectDone).length;
+  const active=base.filter(p=>!isProjectPaused(p)&&!isProjectDone(p)&&String(p.status||'')!=='已取消').length;
+  const curStatus=$('fStatus')?.value||'';
+  const chip=(label,val,count)=>`<button class="project-status-chip ${String(curStatus)===String(val||'')?'active':''}" onclick="setStatusFilter('${esc(val||'')}')">${esc(label)} ${count}</button>`;
+  box.innerHTML=chip('全部','',total)+chip('进行中','__active',active)+chip('暂停','暂停',paused)+chip('完成','已完成',done);
+}
 function projectListCategory(title,count,cls,key){
   const k=key||cls||title;
   const closed=projectGroupIsCollapsed(k);
@@ -8053,51 +9549,289 @@ function renderProjectListRow(p){
     <div class="project-row-actions">${statusTag(p.status)}${priorityBadge(p)}</div>
   </div>`;
 }
+function renderProjectNavCard(p){
+  const g=prog(p.id);
+  const active=Number(p.id)===Number(selectedId)?'active':'';
+  const risk=projectRisk(p),riskCls=projectRiskClass(risk);
+  const doneCls=isProjectDone(p)?'project-done-row':(isProjectPaused(p)?'project-paused-row':'');
+  const openIssue=issues.filter(x=>Number(x.project_id)===Number(p.id)&&issueIsOpen(x)).length;
+  const title=[p.name||'未命名项目',p.customer?'客户：'+p.customer:'',p.engineer?'负责人：'+p.engineer:'',p.updated_at?'更新时间：'+p.updated_at:''].filter(Boolean).join('\n');
+  return `<div id="project_nav_card_${Number(p.id)||0}" class="project-nav-card ${active} ${riskCls} ${doneCls}" title="${esc(title)}" onclick="selectProjectFromNav(${Number(p.id)||0})">
+    ${projectThumb(p)}
+    <div class="project-nav-main">
+      <div class="project-nav-title"><b>${esc(p.name||'未命名项目')}</b>${priorityBadge(p)}</div>
+      <div class="project-nav-no">${esc(p.project_no||'-')}</div>
+      <div class="project-nav-meta">样品${g.models} · 流程${g.flowDone}/${g.flowTotal} · 测试${g.tests} · 问题${openIssue}</div>
+      <div class="project-nav-progress"><div class="bar"><i style="width:${g.flowPct}%"></i></div><b>${g.flowPct}%</b></div>
+    </div>
+  </div>`;
+}
+function currentProjectIndexInFiltered(){
+  const arr=filteredProjects();
+  return arr.findIndex(p=>Number(p.id)===Number(selectedId));
+}
+function jumpAdjacentProject(dir){
+  const arr=filteredProjects();
+  if(!arr.length)return;
+  let idx=arr.findIndex(p=>Number(p.id)===Number(selectedId));
+  if(idx<0)idx=0; else idx=Math.max(0,Math.min(arr.length-1,idx+dir));
+  selectProjectFromNav(Number(arr[idx].id)||0);
+}
+function ensureProjectCardVisible(){
+  const el=$(`project_nav_card_${selectedId}`);
+  if(el&&$('cards')) el.scrollIntoView({block:'nearest',inline:'center'});
+}
+function scrollProjectNav(dir){
+  const box=$('cards'); if(!box)return;
+  box.scrollBy({left:dir*Math.max(260,Math.floor(box.clientWidth*.75)),behavior:'smooth'});
+}
+function bindProjectNavScroll(){
+  const box=$('cards'); if(!box||box.dataset.navBound==='1')return;
+  box.dataset.navBound='1';
+  box.addEventListener('wheel',e=>{
+    if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){box.scrollLeft+=e.deltaY;e.preventDefault();}
+  },{passive:false});
+  let down=false,startX=0,startLeft=0,moved=false;
+  box.addEventListener('pointerdown',e=>{down=true;moved=false;startX=e.clientX;startLeft=box.scrollLeft;box.setPointerCapture?.(e.pointerId);box.classList.add('dragging');});
+  box.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-startX;if(Math.abs(dx)>5)moved=true;box.scrollLeft=startLeft-dx;});
+  box.addEventListener('pointerup',e=>{down=false;box.classList.remove('dragging');setTimeout(()=>{moved=false},0);});
+  box.addEventListener('click',e=>{if(moved){e.preventDefault();e.stopPropagation();}},true);
+}
 function renderCards(){
-  const sig=currentProjectFilterSig();
-  if(projectListLastFilterSig===null) projectListLastFilterSig=sig;
-  else if(sig!==projectListLastFilterSig){projectListPage=1;projectListLastFilterSig=sig;localStorage.setItem('plm_v85_project_page','1')}
-  const raw=filteredProjects();
-  const totalList=raw.length;
-  const pageSize=Math.max(1,Number(projectListLimit)||10);
-  const totalPages=Math.max(1,Math.ceil(totalList/pageSize));
-  if(projectListPage<1) projectListPage=1;
-  if(projectListPage>totalPages) projectListPage=totalPages;
-  localStorage.setItem('plm_v85_project_page',String(projectListPage));
-  const start=(projectListPage-1)*pageSize;
-  const list=raw.slice(start,start+pageSize);
+  const list=filteredProjects();
   const box=$('cards');
-  const main=$('mainWrap');
-  if(main) main.classList.toggle('project-collapsed', projectListCollapsed);
-  if($('projectCollapseBtn')) $('projectCollapseBtn').textContent = projectListCollapsed ? '展开项目列表' : '收起项目列表';
-  if(projectListCollapsed){
-    box.className='cards project-list-collapsed-rail';
-    const icons=list.map(p=>projectRailThumb(p)).join('');
-    box.innerHTML=`<div class="project-rail-shell" title="项目列表已收起"><button class="project-rail-expand" onclick="toggleProjectListCollapse(false)" title="展开项目列表">☰</button><div class="project-rail-icons">${icons||'<div class="hint" style="writing-mode:vertical-rl">无项目</div>'}</div><div class="project-rail-total" title="项目数量">${totalList}</div></div>`;
+  renderProjectStatusQuick();
+  if(!box)return;
+  box.className='cards project-list-modern project-list-compact project-nav-strip';
+  if(!list.length){
+    box.innerHTML='<div class="empty" style="min-width:260px">没有符合条件的项目</div>';
     return;
   }
-  box.className='cards project-list-modern project-list-compact project-list-with-category';
-  box.style.setProperty('--project-cols',1);
-  if(!list.length){box.innerHTML='<div class="empty">没有符合条件的项目</div>';return}
-  const doneTotal=raw.filter(isProjectDone).length;
-  const pausedTotal=raw.filter(isProjectPaused).length;
-  const activeTotal=totalList-doneTotal-pausedTotal;
-  const activeRows=list.filter(p=>!isProjectDone(p)&&!isProjectPaused(p));
-  const pausedRows=list.filter(isProjectPaused);
-  const doneRows=list.filter(isProjectDone);
-  const html=[];
-  if(activeRows.length){html.push(projectListCategory('进行中 / 未完成',activeTotal,'active','active'));if(!projectGroupIsCollapsed('active'))activeRows.forEach(p=>html.push(renderProjectListRow(p)));}
-  if(pausedRows.length){html.push(projectListCategory('暂停',pausedTotal,'paused','paused'));if(!projectGroupIsCollapsed('paused'))pausedRows.forEach(p=>html.push(renderProjectListRow(p)));}
-  if(doneRows.length){html.push(projectListCategory('已完成',doneTotal,'done','done'));if(!projectGroupIsCollapsed('done'))doneRows.forEach(p=>html.push(renderProjectListRow(p)));}
-  if(!pausedRows.length&&pausedTotal>0&&(!$('fStatus')||!$('fStatus').value))html.push(`<div class="project-list-done-note" style="border-color:#fed7aa;background:#fff7ed;color:#c2410c">暂停项目 ${pausedTotal} 个，已单独放在进行中之后；翻页或筛选“暂停”可查看。</div>`);
-  if(!doneRows.length&&doneTotal>0&&(!$('fStatus')||!$('fStatus').value))html.push(`<div class="project-list-done-note">已完成项目 ${doneTotal} 个，已放在列表底部；翻到后面页或筛选“已完成”可查看。</div>`);
-  html.push(renderProjectPager(totalList,pageSize,projectListPage,totalPages,start,list.length));
-  box.innerHTML=html.join('');
+  box.innerHTML=list.map(renderProjectNavCard).join('');
+  bindProjectNavScroll();
+  setTimeout(ensureProjectCardVisible,30);
 }
 function tabBtn(t,n){return `<button class="tab ${tab===t?'active':''}" onclick="tab='${t}';localStorage.setItem('plm_v85_tab',tab);renderDetail()">${n}</button>`}
 function projectPauseActionButton(p){return String(p.status||'')==='暂停'?`<button class="btn good" onclick="openResumeProjectModal()">恢复项目</button>`:`<button class="btn warn" onclick="openPauseProjectModal()">暂停项目</button>`}
-function renderDetail(){const p=cur();if(!p){$('detail').innerHTML='<div class="empty">请选择或新增项目</div>';return}const g=prog(p.id);const ps=projectDispatchSummary(p.id);$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(p.name||'未命名项目')}</h2><div class="tags">${statusTag(p.status)}<span class="tag orange">${esc(p.priority||'P2 正常')}</span><span class="tag blue">${esc(p.source||'')}</span><span class="tag">流程 ${g.flowDone}/${g.flowTotal}</span><span class="tag green">测试 ${g.testDone}/${g.tests}</span>${ps.total?`<span class="tag blue">项目派工 ${ps.done}/${ps.total}</span>`:''}</div><div class="hint">项目号：${esc(p.project_no||'-')} ｜ 客户：${esc(p.customer||'-')} ｜ 更新时间：${esc(p.updated_at||'-')}</div></div><div class="actions"><button class="btn good" onclick="saveProjectFromForm()">保存项目</button>${projectPauseActionButton(p)}<button class="btn warn" onclick="openDispatch()">生成/查看派工</button><button class="btn" onclick="openProjectDispatchProgress()">派工进度${ps.total?' '+ps.done+'/'+ps.total:''}</button><button class="btn primary" onclick="openProjectPackageModal()">项目资料包</button><button class="btn danger" onclick="deleteProject()">删除项目</button></div></div><div class="tabs">${tabBtn('basic','基本资料')}${tabBtn('models','样品管理')}${tabBtn('flow','开发导航图')}${tabBtn('tests','测试中心')}${tabBtn('issues','问题闭环')}${tabBtn('files','文件中心')}${tabBtn('summary','项目总览')}</div><div id="tabbody" class="tabbody"></div>`;try{if(tab==='basic')renderBasic(p);else if(tab==='models')renderModels(p);else if(tab==='flow')renderFlow(p);else if(tab==='issues')renderIssues(p);else if(tab==='tests')renderTests(p);else if(tab==='files')renderFiles(p);else if(tab==='summary')renderSummary(p);else renderBasic(p);}catch(e){$('tabbody').innerHTML='<div class="empty dangerText">当前标签页渲染失败：'+esc(e.message)+'</div>';}}
-function renderBasic(p){$('tabbody').innerHTML=`<div class="basic-pro basic-clean-layout"><div class="basic-block basic-main-block"><div class="section-title"><i></i><span>项目基础资料</span></div><div class="grid3 basic-fields-grid"><div class="field"><label>项目号</label><input id="p_project_no" value="${esc(p.project_no||'')}" placeholder="如 AT-260602EX130"></div><div class="field"><label>项目名称</label><input id="p_name" value="${esc(p.name||'')}" placeholder="如 安铝杯-开发"></div><div class="field"><label>客户</label><input id="p_customer" value="${esc(p.customer||'')}" placeholder="客户代码/客户名"></div><div class="field"><label>工程师 / 负责人</label><input id="p_engineer" value="${esc(p.engineer||'')}"></div><div class="field"><label>系列</label><input id="p_series" value="${esc(p.series||'')}"></div><div class="field"><label>主型号</label><input id="p_model" value="${esc(p.model||'')}"></div><div class="field"><label>产品类型</label><input id="p_product_type" value="${esc(p.product_type||'')}" placeholder="嵌入式 / 导轨 / 磁吸 / 户外"></div><div class="field"><label>来源</label><select id="p_source">${opt(['工厂自行开发','客户下单开发'],p.source)}</select></div><div class="field"><label>优先级</label><select id="p_priority">${opt(['P1 紧急','P2 正常','P3 储备'],p.priority)}</select></div><div class="field"><label>状态</label><select id="p_status">${opt(['未开始','开发中','测试中','暂停','已完成','已取消'],p.status)}</select></div><div class="field"><label>计划完成日期</label><input id="p_due_date" type="date" value="${esc(dateOnly(p.due_date))}"></div></div></div><div class="basic-block basic-image-block"><div class="section-title"><i></i><span>项目图片与备注</span></div><div class="project-image-drop"><h3>项目图片上传</h3><p class="hint">用于左侧项目列表缩略图。上传分类选“产品图片”或“项目图片”即可自动显示。</p>${uploadBox('产品图片',0,0)}</div><div class="field"><label>项目备注 / 客户要求 / 开发重点</label><textarea id="p_remark" placeholder="记录客户要求、结构风险、光学要求、交期重点等">${esc(p.remark||'')}</textarea></div></div></div>`}
+function projectBasicImages(p){
+  const pid=Number(p?.id||0);
+  return pFiles(pid).filter(f=>{
+    const cat=String(f.category||'');
+    const mt=String(f.mime_type||'');
+    const name=String(f.original_name||f.file_name||f.file_path||'').toLowerCase();
+    return ['产品图片','项目图片'].includes(cat) && (mt.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/.test(name));
+  });
+}
+function basicProjectImagePanel(p){
+  const imgs=projectBasicImages(p);
+  const main=String(p?.image_path||imgs[0]?.file_path||'');
+  const preview=main?`<img id="basic_project_preview_img" src="${esc(main)}" alt="项目图片">`:`<div class="basic-image-empty">暂无项目图片</div>`;
+  const thumbs=imgs.length?`<div class="basic-thumb-list">${imgs.slice(0,8).map((f,i)=>`<button type="button" class="basic-thumb ${String(f.file_path||'')===main||(!main&&i===0)?'active':''}" data-path="${esc(String(f.file_path||''))}" title="${esc(f.title||f.original_name||f.file_name||'项目图片')}" onclick="setBasicProjectPreview(this.dataset.path,this)"><img src="${esc(f.file_path||'')}" alt=""></button>`).join('')}</div>`:'';
+  return `<div class="basic-subsection"><div class="basic-subtitle">项目图片</div><div class="basic-image-preview" id="basic_project_preview">${preview}</div>${thumbs}</div>`;
+}
+function setBasicProjectPreview(path,btn){
+  const box=$('basic_project_preview');
+  if(box)box.innerHTML=path?`<img id="basic_project_preview_img" src="${esc(path)}" alt="项目图片">`:'<div class="basic-image-empty">暂无项目图片</div>';
+  document.querySelectorAll('.basic-thumb').forEach(x=>x.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+}
+function basicFlowModelId(p){
+  const ms=pModels(p.id);
+  if(!ms.length)return 0;
+  const stored=Number(localStorage.getItem('plm_v85104_basic_flow_model_'+p.id)||0);
+  if(stored&&ms.some(m=>Number(m.id)===stored))return stored;
+  if(flowModelId&&ms.some(m=>Number(m.id)===Number(flowModelId)))return Number(flowModelId);
+  const active=Number(localStorage.getItem('plm_v8516_active_model_'+p.id)||0);
+  if(active&&ms.some(m=>Number(m.id)===active))return active;
+  const sorted=[...ms].sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))||Number(b.id)-Number(a.id));
+  return Number(sorted[0]?.id||0);
+}
+function basicFlowSteps(p,mid){
+  return steps.filter(s=>Number(s.project_id)===Number(p.id)&&Number(s.model_id)===Number(mid)).sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0)||Number(a.id)-Number(b.id));
+}
+function basicFlowStepTime(s){
+  const done=s.done_at||s.completed_at||s.actual_end||'';
+  if(done)return '完成：'+flowShortDate(done);
+  const end=s.plan_end||s.plan_date||'';
+  return end?'计划：'+flowShortDate(end):'计划：未设';
+}
+function basicFlowDispatchText(s){
+  const ds=dispatchSummary(s.id);
+  if(ds.total)return ds.done>=ds.total?`派工已完成 ${ds.label}`:`派工 ${ds.label}`;
+  return s.dispatch_status?`派工 ${s.dispatch_status}`:'未派工';
+}
+function basicFlowStatusTag(s){
+  const cls=flowStatusClass(s.status);
+  const map={done:'green',doing:'blue',pause:'orange',redo:'red',todo:''};
+  const label=String(s.status||'未开始')==='跳过'?'已跳过':(s.status||'未开始');
+  return `<span class="tag ${map[cls]||''}">${esc(label)}</span>`;
+}
+function basicFlowCurrentInfo(st){
+  const active=st.filter(s=>flowStatusClass(s.status)==='doing');
+  const open=st.filter(s=>!['done'].includes(flowStatusClass(s.status))&&String(s.status||'')!=='跳过');
+  const current=active[0]||open[0]||null;
+  const idx=current?st.findIndex(s=>Number(s.id)===Number(current.id)):-1;
+  const next=idx>=0?st.slice(idx+1).find(s=>flowStatusClass(s.status)!=='done'&&String(s.status||'')!=='跳过'):null;
+  return {active,current,next,idx};
+}
+function basicFlowGoto(p,mid,stepId=0){
+  flowModelId=Number(mid)||0;
+  flowSelectedStepId=Number(stepId)||0;
+  flowDrawerCollapsed=false;
+  localStorage.setItem('plm_v85_flow_model',flowModelId);
+  localStorage.setItem('plm_v85_step_id',flowSelectedStepId||0);
+  localStorage.setItem('plm_v85_drawer_collapsed','0');
+  tab='flow';
+  localStorage.setItem('plm_v85_tab','flow');
+  renderDetail();
+  setTimeout(()=>{const el=document.querySelector(`.flow-node[data-step-id="${flowSelectedStepId}"]`);if(el)el.scrollIntoView({block:'center',inline:'center'});},80);
+}
+function basicFlowSetModel(pid,mid){
+  localStorage.setItem('plm_v85104_basic_flow_model_'+pid,Number(mid)||0);
+  const p=projects.find(x=>Number(x.id)===Number(pid))||cur();
+  if(p&&$('basic_flow_overview'))$('basic_flow_overview').outerHTML=basicFlowOverview(p);
+  setTimeout(bindBasicFlowScroll,30);
+}
+function basicFlowNodeCard(s,i,currentId){
+  const cls=flowStatusClass(s.status), delay=isOverdueStep(s)?daysBetween(dateOnly(s.plan_end||s.plan_date),todayStr()):0;
+  const skip=String(s.status||'')==='跳过';
+  const ds=dispatchSummary(s.id);
+  const foot=ds.total?basicFlowDispatchText(s):(s.dispatch_status?`派工 ${s.dispatch_status}`:'未派工');
+  return `<div id="basic_flow_node_${Number(s.id)||0}" class="basic-flow-node ${skip?'skip':cls} ${Number(currentId)===Number(s.id)?'current':''}" onclick="basicFlowGoto(cur(),${Number(s.model_id)||0},${Number(s.id)||0})" title="${esc(s.title||'步骤')}">
+    <div class="basic-flow-node-top"><div class="basic-flow-node-index">${String(i+1).padStart(2,'0')}</div><div class="basic-flow-node-title">${esc(s.title||'步骤')}</div></div>
+    <div class="basic-flow-tags">${basicFlowStatusTag(s)}${delay?`<span class="tag orange">延期${delay}天</span>`:''}${Number(currentId)===Number(s.id)?'<span class="tag blue">当前</span>':''}</div>
+    <div class="basic-flow-node-meta">负责人：${esc(s.owner||'未指定')}<br>${esc(basicFlowStepTime(s))}</div>
+    <div class="basic-flow-node-foot">${esc(foot)}</div>
+  </div>`;
+}
+function basicFlowAdvice(p,mid,st,info,metrics){
+  const bad=st.find(s=>flowStatusClass(s.status)==='redo');
+  const late=st.find(isOverdueStep);
+  const target=info.current||info.next||st[0]||null;
+  const unDispatch=target&&!dispatchSummary(target.id).total&&!target.dispatch_status;
+  const noOwner=target&&!String(target.owner||'').trim();
+  let text='当前流程推进正常。', actions=`<button class="btn" onclick="basicFlowGoto(cur(),${Number(mid)||0},${Number(target?.id)||0})">查看流程</button>`;
+  if(!st.length){text='当前样品暂未建立开发流程。';actions=`<button class="btn" onclick="basicFlowGoto(cur(),${Number(mid)||0},0)">前往开发导航图</button>`}
+  else if(bad){text='当前流程存在异常或退回节点，请优先处理：'+(bad.title||'步骤');actions=`<button class="btn danger" onclick="basicFlowGoto(cur(),${Number(mid)||0},${Number(bad.id)||0})">查看异常</button>`}
+  else if(late){text='当前流程存在延期节点：'+(late.title||'步骤');actions=`<button class="btn warn" onclick="basicFlowGoto(cur(),${Number(mid)||0},${Number(late.id)||0})">查看延期</button>`}
+  else if(unDispatch){text='当前步骤尚未生成派工：'+(target.title||'步骤');}
+  else if(noOwner){text='当前步骤尚未指定负责人：'+(target.title||'步骤');}
+  else if(metrics.total&&metrics.done>=metrics.total){text='开发流程已完成，可以进入测试中心。';actions=`<button class="btn" onclick="basicFlowGoto(cur(),${Number(mid)||0},${Number(st[st.length-1]?.id)||0})">查看流程</button><button class="btn good" onclick="gotoTab('tests')">进入测试中心</button>`}
+  else if(info.next){text='下一步：'+(info.next.title||'步骤')+'。';}
+  return `<div class="basic-flow-advice"><span>${esc(text)}</span><div class="actions">${actions}</div></div>`;
+}
+function basicFlowOverview(p){
+  const ms=pModels(p.id);
+  if(!ms.length){
+    return `<div id="basic_flow_overview" class="basic-flow-overview"><div class="basic-flow-head"><div><div class="section-title"><i></i><span>研发进展概览</span></div><div class="hint">读取当前样品开发导航图，快速查看流程进度、节点状态、负责人及派工情况。</div></div></div><div class="basic-flow-empty">当前项目暂未建立样品。<br><button class="btn small" onclick="gotoTab('models')">前往样品管理</button></div></div>`;
+  }
+  const mid=basicFlowModelId(p);
+  const model=ms.find(m=>Number(m.id)===Number(mid))||ms[0];
+  const st=basicFlowSteps(p,Number(model.id));
+  const metrics=flowMetrics(st);
+  const info=basicFlowCurrentInfo(st);
+  const doneAt=st.filter(s=>flowStatusClass(s.status)==='done').map(s=>s.done_at||s.completed_at||s.actual_end).filter(Boolean).sort().pop()||'';
+  const modelSelect=ms.length>1?`<select id="basic_flow_model" onchange="basicFlowSetModel(${Number(p.id)||0},this.value)" title="${esc(modelLabel(model))}">${ms.map(m=>`<option value="${m.id}" ${Number(m.id)===Number(model.id)?'selected':''}>${esc(modelLabel(m))}</option>`).join('')}</select>`:`<span class="basic-flow-sample-name" title="${esc(modelLabel(model))}">${esc(modelLabel(model))}</span>`;
+  const currentText=info.active.length>1?`正在进行 ${info.active.length} 个节点`:(info.current?(info.current.title||'步骤'):(metrics.total?'开发流程已完成':'当前样品暂未建立开发流程'));
+  const nextText=info.next?(info.next.title||'步骤'):(metrics.total&&metrics.done>=metrics.total?'无，流程已完成':'暂无下一步');
+  return `<div id="basic_flow_overview" class="basic-flow-overview">
+    <div class="basic-flow-head"><div><div class="section-title"><i></i><span>研发进展概览</span></div><div class="hint">读取当前样品开发导航图，快速查看流程进度、节点状态、负责人及派工情况。</div></div><div class="basic-flow-head-controls"><div class="basic-flow-selectline"><b>当前样品</b>${modelSelect}</div><button class="btn" onclick="basicFlowGoto(cur(),${Number(model.id)||0},${Number(info.current?.id||0)})">查看完整导航图</button></div></div>
+    <div class="basic-flow-kpis"><div class="basic-flow-kpi blue"><b>${metrics.pct}%</b><span>总体进度</span></div><div class="basic-flow-kpi"><b>${metrics.total}</b><span>总步骤</span></div><div class="basic-flow-kpi good"><b>${metrics.done}</b><span>已完成</span></div><div class="basic-flow-kpi blue"><b>${metrics.doing}</b><span>进行中</span></div><div class="basic-flow-kpi red"><b>${metrics.redo}</b><span>异常/退回</span></div><div class="basic-flow-kpi orange"><b>${metrics.overdue}</b><span>延期</span></div></div>
+    <div class="basic-flow-progress"><div class="bar"><i style="width:${Math.max(0,Math.min(100,metrics.pct))}%"></i></div><b>${metrics.pct}%</b></div>
+    <div class="basic-flow-current"><div class="basic-flow-current-card"><h4>当前步骤</h4><b title="${esc(currentText)}">${esc(currentText)}</b><span>状态：${esc(info.current?info.current.status||'未开始':(metrics.total?'已完成':'无流程'))}</span><span>负责人：${esc(info.current?.owner||'未指定')}</span><span>计划完成：${esc(dateOnly(info.current?.plan_end||info.current?.plan_date)||'-')}</span>${info.current?`<button class="btn" onclick="basicFlowGoto(cur(),${Number(model.id)||0},${Number(info.current.id)||0})">查看节点</button>`:''}</div><div class="basic-flow-current-card"><h4>下一步</h4><b title="${esc(nextText)}">${esc(nextText)}</b><span>状态：${esc(info.next?info.next.status||'未开始':'-')}</span><span>负责人：${esc(info.next?.owner||'未指定')}</span><span>${doneAt&&metrics.total&&metrics.done>=metrics.total?'完成时间：'+esc(flowShortDate(doneAt)):'计划完成：'+esc(dateOnly(info.next?.plan_end||info.next?.plan_date)||'-')}</span>${info.next?`<button class="btn" onclick="basicFlowGoto(cur(),${Number(model.id)||0},${Number(info.next.id)||0})">查看节点</button>`:''}</div></div>
+    ${st.length?`<div class="basic-flow-scroll-wrap"><button class="basic-flow-arrow" onclick="scrollBasicFlow(-1)">‹</button><div id="basic_flow_nodes" class="basic-flow-nodes">${st.map((s,i)=>basicFlowNodeCard(s,i,info.current?.id||0)).join('')}</div><button class="basic-flow-arrow" onclick="scrollBasicFlow(1)">›</button></div>`:`<div class="basic-flow-empty">当前样品暂未建立开发流程。<br><button class="btn small" onclick="basicFlowGoto(cur(),${Number(model.id)||0},0)">前往开发导航图</button></div>`}
+    ${basicFlowAdvice(p,Number(model.id),st,info,metrics)}
+  </div>`;
+}
+function scrollBasicFlow(dir){const box=$('basic_flow_nodes');if(box)box.scrollBy({left:dir*Math.max(220,Math.floor(box.clientWidth*.75)),behavior:'smooth'});}
+function bindBasicFlowScroll(){
+  const box=$('basic_flow_nodes');if(!box||box.dataset.bound==='1')return;box.dataset.bound='1';
+  box.addEventListener('wheel',e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){box.scrollLeft+=e.deltaY;e.preventDefault();}},{passive:false});
+  let down=false,startX=0,startLeft=0,moved=false;
+  box.addEventListener('pointerdown',e=>{down=true;moved=false;startX=e.clientX;startLeft=box.scrollLeft;box.setPointerCapture?.(e.pointerId);box.classList.add('dragging');});
+  box.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-startX;if(Math.abs(dx)>5)moved=true;box.scrollLeft=startLeft-dx;});
+  box.addEventListener('pointerup',()=>{down=false;box.classList.remove('dragging');setTimeout(()=>{moved=false},0);});
+  box.addEventListener('click',e=>{if(moved){e.preventDefault();e.stopPropagation();}},true);
+  const current=document.querySelector('.basic-flow-node.current');if(current)setTimeout(()=>current.scrollIntoView({block:'nearest',inline:'center'}),40);
+}
+function renderDetail(){
+  const p=cur();
+  if(!p){$('detail').innerHTML='<div class="empty">请选择或新增项目</div>';return}
+  const g=prog(p.id), ps=projectDispatchSummary(p.id);
+  $('detail').innerHTML=`<div class="detail-head">
+    <div class="project-title-meta">
+      <h2>${esc(p.name||'未命名项目')}</h2>
+      <div class="tags">${statusTag(p.status)}<span class="tag orange">${esc(p.priority||'P2 正常')}</span><span class="tag blue">${esc(p.source||'')}</span><span class="tag">流程 ${g.flowDone}/${g.flowTotal}</span><span class="tag green">测试 ${g.testDone}/${g.tests}</span>${ps.total?`<span class="tag blue">项目派工 ${ps.done}/${ps.total}</span>`:''}</div>
+      <div class="hint">项目号：${esc(p.project_no||'-')} ｜ 客户：${esc(p.customer||'-')} ｜ 负责人：${esc(p.engineer||'-')} ｜ 更新时间：${esc(p.updated_at||'-')}</div>
+    </div>
+    <div class="actions">
+      <button class="btn good" onclick="saveProjectFromForm()">保存项目</button>
+      <button class="btn warn" onclick="openDispatch()">生成/查看派工</button>
+      <button class="btn primary" onclick="openProjectPackageModal()">项目资料包</button>
+      <details class="project-more-menu">
+        <summary>更多</summary>
+        <div class="project-more-menu-body">
+          ${projectPauseActionButton(p)}
+          <button class="btn" onclick="openProjectDispatchProgress()">派工进度${ps.total?' '+ps.done+'/'+ps.total:''}</button>
+          <button class="btn danger" onclick="deleteProject()">删除项目</button>
+        </div>
+      </details>
+    </div>
+  </div><div class="tabs">${tabBtn('basic','基本资料')}${tabBtn('models','样品管理')}${tabBtn('flow','开发导航图')}${tabBtn('tests','测试中心')}${tabBtn('issues','问题闭环')}${tabBtn('files','文件中心')}${tabBtn('summary','项目总览')}</div><div id="tabbody" class="tabbody"></div>`;
+  try{
+    if(tab==='basic')renderBasic(p);else if(tab==='models')renderModels(p);else if(tab==='flow')renderFlow(p);else if(tab==='issues')renderIssues(p);else if(tab==='tests')renderTests(p);else if(tab==='files')renderFiles(p);else if(tab==='summary')renderSummary(p);else renderBasic(p);
+  }catch(e){$('tabbody').innerHTML='<div class="empty dangerText">当前标签页渲染失败：'+esc(e.message)+'</div>';}
+}
+function renderBasic(p){$('tabbody').innerHTML=`<div class="basic-pro basic-clean-layout">
+  <div class="basic-left-stack">
+    <div class="basic-block basic-main-block">
+      <div class="section-title"><i></i><span>项目基础资料</span></div>
+      <p class="basic-section-desc">用于维护项目身份、产品归属、负责人、状态及计划信息。</p>
+      <div class="basic-form-group">
+        <div class="basic-group-title">项目身份</div>
+        <div class="basic-form-grid">
+          <div class="field basic-col-3"><label>项目号</label><input id="p_project_no" value="${esc(p.project_no||'')}" placeholder="如 AT-260602EX130"></div>
+          <div class="field basic-col-6"><label>项目名称</label><input id="p_name" value="${esc(p.name||'')}" title="${esc(p.name||'')}" placeholder="如 安铝杯-开发"></div>
+          <div class="field basic-col-3"><label>工程师 / 负责人</label><input id="p_engineer" value="${esc(p.engineer||'')}" title="${esc(p.engineer||'')}"></div>
+          <div class="field basic-col-5"><label>客户</label><input id="p_customer" value="${esc(p.customer||'')}" title="${esc(p.customer||'')}" placeholder="客户代码/客户名"></div>
+        </div>
+      </div>
+      <div class="basic-form-group">
+        <div class="basic-group-title">产品归属</div>
+        <div class="basic-form-grid">
+          <div class="field basic-col-5"><label>系列</label><input id="p_series" value="${esc(p.series||'')}" title="${esc(p.series||'')}"></div>
+          <div class="field basic-col-3"><label>主型号</label><input id="p_model" value="${esc(p.model||'')}" title="${esc(p.model||'')}"></div>
+          <div class="field basic-col-4"><label>产品类型</label><input id="p_product_type" value="${esc(p.product_type||'')}" title="${esc(p.product_type||'')}" placeholder="嵌入式 / 导轨 / 磁吸 / 户外"></div>
+          <div class="field basic-col-3"><label>来源</label><select id="p_source">${opt(['工厂自行开发','客户下单开发'],p.source)}</select></div>
+          <div class="field basic-col-2"><label>优先级</label><select id="p_priority">${opt(['P1 紧急','P2 正常','P3 储备'],p.priority)}</select></div>
+        </div>
+      </div>
+      <div class="basic-form-group">
+        <div class="basic-group-title">状态与计划</div>
+        <div class="basic-form-grid">
+          <div class="field basic-col-3"><label>状态</label><select id="p_status">${opt(['未开始','开发中','测试中','暂停','已完成','已取消'],p.status)}</select></div>
+          <div class="field basic-col-3"><label>计划完成日期</label><input id="p_due_date" type="date" value="${esc(dateOnly(p.due_date))}"></div>
+        </div>
+      </div>
+    </div>
+    ${basicFlowOverview(p)}
+  </div>
+  <div class="basic-block basic-image-block">
+    <div class="section-title"><i></i><span>项目图片与备注</span></div>
+    ${basicProjectImagePanel(p)}
+    <div class="basic-subsection project-image-drop">
+      <div class="basic-subtitle">上传项目图片</div>
+      <p class="hint">上传分类选“产品图片”或“项目图片”即可作为项目缩略图来源。</p>
+      ${uploadBox('产品图片',0,0)}
+    </div>
+    <div class="basic-subsection basic-remark-box field">
+      <label>项目备注 / 客户要求 / 开发重点</label>
+      <textarea id="p_remark" placeholder="记录客户要求、结构风险、光学要求、交期重点等">${esc(p.remark||'')}</textarea>
+    </div>
+  </div>
+</div>`;
+  setTimeout(bindBasicFlowScroll,30);
+}
 async function saveProjectFromForm(){const p=cur();if(!p)return;const d={id:p.id,project_no:$('p_project_no')?.value??p.project_no,name:$('p_name')?.value??p.name,customer:$('p_customer')?.value??p.customer,engineer:$('p_engineer')?.value??p.engineer,series:$('p_series')?.value??p.series,model:$('p_model')?.value??p.model,product_type:$('p_product_type')?.value??p.product_type,source:$('p_source')?.value??p.source,priority:$('p_priority')?.value??p.priority,status:$('p_status')?.value??p.status,due_date:$('p_due_date')?.value??p.due_date,remark:$('p_remark')?.value??p.remark};const r=await api('save_project',d);toast(r.ok?'项目已保存':r.error);await load()}
 async function newProject(){if(!guardPerm('new_project','新增项目'))return;const r=await api('new_project');if(r.ok){selectedId=r.id;tab='basic';localStorage.setItem('plm_v85_selected',selectedId);localStorage.setItem('plm_v85_tab','basic');toast('已新增项目，已进入基本资料');await load()}else toast(r.error||'新增失败')}
 async function deleteProject(){const p=cur();if(!p)return;const reason=prompt('删除项目会进入回收站。请填写删除原因：','');if(reason===null)return;if(!reason.trim()){toast('删除项目必须填写原因');return}const r=await api('delete_project',{id:p.id,reason});toast(r.ok?'项目已移入回收站':r.error);if(r.ok)selectedId=0;await load()}
@@ -8110,16 +9844,60 @@ function issueStatusTag(st){const s=String(st||'待处理');const c=['已解决'
 function issueSeverityTag(sev){const s=String(sev||'中');const c=s==='高'?'red':(s==='低'?'green':'orange');return `<span class="tag ${c}">${esc(s)}优先</span>`}
 function issueMiniRow(i){return `<div class="issue-mini-row"><b>${esc(i.title||'未命名问题')}</b><div class="hint">${esc(i.status||'待处理')} ｜ ${esc(i.severity||'中')} ｜ ${esc(i.owner||'-')}</div></div>`}
 function renderIssues(p){
-  const ms=pModels(p.id), ps=issues.filter(x=>Number(x.project_id)===Number(p.id));
-  const open=ps.filter(x=>!['已解决','已关闭'].includes(String(x.status||''))).length;
-  $('tabbody').innerHTML=`<div class="sample-toolbar-pro"><div><h3 style="margin:0">问题闭环</h3><div class="hint">记录样品开发中的温升、光斑、结构、表面处理、客户修改等问题，并关联样品、步骤、文件。</div></div><div class="sample-summary"><span class="key-mini">问题 ${ps.length}</span><span class="key-mini ${open?'warn':'ok'}">未关闭 ${open}</span></div></div><div class="issue-board"><div class="issue-form"><h3 style="margin-top:0">新增问题</h3><div class="field"><label>关联样品</label>${modelSelectHtml('issue_model',ms[0]?.id||0,false)}</div><div class="field"><label>关联步骤</label>${stepSelectHtml('issue_step',0,Number(ms[0]?.id||0),true)}</div><div class="field"><label>问题标题</label><input id="issue_title" placeholder="如：温升过高 / IES角度偏大 / 表面处理起泡"></div><div class="grid2"><div class="field"><label>来源</label><select id="issue_source">${opt(['手工记录','温升测试','IES测试','积分球测试','EMC测试','客户反馈','供应商反馈','装配验证'],'手工记录')}</select></div><div class="field"><label>严重程度</label><select id="issue_severity">${opt(['低','中','高'],'中')}</select></div></div><div class="grid2"><div class="field"><label>状态</label><select id="issue_status">${opt(['待处理','处理中','已解决','已关闭'],'待处理')}</select></div><div class="field"><label>负责人</label><input id="issue_owner" placeholder="负责人"></div></div><div class="field"><label>解决方案</label><textarea id="issue_solution" placeholder="怎么解决，比如换电源位置、修改反光杯、加散热、重新表面处理"></textarea></div><div class="field"><label>备注</label><textarea id="issue_note" placeholder="问题现象、测试数据、客户要求等"></textarea></div><button class="btn primary" onclick="saveIssue(0,${p.id})">保存问题</button></div><div class="issue-list-panel"><h3 style="margin-top:0">问题列表</h3>${ps.map(issueRow).join('')||'<div class="empty">暂无问题记录</div>'}</div></div>`;
-  const im=$('issue_model');if(im)im.onchange=()=>{const st=$('issue_step');if(st)st.outerHTML=stepSelectHtml('issue_step',0,Number(im.value||0),true)};
+  const ms=pModels(p.id), all=issues.filter(x=>Number(x.project_id)===Number(p.id));
+  if(issueSelectedId && !all.some(x=>Number(x.id)===Number(issueSelectedId))){issueSelectedId=Number(all[0]?.id||0);localStorage.setItem('plm_v85_issue_id',issueSelectedId)}
+  if(!issueSelectedId && all.length && !issueCreateMode){issueSelectedId=Number(all[0].id||0);localStorage.setItem('plm_v85_issue_id',issueSelectedId)}
+  const filtered=issueFilteredList(p), stats=issueStats(all), current=issueCreateMode?null:(all.find(x=>Number(x.id)===Number(issueSelectedId))||null);
+  $('tabbody').innerHTML=`<div class="issue-workbench">
+    <div class="issue-topbar"><div class="issue-title-block"><h3>问题闭环</h3><span>问题 ${stats.total} · 未关闭 ${stats.open}</span></div><div class="issue-top-controls"><select id="issue_model_filter_top" onchange="setIssueModelFilter(this.value)"><option value="">全部样品</option><option value="0" ${String(issueModelFilter)==='0'?'selected':''}>项目公共</option>${ms.map(m=>`<option value="${m.id}" ${String(issueModelFilter)===String(m.id)?'selected':''}>${esc(modelLabel(m))}</option>`).join('')}</select><input value="${esc(issueSearch)}" placeholder="搜索标题 / 描述 / 负责人 / 样品 / 步骤 / 测试" oninput="setIssueSearch(this.value)"><button class="btn primary" onclick="newIssue(${Number(p.id)})">新增问题</button><button class="btn" onclick="toggleIssueFilterPanel()">筛选</button><select onchange="setIssueSort(this.value)"><option value="updated_desc" ${issueSort==='updated_desc'?'selected':''}>最近更新</option><option value="created_desc" ${issueSort==='created_desc'?'selected':''}>创建时间</option><option value="severity_desc" ${issueSort==='severity_desc'?'selected':''}>严重程度</option><option value="status_asc" ${issueSort==='status_asc'?'selected':''}>问题状态</option><option value="owner_asc" ${issueSort==='owner_asc'?'selected':''}>负责人</option></select><details class="issue-more"><summary>更多</summary><div><button class="btn small" onclick="issueQuick='all';setIssueModelFilter('')">显示全部问题</button><button class="btn small" onclick="setIssueModelFilter(String((pModels(cur()?.id||selectedId)[0]||{}).id||''))">仅看当前样品</button><button class="btn small" onclick="exportIssuesCsv()">导出问题记录</button></div></details></div></div>
+    <div id="issueFilterPanel" class="issue-filter-panel"><select onchange="setIssueStatusFilter(this.value)"><option value="">全部状态</option>${issueStatusOptions(all).map(s=>`<option ${s===issueStatusFilter?'selected':''}>${esc(s)}</option>`).join('')}</select><select onchange="setIssueSeverityFilter(this.value)"><option value="">全部严重程度</option>${issueSeverityOptions(all).map(s=>`<option ${s===issueSeverityFilter?'selected':''}>${esc(s)}</option>`).join('')}</select><select onchange="setIssueSourceFilter(this.value)"><option value="">全部来源</option>${issueSourceOptions(all).map(s=>`<option ${s===issueSourceFilter?'selected':''}>${esc(s)}</option>`).join('')}</select><select onchange="setIssueOwnerFilter(this.value)"><option value="">全部负责人</option>${issueOwnerOptions(all).map(s=>`<option ${s===issueOwnerFilter?'selected':''}>${esc(s||'未指定')}</option>`).join('')}</select><button class="btn small" onclick="clearIssueFilters()">清空筛选</button></div>
+    <div class="issue-statbar">${issueStatItem('问题',stats.total)}${issueStatItem('待处理',stats.pending,'warn')}${issueStatItem('处理中',stats.doing,'info')}${issueStatItem('未关闭',stats.open,'warn')}${issueStatItem('已关闭',stats.closed,'good')}${issueStatItem('严重',stats.high,'bad')}</div>
+    ${issueFilterTags()}
+    <div class="issue-board-pro"><aside class="issue-list-panel-pro"><div class="issue-list-head"><div><b>问题列表</b><span>${filtered.length} 条</span></div><div class="issue-quick">${issueQuickBtn('all','全部',all.length)}${issueQuickBtn('open','未关闭',stats.open)}${issueQuickBtn('mine','我负责',issueMineCount(all))}${issueQuickBtn('high','严重',stats.high)}${issueQuickBtn('closed','已关闭',stats.closed)}</div></div><div class="issue-list-scroll">${filtered.map(issueRow).join('')||'<div class="issue-empty">当前筛选下暂无问题</div>'}</div></aside><section class="issue-detail-panel">${renderIssueWorkspace(p,current)}</section></div>
+  </div>`;
+  wireIssueFormModelChange();
 }
-function issueRow(i){const m=models.find(x=>Number(x.id)===Number(i.model_id));const st=steps.find(x=>Number(x.id)===Number(i.step_id));const cls=String(i.severity)==='高'?'high':(['已解决','已关闭'].includes(String(i.status||''))?'closed':'');return `<div class="issue-row ${cls}" data-issue-id="${Number(i.id||0)}"><div><div class="issue-title">${esc(i.title||'未命名问题')}</div><div class="tags">${issueStatusTag(i.status)}${issueSeverityTag(i.severity)}<span class="tag">样品：${esc(m?modelLabel(m):'-')}</span>${st?`<span class="tag blue">步骤：${esc(st.title||'')}</span>`:''}</div><div class="issue-meta">来源：${esc(i.source||'-')} ｜ 负责人：${esc(i.owner||'-')} ｜ 创建：${esc(i.created_at||'-')}</div>${i.solution?`<div class="issue-meta"><b>解决方案：</b>${esc(i.solution)}</div>`:''}${i.note?`<div class="issue-meta"><b>备注：</b>${esc(i.note)}</div>`:''}</div><div class="issue-actions"><button class="btn small good" onclick="closeIssue(${i.id},${i.project_id})">关闭</button><button class="btn small" onclick="editIssue(${i.id})">编辑</button><button class="btn small danger" onclick="deleteIssue(${i.id})">删除</button></div></div>`}
-function editIssue(id){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const title=prompt('问题标题',i.title||'');if(title===null)return;const status=prompt('状态：待处理/处理中/已解决/已关闭',i.status||'待处理');if(status===null)return;const solution=prompt('解决方案',i.solution||'');if(solution===null)return;saveIssue(id,i.project_id,{title,status,solution,model_id:i.model_id,step_id:i.step_id,source:i.source,severity:i.severity,owner:i.owner,note:i.note})}
-async function closeIssue(id,pid){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const r=await api('save_issue',{...i,status:'已关闭'});toast(r.ok?'问题已关闭':r.error);await load()}
-async function deleteIssue(id){if(!confirm('删除这个问题记录？'))return;const r=await api('delete_issue',{id});toast(r.ok?'问题已删除':r.error);await load()}
-async function saveIssue(id,pid,override=null){let d;if(override){d={id,project_id:pid,...override}}else{d={id,project_id:pid,model_id:Number($('issue_model')?.value||0),step_id:Number($('issue_step')?.value||0),title:$('issue_title')?.value||'',source:$('issue_source')?.value||'',severity:$('issue_severity')?.value||'中',status:$('issue_status')?.value||'待处理',owner:$('issue_owner')?.value||'',solution:$('issue_solution')?.value||'',note:$('issue_note')?.value||''}}if(!String(d.title||'').trim()){toast('请填写问题标题');return}const r=await api('save_issue',d);toast(r.ok?'问题已保存':r.error);await load()}
+function issueRow(i){const m=models.find(x=>Number(x.id)===Number(i.model_id));const st=steps.find(x=>Number(x.id)===Number(i.step_id));const t=tests.find(x=>Number(x.id)===Number(i.test_id));const closed=!issueIsOpen(i),high=String(i.severity)==='高';const cls=[Number(i.id)===Number(issueSelectedId)?'active':'',high?'high':'',closed?'closed':''].join(' ');const assoc=[m?`样品：${modelLabel(m)}`:'项目公共',st?`步骤：${st.title||''}`:'',t?`测试：${t.title||t.test_type||''}`:''].filter(Boolean).join(' ｜ ');const fileCount=issueFiles(i).length,logCount=issueLogs(i).length;return `<article class="issue-card ${cls}" data-issue-id="${Number(i.id||0)}" onclick="selectIssue(${Number(i.id||0)})"><div class="issue-card-top"><b>${esc(i.title||'未命名问题')}</b>${issueStatusTag(i.status)}</div><div class="issue-card-tags">${issueSeverityTag(i.severity)}<span>${esc(i.source||'-')}</span><span>${esc(i.owner||'未指定')}</span></div><div class="issue-card-link" title="${esc(assoc)}">${esc(assoc||'-')}</div><div class="issue-card-foot"><span>${closed?'关闭：'+esc(dateOnly(i.closed_at)||'-'):'更新：'+esc((i.updated_at||i.created_at||'-').slice(0,16))}</span><span>附件 ${fileCount}</span><span>记录 ${logCount}</span></div></article>`}
+function editIssue(id){selectIssue(id);issueCreateMode=false;localStorage.setItem('plm_v85_issue_create','0');renderDetail()}
+async function closeIssue(id,pid){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const r=await api('save_issue',{...i,status:'已关闭'});toast(r.ok?'问题已关闭':r.error);if(r.ok){issueSelectedId=id;localStorage.setItem('plm_v85_issue_id',id)}await load()}
+async function deleteIssue(id){if(!confirm('删除这个问题记录？'))return;const r=await api('delete_issue',{id});toast(r.ok?'问题已删除':r.error);if(r.ok){issueSelectedId=0;localStorage.setItem('plm_v85_issue_id','0')}await load()}
+function issueStatItem(label,num,cls=''){return `<span class="${cls}"><b>${Number(num||0)}</b>${esc(label)}</span>`}
+function issueStatusOptions(arr){return [...new Set(arr.map(x=>String(x.status||'待处理')).filter(Boolean))]}
+function issueSeverityOptions(arr){return [...new Set(arr.map(x=>String(x.severity||'中')).filter(Boolean))]}
+function issueSourceOptions(arr){return [...new Set(arr.map(x=>String(x.source||'手工记录')).filter(Boolean))]}
+function issueOwnerOptions(arr){return [...new Set(arr.map(x=>String(x.owner||'')).filter(Boolean))]}
+function issueStats(arr){const closed=arr.filter(x=>!issueIsOpen(x)).length,open=arr.length-closed;return {total:arr.length,open,closed,pending:arr.filter(x=>String(x.status||'')==='待处理').length,doing:arr.filter(x=>String(x.status||'')==='处理中').length,high:arr.filter(x=>String(x.severity||'')==='高').length}}
+function issueMineCount(arr){const n=String((plmCurrentUser&&plmCurrentUser.name)||'').trim();const u=String((plmCurrentUser&&plmCurrentUser.username)||'').trim();return arr.filter(x=>String(x.owner||'')&&(String(x.owner||'')===n||String(x.owner||'')===u)).length}
+function issueQuickBtn(k,label,count){return `<button class="${issueQuick===k?'active':''}" onclick="setIssueQuick('${k}')">${esc(label)} ${Number(count||0)}</button>`}
+function issueFilterTags(){const tags=[];if(issueSearch)tags.push(['搜索',issueSearch,"setIssueSearch('')"]);if(issueModelFilter!=='')tags.push(['样品',issueModelFilter==='0'?'项目公共':(models.find(m=>String(m.id)===String(issueModelFilter))?modelLabel(models.find(m=>String(m.id)===String(issueModelFilter))):issueModelFilter),"setIssueModelFilter('')"]);if(issueStatusFilter)tags.push(['状态',issueStatusFilter,"setIssueStatusFilter('')"]);if(issueSeverityFilter)tags.push(['严重程度',issueSeverityFilter,"setIssueSeverityFilter('')"]);if(issueSourceFilter)tags.push(['来源',issueSourceFilter,"setIssueSourceFilter('')"]);if(issueOwnerFilter)tags.push(['负责人',issueOwnerFilter,"setIssueOwnerFilter('')"]);return tags.length?`<div class="issue-filter-tags">${tags.map(t=>`<span>${esc(t[0])}：${esc(t[1])}<button onclick="${t[2]}">×</button></span>`).join('')}</div>`:''}
+function issueTextBlob(i){const m=models.find(x=>Number(x.id)===Number(i.model_id));const st=steps.find(x=>Number(x.id)===Number(i.step_id));const t=tests.find(x=>Number(x.id)===Number(i.test_id));return [i.title,i.note,i.solution,i.owner,i.source,i.severity,i.status,m&&modelLabel(m),st&&st.title,t&&(t.title||t.test_type)].join(' ').toLowerCase()}
+function issueFilteredList(p){let arr=issues.filter(x=>Number(x.project_id)===Number(p.id));if(issueQuick==='open')arr=arr.filter(issueIsOpen);if(issueQuick==='closed')arr=arr.filter(x=>!issueIsOpen(x));if(issueQuick==='high')arr=arr.filter(x=>String(x.severity)==='高');if(issueQuick==='mine'){const n=String(plmCurrentUser?.name||'');const u=String(plmCurrentUser?.username||'');arr=arr.filter(x=>String(x.owner||'')===n||String(x.owner||'')===u)}if(issueModelFilter!=='')arr=arr.filter(x=>Number(x.model_id||0)===Number(issueModelFilter));if(issueStatusFilter)arr=arr.filter(x=>String(x.status||'')===issueStatusFilter);if(issueSeverityFilter)arr=arr.filter(x=>String(x.severity||'')===issueSeverityFilter);if(issueSourceFilter)arr=arr.filter(x=>String(x.source||'')===issueSourceFilter);if(issueOwnerFilter)arr=arr.filter(x=>String(x.owner||'')===issueOwnerFilter);if(issueSearch.trim()){const q=issueSearch.trim().toLowerCase();arr=arr.filter(x=>issueTextBlob(x).includes(q))}const sevRank=s=>String(s)==='高'?3:(String(s)==='中'?2:1);arr=[...arr];arr.sort((a,b)=>{if(issueSort==='created_desc')return String(b.created_at||'').localeCompare(String(a.created_at||''));if(issueSort==='severity_desc')return sevRank(b.severity)-sevRank(a.severity)||String(b.updated_at||'').localeCompare(String(a.updated_at||''));if(issueSort==='status_asc')return String(a.status||'').localeCompare(String(b.status||''));if(issueSort==='owner_asc')return String(a.owner||'').localeCompare(String(b.owner||''));return String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))});return arr}
+function selectIssue(id){issueSelectedId=Number(id)||0;issueCreateMode=false;localStorage.setItem('plm_v85_issue_id',issueSelectedId);localStorage.setItem('plm_v85_issue_create','0');renderDetail()}
+function newIssue(pid){if(!guardPerm('edit_issue','新增问题'))return;issueCreateMode=true;issueSelectedId=0;localStorage.setItem('plm_v85_issue_create','1');localStorage.setItem('plm_v85_issue_id','0');renderDetail()}
+function setIssueQuick(v){issueQuick=v;localStorage.setItem('plm_v85_issue_quick',v);renderDetail()}
+function setIssueSearch(v){issueSearch=v;localStorage.setItem('plm_v85_issue_search',v);renderDetail()}
+function setIssueModelFilter(v){issueModelFilter=String(v??'');localStorage.setItem('plm_v85_issue_model',issueModelFilter);renderDetail()}
+function setIssueStatusFilter(v){issueStatusFilter=v;localStorage.setItem('plm_v85_issue_status',v);renderDetail()}
+function setIssueSeverityFilter(v){issueSeverityFilter=v;localStorage.setItem('plm_v85_issue_severity',v);renderDetail()}
+function setIssueSourceFilter(v){issueSourceFilter=v;localStorage.setItem('plm_v85_issue_source',v);renderDetail()}
+function setIssueOwnerFilter(v){issueOwnerFilter=v;localStorage.setItem('plm_v85_issue_owner',v);renderDetail()}
+function setIssueSort(v){issueSort=v;localStorage.setItem('plm_v85_issue_sort',v);renderDetail()}
+function clearIssueFilters(){issueSearch='';issueModelFilter='';issueStatusFilter='';issueSeverityFilter='';issueSourceFilter='';issueOwnerFilter='';['plm_v85_issue_search','plm_v85_issue_model','plm_v85_issue_status','plm_v85_issue_severity','plm_v85_issue_source','plm_v85_issue_owner'].forEach(k=>localStorage.removeItem(k));renderDetail()}
+function toggleIssueFilterPanel(){document.getElementById('issueFilterPanel')?.classList.toggle('show')}
+function issueFiles(i){return files.filter(f=>Number(f.project_id)===Number(i.project_id)&&((Number(i.file_id)>0&&Number(f.id)===Number(i.file_id))||(Number(i.model_id)>0&&Number(f.model_id)===Number(i.model_id))||(Number(i.step_id)>0&&Number(f.step_id)===Number(i.step_id))||(Number(i.test_id)>0&&Number(f.test_id)===Number(i.test_id))))}
+function issueLogs(i){return logs.filter(l=>String(l.module||l.target_type||'')==='issue'&&Number(l.target_id||l.object_id||0)===Number(i.id)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))}
+function issueDispatchLinks(i){return dispatchLinks.filter(x=>Number(x.issue_id||0)===Number(i.id)||Number(x.task_id||0)===Number(i.dispatch_task_id||0))}
+function renderIssueWorkspace(p,i){if(!pModels(p.id).length&&!i&&!issueCreateMode)return `<div class="issue-empty big"><b>当前项目暂未建立样品。</b><span>建立样品后可关联样品、流程和测试问题。</span><button class="btn primary" onclick="gotoTab('models')">前往样品管理</button></div>`;if(!i&&!issueCreateMode)return `<div class="issue-empty big"><b>${issues.filter(x=>Number(x.project_id)===Number(p.id)).length?'请选择问题':'当前项目暂无问题记录。'}</b><span>从左侧选择问题，或新建问题。</span><button class="btn primary" onclick="newIssue(${Number(p.id)})">新增问题</button></div>`;const d=i||{id:0,project_id:p.id,model_id:Number(issueModelFilter||0)||Number(pModels(p.id)[0]?.id||0),step_id:0,test_id:0,source:'手工记录',severity:'中',status:'待处理',owner:(plmCurrentUser?.name||''),title:'',solution:'',note:''};const closed=!issueIsOpen(d);return `<div class="issue-detail-head"><div><h3>${d.id?esc(d.title||'未命名问题'):'新增问题'}</h3><div class="hint">${issueStatusTag(d.status)} ${issueSeverityTag(d.severity)} 来源：${esc(d.source||'-')} ｜ 负责人：${esc(d.owner||'-')}</div></div><div class="actions"><button class="btn primary" onclick="saveIssue(${Number(d.id||0)},${Number(p.id)})">保存问题</button>${d.id&&!closed?`<button class="btn good" onclick="closeIssue(${Number(d.id)},${Number(p.id)})">验证通过并关闭</button>`:''}${d.id&&closed?`<button class="btn warn" onclick="reopenIssue(${Number(d.id)})">重新打开</button>`:''}<button class="btn" onclick="issueCreateMode=false;localStorage.setItem('plm_v85_issue_create','0');renderDetail()">取消</button>${d.id?`<details class="issue-more"><summary>更多</summary><div><button class="btn small" onclick="openIssueLinked('flow',${Number(d.step_id||0)})">进入关联流程</button><button class="btn small" onclick="openIssueLinked('test',${Number(d.test_id||0)})">进入关联测试</button><button class="btn small" onclick="gotoTab('files')">查看文件</button><button class="btn small danger" onclick="deleteIssue(${Number(d.id)})">删除问题</button></div></details>`:''}</div></div>${issueStageBar(d)}<div class="issue-detail-grid"><section class="issue-section"><h4>问题基础信息</h4><div class="issue-form-grid"><div class="field wide"><label>关联样品</label>${modelSelectHtml('issue_model',d.model_id||0,false)}</div><div class="field wide"><label>关联步骤</label>${stepSelectHtml('issue_step',d.step_id||0,Number(d.model_id||0),true)}</div><div class="field wide"><label>关联测试</label>${issueTestSelectHtml('issue_test',d.test_id||0,Number(d.model_id||0))}</div><div class="field"><label>来源</label><select id="issue_source">${opt(['手工记录','温升测试','IES测试','积分球测试','EMC测试','客户反馈','供应商反馈','装配验证'],d.source||'手工记录')}</select></div><div class="field"><label>严重程度</label><select id="issue_severity">${opt(['低','中','高'],d.severity||'中')}</select></div><div class="field"><label>状态</label><select id="issue_status">${opt(['待处理','处理中','已解决','已关闭'],d.status||'待处理')}</select></div><div class="field"><label>负责人</label><input id="issue_owner" value="${esc(d.owner||'')}" placeholder="负责人"></div><div class="field readonly"><label>创建时间</label><input readonly value="${esc((d.created_at||'').slice(0,16)||'-')}"></div><div class="field readonly"><label>最后更新</label><input readonly value="${esc((d.updated_at||'').slice(0,16)||'-')}"></div><div class="field readonly"><label>关闭时间</label><input readonly value="${esc((d.closed_at||'').slice(0,16)||'-')}"></div></div></section><section class="issue-section"><h4>问题描述与现象</h4><div class="field"><label>问题标题</label><input id="issue_title" value="${esc(d.title||'')}" placeholder="如：温升过高 / IES角度偏大 / 表面处理起泡"></div><div class="field"><label>问题现象 / 备注</label><textarea id="issue_note" placeholder="记录现象、测试数据、客户要求、影响范围等">${esc(d.note||'')}</textarea></div></section><section class="issue-section"><h4>原因分析与解决方案</h4><div class="field"><label>原因 / 方案 / 处理结果</label><textarea id="issue_solution" placeholder="记录原因分析、临时措施、最终解决方案、验证结果">${esc(d.solution||'')}</textarea></div></section><section class="issue-section"><h4>验证与关闭</h4><div class="issue-verify-box">${closed?`<b>问题已关闭</b><span>关闭时间：${esc((d.closed_at||'').slice(0,16)||'-')}</span><button class="btn small warn" onclick="reopenIssue(${Number(d.id||0)})">重新打开</button>`:`<b>当前仍未关闭</b><span>处理完成后可点击“验证通过并关闭”，系统会保留完整记录。</span>${d.id?`<button class="btn small good" onclick="closeIssue(${Number(d.id)},${Number(p.id)})">关闭问题</button>`:''}`}</div></section><section class="issue-section"><h4>关联资料</h4>${renderIssueLinks(d)}</section><section class="issue-section"><h4>附件</h4>${renderIssueFiles(d)}</section><section class="issue-section"><h4>处理时间线</h4>${renderIssueTimeline(d)}</section></div>`}
+function issueTestSelectHtml(id,val=0,modelId=0){let list=tests.filter(t=>Number(t.project_id)===Number(cur()?.id||selectedId));if(Number(modelId)>0)list=list.filter(t=>Number(t.model_id)===Number(modelId));return `<select id="${id}"><option value="0">不绑定测试</option>${list.map(t=>`<option value="${t.id}" ${Number(val)===Number(t.id)?'selected':''}>${esc((t.test_type||'测试')+' / '+(t.title||t.result||t.status||'未命名'))}</option>`).join('')}</select>`}
+function wireIssueFormModelChange(){const im=$('issue_model');if(im)im.onchange=()=>{const st=$('issue_step');if(st)st.outerHTML=stepSelectHtml('issue_step',Number(st?.value||0),Number(im.value||0),true);const tt=$('issue_test');if(tt)tt.outerHTML=issueTestSelectHtml('issue_test',Number(tt?.value||0),Number(im.value||0));};}
+function issueStageBar(i){const st=String(i.status||'待处理');const stages=['待处理','处理中','已解决','已关闭'];const idx=Math.max(0,stages.indexOf(st));return `<div class="issue-stagebar">${stages.map((s,n)=>`<span class="${n<=idx?'on':''}">${esc(s)}</span>`).join('')}</div>`}
+function renderIssueLinks(i){const m=models.find(x=>Number(x.id)===Number(i.model_id)),s=steps.find(x=>Number(x.id)===Number(i.step_id)),t=tests.find(x=>Number(x.id)===Number(i.test_id)),f=files.find(x=>Number(x.id)===Number(i.file_id)),dl=issueDispatchLinks(i)[0];const rows=[['样品',m?modelLabel(m):'未绑定',m?`flowModelId=${Number(m.id)};gotoTab('models')`:''],['开发步骤',s?s.title:'未绑定',s?`flowModelId=${Number(s.model_id||0)};flowSelectedStepId=${Number(s.id)};localStorage.setItem('plm_v85_step_id',flowSelectedStepId);gotoTab('flow')`:''],['测试记录',t?(t.test_type+' / '+(t.title||t.status||'')):'未绑定',t?`testSelectedId=${Number(t.id)};localStorage.setItem('plm_v85_test_id',testSelectedId);gotoTab('tests')`:''],['文件',f?(f.title||f.original_name||f.file_name):'未绑定',f?`openTestFilePreview(${Number(f.id)})`:'' ],['派工',dl?((dl.title||dl.task_no||'派工')+' · '+(dl.status||'')):(i.dispatch_task_id?'派工 '+i.dispatch_task_id:'未绑定'),dl?`window.open('${esc(dl.dispatch_url||dispatchUrl(dl.task_id))}','_blank')`:(i.dispatch_task_id?`window.open('${esc(dispatchUrl(i.dispatch_task_id))}','_blank')`:'')]];return `<div class="issue-link-grid">${rows.map(r=>`<div><span>${esc(r[0])}</span><b title="${esc(r[1])}">${esc(r[1])}</b>${r[2]?`<button class="btn small" onclick="${r[2]}">打开</button>`:''}</div>`).join('')}</div>`}
+function renderIssueFiles(i){const arr=issueFiles(i).slice(0,6);return arr.length?`<div class="issue-file-list">${arr.map(f=>`<div><span>${esc(f.title||f.original_name||f.file_name||'文件')}</span><small>${esc(f.category||fileTypeLabel(f))} · ${esc((f.created_at||'').slice(0,10))}</small><div><button class="btn small" onclick="openTestFilePreview(${Number(f.id)})">预览</button><a class="btn small" href="${esc(f.file_path)}" target="_blank">下载</a></div></div>`).join('')}</div>`:'<div class="hint">暂无直接关联附件；可到文件中心上传并关联样品、步骤或测试。</div>'}
+function renderIssueTimeline(i){if(!i.id)return '<div class="hint">保存后会显示处理时间线。</div>';const arr=issueLogs(i).slice(0,8);const base=`<div class="issue-timeline-row"><b>${esc((i.created_at||'').slice(0,16)||'-')}</b><span>创建问题：${esc(i.title||'')}</span></div>`;return `<div class="issue-timeline">${arr.map(l=>`<div class="issue-timeline-row"><b>${esc((l.created_at||'').slice(0,16)||'-')}</b><span>${esc(l.action||l.action_type||'更新')} ${esc(l.note||'')}</span></div>`).join('')||base}</div>`}
+function openIssueLinked(type,id){if(type==='flow'&&id){flowSelectedStepId=Number(id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);gotoTab('flow');return}if(type==='test'){const i=issues.find(x=>Number(x.id)===Number(issueSelectedId));if(i&&Number(i.test_id)>0){testSelectedId=Number(i.test_id);localStorage.setItem('plm_v85_test_id',testSelectedId)}gotoTab('tests');return}}
+async function reopenIssue(id){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const r=await api('save_issue',{...i,status:'处理中'});toast(r.ok?'问题已重新打开':r.error);await load()}
+function exportIssuesCsv(){const p=cur();if(!p)return;const arr=issueFilteredList(p);const rows=[['ID','标题','状态','严重程度','来源','负责人','样品','步骤','测试','创建时间','更新时间']].concat(arr.map(i=>{const m=models.find(x=>Number(x.id)===Number(i.model_id)),s=steps.find(x=>Number(x.id)===Number(i.step_id)),t=tests.find(x=>Number(x.id)===Number(i.test_id));return [i.id,i.title,i.status,i.severity,i.source,i.owner,m?modelLabel(m):'',s?s.title:'',t?(t.title||t.test_type):'',i.created_at,i.updated_at]}));const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:'text/csv;charset=utf-8'}));a.download='plm_issues_'+(p.project_no||p.id)+'.csv';a.click();URL.revokeObjectURL(a.href)}
+async function saveIssue(id,pid,override=null){let d;if(override){d={id,project_id:pid,...override}}else{d={id,project_id:pid,model_id:Number($('issue_model')?.value||0),step_id:Number($('issue_step')?.value||0),test_id:Number($('issue_test')?.value||0),title:$('issue_title')?.value||'',source:$('issue_source')?.value||'',severity:$('issue_severity')?.value||'中',status:$('issue_status')?.value||'待处理',owner:$('issue_owner')?.value||'',solution:$('issue_solution')?.value||'',note:$('issue_note')?.value||''}}if(!String(d.title||'').trim()){toast('请填写问题标题');return}const r=await api('save_issue',d);toast(r.ok?'问题已保存':r.error);if(r.ok){issueCreateMode=false;localStorage.setItem('plm_v85_issue_create','0');issueSelectedId=Number(r.id||id||0);localStorage.setItem('plm_v85_issue_id',issueSelectedId)}await load()}
 function sampleMediaFiles(modelId, kind='image'){
   const cats = kind==='drawing' ? ['尺寸图','结构图纸','加工资料'] : ['样品图片','产品图片','项目图片'];
   return files.filter(f=>Number(f.model_id)===Number(modelId) && cats.includes(String(f.category||'')))
@@ -8168,6 +9946,26 @@ function renderSampleMediaSection(m){
   const listHtml=mediaRows.map(f=>`<button class="sample-file-chip" onclick="openTestFilePreview(${Number(f.id)})"><span>${esc(f.category||'文件')}</span><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b></button>`).join('')||'<div class="hint">暂无样品图片或尺寸图。</div>';
   return `<div class="sample-section sample-media-section"><div class="sample-section-head"><h4>样品图片 / 尺寸图</h4><div class="hint">弹窗预览，图片和尺寸图也会进入文件中心。</div></div><div class="sample-media-grid">${sampleMediaTile(m,'image')}${sampleMediaTile(m,'drawing')}</div><div class="sample-media-list">${listHtml}</div><details class="sample-upload-fold"><summary>上传样品图 / 尺寸图</summary><div class="sample-upload-grid"><div><b>样品图片</b>${uploadBox('样品图片',m.id,0,false,0,0)}</div><div><b>尺寸图</b>${uploadBox('尺寸图',m.id,0,false,0,0)}</div></div></details></div>`;
 }
+function sampleStatsFor(m){
+  const mid=Number(m.id||0);
+  const st=steps.filter(x=>Number(x.model_id)===mid);
+  const stDone=st.filter(x=>['已完成','跳过'].includes(String(x.status||''))).length;
+  const ts=tests.filter(x=>Number(x.model_id)===mid);
+  const tsDone=ts.filter(t=>['已完成','通过','PASS','合格'].includes(String(t.status||''))||['通过','PASS','合格'].includes(String(t.result||''))).length;
+  const is=issues.filter(x=>Number(x.model_id)===mid);
+  const isOpen=is.filter(x=>!['已解决','已关闭'].includes(String(x.status||''))).length;
+  const fs=files.filter(x=>Number(x.model_id)===mid);
+  return {steps:st.length,stepsDone:stDone,tests:ts.length,testsDone:tsDone,issues:is.length,openIssues:isOpen,files:fs.length};
+}
+function sampleSummaryCards(m){
+  const s=sampleStatsFor(m);
+  return `<div class="sample-section sample-link-summary"><h4>关联资料</h4><div class="sample-link-summary-grid">
+    <div class="sample-link-card"><span>测试记录</span><b>${s.testsDone}/${s.tests}</b><button class="btn small" onclick="gotoTab('tests')">进入测试中心</button></div>
+    <div class="sample-link-card"><span>未关闭问题</span><b class="${s.openIssues?'dangerText':''}">${s.openIssues}</b><button class="btn small" onclick="gotoTab('issues')">进入问题闭环</button></div>
+    <div class="sample-link-card"><span>文件资料</span><b>${s.files}</b><button class="btn small" onclick="gotoTab('files')">进入文件中心</button></div>
+    <div class="sample-link-card"><span>开发流程</span><b>${s.stepsDone}/${s.steps}</b><button class="btn small" onclick="flowModelId=${Number(m.id)||0};gotoTab('flow')">进入开发导航图</button></div>
+  </div></div>`;
+}
 function renderModels(p){
   const arr=pModels(p.id);
   const ready=arr.filter(m=>m.chip_name||m.optical_name||m.driver_name||m.accessories_name).length;
@@ -8176,9 +9974,15 @@ function renderModels(p){
   if(active) localStorage.setItem('plm_v8516_active_model_'+p.id,active);
   const selected=arr.find(m=>Number(m.id)===active);
   const q=(localStorage.getItem('plm_v8587_sample_q_'+p.id)||'').trim();
-  const filtered=q?arr.filter(m=>String([m.name,m.model,m.naming_model_no,m.sample_version,m.status,m.power,m.beam,m.cct,m.test_status,m.note].join(' ')).toLowerCase().includes(q.toLowerCase())):arr;
+  const statusFilter=(localStorage.getItem('plm_v85104_sample_status_'+p.id)||'').trim();
+  const filtered=arr.filter(m=>{
+    const hit=!q||String([m.name,m.model,m.naming_model_no,m.sample_version,m.status,m.power,m.beam,m.cct,m.test_status,m.note].join(' ')).toLowerCase().includes(q.toLowerCase());
+    const statusHit=!statusFilter||String(m.status||'开发中')===statusFilter;
+    return hit&&statusHit;
+  });
   const openIssues=issues.filter(x=>Number(x.project_id)===Number(p.id)&&!['已解决','已关闭'].includes(String(x.status||''))).length;
-  $('tabbody').innerHTML=`<div class="sample-toolbar-pro sample-toolbar-split"><div><h3 style="margin:0">样品管理</h3><div class="hint">左边是样品节点，右边是当前样品详情。操作逻辑和测试中心一致，新增/保存/复制版本功能保留。</div><div class="sample-split-topline"><span class="key-mini">样品 ${arr.length}</span><span class="key-mini ${ready?'ok':'warn'}">关键元器件 ${ready}/${arr.length}</span><span class="key-mini ${openIssues?'warn':'ok'}">未关闭问题 ${openIssues}</span><span class="key-mini blue">当前：${selected?esc(modelLabel(selected)):'-'}</span></div></div><div class="sample-summary"><button class="btn primary" onclick="newModel(${p.id})">新增样品</button><button class="btn" onclick="gotoTab('flow')">开发导航图</button><button class="btn" onclick="gotoTab('tests')">测试中心</button></div></div><div class="sample-split-layout"><div class="sample-left-panel"><div class="sample-left-head"><h3>样品节点</h3><div class="hint">点击左侧样品，右侧编辑详情。</div><div class="sample-left-search"><input id="sampleNodeSearch" value="${esc(q)}" placeholder="搜索样品 / 型号 / 状态" oninput="localStorage.setItem('plm_v8587_sample_q_${p.id}',this.value);renderModels(cur())"><button class="btn small" onclick="localStorage.removeItem('plm_v8587_sample_q_${p.id}');renderModels(cur())">清</button></div></div><div class="sample-node-list">${filtered.map(m=>sampleNavCard(m,Number(m.id)===active,p.id)).join('')||'<div class="empty">没有匹配样品</div>'}</div></div><div class="sample-right-panel">${selected?modelCard(selected,true,p.id):'<div class="sample-right-empty">暂无样品，点击“新增样品”开始。</div>'}</div></div>`;
+  const statuses=uniq(arr.map(m=>m.status||'开发中')).filter(Boolean);
+  $('tabbody').innerHTML=`<div class="sample-workbench"><div class="sample-toolbar-pro sample-toolbar-split"><div><h3 style="margin:0">样品管理</h3><div class="hint">管理当前项目的样品、版本、型号、图片、关键元器件及关联资料。</div><div class="sample-split-topline"><span class="key-mini">样品 ${arr.length}</span><span class="key-mini ${ready?'ok':'warn'}">关键元器件 ${ready}/${arr.length}</span><span class="key-mini ${openIssues?'warn':'ok'}">未关闭问题 ${openIssues}</span><span class="key-mini blue" title="${selected?esc(modelLabel(selected)):''}">当前：${selected?esc(modelLabel(selected)):'-'}</span></div></div><div class="sample-summary"><button class="btn primary" onclick="newModel(${p.id})">新增样品</button><button class="btn" onclick="gotoTab('flow')">开发导航图</button><button class="btn" onclick="gotoTab('tests')">测试中心</button></div></div><div class="sample-split-layout"><div class="sample-left-panel"><div class="sample-left-head"><h3>样品列表</h3><div class="hint">左侧查找和选择样品，右侧维护当前样品。</div><div class="sample-left-search"><input id="sampleNodeSearch" value="${esc(q)}" placeholder="搜索样品 / 型号 / 状态 / 版本" oninput="localStorage.setItem('plm_v8587_sample_q_${p.id}',this.value);renderModels(cur())"><button class="btn small" onclick="localStorage.removeItem('plm_v8587_sample_q_${p.id}');renderModels(cur())">清</button></div><div class="sample-left-filter"><select id="sampleStatusFilter" onchange="localStorage.setItem('plm_v85104_sample_status_${p.id}',this.value);renderModels(cur())"><option value="">全部状态</option>${statuses.map(s=>`<option value="${esc(s)}" ${s===statusFilter?'selected':''}>${esc(s)}</option>`).join('')}</select></div></div><div class="sample-node-list">${filtered.map(m=>sampleNavCard(m,Number(m.id)===active,p.id)).join('')||'<div class="empty">没有匹配样品</div>'}</div></div><div class="sample-right-panel">${selected?modelCard(selected,true,p.id):'<div class="sample-right-empty">暂无样品，点击“新增样品”开始。</div>'}</div></div></div>`;
   setTimeout(updateAllSampleDimensionFields,0);
 }
 function sampleNavCard(m,active,pid){
@@ -8188,10 +9992,12 @@ function sampleNavCard(m,active,pid){
   const pass=ts.filter(t=>String(t.status||t.result||'').includes('通过')||String(t.status||'').includes('完成')).length;
   const bad=ts.filter(t=>/不通过|失败|异常|待复测|需整改/.test(String([t.status,t.result,t.test_conclusion,t.note].join(' ')))).length;
   const fs=files.filter(x=>Number(x.model_id)===Number(m.id)).length;
+  const st=steps.filter(x=>Number(x.model_id)===Number(m.id));
+  const stDone=st.filter(x=>['已完成','跳过'].includes(String(x.status||''))).length;
   const title=esc(m.name||m.model||m.naming_model_no||'未命名样品');
-  const meta1=`${esc(m.model||m.naming_model_no||'-')} ｜ ${esc(m.sample_version||'V1')}`;
-  const meta2=`${esc(m.power||'-')} ｜ ${esc(m.beam||'-')} ｜ ${esc(m.cct||'-')}`;
-  return `<div class="sample-node-card ${active?'active':''}" onclick="selectModelAccordion(${pid},${Number(m.id)||0})"><div class="sample-node-inner"><div class="sample-node-title">${title}</div><div class="sample-node-meta">${meta1}<br>${meta2}</div><div class="sample-node-tags">${statusTag(m.status||'开发中')}${sampleNamingTag(m)}<span class="tag ${bad?'red':(pass?'green':'blue')}">测试 ${pass}/${ts.length}</span><span class="tag ${filled===4?'green':'orange'}">物料 ${filled}/4</span><span class="tag ${ist.open?'red':'green'}">问题 ${ist.open}</span><span class="tag blue">文件 ${fs}</span></div><div class="sample-node-media">${sampleMediaTile(m,'image',true)}${sampleMediaTile(m,'drawing',true)}</div></div></div>`;
+  const meta1=`${esc(m.model||m.naming_model_no||'-')} · ${esc(m.sample_version||'V1')} · ${esc(m.status||'开发中')}`;
+  const meta2=`流程 ${stDone}/${st.length} · 测试 ${pass}/${ts.length} · 物料 ${filled}/4 · 问题 ${ist.open} · 文件 ${fs}`;
+  return `<div class="sample-node-card ${active?'active':''}" onclick="selectModelAccordion(${pid},${Number(m.id)||0})"><div class="sample-node-inner"><div class="sample-node-title" title="${title}">${title}</div><div class="sample-node-meta">${meta1}<br>${meta2}</div><div class="sample-node-media">${sampleMediaTile(m,'image',true)}${sampleMediaTile(m,'drawing',true)}</div></div></div>`;
 }
 function selectModelAccordion(pid,id){localStorage.setItem('plm_v8516_active_model_'+pid,id);renderModels(cur())}
 function componentSimpleField(id,label,icon,prefix,m,placeholder){
@@ -8254,18 +10060,14 @@ let namingSearchTimers={},namingCache={},namingModalModelId=0;
 function namingThumb(path,fallback){return path?`<div class="naming-thumb"><img src="${esc(path)}" onerror="this.parentNode.innerHTML='${esc((fallback||'N').slice(0,1))}'"></div>`:`<div class="naming-thumb">${esc((fallback||'N').slice(0,1))}</div>`}
 function namingInlineMeta(m){
   const linked=Number(m.naming_id||0)>0 || String(m.naming_model_no||'').trim()!=='';
-  if(!linked) return '未绑定命名档案，点击右侧“选型号”从命名系统选择';
+  if(!linked) return '未绑定命名型号';
   const base=['已绑定：'+(m.naming_model_no||m.model||''),m.naming_category,m.naming_item_name,m.naming_product_name].filter(Boolean).join(' ｜ ');
   const st=m.naming_sync_status||{};
   if(st.missing) return base+' ｜ 命名档案异常';
-  if(st.has_update) return base+' ｜ 命名资料有更新';
   return base;
 }
 function namingSyncTools(m){
-  if(!m || !(Number(m.naming_id||0)>0 || String(m.naming_model_no||'').trim())) return '';
-  const st=m.naming_sync_status||{};
-  const flag=st.has_update?`<span class="sync-warn">命名资料有更新</span>`:`<span class="sync-ok">已同步</span>`;
-  return `<div class="naming-sync-tools">${flag}<button type="button" class="btn small" onclick="checkNamingSyncForModel(${Number(m.id)||0})">查看变化</button>${st.has_update?`<button type="button" class="btn small good" onclick="syncNamingBasic(${Number(m.id)||0})">同步基础资料</button>`:''}</div>`;
+  return '';
 }
 async function checkNamingSyncForModel(id){
   const r=await api('naming_sync_check',{model_id:id});
@@ -8345,8 +10147,57 @@ function modelCard(m,expanded,pid){
   if(!expanded){
     return `<div class="sample-pro-card ${cls} collapsed" onclick="selectModelAccordion(${pid},${m.id})"><div class="sample-head-pro clickable"><div class="sample-title-pro"><div class="sample-avatar">${esc((m.name||m.model||'样').slice(0,1))}</div><div><h3>${esc(m.name||'样品')} <span class="version-pill">${esc(version)}</span></h3><div class="sample-sub-pro">ID ${m.id} ｜ 测试：${esc(m.test_status||'待测试')} ｜ 状态：${esc(m.status||'-')}</div>${mini}</div></div><div class="sample-actions-pro"><span class="sample-toggle-pill">展开</span></div></div></div>`;
   }
-  const issueRows=issues.filter(x=>Number(x.model_id)===Number(m.id)).slice(0,5);
-  return `<div class="sample-pro-card ${cls} expanded"><div class="sample-head-pro"><div class="sample-title-pro"><div class="sample-avatar">${esc((m.name||m.model||'样').slice(0,1))}</div><div><h3>${esc(m.name||'样品')} <span class="version-pill">${esc(version)}</span></h3><div class="sample-sub-pro">ID ${m.id} ｜ 型号 ${esc(m.model||'-')} ｜ 测试：${esc(m.test_status||'待测试')} ｜ 关键元器件 ${filled}/4 ｜ 问题 ${ist.open}/${ist.total}</div>${mini}</div></div><div class="sample-actions-pro"><button class="btn small good" onclick="saveModel(${m.id})">保存样品</button>${modelNamingActionButton(m)}<button class="btn small primary" onclick="flowModelId=${m.id};gotoTab('flow')">流程</button><button class="btn small" onclick="gotoTab('tests')">测试</button><button class="btn small" onclick="gotoTab('files')">文件</button><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('bom.php','_blank')">打开BOM</button><button class="btn small danger" onclick="deleteModel(${m.id})">删除</button></div></div><div class="sample-content-pro"><div class="sample-left-stack"><div class="sample-section"><h4>基础规格 / 版本</h4><div class="compact-fields sample-basic-grid"><div class="field"><label>样品名称</label><input id="m_name_${m.id}" value="${esc(m.name||'')}"></div><div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2 / 客户确认版"></div><div class="field sample-model-field"><label>型号</label><div class="model-picker-inline"><input id="m_model_${m.id}" value="${esc(m.model||'')}" placeholder="点击选型号从命名系统绑定"><button type="button" class="btn small primary" onclick="openNamingModal(${m.id})">选型号</button></div><div class="naming-inline-meta">${esc(namingInlineMeta(m))}</div>${namingSyncTools(m)}</div><div class="field"><label>状态</label><select id="m_status_${m.id}">${opt(['草稿','打样中','测试中','修改中','待客户确认','客户已确认','量产前确认','暂停','取消','开发中','已完成'],m.status)}</select></div><div class="field"><label>功率</label><input id="m_power_${m.id}" value="${esc(m.power||'')}"></div><div class="field"><label>角度</label><input id="m_beam_${m.id}" value="${esc(m.beam||'')}"></div><div class="field"><label>色温</label><input id="m_cct_${m.id}" value="${esc(m.cct||'')}"></div>${sampleDimensionPanel(m)}</div>${componentInlinePanel(m)}<div class="field"><label>修改原因 / 版本说明</label><textarea id="m_change_reason_${m.id}" placeholder="为什么从上一版改到这一版，例如温升过高、客户改尺寸、光斑偏黄等">${esc(m.change_reason||'')}</textarea></div></div></div><div class="sample-right-stack">${renderSampleMediaSection(m)}<div class="sample-section sample-note-pro"><h4>样品备注</h4><textarea id="m_note_${m.id}" placeholder="样品问题、客户要求、测试结论等">${esc(m.note||'')}</textarea></div><div class="sample-section bom-note"><h4>BOM 备注</h4><textarea id="m_bom_note_${m.id}" placeholder="替代物料、未入库物料、供应商要求">${esc(m.bom_note||'')}</textarea><div class="bom-hint">BOM 共享物料库按分类严格联动；基础规格里的光源/芯片、光学、电源、附加均可一格搜索。</div></div><div class="sample-section issue-mini-panel"><h4>问题闭环</h4>${issueRows.map(issueMiniRow).join('')||'<div class="hint">暂无问题记录</div>'}<button class="btn small primary" onclick="tab='issues';localStorage.setItem('plm_v85_tab','issues');renderDetail()">进入问题闭环</button></div></div></div></div>`
+  const s=sampleStatsFor(m);
+  return `<div class="sample-pro-card ${cls} expanded">
+    <div class="sample-head-pro">
+      <div class="sample-title-pro">
+        <div class="sample-avatar">${esc((m.name||m.model||'样').slice(0,1))}</div>
+        <div>
+          <h3 title="${esc(m.name||'样品')}">${esc(m.name||'样品')} <span class="version-pill">${esc(version)}</span></h3>
+          <div class="sample-sub-pro">样品 ID ${m.id} ｜ 型号 ${esc(m.model||m.naming_model_no||'-')} ｜ 测试 ${s.testsDone}/${s.tests} ｜ 关键元器件 ${filled}/4 ｜ 问题 ${ist.open}/${ist.total} ｜ 文件 ${s.files}</div>
+          ${mini}
+        </div>
+      </div>
+      <div class="sample-actions-pro">
+        <div class="sample-action-group primary-actions"><button class="btn small good" onclick="saveModel(${m.id})">保存样品</button><button class="btn small primary" onclick="flowModelId=${m.id};gotoTab('flow')">流程</button></div>
+        <div class="sample-action-group normal-actions">${modelNamingActionButton(m)}<button class="btn small" onclick="gotoTab('tests')">测试</button><button class="btn small" onclick="gotoTab('files')">文件</button></div>
+        <div class="sample-action-group bom-actions"><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('bom.php','_blank')">打开BOM</button></div>
+        <div class="sample-action-group danger-actions"><button class="btn small danger" onclick="deleteModel(${m.id})">删除</button></div>
+      </div>
+    </div>
+    <div class="sample-content-pro">
+      <div class="sample-left-stack">
+        <div class="sample-section">
+          <h4>基础规格 / 版本</h4>
+          <div class="compact-fields sample-basic-grid">
+            <div class="field"><label>样品名称</label><input id="m_name_${m.id}" value="${esc(m.name||'')}"></div>
+            <div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2"></div>
+            <div class="field sample-model-field"><label>型号</label><div class="model-picker-inline"><input id="m_model_${m.id}" value="${esc(m.model||'')}" placeholder="从命名系统选择或输入型号"><button type="button" class="btn small primary" onclick="openNamingModal(${m.id})">选型号</button></div><div class="naming-inline-meta" title="${esc(namingInlineMeta(m))}">${esc(namingInlineMeta(m))}</div>${namingSyncTools(m)}</div>
+            <div class="field"><label>状态</label><select id="m_status_${m.id}">${opt(['草稿','打样中','测试中','修改中','待客户确认','客户已确认','量产前确认','暂停','取消','开发中','已完成'],m.status)}</select></div>
+            <div class="field"><label>功率</label><input id="m_power_${m.id}" value="${esc(m.power||'')}"></div>
+            <div class="field"><label>角度</label><input id="m_beam_${m.id}" value="${esc(m.beam||'')}"></div>
+            <div class="field"><label>色温</label><input id="m_cct_${m.id}" value="${esc(m.cct||'')}"></div>
+            ${sampleDimensionPanel(m)}
+          </div>
+        </div>
+        <div class="sample-section">
+          <h4>关键元器件 / BOM</h4>
+          ${componentInlinePanel(m)}
+          <div class="bom-hint">生成 BOM 时按照当前样品关键元器件同步；其他物料继续在 BOM 系统中补充。</div>
+        </div>
+        <div class="sample-section">
+          <h4>修改原因 / 版本说明</h4>
+          <div class="field"><textarea id="m_change_reason_${m.id}" placeholder="记录创建新版本原因、客户修改内容、温升或光学问题、结构调整等">${esc(m.change_reason||'')}</textarea></div>
+        </div>
+      </div>
+      <div class="sample-right-stack">
+        ${renderSampleMediaSection(m)}
+        <div class="sample-section sample-note-pro"><h4>样品备注</h4><textarea id="m_note_${m.id}" placeholder="样品问题、客户要求、测试结论、结构说明等">${esc(m.note||'')}</textarea></div>
+        <div class="sample-section bom-note"><h4>BOM 备注</h4><textarea id="m_bom_note_${m.id}" placeholder="替代物料、未入库物料、供应商要求、特殊加工或装配要求">${esc(m.bom_note||'')}</textarea><div class="bom-hint">BOM 备注跟随样品保存，不自动生成 BOM。</div></div>
+        ${sampleSummaryCards(m)}
+      </div>
+    </div>
+  </div>`;
 }
 async function newModel(pid){const r=await api('new_model',{project_id:pid});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+pid,r.id)}toast(r.ok?'已新增样品':r.error);await load()}
 async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:$('m_beam_'+id).value,cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:$('m_opening_size_'+id)?.value||'',diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
@@ -8442,26 +10293,29 @@ function renderFlow(p){
   const m=flowMetrics(st);
   $('tabbody').style.setProperty('--flow-cols',flowCols);
   $('tabbody').innerHTML=`<div class="flow-shell">
-    <div class="flow-toolbar">
-      <div class="flow-toolbar-left">
-        <div class="flow-view-title">开发导航图 V8.5.32<small>方形卡片 / 右侧对齐 / 时间短显示 / 文字不遮挡 / 多派工联动。</small></div>
-        <select onchange="flowModelId=Number(this.value);flowSelectedStepId=0;localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_step_id',0);renderDetail()">${ms.map(mo=>`<option value="${mo.id}" ${Number(mo.id)===Number(flowModelId)?'selected':''}>${esc(mo.name||mo.model||('样品'+mo.id))}</option>`).join('')}</select>
-        <select onchange="setFlowCols(this.value)"><option value="3" ${flowCols===3?'selected':''}>一排3个</option><option value="4" ${flowCols===4?'selected':''}>一排4个</option><option value="5" ${flowCols===5?'selected':''}>一排5个</option></select>
-        <button class="btn primary" onclick="addStep(${p.id},${flowModelId})">＋ 新增步骤</button><button class="btn danger" onclick="deleteAllSteps(${p.id},${flowModelId})">删除全部步骤</button>
+    <div class="flow-workbar">
+      <div class="flow-main-tools">
+        <div class="flow-title-block"><b>开发导航图</b><span>${m.pct}% · ${m.done}/${m.total} 完成</span></div>
+        <select class="flow-model-select" onchange="flowModelId=Number(this.value);flowSelectedStepId=0;localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_step_id',0);renderDetail()">${ms.map(mo=>`<option value="${mo.id}" ${Number(mo.id)===Number(flowModelId)?'selected':''}>${esc(mo.name||mo.model||('样品'+mo.id))}</option>`).join('')}</select>
+        <select id="tpl_name" class="flow-template-select">${FLOW_TEMPLATES.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
+        <button class="btn warn" onclick="applyTemplate(${p.id},${flowModelId},'replace')">套用并替换</button>
+        <button class="btn" onclick="applyTemplate(${p.id},${flowModelId},'append')">追加模板</button>
+        <button class="btn primary" onclick="addStep(${p.id},${flowModelId})">新增步骤</button>
+        <details class="flow-more-menu">
+          <summary>更多</summary>
+          <div class="flow-more-body">
+            <button class="btn flow-danger-mini" onclick="deleteAllSteps(${p.id},${flowModelId})">清空当前样品流程</button>
+            <button class="btn danger" onclick="deleteAllSteps(${p.id},${flowModelId})">删除全部步骤</button>
+          </div>
+        </details>
       </div>
-      <div class="flow-toolbar-right flow-progress">
-        <div class="flow-kpi"><b>${m.total}</b><span>步骤</span></div><div class="flow-kpi"><b>${m.done}</b><span>完成</span></div><div class="flow-kpi"><b>${m.doing}</b><span>进行中</span></div><div class="flow-kpi"><b>${m.redo}</b><span>异常/退回</span></div><div class="flow-kpi"><b>${m.overdue}</b><span>延期</span></div><div class="flow-kpi"><b>${m.pct}%</b><span>进度</span></div>
+      <div class="flow-statline">
+        <span><b>${m.total||0}</b> 总步骤</span><span><b>${m.done||0}</b> 已完成</span><span><b>${m.doing||0}</b> 进行中</span><span><b>${m.redo||0}</b> 异常/退回</span><span><b>${m.overdue||0}</b> 延期</span><span><b>${m.pct||0}%</b> 总体进度</span>
       </div>
-    </div>
-    <div class="template-panel">
-      <select id="tpl_name">${FLOW_TEMPLATES.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
-      <button class="btn warn" onclick="applyTemplate(${p.id},${flowModelId},'replace')">套用模板并替换当前流程</button>
-      <button class="btn" onclick="applyTemplate(${p.id},${flowModelId},'append')">追加模板步骤</button>
-      <button class="btn flow-danger-mini" onclick="deleteAllSteps(${p.id},${flowModelId})">清空当前样品流程</button>
-      <span class="hint">可删除某一步，也可清空当前样品全部步骤；清空不会删除样品本身。</span>
+      <div class="flow-total-progress"><i style="width:${Math.max(0,Math.min(100,m.pct||0))}%"></i></div>
     </div>
     <div class="flow-stage flow-cols-${flowCols} ${flowDrawerCollapsed?'drawer-collapsed':''}">
-      <div class="flow-board" id="flowBox" style="--flow-cols:${flowCols}">${st.map((s,i)=>stepCard(s,i,st.length,st)).join('')||'<div class="flow-empty">暂无流程步骤，点击上方“新增步骤”或套用模板。</div>'}</div>
+      <div class="flow-board" id="flowBox">${st.map((s,i)=>stepCard(s,i,st.length,st)).join('')||'<div class="flow-empty">当前样品暂未建立开发流程。可在上方选择流程模板，或点击“新增步骤”。</div>'}</div>
       ${stepDrawer(st.find(s=>Number(s.id)===Number(flowSelectedStepId)), model)}
     </div>
   </div>`
@@ -8470,19 +10324,20 @@ function stepCard(s,i,total,st=[]){
   const cls=flowStatusClass(s.status),active=Number(s.id)===Number(flowSelectedStepId)?'active':'';
   const owner=s.owner?`负责人：${esc(s.owner)}`:'负责人：未指定';
   const end=s.plan_end||s.plan_date;
-  const plan=end?`计划 ${esc(flowShortDate(end))}`:'计划 未设';
-  const start=s.actual_start?`开始 ${esc(flowShortDateTime(s.actual_start))}`:'';
-  const done=s.done_at?`完成 ${esc(flowShortDateTime(s.done_at))}`:'';
+  const done=s.done_at||s.completed_at||s.actual_end||'';
+  const dateLine=done?`完成：${esc(flowShortDate(done))}`:(end?`计划：${esc(flowShortDate(end))}`:'计划：-');
   const delay=isOverdueStep(s)?daysBetween(dateOnly(end),todayStr()):0;
   const blocked=isBlockedStep(st,s,i);
   const fileCount=files.filter(f=>Number(f.step_id)===Number(s.id)).length;
   const bad=['异常','退回','重来'].includes(String(s.status||''));
-  return `<div class="flow-node ${cls} ${active} ${delay?'overdue':''} ${blocked?'blocked':''}" data-step-id="${s.id}" draggable="true" ondragstart="dragStepId=${s.id};this.closest('.flow-board')?.classList.add('dragging')" ondragend="this.closest('.flow-board')?.classList.remove('dragging')" ondragover="event.preventDefault();this.classList.add('drop-target')" ondragleave="this.classList.remove('drop-target')" ondrop="this.classList.remove('drop-target');dropStep(${s.id})" onclick="openStepDrawer(${s.id})">
-    <div class="flow-node-top"><div class="flow-index">${String(i+1).padStart(2,'0')}</div><div class="flow-title-wrap"><div class="flow-title">${esc(s.title||'步骤')}</div><div class="flow-sub">${owner}</div></div><button class="flow-handle" title="拖动排序" onclick="event.stopPropagation()">☰</button><button class="flow-node-delete" title="删除步骤" onclick="event.stopPropagation();deleteStep(${s.id})">删</button></div>
-    <div class="tags">${flowStatusLabel(s.status)}${blocked?'<span class="tag orange">等前置</span>':''}${delay?`<span class="tag red">延期${delay}天</span>`:''}${fileCount?`<span class="tag purple">附件${fileCount}</span>`:''}${(()=>{const ds=dispatchSummary(s.id);return ds.total?`<span class="tag blue">派工${ds.label}</span>`:(s.dispatch_status?`<span class="tag blue">派工${esc(s.dispatch_status)}</span>`:'')})()}</div>
-    <div class="flow-meta compact-time"><div>${plan}</div>${start?`<div>${start}</div>`:''}${done?`<div>${done}</div>`:''}</div>
-    <div class="flow-note">${esc(bad?(s.abnormal_reason||s.return_reason||s.rework_reason||s.note||'暂无原因'):(s.note||'暂无备注'))}</div>
-    <div class="flow-quick"><button class="btn small" onclick="event.stopPropagation();quickStepStatus(${s.id},'进行中')">开始</button><button class="btn small good" onclick="event.stopPropagation();quickStepStatus(${s.id},'已完成')">完成</button><button class="btn small danger" onclick="event.stopPropagation();quickStepStatus(${s.id},'异常')">异常</button></div>
+  const ds=dispatchSummary(s.id);
+  const dispatchText=ds.total?(ds.done>=ds.total?'派工已完成':`派工 ${ds.label}`):(s.dispatch_status?`派工 ${s.dispatch_status}`:'未派工');
+  const issueText=bad?(s.abnormal_reason||s.return_reason||s.rework_reason||'需处理'):(delay?`延期${delay}天`:(blocked?'等待前置':'无异常'));
+  return `<div class="flow-node ${cls} ${active} ${delay?'overdue':''} ${blocked?'blocked':''}" data-step-id="${s.id}" ondragover="event.preventDefault();this.classList.add('drop-target')" ondragleave="this.classList.remove('drop-target')" ondrop="this.classList.remove('drop-target');dropStep(${s.id})" onclick="openStepDrawer(${s.id})">
+    <div class="flow-node-top"><div class="flow-index">${String(i+1).padStart(2,'0')}</div><div class="flow-title-wrap"><div class="flow-title">${esc(s.title||'步骤')}</div></div><span class="flow-status ${cls}">${esc(s.status||'未开始')}</span><button class="flow-handle" title="拖动排序" draggable="true" ondragstart="event.stopPropagation();dragStepId=${s.id};this.closest('.flow-board')?.classList.add('dragging')" ondragend="this.closest('.flow-board')?.classList.remove('dragging')" onclick="event.stopPropagation()">☰</button><button class="flow-node-delete" title="删除步骤" onclick="event.stopPropagation();deleteStep(${s.id})">删</button></div>
+    <div class="flow-card-line"><span>${owner}</span><b>${esc(dispatchText)}</b></div>
+    <div class="flow-card-line"><span>${dateLine}</span>${fileCount?`<b>附件 ${fileCount}</b>`:''}</div>
+    <div class="flow-card-foot ${bad?'dangerText':''}">${esc(issueText)}<button class="btn small" onclick="event.stopPropagation();openStepDrawer(${s.id})">查看详情</button></div>
   </div>`
 }
 function stepDrawer(s,model){
@@ -8490,22 +10345,22 @@ function stepDrawer(s,model){
   if(!s)return `<aside class="flow-drawer"><div class="empty">选择左侧流程节点后，在这里编辑详情。</div></aside>`;
   const sf=files.filter(f=>Number(f.step_id)===Number(s.id));
   const recent=logs.filter(l=>String(l.target_type)==='step'&&Number(l.target_id)===Number(s.id)).slice(0,12);
-  return `<aside class="flow-drawer"><div class="flow-drawer-head"><div><h3>${esc(s.title||'步骤详情')}</h3><div class="flow-help">样品：${esc(model?(model.name||model.model||model.id):'-')}</div></div><button class="btn small" onclick="closeStepDrawer()">收起</button></div>
-    <div class="field"><label>步骤名</label><input id="drawer_title_${s.id}" value="${esc(s.title||'')}"></div>
-    <div class="grid2"><div class="field"><label>状态</label><select id="drawer_status_${s.id}">${FLOW_STATUSES.map(x=>`<option ${x===s.status?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>负责人</label><input id="drawer_owner_${s.id}" value="${esc(s.owner||'')}"></div></div>
-    <div class="grid2"><div class="field"><label>计划开始</label><input id="drawer_plan_start_${s.id}" type="date" value="${esc(dateOnly(s.plan_start))}"></div><div class="field"><label>计划完成</label><input id="drawer_plan_end_${s.id}" type="date" value="${esc(dateOnly(s.plan_end||s.plan_date))}"></div></div>
-    <div class="field"><label>前置依赖</label><select id="drawer_dependency_${s.id}">${['跟随前一步','无前置限制'].map(x=>`<option ${x===(s.dependency_mode||'跟随前一步')?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
-    <div class="field"><label>备注</label><textarea id="drawer_note_${s.id}" placeholder="填写问题、修改要求、样品状态等">${esc(s.note||'')}</textarea></div>
-    <div class="grid2"><div class="field"><label>异常原因</label><textarea id="drawer_abnormal_${s.id}" placeholder="如：温升过高、光斑不对、结构装不上">${esc(s.abnormal_reason||'')}</textarea></div><div class="field"><label>退回 / 重来 / 跳过原因</label><textarea id="drawer_reason_${s.id}" placeholder="退回上一步、重来原因，或跳过原因">${esc(s.return_reason||s.rework_reason||s.skip_reason||'')}</textarea></div></div>
-    <div class="flow-help">创建：${esc(s.created_at||'-')}<br>开始：${esc(s.actual_start||'-')}<br>完成：${esc(s.done_at||'-')}</div>
-    <div class="actions" style="margin-top:12px"><button class="btn good" onclick="saveStepFromDrawer(${s.id})">保存详情</button><button class="btn warn" onclick="createDispatchTask(${s.id})">生成派工任务</button><button class="btn" onclick="openDispatchProgressForStep(${s.id})">派工进度</button><button class="btn" onclick="refreshDispatchForStep(${s.id})">同步派工状态</button><button class="btn danger" onclick="deleteStep(${s.id})">删除步骤</button></div>
+  const flowSt=basicFlowSteps(cur(),Number(s.model_id||flowModelId));
+  const idx=flowSt.findIndex(x=>Number(x.id)===Number(s.id));
+  return `<aside class="flow-drawer"><div class="flow-drawer-head"><div><h3>${String(idx+1).padStart(2,'0')} ${esc(s.title||'步骤详情')}</h3><div class="flow-help">样品：${esc(model?(model.name||model.model||model.id):'-')} ｜ ${esc(s.status||'未开始')}</div></div><div class="flow-drawer-nav"><button class="btn small" ${idx<=0?'disabled':''} onclick="openAdjacentStep(-1)">上一个</button><button class="btn small" ${idx<0||idx>=flowSt.length-1?'disabled':''} onclick="openAdjacentStep(1)">下一个</button><button class="btn small" onclick="closeStepDrawer()">收起</button></div></div>
+    <div class="flow-drawer-section">
+      <h4>基础信息</h4>
+      <div class="flow-drawer-grid"><div class="field wide"><label>节点名称</label><input id="drawer_title_${s.id}" value="${esc(s.title||'')}"></div><div class="field"><label>状态</label><select id="drawer_status_${s.id}">${FLOW_STATUSES.map(x=>`<option ${x===s.status?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>负责人</label><input id="drawer_owner_${s.id}" value="${esc(s.owner||'')}"></div><div class="field"><label>前置依赖</label><select id="drawer_dependency_${s.id}">${['跟随前一步','无前置限制'].map(x=>`<option ${x===(s.dependency_mode||'跟随前一步')?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>计划开始</label><input id="drawer_plan_start_${s.id}" type="date" value="${esc(dateOnly(s.plan_start))}"></div><div class="field"><label>计划完成</label><input id="drawer_plan_end_${s.id}" type="date" value="${esc(dateOnly(s.plan_end||s.plan_date))}"></div><div class="field readonly"><label>实际开始</label><input readonly value="${esc(dateOnly(s.actual_start)||'-')}"></div><div class="field readonly"><label>实际完成</label><input readonly value="${esc(dateOnly(s.done_at)||'-')}"></div></div>
+    </div>
+    <div class="flow-drawer-section"><h4>备注</h4><div class="field"><textarea id="drawer_note_${s.id}" placeholder="填写问题、修改要求、样品状态等">${esc(s.note||'')}</textarea></div></div>
+    <div class="flow-drawer-section"><h4>异常 / 退回原因</h4><div class="grid2"><div class="field"><label>异常原因</label><textarea id="drawer_abnormal_${s.id}" placeholder="如：温升过高、光斑不对、结构装不上">${esc(s.abnormal_reason||'')}</textarea></div><div class="field"><label>退回 / 重来 / 跳过原因</label><textarea id="drawer_reason_${s.id}" placeholder="退回上一步、重来原因，或跳过原因">${esc(s.return_reason||s.rework_reason||s.skip_reason||'')}</textarea></div></div></div>
+    <div class="flow-drawer-section"><h4>节点操作</h4><div class="flow-action-grid"><button class="btn good" onclick="saveStepFromDrawer(${s.id})">保存详情</button><button class="btn" onclick="quickStepStatus(${s.id},'进行中')">开始</button><button class="btn good" onclick="quickStepStatus(${s.id},'已完成')">完成</button><button class="btn danger" onclick="quickStepStatus(${s.id},'异常')">设置异常</button><button class="btn warn" onclick="createDispatchTask(${s.id})">生成派工</button><button class="btn" onclick="refreshDispatchForStep(${s.id})">同步派工</button><button class="btn" onclick="openDispatchProgressForStep(${s.id})">派工进度</button><button class="btn danger" onclick="deleteStep(${s.id})">删除步骤</button></div></div>
     ${dispatchLinksPanel(s)}
-    <div class="uploadbox"><b>步骤附件</b><p class="hint">加工图、光斑图、测试报告、返工说明都可以直接绑到当前步骤。</p>${uploadBox('加工资料',s.model_id||0,0,false,s.id)}</div>
-    <div>${sf.map(fileChip).join('')||'<div class="hint">暂无步骤附件</div>'}</div>
-    <h4>步骤日志</h4><div class="log-mini">${recent.map(l=>`<div><b>${esc(l.created_at||'')}</b><br>${esc(l.action||'')}：${esc(l.note||'')}</div>`).join('')||'<div class="hint">暂无日志</div>'}</div>
+    <details class="flow-drawer-section compact-extra"><summary>步骤附件与日志</summary><div class="uploadbox"><b>步骤附件</b>${uploadBox('加工资料',s.model_id||0,0,false,s.id)}</div><div>${sf.map(fileChip).join('')||'<div class="hint">暂无步骤附件</div>'}</div><div class="log-mini">${recent.map(l=>`<div><b>${esc(l.created_at||'')}</b><br>${esc(l.action||'')}：${esc(l.note||'')}</div>`).join('')||'<div class="hint">暂无日志</div>'}</div></details>
   </aside>`
 }
 function openStepDrawer(id){flowDrawerCollapsed=false;localStorage.setItem('plm_v85_drawer_collapsed','0');if(Number(id))flowSelectedStepId=Number(id);else if(!flowSelectedStepId){const first=document.querySelector('.flow-node');flowSelectedStepId=first?Number(first.dataset.stepId)||0:0;}localStorage.setItem('plm_v85_step_id',flowSelectedStepId);renderDetail()}
+function openAdjacentStep(dir){const p=cur();if(!p)return;const arr=basicFlowSteps(p,Number(flowModelId));const idx=arr.findIndex(x=>Number(x.id)===Number(flowSelectedStepId));const next=arr[Math.max(0,Math.min(arr.length-1,idx+Number(dir||0)))];if(next)openStepDrawer(Number(next.id));}
 function closeStepDrawer(){flowDrawerCollapsed=true;localStorage.setItem('plm_v85_drawer_collapsed','1');renderDetail()}
 async function addStep(pid,mid){const title=prompt('步骤名称','新增步骤');if(title===null)return;const r=await api('add_step',{project_id:pid,model_id:mid,title});toast(r.ok?'步骤已新增':r.error);await load()}
 async function applyTemplate(pid,mid,mode){const tpl=$('tpl_name')?.value||FLOW_TEMPLATES[0];if(mode==='replace'&&!confirm('会清空当前样品现有流程步骤，再套用模板。确定继续？'))return;const r=await api('apply_template',{project_id:pid,model_id:mid,template:tpl,mode});toast(r.ok?'模板已套用':r.error);flowSelectedStepId=0;localStorage.setItem('plm_v85_step_id',0);await load()}
@@ -8516,14 +10371,17 @@ async function saveStepFromDrawer(id){const status=$('drawer_status_'+id).value,
 function dispatchLinksPanel(s){
   const arr=dispatchLinksByStep(s.id);
   const summary=dispatchSummary(s.id);
-  const list=arr.map(l=>`<div class="dispatch-link-row"><div><b>${esc(l.title||('派工任务 '+(l.task_id||'')))}</b><span>状态：${esc(dispatchStatusText(l.status))} ｜ 进度：${Number(l.progress||0)}% ｜ 负责人：${esc(l.assignee_name||l.assignee_id||'-')}</span></div><div class="actions"><a class="btn small" target="_blank" href="${esc(l.dispatch_url||dispatchUrl(l.task_id))}">打开</a><button class="btn small" onclick="event.stopPropagation();refreshOneDispatchLink(${l.id})">同步</button><button class="btn small danger" onclick="event.stopPropagation();unlinkDispatch(${l.id})">解除</button></div></div>`).join('')||'<div class="hint">暂无关联派工。点击“生成派工任务”即可把这个步骤派到原派工系统。</div>';
-  return `<div class="statusline dispatch-panel"><b>关联派工 ${summary.total?summary.done+'/'+summary.total:'0/0'}</b><div class="hint">一个开发步骤可以生成多个派工；派工页面不改，PLM 只关联和读取状态。</div><div class="actions" style="margin:6px 0 8px"><button class="btn small" onclick="event.stopPropagation();openDispatchProgressForStep(${s.id})">派工进度</button><button class="btn small" onclick="event.stopPropagation();refreshDispatchForStep(${s.id})">同步状态</button></div>${list}<a class="link" href="dispatch_todo.php" target="_blank">打开原派工页面</a></div>`
+  const row=l=>`<div class="dispatch-link-row"><div><b>${esc(l.title||('派工任务 '+(l.task_id||'')))}</b><span>${esc(l.assignee_name||l.assignee_id||'-')} · ${esc(dispatchStatusText(l.status))} · ${Number(l.progress||0)}%</span></div><div class="actions"><a class="btn small" target="_blank" href="${esc(l.dispatch_url||dispatchUrl(l.task_id))}">打开</a><button class="btn small" onclick="event.stopPropagation();refreshOneDispatchLink(${l.id})">同步</button><button class="btn small danger" onclick="event.stopPropagation();unlinkDispatch(${l.id})">解除</button></div></div>`;
+  const first=arr.slice(0,3).map(row).join('');
+  const more=arr.length>3?`<details class="dispatch-more"><summary>查看全部 ${arr.length} 条派工</summary>${arr.slice(3).map(row).join('')}</details>`:'';
+  const list=arr.length?first+more:'<div class="hint">暂无关联派工。点击“生成派工”即可把这个步骤派到原派工系统。</div>';
+  return `<div class="statusline dispatch-panel"><div class="dispatch-panel-head"><b>关联派工 ${summary.total?summary.done+'/'+summary.total:'0/0'}</b><div class="actions"><button class="btn small warn" onclick="event.stopPropagation();createDispatchTask(${s.id})">生成派工</button><button class="btn small" onclick="event.stopPropagation();openDispatchProgressForStep(${s.id})">进度</button><button class="btn small" onclick="event.stopPropagation();refreshDispatchForStep(${s.id})">同步</button></div></div>${list}</div>`
 }
 let plmDispatchUsersCache=null;
 async function loadPlmDispatchUsers(){
   if(Array.isArray(plmDispatchUsersCache))return plmDispatchUsersCache;
-  const r=await dispatchApi('users',{},'GET');
-  plmDispatchUsersCache=Array.isArray(r.users)?r.users:[];
+  const r=await dispatchApi('list_users',{},'GET');
+  plmDispatchUsersCache=Array.isArray(r.data)?r.data:(Array.isArray(r.users)?r.users:[]);
   return plmDispatchUsersCache;
 }
 function plmUserLabel(u){return String(u.name||u.display_name||u.username||('ID '+u.id));}
@@ -8589,10 +10447,10 @@ async function submitPlmDispatchModal(){
     reason
   ].filter(x=>x!=='' || x==='').join('\n');
   const payload={
-    title,project:projectText,description:desc,priority,due_at:dueDate?dueDate+'T18:00':'',mode:'dispatch',assigned_to:assigned,task_date:taskDate,
+    task_type:'dispatch',title,project:projectText,description:desc,priority,due_at:dueDate?dueDate+'T18:00':'',mode:'dispatch',assigned_to:assigned,task_date:taskDate,
     customer:ctx.customer||'',product_model:ctx.modelName||'',
     extra:{plm_project_id:ctx.project_id||0,plm_model_id:ctx.model_id||0,plm_step_id:ctx.step_id||0,plm_source:ctx.kind==='project'?'项目派工':'开发导航图',plm_reason:reason},
-    linked_system:'PLM',linked_id:ctx.kind==='project'?('plm_project_'+(ctx.project_id||0)):('plm_step_'+(ctx.step_id||0)),
+    linked_system:'PLM',linked_table:ctx.kind==='project'?'plm_projects':'plm_flow_steps',linked_id:ctx.kind==='project'?('plm_project_'+(ctx.project_id||0)):('plm_step_'+(ctx.step_id||0)),
     linked_title:ctx.projectName||'',linked_url:ctx.linked_url||('plm.php?project_id='+(ctx.project_id||0)),linked_json:linked
   };
   let cr=await dispatchApi('create_task',payload);
@@ -8680,62 +10538,101 @@ function testTypeDefaultFileCat(type){
   return '温升报告';
 }
 
-let testSelectedId=Number(localStorage.getItem('plm_v85_test_id')||0), activeTestType=localStorage.getItem('plm_v85_active_test_type')||'温升';
+let testSelectedId=Number(localStorage.getItem('plm_v85_test_id')||0), activeTestType=localStorage.getItem('plm_v85_active_test_type')||'温升测试', testModelId=Number(localStorage.getItem('plm_v85_test_model')||0);
 let testCreateMode=localStorage.getItem('plm_v85_test_create_mode')==='1';
 let testNodeFilter=localStorage.getItem('plm_v85_test_node_filter')||'all', testNodeSearch=localStorage.getItem('plm_v85_test_node_search')||'';
+let testEvidenceTab=localStorage.getItem('plm_v85_test_evidence_tab')||'images';
 const TEST_TEMPLATE_DEFAULTS=[
-  {key:'builtin_temp',name:'温升测试模板',test_type:'温升',builtin:true,fields:[
+  {key:'builtin_temp',name:'温升测试',test_type:'温升测试',builtin:true,usage:'验证灯体、电源和LED温度是否满足安全余量。',fields:[
     {key:'ambient_temp',label:'环境温度',type:'number',bind:'ambient_temp'},
     {key:'led_temp',label:'LED温度',type:'number',bind:'led_temp'},
     {key:'driver_temp',label:'电源温度',type:'number',bind:'driver_temp'},
-    {key:'shell_temp',label:'壳体温度',type:'number',bind:'shell_temp'},
+    {key:'shell_temp',label:'灯体 / 壳体温度',type:'number',bind:'shell_temp'},
     {key:'max_temp',label:'最高温度',type:'number',bind:'max_temp'},
-    {key:'aging_hours',label:'测试时长/条件',type:'text'}
+    {key:'duration',label:'测试时长',type:'text'},
+    {key:'condition',label:'测试条件',type:'textarea',bind:'test_data'},
+    {key:'standard',label:'判定标准',type:'textarea',bind:'test_standard'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_ies',name:'IES 测试模板',test_type:'IES',builtin:true,fields:[
-    {key:'ies_angle',label:'光束角',type:'text',bind:'ies_angle'},
-    {key:'ies_lumen',label:'IES流明',type:'text',bind:'ies_lumen'},
+  {key:'builtin_ies',name:'IES配光测试',test_type:'IES配光测试',builtin:true,usage:'记录配光角度、光强、IES文件和配光报告。',fields:[
     {key:'ies_power',label:'测试功率',type:'text'},
-    {key:'ies_file_note',label:'IES文件说明',type:'text'}
+    {key:'cct',label:'色温',type:'text',bind:'cct'},
+    {key:'ies_angle',label:'光束角',type:'text',bind:'ies_angle'},
+    {key:'peak_cd',label:'峰值光强',type:'text'},
+    {key:'distribution_type',label:'配光类型',type:'text'},
+    {key:'device',label:'测试机构 / 设备',type:'text'},
+    {key:'ies_file_note',label:'IES文件',type:'file'},
+    {key:'report_note',label:'配光报告',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_sphere',name:'积分球测试模板',test_type:'积分球',builtin:true,fields:[
+  {key:'builtin_sphere',name:'积分球测试',test_type:'积分球测试',builtin:true,usage:'记录光通量、光效、CCT、CRI、R9和光谱报告。',fields:[
+    {key:'sphere_power',label:'输入功率',type:'text',bind:'sphere_power'},
+    {key:'pf',label:'功率因数 PF',type:'text'},
     {key:'sphere_lumen',label:'光通量',type:'text',bind:'sphere_lumen'},
-    {key:'sphere_power',label:'功率',type:'text',bind:'sphere_power'},
-    {key:'sphere_efficiency',label:'光效 lm/W',type:'text',bind:'sphere_efficiency'},
+    {key:'sphere_efficiency',label:'光效',type:'text',bind:'sphere_efficiency'},
     {key:'cct',label:'色温 CCT',type:'text',bind:'cct'},
-    {key:'cri',label:'显指 CRI',type:'text',bind:'cri'}
+    {key:'cri',label:'显色指数 CRI',type:'text',bind:'cri'},
+    {key:'r9',label:'R9',type:'text'},
+    {key:'sdcm',label:'色容差 SDCM',type:'text'},
+    {key:'spectrum_report',label:'光谱报告',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_aging',name:'老化测试模板',test_type:'老化',builtin:true,fields:[
+  {key:'builtin_emc',name:'EMC测试',test_type:'EMC测试',builtin:true,usage:'记录EMC标准、机构、报告编号和结果。',fields:[
+    {key:'emc_standard',label:'测试标准',type:'textarea',bind:'test_standard'},
+    {key:'agency',label:'测试机构',type:'text'},
+    {key:'report_no',label:'报告编号',type:'text'},
+    {key:'emc_item',label:'测试项目',type:'textarea'},
+    {key:'emc_result',label:'测试结果',type:'textarea',bind:'test_data'},
+    {key:'emc_report',label:'EMC报告',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
+  ]},
+  {key:'builtin_ip',name:'防水/IP测试',test_type:'防水/IP测试',builtin:true,usage:'记录目标防护等级、测试条件、是否进水和报告。',fields:[
+    {key:'ip_level',label:'目标防护等级',type:'text'},
+    {key:'condition',label:'测试条件',type:'textarea',bind:'test_data'},
+    {key:'test_time',label:'测试时间',type:'text'},
+    {key:'ip_result',label:'测试结果',type:'textarea'},
+    {key:'leakage',label:'是否进水',type:'yesno'},
+    {key:'photo_note',label:'测试图片',type:'file'},
+    {key:'report_note',label:'测试视频或报告',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
+  ]},
+  {key:'builtin_aging',name:'老化测试',test_type:'老化测试',builtin:true,usage:'记录老化时长、数量、失效数量和异常。',fields:[
     {key:'aging_hours',label:'老化时长',type:'text'},
-    {key:'aging_condition',label:'老化条件',type:'text'},
-    {key:'abnormal_record',label:'异常记录',type:'textarea'}
+    {key:'qty',label:'测试数量',type:'number'},
+    {key:'ambient_temp',label:'环境温度',type:'number',bind:'ambient_temp'},
+    {key:'work_status',label:'工作状态',type:'text'},
+    {key:'fail_qty',label:'失效数量',type:'number'},
+    {key:'abnormal_record',label:'异常说明',type:'textarea'},
+    {key:'photo_note',label:'测试图片',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_emc',name:'EMC测试模板',test_type:'EMC',builtin:true,fields:[
-    {key:'emc_standard',label:'EMC标准',type:'textarea'},
-    {key:'emc_data',label:'EMC关键数据',type:'textarea'},
-    {key:'emc_conclusion',label:'EMC结论/整改',type:'textarea'}
+  {key:'builtin_structure',name:'结构/装配检查',test_type:'结构/装配检查',builtin:true,usage:'检查外观、结构配合、安装和表面处理。',fields:[
+    {key:'appearance',label:'外观检查',type:'text'},
+    {key:'fit_status',label:'结构配合',type:'text'},
+    {key:'install_status',label:'安装检查',type:'text'},
+    {key:'screw_status',label:'螺丝 / 卡扣',type:'text'},
+    {key:'surface',label:'表面处理',type:'text'},
+    {key:'assembly_issue',label:'装配异常',type:'textarea'},
+    {key:'photo_note',label:'检查图片',type:'file'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_ip',name:'IP防水测试模板',test_type:'IP防水',builtin:true,fields:[
-    {key:'ip_level',label:'IP等级',type:'text'},
-    {key:'test_time',label:'测试时长',type:'text'},
-    {key:'leakage',label:'进水/异常',type:'textarea'}
+  {key:'builtin_custom',name:'自定义测试',test_type:'自定义测试',builtin:true,usage:'用于临时或非标准测试项目。',fields:[
+    {key:'custom_item',label:'测试项目',type:'text'},
+    {key:'test_data',label:'测试数据',type:'textarea',bind:'test_data'},
+    {key:'standard',label:'判定标准',type:'textarea',bind:'test_standard'},
+    {key:'conclusion',label:'测试结论',type:'textarea',bind:'test_conclusion'}
   ]},
-  {key:'builtin_salt',name:'盐雾测试模板',test_type:'盐雾',builtin:true,fields:[
+  {key:'builtin_salt',name:'盐雾测试',test_type:'盐雾测试',builtin:true,fields:[
     {key:'salt_hours',label:'盐雾小时数',type:'text'},
     {key:'surface_result',label:'表面结果',type:'textarea'},
     {key:'rust_status',label:'腐蚀/生锈情况',type:'textarea'}
   ]},
-  {key:'builtin_structure',name:'结构装配模板',test_type:'结构装配',builtin:true,fields:[
-    {key:'fit_status',label:'装配匹配',type:'text'},
-    {key:'screw_status',label:'螺丝/卡扣',type:'text'},
-    {key:'problem',label:'结构问题',type:'textarea'}
-  ]},
-  {key:'builtin_drop',name:'包装跌落模板',test_type:'包装跌落',builtin:true,fields:[
+  {key:'builtin_drop',name:'包装跌落测试',test_type:'包装跌落测试',builtin:true,fields:[
     {key:'drop_height',label:'跌落高度',type:'text'},
     {key:'drop_times',label:'跌落次数',type:'text'},
     {key:'damage',label:'损坏情况',type:'textarea'}
   ]},
-  {key:'builtin_spot',name:'光斑测试模板',test_type:'光斑测试',builtin:true,fields:[
+  {key:'builtin_spot',name:'光斑测试',test_type:'光斑测试',builtin:true,fields:[
     {key:'beam_angle',label:'角度/光型',type:'text'},
     {key:'spot_result',label:'光斑表现',type:'textarea'},
     {key:'color_issue',label:'偏色/杂光',type:'textarea'}
@@ -8748,13 +10645,16 @@ function normalizeTestTemplate(t){
 }
 function allTestTemplates(){return [...TEST_TEMPLATE_DEFAULTS.map(normalizeTestTemplate),...(testTemplates||[]).map(normalizeTestTemplate)]}
 function templateByKey(key){return allTestTemplates().find(t=>String(t.key)===String(key)||('db_'+t.id)===String(key))||null}
-function templateForType(type){return allTestTemplates().find(t=>t.test_type===type)||TEST_TEMPLATE_DEFAULTS[0]}
+function templateForType(type){const wanted=normalizeTestTypeName(type);return allTestTemplates().find(t=>normalizeTestTypeName(t.test_type)===wanted)||TEST_TEMPLATE_DEFAULTS[0]}
 function templateForTest(t){return templateByKey(t?.template_key||'')||templateForType(t?.test_type||activeTestType||'温升')}
 function testCustomValues(t){const x=parseJsonSafe(t?.template_fields_json||{},{});return (x&&typeof x==='object'&&!Array.isArray(x))?x:{}}
 function testNodeStatusClass(t){return testStatusClass(t.status,t.result)}
 function testNodeClick(id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(id||0);localStorage.setItem('plm_v85_test_id',testSelectedId);renderDetail()}
-function newTestNode(type){testCreateMode=true;testSelectedId=0;activeTestType=type||activeTestType||'温升';localStorage.setItem('plm_v85_test_create_mode','1');localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}
+function newTestNode(type){testCreateMode=true;testSelectedId=0;activeTestType=normalizeTestTypeName(type||activeTestType||'温升测试');localStorage.setItem('plm_v85_test_create_mode','1');localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}
 function changeTestTemplate(){const key=$('t_template')?.value||'';const tpl=templateByKey(key);if(tpl){activeTestType=tpl.test_type||activeTestType;localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}}
+function setTestModel(id){testModelId=Number(id)||0;localStorage.setItem('plm_v85_test_model',testModelId);testSelectedId=0;testCreateMode=false;localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()}
+function setTestTypeFilter(v){localStorage.setItem('plm_v85_test_type_filter',v||'');renderDetail()}
+function setTestStatusFilter(v){testNodeFilter=v||'all';localStorage.setItem('plm_v85_test_node_filter',testNodeFilter);renderDetail()}
 function testRunsFor(t){return (testRuns||[]).filter(x=>Number(x.test_id)===Number(t?.id||0)).sort((a,b)=>(Number(a.run_no)-Number(b.run_no))||(Number(a.id)-Number(b.id)))}
 function testRunText(x){return [x.status,x.result,x.retest_result,x.test_conclusion,x.test_data,x.note].map(v=>String(v||'')).join(' ')}
 function testHistoryStats(t,arr){
@@ -8786,23 +10686,21 @@ function renderTestNodeCard(t,arr,ms){
   const cls=testNodeStatusClass(t);
   const active=Number(t.id)===Number(testSelectedId)?' active':'';
   const hs=testHistoryStats(t,arr);
-  const tags=[];
-  if(hs.fail>0)tags.push(`<span class="mini-tag red">不通过 ${hs.fail}</span>`);
-  if(hs.runs>0)tags.push(`<span class="mini-tag blue">记录 ${hs.runs}</span>`);
-  if(hs.retest>0)tags.push(`<span class="mini-tag orange">重测 ${hs.retest}</span>`);
-  if(hs.pendingRetest)tags.push(`<span class="mini-tag orange">待复测</span>`);
-  if(hs.affect)tags.push(`<span class="mini-tag red">影响样品</span>`);
-  if(hs.issue)tags.push(`<span class="mini-tag blue">有问题闭环</span>`);
   const attachCount=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)).length;
-  if(attachCount>0)tags.push(`<span class="mini-tag blue">附件 ${attachCount}</span>`);
-  if(!tags.length)tags.push(`<span class="mini-tag green">无失败记录</span>`);
   const sample=m?(m.name||m.model||'样品'):('项目公共');
   const modelCode=m?(m.model||m.sample_no||''):'';
   const sampleText=modelCode&&String(modelCode)!==String(sample)?`${sample}，${modelCode}`:sample;
   const date=dateOnly(t.test_date)||'-';
   const op=t.operator||'-';
   const last=hs.last||'-';
-  return `<div class="test-node${active}" onclick="testNodeClick(${t.id})"><div class="test-node-main"><div class="test-node-title">${esc(t.test_type||'测试')} · ${esc(t.title||'未命名')}</div><div class="test-node-meta">样品：${esc(sampleText)}<br>日期：${esc(date)} ｜ 测试人：${esc(op)}</div><div class="test-node-history">${tags.join('')}</div><div class="test-node-last">最后结论：${esc(last)}</div></div><span class="test-node-status ${cls}">${esc(t.status||'待测')}</span></div>`;
+  const retest=hs.retest?`<span class="mini-tag orange">复测 ${hs.retest}</span>`:'';
+  const issue=hs.issue?'<i class="test-issue-dot" title="有关联问题"></i>':'';
+  return `<div class="test-node${active} ${cls}" onclick="testNodeClick(${t.id})" title="${esc(t.test_conclusion||t.note||last||'')}">
+    <div class="test-node-row first"><b>${esc(t.title||'未命名测试')}</b><span class="test-node-status ${cls}">${esc(t.status||'待测')}</span></div>
+    <div class="test-node-row"><span>${esc(t.test_type||'测试')}</span><span>${esc(sampleText)}</span></div>
+    <div class="test-node-row"><span>${esc(date)}</span><span>${esc(op)}</span></div>
+    <div class="test-node-row last"><span>${issue}${esc(last||'-')}</span><span>附件 ${attachCount}</span>${retest}</div>
+  </div>`;
 }
 
 function testReportIsFailed(t){
@@ -8875,10 +10773,10 @@ function setTestNodeSearch(v){
 function testNodeMatchesFilter(t){
   const f=testNodeFilter||'all';
   const txt=[t.status,t.result,t.retest_result,t.test_conclusion,t.test_data,t.note].map(v=>String(v||'')).join(' ');
-  if(f==='failed')return testReportIsFailed(t);
-  if(f==='retest')return testReportNeedsRetest(t);
-  if(f==='pending')return !testReportIsDone(t)&&!testReportIsFailed(t)&&!testReportNeedsRetest(t);
-  if(f==='done')return testReportIsDone(t);
+  if(f==='failed')return testFailed(t);
+  if(f==='retest')return testStatusValue(t)==='待复测'||testRetestCount(t,tests)>0;
+  if(f==='pending')return !testPassed(t)&&!testFailed(t)&&testStatusValue(t)!=='待复测';
+  if(f==='done')return testPassed(t);
   if(f==='issue')return Number(t.issue_id||0)>0||Number(t.problem_generated||0)>0||testNeedsIssue(t);
   if(f==='file')return (files||[]).some(x=>Number(x.test_id)===Number(t.id));
   return true;
@@ -8900,27 +10798,155 @@ function renderTestFilterBar(arr,ms){
   const file=arr.filter(t=>(files||[]).some(x=>Number(x.test_id)===Number(t.id))).length;
   return `<div class="test-filter-toolbar"><div class="test-filter-line"><input class="test-filter-search" value="${esc(testNodeSearch||'')}" placeholder="搜索测试/样品/测试人" oninput="setTestNodeSearch(this.value)"><button class="btn small" onclick="testNodeSearch='';localStorage.removeItem('plm_v85_test_node_search');renderDetail()">清空</button></div><div class="test-filter-chips">${btn('all','全部',arr.length)}${btn('failed','异常',failed)}${btn('retest','待复测',retest)}${btn('pending','待测',pending)}${btn('done','通过',done)}${btn('issue','问题',issue)}${btn('file','有附件',file)}</div></div>`;
 }
+function normalizeTestTypeName(type){
+  const s=String(type||'').trim();
+  if(!s)return '温升测试';
+  if(s==='温升')return '温升测试';
+  if(s==='IES')return 'IES配光测试';
+  if(s==='积分球')return '积分球测试';
+  if(s==='EMC')return 'EMC测试';
+  if(s==='IP防水'||s==='防水')return '防水/IP测试';
+  if(s==='老化')return '老化测试';
+  if(s==='结构装配')return '结构/装配检查';
+  return s;
+}
+function testStatusValue(t){
+  const s=String(t?.status||'').trim();
+  if(/测试中|进行中/.test(s))return '进行中';
+  if(/待复测|需整改/.test(s))return '待复测';
+  if(/取消/.test(s))return '已取消';
+  if(/通过|不通过|完成|已完成/.test(s))return '已完成';
+  return s||'未开始';
+}
+function testResultValue(t){
+  const r=String(t?.result||'').trim();
+  const s=String(t?.status||'').trim();
+  const text=[t?.result,t?.status,t?.test_conclusion,t?.retest_result,t?.note].map(v=>String(v||'')).join(' ');
+  if(/不通过|失败|异常|需整改|NG/i.test(text))return '不通过';
+  if(r)return r;
+  if(/通过|OK|PASS/i.test(s))return '通过';
+  return '待判定';
+}
+function testPassed(t){return testResultValue(t)==='通过' && testStatusValue(t)==='已完成'}
+function testFailed(t){return testResultValue(t)==='不通过'}
+function testRetestCount(t,arr){
+  const id=Number(t?.id||0), src=Number(t?.source_test_id||0);
+  if(src>0)return Number(t?.retest_no||0)||1;
+  return (arr||tests||[]).filter(x=>Number(x.source_test_id||0)===id).length;
+}
+function testFileBuckets(t){
+  const list=(files||[]).filter(f=>Number(f.test_id)===Number(t?.id||0)&&Number(f.test_run_id||0)===0);
+  const isImg=f=>String(f.mime_type||'').startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/i.test(String(f.original_name||f.file_name||f.file_path||''));
+  const isReport=f=>/报告|配光|光谱|EMC|PDF/i.test(String(f.category||'')+' '+String(f.title||'')+' '+String(f.original_name||''))||/\.pdf$/i.test(String(f.original_name||f.file_name||''));
+  const isRaw=f=>/原始|数据|IES|LDT|CSV|Excel|表格/i.test(String(f.category||'')+' '+String(f.title||'')+' '+String(f.original_name||''))||/\.(ies|ldt|csv|xls|xlsx)$/i.test(String(f.original_name||f.file_name||''));
+  const images=list.filter(isImg);
+  const reports=list.filter(f=>!isImg(f)&&isReport(f));
+  const raw=list.filter(f=>!isImg(f)&&!isReport(f)&&isRaw(f));
+  const normal=list.filter(f=>!images.includes(f)&&!reports.includes(f)&&!raw.includes(f));
+  return {images,reports,raw,files:normal,all:list};
+}
+function testSampleName(t,ms){
+  const m=(ms||models||[]).find(x=>Number(x.id)===Number(t?.model_id||0));
+  return m?modelLabel(m):'项目公共测试';
+}
+function renderTestProjectCard(t,arr,ms){
+  const status=testStatusValue(t), result=testResultValue(t), buckets=testFileBuckets(t);
+  const cls=testFailed(t)?'failed':(testPassed(t)?'passed':(status==='待复测'?'retest':(status==='进行中'?'running':'pending')));
+  const active=Number(t.id)===Number(testSelectedId)?' active':'';
+  const date=dateOnly(t.test_date)||'-';
+  const retest=testRetestCount(t,arr);
+  return `<button class="test-project-card ${cls}${active}" onclick="testNodeClick(${Number(t.id)})" title="${esc(t.test_conclusion||t.note||'')}">
+    <div class="test-card-title"><span class="test-type-icon">${esc(String(t.test_type||'测').slice(0,2))}</span><b>${esc(t.title||t.test_type||'测试项目')}</b><em>${esc(status)}</em></div>
+    <div class="test-card-sample">${esc(testSampleName(t,ms))}</div>
+    <div class="test-card-meta"><span>测试人：${esc(t.operator||'-')}</span><span>日期：${esc(date)}</span></div>
+    <div class="test-card-result ${result==='不通过'?'bad':(result==='通过'?'good':'')}" >结果：${esc(result)}</div>
+    <div class="test-card-files"><span>图片 ${buckets.images.length}</span><span>文件 ${buckets.files.length+buckets.raw.length}</span><span>报告 ${buckets.reports.length}</span><span>复测 ${retest}</span></div>
+  </button>`;
+}
+function renderTestTemplateChooserInline(ms){
+  const cards=TEST_TEMPLATE_DEFAULTS.filter(t=>['温升测试','IES配光测试','积分球测试','EMC测试','防水/IP测试','老化测试','结构/装配检查','自定义测试'].includes(t.test_type)).map(t=>`<button class="test-template-card" onclick="createTestFromTemplate('${esc(t.key)}')"><b>${esc(t.name)}</b><span>${esc(t.usage||'添加一个独立测试项目')}</span><em>${esc((t.fields||[]).slice(0,4).map(f=>f.label).join(' / '))}</em><strong>加入测试板</strong></button>`).join('');
+  return `<div class="test-template-board"><div class="test-template-board-head"><div><b>添加测试项目</b><span>每个测试项目都会生成独立 test_id，图片、文件和报告分别归档。</span></div><button class="btn small primary" onclick="addCommonTests()">一键加入常用测试</button></div><div class="test-template-card-grid">${cards}</div></div>`;
+}
+function openAddTestProjectPanel(){const host=document.createElement('div');host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal" style="width:min(980px,96vw)"><div class="modal-head"><div><h3>添加测试项目</h3><div class="hint">选择模板后会在当前样品下创建独立测试记录。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body">${renderTestTemplateChooserInline(pModels(cur()?.id||selectedId))}</div></div></div>`;document.body.appendChild(host.firstElementChild)}
+function currentTestModelForCreate(){
+  const n=Number(testModelId);
+  return n>0?n:0;
+}
+async function createTestFromTemplate(key){
+  const p=cur();if(!p){toast('请先选择项目');return}
+  const tpl=templateByKey(key)||TEST_TEMPLATE_DEFAULTS[0];
+  const mid=currentTestModelForCreate();
+  const exists=pTests(p.id).find(t=>Number(t.model_id||0)===Number(mid)&&normalizeTestTypeName(t.test_type)===normalizeTestTypeName(tpl.test_type)&&Number(t.source_test_id||0)===0);
+  if(exists){testCreateMode=false;testSelectedId=Number(exists.id);localStorage.setItem('plm_v85_test_id',testSelectedId);toast('当前样品已存在这个测试项目');renderDetail();return}
+  const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',test_date:'',operator:'',template_key:tpl.key,template_name:tpl.name,template_fields_json:{}});
+  toast(r.ok?'测试项目已加入':r.error);
+  if(r.ok&&r.id){testCreateMode=false;testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId);const mask=document.querySelector('.modal-mask');if(mask)mask.remove()}
+  await load();
+}
+async function addCommonTests(){
+  const p=cur();if(!p){toast('请先选择项目');return}
+  const keys=['builtin_temp','builtin_ies','builtin_sphere'];let added=0, skipped=0;
+  for(const key of keys){
+    const tpl=templateByKey(key);if(!tpl)continue;
+    const mid=currentTestModelForCreate();
+    const exists=pTests(p.id).some(t=>Number(t.model_id||0)===Number(mid)&&normalizeTestTypeName(t.test_type)===normalizeTestTypeName(tpl.test_type)&&Number(t.source_test_id||0)===0);
+    if(exists){skipped++;continue}
+    const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',template_key:tpl.key,template_name:tpl.name,template_fields_json:{}});
+    if(r.ok){added++;testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}else{toast(r.error);break}
+  }
+  toast(`常用测试已加入 ${added} 个，跳过已有 ${skipped} 个`);
+  await load();
+}
 
 function renderTests(p){
   if(!p){$('tabbody').innerHTML='<div class="empty">请选择项目</div>';return}
   const arr=pTests(p.id).sort((a,b)=>Number(b.id)-Number(a.id));
   const ms=pModels(p.id);
-  const typeCounts={}, statusCounts={待测:0,测试中:0,通过:0,不通过:0,待复测:0};
-  arr.forEach(t=>{const type=(t.test_type||'其它').trim()||'其它';typeCounts[type]=(typeCounts[type]||0)+1;const x=String(t.status||'')+' '+String(t.result||'');if(/不通过|失败|异常|需整改/.test(x))statusCounts['不通过']++;else if(/待复测/.test(x))statusCounts['待复测']++;else if(/测试中/.test(x))statusCounts['测试中']++;else if(/通过|已完成/.test(x))statusCounts['通过']++;else statusCounts['待测']++;});
-  // V8.5.101：测试中心简化。取消搜索、清空、状态筛选、类型快捷按钮，测试节点数量不多时直接显示全部。
-  testNodeFilter='all';
-  testNodeSearch='';
-  localStorage.setItem('plm_v85_test_node_filter','all');
-  localStorage.removeItem('plm_v85_test_node_search');
-  const filtered=arr;
+  if(ms.length && (!testModelId || (testModelId>0 && !ms.some(m=>Number(m.id)===Number(testModelId))))){
+    testModelId=flowModelId&&ms.some(m=>Number(m.id)===Number(flowModelId))?Number(flowModelId):Number(ms[0].id||0);
+    localStorage.setItem('plm_v85_test_model',testModelId);
+  }
+  if(!ms.length && !testModelId){testModelId=0;localStorage.setItem('plm_v85_test_model',0)}
+  const currentModel=ms.find(m=>Number(m.id)===Number(testModelId))||null;
+  const scoped=arr.filter(t=>Number(testModelId)<0 || Number(t.model_id||0)===Number(testModelId||0));
+  const typeFilter=localStorage.getItem('plm_v85_test_type_filter')||'';
+  const typeOptions=uniq(scoped.map(t=>t.test_type||'其它')).filter(Boolean);
+  const filtered=scoped.filter(t=>testNodeMatchesSearch(t,ms)&&testNodeMatchesFilter(t)&&(typeFilter?String(t.test_type||'其它')===typeFilter:true));
   if(!testCreateMode){
     if(testSelectedId&&!filtered.some(x=>Number(x.id)===Number(testSelectedId))){testSelectedId=filtered[0]?Number(filtered[0].id):0;localStorage.setItem('plm_v85_test_id',testSelectedId||0)}
     if(!testSelectedId&&filtered[0]){testSelectedId=Number(filtered[0].id);localStorage.setItem('plm_v85_test_id',testSelectedId||0)}
   }
   const selected=testCreateMode?null:(arr.find(x=>Number(x.id)===Number(testSelectedId))||null);
-  const dashboard=renderTestReportPanel(p,arr,ms,typeCounts,statusCounts);
-  const nodes=filtered.map(t=>renderTestNodeCard(t,arr,ms)).join('')||`<div class="empty">暂无测试节点。<br><button class="btn small primary" onclick="newTestNode('温升')">+ 新测试</button></div>`;
-  $('tabbody').innerHTML=`${dashboard}<div class="test-node-layout clean-v8585"><div class="test-node-left"><div class="test-node-head"><h3>测试节点</h3><button class="btn small primary" onclick="newTestNode('温升')">+ 新测试</button></div><div class="test-node-list">${nodes}</div></div><div class="test-node-right">${renderTestDetailForm(p,selected,ms)}</div></div>`;
+  const total=scoped.length;
+  const notStarted=scoped.filter(t=>testStatusValue(t)==='未开始'||testStatusValue(t)==='待测').length;
+  const running=scoped.filter(t=>testStatusValue(t)==='进行中').length;
+  const done=scoped.filter(testPassed).length;
+  const failed=scoped.filter(testFailed).length;
+  const retest=scoped.filter(t=>testStatusValue(t)==='待复测'||testRetestCount(t,arr)>0).length;
+  const buckets=scoped.reduce((o,t)=>{const b=testFileBuckets(t);o.img+=b.images.length;o.file+=b.files.length+b.raw.length;o.report+=b.reports.length;return o},{img:0,file:0,report:0});
+  const fileTotal=buckets.img+buckets.file+buckets.report;
+  const rectifyOpen=(dispatchLinks||[]).filter(l=>String(l.link_type||'')==='test_rectify'&&scoped.some(t=>Number(t.id)===Number(l.test_id))&&!(Number(l.progress||0)>=100||/完成|已完成|done/i.test(String(l.status||'')))).length;
+  const cover=ms.length?uniq(scoped.map(t=>Number(t.model_id||0)).filter(Boolean)).length+'/'+ms.length:'0/0';
+  const pct=total?Math.round(done*100/total):0;
+  const modelOptions=`<option value="-1" ${Number(testModelId)<0?'selected':''}>全部测试</option><option value="0" ${Number(testModelId)===0?'selected':''}>项目公共测试</option>`+ms.map(m=>`<option value="${m.id}" ${Number(m.id)===Number(testModelId)?'selected':''}>${esc(modelLabel(m))}</option>`).join('');
+  const nodes=filtered.map(t=>renderTestProjectCard(t,scoped,ms)).join('')||`<div class="test-empty-small">${scoped.length?'当前筛选下暂无测试记录。':'当前样品暂无测试项目。'}<br><button class="btn small primary" onclick="openAddTestProjectPanel()">添加测试项目</button></div>`;
+  const detailHtml=(!testCreateMode&&!selected)?`<div class="test-detail-empty"><b>请选择测试记录</b><span>从左侧选择一条测试记录，或点击“新增测试”。</span><button class="btn primary" onclick="newTestNode(activeTestType||'温升')">新增测试</button></div>`:renderTestDetailForm(p,selected,ms);
+  $('tabbody').innerHTML=`<div class="test-workbench">
+    <div class="test-topbar">
+      <div class="test-top-left"><b>测试中心</b><select class="test-model-picker" onchange="setTestModel(this.value)">${modelOptions}</select><span class="test-rate">完成率 ${pct}%</span></div>
+      <div class="test-top-actions"><button class="btn primary" onclick="openAddTestProjectPanel()">添加测试项目</button><button class="btn good" onclick="addCommonTests()">一键加入常用测试</button><button class="btn" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn" onclick="window.print()">打印</button><details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="openTestDashboardModal()">查看测试报表</button></div></details></div>
+    </div>
+    <div class="test-statbar"><span><b>${total}</b> 测试</span><span><b>${notStarted}</b> 未开始</span><span class="info"><b>${running}</b> 进行中</span><span class="good"><b>${done}</b> 通过</span><span class="bad"><b>${failed}</b> 不通过</span><span class="warn"><b>${retest}</b> 待复测</span><span><b>${buckets.img}</b> 图片</span><span><b>${buckets.file}</b> 文件</span><span><b>${buckets.report}</b> 报告</span><span><b>${cover}</b> 覆盖</span></div>
+    <div class="test-stat-progress"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>
+    <div class="test-project-layout">
+      <div class="test-project-board"><div class="test-node-head"><h3>测试项目看板</h3><div class="hint">每个卡片是一条独立测试记录，附件按 test_id 独立归档。</div></div>
+        <div class="test-list-tools"><input class="test-filter-search" value="${esc(testNodeSearch||'')}" placeholder="搜索标题 / 类型 / 测试人 / 结论 / 日期" oninput="setTestNodeSearch(this.value)"><select onchange="setTestTypeFilter(this.value)"><option value="">全部类型</option>${typeOptions.map(x=>`<option ${x===typeFilter?'selected':''}>${esc(x)}</option>`).join('')}</select><select onchange="setTestStatusFilter(this.value)"><option value="all" ${testNodeFilter==='all'?'selected':''}>全部状态</option><option value="pending" ${testNodeFilter==='pending'?'selected':''}>待测/测试中</option><option value="done" ${testNodeFilter==='done'?'selected':''}>通过</option><option value="failed" ${testNodeFilter==='failed'?'selected':''}>异常</option><option value="retest" ${testNodeFilter==='retest'?'selected':''}>待复测</option><option value="file" ${testNodeFilter==='file'?'selected':''}>有附件</option></select><button class="btn small" onclick="testNodeSearch='';testNodeFilter='all';localStorage.removeItem('plm_v85_test_node_search');localStorage.setItem('plm_v85_test_node_filter','all');localStorage.removeItem('plm_v85_test_type_filter');renderDetail()">清空</button></div>
+        <div class="test-card-grid">${nodes}</div>
+        ${!scoped.length?renderTestTemplateChooserInline(ms):''}
+      </div>
+      <aside class="test-detail-side">${detailHtml}</aside>
+    </div>
+  </div>`;
 }
 function renderTemplateSelect(t){const tpl=templateForTest(t);const list=allTestTemplates();return `<select id="t_template" onchange="changeTestTemplate()">${list.map(x=>`<option value="${esc(x.key)}" ${(tpl&&String(x.key)===String(tpl.key))?'selected':''}>${esc(x.name)}${x.builtin?'':' · 自定义'}</option>`).join('')}</select>`}
 function testTplHasBind(tpl,bind){return !!((tpl&&tpl.fields)||[]).some(f=>String(f.bind||'')===String(bind))}
@@ -8955,7 +10981,7 @@ function renderTestRectifyDispatchPanel(t,it){
   const link=testRectifyLink(it.id,t.id);
   if(link){
     const done=/done|完成|已完成|approved|已确认/i.test(String(link.status||''))||Number(link.progress||0)>=100;
-    const url=link.dispatch_url||(`dispatch_todo.php?open_task=${Number(link.task_id||0)}&single_task=1`);
+    const url=link.dispatch_url||(`dispatch_next.php?open_task=${Number(link.task_id||0)}&single_task=1`);
     return `<div class="test-rectify-panel ${done?'done':''}"><div class="test-rectify-head"><span>整改派工</span><span class="tag ${done?'green':'blue'}">${esc(link.status||'已生成')}</span></div><div class="test-rectify-meta">负责人：${esc(link.assignee_name||'-')} ｜ 进度：${Number(link.progress||0)}% ｜ 截止：${esc(dateOnly(link.due_at)||'-')} ｜ 派工ID：${esc(link.task_id||'')}</div><div class="actions"><button class="btn small primary" onclick="window.open('${esc(url)}','_blank')">查看派工</button>${done?'<span class="mini-tag green">整改完成，测试会回写为待复测</span>':'<span class="mini-tag blue">等待工程整改</span>'}</div></div>`;
   }
   return `<div class="test-rectify-panel"><div class="test-rectify-head"><span>整改派工</span><span class="tag orange">未生成</span></div><div class="test-rectify-meta">测试异常后，可一键生成派工给工程整改。派工完成后，问题闭环会更新，测试状态会回写为待复测。</div><div class="test-rectify-actions"><select id="test_rectify_user_${Number(t.id)}">${userSelectOptions(0,it.owner||t.operator||'')}</select><input id="test_rectify_due_${Number(t.id)}" type="date" title="整改截止日期"><button class="btn small warn" onclick="createTestRectifyDispatch(${Number(t.id)},${Number(it.id)})">生成整改派工</button></div></div>`;
@@ -8996,16 +11022,159 @@ function gotoIssueFromTest(issueId){
   setTimeout(()=>{const el=document.querySelector(`[data-issue-id="${issueId}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('issue-highlight');setTimeout(()=>el.classList.remove('issue-highlight'),1800)}},80);
 }
 
-function renderTestAttachmentSection(t,filesHtml){
-  const cnt=files.filter(x=>Number(x.test_id)===Number(t.id)&&Number(x.test_run_id||0)===0).length;
-  return `<div class="test-form-section test-upload-quick" id="testNodeFileSection"><div class="test-upload-quick-head"><div><h4>测试资料 / 节点附件</h4><div class="hint">温升照片、IES 文件、积分球报告、PDF 等都在这里上传；重测记录自己的附件仍放到对应重测记录下面。</div></div><div class="actions"><span class="tag blue">附件 ${cnt}</span><button class="btn small primary" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传测试资料</button></div></div><div class="test-upload-list">${filesHtml||'<div class="hint">暂无节点附件</div>'}</div></div>`;
+function testEvidenceCounts(t){
+  const b=testFileBuckets(t), it=issueForTest(t), runs=testRunsFor(t);
+  return {images:b.images.length,files:b.files.length,reports:b.reports.length,raw:b.raw.length,issues:it?1:0,runs:runs.length||0};
+}
+function testEvidenceTabButton(key,label,count){
+  const active=testEvidenceTab===key?' active':'';
+  return `<button class="test-evidence-tab${active}" onclick="setTestEvidenceTab('${key}')">${esc(label)} <b>${Number(count||0)}</b></button>`;
+}
+function setTestEvidenceTab(key){
+  testEvidenceTab=key||'images';
+  localStorage.setItem('plm_v85_test_evidence_tab',testEvidenceTab);
+  renderDetail();
+}
+function testEvidenceCategoryForTab(tab,testType){
+  if(tab==='images')return '测试图片';
+  if(tab==='reports')return testTypeDefaultFileCat(testType||'测试').replace('图片','报告');
+  if(tab==='raw')return /IES/i.test(String(testType||''))?'IES文件':'原始数据';
+  return '测试附件';
+}
+function testEvidenceAcceptForTab(tab){
+  if(tab==='images')return 'image/*';
+  if(tab==='reports')return '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ies,.ldt,.zip';
+  if(tab==='raw')return '.ies,.ldt,.csv,.txt,.xls,.xlsx,.zip';
+  return '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ies,.ldt,.zip,image/*';
+}
+function renderTestEvidenceUpload(t,tab){
+  const uid='ev_'+Number(t.id)+'_'+tab;
+  const cat=testEvidenceCategoryForTab(tab,t.test_type);
+  return `<div class="test-evidence-upload" id="${uid}_drop" ondragover="event.preventDefault();this.classList.add('dragging')" ondragleave="this.classList.remove('dragging')" ondrop="handleTestEvidenceDrop(event,'${uid}')" tabindex="0" onpaste="handleTestEvidencePaste(event,'${uid}')">
+    <div class="test-evidence-drop-main"><b>将图片或文件拖到这里</b><span>也可以点击选择，或粘贴截图。当前上传到：${esc(t.title||t.test_type||'测试项目')}</span></div>
+    <input id="${uid}_file" type="file" multiple accept="${esc(testEvidenceAcceptForTab(tab))}" onchange="renderTestUploadQueue('${uid}')">
+    <div class="test-evidence-upload-grid"><select id="${uid}_cat">${uniq([...TEST_FILE_CATS,cat]).map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="文件标题，可不填"></div>
+    <textarea id="${uid}_note" placeholder="资料说明 / 图片备注"></textarea>
+    <div id="${uid}_queue" class="test-upload-queue"></div>
+    <div class="actions"><button class="btn small primary" onclick="uploadTestEvidence('${uid}',${Number(t.id)},${Number(t.model_id||0)},0)">开始上传</button><button class="btn small" onclick="$('${uid}_file').click()">选择文件</button></div>
+  </div>`;
+}
+function renderTestUploadQueue(uid){
+  const box=$(uid+'_queue'), input=$(uid+'_file');
+  if(!box||!input)return;
+  const list=[...(input.files||[])];
+  box.innerHTML=list.length?list.map(f=>`<div class="test-upload-row"><span>${esc(f.name)}</span><b>${fileSize(f.size)}</b><em>等待上传</em></div>`).join(''):'';
+}
+function handleTestEvidenceDrop(ev,uid){
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('dragging');
+  const input=$(uid+'_file');
+  if(!input||!ev.dataTransfer)return;
+  input.files=ev.dataTransfer.files;
+  renderTestUploadQueue(uid);
+}
+function handleTestEvidencePaste(ev,uid){
+  const input=$(uid+'_file');
+  if(!input||!ev.clipboardData)return;
+  const files=[];
+  [...ev.clipboardData.items].forEach((item,i)=>{
+    if(item.kind==='file'){
+      const f=item.getAsFile();
+      if(f){
+        const ext=(f.type||'image/png').split('/').pop()||'png';
+        files.push(new File([f], 'clipboard_'+new Date().toISOString().replace(/[:.]/g,'-')+'_'+i+'.'+ext, {type:f.type||'image/png'}));
+      }
+    }
+  });
+  if(!files.length)return;
+  const dt=new DataTransfer();
+  files.forEach(f=>dt.items.add(f));
+  input.files=dt.files;
+  renderTestUploadQueue(uid);
+  ev.preventDefault();
+}
+function uploadApiProgress(form,onProgress){
+  return new Promise(resolve=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',API+'?action=upload_file',true);
+    xhr.withCredentials=true;
+    xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(Math.round(e.loaded*100/e.total));};
+    xhr.onload=()=>{try{resolve(JSON.parse(xhr.responseText||'{}'))}catch(e){resolve({ok:false,error:'上传接口异常：'+String(xhr.responseText||'').slice(0,300)})}};
+    xhr.onerror=()=>resolve({ok:false,error:'网络上传失败'});
+    xhr.send(form);
+  });
+}
+async function uploadTestEvidence(uid,testId,modelId,runId=0){
+  const p=cur();if(!p)return;
+  const input=$(uid+'_file'), box=$(uid+'_queue');
+  const list=[...(input?.files||[])];
+  if(!testId){toast('请先保存测试项目');return}
+  if(!list.length){toast('请选择或拖入文件');return}
+  const existing=pFiles(p.id).filter(f=>Number(f.test_id)===Number(testId));
+  const duplicates=list.filter(file=>existing.some(f=>String(f.original_name||'')===String(file.name)&&Number(f.file_size||0)===Number(file.size||0)));
+  if(duplicates.length&&!confirm(`当前测试已存在 ${duplicates.length} 个同名同大小文件。继续保留两份？`))return;
+  if(box)box.innerHTML=list.map(f=>`<div class="test-upload-row" data-name="${esc(f.name)}"><span>${esc(f.name)}</span><b>${fileSize(f.size)}</b><em>0%</em></div>`).join('');
+  let ok=0,fail=0;
+  for(const file of list){
+    const row=box?[...box.querySelectorAll('.test-upload-row')].find(x=>x.dataset.name===file.name):null;
+    const fd=new FormData();
+    fd.append('project_id',p.id);
+    fd.append('model_id',modelId||0);
+    fd.append('test_id',testId||0);
+    fd.append('test_run_id',runId||0);
+    fd.append('source_module','test');
+    fd.append('category',$(uid+'_cat')?.value||'测试附件');
+    fd.append('title',$(uid+'_title')?.value||'');
+    fd.append('note',$(uid+'_note')?.value||'');
+    fd.append('customer_visible',1);
+    fd.append('file',file);
+    const r=await uploadApiProgress(fd,pct=>{if(row)row.querySelector('em').textContent=pct+'%'});
+    if(r.ok){ok++;if(row){row.classList.add('ok');row.querySelector('em').textContent='完成'}}else{fail++;if(row){row.classList.add('fail');row.querySelector('em').textContent='失败：'+(r.error||'未知错误')}}
+  }
+  toast(`上传完成：成功 ${ok}，失败 ${fail}`);
+  await load();
+}
+function renderEvidenceImageGrid(list){
+  if(!list.length)return '<div class="test-evidence-empty">暂无测试图片。可拖入现场照片、温升照片或截图。</div>';
+  return `<div class="test-image-grid">${list.map(f=>`<div class="test-image-item"><button onclick="openTestImageLightbox(${Number(f.id)})"><img src="${esc(f.file_path)}" alt="${esc(f.title||f.original_name||'测试图片')}"></button><div><b>${esc(f.title||f.original_name||'图片')}</b><span>${esc(f.created_at||'')}</span></div><div class="actions"><button class="btn small" onclick="openTestImageLightbox(${Number(f.id)})">预览</button><a class="btn small" href="${esc(f.file_path)}" download>下载</a><button class="btn small danger" onclick="deleteFile(${Number(f.id)})">删除</button></div></div>`).join('')}</div>`;
+}
+function evidenceFileKind(f){
+  const name=String(f.original_name||f.file_name||f.file_path||'');
+  if(/\.(pdf)$/i.test(name))return 'PDF';
+  if(/\.(ies|ldt)$/i.test(name))return 'IES/LDT';
+  if(/\.(csv|txt)$/i.test(name))return '文本';
+  if(/\.(xls|xlsx)$/i.test(name))return '表格';
+  if(/\.(doc|docx)$/i.test(name))return '文档';
+  if(/\.(zip|rar|7z)$/i.test(name))return '压缩包';
+  return '文件';
+}
+function renderEvidenceFileList(list,empty){
+  if(!list.length)return `<div class="test-evidence-empty">${esc(empty||'暂无资料')}</div>`;
+  return `<div class="test-evidence-file-list">${list.slice(0,6).map(f=>`<div class="test-evidence-file-row"><div><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b><span>${esc(evidenceFileKind(f))} ｜ ${fileSize(f.file_size)} ｜ ${esc(f.created_at||'')}</span><em>${esc(f.note||'')}</em></div><div class="actions"><button class="btn small" onclick="openTestFilePreview(${Number(f.id)})">在线预览</button><a class="btn small" href="${esc(f.file_path)}" download>下载</a><button class="btn small danger" onclick="deleteFile(${Number(f.id)})">删除</button></div></div>`).join('')}${list.length>6?`<div class="hint">还有 ${list.length-6} 个，进入文件中心可查看全部。</div>`:''}</div>`;
+}
+function renderTestEvidencePanel(t){
+  const b=testFileBuckets(t), counts=testEvidenceCounts(t), it=issueForTest(t);
+  const tabs=`<div class="test-evidence-tabs">${testEvidenceTabButton('images','图片',counts.images)}${testEvidenceTabButton('files','文件',counts.files)}${testEvidenceTabButton('reports','报告',counts.reports)}${testEvidenceTabButton('raw','原始数据',counts.raw)}${testEvidenceTabButton('issues','问题',counts.issues)}${testEvidenceTabButton('runs','复测历史',counts.runs)}</div>`;
+  let body='';
+  if(testEvidenceTab==='images')body=renderEvidenceImageGrid(b.images);
+  else if(testEvidenceTab==='files')body=renderEvidenceFileList(b.files,'暂无测试文件。');
+  else if(testEvidenceTab==='reports')body=renderEvidenceFileList(b.reports,'暂无测试报告。');
+  else if(testEvidenceTab==='raw')body=renderEvidenceFileList(b.raw,'暂无原始数据。');
+  else if(testEvidenceTab==='issues')body=renderTestIssuePanel(t);
+  else body=renderTestRunHistory(t);
+  const uploadTabs=['images','files','reports','raw'];
+  return `<div class="test-evidence-panel" id="testNodeFileSection"><div class="test-evidence-head"><div><h4>测试证据</h4><span>附件按当前 test_id 独立绑定，复测附件按 test_run_id 单独归档。</span></div>${uploadTabs.includes(testEvidenceTab)?`<button class="btn small primary" onclick="toggleTestEvidenceUpload()">上传资料</button>`:''}</div>${tabs}<div id="testEvidenceUploadWrap" class="test-evidence-upload-wrap" style="display:none">${uploadTabs.includes(testEvidenceTab)?renderTestEvidenceUpload(t,testEvidenceTab):''}</div><div class="test-evidence-body">${body}</div></div>`;
+}
+function toggleTestEvidenceUpload(){
+  const el=$('testEvidenceUploadWrap');
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
 }
 function openTestUploadModal(testId,modelId,testType){
   if(!testId){toast('请先保存测试节点');return;}
-  const uid='test_upload_'+Math.random().toString(36).slice(2,8);
-  const cat=testTypeDefaultFileCat(testType||'测试');
+  const t=tests.find(x=>Number(x.id)===Number(testId))||{id:testId,model_id:modelId,test_type:testType,title:testType};
+  const uid='test_modal_upload_'+Math.random().toString(36).slice(2,8);
   const host=document.createElement('div');
-  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal test-upload-modal" style="max-width:720px"><div class="modal-head"><div><h3>上传测试资料</h3><div class="hint">上传后会归到当前测试节点；如果是某一次重测的资料，请在重测记录下面上传。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="uploadbox">${uploadBox(cat,modelId||0,testId,true,0,0)}</div></div></div></div>`;
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal test-upload-modal" style="max-width:760px"><div class="modal-head"><div><h3>上传测试资料</h3><div class="hint">当前上传到：${esc(t.title||testType||'测试项目')}。附件绑定当前 test_id。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body">${renderTestEvidenceUpload(t,'files').replace(/ev_${Number(t.id)}_files/g,uid)}</div></div></div>`;
   document.body.appendChild(host.firstElementChild);
 }
 function scrollToTestFiles(){
@@ -9016,14 +11185,25 @@ function scrollToTestFiles(){
 function renderTestDetailForm(p,t,ms){
   const isNew=!t;const tpl=isNew?(templateForType(activeTestType)||TEST_TEMPLATE_DEFAULTS[0]):templateForTest(t);const custom=testCustomValues(t);
   const type=isNew?(tpl.test_type||activeTestType):(t.test_type||tpl.test_type||activeTestType);
-  const title=t?.title||type+'测试';const allTestFiles=t?files.filter(x=>Number(x.test_id)===Number(t.id)):[];const fileList=allTestFiles.filter(x=>Number(x.test_run_id||0)===0);const filesHtml=fileList.map(f=>fileChip(f,'node-file')).join('');
+  const title=t?.title||type+'测试';
   const preserveHidden=[
     testTplHasBind(tpl,'test_standard')?'':hiddenTestTextarea('t_standard',t?.test_standard||''),
     testTplHasBind(tpl,'test_data')?'':hiddenTestTextarea('t_data',t?.test_data||''),
-    testTplHasBind(tpl,'test_conclusion')?'':hiddenTestTextarea('t_conclusion',t?.test_conclusion||''),
-    hiddenTestTextarea('t_note',t?.note||'')
+    testTplHasBind(tpl,'test_conclusion')?'':hiddenTestTextarea('t_conclusion',t?.test_conclusion||'')
   ].join('');
-  return `<div class="test-detail-head"><div><h3>${isNew?'新增测试节点':esc(type+' · '+(t.title||'未命名'))}</h3><div class="hint">左边选测试节点，右边编辑详情。保存测试只改当前节点；保存为重测会新增一条历史记录，不覆盖旧记录。</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button>${t?`<button class="btn" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传资料</button><button class="btn" onclick="openSingleTestReport(${Number(t.id)})">测试报告</button><button class="btn good" onclick="saveAsTestRun(${p.id})">保存为一次重测</button><button class="btn danger" onclick="deleteTest(${t.id})">删除</button>`:''}</div></div><div class="test-detail-form"><input id="t_id" type="hidden" value="${t?.id||0}">${preserveHidden}<div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid"><div class="field"><label>归属样品</label><select id="t_model_id"><option value="0">不绑定样品</option>${ms.map(m=>`<option value="${m.id}" ${Number(t?.model_id||0)===Number(m.id)?'selected':''}>${esc(m.name||m.model||m.id)}</option>`).join('')}</select></div><div class="field"><label>测试模板</label>${renderTemplateSelect(t||{test_type:type,template_key:tpl.key})}</div><div class="field"><label>测试类型</label><select id="t_type">${TEST_TYPES.map(x=>`<option ${x===type?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>测试标题</label><input id="t_title" value="${esc(title)}" placeholder="测试标题"></div><div class="field"><label>状态</label><select id="t_status">${opt(['待测','测试中','通过','不通过','待复测','已完成','需整改'],t?.status||'待测')}</select></div><div class="field"><label>结论</label><select id="t_result"><option value="">测试结论</option>${opt(['通过','不通过','待确认','待复测'],t?.result||'')}</select></div><div class="field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div><div class="field"><label>复测结果</label><input id="t_retest" value="${esc(t?.retest_result||'')}" placeholder="复测结果"></div></div></div><div class="test-form-section"><h4>${esc(tpl.name||'测试模板字段')}</h4><div class="test-template-fields">${(tpl.fields||[]).map(f=>renderTestTemplateField(f,t,custom)).join('')||'<div class="hint">这个模板暂无字段，可在下方模板管理里自定义。</div>'}</div></div>${t?renderTestAttachmentSection(t,filesHtml):''}${t?renderTestIssuePanel(t):''}${t?renderTestRunHistory(t):''}${renderTestTemplateManager(tpl)}</div>`
+  if(!isNew&&!t)return `<div class="test-detail-empty"><b>请选择测试项目</b><span>从看板选择一个测试项目，或添加新的测试项目。</span><button class="btn primary" onclick="openAddTestProjectPanel()">添加测试项目</button></div>`;
+  const sampleName=t?testSampleName(t,ms):(ms.find(m=>Number(m.id)===Number(testModelId))?.name||'项目公共测试');
+  const fallbackResult=!testTplHasBind(tpl,'test_conclusion')?`<div class="field wide"><label>测试结论 / 整改建议</label><textarea id="t_conclusion" placeholder="记录测试结论、整改建议或客户确认要求">${esc(t?.test_conclusion||'')}</textarea></div>`:'';
+  const counts=t?testEvidenceCounts(t):{images:0,files:0,reports:0,raw:0,runs:0};
+  const summary=t?`<div class="test-current-summary"><button onclick="setTestEvidenceTab('images')">图片 <b>${counts.images}</b></button><button onclick="setTestEvidenceTab('files')">文件 <b>${counts.files+counts.raw}</b></button><button onclick="setTestEvidenceTab('reports')">报告 <b>${counts.reports}</b></button><button onclick="setTestEvidenceTab('runs')">复测 <b>${testRetestCount(t,tests)}</b></button><span>${esc(testStatusValue(t))}</span><span>${esc(testResultValue(t))}</span><span>${esc(dateOnly(t.test_date)||'-')}</span><span>${esc(t.operator||'-')}</span></div>`:'';
+  return `<div class="test-detail-head"><div><h3>${isNew?'新增测试':esc(t.test_type||type)}${isNew?'':` · ${esc(t.title||'未命名')}`}</h3><div class="hint">${esc(sampleName)} ｜ 状态：${esc(testStatusValue(t||{status:'未开始'}))} ｜ 结果：${esc(testResultValue(t||{result:'待判定'}))}</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button>${t?`<button class="btn" onclick="markTestStatus('进行中')">开始测试</button><button class="btn good" onclick="markTestStatus('已完成')">完成测试</button><button class="btn good" onclick="markTestResult('通过')">判定通过</button><button class="btn warn" onclick="markTestResult('不通过')">判定不通过</button><details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="createRetestFromCurrent(${p.id})">创建复测</button><button class="btn small" onclick="gotoTab('issues')">进入问题闭环</button><button class="btn small" onclick="gotoTab('files')">文件中心</button><button class="btn small" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传附件</button><button class="btn small" onclick="openSingleTestReport(${Number(t.id)})">打印/报表</button><button class="btn small danger" onclick="deleteTest(${t.id})">删除测试</button></div></details>`:`<button class="btn" onclick="testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()">取消</button>`}</div></div>${summary}
+  <div class="test-detail-form"><input id="t_id" type="hidden" value="${t?.id||0}"><input id="t_source_test_id" type="hidden" value="${Number(t?.source_test_id||0)}"><input id="t_retest_no" type="hidden" value="${Number(t?.retest_no||0)}">${preserveHidden}
+    <div class="test-detail-main-grid"><div class="test-data-column">
+      <div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid test-basic-grid"><div class="field sample-field"><label>归属样品</label><select id="t_model_id"><option value="0">项目公共测试</option>${ms.map(m=>`<option value="${m.id}" ${Number((t?.model_id??testModelId)||0)===Number(m.id)?'selected':''}>${esc(m.name||m.model||m.id)}</option>`).join('')}</select></div><div class="field tpl-field"><label>测试模板</label>${renderTemplateSelect(t||{test_type:type,template_key:tpl.key})}</div><div class="field"><label>测试类型</label><select id="t_type">${TEST_TYPES.map(x=>`<option ${x===type?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field title-field"><label>测试标题</label><input id="t_title" value="${esc(title)}" placeholder="测试标题"></div><div class="field small-field"><label>测试状态</label><select id="t_status">${opt(['未开始','进行中','已完成','待复测','已取消'],testStatusValue(t||{status:'未开始'}))}</select></div><div class="field small-field"><label>测试结果</label><select id="t_result">${opt(['待判定','通过','不通过'],testResultValue(t||{result:'待判定'}))}</select></div><div class="field small-field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field small-field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field small-field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div><div class="field"><label>复测结果</label><input id="t_retest" value="${esc(t?.retest_result||'')}" placeholder="复测结果"></div></div></div>
+      <div class="test-form-section"><h4>${esc(tpl.name||'测试参数')}</h4><div class="test-template-fields">${(tpl.fields||[]).map(f=>renderTestTemplateField(f,t,custom)).join('')||'<div class="hint">这个模板暂无字段，可通过顶部“测试模板”维护。</div>'}</div></div>
+      <div class="test-form-section"><h4>结果与结论</h4><div class="test-result-grid">${fallbackResult}<div class="field wide"><label>备注</label><textarea id="t_note" placeholder="补充测试条件、异常说明、整改建议或备注">${esc(t?.note||'')}</textarea></div></div></div>
+    </div><aside class="test-evidence-column">${t?renderTestEvidencePanel(t):'<div class="test-evidence-empty">保存测试后可以上传图片、文件、报告和原始数据。</div>'}</aside></div>
+  </div>`
 }
 
 function testReportText(t){
@@ -9157,6 +11337,20 @@ function renderTestTemplateManager(tpl){
   const collapsed=tplEditorCollapsed();
   return `<div class="test-form-section test-template-editor ${collapsed?'collapsed':''}"><div class="tpl-collapse-head"><div><h4>模板字段管理</h4><div class="tpl-collapse-sub">可自己决定每种测试要填哪些字段；已改成卡片网格，一排自动显示 2～3 个字段。</div></div><button class="btn small tpl-toggle-btn" onclick="toggleTplEditor()">${collapsed?'展开':'折叠'}</button></div><div class="tpl-editor-body"><input id="tpl_edit_id" type="hidden" value="${editingId}"><div class="tpl-editor-top"><input id="new_tpl_name" value="${esc(nameVal)}" placeholder="模板名称，如 温升简版"><select id="new_tpl_type">${TEST_TYPES.map(x=>`<option ${x===(tpl?.test_type||activeTestType)?'selected':''}>${esc(x)}</option>`).join('')}</select><button class="btn small" onclick="addTplFieldRow()">+ 字段</button><button class="btn small" onclick="loadActiveTemplateToEditor()">载入当前模板</button><button class="btn small primary" onclick="saveTestTemplateFromEditor()">保存模板</button></div><div class="tpl-editor-head"><span></span><span>字段名称</span><span>类型</span><span>绑定标准字段</span><span>必填</span><span>选项</span><span>默认值</span><span>Key</span><span>操作</span></div><div id="tpl_field_rows" class="tpl-field-rows">${(tpl.fields&&tpl.fields.length?tpl.fields:[{label:'测试结论',type:'textarea',bind:'test_conclusion',required:0}]).map(renderTplEditorRow).join('')}</div><div class="test-template-manage">${customs.map(x=>`<div class="test-template-chip"><div><b>${esc(x.name)}</b><div class="hint">${esc(x.test_type||'通用')} · ${x.fields.length}项</div></div><div class="actions"><button class="btn small" onclick="editCustomTestTemplate(${x.id})">编辑</button><button class="btn small danger" onclick="deleteCustomTestTemplate(${x.id})">删</button></div></div>`).join('')||'<div class="hint">暂无自定义模板</div>'}</div></div></div>`;
 }
+function openTestTemplateDrawer(){
+  const tpl=templateForType(activeTestType)||TEST_TEMPLATE_DEFAULTS[0];
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask test-template-drawer-mask" onclick="if(event.target===this)this.remove()"><div class="test-template-drawer"><div class="modal-head"><div><h3>测试模板字段</h3><div class="hint">维护模板字段，不影响已保存的历史记录结构。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body">${renderTestTemplateManager(tpl)}</div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+function openTestDashboardModal(){
+  const p=cur();if(!p){toast('请先选择项目');return}
+  const arr=pTests(p.id),ms=pModels(p.id),typeCounts={},statusCounts={};
+  arr.forEach(t=>{typeCounts[t.test_type||'其它']=(typeCounts[t.test_type||'其它']||0)+1;statusCounts[t.status||'待测']=(statusCounts[t.status||'待测']||0)+1});
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal" style="width:min(1100px,96vw)"><div class="modal-head"><div><h3>测试报表</h3><div class="hint">使用现有测试统计，只读查看，不改变测试记录。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body">${renderTestReportPanel(p,arr,ms,typeCounts,statusCounts)}</div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
 let tplDragEl=null;
 function tplFieldDragStart(e){tplDragEl=e.currentTarget;e.dataTransfer.effectAllowed='move'}
 function tplFieldDragOver(e){e.preventDefault();const row=e.currentTarget;if(!tplDragEl||row===tplDragEl)return;const box=row.getBoundingClientRect();const after=(e.clientY-box.top)>box.height/2;row.parentNode.insertBefore(tplDragEl,after?row.nextSibling:row)}
@@ -9196,15 +11390,55 @@ function gv(id){const el=$(id);return el?el.value:''}
 function numOrEmpty(id){const v=gv(id);return v===''?'':v}
 function collectTestFormData(pid){
   const tpl=templateByKey(gv('t_template'))||templateForType(gv('t_type')||activeTestType);const custom={};document.querySelectorAll('[data-test-custom-key]').forEach(el=>{custom[el.getAttribute('data-test-custom-key')]=el.value||''});
-  return {id:Number(gv('t_id')||0),project_id:pid,model_id:gv('t_model_id'),test_type:gv('t_type')||tpl.test_type||activeTestType,title:gv('t_title'),status:gv('t_status'),result:gv('t_result'),test_date:gv('t_date'),operator:gv('t_operator'),affect_sample:Number(gv('t_affect')||0),ambient_temp:numOrEmpty('t_ambient'),led_temp:numOrEmpty('t_led'),driver_temp:numOrEmpty('t_driver'),shell_temp:numOrEmpty('t_shell'),max_temp:numOrEmpty('t_max'),sphere_lumen:gv('t_lumen'),sphere_power:gv('t_power'),sphere_efficiency:gv('t_eff'),cct:gv('t_cct'),cri:gv('t_cri'),ies_angle:gv('t_angle'),ies_lumen:gv('t_ies_lumen'),retest_result:gv('t_retest'),test_standard:gv('t_standard'),test_data:gv('t_data'),test_conclusion:gv('t_conclusion'),note:gv('t_note'),template_key:tpl?.key||'',template_name:tpl?.name||'',template_fields_json:custom};
+  return {id:Number(gv('t_id')||0),project_id:pid,model_id:gv('t_model_id'),source_test_id:Number(gv('t_source_test_id')||0),retest_no:Number(gv('t_retest_no')||0),test_type:gv('t_type')||tpl.test_type||activeTestType,title:gv('t_title'),status:gv('t_status'),result:gv('t_result'),test_date:gv('t_date'),operator:gv('t_operator'),affect_sample:Number(gv('t_affect')||0),ambient_temp:numOrEmpty('t_ambient'),led_temp:numOrEmpty('t_led'),driver_temp:numOrEmpty('t_driver'),shell_temp:numOrEmpty('t_shell'),max_temp:numOrEmpty('t_max'),sphere_lumen:gv('t_lumen'),sphere_power:gv('t_power'),sphere_efficiency:gv('t_eff'),cct:gv('t_cct'),cri:gv('t_cri'),ies_angle:gv('t_angle'),ies_lumen:gv('t_ies_lumen'),retest_result:gv('t_retest'),test_standard:gv('t_standard'),test_data:gv('t_data'),test_conclusion:gv('t_conclusion'),note:gv('t_note'),template_key:tpl?.key||'',template_name:tpl?.name||'',template_fields_json:custom};
 }
 async function saveNewTest(pid){
   const d=collectTestFormData(pid);
   const r=await api('save_test',d);toast(r.ok?(r.issue_id?'测试已保存，并已生成问题闭环':'测试已保存'):r.error);if(r.ok&&r.id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load()
 }
+async function markTestStatus(status){
+  const p=cur();if(!p)return;
+  const d=collectTestFormData(p.id);if(!d.id){toast('请先保存测试项目');return}
+  d.status=status;
+  if(status==='已完成' && (!d.result||d.result==='')) d.result='待判定';
+  if(status==='已完成'){
+    const miss=testCompletionMissing(d);
+    if(miss.length&&!confirm('测试资料尚未完整：\n- '+miss.join('\n- ')+'\n\n仍然标记完成？'))return;
+  }
+  const r=await api('save_test',d);toast(r.ok?'测试状态已更新':r.error);await load();
+}
+async function markTestResult(result){
+  const p=cur();if(!p)return;
+  const d=collectTestFormData(p.id);if(!d.id){toast('请先保存测试项目');return}
+  d.result=result;
+  d.status='已完成';
+  if(result==='不通过'){
+    const reason=(d.test_conclusion||d.note||'').trim() || prompt('请填写不通过原因','');
+    if(!reason){toast('不通过必须填写原因');return}
+    d.test_conclusion=reason;
+    d.note=d.note||reason;
+    d.affect_sample=Number(d.affect_sample||0)||1;
+  }
+  if(result==='通过'){
+    const miss=testCompletionMissing(d);
+    if(miss.length&&!confirm('通过前还有缺失：\n- '+miss.join('\n- ')+'\n\n仍然判定通过？'))return;
+  }
+  const r=await api('save_test',d);
+  toast(r.ok?(result==='不通过'?(r.issue_id?'已判定不通过，并已生成问题闭环':'已判定不通过'):('已判定通过')):r.error);
+  await load();
+}
+async function createRetestFromCurrent(pid){
+  const d=collectTestFormData(pid);const tid=Number(d.id||0);
+  if(!tid){toast('请先保存测试项目，再创建复测');return}
+  if(!confirm('创建一条新的复测记录？原测试和附件会保留，不会覆盖。'))return;
+  const r=await api('create_retest',{test_id:tid,model_id:d.model_id,test_type:d.test_type,template_key:d.template_key,template_name:d.template_name,template_fields_json:d.template_fields_json});
+  toast(r.ok?'复测记录已创建':r.error);
+  if(r.ok&&r.id){testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}
+  await load();
+}
 async function saveAsTestRun(pid){
   const d=collectTestFormData(pid);const tid=Number(d.id||0);if(!tid){toast('请先保存测试节点，再保存重测记录');return}d.test_id=tid;
-  const r=await api('save_test_run',d);toast(r.ok?(r.issue_id?'重测记录已保存，并已生成问题闭环':'重测记录已保存'):r.error);if(r.ok&&r.id){testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load();
+  const r=await api('create_retest',d);toast(r.ok?'复测记录已创建，原测试已保留':r.error);if(r.ok&&r.id){testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load();
 }
 async function deleteTest(id){if(!confirm('删除这条测试记录？'))return;const r=await api('delete_test',{id});toast(r.ok?'测试已删除':r.error);if(r.ok){testSelectedId=0;localStorage.setItem('plm_v85_test_id',0)}await load()}
 
@@ -9230,10 +11464,89 @@ function fileTypeLabel(f){return isTestFile(f)?'测试中心':'文件中心'}
 function absUrl(path){try{return new URL(path, location.href).href}catch(e){return path}}
 function uploadBox(defaultCat,modelId=0,testId=0,isTest=false,stepId=0,testRunId=0){const uid='u_'+Math.random().toString(36).slice(2,9);const cats=isTest?TEST_FILE_CATS:FILE_CATS;return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${cats.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFile('${uid}',${modelId},${testId},${stepId},${testRunId})">上传</button>`}
 function uploadProjectFileBox(defaultCat='产品图片'){const uid='u_'+Math.random().toString(36).slice(2,9);return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${FILE_CATS.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml(uid+'_model',0,false)}</div><div class="field"><label>关联开发步骤</label>${stepSelectHtml(uid+'_step',0,0,true)}</div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFileFromBox('${uid}',0,0,0)">上传</button>`}
-async function uploadFile(uid,modelId,testId,stepId=0,testRunId=0){const p=cur();if(!p)return;const f=$(uid+'_file').files[0];if(!f){toast('请选择文件');return}const fd=new FormData();fd.append('project_id',p.id);fd.append('model_id',modelId||0);fd.append('test_id',testId||0);fd.append('test_run_id',testRunId||0);fd.append('step_id',stepId||0);fd.append('category',$(uid+'_cat').value);fd.append('title',$(uid+'_title').value);fd.append('note',$(uid+'_note').value);fd.append('customer_visible',$(uid+'_vis').checked?1:0);fd.append('file',f);const r=await uploadApi(fd);toast(r.ok?'文件已上传':r.error);await load()}
+async function uploadFile(uid,modelId,testId,stepId=0,testRunId=0,issueId=0,sourceModule=''){const p=cur();if(!p)return;const f=$(uid+'_file').files[0];if(!f){toast('请选择文件');return}const fd=new FormData();fd.append('project_id',p.id);fd.append('model_id',modelId||0);fd.append('test_id',testId||0);fd.append('test_run_id',testRunId||0);fd.append('step_id',stepId||0);fd.append('issue_id',issueId||0);fd.append('source_module',sourceModule||'');fd.append('category',$(uid+'_cat').value);fd.append('title',$(uid+'_title').value);fd.append('note',$(uid+'_note').value);fd.append('customer_visible',$(uid+'_vis').checked?1:0);fd.append('file',f);const r=await uploadApi(fd);toast(r.ok?'文件已上传':r.error);await load()}
 async function uploadFileFromBox(uid,testId=0,stepId=0,testRunId=0){const mid=Number($(uid+'_model')?.value||0);const sid=Number($(uid+'_step')?.value||stepId||0);return uploadFile(uid,mid,testId,sid,testRunId)}
+function openFileUploadDrawer(ctx={}){
+  const p=cur();if(!p)return;
+  const uid='fu_'+Math.random().toString(36).slice(2,8);
+  const mid=Number(ctx.model_id||0), stepId=Number(ctx.step_id||0), testId=Number(ctx.test_id||0), issueId=Number(ctx.issue_id||0);
+  const source=ctx.source_module||(testId?'test':(issueId?'issue':(stepId?'flow':(mid?'model':'file'))));
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask file-upload-mask" onclick="if(event.target===this)this.remove()"><div class="modal file-upload-drawer"><div class="modal-head"><div><h3>上传文件</h3><div class="hint">当前项目：${esc(p.name||'未命名项目')}。支持一次选择多个文件。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="file-upload-form"><section><h4>上传目标</h4><div class="grid2"><div class="field"><label>归属样品</label>${modelSelectHtml(uid+'_model',mid,false)}</div><div class="field"><label>来源模块</label><select id="${uid}_source"><option value="file" ${source==='file'?'selected':''}>文件中心上传</option><option value="project" ${source==='project'?'selected':''}>项目基础资料</option><option value="model" ${source==='model'?'selected':''}>样品管理</option><option value="flow" ${source==='flow'?'selected':''}>开发导航图</option><option value="test" ${source==='test'?'selected':''}>测试中心</option><option value="issue" ${source==='issue'?'selected':''}>问题闭环</option></select></div></div><div class="field"><label>关联开发步骤</label>${stepSelectHtml(uid+'_step',stepId,mid,true)}</div><div class="field"><label>关联测试项目</label>${testSelectHtml(uid+'_test',testId,mid,true)}</div><div class="field"><label>关联问题</label>${issueSelectHtml(uid+'_issue',issueId,mid,true)}</div></section><section><h4>文件资料</h4><div class="grid2"><div class="field"><label>文件分类</label><select id="${uid}_cat">${uniq([...FILE_CATS,...TEST_FILE_CATS]).map(c=>`<option>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>文件标题</label><input id="${uid}_title" placeholder="可不填，默认用文件名"></div></div><input id="${uid}_file" type="file" multiple><textarea id="${uid}_note" placeholder="文件备注"></textarea></section><section><h4>权限</h4><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><div class="hint">取消勾选即内部资料，不能进入客户资料包。</div></section><div id="${uid}_result" class="upload-result"></div></div></div><div class="modal-foot"><button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button><button class="btn primary" onclick="uploadFilesFromDrawer('${uid}')">开始上传</button></div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+async function uploadFilesFromDrawer(uid){
+  const p=cur();if(!p)return;
+  const input=$(uid+'_file'), list=[...(input?.files||[])], box=$(uid+'_result');
+  if(!list.length){toast('请选择文件');return}
+  const duplicates=list.filter(file=>pFiles(p.id).some(f=>String(f.original_name||'')===String(file.name)&&Number(f.file_size||0)===Number(file.size||0)));
+  if(duplicates.length&&!confirm(`当前项目已存在 ${duplicates.length} 个同名同大小文件。继续保留两份？`))return;
+  if(box)box.innerHTML='';
+  let ok=0, fail=0;
+  for(const file of list){
+    const fd=new FormData();
+    fd.append('project_id',p.id);fd.append('model_id',Number($(uid+'_model')?.value||0));fd.append('step_id',Number($(uid+'_step')?.value||0));fd.append('test_id',Number($(uid+'_test')?.value||0));fd.append('issue_id',Number($(uid+'_issue')?.value||0));fd.append('source_module',$(uid+'_source')?.value||'file');fd.append('category',$(uid+'_cat')?.value||'其它');fd.append('title',$(uid+'_title')?.value||'');fd.append('note',$(uid+'_note')?.value||'');fd.append('customer_visible',$(uid+'_vis')?.checked?1:0);fd.append('file',file);
+    if(box)box.insertAdjacentHTML('beforeend',`<div>${esc(file.name)}：上传中...</div>`);
+    const r=await uploadApi(fd);
+    if(r.ok){ok++;if(box)box.lastElementChild.textContent=file.name+'：完成'}else{fail++;if(box)box.lastElementChild.textContent=file.name+'：失败 - '+(r.error||'未知错误')}
+  }
+  toast(`上传完成：成功 ${ok}，失败 ${fail}`);
+  await load();
+}
 function fileChip(f,extraClass=''){return `<span class="file-chip ${esc(extraClass)}"><a href="${esc(f.file_path)}" target="_blank">${esc(f.title||f.original_name||f.file_name)}</a><button class="btn small" onclick="openTestFilePreview(${Number(f.id)})">预览</button><button class="btn small danger" onclick="deleteFile(${f.id})">×</button></span>`}
 function openTestFilePreview(id){const f=files.find(x=>Number(x.id)===Number(id));if(!f){toast('文件不存在');return}const name=esc(f.title||f.original_name||f.file_name||'文件预览');const host=document.createElement('div');host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal test-file-preview-modal"><div class="modal-head"><div><h3>${name}</h3><div class="hint">弹窗预览，不占用测试详情页面空间。</div></div><div class="actions"><a class="btn small" href="${esc(f.file_path)}" target="_blank">新窗口打开</a><button class="btn small" onclick="this.closest('.modal-mask').remove()">关闭</button></div></div><div class="modal-body">${filePreviewLarge(f)}</div></div></div>`;document.body.appendChild(host.firstElementChild)}
+function testCompletionMissing(d){
+  const tpl=templateByKey(d.template_key)||templateForType(d.test_type||activeTestType);
+  const miss=[];
+  (tpl.fields||[]).forEach(f=>{
+    if(!Number(f.required||0))return;
+    const key=f.bind||f.key||'';
+    let val='';
+    if(f.bind&&d[f.bind]!==undefined)val=d[f.bind];
+    else if(d.template_fields_json&&d.template_fields_json[f.key]!==undefined)val=d.template_fields_json[f.key];
+    if(String(val??'').trim()==='')miss.push(f.label||f.key||'必填字段');
+  });
+  if(!d.result||d.result==='待判定')miss.push('测试结果未判定');
+  const t=tests.find(x=>Number(x.id)===Number(d.id));
+  const b=t?testFileBuckets(t):{images:[],reports:[],raw:[]};
+  const type=String(d.test_type||'');
+  if(/IES|配光/i.test(type)){
+    if(!b.raw.some(f=>/\.(ies|ldt)$/i.test(String(f.original_name||f.file_name||''))))miss.push('IES/LDT 原始文件');
+    if(!b.reports.length)miss.push('配光报告');
+  }
+  if(/积分球|EMC|防水|IP/i.test(type)&&!b.reports.length)miss.push('测试报告');
+  if(/温升|防水|老化|结构|装配/i.test(type)&&!b.images.length)miss.push('测试图片');
+  return uniq(miss);
+}
+function openTestImageLightbox(fileId){
+  const t=tests.find(x=>Number(x.id)===Number(testSelectedId));
+  const imgs=t?testFileBuckets(t).images:(files||[]).filter(f=>String(f.mime_type||'').startsWith('image/'));
+  const idx=Math.max(0,imgs.findIndex(f=>Number(f.id)===Number(fileId)));
+  if(!imgs.length){toast('没有图片');return}
+  const f=imgs[idx];
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask test-lightbox" data-index="${idx}" onclick="if(event.target===this)this.remove()" onkeydown="handleTestLightboxKey(event)" tabindex="0"><div class="test-lightbox-bar"><button class="btn small" onclick="moveTestLightbox(-1)">上一张</button><b>${esc(f.title||f.original_name||'测试图片')}</b><button class="btn small" onclick="moveTestLightbox(1)">下一张</button><a class="btn small" href="${esc(f.file_path)}" download>下载</a><button class="btn small" onclick="this.closest('.modal-mask').remove()">关闭</button></div><img class="test-lightbox-img" src="${esc(f.file_path)}" alt="${esc(f.title||f.original_name||'测试图片')}"></div>`;
+  document.body.appendChild(host.firstElementChild);
+  document.querySelector('.test-lightbox')?.focus();
+}
+function currentLightboxImages(){
+  const t=tests.find(x=>Number(x.id)===Number(testSelectedId));
+  return t?testFileBuckets(t).images:[];
+}
+function moveTestLightbox(delta){
+  const lb=document.querySelector('.test-lightbox');if(!lb)return;
+  const imgs=currentLightboxImages();if(!imgs.length)return;
+  let idx=Number(lb.dataset.index||0)+delta;
+  if(idx<0)idx=imgs.length-1;if(idx>=imgs.length)idx=0;
+  lb.dataset.index=idx;
+  const f=imgs[idx], img=lb.querySelector('.test-lightbox-img'), title=lb.querySelector('.test-lightbox-bar b'), link=lb.querySelector('.test-lightbox-bar a');
+  if(img)img.src=f.file_path||''; if(title)title.textContent=f.title||f.original_name||'测试图片'; if(link)link.href=f.file_path||'';
+}
+function handleTestLightboxKey(ev){
+  if(ev.key==='Escape')ev.currentTarget.remove();
+  if(ev.key==='ArrowLeft')moveTestLightbox(-1);
+  if(ev.key==='ArrowRight')moveTestLightbox(1);
+}
 function renderFiles(p){
   const arr=pFiles(p.id);
   if(customerFileInitializedProject!==Number(p.id)){
@@ -9243,31 +11556,47 @@ function renderFiles(p){
     localStorage.setItem('plm_v85_file_id',fileSelectedId||0);
   }
   if(fileSelectedId && !arr.some(f=>Number(f.id)===Number(fileSelectedId))){fileSelectedId=arr[0]?Number(arr[0].id):0;localStorage.setItem('plm_v85_file_id',fileSelectedId||0)}
-  const total=arr.length, customer=arr.filter(f=>Number(f.customer_visible)===1).length, internal=arr.filter(f=>Number(f.customer_visible)!==1).length;
-  const filterRail = fileFilterCollapsed && arr.length > 0;
-  $('tabbody').innerHTML=`<div class="file-workbench ${filePreviewCollapsed?'preview-collapsed':''} ${filterRail?'filter-rail':''}">
-    <aside class="file-tree ${filterRail?'file-tree-rail':''}">
-      <div class="file-tree-head"><h3>文件筛选</h3><button class="file-tree-toggle" onclick="toggleFileFilterRail()">${filterRail?'展开':'收起'}</button></div>
-      <button class="tree-btn active" data-kind="scope" data-val="all" onclick="setFmFilter('scope','all')">全部文件 <b>${total}</b></button>
-      <button class="tree-btn" data-kind="scope" data-val="customer" onclick="setFmFilter('scope','customer')">可发客户 <b>${customer}</b></button>
-      <button class="tree-btn" data-kind="scope" data-val="internal" onclick="setFmFilter('scope','internal')">内部资料 <b>${internal}</b></button>
-      <button class="tree-btn" data-kind="source" data-val="filecenter" onclick="setFmFilter('source','filecenter')">文件中心 <b>${arr.filter(f=>!isTestFile(f)).length}</b></button>
-      <button class="tree-btn" data-kind="source" data-val="testcenter" onclick="setFmFilter('source','testcenter')">测试资料 <b>${arr.filter(f=>isTestFile(f)).length}</b></button>
-      <div class="uploadbox"><h3>上传文件</h3><p class="hint">可归属项目/样品，也可直接绑定开发步骤。测试报告建议到测试中心上传。</p>${uploadProjectFileBox('产品图片')}</div>
-    </aside>
-    <section class="file-list-pane">
-      <div class="detail-head" style="padding-bottom:10px;margin-bottom:10px"><div><h3>文件列表</h3><div class="hint">筛选文件；点击一行在右侧预览和编辑。</div></div><div class="actions"><button class="btn small good" onclick="selectCustomerFilesFromManager('current')">加入当前</button><button class="btn small" onclick="selectCustomerFilesFromManager('allCustomer')">加入可发</button></div></div>
-      <div class="file-toolbar"><input id="fm_file_search" placeholder="搜索文件名/标题/备注" oninput="renderFileManagerTable()">${modelSelectHtml('fm_model','',true)}<select id="fm_cat" onchange="renderFileManagerTable()"><option value="">全部分类</option>${uniq(arr.map(f=>f.category)).map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="fm_scope" onchange="renderFileManagerTable()"><option value="all">全部权限</option><option value="customer">可发客户</option><option value="internal">内部资料</option></select><select id="fm_source" onchange="renderFileManagerTable()"><option value="all">全部来源</option><option value="filecenter">文件中心</option><option value="testcenter">测试中心</option></select></div>
-      <div class="fm-table-wrap" id="fm_table_wrap"></div>
-    </section>
-    <aside class="file-preview-pane ${filePreviewCollapsed?'collapsed-preview':''}"><div id="file_detail_panel"></div><div class="file-send-mini">${customerPackagePanel(p)}</div></aside>
+  const s=fileStats(arr), cats=uniq(arr.map(f=>f.category).filter(Boolean)), sourceCounts=fileSourceCounts(arr);
+  $('tabbody').innerHTML=`<div class="file-center-v104">
+    <div class="file-center-toolbar"><div class="file-center-title"><b>文件中心</b><span>${esc(p.name||'当前项目')}</span></div><div class="file-center-search"><input id="fm_file_search" placeholder="搜索文件名 / 标题 / 备注 / 上传人" oninput="renderFileManagerTable()">${modelSelectHtml('fm_model','',true)}<select id="fm_cat" onchange="renderFileManagerTable()"><option value="">全部分类</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="fm_source" onchange="renderFileManagerTable()"><option value="all">全部来源</option>${fileSourceOptions(arr)}</select></div><div class="file-center-actions"><button class="btn primary" onclick="openFileUploadDrawer()">上传文件</button><button class="btn good" onclick="openCustomerPackageModal()">客户资料包</button><button class="btn" onclick="openProjectPackageModal()">项目资料包</button><details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="selectCustomerFilesFromManager('current')">当前筛选加入资料包</button><button class="btn small" onclick="selectCustomerFilesFromManager('allCustomer')">全部可发加入资料包</button></div></details></div></div>
+    <div class="file-statbar"><span><b>${s.total}</b> 文件</span><span class="good"><b>${s.customer}</b> 可发客户</span><span class="warn"><b>${s.internal}</b> 内部</span><span><b>${s.images}</b> 图片</span><span class="info"><b>${s.tests}</b> 测试资料</span><span><b>${s.reports}</b> 报告</span><span><b>${fileSize(s.bytes)}</b> 总大小</span></div>
+    <div class="file-workbench">
+      <aside class="file-tree">
+        <div class="file-tree-head"><h3>文件筛选</h3></div>
+        <div class="file-filter-group"><b>文件范围</b><button class="tree-btn active" data-kind="scope" data-val="all" onclick="setFmFilter('scope','all')">全部文件 <b>${s.total}</b></button><button class="tree-btn" data-kind="scope" data-val="customer" onclick="setFmFilter('scope','customer')">可发客户 <b>${s.customer}</b></button><button class="tree-btn" data-kind="scope" data-val="internal" onclick="setFmFilter('scope','internal')">内部资料 <b>${s.internal}</b></button><button class="tree-btn" data-kind="scope" data-val="currentModel" onclick="setFmFilter('scope','currentModel')">当前样品 <b>${arr.filter(f=>Number(f.model_id)===Number($('fm_model')?.value||0)&&Number(f.model_id)>0).length}</b></button><button class="tree-btn" data-kind="scope" data-val="public" onclick="setFmFilter('scope','public')">项目公共 <b>${arr.filter(f=>!Number(f.model_id||0)).length}</b></button></div>
+        <div class="file-filter-group"><b>文件来源</b>${Object.entries(sourceCounts).map(([k,n])=>`<button class="tree-btn" data-kind="source" data-val="${esc(k)}" onclick="setFmFilter('source','${esc(k)}')">${esc(fileSourceLabel(k))} <b>${n}</b></button>`).join('')}</div>
+        <div class="file-filter-group"><b>文件分类</b>${cats.slice(0,12).map(c=>`<button class="tree-btn" data-kind="cat" data-val="${esc(c)}" onclick="setFmFilter('cat','${esc(c)}')">${esc(fileCategoryLabel(c))} <b>${arr.filter(f=>f.category===c).length}</b></button>`).join('')||'<div class="hint">暂无分类</div>'}</div>
+      </aside>
+      <section class="file-list-pane">
+        <div class="file-list-head"><div><h3>文件列表</h3><div class="hint">点击文件行查看预览和属性；测试附件按 test_id 独立归档。</div></div><select id="fm_sort" onchange="renderFileManagerTable()"><option value="new">最近上传</option><option value="name">文件名称</option><option value="type">文件类型</option><option value="size">文件大小</option><option value="source">来源模块</option></select></div>
+        <div class="fm-table-wrap" id="fm_table_wrap"></div>
+      </section>
+      <aside class="file-preview-pane"><div id="file_detail_panel"></div></aside>
+    </div>
   </div>`;
   $('fm_model').onchange=renderFileManagerTable;
   renderFileManagerTable();
-  renderCustomerFileList();
 }
-function setFmFilter(kind,val){if(kind==='scope'&&$('fm_scope'))$('fm_scope').value=val;if(kind==='source'&&$('fm_source'))$('fm_source').value=val;renderFileManagerTable()}
-function currentFileManagerFiles(){const p=cur();if(!p)return[];const q=($('fm_file_search')?.value||'').trim().toLowerCase();const mid=$('fm_model')?.value??'';const cat=$('fm_cat')?.value??'';const scope=$('fm_scope')?.value||'all';const source=$('fm_source')?.value||'all';return pFiles(p.id).filter(f=>{const hay=[f.title,f.original_name,f.file_name,f.category,f.note].join(' ').toLowerCase();if(q&&!hay.includes(q))return false;if(mid!==''&&Number(f.model_id)!==Number(mid))return false;if(cat&&f.category!==cat)return false;if(scope==='customer'&&Number(f.customer_visible)!==1)return false;if(scope==='internal'&&Number(f.customer_visible)===1)return false;if(source==='filecenter'&&isTestFile(f))return false;if(source==='testcenter'&&!isTestFile(f))return false;return true})}
+function fileSourceKey(f){
+  const s=String(f.source_module||'').trim();
+  if(s)return s;
+  if(Number(f.issue_id||0)>0)return 'issue';
+  if(Number(f.test_id||0)>0)return 'test';
+  if(Number(f.step_id||0)>0)return 'flow';
+  if(Number(f.model_id||0)>0)return 'model';
+  return 'file';
+}
+function fileSourceLabel(k){return {project:'项目基础资料',model:'样品管理',flow:'开发导航图',test:'测试中心',issue:'问题闭环',file:'文件中心上传',filecenter:'文件中心上传',testcenter:'测试中心'}[k]||k||'文件中心'}
+function fileCategoryLabel(c){const s=String(c||'');if(/IES|LDT/i.test(s))return 'IES / LDT';if(/报告|PDF/i.test(s))return '测试报告';if(/图片|照片|图/.test(s))return s;return s||'其他'}
+function fileStats(arr){return {total:arr.length,customer:arr.filter(f=>Number(f.customer_visible)===1).length,internal:arr.filter(f=>Number(f.customer_visible)!==1).length,images:arr.filter(fileIsImage).length,tests:arr.filter(f=>fileSourceKey(f)==='test'||isTestFile(f)).length,reports:arr.filter(fileIsReport).length,bytes:arr.reduce((n,f)=>n+Number(f.file_size||0),0)}}
+function fileIsImage(f){const name=String(f.original_name||f.file_name||'').toLowerCase();return String(f.mime_type||'').startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name)}
+function fileIsPdf(f){const name=String(f.original_name||f.file_name||'').toLowerCase();return String(f.mime_type||'').includes('pdf')||/\.pdf$/.test(name)}
+function fileIsReport(f){const x=String(f.category||'')+' '+String(f.title||'')+' '+String(f.original_name||'');return /报告|PDF|光谱|配光|EMC/i.test(x)||fileIsPdf(f)}
+function fileSourceCounts(arr){const out={};arr.forEach(f=>{const k=fileSourceKey(f);out[k]=(out[k]||0)+1});return out}
+function fileSourceOptions(arr){return Object.keys(fileSourceCounts(arr)).map(k=>`<option value="${esc(k)}">${esc(fileSourceLabel(k))}</option>`).join('')}
+function setFmFilter(kind,val){if(kind==='scope'){fileScopeFilter=val||'all'}else if(kind==='source'&&$('fm_source')){$('fm_source').value=val}else if(kind==='cat'&&$('fm_cat')){$('fm_cat').value=val}renderFileManagerTable()}
+let fileScopeFilter='all';
+function currentFileManagerFiles(){const p=cur();if(!p)return[];const q=($('fm_file_search')?.value||'').trim().toLowerCase();const mid=$('fm_model')?.value??'';const cat=$('fm_cat')?.value??'';const scope=fileScopeFilter||'all';const source=$('fm_source')?.value||'all';const sort=$('fm_sort')?.value||'new';let list=pFiles(p.id).filter(f=>{const hay=[f.title,f.original_name,f.file_name,f.category,f.note,f.uploaded_by_name].join(' ').toLowerCase();if(q&&!hay.includes(q))return false;if(mid!==''&&Number(f.model_id)!==Number(mid))return false;if(cat&&f.category!==cat)return false;if(scope==='customer'&&Number(f.customer_visible)!==1)return false;if(scope==='internal'&&Number(f.customer_visible)===1)return false;if(scope==='currentModel'&&!(Number(mid)>0&&Number(f.model_id)===Number(mid)))return false;if(scope==='public'&&Number(f.model_id||0)>0)return false;if(source!=='all'&&fileSourceKey(f)!==source)return false;return true});list=list.slice().sort((a,b)=>{if(sort==='name')return String(a.title||a.original_name||'').localeCompare(String(b.title||b.original_name||''),'zh-Hans-CN');if(sort==='type')return String(a.category||'').localeCompare(String(b.category||''),'zh-Hans-CN');if(sort==='size')return Number(b.file_size||0)-Number(a.file_size||0);if(sort==='source')return fileSourceLabel(fileSourceKey(a)).localeCompare(fileSourceLabel(fileSourceKey(b)),'zh-Hans-CN');return Number(b.id||0)-Number(a.id||0)});return list}
 function renderFileManagerTable(){
   const list=currentFileManagerFiles();
   if(!list.length){
@@ -9278,18 +11607,23 @@ function renderFileManagerTable(){
     localStorage.setItem('plm_v85_file_id',fileSelectedId);
   }
   const rows=list.map(f=>fileRow(f)).join('');
-  if($('fm_table_wrap'))$('fm_table_wrap').innerHTML=`<table class="fm-table"><thead><tr><th>文件</th><th>归属</th><th>分类</th><th>客户</th><th>步骤</th><th>上传时间</th></tr></thead><tbody>${rows||'<tr><td colspan="6"><div class="empty">当前筛选下没有文件</div></td></tr>'}</tbody></table>`;
+  const emptyRow=`<tr><td colspan="9"><div class="empty">当前筛选条件下暂无文件。<br><button class="btn small" onclick="clearFileFilters()">清空筛选</button></div></td></tr>`;
+  if($('fm_table_wrap'))$('fm_table_wrap').innerHTML=`<table class="fm-table file-table-v104"><thead><tr><th>选择</th><th>文件</th><th>归属</th><th>分类</th><th>来源</th><th>权限</th><th>大小</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${rows||emptyRow}</tbody></table>`;
   syncFmTreeActive();
   renderFileDetailPanel()
 }
+function clearFileFilters(){fileScopeFilter='all';if($('fm_cat'))$('fm_cat').value='';if($('fm_source'))$('fm_source').value='all';if($('fm_file_search'))$('fm_file_search').value='';renderFileManagerTable()}
 function syncFmTreeActive(){
-  const scope=$('fm_scope')?.value||'all', source=$('fm_source')?.value||'all';
+  const scope=fileScopeFilter||'all', source=$('fm_source')?.value||'all', cat=$('fm_cat')?.value||'';
   document.querySelectorAll('.file-tree .tree-btn').forEach(btn=>{
     const k=btn.dataset.kind, v=btn.dataset.val;
-    btn.classList.toggle('active', (k==='scope'&&v===scope) || (k==='source'&&v===source));
+    btn.classList.toggle('active', (k==='scope'&&v===scope) || (k==='source'&&v===source) || (k==='cat'&&v===cat));
   });
 }
-function fileRow(f){const m=models.find(x=>Number(x.id)===Number(f.model_id));const st=steps.find(x=>Number(x.id)===Number(f.step_id));const active=Number(fileSelectedId)===Number(f.id);return `<tr class="${active?'active':''}" onclick="selectFile(${f.id})"><td><div style="display:flex;gap:10px;align-items:center;min-width:0">${fileIcon(f)}<div style="min-width:0"><div class="file-main-name">${esc(f.title||f.original_name||f.file_name)}</div><div class="hint">${esc(f.original_name||'')} ｜ ${fileSize(f.file_size)}</div></div></div></td><td>${esc(m?modelLabel(m):'项目公共文件')}</td><td>${esc(f.category||'')}</td><td>${Number(f.customer_visible)===1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}</td><td>${st?esc(st.title||'步骤'):'-'}</td><td class="nowrap">${esc(f.created_at||'')}</td></tr>`}
+function fileLinkSummary(f){const st=steps.find(x=>Number(x.id)===Number(f.step_id));const t=tests.find(x=>Number(x.id)===Number(f.test_id));const it=issues.find(x=>Number(x.id)===Number(f.issue_id));const bits=[];if(st)bits.push('步骤：'+(st.title||st.step_name||st.id));if(t)bits.push('测试：'+(t.title||t.test_type||t.id));if(it)bits.push('问题：'+(it.title||it.id));return bits.join(' · ')}
+function testSelectHtml(id,val=0,modelId=0,includeAll=true){let list=tests.filter(t=>Number(t.project_id)===Number(cur()?.id||selectedId));if(Number(modelId)>0)list=list.filter(t=>Number(t.model_id)===Number(modelId));let html=includeAll?'<option value="0">不绑定测试</option>':'';html+=list.map(t=>`<option value="${t.id}" ${Number(val)===Number(t.id)?'selected':''}>${esc((t.test_type||'测试')+' / '+(t.title||t.result||t.status||'未命名'))}</option>`).join('');return `<select id="${id}">${html}</select>`}
+function issueSelectHtml(id,val=0,modelId=0,includeAll=true){let list=issues.filter(i=>Number(i.project_id)===Number(cur()?.id||selectedId));if(Number(modelId)>0)list=list.filter(i=>Number(i.model_id)===Number(modelId));let html=includeAll?'<option value="0">不绑定问题</option>':'';html+=list.map(i=>`<option value="${i.id}" ${Number(val)===Number(i.id)?'selected':''}>${esc((i.status||'问题')+' / '+(i.title||i.note||i.id))}</option>`).join('');return `<select id="${id}">${html}</select>`}
+function fileRow(f){const m=models.find(x=>Number(x.id)===Number(f.model_id));const active=Number(fileSelectedId)===Number(f.id);const source=fileSourceLabel(fileSourceKey(f));const link=fileLinkSummary(f);const visible=Number(f.customer_visible)===1;return `<tr class="${active?'active':''}" onclick="selectFile(${f.id})"><td onclick="event.stopPropagation()"><input type="checkbox" data-file-select="${Number(f.id)}" onchange="toggleCustomerFile(${Number(f.id)},this.checked)" ${customerFileSelected.has(Number(f.id))?'checked':''}></td><td><div class="file-row-main">${fileIcon(f)}<div class="file-row-text"><div class="file-main-name">${esc(f.title||f.original_name||f.file_name)}</div><div class="hint">${esc(f.original_name||'')} ${link?'｜ '+esc(link):''}</div></div></div></td><td>${esc(m?modelLabel(m):'项目公共文件')}</td><td>${esc(fileCategoryLabel(f.category||''))}</td><td>${esc(source)}</td><td>${visible?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}</td><td>${fileSize(f.file_size)}</td><td class="nowrap">${esc(f.created_at||'')}</td><td onclick="event.stopPropagation()"><div class="file-row-actions"><button class="btn small" onclick="selectFile(${Number(f.id)})">预览</button><a class="btn small" href="${esc(f.file_path)}" target="_blank">下载</a><details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="selectFile(${Number(f.id)})">修改资料</button>${visible?`<button class="btn small good" onclick="customerFileSelected.add(${Number(f.id)});renderFileManagerTable();toast('已加入客户资料包')">加入资料包</button>`:''}<button class="btn small" onclick="copyFileLink(${Number(f.id)})">复制链接</button><button class="btn small danger" onclick="deleteFile(${Number(f.id)})">删除</button></div></details></div></td></tr>`}
 function selectFile(id){fileSelectedId=Number(id)||0;localStorage.setItem('plm_v85_file_id',fileSelectedId);renderFileManagerTable()}
 function fileIcon(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<div class="file-ico"><img src="${esc(path)}"></div>`;const ext=(name.split('.').pop()||'FILE').slice(0,4).toUpperCase();return `<div class="file-ico">${esc(ext)}</div>`}
 function fileSize(n){n=Number(n)||0;if(!n)return'-';if(n<1024)return n+' B';if(n<1024*1024)return Math.round(n/1024)+' KB';return (n/1024/1024).toFixed(1)+' MB'}
@@ -9301,41 +11635,42 @@ function toggleFilePreview(){
     // V8.5.29：展开文件预览时，自动让项目中心和文件筛选变窄，给预览留空间。
     fileFilterCollapsed=true;
     localStorage.setItem('plm_v8529_file_filter_collapsed','1');
-    if(!projectListCollapsed){
-      projectListCollapsed=true;
-      localStorage.setItem('plm_v8514_project_list_collapsed','1');
-      renderCards();
-    }
   }else{
     // V8.5.29：收起预览时，主动恢复项目中心；文件筛选也恢复完整，仍可手动再收起。
     fileFilterCollapsed=false;
     localStorage.setItem('plm_v8529_file_filter_collapsed','0');
-    if(projectListCollapsed){
-      projectListCollapsed=false;
-      localStorage.setItem('plm_v8514_project_list_collapsed','0');
-      renderCards();
-    }
   }
   renderFiles(cur());
 }
 function toggleFileFilterRail(){fileFilterCollapsed=!fileFilterCollapsed;localStorage.setItem('plm_v8529_file_filter_collapsed',fileFilterCollapsed?'1':'0');renderFiles(cur())}
-function renderFileDetailPanel(){const f=files.find(x=>Number(x.id)===Number(fileSelectedId));if(!$('file_detail_panel'))return;if(!f){$('file_detail_panel').innerHTML='<div class="file-preview-head"><h3>文件预览</h3><button class="file-preview-toggle" onclick="toggleFilePreview()">'+(filePreviewCollapsed?'展开预览':'收起预览')+'</button></div><div class="file-empty-note"><b>选择一个文件</b><span>右侧会显示预览、归属、客户权限、步骤绑定。</span></div>';return}const m=models.find(x=>Number(x.id)===Number(f.model_id));const st=steps.find(x=>Number(x.id)===Number(f.step_id));const previewHtml=filePreviewCollapsed?'<div class="file-preview-collapsed">预览已折叠，点击“展开预览”查看图片或 PDF。</div>':filePreviewLarge(f);$('file_detail_panel').innerHTML=`<div class="file-preview-head"><h3>文件预览</h3><button class="file-preview-toggle" onclick="toggleFilePreview()">${filePreviewCollapsed?'展开预览':'收起预览'}</button></div>${previewHtml}<div class="tags"><span class="file-source-badge ${TEST_FILE_CATS.includes(f.category)?'test':'file'}">${esc(fileTypeLabel(f))}</span>${Number(f.customer_visible)===1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}${st?`<span class="tag blue">步骤：${esc(st.title||'')}</span>`:''}</div><div class="file-meta-row"><b>文件名</b><span>${esc(f.original_name||f.file_name||'')}</span></div><div class="file-meta-row"><b>归属</b><span>${esc(m?modelLabel(m):'项目公共文件')}</span></div><div class="file-meta-row"><b>大小</b><span>${fileSize(f.file_size)}</span></div><div class="file-meta-row"><b>上传</b><span>${esc(f.created_at||'')}</span></div><div class="step-bind"><div class="grid2"><input id="f_title_${f.id}" value="${esc(f.title||'')}" placeholder="标题"><select id="f_cat_${f.id}">${[...FILE_CATS,...TEST_FILE_CATS].map(c=>`<option ${c===f.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml('f_model_'+f.id,f.model_id||0,false)}</div><div class="field"><label>绑定开发步骤</label>${stepSelectHtml('f_step_'+f.id,f.step_id||0,f.model_id||0,true)}</div><textarea id="f_note_${f.id}" placeholder="备注">${esc(f.note||'')}</textarea><label class="hint"><input id="f_vis_${f.id}" type="checkbox" ${Number(f.customer_visible)===1?'checked':''} style="width:auto"> 可发客户</label><div class="file-actions-line"><a class="btn small" href="${esc(f.file_path)}" target="_blank">打开</a><button class="btn small good" onclick="saveFileMeta(${f.id})">保存文件信息</button><button class="btn small primary" onclick="customerFileSelected.add(${Number(f.id)});renderCustomerFileList();toast('已加入客户资料包')">加入客户资料包</button><button class="btn small danger" onclick="deleteFile(${f.id})">删除</button></div></div>`}
-function filePreviewLarge(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<div class="file-preview-large"><img src="${esc(path)}"></div>`;if(mt.includes('pdf')||/\.pdf$/.test(name))return `<div class="file-preview-large"><iframe src="${esc(path)}"></iframe></div>`;return `<div class="file-preview-large"><div class="empty" style="border:0;background:transparent">${esc((name.split('.').pop()||'文件').toUpperCase())}<br><span class="hint">此格式可下载或打开链接查看</span></div></div>`}
+function renderFileDetailPanel(){const f=files.find(x=>Number(x.id)===Number(fileSelectedId));if(!$('file_detail_panel'))return;if(!f){$('file_detail_panel').innerHTML='<div class="file-preview-head"><h3>文件预览</h3></div><div class="file-empty-note"><b>选择一个文件</b><span>右侧会显示预览、归属、测试/步骤/问题绑定和客户权限。</span><button class="btn primary" onclick="openFileUploadDrawer()">上传文件</button></div>';return}const m=models.find(x=>Number(x.id)===Number(f.model_id));const st=steps.find(x=>Number(x.id)===Number(f.step_id));const t=tests.find(x=>Number(x.id)===Number(f.test_id));const it=issues.find(x=>Number(x.id)===Number(f.issue_id));const visible=Number(f.customer_visible)===1;const previewHtml=filePreviewLarge(f);$('file_detail_panel').innerHTML=`<div class="file-preview-head"><div><h3>${esc(f.title||f.original_name||'文件预览')}</h3><div class="hint">${esc(fileCategoryLabel(f.category||''))} ｜ ${visible?'可发客户':'内部资料'} ｜ ${esc(fileSourceLabel(fileSourceKey(f)))}</div></div></div>${previewHtml}<div class="tags"><span class="file-source-badge ${fileSourceKey(f)==='test'?'test':'file'}">${esc(fileSourceLabel(fileSourceKey(f)))}</span>${visible?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}${st?`<span class="tag blue">步骤：${esc(st.title||'')}</span>`:''}${t?`<span class="tag purple">测试：${esc(t.title||t.test_type||'')}</span>`:''}${it?`<span class="tag red">问题：${esc(it.title||'')}</span>`:''}</div><div class="file-meta-row"><b>文件名</b><span>${esc(f.original_name||f.file_name||'')}</span></div><div class="file-meta-row"><b>归属</b><span>${esc(m?modelLabel(m):'项目公共文件')}</span></div><div class="file-meta-row"><b>大小</b><span>${fileSize(f.file_size)}</span></div><div class="file-meta-row"><b>上传</b><span>${esc(f.uploaded_by_name||'-')} ｜ ${esc(f.created_at||'')}</span></div><div class="step-bind"><div class="grid2"><div class="field"><label>文件标题</label><input id="f_title_${f.id}" value="${esc(f.title||'')}" placeholder="标题"></div><div class="field"><label>文件分类</label><select id="f_cat_${f.id}">${uniq([...FILE_CATS,...TEST_FILE_CATS, f.category||'']).filter(Boolean).map(c=>`<option ${c===f.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml('f_model_'+f.id,f.model_id||0,false)}</div><div class="field"><label>来源模块</label><select id="f_source_${f.id}">${[['file','文件中心上传'],['project','项目基础资料'],['model','样品管理'],['flow','开发导航图'],['test','测试中心'],['issue','问题闭环']].map(([v,l])=>`<option value="${v}" ${fileSourceKey(f)===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="field"><label>关联开发步骤</label>${stepSelectHtml('f_step_'+f.id,f.step_id||0,f.model_id||0,true)}</div><div class="field"><label>关联测试项目</label>${testSelectHtml('f_test_'+f.id,f.test_id||0,0,true)}</div><div class="field"><label>关联问题</label>${issueSelectHtml('f_issue_'+f.id,f.issue_id||0,0,true)}</div><textarea id="f_note_${f.id}" placeholder="备注">${esc(f.note||'')}</textarea><label class="hint"><input id="f_vis_${f.id}" type="checkbox" ${visible?'checked':''} style="width:auto"> 可发客户（取消后作为内部资料，不进入客户资料包）</label><div class="file-actions-line"><a class="btn small" href="${esc(f.file_path)}" target="_blank">打开</a><a class="btn small" href="${esc(f.file_path)}" download>下载</a><button class="btn small good" onclick="saveFileMeta(${f.id})">保存文件资料</button>${visible?`<button class="btn small primary" onclick="customerFileSelected.add(${Number(f.id)});toast('已加入客户资料包')">加入客户资料包</button>`:''}<button class="btn small danger" onclick="deleteFile(${f.id})">删除</button></div></div>`}
+function filePreviewLarge(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();const ext=(name.split('.').pop()||'文件').toUpperCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<div class="file-preview-large"><img src="${esc(path)}"></div>`;if(mt.includes('pdf')||/\.pdf$/.test(name))return `<div class="file-preview-large"><iframe src="${esc(path)}"></iframe></div>`;let tip='此格式可下载或打开链接查看';if(/\.(ies|ldt)$/.test(name))tip='IES / LDT 文件当前提供下载查看，不伪造配光预览';if(/\.(xls|xlsx|doc|docx)$/.test(name))tip='Office 文件如无法在线预览，请下载查看';if(/\.zip$/.test(name))tip='ZIP 文件不在线展开，请下载查看';return `<div class="file-preview-large"><div class="empty" style="border:0;background:transparent"><b>${esc(ext)}</b><br><span class="hint">${esc(tip)}</span><div style="margin-top:10px"><a class="btn small" href="${esc(path)}" target="_blank">打开</a><a class="btn small primary" href="${esc(path)}" download>下载</a></div></div></div>`}
+async function copyFileLink(id){const f=files.find(x=>Number(x.id)===Number(id));if(!f){toast('文件不存在');return}const url=absUrl(f.file_path);try{await navigator.clipboard.writeText(url);toast('文件链接已复制')}catch(e){prompt('复制文件链接',url)}}
 function selectCustomerFilesFromManager(mode){const p=cur();if(!p)return;if(mode==='allCustomer')pFiles(p.id).filter(f=>Number(f.customer_visible)===1).forEach(f=>customerFileSelected.add(Number(f.id)));else currentFileManagerFiles().forEach(f=>customerFileSelected.add(Number(f.id)));renderCustomerFileList();toast('已加入客户资料包')}
 
 function customerPackagePanel(p){const cats=uniq(pFiles(p.id).map(f=>f.category));return `<div class="customer-panel"><h3>发给客户 / 客户资料包</h3><div class="customer-tools">${modelSelectHtml('cf_model','',true)}<select id="cf_cat"><option value="">全部文件类型</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="cf_scope"><option value="all">全部资料</option><option value="customer">仅可发客户</option><option value="filecenter">仅文件中心</option><option value="testcenter">仅测试中心</option></select><button class="btn" onclick="renderCustomerFileList()">筛选</button></div><div class="actions" style="margin-top:10px"><button class="btn small good" onclick="selectCustomerFiles('visible')">勾选当前筛选</button><button class="btn small" onclick="selectCustomerFiles('all')">勾选全部</button><button class="btn small" onclick="selectCustomerFiles('none')">清空</button><button class="btn small primary" onclick="copyCustomerLinks()">复制客户链接清单</button><button class="btn small warn" onclick="createCustomerZip()">生成ZIP资料包</button></div><div id="pkg_result" class="pkg-result"></div><div id="customer_file_list" class="file-list-wrap"></div><textarea id="customer_links" class="copybox" readonly placeholder="选择文件后，点击“复制客户链接清单”会生成清单。"></textarea></div>`}
+function openCustomerPackageModal(){
+  const p=cur();if(!p)return;
+  const cats=uniq(pFiles(p.id).filter(f=>Number(f.customer_visible)===1).map(f=>f.category).filter(Boolean));
+  const total=pFiles(p.id).filter(f=>Number(f.customer_visible)===1).length;
+  const bytes=pFiles(p.id).filter(f=>Number(f.customer_visible)===1).reduce((n,f)=>n+Number(f.file_size||0),0);
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal customer-package-modal"><div class="modal-head"><div><h3>客户资料包</h3><div class="hint">${esc(p.name||'当前项目')} ｜ 客户：${esc(p.customer||'-')} ｜ 可发文件 ${total} ｜ ${fileSize(bytes)}</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="customer-panel"><div class="customer-tools">${modelSelectHtml('cf_model','',true)}<select id="cf_cat"><option value="">全部文件类型</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="cf_scope"><option value="customer" selected>仅可发客户</option><option value="filecenter">仅文件中心</option><option value="testcenter">仅测试中心</option></select><button class="btn" onclick="renderCustomerFileList()">筛选</button></div><div class="actions" style="margin-top:10px"><button class="btn small good" onclick="selectCustomerFiles('visible')">勾选当前筛选</button><button class="btn small" onclick="selectCustomerFiles('all')">勾选全部可发</button><button class="btn small" onclick="selectCustomerFiles('none')">清空</button><button class="btn small primary" onclick="copyCustomerLinks()">复制客户链接</button><button class="btn small warn" onclick="createCustomerZip()">生成ZIP</button></div><div id="pkg_result" class="pkg-result"></div><div id="customer_file_list" class="file-list-wrap"></div><textarea id="customer_links" class="copybox" readonly placeholder="选择文件后生成客户链接清单"></textarea></div></div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+  renderCustomerFileList();
+}
 function currentCustomerFiles(){const p=cur();if(!p)return[];const mid=$('cf_model')?.value??'';const cat=$('cf_cat')?.value??'';const scope=$('cf_scope')?.value??'all';return pFiles(p.id).filter(f=>{if(mid!==''&&Number(f.model_id)!==Number(mid))return false;if(cat&&f.category!==cat)return false;if(scope==='customer'&&Number(f.customer_visible)!==1)return false;if(scope==='filecenter'&&isTestFile(f))return false;if(scope==='testcenter'&&!isTestFile(f))return false;return true})}
 function renderCustomerFileList(){const list=currentCustomerFiles();const rows=list.map(f=>{const m=models.find(x=>Number(x.id)===Number(f.model_id));const checked=customerFileSelected.has(Number(f.id));const title=esc(f.title||f.original_name||f.file_name||'未命名文件');const origin=esc(f.original_name||f.file_name||'');const group=esc(m?modelLabel(m):'项目公共文件');const cat=esc(f.category||'文件');const source=esc(fileTypeLabel(f));const vis=Number(f.customer_visible)===1;return `<label class="customer-file-row ${checked?'checked':''}"><input type="checkbox" data-cfid="${f.id}" ${checked?'checked':''} onchange="toggleCustomerFile(${f.id},this.checked)"><span class="customer-file-main"><span class="customer-file-title">${title}</span><span class="customer-file-sub">${group} · ${cat} · ${source}</span><span class="customer-file-origin">${origin}</span></span><span class="customer-file-badges">${vis?'<b class="tag green">可发</b>':'<b class="tag orange">内部</b>'}</span></label>`}).join('');const html=`<div class="customer-mini-head"><span>选</span><span>文件 / 归属 / 类型</span><span>权限</span></div><div class="customer-mini-list">${rows||'<div class="empty">当前筛选下没有文件</div>'}</div>`;if($('customer_file_list'))$('customer_file_list').innerHTML=html;refreshCustomerLinksText(false)}
 function toggleCustomerFile(id,on){if(on)customerFileSelected.add(Number(id));else customerFileSelected.delete(Number(id));refreshCustomerLinksText(false)}
-function selectCustomerFiles(mode){const p=cur();if(!p)return;if(mode==='none')customerFileSelected.clear();else if(mode==='all')pFiles(p.id).forEach(f=>customerFileSelected.add(Number(f.id)));else currentCustomerFiles().forEach(f=>customerFileSelected.add(Number(f.id)));renderCustomerFileList()}
-function selectedCustomerFiles(){const p=cur();if(!p)return[];return pFiles(p.id).filter(f=>customerFileSelected.has(Number(f.id)))}
+function selectCustomerFiles(mode){const p=cur();if(!p)return;if(mode==='none')customerFileSelected.clear();else if(mode==='all')pFiles(p.id).filter(f=>Number(f.customer_visible)===1).forEach(f=>customerFileSelected.add(Number(f.id)));else currentCustomerFiles().filter(f=>Number(f.customer_visible)===1).forEach(f=>customerFileSelected.add(Number(f.id)));renderCustomerFileList()}
+function selectedCustomerFiles(){const p=cur();if(!p)return[];return pFiles(p.id).filter(f=>customerFileSelected.has(Number(f.id))&&Number(f.customer_visible)===1)}
 function buildCustomerLinksText(){const p=cur();const list=selectedCustomerFiles();const lines=[];lines.push(`项目：${p?(p.name||'未命名项目'):''}`);lines.push(`客户：${p?(p.customer||'-'):''}`);lines.push(`文件数量：${list.length}`);lines.push('');let last='';list.forEach((f,i)=>{const m=models.find(x=>Number(x.id)===Number(f.model_id));const group=m?modelLabel(m):'项目公共文件';if(group!==last){lines.push('【'+group+'】');last=group;}lines.push(`${i+1}. ${f.title||f.original_name||f.file_name}（${f.category||'文件'}）`);lines.push(absUrl(f.file_path));});return lines.join('\n')}
 function refreshCustomerLinksText(force){const el=$('customer_links');if(!el)return;el.value=buildCustomerLinksText();if(force)el.focus()}
 async function copyCustomerLinks(){refreshCustomerLinksText(true);const txt=$('customer_links').value;if(!selectedCustomerFiles().length){toast('请先选择文件');return}try{await navigator.clipboard.writeText(txt);toast('客户链接清单已复制')}catch(e){toast('浏览器不允许自动复制，可手动复制下方文本')}}
 async function createCustomerZip(){const list=selectedCustomerFiles();if(!list.length){toast('请先选择文件');return}const r=await api('create_customer_zip',{project_id:cur().id,file_ids:list.map(f=>f.id)});if(!r.ok){toast(r.error||'生成ZIP失败');return}const url=absUrl(r.url);const box=$('pkg_result');box.classList.add('show');box.innerHTML=`已生成 ZIP：<a class="link" href="${esc(r.url)}" target="_blank">${esc(r.name||'客户资料包.zip')}</a> ｜ ${r.count} 个文件 <button class="btn small" onclick="navigator.clipboard.writeText('${esc(url)}')">复制ZIP链接</button>`;toast('ZIP资料包已生成')}
 function filePreview(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<img class="thumb" src="${esc(path)}">`;if(mt.includes('pdf')||/\.pdf$/.test(name))return `<div class="pdfbox"><iframe src="${esc(path)}"></iframe></div>`;return `<div class="empty" style="padding:18px">${esc((name.split('.').pop()||'文件').toUpperCase())}</div>`}
 function fileCard(f){const isTest=TEST_FILE_CATS.includes(f.category);const m=models.find(x=>Number(x.id)===Number(f.model_id));return `<div class="file-card" style="border-left-color:${isTest?'#7c3aed':'#2563eb'}">${filePreview(f)}<h3>${esc(f.title||f.original_name||f.file_name)}</h3><div class="hint">${esc(f.category||'')} ｜ ${esc(f.original_name||'')} ｜ ${esc(f.created_at||'')}</div><div class="hint">归属：${esc(m?modelLabel(m):'项目公共文件')} ｜ ${esc(f.note||'')}</div><div class="tags">${f.customer_visible==1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}${isTest?'<span class="tag purple">测试资料</span>':'<span class="tag blue">文件中心</span>'}</div><div class="grid2"><input id="f_title_${f.id}" value="${esc(f.title||'')}" placeholder="标题"><select id="f_cat_${f.id}">${[...FILE_CATS,...TEST_FILE_CATS].map(c=>`<option ${c===f.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml('f_model_'+f.id,f.model_id||0,false)}</div><textarea id="f_note_${f.id}" placeholder="备注">${esc(f.note||'')}</textarea><label class="hint"><input id="f_vis_${f.id}" type="checkbox" ${Number(f.customer_visible)===1?'checked':''} style="width:auto"> 可发客户</label><div class="actions"><a class="btn small" href="${esc(f.file_path)}" target="_blank">打开</a><button class="btn small good" onclick="saveFileMeta(${f.id})">保存</button><button class="btn small danger" onclick="deleteFile(${f.id})">删除</button></div></div>`}
-async function saveFileMeta(id){const f=files.find(x=>Number(x.id)===Number(id))||{};const r=await api('update_file_meta',{id,title:$('f_title_'+id).value,category:$('f_cat_'+id).value,note:$('f_note_'+id).value,customer_visible:$('f_vis_'+id)?.checked?1:0,model_id:Number($('f_model_'+id)?.value||0),test_id:f.test_id||0,step_id:Number($('f_step_'+id)?.value??f.step_id??0)});toast(r.ok?'文件信息已保存':r.error);await load()}
+async function saveFileMeta(id){const f=files.find(x=>Number(x.id)===Number(id))||{};const r=await api('update_file_meta',{id,title:$('f_title_'+id).value,category:$('f_cat_'+id).value,note:$('f_note_'+id).value,customer_visible:$('f_vis_'+id)?.checked?1:0,model_id:Number($('f_model_'+id)?.value||0),test_id:Number($('f_test_'+id)?.value??f.test_id??0),test_run_id:f.test_run_id||0,step_id:Number($('f_step_'+id)?.value??f.step_id??0),issue_id:Number($('f_issue_'+id)?.value??f.issue_id??0),source_module:$('f_source_'+id)?.value||fileSourceKey(f)});toast(r.ok?'文件信息已保存':r.error);await load()}
 async function deleteFile(id){if(!confirm('删除这个文件记录和服务器文件？'))return;const r=await api('delete_file',{id});toast(r.ok?'文件已删除':r.error);await load()}
 
 function openProjectPackageModal(){
@@ -9364,15 +11699,16 @@ function gotoTab(t){tab=t;localStorage.setItem('plm_v85_tab',tab);renderDetail()
 function pctMini(done,total){done=Number(done||0);total=Number(total||0);return total?Math.round(done*100/total):0}
 function isStepOpen(s){return !['已完成','跳过'].includes(String(s.status||''))}
 function isStepLate(s){const d=dateOnly(s.plan_end||s.plan_date||'');return d && d < new Date().toISOString().slice(0,10) && isStepOpen(s)}
-function summaryAction(title,desc,btn,click,cls='primary'){return `<div class="next-action-card"><div><b>${esc(title)}</b><small>${esc(desc)}</small></div><button class="btn small ${cls}" onclick="${click}">${esc(btn)}</button></div>`}
+function summaryAction(title,desc,btn,click,cls='primary',extra=''){return `<div class="next-action-card ${esc(cls)}"><div><b>${esc(title)}</b><small>${esc(desc)}</small>${extra?`<div class="summary-risk-mini">${extra}</div>`:''}</div><button class="btn small ${cls}" onclick="${click}">${esc(btn)}</button></div>`}
 function setSummarySample(id){summarySampleId=Number(id)||0;localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);renderSummary(cur())}
 const SUMMARY_SECTION_DEFS=[
   {key:'overview',label:'项目一眼看清'},
   {key:'actions',label:'下一步建议'},
   {key:'samples',label:'样品进度'},
-  {key:'tests',label:'测试与问题'},
   {key:'flow',label:'进行中流程'},
-  {key:'files',label:'最近资料/日志'}
+  {key:'tests',label:'测试与问题'},
+  {key:'files',label:'最近资料'},
+  {key:'logs',label:'最近动态'}
 ];
 function summaryVisibleMap(){
   const def={};SUMMARY_SECTION_DEFS.forEach(x=>def[x.key]=true);
@@ -9384,12 +11720,70 @@ function summaryVisibleMap(){
 }
 function saveSummaryVisibleMap(v){localStorage.setItem('plm_v85_summary_sections',JSON.stringify(v||{}));}
 function isSummaryVisible(k){const v=summaryVisibleMap();return v[k]!==false;}
-function setSummarySection(k,on){const v=summaryVisibleMap();v[k]=!!on;saveSummaryVisibleMap(v);renderSummary(cur());}
-function setAllSummarySections(on){const v=summaryVisibleMap();SUMMARY_SECTION_DEFS.forEach(x=>v[x.key]=!!on);saveSummaryVisibleMap(v);renderSummary(cur());}
+function setSummarySection(k,on){const v=summaryVisibleMap();if(k==='overview'&&!on){toast('项目一眼看清必须保留');return}v[k]=!!on;saveSummaryVisibleMap(v);renderSummary(cur());}
+function resetSummarySections(){localStorage.removeItem('plm_v85_summary_sections');renderSummary(cur())}
+function showAllSummarySections(){const v=summaryVisibleMap();SUMMARY_SECTION_DEFS.forEach(x=>v[x.key]=true);saveSummaryVisibleMap(v);renderSummary(cur())}
 function summaryVisibilityBar(){
   const v=summaryVisibleMap();
   const chips=SUMMARY_SECTION_DEFS.map(x=>`<label class="summary-toggle-chip ${v[x.key]!==false?'on':''}"><input type="checkbox" ${v[x.key]!==false?'checked':''} onchange="setSummarySection('${x.key}',this.checked)">${esc(x.label)}</label>`).join('');
-  return `<div class="summary-visibility-bar"><div class="summary-visibility-title"><b>总览显示</b><span>勾选需要显示的版块，系统会记住。</span></div><div class="summary-toggle-list">${chips}<button class="btn small" onclick="setAllSummarySections(true)">全显示</button><button class="btn small" onclick="setAllSummarySections(false)">全隐藏</button></div></div>`;
+  return `<details class="summary-settings"><summary>总览设置</summary><div class="summary-settings-menu"><div class="summary-toggle-list">${chips}</div><div class="actions"><button class="btn small" onclick="showAllSummarySections()">全部显示</button><button class="btn small" onclick="resetSummarySections()">恢复默认</button></div></div></details>`;
+}
+function summaryTestStats(ts){
+  const total=ts.length;
+  const passed=ts.filter(t=>testResultValue(t)==='通过').length;
+  const failed=ts.filter(t=>testResultValue(t)==='不通过').length;
+  const retest=ts.filter(t=>testStatusValue(t)==='待复测'||testRetestCount(t,ts)>0).length;
+  const running=ts.filter(t=>testStatusValue(t)==='进行中').length;
+  const pending=ts.filter(t=>['未开始','待测'].includes(testStatusValue(t))).length;
+  return {total,passed,failed,retest,running,pending,pct:total?Math.round(passed*100/total):0};
+}
+function closedIssue(i){return ['已解决','已关闭','关闭','完成'].includes(String(i.status||''))}
+function seriousIssue(i){return /严重|高|P1|S1/i.test(String(i.severity||i.priority||''))}
+function stepDone(s){return ['已完成','跳过'].includes(String(s.status||''))}
+function flowStatsForSteps(st){const done=st.filter(stepDone).length;return {total:st.length,done,pct:st.length?Math.round(done/st.length*100):0}}
+function componentReady(m){
+  const keys=['chip','optical','driver','accessories'];
+  const done=keys.filter(k=>String(m[k+'_name']||m[k+'_brand']||m[k+'_material_id']||m[k+'_material_ids']||'').trim()!=='').length;
+  return {done,total:4,ok:done>=3};
+}
+function projectHasBomForModel(m){
+  return logs.some(l=>Number(l.project_id)===Number(m.project_id)&&String(l.target_type||'').toLowerCase()==='bom'&&String(l.note||'').includes(String(m.id)))||String(m.bom_note||'').trim()!=='';
+}
+function summaryJump(tabName,opts={}){
+  if(opts.model_id){summarySampleId=Number(opts.model_id);flowModelId=Number(opts.model_id);testModelId=Number(opts.model_id);localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_test_model',testModelId);}
+  if(opts.step_id){flowSelectedStepId=Number(opts.step_id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);}
+  if(opts.test_id){testSelectedId=Number(opts.test_id);localStorage.setItem('plm_v85_test_id',testSelectedId);testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');}
+  if(opts.file_id){fileSelectedId=Number(opts.file_id);localStorage.setItem('plm_v85_file_id',fileSelectedId);}
+  tab=tabName;localStorage.setItem('plm_v85_tab',tab);renderDetail();
+}
+function summaryItem(title,meta,click='',cls=''){
+  return `<div class="summary-list-row ${esc(cls)}"><div><b>${esc(title||'-')}</b><span>${esc(meta||'')}</span></div>${click?`<button class="btn small" onclick="${click}">查看</button>`:''}</div>`;
+}
+function currentAndNextStep(st){
+  const sorted=[...st].sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0)));
+  const current=sorted.find(s=>String(s.status||'')==='进行中')||sorted.find(s=>isStepOpen(s));
+  const idx=current?sorted.findIndex(s=>Number(s.id)===Number(current.id)):-1;
+  const next=idx>=0?sorted.slice(idx+1).find(s=>isStepOpen(s)):sorted.find(s=>isStepOpen(s));
+  const recent=[...sorted].reverse().filter(stepDone).slice(0,2);
+  return {current,next,recent};
+}
+function summaryBestAction(data){
+  const {ms,openIssues,seriousIssues,failedTests,retestTests,lateSteps,abnormalSteps,openSteps,fs,ts,ss}=data;
+  const first=(arr)=>arr&&arr.length?arr[0]:null;
+  let x=first(seriousIssues); if(x)return summaryAction('严重问题未关闭',x.title||'存在严重问题','查看问题',`summaryJump('issues',{model_id:${Number(x.model_id||0)}})`,'danger');
+  x=first(failedTests); if(x)return summaryAction('测试不通过',`${x.test_type||'测试'} · ${x.title||''}`,'查看测试',`summaryJump('tests',{model_id:${Number(x.model_id||0)},test_id:${Number(x.id)}})`,'danger');
+  x=first(retestTests); if(x)return summaryAction('存在待复测',`${x.test_type||'测试'} 需要复测确认`,'查看测试',`summaryJump('tests',{model_id:${Number(x.model_id||0)},test_id:${Number(x.id)}})`,'warn');
+  x=first(lateSteps); if(x)return summaryAction('流程节点延期',`${x.title||'步骤'} 计划 ${dateOnly(x.plan_end||x.plan_date)||'-'}`,'查看流程',`summaryJump('flow',{model_id:${Number(x.model_id||0)},step_id:${Number(x.id)}})`,'warn');
+  x=first(abnormalSteps); if(x)return summaryAction('流程存在异常/退回',x.title||'流程节点异常','查看流程',`summaryJump('flow',{model_id:${Number(x.model_id||0)},step_id:${Number(x.id)}})`,'warn');
+  x=openSteps.find(s=>!String(s.owner||s.owner_name||'').trim()); if(x)return summaryAction('当前步骤未指定负责人',x.title||'待分配步骤','查看流程',`summaryJump('flow',{model_id:${Number(x.model_id||0)},step_id:${Number(x.id)}})`,'primary');
+  x=openSteps.find(s=>!dispatchSummary(s.id).total); if(x)return summaryAction('当前步骤尚未生成派工',x.title||'待派工步骤','生成派工',`summaryJump('flow',{model_id:${Number(x.model_id||0)},step_id:${Number(x.id)}})`,'primary');
+  x=openSteps.find(s=>String(s.status||'')!=='进行中'); if(x)return summaryAction('下一流程尚未开始',x.title||'下一步骤','查看流程',`summaryJump('flow',{model_id:${Number(x.model_id||0)},step_id:${Number(x.id)}})`,'primary');
+  const notReady=ms.find(m=>!componentReady(m).ok); if(notReady)return summaryAction('关键元器件未完成',modelLabel(notReady),'查看样品',`summaryJump('models',{model_id:${Number(notReady.id)}})`,'warn');
+  const noBom=ms.find(m=>!projectHasBomForModel(m)); if(noBom)return summaryAction('BOM 尚未生成或不完整',modelLabel(noBom),'生成 BOM',`summaryJump('models',{model_id:${Number(noBom.id)}})`,'warn');
+  if(!ts.length)return summaryAction('必需测试尚未建立','当前项目还没有测试记录','进入测试',`summaryJump('tests')`,'primary');
+  if(!fs.filter(f=>Number(f.customer_visible)===1).length)return summaryAction('客户资料尚不完整','还没有可发客户文件','进入文件',`summaryJump('files')`,'primary');
+  if(ss.length&&ss.every(stepDone)&&ts.length&&summaryTestStats(ts).failed===0)return summaryAction('开发与测试已完成','可以整理客户资料包','客户资料包',"openCustomerPackageModal()",'good');
+  return summaryAction('当前没有阻塞异常','继续按计划推进项目即可','查看流程',`summaryJump('flow')`,'good');
 }
 function renderSummary(p){
   const ms=pModels(p.id),ts=pTests(p.id),fs=pFiles(p.id),ss=steps.filter(s=>Number(s.project_id)===Number(p.id)),is=issues.filter(x=>Number(x.project_id)===Number(p.id));
@@ -9456,6 +11850,54 @@ function renderSummary(p){
       ${gridCards.length?`<div class="summary-grid ${gridCards.length===1?'single':''}">${gridCards.join('')}</div>`:''}
       ${hiddenAll?'<div class="summary-empty">项目总览版块已全部隐藏。点击上方“全显示”恢复。</div>':''}
     </div>`;
+}
+
+function renderSummary(p){
+  if(!p){$('tabbody').innerHTML='<div class="empty">请选择项目</div>';return}
+  const ms=pModels(p.id), ts=pTests(p.id), fs=pFiles(p.id);
+  const ss=steps.filter(s=>Number(s.project_id)===Number(p.id));
+  const is=issues.filter(x=>Number(x.project_id)===Number(p.id));
+  const flow=flowStatsForSteps(ss), tstat=summaryTestStats(ts), ds=rndAllDispatchSummary(Number(p.id));
+  const openIssues=is.filter(x=>!closedIssue(x));
+  const seriousIssues=openIssues.filter(seriousIssue);
+  const failedTests=ts.filter(t=>testResultValue(t)==='不通过');
+  const retestTests=ts.filter(t=>testStatusValue(t)==='待复测'||testRetestCount(t,ts)>0);
+  const lateSteps=ss.filter(isStepLate);
+  const abnormalSteps=ss.filter(s=>/异常|退回|重来|卡住/i.test(String(s.status||'')));
+  const openSteps=ss.filter(isStepOpen).sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0)));
+  const customerFiles=fs.filter(f=>Number(f.customer_visible)===1);
+  const recentFiles=[...fs].sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,8);
+  const recentLogs=logs.filter(l=>Number(l.project_id)===Number(p.id)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,10);
+  const best=summaryBestAction({ms,openIssues,seriousIssues,failedTests,retestTests,lateSteps,abnormalSteps,openSteps,fs,ts,ss});
+  const risks=[];
+  seriousIssues.slice(0,1).forEach(i=>risks.push(summaryItem('严重问题：'+(i.title||'未命名问题'),`${i.severity||'高'} ｜ ${i.status||'待处理'} ｜ ${i.owner||'-'}`,`summaryJump('issues',{model_id:${Number(i.model_id||0)}})`,'danger')));
+  failedTests.slice(0,1).forEach(t=>risks.push(summaryItem('不通过测试：'+(t.title||t.test_type||'测试'),`${t.result||'不通过'} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,'danger')));
+  retestTests.slice(0,1).forEach(t=>risks.push(summaryItem('待复测：'+(t.title||t.test_type||'测试'),`${t.status||'待复测'} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,'warn')));
+  lateSteps.slice(0,1).forEach(st=>risks.push(summaryItem('延期流程：'+(st.title||'步骤'),`${dateOnly(st.plan_end||st.plan_date)||'-'} ｜ ${st.owner||st.owner_name||'未指定'}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,'warn')));
+  abnormalSteps.slice(0,1).forEach(st=>risks.push(summaryItem('异常/退回：'+(st.title||'步骤'),`${st.status||'异常'} ｜ ${st.owner||st.owner_name||'未指定'}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,'warn')));
+  const statusLine=[p.status||'开发中',openSteps[0]?('当前进行到 '+(openSteps[0].title||'流程节点')):(ss.length?'开发流程已完成':'暂无开发流程'),failedTests.length?failedTests.length+'项测试不通过':'',retestTests.length?retestTests.length+'项待复测':'',openIssues.length?openIssues.length+'个未关闭问题':'',customerFiles.length?('客户资料 '+customerFiles.length+'份'):'客户资料待补充'].filter(Boolean).slice(0,4).join(' · ');
+  const overview=isSummaryVisible('overview')?`<section class="summary-cockpit-card summary-overview"><div class="summary-card-head"><h3>项目一眼看清</h3><div class="hint">${esc(p.project_no||'-')} ｜ ${esc(p.customer||'未填客户')} ｜ 负责人：${esc(p.engineer||'-')} ｜ ${esc(p.due_date?('计划 '+dateOnly(p.due_date)):'未填计划日期')}</div></div><div class="summary-project-tags"><span>${esc(p.status||'开发中')}</span><span>${esc(p.priority||'普通')}</span><span>${esc(p.source||'来源未填')}</span></div><div class="summary-metrics"><span><b>${ms.length}</b>样品</span><span><b>${flow.pct}%</b>工序</span><span><b>${tstat.passed}/${tstat.total}</b>测试通过</span><span class="${openIssues.length?'bad':''}"><b>${openIssues.length}</b>未关闭问题</span><span><b>${customerFiles.length}</b>客户资料</span><span><b>${ds.done}/${ds.total}</b>派工</span></div><div class="summary-progress-pair"><div><div><b>开发流程</b><span>${flow.done}/${flow.total}，${flow.pct}%</span></div><i><em style="width:${flow.pct}%"></em></i></div><div><div><b>测试通过</b><span>${tstat.passed}/${tstat.total}${tstat.retest?`，待复测 ${tstat.retest}`:''}</span></div><i class="green"><em style="width:${tstat.pct}%"></em></i></div></div><div class="summary-status-line">${esc(statusLine||'当前项目暂无足够数据。')}</div></section>`:'';
+  const actions=isSummaryVisible('actions')?`<section class="summary-cockpit-card summary-action-panel"><div class="summary-card-head"><h3>下一步与风险提醒</h3><button class="btn small" onclick="renderSummary(cur())">刷新</button></div><div class="next-actions">${best}</div><div class="summary-risk-list">${risks.slice(0,3).join('')||'<div class="summary-ok-line">当前没有阻塞项目推进的异常。</div>'}</div></section>`:'';
+  const sampleCards=ms.map(m=>{
+    const mSteps=ss.filter(s=>Number(s.model_id)===Number(m.id)), mf=flowStatsForSteps(mSteps), curNext=currentAndNextStep(mSteps);
+    const mTests=ts.filter(t=>Number(t.model_id)===Number(m.id)), mt=summaryTestStats(mTests);
+    const mIssues=openIssues.filter(i=>Number(i.model_id)===Number(m.id));
+    const mFiles=fs.filter(f=>Number(f.model_id)===Number(m.id));
+    const comp=componentReady(m), bom=projectHasBomForModel(m);
+    return `<article class="summary-sample-card ${Number(m.id)===Number(summarySampleId)?'active':''}"><div class="summary-sample-head"><div><h4>${esc(modelLabel(m))}</h4><span>${esc(m.sample_version||'V1')} ｜ ${esc(m.status||'开发中')}</span></div><button class="btn small" onclick="setSummarySample(${Number(m.id)})">当前</button></div><div class="hint">${esc(m.model||m.naming_model_no||'-')} ｜ ${esc(m.product_category||m.naming_category||'-')}</div><div class="summary-sample-kpis"><span>流程 ${mf.done}/${mf.total}</span><span class="${mt.failed?'bad':''}">测试 过${mt.passed} / 不${mt.failed} / 复${mt.retest}</span><span class="${mIssues.length?'bad':''}">问题 ${mIssues.length}</span><span>文件 ${mFiles.length}</span></div><div class="summary-mini-bar"><i style="width:${mf.pct}%"></i></div><div class="summary-sample-status"><b>BOM/元器件</b><span>${bom?'BOM已生成':'BOM未生成'} · 元器件 ${comp.done}/${comp.total}</span></div><div class="summary-sample-status"><b>当前</b><span>${esc(curNext.current?curNext.current.title:'暂无进行中')}</span></div><div class="summary-sample-status"><b>下一步</b><span>${esc(curNext.next?curNext.next.title:(mf.total?'流程已完成':'暂无流程'))}</span></div><div class="summary-sample-actions"><button onclick="summaryJump('models',{model_id:${Number(m.id)}})">样品详情</button><button onclick="summaryJump('flow',{model_id:${Number(m.id)},step_id:${Number(curNext.current?.id||0)}})">开发流程</button><button onclick="summaryJump('tests',{model_id:${Number(m.id)}})">测试</button><button onclick="summaryJump('issues',{model_id:${Number(m.id)}})">问题</button><button onclick="summaryJump('files',{model_id:${Number(m.id)}})">文件</button><button onclick="createBomFromModel(${Number(m.id)})">BOM</button></div></article>`;
+  }).join('')||'<div class="summary-empty">当前项目暂未建立样品。</div>';
+  const samples=isSummaryVisible('samples')?`<section class="summary-cockpit-card summary-wide"><div class="summary-card-head"><h3>样品进度</h3><button class="btn small" onclick="summaryJump('models')">进入样品管理</button></div><div class="summary-sample-grid">${sampleCards}</div></section>`:'';
+  const flowItems=[...lateSteps,...abnormalSteps,...ss.filter(s=>String(s.status||'')==='进行中'),...openSteps].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,8).map(st=>{const m=ms.find(x=>Number(x.id)===Number(st.model_id));const d=dispatchSummary(st.id);return summaryItem(st.title||'流程节点',`${m?modelLabel(m):'公共'} ｜ ${st.status||'未开始'} ｜ ${st.owner||st.owner_name||'未指定'} ｜ ${dateOnly(st.plan_end||st.plan_date)||'-'}${d.total?' ｜ 派工 '+d.done+'/'+d.total:''}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,isStepLate(st)?'warn':'');}).join('')||'<div class="summary-empty small">暂无待推进流程。</div>';
+  const flowBlock=isSummaryVisible('flow')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>当前开发流程</h3><button class="btn small" onclick="summaryJump('flow')">开发导航图</button></div><div class="summary-list">${flowItems}</div></section>`:'';
+  const focusTests=[...failedTests,...retestTests,...ts.filter(t=>testStatusValue(t)==='进行中'),...ts.filter(t=>['未开始','待测'].includes(testStatusValue(t)))].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,5);
+  const testRows=focusTests.map(t=>{const m=ms.find(x=>Number(x.id)===Number(t.model_id));return summaryItem(t.title||t.test_type||'测试',`${m?modelLabel(m):'项目公共'} ｜ ${testStatusValue(t)} ｜ ${testResultValue(t)} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,testResultValue(t)==='不通过'?'danger':(testStatusValue(t)==='待复测'?'warn':''));}).join('')||'<div class="summary-empty small">暂无需关注测试。</div>';
+  const issueRows=openIssues.slice().sort((a,b)=>(seriousIssue(b)-seriousIssue(a))||String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,5).map(i=>summaryItem(i.title||'问题',`${i.severity||'中'} ｜ ${i.status||'待处理'} ｜ ${i.owner||'-'}`,`summaryJump('issues',{model_id:${Number(i.model_id||0)}})`,seriousIssue(i)?'danger':'warn')).join('')||'<div class="summary-empty small">暂无未关闭问题。</div>';
+  const testsBlock=isSummaryVisible('tests')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>测试与问题</h3><button class="btn small" onclick="summaryJump('tests')">查看全部测试</button></div><div class="summary-test-strip"><span>总数 <b>${tstat.total}</b></span><span class="good">通过 <b>${tstat.passed}</b></span><span class="bad">不通过 <b>${tstat.failed}</b></span><span class="warn">待复测 <b>${tstat.retest}</b></span><span>未开始 <b>${tstat.pending}</b></span></div><div class="summary-two-tabs"><div><h4>测试关注</h4>${testRows}</div><div><h4>问题关注</h4>${issueRows}</div></div></section>`:'';
+  const fileRows=recentFiles.map(f=>{const m=ms.find(x=>Number(x.id)===Number(f.model_id));return `<div class="summary-file-row"><div>${fileIcon(f)}</div><div><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b><span>${esc(f.category||'文件')} ｜ ${esc(m?modelLabel(m):'项目公共')} ｜ ${esc(fileSourceLabel(fileSourceKey(f)))} ｜ ${Number(f.customer_visible)===1?'可发客户':'内部资料'}</span></div><button class="btn small" onclick="summaryJump('files',{file_id:${Number(f.id)}})">预览</button></div>`;}).join('')||'<div class="summary-empty small">暂无最近资料。</div>';
+  const filesBlock=isSummaryVisible('files')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>最近资料</h3><div class="actions"><button class="btn small" onclick="summaryJump('files')">文件中心</button><button class="btn small good" onclick="openCustomerPackageModal()">客户资料包</button></div></div><div class="summary-file-list">${fileRows}</div></section>`:'';
+  const logRows=recentLogs.map(l=>summaryItem(l.action||l.target_type||'日志',`${l.created_at||'-'} ｜ ${l.actor_name||l.user_name||'-'} ｜ ${l.note||''}`,'','')).join('')||'<div class="summary-empty small">暂无最近动态。</div>';
+  const logsBlock=isSummaryVisible('logs')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>最近动态</h3><button class="btn small" onclick="openRecycleBin()">查看全部日志</button></div><div class="summary-list">${logRows}</div></section>`:'';
+  $('tabbody').innerHTML=`<div id="tab-summary" class="summary-cockpit"><div class="summary-top-tools">${summaryVisibilityBar()}</div><div class="summary-row summary-row-top">${overview}${actions}</div>${samples}<div class="summary-row summary-row-mid">${flowBlock}${testsBlock}</div><div class="summary-row summary-row-bottom">${filesBlock}${logsBlock}</div></div>`;
 }
 async function openDispatch(){
   if(!guardPerm('create_dispatch','生成派工'))return;
@@ -9563,7 +12005,7 @@ function renderAllProjectsModal(){
 function selectProjectFromAllModal(id){
   selectedId=Number(id)||0; localStorage.setItem('plm_v85_selected',selectedId);
   document.querySelector('.all-project-modal')?.remove();
-  if(projectListCollapsed)toggleProjectListCollapse(false); else render();
+  render();
 }
 function exportAllProjectsModalCsv(){
   const r=allProjectFilteredList();
@@ -9648,7 +12090,7 @@ function renderRndDashboardList(){
 }
 function selectProjectFromRnd(id,nextTab='basic'){
   selectedId=Number(id)||0; tab=nextTab||'basic'; localStorage.setItem('plm_v85_selected',selectedId); localStorage.setItem('plm_v85_tab',tab);
-  document.querySelector('.rnd-modal')?.remove(); if(projectListCollapsed)toggleProjectListCollapse(false); else render();
+  document.querySelector('.rnd-modal')?.remove(); render();
 }
 function exportRndDashboardCsv(){
   const r=rndFilteredList();
