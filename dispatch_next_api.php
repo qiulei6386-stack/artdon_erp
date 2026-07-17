@@ -426,6 +426,9 @@ function dn_notification_schema_ready(): void
         'handled_at' => "ALTER TABLE dispatch_next_notifications ADD COLUMN handled_at DATETIME NULL AFTER read_at",
         'updated_at' => "ALTER TABLE dispatch_next_notifications ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
         'event_count' => "ALTER TABLE dispatch_next_notifications ADD COLUMN event_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER updated_at",
+        'summary_count' => "ALTER TABLE dispatch_next_notifications ADD COLUMN summary_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER event_count",
+        'last_event_at' => "ALTER TABLE dispatch_next_notifications ADD COLUMN last_event_at DATETIME NULL AFTER summary_count",
+        'archived' => "ALTER TABLE dispatch_next_notifications ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0 AFTER last_event_at",
     ];
     foreach ($adds as $col => $sql) {
         if (empty($cols[$col])) {
@@ -435,6 +438,7 @@ function dn_notification_schema_ready(): void
     try { $pdo->exec("CREATE UNIQUE INDEX uq_dispatch_next_notice_dedupe ON dispatch_next_notifications(dedupe_key)"); } catch (Throwable $e) {}
     try { $pdo->exec("CREATE INDEX idx_dispatch_next_notice_action ON dispatch_next_notifications(recipient_id, action_required, status, snooze_until, updated_at)"); } catch (Throwable $e) {}
     try { $pdo->exec("UPDATE dispatch_next_notifications SET event_type=COALESCE(event_type,type), actor_id=COALESCE(actor_id,sender_id), status=CASE WHEN is_read=1 THEN 'read' ELSE 'unread' END WHERE event_type IS NULL OR status=''"); } catch (Throwable $e) {}
+    try { $pdo->exec("UPDATE dispatch_next_notifications SET summary_count=GREATEST(summary_count,event_count,1), last_event_at=COALESCE(last_event_at,updated_at,created_at), archived=COALESCE(archived,0)"); } catch (Throwable $e) {}
 }
 
 function dn_notice_event(int $recipientId, ?int $taskId, string $eventType, string $title, string $message, array $opt = []): void
@@ -455,12 +459,12 @@ function dn_notice_event(int $recipientId, ?int $taskId, string $eventType, stri
     $st->execute([$dedupe]);
     $existingId = (int)($st->fetchColumn() ?: 0);
     if ($existingId > 0) {
-        $pdo->prepare("UPDATE dispatch_next_notifications SET actor_id=?, sender_id=?, title=?, message=?, severity=?, action_required=?, action_code=?, status=IF(status='handled','unread',status), snooze_until=NULL, updated_at=NOW(), event_count=event_count+1 WHERE id=?")
+        $pdo->prepare("UPDATE dispatch_next_notifications SET actor_id=?, sender_id=?, title=?, message=?, severity=?, action_required=?, action_code=?, status=IF(status='handled','unread',status), snooze_until=NULL, archived=0, updated_at=NOW(), last_event_at=NOW(), event_count=event_count+1, summary_count=summary_count+1 WHERE id=?")
             ->execute([$actorId, $actorId, $title, $message, $severity, $actionRequired, $actionCode, $existingId]);
         return;
     }
-    $sql = "INSERT INTO dispatch_next_notifications(recipient_id,actor_id,sender_id,task_id,group_id,event_type,type,severity,title,message,action_required,action_code,status,dedupe_key,group_key,created_at,updated_at,event_count)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),1)";
+    $sql = "INSERT INTO dispatch_next_notifications(recipient_id,actor_id,sender_id,task_id,group_id,event_type,type,severity,title,message,action_required,action_code,status,dedupe_key,group_key,created_at,updated_at,event_count,summary_count,last_event_at,archived)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),1,1,NOW(),0)";
     $pdo->prepare($sql)->execute([$recipientId, $actorId, $actorId, $taskId, $groupId, $eventType, $eventType, $severity, $title, $message, $actionRequired, $actionCode, $status, $dedupe, $groupKey]);
 }
 
@@ -479,11 +483,13 @@ function dn_notice_mark_task_handled(int $taskId, array $eventTypes = []): void
 
 function dn_notify_task_update_merged(int $recipientId, int $taskId, string $message): void
 {
+    $day = date('Y-m-d');
     dn_notice_event($recipientId, $taskId, 'task_updated', '任务已更新', $message, [
         'action_required' => 0,
         'severity' => 'normal',
         'skip_self' => true,
-        'dedupe_key' => 'task_updated:' . $taskId . ':' . $recipientId . ':' . floor(time() / 300),
+        'dedupe_key' => 'task_updated:' . $taskId . ':' . $recipientId . ':' . $day,
+        'group_key' => 'task_updated:' . $taskId . ':' . $day,
     ]);
 }
 
@@ -492,7 +498,7 @@ function dn_merge_duplicate_update_notifications(?int $recipientId = null): arra
     dn_notification_schema_ready();
     $pdo = dispatch_next_db();
     $uid = $recipientId ?: dn_uid();
-    $st = $pdo->prepare("SELECT recipient_id, task_id, type, title, COUNT(*) AS c, MAX(id) AS keep_id FROM dispatch_next_notifications WHERE recipient_id=? AND task_id IS NOT NULL AND type='urge' AND title='任务已更新' GROUP BY recipient_id, task_id, type, title HAVING c>1 LIMIT 80");
+    $st = $pdo->prepare("SELECT recipient_id, task_id, COALESCE(event_type,type) AS event_type, DATE(COALESCE(last_event_at,updated_at,created_at)) AS day_key, COUNT(*) AS c, MAX(id) AS keep_id, SUM(GREATEST(summary_count,event_count,1)) AS total_count FROM dispatch_next_notifications WHERE recipient_id=? AND COALESCE(archived,0)=0 AND task_id IS NOT NULL AND action_required=0 GROUP BY recipient_id, task_id, COALESCE(event_type,type), DATE(COALESCE(last_event_at,updated_at,created_at)) HAVING c>1 LIMIT 200");
     $st->execute([$uid]);
     $groups = $st->fetchAll();
     $merged = 0;
@@ -505,11 +511,34 @@ function dn_merge_duplicate_update_notifications(?int $recipientId = null): arra
         $message = (string)($msgSt->fetchColumn() ?: '');
         $cleanMessage = trim((string)preg_replace('/\n?连续更新合并：共\s*\d+\s*条，已保留最新一条。/u', '', $message));
         if ($cleanMessage !== $message) $pdo->prepare("UPDATE dispatch_next_notifications SET message=? WHERE id=?")->execute([$cleanMessage, $keepId]);
-        $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=? AND task_id=? AND type=? AND title=? AND id<>?")
-            ->execute([(int)$g['recipient_id'], (int)$g['task_id'], (string)$g['type'], (string)$g['title'], $keepId]);
+        $pdo->prepare("UPDATE dispatch_next_notifications SET summary_count=?, last_event_at=COALESCE(last_event_at,updated_at,created_at), updated_at=NOW() WHERE id=?")
+            ->execute([max(1, (int)($g['total_count'] ?? $count)), $keepId]);
+        $pdo->prepare("UPDATE dispatch_next_notifications SET archived=1, is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=? AND task_id=? AND COALESCE(event_type,type)=? AND DATE(COALESCE(last_event_at,updated_at,created_at))=? AND id<>?")
+            ->execute([(int)$g['recipient_id'], (int)$g['task_id'], (string)$g['event_type'], (string)$g['day_key'], $keepId]);
         $merged += $count - 1;
     }
     return ['groups' => count($groups), 'merged' => $merged];
+}
+
+function dn_cleanup_duplicate_notifications(array $in = []): array
+{
+    dn_notification_schema_ready();
+    if (!dn_is_admin()) dn_fail('只有管理员可以清理重复通知', 403);
+    $pdo = dispatch_next_db();
+    $limit = max(20, min(500, (int)($in['limit'] ?? 200)));
+    $st = $pdo->prepare("SELECT recipient_id, task_id, COALESCE(event_type,type) AS event_type, DATE(COALESCE(last_event_at,updated_at,created_at)) AS day_key, COUNT(*) AS c, MAX(id) AS keep_id, SUM(GREATEST(summary_count,event_count,1)) AS total_count FROM dispatch_next_notifications WHERE COALESCE(archived,0)=0 AND task_id IS NOT NULL GROUP BY recipient_id, task_id, COALESCE(event_type,type), DATE(COALESCE(last_event_at,updated_at,created_at)) HAVING c>1 LIMIT {$limit}");
+    $st->execute();
+    $groups = $st->fetchAll();
+    $archived = 0;
+    foreach ($groups as $g) {
+        $keepId = (int)($g['keep_id'] ?? 0);
+        if ($keepId <= 0) continue;
+        $total = max(1, (int)($g['total_count'] ?? $g['c'] ?? 1));
+        $pdo->prepare("UPDATE dispatch_next_notifications SET summary_count=?, last_event_at=COALESCE(last_event_at,updated_at,created_at), updated_at=NOW(), archived=0 WHERE id=?")->execute([$total, $keepId]);
+        $pdo->prepare("UPDATE dispatch_next_notifications SET archived=1, is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=? AND task_id=? AND COALESCE(event_type,type)=? AND DATE(COALESCE(last_event_at,updated_at,created_at))=? AND id<>?")->execute([(int)$g['recipient_id'], (int)$g['task_id'], (string)$g['event_type'], (string)$g['day_key'], $keepId]);
+        $archived += max(0, (int)$g['c'] - 1);
+    }
+    return ['groups' => count($groups), 'archived' => $archived];
 }
 
 function dn_generate_due_notifications(int $uid): array
@@ -589,9 +618,9 @@ function dn_notification_rows(int $uid): array
         FROM dispatch_next_notifications n
         LEFT JOIN dispatch_next_tasks t ON t.id=n.task_id
         LEFT JOIN crm_users u ON u.id=t.assigned_to
-        WHERE n.recipient_id=? AND (n.snooze_until IS NULL OR n.snooze_until<=NOW())
+        WHERE n.recipient_id=? AND COALESCE(n.archived,0)=0 AND (n.snooze_until IS NULL OR n.snooze_until<=NOW())
         ORDER BY n.action_required DESC, FIELD(n.status,'unread','read','snoozed','handled'), n.updated_at DESC, n.id DESC
-        LIMIT 300");
+        LIMIT 1000");
     $st->execute([$uid]);
     $rows = $st->fetchAll();
     foreach ($rows as &$r) {
@@ -601,16 +630,85 @@ function dn_notification_rows(int $uid): array
         $r['is_read'] = (int)($r['is_read'] ?? 0);
         $r['action_required'] = (int)($r['action_required'] ?? 0);
         $r['event_count'] = (int)($r['event_count'] ?? 1);
+        $r['summary_count'] = max(1, (int)($r['summary_count'] ?? $r['event_count'] ?? 1));
+        $r['last_event_at'] = (string)($r['last_event_at'] ?? $r['updated_at'] ?? $r['created_at'] ?? '');
         $r['status'] = (string)($r['status'] ?? ($r['is_read'] ? 'read' : 'unread'));
     }
-    return $rows;
+    return dn_compact_notification_rows($rows);
+}
+
+function dn_notification_is_required_row(array $n): bool
+{
+    $status = (string)($n['status'] ?? '');
+    return !empty($n['action_required']) && !in_array($status, ['handled','snoozed'], true);
+}
+
+function dn_compact_notification_rows(array $rows): array
+{
+    $out = [];
+    $map = [];
+    foreach ($rows as $row) {
+        $required = dn_notification_is_required_row($row);
+        $event = (string)($row['event_type'] ?? $row['type'] ?? '');
+        $taskId = (int)($row['task_id'] ?? 0);
+        if ($required || $taskId <= 0) {
+            $out[] = $row;
+            continue;
+        }
+        $date = substr((string)($row['last_event_at'] ?: $row['updated_at'] ?: $row['created_at'] ?: ''), 0, 10);
+        $key = $taskId . ':' . $event . ':' . $date;
+        $count = max(1, (int)($row['summary_count'] ?? $row['event_count'] ?? 1));
+        if (!isset($map[$key])) {
+            $row['summary_count'] = $count;
+            $row['last_event_at'] = (string)($row['last_event_at'] ?: $row['updated_at'] ?: $row['created_at'] ?: '');
+            $map[$key] = count($out);
+            $out[] = $row;
+            continue;
+        }
+        $idx = $map[$key];
+        $out[$idx]['summary_count'] = max(1, (int)($out[$idx]['summary_count'] ?? 1)) + $count;
+        $last = (string)($out[$idx]['last_event_at'] ?: $out[$idx]['updated_at'] ?: $out[$idx]['created_at'] ?: '');
+        $cur = (string)($row['last_event_at'] ?: $row['updated_at'] ?: $row['created_at'] ?: '');
+        if ($cur > $last) {
+            $row['summary_count'] = (int)$out[$idx]['summary_count'];
+            $row['last_event_at'] = $cur;
+            $map[$key] = $idx;
+            $out[$idx] = $row;
+        }
+    }
+    foreach ($out as &$row) {
+        $required = dn_notification_is_required_row($row);
+        $count = max(1, (int)($row['summary_count'] ?? 1));
+        if (!$required && $count > 1) {
+            $last = (string)($row['last_event_at'] ?: $row['updated_at'] ?: $row['created_at'] ?: '');
+            $row['title'] = (string)($row['task_title'] ?: $row['title'] ?: '任务动态');
+            $row['message'] = '今日更新 ' . $count . ' 次' . ($last !== '' ? "\n最后更新：" . $last : '') . "\n类型：" . dn_notice_event_label((string)($row['event_type'] ?? $row['type'] ?? ''));
+        }
+    }
+    usort($out, fn($a, $b) => strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')) ?: ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0)));
+    return $out;
+}
+
+function dn_notice_event_label(string $event): string
+{
+    return [
+        'task_updated' => '任务内容更新',
+        'progress_added' => '进度记录',
+        'attachment_added' => '附件更新',
+        'task_done' => '任务完成',
+        'new_dispatch' => '新派工',
+        'due_today' => '今日到期',
+        'overdue' => '逾期提醒',
+        'urge' => '催办',
+        'completed_pending_confirm' => '完成待确认',
+    ][$event] ?? $event;
 }
 
 function dn_notification_in_category(array $n, string $cat): bool
 {
     $event = (string)($n['event_type'] ?? $n['type'] ?? '');
     $status = (string)($n['status'] ?? '');
-    $required = !empty($n['action_required']) && !in_array($status, ['handled','snoozed'], true);
+    $required = dn_notification_is_required_row($n);
     $taskStatus = (string)($n['task_status'] ?? '');
     return match ($cat) {
         'pending_all' => $required,
@@ -620,11 +718,8 @@ function dn_notification_in_category(array $n, string $cat): bool
         'confirm' => $required && $event === 'completed_pending_confirm',
         'urge' => $required && $event === 'urge',
         'blocked' => $required && in_array($event, ['task_blocked','delay_requested','task_returned'], true),
-        'sent_unaccepted' => $taskStatus === 'pending_accept',
-        'sent_progress' => in_array($taskStatus, ['accepted','in_progress','paused'], true),
-        'sent_confirm' => $taskStatus === 'submitted',
-        'sent_done' => $taskStatus === 'done',
-        'history_read' => !$required && in_array($status, ['read','handled'], true),
+        'history' => !$required,
+        'history_read' => !$required,
         'activity' => in_array($event, ['task_updated','progress_added','attachment_added'], true),
         'system' => $event === 'system',
         default => $required,
@@ -633,7 +728,7 @@ function dn_notification_in_category(array $n, string $cat): bool
 
 function dn_notification_counts(array $rows): array
 {
-    $cats = ['pending_all','new_dispatch','due_today','overdue','confirm','urge','blocked','sent_unaccepted','sent_progress','sent_confirm','sent_done','history_read','activity','system'];
+    $cats = ['pending_all','new_dispatch','due_today','overdue','confirm','urge','blocked','history','history_read','activity'];
     $out = [];
     foreach ($cats as $cat) $out[$cat] = 0;
     foreach ($rows as $r) foreach ($cats as $cat) if (dn_notification_in_category($r, $cat)) $out[$cat]++;
@@ -3219,6 +3314,7 @@ try {
         case 'list_notifications': dn_ok(dn_notifications(!empty($in['mark'])));
         case 'notification_center_data': dn_ok(dn_notification_center_data($in));
         case 'merge_duplicate_notifications': dn_ok(dn_merge_duplicate_update_notifications());
+        case 'cleanup_duplicate_notifications': dn_ok(dn_cleanup_duplicate_notifications($in));
         case 'notification_counts':
             $rows = dn_notification_rows(dn_uid());
             dn_ok(['counts' => dn_notification_counts($rows), 'pending_count' => dn_notification_counts($rows)['pending_all'] ?? 0]);
