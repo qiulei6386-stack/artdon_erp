@@ -406,6 +406,32 @@ function dn_notify_task_update_merged(int $recipientId, int $taskId, string $mes
     dn_notify($recipientId, $taskId, 'urge', '任务已更新', $message);
 }
 
+function dn_merge_duplicate_update_notifications(?int $recipientId = null): array
+{
+    $pdo = dispatch_next_db();
+    $uid = $recipientId ?: dn_uid();
+    $st = $pdo->prepare("SELECT recipient_id, task_id, type, title, COUNT(*) AS c, MAX(id) AS keep_id FROM dispatch_next_notifications WHERE recipient_id=? AND task_id IS NOT NULL AND type='urge' AND title='任务已更新' GROUP BY recipient_id, task_id, type, title HAVING c>1 LIMIT 80");
+    $st->execute([$uid]);
+    $groups = $st->fetchAll();
+    $merged = 0;
+    foreach ($groups as $g) {
+        $keepId = (int)$g['keep_id'];
+        $count = (int)$g['c'];
+        if ($keepId <= 0 || $count <= 1) continue;
+        $msgSt = $pdo->prepare("SELECT message FROM dispatch_next_notifications WHERE id=? LIMIT 1");
+        $msgSt->execute([$keepId]);
+        $message = (string)($msgSt->fetchColumn() ?: '');
+        if (!str_contains($message, '连续更新')) {
+            $message = trim($message) . "\n连续更新合并：共 " . $count . " 条，已保留最新一条。";
+            $pdo->prepare("UPDATE dispatch_next_notifications SET message=? WHERE id=?")->execute([$message, $keepId]);
+        }
+        $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=? AND task_id=? AND type=? AND title=? AND id<>?")
+            ->execute([(int)$g['recipient_id'], (int)$g['task_id'], (string)$g['type'], (string)$g['title'], $keepId]);
+        $merged += $count - 1;
+    }
+    return ['groups' => count($groups), 'merged' => $merged];
+}
+
 function dn_task(int $id): array
 {
     $pdo = dispatch_next_db();
@@ -1332,7 +1358,8 @@ function dn_download_attachment(array $in): void
 function dn_notifications(bool $mark = false): array
 {
     $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT * FROM dispatch_next_notifications WHERE recipient_id=? ORDER BY id DESC LIMIT 60");
+    dn_merge_duplicate_update_notifications(dn_uid());
+    $st = $pdo->prepare("SELECT * FROM dispatch_next_notifications WHERE recipient_id=? ORDER BY id DESC LIMIT 200");
     $st->execute([dn_uid()]);
     $rows = $st->fetchAll();
     if ($mark) $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=?")->execute([dn_uid()]);
@@ -2877,6 +2904,7 @@ try {
         case 'complete_task': dn_ok(dn_set_task_status($in, 'done'));
         case 'cancel_task': dn_ok(dn_set_task_status($in, 'cancelled'));
         case 'list_notifications': dn_ok(dn_notifications(!empty($in['mark'])));
+        case 'merge_duplicate_notifications': dn_ok(dn_merge_duplicate_update_notifications());
         case 'online_status': dn_ok(dn_online_status());
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
