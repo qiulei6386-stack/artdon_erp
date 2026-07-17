@@ -421,10 +421,8 @@ function dn_merge_duplicate_update_notifications(?int $recipientId = null): arra
         $msgSt = $pdo->prepare("SELECT message FROM dispatch_next_notifications WHERE id=? LIMIT 1");
         $msgSt->execute([$keepId]);
         $message = (string)($msgSt->fetchColumn() ?: '');
-        if (!str_contains($message, '连续更新')) {
-            $message = trim($message) . "\n连续更新合并：共 " . $count . " 条，已保留最新一条。";
-            $pdo->prepare("UPDATE dispatch_next_notifications SET message=? WHERE id=?")->execute([$message, $keepId]);
-        }
+        $cleanMessage = trim((string)preg_replace('/\n?连续更新合并：共\s*\d+\s*条，已保留最新一条。/u', '', $message));
+        if ($cleanMessage !== $message) $pdo->prepare("UPDATE dispatch_next_notifications SET message=? WHERE id=?")->execute([$cleanMessage, $keepId]);
         $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=? AND task_id=? AND type=? AND title=? AND id<>?")
             ->execute([(int)$g['recipient_id'], (int)$g['task_id'], (string)$g['type'], (string)$g['title'], $keepId]);
         $merged += $count - 1;
