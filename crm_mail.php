@@ -5292,7 +5292,9 @@ function crm_mail_create_dispatch(array $input): array
     if (mb_strlen($project, 'UTF-8') > 180) $project = mb_substr($project, 0, 180, 'UTF-8');
     $priority = in_array(($input['priority'] ?? 'normal'), ['normal','important','urgent','today'], true) ? (string)$input['priority'] : 'normal';
     $dueAt = trim((string)($input['due_at'] ?? ''));
-    $dueAt = $dueAt !== '' && strtotime($dueAt) ? date('Y-m-d H:i:s', strtotime($dueAt)) : null;
+    if ($dueAt === '') throw new RuntimeException('创建派工必须填写截止时间。');
+    if (!strtotime($dueAt)) throw new RuntimeException('截止时间格式不正确，请填写有效日期时间。');
+    $dueAt = date('Y-m-d H:i:s', strtotime($dueAt));
     $taskDate = date('Y-m-d');
     $bodyText = trim(strip_tags((string)($mail['body_text'] ?? '')));
     if ($bodyText === '') $bodyText = trim(strip_tags((string)($mail['body_html'] ?? '')));

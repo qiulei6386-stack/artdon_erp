@@ -774,6 +774,7 @@ function crm_task_save(array $input): array
         'reminder_at' => crm_task_datetime($input['reminder_at'] ?? ''),
     ];
     if ($data['title'] === '') throw new RuntimeException('请输入任务标题。');
+    if ($data['task_type'] === 'dispatch_confirm' && !$data['due_at']) throw new RuntimeException('派工待办必须填写截止时间。');
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
     if ($id > 0) {
         $before = crm_task_row($id);

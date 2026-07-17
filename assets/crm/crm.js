@@ -8975,7 +8975,7 @@
           '<main class="crm-modal-body"><div class="visit-workspace-form mail-dispatch-workspace">' +
           '<section class="visit-hero-panel"><div><span>任务标题</span><input name="title" value="CRM 邮件联动" maxlength="240" required></div><b>Mail</b></section>' +
           '<section class="visit-work-section"><h3>邮件来源</h3><div class="visit-compact-grid"><label>主题<input value="' + esc(mail.subject || '无主题') + '" readonly></label><label>发件人<input value="' + esc(mail.from_name || mail.from_email || '-') + '" readonly></label><label>时间<input value="' + esc(mail.received_at || mail.sent_at || '-') + '" readonly></label><label>客户<input value="' + esc(mail.linked_customer_name || '未关联客户') + '" readonly></label></div></section>' +
-          '<section class="visit-work-section"><h3>派工内容</h3><div class="visit-compact-grid"><label class="wide">项目<input name="project" value="' + esc(defaultProject) + '" maxlength="180"></label><label>优先级<select name="priority"><option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option><option value="today">今日必须完成</option></select></label><label>截止时间<input name="due_at" placeholder="YYYY-MM-DD HH:MM"></label><label class="wide">补充说明<textarea name="description" rows="3" placeholder="不填时系统会自动带入邮件主题、发件人、收件人、正文摘要。"></textarea></label></div></section>' +
+          '<section class="visit-work-section"><h3>派工内容</h3><div class="visit-compact-grid"><label class="wide">项目<input name="project" value="' + esc(defaultProject) + '" maxlength="180"></label><label>优先级<select name="priority"><option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option><option value="today">今日必须完成</option></select></label><label>截止时间 *<input type="datetime-local" name="due_at" required></label><label class="wide">补充说明<textarea name="description" rows="3" placeholder="不填时系统会自动带入邮件主题、发件人、收件人、正文摘要。"></textarea></label></div></section>' +
           '<section class="visit-work-section visit-section-checks"><h3>执行人 *</h3><div class="mail-dispatch-users">' + userHtml + '</div></section><p class="crm-modal-error" data-mail-dispatch-error></p></div></main>' +
           '<footer class="crm-modal-footer"><span>创建后会写入派工通知、派工日志和邮件日志。</span><div><button type="button" data-mail-dispatch-close>取消</button><button type="button" class="primary" data-mail-dispatch-save>创建派工</button></div></footer></form>';
         var close = function () { if (modal.close) modal.close(); else modal.removeAttribute('open'); };
@@ -8994,6 +8994,10 @@
           }
           if (!data.assignee_ids.length) {
             if (error) error.textContent = '请至少选择一个执行人。';
+            return;
+          }
+          if (!String(data.due_at || '').trim()) {
+            if (error) error.textContent = '请选择派工截止时间。';
             return;
           }
           if (error) error.textContent = '';
