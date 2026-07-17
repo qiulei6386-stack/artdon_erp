@@ -414,7 +414,7 @@ function dn_can_delete_task(array $task): bool
 
 function dn_insert_task(array $d): int
 {
-    if (($d['task_type'] ?? '') === 'dispatch' && dn_due_dt($d['due_at'] ?? null) === null) dn_fail('派工待办必须填写截止日期');
+    if (dn_due_dt($d['due_at'] ?? null) === null) dn_fail('派工待办必须填写截止日期');
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_tasks(task_no,task_type,dispatch_mode,parent_group_id,title,project,description,priority,status,created_by,assigned_to,helper_ids_json,task_date,due_at,progress,is_read,linked_system,linked_table,linked_id,linked_title,linked_json,extra_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
         ->execute([
@@ -767,9 +767,7 @@ function dn_create_task(array $in): array
     if ($assigned <= 0) dn_fail('请选择负责人');
     $title = dn_str($in['title'] ?? '', 240);
     if ($title === '') dn_fail('请输入任务标题');
-    $dueAt = $type === 'dispatch'
-        ? dn_required_due_dt($in['due_at'] ?? null)
-        : dn_due_dt($in['due_at'] ?? null);
+    $dueAt = dn_required_due_dt($in['due_at'] ?? null);
     $id = dn_insert_task([
         'task_type' => $type,
         'dispatch_mode' => $type === 'dispatch' ? 'single' : 'single',
@@ -829,10 +827,8 @@ function dn_update_task(array $in): array
     $id = (int)($in['id'] ?? 0);
     $task = dn_task($id);
     dn_check_task_conflict($task, $in);
-    if (($task['task_type'] ?? '') === 'dispatch') {
-        $nextDue = array_key_exists('due_at', $in) ? dn_due_dt($in['due_at']) : dn_due_dt($task['due_at'] ?? null);
-        if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
-    }
+    $nextDue = array_key_exists('due_at', $in) ? dn_due_dt($in['due_at']) : dn_due_dt($task['due_at'] ?? null);
+    if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
     $allowed = ['title','project','description','priority','status','assigned_to','due_at','task_date','progress'];
     $sets = [];
     $params = [];
@@ -1709,10 +1705,8 @@ function dn_update_cell(array $in): array
     $task = dn_task($id);
     dn_check_task_conflict($task, $in);
     if (!dn_can_edit_task($task, $field)) dn_fail('没有修改权限', 403);
-    if (($task['task_type'] ?? '') === 'dispatch') {
-        $nextDue = $field === 'due_at' ? dn_due_dt($value) : dn_due_dt($task['due_at'] ?? null);
-        if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
-    }
+    $nextDue = $field === 'due_at' ? dn_due_dt($value) : dn_due_dt($task['due_at'] ?? null);
+    if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
     $map = [
         'title' => ['col'=>'title','type'=>'string','max'=>240],
         'project' => ['col'=>'project','type'=>'string','max'=>180],
