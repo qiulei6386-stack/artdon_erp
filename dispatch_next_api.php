@@ -388,26 +388,108 @@ function dn_log_note(string $action, ?string $field, string $old, string $new, s
 
 function dn_notify(int $recipientId, ?int $taskId, string $type, string $title, string $message): void
 {
-    dispatch_next_db()->prepare("INSERT INTO dispatch_next_notifications(recipient_id,sender_id,task_id,type,title,message,created_at) VALUES(?,?,?,?,?,?,NOW())")
-        ->execute([$recipientId, dn_uid(), $taskId, $type, $title, $message]);
+    $action = $type === 'new_dispatch' ? 'accept' : ($type === 'urge' ? 'respond_urge' : '');
+    dn_notice_event($recipientId, $taskId, $type, $title, $message, [
+        'action_required' => in_array($type, ['new_dispatch','urge'], true) ? 1 : 0,
+        'action_code' => $action,
+        'severity' => $type === 'urge' ? 'warning' : 'normal',
+        'dedupe_key' => $type . ':' . (int)$taskId . ':' . $recipientId,
+    ]);
+}
+
+function dn_notification_schema_ready(): void
+{
+    static $ready = false;
+    if ($ready) return;
+    $ready = true;
+    $pdo = dispatch_next_db();
+    $cols = [];
+    try {
+        foreach ($pdo->query("SHOW COLUMNS FROM dispatch_next_notifications") as $row) {
+            $cols[(string)$row['Field']] = true;
+        }
+    } catch (Throwable $e) {
+        return;
+    }
+    try { $pdo->exec("ALTER TABLE dispatch_next_notifications MODIFY type VARCHAR(60) NOT NULL DEFAULT 'new_dispatch'"); } catch (Throwable $e) {}
+    $adds = [
+        'actor_id' => "ALTER TABLE dispatch_next_notifications ADD COLUMN actor_id INT UNSIGNED NULL AFTER recipient_id",
+        'group_id' => "ALTER TABLE dispatch_next_notifications ADD COLUMN group_id BIGINT UNSIGNED NULL AFTER task_id",
+        'event_type' => "ALTER TABLE dispatch_next_notifications ADD COLUMN event_type VARCHAR(60) NULL AFTER group_id",
+        'severity' => "ALTER TABLE dispatch_next_notifications ADD COLUMN severity VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER event_type",
+        'action_required' => "ALTER TABLE dispatch_next_notifications ADD COLUMN action_required TINYINT(1) NOT NULL DEFAULT 0 AFTER message",
+        'action_code' => "ALTER TABLE dispatch_next_notifications ADD COLUMN action_code VARCHAR(60) NULL AFTER action_required",
+        'status' => "ALTER TABLE dispatch_next_notifications ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'unread' AFTER action_code",
+        'dedupe_key' => "ALTER TABLE dispatch_next_notifications ADD COLUMN dedupe_key VARCHAR(190) NULL AFTER status",
+        'group_key' => "ALTER TABLE dispatch_next_notifications ADD COLUMN group_key VARCHAR(190) NULL AFTER dedupe_key",
+        'snooze_until' => "ALTER TABLE dispatch_next_notifications ADD COLUMN snooze_until DATETIME NULL AFTER group_key",
+        'handled_at' => "ALTER TABLE dispatch_next_notifications ADD COLUMN handled_at DATETIME NULL AFTER read_at",
+        'updated_at' => "ALTER TABLE dispatch_next_notifications ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
+        'event_count' => "ALTER TABLE dispatch_next_notifications ADD COLUMN event_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER updated_at",
+    ];
+    foreach ($adds as $col => $sql) {
+        if (empty($cols[$col])) {
+            try { $pdo->exec($sql); } catch (Throwable $e) {}
+        }
+    }
+    try { $pdo->exec("CREATE UNIQUE INDEX uq_dispatch_next_notice_dedupe ON dispatch_next_notifications(dedupe_key)"); } catch (Throwable $e) {}
+    try { $pdo->exec("CREATE INDEX idx_dispatch_next_notice_action ON dispatch_next_notifications(recipient_id, action_required, status, snooze_until, updated_at)"); } catch (Throwable $e) {}
+    try { $pdo->exec("UPDATE dispatch_next_notifications SET event_type=COALESCE(event_type,type), actor_id=COALESCE(actor_id,sender_id), status=CASE WHEN is_read=1 THEN 'read' ELSE 'unread' END WHERE event_type IS NULL OR status=''"); } catch (Throwable $e) {}
+}
+
+function dn_notice_event(int $recipientId, ?int $taskId, string $eventType, string $title, string $message, array $opt = []): void
+{
+    if ($recipientId <= 0) return;
+    dn_notification_schema_ready();
+    $pdo = dispatch_next_db();
+    $actorId = (int)($opt['actor_id'] ?? dn_uid());
+    if (!empty($opt['skip_self']) && $actorId === $recipientId) return;
+    $groupId = $opt['group_id'] ?? null;
+    $severity = dn_str($opt['severity'] ?? 'normal', 20);
+    $actionRequired = !empty($opt['action_required']) ? 1 : 0;
+    $actionCode = dn_str($opt['action_code'] ?? '', 60) ?: null;
+    $status = $actionRequired ? 'unread' : 'read';
+    $dedupe = dn_str($opt['dedupe_key'] ?? ($eventType . ':' . (int)$taskId . ':' . $recipientId), 190);
+    $groupKey = dn_str($opt['group_key'] ?? ($eventType . ':' . (int)$taskId), 190);
+    $st = $pdo->prepare("SELECT id FROM dispatch_next_notifications WHERE dedupe_key=? LIMIT 1");
+    $st->execute([$dedupe]);
+    $existingId = (int)($st->fetchColumn() ?: 0);
+    if ($existingId > 0) {
+        $pdo->prepare("UPDATE dispatch_next_notifications SET actor_id=?, sender_id=?, title=?, message=?, severity=?, action_required=?, action_code=?, status=IF(status='handled','unread',status), snooze_until=NULL, updated_at=NOW(), event_count=event_count+1 WHERE id=?")
+            ->execute([$actorId, $actorId, $title, $message, $severity, $actionRequired, $actionCode, $existingId]);
+        return;
+    }
+    $sql = "INSERT INTO dispatch_next_notifications(recipient_id,actor_id,sender_id,task_id,group_id,event_type,type,severity,title,message,action_required,action_code,status,dedupe_key,group_key,created_at,updated_at,event_count)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),1)";
+    $pdo->prepare($sql)->execute([$recipientId, $actorId, $actorId, $taskId, $groupId, $eventType, $eventType, $severity, $title, $message, $actionRequired, $actionCode, $status, $dedupe, $groupKey]);
+}
+
+function dn_notice_mark_task_handled(int $taskId, array $eventTypes = []): void
+{
+    dn_notification_schema_ready();
+    if ($taskId <= 0) return;
+    $params = [$taskId];
+    $extra = '';
+    if ($eventTypes) {
+        $extra = " AND event_type IN (" . implode(',', array_fill(0, count($eventTypes), '?')) . ")";
+        $params = array_merge($params, $eventTypes);
+    }
+    dispatch_next_db()->prepare("UPDATE dispatch_next_notifications SET status='handled', handled_at=COALESCE(handled_at,NOW()), is_read=1, read_at=COALESCE(read_at,NOW()) WHERE task_id=? AND action_required=1 AND status<>'handled'{$extra}")->execute($params);
 }
 
 function dn_notify_task_update_merged(int $recipientId, int $taskId, string $message): void
 {
-    $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT id FROM dispatch_next_notifications WHERE recipient_id=? AND task_id=? AND type='urge' AND title='任务已更新' AND is_read=0 ORDER BY id DESC LIMIT 1");
-    $st->execute([$recipientId, $taskId]);
-    $noticeId = (int)($st->fetchColumn() ?: 0);
-    if ($noticeId > 0) {
-        $pdo->prepare("UPDATE dispatch_next_notifications SET sender_id=?, message=?, created_at=NOW(), read_at=NULL WHERE id=?")
-            ->execute([dn_uid(), $message, $noticeId]);
-        return;
-    }
-    dn_notify($recipientId, $taskId, 'urge', '任务已更新', $message);
+    dn_notice_event($recipientId, $taskId, 'task_updated', '任务已更新', $message, [
+        'action_required' => 0,
+        'severity' => 'normal',
+        'skip_self' => true,
+        'dedupe_key' => 'task_updated:' . $taskId . ':' . $recipientId . ':' . floor(time() / 300),
+    ]);
 }
 
 function dn_merge_duplicate_update_notifications(?int $recipientId = null): array
 {
+    dn_notification_schema_ready();
     $pdo = dispatch_next_db();
     $uid = $recipientId ?: dn_uid();
     $st = $pdo->prepare("SELECT recipient_id, task_id, type, title, COUNT(*) AS c, MAX(id) AS keep_id FROM dispatch_next_notifications WHERE recipient_id=? AND task_id IS NOT NULL AND type='urge' AND title='任务已更新' GROUP BY recipient_id, task_id, type, title HAVING c>1 LIMIT 80");
@@ -428,6 +510,134 @@ function dn_merge_duplicate_update_notifications(?int $recipientId = null): arra
         $merged += $count - 1;
     }
     return ['groups' => count($groups), 'merged' => $merged];
+}
+
+function dn_generate_due_notifications(int $uid): array
+{
+    dn_notification_schema_ready();
+    $pdo = dispatch_next_db();
+    $today = date('Y-m-d');
+    $made = 0;
+    $st = $pdo->prepare("SELECT id,title,project,due_at,status,created_by,assigned_to,parent_group_id FROM dispatch_next_tasks WHERE is_deleted=0 AND status NOT IN ('done','cancelled') AND (assigned_to=? OR created_by=?) AND due_at IS NOT NULL AND DATE(due_at)<=?");
+    $st->execute([$uid, $uid, $today]);
+    foreach ($st->fetchAll() as $task) {
+        $dueDate = substr((string)$task['due_at'], 0, 10);
+        $isOwner = (int)$task['assigned_to'] === $uid;
+        if ($isOwner && (string)$task['status'] === 'pending_accept') {
+            dn_notice_event($uid, (int)$task['id'], 'new_dispatch', '新派工待接收', (string)$task['title'], [
+                'action_required' => 1,
+                'action_code' => 'accept',
+                'severity' => 'normal',
+                'actor_id' => (int)$task['created_by'],
+                'dedupe_key' => 'new_dispatch:' . (int)$task['id'] . ':' . $uid,
+            ]);
+            $made++;
+        }
+        if ($isOwner && $dueDate === $today) {
+            dn_notice_event($uid, (int)$task['id'], 'due_today', '今日到期', (string)$task['title'], [
+                'action_required' => 1,
+                'action_code' => 'due_today',
+                'severity' => 'warning',
+                'dedupe_key' => 'due_today:' . (int)$task['id'] . ':' . $uid . ':' . $today,
+            ]);
+            $made++;
+        }
+        if ($isOwner && $dueDate < $today) {
+            dn_notice_event($uid, (int)$task['id'], 'overdue', '任务已逾期', (string)$task['title'], [
+                'action_required' => 1,
+                'action_code' => 'overdue',
+                'severity' => 'urgent',
+                'dedupe_key' => 'overdue:' . (int)$task['id'] . ':' . $uid . ':' . $today,
+            ]);
+            $made++;
+        }
+        if ((int)$task['created_by'] === $uid && (string)$task['status'] === 'submitted') {
+            dn_notice_event($uid, (int)$task['id'], 'completed_pending_confirm', '待我确认完成', (string)$task['title'], [
+                'action_required' => 1,
+                'action_code' => 'confirm_done',
+                'severity' => 'warning',
+                'actor_id' => (int)$task['assigned_to'],
+                'dedupe_key' => 'completed_pending_confirm:' . (int)$task['id'] . ':' . $uid,
+            ]);
+            $made++;
+        }
+    }
+    return ['generated' => $made];
+}
+
+function dn_sync_notification_status(int $uid): void
+{
+    dn_notification_schema_ready();
+    $pdo = dispatch_next_db();
+    $sql = "UPDATE dispatch_next_notifications n
+            JOIN dispatch_next_tasks t ON t.id=n.task_id
+            SET n.status='handled', n.handled_at=COALESCE(n.handled_at,NOW()), n.is_read=1, n.read_at=COALESCE(n.read_at,NOW())
+            WHERE n.recipient_id=? AND n.action_required=1 AND n.status<>'handled' AND (
+                t.is_deleted=1 OR t.status IN ('done','cancelled')
+                OR (n.event_type='new_dispatch' AND t.status<>'pending_accept')
+                OR (n.event_type='completed_pending_confirm' AND t.status<>'submitted')
+            )";
+    $pdo->prepare($sql)->execute([$uid]);
+}
+
+function dn_notification_rows(int $uid): array
+{
+    dn_generate_due_notifications($uid);
+    dn_sync_notification_status($uid);
+    $st = dispatch_next_db()->prepare("SELECT n.*, COALESCE(n.event_type,n.type) AS event_type, COALESCE(n.actor_id,n.sender_id) AS actor_id,
+        t.title AS task_title,t.project,t.status AS task_status,t.due_at,COALESCE(NULLIF(u.real_name,''),u.username) AS assignee_name
+        FROM dispatch_next_notifications n
+        LEFT JOIN dispatch_next_tasks t ON t.id=n.task_id
+        LEFT JOIN crm_users u ON u.id=t.assigned_to
+        WHERE n.recipient_id=? AND (n.snooze_until IS NULL OR n.snooze_until<=NOW())
+        ORDER BY n.action_required DESC, FIELD(n.status,'unread','read','snoozed','handled'), n.updated_at DESC, n.id DESC
+        LIMIT 300");
+    $st->execute([$uid]);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$r) {
+        $r['id'] = (int)$r['id'];
+        $r['task_id'] = $r['task_id'] ? (int)$r['task_id'] : null;
+        $r['actor_id'] = $r['actor_id'] ? (int)$r['actor_id'] : null;
+        $r['is_read'] = (int)($r['is_read'] ?? 0);
+        $r['action_required'] = (int)($r['action_required'] ?? 0);
+        $r['event_count'] = (int)($r['event_count'] ?? 1);
+        $r['status'] = (string)($r['status'] ?? ($r['is_read'] ? 'read' : 'unread'));
+    }
+    return $rows;
+}
+
+function dn_notification_in_category(array $n, string $cat): bool
+{
+    $event = (string)($n['event_type'] ?? $n['type'] ?? '');
+    $status = (string)($n['status'] ?? '');
+    $required = !empty($n['action_required']) && !in_array($status, ['handled','snoozed'], true);
+    $taskStatus = (string)($n['task_status'] ?? '');
+    return match ($cat) {
+        'pending_all' => $required,
+        'new_dispatch' => $required && $event === 'new_dispatch',
+        'due_today' => $required && $event === 'due_today',
+        'overdue' => $required && $event === 'overdue',
+        'confirm' => $required && $event === 'completed_pending_confirm',
+        'urge' => $required && $event === 'urge',
+        'blocked' => $required && in_array($event, ['task_blocked','delay_requested','task_returned'], true),
+        'sent_unaccepted' => $taskStatus === 'pending_accept',
+        'sent_progress' => in_array($taskStatus, ['accepted','in_progress','paused'], true),
+        'sent_confirm' => $taskStatus === 'submitted',
+        'sent_done' => $taskStatus === 'done',
+        'history_read' => !$required && in_array($status, ['read','handled'], true),
+        'activity' => in_array($event, ['task_updated','progress_added','attachment_added'], true),
+        'system' => $event === 'system',
+        default => $required,
+    };
+}
+
+function dn_notification_counts(array $rows): array
+{
+    $cats = ['pending_all','new_dispatch','due_today','overdue','confirm','urge','blocked','sent_unaccepted','sent_progress','sent_confirm','sent_done','history_read','activity','system'];
+    $out = [];
+    foreach ($cats as $cat) $out[$cat] = 0;
+    foreach ($rows as $r) foreach ($cats as $cat) if (dn_notification_in_category($r, $cat)) $out[$cat]++;
+    return $out;
 }
 
 function dn_task(int $id): array
@@ -1128,6 +1338,9 @@ function dn_set_task_status(array $in, string $status): array
     if (!dn_can_edit_task($task, 'status')) dn_fail('没有修改状态权限', 403);
     $old = (string)$task['status'];
     $new = dn_status($status);
+    if ($new === 'done' && (int)$task['created_by'] !== dn_uid() && (int)$task['assigned_to'] === dn_uid() && $old !== 'submitted') {
+        $new = 'submitted';
+    }
     $sets = ['status=?', 'updated_at=NOW()'];
     $params = [$new];
     if ($new === 'accepted') $sets[] = "accepted_at=COALESCE(accepted_at,NOW())";
@@ -1140,6 +1353,19 @@ function dn_set_task_status(array $in, string $status): array
     $params[] = (int)$task['id'];
     dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET " . implode(',', $sets) . " WHERE id=?")->execute($params);
     dn_log((int)$task['id'], 'status', 'status', $old, $new, '状态快捷操作');
+    if ($new === 'accepted') dn_notice_mark_task_handled((int)$task['id'], ['new_dispatch']);
+    if ($new === 'submitted') {
+        dn_notice_mark_task_handled((int)$task['id'], ['urge','overdue']);
+        dn_notice_event((int)$task['created_by'], (int)$task['id'], 'completed_pending_confirm', '待我确认完成', (string)$task['title'], [
+            'action_required' => 1,
+            'action_code' => 'confirm_done',
+            'severity' => 'warning',
+            'actor_id' => dn_uid(),
+            'dedupe_key' => 'completed_pending_confirm:' . (int)$task['id'] . ':' . (int)$task['created_by'],
+        ]);
+    }
+    if ($new === 'done') dn_notice_mark_task_handled((int)$task['id']);
+    if ($new === 'returned') dn_notice_mark_task_handled((int)$task['id'], ['completed_pending_confirm']);
     dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     return ['task_id' => (int)$task['id'], 'status' => $new];
 }
@@ -1355,20 +1581,20 @@ function dn_download_attachment(array $in): void
 
 function dn_notifications(bool $mark = false): array
 {
+    $uid = dn_uid();
     $pdo = dispatch_next_db();
-    dn_merge_duplicate_update_notifications(dn_uid());
-    $st = $pdo->prepare("SELECT * FROM dispatch_next_notifications WHERE recipient_id=? ORDER BY id DESC LIMIT 200");
-    $st->execute([dn_uid()]);
-    $rows = $st->fetchAll();
-    if ($mark) $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=?")->execute([dn_uid()]);
-    $unread = 0;
-    foreach ($rows as &$r) {
-        $r['id'] = (int)$r['id'];
-        $r['task_id'] = $r['task_id'] ? (int)$r['task_id'] : null;
-        $r['is_read'] = (int)$r['is_read'];
-        if (!$r['is_read']) $unread++;
+    dn_merge_duplicate_update_notifications($uid);
+    if ($mark) {
+        $pdo->prepare("UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()), status=IF(action_required=1 AND status<>'handled',status,'read') WHERE recipient_id=? AND action_required=0")->execute([$uid]);
     }
-    return ['items' => $rows, 'unread_count' => $unread];
+    $rows = dn_notification_rows($uid);
+    $counts = dn_notification_counts($rows);
+    return [
+        'items' => $rows,
+        'counts' => $counts,
+        'unread_count' => (int)($counts['pending_all'] ?? 0),
+        'pending_count' => (int)($counts['pending_all'] ?? 0),
+    ];
 }
 
 function dn_online_status(): array
@@ -1504,10 +1730,43 @@ function dn_duration_text(int $seconds): string
 
 function dn_mark_read(array $in): array
 {
+    dn_notification_schema_ready();
     $id = (int)($in['id'] ?? 0);
-    $sql = $id > 0 ? "UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE id=? AND recipient_id=?" : "UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE recipient_id=?";
+    $sql = $id > 0 ? "UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()), status=IF(action_required=1 AND status<>'handled',status,'read') WHERE id=? AND recipient_id=?" : "UPDATE dispatch_next_notifications SET is_read=1, read_at=COALESCE(read_at,NOW()), status=IF(action_required=1 AND status<>'handled',status,'read') WHERE recipient_id=? AND action_required=0";
     dispatch_next_db()->prepare($sql)->execute($id > 0 ? [$id, dn_uid()] : [dn_uid()]);
     return ['id' => $id];
+}
+
+function dn_snooze_notification(array $in): array
+{
+    dn_notification_schema_ready();
+    $id = (int)($in['id'] ?? 0);
+    $mins = (int)($in['minutes'] ?? 30);
+    $mins = in_array($mins, [30, 120, 960], true) ? $mins : 30;
+    dispatch_next_db()->prepare("UPDATE dispatch_next_notifications SET status='snoozed', snooze_until=DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id=? AND recipient_id=? AND action_required=1")->execute([$mins, $id, dn_uid()]);
+    return ['id' => $id, 'minutes' => $mins];
+}
+
+function dn_handle_notification(array $in): array
+{
+    dn_notification_schema_ready();
+    $id = (int)($in['id'] ?? 0);
+    $action = dn_str($in['handle_action'] ?? $in['action_code'] ?? '', 60);
+    $st = dispatch_next_db()->prepare("SELECT * FROM dispatch_next_notifications WHERE id=? AND recipient_id=? LIMIT 1");
+    $st->execute([$id, dn_uid()]);
+    $n = $st->fetch();
+    if (!$n) dn_fail('通知不存在', 404);
+    $taskId = (int)($n['task_id'] ?? 0);
+    $result = ['id' => $id, 'task_id' => $taskId, 'action' => $action];
+    if ($action === 'accept') $result['task'] = dn_set_task_status(['id' => $taskId], 'accepted');
+    elseif ($action === 'confirm_done') $result['task'] = dn_set_task_status(['id' => $taskId], 'done');
+    elseif ($action === 'return_task') $result['task'] = dn_set_task_status(['id' => $taskId], 'returned');
+    elseif ($action === 'complete') $result['task'] = dn_set_task_status(['id' => $taskId], 'done');
+    elseif ($action === 'read') dn_mark_read(['id' => $id]);
+    if ($action !== 'read') {
+        dispatch_next_db()->prepare("UPDATE dispatch_next_notifications SET status='handled', handled_at=COALESCE(handled_at,NOW()), is_read=1, read_at=COALESCE(read_at,NOW()) WHERE id=? AND recipient_id=?")->execute([$id, dn_uid()]);
+    }
+    return $result;
 }
 
 function dn_mark_task_read(array $in, bool $return = true): array
@@ -1527,8 +1786,18 @@ function dn_urge_task(array $in): array
     $id = (int)($in['id'] ?? 0);
     $task = dn_task($id);
     if (!dn_is_admin() && (int)$task['created_by'] !== dn_uid()) dn_fail('只有派工人或管理员可以催办', 403);
+    $bucket = floor(time() / 7200);
+    $dedupe = 'urge:' . $id . ':' . (int)$task['assigned_to'] . ':' . $bucket;
+    $exists = dispatch_next_db()->prepare("SELECT id FROM dispatch_next_notifications WHERE dedupe_key=? LIMIT 1");
+    $exists->execute([$dedupe]);
+    if ($exists->fetchColumn()) dn_fail('2小时内已经催办过，请稍后再催办。');
     dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET remind_count=remind_count+1,last_reminded_at=NOW(),updated_at=NOW() WHERE id=?")->execute([$id]);
-    dn_notify((int)$task['assigned_to'], $id, 'urge', '派工催办提醒', (string)$task['title']);
+    dn_notice_event((int)$task['assigned_to'], $id, 'urge', '催办我的', (string)$task['title'], [
+        'action_required' => 1,
+        'action_code' => 'respond_urge',
+        'severity' => 'urgent',
+        'dedupe_key' => $dedupe,
+    ]);
     dn_log($id, 'urge', 'remind_count', $task['remind_count'], ((int)$task['remind_count']) + 1, '催办任务');
     return ['id' => $id];
 }
@@ -2903,12 +3172,27 @@ try {
         case 'cancel_task': dn_ok(dn_set_task_status($in, 'cancelled'));
         case 'list_notifications': dn_ok(dn_notifications(!empty($in['mark'])));
         case 'merge_duplicate_notifications': dn_ok(dn_merge_duplicate_update_notifications());
+        case 'notification_counts':
+            $rows = dn_notification_rows(dn_uid());
+            dn_ok(['counts' => dn_notification_counts($rows), 'pending_count' => dn_notification_counts($rows)['pending_all'] ?? 0]);
+        case 'generate_due_notifications': dn_ok(dn_generate_due_notifications(dn_uid()));
+        case 'generate_daily_popup_summary':
+            $rows = dn_notification_rows(dn_uid());
+            $counts = dn_notification_counts($rows);
+            dn_ok(['counts' => $counts, 'pending_count' => $counts['pending_all'] ?? 0]);
         case 'online_status': dn_ok(dn_online_status());
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
         case 'mark_read': dn_ok(dn_mark_read($in));
+        case 'mark_notification_read': dn_ok(dn_mark_read($in));
+        case 'mark_all_read_history': dn_ok(dn_mark_read([]));
+        case 'handle_notification': dn_ok(dn_handle_notification($in));
+        case 'snooze_notification': dn_ok(dn_snooze_notification($in));
         case 'mark_task_read': dn_ok(dn_mark_task_read($in));
         case 'urge_task': dn_ok(dn_urge_task($in));
+        case 'confirm_task_done': dn_ok(dn_set_task_status($in, 'done'));
+        case 'return_task': dn_ok(dn_set_task_status($in, 'returned'));
+        case 'request_delay': dn_fail('延期申请待接入', 501);
         case 'log_action':
             dn_log((int)($in['task_id'] ?? 0) ?: null, dn_str($in['type'] ?? 'manual', 80), dn_str($in['field'] ?? '', 80) ?: null, $in['old'] ?? '', $in['new'] ?? '', dn_str($in['note'] ?? '', 500));
             dn_ok(['logged' => true]);
