@@ -392,6 +392,20 @@ function dn_notify(int $recipientId, ?int $taskId, string $type, string $title, 
         ->execute([$recipientId, dn_uid(), $taskId, $type, $title, $message]);
 }
 
+function dn_notify_task_update_merged(int $recipientId, int $taskId, string $message): void
+{
+    $pdo = dispatch_next_db();
+    $st = $pdo->prepare("SELECT id FROM dispatch_next_notifications WHERE recipient_id=? AND task_id=? AND type='urge' AND title='任务已更新' AND is_read=0 ORDER BY id DESC LIMIT 1");
+    $st->execute([$recipientId, $taskId]);
+    $noticeId = (int)($st->fetchColumn() ?: 0);
+    if ($noticeId > 0) {
+        $pdo->prepare("UPDATE dispatch_next_notifications SET sender_id=?, message=?, created_at=NOW(), read_at=NULL WHERE id=?")
+            ->execute([dn_uid(), $message, $noticeId]);
+        return;
+    }
+    dn_notify($recipientId, $taskId, 'urge', '任务已更新', $message);
+}
+
 function dn_task(int $id): array
 {
     $pdo = dispatch_next_db();
@@ -813,7 +827,7 @@ function dn_notify_task_change(array $task, string $field, $old, $new): void
     $label = dn_log_field_label($field);
     $message = $label . '：' . dn_value_text($old, $field) . ' → ' . dn_value_text($new, $field);
     foreach ($recipients as $rid) {
-        dn_notify($rid, (int)$task['id'], 'urge', '任务已更新', $message);
+        dn_notify_task_update_merged($rid, (int)$task['id'], $message);
     }
 }
 
