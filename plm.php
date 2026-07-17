@@ -1,0 +1,9719 @@
+<?php
+/* ARTDON_SSO_GATE_V2_START */
+require_once __DIR__.'/includes/artdon_sso_core.php';
+if (isset($_GET['action']) || isset($_POST['action'])) artdon_sso_require_api('plm');
+else artdon_sso_require_page('plm');
+/* ARTDON_SSO_GATE_V2_END */
+
+/**
+ * Artdon Office - PLM V8.5.95 Sample Full List Layout
+ * 入口文件：plm.php
+ * 特点：单文件前端 + 内置 API + 自动建表/补字段 + 错误可视化，避免白屏。
+ * 注意：不修改派工 dispatch_todo.php 核心表格逻辑，只做安全跳转/关联。
+ */
+ob_start();
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+if (session_status() === PHP_SESSION_NONE) {
+    @session_name('ARTDON_SYS');
+    @session_set_cookie_params(array('lifetime'=>86400,'path'=>'/','httponly'=>true,'samesite'=>'Lax'));
+    @session_start();
+}
+
+function plm_v85_is_api(){ return isset($_GET['action']) || isset($_POST['action']); }
+
+register_shutdown_function(function(){
+    $e = error_get_last();
+    if (!$e || !in_array($e['type'], array(E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR), true)) return;
+    if (plm_v85_is_api()) {
+        if (ob_get_length()) @ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(array('ok'=>false,'error'=>'PLM V8.5.19B 致命错误：'.$e['message'].' / line '.$e['line']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } else {
+        if (ob_get_length()) @ob_clean();
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!doctype html><meta charset="utf-8"><title>PLM V8.5.19B 错误</title><div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial;padding:28px;background:#f8fafc;color:#0f172a"><div style="max-width:920px;margin:auto;background:#fff;border:1px solid #fecaca;border-radius:18px;padding:20px;box-shadow:0 16px 50px rgba(15,23,42,.08)"><h2 style="color:#b91c1c;margin-top:0">PLM V8.5.19B 页面没有白屏，但 PHP 出错了</h2><p>错误：'.htmlspecialchars($e['message'],ENT_QUOTES,'UTF-8').'</p><p>行号：'.(int)$e['line'].'</p><p style="color:#64748b">请检查 config.php 数据库配置，或把这个错误截图发给我继续修。</p></div></div>';
+    }
+});
+
+function plm_v85_json($arr, $code=200){
+    if (ob_get_length()) @ob_clean();
+    http_response_code($code);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+function plm_v85_body(){
+    $raw = file_get_contents('php://input');
+    $j = json_decode($raw, true);
+    if (is_array($j)) return array_merge($_POST, $j);
+    return $_POST;
+}
+function plm_v85_s($v, $max=5000){
+    $v = trim((string)($v ?? ''));
+    if ($max > 0 && function_exists('mb_strlen') && mb_strlen($v,'UTF-8') > $max) $v = mb_substr($v,0,$max,'UTF-8');
+    elseif ($max > 0 && strlen($v) > $max * 4) $v = substr($v,0,$max * 4);
+    return $v;
+}
+function plm_v85_now(){ return date('Y-m-d H:i:s'); }
+function plm_v85_config_value($names, $default=null){
+    foreach ($names as $n) {
+        if (defined($n) && constant($n) !== '') return constant($n);
+        if (isset($GLOBALS[$n]) && $GLOBALS[$n] !== '') return $GLOBALS[$n];
+    }
+    return $default;
+}
+function plm_v85_pdo(){
+    static $pdo = null;
+    if ($pdo instanceof PDO) return $pdo;
+    if (function_exists('artdon_sso_db')) {
+        $x = artdon_sso_db();
+        if ($x instanceof PDO) {
+            $x->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $x->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $pdo = $x; return $pdo;
+        }
+    }
+    $cfg = __DIR__.'/config.php';
+    if (file_exists($cfg)) require_once $cfg;
+    foreach(array('db','get_pdo','get_db','connect_db','database','pdo_conn') as $fn){
+        if(function_exists($fn)){
+            $x = $fn();
+            if($x instanceof PDO){
+                $x->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                $x->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+                $pdo = $x; return $pdo;
+            }
+        }
+    }
+    if(isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO){ $pdo=$GLOBALS['pdo']; return $pdo; }
+    if(isset($GLOBALS['db']) && $GLOBALS['db'] instanceof PDO){ $pdo=$GLOBALS['db']; return $pdo; }
+    $host = plm_v85_config_value(array('DB_HOST','DB_HOSTNAME','MYSQL_HOST','db_host','host','hostname','mysql_host'), 'localhost');
+    $name = plm_v85_config_value(array('DB_NAME','DB_DATABASE','MYSQL_DATABASE','db_name','dbname','database','mysql_database'), '');
+    $user = plm_v85_config_value(array('DB_USER','DB_USERNAME','MYSQL_USER','db_user','username','mysql_user'), '');
+    $pass = plm_v85_config_value(array('DB_PASS','DB_PASSWORD','MYSQL_PASS','MYSQL_PASSWORD','db_pass','db_password','password','pwd','mysql_pass','mysql_password'), '');
+    if ($name === '' || $user === '') throw new RuntimeException('数据库配置不完整：请检查 config.php 里的 DB_NAME / DB_USER / DB_PASS，或提供 db() 函数。');
+    $pdo = new PDO('mysql:host='.$host.';dbname='.$name.';charset=utf8mb4', $user, $pass, array(
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4'
+    ));
+    return $pdo;
+}
+
+function plm_v85_pick_user_name($u){
+    if(is_string($u)) return trim($u);
+    if(!is_array($u)) return '';
+    foreach(array('name','display_name','real_name','nickname','username','user_name','account','email','login_name') as $k){
+        if(isset($u[$k]) && is_scalar($u[$k]) && trim((string)$u[$k])!=='') return trim((string)$u[$k]);
+    }
+    return '';
+}
+function plm_v85_current_user_info(){
+    $out=array('id'=>0,'username'=>'','name'=>'未识别账号','role'=>'staff','is_admin'=>false);
+    try{
+        $pdo=plm_v85_pdo();
+        $dispatchId=(int)($_SESSION['dispatch_user_id']??0);
+        if($dispatchId>0 && plm_v85_table_exists('dispatch_users')){
+            $st=$pdo->prepare("SELECT id,username,name,role,department FROM dispatch_users WHERE id=? LIMIT 1");
+            $st->execute(array($dispatchId));
+            $u=$st->fetch();
+            if($u){
+                $raw=strtolower(($u['role']??'').' '.($u['username']??'').' '.($u['name']??'').' '.($u['department']??''));
+                $admin=(strpos($raw,'boss')!==false||strpos($raw,'admin')!==false||strpos($raw,'owner')!==false||strpos($raw,'manager')!==false||strpos($raw,'老板')!==false||strpos($raw,'管理')!==false||strpos($raw,'管理员')!==false||strpos($raw,'超级')!==false);
+                return array('id'=>(int)$u['id'],'username'=>(string)$u['username'],'name'=>(string)($u['name']?:$u['username']),'role'=>(string)$u['role'],'is_admin'=>$admin);
+            }
+        }
+        $plmId=(int)($_SESSION['artdon_user_id']??0);
+        if($plmId>0 && plm_v85_table_exists('artdon_users')){
+            $st=$pdo->prepare("SELECT * FROM artdon_users WHERE id=? LIMIT 1");
+            $st->execute(array($plmId));
+            $u=$st->fetch();
+            if($u){
+                $name=(string)($u['display_name']??($u['name']??($u['username']??'')));
+                $username=(string)($u['username']??'');
+                $raw=strtolower(($u['role_name']??'').' '.($u['role']??'').' '.$username.' '.$name);
+                $admin=(strpos($raw,'boss')!==false||strpos($raw,'admin')!==false||strpos($raw,'owner')!==false||strpos($raw,'manager')!==false||strpos($raw,'老板')!==false||strpos($raw,'管理')!==false||strpos($raw,'管理员')!==false||strpos($raw,'超级')!==false);
+                return array('id'=>$plmId,'username'=>$username,'name'=>$name?:$username,'role'=>(string)($u['role_name']??($u['role']??'')),'is_admin'=>$admin);
+            }
+        }
+    }catch(Throwable $e){}
+    foreach(array('plm_user','artdon_user','auth_user','login_user','current_user','user','profile','user_info') as $k){
+        if(isset($_SESSION[$k])){
+            $name=plm_v85_pick_user_name($_SESSION[$k]);
+            if($name!==''){
+                $raw=is_array($_SESSION[$k])?json_encode($_SESSION[$k],JSON_UNESCAPED_UNICODE):(string)$_SESSION[$k];
+                $low=strtolower($raw);
+                $admin=(strpos($low,'boss')!==false||strpos($low,'admin')!==false||strpos($raw,'老板')!==false||strpos($raw,'管理')!==false||strpos($raw,'管理员')!==false);
+                return array('id'=>0,'username'=>$name,'name'=>$name,'role'=>$admin?'admin':'staff','is_admin'=>$admin);
+            }
+        }
+    }
+    foreach(array('artdon_username','plm_username','username','user_name','real_name','display_name','account') as $k){
+        if(!empty($_SESSION[$k]) && is_scalar($_SESSION[$k])){
+            $name=trim((string)$_SESSION[$k]);
+            $low=strtolower($name);
+            $admin=in_array($low,array('boss','admin','administrator','owner','manager'),true)||strpos($name,'老板')!==false||strpos($name,'管理')!==false;
+            return array('id'=>0,'username'=>$name,'name'=>$name,'role'=>$admin?'admin':'staff','is_admin'=>$admin);
+        }
+    }
+    return $out;
+}
+function plm_v85_is_admin(){ $u=plm_v85_current_user_info(); return !empty($u['is_admin']); }
+
+function plm_v85_permission_defs(){
+    return array(
+        array('key'=>'view_project','group'=>'项目','label'=>'查看项目'),
+        array('key'=>'new_project','group'=>'项目','label'=>'新增项目'),
+        array('key'=>'edit_project','group'=>'项目','label'=>'修改项目'),
+        array('key'=>'delete_project','group'=>'项目','label'=>'删除项目'),
+        array('key'=>'new_model','group'=>'产品/样品','label'=>'新增产品/样品'),
+        array('key'=>'edit_model','group'=>'产品/样品','label'=>'修改产品/样品'),
+        array('key'=>'delete_model','group'=>'产品/样品','label'=>'删除产品/样品'),
+        array('key'=>'edit_flow','group'=>'开发流程','label'=>'修改开发导航图'),
+        array('key'=>'view_dashboard','group'=>'研发管理','label'=>'查看研发看板'),
+        array('key'=>'view_logs','group'=>'研发管理','label'=>'查看操作日志'),
+        array('key'=>'view_recycle','group'=>'安全','label'=>'查看回收站'),
+        array('key'=>'restore_recycle','group'=>'安全','label'=>'还原回收站'),
+        array('key'=>'manage_permissions','group'=>'安全','label'=>'权限设置'),
+        array('key'=>'view_bom_cost','group'=>'BOM','label'=>'查看BOM成本'),
+        array('key'=>'create_bom','group'=>'BOM','label'=>'生成BOM'),
+        array('key'=>'edit_test','group'=>'测试中心','label'=>'新增/修改测试'),
+        array('key'=>'delete_test','group'=>'测试中心','label'=>'删除测试记录'),
+        array('key'=>'edit_issue','group'=>'问题闭环','label'=>'新增/修改问题'),
+        array('key'=>'delete_issue','group'=>'问题闭环','label'=>'删除问题'),
+        array('key'=>'upload_file','group'=>'文件资料','label'=>'上传/修改文件'),
+        array('key'=>'delete_file','group'=>'文件资料','label'=>'删除文件'),
+        array('key'=>'create_dispatch','group'=>'派工','label'=>'生成派工'),
+        array('key'=>'view_dispatch_progress','group'=>'派工','label'=>'查看派工进度'),
+        array('key'=>'export_package','group'=>'资料包','label'=>'导出项目资料包')
+    );
+}
+function plm_v85_perm_keys(){ return array_map(function($x){return $x['key'];}, plm_v85_permission_defs()); }
+function plm_v85_user_perm_key($u=null){
+    if($u===null) $u=plm_v85_current_user_info();
+    $id=(int)($u['id']??0); if($id>0) return 'id:'.$id;
+    $name=trim((string)($u['username']??($u['name']??''))); if($name!=='') return 'user:'.strtolower($name);
+    return 'guest';
+}
+function plm_v85_admin_like_user($u){
+    if(!empty($u['is_admin'])) return true;
+    $raw=strtolower(($u['role']??'').' '.($u['username']??'').' '.($u['name']??'').' '.($u['department']??''));
+    return (strpos($raw,'boss')!==false||strpos($raw,'admin')!==false||strpos($raw,'owner')!==false||strpos($raw,'manager')!==false||strpos($raw,'老板')!==false||strpos($raw,'管理')!==false||strpos($raw,'管理员')!==false||strpos($raw,'超级')!==false);
+}
+function plm_v85_default_permissions($u=null){
+    $keys=plm_v85_perm_keys(); $p=array(); foreach($keys as $k) $p[$k]=false;
+    if(plm_v85_admin_like_user($u?:array())){ foreach($keys as $k) $p[$k]=true; return $p; }
+    foreach(array('view_project','new_project','edit_project','delete_project','new_model','edit_model','delete_model','edit_flow','view_dashboard','create_bom','edit_test','edit_issue','upload_file','create_dispatch','view_dispatch_progress','export_package') as $k) $p[$k]=true;
+    return $p;
+}
+function plm_v85_central_user_id($u){
+    $username=trim((string)($u['username']??($u['name']??'')));
+    $sessionId=(int)($_SESSION['artdon_user_id']??0);
+    $sessionName=trim((string)($_SESSION['artdon_username']??''));
+    if($sessionId>0 && $username!=='' && strcasecmp($username,$sessionName)===0) return $sessionId;
+    try{
+        if(function_exists('artdon_sso_table_exists') && artdon_sso_table_exists('artdon_user_aliases')){
+            $legacyId=(int)($u['id']??0);
+            if($legacyId>0){
+                $st=artdon_sso_db()->prepare("SELECT artdon_user_id FROM artdon_user_aliases WHERE source_table='dispatch_users' AND source_user_id=? LIMIT 1");
+                $st->execute(array((string)$legacyId)); $id=(int)$st->fetchColumn(); if($id>0)return $id;
+            }
+        }
+        if($username!=='' && function_exists('artdon_sso_user_by_username')){
+            $cu=artdon_sso_user_by_username($username); if($cu)return (int)$cu['id'];
+        }
+    }catch(Throwable $e){}
+    return 0;
+}
+function plm_v85_permissions_for($u=null){
+    if($u===null) $u=plm_v85_current_user_info();
+    $p=plm_v85_default_permissions($u);
+    if(plm_v85_admin_like_user($u)){ return $p; }
+    try{
+        if(plm_v85_table_exists('plm_permissions')){
+            $key=plm_v85_user_perm_key($u);
+            $row=plm_v85_row('SELECT permissions_json FROM plm_permissions WHERE user_key=? LIMIT 1',array($key));
+            if($row && trim((string)$row['permissions_json'])!==''){
+                $j=json_decode((string)$row['permissions_json'],true);
+                if(is_array($j)){ foreach(plm_v85_perm_keys() as $k){ if(array_key_exists($k,$j)) $p[$k]=!empty($j[$k]); } }
+            }
+        }
+        // 第三阶段：只有该账号的 PLM 权限在统一权限中心保存过，才覆盖旧权限。
+        $centralId=plm_v85_central_user_id($u);
+        if($centralId>0 && function_exists('artdon_perm_module_has_explicit') && artdon_perm_module_has_explicit($centralId,'plm')){
+            $fm=artdon_perm_effective_feature_map($centralId,'plm',function_exists('artdon_sso_user_by_id')?artdon_sso_user_by_id($centralId):null);
+            foreach(plm_v85_perm_keys() as $k){ if(array_key_exists($k,$fm))$p[$k]=!empty($fm[$k]); }
+        }
+    }catch(Throwable $e){}
+    return $p;
+}
+function plm_v85_can($perm,$u=null){
+    $u=$u?:plm_v85_current_user_info();
+    if(plm_v85_admin_like_user($u)) return true;
+    $p=plm_v85_permissions_for($u);
+    return !empty($p[$perm]);
+}
+function plm_v85_require_perm($perm,$label=''){
+    if(!plm_v85_can($perm)) plm_v85_json(array('ok'=>false,'error'=>'没有权限：'.($label?:$perm)));
+}
+function plm_v85_permission_users(){
+    $users=array();
+    try{
+        if(plm_v85_table_exists('dispatch_users')){
+            $cols=plm_v85_cols('dispatch_users');
+            $nameCol=in_array('name',$cols,true)?'name':(in_array('display_name',$cols,true)?'display_name':'username');
+            $roleCol=in_array('role',$cols,true)?'role':(in_array('role_name',$cols,true)?'role_name':"''");
+            $depCol=in_array('department',$cols,true)?'department':"''";
+            $hiddenWhere=in_array('hidden_at',$cols,true)?"":"";
+            $rows=plm_v85_rows("SELECT id,username,{$nameCol} name,{$roleCol} role,{$depCol} department FROM dispatch_users ORDER BY id ASC LIMIT 300");
+            foreach($rows as $r){
+                $u=array('id'=>(int)$r['id'],'username'=>(string)($r['username']??''),'name'=>(string)($r['name']?:($r['username']??'')),'role'=>(string)($r['role']??''),'department'=>(string)($r['department']??''));
+                $u['is_admin']=plm_v85_admin_like_user($u);
+                $u['user_key']=plm_v85_user_perm_key($u);
+                $u['permissions']=plm_v85_permissions_for($u);
+                $users[]=$u;
+            }
+        } elseif(plm_v85_table_exists('artdon_users')){
+            $rows=plm_v85_rows("SELECT id,username,COALESCE(display_name,username) name,COALESCE(role_name,'') role,'' department FROM artdon_users ORDER BY id ASC LIMIT 300");
+            foreach($rows as $r){
+                $u=array('id'=>(int)$r['id'],'username'=>(string)($r['username']??''),'name'=>(string)($r['name']?:($r['username']??'')),'role'=>(string)($r['role']??''),'department'=>'');
+                $u['is_admin']=plm_v85_admin_like_user($u);
+                $u['user_key']=plm_v85_user_perm_key($u);
+                $u['permissions']=plm_v85_permissions_for($u);
+                $users[]=$u;
+            }
+        }
+    }catch(Throwable $e){}
+    if(!$users){ $u=plm_v85_current_user_info(); $u['user_key']=plm_v85_user_perm_key($u); $u['permissions']=plm_v85_permissions_for($u); $users[]=$u; }
+    return $users;
+}
+function plm_v85_delete_count_today($type,$user){
+    $table=$type==='model'?'plm_models':'plm_projects';
+    $uid=(int)($user['id']??0); $uname=(string)($user['name']??'');
+    if(!plm_v85_table_exists($table)) return 0;
+    try{
+        if($uid>0 && plm_v85_hascol($table,'deleted_by')){
+            $st=plm_v85_pdo()->prepare("SELECT COUNT(*) FROM `{$table}` WHERE DATE(deleted_at)=CURDATE() AND deleted_by=? AND COALESCE(is_deleted,0)=1");
+            $st->execute(array($uid)); return (int)$st->fetchColumn();
+        }
+        if($uname!=='' && plm_v85_hascol($table,'deleted_by_name')){
+            $st=plm_v85_pdo()->prepare("SELECT COUNT(*) FROM `{$table}` WHERE DATE(deleted_at)=CURDATE() AND deleted_by_name=? AND COALESCE(is_deleted,0)=1");
+            $st->execute(array($uname)); return (int)$st->fetchColumn();
+        }
+    }catch(Throwable $e){}
+    return 0;
+}
+function plm_v85_notify_admins($title,$message,$payload=array()){
+    try{
+        if(!plm_v85_table_exists('plm_notifications')) return;
+        $pdo=plm_v85_pdo();
+        $admins=array();
+        if(plm_v85_table_exists('dispatch_users')){
+            $admins=plm_v85_rows("SELECT id,username,name,role FROM dispatch_users WHERE is_active=1 AND (hidden_at IS NULL OR hidden_at='0000-00-00 00:00:00') AND (role='boss' OR role='admin' OR username IN ('boss','admin'))");
+        }
+        if(!$admins && plm_v85_table_exists('artdon_users')){
+            $admins=plm_v85_rows("SELECT id,username,COALESCE(display_name,username) name,COALESCE(role_name,'') role FROM artdon_users WHERE COALESCE(status,'active') IN ('active','1','正常','启用') AND (LOWER(COALESCE(role_name,'')) LIKE '%admin%' OR LOWER(COALESCE(role_name,'')) LIKE '%boss%' OR COALESCE(role_name,'') LIKE '%管理%' OR username IN ('boss','admin'))");
+        }
+        if(!$admins) $admins=array(array('id'=>0,'username'=>'admin','name'=>'管理员','role'=>'admin'));
+        $st=$pdo->prepare("INSERT INTO plm_notifications(recipient_id,recipient_name,title,message,payload_json,is_read,created_at) VALUES(?,?,?,?,?,0,?)");
+        foreach($admins as $a){
+            $st->execute(array((int)($a['id']??0),(string)(($a['name']??'')?:($a['username']??'管理员')),$title,$message,json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),plm_v85_now()));
+        }
+    }catch(Throwable $e){}
+}
+
+function plm_v85_table_exists($t){
+    $st = plm_v85_pdo()->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
+    $st->execute(array($t));
+    return (int)$st->fetchColumn() > 0;
+}
+function plm_v85_cols($t, $refresh=false){
+    static $cache = array();
+    if(!$refresh && isset($cache[$t])) return $cache[$t];
+    if(!plm_v85_table_exists($t)){ $cache[$t]=array(); return array(); }
+    $rs = plm_v85_pdo()->query('SHOW COLUMNS FROM `'.$t.'`')->fetchAll();
+    $cache[$t] = array_column($rs, 'Field');
+    return $cache[$t];
+}
+function plm_v85_hascol($t,$c){ return in_array($c, plm_v85_cols($t), true); }
+function plm_v85_ensure_col($t,$c,$def){
+    if(plm_v85_table_exists($t) && !plm_v85_hascol($t,$c)){
+        plm_v85_pdo()->exec('ALTER TABLE `'.$t.'` ADD COLUMN `'.$c.'` '.$def);
+        plm_v85_cols($t, true);
+    }
+}
+function plm_v85_dyn_insert($table, $data){
+    $cols = plm_v85_cols($table);
+    $keys = array_values(array_filter(array_keys($data), function($k) use($cols){ return in_array($k,$cols,true); }));
+    if(!$keys) return 0;
+    $sql = 'INSERT INTO `'.$table.'` (`'.implode('`,`',$keys).'`) VALUES ('.implode(',', array_fill(0,count($keys),'?')).')';
+    $st = plm_v85_pdo()->prepare($sql);
+    $st->execute(array_map(function($k) use($data){ return $data[$k]; }, $keys));
+    return (int)plm_v85_pdo()->lastInsertId();
+}
+function plm_v85_dyn_update($table,$data,$where,$params=array()){
+    $cols = plm_v85_cols($table);
+    $keys = array_values(array_filter(array_keys($data), function($k) use($cols){ return in_array($k,$cols,true); }));
+    if(!$keys) return false;
+    $sets = array_map(function($k){ return '`'.$k.'`=?'; }, $keys);
+    $sql = 'UPDATE `'.$table.'` SET '.implode(',',$sets).' WHERE '.$where;
+    $st = plm_v85_pdo()->prepare($sql);
+    return $st->execute(array_merge(array_map(function($k) use($data){ return $data[$k]; }, $keys), $params));
+}
+function plm_v85_rows($sql,$params=array()){
+    $st = plm_v85_pdo()->prepare($sql); $st->execute($params); return $st->fetchAll();
+}
+function plm_v85_row($sql,$params=array()){
+    $st = plm_v85_pdo()->prepare($sql); $st->execute($params); $r=$st->fetch(); return $r ?: null;
+}
+
+/* ===== ARTDON_PLM_V85_53_LOG_CENTER_BACKEND_START ===== */
+function plm_v85_log_schema_v853(){
+    try{
+        $db = plm_v85_pdo();
+        $db->exec("CREATE TABLE IF NOT EXISTS plm_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            project_id INT NOT NULL DEFAULT 0,
+            model_id INT NOT NULL DEFAULT 0,
+            target_type VARCHAR(80) DEFAULT '',
+            target_id INT NOT NULL DEFAULT 0,
+            action VARCHAR(160) DEFAULT '',
+            note TEXT NULL,
+            user_id INT NOT NULL DEFAULT 0,
+            username VARCHAR(160) DEFAULT '',
+            user_name VARCHAR(160) DEFAULT '',
+            user_role VARCHAR(120) DEFAULT '',
+            ip VARCHAR(80) DEFAULT '',
+            user_agent VARCHAR(500) DEFAULT '',
+            request_uri VARCHAR(500) DEFAULT '',
+            method VARCHAR(20) DEFAULT '',
+            snapshot_json MEDIUMTEXT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_target(target_type,target_id), KEY idx_action(action), KEY idx_user(user_name), KEY idx_created(created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        foreach(array(
+            'project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','target_type'=>"VARCHAR(80) DEFAULT ''",'target_id'=>'INT NOT NULL DEFAULT 0','action'=>"VARCHAR(160) DEFAULT ''",'note'=>'TEXT NULL',
+            'user_id'=>'INT NOT NULL DEFAULT 0','username'=>"VARCHAR(160) DEFAULT ''",'user_name'=>"VARCHAR(160) DEFAULT ''",'user_role'=>"VARCHAR(120) DEFAULT ''",
+            'ip'=>"VARCHAR(80) DEFAULT ''",'user_agent'=>"VARCHAR(500) DEFAULT ''",'request_uri'=>"VARCHAR(500) DEFAULT ''",'method'=>"VARCHAR(20) DEFAULT ''",'snapshot_json'=>'MEDIUMTEXT NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP'
+        ) as $c=>$d){ if(function_exists('plm_v85_ensure_col')) plm_v85_ensure_col('plm_logs',$c,$d); }
+        try{ $db->exec("ALTER TABLE plm_logs ADD INDEX idx_plm_logs_created(created_at)"); }catch(Throwable $e){}
+        try{ $db->exec("ALTER TABLE plm_logs ADD INDEX idx_plm_logs_project(project_id)"); }catch(Throwable $e){}
+        try{ $db->exec("ALTER TABLE plm_logs ADD INDEX idx_plm_logs_user(user_name)"); }catch(Throwable $e){}
+    }catch(Throwable $e){}
+}
+function plm_v85_log_request_meta_v853(){
+    $ip='';
+    foreach(array('HTTP_CF_CONNECTING_IP','HTTP_X_FORWARDED_FOR','REMOTE_ADDR') as $k){ if(!empty($_SERVER[$k])){ $ip=trim(explode(',',(string)$_SERVER[$k])[0]); break; } }
+    return array(
+        'ip'=>$ip,
+        'user_agent'=>substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500),
+        'request_uri'=>substr((string)($_SERVER['REQUEST_URI']??''),0,500),
+        'method'=>substr((string)($_SERVER['REQUEST_METHOD']??''),0,20)
+    );
+}
+function plm_v85_log_query_v853($d, $forExport=false){
+    plm_v85_log_schema_v853();
+    $where=array('1=1'); $params=array();
+    $from=plm_v85_s($d['date_from']??($d['from']??''),30); if($from!==''){ $where[]='l.created_at >= ?'; $params[]=preg_match('/\d{2}:\d{2}/',$from)?$from:($from.' 00:00:00'); }
+    $to=plm_v85_s($d['date_to']??($d['to']??''),30); if($to!==''){ $where[]='l.created_at <= ?'; $params[]=preg_match('/\d{2}:\d{2}/',$to)?$to:($to.' 23:59:59'); }
+    $person=plm_v85_s($d['person']??'',120); if($person!==''){ $where[]='(l.user_name LIKE ? OR l.username LIKE ? OR l.user_role LIKE ?)'; $like='%'.$person.'%'; array_push($params,$like,$like,$like); }
+    $pid=(int)($d['project_id']??0); if($pid>0){ $where[]='l.project_id=?'; $params[]=$pid; }
+    $mid=(int)($d['model_id']??0); if($mid>0){ $where[]='l.model_id=?'; $params[]=$mid; }
+    $type=plm_v85_s($d['target_type']??($d['type']??''),80); if($type!==''){ $where[]='l.target_type=?'; $params[]=$type; }
+    $action=plm_v85_s($d['action_kw']??($d['action_name']??''),120); if($action!==''){ $where[]='l.action LIKE ?'; $params[]='%'.$action.'%'; }
+    $kw=plm_v85_s($d['q']??($d['keyword']??''),160); if($kw!==''){ $where[]='(l.action LIKE ? OR l.note LIKE ? OR l.target_type LIKE ? OR l.user_name LIKE ? OR l.username LIKE ? OR p.name LIKE ? OR p.customer LIKE ? OR m.name LIKE ? OR m.model LIKE ?)'; $like='%'.$kw.'%'; for($i=0;$i<9;$i++) $params[]=$like; }
+    $limit=(int)($d['limit']??300); if($limit<20) $limit=20; if($limit>2000) $limit=2000; if($forExport) $limit=5000;
+    $sql="SELECT l.*, p.name AS project_name, p.customer AS project_customer, m.name AS model_name, m.model AS model_code
+          FROM plm_logs l
+          LEFT JOIN plm_projects p ON p.id=l.project_id
+          LEFT JOIN plm_models m ON m.id=l.model_id
+          WHERE ".implode(' AND ',$where)." ORDER BY l.id DESC LIMIT ".$limit;
+    return plm_v85_rows($sql,$params);
+}
+function plm_v85_csv_cell_v853($v){
+    $v=(string)($v??''); $v=str_replace(array("\r\n","\r","\n"),' ', $v); $v=str_replace('"','""',$v); return '"'.$v.'"';
+}
+function plm_v85_export_logs_csv_v853($d){
+    plm_v85_log_schema_v853();
+    $rows=plm_v85_log_query_v853($d,true);
+    if(ob_get_length()) @ob_clean();
+    $name='PLM操作日志_'.date('Ymd_His').'.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="'.rawurlencode($name).'"');
+    echo "\xEF\xBB\xBF";
+    echo implode(',',array('时间','操作人','账号','角色','项目','客户','样品','对象类型','对象ID','动作','说明','IP','请求'))."\n";
+    foreach($rows as $r){
+        echo implode(',',array(
+            plm_v85_csv_cell_v853($r['created_at']??''), plm_v85_csv_cell_v853($r['user_name']??''), plm_v85_csv_cell_v853($r['username']??''), plm_v85_csv_cell_v853($r['user_role']??''),
+            plm_v85_csv_cell_v853($r['project_name']??''), plm_v85_csv_cell_v853($r['project_customer']??''), plm_v85_csv_cell_v853(trim(($r['model_name']??'').' '.($r['model_code']??''))),
+            plm_v85_csv_cell_v853($r['target_type']??''), plm_v85_csv_cell_v853($r['target_id']??''), plm_v85_csv_cell_v853($r['action']??''), plm_v85_csv_cell_v853($r['note']??''),
+            plm_v85_csv_cell_v853($r['ip']??''), plm_v85_csv_cell_v853($r['request_uri']??'')
+        ))."\n";
+    }
+    exit;
+}
+/* ===== ARTDON_PLM_V85_53_LOG_CENTER_BACKEND_END ===== */
+function plm_v85_schema(){
+    $db = plm_v85_pdo();
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_projects (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_no VARCHAR(80) DEFAULT '',
+        name VARCHAR(255) DEFAULT '',
+        customer VARCHAR(255) DEFAULT '',
+        engineer VARCHAR(120) DEFAULT '',
+        series VARCHAR(160) DEFAULT '',
+        model VARCHAR(160) DEFAULT '',
+        product_type VARCHAR(160) DEFAULT '',
+        source VARCHAR(100) DEFAULT '工厂自行开发',
+        priority VARCHAR(60) DEFAULT 'P2 正常',
+        status VARCHAR(60) DEFAULT '开发中',
+        due_date DATE NULL,
+        image_path VARCHAR(500) DEFAULT '',
+        remark TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_customer(customer), KEY idx_status(status), KEY idx_updated(updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'project_no'=>"VARCHAR(80) DEFAULT ''", 'name'=>"VARCHAR(255) DEFAULT ''", 'customer'=>"VARCHAR(255) DEFAULT ''", 'engineer'=>"VARCHAR(120) DEFAULT ''",
+        'series'=>"VARCHAR(160) DEFAULT ''", 'model'=>"VARCHAR(160) DEFAULT ''", 'product_type'=>"VARCHAR(160) DEFAULT ''", 'source'=>"VARCHAR(100) DEFAULT '工厂自行开发'",
+        'priority'=>"VARCHAR(60) DEFAULT 'P2 正常'", 'status'=>"VARCHAR(60) DEFAULT '开发中'", 'due_date'=>'DATE NULL', 'image_path'=>"VARCHAR(500) DEFAULT ''", 'remark'=>'TEXT NULL',
+        'naming_id'=>'INT DEFAULT 0','naming_model_no'=>"VARCHAR(80) DEFAULT ''",'naming_category'=>"VARCHAR(120) DEFAULT ''",'naming_item_name'=>"VARCHAR(120) DEFAULT ''",'naming_image_path'=>"VARCHAR(500) DEFAULT ''",
+        'naming_snapshot_json'=>'LONGTEXT NULL','naming_sync_hash'=>"VARCHAR(64) DEFAULT ''",'naming_synced_at'=>'DATETIME NULL','naming_source_updated_at'=>'DATETIME NULL',
+        'created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP', 'updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('plm_projects',$c,$d);
+    foreach(array('is_deleted'=>'TINYINT(1) NOT NULL DEFAULT 0','deleted_at'=>'DATETIME NULL','deleted_by'=>'INT DEFAULT 0','deleted_by_name'=>"VARCHAR(120) DEFAULT ''",'delete_reason'=>'TEXT NULL') as $c=>$d) plm_v85_ensure_col('plm_projects',$c,$d);
+    // V8.5.98：整个项目暂停 / 恢复。保存暂停原因、预计恢复时间和恢复前状态快照。
+    foreach(array(
+        'pause_reason'=>'TEXT NULL',
+        'pause_expected_resume'=>'DATE NULL',
+        'paused_at'=>'DATETIME NULL',
+        'paused_by'=>'INT DEFAULT 0',
+        'paused_by_name'=>"VARCHAR(120) DEFAULT ''",
+        'resume_reason'=>'TEXT NULL',
+        'resumed_at'=>'DATETIME NULL',
+        'resumed_by'=>'INT DEFAULT 0',
+        'resumed_by_name'=>"VARCHAR(120) DEFAULT ''",
+        'pause_snapshot_json'=>'LONGTEXT NULL'
+    ) as $c=>$d) plm_v85_ensure_col('plm_projects',$c,$d);
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_models (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        name VARCHAR(255) DEFAULT '',
+        model VARCHAR(180) DEFAULT '',
+        sample_no VARCHAR(120) DEFAULT '',
+        power VARCHAR(80) DEFAULT '',
+        beam VARCHAR(80) DEFAULT '',
+        cct VARCHAR(80) DEFAULT '',
+        qty INT DEFAULT 1,
+        status VARCHAR(60) DEFAULT '开发中',
+        test_status VARCHAR(80) DEFAULT '待测试',
+        test_summary VARCHAR(255) DEFAULT '',
+        note TEXT NULL,
+        sort_order INT DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'project_id'=>'INT NOT NULL DEFAULT 0','name'=>"VARCHAR(255) DEFAULT ''",'model'=>"VARCHAR(180) DEFAULT ''",'sample_no'=>"VARCHAR(120) DEFAULT ''",'sample_version'=>"VARCHAR(60) DEFAULT 'V1'",'parent_model_id'=>'INT DEFAULT 0','change_reason'=>'TEXT NULL','confirmed_by'=>"VARCHAR(120) DEFAULT ''",'confirmed_at'=>'DATETIME NULL',
+        'power'=>"VARCHAR(80) DEFAULT ''",'beam'=>"VARCHAR(80) DEFAULT ''",'cct'=>"VARCHAR(80) DEFAULT ''",'product_category'=>"VARCHAR(120) DEFAULT ''",'opening_size'=>"VARCHAR(80) DEFAULT ''",'diameter'=>"VARCHAR(80) DEFAULT ''",'length_mm'=>"VARCHAR(80) DEFAULT ''",'width_mm'=>"VARCHAR(80) DEFAULT ''",'height_mm'=>"VARCHAR(80) DEFAULT ''",'qty'=>'INT DEFAULT 1','status'=>"VARCHAR(60) DEFAULT '开发中'",
+        'chip_name'=>"VARCHAR(255) DEFAULT ''",'chip_brand'=>"VARCHAR(160) DEFAULT ''",'chip_spec'=>"VARCHAR(255) DEFAULT ''",'chip_material_id'=>'INT DEFAULT 0',
+        'optical_name'=>"VARCHAR(255) DEFAULT ''",'optical_brand'=>"VARCHAR(160) DEFAULT ''",'optical_spec'=>"VARCHAR(255) DEFAULT ''",'optical_material_id'=>'INT DEFAULT 0',
+        'driver_name'=>"VARCHAR(255) DEFAULT ''",'driver_brand'=>"VARCHAR(160) DEFAULT ''",'driver_spec'=>"VARCHAR(255) DEFAULT ''",'driver_material_id'=>'INT DEFAULT 0',
+        'accessories_name'=>"VARCHAR(255) DEFAULT ''",'accessories_brand'=>"VARCHAR(160) DEFAULT ''",'accessories_spec'=>'TEXT NULL','accessories_material_ids'=>'TEXT NULL','bom_note'=>'TEXT NULL',
+        'naming_id'=>'INT DEFAULT 0','naming_model_no'=>"VARCHAR(80) DEFAULT ''",'naming_category'=>"VARCHAR(120) DEFAULT ''",'naming_item_name'=>"VARCHAR(120) DEFAULT ''",'naming_product_name'=>"VARCHAR(180) DEFAULT ''",'naming_image_path'=>"VARCHAR(500) DEFAULT ''",'naming_drawing_path'=>"VARCHAR(500) DEFAULT ''",'naming_remark'=>'TEXT NULL','naming_linked_at'=>'DATETIME NULL','naming_snapshot_json'=>'LONGTEXT NULL','naming_sync_hash'=>"VARCHAR(64) DEFAULT ''",'naming_synced_at'=>'DATETIME NULL','naming_source_updated_at'=>'DATETIME NULL',
+        'naming_inbox_id'=>'BIGINT UNSIGNED NOT NULL DEFAULT 0','naming_status'=>"VARCHAR(40) DEFAULT ''",'naming_submitted_at'=>'DATETIME NULL','naming_completed_at'=>'DATETIME NULL','naming_last_note'=>'TEXT NULL','naming_assigned_to'=>"VARCHAR(120) DEFAULT ''",
+        'test_status'=>"VARCHAR(80) DEFAULT '待测试'",'test_summary'=>"VARCHAR(255) DEFAULT ''",'note'=>'TEXT NULL','sort_order'=>'INT DEFAULT 0','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('plm_models',$c,$d);
+    foreach(array('is_deleted'=>'TINYINT(1) NOT NULL DEFAULT 0','deleted_at'=>'DATETIME NULL','deleted_by'=>'INT DEFAULT 0','deleted_by_name'=>"VARCHAR(120) DEFAULT ''",'delete_reason'=>'TEXT NULL') as $c=>$d) plm_v85_ensure_col('plm_models',$c,$d);
+
+    // V8.5.102：PLM 样品可提交到命名系统收件箱。与 CRM 共用同一张通用收件箱表。
+    $db->exec("CREATE TABLE IF NOT EXISTS naming_inbox(
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      source_type VARCHAR(60) NOT NULL DEFAULT 'plm_sample',
+      source_table VARCHAR(120) NOT NULL DEFAULT 'plm_models',
+      source_id VARCHAR(120) NOT NULL DEFAULT '',
+      customer_id INT NOT NULL DEFAULT 0,
+      customer_name VARCHAR(255) NOT NULL DEFAULT '',
+      sample_no VARCHAR(120) NOT NULL DEFAULT '',
+      sample_model VARCHAR(255) NOT NULL DEFAULT '',
+      product_name VARCHAR(255) NOT NULL DEFAULT '',
+      category_hint VARCHAR(160) NOT NULL DEFAULT '',
+      item_hint VARCHAR(160) NOT NULL DEFAULT '',
+      requirements MEDIUMTEXT NULL,
+      note MEDIUMTEXT NULL,
+      image_path VARCHAR(500) NOT NULL DEFAULT '',
+      drawing_path VARCHAR(500) NOT NULL DEFAULT '',
+      payload_json MEDIUMTEXT NULL,
+      status VARCHAR(40) NOT NULL DEFAULT '待处理',
+      assigned_to VARCHAR(120) NOT NULL DEFAULT '',
+      submitted_by VARCHAR(120) NOT NULL DEFAULT '',
+      submitted_at DATETIME NULL,
+      processed_by VARCHAR(120) NOT NULL DEFAULT '',
+      processed_at DATETIME NULL,
+      naming_model_id INT NOT NULL DEFAULT 0,
+      model_no VARCHAR(80) NOT NULL DEFAULT '',
+      return_reason MEDIUMTEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY(id),
+      UNIQUE KEY uq_naming_inbox_source(source_type,source_id),
+      KEY idx_naming_inbox_status(status),
+      KEY idx_naming_inbox_customer(customer_id),
+      KEY idx_naming_inbox_model(naming_model_id),
+      KEY idx_naming_inbox_updated(updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_flow_steps (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        title VARCHAR(160) DEFAULT '',
+        status VARCHAR(60) DEFAULT '未开始',
+        owner VARCHAR(120) DEFAULT '',
+        plan_date DATE NULL,
+        done_at DATETIME NULL,
+        note TEXT NULL,
+        sort_order INT DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_sort(sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','title'=>"VARCHAR(160) DEFAULT ''",'status'=>"VARCHAR(60) DEFAULT '未开始'",'owner'=>"VARCHAR(120) DEFAULT ''",'plan_date'=>'DATE NULL','plan_start'=>'DATE NULL','plan_end'=>'DATE NULL','actual_start'=>'DATETIME NULL','done_at'=>'DATETIME NULL','dependency_mode'=>"VARCHAR(60) DEFAULT '跟随前一步'",'abnormal_reason'=>'TEXT NULL','return_reason'=>'TEXT NULL','rework_reason'=>'TEXT NULL','skip_reason'=>'TEXT NULL','dispatch_status'=>"VARCHAR(60) DEFAULT ''",'dispatch_note'=>'TEXT NULL','note'=>'TEXT NULL','sort_order'=>'INT DEFAULT 0','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_flow_steps',$c,$d);
+    // V8.5.23：兼容旧版数据库字段 step_name。旧表里 step_name 可能是 NOT NULL 且无默认值，新增步骤时会报 Field 'step_name' doesn't have a default value。
+    if(plm_v85_table_exists('plm_flow_steps') && plm_v85_hascol('plm_flow_steps','step_name')){
+        try{ plm_v85_pdo()->exec("ALTER TABLE `plm_flow_steps` MODIFY COLUMN `step_name` VARCHAR(160) NOT NULL DEFAULT ''"); }catch(Exception $e){}
+        try{ plm_v85_pdo()->exec("UPDATE `plm_flow_steps` SET `title`=`step_name` WHERE (`title`='' OR `title` IS NULL) AND `step_name`<>''"); }catch(Exception $e){}
+        try{ plm_v85_pdo()->exec("UPDATE `plm_flow_steps` SET `step_name`=`title` WHERE (`step_name`='' OR `step_name` IS NULL) AND `title`<>''"); }catch(Exception $e){}
+        plm_v85_cols('plm_flow_steps', true);
+    }
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_tests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        test_type VARCHAR(80) DEFAULT '温升',
+        title VARCHAR(255) DEFAULT '',
+        status VARCHAR(60) DEFAULT '待测',
+        result VARCHAR(80) DEFAULT '',
+        test_date DATE NULL,
+        operator VARCHAR(120) DEFAULT '',
+        ambient_temp DECIMAL(10,2) NULL,
+        led_temp DECIMAL(10,2) NULL,
+        driver_temp DECIMAL(10,2) NULL,
+        shell_temp DECIMAL(10,2) NULL,
+        max_temp DECIMAL(10,2) NULL,
+        sphere_lumen VARCHAR(80) DEFAULT '',
+        sphere_power VARCHAR(80) DEFAULT '',
+        sphere_efficiency VARCHAR(80) DEFAULT '',
+        cct VARCHAR(80) DEFAULT '',
+        cri VARCHAR(80) DEFAULT '',
+        ies_angle VARCHAR(80) DEFAULT '',
+        ies_lumen VARCHAR(80) DEFAULT '',
+        note TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_type(test_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','test_type'=>"VARCHAR(80) DEFAULT '温升'",'title'=>"VARCHAR(255) DEFAULT ''",'status'=>"VARCHAR(60) DEFAULT '待测'",'result'=>"VARCHAR(80) DEFAULT ''",'test_date'=>'DATE NULL','operator'=>"VARCHAR(120) DEFAULT ''",'ambient_temp'=>'DECIMAL(10,2) NULL','led_temp'=>'DECIMAL(10,2) NULL','driver_temp'=>'DECIMAL(10,2) NULL','shell_temp'=>'DECIMAL(10,2) NULL','max_temp'=>'DECIMAL(10,2) NULL','sphere_lumen'=>"VARCHAR(80) DEFAULT ''",'sphere_power'=>"VARCHAR(80) DEFAULT ''",'sphere_efficiency'=>"VARCHAR(80) DEFAULT ''",'cct'=>"VARCHAR(80) DEFAULT ''",'cri'=>"VARCHAR(80) DEFAULT ''",'ies_angle'=>"VARCHAR(80) DEFAULT ''",'ies_lumen'=>"VARCHAR(80) DEFAULT ''",'test_standard'=>'TEXT NULL','test_data'=>'TEXT NULL','test_conclusion'=>'TEXT NULL','retest_result'=>"VARCHAR(80) DEFAULT ''",'affect_sample'=>'TINYINT DEFAULT 0','issue_id'=>'INT DEFAULT 0','problem_generated'=>'TINYINT DEFAULT 0','template_key'=>"VARCHAR(120) DEFAULT ''",'template_name'=>"VARCHAR(160) DEFAULT ''",'template_fields_json'=>'MEDIUMTEXT NULL','note'=>'TEXT NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('plm_tests',$c,$d);
+
+    // V8.5.73：测试中心导航图 + 模板基础版。模板独立保存，不破坏旧测试字段。
+    // V8.5.74：测试中心紧凑 + 文件弹窗预览；不删除旧测试字段，只隐藏通用记录大区块。
+    // V8.5.75：测试节点卡片方块化，取消标题/信息省略，节点信息完整显示。
+    // V8.5.76：测试节点方形卡片 + 重测/不通过历史标签，只做显示增强，不改测试保存核心。
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_test_templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(160) NOT NULL DEFAULT '',
+        test_type VARCHAR(80) DEFAULT '',
+        fields_json MEDIUMTEXT NULL,
+        is_public TINYINT(1) NOT NULL DEFAULT 1,
+        created_by_id INT DEFAULT 0,
+        created_by_name VARCHAR(120) DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_type(test_type), KEY idx_public(is_public)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('name'=>"VARCHAR(160) NOT NULL DEFAULT ''",'test_type'=>"VARCHAR(80) DEFAULT ''",'fields_json'=>'MEDIUMTEXT NULL','is_public'=>'TINYINT(1) NOT NULL DEFAULT 1','created_by_id'=>'INT DEFAULT 0','created_by_name'=>"VARCHAR(120) DEFAULT ''",'created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_test_templates',$c,$d);
+
+    // V8.5.77：测试历史记录 / 重测记录。主测试 plm_tests 作为测试节点；每一次测试/重测记录保存在 plm_test_runs，避免覆盖旧失败记录。
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_test_runs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        test_id INT NOT NULL DEFAULT 0,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        run_no INT NOT NULL DEFAULT 1,
+        run_title VARCHAR(255) DEFAULT '',
+        status VARCHAR(60) DEFAULT '待测',
+        result VARCHAR(80) DEFAULT '',
+        test_date DATE NULL,
+        operator VARCHAR(120) DEFAULT '',
+        ambient_temp DECIMAL(10,2) NULL,
+        led_temp DECIMAL(10,2) NULL,
+        driver_temp DECIMAL(10,2) NULL,
+        shell_temp DECIMAL(10,2) NULL,
+        max_temp DECIMAL(10,2) NULL,
+        sphere_lumen VARCHAR(80) DEFAULT '',
+        sphere_power VARCHAR(80) DEFAULT '',
+        sphere_efficiency VARCHAR(80) DEFAULT '',
+        cct VARCHAR(80) DEFAULT '',
+        cri VARCHAR(80) DEFAULT '',
+        ies_angle VARCHAR(80) DEFAULT '',
+        ies_lumen VARCHAR(80) DEFAULT '',
+        test_standard TEXT NULL,
+        test_data TEXT NULL,
+        test_conclusion TEXT NULL,
+        retest_result VARCHAR(80) DEFAULT '',
+        affect_sample TINYINT DEFAULT 0,
+        template_key VARCHAR(120) DEFAULT '',
+        template_name VARCHAR(160) DEFAULT '',
+        template_fields_json MEDIUMTEXT NULL,
+        note TEXT NULL,
+        created_by_name VARCHAR(120) DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_test(test_id), KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_run(test_id,run_no)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'test_id'=>'INT NOT NULL DEFAULT 0','project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','run_no'=>'INT NOT NULL DEFAULT 1','run_title'=>"VARCHAR(255) DEFAULT ''",'status'=>"VARCHAR(60) DEFAULT '待测'",'result'=>"VARCHAR(80) DEFAULT ''",'test_date'=>'DATE NULL','operator'=>"VARCHAR(120) DEFAULT ''",
+        'ambient_temp'=>'DECIMAL(10,2) NULL','led_temp'=>'DECIMAL(10,2) NULL','driver_temp'=>'DECIMAL(10,2) NULL','shell_temp'=>'DECIMAL(10,2) NULL','max_temp'=>'DECIMAL(10,2) NULL','sphere_lumen'=>"VARCHAR(80) DEFAULT ''",'sphere_power'=>"VARCHAR(80) DEFAULT ''",'sphere_efficiency'=>"VARCHAR(80) DEFAULT ''",'cct'=>"VARCHAR(80) DEFAULT ''",'cri'=>"VARCHAR(80) DEFAULT ''",'ies_angle'=>"VARCHAR(80) DEFAULT ''",'ies_lumen'=>"VARCHAR(80) DEFAULT ''",
+        'test_standard'=>'TEXT NULL','test_data'=>'TEXT NULL','test_conclusion'=>'TEXT NULL','retest_result'=>"VARCHAR(80) DEFAULT ''",'affect_sample'=>'TINYINT DEFAULT 0','template_key'=>"VARCHAR(120) DEFAULT ''",'template_name'=>"VARCHAR(160) DEFAULT ''",'template_fields_json'=>'MEDIUMTEXT NULL','note'=>'TEXT NULL','created_by_name'=>"VARCHAR(120) DEFAULT ''",'created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('plm_test_runs',$c,$d);
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_files (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        test_id INT NOT NULL DEFAULT 0,
+        category VARCHAR(100) DEFAULT '',
+        title VARCHAR(255) DEFAULT '',
+        original_name VARCHAR(255) DEFAULT '',
+        file_name VARCHAR(255) DEFAULT '',
+        file_path VARCHAR(500) DEFAULT '',
+        mime_type VARCHAR(160) DEFAULT '',
+        file_size INT DEFAULT 0,
+        note TEXT NULL,
+        customer_visible TINYINT DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_test(test_id), KEY idx_cat(category)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','test_id'=>'INT NOT NULL DEFAULT 0','step_id'=>'INT NOT NULL DEFAULT 0','category'=>"VARCHAR(100) DEFAULT ''",'title'=>"VARCHAR(255) DEFAULT ''",'original_name'=>"VARCHAR(255) DEFAULT ''",'file_name'=>"VARCHAR(255) DEFAULT ''",'file_path'=>"VARCHAR(500) DEFAULT ''",'mime_type'=>"VARCHAR(160) DEFAULT ''",'file_size'=>'INT DEFAULT 0','note'=>'TEXT NULL','customer_visible'=>'TINYINT DEFAULT 1','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_files',$c,$d);
+    plm_v85_ensure_col('plm_files','test_run_id','INT NOT NULL DEFAULT 0');
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        target_type VARCHAR(80) DEFAULT '',
+        target_id INT DEFAULT 0,
+        action VARCHAR(160) DEFAULT '',
+        note TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_created(created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    plm_v85_ensure_col('plm_logs','operator_name',"VARCHAR(120) DEFAULT ''");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        recipient_id INT DEFAULT 0,
+        recipient_name VARCHAR(120) DEFAULT '',
+        title VARCHAR(255) DEFAULT '',
+        message TEXT NULL,
+        payload_json LONGTEXT NULL,
+        is_read TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_read(is_read), KEY idx_created(created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // V8.5.104：PLM 顶部“谁在线”。只记录 PLM 当前在线状态，不影响统一登录核心。
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_online_users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(128) NOT NULL DEFAULT '',
+        user_id INT NOT NULL DEFAULT 0,
+        username VARCHAR(160) DEFAULT '',
+        user_name VARCHAR(160) DEFAULT '',
+        user_role VARCHAR(120) DEFAULT '',
+        module VARCHAR(40) DEFAULT 'plm',
+        ip VARCHAR(80) DEFAULT '',
+        user_agent VARCHAR(500) DEFAULT '',
+        page VARCHAR(500) DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_plm_online_session(session_id),
+        KEY idx_last_seen(last_seen),
+        KEY idx_user(user_name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'session_id'=>"VARCHAR(128) NOT NULL DEFAULT ''",'user_id'=>'INT NOT NULL DEFAULT 0','username'=>"VARCHAR(160) DEFAULT ''",'user_name'=>"VARCHAR(160) DEFAULT ''",'user_role'=>"VARCHAR(120) DEFAULT ''",
+        'module'=>"VARCHAR(40) DEFAULT 'plm'",'ip'=>"VARCHAR(80) DEFAULT ''",'user_agent'=>"VARCHAR(500) DEFAULT ''",'page'=>"VARCHAR(500) DEFAULT ''",'created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','last_seen'=>'DATETIME DEFAULT CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('plm_online_users',$c,$d);
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_permissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_key VARCHAR(160) NOT NULL,
+        user_id INT DEFAULT 0,
+        username VARCHAR(120) DEFAULT '',
+        display_name VARCHAR(120) DEFAULT '',
+        role_name VARCHAR(120) DEFAULT '',
+        permissions_json LONGTEXT NULL,
+        updated_by_name VARCHAR(120) DEFAULT '',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_key(user_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('user_key'=>"VARCHAR(160) NOT NULL",'user_id'=>'INT DEFAULT 0','username'=>"VARCHAR(120) DEFAULT ''",'display_name'=>"VARCHAR(120) DEFAULT ''",'role_name'=>"VARCHAR(120) DEFAULT ''",'permissions_json'=>'LONGTEXT NULL','updated_by_name'=>"VARCHAR(120) DEFAULT ''",'updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_permissions',$c,$d);
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_dispatch_links (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        step_id INT NOT NULL DEFAULT 0,
+        task_id INT NOT NULL DEFAULT 0,
+        task_no VARCHAR(120) DEFAULT '',
+        title VARCHAR(255) DEFAULT '',
+        assignee_id INT NOT NULL DEFAULT 0,
+        assignee_name VARCHAR(120) DEFAULT '',
+        status VARCHAR(80) DEFAULT '已创建',
+        progress INT DEFAULT 0,
+        due_at DATETIME NULL,
+        dispatch_url VARCHAR(500) DEFAULT '',
+        linked_json LONGTEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_step(step_id), KEY idx_task(task_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','step_id'=>'INT NOT NULL DEFAULT 0','task_id'=>'INT NOT NULL DEFAULT 0','task_no'=>"VARCHAR(120) DEFAULT ''",'title'=>"VARCHAR(255) DEFAULT ''",'assignee_id'=>'INT NOT NULL DEFAULT 0','assignee_name'=>"VARCHAR(120) DEFAULT ''",'status'=>"VARCHAR(80) DEFAULT '已创建'",'progress'=>'INT DEFAULT 0','due_at'=>'DATETIME NULL','dispatch_url'=>"VARCHAR(500) DEFAULT ''",'linked_json'=>'LONGTEXT NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_dispatch_links',$c,$d);
+    // V8.5.83：测试整改派工关联字段。兼容旧记录，旧派工联动不受影响。
+    foreach(array('issue_id'=>'INT NOT NULL DEFAULT 0','test_id'=>'INT NOT NULL DEFAULT 0','test_run_id'=>'INT NOT NULL DEFAULT 0','link_type'=>"VARCHAR(80) DEFAULT ''") as $c=>$d) plm_v85_ensure_col('plm_dispatch_links',$c,$d);
+
+    // V8.5.93：兼容派工 API 自动反写字段。保留 PLM 正式字段，同时兼容派工回写字段。
+    foreach(array(
+        'plm_project_id'=>"VARCHAR(80) NOT NULL DEFAULT ''",
+        'plm_project_name'=>"VARCHAR(255) NOT NULL DEFAULT ''",
+        'task_title'=>"VARCHAR(255) NOT NULL DEFAULT ''",
+        'task_status'=>"VARCHAR(60) NOT NULL DEFAULT ''",
+        'status_label'=>"VARCHAR(80) NOT NULL DEFAULT ''",
+        'source_type'=>"VARCHAR(40) NOT NULL DEFAULT ''",
+        'priority'=>"VARCHAR(40) NOT NULL DEFAULT ''",
+        'assigned_to'=>'INT UNSIGNED NOT NULL DEFAULT 0',
+        'assigned_to_name'=>"VARCHAR(160) NOT NULL DEFAULT ''",
+        'created_by'=>'INT UNSIGNED NOT NULL DEFAULT 0',
+        'created_by_name'=>"VARCHAR(160) NOT NULL DEFAULT ''",
+        'is_done'=>'TINYINT(1) NOT NULL DEFAULT 0',
+        'is_overdue'=>'TINYINT(1) NOT NULL DEFAULT 0',
+        'last_progress'=>'MEDIUMTEXT NULL',
+        'last_action'=>"VARCHAR(80) NOT NULL DEFAULT ''",
+        'last_note'=>'MEDIUMTEXT NULL',
+        'last_event_at'=>'DATETIME NULL',
+        'completed_at'=>'DATETIME NULL',
+        'task_created_at'=>'DATETIME NULL',
+        'task_updated_at'=>'DATETIME NULL'
+    ) as $c=>$d) plm_v85_ensure_col('plm_dispatch_links',$c,$d);
+
+    $db->exec("CREATE TABLE IF NOT EXISTS plm_issues (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL DEFAULT 0,
+        model_id INT NOT NULL DEFAULT 0,
+        step_id INT NOT NULL DEFAULT 0,
+        file_id INT NOT NULL DEFAULT 0,
+        title VARCHAR(255) DEFAULT '',
+        source VARCHAR(120) DEFAULT '',
+        severity VARCHAR(60) DEFAULT '中',
+        status VARCHAR(60) DEFAULT '待处理',
+        owner VARCHAR(120) DEFAULT '',
+        solution TEXT NULL,
+        note TEXT NULL,
+        closed_at DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project(project_id), KEY idx_model(model_id), KEY idx_status(status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array('project_id'=>'INT NOT NULL DEFAULT 0','model_id'=>'INT NOT NULL DEFAULT 0','step_id'=>'INT NOT NULL DEFAULT 0','file_id'=>'INT NOT NULL DEFAULT 0','title'=>"VARCHAR(255) DEFAULT ''",'source'=>"VARCHAR(120) DEFAULT ''",'severity'=>"VARCHAR(60) DEFAULT '中'",'status'=>"VARCHAR(60) DEFAULT '待处理'",'owner'=>"VARCHAR(120) DEFAULT ''",'solution'=>'TEXT NULL','note'=>'TEXT NULL','closed_at'=>'DATETIME NULL','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP') as $c=>$d) plm_v85_ensure_col('plm_issues',$c,$d);
+    // V8.5.81：测试不通过自动生成问题闭环，问题记录直接关联测试节点 / 重测记录。
+    foreach(array('test_id'=>'INT NOT NULL DEFAULT 0','test_run_id'=>'INT NOT NULL DEFAULT 0','test_type'=>"VARCHAR(120) DEFAULT ''",'auto_from_test'=>'TINYINT(1) NOT NULL DEFAULT 0') as $c=>$d) plm_v85_ensure_col('plm_issues',$c,$d);
+    // V8.5.83：问题闭环可关联整改派工。
+    foreach(array('dispatch_task_id'=>'INT NOT NULL DEFAULT 0','dispatch_status'=>"VARCHAR(80) DEFAULT ''",'dispatch_url'=>"VARCHAR(500) DEFAULT ''",'dispatch_created_at'=>'DATETIME NULL','rectify_note'=>'TEXT NULL') as $c=>$d) plm_v85_ensure_col('plm_issues',$c,$d);
+}
+function plm_v85_flow_templates(){
+    return array(
+        '常规灯具开发流程'=>array('制定方案','3D/结构图','加工图','CNC粗坯','表面处理','成品组装','温升测试','IES测试','积分球测试','EMC/IP/老化','客户确认','量产移交'),
+        '客户定制快速流程'=>array('客户需求确认','方案评审','报价确认','加工图','样品制作','测试确认','客户确认','小批量试产','量产移交'),
+        '结构件打样流程'=>array('结构方案','3D建模','加工图','CNC/车床加工','表面处理','装配验证','尺寸复核','问题整改','确认封样'),
+        '光学测试流程'=>array('光学方案','透镜/反射器验证','样品装配','光斑测试','IES测试','积分球测试','角度修正','复测确认'),
+        '表面处理验证流程'=>array('表面处理方案','打样前检查','供应商打样','外观确认','附着力/盐雾评估','装配验证','客户确认','封样归档'),
+        '简化流程'=>array('制定方案','加工图','样品制作','测试','客户确认','完成')
+    );
+}
+
+function plm_v85_log($pid,$type,$tid,$action,$note=''){
+    try {
+        if(function_exists('plm_v85_log_schema_v853')) plm_v85_log_schema_v853();
+        $u=function_exists('plm_v85_current_user_info') ? plm_v85_current_user_info() : array();
+        $meta=function_exists('plm_v85_log_request_meta_v853') ? plm_v85_log_request_meta_v853() : array();
+        $modelId=0;
+        if((string)$type==='model' || (string)$type==='sample') $modelId=(int)$tid;
+        $row=array(
+            'project_id'=>(int)$pid,
+            'model_id'=>$modelId,
+            'target_type'=>(string)$type,
+            'target_id'=>(int)$tid,
+            'action'=>(string)$action,
+            'note'=>(string)$note,
+            'user_id'=>(int)($u['id']??0),
+            'username'=>(string)($u['username']??''),
+            'user_name'=>(string)(($u['name']??'')?:($u['username']??'')),
+            'user_role'=>(string)($u['role']??''),
+            'ip'=>(string)($meta['ip']??''),
+            'user_agent'=>(string)($meta['user_agent']??''),
+            'request_uri'=>(string)($meta['request_uri']??''),
+            'method'=>(string)($meta['method']??''),
+            'created_at'=>plm_v85_now()
+        );
+        plm_v85_dyn_insert('plm_logs', $row);
+    } catch(Throwable $e) {}
+}
+function plm_v85_seed_steps($project_id, $model_id=0){
+    $exists = plm_v85_row('SELECT id FROM plm_flow_steps WHERE project_id=? AND model_id=? LIMIT 1', array((int)$project_id,(int)$model_id));
+    if($exists) return;
+    $steps = array('制定方案','3D/结构图','加工图','粗坯样品','表面处理','成品组装','温升测试','IES/积分球','EMC/IP/老化','客户确认','量产移交');
+    $i=1; foreach($steps as $s){ plm_v85_dyn_insert('plm_flow_steps', array('project_id'=>(int)$project_id,'model_id'=>(int)$model_id,'title'=>$s,'step_name'=>$s,'status'=>'未开始','dependency_mode'=>'跟随前一步','sort_order'=>$i++,'created_at'=>plm_v85_now(),'updated_at'=>plm_v85_now())); }
+}
+function plm_v85_update_model_test_summary($model_id){
+    $model_id = (int)$model_id; if(!$model_id) return;
+    $rows = plm_v85_rows('SELECT test_type,status,result FROM plm_tests WHERE model_id=?', array($model_id));
+    $types = array(); $done=0; $bad=0;
+    foreach($rows as $r){
+        $t = $r['test_type'] ?: '测试'; $types[$t]=true;
+        $s = (string)($r['status'] ?? ''); $res = (string)($r['result'] ?? '');
+        if(in_array($s, array('已完成','通过','PASS','合格'), true) || in_array($res, array('通过','PASS','合格'), true)) $done++;
+        if(in_array($s, array('失败','不通过','NG','需整改'), true) || in_array($res, array('失败','不通过','NG'), true)) $bad++;
+    }
+    $total = count($rows); $typeCount = count($types);
+    $status = $bad ? '测试异常' : ($total ? ($done >= $total ? '测试完成' : '测试中') : '待测试');
+    $summary = '实际测试项 '.$typeCount.' 类，记录 '.$total.' 条，完成 '.$done.' 条';
+    plm_v85_dyn_update('plm_models', array('test_status'=>$status,'test_summary'=>$summary,'updated_at'=>plm_v85_now()), 'id=?', array($model_id));
+}
+function plm_v85_norm_project($p){
+    foreach(array('id','name','customer','engineer','series','model','product_type','source','priority','status','due_date','image_path','remark','created_at','updated_at','project_no') as $k){ if(!isset($p[$k])) $p[$k]=''; }
+    $p['id']=(int)$p['id']; return $p;
+}
+function plm_v85_norm_model($m){ $m['id']=(int)($m['id']??0); $m['project_id']=(int)($m['project_id']??0); return $m; }
+
+function plm_v85_test_failed($status, $result): bool {
+    $x = (string)$status . ' ' . (string)$result;
+    foreach (array('不通过','失败','异常','需整改','待复测') as $kw) {
+        if (strpos($x, $kw) !== false) return true;
+    }
+    return false;
+}
+function plm_v85_auto_issue_from_test(int $pid, int $mid, int $testId, array $vals, int $runId=0): int {
+    if ($pid <= 0 || $testId <= 0) return 0;
+    $old = plm_v85_row('SELECT issue_id FROM plm_tests WHERE id=?', array($testId));
+    $issueId = (int)($old['issue_id'] ?? 0);
+    if ($issueId > 0 && plm_v85_row('SELECT id FROM plm_issues WHERE id=?', array($issueId))) {
+        plm_v85_dyn_update('plm_issues', array('test_id'=>$testId,'test_run_id'=>$runId,'test_type'=>plm_v85_s($vals['test_type'] ?? '测试',120),'auto_from_test'=>1,'updated_at'=>plm_v85_now()), 'id=?', array($issueId));
+        return $issueId;
+    }
+    $needle = '自动来源测试ID:'.$testId;
+    $ex = plm_v85_row('SELECT id FROM plm_issues WHERE project_id=? AND note LIKE ? LIMIT 1', array($pid, '%'.$needle.'%'));
+    if ($ex) {
+        plm_v85_dyn_update('plm_issues', array('test_id'=>$testId,'test_run_id'=>$runId,'test_type'=>plm_v85_s($vals['test_type'] ?? '测试',120),'auto_from_test'=>1,'updated_at'=>plm_v85_now()), 'id=?', array((int)$ex['id']));
+        return (int)$ex['id'];
+    }
+    $type = plm_v85_s($vals['test_type'] ?? '测试', 80);
+    $title = plm_v85_s($vals['title'] ?? '', 160);
+    $issueTitle = '测试不通过：'.$type.($title ? ' - '.$title : '');
+    $note = $needle."\n".
+        '测试状态：'.($vals['status'] ?? '')."\n".
+        '测试结果：'.($vals['result'] ?? '')."\n".
+        '测试日期：'.($vals['test_date'] ?? '')."\n".
+        '测试人：'.($vals['operator'] ?? '')."\n".
+        '测试数据：'.($vals['test_data'] ?? '')."\n".
+        '测试结论：'.($vals['test_conclusion'] ?? '')."\n".
+        '备注：'.($vals['note'] ?? '')."
+".
+        '关联重测记录ID：'.$runId;
+    $issueId = plm_v85_dyn_insert('plm_issues', array(
+        'project_id'=>$pid,
+        'model_id'=>$mid,
+        'test_id'=>$testId,
+        'test_run_id'=>$runId,
+        'test_type'=>$type,
+        'auto_from_test'=>1,
+        'title'=>$issueTitle,
+        'source'=>$type.'测试',
+        'severity'=>!empty($vals['affect_sample']) ? '高' : '中',
+        'status'=>'待处理',
+        'owner'=>plm_v85_s($vals['operator'] ?? '', 120),
+        'solution'=>'',
+        'note'=>plm_v85_s($note, 10000),
+        'created_at'=>plm_v85_now(),
+        'updated_at'=>plm_v85_now()
+    ));
+    plm_v85_log($pid,'issue',$issueId,'测试不通过自动生成问题',$issueTitle);
+    return (int)$issueId;
+}
+
+
+/* ===== ARTDON_PLM_V8_5_83_TEST_RECTIFY_DISPATCH_START ===== */
+function plm_v85_make_dispatch_task_no(){
+    return 'PLM'.date('ymdHis').mt_rand(100,999);
+}
+function plm_v85_dispatch_user_name_by_id($uid){
+    $uid=(int)$uid; if($uid<=0 || !plm_v85_table_exists('dispatch_users')) return '';
+    try{
+        $cols=plm_v85_cols('dispatch_users');
+        $nameCol=in_array('name',$cols,true)?'name':(in_array('display_name',$cols,true)?'display_name':'username');
+        $st=plm_v85_pdo()->prepare("SELECT {$nameCol} nm, username FROM dispatch_users WHERE id=? LIMIT 1");
+        $st->execute(array($uid)); $r=$st->fetch();
+        return $r ? (string)(($r['nm']??'')?:($r['username']??'')) : '';
+    }catch(Throwable $e){ return ''; }
+}
+function plm_v85_sync_test_rectify_dispatch_links(){
+    try{
+        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_tasks')) return;
+        $links=plm_v85_rows("SELECT * FROM plm_dispatch_links WHERE COALESCE(link_type,'')='test_rectify' AND task_id>0 ORDER BY id DESC LIMIT 500");
+        foreach($links as $l){
+            $task=plm_v85_row('SELECT id,status,progress,due_at,updated_at FROM dispatch_tasks WHERE id=? LIMIT 1',array((int)$l['task_id']));
+            if(!$task) continue;
+            $status=(string)($task['status']??''); $progress=(int)($task['progress']??0);
+            $vals=array('status'=>$status,'progress'=>$progress,'due_at'=>$task['due_at']??null,'updated_at'=>plm_v85_now());
+            plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$l['id']));
+            $issueId=(int)($l['issue_id']??0); $testId=(int)($l['test_id']??0);
+            if($issueId>0){
+                plm_v85_dyn_update('plm_issues',array('dispatch_task_id'=>(int)$task['id'],'dispatch_status'=>$status,'dispatch_url'=>'dispatch_todo.php?open_task='.(int)$task['id'].'&single_task=1','updated_at'=>plm_v85_now()),'id=?',array($issueId));
+            }
+            $done = ($progress>=100 || in_array($status,array('done','已完成','完成','approved','已确认'),true));
+            if($done){
+                if($issueId>0){
+                    $old=plm_v85_row('SELECT status FROM plm_issues WHERE id=?',array($issueId));
+                    if($old && !in_array((string)($old['status']??''),array('已解决','已关闭'),true)){
+                        plm_v85_dyn_update('plm_issues',array('status'=>'已解决','rectify_note'=>'整改派工已完成，建议复测','closed_at'=>plm_v85_now(),'updated_at'=>plm_v85_now()),'id=?',array($issueId));
+                    }
+                }
+                if($testId>0){
+                    $test=plm_v85_row('SELECT project_id,status,result FROM plm_tests WHERE id=?',array($testId));
+                    if($test && !preg_match('/通过|已完成/u',(string)($test['status']??'').' '.(string)($test['result']??''))){
+                        plm_v85_dyn_update('plm_tests',array('status'=>'待复测','retest_result'=>'整改派工已完成，建议复测','updated_at'=>plm_v85_now()),'id=?',array($testId));
+                        plm_v85_log((int)$test['project_id'],'test',$testId,'整改派工完成回写测试','测试状态已更新为待复测');
+                    }
+                }
+            }
+        }
+    }catch(Throwable $e){}
+}
+function plm_v85_create_test_rectify_dispatch($testId,$issueId,$assigneeId=0,$assigneeName='',$dueAt=''){
+    $testId=(int)$testId; $issueId=(int)$issueId; $assigneeId=(int)$assigneeId;
+    if(!$testId) throw new RuntimeException('缺少测试ID');
+    $test=plm_v85_row('SELECT * FROM plm_tests WHERE id=?',array($testId));
+    if(!$test) throw new RuntimeException('测试记录不存在');
+    if(!$issueId){
+        $issueId=(int)($test['issue_id']??0);
+        if(!$issueId) $issueId=plm_v85_auto_issue_from_test((int)$test['project_id'],(int)$test['model_id'],$testId,$test,0);
+    }
+    $issue=$issueId?plm_v85_row('SELECT * FROM plm_issues WHERE id=?',array($issueId)):null;
+    if(!$issue) throw new RuntimeException('请先生成问题闭环');
+    if(plm_v85_table_exists('plm_dispatch_links')){
+        $old=plm_v85_row("SELECT * FROM plm_dispatch_links WHERE link_type='test_rectify' AND issue_id=? AND task_id>0 LIMIT 1",array($issueId));
+        if($old) return array('task_id'=>(int)$old['task_id'],'task_no'=>$old['task_no']??'','url'=>$old['dispatch_url']?:('dispatch_todo.php?open_task='.(int)$old['task_id'].'&single_task=1'),'link_id'=>(int)$old['id'],'exists'=>true);
+    }
+    if(!plm_v85_table_exists('dispatch_tasks')) throw new RuntimeException('派工表 dispatch_tasks 不存在，请确认派工系统已安装');
+    $me=plm_v85_current_user_info();
+    if($assigneeName==='') $assigneeName=plm_v85_dispatch_user_name_by_id($assigneeId);
+    if($assigneeId<=0 && plm_v85_table_exists('dispatch_users') && $assigneeName!==''){
+        try{
+            $st=plm_v85_pdo()->prepare('SELECT id FROM dispatch_users WHERE name=? OR username=? LIMIT 1');
+            $st->execute(array($assigneeName,$assigneeName)); $assigneeId=(int)$st->fetchColumn();
+        }catch(Throwable $e){}
+    }
+    if($assigneeId<=0) $assigneeId=(int)($me['id']??0);
+    if($assigneeName==='') $assigneeName=(string)(($me['name']??'')?:($me['username']??''));
+    $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=?',array((int)$test['project_id']));
+    $m=plm_v85_row('SELECT * FROM plm_models WHERE id=?',array((int)$test['model_id']));
+    $title='测试整改：'.(($test['test_type']??'测试')).(($test['title']??'')?' - '.$test['title']:'');
+    $desc="来源：PLM 测试中心\n".
+          '项目：'.($p['name']??'')."\n".
+          '样品：'.(($m['name']??'')?:($m['model']??''))."\n".
+          '测试类型：'.($test['test_type']??'')."\n".
+          '测试标题：'.($test['title']??'')."\n".
+          '测试状态：'.($test['status']??'')."\n".
+          '测试结论：'.(($test['result']??'')?:($test['test_conclusion']??''))."\n".
+          '关键数据：'.($test['test_data']??'')."\n".
+          '整改建议：'.(($issue['solution']??'')?:($issue['note']??''))."\n".
+          '关联问题ID：'.$issueId.' / 测试ID：'.$testId;
+    $now=plm_v85_now();
+    $taskNo=plm_v85_make_dispatch_task_no();
+    $dueAt=plm_v85_s($dueAt,30); if($dueAt!=='' && preg_match('/^\d{4}-\d{2}-\d{2}$/',$dueAt)) $dueAt.=' 23:59:00';
+    $linkedJson=array('module'=>'PLM_TEST_RECTIFY','project_id'=>(int)$test['project_id'],'model_id'=>(int)$test['model_id'],'test_id'=>$testId,'issue_id'=>$issueId,'test_type'=>$test['test_type']??'','title'=>$test['title']??'');
+    $status=($assigneeId>0 && $assigneeId!==(int)($me['id']??0))?'pending_accept':'in_progress';
+    $taskVals=array(
+        'task_no'=>$taskNo,'title'=>$title,'description'=>$desc,'task_type'=>'测试整改','priority'=>'urgent','status'=>$status,'source_type'=>'dispatch','boss_private'=>0,
+        'created_by'=>(int)($me['id']??0),'assigned_to'=>$assigneeId,'helpers_json'=>'[]','customer'=>(string)($p['customer']??''),'project'=>(string)($p['name']??''),'product_model'=>(string)(($m['model']??'')?:($test['test_type']??'')),
+        'linked_system'=>'PLM','linked_table'=>'plm_issues','linked_id'=>(string)$issueId,'linked_title'=>$title,'linked_url'=>'plm.php?project_id='.(int)$test['project_id'].'&tab=tests&test_id='.$testId,
+        'linked_json'=>json_encode($linkedJson,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'task_date'=>date('Y-m-d'),'extra_json'=>json_encode(array('from'=>'PLM测试整改','issue_id'=>$issueId,'test_id'=>$testId),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'due_at'=>$dueAt?:null,'progress'=>0,'sort_order'=>0,'created_at'=>$now,'updated_at'=>$now
+    );
+    $taskId=plm_v85_dyn_insert('dispatch_tasks',$taskVals);
+    if(!$taskId) throw new RuntimeException('生成整改派工失败');
+    if(plm_v85_table_exists('dispatch_task_logs')){
+        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$taskId,'user_id'=>(int)($me['id']??0),'action'=>'assign','old_status'=>'','new_status'=>$status,'note'=>'PLM测试整改派工','created_at'=>$now));
+    }
+    if(plm_v85_table_exists('dispatch_notifications') && $assigneeId>0 && $assigneeId!==(int)($me['id']??0)){
+        plm_v85_dyn_insert('dispatch_notifications',array('user_id'=>$assigneeId,'task_id'=>$taskId,'type'=>'new_dispatch','title'=>'新测试整改派工','message'=>$title,'is_read'=>0,'created_at'=>$now));
+    }
+    $url='dispatch_todo.php?open_task='.$taskId.'&single_task=1';
+    $linkVals=array('project_id'=>(int)$test['project_id'],'model_id'=>(int)$test['model_id'],'step_id'=>0,'task_id'=>$taskId,'task_no'=>$taskNo,'title'=>$title,'assignee_id'=>$assigneeId,'assignee_name'=>$assigneeName,'status'=>$status,'progress'=>0,'due_at'=>$dueAt?:null,'dispatch_url'=>$url,'linked_json'=>json_encode($linkedJson,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'issue_id'=>$issueId,'test_id'=>$testId,'test_run_id'=>0,'link_type'=>'test_rectify','created_at'=>$now,'updated_at'=>$now);
+    $linkId=plm_v85_dyn_insert('plm_dispatch_links',$linkVals);
+    plm_v85_dyn_update('plm_issues',array('dispatch_task_id'=>$taskId,'dispatch_status'=>$status,'dispatch_url'=>$url,'dispatch_created_at'=>$now,'status'=>'处理中','owner'=>$assigneeName,'updated_at'=>$now),'id=?',array($issueId));
+    plm_v85_log((int)$test['project_id'],'test',$testId,'生成测试整改派工','问题ID '.$issueId.' / 派工ID '.$taskId.' / '.$title);
+    return array('task_id'=>$taskId,'task_no'=>$taskNo,'url'=>$url,'link_id'=>$linkId,'exists'=>false);
+}
+/* ===== ARTDON_PLM_V8_5_83_TEST_RECTIFY_DISPATCH_END ===== */
+
+function plm_v85_norm_file($f){ $f['id']=(int)($f['id']??0); $f['project_id']=(int)($f['project_id']??0); $f['model_id']=(int)($f['model_id']??0); $f['test_id']=(int)($f['test_id']??0); $f['test_run_id']=(int)($f['test_run_id']??0); $f['step_id']=(int)($f['step_id']??0); return $f; }
+function plm_v85_upload_file(){
+    if(empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) throw new RuntimeException('没有收到文件，或文件上传失败。');
+    $orig = $_FILES['file']['name'];
+    $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+    $ext = preg_replace('/[^a-z0-9]/', '', $ext);
+    if($ext === '') $ext = 'dat';
+    $allow = array('jpg','jpeg','png','webp','gif','pdf','ies','ldt','txt','doc','docx','xls','xlsx','csv','zip','rar','dwg','dxf','stp','step','obj','glb','mp4','mov');
+    if(!in_array($ext,$allow,true)) throw new RuntimeException('文件类型暂不允许：'.$ext);
+    $size = (int)($_FILES['file']['size'] ?? 0);
+    if($size > 80 * 1024 * 1024) throw new RuntimeException('文件太大，当前限制 80MB。');
+    $relDir = 'uploads/plm/'.date('Ym');
+    $dir = __DIR__.'/'.$relDir;
+    if(!is_dir($dir) && !mkdir($dir, 0777, true)) throw new RuntimeException('无法创建上传目录：'.$relDir);
+    $name = date('YmdHis').'_'.substr(md5(uniqid('', true).$orig),0,10).'.'.$ext;
+    $full = $dir.'/'.$name;
+    if(!move_uploaded_file($_FILES['file']['tmp_name'], $full)) throw new RuntimeException('保存文件失败，请检查 uploads/plm 目录权限。');
+    return array('original_name'=>$orig,'file_name'=>$name,'file_path'=>$relDir.'/'.$name,'mime_type'=>$_FILES['file']['type'] ?? '','file_size'=>$size);
+}
+function plm_v85_safe_name($s, $fallback='file'){
+    $s = trim((string)$s);
+    if($s === '') $s = $fallback;
+    $s = preg_replace('/[\\\/\:\*\?"\<\>\|
+	]+/u', '_', $s);
+    $s = preg_replace('/\s+/u', '_', $s);
+    if(function_exists('mb_substr')) $s = mb_substr($s, 0, 80, 'UTF-8'); else $s = substr($s, 0, 120);
+    return $s ?: $fallback;
+}
+function plm_v85_abs_upload_path($rel){
+    $rel = (string)$rel;
+    if(strpos($rel, 'uploads/plm/') !== 0) return null;
+    $full = realpath(__DIR__.'/'.$rel);
+    $root = realpath(__DIR__.'/uploads/plm');
+    if(!$full || !$root || strpos($full, $root) !== 0 || !is_file($full)) return null;
+    return $full;
+}
+function plm_v85_public_url($rel){
+    $rel = ltrim((string)$rel, '/');
+    return $rel;
+}
+function plm_v85_create_customer_zip($project_id, $file_ids){
+    if(!class_exists('ZipArchive')) throw new RuntimeException('服务器 PHP 未启用 ZipArchive，不能自动打包 ZIP。可以先用“复制客户链接清单”发送。');
+    $project_id = (int)$project_id;
+    $ids = array_values(array_unique(array_map('intval', is_array($file_ids) ? $file_ids : array())));
+    if(!$project_id) throw new RuntimeException('缺少项目ID。');
+    if(!$ids) throw new RuntimeException('请先选择要发给客户的文件。');
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $params = array_merge(array($project_id), $ids);
+    $rows = plm_v85_rows('SELECT f.*, m.name AS model_name, m.model AS model_code FROM plm_files f LEFT JOIN plm_models m ON m.id=f.model_id WHERE f.project_id=? AND f.id IN ('.$placeholders.') ORDER BY f.model_id ASC, f.category ASC, f.id ASC', $params);
+    if(!$rows) throw new RuntimeException('没有找到可打包的文件。');
+    $p = plm_v85_row('SELECT * FROM plm_projects WHERE id=?', array($project_id));
+    $relDir = 'uploads/plm_customer_packages/'.date('Ym');
+    $dir = __DIR__.'/'.$relDir;
+    if(!is_dir($dir) && !mkdir($dir, 0777, true)) throw new RuntimeException('无法创建客户资料包目录：'.$relDir);
+    $base = plm_v85_safe_name(($p['project_no'] ?? '').'_'.($p['name'] ?? 'PLM项目'), 'PLM项目');
+    $zipName = $base.'_客户资料包_'.date('Ymd_His').'.zip';
+    $zipPath = $dir.'/'.$zipName;
+    $zip = new ZipArchive();
+    if($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) throw new RuntimeException('ZIP 文件创建失败。');
+    $added = 0; $used = array();
+    foreach($rows as $r){
+        $full = plm_v85_abs_upload_path($r['file_path'] ?? '');
+        if(!$full) continue;
+        $model = ((int)($r['model_id'] ?? 0) > 0) ? plm_v85_safe_name(($r['model_name'] ?: $r['model_code'] ?: ('样品'.$r['model_id'])), '样品') : '项目公共文件';
+        $cat = plm_v85_safe_name($r['category'] ?: '其它文件', '其它文件');
+        $orig = plm_v85_safe_name($r['title'] ?: $r['original_name'] ?: $r['file_name'] ?: ('file_'.$r['id']), 'file_'.$r['id']);
+        $ext = pathinfo($r['original_name'] ?: $r['file_name'] ?: $full, PATHINFO_EXTENSION);
+        if($ext && !preg_match('/\.'.$ext.'$/i', $orig)) $orig .= '.'.$ext;
+        $inside = $model.'/'.$cat.'/'.$orig;
+        $n=1; $unique=$inside;
+        while(isset($used[$unique])){ $unique = $model.'/'.$cat.'/'.pathinfo($orig, PATHINFO_FILENAME).'_'.$n.'.'.pathinfo($orig, PATHINFO_EXTENSION); $n++; }
+        $used[$unique]=true;
+        if($zip->addFile($full, $unique)) $added++;
+    }
+    $zip->close();
+    if($added <= 0){ @unlink($zipPath); throw new RuntimeException('选择的文件在服务器上不存在，无法打包。'); }
+    return array('url'=>plm_v85_public_url($relDir.'/'.$zipName), 'count'=>$added, 'name'=>$zipName);
+}
+
+
+function plm_v85_csv_string($headers, $rows){
+    $fp = fopen('php://temp', 'r+');
+    fputcsv($fp, $headers);
+    foreach($rows as $r){
+        $line = array();
+        foreach($headers as $h){ $line[] = isset($r[$h]) ? $r[$h] : ''; }
+        fputcsv($fp, $line);
+    }
+    rewind($fp);
+    $csv = stream_get_contents($fp);
+    fclose($fp);
+    return "\xEF\xBB\xBF".$csv;
+}
+function plm_v85_html($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+function plm_v85_package_summary_html($project, $models, $tests, $issues, $steps, $files, $logs, $modeLabel){
+    $p = $project ?: array();
+    $fileCount = count($files); $testCount = count($tests); $issueOpen = 0;
+    foreach($issues as $i){ if(!in_array((string)($i['status'] ?? ''), array('已解决','已关闭'), true)) $issueOpen++; }
+    $html = '<!doctype html><html><head><meta charset="utf-8"><title>PLM项目资料包</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;color:#0f172a;line-height:1.65;padding:24px}h1{font-size:24px}h2{margin-top:28px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}table{border-collapse:collapse;width:100%;margin:10px 0 18px}th,td{border:1px solid #e5e7eb;padding:7px 9px;text-align:left;font-size:13px}th{background:#f8fafc}.tag{display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:2px 8px;margin-right:6px}.bad{background:#fee2e2;border-color:#fecaca}.ok{background:#dcfce7;border-color:#bbf7d0}.muted{color:#64748b}/* ARTDON_PLM_V857_DUPLICATE_BUTTON_FIX: 项目总览不再显示与顶部标签重复的快捷按钮 */
+
+
+/* ===== PLM V8.5.59 项目列表卡片高度修复：稍微拉高，避免第二项/带图项目被裁切；只改样式不动联动 ===== */
+.project-list-compact .project-row-modern{
+  height:112px !important;
+  min-height:112px !important;
+  grid-template-columns:66px minmax(0,1fr) 42px !important;
+  gap:8px !important;
+  padding:8px 8px !important;
+  align-items:center !important;
+  overflow:hidden !important;
+}
+.project-list-compact .project-row-modern.active{
+  box-shadow:0 0 0 2px rgba(37,99,235,.24),0 10px 24px rgba(15,23,42,.075) !important;
+}
+.project-thumb{
+  width:66px !important;
+  height:66px !important;
+  border-radius:15px !important;
+}
+.project-thumb.no span{font-size:28px !important;}
+.project-thumb.no small{font-size:9.5px !important;margin-top:3px !important;}
+.project-list-compact .project-title-line{grid-template-columns:minmax(0,1fr) 12px !important;gap:4px !important;}
+.project-list-compact .project-title-line h2{
+  font-size:14px !important;
+  line-height:1.14 !important;
+  letter-spacing:-.2px !important;
+}
+.project-list-compact .project-subline{
+  font-size:10.5px !important;
+  line-height:1.18 !important;
+  margin-top:4px !important;
+}
+.project-list-compact .project-row-metrics{
+  margin-top:5px !important;
+  gap:4px !important;
+}
+.project-list-compact .project-row-metrics span{
+  font-size:9.8px !important;
+  padding:3px 4px !important;
+  line-height:1.05 !important;
+}
+.project-risk-strip{
+  min-height:17px !important;
+  margin-top:4px !important;
+  gap:4px !important;
+  overflow:hidden !important;
+  align-items:center !important;
+}
+.risk-pill{
+  font-size:10px !important;
+  padding:3px 6px !important;
+  line-height:1.08 !important;
+}
+.project-progress-pair{
+  gap:3px !important;
+  margin-top:5px !important;
+}
+.project-mini-progress-row{
+  grid-template-columns:15px minmax(0,1fr) 34px !important;
+  gap:5px !important;
+  font-size:9px !important;
+}
+.project-mini-progress-row span{font-size:9px !important;width:15px !important;}
+.project-mini-progress-row b{font-size:9px !important;}
+.project-mini-progress-row .bar{height:5px !important;}
+.project-list-compact .project-mini-footer{
+  margin-top:5px !important;
+  font-size:9.2px !important;
+  line-height:1.08 !important;
+}
+.project-list-compact .project-row-actions{
+  width:42px !important;
+  gap:6px !important;
+  overflow:visible !important;
+}
+.project-list-compact .project-row-actions .tag,
+.project-list-compact .project-priority{
+  max-width:42px !important;
+  font-size:10px !important;
+  line-height:1.08 !important;
+  padding:4px 5px !important;
+}
+@media(max-width:1180px){
+  .project-list-compact .project-row-modern{height:110px !important;min-height:110px !important;grid-template-columns:64px minmax(0,1fr) 40px !important;}
+  .project-thumb{width:64px !important;height:64px !important;}
+}
+@media(max-width:720px){
+  .project-list-compact .project-row-modern{height:110px !important;min-height:110px !important;grid-template-columns:64px minmax(0,1fr) 40px !important;padding:8px !important;}
+  .project-thumb{width:64px !important;height:64px !important;}
+}
+
+
+
+/* ===== ARTDON_PLM_V8_5_61_MORE_MENU_ZINDEX_FIX_START =====
+   修复：顶部“更多”下拉菜单被统计卡片/今日重点卡片遮挡。
+   只改层级，不改任何联动、按钮事件、数据库和 API。 */
+.top{
+  position:relative!important;
+  z-index:9000!important;
+  isolation:isolate!important;
+}
+.top .actions,
+.top-actions-v855,
+.top-more,
+.top-more[open]{
+  position:relative!important;
+  z-index:9100!important;
+}
+.top-more-menu{
+  position:absolute!important;
+  z-index:99999!important;
+  right:0!important;
+  top:44px!important;
+  isolation:isolate!important;
+  pointer-events:auto!important;
+}
+.stats,
+#focusPanel,
+.focus-panel,
+.app > .panel,
+.main{
+  position:relative!important;
+  z-index:1!important;
+}
+.focus-card,
+.stat{
+  z-index:auto!important;
+}
+/* 防止下拉按钮被玻璃卡片阴影盖住，打开时菜单周边留出清晰层级 */
+.top-more[open] summary{
+  box-shadow:0 12px 34px rgba(37,99,235,.18)!important;
+}
+/* ===== ARTDON_PLM_V8_5_61_MORE_MENU_ZINDEX_FIX_END ===== */
+
+
+
+/* ===== PLM V8.5.69 已完成分类版：纯白统一 + 显示收尾，只改前端样式，不动联动/API/数据库 ===== */
+html,body,.app{background:#fff!important;background-image:none!important;}
+body{overflow-x:hidden!important;color:#0f172a!important;}
+.top,.panel,.detail,.detail-head,.tabbody,.summary-main-card,.summary-side-card,.summary-card,.sample-mini-card,.model-card,.test-card,.file-card,.step,.search-card,.side-card,.file-tree,.file-list-pane,.file-preview-pane,.file-send-mini,.file-preview-large{background:#fff!important;background-image:none!important;}
+.app>.panel,.top,.detail,.summary-main-card,.summary-side-card,.summary-card,.sample-mini-card,.model-card,.test-card,.file-card,.file-tree,.file-list-pane,.file-preview-pane{box-shadow:0 8px 22px rgba(15,23,42,.045)!important;}
+.stats,#focusPanel,.focus-panel{background:transparent!important;background-image:none!important;}
+.stat,.focus-card,.focus-card.primary,.focus-card.warn,.focus-card.danger,.focus-card.good{background:#fff!important;background-image:none!important;color:#0f172a!important;box-shadow:0 8px 22px rgba(15,23,42,.045)!important;}
+.stat:after,.focus-card:after,.app>.panel:before,.top:before,.top:after{display:none!important;}
+.focus-card h3,.focus-card b,.focus-card.primary h3,.focus-card.primary b{color:#0f172a!important;}
+.focus-card span,.focus-card small,.focus-card.primary span,.focus-card.primary small{color:#64748b!important;}
+.focus-line,.next-action-card,.summary-empty,.test-mini,.empty,.segment,.tab,input,select,textarea{background:#fff!important;background-image:none!important;}
+.project-row-modern,.project-row-modern.risk-danger,.project-row-modern.risk-warn{background:#fff!important;background-image:none!important;}
+.project-row-modern.active{background:#fff!important;}
+.project-list-compact .project-row-modern{height:auto!important;min-height:132px!important;overflow:visible!important;}
+.project-list-compact .project-mini-footer.only-time{font-size:10px!important;margin-top:6px!important;color:#64748b!important;overflow:visible!important;white-space:nowrap!important;}
+.project-list-compact .project-mini-footer.only-time span{display:block!important;overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;max-width:none!important;}
+.summary-grid,.summary-main,.summary-layout{min-width:0!important;}
+.compact-table,.table{width:100%!important;min-width:0!important;table-layout:fixed!important;}
+.compact-table th,.compact-table td,.table th,.table td{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+.file-workbench{grid-template-columns:250px minmax(520px,1fr) minmax(330px,420px)!important;max-width:100%!important;overflow:visible!important;}
+.file-tree,.file-list-pane,.file-preview-pane{min-width:0!important;}
+.file-preview-pane{overflow:visible!important;}
+.top-more,.top-more[open],.top .actions,.top-actions-v855{overflow:visible!important;}
+.top-more-menu{position:fixed!important;left:var(--plm-more-left,calc(100vw - 220px))!important;top:var(--plm-more-top,92px)!important;right:auto!important;z-index:2147483000!important;background:#fff!important;background-image:none!important;}
+.btn.good{background:#dcfce7!important;}
+.btn.warn{background:#fff7ed!important;}
+.btn.danger{background:#fee2e2!important;}
+.btn.primary{background:#2563eb!important;color:#fff!important;}
+@media(max-width:1180px){.file-workbench{grid-template-columns:1fr!important}.project-list-compact .project-row-modern{min-height:118px!important}}
+@media(max-width:720px){.project-list-compact .project-row-modern{min-height:104px!important}.compact-table th,.compact-table td,.table th,.table td{white-space:normal!important}.top-more-menu{left:12px!important;width:min(220px,calc(100vw - 24px))!important}}
+
+/* ===== PLM V8.5.71：备份恢复弹窗 ===== */
+.plm-backup-panel{display:grid;gap:14px}.plm-backup-row{border:1px solid #dbe4ef;border-radius:16px;background:#fff;padding:14px;display:grid;gap:9px}.plm-backup-row h4{margin:0;font-size:15px}.plm-backup-row p{margin:0;color:#64748b;font-weight:800;font-size:12px;line-height:1.5}.plm-backup-result{border:1px dashed #bfdbfe;background:#f8fbff;border-radius:14px;padding:10px 12px;font-size:12px;font-weight:900;color:#334155;line-height:1.55;white-space:pre-wrap}.plm-backup-result a{color:#2563eb;font-weight:1000}.plm-restore-warn{border-color:#fed7aa!important;background:#fff7ed!important;color:#9a3412!important}.plm-backup-file{height:auto!important;padding:10px!important;border-radius:12px!important;background:#f8fafc!important}
+.plm-backup-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.plm-backup-list{display:grid;gap:8px;max-height:260px;overflow:auto;border:1px solid #e5edf7;border-radius:14px;background:#f8fbff;padding:8px}.plm-backup-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:#fff;border:1px solid #dbe4ef;border-radius:12px;padding:10px}.plm-backup-item b{display:block;font-size:13px;color:#0f172a;word-break:break-all}.plm-backup-item small{display:block;color:#64748b;font-weight:800;line-height:1.55;margin-top:3px}.plm-backup-item .ops{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.plm-backup-item .ops a,.plm-backup-item .ops button{min-height:32px;padding:6px 9px;border-radius:10px;border:1px solid #dbe4ef;background:#fff;color:#0f172a;font-weight:900;text-decoration:none;cursor:pointer}.plm-backup-item .ops button.restore{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}.plm-backup-item .ops button.delete{background:#fff1f2;color:#be123c;border-color:#fecdd3}.plm-backup-empty{padding:18px;border:1px dashed #bfdbfe;border-radius:14px;background:#fff;color:#64748b;font-weight:900;text-align:center}.plm-backup-row.plm-manage-row{background:#fff!important;border-color:#dbeafe!important}@media(max-width:720px){.plm-backup-item{grid-template-columns:1fr}.plm-backup-item .ops{justify-content:flex-start}}
+
+
+/* ===== PLM V8.5.78 测试模板字段管理 + 历史标签 ===== */
+.test-node-layout{grid-template-columns:392px minmax(0,1fr)!important;gap:16px!important}
+.test-node-left{max-height:calc(100vh - 108px);padding:14px!important}
+.test-node-list{gap:13px!important}
+.test-node{
+  position:relative!important;
+  display:block!important;
+  min-height:178px!important;
+  padding:18px 114px 16px 18px!important;
+  border-radius:24px!important;
+  overflow:visible!important;
+  background:#fff!important;
+}
+.test-node.active{box-shadow:0 0 0 3px rgba(37,99,235,.18)!important;border-width:2px!important}
+.test-node-title{
+  font-size:18px!important;
+  line-height:1.38!important;
+  font-weight:1000!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+  padding-right:4px!important;
+}
+.test-node-meta{
+  margin-top:10px!important;
+  font-size:14px!important;
+  line-height:1.55!important;
+  color:#64748b!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+}
+.test-node-status{
+  position:absolute!important;
+  right:18px!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  font-size:15px!important;
+  padding:9px 16px!important;
+  min-width:86px!important;
+  max-width:98px!important;
+  text-align:center!important;
+  white-space:nowrap!important;
+}
+.test-node-history{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-right:2px}
+.test-node-history .mini-tag{font-size:11px;font-weight:950;border:1px solid #e5e7eb;border-radius:999px;padding:3px 7px;background:#f8fafc;color:#475569;line-height:1.2}
+.test-node-history .mini-tag.red{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+.test-node-history .mini-tag.orange{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+.test-node-history .mini-tag.green{background:#ecfdf5;border-color:#bbf7d0;color:#047857}
+.test-node-history .mini-tag.blue{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.test-node-last{margin-top:7px;font-size:12px;line-height:1.35;color:#64748b;font-weight:850;white-space:normal;word-break:break-word}
+@media(max-width:1180px){.test-node-layout{grid-template-columns:360px minmax(0,1fr)!important}.test-node{min-height:168px!important;padding-right:108px!important}.test-node-title{font-size:17px!important}}
+@media(max-width:980px){.test-node-layout{grid-template-columns:1fr!important}.test-node-left{max-height:none!important}.test-node{min-height:auto!important;padding-right:112px!important}}
+
+
+/* ===== PLM V8.5.78 测试模板字段管理 ===== */
+.test-template-editor{background:#fbfdff!important;border-color:#dbeafe!important}
+.tpl-editor-top{display:grid;grid-template-columns:minmax(180px,1fr) 160px auto auto auto;gap:8px;align-items:center;margin-top:8px}.tpl-editor-top input,.tpl-editor-top select{height:34px!important;font-size:12px!important;border-radius:10px!important}.tpl-editor-head{display:grid;grid-template-columns:28px 1.1fr 105px 145px 58px 1fr .8fr .8fr 132px;gap:6px;color:#64748b;font-size:11px;font-weight:1000;margin:10px 0 6px;padding:0 4px}.tpl-field-rows{display:grid;gap:6px}.tpl-field-row{display:grid;grid-template-columns:28px 1.1fr 105px 145px 58px 1fr .8fr .8fr 132px;gap:6px;align-items:center;border:1px solid #dbe4ef;background:#fff;border-radius:12px;padding:6px}.tpl-field-row input,.tpl-field-row select{height:32px!important;font-size:12px!important;border-radius:9px!important;padding:5px 8px!important;min-width:0}.tpl-drag{cursor:grab;color:#64748b;font-weight:1000;text-align:center}.tpl-required{font-size:11px;font-weight:900;color:#475569;display:flex;align-items:center;gap:3px;white-space:nowrap}.tpl-required input{width:auto!important;height:auto!important}.tpl-field-row .btn{height:28px!important;min-height:28px!important;padding:4px 7px!important}.test-template-chip .actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.test-template-file-hint .hint{font-size:10px;margin-top:3px}@media(max-width:1280px){.tpl-editor-head{display:none}.tpl-editor-top{grid-template-columns:1fr 130px repeat(3,auto)}.tpl-field-row{grid-template-columns:26px 1fr 95px 120px 54px}.tpl-field-row .tpl-options,.tpl-field-row .tpl-default,.tpl-field-row .tpl-key{grid-column:span 2}.tpl-field-row .btn{width:auto}}@media(max-width:760px){.tpl-editor-top,.tpl-field-row{grid-template-columns:1fr}.tpl-drag{display:none}.tpl-required{justify-content:flex-start}.tpl-field-row .tpl-options,.tpl-field-row .tpl-default,.tpl-field-row .tpl-key{grid-column:auto}}
+
+/* ===== PLM V8.5.83 测试整改派工 ===== */
+.test-rectify-panel{margin-top:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:10px;display:grid;gap:8px}
+.test-rectify-panel.done{background:#f0fdf4;border-color:#bbf7d0}
+.test-rectify-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:1000;color:#0f172a}
+.test-rectify-meta{font-size:12px;color:#475569;font-weight:850;line-height:1.5}
+.test-rectify-actions{display:grid;grid-template-columns:minmax(130px,1fr) 120px auto;gap:8px;align-items:center}
+.test-rectify-actions select,.test-rectify-actions input{height:32px!important;border-radius:10px!important;font-size:12px!important;padding:5px 8px!important;min-width:0!important}
+@media(max-width:760px){.test-rectify-actions{grid-template-columns:1fr}.test-rectify-head{align-items:flex-start;flex-direction:column}}
+
+/* ===== PLM V8.5.84 测试看板 / 报表 ===== */
+.test-report-panel{border:1px solid #dbeafe;background:#fbfdff;border-radius:18px;padding:12px;margin:0 0 12px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+.test-report-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.test-report-head h3{margin:0;font-size:15px;color:#0f172a;font-weight:1000}
+.test-report-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:10px;align-items:start}
+.test-report-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.test-report-card{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:10px;min-height:72px}
+.test-report-card b{display:block;font-size:22px;line-height:1.1;color:#0f172a}.test-report-card span{display:block;color:#64748b;font-size:11px;font-weight:900;margin-bottom:4px}.test-report-card.red{border-color:#fecaca;background:#fff7f7}.test-report-card.orange{border-color:#fed7aa;background:#fffaf0}.test-report-card.green{border-color:#bbf7d0;background:#f0fdf4}.test-report-card.blue{border-color:#bfdbfe;background:#eff6ff}
+.test-report-table{width:100%;border-collapse:separate;border-spacing:0 6px}.test-report-table th{font-size:11px;color:#64748b;text-align:left;padding:0 8px 2px;font-weight:1000}.test-report-table td{font-size:12px;font-weight:850;color:#334155;background:#fff;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:8px}.test-report-table td:first-child{border-left:1px solid #e2e8f0;border-radius:12px 0 0 12px;color:#0f172a;font-weight:1000}.test-report-table td:last-child{border-right:1px solid #e2e8f0;border-radius:0 12px 12px 0}
+.test-risk-list{display:grid;gap:7px}.test-risk-item{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:9px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}.test-risk-item.red{border-color:#fecaca;background:#fff7f7}.test-risk-item.orange{border-color:#fed7aa;background:#fffaf0}.test-risk-title{font-weight:1000;color:#0f172a;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.test-risk-meta{color:#64748b;font-size:11px;font-weight:850;line-height:1.45;margin-top:3px}.test-report-subtitle{font-size:12px;color:#475569;font-weight:1000;margin:8px 0 5px}.test-report-muted{font-size:12px;color:#94a3b8;font-weight:900;padding:16px;border:1px dashed #cbd5e1;border-radius:14px;text-align:center;background:#fff}
+@media(max-width:1180px){.test-report-grid{grid-template-columns:1fr}.test-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.test-report-cards{grid-template-columns:1fr}.test-report-table{font-size:11px}.test-report-table th:nth-child(n+4),.test-report-table td:nth-child(n+4){display:none}}
+
+
+/* ===== PLM V8.5.86 测试中心封版整理 ===== */
+.test-report-panel.collapsed{padding-bottom:12px}
+.test-report-panel.collapsed .test-report-cards,.test-report-panel.collapsed .test-report-grid{display:none!important}
+.test-filter-toolbar{border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;padding:10px;margin:0 0 12px 0}
+.test-filter-line{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.test-filter-search{height:36px;border:1px solid #dbe4f0;border-radius:12px;padding:0 12px;font-weight:800;flex:1;min-width:0;background:#fff}
+.test-filter-chips{display:flex;gap:6px;flex-wrap:wrap}
+.test-filter-chips .btn.small{height:30px;padding:0 10px;border-radius:999px}
+.test-type-quick{margin-bottom:10px;gap:6px;flex-wrap:wrap}
+.test-node-layout.clean-v8585{align-items:flex-start}
+.clean-v8585 .test-node-left{position:sticky;top:10px;max-height:calc(100vh - 120px);overflow:auto;padding-right:4px}
+.clean-v8585 .test-node-list{display:grid;gap:10px}
+.clean-v8585 .test-node{min-height:158px}
+.clean-v8585 .test-node-right{min-width:0}
+@media(max-width:900px){.clean-v8585 .test-node-left{position:relative;top:auto;max-height:none}.test-filter-line{flex-direction:column;align-items:stretch}}
+
+
+
+/* ===== PLM V8.5.89 样品图片/尺寸图预览版 ===== */
+.test-report-panel.collapsed .test-report-body{display:none!important}
+.test-report-mini{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.test-report-mini .mini-tag{font-size:11px;font-weight:950;border:1px solid #dbe4ef;border-radius:999px;padding:4px 8px;background:#fff;color:#475569}
+.test-single-report-modal{max-width:980px!important;width:min(96vw,980px)!important}
+.test-single-report{background:#fff;color:#0f172a;padding:6px 2px 18px}
+.test-single-report h2{margin:0 0 8px;font-size:22px}.test-single-report h3{margin:16px 0 8px;font-size:15px}
+.test-report-info-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.test-report-info-grid div{border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#f8fafc;font-weight:850;color:#334155;min-height:42px}
+.test-report-info-grid b{display:block;font-size:11px;color:#64748b;margin-bottom:3px}
+.test-report-textbox{border:1px solid #e2e8f0;border-radius:12px;padding:10px;white-space:pre-wrap;word-break:break-word;min-height:42px;background:#fff}
+.test-report-run{border:1px solid #e2e8f0;border-radius:14px;padding:10px;margin:8px 0;background:#fbfdff}.test-report-run.bad{border-color:#fecaca;background:#fff7f7}
+.test-report-files{display:flex;gap:6px;flex-wrap:wrap}.test-report-files a{border:1px solid #dbe4ef;border-radius:999px;padding:5px 9px;text-decoration:none;color:#1d4ed8;font-weight:900;background:#fff}
+@media(max-width:760px){.test-report-info-grid{grid-template-columns:1fr}}
+@media print{body.print-single-test .app{display:none!important} body.print-single-test .modal-mask{position:static!important;background:#fff!important;display:block!important;padding:0!important} body.print-single-test .modal{box-shadow:none!important;border:0!important;width:100%!important;max-width:none!important} body.print-single-test .modal-head .actions, body.print-single-test .modal-head .hint{display:none!important}}
+
+
+
+/* ===== PLM V8.5.95 样品节点全量显示修复 START =====
+   目标：左侧样品节点不再内部滚动；6-10个样品直接全部显示，跟随整页滚动。
+   同时强制样品节点卡片自适应高度，避免“开发中/测试/物料/问题/文件”标签被下一张卡片遮住。 */
+.sample-left-panel{
+  position:relative!important;
+  top:auto!important;
+  max-height:none!important;
+  overflow:visible!important;
+  display:block!important;
+}
+.sample-node-list{
+  overflow:visible!important;
+  max-height:none!important;
+  height:auto!important;
+  align-items:start!important;
+}
+.sample-node-card{
+  height:auto!important;
+  min-height:auto!important;
+  overflow:visible!important;
+  justify-content:flex-start!important;
+  gap:10px!important;
+  padding-bottom:14px!important;
+}
+.sample-node-card > div:first-child,
+.sample-node-tags{
+  position:relative!important;
+  z-index:1!important;
+}
+.sample-node-tags{
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:6px!important;
+  margin-top:8px!important;
+  padding-top:2px!important;
+  overflow:visible!important;
+}
+.sample-node-tags .tag{
+  line-height:1.2!important;
+  margin-bottom:2px!important;
+}
+.sample-node-media{
+  margin-top:8px!important;
+}
+.sample-node-media .sample-media-tile.mini{
+  height:72px!important;
+  min-height:72px!important;
+}
+.sample-node-media .sample-media-tile.mini img{
+  height:72px!important;
+  min-height:72px!important;
+}
+@media(max-width:680px){
+  .sample-node-media .sample-media-tile.mini,
+  .sample-node-media .sample-media-tile.mini img{
+    height:82px!important;
+    min-height:82px!important;
+  }
+}
+/* ===== PLM V8.5.95 样品节点全量显示修复 END ===== */
+
+/* ===== PLM V8.5.98 项目暂停恢复样式 START ===== */
+.project-pause-panel{border:1px solid #fed7aa!important;background:#fff7ed!important;box-shadow:0 14px 35px rgba(234,88,12,.08)!important}
+.project-pause-panel.active{border-color:#fb923c!important;background:linear-gradient(135deg,#fff7ed,#fff)!important}
+.project-pause-panel .section-title span{color:#c2410c!important}
+/* ===== PLM V8.5.98 项目暂停恢复样式 END ===== */
+
+/* ARTDON_PLM_V8_5_101_TEST_CENTER_CLEAN_START */
+.test-node-layout.clean-v8585 .test-node-left{overflow:visible!important;max-height:none!important;}
+.test-node-layout.clean-v8585 .test-node-head{margin-bottom:14px!important;}
+.test-node-layout.clean-v8585 .test-node-list{margin-top:14px!important;gap:14px!important;}
+.test-node-layout.clean-v8585 .test-filter-toolbar,
+.test-node-layout.clean-v8585 .test-type-quick{display:none!important;}
+@media(max-width:980px){.test-node-layout.clean-v8585 .test-node-list{margin-top:12px!important;}}
+/* ARTDON_PLM_V8_5_101_TEST_CENTER_CLEAN_END */
+</style>
+<style>
+/* V8.5.99：基本资料页清爽布局。暂停/恢复只保留顶部按钮，不再占用基本资料内容区。 */
+.basic-clean-layout{grid-template-columns:minmax(0,1.65fr) minmax(360px,.75fr)!important;gap:18px!important;align-items:start!important}
+.basic-main-block{min-height:270px!important;padding:18px!important}
+.basic-main-block .section-title span{font-size:18px!important}
+.basic-fields-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}
+.basic-main-block input,.basic-main-block select{min-height:42px!important;font-size:14px!important;border-radius:14px!important}
+.basic-image-block{padding:18px!important}
+.basic-image-block textarea{min-height:132px!important}
+@media(max-width:1180px){.basic-clean-layout{grid-template-columns:1fr!important}.basic-fields-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:720px){.basic-fields-grid{grid-template-columns:1fr!important}.basic-main-block,.basic-image-block{padding:14px!important}}
+</style>
+
+<style>
+/* V8.5.102：PLM 样品命名收件箱状态 */
+.sample-actions-pro .btn.orange{background:#fff7ed;border-color:#fdba74;color:#c2410c}
+.sample-node-tags .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head><body>';
+    $html .= '<h1>Artdon PLM 项目资料包</h1>';
+    $html .= '<p class="muted">生成时间：'.plm_v85_html(date('Y-m-d H:i:s')).' ｜ 类型：'.plm_v85_html($modeLabel).'</p>';
+    $html .= '<h2>项目基础资料</h2><table>';
+    $basic = array('项目号'=>'project_no','项目名称'=>'name','客户'=>'customer','工程师'=>'engineer','系列'=>'series','型号'=>'model','产品类型'=>'product_type','来源'=>'source','优先级'=>'priority','状态'=>'status','计划日期'=>'due_date','创建时间'=>'created_at','更新时间'=>'updated_at');
+    foreach($basic as $label=>$key){ $html.='<tr><th style="width:160px">'.plm_v85_html($label).'</th><td>'.plm_v85_html($p[$key] ?? '').'</td></tr>'; }
+    if(!empty($p['remark'])) $html.='<tr><th>备注</th><td>'.nl2br(plm_v85_html($p['remark'])).'</td></tr>';
+    $html .= '</table>';
+    $html .= '<p><span class="tag">样品 '.count($models).'</span><span class="tag">测试 '.$testCount.'</span><span class="tag '.($issueOpen?'bad':'ok').'">未关闭问题 '.$issueOpen.'</span><span class="tag">文件 '.$fileCount.'</span></p>';
+    $html .= '<h2>样品资料</h2><table><tr><th>样品</th><th>版本</th><th>型号</th><th>状态</th><th>功率</th><th>角度</th><th>色温</th><th>测试状态</th><th>测试摘要</th></tr>';
+    foreach($models as $m){ $html.='<tr><td>'.plm_v85_html($m['name']??'').'</td><td>'.plm_v85_html($m['sample_version']??'').'</td><td>'.plm_v85_html($m['model']??'').'</td><td>'.plm_v85_html($m['status']??'').'</td><td>'.plm_v85_html($m['power']??'').'</td><td>'.plm_v85_html($m['beam']??'').'</td><td>'.plm_v85_html($m['cct']??'').'</td><td>'.plm_v85_html($m['test_status']??'').'</td><td>'.plm_v85_html($m['test_summary']??'').'</td></tr>'; }
+    $html .= '</table>';
+    $html .= '<h2>测试记录</h2><table><tr><th>样品ID</th><th>类型</th><th>标题</th><th>状态</th><th>结果</th><th>日期</th><th>测试人</th><th>是否影响样品</th><th>结论/整改</th></tr>';
+    foreach($tests as $t){ $html.='<tr><td>'.plm_v85_html($t['model_id']??'').'</td><td>'.plm_v85_html($t['test_type']??'').'</td><td>'.plm_v85_html($t['title']??'').'</td><td>'.plm_v85_html($t['status']??'').'</td><td>'.plm_v85_html($t['result']??'').'</td><td>'.plm_v85_html($t['test_date']??'').'</td><td>'.plm_v85_html($t['operator']??'').'</td><td>'.(!empty($t['affect_sample'])?'是':'否').'</td><td>'.plm_v85_html($t['test_conclusion']??($t['note']??'')).'</td></tr>'; }
+    $html .= '</table>';
+    $html .= '<h2>问题闭环</h2><table><tr><th>样品ID</th><th>标题</th><th>来源</th><th>严重程度</th><th>状态</th><th>负责人</th><th>解决方案</th><th>创建时间</th></tr>';
+    foreach($issues as $i){ $html.='<tr><td>'.plm_v85_html($i['model_id']??'').'</td><td>'.plm_v85_html($i['title']??'').'</td><td>'.plm_v85_html($i['source']??'').'</td><td>'.plm_v85_html($i['severity']??'').'</td><td>'.plm_v85_html($i['status']??'').'</td><td>'.plm_v85_html($i['owner']??'').'</td><td>'.plm_v85_html($i['solution']??'').'</td><td>'.plm_v85_html($i['created_at']??'').'</td></tr>'; }
+    $html .= '</table>';
+    $html .= '<h2>开发流程</h2><table><tr><th>样品ID</th><th>步骤</th><th>状态</th><th>负责人</th><th>计划</th><th>完成时间</th><th>备注</th></tr>';
+    foreach($steps as $st){ $html.='<tr><td>'.plm_v85_html($st['model_id']??'').'</td><td>'.plm_v85_html($st['title']??($st['step_name']??'')).'</td><td>'.plm_v85_html($st['status']??'').'</td><td>'.plm_v85_html($st['owner']??'').'</td><td>'.plm_v85_html(($st['plan_start']??'').'~'.($st['plan_end']??($st['plan_date']??''))).'</td><td>'.plm_v85_html($st['done_at']??'').'</td><td>'.plm_v85_html($st['note']??'').'</td></tr>'; }
+    $html .= '</table>';
+    $html .= '<h2>文件清单</h2><table><tr><th>分类</th><th>标题</th><th>原文件名</th><th>样品ID</th><th>大小</th><th>上传时间</th><th>备注</th></tr>';
+    foreach($files as $f){ $html.='<tr><td>'.plm_v85_html($f['category']??'').'</td><td>'.plm_v85_html($f['title']??'').'</td><td>'.plm_v85_html($f['original_name']??($f['file_name']??'')).'</td><td>'.plm_v85_html($f['model_id']??'').'</td><td>'.plm_v85_html($f['file_size']??'').'</td><td>'.plm_v85_html($f['created_at']??'').'</td><td>'.plm_v85_html($f['note']??'').'</td></tr>'; }
+    $html .= '</table>';
+    $html .= '<h2>最近日志</h2><table><tr><th>时间</th><th>对象</th><th>动作</th><th>备注</th></tr>';
+    foreach($logs as $l){ $html.='<tr><td>'.plm_v85_html($l['created_at']??'').'</td><td>'.plm_v85_html($l['target_type']??'').'</td><td>'.plm_v85_html($l['action']??'').'</td><td>'.plm_v85_html($l['note']??'').'</td></tr>'; }
+    $html .= '</table></body></html>';
+    return $html;
+}
+function plm_v85_create_project_package_zip($project_id, $model_id=0, $include='all'){
+    if(!class_exists('ZipArchive')) throw new RuntimeException('服务器 PHP 未启用 ZipArchive，不能自动打包 ZIP。');
+    $project_id=(int)$project_id; $model_id=(int)$model_id; $include=(string)$include;
+    if(!$project_id) throw new RuntimeException('缺少项目ID。');
+    $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=?', array($project_id));
+    if(!$p) throw new RuntimeException('项目不存在。');
+    $params=array($project_id); $modelWhere='';
+    if($model_id>0){ $modelWhere=' AND id=?'; $params[]=$model_id; }
+    $models=plm_v85_rows('SELECT * FROM plm_models WHERE project_id=?'.$modelWhere.' ORDER BY sort_order ASC,id ASC',$params);
+    $modelIds=array_map(function($m){return (int)$m['id'];},$models);
+    $testParams=array($project_id); $testWhere='';
+    if($model_id>0){$testWhere=' AND model_id=?';$testParams[]=$model_id;}
+    $tests=plm_v85_rows('SELECT * FROM plm_tests WHERE project_id=?'.$testWhere.' ORDER BY model_id ASC,id DESC',$testParams);
+    $steps=plm_v85_rows('SELECT * FROM plm_flow_steps WHERE project_id=?'.($model_id>0?' AND model_id=?':'').' ORDER BY model_id ASC,sort_order ASC,id ASC',$testParams);
+    $issues=plm_v85_table_exists('plm_issues') ? plm_v85_rows('SELECT * FROM plm_issues WHERE project_id=?'.($model_id>0?' AND model_id=?':'').' ORDER BY id DESC',$testParams) : array();
+    $logs=plm_v85_rows('SELECT * FROM plm_logs WHERE project_id=? ORDER BY id DESC LIMIT 200',array($project_id));
+    $fileSql='SELECT * FROM plm_files WHERE project_id=?'; $fileParams=array($project_id);
+    if($model_id>0){ $fileSql.=' AND (model_id=? OR model_id=0)'; $fileParams[]=$model_id; }
+    if($include==='customer') $fileSql.=' AND customer_visible=1';
+    elseif($include==='test') $fileSql.=" AND category IN ('温升报告','IES报告','积分球报告','EMC报告','老化测试','防水测试','盐雾测试','结构装配测试','包装跌落测试','光斑测试','其它测试资料')";
+    elseif($include==='filecenter') $fileSql.=" AND category NOT IN ('温升报告','IES报告','积分球报告','EMC报告','老化测试','防水测试','盐雾测试','结构装配测试','包装跌落测试','光斑测试','其它测试资料')";
+    $fileSql.=' ORDER BY model_id ASC,category ASC,id ASC';
+    $files=plm_v85_rows($fileSql,$fileParams);
+    $relDir='uploads/plm_project_packages/'.date('Ym');
+    $dir=__DIR__.'/'.$relDir;
+    if(!is_dir($dir) && !mkdir($dir,0777,true)) throw new RuntimeException('无法创建项目资料包目录：'.$relDir);
+    $base=plm_v85_safe_name(($p['project_no']??'').'_'.$p['name'].($model_id>0?'_样品'.$model_id:''),'PLM项目');
+    $zipName=$base.'_项目资料包_'.date('Ymd_His').'.zip';
+    $zipPath=$dir.'/'.$zipName;
+    $zip=new ZipArchive();
+    if($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)!==true) throw new RuntimeException('ZIP 文件创建失败。');
+    $modeLabel=$model_id>0?'样品资料包':'项目资料包';
+    $zip->addFromString('00_项目资料汇总.html', plm_v85_package_summary_html($p,$models,$tests,$issues,$steps,$files,$logs,$modeLabel));
+    $zip->addFromString('01_项目基础资料.json', json_encode(array('project'=>$p,'models'=>$models,'tests'=>$tests,'issues'=>$issues,'steps'=>$steps,'files'=>$files), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT));
+    $modelRows=array(); foreach($models as $m){ $modelRows[]=array('ID'=>$m['id']??'','样品'=>$m['name']??'','版本'=>$m['sample_version']??'','型号'=>$m['model']??'','状态'=>$m['status']??'','功率'=>$m['power']??'','角度'=>$m['beam']??'','色温'=>$m['cct']??'','测试状态'=>$m['test_status']??'','测试摘要'=>$m['test_summary']??''); }
+    $zip->addFromString('02_样品资料.csv', plm_v85_csv_string(array('ID','样品','版本','型号','状态','功率','角度','色温','测试状态','测试摘要'), $modelRows));
+    $testRows=array(); foreach($tests as $t){ $testRows[]=array('ID'=>$t['id']??'','样品ID'=>$t['model_id']??'','测试类型'=>$t['test_type']??'','标题'=>$t['title']??'','状态'=>$t['status']??'','结果'=>$t['result']??'','测试日期'=>$t['test_date']??'','测试人'=>$t['operator']??'','测试数据'=>$t['test_data']??'','结论整改'=>$t['test_conclusion']??($t['note']??'')); }
+    $zip->addFromString('03_测试记录.csv', plm_v85_csv_string(array('ID','样品ID','测试类型','标题','状态','结果','测试日期','测试人','测试数据','结论整改'), $testRows));
+    $issueRows=array(); foreach($issues as $i){ $issueRows[]=array('ID'=>$i['id']??'','样品ID'=>$i['model_id']??'','标题'=>$i['title']??'','来源'=>$i['source']??'','严重程度'=>$i['severity']??'','状态'=>$i['status']??'','负责人'=>$i['owner']??'','解决方案'=>$i['solution']??'','备注'=>$i['note']??''); }
+    $zip->addFromString('04_问题闭环.csv', plm_v85_csv_string(array('ID','样品ID','标题','来源','严重程度','状态','负责人','解决方案','备注'), $issueRows));
+    $stepRows=array(); foreach($steps as $st){ $stepRows[]=array('ID'=>$st['id']??'','样品ID'=>$st['model_id']??'','步骤'=>$st['title']??($st['step_name']??''),'状态'=>$st['status']??'','负责人'=>$st['owner']??'','计划开始'=>$st['plan_start']??($st['plan_date']??''),'计划结束'=>$st['plan_end']??'','完成时间'=>$st['done_at']??'','备注'=>$st['note']??''); }
+    $zip->addFromString('05_开发流程.csv', plm_v85_csv_string(array('ID','样品ID','步骤','状态','负责人','计划开始','计划结束','完成时间','备注'), $stepRows));
+    $fileRows=array(); foreach($files as $f){ $fileRows[]=array('ID'=>$f['id']??'','分类'=>$f['category']??'','标题'=>$f['title']??'','原文件名'=>$f['original_name']??($f['file_name']??''),'样品ID'=>$f['model_id']??'','大小'=>$f['file_size']??'','路径'=>$f['file_path']??'','备注'=>$f['note']??''); }
+    $zip->addFromString('06_文件清单.csv', plm_v85_csv_string(array('ID','分类','标题','原文件名','样品ID','大小','路径','备注'), $fileRows));
+    $added=0; $used=array();
+    if($include !== 'none') foreach($files as $r){
+        $full=plm_v85_abs_upload_path($r['file_path']??''); if(!$full) continue;
+        $mname='项目公共文件';
+        if((int)($r['model_id']??0)>0){ foreach($models as $m){ if((int)$m['id']===(int)$r['model_id']){ $mname=plm_v85_safe_name(($m['name']?:$m['model']?:('样品'.$m['id'])),'样品'); break; } } }
+        $cat=plm_v85_safe_name($r['category']?:'其它文件','其它文件');
+        $orig=plm_v85_safe_name($r['title']?:$r['original_name']?:$r['file_name']?:('file_'.$r['id']),'file_'.$r['id']);
+        $ext=pathinfo($r['original_name']?:$r['file_name']?:$full, PATHINFO_EXTENSION);
+        if($ext && !preg_match('/\.'.$ext.'$/i',$orig)) $orig.='.'.$ext;
+        $inside='文件资料/'.$mname.'/'.$cat.'/'.$orig;
+        $n=1; $unique=$inside;
+        while(isset($used[$unique])){ $unique='文件资料/'.$mname.'/'.$cat.'/'.pathinfo($orig, PATHINFO_FILENAME).'_'.$n.'.'.pathinfo($orig, PATHINFO_EXTENSION); $n++; }
+        $used[$unique]=true;
+        if($zip->addFile($full,$unique)) $added++;
+    }
+    $zip->close();
+    if(!is_file($zipPath)) throw new RuntimeException('资料包生成失败。');
+    return array('url'=>plm_v85_public_url($relDir.'/'.$zipName),'count'=>$added,'name'=>$zipName,'model_id'=>$model_id,'include'=>$include);
+}
+
+function plm_v85_bom_price($v){ return is_numeric($v) ? (float)$v : 0; }
+function plm_v85_bom_format_material($m){
+    if(!$m) return null;
+    return array(
+        'id'=>(int)($m['id'] ?? 0),
+        'category'=>(string)($m['category'] ?? ''),
+        'brand'=>(string)($m['brand'] ?? ''),
+        'name'=>(string)($m['name'] ?? ''),
+        'model'=>(string)($m['model'] ?? ''),
+        'spec'=>(string)($m['spec'] ?? ''),
+        'price'=>plm_v85_bom_price($m['price'] ?? 0),
+        'unit'=>(string)($m['unit'] ?? 'PCS'),
+        'supplier'=>(string)($m['supplier'] ?? ''),
+        'keyword'=>(string)($m['keyword'] ?? '')
+    );
+}
+function plm_v85_bom_material_by_id($id){
+    $id=(int)$id; if($id<=0 || !plm_v85_table_exists('bom_materials')) return null;
+    $st=plm_v85_pdo()->prepare('SELECT * FROM bom_materials WHERE id=? LIMIT 1');
+    $st->execute(array($id));
+    $r=$st->fetch();
+    if(!$r) return null;
+    if(array_key_exists('is_active',$r) && (int)$r['is_active']!==1) return null;
+    return $r;
+}
+function plm_v85_bom_category_terms($type){
+    $type=trim((string)$type);
+    if($type==='chip') return array('芯片','LED芯片','COB','光源');
+    if($type==='optical') return array('光学','透镜','反光杯','光杯','镜片','光学件');
+    if($type==='driver') return array('电源','驱动','驱动电源');
+    if($type==='accessories') return array('配件','附件','端子','接头','防水圈','螺丝','螺丝包','线材','线束');
+    return array();
+}
+function plm_v85_bom_material_where($type='', $filters=array(), &$params=array()){
+    $type=plm_v85_s($type,60);
+    $filters=is_array($filters)?$filters:array();
+    $where=array();
+    $params=array();
+    if(plm_v85_hascol('bom_materials','is_active')) $where[]='is_active=1';
+
+    // V8.5.47：关键元器件弹窗仍严格按分类过滤，避免光源/光学/电源/配件串类。
+    $terms=plm_v85_bom_category_terms($type);
+    if(count($terms) && plm_v85_hascol('bom_materials','category')){
+        $catOr=array();
+        foreach($terms as $term){ $catOr[]='`category` LIKE ?'; $params[]='%'.$term.'%'; }
+        $where[]='('.implode(' OR ',$catOr).')';
+    }
+
+    $q=plm_v85_s($filters['q']??'',120);
+    if($q!==''){
+        $like='%'.$q.'%';
+        $or=array();
+        foreach(array('name','model','spec','brand','supplier','keyword','category') as $c){
+            if(plm_v85_hascol('bom_materials',$c)){ $or[]='`'.$c.'` LIKE ?'; $params[]=$like; }
+        }
+        if($or) $where[]='('.implode(' OR ',$or).')';
+    }
+    foreach(array('category','brand','supplier') as $fc){
+        $v=plm_v85_s($filters[$fc]??'',120);
+        if($v!=='' && plm_v85_hascol('bom_materials',$fc)){
+            $where[]='`'.$fc.'` LIKE ?';
+            $params[]='%'.$v.'%';
+        }
+    }
+    $priceMin=trim((string)($filters['price_min']??''));
+    $priceMax=trim((string)($filters['price_max']??''));
+    if($priceMin!=='' && is_numeric($priceMin) && plm_v85_hascol('bom_materials','price')){ $where[]='`price`>=?'; $params[]=(float)$priceMin; }
+    if($priceMax!=='' && is_numeric($priceMax) && plm_v85_hascol('bom_materials','price')){ $where[]='`price`<=?'; $params[]=(float)$priceMax; }
+    return $where;
+}
+function plm_v85_bom_material_search($q,$type='', $filters=array()){
+    if(!plm_v85_table_exists('bom_materials')) return array();
+    if(!is_array($filters)) $filters=array();
+    $filters['q']=$q;
+    $params=array();
+    $where=plm_v85_bom_material_where($type,$filters,$params);
+    $sql='SELECT * FROM bom_materials'.($where?' WHERE '.implode(' AND ',$where):'');
+    $sort=plm_v85_s($filters['sort']??'updated_desc',40);
+    $orderMap=array(
+        'updated_desc'=>plm_v85_hascol('bom_materials','updated_at')?'updated_at DESC, id DESC':'id DESC',
+        'newest'=>plm_v85_hascol('bom_materials','created_at')?'created_at DESC, id DESC':'id DESC',
+        'price_asc'=>plm_v85_hascol('bom_materials','price')?'price ASC, id DESC':'id DESC',
+        'price_desc'=>plm_v85_hascol('bom_materials','price')?'price DESC, id DESC':'id DESC',
+        'category_asc'=>plm_v85_hascol('bom_materials','category')?'category ASC, id DESC':'id DESC',
+        'brand_asc'=>plm_v85_hascol('bom_materials','brand')?'brand ASC, id DESC':'id DESC',
+        'name_asc'=>plm_v85_hascol('bom_materials','name')?'name ASC, id DESC':'id DESC'
+    );
+    $order=$orderMap[$sort] ?? $orderMap['updated_desc'];
+    $limit=(int)($filters['limit']??100); if($limit<20)$limit=20; if($limit>500)$limit=500;
+    $rows=plm_v85_rows($sql.' ORDER BY '.$order.' LIMIT '.$limit,$params);
+    return array_map('plm_v85_bom_format_material',$rows);
+}
+function plm_v85_bom_material_filter_options($type=''){
+    if(!plm_v85_table_exists('bom_materials')) return array('categories'=>array(),'brands'=>array(),'suppliers'=>array());
+    $out=array('categories'=>array(),'brands'=>array(),'suppliers'=>array());
+    foreach(array('category'=>'categories','brand'=>'brands','supplier'=>'suppliers') as $col=>$key){
+        if(!plm_v85_hascol('bom_materials',$col)) continue;
+        $params=array();
+        $where=plm_v85_bom_material_where($type,array(),$params);
+        $where[]='`'.$col.'`<>\'\'';
+        $sql='SELECT DISTINCT `'.$col.'` v FROM bom_materials WHERE '.implode(' AND ',$where).' ORDER BY `'.$col.'` ASC LIMIT 300';
+        $rows=plm_v85_rows($sql,$params);
+        $out[$key]=array_values(array_filter(array_map(function($r){ return (string)($r['v']??''); },$rows)));
+    }
+    return $out;
+}
+function plm_v85_bom_ensure_projects(){
+    $db=plm_v85_pdo();
+    $db->exec("CREATE TABLE IF NOT EXISTS bom_projects(
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_uid VARCHAR(80) NOT NULL,
+        name VARCHAR(255) DEFAULT '',
+        customer VARCHAR(255) DEFAULT '',
+        model VARCHAR(160) DEFAULT '',
+        product_type VARCHAR(160) DEFAULT '',
+        currency VARCHAR(20) DEFAULT 'RMB',
+        product_image LONGTEXT NULL,
+        labor DECIMAL(12,4) DEFAULT 0,
+        other DECIMAL(12,4) DEFAULT 0,
+        profit_rate DECIMAL(10,2) DEFAULT 30,
+        quote_mode VARCHAR(40) DEFAULT 'markup',
+        exchange_rate DECIMAL(12,6) DEFAULT 1,
+        note TEXT NULL,
+        rows_json LONGTEXT NULL,
+        created_by VARCHAR(120) DEFAULT 'PLM',
+        updated_by VARCHAR(120) DEFAULT 'PLM',
+        is_active TINYINT(1) DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_project_uid(project_uid), KEY idx_updated(updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach(array(
+        'project_uid'=>"VARCHAR(80) NOT NULL DEFAULT ''",'name'=>"VARCHAR(255) DEFAULT ''",'customer'=>"VARCHAR(255) DEFAULT ''",'model'=>"VARCHAR(160) DEFAULT ''",'product_type'=>"VARCHAR(160) DEFAULT ''",
+        'currency'=>"VARCHAR(20) DEFAULT 'RMB'",'product_image'=>'LONGTEXT NULL','labor'=>'DECIMAL(12,4) DEFAULT 0','other'=>'DECIMAL(12,4) DEFAULT 0','profit_rate'=>'DECIMAL(10,2) DEFAULT 30','quote_mode'=>"VARCHAR(40) DEFAULT 'markup'",'exchange_rate'=>'DECIMAL(12,6) DEFAULT 1','note'=>'TEXT NULL','rows_json'=>'LONGTEXT NULL','created_by'=>"VARCHAR(120) DEFAULT 'PLM'",'updated_by'=>"VARCHAR(120) DEFAULT 'PLM'",'is_active'=>'TINYINT(1) DEFAULT 1','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+    ) as $c=>$d) plm_v85_ensure_col('bom_projects',$c,$d);
+}
+function plm_v85_bom_display_name($mat,$fallbackName='',$fallbackBrand=''){
+    if($mat){
+        $brand=trim((string)($mat['brand']??'')); $name=trim((string)($mat['name']??'')); $model=trim((string)($mat['model']??''));
+        if($name==='') $name=$model;
+        if($brand!=='' && $name!=='' && mb_stripos($name,$brand,0,'UTF-8')===false) return $brand.' / '.$name;
+        return $name ?: $brand;
+    }
+    $brand=trim((string)$fallbackBrand); $name=trim((string)$fallbackName);
+    return ($brand!=='' && $name!=='' && mb_stripos($name,$brand,0,'UTF-8')===false) ? ($brand.' / '.$name) : ($name ?: $brand);
+}
+function plm_v85_bom_display_spec($mat,$fallbackSpec=''){
+    if($mat){
+        $model=trim((string)($mat['model']??'')); $spec=trim((string)($mat['spec']??'')); $supplier=trim((string)($mat['supplier']??''));
+        $out=array(); if($model!=='')$out[]=$model; if($spec!=='' && mb_stripos($spec,$model,0,'UTF-8')===false)$out[]=$spec; if($supplier!=='')$out[]='供应商：'.$supplier;
+        return implode(' / ',$out);
+    }
+    return trim((string)$fallbackSpec);
+}
+function plm_v85_bom_add_component_row(&$rows,$label,$name,$brand,$spec,$materialId,$qty=1){
+    $mat=plm_v85_bom_material_by_id($materialId);
+    $displayName=plm_v85_bom_display_name($mat,$name,$brand);
+    $displaySpec=plm_v85_bom_display_spec($mat,$spec);
+    if(trim($displayName)==='' && trim($displaySpec)==='') return;
+    $rows[]=array(
+        'category'=>$mat ? (string)($mat['category'] ?: $label) : $label,
+        'name'=>$displayName,
+        'spec'=>$displaySpec,
+        'qty'=>$qty>0?$qty:1,
+        'process'=>0,
+        'finish'=>'',
+        'finishCost'=>0,
+        'price'=>$mat ? plm_v85_bom_price($mat['price'] ?? 0) : 0,
+        'materialId'=>$mat ? (string)($mat['id'] ?? '') : ''
+    );
+}
+function plm_v85_bom_rows_from_model($m){
+    $rows=array();
+    plm_v85_bom_add_component_row($rows,'芯片',$m['chip_name']??'',$m['chip_brand']??'',$m['chip_spec']??'',(int)($m['chip_material_id']??0),1);
+    plm_v85_bom_add_component_row($rows,'光学',$m['optical_name']??'',$m['optical_brand']??'',$m['optical_spec']??'',(int)($m['optical_material_id']??0),1);
+    plm_v85_bom_add_component_row($rows,'电源',$m['driver_name']??'',$m['driver_brand']??'',$m['driver_spec']??'',(int)($m['driver_material_id']??0),1);
+    $ids=preg_split('/[,，;；\s]+/',(string)($m['accessories_material_ids']??''));
+    $added=false;
+    foreach($ids as $id){ $id=(int)$id; if($id>0){ plm_v85_bom_add_component_row($rows,'配件','','','',$id,1); $added=true; } }
+    if(!$added) plm_v85_bom_add_component_row($rows,'配件',$m['accessories_name']??'',$m['accessories_brand']??'',$m['accessories_spec']??'',0,1);
+    return $rows;
+}
+function plm_v85_create_or_update_bom_from_model($modelId){
+    $m=plm_v85_row('SELECT * FROM plm_models WHERE id=?',array((int)$modelId));
+    if(!$m) return array('ok'=>false,'error'=>'没有找到样品');
+    $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=?',array((int)$m['project_id']));
+    if(!$p) return array('ok'=>false,'error'=>'没有找到项目');
+    $rows=plm_v85_bom_rows_from_model($m);
+    if(!count($rows)) return array('ok'=>false,'error'=>'请先填写芯片/光学/电源/配件，或从 BOM 物料库选择物料');
+    plm_v85_bom_ensure_projects();
+    $uid='PLM-MODEL-'.(int)$modelId;
+    $name=trim(($p['project_no']??'').' '.($p['name']??'').' - '.($m['name']??''));
+    $model=trim(($m['model']??'') ?: ($p['model']??''));
+    $note="由 PLM 样品关键元器件生成/更新。\n项目：".($p['name']??'')."\n样品：".($m['name']??'')."\nBOM备注：".($m['bom_note']??'');
+    $exists=plm_v85_row('SELECT id FROM bom_projects WHERE project_uid=? LIMIT 1',array($uid));
+    if($exists){
+        $st=plm_v85_pdo()->prepare('UPDATE bom_projects SET name=?,customer=?,model=?,product_type=?,currency=?,rows_json=?,note=?,updated_by=?,updated_at=NOW(),is_active=1 WHERE project_uid=?');
+        $st->execute(array($name,$p['customer']??'',$model,$p['product_type']??'','RMB',json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$note,'PLM',$uid));
+    }else{
+        $st=plm_v85_pdo()->prepare('INSERT INTO bom_projects(project_uid,name,customer,model,product_type,currency,labor,other,profit_rate,quote_mode,exchange_rate,note,rows_json,created_by,updated_by,is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)');
+        $st->execute(array($uid,$name,$p['customer']??'',$model,$p['product_type']??'','RMB',0,0,30,'markup',1,$note,json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'PLM','PLM'));
+    }
+    plm_v85_log((int)$p['id'],'bom',(int)$modelId,'生成/更新BOM','BOM项目UID：'.$uid.'，物料行：'.count($rows));
+    return array('ok'=>true,'project_uid'=>$uid,'rows_count'=>count($rows),'bom_url'=>'bom.php','message'=>'已生成/更新 BOM 草稿');
+}
+
+
+function plm_v85_naming_format_model($m){
+    if(!$m) return null;
+    return array(
+        'id'=>(int)($m['id'] ?? 0),
+        'model_no'=>(string)($m['model_no'] ?? ''),
+        'category'=>(string)($m['category'] ?? ''),
+        'item_name'=>(string)($m['item_name'] ?? ''),
+        'prefix'=>(string)($m['prefix'] ?? ''),
+        'size_code'=>(string)($m['size_code'] ?? ''),
+        'product_name'=>(string)($m['product_name'] ?? ''),
+        'customer'=>(string)($m['customer'] ?? ''),
+        'status'=>(string)($m['status'] ?? ''),
+        'remark'=>(string)($m['remark'] ?? ''),
+        'image_path'=>(string)($m['image_path'] ?? ''),
+        'drawing_path'=>(string)($m['drawing_path'] ?? ''),
+        'dimension_type'=>(string)($m['dimension_type'] ?? ''),
+        'dim_opening'=>(string)($m['dim_opening'] ?? ''),
+        'dim_outer_d'=>(string)($m['dim_outer_d'] ?? ''),
+        'dim_length'=>(string)($m['dim_length'] ?? ''),
+        'dim_width'=>(string)($m['dim_width'] ?? ''),
+        'dim_height'=>(string)($m['dim_height'] ?? ''),
+        'created_at'=>(string)($m['created_at'] ?? ''),
+        'updated_at'=>(string)($m['updated_at'] ?? '')
+    );
+}
+function plm_v85_naming_select_sql(): string {
+    $base = 'id,model_no,category,item_name,prefix,size_code,product_name,customer,status,remark,image_path,drawing_path,created_at,updated_at';
+    $extra = array();
+    foreach(array('dimension_type','dim_opening','dim_outer_d','dim_length','dim_width','dim_height') as $c){
+        $extra[] = plm_v85_hascol('naming_models',$c) ? $c : "'' AS ".$c;
+    }
+    return $base . ',' . implode(',', $extra);
+}
+function plm_v85_naming_search($filters='', $limit=30){
+    if(!plm_v85_table_exists('naming_models')) return array('available'=>false,'models'=>array(),'error'=>'未找到 naming_models 表，请先打开 naming.php?action=install 或访问命名系统初始化。');
+    $limit=(int)$limit; if($limit<5)$limit=5; if($limit>200)$limit=200;
+    if(is_array($filters)){
+        $q=trim((string)($filters['q']??''));
+        $category=trim((string)($filters['category']??''));
+        $item=trim((string)($filters['item_name']??''));
+        $status=trim((string)($filters['status']??''));
+        $customer=trim((string)($filters['customer']??''));
+        $prefix=preg_replace('/\D+/', '', (string)($filters['prefix']??''));
+        $size=preg_replace('/\D+/', '', (string)($filters['size_code']??''));
+        $hasImage=trim((string)($filters['has_image']??''));
+        $hasDrawing=trim((string)($filters['has_drawing']??''));
+        $dateStart=trim((string)($filters['date_start']??''));
+        $dateEnd=trim((string)($filters['date_end']??''));
+    }else{
+        $q=trim((string)$filters); $category=$item=$status=$customer=$prefix=$size=$hasImage=$hasDrawing=$dateStart=$dateEnd='';
+    }
+    $where=array(); $args=array();
+    if($q!==''){
+        $where[]='(model_no LIKE ? OR product_name LIKE ? OR customer LIKE ? OR item_name LIKE ? OR category LIKE ? OR remark LIKE ?)';
+        for($i=0;$i<6;$i++) $args[]='%'.$q.'%';
+    }
+    if($category!==''){ $where[]='category LIKE ?'; $args[]='%'.$category.'%'; }
+    if($item!==''){ $where[]='item_name LIKE ?'; $args[]='%'.$item.'%'; }
+    if($status!==''){ $where[]='status=?'; $args[]=$status; }
+    if($customer!==''){ $where[]='customer LIKE ?'; $args[]='%'.$customer.'%'; }
+    if($prefix!==''){ $where[]='prefix=?'; $args[]=$prefix; }
+    if($size!==''){ $where[]='size_code=?'; $args[]=str_pad(substr($size,0,3),3,'0',STR_PAD_LEFT); }
+    if($hasImage==='yes'){ $where[]="image_path<>''"; }
+    if($hasImage==='no'){ $where[]="image_path=''"; }
+    if($hasDrawing==='yes'){ $where[]="drawing_path<>''"; }
+    if($hasDrawing==='no'){ $where[]="drawing_path=''"; }
+    if(preg_match('/^\d{4}-\d{2}-\d{2}$/',$dateStart)){ $where[]='DATE(created_at)>=?'; $args[]=$dateStart; }
+    if(preg_match('/^\d{4}-\d{2}-\d{2}$/',$dateEnd)){ $where[]='DATE(created_at)<=?'; $args[]=$dateEnd; }
+    $whereSql=$where ? ' WHERE '.implode(' AND ',$where) : '';
+    $sql='SELECT '.plm_v85_naming_select_sql().' FROM naming_models'.$whereSql.' ORDER BY updated_at DESC,id DESC LIMIT '.$limit;
+    $rows=plm_v85_rows($sql,$args);
+    return array('available'=>true,'models'=>array_map('plm_v85_naming_format_model',$rows),'count'=>count($rows));
+}
+function plm_v85_naming_model_by_id($id){
+    if(!plm_v85_table_exists('naming_models')) return null;
+    $r=plm_v85_row('SELECT '.plm_v85_naming_select_sql().' FROM naming_models WHERE id=? LIMIT 1', array((int)$id));
+    return $r ? plm_v85_naming_format_model($r) : null;
+}
+
+
+function plm_v85_product_category_from_naming($category='', $item=''){
+    $raw = (string)$category.' '.(string)$item;
+    if(strpos($raw,'导轨')!==false) return '导轨灯';
+    if(strpos($raw,'嵌入')!==false || strpos($raw,'无边')!==false || strpos($raw,'有边')!==false) return '嵌入式';
+    if(strpos($raw,'明装')!==false) return '明装灯';
+    if(strpos($raw,'磁吸')!==false) return '磁吸灯';
+    if(strpos($raw,'吊')!==false) return '吊线灯';
+    if(strpos($raw,'线性')!==false || strpos($raw,'K条')!==false || strpos($raw,'条')!==false) return '线性灯';
+    if(strpos($raw,'户外')!==false) return '户外灯';
+    $cat = trim(str_replace(array('灯具型号命名','型号命名'), '', (string)$category));
+    return $cat !== '' ? $cat : '';
+}
+function plm_v85_naming_size_from_model_no($modelNo='', $fallback=''): string {
+    // 命名系统允许手动输入 D1.20001 这类型号。
+    // 旧 naming_models.size_code 可能仍是默认 075，所以这里优先从型号点号后面取前 3 位尺寸。
+    $modelNo = strtoupper(trim((string)$modelNo));
+    $fallback = preg_replace('/\D+/', '', (string)$fallback);
+    if(preg_match('/^[A-Z0-9]+\.(\d{3})\d*$/', $modelNo, $m)){
+        return $m[1];
+    }
+    if($fallback !== '') return str_pad(substr($fallback,0,3),3,'0',STR_PAD_LEFT);
+    return '';
+}
+
+function plm_v85_apply_naming_size_to_model_data(array &$data, array $nm): void {
+    $pc = plm_v85_product_category_from_naming($nm['category'] ?? '', $nm['item_name'] ?? '');
+    $size = plm_v85_naming_size_from_model_no($nm['model_no'] ?? '', $nm['size_code'] ?? '');
+    $dtRaw = trim((string)($nm['dimension_type'] ?? ''));
+    $dt = strtolower($dtRaw);
+    $opening = trim((string)($nm['dim_opening'] ?? ''));
+    $outer = trim((string)($nm['dim_outer_d'] ?? ''));
+    $len = trim((string)($nm['dim_length'] ?? ''));
+    $wid = trim((string)($nm['dim_width'] ?? ''));
+    $hei = trim((string)($nm['dim_height'] ?? ''));
+
+    // 命名系统有多版数据：
+    // 1) 新版：dimension_type = embedded_round / embedded_square，dim_outer_d 为圆形直径；
+    // 2) 旧版：圆形直径可能写在 dim_length，dim_width 为空；
+    // 3) 手工老数据：只有型号里的尺寸码，例如 D1.20001。
+    // 这里必须优先识别“圆形/方形”，不能只要 dim_length 有值就误判成方形。
+    $shapeText = $dtRaw.' '.(string)($nm['category'] ?? '').' '.(string)($nm['item_name'] ?? '').' '.(string)($nm['remark'] ?? '').' '.(string)($nm['product_name'] ?? '');
+    $explicitRound = in_array($dt, array('embedded_round','round','circle','circular'), true) || strpos($shapeText, '圆') !== false;
+    $explicitSquare = in_array($dt, array('embedded_square','square','box','rect','rectangle'), true) || strpos($shapeText, '方') !== false || strpos($shapeText, '线性') !== false;
+
+    if(strpos($pc, '嵌入') !== false){
+        // 方形一定要有明确方形标记，或至少有宽度字段；只有 length 没有 width 时，按旧版圆形直径处理。
+        $isSquare = $explicitSquare && !$explicitRound;
+        if(!$explicitRound && !$isSquare && $wid !== '') $isSquare = true;
+        $isRound = !$isSquare;
+
+        if($isRound){
+            $data['product_category'] = '嵌入式圆形';
+            $data['opening_size'] = $opening !== '' ? $opening : $size;
+            $data['diameter'] = $outer !== '' ? $outer : $len; // 兼容旧命名数据把圆形直径写在长
+            $data['height_mm'] = $hei;
+            $data['length_mm'] = '';
+            $data['width_mm'] = '';
+        }else{
+            $data['product_category'] = '嵌入式方形';
+            $data['opening_size'] = $opening !== '' ? $opening : $size;
+            $data['length_mm'] = $len;
+            $data['width_mm'] = $wid;
+            $data['height_mm'] = $hei;
+            $data['diameter'] = '';
+        }
+        return;
+    }
+
+    if(strpos($pc, '导轨') !== false || strpos($pc, '筒') !== false || strpos($pc, '射') !== false){
+        $data['product_category'] = $pc !== '' ? $pc : '导轨灯';
+        $data['diameter'] = $outer !== '' ? $outer : ($size !== '' ? $size : $len);
+        $data['height_mm'] = $hei;
+        $data['opening_size'] = '';
+        $data['length_mm'] = '';
+        $data['width_mm'] = '';
+        return;
+    }
+
+    if($pc !== '') $data['product_category'] = $pc;
+    // 其它结构只联动长宽高，不再把尺寸码乱塞到宽度里。
+    if($len !== '') $data['length_mm'] = $len;
+    if($wid !== '') $data['width_mm'] = $wid;
+    if($hei !== '') $data['height_mm'] = $hei;
+}
+
+
+/* ===== ARTDON_PLM_V8_5_104_NAMING_SYNC_START ===== */
+function plm_v85_naming_snapshot(array $nm){
+    $keys=array('id','model_no','product_name','customer','category','item_name','size_code','dimension_type','dim_opening','dim_outer_d','dim_length','dim_width','dim_height','image_path','drawing_path','remark','updated_at');
+    $out=array(); foreach($keys as $k){ $out[$k]=isset($nm[$k])?(string)$nm[$k]:''; }
+    $tmp=array(); plm_v85_apply_naming_size_to_model_data($tmp,$nm);
+    $out['product_category']=$tmp['product_category']??'';
+    $out['opening_size']=$tmp['opening_size']??'';
+    $out['diameter']=$tmp['diameter']??'';
+    $out['length_mm']=$tmp['length_mm']??'';
+    $out['width_mm']=$tmp['width_mm']??'';
+    $out['height_mm']=$tmp['height_mm']??'';
+    return $out;
+}
+function plm_v85_naming_hash(array $snap){ return md5(json_encode($snap,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)); }
+function plm_v85_model_naming_snapshot(array $m){
+    $raw=trim((string)($m['naming_snapshot_json']??''));
+    $j=$raw!==''?json_decode($raw,true):null;
+    if(is_array($j)) return plm_v85_naming_snapshot($j);
+    return array(
+        'id'=>(string)($m['naming_id']??0),'model_no'=>(string)($m['naming_model_no']??($m['model']??'')),'product_name'=>(string)($m['naming_product_name']??($m['name']??'')),'customer'=>'','category'=>(string)($m['naming_category']??''),'item_name'=>(string)($m['naming_item_name']??''),'image_path'=>(string)($m['naming_image_path']??''),'drawing_path'=>(string)($m['naming_drawing_path']??''),'remark'=>(string)($m['naming_remark']??''),'product_category'=>(string)($m['product_category']??''),'opening_size'=>(string)($m['opening_size']??''),'diameter'=>(string)($m['diameter']??''),'length_mm'=>(string)($m['length_mm']??''),'width_mm'=>(string)($m['width_mm']??''),'height_mm'=>(string)($m['height_mm']??''),'updated_at'=>(string)($m['naming_source_updated_at']??'')
+    );
+}
+function plm_v85_naming_diffs(array $old,array $new){
+    $map=array('model_no'=>'型号','product_name'=>'产品名称','category'=>'产品大类','item_name'=>'产品类型','product_category'=>'PLM类别','opening_size'=>'开孔','diameter'=>'直径','length_mm'=>'长','width_mm'=>'宽','height_mm'=>'高','image_path'=>'产品图','drawing_path'=>'尺寸图','remark'=>'命名备注');
+    $out=array(); foreach($map as $k=>$label){ $a=trim((string)($old[$k]??'')); $b=trim((string)($new[$k]??'')); if($a!==$b) $out[]=array('field'=>$k,'label'=>$label,'old'=>$a,'new'=>$b); }
+    return $out;
+}
+function plm_v85_naming_sync_status_for_model(array $m){
+    $nid=(int)($m['naming_id']??0); if($nid<=0) return array('linked'=>false,'has_update'=>false,'diffs'=>array(),'message'=>'未绑定命名型号');
+    $nm=plm_v85_naming_model_by_id($nid);
+    if(!$nm) return array('linked'=>true,'missing'=>true,'has_update'=>true,'diffs'=>array(),'message'=>'命名型号已不存在或无法读取');
+    $old=plm_v85_model_naming_snapshot($m); $new=plm_v85_naming_snapshot($nm); $diffs=plm_v85_naming_diffs($old,$new);
+    $oldHash=trim((string)($m['naming_sync_hash']??'')); if($oldHash==='') $oldHash=plm_v85_naming_hash($old);
+    $newHash=plm_v85_naming_hash($new);
+    return array('linked'=>true,'missing'=>false,'has_update'=>($oldHash!==$newHash || count($diffs)>0),'diffs'=>$diffs,'current'=>$new,'snapshot'=>$old,'hash'=>$newHash,'source_updated_at'=>$new['updated_at']??'','synced_at'=>$m['naming_synced_at']??'','message'=>count($diffs)?('命名资料有 '.count($diffs).' 项变化'):'命名基础资料已同步');
+}
+function plm_v85_attach_naming_sync_status(array $models){
+    foreach($models as &$m){ if((int)($m['naming_id']??0)>0) $m['naming_sync_status']=plm_v85_naming_sync_status_for_model($m); }
+    unset($m); return $models;
+}
+function plm_v85_apply_naming_basic_to_model($modelId){
+    $modelId=(int)$modelId; if($modelId<=0) return array('ok'=>false,'error'=>'缺少样品ID');
+    $m=plm_v85_row('SELECT * FROM plm_models WHERE id=? LIMIT 1',array($modelId)); if(!$m) return array('ok'=>false,'error'=>'样品不存在');
+    $nid=(int)($m['naming_id']??0); if($nid<=0) return array('ok'=>false,'error'=>'当前样品未绑定命名型号');
+    $nm=plm_v85_naming_model_by_id($nid); if(!$nm) return array('ok'=>false,'error'=>'命名型号不存在或命名系统未初始化');
+    $status=plm_v85_naming_sync_status_for_model($m); $snap=plm_v85_naming_snapshot($nm);
+    $sampleName=trim((string)($nm['product_name']??'')); if($sampleName==='') $sampleName=trim((string)($m['name']??'')) ?: (string)$nm['model_no'];
+    $data=array('model'=>$nm['model_no'],'name'=>$sampleName,'naming_id'=>$nm['id'],'naming_model_no'=>$nm['model_no'],'naming_category'=>$nm['category'],'naming_item_name'=>$nm['item_name'],'naming_product_name'=>$nm['product_name'],'naming_image_path'=>$nm['image_path'],'naming_drawing_path'=>$nm['drawing_path'],'naming_remark'=>$nm['remark'],'naming_linked_at'=>plm_v85_now(),'naming_snapshot_json'=>json_encode($snap,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'naming_sync_hash'=>plm_v85_naming_hash($snap),'naming_synced_at'=>plm_v85_now(),'naming_source_updated_at'=>$snap['updated_at']??null,'updated_at'=>plm_v85_now());
+    plm_v85_apply_naming_size_to_model_data($data,$nm);
+    plm_v85_dyn_update('plm_models',$data,'id=?',array($modelId));
+    $pid=(int)($m['project_id']??0);
+    if($pid>0){
+        $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=? LIMIT 1',array($pid));
+        $pd=array('model'=>$nm['model_no'],'naming_id'=>$nm['id'],'naming_model_no'=>$nm['model_no'],'naming_category'=>$nm['category'],'naming_item_name'=>$nm['item_name'],'naming_snapshot_json'=>json_encode($snap,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'naming_sync_hash'=>plm_v85_naming_hash($snap),'naming_synced_at'=>plm_v85_now(),'naming_source_updated_at'=>$snap['updated_at']??null,'updated_at'=>plm_v85_now());
+        if(trim((string)($p['product_type']??''))==='' || trim((string)($p['product_type']??''))===trim((string)($m['product_category']??''))) $pd['product_type']=trim(($nm['category']?:'').' '.($nm['item_name']?:''));
+        if(trim((string)($p['image_path']??''))==='' || trim((string)($p['image_path']??''))===trim((string)($m['naming_image_path']??''))) $pd['image_path']=$nm['image_path'];
+        plm_v85_dyn_update('plm_projects',$pd,'id=?',array($pid));
+        plm_v85_log($pid,'model',$modelId,'同步命名基础资料','命名型号：'.$nm['model_no'].'；变化 '.count($status['diffs']??array()).' 项。只更新型号/尺寸/图片/分类，不改流程、测试、文件、派工。');
+    }
+    return array('ok'=>true,'model'=>$nm,'diffs'=>$status['diffs']??array(),'message'=>'已同步命名基础资料；PLM 测试、流程、问题、文件和派工没有改动');
+}
+/* ===== ARTDON_PLM_V8_5_104_NAMING_SYNC_END ===== */
+
+
+/* ===== ARTDON_PLM_V8_5_71_BACKUP_RESTORE_START ===== */
+function plm_v85_backup_table_allow_v871(){
+    return array('plm_projects','plm_models','plm_flow_steps','plm_tests','plm_test_runs','plm_test_templates','plm_files','plm_issues','plm_logs','plm_permissions','plm_notifications','plm_dispatch_links');
+}
+function plm_v85_backup_tables_v871(){
+    $out=array();
+    foreach(plm_v85_backup_table_allow_v871() as $t){ if(plm_v85_table_exists($t)) $out[]=$t; }
+    return $out;
+}
+function plm_v85_backup_dir_v871(){
+    $dir=__DIR__.'/uploads/plm_backups';
+    if(!is_dir($dir)) @mkdir($dir,0775,true);
+    if(!is_dir($dir) || !is_writable($dir)) throw new RuntimeException('备份目录不可写：uploads/plm_backups');
+    return $dir;
+}
+function plm_v85_backup_url_v871($file){
+    return 'uploads/plm_backups/'.basename($file);
+}
+function plm_v85_backup_safe_rel_v871($path){
+    $p=str_replace(array('\\',"\0"),array('/',''),(string)$path);
+    $p=preg_replace('#/+#','/',$p);
+    $p=ltrim($p,'/');
+    if($p==='' || strpos($p,'..')!==false) return '';
+    if(strpos($p,'uploads/plm/')!==0) return '';
+    return $p;
+}
+function plm_v85_create_backup_file_v871($tag='manual'){
+    plm_v85_schema();
+    $tables=array(); $counts=array();
+    foreach(plm_v85_backup_tables_v871() as $t){
+        $cols=plm_v85_cols($t);
+        $order=in_array('id',$cols,true)?' ORDER BY id ASC':'';
+        $rows=plm_v85_rows('SELECT * FROM `'.$t.'`'.$order);
+        $tables[$t]=array('columns'=>$cols,'rows'=>$rows);
+        $counts[$t]=count($rows);
+    }
+    $payload=array(
+        'type'=>'artdon_plm_backup',
+        'version'=>'V8.5.72',
+        'tag'=>(string)$tag,
+        'created_at'=>plm_v85_now(),
+        'created_by'=>plm_v85_current_user_info(),
+        'site'=>array('host'=>$_SERVER['HTTP_HOST']??'', 'uri'=>$_SERVER['REQUEST_URI']??''),
+        'tables'=>$tables,
+        'counts'=>$counts,
+        'note'=>'PLM 数据备份。ZIP 备份在服务器支持 ZipArchive 时会同时包含 uploads/plm/ 下的文件实体；JSON 备份只包含数据记录和文件路径。'
+    );
+    $dir=plm_v85_backup_dir_v871();
+    $stamp=date('Ymd_His');
+    $base='artdon_plm_backup_'.$stamp.'_'.preg_replace('/[^A-Za-z0-9_\-]+/','_', (string)$tag);
+    $json=json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
+    if($json===false) throw new RuntimeException('备份 JSON 生成失败');
+    $filesAdded=0; $withFiles=false;
+    if(class_exists('ZipArchive')){
+        $zipPath=$dir.'/'.$base.'.zip';
+        $zip=new ZipArchive();
+        if($zip->open($zipPath, ZipArchive::CREATE|ZipArchive::OVERWRITE)===true){
+            $zip->addFromString('plm_backup.json',$json);
+            if(plm_v85_table_exists('plm_files')){
+                $fileRows=plm_v85_rows('SELECT file_path, original_name FROM plm_files WHERE file_path<>"" ORDER BY id ASC');
+                foreach($fileRows as $fr){
+                    $rel=plm_v85_backup_safe_rel_v871($fr['file_path']??'');
+                    if($rel==='') continue;
+                    $full=__DIR__.'/'.$rel;
+                    if(is_file($full)){
+                        $zip->addFile($full,'files/'.$rel);
+                        $filesAdded++;
+                    }
+                }
+            }
+            $zip->close();
+            if(is_file($zipPath)){
+                $withFiles=true;
+                return array('name'=>basename($zipPath),'path'=>$zipPath,'url'=>plm_v85_backup_url_v871($zipPath),'format'=>'zip','with_files'=>$withFiles,'files_count'=>$filesAdded,'counts'=>$counts,'created_at'=>$payload['created_at']);
+            }
+        }
+    }
+    $jsonPath=$dir.'/'.$base.'.json';
+    if(file_put_contents($jsonPath,$json)===false) throw new RuntimeException('写入备份文件失败');
+    return array('name'=>basename($jsonPath),'path'=>$jsonPath,'url'=>plm_v85_backup_url_v871($jsonPath),'format'=>'json','with_files'=>false,'files_count'=>0,'counts'=>$counts,'created_at'=>$payload['created_at']);
+}
+function plm_v85_restore_payload_v871($payload){
+    if(!is_array($payload) || ($payload['type']??'')!=='artdon_plm_backup') throw new RuntimeException('备份文件格式不正确，不是 Artdon PLM 备份。');
+    $tables=$payload['tables']??array();
+    if(!is_array($tables) || !$tables) throw new RuntimeException('备份文件里没有表数据。');
+    plm_v85_schema();
+    $pdo=plm_v85_pdo();
+    $restored=array();
+    try{
+        $pdo->beginTransaction();
+        try{ $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); }catch(Throwable $e){}
+        foreach(plm_v85_backup_table_allow_v871() as $t){
+            if(!plm_v85_table_exists($t) || !array_key_exists($t,$tables)) continue;
+            $block=$tables[$t];
+            $rows=is_array($block) && array_key_exists('rows',$block) ? $block['rows'] : $block;
+            if(!is_array($rows)) $rows=array();
+            $pdo->exec('DELETE FROM `'.$t.'`');
+            $colsNow=plm_v85_cols($t,true);
+            $n=0;
+            foreach($rows as $row){
+                if(!is_array($row)) continue;
+                $cols=array_values(array_filter(array_keys($row), function($c) use($colsNow){ return in_array($c,$colsNow,true); }));
+                if(!$cols) continue;
+                $sql='INSERT INTO `'.$t.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($cols),'?')).')';
+                $st=$pdo->prepare($sql);
+                $vals=array(); foreach($cols as $c){ $vals[]=$row[$c]; }
+                $st->execute($vals); $n++;
+            }
+            $restored[$t]=$n;
+        }
+        try{ $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); }catch(Throwable $e){}
+        $pdo->commit();
+    }catch(Throwable $e){
+        if($pdo->inTransaction()) $pdo->rollBack();
+        try{ $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); }catch(Throwable $x){}
+        throw $e;
+    }
+    return $restored;
+}
+function plm_v85_restore_backup_file_v871($tmp,$original){
+    if(!is_uploaded_file($tmp) && !is_file($tmp)) throw new RuntimeException('没有收到备份文件。');
+    $before=plm_v85_create_backup_file_v871('before_restore');
+    $name=(string)$original; $lower=strtolower($name); $json=''; $filesRestored=0;
+    if(substr($lower,-4)==='.zip'){
+        if(!class_exists('ZipArchive')) throw new RuntimeException('服务器没有启用 ZipArchive，无法恢复 ZIP 备份；请上传 JSON 备份，或先安装 PHP zip 扩展。');
+        $zip=new ZipArchive();
+        if($zip->open($tmp)!==true) throw new RuntimeException('ZIP 备份无法打开。');
+        $json=$zip->getFromName('plm_backup.json');
+        if($json===false){ $zip->close(); throw new RuntimeException('ZIP 里没有 plm_backup.json。'); }
+        for($i=0;$i<$zip->numFiles;$i++){
+            $stat=$zip->statIndex($i); $entry=$stat['name']??'';
+            if(strpos($entry,'files/uploads/plm/')!==0 || substr($entry,-1)==='/') continue;
+            $rel=substr($entry,6); // strip files/
+            $rel=plm_v85_backup_safe_rel_v871($rel);
+            if($rel==='') continue;
+            $target=__DIR__.'/'.$rel;
+            $dir=dirname($target); if(!is_dir($dir)) @mkdir($dir,0775,true);
+            $content=$zip->getFromIndex($i);
+            if($content!==false && file_put_contents($target,$content)!==false) $filesRestored++;
+        }
+        $zip->close();
+    }else{
+        $json=file_get_contents($tmp);
+    }
+    $payload=json_decode((string)$json,true);
+    if(!is_array($payload)) throw new RuntimeException('备份 JSON 解析失败。');
+    $restored=plm_v85_restore_payload_v871($payload);
+    return array('restored'=>$restored,'before_backup'=>$before,'files_restored'=>$filesRestored,'source_version'=>$payload['version']??'', 'source_created_at'=>$payload['created_at']??'');
+}
+
+function plm_v85_backup_file_by_name_v872($name){
+    $base=basename((string)$name);
+    if(!preg_match('/^artdon_plm_backup_[A-Za-z0-9_\-]+\.(zip|json)$/i',$base)) throw new RuntimeException('备份文件名不合法。');
+    $dir=plm_v85_backup_dir_v871();
+    $path=$dir.'/'.$base;
+    if(!is_file($path)) throw new RuntimeException('备份文件不存在。');
+    $real=realpath($path); $realDir=realpath($dir);
+    if(!$real || !$realDir || strpos($real,$realDir.DIRECTORY_SEPARATOR)!==0) throw new RuntimeException('备份文件路径不合法。');
+    return $real;
+}
+function plm_v85_backup_meta_from_json_v872($json){
+    $p=json_decode((string)$json,true);
+    if(!is_array($p)) return array();
+    $counts=is_array($p['counts']??null)?$p['counts']:array();
+    return array(
+        'version'=>(string)($p['version']??''),
+        'tag'=>(string)($p['tag']??''),
+        'created_at'=>(string)($p['created_at']??''),
+        'counts'=>$counts,
+        'total_rows'=>array_sum(array_map('intval',$counts))
+    );
+}
+function plm_v85_backup_read_meta_v872($file,$format){
+    try{
+        if($format==='json' && filesize($file) < 50*1024*1024){
+            return plm_v85_backup_meta_from_json_v872(file_get_contents($file));
+        }
+        if($format==='zip' && class_exists('ZipArchive')){
+            $zip=new ZipArchive();
+            if($zip->open($file)===true){
+                $json=$zip->getFromName('plm_backup.json');
+                $zip->close();
+                if($json!==false) return plm_v85_backup_meta_from_json_v872($json);
+            }
+        }
+    }catch(Throwable $e){}
+    return array();
+}
+function plm_v85_backup_list_v872(){
+    $dir=plm_v85_backup_dir_v871();
+    $files=array_merge(glob($dir.'/artdon_plm_backup_*.zip')?:array(), glob($dir.'/artdon_plm_backup_*.json')?:array());
+    usort($files,function($a,$b){ return (filemtime($b)?:0) <=> (filemtime($a)?:0); });
+    $out=array();
+    foreach($files as $file){
+        if(!is_file($file)) continue;
+        $name=basename($file); $format=strtolower(pathinfo($name,PATHINFO_EXTENSION));
+        if(!in_array($format,array('zip','json'),true)) continue;
+        $meta=plm_v85_backup_read_meta_v872($file,$format);
+        $created=$meta['created_at']??'';
+        if($created==='') $created=date('Y-m-d H:i:s', filemtime($file)?:time());
+        $out[]=array(
+            'name'=>$name,
+            'url'=>plm_v85_backup_url_v871($file),
+            'format'=>$format,
+            'size'=>filesize($file)?:0,
+            'mtime'=>date('Y-m-d H:i:s', filemtime($file)?:time()),
+            'created_at'=>$created,
+            'version'=>(string)($meta['version']??''),
+            'tag'=>(string)($meta['tag']??''),
+            'total_rows'=>(int)($meta['total_rows']??0),
+            'counts'=>is_array($meta['counts']??null)?$meta['counts']:array(),
+            'is_before_restore'=>strpos($name,'before_restore')!==false
+        );
+    }
+    return $out;
+}
+function plm_v85_delete_backup_v872($name){
+    $path=plm_v85_backup_file_by_name_v872($name);
+    if(!@unlink($path)) throw new RuntimeException('备份文件删除失败，请检查目录权限。');
+    return true;
+}
+function plm_v85_restore_server_backup_v872($name){
+    $path=plm_v85_backup_file_by_name_v872($name);
+    return plm_v85_restore_backup_file_v871($path, basename($path));
+}
+/* ===== ARTDON_PLM_V8_5_77_TEST_RUN_HISTORY_START ===== */
+function plm_v85_test_run_vals_from_test_vals($test_id, $vals, $run_no=1, $created_by=''){
+    return array(
+        'test_id'=>(int)$test_id,
+        'project_id'=>(int)($vals['project_id']??0),
+        'model_id'=>(int)($vals['model_id']??0),
+        'run_no'=>(int)$run_no,
+        'run_title'=>plm_v85_s(($vals['title']??'').' 第'.(int)$run_no.'次',255),
+        'status'=>plm_v85_s($vals['status']??'待测',60),
+        'result'=>plm_v85_s($vals['result']??'',80),
+        'test_date'=>($vals['test_date']??'') ?: null,
+        'operator'=>plm_v85_s($vals['operator']??'',120),
+        'ambient_temp'=>($vals['ambient_temp']??'')===''?null:$vals['ambient_temp'],
+        'led_temp'=>($vals['led_temp']??'')===''?null:$vals['led_temp'],
+        'driver_temp'=>($vals['driver_temp']??'')===''?null:$vals['driver_temp'],
+        'shell_temp'=>($vals['shell_temp']??'')===''?null:$vals['shell_temp'],
+        'max_temp'=>($vals['max_temp']??'')===''?null:$vals['max_temp'],
+        'sphere_lumen'=>plm_v85_s($vals['sphere_lumen']??'',80),
+        'sphere_power'=>plm_v85_s($vals['sphere_power']??'',80),
+        'sphere_efficiency'=>plm_v85_s($vals['sphere_efficiency']??'',80),
+        'cct'=>plm_v85_s($vals['cct']??'',80),
+        'cri'=>plm_v85_s($vals['cri']??'',80),
+        'ies_angle'=>plm_v85_s($vals['ies_angle']??'',80),
+        'ies_lumen'=>plm_v85_s($vals['ies_lumen']??'',80),
+        'test_standard'=>plm_v85_s($vals['test_standard']??'',10000),
+        'test_data'=>plm_v85_s($vals['test_data']??'',10000),
+        'test_conclusion'=>plm_v85_s($vals['test_conclusion']??'',10000),
+        'retest_result'=>plm_v85_s($vals['retest_result']??'',80),
+        'affect_sample'=>(int)($vals['affect_sample']??0),
+        'template_key'=>plm_v85_s($vals['template_key']??'',120),
+        'template_name'=>plm_v85_s($vals['template_name']??'',160),
+        'template_fields_json'=>is_array($vals['template_fields_json']??null)?json_encode($vals['template_fields_json'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):plm_v85_s($vals['template_fields_json']??'',20000),
+        'note'=>plm_v85_s($vals['note']??'',10000),
+        'created_by_name'=>plm_v85_s($created_by,120),
+        'updated_at'=>plm_v85_now()
+    );
+}
+function plm_v85_ensure_initial_test_run($test_id){
+    $test_id=(int)$test_id;
+    if(!$test_id || !plm_v85_table_exists('plm_test_runs')) return 0;
+    $exists=plm_v85_row('SELECT id FROM plm_test_runs WHERE test_id=? LIMIT 1',array($test_id));
+    if($exists) return (int)$exists['id'];
+    $t=plm_v85_row('SELECT * FROM plm_tests WHERE id=?',array($test_id));
+    if(!$t) return 0;
+    $me=plm_v85_current_user_info();
+    $vals=plm_v85_test_run_vals_from_test_vals($test_id,$t,1,(string)($me['name']??''));
+    $vals['created_at']=$t['created_at']??plm_v85_now();
+    $id=plm_v85_dyn_insert('plm_test_runs',$vals);
+    return (int)$id;
+}
+function plm_v85_next_test_run_no($test_id){
+    $r=plm_v85_row('SELECT MAX(run_no) n FROM plm_test_runs WHERE test_id=?',array((int)$test_id));
+    return max(1,(int)($r['n']??0)+1);
+}
+/* ===== ARTDON_PLM_V8_5_77_TEST_RUN_HISTORY_END ===== */
+
+/* ===== ARTDON_PLM_V8_5_93_DISPATCH_AUTO_BACKWRITE_START ===== */
+function plm_v85_dispatch_link_done_expr(){
+    return "COALESCE(status,'') IN ('done','已完成','完成') OR COALESCE(task_status,'')='done' OR COALESCE(progress,0)>=100 OR COALESCE(is_done,0)=1";
+}
+function plm_v85_sync_step_dispatch_completion($stepId,$reason=''){
+    $stepId=(int)$stepId;
+    $out=array('total'=>0,'done'=>0,'label'=>'');
+    if($stepId<=0 || !plm_v85_table_exists('plm_flow_steps') || !plm_v85_table_exists('plm_dispatch_links')) return $out;
+    try{
+        $expr=plm_v85_dispatch_link_done_expr();
+        $cnt=plm_v85_row("SELECT COUNT(*) c, SUM(CASE WHEN {$expr} THEN 1 ELSE 0 END) d FROM plm_dispatch_links WHERE step_id=? AND COALESCE(task_id,0)>0",array($stepId));
+        $total=(int)($cnt['c']??0); $done=(int)($cnt['d']??0);
+        $label=$total>0?($done.'/'.$total):'';
+        $out=array('total'=>$total,'done'=>$done,'label'=>$label);
+        $s=plm_v85_row('SELECT * FROM plm_flow_steps WHERE id=?',array($stepId));
+        if(!$s) return $out;
+        $note=$label?('派工自动同步：'.$label.' 已完成'.($reason?('；来源：'.$reason):'')):'';
+        $vals=array('dispatch_status'=>$label,'dispatch_note'=>$note,'updated_at'=>plm_v85_now());
+        $oldStatus=(string)($s['status']??'');
+        if($total>0 && $done>=$total){
+            if($oldStatus!=='已完成'){
+                $vals['status']='已完成';
+                $vals['done_at']=($s['done_at']??'')?:plm_v85_now();
+                if(plm_v85_hascol('plm_flow_steps','actual_start') && empty($s['actual_start'])) $vals['actual_start']=plm_v85_now();
+                plm_v85_log((int)($s['project_id']??0),'step',$stepId,'派工完成自动反写','步骤状态：'.$oldStatus.' → 已完成；派工进度：'.$label);
+            }
+        }else{
+            $oldNote=(string)($s['dispatch_note']??'');
+            if($oldStatus==='已完成' && strpos($oldNote,'派工')!==false && strpos($oldNote,'自动')!==false){
+                $vals['status']='进行中';
+                $vals['done_at']=null;
+                plm_v85_log((int)($s['project_id']??0),'step',$stepId,'派工取消完成自动反写','步骤状态：已完成 → 进行中；派工进度：'.$label);
+            }
+        }
+        plm_v85_dyn_update('plm_flow_steps',$vals,'id=?',array($stepId));
+    }catch(Throwable $e){}
+    return $out;
+}
+function plm_v85_sync_flow_dispatch_links(){
+    try{
+        if(!plm_v85_table_exists('plm_dispatch_links') || !plm_v85_table_exists('dispatch_tasks')) return;
+        $links=plm_v85_rows("SELECT * FROM plm_dispatch_links WHERE COALESCE(task_id,0)>0 AND COALESCE(step_id,0)>0 ORDER BY id DESC LIMIT 800");
+        $stepIds=array();
+        foreach($links as $l){
+            $tid=(int)($l['task_id']??0); if($tid<=0) continue;
+            $t=plm_v85_row('SELECT * FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+            if(!$t) continue;
+            $isDone=((string)($t['status']??'')==='done')?1:0;
+            $progress=$isDone?100:max(0,min(100,(int)($t['progress']??0)));
+            $assignee=(int)($t['assigned_to']??0);
+            $assigneeName='';
+            try{
+                $u=plm_v85_row('SELECT name,username FROM dispatch_users WHERE id=? LIMIT 1',array($assignee));
+                if($u) $assigneeName=(string)(($u['name']??'')?:($u['username']??''));
+            }catch(Throwable $e){}
+            $vals=array(
+                'task_no'=>(string)($t['task_no']??($l['task_no']??'')),
+                'title'=>(string)($t['title']??($l['title']??'')),
+                'task_title'=>(string)($t['title']??($l['task_title']??'')),
+                'status'=>(string)($t['status']??($l['status']??'')),
+                'task_status'=>(string)($t['status']??($l['task_status']??'')),
+                'status_label'=>plm_v85_dispatch_status_label((string)($t['status']??'')),
+                'progress'=>$progress,
+                'is_done'=>$isDone,
+                'assignee_id'=>$assignee,
+                'assignee_name'=>$assigneeName,
+                'assigned_to'=>$assignee,
+                'assigned_to_name'=>$assigneeName,
+                'due_at'=>($t['due_at']??null)?:null,
+                'task_updated_at'=>($t['updated_at']??null)?:plm_v85_now(),
+                'completed_at'=>$isDone?(($t['approved_at']??null)?:plm_v85_now()):null,
+                'updated_at'=>plm_v85_now()
+            );
+            plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$l['id']));
+            $stepIds[(int)$l['step_id']]=true;
+        }
+        foreach(array_keys($stepIds) as $sid) plm_v85_sync_step_dispatch_completion((int)$sid,'PLM载入同步');
+    }catch(Throwable $e){}
+}
+function plm_v85_dispatch_status_label($status){
+    $map=array('pending_accept'=>'待接收','accepted'=>'已接收','in_progress'=>'进行中','paused'=>'暂停','submitted'=>'待确认','returned'=>'退回','rejected'=>'驳回','done'=>'已完成','cancelled'=>'已取消');
+    return $map[$status]??$status;
+}
+/* ===== ARTDON_PLM_V8_5_93_DISPATCH_AUTO_BACKWRITE_END ===== */
+
+/* ===== ARTDON_PLM_V8_5_98_PROJECT_PAUSE_RESUME_START ===== */
+function plm_v85_json_arr($json){
+    $j=json_decode((string)$json,true);
+    return is_array($j)?$j:array();
+}
+function plm_v85_terminal_status($s,$kind=''){
+    $s=trim((string)$s);
+    if($s==='') return false;
+    $term=array('已完成','完成','通过','已通过','跳过','取消','已取消','done','cancelled','closed','已关闭','已解决');
+    if(in_array($s,$term,true)) return true;
+    if(preg_match('/已完成|完成|通过|已取消|取消/u',$s)) return true;
+    return false;
+}
+function plm_v85_paused_status($s){ return in_array(trim((string)$s),array('暂停','已暂停','paused'),true); }
+function plm_v85_resume_status($s,$fallback){
+    $s=trim((string)$s);
+    if($s==='' || plm_v85_paused_status($s)) return $fallback;
+    return $s;
+}
+function plm_v85_project_pause_execute($pid,$reason,$expected,$syncFlow=true,$syncDispatch=true,$syncTests=true){
+    $pid=(int)$pid;
+    if($pid<=0) return array('ok'=>false,'error'=>'缺少项目ID');
+    $pdo=plm_v85_pdo();
+    $project=plm_v85_row('SELECT * FROM plm_projects WHERE id=? LIMIT 1',array($pid));
+    if(!$project) return array('ok'=>false,'error'=>'项目不存在');
+    if(plm_v85_paused_status($project['status']??'')) return array('ok'=>true,'already'=>true,'message'=>'项目已经是暂停状态');
+    $me=plm_v85_current_user_info();
+    $now=plm_v85_now();
+    $snapshot=array(
+        'version'=>'V8.5.98',
+        'paused_at'=>$now,
+        'reason'=>$reason,
+        'expected_resume'=>$expected,
+        'sync_flow'=>$syncFlow?1:0,
+        'sync_dispatch'=>$syncDispatch?1:0,
+        'sync_tests'=>$syncTests?1:0,
+        'project'=>array('id'=>$pid,'status'=>(string)($project['status']??'开发中')),
+        'models'=>array(),
+        'steps'=>array(),
+        'tests'=>array(),
+        'dispatch_links'=>array(),
+        'dispatch_tasks'=>array()
+    );
+    $counts=array('models'=>0,'steps'=>0,'tests'=>0,'dispatch'=>0);
+    $started=false;
+    try{
+        if(!$pdo->inTransaction()){ $pdo->beginTransaction(); $started=true; }
+        $models=plm_v85_rows('SELECT id,status FROM plm_models WHERE project_id=? AND COALESCE(is_deleted,0)=0',array($pid));
+        foreach($models as $m){
+            $st=(string)($m['status']??'');
+            if(plm_v85_terminal_status($st,'model') || plm_v85_paused_status($st)) continue;
+            $snapshot['models'][]=array('id'=>(int)$m['id'],'status'=>$st);
+            plm_v85_dyn_update('plm_models',array('status'=>'暂停','updated_at'=>$now),'id=?',array((int)$m['id']));
+            $counts['models']++;
+        }
+        if($syncFlow){
+            $steps=plm_v85_rows('SELECT id,status FROM plm_flow_steps WHERE project_id=?',array($pid));
+            foreach($steps as $s){
+                $st=(string)($s['status']??'');
+                if(plm_v85_terminal_status($st,'step') || plm_v85_paused_status($st)) continue;
+                $snapshot['steps'][]=array('id'=>(int)$s['id'],'status'=>$st);
+                plm_v85_dyn_update('plm_flow_steps',array('status'=>'暂停','dispatch_note'=>'项目暂停：'.$reason,'updated_at'=>$now),'id=?',array((int)$s['id']));
+                $counts['steps']++;
+            }
+        }
+        if($syncTests){
+            $tests=plm_v85_rows('SELECT id,status,result FROM plm_tests WHERE project_id=?',array($pid));
+            foreach($tests as $t){
+                $st=(string)($t['status']??''); $res=(string)($t['result']??'');
+                if(plm_v85_terminal_status($st.' '.$res,'test') || plm_v85_paused_status($st)) continue;
+                $snapshot['tests'][]=array('id'=>(int)$t['id'],'status'=>$st,'result'=>$res);
+                plm_v85_dyn_update('plm_tests',array('status'=>'暂停','updated_at'=>$now),'id=?',array((int)$t['id']));
+                $counts['tests']++;
+            }
+        }
+        if($syncDispatch && plm_v85_table_exists('plm_dispatch_links')){
+            $links=plm_v85_rows('SELECT * FROM plm_dispatch_links WHERE project_id=? AND COALESCE(task_id,0)>0',array($pid));
+            foreach($links as $l){
+                $tid=(int)($l['task_id']??0); if($tid<=0) continue;
+                $task=null;
+                if(plm_v85_table_exists('dispatch_tasks')) $task=plm_v85_row('SELECT * FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+                $taskStatus=(string)(($task['status']??'')?:($l['status']??''));
+                if(in_array($taskStatus,array('done','cancelled','已完成','完成','已取消'),true) || plm_v85_paused_status($taskStatus)) continue;
+                $snapshot['dispatch_links'][]=array('id'=>(int)$l['id'],'task_id'=>$tid,'status'=>(string)($l['status']??''),'task_status'=>(string)($l['task_status']??''),'progress'=>(int)($l['progress']??0));
+                if($task) $snapshot['dispatch_tasks'][]=array('id'=>$tid,'status'=>(string)($task['status']??''),'progress'=>(int)($task['progress']??0));
+                plm_v85_dyn_update('plm_dispatch_links',array('status'=>'paused','task_status'=>'paused','status_label'=>'暂停','last_action'=>'project_pause','last_note'=>$reason,'last_event_at'=>$now,'updated_at'=>$now),'id=?',array((int)$l['id']));
+                if($task && plm_v85_table_exists('dispatch_tasks')){
+                    plm_v85_dyn_update('dispatch_tasks',array('status'=>'paused','pause_reason'=>'PLM项目暂停：'.$reason,'updated_at'=>$now),'id=?',array($tid));
+                    if(plm_v85_table_exists('dispatch_task_logs')){
+                        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action'=>'project_pause','old_status'=>(string)($task['status']??''),'new_status'=>'paused','note'=>'PLM项目暂停：'.$reason,'created_at'=>$now));
+                    }
+                    $counts['dispatch']++;
+                }
+            }
+        }
+        $expectedDate=$expected?:null;
+        plm_v85_dyn_update('plm_projects',array(
+            'status'=>'暂停',
+            'pause_reason'=>$reason,
+            'pause_expected_resume'=>$expectedDate,
+            'paused_at'=>$now,
+            'paused_by'=>(int)($me['id']??0),
+            'paused_by_name'=>(string)($me['name']??''),
+            'pause_snapshot_json'=>json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+            'updated_at'=>$now
+        ),'id=?',array($pid));
+        if($started) $pdo->commit();
+        plm_v85_log($pid,'project',$pid,'暂停整个项目','原因：'.$reason.'；预计恢复：'.($expected?:'-').'；流程 '.$counts['steps'].'；测试 '.$counts['tests'].'；派工 '.$counts['dispatch']);
+        return array('ok'=>true,'counts'=>$counts,'snapshot'=>$snapshot);
+    }catch(Throwable $e){
+        if($started && $pdo->inTransaction()) $pdo->rollBack();
+        return array('ok'=>false,'error'=>'暂停项目失败：'.$e->getMessage());
+    }
+}
+function plm_v85_project_resume_execute($pid,$reason){
+    $pid=(int)$pid;
+    if($pid<=0) return array('ok'=>false,'error'=>'缺少项目ID');
+    $pdo=plm_v85_pdo();
+    $project=plm_v85_row('SELECT * FROM plm_projects WHERE id=? LIMIT 1',array($pid));
+    if(!$project) return array('ok'=>false,'error'=>'项目不存在');
+    $snapshot=plm_v85_json_arr($project['pause_snapshot_json']??'');
+    $me=plm_v85_current_user_info();
+    $now=plm_v85_now();
+    $counts=array('models'=>0,'steps'=>0,'tests'=>0,'dispatch'=>0);
+    $restoreProjectStatus=plm_v85_resume_status($snapshot['project']['status']??($project['status']??''),'开发中');
+    $started=false;
+    try{
+        if(!$pdo->inTransaction()){ $pdo->beginTransaction(); $started=true; }
+        $models=is_array($snapshot['models']??null)?$snapshot['models']:array();
+        foreach($models as $m){
+            $id=(int)($m['id']??0); if(!$id) continue;
+            $old=plm_v85_row('SELECT status FROM plm_models WHERE id=? AND project_id=? LIMIT 1',array($id,$pid));
+            if(!$old || !plm_v85_paused_status($old['status']??'')) continue;
+            plm_v85_dyn_update('plm_models',array('status'=>plm_v85_resume_status($m['status']??'','开发中'),'updated_at'=>$now),'id=?',array($id));
+            $counts['models']++;
+        }
+        if(!$models){
+            $rows=plm_v85_rows('SELECT id FROM plm_models WHERE project_id=? AND status IN (\'暂停\',\'已暂停\')',array($pid));
+            foreach($rows as $r){ plm_v85_dyn_update('plm_models',array('status'=>'开发中','updated_at'=>$now),'id=?',array((int)$r['id'])); $counts['models']++; }
+        }
+        $steps=is_array($snapshot['steps']??null)?$snapshot['steps']:array();
+        foreach($steps as $s){
+            $id=(int)($s['id']??0); if(!$id) continue;
+            $old=plm_v85_row('SELECT status,actual_start FROM plm_flow_steps WHERE id=? AND project_id=? LIMIT 1',array($id,$pid));
+            if(!$old || !plm_v85_paused_status($old['status']??'')) continue;
+            $fallback=empty($old['actual_start'])?'未开始':'进行中';
+            plm_v85_dyn_update('plm_flow_steps',array('status'=>plm_v85_resume_status($s['status']??'',$fallback),'dispatch_note'=>'项目恢复：'.$reason,'updated_at'=>$now),'id=?',array($id));
+            $counts['steps']++;
+        }
+        if(!$steps){
+            $rows=plm_v85_rows('SELECT id,actual_start FROM plm_flow_steps WHERE project_id=? AND status IN (\'暂停\',\'已暂停\')',array($pid));
+            foreach($rows as $r){ $st=empty($r['actual_start'])?'未开始':'进行中'; plm_v85_dyn_update('plm_flow_steps',array('status'=>$st,'updated_at'=>$now),'id=?',array((int)$r['id'])); $counts['steps']++; }
+        }
+        $tests=is_array($snapshot['tests']??null)?$snapshot['tests']:array();
+        foreach($tests as $t){
+            $id=(int)($t['id']??0); if(!$id) continue;
+            $old=plm_v85_row('SELECT status FROM plm_tests WHERE id=? AND project_id=? LIMIT 1',array($id,$pid));
+            if(!$old || !plm_v85_paused_status($old['status']??'')) continue;
+            plm_v85_dyn_update('plm_tests',array('status'=>plm_v85_resume_status($t['status']??'','待测'),'updated_at'=>$now),'id=?',array($id));
+            $counts['tests']++;
+        }
+        if(!$tests){
+            $rows=plm_v85_rows('SELECT id FROM plm_tests WHERE project_id=? AND status IN (\'暂停\',\'已暂停\')',array($pid));
+            foreach($rows as $r){ plm_v85_dyn_update('plm_tests',array('status'=>'待测','updated_at'=>$now),'id=?',array((int)$r['id'])); $counts['tests']++; }
+        }
+        $links=is_array($snapshot['dispatch_links']??null)?$snapshot['dispatch_links']:array();
+        $taskMap=array();
+        foreach((is_array($snapshot['dispatch_tasks']??null)?$snapshot['dispatch_tasks']:array()) as $t){ $taskMap[(int)($t['id']??0)]=$t; }
+        foreach($links as $l){
+            $id=(int)($l['id']??0); $tid=(int)($l['task_id']??0); if(!$id) continue;
+            $link=plm_v85_row('SELECT status FROM plm_dispatch_links WHERE id=? AND project_id=? LIMIT 1',array($id,$pid));
+            if($link && plm_v85_paused_status($link['status']??'')){
+                $restore=plm_v85_resume_status($l['status']??($l['task_status']??''),'in_progress');
+                plm_v85_dyn_update('plm_dispatch_links',array('status'=>$restore,'task_status'=>$restore,'status_label'=>plm_v85_dispatch_status_label($restore),'last_action'=>'project_resume','last_note'=>$reason,'last_event_at'=>$now,'updated_at'=>$now),'id=?',array($id));
+            }
+            if($tid>0 && isset($taskMap[$tid]) && plm_v85_table_exists('dispatch_tasks')){
+                $task=plm_v85_row('SELECT status FROM dispatch_tasks WHERE id=? LIMIT 1',array($tid));
+                if($task && plm_v85_paused_status($task['status']??'')){
+                    $restore=plm_v85_resume_status($taskMap[$tid]['status']??'','in_progress');
+                    plm_v85_dyn_update('dispatch_tasks',array('status'=>$restore,'pause_reason'=>'','updated_at'=>$now),'id=?',array($tid));
+                    if(plm_v85_table_exists('dispatch_task_logs')){
+                        plm_v85_dyn_insert('dispatch_task_logs',array('task_id'=>$tid,'user_id'=>(int)($me['id']??0),'action'=>'project_resume','old_status'=>'paused','new_status'=>$restore,'note'=>'PLM项目恢复：'.$reason,'created_at'=>$now));
+                    }
+                    $counts['dispatch']++;
+                }
+            }
+        }
+        if(!$links && plm_v85_table_exists('plm_dispatch_links')){
+            $rows=plm_v85_rows('SELECT id,task_id FROM plm_dispatch_links WHERE project_id=? AND status IN (\'paused\',\'暂停\',\'已暂停\')',array($pid));
+            foreach($rows as $r){
+                plm_v85_dyn_update('plm_dispatch_links',array('status'=>'in_progress','task_status'=>'in_progress','status_label'=>'进行中','updated_at'=>$now),'id=?',array((int)$r['id']));
+                $tid=(int)($r['task_id']??0);
+                if($tid>0 && plm_v85_table_exists('dispatch_tasks')) plm_v85_dyn_update('dispatch_tasks',array('status'=>'in_progress','pause_reason'=>'','updated_at'=>$now),'id=?',array($tid));
+                $counts['dispatch']++;
+            }
+        }
+        plm_v85_dyn_update('plm_projects',array(
+            'status'=>$restoreProjectStatus,
+            'resume_reason'=>$reason,
+            'resumed_at'=>$now,
+            'resumed_by'=>(int)($me['id']??0),
+            'resumed_by_name'=>(string)($me['name']??''),
+            'updated_at'=>$now
+        ),'id=?',array($pid));
+        if($started) $pdo->commit();
+        plm_v85_log($pid,'project',$pid,'恢复整个项目','原因：'.$reason.'；状态恢复：'.$restoreProjectStatus.'；流程 '.$counts['steps'].'；测试 '.$counts['tests'].'；派工 '.$counts['dispatch']);
+        return array('ok'=>true,'counts'=>$counts,'status'=>$restoreProjectStatus);
+    }catch(Throwable $e){
+        if($started && $pdo->inTransaction()) $pdo->rollBack();
+        return array('ok'=>false,'error'=>'恢复项目失败：'.$e->getMessage());
+    }
+}
+/* ===== ARTDON_PLM_V8_5_98_PROJECT_PAUSE_RESUME_END ===== */
+
+
+/* ===== ARTDON_PLM_V8_5_103_NAMING_INBOX_SQL_FIX_START ===== */
+function plm_v85_naming_inbox_media_path($modelId,$kind='image',$fallback=''){
+    $modelId=(int)$modelId;
+    if($modelId<=0) return trim((string)$fallback);
+    $cats=$kind==='drawing'?array('尺寸图','结构图纸','加工资料'):array('样品图片','产品图片','项目图片');
+    try{
+        if(plm_v85_table_exists('plm_files')){
+            $marks=implode(',',array_fill(0,count($cats),'?'));
+            $params=array_merge(array($modelId),$cats);
+            $r=plm_v85_row("SELECT file_path FROM plm_files WHERE model_id=? AND category IN ($marks) ORDER BY created_at DESC,id DESC LIMIT 1",$params);
+            if($r && trim((string)($r['file_path']??''))!=='') return trim((string)$r['file_path']);
+        }
+    }catch(Throwable $e){}
+    return trim((string)$fallback);
+}
+function plm_v85_naming_inbox_submit_model($modelId){
+    $modelId=(int)$modelId;
+    if($modelId<=0) return array('ok'=>false,'error'=>'缺少样品ID');
+    $pdo=plm_v85_pdo();
+    $m=plm_v85_row('SELECT * FROM plm_models WHERE id=? AND COALESCE(is_deleted,0)=0 LIMIT 1',array($modelId));
+    if(!$m) return array('ok'=>false,'error'=>'样品不存在');
+    $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=? AND COALESCE(is_deleted,0)=0 LIMIT 1',array((int)($m['project_id']??0)));
+    if(!$p) return array('ok'=>false,'error'=>'所属项目不存在');
+    $me=plm_v85_current_user_info();
+    $user=trim((string)($me['name']??($me['username']??''))); if($user==='')$user='未识别账号';
+    $image=plm_v85_naming_inbox_media_path($modelId,'image',$m['naming_image_path']??'');
+    $drawing=plm_v85_naming_inbox_media_path($modelId,'drawing',$m['naming_drawing_path']??'');
+    $dims=array_filter(array(
+        '开孔'=>trim((string)($m['opening_size']??'')),
+        '直径'=>trim((string)($m['diameter']??'')),
+        '长'=>trim((string)($m['length_mm']??'')),
+        '宽'=>trim((string)($m['width_mm']??'')),
+        '高'=>trim((string)($m['height_mm']??''))
+    ),function($v){return $v!=='';});
+    $spec=array();
+    if(trim((string)($m['power']??''))!=='')$spec[]='功率：'.trim((string)$m['power']);
+    if(trim((string)($m['beam']??''))!=='')$spec[]='角度：'.trim((string)$m['beam']);
+    if(trim((string)($m['cct']??''))!=='')$spec[]='色温：'.trim((string)$m['cct']);
+    foreach($dims as $k=>$v)$spec[]=$k.'：'.$v;
+    $requirements=implode("\n",array_filter(array(
+        trim((string)($m['note']??'')),
+        trim((string)($m['change_reason']??'')),
+        implode('；',$spec)
+    ),function($v){return $v!=='';}));
+    $payload=array(
+        'source'=>'PLM样品','project_id'=>(int)($p['id']??0),'project_no'=>$p['project_no']??'','project_name'=>$p['name']??'',
+        'customer'=>$p['customer']??'','engineer'=>$p['engineer']??'','sample_id'=>$modelId,'sample_name'=>$m['name']??'',
+        'sample_no'=>$m['sample_no']??'','sample_version'=>$m['sample_version']??'V1','current_model'=>$m['model']??'',
+        'product_category'=>$m['product_category']??'','power'=>$m['power']??'','beam'=>$m['beam']??'','cct'=>$m['cct']??'',
+        'opening_size'=>$m['opening_size']??'','diameter'=>$m['diameter']??'','length_mm'=>$m['length_mm']??'',
+        'width_mm'=>$m['width_mm']??'','height_mm'=>$m['height_mm']??'','image_path'=>$image,'drawing_path'=>$drawing,
+        'plm_url'=>'plm.php?project_id='.(int)($p['id']??0).'&tab=models&model_id='.$modelId
+    );
+    $existing=plm_v85_row("SELECT * FROM naming_inbox WHERE source_type='plm_sample' AND source_id=? LIMIT 1",array((string)$modelId));
+    $status=($existing && (string)($existing['status']??'')==='已确认')?'已确认':'待处理';
+    $sql="INSERT INTO naming_inbox(source_type,source_table,source_id,customer_id,customer_name,sample_no,sample_model,product_name,category_hint,item_hint,requirements,note,image_path,drawing_path,payload_json,status,submitted_by,submitted_at,created_at,updated_at)
+          VALUES('plm_sample','plm_models',:source_id,0,:customer_name,:sample_no,:sample_model,:product_name,:category_hint,:item_hint,:requirements,:note,:image_path,:drawing_path,:payload_json,'待处理',:submitted_by,NOW(),NOW(),NOW())
+          ON DUPLICATE KEY UPDATE customer_name=VALUES(customer_name),sample_no=VALUES(sample_no),sample_model=VALUES(sample_model),product_name=VALUES(product_name),category_hint=VALUES(category_hint),item_hint=VALUES(item_hint),requirements=VALUES(requirements),note=VALUES(note),image_path=VALUES(image_path),drawing_path=VALUES(drawing_path),payload_json=VALUES(payload_json),status=IF(status='已确认',status,'待处理'),submitted_by=VALUES(submitted_by),submitted_at=NOW(),updated_at=NOW()";
+    $sampleNo=trim((string)($m['sample_no']??'')); if($sampleNo==='')$sampleNo='PLM-'.$modelId;
+    $sampleModel=trim((string)($m['model']??''));
+    $productName=trim((string)($m['name']??'')); if($productName==='')$productName=$sampleModel?:$sampleNo;
+    $note=implode("\n",array_filter(array(
+        '项目：'.trim((string)($p['project_no']??'')).' '.trim((string)($p['name']??'')),
+        trim((string)($m['bom_note']??''))!==''?'BOM备注：'.trim((string)$m['bom_note']):''
+    ),function($v){return trim($v)!=='';}));
+    $pdo->prepare($sql)->execute(array(
+        ':source_id'=>(string)$modelId,
+        ':customer_name'=>(string)($p['customer']??''),
+        ':sample_no'=>$sampleNo,
+        ':sample_model'=>$sampleModel,
+        ':product_name'=>$productName,
+        ':category_hint'=>(string)($m['product_category']??''),
+        ':item_hint'=>'',
+        ':requirements'=>$requirements,
+        ':note'=>$note,
+        ':image_path'=>$image,
+        ':drawing_path'=>$drawing,
+        ':payload_json'=>json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+        ':submitted_by'=>$user
+    ));
+    $box=plm_v85_row("SELECT * FROM naming_inbox WHERE source_type='plm_sample' AND source_id=? LIMIT 1",array((string)$modelId));
+    if(!$box) return array('ok'=>false,'error'=>'命名草稿创建失败');
+    plm_v85_dyn_update('plm_models',array(
+        'naming_inbox_id'=>(int)$box['id'],'naming_status'=>(string)($box['status']??$status),'naming_submitted_at'=>plm_v85_now(),
+        'naming_last_note'=>'','updated_at'=>plm_v85_now()
+    ),'id=?',array($modelId));
+    plm_v85_log((int)($p['id']??0),'model',$modelId,'提交命名草稿','命名收件箱 #'.(int)$box['id'].'；样品：'.$productName);
+    return array('ok'=>true,'inbox'=>$box,'inbox_id'=>(int)$box['id'],'status'=>(string)($box['status']??'待处理'));
+}
+/* ===== ARTDON_PLM_V8_5_103_NAMING_INBOX_SQL_FIX_END ===== */
+
+
+/* ===== ARTDON_PLM_V8_5_104_ONLINE_USERS_START ===== */
+function plm_v85_online_meta_v8104(){
+    $ip='';
+    foreach(array('HTTP_CF_CONNECTING_IP','HTTP_X_FORWARDED_FOR','REMOTE_ADDR') as $k){ if(!empty($_SERVER[$k])){ $ip=trim(explode(',',(string)$_SERVER[$k])[0]); break; } }
+    return array(
+        'ip'=>$ip,
+        'user_agent'=>substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500),
+        'page'=>substr((string)($_SERVER['REQUEST_URI']??''),0,500)
+    );
+}
+function plm_v85_online_touch(){
+    try{
+        if(!plm_v85_table_exists('plm_online_users')) return;
+        $u=plm_v85_current_user_info();
+        $meta=plm_v85_online_meta_v8104();
+        $sid=session_id();
+        if(!$sid) $sid=md5(($meta['ip']??'').($meta['user_agent']??'').(string)($u['id']??0).(string)($u['username']??''));
+        $now=plm_v85_now();
+        $sql="INSERT INTO plm_online_users(session_id,user_id,username,user_name,user_role,module,ip,user_agent,page,created_at,last_seen)
+              VALUES(?,?,?,?,?,'plm',?,?,?,?,?)
+              ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),username=VALUES(username),user_name=VALUES(user_name),user_role=VALUES(user_role),ip=VALUES(ip),user_agent=VALUES(user_agent),page=VALUES(page),last_seen=VALUES(last_seen)";
+        plm_v85_pdo()->prepare($sql)->execute(array(
+            (string)$sid,(int)($u['id']??0),(string)($u['username']??''),(string)(($u['name']??'')?:($u['username']??'')),(string)($u['role']??''),
+            (string)($meta['ip']??''),(string)($meta['user_agent']??''),(string)($meta['page']??''),$now,$now
+        ));
+        // 清理一天前的在线痕迹，避免表膨胀。
+        try{ plm_v85_pdo()->exec("DELETE FROM plm_online_users WHERE last_seen < DATE_SUB(NOW(), INTERVAL 1 DAY)"); }catch(Throwable $e){}
+    }catch(Throwable $e){}
+}
+function plm_v85_online_users($minutes=10){
+    try{
+        if(!plm_v85_table_exists('plm_online_users')) return array();
+        $minutes=(int)$minutes; if($minutes<2)$minutes=2; if($minutes>120)$minutes=120;
+        $rows=plm_v85_rows("SELECT user_id,username,user_name,user_role,module,ip,page,created_at,last_seen, TIMESTAMPDIFF(SECOND,last_seen,NOW()) AS idle_seconds FROM plm_online_users WHERE last_seen >= DATE_SUB(NOW(), INTERVAL {$minutes} MINUTE) ORDER BY last_seen DESC LIMIT 200");
+        foreach($rows as &$r){
+            $idle=(int)($r['idle_seconds']??0);
+            $r['idle_label']=$idle<60?($idle.'秒前'):(floor($idle/60).'分钟前');
+        }
+        unset($r);
+        return $rows;
+    }catch(Throwable $e){ return array(); }
+}
+/* ===== ARTDON_PLM_V8_5_104_ONLINE_USERS_END ===== */
+
+function plm_v85_handle_api(){
+    try{
+        plm_v85_schema();
+        $action = $_GET['action'] ?? $_POST['action'] ?? '';
+        $d = plm_v85_body();
+        if($action === 'bootstrap' || $action === ''){
+            plm_v85_online_touch();
+            plm_v85_sync_test_rectify_dispatch_links();
+            plm_v85_sync_flow_dispatch_links();
+            $projects = array_map('plm_v85_norm_project', plm_v85_rows('SELECT * FROM plm_projects WHERE COALESCE(is_deleted,0)=0 ORDER BY id DESC'));
+            $models = array_map('plm_v85_norm_model', plm_v85_rows('SELECT m.* FROM plm_models m INNER JOIN plm_projects p ON p.id=m.project_id AND COALESCE(p.is_deleted,0)=0 WHERE COALESCE(m.is_deleted,0)=0 ORDER BY m.project_id ASC, m.sort_order ASC, m.id ASC'));
+            $models = plm_v85_attach_naming_sync_status($models);
+            $tests = plm_v85_rows('SELECT * FROM plm_tests ORDER BY id DESC');
+            $test_runs = plm_v85_table_exists('plm_test_runs') ? plm_v85_rows('SELECT * FROM plm_test_runs ORDER BY test_id ASC, run_no ASC, id ASC') : array();
+            $test_templates = plm_v85_table_exists('plm_test_templates') ? plm_v85_rows('SELECT * FROM plm_test_templates ORDER BY is_public DESC, id DESC') : array();
+            $files = array_map('plm_v85_norm_file', plm_v85_rows('SELECT * FROM plm_files ORDER BY id DESC'));
+            $steps = plm_v85_rows('SELECT s.* FROM plm_flow_steps s INNER JOIN plm_projects p ON p.id=s.project_id AND COALESCE(p.is_deleted,0)=0 ORDER BY s.project_id ASC, s.model_id ASC, s.sort_order ASC, s.id ASC');
+            $logs = plm_v85_rows('SELECT * FROM plm_logs ORDER BY id DESC LIMIT 300');            $issues = plm_v85_table_exists('plm_issues') ? plm_v85_rows('SELECT * FROM plm_issues ORDER BY id DESC') : array();
+            $dispatch_links = plm_v85_table_exists('plm_dispatch_links') ? plm_v85_rows('SELECT * FROM plm_dispatch_links ORDER BY id DESC') : array();
+            $me=plm_v85_current_user_info();
+            $notice_count=0;
+            try{ if(plm_v85_table_exists('plm_notifications')) $notice_count=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_notifications WHERE is_read=0')->fetchColumn(); }catch(Throwable $e){}
+            $recycle_counts=array('projects'=>0,'models'=>0);
+            try{ $recycle_counts['projects']=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_projects WHERE COALESCE(is_deleted,0)=1')->fetchColumn(); }catch(Throwable $e){}
+            try{ $recycle_counts['models']=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_models WHERE COALESCE(is_deleted,0)=1')->fetchColumn(); }catch(Throwable $e){}
+            $current_permissions=plm_v85_permissions_for($me);
+            $permission_users=!empty($me['is_admin'])?plm_v85_permission_users():array();
+            $online_users=plm_v85_online_users(10);
+            plm_v85_json(array('ok'=>true,'version'=>'V8.5.104 Top Nav + Online + Log','projects'=>$projects,'models'=>$models,'tests'=>$tests,'test_runs'=>$test_runs,'test_templates'=>$test_templates,'files'=>$files,'steps'=>$steps,'issues'=>$issues,'logs'=>$logs,'dispatch_links'=>$dispatch_links,'current_user'=>$me,'is_admin'=>!empty($me['is_admin']),'current_permissions'=>$current_permissions,'permission_defs'=>plm_v85_permission_defs(),'permission_users'=>$permission_users,'notice_count'=>$notice_count,'online_count'=>count($online_users),'online_users'=>$online_users,'recycle_counts'=>$recycle_counts));
+        }
+        if($action === 'save_plm_permission'){
+            plm_v85_require_perm('manage_permissions','权限设置');
+            $key=plm_v85_s($d['user_key']??'',160); if($key==='') plm_v85_json(array('ok'=>false,'error'=>'缺少用户'));
+            $perms=$d['permissions']??array(); if(!is_array($perms)) $perms=array();
+            $clean=array(); foreach(plm_v85_perm_keys() as $k){ $clean[$k]=!empty($perms[$k])?1:0; }
+            $targetName=plm_v85_s($d['display_name']??'',120); $username=plm_v85_s($d['username']??'',120); $role=plm_v85_s($d['role_name']??'',120); $uid=(int)($d['user_id']??0);
+            $exists=plm_v85_row('SELECT id FROM plm_permissions WHERE user_key=? LIMIT 1',array($key));
+            $vals=array('user_key'=>$key,'user_id'=>$uid,'username'=>$username,'display_name'=>$targetName,'role_name'=>$role,'permissions_json'=>json_encode($clean,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'updated_by_name'=>(string)(plm_v85_current_user_info()['name']??''),'updated_at'=>plm_v85_now());
+            if($exists) plm_v85_dyn_update('plm_permissions',$vals,'id=?',array((int)$exists['id'])); else plm_v85_dyn_insert('plm_permissions',$vals);
+            // 旧 PLM 权限页面保存时，同步写入统一权限中心，避免两套设置互相覆盖。
+            try{
+                $centralTarget=0;
+                if($username!=='' && function_exists('artdon_sso_user_by_username')){ $cu=artdon_sso_user_by_username($username); if($cu)$centralTarget=(int)$cu['id']; }
+                if($centralTarget>0 && function_exists('artdon_perm_write_feature_map')){
+                    $row0=artdon_perm_module_row($centralTarget,'plm');
+                    $caps0=array('view'=>!empty($row0['can_view']),'create'=>!empty($row0['can_create']),'edit'=>!empty($row0['can_edit']),'delete'=>!empty($row0['can_delete']),'export'=>!empty($row0['can_export']),'admin'=>!empty($row0['can_admin']));
+                    artdon_perm_write_module_row($centralTarget,'plm',$caps0,(string)($row0['data_scope']??'inherit'),array(),(string)(plm_v85_current_user_info()['name']??''));
+                    artdon_perm_write_feature_map($centralTarget,'plm',$clean,(string)(plm_v85_current_user_info()['name']??''));
+                }
+            }catch(Throwable $e){}
+            plm_v85_log(0,'permission',$uid,'修改PLM权限','用户：'.($targetName?:$username?:$key));
+            plm_v85_json(array('ok'=>true,'users'=>plm_v85_permission_users()));
+        }
+        if($action === 'new_project'){
+            plm_v85_require_perm('new_project','新增项目');
+            $now=plm_v85_now();
+            $id = plm_v85_dyn_insert('plm_projects', array('project_no'=>'PLM-'.date('Ymd-His'),'name'=>'新开发项目','source'=>'工厂自行开发','priority'=>'P2 正常','status'=>'开发中','created_at'=>$now,'updated_at'=>$now));
+            $mid = plm_v85_dyn_insert('plm_models', array('project_id'=>$id,'name'=>'样品01','qty'=>1,'status'=>'开发中','sort_order'=>1,'created_at'=>$now,'updated_at'=>$now));
+            plm_v85_seed_steps($id, $mid);
+            plm_v85_log($id,'project',$id,'新增项目','系统自动创建默认样品和导航图');
+            plm_v85_json(array('ok'=>true,'id'=>$id,'model_id'=>$mid));
+        }
+        if($action === 'save_project'){
+            plm_v85_require_perm('edit_project','修改项目');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $data=array('project_no'=>plm_v85_s($d['project_no']??'',80),'name'=>plm_v85_s($d['name']??'',255),'customer'=>plm_v85_s($d['customer']??'',255),'engineer'=>plm_v85_s($d['engineer']??'',120),'series'=>plm_v85_s($d['series']??'',160),'model'=>plm_v85_s($d['model']??'',160),'product_type'=>plm_v85_s($d['product_type']??'',160),'source'=>plm_v85_s($d['source']??'',100),'priority'=>plm_v85_s($d['priority']??'',60),'status'=>plm_v85_s($d['status']??'',60),'due_date'=>plm_v85_s($d['due_date']??'',20) ?: null,'remark'=>plm_v85_s($d['remark']??'',10000),'updated_at'=>plm_v85_now());
+            plm_v85_dyn_update('plm_projects',$data,'id=?',array($id));
+            plm_v85_log($id,'project',$id,'保存项目','');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'pause_project'){
+            plm_v85_require_perm('edit_project','暂停项目');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $reason=plm_v85_s($d['reason']??'',2000); if($reason==='') plm_v85_json(array('ok'=>false,'error'=>'暂停项目必须填写原因'));
+            $expected=plm_v85_s($d['expected_resume']??'',20);
+            $syncFlow=empty($d['sync_flow'])?false:true;
+            $syncDispatch=empty($d['sync_dispatch'])?false:true;
+            $syncTests=empty($d['sync_tests'])?false:true;
+            $r=plm_v85_project_pause_execute($id,$reason,$expected,$syncFlow,$syncDispatch,$syncTests);
+            plm_v85_json($r);
+        }
+        if($action === 'resume_project'){
+            plm_v85_require_perm('edit_project','恢复项目');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $reason=plm_v85_s($d['reason']??'',2000); if($reason==='') $reason='项目恢复开发';
+            $r=plm_v85_project_resume_execute($id,$reason);
+            plm_v85_json($r);
+        }
+        if($action === 'delete_project'){
+            plm_v85_require_perm('delete_project','删除项目');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $reason=plm_v85_s($d['reason']??'',1000);
+            $u=plm_v85_current_user_info();
+            if(empty($u['is_admin']) && plm_v85_delete_count_today('project',$u)>=1) plm_v85_json(array('ok'=>false,'error'=>'非管理员用户每天只能删除 1 个项目。请联系管理员处理。'));
+            $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=? LIMIT 1',array($id)); if(!$p) plm_v85_json(array('ok'=>false,'error'=>'项目不存在'));
+            plm_v85_dyn_update('plm_projects',array('is_deleted'=>1,'deleted_at'=>plm_v85_now(),'deleted_by'=>(int)($u['id']??0),'deleted_by_name'=>(string)($u['name']??''),'delete_reason'=>$reason,'updated_at'=>plm_v85_now()),'id=?',array($id));
+            plm_v85_log($id,'project',$id,'删除项目进入回收站','删除人：'.($u['name']??'').'；原因：'.$reason);
+            plm_v85_notify_admins('PLM 项目删除提醒','用户 '.($u['name']??'未识别账号').' 删除项目：'.($p['name']??$id).($reason?'；原因：'.$reason:''),array('type'=>'delete_project','project_id'=>$id,'project_name'=>$p['name']??'','reason'=>$reason,'user'=>$u));
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'recycle_bin'){
+            plm_v85_require_perm('view_recycle','查看回收站');
+            $u=plm_v85_current_user_info();
+            $deletedProjects=plm_v85_rows('SELECT * FROM plm_projects WHERE COALESCE(is_deleted,0)=1 ORDER BY deleted_at DESC,id DESC LIMIT 200');
+            $deletedModels=plm_v85_rows('SELECT m.*,p.name project_name FROM plm_models m LEFT JOIN plm_projects p ON p.id=m.project_id WHERE COALESCE(m.is_deleted,0)=1 ORDER BY m.deleted_at DESC,m.id DESC LIMIT 200');
+            $notices=plm_v85_table_exists('plm_notifications')?plm_v85_rows('SELECT * FROM plm_notifications ORDER BY id DESC LIMIT 100'):array();
+            plm_v85_json(array('ok'=>true,'projects'=>$deletedProjects,'models'=>$deletedModels,'notifications'=>$notices,'current_user'=>$u));
+        }
+        if($action === 'restore_project'){
+            plm_v85_require_perm('restore_recycle','还原回收站');
+            $u=plm_v85_current_user_info();
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            plm_v85_dyn_update('plm_projects',array('is_deleted'=>0,'deleted_at'=>null,'deleted_by'=>0,'deleted_by_name'=>'','delete_reason'=>'','updated_at'=>plm_v85_now()),'id=?',array($id));
+            plm_v85_log($id,'project',$id,'从回收站还原项目','操作人：'.($u['name']??''));
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'restore_model'){
+            plm_v85_require_perm('restore_recycle','还原回收站');
+            $u=plm_v85_current_user_info();
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $m=plm_v85_row('SELECT project_id FROM plm_models WHERE id=? LIMIT 1',array($id));
+            plm_v85_dyn_update('plm_models',array('is_deleted'=>0,'deleted_at'=>null,'deleted_by'=>0,'deleted_by_name'=>'','delete_reason'=>'','updated_at'=>plm_v85_now()),'id=?',array($id));
+            plm_v85_log((int)($m['project_id']??0),'model',$id,'从回收站还原样品','操作人：'.($u['name']??''));
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'mark_notifications_read'){
+            $u=plm_v85_current_user_info(); if(empty($u['is_admin'])) plm_v85_json(array('ok'=>false,'error'=>'只有管理员可以操作站内信'));
+            try{ plm_v85_pdo()->exec('UPDATE plm_notifications SET is_read=1 WHERE is_read=0'); }catch(Throwable $e){}
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'new_model'){
+            plm_v85_require_perm('new_model','新增产品/样品');
+            $pid=(int)($d['project_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $cnt=(int)plm_v85_row('SELECT COUNT(*) c FROM plm_models WHERE project_id=?', array($pid))['c'];
+            $id=plm_v85_dyn_insert('plm_models', array('project_id'=>$pid,'name'=>'样品'.str_pad((string)($cnt+1),2,'0',STR_PAD_LEFT),'sample_version'=>'V1','qty'=>1,'status'=>'开发中','sort_order'=>$cnt+1,'created_at'=>plm_v85_now(),'updated_at'=>plm_v85_now()));
+            plm_v85_seed_steps($pid, $id);
+            plm_v85_log($pid,'model',$id,'新增样品','');
+            plm_v85_json(array('ok'=>true,'id'=>$id));
+        }
+        if($action === 'save_model'){
+            plm_v85_require_perm('edit_model','修改产品/样品');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $pid=(int)($d['project_id']??0);
+            $data=array('project_id'=>$pid,'name'=>plm_v85_s($d['name']??'',255),'model'=>plm_v85_s($d['model']??'',180),'sample_no'=>plm_v85_s($d['sample_no']??'',120),'sample_version'=>plm_v85_s($d['sample_version']??'V1',60),'change_reason'=>plm_v85_s($d['change_reason']??'',10000),'confirmed_by'=>plm_v85_s($d['confirmed_by']??'',120),'confirmed_at'=>plm_v85_s($d['confirmed_at']??'',25) ?: null,'power'=>plm_v85_s($d['power']??'',80),'beam'=>plm_v85_s($d['beam']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'product_category'=>plm_v85_s($d['product_category']??'',120),'opening_size'=>plm_v85_s($d['opening_size']??'',80),'diameter'=>plm_v85_s($d['diameter']??'',80),'length_mm'=>plm_v85_s($d['length_mm']??'',80),'width_mm'=>plm_v85_s($d['width_mm']??'',80),'height_mm'=>plm_v85_s($d['height_mm']??'',80),'qty'=>(int)($d['qty']??1),'status'=>plm_v85_s($d['status']??'',60),
+                'chip_name'=>plm_v85_s($d['chip_name']??'',255),'chip_brand'=>plm_v85_s($d['chip_brand']??'',160),'chip_spec'=>plm_v85_s($d['chip_spec']??'',255),'chip_material_id'=>(int)($d['chip_material_id']??0),
+                'optical_name'=>plm_v85_s($d['optical_name']??'',255),'optical_brand'=>plm_v85_s($d['optical_brand']??'',160),'optical_spec'=>plm_v85_s($d['optical_spec']??'',255),'optical_material_id'=>(int)($d['optical_material_id']??0),
+                'driver_name'=>plm_v85_s($d['driver_name']??'',255),'driver_brand'=>plm_v85_s($d['driver_brand']??'',160),'driver_spec'=>plm_v85_s($d['driver_spec']??'',255),'driver_material_id'=>(int)($d['driver_material_id']??0),
+                'accessories_name'=>plm_v85_s($d['accessories_name']??'',255),'accessories_brand'=>plm_v85_s($d['accessories_brand']??'',160),'accessories_spec'=>plm_v85_s($d['accessories_spec']??'',8000),'accessories_material_ids'=>plm_v85_s($d['accessories_material_ids']??'',8000),'bom_note'=>plm_v85_s($d['bom_note']??'',8000),
+                'note'=>plm_v85_s($d['note']??'',8000),'updated_at'=>plm_v85_now());
+            plm_v85_dyn_update('plm_models',$data,'id=?',array($id));
+            plm_v85_seed_steps($pid, $id);
+            plm_v85_log($pid,'model',$id,'保存样品','');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'submit_model_naming'){
+            plm_v85_require_perm('edit_model','提交命名草稿');
+            $modelId=(int)($d['model_id']??$d['id']??0);
+            $r=plm_v85_naming_inbox_submit_model($modelId);
+            plm_v85_json($r);
+        }
+        if($action === 'naming_search'){
+            $limit=(int)($d['limit']??80);
+            $filters=is_array($d)?$d:array();
+            $r=plm_v85_naming_search($filters,$limit);
+            plm_v85_json(array('ok'=>true,'available'=>$r['available']??false,'models'=>$r['models']??array(),'count'=>$r['count']??0,'error'=>$r['error']??''));
+        }
+        if($action === 'bind_naming_model'){
+            $modelId=(int)($d['model_id']??0); $namingId=(int)($d['naming_id']??0);
+            if(!$modelId || !$namingId) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID或命名型号ID'));
+            $m=plm_v85_row('SELECT * FROM plm_models WHERE id=? LIMIT 1', array($modelId));
+            if(!$m) plm_v85_json(array('ok'=>false,'error'=>'样品不存在'));
+            $nm=plm_v85_naming_model_by_id($namingId);
+            if(!$nm) plm_v85_json(array('ok'=>false,'error'=>'命名型号不存在或命名系统未初始化'));
+            $sampleName = trim((string)($nm['product_name'] ?? ''));
+            if($sampleName==='') $sampleName = trim((string)($m['name'] ?? '')) ?: (string)$nm['model_no'];
+            $data=array(
+                'model'=>$nm['model_no'],
+                'name'=>$sampleName,
+                'naming_id'=>$nm['id'],
+                'naming_model_no'=>$nm['model_no'],
+                'naming_category'=>$nm['category'],
+                'naming_item_name'=>$nm['item_name'],
+                'naming_product_name'=>$nm['product_name'],
+                'naming_image_path'=>$nm['image_path'],
+                'naming_drawing_path'=>$nm['drawing_path'],
+                'naming_remark'=>$nm['remark'],
+                'naming_linked_at'=>plm_v85_now(),
+                'naming_snapshot_json'=>json_encode(plm_v85_naming_snapshot($nm),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+                'naming_sync_hash'=>plm_v85_naming_hash(plm_v85_naming_snapshot($nm)),
+                'naming_synced_at'=>plm_v85_now(),
+                'naming_source_updated_at'=>$nm['updated_at'] ?? null,
+                'updated_at'=>plm_v85_now()
+            );
+            plm_v85_apply_naming_size_to_model_data($data, $nm);
+            plm_v85_dyn_update('plm_models',$data,'id=?',array($modelId));
+            $pid=(int)($m['project_id'] ?? 0);
+            if($pid>0){
+                $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=? LIMIT 1', array($pid));
+                $pd=array('model'=>$nm['model_no'],'naming_id'=>$nm['id'],'naming_model_no'=>$nm['model_no'],'naming_category'=>$nm['category'],'naming_item_name'=>$nm['item_name'],'naming_snapshot_json'=>json_encode(plm_v85_naming_snapshot($nm),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'naming_sync_hash'=>plm_v85_naming_hash(plm_v85_naming_snapshot($nm)),'naming_synced_at'=>plm_v85_now(),'naming_source_updated_at'=>$nm['updated_at'] ?? null,'updated_at'=>plm_v85_now());
+                if(trim((string)($p['product_type']??''))==='') $pd['product_type']=trim(($nm['category']?:'').' '.($nm['item_name']?:''));
+                if(trim((string)($p['image_path']??''))==='' && trim((string)$nm['image_path'])!=='') $pd['image_path']=$nm['image_path'];
+                if(trim((string)($p['customer']??''))==='' && trim((string)$nm['customer'])!=='') $pd['customer']=$nm['customer'];
+                plm_v85_dyn_update('plm_projects',$pd,'id=?',array($pid));
+                plm_v85_log($pid,'model',$modelId,'绑定命名型号','命名型号：'.$nm['model_no'].'；品类：'.$nm['category'].' / '.$nm['item_name']);
+            }
+            plm_v85_json(array('ok'=>true,'model'=>$nm));
+        }
+        if($action === 'naming_sync_check'){
+            $modelId=(int)($d['model_id']??0); if(!$modelId) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $m=plm_v85_row('SELECT * FROM plm_models WHERE id=? LIMIT 1',array($modelId)); if(!$m) plm_v85_json(array('ok'=>false,'error'=>'样品不存在'));
+            plm_v85_json(array('ok'=>true) + plm_v85_naming_sync_status_for_model($m));
+        }
+        if($action === 'naming_sync_apply'){
+            plm_v85_require_perm('edit_model','同步命名基础资料');
+            $modelId=(int)($d['model_id']??0);
+            plm_v85_json(plm_v85_apply_naming_basic_to_model($modelId));
+        }
+        if($action === 'bom_material_options'){
+            $type=plm_v85_s($d['type']??'',60);
+            plm_v85_json(array('ok'=>true,'options'=>plm_v85_bom_material_filter_options($type),'has_table'=>plm_v85_table_exists('bom_materials')));
+        }
+        if($action === 'bom_material_search'){
+            $q=plm_v85_s($d['q']??'',120); $type=plm_v85_s($d['type']??'',60);
+            $filters=array(
+                'q'=>$q,
+                'category'=>plm_v85_s($d['category']??'',120),
+                'brand'=>plm_v85_s($d['brand']??'',120),
+                'supplier'=>plm_v85_s($d['supplier']??'',120),
+                'price_min'=>plm_v85_s($d['price_min']??'',40),
+                'price_max'=>plm_v85_s($d['price_max']??'',40),
+                'sort'=>plm_v85_s($d['sort']??'updated_desc',40),
+                'limit'=>(int)($d['limit']??100)
+            );
+            $list=plm_v85_bom_material_search($q,$type,$filters);
+            plm_v85_json(array('ok'=>true,'materials'=>$list,'count'=>count($list),'has_table'=>plm_v85_table_exists('bom_materials')));
+        }
+        if($action === 'create_bom_from_model'){
+            plm_v85_require_perm('create_bom','生成BOM');
+            $mid=(int)($d['model_id']??0); if(!$mid) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $r=plm_v85_create_or_update_bom_from_model($mid);
+            plm_v85_json($r);
+        }
+        if($action === 'copy_model_version'){
+            plm_v85_require_perm('new_model','复制样品版本');
+            $mid=(int)($d['model_id']??0); if(!$mid) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $old=plm_v85_row('SELECT * FROM plm_models WHERE id=?',array($mid)); if(!$old) plm_v85_json(array('ok'=>false,'error'=>'样品不存在'));
+            $reason=plm_v85_s($d['change_reason']??'',10000); if($reason==='') plm_v85_json(array('ok'=>false,'error'=>'复制新版本必须填写修改原因'));
+            $cnt=(int)plm_v85_row('SELECT COUNT(*) c FROM plm_models WHERE project_id=?', array((int)$old['project_id']))['c'];
+            $ver=plm_v85_s($d['sample_version']??'',60); if($ver==='') $ver='V'.($cnt+1);
+            $data=$old; unset($data['id']); $data['name']=trim((string)$old['name']).' '.$ver; $data['sample_version']=$ver; $data['parent_model_id']=$mid; $data['change_reason']=$reason; $data['status']='修改中'; $data['sort_order']=$cnt+1; $data['created_at']=plm_v85_now(); $data['updated_at']=plm_v85_now(); $data['confirmed_by']=''; $data['confirmed_at']=null;
+            $newId=plm_v85_dyn_insert('plm_models',$data);
+            $steps=plm_v85_rows('SELECT * FROM plm_flow_steps WHERE model_id=? ORDER BY sort_order ASC,id ASC',array($mid));
+            foreach($steps as $st){ $ns=$st; unset($ns['id']); $ns['model_id']=$newId; $ns['status']='未开始'; $ns['actual_start']=null; $ns['done_at']=null; $ns['dispatch_status']=''; $ns['dispatch_note']=''; $ns['created_at']=plm_v85_now(); $ns['updated_at']=plm_v85_now(); plm_v85_dyn_insert('plm_flow_steps',$ns); }
+            plm_v85_log((int)$old['project_id'],'model',$newId,'复制为新版本','来源样品ID：'.$mid.'；版本：'.$ver.'；原因：'.$reason);
+            plm_v85_json(array('ok'=>true,'id'=>$newId));
+        }        if($action === 'delete_model'){
+            plm_v85_require_perm('delete_model','删除产品/样品');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
+            $reason=plm_v85_s($d['reason']??'',1000);
+            $m=plm_v85_row('SELECT * FROM plm_models WHERE id=?',array($id)); if(!$m) plm_v85_json(array('ok'=>false,'error'=>'样品不存在'));
+            $pid=(int)$m['project_id'];
+            $u=plm_v85_current_user_info();
+            if(empty($u['is_admin']) && plm_v85_delete_count_today('model',$u)>=1) plm_v85_json(array('ok'=>false,'error'=>'非管理员用户每天只能删除 1 个产品/样品。请联系管理员处理。'));
+            plm_v85_dyn_update('plm_models',array('is_deleted'=>1,'deleted_at'=>plm_v85_now(),'deleted_by'=>(int)($u['id']??0),'deleted_by_name'=>(string)($u['name']??''),'delete_reason'=>$reason,'updated_at'=>plm_v85_now()),'id=?',array($id));
+            plm_v85_log($pid,'model',$id,'删除样品进入回收站','删除人：'.($u['name']??'').'；原因：'.$reason);
+            plm_v85_notify_admins('PLM 产品/样品删除提醒','用户 '.($u['name']??'未识别账号').' 删除产品/样品：'.($m['name']??$id).($reason?'；原因：'.$reason:''),array('type'=>'delete_model','project_id'=>$pid,'model_id'=>$id,'model_name'=>$m['name']??'','reason'=>$reason,'user'=>$u));
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'add_step'){
+            plm_v85_require_perm('edit_flow','修改开发导航图');
+            $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $max=(int)(plm_v85_row('SELECT COALESCE(MAX(sort_order),0) m FROM plm_flow_steps WHERE project_id=? AND model_id=?',array($pid,$mid))['m'] ?? 0);
+            $stepTitle = plm_v85_s($d['title']??'新增步骤',160);
+            $id=plm_v85_dyn_insert('plm_flow_steps', array('project_id'=>$pid,'model_id'=>$mid,'title'=>$stepTitle,'step_name'=>$stepTitle,'status'=>'未开始','owner'=>plm_v85_s($d['owner']??'',120),'plan_date'=>plm_v85_s($d['plan_date']??'',20) ?: null,'plan_start'=>plm_v85_s($d['plan_start']??'',20) ?: null,'plan_end'=>plm_v85_s($d['plan_end']??'',20) ?: null,'dependency_mode'=>plm_v85_s($d['dependency_mode']??'跟随前一步',60),'sort_order'=>$max+1,'created_at'=>plm_v85_now(),'updated_at'=>plm_v85_now()));
+            plm_v85_log($pid,'step',$id,'新增步骤','');
+            plm_v85_json(array('ok'=>true,'id'=>$id));
+        }
+        if($action === 'save_step'){
+            plm_v85_require_perm('edit_flow','修改开发导航图');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少步骤ID'));
+            $old=plm_v85_row('SELECT * FROM plm_flow_steps WHERE id=?', array($id));
+            if(!$old) plm_v85_json(array('ok'=>false,'error'=>'步骤不存在'));
+            $status=plm_v85_s($d['status']??($old['status']??'未开始'),60);
+            $done = ($status==='已完成') ? (($old && !empty($old['done_at'])) ? $old['done_at'] : plm_v85_now()) : null;
+            $actualStart = $old['actual_start'] ?? null;
+            if(in_array($status, array('进行中','已完成'), true) && empty($actualStart)) $actualStart = plm_v85_now();
+            $stepTitle = plm_v85_s($d['title']??'',160);
+            $payload = array(
+                'title'=>$stepTitle,
+                'step_name'=>$stepTitle,
+                'status'=>$status,
+                'owner'=>plm_v85_s($d['owner']??'',120),
+                'plan_date'=>plm_v85_s($d['plan_date']??'',20) ?: null,
+                'plan_start'=>plm_v85_s($d['plan_start']??'',20) ?: null,
+                'plan_end'=>plm_v85_s($d['plan_end']??'',20) ?: null,
+                'actual_start'=>$actualStart,
+                'done_at'=>$done,
+                'dependency_mode'=>plm_v85_s($d['dependency_mode']??'跟随前一步',60),
+                'abnormal_reason'=>plm_v85_s($d['abnormal_reason']??'',10000),
+                'return_reason'=>plm_v85_s($d['return_reason']??'',10000),
+                'rework_reason'=>plm_v85_s($d['rework_reason']??'',10000),
+                'skip_reason'=>plm_v85_s($d['skip_reason']??'',10000),
+                'dispatch_status'=>plm_v85_s($d['dispatch_status']??($old['dispatch_status']??''),60),
+                'dispatch_note'=>plm_v85_s($d['dispatch_note']??($old['dispatch_note']??''),10000),
+                'note'=>plm_v85_s($d['note']??'',10000),
+                'updated_at'=>plm_v85_now()
+            );
+            plm_v85_dyn_update('plm_flow_steps', $payload, 'id=?', array($id));
+            $note = '状态：'.($old['status']??'').' → '.$status;
+            if($status==='异常' && $payload['abnormal_reason']) $note .= '；异常：'.$payload['abnormal_reason'];
+            if($status==='退回' && $payload['return_reason']) $note .= '；退回：'.$payload['return_reason'];
+            if($status==='重来' && $payload['rework_reason']) $note .= '；重来：'.$payload['rework_reason'];
+            if($status==='跳过' && $payload['skip_reason']) $note .= '；跳过：'.$payload['skip_reason'];
+            plm_v85_log((int)($old['project_id']??0),'step',$id,'保存步骤',$note);
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'apply_template'){
+            plm_v85_require_perm('edit_flow','应用流程模板');
+            $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); $tpl=plm_v85_s($d['template']??'',120); $mode=plm_v85_s($d['mode']??'replace',20);
+            if(!$pid || !$mid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目或样品ID'));
+            $templates = plm_v85_flow_templates();
+            if(!isset($templates[$tpl])) plm_v85_json(array('ok'=>false,'error'=>'模板不存在：'.$tpl));
+            if($mode==='replace'){ plm_v85_pdo()->prepare('UPDATE plm_files SET step_id=0 WHERE project_id=? AND model_id=?')->execute(array($pid,$mid)); plm_v85_pdo()->prepare('DELETE FROM plm_flow_steps WHERE project_id=? AND model_id=?')->execute(array($pid,$mid)); }
+            $max=(int)(plm_v85_row('SELECT COALESCE(MAX(sort_order),0) m FROM plm_flow_steps WHERE project_id=? AND model_id=?',array($pid,$mid))['m'] ?? 0);
+            $i=$max+1; foreach($templates[$tpl] as $title){ plm_v85_dyn_insert('plm_flow_steps', array('project_id'=>$pid,'model_id'=>$mid,'title'=>$title,'step_name'=>$title,'status'=>'未开始','dependency_mode'=>'跟随前一步','sort_order'=>$i++,'created_at'=>plm_v85_now(),'updated_at'=>plm_v85_now())); }
+            plm_v85_log($pid,'model',$mid,'套用流程模板',$tpl.' / '.$mode);
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'create_dispatch_draft'){
+            plm_v85_require_perm('create_dispatch','生成派工');
+            $id=(int)($d['step_id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少步骤ID'));
+            $srow=plm_v85_row('SELECT * FROM plm_flow_steps WHERE id=?', array($id)); if(!$srow) plm_v85_json(array('ok'=>false,'error'=>'步骤不存在'));
+            $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=?', array((int)$srow['project_id']));
+            $m=plm_v85_row('SELECT * FROM plm_models WHERE id=?', array((int)$srow['model_id']));
+            $text='项目：'.($p['name']??'').'
+客户：'.($p['customer']??'').'
+样品：'.($m['name']??($m['model']??'')).'
+任务：'.($srow['title']??'').'
+来源：PLM开发导航图 V8.5.4';
+            plm_v85_dyn_update('plm_flow_steps', array('dispatch_status'=>'已生成草稿','dispatch_note'=>$text,'updated_at'=>plm_v85_now()), 'id=?', array($id));
+            plm_v85_log((int)$srow['project_id'],'step',$id,'生成派工草稿',$text);
+            plm_v85_json(array('ok'=>true,'text'=>$text,'url'=>'dispatch_todo.php'));
+        }
+        if($action === 'save_dispatch_link'){
+            plm_v85_require_perm('create_dispatch','生成派工');
+            $sid=(int)($d['step_id']??0); if(!$sid) plm_v85_json(array('ok'=>false,'error'=>'缺少步骤ID'));
+            $srow=plm_v85_row('SELECT * FROM plm_flow_steps WHERE id=?', array($sid)); if(!$srow) plm_v85_json(array('ok'=>false,'error'=>'步骤不存在'));
+            $taskId=(int)($d['task_id']??0);
+            $vals=array(
+                'project_id'=>(int)$srow['project_id'],
+                'model_id'=>(int)$srow['model_id'],
+                'step_id'=>$sid,
+                'task_id'=>$taskId,
+                'task_no'=>plm_v85_s($d['task_no']??'',120),
+                'title'=>plm_v85_s($d['title']??($srow['title']??''),255),
+                'assignee_id'=>(int)($d['assignee_id']??0),
+                'assignee_name'=>plm_v85_s($d['assignee_name']??'',120),
+                'status'=>plm_v85_s($d['status']??'已创建',80),
+                'progress'=>(int)($d['progress']??0),
+                'due_at'=>plm_v85_s($d['due_at']??'',30) ?: null,
+                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_todo.php?task_id='.$taskId):'dispatch_todo.php'),500),
+                'linked_json'=>json_encode($d['linked_json']??array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at'=>plm_v85_now()
+            );
+            $exists = null;
+            if($taskId){
+                // V8.5.43：旧版可能已有同 task_id 关联，唯一键 uk_plm_dispatch_task 会阻止重复插入；先按 task_id 找回并更新。
+                $exists = plm_v85_row('SELECT id FROM plm_dispatch_links WHERE task_id=? LIMIT 1', array($taskId));
+                if(!$exists) $exists = plm_v85_row('SELECT id FROM plm_dispatch_links WHERE step_id=? AND task_id=? LIMIT 1', array($sid,$taskId));
+            }
+            if($exists){
+                plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$exists['id']));
+                $linkId=(int)$exists['id'];
+            }else{
+                $vals['created_at']=plm_v85_now();
+                $linkId=plm_v85_dyn_insert('plm_dispatch_links',$vals);
+            }
+            $sync=plm_v85_sync_step_dispatch_completion($sid,'保存派工关联');
+            $text=$sync['label']??'';
+            plm_v85_log((int)$srow['project_id'],'step',$sid,'关联派工任务','派工任务ID：'.$taskId.'；标题：'.$vals['title'].'；进度：'.$text);
+            plm_v85_json(array('ok'=>true,'id'=>$linkId,'dispatch_status'=>$text));
+        }
+
+        if($action === 'save_project_dispatch_link'){
+            plm_v85_require_perm('create_dispatch','生成派工');
+            $pid=(int)($d['project_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $prow=plm_v85_row('SELECT * FROM plm_projects WHERE id=?', array($pid)); if(!$prow) plm_v85_json(array('ok'=>false,'error'=>'项目不存在'));
+            $taskId=(int)($d['task_id']??0);
+            $modelId=(int)($d['model_id']??0);
+            $vals=array(
+                'project_id'=>$pid,
+                'model_id'=>$modelId,
+                'step_id'=>0,
+                'task_id'=>$taskId,
+                'task_no'=>plm_v85_s($d['task_no']??'',120),
+                'title'=>plm_v85_s($d['title']??($prow['name']??'项目派工'),255),
+                'assignee_id'=>(int)($d['assignee_id']??0),
+                'assignee_name'=>plm_v85_s($d['assignee_name']??'',120),
+                'status'=>plm_v85_s($d['status']??'已创建',80),
+                'progress'=>(int)($d['progress']??0),
+                'due_at'=>plm_v85_s($d['due_at']??'',30) ?: null,
+                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($taskId?('dispatch_todo.php?task_id='.$taskId):'dispatch_todo.php'),500),
+                'linked_json'=>json_encode($d['linked_json']??array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at'=>plm_v85_now()
+            );
+            $exists = null;
+            if($taskId){
+                $exists = plm_v85_row('SELECT id FROM plm_dispatch_links WHERE task_id=? LIMIT 1', array($taskId));
+                if(!$exists) $exists = plm_v85_row('SELECT id FROM plm_dispatch_links WHERE project_id=? AND step_id=0 AND task_id=? LIMIT 1', array($pid,$taskId));
+            }
+            if($exists){
+                plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array((int)$exists['id']));
+                $linkId=(int)$exists['id'];
+            }else{
+                $vals['created_at']=plm_v85_now();
+                $linkId=plm_v85_dyn_insert('plm_dispatch_links',$vals);
+            }
+            $cnt=plm_v85_row("SELECT COUNT(*) c, SUM(CASE WHEN status IN ('done','已完成','完成') OR progress>=100 THEN 1 ELSE 0 END) d FROM plm_dispatch_links WHERE project_id=? AND step_id=0",array($pid));
+            $text=((int)($cnt['d']??0)).'/'.((int)($cnt['c']??0));
+            plm_v85_log($pid,'project',$pid,'关联项目派工任务','派工任务ID：'.$taskId.'；标题：'.$vals['title'].'；项目派工进度：'.$text);
+            plm_v85_json(array('ok'=>true,'id'=>$linkId,'project_dispatch_status'=>$text));
+        }
+        if($action === 'update_dispatch_link'){
+            plm_v85_require_perm('create_dispatch','更新派工进度');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少关联ID'));
+            $old=plm_v85_row('SELECT * FROM plm_dispatch_links WHERE id=?',array($id)); if(!$old) plm_v85_json(array('ok'=>false,'error'=>'派工关联不存在'));
+            $vals=array(
+                'task_no'=>plm_v85_s($d['task_no']??($old['task_no']??''),120),
+                'title'=>plm_v85_s($d['title']??($old['title']??''),255),
+                'assignee_id'=>(int)($d['assignee_id']??($old['assignee_id']??0)),
+                'assignee_name'=>plm_v85_s($d['assignee_name']??($old['assignee_name']??''),120),
+                'status'=>plm_v85_s($d['status']??($old['status']??''),80),
+                'progress'=>(int)($d['progress']??($old['progress']??0)),
+                'due_at'=>plm_v85_s($d['due_at']??($old['due_at']??''),30) ?: null,
+                'dispatch_url'=>plm_v85_s($d['dispatch_url']??($old['dispatch_url']??''),500),
+                'updated_at'=>plm_v85_now()
+            );
+            plm_v85_dyn_update('plm_dispatch_links',$vals,'id=?',array($id));
+            $sid=(int)$old['step_id'];
+            $sync=plm_v85_sync_step_dispatch_completion($sid,'更新派工进度');
+            $text=$sync['label']??'';
+            plm_v85_json(array('ok'=>true,'dispatch_status'=>$text));
+        }
+        if($action === 'unlink_dispatch_link'){
+            plm_v85_require_perm('create_dispatch','取消派工关联');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少关联ID'));
+            $old=plm_v85_row('SELECT * FROM plm_dispatch_links WHERE id=?',array($id)); if(!$old) plm_v85_json(array('ok'=>false,'error'=>'派工关联不存在'));
+            plm_v85_pdo()->prepare('DELETE FROM plm_dispatch_links WHERE id=?')->execute(array($id));
+            $sid=(int)$old['step_id'];
+            $sync=plm_v85_sync_step_dispatch_completion($sid,'解除派工关联');
+            $text=$sync['label']??'';
+            plm_v85_log((int)$old['project_id'],'step',$sid,'解除派工关联','派工任务ID：'.(int)$old['task_id']);
+            plm_v85_json(array('ok'=>true,'dispatch_status'=>$text));
+        }
+        if($action === 'delete_step'){
+            plm_v85_require_perm('edit_flow','删除流程步骤');
+            $id=(int)($d['id']??0); $old=plm_v85_row('SELECT project_id FROM plm_flow_steps WHERE id=?',array($id));
+            if($id){ plm_v85_pdo()->prepare('UPDATE plm_files SET step_id=0 WHERE step_id=?')->execute(array($id)); plm_v85_pdo()->prepare('DELETE FROM plm_flow_steps WHERE id=?')->execute(array($id)); }
+            plm_v85_log((int)($old['project_id']??0),'step',$id,'删除步骤','');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'delete_steps_by_model'){
+            plm_v85_require_perm('edit_flow','清空流程步骤');
+            $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); if(!$pid || !$mid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目或样品ID'));
+            $count=(int)plm_v85_row('SELECT COUNT(*) c FROM plm_flow_steps WHERE project_id=? AND model_id=?',array($pid,$mid))['c'];
+            plm_v85_pdo()->prepare('UPDATE plm_files SET step_id=0 WHERE project_id=? AND model_id=?')->execute(array($pid,$mid));
+            plm_v85_pdo()->prepare('DELETE FROM plm_flow_steps WHERE project_id=? AND model_id=?')->execute(array($pid,$mid));
+            plm_v85_log($pid,'model',$mid,'删除全部流程步骤','共删除 '.$count.' 个步骤');
+            plm_v85_json(array('ok'=>true,'count'=>$count));
+        }
+        if($action === 'reorder_steps'){
+            plm_v85_require_perm('edit_flow','拖动流程排序');
+            $ids=$d['ids']??array(); if(!is_array($ids)) $ids=array(); $i=1; foreach($ids as $sid){ plm_v85_dyn_update('plm_flow_steps',array('sort_order'=>$i++),'id=?',array((int)$sid)); }
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'save_test_template'){
+            plm_v85_require_perm('edit_test','保存测试模板');
+            $id=(int)($d['id']??0);
+            $me=plm_v85_current_user_info();
+            $name=plm_v85_s($d['name']??'',160);
+            if($name==='') plm_v85_json(array('ok'=>false,'error'=>'模板名称不能为空'));
+            $fields=$d['fields']??array();
+            if(is_string($fields)){
+                $tmp=json_decode($fields,true);
+                $fields=is_array($tmp)?$tmp:array();
+            }
+            if(!is_array($fields)) $fields=array();
+            $clean=array();
+            foreach($fields as $f){
+                if(!is_array($f)) continue;
+                $label=plm_v85_s($f['label']??'',80);
+                if($label==='') continue;
+                $key=plm_v85_s($f['key']??preg_replace('/[^a-zA-Z0-9_]+/','_',strtolower($label)),80);
+                if($key==='') $key='field_'.(count($clean)+1);
+                $type=plm_v85_s($f['type']??'text',30);
+                $allowedTypes=array('text','number','date','textarea','select','yesno','file');
+                if(!in_array($type,$allowedTypes,true)) $type='text';
+                $bind=plm_v85_s($f['bind']??'',80);
+                $required=!empty($f['required'])?1:0;
+                $options=plm_v85_s($f['options']??'',1000);
+                $default=plm_v85_s($f['default']??'',500);
+                $placeholder=plm_v85_s($f['placeholder']??'',500);
+                $clean[]=array('key'=>$key,'label'=>$label,'type'=>$type,'bind'=>$bind,'required'=>$required,'options'=>$options,'default'=>$default,'placeholder'=>$placeholder);
+            }
+            $vals=array(
+                'name'=>$name,
+                'test_type'=>plm_v85_s($d['test_type']??'',80),
+                'fields_json'=>json_encode($clean,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+                'is_public'=>(int)($d['is_public']??1),
+                'created_by_id'=>(int)($me['id']??0),
+                'created_by_name'=>plm_v85_s($me['name']??'',120),
+                'updated_at'=>plm_v85_now()
+            );
+            if($id>0 && plm_v85_row('SELECT id FROM plm_test_templates WHERE id=?',array($id))){
+                plm_v85_dyn_update('plm_test_templates',$vals,'id=?',array($id));
+            }else{
+                $vals['created_at']=plm_v85_now();
+                $id=plm_v85_dyn_insert('plm_test_templates',$vals);
+            }
+            plm_v85_log(0,'test_template',$id,'保存测试模板',$name);
+            plm_v85_json(array('ok'=>true,'id'=>$id));
+        }
+        if($action === 'delete_test_template'){
+            plm_v85_require_perm('edit_test','删除测试模板');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少模板ID'));
+            $old=plm_v85_row('SELECT name FROM plm_test_templates WHERE id=?',array($id));
+            plm_v85_pdo()->prepare('DELETE FROM plm_test_templates WHERE id=?')->execute(array($id));
+            plm_v85_log(0,'test_template',$id,'删除测试模板',(string)($old['name']??''));
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'save_test'){
+            plm_v85_require_perm('edit_test','新增/修改测试');
+            $id=(int)($d['id']??0); $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0);
+            if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $tplFields=$d['template_fields_json']??($d['custom_fields']??array());
+            if(is_array($tplFields)) $tplFieldsJson=json_encode($tplFields,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            else $tplFieldsJson=plm_v85_s($tplFields,20000);
+            $vals=array('project_id'=>$pid,'model_id'=>$mid,'test_type'=>plm_v85_s($d['test_type']??'温升',80),'title'=>plm_v85_s($d['title']??'',255),'status'=>plm_v85_s($d['status']??'待测',60),'result'=>plm_v85_s($d['result']??'',80),'test_date'=>plm_v85_s($d['test_date']??'',20) ?: null,'operator'=>plm_v85_s($d['operator']??'',120),'ambient_temp'=>($d['ambient_temp']??'')===''?null:(float)$d['ambient_temp'],'led_temp'=>($d['led_temp']??'')===''?null:(float)$d['led_temp'],'driver_temp'=>($d['driver_temp']??'')===''?null:(float)$d['driver_temp'],'shell_temp'=>($d['shell_temp']??'')===''?null:(float)$d['shell_temp'],'max_temp'=>($d['max_temp']??'')===''?null:(float)$d['max_temp'],'sphere_lumen'=>plm_v85_s($d['sphere_lumen']??'',80),'sphere_power'=>plm_v85_s($d['sphere_power']??'',80),'sphere_efficiency'=>plm_v85_s($d['sphere_efficiency']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'cri'=>plm_v85_s($d['cri']??'',80),'ies_angle'=>plm_v85_s($d['ies_angle']??'',80),'ies_lumen'=>plm_v85_s($d['ies_lumen']??'',80),'test_standard'=>plm_v85_s($d['test_standard']??'',10000),'test_data'=>plm_v85_s($d['test_data']??'',10000),'test_conclusion'=>plm_v85_s($d['test_conclusion']??'',10000),'retest_result'=>plm_v85_s($d['retest_result']??'',80),'affect_sample'=>(int)($d['affect_sample']??0),'template_key'=>plm_v85_s($d['template_key']??'',120),'template_name'=>plm_v85_s($d['template_name']??'',160),'template_fields_json'=>$tplFieldsJson,'note'=>plm_v85_s($d['note']??'',10000),'updated_at'=>plm_v85_now());
+            if($id){ plm_v85_dyn_update('plm_tests',$vals,'id=?',array($id)); }
+            else { $vals['created_at']=plm_v85_now(); $id=plm_v85_dyn_insert('plm_tests',$vals); }
+            plm_v85_ensure_initial_test_run($id);
+            $autoIssueId = 0;
+            if (plm_v85_test_failed($vals['status'] ?? '', $vals['result'] ?? '')) {
+                $autoIssueId = plm_v85_auto_issue_from_test($pid, $mid, $id, $vals);
+                if ($autoIssueId > 0) {
+                    plm_v85_dyn_update('plm_tests', array('issue_id'=>$autoIssueId,'problem_generated'=>1,'updated_at'=>plm_v85_now()), 'id=?', array($id));
+                }
+            }
+            plm_v85_update_model_test_summary($mid);
+            plm_v85_log($pid,'test',$id,'保存测试',$vals['test_type'].'/'.$vals['status']);
+            plm_v85_json(array('ok'=>true,'id'=>$id,'issue_id'=>$autoIssueId));
+        }
+        if($action === 'save_test_run'){
+            plm_v85_require_perm('edit_test','新增/修改测试');
+            $testId=(int)($d['test_id']??($d['id']??0));
+            if(!$testId) plm_v85_json(array('ok'=>false,'error'=>'请先保存测试节点，再新增重测记录'));
+            $old=plm_v85_row('SELECT * FROM plm_tests WHERE id=?',array($testId));
+            if(!$old) plm_v85_json(array('ok'=>false,'error'=>'测试节点不存在'));
+            $pid=(int)($old['project_id']??0); $mid=(int)($old['model_id']??0);
+            $tplFields=$d['template_fields_json']??($d['custom_fields']??array());
+            if(is_array($tplFields)) $tplFieldsJson=json_encode($tplFields,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            else $tplFieldsJson=plm_v85_s($tplFields,20000);
+            $vals=array('project_id'=>$pid,'model_id'=>(int)($d['model_id']??$mid),'test_type'=>plm_v85_s($d['test_type']??($old['test_type']??'温升'),80),'title'=>plm_v85_s($d['title']??($old['title']??''),255),'status'=>plm_v85_s($d['status']??'待复测',60),'result'=>plm_v85_s($d['result']??'',80),'test_date'=>plm_v85_s($d['test_date']??'',20) ?: null,'operator'=>plm_v85_s($d['operator']??'',120),'ambient_temp'=>($d['ambient_temp']??'')===''?null:(float)$d['ambient_temp'],'led_temp'=>($d['led_temp']??'')===''?null:(float)$d['led_temp'],'driver_temp'=>($d['driver_temp']??'')===''?null:(float)$d['driver_temp'],'shell_temp'=>($d['shell_temp']??'')===''?null:(float)$d['shell_temp'],'max_temp'=>($d['max_temp']??'')===''?null:(float)$d['max_temp'],'sphere_lumen'=>plm_v85_s($d['sphere_lumen']??'',80),'sphere_power'=>plm_v85_s($d['sphere_power']??'',80),'sphere_efficiency'=>plm_v85_s($d['sphere_efficiency']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'cri'=>plm_v85_s($d['cri']??'',80),'ies_angle'=>plm_v85_s($d['ies_angle']??'',80),'ies_lumen'=>plm_v85_s($d['ies_lumen']??'',80),'test_standard'=>plm_v85_s($d['test_standard']??'',10000),'test_data'=>plm_v85_s($d['test_data']??'',10000),'test_conclusion'=>plm_v85_s($d['test_conclusion']??'',10000),'retest_result'=>plm_v85_s($d['retest_result']??'',80),'affect_sample'=>(int)($d['affect_sample']??0),'template_key'=>plm_v85_s($d['template_key']??'',120),'template_name'=>plm_v85_s($d['template_name']??'',160),'template_fields_json'=>$tplFieldsJson,'note'=>plm_v85_s($d['note']??'',10000),'updated_at'=>plm_v85_now());
+            // 主测试节点保存最终状态，历史明细单独插入 plm_test_runs。
+            plm_v85_dyn_update('plm_tests',$vals,'id=?',array($testId));
+            $runNo=plm_v85_next_test_run_no($testId);
+            $me=plm_v85_current_user_info();
+            $runVals=plm_v85_test_run_vals_from_test_vals($testId,$vals,$runNo,(string)($me['name']??''));
+            $runVals['created_at']=plm_v85_now();
+            $runId=plm_v85_dyn_insert('plm_test_runs',$runVals);
+            $autoIssueId=0;
+            if(plm_v85_test_failed($vals['status']??'', $vals['result']??'')){
+                $autoIssueId=plm_v85_auto_issue_from_test($pid,(int)$vals['model_id'],$testId,$vals,$runId);
+                if($autoIssueId>0) plm_v85_dyn_update('plm_tests',array('issue_id'=>$autoIssueId,'problem_generated'=>1,'updated_at'=>plm_v85_now()),'id=?',array($testId));
+            }
+            plm_v85_update_model_test_summary((int)$vals['model_id']);
+            plm_v85_log($pid,'test',$testId,'新增重测记录','第'.$runNo.'次：'.$vals['test_type'].'/'.$vals['status'].'/'.$vals['result']);
+            plm_v85_json(array('ok'=>true,'id'=>$testId,'run_id'=>$runId,'run_no'=>$runNo,'issue_id'=>$autoIssueId));
+        }
+        if($action === 'create_issue_from_test'){
+            plm_v85_require_perm('edit_issue','新增/修改问题');
+            $testId=(int)($d['test_id']??0); $runId=(int)($d['test_run_id']??0);
+            if(!$testId) plm_v85_json(array('ok'=>false,'error'=>'缺少测试ID'));
+            $test=plm_v85_row('SELECT * FROM plm_tests WHERE id=?',array($testId));
+            if(!$test) plm_v85_json(array('ok'=>false,'error'=>'测试记录不存在'));
+            $vals=$test;
+            if($runId>0 && plm_v85_table_exists('plm_test_runs')){
+                $run=plm_v85_row('SELECT * FROM plm_test_runs WHERE id=? AND test_id=?',array($runId,$testId));
+                if($run){ foreach($run as $k=>$v){ if($v!==null && $v!=='') $vals[$k]=$v; } }
+            }
+            $issueId=plm_v85_auto_issue_from_test((int)$test['project_id'],(int)$test['model_id'],$testId,$vals,$runId);
+            if($issueId>0){
+                plm_v85_dyn_update('plm_tests',array('issue_id'=>$issueId,'problem_generated'=>1,'updated_at'=>plm_v85_now()),'id=?',array($testId));
+                plm_v85_log((int)$test['project_id'],'test',$testId,'手动生成测试问题闭环','问题ID '.$issueId);
+                plm_v85_json(array('ok'=>true,'issue_id'=>$issueId));
+            }
+            plm_v85_json(array('ok'=>false,'error'=>'生成问题闭环失败'));
+        }
+        if($action === 'create_test_rectify_dispatch'){
+            plm_v85_require_perm('create_dispatch','生成测试整改派工');
+            $testId=(int)($d['test_id']??0); $issueId=(int)($d['issue_id']??0);
+            $assigneeId=(int)($d['assignee_id']??0); $assigneeName=plm_v85_s($d['assignee_name']??'',120);
+            $dueAt=plm_v85_s($d['due_at']??'',30);
+            try{
+                $ret=plm_v85_create_test_rectify_dispatch($testId,$issueId,$assigneeId,$assigneeName,$dueAt);
+                plm_v85_json(array('ok'=>true)+$ret);
+            }catch(Throwable $e){ plm_v85_json(array('ok'=>false,'error'=>$e->getMessage())); }
+        }
+        if($action === 'delete_test_run'){
+            plm_v85_require_perm('delete_test','删除测试重测记录');
+            $runId=(int)($d['run_id']??0); if(!$runId) plm_v85_json(array('ok'=>false,'error'=>'缺少重测记录ID'));
+            $run=plm_v85_row('SELECT * FROM plm_test_runs WHERE id=?',array($runId));
+            if(!$run) plm_v85_json(array('ok'=>false,'error'=>'重测记录不存在'));
+            // V8.5.80：删除某次重测时，不物理删除附件；将该次附件退回到测试节点公共附件，避免资料丢失。
+            plm_v85_pdo()->prepare('UPDATE plm_files SET test_run_id=0 WHERE test_run_id=?')->execute(array($runId));
+            plm_v85_pdo()->prepare('DELETE FROM plm_test_runs WHERE id=?')->execute(array($runId));
+            plm_v85_log((int)$run['project_id'],'test',(int)$run['test_id'],'删除重测记录','第'.(int)$run['run_no'].'次，附件已退回测试节点');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'delete_test'){
+            plm_v85_require_perm('delete_test','删除测试记录');
+            $id=(int)($d['id']??0); $old=plm_v85_row('SELECT project_id,model_id FROM plm_tests WHERE id=?',array($id));
+            if($id){ plm_v85_pdo()->prepare('DELETE FROM plm_test_runs WHERE test_id=?')->execute(array($id)); plm_v85_pdo()->prepare('DELETE FROM plm_tests WHERE id=?')->execute(array($id)); plm_v85_pdo()->prepare('UPDATE plm_files SET test_id=0,test_run_id=0 WHERE test_id=?')->execute(array($id)); }
+            plm_v85_update_model_test_summary((int)($old['model_id']??0));
+            plm_v85_log((int)($old['project_id']??0),'test',$id,'删除测试','');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'upload_file'){
+            plm_v85_require_perm('upload_file','上传文件');
+            $pid=(int)($_POST['project_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $file = plm_v85_upload_file();
+            $cat=plm_v85_s($_POST['category']??'其它',100);
+            $id=plm_v85_dyn_insert('plm_files', array('project_id'=>$pid,'model_id'=>(int)($_POST['model_id']??0),'test_id'=>(int)($_POST['test_id']??0),'test_run_id'=>(int)($_POST['test_run_id']??0),'step_id'=>(int)($_POST['step_id']??0),'category'=>$cat,'title'=>plm_v85_s($_POST['title']??'',255),'original_name'=>$file['original_name'],'file_name'=>$file['file_name'],'file_path'=>$file['file_path'],'mime_type'=>$file['mime_type'],'file_size'=>$file['file_size'],'note'=>plm_v85_s($_POST['note']??'',5000),'customer_visible'=>(int)($_POST['customer_visible']??1),'created_at'=>plm_v85_now()));
+            if(in_array($cat,array('产品图片','项目图片'),true) && preg_match('/^image\//', (string)$file['mime_type'])) plm_v85_dyn_update('plm_projects',array('image_path'=>$file['file_path'],'updated_at'=>plm_v85_now()),'id=?',array($pid));
+            plm_v85_log($pid,'file',$id,'上传文件',$file['original_name']);
+            plm_v85_json(array('ok'=>true,'id'=>$id,'file'=>$file));
+        }
+        if($action === 'update_file_meta'){
+            plm_v85_require_perm('upload_file','修改文件信息');
+            $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少文件ID'));
+            $old=plm_v85_row('SELECT project_id FROM plm_files WHERE id=?',array($id));
+            plm_v85_dyn_update('plm_files',array('category'=>plm_v85_s($d['category']??'',100),'title'=>plm_v85_s($d['title']??'',255),'note'=>plm_v85_s($d['note']??'',5000),'customer_visible'=>(int)($d['customer_visible']??1),'model_id'=>(int)($d['model_id']??0),'test_id'=>(int)($d['test_id']??0),'test_run_id'=>(int)($d['test_run_id']??0),'step_id'=>(int)($d['step_id']??0)),'id=?',array($id));
+            plm_v85_log((int)($old['project_id']??0),'file',$id,'保存文件信息','');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'create_customer_zip'){
+            plm_v85_require_perm('export_package','导出资料包');
+            $pid=(int)($d['project_id']??0);
+            $ids=$d['file_ids']??array();
+            $pkg = plm_v85_create_customer_zip($pid, $ids);
+            plm_v85_log($pid,'file',0,'生成客户资料包',$pkg['name'].' / '.$pkg['count'].' 个文件');
+            plm_v85_json(array('ok'=>true,'url'=>$pkg['url'],'count'=>$pkg['count'],'name'=>$pkg['name']));
+        }
+        if($action === 'create_project_package'){
+            plm_v85_require_perm('export_package','导出项目资料包');
+            $pid=(int)($d['project_id']??0);
+            $mid=(int)($d['model_id']??0);
+            $include=plm_v85_s($d['include']??'all',40);
+            $pkg=plm_v85_create_project_package_zip($pid,$mid,$include);
+            plm_v85_log($pid,'file',0,$mid>0?'生成样品资料包':'生成项目资料包',$pkg['name'].' / 文件 '.$pkg['count'].' 个 / 范围 '.$include);
+            plm_v85_json(array('ok'=>true,'url'=>$pkg['url'],'count'=>$pkg['count'],'name'=>$pkg['name'],'model_id'=>$mid,'include'=>$include));
+        }
+        if($action === 'delete_file'){
+            plm_v85_require_perm('delete_file','删除文件');
+            $id=(int)($d['id']??0); $f=plm_v85_row('SELECT * FROM plm_files WHERE id=?',array($id));
+            if($f){
+                $path=(string)$f['file_path'];
+                if(strpos($path,'uploads/plm/')===0){ $full=realpath(__DIR__.'/'.$path); $root=realpath(__DIR__.'/uploads/plm'); if($full && $root && strpos($full,$root)===0 && is_file($full)) @unlink($full); }
+                plm_v85_pdo()->prepare('DELETE FROM plm_files WHERE id=?')->execute(array($id));
+                plm_v85_log((int)$f['project_id'],'file',$id,'删除文件',$f['original_name']??'');
+            }
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'save_issue'){
+            plm_v85_require_perm('edit_issue','新增/修改问题');
+            $id=(int)($d['id']??0); $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); if(!$pid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目ID'));
+            $status=plm_v85_s($d['status']??'待处理',60);
+            $vals=array('project_id'=>$pid,'model_id'=>$mid,'step_id'=>(int)($d['step_id']??0),'file_id'=>(int)($d['file_id']??0),'title'=>plm_v85_s($d['title']??'',255),'source'=>plm_v85_s($d['source']??'',120),'severity'=>plm_v85_s($d['severity']??'中',60),'status'=>$status,'owner'=>plm_v85_s($d['owner']??'',120),'solution'=>plm_v85_s($d['solution']??'',10000),'note'=>plm_v85_s($d['note']??'',10000),'closed_at'=>in_array($status,array('已解决','已关闭'),true)?plm_v85_now():null,'updated_at'=>plm_v85_now());
+            if($id){ plm_v85_dyn_update('plm_issues',$vals,'id=?',array($id)); }
+            else { $vals['created_at']=plm_v85_now(); $id=plm_v85_dyn_insert('plm_issues',$vals); }
+            plm_v85_log($pid,'issue',$id,'保存问题',$vals['title'].' / '.$status);
+            plm_v85_json(array('ok'=>true,'id'=>$id));
+        }
+        if($action === 'delete_issue'){
+            plm_v85_require_perm('delete_issue','删除问题');
+            $id=(int)($d['id']??0); $old=plm_v85_row('SELECT project_id,title FROM plm_issues WHERE id=?',array($id));
+            if($id) plm_v85_pdo()->prepare('DELETE FROM plm_issues WHERE id=?')->execute(array($id));
+            plm_v85_log((int)($old['project_id']??0),'issue',$id,'删除问题',$old['title']??'');
+            plm_v85_json(array('ok'=>true));
+        }
+        if($action === 'plm_create_backup'){
+            plm_v85_require_perm('manage_permissions','PLM 备份恢复');
+            $bk=plm_v85_create_backup_file_v871('manual');
+            plm_v85_log(0,'backup',0,'生成PLM备份',$bk['name'].' / '.$bk['format'].' / 文件 '.$bk['files_count'].' 个');
+            plm_v85_json(array('ok'=>true,'backup'=>$bk,'backups'=>plm_v85_backup_list_v872()));
+        }
+        if($action === 'plm_list_backups'){
+            plm_v85_require_perm('manage_permissions','PLM 备份恢复');
+            plm_v85_json(array('ok'=>true,'backups'=>plm_v85_backup_list_v872()));
+        }
+        if($action === 'plm_delete_backup'){
+            plm_v85_require_perm('manage_permissions','PLM 备份恢复');
+            $name=plm_v85_s($d['name']??'',255);
+            plm_v85_delete_backup_v872($name);
+            plm_v85_log(0,'backup',0,'删除PLM备份',$name);
+            plm_v85_json(array('ok'=>true,'backups'=>plm_v85_backup_list_v872()));
+        }
+        if($action === 'plm_restore_server_backup'){
+            plm_v85_require_perm('manage_permissions','PLM 备份恢复');
+            $name=plm_v85_s($d['name']??'',255);
+            $res=plm_v85_restore_server_backup_v872($name);
+            plm_v85_log(0,'backup',0,'从服务器备份恢复PLM','恢复来源：'.$name.'；恢复前备份：'.($res['before_backup']['name']??''));
+            plm_v85_json(array('ok'=>true,'result'=>$res,'backups'=>plm_v85_backup_list_v872()));
+        }
+        if($action === 'plm_restore_backup'){
+            plm_v85_require_perm('manage_permissions','PLM 备份恢复');
+            if(empty($_FILES['backup_file']) || empty($_FILES['backup_file']['tmp_name'])) plm_v85_json(array('ok'=>false,'error'=>'请选择要恢复的备份文件'));
+            $res=plm_v85_restore_backup_file_v871($_FILES['backup_file']['tmp_name'], $_FILES['backup_file']['name']??'backup');
+            plm_v85_log(0,'backup',0,'恢复PLM备份','恢复来源：'.($_FILES['backup_file']['name']??'').'；恢复前备份：'.($res['before_backup']['name']??''));
+            plm_v85_json(array('ok'=>true,'result'=>$res,'backups'=>plm_v85_backup_list_v872()));
+        }
+        if($action === 'plm_online_ping'){
+            plm_v85_online_touch();
+            $online_users=plm_v85_online_users(10);
+            plm_v85_json(array('ok'=>true,'online_count'=>count($online_users),'online_users'=>$online_users));
+        }
+        if($action === 'plm_online_users'){
+            plm_v85_online_touch();
+            $minutes=(int)($d['minutes']??10);
+            $online_users=plm_v85_online_users($minutes);
+            plm_v85_json(array('ok'=>true,'online_count'=>count($online_users),'users'=>$online_users));
+        }
+        if($action === 'health'){
+            $tables=array('plm_projects','plm_models','plm_flow_steps','plm_tests','plm_files','plm_issues','plm_logs'); $out=array();
+            foreach($tables as $t){ $out[$t]=array('exists'=>plm_v85_table_exists($t),'rows'=>plm_v85_table_exists($t)?(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM `'.$t.'`')->fetchColumn():0); }
+            plm_v85_json(array('ok'=>true,'tables'=>$out,'php'=>PHP_VERSION,'time'=>plm_v85_now()));
+        }
+        /* ===== ARTDON_PLM_V85_53_LOG_CENTER_API_START ===== */
+        if($action === 'plm_logs' || $action === 'plm_log_list'){
+            plm_v85_require_perm('view_logs','查看操作日志');
+            $args=array_merge($_GET,$_POST,is_array($d)?$d:array());
+            $rows=plm_v85_log_query_v853($args,false);
+            plm_v85_json(array('ok'=>true,'logs'=>$rows,'count'=>count($rows)));
+        }
+        if($action === 'plm_logs_export' || $action === 'plm_log_export_csv'){
+            plm_v85_require_perm('view_logs','导出操作日志');
+            $args=array_merge($_GET,$_POST,is_array($d)?$d:array());
+            plm_v85_log(0,'log',0,'导出操作日志','CSV');
+            plm_v85_export_logs_csv_v853($args);
+        }
+        /* ===== ARTDON_PLM_V85_53_LOG_CENTER_API_END ===== */
+        plm_v85_json(array('ok'=>false,'error'=>'未知 action：'.$action));
+    } catch(Throwable $e){
+        plm_v85_json(array('ok'=>false,'error'=>$e->getMessage(),'file'=>basename($e->getFile()),'line'=>$e->getLine()));
+    }
+}
+if(plm_v85_is_api()) plm_v85_handle_api();
+if (ob_get_length()) @ob_clean();
+?>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Artdon PLM V8.5.92 测试资料上传入口修复版</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--text:#0f172a;--muted:#64748b;--line:#dbe4ef;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--orange:#f59e0b;--purple:#7c3aed;--shadow:0 14px 36px rgba(15,23,42,.08)}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#eef6ff,#f8fbff);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif;color:var(--text);font-size:14px}.app{max-width:1480px;margin:auto;padding:16px}.top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}.brand{font-weight:1000;color:#1d4ed8}.top h1{margin:4px 0 2px;font-size:30px}.sub{font-size:12px;color:var(--muted);font-weight:800;line-height:1.5}.btn{border:1px solid var(--line);background:#fff;color:#1e293b;border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:4px}.btn:hover{filter:brightness(.98)}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.good{background:#dcfce7;border-color:#bbf7d0;color:#15803d}.btn.warn{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.btn.danger{background:#fee2e2;border-color:#fecaca;color:#991b1b}.btn.small{padding:6px 9px;font-size:12px;border-radius:10px}.actions{display:flex;gap:8px;flex-wrap:wrap}.stats{display:grid;grid-template-columns:repeat(6,minmax(118px,1fr));gap:10px;margin:14px 0}.stat{background:#fff;border:1px solid var(--line);border-left:6px solid var(--blue);border-radius:16px;padding:12px;box-shadow:var(--shadow)}.stat.green{border-left-color:var(--green)}.stat.red{border-left-color:var(--red)}.stat.orange{border-left-color:var(--orange)}.stat.purple{border-left-color:var(--purple)}.stat b{display:block;font-size:24px}.stat span{color:var(--muted);font-size:12px;font-weight:900}.panel,.detail,.side-card{background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}.panel{padding:12px;margin:12px 0}.filters{display:grid;grid-template-columns:1.45fr repeat(5,1fr) auto;gap:9px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:#fff;font:inherit;outline:none}textarea{min-height:82px;resize:vertical}input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}.viewbar{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}.segment{display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:14px;flex-wrap:wrap}.segment button,.segment select{border:0;background:transparent;border-radius:10px;padding:7px 12px;font-weight:900;color:#64748b;cursor:pointer;width:auto}.segment button.active{background:#fff;color:#1d4ed8;box-shadow:0 4px 12px rgba(15,23,42,.08)}.main{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start}.cards{display:grid;gap:12px;align-content:start;min-width:0;max-height:calc(100vh - 310px);overflow:auto;padding-right:2px}.cards.cardMode{grid-template-columns:repeat(var(--project-cols,2),minmax(0,1fr));max-height:none}.side-card{padding:13px;border:3px solid #e2e8f0;cursor:pointer;overflow:hidden}.side-card.active{border-color:#f59e0b}.side-card h2{font-size:18px;margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side-img{width:100%;height:112px;border-radius:16px;object-fit:cover;background:#eef2f7;margin-bottom:10px}.noimg{height:112px;border-radius:16px;background:linear-gradient(135deg,#e0f2fe,#f8fafc);display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;margin-bottom:10px}.cards:not(.cardMode) .side-img,.cards:not(.cardMode) .noimg{height:76px}.tags{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.tag{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:900;background:#e2e8f0;color:#334155}.tag.blue{background:#dbeafe;color:#1d4ed8}.tag.green{background:#dcfce7;color:#15803d}.tag.red{background:#fee2e2;color:#991b1b}.tag.orange{background:#ffedd5;color:#c2410c}.tag.purple{background:#ede9fe;color:#6d28d9}.progress-row{display:grid;grid-template-columns:58px 1fr 46px;gap:8px;align-items:center;margin:8px 0;font-size:13px;font-weight:900;color:#475569}.bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue)}.bar.green i{background:var(--green)}.detail{padding:16px;min-height:690px}.detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px}.detail-head h2{margin:0;font-size:28px}.tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:12px 0}.tab{border:0;background:#f1f5f9;border-radius:12px;padding:10px 14px;font-weight:900;color:#475569;cursor:pointer}.tab.active{background:#dbeafe;color:#1d4ed8}.tabbody{padding-top:14px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field label{display:block;color:#64748b;font-size:12px;font-weight:900;margin:7px 0 4px}.model-card,.test-card,.file-card,.step,.search-card{background:#fff;border:1px solid var(--line);border-left:7px solid #f59e0b;border-radius:20px;padding:13px;box-shadow:0 8px 24px rgba(15,23,42,.05)}.model-list,.test-list,.file-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.model-top,.test-top,.step-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.model-top h3,.test-top h3,.step h3{margin:0;font-size:18px}.uploadbox{border:1px dashed #93c5fd;background:#eff6ff;border-radius:16px;padding:12px;margin:12px 0}.flow-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.flow{display:grid;grid-template-columns:repeat(var(--flow-cols,3),minmax(180px,1fr));gap:12px;align-items:start}.step{border-left:0;border:2px solid var(--line);padding:12px;font-size:13px;aspect-ratio:1/1;min-height:210px;display:flex;flex-direction:column}.step.status-已完成{border-color:#bbf7d0;background:#f0fdf4}.step.status-进行中{border-color:#bfdbfe;background:#eff6ff}.step.status-暂停{border-color:#fed7aa;background:#fff7ed}.step.status-重来{border-color:#fecaca;background:#fff1f2}.drag-handle{cursor:grab;color:#64748b;font-weight:900}.time-line{font-size:12px;color:#64748b;font-weight:800;line-height:1.45;margin:6px 0;flex:1}.empty{padding:28px;border:1px dashed #cbd5e1;border-radius:18px;text-align:center;color:#94a3b8;font-weight:900;background:#f8fafc}.hint{font-size:12px;color:#64748b;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;background:#111827;color:#fff;border-radius:14px;padding:13px 16px;box-shadow:0 18px 50px rgba(15,23,42,.28);z-index:9999;display:none;max-width:520px}.toast.show{display:block}.test-dashboard{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.test-mini{border:1px solid var(--line);border-radius:16px;padding:12px;background:#f8fafc}.test-mini b{font-size:22px}.file-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #dbe3ef;background:#f8fafc;border-radius:999px;padding:6px 9px;margin:3px;font-size:12px;font-weight:800}.file-chip a{color:#1d4ed8;text-decoration:none}.thumb{width:100%;height:145px;object-fit:cover;border-radius:14px;background:#eef2f7}.pdfbox{width:100%;height:230px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#f8fafc}.pdfbox iframe{width:100%;height:100%;border:0}.table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid #e5e7eb;padding:9px;text-align:left;vertical-align:top}.dangerText{color:#b91c1c;font-weight:900}.health{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:16px;padding:14px;overflow:auto}.statusline{padding:9px 12px;border-radius:14px;background:#eff6ff;color:#1d4ed8;font-weight:900;margin:8px 0}.preview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.preview-card{border:1px solid var(--line);border-radius:16px;padding:10px;background:#fff}.nowrap{white-space:nowrap}.link{color:#2563eb;text-decoration:none;font-weight:900}
+.customer-panel{border:1px solid #bfdbfe;background:linear-gradient(180deg,#eff6ff,#fff);border-radius:20px;padding:14px;margin:12px 0;box-shadow:0 10px 26px rgba(37,99,235,.06)}.customer-panel h3{margin:0 0 8px}.customer-tools{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:center}.file-list-wrap{border:1px solid var(--line);border-radius:16px;overflow:auto;background:#fff;margin-top:10px}.file-list{width:100%;border-collapse:collapse;min-width:860px}.file-list th,.file-list td{border-bottom:1px solid #e5e7eb;padding:9px;text-align:left;vertical-align:middle}.file-list th{background:#f8fafc;color:#475569;font-size:12px;font-weight:1000}.file-list tr:hover td{background:#f8fbff}.checkcell{width:44px;text-align:center!important}.file-name-cell{font-weight:900;color:#0f172a}.copybox{width:100%;min-height:96px;background:#f8fafc;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.pkg-result{margin-top:10px;padding:10px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:14px;color:#15803d;font-weight:900;display:none}.pkg-result.show{display:block}@media(max-width:1160px){.customer-tools{grid-template-columns:1fr 1fr}.file-list{min-width:760px}}@media(max-width:720px){.customer-tools{grid-template-columns:1fr}.file-list-wrap{max-height:360px}}
+@media(max-width:1160px){.main{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.filters,.grid4,.grid3,.grid2,.test-dashboard{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,1fr)}.cards{max-height:none;overflow:visible}.detail-head{display:block}.model-list,.test-list,.file-grid,.preview-grid{grid-template-columns:1fr}}@media(max-width:720px){.flow{grid-template-columns:1fr}.step{aspect-ratio:auto;min-height:220px}.stats{grid-template-columns:1fr}.top h1{font-size:24px}.app{padding:10px}.cards.cardMode{grid-template-columns:1fr}}
+
+/* ===== PLM V8.5.1 开发导航图重设计：流程节点 + 右侧详情，不再把表单摊在卡片上 ===== */
+.flow-shell{display:grid;gap:14px}.flow-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,#f8fbff,#eef6ff);border:1px solid #dbeafe;border-radius:20px;padding:12px}.flow-toolbar-left,.flow-toolbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.flow-toolbar select{width:auto;min-width:160px}.flow-stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}.flow-board{display:grid;grid-template-columns:repeat(var(--flow-cols,3),minmax(160px,1fr));gap:18px;background:#f8fafc;border:1px solid var(--line);border-radius:22px;padding:18px;min-height:440px}.flow-node{position:relative;min-height:172px;border:2px solid #dbe4ef;border-radius:22px;background:#fff;box-shadow:0 14px 28px rgba(15,23,42,.06);padding:13px;cursor:pointer;display:flex;flex-direction:column;gap:9px;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}.flow-node:hover{transform:translateY(-2px);box-shadow:0 18px 36px rgba(15,23,42,.10)}.flow-node.active{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.12),0 18px 36px rgba(15,23,42,.10)}.flow-node:after{content:'→';position:absolute;right:-16px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:999px;background:#e0edff;color:#2563eb;border:1px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-weight:1000;z-index:2}.flow-node:last-child:after{display:none}.flow-node.done{border-color:#bbf7d0;background:linear-gradient(180deg,#f0fdf4,#fff)}.flow-node.doing{border-color:#bfdbfe;background:linear-gradient(180deg,#eff6ff,#fff)}.flow-node.pause{border-color:#fed7aa;background:linear-gradient(180deg,#fff7ed,#fff)}.flow-node.redo{border-color:#fecaca;background:linear-gradient(180deg,#fff1f2,#fff)}.flow-node.overdue{box-shadow:0 0 0 4px rgba(220,38,38,.08),0 14px 28px rgba(15,23,42,.06)}.flow-node.blocked{opacity:.72}.template-panel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px dashed #bfdbfe;border-radius:18px;padding:10px}.template-panel select{width:auto;min-width:220px}.log-mini{display:grid;gap:8px;max-height:180px;overflow:auto;font-size:12px;color:#475569}.log-mini>div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:8px}.flow-node.todo{background:linear-gradient(180deg,#ffffff,#f8fafc)}.flow-node-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.flow-index{width:40px;height:40px;border-radius:14px;background:#eef2ff;color:#1d4ed8;font-size:17px;font-weight:1000;display:flex;align-items:center;justify-content:center;flex:0 0 auto}.flow-title-wrap{min-width:0;flex:1}.flow-title{font-size:18px;font-weight:1000;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.flow-sub{font-size:12px;font-weight:900;color:#64748b;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.flow-handle{border:0;background:#f1f5f9;border-radius:10px;padding:6px 8px;color:#64748b;font-weight:1000;cursor:grab}.flow-status{display:inline-flex;width:max-content;align-items:center;gap:6px;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:1000}.flow-status.todo{background:#e2e8f0;color:#334155}.flow-status.doing{background:#dbeafe;color:#1d4ed8}.flow-status.done{background:#dcfce7;color:#15803d}.flow-status.pause{background:#ffedd5;color:#c2410c}.flow-status.redo{background:#fee2e2;color:#991b1b}.flow-meta{display:grid;gap:5px;font-size:12px;font-weight:900;color:#475569;line-height:1.35}.flow-note{font-size:12px;color:#64748b;line-height:1.45;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.flow-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}.flow-quick .btn{padding:5px 8px;font-size:12px;border-radius:10px}.flow-drawer{position:sticky;top:12px;background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:0 16px 42px rgba(15,23,42,.10);padding:14px;min-height:440px}.flow-drawer h3{margin:0 0 4px;font-size:22px}.flow-drawer-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}.flow-progress{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.flow-kpi{background:#fff;border:1px solid var(--line);border-radius:16px;padding:9px;text-align:center}.flow-kpi b{display:block;font-size:20px}.flow-kpi span{font-size:11px;color:#64748b;font-weight:900}.flow-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;min-height:240px;border:1px dashed #cbd5e1;border-radius:18px;color:#94a3b8;font-weight:900;background:#fff}.flow-help{font-size:12px;color:#64748b;font-weight:900;line-height:1.5}.flow-view-title{font-size:18px;font-weight:1000;color:#0f172a}.flow-view-title small{display:block;font-size:12px;font-weight:900;color:#64748b;margin-top:3px}.flow-board.dragging .flow-node{opacity:.75}.flow-node.drop-target{outline:3px dashed #2563eb;outline-offset:3px}
+@media(max-width:1160px){.flow-stage{grid-template-columns:1fr}.flow-drawer{position:relative;top:auto}.flow-board{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.flow-toolbar,.flow-toolbar-left,.flow-toolbar-right{align-items:stretch}.flow-toolbar select,.flow-toolbar .btn{width:100%}.flow-stage{grid-template-columns:1fr}.flow-board{grid-template-columns:1fr;padding:12px}.flow-node:after{display:none}.flow-progress{grid-template-columns:repeat(2,1fr)}}
+
+.file-workbench{display:grid;grid-template-columns:260px minmax(0,1fr) 390px;gap:14px;align-items:start}.file-tree,.file-list-pane,.file-preview-pane{background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 10px 28px rgba(15,23,42,.06);padding:13px}.file-tree{position:sticky;top:10px}.file-tree h3,.file-list-pane h3,.file-preview-pane h3{margin:0 0 10px}.tree-btn{width:100%;display:flex;justify-content:space-between;align-items:center;border:1px solid transparent;background:#f8fafc;border-radius:12px;padding:9px 10px;margin:5px 0;font-weight:900;color:#334155;cursor:pointer}.tree-btn:hover,.tree-btn.active{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.tree-btn b{font-size:12px;color:#64748b}.file-toolbar{display:grid;grid-template-columns:1.2fr repeat(4,minmax(110px,.8fr));gap:8px;margin-bottom:10px}.fm-table-wrap{border:1px solid var(--line);border-radius:16px;overflow:auto;max-height:560px;background:#fff}.fm-table{width:100%;border-collapse:collapse;min-width:880px}.fm-table th,.fm-table td{border-bottom:1px solid #e5e7eb;padding:9px;text-align:left;vertical-align:middle}.fm-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#475569;font-size:12px;font-weight:1000}.fm-table tr{cursor:pointer}.fm-table tr:hover td{background:#f8fbff}.fm-table tr.active td{background:#eff6ff}.file-ico{width:42px;height:42px;border-radius:12px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:1000;color:#1d4ed8;overflow:hidden}.file-ico img{width:100%;height:100%;object-fit:cover}.file-main-name{font-weight:1000;color:#0f172a}.file-preview-large{border:1px solid var(--line);border-radius:16px;background:#f8fafc;overflow:hidden;min-height:220px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}.file-preview-large img{width:100%;max-height:360px;object-fit:contain;background:#fff}.file-preview-large iframe{width:100%;height:360px;border:0;background:#fff}.file-meta-row{display:grid;grid-template-columns:90px 1fr;gap:8px;border-bottom:1px solid #eef2f7;padding:7px 0;font-size:12px}.file-meta-row b{color:#64748b}.file-send-mini{margin-top:12px}.file-send-mini .customer-panel{margin:0;box-shadow:none}.step-bind{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:14px;padding:9px;margin:8px 0}.file-source-badge{font-size:11px;font-weight:1000;border-radius:999px;padding:4px 7px;background:#e2e8f0;color:#334155}.file-source-badge.test{background:#ede9fe;color:#6d28d9}.file-source-badge.file{background:#dbeafe;color:#1d4ed8}.file-empty-note{min-height:360px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#94a3b8;font-weight:900;border:1px dashed #cbd5e1;border-radius:16px;background:#f8fafc}.file-actions-line{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:10px}.file-list-pane .customer-panel{display:none}@media(max-width:1260px){.file-workbench{grid-template-columns:1fr}.file-tree{position:relative;top:auto}.file-toolbar{grid-template-columns:1fr 1fr}.file-preview-pane{order:3}.fm-table-wrap{max-height:none}}@media(max-width:720px){.file-toolbar{grid-template-columns:1fr}.file-workbench{gap:10px}.file-preview-large iframe{height:280px}.fm-table{min-width:720px}}
+
+
+/* ===== PLM V8.5.12 项目列表重设计 + 文件预览折叠 ===== */
+.project-list-modern{gap:10px;max-height:calc(100vh - 300px);overflow:auto;padding:3px 4px 12px 1px}.project-row-modern{display:grid;grid-template-columns:58px minmax(0,1fr);gap:12px;align-items:center;background:rgba(255,255,255,.92);border:1px solid #e2e8f0;border-left:5px solid #dbeafe;border-radius:18px;padding:11px 12px;box-shadow:0 8px 24px rgba(15,23,42,.045);cursor:pointer;transition:.15s ease;position:relative}.project-row-modern:hover{transform:translateY(-1px);box-shadow:0 12px 28px rgba(15,23,42,.08);border-color:#bfdbfe}.project-row-modern.active{border-color:#f59e0b;border-left-color:#f59e0b;background:linear-gradient(180deg,#fff,#fffbeb)}.project-avatar{width:58px;height:58px;border-radius:16px;overflow:hidden;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-weight:1000;color:#1d4ed8;flex-shrink:0}.project-avatar img{width:100%;height:100%;object-fit:cover}.project-avatar.no{background:linear-gradient(135deg,#dbeafe,#f8fafc);font-size:24px}.project-row-main{min-width:0}.project-title-line{display:flex;align-items:center;gap:8px;justify-content:space-between}.project-title-line h2{font-size:16px;line-height:1.25;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a}.project-subline{font-size:12px;color:#64748b;font-weight:900;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-row-metrics{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.project-row-metrics span{background:#f1f5f9;border-radius:999px;padding:3px 7px;font-size:11px;font-weight:900;color:#475569}.project-row-side{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-start;margin-top:7px}.project-dot{width:10px;height:10px;border-radius:999px;background:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.10);flex-shrink:0}.project-dot.done{background:#16a34a;box-shadow:0 0 0 4px rgba(22,163,74,.12)}.project-dot.pause{background:#f97316;box-shadow:0 0 0 4px rgba(249,115,22,.14)}.project-dot.cancel{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.12)}.project-dot.test{background:#7c3aed;box-shadow:0 0 0 4px rgba(124,58,237,.12)}.project-priority{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:1000}.project-priority.orange{background:#ffedd5;color:#c2410c}.project-priority.red{background:#fee2e2;color:#991b1b}.project-priority.purple{background:#ede9fe;color:#6d28d9}.project-progress{display:grid;grid-template-columns:40px 1fr 38px;gap:7px;align-items:center;margin-top:9px;font-size:12px;font-weight:900;color:#64748b}.project-progress.thin{grid-template-columns:1fr 38px;margin-top:8px}.project-progress.thin span{display:none}.project-cards-grid{grid-template-columns:repeat(var(--project-cols,2),minmax(0,1fr));gap:13px;max-height:none}.project-card-modern{background:#fff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 10px 28px rgba(15,23,42,.055);cursor:pointer;transition:.15s ease}.project-card-modern:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(15,23,42,.10)}.project-card-modern.active{border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.16),0 16px 36px rgba(15,23,42,.10)}.project-card-cover{height:138px;background:linear-gradient(135deg,#e0f2fe,#f8fafc);display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:1000}.project-card-cover img{width:100%;height:100%;object-fit:cover}.project-card-body{padding:12px}.project-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.project-foot{display:flex;justify-content:space-between;gap:8px;color:#64748b;font-size:12px;font-weight:900;margin-top:9px}.file-preview-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.file-preview-head h3{margin:0}.file-preview-toggle{border:1px solid #dbe3ef;background:#f8fafc;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:1000;color:#475569;cursor:pointer}.file-preview-toggle:hover{background:#eff6ff;color:#1d4ed8}.file-preview-collapsed{border:1px dashed #cbd5e1;background:#f8fafc;border-radius:16px;padding:16px;text-align:center;color:#64748b;font-weight:900;margin-bottom:10px}.file-preview-pane.collapsed-preview .file-preview-large{display:none}.file-preview-pane.collapsed-preview{grid-column:auto}.file-workbench.preview-collapsed{grid-template-columns:250px minmax(0,1fr) 330px}.file-workbench.preview-collapsed .file-send-mini .file-list-wrap{max-height:260px}.file-workbench.preview-collapsed .file-empty-note{min-height:180px}@media(max-width:1260px){.project-list-modern{max-height:none}.file-workbench.preview-collapsed{grid-template-columns:1fr}}@media(max-width:720px){.project-row-modern{grid-template-columns:46px minmax(0,1fr);padding:10px}.project-avatar{width:46px;height:46px;border-radius:14px}.project-row-metrics span:nth-child(4){display:none}.project-title-line h2{font-size:15px}.project-cards-grid{grid-template-columns:1fr}.project-card-cover{height:120px}}
+
+
+/* ===== PLM V8.5.6 项目列表再次精进：带图紧凑列表，一屏显示约5个 ===== */
+.main{grid-template-columns:430px minmax(0,1fr);align-items:start}.project-list-toolbar{padding-top:2px}.project-list-title-pill{background:#fff;color:#1d4ed8;border:1px solid #dbeafe;border-radius:999px;padding:9px 14px;font-weight:1000;box-shadow:0 6px 18px rgba(15,23,42,.06)}.project-list-modern.project-list-compact{max-height:none;overflow:visible;display:grid;gap:9px;padding:0 2px 6px 0}.project-list-compact .project-row-modern{height:112px;display:grid;grid-template-columns:92px minmax(0,1fr) 72px;gap:11px;align-items:center;padding:9px 10px;border-radius:18px;background:rgba(255,255,255,.96);border:1px solid #dbe5f1;border-left:5px solid #dbeafe;box-shadow:0 8px 22px rgba(15,23,42,.045);overflow:hidden}.project-list-compact .project-row-modern.active{border-color:#60a5fa;border-left-color:#2563eb;background:linear-gradient(90deg,#eff6ff 0%,#fff 42%,#fff 100%);box-shadow:0 0 0 3px rgba(37,99,235,.10),0 10px 28px rgba(15,23,42,.07)}.project-list-compact .project-row-modern:hover{transform:translateY(-1px);border-color:#93c5fd;box-shadow:0 13px 30px rgba(15,23,42,.09)}.project-thumb{width:92px;height:92px;border-radius:16px;overflow:hidden;background:#eef6ff;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#2563eb;font-weight:1000;flex-shrink:0}.project-thumb img{width:100%;height:100%;object-fit:cover}.project-thumb.no{background:linear-gradient(135deg,#dbeafe,#f8fafc)}.project-thumb.no span{font-size:34px;line-height:1}.project-thumb.no small{font-size:10px;margin-top:4px;color:#64748b}.project-list-compact .project-title-line{display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:6px;align-items:center}.project-list-compact .project-title-line h2{font-size:17px;line-height:1.18;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#0f172a}.project-list-compact .project-subline{font-size:12px;margin-top:4px;color:#64748b;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-list-compact .project-row-metrics{display:flex;gap:5px;flex-wrap:nowrap;margin-top:7px;overflow:hidden}.project-list-compact .project-row-metrics span{font-size:11px;padding:3px 7px;border-radius:999px;background:#f1f5f9;color:#475569;font-weight:1000;white-space:nowrap}.project-list-compact .project-progress.thin{grid-template-columns:1fr 34px;margin-top:7px;gap:7px;font-size:12px}.project-list-compact .project-progress .bar{height:8px}.project-list-compact .project-mini-footer{display:flex;justify-content:space-between;gap:8px;margin-top:5px;font-size:11px;color:#64748b;font-weight:900;white-space:nowrap;overflow:hidden}.project-list-compact .project-mini-footer span:first-child{overflow:hidden;text-overflow:ellipsis}.project-list-compact .project-row-actions{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:7px;min-width:0}.project-list-compact .project-row-actions .tag,.project-list-compact .project-priority{font-size:11px;padding:4px 7px;max-width:70px;white-space:normal;line-height:1.15;justify-content:center;text-align:center}.project-list-compact .project-dot{width:10px;height:10px}.project-card-modern,.project-cards-grid{display:none}.cards.cardMode{grid-template-columns:1fr}@media(max-width:1180px){.main{grid-template-columns:1fr}.project-list-modern.project-list-compact{grid-template-columns:repeat(2,minmax(0,1fr));}.project-list-compact .project-row-modern{height:108px}}@media(max-width:720px){.project-list-modern.project-list-compact{grid-template-columns:1fr}.project-list-compact .project-row-modern{grid-template-columns:74px minmax(0,1fr);height:auto;min-height:96px}.project-thumb{width:74px;height:74px}.project-list-compact .project-row-actions{grid-column:1/-1;flex-direction:row;align-items:center;justify-content:flex-start}.main{grid-template-columns:1fr}}
+
+
+
+/* ===== PLM V8.5.7 项目列表再次压缩：保留图片，一屏显示约 5 个，文字不顶出 ===== */
+.project-list-title-pill{font-size:13px;padding:7px 12px}
+.main{grid-template-columns:420px minmax(0,1fr);align-items:start}
+.project-list-modern.project-list-compact{gap:6px;padding:0 1px 4px 0;overflow:visible;max-height:none}
+.project-list-compact .project-row-modern{height:92px;grid-template-columns:72px minmax(0,1fr) 52px;gap:9px;padding:7px 9px;border-radius:16px;border-left-width:4px;box-shadow:0 5px 16px rgba(15,23,42,.04)}
+.project-list-compact .project-row-modern:hover{transform:none;box-shadow:0 8px 20px rgba(15,23,42,.075)}
+.project-thumb{width:72px;height:72px;border-radius:14px}
+.project-thumb.no span{font-size:27px;line-height:1}
+.project-thumb.no small{font-size:9px;margin-top:2px;color:#64748b;font-weight:900}
+.project-row-main{min-width:0;overflow:hidden}
+.project-list-compact .project-title-line{grid-template-columns:minmax(0,1fr) 12px;gap:4px}
+.project-list-compact .project-title-line h2{font-size:14.5px;line-height:1.08;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.project-list-compact .project-subline{font-size:10.5px;line-height:1.15;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.project-list-compact .project-row-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:5px;overflow:hidden}
+.project-list-compact .project-row-metrics span{font-size:10px;line-height:1;padding:3px 4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-list-compact .project-progress.thin{grid-template-columns:1fr 28px;margin-top:5px;gap:5px;font-size:10.5px;line-height:1}
+.project-list-compact .project-progress .bar{height:6px;border-radius:999px}
+.project-list-compact .project-mini-footer{margin-top:4px;font-size:9.5px;line-height:1.05;gap:4px;white-space:nowrap;overflow:hidden}
+.project-list-compact .project-mini-footer span{overflow:hidden;text-overflow:ellipsis}
+.project-list-compact .project-mini-footer span:last-child{flex:0 0 auto;max-width:92px}
+.project-list-compact .project-row-actions{gap:5px;align-items:flex-end;justify-content:center;overflow:hidden}
+.project-list-compact .project-row-actions .tag,.project-list-compact .project-priority{font-size:10px;line-height:1.05;padding:4px 5px;max-width:50px;border-radius:999px;white-space:normal;text-align:center}
+.project-list-compact .project-dot{width:9px;height:9px;box-shadow:0 0 0 4px #eef2ff}
+.project-list-compact .project-row-modern.active{box-shadow:0 0 0 3px rgba(37,99,235,.12),0 8px 20px rgba(15,23,42,.07)}
+@media(max-width:1180px){.project-list-modern.project-list-compact{grid-template-columns:1fr}.project-list-compact .project-row-modern{height:90px}}
+@media(max-width:720px){.project-list-compact .project-row-modern{grid-template-columns:64px minmax(0,1fr) 48px;min-height:84px;height:auto;padding:7px}.project-thumb{width:64px;height:64px}.project-list-compact .project-title-line h2{font-size:14px}.project-list-compact .project-row-actions{grid-column:auto;flex-direction:column;align-items:flex-end;justify-content:center}.project-list-compact .project-row-metrics span:nth-child(4){display:none}.project-list-compact .project-row-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+
+/* V8.5.9 文件中心宽度/溢出修复：中栏不再被筛选框和表格撑爆 */
+.file-workbench{grid-template-columns:230px minmax(0,1fr) 320px !important;gap:10px !important;min-width:0 !important;overflow:hidden !important;}
+.file-workbench.preview-collapsed{grid-template-columns:220px minmax(0,1fr) 280px !important;}
+.file-tree,.file-list-pane,.file-preview-pane{min-width:0 !important;overflow:hidden !important;padding:12px !important;}
+.file-list-pane .detail-head{display:flex !important;align-items:flex-start !important;gap:8px !important;flex-wrap:wrap !important;min-width:0 !important;}
+.file-list-pane .detail-head>div:first-child{min-width:180px !important;flex:1 1 190px !important;}
+.file-list-pane .detail-head h3{font-size:18px !important;margin:0 0 4px !important;line-height:1.2 !important;}
+.file-list-pane .detail-head .hint{font-size:12px !important;line-height:1.35 !important;}
+.file-list-pane .detail-head .actions{flex:0 0 auto !important;display:flex !important;gap:6px !important;flex-wrap:wrap !important;justify-content:flex-end !important;}
+.file-list-pane .detail-head .btn{padding:7px 10px !important;border-radius:11px !important;font-size:12px !important;line-height:1.15 !important;max-width:96px !important;white-space:normal !important;}
+.file-toolbar{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:7px !important;margin-bottom:9px !important;min-width:0 !important;}
+.file-toolbar input{grid-column:1 / -1 !important;min-width:0 !important;}
+.file-toolbar select,.file-toolbar input{font-size:13px !important;padding:8px 9px !important;border-radius:12px !important;min-width:0 !important;max-width:100% !important;}
+.fm-table-wrap{max-width:100% !important;overflow:auto !important;min-width:0 !important;}
+.fm-table{width:100% !important;min-width:520px !important;table-layout:fixed !important;}
+.fm-table th,.fm-table td{padding:7px 8px !important;font-size:12px !important;line-height:1.25 !important;overflow:hidden !important;text-overflow:ellipsis !important;}
+.fm-table th:nth-child(1),.fm-table td:nth-child(1){width:46% !important;}
+.fm-table th:nth-child(2),.fm-table td:nth-child(2){width:22% !important;}
+.fm-table th:nth-child(3),.fm-table td:nth-child(3){width:18% !important;}
+.fm-table th:nth-child(4),.fm-table td:nth-child(4){width:14% !important;}
+.fm-table th:nth-child(5),.fm-table td:nth-child(5),.fm-table th:nth-child(6),.fm-table td:nth-child(6){display:none !important;}
+.file-ico{width:32px !important;height:32px !important;border-radius:10px !important;flex:0 0 32px !important;font-size:11px !important;}
+.file-main-name{font-size:13px !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;max-width:100% !important;}
+.file-name-cell,.file-main-name+ .hint{font-size:11px !important;}
+.file-empty-note,.empty{max-width:100% !important;overflow:hidden !important;}
+.file-preview-pane h3{font-size:18px !important;}
+.file-meta-row{grid-template-columns:64px minmax(0,1fr) !important;font-size:12px !important;}
+.customer-panel{padding:10px !important;}
+.customer-panel h3{font-size:16px !important;}
+.customer-tools{grid-template-columns:1fr !important;gap:6px !important;}
+.customer-panel .actions{gap:5px !important;}
+.customer-panel .btn{font-size:12px !important;padding:6px 8px !important;}
+.file-list{min-width:560px !important;table-layout:fixed !important;}
+@media(max-width:1320px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:210px minmax(0,1fr) 260px !important;gap:8px !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{padding:10px !important;}
+  .file-toolbar{grid-template-columns:1fr !important;}
+}
+@media(max-width:1100px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:1fr !important;}
+  .file-preview-pane{order:3;}
+}
+
+
+/* ===== PLM V8.5.10 文件中心三栏对齐 + 文件列表加长加宽 ===== */
+.file-workbench,
+.file-workbench.preview-collapsed{
+  grid-template-columns:240px minmax(560px,1fr) 300px !important;
+  gap:12px !important;
+  align-items:stretch !important;
+  overflow:visible !important;
+}
+.file-tree,.file-list-pane,.file-preview-pane{
+  min-height:calc(100vh - 170px) !important;
+  height:calc(100vh - 170px) !important;
+  max-height:calc(100vh - 120px) !important;
+  border-radius:22px !important;
+  padding:14px !important;
+}
+.file-tree,.file-preview-pane{
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+}
+.file-list-pane{
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden !important;
+}
+.file-list-pane .detail-head{
+  flex:0 0 auto !important;
+  padding-bottom:10px !important;
+  margin-bottom:10px !important;
+  border-bottom:1px solid var(--line) !important;
+}
+.file-list-pane .detail-head h3{font-size:20px !important;}
+.file-list-pane .detail-head .actions .btn{
+  max-width:none !important;
+  white-space:nowrap !important;
+  padding:7px 12px !important;
+}
+.file-toolbar{
+  flex:0 0 auto !important;
+  display:grid !important;
+  grid-template-columns:1.4fr 1fr 1fr !important;
+  gap:8px !important;
+  margin-bottom:10px !important;
+}
+.file-toolbar input{grid-column:1 / -1 !important;}
+.file-toolbar select:nth-of-type(4){grid-column:auto !important;}
+.fm-table-wrap{
+  flex:1 1 auto !important;
+  min-height:460px !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  border-radius:18px !important;
+}
+.fm-table{
+  width:100% !important;
+  min-width:0 !important;
+  table-layout:fixed !important;
+}
+.fm-table th,.fm-table td{
+  padding:9px 10px !important;
+  font-size:12.5px !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+.fm-table th:nth-child(1),.fm-table td:nth-child(1){width:52% !important;}
+.fm-table th:nth-child(2),.fm-table td:nth-child(2){width:22% !important;}
+.fm-table th:nth-child(3),.fm-table td:nth-child(3){width:16% !important;}
+.fm-table th:nth-child(4),.fm-table td:nth-child(4){width:10% !important;}
+.fm-table th:nth-child(5),.fm-table td:nth-child(5),
+.fm-table th:nth-child(6),.fm-table td:nth-child(6){display:none !important;}
+.file-main-name{font-size:13px !important;line-height:1.2 !important;}
+.file-ico{width:36px !important;height:36px !important;}
+.file-preview-pane.collapsed-preview .file-preview-large{display:none !important;}
+.file-preview-collapsed{padding:18px 12px !important;}
+.file-send-mini .customer-panel{max-height:none !important;}
+.customer-panel .file-list-wrap{max-height:260px !important;overflow:auto !important;}
+.copybox{min-height:78px !important;}
+@media(max-width:1360px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:220px minmax(500px,1fr) 270px !important;gap:10px !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{padding:12px !important;}
+  .file-toolbar{grid-template-columns:1fr 1fr !important;}
+}
+@media(max-width:1120px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:1fr !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{height:auto !important;min-height:auto !important;max-height:none !important;}
+  .fm-table-wrap{min-height:360px !important;overflow-x:auto !important;}
+  .fm-table{min-width:560px !important;}
+}
+
+
+/* ===== PLM V8.5.11 文件中心稳定修复：筛选真实生效 + 三栏自然对齐 + 中栏加长 ===== */
+.file-workbench,
+.file-workbench.preview-collapsed{
+  grid-template-columns:260px minmax(620px,1fr) 330px !important;
+  gap:14px !important;
+  align-items:start !important;
+  overflow:visible !important;
+}
+.file-tree,.file-list-pane,.file-preview-pane{
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow:visible !important;
+  padding:16px !important;
+}
+.file-list-pane{
+  min-height:720px !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+.file-tree{position:sticky !important;top:12px !important;align-self:start !important;}
+.file-preview-pane{position:sticky !important;top:12px !important;align-self:start !important;}
+.file-toolbar{
+  display:grid !important;
+  grid-template-columns:1fr 1fr 1fr !important;
+  gap:10px !important;
+  margin-bottom:12px !important;
+}
+.file-toolbar input{grid-column:1 / -1 !important;}
+.file-toolbar select,.file-toolbar input{min-width:0 !important;max-width:100% !important;}
+.fm-table-wrap{
+  flex:1 1 auto !important;
+  min-height:540px !important;
+  max-height:calc(100vh - 360px) !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  border-radius:18px !important;
+}
+.fm-table{width:100% !important;min-width:0 !important;table-layout:fixed !important;}
+.fm-table th:nth-child(1),.fm-table td:nth-child(1){width:50% !important;}
+.fm-table th:nth-child(2),.fm-table td:nth-child(2){width:20% !important;}
+.fm-table th:nth-child(3),.fm-table td:nth-child(3){width:14% !important;}
+.fm-table th:nth-child(4),.fm-table td:nth-child(4){width:16% !important;}
+.fm-table th:nth-child(5),.fm-table td:nth-child(5),
+.fm-table th:nth-child(6),.fm-table td:nth-child(6){display:none !important;}
+.fm-table td,.fm-table th{overflow:hidden !important;text-overflow:ellipsis !important;}
+.file-main-name{white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;max-width:100% !important;}
+.file-row-sub,.file-name-cell .hint{white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;}
+.file-tree .tree-btn.active{background:#eff6ff !important;border-color:#93c5fd !important;color:#1d4ed8 !important;}
+.file-empty-note{min-height:260px !important;}
+@media(max-width:1380px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:240px minmax(520px,1fr) 300px !important;gap:10px !important;}
+  .file-toolbar{grid-template-columns:1fr 1fr !important;}
+}
+@media(max-width:1120px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:1fr !important;}
+  .file-tree,.file-preview-pane{position:relative !important;top:auto !important;}
+  .file-list-pane{min-height:560px !important;}
+  .fm-table-wrap{min-height:360px !important;max-height:none !important;overflow-x:auto !important;}
+  .fm-table{min-width:560px !important;}
+}
+
+
+
+/* ===== PLM V8.5.12 文件预览不外溢终修：折叠为窄栏，三栏永远锁在内容区内 ===== */
+.detail,.tabbody{min-width:0 !important;max-width:100% !important;overflow:hidden !important;}
+.main{min-width:0 !important;overflow:hidden !important;}
+.file-workbench,
+.file-workbench.preview-collapsed{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  box-sizing:border-box !important;
+  align-items:start !important;
+}
+.file-workbench{
+  grid-template-columns:clamp(170px,18%,220px) minmax(0,1fr) clamp(230px,25%,280px) !important;
+  gap:10px !important;
+}
+.file-workbench.preview-collapsed{
+  grid-template-columns:clamp(170px,18%,220px) minmax(0,1fr) 74px !important;
+  gap:10px !important;
+}
+.file-tree,.file-list-pane,.file-preview-pane{
+  min-width:0 !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+  padding:12px !important;
+  position:relative !important;
+  top:auto !important;
+}
+.file-list-pane{min-height:620px !important;}
+.file-tree{max-height:calc(100vh - 210px) !important;overflow-y:auto !important;}
+.file-preview-pane{max-height:calc(100vh - 210px) !important;overflow-y:auto !important;overflow-x:hidden !important;}
+.file-preview-pane.collapsed-preview{
+  width:74px !important;
+  max-width:74px !important;
+  min-width:74px !important;
+  padding:8px 6px !important;
+  overflow:hidden !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-head{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  margin:0 !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-head h3{
+  font-size:14px !important;
+  line-height:1.1 !important;
+  writing-mode:vertical-rl !important;
+  letter-spacing:1px !important;
+  margin:0 !important;
+  white-space:nowrap !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-toggle{
+  writing-mode:vertical-rl !important;
+  padding:8px 5px !important;
+  border-radius:12px !important;
+  font-size:12px !important;
+  max-height:110px !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-collapsed,
+.file-preview-pane.collapsed-preview .file-empty-note,
+.file-preview-pane.collapsed-preview .tags,
+.file-preview-pane.collapsed-preview .file-meta-row,
+.file-preview-pane.collapsed-preview .step-bind,
+.file-preview-pane.collapsed-preview .file-send-mini,
+.file-preview-pane.collapsed-preview .file-actions-line{display:none !important;}
+.file-toolbar{grid-template-columns:1fr 1fr !important;gap:8px !important;}
+.file-toolbar input{grid-column:1 / -1 !important;}
+.fm-table-wrap{min-height:520px !important;max-height:calc(100vh - 390px) !important;overflow-y:auto !important;overflow-x:hidden !important;}
+.fm-table{width:100% !important;min-width:0 !important;table-layout:fixed !important;}
+.fm-table th:nth-child(1),.fm-table td:nth-child(1){width:48% !important;}
+.fm-table th:nth-child(2),.fm-table td:nth-child(2){width:22% !important;}
+.fm-table th:nth-child(3),.fm-table td:nth-child(3){width:16% !important;}
+.fm-table th:nth-child(4),.fm-table td:nth-child(4){width:14% !important;}
+.fm-table th:nth-child(5),.fm-table td:nth-child(5),
+.fm-table th:nth-child(6),.fm-table td:nth-child(6){display:none !important;}
+.file-main-name,.file-row-sub,.file-name-cell,.file-name-cell .hint,
+.fm-table td,.fm-table th{min-width:0 !important;max-width:100% !important;overflow:hidden !important;text-overflow:ellipsis !important;}
+.file-main-name,.file-row-sub,.file-name-cell .hint{white-space:nowrap !important;display:block !important;}
+@media(max-width:1280px){
+  .file-workbench{grid-template-columns:160px minmax(0,1fr) 230px !important;gap:8px !important;}
+  .file-workbench.preview-collapsed{grid-template-columns:160px minmax(0,1fr) 68px !important;gap:8px !important;}
+  .file-preview-pane.collapsed-preview{width:68px !important;max-width:68px !important;min-width:68px !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{padding:10px !important;}
+}
+@media(max-width:1120px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:1fr !important;overflow:visible !important;}
+  .file-preview-pane.collapsed-preview{width:auto !important;max-width:none !important;min-width:0 !important;}
+  .file-preview-pane.collapsed-preview .file-preview-head{flex-direction:row !important;justify-content:space-between !important;}
+  .file-preview-pane.collapsed-preview .file-preview-head h3,
+  .file-preview-pane.collapsed-preview .file-preview-toggle{writing-mode:horizontal-tb !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{max-height:none !important;overflow:visible !important;}
+  .fm-table-wrap{min-height:360px !important;max-height:none !important;}
+}
+
+
+
+/* ===== PLM V8.5.13 项目列表左侧窄栏：向左收紧，右侧工作区放大 ===== */
+.app{
+  max-width:1600px !important;
+  padding-left:8px !important;
+  padding-right:12px !important;
+}
+.main{
+  grid-template-columns:315px minmax(0,1fr) !important;
+  gap:12px !important;
+  align-items:start !important;
+}
+.project-list-toolbar{
+  margin-top:6px !important;
+}
+.project-list-title-pill{
+  font-size:12px !important;
+  padding:6px 10px !important;
+  white-space:nowrap !important;
+}
+.project-list-toolbar .hint{
+  display:none !important;
+}
+.project-list-modern.project-list-compact{
+  gap:7px !important;
+  padding:0 !important;
+  max-width:315px !important;
+}
+.project-list-compact .project-row-modern{
+  position:relative !important;
+  height:82px !important;
+  grid-template-columns:58px minmax(0,1fr) 30px !important;
+  gap:7px !important;
+  padding:7px 7px !important;
+  border-radius:15px !important;
+  border-left-width:4px !important;
+  overflow:hidden !important;
+}
+.project-list-compact .project-row-modern.active{
+  box-shadow:0 0 0 2px rgba(37,99,235,.22),0 8px 20px rgba(15,23,42,.06) !important;
+}
+.project-thumb{
+  width:58px !important;
+  height:58px !important;
+  border-radius:14px !important;
+}
+.project-thumb.no span{
+  font-size:25px !important;
+  line-height:1 !important;
+}
+.project-thumb.no small{
+  font-size:9px !important;
+  margin-top:2px !important;
+}
+.project-list-compact .project-title-line{
+  grid-template-columns:minmax(0,1fr) 10px !important;
+  gap:3px !important;
+}
+.project-list-compact .project-title-line h2{
+  font-size:13px !important;
+  line-height:1.05 !important;
+  letter-spacing:-.25px !important;
+}
+.project-list-compact .project-dot{
+  width:8px !important;
+  height:8px !important;
+  box-shadow:0 0 0 4px #eef2ff !important;
+}
+.project-list-compact .project-subline{
+  font-size:9.5px !important;
+  line-height:1.1 !important;
+  margin-top:3px !important;
+}
+.project-list-compact .project-row-metrics{
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:3px !important;
+  margin-top:4px !important;
+}
+.project-list-compact .project-row-metrics span{
+  font-size:9px !important;
+  padding:2px 3px !important;
+  line-height:1.05 !important;
+}
+.project-list-compact .project-progress.thin{
+  grid-template-columns:1fr 22px !important;
+  gap:4px !important;
+  font-size:9px !important;
+  margin-top:4px !important;
+}
+.project-list-compact .project-progress .bar{
+  height:5px !important;
+}
+.project-list-compact .project-mini-footer{
+  margin-top:3px !important;
+  font-size:8.8px !important;
+  line-height:1.02 !important;
+}
+.project-list-compact .project-mini-footer span:last-child{
+  max-width:78px !important;
+}
+.project-list-compact .project-row-actions{
+  gap:4px !important;
+  align-items:flex-end !important;
+  justify-content:center !important;
+}
+.project-list-compact .project-row-actions .tag{
+  display:none !important;
+}
+.project-list-compact .project-priority{
+  font-size:9px !important;
+  line-height:1.05 !important;
+  padding:3px 4px !important;
+  max-width:32px !important;
+  border-radius:10px !important;
+  white-space:normal !important;
+  text-align:center !important;
+}
+.detail{
+  min-width:0 !important;
+  width:100% !important;
+}
+.detail-head h2{
+  font-size:24px !important;
+}
+.detail-head{
+  gap:10px !important;
+}
+.tabs .tab,.tab{
+  padding:9px 12px !important;
+}
+@media(max-width:1280px){
+  .main{grid-template-columns:300px minmax(0,1fr) !important;gap:10px !important;}
+  .project-list-modern.project-list-compact{max-width:300px !important;}
+  .project-list-compact .project-row-modern{height:80px !important;grid-template-columns:54px minmax(0,1fr) 28px !important;}
+  .project-thumb{width:54px !important;height:54px !important;}
+}
+@media(max-width:1120px){
+  .main{grid-template-columns:1fr !important;}
+  .project-list-modern.project-list-compact{max-width:none !important;}
+}
+
+
+/* ===== PLM V8.5.14 项目列表可完全折叠：手动收起/展开，右侧工作区放大 ===== */
+.project-collapse-btn{
+  border:1px solid #bfdbfe;
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-radius:999px;
+  padding:6px 11px;
+  font-size:12px;
+  font-weight:1000;
+  cursor:pointer;
+  box-shadow:0 6px 16px rgba(37,99,235,.08);
+}
+.project-collapse-btn:hover{background:#dbeafe}
+.main.project-collapsed{
+  grid-template-columns:48px minmax(0,1fr) !important;
+  gap:10px !important;
+}
+.project-list-collapsed-rail{
+  max-width:48px !important;
+  min-width:48px !important;
+  width:48px !important;
+  overflow:visible !important;
+  display:block !important;
+  padding:0 !important;
+}
+.project-rail-card{
+  position:sticky;
+  top:12px;
+  width:46px;
+  min-height:220px;
+  border:1px solid #bfdbfe;
+  background:linear-gradient(180deg,#eff6ff,#fff);
+  border-radius:18px;
+  box-shadow:0 10px 26px rgba(15,23,42,.07);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  cursor:pointer;
+  color:#1d4ed8;
+  font-weight:1000;
+  user-select:none;
+}
+.project-rail-card:hover{background:#dbeafe;transform:translateY(-1px)}
+.project-rail-icon{font-size:18px;line-height:1}
+.project-rail-text{writing-mode:vertical-rl;letter-spacing:2px;font-size:13px;line-height:1.1}
+.project-rail-count{font-size:11px;border-radius:999px;background:#2563eb;color:#fff;padding:4px 6px;line-height:1}
+/* V8.5.25：项目列表收起后，在窄栏内显示项目图标，可直接点击切换项目 */
+.main.project-collapsed{
+  grid-template-columns:56px minmax(0,1fr) !important;
+}
+.project-list-collapsed-rail{
+  max-width:56px !important;
+  min-width:56px !important;
+  width:56px !important;
+}
+.project-rail-shell{
+  position:sticky;
+  top:12px;
+  width:54px;
+  min-height:220px;
+  max-height:calc(100vh - 180px);
+  border:1px solid #bfdbfe;
+  background:linear-gradient(180deg,#eff6ff,#fff);
+  border-radius:22px;
+  box-shadow:0 10px 26px rgba(15,23,42,.07);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  padding:8px 6px;
+  overflow:hidden;
+}
+.project-rail-expand{
+  width:38px;height:38px;border:1px solid #bfdbfe;background:#fff;color:#1d4ed8;
+  border-radius:14px;display:grid;place-items:center;font-size:18px;font-weight:1000;cursor:pointer;flex:0 0 auto;
+}
+.project-rail-expand:hover{background:#dbeafe}
+.project-rail-icons{
+  width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;overflow-y:auto;overflow-x:hidden;padding:1px 0;
+  scrollbar-width:thin;
+}
+.project-rail-icon-card{
+  width:38px;height:38px;border-radius:13px;border:2px solid #dbeafe;background:#f8fbff;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;color:#1d4ed8;font-size:15px;font-weight:1000;
+  cursor:pointer;box-shadow:0 4px 12px rgba(15,23,42,.05);flex:0 0 auto;position:relative;
+}
+.project-rail-icon-card:hover{border-color:#93c5fd;transform:translateY(-1px)}
+.project-rail-icon-card.active{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.16),0 6px 14px rgba(15,23,42,.08)}
+.project-rail-icon-card img{width:100%;height:100%;object-fit:cover;display:block}
+.project-rail-icon-card.no{background:linear-gradient(135deg,#dbeafe,#ffffff)}
+.project-rail-total{
+  min-width:26px;height:26px;border-radius:999px;background:#2563eb;color:#fff;display:grid;place-items:center;
+  font-size:12px;font-weight:1000;flex:0 0 auto;
+}
+@media(max-width:1120px){
+  .main.project-collapsed{grid-template-columns:1fr !important;}
+  .project-list-collapsed-rail{width:100% !important;max-width:none !important;min-width:0 !important;}
+  .project-rail-shell{width:100%;min-height:52px;max-height:none;flex-direction:row;position:relative;top:auto;border-radius:18px;padding:7px 8px;}
+  .project-rail-icons{flex-direction:row;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;}
+}
+.main.project-collapsed + *{min-width:0}
+.main.project-collapsed .detail{
+  width:100% !important;
+  min-width:0 !important;
+}
+@media(max-width:1120px){
+  .main.project-collapsed{grid-template-columns:1fr !important;}
+  .project-list-collapsed-rail{width:100% !important;max-width:none !important;min-width:0 !important;}
+  .project-rail-card{width:100%;min-height:46px;flex-direction:row;position:relative;top:auto;}
+  .project-rail-text{writing-mode:horizontal-tb;letter-spacing:0}
+}
+
+
+/* V8.5.18 BOM category strict link */
+.basic-pro{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:14px;align-items:start}
+.basic-block,.sample-pro-card{background:#fff;border:1px solid #dbe3ef;border-radius:20px;padding:14px;box-shadow:0 8px 24px rgba(15,23,42,.045)}
+.basic-block h3,.sample-pro-card h3{margin:0 0 8px;font-size:17px;color:#0f172a}.section-title{display:flex;align-items:center;gap:8px;margin:4px 0 10px;font-weight:1000;color:#0f172a}.section-title i{width:8px;height:22px;border-radius:99px;background:#2563eb;display:inline-block}.project-image-drop{border:1px dashed #93c5fd;background:#eff6ff;border-radius:18px;padding:12px}
+.sample-toolbar-pro{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}.sample-toolbar-pro .sample-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.sample-list-pro{grid-template-columns:1fr;gap:10px}.sample-pro-card{border-left:6px solid #2563eb;transition:.18s ease;padding:10px 12px}.sample-pro-card.testing{border-left-color:#f59e0b}.sample-pro-card.done{border-left-color:#22c55e}.sample-pro-card.collapsed{padding:8px 12px;background:#fbfdff}.sample-pro-card.collapsed:hover{border-color:#93c5fd;box-shadow:0 10px 28px rgba(37,99,235,.10);transform:translateY(-1px)}
+.sample-head-pro{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}.sample-head-pro.clickable{cursor:pointer}.sample-pro-card.expanded .sample-head-pro{border-bottom:1px solid #e5e7eb;padding-bottom:9px;margin-bottom:10px}.sample-title-pro{display:flex;gap:10px;align-items:center;min-width:0}.sample-avatar{width:42px;height:42px;border-radius:14px;background:#dbeafe;color:#1d4ed8;font-weight:1000;font-size:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.sample-title-pro h3{margin:0;font-size:18px;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sample-sub-pro{font-size:11px;color:#64748b;font-weight:900;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sample-actions-pro{display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;align-items:center}.sample-toggle-pill{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:1000}.sample-mini-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.sample-mini-row .key-mini{font-size:11px;padding:3px 7px}.sample-content-pro{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(260px,.72fr);gap:12px;align-items:start}.sample-left-stack{display:grid;gap:10px}.sample-right-stack{display:grid;gap:10px}.sample-section{border:1px solid #e5e7eb;background:#f8fafc;border-radius:16px;padding:10px}.sample-section h4{margin:0 0 8px;font-size:14px;color:#0f172a}.component-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.component-card{background:#fff;border:1px solid #dbe3ef;border-radius:14px;padding:8px}.component-card .component-name{display:flex;align-items:center;gap:6px;font-weight:1000;color:#1e293b;margin-bottom:6px;font-size:13px}.component-card .component-icon{width:22px;height:22px;border-radius:8px;background:#dbeafe;color:#1d4ed8;display:inline-flex;align-items:center;justify-content:center;font-size:12px}.component-card input,.component-card textarea{padding:6px 8px;border-radius:9px;font-size:12px}.component-card textarea{min-height:48px}.bom-hint{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:13px;padding:8px 10px;font-weight:900;font-size:12px}
+.bom-action-bar{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}.bom-mini-btn{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:9px;padding:4px 7px;font-size:11px;font-weight:1000;cursor:pointer}.bom-selected-meta{font-size:11px;color:#64748b;font-weight:900}.bom-selected-meta.ok{color:#15803d}.bom-suggestions{display:none;margin-top:6px;border:1px solid #bfdbfe;border-radius:12px;background:#fff;box-shadow:0 14px 32px rgba(15,23,42,.12);max-height:190px;overflow:auto}.bom-suggestions.show{display:block}.bom-suggest-item{padding:7px 8px;border-bottom:1px solid #eef2f7;cursor:pointer}.bom-suggest-item:last-child{border-bottom:0}.bom-suggest-item:hover{background:#eff6ff}.bom-suggest-title{font-size:12px;font-weight:1000;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bom-suggest-sub{font-size:11px;color:#64748b;line-height:1.35;margin-top:2px}.bom-price{color:#b91c1c;font-weight:1000}.bom-generate-btn{background:#fff7ed!important;border-color:#fdba74!important;color:#c2410c!important}.bom-link-btn{background:#ecfdf5!important;border-color:#86efac!important;color:#15803d!important}
+.sample-note-pro textarea{min-height:78px}.bom-note textarea{min-height:96px}.compact-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.compact-fields .field label{font-size:11px;margin-top:1px}.compact-fields input,.compact-fields select{padding:7px 9px;font-size:12px;border-radius:10px}.key-mini{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:12px;font-weight:900}.key-mini.ok{background:#dcfce7;color:#15803d}.key-mini.warn{background:#ffedd5;color:#c2410c}.key-mini.blue{background:#dbeafe;color:#1d4ed8}.sample-empty-note{border:1px dashed #cbd5e1;border-radius:16px;padding:18px;text-align:center;color:#64748b;font-weight:900;background:#f8fafc}@media(max-width:1280px){.compact-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.sample-content-pro{grid-template-columns:1fr}.sample-right-stack{grid-template-columns:1fr 1fr}.component-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:860px){.basic-pro,.sample-content-pro{grid-template-columns:1fr}.sample-right-stack{grid-template-columns:1fr}.component-grid{grid-template-columns:1fr}.sample-head-pro{grid-template-columns:1fr}.sample-actions-pro{justify-content:flex-start}.compact-fields{grid-template-columns:1fr}.sample-title-pro h3{white-space:normal}.sample-sub-pro{white-space:normal}}
+
+
+/* ===== PLM V8.5.19B 样品版本 / 问题闭环 / 流程删除增强 ===== */
+.version-pill{display:inline-flex;align-items:center;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:1000;vertical-align:middle}
+.issue-mini-row{border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:7px 8px;margin-bottom:6px;font-size:12px}
+.issue-mini-row b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-mini-row .hint{font-size:10px}
+.issue-board{display:grid;grid-template-columns:320px minmax(0,1fr);gap:12px;align-items:start}.issue-form,.issue-list-panel{background:#fff;border:1px solid #dbe3ef;border-radius:18px;padding:12px;box-shadow:0 8px 22px rgba(15,23,42,.045)}
+.issue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e5e7eb;border-left:5px solid #93c5fd;border-radius:16px;padding:10px;background:#fff;margin-bottom:8px}.issue-row.high{border-left-color:#ef4444}.issue-row.closed{opacity:.68;background:#f8fafc}.issue-title{font-weight:1000;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.issue-meta{font-size:12px;color:#64748b;font-weight:800;line-height:1.55}.issue-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.flow-danger-mini{background:#fee2e2!important;border-color:#fecaca!important;color:#991b1b!important}.flow-node-delete{border:1px solid #fecaca;background:#fff1f2;color:#991b1b;border-radius:9px;font-size:11px;font-weight:1000;padding:3px 6px;cursor:pointer}.flow-node-delete:hover{background:#fee2e2}
+@media(max-width:980px){.issue-board{grid-template-columns:1fr}}
+
+
+.dispatch-panel{border-color:#bfdbfe!important;background:#eff6ff!important}
+.dispatch-link-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fff;border:1px solid #dbeafe;border-radius:12px;padding:8px;margin-top:8px}
+.dispatch-link-row b{display:block;font-size:12px;color:#0f172a;margin-bottom:3px}
+.dispatch-link-row span{display:block;font-size:11px;color:#64748b;font-weight:800}
+.dispatch-link-row .actions{flex:0 0 auto;margin:0!important}
+@media(max-width:720px){.dispatch-link-row{display:block}.dispatch-link-row .actions{margin-top:6px!important}}
+
+
+
+/* ===== PLM V8.5.20：开发导航图强制方形紧凑版，不改整体版面 ===== */
+.flow-stage{grid-template-columns:minmax(0,1fr) 340px!important;}
+.flow-board{
+  grid-template-columns:repeat(var(--flow-cols,3),minmax(150px,1fr))!important;
+  gap:14px!important;
+  padding:14px!important;
+  align-items:start!important;
+  min-height:0!important;
+}
+.flow-node{
+  aspect-ratio:1/1!important;
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:12px!important;
+  gap:7px!important;
+  border-radius:20px!important;
+  overflow:hidden!important;
+}
+.flow-node-top{gap:7px!important;align-items:flex-start!important;}
+.flow-index{width:38px!important;height:38px!important;border-radius:13px!important;font-size:16px!important;}
+.flow-title{font-size:17px!important;line-height:1.08!important;max-width:100%!important;}
+.flow-sub{font-size:12px!important;line-height:1.15!important;margin-top:3px!important;}
+.flow-handle{padding:5px 7px!important;border-radius:10px!important;line-height:1!important;}
+.flow-node-delete{padding:3px 6px!important;border-radius:9px!important;font-size:11px!important;line-height:1.2!important;}
+.flow-node .tags{display:flex!important;gap:5px!important;flex-wrap:wrap!important;max-height:52px!important;overflow:hidden!important;}
+.flow-node .tag{font-size:11px!important;padding:3px 7px!important;border-radius:999px!important;line-height:1.2!important;}
+.flow-meta{font-size:11px!important;gap:3px!important;line-height:1.22!important;color:#475569!important;max-height:48px!important;overflow:hidden!important;}
+.flow-note{font-size:11px!important;line-height:1.28!important;min-height:0!important;-webkit-line-clamp:1!important;color:#64748b!important;}
+.flow-quick{gap:5px!important;flex-wrap:nowrap!important;overflow:hidden!important;}
+.flow-quick .btn{padding:4px 7px!important;font-size:11px!important;border-radius:9px!important;min-width:0!important;}
+.flow-node:after{right:-14px!important;width:26px!important;height:26px!important;font-size:15px!important;}
+@media(max-width:1160px){.flow-stage{grid-template-columns:1fr!important}.flow-board{grid-template-columns:repeat(2,1fr)!important}.flow-node{aspect-ratio:auto!important;min-height:170px!important}.flow-drawer{position:relative!important;top:auto!important}}
+@media(max-width:720px){.flow-board{grid-template-columns:1fr!important}.flow-node{aspect-ratio:auto!important;min-height:160px!important}.flow-node:after{display:none!important}}
+
+
+/* ===== PLM V8.5.21：导航图布局修复，详情可真正收起，一排5个不挤 ===== */
+.flow-stage{
+  align-items:start!important;
+}
+.flow-drawer{
+  margin-top:14px!important;
+  min-width:0!important;
+}
+.flow-stage.drawer-collapsed{
+  grid-template-columns:minmax(0,1fr) 58px!important;
+}
+.flow-drawer.flow-drawer-collapsed{
+  margin-top:14px!important;
+  min-height:180px!important;
+  padding:10px!important;
+  display:flex!important;
+  align-items:flex-start!important;
+  justify-content:center!important;
+  background:#f8fbff!important;
+}
+.flow-drawer-rail{
+  width:36px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+}
+.flow-drawer-rail .btn{
+  writing-mode:vertical-rl;
+  height:126px;
+  width:36px;
+  padding:8px 0!important;
+  border-radius:14px!important;
+}
+.flow-drawer-rail span{
+  font-size:11px;
+  color:#64748b;
+  font-weight:1000;
+  writing-mode:vertical-rl;
+  letter-spacing:1px;
+}
+.flow-stage.flow-cols-5{
+  grid-template-columns:minmax(0,1fr) 300px!important;
+  gap:10px!important;
+}
+.flow-stage.flow-cols-5.drawer-collapsed{
+  grid-template-columns:minmax(0,1fr) 58px!important;
+}
+.flow-stage.flow-cols-5 .flow-board{
+  grid-template-columns:repeat(5,minmax(132px,1fr))!important;
+  gap:10px!important;
+  padding:10px!important;
+}
+.flow-stage.flow-cols-4 .flow-board{
+  grid-template-columns:repeat(4,minmax(150px,1fr))!important;
+}
+.flow-stage.flow-cols-5 .flow-node{
+  padding:9px!important;
+  border-radius:18px!important;
+  gap:5px!important;
+}
+.flow-stage.flow-cols-5 .flow-index{
+  width:32px!important;
+  height:32px!important;
+  border-radius:11px!important;
+  font-size:14px!important;
+}
+.flow-stage.flow-cols-5 .flow-title{
+  font-size:14.5px!important;
+  line-height:1.08!important;
+}
+.flow-stage.flow-cols-5 .flow-sub{
+  font-size:10.5px!important;
+  line-height:1.1!important;
+  margin-top:2px!important;
+}
+.flow-stage.flow-cols-5 .flow-handle{
+  padding:4px 6px!important;
+  font-size:11px!important;
+}
+.flow-stage.flow-cols-5 .flow-node-delete{
+  padding:2px 5px!important;
+  font-size:10px!important;
+}
+.flow-stage.flow-cols-5 .flow-node .tags{
+  gap:4px!important;
+  max-height:42px!important;
+}
+.flow-stage.flow-cols-5 .flow-node .tag,
+.flow-stage.flow-cols-5 .flow-status{
+  font-size:10px!important;
+  padding:2px 5px!important;
+}
+.flow-stage.flow-cols-5 .flow-meta{
+  font-size:10px!important;
+  line-height:1.18!important;
+  max-height:34px!important;
+}
+.flow-stage.flow-cols-5 .flow-note{
+  font-size:10px!important;
+  line-height:1.18!important;
+  max-height:14px!important;
+}
+.flow-stage.flow-cols-5 .flow-quick{
+  gap:4px!important;
+}
+.flow-stage.flow-cols-5 .flow-quick .btn{
+  padding:3px 5px!important;
+  font-size:10px!important;
+  border-radius:8px!important;
+}
+.flow-stage.flow-cols-5 .flow-node:after{
+  right:-10px!important;
+  width:22px!important;
+  height:22px!important;
+  font-size:13px!important;
+}
+.flow-stage.flow-cols-5 .flow-drawer h3{font-size:19px!important;}
+.flow-stage.flow-cols-5 .flow-drawer input,
+.flow-stage.flow-cols-5 .flow-drawer select,
+.flow-stage.flow-cols-5 .flow-drawer textarea{
+  padding:7px 9px!important;
+  border-radius:11px!important;
+}
+@media(max-width:1160px){
+  .flow-stage,.flow-stage.flow-cols-5,.flow-stage.drawer-collapsed,.flow-stage.flow-cols-5.drawer-collapsed{grid-template-columns:1fr!important}
+  .flow-drawer,.flow-drawer.flow-drawer-collapsed{margin-top:0!important}
+  .flow-drawer.flow-drawer-collapsed{min-height:auto!important;display:block!important}
+  .flow-drawer-rail{width:100%;flex-direction:row;justify-content:flex-start}
+  .flow-drawer-rail .btn{writing-mode:horizontal-tb;width:auto;height:auto;padding:7px 12px!important}
+  .flow-drawer-rail span{writing-mode:horizontal-tb;letter-spacing:0}
+  .flow-stage.flow-cols-5 .flow-board{grid-template-columns:repeat(2,1fr)!important}
+}
+@media(max-width:720px){
+  .flow-stage.flow-cols-5 .flow-board{grid-template-columns:1fr!important}
+}
+
+
+
+/* ===== PLM V8.5.22：导航图卡片对齐与文字遮挡修复 ===== */
+.flow-stage{
+  align-items:start!important;
+}
+.flow-drawer,
+.flow-drawer.flow-drawer-collapsed{
+  margin-top:0!important;
+}
+.flow-board{
+  align-items:start!important;
+}
+.flow-node{
+  position:relative!important;
+  overflow:hidden!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:flex-start!important;
+}
+.flow-node-top{
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr) auto auto!important;
+  align-items:start!important;
+  gap:7px!important;
+  min-height:0!important;
+  flex:0 0 auto!important;
+}
+.flow-title-wrap{min-width:0!important;overflow:hidden!important;}
+.flow-title{
+  display:block!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  max-width:100%!important;
+}
+.flow-sub{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  max-width:100%!important;
+}
+.flow-node .tags{
+  flex:0 0 auto!important;
+  min-height:22px!important;
+  overflow:hidden!important;
+}
+.flow-meta.compact-time{
+  flex:0 0 auto!important;
+  display:grid!important;
+  gap:2px!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  word-break:keep-all!important;
+  white-space:nowrap!important;
+}
+.flow-meta.compact-time div{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.flow-note{
+  flex:0 1 auto!important;
+  display:-webkit-box!important;
+  -webkit-box-orient:vertical!important;
+  -webkit-line-clamp:1!important;
+  overflow:hidden!important;
+  min-height:15px!important;
+  max-height:18px!important;
+}
+.flow-quick{
+  margin-top:auto!important;
+  flex:0 0 auto!important;
+  min-height:28px!important;
+  display:flex!important;
+  align-items:center!important;
+}
+.flow-quick .btn{
+  white-space:nowrap!important;
+}
+.flow-stage.flow-cols-4 .flow-node{
+  padding:10px!important;
+  gap:5px!important;
+}
+.flow-stage.flow-cols-4 .flow-title{font-size:15px!important;line-height:1.08!important;}
+.flow-stage.flow-cols-4 .flow-sub{font-size:10.5px!important;line-height:1.1!important;}
+.flow-stage.flow-cols-4 .flow-meta{font-size:10.5px!important;line-height:1.16!important;max-height:44px!important;}
+.flow-stage.flow-cols-4 .flow-note{font-size:10.5px!important;}
+.flow-stage.flow-cols-4 .flow-quick .btn{font-size:10.5px!important;padding:4px 6px!important;}
+.flow-stage.flow-cols-5 .flow-board{
+  grid-template-columns:repeat(5,minmax(118px,1fr))!important;
+  gap:8px!important;
+  padding:10px!important;
+}
+.flow-stage.flow-cols-5 .flow-node{
+  padding:8px!important;
+  gap:4px!important;
+  border-radius:16px!important;
+}
+.flow-stage.flow-cols-5 .flow-node-top{
+  grid-template-columns:auto minmax(0,1fr) auto!important;
+  gap:5px!important;
+}
+.flow-stage.flow-cols-5 .flow-node-delete{
+  position:absolute!important;
+  right:6px!important;
+  top:6px!important;
+  padding:2px 4px!important;
+  font-size:9px!important;
+  z-index:3!important;
+}
+.flow-stage.flow-cols-5 .flow-handle{
+  padding:3px 5px!important;
+  font-size:10px!important;
+  margin-right:24px!important;
+}
+.flow-stage.flow-cols-5 .flow-index{
+  width:28px!important;
+  height:28px!important;
+  border-radius:10px!important;
+  font-size:12px!important;
+}
+.flow-stage.flow-cols-5 .flow-title{
+  font-size:12px!important;
+  line-height:1.06!important;
+  letter-spacing:-.2px!important;
+}
+.flow-stage.flow-cols-5 .flow-sub{
+  font-size:9px!important;
+  line-height:1.05!important;
+}
+.flow-stage.flow-cols-5 .flow-node .tags{
+  flex-wrap:nowrap!important;
+  gap:3px!important;
+  max-height:20px!important;
+  min-height:19px!important;
+}
+.flow-stage.flow-cols-5 .flow-node .tag,
+.flow-stage.flow-cols-5 .flow-status{
+  font-size:9px!important;
+  padding:2px 4px!important;
+  line-height:1!important;
+  max-width:58px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.flow-stage.flow-cols-5 .flow-meta{
+  font-size:9px!important;
+  line-height:1.08!important;
+  gap:1px!important;
+  max-height:31px!important;
+}
+.flow-stage.flow-cols-5 .flow-note{
+  display:none!important;
+}
+.flow-stage.flow-cols-5 .flow-quick{
+  min-height:23px!important;
+  gap:3px!important;
+}
+.flow-stage.flow-cols-5 .flow-quick .btn{
+  padding:3px 4px!important;
+  font-size:9px!important;
+  border-radius:7px!important;
+}
+.flow-stage.flow-cols-5 .flow-node:after{
+  right:-9px!important;
+  width:20px!important;
+  height:20px!important;
+  font-size:12px!important;
+}
+@media(max-width:1160px){
+  .flow-drawer,.flow-drawer.flow-drawer-collapsed{margin-top:0!important;}
+}
+
+
+
+/* ===== PLM V8.5.26：文件中心布局优化；左侧筛选/上传更宽、更紧凑，不挤不截断 ===== */
+.app{
+  max-width:1720px !important;
+}
+.file-workbench{
+  grid-template-columns:300px minmax(680px,1fr) 340px !important;
+  gap:14px !important;
+  align-items:start !important;
+  overflow:visible !important;
+}
+.file-workbench.preview-collapsed{
+  grid-template-columns:300px minmax(680px,1fr) 84px !important;
+  gap:14px !important;
+}
+.file-tree{
+  padding:14px !important;
+  max-height:calc(100vh - 185px) !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+}
+.file-tree h3{
+  font-size:20px !important;
+  margin:0 0 12px !important;
+  line-height:1.2 !important;
+}
+.file-tree .tree-btn,
+.file-tree button,
+.file-tree .tag{
+  max-width:100% !important;
+}
+.file-tree .tree-btn{
+  min-height:42px !important;
+  padding:9px 12px !important;
+  border-radius:14px !important;
+  font-size:14px !important;
+  line-height:1.15 !important;
+}
+.file-tree .uploadbox{
+  padding:12px !important;
+  margin-top:12px !important;
+  border-radius:18px !important;
+}
+.file-tree .uploadbox h3{
+  font-size:18px !important;
+  margin:0 0 8px !important;
+}
+.file-tree .uploadbox .hint{
+  font-size:12px !important;
+  line-height:1.45 !important;
+  margin:0 0 8px !important;
+}
+.file-tree .uploadbox .grid2{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:8px !important;
+  margin-top:8px !important;
+}
+.file-tree .uploadbox input,
+.file-tree .uploadbox select{
+  height:36px !important;
+  padding:7px 10px !important;
+  font-size:13px !important;
+  border-radius:12px !important;
+  min-width:0 !important;
+}
+.file-tree .uploadbox textarea{
+  min-height:58px !important;
+  max-height:88px !important;
+  padding:8px 10px !important;
+  font-size:13px !important;
+  line-height:1.35 !important;
+  border-radius:12px !important;
+}
+.file-tree .uploadbox .field{
+  margin-top:7px !important;
+}
+.file-tree .uploadbox .field label{
+  margin:4px 0 3px !important;
+  font-size:12px !important;
+}
+.file-tree .uploadbox .btn{
+  height:34px !important;
+  padding:0 14px !important;
+  border-radius:12px !important;
+  font-size:13px !important;
+}
+.file-list-pane{
+  padding:16px 18px !important;
+  min-height:650px !important;
+}
+.file-list-pane .detail-head h3{
+  font-size:22px !important;
+}
+.file-toolbar{
+  grid-template-columns:1fr 1fr !important;
+  gap:10px !important;
+}
+.file-toolbar input,
+.file-toolbar select{
+  height:42px !important;
+  font-size:14px !important;
+  padding:8px 14px !important;
+}
+.fm-table-wrap{
+  min-height:500px !important;
+  max-height:calc(100vh - 385px) !important;
+}
+.fm-table th,.fm-table td{
+  padding:10px 12px !important;
+  font-size:13px !important;
+}
+.fm-table th:nth-child(1),.fm-table td:nth-child(1){width:50% !important;}
+.fm-table th:nth-child(2),.fm-table td:nth-child(2){width:20% !important;}
+.fm-table th:nth-child(3),.fm-table td:nth-child(3){width:14% !important;}
+.fm-table th:nth-child(4),.fm-table td:nth-child(4){width:16% !important;}
+.file-main-name{
+  font-size:14px !important;
+  line-height:1.2 !important;
+}
+.file-name-cell .hint,
+.file-row-sub{
+  font-size:12px !important;
+  line-height:1.25 !important;
+}
+.file-preview-pane{
+  padding:14px !important;
+}
+.file-preview-pane.collapsed-preview{
+  width:84px !important;
+  min-width:84px !important;
+  max-width:84px !important;
+  padding:10px 7px !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-head h3{
+  font-size:15px !important;
+}
+.file-preview-pane.collapsed-preview .file-preview-toggle{
+  font-size:13px !important;
+}
+@media(max-width:1460px){
+  .file-workbench{grid-template-columns:285px minmax(600px,1fr) 310px !important;gap:12px !important;}
+  .file-workbench.preview-collapsed{grid-template-columns:285px minmax(600px,1fr) 80px !important;gap:12px !important;}
+  .file-preview-pane.collapsed-preview{width:80px !important;min-width:80px !important;max-width:80px !important;}
+}
+@media(max-width:1260px){
+  .file-workbench{grid-template-columns:270px minmax(520px,1fr) 260px !important;gap:10px !important;}
+  .file-workbench.preview-collapsed{grid-template-columns:270px minmax(520px,1fr) 74px !important;gap:10px !important;}
+  .file-preview-pane.collapsed-preview{width:74px !important;min-width:74px !important;max-width:74px !important;}
+  .file-tree,.file-list-pane,.file-preview-pane{padding:12px !important;}
+}
+@media(max-width:1120px){
+  .file-workbench,.file-workbench.preview-collapsed{grid-template-columns:1fr !important;overflow:visible !important;}
+  .file-tree{max-height:none !important;}
+  .file-tree .uploadbox .grid2{grid-template-columns:1fr !important;}
+  .file-preview-pane.collapsed-preview{width:auto !important;min-width:0 !important;max-width:none !important;}
+}
+
+
+
+/* ===== PLM V8.5.27 文件中心：预览时左侧筛选收为窄栏，右侧预览加宽 ===== */
+.file-workbench.filter-rail{
+  grid-template-columns:118px minmax(640px,1fr) minmax(380px,430px) !important;
+  gap:14px !important;
+}
+.file-workbench.filter-rail.preview-collapsed{
+  grid-template-columns:118px minmax(680px,1fr) 84px !important;
+}
+.file-tree-head{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  margin-bottom:10px !important;
+}
+.file-tree-head h3{margin:0 !important;}
+.file-tree-toggle{
+  flex:0 0 auto !important;
+  border:1px solid #dbe3ef !important;
+  background:#f8fafc !important;
+  color:#1d4ed8 !important;
+  border-radius:999px !important;
+  padding:6px 9px !important;
+  font-size:12px !important;
+  font-weight:1000 !important;
+  cursor:pointer !important;
+}
+.file-tree-toggle:hover{background:#eff6ff !important;}
+.file-tree.file-tree-rail{
+  width:118px !important;
+  min-width:118px !important;
+  max-width:118px !important;
+  padding:10px 8px !important;
+  overflow:hidden !important;
+  max-height:calc(100vh - 185px) !important;
+}
+.file-tree.file-tree-rail .file-tree-head{
+  flex-direction:column !important;
+  align-items:center !important;
+  gap:8px !important;
+}
+.file-tree.file-tree-rail h3{
+  font-size:14px !important;
+  line-height:1.1 !important;
+  writing-mode:vertical-rl !important;
+  letter-spacing:2px !important;
+  white-space:nowrap !important;
+}
+.file-tree.file-tree-rail .file-tree-toggle{
+  writing-mode:vertical-rl !important;
+  padding:8px 5px !important;
+  border-radius:12px !important;
+  min-height:52px !important;
+}
+.file-tree.file-tree-rail .tree-btn{
+  min-height:54px !important;
+  padding:7px 5px !important;
+  margin:6px 0 !important;
+  border-radius:14px !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+  gap:3px !important;
+  text-align:center !important;
+  font-size:12px !important;
+  line-height:1.15 !important;
+  white-space:normal !important;
+}
+.file-tree.file-tree-rail .tree-btn b{
+  font-size:12px !important;
+  color:inherit !important;
+}
+.file-tree.file-tree-rail .uploadbox{display:none !important;}
+.file-workbench.filter-rail .file-list-pane{min-height:650px !important;}
+.file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){
+  min-width:380px !important;
+  max-width:430px !important;
+}
+.file-workbench.filter-rail .file-preview-large{
+  min-height:360px !important;
+}
+.file-workbench.filter-rail .file-preview-large iframe{
+  height:520px !important;
+}
+.file-workbench.filter-rail .file-preview-large img{
+  max-height:520px !important;
+}
+.file-workbench.filter-rail .file-meta-row{
+  grid-template-columns:58px minmax(0,1fr) !important;
+}
+@media(max-width:1460px){
+  .file-workbench.filter-rail{grid-template-columns:106px minmax(560px,1fr) 370px !important;gap:12px !important;}
+  .file-workbench.filter-rail.preview-collapsed{grid-template-columns:106px minmax(600px,1fr) 78px !important;}
+  .file-tree.file-tree-rail{width:106px !important;min-width:106px !important;max-width:106px !important;}
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:340px !important;max-width:370px !important;}
+  .file-workbench.filter-rail .file-preview-large iframe{height:480px !important;}
+  .file-workbench.filter-rail .file-preview-large img{max-height:480px !important;}
+}
+@media(max-width:1260px){
+  .file-workbench.filter-rail{grid-template-columns:96px minmax(500px,1fr) 320px !important;gap:10px !important;}
+  .file-workbench.filter-rail.preview-collapsed{grid-template-columns:96px minmax(520px,1fr) 74px !important;}
+  .file-tree.file-tree-rail{width:96px !important;min-width:96px !important;max-width:96px !important;}
+  .file-tree.file-tree-rail .tree-btn{font-size:11px !important;padding:6px 4px !important;}
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:300px !important;max-width:320px !important;}
+  .file-workbench.filter-rail .file-preview-large iframe{height:430px !important;}
+  .file-workbench.filter-rail .file-preview-large img{max-height:430px !important;}
+}
+@media(max-width:1120px){
+  .file-workbench.filter-rail,.file-workbench.filter-rail.preview-collapsed{grid-template-columns:1fr !important;overflow:visible !important;}
+  .file-tree.file-tree-rail{width:auto !important;min-width:0 !important;max-width:none !important;}
+  .file-tree.file-tree-rail h3,.file-tree.file-tree-rail .file-tree-toggle{writing-mode:horizontal-tb !important;}
+  .file-tree.file-tree-rail .file-tree-head{flex-direction:row !important;align-items:center !important;}
+  .file-tree.file-tree-rail .uploadbox{display:block !important;}
+  .file-tree.file-tree-rail .tree-btn{flex-direction:row !important;justify-content:space-between !important;min-height:42px !important;}
+}
+
+
+
+/* ===== PLM V8.5.28 客户资料包紧凑列表：右侧小面板不再横向表格 ===== */
+.file-send-mini .customer-panel{
+  padding:12px !important;
+  border-radius:18px !important;
+  background:linear-gradient(180deg,#eef6ff,#ffffff) !important;
+  max-height:none !important;
+}
+.file-send-mini .customer-panel h3{
+  font-size:18px !important;
+  line-height:1.15 !important;
+  margin:0 0 10px !important;
+  letter-spacing:-.2px !important;
+}
+.file-send-mini .customer-tools{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:8px !important;
+}
+.file-send-mini .customer-tools select,
+.file-send-mini .customer-tools button{
+  height:40px !important;
+  min-height:40px !important;
+  border-radius:14px !important;
+  font-size:13px !important;
+  padding:8px 12px !important;
+}
+.file-send-mini .customer-panel .actions{
+  display:grid !important;
+  grid-template-columns:1fr 1fr !important;
+  gap:8px !important;
+  margin-top:10px !important;
+}
+.file-send-mini .customer-panel .actions .btn{
+  width:100% !important;
+  max-width:none !important;
+  height:38px !important;
+  min-height:38px !important;
+  padding:7px 8px !important;
+  border-radius:13px !important;
+  font-size:12.5px !important;
+  white-space:nowrap !important;
+}
+.file-send-mini .customer-panel .actions .btn.primary,
+.file-send-mini .customer-panel .actions .btn.warn{
+  grid-column:auto !important;
+}
+.file-send-mini .file-list-wrap,
+.customer-panel .file-list-wrap{
+  border:1px solid var(--line) !important;
+  border-radius:16px !important;
+  background:#fff !important;
+  overflow:hidden !important;
+  max-height:360px !important;
+  margin-top:10px !important;
+}
+.customer-mini-head{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) 58px;
+  gap:8px;
+  align-items:center;
+  padding:8px 10px;
+  background:#f8fafc;
+  border-bottom:1px solid #e5e7eb;
+  color:#64748b;
+  font-size:11px;
+  font-weight:1000;
+}
+.customer-mini-list{
+  max-height:305px;
+  overflow:auto;
+  background:#fff;
+}
+.customer-file-row{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) 58px;
+  gap:8px;
+  align-items:center;
+  min-height:62px;
+  padding:9px 10px;
+  border-bottom:1px solid #edf2f7;
+  cursor:pointer;
+  background:#fff;
+}
+.customer-file-row:hover{background:#f8fbff;}
+.customer-file-row.checked{background:#eff6ff;}
+.customer-file-row input{
+  width:18px !important;
+  height:18px !important;
+  margin:0 auto !important;
+  accent-color:#2563eb;
+}
+.customer-file-main{min-width:0;display:block;}
+.customer-file-title{
+  display:block;
+  font-weight:1000;
+  color:#0f172a;
+  font-size:13.5px;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.customer-file-sub{
+  display:block;
+  margin-top:3px;
+  color:#475569;
+  font-size:11.5px;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-weight:850;
+}
+.customer-file-origin{
+  display:block;
+  margin-top:2px;
+  color:#94a3b8;
+  font-size:10.5px;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-weight:800;
+}
+.customer-file-badges{display:flex;justify-content:flex-end;align-items:center;min-width:0;}
+.customer-file-badges .tag{
+  font-size:11px !important;
+  padding:4px 6px !important;
+  max-width:54px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.file-send-mini .copybox{
+  min-height:64px !important;
+  max-height:96px !important;
+  font-size:11px !important;
+  line-height:1.35 !important;
+  border-radius:14px !important;
+  margin-top:8px !important;
+}
+.file-send-mini .pkg-result{
+  font-size:12px !important;
+  line-height:1.4 !important;
+  padding:8px !important;
+  border-radius:12px !important;
+}
+.file-preview-pane:not(.collapsed-preview){
+  min-width:420px !important;
+}
+.file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){
+  min-width:420px !important;
+  max-width:470px !important;
+}
+@media(max-width:1460px){
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:390px !important;max-width:430px !important;}
+  .file-preview-pane:not(.collapsed-preview){min-width:390px !important;}
+}
+@media(max-width:1260px){
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:330px !important;max-width:360px !important;}
+  .file-preview-pane:not(.collapsed-preview){min-width:330px !important;}
+  .file-send-mini .customer-panel .actions{grid-template-columns:1fr !important;}
+}
+@media(max-width:1120px){
+  .file-preview-pane:not(.collapsed-preview){min-width:0 !important;}
+  .customer-mini-list{max-height:360px;}
+}
+
+
+
+/* ===== PLM V8.5.29 文件预览联动 + 文件筛选窄栏重新设计 ===== */
+.file-workbench.filter-rail{
+  grid-template-columns:148px minmax(600px,1fr) minmax(430px,480px) !important;
+  gap:14px !important;
+  align-items:start !important;
+}
+.file-workbench.filter-rail.preview-collapsed{
+  grid-template-columns:260px minmax(0,1fr) 92px !important;
+}
+.file-tree.file-tree-rail{
+  width:148px !important;
+  min-width:148px !important;
+  max-width:148px !important;
+  padding:10px !important;
+  border-radius:24px !important;
+  background:linear-gradient(180deg,#f8fbff,#ffffff) !important;
+  border:1px solid #bfdbfe !important;
+  box-shadow:0 12px 34px rgba(37,99,235,.08) !important;
+  max-height:calc(100vh - 180px) !important;
+  overflow:auto !important;
+}
+.file-tree.file-tree-rail .file-tree-head{
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  margin-bottom:10px !important;
+  padding:4px 2px 8px !important;
+  border-bottom:1px dashed #dbeafe !important;
+}
+.file-tree.file-tree-rail h3{
+  writing-mode:horizontal-tb !important;
+  letter-spacing:0 !important;
+  white-space:normal !important;
+  font-size:14px !important;
+  line-height:1.15 !important;
+  margin:0 !important;
+  color:#0f172a !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:5px !important;
+}
+.file-tree.file-tree-rail h3::before{
+  content:'筛';
+  width:24px;height:24px;border-radius:9px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:1000;
+}
+.file-tree.file-tree-rail .file-tree-toggle{
+  writing-mode:horizontal-tb !important;
+  min-height:0 !important;
+  padding:6px 8px !important;
+  border-radius:999px !important;
+  font-size:12px !important;
+  line-height:1 !important;
+  background:#fff !important;
+  color:#1d4ed8 !important;
+  border-color:#bfdbfe !important;
+  white-space:nowrap !important;
+}
+.file-tree.file-tree-rail .tree-btn{
+  min-height:44px !important;
+  padding:8px 9px !important;
+  margin:7px 0 !important;
+  border-radius:16px !important;
+  flex-direction:row !important;
+  justify-content:space-between !important;
+  gap:7px !important;
+  text-align:left !important;
+  font-size:12px !important;
+  line-height:1.15 !important;
+  white-space:normal !important;
+  background:#f8fafc !important;
+  border:1px solid transparent !important;
+  box-shadow:none !important;
+}
+.file-tree.file-tree-rail .tree-btn:hover{background:#eff6ff !important;border-color:#bfdbfe !important;}
+.file-tree.file-tree-rail .tree-btn.active{
+  background:#eff6ff !important;
+  color:#1d4ed8 !important;
+  border-color:#93c5fd !important;
+  box-shadow:inset 0 0 0 1px #bfdbfe !important;
+}
+.file-tree.file-tree-rail .tree-btn b{
+  flex:0 0 auto !important;
+  min-width:28px !important;
+  height:24px !important;
+  border-radius:999px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 7px !important;
+  font-size:12px !important;
+  background:#fff !important;
+  color:#1d4ed8 !important;
+  border:1px solid #dbeafe !important;
+}
+.file-tree.file-tree-rail .uploadbox{display:none !important;}
+.file-workbench.filter-rail .file-list-pane{min-height:670px !important;}
+.file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){
+  min-width:430px !important;
+  max-width:480px !important;
+  padding:14px !important;
+}
+.file-workbench.filter-rail .file-preview-large iframe{height:560px !important;}
+.file-workbench.filter-rail .file-preview-large img{max-height:560px !important;}
+.file-workbench.filter-rail .file-preview-large{min-height:400px !important;}
+@media(max-width:1460px){
+  .file-workbench.filter-rail{grid-template-columns:142px minmax(560px,1fr) minmax(390px,430px) !important;gap:12px !important;}
+  .file-tree.file-tree-rail{width:142px !important;min-width:142px !important;max-width:142px !important;}
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:390px !important;max-width:430px !important;}
+  .file-workbench.filter-rail .file-preview-large iframe{height:500px !important;}
+  .file-workbench.filter-rail .file-preview-large img{max-height:500px !important;}
+}
+@media(max-width:1260px){
+  .file-workbench.filter-rail{grid-template-columns:136px minmax(500px,1fr) minmax(330px,370px) !important;gap:10px !important;}
+  .file-tree.file-tree-rail{width:136px !important;min-width:136px !important;max-width:136px !important;padding:8px !important;}
+  .file-tree.file-tree-rail .tree-btn{font-size:11px !important;padding:7px 8px !important;}
+  .file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){min-width:330px !important;max-width:370px !important;}
+  .file-workbench.filter-rail .file-preview-large iframe{height:440px !important;}
+  .file-workbench.filter-rail .file-preview-large img{max-height:440px !important;}
+}
+@media(max-width:1120px){
+  .file-workbench.filter-rail,.file-workbench.filter-rail.preview-collapsed{grid-template-columns:1fr !important;overflow:visible !important;}
+  .file-tree.file-tree-rail{width:auto !important;min-width:0 !important;max-width:none !important;}
+  .file-tree.file-tree-rail .file-tree-head{flex-direction:row !important;}
+  .file-tree.file-tree-rail .uploadbox{display:block !important;}
+  .file-tree.file-tree-rail .tree-btn{min-height:40px !important;}
+}
+
+
+
+/* ===== PLM V8.5.30：项目列表双进度条，工序完成 / 测试完成分开显示 ===== */
+.project-list-compact .project-row-modern{
+  height:126px !important;
+  grid-template-columns:92px minmax(0,1fr) 54px !important;
+  align-items:center !important;
+}
+.project-list-compact .project-row-metrics{
+  margin-top:5px !important;
+}
+.project-dual-progress{
+  display:grid !important;
+  gap:3px !important;
+  margin-top:5px !important;
+}
+.project-progress-line{
+  display:grid !important;
+  grid-template-columns:26px minmax(0,1fr) 28px !important;
+  gap:5px !important;
+  align-items:center !important;
+  font-size:9.5px !important;
+  line-height:1 !important;
+  color:#64748b !important;
+  font-weight:1000 !important;
+  min-width:0 !important;
+}
+.project-progress-line em{
+  font-style:normal !important;
+  white-space:nowrap !important;
+  color:#475569 !important;
+}
+.project-progress-line b{
+  text-align:right !important;
+  font-size:9.5px !important;
+  color:#64748b !important;
+}
+.project-progress-line .bar{
+  height:5px !important;
+  border-radius:999px !important;
+  background:#e5e7eb !important;
+  overflow:hidden !important;
+  min-width:0 !important;
+}
+.project-progress-line.flow-line .bar i{
+  background:#2563eb !important;
+}
+.project-progress-line.test-line .bar i{
+  background:#16a34a !important;
+}
+.project-list-compact .project-mini-footer{
+  margin-top:4px !important;
+}
+@media(max-width:1280px){
+  .project-list-compact .project-row-modern{
+    height:118px !important;
+    grid-template-columns:62px minmax(0,1fr) 34px !important;
+  }
+  .project-thumb{width:62px !important;height:62px !important;}
+  .project-progress-line{
+    grid-template-columns:24px minmax(0,1fr) 26px !important;
+    gap:4px !important;
+    font-size:9px !important;
+  }
+  .project-progress-line b{font-size:9px !important;}
+  .project-list-compact .project-row-metrics span:nth-child(4){display:none !important;}
+}
+@media(max-width:720px){
+  .project-list-compact .project-row-modern{
+    height:auto !important;
+    min-height:122px !important;
+    grid-template-columns:74px minmax(0,1fr) !important;
+  }
+  .project-thumb{width:74px !important;height:74px !important;}
+  .project-dual-progress{margin-top:6px !important;}
+}
+
+
+/* ===== PLM V8.5.31：项目列表恢复原版排版，只增加第二条进度杆 ===== */
+.project-list-modern.project-list-compact{
+  max-width:315px !important;
+  gap:7px !important;
+  padding:0 !important;
+}
+.project-list-compact .project-row-modern{
+  position:relative !important;
+  height:92px !important;
+  grid-template-columns:58px minmax(0,1fr) 30px !important;
+  gap:7px !important;
+  padding:7px 7px !important;
+  border-radius:15px !important;
+  border-left-width:4px !important;
+  overflow:hidden !important;
+}
+.project-list-compact .project-row-modern.active{
+  box-shadow:0 0 0 2px rgba(37,99,235,.22),0 8px 20px rgba(15,23,42,.06) !important;
+}
+.project-thumb{
+  width:58px !important;
+  height:58px !important;
+  border-radius:14px !important;
+}
+.project-thumb.no span{font-size:25px !important;line-height:1 !important;}
+.project-thumb.no small{font-size:9px !important;margin-top:2px !important;color:#64748b !important;}
+.project-list-compact .project-title-line{
+  grid-template-columns:minmax(0,1fr) 10px !important;
+  gap:3px !important;
+}
+.project-list-compact .project-title-line h2{
+  font-size:13px !important;
+  line-height:1.05 !important;
+  letter-spacing:-.25px !important;
+}
+.project-list-compact .project-dot{
+  width:8px !important;
+  height:8px !important;
+  box-shadow:0 0 0 4px #eef2ff !important;
+}
+.project-list-compact .project-subline{
+  font-size:9.5px !important;
+  line-height:1.1 !important;
+  margin-top:3px !important;
+}
+.project-list-compact .project-row-metrics{
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:3px !important;
+  margin-top:4px !important;
+  overflow:hidden !important;
+}
+.project-list-compact .project-row-metrics span{
+  font-size:9px !important;
+  padding:2px 3px !important;
+  line-height:1.05 !important;
+  text-align:center !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+.project-dual-progress,
+.project-progress-line{display:none !important;}
+.project-progress-pair{
+  display:grid !important;
+  gap:2px !important;
+  margin-top:4px !important;
+}
+.project-mini-progress-row{
+  display:grid !important;
+  grid-template-columns:14px minmax(0,1fr) 32px !important;
+  gap:4px !important;
+  align-items:center !important;
+  min-width:0 !important;
+  font-size:8.8px !important;
+  font-weight:1000 !important;
+  line-height:1 !important;
+  color:#64748b !important;
+}
+.project-mini-progress-row span{
+  width:14px !important;
+  text-align:center !important;
+  color:#64748b !important;
+  font-size:8.5px !important;
+}
+.project-mini-progress-row b{
+  text-align:right !important;
+  font-size:8.8px !important;
+  color:#64748b !important;
+  white-space:nowrap !important;
+  overflow:visible !important;
+  letter-spacing:-.2px !important;
+}
+.project-mini-progress-row .bar{
+  height:4px !important;
+  border-radius:999px !important;
+  background:#e5e7eb !important;
+  overflow:hidden !important;
+  min-width:0 !important;
+}
+.project-mini-progress-row .bar i{
+  display:block !important;
+  height:100% !important;
+  border-radius:999px !important;
+  background:#2563eb !important;
+}
+.project-mini-progress-row.test .bar i{background:#16a34a !important;}
+.project-list-compact .project-mini-footer{
+  display:flex !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  margin-top:3px !important;
+  font-size:8.8px !important;
+  line-height:1.02 !important;
+  color:#64748b !important;
+  font-weight:900 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+}
+.project-list-compact .project-mini-footer span:first-child{overflow:hidden !important;text-overflow:ellipsis !important;}
+.project-list-compact .project-mini-footer span:last-child{max-width:50% !important;overflow:hidden !important;text-overflow:ellipsis !important;}
+.project-list-compact .project-row-actions{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:flex-end !important;
+  justify-content:center !important;
+  gap:5px !important;
+  min-width:0 !important;
+}
+.project-list-compact .project-row-actions .tag,
+.project-list-compact .project-priority{
+  font-size:10px !important;
+  padding:3px 5px !important;
+  max-width:44px !important;
+  white-space:normal !important;
+  line-height:1.08 !important;
+  justify-content:center !important;
+  text-align:center !important;
+}
+@media(max-width:1180px){
+  .project-list-modern.project-list-compact{grid-template-columns:1fr !important;max-width:none !important;}
+  .project-list-compact .project-row-modern{height:92px !important;grid-template-columns:58px minmax(0,1fr) 30px !important;}
+}
+@media(max-width:720px){
+  .project-list-compact .project-row-modern{grid-template-columns:58px minmax(0,1fr) 30px !important;height:92px !important;min-height:92px !important;padding:7px !important;}
+  .project-thumb{width:58px !important;height:58px !important;}
+  .project-list-compact .project-title-line h2{font-size:13px !important;}
+  .project-list-compact .project-row-actions{grid-column:auto !important;flex-direction:column !important;align-items:flex-end !important;justify-content:center !important;}
+  .project-list-compact .project-row-metrics span:nth-child(4){display:inline-flex !important;}
+}
+
+
+/* V8.5.33 命名系统联动 */
+.naming-link-box{border:1px solid #bfdbfe;background:linear-gradient(180deg,#f8fbff,#eef6ff);border-radius:15px;padding:10px;display:grid;gap:9px}
+.naming-link-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.naming-current{display:grid;grid-template-columns:48px minmax(0,1fr);gap:9px;align-items:center}
+.naming-thumb{width:48px;height:48px;border-radius:13px;background:#dbeafe;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-weight:1000;overflow:hidden;border:1px solid #bfdbfe;flex-shrink:0}
+.naming-thumb img{width:100%;height:100%;object-fit:cover}
+.naming-title{font-weight:1000;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.naming-sub{font-size:11px;color:#64748b;font-weight:900;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.naming-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;align-items:center}
+.naming-search-row input{padding:7px 9px;border-radius:10px;font-size:12px}
+.naming-results{display:none;border:1px solid #dbeafe;background:#fff;border-radius:13px;overflow:hidden;max-height:240px;overflow-y:auto}
+.naming-results.show{display:block}
+.naming-result{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px;border-bottom:1px solid #edf2f7;cursor:pointer}
+.naming-result:last-child{border-bottom:0}.naming-result:hover{background:#eff6ff}.naming-result .btn{height:28px;padding:0 8px;font-size:11px}
+.naming-result-thumb{width:42px;height:42px;border-radius:12px;background:#eff6ff;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-weight:1000;overflow:hidden}.naming-result-thumb img{width:100%;height:100%;object-fit:cover}
+
+/* V8.5.34：样品型号弹窗 + 关键元器件简化 */
+.model-picker-inline{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
+.model-picker-inline .btn{height:31px;padding:0 9px;font-size:11px;border-radius:10px}
+.naming-inline-meta{font-size:10px;color:#64748b;font-weight:900;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.naming-sync-tools{margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.naming-sync-tools .sync-warn{border:1px solid #fed7aa;background:#fff7ed;color:#c2410c;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:1000}.naming-sync-tools .sync-ok{border:1px solid #bbf7d0;background:#f0fdf4;color:#047857;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:1000}
+
+.key-components-inline{margin-top:10px;border:1px solid #dbeafe;background:linear-gradient(180deg,#fbfdff,#f3f8ff);border-radius:14px;padding:9px}
+.key-components-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}
+.key-components-head b{font-size:13px;color:#0f172a}.key-components-head span{font-size:11px;color:#64748b;font-weight:900}
+.component-simple-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.component-simple{position:relative;min-width:0}.component-simple label{font-size:10px;color:#475569;font-weight:1000;margin-bottom:3px;display:block}.component-simple-row{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:4px}.component-simple input{padding:7px 8px;border-radius:10px;font-size:12px}.component-simple .bom-mini-btn{height:30px;width:28px;padding:0;border-radius:9px}
+.component-simple-meta{font-size:10px;color:#94a3b8;font-weight:900;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.component-simple-meta.ok{color:#15803d}.component-simple .bom-suggestions{position:absolute;left:0;right:0;z-index:40;margin-top:3px;max-height:260px;overflow:auto}.naming-modal{width:min(1080px,96vw);max-height:92vh}.naming-modal-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:10px}.naming-modal-grid .field label{font-size:11px}.naming-modal-grid input,.naming-modal-grid select{padding:7px 9px;border-radius:10px;font-size:12px}.naming-modal-wide{grid-column:span 2}.naming-modal-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.naming-modal-results{border:1px solid #e5e7eb;border-radius:15px;overflow:hidden;background:#fff;max-height:50vh;overflow-y:auto}.naming-modal-row{display:grid;grid-template-columns:54px minmax(0,1fr) 90px;gap:10px;align-items:center;padding:9px;border-bottom:1px solid #edf2f7}.naming-modal-row:last-child{border-bottom:0}.naming-modal-row:hover{background:#f8fbff}.naming-modal-thumb{width:54px;height:54px;border-radius:14px;background:#dbeafe;color:#1d4ed8;font-weight:1000;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #bfdbfe}.naming-modal-thumb img{width:100%;height:100%;object-fit:cover}.naming-modal-title{font-weight:1000;font-size:14px;color:#0f172a}.naming-modal-sub{font-size:11px;color:#64748b;font-weight:900;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.naming-modal-remark{font-size:11px;color:#64748b;font-weight:760;line-height:1.35;margin-top:2px;max-height:32px;overflow:hidden}
+@media(max-width:1280px){.component-simple-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.naming-modal-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.naming-modal-wide{grid-column:span 3}}
+@media(max-width:720px){.component-simple-grid{grid-template-columns:1fr}.naming-modal-grid{grid-template-columns:1fr}.naming-modal-wide{grid-column:auto}.naming-modal-row{grid-template-columns:44px minmax(0,1fr);}.naming-modal-row .btn{grid-column:1/-1}.naming-modal-thumb{width:44px;height:44px}}
+@media(max-width:720px){.naming-search-row{grid-template-columns:1fr}.naming-result{grid-template-columns:38px minmax(0,1fr)}}
+
+
+
+/* V8.5.36：样品类别 + 尺寸参数，一个参数一个格子 */
+.sample-dimension-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 10px;padding:9px;border:1px solid #e5edf6;background:#f8fbff;border-radius:14px}
+.sample-dimension-grid .field{min-width:0}.sample-dimension-grid .field label{font-size:10px;color:#475569;font-weight:1000}.sample-dimension-grid input{height:34px;padding:7px 9px;border-radius:10px;font-size:12px}.sample-dim-note{grid-column:1/-1;color:#64748b;font-size:11px;font-weight:900;margin-top:-2px}.dim-hidden{display:none!important}
+@media(max-width:1280px){.sample-dimension-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:720px){.sample-dimension-grid{grid-template-columns:1fr 1fr}.sample-dim-note{grid-column:1/-1}}
+
+/* ===== PLM V8.5.35：命名型号弹窗容器补齐 + 弹窗样式修复 ===== */
+#modalHost{position:relative;z-index:9999;}
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;}
+.modal{background:#fff;border:1px solid #dbe4ef;border-radius:22px;box-shadow:0 30px 100px rgba(15,23,42,.28);max-width:96vw;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;}
+.modal.naming-modal{width:min(1120px,96vw);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid #e5edf6;background:linear-gradient(180deg,#fff,#f8fbff);}
+.modal-head h3{margin:0;font-size:22px;font-weight:1000;color:#0f172a;}
+.modal-body{padding:16px 18px;overflow:auto;}
+.modal .btn.small{height:34px;border-radius:11px;padding:0 12px;font-size:13px;}
+
+
+/* V8.5.37：样品基础规格紧凑重排，取消样品号/确认信息显示，型号加长对齐 */
+.sample-section{padding:14px 16px!important;}
+.sample-section h4{margin:0 0 10px!important;}
+.compact-fields.sample-basic-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:9px 10px;align-items:start;}
+.compact-fields.sample-basic-grid .field{min-width:0;}
+.sample-model-field{grid-column:span 2;}
+.sample-model-field .model-picker-inline{grid-template-columns:minmax(260px,1fr) 74px!important;gap:8px;}
+.sample-model-field input[id^="m_model_"]{font-size:13px!important;font-weight:900;letter-spacing:.01em;}
+.sample-model-field .btn{height:34px!important;font-size:12px!important;border-radius:11px!important;}
+.naming-inline-meta{max-width:100%;font-size:11px!important;}
+.sample-dimension-grid{margin:6px 0 8px!important;padding:8px!important;gap:7px!important;}
+.sample-dimension-grid input{height:32px!important;}
+.key-components-inline{margin-top:8px!important;padding:8px!important;}
+.component-simple-grid{gap:7px!important;}
+.component-simple-row{grid-template-columns:minmax(0,1fr) 34px!important;}
+.component-simple .bom-mini-btn{width:34px!important;height:32px!important;}
+.sample-content-pro{gap:14px!important;}
+@media(max-width:1280px){
+  .compact-fields.sample-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .sample-model-field{grid-column:1/-1;}
+}
+@media(max-width:720px){
+  .compact-fields.sample-basic-grid{grid-template-columns:1fr;}
+  .sample-model-field .model-picker-inline{grid-template-columns:minmax(0,1fr) 72px!important;}
+}
+
+
+
+/* V8.5.39：型号栏收短修复，避免顶到右侧备注区 */
+.compact-fields.sample-basic-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.sample-model-field{
+  grid-column:span 1!important;
+  min-width:0!important;
+  overflow:visible!important;
+}
+.sample-model-field .model-picker-inline{
+  grid-template-columns:minmax(0,1fr) 58px!important;
+  gap:5px!important;
+  width:100%!important;
+  max-width:100%!important;
+}
+.sample-model-field input[id^="m_model_"]{
+  min-width:0!important;
+  width:100%!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  letter-spacing:0!important;
+  padding-left:8px!important;
+  padding-right:8px!important;
+}
+.sample-model-field .btn{
+  width:58px!important;
+  min-width:58px!important;
+  height:34px!important;
+  padding:0!important;
+  font-size:11px!important;
+  border-radius:10px!important;
+}
+.naming-inline-meta{
+  max-width:100%!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  font-size:10px!important;
+}
+.sample-section.sample-note-pro{
+  position:relative!important;
+  z-index:2!important;
+}
+.sample-section .compact-fields.sample-basic-grid + .key-components-inline{
+  margin-top:8px!important;
+}
+@media(max-width:1280px){
+  .compact-fields.sample-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .sample-model-field{grid-column:span 1!important;}
+}
+@media(max-width:860px){
+  .compact-fields.sample-basic-grid{grid-template-columns:1fr!important;}
+  .sample-model-field{grid-column:1/-1!important;}
+  .sample-model-field .model-picker-inline{grid-template-columns:minmax(0,1fr) 68px!important;}
+  .sample-model-field .btn{width:68px!important;min-width:68px!important;}
+}
+
+
+/* V8.5.42：PLM 派工统一弹窗。只替换原 prompt 小弹窗，不改派工表格核心逻辑 */
+.plm-dispatch-mask{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.46);display:flex;align-items:center;justify-content:center;padding:18px}
+.plm-dispatch-modal{width:min(760px,96vw);max-height:92vh;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 90px rgba(15,23,42,.32);display:flex;flex-direction:column}
+.plm-dispatch-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;background:#fbfdff}
+.plm-dispatch-head h3{margin:0;font-size:20px;font-weight:1000;color:#0f172a}.plm-dispatch-head p{margin:4px 0 0;color:#64748b;font-size:12px;font-weight:850;line-height:1.5}
+.plm-dispatch-body{padding:16px 18px;overflow:auto}.plm-dispatch-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.plm-dispatch-field{margin-bottom:12px}.plm-dispatch-field label{display:block;margin:0 0 5px;color:#475569;font-size:12px;font-weight:1000}.plm-dispatch-field.full{grid-column:1/-1}.plm-dispatch-body textarea{min-height:132px;line-height:1.55}
+.plm-dispatch-preview{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px;color:#475569;font-size:12px;font-weight:850;line-height:1.6;margin-bottom:12px}.plm-dispatch-preview b{color:#0f172a}
+.plm-dispatch-foot{border-top:1px solid var(--line);padding:12px 18px;display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbfdff}.plm-dispatch-foot .hint{max-width:430px}.plm-dispatch-error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:12px;padding:8px 10px;margin-bottom:12px;font-weight:900;display:none}.plm-dispatch-error.show{display:block}
+@media(max-width:720px){.plm-dispatch-grid{grid-template-columns:1fr}.plm-dispatch-foot{display:block}.plm-dispatch-foot .actions{margin-top:10px;justify-content:flex-end}}
+
+/* V8.5.43：派工进度弹窗，只读查看 + 自动找回 PLM 已生成派工 */
+.plm-progress-list{display:grid;gap:10px}
+.plm-progress-row{border:1px solid #dbeafe;background:#fff;border-radius:14px;padding:10px 12px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.plm-progress-row.done{border-color:#bbf7d0;background:#f0fdf4}
+.plm-progress-row.warn{border-color:#fed7aa;background:#fff7ed}
+.plm-progress-row b{display:block;font-size:14px;color:#0f172a;margin-bottom:4px}
+.plm-progress-row span{display:block;font-size:12px;color:#64748b;font-weight:850;line-height:1.55}
+.plm-progress-bar{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-top:8px}
+.plm-progress-bar i{display:block;height:100%;background:#2563eb;border-radius:999px}
+.plm-progress-row.done .plm-progress-bar i{background:#16a34a}
+.plm-progress-empty{border:1px dashed #cbd5e1;background:#f8fafc;color:#64748b;border-radius:14px;padding:18px;text-align:center;font-weight:900;line-height:1.7}
+.plm-progress-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:10px 12px;margin-bottom:12px;color:#1e40af;font-weight:1000}
+@media(max-width:720px){.plm-progress-row{display:block}.plm-progress-row .actions{margin-top:8px!important}}
+
+
+/* V8.5.46：登录信息 / 回收站 / 项目列表数量 / 全项目弹窗筛选 */
+.user-pill,.notice-pill{height:32px;border:1px solid #dbeafe;border-radius:999px;background:#eff6ff;color:#1d4ed8;padding:0 12px;font-weight:1000;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.notice-pill.has{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+.recycle-modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.recycle-panel{border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:12px;min-height:180px}
+.recycle-row{border:1px solid #eef2f7;border-radius:12px;padding:9px;margin-bottom:8px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.recycle-row b{display:block;font-size:13px}.recycle-row .hint{font-size:11px}
+.project-list-limit{height:28px;border:1px solid #bfdbfe;border-radius:999px;background:#fff;color:#1d4ed8;font-weight:900;padding:0 8px}
+@media(max-width:900px){.recycle-modal-grid{grid-template-columns:1fr}.user-pill,.notice-pill{height:28px;font-size:11px;padding:0 8px}}
+
+
+/* V8.5.46：顶部“所有项目列表”弹窗 + 全功能筛选 */
+.all-project-modal .modal{width:min(1480px,97vw)!important;max-height:92vh!important}
+.all-project-filter-grid{display:grid;grid-template-columns:1.4fr repeat(5,minmax(120px,1fr));gap:10px;align-items:end;margin-bottom:10px}
+.all-project-filter-grid .field{min-width:0;margin:0}
+.all-project-filter-grid input,.all-project-filter-grid select{height:34px;border:1px solid #dbe4ef;border-radius:12px;background:#fff;padding:0 10px;font-weight:850;width:100%;outline:none}
+.all-project-filter-grid input:focus,.all-project-filter-grid select:focus{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.all-project-modal-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 10px;padding:8px;border:1px solid #e5edf8;background:#fbfdff;border-radius:14px}
+.all-project-result-wrap{border:1px solid #dbe4ef;border-radius:16px;overflow:auto;max-height:58vh;background:#fff}
+.all-project-table{width:100%;border-collapse:separate;border-spacing:0;min-width:1180px}
+.all-project-table th,.all-project-table td{border-bottom:1px solid #edf2f7;border-right:1px solid #edf2f7;padding:8px 9px;text-align:left;vertical-align:middle;font-size:12px;font-weight:850}
+.all-project-table th{position:sticky;top:0;background:#f8fafc;color:#334155;font-weight:1000;z-index:2;white-space:nowrap}
+.all-project-table tr:hover td{background:#f8fbff}
+.all-project-title{font-weight:1000;color:#0f172a;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.all-project-sub{font-size:11px;color:#64748b;font-weight:800;margin-top:2px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.all-project-mini-img{width:44px;height:44px;border-radius:12px;border:1px solid #dbe4ef;background:#f8fafc;object-fit:cover;display:block}
+.all-project-mini-img.no{display:grid;place-items:center;color:#2563eb;font-weight:1000;font-size:18px;background:#eff6ff}
+.all-project-stat-pill{display:inline-flex;align-items:center;height:24px;border:1px solid #dbe4ef;background:#f8fafc;border-radius:999px;padding:0 8px;font-size:11px;font-weight:1000;white-space:nowrap;color:#334155}
+.all-project-stat-pill.good{background:#dcfce7;border-color:#bbf7d0;color:#166534}
+.all-project-stat-pill.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+.all-project-stat-pill.blue{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.all-project-toolbar-btn{height:32px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:12px;padding:0 11px;font-size:12px;font-weight:1000;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+.all-project-toolbar-btn:hover{background:#dbeafe}
+@media(max-width:900px){.all-project-filter-grid{grid-template-columns:1fr 1fr}.all-project-result-wrap{max-height:62vh}.all-project-table{min-width:980px}}
+@media(max-width:560px){.all-project-filter-grid{grid-template-columns:1fr}.all-project-modal .modal{width:98vw!important}.all-project-result-wrap{max-height:58vh}}
+
+/* V8.5.48：关键元器件保留三点按钮，同时恢复输入框模糊查找下拉 */
+.component-simple-row .bom-dot-btn{
+  width:42px;min-width:42px;height:34px;border-radius:13px;
+  border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;
+  font-size:18px;font-weight:1000;letter-spacing:1px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.component-simple-row .bom-dot-btn:hover{background:#dbeafe;border-color:#93c5fd}
+.bom-material-modal .modal{width:min(1380px,97vw)!important;max-height:92vh!important}
+.bom-material-filter-grid{display:grid;grid-template-columns:2fr repeat(5,minmax(120px,1fr));gap:9px;margin-bottom:10px}
+.bom-material-filter-grid .field label{font-size:11px}
+.bom-material-filter-grid input,.bom-material-filter-grid select{height:34px;border-radius:11px;padding:6px 9px;font-size:12px;font-weight:850}
+.bom-material-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px;border:1px solid #e5edf8;background:#fbfdff;border-radius:14px}
+.bom-material-results{border:1px solid #e5e7eb;border-radius:15px;background:#fff;overflow:auto;max-height:58vh}
+.bom-material-table{width:100%;border-collapse:separate;border-spacing:0;min-width:980px}
+.bom-material-table th,.bom-material-table td{padding:8px 10px;border-bottom:1px solid #edf2f7;border-right:1px solid #edf2f7;text-align:left;font-size:12px;vertical-align:middle}
+.bom-material-table th{position:sticky;top:0;background:#f8fafc;color:#334155;font-weight:1000;z-index:2}
+.bom-material-table tr:hover td{background:#f8fbff}
+.bom-material-main{font-weight:1000;color:#0f172a;font-size:13px;line-height:1.35}
+.bom-material-sub{font-size:11px;color:#64748b;font-weight:850;line-height:1.45;margin-top:2px}
+.bom-material-price{font-weight:1000;color:#15803d;white-space:nowrap}
+.bom-material-chip{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:1000;font-size:11px;white-space:nowrap}
+.bom-material-empty{padding:24px;text-align:center;color:#94a3b8;font-weight:1000}
+@media(max-width:900px){.bom-material-filter-grid{grid-template-columns:1fr 1fr}.bom-material-filter-grid .field:first-child{grid-column:1/-1}.bom-material-results{max-height:56vh}}
+@media(max-width:560px){.bom-material-filter-grid{grid-template-columns:1fr}.bom-material-modal .modal{width:98vw!important}}
+
+
+/* ===== PLM V8.5.51 研发看板 ===== */
+.rnd-modal .modal{width:min(1380px,97vw)!important;max-height:92vh!important}
+.rnd-board-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.rnd-card{border:1px solid #e2e8f0;background:#fff;border-radius:18px;padding:13px;box-shadow:0 8px 24px rgba(15,23,42,.05);cursor:pointer;border-left:6px solid #2563eb}
+.rnd-card:hover{transform:translateY(-1px);box-shadow:0 14px 32px rgba(15,23,42,.08)}
+.rnd-card.active{box-shadow:0 0 0 3px rgba(37,99,235,.14),0 14px 32px rgba(15,23,42,.08)}
+.rnd-card.red{border-left-color:#dc2626}.rnd-card.orange{border-left-color:#f59e0b}.rnd-card.green{border-left-color:#16a34a}.rnd-card.purple{border-left-color:#7c3aed}
+.rnd-card b{display:block;font-size:30px;line-height:1;color:#0f172a}
+.rnd-card span{display:block;margin-top:6px;color:#64748b;font-size:12px;font-weight:1000}
+.rnd-card small{display:block;margin-top:6px;color:#94a3b8;font-weight:800;line-height:1.35}
+.rnd-tools{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:10px 0}
+.rnd-tools-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rnd-tools input,.rnd-tools select{width:auto;min-width:160px;height:34px;padding:6px 10px;font-size:12px;border-radius:11px}
+.rnd-table-wrap{border:1px solid #e5e7eb;border-radius:16px;overflow:auto;background:#fff;max-height:52vh}
+.rnd-table{width:100%;min-width:1060px;border-collapse:collapse}
+.rnd-table th,.rnd-table td{border-bottom:1px solid #edf2f7;padding:9px;text-align:left;vertical-align:middle;font-size:12px}
+.rnd-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#475569;font-weight:1000}
+.rnd-project-title{font-weight:1000;color:#0f172a;font-size:13px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rnd-sub{font-size:11px;color:#64748b;font-weight:850;margin-top:2px;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rnd-pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 8px;background:#f1f5f9;color:#475569;font-weight:1000;font-size:11px;white-space:nowrap}
+.rnd-pill.red{background:#fee2e2;color:#991b1b}.rnd-pill.orange{background:#ffedd5;color:#c2410c}.rnd-pill.green{background:#dcfce7;color:#15803d}.rnd-pill.blue{background:#dbeafe;color:#1d4ed8}.rnd-pill.purple{background:#ede9fe;color:#6d28d9}
+.rnd-mini-bar{height:7px;background:#e5e7eb;border-radius:999px;overflow:hidden;width:90px;margin-top:4px}.rnd-mini-bar i{display:block;height:100%;background:#2563eb}.rnd-mini-bar.green i{background:#16a34a}
+@media(max-width:1100px){.rnd-board-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rnd-tools input,.rnd-tools select{width:100%;min-width:0}.rnd-tools-left{width:100%;display:grid;grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.rnd-board-grid{grid-template-columns:1fr}.rnd-tools-left{grid-template-columns:1fr}}
+
+
+/* ===== PLM V8.5.53 权限细化 ===== */
+.perm-modal{width:min(980px,96vw);max-height:92vh;display:flex;flex-direction:column}.perm-modal .modal-body{overflow:auto}.perm-top{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:12px;align-items:end;margin-bottom:12px}.perm-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.perm-group{border:1px solid #e5e7eb;border-radius:16px;background:#fff;margin:10px 0;padding:12px}.perm-group h4{margin:0 0 10px;font-size:15px;color:#1e293b}.perm-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.perm-item{display:flex;align-items:center;gap:8px;border:1px solid #eef2f7;background:#f8fafc;border-radius:12px;padding:9px 10px;font-weight:900;color:#334155}.perm-item input{width:auto}.perm-admin-note{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:14px;padding:10px 12px;font-weight:1000;margin-bottom:10px}.modal-foot{border-top:1px solid #e5e7eb;padding:12px 18px;display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbfdff}
+@media(max-width:780px){.perm-top{grid-template-columns:1fr}.perm-grid{grid-template-columns:1fr}.modal-foot{display:block}.modal-foot .btn{margin-top:8px;width:100%}}
+
+
+/* ===== PLM V8.5.58 操作友好加强版：今日重点 + 风险提醒 + 菜单折叠 ===== */
+.top{background:rgba(255,255,255,.88);border:1px solid #dbe4ef;border-radius:26px;padding:14px 16px;box-shadow:0 18px 55px rgba(15,23,42,.10);backdrop-filter:blur(14px)}
+.top h1{font-size:27px;line-height:1.12}.top .actions{align-items:center;gap:6px}.top .actions .btn,.top .actions .user-pill,.top .actions .notice-pill{height:34px;padding:7px 11px;border-radius:999px;font-size:12px;white-space:nowrap}.top .actions .btn.primary{box-shadow:0 10px 22px rgba(37,99,235,.18)}
+.stats{grid-template-columns:repeat(6,minmax(108px,1fr));gap:9px;margin:12px 0}.stat{padding:10px 11px;border-radius:14px}.stat b{font-size:22px}.panel{padding:10px 12px}.filters{grid-template-columns:minmax(240px,1.7fr) repeat(5,minmax(106px,1fr)) auto}.project-list-toolbar{align-items:center}.project-list-title-pill{font-weight:1000}.project-list-limit{min-width:96px}.detail{padding:14px}.detail-head{border-radius:18px;background:linear-gradient(180deg,#fff,#f8fbff);border:1px solid #e5edf6;margin-bottom:10px;padding:13px}.detail-head h2{font-size:24px}.tabs{gap:6px;padding:8px 0;overflow-x:auto;flex-wrap:nowrap}.tab{white-space:nowrap;padding:9px 12px;border-radius:999px}.tab.active{box-shadow:0 8px 20px rgba(37,99,235,.12)}
+.summary-hero{display:grid;grid-template-columns:1.25fr .9fr;gap:12px;align-items:stretch;margin-bottom:12px}.summary-main-card,.summary-side-card,.summary-card{border:1px solid #e5edf6;background:#fff;border-radius:20px;padding:14px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.summary-main-card{background:linear-gradient(135deg,#eff6ff,#fff)}.summary-main-card h3,.summary-side-card h3,.summary-card h3{margin:0 0 8px;font-size:16px}.summary-big{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}.summary-big div{border:1px solid #dbeafe;background:#fff;border-radius:16px;padding:10px}.summary-big b{display:block;font-size:24px}.summary-big span{color:#64748b;font-size:12px;font-weight:900}.next-actions{display:grid;gap:8px}.next-action-card{border:1px solid #e5e7eb;background:#f8fafc;border-radius:14px;padding:10px;display:flex;justify-content:space-between;gap:10px;align-items:center}.next-action-card b{display:block}.next-action-card small{display:block;color:#64748b;font-weight:800;margin-top:2px}.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sample-mini-card{border:1px solid #e5edf6;border-radius:18px;padding:12px;background:#fff}.sample-mini-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.sample-mini-head b{font-size:15px}.mini-progress{display:grid;grid-template-columns:44px 1fr 38px;gap:7px;align-items:center;margin-top:8px;color:#475569;font-weight:900;font-size:12px}.compact-table-wrap{border:1px solid #e5edf6;border-radius:16px;overflow:auto;background:#fff}.compact-table{width:100%;border-collapse:collapse;min-width:620px}.compact-table th,.compact-table td{border-bottom:1px solid #edf2f7;padding:8px 9px;text-align:left;font-size:12px;vertical-align:top}.compact-table th{background:#f8fafc;color:#475569;font-weight:1000}.summary-empty{border:1px dashed #cbd5e1;border-radius:16px;padding:18px;text-align:center;color:#94a3b8;font-weight:1000;background:#f8fafc}
+@media(max-width:1100px){.summary-hero,.summary-grid{grid-template-columns:1fr}.summary-big{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr 1fr}.filters .btn{grid-column:1/-1}.top{position:static}.top .actions{width:100%}}
+@media(max-width:640px){.summary-big{grid-template-columns:1fr}.top h1{font-size:22px}.detail-head .actions{width:100%}.detail-head .actions .btn{flex:1;min-width:120px}}
+/* ===== PLM V8.5.91 项目总览版块显示设置：勾选显示/隐藏，localStorage 记忆 ===== */
+#tab-summary .summary-visibility-bar{border:1px solid #dbe4ef;background:#fff;border-radius:18px;padding:10px 12px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+#tab-summary .summary-visibility-title{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+#tab-summary .summary-visibility-title b{font-size:14px;color:#0f172a}
+#tab-summary .summary-visibility-title span{font-size:12px;color:#64748b;font-weight:900}
+#tab-summary .summary-toggle-list{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+#tab-summary .summary-toggle-chip{height:30px;border:1px solid #dbe4ef;border-radius:999px;background:#fff;padding:0 10px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:1000;color:#475569;cursor:pointer;user-select:none}
+#tab-summary .summary-toggle-chip input{width:14px;height:14px;margin:0}
+#tab-summary .summary-toggle-chip.on{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
+#tab-summary .summary-hero.single{grid-template-columns:1fr!important}
+#tab-summary .summary-grid.single{grid-template-columns:1fr!important}
+@media(max-width:900px){#tab-summary .summary-visibility-bar{align-items:flex-start;flex-direction:column}#tab-summary .summary-toggle-list{justify-content:flex-start}}
+
+
+
+/* ===== PLM V8.5.58 操作友好加强版：今日重点 / 风险提醒 / 常用操作前置 ===== */
+.top-actions-v855{position:relative}.top-more{position:relative}.top-more summary{list-style:none;height:34px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:1000;color:#1e293b;cursor:pointer;display:flex;align-items:center}.top-more summary::-webkit-details-marker{display:none}.top-more[open] summary{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}.top-more-menu{position:absolute;right:0;top:42px;z-index:70;width:178px;background:#fff;border:1px solid #dbe4ef;border-radius:18px;padding:8px;box-shadow:0 20px 48px rgba(15,23,42,.18);display:grid;gap:6px}.top-more-menu .btn{width:100%;height:34px;border-radius:12px!important;justify-content:flex-start!important;white-space:nowrap}.focus-panel{display:grid;grid-template-columns:1.2fr repeat(4,minmax(130px,.8fr));gap:10px;margin:10px 0 12px}.focus-card{border:1px solid #dbe4ef;border-radius:18px;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,.055);padding:12px;min-height:86px}.focus-card.primary{background:linear-gradient(135deg,#eff6ff,#fff);border-color:#bfdbfe}.focus-card.warn{background:linear-gradient(135deg,#fff7ed,#fff);border-color:#fed7aa}.focus-card.danger{background:linear-gradient(135deg,#fff1f2,#fff);border-color:#fecaca}.focus-card.good{background:linear-gradient(135deg,#f0fdf4,#fff);border-color:#bbf7d0}.focus-card h3{margin:0 0 6px;font-size:15px}.focus-card b{font-size:24px}.focus-card span,.focus-card small{display:block;color:#64748b;font-size:12px;font-weight:900;line-height:1.35}.focus-card .btn{margin-top:8px;height:30px;padding:5px 9px;border-radius:999px;font-size:12px}.focus-list{display:grid;gap:6px;margin-top:7px}.focus-line{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border:1px solid #e5edf6;background:#fff;border-radius:12px;padding:7px 8px}.focus-line b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.focus-line small{font-size:11px}.project-row-modern.risk-danger{border-left-color:#ef4444!important;background:linear-gradient(180deg,#fff,#fff7f7)}.project-row-modern.risk-warn{border-left-color:#f59e0b!important;background:linear-gradient(180deg,#fff,#fffbeb)}.project-risk-strip{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}.risk-pill{border-radius:999px;padding:3px 6px;font-size:10.5px;font-weight:1000;background:#f1f5f9;color:#475569;line-height:1}.risk-pill.red{background:#fee2e2;color:#991b1b}.risk-pill.orange{background:#ffedd5;color:#c2410c}.risk-pill.purple{background:#ede9fe;color:#6d28d9}.summary-quickbar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}.summary-quickbar button{min-height:42px;border-radius:14px;font-size:12px;white-space:normal}.sample-mini-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px}.sample-mini-actions .btn{padding:6px 7px;font-size:11px;border-radius:10px}.sample-pro-card.collapsed:hover{border-color:#bfdbfe;box-shadow:0 14px 34px rgba(37,99,235,.10)}.sample-actions-pro .btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}@media(max-width:1180px){.focus-panel{grid-template-columns:1fr 1fr}.summary-quickbar{grid-template-columns:repeat(3,1fr)}}@media(max-width:720px){.top-more-menu{right:auto;left:0}.focus-panel{grid-template-columns:1fr}.summary-quickbar{grid-template-columns:1fr 1fr}.sample-mini-actions{grid-template-columns:1fr 1fr}.top .actions{align-items:flex-start}}
+
+
+/* ===== PLM V8.5.58 三段式科技感优化：统计 / 今日重点 / 筛选区，只改样式不改联动 ===== */
+body{background:
+  radial-gradient(circle at 8% 0%, rgba(37,99,235,.18), transparent 34%),
+  radial-gradient(circle at 88% 12%, rgba(20,184,166,.14), transparent 32%),
+  linear-gradient(180deg,#edf5ff 0%,#f7fbff 52%,#f3f7fb 100%)!important;}
+.app{max-width:1540px!important;}
+.stats{
+  position:relative;
+  grid-template-columns:repeat(6,minmax(118px,1fr))!important;
+  gap:12px!important;
+  margin:14px 0 12px!important;
+  padding:2px!important;
+}
+.stat{
+  position:relative;
+  overflow:hidden;
+  min-height:66px;
+  padding:13px 16px 11px!important;
+  border:1px solid rgba(148,163,184,.30)!important;
+  border-left:0!important;
+  border-radius:20px!important;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.94),rgba(239,246,255,.74)),
+    radial-gradient(circle at 96% 0%,rgba(37,99,235,.18),transparent 36%)!important;
+  box-shadow:0 16px 38px rgba(15,23,42,.09), inset 0 1px 0 rgba(255,255,255,.85)!important;
+  backdrop-filter:blur(16px);
+}
+.stat:before{
+  content:'';
+  position:absolute;
+  left:0;top:0;bottom:0;width:5px;
+  background:linear-gradient(180deg,#3b82f6,#06b6d4);
+  border-radius:20px 0 0 20px;
+}
+.stat:after{
+  content:'';
+  position:absolute;
+  right:-32px;top:-36px;
+  width:100px;height:100px;
+  border:1px solid rgba(37,99,235,.12);
+  border-radius:50%;
+}
+.stat.orange:before{background:linear-gradient(180deg,#f59e0b,#f97316)}
+.stat.purple:before{background:linear-gradient(180deg,#7c3aed,#2563eb)}
+.stat.green:before{background:linear-gradient(180deg,#16a34a,#14b8a6)}
+.stat.red:before{background:linear-gradient(180deg,#ef4444,#f97316)}
+.stat b{
+  position:relative;z-index:1;
+  font-size:27px!important;
+  line-height:1;
+  letter-spacing:.2px;
+  color:#0f172a!important;
+}
+.stat span{
+  position:relative;z-index:1;
+  display:block;
+  margin-top:5px;
+  font-size:12px!important;
+  letter-spacing:.02em;
+  color:#526071!important;
+}
+#focusPanel{position:relative;margin:0 0 14px!important;}
+.focus-panel{
+  position:relative;
+  grid-template-columns:minmax(330px,1.25fr) repeat(4,minmax(150px,.78fr))!important;
+  gap:12px!important;
+  margin:0!important;
+  padding:0!important;
+}
+.focus-card{
+  position:relative;
+  overflow:hidden;
+  min-height:104px!important;
+  padding:15px 16px!important;
+  border-radius:22px!important;
+  border:1px solid rgba(148,163,184,.30)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.95),rgba(248,250,252,.78))!important;
+  box-shadow:0 18px 42px rgba(15,23,42,.085), inset 0 1px 0 rgba(255,255,255,.82)!important;
+  backdrop-filter:blur(18px);
+}
+.focus-card:before{
+  content:'';
+  position:absolute;
+  inset:0 0 auto 0;
+  height:3px;
+  background:linear-gradient(90deg,#2563eb,#22c55e,#06b6d4);
+  opacity:.85;
+}
+.focus-card:after{
+  content:'';
+  position:absolute;
+  right:-48px;bottom:-58px;
+  width:138px;height:138px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(37,99,235,.12),transparent 64%);
+}
+.focus-card.primary{
+  background:
+    linear-gradient(135deg,rgba(12,25,48,.94),rgba(24,52,96,.90)),
+    radial-gradient(circle at 90% 10%,rgba(34,197,94,.22),transparent 35%)!important;
+  border-color:rgba(96,165,250,.35)!important;
+  color:#fff!important;
+}
+.focus-card.primary:before{background:linear-gradient(90deg,#60a5fa,#22c55e,#67e8f9)}
+.focus-card.warn:before{background:linear-gradient(90deg,#f59e0b,#f97316)}
+.focus-card.danger:before{background:linear-gradient(90deg,#ef4444,#f97316)}
+.focus-card.good:before{background:linear-gradient(90deg,#22c55e,#06b6d4)}
+.focus-card h3{
+  position:relative;z-index:1;
+  margin:0 0 8px!important;
+  font-size:17px!important;
+  letter-spacing:.02em;
+}
+.focus-card b{
+  position:relative;z-index:1;
+  font-size:30px!important;
+  line-height:1;
+  color:#0f172a!important;
+}
+.focus-card.primary h3,.focus-card.primary b{color:#fff!important}
+.focus-card span,.focus-card small{
+  position:relative;z-index:1;
+  color:#64748b!important;
+  line-height:1.45!important;
+}
+.focus-card.primary span,.focus-card.primary small{color:#cbd5e1!important}
+.focus-list{position:relative;z-index:2;gap:7px!important;margin-top:10px!important;}
+.focus-line{
+  border:1px solid rgba(191,219,254,.55)!important;
+  background:rgba(255,255,255,.10)!important;
+  color:#fff!important;
+  border-radius:15px!important;
+  padding:8px 10px!important;
+  backdrop-filter:blur(10px);
+}
+.focus-line b{color:#fff!important;font-size:13px!important;}
+.focus-line small{color:#dbeafe!important;}
+.focus-card .btn{
+  position:relative;z-index:2;
+  height:32px!important;
+  border-radius:999px!important;
+  box-shadow:0 8px 18px rgba(15,23,42,.08);
+}
+.app > .panel{
+  position:relative;
+  overflow:hidden;
+  padding:15px!important;
+  margin:14px 0 16px!important;
+  border:1px solid rgba(148,163,184,.28)!important;
+  border-radius:26px!important;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.92),rgba(239,246,255,.72)),
+    radial-gradient(circle at 100% 0%,rgba(37,99,235,.13),transparent 34%)!important;
+  box-shadow:0 20px 48px rgba(15,23,42,.09), inset 0 1px 0 rgba(255,255,255,.86)!important;
+  backdrop-filter:blur(18px);
+}
+.app > .panel:before{
+  content:'';
+  position:absolute;
+  left:18px;right:18px;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,#60a5fa,#22c55e,transparent);
+}
+.app > .panel .filters{
+  grid-template-columns:minmax(300px,1.55fr) repeat(5,minmax(118px,1fr)) auto!important;
+  gap:10px!important;
+  align-items:center!important;
+}
+.app > .panel input,.app > .panel select{
+  height:44px!important;
+  border-radius:16px!important;
+  border:1px solid rgba(148,163,184,.36)!important;
+  background:rgba(255,255,255,.82)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.70), 0 6px 18px rgba(15,23,42,.035)!important;
+}
+.app > .panel input:focus,.app > .panel select:focus{
+  border-color:#60a5fa!important;
+  box-shadow:0 0 0 4px rgba(37,99,235,.12), 0 8px 20px rgba(37,99,235,.08)!important;
+}
+.app > .panel .filters .btn{
+  height:44px!important;
+  border-radius:16px!important;
+  background:#0f172a!important;
+  color:#fff!important;
+  border-color:#0f172a!important;
+}
+.project-list-toolbar{
+  margin-top:12px!important;
+  padding-top:12px!important;
+  border-top:1px solid rgba(148,163,184,.22);
+}
+.project-list-title-pill{
+  height:34px;
+  display:inline-flex;
+  align-items:center;
+  padding:0 12px;
+  border-radius:999px;
+  background:rgba(37,99,235,.09);
+  border:1px solid rgba(147,197,253,.65);
+  color:#1d4ed8;
+}
+.project-list-limit,.project-collapse-btn{
+  height:34px!important;
+  border-radius:999px!important;
+}
+@media(max-width:1320px){
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+  .focus-panel{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .focus-card.primary{grid-column:1/-1;}
+  .app > .panel .filters{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+}
+@media(max-width:760px){
+  .stats,.focus-panel,.app > .panel .filters{grid-template-columns:1fr!important;}
+  .stat,.focus-card,.app > .panel{border-radius:18px!important;}
+  .focus-card{min-height:auto!important;}
+}
+
+
+/* ===== PLM V8.5.61 项目列表真实拉高修复：放在最终样式末尾，覆盖旧版 92px 压缩规则 ===== */
+.project-list-modern.project-list-compact{
+  gap:11px !important;
+  max-width:315px !important;
+}
+.project-list-compact .project-row-modern{
+  height:auto !important;
+  min-height:132px !important;
+  grid-template-columns:74px minmax(0,1fr) 48px !important;
+  gap:9px !important;
+  padding:10px 9px !important;
+  align-items:center !important;
+  overflow:visible !important;
+  border-radius:18px !important;
+}
+.project-list-compact .project-row-modern.active{
+  box-shadow:0 0 0 3px rgba(37,99,235,.18),0 10px 26px rgba(15,23,42,.08) !important;
+}
+.project-thumb{
+  width:74px !important;
+  height:74px !important;
+  border-radius:16px !important;
+}
+.project-thumb.no span{font-size:30px !important;line-height:1 !important;}
+.project-thumb.no small{font-size:10px !important;margin-top:3px !important;}
+.project-row-main{
+  min-width:0 !important;
+  overflow:visible !important;
+}
+.project-list-compact .project-title-line h2{
+  font-size:14.5px !important;
+  line-height:1.14 !important;
+}
+.project-list-compact .project-subline{
+  font-size:10.5px !important;
+  line-height:1.18 !important;
+  margin-top:4px !important;
+}
+.project-list-compact .project-row-metrics{
+  margin-top:6px !important;
+  gap:4px !important;
+}
+.project-list-compact .project-row-metrics span{
+  font-size:9.5px !important;
+  padding:3px 4px !important;
+  line-height:1.08 !important;
+}
+.project-risk-strip{
+  margin-top:5px !important;
+  gap:4px !important;
+}
+.risk-pill{
+  font-size:10px !important;
+  padding:4px 7px !important;
+}
+.project-progress-pair{
+  margin-top:6px !important;
+  gap:4px !important;
+}
+.project-mini-progress-row{
+  grid-template-columns:16px minmax(0,1fr) 34px !important;
+  gap:5px !important;
+  font-size:9.5px !important;
+}
+.project-mini-progress-row span{font-size:9px !important;width:16px !important;}
+.project-mini-progress-row b{font-size:9.5px !important;}
+.project-mini-progress-row .bar{height:5px !important;}
+.project-list-compact .project-mini-footer{
+  margin-top:6px !important;
+  font-size:9.5px !important;
+  line-height:1.12 !important;
+  overflow:visible !important;
+}
+.project-list-compact .project-row-actions{
+  align-self:stretch !important;
+  justify-content:center !important;
+  gap:8px !important;
+  overflow:visible !important;
+}
+.project-list-compact .project-row-actions .tag,
+.project-list-compact .project-priority{
+  font-size:10.5px !important;
+  padding:5px 6px !important;
+  max-width:48px !important;
+  line-height:1.08 !important;
+}
+@media(max-width:1180px){
+  .project-list-modern.project-list-compact{grid-template-columns:1fr !important;max-width:none !important;}
+  .project-list-compact .project-row-modern{height:auto !important;min-height:132px !important;grid-template-columns:74px minmax(0,1fr) 48px !important;}
+}
+@media(max-width:720px){
+  .project-list-compact .project-row-modern{height:auto !important;min-height:128px !important;grid-template-columns:70px minmax(0,1fr) 46px !important;padding:9px !important;}
+  .project-thumb{width:70px !important;height:70px !important;}
+}
+
+
+
+/* ===== PLM V8.5.62 更多菜单真实置顶修复：放在主页面样式最终末尾 =====
+   上一版误插到资料包导出 HTML 的 style 中，主页面没有吃到样式。
+   本版使用固定浮层 + 顶层 z-index，只改显示层级，不改任何按钮 onclick / 联动 / 数据库 / API。 */
+.app,
+.top,
+.top .actions,
+.top-actions-v855,
+.top-more,
+.top-more[open]{
+  overflow:visible!important;
+}
+.top{
+  position:relative!important;
+  z-index:2147482000!important;
+  isolation:normal!important;
+}
+.top .actions,
+.top-actions-v855{
+  position:relative!important;
+  z-index:2147482100!important;
+}
+.top-more{
+  position:relative!important;
+  z-index:2147482200!important;
+}
+.top-more[open] summary{
+  position:relative!important;
+  z-index:2147482300!important;
+  background:#eff6ff!important;
+  color:#1d4ed8!important;
+  border-color:#93c5fd!important;
+  box-shadow:0 12px 32px rgba(37,99,235,.20)!important;
+}
+.top-more-menu{
+  position:fixed!important;
+  left:var(--plm-more-left, calc(100vw - 220px))!important;
+  top:var(--plm-more-top, 92px)!important;
+  right:auto!important;
+  width:190px!important;
+  max-width:calc(100vw - 24px)!important;
+  z-index:2147483000!important;
+  display:grid!important;
+  gap:7px!important;
+  padding:10px!important;
+  border-radius:20px!important;
+  border:1px solid rgba(147,197,253,.82)!important;
+  background:rgba(255,255,255,.98)!important;
+  box-shadow:0 28px 80px rgba(15,23,42,.35),0 0 0 1px rgba(255,255,255,.7) inset!important;
+  backdrop-filter:blur(18px)!important;
+  -webkit-backdrop-filter:blur(18px)!important;
+  pointer-events:auto!important;
+}
+.top-more-menu .btn{
+  width:100%!important;
+  min-height:36px!important;
+  justify-content:flex-start!important;
+  border-radius:13px!important;
+  white-space:nowrap!important;
+}
+.stats,#focusPanel,.focus-panel,.app>.panel,.main,.detail{
+  position:relative!important;
+  z-index:1!important;
+}
+.stat,.focus-card,.panel{
+  z-index:auto!important;
+}
+@media(max-width:720px){
+  .top-more-menu{
+    left:12px!important;
+    top:var(--plm-more-top, 118px)!important;
+    width:min(220px, calc(100vw - 24px))!important;
+  }
+}
+
+
+
+/* ===== PLM V8.5.63 文件预览完整显示修复：三栏宽度重新分配，不再裁切右侧预览 ===== */
+/* 只改文件中心视觉布局，不改上传、预览、资料包、派工/BOM/报价/命名联动逻辑 */
+#tabbody,
+.tabbody{
+  min-width:0 !important;
+}
+.detail:has(.file-workbench),
+.tabbody:has(.file-workbench){
+  overflow:visible !important;
+}
+.file-workbench,
+.file-workbench:not(.filter-rail),
+.file-workbench:not(.filter-rail):not(.preview-collapsed){
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  display:grid !important;
+  grid-template-columns:minmax(230px,260px) minmax(360px,1fr) minmax(340px,380px) !important;
+  gap:12px !important;
+  align-items:start !important;
+  overflow:visible !important;
+}
+.file-workbench.preview-collapsed:not(.filter-rail){
+  grid-template-columns:minmax(230px,260px) minmax(0,1fr) 84px !important;
+}
+.file-workbench.filter-rail:not(.preview-collapsed){
+  grid-template-columns:126px minmax(420px,1fr) minmax(360px,420px) !important;
+  gap:12px !important;
+  overflow:visible !important;
+}
+.file-workbench.filter-rail.preview-collapsed{
+  grid-template-columns:126px minmax(0,1fr) 84px !important;
+  gap:12px !important;
+}
+.file-tree,
+.file-list-pane,
+.file-preview-pane{
+  min-width:0 !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+}
+.file-preview-pane:not(.collapsed-preview),
+.file-workbench.filter-rail .file-preview-pane:not(.collapsed-preview){
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  padding:14px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+}
+.file-preview-pane .file-preview-head,
+.file-preview-pane .file-meta-row,
+.file-preview-pane .step-bind,
+.file-preview-pane .file-send-mini,
+.file-preview-pane .customer-panel,
+.file-preview-pane .customer-tools,
+.file-preview-pane .customer-file-row,
+.file-preview-pane .customer-mini-head,
+.file-preview-pane .copybox,
+.file-preview-pane select,
+.file-preview-pane input,
+.file-preview-pane textarea,
+.file-preview-pane button{
+  max-width:100% !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+.file-preview-pane .file-send-mini,
+.file-preview-pane .customer-panel{
+  overflow:hidden !important;
+}
+.file-preview-pane .customer-tools{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+}
+.file-preview-pane .file-preview-large,
+.file-preview-pane .file-empty-note{
+  width:100% !important;
+  max-width:100% !important;
+}
+.file-preview-pane .file-preview-large iframe,
+.file-preview-pane .file-preview-large img{
+  width:100% !important;
+  max-width:100% !important;
+}
+@media(max-width:1360px){
+  .file-workbench,
+  .file-workbench:not(.filter-rail):not(.preview-collapsed){
+    grid-template-columns:minmax(210px,240px) minmax(320px,1fr) minmax(320px,350px) !important;
+    gap:10px !important;
+  }
+  .file-workbench.filter-rail:not(.preview-collapsed){
+    grid-template-columns:112px minmax(360px,1fr) minmax(320px,360px) !important;
+    gap:10px !important;
+  }
+  .file-tree,.file-list-pane,.file-preview-pane{padding:12px !important;}
+}
+@media(max-width:1080px){
+  .file-workbench,
+  .file-workbench.preview-collapsed,
+  .file-workbench.filter-rail,
+  .file-workbench.filter-rail.preview-collapsed{
+    grid-template-columns:1fr !important;
+    overflow:visible !important;
+  }
+  .file-tree,
+  .file-list-pane,
+  .file-preview-pane,
+  .file-preview-pane.collapsed-preview{
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    max-height:none !important;
+    position:relative !important;
+    top:auto !important;
+  }
+  .file-tree.file-tree-rail{
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+  }
+}
+
+
+/* ===== ARTDON_PLM_V85_64_PROJECT_OVERVIEW_CLEAN_UX_START =====
+   只调整“项目总览”视觉排版：对齐、留白、表格宽度，不动任何联动/API/数据库。 */
+#tab-summary{padding-top:14px !important;}
+#tab-summary .summary-hero{
+  display:grid !important;
+  grid-template-columns:minmax(0,1.18fr) minmax(360px,.82fr) !important;
+  gap:14px !important;
+  align-items:stretch !important;
+  margin-bottom:14px !important;
+}
+#tab-summary .summary-grid{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:14px !important;
+  align-items:stretch !important;
+}
+#tab-summary .summary-main-card,
+#tab-summary .summary-side-card,
+#tab-summary .summary-card{
+  border:1px solid rgba(148,163,184,.24) !important;
+  background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(248,251,255,.94)) !important;
+  border-radius:18px !important;
+  padding:16px !important;
+  box-shadow:0 10px 28px rgba(15,23,42,.045) !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+}
+#tab-summary .summary-main-card{background:linear-gradient(135deg,#f7fbff,#ffffff 62%,#f1f7ff) !important;}
+#tab-summary .summary-side-card{display:flex !important; flex-direction:column !important;}
+#tab-summary .summary-main-card h3,
+#tab-summary .summary-side-card h3,
+#tab-summary .summary-card h3{
+  font-size:16px !important;
+  line-height:1.25 !important;
+  margin:0 0 10px !important;
+  letter-spacing:.01em !important;
+}
+#tab-summary .summary-main-card>.hint{
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  padding-bottom:2px !important;
+}
+#tab-summary .summary-big{
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:10px !important;
+  margin-top:12px !important;
+}
+#tab-summary .summary-big div{
+  min-height:70px !important;
+  padding:12px !important;
+  border-radius:14px !important;
+  border:1px solid rgba(191,219,254,.72) !important;
+  background:linear-gradient(180deg,#fff,#f8fbff) !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+}
+#tab-summary .summary-big b{font-size:24px !important; line-height:1 !important; margin-bottom:6px !important;}
+#tab-summary .summary-big span{font-size:12px !important; color:#64748b !important; font-weight:900 !important;}
+#tab-summary .project-progress-pair{display:grid !important; gap:8px !important; margin-top:12px !important;}
+#tab-summary .project-mini-progress-row{grid-template-columns:38px minmax(0,1fr) 42px !important;}
+#tab-summary .next-actions{display:grid !important; gap:8px !important; flex:1 !important;}
+#tab-summary .next-action-card{
+  min-height:56px !important;
+  padding:10px 12px !important;
+  border-radius:14px !important;
+  background:#fff !important;
+  border:1px solid #e8eef6 !important;
+  align-items:center !important;
+}
+#tab-summary .next-action-card small{line-height:1.35 !important;}
+#tab-summary .summary-card{
+  min-height:245px !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+#tab-summary .sample-mini-head{
+  min-height:34px !important;
+  align-items:center !important;
+  border-bottom:1px solid #eef2f7 !important;
+  margin:-2px -2px 10px !important;
+  padding:0 2px 10px !important;
+}
+#tab-summary .sample-mini-head h3{margin:0 !important;}
+#tab-summary .sample-mini-head .btn,
+#tab-summary .next-action-card .btn{
+  height:32px !important;
+  padding:0 12px !important;
+  border-radius:12px !important;
+  white-space:nowrap !important;
+}
+#tab-summary .sample-mini-card{
+  border:1px solid #e8eef6 !important;
+  border-radius:16px !important;
+  background:linear-gradient(180deg,#fff,#fbfdff) !important;
+  padding:12px !important;
+  min-width:0 !important;
+}
+#tab-summary .sample-mini-card .tags{gap:6px !important;}
+#tab-summary .sample-mini-card .btn.small{height:30px !important; padding:0 10px !important;}
+#tab-summary .compact-table-wrap{
+  flex:1 !important;
+  width:100% !important;
+  min-width:0 !important;
+  border-radius:14px !important;
+  border:1px solid #e8eef6 !important;
+  overflow:hidden !important;
+  background:#fff !important;
+}
+#tab-summary .compact-table{
+  width:100% !important;
+  min-width:0 !important;
+  table-layout:fixed !important;
+  border-collapse:collapse !important;
+}
+#tab-summary .compact-table th,
+#tab-summary .compact-table td{
+  padding:8px 10px !important;
+  font-size:12px !important;
+  line-height:1.35 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  vertical-align:middle !important;
+}
+#tab-summary .compact-table th{background:#f8fafc !important; color:#475569 !important;}
+#tab-summary .compact-table tr:last-child td{border-bottom:0 !important;}
+#tab-summary .summary-card .tags{
+  margin:0 0 8px !important;
+  min-height:28px !important;
+  align-items:center !important;
+}
+#tab-summary .summary-card:nth-child(2) .compact-table th:nth-child(1),
+#tab-summary .summary-card:nth-child(2) .compact-table td:nth-child(1){width:32% !important;}
+#tab-summary .summary-card:nth-child(2) .compact-table th:nth-child(2),
+#tab-summary .summary-card:nth-child(2) .compact-table td:nth-child(2){width:22% !important;}
+#tab-summary .summary-card:nth-child(2) .compact-table th:nth-child(3),
+#tab-summary .summary-card:nth-child(2) .compact-table td:nth-child(3){width:46% !important;}
+#tab-summary .summary-card:nth-child(3) .compact-table th:nth-child(1),
+#tab-summary .summary-card:nth-child(3) .compact-table td:nth-child(1){width:34% !important;}
+#tab-summary .summary-card:nth-child(3) .compact-table th:nth-child(2),
+#tab-summary .summary-card:nth-child(3) .compact-table td:nth-child(2){width:34% !important;}
+#tab-summary .summary-card:nth-child(3) .compact-table th:nth-child(3),
+#tab-summary .summary-card:nth-child(3) .compact-table td:nth-child(3){width:17% !important;}
+#tab-summary .summary-card:nth-child(3) .compact-table th:nth-child(4),
+#tab-summary .summary-card:nth-child(3) .compact-table td:nth-child(4){width:15% !important;}
+#tab-summary .summary-card:nth-child(4) .compact-table th:nth-child(1),
+#tab-summary .summary-card:nth-child(4) .compact-table td:nth-child(1){width:28% !important;}
+#tab-summary .summary-card:nth-child(4) .compact-table th:nth-child(2),
+#tab-summary .summary-card:nth-child(4) .compact-table td:nth-child(2){width:52% !important;}
+#tab-summary .summary-card:nth-child(4) .compact-table th:nth-child(3),
+#tab-summary .summary-card:nth-child(4) .compact-table td:nth-child(3){width:20% !important; text-align:right !important;}
+@media(max-width:1180px){
+  #tab-summary .summary-hero,
+  #tab-summary .summary-grid{grid-template-columns:1fr !important;}
+  #tab-summary .summary-big{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
+}
+@media(max-width:720px){
+  #tab-summary .summary-big{grid-template-columns:1fr 1fr !important;}
+  #tab-summary .summary-main-card,
+  #tab-summary .summary-side-card,
+  #tab-summary .summary-card{padding:12px !important; border-radius:16px !important;}
+  #tab-summary .compact-table th,
+  #tab-summary .compact-table td{font-size:11px !important; padding:7px 8px !important;}
+}
+
+
+/* ===== ARTDON_PLM_V85_65_SAMPLE_TABS_SUMMARY_START =====
+   项目总览：样品进度改为选项卡，显示更多样品信息；仅前端排版，不动联动/API/数据库。 */
+#tab-summary .sample-tabs-wrap{
+  display:grid !important;
+  gap:12px !important;
+  min-width:0 !important;
+  flex:1 !important;
+}
+#tab-summary .sample-tabs{
+  display:flex !important;
+  gap:8px !important;
+  overflow-x:auto !important;
+  padding:2px 2px 8px !important;
+  scrollbar-width:thin !important;
+}
+#tab-summary .sample-tab-btn{
+  border:1px solid #dbe7f5 !important;
+  background:#f8fbff !important;
+  color:#334155 !important;
+  border-radius:999px !important;
+  padding:7px 12px !important;
+  min-width:max-content !important;
+  height:34px !important;
+  font-size:12px !important;
+  font-weight:1000 !important;
+  box-shadow:none !important;
+}
+#tab-summary .sample-tab-btn.active{
+  background:#2563eb !important;
+  color:#fff !important;
+  border-color:#2563eb !important;
+  box-shadow:0 8px 18px rgba(37,99,235,.20) !important;
+}
+#tab-summary .sample-tab-panel{
+  border:1px solid #e8eef6 !important;
+  background:linear-gradient(180deg,#fff,#fbfdff) !important;
+  border-radius:18px !important;
+  padding:14px !important;
+  min-width:0 !important;
+}
+#tab-summary .sample-tab-head{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) auto !important;
+  gap:12px !important;
+  align-items:start !important;
+  padding-bottom:12px !important;
+  border-bottom:1px solid #eef2f7 !important;
+}
+#tab-summary .sample-tab-title{min-width:0 !important;}
+#tab-summary .sample-tab-title b{
+  display:block !important;
+  font-size:18px !important;
+  line-height:1.2 !important;
+  color:#0f172a !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+#tab-summary .sample-tab-title .hint{
+  margin-top:4px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+#tab-summary .sample-tab-actions{
+  display:flex !important;
+  gap:6px !important;
+  flex-wrap:wrap !important;
+  justify-content:flex-end !important;
+}
+#tab-summary .sample-tab-actions .btn{
+  height:30px !important;
+  padding:0 10px !important;
+  border-radius:11px !important;
+  font-size:11px !important;
+}
+#tab-summary .sample-detail-grid{
+  display:grid !important;
+  grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr) !important;
+  gap:12px !important;
+  margin-top:12px !important;
+}
+#tab-summary .sample-detail-box{
+  border:1px solid #eef2f7 !important;
+  background:#fff !important;
+  border-radius:16px !important;
+  padding:11px !important;
+  min-width:0 !important;
+}
+#tab-summary .sample-detail-box h4{
+  margin:0 0 9px !important;
+  font-size:13px !important;
+  color:#334155 !important;
+}
+#tab-summary .sample-kv-grid{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:7px !important;
+}
+#tab-summary .sample-kv{
+  border:1px solid #eef2f7 !important;
+  background:#f8fafc !important;
+  border-radius:12px !important;
+  padding:7px 9px !important;
+  min-width:0 !important;
+}
+#tab-summary .sample-kv span{
+  display:block !important;
+  color:#64748b !important;
+  font-size:11px !important;
+  font-weight:900 !important;
+  margin-bottom:3px !important;
+}
+#tab-summary .sample-kv b{
+  display:block !important;
+  color:#0f172a !important;
+  font-size:12px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+#tab-summary .sample-mini-table{
+  width:100% !important;
+  border-collapse:collapse !important;
+  table-layout:fixed !important;
+}
+#tab-summary .sample-mini-table th,
+#tab-summary .sample-mini-table td{
+  padding:7px 6px !important;
+  border-bottom:1px solid #eef2f7 !important;
+  font-size:12px !important;
+  line-height:1.3 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+#tab-summary .sample-mini-table th{color:#64748b !important; background:#f8fafc !important; font-weight:1000 !important;}
+#tab-summary .sample-mini-table tr:last-child td{border-bottom:0 !important;}
+#tab-summary .sample-tab-panel .mini-progress{margin-top:10px !important;}
+@media(max-width:1180px){
+  #tab-summary .sample-detail-grid{grid-template-columns:1fr !important;}
+}
+@media(max-width:720px){
+  #tab-summary .sample-tab-head{grid-template-columns:1fr !important;}
+  #tab-summary .sample-tab-actions{justify-content:flex-start !important;}
+  #tab-summary .sample-kv-grid{grid-template-columns:1fr !important;}
+}
+/* ===== ARTDON_PLM_V85_65_SAMPLE_TABS_SUMMARY_END ===== */
+
+/* ===== ARTDON_PLM_V85_64_PROJECT_OVERVIEW_CLEAN_UX_END ===== */
+
+
+/* ===== PLM V8.5.66 项目卡片更新时间完整显示修复 =====
+   左侧项目卡片底部不再显示系列/型号缩略名，只显示完整更新时间。 */
+.project-list-compact .project-mini-footer.only-time{
+  display:block !important;
+  margin-top:7px !important;
+  width:100% !important;
+  font-size:9.4px !important;
+  line-height:1.15 !important;
+  color:#64748b !important;
+  font-weight:1000 !important;
+  white-space:nowrap !important;
+  overflow:visible !important;
+  letter-spacing:.01em !important;
+}
+.project-list-compact .project-mini-footer.only-time span{
+  display:block !important;
+  max-width:none !important;
+  width:100% !important;
+  overflow:visible !important;
+  text-overflow:clip !important;
+  white-space:nowrap !important;
+}
+
+
+/* ===== PLM V8.5.67 纯白简洁视觉：去掉花背景/卡片渐变，保留原有彩色边线 ===== */
+html,
+body{
+  background:#fff !important;
+  background-image:none !important;
+}
+.app{
+  background:#fff !important;
+}
+.top,
+.detail,
+.panel,
+.app > .panel,
+.detail-head,
+.summary-main-card,
+.summary-side-card,
+.summary-card,
+.sample-mini-card,
+.model-card,
+.test-card,
+.file-card,
+.step,
+.search-card,
+.side-card,
+.file-tree,
+.file-list-pane,
+.file-preview-pane{
+  background:#fff !important;
+  background-image:none !important;
+}
+.stats,
+.focus-panel,
+#focusPanel{
+  background:transparent !important;
+  background-image:none !important;
+}
+.stat,
+.focus-card,
+.focus-card.primary,
+.focus-card.warn,
+.focus-card.danger,
+.focus-card.good{
+  background:#fff !important;
+  background-image:none !important;
+  color:#0f172a !important;
+  box-shadow:0 8px 22px rgba(15,23,42,.055) !important;
+}
+.stat:after,
+.focus-card:after,
+.app > .panel:before{
+  display:none !important;
+}
+/* 彩色边线保留：.stat:before 和 .focus-card:before 不隐藏 */
+.focus-card h3,
+.focus-card b,
+.focus-card.primary h3,
+.focus-card.primary b{
+  color:#0f172a !important;
+}
+.focus-card span,
+.focus-card small,
+.focus-card.primary span,
+.focus-card.primary small{
+  color:#64748b !important;
+}
+.focus-line{
+  background:#fff !important;
+  color:#0f172a !important;
+  border:1px solid #dbe4ef !important;
+  box-shadow:none !important;
+}
+.focus-line b{color:#0f172a !important;}
+.focus-line small{color:#64748b !important;}
+.project-row-modern,
+.project-row-modern.risk-danger,
+.project-row-modern.risk-warn{
+  background:#fff !important;
+  background-image:none !important;
+}
+.next-action-card,
+.summary-big div,
+.summary-empty,
+.compact-table th,
+.table th,
+.test-mini,
+.empty,
+.segment,
+.tab,
+input,
+select,
+textarea,
+.app > .panel input,
+.app > .panel select{
+  background:#fff !important;
+  background-image:none !important;
+}
+.tab.active,
+.segment button.active,
+.project-list-title-pill{
+  background:#eff6ff !important;
+}
+.btn.good{background:#dcfce7 !important;}
+.btn.warn{background:#fff7ed !important;}
+.btn.danger{background:#fee2e2 !important;}
+.btn.primary{background:#2563eb !important;color:#fff !important;}
+
+
+/* ===== PLM V8.5.69：项目列表已完成下沉 + 分类标题 ===== */
+.project-list-with-category{gap:8px!important;}
+.project-list-category{height:30px;display:flex;align-items:center;justify-content:space-between;border:1px solid #dbe4ef;background:#fff;border-radius:999px;padding:0 12px;margin:2px 2px 0 0;font-size:12px;font-weight:1000;color:#475569;letter-spacing:.02em;position:sticky;top:0;z-index:2;box-shadow:0 6px 16px rgba(15,23,42,.035)}
+.project-list-category.active{border-color:#bfdbfe;color:#1d4ed8;background:#f8fbff;}
+.project-list-category.done{border-color:#bbf7d0;color:#15803d;background:#f8fff9;}
+.project-list-category b{font-size:12px;min-width:24px;height:22px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;color:#334155;padding:0 7px;}
+.project-list-category.done b{background:#dcfce7;color:#15803d;}
+.project-done-row{border-left-color:#22c55e!important;}
+.project-done-row:not(.active){background:#fff!important;}
+.project-done-row .project-title-line h2{color:#334155!important;}
+.project-done-row .project-priority{opacity:.92;}
+.project-list-done-note{border:1px dashed #bbf7d0;background:#f8fff9;color:#15803d;border-radius:14px;padding:10px 12px;font-size:12px;font-weight:900;line-height:1.45;}
+
+/* ===== PLM V8.5.70：项目列表分页，不再一次性挤在左栏 ===== */
+.project-list-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;border:1px solid #dbe4ef;background:#fff;border-radius:16px;padding:8px 10px;margin:6px 2px 0 0;box-shadow:0 6px 16px rgba(15,23,42,.035)}
+.project-list-pager-info{font-size:12px;font-weight:900;color:#64748b;white-space:nowrap}
+.project-list-pager-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.project-list-pager button{border:1px solid #dbe4ef;background:#fff;color:#1e293b;border-radius:10px;padding:6px 9px;font-size:12px;font-weight:1000;cursor:pointer;min-width:34px;height:32px;display:inline-flex;align-items:center;justify-content:center}
+.project-list-pager button:hover{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.project-list-pager button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.project-list-pager button:disabled{opacity:.42;cursor:not-allowed;background:#f8fafc;color:#94a3b8;border-color:#e5e7eb}
+.project-list-pager .pager-ellipsis{font-size:12px;font-weight:1000;color:#94a3b8;padding:0 2px}
+.project-list-page-note{border:1px dashed #bfdbfe;background:#f8fbff;color:#1d4ed8;border-radius:14px;padding:9px 11px;font-size:12px;font-weight:900;line-height:1.45;margin:4px 2px 0 0}
+@media(max-width:720px){.project-list-pager{justify-content:center}.project-list-pager-info{width:100%;text-align:center}.project-list-pager button{min-width:32px;padding:5px 8px}}
+
+/* ===== PLM V8.5.71：备份恢复弹窗 ===== */
+.plm-backup-panel{display:grid;gap:14px}.plm-backup-row{border:1px solid #dbe4ef;border-radius:16px;background:#fff;padding:14px;display:grid;gap:9px}.plm-backup-row h4{margin:0;font-size:15px}.plm-backup-row p{margin:0;color:#64748b;font-weight:800;font-size:12px;line-height:1.5}.plm-backup-result{border:1px dashed #bfdbfe;background:#f8fbff;border-radius:14px;padding:10px 12px;font-size:12px;font-weight:900;color:#334155;line-height:1.55;white-space:pre-wrap}.plm-backup-result a{color:#2563eb;font-weight:1000}.plm-restore-warn{border-color:#fed7aa!important;background:#fff7ed!important;color:#9a3412!important}.plm-backup-file{height:auto!important;padding:10px!important;border-radius:12px!important;background:#f8fafc!important}
+
+
+/* ===== PLM V8.5.73：测试中心导航图 + 模板基础版 ===== */
+.test-node-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start;margin-top:12px}
+.test-node-left,.test-node-right{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:12px;box-shadow:0 8px 22px rgba(15,23,42,.045)}
+.test-node-left{position:sticky;top:74px;max-height:calc(100vh - 110px);overflow:auto}
+.test-node-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.test-node-head h3,.test-detail-head h3{margin:0;font-size:15px;color:#0f172a;letter-spacing:-.2px}
+.test-node-list{display:flex;flex-direction:column;gap:7px}
+.test-node{border:1px solid #e5e7eb;background:#fff;border-radius:14px;padding:9px 10px;cursor:pointer;transition:.16s;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
+.test-node:hover{border-color:#bfdbfe;background:#f8fbff}.test-node.active{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
+.test-node-title{font-weight:800;font-size:13px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.test-node-meta{font-size:11px;color:#64748b;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.test-node-status{font-size:11px;border:1px solid #e5e7eb;border-radius:999px;padding:3px 7px;background:#f8fafc;color:#334155}.test-node-status.green{background:#ecfdf5;border-color:#bbf7d0;color:#047857}.test-node-status.red{background:#fef2f2;border-color:#fecaca;color:#b91c1c}.test-node-status.blue{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.test-node-status.orange{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+.test-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:1px solid #eef2f7;padding-bottom:10px;margin-bottom:12px}.test-detail-form{display:flex;flex-direction:column;gap:12px}.test-form-section{border:1px solid #eef2f7;border-radius:16px;background:#fff;padding:12px}.test-form-section h4{font-size:13px;margin:0 0 10px;color:#0f172a}.test-compact-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.test-compact-grid .field label,.test-template-field label{font-size:11px;color:#64748b;margin-bottom:4px;display:block}.test-template-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.test-template-field input,.test-template-field select,.test-template-field textarea{width:100%}.test-template-field textarea{min-height:64px}.test-template-field.wide{grid-column:span 3}.test-common-textareas{display:grid;grid-template-columns:1fr 1fr;gap:9px}.test-common-textareas textarea{min-height:74px}.test-node-files{border-top:1px dashed #e5e7eb;padding-top:10px;margin-top:8px}.test-template-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.test-template-toolbar input{max-width:190px}.test-template-toolbar select{max-width:180px}.test-template-manage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}.test-template-chip{border:1px solid #e5e7eb;border-radius:12px;padding:8px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;gap:8px}.test-template-chip b{font-size:12px}.test-empty-detail{min-height:260px;display:flex;align-items:center;justify-content:center;text-align:center;color:#64748b;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:16px}
+@media(max-width:980px){.test-node-layout{grid-template-columns:1fr}.test-node-left{position:relative;top:auto;max-height:none}.test-compact-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.test-template-fields{grid-template-columns:1fr}.test-template-field.wide{grid-column:auto}.test-common-textareas{grid-template-columns:1fr}.test-template-manage{grid-template-columns:1fr}}
+/* ===== PLM V8.5.74 测试中心紧凑 + 弹窗预览 ===== */
+.test-node-layout{grid-template-columns:285px minmax(0,1fr)!important;gap:12px!important}
+.test-node-left,.test-node-right{padding:10px!important;border-radius:16px!important}
+.test-detail-head{padding-bottom:8px!important;margin-bottom:9px!important}
+.test-detail-head h3{font-size:14px!important}
+.test-detail-form{gap:9px!important}
+.test-form-section{padding:9px 10px!important;border-radius:14px!important}
+.test-form-section h4{font-size:12px!important;margin-bottom:7px!important}
+.test-compact-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:7px!important}
+.test-compact-grid input,.test-compact-grid select,.test-template-field input,.test-template-field select{height:34px!important;padding:6px 9px!important;border-radius:10px!important;font-size:12px!important}
+.test-compact-grid .field label,.test-template-field label{font-size:10px!important;margin:3px 0 3px!important}
+.test-template-fields{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important}
+.test-template-field textarea{min-height:46px!important;padding:7px 9px!important;border-radius:10px!important;font-size:12px!important}
+.test-template-field.wide{grid-column:span 2!important}
+.test-file-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.test-file-list .file-chip{margin:0}
+.test-file-preview-modal{width:min(980px,96vw)!important}.test-file-preview-modal .modal-body{padding:12px!important}
+.test-file-preview-modal .file-preview-large{min-height:560px}.test-file-preview-modal .file-preview-large iframe{height:70vh;width:100%;border:0}.test-file-preview-modal .file-preview-large img{display:block;max-width:100%;max-height:70vh;margin:auto;border-radius:14px}
+@media(max-width:1180px){.test-compact-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.test-template-fields{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* ===== PLM V8.5.75 测试节点卡片方块化修正 ===== */
+.test-node-layout{grid-template-columns:340px minmax(0,1fr)!important;gap:14px!important}
+.test-node-left{max-height:calc(100vh - 108px);padding:12px!important}
+.test-node-list{gap:10px!important}
+.test-node{
+  position:relative!important;
+  display:block!important;
+  min-height:112px!important;
+  padding:14px 96px 14px 14px!important;
+  border-radius:18px!important;
+  overflow:visible!important;
+  background:#fff!important;
+}
+.test-node.active{box-shadow:0 0 0 3px rgba(37,99,235,.16)!important}
+.test-node-title{
+  font-size:16px!important;
+  line-height:1.35!important;
+  font-weight:950!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+}
+.test-node-meta{
+  margin-top:8px!important;
+  font-size:13px!important;
+  line-height:1.45!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+}
+.test-node-status{
+  position:absolute!important;
+  right:14px!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  font-size:14px!important;
+  padding:7px 13px!important;
+  max-width:82px!important;
+  text-align:center!important;
+  white-space:nowrap!important;
+}
+
+@media(max-width:980px){.test-node-layout{grid-template-columns:1fr!important}.test-compact-grid,.test-template-fields{grid-template-columns:1fr!important}.test-template-field.wide{grid-column:auto!important}}
+@media(max-width:980px){.test-node{min-height:auto!important;padding-right:92px!important}.test-node-left{max-height:none!important}}
+
+
+/* ===== PLM V8.5.78 测试模板字段管理 + 历史标签 ===== */
+.test-node-layout{grid-template-columns:392px minmax(0,1fr)!important;gap:16px!important}
+.test-node-left{max-height:calc(100vh - 108px);padding:14px!important}
+.test-node-list{gap:13px!important}
+.test-node{
+  position:relative!important;
+  display:block!important;
+  min-height:178px!important;
+  padding:18px 114px 16px 18px!important;
+  border-radius:24px!important;
+  overflow:visible!important;
+  background:#fff!important;
+}
+.test-node.active{box-shadow:0 0 0 3px rgba(37,99,235,.18)!important;border-width:2px!important}
+.test-node-title{
+  font-size:18px!important;
+  line-height:1.38!important;
+  font-weight:1000!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+  padding-right:4px!important;
+}
+.test-node-meta{
+  margin-top:10px!important;
+  font-size:14px!important;
+  line-height:1.55!important;
+  color:#64748b!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  word-break:break-word!important;
+}
+.test-node-status{
+  position:absolute!important;
+  right:18px!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  font-size:15px!important;
+  padding:9px 16px!important;
+  min-width:86px!important;
+  max-width:98px!important;
+  text-align:center!important;
+  white-space:nowrap!important;
+}
+.test-node-history{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-right:2px}
+.test-node-history .mini-tag{font-size:11px;font-weight:950;border:1px solid #e5e7eb;border-radius:999px;padding:3px 7px;background:#f8fafc;color:#475569;line-height:1.2}
+.test-node-history .mini-tag.red{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+.test-node-history .mini-tag.orange{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+.test-node-history .mini-tag.green{background:#ecfdf5;border-color:#bbf7d0;color:#047857}
+.test-node-history .mini-tag.blue{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+.test-node-last{margin-top:7px;font-size:12px;line-height:1.35;color:#64748b;font-weight:850;white-space:normal;word-break:break-word}
+@media(max-width:1180px){.test-node-layout{grid-template-columns:360px minmax(0,1fr)!important}.test-node{min-height:168px!important;padding-right:108px!important}.test-node-title{font-size:17px!important}}
+@media(max-width:980px){.test-node-layout{grid-template-columns:1fr!important}.test-node-left{max-height:none!important}.test-node{min-height:auto!important;padding-right:112px!important}}
+
+
+/* ===== PLM V8.5.77 测试历史 / 重测记录 ===== */
+.test-run-section{background:#fbfdff!important;border-color:#dbeafe!important}.test-run-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.test-run-title h4{margin:0!important}.test-run-list{display:grid;gap:8px;margin-top:8px}.test-run-card{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:9px 10px}.test-run-card.bad{border-color:#fecaca;background:#fff7f7}.test-run-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.test-run-head b{font-size:13px;color:#0f172a}.test-run-meta{margin-top:5px;font-size:11px;color:#64748b;font-weight:850;line-height:1.45}.test-run-note{margin-top:6px;font-size:12px;color:#334155;font-weight:850;line-height:1.5;white-space:pre-wrap;word-break:break-word}.test-run-actions{margin-top:6px;display:flex;justify-content:flex-end}.test-node{min-height:190px!important}.test-node-history .mini-tag{margin-bottom:2px}
+
+
+
+
+/* ===== PLM V8.5.81 测试问题闭环联动 ===== */
+.test-issue-section{background:#fffaf7!important;border-color:#fed7aa!important}
+.test-issue-section.good{background:#f6fffb!important;border-color:#bbf7d0!important}
+.test-issue-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;border:1px dashed #fdba74;border-radius:14px;padding:10px;background:rgba(255,247,237,.6)}
+.test-issue-panel.good{border-color:#86efac;background:rgba(236,253,245,.75)}
+.test-issue-title{font-weight:950;color:#0f172a;font-size:14px;margin-bottom:4px}.test-issue-meta{font-size:12px;color:#64748b;font-weight:850;line-height:1.55}.test-issue-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.test-issue-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+@media(max-width:760px){.test-issue-panel{grid-template-columns:1fr}.test-issue-actions{justify-content:flex-start}}
+.issue-row.issue-highlight{box-shadow:0 0 0 3px rgba(245,158,11,.25)!important;border-color:#f59e0b!important}
+/* ===== PLM V8.5.80 测试附件按记录归档 ===== */
+.test-attach-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.test-attach-summary .mini-tag{background:#f8fafc;border:1px solid #e2e8f0;color:#475569}
+.test-run-files{margin-top:8px;border-top:1px dashed #e2e8f0;padding-top:8px}
+.test-run-files-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:11px;font-weight:1000;color:#475569}
+.test-run-files-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:5px 0}
+.test-run-upload{margin-top:7px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:8px}
+.test-run-upload summary{cursor:pointer;font-size:11px;font-weight:1000;color:#2563eb}
+.test-node-files .grid2,.test-run-upload .grid2{grid-template-columns:minmax(0,150px) minmax(0,1fr)!important;gap:6px!important}
+.test-node-files input[type=file],.test-run-upload input[type=file]{font-size:12px;max-width:100%}
+.test-node-files textarea,.test-run-upload textarea{min-height:42px!important;font-size:12px!important;border-radius:10px!important}
+.file-chip.run-file{background:#eff6ff;border-color:#bfdbfe}
+.file-chip.node-file{background:#f8fafc}
+@media(max-width:760px){.test-node-files .grid2,.test-run-upload .grid2{grid-template-columns:1fr!important}}
+
+/* ===== PLM V8.5.79 测试模板字段折叠 + 卡片网格整理 ===== */
+.test-template-editor{background:#fbfdff!important;border-color:#dbeafe!important;position:relative!important;overflow:hidden!important}
+.tpl-collapse-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.tpl-collapse-head h4{margin:0!important;font-size:13px!important;color:#0f172a!important}
+.tpl-collapse-sub{font-size:11px;font-weight:850;color:#64748b;line-height:1.35;margin-top:3px}
+.tpl-toggle-btn{height:30px!important;padding:4px 10px!important;border-radius:10px!important;font-size:12px!important;white-space:nowrap}
+.test-template-editor.collapsed .tpl-editor-body{display:none!important}
+.tpl-editor-body{display:grid;gap:10px;margin-top:8px}
+.tpl-editor-top{display:grid!important;grid-template-columns:minmax(170px,1fr) 150px auto auto auto!important;gap:8px!important;align-items:center!important;margin-top:0!important}
+.tpl-editor-top input,.tpl-editor-top select{height:32px!important;font-size:12px!important;border-radius:10px!important;padding:5px 9px!important;min-width:0!important}
+.tpl-editor-head{display:none!important}
+.tpl-field-rows{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(285px,1fr))!important;gap:10px!important;align-items:start!important}
+.tpl-field-row{display:grid!important;grid-template-columns:22px 1fr auto!important;gap:7px!important;align-items:start!important;border:1px solid #dbe4ef!important;background:#fff!important;border-radius:14px!important;padding:9px!important;min-width:0!important;box-shadow:0 6px 16px rgba(15,23,42,.035)!important}
+.tpl-drag{cursor:grab!important;color:#64748b!important;font-weight:1000!important;text-align:center!important;line-height:30px!important}
+.tpl-field-main{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;min-width:0!important}
+.tpl-mini-field{display:grid!important;gap:3px!important;min-width:0!important}
+.tpl-mini-field > span{font-size:10px!important;font-weight:950!important;color:#64748b!important;line-height:1.1!important}
+.tpl-mini-field input,.tpl-mini-field select{height:30px!important;font-size:12px!important;border-radius:9px!important;padding:5px 8px!important;min-width:0!important;width:100%!important}
+.tpl-mini-field.wide{grid-column:1 / -1!important}
+.tpl-required-card{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;border:1px solid #dbe4ef!important;background:#f8fafc!important;border-radius:9px!important;padding:0 8px!important;height:30px!important;font-size:12px!important;font-weight:950!important;color:#334155!important;white-space:nowrap!important}
+.tpl-required-card input{width:16px!important;height:16px!important;margin:0!important;padding:0!important}
+.tpl-field-actions{display:flex!important;flex-direction:column!important;gap:6px!important;align-items:flex-end!important}
+.tpl-field-actions .btn{height:28px!important;min-height:28px!important;padding:4px 8px!important;border-radius:9px!important;font-size:12px!important;white-space:nowrap!important}
+.test-template-manage{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important;gap:8px!important;margin-top:0!important}
+.test-template-chip{border:1px solid #e5e7eb!important;border-radius:12px!important;padding:8px!important;background:#fff!important;display:flex!important;justify-content:space-between!important;align-items:center!important;gap:8px!important}
+.test-template-chip .actions{display:flex!important;gap:5px!important;flex-wrap:wrap!important;justify-content:flex-end!important}
+.test-template-file-hint .hint{font-size:10px!important;margin-top:3px!important}
+@media(max-width:1280px){.tpl-field-rows{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))!important}.tpl-editor-top{grid-template-columns:1fr 140px repeat(3,auto)!important}}
+@media(max-width:760px){.tpl-editor-top{grid-template-columns:1fr!important}.tpl-field-rows{grid-template-columns:1fr!important}.tpl-field-row{grid-template-columns:1fr!important}.tpl-drag{display:none!important}.tpl-field-actions{flex-direction:row!important;justify-content:flex-end!important}.tpl-field-main{grid-template-columns:1fr!important}}
+
+
+/* ===== PLM V8.5.83 测试历史状态标签定位修复 ===== */
+/* 左侧测试节点的状态标签仍然居右居中；历史/重测记录里的状态标签不能套用绝对定位，避免“已完成”浮到问题闭环区域。 */
+.test-node > .test-node-status{
+  position:absolute!important;
+  right:18px!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+}
+.test-run-head .test-node-status,
+.test-issue-panel .test-node-status,
+.test-detail-form .test-run-card .test-node-status{
+  position:static!important;
+  right:auto!important;
+  top:auto!important;
+  transform:none!important;
+  min-width:auto!important;
+  max-width:none!important;
+  width:auto!important;
+  font-size:12px!important;
+  line-height:1.2!important;
+  padding:5px 9px!important;
+  white-space:nowrap!important;
+  flex:0 0 auto!important;
+}
+.test-run-head{position:relative!important;overflow:hidden!important}
+.test-issue-panel{position:relative!important;overflow:hidden!important}
+
+/* ===== PLM V8.5.83 测试整改派工 ===== */
+.test-rectify-panel{margin-top:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:10px;display:grid;gap:8px}
+.test-rectify-panel.done{background:#f0fdf4;border-color:#bbf7d0}
+.test-rectify-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:1000;color:#0f172a}
+.test-rectify-meta{font-size:12px;color:#475569;font-weight:850;line-height:1.5}
+.test-rectify-actions{display:grid;grid-template-columns:minmax(130px,1fr) 120px auto;gap:8px;align-items:center}
+.test-rectify-actions select,.test-rectify-actions input{height:32px!important;border-radius:10px!important;font-size:12px!important;padding:5px 8px!important;min-width:0!important}
+@media(max-width:760px){.test-rectify-actions{grid-template-columns:1fr}.test-rectify-head{align-items:flex-start;flex-direction:column}}
+
+/* ===== PLM V8.5.84 测试看板 / 报表 ===== */
+.test-report-panel{border:1px solid #dbeafe;background:#fbfdff;border-radius:18px;padding:12px;margin:0 0 12px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+.test-report-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.test-report-head h3{margin:0;font-size:15px;color:#0f172a;font-weight:1000}
+.test-report-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:10px;align-items:start}
+.test-report-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.test-report-card{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:10px;min-height:72px}
+.test-report-card b{display:block;font-size:22px;line-height:1.1;color:#0f172a}.test-report-card span{display:block;color:#64748b;font-size:11px;font-weight:900;margin-bottom:4px}.test-report-card.red{border-color:#fecaca;background:#fff7f7}.test-report-card.orange{border-color:#fed7aa;background:#fffaf0}.test-report-card.green{border-color:#bbf7d0;background:#f0fdf4}.test-report-card.blue{border-color:#bfdbfe;background:#eff6ff}
+.test-report-table{width:100%;border-collapse:separate;border-spacing:0 6px}.test-report-table th{font-size:11px;color:#64748b;text-align:left;padding:0 8px 2px;font-weight:1000}.test-report-table td{font-size:12px;font-weight:850;color:#334155;background:#fff;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:8px}.test-report-table td:first-child{border-left:1px solid #e2e8f0;border-radius:12px 0 0 12px;color:#0f172a;font-weight:1000}.test-report-table td:last-child{border-right:1px solid #e2e8f0;border-radius:0 12px 12px 0}
+.test-risk-list{display:grid;gap:7px}.test-risk-item{border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:9px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}.test-risk-item.red{border-color:#fecaca;background:#fff7f7}.test-risk-item.orange{border-color:#fed7aa;background:#fffaf0}.test-risk-title{font-weight:1000;color:#0f172a;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.test-risk-meta{color:#64748b;font-size:11px;font-weight:850;line-height:1.45;margin-top:3px}.test-report-subtitle{font-size:12px;color:#475569;font-weight:1000;margin:8px 0 5px}.test-report-muted{font-size:12px;color:#94a3b8;font-weight:900;padding:16px;border:1px dashed #cbd5e1;border-radius:14px;text-align:center;background:#fff}
+@media(max-width:1180px){.test-report-grid{grid-template-columns:1fr}.test-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.test-report-cards{grid-template-columns:1fr}.test-report-table{font-size:11px}.test-report-table th:nth-child(n+4),.test-report-table td:nth-child(n+4){display:none}}
+
+
+
+/* ===== PLM V8.5.86 测试看板折叠真实修复 + 单项测试报告 ===== */
+.test-report-panel.collapsed .test-report-body{display:none!important}
+.test-report-mini{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.test-report-mini .mini-tag{font-size:11px;font-weight:950;border:1px solid #dbe4ef;border-radius:999px;padding:4px 8px;background:#fff;color:#475569}
+.test-single-report-modal{max-width:980px!important;width:min(96vw,980px)!important}
+.test-single-report{background:#fff;color:#0f172a;padding:6px 2px 18px}
+.test-single-report h2{margin:0 0 8px;font-size:22px}.test-single-report h3{margin:16px 0 8px;font-size:15px}
+.test-report-info-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.test-report-info-grid div{border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#f8fafc;font-weight:850;color:#334155;min-height:42px}
+.test-report-info-grid b{display:block;font-size:11px;color:#64748b;margin-bottom:3px}
+.test-report-textbox{border:1px solid #e2e8f0;border-radius:12px;padding:10px;white-space:pre-wrap;word-break:break-word;min-height:42px;background:#fff}
+.test-report-run{border:1px solid #e2e8f0;border-radius:14px;padding:10px;margin:8px 0;background:#fbfdff}.test-report-run.bad{border-color:#fecaca;background:#fff7f7}
+.test-report-files{display:flex;gap:6px;flex-wrap:wrap}.test-report-files a{border:1px solid #dbe4ef;border-radius:999px;padding:5px 9px;text-decoration:none;color:#1d4ed8;font-weight:900;background:#fff}
+@media(max-width:760px){.test-report-info-grid{grid-template-columns:1fr}}
+@media print{body.print-single-test .app{display:none!important} body.print-single-test .modal-mask{position:static!important;background:#fff!important;display:block!important;padding:0!important} body.print-single-test .modal{box-shadow:none!important;border:0!important;width:100%!important;max-width:none!important} body.print-single-test .modal-head .actions, body.print-single-test .modal-head .hint{display:none!important}}
+
+
+/* ===== PLM V8.5.87 样品管理左右结构 START ===== */
+.sample-split-layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:14px;align-items:start;margin-top:12px}
+.sample-left-panel,.sample-right-panel{background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:0 8px 24px rgba(15,23,42,.045);overflow:hidden}
+.sample-left-panel{position:sticky;top:14px;max-height:calc(100vh - 230px);display:flex;flex-direction:column}
+.sample-left-head{padding:14px 14px 10px;border-bottom:1px solid var(--line);background:#f8fafc}
+.sample-left-head h3{margin:0;font-size:18px}
+.sample-left-search{display:flex;gap:8px;margin-top:10px}
+.sample-left-search input{height:38px;border-radius:12px}
+.sample-node-list{display:grid;gap:10px;padding:12px;overflow:auto;min-height:180px}
+.sample-node-card{border:2px solid #e2e8f0;border-radius:18px;background:#fff;padding:13px;cursor:pointer;transition:.15s;min-height:138px;display:flex;flex-direction:column;justify-content:space-between}
+.sample-node-card:hover{border-color:#bfdbfe;box-shadow:0 8px 22px rgba(37,99,235,.08)}
+.sample-node-card.active{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+.sample-node-title{font-size:18px;font-weight:1000;color:#0f172a;line-height:1.25;margin-bottom:8px;word-break:break-word}
+.sample-node-meta{font-size:13px;color:#64748b;font-weight:850;line-height:1.55;word-break:break-word}
+.sample-node-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.sample-node-tags .tag{font-size:11px;padding:3px 7px}
+.sample-right-panel{padding:0;min-height:560px}
+.sample-right-empty{padding:34px;text-align:center;color:#94a3b8;font-weight:900}
+.sample-right-panel .sample-pro-card.expanded{border:0;border-radius:0;box-shadow:none;margin:0}
+.sample-right-panel .sample-head-pro{position:sticky;top:0;z-index:3;background:#fff;border-bottom:1px solid var(--line);padding:14px 16px}
+.sample-right-panel .sample-content-pro{padding:14px 16px}
+.sample-right-panel .sample-section{border-radius:18px}
+.sample-split-topline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.sample-split-topline .key-mini{font-size:12px}
+@media(max-width:1100px){.sample-split-layout{grid-template-columns:1fr}.sample-left-panel{position:relative;top:auto;max-height:none}.sample-node-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:none}.sample-node-card{min-height:125px}}
+@media(max-width:680px){.sample-node-list{grid-template-columns:1fr}.sample-toolbar-pro{align-items:flex-start}.sample-summary{width:100%}}
+
+
+/* ===== PLM V8.5.89 样品图片 / 尺寸图预览 START ===== */
+.sample-node-card{min-height:205px!important;}
+.sample-node-media{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px;pointer-events:auto;}
+.sample-media-tile{position:relative;border:1px solid #dbe4ef;border-radius:14px;background:#f8fafc;min-height:112px;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(15,23,42,.035)}
+.sample-media-tile:hover{border-color:#93c5fd;box-shadow:0 12px 26px rgba(37,99,235,.10)}
+.sample-media-tile img{width:100%;height:100%;object-fit:cover;display:block;min-height:112px;}
+.sample-media-tile.mini{min-height:58px;border-radius:12px;}
+.sample-media-tile.mini img{min-height:58px;height:58px;}
+.sample-media-tile.empty{border-style:dashed;color:#94a3b8;background:#fff;flex-direction:column;gap:2px;}
+.sample-media-tile.broken:after{content:'预览失败';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#94a3b8;font-weight:1000;}
+.sample-media-label{position:absolute;left:7px;top:7px;background:rgba(15,23,42,.70);color:#fff;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:1000;z-index:2;}
+.sample-media-name{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg,transparent,rgba(15,23,42,.78));color:#fff;font-size:10.5px;font-weight:900;padding:17px 7px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2;}
+.sample-media-tile.empty .sample-media-label{background:#e2e8f0;color:#475569;}
+.sample-media-tile.empty .sample-media-name{position:static;background:transparent;color:#94a3b8;padding:0;white-space:normal;}
+.sample-media-plus{font-size:20px;font-weight:1000;color:#94a3b8;margin-top:10px;}
+.sample-media-pdf{width:100%;height:100%;min-height:112px;display:flex;align-items:center;justify-content:center;background:#eef2ff;color:#3730a3;font-weight:1000;font-size:22px;}
+.sample-media-tile.mini .sample-media-pdf{min-height:58px;font-size:15px;}
+.sample-media-section{grid-column:1/-1;}
+.sample-section-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px;}
+.sample-section-head h4{margin:0!important;}
+.sample-media-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:9px;}
+.sample-media-list{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;}
+.sample-file-chip{border:1px solid #dbe4ef;background:#fff;border-radius:999px;padding:6px 9px;display:inline-flex;gap:6px;align-items:center;cursor:pointer;color:#334155;font-weight:900;max-width:100%;}
+.sample-file-chip span{color:#2563eb;font-size:11px;}
+.sample-file-chip b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px;}
+.sample-upload-fold{border:1px dashed #cbd5e1;border-radius:14px;padding:9px;background:#f8fafc;margin-top:8px;}
+.sample-upload-fold summary{cursor:pointer;font-weight:1000;color:#1d4ed8;}
+.sample-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+.sample-preview-modal{max-width:960px!important;}
+@media(max-width:1180px){.sample-upload-grid{grid-template-columns:1fr}.sample-media-grid{grid-template-columns:1fr 1fr}.sample-node-card{min-height:190px!important;}}
+@media(max-width:680px){.sample-node-media,.sample-media-grid{grid-template-columns:1fr}.sample-node-card{min-height:auto!important;}.sample-media-tile.mini{min-height:82px}.sample-media-tile.mini img{height:82px;min-height:82px}}
+/* ===== PLM V8.5.89 样品图片 / 尺寸图预览 END ===== */
+
+/* ===== PLM V8.5.88 样品详情按钮重排 START ===== */
+.sample-right-panel .sample-head-pro{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:10px!important;
+  align-items:start!important;
+  padding:14px 16px 12px!important;
+}
+.sample-right-panel .sample-title-pro{
+  width:100%;
+  min-width:0;
+  align-items:flex-start;
+}
+.sample-right-panel .sample-title-pro>div:last-child{min-width:0;flex:1}
+.sample-right-panel .sample-title-pro h3{
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  line-height:1.22;
+  padding-right:0!important;
+}
+.sample-right-panel .sample-sub-pro{
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  line-height:1.45;
+}
+.sample-right-panel .sample-actions-pro{
+  width:100%;
+  justify-content:flex-start!important;
+  align-items:center!important;
+  gap:7px!important;
+  flex-wrap:wrap!important;
+  border-top:1px solid #edf2f7;
+  padding-top:9px;
+  margin-top:0;
+}
+.sample-right-panel .sample-actions-pro .btn{
+  height:32px!important;
+  min-height:32px!important;
+  padding:6px 10px!important;
+  border-radius:12px!important;
+  font-size:12px!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+}
+.sample-right-panel .sample-actions-pro .btn.good{order:1}
+.sample-right-panel .sample-actions-pro .btn.primary{order:2}
+.sample-right-panel .sample-actions-pro .btn:not(.good):not(.primary):not(.warn):not(.danger):not(.bom-generate-btn):not(.bom-link-btn){order:3}
+.sample-right-panel .sample-actions-pro .btn.warn{order:4}
+.sample-right-panel .sample-actions-pro .bom-generate-btn{order:5}
+.sample-right-panel .sample-actions-pro .bom-link-btn{order:6}
+.sample-right-panel .sample-actions-pro .btn.danger{order:9;margin-left:auto}
+@media(max-width:1280px){
+  .sample-split-layout{grid-template-columns:340px minmax(0,1fr)}
+  .sample-right-panel .sample-actions-pro .btn{font-size:11.5px!important;padding:6px 8px!important}
+  .sample-content-pro{grid-template-columns:1fr!important}
+}
+@media(max-width:760px){
+  .sample-right-panel .sample-actions-pro .btn.danger{margin-left:0}
+  .sample-right-panel .sample-actions-pro{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sample-right-panel .sample-actions-pro .btn{width:100%;justify-content:center!important}
+}
+/* ===== PLM V8.5.88 样品详情按钮重排 END ===== */
+
+/* ===== PLM V8.5.87 样品管理左右结构 END ===== */
+
+/* ===== PLM V8.5.90 样品关键元器件两行显示：避免四格挤压 ===== */
+.sample-right-panel .key-components-inline,
+.sample-content-pro .key-components-inline{
+  padding:10px 12px!important;
+}
+.sample-right-panel .key-components-head,
+.sample-content-pro .key-components-head{
+  align-items:flex-start!important;
+  flex-wrap:wrap!important;
+  gap:4px 10px!important;
+}
+.sample-right-panel .key-components-head span,
+.sample-content-pro .key-components-head span{
+  display:block!important;
+  flex:1 1 260px!important;
+  line-height:1.35!important;
+}
+.sample-right-panel .component-simple-grid,
+.sample-content-pro .component-simple-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:10px 12px!important;
+}
+.sample-right-panel .component-simple,
+.sample-content-pro .component-simple{
+  min-width:0!important;
+}
+.sample-right-panel .component-simple-row,
+.sample-content-pro .component-simple-row{
+  grid-template-columns:minmax(0,1fr) 38px!important;
+  gap:6px!important;
+}
+.sample-right-panel .component-simple input,
+.sample-content-pro .component-simple input{
+  height:36px!important;
+  font-size:12.5px!important;
+  padding:7px 9px!important;
+}
+.sample-right-panel .component-simple .bom-mini-btn,
+.sample-right-panel .component-simple .bom-dot-btn,
+.sample-content-pro .component-simple .bom-mini-btn,
+.sample-content-pro .component-simple .bom-dot-btn{
+  width:38px!important;
+  height:36px!important;
+  border-radius:11px!important;
+  flex:0 0 38px!important;
+}
+.sample-right-panel .component-simple-meta,
+.sample-content-pro .component-simple-meta{
+  white-space:normal!important;
+  line-height:1.25!important;
+  min-height:16px!important;
+}
+@media(max-width:760px){
+  .sample-right-panel .component-simple-grid,
+  .sample-content-pro .component-simple-grid{
+    grid-template-columns:1fr!important;
+  }
+}
+/* ===== PLM V8.5.90 样品关键元器件两行显示 END ===== */
+
+
+/* ===== PLM V8.5.93 更多菜单定位修复：回到“更多”按钮下方，不再用全屏固定坐标 ===== */
+.top,
+.top .actions,
+.top-actions-v855,
+.top-more,
+.top-more[open]{
+  overflow:visible!important;
+}
+.top{
+  position:relative!important;
+  z-index:20000!important;
+}
+.top .actions,
+.top-actions-v855{
+  position:relative!important;
+  z-index:21000!important;
+}
+.top-more{
+  position:relative!important;
+  z-index:22000!important;
+}
+.top-more-menu{
+  position:absolute!important;
+  left:auto!important;
+  right:0!important;
+  top:calc(100% + 8px)!important;
+  width:190px!important;
+  max-width:calc(100vw - 24px)!important;
+  z-index:23000!important;
+  display:grid!important;
+  gap:7px!important;
+  padding:10px!important;
+  border-radius:18px!important;
+  border:1px solid #bfdbfe!important;
+  background:#fff!important;
+  box-shadow:0 22px 52px rgba(15,23,42,.20)!important;
+  transform:none!important;
+}
+.top-more-menu .btn{
+  width:100%!important;
+  min-height:36px!important;
+  justify-content:flex-start!important;
+  border-radius:12px!important;
+  white-space:nowrap!important;
+}
+@media(max-width:720px){
+  .top-more-menu{
+    right:auto!important;
+    left:0!important;
+    top:calc(100% + 8px)!important;
+    width:min(220px, calc(100vw - 24px))!important;
+  }
+}
+/* ===== PLM V8.5.93 更多菜单定位修复 END ===== */
+
+
+/* ===== PLM V8.5.96 样品节点真实修复 START =====
+   上一版样式插在前面，被后面的 .sample-left-panel / .sample-node-list / .sample-node-card 覆盖了。
+   本版把最终覆盖放在主样式结尾，并把状态标签移到图片上方，确保能看到 开发中/测试/物料/问题/文件。 */
+#tab-samples .sample-split-layout{
+  align-items:start!important;
+}
+#tab-samples .sample-left-panel{
+  position:relative!important;
+  top:auto!important;
+  max-height:none!important;
+  height:auto!important;
+  overflow:visible!important;
+  display:block!important;
+}
+#tab-samples .sample-node-list{
+  overflow:visible!important;
+  max-height:none!important;
+  height:auto!important;
+  min-height:0!important;
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:12px!important;
+  padding:12px!important;
+}
+#tab-samples .sample-node-card{
+  height:auto!important;
+  min-height:0!important;
+  overflow:visible!important;
+  display:block!important;
+  padding:14px!important;
+  margin:0!important;
+}
+#tab-samples .sample-node-inner{
+  display:block!important;
+  min-height:0!important;
+  overflow:visible!important;
+}
+#tab-samples .sample-node-title{
+  margin-bottom:6px!important;
+}
+#tab-samples .sample-node-meta{
+  margin-bottom:8px!important;
+}
+#tab-samples .sample-node-tags{
+  position:relative!important;
+  z-index:5!important;
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:6px!important;
+  margin:8px 0 10px!important;
+  padding:0!important;
+  overflow:visible!important;
+}
+#tab-samples .sample-node-tags .tag{
+  display:inline-flex!important;
+  align-items:center!important;
+  height:24px!important;
+  line-height:22px!important;
+  padding:0 8px!important;
+  border-radius:999px!important;
+  white-space:nowrap!important;
+  font-size:11px!important;
+}
+#tab-samples .sample-node-media{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+  margin-top:0!important;
+  pointer-events:auto!important;
+}
+#tab-samples .sample-node-media .sample-media-tile.mini{
+  min-height:82px!important;
+  height:82px!important;
+  max-height:82px!important;
+  border-radius:12px!important;
+}
+#tab-samples .sample-node-media .sample-media-tile.mini img{
+  height:82px!important;
+  min-height:82px!important;
+  max-height:82px!important;
+  object-fit:cover!important;
+}
+#tab-samples .sample-node-media .sample-media-tile.mini .sample-media-pdf{
+  min-height:82px!important;
+  height:82px!important;
+}
+@media(max-width:1100px){
+  #tab-samples .sample-left-panel{position:relative!important;top:auto!important;max-height:none!important;overflow:visible!important;}
+  #tab-samples .sample-node-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;max-height:none!important;overflow:visible!important;}
+}
+@media(max-width:680px){
+  #tab-samples .sample-node-list{grid-template-columns:1fr!important;}
+  #tab-samples .sample-node-media{grid-template-columns:1fr 1fr!important;}
+}
+/* ===== PLM V8.5.96 样品节点真实修复 END ===== */
+
+
+/* ===== PLM V8.5.97 样品节点重叠真实修复 START =====
+   修复 V8.5.96 使用 #tab-samples 前缀但页面无该 ID，导致样式没命中。
+   本段直接覆盖样品管理真实 DOM：取消左侧内部滚动，卡片按内容撑开，图片不再压到下一张。 */
+.sample-split-layout{
+  align-items:start!important;
+}
+.sample-split-layout .sample-left-panel{
+  position:relative!important;
+  top:auto!important;
+  max-height:none!important;
+  height:auto!important;
+  overflow:visible!important;
+  display:block!important;
+}
+.sample-split-layout .sample-node-list{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:12px!important;
+  padding:12px!important;
+  overflow:visible!important;
+  max-height:none!important;
+  height:auto!important;
+  min-height:0!important;
+}
+.sample-split-layout .sample-node-card{
+  display:block!important;
+  height:auto!important;
+  min-height:0!important;
+  overflow:visible!important;
+  padding:14px!important;
+  margin:0!important;
+  box-sizing:border-box!important;
+}
+.sample-split-layout .sample-node-inner{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:7px!important;
+  height:auto!important;
+  min-height:0!important;
+  overflow:visible!important;
+}
+.sample-split-layout .sample-node-title{
+  margin:0!important;
+  line-height:1.25!important;
+  overflow:visible!important;
+}
+.sample-split-layout .sample-node-meta{
+  margin:0!important;
+  line-height:1.45!important;
+  overflow:visible!important;
+}
+.sample-split-layout .sample-node-tags{
+  position:relative!important;
+  z-index:2!important;
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:6px!important;
+  margin:2px 0 4px!important;
+  padding:0!important;
+  overflow:visible!important;
+}
+.sample-split-layout .sample-node-tags .tag{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-height:24px!important;
+  height:auto!important;
+  line-height:1.1!important;
+  padding:5px 8px!important;
+  border-radius:999px!important;
+  white-space:nowrap!important;
+  font-size:11px!important;
+}
+.sample-split-layout .sample-node-media{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+  margin:3px 0 0!important;
+  height:auto!important;
+  overflow:visible!important;
+  pointer-events:auto!important;
+}
+.sample-split-layout .sample-node-media .sample-media-tile.mini{
+  min-height:92px!important;
+  height:92px!important;
+  max-height:92px!important;
+  border-radius:12px!important;
+  overflow:hidden!important;
+  box-sizing:border-box!important;
+}
+.sample-split-layout .sample-node-media .sample-media-tile.mini img{
+  height:92px!important;
+  min-height:92px!important;
+  max-height:92px!important;
+  object-fit:cover!important;
+}
+.sample-split-layout .sample-node-media .sample-media-tile.mini .sample-media-pdf{
+  height:92px!important;
+  min-height:92px!important;
+  max-height:92px!important;
+}
+.sample-split-layout .sample-media-tile.empty .sample-media-plus{
+  margin-top:8px!important;
+}
+.sample-split-layout .sample-media-tile.empty .sample-media-name{
+  position:static!important;
+  background:transparent!important;
+  padding:0!important;
+}
+@media(max-width:1100px){
+  .sample-split-layout .sample-node-list{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    overflow:visible!important;
+    max-height:none!important;
+  }
+}
+@media(max-width:680px){
+  .sample-split-layout .sample-node-list{
+    grid-template-columns:1fr!important;
+  }
+  .sample-split-layout .sample-node-media{
+    grid-template-columns:1fr 1fr!important;
+  }
+}
+/* ===== PLM V8.5.97 样品节点重叠真实修复 END ===== */
+
+/* ===== PLM V8.5.100：项目列表三组折叠（进行中 / 暂停 / 已完成） START ===== */
+.project-list-with-category{gap:8px!important;}
+.project-list-category{cursor:pointer!important;user-select:none!important;transition:.16s ease!important;}
+.project-list-category:hover{filter:brightness(.985);box-shadow:0 8px 20px rgba(15,23,42,.055)!important;}
+.project-list-category .group-left{display:inline-flex!important;align-items:center!important;gap:7px!important;min-width:0!important;}
+.project-list-category .group-arrow{width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.75);font-size:11px;font-weight:1000;line-height:1;}
+.project-list-category.paused{border-color:#fed7aa!important;color:#c2410c!important;background:#fff7ed!important;}
+.project-list-category.paused b{background:#ffedd5!important;color:#c2410c!important;}
+.project-list-category.active{border-color:#bfdbfe!important;color:#1d4ed8!important;background:#f8fbff!important;}
+.project-list-category.active b{background:#dbeafe!important;color:#1d4ed8!important;}
+.project-list-category.done{border-color:#bbf7d0!important;color:#15803d!important;background:#f8fff9!important;}
+.project-list-category.done b{background:#dcfce7!important;color:#15803d!important;}
+.project-list-category.collapsed{opacity:.96!important;}
+.project-list-category.collapsed + .project-list-category{margin-top:3px!important;}
+.project-paused-row{border-left-color:#f59e0b!important;}
+.project-paused-row:not(.active){background:#fffaf4!important;}
+.project-paused-row .project-title-line h2{color:#78350f!important;}
+/* ===== PLM V8.5.100：项目列表三组折叠（进行中 / 暂停 / 已完成） END ===== */
+
+/* ===== PLM V8.5.103 样品基础资料排版修复 START =====
+   只优化样品详情红框区域：基础规格、尺寸、关键元器件、版本说明。
+   不改 API、不改数据库、不覆盖流程/测试/BOM/文件/派工联动。 */
+.sample-right-panel .sample-content-pro{
+  grid-template-columns:minmax(0,1.12fr) minmax(330px,.88fr)!important;
+  gap:18px!important;
+  align-items:start!important;
+}
+.sample-right-panel .sample-left-stack,
+.sample-right-panel .sample-right-stack{
+  gap:14px!important;
+}
+.sample-right-panel .sample-section{
+  padding:16px 18px!important;
+  border-radius:20px!important;
+  background:#fff!important;
+  border:1px solid #e2e8f0!important;
+  box-shadow:0 8px 20px rgba(15,23,42,.035)!important;
+}
+.sample-right-panel .sample-section h4{
+  margin:0 0 14px!important;
+  font-size:15px!important;
+  line-height:1.2!important;
+  color:#0f172a!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid{
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:12px 10px!important;
+  align-items:start!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field{
+  min-width:0!important;
+  margin:0!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field label,
+.sample-right-panel .sample-dimension-grid .field label,
+.sample-right-panel .component-simple label{
+  display:block!important;
+  margin:0 0 6px!important;
+  height:15px!important;
+  line-height:15px!important;
+  font-size:11.5px!important;
+  color:#64748b!important;
+  font-weight:1000!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1){grid-column:span 3!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 5!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 4!important;}
+.sample-right-panel .compact-fields.sample-basic-grid input,
+.sample-right-panel .compact-fields.sample-basic-grid select,
+.sample-right-panel .sample-dimension-grid input,
+.sample-right-panel .sample-dimension-grid select{
+  width:100%!important;
+  height:40px!important;
+  min-height:40px!important;
+  padding:8px 11px!important;
+  border-radius:13px!important;
+  font-size:13px!important;
+  line-height:20px!important;
+  background:#fff!important;
+}
+.sample-right-panel .sample-model-field .model-picker-inline{
+  grid-template-columns:minmax(0,1fr) 72px!important;
+  gap:7px!important;
+  width:100%!important;
+}
+.sample-right-panel .sample-model-field .model-picker-inline input{
+  font-size:13px!important;
+  font-weight:900!important;
+  letter-spacing:0!important;
+}
+.sample-right-panel .sample-model-field .model-picker-inline .btn{
+  width:72px!important;
+  min-width:72px!important;
+  height:40px!important;
+  border-radius:13px!important;
+  font-size:12px!important;
+  padding:0!important;
+}
+.sample-right-panel .naming-inline-meta{
+  margin-top:6px!important;
+  font-size:11px!important;
+  line-height:1.3!important;
+  color:#64748b!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.sample-right-panel .naming-sync-tools{
+  margin-top:8px!important;
+  gap:7px!important;
+  align-items:center!important;
+}
+.sample-right-panel .naming-sync-tools .sync-warn,
+.sample-right-panel .naming-sync-tools .sync-ok{
+  height:26px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  padding:0 9px!important;
+  font-size:11px!important;
+}
+.sample-right-panel .naming-sync-tools .btn{
+  height:30px!important;
+  min-height:30px!important;
+  border-radius:10px!important;
+  padding:0 10px!important;
+  font-size:11.5px!important;
+}
+.sample-right-panel .sample-dimension-grid{
+  grid-column:1/-1!important;
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:11px 12px!important;
+  margin:2px 0 2px!important;
+  padding:13px 14px!important;
+  border-radius:18px!important;
+  border:1px solid #dbeafe!important;
+  background:#f8fbff!important;
+}
+.sample-right-panel .sample-dimension-grid .field{
+  min-width:0!important;
+  margin:0!important;
+}
+.sample-right-panel .sample-dim-note{
+  grid-column:1/-1!important;
+  margin:0!important;
+  padding-top:0!important;
+  color:#64748b!important;
+  font-size:12px!important;
+  line-height:1.45!important;
+  font-weight:900!important;
+}
+.sample-right-panel .key-components-inline,
+.sample-content-pro .key-components-inline{
+  margin-top:14px!important;
+  padding:14px 15px!important;
+  border-radius:18px!important;
+  background:#f8fbff!important;
+  border:1px solid #dbeafe!important;
+}
+.sample-right-panel .key-components-head,
+.sample-content-pro .key-components-head{
+  margin-bottom:12px!important;
+  align-items:center!important;
+  gap:8px 14px!important;
+}
+.sample-right-panel .key-components-head b,
+.sample-content-pro .key-components-head b{
+  font-size:14px!important;
+}
+.sample-right-panel .key-components-head span,
+.sample-content-pro .key-components-head span{
+  flex:1 1 260px!important;
+  line-height:1.4!important;
+  font-size:12px!important;
+}
+.sample-right-panel .component-simple-grid,
+.sample-content-pro .component-simple-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:12px 14px!important;
+}
+.sample-right-panel .component-simple-row,
+.sample-content-pro .component-simple-row{
+  grid-template-columns:minmax(0,1fr) 40px!important;
+  gap:8px!important;
+}
+.sample-right-panel .component-simple input,
+.sample-content-pro .component-simple input{
+  height:40px!important;
+  min-height:40px!important;
+  padding:8px 11px!important;
+  border-radius:13px!important;
+  font-size:13px!important;
+}
+.sample-right-panel .component-simple .bom-mini-btn,
+.sample-right-panel .component-simple .bom-dot-btn,
+.sample-content-pro .component-simple .bom-mini-btn,
+.sample-content-pro .component-simple .bom-dot-btn{
+  width:40px!important;
+  min-width:40px!important;
+  height:40px!important;
+  border-radius:13px!important;
+}
+.sample-right-panel .component-simple-meta,
+.sample-content-pro .component-simple-meta{
+  min-height:18px!important;
+  margin-top:5px!important;
+  font-size:11px!important;
+  line-height:1.25!important;
+}
+.sample-right-panel .sample-left-stack .sample-section>.field{
+  margin-top:14px!important;
+}
+.sample-right-panel .sample-left-stack .sample-section>.field textarea{
+  min-height:96px!important;
+  border-radius:16px!important;
+  padding:12px 13px!important;
+  font-size:13px!important;
+  line-height:1.5!important;
+}
+@media(max-width:1380px){
+  .sample-right-panel .sample-content-pro{grid-template-columns:1fr!important;}
+  .sample-right-panel .sample-right-stack{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .sample-right-panel .sample-media-section{grid-column:auto!important;}
+}
+@media(max-width:980px){
+  .sample-right-panel .compact-fields.sample-basic-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 3!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:1/-1!important;}
+  .sample-right-panel .sample-dimension-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .sample-right-panel .sample-right-stack{grid-template-columns:1fr!important;}
+}
+@media(max-width:640px){
+  .sample-right-panel .compact-fields.sample-basic-grid{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field,
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:1/-1!important;}
+  .sample-right-panel .sample-dimension-grid,
+  .sample-right-panel .component-simple-grid,
+  .sample-content-pro .component-simple-grid{grid-template-columns:1fr!important;}
+}
+/* ===== PLM V8.5.104 顶部导航 + 取消首页方框看板 START ===== */
+#stats,#focusPanel,.stats,.focus-panel{display:none!important;visibility:hidden!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}
+.top{align-items:center!important;margin-bottom:12px!important;}
+.top .sub{max-width:720px!important;}
+.plm-quote-like-nav{
+  background:rgba(255,255,255,.96)!important;
+  border:1px solid #dbe4ef!important;
+  border-radius:999px!important;
+  padding:7px!important;
+  box-shadow:0 12px 30px rgba(15,23,42,.08)!important;
+  gap:6px!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  flex-wrap:wrap!important;
+}
+.plm-quote-like-nav .btn,
+.plm-quote-like-nav .user-pill,
+.plm-quote-like-nav .notice-pill,
+.plm-quote-like-nav .online-pill,
+.plm-quote-like-nav .log-pill,
+.plm-quote-like-nav .top-more summary{
+  height:34px!important;
+  min-height:34px!important;
+  padding:0 13px!important;
+  border-radius:999px!important;
+  font-size:12px!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  font-weight:1000!important;
+}
+.online-pill{border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;cursor:pointer;}
+.online-pill.has{background:#dcfce7;border-color:#86efac;color:#166534;}
+.log-pill{border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;cursor:pointer;}
+.plm-mini-table{width:100%;border-collapse:separate;border-spacing:0 6px;}
+.plm-mini-table th{font-size:12px;color:#64748b;text-align:left;padding:0 8px 4px;font-weight:1000;}
+.plm-mini-table td{font-size:13px;font-weight:850;color:#334155;background:#fff;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:9px 8px;vertical-align:middle;}
+.plm-mini-table td:first-child{border-left:1px solid #e2e8f0;border-radius:12px 0 0 12px;}
+.plm-mini-table td:last-child{border-right:1px solid #e2e8f0;border-radius:0 12px 12px 0;}
+.plm-log-filter{display:grid;grid-template-columns:1.4fr 150px 150px 130px auto;gap:8px;align-items:end;margin-bottom:12px;}
+.plm-online-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;}
+.plm-online-card{border:1px solid #dbe4ef;border-radius:16px;background:#fff;padding:12px;box-shadow:0 8px 22px rgba(15,23,42,.04);}
+.plm-online-card b{display:block;font-size:15px;color:#0f172a;margin-bottom:4px;}
+.plm-online-card span{display:block;font-size:12px;color:#64748b;font-weight:850;line-height:1.55;}
+@media(max-width:980px){.top{align-items:flex-start!important}.plm-quote-like-nav{border-radius:22px!important;justify-content:flex-start!important}.plm-log-filter{grid-template-columns:1fr 1fr}.plm-online-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.plm-log-filter,.plm-online-grid{grid-template-columns:1fr}.plm-quote-like-nav .btn,.plm-quote-like-nav .user-pill,.plm-quote-like-nav .notice-pill,.plm-quote-like-nav .online-pill,.plm-quote-like-nav .log-pill{width:auto!important}}
+/* ===== PLM V8.5.104 顶部导航 + 取消首页方框看板 END ===== */
+
+/* ===== PLM V8.5.103 样品基础资料排版修复 END ===== */
+
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div>
+      <div class="brand">中山雅大光电有限公司 · Artdon Lighting Limited</div>
+      <h1>商业照明研发样品管理系统 PLM V8.5.104</h1>
+      <div class="sub">首页精简版：取消方框看板，顶部导航加入谁在线与操作日志。</div>
+    </div>
+    <div class="actions top-actions-v855 plm-quote-like-nav">
+      <button class="btn primary" onclick="newProject()">新增项目</button>
+      <button class="btn good" onclick="openRndDashboardModal()">研发看板</button>
+      <button class="btn" onclick="openAllProjectsModal()">项目总表</button>
+      <button class="btn warn" onclick="openDispatch()">派工</button>
+      <button id="plmOnlineBtn" class="online-pill" onclick="openPlmOnlineModal()">谁在线</button>
+      <button id="plmLogBtn" class="log-pill" onclick="openPlmLogModal()">日志</button>
+      <button id="plmUserPill" class="user-pill" title="当前登录账号">登录：--</button>
+      <button id="plmNoticeBtn" class="notice-pill" onclick="openPlmNotifications()">站内信</button>
+      <details class="top-more">
+        <summary>更多</summary>
+        <div class="top-more-menu">
+          <button id="plmPermBtn" class="btn" onclick="openPermissionModal()" style="display:none">权限设置</button>
+          <button id="plmBackupBtn" class="btn" onclick="openPlmBackupRestoreModal()" style="display:none">备份恢复</button>
+          <button class="btn" onclick="location.href='artdon_portal.php'">系统首页</button>
+          <button class="btn" onclick="location.href='bom.php'">BOM</button>
+          <button class="btn" onclick="location.href='naming.php'">型号命名</button>
+          <button class="btn" onclick="location.href='quotation.php'">报价</button>
+          <button class="btn" onclick="openRecycleBin()">回收站</button>
+          <button class="btn" onclick="showHealth()">健康检查</button>
+        </div>
+      </details>
+    </div>
+  </div>
+  <div id="fatalBox"></div>
+  <div class="panel">
+    <div class="filters">
+      <input id="q" placeholder="搜索：项目名 / 客户 / 系列 / 型号 / 工程师" oninput="render()">
+      <select id="fEngineer" onchange="render()"><option value="">全部工程师</option></select>
+      <select id="fCustomer" onchange="render()"><option value="">全部客户</option></select>
+      <select id="fSource" onchange="render()"><option value="">全部来源</option><option>工厂自行开发</option><option>客户下单开发</option></select>
+      <select id="fPriority" onchange="render()"><option value="">全部优先级</option><option>P1 紧急</option><option>P2 正常</option><option>P3 储备</option></select>
+      <select id="fStatus" onchange="render()"><option value="">全部状态</option><option>未开始</option><option>开发中</option><option>测试中</option><option>暂停</option><option>已完成</option><option>已取消</option></select>
+      <button class="btn" onclick="resetFilters()">重置</button>
+    </div>
+    <div class="viewbar project-list-toolbar">
+      <div class="project-list-title-pill">项目列表 · 图片缩略</div>
+      <select id="projectListLimit" class="project-list-limit" onchange="setProjectListLimit(this.value)"><option value="5">显示5个</option><option value="10">显示10个</option><option value="20">显示20个</option><option value="30">显示30个</option><option value="50">显示50个</option></select>
+      <button id="projectCollapseBtn" class="project-collapse-btn" onclick="toggleProjectListCollapse()">收起项目列表</button>
+      <div class="hint">项目列表可手动折叠/展开；折叠后右侧工作区自动放大。派工核心表格不修改。</div>
+    </div>
+  </div>
+  <div id="mainWrap" class="main"><div id="cards" class="cards"></div><div id="detail" class="detail"></div></div>
+</div>
+<div id="toast" class="toast"></div>
+<div id="modalHost"></div>
+<script>
+const API='plm.php';
+let projects=[],models=[],tests=[],testRuns=[],testTemplates=[],files=[],steps=[],issues=[],logs=[],dispatchLinks=[],plmCurrentUser=null,plmIsAdmin=false,plmPermissions={},plmPermissionDefs=[],plmPermissionUsers=[],plmNoticeCount=0,plmOnlineCount=0,plmRecycleCounts={projects:0,models:0},selectedId=Number(localStorage.getItem('plm_v85_selected')||0),tab=localStorage.getItem('plm_v85_tab')||'basic',projectView=localStorage.getItem('plm_v85_project_view')||'list',projectCols=Number(localStorage.getItem('plm_v85_project_cols')||2),projectListLimit=Number(localStorage.getItem('plm_v85_project_limit')||10),projectListPage=Number(localStorage.getItem('plm_v85_project_page')||1),projectListLastFilterSig=null,summarySampleId=Number(localStorage.getItem('plm_v85_summary_sample_id')||0),flowModelId=Number(localStorage.getItem('plm_v85_flow_model')||0),flowCols=Number(localStorage.getItem('plm_v85_flow_cols')||3),flowSelectedStepId=Number(localStorage.getItem('plm_v85_step_id')||0),flowDrawerCollapsed=localStorage.getItem('plm_v85_drawer_collapsed')==='1',dragStepId=0;
+let customerFileSelected=new Set(), customerFileInitializedProject=0, fileSelectedId=Number(localStorage.getItem('plm_v85_file_id')||0), filePreviewCollapsed=(localStorage.getItem('plm_v855_file_preview_collapsed') ?? '0')==='1', fileFilterCollapsed=(localStorage.getItem('plm_v8529_file_filter_collapsed') ?? '0')==='1', projectListCollapsed=(localStorage.getItem('plm_v8514_project_list_collapsed')||'0')==='1';
+const TEST_TYPES=['温升','IES','积分球','EMC','老化','防水','盐雾','结构装配','包装跌落','光斑测试','IP防水','其它'];
+const FILE_CATS=['产品图片','项目图片','样品图片','尺寸图','结构图纸','加工资料','包装资料','客户资料','报价资料','BOM资料','其它文件'];
+const FLOW_TEMPLATES=['常规灯具开发流程','客户定制快速流程','结构件打样流程','光学测试流程','表面处理验证流程','简化流程'];
+const FLOW_STATUSES=['未开始','进行中','已完成','暂停','异常','退回','重来','跳过'];
+const TEST_FILE_CATS=['温升报告','IES文件','IES报告','积分球报告','EMC报告','老化测试','防水测试','盐雾测试','结构装配测试','包装跌落测试','光斑测试','其它测试'];
+const $=id=>document.getElementById(id);
+let projectGroupCollapsed={};
+try{projectGroupCollapsed=JSON.parse(localStorage.getItem('plm_v85100_project_group_collapsed')||'{}')||{};}catch(e){projectGroupCollapsed={};}
+function projectGroupIsCollapsed(k){return !!projectGroupCollapsed[k];}
+function toggleProjectGroup(k){projectGroupCollapsed[k]=!projectGroupCollapsed[k];localStorage.setItem('plm_v85100_project_group_collapsed',JSON.stringify(projectGroupCollapsed));renderCards();}
+const esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const js=s=>JSON.stringify(String(s??''));
+window.onerror=function(msg,src,line,col,err){showFatal('前端脚本错误：'+msg+' / line '+line);return false;};
+function showFatal(t){$('fatalBox').innerHTML='<div class="panel dangerText">'+esc(t)+'</div>'}
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),3200)}
+function plmSsoRedirect(){const back=location.pathname+location.search+location.hash;location.replace('login.php?redirect='+encodeURIComponent(back))}
+async function api(action,data={}){try{const r=await fetch(API+'?action='+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',body:JSON.stringify(data)});const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){if(r.status===401){plmSsoRedirect();return{ok:false,auth_redirect:true}}throw new Error('接口没有返回JSON，可能PHP报错：'+txt.slice(0,300));}if(r.status===401||j.auth_required||j.login_required||j.need_login){plmSsoRedirect();return{ok:false,auth_redirect:true}}return j;}catch(e){showFatal(e.message);return {ok:false,error:e.message};}}
+function canPerm(k){return !!plmIsAdmin || !!(plmPermissions&&plmPermissions[k]);}
+function guardPerm(k,label){if(!canPerm(k)){toast('没有权限：'+(label||k));return false;}return true;}
+function closeModal(){const h=$('modalHost');if(h)h.innerHTML='';document.querySelectorAll('.modal-mask').forEach(x=>{if(x.parentElement&&x.parentElement.id!=='modalHost')x.remove();});}
+
+async function dispatchApi(action,data={},method='POST'){
+  try{
+    let url='dispatch_api.php?action='+encodeURIComponent(action);
+    const opt={method,credentials:'same-origin',headers:{}};
+    if(method==='GET'){
+      const qs=new URLSearchParams(data||{}).toString(); if(qs)url+='&'+qs;
+    }else{
+      opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(data||{});
+    }
+    const r=await fetch(url,opt); const txt=await r.text(); let j;
+    try{j=JSON.parse(txt)}catch(e){throw new Error('派工接口没有返回JSON：'+txt.slice(0,240));}
+    if(!r.ok||j.ok===false)throw new Error(j.error||'派工接口错误');
+    return j;
+  }catch(e){return {ok:false,error:e.message};}
+}
+function dispatchLinksByStep(stepId){return dispatchLinks.filter(x=>Number(x.step_id)===Number(stepId)).sort((a,b)=>Number(a.id)-Number(b.id))}
+function dispatchDone(l){const s=String(l.status||'');return ['done','已完成','完成'].includes(s)||Number(l.progress||0)>=100}
+function dispatchSummary(stepId){const arr=dispatchLinksByStep(stepId);const done=arr.filter(dispatchDone).length;return{total:arr.length,done,pct:arr.length?Math.round(done/arr.length*100):0,label:arr.length?(done+'/'+arr.length):''}}
+function dispatchLinksByProject(projectId){return dispatchLinks.filter(x=>Number(x.project_id)===Number(projectId)&&Number(x.step_id||0)===0).sort((a,b)=>Number(a.id)-Number(b.id))}
+function projectDispatchSummary(projectId){const arr=dispatchLinksByProject(projectId);const done=arr.filter(dispatchDone).length;return{total:arr.length,done,pct:arr.length?Math.round(done/arr.length*100):0,label:arr.length?(done+'/'+arr.length):''}}
+function dispatchStatusText(s){const map={pending_accept:'待接收',accepted:'已接收',in_progress:'进行中',paused:'暂停',submitted:'待确认',returned:'退回',rejected:'驳回',done:'已完成',cancelled:'已取消'};return map[s]||s||'已创建'}
+function dispatchDueFromStep(s){const d=dateOnly(s.plan_end||s.plan_date||s.plan_start);return d?d+'T18:00':''}
+function dispatchTaskDateFromStep(s){return dateOnly(s.plan_start||s.plan_end||s.plan_date)||new Date().toISOString().slice(0,10)}
+function dispatchUrl(taskId){return taskId?('dispatch_todo.php?task_id='+encodeURIComponent(taskId)):'dispatch_todo.php'}
+function currentModelName(model){return model?(model.name||model.model||('样品'+model.id)):'未绑定样品'}
+
+function dispatchTaskDone(t){const st=String(t.status||'');return ['done','已完成','完成'].includes(st)||Number(t.progress||0)>=100}
+function dispatchTaskProgress(t){if(dispatchTaskDone(t))return 100;return Math.max(0,Math.min(100,Number(t.progress||0)||0))}
+function plmStepContext(stepId){
+  const s=steps.find(x=>Number(x.id)===Number(stepId)); if(!s)return null;
+  const p=projects.find(x=>Number(x.id)===Number(s.project_id))||cur()||{};
+  const m=models.find(x=>Number(x.id)===Number(s.model_id));
+  return {kind:'flow',project_id:Number(p.id||s.project_id||0),model_id:Number(s.model_id||0),step_id:Number(s.id||0),projectName:p.name||'',customer:p.customer||'',modelName:currentModelName(m),stepTitle:s.title||'',title:s.title||''};
+}
+function plmProjectContext(){const p=cur();if(!p)return null;return {kind:'project',project_id:Number(p.id||0),model_id:0,step_id:0,projectName:p.name||'',customer:p.customer||'',modelName:p.model||p.series||'',stepTitle:'',title:p.name||''};}
+async function queryPlmDispatchTasks(ctx){
+  if(!ctx)return [];
+  const r=await dispatchApi('plm_linked_tasks',{kind:ctx.kind||'flow',project_id:ctx.project_id||0,model_id:ctx.model_id||0,step_id:ctx.step_id||0});
+  if(!r.ok){toast('派工进度查询失败：'+(r.error||''));return []}
+  return Array.isArray(r.tasks)?r.tasks:[];
+}
+async function saveRemoteTasksToPlmLinks(ctx,tasks,silent=false){
+  if(!ctx||!Array.isArray(tasks)||!tasks.length)return 0;
+  let ok=0;
+  for(const t of tasks){
+    const taskId=Number(t.id||0); if(!taskId)continue;
+    const base={task_id:taskId,task_no:t.task_no||'',title:t.title||ctx.title||'',assignee_id:Number(t.assigned_to||0),assignee_name:t.assignee_name||t.assigned_name||'',status:t.status||'',progress:dispatchTaskProgress(t),due_at:(t.due_at||'').replace('T',' '),dispatch_url:dispatchUrl(taskId)};
+    let save=null;
+    if(ctx.kind==='flow'&&ctx.step_id){
+      save=await api('save_dispatch_link',Object.assign({},base,{step_id:ctx.step_id,linked_json:{system:'PLM',type:'flow',project_id:ctx.project_id||0,model_id:ctx.model_id||0,step_id:ctx.step_id||0,project_name:ctx.projectName||'',customer:ctx.customer||'',model:ctx.modelName||'',step_title:ctx.stepTitle||''}}));
+    }else if(ctx.kind==='project'&&ctx.project_id){
+      save=await api('save_project_dispatch_link',Object.assign({},base,{project_id:ctx.project_id||0,model_id:ctx.model_id||0,linked_json:{system:'PLM',type:'project',project_id:ctx.project_id||0,model_id:ctx.model_id||0,project_name:ctx.projectName||'',customer:ctx.customer||'',model:ctx.modelName||''}}));
+    }
+    if(save&&save.ok)ok++;
+  }
+  if(ok&&!silent)toast('已找回并同步派工：'+ok+'条');
+  return ok;
+}
+function renderPlmDispatchProgressModal(ctx,tasks,loading=false){
+  const modalId='plmDispatchProgressModal';
+  document.getElementById(modalId)?.remove();
+  const done=tasks.filter(dispatchTaskDone).length,total=tasks.length;
+  const top=loading?'正在查询派工进度...':(total?`已查到 ${done}/${total} 已完成`:'未查到派工任务');
+  const rows=loading?'<div class="plm-progress-empty">正在从派工系统读取进度...</div>':(tasks.map(t=>{
+    const pct=dispatchTaskProgress(t), cls=dispatchTaskDone(t)?'done':(String(t.status||'')==='pending_accept'?'warn':'');
+    const ass=t.assignee_name||t.assigned_name||t.assigned_to||'-';
+    const due=(t.due_at||'').slice(0,10)||'-';
+    return `<div class="plm-progress-row ${cls}"><div style="min-width:0;flex:1"><b>${esc(t.title||'派工任务')}</b><span>负责人：${esc(ass)} ｜ 状态：${esc(dispatchStatusText(t.status))} ｜ 截止：${esc(due)} ｜ 任务ID：${esc(t.id||'')}</span><div class="plm-progress-bar"><i style="width:${pct}%"></i></div></div><div class="actions"><a class="btn small" target="_blank" href="${esc(dispatchUrl(t.id))}">打开派工</a></div></div>`;
+  }).join('')||'<div class="plm-progress-empty">没有查到这个 PLM 来源的派工。<br>如果待办里已经有任务，请用新版 PLM 弹窗重新生成一次，后续会自动关联。</div>');
+  const html=`<div id="${modalId}" class="plm-dispatch-mask" onclick="if(event.target===this)closePlmDispatchProgressModal()"><div class="plm-dispatch-modal"><div class="plm-dispatch-head"><div><h3>${ctx.kind==='project'?'项目派工进度':'流程派工进度'}</h3><p>${esc(ctx.projectName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}</p></div><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div><div class="plm-dispatch-body"><div class="plm-progress-top"><span>${top}</span><button class="btn small" onclick="reloadPlmDispatchProgress()">重新查询</button></div><div class="plm-progress-list">${rows}</div></div><div class="plm-dispatch-foot"><div class="hint">这里直接读取派工系统真实任务；如果 PLM 关联丢失，会自动找回并回写。</div><div class="actions"><a class="btn" href="dispatch_todo.php" target="_blank">打开派工页面</a><button class="btn" onclick="closePlmDispatchProgressModal()">关闭</button></div></div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html); window.__plmProgressCtx=ctx;
+}
+function closePlmDispatchProgressModal(){document.getElementById('plmDispatchProgressModal')?.remove();window.__plmProgressCtx=null;}
+async function openPlmDispatchProgress(ctx){
+  if(!ctx){toast('缺少 PLM 上下文');return;}
+  renderPlmDispatchProgressModal(ctx,[],true);
+  const tasks=await queryPlmDispatchTasks(ctx);
+  if(tasks.length){await saveRemoteTasksToPlmLinks(ctx,tasks,true);}
+  renderPlmDispatchProgressModal(ctx,tasks,false);
+}
+async function reloadPlmDispatchProgress(){const ctx=window.__plmProgressCtx;if(!ctx)return;await openPlmDispatchProgress(ctx);}
+async function openDispatchProgressForStep(stepId){const ctx=plmStepContext(stepId);if(!ctx){toast('没有找到步骤');return;}await openPlmDispatchProgress(ctx)}
+async function openProjectDispatchProgress(){const ctx=plmProjectContext();if(!ctx){toast('请先选择项目');return;}await openPlmDispatchProgress(ctx)}
+
+async function uploadApi(form){try{const r=await fetch(API+'?action=upload_file',{method:'POST',body:form,credentials:'same-origin',cache:'no-store'});const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){if(r.status===401){plmSsoRedirect();return{ok:false,auth_redirect:true}}throw new Error('上传接口异常：'+txt.slice(0,300));}if(r.status===401||j.auth_required||j.login_required||j.need_login){plmSsoRedirect();return{ok:false,auth_redirect:true}}return j;}catch(e){showFatal(e.message);return {ok:false,error:e.message};}}
+function arrByPid(arr,pid){return arr.filter(x=>Number(x.project_id)===Number(pid))}
+function pModels(pid=selectedId){return arrByPid(models,pid)}
+function pTests(pid=selectedId){return arrByPid(tests,pid)}
+function pFiles(pid=selectedId){return arrByPid(files,pid)}
+function cur(){return projects.find(p=>Number(p.id)===Number(selectedId))}
+function uniq(arr){return [...new Set(arr.filter(Boolean).map(x=>String(x)))]}
+function opt(options,val=''){return options.map(o=>`<option ${String(o)===String(val)?'selected':''}>${esc(o)}</option>`).join('')}
+function dateOnly(v){if(!v)return'';return String(v).slice(0,10)}
+function dateTimeFull(v){if(!v)return'';const s=String(v).replace('T',' ');return s.length>=19?s.slice(0,19):(s.length>=16?s.slice(0,16):s)}
+function flowShortDate(v){const d=dateOnly(v);return d?d.slice(5):''}
+function flowShortDateTime(v){if(!v)return'';const s=String(v).replace('T',' ');return s.length>=16?s.slice(5,16):s.slice(0,16)}
+function setProjectView(v){projectView=v;localStorage.setItem('plm_v85_project_view',v);render()}
+function setProjectCols(v){projectCols=Number(v)||2;localStorage.setItem('plm_v85_project_cols',projectCols);renderCards()}
+function setFlowCols(v){flowCols=Number(v)||3;localStorage.setItem('plm_v85_flow_cols',flowCols);renderDetail()}
+function resetFilters(){['q','fEngineer','fCustomer','fSource','fPriority','fStatus'].forEach(id=>$(id).value='');projectListPage=1;localStorage.setItem('plm_v85_project_page','1');render()}
+function toggleProjectListCollapse(force){projectListCollapsed=(typeof force==='boolean')?force:!projectListCollapsed;localStorage.setItem('plm_v8514_project_list_collapsed',projectListCollapsed?'1':'0');renderCards();renderDetail()}
+function currentProjectFilterSig(){return ['q','fEngineer','fCustomer','fSource','fPriority','fStatus'].map(id=>String($(id)?.value||'')).join('|')}
+function setProjectListLimit(v){projectListLimit=Number(v)||5;projectListPage=1;localStorage.setItem('plm_v85_project_limit',projectListLimit);localStorage.setItem('plm_v85_project_page','1');renderCards()}
+function setProjectListPage(v){projectListPage=Math.max(1,Number(v)||1);localStorage.setItem('plm_v85_project_page',String(projectListPage));renderCards()}
+function projectPagerPages(current,total){const out=[];for(let i=1;i<=total;i++){if(i===1||i===total||Math.abs(i-current)<=1){out.push(i)}else if(out[out.length-1]!=='...'){out.push('...')}}return out}
+function renderProjectPager(total,pageSize,current,totalPages,start,count){if(totalPages<=1)return `<div class="project-list-page-note">共 ${total} 个项目，当前显示全部。</div>`;const pages=projectPagerPages(current,totalPages).map(x=>x==='...'?`<span class="pager-ellipsis">...</span>`:`<button class="${x===current?'active':''}" onclick="setProjectListPage(${x})">${x}</button>`).join('');const from=count?start+1:0,to=start+count;return `<div class="project-list-pager"><div class="project-list-pager-info">第 ${current}/${totalPages} 页 ｜ ${from}-${to} / 共 ${total} 个</div><div class="project-list-pager-actions"><button onclick="setProjectListPage(1)" ${current<=1?'disabled':''}>首页</button><button onclick="setProjectListPage(${current-1})" ${current<=1?'disabled':''}>上一页</button>${pages}<button onclick="setProjectListPage(${current+1})" ${current>=totalPages?'disabled':''}>下一页</button><button onclick="setProjectListPage(${totalPages})" ${current>=totalPages?'disabled':''}>末页</button></div></div>`}
+function renderTopInfo(){
+  const name=plmCurrentUser?(plmCurrentUser.name||plmCurrentUser.username||'未识别账号'):'未识别账号';
+  if($('plmUserPill')) $('plmUserPill').textContent='登录：'+name+(plmIsAdmin?' · 管理员':'');
+  if($('plmNoticeBtn')){const n=Number(plmNoticeCount||0);$('plmNoticeBtn').textContent=n?'站内信 '+n:'站内信';$('plmNoticeBtn').classList.toggle('has',n>0)}
+  if($('plmOnlineBtn')){const n=Number(plmOnlineCount||0);$('plmOnlineBtn').textContent=n?'谁在线 '+n:'谁在线';$('plmOnlineBtn').classList.toggle('has',n>0)}
+  if($('projectListLimit')) $('projectListLimit').value=String(projectListLimit||5);
+  if($('plmPermBtn')) $('plmPermBtn').style.display=canPerm('manage_permissions')?'inline-flex':'none';
+  if($('plmBackupBtn')) $('plmBackupBtn').style.display=canPerm('manage_permissions')?'inline-flex':'none';
+  if($('plmLogBtn')) $('plmLogBtn').style.display=canPerm('view_logs')?'inline-flex':'none';
+}
+
+
+function openPlmBackupRestoreModal(){
+  if(!canPerm('manage_permissions')){toast('只有管理员或被授权人员可以备份/恢复');return;}
+  const html=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:920px"><div class="modal-head"><div><h3>PLM 备份与恢复</h3><div class="hint">用于备份 PLM 项目、样品、流程、测试、文件记录、问题、日志、权限、派工关联等 PLM 数据。恢复前系统会自动生成 before_restore 安全备份。</div></div><button class="btn" onclick="closeModal()">关闭</button></div><div class="modal-body"><div class="plm-backup-panel"><div class="plm-backup-row"><h4>一键生成备份</h4><p>优先生成 ZIP；如果服务器没有 PHP ZipArchive，则自动生成 JSON。ZIP 在服务器支持时会同时包含 uploads/plm/ 下的附件实体。</p><div class="actions"><button class="btn primary" onclick="createPlmBackupNow()">生成备份</button><button class="btn" onclick="loadPlmBackupList()">刷新备份列表</button></div><div id="plmBackupResult" class="plm-backup-result">尚未生成备份。</div></div><div class="plm-backup-row plm-manage-row"><h4>备份管理</h4><p>这里会列出服务器 uploads/plm_backups/ 里的历史备份。关闭弹窗后再打开，也能在这里继续下载、恢复或删除。</p><div class="plm-backup-toolbar"><button class="btn" onclick="loadPlmBackupList()">刷新列表</button><span class="hint" id="plmBackupListHint">正在读取...</span></div><div id="plmBackupList" class="plm-backup-list"><div class="plm-backup-empty">正在读取备份列表...</div></div></div><div class="plm-backup-row plm-restore-warn"><h4>上传备份恢复</h4><p>用于恢复你本地保存的备份文件。恢复会覆盖当前 PLM 数据表。恢复前会自动先生成一份 before_restore 备份。</p><input id="plmRestoreFile" class="plm-backup-file" type="file" accept=".zip,.json,application/json,application/zip"><div class="actions"><button class="btn red" onclick="restorePlmBackupNow()">确认恢复</button></div><div id="plmRestoreResult" class="plm-backup-result">请选择备份文件后再恢复。</div></div></div></div><div class="modal-foot"><div class="hint">说明：本功能只处理 PLM 自己的数据，不覆盖 BOM、报价、CRM、派工原始表。</div><button class="btn" onclick="closeModal()">关闭</button></div></div></div>`;
+  $('modalHost').innerHTML=html;
+  loadPlmBackupList();
+}
+function plmBackupSize(n){n=Number(n)||0;if(n<1024)return n+' B';if(n<1024*1024)return (n/1024).toFixed(1)+' KB';return (n/1024/1024).toFixed(2)+' MB'}
+function renderPlmBackupList(items){
+  const box=$('plmBackupList'), hint=$('plmBackupListHint'); if(!box)return;
+  const arr=Array.isArray(items)?items:[];
+  if(hint)hint.textContent='共 '+arr.length+' 个备份';
+  if(!arr.length){box.innerHTML='<div class="plm-backup-empty">暂无服务器备份。点击“生成备份”后会出现在这里。</div>';return;}
+  box.innerHTML=arr.map(b=>{
+    const counts=b.counts||{}; const brief=Object.entries(counts).slice(0,4).map(([k,v])=>`${esc(k)}:${esc(v)}`).join(' ｜ ');
+    const label=(b.is_before_restore?'恢复前安全备份':'手动/自动备份');
+    return `<div class="plm-backup-item"><div><b>${esc(b.name||'')}</b><small>${esc(label)} ｜ ${esc((b.format||'').toUpperCase())} ｜ ${plmBackupSize(b.size)} ｜ 创建：${esc(b.created_at||b.mtime||'')} ｜ 版本：${esc(b.version||'-')}<br>${brief||('数据行：'+esc(b.total_rows||0))}</small></div><div class="ops"><a href="${esc(b.url||'#')}" download>下载</a><button class="restore" onclick="restoreServerPlmBackup('${esc(String(b.name||'')).replace(/'/g,'&#39;')}')">恢复</button><button class="delete" onclick="deletePlmBackup('${esc(String(b.name||'')).replace(/'/g,'&#39;')}')">删除</button></div></div>`;
+  }).join('');
+}
+async function loadPlmBackupList(){
+  const box=$('plmBackupList'), hint=$('plmBackupListHint'); if(box)box.innerHTML='<div class="plm-backup-empty">正在读取备份列表...</div>'; if(hint)hint.textContent='读取中...';
+  const r=await api('plm_list_backups',{});
+  if(!r.ok){ if(box)box.innerHTML='<div class="plm-backup-empty">读取失败：'+esc(r.error||'未知错误')+'</div>'; if(hint)hint.textContent='读取失败'; return; }
+  renderPlmBackupList(r.backups||[]);
+}
+async function createPlmBackupNow(){
+  const box=$('plmBackupResult'); if(box)box.textContent='正在生成备份，请稍候...';
+  const r=await api('plm_create_backup',{});
+  if(!r.ok){if(box)box.textContent='生成失败：'+(r.error||'未知错误');toast(r.error||'生成失败');return;}
+  const b=r.backup||{};
+  const tableLines=Object.entries(b.counts||{}).map(([k,v])=>`${k}: ${v}`).join('\n');
+  if(box)box.innerHTML=`生成成功：${esc(b.name||'')}<br>格式：${esc(b.format||'')} ｜ 附件实体：${b.with_files?'已打包':'未打包'} ｜ 文件数：${esc(b.files_count||0)}<br><a href="${esc(b.url||'#')}" download>下载备份文件</a><br><br>${esc(tableLines)}`;
+  renderPlmBackupList(r.backups||[]);
+  toast('PLM 备份已生成');
+}
+async function deletePlmBackup(name){
+  if(!name)return;
+  if(!confirm('确认删除这个服务器备份？\n\n'+name+'\n\n建议先确认你已经下载到本地。'))return;
+  const r=await api('plm_delete_backup',{name});
+  if(!r.ok){toast(r.error||'删除失败');return;}
+  renderPlmBackupList(r.backups||[]);
+  toast('备份已删除');
+}
+async function restoreServerPlmBackup(name){
+  if(!name)return;
+  if(!confirm('确认从这个服务器备份恢复？\n\n'+name+'\n\n恢复会覆盖当前 PLM 数据，系统会先自动生成 before_restore 安全备份。'))return;
+  const box=$('plmRestoreResult'); if(box)box.textContent='正在从服务器备份恢复，请不要关闭页面...';
+  const r=await api('plm_restore_server_backup',{name});
+  if(!r.ok){if(box)box.textContent='恢复失败：'+(r.error||'未知错误');toast(r.error||'恢复失败');return;}
+  const res=r.result||{}, restored=res.restored||{}, before=res.before_backup||{};
+  const lines=Object.entries(restored).map(([k,v])=>`${k}: ${v}`).join('\n');
+  if(box)box.innerHTML=`恢复完成。<br>恢复前安全备份：<a href="${esc(before.url||'#')}" download>${esc(before.name||'before_restore')}</a><br>附件恢复数：${esc(res.files_restored||0)}<br>来源版本：${esc(res.source_version||'')} ｜ 来源时间：${esc(res.source_created_at||'')}<br><br>${esc(lines)}`;
+  renderPlmBackupList(r.backups||[]);
+  toast('PLM 恢复完成，正在刷新数据');
+  await load();
+}
+async function restorePlmBackupNow(){
+  const inp=$('plmRestoreFile'), box=$('plmRestoreResult');
+  if(!inp||!inp.files||!inp.files[0]){toast('请选择备份文件');return;}
+  if(!confirm('恢复会覆盖当前 PLM 数据。系统会先自动生成 before_restore 备份。确认继续？'))return;
+  if(box)box.textContent='正在恢复，请不要关闭页面...';
+  try{
+    const fd=new FormData(); fd.append('backup_file', inp.files[0]);
+    const resp=await fetch(API+'?action=plm_restore_backup',{method:'POST',body:fd});
+    const txt=await resp.text(); let r; try{r=JSON.parse(txt)}catch(e){throw new Error('恢复接口没有返回JSON：'+txt.slice(0,300));}
+    if(!r.ok)throw new Error(r.error||'恢复失败');
+    const res=r.result||{}, restored=res.restored||{}, before=res.before_backup||{};
+    const lines=Object.entries(restored).map(([k,v])=>`${k}: ${v}`).join('\n');
+    if(box)box.innerHTML=`恢复完成。<br>恢复前安全备份：<a href="${esc(before.url||'#')}" download>${esc(before.name||'before_restore')}</a><br>附件恢复数：${esc(res.files_restored||0)}<br>来源版本：${esc(res.source_version||'')} ｜ 来源时间：${esc(res.source_created_at||'')}<br><br>${esc(lines)}`;
+    renderPlmBackupList(r.backups||[]);
+    toast('PLM 恢复完成，正在刷新数据');
+    await load();
+  }catch(e){ if(box)box.textContent='恢复失败：'+e.message; toast(e.message); }
+}
+
+function permissionGroups(){const m={};(plmPermissionDefs||[]).forEach(d=>{const g=d.group||'其它';(m[g]||(m[g]=[])).push(d)});return m;}
+function openPermissionModal(){
+  if(!canPerm('manage_permissions')){toast('只有管理员或被授权人员可以设置权限');return;}
+  const users=plmPermissionUsers||[];
+  const first=users[0]?.user_key||'';
+  const html=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal perm-modal"><div class="modal-head"><div><h3>PLM 权限细化</h3><div class="hint">按账号控制新增、修改、删除、BOM、测试、文件、派工、资料包等权限。老板/管理员默认拥有全部权限。</div></div><button class="btn" onclick="closeModal()">关闭</button></div><div class="modal-body"><div class="perm-top"><div class="field"><label>选择用户</label><select id="perm_user" onchange="renderPermissionEditor()">${users.map(u=>`<option value="${esc(u.user_key)}">${esc(u.name||u.username||u.user_key)}${u.role?' · '+esc(u.role):''}${u.is_admin?' · 管理员':''}</option>`).join('')}</select></div><div class="perm-actions"><button class="btn small" onclick="setPermAll(true)">全选</button><button class="btn small" onclick="setPermAll(false)">全不选</button><button class="btn small good" onclick="presetPerm('engineer')">工程常用</button><button class="btn small warn" onclick="presetPerm('sales')">业务常用</button><button class="btn small" onclick="presetPerm('readonly')">只读</button></div></div><div id="perm_editor"></div></div><div class="modal-foot"><div class="hint">建议：删除、还原回收站、删除文件、删除测试、权限设置，只给管理员或主管。</div><button class="btn primary" onclick="savePermissionSetting()">保存权限</button></div></div></div>`;
+  $('modalHost').innerHTML=html;
+  if(first)$('perm_user').value=first;
+  renderPermissionEditor();
+}
+function selectedPermUser(){const key=$('perm_user')?.value||'';return (plmPermissionUsers||[]).find(u=>u.user_key===key)||null;}
+function renderPermissionEditor(){
+  const u=selectedPermUser(); if(!$('perm_editor')||!u){return;}
+  const perms=u.permissions||{}; const groups=permissionGroups();
+  let html='';
+  if(u.is_admin){html+=`<div class="perm-admin-note">${esc(u.name||u.username)} 是管理员/老板角色，默认拥有全部权限；这里保存也不会限制管理员。</div>`;}
+  Object.keys(groups).forEach(g=>{html+=`<div class="perm-group"><h4>${esc(g)}</h4><div class="perm-grid">`+groups[g].map(d=>`<label class="perm-item"><input type="checkbox" data-perm="${esc(d.key)}" ${perms[d.key]?'checked':''}> <span>${esc(d.label)}</span></label>`).join('')+`</div></div>`;});
+  $('perm_editor').innerHTML=html;
+}
+function setPermAll(v){document.querySelectorAll('#perm_editor input[data-perm]').forEach(x=>x.checked=!!v)}
+function presetPerm(type){
+  const keys={readonly:['view_project','view_dashboard','view_dispatch_progress'],
+    sales:['view_project','new_project','edit_project','new_model','edit_model','view_dashboard','upload_file','create_dispatch','view_dispatch_progress','export_package'],
+    engineer:['view_project','new_project','edit_project','delete_project','new_model','edit_model','delete_model','edit_flow','view_dashboard','create_bom','edit_test','edit_issue','upload_file','create_dispatch','view_dispatch_progress','export_package']};
+  const set=new Set(keys[type]||[]);document.querySelectorAll('#perm_editor input[data-perm]').forEach(x=>x.checked=set.has(x.dataset.perm));
+}
+async function savePermissionSetting(){
+  const u=selectedPermUser(); if(!u){toast('请选择用户');return;}
+  const perms={};document.querySelectorAll('#perm_editor input[data-perm]').forEach(x=>perms[x.dataset.perm]=x.checked?1:0);
+  const r=await api('save_plm_permission',{user_key:u.user_key,user_id:u.id||0,username:u.username||'',display_name:u.name||'',role_name:u.role||'',permissions:perms});
+  if(!r.ok){toast(r.error||'保存失败');return;}
+  plmPermissionUsers=r.users||plmPermissionUsers;toast('权限已保存');openPermissionModal();
+}
+async function load(){const r=await api('bootstrap');if(!r.ok){showFatal('PLM载入失败：'+(r.error||'未知错误'));$('detail').innerHTML='<div class="empty dangerText">'+esc(r.error||'载入失败')+'</div>';return;}projects=r.projects||[];models=r.models||[];tests=r.tests||[];testRuns=r.test_runs||[];testTemplates=r.test_templates||[];files=r.files||[];steps=r.steps||[];issues=r.issues||[];logs=r.logs||[];dispatchLinks=r.dispatch_links||[];plmCurrentUser=r.current_user||null;plmIsAdmin=!!r.is_admin;plmPermissions=r.current_permissions||{};plmPermissionDefs=r.permission_defs||[];plmPermissionUsers=r.permission_users||[];plmNoticeCount=Number(r.notice_count||0);plmOnlineCount=Number(r.online_count||0);plmRecycleCounts=r.recycle_counts||{projects:0,models:0};if(!selectedId&&projects[0])selectedId=projects[0].id;if(selectedId&&!projects.some(p=>Number(p.id)===Number(selectedId))){selectedId=projects[0]?.id||0;localStorage.setItem('plm_v85_selected',selectedId)}if(!projects.length){$('detail').innerHTML='<div class="empty">暂无项目，点击右上角“新增项目”开始。</div>'}renderTopInfo();render();}
+function fillFilters(){const e=$('fEngineer').value,c=$('fCustomer').value; $('fEngineer').innerHTML='<option value="">全部工程师</option>'+uniq(projects.map(p=>p.engineer)).map(x=>`<option ${x===e?'selected':''}>${esc(x)}</option>`).join(''); $('fCustomer').innerHTML='<option value="">全部客户</option>'+uniq(projects.map(p=>p.customer)).map(x=>`<option ${x===c?'selected':''}>${esc(x)}</option>`).join(''); if($('projectCols'))$('projectCols').value=String(projectCols); if($('projectListLimit'))$('projectListLimit').value=String(projectListLimit||5)}
+function isProjectDone(p){return String(p&&p.status||'').trim()==='已完成'}
+function isProjectPaused(p){return String(p&&p.status||'').trim()==='暂停'}
+function filteredProjects(){
+  const q=$('q').value.trim().toLowerCase(),fe=$('fEngineer').value,fc=$('fCustomer').value,fs=$('fSource').value,fp=$('fPriority').value,ft=$('fStatus').value;
+  const base=projects.filter(p=>{const hay=[p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.project_no].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!fe||p.engineer===fe)&&(!fc||p.customer===fc)&&(!fs||p.source===fs)&&(!fp||p.priority===fp)&&(!ft||p.status===ft)});
+  // 项目列表排序：进行中/未完成 → 暂停 → 已完成；同组内保持原有顺序，避免影响已有筛选和联动。
+  const rank=p=>isProjectDone(p)?2:(isProjectPaused(p)?1:0);
+  return base.map((p,i)=>({p,i})).sort((a,b)=>{const ar=rank(a.p),br=rank(b.p);if(ar!==br)return ar-br;return a.i-b.i;}).map(x=>x.p);
+}
+function prog(pid){const ms=pModels(pid), ts=pTests(pid), fs=pFiles(pid), st=arrByPid(steps,pid);const doneSteps=st.filter(s=>s.status==='已完成').length;const passTests=ts.filter(t=>['已完成','通过','PASS','合格'].includes(t.status)||['通过','PASS','合格'].includes(t.result)).length;return{models:ms.length,tests:ts.length,files:fs.length,flowTotal:st.length,flowDone:doneSteps,flowPct:st.length?Math.round(doneSteps/st.length*100):0,testDone:passTests,testPct:ts.length?Math.round(passTests/ts.length*100):0}}
+function statusTag(s){const c=s==='已完成'?'green':s==='暂停'?'orange':s==='已取消'?'red':s==='测试中'?'purple':'blue';return `<span class="tag ${c}">${esc(s||'开发中')}</span>`}
+function testIsFail(t){return ['不通过','需整改','待复测','异常'].includes(String(t.status||''))||['不通过','待复测','异常'].includes(String(t.result||''))}
+function issueIsOpen(x){return !['已解决','已关闭','关闭','完成'].includes(String(x.status||''))}
+function projectRisk(p){const pid=Number(p.id)||0;const st=steps.filter(s=>Number(s.project_id)===pid);const late=st.filter(isStepLate).length;const fail=tests.filter(t=>Number(t.project_id)===pid&&testIsFail(t)).length;const issue=issues.filter(x=>Number(x.project_id)===pid&&issueIsOpen(x)).length;const doing=st.filter(s=>String(s.status||'')==='进行中').length;return {late,fail,issues:issue,doing,total:late+fail+issue}}
+function projectRiskClass(r){return r.late||r.fail||r.issues?'risk-danger':(r.doing?'risk-warn':'')}
+function riskPills(r){const a=[];if(r.late)a.push(`<span class="risk-pill red">逾期 ${r.late}</span>`);if(r.fail)a.push(`<span class="risk-pill red">测试异常 ${r.fail}</span>`);if(r.issues)a.push(`<span class="risk-pill orange">问题 ${r.issues}</span>`);if(!a.length&&r.doing)a.push(`<span class="risk-pill purple">进行中 ${r.doing}</span>`);return a.join('')}
+function openProjectTab(id,t){selectedId=Number(id)||0;tab=t||'basic';localStorage.setItem('plm_v85_selected',selectedId);localStorage.setItem('plm_v85_tab',tab);render()}
+function setStatusFilter(v){if($('fStatus'))$('fStatus').value=v||'';render()}
+function renderFocusLine(p,label,tabName){return `<div class="focus-line"><div><b>${esc(p.name||'未命名项目')}</b><small>${esc(p.customer||'-')} ｜ ${esc(label||'')}</small></div><button class="btn small" onclick="openProjectTab(${Number(p.id)||0},'${tabName||'summary'}')">处理</button></div>`}
+function renderFocusPanel(){const el=$('focusPanel');if(!el)return;const riskRows=projects.map(p=>({p,r:projectRisk(p)})).filter(x=>x.r.total>0).sort((a,b)=>b.r.total-a.r.total).slice(0,3);const urgent=projects.filter(p=>p.priority==='P1 紧急').slice(0,3);const noSample=projects.filter(p=>pModels(p.id).length===0).slice(0,3);const dueSoon=projects.filter(p=>{const d=dateOnly(p.due_date);if(!d)return false;const dd=daysBetween(todayStr(),d);return dd>=0&&dd<=7&&p.status!=='已完成'}).slice(0,3);const doingProjects=projects.filter(p=>String(p.status||'')==='开发中'||String(p.status||'')==='测试中').length;el.innerHTML=`<div class="focus-panel"><div class="focus-card primary"><h3>今日重点</h3><span>正在推进 ${doingProjects} 个项目；优先处理红色风险和 P1 项目。</span><div class="focus-list">${riskRows.map(x=>renderFocusLine(x.p,`风险 ${x.r.total} 项`,'summary')).join('')||'<small>暂无明显风险，保持推进即可。</small>'}</div></div><div class="focus-card danger"><b>${riskRows.length}</b><span>风险项目</span><button class="btn small danger" onclick="openAllProjectsModal()">查看总表</button></div><div class="focus-card warn"><b>${urgent.length}</b><span>P1 紧急项目</span><button class="btn small warn" onclick="document.getElementById('fPriority').value='P1 紧急';render()">筛选 P1</button></div><div class="focus-card good"><b>${dueSoon.length}</b><span>7天内到期</span><button class="btn small" onclick="openRndDashboardModal()">看研发看板</button></div><div class="focus-card ${noSample.length?'warn':'good'}"><b>${noSample.length}</b><span>未建样品项目</span><button class="btn small" onclick="${noSample[0]?`openProjectTab(${Number(noSample[0].id)||0},'models')`:'newProject()'}">${noSample.length?'去补样品':'新增项目'}</button></div></div>`}
+function render(){renderTopInfo();fillFilters();renderCards();renderDetail();if($('viewListBtn'))$('viewListBtn').classList.toggle('active',projectView==='list');if($('viewCardBtn'))$('viewCardBtn').classList.toggle('active',projectView==='card')}
+function renderStats(){const total=projects.length,dev=projects.filter(p=>p.status==='开发中').length,test=projects.filter(p=>p.status==='测试中').length,done=projects.filter(p=>p.status==='已完成').length,urgent=projects.filter(p=>p.priority==='P1 紧急').length;const riskAll=projects.map(projectRisk);const overdue=riskAll.reduce((a,r)=>a+r.late,0),bad=riskAll.reduce((a,r)=>a+r.fail,0),open=riskAll.reduce((a,r)=>a+r.issues,0);$('stats').innerHTML=`<div class="stat"><b>${total}</b><span>项目总数</span></div><div class="stat orange"><b>${dev}</b><span>开发中</span></div><div class="stat purple"><b>${test}</b><span>测试中</span></div><div class="stat green"><b>${done}</b><span>已完成</span></div><div class="stat red"><b>${urgent}</b><span>P1紧急</span></div><div class="stat red"><b>${overdue+bad+open}</b><span>需关注事项</span></div>`}
+function projectStatusDot(p){const s=String(p.status||'开发中');const cls=s==='已完成'?'done':s==='暂停'?'pause':s==='已取消'?'cancel':s==='测试中'?'test':'dev';return `<span class="project-dot ${cls}"></span>`}
+function priorityBadge(p){const pri=String(p.priority||'P2 正常');const c=pri.includes('P1')?'red':pri.includes('P3')?'purple':'orange';return `<span class="project-priority ${c}">${esc(pri)}</span>`}
+function projectAvatar(p){if(p.image_path)return `<div class="project-avatar"><img src="${esc(p.image_path)}"></div>`;const name=String(p.name||p.customer||'PLM').trim();return `<div class="project-avatar no">${esc(name.slice(0,1)||'项')}</div>`}
+function projectThumb(p){
+  const name=String(p.name||p.customer||'PLM').trim();
+  const initial=esc(name.slice(0,1)||'项');
+  if(p.image_path){
+    const fallback=`<span>${initial}</span><small>未传图</small>`;
+    return `<div class="project-thumb"><img src="${esc(p.image_path)}" onerror="this.parentNode.classList.add('no');this.parentNode.innerHTML='${fallback.replace(/'/g,"&#39;")}'"></div>`;
+  }
+  return `<div class="project-thumb no"><span>${initial}</span><small>未传图</small></div>`;
+}
+function projectRailThumb(p){
+  const id=Number(p.id)||0;
+  const active=id===Number(selectedId)?'active':'';
+  const name=String(p.name||p.customer||'PLM').trim();
+  const initial=esc(name.slice(0,1)||'项');
+  const title=esc((p.project_no? p.project_no+' · ':'')+(p.name||'未命名项目'));
+  if(p.image_path){
+    return `<button class="project-rail-icon-card ${active}" onclick="selectProjectFromRail(${id})" title="${title}"><img src="${esc(p.image_path)}" onerror="var p=this.parentNode;if(p){p.classList.add('no');p.innerHTML='${initial}';}"></button>`;
+  }
+  return `<button class="project-rail-icon-card no ${active}" onclick="selectProjectFromRail(${id})" title="${title}">${initial}</button>`;
+}
+function selectProjectFromRail(id){
+  selectedId=Number(id)||0;
+  localStorage.setItem('plm_v85_selected',selectedId);
+  render();
+}
+function projectListCategory(title,count,cls,key){
+  const k=key||cls||title;
+  const closed=projectGroupIsCollapsed(k);
+  return `<div class="project-list-category ${cls||''} ${closed?'collapsed':''}" onclick="toggleProjectGroup('${esc(k)}')" title="点击折叠/展开"><span class="group-left"><i class="group-arrow">${closed?'▶':'▼'}</i><span>${esc(title)}</span></span><b>${count}</b></div>`;
+}
+function renderProjectListRow(p){
+  const g=prog(p.id);
+  const active=Number(p.id)===Number(selectedId)?'active':'';
+  const updatedFull=dateTimeFull(p.updated_at)||dateOnly(p.updated_at)||'-';
+  const risk=projectRisk(p),riskCls=projectRiskClass(risk);
+  const doneCls=isProjectDone(p)?'project-done-row':(isProjectPaused(p)?'project-paused-row':'');
+  return `<div class="project-row-modern ${active} ${riskCls} ${doneCls}" onclick="selectedId=${p.id};localStorage.setItem('plm_v85_selected',selectedId);render()">
+    ${projectThumb(p)}
+    <div class="project-row-main">
+      <div class="project-title-line"><h2>${esc(p.name||'未命名项目')}</h2>${projectStatusDot(p)}</div>
+      <div class="project-subline"><b>${esc(p.project_no||'-')}</b> ｜ ${esc(p.customer||'未填客户')} ｜ ${esc(p.engineer||'-')}</div>
+      <div class="project-row-metrics"><span>样品 ${g.models}</span><span>流程 ${g.flowDone}/${g.flowTotal}</span><span>测试 ${g.testDone}/${g.tests}</span><span>文件 ${g.files}</span></div><div class="project-risk-strip">${riskPills(risk)}</div>
+      <div class="project-progress-pair">
+        <div class="project-mini-progress-row flow"><span>工</span><div class="bar"><i style="width:${g.flowPct}%"></i></div><b>${g.flowPct}%</b></div>
+        <div class="project-mini-progress-row test"><span>测</span><div class="bar"><i style="width:${g.testPct}%"></i></div><b>${g.testPct}%</b></div>
+      </div>
+      <div class="project-mini-footer only-time"><span>更新时间：${esc(updatedFull)}</span></div>
+    </div>
+    <div class="project-row-actions">${statusTag(p.status)}${priorityBadge(p)}</div>
+  </div>`;
+}
+function renderCards(){
+  const sig=currentProjectFilterSig();
+  if(projectListLastFilterSig===null) projectListLastFilterSig=sig;
+  else if(sig!==projectListLastFilterSig){projectListPage=1;projectListLastFilterSig=sig;localStorage.setItem('plm_v85_project_page','1')}
+  const raw=filteredProjects();
+  const totalList=raw.length;
+  const pageSize=Math.max(1,Number(projectListLimit)||10);
+  const totalPages=Math.max(1,Math.ceil(totalList/pageSize));
+  if(projectListPage<1) projectListPage=1;
+  if(projectListPage>totalPages) projectListPage=totalPages;
+  localStorage.setItem('plm_v85_project_page',String(projectListPage));
+  const start=(projectListPage-1)*pageSize;
+  const list=raw.slice(start,start+pageSize);
+  const box=$('cards');
+  const main=$('mainWrap');
+  if(main) main.classList.toggle('project-collapsed', projectListCollapsed);
+  if($('projectCollapseBtn')) $('projectCollapseBtn').textContent = projectListCollapsed ? '展开项目列表' : '收起项目列表';
+  if(projectListCollapsed){
+    box.className='cards project-list-collapsed-rail';
+    const icons=list.map(p=>projectRailThumb(p)).join('');
+    box.innerHTML=`<div class="project-rail-shell" title="项目列表已收起"><button class="project-rail-expand" onclick="toggleProjectListCollapse(false)" title="展开项目列表">☰</button><div class="project-rail-icons">${icons||'<div class="hint" style="writing-mode:vertical-rl">无项目</div>'}</div><div class="project-rail-total" title="项目数量">${totalList}</div></div>`;
+    return;
+  }
+  box.className='cards project-list-modern project-list-compact project-list-with-category';
+  box.style.setProperty('--project-cols',1);
+  if(!list.length){box.innerHTML='<div class="empty">没有符合条件的项目</div>';return}
+  const doneTotal=raw.filter(isProjectDone).length;
+  const pausedTotal=raw.filter(isProjectPaused).length;
+  const activeTotal=totalList-doneTotal-pausedTotal;
+  const activeRows=list.filter(p=>!isProjectDone(p)&&!isProjectPaused(p));
+  const pausedRows=list.filter(isProjectPaused);
+  const doneRows=list.filter(isProjectDone);
+  const html=[];
+  if(activeRows.length){html.push(projectListCategory('进行中 / 未完成',activeTotal,'active','active'));if(!projectGroupIsCollapsed('active'))activeRows.forEach(p=>html.push(renderProjectListRow(p)));}
+  if(pausedRows.length){html.push(projectListCategory('暂停',pausedTotal,'paused','paused'));if(!projectGroupIsCollapsed('paused'))pausedRows.forEach(p=>html.push(renderProjectListRow(p)));}
+  if(doneRows.length){html.push(projectListCategory('已完成',doneTotal,'done','done'));if(!projectGroupIsCollapsed('done'))doneRows.forEach(p=>html.push(renderProjectListRow(p)));}
+  if(!pausedRows.length&&pausedTotal>0&&(!$('fStatus')||!$('fStatus').value))html.push(`<div class="project-list-done-note" style="border-color:#fed7aa;background:#fff7ed;color:#c2410c">暂停项目 ${pausedTotal} 个，已单独放在进行中之后；翻页或筛选“暂停”可查看。</div>`);
+  if(!doneRows.length&&doneTotal>0&&(!$('fStatus')||!$('fStatus').value))html.push(`<div class="project-list-done-note">已完成项目 ${doneTotal} 个，已放在列表底部；翻到后面页或筛选“已完成”可查看。</div>`);
+  html.push(renderProjectPager(totalList,pageSize,projectListPage,totalPages,start,list.length));
+  box.innerHTML=html.join('');
+}
+function tabBtn(t,n){return `<button class="tab ${tab===t?'active':''}" onclick="tab='${t}';localStorage.setItem('plm_v85_tab',tab);renderDetail()">${n}</button>`}
+function projectPauseActionButton(p){return String(p.status||'')==='暂停'?`<button class="btn good" onclick="openResumeProjectModal()">恢复项目</button>`:`<button class="btn warn" onclick="openPauseProjectModal()">暂停项目</button>`}
+function renderDetail(){const p=cur();if(!p){$('detail').innerHTML='<div class="empty">请选择或新增项目</div>';return}const g=prog(p.id);const ps=projectDispatchSummary(p.id);$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(p.name||'未命名项目')}</h2><div class="tags">${statusTag(p.status)}<span class="tag orange">${esc(p.priority||'P2 正常')}</span><span class="tag blue">${esc(p.source||'')}</span><span class="tag">流程 ${g.flowDone}/${g.flowTotal}</span><span class="tag green">测试 ${g.testDone}/${g.tests}</span>${ps.total?`<span class="tag blue">项目派工 ${ps.done}/${ps.total}</span>`:''}</div><div class="hint">项目号：${esc(p.project_no||'-')} ｜ 客户：${esc(p.customer||'-')} ｜ 更新时间：${esc(p.updated_at||'-')}</div></div><div class="actions"><button class="btn good" onclick="saveProjectFromForm()">保存项目</button>${projectPauseActionButton(p)}<button class="btn warn" onclick="openDispatch()">生成/查看派工</button><button class="btn" onclick="openProjectDispatchProgress()">派工进度${ps.total?' '+ps.done+'/'+ps.total:''}</button><button class="btn primary" onclick="openProjectPackageModal()">项目资料包</button><button class="btn danger" onclick="deleteProject()">删除项目</button></div></div><div class="tabs">${tabBtn('basic','基本资料')}${tabBtn('models','样品管理')}${tabBtn('flow','开发导航图')}${tabBtn('tests','测试中心')}${tabBtn('issues','问题闭环')}${tabBtn('files','文件中心')}${tabBtn('summary','项目总览')}</div><div id="tabbody" class="tabbody"></div>`;try{if(tab==='basic')renderBasic(p);else if(tab==='models')renderModels(p);else if(tab==='flow')renderFlow(p);else if(tab==='issues')renderIssues(p);else if(tab==='tests')renderTests(p);else if(tab==='files')renderFiles(p);else if(tab==='summary')renderSummary(p);else renderBasic(p);}catch(e){$('tabbody').innerHTML='<div class="empty dangerText">当前标签页渲染失败：'+esc(e.message)+'</div>';}}
+function renderBasic(p){$('tabbody').innerHTML=`<div class="basic-pro basic-clean-layout"><div class="basic-block basic-main-block"><div class="section-title"><i></i><span>项目基础资料</span></div><div class="grid3 basic-fields-grid"><div class="field"><label>项目号</label><input id="p_project_no" value="${esc(p.project_no||'')}" placeholder="如 AT-260602EX130"></div><div class="field"><label>项目名称</label><input id="p_name" value="${esc(p.name||'')}" placeholder="如 安铝杯-开发"></div><div class="field"><label>客户</label><input id="p_customer" value="${esc(p.customer||'')}" placeholder="客户代码/客户名"></div><div class="field"><label>工程师 / 负责人</label><input id="p_engineer" value="${esc(p.engineer||'')}"></div><div class="field"><label>系列</label><input id="p_series" value="${esc(p.series||'')}"></div><div class="field"><label>主型号</label><input id="p_model" value="${esc(p.model||'')}"></div><div class="field"><label>产品类型</label><input id="p_product_type" value="${esc(p.product_type||'')}" placeholder="嵌入式 / 导轨 / 磁吸 / 户外"></div><div class="field"><label>来源</label><select id="p_source">${opt(['工厂自行开发','客户下单开发'],p.source)}</select></div><div class="field"><label>优先级</label><select id="p_priority">${opt(['P1 紧急','P2 正常','P3 储备'],p.priority)}</select></div><div class="field"><label>状态</label><select id="p_status">${opt(['未开始','开发中','测试中','暂停','已完成','已取消'],p.status)}</select></div><div class="field"><label>计划完成日期</label><input id="p_due_date" type="date" value="${esc(dateOnly(p.due_date))}"></div></div></div><div class="basic-block basic-image-block"><div class="section-title"><i></i><span>项目图片与备注</span></div><div class="project-image-drop"><h3>项目图片上传</h3><p class="hint">用于左侧项目列表缩略图。上传分类选“产品图片”或“项目图片”即可自动显示。</p>${uploadBox('产品图片',0,0)}</div><div class="field"><label>项目备注 / 客户要求 / 开发重点</label><textarea id="p_remark" placeholder="记录客户要求、结构风险、光学要求、交期重点等">${esc(p.remark||'')}</textarea></div></div></div>`}
+async function saveProjectFromForm(){const p=cur();if(!p)return;const d={id:p.id,project_no:$('p_project_no')?.value??p.project_no,name:$('p_name')?.value??p.name,customer:$('p_customer')?.value??p.customer,engineer:$('p_engineer')?.value??p.engineer,series:$('p_series')?.value??p.series,model:$('p_model')?.value??p.model,product_type:$('p_product_type')?.value??p.product_type,source:$('p_source')?.value??p.source,priority:$('p_priority')?.value??p.priority,status:$('p_status')?.value??p.status,due_date:$('p_due_date')?.value??p.due_date,remark:$('p_remark')?.value??p.remark};const r=await api('save_project',d);toast(r.ok?'项目已保存':r.error);await load()}
+async function newProject(){if(!guardPerm('new_project','新增项目'))return;const r=await api('new_project');if(r.ok){selectedId=r.id;tab='basic';localStorage.setItem('plm_v85_selected',selectedId);localStorage.setItem('plm_v85_tab','basic');toast('已新增项目，已进入基本资料');await load()}else toast(r.error||'新增失败')}
+async function deleteProject(){const p=cur();if(!p)return;const reason=prompt('删除项目会进入回收站。请填写删除原因：','');if(reason===null)return;if(!reason.trim()){toast('删除项目必须填写原因');return}const r=await api('delete_project',{id:p.id,reason});toast(r.ok?'项目已移入回收站':r.error);if(r.ok)selectedId=0;await load()}
+function openPauseProjectModal(){const p=cur();if(!p)return;if(!guardPerm('edit_project','暂停项目'))return;$('modalHost').innerHTML=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal" style="width:min(680px,96vw)"><div class="modal-head"><div><h3>暂停整个项目</h3><div class="hint">项目：${esc(p.name||'-')}</div></div><button class="btn" onclick="closeModal()">关闭</button></div><div class="modal-body"><div class="field"><label>暂停原因（必填）</label><textarea id="pause_reason" placeholder="例如：客户确认延后 / 结构方案待定 / 供应商物料未到 / 优先级后移"></textarea></div><div class="field"><label>预计恢复日期</label><input id="pause_expected" type="date"></div><div class="grid3"><label class="tag blue" style="justify-content:flex-start"><input id="pause_flow" type="checkbox" checked style="width:auto"> 同步暂停流程</label><label class="tag green" style="justify-content:flex-start"><input id="pause_tests" type="checkbox" checked style="width:auto"> 同步暂停测试</label><label class="tag orange" style="justify-content:flex-start"><input id="pause_dispatch" type="checkbox" checked style="width:auto"> 同步暂停派工</label></div><div class="hint" style="margin-top:10px">已完成/已取消的流程、测试和派工不会被改动。恢复项目时会按暂停前状态还原。</div><div class="actions" style="justify-content:flex-end;margin-top:14px"><button class="btn" onclick="closeModal()">取消</button><button class="btn warn" onclick="pauseProjectNow()">确认暂停</button></div></div></div></div>`}
+async function pauseProjectNow(){const p=cur();if(!p)return;const reason=($('pause_reason')?.value||'').trim();if(!reason){toast('请填写暂停原因');return}const r=await api('pause_project',{id:p.id,reason,expected_resume:$('pause_expected')?.value||'',sync_flow:$('pause_flow')?.checked?1:0,sync_tests:$('pause_tests')?.checked?1:0,sync_dispatch:$('pause_dispatch')?.checked?1:0});if(r.ok){const c=r.counts||{};toast(`项目已暂停：流程 ${c.steps||0}，测试 ${c.tests||0}，派工 ${c.dispatch||0}`);closeModal();await load()}else toast(r.error||'暂停失败')}
+function openResumeProjectModal(){const p=cur();if(!p)return;if(!guardPerm('edit_project','恢复项目'))return;$('modalHost').innerHTML=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal" style="width:min(620px,96vw)"><div class="modal-head"><div><h3>恢复整个项目</h3><div class="hint">项目：${esc(p.name||'-')}</div></div><button class="btn" onclick="closeModal()">关闭</button></div><div class="modal-body"><div class="statusline">暂停原因：${esc(p.pause_reason||'-')}<br>暂停时间：${esc(p.paused_at||'-')} ｜ 预计恢复：${esc(dateOnly(p.pause_expected_resume)||'-')}</div><div class="field"><label>恢复说明</label><textarea id="resume_reason" placeholder="例如：客户已确认，恢复开发">项目恢复开发</textarea></div><div class="hint">恢复后会尽量按暂停前状态还原样品、流程、测试和派工；已被手动改成完成/取消的内容不会被强制覆盖。</div><div class="actions" style="justify-content:flex-end;margin-top:14px"><button class="btn" onclick="closeModal()">取消</button><button class="btn good" onclick="resumeProjectNow()">确认恢复</button></div></div></div></div>`}
+async function resumeProjectNow(){const p=cur();if(!p)return;const r=await api('resume_project',{id:p.id,reason:$('resume_reason')?.value||'项目恢复开发'});if(r.ok){const c=r.counts||{};toast(`项目已恢复：流程 ${c.steps||0}，测试 ${c.tests||0}，派工 ${c.dispatch||0}`);closeModal();await load()}else toast(r.error||'恢复失败')}
+
+function issueStatusTag(st){const s=String(st||'待处理');const c=['已解决','已关闭'].includes(s)?'green':(s==='处理中'?'blue':(s==='待处理'?'orange':'red'));return `<span class="tag ${c}">${esc(s)}</span>`}
+function issueSeverityTag(sev){const s=String(sev||'中');const c=s==='高'?'red':(s==='低'?'green':'orange');return `<span class="tag ${c}">${esc(s)}优先</span>`}
+function issueMiniRow(i){return `<div class="issue-mini-row"><b>${esc(i.title||'未命名问题')}</b><div class="hint">${esc(i.status||'待处理')} ｜ ${esc(i.severity||'中')} ｜ ${esc(i.owner||'-')}</div></div>`}
+function renderIssues(p){
+  const ms=pModels(p.id), ps=issues.filter(x=>Number(x.project_id)===Number(p.id));
+  const open=ps.filter(x=>!['已解决','已关闭'].includes(String(x.status||''))).length;
+  $('tabbody').innerHTML=`<div class="sample-toolbar-pro"><div><h3 style="margin:0">问题闭环</h3><div class="hint">记录样品开发中的温升、光斑、结构、表面处理、客户修改等问题，并关联样品、步骤、文件。</div></div><div class="sample-summary"><span class="key-mini">问题 ${ps.length}</span><span class="key-mini ${open?'warn':'ok'}">未关闭 ${open}</span></div></div><div class="issue-board"><div class="issue-form"><h3 style="margin-top:0">新增问题</h3><div class="field"><label>关联样品</label>${modelSelectHtml('issue_model',ms[0]?.id||0,false)}</div><div class="field"><label>关联步骤</label>${stepSelectHtml('issue_step',0,Number(ms[0]?.id||0),true)}</div><div class="field"><label>问题标题</label><input id="issue_title" placeholder="如：温升过高 / IES角度偏大 / 表面处理起泡"></div><div class="grid2"><div class="field"><label>来源</label><select id="issue_source">${opt(['手工记录','温升测试','IES测试','积分球测试','EMC测试','客户反馈','供应商反馈','装配验证'],'手工记录')}</select></div><div class="field"><label>严重程度</label><select id="issue_severity">${opt(['低','中','高'],'中')}</select></div></div><div class="grid2"><div class="field"><label>状态</label><select id="issue_status">${opt(['待处理','处理中','已解决','已关闭'],'待处理')}</select></div><div class="field"><label>负责人</label><input id="issue_owner" placeholder="负责人"></div></div><div class="field"><label>解决方案</label><textarea id="issue_solution" placeholder="怎么解决，比如换电源位置、修改反光杯、加散热、重新表面处理"></textarea></div><div class="field"><label>备注</label><textarea id="issue_note" placeholder="问题现象、测试数据、客户要求等"></textarea></div><button class="btn primary" onclick="saveIssue(0,${p.id})">保存问题</button></div><div class="issue-list-panel"><h3 style="margin-top:0">问题列表</h3>${ps.map(issueRow).join('')||'<div class="empty">暂无问题记录</div>'}</div></div>`;
+  const im=$('issue_model');if(im)im.onchange=()=>{const st=$('issue_step');if(st)st.outerHTML=stepSelectHtml('issue_step',0,Number(im.value||0),true)};
+}
+function issueRow(i){const m=models.find(x=>Number(x.id)===Number(i.model_id));const st=steps.find(x=>Number(x.id)===Number(i.step_id));const cls=String(i.severity)==='高'?'high':(['已解决','已关闭'].includes(String(i.status||''))?'closed':'');return `<div class="issue-row ${cls}" data-issue-id="${Number(i.id||0)}"><div><div class="issue-title">${esc(i.title||'未命名问题')}</div><div class="tags">${issueStatusTag(i.status)}${issueSeverityTag(i.severity)}<span class="tag">样品：${esc(m?modelLabel(m):'-')}</span>${st?`<span class="tag blue">步骤：${esc(st.title||'')}</span>`:''}</div><div class="issue-meta">来源：${esc(i.source||'-')} ｜ 负责人：${esc(i.owner||'-')} ｜ 创建：${esc(i.created_at||'-')}</div>${i.solution?`<div class="issue-meta"><b>解决方案：</b>${esc(i.solution)}</div>`:''}${i.note?`<div class="issue-meta"><b>备注：</b>${esc(i.note)}</div>`:''}</div><div class="issue-actions"><button class="btn small good" onclick="closeIssue(${i.id},${i.project_id})">关闭</button><button class="btn small" onclick="editIssue(${i.id})">编辑</button><button class="btn small danger" onclick="deleteIssue(${i.id})">删除</button></div></div>`}
+function editIssue(id){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const title=prompt('问题标题',i.title||'');if(title===null)return;const status=prompt('状态：待处理/处理中/已解决/已关闭',i.status||'待处理');if(status===null)return;const solution=prompt('解决方案',i.solution||'');if(solution===null)return;saveIssue(id,i.project_id,{title,status,solution,model_id:i.model_id,step_id:i.step_id,source:i.source,severity:i.severity,owner:i.owner,note:i.note})}
+async function closeIssue(id,pid){const i=issues.find(x=>Number(x.id)===Number(id));if(!i)return;const r=await api('save_issue',{...i,status:'已关闭'});toast(r.ok?'问题已关闭':r.error);await load()}
+async function deleteIssue(id){if(!confirm('删除这个问题记录？'))return;const r=await api('delete_issue',{id});toast(r.ok?'问题已删除':r.error);await load()}
+async function saveIssue(id,pid,override=null){let d;if(override){d={id,project_id:pid,...override}}else{d={id,project_id:pid,model_id:Number($('issue_model')?.value||0),step_id:Number($('issue_step')?.value||0),title:$('issue_title')?.value||'',source:$('issue_source')?.value||'',severity:$('issue_severity')?.value||'中',status:$('issue_status')?.value||'待处理',owner:$('issue_owner')?.value||'',solution:$('issue_solution')?.value||'',note:$('issue_note')?.value||''}}if(!String(d.title||'').trim()){toast('请填写问题标题');return}const r=await api('save_issue',d);toast(r.ok?'问题已保存':r.error);await load()}
+function sampleMediaFiles(modelId, kind='image'){
+  const cats = kind==='drawing' ? ['尺寸图','结构图纸','加工资料'] : ['样品图片','产品图片','项目图片'];
+  return files.filter(f=>Number(f.model_id)===Number(modelId) && cats.includes(String(f.category||'')))
+    .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')) || Number(b.id||0)-Number(a.id||0));
+}
+function sampleMediaMain(modelId, kind='image'){
+  const list=sampleMediaFiles(modelId,kind);
+  return list[0]||null;
+}
+function sampleMediaPath(m, kind='image'){
+  const f=sampleMediaMain(m.id,kind);
+  if(f&&f.file_path)return f.file_path;
+  if(kind==='drawing')return m.naming_drawing_path||'';
+  return m.naming_image_path||'';
+}
+function sampleMediaTile(m, kind='image', mini=false){
+  const label=kind==='drawing'?'尺寸图':'样品图';
+  const f=sampleMediaMain(m.id,kind);
+  const path=sampleMediaPath(m,kind);
+  const name=f?(f.title||f.original_name||f.file_name||label):(kind==='drawing'?'命名系统尺寸图':'命名系统图片');
+  const fileId=f?Number(f.id||0):0;
+  const cls=mini?' mini':'';
+  if(path){
+    const isImg=/\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(String(path));
+    const isPdf=/\.pdf(\?.*)?$/i.test(String(path));
+    const body=isImg?`<img src="${esc(path)}" onerror="this.closest('.sample-media-tile').classList.add('broken')">`:(isPdf?`<div class="sample-media-pdf">PDF</div>`:`<div class="sample-media-pdf">文件</div>`);
+    const click=fileId?`openTestFilePreview(${fileId})`:`openSamplePathPreview('${encodeURIComponent(path)}','${encodeURIComponent(name)}')`;
+    return `<div class="sample-media-tile${cls}" onclick="${click}" title="点击预览：${esc(name)}"><div class="sample-media-label">${label}</div>${body}<div class="sample-media-name">${esc(name)}</div></div>`;
+  }
+  return `<div class="sample-media-tile empty${cls}"><div class="sample-media-label">${label}</div><div class="sample-media-plus">+</div><div class="sample-media-name">未上传</div></div>`;
+}
+function openSamplePathPreview(encodedPath, encodedName){
+  const path=decodeURIComponent(encodedPath||'');
+  const name=esc(decodeURIComponent(encodedName||'文件预览'));
+  if(!path){toast('没有可预览文件');return;}
+  const lower=path.toLowerCase();
+  const body=/\.(jpg|jpeg|png|webp|gif)(\?.*)?$/.test(lower)?`<div class="file-preview-large"><img src="${esc(path)}"></div>`:(/\.pdf(\?.*)?$/.test(lower)?`<div class="file-preview-large"><iframe src="${esc(path)}"></iframe></div>`:`<div class="file-preview-large"><div class="empty" style="border:0;background:transparent">文件预览<br><span class="hint">此格式建议新窗口打开</span></div></div>`);
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal sample-preview-modal"><div class="modal-head"><div><h3>${name}</h3><div class="hint">样品图片 / 尺寸图弹窗预览。</div></div><div class="actions"><a class="btn small" href="${esc(path)}" target="_blank">新窗口打开</a><button class="btn small" onclick="this.closest('.modal-mask').remove()">关闭</button></div></div><div class="modal-body">${body}</div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+function renderSampleMediaSection(m){
+  const imgFiles=sampleMediaFiles(m.id,'image');
+  const drawFiles=sampleMediaFiles(m.id,'drawing');
+  const mediaRows=[...imgFiles,...drawFiles].slice(0,8);
+  const listHtml=mediaRows.map(f=>`<button class="sample-file-chip" onclick="openTestFilePreview(${Number(f.id)})"><span>${esc(f.category||'文件')}</span><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b></button>`).join('')||'<div class="hint">暂无样品图片或尺寸图。</div>';
+  return `<div class="sample-section sample-media-section"><div class="sample-section-head"><h4>样品图片 / 尺寸图</h4><div class="hint">弹窗预览，图片和尺寸图也会进入文件中心。</div></div><div class="sample-media-grid">${sampleMediaTile(m,'image')}${sampleMediaTile(m,'drawing')}</div><div class="sample-media-list">${listHtml}</div><details class="sample-upload-fold"><summary>上传样品图 / 尺寸图</summary><div class="sample-upload-grid"><div><b>样品图片</b>${uploadBox('样品图片',m.id,0,false,0,0)}</div><div><b>尺寸图</b>${uploadBox('尺寸图',m.id,0,false,0,0)}</div></div></details></div>`;
+}
+function renderModels(p){
+  const arr=pModels(p.id);
+  const ready=arr.filter(m=>m.chip_name||m.optical_name||m.driver_name||m.accessories_name).length;
+  let active=Number(localStorage.getItem('plm_v8516_active_model_'+p.id)||0);
+  if(!arr.some(m=>Number(m.id)===active)) active=arr[0]?Number(arr[0].id):0;
+  if(active) localStorage.setItem('plm_v8516_active_model_'+p.id,active);
+  const selected=arr.find(m=>Number(m.id)===active);
+  const q=(localStorage.getItem('plm_v8587_sample_q_'+p.id)||'').trim();
+  const filtered=q?arr.filter(m=>String([m.name,m.model,m.naming_model_no,m.sample_version,m.status,m.power,m.beam,m.cct,m.test_status,m.note].join(' ')).toLowerCase().includes(q.toLowerCase())):arr;
+  const openIssues=issues.filter(x=>Number(x.project_id)===Number(p.id)&&!['已解决','已关闭'].includes(String(x.status||''))).length;
+  $('tabbody').innerHTML=`<div class="sample-toolbar-pro sample-toolbar-split"><div><h3 style="margin:0">样品管理</h3><div class="hint">左边是样品节点，右边是当前样品详情。操作逻辑和测试中心一致，新增/保存/复制版本功能保留。</div><div class="sample-split-topline"><span class="key-mini">样品 ${arr.length}</span><span class="key-mini ${ready?'ok':'warn'}">关键元器件 ${ready}/${arr.length}</span><span class="key-mini ${openIssues?'warn':'ok'}">未关闭问题 ${openIssues}</span><span class="key-mini blue">当前：${selected?esc(modelLabel(selected)):'-'}</span></div></div><div class="sample-summary"><button class="btn primary" onclick="newModel(${p.id})">新增样品</button><button class="btn" onclick="gotoTab('flow')">开发导航图</button><button class="btn" onclick="gotoTab('tests')">测试中心</button></div></div><div class="sample-split-layout"><div class="sample-left-panel"><div class="sample-left-head"><h3>样品节点</h3><div class="hint">点击左侧样品，右侧编辑详情。</div><div class="sample-left-search"><input id="sampleNodeSearch" value="${esc(q)}" placeholder="搜索样品 / 型号 / 状态" oninput="localStorage.setItem('plm_v8587_sample_q_${p.id}',this.value);renderModels(cur())"><button class="btn small" onclick="localStorage.removeItem('plm_v8587_sample_q_${p.id}');renderModels(cur())">清</button></div></div><div class="sample-node-list">${filtered.map(m=>sampleNavCard(m,Number(m.id)===active,p.id)).join('')||'<div class="empty">没有匹配样品</div>'}</div></div><div class="sample-right-panel">${selected?modelCard(selected,true,p.id):'<div class="sample-right-empty">暂无样品，点击“新增样品”开始。</div>'}</div></div>`;
+  setTimeout(updateAllSampleDimensionFields,0);
+}
+function sampleNavCard(m,active,pid){
+  const filled=[m.chip_name,m.optical_name,m.driver_name,m.accessories_name].filter(Boolean).length;
+  const ist=sampleIssueStats(m.id);
+  const ts=tests.filter(x=>Number(x.model_id)===Number(m.id));
+  const pass=ts.filter(t=>String(t.status||t.result||'').includes('通过')||String(t.status||'').includes('完成')).length;
+  const bad=ts.filter(t=>/不通过|失败|异常|待复测|需整改/.test(String([t.status,t.result,t.test_conclusion,t.note].join(' ')))).length;
+  const fs=files.filter(x=>Number(x.model_id)===Number(m.id)).length;
+  const title=esc(m.name||m.model||m.naming_model_no||'未命名样品');
+  const meta1=`${esc(m.model||m.naming_model_no||'-')} ｜ ${esc(m.sample_version||'V1')}`;
+  const meta2=`${esc(m.power||'-')} ｜ ${esc(m.beam||'-')} ｜ ${esc(m.cct||'-')}`;
+  return `<div class="sample-node-card ${active?'active':''}" onclick="selectModelAccordion(${pid},${Number(m.id)||0})"><div class="sample-node-inner"><div class="sample-node-title">${title}</div><div class="sample-node-meta">${meta1}<br>${meta2}</div><div class="sample-node-tags">${statusTag(m.status||'开发中')}${sampleNamingTag(m)}<span class="tag ${bad?'red':(pass?'green':'blue')}">测试 ${pass}/${ts.length}</span><span class="tag ${filled===4?'green':'orange'}">物料 ${filled}/4</span><span class="tag ${ist.open?'red':'green'}">问题 ${ist.open}</span><span class="tag blue">文件 ${fs}</span></div><div class="sample-node-media">${sampleMediaTile(m,'image',true)}${sampleMediaTile(m,'drawing',true)}</div></div></div>`;
+}
+function selectModelAccordion(pid,id){localStorage.setItem('plm_v8516_active_model_'+pid,id);renderModels(cur())}
+function componentSimpleField(id,label,icon,prefix,m,placeholder){
+  const isAcc=prefix==='accessories';
+  const mid=isAcc?(m.accessories_material_ids||''):(m[prefix+'_material_id']||0);
+  const name=isAcc?(m.accessories_name||''):(m[prefix+'_name']||'');
+  const brand=isAcc?(m.accessories_brand||''):(m[prefix+'_brand']||'');
+  const spec=isAcc?(m.accessories_spec||''):(m[prefix+'_spec']||'');
+  const materialInput=isAcc?`<input id="m_accessories_material_ids_${id}" type="hidden" value="${esc(mid)}">`:`<input id="m_${prefix}_material_id_${id}" type="hidden" value="${esc(mid)}">`;
+  const brandInput=isAcc?`<input id="m_accessories_brand_${id}" type="hidden" value="${esc(brand)}">`:`<input id="m_${prefix}_brand_${id}" type="hidden" value="${esc(brand)}">`;
+  const specInput=isAcc?`<input id="m_accessories_spec_${id}" type="hidden" value="${esc(spec)}">`:`<input id="m_${prefix}_spec_${id}" type="hidden" value="${esc(spec)}">`;
+  const nameId=isAcc?`m_accessories_name_${id}`:`m_${prefix}_name_${id}`;
+  const metaId=isAcc?`m_accessories_mat_${id}`:`m_${prefix}_mat_${id}`;
+  const suggestId=isAcc?`m_accessories_suggest_${id}`:`m_${prefix}_suggest_${id}`;
+  return `<div class="component-simple"><label>${esc(label)}</label><div class="component-simple-row"><input id="${nameId}" value="${esc(name)}" placeholder="${esc(placeholder)}" autocomplete="off" oninput="onBomMaterialInput(${id},'${prefix}','${label}')" onfocus="onBomMaterialFocus(${id},'${prefix}','${label}')" onkeydown="if(event.key==='Enter'){event.preventDefault();runBomSearch(${id},'${prefix}','${label}',true)}"><button type="button" class="bom-dot-btn" title="打开BOM共享物料库筛选" onclick="openBomMaterialModal(${id},'${prefix}','${label}')">...</button></div>${brandInput}${specInput}${materialInput}<div id="${metaId}" class="component-simple-meta ${mid?'ok':''}">${mid?'已联动BOM：'+esc(mid):'未联动BOM'}</div><div id="${suggestId}" class="bom-suggestions"></div></div>`;
+}
+function componentInlinePanel(m){
+  const id=m.id;
+  return `<div class="key-components-inline"><div class="key-components-head"><b>关键元器件</b><span>输入可模糊查找，右侧 ... 可全功能筛选 BOM 物料库</span></div><div class="component-simple-grid">${componentSimpleField(id,'光源/芯片','芯','chip',m,'如 CREE XPG4 / COB')}${componentSimpleField(id,'光学','光','optical',m,'如透镜 / 反光杯')}${componentSimpleField(id,'电源','电','driver',m,'如驱动电源')}${componentSimpleField(id,'附加/配件','配','accessories',m,'如接头 / 防水圈 / 螺丝包')}</div></div>`;
+}
+
+function sampleDimensionPanel(m){
+  const id=m.id;
+  const catOpts=['嵌入式圆形','嵌入式方形','嵌入式','导轨灯','明装灯','磁吸灯','吊线灯','线性灯','户外灯','面板灯','筒灯','射灯','其它'];
+  return `<div class="sample-dimension-grid" id="m_dim_box_${id}">
+    <div class="field"><label>类别</label><input id="m_product_category_${id}" list="m_category_list_${id}" value="${esc(m.product_category||'')}" placeholder="嵌入式 / 导轨灯 / 明装灯" oninput="updateSampleDimensionFields(${id})"><datalist id="m_category_list_${id}">${catOpts.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
+    <div class="field dim-field dim-aperture" data-dim-id="${id}"><label>开孔</label><input id="m_opening_size_${id}" value="${esc(m.opening_size||'')}" placeholder="如 075"></div>
+    <div class="field dim-field dim-diameter" data-dim-id="${id}"><label>直径</label><input id="m_diameter_${id}" value="${esc(m.diameter||'')}" placeholder="如 075"></div>
+    <div class="field dim-field dim-length" data-dim-id="${id}"><label>长</label><input id="m_length_mm_${id}" value="${esc(m.length_mm||'')}" placeholder="长度"></div>
+    <div class="field dim-field dim-width" data-dim-id="${id}"><label>宽</label><input id="m_width_mm_${id}" value="${esc(m.width_mm||'')}" placeholder="宽度"></div>
+    <div class="field dim-field dim-height" data-dim-id="${id}"><label>高</label><input id="m_height_mm_${id}" value="${esc(m.height_mm||'')}" placeholder="高度"></div>
+    <div class="sample-dim-note" id="m_dim_note_${id}">圆形嵌入式：开孔+直径+高；方形嵌入式：开孔+长+宽+高；导轨灯：直径+高；其它：长宽高。</div>
+  </div>`;
+}
+function updateSampleDimensionFields(id){
+  const cat=String(($('m_product_category_'+id)?.value||'')).trim();
+  const isTrack=cat.includes('导轨') || cat.includes('筒') || cat.includes('射');
+  const isEmbed=cat.includes('嵌入');
+  const isRound=isEmbed && (cat.includes('圆') || (!cat.includes('方') && (($('m_diameter_'+id)?.value||'') || !(($('m_length_mm_'+id)?.value||'') || ($('m_width_mm_'+id)?.value||'')))));
+  const isSquare=isEmbed && !isRound;
+  const set=(cls,show)=>document.querySelectorAll(`#m_dim_box_${id} .${cls}`).forEach(el=>el.classList.toggle('dim-hidden',!show));
+  if(isTrack){
+    set('dim-aperture', false); set('dim-diameter', true); set('dim-length', false); set('dim-width', false); set('dim-height', true);
+  }else if(isEmbed && isRound){
+    set('dim-aperture', true); set('dim-diameter', true); set('dim-length', false); set('dim-width', false); set('dim-height', true);
+  }else if(isEmbed && isSquare){
+    set('dim-aperture', true); set('dim-diameter', false); set('dim-length', true); set('dim-width', true); set('dim-height', true);
+  }else{
+    set('dim-aperture', false); set('dim-diameter', false); set('dim-length', true); set('dim-width', true); set('dim-height', true);
+  }
+  const note=$('m_dim_note_'+id);
+  if(note){
+    note.textContent = isTrack ? '导轨灯 / 筒射类：联动直径、高度。' : (isEmbed && isRound ? '圆形嵌入式：联动开孔、直径、高度。' : (isEmbed ? '方形嵌入式：联动开孔、长、宽、高。' : '其它结构：联动长、宽、高。'));
+  }
+}
+function updateAllSampleDimensionFields(){document.querySelectorAll('[id^="m_product_category_"]').forEach(el=>{const id=Number(el.id.replace('m_product_category_','')); if(id) updateSampleDimensionFields(id);});}
+function sampleIssueStats(id){const arr=issues.filter(x=>Number(x.model_id)===Number(id));const open=arr.filter(x=>!['已解决','已关闭'].includes(String(x.status||''))).length;return {total:arr.length,open};}
+
+let namingSearchTimers={},namingCache={},namingModalModelId=0;
+function namingThumb(path,fallback){return path?`<div class="naming-thumb"><img src="${esc(path)}" onerror="this.parentNode.innerHTML='${esc((fallback||'N').slice(0,1))}'"></div>`:`<div class="naming-thumb">${esc((fallback||'N').slice(0,1))}</div>`}
+function namingInlineMeta(m){
+  const linked=Number(m.naming_id||0)>0 || String(m.naming_model_no||'').trim()!=='';
+  if(!linked) return '未绑定命名档案，点击右侧“选型号”从命名系统选择';
+  const base=['已绑定：'+(m.naming_model_no||m.model||''),m.naming_category,m.naming_item_name,m.naming_product_name].filter(Boolean).join(' ｜ ');
+  const st=m.naming_sync_status||{};
+  if(st.missing) return base+' ｜ 命名档案异常';
+  if(st.has_update) return base+' ｜ 命名资料有更新';
+  return base;
+}
+function namingSyncTools(m){
+  if(!m || !(Number(m.naming_id||0)>0 || String(m.naming_model_no||'').trim())) return '';
+  const st=m.naming_sync_status||{};
+  const flag=st.has_update?`<span class="sync-warn">命名资料有更新</span>`:`<span class="sync-ok">已同步</span>`;
+  return `<div class="naming-sync-tools">${flag}<button type="button" class="btn small" onclick="checkNamingSyncForModel(${Number(m.id)||0})">查看变化</button>${st.has_update?`<button type="button" class="btn small good" onclick="syncNamingBasic(${Number(m.id)||0})">同步基础资料</button>`:''}</div>`;
+}
+async function checkNamingSyncForModel(id){
+  const r=await api('naming_sync_check',{model_id:id});
+  if(!r.ok){toast(r.error||'检查失败');return;}
+  if(!r.has_update){toast(r.message||'命名基础资料已同步');return;}
+  const lines=(r.diffs||[]).map(d=>`${d.label}: ${d.old||'-'} → ${d.new||'-'}`).join('\n');
+  if(confirm('命名系统有更新：\n\n'+lines+'\n\n是否同步到当前 PLM 样品基础资料？\n不会改测试、流程、问题、文件、派工。')) await syncNamingBasic(id);
+}
+async function syncNamingBasic(id){
+  if(!confirm('确认同步命名基础资料到当前样品？\n\n只同步：型号、名称、分类、尺寸、产品图、尺寸图。\n不会覆盖测试、流程、问题、文件、派工记录。'))return;
+  const r=await api('naming_sync_apply',{model_id:id});
+  if(!r.ok){toast(r.error||'同步失败');return;}
+  toast(r.message||'已同步命名基础资料');
+  await load();
+}
+function closeNamingModal(){const host=$('modalHost');if(host)host.innerHTML='';}
+function openNamingModal(modelId){
+  namingModalModelId=Number(modelId||0);
+  const m=models.find(x=>Number(x.id)===namingModalModelId)||{};
+  let host=$('modalHost'); if(!host){host=document.createElement('div');host.id='modalHost';document.body.appendChild(host);} host.innerHTML=`<div class="modal-mask"><div class="modal naming-modal"><div class="modal-head"><div><h3>选择命名型号</h3><div class="hint">从命名系统筛选型号，绑定后自动写入样品型号、名称、品类、产品图和尺寸图。</div></div><button id="closeModal" class="btn small" onclick="closeNamingModal()">关闭</button></div><div class="modal-body"><div class="naming-modal-grid"><div class="field naming-modal-wide"><label>关键词</label><input id="nm_kw" value="${esc(m.model||m.name||'')}" placeholder="型号 / 产品名 / 客户 / 备注"></div><div class="field"><label>品类</label><input id="nm_category" placeholder="嵌入式 / 导轨 / 磁吸"></div><div class="field"><label>类型</label><input id="nm_item" placeholder="有边固定 / COB"></div><div class="field"><label>前缀</label><input id="nm_prefix" placeholder="51 / 55"></div><div class="field"><label>尺寸</label><input id="nm_size" placeholder="075"></div><div class="field"><label>状态</label><select id="nm_status"><option value="">全部状态</option><option>草稿</option><option>已确认</option><option>停用</option></select></div><div class="field"><label>客户/项目</label><input id="nm_customer" placeholder="客户名"></div><div class="field"><label>产品图</label><select id="nm_has_image"><option value="">全部</option><option value="yes">有产品图</option><option value="no">无产品图</option></select></div><div class="field"><label>尺寸图</label><select id="nm_has_drawing"><option value="">全部</option><option value="yes">有尺寸图</option><option value="no">无尺寸图</option></select></div><div class="field"><label>开始日期</label><input id="nm_date_start" type="date"></div><div class="field"><label>结束日期</label><input id="nm_date_end" type="date"></div><div class="field"><label>显示数量</label><select id="nm_limit"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option></select></div></div><div class="naming-modal-actions"><button class="btn primary" onclick="searchNamingModal()">筛选型号</button><button class="btn" onclick="resetNamingModalFilters()">清空筛选</button><button class="btn good" onclick="window.open('naming.php','_blank')">打开命名系统</button><span class="hint" id="nm_summary">输入条件后筛选</span></div><div id="naming_modal_results" class="naming-modal-results" style="margin-top:10px"><div class="empty">等待筛选</div></div></div></div></div>`;
+  setTimeout(()=>{const kw=$('nm_kw');if(kw)kw.focus();searchNamingModal();},80);
+}
+function resetNamingModalFilters(){['nm_kw','nm_category','nm_item','nm_prefix','nm_size','nm_customer','nm_date_start','nm_date_end'].forEach(id=>{if($(id))$(id).value=''});['nm_status','nm_has_image','nm_has_drawing'].forEach(id=>{if($(id))$(id).value=''});searchNamingModal()}
+async function searchNamingModal(){
+  const box=$('naming_modal_results'); if(!box)return;
+  const d={q:$('nm_kw')?.value||'',category:$('nm_category')?.value||'',item_name:$('nm_item')?.value||'',prefix:$('nm_prefix')?.value||'',size_code:$('nm_size')?.value||'',status:$('nm_status')?.value||'',customer:$('nm_customer')?.value||'',has_image:$('nm_has_image')?.value||'',has_drawing:$('nm_has_drawing')?.value||'',date_start:$('nm_date_start')?.value||'',date_end:$('nm_date_end')?.value||'',limit:Number($('nm_limit')?.value||100)};
+  box.innerHTML='<div class="empty">正在搜索命名系统...</div>';
+  const r=await api('naming_search',d);
+  if(!r.ok||!r.available){box.innerHTML=`<div class="empty dangerText">${esc(r.error||'命名系统未初始化')}</div>`;return}
+  const list=r.models||[]; if($('nm_summary'))$('nm_summary').textContent='找到 '+list.length+' 个型号';
+  if(!list.length){box.innerHTML='<div class="empty">没有匹配到型号，可到命名系统新建。</div>';return}
+  box.innerHTML=list.map((nm,i)=>{const key='naming_modal_'+namingModalModelId+'_'+i+'_'+Date.now();namingCache[key]=nm;const img=nm.image_path?`<img src="${esc(nm.image_path)}" onerror="this.parentNode.textContent='${esc((nm.model_no||'N').slice(0,1))}'">`:esc((nm.model_no||'N').slice(0,1));return `<div class="naming-modal-row"><div class="naming-modal-thumb">${img}</div><div><div class="naming-modal-title">${esc(nm.model_no||'-')} ${nm.product_name?`· ${esc(nm.product_name)}`:''}</div><div class="naming-modal-sub">${esc([nm.category,nm.item_name,nm.customer,nm.status].filter(Boolean).join(' ｜ '))}</div>${nm.remark?`<div class="naming-modal-remark">${esc(nm.remark)}</div>`:''}</div><button class="btn small good" onclick="bindNamingToModel(${namingModalModelId},'${key}')">绑定</button></div>`}).join('');
+}
+function debouncedNamingSearch(id){clearTimeout(namingSearchTimers[id]);namingSearchTimers[id]=setTimeout(()=>searchNamingForModel(id),420)}
+function quickNamingSearch(id){openNamingModal(id)}
+async function searchNamingForModel(id){openNamingModal(id)}
+async function bindNamingToModel(modelId,key){const nm=namingCache[key];if(!nm)return;const saved=await saveModel(modelId,true);if(!saved.ok){toast(saved.error||'请先保存当前样品');return}const r=await api('bind_naming_model',{model_id:modelId,naming_id:nm.id});if(!r.ok){toast(r.error||'绑定失败');return}toast('已绑定命名型号：'+(nm.model_no||''));closeNamingModal();await load()}
+
+
+function sampleNamingStatusText(m){
+  const st=String(m.naming_status||'').trim();
+  if(st==='已确认')return m.naming_model_no?('已命名 '+m.naming_model_no):'已命名';
+  if(st)return '命名：'+st;
+  if(Number(m.naming_id||0)>0||String(m.naming_model_no||'').trim())return '已绑定命名';
+  return '未提交命名';
+}
+function sampleNamingTag(m){
+  const st=String(m.naming_status||'').trim();
+  const cls=st==='已确认'?'green':(st==='待补资料'||st==='已退回'?'red':(st?'orange':''));
+  return `<span class="tag ${cls}">${esc(sampleNamingStatusText(m))}</span>`;
+}
+function modelNamingActionButton(m){
+  const id=Number(m.id||0), inbox=Number(m.naming_inbox_id||0), st=String(m.naming_status||'').trim();
+  if(inbox>0){
+    const label=st==='已确认'?(m.naming_model_no?('已命名 '+m.naming_model_no):'查看命名'):(st?('命名：'+st):'查看命名草稿');
+    return `<button class="btn small ${st==='已确认'?'good':'orange'}" onclick="openModelNamingInbox(${inbox})">${esc(label)}</button>`;
+  }
+  return `<button class="btn small orange" onclick="submitModelNaming(${id})">提交命名</button>`;
+}
+function openModelNamingInbox(inboxId){window.open('naming.php?tab=inbox&inbox_id='+Number(inboxId||0),'_blank')}
+async function submitModelNaming(modelId){
+  const m=models.find(x=>Number(x.id)===Number(modelId)); if(!m)return;
+  const saved=await saveModel(modelId,true); if(!saved.ok){toast(saved.error||'请先保存样品');return}
+  const r=await api('submit_model_naming',{model_id:modelId});
+  if(!r.ok){toast(r.error||'提交命名失败');return}
+  toast('已提交命名收件箱，等待命名同事处理');
+  await load();
+}
+
+function modelCard(m,expanded,pid){
+  const cls=String(m.status||'').includes('测试')?'testing':(String(m.status||'').includes('完成')||String(m.status||'').includes('确认')?'done':'');
+  const filled=[m.chip_name,m.optical_name,m.driver_name,m.accessories_name].filter(Boolean).length;
+  const ist=sampleIssueStats(m.id);
+  const version=m.sample_version||'V1';
+  const parent=m.parent_model_id?`<span class="key-mini">来源 #${esc(m.parent_model_id)}</span>`:'';
+  const mini=`<div class="sample-mini-row"><span class="key-mini blue">${esc(version)}</span>${parent}${sampleNamingTag(m)}<span class="key-mini">型号 ${esc(m.model||'-')}</span><span class="key-mini">功率 ${esc(m.power||'-')}</span><span class="key-mini">色温 ${esc(m.cct||'-')}</span><span class="key-mini ${filled===4?'ok':'warn'}">元器件 ${filled}/4</span><span class="key-mini ${ist.open?'warn':'ok'}">问题 ${ist.open}/${ist.total}</span></div>`;
+  if(!expanded){
+    return `<div class="sample-pro-card ${cls} collapsed" onclick="selectModelAccordion(${pid},${m.id})"><div class="sample-head-pro clickable"><div class="sample-title-pro"><div class="sample-avatar">${esc((m.name||m.model||'样').slice(0,1))}</div><div><h3>${esc(m.name||'样品')} <span class="version-pill">${esc(version)}</span></h3><div class="sample-sub-pro">ID ${m.id} ｜ 测试：${esc(m.test_status||'待测试')} ｜ 状态：${esc(m.status||'-')}</div>${mini}</div></div><div class="sample-actions-pro"><span class="sample-toggle-pill">展开</span></div></div></div>`;
+  }
+  const issueRows=issues.filter(x=>Number(x.model_id)===Number(m.id)).slice(0,5);
+  return `<div class="sample-pro-card ${cls} expanded"><div class="sample-head-pro"><div class="sample-title-pro"><div class="sample-avatar">${esc((m.name||m.model||'样').slice(0,1))}</div><div><h3>${esc(m.name||'样品')} <span class="version-pill">${esc(version)}</span></h3><div class="sample-sub-pro">ID ${m.id} ｜ 型号 ${esc(m.model||'-')} ｜ 测试：${esc(m.test_status||'待测试')} ｜ 关键元器件 ${filled}/4 ｜ 问题 ${ist.open}/${ist.total}</div>${mini}</div></div><div class="sample-actions-pro"><button class="btn small good" onclick="saveModel(${m.id})">保存样品</button>${modelNamingActionButton(m)}<button class="btn small primary" onclick="flowModelId=${m.id};gotoTab('flow')">流程</button><button class="btn small" onclick="gotoTab('tests')">测试</button><button class="btn small" onclick="gotoTab('files')">文件</button><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('bom.php','_blank')">打开BOM</button><button class="btn small danger" onclick="deleteModel(${m.id})">删除</button></div></div><div class="sample-content-pro"><div class="sample-left-stack"><div class="sample-section"><h4>基础规格 / 版本</h4><div class="compact-fields sample-basic-grid"><div class="field"><label>样品名称</label><input id="m_name_${m.id}" value="${esc(m.name||'')}"></div><div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2 / 客户确认版"></div><div class="field sample-model-field"><label>型号</label><div class="model-picker-inline"><input id="m_model_${m.id}" value="${esc(m.model||'')}" placeholder="点击选型号从命名系统绑定"><button type="button" class="btn small primary" onclick="openNamingModal(${m.id})">选型号</button></div><div class="naming-inline-meta">${esc(namingInlineMeta(m))}</div>${namingSyncTools(m)}</div><div class="field"><label>状态</label><select id="m_status_${m.id}">${opt(['草稿','打样中','测试中','修改中','待客户确认','客户已确认','量产前确认','暂停','取消','开发中','已完成'],m.status)}</select></div><div class="field"><label>功率</label><input id="m_power_${m.id}" value="${esc(m.power||'')}"></div><div class="field"><label>角度</label><input id="m_beam_${m.id}" value="${esc(m.beam||'')}"></div><div class="field"><label>色温</label><input id="m_cct_${m.id}" value="${esc(m.cct||'')}"></div>${sampleDimensionPanel(m)}</div>${componentInlinePanel(m)}<div class="field"><label>修改原因 / 版本说明</label><textarea id="m_change_reason_${m.id}" placeholder="为什么从上一版改到这一版，例如温升过高、客户改尺寸、光斑偏黄等">${esc(m.change_reason||'')}</textarea></div></div></div><div class="sample-right-stack">${renderSampleMediaSection(m)}<div class="sample-section sample-note-pro"><h4>样品备注</h4><textarea id="m_note_${m.id}" placeholder="样品问题、客户要求、测试结论等">${esc(m.note||'')}</textarea></div><div class="sample-section bom-note"><h4>BOM 备注</h4><textarea id="m_bom_note_${m.id}" placeholder="替代物料、未入库物料、供应商要求">${esc(m.bom_note||'')}</textarea><div class="bom-hint">BOM 共享物料库按分类严格联动；基础规格里的光源/芯片、光学、电源、附加均可一格搜索。</div></div><div class="sample-section issue-mini-panel"><h4>问题闭环</h4>${issueRows.map(issueMiniRow).join('')||'<div class="hint">暂无问题记录</div>'}<button class="btn small primary" onclick="tab='issues';localStorage.setItem('plm_v85_tab','issues');renderDetail()">进入问题闭环</button></div></div></div></div>`
+}
+async function newModel(pid){const r=await api('new_model',{project_id:pid});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+pid,r.id)}toast(r.ok?'已新增样品':r.error);await load()}
+async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:$('m_beam_'+id).value,cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:$('m_opening_size_'+id)?.value||'',diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
+  chip_name:$('m_chip_name_'+id)?.value||'',chip_brand:$('m_chip_brand_'+id)?.value||'',chip_spec:$('m_chip_spec_'+id)?.value||'',chip_material_id:$('m_chip_material_id_'+id)?.value||0,
+  optical_name:$('m_optical_name_'+id)?.value||'',optical_brand:$('m_optical_brand_'+id)?.value||'',optical_spec:$('m_optical_spec_'+id)?.value||'',optical_material_id:$('m_optical_material_id_'+id)?.value||0,
+  driver_name:$('m_driver_name_'+id)?.value||'',driver_brand:$('m_driver_brand_'+id)?.value||'',driver_spec:$('m_driver_spec_'+id)?.value||'',driver_material_id:$('m_driver_material_id_'+id)?.value||0,
+  accessories_name:$('m_accessories_name_'+id)?.value||'',accessories_brand:$('m_accessories_brand_'+id)?.value||'',accessories_spec:$('m_accessories_spec_'+id)?.value||'',accessories_material_ids:$('m_accessories_material_ids_'+id)?.value||'',bom_note:$('m_bom_note_'+id)?.value||''};const r=await api('save_model',d);if(!quiet){toast(r.ok?'样品与关键元器件已保存':r.error);await load()}return r;}
+async function copyModelVersion(id){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return;let ver=prompt('新版本号',nextVersion(m.sample_version||'V1'));if(ver===null)return;ver=(ver||'').trim()||nextVersion(m.sample_version||'V1');const reason=prompt('修改原因（必填）','');if(reason===null)return;if(!reason.trim()){toast('复制为新版本必须填写修改原因');return}const saved=await saveModel(id,true);if(!saved.ok){toast(saved.error||'请先保存当前样品');return}const r=await api('copy_model_version',{model_id:id,sample_version:ver,change_reason:reason});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+m.project_id,r.id);toast('已复制为新版本 '+ver)}else toast(r.error||'复制失败');await load()}
+function nextVersion(v){const m=String(v||'V1').match(/^(.*?)(\d+)$/);if(!m)return 'V2';return m[1]+(Number(m[2])+1)}
+let bomSearchTimers={},bomSuggestCache={};
+function bomInputValue(id,prefix){if(prefix==='accessories'){return (($('m_accessories_name_'+id)?.value||'')+' '+($('m_accessories_spec_'+id)?.value||'')).trim()}return (($('m_'+prefix+'_name_'+id)?.value||'')+' '+($('m_'+prefix+'_spec_'+id)?.value||'')).trim()}
+function debouncedBomSearch(id,prefix,label){clearTimeout(bomSearchTimers[prefix+'_'+id]);bomSearchTimers[prefix+'_'+id]=setTimeout(()=>runBomSearch(id,prefix,label,false),450)}
+function manualBomSearch(id,prefix,label){runBomSearch(id,prefix,label,true)}
+function bomTypeLabel(prefix,label){return ({chip:'芯片',optical:'光学',driver:'电源',accessories:'配件'}[prefix]||label||'对应')}
+
+let bomMaterialModalCtx=null,bomMaterialModalCache={};
+function closeBomMaterialModal(){document.querySelector('.bom-material-modal')?.remove();}
+function bomOptList(arr,first){arr=Array.isArray(arr)?arr:[];return `<option value="">${esc(first||'全部')}</option>`+arr.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+async function openBomMaterialModal(id,prefix,label){
+  bomMaterialModalCtx={id,prefix,label};
+  const current=bomInputValue(id,prefix);
+  let opts={categories:[],brands:[],suppliers:[]};
+  try{const r=await api('bom_material_options',{type:prefix}); if(r.ok&&r.options)opts=r.options;}catch(e){}
+  let host=$('modalHost'); if(!host){host=document.createElement('div');host.id='modalHost';document.body.appendChild(host);}
+  host.innerHTML=`<div class="modal-mask bom-material-modal" onclick="if(event.target===this)closeBomMaterialModal()"><div class="modal"><div class="modal-head"><div><h3>选择${esc(label)}物料</h3><div class="hint">从 BOM 共享物料库按分类、品牌、供应商、价格筛选；选中后自动带入名称、品牌、规格、物料ID。</div></div><button class="btn" onclick="closeBomMaterialModal()">关闭</button></div><div class="modal-body"><div class="bom-material-filter-grid"><div class="field"><label>关键词</label><input id="bm_kw" value="${esc(current)}" placeholder="名称 / 型号 / 规格 / 关键词" onkeydown="if(event.key==='Enter')searchBomMaterialModal()"></div><div class="field"><label>分类</label><select id="bm_category">${bomOptList(opts.categories,'全部分类')}</select></div><div class="field"><label>品牌</label><select id="bm_brand">${bomOptList(opts.brands,'全部品牌')}</select></div><div class="field"><label>供应商</label><select id="bm_supplier">${bomOptList(opts.suppliers,'全部供应商')}</select></div><div class="field"><label>最低价</label><input id="bm_price_min" type="number" step="0.01" placeholder="0"></div><div class="field"><label>最高价</label><input id="bm_price_max" type="number" step="0.01" placeholder="不限"></div><div class="field"><label>排序</label><select id="bm_sort"><option value="updated_desc">最近更新</option><option value="newest">最新新增</option><option value="price_asc">单价从低到高</option><option value="price_desc">单价从高到低</option><option value="category_asc">分类排序</option><option value="brand_asc">品牌排序</option><option value="name_asc">名称排序</option></select></div><div class="field"><label>显示数量</label><select id="bm_limit"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="500">500</option></select></div></div><div class="bom-material-toolbar"><button class="btn primary" onclick="searchBomMaterialModal()">筛选物料</button><button class="btn" onclick="resetBomMaterialModal()">清空筛选</button><button class="btn good" onclick="window.open('bom.php','_blank')">打开BOM物料库</button><span class="hint" id="bm_summary">只显示“${esc(label)}”对应分类物料</span></div><div id="bomMaterialResults" class="bom-material-results"><div class="bom-material-empty">点击“筛选物料”查询</div></div></div></div></div>`;
+  setTimeout(searchBomMaterialModal,80);
+}
+function resetBomMaterialModal(){['bm_kw','bm_price_min','bm_price_max'].forEach(id=>{const el=$(id);if(el)el.value=''});['bm_category','bm_brand','bm_supplier','bm_sort'].forEach(id=>{const el=$(id);if(el)el.selectedIndex=0});const lim=$('bm_limit');if(lim)lim.value='100';searchBomMaterialModal()}
+async function searchBomMaterialModal(){
+  const ctx=bomMaterialModalCtx; if(!ctx)return;
+  const box=$('bomMaterialResults'); if(!box)return;
+  box.innerHTML='<div class="bom-material-empty">正在筛选 BOM 共享物料库...</div>';
+  const payload={type:ctx.prefix,q:$('bm_kw')?.value||'',category:$('bm_category')?.value||'',brand:$('bm_brand')?.value||'',supplier:$('bm_supplier')?.value||'',price_min:$('bm_price_min')?.value||'',price_max:$('bm_price_max')?.value||'',sort:$('bm_sort')?.value||'updated_desc',limit:$('bm_limit')?.value||100};
+  const r=await api('bom_material_search',payload);
+  if(!r.ok){box.innerHTML=`<div class="bom-material-empty dangerText">${esc(r.error||'查询失败')}</div>`;return}
+  const list=r.materials||[]; const sum=$('bm_summary'); if(sum)sum.textContent=`共 ${list.length} 条，仍按 ${ctx.label} 分类严格过滤`;
+  if(!list.length){box.innerHTML='<div class="bom-material-empty">没有匹配物料。可以换关键词，或先到 BOM 共享物料库新增。</div>';return}
+  box.innerHTML=`<table class="bom-material-table"><thead><tr><th style="width:105px">分类</th><th>物料</th><th style="width:130px">品牌</th><th style="width:150px">供应商</th><th style="width:115px">单价</th><th style="width:160px">关键词</th><th style="width:78px">操作</th></tr></thead><tbody>${list.map((m,i)=>{const key='bm_modal_'+ctx.prefix+'_'+ctx.id+'_'+i+'_'+Date.now();bomMaterialModalCache[key]=m;return `<tr><td><span class="bom-material-chip">${esc(m.category||ctx.label)}</span></td><td><div class="bom-material-main">${esc(m.name||m.model||'-')}</div><div class="bom-material-sub">型号：${esc(m.model||'-')} ｜ 规格：${esc(m.spec||'-')}</div></td><td>${esc(m.brand||'-')}</td><td>${esc(m.supplier||'-')}</td><td><span class="bom-material-price">${Number(m.price||0).toFixed(2)}</span> / ${esc(m.unit||'PCS')}</td><td><div class="bom-material-sub">${esc(m.keyword||'')}</div></td><td><button class="btn small good" onclick="selectBomMaterialFromModal('${key}')">选用</button></td></tr>`}).join('')}</tbody></table>`;
+}
+function selectBomMaterialFromModal(key){const ctx=bomMaterialModalCtx;if(!ctx)return;const m=bomMaterialModalCache[key];if(!m)return;selectBomMaterialObject(m,ctx.id,ctx.prefix);closeBomMaterialModal();toast('已带入BOM物料：'+(m.name||m.model||''));}
+function selectBomMaterialObject(m,id,prefix){if(prefix==='accessories'){$('m_accessories_name_'+id).value=m.name||m.model||'';$('m_accessories_brand_'+id).value=[m.brand,m.supplier].filter(Boolean).join(' / ');$('m_accessories_spec_'+id).value=[m.model,m.spec].filter(Boolean).join(' / ');$('m_accessories_material_ids_'+id).value=m.id||'';const meta=$('m_accessories_mat_'+id);if(meta){meta.textContent='已选物料ID '+(m.id||'')+' ｜ '+(m.category||'');meta.classList.add('ok')}return}const pre='m_'+prefix+'_';$(pre+'name_'+id).value=m.name||m.model||'';$(pre+'brand_'+id).value=[m.brand,m.supplier].filter(Boolean).join(' / ');$(pre+'spec_'+id).value=[m.model,m.spec].filter(Boolean).join(' / ');$(pre+'material_id_'+id).value=m.id||0;const meta=$(pre+'mat_'+id);if(meta){meta.textContent='已选物料ID '+(m.id||'')+' ｜ '+(m.category||'');meta.classList.add('ok')}}
+let bomFuzzyTimers={};
+function clearBomMaterialLink(id,prefix){
+  if(prefix==='accessories'){
+    const hid=$('m_accessories_material_ids_'+id); if(hid)hid.value='';
+    const meta=$('m_accessories_mat_'+id); if(meta){meta.textContent='未联动BOM';meta.classList.remove('ok')}
+    return;
+  }
+  const hid=$('m_'+prefix+'_material_id_'+id); if(hid)hid.value=0;
+  const meta=$('m_'+prefix+'_mat_'+id); if(meta){meta.textContent='未联动BOM';meta.classList.remove('ok')}
+}
+function onBomMaterialInput(id,prefix,label){
+  clearBomMaterialLink(id,prefix);
+  const k=prefix+'_'+id;
+  clearTimeout(bomFuzzyTimers[k]);
+  const q=bomInputValue(id,prefix);
+  const box=$('m_'+prefix+'_suggest_'+id);
+  if(!box)return;
+  if(String(q||'').trim().length<1){box.classList.remove('show');box.innerHTML='';return}
+  bomFuzzyTimers[k]=setTimeout(()=>runBomSearch(id,prefix,label,false),260);
+}
+function onBomMaterialFocus(id,prefix,label){
+  const q=bomInputValue(id,prefix);
+  const box=$('m_'+prefix+'_suggest_'+id);
+  if(!box)return;
+  if(String(q||'').trim().length>=1 && !box.classList.contains('show')) runBomSearch(id,prefix,label,false);
+}
+document.addEventListener('click',function(e){
+  if(e.target.closest('.component-simple')) return;
+  document.querySelectorAll('.component-simple .bom-suggestions.show').forEach(el=>el.classList.remove('show'));
+});
+async function runBomSearch(id,prefix,label,manual){const q=bomInputValue(id,prefix);const box=$('m_'+prefix+'_suggest_'+id);if(!box)return;if(!q&&!manual){box.classList.remove('show');box.innerHTML='';return}box.classList.add('show');box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub">正在模糊查找 BOM 共享物料库...</div></div>';const r=await api('bom_material_search',{q,type:prefix,limit:20,sort:'updated_desc'});if(!r.ok){box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub dangerText">'+esc(r.error||'搜索失败')+'</div></div>';return}const list=r.materials||[];if(!list.length){box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub">当前分类未匹配到物料。可继续输入，或点右侧 ... 打开全功能筛选。</div></div>';return}box.innerHTML=list.map((m,i)=>{const key=prefix+'_'+id+'_'+i+'_'+Date.now();bomSuggestCache[key]=m;return `<div class="bom-suggest-item" onclick="selectBomMaterial('${key}',${id},'${prefix}')"><div class="bom-suggest-title">${esc((m.brand?m.brand+' / ':'')+(m.name||m.model||'-'))}</div><div class="bom-suggest-sub">${esc(m.model||'')} ｜ ${esc(m.category||label)} ｜ ${esc(m.supplier||'')} ｜ <span class="bom-price">${Number(m.price||0).toFixed(2)}</span> / ${esc(m.unit||'PCS')}</div><div class="bom-suggest-sub">${esc(m.spec||'')}</div></div>`}).join('')}
+function selectBomMaterial(key,id,prefix){const m=bomSuggestCache[key];if(!m)return;selectBomMaterialObject(m,id,prefix);const box=prefix==='accessories' ? $('m_accessories_suggest_'+id) : $('m_'+prefix+'_suggest_'+id);if(box)box.classList.remove('show')}
+async function createBomFromModel(id){const saved=await saveModel(id,true);if(!saved.ok){toast(saved.error||'样品保存失败，不能生成BOM');return}const r=await api('create_bom_from_model',{model_id:id});if(!r.ok){toast(r.error||'生成BOM失败');return}toast('BOM已生成/更新：'+(r.rows_count||0)+' 行');await load();window.open(r.bom_url||'bom.php','_blank')}
+async function deleteModel(id){const reason=prompt('删除产品/样品会进入回收站。请填写删除原因：','');if(reason===null)return;if(!reason.trim()){toast('删除产品/样品必须填写原因');return}const r=await api('delete_model',{id,reason});toast(r.ok?'产品/样品已移入回收站':r.error);await load()}
+function flowStatusClass(status){const s=String(status||'未开始');if(['已完成','完成','通过','跳过'].includes(s))return 'done';if(['进行中','开发中','测试中'].includes(s))return 'doing';if(['暂停','已暂停'].includes(s))return 'pause';if(['重来','异常','退回','不通过'].includes(s))return 'redo';return 'todo'}
+function flowStatusLabel(status){const cls=flowStatusClass(status);return `<span class="flow-status ${cls}">${esc(status||'未开始')}</span>`}
+function daysBetween(a,b){if(!a||!b)return 0;const da=new Date(String(a).slice(0,10)+'T00:00:00'),db=new Date(String(b).slice(0,10)+'T00:00:00');return Math.floor((db-da)/86400000)}
+function todayStr(){return new Date().toISOString().slice(0,10)}
+function isOverdueStep(s){const end=dateOnly(s.plan_end||s.plan_date);return end && !['已完成','跳过'].includes(String(s.status||'')) && daysBetween(end,todayStr())>0}
+function isBlockedStep(st,s,i){if(String(s.dependency_mode||'跟随前一步')==='无前置限制')return false;if(i<=0)return false;return !['已完成','跳过'].includes(String(st[i-1]?.status||''))}
+function flowMetrics(st){const total=st.length,done=st.filter(x=>flowStatusClass(x.status)==='done').length,doing=st.filter(x=>flowStatusClass(x.status)==='doing').length,pause=st.filter(x=>flowStatusClass(x.status)==='pause').length,redo=st.filter(x=>flowStatusClass(x.status)==='redo').length,overdue=st.filter(isOverdueStep).length;return{total,done,doing,pause,redo,overdue,pct:total?Math.round(done/total*100):0}}
+function renderFlow(p){
+  const ms=pModels(p.id);
+  if(!ms.length){$('tabbody').innerHTML='<div class="empty">请先在“样品管理”新增样品，再做独立开发导航图。</div>';return}
+  if(!flowModelId||!ms.some(m=>Number(m.id)===Number(flowModelId)))flowModelId=ms[0]?.id||0;
+  localStorage.setItem('plm_v85_flow_model',flowModelId);
+  const model=ms.find(m=>Number(m.id)===Number(flowModelId));
+  const st=steps.filter(s=>Number(s.project_id)===Number(p.id)&&Number(s.model_id)===Number(flowModelId)).sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0)||Number(a.id)-Number(b.id));
+  if(flowSelectedStepId && !st.some(s=>Number(s.id)===Number(flowSelectedStepId))) flowSelectedStepId=0;
+  if(!flowDrawerCollapsed && !flowSelectedStepId && st[0]) flowSelectedStepId=Number(st[0].id);
+  localStorage.setItem('plm_v85_step_id',flowSelectedStepId||0);
+  const m=flowMetrics(st);
+  $('tabbody').style.setProperty('--flow-cols',flowCols);
+  $('tabbody').innerHTML=`<div class="flow-shell">
+    <div class="flow-toolbar">
+      <div class="flow-toolbar-left">
+        <div class="flow-view-title">开发导航图 V8.5.32<small>方形卡片 / 右侧对齐 / 时间短显示 / 文字不遮挡 / 多派工联动。</small></div>
+        <select onchange="flowModelId=Number(this.value);flowSelectedStepId=0;localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_step_id',0);renderDetail()">${ms.map(mo=>`<option value="${mo.id}" ${Number(mo.id)===Number(flowModelId)?'selected':''}>${esc(mo.name||mo.model||('样品'+mo.id))}</option>`).join('')}</select>
+        <select onchange="setFlowCols(this.value)"><option value="3" ${flowCols===3?'selected':''}>一排3个</option><option value="4" ${flowCols===4?'selected':''}>一排4个</option><option value="5" ${flowCols===5?'selected':''}>一排5个</option></select>
+        <button class="btn primary" onclick="addStep(${p.id},${flowModelId})">＋ 新增步骤</button><button class="btn danger" onclick="deleteAllSteps(${p.id},${flowModelId})">删除全部步骤</button>
+      </div>
+      <div class="flow-toolbar-right flow-progress">
+        <div class="flow-kpi"><b>${m.total}</b><span>步骤</span></div><div class="flow-kpi"><b>${m.done}</b><span>完成</span></div><div class="flow-kpi"><b>${m.doing}</b><span>进行中</span></div><div class="flow-kpi"><b>${m.redo}</b><span>异常/退回</span></div><div class="flow-kpi"><b>${m.overdue}</b><span>延期</span></div><div class="flow-kpi"><b>${m.pct}%</b><span>进度</span></div>
+      </div>
+    </div>
+    <div class="template-panel">
+      <select id="tpl_name">${FLOW_TEMPLATES.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
+      <button class="btn warn" onclick="applyTemplate(${p.id},${flowModelId},'replace')">套用模板并替换当前流程</button>
+      <button class="btn" onclick="applyTemplate(${p.id},${flowModelId},'append')">追加模板步骤</button>
+      <button class="btn flow-danger-mini" onclick="deleteAllSteps(${p.id},${flowModelId})">清空当前样品流程</button>
+      <span class="hint">可删除某一步，也可清空当前样品全部步骤；清空不会删除样品本身。</span>
+    </div>
+    <div class="flow-stage flow-cols-${flowCols} ${flowDrawerCollapsed?'drawer-collapsed':''}">
+      <div class="flow-board" id="flowBox" style="--flow-cols:${flowCols}">${st.map((s,i)=>stepCard(s,i,st.length,st)).join('')||'<div class="flow-empty">暂无流程步骤，点击上方“新增步骤”或套用模板。</div>'}</div>
+      ${stepDrawer(st.find(s=>Number(s.id)===Number(flowSelectedStepId)), model)}
+    </div>
+  </div>`
+}
+function stepCard(s,i,total,st=[]){
+  const cls=flowStatusClass(s.status),active=Number(s.id)===Number(flowSelectedStepId)?'active':'';
+  const owner=s.owner?`负责人：${esc(s.owner)}`:'负责人：未指定';
+  const end=s.plan_end||s.plan_date;
+  const plan=end?`计划 ${esc(flowShortDate(end))}`:'计划 未设';
+  const start=s.actual_start?`开始 ${esc(flowShortDateTime(s.actual_start))}`:'';
+  const done=s.done_at?`完成 ${esc(flowShortDateTime(s.done_at))}`:'';
+  const delay=isOverdueStep(s)?daysBetween(dateOnly(end),todayStr()):0;
+  const blocked=isBlockedStep(st,s,i);
+  const fileCount=files.filter(f=>Number(f.step_id)===Number(s.id)).length;
+  const bad=['异常','退回','重来'].includes(String(s.status||''));
+  return `<div class="flow-node ${cls} ${active} ${delay?'overdue':''} ${blocked?'blocked':''}" data-step-id="${s.id}" draggable="true" ondragstart="dragStepId=${s.id};this.closest('.flow-board')?.classList.add('dragging')" ondragend="this.closest('.flow-board')?.classList.remove('dragging')" ondragover="event.preventDefault();this.classList.add('drop-target')" ondragleave="this.classList.remove('drop-target')" ondrop="this.classList.remove('drop-target');dropStep(${s.id})" onclick="openStepDrawer(${s.id})">
+    <div class="flow-node-top"><div class="flow-index">${String(i+1).padStart(2,'0')}</div><div class="flow-title-wrap"><div class="flow-title">${esc(s.title||'步骤')}</div><div class="flow-sub">${owner}</div></div><button class="flow-handle" title="拖动排序" onclick="event.stopPropagation()">☰</button><button class="flow-node-delete" title="删除步骤" onclick="event.stopPropagation();deleteStep(${s.id})">删</button></div>
+    <div class="tags">${flowStatusLabel(s.status)}${blocked?'<span class="tag orange">等前置</span>':''}${delay?`<span class="tag red">延期${delay}天</span>`:''}${fileCount?`<span class="tag purple">附件${fileCount}</span>`:''}${(()=>{const ds=dispatchSummary(s.id);return ds.total?`<span class="tag blue">派工${ds.label}</span>`:(s.dispatch_status?`<span class="tag blue">派工${esc(s.dispatch_status)}</span>`:'')})()}</div>
+    <div class="flow-meta compact-time"><div>${plan}</div>${start?`<div>${start}</div>`:''}${done?`<div>${done}</div>`:''}</div>
+    <div class="flow-note">${esc(bad?(s.abnormal_reason||s.return_reason||s.rework_reason||s.note||'暂无原因'):(s.note||'暂无备注'))}</div>
+    <div class="flow-quick"><button class="btn small" onclick="event.stopPropagation();quickStepStatus(${s.id},'进行中')">开始</button><button class="btn small good" onclick="event.stopPropagation();quickStepStatus(${s.id},'已完成')">完成</button><button class="btn small danger" onclick="event.stopPropagation();quickStepStatus(${s.id},'异常')">异常</button></div>
+  </div>`
+}
+function stepDrawer(s,model){
+  if(flowDrawerCollapsed){return `<aside class="flow-drawer flow-drawer-collapsed"><div class="flow-drawer-rail"><button class="btn small" onclick="openStepDrawer(flowSelectedStepId||0)">展开详情</button><span>工序详情</span></div></aside>`;}
+  if(!s)return `<aside class="flow-drawer"><div class="empty">选择左侧流程节点后，在这里编辑详情。</div></aside>`;
+  const sf=files.filter(f=>Number(f.step_id)===Number(s.id));
+  const recent=logs.filter(l=>String(l.target_type)==='step'&&Number(l.target_id)===Number(s.id)).slice(0,12);
+  return `<aside class="flow-drawer"><div class="flow-drawer-head"><div><h3>${esc(s.title||'步骤详情')}</h3><div class="flow-help">样品：${esc(model?(model.name||model.model||model.id):'-')}</div></div><button class="btn small" onclick="closeStepDrawer()">收起</button></div>
+    <div class="field"><label>步骤名</label><input id="drawer_title_${s.id}" value="${esc(s.title||'')}"></div>
+    <div class="grid2"><div class="field"><label>状态</label><select id="drawer_status_${s.id}">${FLOW_STATUSES.map(x=>`<option ${x===s.status?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>负责人</label><input id="drawer_owner_${s.id}" value="${esc(s.owner||'')}"></div></div>
+    <div class="grid2"><div class="field"><label>计划开始</label><input id="drawer_plan_start_${s.id}" type="date" value="${esc(dateOnly(s.plan_start))}"></div><div class="field"><label>计划完成</label><input id="drawer_plan_end_${s.id}" type="date" value="${esc(dateOnly(s.plan_end||s.plan_date))}"></div></div>
+    <div class="field"><label>前置依赖</label><select id="drawer_dependency_${s.id}">${['跟随前一步','无前置限制'].map(x=>`<option ${x===(s.dependency_mode||'跟随前一步')?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+    <div class="field"><label>备注</label><textarea id="drawer_note_${s.id}" placeholder="填写问题、修改要求、样品状态等">${esc(s.note||'')}</textarea></div>
+    <div class="grid2"><div class="field"><label>异常原因</label><textarea id="drawer_abnormal_${s.id}" placeholder="如：温升过高、光斑不对、结构装不上">${esc(s.abnormal_reason||'')}</textarea></div><div class="field"><label>退回 / 重来 / 跳过原因</label><textarea id="drawer_reason_${s.id}" placeholder="退回上一步、重来原因，或跳过原因">${esc(s.return_reason||s.rework_reason||s.skip_reason||'')}</textarea></div></div>
+    <div class="flow-help">创建：${esc(s.created_at||'-')}<br>开始：${esc(s.actual_start||'-')}<br>完成：${esc(s.done_at||'-')}</div>
+    <div class="actions" style="margin-top:12px"><button class="btn good" onclick="saveStepFromDrawer(${s.id})">保存详情</button><button class="btn warn" onclick="createDispatchTask(${s.id})">生成派工任务</button><button class="btn" onclick="openDispatchProgressForStep(${s.id})">派工进度</button><button class="btn" onclick="refreshDispatchForStep(${s.id})">同步派工状态</button><button class="btn danger" onclick="deleteStep(${s.id})">删除步骤</button></div>
+    ${dispatchLinksPanel(s)}
+    <div class="uploadbox"><b>步骤附件</b><p class="hint">加工图、光斑图、测试报告、返工说明都可以直接绑到当前步骤。</p>${uploadBox('加工资料',s.model_id||0,0,false,s.id)}</div>
+    <div>${sf.map(fileChip).join('')||'<div class="hint">暂无步骤附件</div>'}</div>
+    <h4>步骤日志</h4><div class="log-mini">${recent.map(l=>`<div><b>${esc(l.created_at||'')}</b><br>${esc(l.action||'')}：${esc(l.note||'')}</div>`).join('')||'<div class="hint">暂无日志</div>'}</div>
+  </aside>`
+}
+function openStepDrawer(id){flowDrawerCollapsed=false;localStorage.setItem('plm_v85_drawer_collapsed','0');if(Number(id))flowSelectedStepId=Number(id);else if(!flowSelectedStepId){const first=document.querySelector('.flow-node');flowSelectedStepId=first?Number(first.dataset.stepId)||0:0;}localStorage.setItem('plm_v85_step_id',flowSelectedStepId);renderDetail()}
+function closeStepDrawer(){flowDrawerCollapsed=true;localStorage.setItem('plm_v85_drawer_collapsed','1');renderDetail()}
+async function addStep(pid,mid){const title=prompt('步骤名称','新增步骤');if(title===null)return;const r=await api('add_step',{project_id:pid,model_id:mid,title});toast(r.ok?'步骤已新增':r.error);await load()}
+async function applyTemplate(pid,mid,mode){const tpl=$('tpl_name')?.value||FLOW_TEMPLATES[0];if(mode==='replace'&&!confirm('会清空当前样品现有流程步骤，再套用模板。确定继续？'))return;const r=await api('apply_template',{project_id:pid,model_id:mid,template:tpl,mode});toast(r.ok?'模板已套用':r.error);flowSelectedStepId=0;localStorage.setItem('plm_v85_step_id',0);await load()}
+async function quickStepStatus(id,status){const s=steps.find(x=>Number(x.id)===Number(id));if(!s)return;flowSelectedStepId=Number(id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);const r=await api('save_step',{id,title:s.title||'步骤',status,owner:s.owner||'',plan_date:dateOnly(s.plan_date),plan_start:dateOnly(s.plan_start),plan_end:dateOnly(s.plan_end||s.plan_date),dependency_mode:s.dependency_mode||'跟随前一步',abnormal_reason:s.abnormal_reason||'',return_reason:s.return_reason||'',rework_reason:s.rework_reason||'',skip_reason:s.skip_reason||'',note:s.note||'',dispatch_status:s.dispatch_status||'',dispatch_note:s.dispatch_note||''});toast(r.ok?'状态已更新':r.error);await load()}
+async function saveStep(id){return saveStepFromDrawer(id)}
+async function saveStepFromDrawer(id){const status=$('drawer_status_'+id).value,reason=$('drawer_reason_'+id)?.value||'';const r=await api('save_step',{id,title:$('drawer_title_'+id).value,status,owner:$('drawer_owner_'+id).value,plan_date:$('drawer_plan_end_'+id).value,plan_start:$('drawer_plan_start_'+id).value,plan_end:$('drawer_plan_end_'+id).value,dependency_mode:$('drawer_dependency_'+id).value,note:$('drawer_note_'+id).value,abnormal_reason:$('drawer_abnormal_'+id)?.value||'',return_reason:status==='退回'?reason:'',rework_reason:status==='重来'?reason:'',skip_reason:status==='跳过'?reason:'',dispatch_status:(steps.find(x=>Number(x.id)===Number(id))||{}).dispatch_status||'',dispatch_note:(steps.find(x=>Number(x.id)===Number(id))||{}).dispatch_note||''});flowSelectedStepId=Number(id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);toast(r.ok?'步骤详情已保存':r.error);await load()}
+
+function dispatchLinksPanel(s){
+  const arr=dispatchLinksByStep(s.id);
+  const summary=dispatchSummary(s.id);
+  const list=arr.map(l=>`<div class="dispatch-link-row"><div><b>${esc(l.title||('派工任务 '+(l.task_id||'')))}</b><span>状态：${esc(dispatchStatusText(l.status))} ｜ 进度：${Number(l.progress||0)}% ｜ 负责人：${esc(l.assignee_name||l.assignee_id||'-')}</span></div><div class="actions"><a class="btn small" target="_blank" href="${esc(l.dispatch_url||dispatchUrl(l.task_id))}">打开</a><button class="btn small" onclick="event.stopPropagation();refreshOneDispatchLink(${l.id})">同步</button><button class="btn small danger" onclick="event.stopPropagation();unlinkDispatch(${l.id})">解除</button></div></div>`).join('')||'<div class="hint">暂无关联派工。点击“生成派工任务”即可把这个步骤派到原派工系统。</div>';
+  return `<div class="statusline dispatch-panel"><b>关联派工 ${summary.total?summary.done+'/'+summary.total:'0/0'}</b><div class="hint">一个开发步骤可以生成多个派工；派工页面不改，PLM 只关联和读取状态。</div><div class="actions" style="margin:6px 0 8px"><button class="btn small" onclick="event.stopPropagation();openDispatchProgressForStep(${s.id})">派工进度</button><button class="btn small" onclick="event.stopPropagation();refreshDispatchForStep(${s.id})">同步状态</button></div>${list}<a class="link" href="dispatch_todo.php" target="_blank">打开原派工页面</a></div>`
+}
+let plmDispatchUsersCache=null;
+async function loadPlmDispatchUsers(){
+  if(Array.isArray(plmDispatchUsersCache))return plmDispatchUsersCache;
+  const r=await dispatchApi('users',{},'GET');
+  plmDispatchUsersCache=Array.isArray(r.users)?r.users:[];
+  return plmDispatchUsersCache;
+}
+function plmUserLabel(u){return String(u.name||u.display_name||u.username||('ID '+u.id));}
+function plmPriorityOptions(v='normal'){
+  const opts=[['normal','普通'],['important','重要'],['urgent','紧急'],['today','今日必须完成']];
+  return opts.map(([k,t])=>`<option value="${k}" ${k===v?'selected':''}>${t}</option>`).join('');
+}
+async function openPlmDispatchModal(ctx){
+  const users=await loadPlmDispatchUsers();
+  let meId=0;
+  try{const me=await dispatchApi('me',{},'GET'); if(me&&me.user)meId=Number(me.user.id||0);}catch(e){}
+  const assignee=Number(ctx.assigned_to||meId||0);
+  const userOptions=users.map(u=>`<option value="${Number(u.id||0)}" ${Number(u.id||0)===assignee?'selected':''}>${esc(plmUserLabel(u))}</option>`).join('');
+  const modalId='plmDispatchModal';
+  const old=$(modalId); if(old) old.remove();
+  const html=`<div id="${modalId}" class="plm-dispatch-mask" onclick="if(event.target===this)closePlmDispatchModal()">
+    <div class="plm-dispatch-modal">
+      <div class="plm-dispatch-head"><div><h3>${ctx.kind==='project'?'项目派工':'流程派工'}</h3><p>在这个弹窗里一次完成：更换人员、任务标题、截止日期、详细事由。不会再弹小小输入框。</p></div><button class="btn" onclick="closePlmDispatchModal()">关闭</button></div>
+      <div class="plm-dispatch-body">
+        <div id="plmDispatchErr" class="plm-dispatch-error"></div>
+        <div class="plm-dispatch-preview"><b>来源：</b>${esc(ctx.sourceText||'PLM')}<br><b>项目：</b>${esc(ctx.projectName||'-')}<br><b>样品/步骤：</b>${esc(ctx.modelName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}</div>
+        <div class="plm-dispatch-grid">
+          <div class="plm-dispatch-field full"><label>任务标题 *</label><input id="plmDispatchTitle" value="${esc(ctx.title||'')}" placeholder="派工任务标题"></div>
+          <div class="plm-dispatch-field full"><label>项目 / 说明</label><input id="plmDispatchProject" value="${esc(ctx.projectText||'')}" placeholder="项目名称 / 样品 / 工序"></div>
+          <div class="plm-dispatch-field"><label>负责人 / 执行人 *</label><select id="plmDispatchAssignee"><option value="">请选择人员</option>${userOptions}</select></div>
+          <div class="plm-dispatch-field"><label>优先级</label><select id="plmDispatchPriority">${plmPriorityOptions(ctx.priority||'normal')}</select></div>
+          <div class="plm-dispatch-field"><label>任务日期</label><input id="plmDispatchTaskDate" type="date" value="${esc(ctx.task_date||new Date().toISOString().slice(0,10))}"></div>
+          <div class="plm-dispatch-field"><label>截止日期</label><input id="plmDispatchDueDate" type="date" value="${esc(ctx.due_date||'')}"></div>
+          <div class="plm-dispatch-field full"><label>详细事由 / 要求 *</label><textarea id="plmDispatchReason" placeholder="请尽量写清楚：为什么派工、要完成什么、交付标准、注意事项。">${esc(ctx.reason||'')}</textarea></div>
+        </div>
+      </div>
+      <div class="plm-dispatch-foot"><div class="hint">流程派工和项目派工共用这个弹窗；只生成派工，不改派工表格核心逻辑。</div><div class="actions"><button class="btn" onclick="closePlmDispatchModal()">取消</button><button class="btn warn" onclick="submitPlmDispatchModal()">确认派工</button></div></div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  window.__plmDispatchCtx=ctx;
+}
+function closePlmDispatchModal(){const el=$('plmDispatchModal'); if(el)el.remove(); window.__plmDispatchCtx=null;}
+function showPlmDispatchErr(t){const el=$('plmDispatchErr'); if(el){el.textContent=t; el.classList.add('show');} else toast(t);}
+async function submitPlmDispatchModal(){
+  const ctx=window.__plmDispatchCtx||{};
+  const title=($('plmDispatchTitle')?.value||'').trim();
+  const projectText=($('plmDispatchProject')?.value||'').trim();
+  const assigned=Number($('plmDispatchAssignee')?.value||0);
+  const priority=$('plmDispatchPriority')?.value||'normal';
+  const taskDate=$('plmDispatchTaskDate')?.value||new Date().toISOString().slice(0,10);
+  const dueDate=$('plmDispatchDueDate')?.value||'';
+  const reason=($('plmDispatchReason')?.value||'').trim();
+  if(!title){showPlmDispatchErr('请填写任务标题');return;}
+  if(!assigned){showPlmDispatchErr('请选择负责人');return;}
+  if(!reason){showPlmDispatchErr('请填写详细事由 / 要求');return;}
+  const users=await loadPlmDispatchUsers();
+  const u=users.find(x=>Number(x.id)===assigned)||{};
+  const linked=ctx.linked||{};
+  const desc=[
+    '来源：'+(ctx.sourceText||'PLM'),
+    '项目：'+(ctx.projectName||''),
+    ctx.customer?('客户：'+ctx.customer):'',
+    ctx.modelName?('样品：'+ctx.modelName):'',
+    ctx.stepTitle?('流程步骤：'+ctx.stepTitle):'',
+    '',
+    '详细事由 / 要求：',
+    reason
+  ].filter(x=>x!=='' || x==='').join('\n');
+  const payload={
+    title,project:projectText,description:desc,priority,due_at:dueDate?dueDate+'T18:00':'',mode:'dispatch',assigned_to:assigned,task_date:taskDate,
+    customer:ctx.customer||'',product_model:ctx.modelName||'',
+    extra:{plm_project_id:ctx.project_id||0,plm_model_id:ctx.model_id||0,plm_step_id:ctx.step_id||0,plm_source:ctx.kind==='project'?'项目派工':'开发导航图',plm_reason:reason},
+    linked_system:'PLM',linked_id:ctx.kind==='project'?('plm_project_'+(ctx.project_id||0)):('plm_step_'+(ctx.step_id||0)),
+    linked_title:ctx.projectName||'',linked_url:ctx.linked_url||('plm.php?project_id='+(ctx.project_id||0)),linked_json:linked
+  };
+  let cr=await dispatchApi('create_task',payload);
+  let task={},taskId=0;
+  if(cr&&cr.ok!==false){task=cr.task||{}; taskId=Number(cr.task_id||cr.id||task.id||0);}
+  if(!taskId){
+    const found=await findCreatedDispatchTask(payload);
+    if(found){task=found;taskId=Number(found.id||0);}
+  }
+  if(!taskId && cr && cr.ok===false){showPlmDispatchErr('派工可能已收到，但接口返回：'+(cr.error||'未取得任务ID'));return;}
+  if(ctx.kind==='flow' && ctx.step_id){
+    const save=await api('save_dispatch_link',{step_id:ctx.step_id,task_id:taskId,task_no:task.task_no||'',title:task.title||payload.title,assignee_id:Number(task.assigned_to||assigned||0),assignee_name:plmUserLabel(u),status:task.status||'pending_accept',progress:Number(task.progress||0),due_at:(task.due_at||payload.due_at||'').replace('T',' '),dispatch_url:dispatchUrl(taskId),linked_json:linked});
+    if(!save.ok){toast('待办已收到，但PLM关联提示：'+(save.error||'保存关联失败'));}
+  }else if(ctx.kind==='project' && ctx.project_id){
+    const save=await api('save_project_dispatch_link',{project_id:ctx.project_id,model_id:ctx.model_id||0,task_id:taskId,task_no:task.task_no||'',title:task.title||payload.title,assignee_id:Number(task.assigned_to||assigned||0),assignee_name:plmUserLabel(u),status:task.status||'pending_accept',progress:Number(task.progress||0),due_at:(task.due_at||payload.due_at||'').replace('T',' '),dispatch_url:dispatchUrl(taskId),linked_json:linked});
+    if(!save.ok){toast('待办已收到，但PLM项目关联提示：'+(save.error||'保存关联失败'));}
+  }
+  closePlmDispatchModal();
+  toast(taskId?'派工已生成：'+title:'派工已提交');
+  await load();
+}
+async function createDispatchTask(id){
+  const s=steps.find(x=>Number(x.id)===Number(id)); if(!s)return;
+  const p=projects.find(x=>Number(x.id)===Number(s.project_id))||cur()||{};
+  const model=models.find(x=>Number(x.id)===Number(s.model_id));
+  const modelName=currentModelName(model);
+  const title='【PLM流程】'+(s.title||'开发步骤')+' - '+(modelName||p.name||'项目');
+  const due=dispatchDueFromStep(s).slice(0,10);
+  const taskDate=dispatchTaskDateFromStep(s);
+  await openPlmDispatchModal({kind:'flow',sourceText:'PLM开发导航图 / 流程派工',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,projectName:p.name||'',customer:p.customer||'',modelName,stepTitle:s.title||'',title,projectText:[p.name||'',modelName,s.title||''].filter(Boolean).join(' / '),task_date:taskDate,due_date:due,priority:'normal',reason:'请完成【'+(s.title||'该工序')+'】。完成后在派工里标记完成，PLM 可同步状态。\n\n要求：\n1. 按项目资料和样品要求执行。\n2. 如有异常，请在派工详情中说明原因。\n3. 完成后上传必要图片或附件。',linked:{system:'PLM',type:'flow',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,project_name:p.name||'',customer:p.customer||'',model:modelName,step_title:s.title||''},linked_url:'plm.php?project_id='+(p.id||0)+'&model_id='+(s.model_id||0)+'&step_id='+s.id});
+}
+async function findCreatedDispatchTask(payload){
+  const r=await dispatchApi('list_tasks',{task_date:payload.task_date,carry_open:1,keyword:'',status:'all',assignee:0});
+  const rows=Array.isArray(r.tasks)?r.tasks:[];
+  const title=String(payload.title||'');
+  rows.sort((a,b)=>Number(b.id||0)-Number(a.id||0));
+  return rows.find(t=>String(t.title||'')===title)||rows.find(t=>String(t.title||'').includes(title.slice(0,20)));
+}
+async function refreshOneDispatchLink(linkId){
+  const l=dispatchLinks.find(x=>Number(x.id)===Number(linkId)); if(!l||!Number(l.task_id)){toast('没有派工任务ID，无法自动同步');return;}
+  const r=await dispatchApi('task_detail',{id:Number(l.task_id)});
+  if(!r.ok){toast('同步失败：'+(r.error||''));return;}
+  const t=r.task||{};
+  const up=await api('update_dispatch_link',{id:linkId,task_no:t.task_no||l.task_no,title:t.title||l.title,assignee_id:Number(t.assigned_to||0),assignee_name:t.assignee_name||'',status:t.status||l.status,progress:Number(t.progress||0),due_at:(t.due_at||'').replace('T',' '),dispatch_url:dispatchUrl(l.task_id)});
+  toast(up.ok?'派工状态已同步':up.error);
+  await load();
+}
+async function refreshDispatchForStep(stepId){
+  const ctx=plmStepContext(stepId);
+  if(!ctx){toast('没有找到步骤');return;}
+  let arr=dispatchLinksByStep(stepId);
+  // V8.5.43：先从派工系统按 PLM 来源查真实任务；PLM 本地关联丢失时自动找回。
+  const remote=await queryPlmDispatchTasks(ctx);
+  if(remote.length){
+    const n=await saveRemoteTasksToPlmLinks(ctx,remote,true);
+    if(n){toast('已同步派工进度：'+remote.filter(dispatchTaskDone).length+'/'+remote.length);await load();return;}
+  }
+  if(!arr.length){toast('这个步骤没有查到关联派工');return;}
+  for(const l of arr){ if(Number(l.task_id)) await refreshOneDispatchLink(Number(l.id)); }
+}
+async function unlinkDispatch(id){if(!confirm('只解除 PLM 与派工的关联，不删除原派工任务。确定继续？'))return;const r=await api('unlink_dispatch_link',{id});toast(r.ok?'已解除关联':r.error);await load()}
+async function createDispatchDraft(id){return createDispatchTask(id)}
+
+async function deleteStep(id){if(!confirm('删除这个步骤？'))return;const r=await api('delete_step',{id});if(Number(flowSelectedStepId)===Number(id)){flowSelectedStepId=0;localStorage.setItem('plm_v85_step_id',0)}toast(r.ok?'步骤已删除':r.error);await load()}
+async function deleteAllSteps(pid,mid){if(!mid){toast('请先选择样品');return}if(!confirm('确定删除当前样品的全部开发步骤？步骤附件不会删除，但会解除步骤绑定。'))return;const r=await api('delete_steps_by_model',{project_id:pid,model_id:mid});flowSelectedStepId=0;localStorage.setItem('plm_v85_step_id',0);toast(r.ok?'已删除全部步骤：'+(r.count||0):r.error);await load()}
+async function dropStep(targetId){if(!dragStepId||Number(dragStepId)===Number(targetId))return;const ids=[...document.querySelectorAll('.flow-node')].map(el=>Number(el.dataset.stepId));const a=ids.indexOf(Number(dragStepId)),b=ids.indexOf(Number(targetId));if(a<0||b<0)return;ids.splice(b,0,ids.splice(a,1)[0]);const r=await api('reorder_steps',{ids});toast(r.ok?'排序已保存':'排序失败：'+(r.error||''));await load()}
+function testStatusClass(st,result=''){
+  const x=String(st||'')+' '+String(result||'');
+  if(/不通过|失败|异常|需整改|待复测/.test(x))return 'red';
+  if(/通过|已完成/.test(x))return 'green';
+  if(/测试中/.test(x))return 'blue';
+  return 'orange';
+}
+function testTypeDefaultFileCat(type){
+  const t=String(type||'');
+  if(t.includes('IES'))return 'IES报告';
+  if(t.includes('积分球'))return '积分球报告';
+  if(t.includes('EMC'))return 'EMC报告';
+  if(t.includes('盐雾'))return '盐雾测试';
+  if(t.includes('防水')||t.includes('IP'))return '防水测试';
+  if(t.includes('老化'))return '老化测试';
+  if(t.includes('结构'))return '结构装配测试';
+  if(t.includes('包装'))return '包装跌落测试';
+  if(t.includes('光斑'))return '光斑测试';
+  return '温升报告';
+}
+
+let testSelectedId=Number(localStorage.getItem('plm_v85_test_id')||0), activeTestType=localStorage.getItem('plm_v85_active_test_type')||'温升';
+let testCreateMode=localStorage.getItem('plm_v85_test_create_mode')==='1';
+let testNodeFilter=localStorage.getItem('plm_v85_test_node_filter')||'all', testNodeSearch=localStorage.getItem('plm_v85_test_node_search')||'';
+const TEST_TEMPLATE_DEFAULTS=[
+  {key:'builtin_temp',name:'温升测试模板',test_type:'温升',builtin:true,fields:[
+    {key:'ambient_temp',label:'环境温度',type:'number',bind:'ambient_temp'},
+    {key:'led_temp',label:'LED温度',type:'number',bind:'led_temp'},
+    {key:'driver_temp',label:'电源温度',type:'number',bind:'driver_temp'},
+    {key:'shell_temp',label:'壳体温度',type:'number',bind:'shell_temp'},
+    {key:'max_temp',label:'最高温度',type:'number',bind:'max_temp'},
+    {key:'aging_hours',label:'测试时长/条件',type:'text'}
+  ]},
+  {key:'builtin_ies',name:'IES 测试模板',test_type:'IES',builtin:true,fields:[
+    {key:'ies_angle',label:'光束角',type:'text',bind:'ies_angle'},
+    {key:'ies_lumen',label:'IES流明',type:'text',bind:'ies_lumen'},
+    {key:'ies_power',label:'测试功率',type:'text'},
+    {key:'ies_file_note',label:'IES文件说明',type:'text'}
+  ]},
+  {key:'builtin_sphere',name:'积分球测试模板',test_type:'积分球',builtin:true,fields:[
+    {key:'sphere_lumen',label:'光通量',type:'text',bind:'sphere_lumen'},
+    {key:'sphere_power',label:'功率',type:'text',bind:'sphere_power'},
+    {key:'sphere_efficiency',label:'光效 lm/W',type:'text',bind:'sphere_efficiency'},
+    {key:'cct',label:'色温 CCT',type:'text',bind:'cct'},
+    {key:'cri',label:'显指 CRI',type:'text',bind:'cri'}
+  ]},
+  {key:'builtin_aging',name:'老化测试模板',test_type:'老化',builtin:true,fields:[
+    {key:'aging_hours',label:'老化时长',type:'text'},
+    {key:'aging_condition',label:'老化条件',type:'text'},
+    {key:'abnormal_record',label:'异常记录',type:'textarea'}
+  ]},
+  {key:'builtin_emc',name:'EMC测试模板',test_type:'EMC',builtin:true,fields:[
+    {key:'emc_standard',label:'EMC标准',type:'textarea'},
+    {key:'emc_data',label:'EMC关键数据',type:'textarea'},
+    {key:'emc_conclusion',label:'EMC结论/整改',type:'textarea'}
+  ]},
+  {key:'builtin_ip',name:'IP防水测试模板',test_type:'IP防水',builtin:true,fields:[
+    {key:'ip_level',label:'IP等级',type:'text'},
+    {key:'test_time',label:'测试时长',type:'text'},
+    {key:'leakage',label:'进水/异常',type:'textarea'}
+  ]},
+  {key:'builtin_salt',name:'盐雾测试模板',test_type:'盐雾',builtin:true,fields:[
+    {key:'salt_hours',label:'盐雾小时数',type:'text'},
+    {key:'surface_result',label:'表面结果',type:'textarea'},
+    {key:'rust_status',label:'腐蚀/生锈情况',type:'textarea'}
+  ]},
+  {key:'builtin_structure',name:'结构装配模板',test_type:'结构装配',builtin:true,fields:[
+    {key:'fit_status',label:'装配匹配',type:'text'},
+    {key:'screw_status',label:'螺丝/卡扣',type:'text'},
+    {key:'problem',label:'结构问题',type:'textarea'}
+  ]},
+  {key:'builtin_drop',name:'包装跌落模板',test_type:'包装跌落',builtin:true,fields:[
+    {key:'drop_height',label:'跌落高度',type:'text'},
+    {key:'drop_times',label:'跌落次数',type:'text'},
+    {key:'damage',label:'损坏情况',type:'textarea'}
+  ]},
+  {key:'builtin_spot',name:'光斑测试模板',test_type:'光斑测试',builtin:true,fields:[
+    {key:'beam_angle',label:'角度/光型',type:'text'},
+    {key:'spot_result',label:'光斑表现',type:'textarea'},
+    {key:'color_issue',label:'偏色/杂光',type:'textarea'}
+  ]}
+];
+function parseJsonSafe(x,fb){try{if(typeof x==='string'&&x.trim())return JSON.parse(x);if(typeof x==='object'&&x)return x}catch(e){}return fb}
+function normalizeTestTemplate(t){
+  const fields=parseJsonSafe(t.fields_json||t.fields||[],[]);
+  return {id:Number(t.id||0),key:t.key||('db_'+t.id),name:t.name||'未命名模板',test_type:t.test_type||'',builtin:!!t.builtin,fields:Array.isArray(fields)?fields:[]}
+}
+function allTestTemplates(){return [...TEST_TEMPLATE_DEFAULTS.map(normalizeTestTemplate),...(testTemplates||[]).map(normalizeTestTemplate)]}
+function templateByKey(key){return allTestTemplates().find(t=>String(t.key)===String(key)||('db_'+t.id)===String(key))||null}
+function templateForType(type){return allTestTemplates().find(t=>t.test_type===type)||TEST_TEMPLATE_DEFAULTS[0]}
+function templateForTest(t){return templateByKey(t?.template_key||'')||templateForType(t?.test_type||activeTestType||'温升')}
+function testCustomValues(t){const x=parseJsonSafe(t?.template_fields_json||{},{});return (x&&typeof x==='object'&&!Array.isArray(x))?x:{}}
+function testNodeStatusClass(t){return testStatusClass(t.status,t.result)}
+function testNodeClick(id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(id||0);localStorage.setItem('plm_v85_test_id',testSelectedId);renderDetail()}
+function newTestNode(type){testCreateMode=true;testSelectedId=0;activeTestType=type||activeTestType||'温升';localStorage.setItem('plm_v85_test_create_mode','1');localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}
+function changeTestTemplate(){const key=$('t_template')?.value||'';const tpl=templateByKey(key);if(tpl){activeTestType=tpl.test_type||activeTestType;localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}}
+function testRunsFor(t){return (testRuns||[]).filter(x=>Number(x.test_id)===Number(t?.id||0)).sort((a,b)=>(Number(a.run_no)-Number(b.run_no))||(Number(a.id)-Number(b.id)))}
+function testRunText(x){return [x.status,x.result,x.retest_result,x.test_conclusion,x.test_data,x.note].map(v=>String(v||'')).join(' ')}
+function testHistoryStats(t,arr){
+  const runs=testRunsFor(t);
+  const txt=x=>testRunText(x);
+  if(runs.length){
+    const fail=runs.filter(x=>/不通过|失败|异常|需整改|NG/i.test(txt(x))).length;
+    const currentText=txt(t);
+    const affect=runs.some(x=>Number(x.affect_sample||0)>0)||Number(t.affect_sample||0)>0;
+    const issue=Number(t.issue_id||0)>0||Number(t.problem_generated||0)>0;
+    const pendingRetest=/待复测|复测/i.test(currentText)||runs.some(x=>/待复测/i.test(txt(x)));
+    const lastRun=runs[runs.length-1]||t;
+    const last=(lastRun.result||lastRun.status||t.result||t.status||'待测');
+    return {fail,retest:Math.max(0,runs.length-1),runs:runs.length,affect,issue,pendingRetest,last};
+  }
+  const same=(arr||[]).filter(x=>Number(x.model_id||0)===Number(t.model_id||0)&&String(x.test_type||'').trim()===String(t.test_type||'').trim());
+  const fail=same.filter(x=>/不通过|失败|异常|需整改|NG/i.test([x.status,x.result,x.retest_result,x.test_conclusion,x.note].map(v=>String(v||'')).join(' '))).length;
+  const retestMarked=same.filter(x=>/复测|重测/i.test([x.status,x.result,x.retest_result,x.test_conclusion,x.note].map(v=>String(v||'')).join(' '))).length;
+  const retest=Math.max(retestMarked, same.length>1 ? same.length-1 : 0);
+  const currentText=[t.status,t.result,t.retest_result,t.test_conclusion,t.note].map(v=>String(v||'')).join(' ');
+  const affect=Number(t.affect_sample||0)>0;
+  const issue=Number(t.issue_id||0)>0||Number(t.problem_generated||0)>0;
+  const pendingRetest=/待复测|复测/i.test(currentText);
+  const last=(t.result||t.status||'待测');
+  return {fail,retest,runs:0,affect,issue,pendingRetest,last};
+}
+function renderTestNodeCard(t,arr,ms){
+  const m=(ms||models||[]).find(x=>Number(x.id)===Number(t.model_id));
+  const cls=testNodeStatusClass(t);
+  const active=Number(t.id)===Number(testSelectedId)?' active':'';
+  const hs=testHistoryStats(t,arr);
+  const tags=[];
+  if(hs.fail>0)tags.push(`<span class="mini-tag red">不通过 ${hs.fail}</span>`);
+  if(hs.runs>0)tags.push(`<span class="mini-tag blue">记录 ${hs.runs}</span>`);
+  if(hs.retest>0)tags.push(`<span class="mini-tag orange">重测 ${hs.retest}</span>`);
+  if(hs.pendingRetest)tags.push(`<span class="mini-tag orange">待复测</span>`);
+  if(hs.affect)tags.push(`<span class="mini-tag red">影响样品</span>`);
+  if(hs.issue)tags.push(`<span class="mini-tag blue">有问题闭环</span>`);
+  const attachCount=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)).length;
+  if(attachCount>0)tags.push(`<span class="mini-tag blue">附件 ${attachCount}</span>`);
+  if(!tags.length)tags.push(`<span class="mini-tag green">无失败记录</span>`);
+  const sample=m?(m.name||m.model||'样品'):('项目公共');
+  const modelCode=m?(m.model||m.sample_no||''):'';
+  const sampleText=modelCode&&String(modelCode)!==String(sample)?`${sample}，${modelCode}`:sample;
+  const date=dateOnly(t.test_date)||'-';
+  const op=t.operator||'-';
+  const last=hs.last||'-';
+  return `<div class="test-node${active}" onclick="testNodeClick(${t.id})"><div class="test-node-main"><div class="test-node-title">${esc(t.test_type||'测试')} · ${esc(t.title||'未命名')}</div><div class="test-node-meta">样品：${esc(sampleText)}<br>日期：${esc(date)} ｜ 测试人：${esc(op)}</div><div class="test-node-history">${tags.join('')}</div><div class="test-node-last">最后结论：${esc(last)}</div></div><span class="test-node-status ${cls}">${esc(t.status||'待测')}</span></div>`;
+}
+
+function testReportIsFailed(t){
+  const x=[t.status,t.result,t.retest_result,t.test_conclusion,t.test_data,t.note].map(v=>String(v||'')).join(' ');
+  return /不通过|失败|异常|需整改|NG/i.test(x)||Number(t.affect_sample||0)>0;
+}
+function testReportNeedsRetest(t){
+  const x=[t.status,t.result,t.retest_result,t.test_conclusion,t.note].map(v=>String(v||'')).join(' ');
+  return /待复测|复测|重测/i.test(x);
+}
+function testReportIsDone(t){
+  const x=[t.status,t.result].map(v=>String(v||'')).join(' ');
+  return /通过|已完成/.test(x)&&!testReportIsFailed(t)&&!testReportNeedsRetest(t);
+}
+function testReportCsvCell(v){v=String(v??'').replace(/"/g,'""').replace(/[\r\n]+/g,' ');return '"'+v+'"'}
+function exportCurrentProjectTestReport(){
+  const p=cur(); if(!p){toast('请先选择项目');return;}
+  const arr=pTests(p.id); const ms=pModels(p.id);
+  const rows=[['测试类型','测试标题','样品','日期','测试人','状态','结论','重测次数','不通过次数','附件数']];
+  arr.forEach(t=>{const m=ms.find(x=>Number(x.id)===Number(t.model_id))||{};const hs=testHistoryStats(t,arr);const ac=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)).length;rows.push([t.test_type||'',t.title||'',m.name||m.model||'',dateOnly(t.test_date)||'',t.operator||'',t.status||'',t.result||t.test_conclusion||'',hs.retest||0,hs.fail||0,ac]);});
+  const csv='\ufeff'+rows.map(r=>r.map(testReportCsvCell).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='PLM测试报表_'+(p.name||p.id)+'_'+new Date().toISOString().slice(0,10)+'.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800);toast('测试报表已导出');
+}
+function renderTestReportPanel(p,arr,ms,typeCounts,statusCounts){
+  const total=arr.length;
+  const done=arr.filter(testReportIsDone).length;
+  const failed=arr.filter(testReportIsFailed).length;
+  const retest=arr.filter(testReportNeedsRetest).length;
+  const pending=arr.filter(t=>!testReportIsDone(t)&&!testReportIsFailed(t)&&!testReportNeedsRetest(t)).length;
+  const fileTotal=(files||[]).filter(f=>Number(f.project_id)===Number(p.id)&&Number(f.test_id||0)>0).length;
+  const rectifyLinks=(dispatchLinks||[]).filter(l=>String(l.link_type||'')==='test_rectify'&&arr.some(t=>Number(t.id)===Number(l.test_id)));
+  const rectifyOpen=rectifyLinks.filter(l=>!(Number(l.progress||0)>=100||/完成|已完成|done/i.test(String(l.status||'')))).length;
+  const sampleMap={};
+  (ms||[]).forEach(m=>sampleMap[Number(m.id)]={name:m.name||m.model||('样品'+m.id),total:0,done:0,failed:0,retest:0,pending:0});
+  const typeMap={};
+  arr.forEach(t=>{
+    const type=(t.test_type||'其它').trim()||'其它';
+    if(!typeMap[type]) typeMap[type]={total:0,done:0,failed:0,retest:0,pending:0,files:0};
+    const ac=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)).length;
+    const sm=sampleMap[Number(t.model_id)]||(sampleMap[Number(t.model_id)]={name:Number(t.model_id)?('样品'+t.model_id):'项目公共',total:0,done:0,failed:0,retest:0,pending:0});
+    [typeMap[type],sm].forEach(o=>{o.total++;o.files=(o.files||0)+ac;if(testReportIsFailed(t))o.failed++;else if(testReportNeedsRetest(t))o.retest++;else if(testReportIsDone(t))o.done++;else o.pending++;});
+  });
+  const typeRows=Object.entries(typeMap).sort((a,b)=>b[1].total-a[1].total).map(([name,o])=>`<tr><td>${esc(name)}</td><td>${o.total}</td><td><span class="tag green">${o.done}</span></td><td><span class="tag red">${o.failed}</span></td><td><span class="tag orange">${o.retest}</span></td><td>${o.pending}</td><td>${o.files||0}</td></tr>`).join('')||`<tr><td colspan="7">暂无测试类型统计</td></tr>`;
+  const sampleRows=Object.values(sampleMap).filter(o=>o.total>0).sort((a,b)=>b.failed-a.failed||b.retest-a.retest||b.total-a.total).slice(0,8).map(o=>`<tr><td>${esc(o.name)}</td><td>${o.total}</td><td><span class="tag green">${o.done}</span></td><td><span class="tag red">${o.failed}</span></td><td><span class="tag orange">${o.retest}</span></td><td>${o.pending}</td></tr>`).join('')||`<tr><td colspan="6">暂无样品测试统计</td></tr>`;
+  const risks=arr.filter(t=>testReportIsFailed(t)||testReportNeedsRetest(t)||Number(t.issue_id||0)>0||Number(t.affect_sample||0)>0).sort((a,b)=>Number(testReportIsFailed(b))-Number(testReportIsFailed(a))||Number(testReportNeedsRetest(b))-Number(testReportNeedsRetest(a))||Number(b.id)-Number(a.id)).slice(0,8);
+  const riskHtml=risks.map(t=>{const m=ms.find(x=>Number(x.id)===Number(t.model_id))||{};const cls=testReportIsFailed(t)?'red':'orange';const reason=testReportIsFailed(t)?'不通过/异常/影响样品':(testReportNeedsRetest(t)?'待复测/重测':'有问题闭环');return `<div class="test-risk-item ${cls}"><div><div class="test-risk-title">${esc(t.test_type||'测试')} · ${esc(t.title||'未命名')}</div><div class="test-risk-meta">${esc(m.name||m.model||'项目公共')} ｜ ${esc(dateOnly(t.test_date)||'-')} ｜ ${esc(t.operator||'-')} ｜ ${esc(reason)}</div></div><button class="btn small" onclick="testNodeClick(${Number(t.id)})">打开</button></div>`}).join('')||'<div class="test-report-muted">当前项目暂无异常测试。</div>';
+  const pct=total?Math.round(done*100/total):0;
+  const collapsed=localStorage.getItem('plm_v85_test_dashboard_collapsed')==='1';
+  const head=`<div class="test-report-head"><div><h3>测试看板 / 报表</h3>${collapsed?`<div class="test-report-mini"><span class="mini-tag">总数 ${total}</span><span class="mini-tag">完成 ${done}</span><span class="mini-tag">异常 ${failed}</span><span class="mini-tag">复测 ${retest}</span><span class="mini-tag">附件 ${fileTotal}</span></div>`:''}</div><div class="actions"><span class="tag blue">完成率 ${pct}%</span><button class="btn small" onclick="toggleTestDashboard()">${collapsed?'展开':'折叠'}</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="window.print()">打印</button></div></div>`;
+  if(collapsed){return `<div class="test-report-panel collapsed">${head}</div>`;}
+  return `<div class="test-report-panel">${head}<div class="test-report-body"><div class="test-report-cards"><div class="test-report-card blue"><span>测试总数</span><b>${total}</b></div><div class="test-report-card green"><span>已通过 / 已完成</span><b>${done}</b></div><div class="test-report-card red"><span>异常 / 不通过</span><b>${failed}</b></div><div class="test-report-card orange"><span>待复测</span><b>${retest}</b></div><div class="test-report-card"><span>待测 / 测试中</span><b>${pending}</b></div><div class="test-report-card"><span>测试附件</span><b>${fileTotal}</b></div><div class="test-report-card ${rectifyOpen?'orange':'green'}"><span>整改派工未完</span><b>${rectifyOpen}</b></div><div class="test-report-card"><span>样品覆盖</span><b>${Object.values(sampleMap).filter(o=>o.total>0).length}/${ms.length}</b></div></div><div class="test-report-grid"><div><div class="test-report-subtitle">测试类型汇总</div><table class="test-report-table"><thead><tr><th>类型</th><th>总数</th><th>通过</th><th>异常</th><th>复测</th><th>待测</th><th>附件</th></tr></thead><tbody>${typeRows}</tbody></table><div class="test-report-subtitle">样品测试汇总</div><table class="test-report-table"><thead><tr><th>样品</th><th>总数</th><th>通过</th><th>异常</th><th>复测</th><th>待测</th></tr></thead><tbody>${sampleRows}</tbody></table></div><div><div class="test-report-subtitle">异常 / 待复测清单</div><div class="test-risk-list">${riskHtml}</div></div></div></div></div>`;
+}
+
+function toggleTestDashboard(){
+  const v=localStorage.getItem('plm_v85_test_dashboard_collapsed')==='1';
+  localStorage.setItem('plm_v85_test_dashboard_collapsed',v?'0':'1');
+  const p=cur();
+  if(p) renderTests(p); else renderDetail();
+}
+function setTestNodeFilter(v){
+  testNodeFilter=v||'all';
+  localStorage.setItem('plm_v85_test_node_filter',testNodeFilter);
+  renderDetail();
+}
+function setTestNodeSearch(v){
+  testNodeSearch=String(v||'');
+  localStorage.setItem('plm_v85_test_node_search',testNodeSearch);
+  renderTests(cur());
+}
+function testNodeMatchesFilter(t){
+  const f=testNodeFilter||'all';
+  const txt=[t.status,t.result,t.retest_result,t.test_conclusion,t.test_data,t.note].map(v=>String(v||'')).join(' ');
+  if(f==='failed')return testReportIsFailed(t);
+  if(f==='retest')return testReportNeedsRetest(t);
+  if(f==='pending')return !testReportIsDone(t)&&!testReportIsFailed(t)&&!testReportNeedsRetest(t);
+  if(f==='done')return testReportIsDone(t);
+  if(f==='issue')return Number(t.issue_id||0)>0||Number(t.problem_generated||0)>0||testNeedsIssue(t);
+  if(f==='file')return (files||[]).some(x=>Number(x.test_id)===Number(t.id));
+  return true;
+}
+function testNodeMatchesSearch(t,ms){
+  const q=String(testNodeSearch||'').trim().toLowerCase();
+  if(!q)return true;
+  const m=(ms||[]).find(x=>Number(x.id)===Number(t.model_id))||{};
+  const txt=[t.test_type,t.title,t.status,t.result,t.operator,t.test_conclusion,t.test_data,t.note,m.name,m.model,m.sample_no].map(v=>String(v||'').toLowerCase()).join(' ');
+  return txt.includes(q);
+}
+function renderTestFilterBar(arr,ms){
+  const btn=(key,label,count)=>`<button class="btn small ${testNodeFilter===key?'primary':''}" onclick="setTestNodeFilter('${key}')">${label}${count!==undefined?' '+count:''}</button>`;
+  const failed=arr.filter(testReportIsFailed).length;
+  const retest=arr.filter(testReportNeedsRetest).length;
+  const done=arr.filter(testReportIsDone).length;
+  const pending=arr.filter(t=>!testReportIsDone(t)&&!testReportIsFailed(t)&&!testReportNeedsRetest(t)).length;
+  const issue=arr.filter(t=>Number(t.issue_id||0)>0||Number(t.problem_generated||0)>0||testNeedsIssue(t)).length;
+  const file=arr.filter(t=>(files||[]).some(x=>Number(x.test_id)===Number(t.id))).length;
+  return `<div class="test-filter-toolbar"><div class="test-filter-line"><input class="test-filter-search" value="${esc(testNodeSearch||'')}" placeholder="搜索测试/样品/测试人" oninput="setTestNodeSearch(this.value)"><button class="btn small" onclick="testNodeSearch='';localStorage.removeItem('plm_v85_test_node_search');renderDetail()">清空</button></div><div class="test-filter-chips">${btn('all','全部',arr.length)}${btn('failed','异常',failed)}${btn('retest','待复测',retest)}${btn('pending','待测',pending)}${btn('done','通过',done)}${btn('issue','问题',issue)}${btn('file','有附件',file)}</div></div>`;
+}
+
+function renderTests(p){
+  if(!p){$('tabbody').innerHTML='<div class="empty">请选择项目</div>';return}
+  const arr=pTests(p.id).sort((a,b)=>Number(b.id)-Number(a.id));
+  const ms=pModels(p.id);
+  const typeCounts={}, statusCounts={待测:0,测试中:0,通过:0,不通过:0,待复测:0};
+  arr.forEach(t=>{const type=(t.test_type||'其它').trim()||'其它';typeCounts[type]=(typeCounts[type]||0)+1;const x=String(t.status||'')+' '+String(t.result||'');if(/不通过|失败|异常|需整改/.test(x))statusCounts['不通过']++;else if(/待复测/.test(x))statusCounts['待复测']++;else if(/测试中/.test(x))statusCounts['测试中']++;else if(/通过|已完成/.test(x))statusCounts['通过']++;else statusCounts['待测']++;});
+  // V8.5.101：测试中心简化。取消搜索、清空、状态筛选、类型快捷按钮，测试节点数量不多时直接显示全部。
+  testNodeFilter='all';
+  testNodeSearch='';
+  localStorage.setItem('plm_v85_test_node_filter','all');
+  localStorage.removeItem('plm_v85_test_node_search');
+  const filtered=arr;
+  if(!testCreateMode){
+    if(testSelectedId&&!filtered.some(x=>Number(x.id)===Number(testSelectedId))){testSelectedId=filtered[0]?Number(filtered[0].id):0;localStorage.setItem('plm_v85_test_id',testSelectedId||0)}
+    if(!testSelectedId&&filtered[0]){testSelectedId=Number(filtered[0].id);localStorage.setItem('plm_v85_test_id',testSelectedId||0)}
+  }
+  const selected=testCreateMode?null:(arr.find(x=>Number(x.id)===Number(testSelectedId))||null);
+  const dashboard=renderTestReportPanel(p,arr,ms,typeCounts,statusCounts);
+  const nodes=filtered.map(t=>renderTestNodeCard(t,arr,ms)).join('')||`<div class="empty">暂无测试节点。<br><button class="btn small primary" onclick="newTestNode('温升')">+ 新测试</button></div>`;
+  $('tabbody').innerHTML=`${dashboard}<div class="test-node-layout clean-v8585"><div class="test-node-left"><div class="test-node-head"><h3>测试节点</h3><button class="btn small primary" onclick="newTestNode('温升')">+ 新测试</button></div><div class="test-node-list">${nodes}</div></div><div class="test-node-right">${renderTestDetailForm(p,selected,ms)}</div></div>`;
+}
+function renderTemplateSelect(t){const tpl=templateForTest(t);const list=allTestTemplates();return `<select id="t_template" onchange="changeTestTemplate()">${list.map(x=>`<option value="${esc(x.key)}" ${(tpl&&String(x.key)===String(tpl.key))?'selected':''}>${esc(x.name)}${x.builtin?'':' · 自定义'}</option>`).join('')}</select>`}
+function testTplHasBind(tpl,bind){return !!((tpl&&tpl.fields)||[]).some(f=>String(f.bind||'')===String(bind))}
+function hiddenTestTextarea(id,val){return `<textarea id="${esc(id)}" style="display:none">${esc(val||'')}</textarea>`}
+function issueForTest(t){
+  if(!t)return null;
+  const tid=Number(t.id||0);const iid=Number(t.issue_id||0);
+  let it=(issues||[]).find(x=>iid>0&&Number(x.id)===iid);
+  if(it)return it;
+  it=(issues||[]).find(x=>Number(x.test_id||0)===tid);
+  if(it)return it;
+  return (issues||[]).find(x=>Number(x.project_id)===Number(t.project_id)&&String(x.note||'').includes('自动来源测试ID:'+tid))||null;
+}
+function testNeedsIssue(t){
+  if(!t)return false;
+  const x=String(t.status||'')+' '+String(t.result||'')+' '+String(t.retest_result||'');
+  return /不通过|失败|异常|需整改|待复测/.test(x)||Number(t.affect_sample||0)>0;
+}
+
+function userSelectOptions(selectedId=0,selectedName=''){
+  const list=(plmPermissionUsers||[]).filter(u=>u&&((u.id||0)>0||u.name||u.username));
+  const opts=['<option value="0">选择负责人</option>'].concat(list.map(u=>`<option value="${Number(u.id||0)}" ${(Number(selectedId)>0&&Number(u.id)===Number(selectedId))||(!selectedId&&selectedName&&String(u.name||u.username)===String(selectedName))?'selected':''}>${esc(u.name||u.username||('用户'+u.id))}</option>`));
+  if(selectedName&&!list.some(u=>String(u.name||u.username)===String(selectedName))) opts.push(`<option value="0" selected>${esc(selectedName)}</option>`);
+  return opts.join('');
+}
+function testRectifyLink(issueId,testId){
+  issueId=Number(issueId||0);testId=Number(testId||0);
+  return (dispatchLinks||[]).find(x=>String(x.link_type||'')==='test_rectify'&&((issueId&&Number(x.issue_id)===issueId)||(testId&&Number(x.test_id)===testId)))||null;
+}
+function renderTestRectifyDispatchPanel(t,it){
+  if(!t||!it)return '';
+  const link=testRectifyLink(it.id,t.id);
+  if(link){
+    const done=/done|完成|已完成|approved|已确认/i.test(String(link.status||''))||Number(link.progress||0)>=100;
+    const url=link.dispatch_url||(`dispatch_todo.php?open_task=${Number(link.task_id||0)}&single_task=1`);
+    return `<div class="test-rectify-panel ${done?'done':''}"><div class="test-rectify-head"><span>整改派工</span><span class="tag ${done?'green':'blue'}">${esc(link.status||'已生成')}</span></div><div class="test-rectify-meta">负责人：${esc(link.assignee_name||'-')} ｜ 进度：${Number(link.progress||0)}% ｜ 截止：${esc(dateOnly(link.due_at)||'-')} ｜ 派工ID：${esc(link.task_id||'')}</div><div class="actions"><button class="btn small primary" onclick="window.open('${esc(url)}','_blank')">查看派工</button>${done?'<span class="mini-tag green">整改完成，测试会回写为待复测</span>':'<span class="mini-tag blue">等待工程整改</span>'}</div></div>`;
+  }
+  return `<div class="test-rectify-panel"><div class="test-rectify-head"><span>整改派工</span><span class="tag orange">未生成</span></div><div class="test-rectify-meta">测试异常后，可一键生成派工给工程整改。派工完成后，问题闭环会更新，测试状态会回写为待复测。</div><div class="test-rectify-actions"><select id="test_rectify_user_${Number(t.id)}">${userSelectOptions(0,it.owner||t.operator||'')}</select><input id="test_rectify_due_${Number(t.id)}" type="date" title="整改截止日期"><button class="btn small warn" onclick="createTestRectifyDispatch(${Number(t.id)},${Number(it.id)})">生成整改派工</button></div></div>`;
+}
+async function createTestRectifyDispatch(testId,issueId){
+  const sel=$(`test_rectify_user_${testId}`);const due=$(`test_rectify_due_${testId}`);
+  let assignee_id=sel?Number(sel.value||0):0;let assignee_name='';
+  if(sel&&sel.selectedOptions&&sel.selectedOptions[0])assignee_name=sel.selectedOptions[0].textContent.trim();
+  if(assignee_name==='选择负责人')assignee_name='';
+  if(!assignee_id&&!assignee_name){assignee_name=prompt('填写整改负责人姓名','')||'';}
+  if(!assignee_id&&!assignee_name){toast('请选择或填写负责人');return;}
+  const r=await api('create_test_rectify_dispatch',{test_id:testId,issue_id:issueId,assignee_id,assignee_name,due_at:due?due.value:''});
+  toast(r.ok?(r.exists?'已有关联整改派工':'整改派工已生成'):r.error);
+  await load();
+}
+function renderTestIssuePanel(t){
+  const it=issueForTest(t);const need=testNeedsIssue(t);const cls=it?' good':'';
+  const status=it?(it.status||'待处理'):(need?'待生成':'正常');
+  const sev=it?(it.severity||'中'):(Number(t.affect_sample||0)?'高':'中');
+  const title=it?(it.title||'测试问题闭环'):(need?'测试异常，建议生成问题闭环':'当前测试没有异常');
+  const meta=it?`问题ID：${esc(it.id)} ｜ 状态：${esc(status)} ｜ 严重程度：${esc(sev)} ｜ 负责人：${esc(it.owner||'-')}`:`状态/结论出现不通过、待复测、异常、需整改，或勾选影响样品时，系统会自动生成问题闭环。`;
+  const badges=[];
+  if(need)badges.push(`<span class="mini-tag red">测试异常</span>`);
+  if(Number(t.affect_sample||0)>0)badges.push(`<span class="mini-tag red">影响样品</span>`);
+  if(it)badges.push(`<span class="mini-tag blue">已关联问题</span>`); else if(!need)badges.push(`<span class="mini-tag green">无需闭环</span>`);
+  const actions=it?`<button class="btn small primary" onclick="gotoIssueFromTest(${Number(it.id)})">查看问题</button><button class="btn small" onclick="gotoTab('issues')">问题中心</button>`:`${need?`<button class="btn small warn" onclick="createIssueFromCurrentTest(${Number(t.id)})">生成问题闭环</button>`:''}<button class="btn small" onclick="gotoTab('issues')">问题中心</button>`;
+  const rectify=it?renderTestRectifyDispatchPanel(t,it):'';
+  return `<div class="test-form-section test-issue-section${cls}"><h4>问题闭环</h4><div class="test-issue-panel${cls}"><div><div class="test-issue-title">${esc(title)}</div><div class="test-issue-meta">${meta}</div><div class="test-issue-badges">${badges.join('')}</div></div><div class="test-issue-actions">${actions}</div></div>${rectify}</div>`;
+}
+async function createIssueFromCurrentTest(testId,runId=0){
+  if(!testId){toast('请先保存测试节点');return}
+  const r=await api('create_issue_from_test',{test_id:testId,test_run_id:runId});
+  toast(r.ok?'问题闭环已生成/已关联':r.error);
+  await load();
+}
+function gotoIssueFromTest(issueId){
+  tab='issues';localStorage.setItem('plm_v85_tab','issues');renderDetail();
+  setTimeout(()=>{const el=document.querySelector(`[data-issue-id="${issueId}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('issue-highlight');setTimeout(()=>el.classList.remove('issue-highlight'),1800)}},80);
+}
+
+function renderTestAttachmentSection(t,filesHtml){
+  const cnt=files.filter(x=>Number(x.test_id)===Number(t.id)&&Number(x.test_run_id||0)===0).length;
+  return `<div class="test-form-section test-upload-quick" id="testNodeFileSection"><div class="test-upload-quick-head"><div><h4>测试资料 / 节点附件</h4><div class="hint">温升照片、IES 文件、积分球报告、PDF 等都在这里上传；重测记录自己的附件仍放到对应重测记录下面。</div></div><div class="actions"><span class="tag blue">附件 ${cnt}</span><button class="btn small primary" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传测试资料</button></div></div><div class="test-upload-list">${filesHtml||'<div class="hint">暂无节点附件</div>'}</div></div>`;
+}
+function openTestUploadModal(testId,modelId,testType){
+  if(!testId){toast('请先保存测试节点');return;}
+  const uid='test_upload_'+Math.random().toString(36).slice(2,8);
+  const cat=testTypeDefaultFileCat(testType||'测试');
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal test-upload-modal" style="max-width:720px"><div class="modal-head"><div><h3>上传测试资料</h3><div class="hint">上传后会归到当前测试节点；如果是某一次重测的资料，请在重测记录下面上传。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="uploadbox">${uploadBox(cat,modelId||0,testId,true,0,0)}</div></div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+function scrollToTestFiles(){
+  const el=document.getElementById('testNodeFileSection');
+  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.boxShadow='0 0 0 3px rgba(37,99,235,.18)';setTimeout(()=>el.style.boxShadow='',1200)}
+}
+
+function renderTestDetailForm(p,t,ms){
+  const isNew=!t;const tpl=isNew?(templateForType(activeTestType)||TEST_TEMPLATE_DEFAULTS[0]):templateForTest(t);const custom=testCustomValues(t);
+  const type=isNew?(tpl.test_type||activeTestType):(t.test_type||tpl.test_type||activeTestType);
+  const title=t?.title||type+'测试';const allTestFiles=t?files.filter(x=>Number(x.test_id)===Number(t.id)):[];const fileList=allTestFiles.filter(x=>Number(x.test_run_id||0)===0);const filesHtml=fileList.map(f=>fileChip(f,'node-file')).join('');
+  const preserveHidden=[
+    testTplHasBind(tpl,'test_standard')?'':hiddenTestTextarea('t_standard',t?.test_standard||''),
+    testTplHasBind(tpl,'test_data')?'':hiddenTestTextarea('t_data',t?.test_data||''),
+    testTplHasBind(tpl,'test_conclusion')?'':hiddenTestTextarea('t_conclusion',t?.test_conclusion||''),
+    hiddenTestTextarea('t_note',t?.note||'')
+  ].join('');
+  return `<div class="test-detail-head"><div><h3>${isNew?'新增测试节点':esc(type+' · '+(t.title||'未命名'))}</h3><div class="hint">左边选测试节点，右边编辑详情。保存测试只改当前节点；保存为重测会新增一条历史记录，不覆盖旧记录。</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button>${t?`<button class="btn" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传资料</button><button class="btn" onclick="openSingleTestReport(${Number(t.id)})">测试报告</button><button class="btn good" onclick="saveAsTestRun(${p.id})">保存为一次重测</button><button class="btn danger" onclick="deleteTest(${t.id})">删除</button>`:''}</div></div><div class="test-detail-form"><input id="t_id" type="hidden" value="${t?.id||0}">${preserveHidden}<div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid"><div class="field"><label>归属样品</label><select id="t_model_id"><option value="0">不绑定样品</option>${ms.map(m=>`<option value="${m.id}" ${Number(t?.model_id||0)===Number(m.id)?'selected':''}>${esc(m.name||m.model||m.id)}</option>`).join('')}</select></div><div class="field"><label>测试模板</label>${renderTemplateSelect(t||{test_type:type,template_key:tpl.key})}</div><div class="field"><label>测试类型</label><select id="t_type">${TEST_TYPES.map(x=>`<option ${x===type?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>测试标题</label><input id="t_title" value="${esc(title)}" placeholder="测试标题"></div><div class="field"><label>状态</label><select id="t_status">${opt(['待测','测试中','通过','不通过','待复测','已完成','需整改'],t?.status||'待测')}</select></div><div class="field"><label>结论</label><select id="t_result"><option value="">测试结论</option>${opt(['通过','不通过','待确认','待复测'],t?.result||'')}</select></div><div class="field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div><div class="field"><label>复测结果</label><input id="t_retest" value="${esc(t?.retest_result||'')}" placeholder="复测结果"></div></div></div><div class="test-form-section"><h4>${esc(tpl.name||'测试模板字段')}</h4><div class="test-template-fields">${(tpl.fields||[]).map(f=>renderTestTemplateField(f,t,custom)).join('')||'<div class="hint">这个模板暂无字段，可在下方模板管理里自定义。</div>'}</div></div>${t?renderTestAttachmentSection(t,filesHtml):''}${t?renderTestIssuePanel(t):''}${t?renderTestRunHistory(t):''}${renderTestTemplateManager(tpl)}</div>`
+}
+
+function testReportText(t){
+  return [t.test_data,t.test_conclusion,t.note,t.retest_result].map(x=>String(x||'').trim()).filter(Boolean).join('\n');
+}
+function testReportFileLinks(list){
+  if(!list||!list.length)return '<div class="hint">暂无附件</div>';
+  return '<div class="test-report-files">'+list.map(f=>`<a href="${esc(f.file_path||'')}" target="_blank">${esc(f.title||f.original_name||f.file_name||'附件')}</a>`).join('')+'</div>';
+}
+function openSingleTestReport(testId){
+  const p=cur(); if(!p){toast('请先选择项目');return;}
+  const t=tests.find(x=>Number(x.id)===Number(testId)); if(!t){toast('测试不存在');return;}
+  const m=models.find(x=>Number(x.id)===Number(t.model_id))||{};
+  const runs=testRunsFor(t);
+  const nodeFiles=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)&&Number(f.test_run_id||0)===0);
+  const statusCls=testStatusClass(t.status,t.result);
+  const hs=testHistoryStats(t,tests);
+  const runHtml=(runs.length?runs:[{id:0,run_no:1,status:t.status,result:t.result,test_date:t.test_date,operator:t.operator,test_data:t.test_data,test_conclusion:t.test_conclusion,note:t.note,affect_sample:t.affect_sample,_virtual:true}]).map(r=>{
+    const bad=/不通过|失败|异常|需整改|NG/i.test(testRunText(r));
+    const rfs=r._virtual?[]:runFilesFor(r.id,t.id);
+    const txt=[r.test_data,r.test_conclusion,r.note].map(x=>String(x||'').trim()).filter(Boolean).join('\n')||'暂无关键记录';
+    return `<div class="test-report-run ${bad?'bad':''}"><b>第 ${esc(r.run_no||1)} 次测试 · ${esc(r.result||r.status||'待测')}</b><div class="hint">日期：${esc(dateOnly(r.test_date)||'-')} ｜ 测试人：${esc(r.operator||'-')} ｜ ${Number(r.affect_sample||0)?'影响样品':'不影响样品'}</div><div class="test-report-textbox">${esc(txt)}</div><h3>本次附件</h3>${testReportFileLinks(rfs)}</div>`;
+  }).join('');
+  const custom=testCustomValues(t);
+  const tpl=templateForTest(t);
+  const tplRows=(tpl.fields||[]).map(f=>{const key=f.bind||f.key||'';const val=((custom[f.key]!==undefined&&custom[f.key]!==null)?custom[f.key]:((key&&t[key]!==undefined&&t[key]!==null)?t[key]:(f.default||'')));return `<div><b>${esc(f.label||f.key||'字段')}</b>${esc(String(val||'-'))}</div>`}).join('');
+  const html=`<div class="modal-mask" onclick="if(event.target===this)closeSingleTestReport(this)"><div class="modal test-single-report-modal"><div class="modal-head"><div><h3>测试报告</h3><div class="hint">单项测试打印/查看，不影响原测试数据。</div></div><div class="actions"><button class="btn small primary" onclick="printSingleTestReport()">打印</button><button class="btn small" onclick="closeSingleTestReport(this)">关闭</button></div></div><div class="modal-body"><div class="test-single-report"><h2>${esc(t.test_type||'测试')} · ${esc(t.title||'未命名')}</h2><div class="tags"><span class="test-node-status ${statusCls}">${esc(t.status||'待测')}</span><span class="mini-tag blue">记录 ${hs.runs||runs.length||1}</span>${hs.fail?`<span class="mini-tag red">不通过 ${hs.fail}</span>`:''}${hs.retest?`<span class="mini-tag orange">重测 ${hs.retest}</span>`:''}</div><div class="test-report-info-grid"><div><b>项目</b>${esc(p.name||'-')}</div><div><b>样品</b>${esc(m.name||m.model||'项目公共')}</div><div><b>型号</b>${esc(m.model||m.sample_no||'-')}</div><div><b>测试日期</b>${esc(dateOnly(t.test_date)||'-')}</div><div><b>测试人</b>${esc(t.operator||'-')}</div><div><b>结论</b>${esc(t.result||t.test_conclusion||'-')}</div></div><h3>模板字段</h3><div class="test-report-info-grid">${tplRows||'<div><b>模板字段</b>暂无</div>'}</div><h3>关键记录 / 结论</h3><div class="test-report-textbox">${esc(testReportText(t)||'暂无关键记录')}</div><h3>测试节点附件</h3>${testReportFileLinks(nodeFiles)}<h3>重测历史</h3>${runHtml}</div></div></div></div>`;
+  const host=document.createElement('div'); host.innerHTML=html; document.body.appendChild(host.firstElementChild);
+}
+function closeSingleTestReport(el){
+  const mask=el?.classList?.contains('modal-mask')?el:el?.closest?.('.modal-mask');
+  document.body.classList.remove('print-single-test');
+  if(mask)mask.remove();
+}
+function printSingleTestReport(){
+  document.body.classList.add('print-single-test');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('print-single-test'),500);
+}
+
+function runStatusClass(r){return testStatusClass(r.status,r.result)}
+function runFilesFor(runId,testId){return (files||[]).filter(f=>Number(f.test_id)===Number(testId)&&Number(f.test_run_id||0)===Number(runId||0))}
+function renderTestRunHistory(t){
+  const runs=testRunsFor(t);
+  const rows=runs.length?runs:[{id:0,test_id:t.id,run_no:1,status:t.status,result:t.result,test_date:t.test_date,operator:t.operator,test_data:t.test_data,test_conclusion:t.test_conclusion,note:t.note,affect_sample:t.affect_sample,created_at:t.created_at,_virtual:true}];
+  const cards=rows.slice().reverse().map(r=>{
+    const failed=/不通过|失败|异常|需整改|NG/i.test(testRunText(r));
+    const status=r.result||r.status||'待测';
+    const data=[r.test_data,r.test_conclusion,r.note].map(x=>String(x||'').trim()).filter(Boolean).join(' ｜ ');
+    const rfs=r._virtual?[]:runFilesFor(r.id,t.id);
+    const filesHtml=rfs.map(f=>fileChip(f,'run-file')).join('')||'<div class="hint">本次暂无附件</div>';
+    const uploadHtml=r._virtual?'':`<details class="test-run-upload"><summary>上传本次测试附件</summary>${uploadBox(testTypeDefaultFileCat(t.test_type),t.model_id||0,t.id,true,0,r.id)}</details>`;
+    return `<div class="test-run-card ${failed?'bad':''}"><div class="test-run-head"><b>第 ${esc(r.run_no||1)} 次测试</b><span class="test-node-status ${runStatusClass(r)}">${esc(status)}</span></div><div class="test-run-meta">日期：${esc(dateOnly(r.test_date)||'-')} ｜ 测试人：${esc(r.operator||'-')} ｜ ${Number(r.affect_sample||0)?'影响样品':'不影响样品'} ｜ 附件 ${rfs.length}</div><div class="test-run-note">${esc(data||'暂无关键记录')}</div><div class="test-run-files"><div class="test-run-files-head"><span>本次测试附件</span>${rfs.length?`<span class="tag blue">${rfs.length} 个</span>`:''}</div><div class="test-run-files-list">${filesHtml}</div>${uploadHtml}</div>${r._virtual?'<div class="hint">旧记录尚未写入历史表，保存后系统会自动补一条初始记录。</div>':`<div class="test-run-actions">${failed?`<button class="btn small warn" onclick="createIssueFromCurrentTest(${Number(t.id)},${Number(r.id)})">生成问题</button>`:''}<button class="btn small danger" onclick="deleteTestRun(${r.id})">删除本次</button></div>`}</div>`
+  }).join('');
+  const totalFiles=(files||[]).filter(f=>Number(f.test_id)===Number(t.id)).length;
+  return `<div class="test-form-section test-run-section"><div class="test-run-title"><h4>测试历史 / 重测记录</h4><div class="actions"><span class="tag blue">附件 ${totalFiles}</span><button class="btn small" onclick="prepareNewTestRun()">新增一次重测</button><button class="btn small good" onclick="saveAsTestRun(${Number(t.project_id||cur()?.id||0)})">保存为重测记录</button></div></div><div class="hint">每次重测可单独上传附件。比如第一次不通过的照片、第二次复测报告，会分别归到对应记录下面；文件中心仍能统一查看。</div><div class="test-run-list">${cards}</div></div>`;
+}
+function prepareNewTestRun(){
+  if($('t_status')) $('t_status').value='待复测';
+  if($('t_result')) $('t_result').value='';
+  if($('t_retest')) $('t_retest').value='';
+  if($('t_date')) $('t_date').value=new Date().toISOString().slice(0,10);
+  toast('已切到新增重测状态，填写数据后点“保存为重测记录”。');
+}
+async function deleteTestRun(runId){
+  if(!confirm('删除这一条重测历史记录？不会删除测试节点。'))return;
+  const r=await api('delete_test_run',{run_id:runId});toast(r.ok?'重测记录已删除':r.error);await load();
+}
+
+function splitTemplateOptions(opt){
+  if(Array.isArray(opt)) return opt.map(x=>String(x||'').trim()).filter(Boolean);
+  return String(opt||'').split(/[\n,，、|\/]+/).map(x=>x.trim()).filter(Boolean);
+}
+function bindFieldIdMap(){return {ambient_temp:'t_ambient',led_temp:'t_led',driver_temp:'t_driver',shell_temp:'t_shell',max_temp:'t_max',sphere_lumen:'t_lumen',sphere_power:'t_power',sphere_efficiency:'t_eff',cct:'t_cct',cri:'t_cri',ies_angle:'t_angle',ies_lumen:'t_ies_lumen',test_standard:'t_standard',test_data:'t_data',test_conclusion:'t_conclusion'}}
+function renderTestTemplateField(f,t,custom){
+  f=f||{};
+  const bind=f.bind||'';
+  const key=f.key||bind||('field_'+Math.random().toString(36).slice(2,6));
+  const label=f.label||key;
+  const type=f.type||'text';
+  const bindIds=bindFieldIdMap();
+  const values={ambient_temp:t?.ambient_temp,led_temp:t?.led_temp,driver_temp:t?.driver_temp,shell_temp:t?.shell_temp,max_temp:t?.max_temp,sphere_lumen:t?.sphere_lumen,sphere_power:t?.sphere_power,sphere_efficiency:t?.sphere_efficiency,cct:t?.cct,cri:t?.cri,ies_angle:t?.ies_angle,ies_lumen:t?.ies_lumen,test_standard:t?.test_standard,test_data:t?.test_data,test_conclusion:t?.test_conclusion};
+  const id=bindIds[bind]||('tc_'+String(key).replace(/[^a-zA-Z0-9_]/g,'_'));
+  let val=bind ? (values[bind]??'') : (custom[key]??'');
+  if((val===undefined||val===null||String(val)==='') && f.default!==undefined) val=f.default;
+  const req=f.required?' required':'';
+  const data=bind?'':` data-test-custom-key="${esc(key)}"`;
+  const ph=f.placeholder||'';
+  const wide=(type==='textarea'||type==='file'||bind==='test_standard'||bind==='test_data'||bind==='test_conclusion')?' wide':'';
+  if(type==='textarea'||bind==='test_standard'||bind==='test_data'||bind==='test_conclusion')return `<div class="test-template-field${wide}"><label>${esc(label)}${f.required?' *':''}</label><textarea id="${esc(id)}" placeholder="${esc(ph)}"${data}${req}>${esc(val||'')}</textarea></div>`;
+  if(type==='date')return `<div class="test-template-field"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="date" value="${esc(dateOnly(val)||'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
+  if(type==='number')return `<div class="test-template-field"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="number" step="0.01" value="${esc(val??'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
+  if(type==='select'){
+    const opts=splitTemplateOptions(f.options||'通过\n不通过\n待确认');
+    return `<div class="test-template-field"><label>${esc(label)}${f.required?' *':''}</label><select id="${esc(id)}"${data}${req}><option value="">请选择</option>${opts.map(o=>`<option value="${esc(o)}" ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+  }
+  if(type==='yesno')return `<div class="test-template-field"><label>${esc(label)}${f.required?' *':''}</label><select id="${esc(id)}"${data}${req}><option value="">请选择</option><option value="是" ${String(val)==='是'?'selected':''}>是</option><option value="否" ${String(val)==='否'?'selected':''}>否</option></select></div>`;
+  if(type==='file')return `<div class="test-template-field wide test-template-file-hint"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" value="${esc(val??'')}" placeholder="${esc(ph||'附件请在下方测试资料上传，这里可写文件说明')}"${data}${req}><div class="hint">附件统一在“测试资料”上传，避免文件散乱。</div></div>`;
+  return `<div class="test-template-field"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" value="${esc(val??'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
+}
+function testTemplateBindOptions(selected=''){
+  const list=[['','不绑定/自定义字段'],['ambient_temp','环境温度'],['led_temp','LED温度'],['driver_temp','驱动温度'],['shell_temp','外壳温度'],['max_temp','最高温度'],['sphere_lumen','积分球光通量'],['sphere_power','积分球功率'],['sphere_efficiency','光效'],['cct','色温 CCT'],['cri','显指 CRI'],['ies_angle','IES角度'],['ies_lumen','IES光通量'],['test_standard','测试标准'],['test_data','关键测试数据'],['test_conclusion','测试结论/整改建议']];
+  return list.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(selected||'')?'selected':''}>${esc(l)}</option>`).join('');
+}
+function testTemplateTypeOptions(selected='text'){
+  const list=[['text','文本'],['number','数字'],['date','日期'],['select','下拉'],['yesno','是否'],['textarea','多行备注'],['file','附件说明']];
+  return list.map(([v,l])=>`<option value="${v}" ${String(v)===String(selected||'text')?'selected':''}>${l}</option>`).join('');
+}
+function fieldKeyFromLabel(label,i){
+  const base=String(label||'field').trim().replace(/\s+/g,'_').replace(/[^\u4e00-\u9fa5a-zA-Z0-9_]/g,'_').slice(0,40);
+  return (base||'field')+'_'+(i+1);
+}
+function renderTplEditorRow(f={},i=0){
+  const label=f.label||'';
+  const key=f.key||fieldKeyFromLabel(label,i);
+  const type=f.type||'text';
+  const bind=f.bind||'';
+  const required=!!f.required;
+  const options=f.options||'';
+  const def=f.default||'';
+  return `<div class="tpl-field-row" draggable="true" ondragstart="tplFieldDragStart(event)" ondragover="tplFieldDragOver(event)" ondrop="tplFieldDrop(event)"><span class="tpl-drag" title="拖动排序">☰</span><div class="tpl-field-main"><label class="tpl-mini-field"><span>字段名称</span><input class="tpl-label" value="${esc(label)}" placeholder="如：环境温度"></label><label class="tpl-mini-field"><span>类型</span><select class="tpl-type" onchange="tplFieldTypeChanged(this)">${testTemplateTypeOptions(type)}</select></label><label class="tpl-mini-field"><span>绑定字段</span><select class="tpl-bind">${testTemplateBindOptions(bind)}</select></label><label class="tpl-mini-field"><span>必填</span><span class="tpl-required-card"><input type="checkbox" ${required?'checked':''}> 必填</span></label><label class="tpl-mini-field"><span>下拉选项</span><input class="tpl-options" value="${esc(options)}" placeholder="通过,不通过"></label><label class="tpl-mini-field"><span>默认值</span><input class="tpl-default" value="${esc(def)}" placeholder="默认值"></label><label class="tpl-mini-field wide"><span>字段Key</span><input class="tpl-key" value="${esc(key)}" title="字段Key，一般不用改"></label></div><div class="tpl-field-actions"><button class="btn small" onclick="moveTplFieldRow(this,-1)">↑</button><button class="btn small" onclick="moveTplFieldRow(this,1)">↓</button><button class="btn small danger" onclick="removeTplFieldRow(this)">删</button></div></div>`;
+}
+function tplEditorCollapsed(){try{return localStorage.getItem('plm_test_template_editor_collapsed_v8579')==='1'}catch(e){return false}}
+function setTplEditorCollapsed(v){try{localStorage.setItem('plm_test_template_editor_collapsed_v8579',v?'1':'0')}catch(e){}}
+function toggleTplEditor(){const box=document.querySelector('.test-template-editor');if(!box)return;const next=!box.classList.contains('collapsed');box.classList.toggle('collapsed',next);setTplEditorCollapsed(next);const btn=box.querySelector('.tpl-toggle-btn');if(btn)btn.textContent=next?'展开':'折叠';}
+function renderTestTemplateManager(tpl){
+  tpl=tpl||templateForType(activeTestType)||{};
+  const customs=allTestTemplates().filter(x=>!x.builtin);
+  const editingId=(!tpl.builtin && tpl.id)?tpl.id:0;
+  const nameVal=!tpl.builtin?(tpl.name||''):'';
+  const collapsed=tplEditorCollapsed();
+  return `<div class="test-form-section test-template-editor ${collapsed?'collapsed':''}"><div class="tpl-collapse-head"><div><h4>模板字段管理</h4><div class="tpl-collapse-sub">可自己决定每种测试要填哪些字段；已改成卡片网格，一排自动显示 2～3 个字段。</div></div><button class="btn small tpl-toggle-btn" onclick="toggleTplEditor()">${collapsed?'展开':'折叠'}</button></div><div class="tpl-editor-body"><input id="tpl_edit_id" type="hidden" value="${editingId}"><div class="tpl-editor-top"><input id="new_tpl_name" value="${esc(nameVal)}" placeholder="模板名称，如 温升简版"><select id="new_tpl_type">${TEST_TYPES.map(x=>`<option ${x===(tpl?.test_type||activeTestType)?'selected':''}>${esc(x)}</option>`).join('')}</select><button class="btn small" onclick="addTplFieldRow()">+ 字段</button><button class="btn small" onclick="loadActiveTemplateToEditor()">载入当前模板</button><button class="btn small primary" onclick="saveTestTemplateFromEditor()">保存模板</button></div><div class="tpl-editor-head"><span></span><span>字段名称</span><span>类型</span><span>绑定标准字段</span><span>必填</span><span>选项</span><span>默认值</span><span>Key</span><span>操作</span></div><div id="tpl_field_rows" class="tpl-field-rows">${(tpl.fields&&tpl.fields.length?tpl.fields:[{label:'测试结论',type:'textarea',bind:'test_conclusion',required:0}]).map(renderTplEditorRow).join('')}</div><div class="test-template-manage">${customs.map(x=>`<div class="test-template-chip"><div><b>${esc(x.name)}</b><div class="hint">${esc(x.test_type||'通用')} · ${x.fields.length}项</div></div><div class="actions"><button class="btn small" onclick="editCustomTestTemplate(${x.id})">编辑</button><button class="btn small danger" onclick="deleteCustomTestTemplate(${x.id})">删</button></div></div>`).join('')||'<div class="hint">暂无自定义模板</div>'}</div></div></div>`;
+}
+let tplDragEl=null;
+function tplFieldDragStart(e){tplDragEl=e.currentTarget;e.dataTransfer.effectAllowed='move'}
+function tplFieldDragOver(e){e.preventDefault();const row=e.currentTarget;if(!tplDragEl||row===tplDragEl)return;const box=row.getBoundingClientRect();const after=(e.clientY-box.top)>box.height/2;row.parentNode.insertBefore(tplDragEl,after?row.nextSibling:row)}
+function tplFieldDrop(e){e.preventDefault();tplDragEl=null}
+function addTplFieldRow(f){const box=$('tpl_field_rows');if(!box)return;box.insertAdjacentHTML('beforeend',renderTplEditorRow(f||{label:'',type:'text'},box.children.length));}
+function removeTplFieldRow(btn){const row=btn.closest('.tpl-field-row');if(row)row.remove();}
+function moveTplFieldRow(btn,dir){const row=btn.closest('.tpl-field-row');if(!row)return;if(dir<0&&row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);if(dir>0&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);}
+function tplFieldTypeChanged(sel){const row=sel.closest('.tpl-field-row');if(!row)return;const opt=row.querySelector('.tpl-options');if(!opt)return;opt.placeholder=sel.value==='select'?'例如：通过,不通过,待确认':'下拉选项，用逗号/换行分隔';}
+function loadActiveTemplateToEditor(){const tpl=templateByKey($('t_template')?.value)||templateForType($('t_type')?.value||activeTestType);if(!tpl)return;const rows=$('tpl_field_rows');if(rows)rows.innerHTML=(tpl.fields||[]).map(renderTplEditorRow).join('');if($('new_tpl_type'))$('new_tpl_type').value=tpl.test_type||activeTestType;if($('new_tpl_name'))$('new_tpl_name').value=tpl.builtin?'':(tpl.name||'');if($('tpl_edit_id'))$('tpl_edit_id').value=tpl.builtin?0:(tpl.id||0);toast('已载入当前模板字段，可修改后保存。')}
+function editCustomTestTemplate(id){const tpl=allTestTemplates().find(x=>Number(x.id)===Number(id));if(!tpl)return;const rows=$('tpl_field_rows');if(rows)rows.innerHTML=(tpl.fields||[]).map(renderTplEditorRow).join('');if($('new_tpl_name'))$('new_tpl_name').value=tpl.name||'';if($('new_tpl_type'))$('new_tpl_type').value=tpl.test_type||activeTestType;if($('tpl_edit_id'))$('tpl_edit_id').value=tpl.id||0;toast('已载入模板，可直接修改保存。')}
+function collectTplEditorFields(){
+  const rows=[...document.querySelectorAll('#tpl_field_rows .tpl-field-row')];
+  return rows.map((row,i)=>{
+    const label=(row.querySelector('.tpl-label')?.value||'').trim();
+    if(!label)return null;
+    const key=(row.querySelector('.tpl-key')?.value||fieldKeyFromLabel(label,i)).trim();
+    return {key,label,type:row.querySelector('.tpl-type')?.value||'text',bind:row.querySelector('.tpl-bind')?.value||'',required:row.querySelector('.tpl-required-card input')?.checked?1:0,options:row.querySelector('.tpl-options')?.value||'',default:row.querySelector('.tpl-default')?.value||''};
+  }).filter(Boolean);
+}
+async function saveTestTemplateFromEditor(){
+  const id=Number($('tpl_edit_id')?.value||0);
+  const name=($('new_tpl_name')?.value||'').trim();
+  const type=$('new_tpl_type')?.value||activeTestType||'其它';
+  const fields=collectTplEditorFields();
+  if(!name){toast('请填写模板名称');return}
+  if(!fields.length){toast('请至少保留一个字段');return}
+  const r=await api('save_test_template',{id,name,test_type:type,fields,is_public:1});toast(r.ok?'模板已保存':r.error);await load();
+}
+async function saveCustomTestTemplateFromLines(){return saveTestTemplateFromEditor()}
+async function saveActiveTestTemplateCopy(){
+  const tpl=templateByKey($('t_template')?.value)||templateForType($('t_type')?.value||activeTestType);const name=prompt('另存为模板名称', (tpl?.name||'测试模板')+' 复制');if(!name)return;const r=await api('save_test_template',{name,test_type:$('t_type')?.value||tpl.test_type,fields:tpl.fields||[],is_public:1});toast(r.ok?'模板已另存':r.error);await load();
+}
+async function deleteCustomTestTemplate(id){if(!confirm('删除这个自定义测试模板？已套用到测试记录的数据不会删除。'))return;const r=await api('delete_test_template',{id});toast(r.ok?'模板已删除':r.error);await load();}
+function fillTest(id){testNodeClick(id)}
+function resetTestForm(){newTestNode(activeTestType||'温升')}
+function gv(id){const el=$(id);return el?el.value:''}
+function numOrEmpty(id){const v=gv(id);return v===''?'':v}
+function collectTestFormData(pid){
+  const tpl=templateByKey(gv('t_template'))||templateForType(gv('t_type')||activeTestType);const custom={};document.querySelectorAll('[data-test-custom-key]').forEach(el=>{custom[el.getAttribute('data-test-custom-key')]=el.value||''});
+  return {id:Number(gv('t_id')||0),project_id:pid,model_id:gv('t_model_id'),test_type:gv('t_type')||tpl.test_type||activeTestType,title:gv('t_title'),status:gv('t_status'),result:gv('t_result'),test_date:gv('t_date'),operator:gv('t_operator'),affect_sample:Number(gv('t_affect')||0),ambient_temp:numOrEmpty('t_ambient'),led_temp:numOrEmpty('t_led'),driver_temp:numOrEmpty('t_driver'),shell_temp:numOrEmpty('t_shell'),max_temp:numOrEmpty('t_max'),sphere_lumen:gv('t_lumen'),sphere_power:gv('t_power'),sphere_efficiency:gv('t_eff'),cct:gv('t_cct'),cri:gv('t_cri'),ies_angle:gv('t_angle'),ies_lumen:gv('t_ies_lumen'),retest_result:gv('t_retest'),test_standard:gv('t_standard'),test_data:gv('t_data'),test_conclusion:gv('t_conclusion'),note:gv('t_note'),template_key:tpl?.key||'',template_name:tpl?.name||'',template_fields_json:custom};
+}
+async function saveNewTest(pid){
+  const d=collectTestFormData(pid);
+  const r=await api('save_test',d);toast(r.ok?(r.issue_id?'测试已保存，并已生成问题闭环':'测试已保存'):r.error);if(r.ok&&r.id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load()
+}
+async function saveAsTestRun(pid){
+  const d=collectTestFormData(pid);const tid=Number(d.id||0);if(!tid){toast('请先保存测试节点，再保存重测记录');return}d.test_id=tid;
+  const r=await api('save_test_run',d);toast(r.ok?(r.issue_id?'重测记录已保存，并已生成问题闭环':'重测记录已保存'):r.error);if(r.ok&&r.id){testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load();
+}
+async function deleteTest(id){if(!confirm('删除这条测试记录？'))return;const r=await api('delete_test',{id});toast(r.ok?'测试已删除':r.error);if(r.ok){testSelectedId=0;localStorage.setItem('plm_v85_test_id',0)}await load()}
+
+function modelLabel(m){return (m.name||m.model||m.sample_no||('样品'+m.id))}
+function modelSelectHtml(id,val=0,includeAll=false){
+  const ms=pModels(cur()?.id||selectedId);
+  const valStr=String(val ?? '');
+  let html='';
+  if(includeAll) html+=`<option value="" ${valStr===''?'selected':''}>全部产品/样品</option>`;
+  html+=`<option value="0" ${(valStr!=='' && Number(val)===0)?'selected':''}>项目公共文件</option>`;
+  html+=ms.map(m=>`<option value="${m.id}" ${(valStr!=='' && Number(val)===Number(m.id))?'selected':''}>${esc(modelLabel(m))}</option>`).join('');
+  return `<select id="${id}">${html}</select>`
+}
+function isTestFile(f){
+  const cat=String(f?.category||'');
+  const name=[f?.title,f?.original_name,f?.file_name,f?.note].join(' ');
+  if(Number(f?.test_id)>0) return true;
+  if(TEST_FILE_CATS.includes(cat)) return true;
+  return /(温升|IES|积分球|EMC|IP防水|防水|老化|测试|报告|光电|光谱|配光)/i.test(cat+' '+name);
+}
+function stepSelectHtml(id,val=0,modelId=0,includeAllModels=false){const p=cur();const pid=p?Number(p.id):selectedId;let list=steps.filter(x=>Number(x.project_id)===Number(pid));if(!includeAllModels&&Number(modelId)>0)list=list.filter(x=>Number(x.model_id)===Number(modelId));list=list.sort((a,b)=>(Number(a.model_id)-Number(b.model_id))||(Number(a.sort_order)-Number(b.sort_order))||(Number(a.id)-Number(b.id)));let html='<option value="0">不绑定步骤</option>';html+=list.map(s=>{const m=models.find(x=>Number(x.id)===Number(s.model_id));const prefix=m?modelLabel(m)+' / ':'项目公共 / ';return `<option value="${s.id}" ${Number(val)===Number(s.id)?'selected':''}>${esc(prefix+(s.title||'步骤'))}</option>`}).join('');return `<select id="${id}">${html}</select>`}
+function fileTypeLabel(f){return isTestFile(f)?'测试中心':'文件中心'}
+function absUrl(path){try{return new URL(path, location.href).href}catch(e){return path}}
+function uploadBox(defaultCat,modelId=0,testId=0,isTest=false,stepId=0,testRunId=0){const uid='u_'+Math.random().toString(36).slice(2,9);const cats=isTest?TEST_FILE_CATS:FILE_CATS;return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${cats.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFile('${uid}',${modelId},${testId},${stepId},${testRunId})">上传</button>`}
+function uploadProjectFileBox(defaultCat='产品图片'){const uid='u_'+Math.random().toString(36).slice(2,9);return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${FILE_CATS.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml(uid+'_model',0,false)}</div><div class="field"><label>关联开发步骤</label>${stepSelectHtml(uid+'_step',0,0,true)}</div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFileFromBox('${uid}',0,0,0)">上传</button>`}
+async function uploadFile(uid,modelId,testId,stepId=0,testRunId=0){const p=cur();if(!p)return;const f=$(uid+'_file').files[0];if(!f){toast('请选择文件');return}const fd=new FormData();fd.append('project_id',p.id);fd.append('model_id',modelId||0);fd.append('test_id',testId||0);fd.append('test_run_id',testRunId||0);fd.append('step_id',stepId||0);fd.append('category',$(uid+'_cat').value);fd.append('title',$(uid+'_title').value);fd.append('note',$(uid+'_note').value);fd.append('customer_visible',$(uid+'_vis').checked?1:0);fd.append('file',f);const r=await uploadApi(fd);toast(r.ok?'文件已上传':r.error);await load()}
+async function uploadFileFromBox(uid,testId=0,stepId=0,testRunId=0){const mid=Number($(uid+'_model')?.value||0);const sid=Number($(uid+'_step')?.value||stepId||0);return uploadFile(uid,mid,testId,sid,testRunId)}
+function fileChip(f,extraClass=''){return `<span class="file-chip ${esc(extraClass)}"><a href="${esc(f.file_path)}" target="_blank">${esc(f.title||f.original_name||f.file_name)}</a><button class="btn small" onclick="openTestFilePreview(${Number(f.id)})">预览</button><button class="btn small danger" onclick="deleteFile(${f.id})">×</button></span>`}
+function openTestFilePreview(id){const f=files.find(x=>Number(x.id)===Number(id));if(!f){toast('文件不存在');return}const name=esc(f.title||f.original_name||f.file_name||'文件预览');const host=document.createElement('div');host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal test-file-preview-modal"><div class="modal-head"><div><h3>${name}</h3><div class="hint">弹窗预览，不占用测试详情页面空间。</div></div><div class="actions"><a class="btn small" href="${esc(f.file_path)}" target="_blank">新窗口打开</a><button class="btn small" onclick="this.closest('.modal-mask').remove()">关闭</button></div></div><div class="modal-body">${filePreviewLarge(f)}</div></div></div>`;document.body.appendChild(host.firstElementChild)}
+function renderFiles(p){
+  const arr=pFiles(p.id);
+  if(customerFileInitializedProject!==Number(p.id)){
+    customerFileInitializedProject=Number(p.id);
+    customerFileSelected=new Set(arr.filter(f=>Number(f.customer_visible)===1).map(f=>Number(f.id)));
+    fileSelectedId=arr[0]?Number(arr[0].id):0;
+    localStorage.setItem('plm_v85_file_id',fileSelectedId||0);
+  }
+  if(fileSelectedId && !arr.some(f=>Number(f.id)===Number(fileSelectedId))){fileSelectedId=arr[0]?Number(arr[0].id):0;localStorage.setItem('plm_v85_file_id',fileSelectedId||0)}
+  const total=arr.length, customer=arr.filter(f=>Number(f.customer_visible)===1).length, internal=arr.filter(f=>Number(f.customer_visible)!==1).length;
+  const filterRail = fileFilterCollapsed && arr.length > 0;
+  $('tabbody').innerHTML=`<div class="file-workbench ${filePreviewCollapsed?'preview-collapsed':''} ${filterRail?'filter-rail':''}">
+    <aside class="file-tree ${filterRail?'file-tree-rail':''}">
+      <div class="file-tree-head"><h3>文件筛选</h3><button class="file-tree-toggle" onclick="toggleFileFilterRail()">${filterRail?'展开':'收起'}</button></div>
+      <button class="tree-btn active" data-kind="scope" data-val="all" onclick="setFmFilter('scope','all')">全部文件 <b>${total}</b></button>
+      <button class="tree-btn" data-kind="scope" data-val="customer" onclick="setFmFilter('scope','customer')">可发客户 <b>${customer}</b></button>
+      <button class="tree-btn" data-kind="scope" data-val="internal" onclick="setFmFilter('scope','internal')">内部资料 <b>${internal}</b></button>
+      <button class="tree-btn" data-kind="source" data-val="filecenter" onclick="setFmFilter('source','filecenter')">文件中心 <b>${arr.filter(f=>!isTestFile(f)).length}</b></button>
+      <button class="tree-btn" data-kind="source" data-val="testcenter" onclick="setFmFilter('source','testcenter')">测试资料 <b>${arr.filter(f=>isTestFile(f)).length}</b></button>
+      <div class="uploadbox"><h3>上传文件</h3><p class="hint">可归属项目/样品，也可直接绑定开发步骤。测试报告建议到测试中心上传。</p>${uploadProjectFileBox('产品图片')}</div>
+    </aside>
+    <section class="file-list-pane">
+      <div class="detail-head" style="padding-bottom:10px;margin-bottom:10px"><div><h3>文件列表</h3><div class="hint">筛选文件；点击一行在右侧预览和编辑。</div></div><div class="actions"><button class="btn small good" onclick="selectCustomerFilesFromManager('current')">加入当前</button><button class="btn small" onclick="selectCustomerFilesFromManager('allCustomer')">加入可发</button></div></div>
+      <div class="file-toolbar"><input id="fm_file_search" placeholder="搜索文件名/标题/备注" oninput="renderFileManagerTable()">${modelSelectHtml('fm_model','',true)}<select id="fm_cat" onchange="renderFileManagerTable()"><option value="">全部分类</option>${uniq(arr.map(f=>f.category)).map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="fm_scope" onchange="renderFileManagerTable()"><option value="all">全部权限</option><option value="customer">可发客户</option><option value="internal">内部资料</option></select><select id="fm_source" onchange="renderFileManagerTable()"><option value="all">全部来源</option><option value="filecenter">文件中心</option><option value="testcenter">测试中心</option></select></div>
+      <div class="fm-table-wrap" id="fm_table_wrap"></div>
+    </section>
+    <aside class="file-preview-pane ${filePreviewCollapsed?'collapsed-preview':''}"><div id="file_detail_panel"></div><div class="file-send-mini">${customerPackagePanel(p)}</div></aside>
+  </div>`;
+  $('fm_model').onchange=renderFileManagerTable;
+  renderFileManagerTable();
+  renderCustomerFileList();
+}
+function setFmFilter(kind,val){if(kind==='scope'&&$('fm_scope'))$('fm_scope').value=val;if(kind==='source'&&$('fm_source'))$('fm_source').value=val;renderFileManagerTable()}
+function currentFileManagerFiles(){const p=cur();if(!p)return[];const q=($('fm_file_search')?.value||'').trim().toLowerCase();const mid=$('fm_model')?.value??'';const cat=$('fm_cat')?.value??'';const scope=$('fm_scope')?.value||'all';const source=$('fm_source')?.value||'all';return pFiles(p.id).filter(f=>{const hay=[f.title,f.original_name,f.file_name,f.category,f.note].join(' ').toLowerCase();if(q&&!hay.includes(q))return false;if(mid!==''&&Number(f.model_id)!==Number(mid))return false;if(cat&&f.category!==cat)return false;if(scope==='customer'&&Number(f.customer_visible)!==1)return false;if(scope==='internal'&&Number(f.customer_visible)===1)return false;if(source==='filecenter'&&isTestFile(f))return false;if(source==='testcenter'&&!isTestFile(f))return false;return true})}
+function renderFileManagerTable(){
+  const list=currentFileManagerFiles();
+  if(!list.length){
+    fileSelectedId=0;
+    localStorage.setItem('plm_v85_file_id',0);
+  }else if(!fileSelectedId || !list.some(f=>Number(f.id)===Number(fileSelectedId))){
+    fileSelectedId=Number(list[0].id);
+    localStorage.setItem('plm_v85_file_id',fileSelectedId);
+  }
+  const rows=list.map(f=>fileRow(f)).join('');
+  if($('fm_table_wrap'))$('fm_table_wrap').innerHTML=`<table class="fm-table"><thead><tr><th>文件</th><th>归属</th><th>分类</th><th>客户</th><th>步骤</th><th>上传时间</th></tr></thead><tbody>${rows||'<tr><td colspan="6"><div class="empty">当前筛选下没有文件</div></td></tr>'}</tbody></table>`;
+  syncFmTreeActive();
+  renderFileDetailPanel()
+}
+function syncFmTreeActive(){
+  const scope=$('fm_scope')?.value||'all', source=$('fm_source')?.value||'all';
+  document.querySelectorAll('.file-tree .tree-btn').forEach(btn=>{
+    const k=btn.dataset.kind, v=btn.dataset.val;
+    btn.classList.toggle('active', (k==='scope'&&v===scope) || (k==='source'&&v===source));
+  });
+}
+function fileRow(f){const m=models.find(x=>Number(x.id)===Number(f.model_id));const st=steps.find(x=>Number(x.id)===Number(f.step_id));const active=Number(fileSelectedId)===Number(f.id);return `<tr class="${active?'active':''}" onclick="selectFile(${f.id})"><td><div style="display:flex;gap:10px;align-items:center;min-width:0">${fileIcon(f)}<div style="min-width:0"><div class="file-main-name">${esc(f.title||f.original_name||f.file_name)}</div><div class="hint">${esc(f.original_name||'')} ｜ ${fileSize(f.file_size)}</div></div></div></td><td>${esc(m?modelLabel(m):'项目公共文件')}</td><td>${esc(f.category||'')}</td><td>${Number(f.customer_visible)===1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}</td><td>${st?esc(st.title||'步骤'):'-'}</td><td class="nowrap">${esc(f.created_at||'')}</td></tr>`}
+function selectFile(id){fileSelectedId=Number(id)||0;localStorage.setItem('plm_v85_file_id',fileSelectedId);renderFileManagerTable()}
+function fileIcon(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<div class="file-ico"><img src="${esc(path)}"></div>`;const ext=(name.split('.').pop()||'FILE').slice(0,4).toUpperCase();return `<div class="file-ico">${esc(ext)}</div>`}
+function fileSize(n){n=Number(n)||0;if(!n)return'-';if(n<1024)return n+' B';if(n<1024*1024)return Math.round(n/1024)+' KB';return (n/1024/1024).toFixed(1)+' MB'}
+function toggleFilePreview(){
+  const willOpen = filePreviewCollapsed;
+  filePreviewCollapsed=!filePreviewCollapsed;
+  localStorage.setItem('plm_v855_file_preview_collapsed',filePreviewCollapsed?'1':'0');
+  if(willOpen){
+    // V8.5.29：展开文件预览时，自动让项目中心和文件筛选变窄，给预览留空间。
+    fileFilterCollapsed=true;
+    localStorage.setItem('plm_v8529_file_filter_collapsed','1');
+    if(!projectListCollapsed){
+      projectListCollapsed=true;
+      localStorage.setItem('plm_v8514_project_list_collapsed','1');
+      renderCards();
+    }
+  }else{
+    // V8.5.29：收起预览时，主动恢复项目中心；文件筛选也恢复完整，仍可手动再收起。
+    fileFilterCollapsed=false;
+    localStorage.setItem('plm_v8529_file_filter_collapsed','0');
+    if(projectListCollapsed){
+      projectListCollapsed=false;
+      localStorage.setItem('plm_v8514_project_list_collapsed','0');
+      renderCards();
+    }
+  }
+  renderFiles(cur());
+}
+function toggleFileFilterRail(){fileFilterCollapsed=!fileFilterCollapsed;localStorage.setItem('plm_v8529_file_filter_collapsed',fileFilterCollapsed?'1':'0');renderFiles(cur())}
+function renderFileDetailPanel(){const f=files.find(x=>Number(x.id)===Number(fileSelectedId));if(!$('file_detail_panel'))return;if(!f){$('file_detail_panel').innerHTML='<div class="file-preview-head"><h3>文件预览</h3><button class="file-preview-toggle" onclick="toggleFilePreview()">'+(filePreviewCollapsed?'展开预览':'收起预览')+'</button></div><div class="file-empty-note"><b>选择一个文件</b><span>右侧会显示预览、归属、客户权限、步骤绑定。</span></div>';return}const m=models.find(x=>Number(x.id)===Number(f.model_id));const st=steps.find(x=>Number(x.id)===Number(f.step_id));const previewHtml=filePreviewCollapsed?'<div class="file-preview-collapsed">预览已折叠，点击“展开预览”查看图片或 PDF。</div>':filePreviewLarge(f);$('file_detail_panel').innerHTML=`<div class="file-preview-head"><h3>文件预览</h3><button class="file-preview-toggle" onclick="toggleFilePreview()">${filePreviewCollapsed?'展开预览':'收起预览'}</button></div>${previewHtml}<div class="tags"><span class="file-source-badge ${TEST_FILE_CATS.includes(f.category)?'test':'file'}">${esc(fileTypeLabel(f))}</span>${Number(f.customer_visible)===1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}${st?`<span class="tag blue">步骤：${esc(st.title||'')}</span>`:''}</div><div class="file-meta-row"><b>文件名</b><span>${esc(f.original_name||f.file_name||'')}</span></div><div class="file-meta-row"><b>归属</b><span>${esc(m?modelLabel(m):'项目公共文件')}</span></div><div class="file-meta-row"><b>大小</b><span>${fileSize(f.file_size)}</span></div><div class="file-meta-row"><b>上传</b><span>${esc(f.created_at||'')}</span></div><div class="step-bind"><div class="grid2"><input id="f_title_${f.id}" value="${esc(f.title||'')}" placeholder="标题"><select id="f_cat_${f.id}">${[...FILE_CATS,...TEST_FILE_CATS].map(c=>`<option ${c===f.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml('f_model_'+f.id,f.model_id||0,false)}</div><div class="field"><label>绑定开发步骤</label>${stepSelectHtml('f_step_'+f.id,f.step_id||0,f.model_id||0,true)}</div><textarea id="f_note_${f.id}" placeholder="备注">${esc(f.note||'')}</textarea><label class="hint"><input id="f_vis_${f.id}" type="checkbox" ${Number(f.customer_visible)===1?'checked':''} style="width:auto"> 可发客户</label><div class="file-actions-line"><a class="btn small" href="${esc(f.file_path)}" target="_blank">打开</a><button class="btn small good" onclick="saveFileMeta(${f.id})">保存文件信息</button><button class="btn small primary" onclick="customerFileSelected.add(${Number(f.id)});renderCustomerFileList();toast('已加入客户资料包')">加入客户资料包</button><button class="btn small danger" onclick="deleteFile(${f.id})">删除</button></div></div>`}
+function filePreviewLarge(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<div class="file-preview-large"><img src="${esc(path)}"></div>`;if(mt.includes('pdf')||/\.pdf$/.test(name))return `<div class="file-preview-large"><iframe src="${esc(path)}"></iframe></div>`;return `<div class="file-preview-large"><div class="empty" style="border:0;background:transparent">${esc((name.split('.').pop()||'文件').toUpperCase())}<br><span class="hint">此格式可下载或打开链接查看</span></div></div>`}
+function selectCustomerFilesFromManager(mode){const p=cur();if(!p)return;if(mode==='allCustomer')pFiles(p.id).filter(f=>Number(f.customer_visible)===1).forEach(f=>customerFileSelected.add(Number(f.id)));else currentFileManagerFiles().forEach(f=>customerFileSelected.add(Number(f.id)));renderCustomerFileList();toast('已加入客户资料包')}
+
+function customerPackagePanel(p){const cats=uniq(pFiles(p.id).map(f=>f.category));return `<div class="customer-panel"><h3>发给客户 / 客户资料包</h3><div class="customer-tools">${modelSelectHtml('cf_model','',true)}<select id="cf_cat"><option value="">全部文件类型</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select><select id="cf_scope"><option value="all">全部资料</option><option value="customer">仅可发客户</option><option value="filecenter">仅文件中心</option><option value="testcenter">仅测试中心</option></select><button class="btn" onclick="renderCustomerFileList()">筛选</button></div><div class="actions" style="margin-top:10px"><button class="btn small good" onclick="selectCustomerFiles('visible')">勾选当前筛选</button><button class="btn small" onclick="selectCustomerFiles('all')">勾选全部</button><button class="btn small" onclick="selectCustomerFiles('none')">清空</button><button class="btn small primary" onclick="copyCustomerLinks()">复制客户链接清单</button><button class="btn small warn" onclick="createCustomerZip()">生成ZIP资料包</button></div><div id="pkg_result" class="pkg-result"></div><div id="customer_file_list" class="file-list-wrap"></div><textarea id="customer_links" class="copybox" readonly placeholder="选择文件后，点击“复制客户链接清单”会生成清单。"></textarea></div>`}
+function currentCustomerFiles(){const p=cur();if(!p)return[];const mid=$('cf_model')?.value??'';const cat=$('cf_cat')?.value??'';const scope=$('cf_scope')?.value??'all';return pFiles(p.id).filter(f=>{if(mid!==''&&Number(f.model_id)!==Number(mid))return false;if(cat&&f.category!==cat)return false;if(scope==='customer'&&Number(f.customer_visible)!==1)return false;if(scope==='filecenter'&&isTestFile(f))return false;if(scope==='testcenter'&&!isTestFile(f))return false;return true})}
+function renderCustomerFileList(){const list=currentCustomerFiles();const rows=list.map(f=>{const m=models.find(x=>Number(x.id)===Number(f.model_id));const checked=customerFileSelected.has(Number(f.id));const title=esc(f.title||f.original_name||f.file_name||'未命名文件');const origin=esc(f.original_name||f.file_name||'');const group=esc(m?modelLabel(m):'项目公共文件');const cat=esc(f.category||'文件');const source=esc(fileTypeLabel(f));const vis=Number(f.customer_visible)===1;return `<label class="customer-file-row ${checked?'checked':''}"><input type="checkbox" data-cfid="${f.id}" ${checked?'checked':''} onchange="toggleCustomerFile(${f.id},this.checked)"><span class="customer-file-main"><span class="customer-file-title">${title}</span><span class="customer-file-sub">${group} · ${cat} · ${source}</span><span class="customer-file-origin">${origin}</span></span><span class="customer-file-badges">${vis?'<b class="tag green">可发</b>':'<b class="tag orange">内部</b>'}</span></label>`}).join('');const html=`<div class="customer-mini-head"><span>选</span><span>文件 / 归属 / 类型</span><span>权限</span></div><div class="customer-mini-list">${rows||'<div class="empty">当前筛选下没有文件</div>'}</div>`;if($('customer_file_list'))$('customer_file_list').innerHTML=html;refreshCustomerLinksText(false)}
+function toggleCustomerFile(id,on){if(on)customerFileSelected.add(Number(id));else customerFileSelected.delete(Number(id));refreshCustomerLinksText(false)}
+function selectCustomerFiles(mode){const p=cur();if(!p)return;if(mode==='none')customerFileSelected.clear();else if(mode==='all')pFiles(p.id).forEach(f=>customerFileSelected.add(Number(f.id)));else currentCustomerFiles().forEach(f=>customerFileSelected.add(Number(f.id)));renderCustomerFileList()}
+function selectedCustomerFiles(){const p=cur();if(!p)return[];return pFiles(p.id).filter(f=>customerFileSelected.has(Number(f.id)))}
+function buildCustomerLinksText(){const p=cur();const list=selectedCustomerFiles();const lines=[];lines.push(`项目：${p?(p.name||'未命名项目'):''}`);lines.push(`客户：${p?(p.customer||'-'):''}`);lines.push(`文件数量：${list.length}`);lines.push('');let last='';list.forEach((f,i)=>{const m=models.find(x=>Number(x.id)===Number(f.model_id));const group=m?modelLabel(m):'项目公共文件';if(group!==last){lines.push('【'+group+'】');last=group;}lines.push(`${i+1}. ${f.title||f.original_name||f.file_name}（${f.category||'文件'}）`);lines.push(absUrl(f.file_path));});return lines.join('\n')}
+function refreshCustomerLinksText(force){const el=$('customer_links');if(!el)return;el.value=buildCustomerLinksText();if(force)el.focus()}
+async function copyCustomerLinks(){refreshCustomerLinksText(true);const txt=$('customer_links').value;if(!selectedCustomerFiles().length){toast('请先选择文件');return}try{await navigator.clipboard.writeText(txt);toast('客户链接清单已复制')}catch(e){toast('浏览器不允许自动复制，可手动复制下方文本')}}
+async function createCustomerZip(){const list=selectedCustomerFiles();if(!list.length){toast('请先选择文件');return}const r=await api('create_customer_zip',{project_id:cur().id,file_ids:list.map(f=>f.id)});if(!r.ok){toast(r.error||'生成ZIP失败');return}const url=absUrl(r.url);const box=$('pkg_result');box.classList.add('show');box.innerHTML=`已生成 ZIP：<a class="link" href="${esc(r.url)}" target="_blank">${esc(r.name||'客户资料包.zip')}</a> ｜ ${r.count} 个文件 <button class="btn small" onclick="navigator.clipboard.writeText('${esc(url)}')">复制ZIP链接</button>`;toast('ZIP资料包已生成')}
+function filePreview(f){const mt=String(f.mime_type||''),path=String(f.file_path||''),name=String(f.original_name||f.file_name||'').toLowerCase();if(mt.startsWith('image/')||/\.(jpg|jpeg|png|webp|gif)$/.test(name))return `<img class="thumb" src="${esc(path)}">`;if(mt.includes('pdf')||/\.pdf$/.test(name))return `<div class="pdfbox"><iframe src="${esc(path)}"></iframe></div>`;return `<div class="empty" style="padding:18px">${esc((name.split('.').pop()||'文件').toUpperCase())}</div>`}
+function fileCard(f){const isTest=TEST_FILE_CATS.includes(f.category);const m=models.find(x=>Number(x.id)===Number(f.model_id));return `<div class="file-card" style="border-left-color:${isTest?'#7c3aed':'#2563eb'}">${filePreview(f)}<h3>${esc(f.title||f.original_name||f.file_name)}</h3><div class="hint">${esc(f.category||'')} ｜ ${esc(f.original_name||'')} ｜ ${esc(f.created_at||'')}</div><div class="hint">归属：${esc(m?modelLabel(m):'项目公共文件')} ｜ ${esc(f.note||'')}</div><div class="tags">${f.customer_visible==1?'<span class="tag green">可发客户</span>':'<span class="tag orange">内部资料</span>'}${isTest?'<span class="tag purple">测试资料</span>':'<span class="tag blue">文件中心</span>'}</div><div class="grid2"><input id="f_title_${f.id}" value="${esc(f.title||'')}" placeholder="标题"><select id="f_cat_${f.id}">${[...FILE_CATS,...TEST_FILE_CATS].map(c=>`<option ${c===f.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>归属产品/样品</label>${modelSelectHtml('f_model_'+f.id,f.model_id||0,false)}</div><textarea id="f_note_${f.id}" placeholder="备注">${esc(f.note||'')}</textarea><label class="hint"><input id="f_vis_${f.id}" type="checkbox" ${Number(f.customer_visible)===1?'checked':''} style="width:auto"> 可发客户</label><div class="actions"><a class="btn small" href="${esc(f.file_path)}" target="_blank">打开</a><button class="btn small good" onclick="saveFileMeta(${f.id})">保存</button><button class="btn small danger" onclick="deleteFile(${f.id})">删除</button></div></div>`}
+async function saveFileMeta(id){const f=files.find(x=>Number(x.id)===Number(id))||{};const r=await api('update_file_meta',{id,title:$('f_title_'+id).value,category:$('f_cat_'+id).value,note:$('f_note_'+id).value,customer_visible:$('f_vis_'+id)?.checked?1:0,model_id:Number($('f_model_'+id)?.value||0),test_id:f.test_id||0,step_id:Number($('f_step_'+id)?.value??f.step_id??0)});toast(r.ok?'文件信息已保存':r.error);await load()}
+async function deleteFile(id){if(!confirm('删除这个文件记录和服务器文件？'))return;const r=await api('delete_file',{id});toast(r.ok?'文件已删除':r.error);await load()}
+
+function openProjectPackageModal(){
+  if(!guardPerm('export_package','导出项目资料包'))return;
+  const p=cur(); if(!p){toast('请先选择项目');return}
+  const ms=pModels(p.id);
+  const host=document.createElement('div');
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal" style="width:min(860px,96vw)"><div class="modal-head"><div><h3>项目资料包</h3><div class="hint">导出项目或单个样品资料包，包含项目资料、样品资料、测试记录、问题闭环、开发流程、文件清单和实际附件。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="grid2"><div class="field"><label>资料包类型</label><select id="pkg_model"><option value="0">整个项目资料包</option>${ms.map(m=>`<option value="${m.id}">样品：${esc(modelLabel(m))}</option>`).join('')}</select></div><div class="field"><label>附件范围</label><select id="pkg_include"><option value="all">全部附件</option><option value="customer">仅可发客户资料</option><option value="filecenter">仅文件中心资料</option><option value="test">仅测试中心资料</option><option value="none">只导出汇总和清单，不带附件</option></select></div></div><div class="search-card" style="margin-top:10px"><h3 style="margin-top:0">将包含</h3><div class="tags"><span class="tag">项目基础资料</span><span class="tag">样品资料</span><span class="tag green">测试记录</span><span class="tag orange">问题闭环</span><span class="tag blue">开发流程</span><span class="tag">文件清单</span><span class="tag">实际附件</span></div><div class="hint" style="margin-top:8px">第一版为 ZIP 资料包。ZIP 内会带 00_项目资料汇总.html、CSV 清单、JSON 原始资料，以及按“样品/分类”整理的附件文件。</div></div><div id="pkg_full_result" class="pkg-result" style="margin-top:12px"></div></div><div class="modal-foot"><button class="btn" onclick="this.closest('.modal-mask').remove()">取消</button><button class="btn primary" onclick="createProjectPackageZip()">生成资料包 ZIP</button></div></div></div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+async function createProjectPackageZip(){
+  if(!guardPerm('export_package','导出项目资料包'))return;
+  const p=cur(); if(!p)return;
+  const mid=Number($('pkg_model')?.value||0);
+  const include=$('pkg_include')?.value||'all';
+  const box=$('pkg_full_result');
+  if(box){box.classList.add('show');box.innerHTML='正在生成资料包，请稍候...';}
+  const r=await api('create_project_package',{project_id:p.id,model_id:mid,include});
+  if(!r.ok){ if(box)box.innerHTML='生成失败：'+esc(r.error||'未知错误'); toast(r.error||'生成失败'); return; }
+  const url=absUrl(r.url);
+  if(box)box.innerHTML=`已生成：<a class="link" href="${esc(r.url)}" target="_blank">${esc(r.name||'项目资料包.zip')}</a> ｜ 附件 ${Number(r.count||0)} 个 <button class="btn small" onclick="navigator.clipboard.writeText('${esc(url)}')">复制链接</button>`;
+  toast('资料包已生成');
+}
+
+function gotoTab(t){tab=t;localStorage.setItem('plm_v85_tab',tab);renderDetail()}
+function pctMini(done,total){done=Number(done||0);total=Number(total||0);return total?Math.round(done*100/total):0}
+function isStepOpen(s){return !['已完成','跳过'].includes(String(s.status||''))}
+function isStepLate(s){const d=dateOnly(s.plan_end||s.plan_date||'');return d && d < new Date().toISOString().slice(0,10) && isStepOpen(s)}
+function summaryAction(title,desc,btn,click,cls='primary'){return `<div class="next-action-card"><div><b>${esc(title)}</b><small>${esc(desc)}</small></div><button class="btn small ${cls}" onclick="${click}">${esc(btn)}</button></div>`}
+function setSummarySample(id){summarySampleId=Number(id)||0;localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);renderSummary(cur())}
+const SUMMARY_SECTION_DEFS=[
+  {key:'overview',label:'项目一眼看清'},
+  {key:'actions',label:'下一步建议'},
+  {key:'samples',label:'样品进度'},
+  {key:'tests',label:'测试与问题'},
+  {key:'flow',label:'进行中流程'},
+  {key:'files',label:'最近资料/日志'}
+];
+function summaryVisibleMap(){
+  const def={};SUMMARY_SECTION_DEFS.forEach(x=>def[x.key]=true);
+  try{
+    const raw=localStorage.getItem('plm_v85_summary_sections');
+    const saved=raw?JSON.parse(raw):{};
+    return Object.assign(def,saved||{});
+  }catch(e){return def;}
+}
+function saveSummaryVisibleMap(v){localStorage.setItem('plm_v85_summary_sections',JSON.stringify(v||{}));}
+function isSummaryVisible(k){const v=summaryVisibleMap();return v[k]!==false;}
+function setSummarySection(k,on){const v=summaryVisibleMap();v[k]=!!on;saveSummaryVisibleMap(v);renderSummary(cur());}
+function setAllSummarySections(on){const v=summaryVisibleMap();SUMMARY_SECTION_DEFS.forEach(x=>v[x.key]=!!on);saveSummaryVisibleMap(v);renderSummary(cur());}
+function summaryVisibilityBar(){
+  const v=summaryVisibleMap();
+  const chips=SUMMARY_SECTION_DEFS.map(x=>`<label class="summary-toggle-chip ${v[x.key]!==false?'on':''}"><input type="checkbox" ${v[x.key]!==false?'checked':''} onchange="setSummarySection('${x.key}',this.checked)">${esc(x.label)}</label>`).join('');
+  return `<div class="summary-visibility-bar"><div class="summary-visibility-title"><b>总览显示</b><span>勾选需要显示的版块，系统会记住。</span></div><div class="summary-toggle-list">${chips}<button class="btn small" onclick="setAllSummarySections(true)">全显示</button><button class="btn small" onclick="setAllSummarySections(false)">全隐藏</button></div></div>`;
+}
+function renderSummary(p){
+  const ms=pModels(p.id),ts=pTests(p.id),fs=pFiles(p.id),ss=steps.filter(s=>Number(s.project_id)===Number(p.id)),is=issues.filter(x=>Number(x.project_id)===Number(p.id));
+  const openIssues=is.filter(x=>!['已解决','已关闭'].includes(String(x.status||'')));
+  const failTests=ts.filter(t=>['不通过','需整改','待复测'].includes(String(t.status||''))||['不通过','待复测'].includes(String(t.result||'')));
+  const lateSteps=ss.filter(isStepLate);
+  const doingSteps=ss.filter(s=>String(s.status||'')==='进行中');
+  const openSteps=ss.filter(isStepOpen);
+  const g=prog(p.id);
+  const typeCounts={};ts.forEach(t=>typeCounts[t.test_type||'其它']=(typeCounts[t.test_type||'其它']||0)+1);
+  const recentLogs=logs.filter(l=>Number(l.project_id)===Number(p.id)).slice(0,8);
+  const recentFiles=fs.slice(0,8);
+  const actions=[];
+  if(!ms.length) actions.push(summaryAction('先建样品','一个项目可以多个样品，每个样品独立流程和测试。','去新增',"gotoTab('models')"));
+  if(openIssues.length) actions.push(summaryAction('处理未关闭问题','还有 '+openIssues.length+' 个问题未关闭，建议先处理。','看问题',"gotoTab('issues')",'warn'));
+  if(failTests.length) actions.push(summaryAction('复核异常测试','有 '+failTests.length+' 条测试不通过/需复测。','看测试',"gotoTab('tests')",'warn'));
+  if(lateSteps.length) actions.push(summaryAction('检查逾期流程','有 '+lateSteps.length+' 个流程节点已过计划日期。','看流程',"gotoTab('flow')",'danger'));
+  if(openSteps.length && !lateSteps.length) actions.push(summaryAction('推进开发流程','还有 '+openSteps.length+' 个流程节点未完成。','看流程',"gotoTab('flow')"));
+  if(!fs.length) actions.push(summaryAction('补充项目资料','建议上传产品图、结构图、测试资料，后续资料包才完整。','传文件',"gotoTab('files')"));
+  if(!actions.length) actions.push(summaryAction('项目状态不错','流程、测试、问题都比较清楚，可以生成项目资料包。','资料包',"openProjectPackageModal()",'good'));
+  if(ms.length && !ms.some(m=>Number(m.id)===Number(summarySampleId))){summarySampleId=Number(ms[0].id)||0;localStorage.setItem('plm_v85_summary_sample_id',summarySampleId)}
+  const activeSample=ms.find(m=>Number(m.id)===Number(summarySampleId)) || ms[0] || null;
+  const sampleTabsHtml=ms.map(m=>{
+    const mSteps=ss.filter(s=>Number(s.model_id)===Number(m.id));
+    const mTests=ts.filter(t=>Number(t.model_id)===Number(m.id));
+    const mIssues=openIssues.filter(x=>Number(x.model_id)===Number(m.id)).length;
+    const name=modelLabel(m);
+    return `<button class="sample-tab-btn ${Number(m.id)===Number(summarySampleId)?'active':''}" onclick="setSummarySample(${Number(m.id)||0})">${esc(name)} · 流程 ${mSteps.filter(s=>['已完成','跳过'].includes(String(s.status||''))).length}/${mSteps.length} · 测试 ${mTests.filter(t=>['通过','已完成'].includes(String(t.status||''))||String(t.result||'')==='通过').length}/${mTests.length}${mIssues?` · 问题 ${mIssues}`:''}</button>`;
+  }).join('');
+  const sampleDetailHtml=activeSample?(()=>{
+    const m=activeSample;
+    const mSteps=ss.filter(s=>Number(s.model_id)===Number(m.id));
+    const mTests=ts.filter(t=>Number(t.model_id)===Number(m.id));
+    const mFiles=fs.filter(f=>Number(f.model_id)===Number(m.id));
+    const mIssuesAll=is.filter(x=>Number(x.model_id)===Number(m.id));
+    const mIssuesOpen=mIssuesAll.filter(x=>!['已关闭','关闭','完成','已解决'].includes(String(x.status||'')));
+    const flowDone=mSteps.filter(s=>['已完成','跳过'].includes(String(s.status||''))).length;
+    const testDone=mTests.filter(t=>['通过','已完成'].includes(String(t.status||''))||String(t.result||'')==='通过').length;
+    const flowPct=pctMini(flowDone,mSteps.length);
+    const testPct=pctMini(testDone,mTests.length);
+    const sizeText=[m.opening_size?('开孔 '+m.opening_size):'',m.diameter?('直径 '+m.diameter):'',m.length_mm||m.width_mm||m.height_mm?([m.length_mm,m.width_mm,m.height_mm].filter(Boolean).join('*')):''].filter(Boolean).join(' ｜ ')||'-';
+    const kv=(k,v)=>`<div class="sample-kv"><span>${esc(k)}</span><b title="${esc(v||'-')}">${esc(v||'-')}</b></div>`;
+    const stepRows=[...mSteps].sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0))).slice(0,8).map(s=>`<tr><td>${esc(s.title||'步骤')}</td><td>${esc(s.status||'未开始')}</td><td>${esc(dateOnly(s.plan_end||s.plan_date)||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无流程步骤</td></tr>';
+    const testRows=[...mTests].sort((a,b)=>String(b.test_date||b.updated_at||b.created_at||'').localeCompare(String(a.test_date||a.updated_at||a.created_at||''))).slice(0,6).map(t=>`<tr><td>${esc(t.test_type||'测试')}</td><td>${esc(t.status||t.result||'-')}</td><td>${esc(t.test_conclusion||t.note||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无测试记录</td></tr>';
+    const issueRows=mIssuesAll.slice(0,5).map(i=>`<tr><td>${esc(i.title||'问题')}</td><td>${esc(i.status||'待处理')}</td><td>${esc(i.owner||i.severity||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无问题</td></tr>';
+    const fileRows=mFiles.slice(0,5).map(f=>`<tr><td>${esc(f.category||'文件')}</td><td>${fileChip(f)}</td><td>${esc(dateOnly(f.created_at)||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无文件</td></tr>';
+    return `<div class="sample-tab-panel"><div class="sample-tab-head"><div class="sample-tab-title"><b>${esc(modelLabel(m))}</b><div class="hint">${esc(m.model||m.naming_model_no||'-')} ｜ ${esc(m.power||'-')} ｜ ${esc(m.beam||'-')} ｜ ${esc(m.cct||'-')} ｜ ${esc(m.sample_version||'V1')}</div></div><div class="sample-tab-actions"><button class="btn small" onclick="flowModelId=${Number(m.id)||0};gotoTab('flow')">开发流程</button><button class="btn small" onclick="gotoTab('tests')">测试中心</button><button class="btn small" onclick="gotoTab('issues')">问题闭环</button><button class="btn small" onclick="gotoTab('files')">文件资料</button><button class="btn small good" onclick="createBomFromModel(${Number(m.id)||0})">BOM</button></div></div><div class="mini-progress"><span>流程</span><div class="bar"><i style="width:${flowPct}%"></i></div><b>${flowDone}/${mSteps.length}</b></div><div class="mini-progress"><span>测试</span><div class="bar green"><i style="width:${testPct}%"></i></div><b>${testDone}/${mTests.length}</b></div><div class="tags" style="margin-top:10px"><span class="tag ${mIssuesOpen.length?'red':'green'}">未关闭问题 ${mIssuesOpen.length}</span><span class="tag blue">文件 ${mFiles.length}</span><span class="tag">数量 ${esc(m.qty||1)}</span>${statusTag(m.status||'开发中')}</div><div class="sample-detail-grid"><div class="sample-detail-box"><h4>规格 / 物料一览</h4><div class="sample-kv-grid">${kv('状态',m.status||'开发中')}${kv('型号',m.model||m.naming_model_no||'-')}${kv('版本',m.sample_version||'V1')}${kv('产品类别',m.product_category||m.naming_category||'-')}${kv('功率',m.power||'-')}${kv('角度',m.beam||'-')}${kv('色温',m.cct||'-')}${kv('尺寸/开孔',sizeText)}${kv('芯片',m.chip_name||m.chip_brand||'-')}${kv('电源',m.driver_name||m.driver_brand||'-')}${kv('光学',m.optical_name||m.optical_brand||'-')}${kv('附件',m.accessories_name||'-')}</div></div><div class="sample-detail-box"><h4>流程节点</h4><table class="sample-mini-table"><thead><tr><th>步骤</th><th>状态</th><th>计划</th></tr></thead><tbody>${stepRows}</tbody></table></div><div class="sample-detail-box"><h4>测试记录</h4><table class="sample-mini-table"><thead><tr><th>类型</th><th>状态</th><th>结论/说明</th></tr></thead><tbody>${testRows}</tbody></table></div><div class="sample-detail-box"><h4>问题 / 文件</h4><table class="sample-mini-table"><thead><tr><th>类型</th><th>名称</th><th>状态/时间</th></tr></thead><tbody>${issueRows}${fileRows}</tbody></table></div></div></div>`;
+  })():'<div class="summary-empty">暂无样品，点击上方“管理样品”新增。</div>';
+  const sampleHtml=ms.length?`<div class="sample-tabs-wrap"><div class="sample-tabs">${sampleTabsHtml}</div>${sampleDetailHtml}</div>`:'<div class="summary-empty">暂无样品，点击上方“样品管理”新增。</div>';
+
+  const heroCards=[];
+  if(isSummaryVisible('overview')) heroCards.push(`<div class="summary-main-card"><h3>项目一眼看清</h3><div class="hint">${esc(p.project_no||'-')} ｜ ${esc(p.customer||'未填客户')} ｜ ${esc(p.engineer||'-')} ｜ ${esc(p.due_date?('计划 '+dateOnly(p.due_date)):'未填计划日期')}</div><div class="summary-big"><div><b>${ms.length}</b><span>样品</span></div><div><b>${g.flowPct}%</b><span>工序进度</span></div><div><b>${g.testPct}%</b><span>测试进度</span></div><div><b>${openIssues.length}</b><span>未关闭问题</span></div></div><div class="project-progress-pair" style="margin-top:12px"><div class="project-mini-progress-row flow"><span>工序</span><div class="bar"><i style="width:${g.flowPct}%"></i></div><b>${g.flowPct}%</b></div><div class="project-mini-progress-row test"><span>测试</span><div class="bar green"><i style="width:${g.testPct}%"></i></div><b>${g.testPct}%</b></div></div></div>`);
+  if(isSummaryVisible('actions')) heroCards.push(`<div class="summary-side-card"><h3>下一步建议</h3><div class="next-actions">${actions.slice(0,4).join('')}</div></div>`);
+  const gridCards=[];
+  if(isSummaryVisible('samples')) gridCards.push(`<div class="summary-card"><div class="sample-mini-head"><h3>样品进度</h3><button class="btn small" onclick="gotoTab('models')">管理样品</button></div>${sampleHtml}</div>`);
+  if(isSummaryVisible('tests')) gridCards.push(`<div class="summary-card"><div class="sample-mini-head"><h3>测试与问题</h3><button class="btn small" onclick="gotoTab('tests')">进入测试</button></div><div class="tags">${Object.entries(typeCounts).map(([k,v])=>`<span class="tag blue">${esc(k)} ${v}</span>`).join('')||'<span class="tag">暂无测试</span>'}</div><div class="compact-table-wrap" style="margin-top:8px"><table class="compact-table"><thead><tr><th>事项</th><th>状态</th><th>说明</th></tr></thead><tbody>${[...failTests.slice(0,5).map(t=>`<tr><td>${esc(t.test_type||'测试')}</td><td>${esc(t.status||t.result||'-')}</td><td>${esc(t.test_conclusion||t.note||'-')}</td></tr>`),...openIssues.slice(0,5).map(i=>`<tr><td>${esc(i.title||'问题')}</td><td>${esc(i.status||'待处理')}</td><td>${esc(i.owner||'-')} ｜ ${esc(i.severity||'中')}</td></tr>`)].join('')||'<tr><td colspan="3">暂无异常测试和未关闭问题</td></tr>'}</tbody></table></div></div>`);
+  if(isSummaryVisible('flow')) gridCards.push(`<div class="summary-card"><div class="sample-mini-head"><h3>进行中的流程</h3><button class="btn small" onclick="gotoTab('flow')">开发导航图</button></div><div class="compact-table-wrap"><table class="compact-table"><thead><tr><th>样品</th><th>步骤</th><th>状态</th><th>计划</th></tr></thead><tbody>${[...lateSteps,...doingSteps,...openSteps].slice(0,10).map(s=>{const m=ms.find(x=>Number(x.id)===Number(s.model_id));return `<tr><td>${esc(m?modelLabel(m):'公共')}</td><td>${esc(s.title||'步骤')}</td><td>${esc(s.status||'')}</td><td>${esc(dateOnly(s.plan_end||s.plan_date)||'-')}</td></tr>`}).join('')||'<tr><td colspan="4">暂无待推进流程</td></tr>'}</tbody></table></div></div>`);
+  if(isSummaryVisible('files')) gridCards.push(`<div class="summary-card"><div class="sample-mini-head"><h3>最近资料 / 日志</h3><button class="btn small" onclick="gotoTab('files')">文件中心</button></div><div class="compact-table-wrap"><table class="compact-table"><thead><tr><th>类型</th><th>名称</th><th>时间</th></tr></thead><tbody>${recentFiles.map(f=>`<tr><td>${esc(f.category||'文件')}</td><td>${fileChip(f)}</td><td>${esc(dateOnly(f.created_at)||'-')}</td></tr>`).join('')||recentLogs.map(l=>`<tr><td>${esc(l.action||'日志')}</td><td>${esc(l.note||'-')}</td><td>${esc(dateOnly(l.created_at)||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无资料和日志</td></tr>'}</tbody></table></div></div>`);
+  const hiddenAll=!heroCards.length&&!gridCards.length;
+  $('tabbody').innerHTML=`
+    <div id="tab-summary">
+      ${summaryVisibilityBar()}
+      ${heroCards.length?`<div class="summary-hero ${heroCards.length===1?'single':''}">${heroCards.join('')}</div>`:''}
+      ${gridCards.length?`<div class="summary-grid ${gridCards.length===1?'single':''}">${gridCards.join('')}</div>`:''}
+      ${hiddenAll?'<div class="summary-empty">项目总览版块已全部隐藏。点击上方“全显示”恢复。</div>':''}
+    </div>`;
+}
+async function openDispatch(){
+  if(!guardPerm('create_dispatch','生成派工'))return;
+  const p=cur();
+  if(!p){toast('请先选择项目');return;}
+  const ms=pModels(p.id)||[];
+  const mainModel=ms[0]||{};
+  await openPlmDispatchModal({kind:'project',sourceText:'PLM项目派工',project_id:p.id||0,model_id:Number(mainModel.id||0),step_id:0,projectName:p.name||'',customer:p.customer||'',modelName:p.model||p.series||currentModelName(mainModel)||'',stepTitle:'',title:'【PLM项目】'+(p.name||'项目派工'),projectText:[p.name||'',p.customer||'',p.model||p.series||''].filter(Boolean).join(' / '),task_date:new Date().toISOString().slice(0,10),due_date:dateOnly(p.due_date)||'',priority:'normal',reason:'项目派工事由：\n\n1. 请按 PLM 项目资料处理。\n2. 请在派工详情里反馈进度。\n3. 如有异常，请写明原因和下一步建议。',linked:{system:'PLM',type:'project',project_id:p.id||0,project_name:p.name||'',customer:p.customer||'',model:p.model||p.series||''},linked_url:'plm.php?project_id='+(p.id||0)});
+}
+async function openRecycleBin(){
+  if(!guardPerm('view_recycle','查看回收站'))return;
+  const r=await api('recycle_bin');
+  if(!r.ok){toast(r.error||'无法打开回收站');return}
+  const ps=r.projects||[], ms=r.models||[], ns=r.notifications||[];
+  const html=`<div class="modal-mask" onclick="if(event.target===this)this.remove()"><div class="modal" style="width:min(1080px,96vw)"><div class="modal-head"><h3>PLM 回收站 / 站内信</h3><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="hint" style="margin-bottom:10px">项目和产品/样品删除后先进入回收站，管理员可还原。非管理员每天只能删除 1 个项目、1 个产品/样品。</div><div class="recycle-modal-grid"><div class="recycle-panel"><h3>已删除项目 ${ps.length}</h3>${ps.map(p=>`<div class="recycle-row"><div><b>${esc(p.name||'未命名项目')}</b><div class="hint">删除人：${esc(p.deleted_by_name||'-')} ｜ ${esc(p.deleted_at||'-')}</div><div class="hint">原因：${esc(p.delete_reason||'-')}</div></div><button class="btn small good" onclick="restoreProject(${p.id})">还原</button></div>`).join('')||'<div class="empty">暂无删除项目</div>'}</div><div class="recycle-panel"><h3>已删除产品/样品 ${ms.length}</h3>${ms.map(m=>`<div class="recycle-row"><div><b>${esc(m.name||m.model||'未命名样品')}</b><div class="hint">项目：${esc(m.project_name||m.project_id||'-')} ｜ 删除人：${esc(m.deleted_by_name||'-')} ｜ ${esc(m.deleted_at||'-')}</div><div class="hint">原因：${esc(m.delete_reason||'-')}</div></div><button class="btn small good" onclick="restoreModel(${m.id})">还原</button></div>`).join('')||'<div class="empty">暂无删除产品/样品</div>'}</div></div><div class="recycle-panel" style="margin-top:12px"><div class="actions" style="justify-content:space-between"><h3>站内信 ${ns.filter(x=>Number(x.is_read||0)===0).length} 未读</h3><button class="btn" onclick="markPlmNotificationsRead()">全部已读</button></div>${ns.map(n=>`<div class="recycle-row"><div><b>${esc(n.title||'通知')}</b><div class="hint">${esc(n.created_at||'-')} ｜ ${Number(n.is_read||0)?'已读':'未读'}</div><div class="hint">${esc(n.message||'')}</div></div></div>`).join('')||'<div class="empty">暂无站内信</div>'}</div></div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function openPlmNotifications(){await openRecycleBin()}
+async function restoreProject(id){const r=await api('restore_project',{id});toast(r.ok?'项目已还原':r.error);document.querySelector('.modal-mask')?.remove();await load();await openRecycleBin()}
+async function restoreModel(id){const r=await api('restore_model',{id});toast(r.ok?'产品/样品已还原':r.error);document.querySelector('.modal-mask')?.remove();await load();await openRecycleBin()}
+async function markPlmNotificationsRead(){const r=await api('mark_notifications_read',{});toast(r.ok?'站内信已标记已读':r.error);document.querySelector('.modal-mask')?.remove();await load();await openRecycleBin()}
+
+function allProjectImageCell(p){
+  const name=String(p.name||p.customer||'项');
+  if(p.image_path){return `<img class="all-project-mini-img" src="${esc(p.image_path)}" onerror="this.outerHTML='<div class=&quot;all-project-mini-img no&quot;>${esc(name.slice(0,1)||'项')}</div>'">`;}
+  return `<div class="all-project-mini-img no">${esc(name.slice(0,1)||'项')}</div>`;
+}
+function allProjectFilterValues(){
+  return {
+    q:($('ap_q')?.value||'').trim().toLowerCase(),
+    engineer:$('ap_engineer')?.value||'',
+    customer:$('ap_customer')?.value||'',
+    source:$('ap_source')?.value||'',
+    priority:$('ap_priority')?.value||'',
+    status:$('ap_status')?.value||'',
+    hasImage:$('ap_image')?.value||'',
+    hasFile:$('ap_file')?.value||'',
+    hasDispatch:$('ap_dispatch')?.value||'',
+    dueStart:$('ap_due_start')?.value||'',
+    dueEnd:$('ap_due_end')?.value||'',
+    updatedStart:$('ap_updated_start')?.value||'',
+    updatedEnd:$('ap_updated_end')?.value||'',
+    sort:$('ap_sort')?.value||'updated_desc',
+    limit:Number($('ap_limit')?.value||200)
+  };
+}
+function allProjectFilteredList(){
+  const f=allProjectFilterValues();
+  let arr=projects.filter(p=>{
+    const g=prog(p.id); const ps=projectDispatchSummary(p.id);
+    const hay=[p.project_no,p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.source,p.priority,p.status,p.remark].join(' ').toLowerCase();
+    const due=dateOnly(p.due_date); const upd=dateOnly(p.updated_at);
+    return (!f.q||hay.includes(f.q))
+      && (!f.engineer||p.engineer===f.engineer)
+      && (!f.customer||p.customer===f.customer)
+      && (!f.source||p.source===f.source)
+      && (!f.priority||p.priority===f.priority)
+      && (!f.status||p.status===f.status)
+      && (!f.hasImage||(f.hasImage==='yes'?!!p.image_path:!p.image_path))
+      && (!f.hasFile||(f.hasFile==='yes'?g.files>0:g.files===0))
+      && (!f.hasDispatch||(f.hasDispatch==='yes'?ps.total>0:ps.total===0))
+      && (!f.dueStart||due>=f.dueStart)
+      && (!f.dueEnd||due<=f.dueEnd)
+      && (!f.updatedStart||upd>=f.updatedStart)
+      && (!f.updatedEnd||upd<=f.updatedEnd);
+  });
+  const byDate=(v)=>v?String(v):'';
+  arr.sort((a,b)=>{
+    const ga=prog(a.id), gb=prog(b.id);
+    if(f.sort==='name_asc')return String(a.name||'').localeCompare(String(b.name||''),'zh-Hans-CN');
+    if(f.sort==='name_desc')return String(b.name||'').localeCompare(String(a.name||''),'zh-Hans-CN');
+    if(f.sort==='due_asc')return byDate(a.due_date).localeCompare(byDate(b.due_date));
+    if(f.sort==='due_desc')return byDate(b.due_date).localeCompare(byDate(a.due_date));
+    if(f.sort==='flow_desc')return (gb.flowPct-ga.flowPct)||Number(b.id)-Number(a.id);
+    if(f.sort==='test_desc')return (gb.testPct-ga.testPct)||Number(b.id)-Number(a.id);
+    if(f.sort==='created_desc')return String(b.created_at||'').localeCompare(String(a.created_at||''));
+    if(f.sort==='created_asc')return String(a.created_at||'').localeCompare(String(b.created_at||''));
+    return String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+  });
+  return {list:arr.slice(0,Math.max(20,Math.min(1000,f.limit||200))),total:arr.length,filters:f};
+}
+function openAllProjectsModal(){
+  const host=$('modalHost')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'modalHost'}));
+  const engineers=uniq(projects.map(p=>p.engineer));
+  const customers=uniq(projects.map(p=>p.customer));
+  const sources=uniq(projects.map(p=>p.source));
+  const priorities=uniq(projects.map(p=>p.priority));
+  const statuses=uniq(projects.map(p=>p.status));
+  host.innerHTML=`<div class="modal-mask all-project-modal" onclick="if(event.target===this)this.remove()"><div class="modal"><div class="modal-head"><div><h3>所有项目列表</h3><div class="hint">全功能筛选项目，可按客户、工程师、状态、日期、图片、文件、派工进度筛选。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="all-project-filter-grid"><div class="field"><label>关键词</label><input id="ap_q" placeholder="项目号 / 项目名 / 客户 / 系列 / 型号 / 备注" oninput="renderAllProjectsModal()"></div><div class="field"><label>工程师</label><select id="ap_engineer" onchange="renderAllProjectsModal()"><option value="">全部工程师</option>${engineers.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>客户</label><select id="ap_customer" onchange="renderAllProjectsModal()"><option value="">全部客户</option>${customers.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>来源</label><select id="ap_source" onchange="renderAllProjectsModal()"><option value="">全部来源</option>${sources.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>优先级</label><select id="ap_priority" onchange="renderAllProjectsModal()"><option value="">全部优先级</option>${priorities.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>状态</label><select id="ap_status" onchange="renderAllProjectsModal()"><option value="">全部状态</option>${statuses.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>项目图</label><select id="ap_image" onchange="renderAllProjectsModal()"><option value="">全部</option><option value="yes">有项目图</option><option value="no">无项目图</option></select></div><div class="field"><label>文件资料</label><select id="ap_file" onchange="renderAllProjectsModal()"><option value="">全部</option><option value="yes">有文件</option><option value="no">无文件</option></select></div><div class="field"><label>项目派工</label><select id="ap_dispatch" onchange="renderAllProjectsModal()"><option value="">全部</option><option value="yes">有项目派工</option><option value="no">无项目派工</option></select></div><div class="field"><label>计划开始</label><input id="ap_due_start" type="date" onchange="renderAllProjectsModal()"></div><div class="field"><label>计划结束</label><input id="ap_due_end" type="date" onchange="renderAllProjectsModal()"></div><div class="field"><label>更新开始</label><input id="ap_updated_start" type="date" onchange="renderAllProjectsModal()"></div><div class="field"><label>更新结束</label><input id="ap_updated_end" type="date" onchange="renderAllProjectsModal()"></div><div class="field"><label>排序</label><select id="ap_sort" onchange="renderAllProjectsModal()"><option value="updated_desc">最近更新</option><option value="created_desc">最新创建</option><option value="created_asc">最早创建</option><option value="due_asc">计划日期升序</option><option value="due_desc">计划日期降序</option><option value="name_asc">项目名升序</option><option value="name_desc">项目名降序</option><option value="flow_desc">流程进度最高</option><option value="test_desc">测试进度最高</option></select></div><div class="field"><label>显示数量</label><select id="ap_limit" onchange="renderAllProjectsModal()"><option value="50">50</option><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div></div><div class="all-project-modal-actions"><button class="all-project-toolbar-btn" onclick="renderAllProjectsModal()">筛选</button><button class="btn" onclick="resetAllProjectsModal()">清空筛选</button><button class="btn good" onclick="exportAllProjectsModalCsv()">导出当前结果 CSV</button><span id="ap_summary" class="hint">准备筛选</span></div><div id="allProjectResults" class="all-project-result-wrap"><div class="empty">正在加载项目列表...</div></div></div></div></div>`;
+  renderAllProjectsModal();
+}
+function resetAllProjectsModal(){
+  ['ap_q','ap_due_start','ap_due_end','ap_updated_start','ap_updated_end'].forEach(id=>{if($(id))$(id).value=''});
+  ['ap_engineer','ap_customer','ap_source','ap_priority','ap_status','ap_image','ap_file','ap_dispatch'].forEach(id=>{if($(id))$(id).value=''});
+  if($('ap_sort'))$('ap_sort').value='updated_desc'; if($('ap_limit'))$('ap_limit').value='200';
+  renderAllProjectsModal();
+}
+function renderAllProjectsModal(){
+  const box=$('allProjectResults'); if(!box)return;
+  const r=allProjectFilteredList();
+  if($('ap_summary'))$('ap_summary').textContent=`共 ${r.total} 个符合条件，当前显示 ${r.list.length} 个`;
+  if(!r.list.length){box.innerHTML='<div class="empty">没有符合条件的项目</div>';return;}
+  box.innerHTML=`<table class="all-project-table"><thead><tr><th>图</th><th>项目</th><th>客户/工程师</th><th>状态</th><th>优先级</th><th>来源</th><th>样品</th><th>流程</th><th>测试</th><th>文件</th><th>项目派工</th><th>计划</th><th>更新</th><th>操作</th></tr></thead><tbody>${r.list.map(p=>{const g=prog(p.id);const ps=projectDispatchSummary(p.id);return `<tr><td>${allProjectImageCell(p)}</td><td><div class="all-project-title">${esc(p.name||'未命名项目')}</div><div class="all-project-sub">${esc(p.project_no||'-')} ｜ ${esc(p.series||'')} ${esc(p.model||'')} ${esc(p.product_type||'')}</div></td><td><b>${esc(p.customer||'-')}</b><div class="all-project-sub">工程师：${esc(p.engineer||'-')}</div></td><td>${statusTag(p.status)}</td><td><span class="all-project-stat-pill warn">${esc(p.priority||'-')}</span></td><td>${esc(p.source||'-')}</td><td><span class="all-project-stat-pill blue">${g.models}</span></td><td><span class="all-project-stat-pill ${g.flowPct>=100?'good':'blue'}">${g.flowDone}/${g.flowTotal} · ${g.flowPct}%</span></td><td><span class="all-project-stat-pill ${g.testPct>=100?'good':'blue'}">${g.testDone}/${g.tests} · ${g.testPct}%</span></td><td><span class="all-project-stat-pill">${g.files}</span></td><td><span class="all-project-stat-pill ${ps.total?'good':''}">${ps.total?ps.done+'/'+ps.total:'无'}</span></td><td>${esc(dateOnly(p.due_date)||'-')}</td><td>${esc(dateOnly(p.updated_at)||'-')}</td><td><button class="btn small primary" onclick="selectProjectFromAllModal(${Number(p.id)||0})">打开</button></td></tr>`}).join('')}</tbody></table>`;
+}
+function selectProjectFromAllModal(id){
+  selectedId=Number(id)||0; localStorage.setItem('plm_v85_selected',selectedId);
+  document.querySelector('.all-project-modal')?.remove();
+  if(projectListCollapsed)toggleProjectListCollapse(false); else render();
+}
+function exportAllProjectsModalCsv(){
+  const r=allProjectFilteredList();
+  const rows=[['项目ID','项目号','项目名称','客户','工程师','系列','型号','产品类型','状态','优先级','来源','样品数','流程完成','流程总数','测试完成','测试总数','文件数','项目派工完成','项目派工总数','计划日期','更新时间']];
+  r.list.forEach(p=>{const g=prog(p.id),ps=projectDispatchSummary(p.id);rows.push([p.id,p.project_no||'',p.name||'',p.customer||'',p.engineer||'',p.series||'',p.model||'',p.product_type||'',p.status||'',p.priority||'',p.source||'',g.models,g.flowDone,g.flowTotal,g.testDone,g.tests,g.files,ps.done,ps.total,dateOnly(p.due_date)||'',p.updated_at||'']);});
+  const csv='\ufeff'+rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='plm_projects_'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+
+// ===== PLM V8.5.51 研发看板 =====
+let rndDashboardActive='overdue';
+function rndToday(){return new Date(new Date().toISOString().slice(0,10)+'T00:00:00');}
+function rndDate(v){const d=dateOnly(v);return d?new Date(d+'T00:00:00'):null;}
+function rndAddDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x;}
+function rndNotFinishedProject(p){const s=String(p.status||'');return !['已完成','已取消','取消','关闭'].includes(s);}
+function rndIsClosedIssue(x){const s=String(x.status||'');return ['已关闭','关闭','已完成','已解决','解决','通过'].includes(s)||!!x.closed_at;}
+function rndIsFailedTest(t){const s=String(t.status||''), r=String(t.result||'');return ['不通过','NG','FAIL','需整改','待复测'].some(k=>s.includes(k)||r.includes(k));}
+function rndIsPassTest(t){const s=String(t.status||''), r=String(t.result||'');return ['通过','PASS','合格','已完成'].some(k=>s.includes(k)||r.includes(k));}
+function rndAllDispatchSummary(pid){const arr=dispatchLinks.filter(x=>Number(x.project_id)===Number(pid));const done=arr.filter(dispatchDone).length;return{total:arr.length,done,pct:arr.length?Math.round(done/arr.length*100):0};}
+function rndProjectHasBom(pid){
+  return logs.some(l=>Number(l.project_id)===Number(pid)&&(String(l.target_type||'').toLowerCase()==='bom'||String(l.action||'').toUpperCase().includes('BOM')||String(l.note||'').toUpperCase().includes('BOM项目UID')));
+}
+function rndProjectWarnText(p){
+  const pid=Number(p.id), g=prog(pid), ds=rndAllDispatchSummary(pid), badT=pTests(pid).filter(rndIsFailedTest).length, openI=issues.filter(x=>Number(x.project_id)===pid&&!rndIsClosedIssue(x)).length;
+  const arr=[]; if(rndDate(p.due_date)&&rndDate(p.due_date)<rndToday()&&rndNotFinishedProject(p))arr.push('逾期'); if(badT)arr.push('测试异常 '+badT); if(openI)arr.push('问题未关 '+openI); if(ds.total&&ds.done<ds.total)arr.push('派工 '+ds.done+'/'+ds.total); if(g.flowTotal&&g.flowDone<g.flowTotal)arr.push('流程 '+g.flowDone+'/'+g.flowTotal); return arr.join(' ｜ ')||'正常';
+}
+function rndDashboardData(){
+  const today=rndToday(), weekEnd=rndAddDays(today,7), ym=new Date().toISOString().slice(0,7);
+  const map={
+    dev:{title:'开发中项目',desc:'状态为开发中/测试中/未开始，未关闭',color:'blue',list:[]},
+    dueweek:{title:'本周到期',desc:'计划日期在未来 7 天内',color:'orange',list:[]},
+    overdue:{title:'逾期项目',desc:'计划日期小于今天，且未完成',color:'red',list:[]},
+    failedtest:{title:'测试不通过',desc:'测试结果不通过、需整改或待复测',color:'red',list:[]},
+    openissue:{title:'问题未关闭',desc:'问题闭环仍待处理',color:'orange',list:[]},
+    nobom:{title:'BOM未生成',desc:'有样品但未发现 BOM 生成记录',color:'purple',list:[]},
+    dispatch:{title:'派工未完成',desc:'项目/流程派工未全部完成',color:'blue',list:[]},
+    customer:{title:'等待客户确认',desc:'状态或备注包含客户确认/待确认',color:'purple',list:[]},
+    donemonth:{title:'本月完成',desc:'本月更新且状态已完成',color:'green',list:[]}
+  };
+  projects.forEach(p=>{
+    const pid=Number(p.id), due=rndDate(p.due_date), status=String(p.status||''), remark=String(p.remark||'');
+    const pm=pModels(pid), pt=pTests(pid), pi=issues.filter(x=>Number(x.project_id)===pid), ds=rndAllDispatchSummary(pid);
+    if(rndNotFinishedProject(p) && ['开发中','测试中','未开始','暂停'].some(k=>status.includes(k)||(!status&&k==='开发中'))) map.dev.list.push(p);
+    if(due && due>=today && due<=weekEnd && rndNotFinishedProject(p)) map.dueweek.list.push(p);
+    if(due && due<today && rndNotFinishedProject(p)) map.overdue.list.push(p);
+    if(pt.some(rndIsFailedTest)) map.failedtest.list.push(p);
+    if(pi.some(x=>!rndIsClosedIssue(x))) map.openissue.list.push(p);
+    if(pm.length && !rndProjectHasBom(pid)) map.nobom.list.push(p);
+    if(ds.total && ds.done<ds.total) map.dispatch.list.push(p);
+    if(/客户确认|待确认|客户待确认|客户要求修改/.test(status+remark)) map.customer.list.push(p);
+    if(status==='已完成' && String(p.updated_at||'').slice(0,7)===ym) map.donemonth.list.push(p);
+  });
+  // 默认把最紧急的放前面
+  Object.values(map).forEach(g=>g.list.sort((a,b)=>String(a.due_date||'9999').localeCompare(String(b.due_date||'9999'))||String(b.updated_at||'').localeCompare(String(a.updated_at||''))));
+  return map;
+}
+function openRndDashboardModal(active=''){
+  if(!guardPerm('view_dashboard','查看研发看板'))return;
+  if(active)rndDashboardActive=active;
+  const host=$('modalHost')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'modalHost'}));
+  const data=rndDashboardData();
+  host.innerHTML=`<div class="modal-mask rnd-modal" onclick="if(event.target===this)this.remove()"><div class="modal"><div class="modal-head"><div><h3>研发看板</h3><div class="hint">老板视图：集中查看逾期、测试异常、问题未关闭、BOM 未生成、派工未完成等卡点。</div></div><button class="btn" onclick="this.closest('.modal-mask').remove()">关闭</button></div><div class="modal-body"><div class="rnd-board-grid">${Object.entries(data).map(([k,g])=>`<div class="rnd-card ${esc(g.color)} ${rndDashboardActive===k?'active':''}" onclick="rndDashboardActive='${k}';renderRndDashboardList()"><b>${g.list.length}</b><span>${esc(g.title)}</span><small>${esc(g.desc)}</small></div>`).join('')}</div><div class="rnd-tools"><div class="rnd-tools-left"><input id="rnd_q" placeholder="搜索项目 / 客户 / 工程师 / 型号" oninput="renderRndDashboardList()"><select id="rnd_engineer" onchange="renderRndDashboardList()"><option value="">全部工程师</option>${uniq(projects.map(p=>p.engineer)).map(x=>`<option>${esc(x)}</option>`).join('')}</select><select id="rnd_priority" onchange="renderRndDashboardList()"><option value="">全部优先级</option>${uniq(projects.map(p=>p.priority)).map(x=>`<option>${esc(x)}</option>`).join('')}</select></div><div class="actions"><button class="btn" onclick="renderRndDashboardList()">刷新</button><button class="btn good" onclick="exportRndDashboardCsv()">导出当前 CSV</button></div></div><div id="rnd_summary" class="hint" style="margin:6px 0 10px">准备加载</div><div id="rnd_result" class="rnd-table-wrap"><div class="empty">正在加载研发看板...</div></div></div></div></div>`;
+  renderRndDashboardList();
+}
+function rndFilteredList(){
+  const data=rndDashboardData(), group=data[rndDashboardActive]||data.overdue;
+  const q=($('rnd_q')?.value||'').toLowerCase().trim(), eng=$('rnd_engineer')?.value||'', pri=$('rnd_priority')?.value||'';
+  let arr=[...group.list];
+  if(q)arr=arr.filter(p=>[p.project_no,p.name,p.customer,p.engineer,p.series,p.model,p.product_type,p.remark].join(' ').toLowerCase().includes(q));
+  if(eng)arr=arr.filter(p=>String(p.engineer||'')===eng);
+  if(pri)arr=arr.filter(p=>String(p.priority||'')===pri);
+  return {group,list:arr};
+}
+function renderRndDashboardList(){
+  const box=$('rnd_result'); if(!box)return;
+  document.querySelectorAll('.rnd-card').forEach(c=>c.classList.remove('active'));
+  const keys=Object.keys(rndDashboardData()); const idx=keys.indexOf(rndDashboardActive); if(idx>=0)document.querySelectorAll('.rnd-card')[idx]?.classList.add('active');
+  const r=rndFilteredList(); if($('rnd_summary'))$('rnd_summary').textContent=`${r.group.title}：${r.list.length} 个项目`;
+  if(!r.list.length){box.innerHTML='<div class="empty">当前分类没有项目</div>';return;}
+  box.innerHTML=`<table class="rnd-table"><thead><tr><th>项目</th><th>客户/工程师</th><th>状态</th><th>流程</th><th>测试</th><th>问题</th><th>派工</th><th>BOM</th><th>计划</th><th>卡点说明</th><th>操作</th></tr></thead><tbody>${r.list.map(p=>{const pid=Number(p.id),g=prog(pid),ts=pTests(pid),bad=ts.filter(rndIsFailedTest).length,openI=issues.filter(x=>Number(x.project_id)===pid&&!rndIsClosedIssue(x)).length,ds=rndAllDispatchSummary(pid),bom=rndProjectHasBom(pid);return `<tr><td><div class="rnd-project-title">${esc(p.name||'未命名项目')}</div><div class="rnd-sub">${esc(p.project_no||'-')} ｜ ${esc(p.series||'')} ${esc(p.model||'')} ${esc(p.product_type||'')}</div></td><td><b>${esc(p.customer||'-')}</b><div class="rnd-sub">工程师：${esc(p.engineer||'-')}</div></td><td>${statusTag(p.status)}</td><td><span class="rnd-pill blue">${g.flowDone}/${g.flowTotal} · ${g.flowPct}%</span><div class="rnd-mini-bar"><i style="width:${g.flowPct}%"></i></div></td><td><span class="rnd-pill ${bad?'red':(g.testPct>=100?'green':'blue')}">${g.testDone}/${g.tests}${bad?' · 异常'+bad:''}</span><div class="rnd-mini-bar green"><i style="width:${g.testPct}%"></i></div></td><td><span class="rnd-pill ${openI?'orange':'green'}">${openI?openI+' 未关':'正常'}</span></td><td><span class="rnd-pill ${ds.total&&ds.done<ds.total?'orange':(ds.total?'green':'')}">${ds.total?ds.done+'/'+ds.total:'无'}</span></td><td><span class="rnd-pill ${bom?'green':'purple'}">${bom?'已生成':'未生成'}</span></td><td>${esc(dateOnly(p.due_date)||'-')}</td><td><span class="rnd-pill ${rndProjectWarnText(p).includes('逾期')||bad?'red':'blue'}">${esc(rndProjectWarnText(p))}</span></td><td><div class="actions"><button class="btn small primary" onclick="selectProjectFromRnd(${pid},'basic')">打开</button><button class="btn small" onclick="selectProjectFromRnd(${pid},'tests')">测试</button><button class="btn small" onclick="selectProjectFromRnd(${pid},'issues')">问题</button></div></td></tr>`}).join('')}</tbody></table>`;
+}
+function selectProjectFromRnd(id,nextTab='basic'){
+  selectedId=Number(id)||0; tab=nextTab||'basic'; localStorage.setItem('plm_v85_selected',selectedId); localStorage.setItem('plm_v85_tab',tab);
+  document.querySelector('.rnd-modal')?.remove(); if(projectListCollapsed)toggleProjectListCollapse(false); else render();
+}
+function exportRndDashboardCsv(){
+  const r=rndFilteredList();
+  const rows=[['分类','项目ID','项目号','项目名称','客户','工程师','状态','优先级','流程完成','流程总数','测试通过','测试总数','测试异常数','未关闭问题','派工完成','派工总数','BOM状态','计划日期','卡点说明']];
+  r.list.forEach(p=>{const pid=Number(p.id),g=prog(pid),bad=pTests(pid).filter(rndIsFailedTest).length,openI=issues.filter(x=>Number(x.project_id)===pid&&!rndIsClosedIssue(x)).length,ds=rndAllDispatchSummary(pid);rows.push([r.group.title,p.id,p.project_no||'',p.name||'',p.customer||'',p.engineer||'',p.status||'',p.priority||'',g.flowDone,g.flowTotal,g.testDone,g.tests,bad,openI,ds.done,ds.total,rndProjectHasBom(pid)?'已生成':'未生成',dateOnly(p.due_date)||'',rndProjectWarnText(p)]);});
+  const csv='\ufeff'+rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='plm_rnd_dashboard_'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+
+async function openPlmOnlineModal(){
+  const host=$('modalHost')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'modalHost'}));
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal" style="width:min(920px,96vw)"><div class="modal-head"><div><h3>谁在线</h3><div class="hint">显示最近 10 分钟访问 PLM 的账号。页面会自动刷新当前在线状态。</div></div><div class="actions"><button class="btn small" onclick="refreshPlmOnlineUsers()">刷新</button><button class="btn small" onclick="closeModal()">关闭</button></div></div><div class="modal-body"><div id="plmOnlineBody"><div class="empty">正在读取在线人员...</div></div></div></div></div>`;
+  await refreshPlmOnlineUsers();
+}
+async function refreshPlmOnlineUsers(){
+  const r=await api('plm_online_users',{minutes:10});
+  const box=$('plmOnlineBody');
+  if(!box)return;
+  if(!r.ok){box.innerHTML=`<div class="empty dangerText">${esc(r.error||'读取失败')}</div>`;return;}
+  const users=r.users||[]; plmOnlineCount=Number(r.online_count||users.length||0); renderTopInfo();
+  box.innerHTML=`<div class="plm-online-grid">${users.map(u=>`<div class="plm-online-card"><b>${esc(u.user_name||u.username||'未识别账号')}</b><span>账号：${esc(u.username||'-')}</span><span>角色：${esc(u.user_role||'-')}</span><span>最后活动：${esc(u.last_seen||'-')}（${esc(u.idle_label||'')}）</span><span>页面：${esc(u.page||'PLM')}</span></div>`).join('')||'<div class="empty">暂无在线人员</div>'}</div>`;
+}
+async function plmOnlinePing(){
+  const r=await api('plm_online_ping',{});
+  if(r&&r.ok){plmOnlineCount=Number(r.online_count||0);renderTopInfo();}
+}
+async function openPlmLogModal(){
+  if(!guardPerm('view_logs','查看操作日志'))return;
+  const host=$('modalHost')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'modalHost'}));
+  const today=new Date().toISOString().slice(0,10);
+  host.innerHTML=`<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal" style="width:min(1180px,97vw)"><div class="modal-head"><div><h3>PLM 操作日志</h3><div class="hint">按人员、项目、动作、日期查看操作记录，可导出 CSV。</div></div><div class="actions"><button class="btn small good" onclick="exportPlmLogsCsv()">导出 CSV</button><button class="btn small" onclick="closeModal()">关闭</button></div></div><div class="modal-body"><div class="plm-log-filter"><div class="field"><label>关键词</label><input id="plm_log_q" placeholder="项目 / 样品 / 动作 / 说明 / 人员" oninput="loadPlmLogs()"></div><div class="field"><label>开始日期</label><input id="plm_log_from" type="date" onchange="loadPlmLogs()"></div><div class="field"><label>结束日期</label><input id="plm_log_to" type="date" value="${today}" onchange="loadPlmLogs()"></div><div class="field"><label>操作人</label><input id="plm_log_person" placeholder="姓名/账号" oninput="loadPlmLogs()"></div><button class="btn primary" onclick="loadPlmLogs()">筛选</button></div><div id="plmLogBody"><div class="empty">正在读取日志...</div></div></div></div></div>`;
+  await loadPlmLogs();
+}
+function plmLogParams(){return {q:$('plm_log_q')?.value||'',date_from:$('plm_log_from')?.value||'',date_to:$('plm_log_to')?.value||'',person:$('plm_log_person')?.value||'',limit:500};}
+async function loadPlmLogs(){
+  const box=$('plmLogBody'); if(!box)return;
+  const r=await api('plm_logs',plmLogParams());
+  if(!r.ok){box.innerHTML=`<div class="empty dangerText">${esc(r.error||'读取失败')}</div>`;return;}
+  const rows=r.logs||[];
+  box.innerHTML=`<div class="hint" style="margin-bottom:8px">共 ${rows.length} 条记录</div><div style="overflow:auto;max-height:62vh"><table class="plm-mini-table"><thead><tr><th>时间</th><th>操作人</th><th>项目</th><th>样品</th><th>对象</th><th>动作</th><th>说明</th></tr></thead><tbody>${rows.map(l=>`<tr><td>${esc(l.created_at||'-')}</td><td>${esc(l.user_name||l.username||'-')}</td><td>${esc(l.project_name||l.project_id||'-')}</td><td>${esc((l.model_name||'')+(l.model_code?' / '+l.model_code:''))}</td><td>${esc(l.target_type||'-')} #${esc(l.target_id||'')}</td><td>${esc(l.action||'-')}</td><td>${esc(l.note||'')}</td></tr>`).join('')||'<tr><td colspan="7">暂无日志</td></tr>'}</tbody></table></div>`;
+}
+function exportPlmLogsCsv(){
+  const p=plmLogParams();
+  const qs=new URLSearchParams(Object.assign({action:'plm_logs_export'},p));
+  location.href=API+'?'+qs.toString();
+}
+
+async function showHealth(){const r=await api('health');if(!r.ok){showFatal(r.error);return}$('detail').innerHTML=`<h2>PLM V8.5.31 健康检查</h2><pre class="health">${esc(JSON.stringify(r,null,2))}</pre><button class="btn" onclick="renderDetail()">返回项目</button>`}
+load();
+setInterval(plmOnlinePing,60000);
+</script>
+
+<!-- ARTDON_PLM_V85_53_LOG_CENTER_SCRIPT --><script src="plm_v85_53_log_center.js?v=8532"></script>
+
+<script>
+/* PLM V8.5.93：更多菜单改回按钮内绝对定位，避免固定坐标跑偏。 */
+(function(){
+  document.addEventListener('click', function(e){
+    var box=document.querySelector('.top-more');
+    if(!box || !box.open) return;
+    if(!box.contains(e.target)) box.removeAttribute('open');
+  }, true);
+})();
+</script>
+
+</body>
+</html>

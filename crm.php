@@ -332,7 +332,7 @@ $prefStyle = sprintf(
         </button>
         <div class="status-menu crm-system-menu" data-status-menu="systems">
           <header class="top-popover-head"><div><strong>系统链接</strong><span>CRM / Office 模块</span></div></header>
-          <?php foreach ([['CRM','crm.php'],['邮箱','mail.php'],['推广','promotion.php'],['报价','quotation.php'],['资料','datasheet.php'],['BOM','bom.php'],['派工','dispatch_next.php'],['命名','naming.php'],['PLM','../plm.php'],['对账','crm.php#linkage'],['Office首页','index.php']] as $item): ?>
+          <?php foreach ([['CRM','crm.php'],['邮箱','mail.php'],['推广','promotion.php'],['报价','quotation.php'],['资料','datasheet.php'],['BOM','bom.php'],['派工','dispatch_next.php'],['命名','naming.php'],['PLM','plm.php'],['对账','crm.php#linkage'],['Office首页','index.php']] as $item): ?>
           <a href="<?= h($item[1]) ?>"><?= h($item[0]) ?></a>
           <?php endforeach; ?>
         </div>

@@ -861,7 +861,9 @@ function dn_list(array $in): array
         au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name,
         (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.is_deleted=0) AS attachment_count,
         (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.file_kind='image' AND a.is_deleted=0) AS image_count,
-        (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.is_deleted=0 AND (a.expires_at IS NULL OR a.expires_at>NOW())) AS valid_attachment_count
+        (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.is_deleted=0 AND (a.expires_at IS NULL OR a.expires_at>NOW())) AS valid_attachment_count,
+        (SELECT COUNT(*) FROM dispatch_next_steps s WHERE s.task_id=t.id AND s.is_deleted=0) AS step_count,
+        (SELECT COUNT(*) FROM dispatch_next_steps s WHERE s.task_id=t.id AND s.is_deleted=0 AND s.status='done') AS step_done_count
         FROM dispatch_next_tasks t
         LEFT JOIN crm_users cu ON cu.id=t.created_by
         LEFT JOIN crm_users au ON au.id=t.assigned_to
@@ -1058,6 +1060,9 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         if ($c['status'] === 'done') $done++;
         if ((int)$c['assigned_to'] === dn_uid() && !(int)$c['is_read']) $mineUnread = true;
     }
+    $stepSt = $pdo->prepare("SELECT COUNT(*) step_count, SUM(status='done') step_done_count FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0");
+    $stepSt->execute([$gid]);
+    $stepRow = $stepSt->fetch() ?: ['step_count' => 0, 'step_done_count' => 0];
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
     $due = dn_due_status($g['due_at'] ?? null, $groupStatus);
     return [
@@ -1083,6 +1088,8 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'done_count' => $done,
         'total_count' => count($children),
         'progress' => count($children) ? (int)floor($done * 100 / count($children)) : 0,
+        'step_count' => (int)($stepRow['step_count'] ?? 0),
+        'step_done_count' => (int)($stepRow['step_done_count'] ?? 0),
         'is_read' => $mineUnread ? 0 : 1,
         'can_urge' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
         'can_delete' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
@@ -1304,7 +1311,8 @@ function dn_create_task(array $in): array
     if ($type === 'personal') dn_require('create_personal', '没有新增个人权限');
     if ($type === 'private') dn_require('create_private', '没有新增私人权限');
     $uid = dn_uid();
-    $assigned = $type === 'personal' || $type === 'private' ? $uid : (int)($in['assigned_to'] ?? 0);
+    $assigned = (int)($in['assigned_to'] ?? 0);
+    if (($type === 'personal' || $type === 'private') && $assigned <= 0) $assigned = $uid;
     if ($assigned <= 0) dn_fail('请选择负责人');
     $title = dn_str($in['title'] ?? '', 240);
     if ($title === '') dn_fail('请输入任务标题');
@@ -1659,8 +1667,36 @@ function dn_set_task_status(array $in, string $status): array
     }
     if ($new === 'done') dn_notice_mark_task_handled((int)$task['id']);
     if ($new === 'returned') dn_notice_mark_task_handled((int)$task['id'], ['completed_pending_confirm']);
+    dn_sync_step_from_child_task($task, $new);
     dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     return ['task_id' => (int)$task['id'], 'status' => $new];
+}
+
+function dn_sync_step_from_child_task(array $task, string $newStatus): void
+{
+    if (($task['linked_system'] ?? '') !== 'dispatch_step' || ($task['linked_table'] ?? '') !== 'dispatch_next_steps') return;
+    $stepId = (int)($task['linked_id'] ?? 0);
+    if ($stepId <= 0) return;
+    $pdo = dispatch_next_db();
+    $st = $pdo->prepare("SELECT * FROM dispatch_next_steps WHERE id=? AND is_deleted=0 LIMIT 1");
+    $st->execute([$stepId]);
+    $step = $st->fetch();
+    if (!$step) return;
+    if ($newStatus === 'done') {
+        $pdo->prepare("UPDATE dispatch_next_steps SET status='done', completed_at=COALESCE(completed_at,NOW()), updated_at=NOW() WHERE id=?")->execute([$stepId]);
+        dn_log((int)($step['task_id'] ?: 0) ?: null, 'step_child_done', 'step_status', $step['status'], 'done', '子派工完成，回写执行步骤 #' . $stepId);
+        if ((int)($step['created_by'] ?? 0) > 0) {
+            dn_notice_event((int)$step['created_by'], (int)$task['id'], 'step_child_done', '步骤派工已完成', (string)($step['step_name'] ?? ''), [
+                'action_required' => 0,
+                'actor_id' => dn_uid(),
+                'dedupe_key' => 'step_child_done:' . $stepId . ':' . date('Y-m-d'),
+                'group_key' => 'step:' . $stepId,
+            ]);
+        }
+    } elseif (in_array($newStatus, ['returned','paused'], true)) {
+        $pdo->prepare("UPDATE dispatch_next_steps SET status='blocked', updated_at=NOW() WHERE id=?")->execute([$stepId]);
+        dn_log((int)($step['task_id'] ?: 0) ?: null, 'step_child_blocked', 'step_status', $step['status'], 'blocked', '子派工退回/暂停，回写执行步骤 #' . $stepId);
+    }
 }
 
 function dn_group(int $id): array
@@ -1737,12 +1773,28 @@ function dn_list_steps(array $in): array
     $id = $task ? (int)$task['id'] : (int)$group['id'];
     $st = dispatch_next_db()->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE {$where} AND is_deleted=0 ORDER BY sort_order,id");
     $st->execute([$id]);
-    return $st->fetchAll();
+    $rows = $st->fetchAll();
+    foreach ($rows as &$row) {
+        $overdue = !empty($row['due_at']) && !in_array((string)$row['status'], ['done','cancelled'], true) && strtotime((string)$row['due_at']) < time();
+        $row['is_overdue'] = $overdue ? 1 : 0;
+        if ($overdue && (int)($row['owner_id'] ?? 0) > 0) {
+            dn_notice_event((int)$row['owner_id'], $task ? (int)$task['id'] : null, 'step_overdue', '执行步骤已逾期', (string)$row['step_name'], [
+                'action_required' => 1,
+                'action_code' => 'open_task',
+                'severity' => 'urgent',
+                'actor_id' => 0,
+                'dedupe_key' => 'step_overdue:' . (int)$row['id'] . ':' . (int)$row['owner_id'] . ':' . date('Y-m-d'),
+                'group_key' => 'step:' . (int)$row['id'],
+                'group_id' => $group ? (int)$group['id'] : null,
+            ]);
+        }
+    }
+    unset($row);
+    return $rows;
 }
 
 function dn_save_step(array $in): array
 {
-    dn_require('edit', '没有编辑执行步骤权限');
     $ctx = dn_step_context($in, true);
     $task = $ctx['task'];
     $group = $ctx['group'];
@@ -1753,24 +1805,43 @@ function dn_save_step(array $in): array
     $status = in_array(($in['status'] ?? 'pending'), ['pending','in_progress','blocked','done','cancelled'], true) ? $in['status'] : 'pending';
     $due = dn_dt($in['due_at'] ?? null);
     $note = dn_str($in['note'] ?? '', 3000);
+    if ($status === 'blocked' && $note === '') dn_fail('步骤卡住必须填写原因或备注');
     $sort = (int)($in['sort_order'] ?? 0);
     $pdo = dispatch_next_db();
     if ($id > 0) {
         $old = dn_step($id);
         dn_step_assert_context($old, $ctx);
         $pdo->prepare("UPDATE dispatch_next_steps SET step_name=?, owner_id=?, status=?, due_at=?, note=?, sort_order=?, updated_at=NOW() WHERE id=?")->execute([$name, $owner, $status, $due, $note, $sort, $id]);
-        dn_log($task ? (int)$task['id'] : null, 'step_update', 'step', $old['step_name'], $name, $group ? ('修改组执行步骤 #' . (int)$group['id']) : '修改执行步骤');
+        $logTask = $task ? (int)$task['id'] : null;
+        if ((string)$old['step_name'] !== $name) dn_log($logTask, 'step_update', 'step', $old['step_name'], $name, $group ? ('修改组执行步骤 #' . (int)$group['id']) : '修改执行步骤名称');
+        if ((int)($old['owner_id'] ?? 0) !== (int)($owner ?? 0)) {
+            dn_log($logTask, 'step_update_owner', 'assigned_to', (string)($old['owner_id'] ?? ''), (string)($owner ?? ''), '修改步骤负责人：' . $name);
+            if ($owner) dn_notice_event((int)$owner, $logTask, 'step_assigned', '步骤分配给你', $name, [
+                'action_required' => 0,
+                'actor_id' => dn_uid(),
+                'dedupe_key' => 'step_assigned:' . $id . ':' . $owner . ':' . date('Y-m-d'),
+                'group_key' => 'step:' . $id,
+            ]);
+        }
+        if ((string)($old['due_at'] ?? '') !== (string)($due ?? '')) dn_log($logTask, 'step_update_due', 'due_at', $old['due_at'] ?? '', $due ?? '', '修改步骤截止日期：' . $name);
+        if ((string)($old['status'] ?? '') !== $status) dn_log($logTask, 'step_update_status', 'step_status', $old['status'] ?? '', $status, '修改步骤状态：' . $name);
+        if ((string)($old['note'] ?? '') !== $note) dn_log($logTask, 'step_update_note', 'step', $old['note'] ?? '', $note, '修改步骤备注：' . $name);
     } else {
         $pdo->prepare("INSERT INTO dispatch_next_steps(task_id,group_id,step_name,owner_id,status,due_at,note,sort_order,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())")->execute([$task ? (int)$task['id'] : null, $group ? (int)$group['id'] : null, $name, $owner, $status, $due, $note, $sort, dn_uid()]);
         $id = (int)$pdo->lastInsertId();
         dn_log($task ? (int)$task['id'] : null, 'step_create', 'step', '', $name, $group ? ('新增组执行步骤 #' . (int)$group['id']) : '新增执行步骤');
+        if ($owner) dn_notice_event((int)$owner, $task ? (int)$task['id'] : null, 'step_assigned', '步骤分配给你', $name, [
+            'action_required' => 0,
+            'actor_id' => dn_uid(),
+            'dedupe_key' => 'step_assigned:' . $id . ':' . $owner . ':' . date('Y-m-d'),
+            'group_key' => 'step:' . $id,
+        ]);
     }
     return ['step_id' => $id];
 }
 
 function dn_delete_step(array $in): array
 {
-    dn_require('edit', '没有删除执行步骤权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
     $s = dn_step($id);
@@ -1782,7 +1853,6 @@ function dn_delete_step(array $in): array
 
 function dn_reorder_steps(array $in): array
 {
-    dn_require('edit', '没有排序执行步骤权限');
     $ctx = dn_step_context($in, true);
     $task = $ctx['task'];
     $group = $ctx['group'];
@@ -1798,15 +1868,39 @@ function dn_reorder_steps(array $in): array
 
 function dn_set_step_status(array $in, string $status): array
 {
-    dn_require('edit', '没有修改执行步骤权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
     $s = dn_step($id);
     $ctx = dn_step_context($s, true);
     $new = in_array($status, ['pending','in_progress','blocked','done','cancelled'], true) ? $status : 'pending';
-    $extra = $new === 'done' ? ", completed_at=NOW()" : ($new === 'in_progress' ? ", started_at=COALESCE(started_at,NOW())" : '');
-    $pdo->prepare("UPDATE dispatch_next_steps SET status=?, updated_at=NOW(){$extra} WHERE id=?")->execute([$new, $id]);
-    dn_log($ctx['task'] ? (int)$ctx['task']['id'] : null, 'step_status', 'step_status', $s['status'], $new, $ctx['group'] ? ('修改组执行步骤状态 #' . (int)$ctx['group']['id']) : '修改执行步骤状态');
+    $reason = dn_str($in['reason'] ?? $in['block_reason'] ?? '', 1000);
+    if ($new === 'blocked' && $reason === '') dn_fail('请填写卡住原因');
+    $sets = ['status=?', 'updated_at=NOW()'];
+    $params = [$new];
+    if ($new === 'done') $sets[] = "completed_at=NOW()";
+    if ($new === 'in_progress') $sets[] = "started_at=COALESCE(started_at,NOW())";
+    if ($new === 'blocked' && $reason !== '') {
+        $sets[] = "note=TRIM(CONCAT(COALESCE(NULLIF(note,''),''), IF(COALESCE(NULLIF(note,''),'')='', '', '\n'), '卡住原因：', ?))";
+        $params[] = $reason;
+    }
+    $params[] = $id;
+    $pdo->prepare("UPDATE dispatch_next_steps SET " . implode(',', $sets) . " WHERE id=?")->execute($params);
+    $taskId = $ctx['task'] ? (int)$ctx['task']['id'] : null;
+    $note = $ctx['group'] ? ('修改组执行步骤状态 #' . (int)$ctx['group']['id']) : '修改执行步骤状态';
+    if ($new === 'blocked' && $reason !== '') $note .= '，原因：' . $reason;
+    dn_log($taskId, 'step_status', 'step_status', $s['status'], $new, $note);
+    if ($new === 'blocked') {
+        $recipient = $ctx['task'] ? (int)($ctx['task']['created_by'] ?? 0) : (int)($ctx['group']['created_by'] ?? 0);
+        if ($recipient > 0) dn_notice_event($recipient, $taskId, 'step_blocked', '执行步骤卡住', (string)$s['step_name'] . ($reason ? '：' . $reason : ''), [
+            'action_required' => 1,
+            'action_code' => 'open_task',
+            'severity' => 'warning',
+            'actor_id' => dn_uid(),
+            'dedupe_key' => 'step_blocked:' . $id . ':' . $recipient . ':' . date('Y-m-d'),
+            'group_key' => 'step:' . $id,
+            'group_id' => $ctx['group'] ? (int)$ctx['group']['id'] : null,
+        ]);
+    }
     return ['step_id' => $id, 'status' => $new];
 }
 
@@ -1815,30 +1909,39 @@ function dn_dispatch_step(array $in): array
     dn_require('create_dispatch', '没有从步骤生成派工的权限');
     $id = (int)($in['step_id'] ?? 0);
     $pdo = dispatch_next_db();
-    $st = $pdo->prepare("SELECT s.*, t.title AS task_title, t.project AS task_project, t.created_by AS parent_created_by FROM dispatch_next_steps s JOIN dispatch_next_tasks t ON t.id=s.task_id WHERE s.id=? AND s.is_deleted=0 LIMIT 1");
+    $st = $pdo->prepare("SELECT s.*, t.title AS task_title, t.project AS task_project, t.created_by AS parent_created_by, g.title AS group_title, g.project AS group_project, g.created_by AS group_created_by FROM dispatch_next_steps s LEFT JOIN dispatch_next_tasks t ON t.id=s.task_id LEFT JOIN dispatch_next_groups g ON g.id=s.group_id WHERE s.id=? AND s.is_deleted=0 LIMIT 1");
     $st->execute([$id]);
     $s = $st->fetch();
     if (!$s) dn_fail('步骤不存在', 404);
-    dn_task((int)$s['task_id']);
+    $ctx = dn_step_context($s, true);
     if (!empty($s['child_task_id'])) return ['step_id' => $id, 'child_task_id' => (int)$s['child_task_id']];
-    $assigned = (int)($s['owner_id'] ?: dn_uid());
+    $assigned = (int)($in['assigned_to'] ?? $s['owner_id'] ?? 0) ?: dn_uid();
+    $due = dn_due_dt($in['due_at'] ?? $s['due_at'] ?? null);
+    if ($due === null) dn_fail('步骤派工必须填写截止日期');
+    $parentTitle = (string)($s['task_title'] ?: $s['group_title'] ?: '执行步骤');
+    $parentProject = (string)($s['task_project'] ?: $s['group_project'] ?: '');
+    $stepName = (string)$s['step_name'];
     $childId = dn_insert_task([
         'task_type' => 'dispatch',
         'dispatch_mode' => 'single',
         'parent_group_id' => null,
-        'title' => (string)$s['step_name'],
-        'project' => (string)($s['task_title'] ?? ''),
+        'title' => $parentTitle . ' - ' . $stepName,
+        'project' => (string)($s['note'] ?: $parentProject),
         'description' => (string)($s['note'] ?? ''),
         'priority' => 'normal',
         'status' => $assigned === dn_uid() ? 'in_progress' : 'pending_accept',
         'created_by' => dn_uid(),
         'assigned_to' => $assigned,
         'task_date' => date('Y-m-d'),
-        'due_at' => $s['due_at'] ?? null,
+        'due_at' => $due,
         'is_read' => $assigned === dn_uid() ? 1 : 0,
+        'linked_system' => 'dispatch_step',
+        'linked_table' => 'dispatch_next_steps',
+        'linked_id' => (string)$id,
+        'linked_title' => $stepName,
     ]);
-    $pdo->prepare("UPDATE dispatch_next_steps SET child_task_id=?, updated_at=NOW() WHERE id=?")->execute([$childId, $id]);
-    dn_log((int)$s['task_id'], 'step_dispatch', 'child_task_id', '', $childId, '步骤生成子派工');
+    $pdo->prepare("UPDATE dispatch_next_steps SET child_task_id=?, owner_id=?, due_at=COALESCE(due_at,?), updated_at=NOW() WHERE id=?")->execute([$childId, $assigned, $due, $id]);
+    dn_log($ctx['task'] ? (int)$ctx['task']['id'] : null, 'step_dispatch', 'child_task_id', '', $childId, ($ctx['group'] ? '多人组步骤生成子派工 #' . (int)$ctx['group']['id'] : '步骤生成子派工') . '：' . $stepName);
     return ['step_id' => $id, 'child_task_id' => $childId];
 }
 
@@ -1893,7 +1996,6 @@ function dn_list_step_template_items(array $in): array
 
 function dn_apply_step_template(array $in): array
 {
-    dn_require('edit', '没有套用步骤模板权限');
     $ctx = dn_step_context($in, true);
     $task = $ctx['task'];
     $group = $ctx['group'];
@@ -1923,6 +2025,7 @@ function dn_apply_step_template(array $in): array
         if ($role === 'current_user') $owner = dn_uid();
         elseif ($role === 'assignee' && $task) $owner = (int)($task['assigned_to'] ?? 0) ?: null;
         elseif ($role === 'creator' && $task) $owner = (int)($task['created_by'] ?? 0) ?: null;
+        elseif ($task) $owner = (int)($task['assigned_to'] ?? 0) ?: null;
         $ins->execute([$task ? (int)$task['id'] : null, $group ? (int)$group['id'] : null, (string)$item['step_name'], $owner, 'pending', $due, (string)($item['note'] ?? ''), $sort, dn_uid()]);
         $created++;
     }
@@ -1932,8 +2035,8 @@ function dn_apply_step_template(array $in): array
 
 function dn_save_steps_as_template(array $in): array
 {
-    dn_require('edit', '没有保存步骤模板权限');
     $ctx = dn_step_context($in, false);
+    if (!dn_can_edit_step_context($ctx['task'], $ctx['group'])) dn_fail('没有保存步骤模板权限', 403);
     $task = $ctx['task'];
     $group = $ctx['group'];
     $name = dn_str($in['template_name'] ?? '', 160);
@@ -2358,7 +2461,7 @@ function dn_custom_fields(): array
 function dn_get_table_prefs(array $in): array
 {
     $scope = dn_str($in['scope'] ?? 'desktop', 20);
-    if (!in_array($scope, ['desktop','mobile'], true)) $scope = 'desktop';
+    if (!in_array($scope, ['desktop','mobile','mobile_landscape'], true)) $scope = 'desktop';
     $prefs = dn_prefs_get('table_prefs_' . $scope, []);
     $columns = dn_table_default_columns();
     if ($scope === 'mobile' && empty($prefs['columns'])) {
@@ -2379,6 +2482,28 @@ function dn_get_table_prefs(array $in): array
             if ($key === 'row_handle') $col['visible'] = 0;
             if (isset($mobileWidths[$key])) $col['width'] = $mobileWidths[$key];
             $col['minWidth'] = 24;
+            $col['maxWidth'] = 520;
+        }
+        unset($col);
+    }
+    if ($scope === 'mobile_landscape' && empty($prefs['columns'])) {
+        $landscapeWidths = [
+            'row_handle' => 0,
+            'complete' => 42,
+            'priority' => 68,
+            'title' => 150,
+            'project' => 320,
+            'due_at' => 76,
+            'assigned_to' => 90,
+            'dispatch_mode' => 70,
+            'creator_name' => 80,
+            'actions' => 82,
+        ];
+        foreach ($columns as &$col) {
+            $key = (string)($col['key'] ?? '');
+            if ($key === 'row_handle') $col['visible'] = 0;
+            if (isset($landscapeWidths[$key])) $col['width'] = $landscapeWidths[$key];
+            $col['minWidth'] = 36;
             $col['maxWidth'] = 520;
         }
         unset($col);
@@ -2421,7 +2546,7 @@ function dn_save_table_prefs(array $in): array
 {
     dn_require('table_customize', '没有表格自定义权限');
     $scope = dn_str($in['scope'] ?? 'desktop', 20);
-    if (!in_array($scope, ['desktop','mobile'], true)) $scope = 'desktop';
+    if (!in_array($scope, ['desktop','mobile','mobile_landscape'], true)) $scope = 'desktop';
     $current = dn_prefs_get('table_prefs_' . $scope, []);
     $colorPrefs = dn_shared_color_prefs($scope);
     if (is_array($in['color_prefs'] ?? null)) {
@@ -2945,6 +3070,8 @@ function dn_preview_link(array $in): array
     $system = strtolower(dn_str($in['system'] ?? '', 30));
     $code = dn_str($in['code'] ?? '', 80);
     $systems = [
+        'customer' => ['label' => '客户', 'permission' => 'view', 'actions' => ['查看客户', '查看联系人', '创建跟进']],
+        'mail' => ['label' => '邮件', 'permission' => 'view', 'actions' => ['打开邮件正文', '回复邮件', '关联客户']],
         'naming' => ['label' => '命名', 'permission' => 'view', 'actions' => ['查看型号', '复制资料', '转资料生成']],
         'bom' => ['label' => 'BOM', 'permission' => 'view', 'actions' => ['查看成本摘要', '生成报价参考']],
         'quote' => ['label' => '报价', 'permission' => 'view', 'actions' => ['查看报价', '发送报价', '导出 PDF']],
@@ -2972,6 +3099,20 @@ function dn_preview_link(array $in): array
         'actions' => array_map(fn($label) => ['label' => $label, 'hint' => '接口待接入'], $systems[$system]['actions']),
     ];
 
+    if ($system === 'customer') {
+        $customer = dn_preview_customer($code, $systems[$system]['actions']);
+        if ($customer) {
+            dn_log(null, 'preview_link', $system, '', $code, '派工表格联动预览');
+            return $customer;
+        }
+    }
+    if ($system === 'mail') {
+        $mail = dn_preview_customer_mails($code, $systems[$system]['actions']);
+        if ($mail) {
+            dn_log(null, 'preview_link', $system, '', $code, '派工表格联动预览');
+            return $mail;
+        }
+    }
     if ($system === 'naming') {
         $naming = dn_preview_naming_model($code, $systems[$system]['actions']);
         if ($naming) {
@@ -3028,6 +3169,433 @@ function dn_preview_link(array $in): array
     }
     dn_log(null, 'preview_link', $system, '', $code, '派工表格联动预览');
     return $result;
+}
+
+function dn_preview_customer(string $code, array $actions): ?array
+{
+    if (!artdon_sso_table_exists('crm_customers')) return null;
+    $pdo = dispatch_next_db();
+    $cols = dn_table_columns('crm_customers');
+    $where = [];
+    $args = [];
+    foreach (['customer_code', 'customer_name', 'customer_name_en', 'email', 'website', 'customer_domain', 'id'] as $col) {
+        if (!in_array($col, $cols, true)) continue;
+        if ($col === 'id') {
+            if (ctype_digit($code)) {
+                $where[] = 'c.id = ?';
+                $args[] = (int)$code;
+            }
+            continue;
+        }
+        $where[] = "c.`{$col}` = ?";
+        $args[] = $code;
+    }
+    if (!$where) return null;
+    $deleted = in_array('deleted_at', $cols, true) ? ' AND c.deleted_at IS NULL' : '';
+    $st = $pdo->prepare('SELECT c.* FROM crm_customers c WHERE (' . implode(' OR ', $where) . ')' . $deleted . ' ORDER BY c.updated_at DESC, c.id DESC LIMIT 1');
+    $st->execute($args);
+    $row = $st->fetch();
+    if (!$row) {
+        $likeCols = array_values(array_filter(['customer_code', 'customer_name', 'customer_name_en'], fn($col) => in_array($col, $cols, true)));
+        if ($likeCols) {
+            $likeWhere = implode(' OR ', array_map(fn($col) => "c.`{$col}` LIKE ?", $likeCols));
+            $st = $pdo->prepare('SELECT c.* FROM crm_customers c WHERE (' . $likeWhere . ')' . $deleted . ' ORDER BY c.updated_at DESC, c.id DESC LIMIT 1');
+            $st->execute(array_fill(0, count($likeCols), '%' . $code . '%'));
+            $row = $st->fetch();
+        }
+    }
+    if (!$row) return null;
+    $customerId = (int)$row['id'];
+    $ownerName = '';
+    if (artdon_sso_table_exists('crm_users') && !empty($row['owner_user_id'])) {
+        $u = $pdo->prepare('SELECT username FROM crm_users WHERE id=? LIMIT 1');
+        $u->execute([(int)$row['owner_user_id']]);
+        $ownerName = (string)($u->fetchColumn() ?: '');
+    }
+    $address = null;
+    if (artdon_sso_table_exists('crm_customer_addresses')) {
+        $addrCols = dn_table_columns('crm_customer_addresses');
+        $addrDeleted = in_array('deleted_at', $addrCols, true) ? ' AND deleted_at IS NULL' : '';
+        $a = $pdo->prepare('SELECT * FROM crm_customer_addresses WHERE customer_id=?' . $addrDeleted . ' ORDER BY is_primary DESC, id DESC LIMIT 1');
+        $a->execute([$customerId]);
+        $address = $a->fetch() ?: null;
+    }
+    $contact = null;
+    if (artdon_sso_table_exists('crm_contacts')) {
+        $contactCols = dn_table_columns('crm_contacts');
+        $contactDeleted = in_array('deleted_at', $contactCols, true) ? ' AND deleted_at IS NULL' : '';
+        $c = $pdo->prepare('SELECT * FROM crm_contacts WHERE customer_id=?' . $contactDeleted . ' ORDER BY is_primary DESC, id DESC LIMIT 1');
+        $c->execute([$customerId]);
+        $contact = $c->fetch() ?: null;
+    }
+    $fields = [
+        ['label' => '客户代码', 'value' => (string)($row['customer_code'] ?? '')],
+        ['label' => '客户名称', 'value' => (string)($row['customer_name'] ?? '')],
+        ['label' => '英文名称', 'value' => (string)($row['customer_name_en'] ?? '')],
+        ['label' => '国家 / 城市', 'value' => trim((string)($row['country'] ?? '') . ' ' . (string)($row['city'] ?? ''))],
+        ['label' => '负责人', 'value' => $ownerName],
+        ['label' => '邮箱', 'value' => (string)($row['email'] ?? '')],
+        ['label' => '电话', 'value' => (string)($row['phone'] ?? '')],
+        ['label' => 'WhatsApp', 'value' => (string)($row['whatsapp'] ?? '')],
+        ['label' => '网站', 'value' => (string)($row['website'] ?? '')],
+        ['label' => '客户域名', 'value' => (string)($row['customer_domain'] ?? '')],
+        ['label' => '主地址', 'value' => $address ? trim((string)($address['country'] ?? '') . ' ' . (string)($address['city'] ?? '') . ' ' . (string)($address['address'] ?? '')) : (string)($row['address'] ?? '')],
+        ['label' => '主联系人', 'value' => $contact ? trim((string)($contact['name'] ?? '') . ' ' . (string)($contact['email'] ?? '') . ' ' . (string)($contact['phone'] ?? '') . ' ' . (string)($contact['whatsapp'] ?? '')) : ''],
+        ['label' => '客户等级', 'value' => (string)($row['level'] ?? '')],
+        ['label' => '状态', 'value' => (string)($row['status'] ?? '')],
+        ['label' => '更新时间', 'value' => (string)($row['updated_at'] ?? '')],
+    ];
+    return [
+        'system' => 'customer',
+        'label' => '客户',
+        'code' => (string)($row['customer_code'] ?: $code),
+        'status' => 'connected',
+        'status_label' => '已接入',
+        'message' => '已从 CRM 客户中心读取客户资料。',
+        'fields' => $fields,
+        'actions' => array_map(fn($label) => ['label' => $label, 'hint' => '客户预览已接入；具体操作按客户中心权限处理。'], $actions),
+    ];
+}
+
+function dn_preview_customer_mails(string $code, array $actions): ?array
+{
+    if (!artdon_sso_table_exists('crm_customers') || !artdon_sso_table_exists('crm_mails')) return null;
+    $pdo = dispatch_next_db();
+    $customerCols = dn_table_columns('crm_customers');
+    $where = [];
+    $args = [];
+    foreach (['customer_code', 'customer_name', 'customer_name_en', 'email', 'website', 'customer_domain', 'id'] as $col) {
+        if (!in_array($col, $customerCols, true)) continue;
+        if ($col === 'id') {
+            if (ctype_digit($code)) {
+                $where[] = 'id = ?';
+                $args[] = (int)$code;
+            }
+            continue;
+        }
+        $where[] = "`{$col}` = ?";
+        $args[] = $code;
+    }
+    if (!$where) return null;
+    $deleted = in_array('deleted_at', $customerCols, true) ? ' AND deleted_at IS NULL' : '';
+    $st = $pdo->prepare('SELECT * FROM crm_customers WHERE (' . implode(' OR ', $where) . ')' . $deleted . ' ORDER BY updated_at DESC, id DESC LIMIT 1');
+    $st->execute($args);
+    $customer = $st->fetch();
+    if (!$customer) return null;
+    $customerId = (int)$customer['id'];
+
+    $emails = [];
+    foreach (['email', 'backup_email'] as $field) {
+        $email = strtolower(trim((string)($customer[$field] ?? '')));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $emails[] = $email;
+    }
+    if (artdon_sso_table_exists('crm_contacts')) {
+        $contactCols = dn_table_columns('crm_contacts');
+        $contactDeleted = in_array('deleted_at', $contactCols, true) ? ' AND deleted_at IS NULL' : '';
+        $ct = $pdo->prepare('SELECT email FROM crm_contacts WHERE customer_id=?' . $contactDeleted . ' AND email IS NOT NULL AND email<>""');
+        $ct->execute([$customerId]);
+        foreach ($ct->fetchAll(PDO::FETCH_COLUMN) as $email) {
+            $email = strtolower(trim((string)$email));
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $emails[] = $email;
+        }
+    }
+    $emails = array_values(array_unique($emails));
+
+    $mailCols = dn_table_columns('crm_mails');
+    $uid = dn_uid();
+    $canOpenCustomerMail = dn_is_admin() || dn_can('view_all') || (int)($customer['owner_user_id'] ?? 0) === $uid;
+    if (!$canOpenCustomerMail && artdon_sso_table_exists('crm_customer_owners')) {
+        $ownerCols = dn_table_columns('crm_customer_owners');
+        $ownerDeleted = in_array('deleted_at', $ownerCols, true) ? ' AND deleted_at IS NULL' : '';
+        $own = $pdo->prepare('SELECT 1 FROM crm_customer_owners WHERE customer_id=? AND user_id=?' . $ownerDeleted . ' LIMIT 1');
+        $own->execute([$customerId, $uid]);
+        $canOpenCustomerMail = (bool)$own->fetchColumn();
+    }
+    $or = [];
+    $params = [];
+    if (in_array('linked_customer_id', $mailCols, true)) {
+        $or[] = 'm.linked_customer_id = ?';
+        $params[] = $customerId;
+    }
+    $emailFields = array_values(array_filter(['from_email', 'to_emails', 'cc_emails', 'bcc_emails'], fn($field) => in_array($field, $mailCols, true)));
+    foreach ($emails as $email) {
+        foreach ($emailFields as $field) {
+            if ($field === 'from_email') {
+                $or[] = 'LOWER(m.from_email) = ?';
+                $params[] = $email;
+            } else {
+                $or[] = 'LOWER(m.`' . $field . '`) LIKE ?';
+                $params[] = '%' . $email . '%';
+            }
+        }
+    }
+    if (!$or) {
+        $or[] = '0=1';
+    }
+    $dateExpr = 'COALESCE(' . implode(',', array_values(array_filter(['m.received_at', 'm.sent_at', 'm.created_at'], function ($expr) use ($mailCols) {
+        $col = substr($expr, 2);
+        return in_array($col, $mailCols, true);
+    }))) . ')';
+    if ($dateExpr === 'COALESCE()') $dateExpr = 'm.id';
+    $folderFilter = in_array('folder', $mailCols, true) ? ' AND m.folder IN ("inbox","sent")' : '';
+    $deletedFilter = in_array('is_deleted', $mailCols, true) ? ' AND COALESCE(m.is_deleted,0)=0' : '';
+    $select = [
+        'm.id',
+        in_array('user_id', $mailCols, true) ? 'm.user_id' : '0 AS user_id',
+        in_array('mail_account_id', $mailCols, true) ? 'm.mail_account_id' : '0 AS mail_account_id',
+        in_array('linked_customer_id', $mailCols, true) ? 'm.linked_customer_id' : '0 AS linked_customer_id',
+        in_array('message_id_header', $mailCols, true) ? 'm.message_id_header' : 'NULL AS message_id_header',
+        in_array('body_hash', $mailCols, true) ? 'm.body_hash' : 'NULL AS body_hash',
+        in_array('subject', $mailCols, true) ? 'm.subject' : 'NULL AS subject',
+        in_array('folder', $mailCols, true) ? 'm.folder' : 'NULL AS folder',
+        in_array('from_email', $mailCols, true) ? 'm.from_email' : 'NULL AS from_email',
+        in_array('from_name', $mailCols, true) ? 'm.from_name' : 'NULL AS from_name',
+        in_array('to_emails', $mailCols, true) ? 'm.to_emails' : 'NULL AS to_emails',
+        in_array('cc_emails', $mailCols, true) ? 'm.cc_emails' : 'NULL AS cc_emails',
+        in_array('bcc_emails', $mailCols, true) ? 'm.bcc_emails' : 'NULL AS bcc_emails',
+        in_array('received_at', $mailCols, true) ? 'm.received_at' : 'NULL AS received_at',
+        in_array('sent_at', $mailCols, true) ? 'm.sent_at' : 'NULL AS sent_at',
+        in_array('created_at', $mailCols, true) ? 'm.created_at' : 'NULL AS created_at',
+        in_array('has_attachment', $mailCols, true) ? 'm.has_attachment' : '0 AS has_attachment',
+        in_array('attachment_count', $mailCols, true) ? 'm.attachment_count' : '0 AS attachment_count',
+    ];
+    $accountJoin = artdon_sso_table_exists('crm_user_mail_accounts') && in_array('mail_account_id', $mailCols, true)
+        ? ' LEFT JOIN crm_user_mail_accounts ma ON ma.id = m.mail_account_id'
+        : '';
+    $accountSelect = $accountJoin ? ', ma.email_address AS account_email' : ', NULL AS account_email';
+    $sql = 'SELECT ' . implode(',', $select) . $accountSelect . ', ' . $dateExpr . ' AS mail_time
+        FROM crm_mails m' . $accountJoin . '
+        WHERE 1=1' . $deletedFilter . $folderFilter . '
+          AND ' . $dateExpr . ' >= DATE_SUB(NOW(), INTERVAL 3 DAY)
+          AND (' . implode(' OR ', $or) . ')
+        ORDER BY ' . $dateExpr . ' DESC, m.id DESC
+        LIMIT 20';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $mails = [];
+    $rawMailCount = 0;
+    foreach ($stmt->fetchAll() as $row) {
+        $rawMailCount++;
+        $folder = (string)($row['folder'] ?? '');
+        $row['direction'] = $folder === 'sent' ? '发件' : ($folder === 'draft' ? '草稿' : '收件');
+        $canOpen = $canOpenCustomerMail || (int)($row['user_id'] ?? 0) === $uid;
+        $row['can_open'] = $canOpen ? 1 : 0;
+        $row['open_url'] = $canOpen ? ('crm.php#mail:' . (int)$row['id']) : '';
+        $msgId = strtolower(trim((string)($row['message_id_header'] ?? '')));
+        $bodyHash = strtolower(trim((string)($row['body_hash'] ?? '')));
+        $mailTime = (string)($row['mail_time'] ?? ($row['received_at'] ?? ($row['sent_at'] ?? ($row['created_at'] ?? ''))));
+        $timeBucket = $mailTime && strtotime($mailTime) ? date('Y-m-d H:i', strtotime($mailTime)) : (string)($row['id'] ?? '');
+        $dedupeKey = $bodyHash !== ''
+            ? 'body:' . $bodyHash . ':' . md5(strtolower((string)($row['subject'] ?? '')))
+            : ($msgId !== ''
+            ? 'msg:' . $msgId
+            : 'fallback:' . md5(strtolower((string)($row['subject'] ?? '') . '|' . (string)($row['from_email'] ?? '') . '|' . $timeBucket)));
+        if (!isset($mails[$dedupeKey])) {
+            $row['_account_emails'] = array_values(array_filter([(string)($row['account_email'] ?? '')]));
+            $row['_duplicate_count'] = 1;
+            $mails[$dedupeKey] = $row;
+            continue;
+        }
+        $existing = $mails[$dedupeKey];
+        $accounts = array_values(array_unique(array_filter(array_merge($existing['_account_emails'] ?? [], [(string)($row['account_email'] ?? '')]))));
+        $row['_account_emails'] = $accounts;
+        $row['_duplicate_count'] = (int)($existing['_duplicate_count'] ?? 1) + 1;
+        $row['account_email'] = implode('、', $accounts);
+        if (!empty($existing['can_open']) && empty($row['can_open'])) {
+            $existing['_account_emails'] = $accounts;
+            $existing['_duplicate_count'] = $row['_duplicate_count'];
+            $existing['account_email'] = implode('、', $accounts);
+            $mails[$dedupeKey] = $existing;
+        } else {
+            $mails[$dedupeKey] = $row;
+        }
+    }
+    $mails = array_values($mails);
+    return [
+        'system' => 'mail',
+        'label' => '邮件',
+        'code' => (string)($customer['customer_code'] ?: $code),
+        'status' => 'connected',
+        'status_label' => '已接入',
+        'message' => $mails ? '已读取该客户近三天公司邮箱邮件主题；有权限的邮件可点击打开正文。' : '已找到客户，但近三天暂无匹配邮件。',
+        'fields' => [
+            ['label' => '客户代码', 'value' => (string)($customer['customer_code'] ?? '')],
+            ['label' => '客户名称', 'value' => (string)($customer['customer_name'] ?? '')],
+            ['label' => '国家 / 城市', 'value' => trim((string)($customer['country'] ?? '') . ' ' . (string)($customer['city'] ?? ''))],
+            ['label' => '匹配邮箱数', 'value' => (string)count($emails)],
+            ['label' => '近三天邮件数', 'value' => (string)count($mails)],
+            ['label' => '已合并重复', 'value' => (string)max(0, $rawMailCount - count($mails))],
+        ],
+        'mails' => $mails,
+        'actions' => array_map(fn($label) => ['label' => $label, 'hint' => '邮件主题预览已接入；正文查看使用邮箱中心权限。'], $actions),
+    ];
+}
+
+function dn_mail_can_open(array $mail): bool
+{
+    $uid = dn_uid();
+    if (dn_is_admin() || dn_can('view_all')) return true;
+    if ((int)($mail['user_id'] ?? 0) === $uid) return true;
+    $customerId = (int)($mail['linked_customer_id'] ?? 0);
+    if ($customerId <= 0 || !artdon_sso_table_exists('crm_customers')) return false;
+    $pdo = dispatch_next_db();
+    $customerCols = dn_table_columns('crm_customers');
+    if (in_array('owner_user_id', $customerCols, true)) {
+        $st = $pdo->prepare('SELECT owner_user_id FROM crm_customers WHERE id=? LIMIT 1');
+        $st->execute([$customerId]);
+        if ((int)($st->fetchColumn() ?: 0) === $uid) return true;
+    }
+    if (artdon_sso_table_exists('crm_customer_owners')) {
+        $ownerCols = dn_table_columns('crm_customer_owners');
+        $ownerDeleted = in_array('deleted_at', $ownerCols, true) ? ' AND deleted_at IS NULL' : '';
+        $own = $pdo->prepare('SELECT 1 FROM crm_customer_owners WHERE customer_id=? AND user_id=?' . $ownerDeleted . ' LIMIT 1');
+        $own->execute([$customerId, $uid]);
+        if ($own->fetchColumn()) return true;
+    }
+    return false;
+}
+
+function dn_mail_customer_context(string $code): ?array
+{
+    if ($code === '' || !artdon_sso_table_exists('crm_customers')) return null;
+    $pdo = dispatch_next_db();
+    $customerCols = dn_table_columns('crm_customers');
+    $where = [];
+    $args = [];
+    foreach (['customer_code', 'customer_name', 'customer_name_en', 'email', 'website', 'customer_domain', 'id'] as $col) {
+        if (!in_array($col, $customerCols, true)) continue;
+        if ($col === 'id') {
+            if (ctype_digit($code)) {
+                $where[] = 'id = ?';
+                $args[] = (int)$code;
+            }
+            continue;
+        }
+        $where[] = "`{$col}` = ?";
+        $args[] = $code;
+    }
+    if (!$where) return null;
+    $deleted = in_array('deleted_at', $customerCols, true) ? ' AND deleted_at IS NULL' : '';
+    $st = $pdo->prepare('SELECT * FROM crm_customers WHERE (' . implode(' OR ', $where) . ')' . $deleted . ' ORDER BY updated_at DESC, id DESC LIMIT 1');
+    $st->execute($args);
+    $customer = $st->fetch();
+    if (!$customer) return null;
+    $customerId = (int)$customer['id'];
+    $emails = [];
+    foreach (['email', 'backup_email'] as $field) {
+        $email = strtolower(trim((string)($customer[$field] ?? '')));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $emails[] = $email;
+    }
+    if (artdon_sso_table_exists('crm_contacts')) {
+        $contactCols = dn_table_columns('crm_contacts');
+        $contactDeleted = in_array('deleted_at', $contactCols, true) ? ' AND deleted_at IS NULL' : '';
+        $ct = $pdo->prepare('SELECT email FROM crm_contacts WHERE customer_id=?' . $contactDeleted . ' AND email IS NOT NULL AND email<>""');
+        $ct->execute([$customerId]);
+        foreach ($ct->fetchAll(PDO::FETCH_COLUMN) as $email) {
+            $email = strtolower(trim((string)$email));
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $emails[] = $email;
+        }
+    }
+    $uid = dn_uid();
+    $canOpen = dn_is_admin() || dn_can('view_all') || (int)($customer['owner_user_id'] ?? 0) === $uid;
+    if (!$canOpen && artdon_sso_table_exists('crm_customer_owners')) {
+        $ownerCols = dn_table_columns('crm_customer_owners');
+        $ownerDeleted = in_array('deleted_at', $ownerCols, true) ? ' AND deleted_at IS NULL' : '';
+        $own = $pdo->prepare('SELECT 1 FROM crm_customer_owners WHERE customer_id=? AND user_id=?' . $ownerDeleted . ' LIMIT 1');
+        $own->execute([$customerId, $uid]);
+        $canOpen = (bool)$own->fetchColumn();
+    }
+    return ['customer' => $customer, 'emails' => array_values(array_unique($emails)), 'can_open' => $canOpen];
+}
+
+function dn_mail_belongs_to_customer(array $mail, array $ctx): bool
+{
+    $customerId = (int)($ctx['customer']['id'] ?? 0);
+    if ($customerId > 0 && (int)($mail['linked_customer_id'] ?? 0) === $customerId) return true;
+    $haystack = strtolower(implode(' ', [
+        (string)($mail['from_email'] ?? ''),
+        (string)($mail['to_emails'] ?? ''),
+        (string)($mail['cc_emails'] ?? ''),
+        (string)($mail['bcc_emails'] ?? ''),
+    ]));
+    foreach (($ctx['emails'] ?? []) as $email) {
+        if ($email !== '' && str_contains($haystack, strtolower((string)$email))) return true;
+    }
+    return false;
+}
+
+function dn_mail_preview_get(array $in): array
+{
+    if (!artdon_sso_table_exists('crm_mails')) dn_fail('邮件表不存在', 404);
+    $mailId = (int)($in['mail_id'] ?? 0);
+    if ($mailId <= 0) dn_fail('缺少邮件 ID');
+    $pdo = dispatch_next_db();
+    $mailCols = dn_table_columns('crm_mails');
+    $select = ['m.*'];
+    $join = '';
+    if (artdon_sso_table_exists('crm_user_mail_accounts') && in_array('mail_account_id', $mailCols, true)) {
+        $join .= ' LEFT JOIN crm_user_mail_accounts ma ON ma.id = m.mail_account_id';
+        $select[] = 'ma.email_address AS account_email';
+    } else {
+        $select[] = 'NULL AS account_email';
+    }
+    if (artdon_sso_table_exists('crm_customers') && in_array('linked_customer_id', $mailCols, true)) {
+        $join .= ' LEFT JOIN crm_customers c ON c.id = m.linked_customer_id';
+        $select[] = 'c.customer_name AS linked_customer_name';
+        $select[] = 'c.customer_code AS linked_customer_code';
+    } else {
+        $select[] = 'NULL AS linked_customer_name';
+        $select[] = 'NULL AS linked_customer_code';
+    }
+    $deletedFilter = in_array('is_deleted', $mailCols, true) ? ' AND COALESCE(m.is_deleted,0)=0' : '';
+    $st = $pdo->prepare('SELECT ' . implode(',', $select) . ' FROM crm_mails m' . $join . ' WHERE m.id=?' . $deletedFilter . ' LIMIT 1');
+    $st->execute([$mailId]);
+    $mail = $st->fetch();
+    if (!$mail) dn_fail('邮件不存在或已删除', 404);
+    $customerCode = dn_str($in['customer_code'] ?? $in['code'] ?? '', 80);
+    $customerCtx = $customerCode !== '' ? dn_mail_customer_context($customerCode) : null;
+    $allowedByCustomer = $customerCtx && !empty($customerCtx['can_open']) && dn_mail_belongs_to_customer($mail, $customerCtx);
+    if (!$allowedByCustomer && !dn_mail_can_open($mail)) dn_fail('没有权限预览这封邮件正文', 403);
+
+    $attachments = [];
+    if (artdon_sso_table_exists('crm_mail_attachments')) {
+        $attCols = dn_table_columns('crm_mail_attachments');
+        $attDeleted = in_array('deleted_at', $attCols, true) ? ' AND deleted_at IS NULL' : '';
+        $ast = $pdo->prepare('SELECT id,file_name,filename,original_filename,file_size,mime_type,is_inline,is_signature_image,created_at FROM crm_mail_attachments WHERE mail_id=? AND user_id=?' . $attDeleted . ' ORDER BY COALESCE(is_inline,0) ASC, id ASC LIMIT 30');
+        $ast->execute([$mailId, (int)($mail['user_id'] ?? 0)]);
+        foreach ($ast->fetchAll() as $att) {
+            $attachments[] = [
+                'id' => (int)$att['id'],
+                'file_name' => (string)($att['file_name'] ?: ($att['filename'] ?: ($att['original_filename'] ?: '附件'))),
+                'file_size' => (int)($att['file_size'] ?? 0),
+                'mime_type' => (string)($att['mime_type'] ?? ''),
+                'is_inline' => (int)($att['is_inline'] ?? 0),
+                'is_signature_image' => (int)($att['is_signature_image'] ?? 0),
+                'created_at' => (string)($att['created_at'] ?? ''),
+            ];
+        }
+    }
+    $date = (string)($mail['received_at'] ?? '') ?: ((string)($mail['sent_at'] ?? '') ?: (string)($mail['created_at'] ?? ''));
+    return [
+        'mail' => [
+            'id' => (int)$mail['id'],
+            'subject' => (string)($mail['subject'] ?? ''),
+            'folder' => (string)($mail['folder'] ?? ''),
+            'direction' => ((string)($mail['folder'] ?? '') === 'sent') ? '发件' : '收件',
+            'from_name' => (string)($mail['from_name'] ?? ''),
+            'from_email' => (string)($mail['from_email'] ?? ''),
+            'to_emails' => (string)($mail['to_emails'] ?? ''),
+            'cc_emails' => (string)($mail['cc_emails'] ?? ''),
+            'mail_time' => $date,
+            'account_email' => (string)($mail['account_email'] ?? ''),
+            'linked_customer_name' => (string)($mail['linked_customer_name'] ?? ''),
+            'linked_customer_code' => (string)($mail['linked_customer_code'] ?? ''),
+            'body_html' => (string)($mail['body_html'] ?? ''),
+            'body_text' => (string)($mail['body_text'] ?? ''),
+            'attachments' => $attachments,
+            'open_url' => 'crm.php#mail:' . (int)$mail['id'],
+        ],
+    ];
 }
 
 function dn_preview_datasheet_snapshot(string $code, array $actions): ?array
@@ -3580,6 +4148,7 @@ function dn_table_columns(string $table): array
 function dn_preview_link_candidate(string $system): ?array
 {
     $map = [
+        'customer' => ['table' => 'crm_customers', 'match' => ['customer_code', 'customer_name', 'customer_name_en', 'email', 'id'], 'fields' => ['customer_code' => '客户代码', 'customer_name' => '客户名称', 'country' => '国家', 'email' => '邮箱', 'updated_at' => '更新时间']],
         'quote' => ['table' => 'crm_quotes', 'match' => ['quote_no', 'quote_code', 'id'], 'fields' => ['quote_no' => '报价编号', 'customer_id' => '客户 ID', 'status' => '状态', 'created_at' => '创建时间']],
         'plm' => ['table' => 'crm_plm_projects', 'match' => ['project_no', 'project_code', 'id'], 'fields' => ['project_no' => '项目编号', 'project_name' => '项目名称', 'status' => '状态', 'updated_at' => '更新时间']],
         'bom' => ['table' => 'crm_bom_items', 'match' => ['bom_no', 'model_no', 'id'], 'fields' => ['bom_no' => 'BOM 编号', 'model_no' => '型号', 'status' => '状态', 'updated_at' => '更新时间']],
@@ -3648,8 +4217,11 @@ try {
         case 'add_step': dn_ok(dn_save_step($in));
         case 'delete_step': dn_ok(dn_delete_step($in));
         case 'reorder_steps': dn_ok(dn_reorder_steps($in));
+        case 'start_step': dn_ok(dn_set_step_status($in, 'in_progress'));
         case 'complete_step': dn_ok(dn_set_step_status($in, 'done'));
         case 'block_step': dn_ok(dn_set_step_status($in, 'blocked'));
+        case 'cancel_step': dn_ok(dn_set_step_status($in, 'cancelled'));
+        case 'resume_step': dn_ok(dn_set_step_status($in, 'in_progress'));
         case 'dispatch_step': dn_ok(dn_dispatch_step($in));
         case 'list_task_logs': dn_ok(dn_detail($in)['logs']);
         case 'list_step_templates': dn_ok(dn_list_step_templates($in));
@@ -3724,6 +4296,7 @@ try {
         case 'get_backup_settings': dn_ok(dn_backup_settings());
         case 'save_backup_settings': dn_ok(dn_save_backup_settings($in));
         case 'preview_link': dn_ok(dn_preview_link($in));
+        case 'mail_preview_get': dn_ok(dn_mail_preview_get($in));
         case 'health_check': dn_ok(['php' => PHP_VERSION, 'time' => date('Y-m-d H:i:s'), 'schema' => dispatch_next_init_schema()]);
         default: dn_fail('未知 action：' . $action, 404);
     }
