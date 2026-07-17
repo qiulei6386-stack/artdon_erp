@@ -1201,7 +1201,11 @@ function dn_multi_group_detail(array $in): array
         $cst->execute($ids);
         $comments = $cst->fetchAll();
     }
-    return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'task' => $task];
+    $attachments = $pdo->prepare("SELECT a.*, (a.expires_at IS NULL OR a.expires_at>NOW()) AS is_valid, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_attachments a LEFT JOIN crm_users u ON u.id=a.user_id WHERE a.task_id=? AND a.is_deleted=0 ORDER BY a.id DESC");
+    $attachments->execute([$id]);
+    $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE task_id=? ORDER BY sort_order,id");
+    $steps->execute([$id]);
+    return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'attachments' => $attachments->fetchAll(), 'steps' => $steps->fetchAll(), 'task' => $task];
 }
 
 function dn_multi_member_task(int $id): array
@@ -1284,6 +1288,13 @@ function dn_multi_member_urge(array $in): array
     if (!dn_multi_member_can_manage($task)) dn_fail('只有派工人或管理员可以催办', 403);
     dn_urge_task(['id' => $id, 'note' => $in['note'] ?? '']);
     return dn_multi_member_payload($id);
+}
+
+function dn_multi_member_detail(array $in): array
+{
+    $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
+    dn_multi_member_task($id);
+    return dn_detail(['id' => $id]);
 }
 
 function dn_create_task(array $in): array
@@ -3404,6 +3415,7 @@ try {
         case 'detail': dn_ok(dn_detail($in));
         case 'task_detail': dn_ok(dn_detail($in));
         case 'multi_group_detail': dn_ok(dn_multi_group_detail($in));
+        case 'multi_member_detail': dn_ok(dn_multi_member_detail($in));
         case 'multi_member_accept': dn_ok(dn_multi_member_accept($in));
         case 'multi_member_complete': dn_ok(dn_multi_member_complete($in));
         case 'multi_member_admin_complete': dn_ok(dn_multi_member_admin_complete($in));
@@ -3450,6 +3462,7 @@ try {
         case 'complete_step': dn_ok(dn_set_step_status($in, 'done'));
         case 'block_step': dn_ok(dn_set_step_status($in, 'blocked'));
         case 'dispatch_step': dn_ok(dn_dispatch_step($in));
+        case 'list_task_logs': dn_ok(dn_detail($in)['logs']);
         case 'list_step_templates': dn_ok([]);
         case 'apply_step_template': dn_fail('步骤模板待接入', 501);
         case 'save_step_template': dn_fail('步骤模板待接入', 501);
