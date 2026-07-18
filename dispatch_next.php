@@ -280,9 +280,9 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   .mobilePrio.urgent{color:#dc2626;background:#fef2f2;border-color:#fecaca}.mobilePrio.important{color:#ea580c;background:#fff7ed;border-color:#fed7aa}.mobilePrio.today{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
   .mobileMain{min-width:0;display:grid;gap:3px}
   .mobileTaskTitle{min-width:0;font-size:12px;font-weight:1000;color:#111827;line-height:1.32;word-break:break-word;max-height:calc(1.32em * 2);overflow:hidden}
-  .mobileTaskProject{font-size:11px;line-height:1.35;color:#475569;white-space:pre-wrap;word-break:break-word;max-height:calc(1.35em * 3);overflow:hidden}
-  .mobileTaskCard.project-expanded .mobileTaskProject{max-height:168px;overflow:auto}
-  .mobileProjectToggle{height:20px;border:0;background:transparent;color:#2563eb;font-size:10px;font-weight:900;padding:0;margin-top:1px;text-align:left}
+  .mobileTaskProject{font-size:11px;line-height:1.35;color:#475569;white-space:pre-wrap;word-break:break-word;max-height:none;overflow:visible}
+  .mobileTaskCard.project-expanded .mobileTaskProject{max-height:none;overflow:visible}
+  .mobileProjectToggle{display:none}
   .mobileTaskMeta{display:flex;gap:4px;flex-wrap:wrap;color:#6b7280;font-size:9px;font-weight:850;line-height:1.2}
   .mobileTaskMeta span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mobileDue{font-size:10px;font-weight:950;color:#334155;line-height:1.25;word-break:break-word;text-align:left}
