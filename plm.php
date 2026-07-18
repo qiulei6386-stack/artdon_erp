@@ -1596,6 +1596,18 @@ body{overflow-x:hidden!important;color:#0f172a!important;}
 .test-more-menu summary{list-style:none!important;border:1px solid #dbe4ef!important;background:#fff!important;font-weight:900!important;display:inline-flex!important;align-items:center!important;cursor:pointer!important;}
 .test-more-menu summary::-webkit-details-marker{display:none!important;}
 .test-more-menu>div{position:absolute!important;right:0!important;top:38px!important;width:170px!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:10px!important;padding:7px!important;box-shadow:0 18px 40px rgba(15,23,42,.16)!important;z-index:40!important;display:grid!important;gap:6px!important;}
+.test-action-menu>div{width:min(420px,calc(100vw - 24px))!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;padding:10px!important;z-index:3000!important;max-height:min(70vh,520px)!important;overflow:auto!important;}
+.test-action-group{display:grid!important;gap:6px!important;align-content:start!important;}
+.test-action-group h5{margin:0 0 1px!important;font-size:11px!important;line-height:1.2!important;color:#64748b!important;font-weight:900!important;}
+.test-action-group.danger{grid-column:1/-1!important;border-top:1px solid #fee2e2!important;padding-top:8px!important;}
+.test-menu-item{width:100%!important;min-height:34px!important;height:auto!important;justify-content:flex-start!important;text-align:left!important;border:1px solid #e2e8f0!important;background:#fff!important;color:#0f172a!important;border-radius:8px!important;padding:6px 8px!important;font-size:11.5px!important;line-height:1.25!important;}
+.test-menu-item .menu-icon{width:18px!important;display:inline-flex!important;justify-content:center!important;color:#2563eb!important;}
+.test-menu-item.good .menu-icon{color:#16a34a!important;}
+.test-menu-item.warn .menu-icon{color:#ea580c!important;}
+.test-menu-item.danger{border-color:#fecaca!important;background:#fff7f7!important;color:#b91c1c!important;}
+.test-menu-item.danger .menu-icon{color:#dc2626!important;}
+.test-menu-item[disabled]{opacity:.55!important;cursor:not-allowed!important;background:#f8fafc!important;color:#64748b!important;}
+.test-menu-note{min-height:34px!important;border:1px dashed #cbd5e1!important;background:#f8fafc!important;border-radius:8px!important;padding:7px 8px!important;font-size:11.5px!important;line-height:1.35!important;color:#64748b!important;}
 .test-statbar{min-height:50px!important;display:grid!important;grid-template-columns:repeat(auto-fit,minmax(82px,1fr))!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fafc!important;overflow:hidden!important;}
 .test-statbar span{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;border-right:1px solid #e2e8f0!important;color:#64748b!important;font-size:11.5px!important;font-weight:900!important;white-space:nowrap!important;}
 .test-statbar span:last-child{border-right:0!important;}
@@ -1622,11 +1634,11 @@ body{overflow-x:hidden!important;color:#0f172a!important;}
 .test-node-row.last .mini-tag{padding:2px 6px!important;font-size:10px!important;}
 .test-issue-dot{width:7px!important;height:7px!important;border-radius:50%!important;background:#ef4444!important;display:inline-block!important;margin-right:4px!important;}
 .test-empty-small{padding:18px 10px!important;border:1px dashed #bfdbfe!important;border-radius:10px!important;background:#f8fbff!important;text-align:center!important;color:#64748b!important;font-weight:900!important;font-size:12px!important;}
-.test-node-right{min-width:0!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:10px!important;overflow:hidden!important;}
+.test-node-right{min-width:0!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:10px!important;overflow:visible!important;}
 .test-detail-head{min-height:54px!important;padding:10px 12px!important;border-bottom:1px solid #e2e8f0!important;background:#fff!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;}
 .test-detail-head h3{font-size:15px!important;line-height:1.2!important;margin:0 0 3px!important;}
 .test-detail-head .hint{font-size:11.5px!important;line-height:1.3!important;}
-.test-detail-head .actions{display:flex!important;gap:6px!important;align-items:center!important;flex-wrap:wrap!important;justify-content:flex-end!important;}
+.test-detail-head .actions{display:flex!important;gap:6px!important;align-items:center!important;flex-wrap:nowrap!important;justify-content:flex-end!important;}
 .test-detail-head .btn,.test-detail-head .test-more-menu summary{height:30px!important;min-height:30px!important;border-radius:8px!important;font-size:11px!important;padding:0 8px!important;}
 .test-detail-form{padding:12px!important;display:grid!important;gap:10px!important;}
 .test-form-section{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:12px!important;margin:0!important;box-shadow:none!important;}
@@ -1663,6 +1675,7 @@ body{overflow-x:hidden!important;color:#0f172a!important;}
   .test-statbar{grid-template-columns:repeat(4,minmax(0,1fr))!important;}
   .test-work-layout,.test-node-layout.clean-v8585.test-work-layout{grid-template-columns:1fr!important;}
   .test-node-left{position:relative!important;top:auto!important;max-height:none!important;}
+  .test-action-menu>div{position:fixed!important;left:10px!important;right:10px!important;bottom:10px!important;top:auto!important;width:auto!important;grid-template-columns:1fr!important;max-height:75vh!important;border-radius:14px!important;}
   .test-compact-grid .field,.test-template-field,.test-compact-grid .title-field{grid-column:span 6!important;}
 }
 @media(max-width:620px){
@@ -11418,6 +11431,86 @@ function syncTestComponentsFromSample(){
   if($('t_comp_optical'))$('t_comp_optical').value=snap.optical||'';
 }
 
+function closeTestActionMenus(skip=null){
+  document.querySelectorAll('.test-action-menu[open]').forEach(el=>{if(el!==skip)el.removeAttribute('open')});
+}
+function handleTestMoreToggle(el){
+  if(el.open)closeTestActionMenus(el);
+}
+function focusTestEvidence(tab='images'){
+  setTestEvidenceTab(tab);
+  setTimeout(()=>scrollToTestFiles(),0);
+}
+function testActionItem(label,action,icon='',tone=''){
+  return `<button type="button" class="btn small test-menu-item ${tone}" onclick="closeTestActionMenus();${action}"><span class="menu-icon">${esc(icon||'•')}</span><span>${esc(label)}</span></button>`;
+}
+function testJsArg(v){return esc(JSON.stringify(String(v??'')));}
+function testActionGroup(title,items,cls=''){
+  if(!items.length)return '';
+  return `<div class="test-action-group ${cls}"><h5>${esc(title)}</h5>${items.join('')}</div>`;
+}
+function testCanCreateRetestByState(t){
+  if(!t||!Number(t.id||0))return false;
+  const status=testStatusValue(t), result=testResultValue(t);
+  return status==='待复测'||result==='不通过';
+}
+async function saveTestAndOpenUpload(pid){
+  const d=collectTestFormData(pid);
+  const r=await api('save_test',d);
+  if(!r.ok){toast(r.error||'测试保存失败，未上传资料');return}
+  testCreateMode=false;
+  localStorage.setItem('plm_v85_test_create_mode','0');
+  const id=Number(r.id||d.id||0);
+  testSelectedId=id;
+  localStorage.setItem('plm_v85_test_id',id);
+  await load();
+  const t=tests.find(x=>Number(x.id)===id);
+  if(t)openTestUploadModal(id,Number(t.model_id||0),t.test_type||'测试');
+}
+function renderTestMoreMenu(p,t){
+  const saved=!!(t&&Number(t.id||0));
+  const status=saved?testStatusValue(t):'未开始';
+  const result=saved?testResultValue(t):'待判定';
+  const testOps=[];
+  if(saved&&status==='未开始')testOps.push(testActionItem('开始测试',"markTestStatus('进行中')",'▶',''));
+  if(saved&&status==='进行中')testOps.push(testActionItem('完成测试',"markTestStatus('已完成')",'✓','good'));
+  if(saved&&status==='已完成'&&(!result||result==='待判定')){
+    testOps.push(testActionItem('判定通过',"markTestResult('通过')",'✓','good'));
+    testOps.push(testActionItem('判定不通过',"markTestResult('不通过')",'!','warn'));
+  }
+  if(testCanCreateRetestByState(t))testOps.push(testActionItem('创建复测',`createRetestFromCurrent(${Number(p.id)})`,'↻','warn'));
+  const related=saved?[
+    testActionItem('进入问题闭环',"gotoTab('issues')",'?',''),
+    testActionItem('文件中心',"gotoTab('files')",'▣','')
+  ]:[`<div class="test-menu-note">保存测试后可进入问题闭环和文件中心定位当前测试。</div>`];
+  const evidence=saved?[
+    testActionItem('上传附件',`openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},${testJsArg(t.test_type||'测试')})`,'↑',''),
+    testActionItem('查看当前测试资料',"focusTestEvidence('images')",'◎','')
+  ]:[
+    testActionItem('保存并上传附件',`saveTestAndOpenUpload(${Number(p.id)})`,'↑','')
+  ];
+  const tools=[
+    testActionItem('测试模板',"openTestTemplateDrawer()",'⚙',''),
+    testActionItem('导出 CSV',"exportCurrentProjectTestReport()",'⇩',''),
+    testActionItem('打印/报表',saved?`openSingleTestReport(${Number(t.id)})`:'window.print()','⎙','')
+  ];
+  const danger=saved?[testActionItem('删除测试',`deleteTest(${Number(t.id)})`,'×','danger')]:[];
+  const body=[
+    testActionGroup('测试操作',testOps.length?testOps:[`<div class="test-menu-note">当前状态暂无可执行的状态操作。</div>`]),
+    testActionGroup('关联处理',related),
+    testActionGroup('资料管理',evidence),
+    testActionGroup('工具',tools),
+    testActionGroup('危险操作',danger,'danger')
+  ].join('');
+  return `<details class="test-more-menu test-action-menu" ontoggle="handleTestMoreToggle(this)"><summary>更多 ▾</summary><div>${body}</div></details>`;
+}
+if(!window.__plmTestActionMenuBound){
+  window.__plmTestActionMenuBound=true;
+  document.addEventListener('click',e=>{if(!e.target.closest('.test-action-menu'))closeTestActionMenus()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTestActionMenus()});
+  window.addEventListener('scroll',()=>closeTestActionMenus(),true);
+}
+
 function renderTestDetailForm(p,t,ms){
   const isNew=!t;const tpl=isNew?(templateForType(activeTestType)||TEST_TEMPLATE_DEFAULTS[0]):templateForTest(t);const custom=testCustomValues(t);
   const type=isNew?(tpl.test_type||activeTestType):(t.test_type||tpl.test_type||activeTestType);
@@ -11433,7 +11526,7 @@ function renderTestDetailForm(p,t,ms){
   const retestField=(t&&(Number(t.source_test_id||0)>0||Number(t.retest_no||0)>0||String(t.retest_result||'').trim()))?`<div class="field small-field"><label>复测结果</label><input id="t_retest" value="${esc(t?.retest_result||'')}" placeholder="复测结果"></div>`:`<input id="t_retest" type="hidden" value="${esc(t?.retest_result||'')}">`;
   const titleCustom=String(title||'')!==String(tpl.name||type||'')||normalizeTestTypeName(type)==='自定义测试';
   const titleRow=`<div class="test-title-inline ${titleCustom?'':'collapsed'}"><div class="field"><label>自定义标题</label><input id="t_custom_title" value="${esc(title)}" placeholder="自定义测试标题" oninput="$('t_title').value=this.value"></div><button class="btn small" onclick="toggleCustomTestTitle()">收起</button></div>`;
-  return `<div class="test-detail-head"><div><h3>${esc(testProjectLabel(t||{title:tpl.name,test_type:type},tpl))}</h3><div class="hint">${esc(sampleName)} ｜ ${esc(testStatusValue(t||{status:'未开始'}))} ｜ ${esc(testResultValue(t||{result:'待判定'}))}</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button><button class="btn" onclick="testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()">取消</button>${t?`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="markTestStatus('进行中')">开始测试</button><button class="btn small good" onclick="markTestStatus('已完成')">完成测试</button><button class="btn small good" onclick="markTestResult('通过')">判定通过</button><button class="btn small warn" onclick="markTestResult('不通过')">判定不通过</button><button class="btn small" onclick="createRetestFromCurrent(${p.id})">创建复测</button><button class="btn small" onclick="gotoTab('issues')">进入问题闭环</button><button class="btn small" onclick="gotoTab('files')">文件中心</button><button class="btn small" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传附件</button><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="openSingleTestReport(${Number(t.id)})">打印/报表</button><button class="btn small danger" onclick="deleteTest(${t.id})">删除测试</button></div></details>`:`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="window.print()">打印</button></div></details>`}</div></div>
+  return `<div class="test-detail-head"><div><h3>${esc(testProjectLabel(t||{title:tpl.name,test_type:type},tpl))}</h3><div class="hint">${esc(sampleName)} ｜ ${esc(testStatusValue(t||{status:'未开始'}))} ｜ ${esc(testResultValue(t||{result:'待判定'}))}</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button><button class="btn" onclick="testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()">取消</button>${renderTestMoreMenu(p,t)}</div></div>
   <div class="test-detail-form"><input id="t_id" type="hidden" value="${t?.id||0}"><input id="t_source_test_id" type="hidden" value="${Number(t?.source_test_id||0)}"><input id="t_retest_no" type="hidden" value="${Number(t?.retest_no||0)}">${preserveHidden}
     <div class="test-detail-main-grid"><div class="test-data-column">
       <div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid test-basic-grid"><div class="field project-field"><label>测试项目</label>${renderTestProjectSelect(t||{test_type:type,title},tpl)}</div><div class="field small-field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field medium-field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field small-field"><label>测试状态</label><select id="t_status">${opt(['未开始','进行中','已完成','待复测','已取消'],testStatusValue(t||{status:'未开始'}))}</select></div><div class="field small-field"><label>测试结果</label><select id="t_result">${opt(['待判定','通过','不通过'],testResultValue(t||{result:'待判定'}))}</select></div><div class="field medium-field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div><div class="field medium-field"><label>归属样品</label><select id="t_model_id"><option value="0">项目公共测试</option>${ms.map(m=>`<option value="${m.id}" ${Number((t?.model_id??testModelId)||0)===Number(m.id)?'selected':''}>${esc(testModelLabel(m))}</option>`).join('')}</select></div><button class="btn small" onclick="toggleCustomTestTitle()">自定义标题</button>${titleRow}${retestField}</div></div>
