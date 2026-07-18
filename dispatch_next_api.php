@@ -3241,7 +3241,7 @@ function dn_preview_plm_model(string $code, array $actions): ?array
             $where[] = 'm.id = ?';
             $args[] = (int)$code;
         }
-        $sql = "SELECT m.*, p.project_no, p.name AS project_name, p.customer, p.engineer, p.status AS project_status, p.due_date, p.updated_at AS project_updated_at
+        $sql = "SELECT m.*, p.project_no, p.name AS project_name, p.customer, p.engineer, p.status AS project_status, p.due_date, p.image_path AS project_image_path, p.updated_at AS project_updated_at
                 FROM plm_models m
                 INNER JOIN plm_projects p ON p.id=m.project_id AND COALESCE(p.is_deleted,0)=0
                 WHERE COALESCE(m.is_deleted,0)=0 AND (" . implode(' OR ', $where) . ")
@@ -3261,6 +3261,7 @@ function dn_preview_plm_model(string $code, array $actions): ?array
             'engineer' => (string)($model['engineer'] ?? ''),
             'status' => (string)($model['project_status'] ?? ''),
             'due_date' => (string)($model['due_date'] ?? ''),
+            'image_path' => (string)($model['project_image_path'] ?? ''),
         ];
     } else {
         $where = ['project_no = ?', 'name = ?', 'model = ?'];
@@ -3362,6 +3363,15 @@ function dn_preview_plm_model(string $code, array $actions): ?array
     $badSteps = count(array_filter($steps, fn($s) => ($s['tone'] ?? '') === 'bad'));
     $passedTests = count(array_filter($tests, fn($t) => preg_match('/通过/u', (string)($t['result'] ?? '')) && !preg_match('/不通过/u', (string)($t['result'] ?? ''))));
     $failedTests = count(array_filter($tests, fn($t) => preg_match('/不通过|失败/u', (string)(($t['result'] ?? '') . ' ' . ($t['status'] ?? '')))));
+    $media = [];
+    if ($model) {
+        $imageUrl = dn_naming_asset_url((string)(($model['naming_image_path'] ?? '') ?: ($model['image_path'] ?? '') ?: ($project['image_path'] ?? '')));
+        $drawingUrl = dn_naming_asset_url((string)(($model['naming_drawing_path'] ?? '') ?: ($model['drawing_path'] ?? '')));
+        if ($imageUrl !== '') $media[] = ['label' => '样品图', 'url' => $imageUrl];
+        if ($drawingUrl !== '' && $drawingUrl !== $imageUrl) $media[] = ['label' => '尺寸图', 'url' => $drawingUrl];
+    } elseif (!empty($project['image_path'])) {
+        $media[] = ['label' => '项目图', 'url' => dn_naming_asset_url((string)$project['image_path'])];
+    }
     $fields = [
         ['label' => '项目', 'value' => (string)(($project['project_no'] ?? '') . ' ' . ($project['name'] ?? ''))],
         ['label' => '客户', 'value' => (string)($project['customer'] ?? '')],
@@ -3380,6 +3390,7 @@ function dn_preview_plm_model(string $code, array $actions): ?array
         'status' => 'connected',
         'status_label' => '已接入',
         'message' => '',
+        'media' => $media,
         'fields' => $fields,
         'actions' => [
             ['label' => '打开 PLM', 'hint' => $openUrl],
