@@ -12147,7 +12147,11 @@ function summaryVisibleMap(){
   try{
     const raw=localStorage.getItem('plm_v85_summary_sections');
     const saved=raw?JSON.parse(raw):{};
-    return Object.assign(def,saved||{});
+    const merged=Object.assign(def,saved||{});
+    const visibleCount=SUMMARY_SECTION_DEFS.filter(x=>merged[x.key]!==false).length;
+    if(!visibleCount)return def;
+    merged.overview=true;
+    return merged;
   }catch(e){return def;}
 }
 function saveSummaryVisibleMap(v){localStorage.setItem('plm_v85_summary_sections',JSON.stringify(v||{}));}
@@ -12182,7 +12186,7 @@ function projectHasBomForModel(m){
   return logs.some(l=>Number(l.project_id)===Number(m.project_id)&&String(l.target_type||'').toLowerCase()==='bom'&&String(l.note||'').includes(String(m.id)))||String(m.bom_note||'').trim()!=='';
 }
 function summaryJump(tabName,opts={}){
-  if(opts.model_id){summarySampleId=Number(opts.model_id);flowModelId=Number(opts.model_id);testModelId=Number(opts.model_id);localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_test_model',testModelId);}
+  if(Object.prototype.hasOwnProperty.call(opts,'model_id')){summarySampleId=Number(opts.model_id)||0;flowModelId=summarySampleId;testModelId=summarySampleId;issueModelFilter=summarySampleId?String(summarySampleId):'';localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_test_model',testModelId);localStorage.setItem('plm_v85_issue_model',issueModelFilter);}
   if(opts.step_id){flowSelectedStepId=Number(opts.step_id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);}
   if(opts.test_id){testSelectedId=Number(opts.test_id);localStorage.setItem('plm_v85_test_id',testSelectedId);testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');}
   if(opts.issue_id){issueSelectedId=Number(opts.issue_id);issueCreateMode=false;localStorage.setItem('plm_v85_issue_id',issueSelectedId);localStorage.setItem('plm_v85_issue_create','0');}
