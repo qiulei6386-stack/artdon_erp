@@ -1122,7 +1122,10 @@ function plm_v85_upload_file(){
     $allow = array('jpg','jpeg','png','webp','gif','pdf','ies','ldt','txt','doc','docx','xls','xlsx','csv','zip','rar','dwg','dxf','stp','step','obj','glb','mp4','mov');
     if(!in_array($ext,$allow,true)) throw new RuntimeException('文件类型暂不允许：'.$ext);
     $size = (int)($_FILES['file']['size'] ?? 0);
-    if($size > 80 * 1024 * 1024) throw new RuntimeException('文件太大，当前限制 80MB。');
+    $imageExts = array('jpg','jpeg','png','webp','gif');
+    $isImage = in_array($ext,$imageExts,true) || stripos((string)($_FILES['file']['type'] ?? ''), 'image/') === 0;
+    if($isImage && $size > 500 * 1024) throw new RuntimeException('图片文件太大，当前限制 500KB。请压缩后再上传。');
+    if(!$isImage && $size > 80 * 1024 * 1024) throw new RuntimeException('文件太大，当前限制 80MB。');
     $relDir = 'uploads/plm/'.date('Ym');
     $dir = __DIR__.'/'.$relDir;
     if(!is_dir($dir) && !mkdir($dir, 0777, true)) throw new RuntimeException('无法创建上传目录：'.$relDir);
@@ -9380,6 +9383,9 @@ async function openDispatchProgressForStep(stepId){const ctx=plmStepContext(step
 async function openProjectDispatchProgress(){const ctx=plmProjectContext();if(!ctx){toast('请先选择项目');return;}await openPlmDispatchProgress(ctx)}
 
 async function uploadApi(form){try{const r=await fetch(API+'?action=upload_file',{method:'POST',body:form,credentials:'same-origin',cache:'no-store'});const txt=await r.text();let j;try{j=JSON.parse(txt)}catch(e){if(r.status===401){plmSsoRedirect();return{ok:false,auth_redirect:true}}throw new Error('上传接口异常：'+txt.slice(0,300));}if(r.status===401||j.auth_required||j.login_required||j.need_login){plmSsoRedirect();return{ok:false,auth_redirect:true}}return j;}catch(e){showFatal(e.message);return {ok:false,error:e.message};}}
+const PLM_IMAGE_UPLOAD_MAX_BYTES=500*1024;
+function plmIsImageUploadFile(file){return !!file&&(/^image\//i.test(file.type||'')||/\.(jpe?g|png|webp|gif)$/i.test(file.name||''))}
+function plmImageUploadError(file){return plmIsImageUploadFile(file)&&Number(file.size||0)>PLM_IMAGE_UPLOAD_MAX_BYTES?`图片超过 500KB：${file.name||'未命名图片'}`:''}
 function arrByPid(arr,pid){return arr.filter(x=>Number(x.project_id)===Number(pid))}
 function pModels(pid=selectedId){return arrByPid(models,pid)}
 function pTests(pid=selectedId){return arrByPid(tests,pid)}
@@ -11245,6 +11251,8 @@ async function uploadTestEvidence(uid,testId,modelId,runId=0){
   const list=[...(input?.files||[])];
   if(!testId){toast('请先保存测试项目');return}
   if(!list.length){toast('请选择或拖入文件');return}
+  const sizeErrors=list.map(plmImageUploadError).filter(Boolean);
+  if(sizeErrors.length){toast(sizeErrors[0]);if(box)box.innerHTML=sizeErrors.map(x=>`<div class="test-upload-row fail"><span>${esc(x)}</span><em>未上传</em></div>`).join('');return}
   const existing=pFiles(p.id).filter(f=>Number(f.test_id)===Number(testId));
   const duplicates=list.filter(file=>existing.some(f=>String(f.original_name||'')===String(file.name)&&Number(f.file_size||0)===Number(file.size||0)));
   if(duplicates.length&&!confirm(`当前测试已存在 ${duplicates.length} 个同名同大小文件。继续保留两份？`))return;
@@ -11643,7 +11651,7 @@ function fileTypeLabel(f){return isTestFile(f)?'测试中心':'文件中心'}
 function absUrl(path){try{return new URL(path, location.href).href}catch(e){return path}}
 function uploadBox(defaultCat,modelId=0,testId=0,isTest=false,stepId=0,testRunId=0){const uid='u_'+Math.random().toString(36).slice(2,9);const cats=isTest?TEST_FILE_CATS:FILE_CATS;return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${cats.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFile('${uid}',${modelId},${testId},${stepId},${testRunId})">上传</button>`}
 function uploadProjectFileBox(defaultCat='产品图片'){const uid='u_'+Math.random().toString(36).slice(2,9);return `<div class="grid2" style="margin-top:8px"><select id="${uid}_cat">${FILE_CATS.map(c=>`<option ${c===defaultCat?'selected':''}>${esc(c)}</option>`).join('')}</select><input id="${uid}_title" placeholder="标题，可不填"></div><div class="field"><label>归属型号</label>${fileModelSelectHtml(uid+'_model',0,false)}</div><div class="field"><label>关联开发步骤</label>${stepSelectHtml(uid+'_step',0,0,true)}</div><input id="${uid}_file" type="file" style="margin-top:8px"><textarea id="${uid}_note" placeholder="备注" style="margin-top:8px"></textarea><label class="hint"><input id="${uid}_vis" type="checkbox" checked style="width:auto"> 可发客户</label><br><button class="btn small primary" onclick="uploadFileFromBox('${uid}',0,0,0)">上传</button>`}
-async function uploadFile(uid,modelId,testId,stepId=0,testRunId=0,issueId=0,sourceModule=''){const p=cur();if(!p)return;const f=$(uid+'_file').files[0];if(!f){toast('请选择文件');return}const fd=new FormData();fd.append('project_id',p.id);fd.append('model_id',modelId||0);fd.append('test_id',testId||0);fd.append('test_run_id',testRunId||0);fd.append('step_id',stepId||0);fd.append('issue_id',issueId||0);fd.append('source_module',sourceModule||'');fd.append('category',$(uid+'_cat').value);fd.append('title',$(uid+'_title').value);fd.append('note',$(uid+'_note').value);fd.append('customer_visible',$(uid+'_vis').checked?1:0);fd.append('file',f);const r=await uploadApi(fd);toast(r.ok?'文件已上传':r.error);await load()}
+async function uploadFile(uid,modelId,testId,stepId=0,testRunId=0,issueId=0,sourceModule=''){const p=cur();if(!p)return;const f=$(uid+'_file').files[0];if(!f){toast('请选择文件');return}const sizeError=plmImageUploadError(f);if(sizeError){toast(sizeError);return}const fd=new FormData();fd.append('project_id',p.id);fd.append('model_id',modelId||0);fd.append('test_id',testId||0);fd.append('test_run_id',testRunId||0);fd.append('step_id',stepId||0);fd.append('issue_id',issueId||0);fd.append('source_module',sourceModule||'');fd.append('category',$(uid+'_cat').value);fd.append('title',$(uid+'_title').value);fd.append('note',$(uid+'_note').value);fd.append('customer_visible',$(uid+'_vis').checked?1:0);fd.append('file',f);const r=await uploadApi(fd);toast(r.ok?'文件已上传':r.error);await load()}
 async function uploadFileFromBox(uid,testId=0,stepId=0,testRunId=0){const mid=Number($(uid+'_model')?.value||0);const sid=Number($(uid+'_step')?.value||stepId||0);return uploadFile(uid,mid,testId,sid,testRunId)}
 function openFileUploadDrawer(ctx={}){
   const p=cur();if(!p)return;
@@ -11658,6 +11666,8 @@ async function uploadFilesFromDrawer(uid){
   const p=cur();if(!p)return;
   const input=$(uid+'_file'), list=[...(input?.files||[])], box=$(uid+'_result');
   if(!list.length){toast('请选择文件');return}
+  const sizeErrors=list.map(plmImageUploadError).filter(Boolean);
+  if(sizeErrors.length){toast(sizeErrors[0]);if(box)box.innerHTML=sizeErrors.map(x=>`<div>${esc(x)}：未上传</div>`).join('');return}
   const duplicates=list.filter(file=>pFiles(p.id).some(f=>String(f.original_name||'')===String(file.name)&&Number(f.file_size||0)===Number(file.size||0)));
   if(duplicates.length&&!confirm(`当前项目已存在 ${duplicates.length} 个同名同大小文件。继续保留两份？`))return;
   if(box)box.innerHTML='';
