@@ -9685,9 +9685,10 @@ function bindProjectNavScroll(){
   });
   const clearDrag=()=>{down=false;downCard=null;box.classList.remove('dragging');setTimeout(()=>{moved=false;suppressClick=false},80);};
   box.addEventListener('pointerup',e=>{
-    const upCard=e.target.closest?.('.project-nav-card')||null;
-    if(down&&!moved&&downCard&&upCard&&downCard===upCard){
-      const id=Number(upCard.dataset.projectId||0);
+    const hit=document.elementFromPoint?.(e.clientX,e.clientY);
+    const upCard=hit?.closest?.('.project-nav-card')||null;
+    if(down&&!moved&&downCard&&(!upCard||upCard===downCard)){
+      const id=Number(downCard.dataset.projectId||0);
       if(id){lastSelectAt=Date.now();lastSelectId=id;selectProjectFromNav(id);}
     }
     clearDrag();
