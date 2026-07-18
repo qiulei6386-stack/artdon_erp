@@ -9140,11 +9140,11 @@ body{overflow:hidden!important;}
 .test-current-summary span,.test-current-summary button{border:0!important;border-right:1px solid #e2e8f0!important;background:transparent!important;color:#64748b!important;font-size:11.5px!important;font-weight:900!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;cursor:pointer!important}.test-current-summary b{color:#0f172a!important}
 .test-detail-main-grid{display:grid!important;grid-template-columns:minmax(0,1.65fr) minmax(330px,.9fr)!important;gap:14px!important;align-items:start!important}
 .test-data-column,.test-evidence-column{min-width:0!important;display:grid!important;gap:10px!important}
-.test-basic-grid .sample-field,.test-basic-grid .tpl-field{grid-column:span 4!important}.test-basic-grid .title-field{grid-column:span 6!important}.test-basic-grid .small-field{grid-column:span 2!important}
+.test-basic-grid .sample-field{grid-column:span 4!important}.test-basic-grid .project-field{grid-column:span 6!important}.test-basic-grid .title-field{grid-column:span 6!important}.test-basic-grid .small-field{grid-column:span 2!important}.test-basic-grid .medium-field{grid-column:span 3!important}
 .test-template-fields .test-template-field{grid-column:span 3!important}.test-template-fields .test-template-field.compact{grid-column:span 2!important}.test-template-fields .test-template-field.medium{grid-column:span 4!important}.test-template-fields .test-template-field.wide{grid-column:1/-1!important}
 .test-evidence-panel{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:10px!important;display:grid!important;gap:9px!important}
 .test-evidence-head{display:flex!important;justify-content:space-between!important;align-items:center!important;gap:8px!important}.test-evidence-head h4{margin:0!important;font-size:13px!important;padding-left:8px!important;border-left:3px solid #2563eb!important}.test-evidence-head span{display:none!important}
-.test-evidence-tabs{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important}.test-evidence-tab{height:28px!important;border:1px solid #dbe4ef!important;background:#fff!important;border-radius:8px!important;font-size:11.5px!important;font-weight:900!important;color:#475569!important;cursor:pointer!important}.test-evidence-tab.active{background:#eff6ff!important;border-color:#93c5fd!important;color:#1d4ed8!important}.test-evidence-tab b{margin-left:3px!important;color:#0f172a!important}
+.test-evidence-tabs{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}.test-evidence-tab{height:28px!important;border:1px solid #dbe4ef!important;background:#fff!important;border-radius:8px!important;font-size:11.5px!important;font-weight:900!important;color:#475569!important;cursor:pointer!important}.test-evidence-tab.active{background:#eff6ff!important;border-color:#93c5fd!important;color:#1d4ed8!important}.test-evidence-tab b{margin-left:3px!important;color:#0f172a!important}
 .test-evidence-upload{border:1px dashed #93c5fd!important;background:#f8fbff!important;border-radius:10px!important;padding:10px!important;display:grid!important;gap:8px!important}.test-evidence-upload.dragging{background:#eff6ff!important;border-color:#2563eb!important}.test-evidence-drop-main b{display:block!important;color:#0f172a!important}.test-evidence-drop-main span{display:block!important;color:#64748b!important;font-size:11.5px!important;margin-top:2px!important}.test-evidence-upload input[type=file]{height:auto!important;border:0!important;padding:0!important;background:transparent!important}.test-evidence-upload-grid{display:grid!important;grid-template-columns:160px minmax(0,1fr)!important;gap:8px!important}.test-evidence-upload textarea{min-height:54px!important;height:54px!important}
 .test-upload-queue{display:grid!important;gap:5px!important}.test-upload-row{display:grid!important;grid-template-columns:minmax(0,1fr) 70px 88px!important;gap:6px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-radius:8px!important;background:#fff!important;padding:5px 7px!important;font-size:11.5px!important}.test-upload-row span{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-upload-row em{font-style:normal!important;color:#64748b!important;text-align:right!important}.test-upload-row.ok em{color:#16a34a!important}.test-upload-row.fail em{color:#dc2626!important}
 .test-evidence-body{min-height:118px!important;max-height:360px!important;overflow:auto!important;padding-right:2px!important}.test-evidence-empty{border:1px dashed #cbd5e1!important;border-radius:10px!important;background:#f8fafc!important;color:#64748b!important;font-size:12px!important;font-weight:900!important;padding:12px!important;text-align:center!important}
@@ -9152,9 +9152,11 @@ body{overflow:hidden!important;}
 .test-node-head{margin-bottom:9px!important}.test-node-head h3{margin:0!important;font-size:14px!important}
 .test-project-board .test-list-tools{display:none!important}
 .test-evidence-empty.compact{padding:10px 12px!important;min-height:0!important;text-align:left!important}
-.test-left-controls{display:grid!important;gap:8px!important;margin-bottom:10px!important}.test-left-controls .test-model-picker{width:100%!important}.test-left-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important}.test-left-actions .btn{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 8px!important}
+.test-left-controls{display:grid!important;gap:8px!important;margin-bottom:10px!important}.test-left-controls .test-model-picker{width:100%!important}.test-left-actions{display:grid!important;grid-template-columns:1fr 1fr auto!important;gap:7px!important;align-items:start!important}.test-left-actions .btn,.test-left-actions summary{height:32px!important;min-height:32px!important;border-radius:8px!important;font-size:11.5px!important;padding:0 8px!important;display:flex!important;align-items:center!important}
 .test-workbench>.test-topbar,.test-workbench>.test-statbar,.test-workbench>.test-stat-progress{display:none!important}
 .test-template-field textarea,.test-result-grid textarea{min-height:58px!important;height:58px!important}.test-template-field.wide textarea{min-height:64px!important;height:64px!important}
+.test-brief-stat{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:0!important;border:1px solid #e2e8f0!important;border-radius:9px!important;background:#f8fafc!important;overflow:hidden!important;margin-bottom:9px!important}.test-brief-stat span{min-height:30px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;font-size:11px!important;font-weight:900!important;color:#64748b!important;border-right:1px solid #e2e8f0!important}.test-brief-stat span:last-child{border-right:0!important}.test-brief-stat b{color:#0f172a!important}
+.test-component-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}.test-component-grid .field label{font-size:11px!important;color:#64748b!important;margin-bottom:4px!important;display:block!important}.test-component-grid input{height:34px!important;font-size:12px!important;white-space:nowrap!important;text-overflow:ellipsis!important}.test-section-headline{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin-bottom:8px!important}.test-section-headline h4{margin:0!important}.test-title-inline{grid-column:1/-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:end!important}.test-title-inline.collapsed{display:none!important}.test-unsaved-upload{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;border:1px dashed #cbd5e1!important;border-radius:9px!important;background:#f8fafc!important;padding:10px 12px!important;font-size:12px!important;font-weight:900!important;color:#64748b!important}
 .test-image-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}.test-image-item{border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:7px!important;display:grid!important;gap:6px!important}.test-image-item button{border:0!important;background:transparent!important;padding:0!important;cursor:pointer!important}.test-image-item img{width:100%!important;height:118px!important;object-fit:contain!important;background:#f1f5f9!important;border-radius:8px!important}.test-image-item b{display:block!important;font-size:11.5px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-image-item span{font-size:10.5px!important;color:#64748b!important}
 .test-evidence-file-list{display:grid!important;gap:7px!important}.test-evidence-file-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:8px!important;align-items:center!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#fff!important;padding:8px!important}.test-evidence-file-row b{display:block!important;font-size:12px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-evidence-file-row span,.test-evidence-file-row em{display:block!important;font-size:11px!important;color:#64748b!important;font-style:normal!important;line-height:1.35!important}
 .test-lightbox{background:rgba(15,23,42,.82)!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;padding:16px!important}.test-lightbox-bar{display:flex!important;gap:8px!important;align-items:center!important;justify-content:center!important;color:#fff!important;margin-bottom:10px!important}.test-lightbox-bar b{max-width:42vw!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.test-lightbox-img{max-width:96vw!important;max-height:calc(100vh - 90px)!important;object-fit:contain!important;margin:auto!important;display:block!important;background:#111827!important}
@@ -10761,10 +10763,47 @@ function templateByKey(key){return allTestTemplates().find(t=>String(t.key)===St
 function templateForType(type){const wanted=normalizeTestTypeName(type);return allTestTemplates().find(t=>normalizeTestTypeName(t.test_type)===wanted)||TEST_TEMPLATE_DEFAULTS[0]}
 function templateForTest(t){return templateByKey(t?.template_key||'')||templateForType(t?.test_type||activeTestType||'温升')}
 function testCustomValues(t){const x=parseJsonSafe(t?.template_fields_json||{},{});return (x&&typeof x==='object'&&!Array.isArray(x))?x:{}}
+function componentText(parts){return parts.map(x=>String(x||'').trim()).filter(Boolean).join(' / ')}
+function modelComponentSnapshot(m){
+  m=m||{};
+  return {
+    power:componentText([m.driver_name,m.driver_brand,m.driver_spec]),
+    chip:componentText([m.chip_name,m.chip_brand,m.chip_spec]),
+    optical:componentText([m.optical_name,m.optical_brand,m.optical_spec])
+  };
+}
+function currentComponentSnapshot(modelId){
+  const m=(models||[]).find(x=>Number(x.id)===Number(modelId||testModelId));
+  return modelComponentSnapshot(m);
+}
+function testProjectLabel(t,tpl){
+  return (t?.title&&String(t.title).trim()) || (tpl?.name&&String(tpl.name).trim()) || t?.test_type || '测试项目';
+}
+function renderTestProjectSelect(t,tpl){
+  const list=allTestTemplates();
+  const key=(tpl&&tpl.key)||'';
+  return `<select id="t_template" onchange="changeTestProject()">${list.map(x=>`<option value="${esc(x.key)}" ${String(x.key)===String(key)?'selected':''}>${esc(x.name)}${x.builtin?'':' · 自定义'}</option>`).join('')}</select><input id="t_type" type="hidden" value="${esc(tpl?.test_type||t?.test_type||activeTestType||'温升测试')}"><input id="t_title" type="hidden" value="${esc(testProjectLabel(t,tpl))}">`;
+}
 function testNodeStatusClass(t){return testStatusClass(t.status,t.result)}
 function testNodeClick(id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(id||0);localStorage.setItem('plm_v85_test_id',testSelectedId);renderDetail()}
 function newTestNode(type){testCreateMode=true;testSelectedId=0;activeTestType=normalizeTestTypeName(type||activeTestType||'温升测试');localStorage.setItem('plm_v85_test_create_mode','1');localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}
-function changeTestTemplate(){const key=$('t_template')?.value||'';const tpl=templateByKey(key);if(tpl){activeTestType=tpl.test_type||activeTestType;localStorage.setItem('plm_v85_active_test_type',activeTestType);renderDetail()}}
+function changeTestTemplate(){return changeTestProject()}
+function changeTestProject(){
+  const key=$('t_template')?.value||'';
+  const tpl=templateByKey(key);
+  if(!tpl)return;
+  activeTestType=tpl.test_type||activeTestType;
+  localStorage.setItem('plm_v85_active_test_type',activeTestType);
+  const t=tests.find(x=>Number(x.id)===Number(testSelectedId));
+  if(t&&!testCreateMode){
+    t.template_key=tpl.key;t.template_name=tpl.name;t.test_type=tpl.test_type||tpl.name;t.title=tpl.name;
+  }
+  renderDetail();
+}
+function toggleCustomTestTitle(){
+  const row=document.querySelector('.test-title-inline');
+  if(row)row.classList.toggle('collapsed');
+}
 function setTestModel(id){testModelId=Number(id)||0;localStorage.setItem('plm_v85_test_model',testModelId);testSelectedId=0;testCreateMode=false;localStorage.setItem('plm_v85_test_id',0);localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()}
 function setTestTypeFilter(v){localStorage.setItem('plm_v85_test_type_filter',v||'');renderDetail()}
 function setTestStatusFilter(v){testNodeFilter=v||'all';localStorage.setItem('plm_v85_test_node_filter',testNodeFilter);renderDetail()}
@@ -10966,10 +11005,12 @@ function renderTestProjectCard(t,arr,ms){
   const cls=testFailed(t)?'failed':(testPassed(t)?'passed':(status==='待复测'?'retest':(status==='进行中'?'running':'pending')));
   const active=Number(t.id)===Number(testSelectedId)?' active':'';
   const date=dateOnly(t.test_date)||'-';
+  const retest=testRetestCount(t,arr);
   return `<button class="test-project-card ${cls}${active}" onclick="testNodeClick(${Number(t.id)})" title="${esc(t.test_conclusion||t.note||'')}">
     <div class="test-card-title"><span class="test-type-icon">${esc(String(t.test_type||'测').slice(0,2))}</span><b>${esc(t.title||t.test_type||'测试项目')}</b><em>${esc(status)}</em></div>
-    <div class="test-card-meta"><span class="${result==='不通过'?'bad':(result==='通过'?'good':'')}">${esc(result)}</span><span>${esc(date)}</span></div>
-    <div class="test-card-files"><span>图片 ${buckets.images.length}</span><span>文件 ${buckets.files.length+buckets.raw.length}</span><span>报告 ${buckets.reports.length}</span></div>
+    <div class="test-card-meta"><span class="${result==='不通过'?'bad':(result==='通过'?'good':'')}">结果：${esc(result)}</span><span>${esc(date)}</span></div>
+    <div class="test-card-meta"><span>测试人：${esc(t.operator||'-')}</span></div>
+    <div class="test-card-files"><span>图片 ${buckets.images.length}</span><span>文件 ${buckets.files.length+buckets.raw.length}</span><span>报告 ${buckets.reports.length}</span><span>复测 ${retest}</span></div>
   </button>`;
 }
 function renderTestTemplateChooserInline(ms){
@@ -10987,7 +11028,8 @@ async function createTestFromTemplate(key){
   const mid=currentTestModelForCreate();
   const exists=pTests(p.id).find(t=>Number(t.model_id||0)===Number(mid)&&normalizeTestTypeName(t.test_type)===normalizeTestTypeName(tpl.test_type)&&Number(t.source_test_id||0)===0);
   if(exists){testCreateMode=false;testSelectedId=Number(exists.id);localStorage.setItem('plm_v85_test_id',testSelectedId);toast('当前样品已存在这个测试项目');renderDetail();return}
-  const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',test_date:'',operator:'',template_key:tpl.key,template_name:tpl.name,template_fields_json:{}});
+  const snap=currentComponentSnapshot(mid);
+  const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',test_date:'',operator:'',template_key:tpl.key,template_name:tpl.name,template_fields_json:{_test_power:snap.power,_test_chip:snap.chip,_test_optical:snap.optical,_test_custom_component:''}});
   toast(r.ok?'测试项目已加入':r.error);
   if(r.ok&&r.id){testCreateMode=false;testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId);const mask=document.querySelector('.modal-mask');if(mask)mask.remove()}
   await load();
@@ -11000,7 +11042,8 @@ async function addCommonTests(){
     const mid=currentTestModelForCreate();
     const exists=pTests(p.id).some(t=>Number(t.model_id||0)===Number(mid)&&normalizeTestTypeName(t.test_type)===normalizeTestTypeName(tpl.test_type)&&Number(t.source_test_id||0)===0);
     if(exists){skipped++;continue}
-    const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',template_key:tpl.key,template_name:tpl.name,template_fields_json:{}});
+    const snap=currentComponentSnapshot(mid);
+    const r=await api('save_test',{project_id:p.id,model_id:mid,test_type:tpl.test_type,title:tpl.name,status:'未开始',result:'待判定',template_key:tpl.key,template_name:tpl.name,template_fields_json:{_test_power:snap.power,_test_chip:snap.chip,_test_optical:snap.optical,_test_custom_component:''}});
     if(r.ok){added++;testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}else{toast(r.error);break}
   }
   toast(`常用测试已加入 ${added} 个，跳过已有 ${skipped} 个`);
@@ -11025,11 +11068,14 @@ function renderTests(p){
   }
   const selected=testCreateMode?null:(arr.find(x=>Number(x.id)===Number(testSelectedId))||null);
   const modelOptions=`<option value="-1" ${Number(testModelId)<0?'selected':''}>全部测试</option><option value="0" ${Number(testModelId)===0?'selected':''}>项目公共测试</option>`+ms.map(m=>`<option value="${m.id}" ${Number(m.id)===Number(testModelId)?'selected':''}>${esc(testModelLabel(m))}</option>`).join('');
+  const total=scoped.length, passed=scoped.filter(testPassed).length, failed=scoped.filter(testFailed).length, retest=scoped.filter(t=>testStatusValue(t)==='待复测'||testRetestCount(t,arr)>0).length;
+  const pct=total?Math.round(passed*100/total):0;
+  const stat=`<div class="test-brief-stat"><span><b>${pct}%</b>完成率</span><span><b>${passed}/${total}</b>测试</span><span class="good"><b>${passed}</b>通过</span><span class="bad"><b>${failed}</b>不通过</span><span class="warn"><b>${retest}</b>待复测</span></div>`;
   const nodes=filtered.map(t=>renderTestProjectCard(t,scoped,ms)).join('')||`<div class="test-empty-small">${scoped.length?'当前筛选下暂无测试记录。':'当前样品暂无测试项目。'}<br><button class="btn small primary" onclick="openAddTestProjectPanel()">添加测试项目</button></div>`;
   const detailHtml=(!testCreateMode&&!selected)?`<div class="test-detail-empty"><b>请选择测试记录</b><span>从左侧选择一条测试记录，或点击“新增测试”。</span><button class="btn primary" onclick="newTestNode(activeTestType||'温升')">新增测试</button></div>`:renderTestDetailForm(p,selected,ms);
   $('tabbody').innerHTML=`<div class="test-workbench">
     <div class="test-project-layout">
-      <div class="test-project-board"><div class="test-left-controls"><select class="test-model-picker" onchange="setTestModel(this.value)">${modelOptions}</select><div class="test-left-actions"><button class="btn primary" onclick="openAddTestProjectPanel()">新增测试</button><button class="btn good" onclick="addCommonTests()">常用测试</button></div></div><div class="test-node-head"><h3>测试项目</h3></div>
+      <div class="test-project-board"><div class="test-left-controls"><select class="test-model-picker" onchange="setTestModel(this.value)">${modelOptions}</select><div class="test-left-actions"><button class="btn primary" onclick="openAddTestProjectPanel()">新增测试</button><button class="btn good" onclick="addCommonTests()">常用测试</button><details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="openTestTemplateDrawer()">测试模板管理</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="window.print()">打印</button><button class="btn small" onclick="openTestDashboardModal()">测试报表</button></div></details></div></div>${stat}<div class="test-node-head"><h3>测试项目</h3></div>
         <div class="test-card-grid">${nodes}</div>
         ${!scoped.length?renderTestTemplateChooserInline(ms):''}
       </div>
@@ -11243,15 +11289,16 @@ function renderEvidenceFileList(list,empty){
 }
 function renderTestEvidencePanel(t){
   const b=testFileBuckets(t), counts=testEvidenceCounts(t);
-  if(!['images','files','reports','more'].includes(testEvidenceTab))testEvidenceTab='images';
-  const moreCount=Number(counts.raw||0)+Number(counts.issues||0)+Number(counts.runs||0);
-  const tabs=`<div class="test-evidence-tabs">${testEvidenceTabButton('images','图片',counts.images)}${testEvidenceTabButton('files','文件',counts.files+counts.raw)}${testEvidenceTabButton('reports','报告',counts.reports)}${testEvidenceTabButton('more','更多',moreCount)}</div>`;
+  if(!['images','files','reports','raw','issues','runs'].includes(testEvidenceTab))testEvidenceTab='images';
+  const tabs=`<div class="test-evidence-tabs">${testEvidenceTabButton('images','图片',counts.images)}${testEvidenceTabButton('files','文件',counts.files)}${testEvidenceTabButton('reports','报告',counts.reports)}${testEvidenceTabButton('raw','原始数据',counts.raw)}${testEvidenceTabButton('issues','问题',counts.issues)}${testEvidenceTabButton('runs','复测',counts.runs)}</div>`;
   let body='';
   if(testEvidenceTab==='images')body=renderEvidenceImageGrid(b.images);
-  else if(testEvidenceTab==='files')body=renderEvidenceFileList([...b.files,...b.raw],'暂无测试文件。');
+  else if(testEvidenceTab==='files')body=renderEvidenceFileList(b.files,'暂无测试文件。');
   else if(testEvidenceTab==='reports')body=renderEvidenceFileList(b.reports,'暂无测试报告。');
-  else body=`<div class="test-evidence-more-grid"><button class="btn small" onclick="setTestEvidenceTab('files')">原始数据 ${Number(counts.raw||0)}</button><button class="btn small ${counts.issues?'warn':''}" onclick="testEvidenceTab='issues';localStorage.setItem('plm_v85_test_evidence_tab','issues');document.querySelector('.test-evidence-body').innerHTML=renderTestIssuePanel(tests.find(x=>Number(x.id)===${Number(t.id)}))">问题 ${Number(counts.issues||0)}</button><button class="btn small" onclick="testEvidenceTab='runs';localStorage.setItem('plm_v85_test_evidence_tab','runs');document.querySelector('.test-evidence-body').innerHTML=renderTestRunHistory(tests.find(x=>Number(x.id)===${Number(t.id)}))">复测 ${Number(counts.runs||0)}</button></div>`;
-  const uploadTabs=['images','files','reports'];
+  else if(testEvidenceTab==='raw')body=renderEvidenceFileList(b.raw,'暂无原始数据。');
+  else if(testEvidenceTab==='issues')body=renderTestIssuePanel(t);
+  else body=renderTestRunHistory(t);
+  const uploadTabs=['images','files','reports','raw'];
   return `<div class="test-evidence-panel" id="testNodeFileSection"><div class="test-evidence-head"><h4>附件资料</h4>${uploadTabs.includes(testEvidenceTab)?`<button class="btn small primary" onclick="toggleTestEvidenceUpload()">上传</button>`:''}</div>${tabs}<div id="testEvidenceUploadWrap" class="test-evidence-upload-wrap" style="display:none">${uploadTabs.includes(testEvidenceTab)?renderTestEvidenceUpload(t,testEvidenceTab):''}</div><div class="test-evidence-body">${body}</div></div>`;
 }
 function toggleTestEvidenceUpload(){
@@ -11270,6 +11317,26 @@ function scrollToTestFiles(){
   const el=document.getElementById('testNodeFileSection');
   if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.boxShadow='0 0 0 3px rgba(37,99,235,.18)';setTimeout(()=>el.style.boxShadow='',1200)}
 }
+function renderTestComponentsSection(t,custom,modelId){
+  const snap=currentComponentSnapshot(modelId);
+  const vals={
+    power:(custom._test_power!==undefined?custom._test_power:(t?'' : snap.power)),
+    chip:(custom._test_chip!==undefined?custom._test_chip:(t?'' : snap.chip)),
+    optical:(custom._test_optical!==undefined?custom._test_optical:(t?'' : snap.optical)),
+    other:(custom._test_custom_component!==undefined?custom._test_custom_component:'')
+  };
+  return `<div class="test-form-section"><div class="test-section-headline"><h4>关键元器件</h4><button class="btn small" onclick="syncTestComponentsFromSample()">从样品同步</button></div><div class="test-component-grid"><div class="field"><label>电源</label><input id="t_comp_power" data-test-custom-key="_test_power" value="${esc(vals.power||'')}" placeholder="电源品牌 / 型号 / 规格" title="${esc(vals.power||'')}"></div><div class="field"><label>芯片</label><input id="t_comp_chip" data-test-custom-key="_test_chip" value="${esc(vals.chip||'')}" placeholder="LED芯片品牌 / 型号 / 规格" title="${esc(vals.chip||'')}"></div><div class="field"><label>光学</label><input id="t_comp_optical" data-test-custom-key="_test_optical" value="${esc(vals.optical||'')}" placeholder="透镜 / 反光杯 / 光学件" title="${esc(vals.optical||'')}"></div><div class="field"><label>自定义</label><input id="t_comp_custom" data-test-custom-key="_test_custom_component" value="${esc(vals.other||'')}" placeholder="填写其他关键件或测试变量" title="${esc(vals.other||'')}"></div></div></div>`;
+}
+function syncTestComponentsFromSample(){
+  const mid=Number($('t_model_id')?.value||testModelId||0);
+  const snap=currentComponentSnapshot(mid);
+  const ids=['t_comp_power','t_comp_chip','t_comp_optical'];
+  const has=ids.some(id=>String($(id)?.value||'').trim());
+  if(has&&!confirm('当前测试已有关键元器件内容，是否用当前样品资料覆盖电源、芯片和光学？'))return;
+  if($('t_comp_power'))$('t_comp_power').value=snap.power||'';
+  if($('t_comp_chip'))$('t_comp_chip').value=snap.chip||'';
+  if($('t_comp_optical'))$('t_comp_optical').value=snap.optical||'';
+}
 
 function renderTestDetailForm(p,t,ms){
   const isNew=!t;const tpl=isNew?(templateForType(activeTestType)||TEST_TEMPLATE_DEFAULTS[0]):templateForTest(t);const custom=testCustomValues(t);
@@ -11284,13 +11351,16 @@ function renderTestDetailForm(p,t,ms){
   const sampleName=t?testSampleName(t,ms):(ms.find(m=>Number(m.id)===Number(testModelId))?testModelLabel(ms.find(m=>Number(m.id)===Number(testModelId))):'项目公共测试');
   const fallbackResult=!testTplHasBind(tpl,'test_conclusion')?`<div class="field wide"><label>测试结论 / 整改建议</label><textarea id="t_conclusion" placeholder="记录测试结论、整改建议或客户确认要求">${esc(t?.test_conclusion||'')}</textarea></div>`:'';
   const retestField=(t&&(Number(t.source_test_id||0)>0||Number(t.retest_no||0)>0||String(t.retest_result||'').trim()))?`<div class="field small-field"><label>复测结果</label><input id="t_retest" value="${esc(t?.retest_result||'')}" placeholder="复测结果"></div>`:`<input id="t_retest" type="hidden" value="${esc(t?.retest_result||'')}">`;
-  return `<div class="test-detail-head"><div><h3>${isNew?'新增测试':esc(t.test_type||type)}${isNew?'':` · ${esc(t.title||'未命名')}`}</h3><div class="hint">${esc(sampleName)} ｜ ${esc(testStatusValue(t||{status:'未开始'}))} ｜ ${esc(testResultValue(t||{result:'待判定'}))}</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button><button class="btn" onclick="testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()">取消</button>${t?`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="markTestStatus('进行中')">开始测试</button><button class="btn small good" onclick="markTestStatus('已完成')">完成测试</button><button class="btn small good" onclick="markTestResult('通过')">判定通过</button><button class="btn small warn" onclick="markTestResult('不通过')">判定不通过</button><button class="btn small" onclick="createRetestFromCurrent(${p.id})">创建复测</button><button class="btn small" onclick="gotoTab('issues')">进入问题闭环</button><button class="btn small" onclick="gotoTab('files')">文件中心</button><button class="btn small" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传附件</button><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="openSingleTestReport(${Number(t.id)})">打印/报表</button><button class="btn small danger" onclick="deleteTest(${t.id})">删除测试</button></div></details>`:`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="window.print()">打印</button></div></details>`}</div></div>
+  const titleCustom=String(title||'')!==String(tpl.name||type||'')||normalizeTestTypeName(type)==='自定义测试';
+  const titleRow=`<div class="test-title-inline ${titleCustom?'':'collapsed'}"><div class="field"><label>自定义标题</label><input id="t_custom_title" value="${esc(title)}" placeholder="自定义测试标题" oninput="$('t_title').value=this.value"></div><button class="btn small" onclick="toggleCustomTestTitle()">收起</button></div>`;
+  return `<div class="test-detail-head"><div><h3>${esc(testProjectLabel(t||{title:tpl.name,test_type:type},tpl))}</h3><div class="hint">${esc(sampleName)} ｜ ${esc(testStatusValue(t||{status:'未开始'}))} ｜ ${esc(testResultValue(t||{result:'待判定'}))}</div></div><div class="actions"><button class="btn primary" onclick="saveNewTest(${p.id})">保存测试</button><button class="btn" onclick="testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');renderDetail()">取消</button>${t?`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="markTestStatus('进行中')">开始测试</button><button class="btn small good" onclick="markTestStatus('已完成')">完成测试</button><button class="btn small good" onclick="markTestResult('通过')">判定通过</button><button class="btn small warn" onclick="markTestResult('不通过')">判定不通过</button><button class="btn small" onclick="createRetestFromCurrent(${p.id})">创建复测</button><button class="btn small" onclick="gotoTab('issues')">进入问题闭环</button><button class="btn small" onclick="gotoTab('files')">文件中心</button><button class="btn small" onclick="openTestUploadModal(${Number(t.id)},${Number(t.model_id||0)},'${esc(t.test_type||'测试')}')">上传附件</button><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="openSingleTestReport(${Number(t.id)})">打印/报表</button><button class="btn small danger" onclick="deleteTest(${t.id})">删除测试</button></div></details>`:`<details class="test-more-menu"><summary>更多</summary><div><button class="btn small" onclick="openTestTemplateDrawer()">测试模板</button><button class="btn small" onclick="exportCurrentProjectTestReport()">导出 CSV</button><button class="btn small" onclick="window.print()">打印</button></div></details>`}</div></div>
   <div class="test-detail-form"><input id="t_id" type="hidden" value="${t?.id||0}"><input id="t_source_test_id" type="hidden" value="${Number(t?.source_test_id||0)}"><input id="t_retest_no" type="hidden" value="${Number(t?.retest_no||0)}">${preserveHidden}
     <div class="test-detail-main-grid"><div class="test-data-column">
-      <div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid test-basic-grid"><div class="field sample-field"><label>归属样品</label><select id="t_model_id"><option value="0">项目公共测试</option>${ms.map(m=>`<option value="${m.id}" ${Number((t?.model_id??testModelId)||0)===Number(m.id)?'selected':''}>${esc(testModelLabel(m))}</option>`).join('')}</select></div><div class="field tpl-field"><label>测试模板</label>${renderTemplateSelect(t||{test_type:type,template_key:tpl.key})}</div><div class="field small-field"><label>测试类型</label><select id="t_type">${TEST_TYPES.map(x=>`<option ${x===type?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field title-field"><label>测试标题</label><input id="t_title" value="${esc(title)}" placeholder="测试标题"></div><div class="field small-field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field small-field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field small-field"><label>测试状态</label><select id="t_status">${opt(['未开始','进行中','已完成','待复测','已取消'],testStatusValue(t||{status:'未开始'}))}</select></div><div class="field small-field"><label>测试结果</label><select id="t_result">${opt(['待判定','通过','不通过'],testResultValue(t||{result:'待判定'}))}</select></div><div class="field small-field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div>${retestField}</div></div>
+      <div class="test-form-section"><h4>基础信息</h4><div class="test-compact-grid test-basic-grid"><div class="field project-field"><label>测试项目</label>${renderTestProjectSelect(t||{test_type:type,title},tpl)}</div><div class="field small-field"><label>日期</label><input id="t_date" type="date" value="${esc(dateOnly(t?.test_date)||new Date().toISOString().slice(0,10))}"></div><div class="field medium-field"><label>测试人</label><input id="t_operator" value="${esc(t?.operator||'')}" placeholder="测试人"></div><div class="field small-field"><label>测试状态</label><select id="t_status">${opt(['未开始','进行中','已完成','待复测','已取消'],testStatusValue(t||{status:'未开始'}))}</select></div><div class="field small-field"><label>测试结果</label><select id="t_result">${opt(['待判定','通过','不通过'],testResultValue(t||{result:'待判定'}))}</select></div><div class="field medium-field"><label>影响样品</label><select id="t_affect"><option value="0" ${Number(t?.affect_sample||0)?'':'selected'}>不影响</option><option value="1" ${Number(t?.affect_sample||0)?'selected':''}>影响通过</option></select></div><div class="field medium-field"><label>归属样品</label><select id="t_model_id"><option value="0">项目公共测试</option>${ms.map(m=>`<option value="${m.id}" ${Number((t?.model_id??testModelId)||0)===Number(m.id)?'selected':''}>${esc(testModelLabel(m))}</option>`).join('')}</select></div><button class="btn small" onclick="toggleCustomTestTitle()">自定义标题</button>${titleRow}${retestField}</div></div>
+      ${renderTestComponentsSection(t,custom,Number(t?.model_id??testModelId)||0)}
       <div class="test-form-section"><h4>${esc(tpl.name||'测试参数')}</h4><div class="test-template-fields">${(tpl.fields||[]).map(f=>renderTestTemplateField(f,t,custom)).join('')||'<div class="hint">这个模板暂无字段，可通过顶部“测试模板”维护。</div>'}</div></div>
       <div class="test-form-section"><h4>备注 / 整改</h4><div class="test-result-grid">${fallbackResult}<div class="field wide"><label>备注 / 整改建议</label><textarea id="t_note" placeholder="补充异常说明、整改建议或备注">${esc(t?.note||'')}</textarea></div></div></div>
-    </div><aside class="test-evidence-column">${t?renderTestEvidencePanel(t):'<div class="test-evidence-empty compact">保存测试后可上传图片、文件、报告和原始数据。</div>'}</aside></div>
+    </div><aside class="test-evidence-column">${t?renderTestEvidencePanel(t):'<div class="test-unsaved-upload"><span>请先保存测试，再上传资料。</span><button class="btn small primary" onclick="saveNewTest('+p.id+')">保存并继续上传</button></div>'}</aside></div>
   </div>`
 }
 
@@ -11388,13 +11458,13 @@ function renderTestTemplateField(f,t,custom){
   const cls=isWide?' wide':(isMedium?' medium':(isCompact?' compact':''));
   if(type==='textarea'||bind==='test_standard'||bind==='test_data'||bind==='test_conclusion')return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><textarea id="${esc(id)}" placeholder="${esc(ph)}"${data}${req}>${esc(val||'')}</textarea></div>`;
   if(type==='date')return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="date" value="${esc(dateOnly(val)||'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
-  if(type==='number')return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="number" step="0.01" value="${esc(val??'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
+  if(type==='number')return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="number" step="0.01" inputmode="decimal" value="${esc(val??'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
   if(type==='select'){
     const opts=splitTemplateOptions(f.options||'通过\n不通过\n待确认');
     return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><select id="${esc(id)}"${data}${req}><option value="">请选择</option>${opts.map(o=>`<option value="${esc(o)}" ${String(val)===String(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
   }
   if(type==='yesno')return `<div class="test-template-field${cls||' compact'}"><label>${esc(label)}${f.required?' *':''}</label><select id="${esc(id)}"${data}${req}><option value="">请选择</option><option value="是" ${String(val)==='是'?'selected':''}>是</option><option value="否" ${String(val)==='否'?'selected':''}>否</option></select></div>`;
-  if(type==='file')return `<div class="test-template-field wide test-template-file-hint"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" value="${esc(val??'')}" placeholder="${esc(ph||'附件请在下方测试资料上传，这里可写文件说明')}"${data}${req}><div class="hint">附件统一在“测试资料”上传，避免文件散乱。</div></div>`;
+  if(type==='file'){const fileTab=/IES|LDT|原始|数据/i.test(labelText)?'raw':'reports';return `<div class="test-template-field medium test-template-file-hint"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" type="hidden" value="${esc(val??'')}"${data}${req}><div class="hint">在右侧附件资料上传和预览。</div><button class="btn small" onclick="setTestEvidenceTab('${fileTab}')">查看资料</button></div>`;}
   return `<div class="test-template-field${cls}"><label>${esc(label)}${f.required?' *':''}</label><input id="${esc(id)}" value="${esc(val??'')}" placeholder="${esc(ph)}"${data}${req}></div>`;
 }
 function testTemplateBindOptions(selected=''){
@@ -11487,6 +11557,7 @@ function collectTestFormData(pid){
 }
 async function saveNewTest(pid){
   const d=collectTestFormData(pid);
+  if(normalizeTestTypeName(d.test_type)==='自定义测试' && (!String(d.title||'').trim() || String(d.title||'').trim()==='自定义测试')){toast('自定义测试请填写测试标题');toggleCustomTestTitle();return}
   const r=await api('save_test',d);toast(r.ok?(r.issue_id?'测试已保存，并已生成问题闭环':'测试已保存'):r.error);if(r.ok&&r.id){testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');testSelectedId=Number(r.id);localStorage.setItem('plm_v85_test_id',testSelectedId)}await load()
 }
 async function markTestStatus(status){
