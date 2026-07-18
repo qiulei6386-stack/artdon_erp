@@ -1044,14 +1044,16 @@ function crm_sample_upload_files(int $shipmentId, string $type, array $files): a
     $detail = crm_sample_shipment_detail($shipmentId);
     $shipment = $detail['shipment'];
     $base = __DIR__ . '/uploads/crm_sample_shipments/' . $shipmentId;
-    if (!is_dir($base)) mkdir($base, 0775, true);
+    if (!is_dir($base) && !mkdir($base, 0777, true) && !is_dir($base)) {
+        throw new RuntimeException('样品寄送上传目录无法创建，请检查服务器 uploads/crm_sample_shipments 权限。');
+    }
     $allowedImage = ['image/jpeg','image/png','image/webp','image/gif'];
     $allowedAttach = ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/zip','application/x-zip-compressed','text/plain','text/csv','application/csv','application/octet-stream','image/jpeg','image/png','image/webp','image/gif'];
     $allowedAttachExt = ['pdf','doc','docx','xls','xlsx','ppt','pptx','zip','txt','csv','jpg','jpeg','png','webp','gif'];
     $saved = [];
     if (!isset($files['name'])) throw new RuntimeException('请选择要上传的文件。');
     if (!is_array($files['name'])) $files = ['name'=>[$files['name'] ?? ''], 'tmp_name'=>[$files['tmp_name'] ?? ''], 'size'=>[$files['size'] ?? 0], 'type'=>[$files['type'] ?? ''], 'error'=>[$files['error'] ?? 0]];
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
     foreach (($files['name'] ?? []) as $i => $name) {
         if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('文件上传失败，请重新选择。');
         if (!is_uploaded_file((string)($files['tmp_name'][$i] ?? ''))) throw new RuntimeException('上传文件无效。');
@@ -1059,9 +1061,9 @@ function crm_sample_upload_files(int $shipmentId, string $type, array $files): a
         $mime = $finfo ? (string)finfo_file($finfo, (string)$files['tmp_name'][$i]) : (string)($files['type'][$i] ?? '');
         $size = (int)($files['size'][$i] ?? 0);
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
-        if ($type === 'image' && !in_array($mime, $allowedImage, true)) throw new RuntimeException('图片仅支持 jpg/png/webp/gif。');
         if ($type === 'image' && !in_array($ext, ['jpg','jpeg','png','webp','gif'], true)) throw new RuntimeException('图片仅支持 jpg/png/webp/gif。');
-        if ($type === 'attachment' && (!in_array($mime, $allowedAttach, true) || !in_array($ext, $allowedAttachExt, true))) throw new RuntimeException('附件类型暂不支持：' . $original);
+        if ($type === 'image' && $mime && !in_array($mime, $allowedImage, true) && !in_array($ext, ['jpg','jpeg','png','webp','gif'], true)) throw new RuntimeException('图片仅支持 jpg/png/webp/gif。');
+        if ($type === 'attachment' && (!in_array($ext, $allowedAttachExt, true) || ($mime && !in_array($mime, $allowedAttach, true)))) throw new RuntimeException('附件类型暂不支持：' . $original);
         if ($type === 'image' && $size > 512000) throw new RuntimeException('单张图片不能超过 500KB。');
         if ($type === 'attachment' && $size > 100 * 1024 * 1024) throw new RuntimeException('单个附件不能超过 100MB。');
         $ext = $ext ?: ($type === 'image' ? 'jpg' : 'bin');
