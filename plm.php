@@ -9636,7 +9636,7 @@ function renderProjectNavCard(p){
   const doneCls=isProjectDone(p)?'project-done-row':(isProjectPaused(p)?'project-paused-row':'');
   const openIssue=issues.filter(x=>Number(x.project_id)===Number(p.id)&&issueIsOpen(x)).length;
   const title=[p.name||'未命名项目',p.customer?'客户：'+p.customer:'',p.engineer?'负责人：'+p.engineer:'',p.updated_at?'更新时间：'+p.updated_at:''].filter(Boolean).join('\n');
-  return `<div id="project_nav_card_${Number(p.id)||0}" class="project-nav-card ${active} ${riskCls} ${doneCls}" title="${esc(title)}" onclick="selectProjectFromNav(${Number(p.id)||0})">
+  return `<div id="project_nav_card_${Number(p.id)||0}" class="project-nav-card ${active} ${riskCls} ${doneCls}" data-project-id="${Number(p.id)||0}" title="${esc(title)}" onclick="selectProjectFromNav(${Number(p.id)||0})">
     ${projectThumb(p)}
     <div class="project-nav-main">
       <div class="project-nav-title"><b>${esc(p.name||'未命名项目')}</b>${priorityBadge(p)}</div>
@@ -9671,11 +9671,29 @@ function bindProjectNavScroll(){
   box.addEventListener('wheel',e=>{
     if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){box.scrollLeft+=e.deltaY;e.preventDefault();}
   },{passive:false});
-  let down=false,startX=0,startLeft=0,moved=false;
-  box.addEventListener('pointerdown',e=>{down=true;moved=false;startX=e.clientX;startLeft=box.scrollLeft;box.setPointerCapture?.(e.pointerId);box.classList.add('dragging');});
-  box.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-startX;if(Math.abs(dx)>5)moved=true;box.scrollLeft=startLeft-dx;});
-  box.addEventListener('pointerup',e=>{down=false;box.classList.remove('dragging');setTimeout(()=>{moved=false},0);});
-  box.addEventListener('click',e=>{if(moved){e.preventDefault();e.stopPropagation();}},true);
+  let down=false,startX=0,startLeft=0,moved=false,suppressClick=false;
+  box.addEventListener('pointerdown',e=>{
+    if(e.button!==undefined&&e.button!==0)return;
+    down=true;moved=false;suppressClick=false;startX=e.clientX;startLeft=box.scrollLeft;
+    box.setPointerCapture?.(e.pointerId);
+  });
+  box.addEventListener('pointermove',e=>{
+    if(!down)return;
+    const dx=e.clientX-startX;
+    if(Math.abs(dx)>6){moved=true;suppressClick=true;box.classList.add('dragging');box.scrollLeft=startLeft-dx;}
+  });
+  const endDrag=()=>{down=false;box.classList.remove('dragging');setTimeout(()=>{moved=false;suppressClick=false},80);};
+  box.addEventListener('pointerup',endDrag);
+  box.addEventListener('pointercancel',endDrag);
+  box.addEventListener('click',e=>{
+    const card=e.target.closest?.('.project-nav-card');
+    if(!card||!box.contains(card))return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(suppressClick||moved)return;
+    const id=Number(card.dataset.projectId||0);
+    if(id)selectProjectFromNav(id);
+  },true);
 }
 function renderCards(){
   const list=filteredProjects();
