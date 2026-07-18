@@ -8264,6 +8264,79 @@ textarea,
 .sample-file-chip{height:24px!important;min-height:24px!important;padding:0 7px!important;border-radius:999px!important;white-space:nowrap!important;flex:0 0 auto!important;font-size:10.5px!important;}
 .sample-upload-fold{padding:6px 8px!important;border-radius:8px!important;margin-top:7px!important;}
 .sample-upload-fold summary{font-size:11.5px!important;line-height:1.2!important;}
+/* ===== PLM V8.5.104 样品详情主编辑区精细压缩 START ===== */
+.sample-right-panel .sample-left-stack{gap:9px!important;}
+.sample-right-panel .sample-left-stack>.sample-section{padding:10px 11px!important;border-radius:9px!important;}
+.sample-right-panel .sample-left-stack>.sample-section h4{font-size:12.8px!important;margin:0 0 7px!important;padding-left:7px!important;border-left-width:3px!important;}
+.sample-right-panel .compact-fields.sample-basic-grid{
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:7px 9px!important;
+  align-items:start!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1){grid-column:span 5!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 5!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4){grid-column:span 3!important;}
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 2!important;}
+.sample-right-panel .compact-fields.sample-basic-grid label,
+.sample-right-panel .sample-dimension-grid label{font-size:10.5px!important;margin:0 0 3px!important;line-height:1.15!important;color:#64748b!important;}
+.sample-right-panel .compact-fields.sample-basic-grid input,
+.sample-right-panel .compact-fields.sample-basic-grid select,
+.sample-right-panel .sample-dimension-grid input,
+.sample-right-panel .sample-dimension-grid select{height:34px!important;min-height:34px!important;padding:6px 8px!important;font-size:12px!important;border-radius:8px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline{grid-template-columns:minmax(0,1fr) 62px!important;gap:6px!important;}
+.sample-right-panel .sample-model-field .model-picker-inline .btn{width:62px!important;min-width:62px!important;height:34px!important;min-height:34px!important;padding:0!important;font-size:11px!important;}
+.sample-right-panel .naming-inline-meta{font-size:10.2px!important;line-height:1.25!important;margin-top:3px!important;color:#94a3b8!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-right-panel .naming-sync-tools{margin-top:3px!important;gap:4px!important;max-height:22px!important;overflow:hidden!important;}
+.sample-right-panel .sample-dimension-grid{
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:7px!important;
+  padding:8px!important;
+  margin:1px 0 0!important;
+  border-radius:8px!important;
+}
+.sample-right-panel .sample-dimension-grid>.field:first-child{grid-column:span 4!important;}
+.sample-right-panel .sample-dimension-grid>.field:not(:first-child){grid-column:span 2!important;}
+.sample-right-panel .sample-dim-note{grid-column:1/-1!important;font-size:10.2px!important;line-height:1.25!important;color:#94a3b8!important;margin-top:-1px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-content-pro .key-components-inline{padding:8px!important;border-radius:8px!important;margin:0!important;}
+.sample-content-pro .key-components-head{margin:0 0 6px!important;display:block!important;}
+.sample-content-pro .key-components-head b{display:none!important;}
+.sample-content-pro .key-components-head span{display:block!important;font-size:10.5px!important;line-height:1.25!important;color:#64748b!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+.sample-right-panel .component-simple-grid,
+.sample-content-pro .component-simple-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px 10px!important;}
+.sample-content-pro .component-simple label{font-size:10.5px!important;margin:0 0 3px!important;line-height:1.15!important;color:#475569!important;}
+.sample-content-pro .component-simple-row{grid-template-columns:minmax(0,1fr) 30px!important;gap:5px!important;align-items:center!important;}
+.sample-content-pro .component-simple input{height:34px!important;min-height:34px!important;padding:6px 8px!important;font-size:12px!important;border-radius:8px!important;}
+.sample-content-pro .component-simple .bom-dot-btn{width:30px!important;min-width:30px!important;height:34px!important;border-radius:8px!important;padding:0!important;}
+.sample-content-pro .component-simple-meta:empty{display:none!important;}
+.sample-content-pro .component-simple-meta{font-size:10px!important;line-height:1.2!important;margin-top:2px!important;min-height:0!important;}
+.sample-right-panel .sample-left-stack .sample-section>.field textarea#m_change_reason,
+.sample-right-panel .sample-left-stack .sample-section>.field textarea{min-height:88px!important;height:88px!important;font-size:12px!important;line-height:1.45!important;padding:8px!important;border-radius:8px!important;resize:vertical!important;}
+.sample-right-panel .sample-left-stack .bom-hint{margin-top:7px!important;padding:5px 8px!important;font-size:10.5px!important;line-height:1.25!important;border-radius:7px!important;}
+@media(max-width:1380px){
+  .sample-right-panel .compact-fields.sample-basic-grid{grid-template-columns:repeat(8,minmax(0,1fr))!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1){grid-column:span 4!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2){grid-column:span 2!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:span 4!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4){grid-column:span 2!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+  .sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){grid-column:span 2!important;}
+  .sample-right-panel .sample-dimension-grid{grid-template-columns:repeat(8,minmax(0,1fr))!important;}
+  .sample-right-panel .sample-dimension-grid>.field:first-child{grid-column:span 4!important;}
+}
+@media(max-width:760px){
+  .sample-right-panel .compact-fields.sample-basic-grid,
+  .sample-right-panel .sample-dimension-grid,
+  .sample-right-panel .component-simple-grid,
+  .sample-content-pro .component-simple-grid{grid-template-columns:1fr!important;}
+  .sample-right-panel .compact-fields.sample-basic-grid>.field,
+  .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field,
+  .sample-right-panel .sample-dimension-grid>.field{grid-column:1/-1!important;}
+}
+/* ===== PLM V8.5.104 样品详情主编辑区精细压缩 END ===== */
 .sample-upload-grid{gap:8px!important;}
 .sample-upload-fold .grid2{grid-template-columns:1fr!important;gap:6px!important;}
 .sample-upload-fold input[type=file]{font-size:11px!important;}
@@ -10019,11 +10092,11 @@ function componentSimpleField(id,label,icon,prefix,m,placeholder){
   const nameId=isAcc?`m_accessories_name_${id}`:`m_${prefix}_name_${id}`;
   const metaId=isAcc?`m_accessories_mat_${id}`:`m_${prefix}_mat_${id}`;
   const suggestId=isAcc?`m_accessories_suggest_${id}`:`m_${prefix}_suggest_${id}`;
-  return `<div class="component-simple"><label>${esc(label)}</label><div class="component-simple-row"><input id="${nameId}" value="${esc(name)}" placeholder="${esc(placeholder)}" autocomplete="off" oninput="onBomMaterialInput(${id},'${prefix}','${label}')" onfocus="onBomMaterialFocus(${id},'${prefix}','${label}')" onkeydown="if(event.key==='Enter'){event.preventDefault();runBomSearch(${id},'${prefix}','${label}',true)}"><button type="button" class="bom-dot-btn" title="打开BOM共享物料库筛选" onclick="openBomMaterialModal(${id},'${prefix}','${label}')">...</button></div>${brandInput}${specInput}${materialInput}<div id="${metaId}" class="component-simple-meta ${mid?'ok':''}">${mid?'已联动BOM：'+esc(mid):'未联动BOM'}</div><div id="${suggestId}" class="bom-suggestions"></div></div>`;
+  return `<div class="component-simple"><label>${esc(label)}</label><div class="component-simple-row"><input id="${nameId}" value="${esc(name)}" placeholder="${esc(placeholder)}" autocomplete="off" oninput="onBomMaterialInput(${id},'${prefix}','${label}')" onfocus="onBomMaterialFocus(${id},'${prefix}','${label}')" onkeydown="if(event.key==='Enter'){event.preventDefault();runBomSearch(${id},'${prefix}','${label}',true)}"><button type="button" class="bom-dot-btn" title="打开BOM共享物料库筛选" onclick="openBomMaterialModal(${id},'${prefix}','${label}')">...</button></div>${brandInput}${specInput}${materialInput}<div id="${metaId}" class="component-simple-meta ${mid?'ok':''}">${mid?'已联动BOM：'+esc(mid):''}</div><div id="${suggestId}" class="bom-suggestions"></div></div>`;
 }
 function componentInlinePanel(m){
   const id=m.id;
-  return `<div class="key-components-inline"><div class="key-components-head"><b>关键元器件</b><span>输入可模糊查找，右侧 ... 可全功能筛选 BOM 物料库</span></div><div class="component-simple-grid">${componentSimpleField(id,'光源/芯片','芯','chip',m,'如 CREE XPG4 / COB')}${componentSimpleField(id,'光学','光','optical',m,'如透镜 / 反光杯')}${componentSimpleField(id,'电源','电','driver',m,'如驱动电源')}${componentSimpleField(id,'附加/配件','配','accessories',m,'如接头 / 防水圈 / 螺丝包')}</div></div>`;
+  return `<div class="key-components-inline"><div class="key-components-head"><span>输入可模糊查找，右侧 ... 可联动筛选 BOM 物料库。</span></div><div class="component-simple-grid">${componentSimpleField(id,'光源/芯片','芯','chip',m,'如 CREE XPG4 / COB')}${componentSimpleField(id,'光学','光','optical',m,'如透镜 / 反光杯')}${componentSimpleField(id,'电源','电','driver',m,'如驱动电源')}${componentSimpleField(id,'附加/配件','配','accessories',m,'如接头 / 防水圈 / 螺丝包')}</div></div>`;
 }
 
 function sampleDimensionPanel(m){
@@ -10250,11 +10323,11 @@ let bomFuzzyTimers={};
 function clearBomMaterialLink(id,prefix){
   if(prefix==='accessories'){
     const hid=$('m_accessories_material_ids_'+id); if(hid)hid.value='';
-    const meta=$('m_accessories_mat_'+id); if(meta){meta.textContent='未联动BOM';meta.classList.remove('ok')}
+    const meta=$('m_accessories_mat_'+id); if(meta){meta.textContent='';meta.classList.remove('ok')}
     return;
   }
   const hid=$('m_'+prefix+'_material_id_'+id); if(hid)hid.value=0;
-  const meta=$('m_'+prefix+'_mat_'+id); if(meta){meta.textContent='未联动BOM';meta.classList.remove('ok')}
+  const meta=$('m_'+prefix+'_mat_'+id); if(meta){meta.textContent='';meta.classList.remove('ok')}
 }
 function onBomMaterialInput(id,prefix,label){
   clearBomMaterialLink(id,prefix);
