@@ -10417,7 +10417,7 @@ function renderFlow(p){
     <div class="flow-workbar">
       <div class="flow-main-tools">
         <div class="flow-title-block"><b>开发导航图</b><span>${m.pct}% · ${m.done}/${m.total} 完成</span></div>
-        <select class="flow-model-select" onchange="flowModelId=Number(this.value);flowSelectedStepId=0;localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_step_id',0);renderDetail()">${ms.map(mo=>`<option value="${mo.id}" ${Number(mo.id)===Number(flowModelId)?'selected':''}>${esc(mo.name||mo.model||('样品'+mo.id))}</option>`).join('')}</select>
+        <select class="flow-model-select" onchange="flowModelId=Number(this.value);flowSelectedStepId=0;localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_step_id',0);renderDetail()">${ms.map(mo=>`<option value="${mo.id}" ${Number(mo.id)===Number(flowModelId)?'selected':''}>${esc(flowModelLabel(mo))}</option>`).join('')}</select>
         <select id="tpl_name" class="flow-template-select">${FLOW_TEMPLATES.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
         <button class="btn warn" onclick="applyTemplate(${p.id},${flowModelId},'replace')">套用并替换</button>
         <button class="btn" onclick="applyTemplate(${p.id},${flowModelId},'append')">追加模板</button>
@@ -10468,7 +10468,7 @@ function stepDrawer(s,model){
   const recent=logs.filter(l=>String(l.target_type)==='step'&&Number(l.target_id)===Number(s.id)).slice(0,12);
   const flowSt=basicFlowSteps(cur(),Number(s.model_id||flowModelId));
   const idx=flowSt.findIndex(x=>Number(x.id)===Number(s.id));
-  return `<aside class="flow-drawer"><div class="flow-drawer-head"><div><h3>${String(idx+1).padStart(2,'0')} ${esc(s.title||'步骤详情')}</h3><div class="flow-help">样品：${esc(model?(model.name||model.model||model.id):'-')} ｜ ${esc(s.status||'未开始')}</div></div><div class="flow-drawer-nav"><button class="btn small" ${idx<=0?'disabled':''} onclick="openAdjacentStep(-1)">上一个</button><button class="btn small" ${idx<0||idx>=flowSt.length-1?'disabled':''} onclick="openAdjacentStep(1)">下一个</button><button class="btn small" onclick="closeStepDrawer()">收起</button></div></div>
+  return `<aside class="flow-drawer"><div class="flow-drawer-head"><div><h3>${String(idx+1).padStart(2,'0')} ${esc(s.title||'步骤详情')}</h3><div class="flow-help">型号：${esc(model?flowModelLabel(model):'-')} ｜ ${esc(s.status||'未开始')}</div></div><div class="flow-drawer-nav"><button class="btn small" ${idx<=0?'disabled':''} onclick="openAdjacentStep(-1)">上一个</button><button class="btn small" ${idx<0||idx>=flowSt.length-1?'disabled':''} onclick="openAdjacentStep(1)">下一个</button><button class="btn small" onclick="closeStepDrawer()">收起</button></div></div>
     <div class="flow-drawer-section">
       <h4>基础信息</h4>
       <div class="flow-drawer-grid"><div class="field wide"><label>节点名称</label><input id="drawer_title_${s.id}" value="${esc(s.title||'')}"></div><div class="field"><label>状态</label><select id="drawer_status_${s.id}">${FLOW_STATUSES.map(x=>`<option ${x===s.status?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>负责人</label><input id="drawer_owner_${s.id}" value="${esc(s.owner||'')}"></div><div class="field"><label>前置依赖</label><select id="drawer_dependency_${s.id}">${['跟随前一步','无前置限制'].map(x=>`<option ${x===(s.dependency_mode||'跟随前一步')?'selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label>计划开始</label><input id="drawer_plan_start_${s.id}" type="date" value="${esc(dateOnly(s.plan_start))}"></div><div class="field"><label>计划完成</label><input id="drawer_plan_end_${s.id}" type="date" value="${esc(dateOnly(s.plan_end||s.plan_date))}"></div><div class="field readonly"><label>实际开始</label><input readonly value="${esc(dateOnly(s.actual_start)||'-')}"></div><div class="field readonly"><label>实际完成</label><input readonly value="${esc(dateOnly(s.done_at)||'-')}"></div></div>
@@ -11615,6 +11615,7 @@ async function saveAsTestRun(pid){
 async function deleteTest(id){if(!confirm('删除这条测试记录？'))return;const r=await api('delete_test',{id});toast(r.ok?'测试已删除':r.error);if(r.ok){testSelectedId=0;localStorage.setItem('plm_v85_test_id',0)}await load()}
 
 function modelLabel(m){return (m.name||m.model||m.sample_no||('样品'+m.id))}
+function flowModelLabel(m){return (m?.model||m?.naming_model_no||m?.sample_no||m?.name||('样品'+m.id))}
 function fileModelLabel(m){
   const code=m?.model||m?.naming_model_no||m?.sample_no||'';
   const name=m?.name||'';
