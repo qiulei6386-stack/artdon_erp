@@ -1497,6 +1497,12 @@ function dn_create_multi(array $in): array
             'priority' => dn_priority($in['priority'] ?? 'normal'), 'status' => $aid === dn_uid() ? 'in_progress' : 'pending_accept',
             'created_by' => dn_uid(), 'assigned_to' => $aid, 'task_date' => dn_date($in['task_date'] ?? null), 'due_at' => $dueAt,
             'is_read' => $aid === dn_uid() ? 1 : 0,
+            'linked_system' => dn_str($in['linked_system'] ?? '', 80) ?: null,
+            'linked_table' => dn_str($in['linked_table'] ?? '', 120) ?: null,
+            'linked_id' => dn_str($in['linked_id'] ?? '', 120) ?: null,
+            'linked_title' => dn_str($in['linked_title'] ?? '', 240) ?: null,
+            'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
+            'extra' => $in['extra'] ?? [],
         ]);
     }
     dn_refresh_group($gid);
