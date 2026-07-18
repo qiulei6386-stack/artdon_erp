@@ -281,6 +281,7 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   .mobileMain{min-width:0;display:grid;gap:3px}
   .mobileTaskTitle{min-width:0;font-size:12px;font-weight:1000;color:#111827;line-height:1.32;word-break:break-word;max-height:calc(1.32em * 2);overflow:hidden}
   .mobileTaskProject{font-size:11px;line-height:1.35;color:#475569;white-space:pre-wrap;word-break:break-word;max-height:none;overflow:visible}
+  .mobileTaskProject .ref-chip-list,.mobileTaskTitle .ref-chip-list{max-height:none!important;overflow:visible!important;flex-wrap:wrap!important}
   .mobileTaskCard.project-expanded .mobileTaskProject{max-height:none;overflow:visible}
   .mobileProjectToggle{display:none}
   .mobileTaskMeta{display:flex;gap:4px;flex-wrap:wrap;color:#6b7280;font-size:9px;font-weight:850;line-height:1.2}
