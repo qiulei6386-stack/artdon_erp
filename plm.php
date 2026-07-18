@@ -5926,6 +5926,83 @@ if (ob_get_length()) @ob_clean();
 #tab-summary .summary-grid.single{grid-template-columns:1fr!important}
 @media(max-width:900px){#tab-summary .summary-visibility-bar{align-items:flex-start;flex-direction:column}#tab-summary .summary-toggle-list{justify-content:flex-start}}
 
+/* ===== PLM V8.5.104 项目总览驾驶舱：参考图重排，只调整总览展示层 ===== */
+#tab-summary.summary-ref{display:grid;gap:12px;background:transparent}
+#tab-summary.summary-ref .summary-top-tools{display:flex;justify-content:flex-end;align-items:center;margin:0}
+#tab-summary.summary-ref .summary-settings{position:relative;z-index:60}
+#tab-summary.summary-ref .summary-settings summary{list-style:none;height:32px;border:1px solid #dbe4ef;background:#fff;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:1000;color:#1d4ed8;cursor:pointer;display:flex;align-items:center;gap:6px}
+#tab-summary.summary-ref .summary-settings summary::-webkit-details-marker{display:none}
+#tab-summary.summary-ref .summary-settings[open] summary{background:#eff6ff;border-color:#bfdbfe}
+#tab-summary.summary-ref .summary-settings-menu{position:absolute;right:0;top:38px;width:330px;border:1px solid #dbe4ef;background:#fff;border-radius:12px;padding:10px;box-shadow:0 18px 40px rgba(15,23,42,.15);display:grid;gap:10px}
+#tab-summary.summary-ref .summary-toggle-list{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+#tab-summary.summary-ref .summary-toggle-chip{height:30px;border:1px solid #dbe4ef;border-radius:8px;background:#fff;padding:0 8px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:900;color:#475569}
+#tab-summary.summary-ref .summary-toggle-chip.on{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+#tab-summary.summary-ref .summary-toggle-chip input{width:14px;height:14px;margin:0}
+.summary-ref-row{display:grid;gap:16px}
+.summary-ref-row.single{grid-template-columns:1fr!important}
+.summary-ref-top{grid-template-columns:minmax(0,2fr) minmax(300px,.9fr)}
+.summary-ref-two{grid-template-columns:1fr 1fr}
+.summary-ref-panel{border:1px solid #dbe4ef;background:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 8px 22px rgba(15,23,42,.035);min-width:0}
+.summary-ref-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.summary-ref-head h3{margin:0;font-size:15px;line-height:1.2;color:#0f172a;font-weight:1000}
+.summary-ref-head .actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.summary-ref-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.summary-ref-metric{height:68px;border:1px solid #dbe4ef;background:linear-gradient(180deg,#fff,#f8fbff);border-radius:8px;padding:9px 10px;display:flex;align-items:center;gap:9px;min-width:0}
+.summary-ref-metric .metric-ico{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#eff6ff;color:#2563eb;font-weight:1000;font-size:13px;flex:0 0 auto}
+.summary-ref-metric.good .metric-ico{background:#dcfce7;color:#16a34a}
+.summary-ref-metric.warn .metric-ico{background:#fff7ed;color:#f97316}
+.summary-ref-metric.danger .metric-ico{background:#fee2e2;color:#dc2626}
+.summary-ref-metric span{display:block;color:#475569;font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-ref-metric b{display:block;font-size:22px;line-height:1.05;color:#0f172a;font-weight:1000;white-space:nowrap}
+.summary-ref-progress{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px}
+.summary-ref-progress-line{display:grid;grid-template-columns:70px minmax(0,1fr) 42px;gap:8px;align-items:center;font-size:12px;font-weight:1000;color:#334155}
+.summary-ref-progress-line i{display:block;height:7px;border-radius:999px;background:#e8eef7;overflow:hidden}
+.summary-ref-progress-line em{display:block;height:100%;border-radius:999px;background:#2563eb}
+.summary-ref-progress-line.green em{background:#16a34a}
+.summary-ref-progress-note{margin-top:4px;color:#64748b;font-size:11px;font-weight:850}
+.summary-ref-status{margin-top:10px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-ref-advice{display:grid;gap:9px;margin-top:2px}
+.summary-advice-row{border:0;background:transparent;padding:0;display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;align-items:start;text-align:left;color:#1e293b;cursor:default}
+.summary-advice-row.clickable{cursor:pointer}
+.summary-advice-row i{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:1000;font-size:11px;background:#eff6ff;color:#2563eb}
+.summary-advice-row.good i{background:#dcfce7;color:#16a34a}.summary-advice-row.warn i{background:#fff7ed;color:#f97316}.summary-advice-row.danger i{background:#fee2e2;color:#dc2626}
+.summary-advice-row b{display:block;font-size:12px;line-height:1.3;color:#0f172a;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-advice-row span{display:block;margin-top:2px;font-size:11px;color:#64748b;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-sample-ref-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.summary-sample-ref-card{border:1px solid #dbe4ef;background:#fff;border-radius:10px;padding:11px 12px;min-height:190px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.summary-sample-ref-card.active{border-color:#93c5fd;box-shadow:inset 0 3px 0 #2563eb;background:#f8fbff}
+.summary-sample-ref-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.summary-sample-ref-head h4{margin:0;font-size:13px;line-height:1.25;color:#0f172a;font-weight:1000;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.summary-ver{height:18px;border:1px solid #bbf7d0;background:#dcfce7;color:#15803d;border-radius:5px;padding:1px 6px;font-size:10px;font-weight:1000;white-space:nowrap;flex:0 0 auto}
+.summary-sample-model{font-size:11px;color:#64748b;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-sample-progress{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font-size:11px;font-weight:1000;color:#334155}
+.summary-sample-progress i{height:6px;background:#e8eef7;border-radius:999px;overflow:hidden}.summary-sample-progress em{display:block;height:100%;background:#2563eb;border-radius:999px}
+.summary-sample-split{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7;padding:7px 0;min-height:62px}
+.summary-sample-split div+div{border-left:1px solid #edf2f7;padding-left:8px}
+.summary-sample-split b{display:block;color:#0f172a;font-size:11px;font-weight:1000;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-sample-split span{display:block;color:#475569;font-size:11px;font-weight:850;line-height:1.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-sample-actions{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin-top:auto}
+.summary-sample-actions button{border:0;background:transparent;color:#2563eb;font-size:10.5px;font-weight:1000;padding:3px 1px;cursor:pointer;white-space:nowrap}
+.summary-ref-stat-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-bottom:9px}
+.summary-ref-stat-strip span{border:1px solid #e5edf6;background:#f8fafc;border-radius:7px;padding:7px 8px;text-align:center;color:#475569;font-size:11px;font-weight:900}
+.summary-ref-stat-strip b{display:block;font-size:20px;color:#1d4ed8;line-height:1.05}.summary-ref-stat-strip .good b{color:#16a34a}.summary-ref-stat-strip .bad b{color:#dc2626}.summary-ref-stat-strip .warn b{color:#f59e0b}
+.summary-focus-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.summary-focus-grid h4{margin:0 0 6px;font-size:12px;color:#334155;font-weight:1000}
+.summary-ref-table-wrap{border:1px solid #e5edf6;border-radius:8px;overflow:hidden;background:#fff}
+.summary-ref-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.summary-ref-table th,.summary-ref-table td{border-bottom:1px solid #edf2f7;padding:7px 8px;text-align:left;font-size:12px;vertical-align:middle;color:#334155}
+.summary-ref-table th{background:#f8fafc;color:#475569;font-weight:1000}
+.summary-ref-table tr:last-child td{border-bottom:0}
+.summary-ref-table .idx{width:36px}.summary-ref-table .op{width:58px;text-align:center}.summary-ref-table .status-col{width:72px}.summary-ref-table .time-col{width:110px}.summary-ref-table .type-col{width:72px}
+.summary-ref-table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-file-type{display:inline-flex;align-items:center;gap:4px;font-weight:1000;color:#475569}
+.summary-file-type .file-ico{width:18px!important;height:18px!important;flex:0 0 18px!important;border-radius:4px!important;font-size:9px!important}
+.summary-file-type .file-ico img{width:100%;height:100%;object-fit:cover}
+.summary-empty.small{padding:12px;border-radius:8px;font-size:12px}
+@media(max-width:1320px){.summary-sample-ref-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-ref-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1040px){.summary-ref-top,.summary-ref-two{grid-template-columns:1fr}.summary-sample-ref-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-ref-progress{grid-template-columns:1fr}}
+@media(max-width:680px){#tab-summary.summary-ref .summary-settings-menu{right:auto;left:0;width:min(330px,92vw)}#tab-summary.summary-ref .summary-toggle-list{grid-template-columns:1fr}.summary-ref-metrics,.summary-ref-stat-strip,.summary-sample-ref-grid,.summary-focus-grid{grid-template-columns:1fr}.summary-sample-actions{grid-template-columns:repeat(3,1fr)}}
+
 
 
 /* ===== PLM V8.5.58 操作友好加强版：今日重点 / 风险提醒 / 常用操作前置 ===== */
@@ -12058,9 +12135,9 @@ function summaryAction(title,desc,btn,click,cls='primary',extra=''){return `<div
 function setSummarySample(id){summarySampleId=Number(id)||0;localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);renderSummary(cur())}
 const SUMMARY_SECTION_DEFS=[
   {key:'overview',label:'项目一眼看清'},
-  {key:'actions',label:'下一步建议'},
-  {key:'samples',label:'样品进度'},
-  {key:'flow',label:'进行中流程'},
+  {key:'actions',label:'下一步与风险提醒'},
+  {key:'samples',label:'样品推进'},
+  {key:'flow',label:'当前开发流程'},
   {key:'tests',label:'测试与问题'},
   {key:'files',label:'最近资料'},
   {key:'logs',label:'最近动态'}
@@ -12108,6 +12185,7 @@ function summaryJump(tabName,opts={}){
   if(opts.model_id){summarySampleId=Number(opts.model_id);flowModelId=Number(opts.model_id);testModelId=Number(opts.model_id);localStorage.setItem('plm_v85_summary_sample_id',summarySampleId);localStorage.setItem('plm_v85_flow_model',flowModelId);localStorage.setItem('plm_v85_test_model',testModelId);}
   if(opts.step_id){flowSelectedStepId=Number(opts.step_id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);}
   if(opts.test_id){testSelectedId=Number(opts.test_id);localStorage.setItem('plm_v85_test_id',testSelectedId);testCreateMode=false;localStorage.setItem('plm_v85_test_create_mode','0');}
+  if(opts.issue_id){issueSelectedId=Number(opts.issue_id);issueCreateMode=false;localStorage.setItem('plm_v85_issue_id',issueSelectedId);localStorage.setItem('plm_v85_issue_create','0');}
   if(opts.file_id){fileSelectedId=Number(opts.file_id);localStorage.setItem('plm_v85_file_id',fileSelectedId);}
   tab=tabName;localStorage.setItem('plm_v85_tab',tab);renderDetail();
 }
@@ -12217,42 +12295,64 @@ function renderSummary(p){
   const seriousIssues=openIssues.filter(seriousIssue);
   const failedTests=ts.filter(t=>testResultValue(t)==='不通过');
   const retestTests=ts.filter(t=>testStatusValue(t)==='待复测'||testRetestCount(t,ts)>0);
+  const runningTests=ts.filter(t=>testStatusValue(t)==='进行中');
+  const pendingTests=ts.filter(t=>['未开始','待测'].includes(testStatusValue(t)));
   const lateSteps=ss.filter(isStepLate);
   const abnormalSteps=ss.filter(s=>/异常|退回|重来|卡住/i.test(String(s.status||'')));
   const openSteps=ss.filter(isStepOpen).sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0)));
   const customerFiles=fs.filter(f=>Number(f.customer_visible)===1);
-  const recentFiles=[...fs].sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,8);
-  const recentLogs=logs.filter(l=>Number(l.project_id)===Number(p.id)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,10);
-  const best=summaryBestAction({ms,openIssues,seriousIssues,failedTests,retestTests,lateSteps,abnormalSteps,openSteps,fs,ts,ss});
-  const risks=[];
-  seriousIssues.slice(0,1).forEach(i=>risks.push(summaryItem('严重问题：'+(i.title||'未命名问题'),`${i.severity||'高'} ｜ ${i.status||'待处理'} ｜ ${i.owner||'-'}`,`summaryJump('issues',{model_id:${Number(i.model_id||0)}})`,'danger')));
-  failedTests.slice(0,1).forEach(t=>risks.push(summaryItem('不通过测试：'+(t.title||t.test_type||'测试'),`${t.result||'不通过'} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,'danger')));
-  retestTests.slice(0,1).forEach(t=>risks.push(summaryItem('待复测：'+(t.title||t.test_type||'测试'),`${t.status||'待复测'} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,'warn')));
-  lateSteps.slice(0,1).forEach(st=>risks.push(summaryItem('延期流程：'+(st.title||'步骤'),`${dateOnly(st.plan_end||st.plan_date)||'-'} ｜ ${st.owner||st.owner_name||'未指定'}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,'warn')));
-  abnormalSteps.slice(0,1).forEach(st=>risks.push(summaryItem('异常/退回：'+(st.title||'步骤'),`${st.status||'异常'} ｜ ${st.owner||st.owner_name||'未指定'}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,'warn')));
-  const statusLine=[p.status||'开发中',openSteps[0]?('当前进行到 '+(openSteps[0].title||'流程节点')):(ss.length?'开发流程已完成':'暂无开发流程'),failedTests.length?failedTests.length+'项测试不通过':'',retestTests.length?retestTests.length+'项待复测':'',openIssues.length?openIssues.length+'个未关闭问题':'',customerFiles.length?('客户资料 '+customerFiles.length+'份'):'客户资料待补充'].filter(Boolean).slice(0,4).join(' · ');
-  const overview=isSummaryVisible('overview')?`<section class="summary-cockpit-card summary-overview"><div class="summary-card-head"><h3>项目一眼看清</h3><div class="hint">${esc(p.project_no||'-')} ｜ ${esc(p.customer||'未填客户')} ｜ 负责人：${esc(p.engineer||'-')} ｜ ${esc(p.due_date?('计划 '+dateOnly(p.due_date)):'未填计划日期')}</div></div><div class="summary-project-tags"><span>${esc(p.status||'开发中')}</span><span>${esc(p.priority||'普通')}</span><span>${esc(p.source||'来源未填')}</span></div><div class="summary-metrics"><span><b>${ms.length}</b>样品</span><span><b>${flow.pct}%</b>工序</span><span><b>${tstat.passed}/${tstat.total}</b>测试通过</span><span class="${openIssues.length?'bad':''}"><b>${openIssues.length}</b>未关闭问题</span><span><b>${customerFiles.length}</b>客户资料</span><span><b>${ds.done}/${ds.total}</b>派工</span></div><div class="summary-progress-pair"><div><div><b>开发流程</b><span>${flow.done}/${flow.total}，${flow.pct}%</span></div><i><em style="width:${flow.pct}%"></em></i></div><div><div><b>测试通过</b><span>${tstat.passed}/${tstat.total}${tstat.retest?`，待复测 ${tstat.retest}`:''}</span></div><i class="green"><em style="width:${tstat.pct}%"></em></i></div></div><div class="summary-status-line">${esc(statusLine||'当前项目暂无足够数据。')}</div></section>`:'';
-  const actions=isSummaryVisible('actions')?`<section class="summary-cockpit-card summary-action-panel"><div class="summary-card-head"><h3>下一步与风险提醒</h3><button class="btn small" onclick="renderSummary(cur())">刷新</button></div><div class="next-actions">${best}</div><div class="summary-risk-list">${risks.slice(0,3).join('')||'<div class="summary-ok-line">当前没有阻塞项目推进的异常。</div>'}</div></section>`:'';
+  const recentFiles=[...fs].sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,6);
+  const recentLogs=logs.filter(l=>Number(l.project_id)===Number(p.id)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,8);
+  const currentSteps=ss.filter(s=>String(s.status||'')==='进行中').sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0)));
+  const primaryStep=currentSteps[0]||openSteps[0]||null;
+  const primaryModel=primaryStep?ms.find(m=>Number(m.id)===Number(primaryStep.model_id)):null;
+  const nextStep=primaryStep?(
+    ss.filter(s=>Number(s.model_id)===Number(primaryStep.model_id)).sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0))).slice(
+      ss.filter(s=>Number(s.model_id)===Number(primaryStep.model_id)).sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0))).findIndex(s=>Number(s.id)===Number(primaryStep.id))+1
+    ).find(isStepOpen)
+  ):openSteps[1]||null;
+  const metric=(ico,name,val,cls='')=>`<div class="summary-ref-metric ${cls}"><div class="metric-ico">${esc(ico)}</div><div><span>${esc(name)}</span><b>${esc(val)}</b></div></div>`;
+  const progressLine=(name,pct,desc,cls='')=>`<div><div class="summary-ref-progress-line ${cls}"><b>${esc(name)}</b><i><em style="width:${Math.max(0,Math.min(100,Number(pct||0)))}%"></em></i><span>${Number(pct||0)}%</span></div><div class="summary-ref-progress-note">${esc(desc)}</div></div>`;
+  const statusLine=`当前推进：${primaryStep?esc(primaryStep.title||'流程节点'):(flow.total?'开发流程已完成':'暂无流程')} · 客户资料 ${customerFiles.length} 份`;
+  const overview=isSummaryVisible('overview')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>项目一眼看清</h3></div><div class="summary-ref-metrics">${metric('样','样品',ms.length)}${metric('流','流程',`${flow.done}/${flow.total}`)}${metric('测','测试',`${tstat.passed}/${tstat.total}`)}${metric('!','未关闭问题',openIssues.length,openIssues.length?'danger':'')}${metric('资','客户资料',customerFiles.length)}${metric('派','派工',`${ds.done}/${ds.total}`,ds.total&&ds.done>=ds.total?'good':'')}</div><div class="summary-ref-progress">${progressLine('开发流程',flow.pct,`${flow.done}/${flow.total} 步骤已完成`)}${progressLine('测试进度',tstat.pct,`${tstat.passed}/${tstat.total} 测试通过${tstat.failed?`，不通过 ${tstat.failed}`:''}${tstat.retest?`，待复测 ${tstat.retest}`:''}`,'green')}</div><div class="summary-ref-status">${statusLine}</div></section>`:'';
+  const adviceRow=(ico,title,desc,click='',cls='')=>click?`<button class="summary-advice-row clickable ${cls}" onclick="${click}"><i>${esc(ico)}</i><div><b>${esc(title)}</b><span>${esc(desc)}</span></div></button>`:`<div class="summary-advice-row ${cls}"><i>${esc(ico)}</i><div><b>${esc(title)}</b><span>${esc(desc)}</span></div></div>`;
+  const issueTarget=seriousIssues[0]||openIssues[0]||null;
+  const testTarget=failedTests[0]||retestTests[0]||runningTests[0]||pendingTests[0]||null;
+  const advice=[
+    primaryStep?adviceRow('◎','当前步骤：'+(primaryStep.title||'流程节点'),`${primaryModel?modelLabel(primaryModel):'项目公共'} ｜ ${primaryStep.owner||primaryStep.owner_name||'未指定'}`,`summaryJump('flow',{model_id:${Number(primaryStep.model_id||0)},step_id:${Number(primaryStep.id)}})`,lateSteps.some(s=>Number(s.id)===Number(primaryStep.id))?'warn':''):adviceRow('◎','当前步骤',flow.total?'开发流程已完成':'暂无流程','',flow.total?'good':''),
+    nextStep?adviceRow('→','下一步：'+(nextStep.title||'流程节点'),`${(ms.find(m=>Number(m.id)===Number(nextStep.model_id))?modelLabel(ms.find(m=>Number(m.id)===Number(nextStep.model_id))):'项目公共')} ｜ ${nextStep.status||'待开始'}`,`summaryJump('flow',{model_id:${Number(nextStep.model_id||0)},step_id:${Number(nextStep.id)}})`):adviceRow('→','下一步',flow.total?'暂无未完成步骤':'等待建立流程','',flow.total?'good':''),
+    testTarget?adviceRow('测',failedTests.length?`${failedTests.length} 个测试不通过`:retestTests.length?`${retestTests.length} 个测试待复测`:pendingTests.length?`${pendingTests.length} 个测试未开始`:'测试进行中',`${testTarget.title||testTarget.test_type||'测试'} ｜ ${testStatusValue(testTarget)} ｜ ${testResultValue(testTarget)}`,`summaryJump('tests',{model_id:${Number(testTarget.model_id||0)},test_id:${Number(testTarget.id)}})`,failedTests.length?'danger':(retestTests.length?'warn':'')):adviceRow('测','测试提醒','暂无测试风险','',tstat.total?'good':''),
+    issueTarget?adviceRow('问',`${openIssues.length} 个未关闭问题`,`${issueTarget.title||'问题'} ｜ ${issueTarget.severity||'中'} ｜ ${issueTarget.status||'待处理'}`,`summaryJump('issues',{model_id:${Number(issueTarget.model_id||0)},issue_id:${Number(issueTarget.id)}})`,seriousIssue(issueTarget)?'danger':'warn'):adviceRow('问','暂无未关闭问题','问题闭环当前正常','', 'good'),
+    customerFiles.length?adviceRow('资',`客户资料已上传 ${customerFiles.length} 份`,'可进入文件中心或生成客户资料包',`summaryJump('files')`,'good'):adviceRow('资','客户资料待补充','暂无可发客户资料',`summaryJump('files')`,'warn')
+  ].slice(0,5).join('');
+  const actions=isSummaryVisible('actions')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>下一步建议 / 风险提醒</h3></div><div class="summary-ref-advice">${advice}</div></section>`:'';
   const sampleCards=ms.map(m=>{
     const mSteps=ss.filter(s=>Number(s.model_id)===Number(m.id)), mf=flowStatsForSteps(mSteps), curNext=currentAndNextStep(mSteps);
     const mTests=ts.filter(t=>Number(t.model_id)===Number(m.id)), mt=summaryTestStats(mTests);
     const mIssues=openIssues.filter(i=>Number(i.model_id)===Number(m.id));
     const mFiles=fs.filter(f=>Number(f.model_id)===Number(m.id));
     const comp=componentReady(m), bom=projectHasBomForModel(m);
-    return `<article class="summary-sample-card ${Number(m.id)===Number(summarySampleId)?'active':''}"><div class="summary-sample-head"><div><h4>${esc(modelLabel(m))}</h4><span>${esc(m.sample_version||'V1')} ｜ ${esc(m.status||'开发中')}</span></div><button class="btn small" onclick="setSummarySample(${Number(m.id)})">当前</button></div><div class="hint">${esc(m.model||m.naming_model_no||'-')} ｜ ${esc(m.product_category||m.naming_category||'-')}</div><div class="summary-sample-kpis"><span>流程 ${mf.done}/${mf.total}</span><span class="${mt.failed?'bad':''}">测试 过${mt.passed} / 不${mt.failed} / 复${mt.retest}</span><span class="${mIssues.length?'bad':''}">问题 ${mIssues.length}</span><span>文件 ${mFiles.length}</span></div><div class="summary-mini-bar"><i style="width:${mf.pct}%"></i></div><div class="summary-sample-status"><b>BOM/元器件</b><span>${bom?'BOM已生成':'BOM未生成'} · 元器件 ${comp.done}/${comp.total}</span></div><div class="summary-sample-status"><b>当前</b><span>${esc(curNext.current?curNext.current.title:'暂无进行中')}</span></div><div class="summary-sample-status"><b>下一步</b><span>${esc(curNext.next?curNext.next.title:(mf.total?'流程已完成':'暂无流程'))}</span></div><div class="summary-sample-actions"><button onclick="summaryJump('models',{model_id:${Number(m.id)}})">样品详情</button><button onclick="summaryJump('flow',{model_id:${Number(m.id)},step_id:${Number(curNext.current?.id||0)}})">开发流程</button><button onclick="summaryJump('tests',{model_id:${Number(m.id)}})">测试</button><button onclick="summaryJump('issues',{model_id:${Number(m.id)}})">问题</button><button onclick="summaryJump('files',{model_id:${Number(m.id)}})">文件</button><button onclick="createBomFromModel(${Number(m.id)})">BOM</button></div></article>`;
+    const testText=mt.total?`通过 ${mt.passed}${mt.failed?` · 不通过 ${mt.failed}`:''}${mt.retest?` · 待复测 ${mt.retest}`:''}${mt.pending?` · 未开始 ${mt.pending}`:''}`:'0/0 未开始';
+    const bomText=bom?'BOM 已生成':`BOM 未完成 · 元器件 ${comp.done}/${comp.total}`;
+    return `<article class="summary-sample-ref-card ${Number(m.id)===Number(summarySampleId)?'active':''}"><div class="summary-sample-ref-head"><h4 title="${esc(modelLabel(m))}">${esc(modelLabel(m))}</h4><span class="summary-ver">${esc(m.sample_version||'V1.0')}</span></div><div class="summary-sample-model">型号：${esc(m.model||m.naming_model_no||m.sample_no||'-')}</div><div class="summary-sample-progress"><span>${esc(m.status||'开发中')}</span><i><em style="width:${mf.pct}%"></em></i><span>${mf.pct}%</span></div><div class="summary-sample-split"><div><b>当前步骤：${esc(curNext.current?curNext.current.title:'暂无进行中')}</b><b>下一步：${esc(curNext.next?curNext.next.title:(mf.total?'流程已完成':'暂无流程'))}</b></div><div><span>测试：${esc(testText)}</span><span>问题：${mIssues.length}</span><span>文件：${mFiles.length}</span><span>BOM：${esc(bomText)}</span></div></div><div class="summary-sample-actions"><button onclick="summaryJump('models',{model_id:${Number(m.id)}})">样品详情</button><button onclick="summaryJump('flow',{model_id:${Number(m.id)},step_id:${Number(curNext.current?.id||curNext.next?.id||0)}})">开发流程</button><button onclick="summaryJump('tests',{model_id:${Number(m.id)}})">测试</button><button onclick="summaryJump('issues',{model_id:${Number(m.id)}})">问题</button><button onclick="summaryJump('files',{model_id:${Number(m.id)}})">文件</button><button onclick="createBomFromModel(${Number(m.id)})">BOM</button></div></article>`;
   }).join('')||'<div class="summary-empty">当前项目暂未建立样品。</div>';
-  const samples=isSummaryVisible('samples')?`<section class="summary-cockpit-card summary-wide"><div class="summary-card-head"><h3>样品进度</h3><button class="btn small" onclick="summaryJump('models')">进入样品管理</button></div><div class="summary-sample-grid">${sampleCards}</div></section>`:'';
-  const flowItems=[...lateSteps,...abnormalSteps,...ss.filter(s=>String(s.status||'')==='进行中'),...openSteps].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,8).map(st=>{const m=ms.find(x=>Number(x.id)===Number(st.model_id));const d=dispatchSummary(st.id);return summaryItem(st.title||'流程节点',`${m?modelLabel(m):'公共'} ｜ ${st.status||'未开始'} ｜ ${st.owner||st.owner_name||'未指定'} ｜ ${dateOnly(st.plan_end||st.plan_date)||'-'}${d.total?' ｜ 派工 '+d.done+'/'+d.total:''}`,`summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})`,isStepLate(st)?'warn':'');}).join('')||'<div class="summary-empty small">暂无待推进流程。</div>';
-  const flowBlock=isSummaryVisible('flow')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>当前开发流程</h3><button class="btn small" onclick="summaryJump('flow')">开发导航图</button></div><div class="summary-list">${flowItems}</div></section>`:'';
-  const focusTests=[...failedTests,...retestTests,...ts.filter(t=>testStatusValue(t)==='进行中'),...ts.filter(t=>['未开始','待测'].includes(testStatusValue(t)))].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,5);
-  const testRows=focusTests.map(t=>{const m=ms.find(x=>Number(x.id)===Number(t.model_id));return summaryItem(t.title||t.test_type||'测试',`${m?modelLabel(m):'项目公共'} ｜ ${testStatusValue(t)} ｜ ${testResultValue(t)} ｜ ${dateOnly(t.test_date)||'-'}`,`summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})`,testResultValue(t)==='不通过'?'danger':(testStatusValue(t)==='待复测'?'warn':''));}).join('')||'<div class="summary-empty small">暂无需关注测试。</div>';
-  const issueRows=openIssues.slice().sort((a,b)=>(seriousIssue(b)-seriousIssue(a))||String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,5).map(i=>summaryItem(i.title||'问题',`${i.severity||'中'} ｜ ${i.status||'待处理'} ｜ ${i.owner||'-'}`,`summaryJump('issues',{model_id:${Number(i.model_id||0)}})`,seriousIssue(i)?'danger':'warn')).join('')||'<div class="summary-empty small">暂无未关闭问题。</div>';
-  const testsBlock=isSummaryVisible('tests')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>测试与问题</h3><button class="btn small" onclick="summaryJump('tests')">查看全部测试</button></div><div class="summary-test-strip"><span>总数 <b>${tstat.total}</b></span><span class="good">通过 <b>${tstat.passed}</b></span><span class="bad">不通过 <b>${tstat.failed}</b></span><span class="warn">待复测 <b>${tstat.retest}</b></span><span>未开始 <b>${tstat.pending}</b></span></div><div class="summary-two-tabs"><div><h4>测试关注</h4>${testRows}</div><div><h4>问题关注</h4>${issueRows}</div></div></section>`:'';
-  const fileRows=recentFiles.map(f=>{const m=ms.find(x=>Number(x.id)===Number(f.model_id));return `<div class="summary-file-row"><div>${fileIcon(f)}</div><div><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b><span>${esc(f.category||'文件')} ｜ ${esc(m?modelLabel(m):'项目公共')} ｜ ${esc(fileSourceLabel(fileSourceKey(f)))} ｜ ${Number(f.customer_visible)===1?'可发客户':'内部资料'}</span></div><button class="btn small" onclick="summaryJump('files',{file_id:${Number(f.id)}})">预览</button></div>`;}).join('')||'<div class="summary-empty small">暂无最近资料。</div>';
-  const filesBlock=isSummaryVisible('files')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>最近资料</h3><div class="actions"><button class="btn small" onclick="summaryJump('files')">文件中心</button><button class="btn small good" onclick="openCustomerPackageModal()">客户资料包</button></div></div><div class="summary-file-list">${fileRows}</div></section>`:'';
-  const logRows=recentLogs.map(l=>summaryItem(l.action||l.target_type||'日志',`${l.created_at||'-'} ｜ ${l.actor_name||l.user_name||'-'} ｜ ${l.note||''}`,'','')).join('')||'<div class="summary-empty small">暂无最近动态。</div>';
-  const logsBlock=isSummaryVisible('logs')?`<section class="summary-cockpit-card"><div class="summary-card-head"><h3>最近动态</h3><button class="btn small" onclick="openRecycleBin()">查看全部日志</button></div><div class="summary-list">${logRows}</div></section>`:'';
-  $('tabbody').innerHTML=`<div id="tab-summary" class="summary-cockpit"><div class="summary-top-tools">${summaryVisibilityBar()}</div><div class="summary-row summary-row-top">${overview}${actions}</div>${samples}<div class="summary-row summary-row-mid">${flowBlock}${testsBlock}</div><div class="summary-row summary-row-bottom">${filesBlock}${logsBlock}</div></div>`;
+  const samples=isSummaryVisible('samples')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>样品推进</h3><button class="btn small" onclick="summaryJump('models')">进入样品管理</button></div><div class="summary-sample-ref-grid">${sampleCards}</div></section>`:'';
+  const focusSteps=[...currentSteps,...lateSteps,...abnormalSteps,...openSteps].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,6);
+  const flowRows=focusSteps.length?focusSteps.map((st,i)=>{const m=ms.find(x=>Number(x.id)===Number(st.model_id));return `<tr><td class="idx">${i+1}</td><td title="${esc(st.title||'流程节点')}">${esc(st.title||'流程节点')}</td><td title="${esc(m?modelLabel(m):'项目公共')}">${esc(m?modelLabel(m):'项目公共')}</td><td class="status-col">${esc(st.status||'待开始')}</td><td class="op"><button class="btn small" onclick="summaryJump('flow',{model_id:${Number(st.model_id||0)},step_id:${Number(st.id)}})">查看</button></td></tr>`}).join(''):`<tr><td colspan="5"><div class="summary-empty small">暂无待推进流程。</div></td></tr>`;
+  const flowBlock=isSummaryVisible('flow')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>当前开发流程</h3><button class="btn small" onclick="summaryJump('flow')">开发导航图</button></div><div class="summary-ref-table-wrap"><table class="summary-ref-table"><thead><tr><th class="idx">序号</th><th>步骤</th><th>样品</th><th class="status-col">状态</th><th class="op">操作</th></tr></thead><tbody>${flowRows}</tbody></table></div></section>`:'';
+  const focusTests=[...failedTests,...retestTests,...runningTests,...pendingTests].filter((v,i,a)=>a.findIndex(x=>Number(x.id)===Number(v.id))===i).slice(0,5);
+  const testRows=focusTests.length?focusTests.map(t=>`<tr><td title="${esc(t.title||t.test_type||'测试')}">${esc(t.title||t.test_type||'测试')}</td><td class="status-col">${esc(testStatusValue(t))}</td><td class="op"><button class="btn small" onclick="summaryJump('tests',{model_id:${Number(t.model_id||0)},test_id:${Number(t.id)}})">查看</button></td></tr>`).join(''):'<tr><td colspan="3"><div class="summary-empty small">暂无需关注测试。</div></td></tr>';
+  const issueFocus=openIssues.slice().sort((a,b)=>(seriousIssue(b)-seriousIssue(a))||String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))).slice(0,5);
+  const issueRows=issueFocus.length?issueFocus.map(i=>`<tr><td title="${esc(i.title||'问题')}">${esc(i.title||'问题')}</td><td class="status-col">${esc(i.status||'待处理')}</td><td class="op"><button class="btn small" onclick="summaryJump('issues',{model_id:${Number(i.model_id||0)},issue_id:${Number(i.id)}})">查看</button></td></tr>`).join(''):'<tr><td colspan="3"><div class="summary-empty small">暂无未关闭问题。</div></td></tr>';
+  const testsBlock=isSummaryVisible('tests')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>测试与问题</h3><button class="btn small" onclick="summaryJump('tests')">查看全部测试</button></div><div class="summary-ref-stat-strip"><span>总数 <b>${tstat.total}</b></span><span class="good">通过 <b>${tstat.passed}</b></span><span class="bad">不通过 <b>${tstat.failed}</b></span><span class="warn">待复测 <b>${tstat.retest}</b></span><span>未开始 <b>${tstat.pending}</b></span></div><div class="summary-focus-grid"><div><h4>测试关注</h4><div class="summary-ref-table-wrap"><table class="summary-ref-table"><tbody>${testRows}</tbody></table></div></div><div><h4>问题关注</h4><div class="summary-ref-table-wrap"><table class="summary-ref-table"><tbody>${issueRows}</tbody></table></div></div></div></section>`:'';
+  const fileRows=recentFiles.length?recentFiles.map(f=>{const type=(f.category||String(f.original_name||f.file_name||'').split('.').pop()||'文件');return `<tr><td title="${esc(f.title||f.original_name||f.file_name||'文件')}">${esc(f.title||f.original_name||f.file_name||'文件')}</td><td class="type-col"><span class="summary-file-type">${fileIcon(f)}${esc(type)}</span></td><td title="${esc(fileSourceLabel(fileSourceKey(f)))}">${esc(fileSourceLabel(fileSourceKey(f)))}</td><td class="time-col">${esc((f.updated_at||f.created_at||'').slice(0,16)||'-')}</td><td class="op"><button class="btn small" onclick="summaryJump('files',{file_id:${Number(f.id)}})">预览</button></td></tr>`}).join(''):`<tr><td colspan="5"><div class="summary-empty small">暂无最近资料。</div></td></tr>`;
+  const filesBlock=isSummaryVisible('files')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>最近资料</h3><div class="actions"><button class="btn small" onclick="summaryJump('files')">文件中心</button><button class="btn small good" onclick="openCustomerPackageModal()">客户资料包</button></div></div><div class="summary-ref-table-wrap"><table class="summary-ref-table"><thead><tr><th>文件名</th><th class="type-col">类型</th><th>来源</th><th class="time-col">更新时间</th><th class="op">操作</th></tr></thead><tbody>${fileRows}</tbody></table></div></section>`:'';
+  const logRows=recentLogs.length?recentLogs.map(l=>`<tr><td class="time-col">${esc((l.created_at||'').slice(5,16)||'-')}</td><td class="status-col">${esc(l.actor_name||l.user_name||l.operator_name||'-')}</td><td class="type-col">${esc(l.module||l.target_type||'-')}</td><td title="${esc(l.note||l.action||'')}">${esc(l.note||l.action||'-')}</td></tr>`).join(''):`<tr><td colspan="4"><div class="summary-empty small">暂无最近动态。</div></td></tr>`;
+  const logsBlock=isSummaryVisible('logs')?`<section class="summary-ref-panel"><div class="summary-ref-head"><h3>最近动态</h3><button class="btn small" onclick="openPlmLogModal()">查看全部日志</button></div><div class="summary-ref-table-wrap"><table class="summary-ref-table"><thead><tr><th class="time-col">时间</th><th class="status-col">操作人</th><th class="type-col">模块</th><th>动态内容</th></tr></thead><tbody>${logRows}</tbody></table></div></section>`:'';
+  const topRow=[overview,actions].filter(Boolean);
+  const midRow=[flowBlock,testsBlock].filter(Boolean);
+  const bottomRow=[filesBlock,logsBlock].filter(Boolean);
+  $('tabbody').innerHTML=`<div id="tab-summary" class="summary-ref"><div class="summary-top-tools">${summaryVisibilityBar()}</div>${topRow.length?`<div class="summary-ref-row summary-ref-top ${topRow.length===1?'single':''}">${topRow.join('')}</div>`:''}${samples}${midRow.length?`<div class="summary-ref-row summary-ref-two ${midRow.length===1?'single':''}">${midRow.join('')}</div>`:''}${bottomRow.length?`<div class="summary-ref-row summary-ref-two ${bottomRow.length===1?'single':''}">${bottomRow.join('')}</div>`:''}</div>`;
 }
 async function openDispatch(){
   if(!guardPerm('create_dispatch','生成派工'))return;
