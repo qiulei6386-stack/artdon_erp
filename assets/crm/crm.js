@@ -21586,7 +21586,7 @@
         '<section class="visit-work-section"><h3>样品信息</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>相关型号</span><input name="product_model" value="' + esc(row.product_model || '') + '"></label><label class="visit-pill-field"><span>客户型号</span><input name="customer_model" value="' + esc(row.customer_model || '') + '"></label><label class="visit-pill-field"><span>产品类别</span><input name="product_category" value="' + esc(row.product_category || '') + '"></label><label class="visit-pill-field"><span>数量</span><input type="number" step="0.01" name="quantity" value="' + esc(row.quantity || 1) + '"></label><label class="visit-pill-field"><span>单位</span><input name="unit" value="' + esc(row.unit || 'pcs') + '"></label><label class="visit-pill-field"><span>颜色</span><input name="color" value="' + esc(row.color || '') + '"></label><label class="visit-pill-field"><span>功率</span><input name="power" value="' + esc(row.power || '') + '"></label><label class="visit-pill-field"><span>色温</span><input name="cct" value="' + esc(row.cct || '') + '"></label><label class="visit-pill-field"><span>显指</span><input name="cri" value="' + esc(row.cri || '') + '"></label><label class="visit-pill-field"><span>角度</span><input name="beam_angle" value="' + esc(row.beam_angle || '') + '"></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="is_custom" ' + (Number(row.is_custom) ? 'checked' : '') + '><span>定制样品</span></label></div></section>' +
         '<section class="visit-work-section"><h3>寄送信息</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>快递公司</span><select name="courier_company"><option value="">未选择</option>' + this.courierOptions(row.courier_company || '') + '</select></label><label class="visit-pill-field"><span>快递单号</span><input name="tracking_no" value="' + esc(row.tracking_no || '') + '"></label><label class="visit-pill-field"><span>状态</span><select name="status">' + this.statusOptions(row.status || 'preparing') + '</select></label><label class="visit-date-card"><span>寄出日期</span><input type="date" name="shipping_date" value="' + esc(row.shipping_date || '') + '"></label><label class="visit-date-card"><span>预计到达</span><input type="date" name="expected_arrival_date" value="' + esc(row.expected_arrival_date || '') + '"></label><label class="visit-pill-field"><span>运费</span><input type="number" step="0.01" name="freight_cost" value="' + esc(row.freight_cost || 0) + '"></label><label class="visit-pill-field"><span>币种</span><input name="currency" value="' + esc(row.currency || 'USD') + '"></label><label class="visit-pill-field"><span>承担方</span><input name="freight_payer" value="' + esc(row.freight_payer || '') + '"></label><label class="visit-pill-field"><span>负责人</span><select name="owner_user_id">' + this.userOptions(row.owner_user_id) + '</select></label><label class="visit-date-card"><span>后续跟进</span><input type="datetime-local" name="followup_time" value="' + esc(String(row.followup_time || '').replace(' ', 'T').slice(0,16)) + '"></label></div></section>' +
         '<section class="visit-work-section visit-section-checks"><h3>后续联动</h3><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="remind_customer_sign" ' + (Number(row.remind_customer_sign) ? 'checked' : '') + '><span>提醒客户签收</span></label><label class="tag-chip"><input type="checkbox" name="remind_owner_follow" ' + (row.remind_owner_follow === undefined || Number(row.remind_owner_follow) ? 'checked' : '') + '><span>提醒业务跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_followup_task" ' + (Number(row.create_followup_task) ? 'checked' : '') + '><span>创建跟进任务</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch_task" ' + (Number(row.create_dispatch_task) ? 'checked' : '') + '><span>创建派工</span></label></div><p class="entry-muted wide">派工接口未接入时只写入日志和客户时间轴，不会假装创建成功。</p></section>' +
-        '<section class="visit-work-section"><h3>图片 / 附件</h3><div class="sample-file-grid visit-upload-layout"><label><strong>图片</strong><input type="file" multiple accept="image/jpeg,image/png,image/webp" data-sample-image-input></label><label><strong>附件</strong><input type="file" multiple data-sample-attachment-input></label></div><div data-sample-files>' + this.sampleFilesHtml(row.files || []) + '</div></section>' +
+        '<section class="visit-work-section"><h3>图片 / 附件</h3><div class="sample-file-grid visit-upload-layout"><label><strong>图片</strong><span>jpg / png / webp / gif · 单张 <= 500KB</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" data-sample-image-input></label><label><strong>附件</strong><span>PDF / Word / Excel / ZIP / 图片等</span><input type="file" multiple data-sample-attachment-input></label></div><div class="visit-thumb-grid" data-sample-local-images></div><div class="visit-file-list" data-sample-local-attachments></div><div data-sample-files>' + this.sampleFilesHtml(row.files || []) + '</div></section>' +
         '<section class="visit-work-section"><h3>备注</h3><div class="visit-note-grid"><label class="wide">样品备注<textarea name="remark" rows="3">' + esc(row.remark || '') + '</textarea></label></div></section><p class="entry-muted" data-sample-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-save>保存样品寄送</button></div>';
       CustomerModule.openBusinessDialog(row.id ? '编辑样品寄送' : '新建样品寄送', html, '状态为已寄出、运输中或已签收时，快递单号必填。', function (dialog) {
@@ -21601,6 +21601,8 @@
       dialog.querySelector('[data-sample-customer-search-btn]')?.addEventListener('click', function () { self.searchCustomers(dialog); });
       dialog.querySelector('[data-sample-customer-search]')?.addEventListener('input', debounce(function () { self.searchCustomers(dialog); }, 260));
       dialog.querySelector('[data-sample-contact-select]')?.addEventListener('change', function () { self.applySampleContact(dialog, false); });
+      dialog.querySelector('[data-sample-image-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-sample-local-images]'), 'image'); });
+      dialog.querySelector('[data-sample-attachment-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-sample-local-attachments]'), 'attachment'); });
       dialog.querySelector('[data-sample-customer-results]')?.addEventListener('click', function (event) {
         var btn = event.target.closest('[data-sample-pick-customer]');
         if (!btn) return;
@@ -21610,7 +21612,7 @@
         var del = event.target.closest('[data-sample-delete-file]');
         if (del) return self.deleteSampleFile(del.getAttribute('data-sample-delete-file'), dialog);
         var preview = event.target.closest('[data-sample-preview-file]');
-        if (preview) return self.previewSampleFile(preview.getAttribute('data-sample-preview-file'));
+        if (preview) return self.previewSampleFile(preview.getAttribute('data-sample-preview-file'), preview);
       });
       var customerId = dialog.querySelector('[data-sample-form] [name="customer_id"]')?.value || '';
       var contactId = dialog.querySelector('[data-sample-contact-select]')?.value || '';
@@ -21747,13 +21749,16 @@
     },
     saveSample: function (dialog) {
       var form = dialog.querySelector('[data-sample-form]'), data = this.collect(form);
+      var button = dialog.querySelector('[data-sample-save]');
+      if (button) button.disabled = true;
       post('sample_shipment_save', data).then(function (json) {
         if (!json.success) return toast(json.message || '保存失败');
         var shipment = json.data && json.data.shipment;
+        if (!shipment || !shipment.id) throw new Error('样品寄送保存成功但未返回寄样ID，无法关联上传文件。');
         return TaskCenterModule.uploadQueuedFiles(shipment.id, dialog).then(function () {
           CustomerModule.closeDialog(); toast('样品寄送已保存'); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
         });
-      }).catch(function (err) { toast(err.message || '保存失败'); });
+      }).catch(function (err) { toast(err.message || '保存失败'); }).finally(function () { if (button) button.disabled = false; });
     },
     uploadQueuedFiles: function (shipmentId, dialog) {
       var jobs = [], img = dialog.querySelector('[data-sample-image-input]'), att = dialog.querySelector('[data-sample-attachment-input]');
@@ -21766,22 +21771,58 @@
       body.set('action', 'sample_shipment_file_upload'); body.set('shipment_id', shipmentId); body.set('file_type', type);
       if (state.csrf) body.set('csrf_token', state.csrf);
       Array.prototype.forEach.call(input.files || [], function (file) { body.append('files[]', file); });
-      return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) { return res.json(); }).then(function (json) { if (!json.success) throw new Error(json.message || '上传失败'); return json; });
+      return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
+        return res.text().then(function (text) {
+          try { return JSON.parse(text); } catch (error) { return { success: false, message: (text || '接口返回格式错误').slice(0, 300), data: {} }; }
+        });
+      }).then(function (json) { if (!json.success) throw new Error(json.message || '上传失败'); return json; });
+    },
+    filePreviewKind: function (file) {
+      var mime = String((file && file.mime_type) || '').toLowerCase(), name = String((file && (file.original_name || file.file_name)) || '').toLowerCase();
+      if (((file && (file.file_type === 'image' || file.file_kind === 'image')) || mime.indexOf('image/') === 0 || /\.(jpg|jpeg|png|webp|gif)$/.test(name))) return 'image';
+      if (mime === 'application/pdf' || /\.pdf$/.test(name)) return 'pdf';
+      if (mime.indexOf('text/') === 0 || /\.(txt|csv|json|log)$/i.test(name)) return 'text';
+      if (/\.(xls|xlsx)$/i.test(name)) return 'excel';
+      if (/\.(doc|docx)$/i.test(name)) return 'word';
+      if (/\.(zip|rar|7z)$/i.test(name)) return 'archive';
+      return 'file';
+    },
+    openFilePreviewLayer: function (file, inlineUrl, downloadUrl, title) {
+      file = file || {};
+      var kind = this.filePreviewKind(file);
+      var name = file.original_name || file.file_name || title || '文件预览';
+      var body = '';
+      if (kind === 'image') {
+        body = '<div class="visit-preview-image"><img src="' + esc(inlineUrl) + '" alt="' + esc(name) + '"></div>';
+      } else if (kind === 'pdf' || kind === 'text') {
+        body = '<iframe src="' + esc(inlineUrl) + '" title="' + esc(name) + '"></iframe>';
+      } else {
+        var tip = kind === 'excel' ? 'Excel 文件当前请下载查看。' : (kind === 'word' ? 'Word 文件当前请下载查看。' : (kind === 'archive' ? '压缩包不在线展开，请下载查看。' : '此格式当前不支持在线预览，请下载查看。'));
+        body = '<div class="visit-preview-fallback"><strong>' + esc(name) + '</strong><span>' + esc(tip) + '</span><a href="' + esc(downloadUrl) + '">下载文件</a></div>';
+      }
+      var node = document.createElement('div');
+      node.innerHTML = '<div class="visit-preview-layer" data-crm-file-preview-layer><div><header><strong>' + esc(name) + '</strong><button type="button" data-crm-file-preview-close>关闭</button></header>' + body + '<p><a href="' + esc(downloadUrl) + '">下载</a> · 图片、PDF、文本支持在线预览，Office/压缩包请下载查看。</p></div></div>';
+      document.body.appendChild(node.firstChild);
+      document.querySelector('[data-crm-file-preview-close]')?.addEventListener('click', function () { document.querySelector('[data-crm-file-preview-layer]')?.remove(); });
+    },
+    sampleFileKind: function (file) {
+      return this.filePreviewKind(file);
     },
     sampleFilesHtml: function (files) {
       files = files || [];
       if (!files.length) return '<p class="task-empty">暂无图片或附件。</p>';
       return '<div class="sample-files">' + files.map(function (file) {
-        var isImg = file.file_type === 'image', url = TaskCenterModule.fileUrl(file.id, true);
-        return '<article data-sample-file-id="' + esc(file.id) + '">' + (isImg ? '<img src="' + esc(url) + '" alt="' + esc(file.original_name || '') + '">' : '<b>附件</b>') + '<span>' + esc(file.original_name || file.file_name) + '</span><nav><button type="button" data-sample-preview-file="' + esc(file.id) + '">' + (isImg || Number(file.is_pdf) ? '预览' : '说明') + '</button><a href="' + esc(TaskCenterModule.fileUrl(file.id, false)) + '">下载</a><button type="button" data-sample-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
+        var kind = TaskCenterModule.sampleFileKind(file), isImg = kind === 'image', url = TaskCenterModule.fileUrl(file.id, true);
+        return '<article data-sample-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '">' + (isImg ? '<img src="' + esc(url) + '" alt="' + esc(file.original_name || '') + '">' : '<b>' + esc(kind === 'pdf' ? 'PDF' : kind.toUpperCase()) + '</b>') + '<span>' + esc(file.original_name || file.file_name) + '</span><nav><button type="button" data-sample-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(TaskCenterModule.fileUrl(file.id, false)) + '">下载</a><button type="button" data-sample-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
       }).join('') + '</div>';
     },
     fileUrl: function (id, inline) { return 'crm_api.php?action=sample_shipment_file_download&file_id=' + encodeURIComponent(id) + (inline ? '&inline=1' : ''); },
-    previewSampleFile: function (id) {
-      var node = document.createElement('div');
-      node.innerHTML = '<div class="visit-preview-layer" data-sample-preview-layer><div><button type="button" data-sample-preview-close>关闭</button><iframe src="' + esc(this.fileUrl(id, true)) + '" title="样品文件预览"></iframe><p>Office / 压缩包暂不支持在线预览，请下载查看。</p></div></div>';
-      document.body.appendChild(node.firstChild);
-      document.querySelector('[data-sample-preview-close]')?.addEventListener('click', function () { document.querySelector('[data-sample-preview-layer]')?.remove(); });
+    previewSampleFile: function (id, trigger) {
+      var file = null;
+      if (this.currentDetail && this.currentDetail.files) file = this.currentDetail.files.find(function (f) { return Number(f.id) === Number(id); });
+      var article = trigger && trigger.closest ? trigger.closest('[data-sample-file-id]') : null;
+      if (!file && article) file = { id: id, original_name: article.getAttribute('data-file-name') || '', mime_type: article.getAttribute('data-file-mime') || '' };
+      this.openFilePreviewLayer(file || { id: id, original_name: '样品文件' }, this.fileUrl(id, true), this.fileUrl(id, false), '样品文件预览');
     },
     deleteSampleFile: function (id, dialog) {
       post('sample_shipment_file_delete', { file_id: id }).then(function (json) {
@@ -22226,9 +22267,9 @@
       return list.map(function (file, index) {
         var url = self.fileUrl(file.id, true);
         if (kind === 'image') {
-          return '<article class="visit-thumb" data-visit-file-id="' + esc(file.id) + '"><button type="button" data-visit-preview-file="' + esc(file.id) + '"><img src="' + esc(url) + '" alt="' + esc(file.original_name || file.file_name || '图片') + '"></button><span>' + esc(file.original_name || file.file_name || '图片') + '</span><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
+          return '<article class="visit-thumb" data-visit-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '" data-file-kind="' + esc(file.file_kind || kind) + '"><button type="button" data-visit-preview-file="' + esc(file.id) + '"><img src="' + esc(url) + '" alt="' + esc(file.original_name || file.file_name || '图片') + '"></button><span>' + esc(file.original_name || file.file_name || '图片') + '</span><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
         }
-        return '<article data-visit-file-id="' + esc(file.id) + '"><div><strong>' + esc(file.original_name || file.file_name || '附件') + '</strong><span>' + esc(file.file_size_label || '') + ' · ' + esc(String(file.uploaded_at || file.created_at || '').slice(0, 16)) + '</span></div><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">' + (Number(file.is_pdf) ? '预览' : '说明') + '</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
+        return '<article data-visit-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '" data-file-kind="' + esc(file.file_kind || kind) + '"><div><strong>' + esc(file.original_name || file.file_name || '附件') + '</strong><span>' + esc(file.file_size_label || '') + ' · ' + esc(String(file.uploaded_at || file.created_at || '').slice(0, 16)) + '</span></div><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
       }).join('');
     },
     fileUrl: function (id, inline) {
@@ -22246,7 +22287,7 @@
         }
         var preview = event.target.closest('[data-visit-preview-file]');
         if (preview) {
-          self.previewVisitFile(preview.getAttribute('data-visit-preview-file'));
+          self.previewVisitFile(preview.getAttribute('data-visit-preview-file'), preview);
         }
       });
     },
@@ -22390,15 +22431,15 @@
         self.load();
       });
     },
-    previewVisitFile: function (fileId) {
-      var url = this.fileUrl(fileId, true);
-      var html = '<div class="visit-preview-layer" data-visit-preview-layer><div><button type="button" data-visit-preview-close>关闭</button><iframe src="' + esc(url) + '" title="文件预览"></iframe><p>如果文件无法在线预览，请使用下载按钮。</p></div></div>';
-      var node = document.createElement('div');
-      node.innerHTML = html;
-      document.body.appendChild(node.firstChild);
-      document.querySelector('[data-visit-preview-close]')?.addEventListener('click', function () {
-        document.querySelector('[data-visit-preview-layer]')?.remove();
-      });
+    previewVisitFile: function (fileId, trigger) {
+      var article = trigger && trigger.closest ? trigger.closest('[data-visit-file-id]') : null;
+      var file = article ? {
+        id: fileId,
+        original_name: article.getAttribute('data-file-name') || '',
+        mime_type: article.getAttribute('data-file-mime') || '',
+        file_kind: article.getAttribute('data-file-kind') || ''
+      } : { id: fileId, original_name: '任务附件' };
+      this.openFilePreviewLayer(file, this.fileUrl(fileId, true), this.fileUrl(fileId, false), '任务附件预览');
     },
     collectForm: function (root) {
       var data = {};
