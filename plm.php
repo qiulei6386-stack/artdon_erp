@@ -3269,6 +3269,57 @@ function plm_v85_handle_api(){
             plm_v85_log($pid,'model',$mid,'套用流程模板',$tpl.' / '.$mode);
             plm_v85_json(array('ok'=>true));
         }
+        if($action === 'copy_flow_to_series_models'){
+            plm_v85_require_perm('edit_flow','复制开发导航图');
+            $pid=(int)($d['project_id']??0); $mid=(int)($d['model_id']??0); $overwrite=(int)($d['overwrite']??0)===1;
+            if(!$pid || !$mid) plm_v85_json(array('ok'=>false,'error'=>'缺少项目或型号ID'));
+            $project=plm_v85_row('SELECT * FROM plm_projects WHERE id=? AND COALESCE(is_deleted,0)=0 LIMIT 1',array($pid));
+            if(!$project) plm_v85_json(array('ok'=>false,'error'=>'项目不存在'));
+            $source=plm_v85_row('SELECT * FROM plm_models WHERE id=? AND project_id=? AND COALESCE(is_deleted,0)=0 LIMIT 1',array($mid,$pid));
+            if(!$source) plm_v85_json(array('ok'=>false,'error'=>'来源型号不存在'));
+            $sourceSteps=plm_v85_rows('SELECT * FROM plm_flow_steps WHERE project_id=? AND model_id=? ORDER BY sort_order ASC,id ASC',array($pid,$mid));
+            if(!count($sourceSteps)) plm_v85_json(array('ok'=>false,'error'=>'来源型号还没有开发导航图节点'));
+            $targets=plm_v85_rows('SELECT * FROM plm_models WHERE project_id=? AND id<>? AND COALESCE(is_deleted,0)=0 ORDER BY sort_order ASC,id ASC',array($pid,$mid));
+            if(!count($targets)) plm_v85_json(array('ok'=>false,'error'=>'当前系列没有其它型号可复制'));
+            $copied=0; $skipped=array(); $totalSteps=0; $now=plm_v85_now();
+            foreach($targets as $target){
+                $targetId=(int)$target['id'];
+                $existing=(int)(plm_v85_row('SELECT COUNT(*) c FROM plm_flow_steps WHERE project_id=? AND model_id=?',array($pid,$targetId))['c'] ?? 0);
+                if($existing>0 && !$overwrite){
+                    $skipped[]=array('id'=>$targetId,'name'=>($target['model']??'') ?: (($target['name']??'') ?: ('型号'.$targetId)),'count'=>$existing);
+                    continue;
+                }
+                if($existing>0 && $overwrite){
+                    plm_v85_pdo()->prepare('UPDATE plm_files SET step_id=0 WHERE project_id=? AND model_id=?')->execute(array($pid,$targetId));
+                    plm_v85_pdo()->prepare('DELETE FROM plm_flow_steps WHERE project_id=? AND model_id=?')->execute(array($pid,$targetId));
+                }
+                $i=1;
+                foreach($sourceSteps as $st){
+                    $ns=$st;
+                    unset($ns['id']);
+                    $ns['project_id']=$pid;
+                    $ns['model_id']=$targetId;
+                    $ns['status']='未开始';
+                    $ns['actual_start']=null;
+                    $ns['done_at']=null;
+                    $ns['abnormal_reason']='';
+                    $ns['return_reason']='';
+                    $ns['rework_reason']='';
+                    $ns['skip_reason']='';
+                    $ns['dispatch_status']='';
+                    $ns['dispatch_note']='';
+                    $ns['sort_order']=$i++;
+                    $ns['created_at']=$now;
+                    $ns['updated_at']=$now;
+                    plm_v85_dyn_insert('plm_flow_steps',$ns);
+                    $totalSteps++;
+                }
+                $copied++;
+                plm_v85_log($pid,'model',$targetId,'复制开发导航图','来源型号ID：'.$mid.'；来源：'.(($source['model']??'') ?: ($source['name']??$mid)).'；节点数：'.count($sourceSteps).($overwrite?'；覆盖已有流程':''));
+            }
+            plm_v85_log($pid,'model',$mid,'批量复制开发导航图','系列：'.($project['series']??'').'；目标型号：'.$copied.'；节点：'.$totalSteps.'；跳过：'.count($skipped).($overwrite?'；模式：覆盖':'；模式：仅空流程'));
+            plm_v85_json(array('ok'=>true,'copied'=>$copied,'steps'=>$totalSteps,'skipped'=>$skipped,'source_steps'=>count($sourceSteps),'overwrite'=>$overwrite));
+        }
         if($action === 'create_dispatch_draft'){
             plm_v85_require_perm('create_dispatch','生成派工');
             $id=(int)($d['step_id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少步骤ID'));
@@ -10425,6 +10476,7 @@ function renderFlow(p){
         <details class="flow-more-menu">
           <summary>更多</summary>
           <div class="flow-more-body">
+            <button class="btn" onclick="copyFlowToSeriesModels(${p.id},${flowModelId})">复制到同系列型号</button>
             <button class="btn flow-danger-mini" onclick="deleteAllSteps(${p.id},${flowModelId})">清空当前样品流程</button>
             <button class="btn danger" onclick="deleteAllSteps(${p.id},${flowModelId})">删除全部步骤</button>
           </div>
@@ -10485,6 +10537,26 @@ function openAdjacentStep(dir){const p=cur();if(!p)return;const arr=basicFlowSte
 function closeStepDrawer(){flowDrawerCollapsed=true;localStorage.setItem('plm_v85_drawer_collapsed','1');renderDetail()}
 async function addStep(pid,mid){const title=prompt('步骤名称','新增步骤');if(title===null)return;const r=await api('add_step',{project_id:pid,model_id:mid,title});toast(r.ok?'步骤已新增':r.error);await load()}
 async function applyTemplate(pid,mid,mode){const tpl=$('tpl_name')?.value||FLOW_TEMPLATES[0];if(mode==='replace'&&!confirm('会清空当前样品现有流程步骤，再套用模板。确定继续？'))return;const r=await api('apply_template',{project_id:pid,model_id:mid,template:tpl,mode});toast(r.ok?'模板已套用':r.error);flowSelectedStepId=0;localStorage.setItem('plm_v85_step_id',0);await load()}
+async function copyFlowToSeriesModels(pid,mid){
+  const p=cur(),source=(pModels(pid).find(m=>Number(m.id)===Number(mid))||{}),sourceSteps=steps.filter(s=>Number(s.project_id)===Number(pid)&&Number(s.model_id)===Number(mid));
+  if(!mid){toast('请先选择来源型号');return}
+  if(!sourceSteps.length){toast('当前型号还没有开发导航图节点');return}
+  const targets=pModels(pid).filter(m=>Number(m.id)!==Number(mid));
+  if(!targets.length){toast('当前系列没有其它型号可复制');return}
+  const withFlow=targets.filter(m=>steps.some(s=>Number(s.project_id)===Number(pid)&&Number(s.model_id)===Number(m.id)));
+  const targetText=targets.map(m=>flowModelLabel(m)).join('、');
+  let overwrite=false;
+  if(withFlow.length){
+    const ans=prompt(`将把“${flowModelLabel(source)}”的 ${sourceSteps.length} 个开发节点复制给同系列其它型号：\n${targetText}\n\n其中 ${withFlow.length} 个型号已有流程。\n留空并确定：只复制给尚无流程的型号\n输入“覆盖”：先清空目标型号现有流程再复制\n取消：放弃`, '');
+    if(ans===null)return;
+    overwrite=String(ans).trim()==='覆盖';
+  }else if(!confirm(`将把“${flowModelLabel(source)}”的 ${sourceSteps.length} 个开发节点复制给同系列其它型号：\n${targetText}\n\n复制后目标型号节点状态会重置为“未开始”，不复制派工、异常历史和附件。确定继续？`))return;
+  const r=await api('copy_flow_to_series_models',{project_id:pid,model_id:mid,overwrite:overwrite?1:0});
+  if(!r.ok){toast(r.error||'复制失败');return}
+  const skipped=(r.skipped||[]).length;
+  toast(`已复制 ${r.copied||0} 个型号，新增 ${r.steps||0} 个节点${skipped?'，跳过 '+skipped+' 个已有流程型号':''}`);
+  await load();
+}
 async function quickStepStatus(id,status){const s=steps.find(x=>Number(x.id)===Number(id));if(!s)return;flowSelectedStepId=Number(id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);const r=await api('save_step',{id,title:s.title||'步骤',status,owner:s.owner||'',plan_date:dateOnly(s.plan_date),plan_start:dateOnly(s.plan_start),plan_end:dateOnly(s.plan_end||s.plan_date),dependency_mode:s.dependency_mode||'跟随前一步',abnormal_reason:s.abnormal_reason||'',return_reason:s.return_reason||'',rework_reason:s.rework_reason||'',skip_reason:s.skip_reason||'',note:s.note||'',dispatch_status:s.dispatch_status||'',dispatch_note:s.dispatch_note||''});toast(r.ok?'状态已更新':r.error);await load()}
 async function saveStep(id){return saveStepFromDrawer(id)}
 async function saveStepFromDrawer(id){const status=$('drawer_status_'+id).value,reason=$('drawer_reason_'+id)?.value||'';const r=await api('save_step',{id,title:$('drawer_title_'+id).value,status,owner:$('drawer_owner_'+id).value,plan_date:$('drawer_plan_end_'+id).value,plan_start:$('drawer_plan_start_'+id).value,plan_end:$('drawer_plan_end_'+id).value,dependency_mode:$('drawer_dependency_'+id).value,note:$('drawer_note_'+id).value,abnormal_reason:$('drawer_abnormal_'+id)?.value||'',return_reason:status==='退回'?reason:'',rework_reason:status==='重来'?reason:'',skip_reason:status==='跳过'?reason:'',dispatch_status:(steps.find(x=>Number(x.id)===Number(id))||{}).dispatch_status||'',dispatch_note:(steps.find(x=>Number(x.id)===Number(id))||{}).dispatch_note||''});flowSelectedStepId=Number(id);localStorage.setItem('plm_v85_step_id',flowSelectedStepId);toast(r.ok?'步骤详情已保存':r.error);await load()}
