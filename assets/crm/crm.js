@@ -21586,7 +21586,7 @@
         '<section class="visit-work-section"><h3>样品信息</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>相关型号</span><input name="product_model" value="' + esc(row.product_model || '') + '"></label><label class="visit-pill-field"><span>客户型号</span><input name="customer_model" value="' + esc(row.customer_model || '') + '"></label><label class="visit-pill-field"><span>产品类别</span><input name="product_category" value="' + esc(row.product_category || '') + '"></label><label class="visit-pill-field"><span>数量</span><input type="number" step="0.01" name="quantity" value="' + esc(row.quantity || 1) + '"></label><label class="visit-pill-field"><span>单位</span><input name="unit" value="' + esc(row.unit || 'pcs') + '"></label><label class="visit-pill-field"><span>颜色</span><input name="color" value="' + esc(row.color || '') + '"></label><label class="visit-pill-field"><span>功率</span><input name="power" value="' + esc(row.power || '') + '"></label><label class="visit-pill-field"><span>色温</span><input name="cct" value="' + esc(row.cct || '') + '"></label><label class="visit-pill-field"><span>显指</span><input name="cri" value="' + esc(row.cri || '') + '"></label><label class="visit-pill-field"><span>角度</span><input name="beam_angle" value="' + esc(row.beam_angle || '') + '"></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="is_custom" ' + (Number(row.is_custom) ? 'checked' : '') + '><span>定制样品</span></label></div></section>' +
         '<section class="visit-work-section"><h3>寄送信息</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>快递公司</span><select name="courier_company"><option value="">未选择</option>' + this.courierOptions(row.courier_company || '') + '</select></label><label class="visit-pill-field"><span>快递单号</span><input name="tracking_no" value="' + esc(row.tracking_no || '') + '"></label><label class="visit-pill-field"><span>状态</span><select name="status">' + this.statusOptions(row.status || 'preparing') + '</select></label><label class="visit-date-card"><span>寄出日期</span><input type="date" name="shipping_date" value="' + esc(row.shipping_date || '') + '"></label><label class="visit-date-card"><span>预计到达</span><input type="date" name="expected_arrival_date" value="' + esc(row.expected_arrival_date || '') + '"></label><label class="visit-pill-field"><span>运费</span><input type="number" step="0.01" name="freight_cost" value="' + esc(row.freight_cost || 0) + '"></label><label class="visit-pill-field"><span>币种</span><input name="currency" value="' + esc(row.currency || 'USD') + '"></label><label class="visit-pill-field"><span>承担方</span><input name="freight_payer" value="' + esc(row.freight_payer || '') + '"></label><label class="visit-pill-field"><span>负责人</span><select name="owner_user_id">' + this.userOptions(row.owner_user_id) + '</select></label><label class="visit-date-card"><span>后续跟进</span><input type="datetime-local" name="followup_time" value="' + esc(String(row.followup_time || '').replace(' ', 'T').slice(0,16)) + '"></label></div></section>' +
         '<section class="visit-work-section visit-section-checks"><h3>后续联动</h3><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="remind_customer_sign" ' + (Number(row.remind_customer_sign) ? 'checked' : '') + '><span>提醒客户签收</span></label><label class="tag-chip"><input type="checkbox" name="remind_owner_follow" ' + (row.remind_owner_follow === undefined || Number(row.remind_owner_follow) ? 'checked' : '') + '><span>提醒业务跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_followup_task" ' + (Number(row.create_followup_task) ? 'checked' : '') + '><span>创建跟进任务</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch_task" ' + (Number(row.create_dispatch_task) ? 'checked' : '') + '><span>创建派工</span></label></div><p class="entry-muted wide">派工接口未接入时只写入日志和客户时间轴，不会假装创建成功。</p></section>' +
-        '<section class="visit-work-section"><h3>图片 / 附件</h3><div class="sample-file-grid visit-upload-layout"><label><strong>图片</strong><span>jpg / png / webp / gif · 单张 <= 500KB</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" data-sample-image-input></label><label><strong>附件</strong><span>PDF / Word / Excel / ZIP / 图片等</span><input type="file" multiple data-sample-attachment-input></label></div><div class="visit-thumb-grid" data-sample-local-images></div><div class="visit-file-list" data-sample-local-attachments></div><div data-sample-files>' + this.sampleFilesHtml(row.files || []) + '</div></section>' +
+        '<section class="visit-work-section"><h3>图片 / 附件</h3><div class="sample-file-grid visit-upload-layout"><label><strong>图片</strong><span>jpg / png / webp / gif · 单张 <= 500KB</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" data-sample-image-input></label><label><strong>附件</strong><span>PDF / Word / Excel / ZIP / 图片等</span><input type="file" multiple data-sample-attachment-input></label></div><div class="visit-thumb-grid" data-sample-local-images></div><div class="visit-file-list" data-sample-local-attachments></div><div class="sample-upload-actions"><button type="button" data-sample-upload-now>上传所选图片/附件</button><span data-sample-upload-hint>新建记录会先保存，再上传资料。</span></div><div data-sample-files>' + this.sampleFilesHtml(row.files || []) + '</div></section>' +
         '<section class="visit-work-section"><h3>备注</h3><div class="visit-note-grid"><label class="wide">样品备注<textarea name="remark" rows="3">' + esc(row.remark || '') + '</textarea></label></div></section><p class="entry-muted" data-sample-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-save>保存样品寄送</button></div>';
       CustomerModule.openBusinessDialog(row.id ? '编辑样品寄送' : '新建样品寄送', html, '状态为已寄出、运输中或已签收时，快递单号必填。', function (dialog) {
@@ -21603,6 +21603,7 @@
       dialog.querySelector('[data-sample-contact-select]')?.addEventListener('change', function () { self.applySampleContact(dialog, false); });
       dialog.querySelector('[data-sample-image-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-sample-local-images]'), 'image'); });
       dialog.querySelector('[data-sample-attachment-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-sample-local-attachments]'), 'attachment'); });
+      dialog.querySelector('[data-sample-upload-now]')?.addEventListener('click', function () { self.saveSample(dialog, { uploadOnly: true }); });
       dialog.querySelector('[data-sample-customer-results]')?.addEventListener('click', function (event) {
         var btn = event.target.closest('[data-sample-pick-customer]');
         if (!btn) return;
@@ -21748,17 +21749,60 @@
       });
     },
     saveSample: function (dialog) {
+      return this.saveSample(dialog, {});
+    },
+    validateSampleUploadInputs: function (dialog) {
+      var imageInput = dialog.querySelector('[data-sample-image-input]');
+      var imageFiles = Array.prototype.slice.call((imageInput && imageInput.files) || []);
+      var badImage = imageFiles.find(function (file) { return file.size > 512000; });
+      if (badImage) throw new Error('图片“' + badImage.name + '”超过 500KB，请压缩后再上传。');
+      var badType = imageFiles.find(function (file) { return !/^image\/(jpeg|png|webp|gif)$/.test(String(file.type || '').toLowerCase()) && !/\.(jpg|jpeg|png|webp|gif)$/i.test(file.name || ''); });
+      if (badType) throw new Error('图片仅支持 jpg/png/webp/gif：' + badType.name);
+    },
+    refreshSampleFiles: function (shipmentId, dialog) {
+      return post('sample_shipment_files', { shipment_id: shipmentId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '刷新样品文件失败');
+        var files = (json.data && json.data.files) || [];
+        var box = dialog.querySelector('[data-sample-files]');
+        if (box) box.innerHTML = TaskCenterModule.sampleFilesHtml(files);
+        if (TaskCenterModule.currentDetail && TaskCenterModule.currentDetail.shipment && Number(TaskCenterModule.currentDetail.shipment.id) === Number(shipmentId)) TaskCenterModule.currentDetail.files = files;
+        return files;
+      });
+    },
+    clearSampleUploadInputs: function (dialog) {
+      var img = dialog.querySelector('[data-sample-image-input]'), att = dialog.querySelector('[data-sample-attachment-input]');
+      if (img) img.value = '';
+      if (att) att.value = '';
+      var imgBox = dialog.querySelector('[data-sample-local-images]'), attBox = dialog.querySelector('[data-sample-local-attachments]');
+      if (imgBox) imgBox.innerHTML = '';
+      if (attBox) attBox.innerHTML = '';
+    },
+    saveSample: function (dialog, options) {
+      options = options || {};
       var form = dialog.querySelector('[data-sample-form]'), data = this.collect(form);
       var button = dialog.querySelector('[data-sample-save]');
+      var uploadButton = dialog.querySelector('[data-sample-upload-now]');
+      try { this.validateSampleUploadInputs(dialog); } catch (err) { toast(err.message || '图片不符合要求'); return Promise.resolve(); }
       if (button) button.disabled = true;
+      if (uploadButton) uploadButton.disabled = true;
       post('sample_shipment_save', data).then(function (json) {
         if (!json.success) return toast(json.message || '保存失败');
         var shipment = json.data && json.data.shipment;
         if (!shipment || !shipment.id) throw new Error('样品寄送保存成功但未返回寄样ID，无法关联上传文件。');
         return TaskCenterModule.uploadQueuedFiles(shipment.id, dialog).then(function () {
-          CustomerModule.closeDialog(); toast('样品寄送已保存'); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+          return TaskCenterModule.refreshSampleFiles(shipment.id, dialog).catch(function () { return []; }).then(function () {
+            TaskCenterModule.clearSampleUploadInputs(dialog);
+            if (form && form.querySelector('[name="shipment_id"]')) form.querySelector('[name="shipment_id"]').value = shipment.id;
+            toast(options.uploadOnly ? '样品图片/附件已上传' : '样品寄送已保存');
+            TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+            if (!options.uploadOnly) CustomerModule.closeDialog();
+          });
         });
-      }).catch(function (err) { toast(err.message || '保存失败'); }).finally(function () { if (button) button.disabled = false; });
+      }).catch(function (err) {
+        var node = dialog.querySelector('[data-sample-error]');
+        if (node) node.textContent = err.message || '保存或上传失败';
+        toast(err.message || '保存或上传失败');
+      }).finally(function () { if (button) button.disabled = false; if (uploadButton) uploadButton.disabled = false; });
     },
     uploadQueuedFiles: function (shipmentId, dialog) {
       var jobs = [], img = dialog.querySelector('[data-sample-image-input]'), att = dialog.querySelector('[data-sample-attachment-input]');
