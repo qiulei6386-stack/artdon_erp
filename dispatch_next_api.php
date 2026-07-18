@@ -3160,6 +3160,13 @@ function dn_preview_link(array $in): array
             return $bom;
         }
     }
+    if ($system === 'plm') {
+        $plm = dn_preview_plm_model($code, $systems[$system]['actions']);
+        if ($plm) {
+            dn_log(null, 'preview_link', $system, '', $code, '派工表格联动预览');
+            return $plm;
+        }
+    }
     if ($system === 'snapshot') {
         $snapshot = dn_preview_datasheet_snapshot($code, $systems[$system]['actions']);
         if ($snapshot) {
@@ -3195,6 +3202,204 @@ function dn_preview_link(array $in): array
     }
     dn_log(null, 'preview_link', $system, '', $code, '派工表格联动预览');
     return $result;
+}
+
+function dn_preview_plm_norm(string $code): string
+{
+    return strtoupper(str_replace(['.', '-', '_', ' '], '', trim($code)));
+}
+
+function dn_preview_plm_done_status(string $status, string $result = ''): bool
+{
+    $s = $status . ' ' . $result;
+    return (bool)preg_match('/已完成|完成|done|通过/u', $s);
+}
+
+function dn_preview_plm_bad_status(string $status, string $result = ''): bool
+{
+    $s = $status . ' ' . $result;
+    return (bool)preg_match('/异常|退回|不通过|失败|待复测|blocked|failed/u', $s);
+}
+
+function dn_preview_plm_model(string $code, array $actions): ?array
+{
+    if (!artdon_sso_table_exists('plm_projects') || !artdon_sso_table_exists('plm_models')) return null;
+    $pdo = dispatch_next_db();
+    $norm = dn_preview_plm_norm($code);
+    $model = null;
+    $project = null;
+    if (artdon_sso_table_exists('plm_models')) {
+        $where = [
+            'm.model = ?',
+            'm.name = ?',
+            'm.sample_no = ?',
+            "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(COALESCE(m.model,'')),'.',''),'-',''),' ',''),'_','') = ?",
+            "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(COALESCE(m.name,'')),'.',''),'-',''),' ',''),'_','') = ?"
+        ];
+        $args = [$code, $code, $code, $norm, $norm];
+        if (ctype_digit($code)) {
+            $where[] = 'm.id = ?';
+            $args[] = (int)$code;
+        }
+        $sql = "SELECT m.*, p.project_no, p.name AS project_name, p.customer, p.engineer, p.status AS project_status, p.due_date, p.updated_at AS project_updated_at
+                FROM plm_models m
+                INNER JOIN plm_projects p ON p.id=m.project_id AND COALESCE(p.is_deleted,0)=0
+                WHERE COALESCE(m.is_deleted,0)=0 AND (" . implode(' OR ', $where) . ")
+                ORDER BY m.updated_at DESC, m.id DESC LIMIT 1";
+        $st = $pdo->prepare($sql);
+        $st->execute($args);
+        $model = $st->fetch() ?: null;
+    }
+    if ($model) {
+        $projectId = (int)$model['project_id'];
+        $modelId = (int)$model['id'];
+        $project = [
+            'id' => $projectId,
+            'project_no' => (string)($model['project_no'] ?? ''),
+            'name' => (string)($model['project_name'] ?? ''),
+            'customer' => (string)($model['customer'] ?? ''),
+            'engineer' => (string)($model['engineer'] ?? ''),
+            'status' => (string)($model['project_status'] ?? ''),
+            'due_date' => (string)($model['due_date'] ?? ''),
+        ];
+    } else {
+        $where = ['project_no = ?', 'name = ?', 'model = ?'];
+        $args = [$code, $code, $code];
+        if (ctype_digit($code)) {
+            $where[] = 'id = ?';
+            $args[] = (int)$code;
+        }
+        $st = $pdo->prepare("SELECT * FROM plm_projects WHERE COALESCE(is_deleted,0)=0 AND (" . implode(' OR ', $where) . ") ORDER BY updated_at DESC,id DESC LIMIT 1");
+        $st->execute($args);
+        $project = $st->fetch() ?: null;
+        if (!$project) return null;
+        $projectId = (int)$project['id'];
+        $modelId = 0;
+    }
+
+    $stepArgs = [$projectId];
+    $stepWhere = 's.project_id=?';
+    if ($modelId > 0) {
+        $stepWhere .= ' AND s.model_id=?';
+        $stepArgs[] = $modelId;
+    }
+    $steps = [];
+    if (artdon_sso_table_exists('plm_flow_steps')) {
+        $dispatchTotalSql = artdon_sso_table_exists('plm_dispatch_links') ? "(SELECT COUNT(*) FROM plm_dispatch_links dl WHERE dl.step_id=s.id)" : '0';
+        $dispatchDoneSql = artdon_sso_table_exists('plm_dispatch_links') ? "(SELECT COUNT(*) FROM plm_dispatch_links dl WHERE dl.step_id=s.id AND (COALESCE(dl.progress,0)>=100 OR COALESCE(dl.status,'') IN ('done','已完成','完成','approved','已确认')))" : '0';
+        $sql = "SELECT s.*,
+                  {$dispatchTotalSql} AS dispatch_total,
+                  {$dispatchDoneSql} AS dispatch_done
+                FROM plm_flow_steps s
+                WHERE {$stepWhere}
+                ORDER BY s.model_id ASC, s.sort_order ASC, s.id ASC LIMIT 40";
+        $st = $pdo->prepare($sql);
+        $st->execute($stepArgs);
+        foreach ($st->fetchAll() ?: [] as $i => $s) {
+            $status = (string)($s['status'] ?? '');
+            $done = dn_preview_plm_done_status($status);
+            $bad = dn_preview_plm_bad_status($status);
+            $plan = (string)(($s['plan_end'] ?? '') ?: ($s['plan_date'] ?? '') ?: ($s['plan_start'] ?? ''));
+            $steps[] = [
+                'id' => (int)($s['id'] ?? 0),
+                'index' => $i + 1,
+                'title' => (string)(($s['title'] ?? '') ?: ($s['step_name'] ?? '') ?: '未命名步骤'),
+                'status' => $status ?: '未开始',
+                'owner' => (string)($s['owner'] ?? ''),
+                'plan' => $plan,
+                'done_at' => (string)($s['done_at'] ?? ''),
+                'note' => (string)(($s['abnormal_reason'] ?? '') ?: ($s['return_reason'] ?? '') ?: ($s['dispatch_note'] ?? '') ?: ($s['note'] ?? '')),
+                'dispatch' => ((int)($s['dispatch_total'] ?? 0) > 0) ? ((int)($s['dispatch_done'] ?? 0) . '/' . (int)($s['dispatch_total'] ?? 0)) : '未派工',
+                'tone' => $bad ? 'bad' : ($done ? 'done' : (preg_match('/进行|in_progress/u', $status) ? 'active' : 'todo')),
+            ];
+        }
+    }
+
+    $tests = [];
+    if (artdon_sso_table_exists('plm_tests')) {
+        $imageCountSql = artdon_sso_table_exists('plm_files') ? "(SELECT COUNT(*) FROM plm_files f WHERE f.test_id=t.id AND f.category IN ('测试图片','图片','产品图片'))" : '0';
+        $reportCountSql = artdon_sso_table_exists('plm_files') ? "(SELECT COUNT(*) FROM plm_files f WHERE f.test_id=t.id AND f.category IN ('测试报告','报告','配光报告','光谱报告','EMC报告'))" : '0';
+        $fileCountSql = artdon_sso_table_exists('plm_files') ? "(SELECT COUNT(*) FROM plm_files f WHERE f.test_id=t.id)" : '0';
+        $testArgs = [$projectId];
+        $testWhere = 't.project_id=?';
+        if ($modelId > 0) {
+            $testWhere .= ' AND t.model_id=?';
+            $testArgs[] = $modelId;
+        }
+        $sql = "SELECT t.*,
+                  {$imageCountSql} AS image_count,
+                  {$reportCountSql} AS report_count,
+                  {$fileCountSql} AS file_count
+                FROM plm_tests t
+                WHERE {$testWhere}
+                ORDER BY t.model_id ASC, t.id ASC LIMIT 30";
+        $st = $pdo->prepare($sql);
+        $st->execute($testArgs);
+        foreach ($st->fetchAll() ?: [] as $i => $t) {
+            $status = (string)($t['status'] ?? '');
+            $result = (string)($t['result'] ?? '');
+            $bad = dn_preview_plm_bad_status($status, $result);
+            $done = dn_preview_plm_done_status($status, $result);
+            $tests[] = [
+                'id' => (int)($t['id'] ?? 0),
+                'index' => $i + 1,
+                'title' => (string)(($t['title'] ?? '') ?: ($t['template_name'] ?? '') ?: ($t['test_type'] ?? '') ?: '测试项目'),
+                'type' => (string)(($t['template_name'] ?? '') ?: ($t['test_type'] ?? '')),
+                'status' => $status ?: '待测',
+                'result' => $result ?: '待判定',
+                'date' => (string)($t['test_date'] ?? ''),
+                'operator' => (string)($t['operator'] ?? ''),
+                'conclusion' => (string)(($t['test_conclusion'] ?? '') ?: ($t['note'] ?? '')),
+                'image_count' => (int)($t['image_count'] ?? 0),
+                'file_count' => (int)($t['file_count'] ?? 0),
+                'report_count' => (int)($t['report_count'] ?? 0),
+                'tone' => $bad ? 'bad' : ($done ? 'done' : (preg_match('/进行|测试中|in_progress/u', $status) ? 'active' : 'todo')),
+            ];
+        }
+    }
+
+    $doneSteps = count(array_filter($steps, fn($s) => ($s['tone'] ?? '') === 'done'));
+    $badSteps = count(array_filter($steps, fn($s) => ($s['tone'] ?? '') === 'bad'));
+    $passedTests = count(array_filter($tests, fn($t) => preg_match('/通过/u', (string)($t['result'] ?? '')) && !preg_match('/不通过/u', (string)($t['result'] ?? ''))));
+    $failedTests = count(array_filter($tests, fn($t) => preg_match('/不通过|失败/u', (string)(($t['result'] ?? '') . ' ' . ($t['status'] ?? '')))));
+    $fields = [
+        ['label' => '项目', 'value' => (string)(($project['project_no'] ?? '') . ' ' . ($project['name'] ?? ''))],
+        ['label' => '客户', 'value' => (string)($project['customer'] ?? '')],
+        ['label' => '负责人', 'value' => (string)($project['engineer'] ?? '')],
+        ['label' => '项目状态', 'value' => (string)($project['status'] ?? '')],
+        ['label' => '样品型号', 'value' => $model ? (string)($model['model'] ?? '') : '项目级预览'],
+        ['label' => '样品名称', 'value' => $model ? (string)($model['name'] ?? '') : '全部样品'],
+        ['label' => '开发流程', 'value' => $steps ? ($doneSteps . '/' . count($steps) . ($badSteps ? '，异常 ' . $badSteps : '')) : '暂无流程'],
+        ['label' => '测试中心', 'value' => $tests ? ('通过 ' . $passedTests . ' / 不通过 ' . $failedTests . ' / 总数 ' . count($tests)) : '暂无测试'],
+    ];
+    $openUrl = 'plm.php?project_id=' . (int)$projectId . ($modelId > 0 ? ('&model_id=' . (int)$modelId) : '');
+    return [
+        'system' => 'plm',
+        'label' => 'PLM',
+        'code' => $model ? (string)(($model['model'] ?? '') ?: $code) : $code,
+        'status' => 'connected',
+        'status_label' => '已接入',
+        'message' => '',
+        'fields' => $fields,
+        'actions' => [
+            ['label' => '打开 PLM', 'hint' => $openUrl],
+            ['label' => '查看开发导航图', 'hint' => $openUrl . '&tab=flow'],
+            ['label' => '查看测试中心', 'hint' => $openUrl . '&tab=tests'],
+        ],
+        'plm' => [
+            'project' => $project,
+            'model' => $model ? [
+                'id' => $modelId,
+                'name' => (string)($model['name'] ?? ''),
+                'model' => (string)($model['model'] ?? ''),
+                'version' => (string)($model['sample_version'] ?? ''),
+                'status' => (string)($model['status'] ?? ''),
+            ] : null,
+            'steps' => $steps,
+            'tests' => $tests,
+            'open_url' => $openUrl,
+        ],
+    ];
 }
 
 function dn_preview_customer(string $code, array $actions): ?array
