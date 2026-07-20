@@ -8623,8 +8623,18 @@ textarea,
   font-size:12px!important;
   border-radius:8px!important;
 }
-.sample-right-panel .beam-test-note{
+.sample-right-panel .beam-test-grid{
   grid-column:1/-1!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:7px!important;
+  align-items:start!important;
+}
+.sample-right-panel .beam-test-note{
+  grid-column:span 3!important;
+}
+.sample-right-panel .beam-test-grid .field{
+  min-width:0!important;
 }
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
@@ -10394,6 +10404,8 @@ const beamUgrLabels=['超小角度UGR','小角度UGR','中角度UGR','宽角度U
 const beamUgrStoreLabels=['U超','U小','U中','U宽','U大'];
 const beamTestNoteLabel='测试条件备注';
 const beamTestNoteStoreLabel='T';
+const beamLumenLabels=['积分球流明','光度分布流明'];
+const beamLumenStoreLabels=['LS','LP'];
 function beamParts(v,labels,storeLabels,legacyLabels=[],fallbackIndex=-1){
   const raw=String(v||'').trim(),out=['','','','',''];
   if(!raw)return out;
@@ -10419,8 +10431,9 @@ function beamTextPart(v,labels){
   return '';
 }
 function beamAngleGrid(m){
-  const id=m.id,angleParts=beamParts(m.beam||'',beamAngleLabels,beamAngleStoreLabels,beamAngleLegacyLabels,1),ugrParts=beamParts(m.beam||'',beamUgrLabels,beamUgrStoreLabels),testNote=beamTextPart(m.beam||'',[beamTestNoteLabel,beamTestNoteStoreLabel]);
-  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(angleParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-angle-grid beam-ugr-grid">${beamUgrLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_ugr_${i}_${id}" value="${esc(ugrParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="field beam-test-note"><label>${beamTestNoteLabel}</label><input id="m_beam_test_note_${id}" value="${esc(testNote)}" placeholder="测试条件备注"></div>`;
+  const id=m.id,beam=m.beam||'',angleParts=beamParts(beam,beamAngleLabels,beamAngleStoreLabels,beamAngleLegacyLabels,1),ugrParts=beamParts(beam,beamUgrLabels,beamUgrStoreLabels),testNote=beamTextPart(beam,[beamTestNoteLabel,beamTestNoteStoreLabel]);
+  const lumenParts=beamLumenLabels.map((label,i)=>beamTextPart(beam,[label,beamLumenStoreLabels[i]]));
+  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(angleParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-angle-grid beam-ugr-grid">${beamUgrLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_ugr_${i}_${id}" value="${esc(ugrParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-test-grid"><div class="field beam-test-note"><label>${beamTestNoteLabel}</label><input id="m_beam_test_note_${id}" value="${esc(testNote)}" placeholder="测试条件备注"></div>${beamLumenLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_lumen_${i}_${id}" value="${esc(lumenParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div>`;
 }
 function beamAngleValue(id){
   const angle=beamAngleStoreLabels.map((label,i)=>{
@@ -10432,7 +10445,11 @@ function beamAngleValue(id){
     return v?label+'：'+v:'';
   });
   const note=String($('m_beam_test_note_'+id)?.value||'').trim();
-  return angle.concat(ugr,note?beamTestNoteStoreLabel+'：'+note:'').filter(Boolean).join(' ｜ ');
+  const lumen=beamLumenStoreLabels.map((label,i)=>{
+    const v=String($('m_beam_lumen_'+i+'_'+id)?.value||'').trim();
+    return v?label+'：'+v:'';
+  });
+  return angle.concat(ugr,[note?beamTestNoteStoreLabel+'：'+note:''],lumen).filter(Boolean).join(' ｜ ');
 }
 
 function sampleDimensionPanel(m){
