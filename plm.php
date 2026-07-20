@@ -10722,6 +10722,41 @@ function moneyMini(v){
   const n=Number(v||0);
   return Number.isFinite(n)?n.toFixed(2):'0.00';
 }
+function modelBomCostInfo(m){
+  const b=m?.bom_summary||{};
+  const exists=!!b.exists;
+  const hasCost=exists && b.total_cost!==undefined && b.total_cost!==null && String(b.total_cost)!=='';
+  return {
+    exists,
+    hasCost,
+    currency:String(b.currency||'RMB'),
+    total:hasCost?Number(b.total_cost||0):null,
+    totalText:hasCost?((b.currency||'RMB')+' '+moneyMini(b.total_cost)):(exists?'无成本权限':'BOM未生成'),
+    updatedAt:String(b.updated_at||''),
+    updatedText:b.updated_at?String(b.updated_at).slice(0,16):'-',
+    projectUid:String(b.project_uid||''),
+    rows:Number(b.rows_count||0)
+  };
+}
+function dispatchBomContext(model){
+  const c=modelBomCostInfo(model||{});
+  return {
+    exists:c.exists,
+    has_cost:c.hasCost,
+    total_cost:c.total,
+    currency:c.currency,
+    cost_text:c.totalText,
+    cost_updated_at:c.updatedAt,
+    cost_updated_text:c.updatedText,
+    project_uid:c.projectUid,
+    rows_count:c.rows
+  };
+}
+function projectDispatchModel(p){
+  const ms=pModels(p?.id||0)||[];
+  if(!ms.length)return {};
+  return ms.find(m=>m?.bom_summary?.exists)||ms[0]||{};
+}
 function shortBomUid(v){
   const s=String(v||'');
   if(s.length<=18)return s;
@@ -11081,12 +11116,14 @@ async function openPlmDispatchModal(ctx){
   const userOptions=users.map(u=>`<option value="${Number(u.id||0)}" ${Number(u.id||0)===assignee?'selected':''}>${esc(plmUserLabel(u))}</option>`).join('');
   const modalId='plmDispatchModal';
   const old=$(modalId); if(old) old.remove();
+  const bom=ctx.bom||{};
+  const bomPreview=`<br><b>BOM成本：</b>${esc(bom.cost_text||'BOM未生成')}<br><b>成本最后更新：</b>${esc(bom.cost_updated_text||'-')}`;
   const html=`<div id="${modalId}" class="plm-dispatch-mask" onclick="if(event.target===this)closePlmDispatchModal()">
     <div class="plm-dispatch-modal">
       <div class="plm-dispatch-head"><div><h3>${ctx.kind==='project'?'项目派工':'流程派工'}</h3><p>在这个弹窗里一次完成：更换人员、任务标题、截止日期、详细事由。不会再弹小小输入框。</p></div><button class="btn" onclick="closePlmDispatchModal()">关闭</button></div>
       <div class="plm-dispatch-body">
         <div id="plmDispatchErr" class="plm-dispatch-error"></div>
-        <div class="plm-dispatch-preview"><b>来源：</b>${esc(ctx.sourceText||'PLM')}<br><b>项目：</b>${esc(ctx.projectName||'-')}<br><b>样品/步骤：</b>${esc(ctx.modelName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}</div>
+        <div class="plm-dispatch-preview"><b>来源：</b>${esc(ctx.sourceText||'PLM')}<br><b>项目：</b>${esc(ctx.projectName||'-')}<br><b>样品/步骤：</b>${esc(ctx.modelName||'-')} ${ctx.stepTitle?(' / '+esc(ctx.stepTitle)):''}${bomPreview}</div>
         <div class="plm-dispatch-grid">
           <div class="plm-dispatch-field full"><label>任务标题 *</label><input id="plmDispatchTitle" value="${esc(ctx.title||'')}" placeholder="派工任务标题"></div>
           <div class="plm-dispatch-field full"><label>项目 / 说明</label><input id="plmDispatchProject" value="${esc(ctx.projectText||'')}" placeholder="项目名称 / 样品 / 工序"></div>
@@ -11119,13 +11156,16 @@ async function submitPlmDispatchModal(){
   if(!reason){showPlmDispatchErr('请填写详细事由 / 要求');return;}
   const users=await loadPlmDispatchUsers();
   const u=users.find(x=>Number(x.id)===assigned)||{};
-  const linked=ctx.linked||{};
+  const bom=ctx.bom||{};
+  const linked={...(ctx.linked||{}),bom_cost:bom.total_cost,bom_currency:bom.currency||'',bom_cost_text:bom.cost_text||'',bom_cost_updated_at:bom.cost_updated_at||'',bom_project_uid:bom.project_uid||'',bom_rows_count:bom.rows_count||0};
   const desc=[
     '来源：'+(ctx.sourceText||'PLM'),
     '项目：'+(ctx.projectName||''),
     ctx.customer?('客户：'+ctx.customer):'',
     ctx.modelName?('样品：'+ctx.modelName):'',
     ctx.stepTitle?('流程步骤：'+ctx.stepTitle):'',
+    'BOM成本：'+(bom.cost_text||'BOM未生成'),
+    '成本最后更新：'+(bom.cost_updated_text||'-'),
     '',
     '详细事由 / 要求：',
     reason
@@ -11133,7 +11173,7 @@ async function submitPlmDispatchModal(){
   const payload={
     task_type:'dispatch',title,project:projectText,description:desc,priority,due_at:dueDate?dueDate+'T18:00':'',mode:'dispatch',assigned_to:assigned,task_date:taskDate,
     customer:ctx.customer||'',product_model:ctx.modelName||'',
-    extra:{plm_project_id:ctx.project_id||0,plm_model_id:ctx.model_id||0,plm_step_id:ctx.step_id||0,plm_source:ctx.kind==='project'?'项目派工':'开发导航图',plm_reason:reason},
+    extra:{plm_project_id:ctx.project_id||0,plm_model_id:ctx.model_id||0,plm_step_id:ctx.step_id||0,plm_source:ctx.kind==='project'?'项目派工':'开发导航图',plm_reason:reason,plm_bom_cost:bom.total_cost,plm_bom_currency:bom.currency||'',plm_bom_cost_text:bom.cost_text||'',plm_bom_cost_updated_at:bom.cost_updated_at||'',plm_bom_project_uid:bom.project_uid||''},
     linked_system:'PLM',linked_table:ctx.kind==='project'?'plm_projects':'plm_flow_steps',linked_id:ctx.kind==='project'?('plm_project_'+(ctx.project_id||0)):('plm_step_'+(ctx.step_id||0)),
     linked_title:ctx.projectName||'',linked_url:ctx.linked_url||('plm.php?project_id='+(ctx.project_id||0)),linked_json:linked
   };
@@ -11161,10 +11201,11 @@ async function createDispatchTask(id){
   const p=projects.find(x=>Number(x.id)===Number(s.project_id))||cur()||{};
   const model=models.find(x=>Number(x.id)===Number(s.model_id));
   const modelName=currentModelName(model);
+  const bom=dispatchBomContext(model||{});
   const title='【PLM流程】'+(s.title||'开发步骤')+' - '+(modelName||p.name||'项目');
   const due=dispatchDueFromStep(s).slice(0,10);
   const taskDate=dispatchTaskDateFromStep(s);
-  await openPlmDispatchModal({kind:'flow',sourceText:'PLM开发导航图 / 流程派工',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,projectName:p.name||'',customer:p.customer||'',modelName,stepTitle:s.title||'',title,projectText:[p.name||'',modelName,s.title||''].filter(Boolean).join(' / '),task_date:taskDate,due_date:due,priority:'normal',reason:'请完成【'+(s.title||'该工序')+'】。完成后在派工里标记完成，PLM 可同步状态。\n\n要求：\n1. 按项目资料和样品要求执行。\n2. 如有异常，请在派工详情中说明原因。\n3. 完成后上传必要图片或附件。',linked:{system:'PLM',type:'flow',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,project_name:p.name||'',customer:p.customer||'',model:modelName,step_title:s.title||''},linked_url:'plm.php?project_id='+(p.id||0)+'&model_id='+(s.model_id||0)+'&step_id='+s.id});
+  await openPlmDispatchModal({kind:'flow',sourceText:'PLM开发导航图 / 流程派工',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,projectName:p.name||'',customer:p.customer||'',modelName,stepTitle:s.title||'',bom,title,projectText:[p.name||'',modelName,s.title||''].filter(Boolean).join(' / '),task_date:taskDate,due_date:due,priority:'normal',reason:'请完成【'+(s.title||'该工序')+'】。完成后在派工里标记完成，PLM 可同步状态。\n\n要求：\n1. 按项目资料和样品要求执行。\n2. 如有异常，请在派工详情中说明原因。\n3. 完成后上传必要图片或附件。',linked:{system:'PLM',type:'flow',project_id:p.id||0,model_id:s.model_id||0,step_id:s.id,project_name:p.name||'',customer:p.customer||'',model:modelName,step_title:s.title||''},linked_url:'plm.php?project_id='+(p.id||0)+'&model_id='+(s.model_id||0)+'&step_id='+s.id});
 }
 async function findCreatedDispatchTask(payload){
   const r=await dispatchApi('list_tasks',{task_date:payload.task_date,carry_open:1,keyword:'',status:'all',assignee:0});
@@ -12801,9 +12842,9 @@ async function openDispatch(){
   if(!guardPerm('create_dispatch','生成派工'))return;
   const p=cur();
   if(!p){toast('请先选择项目');return;}
-  const ms=pModels(p.id)||[];
-  const mainModel=ms[0]||{};
-  await openPlmDispatchModal({kind:'project',sourceText:'PLM项目派工',project_id:p.id||0,model_id:Number(mainModel.id||0),step_id:0,projectName:p.name||'',customer:p.customer||'',modelName:p.model||p.series||currentModelName(mainModel)||'',stepTitle:'',title:'【PLM项目】'+(p.name||'项目派工'),projectText:[p.name||'',p.customer||'',p.model||p.series||''].filter(Boolean).join(' / '),task_date:new Date().toISOString().slice(0,10),due_date:dateOnly(p.due_date)||'',priority:'normal',reason:'项目派工事由：\n\n1. 请按 PLM 项目资料处理。\n2. 请在派工详情里反馈进度。\n3. 如有异常，请写明原因和下一步建议。',linked:{system:'PLM',type:'project',project_id:p.id||0,project_name:p.name||'',customer:p.customer||'',model:p.model||p.series||''},linked_url:'plm.php?project_id='+(p.id||0)});
+  const mainModel=projectDispatchModel(p);
+  const bom=dispatchBomContext(mainModel);
+  await openPlmDispatchModal({kind:'project',sourceText:'PLM项目派工',project_id:p.id||0,model_id:Number(mainModel.id||0),step_id:0,projectName:p.name||'',customer:p.customer||'',modelName:p.model||p.series||currentModelName(mainModel)||'',stepTitle:'',bom,title:'【PLM项目】'+(p.name||'项目派工'),projectText:[p.name||'',p.customer||'',p.model||p.series||''].filter(Boolean).join(' / '),task_date:new Date().toISOString().slice(0,10),due_date:dateOnly(p.due_date)||'',priority:'normal',reason:'项目派工事由：\n\n1. 请按 PLM 项目资料处理。\n2. 请在派工详情里反馈进度。\n3. 如有异常，请写明原因和下一步建议。',linked:{system:'PLM',type:'project',project_id:p.id||0,model_id:Number(mainModel.id||0),project_name:p.name||'',customer:p.customer||'',model:p.model||p.series||currentModelName(mainModel)||''},linked_url:'plm.php?project_id='+(p.id||0)});
 }
 async function openRecycleBin(){
   if(!guardPerm('view_recycle','查看回收站'))return;
