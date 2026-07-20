@@ -866,7 +866,7 @@ async function loadAll(){
     currentUser=r.user||currentUser; currentCan=r.can||currentCan; updateAuthUI();
     projects=(r.projects||[]).map(p=>{const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:normalizeBomRows(p.rows,p.rows_json),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};o.namingType=bomProjectNamingType(o);return o});
     materials=r.materials||[]; lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
-    renderBaseOptions(); renderProjectList(); renderMaterials(); renderLibrary(); renderDashboard();
+    renderBaseOptions();
     initResizableTable('bomTable','bom_col_widths_v65'); applyBomColumnVisibility(); updateBomStickyOffsets(); initResizableTable('materialTable','material_col_widths_v65');
     if(firstBoot){
       firstBoot=false;
@@ -1597,11 +1597,17 @@ function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLo
 function setDashboardView(v){dashboardView=v==='icon'?'icon':'table';dashboardPage=1;localStorage.setItem('bom_dashboard_view_v79',dashboardView);renderDashboard()}
 function toggleDashboardGroup(){dashboardGroup=!dashboardGroup;dashboardPage=1;localStorage.setItem('bom_dashboard_group_v79',dashboardGroup?'1':'0');renderDashboard()}
 function updateDashboardViewButtons(){if($('dashViewTable'))$('dashViewTable').classList.toggle('active',dashboardView!=='icon');if($('dashViewIcon'))$('dashViewIcon').classList.toggle('active',dashboardView==='icon');if($('dashGroupToggle'))$('dashGroupToggle').classList.toggle('active',dashboardGroup);if($('dashboardTableWrap'))$('dashboardTableWrap').hidden=dashboardView==='icon';if($('dashboardIconGrid'))$('dashboardIconGrid').hidden=dashboardView!=='icon'}
-function dashboardTotalPages(){return Math.max(1,Math.ceil((lastDashboardRows.length||0)/dashboardPageSize))}
-function dashboardPageRows(){const total=dashboardTotalPages();dashboardPage=Math.max(1,Math.min(total,Number(dashboardPage)||1));const start=(dashboardPage-1)*dashboardPageSize;return lastDashboardRows.slice(start,start+dashboardPageSize)}
+function dashboardEffectivePageSize(){
+  if(dashboardView!=='icon')return 2;
+  const box=$('dashboardIconGrid'), w=box?.clientWidth||document.querySelector('.dashboard')?.clientWidth||window.innerWidth||1100;
+  const cols=Math.max(2,Math.floor(w/232));
+  return Math.max(4,Math.min(12,cols*2));
+}
+function dashboardTotalPages(){const size=dashboardEffectivePageSize();return Math.max(1,Math.ceil((lastDashboardRows.length||0)/size))}
+function dashboardPageRows(){const size=dashboardEffectivePageSize(),total=dashboardTotalPages();dashboardPage=Math.max(1,Math.min(total,Number(dashboardPage)||1));const start=(dashboardPage-1)*size;return lastDashboardRows.slice(start,start+size)}
 function gotoDashboardPage(delta){dashboardPage=Math.max(1,Math.min(dashboardTotalPages(),dashboardPage+delta));renderDashboard()}
 function renderDashboardPagers(rows){
-  const total=dashboardTotalPages(), start=lastDashboardRows.length?((dashboardPage-1)*dashboardPageSize+1):0, end=Math.min(lastDashboardRows.length,dashboardPage*dashboardPageSize);
+  const size=dashboardEffectivePageSize(), total=dashboardTotalPages(), start=lastDashboardRows.length?((dashboardPage-1)*size+1):0, end=Math.min(lastDashboardRows.length,dashboardPage*size);
   const html=`<span>第 ${dashboardPage}/${total} 页 ｜ ${start}-${end} / ${lastDashboardRows.length}</span><div class="dash-pager-actions"><button class="ghost" onclick="gotoDashboardPage(-1)" ${dashboardPage<=1?'disabled':''}>上一页</button><button class="ghost" onclick="gotoDashboardPage(1)" ${dashboardPage>=total?'disabled':''}>下一页</button></div>`;
   if($('dashPagerTop'))$('dashPagerTop').innerHTML=html;
   if($('dashPagerBottom'))$('dashPagerBottom').innerHTML=html;

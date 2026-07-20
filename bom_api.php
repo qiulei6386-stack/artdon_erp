@@ -1139,6 +1139,19 @@ function bom_v78_naming_sync_check(PDO $pdo,array $p){
     $newHash=bom_v78_naming_hash($new);
     return array('linked'=>true,'missing'=>false,'has_update'=>($oldHash!==$newHash || count($diff)>0),'diffs'=>$diff,'current'=>$new,'snapshot'=>$old,'hash'=>$newHash,'source_updated_at'=>$new['updated_at']??'','synced_at'=>$p['naming_synced_at']??'','message'=>count($diff)?('命名资料有 '.count($diff).' 项变化'):'命名基础资料已同步');
 }
+function bom_v78_naming_sync_summary(array $p){
+    $sys=strtoupper(trim((string)($p['linked_system']??''))); $nid=(int)($p['linked_id']??0);
+    if($sys!=='NAMING' || $nid<=0) return array('linked'=>false,'has_update'=>false,'diffs'=>array(),'message'=>'当前 BOM 未绑定命名型号');
+    return array(
+        'linked'=>true,
+        'missing'=>false,
+        'has_update'=>false,
+        'diffs'=>array(),
+        'source_updated_at'=>(string)($p['naming_source_updated_at']??''),
+        'synced_at'=>(string)($p['naming_synced_at']??''),
+        'message'=>'命名资料可手动检查'
+    );
+}
 function bom_v78_should_update_name($name,$oldModel,$newModel){
     $name=trim((string)$name); if($name==='') return true;
     if($oldModel!=='' && mb_strpos($name,$oldModel)!==false) return true;
@@ -1249,7 +1262,8 @@ try{
             $p['rows'] = bom_hide_sensitive_list($p['rows'], $canCost, $canSupplier);
             $p = bom_hide_sensitive_row($p, $canCost, $canSupplier);
             if(!$canCost && isset($p['rows_json'])) $p['rows_json'] = json_encode($p['rows'], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-            $p['naming_sync'] = bom_v78_naming_sync_check($pdo,$p);
+            // 总览启动只带轻量状态；完整差异检查保留给“查看变化”，避免每个 BOM 一次命名查询导致打开卡顿。
+            $p['naming_sync'] = bom_v78_naming_sync_summary($p);
             // V77.7：仅返回前端显示图；不写库、不改 BOM 明细/成本。
             $p['product_image_display'] = bom_v777_project_display_image($pdo,$p);
         }
