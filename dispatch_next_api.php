@@ -2406,6 +2406,26 @@ function dn_audit_logs(array $in = []): array
     }
     $action = dn_str($in['action_type'] ?? '', 80);
     if ($action !== '') { $where[] = 'l.action_type = ?'; $params[] = $action; }
+    $actionLabel = dn_str($in['action_label'] ?? '', 80);
+    if ($actionLabel !== '') {
+        $map = [
+            '新增' => ['create','create_plan','create_multi'],
+            '修改' => ['update','update_cell','update_multi','status','comment','delete_comment'],
+            '完成' => ['status','step_child_done'],
+            '删除' => ['delete','delete_attachment','delete_comment','step_delete'],
+            '恢复' => ['restore'],
+            '催办' => ['urge'],
+            '上传图片' => ['upload_image'],
+            '上传附件' => ['upload_attachment'],
+            '步骤' => ['step_child_done','step_child_blocked','step_create','step_delete','step_dispatch','step_reorder','step_status','step_template_apply','step_template_save','step_update','step_update_due','step_update_note','step_update_owner','step_update_status'],
+            '权限' => ['save_permissions'],
+            '备份' => ['backup_auto_failed','backup_create','backup_restore','backup_restore_failed','backup_settings','backup_upload'],
+        ];
+        if (isset($map[$actionLabel])) {
+            $where[] = 'l.action_type IN (' . implode(',', array_fill(0, count($map[$actionLabel]), '?')) . ')';
+            array_push($params, ...$map[$actionLabel]);
+        }
+    }
     $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
     $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
     $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.created_at,l.updated_at,
