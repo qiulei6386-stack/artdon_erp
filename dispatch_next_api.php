@@ -305,17 +305,19 @@ function dn_log(?int $taskId, string $action, ?string $field = null, $old = null
     $newS = is_scalar($new) || $new === null ? (string)($new ?? '') : dn_json($new);
     $note = dn_log_note($action, $field, $oldS, $newS, $note);
     if ($field && $taskId) {
-        $st = $pdo->prepare("SELECT id, old_value FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
+        $st = $pdo->prepare("SELECT id, old_value, change_count FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
         $st->execute([$taskId, dn_uid(), $field]);
         $last = $st->fetch();
         if ($last) {
             $mergedOld = (string)($last['old_value'] ?? $oldS);
-            $pdo->prepare("UPDATE dispatch_next_logs SET new_value=?, note=?, updated_at=NOW() WHERE id=?")->execute([$newS, dn_log_note($action, $field, $mergedOld, $newS, $note), (int)$last['id']]);
+            $count = max(1, (int)($last['change_count'] ?? 1)) + 1;
+            $mergedNote = dn_log_note($action, $field, $mergedOld, $newS, $note) . '（5分钟内合并 ' . $count . ' 次）';
+            $pdo->prepare("UPDATE dispatch_next_logs SET action_type=?, new_value=?, note=?, change_count=?, updated_at=NOW() WHERE id=?")->execute([$action, $newS, $mergedNote, $count, (int)$last['id']]);
             return;
         }
     }
-    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
-        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,change_count,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())")
+        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, 1, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
 }
 
 function dn_log_field_label(?string $field): string
@@ -2323,15 +2325,17 @@ function dn_online_logs(array $in = []): array
         $where = 'WHERE user_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
         $params = $ids;
     }
-    $st = db()->prepare("SELECT user_id, user_name, department, role, current_module, login_time, last_active_time, logout_time, active_seconds AS online_seconds, status, heartbeat_count, device_type, browser, ip_address, is_mobile FROM crm_online_sessions {$where} ORDER BY last_active_time DESC LIMIT 200");
+    $st = db()->prepare("SELECT user_id, user_name, department, role, current_module, login_time, last_active_time, logout_time, active_seconds AS online_seconds, status, heartbeat_count, device_type, browser, ip_address, is_mobile FROM crm_online_sessions {$where} ORDER BY last_active_time DESC LIMIT 500");
     $st->execute($params);
     $rows = $st->fetchAll();
     $summary = [];
+    $today = date('Y-m-d');
+    $weekStart = date('Y-m-d', strtotime('monday this week'));
     foreach ($rows as &$row) {
         $seconds = (int)($row['online_seconds'] ?? 0);
         $row['online_seconds'] = $seconds;
         $row['online_text'] = dn_duration_text($seconds);
-        $row['device_type'] = trim((string)$row['device_type'] . ' ' . (string)$row['browser']);
+        $row['device_label'] = trim((string)$row['device_type'] . ' ' . (string)$row['browser']);
         $uid = (int)$row['user_id'];
         if (!isset($summary[$uid])) {
             $summary[$uid] = [
@@ -2340,19 +2344,134 @@ function dn_online_logs(array $in = []): array
                 'department' => (string)($row['department'] ?? ''),
                 'online_seconds' => 0,
                 'online_text' => '',
+                'today_seconds' => 0,
+                'today_text' => '',
+                'week_seconds' => 0,
+                'week_text' => '',
                 'session_count' => 0,
                 'last_active_time' => (string)$row['last_active_time'],
+                'device_type' => (string)($row['device_type'] ?? ''),
+                'browser' => (string)($row['browser'] ?? ''),
             ];
         }
         $summary[$uid]['online_seconds'] += $seconds;
+        $loginDay = substr((string)($row['login_time'] ?? ''), 0, 10);
+        if ($loginDay === $today) $summary[$uid]['today_seconds'] += $seconds;
+        if ($loginDay >= $weekStart) $summary[$uid]['week_seconds'] += $seconds;
         $summary[$uid]['session_count']++;
         if (strtotime((string)$row['last_active_time']) > strtotime((string)$summary[$uid]['last_active_time'])) {
             $summary[$uid]['last_active_time'] = (string)$row['last_active_time'];
+            $summary[$uid]['device_type'] = (string)($row['device_type'] ?? '');
+            $summary[$uid]['browser'] = (string)($row['browser'] ?? '');
         }
     }
-    foreach ($summary as &$item) $item['online_text'] = dn_duration_text((int)$item['online_seconds']);
+    foreach ($summary as &$item) {
+        $item['online_text'] = dn_duration_text((int)$item['online_seconds']);
+        $item['today_text'] = dn_duration_text((int)$item['today_seconds']);
+        $item['week_text'] = dn_duration_text((int)$item['week_seconds']);
+    }
     usort($summary, fn($a, $b) => ((int)$b['online_seconds'] <=> (int)$a['online_seconds']) ?: strcmp((string)$a['user_name'], (string)$b['user_name']));
     return ['summary' => array_values($summary), 'sessions' => $rows];
+}
+
+function dn_audit_action_groups(): array
+{
+    return [
+        'create' => ['create','create_plan','create_multi'],
+        'update' => ['update','update_cell','update_multi','status','comment','delete_comment'],
+        'done' => ['status','step_child_done'],
+        'delete' => ['delete','delete_attachment','delete_comment','step_delete'],
+        'restore' => ['restore'],
+        'urge' => ['urge'],
+        'upload_image' => ['upload_image'],
+        'upload_attachment' => ['upload_attachment'],
+        'step' => ['step_create','step_update','step_update_owner','step_update_due','step_update_status','step_update_note','step_delete','step_reorder','step_status','step_dispatch','step_template_apply','step_template_save','step_child_done','step_child_blocked'],
+        'permission' => ['save_permissions'],
+        'backup' => ['backup_create','backup_upload','backup_settings','backup_restore','backup_restore_failed','backup_auto_failed'],
+    ];
+}
+
+function dn_audit_action_group(string $action, string $newValue = ''): string
+{
+    if ($action === 'status' && $newValue === 'done') return 'done';
+    if (str_starts_with($action, 'upload_image')) return 'upload_image';
+    if (str_starts_with($action, 'upload_attachment')) return 'upload_attachment';
+    foreach (dn_audit_action_groups() as $group => $actions) {
+        if (in_array($action, $actions, true) || str_starts_with($action, $group . '_')) return $group;
+    }
+    return 'update';
+}
+
+function dn_audit_action_label(string $group): string
+{
+    return [
+        'create' => '新增',
+        'update' => '修改',
+        'done' => '完成',
+        'delete' => '删除',
+        'restore' => '恢复',
+        'urge' => '催办',
+        'upload_image' => '上传图片',
+        'upload_attachment' => '上传附件',
+        'step' => '步骤',
+        'permission' => '权限',
+        'backup' => '备份',
+    ][$group] ?? '修改';
+}
+
+function dn_audit_logs(array $in = []): array
+{
+    dn_require('view_logs', '没有查看派工日志权限');
+    dispatch_next_init_schema();
+    $where = [];
+    $params = [];
+    $from = dn_str($in['date_from'] ?? '', 20);
+    $to = dn_str($in['date_to'] ?? '', 20);
+    if ($from !== '') { $where[] = 'l.created_at >= ?'; $params[] = substr($from, 0, 10) . ' 00:00:00'; }
+    if ($to !== '') { $where[] = 'l.created_at <= ?'; $params[] = substr($to, 0, 10) . ' 23:59:59'; }
+    $uid = (int)($in['user_id'] ?? 0);
+    if ($uid > 0) { $where[] = 'l.user_id = ?'; $params[] = $uid; }
+    $taskKw = trim((string)($in['task_kw'] ?? ''));
+    if ($taskKw !== '') {
+        $where[] = '(CAST(l.task_id AS CHAR) LIKE ? OR t.task_no LIKE ? OR t.title LIKE ? OR t.project LIKE ?)';
+        $like = '%' . $taskKw . '%';
+        array_push($params, $like, $like, $like, $like);
+    }
+    $kw = trim((string)($in['kw'] ?? ''));
+    if ($kw !== '') {
+        $where[] = '(l.action_type LIKE ? OR l.field_name LIKE ? OR l.old_value LIKE ? OR l.new_value LIKE ? OR l.note LIKE ? OR COALESCE(u.real_name,u.username) LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)';
+        $like = '%' . $kw . '%';
+        array_push($params, $like, $like, $like, $like, $like, $like, $like, $like);
+    }
+    $group = dn_str($in['action_group'] ?? '', 40);
+    if ($group === 'done') {
+        $where[] = "((l.action_type='status' AND l.new_value='done') OR l.action_type='step_child_done')";
+    } elseif ($group !== '' && isset(dn_audit_action_groups()[$group])) {
+        $actions = dn_audit_action_groups()[$group];
+        $where[] = 'l.action_type IN (' . implode(',', array_fill(0, count($actions), '?')) . ')';
+        array_push($params, ...$actions);
+    }
+    $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+    $limit = max(20, min(500, (int)($in['limit'] ?? 300)));
+    $sql = "SELECT l.*, COALESCE(NULLIF(u.real_name,''), u.username, CONCAT('用户',l.user_id)) AS user_name, t.task_no, t.title AS task_title, t.project AS task_project
+        FROM dispatch_next_logs l
+        LEFT JOIN crm_users u ON u.id=l.user_id
+        LEFT JOIN dispatch_next_tasks t ON t.id=l.task_id
+        {$sqlWhere}
+        ORDER BY l.id DESC
+        LIMIT {$limit}";
+    $st = dispatch_next_db()->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$row) {
+        $groupKey = dn_audit_action_group((string)($row['action_type'] ?? ''), (string)($row['new_value'] ?? ''));
+        $row['action_group'] = $groupKey;
+        $row['action_label'] = dn_audit_action_label($groupKey);
+        $row['field_label'] = dn_log_field_label((string)($row['field_name'] ?? ''));
+        $row['old_label'] = dn_log_value_label((string)($row['field_name'] ?? ''), (string)($row['old_value'] ?? ''));
+        $row['new_label'] = dn_log_value_label((string)($row['field_name'] ?? ''), (string)($row['new_value'] ?? ''));
+    }
+    return ['rows' => $rows, 'count' => count($rows), 'action_groups' => array_map(fn($k) => ['key' => $k, 'label' => dn_audit_action_label($k)], array_keys(dn_audit_action_groups()))];
 }
 
 function dn_duration_text(int $seconds): string
@@ -4631,6 +4750,7 @@ try {
         case 'online_status': dn_ok(dn_online_status());
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
+        case 'audit_logs': dn_ok(dn_audit_logs($in));
         case 'mark_read': dn_ok(dn_mark_read($in));
         case 'mark_notification_read': dn_ok(dn_mark_read($in));
         case 'mark_all_read_history': dn_ok(dn_mark_read([]));
