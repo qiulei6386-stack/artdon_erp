@@ -8646,16 +8646,23 @@ textarea,
 }
 .sample-right-panel .sample-head-pro{
   display:grid!important;
-  grid-template-columns:minmax(0,1fr) max-content!important;
+  grid-template-columns:minmax(460px,1fr) minmax(620px,auto)!important;
   gap:8px!important;
   align-items:start!important;
   padding:8px 10px!important;
   min-height:0!important;
 }
+.sample-right-panel .sample-title-pro{
+  min-width:0!important;
+  max-width:100%!important;
+}
+.sample-right-panel .sample-title-pro>div:last-child{
+  min-width:0!important;
+}
 .sample-right-panel .sample-actions-pro{
   display:flex!important;
-  width:auto!important;
-  max-width:none!important;
+  width:min(100%,1080px)!important;
+  max-width:1080px!important;
   gap:5px!important;
   justify-content:flex-end!important;
   align-items:flex-start!important;
@@ -8691,6 +8698,7 @@ textarea,
 .sample-right-panel .sample-bom-summary .bom-mini-status{
   display:inline-flex!important;
   align-items:center!important;
+  max-width:220px!important;
   height:22px!important;
   padding:0 7px!important;
   border-radius:999px!important;
@@ -8700,6 +8708,8 @@ textarea,
   font-size:10.5px!important;
   font-weight:1000!important;
   white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
 }
 .sample-right-panel .sample-bom-summary .bom-mini-status.ok{
   background:#ecfdf5!important;
@@ -8713,7 +8723,30 @@ textarea,
 }
 .sample-right-panel .sample-title-pro h3{margin-bottom:2px!important}
 .sample-right-panel .sample-sub-pro{margin-top:1px!important}
+.sample-right-panel .sample-sub-pro,
+.sample-right-panel .sample-mini-row{
+  max-width:100%!important;
+}
 .sample-mini-row{margin-top:3px!important}
+@media(max-width:1500px){
+  .sample-right-panel .sample-head-pro{
+    grid-template-columns:minmax(360px,1fr) minmax(520px,auto)!important;
+  }
+  .sample-right-panel .sample-actions-pro{
+    max-width:760px!important;
+  }
+}
+@media(max-width:1180px){
+  .sample-right-panel .sample-head-pro{
+    grid-template-columns:1fr!important;
+  }
+  .sample-right-panel .sample-actions-pro,
+  .sample-right-panel .sample-bom-summary{
+    justify-content:flex-start!important;
+    width:100%!important;
+    max-width:100%!important;
+  }
+}
 .sample-right-panel .compact-fields.sample-basic-grid{
   grid-template-columns:minmax(220px,2fr) minmax(78px,.75fr) minmax(112px,1fr) minmax(86px,.8fr) minmax(86px,.8fr)!important;
   gap:7px!important;
@@ -10694,6 +10727,11 @@ function moneyMini(v){
   const n=Number(v||0);
   return Number.isFinite(n)?n.toFixed(2):'0.00';
 }
+function shortBomUid(v){
+  const s=String(v||'');
+  if(s.length<=18)return s;
+  return '...'+s.slice(-14);
+}
 function sampleBomSummary(m){
   const b=m.bom_summary||{}, exists=!!b.exists;
   const parts=[`<span class="bom-mini-status ${exists?'ok':'warn'}">BOM ${exists?'已绑定':'未生成'}</span>`];
@@ -10703,7 +10741,7 @@ function sampleBomSummary(m){
     if(b.updated_at)parts.push(`<span class="bom-mini-status">更新 ${esc(String(b.updated_at).slice(0,16))}</span>`);
     if(b.updated_by)parts.push(`<span class="bom-mini-status">人员 ${esc(b.updated_by)}</span>`);
     if(b.total_cost!==undefined)parts.push(`<span class="bom-mini-status ok">成本 ${esc(b.currency||'RMB')} ${moneyMini(b.total_cost)}</span>`);
-    if(b.project_uid)parts.push(`<span class="bom-mini-status">UID ${esc(b.project_uid)}</span>`);
+    if(b.project_uid)parts.push(`<span class="bom-mini-status" title="${esc(b.project_uid)}">UID ${esc(shortBomUid(b.project_uid))}</span>`);
   }else{
     parts.push(`<span class="bom-mini-status">关键元器件 ${[m.chip_name,m.optical_name,m.driver_name,m.accessories_name].filter(Boolean).length}/4</span>`);
   }
