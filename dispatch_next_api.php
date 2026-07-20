@@ -1205,6 +1205,8 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'status' => $groupStatus,
         'task_date' => $g['task_date'],
         'due_at' => $g['due_at'],
+        'created_at' => $g['created_at'],
+        'updated_at' => $g['updated_at'],
         'due_state' => $due['state'],
         'due_label' => $due['label'],
         'is_overdue' => $due['state'] === 'overdue',
