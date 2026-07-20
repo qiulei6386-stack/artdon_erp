@@ -8623,6 +8623,9 @@ textarea,
   font-size:12px!important;
   border-radius:8px!important;
 }
+.sample-right-panel .beam-test-note{
+  grid-column:1/-1!important;
+}
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
 .flow-shell{display:grid!important;gap:12px!important;}
@@ -10389,6 +10392,8 @@ const beamAngleStoreLabels=['A超','A小','A中','A宽','A大'];
 const beamAngleLegacyLabels=[['超小'],['小','角度1','角1'],['中','角度2','角2'],['宽','角度3','角3'],['大','角度4','角4']];
 const beamUgrLabels=['超小角度UGR','小角度UGR','中角度UGR','宽角度UGR','大角度UGR'];
 const beamUgrStoreLabels=['U超','U小','U中','U宽','U大'];
+const beamTestNoteLabel='测试条件备注';
+const beamTestNoteStoreLabel='T';
 function beamParts(v,labels,storeLabels,legacyLabels=[],fallbackIndex=-1){
   const raw=String(v||'').trim(),out=['','','','',''];
   if(!raw)return out;
@@ -10403,9 +10408,19 @@ function beamParts(v,labels,storeLabels,legacyLabels=[],fallbackIndex=-1){
   if(!matched&&fallbackIndex>=0)out[fallbackIndex]=raw;
   return out;
 }
+function beamTextPart(v,labels){
+  const raw=String(v||'').trim();
+  if(!raw)return '';
+  for(const label of labels){
+    const re=new RegExp('(?:^|[｜|;；,，\\s])'+label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[:：]\\s*([^｜|;；]+)','u');
+    const m=raw.match(re);
+    if(m)return m[1].trim();
+  }
+  return '';
+}
 function beamAngleGrid(m){
-  const id=m.id,angleParts=beamParts(m.beam||'',beamAngleLabels,beamAngleStoreLabels,beamAngleLegacyLabels,1),ugrParts=beamParts(m.beam||'',beamUgrLabels,beamUgrStoreLabels);
-  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(angleParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-angle-grid beam-ugr-grid">${beamUgrLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_ugr_${i}_${id}" value="${esc(ugrParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div>`;
+  const id=m.id,angleParts=beamParts(m.beam||'',beamAngleLabels,beamAngleStoreLabels,beamAngleLegacyLabels,1),ugrParts=beamParts(m.beam||'',beamUgrLabels,beamUgrStoreLabels),testNote=beamTextPart(m.beam||'',[beamTestNoteLabel,beamTestNoteStoreLabel]);
+  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(angleParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-angle-grid beam-ugr-grid">${beamUgrLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_ugr_${i}_${id}" value="${esc(ugrParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="field beam-test-note"><label>${beamTestNoteLabel}</label><input id="m_beam_test_note_${id}" value="${esc(testNote)}" placeholder="测试条件备注"></div>`;
 }
 function beamAngleValue(id){
   const angle=beamAngleStoreLabels.map((label,i)=>{
@@ -10416,7 +10431,8 @@ function beamAngleValue(id){
     const v=String($('m_beam_ugr_'+i+'_'+id)?.value||'').trim();
     return v?label+'：'+v:'';
   });
-  return angle.concat(ugr).filter(Boolean).join(' ｜ ');
+  const note=String($('m_beam_test_note_'+id)?.value||'').trim();
+  return angle.concat(ugr,note?beamTestNoteStoreLabel+'：'+note:'').filter(Boolean).join(' ｜ ');
 }
 
 function sampleDimensionPanel(m){
