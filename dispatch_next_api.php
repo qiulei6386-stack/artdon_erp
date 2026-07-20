@@ -1117,6 +1117,14 @@ function dn_task_matches_people(array $task, array $personIds): bool
     return false;
 }
 
+function dn_recent_create_highlight($createdBy, $createdAt): int
+{
+    if ((int)$createdBy !== dn_uid()) return 0;
+    if ((string)$createdAt === '') return 0;
+    $ts = strtotime((string)$createdAt);
+    return $ts && time() - $ts <= 20 && time() - $ts >= -30 ? 1 : 0;
+}
+
 function dn_decorate_task(array $r): array
 {
     $r['id'] = (int)$r['id'];
@@ -1137,6 +1145,7 @@ function dn_decorate_task(array $r): array
     $due = dn_due_status($r['due_at'] ?? null, (string)$r['status']);
     $r['due_state'] = $due['state'];
     $r['due_label'] = $due['label'];
+    $r['highlight_recent_create'] = dn_recent_create_highlight($r['created_by'], $r['created_at'] ?? '');
     $mailId = dn_task_mail_id($r);
     $r['mail_preview_task_id'] = $mailId > 0 ? (int)$r['id'] : 0;
     $r['has_mail_body'] = $mailId > 0 ? 1 : 0;
@@ -1207,6 +1216,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'due_at' => $g['due_at'],
         'created_at' => $g['created_at'],
         'updated_at' => $g['updated_at'],
+        'highlight_recent_create' => dn_recent_create_highlight((int)$g['created_by'], $g['created_at'] ?? ''),
         'due_state' => $due['state'],
         'due_label' => $due['label'],
         'is_overdue' => $due['state'] === 'overdue',
