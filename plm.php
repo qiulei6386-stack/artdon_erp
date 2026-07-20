@@ -8605,6 +8605,24 @@ textarea,
 .sample-right-panel .compact-fields.sample-basic-grid .naming-sync-tools{
   display:none!important;
 }
+.sample-right-panel .beam-angle-grid{
+  grid-column:1/-1!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:7px!important;
+  align-items:start!important;
+}
+.sample-right-panel .beam-angle-grid .field{
+  min-width:0!important;
+  grid-column:span 1!important;
+}
+.sample-right-panel .beam-angle-grid input{
+  height:34px!important;
+  min-height:34px!important;
+  padding:6px 8px!important;
+  font-size:12px!important;
+  border-radius:8px!important;
+}
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
 .flow-shell{display:grid!important;gap:12px!important;}
@@ -10366,6 +10384,33 @@ function componentInlinePanel(m){
   return `<div class="key-components-inline"><div class="key-components-head"><span>输入可模糊查找，右侧 ... 可联动筛选 BOM 物料库。</span></div><div class="component-simple-grid">${componentSimpleField(id,'光源/芯片','芯','chip',m,'如 CREE XPG4 / COB')}${componentSimpleField(id,'光学','光','optical',m,'如透镜 / 反光杯')}${componentSimpleField(id,'电源','电','driver',m,'如驱动电源')}${componentSimpleField(id,'附加/配件','配','accessories',m,'如接头 / 防水圈 / 螺丝包')}</div></div>`;
 }
 
+const beamAngleLabels=['超小角度','角度1','角度2','角度3','角度4'];
+const beamAngleStoreLabels=['超小','角1','角2','角3','角4'];
+function beamAngleParts(v){
+  const raw=String(v||'').trim(),out=['','','','',''];
+  if(!raw)return out;
+  let matched=false;
+  beamAngleLabels.forEach((label,i)=>{
+    [label,beamAngleStoreLabels[i]].forEach(key=>{
+      const re=new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[:：]\\s*([^｜|;；,，]+)','u');
+      const m=raw.match(re);
+      if(m){out[i]=m[1].trim();matched=true;}
+    });
+  });
+  if(!matched)out[1]=raw;
+  return out;
+}
+function beamAngleGrid(m){
+  const id=m.id,parts=beamAngleParts(m.beam||'');
+  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(parts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div>`;
+}
+function beamAngleValue(id){
+  return beamAngleStoreLabels.map((label,i)=>{
+    const v=String($('m_beam_part_'+i+'_'+id)?.value||'').trim();
+    return v?label+'：'+v:'';
+  }).filter(Boolean).join(' ｜ ');
+}
+
 function sampleDimensionPanel(m){
   const id=m.id;
   const catOpts=['嵌入式圆形','嵌入式方形','嵌入式','导轨灯','明装灯','磁吸灯','吊线灯','线性灯','户外灯','面板灯','筒灯','射灯','其它'];
@@ -10519,12 +10564,12 @@ function modelCard(m,expanded,pid){
           <h4>基础规格 / 版本</h4>
           <div class="compact-fields sample-basic-grid">
             <input type="hidden" id="m_name_${m.id}" value="${esc(m.name||'')}">
-            <input type="hidden" id="m_beam_${m.id}" value="${esc(m.beam||'')}">
             <div class="field sample-model-field"><label>型号</label><div class="model-picker-inline"><input id="m_model_${m.id}" value="${esc(m.model||'')}" placeholder="从命名系统选择或输入型号"><button type="button" class="btn small primary" onclick="openNamingModal(${m.id})">选型号</button></div><div class="naming-inline-meta" title="${esc(namingInlineMeta(m))}">${esc(namingInlineMeta(m))}</div>${namingSyncTools(m)}</div>
             <div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2"></div>
             <div class="field"><label>状态</label><select id="m_status_${m.id}">${opt(['草稿','打样中','测试中','修改中','待客户确认','客户已确认','量产前确认','暂停','取消','开发中','已完成'],m.status)}</select></div>
             <div class="field"><label>功率</label><input id="m_power_${m.id}" value="${esc(m.power||'')}"></div>
             <div class="field"><label>色温</label><input id="m_cct_${m.id}" value="${esc(m.cct||'')}"></div>
+            ${beamAngleGrid(m)}
             ${sampleDimensionPanel(m)}
           </div>
         </div>
@@ -10548,7 +10593,7 @@ function modelCard(m,expanded,pid){
   </div>`;
 }
 async function newModel(pid){const r=await api('new_model',{project_id:pid});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+pid,r.id)}toast(r.ok?'已新增样品':r.error);await load()}
-async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:$('m_beam_'+id).value,cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:openingSizeValue($('m_opening_size_'+id)?.value||''),diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
+async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:beamAngleValue(id),cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:openingSizeValue($('m_opening_size_'+id)?.value||''),diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
   chip_name:$('m_chip_name_'+id)?.value||'',chip_brand:$('m_chip_brand_'+id)?.value||'',chip_spec:$('m_chip_spec_'+id)?.value||'',chip_material_id:$('m_chip_material_id_'+id)?.value||0,
   optical_name:$('m_optical_name_'+id)?.value||'',optical_brand:$('m_optical_brand_'+id)?.value||'',optical_spec:$('m_optical_spec_'+id)?.value||'',optical_material_id:$('m_optical_material_id_'+id)?.value||0,
   driver_name:$('m_driver_name_'+id)?.value||'',driver_brand:$('m_driver_brand_'+id)?.value||'',driver_spec:$('m_driver_spec_'+id)?.value||'',driver_material_id:$('m_driver_material_id_'+id)?.value||0,
