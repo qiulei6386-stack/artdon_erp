@@ -300,10 +300,10 @@ function dn_task_no(string $prefix = 'DN'): string
 
 function dn_log(?int $taskId, string $action, ?string $field = null, $old = null, $new = null, string $note = ''): void
 {
-    audit_log($taskId, $action, $field, $old, $new, $note);
+    dn_audit_log($taskId, $action, $field, $old, $new, $note);
 }
 
-function audit_log(?int $taskId, string $action, ?string $field = null, $old = null, $new = null, string $note = ''): void
+function dn_audit_log(?int $taskId, string $action, ?string $field = null, $old = null, $new = null, string $note = ''): void
 {
     $pdo = dispatch_next_db();
     $oldS = is_scalar($old) || $old === null ? (string)($old ?? '') : dn_json($old);
@@ -1580,7 +1580,7 @@ function dn_create_multi(array $in): array
             'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
             'extra' => $in['extra'] ?? [],
         ]);
-        audit_log($childId, 'create_multi', 'assigned_to', '', $aid, '多人派工创建：' . dn_user_name((int)$aid));
+        dn_audit_log($childId, 'create_multi', 'assigned_to', '', $aid, '多人派工创建：' . dn_user_name((int)$aid));
     }
     dn_refresh_group($gid);
     return ['group_id' => $gid];
@@ -2194,7 +2194,7 @@ function dn_upload(array $in, string $kind): array
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_attachments(task_id,comment_id,user_id,file_kind,file_name,file_path,file_type,file_size,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
         ->execute([(int)$task['id'], !empty($in['comment_id']) ? (int)$in['comment_id'] : null, dn_uid(), $kind, $name, $rel, $type, $size, $expires]);
-    audit_log((int)$task['id'], 'upload_' . $kind, 'file', '', $name, $kind === 'image' ? '上传图片' : '上传附件');
+    dn_audit_log((int)$task['id'], 'upload_' . $kind, 'file', '', $name, $kind === 'image' ? '上传图片' : '上传附件');
     return ['attachment_id' => (int)$pdo->lastInsertId(), 'path' => $rel, 'expires_at' => $expires];
 }
 
@@ -2211,7 +2211,7 @@ function dn_delete_attachment(array $in): array
     $pdo->prepare("UPDATE dispatch_next_attachments SET is_deleted=1, deleted_at=NOW() WHERE id=?")->execute([$id]);
     dn_delete_attachment_file((string)$a['file_path']);
     $kind = (string)($a['file_kind'] ?? 'attachment');
-    audit_log((int)$a['task_id'], $kind === 'image' ? 'delete_image' : 'delete_attachment', 'file', $a['file_name'], '', $kind === 'image' ? '删除图片' : '删除附件');
+    dn_audit_log((int)$a['task_id'], $kind === 'image' ? 'delete_image' : 'delete_attachment', 'file', $a['file_name'], '', $kind === 'image' ? '删除图片' : '删除附件');
     return ['attachment_id' => $id];
 }
 
