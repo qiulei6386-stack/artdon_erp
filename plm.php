@@ -10385,31 +10385,38 @@ function componentInlinePanel(m){
 }
 
 const beamAngleLabels=['超小角度','小角度','中角度','宽角度','大角度'];
-const beamAngleStoreLabels=['超小','小','中','宽','大'];
-const beamAngleLegacyLabels=[['角度1','角1'],['角度2','角2'],['角度3','角3'],['角度4','角4']];
-function beamAngleParts(v){
+const beamAngleStoreLabels=['A超','A小','A中','A宽','A大'];
+const beamAngleLegacyLabels=[['超小'],['小','角度1','角1'],['中','角度2','角2'],['宽','角度3','角3'],['大','角度4','角4']];
+const beamUgrLabels=['超小角度UGR','小角度UGR','中角度UGR','宽角度UGR','大角度UGR'];
+const beamUgrStoreLabels=['U超','U小','U中','U宽','U大'];
+function beamParts(v,labels,storeLabels,legacyLabels=[],fallbackIndex=-1){
   const raw=String(v||'').trim(),out=['','','','',''];
   if(!raw)return out;
   let matched=false;
-  beamAngleLabels.forEach((label,i)=>{
-    [label,beamAngleStoreLabels[i],...(i>0?beamAngleLegacyLabels[i-1]:[])].forEach(key=>{
-      const re=new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[:：]\\s*([^｜|;；,，]+)','u');
+  labels.forEach((label,i)=>{
+    [label,storeLabels[i],...(legacyLabels[i]||[])].forEach(key=>{
+      const re=new RegExp('(?:^|[｜|;；,，\\s])'+key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[:：]\\s*([^｜|;；,，]+)','u');
       const m=raw.match(re);
       if(m){out[i]=m[1].trim();matched=true;}
     });
   });
-  if(!matched)out[1]=raw;
+  if(!matched&&fallbackIndex>=0)out[fallbackIndex]=raw;
   return out;
 }
 function beamAngleGrid(m){
-  const id=m.id,parts=beamAngleParts(m.beam||'');
-  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(parts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div>`;
+  const id=m.id,angleParts=beamParts(m.beam||'',beamAngleLabels,beamAngleStoreLabels,beamAngleLegacyLabels,1),ugrParts=beamParts(m.beam||'',beamUgrLabels,beamUgrStoreLabels);
+  return `<div class="beam-angle-grid">${beamAngleLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_part_${i}_${id}" value="${esc(angleParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div><div class="beam-angle-grid beam-ugr-grid">${beamUgrLabels.map((label,i)=>`<div class="field"><label>${esc(label)}</label><input id="m_beam_ugr_${i}_${id}" value="${esc(ugrParts[i]||'')}" placeholder="${esc(label)}"></div>`).join('')}</div>`;
 }
 function beamAngleValue(id){
-  return beamAngleStoreLabels.map((label,i)=>{
+  const angle=beamAngleStoreLabels.map((label,i)=>{
     const v=String($('m_beam_part_'+i+'_'+id)?.value||'').trim();
     return v?label+'：'+v:'';
-  }).filter(Boolean).join(' ｜ ');
+  });
+  const ugr=beamUgrStoreLabels.map((label,i)=>{
+    const v=String($('m_beam_ugr_'+i+'_'+id)?.value||'').trim();
+    return v?label+'：'+v:'';
+  });
+  return angle.concat(ugr).filter(Boolean).join(' ｜ ');
 }
 
 function sampleDimensionPanel(m){
