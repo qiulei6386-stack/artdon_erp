@@ -2024,6 +2024,40 @@ function plm_v85_bom_project_total($b){
     $other=plm_v85_bom_num($b['other']??0);
     return array('material'=>$mat,'labor'=>$labor,'other'=>$other,'total'=>$mat+$labor+$other,'rows'=>count($rows));
 }
+function plm_v85_bom_match_key($v){
+    $v=trim((string)($v??''));
+    if($v==='') return '';
+    $v=function_exists('mb_strtolower') ? mb_strtolower($v,'UTF-8') : strtolower($v);
+    return preg_replace('/\s+/u','',$v);
+}
+function plm_v85_bom_candidate_keys($m){
+    $out=array();
+    foreach(array('model','naming_model_no','sample_no','name') as $k){
+        $v=trim((string)($m[$k]??''));
+        if($v==='') continue;
+        $key=plm_v85_bom_match_key($v);
+        if($key!=='' && strlen($key)>=3) $out[$key]=$k;
+    }
+    return $out;
+}
+function plm_v85_find_bom_for_model($m,$uidMap,$fallbackRows){
+    $uid='PLM-MODEL-'.(int)($m['id']??0);
+    if(isset($uidMap[$uid])) return array($uidMap[$uid],'UID');
+    $keys=plm_v85_bom_candidate_keys($m);
+    if(!count($keys)) return array(null,'');
+    foreach($fallbackRows as $b){
+        $bm=plm_v85_bom_match_key($b['model']??'');
+        if($bm!=='' && isset($keys[$bm])) return array($b,'型号');
+    }
+    foreach($fallbackRows as $b){
+        $bn=plm_v85_bom_match_key($b['name']??'');
+        if($bn==='') continue;
+        foreach($keys as $key=>$source){
+            if(strlen($key)>=5 && strpos($bn,$key)!==false) return array($b,$source==='name'?'名称':'型号');
+        }
+    }
+    return array(null,'');
+}
 function plm_v85_attach_bom_summary(array $models, $canCost=false){
     if(!count($models) || !plm_v85_table_exists('bom_projects')) return $models;
     $uids=array();
@@ -2034,9 +2068,10 @@ function plm_v85_attach_bom_summary(array $models, $canCost=false){
     $rows=plm_v85_rows('SELECT * FROM bom_projects WHERE project_uid IN ('.$ph.') AND COALESCE(is_active,1)=1',$uids);
     $map=array();
     foreach($rows as $b) $map[(string)($b['project_uid']??'')]=$b;
+    $fallbackRows=plm_v85_rows('SELECT * FROM bom_projects WHERE COALESCE(is_active,1)=1 ORDER BY updated_at DESC,id DESC LIMIT 1000');
     foreach($models as &$m){
         $uid='PLM-MODEL-'.(int)($m['id']??0);
-        $b=$map[$uid]??null;
+        list($b,$match)=plm_v85_find_bom_for_model($m,$map,$fallbackRows);
         if(!$b){
             $m['bom_summary']=array('exists'=>false,'project_uid'=>$uid,'status'=>'未生成','rows_count'=>0);
             continue;
@@ -2044,8 +2079,9 @@ function plm_v85_attach_bom_summary(array $models, $canCost=false){
         $t=plm_v85_bom_project_total($b);
         $s=array(
             'exists'=>true,
-            'project_uid'=>$uid,
+            'project_uid'=>(string)($b['project_uid']??$uid),
             'status'=>'已生成',
+            'match'=>$match,
             'name'=>(string)($b['name']??''),
             'model'=>(string)($b['model']??''),
             'currency'=>(string)($b['currency']??'RMB'),
@@ -10663,6 +10699,7 @@ function sampleBomSummary(m){
   const parts=[`<span class="bom-mini-status ${exists?'ok':'warn'}">BOM ${exists?'已绑定':'未生成'}</span>`];
   if(exists){
     parts.push(`<span class="bom-mini-status">行数 ${Number(b.rows_count||0)}</span>`);
+    if(b.match)parts.push(`<span class="bom-mini-status">匹配 ${esc(b.match)}</span>`);
     if(b.updated_at)parts.push(`<span class="bom-mini-status">更新 ${esc(String(b.updated_at).slice(0,16))}</span>`);
     if(b.updated_by)parts.push(`<span class="bom-mini-status">人员 ${esc(b.updated_by)}</span>`);
     if(b.total_cost!==undefined)parts.push(`<span class="bom-mini-status ok">成本 ${esc(b.currency||'RMB')} ${moneyMini(b.total_cost)}</span>`);
