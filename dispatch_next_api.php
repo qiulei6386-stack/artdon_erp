@@ -2474,6 +2474,9 @@ function dn_audit_action_label(string $action, string $newValue = ''): string
     if ($action === 'cancel_complete') return '取消完成';
     if ($action === 'progress') return '写进度';
     if ($action === 'status' && $newValue === 'done') return '完成';
+    if ($action === 'status' && in_array($newValue, ['accepted','in_progress'], true)) return '接收';
+    if ($action === 'status' && $newValue === 'submitted') return '提交确认';
+    if ($action === 'status' && in_array($newValue, ['paused','returned'], true)) return '暂停 / 卡住';
     if ($action === 'delete' || $action === 'delete_image' || $action === 'delete_attachment' || $action === 'delete_comment' || $action === 'step_delete') return '删除';
     if ($action === 'restore') return '恢复';
     if ($action === 'urge') return '催办';
@@ -2633,6 +2636,125 @@ function dn_cleanup_old_logs(array $in = []): array
     $deleted = $st->rowCount();
     dn_audit_log(null, 'audit_cleanup', 'days', '', $days, '清理 ' . $days . ' 天前普通操作日志，删除 ' . $deleted . ' 条');
     return ['deleted' => $deleted, 'days' => $days];
+}
+
+function dn_task_flow_list(array $in = []): array
+{
+    $pdo = dispatch_next_db();
+    [$vis, $params] = dn_visible_sql('t');
+    $where = [$vis];
+    $q = dn_str($in['q'] ?? '', 160);
+    if ($q !== '') {
+        $like = '%' . $q . '%';
+        $where[] = '(t.task_no LIKE ? OR t.title LIKE ? OR t.project LIKE ?)';
+        array_push($params, $like, $like, $like);
+    }
+    $from = dn_str($in['date_from'] ?? '', 20);
+    $to = dn_str($in['date_to'] ?? '', 20);
+    if ($from !== '') { $where[] = 't.updated_at >= ?'; $params[] = substr($from, 0, 10) . ' 00:00:00'; }
+    if ($to !== '') { $where[] = 't.updated_at <= ?'; $params[] = substr($to, 0, 10) . ' 23:59:59'; }
+    $assignee = (int)($in['assigned_to'] ?? 0);
+    if ($assignee > 0) { $where[] = 't.assigned_to = ?'; $params[] = $assignee; }
+    $creator = (int)($in['created_by'] ?? 0);
+    if ($creator > 0) { $where[] = 't.created_by = ?'; $params[] = $creator; }
+    $status = dn_str($in['status'] ?? '', 40);
+    if ($status !== '') { $where[] = 't.status = ?'; $params[] = $status; }
+    $overdue = dn_str($in['overdue'] ?? '', 10);
+    if ($overdue === '1') $where[] = "t.due_at IS NOT NULL AND t.due_at<NOW() AND t.status NOT IN ('done','cancelled')";
+    if ($overdue === '0') $where[] = "(t.due_at IS NULL OR t.due_at>=NOW() OR t.status IN ('done','cancelled'))";
+    $sql = "SELECT t.id,t.task_no,t.title,t.project,t.status,t.due_at,t.updated_at,t.created_by,t.assigned_to,t.parent_group_id,t.dispatch_mode,
+            COALESCE(NULLIF(cu.real_name,''),cu.username) AS creator_name,
+            COALESCE(NULLIF(au.real_name,''),au.username) AS assignee_name
+        FROM dispatch_next_tasks t
+        LEFT JOIN crm_users cu ON cu.id=t.created_by
+        LEFT JOIN crm_users au ON au.id=t.assigned_to
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY t.updated_at DESC,t.id DESC
+        LIMIT 120";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $tasks = $st->fetchAll();
+    $groups = [];
+    $seen = [];
+    foreach ($tasks as &$t) {
+        $gid = (int)($t['parent_group_id'] ?? 0);
+        if ($gid > 0 && !isset($seen[$gid])) {
+            $g = dn_group_row($gid);
+            if ($g) $groups[] = $g;
+            $seen[$gid] = true;
+        }
+        $t['is_group'] = false;
+    }
+    return ['tasks' => array_merge($groups, $tasks), 'count' => count($groups) + count($tasks)];
+}
+
+function dn_flow_timeline(array $taskIds, ?int $groupId = null): array
+{
+    $taskIds = array_values(array_unique(array_filter(array_map('intval', $taskIds), fn($v) => $v > 0)));
+    if (!$taskIds && !$groupId) return [];
+    $pdo = dispatch_next_db();
+    $where = [];
+    $params = [];
+    if ($taskIds) {
+        $where[] = 'l.task_id IN (' . implode(',', array_fill(0, count($taskIds), '?')) . ')';
+        array_push($params, ...$taskIds);
+    }
+    if ($groupId) {
+        $where[] = "(l.task_id IS NULL AND l.field_name='group_id' AND (l.old_value=? OR l.new_value=? OR l.note LIKE ?))";
+        array_push($params, (string)$groupId, (string)$groupId, '%#' . $groupId . '%');
+    }
+    $sql = "SELECT l.id,l.task_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.created_at AS time,l.updated_at,l.change_count,
+            COALESCE(NULLIF(u.real_name,''),u.username,CONCAT('用户',l.user_id)) AS user_name,
+            t.title AS task_title,t.task_no,
+            (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=l.task_id AND a.is_deleted=0) AS attachment_count,
+            (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=l.task_id AND a.file_kind='image' AND a.is_deleted=0) AS image_count
+        FROM dispatch_next_logs l
+        LEFT JOIN crm_users u ON u.id=l.user_id
+        LEFT JOIN dispatch_next_tasks t ON t.id=l.task_id
+        WHERE " . implode(' OR ', $where) . "
+        ORDER BY l.created_at ASC,l.id ASC
+        LIMIT 500";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$r) {
+        $field = (string)($r['field_name'] ?? '');
+        $old = (string)($r['old_value'] ?? '');
+        $new = (string)($r['new_value'] ?? '');
+        $r['action_label'] = dn_audit_action_label((string)($r['action_type'] ?? ''), $new);
+        $r['field_label'] = $field !== '' ? dn_log_field_label($field) : '';
+        $r['old_label'] = $field !== '' ? dn_log_value_label($field, $old) : $old;
+        $r['new_label'] = $field !== '' ? dn_log_value_label($field, $new) : $new;
+        $r['attachment_count'] = (int)($r['attachment_count'] ?? 0);
+        $r['image_count'] = (int)($r['image_count'] ?? 0);
+    }
+    return $rows;
+}
+
+function dn_task_flow_detail(array $in): array
+{
+    $id = (int)($in['task_id'] ?? $in['id'] ?? 0);
+    $task = dn_task($id);
+    return ['task' => dn_decorate_task($task), 'timeline' => dn_flow_timeline([$id])];
+}
+
+function dn_multi_group_flow_detail(array $in): array
+{
+    $gid = (int)($in['group_id'] ?? 0);
+    if ($gid <= 0 && !empty($in['task_id'])) {
+        $task = dn_task((int)$in['task_id']);
+        $gid = (int)($task['parent_group_id'] ?? 0);
+    }
+    if ($gid <= 0) dn_fail('缺少多人组 ID');
+    $pdo = dispatch_next_db();
+    $g = dn_group_row($gid);
+    if (!$g) dn_fail('多人组不存在或没有权限', 404);
+    [$vis, $params] = dn_visible_sql('t');
+    $st = $pdo->prepare("SELECT t.id,t.task_no,t.title,t.status,t.due_at,t.updated_at,t.assigned_to,COALESCE(NULLIF(u.real_name,''),u.username) AS assignee_name FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.parent_group_id=? AND {$vis} ORDER BY t.id");
+    $st->execute(array_merge([$gid], $params));
+    $members = $st->fetchAll();
+    $ids = array_map(fn($r) => (int)$r['id'], $members);
+    return ['group' => $g, 'members' => $members, 'timeline' => dn_flow_timeline($ids, $gid)];
 }
 
 function dn_duration_text(int $seconds): string
@@ -4918,6 +5040,9 @@ try {
         case 'export_audit_logs': dn_ok(dn_export_audit_logs($in));
         case 'error_logs': dn_ok(dn_error_logs($in));
         case 'cleanup_old_logs': dn_ok(dn_cleanup_old_logs($in));
+        case 'task_flow_list': dn_ok(dn_task_flow_list($in));
+        case 'task_flow_detail': dn_ok(dn_task_flow_detail($in));
+        case 'multi_group_flow_detail': dn_ok(dn_multi_group_flow_detail($in));
         case 'mark_read': dn_ok(dn_mark_read($in));
         case 'mark_notification_read': dn_ok(dn_mark_read($in));
         case 'mark_all_read_history': dn_ok(dn_mark_read([]));
