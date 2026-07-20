@@ -8548,6 +8548,43 @@ textarea,
 .sample-right-panel .sample-dimension-grid>.field:not(:first-child){
   grid-column:span 1!important;
 }
+.sample-right-panel .sample-head-pro{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) max-content!important;
+  gap:8px!important;
+  align-items:start!important;
+  padding:8px 10px!important;
+  min-height:0!important;
+}
+.sample-right-panel .sample-actions-pro{
+  display:flex!important;
+  width:auto!important;
+  max-width:none!important;
+  gap:5px!important;
+  justify-content:flex-end!important;
+  align-items:flex-start!important;
+  flex-wrap:nowrap!important;
+}
+.sample-right-panel .sample-action-group{
+  display:flex!important;
+  gap:5px!important;
+  flex-wrap:nowrap!important;
+  justify-content:flex-end!important;
+  align-items:center!important;
+}
+.sample-right-panel .sample-actions-pro .btn,
+.sample-right-panel .sample-action-group .btn{
+  height:28px!important;
+  min-height:28px!important;
+  padding:0 8px!important;
+  border-radius:7px!important;
+  font-size:11px!important;
+  white-space:nowrap!important;
+}
+.sample-right-panel .sample-actions-pro .btn.danger{margin-left:0!important}
+.sample-right-panel .sample-title-pro h3{margin-bottom:2px!important}
+.sample-right-panel .sample-sub-pro{margin-top:1px!important}
+.sample-mini-row{margin-top:3px!important}
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
 .flow-shell{display:grid!important;gap:12px!important;}
