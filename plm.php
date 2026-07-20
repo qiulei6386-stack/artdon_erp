@@ -10361,7 +10361,7 @@ function renderModels(p){
   const openIssues=issues.filter(x=>Number(x.project_id)===Number(p.id)&&!['已解决','已关闭'].includes(String(x.status||''))).length;
   const statuses=uniq(arr.map(m=>m.status||'开发中')).filter(Boolean);
   $('tabbody').innerHTML=`<div class="sample-workbench"><div class="sample-toolbar-pro sample-toolbar-split"><div><h3 style="margin:0">样品管理</h3><div class="hint">管理当前项目的样品、版本、型号、图片、关键元器件及关联资料。</div><div class="sample-split-topline"><span class="key-mini">样品 ${arr.length}</span><span class="key-mini ${ready?'ok':'warn'}">关键元器件 ${ready}/${arr.length}</span><span class="key-mini ${openIssues?'warn':'ok'}">未关闭问题 ${openIssues}</span><span class="key-mini blue" title="${selected?esc(modelLabel(selected)):''}">当前：${selected?esc(modelLabel(selected)):'-'}</span></div></div><div class="sample-summary"><button class="btn primary" onclick="newModel(${p.id})">新增样品</button><button class="btn" onclick="gotoTab('flow')">开发导航图</button><button class="btn" onclick="gotoTab('tests')">测试中心</button></div></div><div class="sample-split-layout"><div class="sample-left-panel"><div class="sample-left-head"><h3>样品列表</h3><div class="hint">左侧查找和选择样品，右侧维护当前样品。</div><div class="sample-left-search"><input id="sampleNodeSearch" value="${esc(q)}" placeholder="搜索样品 / 型号 / 状态 / 版本" oninput="localStorage.setItem('plm_v8587_sample_q_${p.id}',this.value);renderModels(cur())"><button class="btn small" onclick="localStorage.removeItem('plm_v8587_sample_q_${p.id}');renderModels(cur())">清</button></div><div class="sample-left-filter"><select id="sampleStatusFilter" onchange="localStorage.setItem('plm_v85104_sample_status_${p.id}',this.value);renderModels(cur())"><option value="">全部状态</option>${statuses.map(s=>`<option value="${esc(s)}" ${s===statusFilter?'selected':''}>${esc(s)}</option>`).join('')}</select></div></div><div class="sample-node-list">${filtered.map(m=>sampleNavCard(m,Number(m.id)===active,p.id)).join('')||'<div class="empty">没有匹配样品</div>'}</div></div><div class="sample-right-panel">${selected?modelCard(selected,true,p.id):'<div class="sample-right-empty">暂无样品，点击“新增样品”开始。</div>'}</div></div></div>`;
-  setTimeout(updateAllSampleDimensionFields,0);
+  setTimeout(()=>{updateAllSampleDimensionFields();bindSampleAutoSave();},0);
 }
 function sampleNavCard(m,active,pid){
   const filled=[m.chip_name,m.optical_name,m.driver_name,m.accessories_name].filter(Boolean).length;
@@ -10633,12 +10633,55 @@ function modelCard(m,expanded,pid){
     </div>
   </div>`;
 }
+let sampleAutoSaveTimers={},sampleAutoSaveComposing=false;
+function sampleAutoSaveModelId(el){
+  const m=String(el?.id||'').match(/_(\d+)$/);
+  return m?Number(m[1]||0):0;
+}
+function sampleAutoSaveTarget(el){
+  if(!el||!el.closest?.('.sample-right-panel'))return false;
+  if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName||''))return false;
+  if(el.type==='hidden'||el.type==='file'||el.readOnly||el.disabled)return false;
+  if(!/^m_/.test(String(el.id||'')))return false;
+  return true;
+}
+function setSampleAutoSaveState(id,state){
+  const btn=document.querySelector(`.sample-right-panel button[onclick="saveModel(${Number(id)})"]`);
+  if(!btn)return;
+  if(!btn.dataset.originalText)btn.dataset.originalText=btn.textContent;
+  btn.textContent=state==='saving'?'保存中':(state==='saved'?'已保存':(state==='error'?'保存失败':btn.dataset.originalText));
+  btn.classList.toggle('warn',state==='saving');
+  btn.classList.toggle('danger',state==='error');
+  if(state==='saved')setTimeout(()=>{if(btn.textContent==='已保存')btn.textContent=btn.dataset.originalText||'保存样品';},1200);
+}
+function scheduleSampleAutoSave(id,delay=1200){
+  id=Number(id||0);
+  if(!id||!document.getElementById('m_model_'+id))return;
+  clearTimeout(sampleAutoSaveTimers[id]);
+  sampleAutoSaveTimers[id]=setTimeout(async()=>{
+    if(!document.getElementById('m_model_'+id))return;
+    setSampleAutoSaveState(id,'saving');
+    const r=await saveModel(id,true);
+    setSampleAutoSaveState(id,r.ok?'saved':'error');
+    if(!r.ok)toast(r.error||'自动保存失败');
+  },delay);
+}
+function bindSampleAutoSave(){
+  const panel=document.querySelector('.sample-right-panel');
+  if(!panel||panel.dataset.autosaveBound==='1')return;
+  panel.dataset.autosaveBound='1';
+  panel.addEventListener('compositionstart',()=>{sampleAutoSaveComposing=true;});
+  panel.addEventListener('compositionend',e=>{sampleAutoSaveComposing=false;if(sampleAutoSaveTarget(e.target))scheduleSampleAutoSave(sampleAutoSaveModelId(e.target),1200);});
+  panel.addEventListener('input',e=>{if(sampleAutoSaveComposing||!sampleAutoSaveTarget(e.target))return;scheduleSampleAutoSave(sampleAutoSaveModelId(e.target),e.target.tagName==='TEXTAREA'?1500:1200);});
+  panel.addEventListener('change',e=>{if(!sampleAutoSaveTarget(e.target))return;scheduleSampleAutoSave(sampleAutoSaveModelId(e.target),500);});
+  panel.addEventListener('blur',e=>{if(!sampleAutoSaveTarget(e.target))return;scheduleSampleAutoSave(sampleAutoSaveModelId(e.target),120);},true);
+}
 async function newModel(pid){const r=await api('new_model',{project_id:pid});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+pid,r.id)}toast(r.ok?'已新增样品':r.error);await load()}
 async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:beamAngleValue(id),cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:openingSizeValue($('m_opening_size_'+id)?.value||''),diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
   chip_name:$('m_chip_name_'+id)?.value||'',chip_brand:$('m_chip_brand_'+id)?.value||'',chip_spec:$('m_chip_spec_'+id)?.value||'',chip_material_id:$('m_chip_material_id_'+id)?.value||0,
   optical_name:$('m_optical_name_'+id)?.value||'',optical_brand:$('m_optical_brand_'+id)?.value||'',optical_spec:$('m_optical_spec_'+id)?.value||'',optical_material_id:$('m_optical_material_id_'+id)?.value||0,
   driver_name:$('m_driver_name_'+id)?.value||'',driver_brand:$('m_driver_brand_'+id)?.value||'',driver_spec:$('m_driver_spec_'+id)?.value||'',driver_material_id:$('m_driver_material_id_'+id)?.value||0,
-  accessories_name:$('m_accessories_name_'+id)?.value||'',accessories_brand:$('m_accessories_brand_'+id)?.value||'',accessories_spec:$('m_accessories_spec_'+id)?.value||'',accessories_material_ids:$('m_accessories_material_ids_'+id)?.value||'',bom_note:$('m_bom_note_'+id)?.value||''};const r=await api('save_model',d);if(!quiet){toast(r.ok?'样品与关键元器件已保存':r.error);await load()}return r;}
+  accessories_name:$('m_accessories_name_'+id)?.value||'',accessories_brand:$('m_accessories_brand_'+id)?.value||'',accessories_spec:$('m_accessories_spec_'+id)?.value||'',accessories_material_ids:$('m_accessories_material_ids_'+id)?.value||'',bom_note:$('m_bom_note_'+id)?.value||''};const r=await api('save_model',d);if(r.ok)Object.assign(m,d,{updated_at:new Date().toISOString().slice(0,19).replace('T',' ')});if(!quiet){toast(r.ok?'样品与关键元器件已保存':r.error);await load()}return r;}
 async function copyModelVersion(id){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return;let ver=prompt('新版本号',nextVersion(m.sample_version||'V1'));if(ver===null)return;ver=(ver||'').trim()||nextVersion(m.sample_version||'V1');const reason=prompt('修改原因（必填）','');if(reason===null)return;if(!reason.trim()){toast('复制为新版本必须填写修改原因');return}const saved=await saveModel(id,true);if(!saved.ok){toast(saved.error||'请先保存当前样品');return}const r=await api('copy_model_version',{model_id:id,sample_version:ver,change_reason:reason});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+m.project_id,r.id);toast('已复制为新版本 '+ver)}else toast(r.error||'复制失败');await load()}
 function nextVersion(v){const m=String(v||'V1').match(/^(.*?)(\d+)$/);if(!m)return 'V2';return m[1]+(Number(m[2])+1)}
 let bomSearchTimers={},bomSuggestCache={};
