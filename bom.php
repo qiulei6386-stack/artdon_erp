@@ -680,11 +680,11 @@ body.bom-header-collapsed main.wrap{padding-top:10px!important}
 
 <script>
 const API='bom_api.php';
-let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=localStorage.getItem('bom_dashboard_view_v79')||'table',dashboardGroup=localStorage.getItem('bom_dashboard_group_v79')==='1',lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false;
+let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView='icon',dashboardGroup=true,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false;
 const BOM_PLACE_PAGE_KEY='bom_last_page_v762', BOM_PLACE_PROJECT_KEY='bom_last_project_v762';
 function bomValidPage(p){return ['dashboard','edit','library','materials','users'].includes(String(p||''))}
 function bomRememberPlace(){try{localStorage.setItem(BOM_PLACE_PAGE_KEY,bomValidPage(currentPage)?currentPage:'dashboard');if(currentId)localStorage.setItem(BOM_PLACE_PROJECT_KEY,currentId)}catch(e){}}
-function bomRememberedPage(){try{const p=localStorage.getItem(BOM_PLACE_PAGE_KEY);return bomValidPage(p)?p:'dashboard'}catch(e){return 'dashboard'}}
+function bomRememberedPage(){return 'dashboard'}
 function bomRememberedProject(){try{return localStorage.getItem(BOM_PLACE_PROJECT_KEY)||''}catch(e){return ''}}
 function bomUrlProjectUid(){
   try{
