@@ -304,20 +304,30 @@ function dn_log(?int $taskId, string $action, ?string $field = null, $old = null
     $oldS = is_scalar($old) || $old === null ? (string)($old ?? '') : dn_json($old);
     $newS = is_scalar($new) || $new === null ? (string)($new ?? '') : dn_json($new);
     $note = dn_log_note($action, $field, $oldS, $newS, $note);
+    $hasCount = dispatch_next_column_exists($pdo, 'dispatch_next_logs', 'change_count');
     if ($field && $taskId) {
-        $st = $pdo->prepare("SELECT id, old_value, change_count FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
+        $st = $pdo->prepare("SELECT id, old_value" . ($hasCount ? ", change_count" : "") . " FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
         $st->execute([$taskId, dn_uid(), $field]);
         $last = $st->fetch();
         if ($last) {
             $mergedOld = (string)($last['old_value'] ?? $oldS);
             $count = max(1, (int)($last['change_count'] ?? 1)) + 1;
             $mergedNote = dn_log_note($action, $field, $mergedOld, $newS, $note) . '（5分钟内合并 ' . $count . ' 次）';
-            $pdo->prepare("UPDATE dispatch_next_logs SET action_type=?, new_value=?, note=?, change_count=?, updated_at=NOW() WHERE id=?")->execute([$action, $newS, $mergedNote, $count, (int)$last['id']]);
+            if ($hasCount) {
+                $pdo->prepare("UPDATE dispatch_next_logs SET action_type=?, new_value=?, note=?, change_count=?, updated_at=NOW() WHERE id=?")->execute([$action, $newS, $mergedNote, $count, (int)$last['id']]);
+            } else {
+                $pdo->prepare("UPDATE dispatch_next_logs SET action_type=?, new_value=?, note=?, updated_at=NOW() WHERE id=?")->execute([$action, $newS, $mergedNote, (int)$last['id']]);
+            }
             return;
         }
     }
-    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,change_count,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())")
-        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, 1, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    if ($hasCount) {
+        $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,change_count,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())")
+            ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, 1, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    } else {
+        $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
+            ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    }
 }
 
 function dn_log_field_label(?string $field): string
@@ -2423,6 +2433,12 @@ function dn_audit_logs(array $in = []): array
 {
     dn_require('view_logs', '没有查看派工日志权限');
     dispatch_next_init_schema();
+    $pdo = dispatch_next_db();
+    $userNameParts = [];
+    foreach (['real_name','display_name','name','username'] as $col) {
+        if (dispatch_next_column_exists($pdo, 'crm_users', $col)) $userNameParts[] = "NULLIF(u.`{$col}`,'')";
+    }
+    $userNameExpr = $userNameParts ? ('COALESCE(' . implode(',', $userNameParts) . ", CONCAT('用户',l.user_id))") : "CONCAT('用户',l.user_id)";
     $where = [];
     $params = [];
     $from = dn_str($in['date_from'] ?? '', 20);
@@ -2439,7 +2455,7 @@ function dn_audit_logs(array $in = []): array
     }
     $kw = trim((string)($in['kw'] ?? ''));
     if ($kw !== '') {
-        $where[] = '(l.action_type LIKE ? OR l.field_name LIKE ? OR l.old_value LIKE ? OR l.new_value LIKE ? OR l.note LIKE ? OR COALESCE(u.real_name,u.username) LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)';
+        $where[] = '(l.action_type LIKE ? OR l.field_name LIKE ? OR l.old_value LIKE ? OR l.new_value LIKE ? OR l.note LIKE ? OR ' . $userNameExpr . ' LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)';
         $like = '%' . $kw . '%';
         array_push($params, $like, $like, $like, $like, $like, $like, $like, $like);
     }
@@ -2453,14 +2469,14 @@ function dn_audit_logs(array $in = []): array
     }
     $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
     $limit = max(20, min(500, (int)($in['limit'] ?? 300)));
-    $sql = "SELECT l.*, COALESCE(NULLIF(u.real_name,''), u.username, CONCAT('用户',l.user_id)) AS user_name, t.task_no, t.title AS task_title, t.project AS task_project
+    $sql = "SELECT l.*, {$userNameExpr} AS user_name, t.task_no, t.title AS task_title, t.project AS task_project
         FROM dispatch_next_logs l
         LEFT JOIN crm_users u ON u.id=l.user_id
         LEFT JOIN dispatch_next_tasks t ON t.id=l.task_id
         {$sqlWhere}
         ORDER BY l.id DESC
         LIMIT {$limit}";
-    $st = dispatch_next_db()->prepare($sql);
+    $st = $pdo->prepare($sql);
     $st->execute($params);
     $rows = $st->fetchAll();
     foreach ($rows as &$row) {
