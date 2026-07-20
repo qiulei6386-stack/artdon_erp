@@ -10384,14 +10384,15 @@ function componentInlinePanel(m){
   return `<div class="key-components-inline"><div class="key-components-head"><span>输入可模糊查找，右侧 ... 可联动筛选 BOM 物料库。</span></div><div class="component-simple-grid">${componentSimpleField(id,'光源/芯片','芯','chip',m,'如 CREE XPG4 / COB')}${componentSimpleField(id,'光学','光','optical',m,'如透镜 / 反光杯')}${componentSimpleField(id,'电源','电','driver',m,'如驱动电源')}${componentSimpleField(id,'附加/配件','配','accessories',m,'如接头 / 防水圈 / 螺丝包')}</div></div>`;
 }
 
-const beamAngleLabels=['超小角度','角度1','角度2','角度3','角度4'];
-const beamAngleStoreLabels=['超小','角1','角2','角3','角4'];
+const beamAngleLabels=['超小角度','小角度','中角度','宽角度','大角度'];
+const beamAngleStoreLabels=['超小','小','中','宽','大'];
+const beamAngleLegacyLabels=[['角度1','角1'],['角度2','角2'],['角度3','角3'],['角度4','角4']];
 function beamAngleParts(v){
   const raw=String(v||'').trim(),out=['','','','',''];
   if(!raw)return out;
   let matched=false;
   beamAngleLabels.forEach((label,i)=>{
-    [label,beamAngleStoreLabels[i]].forEach(key=>{
+    [label,beamAngleStoreLabels[i],...(i>0?beamAngleLegacyLabels[i-1]:[])].forEach(key=>{
       const re=new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*[:：]\\s*([^｜|;；,，]+)','u');
       const m=raw.match(re);
       if(m){out[i]=m[1].trim();matched=true;}
