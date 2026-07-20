@@ -3248,6 +3248,64 @@ function dn_preview_plm_bad_status(string $status, string $result = ''): bool
     return (bool)preg_match('/异常|退回|不通过|失败|待复测|blocked|failed/u', $s);
 }
 
+function dn_preview_plm_bom_cost(?array $model): array
+{
+    if (!$model || !artdon_sso_table_exists('bom_projects')) {
+        return ['exists' => false, 'cost_text' => 'BOM未生成', 'updated_at' => '', 'updated_text' => '-'];
+    }
+    $pdo = dispatch_next_db();
+    $cols = dn_table_columns('bom_projects');
+    $where = [];
+    $args = [];
+    $modelId = (int)($model['id'] ?? 0);
+    if ($modelId > 0 && in_array('project_uid', $cols, true)) {
+        $where[] = 'project_uid = ?';
+        $args[] = 'PLM-MODEL-' . $modelId;
+    }
+    foreach (['model', 'naming_model_no'] as $sourceCol) {
+        $value = trim((string)($model[$sourceCol] ?? ''));
+        if ($value === '') continue;
+        foreach (['model', 'naming_model_no', 'linked_title'] as $bomCol) {
+            if (!in_array($bomCol, $cols, true)) continue;
+            $where[] = "`{$bomCol}` = ?";
+            $args[] = $value;
+            $where[] = "REPLACE(REPLACE(REPLACE(REPLACE(UPPER(COALESCE(`{$bomCol}`,'')),'.',''),'-',''),' ',''),'_','') = ?";
+            $args[] = dn_preview_plm_norm($value);
+        }
+    }
+    if (!$where) return ['exists' => false, 'cost_text' => 'BOM未生成', 'updated_at' => '', 'updated_text' => '-'];
+    $active = in_array('is_active', $cols, true) ? " AND (is_active=1 OR is_active IS NULL)" : "";
+    $st = $pdo->prepare('SELECT * FROM bom_projects WHERE (' . implode(' OR ', $where) . ')' . $active . ' ORDER BY updated_at DESC, id DESC LIMIT 1');
+    $st->execute($args);
+    $row = $st->fetch();
+    if (!$row) return ['exists' => false, 'cost_text' => 'BOM未生成', 'updated_at' => '', 'updated_text' => '-'];
+
+    $canBomView = artdon_sso_can('bom', 'view', dn_user()) || artdon_sso_can('bom', 'dashboard', dn_user()) || artdon_sso_can('bom', 'edit', dn_user());
+    $canCost = $canBomView && dn_bom_can_view_cost();
+    $updatedAt = (string)($row['updated_at'] ?? '');
+    $updatedText = $updatedAt !== '' ? mb_substr($updatedAt, 0, 16) : '-';
+    if (!$canCost) {
+        return ['exists' => true, 'can_cost' => false, 'cost_text' => '无成本权限', 'updated_at' => $updatedAt, 'updated_text' => $updatedText, 'project_uid' => (string)($row['project_uid'] ?? '')];
+    }
+    $rows = dn_bom_rows_from_project($row, true, false);
+    $materialCost = dn_bom_rows_cost($rows);
+    $laborCost = (float)($row['labor'] ?? 0);
+    $otherCost = (float)($row['other'] ?? 0);
+    $totalCost = $materialCost + $laborCost + $otherCost;
+    $currency = (string)($row['currency'] ?? 'RMB');
+    return [
+        'exists' => true,
+        'can_cost' => true,
+        'currency' => $currency,
+        'total_cost' => dn_bom_money($totalCost),
+        'cost_text' => trim($currency . ' ' . dn_bom_money($totalCost)),
+        'updated_at' => $updatedAt,
+        'updated_text' => $updatedText,
+        'project_uid' => (string)($row['project_uid'] ?? ''),
+        'rows_count' => count($rows),
+    ];
+}
+
 function dn_preview_plm_model(string $code, array $actions): ?array
 {
     if (!artdon_sso_table_exists('plm_projects') || !artdon_sso_table_exists('plm_models')) return null;
@@ -3390,6 +3448,7 @@ function dn_preview_plm_model(string $code, array $actions): ?array
     $badSteps = count(array_filter($steps, fn($s) => ($s['tone'] ?? '') === 'bad'));
     $passedTests = count(array_filter($tests, fn($t) => preg_match('/通过/u', (string)($t['result'] ?? '')) && !preg_match('/不通过/u', (string)($t['result'] ?? ''))));
     $failedTests = count(array_filter($tests, fn($t) => preg_match('/不通过|失败/u', (string)(($t['result'] ?? '') . ' ' . ($t['status'] ?? '')))));
+    $bomCost = dn_preview_plm_bom_cost($model ?: null);
     $media = [];
     if ($model) {
         $imageUrl = dn_naming_asset_url((string)(($model['naming_image_path'] ?? '') ?: ($model['image_path'] ?? '') ?: ($project['image_path'] ?? '')));
@@ -3406,6 +3465,8 @@ function dn_preview_plm_model(string $code, array $actions): ?array
         ['label' => '项目状态', 'value' => (string)($project['status'] ?? '')],
         ['label' => '样品型号', 'value' => $model ? (string)($model['model'] ?? '') : '项目级预览'],
         ['label' => '样品名称', 'value' => $model ? (string)($model['name'] ?? '') : '全部样品'],
+        ['label' => 'BOM成本', 'value' => (string)($bomCost['cost_text'] ?? 'BOM未生成')],
+        ['label' => '成本最后更新', 'value' => (string)($bomCost['updated_text'] ?? '-')],
         ['label' => '开发流程', 'value' => $steps ? ($doneSteps . '/' . count($steps) . ($badSteps ? '，异常 ' . $badSteps : '')) : '暂无流程'],
         ['label' => '测试中心', 'value' => $tests ? ('通过 ' . $passedTests . ' / 不通过 ' . $failedTests . ' / 总数 ' . count($tests)) : '暂无测试'],
     ];
@@ -3435,6 +3496,7 @@ function dn_preview_plm_model(string $code, array $actions): ?array
             ] : null,
             'steps' => $steps,
             'tests' => $tests,
+            'bom_cost' => $bomCost,
             'open_url' => $openUrl,
         ],
     ];
