@@ -3810,7 +3810,6 @@ function plm_v85_handle_api(){
             }
             $vals=array('project_id'=>$pid,'model_id'=>(int)($_POST['model_id']??0),'test_id'=>(int)($_POST['test_id']??0),'test_run_id'=>(int)($_POST['test_run_id']??0),'step_id'=>(int)($_POST['step_id']??0),'issue_id'=>(int)($_POST['issue_id']??0),'source_module'=>$source,'uploaded_by_name'=>plm_v85_s($me['name']??($me['username']??''),120),'category'=>$cat,'title'=>plm_v85_s($_POST['title']??'',255),'original_name'=>$file['original_name'],'file_name'=>$file['file_name'],'file_path'=>$file['file_path'],'mime_type'=>$file['mime_type'],'file_size'=>$file['file_size'],'note'=>plm_v85_s($_POST['note']??'',5000),'customer_visible'=>(int)($_POST['customer_visible']??1),'created_at'=>plm_v85_now());
             $id=plm_v85_dyn_insert('plm_files', $vals);
-            if(in_array($cat,array('产品图片','项目图片'),true) && preg_match('/^image\//', (string)$file['mime_type'])) plm_v85_dyn_update('plm_projects',array('image_path'=>$file['file_path'],'updated_at'=>plm_v85_now()),'id=?',array($pid));
             plm_v85_log($pid,'file',$id,'上传文件',$file['original_name']);
             $vals['id']=$id;
             plm_v85_json(array('ok'=>true,'id'=>$id,'file'=>plm_v85_norm_file($vals)));
@@ -9160,6 +9159,8 @@ body{overflow:hidden!important;}
 .basic-image-preview{height:164px!important;border:1px solid #e2e8f0!important;border-radius:10px!important;background:#f8fbff!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;margin:6px 0 8px!important;}
 .basic-image-preview img{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important;}
 .basic-image-empty{color:#94a3b8!important;font-size:13px!important;font-weight:800!important;}
+.basic-linked-media-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;}
+.basic-linked-media{min-width:0!important;}
 .basic-thumb-list{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin:0 0 9px!important;}
 .basic-thumb{height:50px!important;border:1px solid #e2e8f0!important;border-radius:8px!important;background:#f8fafc!important;padding:0!important;overflow:hidden!important;cursor:pointer!important;}
 .basic-thumb.active{border-color:#2563eb!important;box-shadow:0 0 0 2px rgba(37,99,235,.14)!important;}
@@ -9988,13 +9989,33 @@ function render(){renderTopInfo();fillFilters();if($('plmProjectNav'))$('plmProj
 function renderStats(){const total=projects.length,dev=projects.filter(p=>p.status==='开发中').length,test=projects.filter(p=>p.status==='测试中').length,done=projects.filter(p=>p.status==='已完成').length,urgent=projects.filter(p=>p.priority==='P1 紧急').length;const riskAll=projects.map(projectRisk);const overdue=riskAll.reduce((a,r)=>a+r.late,0),bad=riskAll.reduce((a,r)=>a+r.fail,0),open=riskAll.reduce((a,r)=>a+r.issues,0);$('stats').innerHTML=`<div class="stat"><b>${total}</b><span>项目总数</span></div><div class="stat orange"><b>${dev}</b><span>开发中</span></div><div class="stat purple"><b>${test}</b><span>测试中</span></div><div class="stat green"><b>${done}</b><span>已完成</span></div><div class="stat red"><b>${urgent}</b><span>P1紧急</span></div><div class="stat red"><b>${overdue+bad+open}</b><span>需关注事项</span></div>`}
 function projectStatusDot(p){const s=String(p.status||'开发中');const cls=s==='已完成'?'done':s==='暂停'?'pause':s==='已取消'?'cancel':s==='测试中'?'test':'dev';return `<span class="project-dot ${cls}"></span>`}
 function priorityBadge(p){const pri=String(p.priority||'P2 正常');const c=pri.includes('P1')?'red':pri.includes('P3')?'purple':'orange';return `<span class="project-priority ${c}">${esc(pri)}</span>`}
-function projectAvatar(p){if(p.image_path)return `<div class="project-avatar"><img src="${esc(p.image_path)}"></div>`;const name=String(p.name||p.customer||'PLM').trim();return `<div class="project-avatar no">${esc(name.slice(0,1)||'项')}</div>`}
+function projectNamingModel(p){
+  const ms=pModels(p?.id||0);
+  if(!ms.length)return null;
+  const stored=Number(localStorage.getItem('plm_v8516_active_model_'+p.id)||0);
+  const storedModel=stored?ms.find(m=>Number(m.id)===stored):null;
+  const flowId=Number(flowModelId||0);
+  const flowModel=flowId?ms.find(m=>Number(m.id)===flowId):null;
+  const withMedia=ms.find(m=>String(m.naming_image_path||'').trim()||String(m.naming_drawing_path||'').trim());
+  if(storedModel&&(String(storedModel.naming_image_path||'').trim()||String(storedModel.naming_drawing_path||'').trim()))return storedModel;
+  if(flowModel&&(String(flowModel.naming_image_path||'').trim()||String(flowModel.naming_drawing_path||'').trim()))return flowModel;
+  if(withMedia)return withMedia;
+  const sorted=[...ms].sort((a,b)=>String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''))||Number(b.id)-Number(a.id));
+  return sorted[0]||null;
+}
+function namingImagePath(m){return String(m?.naming_image_path||'').trim()}
+function namingDrawingPath(m){return String(m?.naming_drawing_path||'').trim()}
+function projectNamingImagePath(p){return namingImagePath(projectNamingModel(p))}
+function projectNamingDrawingPath(p){return namingDrawingPath(projectNamingModel(p))}
+function projectHasNamingImage(p){return !!projectNamingImagePath(p)}
+function projectAvatar(p){const img=projectNamingImagePath(p);if(img)return `<div class="project-avatar"><img src="${esc(img)}"></div>`;const name=String(p.name||p.customer||'PLM').trim();return `<div class="project-avatar no">${esc(name.slice(0,1)||'项')}</div>`}
 function projectThumb(p){
   const name=String(p.name||p.customer||'PLM').trim();
   const initial=esc(name.slice(0,1)||'项');
-  if(p.image_path){
+  const img=projectNamingImagePath(p);
+  if(img){
     const fallback=`<span>${initial}</span><small>未传图</small>`;
-    return `<div class="project-thumb"><img src="${esc(p.image_path)}" onerror="this.parentNode.classList.add('no');this.parentNode.innerHTML='${fallback.replace(/'/g,"&#39;")}'"></div>`;
+    return `<div class="project-thumb"><img src="${esc(img)}" onerror="this.parentNode.classList.add('no');this.parentNode.innerHTML='${fallback.replace(/'/g,"&#39;")}'"></div>`;
   }
   return `<div class="project-thumb no"><span>${initial}</span><small>未传图</small></div>`;
 }
@@ -10004,8 +10025,9 @@ function projectRailThumb(p){
   const name=String(p.name||p.customer||'PLM').trim();
   const initial=esc(name.slice(0,1)||'项');
   const title=esc((p.project_no? p.project_no+' · ':'')+(p.name||'未命名项目'));
-  if(p.image_path){
-    return `<button class="project-rail-icon-card ${active}" onclick="selectProjectFromRail(${id})" title="${title}"><img src="${esc(p.image_path)}" onerror="var p=this.parentNode;if(p){p.classList.add('no');p.innerHTML='${initial}';}"></button>`;
+  const img=projectNamingImagePath(p);
+  if(img){
+    return `<button class="project-rail-icon-card ${active}" onclick="selectProjectFromRail(${id})" title="${title}"><img src="${esc(img)}" onerror="var p=this.parentNode;if(p){p.classList.add('no');p.innerHTML='${initial}';}"></button>`;
   }
   return `<button class="project-rail-icon-card no ${active}" onclick="selectProjectFromRail(${id})" title="${title}">${initial}</button>`;
 }
@@ -10153,21 +10175,11 @@ function renderCards(){
 }
 function tabBtn(t,n){return `<button class="tab ${tab===t?'active':''}" onclick="tab='${t}';localStorage.setItem('plm_v85_tab',tab);renderDetail()">${n}</button>`}
 function projectPauseActionButton(p){return String(p.status||'')==='暂停'?`<button class="btn good" onclick="openResumeProjectModal()">恢复项目</button>`:`<button class="btn warn" onclick="openPauseProjectModal()">暂停项目</button>`}
-function projectBasicImages(p){
-  const pid=Number(p?.id||0);
-  return pFiles(pid).filter(f=>{
-    const cat=String(f.category||'');
-    const mt=String(f.mime_type||'');
-    const name=String(f.original_name||f.file_name||f.file_path||'').toLowerCase();
-    return ['产品图片','项目图片'].includes(cat) && (mt.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/.test(name));
-  });
-}
 function basicProjectImagePanel(p){
-  const imgs=projectBasicImages(p);
-  const main=String(p?.image_path||imgs[0]?.file_path||'');
-  const preview=main?`<img id="basic_project_preview_img" src="${esc(main)}" alt="项目图片">`:`<div class="basic-image-empty">暂无项目图片</div>`;
-  const thumbs=imgs.length?`<div class="basic-thumb-list">${imgs.slice(0,8).map((f,i)=>`<button type="button" class="basic-thumb ${String(f.file_path||'')===main||(!main&&i===0)?'active':''}" data-path="${esc(String(f.file_path||''))}" title="${esc(f.title||f.original_name||f.file_name||'项目图片')}" onclick="setBasicProjectPreview(this.dataset.path,this)"><img src="${esc(f.file_path||'')}" alt=""></button>`).join('')}</div>`:'';
-  return `<div class="basic-subsection"><div class="basic-subtitle">项目图片</div><div class="basic-image-preview" id="basic_project_preview">${preview}</div>${thumbs}</div>`;
+  const main=projectNamingImagePath(p);
+  const drawing=projectNamingDrawingPath(p);
+  const tile=(title,path,empty)=>`<div class="basic-linked-media"><div class="basic-subtitle">${title}</div><div class="basic-image-preview">${path?`<img src="${esc(path)}" alt="${title}">`:`<div class="basic-image-empty">${empty}</div>`}</div></div>`;
+  return `<div class="basic-subsection basic-linked-media-grid">${tile('项目主图',main,'暂无命名主图')}${tile('尺寸图',drawing,'暂无命名尺寸图')}</div>`;
 }
 function setBasicProjectPreview(path,btn){
   const box=$('basic_project_preview');
@@ -10359,11 +10371,6 @@ function renderBasic(p){$('tabbody').innerHTML=`<div class="basic-pro basic-clea
   <div class="basic-block basic-image-block">
     <div class="section-title"><i></i><span>项目图片与备注</span></div>
     ${basicProjectImagePanel(p)}
-    <div class="basic-subsection project-image-drop">
-      <div class="basic-subtitle">上传项目图片</div>
-      <p class="hint">上传分类选“产品图片”或“项目图片”即可作为项目缩略图来源。</p>
-      ${uploadBox('产品图片',0,0)}
-    </div>
     <div class="basic-subsection basic-remark-box field">
       <label>项目备注 / 客户要求 / 开发重点</label>
       <textarea id="p_remark" placeholder="记录客户要求、结构风险、光学要求、交期重点等">${esc(p.remark||'')}</textarea>
@@ -10443,31 +10450,23 @@ function sampleMediaFiles(modelId, kind='image'){
   return files.filter(f=>Number(f.model_id)===Number(modelId) && cats.includes(String(f.category||'')))
     .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')) || Number(b.id||0)-Number(a.id||0));
 }
-function sampleMediaMain(modelId, kind='image'){
-  const list=sampleMediaFiles(modelId,kind);
-  return list[0]||null;
-}
 function sampleMediaPath(m, kind='image'){
-  const f=sampleMediaMain(m.id,kind);
-  if(f&&f.file_path)return f.file_path;
-  if(kind==='drawing')return m.naming_drawing_path||'';
-  return m.naming_image_path||'';
+  if(kind==='drawing')return namingDrawingPath(m);
+  return namingImagePath(m);
 }
 function sampleMediaTile(m, kind='image', mini=false){
   const label=kind==='drawing'?'尺寸图':'样品图';
-  const f=sampleMediaMain(m.id,kind);
   const path=sampleMediaPath(m,kind);
-  const name=f?(f.title||f.original_name||f.file_name||label):(kind==='drawing'?'命名系统尺寸图':'命名系统图片');
-  const fileId=f?Number(f.id||0):0;
+  const name=kind==='drawing'?'命名系统尺寸图':'命名系统图片';
   const cls=mini?' mini':'';
   if(path){
     const isImg=/\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(String(path));
     const isPdf=/\.pdf(\?.*)?$/i.test(String(path));
     const body=isImg?`<img src="${esc(path)}" onerror="this.closest('.sample-media-tile').classList.add('broken')">`:(isPdf?`<div class="sample-media-pdf">PDF</div>`:`<div class="sample-media-pdf">文件</div>`);
-    const click=fileId?`openTestFilePreview(${fileId})`:`openSamplePathPreview('${encodeURIComponent(path)}','${encodeURIComponent(name)}')`;
+    const click=`openSamplePathPreview('${encodeURIComponent(path)}','${encodeURIComponent(name)}')`;
     return `<div class="sample-media-tile${cls}" onclick="${click}" title="点击预览：${esc(name)}"><div class="sample-media-label">${label}</div>${body}<div class="sample-media-name">${esc(name)}</div></div>`;
   }
-  return `<div class="sample-media-tile empty${cls}"><div class="sample-media-label">${label}</div><div class="sample-media-plus">+</div><div class="sample-media-name">未上传</div></div>`;
+  return `<div class="sample-media-tile empty${cls}"><div class="sample-media-label">${label}</div><div class="sample-media-plus">+</div><div class="sample-media-name">未绑定</div></div>`;
 }
 function openSamplePathPreview(encodedPath, encodedName){
   const path=decodeURIComponent(encodedPath||'');
@@ -10480,11 +10479,7 @@ function openSamplePathPreview(encodedPath, encodedName){
   document.body.appendChild(host.firstElementChild);
 }
 function renderSampleMediaSection(m){
-  const imgFiles=sampleMediaFiles(m.id,'image');
-  const drawFiles=sampleMediaFiles(m.id,'drawing');
-  const mediaRows=[...imgFiles,...drawFiles].slice(0,8);
-  const listHtml=mediaRows.map(f=>`<button class="sample-file-chip" onclick="openTestFilePreview(${Number(f.id)})"><span>${esc(f.category||'文件')}</span><b>${esc(f.title||f.original_name||f.file_name||'文件')}</b></button>`).join('')||'<div class="hint">暂无样品图片或尺寸图。</div>';
-  return `<div class="sample-section sample-media-section"><div class="sample-section-head"><h4>样品图片 / 尺寸图</h4><div class="hint">弹窗预览，图片和尺寸图也会进入文件中心。</div></div><div class="sample-media-grid">${sampleMediaTile(m,'image')}${sampleMediaTile(m,'drawing')}</div><div class="sample-media-list">${listHtml}</div><details class="sample-upload-fold"><summary>上传样品图 / 尺寸图</summary><div class="sample-upload-grid"><div><b>样品图片</b>${uploadBox('样品图片',m.id,0,false,0,0)}</div><div><b>尺寸图</b>${uploadBox('尺寸图',m.id,0,false,0,0)}</div></div></details></div>`;
+  return `<div class="sample-section sample-media-section"><div class="sample-section-head"><h4>样品图片 / 尺寸图</h4><div class="hint">只显示命名系统联动图片。</div></div><div class="sample-media-grid">${sampleMediaTile(m,'image')}${sampleMediaTile(m,'drawing')}</div></div>`;
 }
 function sampleStatsFor(m){
   const mid=Number(m.id||0);
@@ -12825,7 +12820,8 @@ async function markPlmNotificationsRead(){const r=await api('mark_notifications_
 
 function allProjectImageCell(p){
   const name=String(p.name||p.customer||'项');
-  if(p.image_path){return `<img class="all-project-mini-img" src="${esc(p.image_path)}" onerror="this.outerHTML='<div class=&quot;all-project-mini-img no&quot;>${esc(name.slice(0,1)||'项')}</div>'">`;}
+  const img=projectNamingImagePath(p);
+  if(img){return `<img class="all-project-mini-img" src="${esc(img)}" onerror="this.outerHTML='<div class=&quot;all-project-mini-img no&quot;>${esc(name.slice(0,1)||'项')}</div>'">`;}
   return `<div class="all-project-mini-img no">${esc(name.slice(0,1)||'项')}</div>`;
 }
 function allProjectFilterValues(){
@@ -12859,7 +12855,7 @@ function allProjectFilteredList(){
       && (!f.source||p.source===f.source)
       && (!f.priority||p.priority===f.priority)
       && (!f.status||p.status===f.status)
-      && (!f.hasImage||(f.hasImage==='yes'?!!p.image_path:!p.image_path))
+      && (!f.hasImage||(f.hasImage==='yes'?projectHasNamingImage(p):!projectHasNamingImage(p)))
       && (!f.hasFile||(f.hasFile==='yes'?g.files>0:g.files===0))
       && (!f.hasDispatch||(f.hasDispatch==='yes'?ps.total>0:ps.total===0))
       && (!f.dueStart||due>=f.dueStart)
