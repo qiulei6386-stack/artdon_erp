@@ -8585,6 +8585,26 @@ textarea,
 .sample-right-panel .sample-title-pro h3{margin-bottom:2px!important}
 .sample-right-panel .sample-sub-pro{margin-top:1px!important}
 .sample-mini-row{margin-top:3px!important}
+.sample-right-panel .compact-fields.sample-basic-grid{
+  grid-template-columns:minmax(220px,2fr) minmax(78px,.75fr) minmax(112px,1fr) minmax(86px,.8fr) minmax(86px,.8fr)!important;
+  gap:7px!important;
+  align-items:start!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid>.field,
+.sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field,
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(1),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(2),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(3),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(4),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(5),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(6),
+.sample-right-panel .compact-fields.sample-basic-grid>.field:nth-child(7){
+  grid-column:span 1!important;
+}
+.sample-right-panel .compact-fields.sample-basic-grid .naming-inline-meta,
+.sample-right-panel .compact-fields.sample-basic-grid .naming-sync-tools{
+  display:none!important;
+}
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
 .flow-shell{display:grid!important;gap:12px!important;}
@@ -10498,12 +10518,12 @@ function modelCard(m,expanded,pid){
         <div class="sample-section">
           <h4>基础规格 / 版本</h4>
           <div class="compact-fields sample-basic-grid">
-            <div class="field"><label>样品名称</label><input id="m_name_${m.id}" value="${esc(m.name||'')}"></div>
-            <div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2"></div>
+            <input type="hidden" id="m_name_${m.id}" value="${esc(m.name||'')}">
+            <input type="hidden" id="m_beam_${m.id}" value="${esc(m.beam||'')}">
             <div class="field sample-model-field"><label>型号</label><div class="model-picker-inline"><input id="m_model_${m.id}" value="${esc(m.model||'')}" placeholder="从命名系统选择或输入型号"><button type="button" class="btn small primary" onclick="openNamingModal(${m.id})">选型号</button></div><div class="naming-inline-meta" title="${esc(namingInlineMeta(m))}">${esc(namingInlineMeta(m))}</div>${namingSyncTools(m)}</div>
+            <div class="field"><label>版本号</label><input id="m_sample_version_${m.id}" value="${esc(version)}" placeholder="V1 / V2"></div>
             <div class="field"><label>状态</label><select id="m_status_${m.id}">${opt(['草稿','打样中','测试中','修改中','待客户确认','客户已确认','量产前确认','暂停','取消','开发中','已完成'],m.status)}</select></div>
             <div class="field"><label>功率</label><input id="m_power_${m.id}" value="${esc(m.power||'')}"></div>
-            <div class="field"><label>角度</label><input id="m_beam_${m.id}" value="${esc(m.beam||'')}"></div>
             <div class="field"><label>色温</label><input id="m_cct_${m.id}" value="${esc(m.cct||'')}"></div>
             ${sampleDimensionPanel(m)}
           </div>
