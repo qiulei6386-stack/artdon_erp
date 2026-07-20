@@ -1238,6 +1238,19 @@ try{
         $materials = bom_hide_sensitive_list($materials, $canCost, $canSupplier);
         $lists = array();
         foreach($pdo->query("SELECT * FROM bom_base_lists")->fetchAll() as $r){ $lists[$r['list_key']] = json_decode($r['list_json'], true) ?: array(); }
+        if(table_exists($pdo,'naming_models')){
+            $ncols = cols($pdo,'naming_models');
+            if(in_array('category',$ncols,true) || in_array('item_name',$ncols,true)){
+                $catCol=in_array('category',$ncols,true)?'category':"''";
+                $itemCol=in_array('item_name',$ncols,true)?'item_name':"''";
+                $namingTypes=array();
+                foreach($pdo->query("SELECT DISTINCT ".$catCol." AS category,".$itemCol." AS item_name FROM naming_models ORDER BY category ASC,item_name ASC LIMIT 500")->fetchAll() as $nr){
+                    $v=trim((string)($nr['category']??'').(trim((string)($nr['item_name']??''))!==''?' / '.trim((string)$nr['item_name']):''));
+                    if($v!=='' && !in_array($v,$namingTypes,true)) $namingTypes[]=$v;
+                }
+                $lists['namingProductTypes']=$namingTypes;
+            }
+        }
         json_out(array('ok'=>true,'projects'=>$projects,'materials'=>$materials,'lists'=>$lists,'user'=>safe_user_row($user),'can'=>array(
             'dashboard'=>user_can($user,'dashboard'), 'edit'=>user_can($user,'edit'), 'library'=>user_can($user,'library'), 'materials'=>user_can($user,'materials'), 'users'=>user_can($user,'users'), 'cost_view'=>$canCost, 'supplier_view'=>$canSupplier, 'naming_link'=>artdon_sso_can('bom','naming_link')
         )));
