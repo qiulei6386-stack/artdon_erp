@@ -1,7 +1,13 @@
 <?php
 /* ARTDON_SSO_GATE_V2_START */
 require_once __DIR__.'/includes/artdon_sso_core.php';
-artdon_sso_require_page('bom');
+require_login();
+artdon_bom_ensure_permissions();
+artdon_plm_ensure_permissions();
+$__bom_deep_uid = trim((string)($_GET['project_uid'] ?? ''));
+if (!artdon_sso_can('bom', 'view') && !($__bom_deep_uid !== '' && artdon_sso_can('plm', 'view'))) {
+    artdon_sso_forbidden_page('bom');
+}
 /* ARTDON_SSO_GATE_V2_END */
  /* Artdon BOM V2 PHP/MySQL no password */ ?>
 <!DOCTYPE html>
@@ -805,7 +811,7 @@ function toggleBomHeader(){
 }
 
 function bomSsoRedirect(){const back=location.pathname+location.search+location.hash;location.replace('login.php?redirect='+encodeURIComponent(back))}
-async function api(action,data={}){try{const res=await fetch(API+'?action='+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});const text=await res.text();let r;try{r=JSON.parse(text)}catch(e){if(res.status===401){bomSsoRedirect();return{ok:false,need_login:true,error:'登录已失效'}}return{ok:false,error:'接口返回不是JSON：'+text.slice(0,180)}}if(res.status===401||r.need_login||r.login_required||r.auth_required){bomSsoRedirect();return{ok:false,need_login:true,error:r.error||r.msg||'登录已失效'}}return r}catch(e){return{ok:false,error:e.message}}}
+async function api(action,data={}){try{const deep=bomUrlProjectUid(), url=API+'?action='+encodeURIComponent(action)+(deep?'&project_uid='+encodeURIComponent(deep):'');const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});const text=await res.text();let r;try{r=JSON.parse(text)}catch(e){if(res.status===401){bomSsoRedirect();return{ok:false,need_login:true,error:'登录已失效'}}return{ok:false,error:'接口返回不是JSON：'+text.slice(0,180)}}if(res.status===401||r.need_login||r.login_required||r.auth_required){bomSsoRedirect();return{ok:false,need_login:true,error:r.error||r.msg||'登录已失效'}}return r}catch(e){return{ok:false,error:e.message}}}
 function hasPerm(p){return !!(currentCan&&currentCan[p]) || (currentUser&&['boss','admin'].includes(String(currentUser.role||'').toLowerCase()))}
 function showLogin(on){const m=$('loginMask');if(m)m.style.display=on?'flex':'none'}
 

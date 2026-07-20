@@ -10749,7 +10749,7 @@ function sampleBomSummary(m){
 }
 function sampleBomUrl(m){
   const uid=String(m?.bom_summary?.project_uid||'').trim();
-  return uid&&m?.bom_summary?.exists ? 'bom.php#project_uid='+encodeURIComponent(uid) : 'bom.php';
+  return uid&&m?.bom_summary?.exists ? 'bom.php?project_uid='+encodeURIComponent(uid) : 'bom.php';
 }
 function openModelNamingInbox(inboxId){window.open('naming.php?tab=inbox&inbox_id='+Number(inboxId||0),'_blank')}
 async function submitModelNaming(modelId){
