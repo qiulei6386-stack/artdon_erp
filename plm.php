@@ -2006,6 +2006,65 @@ function plm_v85_create_or_update_bom_from_model($modelId){
     return array('ok'=>true,'project_uid'=>$uid,'rows_count'=>count($rows),'bom_url'=>'bom.php','message'=>'已生成/更新 BOM 草稿');
 }
 
+function plm_v85_bom_num($v){ return is_numeric($v) ? (float)$v : 0.0; }
+function plm_v85_bom_project_total($b){
+    $rows=json_decode((string)($b['rows_json']??''),true);
+    if(!is_array($rows)) $rows=array();
+    $mat=0.0;
+    foreach($rows as $r){
+        if(!is_array($r)) continue;
+        $qty=plm_v85_bom_num($r['qty']??0);
+        $price=plm_v85_bom_num($r['price']??0);
+        $process=plm_v85_bom_num($r['process']??0);
+        $finish1=plm_v85_bom_num($r['finishCost']??($r['finish_cost']??0));
+        $finish2=plm_v85_bom_num($r['finishCost2']??($r['finish_cost2']??0));
+        $mat += $qty * ($price + $process + $finish1 + $finish2);
+    }
+    $labor=plm_v85_bom_num($b['labor']??0);
+    $other=plm_v85_bom_num($b['other']??0);
+    return array('material'=>$mat,'labor'=>$labor,'other'=>$other,'total'=>$mat+$labor+$other,'rows'=>count($rows));
+}
+function plm_v85_attach_bom_summary(array $models, $canCost=false){
+    if(!count($models) || !plm_v85_table_exists('bom_projects')) return $models;
+    $uids=array();
+    foreach($models as $m){ $uids[]='PLM-MODEL-'.(int)($m['id']??0); }
+    $uids=array_values(array_unique(array_filter($uids)));
+    if(!count($uids)) return $models;
+    $ph=implode(',',array_fill(0,count($uids),'?'));
+    $rows=plm_v85_rows('SELECT * FROM bom_projects WHERE project_uid IN ('.$ph.') AND COALESCE(is_active,1)=1',$uids);
+    $map=array();
+    foreach($rows as $b) $map[(string)($b['project_uid']??'')]=$b;
+    foreach($models as &$m){
+        $uid='PLM-MODEL-'.(int)($m['id']??0);
+        $b=$map[$uid]??null;
+        if(!$b){
+            $m['bom_summary']=array('exists'=>false,'project_uid'=>$uid,'status'=>'未生成','rows_count'=>0);
+            continue;
+        }
+        $t=plm_v85_bom_project_total($b);
+        $s=array(
+            'exists'=>true,
+            'project_uid'=>$uid,
+            'status'=>'已生成',
+            'name'=>(string)($b['name']??''),
+            'model'=>(string)($b['model']??''),
+            'currency'=>(string)($b['currency']??'RMB'),
+            'rows_count'=>(int)$t['rows'],
+            'updated_at'=>(string)($b['updated_at']??''),
+            'updated_by'=>(string)($b['updated_by']??'')
+        );
+        if($canCost){
+            $s['material_cost']=round($t['material'],2);
+            $s['labor']=round($t['labor'],2);
+            $s['other']=round($t['other'],2);
+            $s['total_cost']=round($t['total'],2);
+        }
+        $m['bom_summary']=$s;
+    }
+    unset($m);
+    return $models;
+}
+
 
 function plm_v85_naming_format_model($m){
     if(!$m) return null;
@@ -2968,9 +3027,12 @@ function plm_v85_handle_api(){
             plm_v85_online_touch();
             plm_v85_sync_test_rectify_dispatch_links();
             plm_v85_sync_flow_dispatch_links();
+            $me=plm_v85_current_user_info();
+            $current_permissions=plm_v85_permissions_for($me);
             $projects = array_map('plm_v85_norm_project', plm_v85_rows('SELECT * FROM plm_projects WHERE COALESCE(is_deleted,0)=0 ORDER BY id DESC'));
             $models = array_map('plm_v85_norm_model', plm_v85_rows('SELECT m.* FROM plm_models m INNER JOIN plm_projects p ON p.id=m.project_id AND COALESCE(p.is_deleted,0)=0 WHERE COALESCE(m.is_deleted,0)=0 ORDER BY m.project_id ASC, m.sort_order ASC, m.id ASC'));
             $models = plm_v85_attach_naming_sync_status($models);
+            $models = plm_v85_attach_bom_summary($models,!empty($current_permissions['view_bom_cost']));
             $tests = plm_v85_rows('SELECT * FROM plm_tests ORDER BY id DESC');
             $test_runs = plm_v85_table_exists('plm_test_runs') ? plm_v85_rows('SELECT * FROM plm_test_runs ORDER BY test_id ASC, run_no ASC, id ASC') : array();
             $test_templates = plm_v85_table_exists('plm_test_templates') ? plm_v85_rows('SELECT * FROM plm_test_templates ORDER BY is_public DESC, id DESC') : array();
@@ -2978,13 +3040,11 @@ function plm_v85_handle_api(){
             $steps = plm_v85_rows('SELECT s.* FROM plm_flow_steps s INNER JOIN plm_projects p ON p.id=s.project_id AND COALESCE(p.is_deleted,0)=0 ORDER BY s.project_id ASC, s.model_id ASC, s.sort_order ASC, s.id ASC');
             $logs = plm_v85_rows('SELECT * FROM plm_logs ORDER BY id DESC LIMIT 300');            $issues = plm_v85_table_exists('plm_issues') ? plm_v85_rows('SELECT * FROM plm_issues ORDER BY id DESC') : array();
             $dispatch_links = plm_v85_table_exists('plm_dispatch_links') ? plm_v85_rows('SELECT * FROM plm_dispatch_links ORDER BY id DESC') : array();
-            $me=plm_v85_current_user_info();
             $notice_count=0;
             try{ if(plm_v85_table_exists('plm_notifications')) $notice_count=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_notifications WHERE is_read=0')->fetchColumn(); }catch(Throwable $e){}
             $recycle_counts=array('projects'=>0,'models'=>0);
             try{ $recycle_counts['projects']=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_projects WHERE COALESCE(is_deleted,0)=1')->fetchColumn(); }catch(Throwable $e){}
             try{ $recycle_counts['models']=(int)plm_v85_pdo()->query('SELECT COUNT(*) FROM plm_models WHERE COALESCE(is_deleted,0)=1')->fetchColumn(); }catch(Throwable $e){}
-            $current_permissions=plm_v85_permissions_for($me);
             $permission_users=!empty($me['is_admin'])?plm_v85_permission_users():array();
             $online_users=plm_v85_online_users(10);
             plm_v85_json(array('ok'=>true,'version'=>'V8.5.104 Top Nav + Online + Log','projects'=>$projects,'models'=>$models,'tests'=>$tests,'test_runs'=>$test_runs,'test_templates'=>$test_templates,'files'=>$files,'steps'=>$steps,'issues'=>$issues,'logs'=>$logs,'dispatch_links'=>$dispatch_links,'current_user'=>$me,'is_admin'=>!empty($me['is_admin']),'current_permissions'=>$current_permissions,'permission_defs'=>plm_v85_permission_defs(),'permission_users'=>$permission_users,'notice_count'=>$notice_count,'online_count'=>count($online_users),'online_users'=>$online_users,'recycle_counts'=>$recycle_counts));
@@ -8563,7 +8623,7 @@ textarea,
   gap:5px!important;
   justify-content:flex-end!important;
   align-items:flex-start!important;
-  flex-wrap:nowrap!important;
+  flex-wrap:wrap!important;
 }
 .sample-right-panel .sample-action-group{
   display:flex!important;
@@ -8582,6 +8642,39 @@ textarea,
   white-space:nowrap!important;
 }
 .sample-right-panel .sample-actions-pro .btn.danger{margin-left:0!important}
+.sample-right-panel .sample-bom-summary{
+  flex:0 0 100%!important;
+  display:flex!important;
+  justify-content:flex-end!important;
+  align-items:center!important;
+  gap:5px!important;
+  flex-wrap:wrap!important;
+  margin-top:4px!important;
+  max-width:100%!important;
+}
+.sample-right-panel .sample-bom-summary .bom-mini-status{
+  display:inline-flex!important;
+  align-items:center!important;
+  height:22px!important;
+  padding:0 7px!important;
+  border-radius:999px!important;
+  border:1px solid #dbe4ef!important;
+  background:#f8fafc!important;
+  color:#475569!important;
+  font-size:10.5px!important;
+  font-weight:1000!important;
+  white-space:nowrap!important;
+}
+.sample-right-panel .sample-bom-summary .bom-mini-status.ok{
+  background:#ecfdf5!important;
+  border-color:#86efac!important;
+  color:#15803d!important;
+}
+.sample-right-panel .sample-bom-summary .bom-mini-status.warn{
+  background:#fff7ed!important;
+  border-color:#fdba74!important;
+  color:#c2410c!important;
+}
 .sample-right-panel .sample-title-pro h3{margin-bottom:2px!important}
 .sample-right-panel .sample-sub-pro{margin-top:1px!important}
 .sample-mini-row{margin-top:3px!important}
@@ -10561,6 +10654,24 @@ function modelNamingActionButton(m){
   }
   return `<button class="btn small orange" onclick="submitModelNaming(${id})">提交命名</button>`;
 }
+function moneyMini(v){
+  const n=Number(v||0);
+  return Number.isFinite(n)?n.toFixed(2):'0.00';
+}
+function sampleBomSummary(m){
+  const b=m.bom_summary||{}, exists=!!b.exists;
+  const parts=[`<span class="bom-mini-status ${exists?'ok':'warn'}">BOM ${exists?'已绑定':'未生成'}</span>`];
+  if(exists){
+    parts.push(`<span class="bom-mini-status">行数 ${Number(b.rows_count||0)}</span>`);
+    if(b.updated_at)parts.push(`<span class="bom-mini-status">更新 ${esc(String(b.updated_at).slice(0,16))}</span>`);
+    if(b.updated_by)parts.push(`<span class="bom-mini-status">人员 ${esc(b.updated_by)}</span>`);
+    if(b.total_cost!==undefined)parts.push(`<span class="bom-mini-status ok">成本 ${esc(b.currency||'RMB')} ${moneyMini(b.total_cost)}</span>`);
+    if(b.project_uid)parts.push(`<span class="bom-mini-status">UID ${esc(b.project_uid)}</span>`);
+  }else{
+    parts.push(`<span class="bom-mini-status">关键元器件 ${[m.chip_name,m.optical_name,m.driver_name,m.accessories_name].filter(Boolean).length}/4</span>`);
+  }
+  return `<div class="sample-bom-summary">${parts.join('')}</div>`;
+}
 function openModelNamingInbox(inboxId){window.open('naming.php?tab=inbox&inbox_id='+Number(inboxId||0),'_blank')}
 async function submitModelNaming(modelId){
   const m=models.find(x=>Number(x.id)===Number(modelId)); if(!m)return;
@@ -10597,6 +10708,7 @@ function modelCard(m,expanded,pid){
         <div class="sample-action-group normal-actions">${modelNamingActionButton(m)}<button class="btn small" onclick="gotoTab('tests')">测试</button><button class="btn small" onclick="gotoTab('files')">文件</button></div>
         <div class="sample-action-group bom-actions"><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('bom.php','_blank')">打开BOM</button></div>
         <div class="sample-action-group danger-actions"><button class="btn small danger" onclick="deleteModel(${m.id})">删除</button></div>
+        ${sampleBomSummary(m)}
       </div>
     </div>
     <div class="sample-content-pro">
