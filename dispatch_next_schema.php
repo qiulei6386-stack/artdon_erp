@@ -241,7 +241,6 @@ function dispatch_next_init_schema(): array
         field_name VARCHAR(80) NULL,
         old_value TEXT NULL,
         new_value TEXT NULL,
-        change_count INT UNSIGNED NOT NULL DEFAULT 1,
         note TEXT NULL,
         ip VARCHAR(80) NULL,
         user_agent VARCHAR(255) NULL,
@@ -303,7 +302,6 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'group_id', 'group_id BIGINT UNSIGNED NULL AFTER task_id');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'created_by', 'created_by INT UNSIGNED NULL AFTER completed_at');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'is_deleted', 'is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER updated_at');
-    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'change_count', 'change_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER new_value');
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 13, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
