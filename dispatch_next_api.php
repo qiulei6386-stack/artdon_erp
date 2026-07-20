@@ -1121,8 +1121,15 @@ function dn_recent_create_highlight($createdBy, $createdAt): int
 {
     if ((int)$createdBy !== dn_uid()) return 0;
     if ((string)$createdAt === '') return 0;
-    $ts = strtotime((string)$createdAt);
-    return $ts && time() - $ts <= 20 && time() - $ts >= -30 ? 1 : 0;
+    try {
+        $st = dispatch_next_db()->prepare("SELECT TIMESTAMPDIFF(SECOND, ?, NOW())");
+        $st->execute([(string)$createdAt]);
+        $diff = (int)$st->fetchColumn();
+        return $diff >= 0 && $diff <= 60 ? 1 : 0;
+    } catch (Throwable $e) {
+        $ts = strtotime((string)$createdAt);
+        return $ts && time() - $ts <= 60 && time() - $ts >= -30 ? 1 : 0;
+    }
 }
 
 function dn_decorate_task(array $r): array
