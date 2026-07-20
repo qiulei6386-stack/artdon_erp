@@ -299,6 +299,23 @@ function dispatch_next_init_schema(): array
         KEY idx_dispatch_next_custom_fields_user (user_id, is_enabled, sort_order)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
+    $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_error_logs (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NULL,
+        action VARCHAR(80) NOT NULL,
+        api_action VARCHAR(80) NULL,
+        error_message TEXT NOT NULL,
+        request_data TEXT NULL,
+        ip VARCHAR(80) NULL,
+        device VARCHAR(40) NULL,
+        browser VARCHAR(80) NULL,
+        user_agent VARCHAR(255) NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_dispatch_next_error_logs_created (created_at),
+        KEY idx_dispatch_next_error_logs_user (user_id, created_at),
+        KEY idx_dispatch_next_error_logs_api (api_action, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
     foreach ($sql as $stmt) {
         $pdo->exec($stmt);
     }
@@ -310,7 +327,7 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'browser', 'browser VARCHAR(80) NULL AFTER device_type');
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
-    return ['tables' => 13, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
+    return ['tables' => 14, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }
 
 if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'dispatch_next_schema.php') {

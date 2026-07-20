@@ -21,6 +21,7 @@ function dn_ok($data = null): void
 
 function dn_fail(string $error, int $code = 400): void
 {
+    dn_maybe_log_error('api_error', $error, $code);
     http_response_code($code);
     echo json_encode(['ok' => false, 'error' => $error], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -30,6 +31,9 @@ function dn_input(): array
 {
     $raw = file_get_contents('php://input');
     $json = $raw ? json_decode($raw, true) : [];
+    if ($raw && json_last_error() !== JSON_ERROR_NONE) {
+        dn_error_log('json_parse_failed', 'JSON 解析失败：' . json_last_error_msg(), ['raw' => mb_substr($raw, 0, 800, 'UTF-8')], 400);
+    }
     return array_merge($_GET, $_POST, is_array($json) ? $json : []);
 }
 
@@ -339,6 +343,57 @@ function audit_client_info(): array
     elseif (preg_match('/Safari/i', $ua)) $browser = 'Safari';
     elseif (preg_match('/Firefox/i', $ua)) $browser = 'Firefox';
     return ['device_type' => $device, 'browser' => $browser, 'user_agent' => $ua];
+}
+
+function dn_error_request_summary(array $in = []): string
+{
+    $blocked = ['password','passwd','pwd','token','access_token','refresh_token','secret','csrf','auth'];
+    $out = [];
+    foreach ($in as $k => $v) {
+        $key = (string)$k;
+        if (in_array(strtolower($key), $blocked, true) || preg_match('/password|passwd|pwd|token|secret|csrf|auth/i', $key)) {
+            $out[$key] = '[FILTERED]';
+            continue;
+        }
+        if (is_array($v)) {
+            $out[$key] = mb_substr(dn_json($v), 0, 500, 'UTF-8');
+        } elseif (is_scalar($v) || $v === null) {
+            $out[$key] = mb_substr((string)($v ?? ''), 0, 500, 'UTF-8');
+        } else {
+            $out[$key] = '[OBJECT]';
+        }
+    }
+    foreach ($_FILES as $k => $f) {
+        $out['file_' . $k] = [
+            'name' => (string)($f['name'] ?? ''),
+            'size' => (int)($f['size'] ?? 0),
+            'type' => (string)($f['type'] ?? ''),
+            'error' => (int)($f['error'] ?? 0),
+        ];
+    }
+    return mb_substr(dn_json($out), 0, 2000, 'UTF-8');
+}
+
+function dn_error_log(string $action, string $message, array $in = [], int $code = 500, string $apiAction = ''): void
+{
+    try {
+        if (!artdon_sso_table_exists('dispatch_next_error_logs')) dispatch_next_init_schema();
+        $client = audit_client_info();
+        $apiAction = $apiAction !== '' ? $apiAction : dn_str($in['action'] ?? ($_REQUEST['action'] ?? ''), 80);
+        $uid = function_exists('dn_uid') ? dn_uid() : 0;
+        dispatch_next_db()->prepare("INSERT INTO dispatch_next_error_logs(user_id,action,api_action,error_message,request_data,ip,device,browser,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
+            ->execute([$uid > 0 ? $uid : null, $action . ':' . $code, $apiAction, mb_substr($message, 0, 2000, 'UTF-8'), dn_error_request_summary($in), artdon_sso_ip(), $client['device_type'], $client['browser'], $client['user_agent']]);
+    } catch (Throwable $e) {
+        error_log('dispatch_next error log failed: ' . $e->getMessage());
+    }
+}
+
+function dn_maybe_log_error(string $action, string $message, int $code): void
+{
+    global $DN_INPUT, $DN_ACTION;
+    $apiAction = (string)($DN_ACTION ?? ($_REQUEST['action'] ?? ''));
+    $important = $code >= 500 || in_array($code, [403, 502], true) || in_array($apiAction, ['upload_image','upload_attachment','backup','upload_backup','restore_backup','save_permissions'], true);
+    if ($important) dn_error_log($action, $message, is_array($DN_INPUT ?? null) ? $DN_INPUT : $_REQUEST, $code, $apiAction);
 }
 
 function audit_normalize_action(string $action, ?string $field, string $old, string $new): string
@@ -2489,7 +2544,8 @@ function dn_audit_logs(array $in = []): array
         }
     }
     $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
-    $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
+    $maxLimit = !empty($in['for_export']) ? 5000 : 300;
+    $limit = max(20, min($maxLimit, (int)($in['limit'] ?? 120)));
     $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.change_count,l.ip,l.device_type,l.browser,l.user_agent,l.created_at,l.updated_at,
             {$userExpr} AS user_name,
             t.task_no,t.title AS task_title,t.project AS task_project
@@ -2512,6 +2568,71 @@ function dn_audit_logs(array $in = []): array
         $row['new_label'] = $field !== '' ? dn_log_value_label($field, $new) : $new;
     }
     return ['rows' => $rows, 'count' => count($rows)];
+}
+
+function dn_csv_cell($v): string
+{
+    return '"' . str_replace('"', '""', (string)($v ?? '')) . '"';
+}
+
+function dn_export_audit_logs(array $in): array
+{
+    dn_require('view_logs', '没有导出派工日志权限');
+    $payload = $in;
+    $payload['for_export'] = 1;
+    $payload['limit'] = min(5000, max(20, (int)($in['limit'] ?? 1000)));
+    $rows = dn_audit_logs($payload)['rows'] ?? [];
+    $header = ['时间','操作人','动作类型','任务标题','字段','旧值','新值','说明','IP','设备','浏览器'];
+    $lines = [implode(',', array_map('dn_csv_cell', $header))];
+    foreach ($rows as $r) {
+        $lines[] = implode(',', array_map('dn_csv_cell', [
+            $r['created_at'] ?? '',
+            $r['user_name'] ?? '',
+            $r['action_label'] ?? $r['action_type'] ?? '',
+            $r['task_title'] ?? '',
+            $r['field_label'] ?? $r['field_name'] ?? '',
+            $r['old_label'] ?? $r['old_value'] ?? '',
+            $r['new_label'] ?? $r['new_value'] ?? '',
+            $r['note'] ?? '',
+            $r['ip'] ?? '',
+            $r['device_type'] ?? '',
+            $r['browser'] ?? '',
+        ]));
+    }
+    dn_audit_log(null, 'audit_export', 'filters', '', dn_error_request_summary($in), '导出当前筛选操作审计日志，共 ' . count($rows) . ' 条');
+    return ['filename' => '操作审计_' . date('Ymd_His') . '.csv', 'csv' => "\xEF\xBB\xBF" . implode("\n", $lines), 'count' => count($rows)];
+}
+
+function dn_error_logs(array $in = []): array
+{
+    dn_require('view_logs', '没有查看系统异常权限');
+    $pdo = dispatch_next_db();
+    $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
+    $userExpr = str_replace('l.user_id', 'e.user_id', dn_audit_user_name_expr($pdo));
+    $st = $pdo->prepare("SELECT e.*, {$userExpr} AS user_name FROM dispatch_next_error_logs e LEFT JOIN crm_users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT {$limit}");
+    $st->execute();
+    $rows = $st->fetchAll();
+    return ['rows' => $rows, 'count' => count($rows)];
+}
+
+function dn_cleanup_old_logs(array $in = []): array
+{
+    if (!dn_is_admin()) dn_fail('只有管理员可以清理旧日志', 403);
+    $days = max(30, (int)($in['days'] ?? 180));
+    $pdo = dispatch_next_db();
+    $important = ['backup_create','backup_restore','backup_restore_failed','backup_settings','backup_upload','backup_auto_failed','save_permissions','delete','delete_multi','restore','delete_image','delete_attachment'];
+    $ph = implode(',', array_fill(0, count($important), '?'));
+    $sql = "DELETE FROM dispatch_next_logs
+        WHERE created_at < DATE_SUB(NOW(), INTERVAL {$days} DAY)
+          AND action_type NOT IN ({$ph})
+          AND action_type NOT LIKE 'backup_%'
+          AND action_type NOT LIKE 'delete%'
+          AND action_type <> 'restore'";
+    $st = $pdo->prepare($sql);
+    $st->execute($important);
+    $deleted = $st->rowCount();
+    dn_audit_log(null, 'audit_cleanup', 'days', '', $days, '清理 ' . $days . ' 天前普通操作日志，删除 ' . $deleted . ' 条');
+    return ['deleted' => $deleted, 'days' => $days];
 }
 
 function dn_duration_text(int $seconds): string
@@ -4702,6 +4823,8 @@ try {
     dn_cleanup_expired_attachments();
     $in = dn_input();
     $action = dn_str($in['action'] ?? 'me', 80);
+    $GLOBALS['DN_INPUT'] = $in;
+    $GLOBALS['DN_ACTION'] = $action;
     switch ($action) {
         case 'me': dn_ok(dn_me_data());
         case 'init_schema': dn_require('init_schema', '没有初始化权限'); dn_ok(dispatch_next_init_schema());
@@ -4792,6 +4915,9 @@ try {
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
         case 'audit_logs': dn_ok(dn_audit_logs($in));
+        case 'export_audit_logs': dn_ok(dn_export_audit_logs($in));
+        case 'error_logs': dn_ok(dn_error_logs($in));
+        case 'cleanup_old_logs': dn_ok(dn_cleanup_old_logs($in));
         case 'mark_read': dn_ok(dn_mark_read($in));
         case 'mark_notification_read': dn_ok(dn_mark_read($in));
         case 'mark_all_read_history': dn_ok(dn_mark_read([]));
@@ -4844,5 +4970,8 @@ try {
         default: dn_fail('未知 action：' . $action, 404);
     }
 } catch (Throwable $e) {
-    dn_fail($e->getMessage(), 500);
+    dn_error_log('exception', $e->getMessage(), is_array($GLOBALS['DN_INPUT'] ?? null) ? $GLOBALS['DN_INPUT'] : $_REQUEST, 500, (string)($GLOBALS['DN_ACTION'] ?? ($_REQUEST['action'] ?? '')));
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
 }
