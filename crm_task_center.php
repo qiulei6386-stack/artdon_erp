@@ -904,12 +904,21 @@ function crm_sample_shipment_save(array $input): array
         crm_sample_update_row($id, $data);
         crm_log_event('tasks', 'sample_update', 'sample_shipment', (string)$id, $before['shipment'], $data);
     } else {
-        $taskId = crm_sample_create_task($data);
-        $data['task_id'] = $taskId;
-        crm_sample_insert_row($data, $uid);
-        $id = (int)db()->lastInsertId();
-        db()->prepare("UPDATE crm_tasks SET source_type='sample_shipment', source_id=? WHERE id=?")->execute([(string)$id, $taskId]);
-        crm_log_event('tasks', 'sample_create', 'sample_shipment', (string)$id, null, $data);
+        $duplicateId = crm_sample_recent_duplicate_id($data, $uid);
+        if ($duplicateId > 0) {
+            $id = $duplicateId;
+            $isNew = false;
+            $before = crm_sample_shipment_detail($id);
+            crm_sample_update_row($id, $data);
+            crm_log_event('tasks', 'sample_duplicate_update', 'sample_shipment', (string)$id, $before['shipment'], $data);
+        } else {
+            $taskId = crm_sample_create_task($data);
+            $data['task_id'] = $taskId;
+            crm_sample_insert_row($data, $uid);
+            $id = (int)db()->lastInsertId();
+            db()->prepare("UPDATE crm_tasks SET source_type='sample_shipment', source_id=? WHERE id=?")->execute([(string)$id, $taskId]);
+            crm_log_event('tasks', 'sample_create', 'sample_shipment', (string)$id, null, $data);
+        }
     }
     $detail = crm_sample_shipment_detail($id);
     crm_customer_timeline_add($customerId, $isNew ? 'sample_shipment_create' : 'sample_shipment_save', ($isNew ? '创建样品寄送：' : '保存样品寄送：') . $sampleName, ($data['courier_company'] ?: '未填写快递') . ' · ' . ($tracking ?: '未填写单号'), 'sample_shipment', (string)$id);
@@ -917,6 +926,26 @@ function crm_sample_shipment_save(array $input): array
     if (!empty($data['create_dispatch_task'])) crm_sample_dispatch_placeholder($detail['shipment']);
     if ($status === 'signed' && !empty($data['followup_time'])) crm_sample_create_signed_followup($detail['shipment']);
     return $detail;
+}
+
+function crm_sample_recent_duplicate_id(array $data, int $uid): int
+{
+    $stmt = db()->prepare("SELECT id FROM crm_sample_shipments
+        WHERE deleted_at IS NULL
+          AND created_by=?
+          AND customer_id=?
+          AND sample_name=?
+          AND product_model=?
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
+        ORDER BY id DESC
+        LIMIT 1");
+    $stmt->execute([
+        $uid,
+        (int)($data['customer_id'] ?? 0),
+        (string)($data['sample_name'] ?? ''),
+        (string)($data['product_model'] ?? ''),
+    ]);
+    return (int)($stmt->fetchColumn() ?: 0);
 }
 
 function crm_sample_payload(array $input, string $status, string $tracking, int $customerId, string $sampleName): array

@@ -13,12 +13,13 @@ $loginSettings = app_settings([
     'system_name' => 'Artdon Office V20',
     'portal_subtitle' => '统一进入 CRM、报价、PLM、BOM、派工、财务、权限和系统管理，保障企业内部协作安全有序。',
 ]);
+$redirectTo = auth_safe_redirect($_POST['redirect'] ?? ($_GET['redirect'] ?? ''), 'index.php');
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     $result = login_user(trim($_POST['username'] ?? ''), $_POST['password'] ?? '');
     if ($result['success']) {
-        redirect('index.php');
+        redirect($redirectTo);
     }
     $error = $result['message'];
 }
@@ -40,6 +41,7 @@ auth_page_header('登录', false, 'login-modern');
     <?php if ($error) flash($error, 'error'); ?>
     <form method="post">
       <?= csrf_field() ?>
+      <input type="hidden" name="redirect" value="<?= h($redirectTo) ?>">
       <label>用户名<input name="username" required autofocus placeholder="请输入用户名"></label>
       <label>密码<input type="password" name="password" required placeholder="请输入密码"></label>
       <button type="submit">登录</button>

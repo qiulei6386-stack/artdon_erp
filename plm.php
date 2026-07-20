@@ -2110,13 +2110,18 @@ function plm_v85_naming_size_from_model_no($modelNo='', $fallback=''): string {
     if($fallback !== '') return str_pad(substr($fallback,0,3),3,'0',STR_PAD_LEFT);
     return '';
 }
+function plm_v85_opening_size_value($v): string {
+    $s = trim((string)$v);
+    if($s === '') return '';
+    return preg_replace('/(^|[^\d.])0+([1-9]\d*(?:\.\d+)?)/u', '$1$2', $s);
+}
 
 function plm_v85_apply_naming_size_to_model_data(array &$data, array $nm): void {
     $pc = plm_v85_product_category_from_naming($nm['category'] ?? '', $nm['item_name'] ?? '');
     $size = plm_v85_naming_size_from_model_no($nm['model_no'] ?? '', $nm['size_code'] ?? '');
     $dtRaw = trim((string)($nm['dimension_type'] ?? ''));
     $dt = strtolower($dtRaw);
-    $opening = trim((string)($nm['dim_opening'] ?? ''));
+    $opening = plm_v85_opening_size_value($nm['dim_opening'] ?? '');
     $outer = trim((string)($nm['dim_outer_d'] ?? ''));
     $len = trim((string)($nm['dim_length'] ?? ''));
     $wid = trim((string)($nm['dim_width'] ?? ''));
@@ -2139,14 +2144,14 @@ function plm_v85_apply_naming_size_to_model_data(array &$data, array $nm): void 
 
         if($isRound){
             $data['product_category'] = '嵌入式圆形';
-            $data['opening_size'] = $opening !== '' ? $opening : $size;
+            $data['opening_size'] = plm_v85_opening_size_value($opening !== '' ? $opening : $size);
             $data['diameter'] = $outer !== '' ? $outer : $len; // 兼容旧命名数据把圆形直径写在长
             $data['height_mm'] = $hei;
             $data['length_mm'] = '';
             $data['width_mm'] = '';
         }else{
             $data['product_category'] = '嵌入式方形';
-            $data['opening_size'] = $opening !== '' ? $opening : $size;
+            $data['opening_size'] = plm_v85_opening_size_value($opening !== '' ? $opening : $size);
             $data['length_mm'] = $len;
             $data['width_mm'] = $wid;
             $data['height_mm'] = $hei;
@@ -2846,7 +2851,7 @@ function plm_v85_naming_inbox_submit_model($modelId){
     $image=plm_v85_naming_inbox_media_path($modelId,'image',$m['naming_image_path']??'');
     $drawing=plm_v85_naming_inbox_media_path($modelId,'drawing',$m['naming_drawing_path']??'');
     $dims=array_filter(array(
-        '开孔'=>trim((string)($m['opening_size']??'')),
+        '开孔'=>plm_v85_opening_size_value($m['opening_size']??''),
         '直径'=>trim((string)($m['diameter']??'')),
         '长'=>trim((string)($m['length_mm']??'')),
         '宽'=>trim((string)($m['width_mm']??'')),
@@ -2867,7 +2872,7 @@ function plm_v85_naming_inbox_submit_model($modelId){
         'customer'=>$p['customer']??'','engineer'=>$p['engineer']??'','sample_id'=>$modelId,'sample_name'=>$m['name']??'',
         'sample_no'=>$m['sample_no']??'','sample_version'=>$m['sample_version']??'V1','current_model'=>$m['model']??'',
         'product_category'=>$m['product_category']??'','power'=>$m['power']??'','beam'=>$m['beam']??'','cct'=>$m['cct']??'',
-        'opening_size'=>$m['opening_size']??'','diameter'=>$m['diameter']??'','length_mm'=>$m['length_mm']??'',
+        'opening_size'=>plm_v85_opening_size_value($m['opening_size']??''),'diameter'=>$m['diameter']??'','length_mm'=>$m['length_mm']??'',
         'width_mm'=>$m['width_mm']??'','height_mm'=>$m['height_mm']??'','image_path'=>$image,'drawing_path'=>$drawing,
         'plm_url'=>'plm.php?project_id='.(int)($p['id']??0).'&tab=models&model_id='.$modelId
     );
@@ -3097,7 +3102,7 @@ function plm_v85_handle_api(){
             plm_v85_require_perm('edit_model','修改产品/样品');
             $id=(int)($d['id']??0); if(!$id) plm_v85_json(array('ok'=>false,'error'=>'缺少样品ID'));
             $pid=(int)($d['project_id']??0);
-            $data=array('project_id'=>$pid,'name'=>plm_v85_s($d['name']??'',255),'model'=>plm_v85_s($d['model']??'',180),'sample_no'=>plm_v85_s($d['sample_no']??'',120),'sample_version'=>plm_v85_s($d['sample_version']??'V1',60),'change_reason'=>plm_v85_s($d['change_reason']??'',10000),'confirmed_by'=>plm_v85_s($d['confirmed_by']??'',120),'confirmed_at'=>plm_v85_s($d['confirmed_at']??'',25) ?: null,'power'=>plm_v85_s($d['power']??'',80),'beam'=>plm_v85_s($d['beam']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'product_category'=>plm_v85_s($d['product_category']??'',120),'opening_size'=>plm_v85_s($d['opening_size']??'',80),'diameter'=>plm_v85_s($d['diameter']??'',80),'length_mm'=>plm_v85_s($d['length_mm']??'',80),'width_mm'=>plm_v85_s($d['width_mm']??'',80),'height_mm'=>plm_v85_s($d['height_mm']??'',80),'qty'=>(int)($d['qty']??1),'status'=>plm_v85_s($d['status']??'',60),
+            $data=array('project_id'=>$pid,'name'=>plm_v85_s($d['name']??'',255),'model'=>plm_v85_s($d['model']??'',180),'sample_no'=>plm_v85_s($d['sample_no']??'',120),'sample_version'=>plm_v85_s($d['sample_version']??'V1',60),'change_reason'=>plm_v85_s($d['change_reason']??'',10000),'confirmed_by'=>plm_v85_s($d['confirmed_by']??'',120),'confirmed_at'=>plm_v85_s($d['confirmed_at']??'',25) ?: null,'power'=>plm_v85_s($d['power']??'',80),'beam'=>plm_v85_s($d['beam']??'',80),'cct'=>plm_v85_s($d['cct']??'',80),'product_category'=>plm_v85_s($d['product_category']??'',120),'opening_size'=>plm_v85_s(plm_v85_opening_size_value($d['opening_size']??''),80),'diameter'=>plm_v85_s($d['diameter']??'',80),'length_mm'=>plm_v85_s($d['length_mm']??'',80),'width_mm'=>plm_v85_s($d['width_mm']??'',80),'height_mm'=>plm_v85_s($d['height_mm']??'',80),'qty'=>(int)($d['qty']??1),'status'=>plm_v85_s($d['status']??'',60),
                 'chip_name'=>plm_v85_s($d['chip_name']??'',255),'chip_brand'=>plm_v85_s($d['chip_brand']??'',160),'chip_spec'=>plm_v85_s($d['chip_spec']??'',255),'chip_material_id'=>(int)($d['chip_material_id']??0),
                 'optical_name'=>plm_v85_s($d['optical_name']??'',255),'optical_brand'=>plm_v85_s($d['optical_brand']??'',160),'optical_spec'=>plm_v85_s($d['optical_spec']??'',255),'optical_material_id'=>(int)($d['optical_material_id']??0),
                 'driver_name'=>plm_v85_s($d['driver_name']??'',255),'driver_brand'=>plm_v85_s($d['driver_brand']??'',160),'driver_spec'=>plm_v85_s($d['driver_spec']??'',255),'driver_material_id'=>(int)($d['driver_material_id']??0),
@@ -8485,6 +8490,15 @@ textarea,
   .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field,
   .sample-right-panel .sample-dimension-grid>.field{grid-column:1/-1!important;}
 }
+.sample-right-panel .sample-dimension-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.sample-right-panel .sample-dimension-grid>.field{
+  grid-column:span 1!important;
+}
+.sample-right-panel .sample-dim-note{
+  grid-column:1/-1!important;
+}
 /* ===== PLM V8.5.104 样品详情主编辑区精细压缩 END ===== */
 .sample-upload-grid{gap:8px!important;}
 .sample-upload-fold .grid2{grid-template-columns:1fr!important;gap:6px!important;}
@@ -8517,7 +8531,6 @@ textarea,
   .sample-split-topline,.sample-summary,.sample-action-group{flex-wrap:wrap!important;}
   .sample-node-list,.sample-right-panel .sample-right-stack{grid-template-columns:1fr!important;}
   .sample-right-panel .compact-fields.sample-basic-grid,
-  .sample-right-panel .sample-dimension-grid,
   .sample-right-panel .component-simple-grid,
   .sample-media-grid,
   .sample-link-summary-grid{grid-template-columns:1fr!important;}
@@ -8525,6 +8538,16 @@ textarea,
   .sample-right-panel .compact-fields.sample-basic-grid>.sample-model-field{grid-column:1/-1!important;}
 }
 /* ===== PLM V8.5.104 样品管理工作台紧凑修正 END ===== */
+.sample-right-panel .sample-dimension-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+.sample-right-panel .sample-dimension-grid>.field{
+  grid-column:span 1!important;
+}
+.sample-right-panel .sample-dimension-grid>.field:first-child,
+.sample-right-panel .sample-dimension-grid>.field:not(:first-child){
+  grid-column:span 1!important;
+}
 
 /* ===== PLM V8.5.104 开发导航图工作台重排 START ===== */
 .flow-shell{display:grid!important;gap:12px!important;}
@@ -10291,7 +10314,7 @@ function sampleDimensionPanel(m){
   const catOpts=['嵌入式圆形','嵌入式方形','嵌入式','导轨灯','明装灯','磁吸灯','吊线灯','线性灯','户外灯','面板灯','筒灯','射灯','其它'];
   return `<div class="sample-dimension-grid" id="m_dim_box_${id}">
     <div class="field"><label>类别</label><input id="m_product_category_${id}" list="m_category_list_${id}" value="${esc(m.product_category||'')}" placeholder="嵌入式 / 导轨灯 / 明装灯" oninput="updateSampleDimensionFields(${id})"><datalist id="m_category_list_${id}">${catOpts.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
-    <div class="field dim-field dim-aperture" data-dim-id="${id}"><label>开孔</label><input id="m_opening_size_${id}" value="${esc(m.opening_size||'')}" placeholder="如 075"></div>
+    <div class="field dim-field dim-aperture" data-dim-id="${id}"><label>开孔</label><input id="m_opening_size_${id}" value="${esc(openingSizeValue(m.opening_size||''))}" placeholder="如 55"></div>
     <div class="field dim-field dim-diameter" data-dim-id="${id}"><label>直径</label><input id="m_diameter_${id}" value="${esc(m.diameter||'')}" placeholder="如 075"></div>
     <div class="field dim-field dim-length" data-dim-id="${id}"><label>长</label><input id="m_length_mm_${id}" value="${esc(m.length_mm||'')}" placeholder="长度"></div>
     <div class="field dim-field dim-width" data-dim-id="${id}"><label>宽</label><input id="m_width_mm_${id}" value="${esc(m.width_mm||'')}" placeholder="宽度"></div>
@@ -10299,6 +10322,7 @@ function sampleDimensionPanel(m){
     <div class="sample-dim-note" id="m_dim_note_${id}">圆形嵌入式：开孔+直径+高；方形嵌入式：开孔+长+宽+高；导轨灯：直径+高；其它：长宽高。</div>
   </div>`;
 }
+function openingSizeValue(v){return String(v??'').trim().replace(/(^|[^\d.])0+([1-9]\d*(?:\.\d+)?)/g,'$1$2')}
 function updateSampleDimensionFields(id){
   const cat=String(($('m_product_category_'+id)?.value||'')).trim();
   const isTrack=cat.includes('导轨') || cat.includes('筒') || cat.includes('射');
@@ -10467,7 +10491,7 @@ function modelCard(m,expanded,pid){
   </div>`;
 }
 async function newModel(pid){const r=await api('new_model',{project_id:pid});if(r.ok&&r.id){localStorage.setItem('plm_v8516_active_model_'+pid,r.id)}toast(r.ok?'已新增样品':r.error);await load()}
-async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:$('m_beam_'+id).value,cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:$('m_opening_size_'+id)?.value||'',diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
+async function saveModel(id,quiet=false){const m=models.find(x=>Number(x.id)===Number(id));if(!m)return {ok:false,error:'没有找到样品'};const d={id,project_id:m.project_id,name:$('m_name_'+id).value,model:$('m_model_'+id).value,sample_no:$('m_sample_no_'+id)?.value||m.sample_no||'',sample_version:$('m_sample_version_'+id)?.value||'V1',change_reason:$('m_change_reason_'+id)?.value||'',confirmed_by:$('m_confirmed_by_'+id)?.value||m.confirmed_by||'',confirmed_at:$('m_confirmed_at_'+id)?.value||m.confirmed_at||'',power:$('m_power_'+id).value,beam:$('m_beam_'+id).value,cct:$('m_cct_'+id).value,product_category:$('m_product_category_'+id)?.value||'',opening_size:openingSizeValue($('m_opening_size_'+id)?.value||''),diameter:$('m_diameter_'+id)?.value||'',length_mm:$('m_length_mm_'+id)?.value||'',width_mm:$('m_width_mm_'+id)?.value||'',height_mm:$('m_height_mm_'+id)?.value||'',qty:$('m_qty_'+id)?.value||m.qty||1,status:$('m_status_'+id).value,note:$('m_note_'+id).value,
   chip_name:$('m_chip_name_'+id)?.value||'',chip_brand:$('m_chip_brand_'+id)?.value||'',chip_spec:$('m_chip_spec_'+id)?.value||'',chip_material_id:$('m_chip_material_id_'+id)?.value||0,
   optical_name:$('m_optical_name_'+id)?.value||'',optical_brand:$('m_optical_brand_'+id)?.value||'',optical_spec:$('m_optical_spec_'+id)?.value||'',optical_material_id:$('m_optical_material_id_'+id)?.value||0,
   driver_name:$('m_driver_name_'+id)?.value||'',driver_brand:$('m_driver_brand_'+id)?.value||'',driver_spec:$('m_driver_spec_'+id)?.value||'',driver_material_id:$('m_driver_material_id_'+id)?.value||0,
@@ -12284,7 +12308,7 @@ function renderSummary(p){
     const testDone=mTests.filter(t=>['通过','已完成'].includes(String(t.status||''))||String(t.result||'')==='通过').length;
     const flowPct=pctMini(flowDone,mSteps.length);
     const testPct=pctMini(testDone,mTests.length);
-    const sizeText=[m.opening_size?('开孔 '+m.opening_size):'',m.diameter?('直径 '+m.diameter):'',m.length_mm||m.width_mm||m.height_mm?([m.length_mm,m.width_mm,m.height_mm].filter(Boolean).join('*')):''].filter(Boolean).join(' ｜ ')||'-';
+    const sizeText=[m.opening_size?('开孔 '+openingSizeValue(m.opening_size)):'',m.diameter?('直径 '+m.diameter):'',m.length_mm||m.width_mm||m.height_mm?([m.length_mm,m.width_mm,m.height_mm].filter(Boolean).join('*')):''].filter(Boolean).join(' ｜ ')||'-';
     const kv=(k,v)=>`<div class="sample-kv"><span>${esc(k)}</span><b title="${esc(v||'-')}">${esc(v||'-')}</b></div>`;
     const stepRows=[...mSteps].sort((a,b)=>(Number(a.sort_order||0)-Number(b.sort_order||0))||(Number(a.id||0)-Number(b.id||0))).slice(0,8).map(s=>`<tr><td>${esc(s.title||'步骤')}</td><td>${esc(s.status||'未开始')}</td><td>${esc(dateOnly(s.plan_end||s.plan_date)||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无流程步骤</td></tr>';
     const testRows=[...mTests].sort((a,b)=>String(b.test_date||b.updated_at||b.created_at||'').localeCompare(String(a.test_date||a.updated_at||a.created_at||''))).slice(0,6).map(t=>`<tr><td>${esc(t.test_type||'测试')}</td><td>${esc(t.status||t.result||'-')}</td><td>${esc(t.test_conclusion||t.note||'-')}</td></tr>`).join('')||'<tr><td colspan="3">暂无测试记录</td></tr>';

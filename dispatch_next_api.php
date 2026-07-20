@@ -1027,7 +1027,19 @@ function dn_decorate_task(array $r): array
     $due = dn_due_status($r['due_at'] ?? null, (string)$r['status']);
     $r['due_state'] = $due['state'];
     $r['due_label'] = $due['label'];
+    $mailId = dn_task_mail_id($r);
+    $r['mail_preview_task_id'] = $mailId > 0 ? (int)$r['id'] : 0;
+    $r['has_mail_body'] = $mailId > 0 ? 1 : 0;
     return $r;
+}
+
+function dn_task_mail_id(array $task): int
+{
+    if (strtolower((string)($task['linked_system'] ?? '')) === 'mail' && (int)($task['linked_id'] ?? 0) > 0) {
+        return (int)$task['linked_id'];
+    }
+    $linked = json_decode((string)($task['linked_json'] ?? ''), true);
+    return is_array($linked) ? (int)($linked['mail_id'] ?? 0) : 0;
 }
 
 function dn_method_label(string $type, string $mode): string
@@ -1051,7 +1063,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         [$peopleScope, $peopleParams] = dn_user_scope_sql('t', $personIds);
         $peopleSql = " AND {$peopleScope}";
     }
-    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$vis}{$peopleSql} ORDER BY t.id");
+    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$vis}{$peopleSql} ORDER BY t.id");
     $st->execute(array_merge([$gid], $params, $peopleParams));
     $children = $st->fetchAll();
     $done = 0;
@@ -1059,6 +1071,13 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     foreach ($children as $c) {
         if ($c['status'] === 'done') $done++;
         if ((int)$c['assigned_to'] === dn_uid() && !(int)$c['is_read']) $mineUnread = true;
+    }
+    $mailPreviewTaskId = 0;
+    foreach ($children as $c) {
+        if (dn_task_mail_id($c) > 0) {
+            $mailPreviewTaskId = (int)$c['id'];
+            break;
+        }
     }
     $stepSt = $pdo->prepare("SELECT COUNT(*) step_count, SUM(status='done') step_done_count FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0");
     $stepSt->execute([$gid]);
@@ -1093,6 +1112,8 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'is_read' => $mineUnread ? 0 : 1,
         'can_urge' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
         'can_delete' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
+        'mail_preview_task_id' => $mailPreviewTaskId,
+        'has_mail_body' => $mailPreviewTaskId > 0 ? 1 : 0,
         'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress']], $children),
         'sort_key' => '0-' . $g['title'],
     ];
@@ -3805,8 +3826,57 @@ function dn_mail_preview_get(array $in): array
     $allowedByCustomer = $customerCtx && !empty($customerCtx['can_open']) && dn_mail_belongs_to_customer($mail, $customerCtx);
     if (!$allowedByCustomer && !dn_mail_can_open($mail)) dn_fail('没有权限预览这封邮件正文', 403);
 
+    return dn_mail_preview_payload($mail, $customerCode);
+}
+
+function dn_task_mail_preview_get(array $in): array
+{
+    if (!artdon_sso_table_exists('crm_mails')) dn_fail('邮件表不存在', 404);
+    $taskId = (int)($in['task_id'] ?? 0);
+    if ($taskId <= 0) dn_fail('缺少派工任务 ID');
+    $task = dn_task($taskId);
+    $mailId = dn_task_mail_id($task);
+    if ($mailId <= 0) dn_fail('这条派工没有关联邮件正文', 404);
+
+    $pdo = dispatch_next_db();
+    $mailCols = dn_table_columns('crm_mails');
+    $select = ['m.*'];
+    $join = '';
+    if (artdon_sso_table_exists('crm_user_mail_accounts') && in_array('mail_account_id', $mailCols, true)) {
+        $join .= ' LEFT JOIN crm_user_mail_accounts ma ON ma.id = m.mail_account_id';
+        $select[] = 'ma.email_address AS account_email';
+    } else {
+        $select[] = 'NULL AS account_email';
+    }
+    if (artdon_sso_table_exists('crm_customers') && in_array('linked_customer_id', $mailCols, true)) {
+        $join .= ' LEFT JOIN crm_customers c ON c.id = m.linked_customer_id';
+        $select[] = 'c.customer_name AS linked_customer_name';
+        $select[] = 'c.customer_code AS linked_customer_code';
+    } else {
+        $select[] = 'NULL AS linked_customer_name';
+        $select[] = 'NULL AS linked_customer_code';
+    }
+    $deletedFilter = in_array('is_deleted', $mailCols, true) ? ' AND COALESCE(m.is_deleted,0)=0' : '';
+    $st = $pdo->prepare('SELECT ' . implode(',', $select) . ' FROM crm_mails m' . $join . ' WHERE m.id=?' . $deletedFilter . ' LIMIT 1');
+    $st->execute([$mailId]);
+    $mail = $st->fetch();
+    if (!$mail) dn_fail('邮件不存在或已删除', 404);
+    $payload = dn_mail_preview_payload($mail, '');
+    $payload['task'] = [
+        'id' => (int)$task['id'],
+        'task_no' => (string)($task['task_no'] ?? ''),
+        'title' => (string)($task['title'] ?? ''),
+        'assigned_to' => (int)($task['assigned_to'] ?? 0),
+    ];
+    return $payload;
+}
+
+function dn_mail_preview_payload(array $mail, string $customerCode = ''): array
+{
+    $pdo = dispatch_next_db();
+    $mailId = (int)($mail['id'] ?? 0);
     $attachments = [];
-    if (artdon_sso_table_exists('crm_mail_attachments')) {
+    if ($mailId > 0 && artdon_sso_table_exists('crm_mail_attachments')) {
         $attCols = dn_table_columns('crm_mail_attachments');
         $attDeleted = in_array('deleted_at', $attCols, true) ? ' AND deleted_at IS NULL' : '';
         $ast = $pdo->prepare('SELECT id,file_name,filename,original_filename,file_size,mime_type,is_inline,is_signature_image,created_at FROM crm_mail_attachments WHERE mail_id=? AND user_id=?' . $attDeleted . ' ORDER BY COALESCE(is_inline,0) ASC, id ASC LIMIT 30');
@@ -4546,6 +4616,7 @@ try {
         case 'save_backup_settings': dn_ok(dn_save_backup_settings($in));
         case 'preview_link': dn_ok(dn_preview_link($in));
         case 'mail_preview_get': dn_ok(dn_mail_preview_get($in));
+        case 'task_mail_preview_get': dn_ok(dn_task_mail_preview_get($in));
         case 'health_check': dn_ok(['php' => PHP_VERSION, 'time' => date('Y-m-d H:i:s'), 'schema' => dispatch_next_init_schema()]);
         default: dn_fail('未知 action：' . $action, 404);
     }

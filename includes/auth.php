@@ -26,8 +26,27 @@ function require_login()
         if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'api.php') {
             api_response(false, '请先登录', [], 'AUTH_REQUIRED');
         }
-        redirect('login.php');
+        $returnUrl = $_SERVER['REQUEST_URI'] ?? '';
+        $returnUrl = auth_safe_redirect($returnUrl, '');
+        redirect('login.php' . ($returnUrl !== '' ? '?redirect=' . rawurlencode($returnUrl) : ''));
     }
+}
+
+function auth_safe_redirect($url, string $fallback = 'index.php'): string
+{
+    $url = str_replace(["\r", "\n"], '', trim((string)$url));
+    if ($url === '') {
+        return $fallback;
+    }
+    if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $url) || strpos($url, '//') === 0 || strpos($url, '\\') !== false) {
+        return $fallback;
+    }
+    $path = parse_url($url, PHP_URL_PATH);
+    $page = basename((string)$path);
+    if ($page === 'login.php' || $page === 'logout.php') {
+        return $fallback;
+    }
+    return $url;
 }
 
 function login_user($username, $password)

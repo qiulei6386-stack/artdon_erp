@@ -21779,10 +21779,12 @@
     },
     saveSample: function (dialog, options) {
       options = options || {};
+      if (dialog.dataset.sampleSaving === '1') return Promise.resolve();
+      dialog.dataset.sampleSaving = '1';
       var form = dialog.querySelector('[data-sample-form]'), data = this.collect(form);
       var button = dialog.querySelector('[data-sample-save]');
       var uploadButton = dialog.querySelector('[data-sample-upload-now]');
-      try { this.validateSampleUploadInputs(dialog); } catch (err) { toast(err.message || '图片不符合要求'); return Promise.resolve(); }
+      try { this.validateSampleUploadInputs(dialog); } catch (err) { delete dialog.dataset.sampleSaving; toast(err.message || '图片不符合要求'); return Promise.resolve(); }
       if (button) button.disabled = true;
       if (uploadButton) uploadButton.disabled = true;
       post('sample_shipment_save', data).then(function (json) {
@@ -21802,7 +21804,7 @@
         var node = dialog.querySelector('[data-sample-error]');
         if (node) node.textContent = err.message || '保存或上传失败';
         toast(err.message || '保存或上传失败');
-      }).finally(function () { if (button) button.disabled = false; if (uploadButton) uploadButton.disabled = false; });
+      }).finally(function () { delete dialog.dataset.sampleSaving; if (button) button.disabled = false; if (uploadButton) uploadButton.disabled = false; });
     },
     uploadQueuedFiles: function (shipmentId, dialog) {
       var jobs = [], img = dialog.querySelector('[data-sample-image-input]'), att = dialog.querySelector('[data-sample-attachment-input]');
