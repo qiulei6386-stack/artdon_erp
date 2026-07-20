@@ -300,14 +300,20 @@ function dn_task_no(string $prefix = 'DN'): string
 
 function dn_log(?int $taskId, string $action, ?string $field = null, $old = null, $new = null, string $note = ''): void
 {
+    audit_log($taskId, $action, $field, $old, $new, $note);
+}
+
+function audit_log(?int $taskId, string $action, ?string $field = null, $old = null, $new = null, string $note = ''): void
+{
     $pdo = dispatch_next_db();
     $oldS = is_scalar($old) || $old === null ? (string)($old ?? '') : dn_json($old);
     $newS = is_scalar($new) || $new === null ? (string)($new ?? '') : dn_json($new);
+    $action = audit_normalize_action($action, $field, $oldS, $newS);
     $note = dn_log_note($action, $field, $oldS, $newS, $note);
     if ($field && $taskId && dn_log_mergeable($action)) {
         $mergeActions = dn_log_mergeable_actions();
         $ph = implode(',', array_fill(0, count($mergeActions), '?'));
-        $st = $pdo->prepare("SELECT id, old_value, change_count FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND action_type IN ({$ph}) AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
+        $st = $pdo->prepare("SELECT id, old_value, change_count FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND action_type IN ({$ph}) AND COALESCE(updated_at, created_at) >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1");
         $st->execute(array_merge([$taskId, dn_uid(), $field], $mergeActions));
         $last = $st->fetch();
         if ($last) {
@@ -318,13 +324,37 @@ function dn_log(?int $taskId, string $action, ?string $field = null, $old = null
             return;
         }
     }
-    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,change_count,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())")
-        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, 1, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    $client = audit_client_info();
+    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,change_count,ip,device_type,browser,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW())")
+        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, 1, artdon_sso_ip(), $client['device_type'], $client['browser'], $client['user_agent']]);
+}
+
+function audit_client_info(): array
+{
+    $ua = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
+    $device = preg_match('/Mobile|Android|iPhone|iPad/i', $ua) ? 'mobile' : 'desktop';
+    $browser = 'Browser';
+    if (preg_match('/Edg/i', $ua)) $browser = 'Edge';
+    elseif (preg_match('/Chrome/i', $ua)) $browser = 'Chrome';
+    elseif (preg_match('/Safari/i', $ua)) $browser = 'Safari';
+    elseif (preg_match('/Firefox/i', $ua)) $browser = 'Firefox';
+    return ['device_type' => $device, 'browser' => $browser, 'user_agent' => $ua];
+}
+
+function audit_normalize_action(string $action, ?string $field, string $old, string $new): string
+{
+    if ($field === 'status') {
+        if ($new === 'done') return 'complete';
+        if ($old === 'done' && $new !== 'done') return 'cancel_complete';
+        return 'status';
+    }
+    if ($field === 'progress') return 'progress';
+    return $action;
 }
 
 function dn_log_mergeable_actions(): array
 {
-    return ['update','update_cell','update_multi','comment','step_update','step_update_owner','step_update_due','step_update_status','step_update_note'];
+    return ['update','update_cell','update_multi','progress','comment','step_update','step_update_owner','step_update_due','step_update_status','step_update_note'];
 }
 
 function dn_log_mergeable(string $action): bool
@@ -357,6 +387,10 @@ function dn_log_field_label(?string $field): string
         'step_status' => '步骤状态',
         'child_task_id' => '子派工',
         'dispatch_permissions' => '派工可见规则',
+        'file' => '文件',
+        'settings' => '设置',
+        'template_id' => '步骤模板',
+        'group_id' => '多人派工组',
     ];
     if ($field && str_starts_with($field, 'custom_')) return '自定义列 ' . substr($field, 7);
     return $field ? ($map[$field] ?? $field) : '任务';
@@ -1533,7 +1567,7 @@ function dn_create_multi(array $in): array
         ->execute([dn_task_no('DG'), 'multi', $title, dn_str($in['project'] ?? '', 180), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), dn_date($in['task_date'] ?? null), $dueAt]);
     $gid = (int)$pdo->lastInsertId();
     foreach ($ids as $aid) {
-        dn_insert_task([
+        $childId = dn_insert_task([
             'task_type' => 'dispatch', 'dispatch_mode' => 'multi', 'parent_group_id' => $gid,
             'title' => $title, 'project' => dn_str($in['project'] ?? '', 180), 'description' => dn_str($in['description'] ?? '', 8000),
             'priority' => dn_priority($in['priority'] ?? 'normal'), 'status' => $aid === dn_uid() ? 'in_progress' : 'pending_accept',
@@ -1546,6 +1580,7 @@ function dn_create_multi(array $in): array
             'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
             'extra' => $in['extra'] ?? [],
         ]);
+        audit_log($childId, 'create_multi', 'assigned_to', '', $aid, '多人派工创建：' . dn_user_name((int)$aid));
     }
     dn_refresh_group($gid);
     return ['group_id' => $gid];
@@ -2159,7 +2194,7 @@ function dn_upload(array $in, string $kind): array
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_attachments(task_id,comment_id,user_id,file_kind,file_name,file_path,file_type,file_size,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
         ->execute([(int)$task['id'], !empty($in['comment_id']) ? (int)$in['comment_id'] : null, dn_uid(), $kind, $name, $rel, $type, $size, $expires]);
-    dn_log((int)$task['id'], 'upload_' . $kind, null, '', $name, '上传文件');
+    audit_log((int)$task['id'], 'upload_' . $kind, 'file', '', $name, $kind === 'image' ? '上传图片' : '上传附件');
     return ['attachment_id' => (int)$pdo->lastInsertId(), 'path' => $rel, 'expires_at' => $expires];
 }
 
@@ -2175,7 +2210,8 @@ function dn_delete_attachment(array $in): array
     dn_task((int)$a['task_id']);
     $pdo->prepare("UPDATE dispatch_next_attachments SET is_deleted=1, deleted_at=NOW() WHERE id=?")->execute([$id]);
     dn_delete_attachment_file((string)$a['file_path']);
-    dn_log((int)$a['task_id'], 'delete_attachment', null, $a['file_name'], '', '删除附件');
+    $kind = (string)($a['file_kind'] ?? 'attachment');
+    audit_log((int)$a['task_id'], $kind === 'image' ? 'delete_image' : 'delete_attachment', 'file', $a['file_name'], '', $kind === 'image' ? '删除图片' : '删除附件');
     return ['attachment_id' => $id];
 }
 
@@ -2379,8 +2415,11 @@ function dn_online_logs(array $in = []): array
 function dn_audit_action_label(string $action, string $newValue = ''): string
 {
     if ($action === 'create' || $action === 'create_plan' || $action === 'create_multi') return '新增';
+    if ($action === 'complete') return '完成';
+    if ($action === 'cancel_complete') return '取消完成';
+    if ($action === 'progress') return '写进度';
     if ($action === 'status' && $newValue === 'done') return '完成';
-    if ($action === 'delete' || $action === 'delete_attachment' || $action === 'delete_comment' || $action === 'step_delete') return '删除';
+    if ($action === 'delete' || $action === 'delete_image' || $action === 'delete_attachment' || $action === 'delete_comment' || $action === 'step_delete') return '删除';
     if ($action === 'restore') return '恢复';
     if ($action === 'urge') return '催办';
     if (str_starts_with($action, 'upload_image')) return '上传图片';
@@ -2432,8 +2471,10 @@ function dn_audit_logs(array $in = []): array
         $map = [
             '新增' => ['create','create_plan','create_multi'],
             '修改' => ['update','update_cell','update_multi','status','comment','delete_comment'],
-            '完成' => ['status','step_child_done'],
-            '删除' => ['delete','delete_attachment','delete_comment','step_delete'],
+            '完成' => ['complete','step_child_done'],
+            '取消完成' => ['cancel_complete'],
+            '写进度' => ['progress','comment'],
+            '删除' => ['delete','delete_image','delete_attachment','delete_comment','step_delete'],
             '恢复' => ['restore'],
             '催办' => ['urge'],
             '上传图片' => ['upload_image'],
@@ -2449,7 +2490,7 @@ function dn_audit_logs(array $in = []): array
     }
     $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
     $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
-    $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.change_count,l.created_at,l.updated_at,
+    $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.change_count,l.ip,l.device_type,l.browser,l.user_agent,l.created_at,l.updated_at,
             {$userExpr} AS user_name,
             t.task_no,t.title AS task_title,t.project AS task_project
         FROM dispatch_next_logs l

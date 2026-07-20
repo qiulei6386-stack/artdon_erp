@@ -244,6 +244,8 @@ function dispatch_next_init_schema(): array
         note TEXT NULL,
         change_count INT UNSIGNED NOT NULL DEFAULT 1,
         ip VARCHAR(80) NULL,
+        device_type VARCHAR(40) NULL,
+        browser VARCHAR(80) NULL,
         user_agent VARCHAR(255) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NULL,
@@ -304,6 +306,8 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'created_by', 'created_by INT UNSIGNED NULL AFTER completed_at');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_steps', 'is_deleted', 'is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER updated_at');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'change_count', 'change_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER note');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'device_type', 'device_type VARCHAR(40) NULL AFTER ip');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'browser', 'browser VARCHAR(80) NULL AFTER device_type');
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 13, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
