@@ -304,18 +304,38 @@ function dn_log(?int $taskId, string $action, ?string $field = null, $old = null
     $oldS = is_scalar($old) || $old === null ? (string)($old ?? '') : dn_json($old);
     $newS = is_scalar($new) || $new === null ? (string)($new ?? '') : dn_json($new);
     $note = dn_log_note($action, $field, $oldS, $newS, $note);
-    if ($field && $taskId) {
-        $st = $pdo->prepare("SELECT id, old_value FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
-        $st->execute([$taskId, dn_uid(), $field]);
+    if ($field && $taskId && dn_log_mergeable($action)) {
+        $mergeActions = dn_log_mergeable_actions();
+        $ph = implode(',', array_fill(0, count($mergeActions), '?'));
+        $st = $pdo->prepare("SELECT id, old_value, change_count FROM dispatch_next_logs WHERE task_id=? AND user_id=? AND field_name=? AND action_type IN ({$ph}) AND created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) ORDER BY id DESC LIMIT 1");
+        $st->execute(array_merge([$taskId, dn_uid(), $field], $mergeActions));
         $last = $st->fetch();
         if ($last) {
             $mergedOld = (string)($last['old_value'] ?? $oldS);
-            $pdo->prepare("UPDATE dispatch_next_logs SET new_value=?, note=?, updated_at=NOW() WHERE id=?")->execute([$newS, dn_log_note($action, $field, $mergedOld, $newS, $note), (int)$last['id']]);
+            $count = max(1, (int)($last['change_count'] ?? 1)) + 1;
+            $mergedNote = dn_log_note_with_count(dn_log_note($action, $field, $mergedOld, $newS, $note), $count);
+            $pdo->prepare("UPDATE dispatch_next_logs SET new_value=?, note=?, change_count=?, updated_at=NOW() WHERE id=?")->execute([$newS, $mergedNote, $count, (int)$last['id']]);
             return;
         }
     }
-    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
-        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+    $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,change_count,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())")
+        ->execute([$taskId, dn_uid(), $action, $field, $oldS, $newS, $note, 1, artdon_sso_ip(), substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+}
+
+function dn_log_mergeable_actions(): array
+{
+    return ['update','update_cell','update_multi','comment','step_update','step_update_owner','step_update_due','step_update_status','step_update_note'];
+}
+
+function dn_log_mergeable(string $action): bool
+{
+    return in_array($action, dn_log_mergeable_actions(), true);
+}
+
+function dn_log_note_with_count(string $note, int $count): string
+{
+    $note = trim((string)preg_replace('/\n连续修改：\d+ 次$/u', '', $note));
+    return $count > 1 ? ($note . "\n连续修改：" . $count . ' 次') : $note;
 }
 
 function dn_log_field_label(?string $field): string
@@ -336,6 +356,7 @@ function dn_log_field_label(?string $field): string
         'step' => '执行步骤',
         'step_status' => '步骤状态',
         'child_task_id' => '子派工',
+        'dispatch_permissions' => '派工可见规则',
     ];
     if ($field && str_starts_with($field, 'custom_')) return '自定义列 ' . substr($field, 7);
     return $field ? ($map[$field] ?? $field) : '任务';
@@ -2428,7 +2449,7 @@ function dn_audit_logs(array $in = []): array
     }
     $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
     $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
-    $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.created_at,l.updated_at,
+    $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.change_count,l.created_at,l.updated_at,
             {$userExpr} AS user_name,
             t.task_no,t.title AS task_title,t.project AS task_project
         FROM dispatch_next_logs l
@@ -2566,9 +2587,10 @@ function dn_global_prefs_get(string $key, $fallback = null)
 
 function dn_global_prefs_save(string $key, $value): array
 {
+    $old = dn_global_prefs_get($key, '');
     dispatch_next_db()->prepare("INSERT INTO dispatch_next_user_prefs(user_id,pref_key,pref_value,updated_at) VALUES(0,?,?,NOW()) ON DUPLICATE KEY UPDATE pref_value=VALUES(pref_value), updated_at=NOW()")
         ->execute([$key, is_string($value) ? $value : dn_json($value)]);
-    dn_log(null, 'save_permissions', $key, '', $value, '保存派工可见规则');
+    if ($key === 'dispatch_permissions') dn_log(null, 'save_permissions', $key, $old, $value, '保存派工可见规则');
     return ['key' => $key];
 }
 
