@@ -818,20 +818,42 @@ function bom_v777_naming_image_index(PDO $pdo){
     }
     return $cache;
 }
-function bom_v777_project_display_image(PDO $pdo,array $p){
-    $raw=bom_v777_s($p['product_image']??'');
-    if(preg_match('/^data:image\//i',$raw)) return $raw;
-    foreach(array('linked_json','naming_snapshot_json') as $k){ $j=bom_v777_json_array($p[$k]??''); $img=bom_v777_pick_media($j,'image'); if($img!=='')return $img; }
+function bom_v777_project_live_naming_image(PDO $pdo,array $p){
     $idx=bom_v777_naming_image_index($pdo);
     $sys=strtoupper(bom_v777_s($p['linked_system']??'')); $nid=bom_v777_s($p['linked_id']??'');
     if($sys==='NAMING' && $nid!=='' && isset($idx['by_id'][$nid])) return $idx['by_id'][$nid];
+    $legacyId=bom_v777_s($p['naming_id']??'');
+    if($legacyId!=='' && isset($idx['by_id'][$legacyId])) return $idx['by_id'][$legacyId];
     foreach(bom_v777_project_candidates($p) as $cand){
         if(isset($idx['by_key'][$cand])) return $idx['by_key'][$cand];
         foreach($idx['by_key'] as $k=>$img){
             if($cand!=='' && $k!=='' && (strpos($k,$cand)!==false || strpos($cand,$k)!==false)) return $img;
         }
     }
+    return '';
+}
+function bom_v777_project_display_image(PDO $pdo,array $p){
+    $raw=bom_v777_s($p['product_image']??'');
+    if(preg_match('/^data:image\//i',$raw)) return $raw;
+    $live=bom_v777_project_live_naming_image($pdo,$p);
+    if($live!=='') return $live;
+    foreach(array('linked_json','naming_snapshot_json') as $k){ $j=bom_v777_json_array($p[$k]??''); $img=bom_v777_pick_media($j,'image'); if($img!=='')return $img; }
     return bom_v777_normalize_media_url($raw);
+}
+function bom_v777_sync_project_image_from_naming(PDO $pdo,array $p){
+    if(!table_exists($pdo,'bom_projects') || !hascol($pdo,'bom_projects','product_image')) return $p;
+    $sys=strtoupper(bom_v777_s($p['linked_system']??'')); $hasLink=($sys==='NAMING' && bom_v777_s($p['linked_id']??'')!=='') || bom_v777_s($p['naming_id']??'')!=='';
+    if(!$hasLink) return $p;
+    $live=bom_v777_project_live_naming_image($pdo,$p);
+    if($live==='') return $p;
+    $current=bom_v777_normalize_media_url($p['product_image']??'');
+    if($current===$live){ $p['product_image']=$live; return $p; }
+    try{
+        $st=$pdo->prepare("UPDATE bom_projects SET product_image=? WHERE project_uid=?");
+        $st->execute(array($live,(string)($p['project_uid']??'')));
+        $p['product_image']=$live;
+    }catch(Throwable $e){}
+    return $p;
 }
 /* ARTDON_BOM_V77_7_IMAGE_DISPLAY_ONLY_END */
 
@@ -1222,6 +1244,7 @@ try{
         $projectWhere = (table_exists($pdo,'bom_projects') && hascol($pdo,'bom_projects','is_active')) ? " WHERE is_active=1" : "";
         $projects = $pdo->query("SELECT * FROM bom_projects".$projectWhere." ORDER BY updated_at DESC")->fetchAll();
         foreach($projects as &$p){
+            $p = bom_v777_sync_project_image_from_naming($pdo,$p);
             $p['rows'] = json_decode($p['rows_json'] ?: '[]', true) ?: array();
             $p['rows'] = bom_hide_sensitive_list($p['rows'], $canCost, $canSupplier);
             $p = bom_hide_sensitive_row($p, $canCost, $canSupplier);
