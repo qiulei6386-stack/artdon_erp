@@ -1,14 +1,7 @@
 <?php
 /* ARTDON_SSO_GATE_V2_START */
 require_once __DIR__.'/includes/artdon_sso_core.php';
-if (!current_user()) {
-    http_response_code(401);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(array('ok'=>false,'error'=>'AUTH_REQUIRED'), JSON_UNESCAPED_UNICODE);
-    exit;
-}
-artdon_bom_ensure_permissions();
-artdon_plm_ensure_permissions();
+artdon_sso_require_api('bom');
 /* ARTDON_SSO_GATE_V2_END */
 
 ob_start();
@@ -19,13 +12,6 @@ require_once __DIR__ . '/includes/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? $_POST['action'] : '');
-$__bom_deep_uid = trim((string)($_GET['project_uid'] ?? ''));
-$__bom_deep_plm = $__bom_deep_uid !== '' && !artdon_sso_can('bom','view') && artdon_sso_can('plm','view');
-if (!artdon_sso_can('bom','view') && !$__bom_deep_plm) {
-    http_response_code(403);
-    echo json_encode(array('ok'=>false,'error'=>'当前账号没有进入 BOM 系统的权限','error_code'=>'PERMISSION_DENIED','module'=>'bom'), JSON_UNESCAPED_UNICODE);
-    exit;
-}
 
 // 第三阶段：BOM 细分权限。页面入口仍由统一登录控制，具体 API 再按功能拦截。
 $__bom_perm_map=array(
@@ -37,9 +23,7 @@ $__bom_perm_map=array(
     'sync_weight_profiles_to_bom'=>'manage_materials','import_materials_bulk'=>'import_materials',
     'save_material'=>'manage_materials','delete_material'=>'delete_materials'
 );
-if (!$__bom_deep_plm || !in_array((string)$action, array('ping','me','bootstrap'), true)) {
-    artdon_perm_require_action('bom',(string)$action,$__bom_perm_map,'view_dashboard');
-}
+artdon_perm_require_action('bom',(string)$action,$__bom_perm_map,'view_dashboard');
 
 function json_out($arr){
     while(ob_get_level()>0){ @ob_end_clean(); }
@@ -1225,25 +1209,18 @@ try{
         $u = bom_current_user($pdo);
         if(!$u) json_out(array('ok'=>true,'login'=>false));
         json_out(array('ok'=>true,'login'=>true,'user'=>safe_user_row($u),'can'=>array(
-            'dashboard'=>$__bom_deep_plm ? true : user_can($u,'dashboard'), 'edit'=>$__bom_deep_plm ? false : user_can($u,'edit'), 'library'=>$__bom_deep_plm ? false : user_can($u,'library'), 'materials'=>$__bom_deep_plm ? false : user_can($u,'materials'), 'users'=>$__bom_deep_plm ? false : user_can($u,'users')
+            'dashboard'=>user_can($u,'dashboard'), 'edit'=>user_can($u,'edit'), 'library'=>user_can($u,'library'), 'materials'=>user_can($u,'materials'), 'users'=>user_can($u,'users')
         )));
     }
 
     $user = bom_require_login($pdo);
 
     if($action === 'bootstrap'){
-        if(!$__bom_deep_plm) bom_require_perm($user,'dashboard');
+        bom_require_perm($user,'dashboard');
         $canCost = artdon_sso_can('bom','cost_view');
         $canSupplier = artdon_sso_can('bom','supplier_view');
-        if($__bom_deep_plm){
-            $activeWhere = (table_exists($pdo,'bom_projects') && hascol($pdo,'bom_projects','is_active')) ? " AND is_active=1" : "";
-            $st=$pdo->prepare("SELECT * FROM bom_projects WHERE project_uid=?".$activeWhere." ORDER BY updated_at DESC LIMIT 1");
-            $st->execute(array($__bom_deep_uid));
-            $projects=$st->fetchAll();
-        }else{
-            $projectWhere = (table_exists($pdo,'bom_projects') && hascol($pdo,'bom_projects','is_active')) ? " WHERE is_active=1" : "";
-            $projects = $pdo->query("SELECT * FROM bom_projects".$projectWhere." ORDER BY updated_at DESC")->fetchAll();
-        }
+        $projectWhere = (table_exists($pdo,'bom_projects') && hascol($pdo,'bom_projects','is_active')) ? " WHERE is_active=1" : "";
+        $projects = $pdo->query("SELECT * FROM bom_projects".$projectWhere." ORDER BY updated_at DESC")->fetchAll();
         foreach($projects as &$p){
             $p['rows'] = json_decode($p['rows_json'] ?: '[]', true) ?: array();
             $p['rows'] = bom_hide_sensitive_list($p['rows'], $canCost, $canSupplier);
@@ -1257,12 +1234,12 @@ try{
         // Weight V1.2：进入 BOM 时也自动把重量页旧型材同步进共享物料库，避免两边数量不一致。
         bom_sync_weight_profiles_to_materials($pdo);
         $matWhere = (table_exists($pdo,'bom_materials') && hascol($pdo,'bom_materials','is_active')) ? " WHERE is_active=1" : "";
-        $materials = $__bom_deep_plm ? array() : (table_exists($pdo,'bom_materials') ? $pdo->query("SELECT * FROM bom_materials".$matWhere." ORDER BY updated_at DESC, id DESC")->fetchAll() : array());
+        $materials = table_exists($pdo,'bom_materials') ? $pdo->query("SELECT * FROM bom_materials".$matWhere." ORDER BY updated_at DESC, id DESC")->fetchAll() : array();
         $materials = bom_hide_sensitive_list($materials, $canCost, $canSupplier);
         $lists = array();
         foreach($pdo->query("SELECT * FROM bom_base_lists")->fetchAll() as $r){ $lists[$r['list_key']] = json_decode($r['list_json'], true) ?: array(); }
         json_out(array('ok'=>true,'projects'=>$projects,'materials'=>$materials,'lists'=>$lists,'user'=>safe_user_row($user),'can'=>array(
-            'dashboard'=>$__bom_deep_plm ? true : user_can($user,'dashboard'), 'edit'=>$__bom_deep_plm ? false : user_can($user,'edit'), 'library'=>$__bom_deep_plm ? false : user_can($user,'library'), 'materials'=>$__bom_deep_plm ? false : user_can($user,'materials'), 'users'=>$__bom_deep_plm ? false : user_can($user,'users'), 'cost_view'=>$canCost, 'supplier_view'=>$canSupplier, 'naming_link'=>$__bom_deep_plm ? false : artdon_sso_can('bom','naming_link')
+            'dashboard'=>user_can($user,'dashboard'), 'edit'=>user_can($user,'edit'), 'library'=>user_can($user,'library'), 'materials'=>user_can($user,'materials'), 'users'=>user_can($user,'users'), 'cost_view'=>$canCost, 'supplier_view'=>$canSupplier, 'naming_link'=>artdon_sso_can('bom','naming_link')
         )));
     }
 
