@@ -680,6 +680,7 @@ function bomValidPage(p){return ['dashboard','edit','library','materials','users
 function bomRememberPlace(){try{localStorage.setItem(BOM_PLACE_PAGE_KEY,bomValidPage(currentPage)?currentPage:'dashboard');if(currentId)localStorage.setItem(BOM_PLACE_PROJECT_KEY,currentId)}catch(e){}}
 function bomRememberedPage(){try{const p=localStorage.getItem(BOM_PLACE_PAGE_KEY);return bomValidPage(p)?p:'dashboard'}catch(e){return 'dashboard'}}
 function bomRememberedProject(){try{return localStorage.getItem(BOM_PLACE_PROJECT_KEY)||''}catch(e){return ''}}
+function bomUrlProjectUid(){try{return new URLSearchParams(location.search).get('project_uid')||''}catch(e){return ''}}
 window.addEventListener('beforeunload',bomRememberPlace);
 const $=id=>document.getElementById(id), uid=()=> 'BOM-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7), money=n=>Number(n||0).toFixed(2), esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'), nowText=()=>new Date().toLocaleString('zh-CN',{hour12:false});
 
@@ -841,12 +842,16 @@ async function loadAll(){
     initResizableTable('bomTable','bom_col_widths_v65'); applyBomColumnVisibility(); updateBomStickyOffsets(); initResizableTable('materialTable','material_col_widths_v65');
     if(firstBoot){
       firstBoot=false;
+      const urlId=bomUrlProjectUid();
       const keepPage=bomRememberedPage();
       const keepId=bomRememberedProject();
-      if(keepId && projects.some(p=>p.id===keepId)){currentId=keepId;loadProject(keepId)}
+      if(urlId && projects.some(p=>p.id===urlId)){currentId=urlId;loadProject(urlId);showPage('edit')}
+      else if(keepId && projects.some(p=>p.id===keepId)){currentId=keepId;loadProject(keepId)}
       else if(keepPage==='edit' && projects.length){currentId=projects[0].id;loadProject(currentId)}
-      if(keepPage==='dashboard'){setDashboardRange(dashboardRange||'month');showPage('dashboard')}
-      else{showPage(keepPage)}
+      if(!urlId){
+        if(keepPage==='dashboard'){setDashboardRange(dashboardRange||'month');showPage('dashboard')}
+        else{showPage(keepPage)}
+      }
     }else{
       if(currentId && projects.some(p=>p.id===currentId)){
         if(currentPage==='edit')loadProject(currentId); else renderProjectList();

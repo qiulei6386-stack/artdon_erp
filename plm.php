@@ -10747,6 +10747,10 @@ function sampleBomSummary(m){
   }
   return `<div class="sample-bom-summary">${parts.join('')}</div>`;
 }
+function sampleBomUrl(m){
+  const uid=String(m?.bom_summary?.project_uid||'').trim();
+  return uid&&m?.bom_summary?.exists ? 'bom.php?project_uid='+encodeURIComponent(uid) : 'bom.php';
+}
 function openModelNamingInbox(inboxId){window.open('naming.php?tab=inbox&inbox_id='+Number(inboxId||0),'_blank')}
 async function submitModelNaming(modelId){
   const m=models.find(x=>Number(x.id)===Number(modelId)); if(!m)return;
@@ -10781,7 +10785,7 @@ function modelCard(m,expanded,pid){
       <div class="sample-actions-pro">
         <div class="sample-action-group primary-actions"><button class="btn small good" onclick="saveModel(${m.id})">保存样品</button><button class="btn small primary" onclick="flowModelId=${m.id};gotoTab('flow')">流程</button></div>
         <div class="sample-action-group normal-actions">${modelNamingActionButton(m)}<button class="btn small" onclick="gotoTab('tests')">测试</button><button class="btn small" onclick="gotoTab('files')">文件</button></div>
-        <div class="sample-action-group bom-actions"><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('bom.php','_blank')">打开BOM</button></div>
+        <div class="sample-action-group bom-actions"><button class="btn small warn" onclick="copyModelVersion(${m.id})">复制为新版本</button><button class="btn small bom-generate-btn" onclick="createBomFromModel(${m.id})">生成/更新BOM</button><button class="btn small bom-link-btn" onclick="window.open('${esc(sampleBomUrl(m))}','_blank')">打开BOM</button></div>
         <div class="sample-action-group danger-actions"><button class="btn small danger" onclick="deleteModel(${m.id})">删除</button></div>
         ${sampleBomSummary(m)}
       </div>
