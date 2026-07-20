@@ -394,7 +394,7 @@ body.bom-header-collapsed main.wrap{padding-top:10px!important}
     <p class="hint" id="dashHint"></p>
     <div class="dashboard-table-wrap" id="dashboardTableWrap">
       <table class="dashboard-table">
-        <thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>分类</th><th>物料行</th><th>总成本</th><th>建议报价</th><th>创建时间</th><th>最后保存</th><th>操作</th></tr></thead>
+        <thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>系列</th><th>物料行</th><th>总成本</th><th>建议报价</th><th>创建时间</th><th>最后保存</th><th>操作</th></tr></thead>
         <tbody id="dashboardTbody"></tbody>
       </table>
     </div>
@@ -771,10 +771,12 @@ function bomProjectDisplayImage(p){
 }
 function bomNamingTypeFromObject(o){
   if(!o||typeof o!=='object')return '';
-  const cat=String(o.category||o.product_category||o.series||'').trim();
-  const item=String(o.item_name||o.product_type||o.type_name||'').trim();
-  if(cat&&item&&item!==cat&&!String(cat).includes(item))return cat+' / '+item;
-  return cat||item;
+  const direct=String(o.web_series||o.series_name||o.product_name||o.website_display_name||o.series||'').trim();
+  if(direct)return direct;
+  const remark=String(o.remark||'');
+  const m=remark.match(/系列[:：]\s*([^;；\n\r]+)/);
+  if(m&&String(m[1]||'').trim())return String(m[1]).trim();
+  return String(o.category||o.product_category||o.item_name||o.product_type||o.type_name||'').trim();
 }
 function bomProjectNamingTypeRaw(p){
   const snap=bomSafeJson(p?.naming_snapshot_json||p?.namingSnapshotJson);
@@ -1045,7 +1047,7 @@ function uploadProductImage(){$('productImageInput').click()}function readProduc
 function dashboardTypeOptions(){
   return [...new Set([...(lists.namingProductTypes||[]),...projects.map(p=>p.namingType||bomProjectNamingType(p)),...(lists.productTypes||[])].map(x=>String(x||'').trim()).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN'));
 }
-function renderBaseOptions(){const opt=a=>a.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');const dashCustomerVal=$('dashCustomer')?.value||'',dashTypeVal=$('dashType')?.value||'',libCustomerVal=$('libCustomer')?.value||'',libTypeVal=$('libType')?.value||'',libCurrencyVal=$('libCurrency')?.value||'';$('productType').innerHTML='<option value="">未分类</option>'+opt(lists.productTypes.filter(x=>x!=='未分类'));$('matCategory').innerHTML=opt(lists.categories);$('matBrand').innerHTML=opt(lists.brands);$('matFilterCategory').innerHTML='<option value="">全部分类</option>'+opt(lists.categories);$('matFilterBrand').innerHTML='<option value="">全部品牌</option>'+opt(lists.brands);$('matFilterSupplier').innerHTML='<option value="">全部供应商</option>'+opt(lists.suppliers);$('supplierOptions').innerHTML=lists.suppliers.map(s=>`<option value="${esc(s)}">`).join('');if($('libType')){$('libType').innerHTML='<option value="">全部产品分类</option>'+opt(lists.productTypes);$('libType').value=libTypeVal}if($('libCustomer')){$('libCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN')).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');$('libCustomer').value=libCustomerVal}if($('libCurrency'))$('libCurrency').value=libCurrencyVal;if($('dashCustomer')){$('dashCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].map(c=>`<option>${esc(c)}</option>`).join('');$('dashCustomer').value=dashCustomerVal};if($('dashType')){$('dashType').innerHTML='<option value="">全部产品分类</option>'+opt(dashboardTypeOptions());$('dashType').value=dashTypeVal}}
+function renderBaseOptions(){const opt=a=>a.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');const dashCustomerVal=$('dashCustomer')?.value||'',dashTypeVal=$('dashType')?.value||'',libCustomerVal=$('libCustomer')?.value||'',libTypeVal=$('libType')?.value||'',libCurrencyVal=$('libCurrency')?.value||'';$('productType').innerHTML='<option value="">未分类</option>'+opt(lists.productTypes.filter(x=>x!=='未分类'));$('matCategory').innerHTML=opt(lists.categories);$('matBrand').innerHTML=opt(lists.brands);$('matFilterCategory').innerHTML='<option value="">全部分类</option>'+opt(lists.categories);$('matFilterBrand').innerHTML='<option value="">全部品牌</option>'+opt(lists.brands);$('matFilterSupplier').innerHTML='<option value="">全部供应商</option>'+opt(lists.suppliers);$('supplierOptions').innerHTML=lists.suppliers.map(s=>`<option value="${esc(s)}">`).join('');if($('libType')){$('libType').innerHTML='<option value="">全部产品分类</option>'+opt(lists.productTypes);$('libType').value=libTypeVal}if($('libCustomer')){$('libCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN')).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');$('libCustomer').value=libCustomerVal}if($('libCurrency'))$('libCurrency').value=libCurrencyVal;if($('dashCustomer')){$('dashCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].map(c=>`<option>${esc(c)}</option>`).join('');$('dashCustomer').value=dashCustomerVal};if($('dashType')){$('dashType').innerHTML='<option value="">全部系列</option>'+opt(dashboardTypeOptions());$('dashType').value=dashTypeVal}}
 async function saveList(key,list){lists[key]=[...new Set(list.filter(Boolean))];await api('save_list',{key,list:lists[key]});renderBaseOptions()}
 function addProductType(){const v=prompt('新增产品分类');if(v)saveList('productTypes',[...lists.productTypes,v])}function addMaterialCategory(){const v=$('newMatCategory').value.trim();if(v)saveList('categories',[...lists.categories,v]);$('newMatCategory').value=''}function addMaterialBrand(){const v=$('newMatBrand').value.trim();if(v)saveList('brands',[...lists.brands,v]);$('newMatBrand').value=''}function addMaterialSupplier(){const v=$('newMatSupplier').value.trim();if(v)saveList('suppliers',[...lists.suppliers,v]);$('newMatSupplier').value=''}
 function readMaterialImage(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>currentMaterialImage=r.result;r.readAsDataURL(f)}

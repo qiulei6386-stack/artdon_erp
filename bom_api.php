@@ -1240,12 +1240,13 @@ try{
         foreach($pdo->query("SELECT * FROM bom_base_lists")->fetchAll() as $r){ $lists[$r['list_key']] = json_decode($r['list_json'], true) ?: array(); }
         if(table_exists($pdo,'naming_models')){
             $ncols = cols($pdo,'naming_models');
-            if(in_array('category',$ncols,true) || in_array('item_name',$ncols,true)){
-                $catCol=in_array('category',$ncols,true)?'category':"''";
-                $itemCol=in_array('item_name',$ncols,true)?'item_name':"''";
+            if(in_array('web_series',$ncols,true) || in_array('series_name',$ncols,true) || in_array('product_name',$ncols,true) || in_array('category',$ncols,true)){
+                $seriesParts=array();
+                foreach(array('web_series','series_name','product_name','category') as $c){ if(in_array($c,$ncols,true)) $seriesParts[]='NULLIF(TRIM('.qid($c)."),'')"; }
+                $seriesSql=count($seriesParts)?'COALESCE('.implode(',',$seriesParts).",'')":"''";
                 $namingTypes=array();
-                foreach($pdo->query("SELECT DISTINCT ".$catCol." AS category,".$itemCol." AS item_name FROM naming_models ORDER BY category ASC,item_name ASC LIMIT 500")->fetchAll() as $nr){
-                    $v=trim((string)($nr['category']??'').(trim((string)($nr['item_name']??''))!==''?' / '.trim((string)$nr['item_name']):''));
+                foreach($pdo->query("SELECT DISTINCT ".$seriesSql." AS series_name FROM naming_models ORDER BY series_name ASC LIMIT 500")->fetchAll() as $nr){
+                    $v=trim((string)($nr['series_name']??''));
                     if($v!=='' && !in_array($v,$namingTypes,true)) $namingTypes[]=$v;
                 }
                 $lists['namingProductTypes']=$namingTypes;
