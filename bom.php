@@ -1601,7 +1601,7 @@ function dashboardEffectivePageSize(){
   if(dashboardView!=='icon')return 2;
   const box=$('dashboardIconGrid'), w=box?.clientWidth||document.querySelector('.dashboard')?.clientWidth||window.innerWidth||1100;
   const cols=Math.max(2,Math.floor(w/232));
-  return Math.max(4,Math.min(12,cols*2));
+  return Math.max(4,cols*2);
 }
 function dashboardTotalPages(){const size=dashboardEffectivePageSize();return Math.max(1,Math.ceil((lastDashboardRows.length||0)/size))}
 function dashboardPageRows(){const size=dashboardEffectivePageSize(),total=dashboardTotalPages();dashboardPage=Math.max(1,Math.min(total,Number(dashboardPage)||1));const start=(dashboardPage-1)*size;return lastDashboardRows.slice(start,start+size)}
