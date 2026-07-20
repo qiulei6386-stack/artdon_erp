@@ -2355,6 +2355,83 @@ function dn_online_logs(array $in = []): array
     return ['summary' => array_values($summary), 'sessions' => $rows];
 }
 
+function dn_audit_action_label(string $action, string $newValue = ''): string
+{
+    if ($action === 'create' || $action === 'create_plan' || $action === 'create_multi') return '新增';
+    if ($action === 'status' && $newValue === 'done') return '完成';
+    if ($action === 'delete' || $action === 'delete_attachment' || $action === 'delete_comment' || $action === 'step_delete') return '删除';
+    if ($action === 'restore') return '恢复';
+    if ($action === 'urge') return '催办';
+    if (str_starts_with($action, 'upload_image')) return '上传图片';
+    if (str_starts_with($action, 'upload_attachment')) return '上传附件';
+    if (str_starts_with($action, 'step_')) return '步骤';
+    if ($action === 'save_permissions') return '权限';
+    if (str_starts_with($action, 'backup_')) return '备份';
+    return '修改';
+}
+
+function dn_audit_user_name_expr(PDO $pdo): string
+{
+    $parts = [];
+    foreach (['real_name','display_name','name','username'] as $col) {
+        if (dispatch_next_column_exists($pdo, 'crm_users', $col)) $parts[] = "NULLIF(u.`{$col}`,'')";
+    }
+    return $parts ? ('COALESCE(' . implode(',', $parts) . ", CONCAT('用户',l.user_id))") : "CONCAT('用户',l.user_id)";
+}
+
+function dn_audit_logs(array $in = []): array
+{
+    dn_require('view_logs', '没有查看派工日志权限');
+    $pdo = dispatch_next_db();
+    $where = [];
+    $params = [];
+    $from = dn_str($in['date_from'] ?? '', 20);
+    $to = dn_str($in['date_to'] ?? '', 20);
+    if ($from !== '') { $where[] = 'l.created_at >= ?'; $params[] = substr($from, 0, 10) . ' 00:00:00'; }
+    if ($to !== '') { $where[] = 'l.created_at <= ?'; $params[] = substr($to, 0, 10) . ' 23:59:59'; }
+    $userId = (int)($in['user_id'] ?? 0);
+    if ($userId > 0) { $where[] = 'l.user_id = ?'; $params[] = $userId; }
+    $taskKw = trim((string)($in['task_kw'] ?? ''));
+    if ($taskKw !== '') {
+        $like = '%' . $taskKw . '%';
+        $where[] = '(CAST(l.task_id AS CHAR) LIKE ? OR t.task_no LIKE ? OR t.title LIKE ? OR t.project LIKE ?)';
+        array_push($params, $like, $like, $like, $like);
+    }
+    $kw = trim((string)($in['kw'] ?? ''));
+    $userExpr = dn_audit_user_name_expr($pdo);
+    if ($kw !== '') {
+        $like = '%' . $kw . '%';
+        $where[] = '(l.action_type LIKE ? OR l.field_name LIKE ? OR l.old_value LIKE ? OR l.new_value LIKE ? OR l.note LIKE ? OR ' . $userExpr . ' LIKE ? OR t.task_no LIKE ? OR t.title LIKE ?)';
+        array_push($params, $like, $like, $like, $like, $like, $like, $like, $like);
+    }
+    $action = dn_str($in['action_type'] ?? '', 80);
+    if ($action !== '') { $where[] = 'l.action_type = ?'; $params[] = $action; }
+    $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+    $limit = max(20, min(300, (int)($in['limit'] ?? 120)));
+    $sql = "SELECT l.id,l.task_id,l.user_id,l.action_type,l.field_name,l.old_value,l.new_value,l.note,l.created_at,l.updated_at,
+            {$userExpr} AS user_name,
+            t.task_no,t.title AS task_title,t.project AS task_project
+        FROM dispatch_next_logs l
+        LEFT JOIN crm_users u ON u.id=l.user_id
+        LEFT JOIN dispatch_next_tasks t ON t.id=l.task_id
+        {$sqlWhere}
+        ORDER BY l.id DESC
+        LIMIT {$limit}";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$row) {
+        $field = (string)($row['field_name'] ?? '');
+        $old = (string)($row['old_value'] ?? '');
+        $new = (string)($row['new_value'] ?? '');
+        $row['action_label'] = dn_audit_action_label((string)($row['action_type'] ?? ''), $new);
+        $row['field_label'] = $field !== '' ? dn_log_field_label($field) : '';
+        $row['old_label'] = $field !== '' ? dn_log_value_label($field, $old) : $old;
+        $row['new_label'] = $field !== '' ? dn_log_value_label($field, $new) : $new;
+    }
+    return ['rows' => $rows, 'count' => count($rows)];
+}
+
 function dn_duration_text(int $seconds): string
 {
     $seconds = max(0, $seconds);
@@ -4631,6 +4708,7 @@ try {
         case 'online_status': dn_ok(dn_online_status());
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
+        case 'audit_logs': dn_ok(dn_audit_logs($in));
         case 'mark_read': dn_ok(dn_mark_read($in));
         case 'mark_notification_read': dn_ok(dn_mark_read($in));
         case 'mark_all_read_history': dn_ok(dn_mark_read([]));
