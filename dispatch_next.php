@@ -394,7 +394,6 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   color:#1f2937!important;
   display:inline-flex!important;
   align-items:center!important;
-  font-size:15px!important;
   font-weight:600!important;
   line-height:1.35!important;
   white-space:normal!important;
@@ -422,7 +421,6 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   border-radius:0!important;
   background:transparent!important;
   color:#1f2937!important;
-  font-size:15px!important;
   font-weight:600!important;
   line-height:1.35!important;
 }
