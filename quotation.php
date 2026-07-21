@@ -1482,7 +1482,7 @@ function autoAddSelectedProductLine(){
   renderQuoteItems();
 }
 function needConnector(){if(S.product&&S.product.need_connector==='yes')return true;if(S.product&&S.product.need_connector==='no')return false;return ['track','magnetic'].includes($('productType').value)}
-function partDefsByType(t,p){let need=p?(p.need_connector==='yes'||(p.need_connector==='auto'&&(p.type==='track'||p.type==='magnetic'))):(t==='track'||t==='magnetic');let a=[['led','芯片','芯片,COB,LED Chip,灯珠,Bridgelux,Cree,Osram,Citizen'],['driver','电源','电源,Driver,驱动,LED Driver,Mean Well,Lifud,Eaglerise'],['optic','光学','光学,透镜,反光杯,Reflector,Lens,蜂窝,格栅,防眩']];if(need)a.splice(1,0,['connector','接头','接头,连接器,Adapter,导轨头']);a.push(['extra','附件','附件,附加,配件,面环,线材,安装件,弹簧']);return a}
+function partDefsByType(t,p){let need=p?(p.need_connector==='yes'||(p.need_connector==='auto'&&(p.type==='track'||p.type==='magnetic'))):(t==='track'||t==='magnetic');let a=[['led','芯片','芯片,COB,LED Chip,灯珠,Bridgelux,普瑞,VHD,Gen8,Cree,Osram,Citizen'],['driver','电源','电源,Driver,驱动,LED Driver,Mean Well,Lifud,Eaglerise'],['optic','光学','光学,透镜,反光杯,Reflector,Lens,蜂窝,格栅,防眩']];if(need)a.splice(1,0,['connector','接头','接头,连接器,Adapter,导轨头']);a.push(['extra','附件','附件,附加,配件,面环,线材,安装件,弹簧']);return a}
 function partDefs(){return partDefsByType($('productType').value,S.product)}
 function quotePartStopWords(){return /^(led|cob|driver|optic|optics|lens|reflector|adapter|connector|accessory|accessories|extra|chip|power|light|光学|透镜|反光杯|电源|驱动|芯片|灯珠|接头|连接器|附件|配件|物料|材料)$/i}
 function quoteDropMaterialNameTokens(raw){
@@ -1520,10 +1520,10 @@ function quoteBrandModelOnly(input,label=''){
   return out||quoteDropMaterialNameTokens(raw).join(' ')||raw;
 }
 function quoteBrandModelFromProduct(p){p=p||{};let name=quoteBrandModelOnly({brand:p.brand||'',model:p.model||p.code||p.product_model||'',name:p.name||p.product_name||'',spec:p.spec||p.size||''});return name||p.code||p.model||p.name||'Material'}
-function matText(m){return [m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.unit].join(' ').toLowerCase()}
+function matText(m){return [m.category,m.brand,m.name,m.model,m.spec,m.keyword,m.supplier,m.unit].join(' ').toLowerCase()}
 function materialBase(cats){let arr=String(cats||'').toLowerCase().split(',').map(x=>x.trim()).filter(Boolean);return DB.materials.filter(m=>arr.some(c=>matText(m).includes(c)))}
 function quotePartIsPackagingText(t){return /纸卡|纸箱|纸盒|内盒|外盒|外箱|彩盒|包装|包材|吸塑|珍珠棉|泡棉|护角|标签|贴纸|说明书|吊牌|卡纸|opp\s*袋|pe\s*袋|poly\s*bag|carton|inner\s*box|outer\s*box|gift\s*box|color\s*box|packing|packaging|label|manual|k\s*=\s*a|k6a|牛皮色/i.test(String(t||''))}
-function quoteMaterialKind(m){let t=matText(m);if(!t||quotePartIsPackagingText(t))return '';if(/\bled\s*driver\b|\bdriver\b|power\s*supply|constant\s*current|eaglerise|lifud|tridonic|mean\s*well|电源|驱动|伊戈尔|恒流/i.test(t))return 'driver';if(/connector|adapter|track\s*head|接头|转接|导轨头|连接器/i.test(t))return 'connector';if(/optic|optics|lens|reflector|dark\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/i.test(t))return 'optic';if(/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa)\b|\bled\s*(chip|module|cob)\b|\b(chip|cob)\s*led\b|芯片|灯珠/i.test(t))return 'led';if(/accessor|附件|配件|面环|线材|吊绳|弹簧|安装件|螺丝|螺钉/i.test(t))return 'extra';return ''}
+function quoteMaterialKind(m){let t=matText(m);if(!t||quotePartIsPackagingText(t))return '';if(/\bled\s*driver\b|\bdriver\b|power\s*supply|constant\s*current|eaglerise|lifud|tridonic|mean\s*well|电源|驱动|伊戈尔|恒流/i.test(t))return 'driver';if(/connector|adapter|track\s*head|接头|转接|导轨头|连接器/i.test(t))return 'connector';if(/optic|optics|lens|reflector|dark\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/i.test(t))return 'optic';if(/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa|vhd|gen8)\b|\bled\s*(chip|module|cob)\b|\b(chip|cob)\s*led\b|芯片|灯珠|普瑞/i.test(t))return 'led';if(/accessor|附件|配件|面环|线材|吊绳|弹簧|安装件|螺丝|螺钉/i.test(t))return 'extra';return ''}
 function filterMatForPart(k,cats,kw=''){kw=String(kw||'').toLowerCase();return materialBase(cats).filter(m=>quoteMaterialKind(m)===k).filter(m=>!kw||matText(m).includes(kw))}
 function filterMat(cats,kw=''){kw=String(kw||'').toLowerCase();return materialBase(cats).filter(m=>!kw||matText(m).includes(kw))}
 function matName(m){return quoteBrandModelOnly(m)||'物料'}

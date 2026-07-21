@@ -182,7 +182,7 @@ function norm_material($m){
   return [
     'id'=>$m['id']??($m['mid']??''),'category'=>$m['category']??($m['type']??''),'brand'=>$m['brand']??'',
     'name'=>$m['name']??($m['material_name']??''),'model'=>$m['model']??($m['code']??''),'spec'=>$m['spec']??($m['remark']??''),
-    'price'=>floatval($m['price']??($m['unit_price']??0)),'unit'=>$m['unit']??'PCS','supplier'=>$m['supplier']??'','image'=>$m['image']??''
+    'price'=>floatval($m['price']??($m['unit_price']??0)),'unit'=>$m['unit']??'PCS','supplier'=>$m['supplier']??'','keyword'=>$m['keyword']??'','image'=>$m['image']??''
   ];
 }
 function get_materials($pdo){
@@ -1225,7 +1225,7 @@ function qspec_component_value_conflicts($label,$value){
   $isDriver=preg_match('/\\bled\\s*driver\\b|\\bdriver\\b|power\\s*supply|constant\\s*current|eaglerise|lifud|tridonic|mean\\s*well|电源|驱动|伊戈尔|恒流/iu',$s)===1;
   $isConnector=preg_match('/connector|adapter|track\\s*head|接头|转接|导轨头|连接器/iu',$s)===1;
   $isOptic=preg_match('/optic|optics|lens|reflector|dark\\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/iu',$s)===1;
-  $isLed=preg_match('/\\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa)\\b|\\bled\\s*(chip|module|cob)\\b|\\b(chip|cob)\\s*led\\b|芯片|灯珠/iu',$s)===1;
+  $isLed=preg_match('/\\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa|vhd|gen8)\\b|\\bled\\s*(chip|module|cob)\\b|\\b(chip|cob)\\s*led\\b|芯片|灯珠|普瑞/iu',$s)===1;
   if($key==='led') return $isDriver || $isConnector || $isOptic;
   if($key==='driver') return $isConnector || $isOptic || ($isLed && !$isDriver);
   if($key==='optic') return $isDriver || $isConnector || ($isLed && !$isOptic);
@@ -1297,7 +1297,7 @@ function qspec_classify_component($txt){
   if(preg_match('/connector|adapter|track\s*head|接头|转接|导轨头|连接器/u',$s)) return 'connector';
   if(preg_match('/optic|optics|lens|reflector|dark\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/u',$s)) return 'optic';
   // “光源面/光源面盖/散热器后盖”这类结构件不能被当成 LED 芯片；必须出现明确芯片/灯珠/LED Chip/COB 或常见芯片品牌/型号。
-  if(preg_match('/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa)\b|\bled\s*(chip|module|cob)\b|\b(chip|cob)\s*led\b|芯片|灯珠/u',$s)) return 'led';
+  if(preg_match('/\b(cob|cree|osram|bridgelux|citizen|xpg|xhp|cxb|cxa|vhd|gen8)\b|\bled\s*(chip|module|cob)\b|\b(chip|cob)\s*led\b|芯片|灯珠|普瑞/u',$s)) return 'led';
   if(preg_match('/accessor|附件|配件|面环|线材|吊绳|弹簧|安装件|螺丝|螺钉/u',$s)) return 'accessories';
   return '';
 }
