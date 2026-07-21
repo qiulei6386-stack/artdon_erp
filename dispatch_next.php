@@ -382,6 +382,23 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   overflow:visible!important;
   vertical-align:middle!important;
 }
+.tbl td[data-field="assigned_to"] .userDisplay,
+.tbl td[data-field="assigned_to"] .people-assignee{
+  height:auto!important;
+  min-height:0!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:#1f2937!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  font-size:15px!important;
+  font-weight:600!important;
+  line-height:1.35!important;
+  white-space:normal!important;
+}
 .tbl td[data-field="assigned_to"] .groupAssignees,
 .tbl td[data-field="assigned_to"] .groupAssigneeText{
   display:block!important;
@@ -398,6 +415,20 @@ body.dark .detailBody{background:#0f172a}body.dark .detailSection,body.dark .med
   line-height:1.32!important;
   font-weight:900!important;
 }
+.mobileTaskMeta span:first-child{
+  height:auto!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:#1f2937!important;
+  font-size:15px!important;
+  font-weight:600!important;
+  line-height:1.35!important;
+}
+body.dark .tbl td[data-field="assigned_to"] .userDisplay,
+body.dark .tbl td[data-field="assigned_to"] .people-assignee,
+body.dark .mobileTaskMeta span:first-child{color:#e5e7eb!important;background:transparent!important}
 .tbl tr.due_today:not(.overdue) td,
 .tbl tr.due_today:not(.overdue):hover td,
 .tbl tr.due_soon:not(.overdue) td,
@@ -758,7 +789,7 @@ function renderEditableCell(r,c){
   }
   let value=displayValue(r,key);
   if(key==='priority')return `<select class="cell-input prioSelect prio-${esc(r.priority||'normal')}" data-cell-task="${r.id}" data-cell-field="priority">${['today','urgent','important','normal'].map(v=>`<option value="${v}" ${v===r.priority?'selected':''}>${prio(v)}</option>`).join('')}</select>`;
-  if(key==='assigned_to')return `<span class="displayCell userDisplay erpBadge people-assignee" data-display-editor="assigned_to" data-task-id="${r.id}" data-value="${esc(r.assigned_to)}">${esc(r.assignee_name||'—')}</span>`;
+  if(key==='assigned_to')return `<span class="displayCell userDisplay assigneeText" data-display-editor="assigned_to" data-task-id="${r.id}" data-value="${esc(r.assigned_to)}">${esc(r.assignee_name||'—')}</span>`;
   if(key==='due_at')return `<span class="displayCell dateDisplay ${esc(dueClass(r))}" data-display-editor="due_at" data-task-id="${r.id}" data-value="${esc((r.due_at||'').slice(0,10))}" title="${esc((r.due_label? r.due_label+' · ':'')+(r.due_at||''))}">${esc(formatDue(r.due_at))}</span>`;
   if(key==='dispatch_mode')return `<select class="cell-input methodSelect" data-cell-task="${r.id}" data-cell-field="dispatch_mode">${methodOptions(methodValue(r))}</select>`;
   if(key==='creator_name')return `<span class="erpBadge people-creator">${esc(r.creator_name||'-')}</span>`;
