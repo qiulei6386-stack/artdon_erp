@@ -325,6 +325,13 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'change_count', 'change_count INT UNSIGNED NOT NULL DEFAULT 1 AFTER note');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'device_type', 'device_type VARCHAR(40) NULL AFTER ip');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_logs', 'browser', 'browser VARCHAR(80) NULL AFTER device_type');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'source_personal_task_id', 'source_personal_task_id BIGINT UNSIGNED NULL AFTER parent_group_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'transfer_from_user_id', 'transfer_from_user_id INT UNSIGNED NULL AFTER source_personal_task_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'transfer_type', 'transfer_type VARCHAR(40) NULL AFTER transfer_from_user_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_task_id', 'converted_task_id BIGINT UNSIGNED NULL AFTER transfer_type');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_group_id', 'converted_group_id BIGINT UNSIGNED NULL AFTER converted_task_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_at', 'converted_at DATETIME NULL AFTER converted_group_id');
+    dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_status', "converted_status VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER converted_at");
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 14, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];

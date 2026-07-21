@@ -999,7 +999,7 @@ function dn_list(array $in): array
         if ($r['status'] === 'done' || $r['status'] === 'cancelled') {
             if (dn_task_matches_people($r, $personalPersonIds) || dn_task_matches_people($r, $dispatchPersonIds) || (!$personalPersonIds && !$dispatchPersonIds)) $done[] = $r;
         }
-        elseif ($r['task_type'] === 'personal' || $r['task_type'] === 'private') {
+        elseif (($r['task_type'] === 'personal' || $r['task_type'] === 'private') && (string)($r['converted_status'] ?? 'normal') !== 'hidden') {
             if (dn_task_matches_people($r, $personalPersonIds)) $personal[] = $r;
         }
         else {
@@ -1146,8 +1146,19 @@ function dn_decorate_task(array $r): array
     $r['assignee_name'] = (string)($r['assignee_name'] ?? dn_user_name($r['assigned_to']));
     $r['creator_name'] = (string)($r['creator_name'] ?? dn_user_name($r['created_by']));
     $r['method_label'] = dn_method_label($r['task_type'], $r['dispatch_mode']);
+    if (($r['transfer_type'] ?? '') === 'personal_to_single') $r['method_label'] = '转派';
+    if (($r['transfer_type'] ?? '') === 'personal_to_multi') $r['method_label'] = '多人转派';
     $r['can_urge'] = ($r['task_type'] === 'dispatch' && (dn_is_admin() || (int)$r['created_by'] === dn_uid()));
     $r['can_delete'] = dn_can_delete_task($r);
+    $converted = (string)($r['converted_status'] ?? 'normal');
+    $r['converted_status'] = $converted ?: 'normal';
+    $r['can_transfer'] = in_array((string)$r['task_type'], ['personal','private'], true)
+        && !in_array((string)$r['status'], ['done','cancelled'], true)
+        && $r['converted_status'] !== 'converted'
+        && (dn_is_admin() || (int)$r['created_by'] === dn_uid());
+    $r['can_restore_transfer'] = in_array((string)$r['task_type'], ['personal','private'], true)
+        && in_array($r['converted_status'], ['converted','hidden'], true)
+        && (dn_is_admin() || (int)$r['created_by'] === dn_uid());
     $r['is_overdue'] = dn_due_is_overdue($r['due_at'] ?? null, (string)$r['status']);
     $due = dn_due_status($r['due_at'] ?? null, (string)$r['status']);
     $r['due_state'] = $due['state'];
@@ -1156,6 +1167,43 @@ function dn_decorate_task(array $r): array
     $mailId = dn_task_mail_id($r);
     $r['mail_preview_task_id'] = $mailId > 0 ? (int)$r['id'] : 0;
     $r['has_mail_body'] = $mailId > 0 ? 1 : 0;
+    if (in_array((string)($r['converted_status'] ?? ''), ['converted','hidden'], true)) {
+        $r = dn_attach_transfer_summary($r);
+    }
+    return $r;
+}
+
+function dn_attach_transfer_summary(array $r): array
+{
+    $pdo = dispatch_next_db();
+    $taskId = (int)($r['converted_task_id'] ?? 0);
+    $groupId = (int)($r['converted_group_id'] ?? 0);
+    $r['converted_assignee_names'] = '';
+    $r['converted_task_status_label'] = '';
+    $r['converted_done_count'] = 0;
+    $r['converted_total_count'] = 0;
+    if ($taskId > 0) {
+        $st = $pdo->prepare("SELECT t.status, COALESCE(NULLIF(u.real_name,''),u.username) AS name FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.id=? LIMIT 1");
+        $st->execute([$taskId]);
+        if ($row = $st->fetch()) {
+            $r['converted_assignee_names'] = (string)($row['name'] ?? '');
+            $r['converted_task_status_label'] = dn_value_text((string)($row['status'] ?? ''), 'status');
+        }
+    } elseif ($groupId > 0) {
+        $st = $pdo->prepare("SELECT t.status, COALESCE(NULLIF(u.real_name,''),u.username) AS name FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
+        $st->execute([$groupId]);
+        $names = [];
+        $done = 0;
+        $total = 0;
+        foreach ($st->fetchAll() as $row) {
+            $total++;
+            if ((string)($row['status'] ?? '') === 'done') $done++;
+            if (!empty($row['name'])) $names[] = (string)$row['name'];
+        }
+        $r['converted_assignee_names'] = implode('、', $names);
+        $r['converted_done_count'] = $done;
+        $r['converted_total_count'] = $total;
+    }
     return $r;
 }
 
@@ -1189,14 +1237,16 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         [$peopleScope, $peopleParams] = dn_user_scope_sql('t', $personIds);
         $peopleSql = " AND {$peopleScope}";
     }
-    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$vis}{$peopleSql} ORDER BY t.id");
+    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$vis}{$peopleSql} ORDER BY t.id");
     $st->execute(array_merge([$gid], $params, $peopleParams));
     $children = $st->fetchAll();
     $done = 0;
     $mineUnread = false;
+    $isTransferGroup = false;
     foreach ($children as $c) {
         if ($c['status'] === 'done') $done++;
         if ((int)$c['assigned_to'] === dn_uid() && !(int)$c['is_read']) $mineUnread = true;
+        if (($c['transfer_type'] ?? '') === 'personal_to_multi') $isTransferGroup = true;
     }
     $mailPreviewTaskId = 0;
     foreach ($children as $c) {
@@ -1232,7 +1282,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'assigned_to' => 0,
         'assignee_name' => '多人',
         'dispatch_mode' => $g['group_type'],
-        'method_label' => $g['group_type'] === 'recurring' ? '周期派工' : '多人',
+        'method_label' => $isTransferGroup ? '多人转派' : ($g['group_type'] === 'recurring' ? '周期派工' : '多人'),
         'done_count' => $done,
         'total_count' => count($children),
         'progress' => count($children) ? (int)floor($done * 100 / count($children)) : 0,
@@ -1658,6 +1708,140 @@ function dn_create_multi(array $in): array
     }
     dn_refresh_group($gid);
     return ['group_id' => $gid];
+}
+
+function dn_transfer_personal_task(array $in): array
+{
+    dn_require('create_dispatch', '没有转派权限');
+    $taskId = (int)($in['task_id'] ?? 0);
+    $task = dn_task($taskId);
+    $uid = dn_uid();
+    if (!in_array((string)($task['task_type'] ?? ''), ['personal','private'], true)) dn_fail('只能转派个人待办');
+    if (!dn_is_admin() && (int)($task['created_by'] ?? 0) !== $uid) dn_fail('只有创建人或管理员可以转派', 403);
+    if (in_array((string)($task['status'] ?? ''), ['done','cancelled'], true)) dn_fail('已完成或已取消的任务不能转派');
+    if ((int)($task['is_deleted'] ?? 0) === 1) dn_fail('已删除任务不能转派');
+    $assigneeIds = array_values(array_unique(array_filter(array_map('intval', (array)($in['assignee_ids'] ?? [])), fn($v) => $v > 0)));
+    if (!$assigneeIds) dn_fail('请选择转派接收人');
+    $dueAt = dn_required_due_dt($in['due_date'] ?? $in['due_at'] ?? ($task['due_at'] ?? null));
+    $priority = dn_priority($in['priority'] ?? ($task['priority'] ?? 'normal'));
+    $keepMode = dn_str($in['keep_mode'] ?? 'converted', 40);
+    $convertedStatus = $keepMode === 'keep' ? 'normal' : ($keepMode === 'hidden' ? 'hidden' : 'converted');
+    $requireAccept = !array_key_exists('require_accept', $in) || (int)$in['require_accept'] === 1;
+    $notifyReceivers = !array_key_exists('notify_receivers', $in) || (int)$in['notify_receivers'] === 1;
+    $requireConfirm = !array_key_exists('require_confirm', $in) || (int)$in['require_confirm'] === 1;
+    if ($notifyReceivers) dn_notification_schema_ready();
+    $pdo = dispatch_next_db();
+    $createdTaskId = null;
+    $createdGroupId = null;
+    try {
+        $pdo->beginTransaction();
+        if (count($assigneeIds) === 1) {
+            $aid = (int)$assigneeIds[0];
+            $createdTaskId = dn_insert_task([
+                'task_type' => 'dispatch',
+                'dispatch_mode' => 'single',
+                'title' => (string)$task['title'],
+                'project' => (string)($task['project'] ?? ''),
+                'description' => (string)($task['description'] ?? ''),
+                'priority' => $priority,
+                'status' => $requireAccept && $aid !== $uid ? 'pending_accept' : 'in_progress',
+                'created_by' => $uid,
+                'assigned_to' => $aid,
+                'task_date' => date('Y-m-d'),
+                'due_at' => $dueAt,
+                'is_read' => $aid === $uid ? 1 : 0,
+                'linked_system' => 'dispatch_transfer',
+                'linked_table' => 'dispatch_next_tasks',
+                'linked_id' => (string)$taskId,
+                'linked_title' => '个人待办转派',
+                'extra' => ['source' => 'personal_to_single', 'require_confirm' => $requireConfirm ? 1 : 0],
+            ]);
+            $pdo->prepare("UPDATE dispatch_next_tasks SET source_personal_task_id=?, transfer_from_user_id=?, transfer_type='personal_to_single', updated_at=NOW() WHERE id=?")
+                ->execute([$taskId, $uid, $createdTaskId]);
+            if ($notifyReceivers) dn_notice_event($aid, $createdTaskId, 'personal_transfer', '个人待办转派', (string)$task['title'], [
+                'action_required' => $requireAccept ? 1 : 0,
+                'action_code' => $requireAccept ? 'accept_task' : 'open_task',
+                'severity' => 'normal',
+                'actor_id' => $uid,
+                'dedupe_key' => 'personal_transfer:' . $createdTaskId . ':' . $aid,
+            ]);
+            $note = dn_user_name($uid) . ' 将个人待办转派给 ' . dn_user_name($aid) . '；新派工 #' . $createdTaskId . '；截止 ' . $dueAt . '；优先级 ' . $priority;
+            dn_log($taskId, 'transfer', 'converted_task_id', '', (string)$createdTaskId, $note);
+        } else {
+            $pdo->prepare("INSERT INTO dispatch_next_groups(group_no,group_type,title,project,description,created_by,assignee_ids_json,total_count,task_date,due_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+                ->execute([dn_task_no('DT'), 'multi', (string)$task['title'], (string)($task['project'] ?? ''), (string)($task['description'] ?? ''), $uid, dn_json($assigneeIds), count($assigneeIds), date('Y-m-d'), $dueAt]);
+            $createdGroupId = (int)$pdo->lastInsertId();
+            foreach ($assigneeIds as $aid) {
+                $childId = dn_insert_task([
+                    'task_type' => 'dispatch',
+                    'dispatch_mode' => 'multi',
+                    'parent_group_id' => $createdGroupId,
+                    'title' => (string)$task['title'],
+                    'project' => (string)($task['project'] ?? ''),
+                    'description' => (string)($task['description'] ?? ''),
+                    'priority' => $priority,
+                    'status' => $requireAccept && $aid !== $uid ? 'pending_accept' : 'in_progress',
+                    'created_by' => $uid,
+                    'assigned_to' => $aid,
+                    'task_date' => date('Y-m-d'),
+                    'due_at' => $dueAt,
+                    'is_read' => $aid === $uid ? 1 : 0,
+                    'linked_system' => 'dispatch_transfer',
+                    'linked_table' => 'dispatch_next_tasks',
+                    'linked_id' => (string)$taskId,
+                    'linked_title' => '个人待办多人转派',
+                    'extra' => ['source' => 'personal_to_multi', 'require_confirm' => $requireConfirm ? 1 : 0],
+                ]);
+                $pdo->prepare("UPDATE dispatch_next_tasks SET source_personal_task_id=?, transfer_from_user_id=?, transfer_type='personal_to_multi', updated_at=NOW() WHERE id=?")
+                    ->execute([$taskId, $uid, $childId]);
+                if ($notifyReceivers) dn_notice_event((int)$aid, $childId, 'personal_transfer', '个人待办多人转派', (string)$task['title'], [
+                    'group_id' => $createdGroupId,
+                    'action_required' => $requireAccept ? 1 : 0,
+                    'action_code' => $requireAccept ? 'accept_task' : 'open_task',
+                    'severity' => 'normal',
+                    'actor_id' => $uid,
+                    'dedupe_key' => 'personal_transfer:' . $childId . ':' . (int)$aid,
+                    'group_key' => 'personal_transfer_group:' . $createdGroupId,
+                ]);
+            }
+            dn_refresh_group($createdGroupId);
+            $names = implode('、', array_map(fn($id) => dn_user_name((int)$id), $assigneeIds));
+            $note = dn_user_name($uid) . ' 将个人待办转为多人派工；成员：' . $names . '；多人组 #' . $createdGroupId . '；截止 ' . $dueAt . '；优先级 ' . $priority;
+            dn_log($taskId, 'transfer', 'converted_group_id', '', (string)$createdGroupId, $note);
+        }
+        $pdo->prepare("UPDATE dispatch_next_tasks SET converted_task_id=?, converted_group_id=?, converted_at=NOW(), converted_status=?, updated_at=NOW() WHERE id=?")
+            ->execute([$createdTaskId, $createdGroupId, $convertedStatus, $taskId]);
+        $pdo->commit();
+        return ['task_id' => $taskId, 'converted_task_id' => $createdTaskId, 'converted_group_id' => $createdGroupId, 'converted_status' => $convertedStatus];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        dn_error_log('transfer_failed', $e->getMessage(), $in, 500, 'transfer_personal_task');
+        dn_fail('转派失败：' . $e->getMessage(), 500);
+    }
+}
+
+function dn_restore_personal_transfer(array $in): array
+{
+    $task = dn_task((int)($in['task_id'] ?? $in['id'] ?? 0));
+    if (!in_array((string)($task['task_type'] ?? ''), ['personal','private'], true)) dn_fail('只能恢复个人待办');
+    if (!dn_is_admin() && (int)($task['created_by'] ?? 0) !== dn_uid()) dn_fail('没有恢复该个人待办的权限', 403);
+    dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET converted_status='restored', updated_at=NOW() WHERE id=?")->execute([(int)$task['id']]);
+    dn_log((int)$task['id'], 'restore_transfer', 'converted_status', $task['converted_status'] ?? '', 'restored', '恢复个人待办显示，保留已生成派工记录');
+    return ['task_id' => (int)$task['id']];
+}
+
+function dn_transfer_target(array $in): array
+{
+    $task = dn_task((int)($in['task_id'] ?? $in['id'] ?? 0));
+    $target = (int)($task['converted_task_id'] ?? 0);
+    $groupId = (int)($task['converted_group_id'] ?? 0);
+    if ($target <= 0 && $groupId > 0) {
+        $st = dispatch_next_db()->prepare("SELECT id FROM dispatch_next_tasks WHERE parent_group_id=? AND is_deleted=0 ORDER BY id LIMIT 1");
+        $st->execute([$groupId]);
+        $target = (int)$st->fetchColumn();
+    }
+    if ($target <= 0) dn_fail('未找到对应派工', 404);
+    return ['task_id' => $target, 'group_id' => $groupId];
 }
 
 function dn_update_multi(array $in): array
@@ -4986,6 +5170,9 @@ try {
         case 'delete_task': dn_ok(dn_delete_task($in));
         case 'restore_task': dn_ok(dn_restore_task($in));
         case 'create_multi': dn_ok(dn_create_multi($in));
+        case 'transfer_personal_task': dn_ok(dn_transfer_personal_task($in));
+        case 'restore_personal_transfer': dn_ok(dn_restore_personal_transfer($in));
+        case 'transfer_target': dn_ok(dn_transfer_target($in));
         case 'update_multi': dn_ok(dn_update_multi($in));
         case 'delete_multi':
             $gid = (int)($in['group_id'] ?? 0);
