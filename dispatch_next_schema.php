@@ -316,6 +316,31 @@ function dispatch_next_init_schema(): array
         KEY idx_dispatch_next_error_logs_api (api_action, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
+    $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_online_sessions (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NOT NULL,
+        user_name VARCHAR(120) NULL,
+        department VARCHAR(120) NULL,
+        session_key VARCHAR(160) NOT NULL,
+        online_date DATE NOT NULL,
+        started_at DATETIME NOT NULL,
+        last_seen_at DATETIME NOT NULL,
+        ended_at DATETIME NULL,
+        duration_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+        module VARCHAR(80) NOT NULL DEFAULT '派工待办',
+        device_type VARCHAR(40) NULL,
+        browser VARCHAR(80) NULL,
+        ip VARCHAR(80) NULL,
+        user_agent VARCHAR(255) NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_dispatch_next_online_date_user (online_date, user_id),
+        KEY idx_dispatch_next_online_session (session_key, last_seen_at),
+        KEY idx_dispatch_next_online_last_seen (last_seen_at),
+        KEY idx_dispatch_next_online_filters (department, device_type, browser, online_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
     foreach ($sql as $stmt) {
         $pdo->exec($stmt);
     }
@@ -334,7 +359,7 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_status', "converted_status VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER converted_at");
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
-    return ['tables' => 14, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
+    return ['tables' => 15, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }
 
 if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'dispatch_next_schema.php') {

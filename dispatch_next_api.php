@@ -2612,10 +2612,81 @@ function dn_touch_online_session(string $event = 'heartbeat'): void
         $status = $event === 'leave' ? 'offline' : 'active';
         db()->prepare("UPDATE crm_online_sessions SET user_id=?, user_name=?, department=?, role=?, current_module='派工待办', last_active_time=NOW(), logout_time=" . ($event === 'leave' ? 'NOW()' : 'NULL') . ", status=?, active_seconds=active_seconds+?, heartbeat_count=heartbeat_count+1, last_event=?, ip_address=?, device_type=?, browser=?, user_agent=?, is_mobile=?, updated_at=NOW() WHERE id=?")
             ->execute([(int)$u['id'], $name, $department, $role, $status, $add, $event, artdon_sso_ip(), $device, $browser, $ua, $isMobile, $row['id']]);
+        dn_touch_dispatch_online_session($event);
         return;
     }
     db()->prepare("INSERT INTO crm_online_sessions (user_id, user_name, department, role, current_module, session_id, login_time, last_active_time, logout_time, status, active_seconds, heartbeat_count, last_event, ip_address, device_type, browser, user_agent, is_mobile, created_at, updated_at) VALUES (?, ?, ?, ?, '派工待办', ?, NOW(), NOW(), " . ($event === 'leave' ? 'NOW()' : 'NULL') . ", ?, 0, 1, ?, ?, ?, ?, ?, ?, NOW(), NOW())")
         ->execute([(int)$u['id'], $name, $department, $role, $session, $event === 'leave' ? 'offline' : 'active', $event, artdon_sso_ip(), $device, $browser, $ua, $isMobile]);
+    dn_touch_dispatch_online_session($event);
+}
+
+function dn_online_client_context(): array
+{
+    $u = dn_user();
+    $ua = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500);
+    $isMobile = preg_match('/Mobile|Android|iPhone|iPad/i', $ua) ? 1 : 0;
+    $device = $isMobile ? 'mobile' : 'desktop';
+    $browser = 'Browser';
+    if (preg_match('/Edg/i', $ua)) $browser = 'Edge';
+    elseif (preg_match('/Chrome/i', $ua)) $browser = 'Chrome';
+    elseif (preg_match('/Safari/i', $ua)) $browser = 'Safari';
+    elseif (preg_match('/Firefox/i', $ua)) $browser = 'Firefox';
+    $name = (string)($u['display_name'] ?? $u['real_name'] ?? $u['username'] ?? ('User#' . (int)$u['id']));
+    return [
+        'user_id' => (int)$u['id'],
+        'user_name' => $name,
+        'department' => (string)($u['department_name'] ?? $u['department'] ?? ''),
+        'session_key' => sha1('dispatch_next|' . (int)$u['id'] . '|' . (session_id() ?: ('dispatch_' . (int)$u['id'])) . '|' . $device . '|' . $browser),
+        'device_type' => $device,
+        'browser' => $browser,
+        'ip' => artdon_sso_ip(),
+        'user_agent' => $ua,
+    ];
+}
+
+function dn_online_update_duration(PDO $pdo, int $id, string $startedAt, string $lastSeenAt, ?string $endedAt, string $status = 'active'): void
+{
+    $duration = max(0, min(86400, strtotime($lastSeenAt) - strtotime($startedAt)));
+    $pdo->prepare("UPDATE dispatch_next_online_sessions SET last_seen_at=?, ended_at=?, duration_seconds=?, status=?, updated_at=NOW() WHERE id=?")
+        ->execute([$lastSeenAt, $endedAt, $duration, $status, $id]);
+}
+
+function dn_touch_dispatch_online_session(string $event = 'heartbeat'): void
+{
+    $pdo = dispatch_next_db();
+    if (!artdon_sso_table_exists('dispatch_next_online_sessions')) dispatch_next_init_schema();
+    $c = dn_online_client_context();
+    $now = date('Y-m-d H:i:s');
+    $today = date('Y-m-d');
+    $st = $pdo->prepare("SELECT * FROM dispatch_next_online_sessions WHERE session_key=? ORDER BY last_seen_at DESC, id DESC LIMIT 1");
+    $st->execute([$c['session_key']]);
+    $last = $st->fetch();
+    if ($last) {
+        $lastSeen = strtotime((string)$last['last_seen_at']);
+        $gap = $lastSeen ? (time() - $lastSeen) : 999999;
+        $lastDate = (string)$last['online_date'];
+        if ($lastDate !== $today && $gap <= 300) {
+            $end = $lastDate . ' 23:59:59';
+            dn_online_update_duration($pdo, (int)$last['id'], (string)$last['started_at'], $end, $end, 'ended');
+            $start = $today . ' 00:00:00';
+            $duration = max(0, min(86400, time() - strtotime($start)));
+            $status = $event === 'leave' ? 'offline' : 'active';
+            $pdo->prepare("INSERT INTO dispatch_next_online_sessions(user_id,user_name,department,session_key,online_date,started_at,last_seen_at,ended_at,duration_seconds,module,device_type,browser,ip,user_agent,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'派工待办',?,?,?,?,?,NOW(),NOW())")
+                ->execute([$c['user_id'], $c['user_name'], $c['department'], $c['session_key'], $today, $start, $now, $event === 'leave' ? $now : null, $duration, $c['device_type'], $c['browser'], $c['ip'], $c['user_agent'], $status]);
+            return;
+        }
+        if ($lastDate === $today && $gap <= 300) {
+            dn_online_update_duration($pdo, (int)$last['id'], (string)$last['started_at'], $now, $event === 'leave' ? $now : null, $event === 'leave' ? 'offline' : 'active');
+            $pdo->prepare("UPDATE dispatch_next_online_sessions SET user_name=?, department=?, device_type=?, browser=?, ip=?, user_agent=? WHERE id=?")
+                ->execute([$c['user_name'], $c['department'], $c['device_type'], $c['browser'], $c['ip'], $c['user_agent'], (int)$last['id']]);
+            return;
+        }
+        if ($gap > 300 && empty($last['ended_at'])) {
+            dn_online_update_duration($pdo, (int)$last['id'], (string)$last['started_at'], (string)$last['last_seen_at'], (string)$last['last_seen_at'], 'timeout');
+        }
+    }
+    $pdo->prepare("INSERT INTO dispatch_next_online_sessions(user_id,user_name,department,session_key,online_date,started_at,last_seen_at,ended_at,duration_seconds,module,device_type,browser,ip,user_agent,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,'派工待办',?,?,?,?,?,NOW(),NOW())")
+        ->execute([$c['user_id'], $c['user_name'], $c['department'], $c['session_key'], $today, $now, $now, $event === 'leave' ? $now : null, $c['device_type'], $c['browser'], $c['ip'], $c['user_agent'], $event === 'leave' ? 'offline' : 'active']);
 }
 
 function dn_online_leave(): array
@@ -2668,6 +2739,180 @@ function dn_online_logs(array $in = []): array
     foreach ($summary as &$item) $item['online_text'] = dn_duration_text((int)$item['online_seconds']);
     usort($summary, fn($a, $b) => ((int)$b['online_seconds'] <=> (int)$a['online_seconds']) ?: strcmp((string)$a['user_name'], (string)$b['user_name']));
     return ['summary' => array_values($summary), 'sessions' => $rows];
+}
+
+function dn_online_filters_sql(array $in, string $alias = 's'): array
+{
+    $where = [];
+    $params = [];
+    $uid = (int)($in['user_id'] ?? 0);
+    if ($uid > 0) {
+        $where[] = "{$alias}.user_id=?";
+        $params[] = $uid;
+    }
+    $department = dn_str($in['department'] ?? '', 120);
+    if ($department !== '') {
+        $where[] = "{$alias}.department=?";
+        $params[] = $department;
+    }
+    $device = dn_str($in['device'] ?? '', 40);
+    if ($device !== '') {
+        $where[] = "{$alias}.device_type=?";
+        $params[] = $device;
+    }
+    $browser = dn_str($in['browser'] ?? '', 80);
+    if ($browser !== '') {
+        $where[] = "{$alias}.browser=?";
+        $params[] = $browser;
+    }
+    return [$where, $params];
+}
+
+function dn_online_status_label(string $lastSeen): string
+{
+    $idle = time() - strtotime($lastSeen);
+    if ($idle <= 180) return '在线';
+    if ($idle <= 600) return '疑似离开';
+    return '离线';
+}
+
+function dn_online_pick_main(array $rows, string $field): string
+{
+    $counts = [];
+    foreach ($rows as $r) {
+        $v = trim((string)($r[$field] ?? ''));
+        if ($v !== '') $counts[$v] = ($counts[$v] ?? 0) + 1;
+    }
+    arsort($counts);
+    return (string)(array_key_first($counts) ?? '');
+}
+
+function dn_online_day_rows(string $date, array $in = []): array
+{
+    dn_require('view_logs', '没有查看在线统计权限');
+    $pdo = dispatch_next_db();
+    if (!artdon_sso_table_exists('dispatch_next_online_sessions')) dispatch_next_init_schema();
+    [$extraWhere, $params] = dn_online_filters_sql($in, 's');
+    $where = array_merge(['s.online_date=?'], $extraWhere);
+    array_unshift($params, $date);
+    $sql = "SELECT s.* FROM dispatch_next_online_sessions s WHERE " . implode(' AND ', $where) . " ORDER BY s.user_name, s.started_at";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $sessions = $st->fetchAll();
+    $groups = [];
+    foreach ($sessions as $s) {
+        $uid = (int)$s['user_id'];
+        if (!isset($groups[$uid])) {
+            $groups[$uid] = [
+                'user_id' => $uid,
+                'user_name' => (string)$s['user_name'],
+                'department' => (string)($s['department'] ?? ''),
+                'online_seconds' => 0,
+                'online_text' => '',
+                'session_count' => 0,
+                'first_seen_at' => (string)$s['started_at'],
+                'last_seen_at' => (string)$s['last_seen_at'],
+                'main_device' => '',
+                'main_browser' => '',
+                '_sessions' => [],
+            ];
+        }
+        $groups[$uid]['online_seconds'] += (int)$s['duration_seconds'];
+        $groups[$uid]['session_count']++;
+        $groups[$uid]['first_seen_at'] = min((string)$groups[$uid]['first_seen_at'], (string)$s['started_at']);
+        $groups[$uid]['last_seen_at'] = max((string)$groups[$uid]['last_seen_at'], (string)$s['last_seen_at']);
+        $groups[$uid]['_sessions'][] = $s;
+    }
+    foreach ($groups as &$g) {
+        $g['online_seconds'] = min(86400, (int)$g['online_seconds']);
+        $g['online_text'] = dn_duration_text((int)$g['online_seconds']);
+        $g['main_device'] = dn_online_pick_main($g['_sessions'], 'device_type');
+        $g['main_browser'] = dn_online_pick_main($g['_sessions'], 'browser');
+        $g['status'] = $date === date('Y-m-d') ? dn_online_status_label((string)$g['last_seen_at']) : '离线';
+        unset($g['_sessions']);
+    }
+    $rows = array_values($groups);
+    $sort = dn_str($in['sort'] ?? 'duration_desc', 30);
+    usort($rows, function($a, $b) use ($sort) {
+        if ($sort === 'duration_asc') return ((int)$a['online_seconds'] <=> (int)$b['online_seconds']);
+        return ((int)$b['online_seconds'] <=> (int)$a['online_seconds']) ?: strcmp((string)$a['user_name'], (string)$b['user_name']);
+    });
+    return $rows;
+}
+
+function dn_online_today_summary(array $in = []): array
+{
+    dn_touch_dispatch_online_session('heartbeat');
+    $date = date('Y-m-d');
+    $rows = dn_online_day_rows($date, $in);
+    $active = array_values(array_filter($rows, fn($r) => (int)$r['online_seconds'] > 0 || dn_online_status_label((string)$r['last_seen_at']) !== '离线'));
+    $total = array_sum(array_map(fn($r) => (int)$r['online_seconds'], $rows));
+    return [
+        'date' => $date,
+        'current_online_count' => count(array_filter($rows, fn($r) => ($r['status'] ?? '') === '在线')),
+        'today_active_count' => count($active),
+        'today_total_seconds' => min(86400 * max(1, count($rows)), $total),
+        'today_total_text' => dn_duration_text((int)$total),
+        'updated_at' => date('Y-m-d H:i:s'),
+        'rows' => $rows,
+    ];
+}
+
+function dn_online_day_summary(array $in = []): array
+{
+    $date = dn_date($in['date'] ?? date('Y-m-d'), date('Y-m-d'));
+    return ['date' => $date, 'rows' => dn_online_day_rows($date, $in), 'updated_at' => date('Y-m-d H:i:s')];
+}
+
+function dn_online_history_sessions(array $in = []): array
+{
+    dn_require('view_logs', '没有查看在线明细权限');
+    $pdo = dispatch_next_db();
+    if (!artdon_sso_table_exists('dispatch_next_online_sessions')) dispatch_next_init_schema();
+    $from = dn_date($in['date_from'] ?? date('Y-m-d', strtotime('-6 days')), date('Y-m-d', strtotime('-6 days')));
+    $to = dn_date($in['date_to'] ?? date('Y-m-d'), date('Y-m-d'));
+    [$where, $params] = dn_online_filters_sql($in, 's');
+    array_unshift($where, 's.online_date BETWEEN ? AND ?');
+    array_unshift($params, $from, $to);
+    $limit = max(20, min(1000, (int)($in['limit'] ?? 300)));
+    $sql = "SELECT s.* FROM dispatch_next_online_sessions s WHERE " . implode(' AND ', $where) . " ORDER BY s.started_at DESC, s.id DESC LIMIT {$limit}";
+    $st = $pdo->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    foreach ($rows as &$r) {
+        $r['online_seconds'] = (int)$r['duration_seconds'];
+        $r['online_text'] = dn_duration_text((int)$r['duration_seconds']);
+        $r['ended_display'] = $r['ended_at'] ?: $r['last_seen_at'];
+    }
+    return ['rows' => $rows, 'date_from' => $from, 'date_to' => $to];
+}
+
+function dn_online_export_csv(array $in = []): array
+{
+    $rows = dn_online_history_sessions(array_merge($in, ['limit' => 1000]))['rows'] ?? [];
+    $cols = ['人员','部门','上线时间','离线/最后活跃','在线时长','模块','设备','浏览器','IP'];
+    $lines = [implode(',', array_map('dn_csv_cell', $cols))];
+    foreach ($rows as $r) {
+        $lines[] = implode(',', array_map('dn_csv_cell', [
+            $r['user_name'] ?? '',
+            $r['department'] ?? '',
+            $r['started_at'] ?? '',
+            $r['ended_display'] ?? '',
+            $r['online_text'] ?? '',
+            $r['module'] ?? '',
+            $r['device_type'] ?? '',
+            $r['browser'] ?? '',
+            $r['ip'] ?? '',
+        ]));
+    }
+    dn_audit_log(null, 'online_export', 'filters', '', dn_error_request_summary($in), '导出在线统计历史明细，共 ' . count($rows) . ' 条');
+    return ['filename' => '在线统计历史明细_' . date('Ymd_His') . '.csv', 'csv' => implode("\n", $lines), 'count' => count($rows)];
+}
+
+function dn_online_rebuild_daily_stats(array $in = []): array
+{
+    dn_require('view_logs', '没有重建在线统计权限');
+    return ['rebuilt' => true, 'message' => '在线统计 PRO 直接按 session 聚合，无需每日汇总重建。'];
 }
 
 function dn_audit_action_label(string $action, string $newValue = ''): string
@@ -5242,6 +5487,11 @@ try {
         case 'online_status': dn_ok(dn_online_status());
         case 'online_leave': dn_ok(dn_online_leave());
         case 'online_logs': dn_ok(dn_online_logs($in));
+        case 'online_today_summary': dn_ok(dn_online_today_summary($in));
+        case 'online_day_summary': dn_ok(dn_online_day_summary($in));
+        case 'online_history_sessions': dn_ok(dn_online_history_sessions($in));
+        case 'online_rebuild_daily_stats': dn_ok(dn_online_rebuild_daily_stats($in));
+        case 'online_export_csv': dn_ok(dn_online_export_csv($in));
         case 'audit_logs': dn_ok(dn_audit_logs($in));
         case 'export_audit_logs': dn_ok(dn_export_audit_logs($in));
         case 'error_logs': dn_ok(dn_error_logs($in));
