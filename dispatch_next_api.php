@@ -569,8 +569,9 @@ function dn_notice_event(int $recipientId, ?int $taskId, string $eventType, stri
     $st->execute([$dedupe]);
     $existingId = (int)($st->fetchColumn() ?: 0);
     if ($existingId > 0) {
-        $pdo->prepare("UPDATE dispatch_next_notifications SET actor_id=?, sender_id=?, title=?, message=?, severity=?, action_required=?, action_code=?, status=IF(status='handled','unread',status), snooze_until=NULL, archived=0, updated_at=NOW(), last_event_at=NOW(), event_count=event_count+1, summary_count=summary_count+1 WHERE id=?")
-            ->execute([$actorId, $actorId, $title, $message, $severity, $actionRequired, $actionCode, $existingId]);
+        $reopenHandled = !empty($opt['reopen_handled']) ? 1 : 0;
+        $pdo->prepare("UPDATE dispatch_next_notifications SET actor_id=?, sender_id=?, title=?, message=?, severity=?, action_required=?, action_code=?, status=IF(status='handled' AND ?=1,'unread',status), snooze_until=NULL, archived=0, updated_at=NOW(), last_event_at=NOW(), event_count=event_count+1, summary_count=summary_count+1 WHERE id=?")
+            ->execute([$actorId, $actorId, $title, $message, $severity, $actionRequired, $actionCode, $reopenHandled, $existingId]);
         return;
     }
     $sql = "INSERT INTO dispatch_next_notifications(recipient_id,actor_id,sender_id,task_id,group_id,event_type,type,severity,title,message,action_required,action_code,status,dedupe_key,group_key,created_at,updated_at,event_count,summary_count,last_event_at,archived)
@@ -657,12 +658,13 @@ function dn_generate_due_notifications(int $uid): array
     $pdo = dispatch_next_db();
     $today = date('Y-m-d');
     $made = 0;
-    $st = $pdo->prepare("SELECT id,title,project,due_at,status,created_by,assigned_to,parent_group_id FROM dispatch_next_tasks WHERE is_deleted=0 AND status NOT IN ('done','cancelled') AND (assigned_to=? OR created_by=?) AND due_at IS NOT NULL AND DATE(due_at)<=?");
+    $st = $pdo->prepare("SELECT id,title,project,due_at,status,created_by,assigned_to,parent_group_id,is_read,read_at FROM dispatch_next_tasks WHERE is_deleted=0 AND status NOT IN ('done','cancelled') AND (assigned_to=? OR created_by=?) AND due_at IS NOT NULL AND DATE(due_at)<=?");
     $st->execute([$uid, $uid, $today]);
     foreach ($st->fetchAll() as $task) {
         $dueDate = substr((string)$task['due_at'], 0, 10);
         $isOwner = (int)$task['assigned_to'] === $uid;
-        if ($isOwner && (string)$task['status'] === 'pending_accept') {
+        $seenToday = $isOwner && !empty($task['read_at']) && substr((string)$task['read_at'], 0, 10) === $today;
+        if ($isOwner && (string)$task['status'] === 'pending_accept' && !(int)($task['is_read'] ?? 0)) {
             dn_notice_event($uid, (int)$task['id'], 'new_dispatch', '新派工待接收', (string)$task['title'], [
                 'action_required' => 1,
                 'action_code' => 'accept',
@@ -672,7 +674,7 @@ function dn_generate_due_notifications(int $uid): array
             ]);
             $made++;
         }
-        if ($isOwner && $dueDate === $today) {
+        if ($isOwner && !$seenToday && $dueDate === $today) {
             dn_notice_event($uid, (int)$task['id'], 'due_today', '今日到期', (string)$task['title'], [
                 'action_required' => 1,
                 'action_code' => 'due_today',
@@ -681,7 +683,7 @@ function dn_generate_due_notifications(int $uid): array
             ]);
             $made++;
         }
-        if ($isOwner && $dueDate < $today) {
+        if ($isOwner && !$seenToday && $dueDate < $today) {
             dn_notice_event($uid, (int)$task['id'], 'overdue', '任务已逾期', (string)$task['title'], [
                 'action_required' => 1,
                 'action_code' => 'overdue',
@@ -714,6 +716,8 @@ function dn_sync_notification_status(int $uid): void
             WHERE n.recipient_id=? AND n.action_required=1 AND n.status<>'handled' AND (
                 t.is_deleted=1 OR t.status IN ('done','cancelled')
                 OR (n.event_type='new_dispatch' AND t.status<>'pending_accept')
+                OR (n.event_type='new_dispatch' AND t.is_read=1)
+                OR (n.event_type IN ('due_today','overdue','urge') AND t.read_at IS NOT NULL AND t.read_at>=n.created_at)
                 OR (n.event_type='completed_pending_confirm' AND t.status<>'submitted')
             )";
     $pdo->prepare($sql)->execute([$uid]);
@@ -1329,7 +1333,7 @@ function dn_detail(array $in): array
     dn_cleanup_expired_attachments();
     $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
     $task = dn_decorate_task(dn_task($id));
-    if ((int)$task['assigned_to'] === dn_uid() && !(int)$task['is_read']) dn_mark_task_read(['id' => $id], false);
+    if ((int)$task['assigned_to'] === dn_uid()) dn_mark_task_read(['id' => $id], false);
     $pdo = dispatch_next_db();
     $comments = $pdo->prepare("SELECT c.*, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_comments c LEFT JOIN crm_users u ON u.id=c.user_id WHERE c.task_id=? ORDER BY c.id DESC");
     $comments->execute([$id]);
@@ -3261,6 +3265,7 @@ function dn_mark_task_read(array $in, bool $return = true): array
     $task = dn_task($id);
     if ((int)$task['assigned_to'] === dn_uid()) {
         dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET is_read=1, read_at=COALESCE(read_at,NOW()) WHERE id=?")->execute([$id]);
+        dn_notice_mark_task_handled($id, ['new_dispatch','due_today','overdue','urge']);
     }
     $data = ['id' => $id];
     return $data;
