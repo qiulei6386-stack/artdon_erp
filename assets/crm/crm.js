@@ -5674,7 +5674,7 @@
       }).join('') : '';
       return '<div class="entity-editor customer-entry-system" data-customer-entry>' +
         '<input type="hidden" name="customer_id" value="' + esc(entity.id || '') + '"><input type="hidden" name="addresses_json" data-addresses-json><input type="hidden" name="contacts_json" data-contacts-json><input type="hidden" name="duplicate_risk_confirmed" data-duplicate-risk-confirmed value="0">' +
-        (isEdit ? '' : '<section class="entity-section business-card-scan" data-business-card-scan><header><div><span>SCAN TO CREATE</span><h3>扫描名片 / 图片识别</h3><p>拍摄或上传名片，识别后先确认，再回填下面的原客户表单。</p></div><b>腾讯 OCR</b></header><div class="business-card-scan-body"><label class="business-card-drop"><input type="file" accept="image/jpeg,image/png" capture="environment" data-business-card-file><span data-business-card-preview><i>＋</i><strong>拍摄或选择名片图片</strong><em>支持 JPG、PNG，最大 5MB</em></span></label><div class="business-card-scan-side"><div data-business-card-status><strong>等待选择图片</strong><span>识别不会直接保存客户，也不会覆盖已填写字段。</span></div><button type="button" class="primary" data-business-card-recognize disabled>开始识别</button></div></div><div class="business-card-result" data-business-card-result hidden></div></section>') +
+        (isEdit ? '' : '<section class="entity-section business-card-scan" data-business-card-scan><header><div><span>SCAN TO CREATE</span><h3>扫描名片 / 图片识别</h3><p>支持拖入、复制粘贴、选择图片或手机拍摄；识别后先确认，再回填原客户表单。</p></div><b>腾讯 OCR</b></header><div class="business-card-scan-body"><label class="business-card-drop" tabindex="0" data-business-card-drop><input type="file" accept="image/jpeg,image/png" capture="environment" data-business-card-file><span data-business-card-preview><i>＋</i><strong>拖入、粘贴或拍摄名片</strong><em>点击选择图片 · Ctrl/⌘+V 粘贴 · JPG/PNG 最大 5MB</em></span></label><div class="business-card-scan-side"><div data-business-card-status><strong>等待名片图片</strong><span>可将截图直接粘贴到当前弹窗；识别不会直接保存客户。</span></div><div class="business-card-input-actions"><button type="button" data-business-card-paste-hint>粘贴截图</button><button type="button" class="primary" data-business-card-recognize disabled>开始识别</button></div></div></div><div class="business-card-result" data-business-card-result hidden></div></section>') +
         '<section class="entity-section entity-section-primary"><h3>基础信息</h3>' +
         '<div class="entity-name-check">' + this.field('客户名称 *', 'customer_name', entity.customer_name, 'required autocomplete="off" data-entry-name data-entry-watch') +
         (isEdit ? '<div class="entry-duplicate-inline muted"><span>编辑客户只更新当前客户，不执行新建查重拦截。</span></div>' : '<div class="entry-duplicate-inline" data-duplicate-results><span>输入客户名称 2 个字符后自动查重。</span></div>') + '</div>' +
@@ -7158,37 +7158,83 @@
       var input = root.querySelector('[data-business-card-file]');
       var button = root.querySelector('[data-business-card-recognize]');
       var preview = root.querySelector('[data-business-card-preview]');
-      if (!input || !button || !preview) return;
+      var drop = root.querySelector('[data-business-card-drop]');
+      if (!input || !button || !preview || !drop) return;
       var self = this;
       input.addEventListener('change', function () {
         var file = input.files && input.files[0];
-        self.businessCardOcrResult = null;
-        var result = root.querySelector('[data-business-card-result]');
-        if (result) {
-          result.hidden = true;
-          result.innerHTML = '';
-        }
-        if (!file) {
-          button.disabled = true;
-          preview.innerHTML = '<i>＋</i><strong>拍摄或选择名片图片</strong><em>支持 JPG、PNG，最大 5MB</em>';
-          return;
-        }
-        if (!/^image\/(jpeg|png)$/i.test(file.type || '') || file.size > 5 * 1024 * 1024) {
-          input.value = '';
-          button.disabled = true;
-          return self.showCustomerError('请选择小于 5MB 的 JPG 或 PNG 名片图片。');
-        }
-        if (self.businessCardPreviewUrl) URL.revokeObjectURL(self.businessCardPreviewUrl);
-        self.businessCardPreviewUrl = URL.createObjectURL(file);
-        preview.innerHTML = '<img src="' + esc(self.businessCardPreviewUrl) + '" alt="名片预览"><span><strong>' + esc(file.name || '名片图片') + '</strong><em>' + Math.max(1, Math.round(file.size / 1024)) + ' KB · 点击可重新选择</em></span>';
-        button.disabled = false;
-        self.setBusinessCardStatus(root, '图片已准备', '点击“开始识别”，通常数秒内完成。', '');
+        if (file) self.setBusinessCardFile(root, file, '选择图片');
+      });
+      ['dragenter', 'dragover'].forEach(function (type) {
+        drop.addEventListener(type, function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          drop.classList.add('is-dragover');
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        });
+      });
+      ['dragleave', 'dragend'].forEach(function (type) {
+        drop.addEventListener(type, function (event) {
+          event.preventDefault();
+          drop.classList.remove('is-dragover');
+        });
+      });
+      drop.addEventListener('drop', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        drop.classList.remove('is-dragover');
+        var files = Array.prototype.slice.call((event.dataTransfer && event.dataTransfer.files) || []);
+        var file = files.find(function (item) { return /^image\//i.test(item.type || ''); });
+        if (!file) return self.showCustomerError('拖入内容中没有可识别的图片。');
+        self.setBusinessCardFile(root, file, '拖入图片');
+      });
+      root.addEventListener('paste', function (event) {
+        var items = Array.prototype.slice.call((event.clipboardData && event.clipboardData.items) || []);
+        var imageItem = items.find(function (item) { return /^image\//i.test(item.type || ''); });
+        if (!imageItem) return;
+        var blob = imageItem.getAsFile();
+        if (!blob) return;
+        event.preventDefault();
+        var extension = /png/i.test(blob.type || '') ? 'png' : 'jpg';
+        var file = new File([blob], 'clipboard_' + Date.now() + '.' + extension, { type: blob.type || 'image/png' });
+        self.setBusinessCardFile(root, file, '粘贴截图');
+      });
+      root.querySelector('[data-business-card-paste-hint]')?.addEventListener('click', function () {
+        drop.focus();
+        self.setBusinessCardStatus(root, '等待粘贴图片', '请按 Ctrl+V；Mac 请按 ⌘+V。也可以直接把图片拖到左侧。', '');
       });
       button.addEventListener('click', function () { self.recognizeBusinessCard(root); });
       root.querySelector('[data-business-card-result]')?.addEventListener('click', function (event) {
         var apply = event.target.closest('[data-business-card-apply]');
         if (apply) self.applyBusinessCardResult(root);
       });
+    },
+    setBusinessCardFile: function (root, file, source) {
+      var input = root.querySelector('[data-business-card-file]');
+      var button = root.querySelector('[data-business-card-recognize]');
+      var preview = root.querySelector('[data-business-card-preview]');
+      this.businessCardOcrResult = null;
+      this.businessCardSelectedFile = null;
+      var result = root.querySelector('[data-business-card-result]');
+      if (result) {
+        result.hidden = true;
+        result.innerHTML = '';
+      }
+      if (!file) {
+        if (button) button.disabled = true;
+        return;
+      }
+      if (!/^image\/(jpeg|png)$/i.test(file.type || '') || file.size > 5 * 1024 * 1024) {
+        if (input) input.value = '';
+        if (button) button.disabled = true;
+        return this.showCustomerError('请选择小于 5MB 的 JPG 或 PNG 名片图片。');
+      }
+      this.businessCardSelectedFile = file;
+      if (this.businessCardPreviewUrl) URL.revokeObjectURL(this.businessCardPreviewUrl);
+      this.businessCardPreviewUrl = URL.createObjectURL(file);
+      if (preview) preview.innerHTML = '<img src="' + esc(this.businessCardPreviewUrl) + '" alt="名片预览"><span><strong>' + esc(file.name || '名片图片') + '</strong><em>' + esc(source || '图片') + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB · 点击可重新选择</em></span>';
+      if (button) button.disabled = false;
+      this.setBusinessCardStatus(root, '图片已准备', '来源：' + (source || '图片') + '。点击“开始识别”，通常数秒内完成。', '');
     },
     setBusinessCardStatus: function (root, title, detail, type) {
       var box = root.querySelector('[data-business-card-status]');
@@ -7199,7 +7245,7 @@
     recognizeBusinessCard: function (root) {
       var input = root.querySelector('[data-business-card-file]');
       var button = root.querySelector('[data-business-card-recognize]');
-      var file = input && input.files ? input.files[0] : null;
+      var file = this.businessCardSelectedFile || (input && input.files ? input.files[0] : null);
       if (!file) return this.showCustomerError('请先拍摄或选择名片图片。');
       var body = new FormData();
       body.set('action', 'customer_business_card_ocr');

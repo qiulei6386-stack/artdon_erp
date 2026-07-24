@@ -8266,6 +8266,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .business-card-scan-body { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(230px, .7fr); gap: 10px; margin-top: 10px; }
 .business-card-drop { min-width: 0; min-height: 104px; border: 1px dashed #93c5fd; border-radius: 12px; background: rgb(255 255 255 / .82); cursor: pointer; overflow: hidden; }
+.business-card-drop.is-dragover,
+.business-card-drop:focus-visible { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 3px rgb(37 99 235 / .12); outline: none; }
 .business-card-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .business-card-drop > span { min-height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px; text-align: center; }
 .business-card-drop i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: #dbeafe; color: #1d4ed8; font-style: normal; font-size: 19px; }
@@ -8281,8 +8283,10 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .business-card-scan-side [data-business-card-status].is-loading strong { color: #1d4ed8; }
 .business-card-scan-side [data-business-card-status].is-success strong { color: #15803d; }
 .business-card-scan-side [data-business-card-status].is-error strong { color: #b91c1c; }
+.business-card-input-actions { display: grid; grid-template-columns: auto 1fr; gap: 7px; }
 .business-card-scan-side button,
 .business-card-result header button { min-height: 32px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; padding: 0 12px; font-weight: 900; cursor: pointer; }
+.business-card-input-actions [data-business-card-paste-hint] { border: 1px solid #bfdbfe; background: #fff; color: #1d4ed8; }
 .business-card-scan-side button:disabled { opacity: .48; cursor: not-allowed; }
 .business-card-result { margin-top: 10px; border-top: 1px solid #dbeafe; padding-top: 10px; }
 .business-card-result header strong { display: block; color: var(--crm-text); font-size: 12px; }
