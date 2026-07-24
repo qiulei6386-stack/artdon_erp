@@ -254,12 +254,12 @@ body{background:#f6f8fb}
 .dash-icon-group-head{padding:6px 9px!important;border-radius:9px!important;font-size:12px}
 .app-header-wrap,main.wrap{width:calc(100% - 32px)!important;max-width:none!important}
 .dashboard,.dashboard>.card,.dashboard-table-wrap,#dashboardIconGrid{width:100%;max-width:none}
-.dash-icon-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))!important;gap:9px!important;width:100%}
-.dash-bom-card{height:300px!important;min-height:300px!important;border-color:#e6ebf2!important;border-radius:15px!important;overflow:visible!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.dash-icon-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr))!important;gap:10px!important;width:100%}
+.dash-bom-card{width:100%!important;height:268px!important;min-height:268px!important;border-color:#e6ebf2!important;border-radius:15px!important;overflow:visible!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
 .dash-bom-card:hover{transform:translateY(-2px);border-color:#cbdcf5!important;box-shadow:0 10px 24px rgba(15,23,42,.09)!important}
-.dash-bom-image{height:135px!important;flex:0 0 135px;border-radius:15px 15px 0 0;overflow:hidden;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
-.dash-bom-body{padding:7px 9px!important;gap:3px!important;flex:1 1 auto;min-height:0}
-.dash-bom-title{font-size:14px!important;min-height:37px}
+.dash-bom-image{height:120px!important;flex:0 0 120px;border-radius:15px 15px 0 0;overflow:hidden;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
+.dash-bom-body{padding:6px 8px!important;gap:2px!important;flex:1 1 auto;min-height:0}
+.dash-bom-title{font-size:13px!important;min-height:34px}
 .dash-bom-model{font-size:11px!important}
 .dash-bom-meta{display:flex!important;flex-wrap:wrap;gap:3px!important;font-size:10px!important}
 .dash-bom-meta span{max-width:calc(50% - 2px);padding:2px 6px!important;border-radius:999px!important;background:#f6f8fb!important}
@@ -279,9 +279,13 @@ body{background:#f6f8fb}
 .bom-title-cell small{display:block!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3!important;margin-top:2px!important}
 .dashboard-table .price,.dashboard-table .quote-price{text-align:right;font-weight:950;color:#b91c1c}
 .dash-table-actions{white-space:nowrap;text-align:center}.dash-table-actions button{height:28px;padding:0 8px!important;margin:0}
+@media(max-width:1599px){.dash-icon-grid{grid-template-columns:repeat(8,minmax(0,1fr))!important}}
+@media(max-width:1399px){.dash-icon-grid{grid-template-columns:repeat(7,minmax(0,1fr))!important}}
 @media(max-width:1200px){.brand-meta .brand-version{display:none}.dashboard-hero{align-items:flex-start!important}.dash-actions{overflow-x:auto;max-width:70%}}
-@media(max-width:900px){.app-header-wrap{padding:6px 0!important}.header-title-row{flex-wrap:wrap}.header-right{width:100%;justify-content:flex-start;overflow-x:auto}.header-nav-row{overflow-x:auto}.header-nav-row .module-nav{overflow:visible}.dashboard-hero{display:block!important}.dash-actions{max-width:100%;overflow-x:auto;margin-top:6px}.dashboard-controls{align-items:flex-start}.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important}}
-@media(max-width:640px){.app-header-wrap,main.wrap{width:calc(100% - 20px)!important}.brand-meta{display:none}.dashboard-sub{display:none}.dash-icon-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))!important}.dash-bom-card{height:288px!important;min-height:288px!important}.dash-bom-image{height:118px!important;flex-basis:118px}}
+@media(max-width:1199px){.dash-icon-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important}}
+@media(max-width:900px){.app-header-wrap{padding:6px 0!important}.header-title-row{flex-wrap:wrap}.header-right{width:100%;justify-content:flex-start;overflow-x:auto}.header-nav-row{overflow-x:auto}.header-nav-row .module-nav{overflow:visible}.dashboard-hero{display:block!important}.dash-actions{max-width:100%;overflow-x:auto;margin-top:6px}.dashboard-controls{align-items:flex-start}}
+@media(max-width:899px){.dash-icon-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:639px){.app-header-wrap,main.wrap{width:calc(100% - 20px)!important}.brand-meta{display:none}.dashboard-sub{display:none}.dash-icon-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.dash-bom-card{height:268px!important;min-height:268px!important}.dash-bom-image{height:112px!important;flex-basis:112px}}
 
 
 
@@ -1196,7 +1200,12 @@ function scheduleBomAutoGrow(){
   clearTimeout(__bomAutoGrowTimer);
   __bomAutoGrowTimer=setTimeout(()=>{ autoGrowAll(); updateBomStickyOffsets(); },30);
 }
-function scheduleBomTableLayout(){ scheduleBomAutoGrow(); }
+let __bomViewportTimer=null;
+function scheduleBomTableLayout(){
+  scheduleBomAutoGrow();
+  clearTimeout(__bomViewportTimer);
+  __bomViewportTimer=setTimeout(()=>{if(currentPage==='dashboard'&&typeof renderDashboard==='function')renderDashboard()},120);
+}
 window.addEventListener('resize', scheduleBomTableLayout);
 window.addEventListener('orientationchange', scheduleBomTableLayout);
 function uploadProductImage(){$('productImageInput').click()}function readProductImage(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>setProductImagePreview(r.result);r.readAsDataURL(f)}function setProductImagePreview(src){src=bomNormalizeMediaUrl(src);const img=$('productImagePreview');img.dataset.src=src||'';img.src=src||'';img.style.display=src?'block':'none'}function removeProductImage(){setProductImagePreview('');touch()}
@@ -1762,10 +1771,17 @@ function updateDashboardViewButtons(){
   if($('dashboardTableWrap')){$('dashboardTableWrap').hidden=dashboardView!=='list';$('dashboardTableWrap').classList.toggle('dashboard-view-hidden',dashboardView!=='list')}
   if($('dashboardIconGrid')){$('dashboardIconGrid').hidden=dashboardView==='list';$('dashboardIconGrid').classList.toggle('dashboard-view-hidden',dashboardView==='list')}
 }
+function dashboardGridColumns(){
+  const w=window.innerWidth||document.documentElement.clientWidth||1600;
+  if(w>=1600)return 9;
+  if(w>=1400)return 8;
+  if(w>=1200)return 7;
+  if(w>=900)return 5;
+  if(w>=640)return 3;
+  return 2;
+}
 function dashboardEffectivePageSize(){
-  const w=document.querySelector('.dashboard')?.clientWidth||window.innerWidth||1100;
-  const cols=Math.max(2,Math.floor(w/232));
-  return Math.max(4,cols*2);
+  return dashboardGridColumns()*2;
 }
 function dashboardTotalPages(){const size=dashboardEffectivePageSize();return Math.max(1,Math.ceil((lastDashboardRows.length||0)/size))}
 function dashboardPageRows(){const size=dashboardEffectivePageSize(),total=dashboardTotalPages();dashboardPage=Math.max(1,Math.min(total,Number(dashboardPage)||1));const start=(dashboardPage-1)*size;return lastDashboardRows.slice(start,start+size)}
@@ -1801,7 +1817,7 @@ function dashboardCardHtml(p){
       <div class="dash-bom-cost"><span>总成本</span><b>${money(t.total)}</b></div>
       <div class="dash-bom-model" title="${esc(material)}">${esc(material||'暂无物料摘要')}</div>
     </div>
-    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></div>
+    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button></div>
   </article>`;
 }
 function renderDashboard(){
