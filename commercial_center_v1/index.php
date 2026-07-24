@@ -37,11 +37,19 @@ header('Cache-Control: no-store, max-age=0');
   <aside class="sidebar" data-sidebar>
     <div class="brand"><span>AD</span><div><strong>商务运营中心</strong><small>Commercial Center V1</small></div></div>
     <nav aria-label="商务中心模块">
-      <?php foreach ($moduleLabels as $key => $label): ?>
-        <a href="?view=<?= cc_h($key) ?>" class="<?= $activeView === $key ? 'active' : '' ?>">
-          <i><?= cc_h(mb_substr($label, 0, 1)) ?></i><span><?= cc_h($label) ?></span>
-          <?php if ($key !== 'dashboard'): ?><em>规划</em><?php endif; ?>
-        </a>
+      <?php foreach ([
+        '工作台' => ['dashboard'],
+        '产品与报价' => ['products','materials','inventory','quotation','custom_project','publishing'],
+        '订单与交付' => ['orders','packaging','documents','commission'],
+        '系统' => ['integrations'],
+      ] as $group => $items): ?>
+        <section class="nav-group"><button type="button" data-nav-group><span><?= cc_h($group) ?></span><b>⌄</b></button><div>
+        <?php foreach ($items as $key): $label=$moduleLabels[$key]; ?>
+          <a href="?view=<?= cc_h($key) ?>" class="<?= $activeView === $key ? 'active' : '' ?>">
+            <i aria-hidden="true"><?= cc_h(mb_substr($label, 0, 1)) ?></i><span><?= cc_h($label) ?></span>
+          </a>
+        <?php endforeach; ?>
+        </div></section>
       <?php endforeach; ?>
     </nav>
     <div class="sidebar-foot"><span>只读旁路模块</span><small>旧系统零修改</small></div>
@@ -92,6 +100,26 @@ header('Cache-Control: no-store, max-age=0');
           </section>
           <aside class="detail-drawer" data-detail-drawer aria-hidden="true"><div><span class="eyebrow">READ-ONLY DETAIL</span><h2><?= cc_h($moduleLabels[$activeView]) ?>详情</h2></div><button type="button" data-detail-close>×</button><dl data-detail-content></dl></aside><div class="drawer-mask" data-detail-close></div>
         <?php endif; ?>
+      <?php elseif ($activeView === 'orders'): $orders=$view['unified_orders']; ?>
+        <section class="page-head"><div><span class="eyebrow">UNIFIED ORDER CENTER</span><h1>统一订单中心</h1><p>新加坡网站是线上销售渠道，订单回到广州后统一管理；当前真实 API 未配置。</p></div><div class="page-meta"><span>渠道状态</span><b><?= cc_h($orders['channel']['status'] ?? 'not_configured') ?></b></div></section>
+        <section class="compact-status"><?php foreach ([['全部订单',$orders['counts']['total']??0,'orders'],['新加坡订单',$orders['counts']['singapore']??0,'orders'],['待人工确认',$orders['counts']['pending_review']??0,'orders'],['同步失败',$orders['counts']['sync_failed']??0,'orders']] as $item): ?><a class="<?= $item[1]?'attention':'zero' ?>" href="?view=orders"><span><?= cc_h($item[0]) ?></span><strong><?= (int)$item[1] ?></strong></a><?php endforeach; ?></section>
+        <?php if ($orders['status']!=='available'): ?><section class="login-notice"><div><strong><?= $orders['status']==='unauthenticated'?'需要统一登录':'订单数据暂时不可用' ?></strong><p>没有创建假订单，也没有连接新加坡生产接口。</p></div></section>
+        <?php else: ?><section class="panel"><div class="panel-head"><div><span class="eyebrow">ORDERS</span><h2>广州与渠道统一订单</h2></div><span class="tag">新加坡 API：not_configured</span></div>
+          <?php if ($orders['rows']===[]): ?><div class="empty">当前没有商务中心订单。可在后续本地模拟接收测试订单，正式同步尚未接通。</div>
+          <?php else: ?><div class="table-wrap"><table><thead><tr><th>来源</th><th>广州订单号</th><th>外部订单号</th><th>客户</th><th>金额</th><th>付款</th><th>库存/生产</th><th>包装</th><th>出货</th><th>预计出货</th><th>下一动作</th></tr></thead><tbody><?php foreach($orders['rows'] as $order): ?><tr><td><span class="tag"><?= cc_h(['singapore_web'=>'新加坡网站','guangzhou_standard_quote'=>'广州标准报价','guangzhou_custom_quote'=>'广州定制报价','crm'=>'CRM','repeat_order'=>'复购','manual'=>'人工'][$order['order_source']]??$order['order_source']) ?></span></td><td><b><?= cc_h($order['order_no']) ?></b></td><td><?= cc_h($order['external_order_no']) ?></td><td><?= cc_h($order['customer_name']) ?></td><td><?= cc_h($order['currency'].' '.number_format((float)$order['total_amount'],2)) ?></td><td><?= cc_h($order['payment_status']) ?></td><td><?= cc_h($order['stock_status']) ?></td><td><?= cc_h($order['packaging_status']) ?></td><td><?= cc_h($order['shipment_status']) ?></td><td class="nowrap"><?= cc_h($order['expected_ship_at']?:'待补交期') ?></td><td><button type="button" class="text-button" data-catalog-detail="<?= cc_h(json_encode($order,JSON_UNESCAPED_UNICODE)) ?>">查看详情</button></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
+        </section><?php endif; ?>
+      <?php elseif ($activeView === 'integrations'): ?>
+        <section class="page-head"><div><span class="eyebrow">SYSTEM &amp; INTEGRATIONS</span><h1>系统状态</h1><p>技术状态与业务首页分离；新加坡写入接口当前未配置。</p></div></section>
+        <?php if (!$view['auth']['authenticated'] || empty($view['auth']['user']['is_super_admin'])): ?>
+          <section class="login-notice"><div><strong>仅管理员可查看技术详情</strong><p>当前页面不会展示数据库名称、版本或适配器细节。</p></div></section>
+        <?php else: ?>
+          <section class="panel"><div class="adapter-list">
+            <div><span>代码版本</span><b><?= cc_h($view['git']['branch'].'@'.$view['git']['head']) ?></b></div>
+            <div><span>数据库</span><b class="<?= $view['database']['ok']?'available':'' ?>"><?= cc_h($view['database']['status']) ?></b></div>
+            <?php foreach ($view['adapters'] as $adapter): ?><div><span><?= cc_h($adapter['name']) ?></span><b class="<?= cc_h($adapter['status']) ?>"><?= cc_h($adapter['status']) ?></b></div><?php endforeach; ?>
+            <div><span>新加坡渠道</span><b>not_configured</b></div>
+          </div></section>
+        <?php endif; ?>
       <?php elseif ($activeView !== 'dashboard'): ?>
         <section class="placeholder-page">
           <span class="eyebrow">PLANNED MODULE</span>
@@ -102,7 +130,7 @@ header('Cache-Control: no-store, max-age=0');
       <?php else: ?>
         <section class="page-head">
           <div><span class="eyebrow">OPERATIONS HOME</span><h1>运营工作台</h1><p>聚合旧系统只读状态，帮助识别下一步；所有正式操作仍返回原系统完成。</p></div>
-          <div class="page-meta"><span><?= cc_h(date('Y-m-d H:i')) ?></span><b><?= cc_h($view['git']['branch'] . '@' . $view['git']['head']) ?></b></div>
+          <div class="page-meta"><span><?= cc_h(date('Y年m月d日')) ?></span><b><?= cc_h($view['auth']['authenticated'] && $view['auth']['user'] ? ($view['auth']['user']['display_name'] . ' · ' . ($view['auth']['user']['role_name'] ?? '现有系统用户')) : '等待统一登录') ?></b></div>
         </section>
 
         <?php if (!$view['auth']['authenticated']): ?>
@@ -113,41 +141,47 @@ header('Cache-Control: no-store, max-age=0');
         <?php endif; ?>
 
         <section class="core-actions" aria-label="核心业务入口">
-          <a href="?view=publishing"><span>01</span><div><strong>发布库存产品到新加坡</strong><small>规划入口 · 尚未开发发布功能</small></div><b>→</b></a>
-          <a href="?view=quotation"><span>02</span><div><strong>创建标准产品报价</strong><small>规划入口 · 旧报价继续正常运行</small></div><b>→</b></a>
-          <a href="?view=custom_project"><span>03</span><div><strong>创建定制产品报价</strong><small>规划入口 · 尚未开发工程流程</small></div><b>→</b></a>
+          <a href="?view=publishing"><span>01</span><div><strong>发布库存产品到新加坡</strong><small>待发布 0 · 待更新 0 · 同步失败 0</small></div><b class="action-label">进入发布中心</b></a>
+          <a href="?view=quotation"><span>02</span><div><strong>创建标准产品报价</strong><small>库存 SKU、标准品、第三方产品与配件组合</small></div><b class="action-label">新建标准报价</b></a>
+          <a href="?view=custom_project"><span>03</span><div><strong>新建定制需求 / 报价</strong><small>标准品改款、结构定制与工程评估 · 暂无待处理</small></div><b class="action-label">新建定制需求</b></a>
         </section>
 
         <section class="compact-status" aria-label="当前工作状态">
-          <div><span>我的工作队列</span><strong><?= (int)$ops['counts']['work_queue'] ?></strong></div>
-          <div><span>商务交付队列</span><strong><?= (int)$ops['counts']['delivery_queue'] ?></strong></div>
-          <div><span>近期订单</span><strong><?= (int)$ops['counts']['orders'] ?></strong></div>
-          <div class="<?= $ops['counts']['exceptions'] > 0 ? 'attention' : '' ?>"><span>异常提醒</span><strong><?= (int)$ops['counts']['exceptions'] ?></strong></div>
-          <div><span>旧适配器</span><strong><?= count($view['adapters']) ?>/<?= count($view['adapters']) ?></strong></div>
+          <?php foreach ([
+            ['待审批报价',$ops['counts']['pending_approval'],'quotation'],
+            ['待工程评估',0,'custom_project'],['待发送报价',$ops['counts']['pending_send'],'quotation'],
+            ['待客户确认',$ops['counts']['pending_customer'],'quotation'],['新加坡待确认订单',0,'orders'],
+            ['待发布 SKU',0,'publishing'],['交期风险',$ops['counts']['exceptions'],'orders'],
+            ['待处理单证',0,'documents'],['待确认佣金',0,'commission'],
+          ] as $statusItem): ?>
+          <a href="?view=<?= cc_h($statusItem[2]) ?>" class="<?= $statusItem[1] > 0 ? 'attention' : 'zero' ?>"><span><?= cc_h($statusItem[0]) ?></span><strong><?= (int)$statusItem[1] ?></strong></a>
+          <?php endforeach; ?>
         </section>
 
         <div class="dashboard-grid">
           <section class="panel wide">
-            <div class="panel-head"><div><span class="eyebrow">WORK QUEUE</span><h2>我的工作队列</h2></div><a href="../dispatch_next.php">打开派工待办</a></div>
+            <div class="panel-head"><div><span class="eyebrow">COMMERCIAL WORK QUEUE</span><h2>统一商务工作队列</h2></div><a href="../dispatch_next.php">查看全部派工任务</a></div>
             <?php if ($ops['work_queue'] === []): ?>
               <div class="empty"><?= $ops['status'] === 'unauthenticated' ? '登录后按本人范围读取任务。' : '当前范围没有待处理任务。' ?></div>
             <?php else: ?>
-              <div class="table-wrap"><table><thead><tr><th>任务</th><th>项目</th><th>负责人</th><th>优先级</th><th>进度</th><th>截止</th><th>下一动作</th></tr></thead><tbody>
+              <div class="table-wrap"><table><thead><tr><th>任务 / 单号</th><th>业务摘要</th><th>来源</th><th>当前节点</th><th>负责人</th><th>等待 / 截止</th><th>状态</th><th>下一动作</th></tr></thead><tbody>
               <?php foreach ($ops['work_queue'] as $row): ?>
-                <tr><td><b><?= cc_h($row['task_no']) ?></b><small><?= cc_h($row['title']) ?></small></td><td><?= cc_h($row['project'] ?: $row['linked_title']) ?></td><td><?= cc_h($row['assignee_name'] ?: '未指定') ?></td><td><span class="tag"><?= cc_h($row['priority']) ?></span></td><td><?= (int)$row['progress'] ?>%</td><td><?= cc_h($row['due_at'] ?: '未设置') ?></td><td><a href="../dispatch_next.php">处理任务</a></td></tr>
+                <tr class="<?= $row['overdue'] ? 'overdue-row' : '' ?>"><td><b><?= cc_h($row['title']) ?></b><small><?= cc_h($row['number']) ?></small></td><td><span class="two-line"><?= cc_h($row['summary'] ?: '暂无补充摘要') ?></span></td><td><span class="tag"><?= cc_h($row['source']) ?></span></td><td><?= cc_h($row['stage']) ?></td><td class="nowrap"><?= cc_h($row['owner']) ?></td><td class="nowrap"><?= cc_h($row['due_label']) ?></td><td><span class="tag"><?= cc_h($row['status']) ?></span></td><td><a class="nowrap" href="<?= cc_h($row['target']) ?>"><?= cc_h($row['action']) ?></a></td></tr>
               <?php endforeach; ?>
               </tbody></table></div>
             <?php endif; ?>
           </section>
 
-          <section class="panel">
-            <div class="panel-head"><div><span class="eyebrow">EXCEPTIONS</span><h2>异常提醒</h2></div></div>
+          <section class="panel side-stack">
+            <div class="panel-head"><div><span class="eyebrow">ACTION REQUIRED</span><h2>需立即处理</h2></div></div>
             <div class="exception-list">
               <?php if ($ops['exceptions'] === []): ?><div class="empty">登录后显示本人范围异常。</div><?php endif; ?>
               <?php foreach ($ops['exceptions'] as $item): ?>
                 <a href="<?= cc_h($item['target']) ?>" class="<?= cc_h($item['severity']) ?>"><span><?= cc_h($item['label']) ?></span><strong><?= (int)$item['count'] ?></strong></a>
               <?php endforeach; ?>
             </div>
+            <div class="side-section"><h3>商务交付队列</h3><?php foreach ([['待生成 PDF',0,'quotation'],['待发送报价',$ops['counts']['pending_send'],'quotation'],['待客户确认',$ops['counts']['pending_customer'],'quotation'],['待生成 PI',0,'documents'],['待完善包装',0,'packaging'],['待生成 CI / PL',0,'documents']] as $deliveryItem): ?><a href="?view=<?= cc_h($deliveryItem[2]) ?>"><span><?= cc_h($deliveryItem[0]) ?></span><b><?= (int)$deliveryItem[1] ?></b></a><?php endforeach; ?></div>
+            <div class="side-section"><h3>渠道状态</h3><p><i class="state-dot neutral"></i>新加坡接口未配置</p><p>待同步 <b>0</b> · 失败 <b>0</b></p><a href="?view=publishing">查看发布中心</a></div>
           </section>
 
           <section class="panel wide">
@@ -183,10 +217,6 @@ header('Cache-Control: no-store, max-age=0');
           </section>
         </div>
 
-        <details class="technical">
-          <summary>安全与适配器状态</summary>
-          <div class="adapter-list"><?php foreach ($view['adapters'] as $adapter): ?><div><span><?= cc_h($adapter['name']) ?></span><b class="<?= cc_h($adapter['status']) ?>"><?= cc_h($adapter['status']) ?></b></div><?php endforeach; ?></div>
-        </details>
       <?php endif; ?>
     </main>
   </section>

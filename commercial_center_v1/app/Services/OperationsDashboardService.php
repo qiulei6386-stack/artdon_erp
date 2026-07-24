@@ -16,7 +16,7 @@ final class OperationsDashboardService
         }
         try {
             $repository = new LegacyOperationsReadRepository();
-            $workQueue = $repository->dispatchQueue($authentication['user']);
+            $workQueue = (new DashboardWorkQueueService())->normalize($repository->dispatchQueue($authentication['user'], 40));
             $delivery = $repository->quoteDeliveryQueue($authentication['user']);
             $orders = $repository->orders($authentication['user']);
             $exceptions = $repository->exceptions($authentication['user']);
@@ -33,6 +33,9 @@ final class OperationsDashboardService
                     'delivery_queue' => count($delivery),
                     'orders' => count($orders),
                     'exceptions' => array_sum(array_column($exceptions, 'count')),
+                    'pending_approval' => count(array_filter($delivery, static fn(array $row): bool => ($row['approval_status'] ?? '') === 'pending')),
+                    'pending_send' => count(array_filter($delivery, static fn(array $row): bool => ($row['approval_status'] ?? '') === 'approved')),
+                    'pending_customer' => count(array_filter($delivery, static fn(array $row): bool => ($row['approval_status'] ?? '') === 'approved')),
                 ],
             ];
         } catch (Throwable $error) {
@@ -53,7 +56,7 @@ final class OperationsDashboardService
             'orders' => [],
             'exceptions' => [],
             'activity' => [],
-            'counts' => ['work_queue' => 0, 'delivery_queue' => 0, 'orders' => 0, 'exceptions' => 0],
+            'counts' => ['work_queue' => 0, 'delivery_queue' => 0, 'orders' => 0, 'exceptions' => 0, 'pending_approval' => 0, 'pending_send' => 0, 'pending_customer' => 0],
         ];
     }
 }

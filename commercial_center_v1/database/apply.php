@@ -13,7 +13,16 @@ if (($argv[1] ?? '') !== '--apply') {
 
 $root = dirname(__DIR__, 2);
 $configFile = $root . '/includes/config.php';
-$migrationFile = __DIR__ . '/migrations/001_foundation.sql';
+$migrationName = (string)($argv[2] ?? '001_foundation.sql');
+$allowedMigrations = [
+    '001_foundation.sql' => ['cc_schema_migrations','cc_entity_links','cc_integration_logs','cc_activity_logs'],
+    '002_unified_orders.sql' => ['cc_external_orders','cc_orders','cc_order_items','cc_order_status_history','cc_external_order_events'],
+];
+if (!isset($allowedMigrations[$migrationName])) {
+    fwrite(STDERR, "Refusing migration: file is not approved.\n");
+    exit(1);
+}
+$migrationFile = __DIR__ . '/migrations/' . $migrationName;
 
 if (!is_file($configFile) || !is_file($migrationFile)) {
     fwrite(STDERR, "Required configuration or migration file is unavailable.\n");
@@ -38,12 +47,7 @@ if ($statements === []) {
     exit(1);
 }
 
-$expectedTables = [
-    'cc_schema_migrations',
-    'cc_entity_links',
-    'cc_integration_logs',
-    'cc_activity_logs',
-];
+$expectedTables = $allowedMigrations[$migrationName];
 
 foreach ($statements as $statement) {
     if (!preg_match('/^CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(cc_[a-z0-9_]+)\s*\(/i', $statement, $match)) {

@@ -10,6 +10,7 @@ use Artdon\CommercialCenter\Services\DatabaseHealthService;
 use Artdon\CommercialCenter\Services\GitStatusService;
 use Artdon\CommercialCenter\Services\OperationsDashboardService;
 use Artdon\CommercialCenter\Services\CatalogCenterService;
+use Artdon\CommercialCenter\Services\UnifiedOrderService;
 
 final class DashboardController
 {
@@ -32,6 +33,7 @@ final class DashboardController
         $materials = $requestedView === 'materials'
             ? $catalogService->materials($auth, $search, $category)
             : $emptyCatalog;
+        $orders = $requestedView === 'orders' ? (new UnifiedOrderService())->load($auth) : ['status'=>'not_requested','rows'=>[],'counts'=>[],'channel'=>[]];
         $allAdaptersAvailable = count(array_filter(
             $adapters,
             static fn(array $status): bool => $status['status'] !== 'available'
@@ -58,6 +60,7 @@ final class DashboardController
             'operations' => $operations,
             'products' => $products,
             'materials' => $materials,
+            'unified_orders' => $orders,
             'filters' => ['q' => $search, 'category' => $category],
             'isolation' => ['ok' => $database['ok'] && $allAdaptersAvailable],
             'request_path' => (string)($_SERVER['REQUEST_URI'] ?? '/artdon_erp/commercial_center_v1/'),
