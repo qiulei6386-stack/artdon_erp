@@ -887,14 +887,23 @@ function nm_build_where(array $cols, array $f, array &$args, bool $forFolder = f
                 $args[] = '%'.$kwDigits.'%';
             }
         }
-        // 拆词也做模糊：例如 SILO REC、52 075、recess down 都能查到。
+        // 拆词也做模糊，但多个词必须分别命中。旧逻辑把所有词直接并入
+        // 大 OR，导致 LITE PRO 中的 PRO 命中 source_url 的 product.php，
+        // 从而把大量官网产品误判成搜索结果。
+        $tokenGroups = array();
         $tokens = preg_split('/[\s,，;；]+/u', trim($kwAlt), -1, PREG_SPLIT_NO_EMPTY) ?: array();
         foreach ($tokens as $tk) {
             $tk = trim((string)$tk);
             if ($tk === '' || (function_exists('mb_strlen') ? mb_strlen($tk,'UTF-8') : strlen($tk)) < 2) continue;
-            foreach ($searchCols as $c) { $or[] = "COALESCE(`{$c}`,'') LIKE ?"; $args[] = '%'.$tk.'%'; }
+            $tokenOr = array();
+            foreach ($searchCols as $c) {
+                $tokenOr[] = "COALESCE(`{$c}`,'') LIKE ?";
+                $args[] = '%'.$tk.'%';
+            }
+            if ($tokenOr) $tokenGroups[] = '(' . implode(' OR ', $tokenOr) . ')';
         }
         if ($or) $where[] = '(' . implode(' OR ', $or) . ')';
+        foreach ($tokenGroups as $tokenGroup) $where[] = $tokenGroup;
     }
     $map = array('category'=>'category','item_name'=>'item_name','prefix'=>'prefix','status'=>'status','customer'=>'customer');
     foreach ($map as $fk=>$col) {
