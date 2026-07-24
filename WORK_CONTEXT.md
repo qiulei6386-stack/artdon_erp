@@ -32,7 +32,7 @@
 
 ## 最近 Git 状态
 
-- 本次派工截止日期列宽调整待提交；完成后以 `git log -1` 为准。
+- 最近业务提交：`95ba3f6`（派工待办截止日期列收窄）。
 - 协作规则与上下文文件已纳入 Git 管理；具体最新提交以 `git log -1` 为准。
 
 ## 本次检查与部署
@@ -41,7 +41,7 @@
 - 本地检查：`git diff --check` 通过；本机未安装 PHP CLI，未能执行本地 `php -l`。
 - 服务器部署：已同步到 `/www/wwwroot/Artdon/` 和 `/www/wwwroot/Artdon/artdon_erp/`。
 - 服务器检查：两个目录内的 `dispatch_next.php`、`dispatch_next_api.php` 均通过 `php -l`，对应文件 SHA-256 一致。
-- Git：待提交并推送 `origin/main`。
+- Git：业务提交 `95ba3f6` 已推送到 `origin/main`。
 
 ## 待办
 
