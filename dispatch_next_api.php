@@ -997,19 +997,43 @@ function dn_list(array $in): array
         $r['user_sort_order'] = $orders[(int)$r['id']] ?? 0;
         $parentGroupId = (int)($r['parent_group_id'] ?? 0);
         if ($parentGroupId > 0) {
-            if (dn_task_matches_people($r, $dispatchPersonIds)) $groupIds[$parentGroupId] = true;
+            if (dn_task_matches_people($r, $dispatchPersonIds, false)) $groupIds[$parentGroupId] = true;
             continue;
         }
         if ($r['status'] === 'done' || $r['status'] === 'cancelled') {
-            if (dn_task_matches_people($r, $personalPersonIds) || dn_task_matches_people($r, $dispatchPersonIds) || (!$personalPersonIds && !$dispatchPersonIds)) $done[] = $r;
+            if (dn_task_matches_people($r, $personalPersonIds) || dn_task_matches_people($r, $dispatchPersonIds, false) || (!$personalPersonIds && !$dispatchPersonIds)) $done[] = $r;
         }
         elseif (($r['task_type'] === 'personal' || $r['task_type'] === 'private') && (string)($r['converted_status'] ?? 'normal') !== 'hidden') {
             if (dn_task_matches_people($r, $personalPersonIds)) $personal[] = $r;
         }
         else {
-            if (!dn_task_matches_people($r, $dispatchPersonIds)) continue;
+            if (!dn_task_matches_people($r, $dispatchPersonIds, false)) continue;
             $dispatch[] = $r;
         }
+    }
+    // 多人组是否显示必须按真实成员负责人判断，不能只依赖当天任务结果集。
+    // 某成员已完成、但整组仍在进行时，该成员账号仍应看到整组。
+    [$groupVis, $groupVisParams] = dn_visible_sql('mt');
+    $groupMemberWhere = '';
+    $groupMemberParams = [];
+    if ($dispatchPersonIds) {
+        $marks = implode(',', array_fill(0, count($dispatchPersonIds), '?'));
+        $groupMemberWhere = " AND mt.assigned_to IN ({$marks})";
+        $groupMemberParams = $dispatchPersonIds;
+    }
+    $groupSt = $pdo->prepare("SELECT DISTINCT mt.parent_group_id
+        FROM dispatch_next_tasks mt
+        INNER JOIN dispatch_next_groups mg ON mg.id=mt.parent_group_id
+        WHERE mt.parent_group_id>0 AND mt.is_deleted=0 AND {$groupVis}{$groupMemberWhere}
+          AND EXISTS (
+            SELECT 1 FROM dispatch_next_tasks active_member
+            WHERE active_member.parent_group_id=mt.parent_group_id
+              AND active_member.is_deleted=0
+              AND active_member.status NOT IN ('done','cancelled')
+          )");
+    $groupSt->execute(array_merge($groupVisParams, $groupMemberParams));
+    foreach ($groupSt->fetchAll(PDO::FETCH_COLUMN) as $gid) {
+        if ((int)$gid > 0) $groupIds[(int)$gid] = true;
     }
     foreach (array_keys($groupIds) as $gid) {
         $g = dn_group_row($gid, $dispatchPersonIds);
@@ -1108,11 +1132,11 @@ function dn_task_owner_sort_key(array $task): string
     return 'z:' . (string)($task['assignee_name'] ?? '');
 }
 
-function dn_task_matches_people(array $task, array $personIds): bool
+function dn_task_matches_people(array $task, array $personIds, bool $includeCreator = true): bool
 {
     if (!$personIds) return true;
     $ids = array_map('intval', $personIds);
-    if (in_array((int)($task['created_by'] ?? 0), $ids, true)) return true;
+    if ($includeCreator && in_array((int)($task['created_by'] ?? 0), $ids, true)) return true;
     if (in_array((int)($task['assigned_to'] ?? 0), $ids, true)) return true;
     $helpers = json_decode((string)($task['helper_ids_json'] ?? '[]'), true);
     foreach ((array)$helpers as $id) {
@@ -1234,24 +1258,21 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     $st->execute([$gid]);
     $g = $st->fetch();
     if (!$g) return null;
-    [$vis, $params] = dn_visible_sql('t');
-    $peopleSql = '';
-    $peopleParams = [];
-    if ($personIds) {
-        [$peopleScope, $peopleParams] = dn_user_scope_sql('t', $personIds);
-        $peopleSql = " AND {$peopleScope}";
-    }
-    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$vis}{$peopleSql} ORDER BY t.id");
-    $st->execute(array_merge([$gid], $params, $peopleParams));
+    // 组已经在列表查询中完成可见性和负责人校验；汇总必须读取全部成员，
+    // 否则人员筛选会把 1/2 错算成 1/1，并漏掉已完成成员姓名。
+    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
+    $st->execute([$gid]);
     $children = $st->fetchAll();
     $done = 0;
     $mineUnread = false;
-    $isTransferGroup = false;
     foreach ($children as $c) {
         if ($c['status'] === 'done') $done++;
         if ((int)$c['assigned_to'] === dn_uid() && !(int)$c['is_read']) $mineUnread = true;
-        if (($c['transfer_type'] ?? '') === 'personal_to_multi') $isTransferGroup = true;
     }
+    $assigneeNames = array_values(array_unique(array_filter(array_map(
+        fn($c) => trim(dn_user_name((int)($c['assigned_to'] ?? 0))),
+        $children
+    ), fn($name) => $name !== '')));
     $mailPreviewTaskId = 0;
     foreach ($children as $c) {
         if (dn_task_mail_id($c) > 0) {
@@ -1285,8 +1306,10 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'creator_name' => dn_user_name((int)$g['created_by']),
         'assigned_to' => 0,
         'assignee_name' => '多人',
+        'assignee_names' => $assigneeNames,
+        'member_names' => $assigneeNames,
         'dispatch_mode' => $g['group_type'],
-        'method_label' => $isTransferGroup ? '多人转派' : ($g['group_type'] === 'recurring' ? '周期派工' : '多人'),
+        'method_label' => '多派',
         'done_count' => $done,
         'total_count' => count($children),
         'progress' => count($children) ? (int)floor($done * 100 / count($children)) : 0,
@@ -3339,10 +3362,10 @@ function dn_table_default_columns(): array
         ['key'=>'priority','label'=>'优先级','type'=>'select','visible'=>1,'width'=>90,'minWidth'=>70,'maxWidth'=>150,'order'=>20],
         ['key'=>'title','label'=>'任务标题','type'=>'text','visible'=>1,'width'=>260,'minWidth'=>140,'maxWidth'=>720,'order'=>30],
         ['key'=>'project','label'=>'项目','type'=>'textarea','visible'=>1,'width'=>420,'minWidth'=>120,'maxWidth'=>760,'order'=>40],
-        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>140,'minWidth'=>100,'maxWidth'=>220,'order'=>50],
-        ['key'=>'assigned_to','label'=>'负责人','type'=>'user','visible'=>1,'width'=>130,'minWidth'=>90,'maxWidth'=>220,'order'=>60],
-        ['key'=>'dispatch_mode','label'=>'方式','type'=>'mode','visible'=>1,'width'=>100,'minWidth'=>80,'maxWidth'=>160,'order'=>70],
-        ['key'=>'creator_name','label'=>'派工来自','type'=>'readonly','visible'=>1,'width'=>120,'minWidth'=>90,'maxWidth'=>220,'order'=>80],
+        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>88,'minWidth'=>70,'maxWidth'=>120,'order'=>50],
+        ['key'=>'assigned_to','label'=>'负责人','type'=>'user','visible'=>1,'width'=>140,'minWidth'=>90,'maxWidth'=>170,'order'=>60],
+        ['key'=>'dispatch_mode','label'=>'方式','type'=>'mode','visible'=>1,'width'=>70,'minWidth'=>64,'maxWidth'=>90,'order'=>70],
+        ['key'=>'creator_name','label'=>'派工来自','type'=>'readonly','visible'=>1,'width'=>96,'minWidth'=>86,'maxWidth'=>110,'order'=>80],
         ['key'=>'actions','label'=>'操作','type'=>'actions','visible'=>1,'width'=>150,'minWidth'=>120,'maxWidth'=>220,'order'=>90],
     ];
 }
@@ -3381,9 +3404,9 @@ function dn_get_table_prefs(array $in): array
             'title' => 52,
             'project' => 260,
             'due_at' => 44,
-            'assigned_to' => 66,
-            'dispatch_mode' => 48,
-            'creator_name' => 54,
+            'assigned_to' => 84,
+            'dispatch_mode' => 54,
+            'creator_name' => 64,
             'actions' => 58,
         ];
         foreach ($columns as &$col) {
@@ -3402,10 +3425,10 @@ function dn_get_table_prefs(array $in): array
             'priority' => 68,
             'title' => 150,
             'project' => 320,
-            'due_at' => 76,
-            'assigned_to' => 90,
+            'due_at' => 72,
+            'assigned_to' => 140,
             'dispatch_mode' => 70,
-            'creator_name' => 80,
+            'creator_name' => 96,
             'actions' => 82,
         ];
         foreach ($columns as &$col) {
@@ -3441,6 +3464,14 @@ function dn_get_table_prefs(array $in): array
             if (array_key_exists($field, $saved)) $byKey[$key][$field] = $saved[$field];
         }
     }
+    foreach ($byKey as &$col) {
+        if (($col['key'] ?? '') !== 'due_at') continue;
+        $dueWidth = $scope === 'mobile' ? 48 : ($scope === 'mobile_landscape' ? 72 : 88);
+        $col['width'] = min((int)($col['width'] ?? $dueWidth), $dueWidth);
+        $col['minWidth'] = $scope === 'mobile' ? 40 : 70;
+        $col['maxWidth'] = $scope === 'mobile' ? 72 : 120;
+    }
+    unset($col);
     $columns = array_values($byKey);
     usort($columns, fn($a, $b) => ((int)($a['order'] ?? 0) <=> (int)($b['order'] ?? 0)));
     return [
@@ -5128,7 +5159,17 @@ function dn_bom_asset_url(string $path): string
 {
     $path = trim(str_replace('\\', '/', $path));
     if ($path === '') return '';
-    if (preg_match('#^https?://#i', $path)) return $path;
+    if (preg_match('#^https?://#i', $path)) {
+        $url = @parse_url($path);
+        $host = strtolower((string)($url['host'] ?? ''));
+        $assetPath = (string)($url['path'] ?? '');
+        if (in_array($host, ['novlight.com', 'www.novlight.com'], true)
+            && strpos($assetPath, '/uploads/naming/') === 0) {
+            $query = !empty($url['query']) ? '?' . $url['query'] : '';
+            return 'https://novlight.com/artdon_erp' . $assetPath . $query;
+        }
+        return $path;
+    }
     if (strpos($path, '//') === 0) return 'https:' . $path;
     return $path;
 }

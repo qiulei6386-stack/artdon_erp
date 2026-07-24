@@ -706,9 +706,13 @@ function crm_customer_detail_tabs(array $customer): array
 function crm_customer_log(string $action, string $objectType, $objectId, ?int $customerId, $before = null, $after = null, string $message = '', bool $success = true, string $error = ''): void
 {
     $user = current_user();
+    // object_id 只用于日志检索标识，批量操作的完整 ID 列表应保存在 after_json。
+    // 统一截断可避免批量客户较多时触发 VARCHAR(120) 超长并中断实际业务操作。
+    $objectIdText = (string)$objectId;
+    $objectIdText = function_exists('mb_substr') ? mb_substr($objectIdText, 0, 120, 'UTF-8') : substr($objectIdText, 0, 120);
     db()->prepare('INSERT INTO crm_logs (user_id, module, action, object_type, object_id, customer_id, before_json, after_json, message, ip_address, user_agent, success, error_message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())')
-        ->execute([$user['id'] ?? null, 'customer', $action, $objectType, (string)$objectId, $customerId, $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE), $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE), $message, client_ip(), user_agent(), $success ? 1 : 0, $error]);
-    crm_log_event('customers', $action, $objectType, (string)$objectId, $before, $after, $success, $error);
+        ->execute([$user['id'] ?? null, 'customer', $action, $objectType, $objectIdText, $customerId, $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE), $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE), $message, client_ip(), user_agent(), $success ? 1 : 0, $error]);
+    crm_log_event('customers', $action, $objectType, $objectIdText, $before, $after, $success, $error);
 }
 
 function crm_sensitive_audit(string $action, string $targetType, $targetId, $before = null, $after = null): void
@@ -1839,6 +1843,84 @@ function crm_customer_overview_stats(bool $forceRefresh = false): array
     ];
     crm_customer_overview_cache_write($cacheFile, $result);
     return $result;
+}
+
+function crm_customer_country_distribution(array $input): array
+{
+    crm_customer_ensure_tables();
+    crm_require('customer.view');
+    $page = max(1, (int)($input['page'] ?? 1));
+    $pageSize = max(20, min(100, (int)($input['page_size'] ?? 50)));
+    $country = trim((string)($input['country'] ?? ''));
+    $keyword = trim((string)($input['q'] ?? ''));
+    $countryAlias = trim((string)($input['country_alias'] ?? ''));
+    $countryName = trim((string)($input['country_name'] ?? ''));
+    $countryEnglish = trim((string)($input['country_english'] ?? ''));
+    $countrySearchTerms = json_decode((string)($input['country_search_terms'] ?? '[]'), true);
+    $countrySearchTerms = is_array($countrySearchTerms)
+        ? array_values(array_unique(array_filter(array_map(static fn($value) => trim((string)$value), $countrySearchTerms))))
+        : [];
+    $scopeParams = [];
+    $scope = crm_customer_scope_sql($scopeParams);
+    $countryExpr = "COALESCE(NULLIF(TRIM(c.country), ''), '未填')";
+
+    $distributionStmt = db()->prepare("SELECT {$countryExpr} AS country, COUNT(*) AS customer_count
+        FROM crm_customers c
+        WHERE c.deleted_at IS NULL AND {$scope}
+        GROUP BY {$countryExpr}
+        ORDER BY customer_count DESC, country ASC");
+    $distributionStmt->execute($scopeParams);
+    $distribution = array_map(static fn($row) => [
+        'country' => (string)$row['country'],
+        'customer_count' => (int)$row['customer_count'],
+    ], $distributionStmt->fetchAll());
+
+    $where = ["c.deleted_at IS NULL", $scope];
+    $params = $scopeParams;
+    if ($country !== '') {
+        $where[] = "{$countryExpr} = ?";
+        $params[] = $country;
+    }
+    if ($keyword !== '') {
+        $like = '%' . $keyword . '%';
+        $aliasLike = '%' . ($countryAlias !== '' ? $countryAlias : $keyword) . '%';
+        $nameLike = '%' . ($countryName !== '' ? $countryName : $keyword) . '%';
+        $englishLike = '%' . ($countryEnglish !== '' ? $countryEnglish : $keyword) . '%';
+        $countryTermSql = '';
+        if ($countrySearchTerms) {
+            $countryTermSql = ' OR ' . implode(' OR ', array_fill(0, count($countrySearchTerms), 'c.country LIKE ?'));
+        }
+        $where[] = '(c.customer_name LIKE ? OR c.customer_code LIKE ? OR c.city LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.country LIKE ? OR c.country LIKE ? OR c.country LIKE ? OR c.country LIKE ?' . $countryTermSql . ')';
+        array_push($params, $like, $like, $like, $like, $like, $like, $aliasLike, $nameLike, $englishLike);
+        foreach ($countrySearchTerms as $term) {
+            $params[] = '%' . $term . '%';
+        }
+    }
+    $whereSql = implode(' AND ', $where);
+    $countStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c WHERE {$whereSql}");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+    $offset = ($page - 1) * $pageSize;
+    $listStmt = db()->prepare("SELECT c.id,c.customer_code,c.customer_name,{$countryExpr} AS country,
+            COALESCE(NULLIF(c.city,''), '-') AS city,COALESCE(u.username,c.owner_department,'未分配') AS owner_name,
+            (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.customer_id=c.id AND ct.deleted_at IS NULL) AS contact_count,
+            c.status,c.updated_at
+        FROM crm_customers c
+        LEFT JOIN crm_customer_owners po ON po.customer_id=c.id AND po.is_primary=1
+        LEFT JOIN crm_users u ON u.id=COALESCE(po.user_id,c.owner_user_id)
+        WHERE {$whereSql}
+        ORDER BY c.customer_name ASC,c.id ASC
+        LIMIT {$pageSize} OFFSET {$offset}");
+    $listStmt->execute($params);
+    return [
+        'countries' => $distribution,
+        'list' => $listStmt->fetchAll(),
+        'total' => $total,
+        'page' => $page,
+        'page_size' => $pageSize,
+        'total_pages' => max(1, (int)ceil($total / $pageSize)),
+        'country' => $country,
+    ];
 }
 
 function crm_customer_get(int $id, string $detailMode = 'full'): array
@@ -3732,8 +3814,47 @@ function crm_import_contact_channels(array $contact): array
     return $channels;
 }
 
+function crm_import_split_composite_contact(array $contact): array
+{
+    $name = trim((string)($contact['name'] ?? ''));
+    if ($name === '' || strpos($name, '@') === false) return $contact;
+    if (trim((string)($contact['email'] ?? '')) !== '' || trim((string)($contact['phone'] ?? '')) !== '') return $contact;
+    $parts = preg_split('/\s+\/\s+|\s*\|\s*/u', $name, -1, PREG_SPLIT_NO_EMPTY);
+    $parts = array_values(array_filter(array_map('trim', $parts ?: []), fn($part) => $part !== ''));
+    if (count($parts) < 2) return $contact;
+    $personName = array_shift($parts);
+    if ($personName === '' || strpos($personName, '@') !== false || preg_match('/^\+?[\d\s().-]{7,}$/u', $personName)) return $contact;
+    $parsed = $contact;
+    $parsed['name'] = $personName;
+    $unclassified = [];
+    foreach ($parts as $part) {
+        if (filter_var($part, FILTER_VALIDATE_EMAIL) && empty($parsed['email'])) {
+            $parsed['email'] = $part;
+            continue;
+        }
+        if (preg_match('/^(?:wxid_|微信[:：]?|wechat[:：]?)/iu', $part) && empty($parsed['wechat'])) {
+            $parsed['wechat'] = preg_replace('/^(?:微信|wechat)[:：]?\s*/iu', '', $part);
+            continue;
+        }
+        $digits = preg_replace('/\D+/', '', $part);
+        if (strlen($digits) >= 7 && empty($parsed['phone'])) {
+            $parsed['phone'] = $part;
+            continue;
+        }
+        $unclassified[] = $part;
+    }
+    if (empty($parsed['email'])) return $contact;
+    if ($unclassified && empty($parsed['position'])) $parsed['position'] = array_shift($unclassified);
+    if ($unclassified) {
+        $existing = trim((string)($parsed['remark'] ?? ''));
+        $parsed['remark'] = trim($existing . ($existing !== '' ? "\n" : '') . '导入待确认：' . implode(' / ', $unclassified));
+    }
+    return $parsed;
+}
+
 function crm_import_normalize_contact(array $contact, int $index = 0): array
 {
+    $contact = crm_import_split_composite_contact($contact);
     $channels = crm_import_contact_channels($contact);
     $sources = crm_import_scalar_text($contact['contact_sources'] ?? ($contact['source_tags'] ?? ($contact['source'] ?? '')));
     $roles = crm_import_scalar_text($contact['role_tags'] ?? ($contact['role'] ?? ''));
@@ -4263,7 +4384,8 @@ function crm_batch_assign(array $customerIds, int $ownerUserId, array $ownerUser
         crm_customer_timeline_add((int)$customerId, 'owner_change', '修改第一负责人', '客户负责人已转移', 'user', (string)$ownerUserId);
         crm_sensitive_audit('customer_primary_owner_change', 'customer', (int)$customerId, null, ['owner_user_id' => $ownerUserId, 'owner_user_ids' => $validOwnerIds]);
     }
-    crm_customer_log('customer_batch_assign', 'customer', implode(',', $customerIds), null, null, ['owner_user_id' => $ownerUserId, 'owner_user_ids' => $validOwnerIds, 'customer_ids' => $customerIds], '批量分配客户');
+    $batchObjectId = 'batch:' . count($customerIds) . ':' . substr(sha1(implode(',', $customerIds)), 0, 16);
+    crm_customer_log('customer_batch_assign', 'customer_batch', $batchObjectId, null, null, ['owner_user_id' => $ownerUserId, 'owner_user_ids' => $validOwnerIds, 'customer_ids' => $customerIds], '批量分配客户（' . count($customerIds) . ' 个）');
 }
 
 function crm_customer_assign_options(): array
@@ -4348,10 +4470,21 @@ function crm_contact_validate(array $input, int $customerId, int $ignoreId = 0):
             if ($status !== 'no_contact') $promotions[] = ['channel' => $channel, 'status' => $status, 'last_contact_time' => null];
         }
     }
+    $birthdayRaw = trim((string)($input['birthday'] ?? ''));
+    if ($birthdayRaw === '' || in_array(strtolower($birthdayRaw), ['null', 'undefined', '0000-00-00'], true)) {
+        $birthday = null;
+    } else {
+        $birthdayDate = DateTime::createFromFormat('!Y-m-d', $birthdayRaw);
+        $birthdayErrors = DateTime::getLastErrors();
+        if (!$birthdayDate || ($birthdayErrors !== false && (($birthdayErrors['warning_count'] ?? 0) > 0 || ($birthdayErrors['error_count'] ?? 0) > 0)) || $birthdayDate->format('Y-m-d') !== $birthdayRaw) {
+            throw new RuntimeException('联系人生日格式不正确，请使用 YYYY-MM-DD。');
+        }
+        $birthday = $birthdayRaw;
+    }
     return [
         'name' => $name, 'name_en' => trim((string)($input['name_en'] ?? '')), 'position' => trim((string)($input['position'] ?? '')), 'department' => trim((string)($input['department'] ?? '')),
         'email' => $email, 'phone' => trim((string)($input['phone'] ?? '')), 'whatsapp' => trim((string)($input['whatsapp'] ?? '')), 'wechat' => trim((string)($input['wechat'] ?? '')),
-        'linkedin' => trim((string)($input['linkedin'] ?? '')), 'gender' => trim((string)($input['gender'] ?? '')), 'birthday' => ($input['birthday'] ?? '') ?: null,
+        'linkedin' => trim((string)($input['linkedin'] ?? '')), 'gender' => trim((string)($input['gender'] ?? '')), 'birthday' => $birthday,
         'language' => trim((string)($input['language'] ?? '')), 'is_primary' => !empty($input['is_primary']) ? 1 : 0, 'is_left' => !empty($input['is_left']) ? 1 : 0, 'remark' => trim((string)($input['remark'] ?? '')),
         'graph' => ['role_tags' => $roleTags, 'source_tags' => $sourceTags, 'promotions' => $promotions],
     ];
@@ -5648,6 +5781,30 @@ function crm_quote_items_from_row(array $row, bool $canPrice): array
     foreach (array_values(is_array($items) ? $items : []) as $i => $item) {
         if (!is_array($item)) continue;
         $p = is_array($item['product'] ?? null) ? $item['product'] : [];
+        $specification = trim((string)($item['specification'] ?? ''));
+        $extraSpec = trim((string)($item['extra_spec'] ?? ''));
+        $specText = $specification !== '' ? $specification : $extraSpec;
+        $specLines = array_values(array_filter(array_map(
+            static fn($line) => trim((string)$line),
+            preg_split('/\r\n|\r|\n/', $specText) ?: []
+        ), static fn($line) => $line !== ''));
+        if (!$specLines) {
+            $fallbackSpecs = [
+                crm_first_value($p, ['name', 'product_name', 'title']) ?: crm_first_value($item, ['product_name', 'name', 'title']),
+                ($item['power'] ?? ($p['power'] ?? '')) !== '' ? 'Power: ' . (string)($item['power'] ?? $p['power']) . (preg_match('/W$/i', (string)($item['power'] ?? $p['power'])) ? '' : 'W') : '',
+                ($p['size'] ?? '') !== '' ? 'Size: ' . (string)$p['size'] : '',
+                ($p['cutout'] ?? '') !== '' ? 'Cut out: ' . (string)$p['cutout'] : '',
+                ($item['beam_angle'] ?? ($p['beam_angle'] ?? '')) !== '' ? 'Beam Angle: ' . (string)($item['beam_angle'] ?? $p['beam_angle']) . '°' : '',
+                trim('CCT: ' . (string)($item['cct'] ?? ($p['cct'] ?? '')) . ' ' . (string)($item['cri'] ?? ($p['cri'] ?? ''))),
+                ($item['ip'] ?? ($p['ip'] ?? '')) !== '' ? 'IP: ' . (string)($item['ip'] ?? $p['ip']) : '',
+                ($item['color'] ?? ($p['color'] ?? '')) !== '' ? 'Color: ' . (string)($item['color'] ?? $p['color']) : '',
+                $extraSpec,
+            ];
+            foreach ($fallbackSpecs as $fallbackSpec) {
+                $fallbackSpec = trim((string)$fallbackSpec);
+                if ($fallbackSpec !== '' && $fallbackSpec !== 'CCT:') $specLines[] = (count($specLines) + 1) . '. ' . $fallbackSpec;
+            }
+        }
         $line = [
             'index' => $i + 1,
             'model' => crm_first_value($p, ['code', 'model', 'model_no', 'naming_model_no', 'product_code']) ?: crm_first_value($item, ['product_code', 'code', 'model', 'model_no']),
@@ -5655,7 +5812,8 @@ function crm_quote_items_from_row(array $row, bool $canPrice): array
             'size' => crm_first_value($p, ['size', 'dimension', 'dimensions']) ?: crm_first_value($item, ['size', 'dimension', 'dimensions']),
             'power' => crm_first_value($p, ['power', 'watt', 'wattage']) ?: crm_first_value($item, ['power', 'watt', 'wattage']),
             'qty' => (string)($item['qty'] ?? ''),
-            'spec' => trim((string)($item['extra_spec'] ?? ($item['specification'] ?? '')) . ' ' . crm_quote_spec_summary($p)),
+            'spec' => $specLines ? implode("\n", $specLines) : crm_quote_spec_summary($p),
+            'spec_lines' => $specLines,
         ];
         if ($canPrice) {
             $line['price'] = crm_money($item['price'] ?? 0);

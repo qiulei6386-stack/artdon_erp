@@ -730,7 +730,10 @@ function bom_v777_public_origin(){
     if($host==='') return '';
     $proto = 'http';
     if((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https') $proto='https';
-    return $proto.'://'.$host;
+    $script = str_replace('\\','/',(string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $dir = rtrim(str_replace('\\','/',dirname($script)),'/');
+    if($dir==='.' || $dir==='/') $dir='';
+    return $proto.'://'.$host.$dir;
 }
 function bom_v777_website_base(){
     if(defined('ARTDON_WEBSITE_IMAGE_BASE') && trim((string)ARTDON_WEBSITE_IMAGE_BASE)!=='') return rtrim((string)ARTDON_WEBSITE_IMAGE_BASE,'/');

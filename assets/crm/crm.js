@@ -214,6 +214,45 @@
     return '<span class="customer-country-label">' + (flag ? '<span class="customer-country-flag" aria-hidden="true">' + flag + '</span>' : '') + '<span>' + esc(text) + '</span></span>';
   }
 
+  function countryMeta(value) {
+    var raw = String(value || '').trim();
+    var normalized = raw.toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ').trim();
+    var rows = [
+      ['CN','中国','China'],['HK','中国香港','Hong Kong'],['MO','中国澳门','Macau'],['TW','中国台湾','Taiwan'],
+      ['US','美国','United States'],['GB','英国','United Kingdom'],['CA','加拿大','Canada'],['AU','澳大利亚','Australia'],['NZ','新西兰','New Zealand'],
+      ['AE','阿联酋','United Arab Emirates'],['SA','沙特阿拉伯','Saudi Arabia'],['QA','卡塔尔','Qatar'],['KW','科威特','Kuwait'],['OM','阿曼','Oman'],['BH','巴林','Bahrain'],
+      ['ID','印度尼西亚','Indonesia'],['IN','印度','India'],['VN','越南','Vietnam'],['TH','泰国','Thailand'],['MY','马来西亚','Malaysia'],['SG','新加坡','Singapore'],
+      ['PH','菲律宾','Philippines'],['KR','韩国','South Korea'],['JP','日本','Japan'],['PK','巴基斯坦','Pakistan'],['BD','孟加拉国','Bangladesh'],['LK','斯里兰卡','Sri Lanka'],['NP','尼泊尔','Nepal'],
+      ['TR','土耳其','Turkey'],['IL','以色列','Israel'],['RU','俄罗斯','Russia'],['DE','德国','Germany'],['FR','法国','France'],['IT','意大利','Italy'],['ES','西班牙','Spain'],
+      ['PT','葡萄牙','Portugal'],['NL','荷兰','Netherlands'],['BE','比利时','Belgium'],['CH','瑞士','Switzerland'],['AT','奥地利','Austria'],['SE','瑞典','Sweden'],
+      ['NO','挪威','Norway'],['DK','丹麦','Denmark'],['FI','芬兰','Finland'],['PL','波兰','Poland'],['CZ','捷克共和国','Czech Republic'],['GR','希腊','Greece'],
+      ['UA','乌克兰','Ukraine'],['HR','克罗地亚','Croatia'],['CY','塞浦路斯','Cyprus'],['IE','爱尔兰','Ireland'],['RO','罗马尼亚','Romania'],['BG','保加利亚','Bulgaria'],
+      ['SK','斯洛伐克','Slovakia'],['HU','匈牙利','Hungary'],
+      ['BR','巴西','Brazil'],['MX','墨西哥','Mexico'],['AR','阿根廷','Argentina'],['CL','智利','Chile'],['CO','哥伦比亚','Colombia'],['PE','秘鲁','Peru'],
+      ['ZA','南非','South Africa'],['EG','埃及','Egypt'],['MA','摩洛哥','Morocco'],['TN','突尼斯','Tunisia'],['NG','尼日利亚','Nigeria'],['KE','肯尼亚','Kenya'],['GH','加纳','Ghana'],
+      ['ZM','赞比亚','Zambia'],['MU','毛里求斯','Mauritius'],['SD','苏丹','Sudan'],
+      ['SY','叙利亚','Syria'],['JO','约旦','Jordan'],['LB','黎巴嫩','Lebanon'],['IQ','伊拉克','Iraq'],['IR','伊朗','Iran'],['KZ','哈萨克斯坦','Kazakhstan']
+    ];
+    var aliases = { '印尼':'ID','印度尼西亚':'ID','韩国':'KR','南韩':'KR','美国':'US','美國':'US','英国':'GB','英國':'GB','香港':'HK','澳门':'MO','澳門':'MO','台湾':'TW','臺灣':'TW','阿联酋':'AE','迪拜':'AE','沙特':'SA','俄罗斯':'RU','俄羅斯':'RU','荷兰':'NL','荷蘭':'NL','捷克':'CZ','孟加拉':'BD','澳洲':'AU','uae':'AE','uk':'GB','usa':'US' };
+    var wanted = aliases[raw] || aliases[normalized] || (/^[a-z]{2}$/i.test(raw) ? raw.toUpperCase() : '');
+    var found = rows.find(function (row) {
+      return row[0] === wanted || row[1] === raw || row[2].toLowerCase() === normalized;
+    });
+    if (!found && normalized.length >= 2) {
+      found = rows.find(function (row) {
+        return row[0].toLowerCase().indexOf(normalized) === 0 ||
+          row[1].indexOf(raw) === 0 ||
+          row[2].toLowerCase().indexOf(normalized) === 0;
+      });
+    }
+    if (!found) return { raw: raw || '未填', code: /^[a-z]{2}$/i.test(raw) ? raw.toUpperCase() : '', name: raw || '未填', english: '', searchTerms: [raw].filter(Boolean) };
+    var searchTerms = [found[0], found[1], found[2]];
+    Object.keys(aliases).forEach(function (alias) {
+      if (aliases[alias] === found[0]) searchTerms.push(alias);
+    });
+    return { raw: raw, code: found[0], name: found[1], english: found[2], searchTerms: Array.from(new Set(searchTerms.filter(Boolean))) };
+  }
+
   function cnChannel(value) {
     var key = String(value || '').toLowerCase();
     var map = {
@@ -2357,9 +2396,12 @@
     quickFilter: 'all',
     filterState: null,
     selected: new Set(),
+    selectingAllFiltered: false,
+    allFilteredSelectionCount: 0,
     currentDetail: null,
     activeDetailTab: 'overview',
     selectedDetailEntity: null,
+    expandedQuotePreviewId: '',
     expandedOrderPreviewId: '',
     viewMode: 'table',
     sort: 'updated_at',
@@ -2645,6 +2687,7 @@
         }).join('') + '</tr>';
       }
       this.updateTableWidth();
+      this.syncPageSelectionState();
     },
     applyListMode: function () {
       var table = document.querySelector('[data-customer-table]');
@@ -2836,11 +2879,21 @@
       document.querySelector('[data-page-next]')?.addEventListener('click', function () { if (self.page * self.pageSize < self.total) { self.page++; self.loadList(); } });
       document.querySelector('[data-customer-table]')?.addEventListener('change', function (event) {
         if (event.target.matches('[data-customer-check-all]')) {
+          var checked = event.target.checked;
           document.querySelectorAll('[data-customer-row-check]').forEach(function (box) {
-            box.checked = event.target.checked;
-            self.toggleSelection(Number(box.value), box.checked);
+            box.checked = checked;
+            if (checked) self.selected.add(Number(box.value));
+            else self.selected.delete(Number(box.value));
           });
+          self.allFilteredSelectionCount = 0;
+          self.renderSelection();
+          self.syncPageSelectionState();
+          if (current === 'customers') renderActions('customers');
         }
+      });
+      document.querySelector('[data-customer-selection]')?.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-customer-select-all-filtered]');
+        if (button) self.selectAllFilteredCustomers();
       });
       document.querySelector('[data-customer-table]')?.addEventListener('mousedown', function (event) {
         var handle = event.target.closest('[data-column-resizer]');
@@ -3139,6 +3192,7 @@
       if (!body) return;
       if (!rows.length) {
         body.innerHTML = '<tr><td colspan="' + this.visibleColumns().length + '">暂无客户。请点击右侧“新建客户”。</td></tr>';
+        this.syncPageSelectionState();
         return;
       }
       var columns = this.visibleColumns();
@@ -3184,6 +3238,7 @@
           self.loadDetail(Number(button.getAttribute('data-row-edit'))).then(function () { self.openCustomerDialog('edit'); });
         });
       });
+      this.syncPageSelectionState();
     },
     updatePageInfo: function () {
       var info = document.querySelector('[data-page-info]');
@@ -3194,12 +3249,80 @@
     toggleSelection: function (id, selected) {
       if (selected) this.selected.add(id);
       else this.selected.delete(id);
+      this.allFilteredSelectionCount = 0;
       this.renderSelection();
+      this.syncPageSelectionState();
       if (current === 'customers') renderActions('customers');
+    },
+    syncPageSelectionState: function () {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('[data-customer-row-check]'));
+      var head = document.querySelector('[data-customer-check-all]');
+      boxes.forEach(function (box) {
+        box.checked = CustomerModule.selected.has(Number(box.value));
+      });
+      if (!head) return;
+      var selectedCount = boxes.filter(function (box) { return box.checked; }).length;
+      head.checked = boxes.length > 0 && selectedCount === boxes.length;
+      head.indeterminate = selectedCount > 0 && selectedCount < boxes.length;
+      head.setAttribute('aria-label', head.checked ? '取消选择本页客户' : '选择本页客户');
+      head.title = head.checked ? '取消选择本页客户' : '选择本页客户';
+    },
+    selectAllFilteredCustomers: function () {
+      if (this.selectingAllFiltered || !this.total) return;
+      var self = this;
+      var filters = this.filters();
+      var totalExpected = Number(this.total || 0);
+      var pageSize = 200;
+      var totalPages = Math.max(1, Math.ceil(totalExpected / pageSize));
+      var page = 1;
+      var matchedIds = new Set();
+      this.selectingAllFiltered = true;
+      this.renderSelection();
+      function loadNext() {
+        var request = Object.assign({}, filters, { page: page, page_size: pageSize });
+        return post('customer_list', request).then(function (json) {
+          if (!json.success) throw new Error(json.message || '读取筛选客户失败');
+          var rows = (json.data && json.data.rows) || [];
+          rows.forEach(function (row) {
+            var id = Number(row.id || 0);
+            if (id) matchedIds.add(id);
+          });
+          var serverTotal = Number((json.data && json.data.total) || totalExpected);
+          totalPages = Math.max(1, Math.ceil(serverTotal / pageSize));
+          page++;
+          if (page <= totalPages) return loadNext();
+        });
+      }
+      return loadNext().then(function () {
+        matchedIds.forEach(function (id) { self.selected.add(id); });
+        self.allFilteredSelectionCount = matchedIds.size;
+        toast('已选择全部筛选客户，共 ' + matchedIds.size + ' 条');
+      }).catch(function (error) {
+        self.allFilteredSelectionCount = 0;
+        self.showCustomerError(error.message || '选择全部筛选客户失败');
+      }).finally(function () {
+        self.selectingAllFiltered = false;
+        self.renderSelection();
+        self.syncPageSelectionState();
+        if (current === 'customers') renderActions('customers');
+      });
     },
     renderSelection: function () {
       var node = document.querySelector('[data-customer-selection]');
-      if (node) node.textContent = this.selected.size ? '已选 ' + this.selected.size : (this.currentId ? '当前 #' + this.currentId : '未选择');
+      if (!node) return;
+      if (this.selectingAllFiltered) {
+        node.innerHTML = '<span>正在选择全部筛选客户…</span>';
+        return;
+      }
+      var label = this.selected.size ? '已选 ' + this.selected.size : (this.currentId ? '当前 #' + this.currentId : '未选择');
+      var currentRows = (this.rows || []).length;
+      var currentSelected = (this.rows || []).filter(function (row) {
+        return CustomerModule.selected.has(Number(row.id));
+      }).length;
+      var canSelectFiltered = this.total > currentRows && currentRows > 0 && currentSelected === currentRows && this.allFilteredSelectionCount !== this.total;
+      var allFiltered = this.allFilteredSelectionCount > 0 && this.allFilteredSelectionCount === this.total;
+      node.innerHTML = '<span>' + esc(allFiltered ? ('已选择全部筛选结果 ' + this.allFilteredSelectionCount + ' 条') : label) + '</span>' +
+        (canSelectFiltered ? '<button type="button" data-customer-select-all-filtered>选择全部筛选结果（' + esc(this.total) + '）</button>' : '');
     },
     renderEmptyOverview: function () {
       var box = document.querySelector('[data-customer-detail]');
@@ -3283,7 +3406,7 @@
           kpi('无负责人客户', kpis.no_owner || 0, '需要分配', 'no_owner', 'red') +
           kpi('资料不完整客户', kpis.incomplete || 0, '待补资料', 'incomplete', 'red') +
         '</section>' +
-        '<section class="customer-overview-grid overview-distribution-grid"><article><h3>国家客户分布</h3><div class="customer-country-chart"><div class="customer-pie" style="background: conic-gradient(' + gradient + ')"><strong>' + esc(total) + '</strong><span>总客户</span></div><div class="customer-country-legend">' + countryHtml + '</div></div></article><article><h3>客户来源分布</h3><div class="customer-country-legend">' + distList(sources, 'source') + '</div></article><article><h3>负责人客户分布</h3><div class="customer-country-legend">' + distList(owners, 'owner') + '</div></article></section>' +
+        '<section class="customer-overview-grid overview-distribution-grid"><article><button type="button" class="overview-distribution-title" data-country-distribution-open>国家客户分布 <span>查看全部客户</span></button><div class="customer-country-chart"><div class="customer-pie" style="background: conic-gradient(' + gradient + ')"><strong>' + esc(total) + '</strong><span>总客户</span></div><div class="customer-country-legend">' + countryHtml + '</div></div></article><article><h3>客户来源分布</h3><div class="customer-country-legend">' + distList(sources, 'source') + '</div></article><article><h3>负责人客户分布</h3><div class="customer-country-legend">' + distList(owners, 'owner') + '</div></article></section>' +
         '<section class="customer-overview-section"><h3>待处理客户</h3><div class="customer-overview-pending-grid">' + pending.map(pendingCard).join('') + '</div></section>' +
         '<section class="customer-overview-grid overview-recent-grid">' + recentCard('最近新增客户', recentCreated, 'created') + recentCard('最近更新客户', recentUpdated, 'updated') + '</section>';
       box.querySelector('[data-overview-refresh]')?.addEventListener('click', this.loadOverviewStats.bind(this, true));
@@ -3291,12 +3414,147 @@
     },
     bindOverviewStats: function (box) {
       var self = this;
+      box.querySelector('[data-country-distribution-open]')?.addEventListener('click', function () {
+        self.openCountryDistribution();
+      });
       box.querySelectorAll('[data-overview-filter]').forEach(function (button) {
         button.addEventListener('click', function () { self.applyOverviewFilter(button.getAttribute('data-overview-filter') || 'all', button.getAttribute('data-value') || ''); });
       });
       box.querySelectorAll('[data-overview-customer]').forEach(function (button) {
         button.addEventListener('click', function () { self.loadDetail(Number(button.getAttribute('data-overview-customer') || 0)); });
       });
+    },
+    openCountryDistribution: function () {
+      var self = this;
+      var state = { country: '', q: '', country_alias: '', country_name: '', country_english: '', country_search_terms: '[]', page: 1, page_size: 50 };
+      this.openBusinessDialog(
+        '国家客户分布',
+        '<section class="country-distribution-dialog">' +
+          '<header class="country-distribution-hero"><div><span>GLOBAL CUSTOMER MAP</span><strong data-country-current-title>全部国家</strong><em data-country-current-count>正在统计客户...</em></div><label><i>⌕</i><input data-country-customer-search placeholder="搜索客户、中文国家名、英文名或国家代码"><button type="button" data-country-search-clear hidden>清除</button></label></header>' +
+          '<div class="country-distribution-layout"><aside><header><strong>国家与地区</strong><span data-country-total-label>读取中</span></header><div data-country-list><div class="country-distribution-loading">正在读取国家分布...</div></div></aside>' +
+          '<main><div class="country-distribution-table-wrap"><table class="crm-table"><thead><tr><th>客户</th><th>国家</th><th>城市</th><th>负责人</th><th>联系人</th><th>状态</th></tr></thead><tbody data-country-customer-rows><tr><td colspan="6">正在读取客户...</td></tr></tbody></table></div>' +
+          '<footer><span data-country-page-label>第 1 / 1 页</span><div><button type="button" data-country-prev disabled>上一页</button><button type="button" data-country-next disabled>下一页</button></div></footer></main></div>' +
+          '<div class="country-distribution-loading-mask" data-country-loading hidden><span></span><b>正在更新客户列表</b></div>' +
+        '</section><div class="business-dialog-actions"><button type="button" data-business-cancel>关闭</button></div>',
+        '支持模糊查找；点击国家只更新右侧客户，不会重置弹窗或滚动位置。',
+        function (root) {
+          root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
+        }
+      );
+      document.querySelector('[data-customer-dialog]')?.classList.add('country-distribution-modal');
+      var host = document.querySelector('.country-distribution-dialog');
+      if (!host) return;
+      var countriesLoaded = false;
+      var currentPages = 1;
+      var requestSerial = 0;
+      var countryList = host.querySelector('[data-country-list]');
+      var customerBody = host.querySelector('[data-country-customer-rows]');
+      var loading = host.querySelector('[data-country-loading]');
+      var search = host.querySelector('[data-country-customer-search]');
+      var clear = host.querySelector('[data-country-search-clear]');
+      var prev = host.querySelector('[data-country-prev]');
+      var next = host.querySelector('[data-country-next]');
+
+      function load() {
+        var serial = ++requestSerial;
+        if (loading) loading.hidden = false;
+        return post('customer_country_distribution', state).then(function (json) {
+          if (serial !== requestSerial) return;
+          if (!json.success) throw new Error(json.message || '国家客户分布读取失败');
+          render(json.data || {});
+        }).catch(function (error) {
+          if (serial !== requestSerial) return;
+          if (customerBody) customerBody.innerHTML = '<tr><td colspan="6"><div class="country-distribution-error">' + esc(error.message || '国家客户分布读取失败') + '</div></td></tr>';
+        }).finally(function () {
+          if (serial === requestSerial && loading) loading.hidden = true;
+        });
+      }
+      function render(data) {
+        var countries = data.countries || [];
+        var rows = data.list || [];
+        var totalAll = countries.reduce(function (sum, item) { return sum + Number(item.customer_count || 0); }, 0);
+        if (!countriesLoaded && countryList) {
+          countryList.innerHTML = '<button type="button" data-country-pick="" class="active"><i>ALL</i><span>全部国家</span><b>' + esc(totalAll) + '</b></button>' + countries.map(function (item, index) {
+            var meta = countryMeta(item.country || '未填');
+            return '<button type="button" data-country-pick="' + esc(item.country || '未填') + '" title="' + esc(meta.name + (meta.code ? ' · ' + meta.code : '')) + '"><i>' + esc(meta.code || String(index + 1)) + '</i><span>' + esc(meta.name) + '</span><b>' + esc(item.customer_count || 0) + '</b></button>';
+          }).join('');
+          countriesLoaded = true;
+          var totalLabel = host.querySelector('[data-country-total-label]');
+          if (totalLabel) totalLabel.textContent = countries.length + ' 个国家 · ' + totalAll + ' 客户';
+        }
+        var customerRows = rows.map(function (row) {
+          var initial = String(row.customer_name || 'C').trim().charAt(0).toUpperCase();
+          var meta = countryMeta(row.country || '未填');
+          return '<tr data-country-customer="' + esc(row.id) + '"><td><div class="country-customer-name"><i>' + esc(initial) + '</i><span><strong>' + esc(row.customer_name || '-') + '</strong><em>' + esc(row.customer_code || '无客户代码') + '</em></span></div></td><td><b class="country-name-chip" title="' + esc(meta.code || meta.raw) + '">' + esc(meta.name) + '</b></td><td>' + esc(row.city || '-') + '</td><td>' + esc(row.owner_name || '未分配') + '</td><td>' + esc(row.contact_count || 0) + '</td><td><b class="country-status-chip">' + esc(row.status || '-') + '</b></td></tr>';
+        }).join('') || '<tr><td colspan="6"><div class="country-distribution-empty"><strong>没有找到匹配客户</strong><span>可以尝试客户名称、代码、城市、邮箱或电话号码的部分内容。</span></div></td></tr>';
+        var page = Number(data.page || 1);
+        currentPages = Number(data.total_pages || 1);
+        if (customerBody) customerBody.innerHTML = customerRows;
+        var title = host.querySelector('[data-country-current-title]');
+        var count = host.querySelector('[data-country-current-count]');
+        var pageLabel = host.querySelector('[data-country-page-label]');
+        if (title) title.textContent = state.country ? countryMeta(state.country).name : '全部国家';
+        if (count) count.textContent = '共 ' + Number(data.total || 0) + ' 个客户' + (state.q ? ' · 正在模糊查找“' + state.q + '”' : '');
+        if (pageLabel) pageLabel.textContent = '第 ' + page + ' / ' + currentPages + ' 页 · 当前显示 ' + rows.length + ' 条';
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= currentPages;
+        host.querySelectorAll('[data-country-pick]').forEach(function (button) {
+          button.classList.toggle('active', (button.getAttribute('data-country-pick') || '') === state.country);
+        });
+      }
+      countryList?.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-country-pick]');
+        if (!button) return;
+        state.country = button.getAttribute('data-country-pick') || '';
+        state.page = 1;
+        host.querySelectorAll('[data-country-pick]').forEach(function (item) { item.classList.toggle('active', item === button); });
+        load();
+      });
+      search?.addEventListener('input', function () {
+        if (clear) clear.hidden = !search.value;
+        window.clearTimeout(self.countryDistributionSearchTimer);
+        self.countryDistributionSearchTimer = window.setTimeout(function () {
+          state.q = search.value.trim();
+          var meta = countryMeta(state.q);
+          state.country_alias = meta.code || '';
+          state.country_name = meta.code ? meta.name : '';
+          state.country_english = meta.english || '';
+          state.country_search_terms = JSON.stringify(meta.searchTerms || []);
+          state.page = 1;
+          load();
+        }, 320);
+      });
+      clear?.addEventListener('click', function () {
+        search.value = '';
+        clear.hidden = true;
+        state.q = '';
+        state.country_alias = '';
+        state.country_name = '';
+        state.country_english = '';
+        state.country_search_terms = '[]';
+        state.page = 1;
+        search.focus();
+        load();
+      });
+      prev?.addEventListener('click', function () {
+        if (state.page <= 1) return;
+        state.page--;
+        load();
+      });
+      next?.addEventListener('click', function () {
+        if (state.page >= currentPages) return;
+        state.page++;
+        load();
+      });
+      customerBody?.addEventListener('click', function (event) {
+        var row = event.target.closest('[data-country-customer]');
+        if (!row) return;
+        var id = Number(row.getAttribute('data-country-customer') || 0);
+        if (!id) return;
+        self.closeDialog();
+        self.loadDetail(id);
+      });
+      load();
     },
     applyOverviewFilter: function (type, value) {
       this.ensureFilterState();
@@ -3408,6 +3666,24 @@
         if (String(group.group_name || '').toLowerCase().indexOf('project') >= 0 || String(group.remark || '').indexOf('项目') >= 0) typeText = '项目群';
         return '<tr data-detail-row="chat_group" data-detail-row-id="' + esc(group.id) + '"><td>' + esc(group.group_name || '-') + '</td><td>' + esc(typeText) + '</td><td>' + esc(group.member_count || '-') + '</td><td>' + esc(group.group_owner || '-') + '</td><td>' + esc(group.last_used_at || group.last_promoted_at || '-') + '</td><td>' + esc(group.remark || statusText) + '</td></tr>';
       }).join('') || '<tr><td colspan="6">暂无客户群</td></tr>';
+      var contactNameMap = {};
+      (data.contacts || []).forEach(function (contact) {
+        contactNameMap[Number(contact.id)] = contact.name || ('联系人 #' + contact.id);
+      });
+      var chatGroupCards = (data.chat_groups || []).map(function (group) {
+        var platform = group.group_platform === 'whatsapp_group' ? 'WhatsApp群' : '微信群';
+        var statusText = group.status === 'paused' ? '已暂停' : (group.status === 'invalid' ? '已失效' : '启用');
+        var linkedNames = (Array.isArray(group.linked_contact_ids) ? group.linked_contact_ids : []).map(function (id) {
+          return contactNameMap[Number(id)] || ('联系人 #' + id);
+        });
+        return '<article class="customer-chat-group-card status-' + esc(group.status || 'active') + '" data-detail-row="chat_group" data-detail-row-id="' + esc(group.id) + '">' +
+          '<div><strong>' + esc(group.group_name || '未命名客户群') + '<b class="chat-group-platform ' + (group.group_platform === 'whatsapp_group' ? 'whatsapp' : 'wechat') + '">' + esc(platform) + '</b><b class="chat-group-status">' + esc(statusText) + '</b></strong>' +
+          '<span>负责人：' + esc(group.group_owner || '未设置') + ' · 关联联系人：' + esc(linkedNames.length ? linkedNames.join('、') : '未关联') + '</span>' +
+          '<em>' + (Number(group.use_for_promotion) ? '可用于推广执行清单' : '仅作为客户关系资料') + ' · 更新：' + esc(group.updated_at || group.created_at || '-') + '</em>' +
+          '<p>' + esc(group.remark || '暂无备注') + '</p></div>' +
+          '<nav><button type="button" data-chat-group-edit="' + esc(group.id) + '">编辑</button><button type="button" data-chat-group-toggle="' + esc(group.id) + '">' + (group.status === 'active' ? '停用' : '启用') + '</button><button type="button" class="danger" data-chat-group-delete="' + esc(group.id) + '">删除</button></nav>' +
+        '</article>';
+      }).join('') || '<div class="customer-chat-group-empty"><strong>还没有客户群资料</strong><span>可以建立微信群或 WhatsApp 群，并关联当前客户下的联系人。</span><button type="button" data-chat-group-create>立即新增客户群</button></div>';
       var follows = (data.followups || []).map(function (f) {
         return '<tr data-detail-row="followup" data-detail-row-id="' + esc(f.id) + '"><td>' + esc(f.followup_time || '-') + '</td><td>' + esc(f.creator_name || f.owner_name || '-') + '</td><td>' + esc(f.contact_name || '-') + '</td><td>' + esc(f.followup_type || '-') + '</td><td title="' + esc(f.content || '') + '">' + esc(f.content || '-') + '</td><td>' + esc(f.next_remind_time || '-') + '</td><td>' + esc(cnStatus(f.status || 'open')) + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无跟进</td></tr>';
@@ -3493,7 +3769,7 @@
       }).join('') || '<tr><td colspan="7">暂无该客户关联邮件。可在邮箱模块关联客户，或通过右侧 ACTIONS 写邮件。</td></tr>';
       var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-tab-stats"><span>主地址 ' + esc((data.addresses || []).filter(function (a) { return Number(a.is_primary); }).length || (c.address ? 1 : 0)) + '</span><span>地址总数 ' + esc((data.addresses || []).length || (c.address ? 1 : 0)) + '</span><span>国家 ' + esc(c.country || '未填') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>地址类型</th><th>国家</th><th>城市</th><th>详细地址</th><th>邮编</th><th>联系人</th><th>电话</th><th>默认</th></tr></thead><tbody>' + addressRows + '</tbody></table></section>';
       var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tab-stats"><span>客户标签 ' + esc(customerTags.length) + '</span><span>客户组 ' + esc((data.groups || []).length) + '</span><span>推广标签 ' + esc(promotionChannels.length) + '</span><span>风险标签 ' + esc(c.risk_status ? 1 : 0) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>标签名</th><th>类型</th><th>来源</th><th>创建人</th><th>创建时间</th></tr></thead><tbody>' + tagTableRows + '</tbody></table></section>';
-      var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>群名称</th><th>平台</th><th>群成员数</th><th>负责人</th><th>最近使用时间</th><th>备注</th></tr></thead><tbody>' + chatGroups + '</tbody></table></section>';
+      var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-chat-group-head"><div><strong>客户群信息</strong><span>维护该客户的微信群、WhatsApp 群、负责人和关联联系人。</span></div><button type="button" class="primary" data-chat-group-create>新增客户群</button></div><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>启用 ' + esc((data.chat_groups || []).filter(function (g) { return (g.status || 'active') === 'active'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><div class="customer-chat-group-list">' + chatGroupCards + '</div></section>';
       var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 ' + esc(mailRows.length) + '</span><span>附件 ' + esc(mailRows.reduce(function (sum, m) { return sum + Number(m.attachment_count || m.attach_count || m.attachments_count || 0); }, 0)) + '</span><span>未回复 ' + esc(mailRows.filter(function (m) { return Number(m.is_unreplied || 0) || String(m.status || '').indexOf('未回复') >= 0; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody>' + mailTableRows + '</tbody></table></section>';
       var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-tab-stats"><span>WhatsApp ' + (c.whatsapp ? '1' : '0') + '</span><span>微信 ' + (c.wechat ? '1' : '0') + '</span><span>人工执行记录 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>平台</th><th>联系人</th><th>内容摘要</th><th>执行人</th><th>来源</th></tr></thead><tbody><tr><td colspan="6">接口待接入，可通过人工执行记录生成。</td></tr></tbody></table></section>';
       var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
@@ -4210,10 +4486,33 @@
     },
     renderQuotePanel: function (data) {
       var rows = data.rows || [];
+      var selectedId = String(this.expandedQuotePreviewId || '');
       var tableRows = rows.map(function (row) {
-        return '<tr data-detail-row="quote" data-detail-row-id="' + esc(row.id || row.quote_id || row.quote_no || '') + '"><td>' + esc(row.quote_no || '-') + '</td><td>' + esc(row.quote_date || row.created_at || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.amount || row.total_amount || '***') + '</td><td>' + esc(row.currency || '-') + '</td><td>' + esc(row.owner || row.owner_name || '-') + '</td><td>' + esc(row.conversion_status || row.convert_status || '-') + '</td></tr>';
+        var rowId = String(row.id || row.quote_id || row.quote_no || '');
+        return '<tr class="' + (rowId && rowId === selectedId ? 'selected' : '') + '" data-detail-row="quote" data-detail-row-id="' + esc(rowId) + '"><td data-quote-open><strong>' + esc(row.quote_no || '-') + '</strong></td><td>' + esc(row.quote_date || row.created_at || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(CustomerModule.moneyWithCurrency(row.amount || row.total_amount || '***', row.currency || '')) + '</td><td>' + esc(row.currency || '-') + '</td><td>' + esc(row.owner || row.owner_name || '-') + '</td><td>' + esc(row.conversion_status || row.convert_status || '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无数据。' + esc(data.message || '暂无匹配报价。') + '</td></tr>';
-      return '<div class="customer-tab-stats"><span>报价数量 ' + esc(data.total || rows.length || 0) + '</span><span>待确认 ' + esc(data.pending || 0) + '</span><span>已发送 ' + esc(data.sent || 0) + '</span><span>转订单金额 ' + esc(data.order_amount || data.converted_amount || '0.00') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>报价单号</th><th>日期</th><th>状态</th><th>报价金额</th><th>币种</th><th>负责人</th><th>转化状态</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
+      return '<div class="customer-tab-stats"><span>报价数量 ' + esc(data.total || rows.length || 0) + '</span><span>待确认 ' + esc(data.pending || 0) + '</span><span>已发送 ' + esc(data.sent || 0) + '</span><span>转订单金额 ' + esc(data.order_amount || data.converted_amount || '0.00') + '</span><span>单击报价号查看产品，双击打开报价</span></div><table class="crm-table customer-detail-table customer-quote-table"><thead><tr><th>报价单号</th><th>日期</th><th>状态</th><th>报价金额</th><th>币种</th><th>负责人</th><th>转化状态</th></tr></thead><tbody>' + tableRows + '</tbody></table><div data-quote-preview-host>' + (selectedId ? this.renderCustomerQuotePreviewById(selectedId) : '') + '</div>';
+    },
+    renderCustomerQuotePreviewById: function (id) {
+      var rows = ((((this.currentDetail || {}).linkage || {}).quote || {}).rows || []);
+      var row = rows.find(function (item, index) {
+        return [item.id, item.quote_id, item.quote_no, index].some(function (value) { return String(value || '') === String(id || ''); });
+      });
+      return row ? this.renderCustomerQuotePreview(row) : '';
+    },
+    renderCustomerQuotePreview: function (row) {
+      row = row || {};
+      var currency = row.currency || '';
+      var items = Array.isArray(row.items) ? row.items : [];
+      var qtyTotal = items.reduce(function (sum, item) { return sum + Number(item.qty || 0); }, 0);
+      var itemRows = items.map(function (item, index) {
+        var specLines = Array.isArray(item.spec_lines) && item.spec_lines.length ? item.spec_lines : String(item.spec || '').split(/\r?\n/).filter(Boolean);
+        var firstSpec = specLines.length ? String(specLines[0] || '') : [item.size, item.power].filter(Boolean).join(' · ');
+        var specSummary = firstSpec.length > 32 ? firstSpec.slice(0, 32) + '…' : firstSpec;
+        if (specLines.length > 1) specSummary += '（等 ' + specLines.length + ' 项）';
+        return '<tr><td>' + esc(item.index || index + 1) + '</td><td><strong>' + esc(item.model || '-') + '</strong></td><td>' + esc(item.name || '-') + '</td><td class="quote-spec-cell" data-quote-spec="' + esc(JSON.stringify(specLines)) + '"><span>' + esc(specSummary || '-') + '</span></td><td>' + esc(item.qty || 0) + '</td><td>' + esc(item.price != null ? CustomerModule.moneyWithCurrency(item.price, currency) : '***') + '</td><td>' + esc(item.amount != null ? CustomerModule.moneyWithCurrency(item.amount, currency) : '***') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7">该报价没有可显示的产品明细。</td></tr>';
+      return '<article class="customer-order-preview-card customer-quote-preview-card"><section class="customer-order-preview-basic"><span>报价明细</span><strong>' + esc(row.quote_no || '-') + '</strong><p>' + esc(row.quote_date || '-') + ' · ' + esc(row.status || '-') + ' · 负责人 ' + esc(row.owner || row.owner_name || '-') + '</p><b>' + esc(this.moneyWithCurrency(row.amount || '***', currency)) + '</b><em>' + esc(items.length + ' 款 / ' + qtyTotal + ' PCS') + '</em></section><section class="customer-quote-preview-products"><table class="crm-table customer-detail-table"><thead><tr><th>#</th><th>产品型号</th><th>产品名称</th><th>规格</th><th>数量</th><th>单价</th><th>金额</th></tr></thead><tbody>' + itemRows + '</tbody></table></section></article>';
     },
     renderOrderPanel: function (data) {
       var rows = data.rows || [];
@@ -4652,6 +4951,36 @@
     },
     bindDetailEvents: function () {
       var self = this;
+      if (document.body.dataset.quoteSpecHoverBound !== '1') {
+        document.body.dataset.quoteSpecHoverBound = '1';
+        document.addEventListener('mouseover', function (event) {
+          var cell = event.target.closest('[data-quote-spec]');
+          if (!cell || (event.relatedTarget && cell.contains(event.relatedTarget))) return;
+          document.querySelector('[data-floating-quote-spec]')?.remove();
+          var lines = [];
+          try { lines = JSON.parse(cell.getAttribute('data-quote-spec') || '[]'); } catch (error) {}
+          if (!Array.isArray(lines) || !lines.length) return;
+          var pop = document.createElement('div');
+          pop.className = 'quote-spec-floating';
+          pop.setAttribute('data-floating-quote-spec', '1');
+          pop.innerHTML = '<strong>完整产品规格</strong><div>' + lines.map(function (line) { return '<span>' + esc(line) + '</span>'; }).join('') + '</div><em>共 ' + esc(lines.length) + ' 项 · 来自该报价保存快照</em>';
+          document.body.appendChild(pop);
+          var rect = cell.getBoundingClientRect();
+          pop.style.width = 'max-content';
+          pop.style.maxWidth = Math.min(460, window.innerWidth - 24) + 'px';
+          var popRect = pop.getBoundingClientRect();
+          var left = Math.max(12, Math.min(window.innerWidth - popRect.width - 12, rect.left));
+          var below = window.innerHeight - rect.bottom;
+          var top = below >= popRect.height + 12 ? rect.bottom + 6 : Math.max(12, rect.top - popRect.height - 6);
+          pop.style.left = left + 'px';
+          pop.style.top = top + 'px';
+        });
+        document.addEventListener('mouseout', function (event) {
+          var cell = event.target.closest('[data-quote-spec]');
+          if (!cell || (event.relatedTarget && cell.contains(event.relatedTarget))) return;
+          document.querySelector('[data-floating-quote-spec]')?.remove();
+        });
+      }
       document.querySelectorAll('[data-detail-tab]').forEach(function (button) {
         button.addEventListener('click', function () {
           var name = button.getAttribute('data-detail-tab');
@@ -4668,6 +4997,15 @@
         row.addEventListener('click', function () {
           var rowType = row.getAttribute('data-detail-row') || '';
           var rowId = row.getAttribute('data-detail-row-id') || '';
+          if (rowType === 'quote' && rowId && self.expandedQuotePreviewId === rowId) {
+            self.expandedQuotePreviewId = '';
+            self.selectedDetailEntity = null;
+            row.classList.remove('selected');
+            var quoteCollapseHost = document.querySelector('[data-quote-preview-host]');
+            if (quoteCollapseHost) quoteCollapseHost.innerHTML = '';
+            if (current === 'customers') renderActions('customers');
+            return;
+          }
           if (rowType === 'order' && rowId && self.expandedOrderPreviewId === rowId) {
             self.expandedOrderPreviewId = '';
             self.selectedDetailEntity = null;
@@ -4682,12 +5020,18 @@
             id: rowId
           };
           document.querySelectorAll('[data-detail-row]').forEach(function (item) { item.classList.toggle('selected', item === row); });
-          if (rowType === 'order' && rowId) {
+          if (rowType === 'quote' && rowId) {
+            self.expandedQuotePreviewId = rowId;
+            var quoteHost = document.querySelector('[data-quote-preview-host]');
+            if (quoteHost) quoteHost.innerHTML = self.renderCustomerQuotePreviewById(rowId);
+            self.expandedOrderPreviewId = '';
+          } else if (rowType === 'order' && rowId) {
             self.expandedOrderPreviewId = rowId;
             var host = document.querySelector('[data-order-preview-host]');
             if (host) host.innerHTML = self.renderCustomerOrderPreviewById(rowId);
             self.bindOrderPreviewShortcuts();
           } else {
+            self.expandedQuotePreviewId = '';
             self.expandedOrderPreviewId = '';
           }
           if (current === 'customers') renderActions('customers');
@@ -4699,6 +5043,12 @@
           if (self.openArchiveRowEditor(rowType, rowId)) {
             event.preventDefault();
             event.stopPropagation();
+            return;
+          }
+          if (rowType === 'quote') {
+            var quote = self.selectedSalesRow('quote');
+            if (!quote) return;
+            window.open('quotation.php?quote_id=' + encodeURIComponent(quote.id || quote.quote_id || '') + '&quote_no=' + encodeURIComponent(quote.quote_no || ''), '_blank');
             return;
           }
           if (rowType !== 'order') return;
@@ -4765,7 +5115,13 @@
           self.openShipmentPreview(rows[index] || {});
         });
       });
-      document.querySelector('[data-chat-group-create]')?.addEventListener('click', function () { self.openChatGroupDialog(); });
+      document.querySelectorAll('[data-chat-group-create]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.openChatGroupDialog();
+        });
+      });
       document.querySelector('[data-customer-new-followup]')?.addEventListener('click', function () { self.openFollowupDialog(); });
       document.querySelector('[data-customer-ai-analysis]')?.addEventListener('click', function () { self.handleAction('AI 分析客户'); });
       document.querySelector('[data-customer-new-visit]')?.addEventListener('click', function () { VisitModule.openVisitDialog('customer_visit'); });
@@ -4808,14 +5164,27 @@
         });
       });
       document.querySelectorAll('[data-chat-group-edit]').forEach(function (button) {
-        button.addEventListener('click', function () {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
           var id = Number(button.getAttribute('data-chat-group-edit') || 0);
           var row = ((self.currentDetail || {}).chat_groups || []).find(function (item) { return Number(item.id) === id; });
           self.openChatGroupDialog(row || {});
         });
       });
+      document.querySelectorAll('[data-chat-group-toggle]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.toggleChatGroupStatus(Number(button.getAttribute('data-chat-group-toggle') || 0));
+        });
+      });
       document.querySelectorAll('[data-chat-group-delete]').forEach(function (button) {
-        button.addEventListener('click', function () { self.deleteChatGroup(Number(button.getAttribute('data-chat-group-delete') || 0)); });
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.deleteChatGroup(Number(button.getAttribute('data-chat-group-delete') || 0));
+        });
       });
       document.querySelectorAll('[data-followup-delete]').forEach(function (button) {
         button.addEventListener('click', function () { self.deleteFollowup(Number(button.getAttribute('data-followup-delete') || 0)); });
@@ -4828,6 +5197,7 @@
       var activeSub = target.sub;
       this.rememberDetailTab(activeSub);
       this.selectedDetailEntity = null;
+      if (activeSub !== 'quote') this.expandedQuotePreviewId = '';
       if (activeSub !== 'orders') this.expandedOrderPreviewId = '';
       if (activeName === 'overview' && this.layoutMode !== 'default') this.applyLayoutMode('default', false);
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
@@ -5042,6 +5412,32 @@
             self.showCustomerError(error.message || '客户群删除失败');
           });
         });
+      });
+    },
+    toggleChatGroupStatus: function (groupId) {
+      if (!groupId || !this.currentId) return;
+      var self = this;
+      var group = ((this.currentDetail || {}).chat_groups || []).find(function (item) { return Number(item.id) === Number(groupId); });
+      if (!group) return this.showCustomerError('没有找到客户群记录。');
+      var nextStatus = group.status === 'active' ? 'paused' : 'active';
+      post('customer_chat_group_save', {
+        customer_id: this.currentId,
+        group_id: group.id,
+        group_name: group.group_name || '',
+        group_platform: group.group_platform || 'wechat_group',
+        group_owner: group.group_owner || '',
+        linked_contact_ids_json: JSON.stringify(group.linked_contact_ids || []),
+        use_for_promotion: Number(group.use_for_promotion) ? 1 : 0,
+        status: nextStatus,
+        remark: group.remark || ''
+      }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '客户群状态保存失败');
+        self.currentDetail = json.data;
+        self.renderDetail(json.data);
+        self.switchDetailTab('chat_groups', { suppressScroll: true });
+        toast(nextStatus === 'active' ? '客户群已启用' : '客户群已停用');
+      }).catch(function (error) {
+        self.showCustomerError(error.message || '客户群状态保存失败');
       });
     },
     selectedAddress: function () {
@@ -5428,8 +5824,9 @@
     },
     entryAddressCard: function (address) {
       address = address || {};
-      return '<article class="entry-address-card" data-address-card data-address-type="' + esc(address.address_type || '') + '" data-address-country="' + esc(address.country || '') + '" data-address-city="' + esc(address.city || '') + '" data-address-text="' + esc(address.address || '') + '" data-address-primary="' + (Number(address.is_primary) ? '1' : '0') + '">' +
-        '<div><strong>' + esc(address.address_type || '地址') + (Number(address.is_primary) ? ' · 主地址' : '') + '</strong><span>' + esc([address.country, address.city].filter(Boolean).join(' · ') || '未填国家城市') + '</span><em>' + esc(address.address || '未填详细地址') + '</em></div>' +
+      var incomplete = !String(address.address || '').trim();
+      return '<article class="entry-address-card' + (incomplete ? ' is-incomplete' : '') + '" data-address-card data-address-type="' + esc(address.address_type || '') + '" data-address-country="' + esc(address.country || '') + '" data-address-city="' + esc(address.city || '') + '" data-address-text="' + esc(address.address || '') + '" data-address-primary="' + (Number(address.is_primary) ? '1' : '0') + '">' +
+        '<div><strong>' + esc(address.address_type || '地址') + (Number(address.is_primary) ? ' · 主地址' : '') + (incomplete ? ' <b class="address-incomplete-badge">待补完整地址</b>' : '') + '</strong><span>' + esc([address.country, address.city].filter(Boolean).join(' · ') || '未填国家城市') + '</span>' + (incomplete ? '<em>当前仅保留国家 / 城市信息，点击编辑补充详细地址</em>' : '<em>' + esc(address.address) + '</em>') + '</div>' +
         '<nav><button type="button" data-edit-address>编辑</button><button type="button" data-primary-address>设为主地址</button><button type="button" data-delete-address>删除</button></nav></article>';
     },
     entryAddressEditor: function (address) {
@@ -5450,8 +5847,9 @@
       contact = contact || {};
       var roles = contact.role_tags || [];
       var channels = contact.promotion_channels || [];
+      var needsCleanup = String(contact.name || '').indexOf('@') >= 0 && !String(contact.email || '').trim();
       return '<article class="entry-contact-card-item" data-contact-card data-contact-id="' + esc(contact.id || '') + '" data-contact-name="' + esc(contact.name || '') + '" data-contact-name-en="' + esc(contact.name_en || '') + '" data-contact-position="' + esc(contact.position || '') + '" data-contact-department="' + esc(contact.department || '') + '" data-contact-email="' + esc(contact.email || '') + '" data-contact-phone="' + esc(contact.phone || '') + '" data-contact-whatsapp="' + esc(contact.whatsapp || '') + '" data-contact-wechat="' + esc(contact.wechat || '') + '" data-contact-linkedin="' + esc(contact.linkedin || '') + '" data-contact-gender="' + esc(contact.gender || '') + '" data-contact-birthday="' + esc(contact.birthday || '') + '" data-contact-language="' + esc(contact.language || '') + '" data-contact-remark="' + esc(contact.remark || '') + '" data-contact-source="' + esc(this.contactSourceValue(contact)) + '" data-contact-primary="' + (Number(contact.is_primary) ? '1' : '0') + '" data-contact-left="' + (Number(contact.is_left) ? '1' : '0') + '" data-contact-promote="' + (Number(contact.promote) === 0 ? '0' : '1') + '" data-contact-roles="' + esc(JSON.stringify(roles)) + '" data-contact-channels="' + esc(JSON.stringify(channels)) + '">' +
-        '<div><strong>' + esc(contact.name || '未命名联系人') + ' · ' + esc(contact.position || '未填职位') + (Number(contact.is_primary) ? ' <b class="first-contact-badge">第一联系人</b>' : '') + '</strong><span>' + esc([contact.email, contact.whatsapp, contact.phone].filter(Boolean).join(' / ') || '未填联系方式') + '</span><em>标签：' + esc(roles.join('、') || '未设置') + ' · 推广：' + esc(channels.join('、') || (Number(contact.promote) === 0 ? '不推广' : '未设置')) + '</em></div>' +
+        '<div><strong>' + esc(contact.name || '未命名联系人') + ' · ' + esc(contact.position || '未填职位') + (Number(contact.is_primary) ? ' <b class="first-contact-badge">第一联系人</b>' : '') + (needsCleanup ? ' <b class="contact-cleanup-badge">待整理</b>' : '') + '</strong><span>' + esc([contact.email, contact.whatsapp, contact.phone].filter(Boolean).join(' / ') || '未填联系方式') + '</span><em>标签：' + esc(roles.join('、') || '未设置') + ' · 推广：' + esc(channels.join('、') || (Number(contact.promote) === 0 ? '不推广' : '未设置')) + '</em></div>' +
         '<nav><button type="button" data-edit-contact-card>编辑</button><button type="button" data-primary-contact-card>' + (Number(contact.is_primary) ? '已是第一联系人' : '设为第一联系人') + '</button><button type="button" data-delete-contact-card>删除</button></nav></article>';
     },
     entryContactEditor: function (contact) {
@@ -7746,7 +8144,7 @@
       if (label === '设为主联系人') {
         var contact = this.selectedContact();
         if (!contact) return this.showCustomerError('请先选择联系人。');
-        return post('customer_contact_save', Object.assign({}, contact, { contact_id: contact.id, customer_id: this.currentId, is_primary: 1 })).then(function (json) {
+        return post('customer_contact_save', Object.assign({}, contact, { contact_id: contact.id, customer_id: this.currentId, birthday: contact.birthday || '', is_primary: 1 })).then(function (json) {
           if (!json.success) throw new Error(json.message || '设置主联系人失败');
           CustomerModule.currentDetail = json.data;
           CustomerModule.renderDetail(json.data);
@@ -7810,7 +8208,7 @@
       });
       if (label === '编辑选项卡') return this.openCustomerTabQuickEditor();
       if (label === '查看日志') return this.openTodayLogsDialog();
-      if (label === '清除选择') { this.selected.clear(); this.currentId = 0; this.currentDetail = null; document.querySelectorAll('[data-customer-row-check]').forEach(function (b) { b.checked = false; }); document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.remove('active'); }); this.renderSelection(); this.renderEmptyOverview(); renderActions('customers'); return; }
+      if (label === '清除选择') { this.selected.clear(); this.allFilteredSelectionCount = 0; this.currentId = 0; this.currentDetail = null; document.querySelectorAll('[data-customer-row-check]').forEach(function (b) { b.checked = false; }); document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.remove('active'); }); this.renderSelection(); this.syncPageSelectionState(); this.renderEmptyOverview(); renderActions('customers'); return; }
       if (label === '查看暂存池') return this.openLeadPool();
       if (label === '查看重复客户' || label === '执行客户查重') return this.applyOverviewFilter('duplicate');
       if (label === '批量补全资料' || label === '查看资料缺失') return this.applyOverviewFilter('incomplete');

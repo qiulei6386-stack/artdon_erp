@@ -709,7 +709,11 @@ function bomMediaEncodePath(path){
 // 官网同步图统一走 artdonlighting.com；命名系统本地图走当前访问域名 novlight.com，避免 https 页面加载 IP/http 图片失败。
 const BOM_WEBSITE_IMAGE_BASE='https://artdonlighting.com';
 function bomCurrentOrigin(){
-  try{return (location.origin || (location.protocol+'//'+location.host)).replace(/\/+$/,'');}catch(e){return 'https://novlight.com';}
+  try{
+    const origin=(location.origin || (location.protocol+'//'+location.host)).replace(/\/+$/,'');
+    const dir=String(location.pathname||'/').replace(/\/[^/]*$/,'').replace(/\/+$/,'');
+    return origin+(dir&&dir!=='/'?dir:'');
+  }catch(e){return 'https://novlight.com/artdon_erp';}
 }
 function bomWebsiteImageBase(){return BOM_WEBSITE_IMAGE_BASE.replace(/\/+$/,'');}
 function bomPathWithBase(base,path,query=''){

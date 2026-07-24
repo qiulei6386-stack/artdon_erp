@@ -20,7 +20,7 @@ if (!function_exists('str_starts_with')) { function str_starts_with($haystack,$n
 
 $pdo = db();
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-if ($action !== 'download_backup') {
+if (!in_array($action,['download_backup','price_policy_export_excel','commission_rule_export'],true)) {
   ob_start();
   register_shutdown_function(function() {
     $err = error_get_last();
@@ -1806,7 +1806,12 @@ function qperm_action_perm($action){
     'init'=>'can_access','list_bom_quote_specs'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
     'create_backup'=>'settings_manage','list_backups'=>'settings_manage','download_backup'=>'settings_manage','restore_backup'=>'settings_manage','save_header'=>'doc_settings_manage','delete_header'=>'doc_settings_manage','save_bank'=>'doc_settings_manage','delete_bank'=>'doc_settings_manage','save_template'=>'doc_settings_manage','delete_template'=>'doc_settings_manage','save_exchange_rate'=>'rate_manage','save_price_level'=>'settings_manage','delete_price_level'=>'settings_manage','save_option'=>'settings_manage','delete_option'=>'settings_manage',
-    'save_quote'=>'quote_edit','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage'
+    'price_policy_list'=>'product_view','price_policy_match'=>'product_view','price_tier_list'=>'product_view','price_policy_levels_list'=>'product_view','price_stock_log_list'=>'product_view','price_policy_options_list'=>'product_view',
+    'commission_rule_list'=>'product_view','commission_options_list'=>'product_view','commission_calc_preview'=>'product_view','commission_rule_export'=>'product_view','commission_order_list'=>'product_view','commission_quote_list'=>'product_view','commission_quote_save'=>'product_view','commission_quote_lines_save'=>'product_view','commission_customer_check'=>'can_access','commission_reminder_list'=>'product_view','commission_reminder_save'=>'product_view','commission_reminder_toggle'=>'product_view',
+    'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
+    'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
+    'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
+    'save_quote'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage'
   ];
   return $map[$action]??'can_access';
 }
@@ -1905,6 +1910,797 @@ function qperm_delete_permission_user($pdo,$d,$actor){
       ->execute([$ut,$uid,$un,$display,(string)($actor['username']??''),'从报价权限页删除/隐藏']);
   $pdo->prepare('DELETE FROM quote_user_permissions WHERE user_table=? AND user_id=? AND username=?')->execute([$ut,$uid,$un]);
   quote_log_event($pdo,['action'=>'delete_permission_user','event'=>'删除/隐藏报价账号','user_name'=>$actor['username']??'','summary'=>'从报价权限页删除/隐藏账号：'.$un,'detail'=>$d]);
+}
+
+/* ===== 价格策略中心 / MOQ & Tier Price（第 2 步：独立数据与接口） ===== */
+function ensure_quote_price_policy_schema($pdo){
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_price_policies (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_source VARCHAR(50) DEFAULT '',
+    product_id VARCHAR(120) DEFAULT '',
+    naming_id VARCHAR(120) DEFAULT '',
+    product_model VARCHAR(120) DEFAULT '',
+    product_name VARCHAR(255) DEFAULT '',
+    series VARCHAR(160) DEFAULT '',
+    lamp_type VARCHAR(120) DEFAULT '',
+    category VARCHAR(160) DEFAULT '',
+    image LONGTEXT NULL,
+    has_stock TINYINT(1) DEFAULT 0,
+    stock_qty DECIMAL(12,2) DEFAULT 0,
+    moq DECIMAL(12,2) DEFAULT 0,
+    allow_below_moq TINYINT(1) DEFAULT 0,
+    need_approval_below_moq TINYINT(1) DEFAULT 1,
+    lead_time VARCHAR(120) DEFAULT '',
+    currency VARCHAR(20) DEFAULT 'USD',
+    price_mode VARCHAR(50) DEFAULT 'manual',
+    level_id INT DEFAULT 0,
+    base_cost DECIMAL(12,4) DEFAULT 0,
+    base_price DECIMAL(12,4) DEFAULT 0,
+    status VARCHAR(30) DEFAULT 'active',
+    note TEXT NULL,
+    created_by VARCHAR(120) DEFAULT '',
+    updated_by VARCHAR(120) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_price_policy_model (product_model),
+    KEY idx_price_policy_name (product_name),
+    KEY idx_price_policy_naming (naming_id),
+    KEY idx_price_policy_series (series),
+    KEY idx_price_policy_lamp_type (lamp_type),
+    KEY idx_price_policy_category (category),
+    KEY idx_price_policy_stock (has_stock),
+    KEY idx_price_policy_moq (moq),
+    KEY idx_price_policy_mode (price_mode),
+    KEY idx_price_policy_status (status),
+    KEY idx_price_policy_level (level_id),
+    KEY idx_price_policy_updated (updated_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_col($pdo,'quote_price_policies','lamp_type',"`lamp_type` VARCHAR(120) DEFAULT '' AFTER `series`");
+  ensure_col($pdo,'quote_price_policies','source_lamp_type',"`source_lamp_type` VARCHAR(120) DEFAULT '' AFTER `series`");
+  ensure_col($pdo,'quote_price_policies','source_category',"`source_category` VARCHAR(160) DEFAULT '' AFTER `lamp_type`");
+  ensure_col($pdo,'quote_price_policies','stock_status_code',"`stock_status_code` VARCHAR(80) DEFAULT '' AFTER `stock_qty`");
+  ensure_col($pdo,'quote_price_policies','moq_status_code',"`moq_status_code` VARCHAR(80) DEFAULT '' AFTER `moq`");
+  ensure_col($pdo,'quote_price_policies','below_moq_rule_code',"`below_moq_rule_code` VARCHAR(80) DEFAULT '' AFTER `need_approval_below_moq`");
+  ensure_col($pdo,'quote_price_policies','bom_cost_rmb',"`bom_cost_rmb` DECIMAL(12,4) DEFAULT 0 AFTER `level_id`");
+  ensure_col($pdo,'quote_price_policies','estimated_sale_price_rmb',"`estimated_sale_price_rmb` DECIMAL(12,4) DEFAULT 0 AFTER `bom_cost_rmb`");
+  ensure_col($pdo,'quote_price_policies','bom_cost_source',"`bom_cost_source` VARCHAR(160) DEFAULT '' AFTER `estimated_sale_price_rmb`");
+  ensure_col($pdo,'quote_price_policies','bom_match_key',"`bom_match_key` VARCHAR(160) DEFAULT '' AFTER `bom_cost_source`");
+  ensure_col($pdo,'quote_price_policies','bom_cost_updated_at',"`bom_cost_updated_at` VARCHAR(50) DEFAULT '' AFTER `bom_match_key`");
+  static $pricePolicyIndexesReady=false;
+  if(!$pricePolicyIndexesReady){
+    $pricePolicyIndexesReady=true;
+    $existing=[];foreach(rows($pdo,'SHOW INDEX FROM quote_price_policies') as $indexRow)$existing[(string)$indexRow['Key_name']]=1;
+    $wanted=[
+      'idx_price_policy_name'=>'product_name','idx_price_policy_series'=>'series','idx_price_policy_lamp_type'=>'lamp_type',
+      'idx_price_policy_stock'=>'has_stock','idx_price_policy_moq'=>'moq','idx_price_policy_mode'=>'price_mode','idx_price_policy_updated'=>'updated_at'
+    ];
+    foreach($wanted as $indexName=>$column)if(!isset($existing[$indexName]))$pdo->exec("ALTER TABLE quote_price_policies ADD KEY `".$indexName."` (`".$column."`)");
+  }
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_price_tiers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    policy_id INT NOT NULL,
+    min_qty DECIMAL(12,2) NOT NULL DEFAULT 0,
+    manual_price DECIMAL(12,4) DEFAULT NULL,
+    auto_price DECIMAL(12,4) DEFAULT NULL,
+    final_price DECIMAL(12,4) DEFAULT NULL,
+    currency VARCHAR(20) DEFAULT 'USD',
+    source VARCHAR(50) DEFAULT 'manual',
+    note VARCHAR(255) DEFAULT '',
+    sort_order INT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_price_tier_policy (policy_id),
+    KEY idx_price_tier_qty (policy_id,min_qty),
+    KEY idx_price_tier_source (source)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_price_policy_levels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    level_name VARCHAR(120) NOT NULL,
+    level_code VARCHAR(50) DEFAULT '',
+    base_multiplier DECIMAL(10,4) DEFAULT 1.35,
+    point_percent DECIMAL(10,4) DEFAULT 0,
+    profit_percent DECIMAL(10,4) DEFAULT 0,
+    sample_multiplier DECIMAL(10,4) DEFAULT 2.00,
+    is_default TINYINT(1) DEFAULT 0,
+    is_active TINYINT(1) DEFAULT 1,
+    note VARCHAR(255) DEFAULT '',
+    sort_order INT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_policy_level_active (is_active),
+    KEY idx_policy_level_sort (sort_order)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_price_stock_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    policy_id INT NOT NULL,
+    product_model VARCHAR(120) DEFAULT '',
+    product_name VARCHAR(255) DEFAULT '',
+    old_stock DECIMAL(12,2) DEFAULT 0,
+    new_stock DECIMAL(12,2) DEFAULT 0,
+    change_qty DECIMAL(12,2) DEFAULT 0,
+    adjust_type VARCHAR(30) DEFAULT '',
+    reason VARCHAR(500) DEFAULT '',
+    operator VARCHAR(120) DEFAULT '',
+    ip VARCHAR(80) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_price_stock_policy (policy_id,created_at),
+    KEY idx_price_stock_model (product_model),
+    KEY idx_price_stock_time (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_price_policy_options (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    option_group VARCHAR(80) NOT NULL,
+    option_code VARCHAR(120) DEFAULT '',
+    option_name VARCHAR(160) NOT NULL,
+    option_value VARCHAR(255) DEFAULT '',
+    extra_json LONGTEXT NULL,
+    is_system TINYINT(1) DEFAULT 0,
+    is_default TINYINT(1) DEFAULT 0,
+    is_active TINYINT(1) DEFAULT 1,
+    sort_order INT DEFAULT 0,
+    note TEXT NULL,
+    created_by VARCHAR(120) DEFAULT '',
+    updated_by VARCHAR(120) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_price_option_group_code (option_group,option_code),
+    KEY idx_price_option_group (option_group,is_active,sort_order)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $count=(int)$pdo->query("SELECT COUNT(*) FROM quote_price_policy_levels")->fetchColumn();
+  if($count===0){
+    $st=$pdo->prepare("INSERT INTO quote_price_policy_levels(level_name,level_code,base_multiplier,point_percent,profit_percent,sample_multiplier,is_default,is_active,note,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?)");
+    foreach([
+      ['A级常规品','A',1.35,0,0,2.00,1,1,'默认常规产品等级',10],
+      ['B级复杂品','B',1.50,0,0,2.00,0,1,'复杂产品等级',20],
+      ['C级定制品','C',1.80,0,0,2.00,0,1,'定制产品等级',30],
+      ['现货品','STOCK',1.20,0,0,2.00,0,1,'现货产品等级',40],
+      ['样品价','SAMPLE',2.00,0,0,2.00,0,1,'样品价格等级',50],
+    ] as $r){ $st->execute($r); }
+  }
+  quote_price_policy_options_init_defaults($pdo,null,false);
+}
+function quote_price_policy_actor($user){ return s($user['username']??($user['display_name']??''),120); }
+function quote_price_policy_option_groups(){return ['product_level','price_mode','lead_time','tier_qty','currency','stock_status','moq_status','below_moq_rule','approval_reason','category_mapping'];}
+function quote_price_policy_option_extra($row){$v=json_decode((string)($row['extra_json']??''),true);return is_array($v)?$v:[];}
+function quote_price_policy_options_init_defaults($pdo,$user=null,$writeLog=true){
+  $defaults=[
+    'price_mode'=>[
+      ['manual','手填阶梯价','manual',['description'=>'只使用手动阶梯价'],1,1,10],
+      ['level_auto','等级自动生成','level_auto',['description'=>'按产品等级倍率自动生成'],1,0,20],
+      ['mixed','自动生成 + 手动覆盖','mixed',['description'=>'自动生成，可逐档手动覆盖'],1,0,30],
+    ],
+    'lead_time'=>[
+      ['stock','现货','现货',['min_days'=>0,'max_days'=>0,'is_stock'=>1],1,1,10],['3_5','3-5天','3-5天',['min_days'=>3,'max_days'=>5],1,0,20],
+      ['7_10','7-10天','7-10天',['min_days'=>7,'max_days'=>10],1,0,30],['15_20','15-20天','15-20天',['min_days'=>15,'max_days'=>20],1,0,40],
+      ['20_30','20-30天','20-30天',['min_days'=>20,'max_days'=>30],1,0,50],['25_35','25-35天','25-35天',['min_days'=>25,'max_days'=>35],1,0,60],
+      ['45','45天','45天',['min_days'=>45,'max_days'=>45],1,0,70],['custom','自定义','自定义',[],1,0,80],
+    ],
+    'tier_qty'=>array_map(fn($q)=>[(string)$q,(string)$q,(string)$q,['description'=>$q.' PCS','default_show'=>1],1,$q===1?1:0,$q],[1,10,50,100,300,500,1000]),
+    'currency'=>[
+      ['USD','USD','USD',['currency_name'=>'美元','symbol'=>'$','exchange_rate'=>1],1,1,10],
+      ['RMB','RMB','RMB',['currency_name'=>'人民币','symbol'=>'¥','exchange_rate'=>1],1,0,20],
+      ['EUR','EUR','EUR',['currency_name'=>'欧元','symbol'=>'€','exchange_rate'=>1],1,0,30],
+    ],
+    'stock_status'=>[
+      ['in_stock','有库存','有库存',['color'=>'#16a34a'],1,0,10],['no_stock','无库存','无库存',['color'=>'#94a3b8'],1,1,20],
+      ['partial','部分库存','部分库存',['color'=>'#f59e0b'],1,0,30],['clearance','清仓库存','清仓库存',['color'=>'#ef4444'],1,0,40],['pending','待确认','待确认',['color'=>'#64748b'],1,0,50],
+    ],
+    'moq_status'=>[
+      ['unset','未设置','未设置',['color'=>'#94a3b8'],1,1,10],['set','已设置','已设置',['color'=>'#2563eb'],1,0,20],
+      ['approval','低于 MOQ 需审批','低于 MOQ 需审批',['color'=>'#f59e0b'],1,0,30],['small_allowed','允许小单','允许小单',['color'=>'#16a34a'],1,0,40],['small_forbidden','禁止小单','禁止小单',['color'=>'#ef4444'],1,0,50],
+    ],
+    'below_moq_rule'=>[
+      ['warn','只提醒，不拦截','warn',['need_approval'=>0,'allow_save'=>1,'log'=>0],1,1,10],
+      ['approval','需要特批','approval',['need_approval'=>1,'allow_save'=>1,'log'=>1],1,0,20],
+      ['forbid','禁止保存','forbid',['need_approval'=>0,'allow_save'=>0,'log'=>1],1,0,30],
+      ['allow_log','允许但记录日志','allow_log',['need_approval'=>0,'allow_save'=>1,'log'=>1],1,0,40],
+    ],
+    'approval_reason'=>[
+      ['sample_test','客户样品测试','sample_test',[],1,0,10],['old_customer','老客户小单','old_customer',[],1,0,20],
+      ['clearance','库存清仓','clearance',[],1,0,30],['boss','老板特批','boss',[],1,0,40],
+      ['project_sample','项目打样','project_sample',[],1,0,50],['replenishment','补单','replenishment',[],1,0,60],['other','其它','other',[],1,0,70],
+    ],
+  ];
+  $insert=$pdo->prepare("INSERT IGNORE INTO quote_price_policy_options(option_group,option_code,option_name,option_value,extra_json,is_system,is_default,is_active,sort_order,note,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+  $actor=$user?quote_price_policy_actor($user):'system';$added=0;
+  foreach($defaults as $group=>$items)foreach($items as $r){$insert->execute([$group,$r[0],$r[1],$r[2],json_encode($r[3],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$r[4],(int)$r[5],1,(int)$r[6],'',$actor,$actor]);$added+=$insert->rowCount();}
+  $linkedLevels=[];foreach(rows($pdo,"SELECT option_value,extra_json FROM quote_price_policy_options WHERE option_group='product_level'") as $existing){$ee=quote_price_policy_option_extra($existing);$linkedLevels[(int)($ee['legacy_level_id']??$existing['option_value']??0)]=1;}
+  foreach(rows($pdo,'SELECT * FROM quote_price_policy_levels ORDER BY sort_order,id') as $level){
+    if(isset($linkedLevels[(int)$level['id']]))continue;
+    $code=trim((string)$level['level_code'])?:('LEVEL_'.$level['id']);$extra=['legacy_level_id'=>(int)$level['id'],'base_multiplier'=>(float)$level['base_multiplier'],'point_percent'=>(float)$level['point_percent'],'profit_percent'=>(float)$level['profit_percent']];
+    $insert->execute(['product_level',$code,$level['level_name'],(string)$level['id'],json_encode($extra,JSON_UNESCAPED_UNICODE),(int)0,(int)$level['is_default'],(int)$level['is_active'],(int)$level['sort_order'],$level['note']??'',$actor,$actor]);$added+=$insert->rowCount();
+  }
+  if($writeLog&&$added)quote_log_event($pdo,['action'=>'price_policy_options_init_defaults','event'=>'初始化价格策略基础数据','user_name'=>$actor,'summary'=>'初始化价格策略选项 '.$added.' 项','detail'=>['added'=>$added]]);
+  return ['added'=>$added];
+}
+function quote_price_policy_mode($v){$v=trim((string)$v);return $v===''?'manual':$v;}
+function quote_price_tier_source($v){ $v=trim((string)$v); return in_array($v,['manual','level_auto','manual_override','approval'],true)?$v:'manual'; }
+function quote_nullable_decimal($v){ return ($v===''||$v===null)?null:(is_numeric($v)?(float)$v:null); }
+function quote_price_policy_options_list($pdo){
+  ensure_quote_price_policy_schema($pdo);$group=trim((string)($_GET['option_group']??''));
+  $args=[];$where='';if($group!==''){if(!in_array($group,quote_price_policy_option_groups(),true))fail('无效的设置分组');$where=' WHERE option_group=?';$args[]=$group;}
+  $options=rows($pdo,'SELECT * FROM quote_price_policy_options'.$where.' ORDER BY option_group,is_active DESC,is_default DESC,sort_order ASC,id ASC',$args);
+  foreach($options as &$o)$o['extra']=quote_price_policy_option_extra($o);unset($o);
+  return ['options'=>$options,'groups'=>quote_price_policy_option_groups()];
+}
+function quote_price_policy_option_used($pdo,$o){
+  $g=$o['option_group']??'';$code=(string)($o['option_code']??'');$value=(string)($o['option_value']??'');
+  if($g==='product_level')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE level_id=?',[(int)$value])['c'];
+  if($g==='price_mode')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE price_mode=?',[$code])['c'];
+  if($g==='lead_time')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE lead_time=?',[$value])['c'];
+  if($g==='currency')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE currency=?',[$code])['c'];
+  if($g==='stock_status')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE stock_status_code=?',[$code])['c'];
+  if($g==='moq_status')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE moq_status_code=?',[$code])['c'];
+  if($g==='below_moq_rule')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies WHERE below_moq_rule_code=?',[$code])['c'];
+  if($g==='tier_qty')return (int)row($pdo,'SELECT COUNT(*) c FROM quote_price_tiers WHERE min_qty=?',[(float)$value])['c'];
+  return 0;
+}
+function quote_price_policy_level_sync_from_option($pdo,$id,$d,$extra){
+  $legacyId=(int)($extra['legacy_level_id']??$d['option_value']??0);
+  $level=['level_name'=>$d['option_name'],'level_code'=>$d['option_code'],'base_multiplier'=>(float)($extra['base_multiplier']??1.35),'point_percent'=>(float)($extra['point_percent']??0),'profit_percent'=>(float)($extra['profit_percent']??0),'sample_multiplier'=>(float)($extra['sample_multiplier']??2),'is_default'=>(int)$d['is_default'],'is_active'=>(int)$d['is_active'],'note'=>$d['note'],'sort_order'=>(int)$d['sort_order']];
+  if($legacyId>0)$level['id']=$legacyId;
+  if($level['is_default'])$pdo->exec('UPDATE quote_price_policy_levels SET is_default=0');
+  $legacyId=(int)save_row($pdo,'quote_price_policy_levels',$level,['level_name','level_code','base_multiplier','point_percent','profit_percent','sample_multiplier','is_default','is_active','note','sort_order']);
+  $extra['legacy_level_id']=$legacyId;$pdo->prepare('UPDATE quote_price_policy_options SET option_value=?,extra_json=? WHERE id=?')->execute([(string)$legacyId,json_encode($extra,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);
+  foreach(rows($pdo,'SELECT * FROM quote_price_policies WHERE level_id=?',[$legacyId]) as $p){quote_price_policy_recalculate_tiers($pdo,(int)$p['id']);$pdo->prepare('UPDATE quote_price_policies SET estimated_sale_price_rmb=? WHERE id=?')->execute([quote_price_policy_estimated_sale_rmb($pdo,$p),(int)$p['id']]);}
+}
+function quote_price_policy_reapply_category_mappings($pdo){
+  $st=$pdo->prepare('UPDATE quote_price_policies SET category=?,lamp_type=? WHERE id=?');$count=0;
+  foreach(rows($pdo,'SELECT id,source_category,source_lamp_type,category,lamp_type FROM quote_price_policies') as $p){
+    $sc=(string)($p['source_category']?:$p['category']);$sl=(string)($p['source_lamp_type']?:$p['lamp_type']);[$category,$lamp]=quote_price_policy_mapped_category($pdo,$sc,$sl);
+    if($category!==(string)$p['category']||$lamp!==(string)$p['lamp_type']){$st->execute([$category,$lamp,(int)$p['id']]);$count++;}
+  }return $count;
+}
+function quote_price_policy_option_save($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);$before=$id?row($pdo,'SELECT * FROM quote_price_policy_options WHERE id=?',[$id]):null;
+  $group=trim((string)($d['option_group']??($before['option_group']??'')));if(!in_array($group,quote_price_policy_option_groups(),true))fail('无效的设置分组');
+  $name=s($d['option_name']??'',160);if($name==='')fail('请填写名称');
+  $code=s($d['option_code']??'',120);if($code==='')$code=preg_replace('/[^a-z0-9_]+/i','_',strtolower(trim((string)($d['option_value']??$name))))?:('option_'.time());
+  $extra=$d['extra']??($d['extra_json']??[]);if(is_string($extra))$extra=json_decode($extra,true);if(!is_array($extra))$extra=[];
+  $actor=quote_price_policy_actor($user);$row=['id'=>$id,'option_group'=>$group,'option_code'=>$code,'option_name'=>$name,'option_value'=>s($d['option_value']??$code,255),'extra_json'=>json_encode($extra,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'is_system'=>(int)($before['is_system']??($d['is_system']??0)),'is_default'=>empty($d['is_default'])?0:1,'is_active'=>array_key_exists('is_active',$d)?(empty($d['is_active'])?0:1):1,'sort_order'=>(int)($d['sort_order']??0),'note'=>(string)($d['note']??''),'updated_by'=>$actor];
+  if(!$id)$row['created_by']=$actor;
+  if($row['is_default'])$pdo->prepare('UPDATE quote_price_policy_options SET is_default=0 WHERE option_group=?')->execute([$group]);
+  try{$id=(int)save_row($pdo,'quote_price_policy_options',$row,['option_group','option_code','option_name','option_value','extra_json','is_system','is_default','is_active','sort_order','note','created_by','updated_by']);}catch(Throwable $e){fail('保存失败：同一分组内代码不能重复');}
+  if($group==='product_level')quote_price_policy_level_sync_from_option($pdo,$id,$row,$extra);
+  if($group==='category_mapping')quote_price_policy_reapply_category_mappings($pdo);
+  $after=row($pdo,'SELECT * FROM quote_price_policy_options WHERE id=?',[$id]);
+  quote_log_event($pdo,['action'=>'price_policy_option_save','event'=>'保存价格策略设置','user_name'=>$actor,'summary'=>'保存'.$group.'：'.$name,'detail'=>['id'=>$id,'group'=>$group],'before'=>$before,'after'=>$after]);
+  return ['id'=>$id,'option'=>$after];
+}
+function quote_price_policy_option_toggle($pdo,$d,$user){
+  $id=(int)($d['id']??0);$o=row($pdo,'SELECT * FROM quote_price_policy_options WHERE id=?',[$id]);if(!$o)fail('设置项不存在');
+  return quote_price_policy_option_save($pdo,array_merge($o,['id'=>$id,'is_active'=>empty($d['is_active'])?0:1,'extra'=>quote_price_policy_option_extra($o)]),$user);
+}
+function quote_price_policy_option_delete($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);$o=row($pdo,'SELECT * FROM quote_price_policy_options WHERE id=?',[$id]);if(!$o)fail('设置项不存在');
+  $used=quote_price_policy_option_used($pdo,$o);$actor=quote_price_policy_actor($user);
+  if(!empty($o['is_system'])||$used>0){
+    $pdo->prepare('UPDATE quote_price_policy_options SET is_active=0,is_default=0,updated_by=? WHERE id=?')->execute([$actor,$id]);
+    if($o['option_group']==='product_level'&&(int)$o['option_value']>0)$pdo->prepare('UPDATE quote_price_policy_levels SET is_active=0,is_default=0 WHERE id=?')->execute([(int)$o['option_value']]);
+    $result='disabled';
+  }else{$pdo->prepare('DELETE FROM quote_price_policy_options WHERE id=?')->execute([$id]);$result='deleted';}
+  if($o['option_group']==='category_mapping')quote_price_policy_reapply_category_mappings($pdo);
+  quote_log_event($pdo,['action'=>'price_policy_option_delete','event'=>$result==='deleted'?'删除价格策略设置':'停用价格策略设置','user_name'=>$actor,'summary'=>($result==='deleted'?'删除':'停用').'：'.$o['option_name'],'detail'=>['id'=>$id,'used'=>$used],'before'=>$o]);
+  return ['id'=>$id,'result'=>$result,'used'=>$used];
+}
+function quote_price_policy_option_sort($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$items=$d['items']??[];if(!is_array($items))fail('排序数据无效');$st=$pdo->prepare('UPDATE quote_price_policy_options SET sort_order=?,updated_by=? WHERE id=?');$actor=quote_price_policy_actor($user);
+  foreach($items as $i=>$r)$st->execute([(int)($r['sort_order']??(($i+1)*10)),$actor,(int)($r['id']??0)]);
+  quote_log_event($pdo,['action'=>'price_policy_option_sort','event'=>'排序价格策略设置','user_name'=>$actor,'summary'=>'调整价格策略设置顺序','detail'=>['items'=>$items]]);return ['updated'=>count($items)];
+}
+function quote_price_policy_list($pdo){
+  ensure_quote_price_policy_schema($pdo);
+  $where=[];$args=[];
+  $q=trim((string)($_GET['keyword']??$_GET['q']??''));if($q!==''){$where[]='(p.product_model LIKE ? OR p.product_name LIKE ? OR p.series LIKE ? OR p.lamp_type LIKE ? OR p.category LIKE ?)';for($i=0;$i<5;$i++)$args[]='%'.$q.'%';}
+  $model=trim((string)($_GET['product_model']??$_GET['model']??'')); if($model!==''){ $where[]='p.product_model LIKE ?';$args[]='%'.$model.'%'; }
+  $name=trim((string)($_GET['product_name']??$_GET['name']??'')); if($name!==''){ $where[]='p.product_name LIKE ?';$args[]='%'.$name.'%'; }
+  foreach(['series','lamp_type','category','price_mode','status'] as $field){ $v=trim((string)($_GET[$field]??'')); if($v!==''){ $where[]='p.`'.$field.'`=?';$args[]=$v; } }
+  if(isset($_GET['has_stock']) && $_GET['has_stock']!==''){ $where[]='p.has_stock=?';$args[]=(int)!!$_GET['has_stock']; }
+  $moqStatus=trim((string)($_GET['moq_status']??''));if($moqStatus!==''){if($moqStatus==='set')$where[]='p.moq>0';elseif($moqStatus==='unset')$where[]='p.moq<=0';else{$where[]='p.moq_status_code=?';$args[]=$moqStatus;}}
+  $level=(int)($_GET['product_level']??$_GET['level_id']??0); if($level>0){ $where[]='p.level_id=?';$args[]=$level; }
+  $page=max(1,(int)($_GET['page']??1));$pageSize=max(8,min(200,(int)($_GET['page_size']??$_GET['limit']??20)));
+  $sortMap=['product_model'=>'p.product_model','product_name'=>'p.product_name','series'=>'p.series','lamp_type'=>'p.lamp_type','category'=>'p.category','has_stock'=>'p.has_stock','moq'=>'p.moq','price_mode'=>'p.price_mode','product_level'=>'p.level_id','level_id'=>'p.level_id','status'=>'p.status','updated_at'=>'p.updated_at'];
+  $sortField=(string)($_GET['sort_field']??'updated_at');$sortSql=$sortMap[$sortField]??$sortMap['updated_at'];$sortOrder=strtoupper((string)($_GET['sort_order']??'DESC'))==='ASC'?'ASC':'DESC';
+  $countSql='SELECT COUNT(*) c FROM quote_price_policies p'.($where?' WHERE '.implode(' AND ',$where):'');
+  $filteredTotal=(int)row($pdo,$countSql,$args)['c'];$totalPages=max(1,(int)ceil($filteredTotal/$pageSize));$page=min($page,$totalPages);$offset=($page-1)*$pageSize;
+  $sql="SELECT p.*,l.level_name,l.level_code,(SELECT COUNT(*) FROM quote_price_tiers t WHERE t.policy_id=p.id) AS tier_count,(SELECT GROUP_CONCAT(CONCAT(t.min_qty,'→',COALESCE(t.final_price,'-')) ORDER BY t.sort_order ASC,t.min_qty ASC SEPARATOR ' | ') FROM quote_price_tiers t WHERE t.policy_id=p.id) AS tier_summary FROM quote_price_policies p LEFT JOIN quote_price_policy_levels l ON l.id=p.level_id";
+  if($where)$sql.=' WHERE '.implode(' AND ',$where);
+  $sql.=' ORDER BY '.$sortSql.' '.$sortOrder.',p.id DESC LIMIT '.$pageSize.' OFFSET '.$offset;
+  $list=rows($pdo,$sql,$args);$allTotal=(int)row($pdo,'SELECT COUNT(*) c FROM quote_price_policies',[])['c'];
+  return [
+    'list'=>$list,'policies'=>$list,
+    'total'=>$filteredTotal,'all_total'=>$allTotal,'filtered_total'=>$filteredTotal,
+    'page'=>$page,'page_size'=>$pageSize,'total_pages'=>$totalPages,
+    'series'=>array_values(array_filter(array_map(fn($r)=>(string)$r['series'],rows($pdo,"SELECT DISTINCT series FROM quote_price_policies WHERE series<>'' ORDER BY series ASC LIMIT 1000")))),
+    'lamp_types'=>array_values(array_filter(array_map(fn($r)=>(string)$r['lamp_type'],rows($pdo,"SELECT DISTINCT lamp_type FROM quote_price_policies WHERE lamp_type<>'' ORDER BY lamp_type ASC LIMIT 500")))),
+    'categories'=>array_values(array_filter(array_map(fn($r)=>(string)$r['category'],rows($pdo,"SELECT DISTINCT category FROM quote_price_policies WHERE category<>'' ORDER BY category ASC LIMIT 500"))))
+  ];
+}
+function quote_commission_schema($pdo){
+  static $done=false;if($done)return;$done=true;
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_rules (
+    id INT AUTO_INCREMENT PRIMARY KEY,rule_name VARCHAR(160) DEFAULT '',target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',target_contact VARCHAR(160) DEFAULT '',
+    commission_mode VARCHAR(50) DEFAULT 'percent',commission_value DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',calc_base VARCHAR(50) DEFAULT 'order_amount',settle_node VARCHAR(50) DEFAULT 'payment_received',settle_status VARCHAR(50) DEFAULT 'unsettled',
+    apply_scope VARCHAR(50) DEFAULT 'all',customer_id VARCHAR(120) DEFAULT '',customer_name VARCHAR(255) DEFAULT '',product_model VARCHAR(120) DEFAULT '',category VARCHAR(160) DEFAULT '',
+    estimated_commission DECIMAL(12,4) DEFAULT 0,settled_amount DECIMAL(12,4) DEFAULT 0,is_active TINYINT(1) DEFAULT 1,note TEXT NULL,created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_commission_target(target_type,target_name),KEY idx_commission_mode(commission_mode),KEY idx_commission_customer(customer_id),KEY idx_commission_product(product_model),KEY idx_commission_status(is_active,settle_status),KEY idx_commission_updated(updated_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_snapshots (
+    id INT AUTO_INCREMENT PRIMARY KEY,quote_id INT DEFAULT 0,order_id INT DEFAULT 0,quote_no VARCHAR(120) DEFAULT '',order_no VARCHAR(120) DEFAULT '',rule_id INT DEFAULT 0,rule_name VARCHAR(160) DEFAULT '',
+    target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',commission_mode VARCHAR(50) DEFAULT '',commission_value DECIMAL(12,4) DEFAULT 0,calc_base VARCHAR(50) DEFAULT '',
+    base_amount DECIMAL(12,4) DEFAULT 0,commission_amount DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',settle_node VARCHAR(50) DEFAULT 'payment_received',
+    settle_status VARCHAR(50) DEFAULT 'unsettled',settled_amount DECIMAL(12,4) DEFAULT 0,settled_at DATETIME NULL,settled_by VARCHAR(120) DEFAULT '',snapshot_json LONGTEXT NULL,note TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,UNIQUE KEY uk_commission_order_rule(order_id,rule_id),KEY idx_commission_order(order_id),KEY idx_commission_quote(quote_id),KEY idx_commission_settle(settle_status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  foreach(['commission_scope'=>"VARCHAR(30) DEFAULT 'order'",'receivable_effect'=>"VARCHAR(50) DEFAULT 'none'",'deduct_amount'=>'DECIMAL(12,4) DEFAULT 0','deduct_confirmed'=>'TINYINT(1) DEFAULT 0','deduct_reason'=>"VARCHAR(255) DEFAULT ''",'deduct_note'=>'TEXT NULL'] as $c=>$ddl) ensure_col($pdo,'quote_commission_snapshots',$c,$ddl);
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_lines (
+    id INT AUTO_INCREMENT PRIMARY KEY,snapshot_id INT DEFAULT 0,order_id INT DEFAULT 0,order_item_id INT DEFAULT 0,order_no VARCHAR(120) DEFAULT '',quote_no VARCHAR(120) DEFAULT '',
+    item_index INT DEFAULT 0,product_model VARCHAR(120) DEFAULT '',customer_model VARCHAR(120) DEFAULT '',product_name VARCHAR(255) DEFAULT '',color VARCHAR(80) DEFAULT '',
+    qty DECIMAL(12,2) DEFAULT 0,unit_price DECIMAL(12,4) DEFAULT 0,amount DECIMAL(12,4) DEFAULT 0,is_commission_enabled TINYINT(1) DEFAULT 1,
+    target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',commission_mode VARCHAR(50) DEFAULT '',commission_value DECIMAL(12,4) DEFAULT 0,
+    calc_base VARCHAR(50) DEFAULT 'product_amount',base_amount DECIMAL(12,4) DEFAULT 0,commission_amount DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',
+    receivable_effect VARCHAR(50) DEFAULT 'none',settle_status VARCHAR(50) DEFAULT 'unsettled',note TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_commission_line_item(order_item_id),KEY idx_commission_line_order(order_id),KEY idx_commission_line_model(product_model)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_item_snapshots (
+    id INT AUTO_INCREMENT PRIMARY KEY,order_id INT NOT NULL DEFAULT 0,order_item_id INT NOT NULL DEFAULT 0,order_no VARCHAR(120) DEFAULT '',quote_no VARCHAR(120) DEFAULT '',
+    product_model VARCHAR(120) DEFAULT '',product_name VARCHAR(255) DEFAULT '',qty DECIMAL(12,3) DEFAULT 0,product_amount DECIMAL(12,4) DEFAULT 0,
+    target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',commission_mode VARCHAR(50) DEFAULT 'percent',commission_value DECIMAL(12,4) DEFAULT 0,
+    calc_base VARCHAR(50) DEFAULT 'product_amount',base_amount DECIMAL(12,4) DEFAULT 0,commission_amount DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',
+    settle_node VARCHAR(50) DEFAULT 'manual',settle_status VARCHAR(50) DEFAULT 'unsettled',settled_amount DECIMAL(12,4) DEFAULT 0,snapshot_json LONGTEXT NULL,note TEXT NULL,
+    created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_commission_order_item(order_item_id),KEY idx_commission_item_order(order_id),KEY idx_commission_item_model(product_model),KEY idx_commission_item_settle(settle_status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_options (
+    id INT AUTO_INCREMENT PRIMARY KEY,option_group VARCHAR(80) NOT NULL,option_code VARCHAR(120) DEFAULT '',option_name VARCHAR(160) NOT NULL,option_value VARCHAR(255) DEFAULT '',extra_json LONGTEXT NULL,
+    is_system TINYINT(1) DEFAULT 0,is_default TINYINT(1) DEFAULT 0,is_active TINYINT(1) DEFAULT 1,sort_order INT DEFAULT 0,note TEXT NULL,created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,UNIQUE KEY uk_commission_option(option_group,option_code),KEY idx_commission_option_group(option_group,is_active,sort_order)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_reminder_rules (
+    id INT AUTO_INCREMENT PRIMARY KEY,scene VARCHAR(80) DEFAULT '',trigger_condition VARCHAR(120) DEFAULT '',remind_level VARCHAR(50) DEFAULT 'warning',
+    action_mode VARCHAR(80) DEFAULT 'remind',require_reason TINYINT(1) DEFAULT 0,is_active TINYINT(1) DEFAULT 1,sort_order INT DEFAULT 0,note TEXT NULL,
+    created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_commission_reminder(scene,trigger_condition),KEY idx_commission_reminder_active(scene,is_active,sort_order)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  foreach(['customer_scope'=>"VARCHAR(30) DEFAULT 'all'",'customer_id'=>"VARCHAR(120) DEFAULT ''",'customer_code'=>"VARCHAR(120) DEFAULT ''",'customer_name'=>"VARCHAR(255) DEFAULT ''"] as $c=>$ddl)ensure_col($pdo,'quote_commission_reminder_rules',$c,$ddl);
+  try{$pdo->exec('ALTER TABLE quote_commission_reminder_rules DROP INDEX uk_commission_reminder');}catch(Throwable $e){}
+  try{$pdo->exec('ALTER TABLE quote_commission_reminder_rules ADD UNIQUE KEY uk_commission_reminder_customer(scene,trigger_condition,customer_scope,customer_id)');}catch(Throwable $e){}
+  ensure_col($pdo,'quote_orders','commission_json','LONGTEXT NULL');
+  $actor='system';$st=$pdo->prepare("INSERT IGNORE INTO quote_commission_reminder_rules(scene,trigger_condition,remind_level,action_mode,require_reason,is_active,sort_order,created_by,updated_by) VALUES(?,?,?,?,0,1,?,?,?)");
+  foreach([['quote_customer_selected','customer_has_commission_rule','warning','must_confirm',10],['quote_customer_selected','customer_has_commission_history','warning','must_confirm',20],['payment_create','order_has_commission','warning','remind',30],['payment_create','commission_affects_receivable','danger','must_confirm',40]] as $x)$st->execute([$x[0],$x[1],$x[2],$x[3],$x[4],$actor,$actor]);
+  quote_commission_init_defaults($pdo,false);
+}
+function quote_commission_customer_check($pdo,$d,$user){
+  quote_commission_schema($pdo);$cid=s($d['customer_id']??'',120);$name=s($d['customer_name']??'',255);$code=s($d['customer_code']??'',120);
+  $rule=null;$args=[];$parts=[];
+  if($cid!==''){$parts[]='customer_id=?';$args[]=$cid;}
+  if($name!==''){$parts[]='customer_name=?';$args[]=$name;}
+  if($code!==''){$parts[]='customer_id=?';$args[]=$code;}
+  if($parts)$rule=row($pdo,"SELECT * FROM quote_commission_rules WHERE is_active=1 AND (".implode(' OR ',$parts).") ORDER BY updated_at DESC,id DESC LIMIT 1",$args);
+  $histArgs=[];$histWhere=[];
+  if($cid!==''){$histWhere[]='o.customer_id=?';$histArgs[]=$cid;}
+  if($name!==''){$histWhere[]='o.customer_name=?';$histArgs[]=$name;}
+  $history=$histWhere?rows($pdo,"SELECT o.order_date,o.order_no,o.quote_no,o.customer_name,s.* FROM quote_commission_snapshots s JOIN quote_sales_orders o ON o.id=s.order_id WHERE (".implode(' OR ',$histWhere).") ORDER BY COALESCE(o.order_date,o.created_at) DESC,s.id DESC LIMIT 5",$histArgs):[];
+  $reminders=rows($pdo,"SELECT * FROM quote_commission_reminder_rules WHERE scene='quote_customer_selected' AND is_active=1 AND (COALESCE(customer_scope,'all')='all' OR customer_id=? OR customer_code=? OR customer_name=?) ORDER BY sort_order,id",[$cid,$code,$name]);$activeTriggers=array_column($reminders,'trigger_condition');$explicitReminder=false;foreach($reminders as $rr)if(($rr['customer_scope']??'all')==='specific'){$explicitReminder=true;break;}$shouldRemind=(bool)($explicitReminder||($rule&&in_array('customer_has_commission_rule',$activeTriggers,true))||($history&&in_array('customer_has_commission_history',$activeTriggers,true)));
+  $result=['has_commission'=>(bool)($rule||$history||$explicitReminder),'has_rule'=>(bool)$rule,'has_history'=>(bool)$history,'has_explicit_reminder'=>$explicitReminder,'should_remind'=>$shouldRemind,'customer_name'=>$name,'latest_rule'=>$rule?:null,'latest_snapshot'=>$history[0]??null,'recent_records'=>$history,'reminder_rules'=>$reminders];
+  if($result['has_commission'])quote_log_event($pdo,['action'=>'commission_customer_reminder_triggered','event'=>'选择客户触发佣金提醒','quote_id'=>(int)($d['quote_id']??0),'quote_no'=>$d['quote_no']??'','customer_id'=>$cid,'customer_name'=>$name,'user_name'=>$user['username']??'','summary'=>'客户存在佣金规则或历史：'.$name,'detail'=>$result]);
+  return $result;
+}
+function quote_commission_reminder_list($pdo){quote_commission_schema($pdo);return ['list'=>rows($pdo,'SELECT * FROM quote_commission_reminder_rules ORDER BY sort_order,id')];}
+function quote_commission_reminder_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$id=(int)($d['id']??0);$before=$id?row($pdo,'SELECT * FROM quote_commission_reminder_rules WHERE id=?',[$id]):null;$actor=quote_price_policy_actor($user);
+  $scope=($d['customer_scope']??'all')==='specific'?'specific':'all';$r=['id'=>$id,'scene'=>s($d['scene']??'',80),'trigger_condition'=>s($d['trigger_condition']??'',120),'customer_scope'=>$scope,'customer_id'=>$scope==='specific'?s($d['customer_id']??'',120):'','customer_code'=>$scope==='specific'?s($d['customer_code']??'',120):'','customer_name'=>$scope==='specific'?s($d['customer_name']??'',255):'','remind_level'=>s($d['remind_level']??'warning',50),'action_mode'=>s($d['action_mode']??'remind',80),'require_reason'=>empty($d['require_reason'])?0:1,'is_active'=>array_key_exists('is_active',$d)?(empty($d['is_active'])?0:1):1,'sort_order'=>(int)($d['sort_order']??0),'note'=>s($d['note']??'',5000),'updated_by'=>$actor];if(!$r['scene']||!$r['trigger_condition'])fail('提醒场景和触发条件不能为空');if($scope==='specific'&&$r['customer_id']===''&&$r['customer_code']===''&&$r['customer_name']==='')fail('请选择指定客户');if(!$id)$r['created_by']=$actor;
+  $id=(int)save_row($pdo,'quote_commission_reminder_rules',$r,['scene','trigger_condition','customer_scope','customer_id','customer_code','customer_name','remind_level','action_mode','require_reason','is_active','sort_order','note','created_by','updated_by']);$after=row($pdo,'SELECT * FROM quote_commission_reminder_rules WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_reminder_save','event'=>'保存佣金提醒设置','user_name'=>$actor,'summary'=>$after['scene'].' / '.$after['trigger_condition'].' / '.($after['customer_name']?:'全部客户'),'before'=>$before,'after'=>$after]);return ['rule'=>$after];
+}
+function quote_commission_init_defaults($pdo,$writeLog=true){
+  $defs=[
+    'target_type'=>[['sales','业务员'],['agent','代理'],['referrer','介绍人'],['customer','客户'],['other','其它']],
+    'commission_mode'=>[['percent','百分比抽点'],['fixed_order','固定金额'],['fixed_unit','每件固定'],['profit_percent','毛利抽点']],
+    'calc_base'=>[['order_amount','订单金额'],['product_amount','产品金额'],['received_amount','已收款金额'],['gross_profit','毛利']],
+    'settle_node'=>[['order_confirmed','订单确认后'],['deposit_received','收订金后'],['shipped','出货后'],['payment_received','收全款后'],['manual','手动结算']],
+    'settle_status'=>[['unsettled','未结算'],['pending','待结算'],['partial','部分结算'],['settled','已结算'],['cancelled','已取消']],
+    'commission_reason'=>[['agent','代理佣金'],['referral','客户介绍费'],['sales','业务提成'],['rebate','项目返点'],['approval','老板特批'],['adjustment','补差价'],['other','其它']],
+    'currency'=>[['USD','USD'],['RMB','RMB'],['EUR','EUR']]
+  ];$st=$pdo->prepare('INSERT IGNORE INTO quote_commission_options(option_group,option_code,option_name,option_value,is_system,is_active,sort_order,created_by,updated_by) VALUES(?,?,?,?,1,1,?,?,?)');$actor='system';$added=0;
+  foreach($defs as $group=>$items)foreach($items as $i=>$x){$st->execute([$group,$x[0],$x[1],$x[0],($i+1)*10,$actor,$actor]);$added+=$st->rowCount();}
+  if($writeLog&&$added)quote_log_event($pdo,['action'=>'commission_options_init_defaults','event'=>'初始化佣金设置','user_name'=>$actor,'summary'=>'初始化佣金选项 '.$added.' 项']);return ['added'=>$added];
+}
+function quote_commission_options_list($pdo){quote_commission_schema($pdo);return ['options'=>rows($pdo,'SELECT * FROM quote_commission_options ORDER BY option_group,is_active DESC,sort_order,id')];}
+function quote_commission_option_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$id=(int)($d['id']??0);$before=$id?row($pdo,'SELECT * FROM quote_commission_options WHERE id=?',[$id]):null;$actor=quote_price_policy_actor($user);
+  $row=['id'=>$id,'option_group'=>s($d['option_group']??'',80),'option_code'=>s($d['option_code']??'',120),'option_name'=>s($d['option_name']??'',160),'option_value'=>s($d['option_value']??($d['option_code']??''),255),'extra_json'=>is_string($d['extra_json']??'')?$d['extra_json']:json_encode($d['extra']??[],JSON_UNESCAPED_UNICODE),'is_system'=>(int)($before['is_system']??0),'is_default'=>empty($d['is_default'])?0:1,'is_active'=>array_key_exists('is_active',$d)?(empty($d['is_active'])?0:1):1,'sort_order'=>(int)($d['sort_order']??0),'note'=>(string)($d['note']??''),'updated_by'=>$actor];if(!$row['option_group']||!$row['option_code']||!$row['option_name'])fail('分组、代码和名称不能为空');if(!$id)$row['created_by']=$actor;
+  $id=(int)save_row($pdo,'quote_commission_options',$row,['option_group','option_code','option_name','option_value','extra_json','is_system','is_default','is_active','sort_order','note','created_by','updated_by']);$after=row($pdo,'SELECT * FROM quote_commission_options WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_option_save','event'=>'保存佣金设置','user_name'=>$actor,'summary'=>$after['option_name'],'before'=>$before,'after'=>$after]);return ['id'=>$id,'option'=>$after];
+}
+function quote_commission_calc($mode,$value,$base,$qty){$value=(float)$value;$base=(float)$base;$qty=(float)$qty;if($mode==='percent')return round($base*$value/100,2);if($mode==='fixed_order')return round($value,2);if($mode==='fixed_unit')return round($qty*$value,2);return null;}
+function quote_commission_order_list($pdo,$d){
+  quote_commission_schema($pdo);$where=[];$args=[];$q=s($d['keyword']??'',160);
+  if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ? OR s.target_name LIKE ? OR s.note LIKE ?)';for($i=0;$i<6;$i++)$args[]='%'.$q.'%';}
+  $settle=s($d['settle_status']??'',50);if($settle!==''){$where[]='COALESCE(s.settle_status,?)=?';$args[]='unsettled';$args[]=$settle;}
+  if(!empty($d['missing_only']))$where[]='s.id IS NULL';$currency=s($d['currency']??'',20);if($currency!==''){$where[]='o.currency=?';$args[]=$currency;}
+  $sqlWhere=$where?' WHERE '.implode(' AND ',$where):'';$size=max(10,min(200,(int)($d['page_size']??50)));$page=max(1,(int)($d['page']??1));
+  $join=' LEFT JOIN quote_commission_snapshots s ON s.id=(SELECT sx.id FROM quote_commission_snapshots sx WHERE sx.order_id=o.id ORDER BY (sx.rule_id=0) DESC,sx.id DESC LIMIT 1)';
+  $total=(int)(row($pdo,'SELECT COUNT(*) c FROM quote_sales_orders o'.$join.$sqlWhere,$args)['c']??0);$pages=max(1,(int)ceil($total/$size));$page=min($page,$pages);$offset=($page-1)*$size;
+  $list=rows($pdo,'SELECT o.id AS order_id,o.order_no,o.quote_no,o.customer_name,o.user_name,o.amount AS order_amount,o.qty AS total_qty,o.currency AS order_currency,o.paid_amount,o.payment_status,o.shipment_status,o.status AS order_status,o.created_at AS order_created_at,s.id AS snapshot_id,s.rule_id,s.target_name,s.target_type,s.commission_mode,s.commission_value,s.calc_base,s.base_amount,s.commission_amount,s.currency,s.settle_node,s.settle_status,s.settled_amount,s.note,s.settled_at,s.settled_by FROM quote_sales_orders o'.$join.$sqlWhere.' ORDER BY COALESCE(o.order_date,o.created_at) DESC,o.id DESC LIMIT '.$size.' OFFSET '.$offset,$args);
+  $orderIds=array_values(array_filter(array_map(fn($x)=>(int)$x['order_id'],$list)));$grouped=[];
+  if($orderIds){$marks=implode(',',array_fill(0,count($orderIds),'?'));$itemRows=rows($pdo,"SELECT i.id AS order_item_id,i.order_id,i.item_index,i.product_code AS product_model,i.product_name,i.qty,i.amount AS product_amount,i.unit_price,i.color,c.id AS item_commission_id,c.target_name,c.target_type,c.commission_mode,c.commission_value,c.calc_base,c.base_amount,c.commission_amount,c.currency,c.settle_node,c.settle_status,c.settled_amount,c.note FROM quote_sales_order_items i LEFT JOIN quote_commission_item_snapshots c ON c.order_item_id=i.id WHERE i.order_id IN ($marks) ORDER BY i.order_id,i.item_index,i.id",$orderIds);foreach($itemRows as $it)$grouped[(int)$it['order_id']][]=$it;}
+  foreach($list as &$o)$o['items']=$grouped[(int)$o['order_id']]??[];unset($o);
+  return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
+}
+function quote_commission_order_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$orderId=(int)($d['order_id']??0);$o=row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]);if(!$o)fail('订单不存在');
+  $mode=s($d['commission_mode']??'percent',50);$value=max(0,(float)($d['commission_value']??0));$baseCode=s($d['calc_base']??'order_amount',50);$base=$baseCode==='received_amount'?(float)($o['paid_amount']??0):(float)($o['amount']??0);$commission=quote_commission_calc($mode,$value,$base,(float)($o['qty']??0));if($commission===null)fail('毛利数据不足，暂不能计算');
+  $old=row($pdo,'SELECT * FROM quote_commission_snapshots WHERE order_id=? AND rule_id=0 LIMIT 1',[$orderId]);$actor=quote_price_policy_actor($user);$snapshot=['source'=>'manual_order_commission','operator'=>$actor,'time'=>date('Y-m-d H:i:s'),'before'=>$old,'order'=>['id'=>$orderId,'order_no'=>$o['order_no'],'quote_no'=>$o['quote_no'],'amount'=>$o['amount'],'qty'=>$o['qty']]];
+  $params=[(int)($o['source_quote_id']??0),$o['quote_no'],$o['order_no'],s($d['target_type']??'other',50),s($d['target_name']??'',160),$mode,$value,$baseCode,$base,$commission,s($d['currency']??$o['currency'],20),s($d['settle_node']??'manual',50),s($d['settle_status']??'unsettled',50),max(0,(float)($d['settled_amount']??0)),json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),s($d['note']??'订单佣金',5000)];
+  if($old){$pdo->prepare('UPDATE quote_commission_snapshots SET quote_id=?,quote_no=?,order_no=?,target_type=?,target_name=?,commission_mode=?,commission_value=?,calc_base=?,base_amount=?,commission_amount=?,currency=?,settle_node=?,settle_status=?,settled_amount=?,snapshot_json=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($params,[(int)$old['id']]));$id=(int)$old['id'];}
+  else{$pdo->prepare("INSERT INTO quote_commission_snapshots(quote_id,order_id,quote_no,order_no,rule_id,rule_name,target_type,target_name,commission_mode,commission_value,calc_base,base_amount,commission_amount,currency,settle_node,settle_status,settled_amount,snapshot_json,note) VALUES(?,?,?,?,0,'订单手填佣金',?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute(array_merge(array_slice($params,0,3),[$orderId],array_slice($params,3)));$id=(int)$pdo->lastInsertId();}
+  $after=row($pdo,'SELECT * FROM quote_commission_snapshots WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_order_save','event'=>'保存订单佣金','user_name'=>$actor,'summary'=>(string)$o['order_no'].' / '.(string)($after['target_name']??''),'before'=>$old,'after'=>$after]);return ['id'=>$id,'snapshot'=>$after];
+}
+function quote_commission_order_batch_save($pdo,$d,$user){$saved=[];$errors=[];foreach(($d['items']??[]) as $x){try{$saved[]=quote_commission_order_save($pdo,$x,$user);}catch(Throwable $e){$errors[]=['order_id'=>$x['order_id']??0,'reason'=>$e->getMessage()];}}return ['saved'=>$saved,'errors'=>$errors];}
+function quote_commission_quote_list($pdo,$d){
+  quote_commission_schema($pdo);$q=s($d['keyword']??'',160);$where='';$args=[];if($q!==''){$where=' WHERE (quote_no LIKE ? OR customer_name LIKE ? OR user_name LIKE ?)';$args=['%'.$q.'%','%'.$q.'%','%'.$q.'%'];}
+  $rows=rows($pdo,"SELECT id,quote_no,quote_date,customer_id,customer_name,user_name,amount,qty,currency,approval_status,status,items_json,commission_json,created_at FROM quote_orders".$where." ORDER BY COALESCE(quote_date,created_at) DESC,id DESC LIMIT 500",$args);$list=[];
+  foreach($rows as $r){$c=json_decode((string)($r['commission_json']??''),true);if(!is_array($c))$c=[];$items=json_decode((string)($r['items_json']??'[]'),true);if(!is_array($items))$items=[];$lineMap=[];foreach(($c['lines']??[]) as $x)$lineMap[(int)($x['item_index']??-1)]=$x;$children=[];
+    foreach($items as $i=>$it){$p=$it['product']??[];$line=$lineMap[$i]??[];$children[]=['order_item_id'=>-((int)$r['id']*1000+$i+1),'quote_item_index'=>$i,'order_id'=>-(int)$r['id'],'item_index'=>$i+1,'image'=>$p['image']??'','product_model'=>$p['code']??$p['model']??'','customer_model'=>$it['customer_code']??'','product_name'=>$p['name']??'','color'=>$it['color']??'','qty'=>(float)($it['qty']??0),'unit_price'=>(float)($it['price']??0),'product_amount'=>(float)($it['amount']??0),'is_commission_enabled'=>array_key_exists('value',$line)?1:0,'target_type'=>'other','target_name'=>$line['target_name']??'','commission_mode'=>$line['mode']??'percent','commission_value'=>$line['value']??0,'calc_base'=>'product_amount','base_amount'=>(float)($it['amount']??0),'commission_amount'=>(float)($line['estimated_amount']??0),'currency'=>$line['currency']??$r['currency'],'receivable_effect'=>$c['commission_receivable_effect']??'none','settle_status'=>'unsettled','note'=>$line['note']??''];}
+    $list[]=['entity_type'=>'quote','quote_id'=>(int)$r['id'],'order_id'=>-(int)$r['id'],'order_no'=>'报价 · '.$r['quote_no'],'quote_no'=>$r['quote_no'],'customer_name'=>$r['customer_name'],'user_name'=>$r['user_name'],'order_amount'=>$r['amount'],'total_qty'=>$r['qty'],'order_currency'=>$r['currency'],'paid_amount'=>0,'payment_status'=>'报价阶段','shipment_status'=>'未转订单','order_status'=>$r['approval_status']?:$r['status'],'order_created_at'=>$r['created_at'],'snapshot_id'=>0,'rule_id'=>$c['commission_rule_id']??0,'target_name'=>$c['commission_target_name']??'','target_type'=>'other','commission_mode'=>$c['commission_mode']??'percent','commission_value'=>$c['commission_value']??0,'calc_base'=>$c['commission_calc_base']??'order_amount','base_amount'=>$r['amount'],'commission_amount'=>$c['commission_estimated_amount']??0,'currency'=>$c['commission_currency']??$r['currency'],'settle_node'=>$c['commission_settle_node']??'manual','settle_status'=>$c['commission_confirm_status']??'unconfirmed','settled_amount'=>0,'commission_scope'=>!empty($c['lines'])?'line':'order','receivable_effect'=>$c['commission_receivable_effect']??'none','note'=>$c['commission_note']??'','items'=>$children];}
+  return ['list'=>$list,'total'=>count($list)];
+}
+function quote_commission_quote_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$id=(int)($d['quote_id']??abs((int)($d['order_id']??0)));$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$id]);if(!$q)fail('报价不存在');$before=json_decode((string)($q['commission_json']??''),true);if(!is_array($before))$before=[];$mode=s($d['commission_mode']??($before['commission_mode']??'percent'),50);$value=max(0,(float)($d['commission_value']??($before['commission_value']??0)));$amount=(float)$q['amount'];$commission=quote_commission_calc($mode,$value,$amount,(float)$q['qty']);if($commission===null)$commission=(float)($before['commission_estimated_amount']??0);
+  $after=array_merge($before,['commission_required'=>$value>0?1:0,'commission_confirm_status'=>$before['commission_confirm_status']??'quote_manual','commission_source'=>'quote_commission_table','commission_target_name'=>s($d['target_name']??($before['commission_target_name']??''),160),'commission_mode'=>$mode,'commission_value'=>$value,'commission_calc_base'=>s($d['calc_base']??($before['commission_calc_base']??'order_amount'),50),'commission_estimated_amount'=>$commission,'commission_currency'=>s($d['currency']??$q['currency'],20),'commission_receivable_effect'=>s($d['receivable_effect']??($before['commission_receivable_effect']??'none'),50),'commission_settle_node'=>s($d['settle_node']??($before['commission_settle_node']??'manual'),50),'commission_note'=>s($d['note']??($before['commission_note']??''),5000),'updated_at'=>date('c')]);$pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);quote_log_event($pdo,['action'=>'commission_quote_save','event'=>'保存报价佣金','quote_id'=>$id,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'before'=>$before,'after'=>$after]);return ['quote_id'=>$id,'commission'=>$after];
+}
+function quote_commission_quote_lines_save($pdo,$d,$user){
+  $group=[];foreach(($d['items']??[]) as $x){$qid=(int)($x['quote_id']??0);if(!$qid&&isset($x['order_id']))$qid=abs((int)$x['order_id']);if($qid)$group[$qid][]=$x;}$saved=[];$errors=[];
+  foreach($group as $qid=>$edits){try{$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$qid]);if(!$q)throw new RuntimeException('报价不存在');$c=json_decode((string)($q['commission_json']??''),true);if(!is_array($c))$c=[];$items=json_decode((string)($q['items_json']??'[]'),true);if(!is_array($items))$items=[];$lines=$c['lines']??[];if(!is_array($lines))$lines=[];foreach($edits as $e){$idx=(int)($e['quote_item_index']??0);$it=$items[$idx]??[];$p=$it['product']??[];$mode=s($e['commission_mode']??'percent',50);$value=max(0,(float)($e['commission_value']??0));$base=(float)($it['amount']??0);$est=quote_commission_calc($mode,$value,$base,(float)($it['qty']??0));$lines[$idx]=['item_index'=>$idx,'item_key'=>(string)($p['code']??$p['model']??$idx),'product_model'=>$p['code']??$p['model']??'','product_name'=>$p['name']??'','qty'=>(float)($it['qty']??0),'unit_price'=>(float)($it['price']??0),'amount'=>$base,'included_in_price'=>$e['included_in_price']??'included','mode'=>$mode,'value'=>$value,'estimated_amount'=>$est??0,'currency'=>$e['currency']??$q['currency'],'target_name'=>$e['target_name']??'','note'=>$e['note']??''];}$c['lines']=array_values($lines);$c['commission_scope']='line';$c['commission_confirm_status']='line_confirmed';$c['commission_estimated_amount']=array_sum(array_map(fn($x)=>(float)($x['estimated_amount']??0),$c['lines']));$pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qid]);$saved[]=$qid;}catch(Throwable $e){$errors[]=['quote_id'=>$qid,'reason'=>$e->getMessage()];}}
+  return ['saved'=>$saved,'errors'=>$errors];
+}
+function quote_commission_item_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$itemId=(int)($d['order_item_id']??0);$it=row($pdo,'SELECT i.*,o.order_no,o.quote_no,o.currency AS order_currency FROM quote_sales_order_items i JOIN quote_sales_orders o ON o.id=i.order_id WHERE i.id=? LIMIT 1',[$itemId]);if(!$it)fail('订单产品不存在');
+  $mode=s($d['commission_mode']??'percent',50);$value=max(0,(float)($d['commission_value']??0));$baseCode=s($d['calc_base']??'product_amount',50);$base=(float)($it['amount']??0);$commission=quote_commission_calc($mode,$value,$base,(float)($it['qty']??0));if($commission===null)fail('毛利数据不足，暂不能计算');
+  $old=row($pdo,'SELECT * FROM quote_commission_item_snapshots WHERE order_item_id=? LIMIT 1',[$itemId]);$actor=quote_price_policy_actor($user);$snapshot=['source'=>'manual_order_item_commission','operator'=>$actor,'time'=>date('Y-m-d H:i:s'),'before'=>$old,'item'=>['id'=>$itemId,'order_id'=>$it['order_id'],'product_model'=>$it['product_code'],'product_name'=>$it['product_name'],'qty'=>$it['qty'],'amount'=>$it['amount']]];
+  $row=['id'=>(int)($old['id']??0),'order_id'=>(int)$it['order_id'],'order_item_id'=>$itemId,'order_no'=>$it['order_no'],'quote_no'=>$it['quote_no'],'product_model'=>$it['product_code'],'product_name'=>$it['product_name'],'qty'=>$it['qty'],'product_amount'=>$it['amount'],'target_type'=>s($d['target_type']??'other',50),'target_name'=>s($d['target_name']??'',160),'commission_mode'=>$mode,'commission_value'=>$value,'calc_base'=>$baseCode,'base_amount'=>$base,'commission_amount'=>$commission,'currency'=>s($d['currency']??$it['order_currency'],20),'settle_node'=>s($d['settle_node']??'manual',50),'settle_status'=>s($d['settle_status']??'unsettled',50),'settled_amount'=>max(0,(float)($d['settled_amount']??0)),'snapshot_json'=>json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'note'=>s($d['note']??'产品佣金',5000),'updated_by'=>$actor];
+  if(!$old)$row['created_by']=$actor;$id=(int)save_row($pdo,'quote_commission_item_snapshots',$row,['order_id','order_item_id','order_no','quote_no','product_model','product_name','qty','product_amount','target_type','target_name','commission_mode','commission_value','calc_base','base_amount','commission_amount','currency','settle_node','settle_status','settled_amount','snapshot_json','note','created_by','updated_by']);$after=row($pdo,'SELECT * FROM quote_commission_item_snapshots WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_item_save','event'=>'保存产品佣金','user_name'=>$actor,'summary'=>$it['order_no'].' / '.$it['product_code'],'before'=>$old,'after'=>$after]);return ['id'=>$id,'snapshot'=>$after];
+}
+function quote_commission_item_batch_save($pdo,$d,$user){$saved=[];$errors=[];foreach(($d['items']??[]) as $x){try{$saved[]=quote_commission_item_save($pdo,$x,$user);}catch(Throwable $e){$errors[]=['order_item_id'=>$x['order_item_id']??0,'reason'=>$e->getMessage()];}}return ['saved'=>$saved,'errors'=>$errors];}
+function quote_commission_rule_list($pdo){
+  quote_commission_schema($pdo);$w=[];$a=[];$q=trim((string)($_GET['keyword']??''));if($q!==''){$w[]='(target_name LIKE ? OR customer_name LIKE ? OR product_model LIKE ? OR rule_name LIKE ? OR note LIKE ?)';for($i=0;$i<5;$i++)$a[]='%'.$q.'%';}
+  foreach(['target_type','commission_mode','calc_base','settle_node','settle_status','currency'] as $f){$v=trim((string)($_GET[$f]??''));if($v!==''){$w[]='`'.$f.'`=?';$a[]=$v;}}if(isset($_GET['status'])&&$_GET['status']!==''){$w[]='is_active=?';$a[]=(int)$_GET['status'];}
+  $size=max(10,min(200,(int)($_GET['page_size']??50)));$page=max(1,(int)($_GET['page']??1));$where=$w?' WHERE '.implode(' AND ',$w):'';$total=(int)row($pdo,'SELECT COUNT(*) c FROM quote_commission_rules'.$where,$a)['c'];$pages=max(1,(int)ceil($total/$size));$page=min($page,$pages);$offset=($page-1)*$size;
+  $list=rows($pdo,'SELECT * FROM quote_commission_rules'.$where.' ORDER BY updated_at DESC,id DESC LIMIT '.$size.' OFFSET '.$offset,$a);return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
+}
+function quote_commission_rule_save($pdo,$d,$user){
+  quote_commission_schema($pdo);$id=(int)($d['id']??0);$before=$id?row($pdo,'SELECT * FROM quote_commission_rules WHERE id=?',[$id]):null;$actor=quote_price_policy_actor($user);$allowed=['rule_name','target_type','target_name','target_contact','commission_mode','commission_value','currency','calc_base','settle_node','settle_status','apply_scope','customer_id','customer_name','product_model','category','settled_amount','is_active','note'];
+  foreach(['commission_value','settled_amount'] as $f)if(isset($d[$f]))$d[$f]=max(0,(float)$d[$f]);$d['updated_by']=$actor;if(!$id)$d['created_by']=$actor;$d['id']=$id;$id=(int)save_row($pdo,'quote_commission_rules',$d,array_merge($allowed,['created_by','updated_by']));$after=row($pdo,'SELECT * FROM quote_commission_rules WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_rule_save','event'=>'保存佣金规则','user_name'=>$actor,'summary'=>($after['target_name']?:$after['rule_name']),'before'=>$before,'after'=>$after]);return ['id'=>$id,'rule'=>$after];
+}
+function quote_commission_batch_save($pdo,$d,$user){$saved=[];$errors=[];foreach(($d['items']??[]) as $x){try{$r=quote_commission_rule_save($pdo,$x,$user);$saved[]=['id'=>$r['id']];}catch(Throwable $e){$errors[]=['id'=>$x['id']??0,'reason'=>$e->getMessage()];}}return ['saved'=>$saved,'errors'=>$errors,'saved_count'=>count($saved),'failed_count'=>count($errors)];}
+function quote_commission_export($pdo,$user){
+  quote_commission_schema($pdo);$headers=['规则名称','佣金对象','对象类型','联系方式','佣金模式','佣金值','计算基准','币种','结算节点','适用范围','指定客户','指定产品','指定分类','状态','备注'];$fields=['rule_name','target_name','target_type','target_contact','commission_mode','commission_value','calc_base','currency','settle_node','apply_scope','customer_name','product_model','category','is_active','note'];$data=rows($pdo,'SELECT * FROM quote_commission_rules ORDER BY updated_at DESC,id DESC');
+  while(ob_get_level()>0)@ob_end_clean();header('Content-Type: application/vnd.ms-excel; charset=UTF-8');header('Content-Disposition: attachment; filename="commission_rules_'.date('Ymd_His').'.xls"');echo "\xEF\xBB\xBF".'<table border="1"><tr>';foreach($headers as $h)echo '<th>'.htmlspecialchars($h,ENT_QUOTES,'UTF-8').'</th>';echo '</tr>';foreach($data as $r){echo '<tr>';foreach($fields as $f){$v=$r[$f]??'';if($f==='is_active')$v=$v?'启用':'停用';echo '<td>'.htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8').'</td>';}echo '</tr>';}echo '</table>';quote_log_event($pdo,['action'=>'commission_rule_export','event'=>'导出佣金规则','user_name'=>quote_price_policy_actor($user),'summary'=>'导出佣金规则 '.count($data).' 条']);exit;
+}
+function quote_commission_import($pdo,$user){
+  quote_commission_schema($pdo);$rows=quote_price_excel_rows_from_upload($_FILES['file']??[]);if(count($rows)<2)fail('Excel 没有可导入的数据');$head=array_shift($rows);$map=[];foreach($head as $c=>$v)$map[trim((string)$v)]=$c;$get=function($r,$k)use($map){return isset($map[$k])?(string)($r[$map[$k]]??''):'';};$ok=0;$bad=0;$errors=[];
+  foreach($rows as $i=>$r){$name=trim($get($r,'规则名称'));$target=trim($get($r,'佣金对象'));if($name===''&&$target==='')continue;try{$old=row($pdo,'SELECT id FROM quote_commission_rules WHERE rule_name=? AND target_name=? LIMIT 1',[$name,$target]);$d=['id'=>(int)($old['id']??0),'rule_name'=>$name,'target_name'=>$target,'target_type'=>$get($r,'对象类型'),'target_contact'=>$get($r,'联系方式'),'commission_mode'=>$get($r,'佣金模式')?:'percent','commission_value'=>(float)$get($r,'佣金值'),'calc_base'=>$get($r,'计算基准')?:'order_amount','currency'=>strtoupper($get($r,'币种')?:'USD'),'settle_node'=>$get($r,'结算节点')?:'payment_received','apply_scope'=>$get($r,'适用范围')?:'all','customer_name'=>$get($r,'指定客户'),'product_model'=>$get($r,'指定产品'),'category'=>$get($r,'指定分类'),'is_active'=>!in_array(trim($get($r,'状态')),['停用','0'],true),'note'=>$get($r,'备注')];quote_commission_rule_save($pdo,$d,$user);$ok++;}catch(Throwable $e){$bad++;$errors[]=['line'=>$i+2,'reason'=>$e->getMessage()];}}
+  $result=['success'=>$ok,'failed'=>$bad,'errors'=>$errors];quote_log_event($pdo,['action'=>'commission_rule_import','event'=>'导入佣金规则','user_name'=>quote_price_policy_actor($user),'summary'=>'导入佣金规则：成功 '.$ok.'，失败 '.$bad,'detail'=>$result]);return $result;
+}
+function quote_price_policy_match($pdo){
+  ensure_quote_price_policy_schema($pdo);
+  $model=trim((string)($_GET['product_model']??''));
+  $namingId=trim((string)($_GET['naming_id']??''));
+  $qty=max(0,(float)($_GET['qty']??0));
+  if($model===''&&$namingId==='')return ['matched'=>0,'message'=>'未设置价格策略，当前使用旧报价逻辑'];
+  $where=["p.status='active'"];$args=[];
+  if($namingId!==''){$where[]='p.naming_id=?';$args[]=$namingId;}
+  if($model!==''){$where[]='UPPER(p.product_model)=UPPER(?)';$args[]=$model;}
+  $policy=row($pdo,'SELECT p.*,l.level_name,l.level_code FROM quote_price_policies p LEFT JOIN quote_price_policy_levels l ON l.id=p.level_id WHERE '.implode(' AND ',$where).' ORDER BY p.id ASC LIMIT 1',$args);
+  if(!$policy && $model!=='' && $namingId!==''){
+    $policy=row($pdo,"SELECT p.*,l.level_name,l.level_code FROM quote_price_policies p LEFT JOIN quote_price_policy_levels l ON l.id=p.level_id WHERE p.status='active' AND UPPER(p.product_model)=UPPER(?) ORDER BY p.id ASC LIMIT 1",[$model]);
+  }
+  if(!$policy)return ['matched'=>0,'message'=>'未设置价格策略，当前使用旧报价逻辑'];
+  $tier=row($pdo,"SELECT * FROM quote_price_tiers WHERE policy_id=? AND min_qty<=? AND final_price IS NOT NULL ORDER BY min_qty DESC,FIELD(source,'approval','manual','manual_override','level_auto') ASC,id DESC LIMIT 1",[(int)$policy['id'],$qty]);
+  $source=$tier['source']??'';$labels=['approval'=>'特批','manual'=>'手填','manual_override'=>'手动覆盖','level_auto'=>'等级生成'];
+  return [
+    'matched'=>$tier?1:0,
+    'has_policy'=>1,
+    'policy_id'=>(int)$policy['id'],
+    'product_model'=>(string)$policy['product_model'],
+    'moq'=>(float)$policy['moq'],
+    'has_stock'=>(int)$policy['has_stock'],
+    'stock_qty'=>(float)$policy['stock_qty'],
+    'allow_below_moq'=>(int)$policy['allow_below_moq'],
+    'need_approval_below_moq'=>(int)$policy['need_approval_below_moq'],
+    'lead_time'=>(string)$policy['lead_time'],
+    'currency'=>(string)$policy['currency'],
+    'price_mode'=>(string)$policy['price_mode'],
+    'level_id'=>(int)$policy['level_id'],
+    'level_name'=>(string)($policy['level_name']??''),
+    'tier_id'=>(int)($tier['id']??0),
+    'matched_min_qty'=>$tier?(float)$tier['min_qty']:null,
+    'final_price'=>$tier?(float)$tier['final_price']:null,
+    'price_source'=>$source,
+    'price_source_label'=>$labels[$source]??'',
+    'message'=>$tier?'':'已设置价格策略，但当前数量没有可匹配的阶梯价，继续使用旧报价逻辑'
+  ];
+}
+function quote_price_policy_first_value($row,$keys,$default=''){
+  foreach($keys as $key){ if(array_key_exists($key,$row) && trim((string)$row[$key])!=='') return trim((string)$row[$key]); }
+  return $default;
+}
+function quote_price_policy_lamp_type($row){
+  $raw=quote_price_policy_first_value($row,['lamp_type','type','product_type','dimension_type','category','item_name'],'');
+  $nameText=implode(' ',array_filter([(string)($row['product_name']??''),(string)($row['series_name']??''),(string)($row['web_series']??'')]));
+  $text=implode(' ',array_filter([(string)($row['category']??''),(string)($row['item_name']??''),$raw,$nameText]));
+  if(preg_match('/线性|线条|linear/i',$nameText))return '线性灯';
+  foreach([
+    ['外购产品','/外购|outsource|purchased/i'],['嵌入式','/嵌入|无边|有边|recessed|downlight/i'],
+    ['导轨灯','/导轨|track/i'],['磁吸灯','/磁吸|magnetic/i'],['明装灯','/明装|surface/i'],['吊线灯','/吊线|吊装|pendant/i'],['户外灯','/户外|outdoor/i']
+  ] as $rule){if(preg_match($rule[1],$text))return $rule[0];}
+  return $raw;
+}
+function quote_price_policy_mapped_category($pdo,$sourceCategory,$sourceLampType){
+  $maps=rows($pdo,"SELECT * FROM quote_price_policy_options WHERE option_group='category_mapping' AND is_active=1 ORDER BY sort_order,id");
+  foreach($maps as $m){$e=quote_price_policy_option_extra($m);$sc=trim((string)($e['source_category']??''));$sl=trim((string)($e['source_lamp_type']??''));
+    if(($sc===''||$sc===$sourceCategory)&&($sl===''||$sl===$sourceLampType))return [(string)($e['display_category']??$sourceCategory),(string)($e['display_lamp_type']??$sourceLampType)];
+  }
+  return [$sourceCategory,$sourceLampType];
+}
+function quote_price_policy_estimated_sale_rmb($pdo,$policy,$bomCost=null){
+  $cost=$bomCost===null?(float)($policy['bom_cost_rmb']??0):(float)$bomCost;if($cost<=0)return 0;
+  $levelId=(int)($policy['level_id']??0);$multiplier=0;
+  if($levelId>0){$level=row($pdo,'SELECT base_multiplier FROM quote_price_policy_levels WHERE id=? LIMIT 1',[$levelId]);$multiplier=(float)($level['base_multiplier']??0);}
+  if($multiplier<=0){$def=row($pdo,'SELECT base_multiplier FROM quote_price_policy_levels WHERE is_default=1 AND is_active=1 ORDER BY sort_order,id LIMIT 1');$multiplier=(float)($def['base_multiplier']??1.35);}
+  return round($cost*($multiplier>0?$multiplier:1.35),4);
+}
+function quote_price_policy_sync_bom_costs($pdo,$user,$writeLog=true){
+  ensure_quote_price_policy_schema($pdo);$costMap=get_bom_cost_map($pdo);$actor=quote_price_policy_actor($user);$matched=0;$missing=0;$changed=0;
+  // BOM 只提供整灯成本；预计卖价始终在价格策略中心按“成本 × 产品等级倍率”计算。
+  $costUp=$pdo->prepare('UPDATE quote_price_policies SET bom_cost_rmb=?,bom_cost_source=?,bom_match_key=?,bom_cost_updated_at=?,updated_by=?,updated_at=NOW() WHERE id=?');
+  $saleUp=$pdo->prepare('UPDATE quote_price_policies SET estimated_sale_price_rmb=? WHERE id=?');
+  foreach(rows($pdo,'SELECT * FROM quote_price_policies ORDER BY id') as $policy){
+    $product=['source'=>$policy['product_source']?:'naming','naming_id'=>$policy['naming_id'],'code'=>$policy['product_model'],'model'=>$policy['product_model'],'model_no'=>$policy['product_model']];
+    $ok=apply_bom_cost($product,$costMap);$cost=$ok?(float)($product['cost_rmb']??0):0;$estimated=quote_price_policy_estimated_sale_rmb($pdo,$policy,$cost);
+    $source=$ok?(string)($product['bom_cost_source']??''):'';$key=$ok?(string)($product['bom_match_key']??''):'';$updated=$ok?(string)($product['cost_updated_at']??''):'';
+    if($ok)$matched++;else$missing++;
+    $costChanged=abs((float)($policy['bom_cost_rmb']??0)-$cost)>.0001||$source!==(string)($policy['bom_cost_source']??'')||$key!==(string)($policy['bom_match_key']??'');
+    $saleChanged=abs((float)($policy['estimated_sale_price_rmb']??0)-$estimated)>.0001;
+    if($costChanged)$costUp->execute([$cost,$source,$key,$updated,$actor,(int)$policy['id']]);
+    if($saleChanged)$saleUp->execute([$estimated,(int)$policy['id']]);
+    if($costChanged||$saleChanged)$changed++;
+  }
+  $result=['total'=>$matched+$missing,'matched'=>$matched,'missing'=>$missing,'changed'=>$changed,'cost_map_count'=>count($costMap)];
+  if($writeLog)quote_log_event($pdo,['action'=>'price_policy_sync_bom_costs','event'=>'同步价格策略BOM成本','user_name'=>$actor,'summary'=>'BOM成本同步：匹配 '.$matched.'，未匹配 '.$missing.'，更新 '.$changed,'detail'=>$result]);
+  return $result;
+}
+function quote_price_policy_sync_naming_products($pdo,$user){
+  ensure_quote_price_policy_schema($pdo);
+  if(!table_exists($pdo,'naming_models')) fail('命名系统产品表 naming_models 不存在');
+  $cols=table_columns($pdo,'naming_models');
+  if(!in_array('id',$cols,true)||!in_array('model_no',$cols,true)) fail('命名系统产品表缺少 id 或 model_no 字段');
+  $where=["model_no<>''"];
+  if(in_array('website_deleted',$cols,true)) $where[]='COALESCE(website_deleted,0)=0';
+  if(in_array('status',$cols,true)) $where[]="LOWER(COALESCE(status,'')) NOT IN ('停用','已删除','disabled','inactive','deleted')";
+  $models=rows($pdo,'SELECT * FROM naming_models WHERE '.implode(' AND ',$where).' ORDER BY id ASC LIMIT 20000');
+  $byNaming=[];$byModel=[];
+  foreach(rows($pdo,'SELECT id,naming_id,product_model FROM quote_price_policies ORDER BY id ASC') as $p){
+    $nid=trim((string)($p['naming_id']??''));$model=strtoupper(trim((string)($p['product_model']??'')));
+    if($nid!=='')$byNaming[$nid]=(int)$p['id'];if($model!==''&&!isset($byModel[$model]))$byModel[$model]=(int)$p['id'];
+  }
+  $actor=quote_price_policy_actor($user);$created=0;$updated=0;$skipped=0;$errors=[];
+  $update=$pdo->prepare('UPDATE quote_price_policies SET product_source=?,product_id=?,naming_id=?,product_model=?,product_name=?,series=?,source_lamp_type=?,lamp_type=?,source_category=?,category=?,image=?,updated_by=?,updated_at=NOW() WHERE id=?');
+  $insert=$pdo->prepare("INSERT INTO quote_price_policies(product_source,product_id,naming_id,product_model,product_name,series,source_lamp_type,lamp_type,source_category,category,image,has_stock,stock_qty,stock_status_code,moq,moq_status_code,allow_below_moq,need_approval_below_moq,below_moq_rule_code,lead_time,currency,price_mode,level_id,base_cost,base_price,status,note,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,0,0,'no_stock',0,'unset',0,1,'approval','','USD','manual',0,0,0,'active','',?,?)");
+  foreach($models as $m){
+    try{
+      $namingId=trim((string)($m['id']??''));$model=trim((string)($m['model_no']??''));if($namingId===''||$model===''){ $skipped++;continue; }
+      $source=quote_price_policy_first_value($m,['source_system'],'naming');if($source==='')$source='naming';
+      $name=quote_price_policy_first_value($m,['product_name','series_name','web_series','item_name','lamp_type'],$model);
+      $series=quote_price_policy_first_value($m,['web_series','series_name','product_name'],'');
+      $sourceLampType=quote_price_policy_lamp_type($m);
+      $sourceCategory=quote_price_policy_first_value($m,['category','item_name','lamp_type'],'');
+      [$category,$lampType]=quote_price_policy_mapped_category($pdo,$sourceCategory,$sourceLampType);
+      $image=quote_price_policy_first_value($m,['image_path','web_image_url','source_image_url'],'');
+      $key=strtoupper($model);$id=$byNaming[$namingId]??($byModel[$key]??0);
+      if($id>0){
+        $update->execute([$source,$namingId,$namingId,$model,$name,$series,$sourceLampType,$lampType,$sourceCategory,$category,$image,$actor,$id]);$updated++;
+      }else{
+        $insert->execute([$source,$namingId,$namingId,$model,$name,$series,$sourceLampType,$lampType,$sourceCategory,$category,$image,$actor,$actor]);$id=(int)$pdo->lastInsertId();$created++;$byNaming[$namingId]=$id;$byModel[$key]=$id;
+      }
+    }catch(Throwable $e){$skipped++;if(count($errors)<20)$errors[]=['naming_id'=>$m['id']??'','model'=>$m['model_no']??'','error'=>$e->getMessage()];}
+  }
+  $result=['source_total'=>count($models),'created'=>$created,'updated'=>$updated,'skipped'=>$skipped,'errors'=>$errors];
+  $result['bom_costs']=quote_price_policy_sync_bom_costs($pdo,$user,false);
+  quote_log_event($pdo,['action'=>'price_policy_sync_naming_products','event'=>'同步命名产品到价格策略','user_name'=>$actor,'summary'=>'同步命名产品：新增 '.$created.'，更新 '.$updated.'，跳过 '.$skipped,'detail'=>$result]);
+  return $result;
+}
+function quote_price_qty_factor($qty,$pdo=null){
+  $qty=(float)$qty;$factor=1.30;
+  $rules=[[1,1.30],[10,1.15],[50,1.05],[100,1.00],[300,.95],[500,.90],[1000,.88]];
+  if($pdo){$configured=[];foreach(rows($pdo,"SELECT option_value,extra_json FROM quote_price_policy_options WHERE option_group='tier_qty' AND is_active=1 ORDER BY CAST(option_value AS DECIMAL(12,2)),sort_order,id") as $o){$q=(float)$o['option_value'];if($q<=0)continue;$e=quote_price_policy_option_extra($o);$configured[]=[$q,(float)($e['price_factor']??quote_price_qty_factor($q,null))];}if($configured)$rules=$configured;}
+  foreach($rules as $r){if($qty>=$r[0])$factor=$r[1];}
+  return $factor;
+}
+function quote_price_policy_auto_base($pdo,$policy){
+  $basePrice=(float)($policy['base_price']??0);if($basePrice>0)return $basePrice;
+  $cost=(float)($policy['base_cost']??0);if($cost<=0)return null;
+  $levelId=(int)($policy['level_id']??0);$level=$levelId>0?row($pdo,'SELECT * FROM quote_price_policy_levels WHERE id=? AND is_active=1 LIMIT 1',[$levelId]):null;
+  if(!$level)return null;return $cost*(float)($level['base_multiplier']??1.35);
+}
+function quote_price_tier_calculated($pdo,$policy,$tier){
+  $mode=quote_price_policy_mode($policy['price_mode']??'manual');$manual=quote_nullable_decimal($tier['manual_price']??null);$requested=quote_price_tier_source($tier['source']??'manual');
+  $base=quote_price_policy_auto_base($pdo,$policy);$auto=$base===null?null:round($base*quote_price_qty_factor($tier['min_qty']??0,$pdo),4);
+  if($requested==='approval'&&$manual!==null)return ['manual_price'=>$manual,'auto_price'=>$auto,'final_price'=>$manual,'source'=>'approval'];
+  if($mode==='manual'||!in_array($mode,['level_auto','mixed'],true))return ['manual_price'=>$manual,'auto_price'=>null,'final_price'=>$manual,'source'=>'manual'];
+  if($mode==='level_auto')return ['manual_price'=>$manual,'auto_price'=>$auto,'final_price'=>$auto,'source'=>'level_auto'];
+  if($manual!==null)return ['manual_price'=>$manual,'auto_price'=>$auto,'final_price'=>$manual,'source'=>'manual_override'];
+  return ['manual_price'=>null,'auto_price'=>$auto,'final_price'=>$auto,'source'=>'level_auto'];
+}
+function quote_price_policy_recalculate_tiers($pdo,$policyId){
+  $policy=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[(int)$policyId]);if(!$policy)return 0;$count=0;
+  $up=$pdo->prepare('UPDATE quote_price_tiers SET manual_price=?,auto_price=?,final_price=?,source=?,currency=?,updated_at=NOW() WHERE id=?');
+  foreach(rows($pdo,'SELECT * FROM quote_price_tiers WHERE policy_id=? ORDER BY min_qty ASC,id ASC',[(int)$policyId]) as $tier){$calc=quote_price_tier_calculated($pdo,$policy,$tier);$up->execute([$calc['manual_price'],$calc['auto_price'],$calc['final_price'],$calc['source'],$policy['currency']??'USD',(int)$tier['id']]);$count++;}
+  return $count;
+}
+function quote_price_policy_save($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);$actor=quote_price_policy_actor($user);
+  if($id>0 && !row($pdo,'SELECT id FROM quote_price_policies WHERE id=? LIMIT 1',[$id])) fail('价格策略不存在');
+  $before=$id>0?row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$id]):null;
+  if($id<=0){$d=array_merge(['has_stock'=>0,'stock_qty'=>0,'stock_status_code'=>'no_stock','moq'=>0,'moq_status_code'=>'unset','allow_below_moq'=>0,'need_approval_below_moq'=>1,'below_moq_rule_code'=>'approval','lead_time'=>'','currency'=>'USD','price_mode'=>'manual','level_id'=>0,'base_cost'=>0,'base_price'=>0,'status'=>'active','note'=>''],$d);}
+  if(array_key_exists('price_mode',$d))$d['price_mode']=quote_price_policy_mode($d['price_mode']);
+  if(array_key_exists('currency',$d))$d['currency']=strtoupper(s($d['currency'],20))?:'USD';
+  if(array_key_exists('status',$d)){$policyStatus=(string)$d['status'];$d['status']=in_array($policyStatus,['active','inactive'],true)?$policyStatus:'active';}
+  foreach(['has_stock','allow_below_moq','need_approval_below_moq'] as $k)if(array_key_exists($k,$d))$d[$k]=empty($d[$k])?0:1;
+  if(array_key_exists('stock_status_code',$d)){
+    $d['stock_status_code']=s($d['stock_status_code'],80);
+    if(in_array($d['stock_status_code'],['in_stock','partial','clearance'],true))$d['has_stock']=1;
+    elseif(in_array($d['stock_status_code'],['no_stock'],true))$d['has_stock']=0;
+  }
+  foreach(['moq_status_code','below_moq_rule_code'] as $k)if(array_key_exists($k,$d))$d[$k]=s($d[$k],80);
+  foreach(['stock_qty','moq','base_cost','base_price'] as $k)if(array_key_exists($k,$d))$d[$k]=max(0,(float)$d[$k]);
+  if(array_key_exists('level_id',$d))$d['level_id']=max(0,(int)$d['level_id']);$d['updated_by']=$actor;if($id<=0)$d['created_by']=$actor;
+  $fields=['product_source','product_id','naming_id','product_model','product_name','series','source_lamp_type','lamp_type','source_category','category','image','has_stock','stock_qty','stock_status_code','moq','moq_status_code','allow_below_moq','need_approval_below_moq','below_moq_rule_code','lead_time','currency','price_mode','level_id','base_cost','base_price','status','note','created_by','updated_by'];
+  $id=(int)save_row($pdo,'quote_price_policies',$d,$fields);
+  $savedPolicy=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$id]);
+  $estimated=quote_price_policy_estimated_sale_rmb($pdo,$savedPolicy);$pdo->prepare('UPDATE quote_price_policies SET estimated_sale_price_rmb=? WHERE id=?')->execute([$estimated,$id]);
+  $recalculated=quote_price_policy_recalculate_tiers($pdo,$id);
+  $after=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$id]);
+  if($before&&array_key_exists('stock_qty',$d)&&abs((float)($before['stock_qty']??0)-(float)($after['stock_qty']??0))>0.000001){
+    $oldStock=(float)($before['stock_qty']??0);$newStock=(float)($after['stock_qty']??0);
+    $pdo->prepare('INSERT INTO quote_price_stock_logs(policy_id,product_model,product_name,old_stock,new_stock,change_qty,adjust_type,reason,operator,ip) VALUES(?,?,?,?,?,?,?,?,?,?)')->execute([$id,$after['product_model']??'',$after['product_name']??'',$oldStock,$newStock,$newStock-$oldStock,'correct',s($d['stock_reason']??'价格策略表直接维护',500),$actor,s($_SERVER['REMOTE_ADDR']??'',80)]);
+  }
+  quote_log_event($pdo,['action'=>'price_policy_save','event'=>'保存价格策略','user_name'=>$actor,'summary'=>'保存价格策略：'.($after['product_model']??('ID '.$id)),'detail'=>array_merge($d,['id'=>$id,'product_model'=>$after['product_model']??'']),'before'=>$before,'after'=>$after]);
+  return ['id'=>$id,'policy'=>$after,'recalculated_tiers'=>$recalculated];
+}
+function quote_price_policy_batch_save($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$items=$d['items']??[];if(!is_array($items)||!$items)fail('没有需要保存的修改');
+  if(count($items)>2000)fail('一次最多保存 2000 行');
+  $allowed=['has_stock','stock_qty','moq','lead_time','currency','price_mode','level_id','status','note'];
+  $saved=[];$errors=[];
+  foreach($items as $index=>$item){
+    try{
+      if(!is_array($item))throw new RuntimeException('数据格式不正确');
+      $id=(int)($item['id']??0);if($id<=0)throw new RuntimeException('缺少策略ID');
+      if(!row($pdo,'SELECT id FROM quote_price_policies WHERE id=? LIMIT 1',[$id]))throw new RuntimeException('价格策略不存在');
+      $payload=['id'=>$id];foreach($allowed as $field)if(array_key_exists($field,$item))$payload[$field]=$item[$field];
+      if(count($payload)===1)throw new RuntimeException('没有可保存的字段');
+      if(isset($payload['currency'])&&!in_array(strtoupper((string)$payload['currency']),['USD','RMB'],true))throw new RuntimeException('币种只允许 USD 或 RMB');
+      $result=quote_price_policy_save($pdo,$payload,$user);$saved[]=['id'=>$id,'policy'=>$result['policy']??null];
+    }catch(Throwable $e){$errors[]=['index'=>$index,'id'=>(int)($item['id']??0),'reason'=>$e->getMessage()];}
+  }
+  $result=['saved'=>$saved,'saved_count'=>count($saved),'failed_count'=>count($errors),'errors'=>$errors];
+  quote_log_event($pdo,['action'=>'price_policy_batch_save','event'=>'批量保存价格策略','user_name'=>quote_price_policy_actor($user),'summary'=>'批量保存价格策略：成功 '.count($saved).'，失败 '.count($errors),'detail'=>$result]);
+  return $result;
+}
+function quote_price_stock_adjust($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['policy_id']??$d['id']??0);if($id<=0)fail('缺少价格策略ID');
+  $type=trim((string)($d['adjust_type']??''));if(!in_array($type,['increase','decrease','correct'],true))fail('库存调整方式不正确');
+  $qty=(float)($d['qty']??0);if($qty<0)fail('调整数量不能小于 0');if($type!=='correct'&&$qty<=0)fail('调整数量必须大于 0');
+  $reason=s($d['reason']??'',500);if($reason==='')fail('请填写库存调整原因');
+  $actor=quote_price_policy_actor($user);$ip=s($_SERVER['REMOTE_ADDR']??'',80);
+  $pdo->beginTransaction();
+  try{
+    $st=$pdo->prepare('SELECT * FROM quote_price_policies WHERE id=? FOR UPDATE');$st->execute([$id]);$policy=$st->fetch(PDO::FETCH_ASSOC);if(!$policy)throw new RuntimeException('价格策略不存在');
+    $old=(float)($policy['stock_qty']??0);$new=$type==='increase'?$old+$qty:($type==='decrease'?$old-$qty:$qty);if($new<0)throw new RuntimeException('库存不能小于 0');
+    $change=$new-$old;$has=$new>0?1:0;
+    $pdo->prepare('UPDATE quote_price_policies SET stock_qty=?,has_stock=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$new,$has,$actor,$id]);
+    $pdo->prepare('INSERT INTO quote_price_stock_logs(policy_id,product_model,product_name,old_stock,new_stock,change_qty,adjust_type,reason,operator,ip) VALUES(?,?,?,?,?,?,?,?,?,?)')->execute([$id,$policy['product_model']??'',$policy['product_name']??'',$old,$new,$change,$type,$reason,$actor,$ip]);
+    $logId=(int)$pdo->lastInsertId();$pdo->commit();
+    $after=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$id]);
+    quote_log_event($pdo,['action'=>'price_stock_adjust','event'=>'调整价格策略库存','user_name'=>$actor,'summary'=>'库存调整：'.($policy['product_model']??$id).' '.$old.' → '.$new,'detail'=>['log_id'=>$logId,'product_model'=>$policy['product_model']??'','adjust_type'=>$type,'qty'=>$qty,'reason'=>$reason],'before'=>$policy,'after'=>$after]);
+    return ['policy'=>$after,'log'=>row($pdo,'SELECT * FROM quote_price_stock_logs WHERE id=? LIMIT 1',[$logId])];
+  }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+}
+function quote_price_stock_log_list($pdo){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($_GET['policy_id']??0);if($id<=0)fail('缺少价格策略ID');
+  return ['logs'=>rows($pdo,'SELECT * FROM quote_price_stock_logs WHERE policy_id=? ORDER BY id DESC LIMIT 100',[$id])];
+}
+function quote_price_policy_delete($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);if($id<=0)fail('缺少价格策略ID');
+  $before=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$id]);if(!$before)fail('价格策略不存在');
+  $pdo->beginTransaction();try{$pdo->prepare('DELETE FROM quote_price_tiers WHERE policy_id=?')->execute([$id]);$pdo->prepare('DELETE FROM quote_price_policies WHERE id=?')->execute([$id]);$pdo->commit();}catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+  quote_log_event($pdo,['action'=>'price_policy_delete','event'=>'删除价格策略','user_name'=>quote_price_policy_actor($user),'summary'=>'删除价格策略：'.($before['product_model']??$id),'detail'=>['id'=>$id],'before'=>$before]);
+  return ['id'=>$id];
+}
+function quote_price_tier_list($pdo){
+  ensure_quote_price_policy_schema($pdo);$policyId=(int)($_GET['policy_id']??0);if($policyId<=0)fail('缺少价格策略ID');
+  return ['policy'=>row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$policyId]),'tiers'=>rows($pdo,'SELECT * FROM quote_price_tiers WHERE policy_id=? ORDER BY sort_order ASC,min_qty ASC,id ASC',[$policyId])];
+}
+function quote_price_tier_save($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);$policyId=(int)($d['policy_id']??0);if($policyId<=0||!row($pdo,'SELECT id FROM quote_price_policies WHERE id=? LIMIT 1',[$policyId]))fail('价格策略不存在');
+  if($id>0&&!row($pdo,'SELECT id FROM quote_price_tiers WHERE id=? AND policy_id=? LIMIT 1',[$id,$policyId]))fail('阶梯价不存在或不属于当前策略');
+  $before=$id>0?row($pdo,'SELECT * FROM quote_price_tiers WHERE id=? LIMIT 1',[$id]):null;
+  $policy=row($pdo,'SELECT * FROM quote_price_policies WHERE id=? LIMIT 1',[$policyId]);
+  $d['policy_id']=$policyId;$d['min_qty']=max(0,(float)($d['min_qty']??0));$d['manual_price']=quote_nullable_decimal($d['manual_price']??null);
+  $d['currency']=strtoupper(s($policy['currency']??($d['currency']??'USD'),20))?:'USD';$d['source']=quote_price_tier_source($d['source']??'manual');$d['sort_order']=(int)($d['sort_order']??0);$d['note']=s($d['note']??'',255);
+  $calc=quote_price_tier_calculated($pdo,$policy,$d);$d=array_merge($d,$calc);
+  $id=(int)save_row($pdo,'quote_price_tiers',$d,['policy_id','min_qty','manual_price','auto_price','final_price','currency','source','note','sort_order']);
+  $after=row($pdo,'SELECT * FROM quote_price_tiers WHERE id=? LIMIT 1',[$id]);
+  quote_log_event($pdo,['action'=>'price_tier_save','event'=>'保存阶梯价','user_name'=>quote_price_policy_actor($user),'summary'=>'保存阶梯价：'.($policy['product_model']??('策略 '.$policyId)).' / 数量 '.$d['min_qty'],'detail'=>array_merge($d,['id'=>$id,'product_model'=>$policy['product_model']??'']),'before'=>$before,'after'=>$after]);
+  return ['id'=>$id,'tier'=>$after];
+}
+function quote_price_tier_delete($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);if($id<=0)fail('缺少阶梯价ID');$before=row($pdo,'SELECT * FROM quote_price_tiers WHERE id=? LIMIT 1',[$id]);if(!$before)fail('阶梯价不存在');
+  $pdo->prepare('DELETE FROM quote_price_tiers WHERE id=?')->execute([$id]);quote_log_event($pdo,['action'=>'price_tier_delete','event'=>'删除阶梯价','user_name'=>quote_price_policy_actor($user),'summary'=>'删除阶梯价：ID '.$id,'detail'=>['id'=>$id],'before'=>$before]);return ['id'=>$id];
+}
+function quote_price_policy_levels_list($pdo){ ensure_quote_price_policy_schema($pdo);return ['levels'=>rows($pdo,'SELECT * FROM quote_price_policy_levels ORDER BY is_active DESC,is_default DESC,sort_order ASC,id ASC')]; }
+function quote_price_policy_level_save($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);if($id>0&&!row($pdo,'SELECT id FROM quote_price_policy_levels WHERE id=? LIMIT 1',[$id]))fail('产品等级不存在');$name=s($d['level_name']??'',120);if($name==='')fail('请填写产品等级名称');$d['level_name']=$name;$d['level_code']=s($d['level_code']??'',50);
+  foreach(['base_multiplier','point_percent','profit_percent','sample_multiplier'] as $k)$d[$k]=max(0,(float)($d[$k]??($k==='base_multiplier'?1.35:($k==='sample_multiplier'?2:0))));
+  $d['is_default']=empty($d['is_default'])?0:1;$d['is_active']=array_key_exists('is_active',$d)?(empty($d['is_active'])?0:1):1;$d['sort_order']=(int)($d['sort_order']??0);$d['note']=s($d['note']??'',255);
+  if($d['is_default'])$pdo->exec('UPDATE quote_price_policy_levels SET is_default=0');
+  $id=(int)save_row($pdo,'quote_price_policy_levels',$d,['level_name','level_code','base_multiplier','point_percent','profit_percent','sample_multiplier','is_default','is_active','note','sort_order']);
+  $tierCount=0;foreach(rows($pdo,'SELECT id FROM quote_price_policies WHERE level_id=?',[$id]) as $policy)$tierCount+=quote_price_policy_recalculate_tiers($pdo,(int)$policy['id']);
+  quote_log_event($pdo,['action'=>'price_policy_level_save','event'=>'保存价格策略等级','user_name'=>quote_price_policy_actor($user),'summary'=>'保存价格策略等级：'.$name,'detail'=>array_merge($d,['id'=>$id,'recalculated_tiers'=>$tierCount])]);return ['id'=>$id,'level'=>row($pdo,'SELECT * FROM quote_price_policy_levels WHERE id=? LIMIT 1',[$id]),'recalculated_tiers'=>$tierCount];
+}
+function quote_price_policy_level_delete($pdo,$d,$user){
+  ensure_quote_price_policy_schema($pdo);$id=(int)($d['id']??0);if($id<=0)fail('缺少产品等级ID');$before=row($pdo,'SELECT * FROM quote_price_policy_levels WHERE id=? LIMIT 1',[$id]);if(!$before)fail('产品等级不存在');
+  $pdo->prepare('UPDATE quote_price_policy_levels SET is_active=0,is_default=0 WHERE id=?')->execute([$id]);quote_log_event($pdo,['action'=>'price_policy_level_delete','event'=>'停用价格策略等级','user_name'=>quote_price_policy_actor($user),'summary'=>'停用价格策略等级：'.($before['level_name']??$id),'detail'=>['id'=>$id],'before'=>$before]);return ['id'=>$id,'status'=>'inactive'];
+}
+
+function quote_price_excel_xml($v){return htmlspecialchars((string)$v,ENT_QUOTES|ENT_XML1,'UTF-8');}
+function quote_price_excel_col($n){$s='';while($n>0){$m=($n-1)%26;$s=chr(65+$m).$s;$n=intdiv($n-1,26);}return $s;}
+function quote_price_excel_cell($col,$row,$value,$style=0,$numeric=false){$ref=quote_price_excel_col($col).$row;$s=$style?' s="'.$style.'"':'';if($numeric&&$value!==null&&$value!==''&&is_numeric($value))return '<c r="'.$ref.'"'.$s.'><v>'.(0+$value).'</v></c>';return '<c r="'.$ref.'" t="inlineStr"'.$s.'><is><t xml:space="preserve">'.quote_price_excel_xml($value).'</t></is></c>';}
+function quote_price_excel_zip($files){
+  $d=getdate();$dosTime=(($d['hours']&0x1F)<<11)|(($d['minutes']&0x3F)<<5)|(int)(($d['seconds']&0x3E)/2);$dosDate=((($d['year']-1980)&0x7F)<<9)|(($d['mon']&0x0F)<<5)|($d['mday']&0x1F);$out='';$central='';$offset=0;$count=0;
+  foreach($files as $name=>$data){$data=(string)$data;$crc=crc32($data);if($crc<0)$crc+=4294967296;$size=strlen($data);$nlen=strlen($name);$local=pack('VvvvvvVVVvv',0x04034b50,20,0,0,$dosTime,$dosDate,$crc,$size,$size,$nlen,0).$name.$data;$out.=$local;$central.=pack('VvvvvvvVVVvvvvvVV',0x02014b50,0x0314,20,0,0,$dosTime,$dosDate,$crc,$size,$size,$nlen,0,0,0,0,0,$offset).$name;$offset+=strlen($local);$count++;}
+  $cdOffset=strlen($out);$cdSize=strlen($central);return $out.$central.pack('VvvvvVVv',0x06054b50,0,0,$count,$count,$cdSize,$cdOffset,0);
+}
+function quote_price_policy_export_excel($pdo,$user){
+  ensure_quote_price_policy_schema($pdo);$headers=['产品型号','产品名称','系列','分类','是否有库存','库存数量','MOQ','是否允许低于 MOQ','低于 MOQ 是否需审批','交期','币种','价格模式','产品等级','起订数量','手动价','系统生成价','最终价','备注'];
+  $data=rows($pdo,"SELECT p.*,l.level_name,t.min_qty,t.manual_price,t.auto_price,t.final_price,t.note AS tier_note,t.id AS tier_id FROM quote_price_policies p LEFT JOIN quote_price_policy_levels l ON l.id=p.level_id LEFT JOIN quote_price_tiers t ON t.policy_id=p.id ORDER BY p.product_model ASC,t.sort_order ASC,t.min_qty ASC,t.id ASC");
+  $sheetRows=[];$cells=[];foreach($headers as $i=>$h)$cells[]=quote_price_excel_cell($i+1,1,$h,1);$sheetRows[]='<row r="1" ht="28" customHeight="1">'.implode('',$cells).'</row>';$r=2;
+  foreach($data as $x){$hasTier=!empty($x['tier_id']);$vals=[$x['product_model'],$x['product_name'],$x['series'],$x['category'],!empty($x['has_stock'])?'是':'否',$x['stock_qty'],$x['moq'],!empty($x['allow_below_moq'])?'是':'否',!empty($x['need_approval_below_moq'])?'是':'否',$x['lead_time'],$x['currency'],$x['price_mode'],$x['level_name']??'',$hasTier?$x['min_qty']:'',$hasTier?$x['manual_price']:'',$hasTier?$x['auto_price']:'',$hasTier?$x['final_price']:'',$hasTier?($x['tier_note']??''):($x['note']??'')];$numeric=[6,7,14,15,16,17];$cells=[];foreach($vals as $i=>$v)$cells[]=quote_price_excel_cell($i+1,$r,$v,2,in_array($i+1,$numeric,true));$sheetRows[]='<row r="'.$r.'">'.implode('',$cells).'</row>';$r++;}
+  $last=max(1,$r-1);$widths=[16,24,22,22,12,12,12,18,20,18,10,18,16,12,14,14,14,28];$cols='<cols>';foreach($widths as $i=>$w)$cols.='<col min="'.($i+1).'" max="'.($i+1).'" width="'.$w.'" customWidth="1"/>';$cols.='</cols>';
+  $sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="21"/>'.$cols.'<sheetData>'.implode('',$sheetRows).'</sheetData><autoFilter ref="A1:R'.$last.'"/><pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
+  $styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="10"/><name val="Microsoft YaHei"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Microsoft YaHei"/></font><font><sz val="10"/><name val="Microsoft YaHei"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2563EB"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD8DEE9"/></left><right style="thin"><color rgb="FFD8DEE9"/></right><top style="thin"><color rgb="FFD8DEE9"/></top><bottom style="thin"><color rgb="FFD8DEE9"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="4" fontId="2" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  $files=['[Content_Types].xml'=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>','_rels/.rels'=>'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>','xl/workbook.xml'=>'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="价格策略" sheetId="1" r:id="rId1"/></sheets></workbook>','xl/_rels/workbook.xml.rels'=>'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>','xl/worksheets/sheet1.xml'=>$sheet,'xl/styles.xml'=>$styles];
+  $bin=quote_price_excel_zip($files);quote_log_event($pdo,['action'=>'price_policy_export_excel','event'=>'导出价格策略 Excel','user_name'=>quote_price_policy_actor($user),'summary'=>'导出价格策略 Excel：'.count($data).' 行']);while(ob_get_level()>0)@ob_end_clean();header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');header('Content-Disposition: attachment; filename="price_policy_'.date('Ymd_His').'.xlsx"');header('Content-Length: '.strlen($bin));echo $bin;exit;
+}
+function quote_price_zip_entries($zip){
+  if(strlen($zip)>25000000)throw new RuntimeException('Excel 文件不能超过 25MB');$eocd=strrpos($zip,"PK\x05\x06");if($eocd===false)throw new RuntimeException('不是有效的 XLSX 文件');$end=unpack('vdisk/vstart/vdiskCount/vcount/Vsize/Voffset/vcomment',substr($zip,$eocd+4,18));$count=(int)($end['count']??0);if($count<=0||$count>3000)throw new RuntimeException('Excel ZIP 目录异常');$pos=(int)$end['offset'];$out=[];
+  for($i=0;$i<$count;$i++){if(substr($zip,$pos,4)!=="PK\x01\x02")throw new RuntimeException('Excel ZIP 目录损坏');$h=unpack('vverMade/vverNeed/vflag/vmethod/vtime/vdate/Vcrc/Vcomp/Vuncomp/vnameLen/vextraLen/vcommentLen/vdisk/vintAttr/VextAttr/Voffset',substr($zip,$pos+4,42));$name=substr($zip,$pos+46,$h['nameLen']);$local=(int)$h['offset'];$lh=unpack('vnameLen/vextraLen',substr($zip,$local+26,4));$start=$local+30+$lh['nameLen']+$lh['extraLen'];$raw=substr($zip,$start,$h['comp']);if($h['method']===0)$data=$raw;elseif($h['method']===8)$data=@gzinflate($raw);else{$data=false;}if($data===false)throw new RuntimeException('Excel 包含不支持的压缩格式');if(strlen($data)>50000000)throw new RuntimeException('Excel 工作表过大');$out[$name]=$data;$pos+=46+$h['nameLen']+$h['extraLen']+$h['commentLen'];}
+  return $out;
+}
+function quote_price_excel_rows_from_upload($file){
+  if(empty($file['tmp_name'])||!is_uploaded_file($file['tmp_name']))throw new RuntimeException('请选择要导入的 Excel 文件');$zip=file_get_contents($file['tmp_name']);$entries=quote_price_zip_entries($zip);$shared=[];
+  if(isset($entries['xl/sharedStrings.xml'])){$x=@simplexml_load_string($entries['xl/sharedStrings.xml']);if($x)foreach($x->si as $si){$txt=(string)$si->t;if($txt===''&&isset($si->r))foreach($si->r as $run)$txt.=(string)$run->t;$shared[]=$txt;}}
+  $sheet=$entries['xl/worksheets/sheet1.xml']??'';if($sheet==='')throw new RuntimeException('Excel 缺少第一个工作表');$x=@simplexml_load_string($sheet);if(!$x)throw new RuntimeException('Excel 工作表 XML 无法解析');$rows=[];
+  foreach($x->sheetData->row as $row){$vals=[];foreach($row->c as $cell){$ref=(string)$cell['r'];preg_match('/^([A-Z]+)/',$ref,$m);$letters=$m[1]??'A';$col=0;for($i=0;$i<strlen($letters);$i++)$col=$col*26+(ord($letters[$i])-64);$type=(string)$cell['t'];if($type==='inlineStr'){$v=(string)$cell->is->t;if($v===''&&isset($cell->is->r))foreach($cell->is->r as $run)$v.=(string)$run->t;}else{$v=(string)$cell->v;if($type==='s')$v=$shared[(int)$v]??'';}$vals[$col]=$v;}if($vals)$rows[]=$vals;}
+  return $rows;
+}
+function quote_price_excel_bool($v){$v=strtolower(trim((string)$v));return in_array($v,['1','yes','true','是','有','允许','需要'],true)?1:0;}
+function quote_price_excel_mode($v){$v=trim((string)$v);$map=['手填阶梯价'=>'manual','手填'=>'manual','产品等级自动生成'=>'level_auto','等级生成'=>'level_auto','自动生成 + 手动覆盖'=>'mixed','自动生成+手动覆盖'=>'mixed','混合'=>'mixed'];return quote_price_policy_mode($map[$v]??$v);}
+function quote_price_policy_import_excel($pdo,$user){
+  ensure_quote_price_policy_schema($pdo);$rows=quote_price_excel_rows_from_upload($_FILES['file']??[]);if(count($rows)<2)fail('Excel 没有可导入的数据');$headerRow=array_shift($rows);$headers=[];foreach($headerRow as $col=>$name){$key=preg_replace('/\s+/u',' ',trim((string)$name));if($key!=='')$headers[$key]=$col;}$required=['产品型号'];foreach($required as $h)if(!isset($headers[$h]))fail('Excel 缺少字段：'.$h);
+  $val=function($row,$name)use($headers){$c=$headers[$name]??0;return $c?(string)($row[$c]??''):'';};$success=0;$failed=0;$errors=[];$actor=quote_price_policy_actor($user);
+  foreach($rows as $index=>$excelRow){$line=$index+2;$model=trim($val($excelRow,'产品型号'));if($model==='')continue;try{$policy=row($pdo,'SELECT * FROM quote_price_policies WHERE UPPER(product_model)=UPPER(?) ORDER BY id ASC LIMIT 1',[$model]);if(!$policy)throw new RuntimeException('找不到对应价格策略');$d=['id'=>(int)$policy['id']];
+      foreach(['产品名称'=>'product_name','系列'=>'series','分类'=>'category','交期'=>'lead_time','币种'=>'currency'] as $cn=>$field){$v=trim($val($excelRow,$cn));if($v!=='')$d[$field]=$v;}
+      foreach(['是否有库存'=>'has_stock','是否允许低于 MOQ'=>'allow_below_moq','低于 MOQ 是否需审批'=>'need_approval_below_moq'] as $cn=>$field){if(isset($headers[$cn]))$d[$field]=quote_price_excel_bool($val($excelRow,$cn));}
+      foreach(['库存数量'=>'stock_qty','MOQ'=>'moq'] as $cn=>$field){$v=trim($val($excelRow,$cn));if($v!==''&&is_numeric($v))$d[$field]=(float)$v;}
+      $mode=trim($val($excelRow,'价格模式'));if($mode!=='')$d['price_mode']=quote_price_excel_mode($mode);$levelName=trim($val($excelRow,'产品等级'));if($levelName!==''){$level=row($pdo,'SELECT id FROM quote_price_policy_levels WHERE level_name=? OR level_code=? ORDER BY is_active DESC,id ASC LIMIT 1',[$levelName,$levelName]);if(!$level)throw new RuntimeException('产品等级不存在：'.$levelName);$d['level_id']=(int)$level['id'];}
+      $min=trim($val($excelRow,'起订数量'));$note=trim($val($excelRow,'备注'));if($min===''&&$note!=='')$d['note']=$note;quote_price_policy_save($pdo,$d,$user);
+      if($min!==''){if(!is_numeric($min))throw new RuntimeException('起订数量不是数字');$manual=trim($val($excelRow,'手动价'));$existing=row($pdo,'SELECT id FROM quote_price_tiers WHERE policy_id=? AND min_qty=? ORDER BY id ASC LIMIT 1',[(int)$policy['id'],(float)$min]);$td=['policy_id'=>(int)$policy['id'],'min_qty'=>(float)$min,'manual_price'=>$manual===''?null:$manual,'currency'=>$d['currency']??$policy['currency'],'note'=>$note,'sort_order'=>(int)round((float)$min)];if($existing)$td['id']=(int)$existing['id'];quote_price_tier_save($pdo,$td,$user);}
+      $success++;
+    }catch(Throwable $e){$failed++;if(count($errors)<100)$errors[]=['line'=>$line,'product_model'=>$model,'reason'=>$e->getMessage()];}}
+  $result=['success'=>$success,'failed'=>$failed,'errors'=>$errors,'total_rows'=>count($rows)];quote_log_event($pdo,['action'=>'price_policy_import_excel','event'=>'导入价格策略 Excel','user_name'=>$actor,'summary'=>'导入价格策略 Excel：成功 '.$success.'，失败 '.$failed,'detail'=>$result]);return $result;
 }
 
 function ensure_quote_settings($pdo){
@@ -2342,6 +3138,31 @@ function quote_apply_review_items(array $items): array {
     $it['approved_qty']=$qty;
     if($mult>0){ $it['price_multiplier']=$mult; $it['approved_multiplier']=$mult; }
     $out[]=$it;
+  }
+  return $out;
+}
+function quote_merge_review_items(array $savedItems, array $reviewItems): array {
+  if(!$savedItems) fail('原报价没有完整产品明细，已停止审核，未修改任何数据');
+  if(count($savedItems)!==count($reviewItems)) fail('审核明细与原报价产品数量不一致，已停止审核，未修改任何数据');
+  $out=[];
+  foreach($savedItems as $idx=>$saved){
+    if(!is_array($saved)) fail('原报价第'.($idx+1).'项产品资料异常，已停止审核');
+    $review=$reviewItems[$idx]??null;
+    if(!is_array($review)) fail('审核第'.($idx+1).'项资料异常，已停止审核');
+    $qty=max(0,(float)($review['qty']??$saved['qty']??0));
+    $price=max(0,(float)($review['price']??$review['unit_price']??$saved['price']??$saved['unit_price']??0));
+    $mult=max(0,(float)($review['price_multiplier']??$review['approved_multiplier']??$review['multiplier']??$saved['price_multiplier']??0));
+    // 审核只允许调整数量、单价及倍率；产品、图片、规格和部件始终以已保存报价为准。
+    $merged=$saved;
+    $merged['qty']=$qty;
+    $merged['price']=$price;
+    $merged['unit_price']=$price;
+    $merged['amount']=$qty*$price;
+    $merged['manual_price']=true;
+    $merged['approved_price']=$price;
+    $merged['approved_qty']=$qty;
+    if($mult>0){ $merged['price_multiplier']=$mult; $merged['approved_multiplier']=$mult; }
+    $out[]=$merged;
   }
   return $out;
 }
@@ -2978,6 +3799,7 @@ function quote_delete_test_order(PDO $pdo, array $d, array $actor): array {
 try{
  ensure_quote_core_schema($pdo);
  ensure_quote_settings($pdo);
+ ensure_quote_price_policy_schema($pdo);
  ensure_quote_permission_schema($pdo);
  quote_approval_schema($pdo);
  if($action==='login'){ $d=input_json(); ok(qperm_login($pdo,$d['username']??'', $d['password']??'')); }
@@ -3070,7 +3892,8 @@ if($action==='init'){
     'headers'=>rows($pdo,"SELECT * FROM quote_headers ORDER BY id DESC"),
     'banks'=>rows($pdo,"SELECT * FROM quote_banks ORDER BY id DESC"),
     'templates'=>rows($pdo,"SELECT * FROM quote_templates ORDER BY id DESC"),
-    'quotes'=>rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json'])." FROM quote_orders ORDER BY id DESC LIMIT 1000"),
+    // 首屏只返回摘要；大体积报价明细在页面可用后异步补齐。
+    'quotes'=>rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json','items_json','parts_json']).", '[]' AS items_json, '{}' AS parts_json, 0 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000"),
     'materials'=>get_materials($pdo),
     'price_levels'=>get_price_levels($pdo),
     'options'=>get_options($pdo),
@@ -3078,6 +3901,81 @@ if($action==='init'){
     'owner_repair_count'=>$ownerRepairCount
    ]);
  }
+
+ if($action==='list_quote_details'){
+   ok(['quotes'=>rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000")]);
+ }
+
+ if($action==='get_quote_detail'){
+   $id=(int)($_GET['id']??0); if($id<=0) fail('缺少报价ID');
+   $q=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders WHERE id=? LIMIT 1",[$id]);
+   if(!$q) fail('报价不存在');
+   ok(['quote'=>$q]);
+ }
+
+ if($action==='get_approved_quote_snapshot'){
+   $d=input_json(); $id=(int)($d['id']??0);
+   if($id<=0) fail('缺少报价ID，已停止导出');
+   $q=row($pdo,'SELECT id,quote_no,approval_status,approved_snapshot_json FROM quote_orders WHERE id=? LIMIT 1',[$id]);
+   if(!$q) fail('报价不存在，已停止导出');
+   if(strtolower((string)($q['approval_status']??''))!=='approved') fail('报价尚未审核通过，已停止导出');
+   $snap=json_decode((string)($q['approved_snapshot_json']??''),true);
+   if(!is_array($snap) || !$snap) fail('审核快照不存在，已停止导出，请重新审核');
+   if((int)($snap['id']??0)!==$id || (string)($snap['quote_no']??'')!==(string)$q['quote_no']) fail('审核快照与报价不一致，已停止导出');
+   $items=json_decode((string)($snap['items_json']??''),true);
+   if(!is_array($items) || !$items) fail('审核快照没有产品明细，已停止导出');
+   unset($snap['approved_snapshot_json']);
+   ok(['quote'=>$snap,'item_count'=>count($items)]);
+ }
+
+ if($action==='price_policy_list'){ ok(quote_price_policy_list($pdo)); }
+ if($action==='commission_rule_list'){ ok(quote_commission_rule_list($pdo)); }
+ if($action==='commission_quote_list'){ ok(quote_commission_quote_list($pdo,input_json())); }
+ if($action==='commission_quote_save'){ ok(quote_commission_quote_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_quote_lines_save'){ ok(quote_commission_quote_lines_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_customer_check'){ ok(quote_commission_customer_check($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_reminder_list'){ ok(quote_commission_reminder_list($pdo)); }
+ if($action==='commission_reminder_save'){ ok(quote_commission_reminder_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_reminder_toggle'){ $d=input_json();quote_commission_schema($pdo);$old=row($pdo,'SELECT * FROM quote_commission_reminder_rules WHERE id=?',[(int)($d['id']??0)]);$pdo->prepare('UPDATE quote_commission_reminder_rules SET is_active=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([empty($d['is_active'])?0:1,quote_price_policy_actor($__quote_user),(int)($d['id']??0)]);quote_log_event($pdo,['action'=>'commission_reminder_toggle','event'=>'切换佣金提醒设置','user_name'=>quote_price_policy_actor($__quote_user),'before'=>$old,'after'=>row($pdo,'SELECT * FROM quote_commission_reminder_rules WHERE id=?',[(int)($d['id']??0)])]);ok(); }
+ if($action==='commission_order_list'){ ok(quote_commission_order_list($pdo,input_json())); }
+ if($action==='commission_order_save'){ ok(quote_commission_order_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_order_batch_save'){ ok(quote_commission_order_batch_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_item_save'){ ok(quote_commission_item_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_item_batch_save'){ ok(quote_commission_item_batch_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_rule_export'){ quote_commission_export($pdo,$__quote_user); }
+ if($action==='commission_rule_import'){ ok(quote_commission_import($pdo,$__quote_user)); }
+ if($action==='commission_rule_save'){ ok(quote_commission_rule_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_rule_batch_save'){ ok(quote_commission_batch_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_rule_toggle'){ $d=input_json();ok(quote_commission_rule_save($pdo,['id'=>(int)($d['id']??0),'is_active'=>empty($d['is_active'])?0:1],$__quote_user)); }
+ if($action==='commission_rule_delete'){ $d=input_json();$id=(int)($d['id']??0);$before=row($pdo,'SELECT * FROM quote_commission_rules WHERE id=?',[$id]);$pdo->prepare('DELETE FROM quote_commission_rules WHERE id=?')->execute([$id]);quote_log_event($pdo,['action'=>'commission_rule_delete','event'=>'删除佣金规则','user_name'=>quote_price_policy_actor($__quote_user),'summary'=>$before['target_name']??('ID '.$id),'before'=>$before]);ok(['id'=>$id]); }
+ if($action==='commission_options_list'){ ok(quote_commission_options_list($pdo)); }
+ if($action==='commission_options_init_defaults'){ quote_commission_schema($pdo);ok(quote_commission_init_defaults($pdo,true)); }
+ if($action==='commission_option_save'){ ok(quote_commission_option_save($pdo,input_json(),$__quote_user)); }
+ if($action==='commission_option_toggle'){ $d=input_json();$o=row($pdo,'SELECT * FROM quote_commission_options WHERE id=?',[(int)($d['id']??0)]);if(!$o)fail('设置不存在');ok(quote_commission_option_save($pdo,array_merge($o,['is_active'=>empty($d['is_active'])?0:1]),$__quote_user)); }
+ if($action==='commission_option_delete'){ $d=input_json();$id=(int)($d['id']??0);$o=row($pdo,'SELECT * FROM quote_commission_options WHERE id=?',[$id]);if(!$o)fail('设置不存在');if(!empty($o['is_system'])){$pdo->prepare('UPDATE quote_commission_options SET is_active=0 WHERE id=?')->execute([$id]);ok(['result'=>'disabled']);}$pdo->prepare('DELETE FROM quote_commission_options WHERE id=?')->execute([$id]);ok(['result'=>'deleted']); }
+ if($action==='commission_calc_preview'){ $d=input_json();$amount=quote_commission_calc((string)($d['commission_mode']??'percent'),$d['commission_value']??0,$d['base_amount']??0,$d['total_qty']??0);ok(['commission_amount'=>$amount,'available'=>$amount===null?0:1,'message'=>$amount===null?'毛利数据不足，暂不能计算。':'']); }
+ if($action==='price_policy_match'){ ok(quote_price_policy_match($pdo)); }
+ if($action==='price_policy_export_excel'){ quote_price_policy_export_excel($pdo,$__quote_user); }
+ if($action==='price_policy_import_excel'){ ok(quote_price_policy_import_excel($pdo,$__quote_user)); }
+ if($action==='price_policy_save'){ ok(quote_price_policy_save($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_batch_save'){ ok(quote_price_policy_batch_save($pdo,input_json(),$__quote_user)); }
+ if($action==='price_stock_adjust'){ ok(quote_price_stock_adjust($pdo,input_json(),$__quote_user)); }
+ if($action==='price_stock_log_list'){ ok(quote_price_stock_log_list($pdo)); }
+ if($action==='price_policy_delete'){ ok(quote_price_policy_delete($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_sync_naming_products'){ ok(quote_price_policy_sync_naming_products($pdo,$__quote_user)); }
+ if($action==='price_policy_sync_bom_costs'){ ok(quote_price_policy_sync_bom_costs($pdo,$__quote_user,true)); }
+ if($action==='price_tier_list'){ ok(quote_price_tier_list($pdo)); }
+ if($action==='price_tier_save'){ ok(quote_price_tier_save($pdo,input_json(),$__quote_user)); }
+ if($action==='price_tier_delete'){ ok(quote_price_tier_delete($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_levels_list'){ ok(quote_price_policy_levels_list($pdo)); }
+ if($action==='price_policy_level_save'){ ok(quote_price_policy_level_save($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_level_delete'){ ok(quote_price_policy_level_delete($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_options_list'){ ok(quote_price_policy_options_list($pdo)); }
+ if($action==='price_policy_option_save'){ ok(quote_price_policy_option_save($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_option_delete'){ ok(quote_price_policy_option_delete($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_option_toggle'){ ok(quote_price_policy_option_toggle($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_option_sort'){ ok(quote_price_policy_option_sort($pdo,input_json(),$__quote_user)); }
+ if($action==='price_policy_options_init_defaults'){ ok(quote_price_policy_options_init_defaults($pdo,$__quote_user,true)); }
 
  if($action==='list_bom_quote_specs') { ensure_bom_quote_spec_schema($pdo); ok(['specs'=>rows($pdo,"SELECT * FROM bom_quote_specs ORDER BY updated_at DESC, id DESC LIMIT 5000")]); }
  if($action==='save_bom_quote_spec') {
@@ -3123,7 +4021,8 @@ if($action==='init'){
    $salesOwner=quote_sales_owner_from_quote($q,(string)($q['user_name']??($q['submitted_by']??'')));
    $items=$d['items']??null;
    if(is_array($items) && count($items)>0){
-     $items=quote_apply_review_items($items);
+     $savedItems=quote_decode_items_json($q['items_json']??'[]');
+     $items=quote_merge_review_items($savedItems,$items);
      $qty=0; $amount=0; foreach($items as $it){ $qty+=(float)($it['qty']??0); $amount+=(float)($it['amount']??0); }
      $first=$items[0]??[];
      $pdo->prepare("UPDATE quote_orders SET user_name=?,items_json=?,approval_items_json=?,qty=?,price=?,amount=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
@@ -3192,6 +4091,7 @@ if($action==='init'){
 
  if($action==='save_quote') {
    quote_v640_doc_schema_fix($pdo);
+   quote_commission_schema($pdo);
    $d=input_json();
    $d['quote_status']=quote_normalize_doc_status($d['quote_status'] ?? $d['status'] ?? 'Quotation sheet');
    if(empty($d['status']) || preg_match('/Quotation|PROFORMA|invoice|订购合同/i',(string)($d['status']??''))) $d['status']=$d['quote_status'];
@@ -3224,9 +4124,33 @@ if($action==='init'){
    } elseif(empty($d['user_name'])) {
      $d['user_name']=$__quote_user['username']??'';
    }
-   $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
+   if(!$before){
+     $cj=json_decode((string)($d['customer_json']??'{}'),true);if(!is_array($cj))$cj=[];
+     $check=quote_commission_customer_check($pdo,['customer_id'=>$d['customer_id']??'','customer_name'=>$d['customer_name']??'','customer_code'=>$cj['code']??'','quote_id'=>0,'quote_no'=>$d['quote_no']??''],$__quote_user);
+     if(!empty($check['has_commission'])&&!empty($check['should_remind'])){
+       $commission=json_decode((string)($d['commission_json']??''),true);
+       if(!is_array($commission)||($commission['commission_confirm_status']??'')!=='line_confirmed'||empty($commission['acknowledged']))fail('该客户必须在保存前逐项确认产品佣金');
+       $quoteItems=json_decode((string)($d['items_json']??'[]'),true);if(!is_array($quoteItems))$quoteItems=[];
+       $commissionLines=$commission['lines']??[];if(!is_array($commissionLines)||count($commissionLines)!==count($quoteItems))fail('佣金明细与报价产品数量不一致，请重新确认');
+       foreach($commissionLines as $i=>$line){if(!in_array(($line['included_in_price']??''),['included','excluded'],true)||!array_key_exists('value',$line)||$line['value']==='')fail('第 '.($i+1).' 行产品佣金尚未明确填写');}
+     }
+   }
+   $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
    $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
    $items=json_decode((string)($d['items_json']??'[]'),true); if(!is_array($items)) $items=[];
+   foreach($items as $item){
+     $snap=$item['price_policy_snapshot']??null;
+     if(!is_array($snap)||empty($item['manual_price']))continue;
+     $strategy=$item['strategy_price']??null;$manual=$item['price']??null;
+     if($strategy===null||$manual===null||abs((float)$strategy-(float)$manual)<0.000001)continue;
+     $model=(string)($item['product']['code']??$item['product']['model']??$snap['product_model']??'');
+     quote_log_event($pdo,[
+       'action'=>'quote_manual_price_override','event'=>'报价手动改价','quote_id'=>$id,'quote_no'=>$d['quote_no']??'',
+       'customer_name'=>qlog_customer_name($d),'user_name'=>$__quote_user['username']??'',
+       'summary'=>'手动改价：'.$model.'，策略价 '.$strategy.' → '.$manual,
+       'detail'=>['original_strategy_price'=>(float)$strategy,'manual_price'=>(float)$manual,'operator'=>$__quote_user['username']??'','time'=>date('Y-m-d H:i:s'),'quote_no'=>$d['quote_no']??'','product_model'=>$model,'qty'=>(float)($item['qty']??0),'price_source'=>$snap['price_source']??'','policy_snapshot'=>$snap]
+     ]);
+   }
    quote_append_approval_log($pdo,(int)$id,[
      'action'=>$before?'resubmit':'submit','time'=>date('Y-m-d H:i:s'),'user'=>(string)($__quote_user['username']??''),'user_name'=>(string)($__quote_user['display_name']??$__quote_user['username']??''),
      'note'=>$before?'修改报价后重新提交审核':'提交报价审核','changes'=>[],'amount'=>quote_money_log((float)($d['amount']??0))
@@ -3234,6 +4158,7 @@ if($action==='init'){
   $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
   quote_push_crm_review_reminder($pdo,$after?:$d,$__quote_user,$before?'resubmitted':'submitted',$before?'修改报价后重新提交审核':'提交报价审核');
   quote_log_event($pdo,['action'=>'save_quote_done','event'=>'报价保存完成','quote_id'=>$id,'quote_no'=>$d['quote_no']??'','customer_name'=>qlog_customer_name($d),'summary'=>'报价保存完成：'.($d['quote_no']??'').'，产品 '.count($items).' 个，数量 '.($d['qty']??'').'，金额 '.($d['currency']??'').' '.($d['amount']??''),'detail'=>$d,'before'=>$before,'after'=>$after]);
+  if(array_key_exists('commission_json',$d))quote_log_event($pdo,['action'=>'quote_commission_confirmation_saved','event'=>'保存报价佣金确认状态','quote_id'=>$id,'quote_no'=>$d['quote_no']??'','customer_name'=>qlog_customer_name($d),'user_name'=>$__quote_user['username']??'','summary'=>'保存报价内部佣金状态','before'=>$before['commission_json']??null,'after'=>$d['commission_json']]);
   ok(['id'=>$id,'approval_status'=>'pending']);
 }
  if($action==='delete_quote') { $d=input_json(); $before=null; if(!empty($d['id'])) $before=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($d['id'])]); $pdo->prepare("DELETE FROM quote_orders WHERE id=?")->execute([intval($d['id'])]); quote_log_event($pdo,['action'=>'delete_quote_done','event'=>'报价删除完成','quote_id'=>intval($d['id']??0),'quote_no'=>$before['quote_no']??'','customer_name'=>qlog_customer_name($before?:[]),'summary'=>'删除报价：'.($before['quote_no']??('ID '.($d['id']??''))),'detail'=>$d,'before'=>$before]); ok(); }

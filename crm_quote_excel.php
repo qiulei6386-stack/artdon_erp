@@ -1,7 +1,9 @@
 <?php
 /* ARTDON_SSO_GATE_V2_START */
 require_once __DIR__.'/includes/artdon_sso_core.php';
-artdon_sso_require_page('quote');
+// Excel 是已登录报价页发起的 POST 下载；这里只校验登录，导出权限由下方
+// quote_permissions/export_pdf_excel 单独校验，避免模块页面门禁误拦下载新窗口。
+require_login();
 /* ARTDON_SSO_GATE_V2_END */
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 function qx_export_allowed(){
@@ -32,13 +34,23 @@ function qe_at_doc_no($v){ $s=trim((string)$v); if(preg_match('/^SO-(.+)$/i',$s,
 function qe_normalize_order_no(&$payload){ $isOrder=!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no']??''))!=='' || stripos((string)($payload['quote_no']??''),'SO-')===0; if(!$isOrder)return; $no=qe_at_doc_no($payload['quote_no']??''); if($no==='')$no=qe_at_doc_no($payload['order_no']??''); if($no!==''){ $payload['quote_no']=$no; $payload['order_no']=$no; } }
 function qe_doc_no_label($docTitle){ if($docTitle==='订购合同') return '订单号'; if($docTitle==='PROFORMA INVOICE') return 'PI Number'; return 'Quotation No'; }
 function qe_terms_font_size($b){ $v=(float)($b['extra_terms_font_size'] ?? $b['terms_font_size'] ?? 7.5); if($v<6)$v=6; if($v>12)$v=12; return rtrim(rtrim(number_format($v,1,'.',''),'0'),'.'); }
+function qe_customer_to_text($c){
+  if(!is_array($c)||!$c)return 'Please select customer';
+  $contact=qe_first($c,['primary_contact','main_contact','contact_name','contact','person','linkman'],'');
+  $phone=qe_first($c,['primary_contact_phone','contact_phone','contact_mobile','contact_whatsapp','whatsapp','mobile','phone','tel'],'');
+  $email=qe_first($c,['primary_contact_email','contact_email','email','customer_email','mail'],'');
+  $company=qe_first($c,['company','name','customer_name','client_name'],'');
+  $lines=[];if($contact!==''||$phone!=='')$lines[]='Contact: '.trim($contact.($contact!==''&&$phone!==''?'  ':'').$phone);if($company!=='')$lines[]=$company;
+  foreach(['address1','office_address','address','company_address','address2','factory_address','delivery_address'] as $k){$v=trim((string)($c[$k]??''));if($v!==''&&!in_array($v,$lines,true))$lines[]=($k==='address1'||$k==='office_address'||$k==='address'||$k==='company_address'?'Address: ':'').$v;if(count($lines)>=6)break;}
+  if($email!=='')$lines[]='Email: '.$email;return $lines?implode("\n",$lines):'Please select customer';
+}
 function qe_doc_title($payload){ $v=(string)($payload['quote_status']??($payload['order_doc_title']??($payload['contract_title']??'Quotation sheet'))); $cur=strtoupper(trim((string)($payload['currency']??''))); $isOrder=trim((string)($payload['order_no']??''))!=='' || stripos((string)($payload['quote_no']??''),'SO-')===0 || trim((string)($payload['order_doc_title']??''))!=='' || trim((string)($payload['contract_title']??''))!==''; if(preg_match('/订购合同|purchase|contract/iu',$v)) return '订购合同'; if($isOrder && in_array($cur,['RMB','CNY','人民币'],true)) return '订购合同'; if($isOrder) return 'PROFORMA INVOICE'; return preg_match('/proforma|invoice/i',$v)?'PROFORMA INVOICE':'Quotation sheet'; }
 function qe_cell($c,$r,$v,$style=0,$num=false){
   $ref=qe_col($c).$r; $s=$style?' s="'.$style.'"':'';
   if($num && is_numeric($v)) return '<c r="'.$ref.'"'.$s.'><v>'.(0+$v).'</v></c>';
   return '<c r="'.$ref.'" t="inlineStr"'.$s.'><is><t xml:space="preserve">'.qe_xml($v).'</t></is></c>';
 }
-function qe_formula($c,$r,$formula,$style=0){ $ref=qe_col($c).$r; $s=$style?' s="'.$style.'"':''; return '<c r="'.$ref.'"'.$s.'><f>'.qe_xml($formula).'</f></c>'; }
+function qe_formula($c,$r,$formula,$style=0,$cached=null){ $ref=qe_col($c).$r; $s=$style?' s="'.$style.'"':''; $v=$cached!==null?'<v>'.qe_num($cached).'</v>':''; return '<c r="'.$ref.'"'.$s.'><f>'.qe_xml($formula).'</f>'.$v.'</c>'; }
 function qe_row($r,$cells,$height=null){ $h=$height?' ht="'.$height.'" customHeight="1"':''; return '<row r="'.$r.'"'.$h.'>'.implode('',$cells).'</row>'; }
 function qe_terms($payload){
   $tpl=$payload['template']??[]; $terms=qe_json_decode($tpl['terms_json']??'',[]);
@@ -191,6 +203,15 @@ function qe_get_payload(){
   }
   return qe_load_from_db(intval($_GET['quote_id']??($_GET['id']??0)), trim((string)($_GET['quote_no']??'')));
 }
+function qe_apply_approved_snapshot($payload){
+  if(!empty($payload['order_export'])||!empty($payload['is_order'])||trim((string)($payload['order_no']??''))!=='')return $payload;
+  $id=(int)($payload['quote_id']??0);if($id<=0){http_response_code(403);die('Missing quote ID; approved snapshot export stopped.');}
+  require_once __DIR__.'/includes/db.php';$pdo=db();$st=$pdo->prepare('SELECT id,quote_no,approval_status,approved_snapshot_json FROM quote_orders WHERE id=? LIMIT 1');$st->execute([$id]);$q=$st->fetch(PDO::FETCH_ASSOC);
+  if(!$q||strtolower((string)($q['approval_status']??''))!=='approved'){http_response_code(403);die('Quote is not approved.');}
+  $snap=qe_json_decode($q['approved_snapshot_json']??'',[]);$items=qe_json_decode($snap['items_json']??'',[]);
+  if(!$snap||(int)($snap['id']??0)!==$id||(string)($snap['quote_no']??'')!==(string)$q['quote_no']||!$items){http_response_code(403);die('Approved snapshot is missing or mismatched.');}
+  return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>qe_json_decode($snap['customer_json']??'',[]),'header'=>qe_json_decode($snap['header_json']??'',[]),'bank'=>qe_json_decode($snap['bank_json']??'',[]),'template'=>qe_json_decode($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'approval_status'=>'approved','approved_snapshot_export'=>1];
+}
 
 function qe_image_source_to_jpeg($src){
   $src=trim((string)$src); if($src==='') return null;
@@ -260,72 +281,80 @@ function qe_zip_files($files){
 function qe_build_xlsx($payload){
   qe_normalize_order_no($payload); $quoteNo=$payload['quote_no']??'quotation'; $date=$payload['quote_date']??date('Y-m-d'); $currency=$payload['currency']??'USD';
   $h=$payload['header']??[]; $b=$payload['bank']??[]; $c=$payload['customer']??[]; $items=array_values(array_filter($payload['items']??[],'is_array'));
-  $company=qe_first($h,['company'],'Gallin Industrial (HK) Limited'); $from=trim(qe_strip_from_label(qe_first($h,['from_text'],''))); $bank=qe_first($b,['text'],''); $bankTerms=qe_first($b,['extra_terms','terms_text'],''); $bankTermsFont=qe_terms_font_size($b);
-  $to=trim(implode("\n",array_filter([qe_first($c,['contact'],''),qe_first($c,['email'],''),qe_first($c,['company','name','customer_name'],''),qe_first($c,['phone'],''),qe_first($c,['country'],''),qe_first($c,['note'], '')])));
+  $company=qe_first($h,['company'],'Gallin Industrial (HK) Limited'); $from=trim(qe_strip_from_label(qe_first($h,['from_text'],''))); $stamp=qe_first($h,['stamp'],''); $bank=qe_first($b,['text'],''); $bankTerms=qe_first($b,['extra_terms','terms_text'],''); $bankTermsFont=qe_terms_font_size($b);
+  $to=qe_customer_to_text($c);
   $rows=[]; $merges=['A1:E1','F1:J1','A3:E7','A9:E11']; $images=[];
+  // A4 可打印高度按当前页边距折算约为 720pt。与 PDF 一样，在银行及
+  // 备注整块放不下时才换页；放得下则继续留在当前页。
+  $contentHeightPt=238; // 页首、客户/条款区及产品表头
   $r=1;
-  $rows[]=qe_row($r,[qe_cell(1,$r,$company,1),qe_cell(6,$r,qe_doc_title($payload),2)],28); $r++;
-  $rows[]=qe_row($r,[],10); $r++;
+  $rows[]=qe_row($r,[qe_cell(1,$r,$company,1),qe_cell(6,$r,$stamp,17)],22); $r++;
+  $rows[]=qe_row($r,[qe_cell(6,$r,qe_doc_title($payload),2)],24); $merges[]='F2:J2'; $r++;
   $terms=qe_terms($payload);
   for($tr=3;$tr<=9;$tr++){
     $cells=[];
     if($tr===3) $cells[]=qe_cell(1,$tr,"From:
 ".$from,12);
     if($tr===9) $cells[]=qe_cell(1,$tr,"To:
-".($to?:'Please select customer'),13);
+".($to?:'Please select customer'),12);
     $idx=$tr-3;
     if(isset($terms[$idx])){
-      // 合并区域内每个单元格都写入样式，避免 Excel 中只显示半截边框。
       $cells[]=qe_cell(6,$tr,$terms[$idx][0],3);
+      // 合并单元格的边框需要覆盖合并区域内每个原始单元格；否则部分
+      // Excel 客户端只保留左上角单元格的边框，右上信息表会出现断线。
       $cells[]=qe_cell(7,$tr,'',3);
       $cells[]=qe_cell(8,$tr,'',3);
       $cells[]=qe_cell(9,$tr,$terms[$idx][1],4);
       $cells[]=qe_cell(10,$tr,'',4);
       $merges[]='F'.$tr.':H'.$tr; $merges[]='I'.$tr.':J'.$tr;
     }
-    $rows[]=qe_row($tr,$cells,22);
+    $rows[]=qe_row($tr,$cells,16);
   }
-  $rows[]=qe_row(10,[],20);
-  $rows[]=qe_row(11,[],20);
-  $rows[]=qe_row(12,[],10);
+  $rows[]=qe_row(10,[],16);
+  $rows[]=qe_row(11,[],16);
+  $rows[]=qe_row(12,[],20);
   $r=13;
   $headers=['Picture','Size or Drawing(mm)','Customer Code','Manufacturer Code','Specification','Color','QTY (pcs)','Unit Price ('.$currency.')','Amount ('.$currency.')','MOQ (pcs)'];
-  $cells=[]; for($i=0;$i<count($headers);$i++) $cells[]=qe_cell($i+1,$r,$headers[$i],5); $rows[]=qe_row($r,$cells,36); $r++;
+  $cells=[]; for($i=0;$i<count($headers);$i++) $cells[]=qe_cell($i+1,$r,$headers[$i],5); $rows[]=qe_row($r,$cells,28); $r++;
   $startItemRow=$r; $totalQty=0; $totalAmt=0;
   if(!$items){ $rows[]=qe_row($r,[qe_cell(1,$r,'Please add products on the left side first.',7)],70); $merges[]='A'.$r.':J'.$r; $r++; }
   foreach($items as $it){
     $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; $qty=qe_num($it['qty']??1); $price=qe_num($it['price']??($it['unit_price']??0)); $amt=qe_num($it['amount']??($qty*$price)); $totalQty+=$qty; $totalAmt+=$amt; $isMat=qe_is_material_sale($it); $itemRowHeight=qe_item_row_height($it); $img=qe_image_source_to_jpeg(qe_first($p,['image','product_image','image_path','main_image','photo','picture','img','image_url'],'')); if($img){ $img['row']=$r; $img['row_height']=$itemRowHeight; $images[]=$img; }
     $row=[
-      qe_cell(1,$r,'',6), qe_cell(2,$r,$isMat?'':qe_display_size($p),6), qe_cell(3,$r,$it['customer_code']??'',6), qe_cell(4,$r,qe_first($p,['code','model','manufacturer_code'],''),6), qe_cell(5,$r,qe_item_spec($it),7), qe_cell(6,$r,$it['color']??($p['color']??''),6), qe_cell(7,$r,$qty,6,true), qe_cell(8,$r,$price,8,true), qe_formula(9,$r,'G'.$r.'*H'.$r,8), qe_cell(10,$r,$it['moq']??($p['moq']??''),6)
+      qe_cell(1,$r,'',6), qe_cell(2,$r,$isMat?'':qe_display_size($p),6), qe_cell(3,$r,$it['customer_code']??'',6), qe_cell(4,$r,qe_first($p,['code','model','manufacturer_code'],''),6), qe_cell(5,$r,qe_item_spec($it),7), qe_cell(6,$r,$it['color']??($p['color']??''),6), qe_cell(7,$r,$qty,6,true), qe_cell(8,$r,$price,8,true), qe_formula(9,$r,'G'.$r.'*H'.$r,8,$amt), qe_cell(10,$r,$it['moq']??($p['moq']??''),6)
     ];
     $rows[]=qe_row($r,$row,$itemRowHeight); $r++;
+    $contentHeightPt += $itemRowHeight;
   }
   $endItemRow=max($startItemRow,$r-1);
-  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_formula(7,$r,'SUM(G'.$startItemRow.':G'.$endItemRow.')',9),qe_formula(9,$r,'SUM(I'.$startItemRow.':I'.$endItemRow.')',10)],28); $totalRow=$r; $r++;
-  $r++;
+  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_formula(7,$r,'SUM(G'.$startItemRow.':G'.$endItemRow.')',9,$totalQty),qe_formula(9,$r,'SUM(I'.$startItemRow.':I'.$endItemRow.')',10,$totalAmt)],18); $totalRow=$r; $r++;
+  $rows[]=qe_row($r,[],14);$r++;
   $paymentText=qe_payment_amount_text($payload,$totalAmt,$currency);
   $summaryLeft="Total Qty: $totalQty PCS".($paymentText!==''?"\n".$paymentText:'')."\nTotal Amount: $currency ".number_format($totalAmt,2,'.','')."\nCurrency: $currency";
   $summaryRight=qe_doc_no_label(qe_doc_title($payload)).": $quoteNo\nStatus: ".($payload['quote_status']??'Draft')."\nDate: $date";
   $sumCells=[];
   for($cc=1;$cc<=5;$cc++) $sumCells[]=qe_cell($cc,$r,$cc===1?$summaryLeft:'',15);
   for($cc=6;$cc<=10;$cc++) $sumCells[]=qe_cell($cc,$r,$cc===6?$summaryRight:'',15);
-  $rows[]=qe_row($r,$sumCells,86); $merges[]='A'.$r.':E'.$r; $merges[]='F'.$r.':J'.$r; $r++;
-  $r++;
-  $remarkCells=[]; for($cc=1;$cc<=10;$cc++) $remarkCells[]=qe_cell($cc,$r,$cc===1?'Remark : all products marked product model number,adaptor wire, color temperature, reflector degree, CRI and product color.':'',12);
-  $rows[]=qe_row($r,$remarkCells,28); $merges[]='A'.$r.':J'.$r; $r++;
-  $r++;
+  $rows[]=qe_row($r,$sumCells,64); $merges[]='A'.$r.':E'.$r; $merges[]='F'.$r.':J'.$r; $r++;
+  $rows[]=qe_row($r,[],23);$r++;
   $lineCells=[]; for($cc=1;$cc<=10;$cc++) $lineCells[]=qe_cell($cc,$r,'',16);
   $rows[]=qe_row($r,$lineCells,16); $merges[]='A'.$r.':C'.$r; $merges[]='D'.$r.':G'.$r; $merges[]='H'.$r.':J'.$r; $r++;
   $labelCells=[]; for($cc=1;$cc<=10;$cc++){ $txt=''; if($cc===1)$txt='Prepared By'; if($cc===4)$txt='Approved By'; if($cc===8)$txt='Customer Signature'; $labelCells[]=qe_cell($cc,$r,$txt,17); }
   $rows[]=qe_row($r,$labelCells,20); $merges[]='A'.$r.':C'.$r; $merges[]='D'.$r.':G'.$r; $merges[]='H'.$r.':J'.$r; $r++;
-  if($bank){ $r++; $bankCells=[]; for($cc=1;$cc<=10;$cc++) $bankCells[]=qe_cell($cc,$r,$cc===1?$bank:'',18); $rows[]=qe_row($r,$bankCells,74); $merges[]='A'.$r.':J'.$r; $r++; }
-  if($bankTerms){ $r++; $termCells=[]; for($cc=1;$cc<=10;$cc++) $termCells[]=qe_cell($cc,$r,$cc===1?$bankTerms:'',19); $rows[]=qe_row($r,$termCells,140); $merges[]='A'.$r.':J'.$r; $r++; }
+  $contentHeightPt += 155; // 合计、摘要、签名区及其间距
+  $bankStartRow=0;
+  $bankBlockHeightPt=($bank!==''?72:0)+($bankTerms!==''?88:0);
+  if($bankBlockHeightPt>0 && $contentHeightPt+$bankBlockHeightPt>720) $bankStartRow=$r+1;
+  if($bank){ $rows[]=qe_row($r,[],14);$r++; $bankCells=[]; for($cc=1;$cc<=10;$cc++) $bankCells[]=qe_cell($cc,$r,$cc===1?$bank:'',18); $rows[]=qe_row($r,$bankCells,58); $merges[]='A'.$r.':J'.$r; $r++; }
+  if($bankTerms){ $rows[]=qe_row($r,[],6);$r++; $termCells=[]; for($cc=1;$cc<=10;$cc++) $termCells[]=qe_cell($cc,$r,$cc===1?$bankTerms:'',19); $rows[]=qe_row($r,$termCells,82); $merges[]='A'.$r.':J'.$r; $r++; }
   $last=$r;
   usort($rows,function($a,$b){ preg_match('/<row r="(\d+)"/',$a,$ma); preg_match('/<row r="(\d+)"/',$b,$mb); return intval($ma[1]??0)<=>intval($mb[1]??0); });
-  $cols='<cols><col min="1" max="1" width="10" customWidth="1"/><col min="2" max="2" width="12" customWidth="1"/><col min="3" max="3" width="10" customWidth="1"/><col min="4" max="4" width="12" customWidth="1"/><col min="5" max="5" width="42" customWidth="1"/><col min="6" max="6" width="9" customWidth="1"/><col min="7" max="7" width="8" customWidth="1"/><col min="8" max="9" width="11" customWidth="1"/><col min="10" max="10" width="8" customWidth="1"/></cols>';
+  $cols='<cols><col min="1" max="1" width="11" customWidth="1"/><col min="2" max="2" width="12" customWidth="1"/><col min="3" max="3" width="9" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/><col min="5" max="5" width="32" customWidth="1"/><col min="6" max="6" width="8" customWidth="1"/><col min="7" max="7" width="7" customWidth="1"/><col min="8" max="8" width="8" customWidth="1"/><col min="9" max="9" width="11" customWidth="1"/><col min="10" max="10" width="7" customWidth="1"/></cols>';
   $mergeXml='<mergeCells count="'.count($merges).'">'.implode('',array_map(fn($m)=>'<mergeCell ref="'.$m.'"/>',$merges)).'</mergeCells>';
   $drawingTag=$images?'<drawing r:id="rId1"/>':'';
-  $sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:J'.$last.'"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="20"/>'.$cols.'<sheetData>'.implode('',$rows).'</sheetData>'.$mergeXml.'<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.15" footer="0.15"/><pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>'.$drawingTag.'</worksheet>';
+  $rowBreakXml=$bankStartRow>0?'<rowBreaks count="1" manualBreakCount="1"><brk id="'.max(1,$bankStartRow-1).'" min="0" max="16383" man="1"/></rowBreaks>':'';
+  $continuationHeader=qe_xml('&L'.$company.'&C'.qe_doc_title($payload).'&R'.qe_doc_no_label(qe_doc_title($payload)).': '.$quoteNo);
+  $sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:J'.$last.'"/><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><sheetFormatPr defaultRowHeight="20"/>'.$cols.'<sheetData>'.implode('',$rows).'</sheetData>'.$mergeXml.'<printOptions horizontalCentered="1"/><pageMargins left="0.51" right="0.51" top="0.79" bottom="0.39" header="0.20" footer="0"/><pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/><headerFooter differentFirst="1"><oddHeader>'.$continuationHeader.'</oddHeader><firstHeader></firstHeader></headerFooter>'.$rowBreakXml.$drawingTag.'</worksheet>';
   $styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="8"><font><sz val="9"/><name val="ARS MaquetteTr"/></font><font><sz val="16"/><name val="ARS MaquetteTr"/></font><font><b/><sz val="16"/><name val="ARS MaquetteTr"/></font><font><b/><sz val="9"/><name val="ARS MaquetteTr"/></font><font><sz val="8"/><name val="ARS MaquetteTr"/></font><font><b/><sz val="9"/><name val="ARS MaquetteTr"/></font><font><b/><sz val="11"/><name val="ARS MaquetteTr"/></font><font><sz val="'.$bankTermsFont.'"/><name val="ARS MaquetteTr"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="4"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border><border><top style="thin"><color auto="1"/></top></border><border><left style="medium"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="20"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="4" fontId="4" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="4" fontId="5" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="6" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="4" fillId="2" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="TableStyleLight16"/></styleSheet>';
   list($mediaFiles,$drawingXml,$drawingRels,$sheetRels)=qe_drawing_parts($images);
   $contentTypes='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'.($images?'<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>':'').'<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>';
@@ -342,7 +371,7 @@ function qe_build_xlsx($payload){
   if($images){ $files['xl/worksheets/_rels/sheet1.xml.rels']=$sheetRels; $files['xl/drawings/drawing1.xml']=$drawingXml; $files['xl/drawings/_rels/drawing1.xml.rels']=$drawingRels; foreach($mediaFiles as $k=>$v)$files[$k]=$v; }
   return qe_zip_files($files);
 }
-$payload=qe_get_payload();
+$payload=qe_apply_approved_snapshot(qe_get_payload());
 qe_normalize_order_no($payload);
 $bin=qe_build_xlsx($payload);
 $filename=qe_safe_filename(qe_file_title($payload),'.xlsx');

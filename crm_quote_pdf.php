@@ -61,12 +61,23 @@ function quote_pdf_block($msg){ http_response_code(403); echo '<!doctype html><m
 html,body,.paper,.paper *,.quote-table,.quote-table *,.terms,.terms *,.bank,.bank *,.bank-terms,.bank-terms *,.final-summary,.final-summary *,.final-sign,.final-sign *,.doc-table,.doc-table *,.box,.box *{font-family:"ARS MaquetteTr","Microsoft YaHei",Arial,sans-serif!important;}body{font-family:Arial,"Microsoft YaHei",sans-serif;padding:40px;color:#111827} .box{border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:14px;padding:18px;max-width:720px}</style><div class="box"><h2>报价未审核，不能导出</h2><p>'.h($msg).'</p><p>请回报价系统 → 未审核列表 → 审核通过后再导出 PDF。</p></div>'; exit; }
 function quote_pdf_table_exists(PDO $pdo,string $t): bool { try{$s=$pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1');$s->execute([$t]);return (bool)$s->fetchColumn();}catch(Throwable $e){return false;} }
 function quote_pdf_col_exists(PDO $pdo,string $t,string $c): bool { try{$s=$pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1');$s->execute([$t,$c]);return (bool)$s->fetchColumn();}catch(Throwable $e){return false;} }
+function quote_pdf_apply_approved_snapshot(array $payload): array {
+    if (!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no'] ?? '')) !== '') return $payload;
+    $id=(int)($payload['quote_id']??0); if($id<=0) quote_pdf_block('缺少报价ID，不能读取审核快照。');
+    require_once __DIR__.'/includes/db.php'; $pdo=db();
+    $st=$pdo->prepare('SELECT id,quote_no,approval_status,approved_snapshot_json FROM quote_orders WHERE id=? LIMIT 1');$st->execute([$id]);$q=$st->fetch(PDO::FETCH_ASSOC);
+    if(!$q || strtolower((string)($q['approval_status']??''))!=='approved') quote_pdf_block('报价不存在或尚未审核通过。');
+    $snap=json_decode((string)($q['approved_snapshot_json']??''),true);
+    if(!is_array($snap)||(int)($snap['id']??0)!==$id||(string)($snap['quote_no']??'')!==(string)$q['quote_no']) quote_pdf_block('审核快照不存在或与报价不一致。');
+    $items=json_decode((string)($snap['items_json']??''),true); if(!is_array($items)||!$items) quote_pdf_block('审核快照没有产品明细。');
+    return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>maybe_json($snap['customer_json']??'',[]),'header'=>maybe_json($snap['header_json']??'',[]),'bank'=>maybe_json($snap['bank_json']??'',[]),'template'=>maybe_json($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'approval_status'=>'approved','approved_snapshot_export'=>1];
+}
 function quote_pdf_approval_guard(array $payload): void {
     if (!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no'] ?? '')) !== '') return;
     $no = trim((string)($payload['quote_no'] ?? ''));
     if ($no === '') quote_pdf_block('缺少报价编号。');
     try {
-        require_once __DIR__ . '/includes/bootstrap.php';
+        require_once __DIR__ . '/includes/db.php';
         if (!function_exists('db')) return;
         $pdo = db(); if (!$pdo instanceof PDO) return;
         if (!quote_pdf_table_exists($pdo,'quote_orders') || !quote_pdf_col_exists($pdo,'quote_orders','approval_status')) quote_pdf_block('报价系统尚未启用审核字段，请先覆盖 quote_api.php 并刷新报价系统。');
@@ -76,6 +87,7 @@ function quote_pdf_approval_guard(array $payload): void {
         if (strtolower((string)($r['approval_status'] ?? '')) !== 'approved') quote_pdf_block('当前报价状态为：'.($r['approval_status'] ?: 'pending').'。');
     } catch (Throwable $e) { quote_pdf_block('审核状态检查失败：'.$e->getMessage()); }
 }
+$payload=quote_pdf_apply_approved_snapshot($payload);
 quote_pdf_approval_guard($payload);
 
 function quote_pdf_at_doc_no($v): string {
@@ -453,14 +465,15 @@ html,body{margin:0;background:#f4f6fa;color:#000;font-family:"ARS MaquetteTr","M
 .paper.quote-one-item .quote-total-row td{height:6mm!important}
 .paper.quote-one-item .quote-table .spec{padding:.8mm 1mm!important;line-height:1.18!important}
 .paper.quote-one-item .prod-img{max-height:18mm!important}
-.paper.quote-one-item .final-summary{margin-top:7mm!important;gap:10mm!important}
+.paper.quote-one-item .final-summary{margin-top:5mm!important;gap:10mm!important}
 .paper.quote-one-item .final-summary .box{font-size:8.7pt!important;line-height:1.38!important;padding:2.3mm!important;min-height:22mm!important}
 .paper.quote-one-item .final-summary .box b{font-size:10pt!important}
-.paper.quote-one-item .final-sign{margin-top:15mm!important;font-size:8.8pt!important;gap:10mm!important}
+.paper.quote-one-item .final-sign{margin-top:8mm!important;font-size:8.8pt!important;gap:10mm!important}
 .paper.quote-one-item .final-sign div{padding-top:3mm!important}
-.paper.quote-one-item .bank{margin-top:8mm!important;padding:2.3mm!important;font-size:7.8pt!important;line-height:1.23!important;min-height:20mm!important}
-.paper.quote-one-item .bank-terms{margin-top:4.5mm!important;padding:1.4mm 1.6mm!important;font-size:7.25pt!important;line-height:1.28!important;min-height:0!important}
-@media print{.no-print{display:none!important}body{background:#fff}.paper{margin:0;border:0;box-shadow:none;width:210mm;min-height:297mm;page-break-after:always}.paper:last-child{page-break-after:auto}.quote-table thead{display:table-header-group}.quote-table tr{page-break-inside:avoid;break-inside:avoid}.paper.quote-one-item{height:297mm!important;min-height:297mm!important;max-height:297mm!important;overflow:hidden!important;padding:20mm 13mm 10mm!important;page-break-after:auto!important;break-after:auto!important}}
+.paper.quote-one-item .bank{margin-top:5mm!important;padding:2.3mm!important;font-size:7.8pt!important;line-height:1.23!important;min-height:20mm!important}
+.paper.quote-one-item .bank-terms{margin-top:2mm!important;padding:1.4mm 1.6mm!important;font-size:7.25pt!important;line-height:1.28!important;min-height:0!important}
+.bank-note-block{page-break-inside:avoid;break-inside:avoid}.continuation-head{display:none}
+@media print{.no-print{display:none!important}body{background:#fff}.paper{margin:0;border:0;box-shadow:none;width:210mm;min-height:297mm;overflow:visible}.paper:last-child{page-break-after:auto}.quote-table thead{display:table-header-group}.quote-table tr{page-break-inside:avoid;break-inside:avoid}.paper.quote-one-item{height:auto!important;min-height:297mm!important;max-height:none!important;overflow:visible!important;padding:20mm 13mm 10mm!important;page-break-after:auto!important;break-after:auto!important}.bank-note-block.starts-next-page{page-break-before:always;break-before:page;padding-top:10mm}.bank-note-block.starts-next-page .continuation-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10mm;align-items:end;border-bottom:1.25px solid #000;padding-bottom:3mm;margin-bottom:7mm;font-size:8.5pt;line-height:1.25}.continuation-company{font-size:12pt;font-weight:700}.continuation-doc{text-align:right}.continuation-doc b{display:block;font-size:10pt}.bank-note-block.starts-next-page .bank{margin-top:0!important}}
 </style>
 </head>
 <body>
@@ -507,9 +520,24 @@ html,body{margin:0;background:#f4f6fa;color:#000;font-family:"ARS MaquetteTr","M
     <div class="box"><b><?=h(quote_pdf_doc_no_label($docTitle))?>:</b> <?=h($quoteNo)?><br><b>Status:</b> <?=h($docTitle)?><br><b>Date:</b> <?=h($quoteDate)?></div>
   </div>
   <div class="final-sign"><div>Prepared By</div><div>Approved By</div><div>Customer Signature</div></div>
-  <?php if(s_trim($bank['text'] ?? '') !== ''): ?><div class="bank"><?=h($bank['text'])?></div><?php endif; ?>
-  <?php $extraTerms=s_trim($bank['extra_terms'] ?? ($bank['terms_text'] ?? '')); if($extraTerms !== ''): ?><div class="bank-terms"><?=h($extraTerms)?></div><?php endif; ?>
+  <?php $bankText=s_trim($bank['text'] ?? ''); $extraTerms=s_trim($bank['extra_terms'] ?? ($bank['terms_text'] ?? '')); if($bankText !== '' || $extraTerms !== ''): ?>
+  <section class="bank-note-block" id="bankNoteBlock">
+    <div class="continuation-head"><div class="continuation-company"><?=h($company)?></div><div class="continuation-doc"><b><?=h($docTitle)?></b><?=h(quote_pdf_doc_no_label($docTitle))?>: <?=h($quoteNo)?></div></div>
+    <?php if($bankText !== ''): ?><div class="bank"><?=h($bankText)?></div><?php endif; ?>
+    <?php if($extraTerms !== ''): ?><div class="bank-terms"><?=h($extraTerms)?></div><?php endif; ?>
+  </section>
+  <?php endif; ?>
 </div>
-<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},450);});</script>
+<script>
+function prepareBankNotePagination(){
+  const paper=document.querySelector('.paper'),block=document.getElementById('bankNoteBlock');
+  if(!paper||!block)return;
+  block.classList.remove('starts-next-page');
+  const pageHeight=paper.getBoundingClientRect().width*(297/210),top=block.offsetTop,height=block.getBoundingClientRect().height;
+  const pageStart=Math.floor(Math.max(0,top-1)/pageHeight)*pageHeight,guard=paper.getBoundingClientRect().width*(10/210);
+  if(top+height>pageStart+pageHeight-guard)block.classList.add('starts-next-page');
+}
+window.addEventListener('load',function(){setTimeout(function(){prepareBankNotePagination();try{window.focus();window.print();}catch(e){}},450);});
+</script>
 </body>
 </html>

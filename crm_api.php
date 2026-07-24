@@ -1074,6 +1074,10 @@ try {
         crm_require('customer.view');
         api_response(true, '', crm_customer_overview_stats(!empty($_POST['force'])));
     }
+    if ($action === 'customer_country_distribution') {
+        crm_require('customer.view');
+        api_response(true, '', crm_customer_country_distribution($_POST));
+    }
     if ($action === 'crm_linkage_data') {
         crm_require('customer.view');
         api_response(true, '', crm_linkage_data($_POST));
