@@ -1094,6 +1094,18 @@ try {
         require_csrf();
         api_response(true, '名片识别完成，请确认后应用到客户表单', crm_customer_business_card_ocr($_FILES['image'] ?? []));
     }
+    if ($action === 'customer_business_card_view') {
+        $file = crm_customer_business_card_file((int)($_GET['file_id'] ?? $_POST['file_id'] ?? 0));
+        header('Content-Type: image/jpeg');
+        header('Content-Length: ' . (string)filesize((string)$file['file_path']));
+        header('Cache-Control: private, max-age=300');
+        readfile((string)$file['file_path']);
+        exit;
+    }
+    if ($action === 'customer_business_card_delete') {
+        require_csrf();
+        api_response(true, '名片图片已删除', crm_customer_business_card_delete((int)($_POST['file_id'] ?? 0)));
+    }
     if ($action === 'customer_create') {
         require_csrf();
         api_response(true, '客户已进入暂存池，请完成查重确认', crm_customer_create($_POST));

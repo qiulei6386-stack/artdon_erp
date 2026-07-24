@@ -1983,6 +1983,7 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'contacts' => $contacts,
         'groups' => $groups,
         'sales_actions' => $salesActions,
+        'business_cards' => crm_customer_business_cards($id),
         'summary' => crm_customer_summary($id, $linkage),
         'linkage' => $linkage,
         '_lazy_detail' => $light ? 1 : 0,
@@ -2870,6 +2871,7 @@ function crm_customer_create_confirmed(array $input): array
         $createdContactCount++;
     }
     crm_customer_set_groups($id, array_filter(array_map('intval', (array)($input['group_ids'] ?? []))));
+    $businessCard = crm_customer_business_card_attach($id, trim((string)($input['business_card_token'] ?? '')));
     if ($leadId) {
         $pdo->prepare('UPDATE crm_lead_pool SET status = "confirmed", target_customer_id = ?, updated_at = NOW() WHERE id = ?')->execute([$id, $leadId]);
     }
@@ -2879,6 +2881,7 @@ function crm_customer_create_confirmed(array $input): array
     return [
         'customer' => crm_customer_basic_row($id),
         'created_contact_count' => $createdContactCount,
+        'business_card' => $businessCard,
     ];
     } catch (Throwable $e) {
         if ($startedTx && $pdo->inTransaction()) $pdo->rollBack();
@@ -3090,11 +3093,110 @@ function crm_customer_business_card_ocr(array $file): array
         'angle' => (float)($response['Angle'] ?? 0),
         'request_id' => (string)($response['RequestId'] ?? ''),
     ];
+    $result['business_card_token'] = crm_customer_business_card_store_pending((string)$file['tmp_name']);
     crm_customer_log('business_card_ocr', 'customer_scan', null, null, null, [
         'recognized_fields' => array_values(array_unique(array_column($rawFields, 'name'))),
         'request_id' => $result['request_id'],
     ], '腾讯 OCR 名片识别完成');
     return $result;
+}
+
+function crm_customer_business_card_store_pending(string $source): string
+{
+    $bytes = @file_get_contents($source);
+    if ($bytes === false) throw new RuntimeException('读取名片图片失败。');
+    $image = @imagecreatefromstring($bytes);
+    unset($bytes);
+    if (!$image) throw new RuntimeException('名片图片格式无法处理。');
+    $width = imagesx($image);
+    $height = imagesy($image);
+    $maxSide = 1800;
+    if (max($width, $height) > $maxSide) {
+        $scale = $maxSide / max($width, $height);
+        $resized = imagescale($image, max(1, (int)round($width * $scale)), max(1, (int)round($height * $scale)), IMG_BICUBIC_FIXED);
+        if ($resized) { imagedestroy($image); $image = $resized; }
+    }
+    $dir = __DIR__ . '/storage/customer_files/pending_business_cards';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    if (!is_dir($dir) || !is_writable($dir)) { imagedestroy($image); throw new RuntimeException('名片图片目录不可写。'); }
+    foreach ((array)glob($dir . '/*.jpg') as $oldFile) {
+        if (is_file($oldFile) && (int)@filemtime($oldFile) < time() - 86400) @unlink($oldFile);
+    }
+    $token = bin2hex(random_bytes(20));
+    $path = $dir . '/' . $token . '.jpg';
+    $quality = 84;
+    do {
+        imagejpeg($image, $path, $quality);
+        clearstatcache(true, $path);
+        $quality -= 7;
+    } while ((int)@filesize($path) > 500 * 1024 && $quality >= 42);
+    while ((int)@filesize($path) > 500 * 1024 && imagesx($image) > 560) {
+        $nextWidth = max(560, (int)round(imagesx($image) * .82));
+        $nextHeight = max(1, (int)round(imagesy($image) * ($nextWidth / imagesx($image))));
+        $smaller = imagescale($image, $nextWidth, $nextHeight, IMG_BICUBIC_FIXED);
+        if (!$smaller) break;
+        imagedestroy($image);
+        $image = $smaller;
+        imagejpeg($image, $path, 58);
+        clearstatcache(true, $path);
+    }
+    imagedestroy($image);
+    clearstatcache(true, $path);
+    if (!is_file($path) || (int)filesize($path) > 500 * 1024) {
+        @unlink($path);
+        throw new RuntimeException('名片图片压缩后仍超过 500KB，请换一张尺寸较小的图片。');
+    }
+    return $token;
+}
+
+function crm_customer_business_card_attach(int $customerId, string $token): ?array
+{
+    $token = preg_replace('/[^a-f0-9]/i', '', $token);
+    if ($customerId <= 0 || strlen($token) !== 40) return null;
+    $source = __DIR__ . '/storage/customer_files/pending_business_cards/' . $token . '.jpg';
+    if (!is_file($source)) return null;
+    $dir = __DIR__ . '/storage/customer_files/' . $customerId;
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    if (!is_dir($dir) || !is_writable($dir)) throw new RuntimeException('客户名片目录不可写。');
+    $name = 'business_card_' . date('Ymd_His') . '.jpg';
+    $target = $dir . '/' . bin2hex(random_bytes(6)) . '_' . $name;
+    if (!@rename($source, $target) && !(@copy($source, $target) && @unlink($source))) throw new RuntimeException('名片图片关联客户失败。');
+    db()->prepare('INSERT INTO crm_customer_files (customer_id,file_name,file_path,file_type,file_size,category,remark,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?,NOW())')
+        ->execute([$customerId,$name,$target,'image/jpeg',(int)(filesize($target) ?: 0),'business_card','CRM 名片 OCR 原图（已压缩）',(int)(current_user()['id'] ?? 0)]);
+    $id = (int)db()->lastInsertId();
+    crm_customer_log('business_card_save', 'customer_file', $id, $customerId, null, ['file_name'=>$name,'file_size'=>(int)(filesize($target) ?: 0)], '保存客户名片图片');
+    return ['id'=>$id,'file_name'=>$name,'file_size'=>(int)(filesize($target) ?: 0),'created_at'=>date('Y-m-d H:i:s')];
+}
+
+function crm_customer_business_cards(int $customerId): array
+{
+    if ($customerId <= 0) return [];
+    $stmt = db()->prepare("SELECT f.id,f.customer_id,f.file_name,f.file_type,f.file_size,f.created_at,u.username AS uploaded_by
+        FROM crm_customer_files f LEFT JOIN crm_users u ON u.id=f.uploaded_by
+        WHERE f.customer_id=? AND f.category='business_card' AND f.deleted_at IS NULL ORDER BY f.id DESC");
+    $stmt->execute([$customerId]);
+    return $stmt->fetchAll() ?: [];
+}
+
+function crm_customer_business_card_file(int $fileId): array
+{
+    $stmt = db()->prepare("SELECT * FROM crm_customer_files WHERE id=? AND category='business_card' AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$fileId]);
+    $row = $stmt->fetch();
+    if (!$row) throw new RuntimeException('名片图片不存在或已删除。');
+    crm_customer_get((int)$row['customer_id'], 'overview');
+    if (!is_file((string)$row['file_path'])) throw new RuntimeException('名片图片文件不存在。');
+    return $row;
+}
+
+function crm_customer_business_card_delete(int $fileId): array
+{
+    crm_require('customer.file_delete');
+    $row = crm_customer_business_card_file($fileId);
+    db()->prepare('UPDATE crm_customer_files SET deleted_at=NOW(),deleted_by=? WHERE id=?')->execute([(int)(current_user()['id'] ?? 0),$fileId]);
+    if (is_file((string)$row['file_path'])) @unlink((string)$row['file_path']);
+    crm_customer_log('business_card_delete', 'customer_file', $fileId, (int)$row['customer_id'], ['file_name'=>$row['file_name']], null, '删除客户名片图片');
+    return ['file_id'=>$fileId,'customer_id'=>(int)$row['customer_id']];
 }
 
 function crm_customer_update(int $id, array $input): array

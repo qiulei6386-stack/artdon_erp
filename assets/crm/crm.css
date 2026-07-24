@@ -23805,6 +23805,71 @@ body.is-workspace-module .workspace-mail-more {
   line-height: 1.2 !important;
 }
 
+.customer-business-card-archive {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: var(--crm-card-bg);
+}
+.customer-business-card-archive > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.customer-business-card-archive > header div { display: grid; gap: 3px; }
+.customer-business-card-archive > header strong { font-size: 14px; }
+.customer-business-card-archive > header span { color: var(--crm-muted-text); font-size: 12px; }
+.customer-business-card-archive > header b {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--crm-active-bg);
+  color: var(--crm-primary);
+  font-size: 12px;
+}
+.customer-business-card-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.customer-business-card-image {
+  overflow: hidden;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: var(--crm-card-bg);
+}
+.customer-business-card-image > button {
+  display: block;
+  width: 100%;
+  height: 140px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #f8fafc;
+}
+.customer-business-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.customer-business-card-image > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: 9px;
+}
+.customer-business-card-image strong,
+.customer-business-card-image span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.customer-business-card-image span { color: var(--crm-muted-text); font-size: 11px; }
+.customer-business-card-image .danger { grid-column: 2; grid-row: 1 / span 2; min-height: 28px; padding: 0 8px; }
+
 /* Mobile customer center: keep filters compact and make the action console usable. */
 .customer-filter-backdrop[hidden],
 .crm-mobile-actions-backdrop[hidden] {

@@ -3775,7 +3775,7 @@
       var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
-        customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute">' + this.renderArchiveAttributePanel(data) + '</section>',
+        customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute">' + this.renderArchiveAttributePanel(data) + this.renderBusinessCardGallery(data.business_cards || []) + '</section>',
         contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><div class="customer-tab-stats"><span>联系人 ' + esc((data.contacts || []).length) + '</span><span>主联系人 ' + esc((data.contacts || []).filter(function (ct) { return Number(ct.is_primary); }).length) + '</span><span>有邮箱 ' + esc((data.contacts || []).filter(function (ct) { return ct.email; }).length) + '</span><span>有 WhatsApp ' + esc((data.contacts || []).filter(function (ct) { return ct.whatsapp; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th><th>主联系人</th><th>推广状态</th><th>最近联系时间</th></tr></thead><tbody>' + contacts + '</tbody></table></section>',
         addresses: addressPanel,
         chat_groups: chatGroupPanel,
@@ -4798,6 +4798,14 @@
       }).join('') || '<tr><td colspan="6">暂无数据。暂无客户文件。</td></tr>';
       return '<div class="customer-tab-stats"><span>文件 ' + esc(data.total || rows.length || 0) + '</span><span>空间 ' + esc(data.total_size || '0 MB') + '</span><span>最近上传 ' + esc(data.latest_at || '暂无') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>大小</th><th>上传人</th><th>上传时间</th></tr></thead><tbody>' + tableRows + '</tbody></table>';
     },
+    renderBusinessCardGallery: function (rows) {
+      rows = rows || [];
+      var cards = rows.map(function (row) {
+        var src = 'crm_api.php?action=customer_business_card_view&file_id=' + encodeURIComponent(row.id || 0);
+        return '<article class="customer-business-card-image"><button type="button" data-business-card-view="' + esc(src) + '"><img src="' + esc(src) + '" alt="客户名片"></button><div><strong>' + esc(row.file_name || '客户名片') + '</strong><span>' + esc(Math.max(1, Math.round(Number(row.file_size || 0) / 1024))) + ' KB · ' + esc(row.created_at || '-') + '</span><button type="button" class="danger" data-business-card-delete="' + esc(row.id || 0) + '">删除</button></div></article>';
+      }).join('');
+      return '<section class="customer-business-card-archive"><header><div><strong>名片图片</strong><span>OCR 原图压缩至约 500KB 保存，仅限 CRM 内部查看。</span></div><b>' + esc(rows.length) + ' 张</b></header><div class="customer-business-card-gallery">' + (cards || '<p>暂无保存的名片图片。</p>') + '</div></section>';
+    },
     renderDuplicatePanel: function (rows) {
       rows = rows || [];
       var tableRows = rows.map(function (row, index) {
@@ -5188,6 +5196,22 @@
       });
       document.querySelectorAll('[data-followup-delete]').forEach(function (button) {
         button.addEventListener('click', function () { self.deleteFollowup(Number(button.getAttribute('data-followup-delete') || 0)); });
+      });
+      document.querySelectorAll('[data-business-card-view]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          window.open(button.getAttribute('data-business-card-view') || '', '_blank');
+        });
+      });
+      document.querySelectorAll('[data-business-card-delete]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var fileId = Number(button.getAttribute('data-business-card-delete') || 0);
+          if (!fileId || !confirm('确认删除这张客户名片图片？删除后无法恢复。')) return;
+          post('customer_business_card_delete', { file_id: fileId }).then(function (json) {
+            if (!json.success) throw new Error(json.message || '删除失败');
+            toast('名片图片已删除');
+            self.loadDetail(self.currentId, { full: true, silent: true });
+          }).catch(function (error) { self.showCustomerError(error.message || '删除失败'); });
+        });
       });
     },
     switchDetailTab: function (name, options) {
@@ -5673,7 +5697,7 @@
         return CustomerModule.entryContactCard(contact).replace('data-contact-card', 'data-contact-card data-contact-index="' + index + '"');
       }).join('') : '';
       return '<div class="entity-editor customer-entry-system" data-customer-entry>' +
-        '<input type="hidden" name="customer_id" value="' + esc(entity.id || '') + '"><input type="hidden" name="addresses_json" data-addresses-json><input type="hidden" name="contacts_json" data-contacts-json><input type="hidden" name="duplicate_risk_confirmed" data-duplicate-risk-confirmed value="0">' +
+        '<input type="hidden" name="customer_id" value="' + esc(entity.id || '') + '"><input type="hidden" name="business_card_token" data-business-card-token value=""><input type="hidden" name="addresses_json" data-addresses-json><input type="hidden" name="contacts_json" data-contacts-json><input type="hidden" name="duplicate_risk_confirmed" data-duplicate-risk-confirmed value="0">' +
         (isEdit ? '' : '<section class="entity-section business-card-scan" data-business-card-scan><header><div><span>SCAN TO CREATE</span><h3>扫描名片 / 图片识别</h3><p>支持拖入、复制粘贴、选择图片或手机拍摄；识别后先确认，再回填原客户表单。</p></div><b>腾讯 OCR</b></header><div class="business-card-scan-body"><label class="business-card-drop" tabindex="0" data-business-card-drop><input type="file" accept="image/jpeg,image/png" capture="environment" data-business-card-file><span data-business-card-preview><i>＋</i><strong>拖入、粘贴或拍摄名片</strong><em>点击选择图片 · Ctrl/⌘+V 粘贴 · JPG/PNG 最大 5MB</em></span></label><div class="business-card-scan-side"><div data-business-card-status><strong>等待名片图片</strong><span>可将截图直接粘贴到当前弹窗；识别不会直接保存客户。</span></div><div class="business-card-input-actions"><button type="button" data-business-card-paste-hint>粘贴截图</button><button type="button" class="primary" data-business-card-recognize disabled>开始识别</button></div></div></div><div class="business-card-result" data-business-card-result hidden></div></section>') +
         '<section class="entity-section entity-section-primary"><h3>基础信息</h3>' +
         '<div class="entity-name-check">' + this.field('客户名称 *', 'customer_name', entity.customer_name, 'required autocomplete="off" data-entry-name data-entry-watch') +
@@ -7264,6 +7288,8 @@
       }).then(function (json) {
         if (!json.success) throw new Error(json.message || '名片识别失败');
         self.businessCardOcrResult = json.data || {};
+        var tokenInput = root.querySelector('[data-business-card-token]');
+        if (tokenInput) tokenInput.value = self.businessCardOcrResult.business_card_token || '';
         self.renderBusinessCardResult(root, self.businessCardOcrResult);
         self.setBusinessCardStatus(root, '识别完成', '请核对识别字段，再应用到客户表单。', 'success');
       }).catch(function (error) {
