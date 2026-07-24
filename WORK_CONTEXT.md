@@ -4,15 +4,16 @@
 
 ## 固定环境
 
-- 本地工作目录：
-  `/Users/qiulei-office/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
+- 本地工作目录（两台电脑）：
+  - 家用电脑：`/Users/qiulei-home/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
+  - 办公电脑：`/Users/qiulei-office/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
+- 当前电脑：家用电脑（`qiulei-home`）
 - GitHub：
   `git@github.com:qiulei6386-stack/artdon_erp.git`
 - 主分支：`main`
 - 服务器 SSH：`artdon`
-- 服务器运行目录：
-  - `/www/wwwroot/Artdon/`
-  - `/www/wwwroot/Artdon/artdon_erp/`
+- 唯一服务器运行目录：
+  `/www/wwwroot/Artdon/artdon_erp/`
 
 ## 固定工作规则
 
@@ -22,6 +23,8 @@
 
 ## 最近完成
 
+- 已确认两个本地路径分别属于家用电脑 `qiulei-home` 和办公电脑 `qiulei-office`；每次使用当前电脑对应目录。
+- 已确认服务器唯一运行目录为 `/www/wwwroot/Artdon/artdon_erp/`，后续不再同步外层 `/www/wwwroot/Artdon/`。
 - 派工待办“完成 / 优先级 / 截止日期 / 负责人 / 方式 / 派工来自 / 操作”7 列已按设备视图锁定宽度：不再显示拖拽把手，也不参与窗口自适应缩放；标题、项目等列继续自适应。
 - 派工待办表格整排表头文字已统一居中，所有设备视图同步生效，内容行原有对齐方式不变。
 - 派工待办“优先级 / 负责人 / 方式”列已按文字压缩：桌面与横屏为 56 / 72 / 52px，手机竖屏为 50 / 72 / 50px；已有较宽个人设置会自动压到新宽度。
@@ -41,11 +44,11 @@
 
 ## 本次检查与部署
 
-- 修改文件：`dispatch_next.php`、`dispatch_next_api.php`、`WORK_CONTEXT.md`。
-- 本地检查：`git diff --check`、内嵌 JavaScript `node --check` 通过；本机未安装 PHP CLI，未能执行本地 `php -l`。
-- 服务器部署：已同步到 `/www/wwwroot/Artdon/` 和 `/www/wwwroot/Artdon/artdon_erp/`。
-- 服务器检查：两个目录内的 `dispatch_next.php`、`dispatch_next_api.php` 均通过 `php -l`，对应文件 SHA-256 一致。
-- Git：业务提交 `d82ffad` 已推送到 `origin/main`。
+- 修改文件：`AGENTS.md`、`WORK_CONTEXT.md`。
+- 本地检查：`git diff --check` 通过。
+- 服务器部署：同步到唯一运行目录 `/www/wwwroot/Artdon/artdon_erp/`。
+- 服务器检查：规则与上下文文件将通过 SHA-256 校验确认一致。
+- Git：本次规则修正提交与推送状态以最新 `git log -1` 为准。
 
 ## 待办
 
