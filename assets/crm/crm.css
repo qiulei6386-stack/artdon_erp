@@ -22959,6 +22959,162 @@ body.is-workspace-module .workspace-assist-time i {
   }
 }
 
+/* Mobile customer contact editor: compact touch layout without changing contact data flow. */
+@media (max-width: 720px) {
+  .customer-dialog.contact-mobile-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box {
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > header {
+    min-height: 56px !important;
+    padding: 8px 12px !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > header > div {
+    min-width: 0;
+  }
+  .contact-mobile-dialog .customer-dialog-box > header strong {
+    font-size: 17px !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > header small {
+    max-width: calc(100vw - 94px);
+    display: block;
+    overflow: hidden;
+    font-size: 11px !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .contact-mobile-dialog .customer-dialog-box > header button {
+    width: 48px !important;
+    min-width: 48px !important;
+    height: 34px !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+  }
+  .contact-mobile-dialog .customer-dialog-body {
+    padding: 10px !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .contact-mobile-dialog .entity-editor-contact {
+    gap: 9px !important;
+  }
+  .contact-mobile-dialog .entity-section {
+    margin: 0 !important;
+    border-radius: 12px !important;
+    padding: 11px !important;
+  }
+  .contact-mobile-dialog .entity-section h3,
+  .contact-mobile-dialog .entity-section summary {
+    margin: 0 0 9px !important;
+    font-size: 13px !important;
+  }
+  .contact-mobile-dialog .entity-section-primary .entity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+  }
+  .contact-mobile-dialog .entity-section-primary .entity-field:has([name="name"]) {
+    grid-column: 1 / -1;
+  }
+  .contact-mobile-dialog .entity-field {
+    gap: 4px !important;
+    font-size: 11px !important;
+  }
+  .contact-mobile-dialog .entity-field input,
+  .contact-mobile-dialog .entity-field select,
+  .contact-mobile-dialog .entity-contact-line input,
+  .contact-mobile-dialog .phone-composite-control select,
+  .contact-mobile-dialog .phone-composite-control input {
+    min-height: 42px !important;
+    font-size: 16px !important;
+  }
+  .contact-mobile-dialog .entity-contact-card {
+    gap: 8px !important;
+  }
+  .contact-mobile-dialog .entity-contact-line,
+  .contact-mobile-dialog .entity-contact-line:has(.entity-contact-icon) {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr !important;
+    gap: 4px;
+    border: 0;
+    padding: 0;
+  }
+  .contact-mobile-dialog .entity-contact-icon {
+    display: none;
+  }
+  .contact-mobile-dialog .entity-contact-label {
+    color: var(--crm-muted-text);
+    font-size: 11px;
+  }
+  .contact-mobile-dialog .entity-contact-line input {
+    border: 1px solid var(--crm-border) !important;
+    border-radius: 10px !important;
+    background: var(--crm-card-bg) !important;
+    padding: 0 10px !important;
+  }
+  .contact-mobile-dialog .phone-composite-control,
+  .contact-mobile-dialog .phone-field .phone-composite-control {
+    grid-template-columns: 112px minmax(0, 1fr) !important;
+    gap: 7px !important;
+  }
+  .contact-mobile-dialog .phone-composite-control select {
+    min-width: 0 !important;
+    padding: 0 6px !important;
+    font-size: 13px !important;
+  }
+  .contact-mobile-dialog .entity-section-muted:not([open]) {
+    opacity: 1;
+    background: #f8fafc !important;
+  }
+  .contact-mobile-dialog .entity-section-muted summary {
+    margin: 0 !important;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+  }
+  .contact-mobile-dialog .entity-section-muted[open] summary {
+    margin-bottom: 10px !important;
+  }
+  .contact-mobile-dialog .entity-section-muted .tag-chip {
+    min-height: 34px !important;
+  }
+  .contact-mobile-dialog .entity-section-note textarea {
+    min-height: 76px !important;
+    max-height: 120px !important;
+    font-size: 16px !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > footer {
+    min-height: 62px !important;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+    display: block !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > footer > span {
+    display: none !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > footer > div {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px !important;
+  }
+  .contact-mobile-dialog .customer-dialog-box > footer button {
+    width: 100%;
+    min-height: 44px !important;
+    margin: 0 !important;
+    font-size: 15px !important;
+  }
+}
+
 /* CRM workspace plain color accent layer. */
 body.is-workspace-module .crm-main,
 body.is-workspace-module .crm-module.active,

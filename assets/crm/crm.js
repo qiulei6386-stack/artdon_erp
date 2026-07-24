@@ -5902,7 +5902,7 @@
       return '<div class="entity-editor entity-editor-' + type + '">' + hidden +
         '<section class="entity-section entity-section-primary"><h3>基础信息</h3><div class="entity-grid">' + basics + '</div></section>' +
         '<section class="entity-section entity-section-contact"><h3>联系方式</h3><div class="entity-contact-card">' + contacts + '</div></section>' +
-        '<details class="entity-section entity-section-muted"><summary>关系 / 状态</summary><div class="entity-grid">' + relation + '</div></details>' +
+        '<details class="entity-section entity-section-muted"><summary>' + (isCustomer ? '关系 / 状态' : '更多信息（角色、来源、生日）') + '</summary><div class="entity-grid">' + relation + '</div></details>' +
         '<section class="entity-section entity-section-note"><h3>备注</h3><textarea name="remark" rows="3" maxlength="1000" placeholder="补充说明，最多 1000 字">' + esc(entity.remark || '') + '</textarea></section>' +
         '</div>';
     },
@@ -6568,7 +6568,8 @@
       var contact = {};
       id = Number(id || 0);
       if (id && this.currentDetail) contact = (this.currentDetail.contacts || []).find(function (item) { return Number(item.id) === id; }) || {};
-      this.openDialog(id ? '编辑联系人' : '新建联系人', this.entityEditor('contact', contact), id ? 'contact_update' : 'contact_create', '联系人是客户下的轻实体，非核心字段默认折叠');
+      var customerName = String((this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.customer_name) || '').trim();
+      this.openDialog(id ? '编辑联系人' : '新建联系人', this.entityEditor('contact', contact), id ? 'contact_update' : 'contact_create', customerName ? ('所属客户：' + customerName) : '填写联系人基础资料和常用联系方式');
     },
     openBulkContactPromotionDialog: function () {
       if (!this.currentId || !this.currentDetail || !this.currentDetail.customer) return this.showCustomerError('请先选择客户。');
@@ -7091,7 +7092,8 @@
       var form = document.querySelector('[data-customer-form]');
       var hintNode = document.querySelector('[data-dialog-hint]');
       if (!dialog || !body || !form) return;
-      dialog.classList.remove('visit-modal-large', 'opportunity-modal-large');
+      dialog.classList.remove('visit-modal-large', 'opportunity-modal-large', 'contact-mobile-dialog');
+      dialog.classList.toggle('contact-mobile-dialog', action === 'contact_create' || action === 'contact_update');
       titleNode.textContent = title;
       if (descNode) descNode.textContent = hint || '客户业务操作';
       body.innerHTML = html;
