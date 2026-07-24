@@ -1,0 +1,15 @@
+{
+  "status": "plan_only",
+  "execution_enabled": false,
+  "database": "artdon_new_erp",
+  "tables": [
+    "cc_schema_migrations",
+    "cc_entity_links",
+    "cc_integration_logs",
+    "cc_activity_logs"
+  ],
+  "legacy_table_changes": 0,
+  "legacy_data_changes": 0,
+  "legacy_triggers": 0,
+  "legacy_foreign_keys": 0
+}
