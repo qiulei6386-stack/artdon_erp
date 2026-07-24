@@ -22,6 +22,7 @@
 
 ## 最近完成
 
+- 派工待办“完成 / 优先级 / 截止日期 / 负责人 / 方式 / 派工来自 / 操作”7 列已按设备视图锁定宽度：不再显示拖拽把手，也不参与窗口自适应缩放；标题、项目等列继续自适应。
 - 派工待办表格整排表头文字已统一居中，所有设备视图同步生效，内容行原有对齐方式不变。
 - 派工待办“优先级 / 负责人 / 方式”列已按文字压缩：桌面与横屏为 56 / 72 / 52px，手机竖屏为 50 / 72 / 50px；已有较宽个人设置会自动压到新宽度。
 - 派工待办“优先级”和“方式”列已隐藏原生下拉箭头，文字区域仍可直接点击选择，新增行同步生效；另已修复方式列旧高优先级背景箭头样式覆盖问题。
@@ -35,16 +36,16 @@
 
 ## 最近 Git 状态
 
-- 最近业务提交：`0a3f3a1`（派工待办表格表头统一居中）。
+- 最近业务提交：`d82ffad`（锁定派工待办 7 个工具列宽度）。
 - 协作规则与上下文文件已纳入 Git 管理；具体最新提交以 `git log -1` 为准。
 
 ## 本次检查与部署
 
-- 修改文件：`dispatch_next.php`、`WORK_CONTEXT.md`。
-- 本地检查：`git diff --check` 通过；本机未安装 PHP CLI，未能执行本地 `php -l`。
+- 修改文件：`dispatch_next.php`、`dispatch_next_api.php`、`WORK_CONTEXT.md`。
+- 本地检查：`git diff --check`、内嵌 JavaScript `node --check` 通过；本机未安装 PHP CLI，未能执行本地 `php -l`。
 - 服务器部署：已同步到 `/www/wwwroot/Artdon/` 和 `/www/wwwroot/Artdon/artdon_erp/`。
-- 服务器检查：两个目录内的 `dispatch_next.php` 均通过 `php -l`，SHA-256 一致。
-- Git：业务提交 `0a3f3a1` 已推送到 `origin/main`。
+- 服务器检查：两个目录内的 `dispatch_next.php`、`dispatch_next_api.php` 均通过 `php -l`，对应文件 SHA-256 一致。
+- Git：业务提交 `d82ffad` 已推送到 `origin/main`。
 
 ## 待办
 
