@@ -3358,15 +3358,15 @@ function dn_table_default_columns(): array
 {
     return [
         ['key'=>'row_handle','label'=>'','type'=>'handle','visible'=>1,'width'=>34,'minWidth'=>28,'maxWidth'=>56,'order'=>5],
-        ['key'=>'complete','label'=>'完成','type'=>'complete','visible'=>1,'width'=>56,'minWidth'=>44,'maxWidth'=>120,'order'=>10],
-        ['key'=>'priority','label'=>'优先级','type'=>'select','visible'=>1,'width'=>56,'minWidth'=>56,'maxWidth'=>72,'order'=>20],
+        ['key'=>'complete','label'=>'完成','type'=>'complete','visible'=>1,'width'=>56,'minWidth'=>56,'maxWidth'=>56,'order'=>10],
+        ['key'=>'priority','label'=>'优先级','type'=>'select','visible'=>1,'width'=>56,'minWidth'=>56,'maxWidth'=>56,'order'=>20],
         ['key'=>'title','label'=>'任务标题','type'=>'text','visible'=>1,'width'=>260,'minWidth'=>140,'maxWidth'=>720,'order'=>30],
         ['key'=>'project','label'=>'项目','type'=>'textarea','visible'=>1,'width'=>420,'minWidth'=>120,'maxWidth'=>760,'order'=>40],
-        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>70,'minWidth'=>70,'maxWidth'=>90,'order'=>50],
-        ['key'=>'assigned_to','label'=>'负责人','type'=>'user','visible'=>1,'width'=>72,'minWidth'=>72,'maxWidth'=>88,'order'=>60],
-        ['key'=>'dispatch_mode','label'=>'方式','type'=>'mode','visible'=>1,'width'=>52,'minWidth'=>52,'maxWidth'=>64,'order'=>70],
-        ['key'=>'creator_name','label'=>'派工来自','type'=>'readonly','visible'=>1,'width'=>96,'minWidth'=>86,'maxWidth'=>110,'order'=>80],
-        ['key'=>'actions','label'=>'操作','type'=>'actions','visible'=>1,'width'=>150,'minWidth'=>120,'maxWidth'=>220,'order'=>90],
+        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>70,'minWidth'=>70,'maxWidth'=>70,'order'=>50],
+        ['key'=>'assigned_to','label'=>'负责人','type'=>'user','visible'=>1,'width'=>72,'minWidth'=>72,'maxWidth'=>72,'order'=>60],
+        ['key'=>'dispatch_mode','label'=>'方式','type'=>'mode','visible'=>1,'width'=>52,'minWidth'=>52,'maxWidth'=>52,'order'=>70],
+        ['key'=>'creator_name','label'=>'派工来自','type'=>'readonly','visible'=>1,'width'=>96,'minWidth'=>96,'maxWidth'=>96,'order'=>80],
+        ['key'=>'actions','label'=>'操作','type'=>'actions','visible'=>1,'width'=>150,'minWidth'=>150,'maxWidth'=>150,'order'=>90],
     ];
 }
 
@@ -3467,13 +3467,15 @@ function dn_get_table_prefs(array $in): array
     foreach ($byKey as &$col) {
         $key = (string)($col['key'] ?? '');
         $compactWidths = $scope === 'mobile'
-            ? ['priority'=>50, 'due_at'=>48, 'assigned_to'=>72, 'dispatch_mode'=>50]
-            : ['priority'=>56, 'due_at'=>70, 'assigned_to'=>72, 'dispatch_mode'=>52];
+            ? ['complete'=>36, 'priority'=>50, 'due_at'=>48, 'assigned_to'=>72, 'dispatch_mode'=>50, 'creator_name'=>64, 'actions'=>62]
+            : ($scope === 'mobile_landscape'
+                ? ['complete'=>42, 'priority'=>56, 'due_at'=>70, 'assigned_to'=>72, 'dispatch_mode'=>52, 'creator_name'=>96, 'actions'=>82]
+                : ['complete'=>56, 'priority'=>56, 'due_at'=>70, 'assigned_to'=>72, 'dispatch_mode'=>52, 'creator_name'=>96, 'actions'=>150]);
         if (!isset($compactWidths[$key])) continue;
         $compactWidth = $compactWidths[$key];
-        $col['width'] = min((int)($col['width'] ?? $compactWidth), $compactWidth);
-        $col['minWidth'] = $key === 'due_at' ? ($scope === 'mobile' ? 40 : 70) : $compactWidth;
-        $col['maxWidth'] = $key === 'due_at' ? ($scope === 'mobile' ? 72 : 90) : $compactWidth;
+        $col['width'] = $compactWidth;
+        $col['minWidth'] = $compactWidth;
+        $col['maxWidth'] = $compactWidth;
     }
     unset($col);
     $columns = array_values($byKey);
