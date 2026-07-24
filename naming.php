@@ -896,6 +896,9 @@ function nm_build_where(array $cols, array $f, array &$args, bool $forFolder = f
     foreach ($map as $fk=>$col) {
         $v = nm_s($f[$fk] ?? '');
         if ($v !== '' && in_array($col, $cols, true)) {
+            // 综合关键词用于跨文件夹找完整系列。旧 URL/浏览器状态里残留的
+            // category 不应把同系列的有边、无边型号再次截断。
+            if ($fk === 'category' && $kw !== '') continue;
             if ($fk === 'customer') { $where[] = "`{$col}` LIKE ?"; $args[] = '%'.$v.'%'; }
             else { $where[] = "`{$col}`=?"; $args[] = $v; }
         }
