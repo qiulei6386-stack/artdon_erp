@@ -1,13 +1,13 @@
 # Artdon ERP 工作上下文
 
-更新时间：2026-07-24
+更新时间：2026-07-25
 
 ## 固定环境
 
 - 本地工作目录（两台电脑）：
   - 家用电脑：`/Users/qiulei-home/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
   - 办公电脑：`/Users/qiulei-office/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
-- 当前电脑：家用电脑（`qiulei-home`）
+- 当前电脑：办公电脑（`qiulei-office`）
 - GitHub：
   `git@github.com:qiulei6386-stack/artdon_erp.git`
 - 主分支：`main`
@@ -23,6 +23,7 @@
 
 ## 最近完成
 
+- 已完成本地、GitHub、服务器三方同步审计：同步前已跟踪代码均为 `1b9436e`；服务器无已跟踪改动，GitHub 与本地一致。服务器缺少 GitHub SSH 凭据，后续由本地推送 GitHub并通过 Git bundle 快进服务器仓库。
 - 已确认两个本地路径分别属于家用电脑 `qiulei-home` 和办公电脑 `qiulei-office`；每次使用当前电脑对应目录。
 - 已确认服务器唯一运行目录为 `/www/wwwroot/Artdon/artdon_erp/`，后续不再同步外层 `/www/wwwroot/Artdon/`。
 - 派工待办“完成 / 优先级 / 截止日期 / 负责人 / 方式 / 派工来自 / 操作”7 列已按设备视图锁定宽度：不再显示拖拽把手，也不参与窗口自适应缩放；标题、项目等列继续自适应。
@@ -44,11 +45,11 @@
 
 ## 本次检查与部署
 
-- 修改文件：`AGENTS.md`、`WORK_CONTEXT.md`。
-- 本地检查：`git diff --check` 通过。
-- 服务器部署：同步到唯一运行目录 `/www/wwwroot/Artdon/artdon_erp/`。
-- 服务器检查：规则与上下文文件将通过 SHA-256 校验确认一致。
-- Git：本次规则修正提交与推送状态以最新 `git log -1` 为准。
+- 修改文件：`WORK_CONTEXT.md`。
+- 同步检查：本地与 GitHub均为 `1b9436e`；服务器已跟踪文件干净且 HEAD 为 `1b9436e`。
+- 未跟踪文件：本地与服务器共有 `CODEX.command` 和两份商业中心执行文档，哈希一致；服务器独有 `_migration_backups/`，均保留原状且未擅自纳入 Git。
+- 服务器同步：服务器无法直接访问 GitHub SSH，最终上下文提交将通过 Git bundle 快进到唯一运行目录 `/www/wwwroot/Artdon/artdon_erp/`。
+- Git：本次同步记录提交与推送状态以最新 `git log -1` 为准。
 
 ## 待办
 
