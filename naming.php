@@ -3149,29 +3149,11 @@ function initQuickFuzzySearch(){
     if(url===lastUrl) return;
     lastUrl=url;
     if(aborter) aborter.abort();
-    aborter=new AbortController();
     setSearchState('正在搜索…','warn');
-    try{
-      const res=await fetch(url,{headers:{'X-Requested-With':'XMLHttpRequest'},signal:aborter.signal,cache:'no-store'});
-      const html=await res.text();
-      const doc=new DOMParser().parseFromString(html,'text/html');
-      replaceIfFound(doc,'.stats','outer');
-      replaceIfFound(doc,'.folders','inner');
-      replaceIfFound(doc,'.viewbar','outer');
-      const oldResult=document.querySelector('.table-wrap') || document.querySelector('.grid');
-      const newResult=doc.querySelector('.table-wrap') || doc.querySelector('.grid');
-      if(oldResult && newResult) oldResult.replaceWith(newResult);
-      replaceAllMatching(doc,'.pager','outer');
-      if(window.history && window.history.replaceState) window.history.replaceState(null,'',url);
-      // 不替换搜索框本身，所以输入焦点和光标位置不会飞走。
-      setSearchState('已自动搜索','ok');
-      applyStaticWatermarks();
-      updateWebsiteSyncChip();
-    }catch(e){
-      if(e && e.name==='AbortError') return;
-      setSearchState('搜索失败','bad');
-      console.error(e);
-    }
+    // HTML 局部替换在登录重定向、权限页或代理缓存出现时会静默失败，
+    // 输入框却仍显示“已自动搜索”。直接导航到完整查询地址，确保统计、
+    // 文件夹和型号列表使用同一次服务器查询，不再出现画面仍是全部 161 条。
+    window.location.assign(url);
   }
   function scheduleQuickSearch(delay){
     if(composing) return;
