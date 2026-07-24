@@ -3175,9 +3175,13 @@ function initQuickFuzzySearch(){
     clearTimeout(timer);
     timer=setTimeout(runQuickSearch, delay || 420);
   }
+  function clearFolderConstraintForKeyword(){
+    const category=form.querySelector('select[name="category"]');
+    if(category && category.value!=='') category.value='';
+  }
   inp.addEventListener('compositionstart',()=>{composing=true; clearTimeout(timer);});
-  inp.addEventListener('compositionend',()=>{composing=false; scheduleQuickSearch(260);});
-  inp.addEventListener('input',()=>scheduleQuickSearch(420));
+  inp.addEventListener('compositionend',()=>{composing=false; clearFolderConstraintForKeyword(); scheduleQuickSearch(260);});
+  inp.addEventListener('input',()=>{clearFolderConstraintForKeyword(); scheduleQuickSearch(420);});
   inp.addEventListener('keydown',function(e){
     if(e.key==='Enter'){
       e.preventDefault();
