@@ -2895,6 +2895,208 @@ function crm_customer_create(array $input): array
     return crm_customer_create_confirmed($input);
 }
 
+function crm_customer_business_card_country_guess(string $address, string $phone = ''): array
+{
+    $text = mb_strtolower(trim($address . ' ' . $phone));
+    $countries = [
+        '中国香港' => ['香港', 'hong kong', '+852'],
+        '中国澳门' => ['澳门', 'macau', 'macao', '+853'],
+        '中国台湾' => ['台湾', 'taiwan', '+886'],
+        '中国' => ['中国', 'china', '+86'],
+        '澳大利亚' => ['澳大利亚', 'australia', '+61'],
+        '美国' => ['美国', 'united states', 'usa', '+1'],
+        '英国' => ['英国', 'united kingdom', 'england', '+44'],
+        '印度' => ['印度', 'india', '+91'],
+        '印度尼西亚' => ['印度尼西亚', 'indonesia', '+62'],
+        '越南' => ['越南', 'vietnam', '+84'],
+        '泰国' => ['泰国', 'thailand', '+66'],
+        '马来西亚' => ['马来西亚', 'malaysia', '+60'],
+        '新加坡' => ['新加坡', 'singapore', '+65'],
+        '菲律宾' => ['菲律宾', 'philippines', '+63'],
+        '韩国' => ['韩国', 'south korea', 'korea', '+82'],
+        '日本' => ['日本', 'japan', '+81'],
+        '阿联酋' => ['阿联酋', 'united arab emirates', 'uae', '+971'],
+        '沙特阿拉伯' => ['沙特', 'saudi arabia', '+966'],
+        '德国' => ['德国', 'germany', '+49'],
+        '法国' => ['法国', 'france', '+33'],
+        '意大利' => ['意大利', 'italy', '+39'],
+        '西班牙' => ['西班牙', 'spain', '+34'],
+        '荷兰' => ['荷兰', 'netherlands', '+31'],
+        '加拿大' => ['加拿大', 'canada'],
+        '巴西' => ['巴西', 'brazil', '+55'],
+        '墨西哥' => ['墨西哥', 'mexico', '+52'],
+        '南非' => ['南非', 'south africa', '+27'],
+    ];
+    foreach ($countries as $country => $needles) {
+        foreach ($needles as $needle) {
+            if ($needle !== '' && mb_strpos($text, mb_strtolower($needle)) !== false) {
+                return ['country' => $country, 'city' => crm_customer_business_card_city_guess($address)];
+            }
+        }
+    }
+    return ['country' => '', 'city' => crm_customer_business_card_city_guess($address)];
+}
+
+function crm_customer_business_card_city_guess(string $address): string
+{
+    $address = trim($address);
+    if ($address === '') return '';
+    if (preg_match('/(?:^|省|自治区|特别行政区)([^省市区县]{2,12}市)/u', $address, $match)) {
+        return trim((string)$match[1]);
+    }
+    foreach (['香港','澳门','新加坡','北京','上海','天津','重庆','广州','深圳','东莞','佛山','中山','珠海','杭州','宁波','苏州','南京','厦门','福州','成都','武汉','长沙','青岛','西安'] as $city) {
+        if (mb_strpos($address, $city) !== false) return $city;
+    }
+    return '';
+}
+
+function crm_customer_business_card_ocr(array $file): array
+{
+    crm_require('customer.create');
+    if (empty($file['tmp_name']) || !is_uploaded_file((string)$file['tmp_name'])) {
+        throw new RuntimeException('请选择需要识别的名片图片。');
+    }
+    $error = (int)($file['error'] ?? UPLOAD_ERR_OK);
+    if ($error !== UPLOAD_ERR_OK) throw new RuntimeException('名片图片上传失败，错误码：' . $error);
+    $size = (int)($file['size'] ?? 0);
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        throw new RuntimeException('名片图片须小于 5MB。');
+    }
+    $imageInfo = @getimagesize((string)$file['tmp_name']);
+    $mime = strtolower((string)($imageInfo['mime'] ?? ''));
+    if (!in_array($mime, ['image/jpeg','image/png'], true)) {
+        throw new RuntimeException('只支持 JPG、JPEG 或 PNG 名片图片。');
+    }
+    if ((int)($imageInfo[0] ?? 0) < 15 || (int)($imageInfo[1] ?? 0) < 15) {
+        throw new RuntimeException('名片图片尺寸过小，无法识别。');
+    }
+    $configFile = '/www/server/artdon_secrets/tencent_ocr.php';
+    $config = is_file($configFile) ? require $configFile : [];
+    $secretId = trim((string)($config['secret_id'] ?? ''));
+    $secretKey = trim((string)($config['secret_key'] ?? ''));
+    $region = trim((string)($config['region'] ?? 'ap-guangzhou'));
+    $host = trim((string)($config['endpoint'] ?? 'ocr.tencentcloudapi.com'));
+    if ($secretId === '' || $secretKey === '') {
+        throw new RuntimeException('腾讯 OCR 尚未完成服务器配置。');
+    }
+    $imageBytes = file_get_contents((string)$file['tmp_name']);
+    if ($imageBytes === false) throw new RuntimeException('读取名片图片失败。');
+    $payload = json_encode([
+        'ImageBase64' => base64_encode($imageBytes),
+        'Config' => json_encode(['RetImageType' => 'PROPROCESS'], JSON_UNESCAPED_SLASHES),
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($payload === false) throw new RuntimeException('名片识别请求生成失败。');
+    $service = 'ocr';
+    $timestamp = time();
+    $date = gmdate('Y-m-d', $timestamp);
+    $canonicalHeaders = "content-type:application/json; charset=utf-8\nhost:{$host}\n";
+    $signedHeaders = 'content-type;host';
+    $canonicalRequest = "POST\n/\n\n{$canonicalHeaders}\n{$signedHeaders}\n" . hash('sha256', $payload);
+    $scope = "{$date}/{$service}/tc3_request";
+    $stringToSign = "TC3-HMAC-SHA256\n{$timestamp}\n{$scope}\n" . hash('sha256', $canonicalRequest);
+    $secretDate = hash_hmac('sha256', $date, 'TC3' . $secretKey, true);
+    $secretService = hash_hmac('sha256', $service, $secretDate, true);
+    $secretSigning = hash_hmac('sha256', 'tc3_request', $secretService, true);
+    $signature = hash_hmac('sha256', $stringToSign, $secretSigning);
+    $authorization = "TC3-HMAC-SHA256 Credential={$secretId}/{$scope}, SignedHeaders={$signedHeaders}, Signature={$signature}";
+    $ch = curl_init("https://{$host}");
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 8,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: ' . $authorization,
+            'Content-Type: application/json; charset=utf-8',
+            'Host: ' . $host,
+            'X-TC-Action: BusinessCardOCR',
+            'X-TC-Timestamp: ' . $timestamp,
+            'X-TC-Version: 2018-11-19',
+            'X-TC-Region: ' . $region,
+        ],
+        CURLOPT_POSTFIELDS => $payload,
+    ]);
+    $body = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    unset($imageBytes, $payload, $secretKey);
+    if ($body === false || $curlError !== '') throw new RuntimeException('腾讯 OCR 网络请求失败：' . $curlError);
+    $json = json_decode((string)$body, true);
+    $response = is_array($json) ? (array)($json['Response'] ?? []) : [];
+    if (!empty($response['Error'])) {
+        $code = trim((string)($response['Error']['Code'] ?? ''));
+        $message = trim((string)($response['Error']['Message'] ?? '名片识别失败'));
+        throw new RuntimeException('腾讯 OCR 识别失败：' . $message . ($code !== '' ? '（' . $code . '）' : ''));
+    }
+    if ($httpCode !== 200) throw new RuntimeException('腾讯 OCR 返回异常状态：' . $httpCode);
+    $rawFields = [];
+    $grouped = [];
+    foreach ((array)($response['BusinessCardInfos'] ?? []) as $item) {
+        $name = trim((string)($item['Name'] ?? ''));
+        $value = trim((string)($item['Value'] ?? ''));
+        if ($name === '' || $value === '') continue;
+        $rawFields[] = ['name' => $name, 'value' => $value];
+        $grouped[$name] ??= [];
+        if (!in_array($value, $grouped[$name], true)) $grouped[$name][] = $value;
+    }
+    if (!$rawFields) throw new RuntimeException('图片中未识别到有效名片字段，请更换清晰图片重试。');
+    $pick = static function (array $names) use ($grouped): string {
+        foreach ($names as $name) {
+            if (!empty($grouped[$name][0])) return trim((string)$grouped[$name][0]);
+        }
+        return '';
+    };
+    $companies = array_values(array_unique(array_merge($grouped['公司'] ?? [], $grouped['公司英文'] ?? [], $grouped['英文公司'] ?? [])));
+    $names = array_values(array_unique(array_merge($grouped['姓名'] ?? [], $grouped['英文姓名'] ?? [])));
+    $address = $pick(['地址','英文地址']);
+    $phone = $pick(['手机','电话']);
+    $location = crm_customer_business_card_country_guess($address, $phone);
+    $companyCn = '';
+    $companyEn = '';
+    foreach ($companies as $company) {
+        if ($companyCn === '' && preg_match('/[\x{4e00}-\x{9fff}]/u', $company)) $companyCn = $company;
+        elseif ($companyEn === '' && preg_match('/[A-Za-z]/', $company)) $companyEn = $company;
+    }
+    if ($companyCn === '') $companyCn = $companies[0] ?? '';
+    $contactName = $names[0] ?? '';
+    $contactNameEn = '';
+    foreach ($names as $name) {
+        if (preg_match('/[A-Za-z]/', $name)) {
+            $contactNameEn = $name;
+            break;
+        }
+    }
+    $result = [
+        'customer_name' => $companyCn,
+        'customer_name_en' => $companyEn,
+        'country' => $location['country'],
+        'city' => $location['city'],
+        'address' => $address,
+        'website' => $pick(['网址','网站']),
+        'email' => $pick(['邮箱']),
+        'phone' => $phone,
+        'contact' => [
+            'name' => $contactName,
+            'name_en' => $contactNameEn,
+            'position' => $pick(['职位','英文职位']),
+            'department' => $pick(['部门','英文部门']),
+            'email' => $pick(['邮箱']),
+            'phone' => $phone,
+            'wechat' => $pick(['微信']),
+            'remark' => $pick(['QQ','MSN','其他']),
+        ],
+        'raw_fields' => $rawFields,
+        'angle' => (float)($response['Angle'] ?? 0),
+        'request_id' => (string)($response['RequestId'] ?? ''),
+    ];
+    crm_customer_log('business_card_ocr', 'customer_scan', null, null, null, [
+        'recognized_fields' => array_values(array_unique(array_column($rawFields, 'name'))),
+        'request_id' => $result['request_id'],
+    ], '腾讯 OCR 名片识别完成');
+    return $result;
+}
+
 function crm_customer_update(int $id, array $input): array
 {
     crm_customer_ensure_tables();

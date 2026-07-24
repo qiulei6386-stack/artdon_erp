@@ -5674,6 +5674,7 @@
       }).join('') : '';
       return '<div class="entity-editor customer-entry-system" data-customer-entry>' +
         '<input type="hidden" name="customer_id" value="' + esc(entity.id || '') + '"><input type="hidden" name="addresses_json" data-addresses-json><input type="hidden" name="contacts_json" data-contacts-json><input type="hidden" name="duplicate_risk_confirmed" data-duplicate-risk-confirmed value="0">' +
+        (isEdit ? '' : '<section class="entity-section business-card-scan" data-business-card-scan><header><div><span>SCAN TO CREATE</span><h3>扫描名片 / 图片识别</h3><p>拍摄或上传名片，识别后先确认，再回填下面的原客户表单。</p></div><b>腾讯 OCR</b></header><div class="business-card-scan-body"><label class="business-card-drop"><input type="file" accept="image/jpeg,image/png" capture="environment" data-business-card-file><span data-business-card-preview><i>＋</i><strong>拍摄或选择名片图片</strong><em>支持 JPG、PNG，最大 5MB</em></span></label><div class="business-card-scan-side"><div data-business-card-status><strong>等待选择图片</strong><span>识别不会直接保存客户，也不会覆盖已填写字段。</span></div><button type="button" class="primary" data-business-card-recognize disabled>开始识别</button></div></div><div class="business-card-result" data-business-card-result hidden></div></section>') +
         '<section class="entity-section entity-section-primary"><h3>基础信息</h3>' +
         '<div class="entity-name-check">' + this.field('客户名称 *', 'customer_name', entity.customer_name, 'required autocomplete="off" data-entry-name data-entry-watch') +
         (isEdit ? '<div class="entry-duplicate-inline muted"><span>编辑客户只更新当前客户，不执行新建查重拦截。</span></div>' : '<div class="entry-duplicate-inline" data-duplicate-results><span>输入客户名称 2 个字符后自动查重。</span></div>') + '</div>' +
@@ -7118,6 +7119,7 @@
       if (!root) return;
       var self = this;
       var timer = null;
+      this.bindBusinessCardScan(root);
       root.querySelectorAll('[data-entry-watch]').forEach(function (input) {
         input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', function () {
           window.clearTimeout(timer);
@@ -7151,6 +7153,168 @@
         if (command.matches('[data-delete-contact-card]')) return self.deleteEntryContact(command.closest('[data-contact-card]'));
         if (command.matches('[data-primary-contact-card]')) return self.setPrimaryContactCard(command.closest('[data-contact-card]'));
       });
+    },
+    bindBusinessCardScan: function (root) {
+      var input = root.querySelector('[data-business-card-file]');
+      var button = root.querySelector('[data-business-card-recognize]');
+      var preview = root.querySelector('[data-business-card-preview]');
+      if (!input || !button || !preview) return;
+      var self = this;
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        self.businessCardOcrResult = null;
+        var result = root.querySelector('[data-business-card-result]');
+        if (result) {
+          result.hidden = true;
+          result.innerHTML = '';
+        }
+        if (!file) {
+          button.disabled = true;
+          preview.innerHTML = '<i>＋</i><strong>拍摄或选择名片图片</strong><em>支持 JPG、PNG，最大 5MB</em>';
+          return;
+        }
+        if (!/^image\/(jpeg|png)$/i.test(file.type || '') || file.size > 5 * 1024 * 1024) {
+          input.value = '';
+          button.disabled = true;
+          return self.showCustomerError('请选择小于 5MB 的 JPG 或 PNG 名片图片。');
+        }
+        if (self.businessCardPreviewUrl) URL.revokeObjectURL(self.businessCardPreviewUrl);
+        self.businessCardPreviewUrl = URL.createObjectURL(file);
+        preview.innerHTML = '<img src="' + esc(self.businessCardPreviewUrl) + '" alt="名片预览"><span><strong>' + esc(file.name || '名片图片') + '</strong><em>' + Math.max(1, Math.round(file.size / 1024)) + ' KB · 点击可重新选择</em></span>';
+        button.disabled = false;
+        self.setBusinessCardStatus(root, '图片已准备', '点击“开始识别”，通常数秒内完成。', '');
+      });
+      button.addEventListener('click', function () { self.recognizeBusinessCard(root); });
+      root.querySelector('[data-business-card-result]')?.addEventListener('click', function (event) {
+        var apply = event.target.closest('[data-business-card-apply]');
+        if (apply) self.applyBusinessCardResult(root);
+      });
+    },
+    setBusinessCardStatus: function (root, title, detail, type) {
+      var box = root.querySelector('[data-business-card-status]');
+      if (!box) return;
+      box.className = type ? 'is-' + type : '';
+      box.innerHTML = '<strong>' + esc(title || '') + '</strong><span>' + esc(detail || '') + '</span>';
+    },
+    recognizeBusinessCard: function (root) {
+      var input = root.querySelector('[data-business-card-file]');
+      var button = root.querySelector('[data-business-card-recognize]');
+      var file = input && input.files ? input.files[0] : null;
+      if (!file) return this.showCustomerError('请先拍摄或选择名片图片。');
+      var body = new FormData();
+      body.set('action', 'customer_business_card_ocr');
+      if (state.csrf) body.set('csrf_token', state.csrf);
+      body.set('image', file);
+      button.disabled = true;
+      button.textContent = '正在识别…';
+      this.setBusinessCardStatus(root, '腾讯 OCR 正在识别', '正在校正图片并提取公司、联系人和联系方式。', 'loading');
+      var self = this;
+      fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
+        return res.text().then(function (text) {
+          try { return JSON.parse(text); } catch (error) { throw new Error((text || '接口返回格式错误').slice(0, 240)); }
+        });
+      }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '名片识别失败');
+        self.businessCardOcrResult = json.data || {};
+        self.renderBusinessCardResult(root, self.businessCardOcrResult);
+        self.setBusinessCardStatus(root, '识别完成', '请核对识别字段，再应用到客户表单。', 'success');
+      }).catch(function (error) {
+        self.setBusinessCardStatus(root, '识别失败', error.message || '请更换清晰图片重试。', 'error');
+        self.showCustomerError(error.message || '名片识别失败');
+      }).finally(function () {
+        button.disabled = false;
+        button.textContent = '重新识别';
+      });
+    },
+    renderBusinessCardResult: function (root, data) {
+      var box = root.querySelector('[data-business-card-result]');
+      if (!box) return;
+      var fields = Array.isArray(data.raw_fields) ? data.raw_fields : [];
+      box.hidden = false;
+      box.innerHTML = '<header><div><strong>识别结果</strong><span>共识别 ' + fields.length + ' 个字段' + (Number(data.angle || 0) ? ' · 已校正 ' + esc(data.angle) + '°' : '') + '</span></div><button type="button" class="primary" data-business-card-apply>应用到表单</button></header>' +
+        '<div class="business-card-result-grid">' + fields.map(function (field) {
+          return '<article><span>' + esc(field.name || '字段') + '</span><strong>' + esc(field.value || '-') + '</strong></article>';
+        }).join('') + '</div><p>为保护已经输入的资料，只填写当前为空的字段；应用后仍需人工检查并点击原“保存”按钮。</p>';
+    },
+    applyBusinessCardResult: function (root) {
+      var data = this.businessCardOcrResult || {};
+      var fill = function (selector, value) {
+        var input = root.querySelector(selector);
+        if (!input || !String(value || '').trim() || String(input.value || '').trim()) return false;
+        input.value = String(value).trim();
+        input.dispatchEvent(new Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+        return true;
+      };
+      fill('[name="customer_name"]', data.customer_name);
+      fill('[name="customer_name_en"]', data.customer_name_en);
+      var countryInput = root.querySelector('[name="country"]');
+      if (countryInput && data.country && (!String(countryInput.value || '').trim() || String(countryInput.value || '').trim().toUpperCase() === 'IN')) {
+        countryInput.value = data.country;
+        countryInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      fill('[name="city"]', data.city);
+      fill('[name="email"]', data.email);
+      fill('[name="website"]', data.website);
+      var phone = root.querySelector('[name="phone"]')?.closest('[data-phone-composite]');
+      if (phone && data.phone && !String(phone.querySelector('[data-phone-number]')?.value || '').trim()) {
+        var parts = this.splitPhoneValue(data.phone, this.dialForCountry(data.country || root.querySelector('[name="country"]')?.value || ''));
+        var dial = phone.querySelector('[data-phone-dial]');
+        var number = phone.querySelector('[data-phone-number]');
+        if (dial) dial.value = parts.dial;
+        if (number) number.value = parts.number;
+      }
+      if (data.address) {
+        var addressBox = root.querySelector('[data-entry-addresses]');
+        var exists = Array.prototype.some.call(addressBox?.querySelectorAll('[data-address-card]') || [], function (card) {
+          return String(card.dataset.addressText || '').trim() === String(data.address || '').trim();
+        });
+        if (addressBox && !exists) {
+          addressBox.insertAdjacentHTML('beforeend', this.entryAddressCard({
+            address_type: 'HQ',
+            country: data.country || root.querySelector('[name="country"]')?.value || '',
+            city: data.city || root.querySelector('[name="city"]')?.value || '',
+            address: data.address,
+            is_primary: addressBox.querySelector('[data-address-card]') ? 0 : 1
+          }));
+        }
+      }
+      var contact = data.contact || {};
+      if (String(contact.name || '').trim()) {
+        var existingIndex = (this.entryContacts || []).findIndex(function (item) {
+          return (contact.email && String(item.email || '').toLowerCase() === String(contact.email).toLowerCase()) ||
+            String(item.name || '').trim().toLowerCase() === String(contact.name).trim().toLowerCase();
+        });
+        var normalized = this.normalizeContactForEditor({
+          name: contact.name || '',
+          name_en: contact.name_en || '',
+          position: contact.position || '',
+          department: contact.department || '',
+          email: contact.email || '',
+          phone: contact.phone || '',
+          whatsapp: '',
+          wechat: contact.wechat || '',
+          remark: contact.remark ? ('名片识别补充：' + contact.remark) : '',
+          contact_sources: 'manual',
+          is_primary: existingIndex < 0 && !(this.entryContacts || []).length ? 1 : 0,
+          promote: 1,
+          promotion_channels: [contact.email ? 'email' : '', contact.phone ? 'phone' : ''].filter(Boolean)
+        });
+        if (existingIndex >= 0) {
+          var old = this.entryContacts[existingIndex];
+          Object.keys(normalized).forEach(function (key) {
+            if (!old[key] || (Array.isArray(old[key]) && !old[key].length)) old[key] = normalized[key];
+          });
+        } else {
+          this.entryContacts.push(normalized);
+        }
+        this.renderEntryContacts();
+      }
+      this.syncPhoneComposites(root);
+      this.collectEntryJson(document.querySelector('[data-customer-form]'));
+      this.checkEntryDuplicate();
+      this.setBusinessCardStatus(root, '已应用到表单', '请检查客户名称、国家、地址和联系人后再保存。', 'success');
+      toast('名片识别结果已回填，请检查后保存。');
+      root.querySelector('.entity-section-primary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
     openAddressEditor: function (card) {
       var root = document.querySelector('[data-customer-entry]');

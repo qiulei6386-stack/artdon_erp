@@ -8239,6 +8239,62 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .entity-editor-contact .entity-section-muted:not([open]) { opacity: .82; }
 .customer-entry-system { gap: 8px; }
 .customer-entry-system .entity-section { border-radius: 10px; }
+.business-card-scan {
+  border-color: color-mix(in srgb, #2563eb 24%, var(--crm-border)) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, #eff6ff 72%, var(--crm-card-bg)), var(--crm-card-bg) 64%) !important;
+  padding: 13px !important;
+}
+.business-card-scan > header,
+.business-card-result > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.business-card-scan > header h3 { margin: 2px 0 3px; color: var(--crm-text); font-size: 15px; cursor: default; }
+.business-card-scan > header span { color: #2563eb; font-size: 9px; font-weight: 950; letter-spacing: .16em; }
+.business-card-scan > header p,
+.business-card-result > p { margin: 0; color: var(--crm-muted-text); font-size: 11px; line-height: 1.45; }
+.business-card-scan > header > b {
+  flex: 0 0 auto;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d4ed8;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.business-card-scan-body { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(230px, .7fr); gap: 10px; margin-top: 10px; }
+.business-card-drop { min-width: 0; min-height: 104px; border: 1px dashed #93c5fd; border-radius: 12px; background: rgb(255 255 255 / .82); cursor: pointer; overflow: hidden; }
+.business-card-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.business-card-drop > span { min-height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px; text-align: center; }
+.business-card-drop i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: #dbeafe; color: #1d4ed8; font-style: normal; font-size: 19px; }
+.business-card-drop strong { color: var(--crm-text); font-size: 12px; }
+.business-card-drop em { color: var(--crm-muted-text); font-style: normal; font-size: 10px; }
+.business-card-drop img { width: 116px; height: 78px; border-radius: 8px; object-fit: contain; background: #f8fafc; }
+.business-card-drop span:has(img) { flex-direction: row; justify-content: flex-start; text-align: left; }
+.business-card-drop span:has(img) > span { display: grid; gap: 4px; }
+.business-card-scan-side { display: flex; flex-direction: column; justify-content: space-between; gap: 9px; border: 1px solid #dbeafe; border-radius: 12px; background: rgb(255 255 255 / .72); padding: 11px; }
+.business-card-scan-side [data-business-card-status] { display: grid; gap: 4px; }
+.business-card-scan-side [data-business-card-status] strong { color: var(--crm-text); font-size: 12px; }
+.business-card-scan-side [data-business-card-status] span { color: var(--crm-muted-text); font-size: 10px; line-height: 1.45; }
+.business-card-scan-side [data-business-card-status].is-loading strong { color: #1d4ed8; }
+.business-card-scan-side [data-business-card-status].is-success strong { color: #15803d; }
+.business-card-scan-side [data-business-card-status].is-error strong { color: #b91c1c; }
+.business-card-scan-side button,
+.business-card-result header button { min-height: 32px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; padding: 0 12px; font-weight: 900; cursor: pointer; }
+.business-card-scan-side button:disabled { opacity: .48; cursor: not-allowed; }
+.business-card-result { margin-top: 10px; border-top: 1px solid #dbeafe; padding-top: 10px; }
+.business-card-result header strong { display: block; color: var(--crm-text); font-size: 12px; }
+.business-card-result header span { display: block; margin-top: 2px; color: var(--crm-muted-text); font-size: 10px; }
+.business-card-result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 9px 0 7px; }
+.business-card-result-grid article { min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 6px 8px; }
+.business-card-result-grid article span { display: block; color: #64748b; font-size: 9px; }
+.business-card-result-grid article strong { display: block; margin-top: 2px; overflow: hidden; color: #0f172a; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .business-card-scan-body { grid-template-columns: 1fr; }
+  .business-card-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .entity-name-check { display: grid; gap: 6px; margin-bottom: 7px; }
 .entry-checks {
   display: flex;
