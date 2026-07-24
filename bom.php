@@ -252,32 +252,36 @@ body{background:#f6f8fb}
 .dash-pager button{height:27px;padding:0 8px!important;border-radius:7px!important;font-size:11px!important}
 .dash-icon-groups{gap:10px!important}.dash-icon-group{gap:6px!important}
 .dash-icon-group-head{padding:6px 9px!important;border-radius:9px!important;font-size:12px}
-.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(225px,1fr))!important;gap:9px!important}
-.dash-bom-card{height:330px!important;min-height:330px!important;border-color:#e6ebf2!important;border-radius:15px!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.app-header-wrap,main.wrap{width:calc(100% - 32px)!important;max-width:none!important}
+.dashboard,.dashboard>.card,.dashboard-table-wrap,#dashboardIconGrid{width:100%;max-width:none}
+.dash-icon-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))!important;gap:9px!important;width:100%}
+.dash-bom-card{height:300px!important;min-height:300px!important;border-color:#e6ebf2!important;border-radius:15px!important;overflow:visible!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
 .dash-bom-card:hover{transform:translateY(-2px);border-color:#cbdcf5!important;box-shadow:0 10px 24px rgba(15,23,42,.09)!important}
-.dash-bom-image{height:150px!important;flex:0 0 150px;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
-.dash-bom-body{padding:8px 9px!important;gap:4px!important}
+.dash-bom-image{height:135px!important;flex:0 0 135px;border-radius:15px 15px 0 0;overflow:hidden;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
+.dash-bom-body{padding:7px 9px!important;gap:3px!important;flex:1 1 auto;min-height:0}
 .dash-bom-title{font-size:14px!important;min-height:37px}
 .dash-bom-model{font-size:11px!important}
 .dash-bom-meta{display:flex!important;flex-wrap:wrap;gap:3px!important;font-size:10px!important}
 .dash-bom-meta span{max-width:calc(50% - 2px);padding:2px 6px!important;border-radius:999px!important;background:#f6f8fb!important}
 .dash-bom-cost{font-size:11px!important}
-.dash-bom-actions{justify-content:space-between;padding:0 9px 8px!important}
-.dash-bom-actions button{flex:1 1 0!important;height:28px;padding:0 9px!important}
-.dashboard-table-wrap{border-radius:11px!important}
+.dash-bom-actions{height:38px;min-height:38px;display:flex;align-items:flex-start;justify-content:stretch;padding:0 9px 8px!important}
+.dash-bom-actions button{display:block;width:100%;flex:1 1 auto!important;height:30px!important;padding:0 9px!important}
+.dash-pager{display:flex!important;width:100%;align-items:center;justify-content:space-between;border:1px solid #e8edf4;background:#f8fafc;border-radius:9px;padding:4px 6px!important}
+.dash-pager-actions{margin-left:auto}
+.dashboard-table-wrap{width:100%;border-radius:11px!important}
 .dashboard-view-hidden{display:none!important}
-.dashboard-table{min-width:980px!important;table-layout:fixed}
-.dashboard-table th,.dashboard-table td{padding:7px 8px;font-size:12px}
+.dashboard-table{width:100%!important;min-width:920px!important;table-layout:fixed}
+.dashboard-table th,.dashboard-table td{height:46px;padding:5px 8px;font-size:12px}
 .dashboard-table th{height:34px;background:#f6f8fb!important;color:#475569;font-weight:900}
 .dashboard-table tbody tr:hover td{background:#f7fbff}
-.dashboard-table th:nth-child(1){width:25%}.dashboard-table th:nth-child(2){width:11%}.dashboard-table th:nth-child(3){width:10%}.dashboard-table th:nth-child(4){width:15%}.dashboard-table th:nth-child(5){width:7%}.dashboard-table th:nth-child(6),.dashboard-table th:nth-child(7){width:9%}.dashboard-table th:nth-child(8){width:12%}.dashboard-table th:nth-child(9){width:150px}
+.dashboard-table th:nth-child(1){width:28%}.dashboard-table th:nth-child(2){width:8%}.dashboard-table th:nth-child(3){width:10%}.dashboard-table th:nth-child(4){width:18%}.dashboard-table th:nth-child(5){width:7%}.dashboard-table th:nth-child(6),.dashboard-table th:nth-child(7){width:8%}.dashboard-table th:nth-child(8){width:10%}.dashboard-table th:nth-child(9){width:8%}
 .bom-title-cell b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px!important}
 .bom-title-cell small{display:block!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3!important;margin-top:2px!important}
 .dashboard-table .price,.dashboard-table .quote-price{text-align:right;font-weight:950;color:#b91c1c}
-.dash-table-actions{white-space:nowrap;text-align:center}.dash-table-actions button{height:27px;padding:0 7px!important;margin:0 2px}
+.dash-table-actions{white-space:nowrap;text-align:center}.dash-table-actions button{height:28px;padding:0 8px!important;margin:0}
 @media(max-width:1200px){.brand-meta .brand-version{display:none}.dashboard-hero{align-items:flex-start!important}.dash-actions{overflow-x:auto;max-width:70%}}
 @media(max-width:900px){.app-header-wrap{padding:6px 0!important}.header-title-row{flex-wrap:wrap}.header-right{width:100%;justify-content:flex-start;overflow-x:auto}.header-nav-row{overflow-x:auto}.header-nav-row .module-nav{overflow:visible}.dashboard-hero{display:block!important}.dash-actions{max-width:100%;overflow-x:auto;margin-top:6px}.dashboard-controls{align-items:flex-start}.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important}}
-@media(max-width:640px){.brand-meta{display:none}.dashboard-sub{display:none}.dash-bom-card{height:300px!important;min-height:300px!important}.dash-bom-image{height:118px!important;flex-basis:118px}}
+@media(max-width:640px){.app-header-wrap,main.wrap{width:calc(100% - 20px)!important}.brand-meta{display:none}.dashboard-sub{display:none}.dash-icon-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))!important}.dash-bom-card{height:288px!important;min-height:288px!important}.dash-bom-image{height:118px!important;flex-basis:118px}}
 
 
 
@@ -1702,7 +1706,7 @@ function dashboardGroups(arr){
 function dashboardTableRowHtml(p){
   const t=totals(p), pt=p.namingType||bomProjectNamingType(p);
   const summary=(p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / ')||String(p.note||'').split(/\r?\n/)[0]||'暂无摘要';
-  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
+  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button></td></tr>`;
 }
 function dashboardImageHtml(p){
   const src=String(p.productImage||'').trim();
@@ -1720,7 +1724,7 @@ function dashboardCardHtml(p){
       <div class="dash-bom-cost"><span>总成本</span><b>${money(t.total)}</b></div>
       <div class="dash-bom-model" title="${esc(material)}">${esc(material||'暂无物料摘要')}</div>
     </div>
-    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></div>
+    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button></div>
   </article>`;
 }
 function renderDashboard(){
