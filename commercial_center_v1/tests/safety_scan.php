@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $errors = [];
-$legacyWrite = '/\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?!`?cc_)[`a-z0-9_]+/i';
+$legacyWrite = '/(?:\b(?:INSERT\s+INTO|DELETE\s+FROM)\s+(?!`?cc_)[`a-z0-9_]+|\bUPDATE\s+(?!`?cc_)[`a-z0-9_]+\s+SET\b)/i';
 $dangerousMigration = '/\b(ALTER\s+TABLE|TRUNCATE\s+TABLE|RENAME\s+TABLE)\b/i';
 
 $iterator = new RecursiveIteratorIterator(

@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS cc_configuration_snapshots;
+DROP TABLE IF EXISTS cc_configuration_instances;
+DROP TABLE IF EXISTS cc_option_material_mappings;
+DROP TABLE IF EXISTS cc_config_lock_rules;
+DROP TABLE IF EXISTS cc_config_preset_values;
+DROP TABLE IF EXISTS cc_config_presets;
+DROP TABLE IF EXISTS cc_product_allowed_options;
+DROP TABLE IF EXISTS cc_product_config_templates;
+DROP TABLE IF EXISTS cc_config_template_groups;
+DROP TABLE IF EXISTS cc_config_group_settings;
+DROP TABLE IF EXISTS cc_config_template_versions;
+DROP TABLE IF EXISTS cc_config_templates;
