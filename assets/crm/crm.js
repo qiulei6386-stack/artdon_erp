@@ -21112,6 +21112,55 @@
   }
   initActionbarResize();
 
+  var mobileActionsButton = document.querySelector('[data-mobile-actions]');
+  var mobileActionsBackdrop = null;
+  function closeMobileActions() {
+    if (!actionbar) return;
+    actionbar.classList.remove('is-mobile-open');
+    document.body.classList.remove('is-mobile-actions-open');
+    if (mobileActionsBackdrop) mobileActionsBackdrop.hidden = true;
+    if (mobileActionsButton) mobileActionsButton.setAttribute('aria-expanded', 'false');
+  }
+  function openMobileActions() {
+    if (!actionbar || window.innerWidth > 980) return;
+    var customerFilter = document.querySelector('[data-customer-filter-drawer]');
+    var customerFilterBackdrop = document.querySelector('[data-customer-filter-backdrop]');
+    if (customerFilter) {
+      customerFilter.classList.remove('open');
+      customerFilter.hidden = true;
+      customerFilter.setAttribute('aria-hidden', 'true');
+    }
+    if (customerFilterBackdrop) customerFilterBackdrop.hidden = true;
+    actionbar.classList.remove('is-collapsed');
+    actionbar.classList.add('is-mobile-open');
+    document.body.classList.add('is-mobile-actions-open');
+    if (mobileActionsBackdrop) mobileActionsBackdrop.hidden = false;
+    if (mobileActionsButton) mobileActionsButton.setAttribute('aria-expanded', 'true');
+  }
+  if (mobileActionsButton && actionbar) {
+    mobileActionsButton.setAttribute('aria-expanded', 'false');
+    mobileActionsBackdrop = document.createElement('button');
+    mobileActionsBackdrop.type = 'button';
+    mobileActionsBackdrop.className = 'crm-mobile-actions-backdrop';
+    mobileActionsBackdrop.setAttribute('aria-label', '关闭操作面板');
+    mobileActionsBackdrop.hidden = true;
+    document.body.appendChild(mobileActionsBackdrop);
+    mobileActionsButton.addEventListener('click', function () {
+      if (actionbar.classList.contains('is-mobile-open')) closeMobileActions();
+      else openMobileActions();
+    });
+    mobileActionsBackdrop.addEventListener('click', closeMobileActions);
+    actionList?.addEventListener('click', function (event) {
+      if (event.target.closest('[data-action-command]')) closeMobileActions();
+    });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 980) closeMobileActions();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeMobileActions();
+    });
+  }
+
   var prefForm = document.querySelector('[data-preferences-form]');
   if (prefForm) {
     prefForm.addEventListener('submit', function (event) {
