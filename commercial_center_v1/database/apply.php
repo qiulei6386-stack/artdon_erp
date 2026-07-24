@@ -17,6 +17,9 @@ $migrationName = (string)($argv[2] ?? '001_foundation.sql');
 $allowedMigrations = [
     '001_foundation.sql' => ['cc_schema_migrations','cc_entity_links','cc_integration_logs','cc_activity_logs'],
     '002_unified_orders.sql' => ['cc_external_orders','cc_orders','cc_order_items','cc_order_status_history','cc_external_order_events'],
+    '003_catalog_configuration.sql' => ['cc_products_extension','cc_materials','cc_config_groups','cc_config_options','cc_compatibility_rules'],
+    '004_inventory_publishing.sql' => ['cc_inventory_skus','cc_stock_reservations','cc_channels','cc_channel_packages','cc_publication_jobs'],
+    '005_standard_quotes.sql' => ['cc_quotes','cc_quote_versions','cc_quote_items','cc_quote_item_snapshots'],
 ];
 if (!isset($allowedMigrations[$migrationName])) {
     fwrite(STDERR, "Refusing migration: file is not approved.\n");

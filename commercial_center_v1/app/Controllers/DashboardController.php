@@ -11,6 +11,7 @@ use Artdon\CommercialCenter\Services\GitStatusService;
 use Artdon\CommercialCenter\Services\OperationsDashboardService;
 use Artdon\CommercialCenter\Services\CatalogCenterService;
 use Artdon\CommercialCenter\Services\UnifiedOrderService;
+use Artdon\CommercialCenter\Services\CommercialModuleService;
 
 final class DashboardController
 {
@@ -34,6 +35,7 @@ final class DashboardController
             ? $catalogService->materials($auth, $search, $category)
             : $emptyCatalog;
         $orders = $requestedView === 'orders' ? (new UnifiedOrderService())->load($auth) : ['status'=>'not_requested','rows'=>[],'counts'=>[],'channel'=>[]];
+        $commercialRows=in_array($requestedView,['inventory','publishing'],true)&&$auth['authenticated']?(new CommercialModuleService())->rows($requestedView):[];
         $allAdaptersAvailable = count(array_filter(
             $adapters,
             static fn(array $status): bool => $status['status'] !== 'available'
@@ -61,6 +63,7 @@ final class DashboardController
             'products' => $products,
             'materials' => $materials,
             'unified_orders' => $orders,
+            'commercial_rows'=>$commercialRows,
             'filters' => ['q' => $search, 'category' => $category],
             'isolation' => ['ok' => $database['ok'] && $allAdaptersAvailable],
             'request_path' => (string)($_SERVER['REQUEST_URI'] ?? '/artdon_erp/commercial_center_v1/'),

@@ -16,6 +16,21 @@ $moduleLabels = [
     'publishing' => '新加坡发布', 'orders' => '订单中心', 'packaging' => '包装中心',
     'documents' => '单证中心', 'commission' => '价格与佣金', 'integrations' => '系统集成',
 ];
+$flash='';
+if(!isset($_SESSION['cc_csrf']))$_SESSION['cc_csrf']=bin2hex(random_bytes(24));
+if($activeView==='quotation'&&($_SERVER['REQUEST_METHOD']??'GET')==='POST'&&($_POST['action']??'')==='create_quote'){
+    if(!$view['auth']['authenticated']){$flash='需要统一登录。';}
+    elseif(!hash_equals((string)$_SESSION['cc_csrf'],(string)($_POST['csrf']??''))){$flash='请求校验失败。';}
+    else{
+        $customer=trim((string)($_POST['customer_name']??''));$description=trim((string)($_POST['description']??''));$qty=max(0,(float)($_POST['quantity']??0));$price=max(0,(float)($_POST['unit_price']??0));
+        if($description===''||$qty<=0){$flash='请填写产品/费用说明和有效数量。';}
+        else{try{$pdo=db();$pdo->beginTransaction();$no='CCQ-'.date('Ymd-His').'-'.random_int(100,999);$now=date('Y-m-d H:i:s');$uid=(int)($view['auth']['user']['id']??0);
+          $s=$pdo->prepare('INSERT INTO cc_quotes(quote_no,customer_snapshot,currency,status,total_amount,total_cost,is_test,created_by_legacy_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)');$s->execute([$no,json_encode(['name'=>$customer],JSON_UNESCAPED_UNICODE),(string)($_POST['currency']??'USD'),'draft',$qty*$price,0,0,$uid,$now,$now]);$qid=(int)$pdo->lastInsertId();
+          $s=$pdo->prepare('INSERT INTO cc_quote_versions(quote_id,version_no,customer_snapshot,exchange_rate,template_version,status,created_by_legacy_user_id,created_at) VALUES(?,?,?,?,?,?,?,?)');$s->execute([$qid,1,json_encode(['name'=>$customer],JSON_UNESCAPED_UNICODE),1,'legacy_v1','draft',$uid,$now]);$vid=(int)$pdo->lastInsertId();
+          $s=$pdo->prepare('INSERT INTO cc_quote_items(quote_version_id,item_type,description,quantity,unit_price,line_amount,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)');$s->execute([$vid,'standard',$description,$qty,$price,$qty*$price,$now,$now]);$pdo->commit();$flash='草稿已保存：'.$no;
+        }catch(Throwable $e){if(isset($pdo)&&$pdo->inTransaction())$pdo->rollBack();$flash='草稿保存失败，详细错误已记录。';Artdon\CommercialCenter\Support\Logger::error('Quote draft save failed',['message'=>$e->getMessage()]);}}
+    }
+}
 
 header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -120,6 +135,16 @@ header('Cache-Control: no-store, max-age=0');
             <div><span>新加坡渠道</span><b>not_configured</b></div>
           </div></section>
         <?php endif; ?>
+      <?php elseif (in_array($activeView,['inventory','publishing'],true)): $rows=$view['commercial_rows']; ?>
+        <section class="page-head"><div><span class="eyebrow"><?= $activeView==='inventory'?'M3 INVENTORY SKU':'M3 CHANNEL PUBLISHING' ?></span><h1><?= cc_h($moduleLabels[$activeView]) ?></h1><p><?= $activeView==='inventory'?'可销售库存 = 实际库存 - 已预占 - 安全库存。':'新加坡渠道未配置；这里只维护公开套餐草稿和发布前检查。' ?></p></div><div class="page-meta"><b><?= $activeView==='publishing'?'not_configured':'共 '.count($rows).' 条' ?></b></div></section>
+        <section class="panel"><?php if($rows===[]):?><div class="empty">当前没有<?= cc_h($moduleLabels[$activeView]) ?>记录。数据库结构已就绪，未写入演示数据。</div><?php else:?><div class="table-wrap"><table><thead><tr><?php foreach(array_keys($rows[0]) as $key):?><th><?=cc_h($key)?></th><?php endforeach;?></tr></thead><tbody><?php foreach($rows as $row):?><tr><?php foreach($row as $value):?><td><?=cc_h($value)?></td><?php endforeach;?></tr><?php endforeach;?></tbody></table></div><?php endif;?></section>
+      <?php elseif ($activeView==='documents'): ?>
+        <section class="page-head"><div><span class="eyebrow">LEGACY V1 DOCUMENTS</span><h1>四套正式单据</h1><p>统一 Fixture / ViewModel / 模板驱动；当前预览为明确标识的脱敏演示数据。</p></div></section>
+        <section class="core-actions"><?php foreach(['quotation'=>'Quotation','order_usd'=>'USD Proforma Invoice','order_cny'=>'人民币订购合同','packing_list'=>'Packing List','commercial_invoice'=>'Commercial Invoice'] as $type=>$label):?><a target="_blank" href="modules/documents/preview.php?type=<?=cc_h($type)?>"><span>文</span><div><strong><?=cc_h($label)?></strong><small>legacy_v1 · 打印/PDF 可用</small></div><b class="action-label">打开预览</b></a><?php endforeach;?></section>
+      <?php elseif ($activeView==='quotation'): ?>
+        <section class="page-head"><div><span class="eyebrow">M4 STANDARD QUOTATION</span><h1>标准报价工作台基础版</h1><p>报价、版本、明细和快照模型已隔离建立；真实邮件、客户确认和转订单未接通。</p></div></section>
+        <?php if($flash!==''):?><section class="login-notice"><strong><?=cc_h($flash)?></strong></section><?php endif;?>
+        <div class="quote-workbench"><section class="panel"><h2>报价编辑区</h2><?php if(!$view['auth']['authenticated']):?><div class="empty">统一登录后可建立商务中心报价草稿。</div><?php else:?><form method="post" class="quote-form"><input type="hidden" name="action" value="create_quote"><input type="hidden" name="csrf" value="<?=cc_h($_SESSION['cc_csrf'])?>"><label>客户（可暂不选择）<input name="customer_name"></label><label>币种<select name="currency"><option>USD</option><option>CNY</option><option>EUR</option><option>SGD</option></select></label><label>产品 / 配件 / 费用说明<input required name="description"></label><label>数量<input required type="number" min=".001" step=".001" name="quantity" value="1"></label><label>单价<input required type="number" min="0" step=".0001" name="unit_price" value="0"></label><button type="submit">保存草稿版本</button></form><?php endif;?><p><a class="action-label" target="_blank" href="modules/documents/preview.php?type=quotation">打开 legacy_v1 报价预览</a></p></section><aside class="paper-mini"><b>QUOTATION</b><p>客户版预览</p><small>永不显示成本、毛利、供应商或内部备注</small></aside></div>
       <?php elseif ($activeView !== 'dashboard'): ?>
         <section class="placeholder-page">
           <span class="eyebrow">PLANNED MODULE</span>
