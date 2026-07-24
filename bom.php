@@ -203,12 +203,70 @@ td input,td select{width:100%;border:0;padding:5px;background:transparent}td tex
 .header-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .header-title-main{min-width:0}.header-fold-btn{height:30px!important;padding:0 12px!important;border-radius:999px!important;background:#fff!important;color:#334155!important;border:1px solid #dbe3ef!important;font-size:12px!important;font-weight:900!important;white-space:nowrap}
 body.bom-header-collapsed header .brand-en,body.bom-header-collapsed header .brand-sub,body.bom-header-collapsed header .topbar,body.bom-header-collapsed header .module-nav,body.bom-header-collapsed header .tabs{display:none!important}
+body.bom-header-collapsed header .brand-meta,body.bom-header-collapsed header .header-nav-row{display:none!important}
 body.bom-header-collapsed header .wrap{padding-top:6px!important;padding-bottom:6px!important}
 body.bom-header-collapsed header .brand-cn{font-size:16px!important;line-height:1.2!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.bom-header-collapsed .header-title-row{align-items:center!important}
 body.bom-header-collapsed .header-fold-btn{height:26px!important;padding:0 10px!important}
 body.bom-header-collapsed main.wrap{padding-top:10px!important}
 @media(max-width:640px){.header-title-row{align-items:center}.brand-cn{font-size:18px}.header-fold-btn{padding:0 9px!important}}
+
+/* V79：紧凑型抬头与 BOM 总览工作台（仅视觉，不改变原有功能） */
+body{background:#f6f8fb}
+.app-header-wrap{padding:7px 0 6px!important}
+.header-title-row{align-items:center!important;gap:10px!important}
+.header-title-main{display:flex;align-items:center;gap:9px;flex:0 0 auto}
+.brand-cn{font-size:18px!important;line-height:1.2;white-space:nowrap}
+.brand-meta{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:10px;font-weight:800;white-space:nowrap}
+.brand-meta span{height:20px;display:inline-flex;align-items:center;padding:0 7px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc}
+.header-right{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+.app-header-wrap .topbar{margin:0!important;gap:5px!important;flex-wrap:nowrap}
+.app-header-wrap .topbar button,.header-fold-btn{height:28px!important;padding:0 9px!important;border-radius:8px!important;font-size:11px!important;font-weight:850!important;white-space:nowrap}
+.app-header-wrap .topbar .status{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.app-header-wrap .user-chip{height:26px;padding:0 8px;font-size:11px;white-space:nowrap}
+.header-fold-btn{margin-left:0}
+.header-nav-row{display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:5px;border-top:1px solid #edf1f6;min-width:0}
+.header-nav-row .module-nav{flex:1;margin:0;padding:0;border:0;gap:4px;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:none}
+.header-nav-row .module-nav::-webkit-scrollbar,.header-nav-row .tabs::-webkit-scrollbar{display:none}
+.header-nav-row .module-nav button{height:27px!important;padding:0 8px!important;font-size:11px!important}
+.header-nav-row .tabs{margin:0 0 0 auto;gap:4px;flex-wrap:nowrap;min-width:max-content}
+.header-nav-row .tab{height:27px!important;padding:0 9px!important;border-radius:999px!important;font-size:11px!important;font-weight:850!important;white-space:nowrap}
+.dashboard{margin-top:8px!important}
+.dashboard>.card{padding:10px 12px;border-radius:14px;box-shadow:0 3px 14px rgba(15,23,42,.035)}
+.dashboard-hero{display:flex!important;align-items:center;justify-content:space-between;gap:10px!important;margin-bottom:7px!important}
+.dashboard-title{font-size:18px!important;line-height:1.2;margin:0 0 2px!important}
+.dashboard-sub{font-size:11px!important;line-height:1.35!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:620px}
+.dash-actions{gap:5px!important;flex-wrap:nowrap!important;align-items:center!important}
+.dash-actions button,.dash-view-pills button,.range-pills button,.dashboard-filters button{height:30px!important;padding:0 9px!important;border-radius:8px!important;font-size:11px!important;font-weight:850!important;white-space:nowrap}
+.dash-view-pills{gap:4px!important;flex-wrap:nowrap!important}
+.dashboard-controls{display:flex;align-items:center;gap:7px;min-width:0;padding:6px;background:#f8fafc;border:1px solid #e8edf4;border-radius:11px;overflow-x:auto;overflow-y:hidden}
+.range-pills{gap:4px!important;flex-wrap:nowrap!important;margin:0!important;min-width:max-content}
+.dashboard-filters{display:flex!important;align-items:center;gap:5px!important;margin:0!important;min-width:900px;flex:1}
+.dashboard-filters input,.dashboard-filters select{height:32px!important;min-width:112px;padding:0 8px;border-radius:8px;font-size:11px}
+.dashboard-filters #dashKeyword{min-width:220px;flex:1}
+.dashboard-filters #dashCustomer,.dashboard-filters #dashType{min-width:135px}
+.dashboard-filters #dashStart,.dashboard-filters #dashEnd{min-width:126px}
+.dash-stats{display:none!important}
+#dashHint{margin:6px 0 2px!important;font-size:11px}
+.dash-pager{margin:4px 0!important;min-height:28px;font-size:11px!important}
+.dash-pager button{height:27px;padding:0 8px!important;border-radius:7px!important;font-size:11px!important}
+.dash-icon-groups{gap:10px!important}.dash-icon-group{gap:6px!important}
+.dash-icon-group-head{padding:6px 9px!important;border-radius:9px!important;font-size:12px}
+.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(205px,1fr))!important;gap:9px!important}
+.dash-bom-card{min-height:262px!important;border-color:#e6ebf2!important;border-radius:15px!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.dash-bom-card:hover{transform:translateY(-2px);border-color:#cbdcf5!important;box-shadow:0 10px 24px rgba(15,23,42,.09)!important}
+.dash-bom-image{height:128px!important;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
+.dash-bom-body{padding:8px 9px!important;gap:4px!important}
+.dash-bom-title{font-size:13px!important;min-height:35px}
+.dash-bom-model{font-size:11px!important}
+.dash-bom-meta{display:flex!important;flex-wrap:wrap;gap:3px!important;font-size:10px!important}
+.dash-bom-meta span{max-width:calc(50% - 2px);padding:2px 6px!important;border-radius:999px!important;background:#f6f8fb!important}
+.dash-bom-cost{font-size:11px!important}
+.dash-bom-actions{justify-content:flex-end;padding:0 9px 8px!important}
+.dash-bom-actions button{flex:0 0 auto!important;height:27px;padding:0 9px!important}
+@media(max-width:1200px){.brand-meta .brand-version{display:none}.dashboard-hero{align-items:flex-start!important}.dash-actions{overflow-x:auto;max-width:70%}}
+@media(max-width:900px){.app-header-wrap{padding:6px 0!important}.header-title-row{flex-wrap:wrap}.header-right{width:100%;justify-content:flex-start;overflow-x:auto}.header-nav-row{overflow-x:auto}.header-nav-row .module-nav{overflow:visible}.dashboard-hero{display:block!important}.dash-actions{max-width:100%;overflow-x:auto;margin-top:6px}.dashboard-controls{align-items:flex-start}.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important}}
+@media(max-width:640px){.brand-meta{display:none}.dashboard-sub{display:none}.dash-bom-image{height:118px!important}}
 
 
 
@@ -312,39 +370,42 @@ body.bom-header-collapsed main.wrap{padding-top:10px!important}
   <div class="header-title-row">
     <div class="header-title-main">
       <div class="brand-cn">中山雅大光电有限公司</div>
-      <div class="brand-en">Artdon Lighting Limited</div>
-      <div class="brand-sub">BOM Cost Management System · 物料成本管理系统 V78.2 · HTTPS图片显示修复版</div>
+      <div class="brand-meta"><span>Artdon Lighting Limited</span><span class="brand-version">BOM Cost Management · V78.2</span></div>
     </div>
-    <button type="button" id="headerFoldBtn" class="ghost header-fold-btn" onclick="toggleBomHeader()">折叠顶部</button>
+    <div class="header-right">
+      <div class="topbar">
+        <button class="ok" onclick="saveCurrent()">保存当前</button>
+        <button class="ghost" onclick="loadAll()">刷新数据</button>
+        <button class="ghost" onclick="window.print()">打印/PDF</button>
+        <button class="ghost" onclick="goModule('bom_backup_restore.php')">备份/恢复</button>
+        <span class="status" id="status">准备就绪</span>
+        <span class="user-chip" id="meText">未登录</span>
+        <button class="ghost" onclick="logout()">退出</button>
+      </div>
+      <button type="button" id="headerFoldBtn" class="ghost header-fold-btn" onclick="toggleBomHeader()">折叠顶部</button>
+    </div>
   </div>
-  <div class="topbar" style="margin-top:10px">
-    <button class="ok" onclick="saveCurrent()">保存当前</button>
-    <button class="ghost" onclick="loadAll()">刷新数据</button>
-    <button class="ghost" onclick="window.print()">打印/PDF</button>
-    <button class="ghost" onclick="goModule('bom_backup_restore.php')">备份/恢复</button>
-    <span class="status" id="status">准备就绪</span>
-    <span class="user-chip" id="meText">未登录</span>
-    <button class="ghost" onclick="logout()">退出</button>
-  </div>
-  <div class="module-nav">
-    <button class="home" onclick="goModule('index.php')">首页</button>
-    <button onclick="goModule('crm.php')">CRM</button>
-    <button onclick="goModule('mail.php')">邮箱</button>
-    <button onclick="goModule('promotion.php')">推广</button>
-    <button onclick="goModule('quotation.php')">报价</button>
-    <button onclick="goModule('datasheet.php')">资料</button>
-    <button onclick="goModule('dispatch_next.php')">派工</button>
-    <button onclick="goModule('plm.php')">PLM</button>
-    <button class="active" onclick="goModule('bom.php')">BOM</button>
-    <button onclick="goModule('naming.php')">命名</button>
-    <button onclick="goModule('crm.php#linkage')">重量</button>
-  </div>
-  <div class="tabs">
-    <button id="tabDashboard" class="tab active" onclick="showPage('dashboard')">BOM总览</button>
-    <button id="tabEdit" class="tab" onclick="showPage('edit')">编辑成本单</button>
-    <button id="tabLibrary" class="tab" onclick="showPage('library')">成本总表 / 明细库</button>
-    <button id="tabMaterials" class="tab" onclick="showPage('materials')">共享物料库</button>
-    <button id="tabUsers" class="tab" onclick="showPage('users')">用户管理</button>
+  <div class="header-nav-row">
+    <div class="module-nav">
+      <button class="home" onclick="goModule('index.php')">首页</button>
+      <button onclick="goModule('crm.php')">CRM</button>
+      <button onclick="goModule('mail.php')">邮箱</button>
+      <button onclick="goModule('promotion.php')">推广</button>
+      <button onclick="goModule('quotation.php')">报价</button>
+      <button onclick="goModule('datasheet.php')">资料</button>
+      <button onclick="goModule('dispatch_next.php')">派工</button>
+      <button onclick="goModule('plm.php')">PLM</button>
+      <button class="active" onclick="goModule('bom.php')">BOM</button>
+      <button onclick="goModule('naming.php')">命名</button>
+      <button onclick="goModule('crm.php#linkage')">重量</button>
+    </div>
+    <div class="tabs">
+      <button id="tabDashboard" class="tab active" onclick="showPage('dashboard')">BOM总览</button>
+      <button id="tabEdit" class="tab" onclick="showPage('edit')">编辑成本单</button>
+      <button id="tabLibrary" class="tab" onclick="showPage('library')">成本总表 / 明细库</button>
+      <button id="tabMaterials" class="tab" onclick="showPage('materials')">共享物料库</button>
+      <button id="tabUsers" class="tab" onclick="showPage('users')">用户管理</button>
+    </div>
   </div>
 </div></header>
 
@@ -368,22 +429,24 @@ body.bom-header-collapsed main.wrap{padding-top:10px!important}
         <button class="ghost" onclick="exportDashboardCSV()">导出当前筛选 CSV</button>
       </div>
     </div>
-    <div class="range-pills">
-      <button id="dashRangeMonth" class="active" onclick="setDashboardRange('month')">本月</button>
-      <button id="dashRange7" onclick="setDashboardRange('7')">近 7 天</button>
-      <button id="dashRange3" onclick="setDashboardRange('3')">近 3 天</button>
-      <button id="dashRangeAll" onclick="setDashboardRange('all')">全部</button>
-      <button id="dashRangeCustom" onclick="setDashboardRange('custom')">自定义时间</button>
-    </div>
-    <div class="dashboard-filters">
-      <input id="dashKeyword" placeholder="搜索 BOM名称 / 客户 / 型号 / 物料" oninput="renderDashboard()">
-      <select id="dashCustomer" onchange="renderDashboard()"></select>
-      <select id="dashType" onchange="renderDashboard()"></select>
-      <select id="dashTimeField" onchange="renderDashboard()"><option value="updatedAt">按最后保存</option><option value="createdAt">按创建时间</option></select>
-      <select id="dashSort" onchange="renderDashboard()"><option value="updatedDesc">最后保存：新到旧</option><option value="createdDesc">创建时间：新到旧</option><option value="costDesc">总成本：高到低</option><option value="costAsc">总成本：低到高</option><option value="customerAsc">客户 A-Z</option><option value="modelAsc">型号 A-Z</option></select>
-      <input id="dashStart" type="date" onchange="setDashboardRange('custom')">
-      <input id="dashEnd" type="date" onchange="setDashboardRange('custom')">
-      <button class="ghost" onclick="clearDashboardFilters()">清空筛选</button>
+    <div class="dashboard-controls">
+      <div class="range-pills">
+        <button id="dashRangeMonth" class="active" onclick="setDashboardRange('month')">本月</button>
+        <button id="dashRange7" onclick="setDashboardRange('7')">近 7 天</button>
+        <button id="dashRange3" onclick="setDashboardRange('3')">近 3 天</button>
+        <button id="dashRangeAll" onclick="setDashboardRange('all')">全部</button>
+        <button id="dashRangeCustom" onclick="setDashboardRange('custom')">自定义时间</button>
+      </div>
+      <div class="dashboard-filters">
+        <input id="dashKeyword" placeholder="搜索 BOM名称 / 客户 / 型号 / 物料" oninput="renderDashboard()">
+        <select id="dashCustomer" onchange="renderDashboard()"></select>
+        <select id="dashType" onchange="renderDashboard()"></select>
+        <select id="dashTimeField" onchange="renderDashboard()"><option value="updatedAt">按最后保存</option><option value="createdAt">按创建时间</option></select>
+        <select id="dashSort" onchange="renderDashboard()"><option value="updatedDesc">最后保存：新到旧</option><option value="createdDesc">创建时间：新到旧</option><option value="costDesc">总成本：高到低</option><option value="costAsc">总成本：低到高</option><option value="customerAsc">客户 A-Z</option><option value="modelAsc">型号 A-Z</option></select>
+        <input id="dashStart" type="date" onchange="setDashboardRange('custom')">
+        <input id="dashEnd" type="date" onchange="setDashboardRange('custom')">
+        <button class="ghost" onclick="clearDashboardFilters()">清空筛选</button>
+      </div>
     </div>
     <div class="dash-stats">
       <div class="dash-stat"><span>当前筛选 BOM</span><b id="dashCount">0</b></div>
