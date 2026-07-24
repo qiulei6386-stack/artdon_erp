@@ -3362,7 +3362,7 @@ function dn_table_default_columns(): array
         ['key'=>'priority','label'=>'优先级','type'=>'select','visible'=>1,'width'=>90,'minWidth'=>70,'maxWidth'=>150,'order'=>20],
         ['key'=>'title','label'=>'任务标题','type'=>'text','visible'=>1,'width'=>260,'minWidth'=>140,'maxWidth'=>720,'order'=>30],
         ['key'=>'project','label'=>'项目','type'=>'textarea','visible'=>1,'width'=>420,'minWidth'=>120,'maxWidth'=>760,'order'=>40],
-        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>88,'minWidth'=>70,'maxWidth'=>120,'order'=>50],
+        ['key'=>'due_at','label'=>'截止日期','type'=>'datetime','visible'=>1,'width'=>70,'minWidth'=>70,'maxWidth'=>90,'order'=>50],
         ['key'=>'assigned_to','label'=>'负责人','type'=>'user','visible'=>1,'width'=>140,'minWidth'=>90,'maxWidth'=>170,'order'=>60],
         ['key'=>'dispatch_mode','label'=>'方式','type'=>'mode','visible'=>1,'width'=>70,'minWidth'=>64,'maxWidth'=>90,'order'=>70],
         ['key'=>'creator_name','label'=>'派工来自','type'=>'readonly','visible'=>1,'width'=>96,'minWidth'=>86,'maxWidth'=>110,'order'=>80],
@@ -3425,7 +3425,7 @@ function dn_get_table_prefs(array $in): array
             'priority' => 68,
             'title' => 150,
             'project' => 320,
-            'due_at' => 72,
+            'due_at' => 70,
             'assigned_to' => 140,
             'dispatch_mode' => 70,
             'creator_name' => 96,
@@ -3466,10 +3466,10 @@ function dn_get_table_prefs(array $in): array
     }
     foreach ($byKey as &$col) {
         if (($col['key'] ?? '') !== 'due_at') continue;
-        $dueWidth = $scope === 'mobile' ? 48 : ($scope === 'mobile_landscape' ? 72 : 88);
+        $dueWidth = $scope === 'mobile' ? 48 : 70;
         $col['width'] = min((int)($col['width'] ?? $dueWidth), $dueWidth);
         $col['minWidth'] = $scope === 'mobile' ? 40 : 70;
-        $col['maxWidth'] = $scope === 'mobile' ? 72 : 120;
+        $col['maxWidth'] = $scope === 'mobile' ? 72 : 90;
     }
     unset($col);
     $columns = array_values($byKey);
