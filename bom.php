@@ -252,21 +252,32 @@ body{background:#f6f8fb}
 .dash-pager button{height:27px;padding:0 8px!important;border-radius:7px!important;font-size:11px!important}
 .dash-icon-groups{gap:10px!important}.dash-icon-group{gap:6px!important}
 .dash-icon-group-head{padding:6px 9px!important;border-radius:9px!important;font-size:12px}
-.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(205px,1fr))!important;gap:9px!important}
-.dash-bom-card{min-height:262px!important;border-color:#e6ebf2!important;border-radius:15px!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(225px,1fr))!important;gap:9px!important}
+.dash-bom-card{height:330px!important;min-height:330px!important;border-color:#e6ebf2!important;border-radius:15px!important;box-shadow:0 2px 9px rgba(15,23,42,.035)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
 .dash-bom-card:hover{transform:translateY(-2px);border-color:#cbdcf5!important;box-shadow:0 10px 24px rgba(15,23,42,.09)!important}
-.dash-bom-image{height:128px!important;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
+.dash-bom-image{height:150px!important;flex:0 0 150px;background:linear-gradient(145deg,#f7f9fc,#eef3f8)!important}
 .dash-bom-body{padding:8px 9px!important;gap:4px!important}
-.dash-bom-title{font-size:13px!important;min-height:35px}
+.dash-bom-title{font-size:14px!important;min-height:37px}
 .dash-bom-model{font-size:11px!important}
 .dash-bom-meta{display:flex!important;flex-wrap:wrap;gap:3px!important;font-size:10px!important}
 .dash-bom-meta span{max-width:calc(50% - 2px);padding:2px 6px!important;border-radius:999px!important;background:#f6f8fb!important}
 .dash-bom-cost{font-size:11px!important}
-.dash-bom-actions{justify-content:flex-end;padding:0 9px 8px!important}
-.dash-bom-actions button{flex:0 0 auto!important;height:27px;padding:0 9px!important}
+.dash-bom-actions{justify-content:space-between;padding:0 9px 8px!important}
+.dash-bom-actions button{flex:1 1 0!important;height:28px;padding:0 9px!important}
+.dashboard-table-wrap{border-radius:11px!important}
+.dashboard-view-hidden{display:none!important}
+.dashboard-table{min-width:980px!important;table-layout:fixed}
+.dashboard-table th,.dashboard-table td{padding:7px 8px;font-size:12px}
+.dashboard-table th{height:34px;background:#f6f8fb!important;color:#475569;font-weight:900}
+.dashboard-table tbody tr:hover td{background:#f7fbff}
+.dashboard-table th:nth-child(1){width:25%}.dashboard-table th:nth-child(2){width:11%}.dashboard-table th:nth-child(3){width:10%}.dashboard-table th:nth-child(4){width:15%}.dashboard-table th:nth-child(5){width:7%}.dashboard-table th:nth-child(6),.dashboard-table th:nth-child(7){width:9%}.dashboard-table th:nth-child(8){width:12%}.dashboard-table th:nth-child(9){width:150px}
+.bom-title-cell b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px!important}
+.bom-title-cell small{display:block!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3!important;margin-top:2px!important}
+.dashboard-table .price,.dashboard-table .quote-price{text-align:right;font-weight:950;color:#b91c1c}
+.dash-table-actions{white-space:nowrap;text-align:center}.dash-table-actions button{height:27px;padding:0 7px!important;margin:0 2px}
 @media(max-width:1200px){.brand-meta .brand-version{display:none}.dashboard-hero{align-items:flex-start!important}.dash-actions{overflow-x:auto;max-width:70%}}
 @media(max-width:900px){.app-header-wrap{padding:6px 0!important}.header-title-row{flex-wrap:wrap}.header-right{width:100%;justify-content:flex-start;overflow-x:auto}.header-nav-row{overflow-x:auto}.header-nav-row .module-nav{overflow:visible}.dashboard-hero{display:block!important}.dash-actions{max-width:100%;overflow-x:auto;margin-top:6px}.dashboard-controls{align-items:flex-start}.dash-icon-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important}}
-@media(max-width:640px){.brand-meta{display:none}.dashboard-sub{display:none}.dash-bom-image{height:118px!important}}
+@media(max-width:640px){.brand-meta{display:none}.dashboard-sub{display:none}.dash-bom-card{height:300px!important;min-height:300px!important}.dash-bom-image{height:118px!important;flex-basis:118px}}
 
 
 
@@ -419,9 +430,9 @@ body{background:#f6f8fb}
       </div>
       <div class="dash-actions">
         <div class="dash-view-pills">
-          <button id="dashViewTable" class="active" onclick="setDashboardView('table')">表格</button>
-          <button id="dashViewIcon" onclick="setDashboardView('icon')">图标</button>
-          <button id="dashGroupToggle" onclick="toggleDashboardGroup()">分类平铺</button>
+          <button id="dashViewTable" onclick="setDashboardView('list')">表格</button>
+          <button id="dashViewIcon" onclick="setDashboardView('grid')">图标</button>
+          <button id="dashGroupToggle" onclick="setDashboardView('grouped')">分类平铺</button>
         </div>
         <button class="ok" onclick="newProjectFromDashboard()">新建 BOM</button>
         <button class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button>
@@ -458,12 +469,11 @@ body{background:#f6f8fb}
     <div class="dash-pager" id="dashPagerTop"></div>
     <div class="dashboard-table-wrap" id="dashboardTableWrap">
       <table class="dashboard-table">
-        <thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>系列</th><th>物料行</th><th>总成本</th><th>建议报价</th><th>创建时间</th><th>最后保存</th><th>操作</th></tr></thead>
+        <thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>系列</th><th>物料行</th><th>总成本</th><th>建议报价</th><th>更新时间</th><th>操作</th></tr></thead>
         <tbody id="dashboardTbody"></tbody>
       </table>
     </div>
     <div class="dash-icon-grid" id="dashboardIconGrid" hidden></div>
-    <div class="dash-pager" id="dashPagerBottom"></div>
   </div>
 </section>
 
@@ -745,7 +755,7 @@ body{background:#f6f8fb}
 
 <script>
 const API='bom_api.php';
-let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView='icon',dashboardGroup=false,dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false;
+let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=['list','grid','grouped'].includes(localStorage.getItem('bom_dashboard_view_v80'))?localStorage.getItem('bom_dashboard_view_v80'):'grid',dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false;
 const BOM_PLACE_PAGE_KEY='bom_last_page_v762', BOM_PLACE_PROJECT_KEY='bom_last_project_v762';
 function bomValidPage(p){return ['dashboard','edit','library','materials','users'].includes(String(p||''))}
 function bomRememberPlace(){try{localStorage.setItem(BOM_PLACE_PAGE_KEY,bomValidPage(currentPage)?currentPage:'dashboard');if(currentId)localStorage.setItem(BOM_PLACE_PROJECT_KEY,currentId)}catch(e){}}
@@ -1662,12 +1672,17 @@ function dashboardRangeEnd(){if(dashboardRange==='custom'&&$('dashEnd')?.value)r
 function setDashboardRange(r){dashboardRange=r;dashboardPage=1;['Month','7','3','All','Custom'].forEach(x=>{const el=$('dashRange'+x);if(el)el.classList.remove('active')});const map={month:'Month','7':'7','3':'3',all:'All',custom:'Custom'};const el=$('dashRange'+map[r]);if(el)el.classList.add('active');if(r==='month'){$('dashStart').value=dateInputValue(startOfMonth());$('dashEnd').value=dateInputValue(new Date())}else if(r==='7'){const d=startOfToday();d.setDate(d.getDate()-6);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='3'){const d=startOfToday();d.setDate(d.getDate()-2);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='all'){$('dashStart').value='';$('dashEnd').value=''}renderDashboard()}
 function isBomModelKeyword(value){return /^[a-z0-9]*\d{2,4}(?:[.\-]\d+)+[a-z0-9]*$/i.test(String(value||'').trim().replace(/\s+/g,''))}
 function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),customer=$('dashCustomer')?.value||'',type=$('dashType')?.value||'',timeField=$('dashTimeField')?.value||'updatedAt';let arr=projects.filter(p=>{const dt=dateFromText(p[timeField]);const st=dashboardRangeStart(),ed=dashboardRangeEnd(),pt=p.namingType||bomProjectNamingType(p);if(st&&(!dt||dt<st))return false;if(ed&&(!dt||dt>ed))return false;if(customer&&p.customer!==customer)return false;if(type&&pt!==type)return false;if(kw){const fields=modelKeyword?[p.model,p.name]:[p.name,p.customer,p.model,pt,p.productType,JSON.stringify(p.rows||[])];if(!fields.join(' ').toLowerCase().includes(kw))return false}return true});const sort=$('dashSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer)):sort==='modelAsc'?String(a.model).localeCompare(String(b.model)):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
-function setDashboardView(v){dashboardView=v==='icon'?'icon':'table';dashboardPage=1;localStorage.setItem('bom_dashboard_view_v79',dashboardView);renderDashboard()}
-function toggleDashboardGroup(){dashboardGroup=!dashboardGroup;dashboardPage=1;localStorage.setItem('bom_dashboard_group_v79',dashboardGroup?'1':'0');renderDashboard()}
-function updateDashboardViewButtons(){if($('dashViewTable'))$('dashViewTable').classList.toggle('active',dashboardView!=='icon');if($('dashViewIcon'))$('dashViewIcon').classList.toggle('active',dashboardView==='icon');if($('dashGroupToggle'))$('dashGroupToggle').classList.toggle('active',dashboardGroup);if($('dashboardTableWrap'))$('dashboardTableWrap').hidden=dashboardView==='icon';if($('dashboardIconGrid'))$('dashboardIconGrid').hidden=dashboardView!=='icon'}
+function setDashboardView(v){dashboardView=['list','grid','grouped'].includes(v)?v:'grid';localStorage.setItem('bom_dashboard_view_v80',dashboardView);renderDashboard()}
+function toggleDashboardGroup(){setDashboardView(dashboardView==='grouped'?'grid':'grouped')}
+function updateDashboardViewButtons(){
+  if($('dashViewTable'))$('dashViewTable').classList.toggle('active',dashboardView==='list');
+  if($('dashViewIcon'))$('dashViewIcon').classList.toggle('active',dashboardView==='grid');
+  if($('dashGroupToggle'))$('dashGroupToggle').classList.toggle('active',dashboardView==='grouped');
+  if($('dashboardTableWrap')){$('dashboardTableWrap').hidden=dashboardView!=='list';$('dashboardTableWrap').classList.toggle('dashboard-view-hidden',dashboardView!=='list')}
+  if($('dashboardIconGrid')){$('dashboardIconGrid').hidden=dashboardView==='list';$('dashboardIconGrid').classList.toggle('dashboard-view-hidden',dashboardView==='list')}
+}
 function dashboardEffectivePageSize(){
-  if(dashboardView!=='icon')return 2;
-  const box=$('dashboardIconGrid'), w=box?.clientWidth||document.querySelector('.dashboard')?.clientWidth||window.innerWidth||1100;
+  const w=document.querySelector('.dashboard')?.clientWidth||window.innerWidth||1100;
   const cols=Math.max(2,Math.floor(w/232));
   return Math.max(4,cols*2);
 }
@@ -1678,7 +1693,6 @@ function renderDashboardPagers(rows){
   const size=dashboardEffectivePageSize(), total=dashboardTotalPages(), start=lastDashboardRows.length?((dashboardPage-1)*size+1):0, end=Math.min(lastDashboardRows.length,dashboardPage*size);
   const html=`<span>第 ${dashboardPage}/${total} 页 ｜ ${start}-${end} / ${lastDashboardRows.length}</span><div class="dash-pager-actions"><button class="ghost" onclick="gotoDashboardPage(-1)" ${dashboardPage<=1?'disabled':''}>上一页</button><button class="ghost" onclick="gotoDashboardPage(1)" ${dashboardPage>=total?'disabled':''}>下一页</button></div>`;
   if($('dashPagerTop'))$('dashPagerTop').innerHTML=html;
-  if($('dashPagerBottom'))$('dashPagerBottom').innerHTML=html;
 }
 function dashboardGroups(arr){
   const map={};
@@ -1687,7 +1701,8 @@ function dashboardGroups(arr){
 }
 function dashboardTableRowHtml(p){
   const t=totals(p), pt=p.namingType||bomProjectNamingType(p);
-  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small>${esc((p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / '))}</small></td><td>${esc(p.customer||'-')}</td><td>${esc(p.model||'-')}</td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="num">${money(t.suggest)}</td><td>${esc(p.createdAt||'')}</td><td>${esc(p.updatedAt||'')}</td><td><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button> <button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
+  const summary=(p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / ')||String(p.note||'').split(/\r?\n/)[0]||'暂无摘要';
+  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
 }
 function dashboardImageHtml(p){
   const src=String(p.productImage||'').trim();
@@ -1716,17 +1731,23 @@ function renderDashboard(){
   $('dashCount').textContent=lastDashboardRows.length+'/'+projects.length;$('dashTotalCost').textContent=money(totalCost);$('dashTotalQuote').textContent=money(totalQuote);$('dashAvgCost').textContent=money(lastDashboardRows.length?totalCost/lastDashboardRows.length:0);
   const label=dashboardRange==='month'?'本月':dashboardRange==='7'?'近 7 天':dashboardRange==='3'?'近 3 天':dashboardRange==='all'?'全部':'自定义时间';
   $('dashHint').textContent=`当前范围：${label} ｜ 时间字段：${$('dashTimeField').value==='createdAt'?'创建时间':'最后保存'} ｜ 共 ${lastDashboardRows.length} 个 BOM`;
-  const iconBox=$('dashboardIconGrid');if(iconBox)iconBox.className=dashboardGroup?'dash-icon-groups':'dash-icon-grid';
+  const iconBox=$('dashboardIconGrid');
+  if(iconBox){iconBox.classList.toggle('dash-icon-groups',dashboardView==='grouped');iconBox.classList.toggle('dash-icon-grid',dashboardView!=='grouped')}
   const pageRows=dashboardPageRows();renderDashboardPagers(pageRows);
-  if(!lastDashboardRows.length){$('dashboardTbody').innerHTML=`<tr><td colspan="10"><div class="dash-empty">当前筛选没有 BOM。可以切换“全部”或清空筛选。</div></td></tr>`;if(iconBox)iconBox.innerHTML='<div class="dash-empty">当前筛选没有 BOM。可以切换“全部”或清空筛选。</div>';return}
-  if(dashboardGroup){
+  $('dashboardTbody').innerHTML='';
+  if(iconBox)iconBox.innerHTML='';
+  if(!lastDashboardRows.length){
+    if(dashboardView==='list')$('dashboardTbody').innerHTML=`<tr><td colspan="9"><div class="dash-empty">当前筛选没有 BOM。可以切换“全部”或清空筛选。</div></td></tr>`;
+    else if(iconBox)iconBox.innerHTML='<div class="dash-empty">当前筛选没有 BOM。可以切换“全部”或清空筛选。</div>';
+    return;
+  }
+  if(dashboardView==='grouped'){
     const groups=dashboardGroups(pageRows);
-    $('dashboardTbody').innerHTML=groups.map(g=>`<tr class="dash-group-row"><td colspan="10"><div class="dash-group-title"><span>${esc(g.name)}</span><small>${g.rows.length} 个 BOM</small></div></td></tr>`+g.rows.map(dashboardTableRowHtml).join('')).join('');
     if(iconBox)iconBox.innerHTML=groups.map(g=>`<section class="dash-icon-group"><div class="dash-icon-group-head"><span>${esc(g.name)}</span><small>${g.rows.length} 个 BOM</small></div><div class="dash-icon-grid">${g.rows.map(dashboardCardHtml).join('')}</div></section>`).join('');
     return;
   }
-  $('dashboardTbody').innerHTML=pageRows.map(dashboardTableRowHtml).join('');
-  if(iconBox)iconBox.innerHTML=pageRows.map(dashboardCardHtml).join('');
+  if(dashboardView==='list')$('dashboardTbody').innerHTML=pageRows.map(dashboardTableRowHtml).join('');
+  else if(iconBox)iconBox.innerHTML=pageRows.map(dashboardCardHtml).join('');
 }
 function clearDashboardFilters(){$('dashKeyword').value='';$('dashCustomer').value='';$('dashType').value='';$('dashSort').value='updatedDesc';$('dashTimeField').value='updatedAt';setDashboardRange('month')}
 function openProjectFromDashboard(id){showPage('edit');loadProject(id)}
