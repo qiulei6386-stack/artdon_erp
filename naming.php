@@ -23,6 +23,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     @session_set_cookie_params(array('lifetime'=>86400*30,'path'=>'/','httponly'=>true,'samesite'=>'Lax'));
     @session_start();
 }
+// 命名中心脚本和列表更新频繁，禁止浏览器/代理复用旧 HTML 与旧内联脚本。
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
 
 // 统一登录/权限中心软加载：真正的拦截放到数据库表检查之后执行，避免缺列时白屏。
 $GLOBALS['NM_SSO_CORE_AVAILABLE'] = false;
