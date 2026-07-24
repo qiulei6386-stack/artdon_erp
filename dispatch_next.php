@@ -502,6 +502,8 @@ body.due-row-fill-off .tbl tr.soon:not(.done):not(.complete):not(.completed):not
 .tbl tr.done td[data-field="actions"]{text-align:left!important}.tbl tr.done td[data-field="actions"] .rowActions{justify-content:flex-start!important}
 .tbl th[data-col="due_at"],.tbl td[data-field="due_at"]{text-align:center!important}
 .tbl td[data-field="due_at"] .dateDisplay{width:100%;min-height:24px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;text-align:center}
+.tbl th,.tbl th[data-col]{text-align:center!important}
+.tbl th .th-label{width:100%;text-align:center!important}
 .tbl .prioSelect,.tbl .methodSelect{-webkit-appearance:none!important;appearance:none!important;background-image:none!important;padding-left:3px!important;padding-right:3px!important;cursor:pointer}
 .tbl td[data-field="dispatch_mode"] .methodSelect{background-image:none!important;background-repeat:no-repeat!important;background-size:0 0!important;background-position:center!important;padding-left:3px!important;padding-right:3px!important}
 .tbl td[data-field="dispatch_mode"] .tableMethodText{padding-left:3px!important;padding-right:3px!important}
