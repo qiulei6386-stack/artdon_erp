@@ -1706,7 +1706,7 @@ function dashboardGroups(arr){
 function dashboardTableRowHtml(p){
   const t=totals(p), pt=p.namingType||bomProjectNamingType(p);
   const summary=(p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / ')||String(p.note||'').split(/\r?\n/)[0]||'暂无摘要';
-  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button></td></tr>`;
+  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
 }
 function dashboardImageHtml(p){
   const src=String(p.productImage||'').trim();
@@ -1724,7 +1724,7 @@ function dashboardCardHtml(p){
       <div class="dash-bom-cost"><span>总成本</span><b>${money(t.total)}</b></div>
       <div class="dash-bom-model" title="${esc(material)}">${esc(material||'暂无物料摘要')}</div>
     </div>
-    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">打开编辑</button></div>
+    <div class="dash-bom-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></div>
   </article>`;
 }
 function renderDashboard(){
