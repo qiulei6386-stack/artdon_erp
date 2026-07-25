@@ -12,6 +12,20 @@ final class CatalogCenterService
 {
     public function products(array $authentication, string $search, string $category): array
     {
+        if (!$authentication['authenticated']) {
+            return ['status' => 'unauthenticated', 'rows' => [], 'categories' => [], 'permission' => 'commercial_center.view'];
+        }
+        try {
+            $repository = new LegacyCatalogReadRepository();
+            $rows = $repository->products($search, $category);
+            $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
+            foreach ($rows as &$row) { $cost = $costs[(string)$row['model_no']] ?? null; $row['bom_cost'] = $cost; $row['product_name'] = trim((string)$row['product_name']) . ' · BOM成本 ' . ($cost === null ? '—' : number_format((float)$cost, 4)); }
+            unset($row);
+            return ['status'=>'available','permission'=>'commercial_center.view','rows'=>$rows,'categories'=>$repository->productCategories()];
+        } catch (\Throwable $error) {
+            return ['status'=>'unavailable','permission'=>'commercial_center.view','rows'=>[],'categories'=>[]];
+        }
+        /*
         return $this->load($authentication, 'commercial_center.view', static function (LegacyCatalogReadRepository $repository) use ($search, $category): array {
             $rows = $repository->products($search, $category);
             $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
@@ -22,7 +36,7 @@ final class CatalogCenterService
             }
             unset($row);
             return ['rows' => $rows, 'categories' => $repository->productCategories()];
-        });
+        }); */
     }
 
     public function materials(array $authentication, string $search, string $category): array
