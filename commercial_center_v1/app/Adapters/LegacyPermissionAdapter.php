@@ -20,6 +20,11 @@ final class LegacyPermissionAdapter extends AbstractLegacyReadOnlyAdapter implem
         if (!$user['authenticated'] || !$user['user']) {
             return ['allowed' => false, 'source' => 'no_user', 'status' => $user['status']];
         }
+        // The sidecar's base read permission is intentionally available to an authenticated
+        // ERP user; write/action permissions remain explicitly role-controlled.
+        if ($permission === 'commercial_center.view') {
+            return ['allowed' => true, 'source' => 'authenticated_sidecar_read', 'status' => 'available'];
+        }
         if ($user['user']['is_super_admin']) {
             return ['allowed' => true, 'source' => 'legacy_super_admin', 'status' => 'available'];
         }
