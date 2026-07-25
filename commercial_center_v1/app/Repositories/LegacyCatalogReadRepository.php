@@ -58,14 +58,14 @@ final class LegacyCatalogReadRepository
     {
         $models = array_values(array_unique(array_filter(array_map('strval', $models))));
         if ($models === []) return [];
-        $marks = implode(',', array_fill(0, count($models) * 2, '?'));
         $rows = $this->selectAll(
-            'SELECT model,naming_model_no,labor,other,rows_json FROM bom_projects
-             WHERE is_active=1 AND (model IN (' . $marks . ') OR naming_model_no IN (' . $marks . '))',
-            array_merge($models, $models)
+            'SELECT model,naming_model_no,labor,other,rows_json FROM bom_projects WHERE is_active=1'
         );
+        $wanted = array_fill_keys(array_map(static fn(string $v): string => trim($v), $models), true);
         $costs = [];
         foreach ($rows as $row) {
+            $modelKey = trim((string)($row['model'] ?: $row['naming_model_no']));
+            if ($modelKey === '' || !isset($wanted[$modelKey])) continue;
             $cost = (float)$row['labor'] + (float)$row['other'];
             $lines = json_decode((string)$row['rows_json'], true);
             if (is_array($lines)) foreach ($lines as $line) {
@@ -74,8 +74,7 @@ final class LegacyCatalogReadRepository
                 $subtotal = array_key_exists('subtotal', $line) ? (float)$line['subtotal'] : $price * $qty;
                 $cost += $subtotal > 0 ? $subtotal : ($price * $qty);
             }
-            $key = (string)($row['model'] ?: $row['naming_model_no']);
-            if ($key !== '') $costs[$key] = round($cost, 4);
+            $costs[$modelKey] = round($cost, 4);
         }
         return $costs;
     }
