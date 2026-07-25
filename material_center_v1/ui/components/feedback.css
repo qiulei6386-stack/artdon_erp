@@ -1,0 +1,10 @@
+.ui-state { min-height: 210px; padding: 36px 20px; display: grid; place-items: center; text-align: center; }
+.ui-state-inner { max-width: 480px; }.ui-state-icon { width: 42px; height: 42px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--ui-primary-soft); color: var(--ui-primary); font-weight: 900; }
+.ui-state h2 { margin-bottom: 6px; }.ui-state p { color: var(--ui-text-muted); }.ui-state-actions { display: flex; justify-content: center; gap: 8px; }
+.ui-toast-region { position: fixed; right: 16px; top: 16px; z-index: var(--ui-z-toast); width: min(360px, calc(100vw - 32px)); display: grid; gap: 8px; }
+.ui-toast { padding: 12px 14px; border: 1px solid var(--ui-border); border-left: 4px solid var(--ui-info); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: var(--ui-shadow-2); animation: ui-toast-in .18s ease; }
+.ui-toast-success { border-left-color: var(--ui-success); }.ui-toast-danger { border-left-color: var(--ui-danger); }
+.ui-skeleton { min-height: 14px; border-radius: 5px; background: linear-gradient(90deg,var(--ui-surface-subtle),var(--ui-border),var(--ui-surface-subtle)); background-size: 200% 100%; animation: ui-shimmer 1.2s infinite; }
+@keyframes ui-toast-in { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes ui-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }

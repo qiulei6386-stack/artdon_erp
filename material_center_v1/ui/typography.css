@@ -1,0 +1,11 @@
+* { box-sizing: border-box; }
+html { font-family: var(--ui-font); font-size: 14px; }
+body { margin: 0; background: var(--ui-bg); color: var(--ui-text); line-height: 1.5; }
+button, input, select, textarea { font: inherit; }
+a { color: var(--ui-primary); }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: 26px; line-height: 1.25; }
+h2 { font-size: 20px; line-height: 1.3; }
+.ui-eyebrow { color: var(--ui-primary); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.ui-muted { color: var(--ui-text-muted); }
+.ui-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

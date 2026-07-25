@@ -1,0 +1,10 @@
+.ui-field { display: grid; gap: 6px; }.ui-label { color: var(--ui-text-muted); font-size: 12px; font-weight: 700; }
+.ui-input, .ui-select { width: 100%; height: var(--ui-control-md); padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text); outline: none; }
+.ui-input:focus, .ui-select:focus { border-color: var(--ui-primary); box-shadow: var(--ui-focus); }
+.ui-input[aria-invalid="true"] { border-color: var(--ui-danger); }.ui-help { color: var(--ui-text-muted); font-size: 11px; }
+.ui-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }.ui-check input { accent-color: var(--ui-primary); width: 16px; height: 16px; }
+.ui-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.ui-switch input { position: absolute; opacity: 0; }.ui-switch-track { width: 36px; height: 20px; padding: 2px; border-radius: 999px; background: var(--ui-border-strong); transition: .16s; }
+.ui-switch-track::after { content: ""; display: block; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: var(--ui-shadow-1); transition: .16s; }
+.ui-switch input:checked + .ui-switch-track { background: var(--ui-primary); }.ui-switch input:checked + .ui-switch-track::after { transform: translateX(16px); }
+.ui-switch input:focus-visible + .ui-switch-track { box-shadow: var(--ui-focus); }

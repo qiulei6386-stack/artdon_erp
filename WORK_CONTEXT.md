@@ -23,6 +23,9 @@
 
 ## 最近完成
 
+- `material_center_v1` 已建立统一 UI 组件体系：设计令牌、浅色/深色/系统主题、排版与页面框架、按钮、表单、选择控件、卡片、徽章、Tooltip、下拉菜单、弹窗、抽屉、Toast、表格、分页和统一页面状态。
+- 物料中心首页已迁移到统一组件，增加主题选择、客户展示模式、300ms 搜索提交、搜索清空、键盘打开详情、统一抽屉与前端分页。
+- 新增组件展厅 `material_center_v1/ui/docs/component-gallery.php`，并补齐 UI 审计、进度、决策和测试清单；本轮没有修改商务中心、广州旧系统或数据库表结构。
 - 新建 `material_center_v1` 只读基础版：位于广州 ERP 正确子目录，接入统一登录与旧 `bom_materials` 只读总览，包含搜索、分类筛选、统计、详情抽屉和健康检查；当前无写入 SQL、不展示价格与供应商。
 - 已完成本地、GitHub、服务器三方同步审计：同步前已跟踪代码均为 `1b9436e`；服务器无已跟踪改动，GitHub 与本地一致。服务器缺少 GitHub SSH 凭据，后续由本地推送 GitHub并通过 Git bundle 快进服务器仓库。
 - 已确认两个本地路径分别属于家用电脑 `qiulei-home` 和办公电脑 `qiulei-office`；每次使用当前电脑对应目录。
@@ -46,12 +49,13 @@
 
 ## 本次检查与部署
 
-- 修改文件：新增 `material_center_v1/` 下 11 个受 Git 管理的基础文件，并更新 `WORK_CONTEXT.md`。
-- 本地检查：`git diff --check`、`node --check material_center_v1/assets/js/app.js`、写入 SQL 扫描通过；7 个 PHP 文件通过服务器 PHP CLI 标准输入语法检查。
-- 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`；确认 `/www/wwwroot/Artdon/material_center_v1` 不存在。
-- 服务器检查：全部 PHP 文件通过 `php -l`；未登录服务探测返回 `unauthenticated`；核心入口、CSS、JS 与本地 SHA-256 一致。
-- Git：业务提交 `565aeab` 已推送到 `origin/main`；最终上下文提交完成后通过 Git bundle 快进服务器仓库。
+- 修改文件：仅在 `material_center_v1` 新增/修改 UI、首页、文档和测试文件，并按协作规则更新 `WORK_CONTEXT.md`。
+- 本地检查：`git diff --check`、UI 静态测试、全部 JavaScript `node --check` 通过；本机无 PHP CLI。
+- 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`，未部署到外层目录。
+- 服务器检查：`index.php` 与组件展厅均通过 `php -l`；线上首页、组件展厅和 CSS 分别返回 HTTP 200。
+- Git：本轮统一 UI 提交号与推送状态见完成后的最新记录。
 
 ## 待办
 
 - 物料中心当前为只读基础版；下一阶段待确认分类与属性模板、永久编码、替代料、供应商/价格权限、BOM 引用和写入审计方案。
+- 登录态真实物料数据与各业务人员常用浏览器仍需人工业务验收。

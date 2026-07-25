@@ -1,0 +1,8 @@
+.ui-card { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow-1); }
+.ui-card-body { padding: 16px; }.ui-card-header { padding: 14px 16px; border-bottom: 1px solid var(--ui-border); display: flex; justify-content: space-between; align-items: center; }
+.ui-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 9px; border-radius: 999px; background: var(--ui-primary-soft); color: var(--ui-primary); font-size: 11px; font-weight: 750; }
+.ui-badge-success { background: color-mix(in srgb, var(--ui-success) 14%, transparent); color: var(--ui-success); }
+.ui-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--ui-border); }
+.ui-tab { padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ui-text-muted); cursor: pointer; }
+.ui-tab[aria-selected="true"] { border-color: var(--ui-primary); color: var(--ui-primary); font-weight: 750; }
+.ui-tooltip { position: relative; }.ui-tooltip:hover::after, .ui-tooltip:focus-visible::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 6px 8px; border-radius: 6px; background: #0f172a; color: #fff; font-size: 11px; white-space: nowrap; z-index: var(--ui-z-toast); }
