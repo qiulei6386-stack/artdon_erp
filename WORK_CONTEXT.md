@@ -9,9 +9,9 @@
 - 标准品报价页独立实现：半自由报价资料区、8 行密集标准品明细、真实产品目录图片/型号接入、固定右侧汇总与 MOQ/交期/佣金提醒、底部内部流程，以及按参考图默认展开的产品选择与合法配置窗口。
 - 定制品报价页独立实现：顶部操作工具栏、三列报价信息、产品图/参考图/尺寸图/客户文件四块上传区、高自由自定义产品明细、右侧自定义字段、可选参考产品、报价汇总、工程说明和底部内部流程。
 - 修改文件：`commercial_center_v1/views/quote_center.php`、`assets/css/app.css`、`tests/quote_center_regression.php`；新增 `views/quote_website.php`、`views/quote_standard.php`、`views/quote_custom.php`，以及本文件。
-- 检查：6 个 PHP 文件经服务器 PHP 8.0 标准输入语法检查通过，`git diff --check` 通过；部署后页面 HTTP、回归、安全与浏览器可用性检查待完成。
+- 检查：6 个 PHP 文件经服务器 PHP 8.0 标准输入语法检查通过，`git diff --check` 通过；部署后三张页面均返回 HTTP 200、无 PHP 错误，页面专属结构关键词零缺失、专属 CSS 资源返回 200；`quote_center_regression.php`、`bootstrap_smoke.php`、`safety_scan.php` 全部通过。当前仍无可用内置浏览器实例，无法完成截图式视觉验收。
 - 数据库/权限/路由：无数据库、权限表和旧数据修改；沿用上一版三类报价路由、旧 URL 映射及现有权限边界。
-- Git/部署：待提交、推送 GitHub、同步服务器并复检；不纳入现有启动脚本删除/重命名、未跟踪文档或服务器物料中心并行改动。
+- Git/部署：重建提交 `a9a86c3` 已推送 GitHub，并通过同一提交 Git bundle 快进同步服务器；未纳入现有启动脚本删除/重命名、未跟踪文档或服务器物料中心并行改动。最终收尾提交及三方一致性见本轮最终结果。
 
 ## 本次：商务中心报价单中心与三类报价页面
 
