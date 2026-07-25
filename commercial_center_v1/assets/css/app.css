@@ -81,7 +81,7 @@
 /* 报价产品库：卡片与产品图同宽，并按可用空间自适应排列。 */
 .product-grid.product-library-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(168px,188px));
+  grid-template-columns:repeat(var(--product-grid-columns,auto-fit),minmax(168px,1fr));
   grid-auto-rows:auto;
   grid-template-rows:none;
   align-content:start;
@@ -90,7 +90,8 @@
   height:auto;
   min-height:0;
   overflow:visible;
-  max-width:1188px;
+  width:100%;
+  max-width:none;
 }
 .product-grid.product-library-grid .library-card{
   width:100%;

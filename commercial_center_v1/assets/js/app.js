@@ -61,6 +61,20 @@ const productLibrary = document.querySelector('.product-library-grid');
 if (productLibrary && new URLSearchParams(window.location.search).get('mode') === 'list') {
   productLibrary.classList.add('is-list');
 }
+if (productLibrary && !productLibrary.classList.contains('is-list')) {
+  const fitProductGrid = () => {
+    const count = productLibrary.querySelectorAll('.library-card').length;
+    if (!count) return;
+    const gap = 12;
+    const minCardWidth = window.innerWidth <= 760 ? 142 : 168;
+    let columns = Math.max(1, Math.min(count, Math.floor((productLibrary.clientWidth + gap) / (minCardWidth + gap))));
+    while (columns > 2 && count > columns && count % columns === 1) columns -= 1;
+    productLibrary.style.setProperty('--product-grid-columns', String(columns));
+  };
+  fitProductGrid();
+  if ('ResizeObserver' in window) new ResizeObserver(fitProductGrid).observe(productLibrary);
+  else window.addEventListener('resize', fitProductGrid);
+}
 document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.product-library-grid .library-card p').forEach(function(el){var parts=el.textContent.split(' · BOM成本 ');if(parts.length<2)return;el.textContent='';el.append(document.createTextNode(parts[0]+' · '));var s=document.createElement('strong');s.className='library-bom-cost';s.textContent='BOM成本 '+parts.slice(1).join(' · BOM成本 ');el.append(s);});});
 document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('.product-library-grid .library-card').forEach(function(card){card.addEventListener('click',function(e){if(e.target.closest('a,button'))return;if(!d||!c)return;var v=card.querySelector('h3')?.textContent||'';var s=card.querySelector('small')?.textContent||'';c.replaceChildren();[['型号',v],['系列/类别',s],['状态',card.querySelector('footer span')?.textContent||'']].forEach(function(x){var t=document.createElement('dt'),q=document.createElement('dd');t.textContent=x[0];q.textContent=x[1];c.append(t,q)});d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});
 document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('[data-product-detail]').forEach(function(card){card.addEventListener('click',function(){if(!d||!c)return;c.innerHTML='<dt>型号</dt><dd>'+card.dataset.model+'</dd><dt>基础资料</dt><dd>系列、类别、尺寸和参数</dd><dt>配置</dt><dd>光源、电源、安装方式、附件</dd><dt>资料</dt><dd>产品图、尺寸图、IES、测试报告</dd>';d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});
