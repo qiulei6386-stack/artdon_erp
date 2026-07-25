@@ -56,7 +56,7 @@
 - 本地检查：`git diff --check`、UI 静态测试、UI 合同/只读安全测试、全部 JavaScript `node --check` 通过；本机无 PHP CLI。
 - 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`，未部署到外层目录。
 - 服务器检查：模块全部 12 个 PHP 文件通过 `php -l`；首页、电源列表、BOM 审计、系统状态、组件展示和健康接口均返回 HTTP 200。
-- Git：本轮 U0–U7 提交号及推送状态在完成提交后记录。
+- Git：U0–U7 业务提交 `8a0fd7e` 已推送 `origin/main`；最终上下文提交完成后同步服务器仓库。
 
 ## 待办
 
