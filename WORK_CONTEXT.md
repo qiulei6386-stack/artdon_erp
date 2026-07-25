@@ -6,6 +6,7 @@
 
 - 保留商务中心现有菜单栏和顶栏，只重做 `product_config` 内容区。
 - 新页面接入真实产品目录及图片，完成三步流程、产品切换、七组配置选项、单选/多选、动态价格明细、A级折扣、MOQ/交期、配置摘要、清空、保存模板与确认加入报价交互。
+- 顶栏当前页名称同步显示“产品与配置”，并处理未登录或目录为空时的字段空值，页面不输出 PHP 提示。
 - 修改文件：`commercial_center_v1/views/product_config.php`、`assets/js/product_config.js`、`assets/css/app.css`、`index.php`、`WORK_CONTEXT.md`；最终检查、提交、部署和三方一致性见本轮最终结果。
 
 ## 本次：价格策略中心主色调整

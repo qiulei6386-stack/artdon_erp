@@ -23,6 +23,7 @@ $moduleLabels = [
     'publishing' => '新加坡发布', 'orders' => '订单中心', 'packaging' => '包装中心',
     'documents' => '单证中心', 'commission' => '价格与佣金', 'integrations' => '系统集成',
 ];
+$currentTitle = $activePage['label'] ?? $moduleLabels[$activeView];
 header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -34,7 +35,7 @@ header('Cache-Control: no-store, max-age=0');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= cc_h($moduleLabels[$activeView]) ?> · <?= cc_h($app['name']) ?></title>
+  <title><?= cc_h($currentTitle) ?> · <?= cc_h($app['name']) ?></title>
   <link rel="stylesheet" href="assets/css/app.css?v=<?= (int) @filemtime(__DIR__ . '/assets/css/app.css') ?>">
   <link rel="stylesheet" href="assets/css/catalog.css?v=<?= (int) @filemtime(__DIR__ . '/assets/css/catalog.css') ?>">
 </head>
@@ -59,7 +60,7 @@ header('Cache-Control: no-store, max-age=0');
   <section class="workspace">
     <header class="topbar">
       <button type="button" class="icon-button" data-sidebar-toggle aria-label="折叠菜单">☰</button>
-      <div class="crumb"><span>Artdon 商务运营中心 V1</span><b>/</b><strong><?= cc_h($moduleLabels[$activeView]) ?></strong></div>
+      <div class="crumb"><span>Artdon 商务运营中心 V1</span><b>/</b><strong><?= cc_h($currentTitle) ?></strong></div>
       <div class="top-actions">
         <a href="api/v1/health.php">健康检查</a>
         <span class="system-state <?= $view['isolation']['ok'] ? 'ok' : 'warn' ?>"><?= $view['isolation']['ok'] ? '隔离正常' : '需检查' ?></span>
