@@ -7,7 +7,8 @@
 - 按产品详情截图要求，将商务中心产品详情 1–5 分区编号圆点使用的青绿色 `#0b8291` 统一替换为商务红 `#d92d20`；同色的抽屉主按钮源样式同步替换，商务中心内不再保留该青绿色。
 - 为商务中心 `app.css` 与 `catalog.css` 增加基于文件修改时间的资源版本参数，部署后浏览器刷新会获取最新样式。
 - 修改文件：`commercial_center_v1/assets/css/app.css`、`commercial_center_v1/index.php`、`WORK_CONTEXT.md`。
-- 检查、GitHub 推送、服务器同步与三方提交一致性结果见本轮最终记录。
+- 检查：`git diff --check` 通过；商务中心内旧色 `#0b8291` 检索结果为 0；服务器 `php -l commercial_center_v1/index.php` 通过，并确认大红色样式已生效于编号圆点和抽屉主按钮。
+- Git 与部署：业务提交 `69f7015` 已推送 GitHub，并以同一提交快进同步到服务器唯一运行目录；业务提交同步时本地、GitHub、服务器三方一致。
 
 ## 本次：CRM 客户编辑后列表重复修复
 
