@@ -16,6 +16,13 @@ final class LegacyCatalogReadRepository
 
     public function products(string $search = '', string $category = '', int $limit = 0): array
     {
+        // Naming-center deployments have different generations of image columns.
+        // Resolve the actual read-only schema first so the catalog remains compatible.
+        $columns = $this->tableColumns('naming_models');
+        $imageColumns = array_values(array_intersect(['web_image_url', 'source_image_url', 'image_path', 'image_url'], $columns));
+        $drawingColumns = array_values(array_intersect(['web_dimension_url', 'source_drawing_url', 'drawing_path', 'dimension_image'], $columns));
+        $imageExpr = $imageColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $imageColumns)) . ') AS image_path' : 'NULL AS image_path';
+        $drawingExpr = $drawingColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $drawingColumns)) . ') AS drawing_path' : 'NULL AS drawing_path';
         $where = ['website_deleted=0'];
         $params = [];
         if ($search !== '') {
@@ -29,8 +36,8 @@ final class LegacyCatalogReadRepository
         }
         return $this->selectAll(
             'SELECT id,model_no,category,product_name,series_name,lamp_type,status,
-                    COALESCE(NULLIF(web_image_url,\'\'),NULLIF(source_image_url,\'\'),NULLIF(image_path,\'\')) AS image_path,
-                    COALESCE(NULLIF(web_dimension_url,\'\'),NULLIF(source_drawing_url,\'\'),NULLIF(drawing_path,\'\')) AS drawing_path,
+                    ' . $imageExpr . ',
+                    ' . $drawingExpr . ',
                     dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
              FROM naming_models
              WHERE ' . implode(' AND ', $where) . '
@@ -110,6 +117,15 @@ final class LegacyCatalogReadRepository
         $statement = $this->connection->prepare($sql);
         $statement->execute($parameters);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function tableColumns(string $table): array
+    {
+        $statement = $this->connection->prepare(
+            'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+        );
+        $statement->execute([$table]);
+        return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
     }
 
     private function limit(int $limit): int
