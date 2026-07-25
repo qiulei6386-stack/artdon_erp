@@ -2,11 +2,20 @@
 
 更新时间：2026-07-25
 
+## 本次：报价产品库多字段模糊搜索
+
+- 根因：原搜索仅对型号、产品名、系列执行单段 `LIKE`，类别、灯具类型、网页尺寸、开孔及长宽高参数均未参与，多关键词也被当作完整字符串。
+- 搜索改为最多 8 个关键词逐词 AND；每个关键词跨型号、产品名、系列、类别、灯具类型、状态、客户、备注、网页尺寸、开孔、外径、长宽高等字段模糊 OR 匹配。
+- 搜索框停止输入 450ms 后自动提交，分类选择会保留当前值；数据库分页的总数和当前页使用同一搜索条件。
+- 增加真实型号片段模糊查询冒烟检查。
+- 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`views/product_library_v2.php`、`assets/js/app.js`、`tests/catalog_smoke.php`、`WORK_CONTEXT.md`。
+- 检查、提交、推送、服务器部署及三方一致性结果待本轮完成后补充。
+
 ## 本次：CRM FPM Fileinfo 兼容与本人记录删除权限修复
 
 - 用户实测 FPM 报 `Call to undefined function finfo_open()`；服务器 CLI 虽有 Fileinfo，但网站 FPM 扩展集不同。附件 MIME 检测改为按 `finfo` → `mime_content_type` → `getimagesize` → 上传类型逐级降级，不再硬依赖 Fileinfo。
 - 删除权限由仅管理员拥有的 `visit.delete` 扩展为：管理员、记录创建人或负责人均可删除该记录；前端卡片和右侧 ACTIONS 使用同一判断显示删除入口，后端再次校验。
-- 数据复核：旧重复 ID 2–6、8–15 均已软删除；用户再次测试新增 ID 16（已完成来访）和 ID 17（重复草稿），本轮仅软删除 ID 17，保留 ID 7 和 ID 16 两条不同类型的已完成有效记录。
+- 数据复核与清理：旧重复 ID 2–6、8–15 均已软删除；用户再次测试新增 ID 16（已完成来访）和 ID 17（重复草稿），已软删除 ID 17。因 ID 7 与 ID 16 内容相同，最终按截图业务类型保留最新有效来访 ID 16，并软删除旧拜访 ID 7；客户 159 在 2026-07-25 仅剩 1 条有效记录。
 - 修改文件：`crm_visit.php`、`assets/crm/crm.js`、`WORK_CONTEXT.md`；最终检查、提交、部署和三方一致性见本轮最终结果。
 
 ## 本次：报价产品卡片间距与开孔参数优化

@@ -23,17 +23,7 @@ final class LegacyCatalogReadRepository
         $drawingColumns = array_values(array_intersect(['web_dimension_url', 'source_drawing_url', 'drawing_path', 'dimension_image'], $columns));
         $imageExpr = $imageColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $imageColumns)) . ') AS image_path' : 'NULL AS image_path';
         $drawingExpr = $drawingColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $drawingColumns)) . ') AS drawing_path' : 'NULL AS drawing_path';
-        $where = ['website_deleted=0'];
-        $params = [];
-        if ($search !== '') {
-            $where[] = '(model_no LIKE ? OR product_name LIKE ? OR series_name LIKE ?)';
-            $term = '%' . $search . '%';
-            array_push($params, $term, $term, $term);
-        }
-        if ($category !== '') {
-            $where[] = 'category=?';
-            $params[] = $category;
-        }
+        [$where, $params] = $this->productWhere($search, $category);
         return $this->selectAll(
             'SELECT id,model_no,category,product_name,series_name,lamp_type,status,
                     ' . $imageExpr . ',
@@ -156,10 +146,14 @@ final class LegacyCatalogReadRepository
     {
         $where = ['website_deleted=0'];
         $params = [];
+        $search = trim($search);
         if ($search !== '') {
-            $where[] = '(model_no LIKE ? OR product_name LIKE ? OR series_name LIKE ?)';
-            $term = '%' . $search . '%';
-            array_push($params, $term, $term, $term);
+            $keywords = preg_split('/[\s,，;；]+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $haystack = "CONCAT_WS(' ',model_no,product_name,item_name,series_name,web_series,category,lamp_type,status,customer,remark,size_code,web_size_name,web_dimensions,dim_opening,dim_outer_d,dim_length,dim_width,dim_height)";
+            foreach (array_slice($keywords, 0, 8) as $keyword) {
+                $where[] = $haystack . ' LIKE ?';
+                $params[] = '%' . $keyword . '%';
+            }
         }
         if ($category !== '') {
             $where[] = 'category=?';

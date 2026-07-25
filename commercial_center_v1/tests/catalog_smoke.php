@@ -21,4 +21,12 @@ foreach ($checks as $name => $rows) {
         exit(1);
     }
 }
+$sample = $checks['products'][0] ?? null;
+if (is_array($sample) && (string)($sample['model_no'] ?? '') !== '') {
+    $needle = substr((string)$sample['model_no'], 1, 4);
+    if ($needle !== '' && $repository->products($needle, '', 5) === []) {
+        fwrite(STDERR, "Product fuzzy search returned no rows for model fragment.\n");
+        exit(1);
+    }
+}
 echo "PASS: M2 product and material catalog queries executed read-only.\n";
