@@ -12,6 +12,9 @@
     if (event.target.closest('[data-create-material]')) await saveMaterial(event.target.closest('[data-create-material]'));
     if (event.target.closest('[data-link-existing]')) await linkExisting(event.target.closest('[data-link-existing]'));
     if (event.target.closest('[data-defer]')) await postAction('reject', new FormData(form), event.target.closest('[data-defer]'), true);
+    if (event.target.closest('[data-add-current]')) addCurrentOption('', document.querySelectorAll('[data-current-row]').length === 0);
+    const removeCurrent = event.target.closest('[data-remove-current]');
+    if (removeCurrent) { const row=removeCurrent.closest('[data-current-row]');const wasDefault=row.querySelector('[name="default_current"]').checked;row.remove();if(wasDefault)document.querySelector('[name="default_current"]')?.click();drawer.dataset.uiDirty='true'; }
     const duplicate = event.target.closest('[data-decide-duplicate]');
     if (duplicate) { const data=new FormData(form);data.set('candidate_id',duplicate.dataset.decideDuplicate);data.set('decision',duplicate.previousElementSibling.value);await postAction('decide_duplicate',data,duplicate,false);duplicate.closest('[data-duplicate-row]')?.remove(); }
   });
@@ -27,14 +30,15 @@
     } catch (error) { window.ArtdonUI.toast(error.message, 'danger', 0); }
   }
   function fill(data) {
-    form.reset(); form.elements.staging_id.value = data.staging.id;
+    form.reset(); renderCurrentOptions([]); form.elements.staging_id.value = data.staging.id;
     document.querySelector('[data-original]').innerHTML = `<strong>原始资料</strong><p>${escapeHtml(data.staging.raw_brand || '—')} / ${escapeHtml(data.staging.raw_model || '—')} / ${escapeHtml(data.staging.raw_name || '—')}</p><p>${escapeHtml(data.staging.raw_spec || '—')}</p>`;
     const parsed = Object.fromEntries(data.parse_results.map(item => [item.field_key,item]));
     Object.entries(parsed).forEach(([key,item]) => {
       const field = form.elements[key]; if (field && !field.length) field.value = item.confirmed_value || item.candidate_value || '';
       const help = document.querySelector(`[data-confidence="${CSS.escape(key)}"]`); if (help) { help.textContent = `${item.confidence} · ${item.parse_rule}`; help.className = `ui-help confidence-${item.confidence}`; }
     });
-    if (parsed.current_options_ma) { try { form.elements.current_options_text.value = JSON.parse(parsed.current_options_ma.candidate_value).join(','); } catch (_) {} }
+    if (parsed.current_options_ma) { try { renderCurrentOptions(JSON.parse(parsed.current_options_ma.candidate_value)); } catch (_) { renderCurrentOptions([]); } }
+    else if(parsed.output_current_ma) renderCurrentOptions([parsed.output_current_ma.candidate_value]);
     if (parsed.dimming_mode) { const item=[...form.querySelectorAll('[name="dimming_modes[]"]')].find(input=>input.value===parsed.dimming_mode.candidate_value);if(item)item.checked=true; }
     const box=document.querySelector('[data-duplicates]');box.innerHTML=data.duplicates.length?`<strong>重复候选</strong>${data.duplicates.map(d=>`<div data-duplicate-row><p>#${d.candidate_material_id} ${escapeHtml(d.material_code)} · ${escapeHtml(d.brand)} ${escapeHtml(d.model)} · 风险 ${d.score}</p><select class="ui-select"><option value="merge_existing">合并到已有正式物料</option><option value="different_supplier">供应商不同记录</option><option value="different_version">不同版本</option><option value="not_duplicate">标记非重复</option><option value="deferred">暂缓处理</option></select><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" data-decide-duplicate="${d.id}">记录决定</button></div>`).join('')}`:'<strong>重复候选</strong><p>当前未发现候选；这不等于自动判定无重复。</p>';
     drawer.dataset.uiDirty='false';
@@ -42,7 +46,11 @@
   async function saveMaterial(button) {
     if (!form.reportValidity()) return;
     if (form.elements.installation_type.value === 'unknown' || form.elements.output_type.value === 'unknown') { window.ArtdonUI.toast('安装方式和输出类型仍待人工确认', 'warning', 5000); return; }
-    const data=new FormData(form);data.set('action','create_material');const currents=form.elements.current_options_text.value.split(/[,，\s]+/).filter(Boolean);data.delete('current_options_text');currents.forEach(value=>data.append('current_options_ma[]',value));
+    const currentRows=[...form.querySelectorAll('[data-current-row]')];const currents=currentRows.map(row=>row.querySelector('[name="current_options_ma[]"]').value.trim()).filter(Boolean);
+    if(!currents.length||currents.some(value=>!Number.isFinite(Number(value))||Number(value)<=0)){window.ArtdonUI.toast('请至少填写一个有效输出电流','warning');return;}
+    if(new Set(currents).size!==currents.length){window.ArtdonUI.toast('输出电流不能重复','warning');return;}
+    const defaultRow=currentRows.find(row=>row.querySelector('[name="default_current"]').checked)||currentRows[0];const defaultCurrent=defaultRow.querySelector('[name="current_options_ma[]"]').value;
+    const data=new FormData(form);data.set('action','create_material');data.delete('default_current');data.set('output_current_ma',defaultCurrent);data.set('output_current_min_ma',String(Math.min(...currents.map(Number))));data.set('output_current_max_ma',String(Math.max(...currents.map(Number))));data.set('is_dip_switch',currents.length>1?'1':'0');
     await request(data,button,true);
   }
   async function linkExisting(button) {
@@ -57,5 +65,7 @@
     finally{button.disabled=false;button.classList.remove('is-loading');button.textContent=label;}
   }
   function setDrawerLoading(){document.querySelector('[data-original]').innerHTML='<div class="ui-skeleton"></div><div class="ui-skeleton"></div>';}
+  function renderCurrentOptions(values){const box=document.querySelector('[data-current-options]');box.innerHTML='';(values.length?values:['']).forEach((value,index)=>addCurrentOption(value,index===0));}
+  function addCurrentOption(value='',isDefault=false){const box=document.querySelector('[data-current-options]');const row=document.createElement('div');row.className='current-option-row';row.dataset.currentRow='';row.innerHTML=`<label class="ui-check ui-check-only"><input type="radio" name="default_current"${isDefault?' checked':''}><span class="ui-radio-mark"></span></label><input class="ui-input" type="number" min="1" step="1" name="current_options_ma[]" value="${escapeHtml(value)}" placeholder="例如 500"><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" data-remove-current>删除</button>`;box.append(row);drawer.dataset.uiDirty='true';}
   function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
 })();

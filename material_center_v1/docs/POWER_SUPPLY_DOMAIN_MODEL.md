@@ -15,6 +15,8 @@
 - `mc_power_supply_dimming_modes`
 - `mc_power_supply_current_options`
 
+人工确认时，同一电源可维护任意多个输出电流选项，并指定一个默认电流。主规格同步保存默认值、最小值和最大值；所有选项逐条保存到 `mc_power_supply_current_options`。
+
 功率档由 `mc_power_bands` 维护，当前 8 档按数据库边界自动建议，不写死在页面代码。
 
 ## 当前试点
