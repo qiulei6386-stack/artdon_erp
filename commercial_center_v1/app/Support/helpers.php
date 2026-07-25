@@ -14,7 +14,11 @@ function cc_public_path(string $path): string
 
 function cc_legacy_asset_url(mixed $path): string
 {
-    $path = ltrim(trim((string)$path), '/');
+    $raw = trim((string)$path);
+    if (preg_match('#^https://#i', $raw)) {
+        return $raw;
+    }
+    $path = ltrim($raw, '/');
     if ($path === '' || str_contains($path, '..') || !preg_match('#^(uploads|assets)/[A-Za-z0-9_./-]+$#', $path)) {
         return '';
     }

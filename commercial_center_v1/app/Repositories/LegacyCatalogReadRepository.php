@@ -28,7 +28,10 @@ final class LegacyCatalogReadRepository
             $params[] = $category;
         }
         return $this->selectAll(
-            'SELECT id,model_no,category,product_name,series_name,lamp_type,status,image_path,dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
+            'SELECT id,model_no,category,product_name,series_name,lamp_type,status,
+                    COALESCE(NULLIF(web_image_url,\'\'),NULLIF(source_image_url,\'\'),NULLIF(image_path,\'\')) AS image_path,
+                    COALESCE(NULLIF(web_dimension_url,\'\'),NULLIF(source_drawing_url,\'\'),NULLIF(drawing_path,\'\')) AS drawing_path,
+                    dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
              FROM naming_models
              WHERE ' . implode(' AND ', $where) . '
              ORDER BY updated_at DESC,id DESC LIMIT ' . $this->limit($limit),
