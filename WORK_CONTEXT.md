@@ -8,7 +8,8 @@
 - 改为 `ResizeObserver` 直接监听产品网格宽度，宽度变窄或变宽均在稳定 250ms 后按真实列数 × 2 排重新查询；不支持时回退窗口监听。
 - 页容量变化时按原首条产品偏移换算新页码，避免直接跳回第一页；`app.js` 增加基于文件修改时间的缓存版本参数，部署后强制获取新逻辑。
 - 修改文件：`commercial_center_v1/assets/js/app.js`、`commercial_center_v1/index.php`、`WORK_CONTEXT.md`。
-- 检查、提交、推送、服务器部署及三方一致性结果待本轮完成后补充。
+- 检查：`git diff --check`、JavaScript 语法、页容量变化后的首条偏移换算及本地 `index.php` 经服务器 PHP 标准输入语法检查均通过；业务提交 `7893c6a` 已推送 GitHub并以同一提交快进同步服务器。
+- 服务器复检：网格 `ResizeObserver`、首条偏移页码换算、`app.js` 文件版本参数、入口 PHP 语法、Git 差异和工作区状态正常；最终三方提交一致性以本轮收尾提交核对结果为准。
 
 ## 本次：CRM 图标卡片双击与客户信息强化
 
