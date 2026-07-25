@@ -21,6 +21,7 @@ $allowedMigrations = [
     '004_inventory_publishing.sql' => ['cc_inventory_skus','cc_stock_reservations','cc_channels','cc_channel_packages','cc_publication_jobs'],
     '005_standard_quotes.sql' => ['cc_quotes','cc_quote_versions','cc_quote_items','cc_quote_item_snapshots'],
     '006_configuration_engine.sql' => ['cc_config_templates','cc_config_template_versions','cc_config_group_settings','cc_config_template_groups','cc_product_config_templates','cc_product_allowed_options','cc_config_presets','cc_config_preset_values','cc_config_lock_rules','cc_option_material_mappings','cc_configuration_instances','cc_configuration_snapshots'],
+    '007_commercial_foundation.sql' => ['cc_commercial_tasks','cc_quotation_logs','cc_commercial_settings','cc_commercial_permissions','cc_approval_flows'],
 ];
 if (!isset($allowedMigrations[$migrationName])) {
     fwrite(STDERR, "Refusing migration: file is not approved.\n");

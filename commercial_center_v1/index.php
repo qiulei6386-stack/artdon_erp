@@ -7,9 +7,15 @@ use Artdon\CommercialCenter\Controllers\DashboardController;
 
 $view = (new DashboardController())->status();
 $app = require __DIR__ . '/config/app.php';
+$menu = require __DIR__ . '/config/menu.php';
 $ops = $view['operations'];
 $allowedViews = ['dashboard', 'products', 'materials', 'inventory', 'quotation', 'custom_project', 'publishing', 'orders', 'packaging', 'documents', 'commission', 'integrations'];
 $activeView = in_array((string)($_GET['view'] ?? 'dashboard'), $allowedViews, true) ? (string)($_GET['view'] ?? 'dashboard') : 'dashboard';
+$requestedPage = (string)($_GET['page'] ?? '');
+$pageRegistry = [];
+foreach ($menu as $group => $items) foreach ($items as $item) $pageRegistry[$item['key']] = ['group' => $group, 'label' => $item['label']];
+$activePage = $pageRegistry[$requestedPage] ?? null;
+if ($requestedPage === 'operations_dashboard') $activeView = 'dashboard';
 $moduleLabels = [
     'dashboard' => '运营工作台', 'products' => '产品与配置', 'materials' => '物料与配件',
     'inventory' => '库存 SKU', 'quotation' => '标准报价', 'custom_project' => '定制项目',
@@ -36,16 +42,11 @@ header('Cache-Control: no-store, max-age=0');
   <aside class="sidebar" data-sidebar>
     <div class="brand"><span>AD</span><div><strong>商务运营中心</strong><small>Commercial Center V1</small></div></div>
     <nav aria-label="商务中心模块">
-      <?php foreach ([
-        '工作台' => ['dashboard'],
-        '产品与报价' => ['products','materials','inventory','quotation','custom_project','publishing'],
-        '订单与交付' => ['orders','packaging','documents','commission'],
-        '系统' => ['integrations'],
-      ] as $group => $items): ?>
+      <?php foreach ($menu as $group => $items): ?>
         <section class="nav-group"><button type="button" data-nav-group><span><?= cc_h($group) ?></span><b>⌄</b></button><div>
-        <?php foreach ($items as $key): $label=$moduleLabels[$key]; ?>
-          <a href="?view=<?= cc_h($key) ?>" class="<?= $activeView === $key ? 'active' : '' ?>">
-            <i aria-hidden="true"><?= cc_h(mb_substr($label, 0, 1)) ?></i><span><?= cc_h($label) ?></span>
+        <?php foreach ($items as $item): $isPage = $activePage && $requestedPage === $item['key']; ?>
+          <a href="?page=<?= cc_h($item['key']) ?>" class="<?= $isPage ? 'active' : '' ?>">
+            <i aria-hidden="true"><?= cc_h(mb_substr($item['label'], 0, 1)) ?></i><span><?= cc_h($item['label']) ?></span>
           </a>
         <?php endforeach; ?>
         </div></section>
@@ -66,7 +67,12 @@ header('Cache-Control: no-store, max-age=0');
     </header>
 
     <main class="content">
-      <?php if (in_array($activeView, ['products', 'materials'], true)): $catalog = $view[$activeView]; ?>
+      <?php if ($activePage && $requestedPage !== 'operations_dashboard'): ?>
+        <section class="page-head"><div><span class="eyebrow">COMMERCIAL CENTER V1</span><h1><?= cc_h($activePage['label']) ?></h1><p>商务中心正式页面入口 · <?= cc_h($activePage['group']) ?> / <?= cc_h($activePage['label']) ?></p></div><div class="page-meta"><span>权限状态</span><b><?= !empty($view['auth']['authenticated']) ? '已登录' : '需统一登录' ?></b></div></section>
+        <nav class="breadcrumb" aria-label="面包屑"><a href="?page=operations_dashboard">工作台</a><span>/</span><span><?= cc_h($activePage['group']) ?></span><span>/</span><strong><?= cc_h($activePage['label']) ?></strong></nav>
+        <section class="toolbar"><form method="get"><input type="hidden" name="page" value="<?= cc_h($requestedPage) ?>"><input type="search" name="q" placeholder="搜索<?= cc_h($activePage['label']) ?>"><select name="status"><option value="">全部状态</option><option>草稿</option><option>处理中</option><option>已完成</option></select><button type="submit">搜索</button></form><span class="toolbar-note">本页面为底座入口，正式业务闭环按后续阶段启用。</span></section>
+        <section class="placeholder-page formal-empty"><span class="eyebrow">READY FOR NEXT PHASE</span><h2><?= cc_h($activePage['label']) ?></h2><p>页面结构、导航、权限检查和空状态已就绪。当前不执行报价、订单或其他正式业务写入。</p><div class="empty-actions"><a href="?page=operations_dashboard">返回运营工作台</a><a href="?page=system_settings">查看系统设置</a></div></section>
+      <?php elseif (in_array($activeView, ['products', 'materials'], true)): $catalog = $view[$activeView]; ?>
         <section class="page-head">
           <div><span class="eyebrow">M2 READ-ONLY FOUNDATION</span><h1><?= cc_h($moduleLabels[$activeView]) ?></h1><p>数据来自广州旧系统只读适配器；本阶段不提供新增、编辑、导入或停用操作。</p></div>
           <div class="page-meta"><span>权限：<?= cc_h($catalog['permission']) ?></span><b><?= cc_h($catalog['status']) ?></b></div>

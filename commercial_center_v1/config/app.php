@@ -9,4 +9,6 @@ return [
     'legacy_root' => dirname(__DIR__, 2),
     'storage_path' => dirname(__DIR__) . '/storage',
     'debug' => false,
+    'formal_shell' => true,
+    'database_prefix' => 'cc_',
 ];
