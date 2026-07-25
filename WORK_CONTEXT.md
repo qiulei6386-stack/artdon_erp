@@ -53,7 +53,7 @@
 - 本地检查：`git diff --check`、UI 静态测试、全部 JavaScript `node --check` 通过；本机无 PHP CLI。
 - 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`，未部署到外层目录。
 - 服务器检查：`index.php` 与组件展厅均通过 `php -l`；线上首页、组件展厅和 CSS 分别返回 HTTP 200。
-- Git：本轮统一 UI 提交号与推送状态见完成后的最新记录。
+- Git：统一 UI 提交 `8aa0de4` 已推送 `origin/main`，服务器仓库已快进到同一提交。
 
 ## 待办
 
