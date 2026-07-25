@@ -61,3 +61,4 @@ const productLibrary = document.querySelector('.product-library-grid');
 if (productLibrary && new URLSearchParams(window.location.search).get('mode') === 'list') {
   productLibrary.classList.add('is-list');
 }
+document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.product-library-grid .library-card p').forEach(function(el){var parts=el.textContent.split(' · BOM成本 ');if(parts.length<2)return;el.textContent='';el.append(document.createTextNode(parts[0]+' · '));var s=document.createElement('strong');s.className='library-bom-cost';s.textContent='BOM成本 '+parts.slice(1).join(' · BOM成本 ');el.append(s);});});
