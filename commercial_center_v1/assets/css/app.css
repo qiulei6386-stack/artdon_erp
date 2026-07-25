@@ -186,7 +186,7 @@ body.quote-modal-open{overflow:hidden}
 @media(max-width:1250px){.standard-form{grid-template-columns:repeat(4,1fr)}.ref-config{right:10%;width:570px}.ref-titlebar nav{gap:4px}.ref-titlebar button{padding:0 8px}}
 
 /* Quote center — screenshot matched workspace */
-.content:has(.quote-hub){height:calc(100vh - 54px);padding:0;background:#f6f8fa;overflow:hidden}
+.content:has(.quote-hub){width:100%;max-width:none;height:calc(100vh - 54px);margin:0;padding:0;background:#f6f8fa;overflow:hidden}
 .quote-hub{display:grid;height:100%;grid-template-rows:100px 116px 96px 54px minmax(0,1fr);color:#243247;font-size:11px;overflow:hidden}
 .quote-hub button,.quote-hub input,.quote-hub select{font:inherit}
 .qhub-heading{display:flex;align-items:center;gap:15px;padding:18px 20px;border-bottom:1px solid #dfe6eb;background:#fff}.qhub-title-icon{display:grid;place-items:center;width:53px;height:53px;border-radius:16px;background:#e7f6f3;color:#008d82;font-size:28px}.qhub-heading h1{margin:0;font-size:26px;letter-spacing:-.5px}.qhub-heading p{margin:3px 0 0;color:#738194}.qhub-heading nav{display:flex;gap:9px;margin-left:auto}.qhub-heading button{height:38px;padding:0 17px;border:1px solid #d7e0e7;border-radius:5px;background:#fff}.qhub-heading button.primary{height:43px;padding:0 22px;border-color:#008e83;background:#008e83;color:#fff;font-size:15px;font-weight:700;box-shadow:0 5px 12px #008e8326}
