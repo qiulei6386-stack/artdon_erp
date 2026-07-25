@@ -1,5 +1,5 @@
 <?php
-$pageNo=max(1,(int)($_GET['p']??1)); $pageSize=in_array((int)($_GET['size']??12),[6,12,24],true)?(int)$_GET['size']:12;
+$pageNo=max(1,(int)($_GET['p']??1)); $requestedSize=(int)($_GET['size']??12); $pageSize=in_array($requestedSize,[6,12,24],true)?$requestedSize:12; $pageSize=max(1,$pageSize);
 $catalog=(new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'],(string)($_GET['q']??''),(string)($_GET['category']??''));
 $rows=$catalog['rows']; $total=count($rows); $pages=max(1,(int)ceil($total/$pageSize)); $pageNo=min($pageNo,$pages); $shown=array_slice($rows,($pageNo-1)*$pageSize,$pageSize);
 ?>
