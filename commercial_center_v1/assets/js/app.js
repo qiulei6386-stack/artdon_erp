@@ -80,15 +80,23 @@ if (productLibrary && productSearchForm && !productLibrary.classList.contains('i
     const desiredSize = Math.max(2, Math.min(100, tracks * 2));
     if (Number(autoPageSizeInput.value) === desiredSize) return;
     const url = new URL(window.location.href);
+    const previousSize = Math.max(1, Number(autoPageSizeInput.value) || desiredSize);
+    const previousPage = Math.max(1, Number(url.searchParams.get('p')) || 1);
+    const firstVisibleOffset = (previousPage - 1) * previousSize;
     url.searchParams.set('size', String(desiredSize));
-    url.searchParams.set('p', '1');
+    url.searchParams.set('p', String(Math.floor(firstVisibleOffset / desiredSize) + 1));
     window.location.replace(url.toString());
   };
-  window.requestAnimationFrame(syncProductPageSize);
-  window.addEventListener('resize', () => {
+  const scheduleProductPageSizeSync = () => {
     window.clearTimeout(autoPageSizeTimer);
-    autoPageSizeTimer = window.setTimeout(syncProductPageSize, 300);
-  });
+    autoPageSizeTimer = window.setTimeout(syncProductPageSize, 250);
+  };
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(scheduleProductPageSizeSync).observe(productLibrary);
+  } else {
+    window.addEventListener('resize', scheduleProductPageSizeSync);
+    window.requestAnimationFrame(syncProductPageSize);
+  }
 }
 document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.product-library-grid .library-card p').forEach(function(el){var parts=el.textContent.split(' · BOM成本 ');if(parts.length<2)return;el.textContent='';el.append(document.createTextNode(parts[0]+' · '));var s=document.createElement('strong');s.className='library-bom-cost';s.textContent='BOM成本 '+parts.slice(1).join(' · BOM成本 ');el.append(s);});});
 document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('.product-library-grid .library-card').forEach(function(card){card.addEventListener('click',function(e){if(e.target.closest('a,button'))return;if(!d||!c)return;var v=card.querySelector('h3')?.textContent||'';var s=card.querySelector('small')?.textContent||'';c.replaceChildren();[['型号',v],['系列/类别',s],['状态',card.querySelector('footer span')?.textContent||'']].forEach(function(x){var t=document.createElement('dt'),q=document.createElement('dd');t.textContent=x[0];q.textContent=x[1];c.append(t,q)});d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});

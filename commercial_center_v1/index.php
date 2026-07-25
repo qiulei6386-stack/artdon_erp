@@ -252,6 +252,6 @@ header('Cache-Control: no-store, max-age=0');
     </main>
   </section>
 </div>
-<script src="assets/js/app.js" defer></script>
+<script src="assets/js/app.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/app.js') ?>" defer></script>
 </body>
 </html>
