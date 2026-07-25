@@ -18,7 +18,14 @@ final class CatalogCenterService
         try {
             $repository = new LegacyCatalogReadRepository();
             $rows = $repository->products($search, $category);
-            $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
+            // BOM is an optional enrichment. A legacy BOM schema mismatch must
+            // never make the read-only product catalog look unauthorized.
+            try {
+                $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
+            } catch (\Throwable $bomError) {
+                Logger::warning('Optional BOM cost lookup failed', ['message' => $bomError->getMessage()]);
+                $costs = [];
+            }
             foreach ($rows as &$row) { $cost = $costs[(string)$row['model_no']] ?? null; $row['bom_cost'] = $cost; $row['product_name'] = trim((string)$row['product_name']) . ' · BOM成本 ' . ($cost === null ? '—' : number_format((float)$cost, 4)); }
             unset($row);
             return ['status'=>'available','permission'=>'commercial_center.view','rows'=>$rows,'categories'=>$repository->productCategories()];
