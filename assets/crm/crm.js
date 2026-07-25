@@ -8424,7 +8424,14 @@
       if (label === '删除跟进') return this.selectedDetailEntity && this.selectedDetailEntity.type === 'followup' ? this.deleteFollowup(this.selectedDetailEntity.id) : this.showCustomerError('请先选择跟进。');
       if (label === '创建提醒') return this.showCustomerError('提醒创建接口待接入。');
       if (label === '转商机') return OpportunityModule.openDialog();
-      if (label === '编辑记录' || label === '删除记录') return this.showCustomerError(label + '接口待接入。');
+      if (label === '编辑记录' && this.selectedDetailEntity && this.selectedDetailEntity.type === 'visit') {
+        var visitRow = (this.currentDetail.visits || []).find(function (item) { return Number(item.id) === Number(CustomerModule.selectedDetailEntity.id); });
+        return visitRow ? VisitModule.openVisitDialog(visitRow.visit_type, visitRow) : this.showCustomerError('请先选择拜访/来访记录。');
+      }
+      if (label === '删除记录' && this.selectedDetailEntity && this.selectedDetailEntity.type === 'visit') {
+        var deleteVisitRow = (this.currentDetail.visits || []).find(function (item) { return Number(item.id) === Number(CustomerModule.selectedDetailEntity.id); });
+        return deleteVisitRow ? VisitModule.deleteVisit(deleteVisitRow) : this.showCustomerError('请先选择拜访/来访记录。');
+      }
       if (label === '创建跟进') return this.openFollowupDialog();
       if (label === '写邮件') return MailModule.openCompose('compose');
       if (label === '查看邮件') {
@@ -20291,7 +20298,7 @@
 
   function renderActions(name) {
     var module = state.modules[name] || {};
-    var actions = name === 'customers' ? CustomerModule.actions() : (state.actions[name] || []);
+    var actions = name === 'customers' ? CustomerModule.actions() : (name === 'visits' ? VisitModule.actions() : (state.actions[name] || []));
     if (actionTitle) actionTitle.textContent = name === 'customers' && CustomerModule.attributeViewMode ? '客户属性' : (module.short || name);
     if (!actionList) return;
     actionList.innerHTML = '';
@@ -22777,6 +22784,16 @@
 
   var VisitModule = {
     inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [],
+    actions: function () {
+      var selected = this.selected();
+      var items = selected
+        ? ['新建拜访', '新建来访', selected.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访', selected.visit_type === 'customer_arrival' ? '填写接待结果' : '填写拜访结果', '创建跟进', '创建派工']
+        : ['新建拜访', '新建来访', '查看今日拜访', '查看今日来访'];
+      if (selected && ((state.user || {}).is_super_admin || (state.permissions && state.permissions['visit.delete']))) {
+        items.push(selected.visit_type === 'customer_arrival' ? '删除来访' : '删除拜访');
+      }
+      return [{ title: selected ? '当前记录' : '拜访/来访', items: items }];
+    },
     init: function () {
       if (this.inited || !document.querySelector('[data-visit-module]')) return;
       this.inited = true; this.bind(); this.loadOptions(); this.load();
@@ -22806,7 +22823,7 @@
         if (card) {
           self.selectedId = Number(card.getAttribute('data-visit-id') || 0);
           document.querySelectorAll('[data-visit-id]').forEach(function (item) { item.classList.toggle('active', item === card); });
-          renderActions('tasks');
+          renderActions('visits');
         }
         var action = event.target.closest('[data-visit-action]');
         if (action) self.handleAction(action.getAttribute('data-visit-action'), Number(action.getAttribute('data-visit-action-id') || self.selectedId || 0));
@@ -22874,7 +22891,9 @@
         '<div><strong>' + esc(row.title || type) + '</strong><span>' + esc(row.customer_code || '-') + ' · ' + esc(row.customer_name || '-') + ' · ' + esc(row.contact_name || '未选联系人') + '</span></div>' +
         '<em>' + esc(type) + '</em><span>' + esc(row.visit_date || '未定日期') + ' ' + esc(String(row.visit_time || '').slice(0, 5)) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b>' +
         '<small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + (files.length ? files.map(function (item) { return '<i class="visit-file-badge">' + esc(item) + '</i>'; }).join('') : '') + '</small>' +
-        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button></nav></article>';
+        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
+        (((state.user || {}).is_super_admin || (state.permissions && state.permissions['visit.delete'])) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
+        '</nav></article>';
     },
     selected: function () {
       var id = this.selectedId;
@@ -23233,6 +23252,20 @@
       post('visit_dispatch_placeholder', { visit_id: row.id, kind: row.visit_type === 'customer_arrival' ? 'arrival_reception' : 'visit_prepare' }).then(function (json) { toast((json.data && json.data.message) || json.message || '派工接口待接入'); });
     },
     createFollowupFromVisit: function (row) { row = row || this.selected(); if (!row) return toast('请先选择拜访/来访记录。'); CustomerModule.currentId = Number(row.customer_id || 0); CustomerModule.openFollowupDialog(); },
+    deleteVisit: function (row) {
+      row = row || this.selected();
+      if (!row) return toast('请先选择拜访/来访记录。');
+      var self = this;
+      if (!window.confirm('确定删除“' + (row.title || '这条拜访/来访记录') + '”吗？关联任务也会一并移除。')) return;
+      post('visit_delete', { visit_id: row.id }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '删除失败');
+        self.selectedId = 0;
+        toast(json.message || '拜访/来访已删除');
+        self.load();
+      }).catch(function (error) {
+        toast(error.message || '删除失败');
+      });
+    },
     handleAction: function (label, id) {
       var row = id ? this.rows.find(function (item) { return Number(item.id) === Number(id); }) : this.selected();
       var viewMap = { '跟进任务': 'followups', '拜访计划': 'visits', '来访接待': 'arrivals', '外出记录': 'outside', '拜访报表': 'report' };
@@ -23255,6 +23288,7 @@
       if (label === '填写拜访结果' || label === '填写接待结果') return this.openResultDialog(row);
       if (label === '创建派工' || label === '创建接待派工') return this.createDispatchPlaceholder(row);
       if (label === '创建跟进') return this.createFollowupFromVisit(row);
+      if (label === 'delete' || label === '删除记录' || label === '删除拜访' || label === '删除来访') return this.deleteVisit(row);
       if (label === '创建报价') return toast('报价接口待接入，可从报价系统创建草稿。');
       if (label === '生成资料') return toast('资料接口待接入，可从资料生成系统创建资料包。');
       if (label === '导出记录') return toast('拜访/来访导出接口待接入。');

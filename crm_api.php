@@ -60,6 +60,7 @@ try {
             'visit.view',
             'visit.create',
             'visit.edit',
+            'visit.delete',
             'visit.confirm',
             'visit.result',
             'visit.export',
@@ -1368,6 +1369,10 @@ try {
     if ($action === 'visit_save') {
         require_csrf();
         api_response(true, '拜访/来访已保存', crm_visit_save($_POST));
+    }
+    if ($action === 'visit_delete') {
+        require_csrf();
+        api_response(true, '拜访/来访已删除', crm_visit_delete((int)($_POST['visit_id'] ?? 0)));
     }
     if ($action === 'visit_result_save') {
         require_csrf();

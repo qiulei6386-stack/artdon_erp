@@ -345,6 +345,41 @@ function crm_visit_save(array $input): array
     return ['record' => $after, 'list' => crm_visit_list([])];
 }
 
+function crm_visit_delete(int $id): array
+{
+    crm_visit_ensure_tables();
+    crm_require('visit.delete');
+    $before = crm_visit_row($id);
+    $userId = (int)(current_user()['id'] ?? 0);
+    db()->beginTransaction();
+    try {
+        db()->prepare('UPDATE crm_visit_records SET deleted_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL')
+            ->execute([$userId, $id]);
+        db()->prepare('UPDATE crm_visit_files SET deleted_at = NOW() WHERE visit_id = ? AND deleted_at IS NULL')
+            ->execute([$id]);
+        db()->prepare("UPDATE crm_tasks SET deleted_at = NOW(), updated_at = NOW()
+            WHERE source_type = 'visit' AND source_id = ? AND deleted_at IS NULL")
+            ->execute([(string)$id]);
+        db()->prepare("UPDATE crm_tasks SET deleted_at = NOW(), updated_at = NOW()
+            WHERE source_type = 'visit_action' AND source_id LIKE ? AND deleted_at IS NULL")
+            ->execute([$id . ':%']);
+        db()->commit();
+    } catch (Throwable $e) {
+        if (db()->inTransaction()) db()->rollBack();
+        throw $e;
+    }
+    crm_log_event('visit', 'visit_delete', 'visit', (string)$id, $before, ['deleted_at' => date('Y-m-d H:i:s')]);
+    crm_customer_timeline_add(
+        (int)$before['customer_id'],
+        'visit_delete',
+        ($before['visit_type'] ?? '') === 'customer_arrival' ? '删除来访记录' : '删除拜访记录',
+        (string)($before['title'] ?? ''),
+        'visit',
+        (string)$id
+    );
+    return ['deleted_id' => $id, 'list' => crm_visit_list([])];
+}
+
 function crm_visit_handle_linkage_requests(int $id, array $visit, array $input): void
 {
     $customerId = (int)($visit['customer_id'] ?? 0);
