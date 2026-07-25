@@ -56,3 +56,8 @@ document.querySelectorAll('[data-detail-close]').forEach((button) => {
     document.body.classList.remove('drawer-open');
   });
 });
+
+const productLibrary = document.querySelector('.product-library-grid');
+if (productLibrary && new URLSearchParams(window.location.search).get('mode') === 'list') {
+  productLibrary.classList.add('is-list');
+}
