@@ -41,6 +41,14 @@ function mc_asset_url(mixed $path): string
     return '../' . $path;
 }
 
+function mc_ui_asset(string $path, string $prefix = ''): string
+{
+    $path = ltrim($path, '/');
+    $file = MC_ROOT . '/' . $path;
+    $version = is_file($file) ? (string) filemtime($file) : '1';
+    return $prefix . $path . '?v=' . rawurlencode($version);
+}
+
 function mc_page_start(string $title, string $active, ?array $user = null, string $prefix = ''): void
 {
     $uiValues=[];
@@ -64,7 +72,7 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
     echo '<!doctype html><html lang="zh-CN" data-theme="system"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
     $theme=(string)($uiValues['theme.mode']??'light');
     echo '<title>' . mc_h($title) . ' · Artdon 物料中心</title><script>document.documentElement.dataset.theme=localStorage.getItem("artdon-ui-theme")||'.json_encode($theme).';</script>';
-    echo '<link rel="stylesheet" href="' . mc_h($prefix) . 'ui/index.css"><link rel="stylesheet" href="' . mc_h($prefix) . 'assets/css/app.css"></head><body>';
+    echo '<link rel="stylesheet" href="' . mc_h(mc_ui_asset('ui/index.css',$prefix)) . '"><link rel="stylesheet" href="' . mc_h(mc_ui_asset('assets/css/app.css',$prefix)) . '"></head><body>';
     $fontMap=['system'=>'-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif','noto_sans_sc'=>'"Noto Sans SC","PingFang SC",sans-serif','arial'=>'Arial,"PingFang SC",sans-serif'];
     $primary=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.primary']??''))?$uiValues['theme.primary']:'#087f8c';
     $sidebar=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.sidebar']??''))?$uiValues['theme.sidebar']:'#ffffff';
@@ -90,10 +98,10 @@ function mc_page_end(string $prefix = '', string $pageScript = ''): void
 {
     echo '</section></main></div><div class="ui-mask" data-ui-mask></div><div class="ui-toast-region" data-ui-toast-region role="status" aria-live="polite"></div>';
     foreach (['interaction-manager','confirm-modal','dropdown','modal','drawer','toast','table','app-shell'] as $script) {
-        echo '<script src="' . mc_h($prefix) . 'ui/js/' . $script . '.js" defer></script>';
+        echo '<script src="' . mc_h(mc_ui_asset('ui/js/' . $script . '.js',$prefix)) . '" defer></script>';
     }
     if ($pageScript !== '') {
-        echo '<script src="' . mc_h($prefix . $pageScript) . '" defer></script>';
+        echo '<script src="' . mc_h(mc_ui_asset($pageScript,$prefix)) . '" defer></script>';
     }
     echo '</body></html>';
 }
