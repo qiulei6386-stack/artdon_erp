@@ -26,6 +26,8 @@ if ($quoteMode !== '') {
     require __DIR__ . '/quote_' . $quoteMode . '.php';
     return;
 }
+require __DIR__ . '/quote_custom.php';
+return;
 if ($quoteMode !== ''):
     $catalog = (new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'], '', '', 1, 8);
     $catalogRows = $catalog['rows'] ?? [];

@@ -39,6 +39,10 @@ foreach (['网站订单报价单','标准品报价单','定制品报价单','dat
         exit(1);
     }
 }
+if (!str_contains($quoteView, "require __DIR__ . '/quote_custom.php';")) {
+    fwrite(STDERR, "FAIL: default quote center does not use full-screen dashboard\n");
+    exit(1);
+}
 foreach ([
     'views/quote_website.php'=>['网站传入','网站订单号','内部审核备注','风险提醒'],
     'views/quote_standard.php'=>['标准品报价单（半自由）','报价明细','产品适配规则','内部流程'],
