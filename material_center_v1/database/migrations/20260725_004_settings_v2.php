@@ -1,0 +1,41 @@
+<?php
+declare(strict_types=1);
+return [
+ 'version'=>'20260725_004_settings_v2',
+ 'description'=>'A7 complete tokenized UI settings definitions',
+ 'up'=>[
+  "INSERT IGNORE INTO mc_ui_settings(setting_key,group_key,default_json,validation_json,created_at,updated_at) VALUES
+  ('font.topbar_px','font','13','{\"type\":\"number\",\"min\":11,\"max\":18}',NOW(),NOW()),
+  ('font.title_px','font','28','{\"type\":\"number\",\"min\":20,\"max\":40}',NOW(),NOW()),
+  ('font.subtitle_px','font','14','{\"type\":\"number\",\"min\":12,\"max\":20}',NOW(),NOW()),
+  ('font.label_px','font','12','{\"type\":\"number\",\"min\":10,\"max\":16}',NOW(),NOW()),
+  ('font.input_px','font','13','{\"type\":\"number\",\"min\":11,\"max\":18}',NOW(),NOW()),
+  ('font.button_px','font','12','{\"type\":\"number\",\"min\":10,\"max\":16}',NOW(),NOW()),
+  ('font.modal_title_px','font','18','{\"type\":\"number\",\"min\":14,\"max\":28}',NOW(),NOW()),
+  ('font.drawer_title_px','font','18','{\"type\":\"number\",\"min\":14,\"max\":28}',NOW(),NOW()),
+  ('font.pagination_px','font','12','{\"type\":\"number\",\"min\":10,\"max\":16}',NOW(),NOW()),
+  ('color.page_bg','color','\"#f6f8fb\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.surface','color','\"#ffffff\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.border','color','\"#e2e8f0\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.text','color','\"#0f172a\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.text_muted','color','\"#64748b\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.success','color','\"#168a5b\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.warning','color','\"#d97706\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('color.danger','color','\"#dc2626\"','{\"type\":\"color\"}',NOW(),NOW()),
+  ('layout.sidebar_width','layout','220','{\"type\":\"number\",\"min\":200,\"max\":280}',NOW(),NOW()),
+  ('layout.topbar_height','layout','56','{\"type\":\"number\",\"min\":48,\"max\":72}',NOW(),NOW()),
+  ('layout.page_padding','layout','20','{\"type\":\"number\",\"min\":12,\"max\":40}',NOW(),NOW()),
+  ('layout.card_padding','layout','16','{\"type\":\"number\",\"min\":8,\"max\":32}',NOW(),NOW()),
+  ('layout.radius','layout','8','{\"type\":\"number\",\"min\":0,\"max\":20}',NOW(),NOW()),
+  ('layout.drawer_width','layout','520','{\"type\":\"number\",\"min\":460,\"max\":620}',NOW(),NOW()),
+  ('table.row_height','table','44','{\"type\":\"number\",\"min\":32,\"max\":64}',NOW(),NOW()),
+  ('table.page_mode','table','\"auto\"','{\"type\":\"enum\",\"values\":[\"auto\",\"10\",\"20\",\"30\",\"50\",\"100\"]}',NOW(),NOW()),
+  ('motion.intensity','feedback','\"standard\"','{\"type\":\"enum\",\"values\":[\"minimal\",\"standard\",\"none\"]}',NOW(),NOW()),
+  ('feedback.card_hover','feedback','true','{\"type\":\"boolean\"}',NOW(),NOW()),
+  ('presentation.hide_sensitive','presentation','true','{\"type\":\"boolean\"}',NOW(),NOW()),
+  ('presentation.hide_actions','presentation','true','{\"type\":\"boolean\"}',NOW(),NOW())",
+ ],
+ 'down'=>[
+  "DELETE FROM mc_ui_settings WHERE setting_key IN('font.topbar_px','font.title_px','font.subtitle_px','font.label_px','font.input_px','font.button_px','font.modal_title_px','font.drawer_title_px','font.pagination_px','color.page_bg','color.surface','color.border','color.text','color.text_muted','color.success','color.warning','color.danger','layout.sidebar_width','layout.topbar_height','layout.page_padding','layout.card_padding','layout.radius','layout.drawer_width','table.row_height','table.page_mode','motion.intensity','feedback.card_hover','presentation.hide_sensitive','presentation.hide_actions')",
+ ],
+];

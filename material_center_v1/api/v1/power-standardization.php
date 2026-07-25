@@ -2,14 +2,16 @@
 declare(strict_types=1);
 require_once dirname(__DIR__,2).'/bootstrap.php';
 use Artdon\MaterialCenter\Services\PowerStandardizationService;
+use Artdon\MaterialCenter\Adapters\LegacyAuthAdapter;
+use Artdon\MaterialCenter\Security\PermissionService;
 
 header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');
-$user=mc_current_user();if(!$user){http_response_code(401);echo json_encode(['ok'=>false,'message'=>'需要统一登录'],JSON_UNESCAPED_UNICODE);exit;}
+$user=mc_current_user();$context=(new LegacyAuthAdapter())->current();$permissions=new PermissionService();if(!$user||!$context){http_response_code(401);echo json_encode(['ok'=>false,'message'=>'需要统一登录'],JSON_UNESCAPED_UNICODE);exit;}
 $service=new PowerStandardizationService();$action=(string)($_GET['action']??$_POST['action']??'');
 try{
-    if($_SERVER['REQUEST_METHOD']==='GET'&&$action==='detail'){echo json_encode(['ok'=>true,'data'=>$service->detail((int)($_GET['id']??0))],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+    if($_SERVER['REQUEST_METHOD']==='GET'&&$action==='detail'){$permissions->require($context,'material_center.power.standardize');$detail=$service->detail((int)($_GET['id']??0));$detail['staging']=$permissions->protectFields($context,'power_supply',$detail['staging'],['raw_price']);echo json_encode(['ok'=>true,'data'=>$detail],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
     if($_SERVER['REQUEST_METHOD']!=='POST'||!function_exists('verify_csrf')||!verify_csrf()){http_response_code(419);throw new RuntimeException('请求已过期，请刷新页面重试。');}
-    if(!(function_exists('is_super_admin')&&is_super_admin())&&!(function_exists('has_permission')&&has_permission('bom.edit'))){http_response_code(403);throw new RuntimeException('需要 BOM 编辑权限。');}
+    $permissions->require($context,$action==='create_material'?'material_center.power.confirm':'material_center.power.standardize');
     $uid=(int)$user['id'];
     if($action==='stage_pilot')$data=$service->stagePilot();
     elseif($action==='create_material')$data=['material_id'=>$service->confirmAndCreate((int)$_POST['staging_id'],$_POST,$uid)];
