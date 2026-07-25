@@ -4,11 +4,23 @@ namespace Artdon\MaterialCenter\Security;
 
 final class MaterialCenterUserContext
 {
+    public int $id;
+    public string $username;
+    public string $displayName;
+    public string $roleKey;
+    public bool $isSuperAdmin;
+
     public function __construct(
-        public readonly int $id,
-        public readonly string $username,
-        public readonly string $displayName,
-        public readonly string $roleKey,
-        public readonly bool $isSuperAdmin
-    ) {}
+        int $id,
+        string $username,
+        string $displayName,
+        string $roleKey,
+        bool $isSuperAdmin
+    ) {
+        $this->id = $id;
+        $this->username = $username;
+        $this->displayName = $displayName;
+        $this->roleKey = $roleKey;
+        $this->isSuperAdmin = $isSuperAdmin;
+    }
 }

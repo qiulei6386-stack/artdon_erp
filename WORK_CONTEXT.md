@@ -2,6 +2,13 @@
 
 更新时间：2026-07-25
 
+## 本次：物料中心 PHP-FPM 8.0 语法错误修复
+
+- 根因：服务器命令行 PHP 为 8.1，但网站实际由 PHP-FPM 8.0 运行；`MaterialCenterUserContext` 使用了 PHP 8.1 才支持的 `readonly` 属性，导致网站解析失败。
+- 处理：保留原有构造参数、公开属性名称和类型，将构造器属性提升改为 PHP 8.0 可解析的显式属性与赋值，没有改变权限接口或业务逻辑。
+- 部署与检查：修复文件已从本地部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`；目标文件分别通过 PHP 8.0 与服务器默认 PHP 语法检查，权限回归通过，整个 `material_center_v1` 的 PHP 文件已全部通过 PHP 8.0 语法扫描。
+- 影响范围：仅修改物料中心用户上下文类及本上下文记录；旧系统、旧表结构和旧 BOM 数据变化均为 0。
+
 ## 本次：PLM 首页 “Access denied.” 修复
 
 - 根因：本地及服务器 `plm.php` 权限为 `600`，服务器文件属主为 `ubuntu:ubuntu`，PHP-FPM 用户无法读取入口文件，因此在进入 PLM 业务权限判断前即返回 `Access denied.`。
