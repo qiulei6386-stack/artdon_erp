@@ -14,7 +14,7 @@ final class LegacyCatalogReadRepository
         $this->connection = db();
     }
 
-    public function products(string $search = '', string $category = '', int $limit = 500): array
+    public function products(string $search = '', string $category = '', int $limit = 0): array
     {
         $where = ['website_deleted=0'];
         $params = [];
@@ -34,7 +34,7 @@ final class LegacyCatalogReadRepository
                     dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
              FROM naming_models
              WHERE ' . implode(' AND ', $where) . '
-             ORDER BY updated_at DESC,id DESC LIMIT ' . $this->limit($limit),
+             ORDER BY updated_at DESC,id DESC' . ($limit > 0 ? ' LIMIT ' . $this->limit($limit) : ''),
             $params
         );
     }
@@ -87,6 +87,6 @@ final class LegacyCatalogReadRepository
 
     private function limit(int $limit): int
     {
-        return max(1, min(500, $limit));
+        return max(1, $limit);
     }
 }
