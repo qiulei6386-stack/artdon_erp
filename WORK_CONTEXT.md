@@ -11,7 +11,7 @@
 - 标准品配置浮窗定位改为相对报价页面，避免随整个文档漂移；JavaScript 模块解析通过，PHP 语法和 `git diff --check` 通过。
 - 修改文件：`commercial_center_v1/views/quote_center.php`、`views/quote_website.php`、`views/quote_standard.php`、`views/quote_custom.php`、`assets/css/app.css`，以及本文件。
 - 数据库/权限：无数据库、权限表或正式报价数据修改。
-- Git/部署：待提交、推送 GitHub、同步服务器及实页复检；不纳入任何现有无关改动。
+- Git/部署：纠偏提交 `e1b2add` 已推送 GitHub并以同一提交快进同步服务器；服务器复检中网站/标准品/定制品页面分别输出 6/8/5 张真实产品图及完整明细行，三页均 HTTP 200、无 PHP 错误，参考订单号、客户、配置窗口和上传区关键词全部命中。当前无可用内置浏览器实例，截图级像素验收无法执行；最终收尾提交及三方一致性见本轮最终结果。
 
 ## 本次：三类报价页面按三张参考图分别重建
 
