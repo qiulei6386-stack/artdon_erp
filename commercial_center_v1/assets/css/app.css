@@ -232,6 +232,15 @@
   padding:7px 8px;
   white-space:nowrap;
 }
+.product-control-bar .auto-page-size{
+  flex:0 0 auto;
+  padding:7px 8px;
+  border-radius:6px;
+  background:#f3f6f9;
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
 .product-control-bar .pagination-footer{
   flex:0 0 auto;
   align-items:center;
