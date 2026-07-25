@@ -12,8 +12,8 @@
 - 旧入口映射：标准报价→标准品报价；快速报价→标准品快速创建；历史报价→报价单中心列表；产品与配置→物料与配件/产品适配规则。旧路由名仍由入口层接收，不删除旧页面、接口或数据。
 - 修改文件：`commercial_center_v1/config/menu.php`、`index.php`、`assets/css/app.css`；新增 `assets/js/quote_center.js`、`views/quote_center.php`、`views/quote_approval.php`、`views/compatibility_rules.php`、`tests/quote_center_regression.php`，以及本文件。
 - 数据库/权限：无数据库结构或数据修改；沿用现有统一登录、`commercial_center.view` 读取权限及既有审核/导出权限模型，不写旧权限表。
-- 检查：`git diff --check` 通过；5 个修改/新增 PHP 文件经服务器 PHP 8.0 标准输入语法检查通过。本机无 PHP/Node，部署后的回归脚本、服务器语法和浏览器页面验收待完成。
-- Git/部署：待本地最终检查后仅提交上述报价中心文件和本上下文，不纳入现有启动脚本删除/重命名及未跟踪文档；推送、服务器同步与三方一致性待完成。
+- 检查：`git diff --check` 通过；5 个修改/新增 PHP 文件经服务器 PHP 8.0 标准输入语法检查通过。部署后 `quote_center_regression.php`、`bootstrap_smoke.php`、`safety_scan.php` 全部通过；服务器 HTTP 实测报价中心、三类编辑页、审核页及标准报价/快速报价/历史报价/产品与配置 4 个旧 URL 均返回 200、无 PHP 错误，产品报价菜单唯一入口计数为 6，报价交互脚本资源返回 200。当前会话无可用内置浏览器实例，未完成截图式视觉验收。
+- Git/部署：业务提交 `e375a42` 已推送 GitHub，并通过同一提交 Git bundle 快进同步服务器；未纳入或覆盖现有启动脚本删除/重命名、未跟踪文档及服务器物料中心并行改动。最终收尾提交及三方一致性见本轮最终结果。
 - 未完成：正式报价保存、附件上传、审批写入、PDF/Excel/邮件动作仍需后端写入授权与接口契约；本轮提供正式页面、只读数据接入、草稿前端交互与安全路由映射，不伪造正式业务写入。
 
 ## 本次：本地、GitHub 与服务器只读扫描
