@@ -2,6 +2,13 @@
 
 更新时间：2026-07-25
 
+## 本次：PLM 首页 “Access denied.” 修复
+
+- 根因：本地及服务器 `plm.php` 权限为 `600`，服务器文件属主为 `ubuntu:ubuntu`，PHP-FPM 用户无法读取入口文件，因此在进入 PLM 业务权限判断前即返回 `Access denied.`。
+- 处理：本地 `plm.php` 权限修正为 `644`，再从本地同步到唯一服务器运行目录 `/www/wwwroot/Artdon/artdon_erp/plm.php`，服务器权限确认是 `644`。
+- 检查：本地 `git diff --check` 通过（本机无 PHP CLI）；服务器 `php -l plm.php` 通过。服务器本机默认虚拟主机不映射该路径，匿名 localhost 探测为 404，登录态页面需用户刷新确认。
+- Git：文件内容无变化，Git 不记录普通文件 `600→644` 权限变化；本次以 `WORK_CONTEXT.md` 记录修复，提交号及推送状态见本轮最终结果。
+
 ## 本次：型号命名创建人/修改人显示“未识别账号”修复
 
 - 根因：命名页面权限已使用统一 SSO `artdon_sso_current_user()`，但 `created_by` / `updated_by` 仍由旧函数单独扫描 Session/Cookie；统一登录有效但旧字段不存在时，会写入“未识别账号”。
