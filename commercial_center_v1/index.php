@@ -68,7 +68,7 @@ header('Cache-Control: no-store, max-age=0');
     </header>
 
     <main class="content">
-      <?php if ($activePage && $requestedPage === 'commercial_product_library'): require __DIR__ . '/views/product_library_v2.php'; elseif ($activePage && $requestedPage === 'product_sync_center'): $syncStatus=(new Artdon\CommercialCenter\Services\ProductSyncService())->status($view['auth']); ?>
+      <?php if ($activePage && $requestedPage === 'commercial_product_library'): require __DIR__ . '/views/product_library_v2.php'; elseif ($activePage && $requestedPage === 'price_strategy'): require __DIR__ . '/views/price_strategy.php'; elseif ($activePage && $requestedPage === 'product_sync_center'): $syncStatus=(new Artdon\CommercialCenter\Services\ProductSyncService())->status($view['auth']); ?>
         <section class="page-head"><div><span class="eyebrow">PRODUCT SYNC CENTER</span><h1>产品同步中心</h1><p>命名中心是产品主数据源；商务中心仅维护引用层，不编辑命名中心资料。</p></div><div class="page-meta"><span>连接状态</span><b><?= cc_h($syncStatus['status']) ?></b></div></section>
         <section class="sync-overview"><div><span>同步状态</span><strong><?= $syncStatus['status']==='available'?'已连接':'待配置' ?></strong></div><div><span>最后同步时间</span><strong>暂无同步记录</strong></div><div><span>同步数量</span><strong>0</strong></div><div class="sync-actions"><button type="button" disabled>立即同步</button><a href="?page=activity_logs">查看日志</a></div></section>
         <section class="panel sync-boundary"><h2>同步字段边界</h2><div class="sync-fields"><span>型号 / 系列 / 分类 / 产品名称</span><span>图片 / 尺寸图 / 状态</span><span>功率 / 色温 / 光束角 / 尺寸</span><span>命名编号 / BOM编号 / PLM项目编号</span></div><p>当前接口为只读适配器，实际同步任务将在获得接口凭据和迁移批准后启用。</p></section>
@@ -253,5 +253,6 @@ header('Cache-Control: no-store, max-age=0');
   </section>
 </div>
 <script src="assets/js/app.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/app.js') ?>" defer></script>
+<?php if($requestedPage==='price_strategy'):?><script src="assets/js/price_strategy.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/price_strategy.js') ?>" defer></script><?php endif;?>
 </body>
 </html>
