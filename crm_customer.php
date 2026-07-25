@@ -1114,13 +1114,26 @@ function crm_customer_sync_addresses(int $customerId, array $addresses): void
 {
     db()->prepare('DELETE FROM crm_customer_addresses WHERE customer_id = ?')->execute([$customerId]);
     $insert = db()->prepare('INSERT INTO crm_customer_addresses (customer_id, address_type, country, city, address, is_primary, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())');
-    $hasPrimary = false;
+    $primaryIndex = null;
+    foreach ($addresses as $index => $address) {
+        if (is_array($address) && !empty($address['is_primary']) && trim((string)($address['country'] ?? '')) !== '') {
+            $primaryIndex = $index;
+            break;
+        }
+    }
+    if ($primaryIndex === null) {
+        foreach ($addresses as $index => $address) {
+            if (is_array($address) && trim((string)($address['country'] ?? '')) !== '') {
+                $primaryIndex = $index;
+                break;
+            }
+        }
+    }
     foreach ($addresses as $index => $address) {
         $country = trim((string)($address['country'] ?? ''));
         if ($country === '') continue;
         $type = in_array(($address['address_type'] ?? 'Other'), crm_graph_options()['address_types'], true) ? $address['address_type'] : 'Other';
-        $isPrimary = !empty($address['is_primary']) || (!$hasPrimary && $index === 0);
-        if ($isPrimary) $hasPrimary = true;
+        $isPrimary = $index === $primaryIndex;
         $insert->execute([$customerId, $type, $country, trim((string)($address['city'] ?? '')), trim((string)($address['address'] ?? '')), $isPrimary ? 1 : 0, current_user()['id'] ?? null, current_user()['id'] ?? null]);
     }
 }
@@ -1597,8 +1610,18 @@ function crm_customer_list(array $input): array
         '' AS promotion_channels,
         COALESCE(ps.status, 'not_promoted') AS promotion_status
         FROM crm_customers c
-        LEFT JOIN crm_customer_addresses pa ON pa.customer_id = c.id AND pa.is_primary = 1
-        LEFT JOIN crm_customer_owners po ON po.customer_id = c.id AND po.is_primary = 1
+        LEFT JOIN crm_customer_addresses pa ON pa.id = (
+            SELECT pa_pick.id FROM crm_customer_addresses pa_pick
+            WHERE pa_pick.customer_id = c.id
+            ORDER BY pa_pick.is_primary DESC, pa_pick.id ASC
+            LIMIT 1
+        )
+        LEFT JOIN crm_customer_owners po ON po.id = (
+            SELECT po_pick.id FROM crm_customer_owners po_pick
+            WHERE po_pick.customer_id = c.id
+            ORDER BY po_pick.is_primary DESC, po_pick.id ASC
+            LIMIT 1
+        )
         LEFT JOIN crm_users u ON u.id = COALESCE(po.user_id, c.owner_user_id)
         LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
         WHERE {$sqlWhere}
