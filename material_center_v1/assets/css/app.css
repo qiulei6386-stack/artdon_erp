@@ -14,3 +14,25 @@
 .ui-workbench-embed{flex:1;min-height:520px;overflow:hidden}.ui-workbench-embed iframe{width:100%;height:100%;min-height:620px;border:0;background:var(--ui-bg)}
 @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); }.filters { grid-template-columns: 1fr 1fr; }.filters > span { grid-column: 1 / -1; } }
 @media (max-width: 560px) { .stats { gap: 8px; }.filters,.standard-form { grid-template-columns: 1fr; }.filters > span { grid-column: auto; }.standard-fieldset{grid-column:auto}.standard-actions{flex-wrap:wrap}.standard-actions .ui-btn{flex:1} }
+
+/* 电源工作台锁定纠偏布局 */
+.power-workbench-shell{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.power-page-head{min-height:64px;max-height:72px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:0 0 10px}
+.power-page-head h1{margin:0 0 4px;font-size:24px;line-height:1.25}.power-page-head p{margin:0;color:var(--ui-text-muted);font-size:13px}
+.power-tabs{flex:none;margin:0;border-bottom:1px solid var(--ui-border)}.power-tabs .ui-tab{min-width:76px;justify-content:center;font-size:13px}
+.power-toolbar{flex:none;min-height:52px;display:flex;align-items:center;gap:8px;padding:8px 0}
+.power-search{width:clamp(320px,36vw,420px)}.power-search .search-field{display:block}.power-search .ui-input{width:100%;padding-right:36px}
+.power-toolbar .ui-btn svg,.power-record-drawer .ui-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.power-filter-panel{flex:none;display:flex;align-items:end;gap:10px;padding:10px 12px;margin-bottom:8px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-lg);background:var(--ui-surface-subtle)}
+.power-filter-panel[hidden]{display:none}.power-filter-panel .ui-field{min-width:180px}.power-filter-tags{display:flex;gap:6px;margin:0 0 8px}.power-filter-tags a{text-decoration:none}
+.power-table-panel{flex:1 1 auto;min-height:0;margin:0;display:grid!important;grid-template-rows:minmax(0,1fr) auto;border-radius:var(--ui-radius-lg)}
+.power-table-panel .ui-table-wrap{min-height:0}.power-table{table-layout:fixed;min-width:1250px}
+.power-table th:nth-child(1){width:44px}.power-table th:nth-child(2){width:110px}.power-table th:nth-child(3){width:180px}.power-table th:nth-child(4){width:110px}.power-table th:nth-child(5){width:180px}.power-table th:nth-child(6){width:320px}.power-table th:nth-child(7){width:80px}.power-table th:nth-child(8){width:90px}.power-table th:nth-child(9){width:80px}.power-table th:nth-child(10){width:90px}.power-table th:nth-child(11){width:96px}
+.power-table td{font-size:13px}.power-table tbody tr{cursor:pointer}.power-table .ui-cell-spec{white-space:normal;overflow:hidden}.power-table .ui-cell-spec span{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:18px;max-height:36px}
+.power-table-state{flex:1;display:grid;place-items:center}.power-record-drawer{padding:0 20px}.power-record-drawer h2{margin:0 0 4px}.power-record-drawer .ui-drawer-header p{margin:0;color:var(--ui-text-muted)}
+.power-record-drawer .ui-drawer-body{padding:8px 0}.power-record-drawer .ui-drawer-footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 0 16px}
+.power-drawer-section{padding:14px 0;border-bottom:1px solid var(--ui-border)}.power-drawer-section h3{margin:0 0 12px;font-size:14px}
+.power-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}.power-detail-grid div{min-width:0}.power-detail-grid .is-wide{grid-column:1/-1}.power-detail-grid dt{color:var(--ui-text-muted);font-size:12px}.power-detail-grid dd{margin:4px 0 0;font-size:13px;font-weight:650;word-break:break-word}
+.power-drawer-skeleton{display:grid;gap:12px;padding:18px 0}.power-drawer-skeleton span{height:64px;border-radius:8px;background:linear-gradient(90deg,var(--ui-surface-subtle),var(--ui-border),var(--ui-surface-subtle));background-size:220% 100%;animation:power-skeleton 1.2s linear infinite}
+@keyframes power-skeleton{to{background-position:-220% 0}}
+@media(max-width:720px){.power-workbench-shell{overflow:visible}.power-search{width:auto;flex:1;min-width:220px}.power-toolbar{flex-wrap:wrap}.power-filter-panel{align-items:stretch;flex-direction:column}.power-page-head{max-height:none}.power-detail-grid{grid-template-columns:1fr}}
