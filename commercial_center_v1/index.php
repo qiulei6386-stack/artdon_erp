@@ -203,7 +203,9 @@ header('Cache-Control: no-store, max-age=0');
           </section>
 
           <section class="panel wide">
-            <div class="panel-head"><div><span class="eyebrow">COMMERCIAL DELIVERY</span><h2>商务交付队列</h2></div><a href="../quotation.php">打开旧报价</a></div>
+            <div class="panel-head"><div><span class="eyebrow">COMMERCIAL DELIVERY</span><h2>商务交付队列 / 最近报价订单</h2></div><a href="../quotation.php">查看全部 ›</a></div>
+            <div class="delivery-tabs"><a class="active" href="?page=operations_dashboard&range=7">最近 7 天</a><a href="?page=operations_dashboard&range=30">最近 30 天</a><a href="?page=operations_dashboard&range=90">最近 90 天</a></div>
+            <div class="delivery-stages"><?php foreach ([['报价处理',$ops['counts']['pending_approval'],'blue'],['报价发送',$ops['counts']['pending_send'],'teal'],['客户确认',$ops['counts']['pending_customer'],'violet'],['PI确认',0,'green'],['订单下达',0,'purple'],['生产中',0,'orange'],['已出货',0,'green']] as $stage): ?><div><i class="stage-icon <?= $stage[2] ?>"></i><span><?= cc_h($stage[0]) ?></span><strong><?= (int)$stage[1] ?></strong></div><?php endforeach; ?></div>
             <?php if ($ops['delivery_queue'] === []): ?><div class="empty">当前范围没有可显示的交付事项。</div><?php else: ?>
               <div class="table-wrap"><table><thead><tr><th>报价编号</th><th>客户</th><th>金额</th><th>审批</th><th>下一动作</th><th>更新时间</th></tr></thead><tbody>
               <?php foreach ($ops['delivery_queue'] as $row): ?>
