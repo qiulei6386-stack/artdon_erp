@@ -42,7 +42,7 @@ foreach (['网站订单报价单','标准品报价单','定制品报价单','dat
 foreach ([
     'views/quote_website.php'=>['网站传入','网站订单号','内部审核备注','风险提醒'],
     'views/quote_standard.php'=>['标准品报价单（半自由）','报价明细','产品适配规则','内部流程'],
-    'views/quote_custom.php'=>['定制品报价单','客户需求 / 参考资料','自定义字段','工程说明'],
+    'views/quote_custom.php'=>['报价单中心','全部报价','快速开始','帮助与支持','AT-260725EX053-01'],
 ] as $file=>$needles) {
     $source = (string)file_get_contents($root . '/' . $file);
     foreach ($needles as $needle) {

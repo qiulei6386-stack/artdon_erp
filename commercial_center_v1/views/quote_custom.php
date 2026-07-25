@@ -1,13 +1,104 @@
-<?php declare(strict_types=1); $rows=array_slice($catalogRows,0,5); $customNames=['定制轨道射灯（深防眩）','定制线性洗墙灯','定制嵌入式筒灯（无边）','定制壁洗灯（非标长度）','定制智能电源（DALI）']; $customSpecs=['18W / 3000K / Ra≥90 / 15° / 黑色 / 深防眩杯','24W/m / 3000K / Ra≥90 / DC24V / IP65 / 铝材黑色','12W / 4000K / Ra≥90 / 38° / 白色 / 无边框','36W / 3000K / Ra≥90 / L=1200mm / IP65','100W / DALI-2 / 24V / PF≥0.95 / 防雷']; $customQty=[120,80,200,40,40]; $customTarget=[238,168,78,328,158]; $customPrice=[288,218,98,418,198]; ?>
-<section class="ref-quote ref-custom" data-quote-editor data-quote-type="custom">
-  <header class="custom-actionbar"><button data-draft-save>▱ 保存草稿</button><button>◉ 预览</button><button>▣ 打印</button><button>▤ 导出PDF</button><button>▤ 导出Excel</button><button>▱ 提交审核</button><button class="primary">➤ 发送报价</button><span>类型：定制品报价单</span></header>
-  <div class="ref-body custom-body">
-    <main>
-      <section class="ref-panel"><h2>报价信息</h2><div class="custom-info"><?php foreach(['报价单号 *'=>'QT-20240523-001','国家/地区 *'=>'🇨🇳 中国','付款方式'=>'30% 预付款，70% 发货前','客户 *'=>'星辉照明（深圳）有限公司','币种 *'=>'CNY 人民币','贸易条款'=>'FOB 深圳','联系人'=>'张经理','有效期 *'=>'2024-06-22','备注'=>'请输入备注信息（可选）','项目名称'=>'星辉总部大楼照明定制方案','负责人 *'=>'邱磊' ] as $label=>$value):?><label><span><?=$label?></span><?= $label==='备注'?'<textarea>'.$value.'</textarea>':'<input value="'.$value.'">'?></label><?php endforeach;?></div></section>
-      <section class="ref-panel custom-uploads"><h2>客户需求 / 参考资料</h2><div><?php foreach(['产品图片','参考图','尺寸图','客户文件'] as $u):?><label><input type="file" multiple hidden data-file-upload><b>↥ 上传<?=$u?></b><span>拖拽或点击上传</span><em data-file-count>尚未选择</em></label><?php endforeach;?></div></section>
-      <section class="ref-panel custom-lines"><div class="panel-title"><h2>报价明细 <small>（支持高度自定义项）</small></h2><nav><button data-add-line>＋ 添加明细</button><button>批量导入</button><button>批量删除</button></nav></div><div class="ref-table-scroll"><table><thead><tr><th>#</th><th>图片</th><th>自定义产品名称 *</th><th>规格说明</th><th>数量 *</th><th>单位</th><th>目标单价</th><th>报价单价 *</th><th>小计</th><th>备注</th><th>操作</th></tr></thead><tbody data-quote-lines><?php foreach($rows as $i=>$row):$img=cc_legacy_asset_url($row['image_path']??'');?><tr><td><?=$i+1?></td><td><div class="ref-thumb"><?php if($img):?><img src="<?=cc_h($img)?>" alt=""><?php else:?>＋<?php endif;?></div></td><td><input value="<?=$customNames[$i]?>"></td><td><textarea><?=$customSpecs[$i]?></textarea></td><td><input type="number" value="<?=$customQty[$i]?>" data-qty></td><td><input value="<?=$i===1?'m':'pcs'?>"></td><td><input value="<?=$customTarget[$i]?>"></td><td><input type="number" value="<?=$customPrice[$i]?>" data-price></td><td data-line-total>0.00</td><td><input value="<?=['防眩角≤30°','配扩散罩','开孔Ø75mm','非标定制1200mm','需过载保护'][$i]?>"></td><td><button>复制</button><button class="text-danger" data-remove-line>删除</button></td></tr><?php endforeach;?></tbody></table></div><footer><button data-add-line>＋ 添加明细</button><span>共 <?=count($rows)?> 项</span></footer></section>
-    </main>
-    <aside><section class="ref-panel custom-fields-side"><h2>自由录入 / 自定义字段</h2><div data-custom-fields><?php foreach(['材质'=>'铝合金','颜色'=>'黑色（RAL 9005）','尺寸'=>'可定制','功率'=>'按方案配置','安装方式'=>'轨道 / 嵌入 / 吊装','特殊工艺'=>'阳极氧化 + 喷涂'] as $k=>$v):?><label><?=$k?><input value="<?=$v?>"></label><?php endforeach;?></div><button data-add-field>＋ 增加自定义字段</button></section><section class="ref-panel reference-product"><h2>关联参考产品（可选）</h2><input placeholder="选择标准产品（可选）"><p><span class="ref-thumb">图</span><b><?=cc_h($rows[0]['model_no']??'52.03526')?></b><small>仅作为参考，不限制自由报价</small></p></section><section class="ref-panel total-box"><h2>报价汇总 <small>CNY</small></h2><dl><dt>产品金额（小计）</dt><dd data-subtotal>0.00</dd><dt>折扣</dt><dd><input value="0" data-order-discount></dd><dt>运费</dt><dd><input value="1800" data-shipping></dd><dt>税费（13%）</dt><dd><input value="0" data-tax></dd></dl><div><b>总金额</b><strong data-grand-total>0.00</strong></div></section><section class="ref-panel engineer-note"><h2>工程说明 / 特殊要求 / 审核提醒</h2><ul><li>该项目为非标定制产品，需完成光效与防眩评估。</li><li>非标产品需开模，交期预计 30–35 天。</li><li>请内部核价确认成本与毛利。</li></ul></section></aside>
+<?php
+declare(strict_types=1);
+
+$dashboardQuotes = [
+    ['AT-260725EX053-01','标准品报价单','网站订单','Horizons Lumiere','—',3,'32.63','USD','pending','邱磊','2025-07-25 14:32'],
+    ['AT-260725EX147','标准品报价单','网站订单','LED-UNIPROF','—',5,'47.50','USD','approved','邱磊','2025-07-25 11:18'],
+    ['AT-260725EX053','标准品报价单','网站订单','Horizons Lumiere','—',2,'17.62','USD','approved','邱磊','2025-07-25 10:07'],
+    ['AT-260704EX001-01','标准品报价单','网站订单','JAFIROE Marketing Incorporated (JMI)','—',4,'31.00','USD','approved','邱磊','2025-07-04 16:34'],
+    ['AT-260630EX136','标准品报价单','网站订单','Dazzy Dekors Ltd','—',8,'1,350.00','USD','approved','邱磊','2025-06-30 09:41'],
+    ['AT-260724EX028','标准品报价单','网站订单','成都照明','—',12,'3,250.00','RMB','approved','邱磊','2025-06-24 17:09'],
+    ['AT-260710CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',15,'27,605.88','RMB','approved','邱磊','2025-06-10 15:22'],
+    ['AT-260721CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',6,'1,042.50','RMB','approved','邱磊','2025-06-21 10:11'],
+    ['AT-260722CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',10,'2,958.45','RMB','approved','邱磊','2025-06-22 14:08'],
+    ['AT-260723EX144','标准品报价单','网站订单','Winsan LED','—',9,'6,159.00','USD','approved','邱磊','2025-06-23 09:55'],
+];
+?>
+<section class="quote-hub" data-quote-hub>
+  <header class="qhub-heading">
+    <div class="qhub-title-icon">▤</div>
+    <div>
+      <h1>报价单中心</h1>
+      <p>统一管理网站订单、标准品与定制品报价，跟踪报价状态与转化进度。</p>
+    </div>
+    <nav>
+      <button type="button">↧ 导入</button>
+      <button type="button">↧ 导出</button>
+      <button type="button">ⓘ 帮助</button>
+      <button type="button" class="primary" data-new-quote>＋ 新建报价单</button>
+    </nav>
+  </header>
+
+  <section class="qhub-kpis" aria-label="报价统计">
+    <?php foreach ([
+      ['全部报价','10','—','blue','▣'],
+      ['草稿','0','—','amber','▤'],
+      ['待审核','1','较昨日 +1','purple','◷'],
+      ['已发送','9','较昨日 +2','teal','➤'],
+      ['待客户确认','9','较昨日 +2','orange','♙'],
+      ['已转订单','0','较昨日 —','blue','✓'],
+    ] as $kpi): ?>
+      <article>
+        <i class="<?= cc_h($kpi[3]) ?>"><?= cc_h($kpi[4]) ?></i>
+        <div><span><?= cc_h($kpi[0]) ?></span><strong><?= cc_h($kpi[1]) ?></strong><small><?= cc_h($kpi[2]) ?></small></div>
+      </article>
+    <?php endforeach; ?>
+  </section>
+
+  <section class="qhub-filters">
+    <label class="qhub-search"><input type="search" placeholder="搜索报价单号 / 客户 / 联系人 / 产品型号 / 网站订单号"><b>⌕</b></label>
+    <?php foreach (['报价类型'=>['全部类型','网站订单报价单','标准品报价单','定制品报价单'],'状态'=>['全部状态','pending','approved'],'币种'=>['全部币种','USD','RMB'],'负责人'=>['全部负责人','邱磊']] as $label=>$options): ?>
+      <label><span><?= cc_h($label) ?></span><select><?php foreach($options as $option): ?><option><?= cc_h($option) ?></option><?php endforeach; ?></select></label>
+    <?php endforeach; ?>
+    <label class="qhub-date"><span>更新时间</span><div>▣　开始日期　 ~　 结束日期　⌄</div></label>
+    <button type="button" class="filter-button">⌕ 筛选</button>
+    <button type="button">↻ 重置</button>
+  </section>
+
+  <nav class="qhub-tabs">
+    <button type="button" class="active">全部报价</button>
+    <button type="button">网站订单</button>
+    <button type="button">标准品</button>
+    <button type="button">定制品</button>
+  </nav>
+
+  <div class="qhub-lower">
+    <section class="qhub-table-card">
+      <div class="qhub-table-scroll">
+        <table>
+          <thead><tr><th>报价单号</th><th>网站类型</th><th>来源</th><th>客户</th><th>联系人</th><th>产品数</th><th>总金额</th><th>币种</th><th>状态</th><th>负责人</th><th>更新时间</th><th>操作</th></tr></thead>
+          <tbody>
+          <?php foreach($dashboardQuotes as $quote): ?>
+            <tr>
+              <td><b><?= cc_h($quote[0]) ?></b></td>
+              <td><?= cc_h($quote[1]) ?></td><td><?= cc_h($quote[2]) ?></td><td><?= cc_h($quote[3]) ?></td>
+              <td><?= cc_h($quote[4]) ?></td><td><?= (int)$quote[5] ?></td><td><b><?= cc_h($quote[6]) ?></b></td>
+              <td><?= cc_h($quote[7]) ?></td><td><span class="qhub-status <?= cc_h($quote[8]) ?>"><?= cc_h($quote[8]) ?></span></td>
+              <td><?= cc_h($quote[9]) ?></td><td><?= cc_h($quote[10]) ?></td>
+              <td class="qhub-row-actions"><a href="?page=quote_center&quote_mode=website">查看</a><a href="?page=quote_center&quote_mode=standard">编辑</a><button>复制</button><button>PDF</button><button>Excel</button><button>更多⌄</button></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <footer><span>共 10 条</span><div><select><option>10 条/页</option></select><button disabled>‹</button><button class="active">1</button><button>›</button><span>前往</span><input value="1"><span>页</span></div></footer>
+    </section>
+
+    <aside class="qhub-side">
+      <section>
+        <h2>快速开始</h2>
+        <a href="?page=quote_center&quote_mode=website"><i class="blue">▤</i><div><b>新建网站订单报价</b><span>基于网站订单创建报价</span></div><em>›</em></a>
+        <a href="?page=quote_center&quote_mode=standard"><i class="green">▤</i><div><b>新建标准品报价</b><span>快速创建标准品报价</span></div><em>›</em></a>
+        <a href="?page=quote_center&quote_mode=custom&editor=1"><i class="amber">▤</i><div><b>新建定制品报价</b><span>为定制产品创建报价</span></div><em>›</em></a>
+        <a href="?page=quote_approval"><i class="purple">♧</i><div><b>待审核网站订单</b><span>查看待审核的报价单</span></div><mark>1</mark><em>›</em></a>
+      </section>
+      <section>
+        <h2>帮助与支持</h2>
+        <a href="#"><i class="blue">?</i><div><b>查看报价管理指南</b><span>了解报价流程与操作说明</span></div></a>
+        <a href="#"><i class="teal">▤</i><div><b>常见问题</b><span>获取常见问题解答</span></div></a>
+      </section>
+    </aside>
   </div>
-  <div class="standard-workflow custom-flow"><b>内部流程</b><?php foreach(['草稿'=>'当前状态','内部核价'=>'待核价','待审核'=>'待提交','已发送'=>'尚未发送','转项目/转订单'=>'未执行'] as $step=>$state):?><span><strong><?=$step?></strong><small><?=$state?></small></span><i>›</i><?php endforeach;?></div>
+
+  <div class="quote-modal" data-type-modal aria-hidden="true"><div><header><div><h2>新建报价单</h2><p>选择需要创建的报价类型</p></div><button type="button" data-modal-close>×</button></header><div class="quote-type-grid"><?php foreach(['website'=>['网站订单报价单','导入或代建新加坡网站订单。'],'standard'=>['标准品报价单','从产品库选品并读取价格规则。'],'custom'=>['定制品报价单','自由录入产品与项目需求。']] as $key=>$type): ?><a href="?page=quote_center&quote_mode=<?= $key ?><?= $key==='custom'?'&editor=1':'' ?>"><i><?= $key==='website'?'网':($key==='standard'?'标':'定') ?></i><strong><?= cc_h($type[0]) ?></strong><span><?= cc_h($type[1]) ?></span><b>选择 →</b></a><?php endforeach; ?></div></div></div>
 </section>
