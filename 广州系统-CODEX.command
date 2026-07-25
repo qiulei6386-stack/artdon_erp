@@ -1,11 +1,10 @@
 #!/bin/zsh
 
-SCRIPT_DIR="${0:A:h}"
-WORK_DIR="${SCRIPT_DIR}/commercial_center_v1"
+WORK_DIR="${0:A:h}"
 CODEX_BIN="/Users/qiulei-office/.local/bin/codex"
 
 if [[ ! -d "${WORK_DIR}" ]]; then
-  echo "找不到商务中心目录：${WORK_DIR}"
+  echo "找不到广州 ERP 目录：${WORK_DIR}"
   echo "按回车键关闭窗口。"
   read -r
   exit 1
@@ -23,5 +22,5 @@ if [[ -z "${CODEX_BIN}" || ! -x "${CODEX_BIN}" ]]; then
 fi
 
 cd "${WORK_DIR}" || exit 1
-printf '\e]0;Codex - 商务中心\a'
+printf '\e]0;Codex - 广州 ERP\a'
 exec "${CODEX_BIN}"

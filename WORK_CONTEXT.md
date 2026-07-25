@@ -2,6 +2,13 @@
 
 更新时间：2026-07-25
 
+## 本次：广州系统与商务中心双击启动入口
+
+- 按用户实际文件整理，将商务中心启动入口移动并重命名为 `commercial_center_v1/离务中心CODEX.command`，同时修正为从所在目录直接启动商务中心 Codex。
+- 在仓库根目录新增 `广州系统-CODEX.command`，macOS 双击后进入广州 ERP 根目录并启动 Codex，终端标题显示“Codex - 广州 ERP”。
+- 两个入口均保留 Codex 路径回退和中文错误提示；`zsh -n`、可执行权限、目标目录及 Codex 本机命令检查通过。
+- Git 与部署：最终提交号、GitHub 推送、服务器同步及三方一致性结果见本轮完成记录。
+
 ## 本次：商务中心 Codex 双击启动入口
 
 - 升级仓库根目录 `CODEX.command`：macOS 双击后自动进入 `commercial_center_v1` 并启动 Codex，终端标题显示“Codex - 商务中心”。
