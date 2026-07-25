@@ -2,6 +2,14 @@
 
 更新时间：2026-07-25
 
+## 本次：型号命名创建人/修改人显示“未识别账号”修复
+
+- 根因：命名页面权限已使用统一 SSO `artdon_sso_current_user()`，但 `created_by` / `updated_by` 仍由旧函数单独扫描 Session/Cookie；统一登录有效但旧字段不存在时，会写入“未识别账号”。
+- 处理：`nm_current_user()` 改为优先读取统一 SSO 的展示名、实名或账号，异常时才回退原有 Session/Cookie 兼容逻辑；版本更新为 `3.0.8.33`。
+- 历史数据：已经写入“未识别账号”的旧记录无法可靠推断原操作人，不自动篡改；新建或后续编辑将写入当前统一登录账号。
+- 检查与部署：`git diff --check` 通过；本机无 PHP CLI，部署前以服务器 PHP 检查本地输入通过；`naming.php` 已部署到 `/www/wwwroot/Artdon/artdon_erp/`，服务器 `php -l` 通过且权限为 `644`。
+- Git：提交号及推送状态见本轮最终结果。
+
 ## 本次：型号命名系统认证库加载错误修复
 
 - 根因：`crm_plm_auth_lib.php` 与入口保护文件在本地及服务器均为 `600` 权限，服务器 PHP-FPM 用户无法读取，因而报 `Failed opening required`；文件本身未缺失，引用路径正确。

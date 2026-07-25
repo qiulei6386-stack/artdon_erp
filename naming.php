@@ -42,7 +42,7 @@ if (is_file($__artdon_sso_core)) {
     }
 }
 
-const NAMING_VERSION = '3.0.8.32';
+const NAMING_VERSION = '3.0.8.33';
 const NM_UPLOAD_LIMIT = 512000; // 500KB
 const NM_UPLOAD_DIR = __DIR__ . '/uploads/naming';
 const NM_BACKUP_DIR = __DIR__ . '/uploads/naming_backups';
@@ -358,6 +358,24 @@ function nm_repair_website_dimensions_by_model(PDO $pdo): void {
 }
 
 function nm_current_user(): string {
+    // 审计字段必须优先使用与页面权限相同的统一 SSO 用户。
+    // 旧实现只扫描 Session/Cookie；统一登录可正常识别用户时，这些旧字段未必存在，
+    // 会导致 created_by / updated_by 被错误写成“未识别账号”。
+    if (function_exists('artdon_sso_current_user')) {
+        try {
+            $u = artdon_sso_current_user(false);
+            if (is_array($u)) {
+                foreach (array('display_name','real_name','username','name','account','email') as $k) {
+                    if (!empty($u[$k]) && is_scalar($u[$k])) {
+                        $v = trim((string)$u[$k]);
+                        if ($v !== '') return $v;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            @error_log('[naming v'.NAMING_VERSION.'] SSO audit user resolve failed: '.$e->getMessage());
+        }
+    }
     foreach ($_SESSION as $sk=>$sv) {
         if (is_scalar($sv) && preg_match('/(username|user_name|account|login_name|display_name|real_name|name|email)$/i', (string)$sk)) {
             $v = trim((string)$sv); if ($v !== '') return $v;
