@@ -23,7 +23,7 @@ final class CatalogCenterService
             try {
                 $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
             } catch (\Throwable $bomError) {
-                Logger::warning('Optional BOM cost lookup failed', ['message' => $bomError->getMessage()]);
+                Logger::error('Optional BOM cost lookup failed', ['message' => $bomError->getMessage()]);
                 $costs = [];
             }
             foreach ($rows as &$row) { $cost = $costs[(string)$row['model_no']] ?? null; $row['bom_cost'] = $cost; $row['product_name'] = trim((string)$row['product_name']) . ' · BOM成本 ' . ($cost === null ? '—' : number_format((float)$cost, 4)); }
