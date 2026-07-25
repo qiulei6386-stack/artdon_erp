@@ -256,3 +256,17 @@
     flex-basis:100%;
   }
 }
+@media(min-width:1100px){
+  .content:has(.product-grid.product-library-grid){
+    height:auto;
+    min-height:calc(100vh - 54px);
+    overflow:auto;
+  }
+  .content:has(.product-grid.product-library-grid) .product-grid.product-library-grid{
+    height:auto;
+    min-height:0;
+    grid-template-rows:none;
+    grid-auto-rows:auto;
+    overflow:visible;
+  }
+}
