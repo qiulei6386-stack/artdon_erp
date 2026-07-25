@@ -1,22 +1,11 @@
 <?php
 declare(strict_types=1);
-
 define('MC_ROOT', __DIR__);
-define('MC_LEGACY_ROOT', dirname(__DIR__));
-
-date_default_timezone_set('Asia/Shanghai');
-
-spl_autoload_register(static function (string $class): void {
-    $prefix = 'Artdon\\MaterialCenter\\';
-    if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
-        return;
-    }
-    $relative = str_replace('\\', '/', substr($class, strlen($prefix)));
-    $file = MC_ROOT . '/app/' . $relative . '.php';
-    if (is_file($file)) {
-        require_once $file;
-    }
-});
-
-require_once MC_ROOT . '/app/Support/helpers.php';
-require_once MC_LEGACY_ROOT . '/includes/bootstrap.php';
+$docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? realpath((string)$_SERVER['DOCUMENT_ROOT']) : false;
+$rootReal = realpath(MC_ROOT);
+if ($docRoot && $rootReal && strpos($rootReal, $docRoot) === 0) {
+    define('MC_BASE_URL', rtrim(str_replace(DIRECTORY_SEPARATOR, '/', substr($rootReal, strlen($docRoot))), '/'));
+} else {
+    define('MC_BASE_URL', '/material_center_v1');
+}
+require_once MC_ROOT . '/lib/helpers.php';
