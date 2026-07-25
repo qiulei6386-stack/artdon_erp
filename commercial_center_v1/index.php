@@ -8,6 +8,7 @@ use Artdon\CommercialCenter\Controllers\DashboardController;
 $view = (new DashboardController())->status();
 $app = require __DIR__ . '/config/app.php';
 $menu = require __DIR__ . '/config/menu.php';
+$permissionCatalog = require __DIR__ . '/config/permission_catalog.php';
 $ops = $view['operations'];
 $allowedViews = ['dashboard', 'products', 'materials', 'inventory', 'quotation', 'custom_project', 'publishing', 'orders', 'packaging', 'documents', 'commission', 'integrations'];
 $activeView = in_array((string)($_GET['view'] ?? 'dashboard'), $allowedViews, true) ? (string)($_GET['view'] ?? 'dashboard') : 'dashboard';
@@ -67,7 +68,11 @@ header('Cache-Control: no-store, max-age=0');
     </header>
 
     <main class="content">
-      <?php if ($activePage && $requestedPage !== 'operations_dashboard'): ?>
+      <?php if ($activePage && $requestedPage === 'permission_center'): ?>
+        <section class="page-head"><div><span class="eyebrow">ACCESS CONTROL CENTER</span><h1>权限中心</h1><p>统一管理角色、菜单、操作、数据范围和敏感字段权限；账号继续使用现有 ERP 用户体系。</p></div><div class="page-meta"><span>权限模式</span><b>旁路配置</b></div></section>
+        <section class="permission-toolbar"><input type="search" placeholder="搜索用户 / 角色"><button type="button">搜索</button><span>当前角色 <?= count($permissionCatalog['roles']) ?> 个 · 操作权限 <?= count($permissionCatalog['actions']) ?> 类</span></section>
+        <section class="permission-layout"><aside class="permission-roles"><h2>角色列表</h2><?php foreach ($permissionCatalog['roles'] as $role): ?><button type="button" class="permission-role <?= $role['code']==='commercial_manager'?'active':'' ?>"><strong><?= cc_h($role['label']) ?></strong><small><?= cc_h($permissionCatalog['data_scopes'][$role['scope']]) ?></small></button><?php endforeach; ?></aside><div class="permission-config"><div class="panel-head"><div><span class="eyebrow">ROLE POLICY</span><h2>商务负责人</h2></div><span class="tag">部门数据</span></div><div class="permission-section"><h3>菜单权限</h3><div class="permission-checks"><?php foreach ($permissionCatalog['modules'] as $code=>$label): ?><label><input type="checkbox" checked> <?= cc_h($label) ?></label><?php endforeach; ?></div></div><div class="permission-section"><h3>操作权限</h3><div class="permission-action-grid"><?php foreach ($permissionCatalog['actions'] as $code=>$label): ?><label><input type="checkbox" <?= in_array($code,['view','edit','approve','export'],true)?'checked':'' ?>> <?= cc_h($label) ?></label><?php endforeach; ?></div></div><div class="permission-section"><h3>报价字段权限</h3><div class="field-permission-table"><div><b>字段</b><b>查看</b><b>编辑</b><b>脱敏</b></div><?php foreach ($permissionCatalog['fields'] as $code=>$label): ?><div><span><?= cc_h($label) ?></span><input type="checkbox" checked><input type="checkbox" <?= in_array($code,['cost_price','margin_rate','supplier'],true)?'':'checked' ?>><input type="checkbox"></div><?php endforeach; ?></div></div><div class="permission-footer"><span>保存操作将记录到系统日志。</span><button type="button" disabled>保存权限（下一步启用）</button></div></div></section>
+      <?php elseif ($activePage && $requestedPage !== 'operations_dashboard'): ?>
         <section class="page-head"><div><span class="eyebrow">COMMERCIAL CENTER V1</span><h1><?= cc_h($activePage['label']) ?></h1><p>商务中心正式页面入口 · <?= cc_h($activePage['group']) ?> / <?= cc_h($activePage['label']) ?></p></div><div class="page-meta"><span>权限状态</span><b><?= !empty($view['auth']['authenticated']) ? '已登录' : '需统一登录' ?></b></div></section>
         <nav class="breadcrumb" aria-label="面包屑"><a href="?page=operations_dashboard">工作台</a><span>/</span><span><?= cc_h($activePage['group']) ?></span><span>/</span><strong><?= cc_h($activePage['label']) ?></strong></nav>
         <section class="toolbar"><form method="get"><input type="hidden" name="page" value="<?= cc_h($requestedPage) ?>"><input type="search" name="q" placeholder="搜索<?= cc_h($activePage['label']) ?>"><select name="status"><option value="">全部状态</option><option>草稿</option><option>处理中</option><option>已完成</option></select><button type="submit">搜索</button></form><span class="toolbar-note">本页面为底座入口，正式业务闭环按后续阶段启用。</span></section>

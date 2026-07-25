@@ -36,7 +36,7 @@ return [
         ['key'=>'receivable_alerts','label'=>'应收提醒'], ['key'=>'profit_analysis','label'=>'利润分析'],
     ],
     '系统设置' => [
-        ['key'=>'system_settings','label'=>'系统设置'], ['key'=>'approval_flows','label'=>'审批流程'],
+        ['key'=>'permission_center','label'=>'权限中心'], ['key'=>'system_settings','label'=>'系统设置'], ['key'=>'approval_flows','label'=>'审批流程'],
         ['key'=>'role_permissions','label'=>'角色权限'], ['key'=>'field_templates','label'=>'字段模板'],
         ['key'=>'mail_settings','label'=>'邮件配置'], ['key'=>'number_rules','label'=>'编号规则'],
         ['key'=>'activity_logs','label'=>'日志中心'], ['key'=>'data_backups','label'=>'数据备份'],
