@@ -8,6 +8,21 @@ $historyRows = $ops['delivery_queue'] ?? [];
 if ($quoteMode !== '') {
     $catalog = (new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'], '', '', 1, 8);
     $catalogRows = $catalog['rows'] ?? [];
+    if ($catalogRows === []) {
+        $previewProducts = [
+            ['81.30013','DELTA PENDANT LIGHT','吊装式灯具','https://artdonlighting.com/uploads/website/products/2026/07/20260709_183004_delta-300_d9e50b03.jpg',38.00],
+            ['56.03711','NOVAL RECESSED DOWNLIGHT','嵌入式灯具','https://artdonlighting.com/uploads/website/products/2026/07/20260702_104652_noval-37_0dcda92c.jpg',22.50],
+            ['52.03526','ULTRA-SLIM CABINET LIGHT','嵌入式有边灯具','https://artdonlighting.com/uploads/website/products/2026/06/20260630_192333_ultra-slim-35_b07a4b6f.jpg',6.80],
+            ['51.05013','SHOWLITE CABINET LIGHT','嵌入式有边灯具','https://artdonlighting.com/uploads/website/products/2026/06/20260630_185029_showlite-50_88f81162.jpg',11.20],
+            ['81.20012','DELTA PENDANT LIGHT','吊装式灯具','https://artdonlighting.com/uploads/website/products/2026/07/20260709_182408_delta-200_b6d90c36.jpg',28.00],
+            ['51.03027','SHOWLITE CABINET LIGHT','嵌入式有边灯具','https://artdonlighting.com/uploads/website/products/2026/06/20260630_184815_showlite-30_a2b9a895.jpg',7.60],
+            ['52.03525','ULTRA-SLIM CABINET LIGHT','嵌入式有边灯具','https://artdonlighting.com/uploads/website/products/2026/06/20260630_192138_ultra-slim-35_6ce0bbe4.jpg',5.80],
+            ['56.02311','NOVAL RECESSED DOWNLIGHT','嵌入式灯具','https://artdonlighting.com/uploads/website/products/2026/07/20260702_104521_noval-23_c46593ba.jpg',9.80],
+        ];
+        foreach ($previewProducts as $product) {
+            $catalogRows[] = ['model_no'=>$product[0],'product_name'=>$product[1],'category'=>$product[2],'image_path'=>$product[3],'bom_cost'=>$product[4] / 1.65,'preview_only'=>true];
+        }
+    }
     require __DIR__ . '/quote_' . $quoteMode . '.php';
     return;
 }
