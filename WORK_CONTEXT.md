@@ -23,6 +23,7 @@
 
 ## 最近完成
 
+- 新建 `material_center_v1` 只读基础版：位于广州 ERP 正确子目录，接入统一登录与旧 `bom_materials` 只读总览，包含搜索、分类筛选、统计、详情抽屉和健康检查；当前无写入 SQL、不展示价格与供应商。
 - 已完成本地、GitHub、服务器三方同步审计：同步前已跟踪代码均为 `1b9436e`；服务器无已跟踪改动，GitHub 与本地一致。服务器缺少 GitHub SSH 凭据，后续由本地推送 GitHub并通过 Git bundle 快进服务器仓库。
 - 已确认两个本地路径分别属于家用电脑 `qiulei-home` 和办公电脑 `qiulei-office`；每次使用当前电脑对应目录。
 - 已确认服务器唯一运行目录为 `/www/wwwroot/Artdon/artdon_erp/`，后续不再同步外层 `/www/wwwroot/Artdon/`。
@@ -40,17 +41,17 @@
 
 ## 最近 Git 状态
 
-- 最近业务提交：`d82ffad`（锁定派工待办 7 个工具列宽度）。
+- 最近业务提交：`565aeab`（新建物料中心只读基础版）。
 - 协作规则与上下文文件已纳入 Git 管理；具体最新提交以 `git log -1` 为准。
 
 ## 本次检查与部署
 
-- 修改文件：`WORK_CONTEXT.md`。
-- 同步检查：本地与 GitHub均为 `1b9436e`；服务器已跟踪文件干净且 HEAD 为 `1b9436e`。
-- 未跟踪文件：本地与服务器共有 `CODEX.command` 和两份商业中心执行文档，哈希一致；服务器独有 `_migration_backups/`，均保留原状且未擅自纳入 Git。
-- 服务器同步：服务器无法直接访问 GitHub SSH，最终上下文提交将通过 Git bundle 快进到唯一运行目录 `/www/wwwroot/Artdon/artdon_erp/`。
-- Git：本次同步记录提交与推送状态以最新 `git log -1` 为准。
+- 修改文件：新增 `material_center_v1/` 下 11 个受 Git 管理的基础文件，并更新 `WORK_CONTEXT.md`。
+- 本地检查：`git diff --check`、`node --check material_center_v1/assets/js/app.js`、写入 SQL 扫描通过；7 个 PHP 文件通过服务器 PHP CLI 标准输入语法检查。
+- 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`；确认 `/www/wwwroot/Artdon/material_center_v1` 不存在。
+- 服务器检查：全部 PHP 文件通过 `php -l`；未登录服务探测返回 `unauthenticated`；核心入口、CSS、JS 与本地 SHA-256 一致。
+- Git：业务提交 `565aeab` 已推送到 `origin/main`；最终上下文提交完成后通过 Git bundle 快进服务器仓库。
 
 ## 待办
 
-- 当前没有用户指定但尚未完成的开发任务。
+- 物料中心当前为只读基础版；下一阶段待确认分类与属性模板、永久编码、替代料、供应商/价格权限、BOM 引用和写入审计方案。
