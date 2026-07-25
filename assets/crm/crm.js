@@ -23147,7 +23147,13 @@
       body.set('file_kind', kind);
       if (state.csrf) body.set('csrf_token', state.csrf);
       Array.prototype.forEach.call(input.files || [], function (file) { body.append('files[]', file); });
-      return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) { return res.json(); }).then(function (json) {
+      return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
+        return res.text().then(function (text) {
+          try { return JSON.parse(text); } catch (error) {
+            throw new Error((text || '附件接口返回格式错误').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300));
+          }
+        });
+      }).then(function (json) {
         if (!json.success) throw new Error(json.message || '文件上传失败');
         return json;
       });

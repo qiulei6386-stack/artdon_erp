@@ -570,9 +570,11 @@ function crm_visit_file_row(int $fileId): array
 
 function crm_visit_upload_dir(): array
 {
-    $relative = 'uploads/visit_files/' . date('Ym');
+    $relative = 'storage/visit_files/' . date('Ym');
     $absolute = __DIR__ . '/' . $relative;
-    if (!is_dir($absolute) && !mkdir($absolute, 0775, true) && !is_dir($absolute)) {
+    $parent = dirname($absolute);
+    if ((!is_dir($parent) && !@mkdir($parent, 0775, true) && !is_dir($parent))
+        || (!is_dir($absolute) && !@mkdir($absolute, 0775, true) && !is_dir($absolute))) {
         throw new RuntimeException('拜访附件目录不可写：' . $relative);
     }
     return [$relative, $absolute];

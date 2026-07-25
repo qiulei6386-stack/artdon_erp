@@ -2,6 +2,14 @@
 
 更新时间：2026-07-25
 
+## 本次：CRM 拜访/来访新建保存 JSON 报错修复
+
+- 根因：新建主记录已成功写入，但选择图片/附件后，上传接口尝试在不可写的 `uploads` 根目录创建 `visit_files`，PHP 输出 `mkdir(): Permission denied` HTML 警告，前端 `res.json()` 因而报 `Unexpected token '<'`。
+- 处理：新拜访附件改存到已有写权限且仍由受控下载接口读取的 `storage/visit_files/YYYYMM`；目录创建失败时抑制 PHP HTML 警告并返回业务错误；前端附件上传先读取文本再解析 JSON，异常响应改为可读提示。
+- 修改文件：`crm_visit.php`、`assets/crm/crm.js`、`WORK_CONTEXT.md`。
+- 数据核对：服务器已有来访 ID 2–5，其中 ID 2–5 为 2026-07-25 反复保存产生；未擅自删除，待用户确认哪些重复记录需要清理。
+- 检查：`git diff --check`、`node --check assets/crm/crm.js`、服务器 PHP 8.0 标准输入语法检查均通过；最终提交、推送、部署、服务器目录创建/语法复检和三方提交一致性见本轮最终结果。
+
 ## 本次：广州系统与商务中心双击启动入口
 
 - 按用户实际文件整理，将商务中心启动入口移动并重命名为 `commercial_center_v1/离务中心CODEX.command`，同时修正为从所在目录直接启动商务中心 Codex。
