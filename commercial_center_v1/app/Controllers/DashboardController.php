@@ -27,9 +27,12 @@ final class DashboardController
         $category = trim((string)($_GET['category'] ?? ''));
         $catalogService = new CatalogCenterService();
         $requestedView = (string)($_GET['view'] ?? 'dashboard');
+        $productPage = max(1, (int)($_GET['p'] ?? 1));
+        $requestedProductPageSize = (int)($_GET['size'] ?? 24);
+        $productPageSize = in_array($requestedProductPageSize, [12, 24, 48], true) ? $requestedProductPageSize : 24;
         $emptyCatalog = ['status' => 'not_requested', 'rows' => [], 'categories' => [], 'permission' => ''];
         $products = $requestedView === 'products'
-            ? $catalogService->products($auth, $search, $category)
+            ? $catalogService->products($auth, $search, $category, $productPage, $productPageSize)
             : $emptyCatalog;
         $materials = $requestedView === 'materials'
             ? $catalogService->materials($auth, $search, $category)

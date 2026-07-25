@@ -1,12 +1,12 @@
 <?php
 $pageNo=max(1,(int)($_GET['p']??1)); $requestedSize=(int)($_GET['size']??12); $pageSize=in_array($requestedSize,[6,12,24],true)?$requestedSize:12; $pageSize=max(1,$pageSize); $viewMode=(($_GET['mode']??'cards')==='list')?'list':'cards';
-$catalog=(new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'],(string)($_GET['q']??''),(string)($_GET['category']??''));
-$rows=$catalog['rows']; $total=count($rows); $pages=max(1,(int)ceil($total/$pageSize)); $pageNo=min($pageNo,$pages); $shown=array_slice($rows,($pageNo-1)*$pageSize,$pageSize);
+$catalog=(new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'],(string)($_GET['q']??''),(string)($_GET['category']??''),$pageNo,$pageSize);
+$shown=$catalog['rows']; $total=(int)$catalog['total']; $pages=(int)$catalog['pages']; $pageNo=(int)$catalog['page']; $statusCounts=$catalog['status_counts'];
 ?>
 <section class="product-library-container">
   <header class="page-header"><div><span class="eyebrow">COMMERCIAL PRODUCT LIBRARY</span><h1>报价产品库</h1><p>命名中心产品只读引用，作为后续报价的统一产品入口。</p></div><div class="page-meta"><span>来源</span><b>命名中心只读</b></div></header>
   <?php $pageQuery='page=commercial_product_library&mode='.$viewMode.'&q='.rawurlencode((string)($_GET['q']??'')).'&category='.rawurlencode((string)($_GET['category']??'')).'&size='.$pageSize; ?><div class="product-control-bar">
-    <div class="product-summary-bar"><span>产品总数 <b><?= $total ?></b></span><span>可报价 <b><?= count(array_filter($rows,fn($r)=>(string)($r['status']??'')==='可报价')) ?></b></span><span>开发中 <b><?= count(array_filter($rows,fn($r)=>(string)($r['status']??'')==='开发中')) ?></b></span><span>停售 <b><?= count(array_filter($rows,fn($r)=>(string)($r['status']??'')==='停售')) ?></b></span></div>
+    <div class="product-summary-bar"><span>产品总数 <b><?= $total ?></b></span><span>可报价 <b><?= (int)$statusCounts['可报价'] ?></b></span><span>开发中 <b><?= (int)$statusCounts['开发中'] ?></b></span><span>停售 <b><?= (int)$statusCounts['停售'] ?></b></span></div>
     <form class="product-toolbar" method="get"><input type="hidden" name="page" value="commercial_product_library"><input type="hidden" name="mode" value="<?= $viewMode ?>"><input type="search" name="q" value="<?= cc_h((string)($_GET['q']??'')) ?>" placeholder="型号 / 系列 / 类别 / 功率 / 参数"><select name="category"><option value="">分类</option><?php foreach($catalog['categories'] as $c): ?><option value="<?= cc_h($c['category']) ?>"><?= cc_h($c['category']) ?></option><?php endforeach; ?></select><select name="status"><option value="">状态</option><option>可报价</option><option>开发中</option><option>停售</option></select><select name="power"><option value="">功率</option></select><a href="?page=commercial_product_library&mode=<?= $viewMode==='list'?'cards':'list' ?>"><?= $viewMode==='list'?'卡片':'列表' ?></a></form>
     <footer class="pagination-footer"><a href="?<?= $pageQuery ?>&p=<?= max(1,$pageNo-1) ?>">上一页</a><span><?= $pageNo ?> / <?= $pages ?></span><a href="?<?= $pageQuery ?>&p=<?= min($pages,$pageNo+1) ?>">下一页</a></footer>
   </div>

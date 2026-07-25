@@ -14,7 +14,7 @@ final class LegacyCatalogReadRepository
         $this->connection = db();
     }
 
-    public function products(string $search = '', string $category = '', int $limit = 0): array
+    public function products(string $search = '', string $category = '', int $limit = 0, int $offset = 0): array
     {
         // Naming-center deployments have different generations of image columns.
         // Resolve the actual read-only schema first so the catalog remains compatible.
@@ -41,9 +41,33 @@ final class LegacyCatalogReadRepository
                     dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
              FROM naming_models
              WHERE ' . implode(' AND ', $where) . '
-             ORDER BY updated_at DESC,id DESC' . ($limit > 0 ? ' LIMIT ' . $this->limit($limit) : ''),
+             ORDER BY updated_at DESC,id DESC' . ($limit > 0 ? ' LIMIT ' . $this->limit($limit) . ' OFFSET ' . max(0, $offset) : ''),
             $params
         );
+    }
+
+    public function productCount(string $search = '', string $category = ''): int
+    {
+        [$where, $params] = $this->productWhere($search, $category);
+        return (int)$this->selectValue(
+            'SELECT COUNT(*) FROM naming_models WHERE ' . implode(' AND ', $where),
+            $params
+        );
+    }
+
+    public function productStatusCounts(string $search = '', string $category = ''): array
+    {
+        [$where, $params] = $this->productWhere($search, $category);
+        $rows = $this->selectAll(
+            'SELECT status,COUNT(*) AS total FROM naming_models WHERE ' . implode(' AND ', $where) . ' GROUP BY status',
+            $params
+        );
+        $counts = ['可报价'=>0, '开发中'=>0, '停售'=>0];
+        foreach ($rows as $row) {
+            $status = (string)($row['status'] ?? '');
+            if (array_key_exists($status, $counts)) $counts[$status] = (int)$row['total'];
+        }
+        return $counts;
     }
 
     public function productCategories(): array
@@ -116,6 +140,32 @@ final class LegacyCatalogReadRepository
         $statement = $this->connection->prepare($sql);
         $statement->execute($parameters);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function selectValue(string $sql, array $parameters = [])
+    {
+        if (!preg_match('/^\s*SELECT\b/i', $sql)) {
+            throw new \LogicException('Catalog repository only permits SELECT.');
+        }
+        $statement = $this->connection->prepare($sql);
+        $statement->execute($parameters);
+        return $statement->fetchColumn();
+    }
+
+    private function productWhere(string $search, string $category): array
+    {
+        $where = ['website_deleted=0'];
+        $params = [];
+        if ($search !== '') {
+            $where[] = '(model_no LIKE ? OR product_name LIKE ? OR series_name LIKE ?)';
+            $term = '%' . $search . '%';
+            array_push($params, $term, $term, $term);
+        }
+        if ($category !== '') {
+            $where[] = 'category=?';
+            $params[] = $category;
+        }
+        return [$where, $params];
     }
 
     private function tableColumns(string $table): array

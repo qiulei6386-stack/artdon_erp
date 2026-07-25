@@ -2,6 +2,14 @@
 
 更新时间：2026-07-25
 
+## 本次：商务中心产品页统一数据库分页
+
+- 报价产品库和“产品与配置”统一改为服务端分页：数据库先执行匹配总数查询，再使用 `LIMIT/OFFSET` 只读取当前页产品，不再读取全部产品后由 PHP `array_slice`。
+- BOM 成本只对当前页型号进行只读补充；产品分类和状态数量使用数据库聚合查询，不加载全部产品明细。
+- 产品服务统一返回 `total/page/pages/page_size`；“产品与配置”新增 12/24/48 个每页选择、页码、上一页和下一页，并保留搜索与分类条件。
+- 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`app/Services/CatalogCenterService.php`、`app/Controllers/DashboardController.php`、`views/product_library_v2.php`、`index.php`、`tests/catalog_smoke.php`、`WORK_CONTEXT.md`。
+- 检查、提交、推送、服务器部署及三方一致性结果待本轮完成后补充。
+
 ## 本次：报价产品网格合理最大列数修正
 
 - 复核确认上一版在超宽内容区会计算出 12 列，默认 12 个产品全部进入第一排，因此页面没有第二排，并非第二排再次被裁剪。

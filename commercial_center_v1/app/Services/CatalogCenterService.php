@@ -10,14 +10,19 @@ use Throwable;
 
 final class CatalogCenterService
 {
-    public function products(array $authentication, string $search, string $category): array
+    public function products(array $authentication, string $search, string $category, int $page = 1, int $pageSize = 24): array
     {
+        $page = max(1, $page);
+        $pageSize = max(1, min(100, $pageSize));
         if (!$authentication['authenticated']) {
-            return ['status' => 'unauthenticated', 'rows' => [], 'categories' => [], 'permission' => 'commercial_center.view'];
+            return ['status'=>'unauthenticated','rows'=>[],'categories'=>[],'permission'=>'commercial_center.view','total'=>0,'page'=>1,'pages'=>1,'page_size'=>$pageSize,'status_counts'=>['可报价'=>0,'开发中'=>0,'停售'=>0]];
         }
         try {
             $repository = new LegacyCatalogReadRepository();
-            $rows = $repository->products($search, $category);
+            $total = $repository->productCount($search, $category);
+            $pages = max(1, (int)ceil($total / $pageSize));
+            $page = min($page, $pages);
+            $rows = $repository->products($search, $category, $pageSize, ($page - 1) * $pageSize);
             // BOM is an optional enrichment. A legacy BOM schema mismatch must
             // never make the read-only product catalog look unauthorized.
             try {
@@ -28,9 +33,15 @@ final class CatalogCenterService
             }
             foreach ($rows as &$row) { $cost = $costs[(string)$row['model_no']] ?? null; $row['bom_cost'] = $cost; $row['product_name'] = trim((string)$row['product_name']) . ' · BOM成本 ' . ($cost === null ? '—' : number_format((float)$cost, 4)); }
             unset($row);
-            return ['status'=>'available','permission'=>'commercial_center.view','rows'=>$rows,'categories'=>$repository->productCategories()];
+            return [
+                'status'=>'available','permission'=>'commercial_center.view','rows'=>$rows,
+                'categories'=>$repository->productCategories(),'total'=>$total,'page'=>$page,
+                'pages'=>$pages,'page_size'=>$pageSize,
+                'status_counts'=>$repository->productStatusCounts($search, $category),
+            ];
         } catch (\Throwable $error) {
-            return ['status'=>'unavailable','permission'=>'commercial_center.view','rows'=>[],'categories'=>[]];
+            Logger::error('Product catalog page read failed', ['message'=>$error->getMessage()]);
+            return ['status'=>'unavailable','permission'=>'commercial_center.view','rows'=>[],'categories'=>[],'total'=>0,'page'=>1,'pages'=>1,'page_size'=>$pageSize,'status_counts'=>['可报价'=>0,'开发中'=>0,'停售'=>0]];
         }
         /*
         return $this->load($authentication, 'commercial_center.view', static function (LegacyCatalogReadRepository $repository) use ($search, $category): array {
