@@ -149,6 +149,7 @@ $stats = [
 ];
 
 $quickLinks = [
+    ['key' => 'commercial_center', 'label' => '商务中心', 'href' => 'commercial_center_v1/login.php', 'permission' => 'dashboard.view', 'icon' => 'quote'],
     ['key' => 'crm', 'label' => '进入 CRM', 'href' => 'crm.php', 'permission' => ['customer.view', 'dashboard.view'], 'icon' => 'crm'],
     ['key' => 'mail', 'label' => '邮箱中心', 'href' => 'mail.php', 'permission' => 'mail.view', 'icon' => 'mail'],
     ['key' => 'promotion', 'label' => '推广中心', 'href' => 'promotion.php', 'permission' => 'promotion.view', 'icon' => 'promotion'],
@@ -169,6 +170,7 @@ $quickLinks = [
 
 $moduleGroups = [
     '业务经营' => [
+        ['key' => 'commercial_center', 'title' => '商务中心', 'en' => 'Commercial Center', 'desc' => '商务运营工作台、报价产品库、产品同步和后续商务流程统一入口。', 'href' => 'commercial_center_v1/login.php', 'permission' => 'dashboard.view', 'icon' => 'quote', 'accent' => 'cyan', 'status' => '已接入统一登录', 'tags' => ['商务运营', '报价产品库', '统一账号']],
         ['key' => 'crm', 'title' => 'CRM 客户经营', 'en' => 'Customer Operation', 'desc' => '客户360、邮箱、联系人、跟进、推广、客户日志、导入导出、数据分析。', 'href' => 'crm.php', 'permission' => ['customer.view', 'dashboard.view'], 'icon' => 'crm', 'accent' => 'blue', 'status' => '已启用', 'tags' => ['客户经营', '邮件协同', '推广跟进', '日志审计', '数据分析']],
         ['key' => 'mail', 'title' => '邮箱中心', 'en' => 'Mail Center', 'desc' => '收件箱、发件箱、草稿、已发送、客户关联、附件和 AI 邮件识别入口。', 'href' => 'mail.php', 'permission' => 'mail.view', 'icon' => 'mail', 'accent' => 'green', 'status' => '已启用', 'tags' => ['收件箱', '发件箱', '客户关联', 'AI识别']],
         ['key' => 'promotion', 'title' => '推广中心', 'en' => 'Marketing Center', 'desc' => '推广项目、客户分组、执行清单、群推广、邮件推广和效果分析。', 'href' => 'promotion.php', 'permission' => 'promotion.view', 'icon' => 'promotion', 'accent' => 'amber', 'status' => '已启用', 'tags' => ['推广任务', '客户分组', '执行清单', '效果分析']],
