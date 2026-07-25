@@ -50,12 +50,17 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
             $uiValues=(new \Artdon\MaterialCenter\Services\SettingsService())->resolved($context)['values']??[];
         }
     } catch (Throwable) {}
+    $pending=static fn(string $page)=>$prefix.'module.php?page='.$page;
     $groups = [
-        '总览' => ['home'=>[$prefix.'./','总','物料总览'],'status'=>[$prefix.'system_status.php','态','系统状态']],
-        '物料主数据' => ['materials'=>[$prefix.'module.php?page=materials','物','通用物料库'],'categories'=>[$prefix.'module.php?page=categories','类','物料分类'],'suppliers'=>[$prefix.'module.php?page=suppliers','供','供应商资料']],
-        '电源' => ['power'=>[$prefix.'power_supplies.php','源','电源源数据'],'standardize'=>[$prefix.'power_standardization.php','标','电源标准化'],'library'=>[$prefix.'formal_power_supplies.php','库','正式电源库'],'bands'=>[$prefix.'power_bands.php','档','功率档管理'],'rules'=>[$prefix.'product_power_rules.php','规','产品电源规则'],'simulate'=>[$prefix.'power_match_simulator.php','配','匹配模拟']],
-        'BOM 与审计' => ['audit'=>[$prefix.'bom_audit.php','审','BOM 源审计'],'logs'=>[$prefix.'module.php?page=activity_logs','志','活动日志']],
-        '系统' => ['settings'=>[$prefix.'settings.php','设','设置中心'],'permissions'=>[$prefix.'module.php?page=permissions','权','权限说明'],'gallery'=>[$prefix.'ui-gallery.php','UI','组件展示']],
+        '工作台'=>['home'=>[$prefix.'./','⌂','物料总览'],'incomplete'=>[$pending('incomplete'),'待','待完善资料'],'pending_maps'=>[$pending('pending_maps'),'映','待确认映射'],'duplicates'=>[$pending('duplicates'),'重','重复候选'],'price_changes'=>[$pending('price_changes'),'价','最近价格变化'],'recent_changes'=>[$pending('recent_changes'),'新','最近修改']],
+        '物料主数据'=>['materials'=>[$pending('materials'),'物','全部物料'],'library'=>[$prefix.'formal_power_supplies.php','电','电源'],'chips'=>[$pending('chips'),'芯','芯片'],'optics'=>[$pending('optics'),'光','光学'],'profiles'=>[$pending('profiles'),'型','型材 / 散热件'],'mounting'=>[$pending('mounting'),'装','接头 / 安装件'],'accessories'=>[$pending('accessories'),'配','其他配件'],'packaging'=>[$pending('packaging'),'包','包装'],'temporary'=>[$pending('temporary'),'临','临时物料']],
+        '标准化'=>['audit'=>[$prefix.'bom_audit.php','审','BOM 源审计'],'power'=>[$prefix.'power_supplies.php','源','电源源数据'],'standardize'=>[$prefix.'power_standardization.php','标','电源标准化'],'bands'=>[$prefix.'power_bands.php','档','功率档管理'],'chip_standardize'=>[$pending('chip_standardize'),'芯','芯片标准化'],'optics_standardize'=>[$pending('optics_standardize'),'光','光学标准化'],'duplicate_clean'=>[$pending('duplicate_clean'),'清','重复清洗'],'field_mapping'=>[$pending('field_mapping'),'映','字段映射']],
+        '产品适配'=>['fit_overview'=>[$pending('fit_overview'),'总','适配总览'],'rules'=>[$prefix.'product_power_rules.php','电','电源适配规则'],'simulate'=>[$prefix.'power_match_simulator.php','算','匹配模拟'],'chip_rules'=>[$pending('chip_rules'),'芯','芯片适配规则'],'optics_rules'=>[$pending('optics_rules'),'光','光学适配规则'],'conflicts'=>[$pending('conflicts'),'冲','适配冲突']],
+        '供应商与价格'=>['suppliers'=>[$pending('suppliers'),'供','供应商资料'],'supplier_materials'=>[$pending('supplier_materials'),'料','供应商物料'],'prices'=>[$pending('prices'),'价','采购价管理'],'price_history'=>[$pending('price_history'),'史','价格历史'],'moq'=>[$pending('moq'),'期','MOQ / 交期']],
+        '替代与版本'=>['alternatives'=>[$pending('alternatives'),'替','替代物料'],'versions'=>[$pending('versions'),'版','物料版本'],'changes'=>[$pending('changes'),'变','变更记录']],
+        '数据接入'=>['legacy_source'=>[$prefix.'power_supplies.php','旧','BOM 旧物料源'],'excel_import'=>[$pending('excel_import'),'入','Excel 导入任务'],'exports'=>[$pending('exports'),'出','导出任务'],'sync_logs'=>[$pending('sync_logs'),'同','同步日志']],
+        '文档与日志'=>['documents'=>[$pending('documents'),'文','规格与认证文件'],'images'=>[$pending('images'),'图','图片资料'],'logs'=>[$pending('activity_logs'),'志','操作日志']],
+        '系统与设置'=>['settings'=>[$prefix.'settings.php','设','外观与主题'],'permissions'=>[$pending('permissions'),'权','权限与角色'],'status'=>[$prefix.'system_status.php','态','系统状态'],'gallery'=>[$prefix.'ui-gallery.php','UI','组件展示'],'design_spec'=>[$pending('design_spec'),'规','设计规范']],
     ];
     echo '<!doctype html><html lang="zh-CN" data-theme="system"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
     $theme=(string)($uiValues['theme.mode']??'light');
@@ -73,7 +78,7 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
         foreach ($links as $key => [$href, $icon, $label]) echo '<a href="' . mc_h($href) . '"' . ($active === $key ? ' aria-current="page"' : '') . '><i class="ui-nav-icon">' . mc_h($icon) . '</i><span>' . mc_h($label) . '</span></a>';
         echo '</div></details>';
     }
-    echo '</nav><div class="ui-side-note"><b>安全旁路模式</b><span>只读旧 BOM 物料源，不写价格、供应商或旧表结构。</span></div></aside><main class="ui-main">';
+    echo '</nav><div class="ui-side-note"><b>安全旁路模式</b><span>旧 BOM 只读，新数据仅写 mc_ 表。</span></div></aside><main class="ui-main">';
     echo '<header class="ui-topbar"><div class="ui-topbar-group"><button class="ui-btn ui-btn-ghost ui-btn-icon ui-mobile-nav" type="button" data-ui-mobile-nav aria-label="打开导航">☰</button><span class="ui-muted ui-breadcrumb-extra">广州 ERP / 物料中心</span><b>/</b><strong>' . mc_h($title) . '</strong></div>';
     echo '<div class="ui-topbar-group"><button class="ui-btn ui-btn-ghost ui-btn-sm ui-page-actions" type="button" data-ui-presentation>展示模式</button><div class="ui-dropdown ui-page-actions"><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" aria-expanded="false" aria-controls="theme-menu" data-ui-dropdown-trigger>主题</button><div class="ui-menu" id="theme-menu" role="menu" aria-hidden="true"><button type="button" data-ui-theme="light">浅色</button><button type="button" data-ui-theme="dark">深色</button><button type="button" data-ui-theme="system">跟随系统</button></div></div><span class="ui-muted">' . mc_h($user['real_name'] ?? $user['username'] ?? '未登录') . '</span></div></header><section class="ui-content">';
 }

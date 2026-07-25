@@ -3,7 +3,7 @@
 .ui-brand { display: flex; align-items: center; gap: 10px; padding: 3px 4px 22px; }
 .ui-brand-mark { width: 38px; height: 38px; border-radius: var(--ui-radius-lg); background: #102a3a; color: #fff; display: grid; place-items: center; font-weight: 900; }
 .ui-brand-copy { display: grid; }.ui-brand-copy small { color: var(--ui-text-muted); }
-.ui-nav { display: grid; gap: 6px; }
+.ui-nav { display: grid; gap: 6px; overflow:auto;min-height:0;padding-right:2px; }
 .ui-nav-group { border-bottom: 1px solid rgba(127,145,160,.22); }
 .ui-nav-group summary { display:flex;align-items:center;justify-content:space-between;padding:9px 11px;color:var(--ui-text-muted);font-size:12px;font-weight:800;cursor:pointer;list-style:none; }
 .ui-nav-group summary::-webkit-details-marker { display:none; }
@@ -13,12 +13,12 @@
 .ui-nav a { min-height: 42px; padding: 0 11px; border-radius: var(--ui-radius-lg); color: var(--ui-text-muted); text-decoration: none; display: flex; align-items: center; gap: 10px; font-size: var(--mc-nav-font-size,13px); font-weight: 700; }
 .ui-nav a:hover, .ui-nav a[aria-current="page"] { background: var(--ui-primary-soft); color: var(--ui-primary-strong); }
 .ui-nav-icon { width: 24px; height: 24px; border-radius: 7px; background: var(--ui-surface-subtle); display: grid; place-items: center; }
-.ui-side-note { margin-top: auto; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); padding: 12px; display: grid; gap: 5px; }
+.ui-side-note { margin-top:10px;border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); padding: 12px; display: grid; gap: 5px;flex:none }
 .ui-side-note span { color: var(--ui-text-muted); font-size: 11px; }
-.ui-main { min-width: 0; }
+.ui-main { min-width:0;height:100vh;display:grid;grid-template-rows:var(--ui-topbar-height) minmax(0,1fr);overflow:hidden }
 .ui-topbar { height: var(--ui-topbar-height); padding: 0 22px; border-bottom: 1px solid var(--ui-border); background: var(--ui-surface); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .ui-topbar-group { display: flex; align-items: center; gap: 8px; }
-.ui-content { max-width: 1500px; margin: auto; padding: 24px; }
+.ui-content { width:100%;max-width:none;margin:0;padding:18px 20px;min-height:0;overflow:auto;display:flex;flex-direction:column }
 .ui-page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 18px; }
 .ui-page-head h1 { margin: 5px 0 6px; }.ui-page-head p { margin: 0; color: var(--ui-text-muted); }
 .ui-presentation .ui-sidebar, .ui-presentation .ui-topbar, .ui-presentation .ui-page-actions { display: none; }

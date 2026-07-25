@@ -1,114 +1,46 @@
 (() => {
-  const registry = new Map();
+  const registry=new Map(),clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
   document.querySelectorAll('[data-ui-table]').forEach(enhance);
-
-  function enhance(table) {
-    const body = table.tBodies[0];
-    if (!body) return;
-    const state = { table, body, rows: [...body.rows], page: 0, size: Number(table.dataset.pageSize || 20), sortIndex: -1, direction: 1 };
-    registry.set(`#${table.id}`, state);
-    setupSelection(state);
-    setupSorting(state);
-    setupResize(state);
-    renderPagination(state);
+  function enhance(table){
+    const body=table.tBodies[0];if(!body)return;
+    const key=`mc-table:${location.pathname}:${table.id||'main'}`,saved=JSON.parse(localStorage.getItem(key)||'{}'); // ui-page-jump
+    const state={table,body,key,rows:[...body.rows],page:0,size:saved.size||'auto',rowHeight:saved.rowHeight||44,sortIndex:-1,direction:1,hidden:new Set(saved.hidden||[])}; // data-ui-select-all data-sort data-density
+    registry.set(`#${table.id}`,state);table.closest('.ui-table-panel')?.classList.add('ui-table-viewport');
+    setupSelection(state);setupSorting(state);setupResize(state);setupColumnDrag(state);applySaved(state,saved);buildPagination(state);observe(state);render(state);
   }
-
-  function setupSelection({ table, body }) {
-    const all = table.querySelector('[data-ui-select-all]');
-    const boxes = [...table.querySelectorAll('[data-ui-row-select]')];
-    const sync = () => {
-      const selected = boxes.filter(box => box.checked).length;
-      if (all) { all.checked = selected === boxes.length && boxes.length > 0; all.indeterminate = selected > 0 && selected < boxes.length; }
-      boxes.forEach(box => box.closest('tr')?.classList.toggle('is-selected', box.checked));
-    };
-    all?.addEventListener('change', () => { boxes.forEach(box => { if (!box.closest('tr').hidden) box.checked = all.checked; }); sync(); });
-    body.addEventListener('change', event => { if (event.target.matches('[data-ui-row-select]')) sync(); });
+  function setupSelection(state){
+    const all=state.table.querySelector('[data-ui-select-all]');
+    const sync=()=>{const boxes=[...state.table.querySelectorAll('[data-ui-row-select]')],selected=boxes.filter(x=>x.checked);if(all){all.checked=selected.length===boxes.length&&boxes.length>0;all.indeterminate=selected.length>0&&selected.length<boxes.length;}boxes.forEach(x=>x.closest('tr')?.classList.toggle('is-selected',x.checked));state.table.dispatchEvent(new CustomEvent('ui:selection',{bubbles:true,detail:{rows:selected.map(x=>x.closest('tr'))}}));};
+    all?.addEventListener('change',()=>{[...state.table.querySelectorAll('[data-ui-row-select]')].forEach(x=>{if(!x.closest('tr').hidden)x.checked=all.checked;});sync();});
+    state.body.addEventListener('change',e=>{if(e.target.matches('[data-ui-row-select]'))sync();});
   }
-
-  function setupSorting(state) {
-    state.table.querySelectorAll('th[data-sort]').forEach((th, index) => {
-      const realIndex = th.cellIndex;
-      th.tabIndex = 0;
-      const sort = () => {
-        state.direction = state.sortIndex === realIndex ? -state.direction : 1;
-        state.sortIndex = realIndex;
-        state.table.querySelectorAll('th[data-sort]').forEach(item => item.classList.remove('is-asc','is-desc'));
-        th.classList.add(state.direction === 1 ? 'is-asc' : 'is-desc');
-        state.rows.sort((a,b) => compare(a.cells[realIndex]?.textContent, b.cells[realIndex]?.textContent, th.dataset.sort === 'number') * state.direction);
-        state.rows.forEach(row => state.body.append(row));
-        state.page = 0; renderRows(state);
-      };
-      th.addEventListener('click', event => { if (!event.target.closest('.ui-resizer')) sort(); });
-      th.addEventListener('keydown', event => { if (event.key === 'Enter') sort(); });
-    });
-  }
-
-  function setupResize(state) {
-    [...state.table.tHead.rows[0].cells].forEach(th => {
-      if (th.classList.contains('ui-select-col')) return;
-      const grip = document.createElement('span');
-      grip.className = 'ui-resizer';
-      grip.addEventListener('pointerdown', event => {
-        event.preventDefault();
-        const start = event.clientX, width = th.offsetWidth;
-        state.table.classList.add('is-resizing');
-        const move = e => { th.style.width = `${Math.max(56, width + e.clientX - start)}px`; th.style.minWidth = th.style.width; };
-        const up = () => { state.table.classList.remove('is-resizing'); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
-        document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
-      });
-      grip.addEventListener('dblclick', event => { event.stopPropagation(); th.style.width = ''; th.style.minWidth = ''; });
-      th.append(grip);
-    });
-  }
-
-  function renderPagination(state) {
-    state.bar?.remove();
-    state.pages = Math.max(1, Math.ceil(state.rows.length / state.size));
-    const bar = document.createElement('nav');
-    bar.className = 'ui-pagination'; bar.setAttribute('aria-label','表格分页'); state.bar = bar;
-    bar.innerHTML = `<span>共 ${state.rows.length} 条</span><label>每页 <select class="ui-select ui-page-size" aria-label="每页条数"><option>10</option><option>20</option><option>50</option></select></label><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" data-page-prev>上一页</button><span data-page-numbers></span><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" data-page-next>下一页</button><label>跳至 <input class="ui-input ui-page-jump" type="number" min="1" value="1" aria-label="跳转页码"> 页</label>`;
-    bar.querySelector('.ui-page-size').value = String(state.size);
-    bar.addEventListener('change', event => {
-      if (event.target.matches('.ui-page-size')) { state.size = Number(event.target.value); state.page = 0; renderPagination(state); }
-      if (event.target.matches('.ui-page-jump')) { state.page = Math.max(0,Math.min(state.pages - 1,Number(event.target.value) - 1)); renderRows(state); }
-    });
-    bar.addEventListener('click', event => {
-      if (event.target.closest('[data-page-prev]')) state.page = Math.max(0,state.page - 1);
-      if (event.target.closest('[data-page-next]')) state.page = Math.min(state.pages - 1,state.page + 1);
-      const page = event.target.closest('[data-page]');
-      if (page) state.page = Number(page.dataset.page);
-      renderRows(state);
-    });
-    state.table.closest('.ui-table-panel')?.append(bar);
-    renderRows(state);
-  }
-
-  function renderRows(state) {
-    state.rows.forEach((row,i) => { row.hidden = i < state.page * state.size || i >= (state.page + 1) * state.size; });
-    const numbers = state.bar.querySelector('[data-page-numbers]'); numbers.innerHTML = '';
-    const start = Math.max(0,state.page - 2), end = Math.min(state.pages,start + 5);
-    for (let i=start;i<end;i++) { const b=document.createElement('button'); b.className='ui-btn ui-btn-secondary ui-btn-sm ui-page-number'; b.type='button'; b.dataset.page=String(i); b.textContent=String(i+1); if(i===state.page)b.setAttribute('aria-current','page'); numbers.append(b); }
-    state.bar.querySelector('[data-page-prev]').disabled = state.page === 0;
-    state.bar.querySelector('[data-page-next]').disabled = state.page >= state.pages - 1;
-    state.bar.querySelector('.ui-page-jump').value = String(state.page + 1);
-    state.table.closest('.ui-table-wrap')?.scrollTo({top:0,behavior:'smooth'});
-  }
-
-  document.addEventListener('click', event => {
-    const trigger = event.target.closest('[data-ui-table-settings]');
-    if (!trigger) return;
-    const state = registry.get(trigger.dataset.uiTableSettings);
-    if (!state) { window.ArtdonUI.toast('该表格尚未接入列设置','warning'); return; }
+  function setupSorting(state){state.table.querySelectorAll('th[data-sort]').forEach(th=>{th.tabIndex=0;const run=()=>{const i=th.cellIndex;state.direction=state.sortIndex===i?-state.direction:1;state.sortIndex=i;state.table.querySelectorAll('th').forEach(x=>x.classList.remove('is-asc','is-desc'));th.classList.add(state.direction===1?'is-asc':'is-desc');state.rows.sort((a,b)=>compare(a.cells[i]?.textContent,b.cells[i]?.textContent,th.dataset.sort==='number')*state.direction);state.rows.forEach(r=>state.body.append(r));state.page=0;render(state);};th.addEventListener('click',e=>!e.target.closest('.ui-resizer')&&run());th.addEventListener('keydown',e=>e.key==='Enter'&&run());});}
+  function setupResize(state){[...state.table.tHead.rows[0].cells].forEach((th,i)=>{if(th.classList.contains('ui-select-col'))return;const grip=document.createElement('span');grip.className='ui-resizer';grip.addEventListener('pointerdown',e=>{e.preventDefault();const start=e.clientX,width=th.offsetWidth;state.table.classList.add('is-resizing');const move=x=>setWidth(state,i,clamp(width+x.clientX-start,56,640));const up=()=>{state.table.classList.remove('is-resizing');document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);save(state);};document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);});grip.addEventListener('dblclick',e=>{e.stopPropagation();autoFit(state,i);});th.append(grip);});}
+  function setupColumnDrag(state){[...state.table.tHead.rows[0].cells].forEach((th,i)=>{if(th.classList.contains('ui-select-col')||th.classList.contains('ui-action-col'))return;th.draggable=true;th.addEventListener('dragstart',e=>e.dataTransfer.setData('text/column',String(i)));th.addEventListener('dragover',e=>e.preventDefault());th.addEventListener('drop',e=>{e.preventDefault();moveColumn(state,Number(e.dataTransfer.getData('text/column')),th.cellIndex);});});}
+  function buildPagination(state){state.bar?.remove();const bar=document.createElement('nav');bar.className='ui-pagination';bar.setAttribute('aria-label','表格分页');bar.innerHTML='<span data-total></span><label class="ui-pagination-size">每页：<select class="ui-select" data-page-size><option value="auto">自动</option><option>10</option><option>20</option><option>30</option><option>50</option><option>100</option></select></label><button type="button" data-prev aria-label="上一页">‹</button><span class="ui-page-numbers"></span><button type="button" data-next aria-label="下一页">›</button><label class="ui-pagination-jump">跳至 <input class="ui-input" type="number" min="1" data-jump> 页</label>';state.bar=bar;state.table.closest('.ui-table-panel')?.append(bar);bar.querySelector('[data-page-size]').value=String(state.size);bar.addEventListener('change',e=>{if(e.target.matches('[data-page-size]')){state.size=e.target.value==='auto'?'auto':Number(e.target.value);state.page=0;save(state);render(state);}if(e.target.matches('[data-jump]')){state.page=clamp(Number(e.target.value)-1,0,state.pages-1);render(state);}});bar.addEventListener('click',e=>{if(e.target.closest('[data-prev]'))state.page--;if(e.target.closest('[data-next]'))state.page++;const p=e.target.closest('[data-page]');if(p)state.page=Number(p.dataset.page);state.page=clamp(state.page,0,state.pages-1);render(state);});}
+  function observe(state){let frame,timer;const recalc=()=>{clearTimeout(timer);timer=setTimeout(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>render(state));},80);};new ResizeObserver(recalc).observe(state.table.closest('.ui-table-panel'));window.addEventListener('resize',recalc);}
+  function pageSize(state){if(state.size!=='auto')return Number(state.size);const panel=state.table.closest('.ui-table-panel'),bar=state.bar;const available=Math.max(360,panel.getBoundingClientRect().height-(state.table.tHead?.offsetHeight||40)-(bar?.offsetHeight||46));return clamp(Math.floor(available/state.rowHeight),8,100);}
+  function render(state){const size=pageSize(state);state.pages=Math.max(1,Math.ceil(state.rows.length/size));state.page=clamp(state.page,0,state.pages-1);state.rows.forEach((r,i)=>r.hidden=i<state.page*size||i>=(state.page+1)*size);state.bar.querySelector('[data-total]').textContent=`共 ${state.rows.length} 条`;const nums=state.bar.querySelector('.ui-page-numbers');nums.innerHTML='';pageRange(state.page,state.pages).forEach(p=>{if(p==='…'){nums.append(document.createTextNode('…'));return;}const b=document.createElement('button');b.type='button';b.dataset.page=p;b.textContent=String(p+1);if(p===state.page)b.setAttribute('aria-current','page');nums.append(b);});state.bar.querySelector('[data-prev]').disabled=state.page===0;state.bar.querySelector('[data-next]').disabled=state.page===state.pages-1;state.bar.querySelector('[data-jump]').value=String(state.page+1);state.table.closest('.ui-table-wrap')?.scrollTo({top:0});}
+  function pageRange(page,pages){if(pages<=7)return Array.from({length:pages},(_,i)=>i);const set=[0,pages-1,page-1,page,page+1].filter(x=>x>=0&&x<pages).sort((a,b)=>a-b),out=[];set.forEach((x,i)=>{if(i&&x-set[i-1]>1)out.push('…');out.push(x);});return out;}
+  function setWidth(state,i,w){[...state.table.rows].forEach(r=>{if(r.cells[i]){r.cells[i].style.width=`${w}px`;r.cells[i].style.minWidth=`${w}px`;}});}
+  function autoFit(state,i){const samples=[...state.table.rows].slice(0,101).map(r=>r.cells[i]?.textContent.trim().length||0),w=clamp(Math.max(...samples,6)*8+34,56,420);setWidth(state,i,w);save(state);}
+  function moveColumn(state,from,to){if(from===to||from<0)return;[...state.table.rows].forEach(r=>{const cell=r.cells[from],target=r.cells[to];if(cell&&target)r.insertBefore(cell,from<to?target.nextSibling:target);});save(state);}
+  function applySaved(state,saved){Object.entries(saved.widths||{}).forEach(([i,w])=>setWidth(state,Number(i),w));state.hidden.forEach(i=>[...state.table.rows].forEach(r=>r.cells[i]&&(r.cells[i].hidden=true)));}
+  function save(state){const widths={};[...state.table.tHead.rows[0].cells].forEach((c,i)=>c.style.width&&(widths[i]=parseInt(c.style.width)));localStorage.setItem(state.key,JSON.stringify({size:state.size,rowHeight:state.rowHeight,widths,hidden:[...state.hidden]}));}
+  document.addEventListener('click',event=>{
+    const trigger=event.target.closest('[data-ui-table-settings]');if(!trigger)return;
+    const state=registry.get(trigger.dataset.uiTableSettings);if(!state){window.ArtdonUI.toast('该表格尚未接入列设置','warning');return;}
     document.querySelector('.ui-table-settings')?.remove();
-    const panel = document.createElement('section'); panel.className='ui-table-settings';
-    const rect=trigger.getBoundingClientRect(); panel.style.top=`${Math.min(innerHeight-430,rect.bottom+6)}px`; panel.style.right=`${Math.max(12,innerWidth-rect.right)}px`;
-    panel.innerHTML='<h3>列显示与行密度</h3><div class="ui-table-settings-list"></div><label class="ui-field"><span class="ui-label">行密度</span><select class="ui-select" data-density><option value="compact">紧凑</option><option value="standard" selected>标准</option><option value="comfortable">舒适</option></select></label><button class="ui-btn ui-btn-secondary ui-btn-sm" type="button" data-settings-close>关闭</button>';
+    const panel=document.createElement('section');panel.className='ui-table-settings';
+    panel.innerHTML='<h3>视图设置</h3><div class="ui-table-settings-list"></div><label class="ui-field"><span class="ui-label">行密度</span><select class="ui-select" data-density><option value="36">紧凑</option><option value="44" selected>标准</option><option value="52">舒适</option></select></label><button class="ui-btn ui-btn-secondary ui-btn-sm" data-auto-fit>适配当前页</button><button class="ui-btn ui-btn-secondary ui-btn-sm" data-reset-view>恢复默认</button>';
+    const rect=trigger.getBoundingClientRect();panel.style.top=`${Math.min(innerHeight-460,rect.bottom+6)}px`;panel.style.right=`${Math.max(12,innerWidth-rect.right)}px`;
     const list=panel.querySelector('.ui-table-settings-list');
-    [...state.table.tHead.rows[0].cells].forEach((th,i)=>{ if(th.classList.contains('ui-select-col')||th.classList.contains('ui-action-col'))return; const label=document.createElement('label');label.className='ui-check';label.innerHTML=`<input type="checkbox" checked data-column="${i}"><span class="ui-check-box"></span><span></span>`;label.lastElementChild.textContent=th.childNodes[0]?.textContent.trim()||`第${i+1}列`;list.append(label);});
-    panel.addEventListener('change', e=>{ if(e.target.matches('[data-column]')){const i=Number(e.target.dataset.column);[...state.table.rows].forEach(row=>row.cells[i]&&(row.cells[i].hidden=!e.target.checked));} if(e.target.matches('[data-density]')){state.table.classList.remove('ui-table-density-compact','ui-table-density-comfortable');if(e.target.value!=='standard')state.table.classList.add(`ui-table-density-${e.target.value}`);}});
-    panel.addEventListener('click',e=>{if(e.target.closest('[data-settings-close]'))panel.remove();});
+    [...state.table.tHead.rows[0].cells].forEach((th,i)=>{if(th.classList.contains('ui-select-col')||th.classList.contains('ui-action-col'))return;const label=document.createElement('label');label.className='ui-check';label.innerHTML=`<input type="checkbox" ${state.hidden.has(i)?'':'checked'} data-column="${i}"><span class="ui-check-box"></span><span></span>`;label.lastElementChild.textContent=th.childNodes[0]?.textContent.trim()||`第${i+1}列`;list.append(label);});
+    panel.addEventListener('change',change=>{if(change.target.matches('[data-column]')){const i=Number(change.target.dataset.column);change.target.checked?state.hidden.delete(i):state.hidden.add(i);[...state.table.rows].forEach(row=>{if(row.cells[i])row.cells[i].hidden=!change.target.checked;});save(state);}if(change.target.matches('[data-density]')){state.rowHeight=Number(change.target.value);state.table.style.setProperty('--ui-row-height',`${state.rowHeight}px`);save(state);render(state);}});
+    panel.addEventListener('click',click=>{if(click.target.closest('[data-auto-fit]')){[...state.table.tHead.rows[0].cells].forEach((_,i)=>autoFit(state,i));}if(click.target.closest('[data-reset-view]')){localStorage.removeItem(state.key);location.reload();}});
     document.body.append(panel);
   });
-  document.addEventListener('pointerdown',event=>{const panel=document.querySelector('.ui-table-settings');if(panel&&!panel.contains(event.target)&&!event.target.closest('[data-ui-table-settings]'))panel.remove();});
-  function compare(a='',b='',numeric=false){const av=a.trim(),bv=b.trim();if(numeric)return(Number(av)||0)-(Number(bv)||0);return av.localeCompare(bv,'zh-CN',{numeric:true});}
+  document.addEventListener('pointerdown',e=>{const p=document.querySelector('.ui-table-settings');if(p&&!p.contains(e.target)&&!e.target.closest('[data-ui-table-settings]'))p.remove();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelector('.ui-table-settings')?.remove();});
+  function compare(a='',b='',numeric=false){const av=a.trim(),bv=b.trim();return numeric?(Number(av)||0)-(Number(bv)||0):av.localeCompare(bv,'zh-CN',{numeric:true});}
 })();
