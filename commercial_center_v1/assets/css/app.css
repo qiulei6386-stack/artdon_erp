@@ -77,3 +77,44 @@
 .detail-drawer .drawer-actions .primary{background:#d92d20;border-color:#d92d20;color:#fff}.detail-drawer .drawer-actions .primary:hover{background:#b42318;border-color:#b42318}
 .product-library-container a,.product-library-container .text-button,.product-library-container .product-price,.detail-drawer .tag,.detail-drawer .drawer-price,.detail-drawer .drawer-ok{color:#d92d20!important}.product-library-container .product-price{font-weight:800}.detail-drawer .tag{background:#fde7e5;border-color:#f5b8b2}
 .content:has(.product-library-grid){--teal:#d92d20}.content:has(.product-library-grid) a,.content:has(.product-library-grid) button.text-button,.content:has(.product-library-grid) .view-switch,.content:has(.product-library-grid) .library-card footer a,.content:has(.product-library-grid) .product-price,.content:has(.product-library-grid) .drawer-price,.content:has(.product-library-grid) .tag{color:#d92d20!important}.content:has(.product-library-grid) .tag{background:#fde7e5!important;border-color:#f5b8b2!important}
+
+/* 报价产品库：卡片与产品图同宽，并按可用空间自适应排列。 */
+.product-grid.product-library-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(168px,188px));
+  grid-auto-rows:auto;
+  grid-template-rows:none;
+  align-content:start;
+  justify-content:start;
+  gap:12px;
+  height:auto;
+  min-height:0;
+  overflow:visible;
+}
+.product-grid.product-library-grid .library-card{
+  width:100%;
+  min-height:0;
+  aspect-ratio:auto;
+  grid-template-rows:168px auto;
+}
+.product-grid.product-library-grid .library-thumb{
+  width:100%;
+  height:168px;
+  padding:8px;
+}
+.product-grid.product-library-grid .library-thumb img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+}
+@media(max-width:760px){
+  .product-grid.product-library-grid{
+    grid-template-columns:repeat(auto-fill,minmax(142px,1fr));
+  }
+  .product-grid.product-library-grid .library-card{
+    grid-template-rows:142px auto;
+  }
+  .product-grid.product-library-grid .library-thumb{
+    height:142px;
+  }
+}

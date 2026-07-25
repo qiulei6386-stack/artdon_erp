@@ -2,6 +2,13 @@
 
 更新时间：2026-07-25
 
+## 本次：报价产品库卡片紧凑自适应排列
+
+- 报价产品库卡片不再按固定 4/6 列或两行视口高度强制拉伸，改为以产品图宽度为卡片宽度的紧凑规格。
+- 桌面端按 168–188px 卡片宽度自动填充并换行，窄屏按可用宽度自动缩放排列；图片与卡片保持同宽，图片使用 `contain` 完整展示。
+- 修改文件：`commercial_center_v1/assets/css/app.css`、`WORK_CONTEXT.md`。
+- 检查、GitHub 推送、服务器部署及三方提交一致性结果待本轮完成后补充。
+
 ## 本次：CRM 拜访/来访新建保存 JSON 报错修复
 
 - 根因：新建主记录已成功写入，但选择图片/附件后，上传接口尝试在不可写的 `uploads` 根目录创建 `visit_files`，PHP 输出 `mkdir(): Permission denied` HTML 警告，前端 `res.json()` 因而报 `Unexpected token '<'`。
