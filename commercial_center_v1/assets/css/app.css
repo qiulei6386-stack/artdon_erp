@@ -33,7 +33,7 @@
   .dashboard-kpi{min-height:82px;padding:10px 12px;border-radius:10px}
   .kpi-icon{flex-basis:34px;width:34px;height:34px;font-size:12px}
   .dashboard-kpi strong{font-size:21px}
-  .dashboard-grid{height:calc(100vh - 232px);min-height:420px;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:minmax(0,.82fr) minmax(0,.48fr);gap:9px;overflow:hidden}
+  .dashboard-grid{height:calc(100vh - 258px);min-height:390px;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:minmax(0,.82fr) minmax(0,.48fr);gap:9px;margin-bottom:12px;overflow:hidden}
   .dashboard-grid>.panel{overflow:hidden}
   .dashboard-grid>.panel.wide:first-child{grid-row:1;grid-column:1}
   .dashboard-grid>.side-stack{grid-row:1 / span 2;grid-column:2;overflow:auto}
