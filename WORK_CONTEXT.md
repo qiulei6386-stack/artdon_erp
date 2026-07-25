@@ -2,6 +2,15 @@
 
 更新时间：2026-07-25
 
+## 本次：服务器仓库同步 GitHub
+
+- 同步前：本地/GitHub 为 `96e9896`，服务器 Git HEAD 为 `c1ca156`，服务器有 23 项已跟踪状态和 70 个未跟踪文件，不能直接 pull。
+- 保护：服务器原状态、二进制补丁和未跟踪文件归档已保存到 `/tmp/artdon_git_sync_backup_20260725/`；未执行清理、强制重置或删除。
+- 比对：将 GitHub bundle 导入服务器后，以目标提交重建索引进行只读比对；发现服务器保留了 PHP 8.0 用户上下文修复，随后该修复已由提交 `520e10a` 推送 GitHub。
+- 结果：服务器 `main`、服务器 `origin/main`、本地 `main` 和 GitHub `origin/main` 已统一到 `520e10a`；服务器已跟踪差异 0，额外 8 个未跟踪文件原样保留。
+- 检查：服务器 `naming.php`、`plm.php`、`crm_plm_auth_lib.php` 及 PHP 8.0 下的 `MaterialCenterUserContext.php` 语法检查通过。
+- Git：本条同步记录的最终提交号及服务器再次同步结果见本轮最终结果。
+
 ## 本次：物料中心 PHP-FPM 8.0 语法错误修复
 
 - 根因：服务器命令行 PHP 为 8.1，但网站实际由 PHP-FPM 8.0 运行；`MaterialCenterUserContext` 使用了 PHP 8.1 才支持的 `readonly` 属性，导致网站解析失败。
