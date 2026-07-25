@@ -25,7 +25,7 @@
 /* Desktop workbench fits the primary sections in one viewport; only data areas scroll. */
 @media(min-width:1100px){
   body:has(.dashboard-kpis){overflow:hidden}
-  .content:has(.dashboard-kpis){height:calc(100vh - 54px);padding:12px 16px;overflow:hidden}
+  .content:has(.dashboard-kpis){height:calc(100vh - 54px);max-width:none;margin:0;padding:10px 9px;overflow:hidden}
   .content:has(.dashboard-kpis) .page-head{margin-bottom:8px;align-items:center}
   .content:has(.dashboard-kpis) .page-head h1{font-size:21px}
   .content:has(.dashboard-kpis) .page-head p{font-size:12px}
