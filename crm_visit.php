@@ -348,9 +348,15 @@ function crm_visit_save(array $input): array
 function crm_visit_delete(int $id): array
 {
     crm_visit_ensure_tables();
-    crm_require('visit.delete');
     $before = crm_visit_row($id);
     $userId = (int)(current_user()['id'] ?? 0);
+    $canDelete = is_super_admin()
+        || has_permission('visit.delete')
+        || $userId === (int)($before['created_by'] ?? 0)
+        || $userId === (int)($before['owner_user_id'] ?? 0);
+    if (!$canDelete) {
+        throw new RuntimeException('没有权限删除这条拜访/来访记录。');
+    }
     db()->beginTransaction();
     try {
         db()->prepare('UPDATE crm_visit_records SET deleted_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL')
@@ -642,13 +648,23 @@ function crm_visit_upload_files(int $visitId, string $kind, array $files): array
     if (!$items) throw new RuntimeException('请选择要上传的文件。');
     [$relativeDir, $absoluteDir] = crm_visit_upload_dir();
     $saved = [];
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
     foreach ($items as $file) {
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('文件上传失败，请重新选择。');
         if (!is_uploaded_file($file['tmp_name'])) throw new RuntimeException('上传文件无效。');
         $original = trim((string)$file['name']);
         $size = (int)$file['size'];
-        $mime = $finfo ? (string)finfo_file($finfo, $file['tmp_name']) : (string)($file['type'] ?? '');
+        $mime = $finfo && function_exists('finfo_file') ? (string)finfo_file($finfo, $file['tmp_name']) : '';
+        if ($mime === '' && function_exists('mime_content_type')) {
+            $mime = (string)@mime_content_type($file['tmp_name']);
+        }
+        if ($mime === '' && $kind === 'image' && function_exists('getimagesize')) {
+            $imageInfo = @getimagesize($file['tmp_name']);
+            $mime = is_array($imageInfo) ? (string)($imageInfo['mime'] ?? '') : '';
+        }
+        if ($mime === '') {
+            $mime = trim((string)($file['type'] ?? '')) ?: 'application/octet-stream';
+        }
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
         if ($kind === 'image') {
             if ($size > 512000) throw new RuntimeException($original . ' 超过 500KB 图片限制。');
@@ -680,7 +696,7 @@ function crm_visit_upload_files(int $visitId, string $kind, array $files): array
         crm_log_event('visit', $kind === 'image' ? 'visit_image_upload' : 'visit_attachment_upload', 'visit_file', (string)$fileId, null, ['visit_id' => $visitId, 'file_name' => $original]);
         crm_customer_timeline_add((int)$visit['customer_id'], $kind === 'image' ? 'visit_image_upload' : 'visit_attachment_upload', $kind === 'image' ? '上传拜访图片' : '上传拜访附件', $original, 'visit', (string)$visitId);
     }
-    if ($finfo) finfo_close($finfo);
+    if ($finfo && function_exists('finfo_close')) finfo_close($finfo);
     return ['files' => crm_visit_files($visitId), 'uploaded' => $saved];
 }
 

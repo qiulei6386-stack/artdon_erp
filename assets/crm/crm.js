@@ -22784,12 +22784,19 @@
 
   var VisitModule = {
     inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [],
+    canDelete: function (row) {
+      var userId = Number((state.user || {}).id || 0);
+      return !!((state.user || {}).is_super_admin
+        || (state.permissions && state.permissions['visit.delete'])
+        || (userId && userId === Number((row || {}).created_by || 0))
+        || (userId && userId === Number((row || {}).owner_user_id || 0)));
+    },
     actions: function () {
       var selected = this.selected();
       var items = selected
         ? ['新建拜访', '新建来访', selected.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访', selected.visit_type === 'customer_arrival' ? '填写接待结果' : '填写拜访结果', '创建跟进', '创建派工']
         : ['新建拜访', '新建来访', '查看今日拜访', '查看今日来访'];
-      if (selected && ((state.user || {}).is_super_admin || (state.permissions && state.permissions['visit.delete']))) {
+      if (selected && this.canDelete(selected)) {
         items.push(selected.visit_type === 'customer_arrival' ? '删除来访' : '删除拜访');
       }
       return [{ title: selected ? '当前记录' : '拜访/来访', items: items }];
@@ -22892,7 +22899,7 @@
         '<em>' + esc(type) + '</em><span>' + esc(row.visit_date || '未定日期') + ' ' + esc(String(row.visit_time || '').slice(0, 5)) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b>' +
         '<small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + (files.length ? files.map(function (item) { return '<i class="visit-file-badge">' + esc(item) + '</i>'; }).join('') : '') + '</small>' +
         '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
-        (((state.user || {}).is_super_admin || (state.permissions && state.permissions['visit.delete'])) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
+        (this.canDelete(row) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
         '</nav></article>';
     },
     selected: function () {

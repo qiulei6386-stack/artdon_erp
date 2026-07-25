@@ -2,6 +2,13 @@
 
 更新时间：2026-07-25
 
+## 本次：CRM FPM Fileinfo 兼容与本人记录删除权限修复
+
+- 用户实测 FPM 报 `Call to undefined function finfo_open()`；服务器 CLI 虽有 Fileinfo，但网站 FPM 扩展集不同。附件 MIME 检测改为按 `finfo` → `mime_content_type` → `getimagesize` → 上传类型逐级降级，不再硬依赖 Fileinfo。
+- 删除权限由仅管理员拥有的 `visit.delete` 扩展为：管理员、记录创建人或负责人均可删除该记录；前端卡片和右侧 ACTIONS 使用同一判断显示删除入口，后端再次校验。
+- 数据复核：旧重复 ID 2–6、8–15 均已软删除；用户再次测试新增 ID 16（已完成来访）和 ID 17（重复草稿），本轮仅软删除 ID 17，保留 ID 7 和 ID 16 两条不同类型的已完成有效记录。
+- 修改文件：`crm_visit.php`、`assets/crm/crm.js`、`WORK_CONTEXT.md`；最终检查、提交、部署和三方一致性见本轮最终结果。
+
 ## 本次：报价产品卡片间距与开孔参数优化
 
 - 产品网格取消 `space-between` 产生的大间隔，改为固定 8px 间距；卡片以 156px 为最小宽度并等分剩余空间，参数区随卡片适度拉长。
