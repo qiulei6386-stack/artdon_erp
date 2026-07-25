@@ -35,8 +35,8 @@ header('Cache-Control: no-store, max-age=0');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= cc_h($moduleLabels[$activeView]) ?> · <?= cc_h($app['name']) ?></title>
-  <link rel="stylesheet" href="assets/css/app.css">
-  <link rel="stylesheet" href="assets/css/catalog.css">
+  <link rel="stylesheet" href="assets/css/app.css?v=<?= (int) @filemtime(__DIR__ . '/assets/css/app.css') ?>">
+  <link rel="stylesheet" href="assets/css/catalog.css?v=<?= (int) @filemtime(__DIR__ . '/assets/css/catalog.css') ?>">
 </head>
 <body>
 <div class="app-shell" data-shell>
