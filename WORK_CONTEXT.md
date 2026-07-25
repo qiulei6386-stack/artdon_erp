@@ -2,6 +2,14 @@
 
 更新时间：2026-07-25
 
+## 本次：型号命名系统认证库加载错误修复
+
+- 根因：`crm_plm_auth_lib.php` 与入口保护文件在本地及服务器均为 `600` 权限，服务器 PHP-FPM 用户无法读取，因而报 `Failed opening required`；文件本身未缺失，引用路径正确。
+- 处理：本地 `crm_plm_auth_lib.php`、`crm_plm_guard.php` 权限修正为 `644`，再从本地同步相同文件到唯一服务器运行目录 `/www/wwwroot/Artdon/artdon_erp/`。
+- 检查：本地 `git diff --check` 通过（本机无 PHP CLI）；服务器 `crm_plm_auth_lib.php`、`crm_plm_guard.php`、`naming.php` 全部通过 `php -l`，认证库独立加载返回 `AUTH_LIB_LOAD_OK`。
+- Git：文件内容无变化，Git 不记录普通文件 `600→644` 权限变化；本次以 `WORK_CONTEXT.md` 记录修复，提交号及推送状态见本轮最终结果。
+- 待确认：用户刷新型号命名系统，确认原报错消失及登录态页面正常。
+
 ## 本次：电源工作台专项
 
 - `tab=source` 空白根因是已读取的真实 `$rows` 被 iframe 分支忽略，并非无数据或查询失败。服务器旧源电源320条，适配器返回安全上限200条。
