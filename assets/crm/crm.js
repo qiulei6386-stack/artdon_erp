@@ -22784,6 +22784,9 @@
 
   var VisitModule = {
     inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [],
+    displayMode: (function () {
+      try { return localStorage.getItem('crm_visit_display_mode') === 'icon' ? 'icon' : 'list'; } catch (error) { return 'list'; }
+    })(),
     canDelete: function (row) {
       var userId = Number((state.user || {}).id || 0);
       return !!((state.user || {}).is_super_admin
@@ -22812,6 +22815,17 @@
           self.range = button.getAttribute('data-visit-filter') || '';
           document.querySelectorAll('[data-visit-filter]').forEach(function (item) { item.classList.toggle('active', item === button); });
           self.load();
+        });
+      });
+      document.querySelectorAll('[data-visit-display]').forEach(function (button) {
+        button.classList.toggle('active', button.getAttribute('data-visit-display') === self.displayMode);
+        button.addEventListener('click', function () {
+          self.displayMode = button.getAttribute('data-visit-display') === 'icon' ? 'icon' : 'list';
+          try { localStorage.setItem('crm_visit_display_mode', self.displayMode); } catch (error) {}
+          document.querySelectorAll('[data-visit-display]').forEach(function (item) {
+            item.classList.toggle('active', item.getAttribute('data-visit-display') === self.displayMode);
+          });
+          document.querySelector('[data-visit-list]')?.classList.toggle('is-icon-mode', self.displayMode === 'icon');
         });
       });
       document.querySelectorAll('[data-visit-view]').forEach(function (button) {
@@ -22867,6 +22881,7 @@
       if (this.view === 'report') return this.renderReport((data && data.stats) || {});
       var box = document.querySelector('[data-visit-list]'), self = this;
       if (!box) return;
+      box.classList.toggle('is-icon-mode', this.displayMode === 'icon');
       box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">暂无记录。右侧 ACTIONS 可新建拜访或来访。</div>';
     },
     renderKpis: function (stats) {
@@ -22895,6 +22910,7 @@
       if (Number(row.image_count)) files.push('图片 ' + row.image_count);
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
+        '<i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i>' +
         '<div><strong>' + esc(row.title || type) + '</strong><span>' + esc(row.customer_code || '-') + ' · ' + esc(row.customer_name || '-') + ' · ' + esc(row.contact_name || '未选联系人') + '</span></div>' +
         '<em>' + esc(type) + '</em><span>' + esc(row.visit_date || '未定日期') + ' ' + esc(String(row.visit_time || '').slice(0, 5)) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b>' +
         '<small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + (files.length ? files.map(function (item) { return '<i class="visit-file-badge">' + esc(item) + '</i>'; }).join('') : '') + '</small>' +

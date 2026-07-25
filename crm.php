@@ -939,6 +939,8 @@ $prefStyle = sprintf(
             <header class="visit-toolbar">
               <div><strong data-visit-title>拜访计划</strong><span data-visit-subtitle>点击记录后，右侧 ACTIONS 会切换为该记录的操作。</span></div>
               <div class="visit-toolbar-actions">
+                <button type="button" class="active" data-visit-display="list" title="列表模式">列表</button>
+                <button type="button" data-visit-display="icon" title="图标模式">图标</button>
                 <button type="button" class="active" data-visit-filter="">全部</button>
                 <button type="button" data-visit-filter="today">今天</button>
                 <button type="button" data-visit-filter="week">本周</button>

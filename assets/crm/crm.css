@@ -14825,6 +14825,67 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   gap: 8px 12px;
   cursor: pointer;
 }
+.visit-type-icon {
+  display: none;
+}
+.visit-list.is-icon-mode {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  align-items: start;
+}
+.visit-list.is-icon-mode .visit-card {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  position: relative;
+}
+.visit-list.is-icon-mode .visit-type-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--crm-primary);
+  color: #fff;
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 950;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, .16);
+}
+.visit-list.is-icon-mode .visit-card > div strong,
+.visit-list.is-icon-mode .visit-card > div span {
+  display: block;
+}
+.visit-list.is-icon-mode .visit-card > div strong {
+  font-size: 14px;
+}
+.visit-list.is-icon-mode .visit-card > div span {
+  margin-top: 4px;
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.visit-list.is-icon-mode .visit-card > em {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--crm-primary);
+}
+.visit-list.is-icon-mode .visit-card > small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.visit-list.is-icon-mode .visit-card > nav {
+  margin-top: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .visit-card:hover,
 .visit-card.selected {
   background: var(--crm-hover-bg);
