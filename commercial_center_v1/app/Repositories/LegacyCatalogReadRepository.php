@@ -14,7 +14,7 @@ final class LegacyCatalogReadRepository
         $this->connection = db();
     }
 
-    public function products(string $search = '', string $category = '', int $limit = 80): array
+    public function products(string $search = '', string $category = '', int $limit = 500): array
     {
         $where = ['website_deleted=0'];
         $params = [];
@@ -87,6 +87,6 @@ final class LegacyCatalogReadRepository
 
     private function limit(int $limit): int
     {
-        return max(1, min(200, $limit));
+        return max(1, min(500, $limit));
     }
 }
