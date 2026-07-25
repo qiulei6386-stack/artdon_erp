@@ -9,7 +9,8 @@
 - 搜索框停止输入 450ms 后自动提交，分类选择会保留当前值；数据库分页的总数和当前页使用同一搜索条件。
 - 增加真实型号片段模糊查询冒烟检查。
 - 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`views/product_library_v2.php`、`assets/js/app.js`、`tests/catalog_smoke.php`、`WORK_CONTEXT.md`。
-- 检查、提交、推送、服务器部署及三方一致性结果待本轮完成后补充。
+- 检查：`git diff --check`、JavaScript 语法及 3 个修改 PHP 文件的服务器标准输入语法检查均通过；业务提交 `4b86cf8` 已推送 GitHub并以同一提交快进同步服务器。
+- 服务器复检：真实数据库产品目录冒烟测试及真实型号片段模糊查询通过，多字段 `CONCAT_WS` 条件、自动提交入口、Git 差异和工作区状态正常；最终三方提交一致性以本轮收尾提交核对结果为准。
 
 ## 本次：CRM FPM Fileinfo 兼容与本人记录删除权限修复
 
