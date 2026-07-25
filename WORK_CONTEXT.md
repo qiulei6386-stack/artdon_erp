@@ -7,7 +7,7 @@
 - 升级仓库根目录 `CODEX.command`：macOS 双击后自动进入 `commercial_center_v1` 并启动 Codex，终端标题显示“Codex - 商务中心”。
 - 增加商务中心目录和 Codex 可执行文件检查；固定路径不可用时会尝试系统 `PATH`，仍不可用则显示中文错误信息，不再无提示退出。
 - 检查：`zsh -n CODEX.command`、可执行权限、商务中心目录、Codex 本机命令和 `git diff --check` 均通过。
-- Git 与部署：最终提交号、GitHub 推送、服务器同步和三方一致性结果见本轮完成记录。
+- Git 与部署：启动入口提交 `bb0a01b` 已推送 GitHub，并以 Git bundle 将同一提交快进同步服务器；服务器没有 `zsh`，因此仅复核文件、权限和提交一致性，macOS `zsh` 语法检查已在本地完成。
 
 ## 本次：商务中心青绿色统一改为大红色
 
