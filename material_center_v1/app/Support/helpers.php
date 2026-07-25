@@ -43,23 +43,35 @@ function mc_asset_url(mixed $path): string
 
 function mc_page_start(string $title, string $active, ?array $user = null, string $prefix = ''): void
 {
-    $links = [
-        'home' => [$prefix . './', '总', '物料总览'],
-        'power' => [$prefix . 'power_supplies.php', '源', '电源源数据'],
-        'standardize' => [$prefix . 'power_standardization.php', '标', '电源标准化'],
-        'library' => [$prefix . 'formal_power_supplies.php', '库', '正式电源库'],
-        'bands' => [$prefix . 'power_bands.php', '档', '功率档管理'],
-        'audit' => [$prefix . 'bom_audit.php', '审', 'BOM 源审计'],
-        'status' => [$prefix . 'system_status.php', '态', '系统状态'],
-        'gallery' => [$prefix . 'ui/docs/component-gallery.php', 'UI', '组件展示'],
+    $uiValues=[];
+    try {
+        if (mc_table_exists('mc_ui_settings')) {
+            $context=(new \Artdon\MaterialCenter\Adapters\LegacyAuthAdapter())->current();
+            $uiValues=(new \Artdon\MaterialCenter\Services\SettingsService())->resolved($context)['values']??[];
+        }
+    } catch (Throwable) {}
+    $groups = [
+        '总览' => ['home'=>[$prefix.'./','总','物料总览'],'status'=>[$prefix.'system_status.php','态','系统状态']],
+        '物料主数据' => ['materials'=>[$prefix.'module.php?page=materials','物','通用物料库'],'categories'=>[$prefix.'module.php?page=categories','类','物料分类'],'suppliers'=>[$prefix.'module.php?page=suppliers','供','供应商资料']],
+        '电源' => ['power'=>[$prefix.'power_supplies.php','源','电源源数据'],'standardize'=>[$prefix.'power_standardization.php','标','电源标准化'],'library'=>[$prefix.'formal_power_supplies.php','库','正式电源库'],'bands'=>[$prefix.'power_bands.php','档','功率档管理'],'rules'=>[$prefix.'product_power_rules.php','规','产品电源规则'],'simulate'=>[$prefix.'power_match_simulator.php','配','匹配模拟']],
+        'BOM 与审计' => ['audit'=>[$prefix.'bom_audit.php','审','BOM 源审计'],'logs'=>[$prefix.'module.php?page=activity_logs','志','活动日志']],
+        '系统' => ['settings'=>[$prefix.'settings.php','设','设置中心'],'permissions'=>[$prefix.'module.php?page=permissions','权','权限说明'],'gallery'=>[$prefix.'ui-gallery.php','UI','组件展示']],
     ];
     echo '<!doctype html><html lang="zh-CN" data-theme="system"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-    echo '<title>' . mc_h($title) . ' · Artdon 物料中心</title><script>document.documentElement.dataset.theme=localStorage.getItem("artdon-ui-theme")||"system";</script>';
+    $theme=(string)($uiValues['theme.mode']??'light');
+    echo '<title>' . mc_h($title) . ' · Artdon 物料中心</title><script>document.documentElement.dataset.theme=localStorage.getItem("artdon-ui-theme")||'.json_encode($theme).';</script>';
     echo '<link rel="stylesheet" href="' . mc_h($prefix) . 'ui/index.css"><link rel="stylesheet" href="' . mc_h($prefix) . 'assets/css/app.css"></head><body>';
+    $fontMap=['system'=>'-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif','noto_sans_sc'=>'"Noto Sans SC","PingFang SC",sans-serif','arial'=>'Arial,"PingFang SC",sans-serif'];
+    $primary=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.primary']??''))?$uiValues['theme.primary']:'#087f8c';
+    $sidebar=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.sidebar']??''))?$uiValues['theme.sidebar']:'#ffffff';
+    $base=max(12,min(18,(float)($uiValues['font.base_px']??14)));$nav=max(12,min(18,(float)($uiValues['font.nav_px']??14)));$table=max(11,min(17,(float)($uiValues['font.table_px']??13)));
+    echo '<style>:root{--ui-primary:'.mc_h($primary).';--ui-sidebar:'.mc_h($sidebar).';--ui-font:'.mc_h($fontMap[$uiValues['font.family']??'system']??$fontMap['system']).';--mc-base-font-size:'.$base.'px;--mc-nav-font-size:'.$nav.'px;--mc-table-font-size:'.$table.'px}</style>';
     echo '<div class="ui-shell"><aside class="ui-sidebar"><div class="ui-brand"><span class="ui-brand-mark">AD</span><div class="ui-brand-copy"><b>物料中心</b><small>Material Center V1</small></div></div>';
     echo '<button class="ui-btn ui-btn-ghost ui-sidebar-toggle" type="button" data-ui-sidebar-toggle aria-label="收起或展开导航">收起导航</button><nav class="ui-nav">';
-    foreach ($links as $key => [$href, $icon, $label]) {
-        echo '<a href="' . mc_h($href) . '"' . ($active === $key ? ' aria-current="page"' : '') . '><i class="ui-nav-icon">' . mc_h($icon) . '</i><span>' . mc_h($label) . '</span></a>';
+    foreach ($groups as $group => $links) {
+        echo '<details class="ui-nav-group"' . (array_key_exists($active,$links)?' open':'') . '><summary>'.mc_h($group).'<span aria-hidden="true">⌄</span></summary><div>';
+        foreach ($links as $key => [$href, $icon, $label]) echo '<a href="' . mc_h($href) . '"' . ($active === $key ? ' aria-current="page"' : '') . '><i class="ui-nav-icon">' . mc_h($icon) . '</i><span>' . mc_h($label) . '</span></a>';
+        echo '</div></details>';
     }
     echo '</nav><div class="ui-side-note"><b>安全旁路模式</b><span>只读旧 BOM 物料源，不写价格、供应商或旧表结构。</span></div></aside><main class="ui-main">';
     echo '<header class="ui-topbar"><div class="ui-topbar-group"><button class="ui-btn ui-btn-ghost ui-btn-icon ui-mobile-nav" type="button" data-ui-mobile-nav aria-label="打开导航">☰</button><span class="ui-muted ui-breadcrumb-extra">广州 ERP / 物料中心</span><b>/</b><strong>' . mc_h($title) . '</strong></div>';

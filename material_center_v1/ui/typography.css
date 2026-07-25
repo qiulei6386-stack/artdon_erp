@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-html { font-family: var(--ui-font); font-size: 14px; }
+html { font-family: var(--ui-font); font-size: var(--mc-base-font-size,14px); }
 body { margin: 0; background: var(--ui-bg); color: var(--ui-text); line-height: 1.5; }
 button, input, select, textarea { font: inherit; }
 a { color: var(--ui-primary); }
