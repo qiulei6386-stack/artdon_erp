@@ -8,7 +8,8 @@
 - BOM 成本只对当前页型号进行只读补充；产品分类和状态数量使用数据库聚合查询，不加载全部产品明细。
 - 产品服务统一返回 `total/page/pages/page_size`；“产品与配置”新增 12/24/48 个每页选择、页码、上一页和下一页，并保留搜索与分类条件。
 - 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`app/Services/CatalogCenterService.php`、`app/Controllers/DashboardController.php`、`views/product_library_v2.php`、`index.php`、`tests/catalog_smoke.php`、`WORK_CONTEXT.md`。
-- 检查、提交、推送、服务器部署及三方一致性结果待本轮完成后补充。
+- 检查：`git diff --check`、6 个修改 PHP 文件语法检查、旧 `allProducts/array_slice` 模式清除检查均通过；业务提交 `b7c74e2` 已推送 GitHub并以同一提交快进同步服务器。
+- 服务器复检：全部修改 PHP 文件语法、真实数据库产品总数/第一页/带 OFFSET 下一页查询、分类/状态聚合及只读目录冒烟测试均通过；服务器确认产品页面无旧全量切页代码，最终三方提交一致性以本轮收尾提交核对结果为准。
 
 ## 本次：报价产品网格合理最大列数修正
 
