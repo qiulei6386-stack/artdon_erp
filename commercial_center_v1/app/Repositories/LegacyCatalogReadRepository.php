@@ -46,6 +46,33 @@ final class LegacyCatalogReadRepository
         );
     }
 
+    /** Returns read-only BOM cost totals keyed by product model. */
+    public function bomCostsForModels(array $models): array
+    {
+        $models = array_values(array_unique(array_filter(array_map('strval', $models))));
+        if ($models === []) return [];
+        $marks = implode(',', array_fill(0, count($models) * 2, '?'));
+        $rows = $this->selectAll(
+            'SELECT model,naming_model_no,labor,other,rows_json FROM bom_projects
+             WHERE is_active=1 AND (model IN (' . $marks . ') OR naming_model_no IN (' . $marks . '))',
+            array_merge($models, $models)
+        );
+        $costs = [];
+        foreach ($rows as $row) {
+            $cost = (float)$row['labor'] + (float)$row['other'];
+            $lines = json_decode((string)$row['rows_json'], true);
+            if (is_array($lines)) foreach ($lines as $line) {
+                $price = (float)($line['price'] ?? 0);
+                $qty = (float)($line['qty'] ?? 1);
+                $subtotal = array_key_exists('subtotal', $line) ? (float)$line['subtotal'] : $price * $qty;
+                $cost += $subtotal > 0 ? $subtotal : ($price * $qty);
+            }
+            $key = (string)($row['model'] ?: $row['naming_model_no']);
+            if ($key !== '') $costs[$key] = round($cost, 4);
+        }
+        return $costs;
+    }
+
     public function materials(string $search = '', string $category = '', int $limit = 100): array
     {
         $where = ['is_active=1'];
