@@ -5,6 +5,12 @@ $quoteMode = in_array((string)($_GET['quote_mode'] ?? ''), ['website','standard'
 $quickMode = (string)($_GET['quick'] ?? '') === '1';
 $quoteLabels = ['website'=>'网站订单报价单','standard'=>'标准品报价单','custom'=>'定制品报价单'];
 $historyRows = $ops['delivery_queue'] ?? [];
+if ($quoteMode !== '') {
+    $catalog = (new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'], '', '', 1, 8);
+    $catalogRows = $catalog['rows'] ?? [];
+    require __DIR__ . '/quote_' . $quoteMode . '.php';
+    return;
+}
 if ($quoteMode !== ''):
     $catalog = (new Artdon\CommercialCenter\Services\CatalogCenterService())->products($view['auth'], '', '', 1, 8);
     $catalogRows = $catalog['rows'] ?? [];

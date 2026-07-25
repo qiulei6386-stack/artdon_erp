@@ -26,7 +26,7 @@ foreach ([
         exit(1);
     }
 }
-foreach (['views/quote_center.php','views/quote_approval.php','views/compatibility_rules.php','assets/js/quote_center.js'] as $file) {
+foreach (['views/quote_center.php','views/quote_website.php','views/quote_standard.php','views/quote_custom.php','views/quote_approval.php','views/compatibility_rules.php','assets/js/quote_center.js'] as $file) {
     if (!is_file($root . '/' . $file)) {
         fwrite(STDERR, "FAIL: missing {$file}\n");
         exit(1);
@@ -37,6 +37,19 @@ foreach (['网站订单报价单','标准品报价单','定制品报价单','dat
     if (!str_contains($quoteView, $needle)) {
         fwrite(STDERR, "FAIL: quote center missing {$needle}\n");
         exit(1);
+    }
+}
+foreach ([
+    'views/quote_website.php'=>['网站传入','网站订单号','内部审核备注','风险提醒'],
+    'views/quote_standard.php'=>['标准品报价单（半自由）','报价明细','产品适配规则','内部流程'],
+    'views/quote_custom.php'=>['定制品报价单','客户需求 / 参考资料','自定义字段','工程说明'],
+] as $file=>$needles) {
+    $source = (string)file_get_contents($root . '/' . $file);
+    foreach ($needles as $needle) {
+        if (!str_contains($source, $needle)) {
+            fwrite(STDERR, "FAIL: {$file} missing {$needle}\n");
+            exit(1);
+        }
     }
 }
 echo "PASS: six-item menu, legacy mappings, shared quote center and three quote modes verified.\n";
