@@ -13,4 +13,6 @@
 | 设置 | `settings.php` | 原地址 | settings权限/API | 保留 |
 | 系统/组件 | 原地址 | 原地址 | view | 保留 |
 
+电源工作台现为原生路由；旧页面不再依赖 iframe 才能展示来源数据。人工确认旧 URL 支持 `?review={staging_id}` 自动打开对应审核抽屉。
+
 新类别入口：`category_workbench.php?category=chips|optics|accessories|packaging|profiles|mounting`。

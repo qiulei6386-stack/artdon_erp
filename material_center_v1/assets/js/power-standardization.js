@@ -3,6 +3,8 @@
   const drawer = document.querySelector('#standardization-drawer');
   const form = document.querySelector('#standard-form');
   let activeTrigger;
+  const initialReview=Number(new URLSearchParams(location.search).get('review')||0);
+  if(initialReview){activeTrigger=document.querySelector(`[data-review-id="${initialReview}"]`)||document.querySelector('[data-review-id]');openReview(initialReview);}
 
   document.addEventListener('click', async event => {
     const review = event.target.closest('[data-review-id]');

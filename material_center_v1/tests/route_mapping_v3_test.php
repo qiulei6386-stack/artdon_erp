@@ -5,6 +5,6 @@ $routes=['index.php','materials.php','power_workbench.php','power_supplies.php',
 foreach($routes as$route)if(!is_file($root.'/'.$route)){fwrite(STDERR,"missing route {$route}\n");exit(1);}
 $nav=file_get_contents($root.'/app/Support/helpers.php');
 foreach(['power_workbench.php','category_workbench.php?category=chips','category_workbench.php?category=optics','category_workbench.php?category=accessories','category_workbench.php?category=packaging','product_adaptation.php']as$route)if(!str_contains($nav,$route)){fwrite(STDERR,"navigation missing {$route}\n");exit(1);}
-$workbench=file_get_contents($root.'/power_workbench.php');
+$workbench=file_get_contents($root.'/power_workbench.php').file_get_contents($root.'/views_power_workbench_table.php');
 foreach(['power_bands.php','bom_audit.php','power_standardization.php','product_adaptation.php?tab=power']as$route)if(!str_contains($workbench,$route)){fwrite(STDERR,"power mapping missing {$route}\n");exit(1);}
 echo "V3 route mapping contract passed: old routes preserved, new object entries connected.\n";
