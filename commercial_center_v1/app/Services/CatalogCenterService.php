@@ -12,7 +12,7 @@ final class CatalogCenterService
 {
     public function products(array $authentication, string $search, string $category): array
     {
-        return $this->load($authentication, 'naming.view', static function (LegacyCatalogReadRepository $repository) use ($search, $category): array {
+        return $this->load($authentication, 'commercial_center.view', static function (LegacyCatalogReadRepository $repository) use ($search, $category): array {
             $rows = $repository->products($search, $category);
             $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
             foreach ($rows as &$row) {
