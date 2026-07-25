@@ -14839,6 +14839,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   align-items: stretch;
   gap: 8px;
   position: relative;
+  cursor: pointer;
 }
 .visit-list.is-icon-mode .visit-type-icon {
   display: grid;
@@ -14860,11 +14861,28 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .visit-list.is-icon-mode .visit-card > div strong {
   font-size: 14px;
 }
-.visit-list.is-icon-mode .visit-card > div span {
+.visit-list.is-icon-mode .visit-customer-line {
+  display: flex !important;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 9px;
   margin-top: 4px;
-  color: var(--crm-muted-text);
-  font-size: 11px;
-  line-height: 1.5;
+  color: var(--crm-text) !important;
+  font-size: 15px !important;
+  line-height: 1.35 !important;
+}
+.visit-list.is-icon-mode .visit-customer-line b:first-child {
+  color: var(--crm-primary);
+  font-size: 16px;
+}
+.visit-list.is-icon-mode .visit-customer-line b:last-child {
+  font-size: 16px;
+}
+.visit-list.is-icon-mode .visit-contact-line {
+  margin-top: 5px !important;
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
 }
 .visit-list.is-icon-mode .visit-card > em {
   position: absolute;

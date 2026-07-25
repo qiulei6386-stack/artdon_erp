@@ -22849,6 +22849,15 @@
         var action = event.target.closest('[data-visit-action]');
         if (action) self.handleAction(action.getAttribute('data-visit-action'), Number(action.getAttribute('data-visit-action-id') || self.selectedId || 0));
       });
+      document.querySelector('[data-visit-list]')?.addEventListener('dblclick', function (event) {
+        if (event.target.closest('button,a,input,select,textarea')) return;
+        var card = event.target.closest('[data-visit-id]');
+        if (!card) return;
+        var row = self.rows.find(function (item) {
+          return Number(item.id) === Number(card.getAttribute('data-visit-id') || 0);
+        });
+        if (row) self.openVisitDialog(row.visit_type || 'customer_visit', row);
+      });
     },
     loadOptions: function () {
       var self = this;
@@ -22911,7 +22920,7 @@
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
         '<i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i>' +
-        '<div><strong>' + esc(row.title || type) + '</strong><span>' + esc(row.customer_code || '-') + ' · ' + esc(row.customer_name || '-') + ' · ' + esc(row.contact_name || '未选联系人') + '</span></div>' +
+        '<div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div>' +
         '<em>' + esc(type) + '</em><span>' + esc(row.visit_date || '未定日期') + ' ' + esc(String(row.visit_time || '').slice(0, 5)) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b>' +
         '<small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + (files.length ? files.map(function (item) { return '<i class="visit-file-badge">' + esc(item) + '</i>'; }).join('') : '') + '</small>' +
         '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
