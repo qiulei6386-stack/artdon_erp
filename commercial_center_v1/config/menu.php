@@ -7,7 +7,7 @@ return [
         ['key'=>'risk_center','label'=>'预警中心'], ['key'=>'data_dashboard','label'=>'数据看板'],
     ],
     '产品报价' => [
-        ['key'=>'product_sync_center','label'=>'产品同步中心'], ['key'=>'commercial_product_library','label'=>'报价产品库'], ['key'=>'product_config','label'=>'产品与配置'], ['key'=>'standard_quote','label'=>'标准报价'],
+        ['key'=>'commercial_product_library','label'=>'报价产品库'], ['key'=>'product_config','label'=>'产品与配置'], ['key'=>'standard_quote','label'=>'标准报价'],
         ['key'=>'quick_quote','label'=>'快速报价'], ['key'=>'quote_templates','label'=>'报价模板'],
         ['key'=>'price_strategy','label'=>'价格策略'], ['key'=>'tier_prices','label'=>'阶梯价格'],
         ['key'=>'quote_history','label'=>'历史报价'], ['key'=>'quote_approval','label'=>'报价审核'],
