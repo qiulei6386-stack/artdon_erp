@@ -22799,7 +22799,7 @@
       if (selected && this.canDelete(selected)) {
         items.push(selected.visit_type === 'customer_arrival' ? '删除来访' : '删除拜访');
       }
-      return [{ title: selected ? '当前记录' : '拜访/来访', items: items }];
+      return items;
     },
     init: function () {
       if (this.inited || !document.querySelector('[data-visit-module]')) return;

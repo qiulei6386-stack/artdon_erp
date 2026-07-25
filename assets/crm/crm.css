@@ -14726,7 +14726,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   overflow: hidden;
 }
 .visit-toolbar {
