@@ -67,3 +67,6 @@
 - [x] ResizeObserver + resize + debounce + rAF
 - [x] 新分页视觉与自动/手动条数
 - [x] 列设置外部点击及ESC关闭
+- [x] 新建/编辑使用唯一 M Modal
+- [x] 生命周期危险操作使用 ConfirmModal
+- [x] 保存 Loading、Toast 和未保存保护
