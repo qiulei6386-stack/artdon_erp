@@ -7,9 +7,9 @@
   --ui-text-muted: #9fb0bf;
   --ui-border: #294052;
   --ui-border-strong: #3b5365;
-  --ui-primary: #38bdf8;
-  --ui-primary-hover: #7dd3fc;
-  --ui-primary-soft: #123d52;
+  --ui-primary: #2dd4bf;
+  --ui-primary-hover: #5eead4;
+  --ui-primary-soft: #123f42;
   --ui-success: #34d399;
   --ui-warning: #fbbf24;
   --ui-danger: #fb7185;
@@ -21,8 +21,8 @@
     color-scheme: dark;
     --ui-bg: #0b1520; --ui-surface: #12202d; --ui-surface-subtle: #172838;
     --ui-text: #e7eef5; --ui-text-muted: #9fb0bf; --ui-border: #294052;
-    --ui-border-strong: #3b5365; --ui-primary: #38bdf8; --ui-primary-hover: #7dd3fc;
-    --ui-primary-soft: #123d52; --ui-success: #34d399; --ui-warning: #fbbf24;
+    --ui-border-strong: #3b5365; --ui-primary: #2dd4bf; --ui-primary-hover: #5eead4;
+    --ui-primary-soft: #123f42; --ui-success: #34d399; --ui-warning: #fbbf24;
     --ui-danger: #fb7185; --ui-info: #60a5fa; --ui-sidebar: #07111a;
   }
 }

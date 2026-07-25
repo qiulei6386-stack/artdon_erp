@@ -5,6 +5,25 @@
 
   function close(options = {}) {
     if (!state.element) return;
+    if (state.element.dataset.uiDirty === 'true' && !options.force) {
+      const dirtyElement = state.element;
+      const dirtyTrigger = state.trigger;
+      const dirtyType = state.type;
+      dirtyElement.dataset.uiDirty = 'false';
+      close({ force: true, restoreFocus: false });
+      window.ArtdonUI.confirm?.({
+        title: '放弃未保存修改？',
+        message: '关闭后，本次尚未保存的修改将丢失。',
+        confirmLabel: '放弃修改',
+        danger: true,
+        onConfirm: () => { dirtyElement.dataset.uiDirty = 'false'; },
+        onCancel: () => {
+          dirtyElement.dataset.uiDirty = 'true';
+          open(dirtyElement, dirtyTrigger, dirtyType);
+        }
+      });
+      return;
+    }
     state.element.classList.remove('is-open');
     state.element.setAttribute('aria-hidden', 'true');
     state.trigger?.setAttribute('aria-expanded', 'false');
@@ -46,6 +65,8 @@
   document.addEventListener('click', event => {
     if (event.target.closest('[data-ui-close], [data-ui-mask]')) close();
   });
+  window.addEventListener('pagehide', () => close({ restoreFocus: false, force: true }));
+  window.addEventListener('popstate', () => close({ restoreFocus: false, force: true }));
   window.ArtdonUI = window.ArtdonUI || {};
   window.ArtdonUI.interactions = { open, close, current: () => ({ ...state }) };
 })();

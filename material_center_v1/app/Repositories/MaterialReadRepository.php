@@ -47,6 +47,28 @@ final class MaterialReadRepository
         );
     }
 
+    public function powerSupplyRows(string $search = '', int $limit = 200): array
+    {
+        $where = [
+            '(is_active=1 OR is_active IS NULL)',
+            "(category LIKE '%电源%' OR category LIKE '%驱动%' OR name LIKE '%电源%' OR name LIKE '%驱动%')",
+        ];
+        $parameters = [];
+        if ($search !== '') {
+            $where[] = '(name LIKE ? OR model LIKE ? OR brand LIKE ? OR spec LIKE ? OR material_grade LIKE ?)';
+            $term = '%' . $search . '%';
+            array_push($parameters, $term, $term, $term, $term, $term);
+        }
+        return $this->selectAll(
+            'SELECT id,category,brand,name,model,spec,unit,material_grade,image,updated_at
+             FROM bom_materials
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY updated_at DESC,id DESC
+             LIMIT ' . max(1, min(200, $limit)),
+            $parameters
+        );
+    }
+
     public function summary(): array
     {
         $row = $this->selectOne(

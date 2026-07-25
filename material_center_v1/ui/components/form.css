@@ -1,10 +1,18 @@
-.ui-field { display: grid; gap: 6px; }.ui-label { color: var(--ui-text-muted); font-size: 12px; font-weight: 700; }
-.ui-input, .ui-select { width: 100%; height: var(--ui-control-md); padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text); outline: none; }
-.ui-input:focus, .ui-select:focus { border-color: var(--ui-primary); box-shadow: var(--ui-focus); }
-.ui-input[aria-invalid="true"] { border-color: var(--ui-danger); }.ui-help { color: var(--ui-text-muted); font-size: 11px; }
-.ui-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }.ui-check input { accent-color: var(--ui-primary); width: 16px; height: 16px; }
-.ui-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
-.ui-switch input { position: absolute; opacity: 0; }.ui-switch-track { width: 36px; height: 20px; padding: 2px; border-radius: 999px; background: var(--ui-border-strong); transition: .16s; }
-.ui-switch-track::after { content: ""; display: block; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: var(--ui-shadow-1); transition: .16s; }
-.ui-switch input:checked + .ui-switch-track { background: var(--ui-primary); }.ui-switch input:checked + .ui-switch-track::after { transform: translateX(16px); }
-.ui-switch input:focus-visible + .ui-switch-track { box-shadow: var(--ui-focus); }
+.ui-field{display:grid;gap:6px}.ui-label{color:var(--ui-text-muted);font-size:12px;font-weight:700}
+.ui-input,.ui-select,.ui-textarea{width:100%;height:var(--ui-control-md);padding:0 10px;border:1px solid var(--ui-border-strong);border-radius:var(--ui-radius-md);background:var(--ui-surface);color:var(--ui-text);outline:none;appearance:none}
+.ui-select{padding-right:30px;background-image:linear-gradient(45deg,transparent 50%,var(--ui-text-muted) 50%),linear-gradient(135deg,var(--ui-text-muted) 50%,transparent 50%);background-position:calc(100% - 15px) 14px,calc(100% - 10px) 14px;background-size:5px 5px;background-repeat:no-repeat}
+.ui-textarea{min-height:88px;padding:9px 10px;resize:vertical}.ui-input:hover,.ui-select:hover,.ui-textarea:hover{border-color:var(--ui-primary)}
+.ui-input:focus,.ui-select:focus,.ui-textarea:focus{border-color:var(--ui-primary);box-shadow:var(--ui-focus)}.ui-input[readonly],.ui-textarea[readonly]{background:var(--ui-surface-subtle);cursor:text}
+.ui-input:disabled,.ui-select:disabled,.ui-textarea:disabled{opacity:.55;cursor:not-allowed}.ui-input[aria-invalid=true],.ui-select[aria-invalid=true],.ui-textarea[aria-invalid=true]{border-color:var(--ui-danger)}
+.ui-help{min-height:18px;color:var(--ui-text-muted);font-size:12px}.ui-error{color:var(--ui-danger)}
+.ui-check{display:inline-flex;align-items:center;gap:8px;cursor:pointer;position:relative}.ui-check input{position:absolute;opacity:0;pointer-events:none}
+.ui-check-box{width:16px;height:16px;border:1.5px solid var(--ui-border-strong);border-radius:4px;background:var(--ui-surface);display:grid;place-items:center;transition:var(--ui-motion-fast)}
+.ui-check input:checked+.ui-check-box,.ui-check input:indeterminate+.ui-check-box{border-color:var(--ui-primary);background:var(--ui-primary);color:#fff}
+.ui-check input:checked+.ui-check-box::after{content:"";width:7px;height:4px;border-left:2px solid;border-bottom:2px solid;transform:rotate(-45deg) translateY(-1px)}
+.ui-check input:indeterminate+.ui-check-box::after{content:"";width:8px;border-top:2px solid}.ui-check input:focus-visible+.ui-check-box,.ui-check input:focus-visible+.ui-radio-mark{box-shadow:var(--ui-focus)}
+.ui-check input:disabled+.ui-check-box{opacity:.5;cursor:not-allowed}.ui-radio-mark{width:16px;height:16px;border:1.5px solid var(--ui-border-strong);border-radius:50%;display:grid;place-items:center;background:var(--ui-surface)}
+.ui-check input:checked+.ui-radio-mark::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--ui-primary)}.ui-check-only{width:18px;height:18px;justify-content:center}
+.ui-switch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}.ui-switch input{position:absolute;opacity:0}.ui-switch-track{width:36px;height:20px;padding:2px;border-radius:999px;background:var(--ui-border-strong);transition:var(--ui-motion-standard)}
+.ui-switch-track::after{content:"";display:block;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:var(--ui-shadow-1);transition:var(--ui-motion-standard)}
+.ui-switch input:checked+.ui-switch-track{background:var(--ui-primary)}.ui-switch input:checked+.ui-switch-track::after{transform:translateX(16px)}.ui-switch input:focus-visible+.ui-switch-track{box-shadow:var(--ui-focus)}
+.ui-combobox{position:relative}.ui-combobox .ui-menu{left:0;right:auto;width:100%}

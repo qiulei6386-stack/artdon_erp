@@ -12,8 +12,18 @@
     }
     const toast = document.createElement('div');
     toast.className = `ui-toast ui-toast-${type}`;
-    toast.textContent = message;
+    const text = document.createElement('span');
+    text.className = 'ui-toast-message';
+    text.textContent = message;
+    const close = document.createElement('button');
+    close.className = 'ui-toast-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭通知');
+    close.textContent = '×';
+    close.addEventListener('click', () => toast.remove());
+    toast.append(text, close);
     region.append(toast);
-    window.setTimeout(() => toast.remove(), duration);
+    if (duration > 0 && type !== 'danger') window.setTimeout(() => toast.remove(), duration);
+    return toast;
   };
 })();

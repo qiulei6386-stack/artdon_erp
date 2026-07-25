@@ -23,6 +23,9 @@
 
 ## 最近完成
 
+- `material_center_v1` 连续完成 UI U0–U7：完善统一设计令牌、唯一表单控件、Dropdown/Modal/ConfirmModal/Drawer/Toast、表格排序/选择/分页/列控制/密度、页面状态与响应式应用框架。
+- 新增物料中心电源只读列表及详情抽屉、旧 BOM 物料源审计页、系统状态页；数据仅来自旧 `bom_materials` SELECT 或真实运行检查，没有写入与表结构变化。
+- 补齐物料中心安全基线、禁止触碰、旧源审计、字段映射、物料/电源当前领域模型、进度、决策和测试文档。
 - `material_center_v1` 已建立统一 UI 组件体系：设计令牌、浅色/深色/系统主题、排版与页面框架、按钮、表单、选择控件、卡片、徽章、Tooltip、下拉菜单、弹窗、抽屉、Toast、表格、分页和统一页面状态。
 - 物料中心首页已迁移到统一组件，增加主题选择、客户展示模式、300ms 搜索提交、搜索清空、键盘打开详情、统一抽屉与前端分页。
 - 新增组件展厅 `material_center_v1/ui/docs/component-gallery.php`，并补齐 UI 审计、进度、决策和测试清单；本轮没有修改商务中心、广州旧系统或数据库表结构。
@@ -49,11 +52,11 @@
 
 ## 本次检查与部署
 
-- 修改文件：仅在 `material_center_v1` 新增/修改 UI、首页、文档和测试文件，并按协作规则更新 `WORK_CONTEXT.md`。
-- 本地检查：`git diff --check`、UI 静态测试、全部 JavaScript `node --check` 通过；本机无 PHP CLI。
+- 修改文件：仅在 `material_center_v1` 新增/修改 UI、只读服务、页面、文档和测试文件，并按协作规则更新 `WORK_CONTEXT.md`。
+- 本地检查：`git diff --check`、UI 静态测试、UI 合同/只读安全测试、全部 JavaScript `node --check` 通过；本机无 PHP CLI。
 - 服务器部署：仅部署到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`，未部署到外层目录。
-- 服务器检查：`index.php` 与组件展厅均通过 `php -l`；线上首页、组件展厅和 CSS 分别返回 HTTP 200。
-- Git：统一 UI 提交 `8aa0de4` 已推送 `origin/main`，服务器仓库已快进到同一提交。
+- 服务器检查：模块全部 12 个 PHP 文件通过 `php -l`；首页、电源列表、BOM 审计、系统状态、组件展示和健康接口均返回 HTTP 200。
+- Git：本轮 U0–U7 提交号及推送状态在完成提交后记录。
 
 ## 待办
 

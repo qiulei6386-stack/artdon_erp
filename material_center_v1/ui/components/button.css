@@ -1,8 +1,10 @@
 .ui-btn { min-height: var(--ui-control-md); padding: 0 14px; border: 1px solid transparent; border-radius: var(--ui-radius-md); display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: var(--ui-primary); color: #fff; text-decoration: none; font-size: 12px; font-weight: 750; cursor: pointer; }
-.ui-btn:hover { background: var(--ui-primary-hover); }.ui-btn:focus-visible { outline: none; box-shadow: var(--ui-focus); }
+.ui-btn:hover { background: var(--ui-primary-hover); }.ui-btn:active { transform: translateY(1px); }.ui-btn:focus-visible { outline: none; box-shadow: var(--ui-focus); }
 .ui-btn-secondary { color: var(--ui-text); background: var(--ui-surface-subtle); border-color: var(--ui-border); }
 .ui-btn-secondary:hover { background: var(--ui-primary-soft); }
 .ui-btn-ghost { color: var(--ui-primary); background: transparent; }.ui-btn-ghost:hover { background: var(--ui-primary-soft); }
 .ui-btn-danger { background: var(--ui-danger); }.ui-btn-sm { min-height: var(--ui-control-sm); padding: 0 10px; }
 .ui-btn-icon { width: var(--ui-control-md); padding: 0; }.ui-btn[disabled] { opacity: .5; cursor: not-allowed; }
 .ui-link-button { padding: 0; border: 0; background: transparent; color: var(--ui-primary); font-weight: 750; cursor: pointer; }
+.ui-btn.is-loading { pointer-events: none; }.ui-btn.is-loading::before { content: ""; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .7s linear infinite; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }

@@ -17,11 +17,24 @@
 .ui-page-head h1 { margin: 5px 0 6px; }.ui-page-head p { margin: 0; color: var(--ui-text-muted); }
 .ui-presentation .ui-sidebar, .ui-presentation .ui-topbar, .ui-presentation .ui-page-actions { display: none; }
 .ui-presentation .ui-shell { grid-template-columns: 1fr; }
+.ui-sidebar-toggle { margin: 0 0 10px; color: #cbd5e1; }
+.ui-mobile-nav { display: none; }
+.ui-shell.is-collapsed { grid-template-columns: var(--ui-sidebar-collapsed) minmax(0,1fr); }
+.ui-shell.is-collapsed .ui-brand-copy,.ui-shell.is-collapsed .ui-nav span,.ui-shell.is-collapsed .ui-side-note { display: none; }
+.ui-shell.is-collapsed .ui-sidebar { padding-inline: 10px; }
+.ui-shell.is-collapsed .ui-sidebar-toggle { font-size: 0; }
+.ui-shell.is-collapsed .ui-sidebar-toggle::after { content: "展开"; font-size: 12px; }
+.ui-toolbar { padding: 10px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ui-toolbar .search-field { flex: 1; min-width: 220px; }
+.audit-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+.audit-grid h2 { margin: 6px 0; }
 @media (max-width: 900px) {
   .ui-shell { grid-template-columns: 1fr; }
-  .ui-sidebar { position: static; height: auto; padding: 10px 12px; }
-  .ui-brand { padding-bottom: 10px; }.ui-nav { grid-template-columns: repeat(3, 1fr); }
+  .ui-sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: min(280px,86vw); height: 100vh; z-index: var(--ui-z-overlay); padding: 14px; transform: translateX(-102%); transition: transform var(--ui-motion-standard); box-shadow: var(--ui-shadow-3); }
+  .ui-sidebar.is-mobile-open { transform: translateX(0); }
+  .ui-brand { padding-bottom: 10px; }.ui-nav { grid-template-columns: 1fr; overflow: auto; }
   .ui-side-note { display: none; }.ui-content { padding: 14px; }
+  .ui-sidebar-toggle { display: none; }.ui-mobile-nav { display: inline-flex; }.audit-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .ui-topbar { padding: 0 12px; }.ui-breadcrumb-extra { display: none; }

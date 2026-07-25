@@ -4,6 +4,7 @@
   const clear = document.querySelector('[data-search-clear]');
 
   document.addEventListener('click', event => {
+    if (event.target.closest('[data-ui-row-select]')) return;
     const row = event.target.closest('tr[data-detail]');
     if (!row || !content) return;
     showDetail(row);

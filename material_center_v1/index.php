@@ -30,9 +30,12 @@ header('Cache-Control: no-store, max-age=0');
 <div class="ui-shell">
   <aside class="ui-sidebar">
     <div class="ui-brand"><span class="ui-brand-mark">AD</span><div class="ui-brand-copy"><b>物料中心</b><small>Material Center V1</small></div></div>
+    <button class="ui-btn ui-btn-ghost ui-sidebar-toggle" type="button" data-ui-sidebar-toggle aria-label="收起或展开导航">收起导航</button>
     <nav class="ui-nav">
       <a aria-current="page" href="./"><i class="ui-nav-icon">总</i><span>物料总览</span></a>
-      <a href="../bom.php"><i class="ui-nav-icon">B</i><span>返回 BOM</span></a>
+      <a href="power_supplies.php"><i class="ui-nav-icon">电</i><span>电源列表</span></a>
+      <a href="bom_audit.php"><i class="ui-nav-icon">审</i><span>BOM 源审计</span></a>
+      <a href="system_status.php"><i class="ui-nav-icon">态</i><span>系统状态</span></a>
       <a href="ui/docs/component-gallery.php"><i class="ui-nav-icon">UI</i><span>组件库</span></a>
     </nav>
     <div class="ui-side-note"><b>安全旁路模式</b><span>当前阶段只读旧物料表，不开放新增、编辑、价格或供应商字段。</span></div>
@@ -40,7 +43,7 @@ header('Cache-Control: no-store, max-age=0');
 
   <main class="ui-main">
     <header class="ui-topbar">
-      <div class="ui-topbar-group"><span class="ui-muted ui-breadcrumb-extra">广州 Artdon ERP</span><b class="ui-breadcrumb-extra">/</b><strong>物料中心 V1</strong></div>
+      <div class="ui-topbar-group"><button class="ui-btn ui-btn-ghost ui-btn-icon ui-mobile-nav" type="button" data-ui-mobile-nav aria-label="打开导航">☰</button><span class="ui-muted ui-breadcrumb-extra">广州 Artdon ERP</span><b class="ui-breadcrumb-extra">/</b><strong>物料中心 V1</strong></div>
       <div class="ui-topbar-group">
         <a class="ui-btn ui-btn-ghost ui-btn-sm" href="api/v1/health.php">健康检查</a>
         <button class="ui-btn ui-btn-ghost ui-btn-sm ui-page-actions" type="button" data-ui-presentation>展示模式</button>
@@ -84,6 +87,7 @@ header('Cache-Control: no-store, max-age=0');
           </select>
           <button class="ui-btn" type="submit">筛选</button>
           <a class="ui-btn ui-btn-secondary" href="./">重置</a>
+          <button class="ui-btn ui-btn-secondary" type="button" data-ui-table-settings="#material-table">列与密度</button>
           <span class="ui-muted">当前 <?= count($view['rows']) ?> 条</span>
         </form>
 
@@ -92,13 +96,14 @@ header('Cache-Control: no-store, max-age=0');
             <div class="ui-state"><div class="ui-state-inner"><div class="ui-state-icon">0</div><h2>没有符合条件的物料</h2><p>请减少筛选条件或尝试其他关键词。</p><div class="ui-state-actions"><a class="ui-btn ui-btn-secondary" href="./">清除筛选</a></div></div></div>
           <?php else: ?>
             <div class="ui-table-wrap">
-              <table class="ui-table" data-ui-table data-page-size="20">
-                <thead><tr><th>ID</th><th>分类</th><th>物料名称</th><th>品牌</th><th>型号</th><th>规格</th><th>材料牌号</th><th>单位</th><th>更新时间</th><th>详情</th></tr></thead>
+              <table class="ui-table" id="material-table" data-ui-table data-page-size="20">
+                <thead><tr><th class="ui-select-col"><label class="ui-check ui-check-only"><input type="checkbox" data-ui-select-all aria-label="全选当前表格"><span class="ui-check-box"></span></label></th><th data-sort="number">ID</th><th data-sort>分类</th><th data-sort>物料名称</th><th data-sort>品牌</th><th data-sort>型号</th><th>规格</th><th data-sort>材料牌号</th><th data-sort>单位</th><th data-sort>更新时间</th><th class="ui-action-col">详情</th></tr></thead>
                 <tbody>
                 <?php foreach ($view['rows'] as $row):
                   $detail = ['永久 ID'=>$row['id'],'分类'=>$row['category'],'物料名称'=>$row['name'],'品牌'=>$row['brand'],'型号'=>$row['model'],'规格'=>$row['spec'],'材料牌号'=>$row['material_grade'],'单位'=>$row['unit'],'更新时间'=>$row['updated_at']];
                 ?>
                   <tr tabindex="0" data-detail="<?= mc_h(json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>">
+                    <td class="ui-select-col"><label class="ui-check ui-check-only"><input type="checkbox" data-ui-row-select aria-label="选择 <?= mc_h($row['name']) ?>"><span class="ui-check-box"></span></label></td>
                     <td><?= (int)$row['id'] ?></td>
                     <td><span class="ui-badge"><?= mc_h($row['category'] ?: '未分类') ?></span></td>
                     <td><b><?= mc_h($row['name']) ?></b></td>
@@ -108,7 +113,7 @@ header('Cache-Control: no-store, max-age=0');
                     <td><?= mc_h($row['material_grade']) ?></td>
                     <td><?= mc_h($row['unit']) ?></td>
                     <td class="nowrap"><?= mc_h($row['updated_at']) ?></td>
-                    <td><button type="button" class="ui-link-button">查看</button></td>
+                    <td class="ui-action-col"><button type="button" class="ui-link-button">查看</button></td>
                   </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -124,6 +129,7 @@ header('Cache-Control: no-store, max-age=0');
 <div class="ui-mask" data-ui-mask></div>
 <div class="ui-toast-region" data-ui-toast-region role="status" aria-live="polite"></div>
 <script src="ui/js/interaction-manager.js" defer></script>
+<script src="ui/js/confirm-modal.js" defer></script>
 <script src="ui/js/dropdown.js" defer></script>
 <script src="ui/js/modal.js" defer></script>
 <script src="ui/js/drawer.js" defer></script>
