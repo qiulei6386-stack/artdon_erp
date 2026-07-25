@@ -63,7 +63,7 @@ header('Cache-Control: no-store, max-age=0');
       <div class="top-actions">
         <a href="api/v1/health.php">健康检查</a>
         <span class="system-state <?= $view['isolation']['ok'] ? 'ok' : 'warn' ?>"><?= $view['isolation']['ok'] ? '隔离正常' : '需检查' ?></span>
-        <span class="user"><?= cc_h($view['auth']['authenticated'] && $view['auth']['user'] ? $view['auth']['user']['display_name'] : '未登录') ?></span>
+        <span class="user"><?= cc_h($view['auth']['authenticated'] && $view['auth']['user'] ? $view['auth']['user']['display_name'] : '未登录') ?></span><?php if ($view['auth']['authenticated']): ?><a href="logout.php">退出</a><?php else: ?><a href="login.php">登录</a><?php endif; ?>
       </div>
     </header>
 
@@ -163,7 +163,7 @@ header('Cache-Control: no-store, max-age=0');
         <?php if (!$view['auth']['authenticated']): ?>
           <section class="login-notice">
             <div><strong>需要现有 Artdon 统一登录</strong><p>当前没有识别到旧系统登录用户，因此不读取客户、报价、订单或任务数据。</p></div>
-            <a href="../login.php?redirect=<?= rawurlencode('/artdon_erp/commercial_center_v1/') ?>">前往统一登录</a>
+            <a href="login.php?redirect=<?= rawurlencode($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">前往统一登录</a>
           </section>
         <?php endif; ?>
 
