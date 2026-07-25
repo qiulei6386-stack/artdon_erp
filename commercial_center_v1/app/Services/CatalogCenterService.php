@@ -13,10 +13,15 @@ final class CatalogCenterService
     public function products(array $authentication, string $search, string $category): array
     {
         return $this->load($authentication, 'naming.view', static function (LegacyCatalogReadRepository $repository) use ($search, $category): array {
-            return [
-                'rows' => $repository->products($search, $category),
-                'categories' => $repository->productCategories(),
-            ];
+            $rows = $repository->products($search, $category);
+            $costs = $repository->bomCostsForModels(array_column($rows, 'model_no'));
+            foreach ($rows as &$row) {
+                $cost = $costs[(string)$row['model_no']] ?? null;
+                $row['bom_cost'] = $cost;
+                $row['product_name'] = trim((string)$row['product_name']) . ' · BOM成本 ' . ($cost === null ? '—' : number_format((float)$cost, 4));
+            }
+            unset($row);
+            return ['rows' => $rows, 'categories' => $repository->productCategories()];
         });
     }
 
