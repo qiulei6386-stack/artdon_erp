@@ -492,3 +492,16 @@
 - 下一步由有 BOM 编辑权限的用户在标准化工作台人工确认 11 条试点的输出类型、安装、质保和调光，再建立第一批正式电源。
 - 本轮停止在 MM4，不进入产品电源适配或报价逻辑。
 - 登录态真实物料数据与各业务人员常用浏览器仍需人工业务验收。
+
+## 2026-07-26：物料中心本地与服务器只读扫描
+
+- 扫描范围：本地 `material_center_v1/`、GitHub `origin/main` 和服务器 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/`；本轮未修改、覆盖或删除物料中心业务文件。
+- 三方提交：扫描时本地 HEAD、GitHub `origin/main`、服务器 HEAD 和服务器 `origin/main` 均为 `4440f471f5dc00cb49aa8cbb98c3111b2479ad88`。
+- 本地状态：物料中心已跟踪文件无修改；有 7 份未跟踪的 UI/框架/电源工作台规格文档。仓库另有商务中心既存删除和未跟踪文件，本轮未触碰。
+- 服务器状态：4 个已跟踪文件存在未提交修改：`bootstrap.php`、`index.php`、`assets/css/app.css`、`assets/js/app.js`；相对 HEAD 合计 25 行新增、241 行删除，其内容校验值均与本地不同。
+- 服务器另有一套未跟踪框架：`README.md`、`adaptation/`、`components/`、`config/material_pages.php`、`data/`、`demo/`、`docs/CODEX_INTEGRATION_GUIDE.md`、`documents/`、`lib/`、`material/`、`settings/`、`substitute/`、`supplier/`。
+- 文件规模：本地扫描到 148 个文件，服务器扫描到 162 个文件；忽略运行时目录后，主要内容差异即上述 4 个跟踪文件、服务器未跟踪框架和本地 7 份未跟踪文档。
+- 检查结果：服务器物料中心全部 PHP 文件通过 `php -l`；服务器修改后的 `assets/js/app.js` 通过本地 Node `--check`。本机无 PHP CLI，因此未在本地重复 PHP 语法检查。
+- 风险结论：服务器存在未进入 GitHub 的实质代码，不能直接用本地目录覆盖服务器；继续开发前必须先决定是将服务器框架审阅后回收至本地，还是确认废弃后再由 GitHub 版本替换。
+- 部署情况：本轮业务代码未部署；仅将本扫描记录按固定 Git 流程提交、推送并同步服务器，且不得改变服务器物料中心现有工作树差异。
+- 下一步：先审阅服务器 4 个跟踪差异及未跟踪框架的功能来源，再由用户确认“回收”或“废弃”；确认前不执行清理或覆盖。
