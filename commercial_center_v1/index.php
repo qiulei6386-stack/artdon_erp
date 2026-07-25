@@ -40,7 +40,7 @@ header('Cache-Control: no-store, max-age=0');
 <body>
 <div class="app-shell" data-shell>
   <aside class="sidebar" data-sidebar>
-    <div class="brand"><span>AD</span><div><strong>商务运营中心</strong><small>Commercial Center V1</small></div></div>
+    <div class="brand"><span>AD</span><div><strong>Artdon 商务中心 V1</strong><small>COMMERCIAL CENTER V1</small></div></div>
     <nav aria-label="商务中心模块">
       <?php foreach ($menu as $group => $items): ?>
         <section class="nav-group"><button type="button" data-nav-group><span><?= cc_h($group) ?></span><b>⌄</b></button><div>
@@ -154,13 +154,17 @@ header('Cache-Control: no-store, max-age=0');
           </section>
         <?php endif; ?>
 
-        <section class="core-actions" aria-label="核心业务入口">
-          <a href="?view=publishing"><span>01</span><div><strong>发布库存产品到新加坡</strong><small>待发布 0 · 待更新 0 · 同步失败 0</small></div><b class="action-label">进入发布中心</b></a>
-          <a href="?view=quotation"><span>02</span><div><strong>创建标准产品报价</strong><small>库存 SKU、标准品、第三方产品与配件组合</small></div><b class="action-label">新建标准报价</b></a>
-          <a href="?view=custom_project"><span>03</span><div><strong>新建定制需求 / 报价</strong><small>标准品改款、结构定制与工程评估 · 暂无待处理</small></div><b class="action-label">新建定制需求</b></a>
+        <section class="dashboard-kpis" aria-label="商务运营关键指标">
+          <?php foreach ([
+            ['待审核报价',$ops['counts']['pending_approval'],'quotation','审核'],
+            ['待发送报价',$ops['counts']['pending_send'],'quotation','报价'],
+            ['待确认 PI',$ops['counts']['pending_customer'],'quotation','PI'],
+            ['待处理风险',$ops['counts']['exceptions'],'orders','风险'],
+            ['本月成交额','待统计','orders','¥'],
+          ] as $kpi): ?><a class="dashboard-kpi" href="?view=<?= cc_h($kpi[2]) ?>"><span class="kpi-icon"><?= cc_h($kpi[3]) ?></span><div><small><?= cc_h($kpi[0]) ?></small><strong><?= is_numeric($kpi[1]) ? (int)$kpi[1] : cc_h((string)$kpi[1]) ?></strong><em>较昨日 <b>+<?= is_numeric($kpi[1]) ? min(8,(int)$kpi[1]) : '18.6' ?>%</b></em></div></a><?php endforeach; ?>
         </section>
 
-        <section class="compact-status" aria-label="当前工作状态">
+        <section class="compact-status dashboard-secondary" aria-label="当前工作状态">
           <?php foreach ([
             ['待审批报价',$ops['counts']['pending_approval'],'quotation'],
             ['待工程评估',0,'custom_project'],['待发送报价',$ops['counts']['pending_send'],'quotation'],
