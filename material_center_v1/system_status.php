@@ -8,6 +8,9 @@ $checks = [
     ['写入功能', false, '按安全基线保持关闭'],
     ['UI 组件入口', is_file(__DIR__ . '/ui/index.css'), '统一 CSS 入口'],
     ['交互管理器', is_file(__DIR__ . '/ui/js/interaction-manager.js'), '统一浮层生命周期'],
+    ['MM2–MM4 迁移', mc_table_exists('mc_schema_migrations'), '可重复执行和回滚'],
+    ['正式物料结构', mc_table_exists('mc_materials'), '独立 mc_ 表'],
+    ['电源标准化暂存', mc_table_exists('mc_material_import_staging'), '解析先暂存后确认'],
 ];
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, max-age=0');

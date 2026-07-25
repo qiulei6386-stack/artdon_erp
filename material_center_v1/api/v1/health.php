@@ -17,4 +17,6 @@ echo json_encode([
     'authentication' => $user ? 'authenticated' : 'unauthenticated',
     'source_table' => $tableReady ? 'available' : 'missing',
     'write_enabled' => false,
+    'mm_schema' => mc_table_exists('mc_materials') ? 'installed' : 'not_installed',
+    'legacy_write_enabled' => false,
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

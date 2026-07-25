@@ -1,0 +1,10 @@
+const fs=require('fs'),path=require('path');const root=path.resolve(__dirname,'..');const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+const migration=read('database/migrations/20260725_001_mm2_mm4_foundation.php');
+const required=['mc_schema_migrations','mc_material_categories','mc_materials','mc_material_attributes','mc_material_attribute_values','mc_suppliers','mc_supplier_materials','mc_supplier_prices','mc_material_alternatives','mc_material_documents','mc_material_versions','mc_legacy_links','mc_activity_logs','mc_power_supply_specs','mc_power_bands','mc_power_supply_dimming_modes','mc_power_supply_current_options','mc_material_import_staging','mc_material_parse_results','mc_duplicate_candidates'];
+for(const table of required)if(!migration.includes(table)&&table!=='mc_schema_migrations')throw new Error(`migration missing ${table}`);
+if(/\bFLOAT\b/i.test(migration))throw new Error('money/numeric schema must not use FLOAT');
+for(const marker of ["'up'","'down'",'purchase_price DECIMAL','raw_data_hash','is_human_confirmed'])if(!migration.includes(marker))throw new Error(`migration marker missing ${marker}`);
+const adapter=read('app/Adapters/LegacyBomMaterialAdapter.php');if(!adapter.includes("preg_match('/^\\s*SELECT"))throw new Error('legacy adapter SELECT guard missing');
+if(/\b(INSERT|UPDATE|DELETE|ALTER|DROP)\s+.*bom_materials/i.test(adapter))throw new Error('legacy adapter writes legacy table');
+const parser=read('app/Domain/PowerSupply/PowerSpecParser.php');for(const marker of ['confidence','parse_rule','is_human_confirmed','installation_type','supplier_warranty_years'])if(!parser.includes(marker))throw new Error(`parser marker missing ${marker}`);
+console.log(`MM static safety test passed (${required.length} tables).`);

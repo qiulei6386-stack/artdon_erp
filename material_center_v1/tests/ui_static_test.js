@@ -5,7 +5,9 @@ const required = [
   'ui/index.css', 'ui/tokens.css', 'ui/theme-light.css', 'ui/theme-dark.css',
   'ui/js/interaction-manager.js', 'ui/js/confirm-modal.js', 'ui/js/dropdown.js', 'ui/js/modal.js',
   'ui/js/drawer.js', 'ui/js/toast.js', 'ui/js/table.js', 'ui/js/app-shell.js',
-  'ui/docs/component-gallery.php', 'power_supplies.php', 'bom_audit.php', 'system_status.php'
+  'ui/docs/component-gallery.php', 'power_supplies.php', 'power_standardization.php',
+  'formal_power_supplies.php', 'power_bands.php', 'bom_audit.php', 'system_status.php',
+  'assets/js/power-standardization.js', 'assets/js/power-bands.js'
 ];
 for (const file of required) {
   if (!fs.existsSync(path.join(root, file))) throw new Error(`缺少 UI 文件: ${file}`);

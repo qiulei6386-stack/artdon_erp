@@ -45,7 +45,10 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
 {
     $links = [
         'home' => [$prefix . './', '总', '物料总览'],
-        'power' => [$prefix . 'power_supplies.php', '电', '电源列表'],
+        'power' => [$prefix . 'power_supplies.php', '源', '电源源数据'],
+        'standardize' => [$prefix . 'power_standardization.php', '标', '电源标准化'],
+        'library' => [$prefix . 'formal_power_supplies.php', '库', '正式电源库'],
+        'bands' => [$prefix . 'power_bands.php', '档', '功率档管理'],
         'audit' => [$prefix . 'bom_audit.php', '审', 'BOM 源审计'],
         'status' => [$prefix . 'system_status.php', '态', '系统状态'],
         'gallery' => [$prefix . 'ui/docs/component-gallery.php', 'UI', '组件展示'],

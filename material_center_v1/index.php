@@ -34,6 +34,9 @@ header('Cache-Control: no-store, max-age=0');
     <nav class="ui-nav">
       <a aria-current="page" href="./"><i class="ui-nav-icon">总</i><span>物料总览</span></a>
       <a href="power_supplies.php"><i class="ui-nav-icon">电</i><span>电源列表</span></a>
+      <a href="power_standardization.php"><i class="ui-nav-icon">标</i><span>电源标准化</span></a>
+      <a href="formal_power_supplies.php"><i class="ui-nav-icon">库</i><span>正式电源库</span></a>
+      <a href="power_bands.php"><i class="ui-nav-icon">档</i><span>功率档管理</span></a>
       <a href="bom_audit.php"><i class="ui-nav-icon">审</i><span>BOM 源审计</span></a>
       <a href="system_status.php"><i class="ui-nav-icon">态</i><span>系统状态</span></a>
       <a href="ui/docs/component-gallery.php"><i class="ui-nav-icon">UI</i><span>组件库</span></a>
