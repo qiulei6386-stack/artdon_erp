@@ -90,6 +90,7 @@
   height:auto;
   min-height:0;
   overflow:visible;
+  max-width:1188px;
 }
 .product-grid.product-library-grid .library-card{
   width:100%;
@@ -116,5 +117,66 @@
   }
   .product-grid.product-library-grid .library-thumb{
     height:142px;
+  }
+}
+.product-grid.product-library-grid.is-list{
+  grid-template-columns:1fr;
+  grid-auto-rows:auto;
+  max-width:none;
+  width:100%;
+  gap:8px;
+}
+.product-grid.product-library-grid.is-list .library-card{
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  grid-template-rows:96px;
+  width:100%;
+  min-height:96px;
+}
+.product-grid.product-library-grid.is-list .library-thumb{
+  width:96px;
+  height:96px;
+  padding:6px;
+}
+.product-grid.product-library-grid.is-list .library-card>div:last-child{
+  display:grid;
+  grid-template-columns:minmax(140px,1.2fr) minmax(140px,1fr) minmax(130px,.8fr) auto;
+  align-items:center;
+  gap:12px;
+  padding:10px 14px;
+}
+.product-grid.product-library-grid.is-list .library-card h3,
+.product-grid.product-library-grid.is-list .library-card small,
+.product-grid.product-library-grid.is-list .library-card p,
+.product-grid.product-library-grid.is-list .library-card .product-price,
+.product-grid.product-library-grid.is-list .library-card footer{
+  margin:0;
+}
+.product-grid.product-library-grid.is-list .library-card footer{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+}
+@media(max-width:900px){
+  .product-grid.product-library-grid.is-list .library-card>div:last-child{
+    grid-template-columns:1fr 1fr;
+  }
+}
+@media(max-width:560px){
+  .product-grid.product-library-grid.is-list .library-card{
+    grid-template-columns:76px minmax(0,1fr);
+    grid-template-rows:auto;
+  }
+  .product-grid.product-library-grid.is-list .library-thumb{
+    width:76px;
+    height:100%;
+    min-height:96px;
+  }
+  .product-grid.product-library-grid.is-list .library-card>div:last-child{
+    grid-template-columns:1fr;
+    gap:4px;
+  }
+  .product-grid.product-library-grid.is-list .library-card footer{
+    justify-content:space-between;
   }
 }
