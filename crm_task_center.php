@@ -320,7 +320,7 @@ function crm_task_center_backfill_links(): void
                 DATE_ADD(q.updated_at,INTERVAL 3 DAY),DATE_ADD(q.updated_at,INTERVAL 1 DAY),{$ownerExpr},NOW(),NOW()
             FROM cc_quotes q {$detailJoin}
             WHERE q.is_test=0 AND q.status IN ('approved','sent','issued','customer_pending','customer_confirmed')
-              AND NOT EXISTS (SELECT 1 FROM crm_tasks t WHERE t.task_type='quote_followup' AND t.source_type='cc_quote' AND t.source_id=CAST(q.id AS CHAR) AND t.deleted_at IS NULL)");
+              AND NOT EXISTS (SELECT 1 FROM crm_tasks t WHERE t.task_type='quote_followup' COLLATE utf8mb4_unicode_ci AND t.source_type='cc_quote' COLLATE utf8mb4_unicode_ci AND t.source_id COLLATE utf8mb4_unicode_ci=CAST(q.id AS CHAR) COLLATE utf8mb4_unicode_ci AND t.deleted_at IS NULL)");
     }
 }
 
@@ -685,7 +685,7 @@ function crm_task_cc_quote_flow_records(): array
             {$detailSelect},t.id AS task_id,t.status AS task_status,t.due_at AS task_due_at,t.completed_at AS replied_at,
             t.result,t.result_note,u.username AS assigned_name
         FROM cc_quotes q {$detailJoin}
-        LEFT JOIN crm_tasks t ON t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.source_type='cc_quote' AND t.source_id=CAST(q.id AS CHAR)
+        LEFT JOIN crm_tasks t ON t.deleted_at IS NULL AND t.task_type='quote_followup' COLLATE utf8mb4_unicode_ci AND t.source_type='cc_quote' COLLATE utf8mb4_unicode_ci AND t.source_id COLLATE utf8mb4_unicode_ci=CAST(q.id AS CHAR) COLLATE utf8mb4_unicode_ci
         LEFT JOIN crm_users u ON u.id=t.assigned_user_id
         WHERE q.is_test=0 ORDER BY q.updated_at DESC LIMIT 300";
     try { $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return []; }
