@@ -532,6 +532,8 @@
     let bootstrap = { customers: [], configuration: { products: [], groups: [] }, commission_reminders: [] };
     let quoteId = Number(editor.dataset.quoteId || 0);
     let editingRow = null;
+    const summaryPanel = $('[data-summary-panel]', editor);
+    const configPanel = $('[data-config-panel]', editor);
     const message = (text, error = false) => {
       const node = $('[data-save-message]', editor);
       if (!node) return;
@@ -687,6 +689,26 @@
         options.append(label);
       });
     };
+    const showConfiguration = (row = null) => {
+      editingRow = row;
+      const productSelect = $('[data-config-product]', editor);
+      const values = row ? JSON.parse(row.dataset.configValues || '{}') : defaultValues();
+      productSelect.value = row?.dataset.productKey || '';
+      productSelect.disabled = Boolean(row);
+      $$('[data-config-group]', editor).forEach((select) => {
+        select.value = values[select.dataset.configGroup] || select.value;
+      });
+      $('[data-config-messages]', editor).textContent = '';
+      summaryPanel.hidden = true;
+      configPanel.hidden = false;
+    };
+    const hideConfiguration = () => {
+      configPanel.hidden = true;
+      summaryPanel.hidden = false;
+      $('[data-config-product]', editor).disabled = false;
+      $('[data-config-messages]', editor).textContent = '';
+      editingRow = null;
+    };
     const quotePayload = () => ({
       id: quoteId,
       customer_id: Number(field('customer_id')?.value || 0),
@@ -736,11 +758,16 @@
       if (event.target.matches('[data-qty],[data-price],[data-discount],[data-order-discount],[data-shipping],[data-tax],[data-other]')) recalculate();
     });
     editor.addEventListener('click', async (event) => {
-      if (event.target.closest('[data-open-product],[data-add-line]')) { editingRow = null; openModal($('[data-config-modal]', editor)); }
+      if (event.target.closest('[data-open-product],[data-add-line]')) showConfiguration();
       const configure = event.target.closest('[data-configure]');
-      if (configure) { editingRow = configure.closest('tr'); openModal($('[data-config-modal]', editor)); }
+      if (configure) showConfiguration(configure.closest('tr'));
+      if (event.target.closest('[data-config-close]')) hideConfiguration();
       const remove = event.target.closest('[data-remove-line]');
-      if (remove) { remove.closest('tr').remove(); recalculate(); }
+      if (remove) {
+        if (editingRow === remove.closest('tr')) hideConfiguration();
+        remove.closest('tr').remove();
+        recalculate();
+      }
       if (event.target.closest('[data-batch-qty]')) {
         const value = prompt('输入统一数量');
         if (value !== null && Number(value) > 0) $$('[data-qty]', tbody).forEach((input) => input.value = value);
@@ -765,7 +792,7 @@
         });
         const row = renderRow(data.item, !editingRow);
         if (editingRow) { editingRow.replaceWith(row); editingRow = null; }
-        closeModal($('[data-config-modal]', editor));
+        hideConfiguration();
         const warnings = data.item.warnings || [];
         $('[data-moq-warning]', editor).textContent = warnings.find((item) => item.includes('MOQ')) || 'MOQ 检查通过';
         $('[data-lead-warning]', editor).textContent = data.item.lead_time;

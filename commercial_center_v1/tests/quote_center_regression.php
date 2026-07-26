@@ -65,4 +65,11 @@ if (!str_contains($standardView, '$rows = [];')) {
     fwrite(STDERR, "FAIL: new standard quote must start with empty line items\n");
     exit(1);
 }
+$standardScript = (string)file_get_contents($root . '/assets/js/quote_center.js');
+foreach (['data-summary-panel', 'data-config-panel', 'showConfiguration', 'hideConfiguration'] as $needle) {
+    if (!str_contains($standardView . $standardScript, $needle)) {
+        fwrite(STDERR, "FAIL: standard quote side configuration switch missing {$needle}\n");
+        exit(1);
+    }
+}
 echo "PASS: six-item menu, legacy mappings, shared quote center and three quote modes verified.\n";

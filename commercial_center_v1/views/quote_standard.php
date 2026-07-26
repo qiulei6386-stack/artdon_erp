@@ -66,7 +66,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       </section>
     </main>
     <aside>
-      <section class="ref-panel total-box"><h2>报价汇总</h2><dl>
+      <section class="ref-panel total-box" data-summary-panel><h2>报价汇总</h2><dl>
         <dt>产品金额（未税）</dt><dd data-subtotal>0.00</dd>
         <dt>折扣金额</dt><dd><input value="0" data-order-discount></dd>
         <dt>运费</dt><dd><input value="0" data-shipping></dd>
@@ -75,6 +75,15 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       </dl><div><b>总金额</b><strong data-grand-total>0.00</strong></div>
       <p>预计成本　<b data-total-cost>按权限计算</b></p><p>预计毛利　<b data-gross-profit>按权限显示</b></p>
       <p>毛利率　<b data-gross-margin>按权限显示</b></p></section>
+      <section class="ref-panel standard-config-panel" data-config-panel hidden>
+        <header><div><b>产品与配置</b><span>编辑当前报价产品</span></div>
+          <button type="button" data-config-close aria-label="关闭配置">×</button></header>
+        <label class="config-product-field"><span>产品</span><select data-config-product><option value="">加载真实产品中…</option></select></label>
+        <div class="config-options" data-config-options></div>
+        <div class="config-message" data-config-messages></div>
+        <footer><button type="button" data-config-close>取消</button>
+          <button type="button" class="primary" data-apply-config>校验并应用</button></footer>
+      </section>
       <section class="ref-panel risk-cards">
         <article>△<b>MOQ 提醒</b><span data-moq-warning>保存后按真实策略检查</span></article>
         <article>▣<b>交期提醒</b><span data-lead-warning>保存后按配置计算</span></article>
@@ -91,13 +100,4 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       <span><strong><?= $step ?></strong><small><?= $state ?></small></span><i>›</i>
     <?php endforeach; ?>
   </div>
-  <div class="quote-config-modal ref-config" data-config-modal aria-hidden="true"><div>
-    <header><div><b>添加产品 / 选择标准产品与配置</b><span>按物料中心产品适配规则选择合法配置</span></div>
-      <button type="button" data-modal-close>×</button></header>
-    <div class="config-steps"><b>1 选择产品</b><span>2 选择配置</span><span>3 加入报价</span></div>
-    <label>产品<select data-config-product><option value="">加载真实产品中…</option></select></label>
-    <div class="config-options" data-config-options></div><div data-config-messages></div>
-    <footer><span>价格、MOQ、交期和毛利由服务端计算</span><button type="button" data-modal-close>取消</button>
-      <button type="button" class="primary" data-apply-config>校验并加入报价</button></footer>
-  </div></div>
 </section>
