@@ -8,7 +8,9 @@
 - 顶部和底部“添加产品”改为原生锚点入口；即使 JavaScript 未执行，也会通过 `:target` 直接打开右侧产品配置并隐藏报价汇总。
 - JavaScript正常时继续负责产品数据加载、配置校验、加入报价及关闭后恢复汇总；移除会与原生锚点冲突的 `hidden` 状态。
 - 按钮契约测试增加锚点、目标面板和 CSS 原生兜底断言。
-- 修改、检查、提交、推送、服务器部署及三方一致性以本轮最终结果为准。
+- 修改文件：`commercial_center_v1/views/quote_standard.php`、`assets/js/quote_center.js`、`assets/css/app.css`、`tests/standard_quote_button_contract.php`、`WORK_CONTEXT.md`。
+- 检查：JavaScript/PHP 语法、按钮契约、报价中心回归及安全扫描通过；线上 HTML 已确认同时包含两个原生添加入口与 `standard-product-config` 目标面板。
+- Git/部署：修复提交 `334f731` 已推送 GitHub 并同步服务器；上下文收尾提交后再次核对三方一致。
 
 ## 本次：标准报价全按钮扫描与“添加产品”修复
 
