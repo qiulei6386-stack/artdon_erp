@@ -8,7 +8,7 @@ $page=file_get_contents($root.'/material/_page.php');
 $script=file_get_contents($root.'/assets/js/category-editor.js');
 $service=file_get_contents($root.'/app/Services/CategoryFieldService.php');
 
-foreach(["'chip'","'optical'","'connector'","'accessories'"]as$menu){
+foreach(["'chip'","'optical'","'profile'","'connector'","'accessories'","'packaging'"]as$menu){
     if(!str_contains($layout,$menu))throw new RuntimeException("category drawer menu missing: {$menu}");
 }
 foreach(['data-category-editor','data-category-editor-fields','data-category-save','data-category-submit','data-category-reference']as$marker){

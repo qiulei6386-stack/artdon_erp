@@ -68,6 +68,8 @@ final class PowerEditorService
                 ['value' => 'nfc', 'label' => 'NFC'],
             ],
             'can_view_price' => $user->isSuperAdmin || $this->canEditSensitive($user),
+            'can_approve' => $user->isSuperAdmin
+                || (new \Artdon\MaterialCenter\Security\PermissionService($this->db))->allows($user, 'material_center.approve'),
         ];
     }
 
@@ -75,7 +77,9 @@ final class PowerEditorService
     {
         $stmt = $this->db->prepare(
             "SELECT m.id,m.material_code,m.category_id,m.name,m.brand,m.model,m.unit,m.status,m.source,
-                    m.is_official,m.updated_at,md.spec_summary,md.lock_version,p.*,b.name AS power_band_name
+                    m.is_official,m.updated_at,md.spec_summary,md.supplier_text,md.remark,md.lock_version,
+                    (SELECT MIN(sm.source_record_id) FROM mc_source_mappings sm WHERE sm.material_id=m.id) source_record_id,
+                    p.*,b.name AS power_band_name
              FROM mc_materials m
              JOIN mc_material_categories c ON c.id=m.category_id AND c.code='power_supply'
              JOIN mc_power_supply_specs p ON p.material_id=m.id
@@ -142,8 +146,13 @@ final class PowerEditorService
                 $materialId,
             ]);
             $this->db->prepare(
-                'UPDATE mc_material_metadata SET spec_summary=?,lock_version=lock_version+1 WHERE material_id=?'
-            )->execute([$this->nullable($data['spec_summary'] ?? '', 2000), $materialId]);
+                'UPDATE mc_material_metadata SET spec_summary=?,supplier_text=?,remark=?,lock_version=lock_version+1 WHERE material_id=?'
+            )->execute([
+                $this->nullable($data['spec_summary'] ?? '', 2000),
+                $this->nullable($data['supplier_text'] ?? '', 200),
+                $this->nullable($data['remark'] ?? '', 5000),
+                $materialId,
+            ]);
 
             $fields = $this->validatedScalarFields($data, $user);
             $this->updatePower($materialId, $fields);
@@ -171,6 +180,16 @@ final class PowerEditorService
         if ($sourceRecordId <= 0) {
             throw new RuntimeException('电源来源记录无效。');
         }
+        $organizer = new SourceMaterialOrganizerService($this->db);
+        $mappedMaterialId = $organizer->mappedMaterialId($sourceRecordId, 'power_supply');
+        if ($mappedMaterialId > 0) {
+            $current = $this->detail($mappedMaterialId, $user);
+            if ($current['status'] !== 'draft') {
+                throw new RuntimeException('该来源已映射物料，当前状态不能直接编辑。');
+            }
+            $data['lock_version'] = (int) $current['lock_version'];
+            return $this->save($mappedMaterialId, $data, $user);
+        }
         $currentOptions = $this->validateCurrents($data['currents'] ?? []);
         if (!$currentOptions['values']) {
             throw new RuntimeException('请至少确认一个有效输出电流。');
@@ -188,7 +207,9 @@ final class PowerEditorService
             $user->id
         );
         $data['lock_version'] = 1;
-        return $this->save($materialId, $data, $user);
+        $detail = $this->save($materialId, $data, $user);
+        $organizer->markReviewed($sourceRecordId, $materialId, 100.0, $user->id);
+        return $detail;
     }
 
     public function batchPreview(array $ids, array $changes, string $policy, MaterialCenterUserContext $user): array

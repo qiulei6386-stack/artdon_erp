@@ -13,6 +13,7 @@
   let selectedIds = [];
   let lastBatchRequest = null;
   let dirty = false;
+  let sourceDetail = null;
 
   const labels = {
     nominal_power_w: '额定功率',
@@ -118,6 +119,61 @@
     if (input) input.value = value == null ? '' : String(value);
   };
 
+  const switchPowerTab = tab => {
+    qa('[data-power-tab]', drawer).forEach(button => button.classList.toggle('is-active', button.dataset.powerTab === tab));
+    qa('[data-power-pane]', drawer).forEach(pane => { pane.hidden = pane.dataset.powerPane !== tab; });
+  };
+
+  const renderSource = detail => {
+    const root = q('[data-power-source-fields]', drawer);
+    const snapshot = q('[data-power-source-snapshot]', drawer);
+    const log = q('[data-power-parse-log]', drawer);
+    root.replaceChildren();
+    log.replaceChildren();
+    if (!detail?.source) {
+      const empty = document.createElement('div');
+      empty.className = 'mc-empty-inline';
+      empty.textContent = '当前物料没有旧 BOM 来源映射。';
+      root.append(empty);
+      snapshot.textContent = '—';
+      return;
+    }
+    const source = detail.source;
+    [
+      ['来源编号', source.source_id], ['来源系统', source.source_system], ['来源表', source.source_table],
+      ['原始名称', source.raw_name], ['原始品牌', source.raw_brand], ['原始型号', source.raw_model],
+      ['原始规格', source.raw_spec], ['同步时间', source.read_at], ['解析置信度', `${source.confidence_score}%`],
+    ].forEach(([label, value]) => {
+      const item = document.createElement('div');
+      const strong = document.createElement('strong');
+      const span = document.createElement('span');
+      strong.textContent = label;
+      span.textContent = value || '—';
+      item.append(strong, span);
+      root.append(item);
+    });
+    if (source.changed) {
+      const warning = document.createElement('div');
+      warning.className = 'mc-source-change-warning';
+      warning.textContent = '来源快照已有变化。人工修正字段没有被覆盖，请核对后重新保存。';
+      root.prepend(warning);
+    }
+    snapshot.textContent = JSON.stringify(source.snapshot || {}, null, 2);
+    if ((detail.parse_result || []).length) {
+      const title = document.createElement('strong');
+      title.textContent = '解析日志';
+      log.append(title, ...detail.parse_result.map(item => {
+        const row = document.createElement('div');
+        row.textContent = `${item.field} → ${Array.isArray(item.candidate_value) ? item.candidate_value.join(', ') : item.candidate_value}（${item.confidence}%）`;
+        return row;
+      }));
+    }
+  };
+
+  const fetchSource = sourceRecordId => request(
+    `${window.MC_BASE_URL}/api/v1/source-material.php?source_record_id=${encodeURIComponent(sourceRecordId)}&category=power_supply`
+  );
+
   const addCurrent = (value = '', isDefault = false) => {
     const row = document.createElement('div');
     row.className = 'mc-current-row';
@@ -172,7 +228,7 @@
     form.reset();
     q('[data-current-list]', form).replaceChildren();
     qa('input[name="dimming_modes"]', form).forEach(input => { input.checked = false; });
-    const basic = ['material_id', 'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary'];
+    const basic = ['material_id', 'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary', 'supplier_text', 'remark'];
     basic.forEach(key => setSelect(key, data[key]));
     const scalar = [
       'nominal_power_w', 'max_output_power_w', 'power_band_id',
@@ -199,14 +255,17 @@
     q('[data-power-source-note]', drawer).hidden = true;
     q('[data-power-save-state]', drawer).textContent = data.editable ? '未修改' : '当前状态只读';
     q('[data-power-submit]', drawer).hidden = data.status !== 'draft';
-    q('[data-power-approve]', drawer).hidden = data.status !== 'pending_review';
+    q('[data-power-approve]', drawer).hidden = data.status !== 'pending_review' || !schema.can_approve;
     q('[data-power-error]', drawer).hidden = true;
     dirty = false;
   };
 
   const openNew = async () => {
     activeRecord = null;
+    sourceDetail = null;
     await ensureSchema();
+    switchPowerTab('fields');
+    renderSource(null);
     form.reset();
     q('[data-current-list]', form).replaceChildren();
     qa('input[name="dimming_modes"]', form).forEach(input => { input.checked = false; });
@@ -232,12 +291,19 @@
 
   const openMaterial = async record => {
     activeRecord = record;
+    sourceDetail = null;
     openDrawer(drawer);
+    switchPowerTab('fields');
+    renderSource(null);
     q('[data-power-editor-title]', drawer).textContent = record.name || '电源资料';
     q('[data-power-editor-subtitle]', drawer).textContent = '正在读取完整资料…';
     try {
       await ensureSchema();
       const detail = await request(`${window.MC_BASE_URL}/api/v1/power-editor.php?action=detail&material_id=${encodeURIComponent(record.id)}`);
+      if (record.source_record_id || detail.source_record_id) {
+        sourceDetail = await fetchSource(record.source_record_id || detail.source_record_id);
+        renderSource(sourceDetail);
+      }
       fillDetail(detail);
     } catch (error) {
       q('[data-power-error]', drawer).textContent = error.message;
@@ -249,32 +315,64 @@
   const openSource = async record => {
     activeRecord = record;
     await ensureSchema();
+    sourceDetail = await fetchSource(record.source_record_id);
+    switchPowerTab('fields');
+    renderSource(sourceDetail);
     form.reset();
     q('[data-current-list]', form).replaceChildren();
-    addCurrent();
-    setSelect('name', record.name);
-    setSelect('brand', record.brand);
-    setSelect('model', record.model);
-    setSelect('spec_summary', record.spec);
+    const defaults = sourceDetail.defaults || {};
+    const parsed = defaults.fields || {};
+    const parsedValue = key => parsed[`power.${key}`] ?? '';
+    const currents = parsedValue('current_options_ma');
+    if (Array.isArray(currents) && currents.length) currents.forEach((value, index) => addCurrent(value, index === 0));
+    else if (parsedValue('output_current_ma')) addCurrent(parsedValue('output_current_ma'), true);
+    else addCurrent();
+    setSelect('name', defaults.name || record.name);
+    setSelect('brand', defaults.brand || record.brand);
+    setSelect('model', defaults.model || record.model);
+    setSelect('spec_summary', defaults.spec_summary || record.spec);
+    setSelect('supplier_text', defaults.supplier_text || '');
+    setSelect('remark', defaults.remark || '');
     setSelect('material_id', '');
     setSelect('lock_version', '1');
     setSelect('unit', 'PCS');
     setSelect('installation_type', 'unknown');
     setSelect('output_type', 'unknown');
+    [
+      'nominal_power_w', 'max_output_power_w', 'power_band_id',
+      'input_voltage_min_v', 'input_voltage_max_v', 'input_frequency_min_hz', 'input_frequency_max_hz',
+      'power_factor', 'efficiency', 'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
+      'installation_type', 'length_mm', 'width_mm', 'height_mm', 'supplier_warranty_years',
+    ].forEach(key => {
+      if (parsedValue(key) !== '') setSelect(key, parsedValue(key));
+    });
+    if (!parsedValue('power_band_id') && parsedValue('max_output_power_w')) {
+      const power = Number(parsedValue('max_output_power_w'));
+      const band = schema.bands.find(item => power >= Number(item.min_power_w)
+        && (power < Number(item.max_power_w) || (Number(item.max_inclusive) === 1 && power <= Number(item.max_power_w))));
+      if (band) setSelect('power_band_id', band.id);
+    }
+    const parsedDimming = parsedValue('dimming_mode');
+    if (parsedDimming) {
+      const dimming = q(`input[name="dimming_modes"][value="${CSS.escape(String(parsedDimming))}"]`, form);
+      if (dimming) dimming.checked = true;
+      syncPrimaryDimming();
+      setSelect('primary_dimming', parsedDimming);
+    }
     setReadonly(false);
     q('[data-power-editor-title]', drawer).textContent = record.name || '旧 BOM 电源';
     q('[data-power-editor-subtitle]', drawer).textContent = `${record.code} · 待整理`;
     q('[data-power-source-note]', drawer).hidden = false;
     q('[data-power-save-state]', drawer).textContent = '确认字段后保存为草稿';
-    q('[data-power-submit]', drawer).hidden = true;
-    q('[data-power-approve]', drawer).hidden = true;
+    q('[data-power-submit]', drawer).hidden = false;
+    q('[data-power-approve]', drawer).hidden = !schema.can_approve;
     openDrawer(drawer);
   };
 
   const formPayload = () => {
     const payload = {};
     const names = [
-      'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary',
+      'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary', 'supplier_text', 'remark',
       'nominal_power_w', 'max_output_power_w', 'power_band_id',
       'input_voltage_min_v', 'input_voltage_max_v', 'input_frequency_min_hz', 'input_frequency_max_hz',
       'power_factor', 'efficiency', 'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
@@ -296,7 +394,15 @@
     return payload;
   };
 
-  const save = async () => {
+  const lifecycleRequest = async (materialId, action) => {
+    const body = new FormData();
+    body.set('csrf_token', window.MC_CSRF || '');
+    body.set('action', action);
+    body.set('material_id', materialId);
+    return request(`${window.MC_BASE_URL}/api/v1/material-master.php`, { method: 'POST', body });
+  };
+
+  const save = async (mode = 'draft') => {
     const error = q('[data-power-error]', drawer);
     const button = q('[data-power-save]', drawer);
     error.hidden = true;
@@ -311,9 +417,18 @@
       const action = activeRecord?.read_only ? 'source_draft' : 'save';
       if (activeRecord?.read_only) values.source_record_id = activeRecord.source_record_id;
       const detail = await post(action, values);
+      if (mode === 'submit' || mode === 'approve') {
+        await lifecycleRequest(detail.material_id || detail.id, 'submit');
+      }
+      if (mode === 'approve') {
+        await lifecycleRequest(detail.material_id || detail.id, 'approve');
+      }
       fillDetail(detail);
       q('[data-power-save-state]', drawer).textContent = '已保存';
-      toast('电源已保存', '全部字段、多电流和调光方式已写入。');
+      toast(
+        mode === 'approve' ? '电源已转正式' : (mode === 'submit' ? '电源已提交确认' : '电源已保存'),
+        mode === 'draft' ? '全部字段、多电流和调光方式已写入。' : '来源映射和生命周期已更新。'
+      );
       setTimeout(() => location.reload(), 500);
     } catch (reason) {
       error.textContent = reason.message;
@@ -327,11 +442,7 @@
   const lifecycle = async action => {
     const materialId = form.elements.material_id.value;
     if (!materialId) return;
-    const body = new FormData();
-    body.set('csrf_token', window.MC_CSRF || '');
-    body.set('action', action);
-    body.set('material_id', materialId);
-    const response = await request(`${window.MC_BASE_URL}/api/v1/material-master.php`, { method: 'POST', body });
+    const response = await lifecycleRequest(materialId, action);
     toast(action === 'approve' ? '电源已转正式' : '电源已提交确认', response.message || '状态已更新');
     setTimeout(() => location.reload(), 400);
   };
@@ -576,11 +687,19 @@
     dirty = true;
     q('[data-power-save-state]', drawer).textContent = '有未保存修改';
   });
-  q('[data-power-save]', drawer).addEventListener('click', save);
-  q('[data-power-submit]', drawer).addEventListener('click', () => lifecycle('submit').catch(error => toast('提交失败', error.message)));
-  q('[data-power-approve]', drawer).addEventListener('click', () => lifecycle('approve').catch(error => toast('转正式失败', error.message)));
+  q('[data-power-save]', drawer).addEventListener('click', () => save('draft'));
+  q('[data-power-submit]', drawer).addEventListener('click', () => {
+    const operation = activeRecord?.read_only ? save('submit') : lifecycle('submit');
+    operation.catch(error => toast('提交失败', error.message));
+  });
+  q('[data-power-approve]', drawer).addEventListener('click', () => {
+    if (!confirm('确认字段无误并将电源转为正式？正式物料不能物理删除。')) return;
+    const operation = activeRecord?.read_only ? save('approve') : lifecycle('approve');
+    operation.catch(error => toast('转正式失败', error.message));
+  });
   q('[data-power-batch-preview-button]', batchDrawer).addEventListener('click', previewBatch);
   q('[data-power-batch-execute]', batchDrawer).addEventListener('click', executeBatch);
+  qa('[data-power-tab]', drawer).forEach(button => button.addEventListener('click', () => switchPowerTab(button.dataset.powerTab)));
   qa('[data-close-layer]', drawer).forEach(button => button.addEventListener('click', event => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -591,4 +710,18 @@
     event.stopImmediatePropagation();
     closeDrawer(batchDrawer);
   }, true));
+
+  const requestedSource = Number(new URLSearchParams(location.search).get('organize_source') || 0);
+  if (requestedSource) {
+    const row = qa('[data-row]', workspace).find(candidate => {
+      try {
+        return Number(JSON.parse(candidate.dataset.record || '{}').source_record_id) === requestedSource;
+      } catch {
+        return false;
+      }
+    });
+    if (row) {
+      openSource(JSON.parse(row.dataset.record || '{}')).catch(error => toast('打开失败', error.message));
+    }
+  }
 })();

@@ -2,8 +2,10 @@
 $mcCategoryDrawerMap=[
  'chip'=>['code'=>'chip','title'=>'芯片'],
  'optical'=>['code'=>'optical','title'=>'光学'],
+ 'profile'=>['code'=>'profile','title'=>'型材 / 散热件'],
  'connector'=>['code'=>'connector','title'=>'接头 / 安装件'],
  'accessories'=>['code'=>'accessory','title'=>'配件'],
+ 'packaging'=>['code'=>'packaging','title'=>'包装'],
 ];
 $mcCategoryDrawer=$mcCategoryDrawerMap[$activeMenu??'']??null;
 if($mcCategoryDrawer){
@@ -20,17 +22,29 @@ if($mcCategoryDrawer){
  <div class="mc-drawer__header"><div><strong data-category-editor-title><?=mc_h($mcCategoryDrawer['title'])?>资料</strong><span data-category-editor-subtitle>新建、查看和编辑真实物料字段</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
  <form class="mc-drawer__body mc-category-editor-body" data-category-editor-form>
   <input type="hidden" name="id"><input type="hidden" name="lock_version"><input type="hidden" name="category_id">
+  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><button type="button" data-category-tab="source">原始来源</button></div>
+  <div data-category-pane="fields">
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>基础资料</strong><span>统一编号在保存草稿时自动生成</span></div></div><div class="mc-form-grid">
    <label class="mc-field mc-field--wide"><span>名称 *</span><input name="name" required maxlength="200"></label>
    <label class="mc-field"><span>品牌</span><input name="brand" maxlength="120"></label>
    <label class="mc-field"><span>型号</span><input name="model" maxlength="160"></label>
    <label class="mc-field"><span>单位 *</span><input name="unit" required maxlength="30" value="PCS"></label>
+   <label class="mc-field mc-field--wide"><span>供应商</span><input name="supplier_text" maxlength="200"></label>
    <label class="mc-field mc-field--wide"><span>规格摘要</span><textarea name="spec_summary" rows="3"></textarea></label>
+   <label class="mc-field mc-field--wide"><span>备注</span><textarea name="remark" rows="3"></textarea></label>
   </div></section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong><?=mc_h($mcCategoryDrawer['title'])?>规格</strong><span>字段来自物料中心字段注册表并真实保存</span></div></div><div class="mc-form-grid" data-category-editor-fields></div></section>
+  </div>
+  <div data-category-pane="source" hidden>
+   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>原始来源</strong><span>旧 BOM 资料只读，不会被物料中心修改</span></div></div>
+    <div class="mc-source-detail-grid" data-category-source-fields><div class="mc-empty-inline">当前物料没有旧 BOM 来源映射。</div></div>
+    <details class="mc-source-snapshot"><summary>查看来源快照</summary><pre data-category-source-snapshot>—</pre></details>
+    <div class="mc-source-parse-log" data-category-parse-log></div>
+   </section>
+  </div>
   <div class="mc-form-error" data-category-editor-error hidden></div>
  </form>
- <div class="mc-drawer__footer mc-category-editor-footer"><span data-category-editor-state>尚未保存</span><button class="mc-button" type="button" data-category-reference hidden>引用检查</button><button class="mc-button" type="button" data-category-copy hidden>复制新增</button><button class="mc-button" type="button" data-category-submit hidden>提交确认</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-category-save>保存草稿</button></div>
+ <div class="mc-drawer__footer mc-category-editor-footer"><span data-category-editor-state>尚未保存</span><button class="mc-button" type="button" data-category-reference hidden>引用检查</button><button class="mc-button" type="button" data-category-copy hidden>复制新增</button><button class="mc-button" type="button" data-category-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-category-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-category-save>保存草稿</button></div>
 </div>
 <?php endif; ?>
 <?php if(($activeMenu??'')!=='power'): ?><div class="mc-drawer mc-drawer--medium" id="batch-drawer" data-drawer><div class="mc-drawer__header"><div><strong>批量设置</strong><span data-batch-count>已选择 0 项</span></div><button class="mc-icon-button" data-close-layer>×</button></div><div class="mc-drawer__body"><div class="mc-batch-fields"><div class="mc-batch-field"><label class="mc-field"><span>字段</span><select data-batch-field></select></label><label class="mc-field"><span>新值</span><input data-batch-value placeholder="填写新值"></label></div></div><div class="mc-section-title">覆盖策略</div><div class="mc-radio-list"><label><input type="radio" name="overwrite" value="fill_empty" checked> 只填写空值</label><label><input type="radio" name="overwrite" value="overwrite"> 覆盖已有值</label></div><output data-batch-preview></output></div><div class="mc-drawer__footer"><button class="mc-button" data-close-layer>取消</button><button class="mc-button mc-button--primary" data-batch-run>预览并执行</button></div></div><?php endif; ?>
@@ -39,13 +53,17 @@ if($mcCategoryDrawer){
  <div class="mc-drawer__header"><div><strong data-power-editor-title>电源资料</strong><span data-power-editor-subtitle>查看与编辑</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
  <form class="mc-drawer__body mc-power-editor-body" data-power-form>
   <input type="hidden" name="material_id"><input type="hidden" name="lock_version">
+  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-power-tab="fields">整理字段</button><button type="button" data-power-tab="source">原始来源</button></div>
+  <div data-power-pane="fields">
   <div class="mc-power-source-note" data-power-source-note hidden><strong>旧 BOM 只读来源</strong><span>请在本抽屉确认电源字段并直接保存为物料中心草稿；原始记录不会被修改。</span></div>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>基本资料</strong><span>用于检索和识别电源</span></div></div><div class="mc-form-grid">
    <label class="mc-field mc-field--wide"><span>电源名称 *</span><input name="name" maxlength="200" required></label>
    <label class="mc-field"><span>品牌</span><input name="brand" maxlength="120"></label>
    <label class="mc-field"><span>型号</span><input name="model" maxlength="160"></label>
    <label class="mc-field"><span>单位</span><input name="unit" maxlength="30" value="PCS"></label>
+   <label class="mc-field mc-field--wide"><span>供应商</span><input name="supplier_text" maxlength="200"></label>
    <label class="mc-field mc-field--wide"><span>规格摘要</span><textarea name="spec_summary" rows="3"></textarea></label>
+   <label class="mc-field mc-field--wide"><span>备注</span><textarea name="remark" rows="3"></textarea></label>
   </div></section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>功率与输入</strong><span>功率档按系统边界自动校验</span></div></div><div class="mc-form-grid">
    <label class="mc-field"><span>额定功率（W）</span><input type="number" step="0.01" min="0" name="nominal_power_w"></label>
@@ -85,8 +103,16 @@ if($mcCategoryDrawer){
    <label class="mc-field"><span>交期（天）</span><input type="number" step="1" min="0" name="lead_time_days"></label>
   </div></section>
   <div class="mc-form-error" data-power-error hidden></div>
+  </div>
+  <div data-power-pane="source" hidden>
+   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>原始来源</strong><span>旧 BOM 资料只读，不会被物料中心修改</span></div></div>
+    <div class="mc-source-detail-grid" data-power-source-fields><div class="mc-empty-inline">当前物料没有旧 BOM 来源映射。</div></div>
+    <details class="mc-source-snapshot"><summary>查看来源快照</summary><pre data-power-source-snapshot>—</pre></details>
+    <div class="mc-source-parse-log" data-power-parse-log></div>
+   </section>
+  </div>
  </form>
- <div class="mc-drawer__footer mc-power-drawer-footer"><span data-power-save-state>未修改</span><button class="mc-button" type="button" data-power-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-power-approve hidden>转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-power-save>保存电源</button></div>
+ <div class="mc-drawer__footer mc-power-drawer-footer"><span data-power-save-state>未修改</span><button class="mc-button" type="button" data-power-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-power-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-power-save>保存草稿</button></div>
 </div>
 <div class="mc-drawer mc-power-drawer" id="power-batch-drawer" data-drawer data-power-batch>
  <div class="mc-drawer__header"><div><strong>批量设置电源</strong><span data-power-batch-count>已选择 0 项</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>

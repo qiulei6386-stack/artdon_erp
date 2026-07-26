@@ -33,9 +33,12 @@ foreach ($records as $record) {
         (string)($record['source'] ?? 'material_center'), (string)($record['supplier_warranty_years'] ?? ''),
         'id'=>(int)$record['id'],
         'category_id'=>(int)$record['category_id'],
+        'source_record_id'=>(int)($record['source_record_id']??0),
         'raw_status'=>(string)$record['status'],
         'lock_version'=>(int)($record['lock_version']??1),
         'unit'=>(string)($record['unit']??'PCS'),
+        'supplier_text'=>(string)($record['supplier_text']??''),
+        'remark'=>(string)($record['remark']??''),
         'read_only'=>false,
     ];
 }
@@ -53,8 +56,13 @@ foreach((new SourceSyncService())->materialRows($category) as$record){
         '',
         'id'=>0,
         'source_record_id'=>(int)$record['source_record_id'],
+        'organize_url'=>mc_url('material/'.([
+            '驱动'=>'power.php','电源'=>'power.php','芯片'=>'chip.php','光学'=>'optical.php',
+            '型材'=>'profile.php','外壳'=>'profile.php','接头'=>'connector.php',
+            '附件'=>'accessories.php','包装'=>'packaging.php',
+        ][(string)($record['legacy_category']??'')]??'all.php').'?organize_source='.(int)$record['source_record_id']),
         'category_id'=>0,
-        'raw_status'=>'source',
+        'raw_status'=>$record['status']==='changed'?'source_changed':'source',
         'lock_version'=>0,
         'unit'=>(string)($record['unit']??'PCS'),
         'read_only'=>true,
