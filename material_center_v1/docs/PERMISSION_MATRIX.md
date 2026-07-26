@@ -1,9 +1,16 @@
-# Permission Matrix
+# 权限矩阵
 
-统一账号由 `LegacyAuthAdapter` 提供，服务端由 `PermissionService` 验证。当前覆盖模块、页面和操作权限；授权表已预留字段范围、数据范围和有效期。
+统一账号由 `LegacyAuthAdapter` 提供，`PermissionService` 在服务端验证。超级管理员拥有全部权限；明确 `deny` 优先于 `allow`；未配置物料中心授权时回退广州 ERP 旧权限。
 
-采购价、供应商、内部备注、审核意见、解析置信度和原始 BOM 字段必须在 A8 后续按 hide/mask/read-only 处理，并在查询与写 API 同时验证。
+| 角色 | 典型能力 |
+|---|---|
+| 管理员 | 全部物料、审批、设置、权限和敏感字段 |
+| 物料管理员 | 主数据、导入导出、生命周期、文档 |
+| 工程 | 物料编辑、动态技术字段、适配维护 |
+| 采购 | 供应商、采购价查看/编辑、MOQ、交期、价格导入 |
+| 业务只读 | 正式物料和批准适配结果只读，不得编辑采购价 |
+| 无权限 | 服务端 403，不因直接调用 API 绕过 |
 
-A6 已建立 `mc_field_permission_rules`。非超级管理员的敏感字段默认无权编辑；普通字段默认 edit，显式规则可降为 read、mask 或 none。
+权限覆盖模块/页面/操作/字段/数据范围/敏感字段/设置。`fieldAccess()` 支持 edit/read/mask/none；`dataScope()` 支持全部、部门、本人、分类、供应商和仅正式等 JSON 范围。采购价、原始 BOM 价格和供应商附件在服务端再次验证。文档的 engineering/purchasing 访问级别分别要求文档维护或采购价查看能力。
 
-A8 已由 `PermissionService::fieldAccess()`、`protectFields()` 和 `dataScope()` 统一执行服务端字段及数据范围判断。标准化详情的 `raw_price` 已纳入敏感字段保护。
+`tests/role_matrix_integration.php` 验证六类角色、敏感字段隔离和 deny 覆盖。
