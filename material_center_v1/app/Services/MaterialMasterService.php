@@ -4,7 +4,14 @@ namespace Artdon\MaterialCenter\Services;
 use PDO;use RuntimeException;
 final class MaterialMasterService{
  public function __construct(private ?PDO$db=null){$this->db??=\db();}
- public function rows(string$q='',string$category='',string$status=''):array{$sql="SELECT m.*,c.code category_code,c.name category_name,md.spec_summary,p.supplier_warranty_years,(SELECT COUNT(*) FROM mc_legacy_links l WHERE l.material_id=m.id) legacy_links FROM mc_materials m JOIN mc_material_categories c ON c.id=m.category_id LEFT JOIN mc_material_metadata md ON md.material_id=m.id LEFT JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.deleted_at IS NULL";$p=[];if($q!==''){$sql.=" AND (m.material_code LIKE ? OR m.name LIKE ? OR m.brand LIKE ? OR m.model LIKE ? OR md.spec_summary LIKE ?)";$v='%'.$q.'%';$p=[$v,$v,$v,$v,$v];}if($category!==''){$sql.=' AND c.code=?';$p[]=$category;}if($status!==''){$sql.=' AND m.status=?';$p[]=$status;}$sql.=" ORDER BY m.updated_at DESC,m.id DESC LIMIT 500";$s=$this->db->prepare($sql);$s->execute($p);return$s->fetchAll(PDO::FETCH_ASSOC);}
+ public function page(string$q='',string$category='',string$status='',int$page=1,int$pageSize=50):array{
+  $page=max(1,$page);$pageSize=max(10,min(100,$pageSize));[$where,$params]=$this->where($q,$category,$status);
+  $count=$this->db->prepare("SELECT COUNT(*) FROM mc_materials m JOIN mc_material_categories c ON c.id=m.category_id LEFT JOIN mc_material_metadata md ON md.material_id=m.id $where");$count->execute($params);$total=(int)$count->fetchColumn();$pages=max(1,(int)ceil($total/$pageSize));$page=min($page,$pages);$offset=($page-1)*$pageSize;
+  $sql="SELECT m.*,c.code category_code,c.name category_name,md.spec_summary,p.supplier_warranty_years,(SELECT COUNT(*) FROM mc_legacy_links l WHERE l.material_id=m.id) legacy_links FROM mc_materials m JOIN mc_material_categories c ON c.id=m.category_id LEFT JOIN mc_material_metadata md ON md.material_id=m.id LEFT JOIN mc_power_supply_specs p ON p.material_id=m.id $where ORDER BY m.updated_at DESC,m.id DESC LIMIT $pageSize OFFSET $offset";$statement=$this->db->prepare($sql);$statement->execute($params);
+  return['rows'=>$statement->fetchAll(PDO::FETCH_ASSOC),'total'=>$total,'page'=>$page,'page_size'=>$pageSize,'pages'=>$pages];
+ }
+ public function rows(string$q='',string$category='',string$status=''):array{return$this->page($q,$category,$status,1,100)['rows'];}
+ private function where(string$q,string$category,string$status):array{$sql='WHERE m.deleted_at IS NULL';$p=[];if($q!==''){$sql.=" AND (m.material_code LIKE ? OR m.name LIKE ? OR m.brand LIKE ? OR m.model LIKE ? OR md.spec_summary LIKE ?)";$v='%'.$q.'%';$p=[$v,$v,$v,$v,$v];}if($category!==''){$sql.=' AND c.code=?';$p[]=$category;}if($status!==''){$sql.=' AND m.status=?';$p[]=$status;}return[$sql,$p];}
  public function categories():array{return$this->db->query("SELECT id,code,name FROM mc_material_categories WHERE status='active' ORDER BY sort_order,id")->fetchAll(PDO::FETCH_ASSOC);}
  public function save(array$d,int$userId):int{
   $own=!$this->db->inTransaction();if($own)$this->db->beginTransaction();try{

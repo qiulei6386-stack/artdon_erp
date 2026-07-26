@@ -1,6 +1,23 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/bootstrap.php';
+$routes=[
+ 'materials'=>'material/all.php','incomplete'=>'material/all.php?status=draft','pending_maps'=>'data/index.php',
+ 'duplicates'=>'material/all.php','price_changes'=>'supplier/index.php','recent_changes'=>'documents/index.php',
+ 'chips'=>'material/chip.php','optics'=>'material/optical.php','profiles'=>'material/profile.php',
+ 'mounting'=>'material/connector.php','accessories'=>'material/accessories.php','packaging'=>'material/packaging.php',
+ 'temporary'=>'material/all.php?status=draft','chip_standardize'=>'material/chip.php','optics_standardize'=>'material/optical.php',
+ 'duplicate_clean'=>'material/all.php','field_mapping'=>'data/index.php','fit_overview'=>'adaptation/index.php',
+ 'chip_rules'=>'adaptation/index.php','optics_rules'=>'adaptation/index.php','conflicts'=>'adaptation/index.php',
+ 'suppliers'=>'supplier/index.php','supplier_materials'=>'supplier/index.php','prices'=>'supplier/index.php',
+ 'price_history'=>'supplier/index.php','moq'=>'supplier/index.php','alternatives'=>'substitute/index.php',
+ 'versions'=>'substitute/index.php','changes'=>'substitute/index.php','excel_import'=>'data/index.php',
+ 'exports'=>'data/index.php','sync_logs'=>'data/index.php','documents'=>'documents/index.php',
+ 'images'=>'documents/index.php','activity_logs'=>'documents/index.php','permissions'=>'settings/index.php',
+ 'design_spec'=>'settings/index.php',
+];
+$requested=(string)($_GET['page']??'');
+if(isset($routes[$requested])){header('Location: '.mc_url($routes[$requested]),true,302);exit;}
 $labels=['materials'=>'全部物料','incomplete'=>'待完善资料','pending_maps'=>'待确认映射','duplicates'=>'重复候选','price_changes'=>'最近价格变化','recent_changes'=>'最近修改','chips'=>'芯片','optics'=>'光学','profiles'=>'型材 / 散热件','mounting'=>'接头 / 安装件','accessories'=>'其他配件','packaging'=>'包装','temporary'=>'临时物料','chip_standardize'=>'芯片标准化','optics_standardize'=>'光学标准化','duplicate_clean'=>'重复清洗','field_mapping'=>'字段映射','fit_overview'=>'适配总览','chip_rules'=>'芯片适配规则','optics_rules'=>'光学适配规则','conflicts'=>'适配冲突','suppliers'=>'供应商资料','supplier_materials'=>'供应商物料','prices'=>'采购价管理','price_history'=>'价格历史','moq'=>'MOQ / 交期','alternatives'=>'替代物料','versions'=>'物料版本','changes'=>'变更记录','excel_import'=>'Excel 导入任务','exports'=>'导出任务','sync_logs'=>'同步日志','documents'=>'规格与认证文件','images'=>'图片资料','activity_logs'=>'操作日志','permissions'=>'权限与角色','design_spec'=>'设计规范'];
 $pages=[];foreach($labels as$slug=>$label)$pages[$slug]=[$label,$slug,'该模块已纳入正式导航，业务能力尚未接入，不会伪造成功。'];
 $key=(string)($_GET['page']??'');if(!isset($pages[$key])){http_response_code(404);$pages[$key]=['页面不存在','', '请求的物料中心页面不存在。'];}
