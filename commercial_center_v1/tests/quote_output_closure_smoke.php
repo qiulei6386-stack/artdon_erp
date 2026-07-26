@@ -30,7 +30,8 @@ try{
     if((int)$approved['id']!==(int)$same['id']||$approved['watermark']!==null)throw new RuntimeException('Approved snapshot reuse/watermark failed.');
     $html=$outputs->html((int)$approved['id'],$actor);
     $pdf=$outputs->artifact((int)$approved['id'],'pdf',$actor);$excel=$outputs->artifact((int)$approved['id'],'excel',$actor);
-    $paths=[dirname(__DIR__).'/'.$pdf['storage_path'],dirname(__DIR__).'/'.$excel['storage_path']];
+    $paths=[dirname(__DIR__).'/'.$pdf['storage_path'],dirname(__DIR__).'/'.$excel['storage_path'],
+        preg_replace('/\.pdf$/','.html',dirname(__DIR__).'/'.$pdf['storage_path'])];
     if(!str_contains($html,'246.90')||!str_contains((string)file_get_contents($paths[1]),'246.9')
         ||!is_file($paths[0])||filesize($paths[0])<1000)throw new RuntimeException('HTML/PDF/Excel output mismatch.');
     try{$outputs->send((int)$approved['id'],'test@example.com','','Step 8 test','Snapshot attachment test',$actor);}
