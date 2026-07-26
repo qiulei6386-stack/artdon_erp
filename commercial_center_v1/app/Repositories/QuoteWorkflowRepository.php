@@ -65,7 +65,7 @@ final class QuoteWorkflowRepository
                 $item['cost_amount'], $item['discount_rate'], $item['line_amount'], $item['sort_order'], $now, $now,
             ]);
             $newItemId = (int)$this->connection->lastInsertId();
-            $this->copyByItem('cc_quote_item_details', $oldItemId, $newItemId, 'quote_item_id');
+            $this->copyItemDetail($oldItemId, $newItemId);
             $this->copyItemSnapshot($oldItemId, $newItemId);
         }
         $update = $this->connection->prepare('UPDATE cc_quotes SET current_version=?,updated_at=NOW() WHERE id=?');
@@ -208,19 +208,19 @@ final class QuoteWorkflowRepository
         );
     }
 
-    private function copyByItem(string $table, int $oldId, int $newId, string $key): void
+    private function copyItemDetail(int $oldId, int $newId): void
     {
-        $columns = $this->tableColumns($table);
-        $copy = array_values(array_filter($columns, static fn(string $column): bool => !in_array(
-            $column, ['id', $key, 'created_at', 'updated_at'], true
-        )));
-        if ($copy === []) {
-            return;
-        }
-        $names = implode(',', array_map(static fn(string $column): string => "`{$column}`", $copy));
-        $sql = "INSERT INTO `{$table}` (`{$key}`,{$names},created_at,updated_at)
-                SELECT ?,{$names},NOW(),NOW() FROM `{$table}` WHERE `{$key}`=?";
-        $this->connection->prepare($sql)->execute([$newId, $oldId]);
+        $statement = $this->connection->prepare(
+            'INSERT INTO cc_quote_item_details
+             (quote_item_id,product_source,sku_code,model_no,product_name,image_path,unit,lead_time,customer_note,
+              internal_note,locked,unlock_reason,source_line_snapshot,custom_fields_json,reference_product_id,
+              created_at,updated_at)
+             SELECT ?,product_source,sku_code,model_no,product_name,image_path,unit,lead_time,customer_note,
+                    internal_note,locked,unlock_reason,source_line_snapshot,custom_fields_json,reference_product_id,
+                    NOW(),NOW()
+             FROM cc_quote_item_details WHERE quote_item_id=?'
+        );
+        $statement->execute([$newId, $oldId]);
     }
 
     private function copyItemSnapshot(int $oldId, int $newId): void
@@ -232,16 +232,6 @@ final class QuoteWorkflowRepository
              FROM cc_quote_item_snapshots WHERE quote_item_id=?'
         );
         $statement->execute([$newId, $oldId]);
-    }
-
-    private function tableColumns(string $table): array
-    {
-        $statement = $this->connection->prepare(
-            'SELECT COLUMN_NAME FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION'
-        );
-        $statement->execute([$table]);
-        return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
     }
 
     private function all(string $sql, array $parameters): array

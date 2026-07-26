@@ -175,13 +175,15 @@ try {
             }
             $connection->exec("DELETE FROM cc_quote_items WHERE quote_version_id IN ({$versions})");
         }
-        foreach ([
-            'cc_quote_approvals', 'cc_quote_state_history', 'cc_quote_audit_logs',
-            'cc_quote_snapshots', 'cc_quote_files', 'cc_quote_legacy_links',
-            'cc_quotation_logs', 'cc_quote_versions', 'cc_quote_details',
-        ] as $table) {
-            $connection->exec("DELETE FROM `{$table}` WHERE quote_id IN ({$ids})");
-        }
+        $connection->exec("DELETE FROM cc_quote_approvals WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_state_history WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_audit_logs WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_snapshots WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_files WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_legacy_links WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quotation_logs WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_versions WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_details WHERE quote_id IN ({$ids})");
         $connection->exec("DELETE FROM cc_quotes WHERE id IN ({$ids}) AND is_test=1");
     }
 }
