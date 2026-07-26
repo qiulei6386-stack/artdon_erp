@@ -9,6 +9,7 @@
 - 正式 PI/订购合同模板定位为根目录 `crm_quote_pdf.php` 和 `crm_quote_excel.php`；正式 CI/PL 定位为 `quote_order_doc.php` 和 `quote_order_excel.php`，并保留现有兼容桥。商务中心 `modules/documents` 的 `legacy_v1` 明确是演示模板，不得替代正式模板。
 - 记录旧系统硬删除、运行时改表、JSON 明细/审核快照、定制编辑路由、报价发送和附件规范化等风险；本步未调用任何写数据库动作，未修改业务代码、数据库、菜单、UI、路由、接口或旧报价数据，未进入 Step 3。
 - 修改文件：新增 `commercial_center_v1/docs/quote_logic/step02_existing_audit.md`，更新 `WORK_CONTEXT.md`；最终检查、提交、部署和三方一致性见本轮最终结果。
+- 检查与部署：文档必需章节、空格错误、临时审计文件清理和只读边界检查通过；审计提交 `d8a6da78f5176cd9bf68f4a27a595e412855f825` 已推送 GitHub，并以同一提交快进同步服务器。服务器复检文档关键模板定位、Git 差异和文件哈希通过；本轮收尾提交完成后再次核对本地、`origin/main` 与服务器 HEAD 一致。
 
 ## 本次：报价逻辑十步实施 Step 1 UI 冻结
 
