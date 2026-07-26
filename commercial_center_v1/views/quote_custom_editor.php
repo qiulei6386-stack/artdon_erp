@@ -3,7 +3,9 @@
  data-quote-id="<?=$customQuoteId?>" data-api="api/v1/custom_quotes.php">
   <header class="quote-editor-head"><div><a href="?page=quote_center">← 返回报价单中心</a><h1>定制品报价单</h1>
     <span class="quote-state" data-custom-status>草稿</span><small data-custom-message></small></div>
-    <div class="quote-actions"><button type="button" data-custom-save>保存草稿</button><button type="button" data-custom-submit>提交审核</button>
+    <div class="quote-actions"><button type="button" data-custom-save>保存草稿</button><button type="button" data-quote-output="preview">预览</button>
+      <button type="button" data-quote-output="print">打印</button><button type="button" data-quote-output="pdf">PDF</button>
+      <button type="button" data-quote-output="excel">Excel</button><button type="button" data-quote-output="send">发送</button><button type="button" data-custom-submit>提交审核</button>
       <button type="button" data-custom-approve>审核通过</button><button type="button" data-custom-handoff="project">转项目</button>
       <button type="button" data-custom-handoff="order">转订单</button></div></header>
   <div class="quote-editor-grid"><div class="quote-main">

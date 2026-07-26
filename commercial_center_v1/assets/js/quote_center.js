@@ -32,6 +32,48 @@
 
   const editor = $('[data-quote-editor]');
   if (!editor) return;
+  const outputButtons = $$('[data-quote-output]', editor);
+  if (outputButtons.length) {
+    let outputCsrf = '';
+    const outputApi = 'api/v1/quote_outputs.php';
+    const outputRequest = async (payload) => {
+      if (!outputCsrf) {
+        const tokenResponse = await fetch(`${outputApi}?action=csrf`);
+        const token = await tokenResponse.json();
+        if (!tokenResponse.ok || !token.ok) throw new Error(token.message || '无法建立输出会话。');
+        outputCsrf = token.csrf;
+      }
+      const response = await fetch(outputApi, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, csrf: outputCsrf }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || '报价输出失败。');
+      return data;
+    };
+    outputButtons.forEach((button) => button.addEventListener('click', async () => {
+      try {
+        const quoteId = Number(editor.dataset.quoteId || 0);
+        if (!quoteId) throw new Error('请先保存报价。');
+        const snapshot = (await outputRequest({ action: 'snapshot', quote_id: quoteId })).snapshot;
+        const action = button.dataset.quoteOutput;
+        if (action === 'send') {
+          const to = prompt('收件人邮箱');
+          if (!to) return;
+          const cc = prompt('抄送邮箱（可留空）') || '';
+          const subject = prompt('邮件主题', 'Artdon Quotation') || 'Artdon Quotation';
+          const body = prompt('邮件正文', 'Please find the quotation attached.') || '';
+          await outputRequest({ action: 'send', snapshot_id: snapshot.id, to, cc, subject, body });
+          alert('报价邮件已发送并记录。');
+          return;
+        }
+        const url = `${outputApi}?action=${encodeURIComponent(action)}&snapshot_id=${snapshot.id}`;
+        window.open(url, '_blank', 'noopener');
+      } catch (error) {
+        alert(error.message);
+      }
+    }));
+  }
   if (editor.matches('[data-custom-quote]')) {
     const api = editor.dataset.api;
     const tbody = $('[data-quote-lines]', editor);

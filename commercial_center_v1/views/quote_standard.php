@@ -12,10 +12,10 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
     </div>
     <nav>
       <button type="button" data-draft-save>保存草稿</button>
-      <button type="button">预览</button><button type="button">打印</button>
-      <button type="button">导出PDF</button><button type="button">导出Excel</button>
+      <button type="button" data-quote-output="preview">预览</button><button type="button" data-quote-output="print">打印</button>
+      <button type="button" data-quote-output="pdf">导出PDF</button><button type="button" data-quote-output="excel">导出Excel</button>
       <button type="button" data-submit-approval>提交审核</button>
-      <button type="button" class="primary" disabled title="审核通过后启用">发送报价</button>
+      <button type="button" class="primary" data-quote-output="send">发送报价</button>
     </nav>
   </header>
   <?php if ($quickMode): ?><div class="quick-strip">快速创建模式：保存后可补充完整客户与条款信息</div><?php endif; ?>

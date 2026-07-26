@@ -28,6 +28,7 @@ $allowedMigrations = [
     '011_quote_workflow.sql' => ['cc_quote_approvals','cc_quote_state_history','cc_quote_audit_logs'],
     '012_website_quote_import.sql' => ['cc_website_order_snapshots','cc_quote_unlock_requests'],
     '013_custom_quote_files.sql' => ['cc_quote_file_orders','cc_quote_handoffs'],
+    '014_quote_outputs.sql' => ['cc_quote_output_snapshots','cc_quote_output_artifacts','cc_quote_deliveries'],
 ];
 if (!isset($allowedMigrations[$migrationName])) {
     fwrite(STDERR, "Refusing migration: file is not approved.\n");

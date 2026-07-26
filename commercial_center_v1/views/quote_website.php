@@ -11,6 +11,8 @@ $websiteQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       <button type="button" class="danger-outline" data-web-reject>驳回网站订单</button>
       <button type="button" data-web-save>保存审核调整</button>
       <button type="button" class="primary" data-web-approve>审核通过</button>
+      <button type="button" data-quote-output="preview">预览</button><button type="button" data-quote-output="pdf">PDF</button>
+      <button type="button" data-quote-output="excel">Excel</button><button type="button" data-quote-output="send">发送</button>
       <button type="button" disabled title="后续步骤开放">转正式订单</button></nav>
   </header>
   <div class="web-flow"><b class="done">✓ 网站传入</b><i></i><b class="active"><em>2</em> 待审核</b><i></i>
