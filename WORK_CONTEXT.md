@@ -10,6 +10,8 @@
 - 任务中心同时读取旧 `quote_orders` 和新版 `cc_quotes`；新版已审核/已发送报价自动生成跟进任务并进入同一流程中心。
 - 修改文件：`crm_task_center.php`、`crm_api.php`、`assets/crm/crm.js`、`assets/crm/crm.css`、`WORK_CONTEXT.md`。未触碰商务中心既存删除及未跟踪文档。
 - 首次服务器数据库验证发现 `cc_quotes` 与 `crm_tasks` 的字符排序规则不同；新版报价 ID 关联已显式统一为 `utf8mb4_unicode_ci` 后重新进入完整检查流程，未在服务器直接修补。
+- 检查结果：本地 `node --check assets/crm/crm.js`、`git diff --check` 通过；服务器 `crm_task_center.php`、`crm_api.php` PHP 语法通过，真实执行建表及报价流程汇总成功，`crm_quote_followup_activities` 已建立并读取 35 条现有报价流程记录。当前生产库没有非测试新版 `cc_quotes` 报价，因此新版记录数为 0，但兼容查询及自动建任务路径已加载通过。
+- Git/部署：功能提交 `03a9edd` 与排序规则修复 `94d5643` 已推送 GitHub并快进同步服务器；最终上下文提交后再次核对本地、GitHub、服务器三方一致。
 - 只读核对现有报价与 CRM 任务中心：`crm_tasks` 已支持 `quote_followup`，旧 `quote_orders` 审核通过且未转订单时会自动生成报价跟进任务，默认 1 天提醒、3 天到期。
 - CRM 报价流程现有客户未回复、写跟进、标记客户回复、设置下次跟进、创建商机等入口；客户跟进表和客户时间线可承接每次沟通记录。
 - 建议在现有任务底座上补充结构化跟进活动：线上/线下分类、邮件/微信/WhatsApp/电话/拜访等渠道、联系人、结果、下一步与下次提醒，并补齐新报价主链 `cc_quotes`，不另建孤立任务系统。
