@@ -23,7 +23,7 @@ final class PowerWorkbenchService
 
     public function staging(string $tab,string $search=''):array
     {
-        $where=["s.is_pilot=1"];$params=[];
+        $where=['1=1'];$params=[];
         if($tab==='organize')$where[]="s.mapping_status IN('pending','parsed','needs_review','rejected')";
         if($tab==='confirm')$where[]="s.mapping_status IN('parsed','needs_review','duplicate_candidate','confirmed')";
         if($tab==='duplicates')$where[]="EXISTS(SELECT 1 FROM mc_duplicate_candidates d WHERE d.staging_id=s.id AND d.decision='pending')";

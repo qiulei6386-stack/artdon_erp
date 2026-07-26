@@ -14,6 +14,7 @@ try{
     $permissions->require($context,$action==='create_material'?'material_center.power.confirm':'material_center.power.standardize');
     $uid=(int)$user['id'];
     if($action==='stage_pilot')$data=$service->stagePilot();
+    elseif($action==='stage_source')$data=$service->stageSourceRecord((int)($_POST['source_record_id']??0),$uid);
     elseif($action==='create_material')$data=['material_id'=>$service->confirmAndCreate((int)$_POST['staging_id'],$_POST,$uid)];
     elseif($action==='link_existing'){$service->linkExisting((int)$_POST['staging_id'],(int)$_POST['material_id'],$uid,(string)($_POST['decision']??'existing_material'));$data=[];}
     elseif($action==='decide_duplicate'){$service->decideDuplicate((int)$_POST['candidate_id'],(string)$_POST['decision'],$uid);$data=[];}
