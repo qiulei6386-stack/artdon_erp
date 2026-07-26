@@ -94,12 +94,12 @@ mc_page_start('电源','power',$user);
       <div class="ui-menu" role="menu" aria-hidden="true">
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'bands']))?>">功率档设置</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'fields']))?>">字段设置</a>
-        <button type="button" data-ui-not-connected>批量导入</button>
+        <a href="data/index.php">批量导入</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'export']))?>">导出</a>
         <a href="?tab=exception&exception=duplicate">重复检查</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'mappings']))?>">映射记录</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'logs']))?>">操作日志</a>
-        <button type="button" data-ui-not-connected>解析规则</button>
+        <a href="power_standardization.php">解析规则</a>
         <button type="button" data-reset-power-view>恢复默认视图</button>
       </div>
     </div>
@@ -120,7 +120,7 @@ mc_page_start('电源','power',$user);
     <?php if($exceptionFilter!==''):?><a href="?<?=mc_h(http_build_query(array_diff_key($queryBase,['exception'=>true])))?>" class="ui-badge">异常：<?=mc_h(['duplicate'=>'重复候选','disabled'=>'停用','archived'=>'归档'][$exceptionFilter]??$exceptionFilter)?> ×</a><?php endif;?>
   </div><?php endif;?>
 
-  <div class="ui-batch-bar" data-power-batch-bar hidden><strong>已选择 <span data-power-selected-count>0</span> 项</strong><button class="ui-btn ui-btn-sm" type="button" data-ui-not-connected>批量设置</button><button class="ui-btn ui-btn-sm ui-btn-secondary" type="button" data-ui-not-connected>批量分类</button><button class="ui-btn ui-btn-sm ui-btn-secondary" type="button" data-ui-not-connected>停用</button><button class="ui-btn ui-btn-sm ui-btn-secondary" type="button" data-export-selected>导出所选</button><button class="ui-btn ui-btn-sm ui-btn-ghost" type="button" data-cancel-selection>取消选择</button></div>
+  <div class="ui-batch-bar" data-power-batch-bar hidden><strong>已选择 <span data-power-selected-count>0</span> 项</strong><a class="ui-btn ui-btn-sm" href="formal_power_supplies.php">批量设置</a><a class="ui-btn ui-btn-sm ui-btn-secondary" href="material/power.php">批量分类 / 停用</a><button class="ui-btn ui-btn-sm ui-btn-secondary" type="button" data-export-selected>导出所选</button><button class="ui-btn ui-btn-sm ui-btn-ghost" type="button" data-cancel-selection>取消选择</button></div>
 
   <?php if($status==='permission'):?><?php mc_state('permission','无权访问电源工作台','需要广州统一账号及物料中心查看权限。');?>
   <?php elseif($status==='config'):?><?php mc_state('config','电源工作台尚未配置','请先执行物料中心迁移。');?>
