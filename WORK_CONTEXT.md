@@ -8,7 +8,10 @@
 - 根因：统一来源整理改动为电源转正式入口新增了浏览器原生 `confirm()` 门槛；点击未进入 `material-master.php`，错误也只能显示短暂 Toast，造成“点了没反应”。
 - 修复：去掉转正式入口对原生确认框的依赖，按钮点击后立即调用生命周期 API；按钮显示“正在转正式…”，请求期间禁用防止重复提交，成功显示“已转正式”，失败原因同时保留在抽屉内和 Toast。提交确认入口同步增加相同的可见进度和错误反馈。
 - 回归：电源编辑器合同测试新增“审批不得依赖原生确认框”的约束；真实集成测试新增草稿提交、待确认审批、`official / is_official / allow_bom / allow_quote` 四项正式状态校验，并在 finally 中清理临时测试物料。
-- 本地检查：电源脚本已通过 macOS JavaScriptCore 解析，两个改动测试文件已通过服务器 PHP CLI 对本地内容的输入语法检查，`git diff --check` 通过。本机没有 PHP CLI，且当前没有可连接的登录态内置浏览器；部署后必须在服务器执行合同、集成、页面和三方一致性复检。
+- 本地检查：电源脚本已通过 macOS JavaScriptCore 解析，两个改动测试文件已通过服务器 PHP CLI 对本地内容的输入语法检查，`git diff --check` 通过。本机没有 PHP CLI，且当前没有可连接的登录态内置浏览器，未伪报登录态点击验证。
+- Git / 部署：功能与初始上下文提交 `3a979c82f85c29410dd990cda71d24d7df06728e` 已推送 GitHub；服务器自身没有 GitHub SSH 权限，因此使用 SHA-256 为 `9e17b78ad7231ce1528bacfff51db27bb4980552c1b31d76bfcef36b0beaf5c0` 的校验 Git bundle，把服务器从 `337e8d9e` 快进到 GitHub 同一 Git 对象，没有直接覆盖文件。
+- 服务器复检：改动测试 PHP 语法、电源编辑器合同、来源整理合同、电源真实编辑 / 批量回滚 / 生命周期审批集成、六分类来源整理幂等集成全部通过；临时测试物料残留为 0。
+- 线上核对：电源页未登录仍 302 到广州统一登录；公开电源脚本已包含“正在转正式…”新逻辑。用户电源仍为 `pending_review / is_official=0 / allow_bom=0 / allow_quote=0`，仍只有原提交事件，修复和测试没有代替用户审批或改动其状态。
 - 修改文件：`material_center_v1/assets/js/power-editor.js`、`material_center_v1/tests/power_editor_contract_test.php`、`material_center_v1/tests/power_editor_integration.php`、`WORK_CONTEXT.md`。未修改数据库结构、旧 BOM 或用户现有电源状态；未触碰商务中心既存删除和未跟踪文件。
 
 ## 本次：统一七类来源物料整理逻辑
