@@ -76,7 +76,7 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
     echo '<title>' . mc_h($title) . ' · Artdon 物料中心</title><script>document.documentElement.dataset.theme=localStorage.getItem("artdon-ui-theme")||'.json_encode($theme).';</script>';
     echo '<link rel="stylesheet" href="' . mc_h(mc_ui_asset('ui/index.css',$prefix)) . '"><link rel="stylesheet" href="' . mc_h(mc_ui_asset('assets/css/app.css',$prefix)) . '"></head><body>';
     $fontMap=['system'=>'-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif','noto_sans_sc'=>'"Noto Sans SC","PingFang SC",sans-serif','arial'=>'Arial,"PingFang SC",sans-serif'];
-    $primary=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.primary']??''))?$uiValues['theme.primary']:'#087f8c';
+    $primary=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.primary']??''))?$uiValues['theme.primary']:'#d60000';
     $sidebar=preg_match('/^#[0-9a-f]{6}$/i',(string)($uiValues['theme.sidebar']??''))?$uiValues['theme.sidebar']:'#ffffff';
     $base=max(12,min(18,(float)($uiValues['font.base_px']??14)));$nav=max(12,min(18,(float)($uiValues['font.nav_px']??14)));$table=max(11,min(17,(float)($uiValues['font.table_px']??13)));
     $tokenMap=['--ui-bg'=>['color.page_bg','#f6f8fb'],'--ui-surface'=>['color.surface','#ffffff'],'--ui-border'=>['color.border','#e2e8f0'],'--ui-text'=>['color.text','#0f172a'],'--ui-text-muted'=>['color.text_muted','#64748b'],'--ui-success'=>['color.success','#168a5b'],'--ui-warning'=>['color.warning','#d97706'],'--ui-danger'=>['color.danger','#dc2626']];

@@ -22,7 +22,7 @@ header('Content-Type:text/html;charset=utf-8');header('Cache-Control:no-store');
 </section>
 <section class="ui-card ui-card-body"><h2>主题与颜色</h2>
 <label class="ui-field"><span class="ui-label">主题</span><select class="ui-select" name="theme.mode"><option value="light">专业白</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label>
-<label class="ui-field"><span class="ui-label">主操作色</span><input class="ui-input ui-color-input" type="color" name="theme.primary" value="<?=mc_h($values['theme.primary']??'#087f8c')?>"></label>
+<label class="ui-field"><span class="ui-label">主操作色</span><input class="ui-input ui-color-input" type="color" name="theme.primary" value="<?=mc_h($values['theme.primary']??'#d60000')?>"></label>
 <label class="ui-field"><span class="ui-label">侧栏底色</span><input class="ui-input ui-color-input" type="color" name="theme.sidebar" value="<?=mc_h($values['theme.sidebar']??'#ffffff')?>"></label>
 <?php foreach(['color.page_bg'=>'页面背景','color.surface'=>'卡片背景','color.border'=>'边框','color.text'=>'主文字','color.text_muted'=>'次文字','color.success'=>'成功','color.warning'=>'警告','color.danger'=>'错误']as$key=>$label):?><label class="ui-field"><span class="ui-label"><?=$label?></span><input class="ui-input ui-color-input" type="color" name="<?=$key?>" value="<?=mc_h($values[$key]??'#ffffff')?>"></label><?php endforeach;?>
 </section>

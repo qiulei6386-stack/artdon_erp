@@ -12,7 +12,7 @@ $legacyBefore=(int)db()->query('SELECT COUNT(*) FROM naming_models')->fetchColum
 $legacyAfter=(int)db()->query('SELECT COUNT(*) FROM naming_models')->fetchColumn();
 if($legacyBefore!==$legacyAfter){fwrite(STDERR,"legacy product count changed\n");exit(1);}
 $context=new MaterialCenterUserContext(999999999,'mc_contract_test','MC Contract Test','test',true);
-$settings=new SettingsService();$settings->save($context,'user',(string)$context->id,['font.base_px'=>15,'theme.primary'=>'#087f8c']);$resolved=$settings->resolved($context);
+$settings=new SettingsService();$settings->save($context,'user',(string)$context->id,['font.base_px'=>15,'theme.primary'=>'#d60000']);$resolved=$settings->resolved($context);
 if((float)($resolved['values']['font.base_px']??0)!==15.0){fwrite(STDERR,"settings resolution failed\n");exit(1);}
 $settings->reset($context,'user',(string)$context->id);
 echo "F3/F4/F9 schema, settings and legacy product read-only contract passed.\n";
