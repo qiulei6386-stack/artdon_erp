@@ -76,7 +76,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       <p>预计成本　<b data-total-cost>按权限计算</b></p><p>预计毛利　<b data-gross-profit>按权限显示</b></p>
       <p>毛利率　<b data-gross-margin>按权限显示</b></p></section>
       <section class="ref-panel standard-config-panel" data-config-panel hidden>
-        <header><div><b>产品与配置</b><span>编辑当前报价产品</span></div>
+        <header><div><b>产品与配置</b><span>按产品适配规则编辑当前报价产品</span></div>
           <button type="button" data-config-close aria-label="关闭配置">×</button></header>
         <label class="config-product-field"><span>产品</span><select data-config-product><option value="">加载真实产品中…</option></select></label>
         <div class="config-options" data-config-options></div>
