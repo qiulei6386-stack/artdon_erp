@@ -12,7 +12,6 @@ foreach(["g.status='approved'","o.status='approved'","m.status='official'","m.is
 foreach(['materialCenterAdaptations','source'=>'material_center',"'material_center'=>",'configurationGroups(productKey)','物料中心已审批']as$marker){
     if(!str_contains($repository.$engine.$script,$marker))throw new RuntimeException("commercial material-center bridge missing: {$marker}");
 }
-if(str_contains($repository,'INSERT INTO mc_')||str_contains($repository,'UPDATE mc_')||str_contains($repository,'DELETE FROM mc_')){
-    throw new RuntimeException('commercial center bridge must remain read-only');
-}
+$writeMarkers=['INSERT'.' INTO mc_','UPDATE'.' mc_','DELETE'.' FROM mc_'];
+foreach($writeMarkers as$writeMarker)if(str_contains($repository,$writeMarker))throw new RuntimeException('commercial center bridge must remain read-only');
 echo "Commercial center approved-adaptation read bridge contract: OK\n";
