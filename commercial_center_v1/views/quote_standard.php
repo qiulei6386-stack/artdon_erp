@@ -39,7 +39,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
 
       <section class="ref-panel standard-lines">
         <div class="panel-title"><h2>报价明细</h2><nav>
-          <button type="button" data-open-product>＋ 添加产品</button>
+          <a href="#standard-product-config" role="button" data-open-product>＋ 添加产品</a>
           <button type="button" data-batch-qty>批量数量</button>
           <button type="button" data-batch-discount>批量折扣</button>
         </nav></div>
@@ -62,7 +62,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
           </tr>
         <?php endforeach; ?>
         </tbody></table></div>
-        <footer><button type="button" data-add-line>＋ 添加产品</button><span data-line-count>共 <?= count($rows) ?> 项</span></footer>
+        <footer><a href="#standard-product-config" role="button" data-add-line>＋ 添加产品</a><span data-line-count>共 <?= count($rows) ?> 项</span></footer>
       </section>
     </main>
     <aside data-standard-sidebar>
@@ -75,7 +75,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
       </dl><div><b>总金额</b><strong data-grand-total>0.00</strong></div>
       <p>预计成本　<b data-total-cost>按权限计算</b></p><p>预计毛利　<b data-gross-profit>按权限显示</b></p>
       <p>毛利率　<b data-gross-margin>按权限显示</b></p></section>
-      <section class="ref-panel standard-config-panel" data-config-panel hidden>
+      <section class="ref-panel standard-config-panel" id="standard-product-config" data-config-panel>
         <header><div><b>产品与配置</b><span>按产品适配规则编辑当前报价产品</span></div>
           <button type="button" data-config-close aria-label="关闭配置">×</button></header>
         <label class="config-product-field"><span>产品</span><select data-config-product><option value="">加载真实产品中…</option></select></label>

@@ -709,15 +709,14 @@
       });
       $('[data-config-messages]', editor).textContent = '';
       sidebar.classList.add('is-configuring');
-      summaryPanel.hidden = true;
-      configPanel.hidden = false;
       sidebar.scrollTop = 0;
     };
     const hideConfiguration = () => {
       if (!sidebar || !summaryPanel || !configPanel) return;
       sidebar.classList.remove('is-configuring');
-      configPanel.hidden = true;
-      summaryPanel.hidden = false;
+      if (window.location.hash === '#standard-product-config') {
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      }
       $('[data-config-product]', editor).disabled = false;
       $('[data-config-messages]', editor).textContent = '';
       editingRow = null;

@@ -51,5 +51,12 @@ foreach (['data-standard-sidebar', 'data-summary-panel', 'data-config-panel'] as
         exit(1);
     }
 }
+foreach (['href="#standard-product-config"', 'id="standard-product-config"', '.standard-config-panel:target'] as $fallback) {
+    $style = (string)file_get_contents($root . '/assets/css/app.css');
+    if (!str_contains($view . $style, $fallback)) {
+        fwrite(STDERR, "FAIL: native add-product fallback missing {$fallback}\n");
+        exit(1);
+    }
+}
 
 echo "PASS: standard quote button and target contract verified.\n";
