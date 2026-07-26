@@ -532,6 +532,7 @@
     let bootstrap = { customers: [], configuration: { products: [], groups: [] }, commission_reminders: [] };
     let quoteId = Number(editor.dataset.quoteId || 0);
     let editingRow = null;
+    const sidebar = $('[data-standard-sidebar]', editor);
     const summaryPanel = $('[data-summary-panel]', editor);
     const configPanel = $('[data-config-panel]', editor);
     const message = (text, error = false) => {
@@ -690,8 +691,16 @@
       });
     };
     const showConfiguration = (row = null) => {
+      if (!sidebar || !summaryPanel || !configPanel) {
+        message('产品配置区域加载失败，请刷新页面后重试。', true);
+        return;
+      }
       editingRow = row;
       const productSelect = $('[data-config-product]', editor);
+      if (!productSelect) {
+        message('产品选择器加载失败，请刷新页面后重试。', true);
+        return;
+      }
       const values = row ? JSON.parse(row.dataset.configValues || '{}') : defaultValues();
       productSelect.value = row?.dataset.productKey || '';
       productSelect.disabled = Boolean(row);
@@ -699,10 +708,14 @@
         select.value = values[select.dataset.configGroup] || select.value;
       });
       $('[data-config-messages]', editor).textContent = '';
+      sidebar.classList.add('is-configuring');
       summaryPanel.hidden = true;
       configPanel.hidden = false;
+      sidebar.scrollTop = 0;
     };
     const hideConfiguration = () => {
+      if (!sidebar || !summaryPanel || !configPanel) return;
+      sidebar.classList.remove('is-configuring');
       configPanel.hidden = true;
       summaryPanel.hidden = false;
       $('[data-config-product]', editor).disabled = false;
@@ -757,11 +770,24 @@
     editor.addEventListener('input', (event) => {
       if (event.target.matches('[data-qty],[data-price],[data-discount],[data-order-discount],[data-shipping],[data-tax],[data-other]')) recalculate();
     });
+    $$('[data-open-product],[data-add-line]', editor).forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        showConfiguration();
+      });
+    });
+    $$('[data-config-close]', editor).forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        hideConfiguration();
+      });
+    });
     editor.addEventListener('click', async (event) => {
-      if (event.target.closest('[data-open-product],[data-add-line]')) showConfiguration();
       const configure = event.target.closest('[data-configure]');
-      if (configure) showConfiguration(configure.closest('tr'));
-      if (event.target.closest('[data-config-close]')) hideConfiguration();
+      if (configure) {
+        event.preventDefault();
+        showConfiguration(configure.closest('tr'));
+      }
       const remove = event.target.closest('[data-remove-line]');
       if (remove) {
         if (editingRow === remove.closest('tr')) hideConfiguration();

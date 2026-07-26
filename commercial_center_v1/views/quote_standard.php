@@ -65,7 +65,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
         <footer><button type="button" data-add-line>＋ 添加产品</button><span data-line-count>共 <?= count($rows) ?> 项</span></footer>
       </section>
     </main>
-    <aside>
+    <aside data-standard-sidebar>
       <section class="ref-panel total-box" data-summary-panel><h2>报价汇总</h2><dl>
         <dt>产品金额（未税）</dt><dd data-subtotal>0.00</dd>
         <dt>折扣金额</dt><dd><input value="0" data-order-discount></dd>
