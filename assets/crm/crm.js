@@ -20884,7 +20884,7 @@
       } else if (selectedTask.task_type === 'sample_shipment') {
         renderGroup({ title: '样品寄送任务', items: ['查看样品寄送', '编辑寄送信息', '上传图片', '上传附件', '修改快递公司', '修改快递单号', '标记已备样', '标记已寄出', '标记已签收', '填写客户反馈', '创建跟进', '创建派工', '复制快递单号', '查看客户', '查看日志', '删除任务'] });
       } else if (selectedTask.task_type === 'quote_followup') {
-        renderGroup({ title: '报价订单流程', items: ['查看报价', '写邮件', '写跟进', '标记客户已回复', '生成派工', '转订单', '登记收款', '查看出货', '查看单证', '创建商机', '设置下次跟进', '标记完成', '查看客户', '查看日志'] });
+        renderGroup({ title: '报价订单流程', items: ['预览报价', '写邮件', '写跟进', '标记客户已回复', '生成派工', '转订单', '登记收款', '查看出货', '查看单证', '创建商机', '设置下次跟进', '标记完成', '查看客户', '查看日志'] });
       } else if (selectedTask.task_type === 'ai_confirm') {
         renderGroup({ title: 'AI 确认', items: ['查看 AI 识别结果', '确认通过', '修改后通过', '驳回', '转给别人', '创建客户', '创建商机', '创建报价', '生成资料', '查看日志'] });
       } else {
@@ -22173,7 +22173,7 @@
       if (this.selectedType === 'quote_flow') return this.quoteFlowDetailActions(row);
       if (this.selectedType === 'sample') return this.sampleNodeActions(row);
       if (row.task_type === 'sample_shipment') return ['查看样品寄送','编辑寄送信息','上传图片','上传附件','修改快递公司','修改快递单号','标记已备样','标记已寄出','标记已签收','填写客户反馈','创建跟进','创建派工','复制快递单号','查看客户','查看日志'];
-      if (row.task_type === 'quote_followup') return ['查看报价','写跟进','标记客户已回复','创建商机','AI 分析回复','设置下次跟进','标记完成'];
+      if (row.task_type === 'quote_followup') return ['预览报价','写跟进','标记客户已回复','创建商机','AI 分析回复','设置下次跟进','标记完成'];
       if (row.task_type === 'ai_confirm') return ['查看 AI 识别结果','确认通过','修改后通过','驳回','转给别人','创建客户','创建商机','创建报价','生成资料','查看日志'];
       return ['标记完成','延期','写跟进结果','创建商机','创建报价','创建资料任务','创建派工','查看客户','查看日志'];
     },
@@ -22181,20 +22181,20 @@
       var stages = row.stages || [];
       nodeKey = nodeKey || this.selectedQuoteNode || this.quoteCurrentNodeKey(row);
       if (nodeKey === 'review') {
-        if (stages.indexOf('review_rejected') >= 0) return ['查看报价','查看驳回原因','修改报价','重新提交审核','查看客户','查看日志'];
-        return ['查看报价','审核通过','驳回报价','编辑报价','查看客户','查看日志'];
+        if (stages.indexOf('review_rejected') >= 0) return ['预览报价','查看驳回原因','修改报价','重新提交审核','查看客户','查看日志'];
+        return ['预览报价','审核通过','驳回报价','编辑报价','查看客户','查看日志'];
       }
-      if (nodeKey === 'reply') return ['查看报价','写邮件','查看邮件','写跟进','标记客户已回复','生成派工','设置下次跟进','AI 分析客户回复','查看日志'];
-      if (nodeKey === 'order') return ['查看报价','转订单','查看订单','写跟进','查看客户','查看日志'];
+      if (nodeKey === 'reply') return ['预览报价','写邮件','查看邮件','写跟进','标记客户已回复','生成派工','设置下次跟进','AI 分析客户回复','查看日志'];
+      if (nodeKey === 'order') return ['预览报价','转订单','查看订单','写跟进','查看客户','查看日志'];
       if (nodeKey === 'deposit') return ['标记已收定金','创建收款提醒','写跟进','查看订单','查看客户','查看日志'];
       if (nodeKey === 'balance') return ['标记已收尾款','创建收款提醒','查看订单','写跟进','查看客户','查看日志'];
       if (nodeKey === 'shipping') return ['新增出货批次','标记全部出货','上传出货附件','创建单证任务','查看订单','查看日志'];
       if (nodeKey === 'documents') return ['创建 Packing List','创建 Commercial Invoice','标记单证完成','上传单证附件','查看订单','查看日志'];
-      if (stages.indexOf('review') >= 0) return ['查看报价','审核通过','驳回报价','编辑报价','查看客户','查看日志'];
-      if (stages.indexOf('review_rejected') >= 0) return ['查看报价','查看驳回原因','修改报价','重新提交审核','查看客户','查看日志'];
-      if (stages.indexOf('unreplied') >= 0) return ['查看报价','写邮件','查看邮件','写跟进','标记客户已回复','生成派工','设置下次跟进','AI 分析客户回复','查看日志'];
+      if (stages.indexOf('review') >= 0) return ['预览报价','审核通过','驳回报价','编辑报价','查看客户','查看日志'];
+      if (stages.indexOf('review_rejected') >= 0) return ['预览报价','查看驳回原因','修改报价','重新提交审核','查看客户','查看日志'];
+      if (stages.indexOf('unreplied') >= 0) return ['预览报价','写邮件','查看邮件','写跟进','标记客户已回复','生成派工','设置下次跟进','AI 分析客户回复','查看日志'];
       if (stages.indexOf('replied') >= 0 || stages.indexOf('quote_done') >= 0) return ['写跟进','修改报价','转订单','创建样品任务','创建资料任务','标记报价完成','查看日志'];
-      return ['查看报价','写跟进','转订单','查看客户','查看日志'];
+      return ['预览报价','写跟进','转订单','查看客户','查看日志'];
     },
     renderQuoteFlowDetail: function (row, box) {
       var amount = row.order_id ? this.moneyText(row.order_currency || row.quote_currency, row.order_amount || row.quote_amount) : this.moneyText(row.quote_currency, row.quote_amount);
@@ -22897,11 +22897,35 @@
         });
       });
     },
+    openQuotePreview: function (row) {
+      row = row || this.selected() || {};
+      var source = row.quote_source || (row.source_type === 'cc_quote' ? 'cc' : 'legacy');
+      var quoteId = source === 'cc' ? Number(row.source_id || row.quote_id || 0) : Number(row.source_id || row.quote_id || 0);
+      var quoteNo = row.quote_no || row.quote_id || '';
+      if (!quoteId) return toast('没有关联报价。');
+      var url = source === 'cc'
+        ? 'commercial_center_v1/index.php?page=quote_center&quote_id=' + encodeURIComponent(quoteId) + '&preview=1'
+        : 'quotation.php?quote_id=' + encodeURIComponent(quoteId) + '&quote_no=' + encodeURIComponent(quoteNo) + '&preview=1';
+      document.querySelector('[data-quote-preview-dialog]')?.remove();
+      var dialog = document.createElement('dialog');
+      dialog.className = 'quote-preview-dialog';
+      dialog.setAttribute('data-quote-preview-dialog','1');
+      dialog.innerHTML = '<header><div><span>报价预览</span><strong>' + esc(quoteNo || ('报价 #' + quoteId)) + '</strong></div><nav><a href="' + esc(url.replace('&preview=1','')) + '" target="_blank" rel="noopener">新窗口打开</a><button type="button" data-quote-preview-close>关闭</button></nav></header><section><div class="quote-preview-loading" data-quote-preview-loading>正在加载报价预览...</div><iframe src="' + esc(url) + '" title="报价预览" data-quote-preview-frame></iframe></section>';
+      document.body.appendChild(dialog);
+      var close = function () { dialog.close(); dialog.remove(); };
+      dialog.querySelector('[data-quote-preview-close]')?.addEventListener('click',close);
+      dialog.addEventListener('cancel',function (event) { event.preventDefault(); close(); });
+      dialog.addEventListener('click',function (event) { if (event.target === dialog) close(); });
+      var frame = dialog.querySelector('[data-quote-preview-frame]');
+      frame?.addEventListener('load',function () { dialog.querySelector('[data-quote-preview-loading]')?.remove(); frame.classList.add('loaded'); });
+      frame?.addEventListener('error',function () { var box=dialog.querySelector('[data-quote-preview-loading]'); if(box) box.textContent='报价预览加载失败，请使用“新窗口打开”。'; });
+      dialog.showModal();
+    },
     handleAction: function (label) {
       var row = this.selected();
       if (this.isViewAction(label)) return this.switchView(this.viewKeyFromLabel(label));
       if (this.selectedType === 'quote_flow') {
-        if (label === '查看报价') { window.open('quotation.php?quote_id=' + encodeURIComponent(row.quote_id || '') + '&quote_no=' + encodeURIComponent(row.quote_no || ''), '_blank'); return; }
+        if (label === '查看报价' || label === '预览报价') return this.openQuotePreview(row);
         if (label === '查看订单') { window.open('quotation.php?order_id=' + encodeURIComponent(row.order_id || '') + '&order_no=' + encodeURIComponent(row.order_no || ''), '_blank'); return; }
         if (label === '查看客户') { if (row.customer_id && /^\d+$/.test(String(row.customer_id))) { activate('customers'); CustomerModule.loadDetail(Number(row.customer_id)); } else toast('该报价没有绑定 CRM 客户 ID'); return; }
         if (label === '标记客户已回复' || label === '标记报价完成') return this.openQuoteFollowupDialog(row, true);
@@ -22947,6 +22971,7 @@
         }, label === '标记客户已回复');
       }
       if (row && row.task_type === 'quote_followup' && label === '写邮件') return this.writeQuoteFollowupMail(row);
+      if (row && row.task_type === 'quote_followup' && (label === '查看报价' || label === '预览报价')) return this.openQuotePreview(row);
       if (label === '生成派工' || label === '创建派工') return this.openTaskDispatchDialog(row);
       if (label === '创建跟进' || label === '写跟进' || label === '写跟进结果' || label === '设置下次跟进') { if (row && row.customer_id) { CustomerModule.currentId = Number(row.customer_id); return CustomerModule.openFollowupDialog(); } return toast('请先选择有关联客户的任务。'); }
       if (label === '查看客户') { if (row && row.customer_id) { activate('customers'); CustomerModule.loadDetail(Number(row.customer_id)); } else toast('没有关联客户'); return; }
