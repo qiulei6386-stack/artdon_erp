@@ -7,7 +7,9 @@
 - 复核发现锚点入口仍被 JavaScript `preventDefault()` 接管，并非真正独立兜底。
 - 改为浏览器原生 checkbox + label 控制：顶部/底部添加、关闭和取消均不依赖 JavaScript即可切换右侧配置与报价汇总。
 - JavaScript只负责产品数据、默认配置、编辑回填、配置校验和加入明细，不再控制“添加产品”点击是否能够打开。
-- 修改、检查、提交、推送、服务器部署及三方一致性以本轮最终结果为准。
+- 修改文件：`commercial_center_v1/views/quote_standard.php`、`assets/js/quote_center.js`、`assets/css/app.css`、`tests/standard_quote_button_contract.php`、`WORK_CONTEXT.md`。
+- 检查：JavaScript/PHP 语法、按钮契约、报价中心回归及安全扫描通过；线上 HTML 已验证顶部添加、底部添加、关闭、取消四个控件均连接同一个原生开关。
+- Git/部署：修复提交 `db7d874` 已推送 GitHub 并同步服务器；上下文收尾提交后再次核对三方一致。
 
 ## 本次：标准报价“添加产品”原生兜底修复
 
