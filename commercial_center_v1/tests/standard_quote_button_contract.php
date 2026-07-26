@@ -30,8 +30,7 @@ foreach ($buttonSelectors as $selector) {
 }
 
 foreach ([
-    "$$('[data-open-product],[data-add-line]', editor)",
-    "$$('[data-config-close]', editor)",
+    "configToggle?.addEventListener('change'",
     "event.target.closest('[data-configure]')",
     "event.target.closest('[data-remove-line]')",
     "$('[data-apply-config]', editor)?.addEventListener",
@@ -51,7 +50,7 @@ foreach (['data-standard-sidebar', 'data-summary-panel', 'data-config-panel'] as
         exit(1);
     }
 }
-foreach (['href="#standard-product-config"', 'id="standard-product-config"', '.standard-config-panel:target'] as $fallback) {
+foreach (['for="standard-config-toggle"', 'id="standard-config-toggle"', '.standard-config-toggle:checked'] as $fallback) {
     $style = (string)file_get_contents($root . '/assets/css/app.css');
     if (!str_contains($view . $style, $fallback)) {
         fwrite(STDERR, "FAIL: native add-product fallback missing {$fallback}\n");

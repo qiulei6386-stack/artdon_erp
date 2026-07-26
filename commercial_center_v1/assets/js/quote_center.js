@@ -532,6 +532,7 @@
     let bootstrap = { customers: [], configuration: { products: [], groups: [] }, commission_reminders: [] };
     let quoteId = Number(editor.dataset.quoteId || 0);
     let editingRow = null;
+    const configToggle = $('[data-config-toggle]', editor);
     const sidebar = $('[data-standard-sidebar]', editor);
     const summaryPanel = $('[data-summary-panel]', editor);
     const configPanel = $('[data-config-panel]', editor);
@@ -708,15 +709,14 @@
         select.value = values[select.dataset.configGroup] || select.value;
       });
       $('[data-config-messages]', editor).textContent = '';
+      if (configToggle) configToggle.checked = true;
       sidebar.classList.add('is-configuring');
       sidebar.scrollTop = 0;
     };
     const hideConfiguration = () => {
       if (!sidebar || !summaryPanel || !configPanel) return;
+      if (configToggle) configToggle.checked = false;
       sidebar.classList.remove('is-configuring');
-      if (window.location.hash === '#standard-product-config') {
-        history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-      }
       $('[data-config-product]', editor).disabled = false;
       $('[data-config-messages]', editor).textContent = '';
       editingRow = null;
@@ -769,17 +769,24 @@
     editor.addEventListener('input', (event) => {
       if (event.target.matches('[data-qty],[data-price],[data-discount],[data-order-discount],[data-shipping],[data-tax],[data-other]')) recalculate();
     });
-    $$('[data-open-product],[data-add-line]', editor).forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        showConfiguration();
-      });
-    });
-    $$('[data-config-close]', editor).forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
+    configToggle?.addEventListener('change', () => {
+      if (!configToggle.checked) {
         hideConfiguration();
+        return;
+      }
+      editingRow = null;
+      const productSelect = $('[data-config-product]', editor);
+      if (productSelect) {
+        productSelect.disabled = false;
+        productSelect.value = '';
+      }
+      const values = defaultValues();
+      $$('[data-config-group]', editor).forEach((select) => {
+        select.value = values[select.dataset.configGroup] || select.value;
       });
+      $('[data-config-messages]', editor).textContent = '';
+      sidebar?.classList.add('is-configuring');
+      if (sidebar) sidebar.scrollTop = 0;
     });
     editor.addEventListener('click', async (event) => {
       const configure = event.target.closest('[data-configure]');
