@@ -12,7 +12,7 @@ $materialIds=[];$supplierId=0;$productId=0;$groupIds=[];$optionIds=[];$priceId=0
 $legacyBefore=(int)$db->query('SELECT COUNT(*) FROM bom_materials')->fetchColumn();
 $legacySignature=(string)$db->query("SELECT SHA2(GROUP_CONCAT(CONCAT(COLUMN_NAME,':',COLUMN_TYPE,':',IS_NULLABLE,':',COLUMN_KEY) ORDER BY ORDINAL_POSITION SEPARATOR '|'),256) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='bom_materials'")->fetchColumn();
 try{
- $categories=$db->query("SELECT id,code FROM mc_material_categories WHERE status='active'")->fetchAll(PDO::FETCH_KEY_PAIR);
+ $categories=$db->query("SELECT code,id FROM mc_material_categories WHERE status='active'")->fetchAll(PDO::FETCH_KEY_PAIR);
  foreach(['power_supply','chip','optical','profile','connector','accessory','packaging']as$category)if(!isset($categories[$category]))throw new RuntimeException("missing category $category");
  $master=new MaterialMasterService($db);
  $power=$master->save(['category_id'=>$categories['power_supply'],'name'=>$tag.' power','brand'=>'TEST','model'=>'P1','unit'=>'PCS'],$userId);$materialIds[]=$power;
