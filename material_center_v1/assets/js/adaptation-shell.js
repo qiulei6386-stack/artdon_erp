@@ -2,7 +2,31 @@
   const q = (selector, root = document) => root.querySelector(selector);
   const qa = (selector, root = document) => [...root.querySelectorAll(selector)];
   const page = q('[data-adaptation]');
-  if (!page) return;
+  const bootstrapNode = q('#adaptation-bootstrap');
+  if (!page || !bootstrapNode) return;
+
+  const bootstrap = JSON.parse(bootstrapNode.textContent || '{}');
+  const state = {
+    products: bootstrap.products || [],
+    workspace: bootstrap.workspace || null,
+    metadata: bootstrap.metadata || {},
+    csrf: bootstrap.csrf || '',
+    baseUrl: bootstrap.baseUrl || '/artdon_erp/material_center_v1',
+    tab: 'options',
+    candidates: [],
+    dirty: false,
+    draggingGroupId: 0,
+  };
+
+  const escapeHtml = value => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+  const integer = value => Number.parseInt(value || 0, 10) || 0;
+  const selectedProductId = () => integer(state.workspace?.product?.id);
+  const selectedGroup = () => state.workspace?.active_group || null;
 
   const notify = (title, message) => {
     const region = q('[data-toast-region]');
@@ -18,91 +42,721 @@
     setTimeout(() => item.remove(), 4200);
   };
 
-  const send = async body => {
-    const response = await fetch(`${window.MC_BASE_URL}/api/v1/adaptation.php`, {
-      method: 'POST',
-      body,
+  const request = async (url, options = {}) => {
+    const response = await fetch(url, {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(options.headers || {}) },
+      ...options,
     });
     const text = await response.text();
-    let data;
+    let payload;
     try {
-      data = JSON.parse(text);
+      payload = JSON.parse(text);
     } catch {
       throw new Error('服务器没有返回有效数据。');
     }
-    if (!response.ok || !data.ok) throw new Error(data.message || '操作失败');
-    return data;
+    if (!response.ok || !payload.ok) throw new Error(payload.message || '操作失败');
+    return payload.data;
   };
 
-  qa('[data-adaptation-action]').forEach(form => form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const button = event.submitter || q('button[type="submit"]', form);
-    if (button) button.disabled = true;
-    try {
-      const body = new FormData(form);
-      if (body.get('action') === 'save_option') {
-        const fieldCode = String(body.get('condition_field_code') || '').trim();
-        const operator = String(body.get('condition_operator') || '').trim();
-        const rawExpected = String(body.get('condition_expected') || '').trim();
-        let expected = rawExpected;
-        if (operator === 'in') expected = rawExpected.split(',').map(value => value.trim()).filter(Boolean);
-        else if (rawExpected !== '' && Number.isFinite(Number(rawExpected))) expected = Number(rawExpected);
-        const conditions = fieldCode && operator ? [{
-          field_code: fieldCode,
-          operator,
-          expected,
-          failure_message: String(body.get('condition_failure_message') || '').trim() || '当前物料不满足适配条件',
-          severity: body.get('condition_severity') === 'warn' ? 'warn' : 'block',
-          sort_order: 10,
-        }] : [];
-        body.set('conditions_json', JSON.stringify(conditions));
-      }
-      const result = await send(body);
-      const action = form.elements.action?.value || '';
-      notify(
-        action === 'approve' ? '适配版本已批准' : '保存成功',
-        action === 'initialize_groups'
-          ? `已新增 ${result.data?.created || 0} 个配置组`
-          : '真实规则已经写入物料中心'
-      );
-      setTimeout(() => location.reload(), 350);
-    } catch (error) {
-      notify('操作失败', error instanceof Error ? error.message : '操作失败');
-      if (button) button.disabled = false;
-    }
-  }));
+  const get = (action, params = {}) => {
+    const url = new URL(`${state.baseUrl}/api/v1/adaptation.php`, location.origin);
+    url.searchParams.set('action', action);
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== '' && value !== null && value !== undefined) url.searchParams.set(key, String(value));
+    });
+    return request(url);
+  };
 
-  qa('[data-adaptation-tab]').forEach(button => button.addEventListener('click', () => {
-    qa('[data-adaptation-tab]').forEach(item => item.classList.toggle('is-active', item === button));
-    qa('[data-adaptation-panel]').forEach(panel => panel.classList.toggle('is-active', panel.dataset.adaptationPanel === button.dataset.adaptationTab));
-  }));
+  const post = (action, values = {}) => {
+    const body = new FormData();
+    body.set('csrf_token', state.csrf);
+    body.set('action', action);
+    Object.entries(values).forEach(([key, value]) => {
+      body.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''));
+    });
+    return request(`${state.baseUrl}/api/v1/adaptation.php`, { method: 'POST', body });
+  };
 
-  q('[data-adaptation-evaluate]')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const body = new FormData(form);
-    const output = q('[data-adaptation-result]', form);
-    const optionIds = qa('[name="option_choice"]:checked', form).map(input => Number(input.value));
-    body.set('option_ids', JSON.stringify(optionIds));
-    try {
-      JSON.parse(String(body.get('context_json') || '{}'));
-    } catch {
-      output.className = 'is-incompatible';
-      output.textContent = '上下文必须是有效 JSON。';
+  const openModal = id => {
+    const modal = q(`#${id}`);
+    if (!modal) return;
+    modal.classList.add('is-open');
+    q('.mc-overlay')?.classList.add('is-visible');
+  };
+
+  const closeModal = modal => {
+    modal?.classList.remove('is-open');
+    if (!q('[data-adaptation-modal].is-open')) q('.mc-overlay')?.classList.remove('is-visible');
+    state.dirty = false;
+  };
+
+  const updateUrl = () => {
+    const url = new URL(location.href);
+    const productId = selectedProductId();
+    const groupId = integer(selectedGroup()?.id);
+    productId ? url.searchParams.set('product_id', productId) : url.searchParams.delete('product_id');
+    groupId ? url.searchParams.set('group_id', groupId) : url.searchParams.delete('group_id');
+    history.replaceState({}, '', url);
+  };
+
+  const renderProducts = () => {
+    q('[data-product-count]').textContent = `${state.products.length} 个产品`;
+    const activeId = selectedProductId();
+    q('[data-product-list]').innerHTML = state.products.length
+      ? state.products.map(product => {
+        const rawImage = String(product.image_url || '');
+        const imageUrl = !rawImage || rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('/')
+          ? rawImage
+          : `${state.baseUrl.replace('/material_center_v1', '')}/${rawImage.startsWith('./') ? rawImage.slice(2) : rawImage}`;
+        const image = imageUrl
+          ? `<img src="${escapeHtml(imageUrl)}" alt="" loading="lazy">`
+          : '<span class="mc-product-thumb__placeholder">◇</span>';
+        const approvalClass = product.approval_label === '已启用' ? 'success' : 'warning';
+        return `<button type="button" class="mc-product-card ${integer(product.id) === activeId ? 'is-active' : ''}" data-product-id="${integer(product.id)}">
+          <span class="mc-product-thumb">${image}</span>
+          <span class="mc-product-card__main">
+            <strong>${escapeHtml(product.product_code || '未编号')}</strong>
+            <small>${escapeHtml(product.product_name || '未命名产品')}</small>
+            <em>${escapeHtml(product.series_name || '未设置系列')}</em>
+            <span class="mc-product-card__stats">${integer(product.group_count)} 组 · ${integer(product.option_count)} 选项</span>
+          </span>
+          <span class="mc-product-card__state">
+            <b class="mc-badge mc-badge--${approvalClass}">${escapeHtml(product.approval_label)}</b>
+            ${integer(product.conflict_count) ? '<i>存在冲突</i>' : '<i class="is-clear">无冲突</i>'}
+          </span>
+        </button>`;
+      }).join('')
+      : '<div class="mc-empty-state"><strong>没有产品</strong><span>同步命名系统或调整搜索条件。</span></div>';
+  };
+
+  const statusLabels = {
+    empty: ['未添加选项', 'muted'],
+    no_default: ['未设置默认', 'warning'],
+    conflict: ['存在冲突', 'danger'],
+    pending: ['待审批', 'warning'],
+    enabled: ['已启用', 'success'],
+    disabled: ['已停用', 'muted'],
+  };
+
+  const renderSummary = () => {
+    const target = q('[data-product-summary]');
+    const workspace = state.workspace;
+    if (!workspace) {
+      target.innerHTML = '';
+      q('[data-rule-subtitle]').textContent = '请选择产品';
       return;
     }
-    output.className = '';
-    output.textContent = '正在计算…';
-    try {
-      const result = await send(body);
-      const data = result.data;
-      output.className = data.compatible ? 'is-compatible' : 'is-incompatible';
-      output.textContent = `${data.compatible ? '适配通过' : '不适配'} · 价格影响 ${data.price_impact} · 交期影响 ${data.lead_time_impact_days} 天${data.reasons.length ? ' · ' + data.reasons.map(reason => reason.reason).join('；') : ''}`;
-    } catch (error) {
-      output.className = 'is-incompatible';
-      output.textContent = error instanceof Error ? error.message : '计算失败';
+    const product = workspace.product;
+    const completion = workspace.completion || { percent: 0 };
+    q('[data-rule-subtitle]').textContent = product.product_code || '未编号产品';
+    target.innerHTML = `<div class="mc-adaptation-product-identity">
+        <div><span>产品型号</span><strong>${escapeHtml(product.product_code || '—')}</strong></div>
+        <div><span>产品名称</span><strong>${escapeHtml(product.product_name || '—')}</strong></div>
+        <div><span>产品系列</span><strong>${escapeHtml(product.series_name || '—')}</strong></div>
+      </div>
+      <div class="mc-adaptation-progress-card">
+        <div><span>配置完成度</span><strong>${integer(completion.percent)}%</strong></div>
+        <div class="mc-completion-track"><i style="width:${integer(completion.percent)}%"></i></div>
+        <div class="mc-adaptation-summary-metrics">
+          <span><b>${workspace.groups.length}</b> 配置组</span>
+          <span><b>${integer(product.option_count)}</b> 总选项</span>
+          <span><b>${workspace.conflicts.length}</b> 冲突</span>
+          <span><b>${escapeHtml(product.approval_label)}</b> 审批状态</span>
+        </div>
+      </div>`;
+  };
+
+  const renderGroups = () => {
+    const list = q('[data-group-list]');
+    const workspace = state.workspace;
+    q('[data-group-create]').disabled = !workspace;
+    q('[data-template-open]').disabled = !workspace;
+    q('[data-template-open]').textContent = workspace?.groups?.length ? '重新套用配置模板' : '生成标准配置';
+    if (!workspace) {
+      list.innerHTML = '<div class="mc-empty-state"><strong>请选择产品</strong><span>从左侧产品列表开始。</span></div>';
+      return;
+    }
+    if (!workspace.groups.length) {
+      list.innerHTML = `<div class="mc-empty-state mc-empty-state--action">
+        <strong>当前产品尚未建立配置规则</strong>
+        <span>先生成标准配置，再逐组添加正式物料、默认项和适用条件。</span>
+        <button class="mc-button mc-button--primary" type="button" data-empty-template>生成标准配置</button>
+      </div>`;
+      return;
+    }
+    const activeId = integer(workspace.active_group?.id);
+    list.innerHTML = workspace.groups.map(group => {
+      const status = statusLabels[group.display_status] || statusLabels.pending;
+      return `<article class="mc-adaptation-group-card ${integer(group.id) === activeId ? 'is-active' : ''}" draggable="true" data-group-id="${integer(group.id)}">
+        <button class="mc-adaptation-group-card__main" type="button" data-select-group="${integer(group.id)}">
+          <span class="mc-drag-handle" title="拖动排序">⋮⋮</span>
+          <span class="mc-rule-group__icon">◇</span>
+          <span class="mc-adaptation-group-card__name">
+            <strong>${escapeHtml(group.group_name)}</strong>
+            <small>${escapeHtml(state.metadata.business_types?.[group.business_type]?.label || group.business_type)} · ${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small>
+            <em>默认：${escapeHtml(group.default_material || '未设置')}</em>
+          </span>
+          <span class="mc-adaptation-group-counts">
+            <b>${integer(group.option_count)} 选项</b>
+            <small>${integer(group.alternative_count)} 替代 · ${integer(group.condition_count)} 条件</small>
+            <small>${integer(group.conflict_count)} 冲突</small>
+          </span>
+          <span class="mc-badge mc-badge--${status[1]}">${status[0]}</span>
+        </button>
+        <button class="mc-icon-button mc-group-edit" type="button" data-edit-group="${integer(group.id)}" title="编辑配置组">•••</button>
+      </article>`;
+    }).join('');
+  };
+
+  const optionMatchLabel = option => ({
+    exact: '完全适配',
+    conditional: '条件适配',
+    needs_approval: '需要审批',
+    incompatible: '不适配',
+  }[option.match_level] || '需要审批');
+
+  const renderOptionPanel = () => {
+    const workspace = state.workspace;
+    const group = selectedGroup();
+    const detail = q('[data-option-detail]');
+    q('[data-option-tabs]').hidden = !group;
+    q('[data-candidate-open]').disabled = !group;
+    q('[data-option-subtitle]').textContent = group?.group_name || '请选择配置组';
+    if (!group) {
+      detail.innerHTML = '<div class="mc-empty-state"><strong>请选择配置组</strong><span>配置组切换后，这里会立即显示选项、默认、条件和审批信息。</span></div>';
+      return;
+    }
+    qa('[data-adaptation-tab]').forEach(button => button.classList.toggle('is-active', button.dataset.adaptationTab === state.tab));
+    const options = workspace.options || [];
+    if (state.tab === 'options') {
+      detail.innerHTML = options.length
+        ? `<div class="mc-adaptation-option-list">${options.map(option => `<article>
+          <div>
+            <strong>${escapeHtml(`${option.material_code} ${option.name}`)}</strong>
+            <span>${escapeHtml(`${option.brand || ''} ${option.model || ''}`.trim() || '未设置品牌 / 型号')}</span>
+            ${(option.match_reasons || []).map(reason => `<small class="mc-option-reason">${escapeHtml(reason)}</small>`).join('')}
+          </div>
+          <div>
+            <em class="mc-match mc-match--${escapeHtml(option.match_level)}">${optionMatchLabel(option)}</em>
+            ${integer(option.is_default) ? '<b>默认</b>' : ''}
+            ${option.material_status !== 'official' ? '<small class="mc-badge--danger">已停用</small>' : ''}
+            ${integer(option.requires_approval) && !integer(option.exception_approved) ? '<small>需审批</small>' : ''}
+          </div>
+        </article>`).join('')}</div>`
+        : `<div class="mc-empty-state mc-empty-state--action">
+          <strong>当前配置组尚未添加物料选项</strong>
+          <span>只能从对应类别的正式物料库选择，候选项会显示匹配等级和冲突原因。</span>
+          <button class="mc-button mc-button--primary" type="button" data-empty-candidate>从物料库添加选项</button>
+        </div>`;
+    } else if (state.tab === 'default') {
+      const inputType = group.selection_mode === 'single' ? 'radio' : 'checkbox';
+      detail.innerHTML = `<form class="mc-default-panel" data-default-form>
+        <div class="mc-adaptation-fact">
+          <span>${group.selection_mode === 'single' ? '单选默认项' : '多选默认勾选项'}</span>
+          <strong>${escapeHtml(group.default_material || '未设置')}</strong>
+          <p>${group.selection_mode === 'single' ? '单选配置组只能设置一个默认选项。' : '多选配置组可设置最少、最多选择数量及多个默认勾选项。'} 切换默认项会记录操作日志。</p>
+        </div>
+        <div class="mc-default-options">${options.length ? options.map(option => `<label>
+          <input type="${inputType}" name="default_option" value="${integer(option.id)}" ${integer(option.is_default) ? 'checked' : ''}>
+          <span><strong>${escapeHtml(option.material_code)}</strong>${escapeHtml(`${option.brand || ''} ${option.model || option.name || ''}`.trim())}</span>
+        </label>`).join('') : '<p>请先添加物料选项。</p>'}</div>
+        ${group.selection_mode === 'multi' ? `<div class="mc-form-grid mc-default-limits">
+          <label class="mc-field"><span>最少选择数量</span><input type="number" name="min_select" min="0" value="${integer(group.min_select)}"></label>
+          <label class="mc-field"><span>最多选择数量</span><input type="number" name="max_select" min="1" value="${integer(group.max_select)}"></label>
+        </div>` : ''}
+        <button class="mc-button mc-button--primary" type="submit" ${options.length ? '' : 'disabled'}>保存默认设置</button>
+      </form>`;
+    } else if (state.tab === 'alternative') {
+      const alternatives = options.filter(option => option.option_type === 'alternative');
+      detail.innerHTML = alternatives.length
+        ? `<div class="mc-adaptation-option-list">${alternatives.map(option => `<article><div><strong>${escapeHtml(`${option.material_code} ${option.name}`)}</strong><span>${escapeHtml(option.model || '')}</span></div><div><em>替代物料</em></div></article>`).join('')}</div>`
+        : '<div class="mc-empty-state"><strong>暂无替代关系</strong><span>替代项需要在物料选项中标记，并在审批前检查循环关系。</span></div>';
+    } else if (state.tab === 'conditions') {
+      const conditions = workspace.conditions || [];
+      detail.innerHTML = `<div class="mc-panel-action"><p>通过字段、运算符和值建立 AND / OR 适用条件，不向普通用户暴露代码表达式。</p><button class="mc-button mc-button--primary" type="button" data-condition-open>${conditions.length ? '编辑适用条件' : '添加适用条件'}</button></div>
+        ${conditions.length ? `<div class="mc-condition-list">${conditions.map((condition, index) => `<article>
+          <strong>${index ? escapeHtml(condition.boolean_connector) + ' ' : ''}${escapeHtml(condition.material_code)} · ${escapeHtml(condition.field_label)}</strong>
+          <span>${escapeHtml(condition.operator_label)} ${escapeHtml(formatExpected(condition.expected))}</span>
+          <p>${escapeHtml(condition.failure_message)}</p>
+        </article>`).join('')}</div>` : '<div class="mc-empty-state mc-empty-state--compact"><strong>暂无适用条件</strong><span>添加后会参与适配检查并返回明确原因。</span></div>'}`;
+    } else if (state.tab === 'impact') {
+      detail.innerHTML = options.length
+        ? `<form class="mc-impact-list" data-impact-form>${options.map(option => `<label>
+          <span><strong>${escapeHtml(option.material_code)}</strong>${escapeHtml(option.name)}</span>
+          <span class="mc-field"><small>价格影响</small><input type="number" step="0.0001" name="price_${integer(option.id)}" value="${escapeHtml(option.price_impact || 0)}"></span>
+          <span class="mc-field"><small>交期影响（天）</small><input type="number" name="lead_${integer(option.id)}" value="${integer(option.lead_time_impact_days)}"></span>
+        </label>`).join('')}<button class="mc-button mc-button--primary" type="submit">保存价格 / 交期</button></form>`
+        : '<div class="mc-empty-state"><strong>暂无价格或交期影响</strong><span>请先添加物料选项。</span></div>';
+    } else if (state.tab === 'approval') {
+      const completion = workspace.completion || { issues: [], percent: 0, ready: false };
+      const exceptions = integer(completion.exception_count);
+      detail.innerHTML = `<div class="mc-approval-readiness">
+        <div class="mc-approval-score"><span>配置完成度</span><strong>${integer(completion.percent)}%</strong><small>${integer(completion.checks_passed)} / ${integer(completion.checks_total)} 项检查通过</small></div>
+        ${completion.issues.length ? `<div class="mc-completion-issues"><strong>提交前还需处理</strong>${completion.issues.map(issue => `<p>${escapeHtml(issue)}</p>`).join('')}</div>` : '<div class="mc-completion-ready"><strong>审批检查已通过</strong><p>通过后配置状态将变为“已启用”，商务中心才可读取。</p></div>'}
+        ${exceptions ? `<label class="mc-exception-approval"><input type="checkbox" data-approve-exceptions><span>本次审批同时批准 ${exceptions} 个适配例外</span></label>` : ''}
+        <button class="mc-button mc-button--primary" type="button" data-approve-product>提交审批</button>
+      </div>`;
+    }
+  };
+
+  const render = () => {
+    renderProducts();
+    renderSummary();
+    renderGroups();
+    renderOptionPanel();
+    updateUrl();
+  };
+
+  const loadWorkspace = async (productId, groupId = 0) => {
+    q('[data-option-detail]').innerHTML = '<div class="mc-empty-state"><strong>正在加载配置</strong><span>产品切换不会刷新整个页面。</span></div>';
+    state.workspace = await get('workspace', { product_id: productId, group_id: groupId });
+    const productIndex = state.products.findIndex(product => integer(product.id) === integer(productId));
+    if (productIndex >= 0) state.products[productIndex] = { ...state.products[productIndex], ...state.workspace.product };
+    render();
+  };
+
+  const refreshWorkspace = () => loadWorkspace(selectedProductId(), integer(selectedGroup()?.id));
+
+  const formatExpected = value => Array.isArray(value) ? value.join(' ～ ') : String(value ?? '');
+
+  const populateTemplate = () => {
+    q('[data-template-preview]').innerHTML = (state.metadata.template || []).map((group, index) => `<div>
+      <b>${index + 1}</b><span><strong>${escapeHtml(group.name)}</strong><small>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></span>
+    </div>`).join('');
+  };
+
+  const populateGroupFormTypes = () => {
+    q('[data-business-type]').innerHTML = '<option value="">请选择类型</option>'
+      + Object.entries(state.metadata.business_types || {}).map(([key, row]) => `<option value="${escapeHtml(key)}">${escapeHtml(row.label)}</option>`).join('');
+  };
+
+  const openGroupForm = group => {
+    const form = q('[data-group-form]');
+    form.reset();
+    form.elements.id.value = group?.id || '';
+    q('[data-group-form-title]').textContent = group ? '编辑配置组' : '新建配置组';
+    q('[data-group-delete]').hidden = !group;
+    if (group) {
+      ['business_type', 'material_category_code', 'group_name', 'is_required', 'selection_mode', 'min_select', 'max_select', 'sort_order', 'status'].forEach(key => {
+        if (form.elements[key]) form.elements[key].value = group[key] ?? '';
+      });
+    } else {
+      form.elements.business_type.value = '';
+      form.elements.is_required.value = '0';
+      form.elements.selection_mode.value = 'single';
+      form.elements.min_select.value = '0';
+      form.elements.max_select.value = '1';
+      form.elements.sort_order.value = String((state.workspace?.groups?.length || 0) * 10 + 10);
+      form.elements.status.value = 'draft';
+    }
+    state.dirty = false;
+    openModal('group-modal');
+  };
+
+  const loadCandidates = async () => {
+    const form = q('[data-candidate-form]');
+    const params = { group_id: selectedGroup()?.id };
+    new FormData(form).forEach((value, key) => {
+      if (String(value).trim()) params[key] = String(value).trim();
+    });
+    q('[data-candidate-list]').innerHTML = '<div class="mc-empty-state"><strong>正在检查候选物料</strong><span>正在计算匹配程度和冲突原因。</span></div>';
+    state.candidates = await get('candidates', params);
+    renderCandidates();
+  };
+
+  const renderCandidates = () => {
+    const list = q('[data-candidate-list]');
+    q('[data-candidate-summary]').textContent = `共 ${state.candidates.length} 个候选物料；不适配和已停用物料不能勾选。`;
+    list.innerHTML = state.candidates.length ? state.candidates.map(material => {
+      const blocked = material.match_level === 'incompatible' || material.status !== 'official' || material.already_added;
+      return `<label class="mc-candidate-card mc-candidate-card--${escapeHtml(material.match_level)} ${blocked ? 'is-disabled' : ''}">
+        <input type="checkbox" name="material_choice" value="${integer(material.id)}" ${blocked ? 'disabled' : ''}>
+        <span class="mc-candidate-card__main">
+          <strong>${escapeHtml(material.material_code)} · ${escapeHtml(`${material.brand || ''} ${material.model || material.name || ''}`.trim())}</strong>
+          <small>${escapeHtml(material.key_specs || '暂无关键规格')}</small>
+          <em>${escapeHtml(material.suppliers || '未关联供应商')}</em>
+        </span>
+        <span class="mc-candidate-card__match">
+          <b>${escapeHtml(material.match_label)}</b>
+          ${material.status !== 'official' ? '<i>已停用</i>' : ''}
+          ${material.requires_approval ? '<i>需要审批</i>' : ''}
+          ${material.already_added ? '<i>已添加</i>' : ''}
+        </span>
+        <span class="mc-candidate-card__reasons">${(material.conflict_reasons || []).length ? material.conflict_reasons.map(reason => `<small>${escapeHtml(reason)}</small>`).join('') : '<small class="is-pass">未发现冲突</small>'}</span>
+      </label>`;
+    }).join('') : '<div class="mc-empty-state"><strong>没有符合条件的正式物料</strong><span>请调整筛选，或先在对应分类将物料转正式。</span></div>';
+    updateCandidateSelection();
+  };
+
+  const updateCandidateSelection = () => {
+    q('[data-candidate-selection]').textContent = `已选择 ${qa('[name="material_choice"]:checked', q('[data-candidate-form]')).length} 项`;
+  };
+
+  const conditionRow = (condition = {}, index = 0) => {
+    const options = state.workspace?.options || [];
+    const fields = state.metadata.condition_fields || {};
+    const operators = state.metadata.condition_operators || {};
+    return `<div class="mc-condition-editor-row">
+      <select name="boolean_connector" ${index === 0 ? 'disabled' : ''}><option value="AND" ${condition.boolean_connector !== 'OR' ? 'selected' : ''}>AND</option><option value="OR" ${condition.boolean_connector === 'OR' ? 'selected' : ''}>OR</option></select>
+      <select name="option_id" required>${options.map(option => `<option value="${integer(option.id)}" ${integer(condition.option_id) === integer(option.id) ? 'selected' : ''}>${escapeHtml(option.material_code)} ${escapeHtml(option.name)}</option>`).join('')}</select>
+      <select name="field_code" required><option value="">选择字段</option>${Object.entries(fields).map(([key, label]) => `<option value="${escapeHtml(key)}" ${condition.field_code === key ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
+      <select name="operator" required>${Object.entries(operators).map(([key, label]) => `<option value="${escapeHtml(key)}" ${condition.operator === key ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>
+      <input name="expected" required value="${escapeHtml(Array.isArray(condition.expected) ? condition.expected.join(',') : condition.expected ?? '')}" placeholder="介于/属于用逗号分隔">
+      <input name="failure_message" maxlength="500" value="${escapeHtml(condition.failure_message || '')}" placeholder="例如：输出电流高于芯片允许值">
+      <button class="mc-icon-button" type="button" data-condition-remove>×</button>
+    </div>`;
+  };
+
+  const openConditionEditor = () => {
+    if (!state.workspace?.options?.length) {
+      notify('无法添加条件', '请先从物料库添加选项。');
+      return;
+    }
+    const rows = state.workspace.conditions || [];
+    q('[data-condition-rows]').innerHTML = rows.length
+      ? rows.map((row, index) => conditionRow(row, index)).join('')
+      : conditionRow({}, 0);
+    state.dirty = false;
+    openModal('condition-modal');
+  };
+
+  page.addEventListener('click', async event => {
+    const productButton = event.target.closest('[data-product-id]');
+    if (productButton) {
+      try {
+        state.tab = 'options';
+        await loadWorkspace(integer(productButton.dataset.productId));
+      } catch (error) {
+        notify('产品加载失败', error.message);
+      }
+      return;
+    }
+    const groupButton = event.target.closest('[data-select-group]');
+    if (groupButton) {
+      try {
+        state.tab = 'options';
+        await loadWorkspace(selectedProductId(), integer(groupButton.dataset.selectGroup));
+      } catch (error) {
+        notify('配置组加载失败', error.message);
+      }
+      return;
+    }
+    const tab = event.target.closest('[data-adaptation-tab]');
+    if (tab) {
+      state.tab = tab.dataset.adaptationTab;
+      renderOptionPanel();
+      return;
+    }
+    if (event.target.closest('[data-template-open], [data-empty-template]')) {
+      populateTemplate();
+      openModal('template-modal');
+      return;
+    }
+    if (event.target.closest('[data-group-create]')) {
+      openGroupForm(null);
+      return;
+    }
+    const edit = event.target.closest('[data-edit-group]');
+    if (edit) {
+      const group = state.workspace.groups.find(row => integer(row.id) === integer(edit.dataset.editGroup));
+      openGroupForm(group);
+      return;
+    }
+    if (event.target.closest('[data-candidate-open], [data-empty-candidate]')) {
+      q('[data-candidate-form]').reset();
+      openModal('candidate-modal');
+      try {
+        await loadCandidates();
+      } catch (error) {
+        notify('候选物料加载失败', error.message);
+      }
+      return;
+    }
+    if (event.target.closest('[data-condition-open]')) {
+      openConditionEditor();
+      return;
+    }
+    if (event.target.closest('[data-condition-add]')) {
+      const container = q('[data-condition-rows]');
+      container.insertAdjacentHTML('beforeend', conditionRow({}, container.children.length));
+      state.dirty = true;
+      return;
+    }
+    const removeCondition = event.target.closest('[data-condition-remove]');
+    if (removeCondition) {
+      removeCondition.closest('.mc-condition-editor-row').remove();
+      qa('.mc-condition-editor-row', q('[data-condition-rows]')).forEach((row, index) => {
+        row.querySelector('[name="boolean_connector"]').disabled = index === 0;
+      });
+      state.dirty = true;
+      return;
+    }
+    if (event.target.closest('[data-candidate-filter]')) {
+      try {
+        await loadCandidates();
+      } catch (error) {
+        notify('筛选失败', error.message);
+      }
+      return;
+    }
+    if (event.target.closest('[data-sync-products]')) {
+      const button = event.target.closest('button');
+      button.disabled = true;
+      try {
+        const result = await post('sync');
+        state.products = await get('products');
+        renderProducts();
+        notify('产品同步完成', `读取 ${result.seen} 条，新增 ${result.created} 条，更新 ${result.changed} 条。`);
+      } catch (error) {
+        notify('同步失败', error.message);
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
+    if (event.target.closest('[data-approve-product]')) {
+      const button = event.target.closest('button');
+      button.disabled = true;
+      try {
+        const approveExceptions = q('[data-approve-exceptions]')?.checked ? 1 : 0;
+        await post('approve', { product_id: selectedProductId(), approve_exceptions: approveExceptions });
+        await refreshWorkspace();
+        notify('审批通过', '当前适配版本已启用，商务中心可以读取。');
+      } catch (error) {
+        notify('暂不能提交审批', error.message);
+        button.disabled = false;
+      }
+      return;
+    }
+    if (event.target.closest('[data-modal-close]')) {
+      if (state.dirty && !window.confirm('当前修改尚未保存，确定离开吗？')) return;
+      closeModal(event.target.closest('[data-adaptation-modal]'));
     }
   });
+
+  page.addEventListener('change', event => {
+    if (event.target.matches('[name="material_choice"]')) updateCandidateSelection();
+    if (event.target.closest('form')) state.dirty = true;
+    if (event.target.matches('[data-business-type]')) {
+      const category = state.metadata.business_types?.[event.target.value]?.category;
+      if (category) q('[data-material-category]').value = category;
+    }
+    if (event.target.matches('[name="selection_mode"]')) {
+      const form = event.target.form;
+      if (event.target.value === 'single') {
+        form.elements.max_select.value = '1';
+        form.elements.min_select.value = form.elements.is_required.value === '1' ? '1' : '0';
+      }
+    }
+  });
+
+  q('[data-product-search]').addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      state.products = await get('products', { q: new FormData(event.currentTarget).get('q') });
+      renderProducts();
+    } catch (error) {
+      notify('搜索失败', error.message);
+    }
+  });
+
+  q('[data-template-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      const result = await post('apply_template', { product_id: selectedProductId() });
+      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      await loadWorkspace(selectedProductId());
+      notify('标准配置已生成', result.created ? `新增 ${result.created} 个配置组。` : '配置组已齐全，没有重复插入。');
+    } catch (error) {
+      notify('生成失败', error.message);
+      button.disabled = false;
+    }
+  });
+
+  q('[data-group-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
+    values.product_id = selectedProductId();
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      await post('save_group', values);
+      closeModal(form.closest('[data-adaptation-modal]'));
+      await loadWorkspace(selectedProductId(), values.id || 0);
+      notify('配置组已保存', '类型、选择规则和排序已经写入操作日志。');
+    } catch (error) {
+      notify('保存失败', error.message);
+      button.disabled = false;
+    }
+  });
+
+  q('[data-group-delete]').addEventListener('click', async () => {
+    const groupId = integer(q('[data-group-form]').elements.id.value);
+    if (!groupId || !window.confirm('确定删除这个未引用的草稿配置组吗？')) return;
+    try {
+      await post('delete_group', { group_id: groupId });
+      closeModal(q('#group-modal'));
+      await loadWorkspace(selectedProductId());
+      notify('配置组已删除', '删除前已完成审批历史、报价和订单引用检查。');
+    } catch (error) {
+      notify('无法删除', error.message);
+    }
+  });
+
+  q('[data-candidate-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const ids = qa('[name="material_choice"]:checked', event.currentTarget).map(input => integer(input.value));
+    if (!ids.length) {
+      notify('尚未选择物料', '请勾选至少一个可添加的候选项。');
+      return;
+    }
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      const result = await post('add_options', { group_id: selectedGroup().id, material_ids: ids });
+      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      await refreshWorkspace();
+      notify('物料选项已添加', `成功 ${result.added} 项，跳过 ${result.skipped} 项。`);
+    } catch (error) {
+      notify('添加失败', error.message);
+      button.disabled = false;
+    }
+  });
+
+  q('[data-condition-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const conditions = qa('.mc-condition-editor-row', event.currentTarget).map((row, index) => {
+      const operator = q('[name="operator"]', row).value;
+      const raw = q('[name="expected"]', row).value.trim();
+      let expected = raw;
+      if (operator === 'in' || operator === 'between') expected = raw.split(',').map(value => value.trim()).filter(Boolean).map(value => Number.isFinite(Number(value)) ? Number(value) : value);
+      else if (raw !== '' && Number.isFinite(Number(raw))) expected = Number(raw);
+      return {
+        boolean_connector: index ? q('[name="boolean_connector"]', row).value : 'AND',
+        condition_group_no: 1,
+        option_id: integer(q('[name="option_id"]', row).value),
+        field_code: q('[name="field_code"]', row).value,
+        operator,
+        expected,
+        failure_message: q('[name="failure_message"]', row).value.trim(),
+        severity: 'block',
+      };
+    });
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      const result = await post('save_conditions', { group_id: selectedGroup().id, conditions });
+      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      await refreshWorkspace();
+      state.tab = 'conditions';
+      renderOptionPanel();
+      notify('适用条件已保存', `共保存 ${result.saved} 条可视化条件。`);
+    } catch (error) {
+      notify('条件保存失败', error.message);
+      button.disabled = false;
+    }
+  });
+
+  page.addEventListener('submit', async event => {
+    const defaultForm = event.target.closest('[data-default-form]');
+    if (defaultForm) {
+      event.preventDefault();
+      const ids = qa('[name="default_option"]:checked', defaultForm).map(input => integer(input.value));
+      try {
+        await post('set_default', {
+          group_id: selectedGroup().id,
+          option_ids: ids,
+          min_select: defaultForm.elements.min_select?.value ?? selectedGroup().min_select,
+          max_select: defaultForm.elements.max_select?.value ?? selectedGroup().max_select,
+        });
+        await refreshWorkspace();
+        state.tab = 'default';
+        renderOptionPanel();
+        notify('默认设置已保存', '默认项变更已写入日志。');
+      } catch (error) {
+        notify('保存失败', error.message);
+      }
+      return;
+    }
+    const impactForm = event.target.closest('[data-impact-form]');
+    if (impactForm) {
+      event.preventDefault();
+      const button = event.submitter;
+      button.disabled = true;
+      try {
+        for (const option of state.workspace.options) {
+          await post('save_option', {
+            group_id: selectedGroup().id,
+            material_id: option.material_id,
+            option_type: option.option_type,
+            is_default: option.is_default,
+            price_impact: impactForm.elements[`price_${option.id}`].value,
+            lead_time_impact_days: impactForm.elements[`lead_${option.id}`].value,
+            sort_order: option.sort_order,
+          });
+        }
+        await refreshWorkspace();
+        state.tab = 'impact';
+        renderOptionPanel();
+        notify('价格 / 交期已保存', '所有影响值已保存并进入待审批状态。');
+      } catch (error) {
+        notify('保存失败', error.message);
+        button.disabled = false;
+      }
+    }
+  });
+
+  q('[data-group-list]').addEventListener('dragstart', event => {
+    const card = event.target.closest('[data-group-id]');
+    if (!card) return;
+    state.draggingGroupId = integer(card.dataset.groupId);
+    card.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+  });
+
+  q('[data-group-list]').addEventListener('dragover', event => {
+    const target = event.target.closest('[data-group-id]');
+    const dragging = q(`[data-group-id="${state.draggingGroupId}"]`);
+    if (!target || !dragging || target === dragging) return;
+    event.preventDefault();
+    const rect = target.getBoundingClientRect();
+    target.parentNode.insertBefore(dragging, event.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
+  });
+
+  q('[data-group-list]').addEventListener('dragend', async event => {
+    event.target.closest('[data-group-id]')?.classList.remove('is-dragging');
+    const ids = qa('[data-group-id]', q('[data-group-list]')).map(card => integer(card.dataset.groupId));
+    state.draggingGroupId = 0;
+    try {
+      await post('reorder_groups', { product_id: selectedProductId(), group_ids: ids });
+      await refreshWorkspace();
+      notify('排序已保存', '配置组顺序已更新。');
+    } catch (error) {
+      notify('排序保存失败', error.message);
+      await refreshWorkspace();
+    }
+  });
+
+  qa('[data-adaptation-modal] form').forEach(form => {
+    form.addEventListener('input', () => { state.dirty = true; });
+  });
+  window.addEventListener('beforeunload', event => {
+    if (!state.dirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const modal = q('[data-adaptation-modal].is-open');
+    if (!modal) return;
+    if (state.dirty && !window.confirm('当前修改尚未保存，确定离开吗？')) return;
+    closeModal(modal);
+  });
+
+  populateGroupFormTypes();
+  render();
 })();

@@ -32,28 +32,27 @@ final class ConfigurationRepository
     public function materialCenterAdaptations(): array
     {
         foreach(['mc_products','mc_adaptation_groups','mc_adaptation_options','mc_materials','mc_material_categories']as$table)if(!$this->tableExists($table))return[];
-        $rows=$this->all("SELECT p.legacy_id,g.id group_id,g.group_code,g.group_name,g.group_type,
+        $rows=$this->all("SELECT p.legacy_id,g.id group_id,g.group_code,g.group_name,g.group_type,g.business_type,g.is_required,g.selection_mode,
           o.id option_id,o.option_type,o.is_default,o.price_impact,o.lead_time_impact_days,
           m.id material_id,m.material_code,m.name material_name,m.brand,m.model,c.code category_code
           FROM mc_products p
-          JOIN mc_adaptation_groups g ON g.product_id=p.id AND g.status='approved'
+          JOIN mc_adaptation_groups g ON g.product_id=p.id AND g.status='approved' AND g.is_enabled=1
           JOIN mc_adaptation_options o ON o.group_id=g.id AND o.status='approved' AND o.option_type<>'disabled'
           JOIN mc_materials m ON m.id=o.material_id AND m.status='official' AND m.is_official=1 AND m.allow_quote=1 AND m.deleted_at IS NULL
           JOIN mc_material_categories c ON c.id=m.category_id
           WHERE p.legacy_table='naming_models' AND p.status='active'
-          AND NOT EXISTS(SELECT 1 FROM mc_adaptation_groups gx WHERE gx.product_id=p.id AND gx.status<>'approved')
-          AND NOT EXISTS(SELECT 1 FROM mc_adaptation_options ox JOIN mc_adaptation_groups gox ON gox.id=ox.group_id WHERE gox.product_id=p.id AND ox.status<>'approved')
+          AND NOT EXISTS(SELECT 1 FROM mc_adaptation_groups gx WHERE gx.product_id=p.id AND gx.status<>'disabled' AND (gx.status<>'approved' OR gx.is_enabled=0))
+          AND NOT EXISTS(SELECT 1 FROM mc_adaptation_options ox JOIN mc_adaptation_groups gox ON gox.id=ox.group_id WHERE gox.product_id=p.id AND gox.status<>'disabled' AND ox.status<>'approved')
           ORDER BY p.legacy_id,g.sort_order,g.id,o.sort_order,o.id");
         $result=[];
         foreach($rows as$row){
             $product=(string)(int)$row['legacy_id'];$groupCode='mc_'.$row['group_code'];
             if(!isset($result[$product][$groupCode]))$result[$product][$groupCode]=[
                 'id'=>'mc-'.(int)$row['group_id'],'group_code'=>$groupCode,'name'=>$row['group_name'],
-                'is_required'=>$row['option_type']==='required'?1:0,'is_multiple'=>0,'sort_order'=>1000+(int)$row['group_id'],
+                'is_required'=>(int)$row['is_required'],'is_multiple'=>$row['selection_mode']==='multi'?1:0,'sort_order'=>1000+(int)$row['group_id'],
                 'input_type'=>'select','is_advanced'=>0,'customer_visible'=>1,'affects_cost'=>0,'affects_price'=>1,
                 'affects_moq'=>0,'affects_lead_time'=>1,'allow_custom'=>0,'source'=>'material_center','options'=>[],
             ];
-            if($row['option_type']==='required')$result[$product][$groupCode]['is_required']=1;
             $result[$product][$groupCode]['options'][]=[
                 'id'=>'mc-'.(int)$row['option_id'],'group_id'=>'mc-'.(int)$row['group_id'],
                 'option_code'=>'mc_material_'.(int)$row['material_id'],
