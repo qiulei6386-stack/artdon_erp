@@ -13,6 +13,7 @@
 - 服务器复检：改动测试 PHP 语法、电源编辑器合同、来源整理合同、电源真实编辑 / 批量回滚 / 生命周期审批集成、六分类来源整理幂等集成全部通过；临时测试物料残留为 0。
 - 线上核对：电源页未登录仍 302 到广州统一登录；公开电源脚本已包含“正在转正式…”新逻辑。用户电源仍为 `pending_review / is_official=0 / allow_bom=0 / allow_quote=0`，仍只有原提交事件，修复和测试没有代替用户审批或改动其状态。
 - 修改文件：`material_center_v1/assets/js/power-editor.js`、`material_center_v1/tests/power_editor_contract_test.php`、`material_center_v1/tests/power_editor_integration.php`、`WORK_CONTEXT.md`。未修改数据库结构、旧 BOM 或用户现有电源状态；未触碰商务中心既存删除和未跟踪文件。
+- 退出交接：用户已要求退出；当前功能已完成并上线，没有尚在执行的任务。下一次从用户实际点击“确认并转正式”的业务验收结果继续。
 
 ## 本次：统一七类来源物料整理逻辑
 
