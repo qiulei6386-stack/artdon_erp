@@ -7,8 +7,8 @@
 - 派工待办详情弹窗移除独立“详细说明”编辑框，将历史项目内容和详细说明合并显示在“项目 / 任务内容”中；多人派工详情的基础信息同步改为合并展示。
 - 项目内容编辑框高度由 112px 扩大到 198px，完整利用原详细说明区域；编辑自动保存或点击保存时，合并内容写入 `project` 并清空旧 `description`，避免历史内容丢失或重复。
 - 修改文件：`dispatch_next.php`、`WORK_CONTEXT.md`。
-- 本地检查：页面 JavaScript 经 Node 语法检查通过，`git diff --check` 通过；本机无 PHP CLI，PHP 语法将在服务器同步后复检。
-- Git/部署：待本轮提交、推送 GitHub、同步服务器并核对三方一致。
+- 检查：页面 JavaScript 经本地 Node 语法检查通过，`git diff --check` 通过；本机无 PHP CLI，服务器 `php -l dispatch_next.php` 检查通过。服务器无 Node CLI，未重复执行 JavaScript 检查。
+- Git/部署：功能提交 `8895749` 已推送 GitHub 并快进同步服务器；同期物料中心提交 `04a42b6` 随后进入 `main`，本轮未修改其内容，服务器已同步至 GitHub 当前提交。上下文收尾提交后再次核对三方一致。
 
 ## 本次：统一登录密码重置入口定位
 
