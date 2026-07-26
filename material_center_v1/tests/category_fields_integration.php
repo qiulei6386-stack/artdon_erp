@@ -7,7 +7,7 @@ $db=db();$master=new MaterialMasterService($db);$fields=new CategoryFieldService
 $cases=[
  'power_supply'=>[['power.nominal_power_w'=>22.5],'mc_power_supply_specs','nominal_power_w'],
  'chip'=>[['chip.cri'=>90],'mc_material_chip','cri'],
- 'optical'=>[['optical.beam_angle'=>36],'mc_material_optical','beam_angle_min'],
+ 'optical'=>[['optical.beam_angle_min'=>36],'mc_material_optical','beam_angle_min'],
  'profile'=>[['profile.material_grade'=>'6063-T5'],'mc_material_profile','material_grade'],
  'connector'=>[['connector.interface_type'=>'track-4-wire'],'mc_material_connector','interface_type'],
  'accessory'=>[['accessory.accessory_type'=>'optical_accessory'],'mc_material_accessory','accessory_type'],
