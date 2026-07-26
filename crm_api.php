@@ -1435,6 +1435,21 @@ try {
         require_csrf();
         api_response(true, '报价跟进已保存', crm_quote_followup_save($_POST));
     }
+    if ($action === 'quote_followup_upload') {
+        require_csrf();
+        api_response(true, '沟通截图已上传', crm_quote_followup_upload((int)($_POST['activity_id'] ?? 0), $_FILES['files'] ?? []));
+    }
+    if ($action === 'quote_followup_file') {
+        crm_quote_followup_stream_file((int)($_GET['file_id'] ?? $_POST['file_id'] ?? 0));
+    }
+    if ($action === 'quote_followup_bind_mail') {
+        require_csrf();
+        api_response(true, '邮件已自动绑定报价跟进', crm_quote_followup_bind_mail($_POST));
+    }
+    if ($action === 'task_create_dispatch') {
+        require_csrf();
+        api_response(true, '派工已生成', crm_task_create_dispatch($_POST));
+    }
     if ($action === 'sample_shipment_list') {
         require_csrf();
         api_response(true, '', crm_sample_shipments($_POST));

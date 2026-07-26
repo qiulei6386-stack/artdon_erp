@@ -122,6 +122,7 @@ function crm_task_center_ensure_tables(): void
         task_id BIGINT UNSIGNED NULL,
         customer_id INT UNSIGNED NULL,
         contact_id INT UNSIGNED NULL,
+        mail_id BIGINT UNSIGNED NULL,
         mode VARCHAR(20) NOT NULL DEFAULT 'online',
         channel VARCHAR(40) NOT NULL DEFAULT 'email',
         contacted_at DATETIME NOT NULL,
@@ -138,7 +139,24 @@ function crm_task_center_ensure_tables(): void
         KEY idx_quote_followup_quote (quote_source, quote_id, deleted_at),
         KEY idx_quote_followup_task (task_id),
         KEY idx_quote_followup_customer (customer_id, contacted_at),
+        KEY idx_quote_followup_mail (mail_id),
         KEY idx_quote_followup_next (next_followup_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    try { db()->exec("ALTER TABLE crm_quote_followup_activities ADD COLUMN mail_id BIGINT UNSIGNED NULL AFTER contact_id"); } catch (Throwable $e) {}
+    try { db()->exec("ALTER TABLE crm_quote_followup_activities ADD KEY idx_quote_followup_mail (mail_id)"); } catch (Throwable $e) {}
+    db()->exec("CREATE TABLE IF NOT EXISTS crm_quote_followup_files (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        activity_id BIGINT UNSIGNED NOT NULL,
+        customer_id INT UNSIGNED NULL,
+        file_name VARCHAR(255) NOT NULL,
+        original_name VARCHAR(255) NOT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        file_size INT UNSIGNED NOT NULL DEFAULT 0,
+        mime_type VARCHAR(160) NOT NULL DEFAULT '',
+        uploaded_by INT UNSIGNED NULL,
+        uploaded_at DATETIME NOT NULL,
+        deleted_at DATETIME NULL,
+        KEY idx_quote_followup_file_activity (activity_id,deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     foreach ([
         "ALTER TABLE crm_tasks ADD KEY idx_task_deleted_status_due (deleted_at, status, due_at)",
@@ -899,11 +917,25 @@ function crm_quote_followup_context(array $input): array
         $contactStmt->execute([$customerId]);
         $contacts = $contactStmt->fetchAll(PDO::FETCH_ASSOC);
     }
-    $historyStmt = db()->prepare("SELECT a.*,COALESCE(NULLIF(u.real_name,''),NULLIF(u.english_name,''),u.username) AS created_name,ct.name AS contact_name
-        FROM crm_quote_followup_activities a LEFT JOIN crm_users u ON u.id=a.created_by LEFT JOIN crm_contacts ct ON ct.id=a.contact_id
+    $historyStmt = db()->prepare("SELECT a.*,COALESCE(NULLIF(u.real_name,''),NULLIF(u.english_name,''),u.username) AS created_name,ct.name AS contact_name,m.subject AS mail_subject,
+            (SELECT COUNT(*) FROM crm_quote_followup_files f WHERE f.activity_id=a.id AND f.deleted_at IS NULL) AS file_count
+        FROM crm_quote_followup_activities a LEFT JOIN crm_users u ON u.id=a.created_by LEFT JOIN crm_contacts ct ON ct.id=a.contact_id LEFT JOIN crm_mails m ON m.id=a.mail_id
         WHERE a.quote_source=? AND a.quote_id=? AND a.deleted_at IS NULL ORDER BY a.contacted_at DESC,a.id DESC");
     $historyStmt->execute([$source, $quoteId]);
-    return ['quote' => $quote, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $historyStmt->fetchAll(PDO::FETCH_ASSOC)];
+    $activities = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($activities as &$activity) {
+        $fileStmt = db()->prepare("SELECT id,original_name,file_size,mime_type,uploaded_at FROM crm_quote_followup_files WHERE activity_id=? AND deleted_at IS NULL ORDER BY id");
+        $fileStmt->execute([(int)$activity['id']]);
+        $activity['files'] = $fileStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    unset($activity);
+    $mails = [];
+    if ($customerId > 0 && db_table_exists('crm_mails')) {
+        $mailStmt = db()->prepare("SELECT id,subject,from_email,to_emails,COALESCE(sent_at,received_at,created_at) AS mail_at,folder FROM crm_mails WHERE linked_customer_id=? AND is_deleted=0 ORDER BY COALESCE(sent_at,received_at,created_at) DESC LIMIT 80");
+        $mailStmt->execute([$customerId]);
+        $mails = $mailStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return ['quote' => $quote, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $activities, 'mails' => $mails];
 }
 
 function crm_quote_followup_save(array $input): array
@@ -927,6 +959,7 @@ function crm_quote_followup_save(array $input): array
     $replied = !empty($input['customer_replied']) || in_array($result, ['interested','need_revision','need_sample','accepted','rejected'], true);
     $customerId = (int)($quote['customer_id'] ?? 0);
     $contactId = (int)($input['contact_id'] ?? 0) ?: null;
+    $mailId = (int)($input['mail_id'] ?? 0) ?: null;
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
     $taskSource = $source === 'cc' ? 'cc_quote' : 'quote';
     db()->beginTransaction();
@@ -945,8 +978,8 @@ function crm_quote_followup_save(array $input): array
                 ->execute([$title,$content,$taskSource,(string)$quoteId,$customerId ?: null,$contactId,(string)($quote['quote_no'] ?? $quoteId),$owner,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$uid]);
             $taskId = (int)db()->lastInsertId();
         }
-        db()->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
-            ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
+        db()->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mail_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+            ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
         $activityId = (int)db()->lastInsertId();
         if ($customerId > 0) {
             $channelMap = ['email'=>'邮件','wechat'=>'微信','whatsapp'=>'WhatsApp','online_meeting'=>'线上会议','other_online'=>'其他线上','phone'=>'电话','visit'=>'拜访','exhibition'=>'展会','other_offline'=>'其他线下'];
@@ -958,7 +991,9 @@ function crm_quote_followup_save(array $input): array
         if (db()->inTransaction()) db()->rollBack();
         throw $e;
     }
-    return crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
+    $resultData = crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
+    $resultData['saved_activity_id'] = $activityId;
+    return $resultData;
 }
 
 function crm_task_detail(int $id): array
@@ -981,7 +1016,97 @@ function crm_task_detail(int $id): array
             try { $sample = crm_sample_shipment_detail($sid); } catch (Throwable $e) { $sample = null; }
         }
     }
-    return ['task' => $task, 'logs' => $logs, 'sample' => $sample];
+    $quoteFollowup = null;
+    if (($task['task_type'] ?? '') === 'quote_followup' && (int)($task['source_id'] ?? 0) > 0) {
+        try { $quoteFollowup = crm_quote_followup_context(['quote_source'=>($task['source_type'] ?? '') === 'cc_quote' ? 'cc' : 'legacy','quote_id'=>(int)$task['source_id']]); } catch (Throwable $e) { $quoteFollowup = ['activities'=>[],'error'=>$e->getMessage()]; }
+    }
+    return ['task' => $task, 'logs' => $logs, 'sample' => $sample, 'quote_followup' => $quoteFollowup];
+}
+
+function crm_quote_followup_upload(int $activityId, array $files): array
+{
+    crm_require('task.edit');
+    $stmt = db()->prepare("SELECT * FROM crm_quote_followup_activities WHERE id=? AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$activityId]);
+    $activity = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$activity) throw new RuntimeException('报价跟进记录不存在。');
+    if (!isset($files['name'])) throw new RuntimeException('请选择沟通截图。');
+    if (!is_array($files['name'])) $files = ['name'=>[$files['name']], 'tmp_name'=>[$files['tmp_name']], 'size'=>[$files['size']], 'type'=>[$files['type']], 'error'=>[$files['error']]];
+    $base = __DIR__ . '/uploads/crm_quote_followups/' . $activityId;
+    if (!is_dir($base) && !mkdir($base, 0777, true) && !is_dir($base)) throw new RuntimeException('沟通截图目录无法创建。');
+    $saved = [];
+    $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
+    foreach ($files['name'] as $i => $name) {
+        if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string)($files['tmp_name'][$i] ?? ''))) throw new RuntimeException('截图上传失败。');
+        $original = basename((string)$name);
+        $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg','jpeg','png','webp','gif'], true)) throw new RuntimeException('沟通截图仅支持 jpg/png/webp/gif。');
+        $size = (int)($files['size'][$i] ?? 0);
+        if ($size > 10 * 1024 * 1024) throw new RuntimeException('单张沟通截图不能超过10MB。');
+        $mime = $finfo ? (string)finfo_file($finfo, (string)$files['tmp_name'][$i]) : (string)($files['type'][$i] ?? '');
+        $fileName = date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (!move_uploaded_file((string)$files['tmp_name'][$i], $base . '/' . $fileName)) throw new RuntimeException('截图保存失败。');
+        $rel = 'uploads/crm_quote_followups/' . $activityId . '/' . $fileName;
+        db()->prepare("INSERT INTO crm_quote_followup_files(activity_id,customer_id,file_name,original_name,file_path,file_size,mime_type,uploaded_by,uploaded_at) VALUES(?,?,?,?,?,?,?,?,NOW())")
+            ->execute([$activityId,$activity['customer_id'],$fileName,$original,$rel,$size,$mime,(int)((current_user() ?: [])['id'] ?? 0)]);
+        $saved[] = (int)db()->lastInsertId();
+    }
+    if ($finfo) finfo_close($finfo);
+    return ['saved_ids'=>$saved];
+}
+
+function crm_quote_followup_stream_file(int $fileId): void
+{
+    crm_require('task.view');
+    $stmt = db()->prepare("SELECT * FROM crm_quote_followup_files WHERE id=? AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$fileId]);
+    $file = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$file) throw new RuntimeException('沟通截图不存在。');
+    $path = __DIR__ . '/' . ltrim((string)$file['file_path'], '/');
+    if (!is_file($path)) throw new RuntimeException('沟通截图文件已丢失。');
+    header('Content-Type: ' . ($file['mime_type'] ?: 'application/octet-stream'));
+    header('Content-Length: ' . filesize($path));
+    header('Content-Disposition: inline; filename="' . rawurlencode($file['original_name']) . '"');
+    readfile($path);
+    exit;
+}
+
+function crm_quote_followup_bind_mail(array $input): array
+{
+    crm_require('task.edit');
+    $mailId = (int)($input['mail_id'] ?? 0);
+    $taskId = (int)($input['task_id'] ?? 0);
+    if (!$mailId || !$taskId) throw new RuntimeException('缺少邮件或任务。');
+    $task = crm_task_row($taskId);
+    if (($task['task_type'] ?? '') !== 'quote_followup') throw new RuntimeException('只有报价跟进任务可以自动绑定邮件。');
+    $source = ($task['source_type'] ?? '') === 'cc_quote' ? 'cc' : 'legacy';
+    return crm_quote_followup_save([
+        'quote_source'=>$source,'quote_id'=>(int)$task['source_id'],'mail_id'=>$mailId,'contact_id'=>$task['contact_id'] ?? null,
+        'mode'=>'online','channel'=>'email','contacted_at'=>date('Y-m-d H:i:s'),'result'=>'waiting_reply',
+        'content'=>trim((string)($input['content'] ?? '')) ?: '已发送报价跟进邮件','next_plan'=>'等待客户回复',
+        'next_followup_at'=>$input['next_followup_at'] ?? ''
+    ]);
+}
+
+function crm_task_create_dispatch(array $input): array
+{
+    crm_require('task.edit');
+    $task = crm_task_row((int)($input['task_id'] ?? 0));
+    $assignee = (int)($input['assigned_to'] ?? 0);
+    $due = crm_task_datetime($input['due_at'] ?? '');
+    if (!$assignee || !$due) throw new RuntimeException('请选择派工执行人和截止时间。');
+    require_once __DIR__ . '/dispatch_next_schema.php';
+    dispatch_next_init_schema();
+    $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $no = 'CT' . date('ymdHis') . mt_rand(100,999);
+    $title = trim((string)($input['title'] ?? '')) ?: ('CRM任务派工：' . $task['title']);
+    $project = trim((string)($input['project'] ?? '')) ?: $task['title'];
+    $linked = ['crm_task_id'=>(int)$task['id'],'quote_id'=>$task['quote_id'],'customer_id'=>$task['customer_id'],'source_type'=>$task['source_type'],'source_id'=>$task['source_id']];
+    db()->prepare("INSERT INTO dispatch_next_tasks(task_no,task_type,dispatch_mode,title,project,description,priority,status,created_by,assigned_to,helper_ids_json,task_date,due_at,progress,is_read,linked_system,linked_table,linked_id,linked_title,linked_json,extra_json,created_at,updated_at) VALUES(?,'dispatch','single',?,?,?,?,?,?,?,JSON_ARRAY(),CURDATE(),?,0,0,'crm','crm_tasks',?,?,?,JSON_OBJECT('source','crm_task_create_dispatch'),NOW(),NOW())")
+        ->execute([$no,$title,$project,(string)($task['description'] ?? ''),'important',$assignee === $uid ? 'in_progress' : 'pending_accept',$uid,$assignee,$due,(string)$task['id'],$task['title'],json_encode($linked,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)]);
+    $dispatchId = (int)db()->lastInsertId();
+    crm_log_event('tasks','task_create_dispatch','task',(string)$task['id'],null,['dispatch_id'=>$dispatchId,'assigned_to'=>$assignee,'due_at'=>$due]);
+    return ['dispatch_id'=>$dispatchId,'task_no'=>$no];
 }
 
 function crm_task_save(array $input): array
