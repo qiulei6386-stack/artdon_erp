@@ -2,6 +2,12 @@
 
 更新时间：2026-07-26
 
+## 本次：统一登录密码重置入口定位
+
+- 只读确认入口为主页“用户权限中心” → “用户审核”，对应 `users.php`；在 Amy 用户行最右侧“操作”栏填写“新密码”并点击“重置密码”。
+- 操作要求当前管理员具备 `users.reset_password` 权限；新密码必须满足系统密码强度规则，重置后 Amy 的 `force_password_change` 会设为 1。
+- 本次未执行密码重置，未修改账号或生产数据库；仅更新 `WORK_CONTEXT.md`。
+
 ## 本次：Amy 账号密码存储方式核查
 
 - 只读检查统一登录认证和管理员重置流程，确认 `crm_users` 仅保存由 PHP `password_hash(..., PASSWORD_DEFAULT)` 生成的单向 `password_hash`，登录通过 `password_verify()` 校验，不保存可读取的明文密码。
