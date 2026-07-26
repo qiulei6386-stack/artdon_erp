@@ -91,7 +91,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
     <?php endforeach; ?>
   </div>
   <div class="quote-config-modal ref-config" data-config-modal aria-hidden="true"><div>
-    <header><div><b>添加产品 / 选择标准产品与配置</b><span>按物料中心适配规则选择合法配置</span></div>
+    <header><div><b>添加产品 / 选择标准产品与配置</b><span>按物料中心产品适配规则选择合法配置</span></div>
       <button type="button" data-modal-close>×</button></header>
     <div class="config-steps"><b>1 选择产品</b><span>2 选择配置</span><span>3 加入报价</span></div>
     <label>产品<select data-config-product><option value="">加载真实产品中…</option></select></label>
