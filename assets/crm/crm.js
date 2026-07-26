@@ -21903,7 +21903,7 @@
       var nodes = [
         { key:'quote', label:'报价', status:row.sent_at ? '已发送' : '已创建', meta:quoteAmount, state:'done', icon:'✓' },
         { key:'review', label:'审核', status:approval === 'rejected' ? '已驳回' : (approval === 'pending' || !approval ? '待审核' : (approval === 'approved' ? '已通过' : '无需审核')), meta:approval === 'rejected' ? (row.reject_reason || '需填写原因') : (row.approved_by || row.rejected_by || ''), state:reviewState, icon:reviewState === 'done' ? '✓' : (reviewState === 'rejected' ? '!' : '•') },
-        { key:'reply', label:'回复', status:stages.indexOf('replied') >= 0 ? '已回复' : (stages.indexOf('unreplied') >= 0 ? ('未回复 ' + (row.no_reply_days || 0) + ' 天') : '待客户'), meta:row.replied_at ? String(row.replied_at).slice(0, 10) : (row.task_due_at ? '跟进 ' + String(row.task_due_at).slice(5, 16) : ''), state:replyState, icon:replyState === 'done' ? '✓' : '•' },
+        { key:'reply', label:'报价跟进', status:stages.indexOf('replied') >= 0 ? '客户已回复' : (Number(row.followup_count || 0) ? '已跟进，等待回复' : (stages.indexOf('unreplied') >= 0 ? '待首次跟进' : '待客户')), meta:row.next_followup_at ? '下次 ' + String(row.next_followup_at).slice(5, 16) : (row.last_followup_at ? '最近 ' + String(row.last_followup_at).slice(5, 16) : ''), state:replyState, icon:replyState === 'done' ? '✓' : '•' },
         { key:'order', label:'转订单', status:hasOrder ? (row.order_no || '已转订单') : (approval === 'approved' ? '未转' : '待接入'), meta:hasOrder ? (row.order_date || '') : '订单接口待接入', state:hasOrder ? 'done' : (current === 'order' ? 'current' : 'interface'), icon:hasOrder ? '✓' : '•' },
         { key:'deposit', label:'定金', status:!hasOrder ? '待接入' : (paid <= 0 && orderAmount > 0 ? '未收' : (balance > 0 ? '部分收' : '已收')), meta:!hasOrder ? '收款接口待接入' : ('已收 ' + this.moneyText(orderCurrency, paid)), state:depositState, icon:depositState === 'done' ? '✓' : '•' },
         { key:'balance', label:'尾款', status:!hasOrder ? '待接入' : (balance > 0 ? ('未收 ' + this.moneyText(orderCurrency, balance)) : '已收'), meta:!hasOrder ? '收款接口待接入' : ('未收 ' + this.moneyText(orderCurrency, balance)), state:balanceState, icon:balanceState === 'done' ? '✓' : '•' },
@@ -21921,7 +21921,7 @@
       var rows = {
         quote: [['报价金额', this.moneyText(row.quote_currency, row.quote_amount)], ['报价时间', row.sent_at || row.updated_at || '-'], ['负责人', row.quote_owner || row.assigned_name || '-']],
         review: [['审核状态', node.status || '-'], ['审核人', row.approved_by || row.rejected_by || '-'], ['驳回原因', row.reject_reason || '-']],
-        reply: [['回复状态', node.status || '-'], ['未回复天数', row.no_reply_days !== null && row.no_reply_days !== undefined ? row.no_reply_days + ' 天' : '-'], ['最近跟进', row.task_due_at || row.replied_at || '-']],
+        reply: [['跟进状态', node.status || '-'], ['跟进次数', row.followup_count || 0], ['最近跟进', row.last_followup_at || '-'], ['跟进方式', [row.last_followup_mode === 'online' ? '线上' : (row.last_followup_mode === 'offline' ? '线下' : ''), row.last_followup_channel || ''].filter(Boolean).join(' · ') || '-'], ['下次跟进', row.next_followup_at || '-'], ['未回复天数', row.no_reply_days !== null && row.no_reply_days !== undefined ? row.no_reply_days + ' 天' : '-']],
         order: [['订单号', row.order_no || '订单接口待接入'], ['订单日期', row.order_date || '-'], ['订单状态', row.order_status || (row.order_id ? '订单处理中' : '待接入')]],
         deposit: [['应收金额', this.moneyText(cur, row.order_amount || row.quote_amount)], ['已收金额', this.moneyText(cur, row.paid_amount || 0)], ['未收金额', this.moneyText(cur, row.order_id ? row.balance_amount || 0 : row.quote_amount || 0)]],
         balance: [['未收金额', this.moneyText(cur, row.balance_amount || 0)], ['收款状态', row.payment_status || (row.order_id ? '未记录' : '收款接口待接入')], ['到期时间', '-']],
@@ -22729,6 +22729,61 @@
         }
       });
     },
+    quoteFollowupChannelOptions: function (mode, selected) {
+      var groups = mode === 'offline'
+        ? [['phone','电话'],['visit','拜访'],['exhibition','展会'],['other_offline','其他线下']]
+        : [['email','邮件'],['wechat','微信'],['whatsapp','WhatsApp'],['online_meeting','线上会议'],['other_online','其他线上']];
+      return groups.map(function (item) { return '<option value="' + item[0] + '"' + (item[0] === selected ? ' selected' : '') + '>' + item[1] + '</option>'; }).join('');
+    },
+    quoteFollowupHistoryHtml: function (rows) {
+      var channel = {email:'邮件',wechat:'微信',whatsapp:'WhatsApp',online_meeting:'线上会议',other_online:'其他线上',phone:'电话',visit:'拜访',exhibition:'展会',other_offline:'其他线下'};
+      var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
+      if (!rows.length) return '<p class="entry-muted">还没有跟进记录。</p>';
+      return rows.map(function (item) {
+        return '<article class="quote-followup-history-item"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + '</footer></article>';
+      }).join('');
+    },
+    openQuoteFollowupDialog: function (row, markReplied) {
+      row = row || this.selected() || {};
+      if (!row.quote_id) return toast('没有关联报价。');
+      post('quote_followup_context', { quote_source: row.quote_source || 'legacy', quote_id: row.quote_id }).then(function (json) {
+        if (!json.success) return toast(json.message || '读取报价跟进失败');
+        var data = json.data || {}, quote = data.quote || {}, contacts = data.contacts || [], now = new Date();
+        var localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+        var contactOptions = '<option value="">未指定联系人</option>' + contacts.map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(item.name + (item.position ? ' · ' + item.position : '')) + '</option>'; }).join('');
+        var html = '<div class="visit-workspace-form quote-followup-workspace" data-quote-followup-form>' +
+          '<input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
+          '<section class="visit-hero-panel"><div><span>报价跟进</span><strong>' + esc(quote.quote_no || row.quote_no || '-') + '</strong><small>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</small></div><b>FOLLOW</b></section>' +
+          '<section class="visit-work-section"><h3>本次沟通</h3><div class="visit-schedule-grid">' +
+            '<label class="visit-pill-field"><span>线上 / 线下</span><select name="mode"><option value="online">线上</option><option value="offline">线下</option></select></label>' +
+            '<label class="visit-pill-field"><span>具体渠道</span><select name="channel">' + TaskCenterModule.quoteFollowupChannelOptions('online','email') + '</select></label>' +
+            '<label class="visit-date-card"><span>跟进时间</span><input type="datetime-local" name="contacted_at" value="' + esc(localNow) + '"></label>' +
+            '<label class="visit-pill-field"><span>联系人</span><select name="contact_id">' + contactOptions + '</select></label>' +
+            '<label class="visit-pill-field"><span>沟通结果</span><select name="result"><option value="waiting_reply">等待回复</option><option value="interested">有兴趣</option><option value="need_revision">需要修改报价</option><option value="need_sample">需要样品</option><option value="accepted">接受报价</option><option value="rejected">拒绝报价</option><option value="no_response">暂无回复</option><option value="other">其他</option></select></label>' +
+            '<label class="visit-date-card"><span>下次跟进</span><input type="datetime-local" name="next_followup_at"></label>' +
+          '</div><div class="visit-note-grid"><label class="wide">沟通结果 *<textarea name="content" rows="4" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="2"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="填写邮件、文件或网盘链接说明"></label><label class="tag-chip wide"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复</span></label></div></section>' +
+          '<section class="visit-work-section quote-followup-history"><h3>历史跟进（' + esc((data.activities || []).length) + '）</h3>' + TaskCenterModule.quoteFollowupHistoryHtml(data.activities || []) + '</section></div>' +
+          '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-quote-followup-save>保存跟进</button></div>';
+        CustomerModule.openBusinessDialog('报价跟进', html, '保存后同步更新流程节点、任务提醒和客户时间线。', function (dialog) {
+          document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
+          var form = dialog.querySelector('[data-quote-followup-form]');
+          form.querySelector('[name="mode"]')?.addEventListener('change', function () {
+            var select = form.querySelector('[name="channel"]');
+            if (select) select.innerHTML = TaskCenterModule.quoteFollowupChannelOptions(this.value, '');
+          });
+          dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+          dialog.querySelector('[data-quote-followup-save]')?.addEventListener('click', function () {
+            var payload = TaskCenterModule.collect(form);
+            if (!String(payload.content || '').trim()) return toast('请填写沟通结果');
+            post('quote_followup_save', payload).then(function (res) {
+              if (!res.success) return toast(res.message || '保存失败');
+              CustomerModule.closeDialog(); toast('报价跟进已保存'); TaskCenterModule.load();
+              if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
+            });
+          });
+        });
+      });
+    },
     handleAction: function (label) {
       var row = this.selected();
       if (this.isViewAction(label)) return this.switchView(this.viewKeyFromLabel(label));
@@ -22736,11 +22791,8 @@
         if (label === '查看报价') { window.open('quotation.php?quote_id=' + encodeURIComponent(row.quote_id || '') + '&quote_no=' + encodeURIComponent(row.quote_no || ''), '_blank'); return; }
         if (label === '查看订单') { window.open('quotation.php?order_id=' + encodeURIComponent(row.order_id || '') + '&order_no=' + encodeURIComponent(row.order_no || ''), '_blank'); return; }
         if (label === '查看客户') { if (row.customer_id && /^\d+$/.test(String(row.customer_id))) { activate('customers'); CustomerModule.loadDetail(Number(row.customer_id)); } else toast('该报价没有绑定 CRM 客户 ID'); return; }
-        if (label === '标记客户已回复' || label === '标记报价完成') {
-          if (!row.task_id) return toast('没有关联报价跟进任务，请先写跟进。');
-          return post('task_status_update', { task_id: row.task_id, status: 'done', result: '客户已回复', result_note: '报价流程中心手动标记客户已回复' }).then(function (json) { toast(json.message || '已标记客户已回复'); if (json.success) TaskCenterModule.load(); });
-        }
-        if (label === '写跟进' || label === '设置下次跟进') { if (row.customer_id && /^\d+$/.test(String(row.customer_id))) { CustomerModule.currentId = Number(row.customer_id); return CustomerModule.openFollowupDialog(); } return toast('该报价没有绑定 CRM 客户，无法直接写客户跟进。'); }
+        if (label === '标记客户已回复' || label === '标记报价完成') return this.openQuoteFollowupDialog(row, true);
+        if (label === '写跟进' || label === '设置下次跟进') return this.openQuoteFollowupDialog(row, false);
         if (label === '查看驳回原因') return toast(row.reject_reason || '暂无驳回原因。');
         if (label === '查看日志') return activate('logs');
         if (['审核通过','驳回报价','编辑报价','修改报价','重新提交审核','查看邮件','AI 分析客户回复','创建商机','创建报价','导入报价','转订单','创建样品任务','创建资料任务','创建收款提醒','标记已收款','标记已收定金','标记已收尾款','新增出货批次','标记部分出货','标记全部出货','上传出货附件','创建单证任务','创建 Packing List','创建 Commercial Invoice','上传单证附件','标记单证完成'].indexOf(label) >= 0) return toast(label + ' 接口待接入');
@@ -22771,6 +22823,15 @@
       if (label === '创建派工') return post('task_dispatch_placeholder', {}).then(function (json) { toast((json.data && json.data.message) || json.message || '派工接口待接入'); });
       if (label === '查询物流') return post('task_logistics_placeholder', {}).then(function (json) { toast((json.data && json.data.message) || json.message || '物流接口待接入'); });
       if ((this.selectedType === 'sample' || this.isSampleTask(row)) && label === '创建跟进') return this.openSampleFollowupDialog();
+      if (row && row.task_type === 'quote_followup' && (label === '写跟进' || label === '写跟进结果' || label === '设置下次跟进' || label === '标记客户已回复')) {
+        return this.openQuoteFollowupDialog({
+          quote_id: Number(row.source_id || 0),
+          quote_no: row.quote_id || '',
+          quote_source: row.source_type === 'cc_quote' ? 'cc' : 'legacy',
+          customer_id: row.customer_id,
+          customer_name: row.customer_name
+        }, label === '标记客户已回复');
+      }
       if (label === '创建跟进' || label === '写跟进' || label === '写跟进结果' || label === '设置下次跟进') { if (row && row.customer_id) { CustomerModule.currentId = Number(row.customer_id); return CustomerModule.openFollowupDialog(); } return toast('请先选择有关联客户的任务。'); }
       if (label === '查看客户') { if (row && row.customer_id) { activate('customers'); CustomerModule.loadDetail(Number(row.customer_id)); } else toast('没有关联客户'); return; }
       if (['查看报价','标记客户已回复','AI 分析回复','查看 AI 识别结果','确认通过','修改后通过','驳回','转给别人','创建客户','创建商机','创建报价','生成资料','创建资料任务'].indexOf(label) >= 0) return toast(label + ' 接口待接入');

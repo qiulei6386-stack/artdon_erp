@@ -114,6 +114,32 @@ function crm_task_center_ensure_tables(): void
         KEY idx_sample_file_type (file_type),
         KEY idx_sample_file_customer (customer_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    db()->exec("CREATE TABLE IF NOT EXISTS crm_quote_followup_activities (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        quote_source VARCHAR(30) NOT NULL DEFAULT 'legacy',
+        quote_id BIGINT UNSIGNED NOT NULL,
+        quote_no VARCHAR(120) NOT NULL DEFAULT '',
+        task_id BIGINT UNSIGNED NULL,
+        customer_id INT UNSIGNED NULL,
+        contact_id INT UNSIGNED NULL,
+        mode VARCHAR(20) NOT NULL DEFAULT 'online',
+        channel VARCHAR(40) NOT NULL DEFAULT 'email',
+        contacted_at DATETIME NOT NULL,
+        result VARCHAR(80) NOT NULL DEFAULT 'waiting_reply',
+        content TEXT NOT NULL,
+        next_plan TEXT NULL,
+        next_followup_at DATETIME NULL,
+        customer_replied TINYINT(1) NOT NULL DEFAULT 0,
+        attachment_note TEXT NULL,
+        created_by INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        deleted_at DATETIME NULL,
+        KEY idx_quote_followup_quote (quote_source, quote_id, deleted_at),
+        KEY idx_quote_followup_task (task_id),
+        KEY idx_quote_followup_customer (customer_id, contacted_at),
+        KEY idx_quote_followup_next (next_followup_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     foreach ([
         "ALTER TABLE crm_tasks ADD KEY idx_task_deleted_status_due (deleted_at, status, due_at)",
         "ALTER TABLE crm_tasks ADD KEY idx_task_deleted_type_due (deleted_at, task_type, due_at)",
@@ -122,6 +148,7 @@ function crm_task_center_ensure_tables(): void
         "ALTER TABLE crm_sample_shipments ADD KEY idx_sample_deleted_status_follow (deleted_at, status, followup_time)",
         "ALTER TABLE crm_sample_shipments ADD KEY idx_sample_owner_deleted_status (owner_user_id, deleted_at, status)",
         "ALTER TABLE crm_sample_shipment_files ADD KEY idx_sample_file_ship_type_deleted (shipment_id, file_type, deleted_at)",
+        "ALTER TABLE crm_quote_followup_activities ADD KEY idx_quote_followup_quote_time (quote_source, quote_id, deleted_at, contacted_at)",
     ] as $indexSql) {
         try { db()->exec($indexSql); } catch (Throwable $e) {}
     }
@@ -279,6 +306,21 @@ function crm_task_center_backfill_links(): void
                   AND t.source_id=(CAST(q.id AS CHAR) COLLATE utf8mb4_unicode_ci)
                   AND t.deleted_at IS NULL
               )");
+    }
+    if (db_table_exists('cc_quotes')) {
+        $detailJoin = db_table_exists('cc_quote_details') ? 'LEFT JOIN cc_quote_details d ON d.quote_id=q.id' : '';
+        $customerExpr = "CASE WHEN COALESCE(q.legacy_customer_id,0)>0 THEN q.legacy_customer_id ELSE NULL END";
+        $ownerExpr = db_table_exists('cc_quote_details') ? 'COALESCE(d.owner_legacy_user_id,q.created_by_legacy_user_id)' : 'q.created_by_legacy_user_id';
+        $contactExpr = db_table_exists('cc_quote_details') ? "COALESCE(NULLIF(d.contact_name,''),'')" : "''";
+        db()->exec("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,created_by,created_at,updated_at)
+            SELECT 'quote_followup',
+                CONCAT('报价未回复：',q.quote_no),
+                CONCAT('新版报价已完成审核，请跟进客户回复。',IF({$contactExpr}='','',CONCAT('\n联系人：',{$contactExpr})),'\n金额：',q.currency,' ',q.total_amount),
+                'cc_quote',CAST(q.id AS CHAR),{$customerExpr},NULL,NULL,q.quote_no,{$ownerExpr},JSON_ARRAY(),'important','pending',
+                DATE_ADD(q.updated_at,INTERVAL 3 DAY),DATE_ADD(q.updated_at,INTERVAL 1 DAY),{$ownerExpr},NOW(),NOW()
+            FROM cc_quotes q {$detailJoin}
+            WHERE q.is_test=0 AND q.status IN ('approved','sent','issued','customer_pending','customer_confirmed')
+              AND NOT EXISTS (SELECT 1 FROM crm_tasks t WHERE t.task_type='quote_followup' AND t.source_type='cc_quote' AND t.source_id=CAST(q.id AS CHAR) AND t.deleted_at IS NULL)");
     }
 }
 
@@ -566,6 +608,15 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             }
         }
         $currentStage = $orderId ? ($balance > 0 ? '尾款/收款' : (($pl > 0 || $ci > 0) ? '单证' : '出货')) : ($approval === 'rejected' ? '审核驳回' : ($approval === 'pending' ? '待审核' : ($taskDone ? '客户已回复' : '客户未回复')));
+        $activityStmt = db()->prepare("SELECT contacted_at,mode,channel,result,next_followup_at,customer_replied,content FROM crm_quote_followup_activities WHERE quote_source='legacy' AND quote_id=? AND deleted_at IS NULL ORDER BY contacted_at DESC,id DESC LIMIT 1");
+        $activityStmt->execute([(int)$r['quote_id']]);
+        $latestActivity = $activityStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (!empty($latestActivity['customer_replied'])) {
+            $stages = array_values(array_diff($stages, ['unreplied']));
+            $stages[] = 'replied';
+            $days = null;
+            if (!$orderId) $currentStage = '客户已回复';
+        }
         $out[] = [
             'record_key' => 'quote_' . (int)$r['quote_id'] . '_' . (int)$orderId,
             'quote_id' => (int)$r['quote_id'],
@@ -587,6 +638,13 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             'task_due_at' => (string)($r['task_due_at'] ?? ''),
             'replied_at' => (string)($r['replied_at'] ?? ''),
             'reply_summary' => (string)($r['task_result_note'] ?: $r['task_result'] ?: ''),
+            'followup_count' => crm_task_quote_count("SELECT COUNT(*) FROM crm_quote_followup_activities WHERE quote_source='legacy' AND quote_id=" . (int)$r['quote_id'] . " AND deleted_at IS NULL"),
+            'last_followup_at' => (string)($latestActivity['contacted_at'] ?? ''),
+            'last_followup_mode' => (string)($latestActivity['mode'] ?? ''),
+            'last_followup_channel' => (string)($latestActivity['channel'] ?? ''),
+            'last_followup_result' => (string)($latestActivity['result'] ?? ''),
+            'next_followup_at' => (string)($latestActivity['next_followup_at'] ?? $r['task_due_at'] ?? ''),
+            'quote_source' => 'legacy',
             'assigned_name' => (string)($r['assigned_name'] ?? ''),
             'order_id' => $orderId,
             'order_no' => (string)($r['order_no'] ?? ''),
@@ -615,6 +673,79 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
     return $out;
 }
 
+function crm_task_cc_quote_flow_records(): array
+{
+    if (!db_table_exists('cc_quotes')) return [];
+    $detailJoin = db_table_exists('cc_quote_details') ? 'LEFT JOIN cc_quote_details d ON d.quote_id=q.id' : '';
+    $detailSelect = db_table_exists('cc_quote_details')
+        ? "d.contact_name,d.owner_name,d.converted_order_id,d.converted_order_no,d.updated_at AS detail_updated_at"
+        : "'' AS contact_name,'' AS owner_name,NULL AS converted_order_id,'' AS converted_order_no,NULL AS detail_updated_at";
+    $sql = "SELECT q.id AS quote_id,q.quote_no,q.legacy_customer_id AS customer_id,q.customer_snapshot,q.currency AS quote_currency,
+            q.total_amount AS quote_amount,q.status,q.created_at AS quote_created_at,q.updated_at AS quote_updated_at,
+            {$detailSelect},t.id AS task_id,t.status AS task_status,t.due_at AS task_due_at,t.completed_at AS replied_at,
+            t.result,t.result_note,u.username AS assigned_name
+        FROM cc_quotes q {$detailJoin}
+        LEFT JOIN crm_tasks t ON t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.source_type='cc_quote' AND t.source_id=CAST(q.id AS CHAR)
+        LEFT JOIN crm_users u ON u.id=t.assigned_user_id
+        WHERE q.is_test=0 ORDER BY q.updated_at DESC LIMIT 300";
+    try { $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return []; }
+    $out = [];
+    foreach ($rows as $r) {
+        $snapshot = json_decode((string)($r['customer_snapshot'] ?? ''), true);
+        $customerName = is_array($snapshot) ? (string)($snapshot['customer_name'] ?? $snapshot['name'] ?? '') : '';
+        $status = strtolower((string)($r['status'] ?? 'draft'));
+        $approved = in_array($status, ['approved','sent','issued','customer_pending','customer_confirmed','converted','ordered'], true);
+        $rejected = in_array($status, ['rejected','void','cancelled'], true);
+        $orderId = (int)($r['converted_order_id'] ?? 0);
+        $taskDone = in_array((string)($r['task_status'] ?? ''), ['done','closed'], true);
+        $activityStmt = db()->prepare("SELECT contacted_at,mode,channel,result,next_followup_at,customer_replied,content FROM crm_quote_followup_activities WHERE quote_source='cc' AND quote_id=? AND deleted_at IS NULL ORDER BY contacted_at DESC,id DESC LIMIT 1");
+        $activityStmt->execute([(int)$r['quote_id']]);
+        $activity = $activityStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $replied = $taskDone || !empty($activity['customer_replied']);
+        $stages = ['quote'];
+        if (!$approved && !$rejected) $stages[] = 'review';
+        if ($rejected) $stages[] = 'review_rejected';
+        if ($approved) { $stages[] = 'quote_done'; $stages[] = $replied ? 'replied' : 'unreplied'; }
+        if ($orderId) $stages[] = 'order';
+        $base = (string)($r['quote_updated_at'] ?: $r['quote_created_at']);
+        $out[] = [
+            'record_key' => 'cc_quote_' . (int)$r['quote_id'] . '_' . $orderId,
+            'quote_source' => 'cc',
+            'quote_id' => (int)$r['quote_id'],
+            'quote_no' => (string)$r['quote_no'],
+            'customer_id' => (string)($r['customer_id'] ?? ''),
+            'customer_name' => $customerName,
+            'contact_name' => (string)($r['contact_name'] ?? ''),
+            'quote_amount' => (float)($r['quote_amount'] ?? 0),
+            'quote_currency' => (string)($r['quote_currency'] ?? ''),
+            'quote_owner' => (string)($r['owner_name'] ?? ''),
+            'approval_status' => $rejected ? 'rejected' : ($approved ? 'approved' : 'pending'),
+            'sent_at' => $base,
+            'no_reply_days' => $approved && !$replied ? max(0, (int)((time() - strtotime($base)) / 86400)) : null,
+            'task_id' => (int)($r['task_id'] ?? 0),
+            'task_status' => (string)($r['task_status'] ?? ''),
+            'task_due_at' => (string)($r['task_due_at'] ?? ''),
+            'replied_at' => (string)($r['replied_at'] ?? ''),
+            'reply_summary' => (string)($r['result_note'] ?: $r['result'] ?: ''),
+            'assigned_name' => (string)($r['assigned_name'] ?? ''),
+            'order_id' => $orderId,
+            'order_no' => (string)($r['converted_order_no'] ?? ''),
+            'current_stage' => $orderId ? '订单' : ($rejected ? '审核驳回' : (!$approved ? '待审核' : ($replied ? '客户已回复' : '客户未回复'))),
+            'current_status' => $status,
+            'next_action' => $orderId ? '推进订单' : ($rejected ? '修改后重提' : (!$approved ? '审核报价' : ($replied ? '推进转订单' : '跟进客户回复'))),
+            'updated_at' => (string)($r['detail_updated_at'] ?: $base),
+            'stages' => array_values(array_unique($stages)),
+            'followup_count' => crm_task_quote_count("SELECT COUNT(*) FROM crm_quote_followup_activities WHERE quote_source='cc' AND quote_id=" . (int)$r['quote_id'] . " AND deleted_at IS NULL"),
+            'last_followup_at' => (string)($activity['contacted_at'] ?? ''),
+            'last_followup_mode' => (string)($activity['mode'] ?? ''),
+            'last_followup_channel' => (string)($activity['channel'] ?? ''),
+            'last_followup_result' => (string)($activity['result'] ?? ''),
+            'next_followup_at' => (string)($activity['next_followup_at'] ?? $r['task_due_at'] ?? ''),
+        ];
+    }
+    return $out;
+}
+
 function crm_task_quote_flow_summary(): array
 {
     $quoteCols = crm_task_quote_table_cols('quote_orders');
@@ -636,6 +767,13 @@ function crm_task_quote_flow_summary(): array
         if (in_array('converted_order_id', $quoteCols, true)) $convertedParts[] = 'COALESCE(converted_order_id,0)>0';
         if (in_array('converted_order_no', $quoteCols, true)) $convertedParts[] = "COALESCE(converted_order_no,'')<>''";
         if ($convertedParts) $converted = crm_task_quote_count('SELECT COUNT(*) FROM quote_orders WHERE ' . implode(' OR ', $convertedParts));
+    }
+    if (db_table_exists('cc_quotes')) {
+        $quoteTotal += crm_task_quote_count("SELECT COUNT(*) FROM cc_quotes WHERE is_test=0");
+        $pending += crm_task_quote_count("SELECT COUNT(*) FROM cc_quotes WHERE is_test=0 AND status IN ('draft','submitted','pending_approval','pending_review','reviewing')");
+        $approved += crm_task_quote_count("SELECT COUNT(*) FROM cc_quotes WHERE is_test=0 AND status IN ('approved','sent','issued','customer_pending','customer_confirmed','converted','ordered')");
+        $rejected += crm_task_quote_count("SELECT COUNT(*) FROM cc_quotes WHERE is_test=0 AND status IN ('rejected','void','cancelled')");
+        if (db_table_exists('cc_quote_details')) $converted += crm_task_quote_count("SELECT COUNT(*) FROM cc_quote_details d JOIN cc_quotes q ON q.id=d.quote_id WHERE q.is_test=0 AND COALESCE(d.converted_order_id,0)>0");
     }
     $replyDone = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.status IN ('done','closed')");
     $reviewOverdue = 0;
@@ -688,6 +826,8 @@ function crm_task_quote_flow_summary(): array
         ['key' => 'quote_follow_overdue', 'label' => '客户未回复超期', 'count' => $quoteFollowOverdue],
         ['key' => 'payment_due', 'label' => '未收款/尾款', 'count' => max($unpaid, $balanceDue)],
     ];
+    $records = array_merge(crm_task_quote_flow_records($quoteCols, $orderCols, $shipCols), crm_task_cc_quote_flow_records());
+    usort($records, fn($a, $b) => strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')));
     return [
         'steps' => $steps,
         'risks' => $risks,
@@ -698,7 +838,7 @@ function crm_task_quote_flow_summary(): array
             'overdue' => $reviewOverdue + $quoteFollowOverdue,
             'payment_due' => max($unpaid, $balanceDue),
         ],
-        'records' => crm_task_quote_flow_records($quoteCols, $orderCols, $shipCols),
+        'records' => array_slice($records, 0, 300),
         'updated_at' => date('Y-m-d H:i:s'),
     ];
 }
@@ -727,6 +867,98 @@ function crm_task_center_stats(): array
         'sample_signed' => $sample("s.status IN ('signed','feedback')"),
         'sample_follow_overdue' => $sample("s.status='signed' AND s.followup_time IS NOT NULL AND s.followup_time < NOW()"),
     ];
+}
+
+function crm_quote_followup_context(array $input): array
+{
+    crm_task_center_ensure_tables();
+    crm_require('task.view');
+    $source = ($input['quote_source'] ?? '') === 'cc' ? 'cc' : 'legacy';
+    $quoteId = (int)($input['quote_id'] ?? 0);
+    if ($quoteId <= 0) throw new RuntimeException('缺少报价记录。');
+    if ($source === 'cc') {
+        if (!db_table_exists('cc_quotes')) throw new RuntimeException('新版报价表不存在。');
+        $detailJoin = db_table_exists('cc_quote_details') ? 'LEFT JOIN cc_quote_details d ON d.quote_id=q.id' : '';
+        $detailSelect = db_table_exists('cc_quote_details') ? "d.contact_name,d.owner_legacy_user_id" : "'' AS contact_name,q.created_by_legacy_user_id AS owner_legacy_user_id";
+        $stmt = db()->prepare("SELECT q.id,q.quote_no,q.legacy_customer_id AS customer_id,q.customer_snapshot,q.currency,q.total_amount,{$detailSelect} FROM cc_quotes q {$detailJoin} WHERE q.id=? AND q.is_test=0 LIMIT 1");
+    } else {
+        if (!db_table_exists('quote_orders')) throw new RuntimeException('报价表不存在。');
+        $stmt = db()->prepare("SELECT id,quote_no,customer_id,customer_name,currency,amount AS total_amount,user_name FROM quote_orders WHERE id=? LIMIT 1");
+    }
+    $stmt->execute([$quoteId]);
+    $quote = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$quote) throw new RuntimeException('报价不存在。');
+    if ($source === 'cc') {
+        $snapshot = json_decode((string)($quote['customer_snapshot'] ?? ''), true);
+        $quote['customer_name'] = is_array($snapshot) ? (string)($snapshot['customer_name'] ?? $snapshot['name'] ?? '') : '';
+    }
+    $customerId = (int)($quote['customer_id'] ?? 0);
+    $contacts = [];
+    if ($customerId > 0) {
+        $contactStmt = db()->prepare("SELECT id,name,position,email,phone,whatsapp FROM crm_contacts WHERE customer_id=? AND deleted_at IS NULL ORDER BY is_primary DESC,id ASC");
+        $contactStmt->execute([$customerId]);
+        $contacts = $contactStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    $historyStmt = db()->prepare("SELECT a.*,COALESCE(NULLIF(u.real_name,''),NULLIF(u.english_name,''),u.username) AS created_name,ct.name AS contact_name
+        FROM crm_quote_followup_activities a LEFT JOIN crm_users u ON u.id=a.created_by LEFT JOIN crm_contacts ct ON ct.id=a.contact_id
+        WHERE a.quote_source=? AND a.quote_id=? AND a.deleted_at IS NULL ORDER BY a.contacted_at DESC,a.id DESC");
+    $historyStmt->execute([$source, $quoteId]);
+    return ['quote' => $quote, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $historyStmt->fetchAll(PDO::FETCH_ASSOC)];
+}
+
+function crm_quote_followup_save(array $input): array
+{
+    crm_task_center_ensure_tables();
+    crm_require('task.edit');
+    $context = crm_quote_followup_context($input);
+    $quote = $context['quote'];
+    $source = $context['quote_source'];
+    $quoteId = (int)$quote['id'];
+    $mode = in_array((string)($input['mode'] ?? ''), ['online','offline'], true) ? (string)$input['mode'] : 'online';
+    $channels = $mode === 'online' ? ['email','wechat','whatsapp','online_meeting','other_online'] : ['phone','visit','exhibition','other_offline'];
+    $channel = (string)($input['channel'] ?? '');
+    if (!in_array($channel, $channels, true)) throw new RuntimeException('跟进渠道与线上/线下分类不匹配。');
+    $content = trim((string)($input['content'] ?? ''));
+    if ($content === '') throw new RuntimeException('请填写沟通结果。');
+    $result = preg_replace('/[^a-z_]/', '', (string)($input['result'] ?? 'waiting_reply'));
+    if (!in_array($result, ['waiting_reply','interested','need_revision','need_sample','accepted','rejected','no_response','other'], true)) $result = 'other';
+    $contactedAt = crm_task_datetime($input['contacted_at'] ?? '') ?: date('Y-m-d H:i:s');
+    $nextAt = crm_task_datetime($input['next_followup_at'] ?? '');
+    $replied = !empty($input['customer_replied']) || in_array($result, ['interested','need_revision','need_sample','accepted','rejected'], true);
+    $customerId = (int)($quote['customer_id'] ?? 0);
+    $contactId = (int)($input['contact_id'] ?? 0) ?: null;
+    $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $taskSource = $source === 'cc' ? 'cc_quote' : 'quote';
+    db()->beginTransaction();
+    try {
+        $taskStmt = db()->prepare("SELECT id FROM crm_tasks WHERE task_type='quote_followup' AND source_type=? AND source_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
+        $taskStmt->execute([$taskSource, (string)$quoteId]);
+        $taskId = (int)$taskStmt->fetchColumn();
+        $taskStatus = $replied && !$nextAt ? 'done' : 'pending';
+        $title = '报价跟进：' . ((string)($quote['quote_no'] ?? '') ?: ('ID ' . $quoteId)) . (($quote['customer_name'] ?? '') ? ' / ' . $quote['customer_name'] : '');
+        if ($taskId > 0) {
+            db()->prepare("UPDATE crm_tasks SET customer_id=?,contact_id=?,title=?,status=?,due_at=?,reminder_at=?,completed_at=?,completed_by=?,result=?,result_note=?,updated_at=NOW() WHERE id=?")
+                ->execute([$customerId ?: null,$contactId,$title,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$taskId]);
+        } else {
+            $owner = (int)($quote['owner_legacy_user_id'] ?? 0) ?: $uid;
+            db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,completed_at,completed_by,result,result_note,created_by,created_at,updated_at) VALUES ('quote_followup',?,?,?,?,?,?,?,?,JSON_ARRAY(),'important',?,?,?,?,?,?,?,?,NOW(),NOW())")
+                ->execute([$title,$content,$taskSource,(string)$quoteId,$customerId ?: null,$contactId,(string)($quote['quote_no'] ?? $quoteId),$owner,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$uid]);
+            $taskId = (int)db()->lastInsertId();
+        }
+        db()->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+            ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
+        $activityId = (int)db()->lastInsertId();
+        if ($customerId > 0) {
+            $channelMap = ['email'=>'邮件','wechat'=>'微信','whatsapp'=>'WhatsApp','online_meeting'=>'线上会议','other_online'=>'其他线上','phone'=>'电话','visit'=>'拜访','exhibition'=>'展会','other_offline'=>'其他线下'];
+            crm_customer_timeline_add($customerId, 'quote_followup', '报价跟进：' . ($quote['quote_no'] ?? ''), ($mode === 'online' ? '线上' : '线下') . ' · ' . ($channelMap[$channel] ?? $channel) . ' · ' . $content, 'quote_followup', (string)$activityId);
+        }
+        crm_log_event('tasks', 'quote_followup_save', 'quote_followup', (string)$activityId, null, ['quote_source'=>$source,'quote_id'=>$quoteId,'task_id'=>$taskId,'result'=>$result,'next_followup_at'=>$nextAt,'customer_replied'=>$replied]);
+        db()->commit();
+    } catch (Throwable $e) {
+        if (db()->inTransaction()) db()->rollBack();
+        throw $e;
+    }
+    return crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
 }
 
 function crm_task_detail(int $id): array

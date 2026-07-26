@@ -24066,3 +24066,12 @@ body.is-workspace-module .workspace-mail-more {
     -webkit-overflow-scrolling: touch;
   }
 }
+.quote-followup-workspace .visit-hero-panel strong{display:block;font-size:20px;color:#111827;margin-top:4px}
+.quote-followup-workspace .visit-hero-panel small{display:block;margin-top:5px;color:#64748b}
+.quote-followup-history{max-height:330px;overflow:auto}
+.quote-followup-history-item{border:1px solid #dbe4f0;border-radius:12px;padding:12px 14px;margin-top:10px;background:#fff}
+.quote-followup-history-item header,.quote-followup-history-item footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.quote-followup-history-item header span,.quote-followup-history-item header time,.quote-followup-history-item footer span{color:#64748b;font-size:12px}
+.quote-followup-history-item header time{margin-left:auto}
+.quote-followup-history-item p{margin:9px 0;white-space:pre-wrap;color:#1e293b;line-height:1.55}
+.quote-followup-history-item footer b{color:#2563eb;font-size:12px}

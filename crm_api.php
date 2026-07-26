@@ -1427,6 +1427,14 @@ try {
         require_csrf();
         api_response(true, '任务已删除', crm_task_delete($_POST));
     }
+    if ($action === 'quote_followup_context') {
+        require_csrf();
+        api_response(true, '', crm_quote_followup_context($_POST));
+    }
+    if ($action === 'quote_followup_save') {
+        require_csrf();
+        api_response(true, '报价跟进已保存', crm_quote_followup_save($_POST));
+    }
     if ($action === 'sample_shipment_list') {
         require_csrf();
         api_response(true, '', crm_sample_shipments($_POST));
