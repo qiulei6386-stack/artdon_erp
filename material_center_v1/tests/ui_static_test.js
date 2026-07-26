@@ -2,22 +2,27 @@ const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 const required = [
-  'ui/index.css', 'ui/tokens.css', 'ui/theme-light.css', 'ui/theme-dark.css',
-  'ui/js/interaction-manager.js', 'ui/js/confirm-modal.js', 'ui/js/dropdown.js', 'ui/js/modal.js',
-  'ui/js/drawer.js', 'ui/js/toast.js', 'ui/js/table.js', 'ui/js/app-shell.js',
-  'ui/docs/component-gallery.php', 'power_supplies.php', 'power_standardization.php',
-  'formal_power_supplies.php', 'power_bands.php', 'bom_audit.php', 'system_status.php',
-  'assets/js/power-standardization.js', 'assets/js/power-bands.js'
+  'assets/css/app.css', 'assets/js/app.js', 'assets/js/material-shell-data.js',
+  'components/layout_top.php', 'components/layout_bottom.php', 'components/sidebar.php',
+  'components/material_workspace.php', 'material/all.php', 'material/power.php',
+  'material/chip.php', 'material/optical.php', 'material/profile.php',
+  'material/connector.php', 'material/accessories.php', 'material/packaging.php',
+  'adaptation/index.php', 'supplier/index.php', 'substitute/index.php',
+  'data/index.php', 'documents/index.php', 'settings/index.php'
 ];
 for (const file of required) {
   if (!fs.existsSync(path.join(root, file))) throw new Error(`缺少 UI 文件: ${file}`);
 }
-const page = fs.readFileSync(path.join(root, 'index.php'), 'utf8');
-for (const marker of ['ui/index.css', 'data-ui-table', 'data-ui-mask', 'ui/js/interaction-manager.js']) {
-  if (!page.includes(marker)) throw new Error(`首页未应用: ${marker}`);
+const shell = [
+  fs.readFileSync(path.join(root, 'index.php'), 'utf8'),
+  fs.readFileSync(path.join(root, 'components/layout_top.php'), 'utf8'),
+  fs.readFileSync(path.join(root, 'components/layout_bottom.php'), 'utf8')
+].join('\n');
+for (const marker of ['assets/css/app.css', 'data-sidebar', 'data-overlay', 'assets/js/app.js']) {
+  if (!shell.includes(marker)) throw new Error(`现行外壳未应用: ${marker}`);
 }
-const manager = fs.readFileSync(path.join(root, 'ui/js/interaction-manager.js'), 'utf8');
-for (const behavior of ['Escape', 'ui-scroll-locked', 'restoreFocus', 'pagehide', 'uiDirty']) {
-  if (!manager.includes(behavior)) throw new Error(`交互管理器缺少: ${behavior}`);
+const app = fs.readFileSync(path.join(root, 'assets/js/app.js'), 'utf8');
+for (const behavior of ['Escape', 'closeLayers', 'data-shell-action', '尚未配置真实业务处理']) {
+  if (!app.includes(behavior)) throw new Error(`现行交互缺少: ${behavior}`);
 }
 console.log(`UI static test passed (${required.length} required files).`);
