@@ -8,7 +8,9 @@
 - “添加产品”和底部“添加产品”改为独立直接事件绑定，不再依赖整页事件委托；配置取消/关闭同样独立绑定。
 - 右栏增加明确的 `is-configuring` 状态、DOM 完整性保护及错误提示；添加/编辑时切换配置，取消/应用后恢复汇总。
 - 新增标准报价按钮契约测试，覆盖保存、预览、打印、PDF、Excel、发送、提交审核、添加、批量、编辑、删除、取消和配置应用的按钮及处理器映射。
-- 修改、检查、提交、推送、服务器部署及三方一致性以本轮最终结果为准。
+- 修改文件：`commercial_center_v1/views/quote_standard.php`、`assets/js/quote_center.js`、`assets/css/app.css`、`tests/standard_quote_button_contract.php`、`WORK_CONTEXT.md`。
+- 检查：JavaScript/PHP 语法、按钮契约、报价中心回归和安全扫描通过；真实 CRM 客户、产品、配置、价格/BOM、毛利、保存、重开、编辑和提交审核闭环通过；同一不可变快照驱动预览/打印、PDF、Excel和发送附件/审计闭环通过，测试数据自动清理。
+- Git/部署：功能提交 `4275382` 已推送 GitHub 并同步服务器；上下文收尾提交后再次核对三方一致。
 
 ## 本次：标准报价右栏按编辑状态切换
 
