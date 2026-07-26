@@ -2,6 +2,12 @@
 
 更新时间：2026-07-26
 
+## 本次：Amy 账号密码存储方式核查
+
+- 只读检查统一登录认证和管理员重置流程，确认 `crm_users` 仅保存由 PHP `password_hash(..., PASSWORD_DEFAULT)` 生成的单向 `password_hash`，登录通过 `password_verify()` 校验，不保存可读取的明文密码。
+- 结论：Amy 的现有密码无法查询或还原；如已遗忘，只能由具备 `users.reset_password` 权限的管理员设置新密码，系统会将 `force_password_change` 设为 1。
+- 本次未读取或导出密码哈希，未尝试破解密码，未修改账号、密码或生产数据库；仅更新 `WORK_CONTEXT.md`。待确认事项：如需重置密码，需指定新密码或授权生成临时密码。
+
 ## 本次：统一登录 Amy 账号临时锁定原因排查
 
 - 只读检查生产环境统一登录用户与 `crm_login_logs`，确认 Amy（肖建青，用户 ID 9）账号状态为 `active`，不是管理员停用或永久锁定。
