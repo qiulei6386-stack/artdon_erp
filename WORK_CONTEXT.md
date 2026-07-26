@@ -2,6 +2,15 @@
 
 更新时间：2026-07-26
 
+## 本次：报价逻辑十步实施 Step 5 标准品报价完整闭环
+
+- 严格只执行 Step 5，新增 `StandardQuoteRepository`、`StandardQuoteService` 和 `api/v1/standard_quotes.php`，串联 CRM 客户/联系人、真实产品目录、配置适配规则、价格策略/客户等级/阶梯价、BOM 成本、佣金提醒及 Step 3/4 报价工作流。
+- 重建现有标准品报价工作区的数据绑定，不改左侧菜单或 Header：正式保存替换本机草稿，支持保存后重新打开、继续编辑、配置校验、拖动排序、批量数量/折扣、固定汇总、MOQ/交期/佣金提醒和提交审核。
+- 服务器不信任浏览器汇总；保存时重新读取客户、产品、配置、价格、成本和佣金并计算金额/毛利。手工改价受 `edit_price` 权限控制，POST 使用独立 CSRF。
+- 新增 `tests/standard_quote_closure_smoke.php` 和 `docs/quote_logic/step05_standard_quote_closure.md`，用真实 CRM 客户、真实产品和真实配置/价格/BOM 来源完成可自动清理验收。
+- 本步不进入 Step 6，不开发网站订单导入、定制附件或正式 PDF/Excel/邮件/转订单。
+- 最终验收、提交、部署和三方一致性见本轮最终结果。
+
 ## 本次：报价逻辑十步实施 Step 4 状态流、权限、日志和版本快照
 
 - 严格只执行 Step 4，新增统一状态机，覆盖 `draft`、`pricing`、`pending_approval`、`rejected`、`approved`、`sent`、`customer_confirmed`、`converted`、`voided`；非法跨状态拒绝，驳回和作废强制原因。
