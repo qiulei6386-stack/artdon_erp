@@ -563,16 +563,18 @@
 
   q('[data-template-form]').addEventListener('submit', async event => {
     event.preventDefault();
-    const button = event.submitter;
-    button.disabled = true;
+    const form = event.currentTarget;
+    const modal = form.closest('[data-adaptation-modal]');
+    const button = event.submitter || q('button[type="submit"]', form);
+    if (button) button.disabled = true;
     try {
       const result = await post('apply_template', { product_id: selectedProductId() });
-      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      closeModal(modal);
       await loadWorkspace(selectedProductId());
       notify('标准配置已生成', result.created ? `新增 ${result.created} 个配置组。` : '配置组已齐全，没有重复插入。');
     } catch (error) {
       notify('生成失败', error.message);
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
   });
 
@@ -609,27 +611,31 @@
 
   q('[data-candidate-form]').addEventListener('submit', async event => {
     event.preventDefault();
-    const ids = qa('[name="material_choice"]:checked', event.currentTarget).map(input => integer(input.value));
+    const form = event.currentTarget;
+    const modal = form.closest('[data-adaptation-modal]');
+    const ids = qa('[name="material_choice"]:checked', form).map(input => integer(input.value));
     if (!ids.length) {
       notify('尚未选择物料', '请勾选至少一个可添加的候选项。');
       return;
     }
-    const button = event.submitter;
-    button.disabled = true;
+    const button = event.submitter || q('button[type="submit"]', form);
+    if (button) button.disabled = true;
     try {
       const result = await post('add_options', { group_id: selectedGroup().id, material_ids: ids });
-      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      closeModal(modal);
       await refreshWorkspace();
       notify('物料选项已添加', `成功 ${result.added} 项，跳过 ${result.skipped} 项。`);
     } catch (error) {
       notify('添加失败', error.message);
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
   });
 
   q('[data-condition-form]').addEventListener('submit', async event => {
     event.preventDefault();
-    const conditions = qa('.mc-condition-editor-row', event.currentTarget).map((row, index) => {
+    const form = event.currentTarget;
+    const modal = form.closest('[data-adaptation-modal]');
+    const conditions = qa('.mc-condition-editor-row', form).map((row, index) => {
       const operator = q('[name="operator"]', row).value;
       const raw = q('[name="expected"]', row).value.trim();
       let expected = raw;
@@ -646,18 +652,18 @@
         severity: 'block',
       };
     });
-    const button = event.submitter;
-    button.disabled = true;
+    const button = event.submitter || q('button[type="submit"]', form);
+    if (button) button.disabled = true;
     try {
       const result = await post('save_conditions', { group_id: selectedGroup().id, conditions });
-      closeModal(event.currentTarget.closest('[data-adaptation-modal]'));
+      closeModal(modal);
       await refreshWorkspace();
       state.tab = 'conditions';
       renderOptionPanel();
       notify('适用条件已保存', `共保存 ${result.saved} 条可视化条件。`);
     } catch (error) {
       notify('条件保存失败', error.message);
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
   });
 

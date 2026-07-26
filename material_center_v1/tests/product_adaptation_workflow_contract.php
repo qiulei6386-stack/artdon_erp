@@ -49,5 +49,6 @@ foreach ([
 
 if (!str_contains($service, "preg_match('/^\\d+$/u'")) throw new RuntimeException('numeric-only group name guard missing');
 if (substr_count($service, "['light_source',") !== 1) throw new RuntimeException('standard template must be declared exactly once');
+if (str_contains($script, "closeModal(event.currentTarget.closest")) throw new RuntimeException('async submit handler must retain its modal before await');
 
 echo "Product adaptation workflow v2 contract: OK\n";
