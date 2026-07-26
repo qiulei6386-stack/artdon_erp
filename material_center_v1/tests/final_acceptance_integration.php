@@ -22,6 +22,7 @@ try{
  $context=new MaterialCenterUserContext($userId,'final-test','Final Test','admin',true);
  $batch=new MaterialBatchService($db);$preview=$batch->preview([$power,$chip],['brand'=>'FINAL-BATCH'],'overwrite',$context);if($preview['affected']!==2)throw new RuntimeException('cross-category batch preview failed');
  $batchResult=$batch->execute([$power,$chip],['brand'=>'FINAL-BATCH'],'overwrite',$context);if($batchResult['success']!==2)throw new RuntimeException('cross-category batch execute failed');
+ $master->transition($chip,'submit',$userId);$master->transition($chip,'approve',$userId);
  $supplier=new SupplierService($db);$supplierId=$supplier->saveSupplier(['supplier_code'=>$tag,'name'=>$tag.' supplier','default_currency'=>'CNY','contact_name'=>'Test Contact'],$userId);
  $priceId=$supplier->savePrice(['supplier_id'=>$supplierId,'material_id'=>$power,'supplier_model'=>'T1','purchase_price'=>'12.3400','currency'=>'CNY','moq'=>'10','package_qty'=>'5','lead_time_days'=>'7','tiers'=>[['min_qty'=>10,'unit_price'=>12.34],['min_qty'=>100,'unit_price'=>11.50]]],$userId);
  $status=$db->query('SELECT approval_status FROM mc_supplier_prices WHERE id='.(int)$priceId)->fetchColumn();if($status!=='pending')throw new RuntimeException('supplier price did not enter approval');
