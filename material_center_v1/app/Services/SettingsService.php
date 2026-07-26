@@ -49,8 +49,8 @@ final class SettingsService
                 $audit=$this->db->prepare('INSERT INTO mc_setting_audit_logs(scope_type,scope_id,setting_key,before_json,after_json,actor_id,created_at) VALUES(?,?,?,?,?,?,NOW())');
                 $audit->execute([$scopeType,$scopeId,$key,$before['value_json']??null,$json,$user->id]);
             }
-            $this->db->commit();
-            return $this->resolved($user);
+            $after=$this->resolved($user);$this->snapshot($scopeType,$scopeId,$after['values']??[],'save',$user->id);$this->db->commit();
+            return $after;
         } catch (\Throwable $e) {
             if($this->db->inTransaction())$this->db->rollBack();
             throw $e;
@@ -60,10 +60,8 @@ final class SettingsService
     public function reset(MaterialCenterUserContext $user,string $scopeType,string $scopeId): void
     {
         if ($scopeType==='user' && $scopeId!==(string)$user->id && !$user->isSuperAdmin) throw new RuntimeException('不能重置其他用户设置。');
-        $stmt=$this->db->prepare('DELETE FROM mc_ui_setting_scopes WHERE scope_type=? AND scope_id=? AND is_locked=0');
-        $stmt->execute([$scopeType,$scopeId]);
-        $audit=$this->db->prepare("INSERT INTO mc_setting_audit_logs(scope_type,scope_id,setting_key,after_json,actor_id,created_at) VALUES(?,?,'*','\"reset\"',?,NOW())");
-        $audit->execute([$scopeType,$scopeId,$user->id]);
+        $this->db->beginTransaction();try{$stmt=$this->db->prepare('DELETE FROM mc_ui_setting_scopes WHERE scope_type=? AND scope_id=? AND is_locked=0');$stmt->execute([$scopeType,$scopeId]);
+        $audit=$this->db->prepare("INSERT INTO mc_setting_audit_logs(scope_type,scope_id,setting_key,after_json,actor_id,created_at) VALUES(?,?,'*','\"reset\"',?,NOW())");$audit->execute([$scopeType,$scopeId,$user->id]);$resolved=$this->resolved($user);$this->snapshot($scopeType,$scopeId,$resolved['values']??[],'reset',$user->id);$this->db->commit();}catch(\Throwable$e){if($this->db->inTransaction())$this->db->rollBack();throw$e;}
     }
 
     private function validate(mixed $value,array $rule): mixed
@@ -75,5 +73,9 @@ final class SettingsService
             'color' => preg_match('/^#[0-9a-fA-F]{6}$/',(string)$value) ? strtolower((string)$value) : throw new RuntimeException('颜色格式无效。'),
             default => mb_substr(trim((string)$value),0,255),
         };
+    }
+    private function snapshot(string$type,string$id,array$values,string$note,int$userId):void
+    {
+        if(!\mc_table_exists('mc_setting_versions'))return;$stmt=$this->db->prepare('SELECT COALESCE(MAX(version_no),0)+1 FROM mc_setting_versions WHERE scope_type=? AND scope_id=?');$stmt->execute([$type,$id]);$this->db->prepare('INSERT INTO mc_setting_versions(scope_type,scope_id,version_no,snapshot_json,change_note,created_by,created_at)VALUES(?,?,?,?,?,?,NOW())')->execute([$type,$id,(int)$stmt->fetchColumn(),json_encode($values,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$note,$userId]);
     }
 }
