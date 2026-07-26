@@ -1,0 +1,40 @@
+<?php
+declare(strict_types=1);
+namespace Artdon\MaterialCenter\Services;
+
+use PDO;
+use RuntimeException;
+
+final class SupplierService
+{
+ public function __construct(private ?PDO$db=null){$this->db??=\db();}
+ public function suppliers():array{return$this->db->query("SELECT s.*,p.default_currency,p.payment_terms,p.quality_grade,p.tax_rate,(SELECT COUNT(*) FROM mc_supplier_materials sm WHERE sm.supplier_id=s.id AND sm.status='active') material_count,(SELECT name FROM mc_supplier_contacts c WHERE c.supplier_id=s.id AND c.status='active' ORDER BY c.is_primary DESC,c.id LIMIT 1) contact_name,(SELECT phone FROM mc_supplier_contacts c WHERE c.supplier_id=s.id AND c.status='active' ORDER BY c.is_primary DESC,c.id LIMIT 1) contact_phone FROM mc_suppliers s LEFT JOIN mc_supplier_profiles p ON p.supplier_id=s.id WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC,s.id DESC")->fetchAll(PDO::FETCH_ASSOC);}
+ public function materials(int$supplierId):array{$stmt=$this->db->prepare("SELECT sm.*,m.material_code,m.name material_name,m.brand,m.model,p.purchase_price,p.currency,p.valid_from,p.valid_to,(SELECT lead_time_days FROM mc_supplier_lead_times l WHERE l.supplier_material_id=sm.id AND l.status='active' ORDER BY id DESC LIMIT 1) current_lead_time,(SELECT moq FROM mc_supplier_moq q WHERE q.supplier_material_id=sm.id AND q.status='active' ORDER BY id DESC LIMIT 1) current_moq FROM mc_supplier_materials sm JOIN mc_materials m ON m.id=sm.material_id LEFT JOIN mc_supplier_prices p ON p.id=(SELECT id FROM mc_supplier_prices x WHERE x.supplier_material_id=sm.id ORDER BY COALESCE(valid_from,'1000-01-01') DESC,id DESC LIMIT 1) WHERE sm.supplier_id=? AND sm.status='active' ORDER BY m.name");$stmt->execute([$supplierId]);return$stmt->fetchAll(PDO::FETCH_ASSOC);}
+ public function saveSupplier(array$d,int$userId):int{
+  $name=trim((string)($d['name']??''));if($name==='')throw new RuntimeException('供应商名称不能为空。');
+  $currency=strtoupper(trim((string)($d['default_currency']??'CNY')));if(!preg_match('/^[A-Z]{3}$/',$currency))throw new RuntimeException('币种无效。');
+  $id=(int)($d['id']??0);$this->db->beginTransaction();try{
+   if($id){$stmt=$this->db->prepare('UPDATE mc_suppliers SET name=?,status=?,updated_at=NOW() WHERE id=? AND deleted_at IS NULL');$stmt->execute([$name,$d['status']??'active',$id]);if(!$stmt->rowCount())throw new RuntimeException('供应商不存在。');}
+   else{$code=trim((string)($d['supplier_code']??''));if($code==='')$code='SUP-'.date('ymd').'-'.strtoupper(substr(bin2hex(random_bytes(3)),0,6));$stmt=$this->db->prepare('INSERT INTO mc_suppliers(supplier_code,name,status,created_at,updated_at)VALUES(?,?,?,NOW(),NOW())');$stmt->execute([$code,$name,$d['status']??'active']);$id=(int)$this->db->lastInsertId();}
+   $taxRate=$d['tax_rate']??'';$this->db->prepare("INSERT INTO mc_supplier_profiles(supplier_id,default_currency,payment_terms,quality_grade,tax_rate,notes,created_at,updated_at)VALUES(?,?,?,?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE default_currency=VALUES(default_currency),payment_terms=VALUES(payment_terms),quality_grade=VALUES(quality_grade),tax_rate=VALUES(tax_rate),notes=VALUES(notes),updated_at=NOW()")->execute([$id,$currency,$this->nullable($d['payment_terms']??''),$this->nullable($d['quality_grade']??''),$taxRate!==''?(float)$taxRate:null,$this->nullable($d['notes']??'')]);
+   if(trim((string)($d['contact_name']??''))!=='')$this->db->prepare("INSERT INTO mc_supplier_contacts(supplier_id,name,position,phone,email,is_primary,status,created_at,updated_at)VALUES(?,?,?,?,?,1,'active',NOW(),NOW())")->execute([$id,trim((string)$d['contact_name']),$this->nullable($d['contact_position']??''),$this->nullable($d['contact_phone']??''),$this->nullable($d['contact_email']??'')]);
+   $this->log('supplier',$id,$id?'save':'create',$d,$userId);$this->db->commit();return$id;
+  }catch(\Throwable$e){if($this->db->inTransaction())$this->db->rollBack();throw$e;}
+ }
+ public function savePrice(array$d,int$userId):int{
+  $supplierId=(int)($d['supplier_id']??0);$materialId=(int)($d['material_id']??0);$price=(float)($d['purchase_price']??-1);$currency=strtoupper(trim((string)($d['currency']??'CNY')));if(!$supplierId||!$materialId||$price<0||!preg_match('/^[A-Z]{3}$/',$currency))throw new RuntimeException('供应商、物料、价格或币种无效。');
+  $this->db->beginTransaction();try{
+   $supplierModel=trim((string)($d['supplier_model']??''));$moq=$d['moq']??'';$lead=$d['lead_time_days']??'';$stmt=$this->db->prepare("INSERT INTO mc_supplier_materials(supplier_id,material_id,supplier_model,supplier_material_code,moq,lead_time_days,status)VALUES(?,?,?,?,?,?,'active') ON DUPLICATE KEY UPDATE supplier_material_code=VALUES(supplier_material_code),moq=VALUES(moq),lead_time_days=VALUES(lead_time_days),status='active'");$stmt->execute([$supplierId,$materialId,$supplierModel,$this->nullable($d['supplier_material_code']??''),$moq!==''?(float)$moq:null,$lead!==''?(int)$lead:null]);
+   $find=$this->db->prepare('SELECT id FROM mc_supplier_materials WHERE supplier_id=? AND material_id=? AND supplier_model=? LIMIT 1');$find->execute([$supplierId,$materialId,$supplierModel]);$sm=(int)$find->fetchColumn();
+   $old=$this->db->prepare('SELECT id,purchase_price FROM mc_supplier_prices WHERE supplier_material_id=? ORDER BY id DESC LIMIT 1');$old->execute([$sm]);$oldRow=$old->fetch(PDO::FETCH_ASSOC);
+   $stmt=$this->db->prepare('INSERT INTO mc_supplier_prices(supplier_material_id,purchase_price,currency,valid_from,valid_to,created_at)VALUES(?,?,?,?,?,NOW())');$stmt->execute([$sm,$price,$currency,$this->nullable($d['valid_from']??''),$this->nullable($d['valid_to']??'')]);$priceId=(int)$this->db->lastInsertId();
+   $taxRate=$d['tax_rate']??'';$this->db->prepare('INSERT INTO mc_supplier_price_history(supplier_price_id,old_price,new_price,currency,tax_included,tax_rate,effective_at,changed_by,created_at)VALUES(?,?,?,?,?,?,NOW(),?,NOW())')->execute([$priceId,$oldRow['purchase_price']??null,$price,$currency,!empty($d['tax_included'])?1:0,$taxRate!==''?(float)$taxRate:null,$userId]);
+   $packageQty=$d['package_qty']??'';if($moq!=='')$this->db->prepare("INSERT INTO mc_supplier_moq(supplier_material_id,moq,package_qty,effective_from,status)VALUES(?,?,?,?,'active')")->execute([$sm,(float)$moq,$packageQty!==''?(float)$packageQty:null,$this->nullable($d['valid_from']??'')]);
+   if($lead!=='')$this->db->prepare("INSERT INTO mc_supplier_lead_times(supplier_material_id,lead_time_days,condition_text,effective_from,status)VALUES(?,?,?,?,'active')")->execute([$sm,(int)$lead,$this->nullable($d['lead_time_condition']??''),$this->nullable($d['valid_from']??'')]);
+   foreach((array)($d['tiers']??[])as$tier){$min=(float)($tier['min_qty']??0);$tierPrice=(float)($tier['unit_price']??-1);if($min>0&&$tierPrice>=0)$this->db->prepare('INSERT INTO mc_supplier_price_tiers(supplier_price_id,min_qty,max_qty,unit_price)VALUES(?,?,?,?)')->execute([$priceId,$min,isset($tier['max_qty'])&&$tier['max_qty']!==''?(float)$tier['max_qty']:null,$tierPrice]);}
+   $this->log('supplier_price',$priceId,'save_price',['supplier_material_id'=>$sm,'price'=>$price,'currency'=>$currency],$userId);$this->db->commit();return$priceId;
+  }catch(\Throwable$e){if($this->db->inTransaction())$this->db->rollBack();throw$e;}
+ }
+ private function log(string$type,int$id,string$action,array$data,int$user):void{$this->db->prepare("INSERT INTO mc_operation_logs(module,object_type,object_id,action,new_value_json,actor_id,actor_ip,result,created_at)VALUES('material_center',?,?,?,?,?,?, 'success',NOW())")->execute([$type,$id,$action,json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$user,(string)($_SERVER['REMOTE_ADDR']??'cli')]);}
+ private function nullable(mixed$v):?string{$v=trim((string)$v);return$v===''?null:$v;}
+}
