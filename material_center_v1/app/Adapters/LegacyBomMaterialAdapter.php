@@ -26,6 +26,15 @@ final class LegacyBomMaterialAdapter
         return $rows[0]??null;
     }
 
+    public function allAfter(int $afterId = 0, int $limit = 500): array
+    {
+        return $this->select(
+            'SELECT id,category,name,brand,model,spec,price,unit,material_grade,image,is_active,updated_at
+             FROM bom_materials WHERE id>? ORDER BY id LIMIT '.max(1,min(1000,$limit)),
+            [$afterId]
+        );
+    }
+
     private function select(string $sql,array $params=[]): array
     {
         if(!preg_match('/^\s*SELECT\b/i',$sql))throw new LogicException('Legacy adapter is read-only.');
