@@ -10,7 +10,7 @@ final class MaterialBatchService{
   $allowed=[];foreach((new FieldRegistryService($this->db))->editable('power_supply',$user)as$f)$allowed[$f['field_key']]=$f;
   $clean=[];foreach($changes as$key=>$value){if(!isset($allowed[$key]))throw new RuntimeException("字段 {$key} 不允许批量编辑。");$clean[$key]=$this->validate($value,$allowed[$key]);}
   if(!$clean)throw new RuntimeException('请至少添加一个字段。');
-  $marks=implode(',',array_fill(0,count($ids),'?'));$q=$this->db->prepare("SELECT m.id,m.material_code,m.brand,m.status,p.power_band_id,p.installation_type,p.output_type,p.nominal_power_w,p.max_output_power_w,p.supplier_warranty_years,p.purchase_price FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.deleted_at IS NULL AND m.id IN($marks)");$q->execute($ids);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
+  $marks=implode(',',array_fill(0,count($ids),'?'));$q=$this->db->prepare("SELECT m.id,m.material_code,m.brand,m.status,p.power_band_id,p.installation_type,p.output_type,p.nominal_power_w,p.max_output_power_w,p.supplier_warranty_years,p.purchase_price FROM mc_materials m LEFT JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.deleted_at IS NULL AND m.id IN($marks)");$q->execute($ids);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
   return['ids'=>$ids,'changes'=>$clean,'policy'=>$policy,'affected'=>count($rows),'preview'=>array_map(fn($r)=>['id'=>$r['id'],'code'=>$r['material_code'],'changes'=>array_filter($clean,fn($v,$k)=>$policy==='overwrite'||$r[$k]===null||$r[$k]==='',ARRAY_FILTER_USE_BOTH)],$rows)];
  }
  public function execute(array$ids,array$changes,string$policy,MaterialCenterUserContext$user):array{

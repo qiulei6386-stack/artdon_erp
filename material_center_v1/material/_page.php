@@ -26,8 +26,10 @@ foreach ($records as $record) {
         (string)($record['model'] ?? ''), $spec ?: '—', (string)$record['status'],
         (string)($record['source'] ?? 'material_center'), (string)($record['supplier_warranty_years'] ?? ''),
         'id'=>(int)$record['id'],
+        'category_id'=>(int)$record['category_id'],
     ];
 }
+$config['category_code']=$category;
 $pageTitle=$config['title'];$pageDescription=$config['description'];$activeMenu=$key;
 include MC_ROOT.'/components/layout_top.php';
 require_once MC_ROOT.'/components/material_workspace.php';

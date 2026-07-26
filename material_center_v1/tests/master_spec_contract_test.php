@@ -23,4 +23,6 @@ foreach(['index.php','components/layout_top.php'] as$file){
  foreach(['赵立伟','LF-GIR020YS'] as$fake)if(str_contains($text,$fake)){fwrite(STDERR,"demo marker remains: $fake\n");exit(1);}
 }
 if(is_file($root.'/demo/materials.php')){fwrite(STDERR,"demo material source remains\n");exit(1);}
+$workspace=file_get_contents($root.'/assets/js/material-workspace-actions.js');
+foreach(['data-material-edit','data-material-copy','data-material-reference','data-material-transition','batch_preview','batch_execute'] as$marker)if(!str_contains($workspace,$marker)){fwrite(STDERR,"workspace action missing: $marker\n");exit(1);}
 echo "master spec contract: OK\n";
