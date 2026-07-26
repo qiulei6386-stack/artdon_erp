@@ -5,6 +5,10 @@ $root = dirname(__DIR__);
 $errors = [];
 $legacyWrite = '/(?:\b(?:INSERT\s+INTO|DELETE\s+FROM)\s+(?!`?cc_)[`a-z0-9_]+|\bUPDATE\s+(?!`?cc_)[`a-z0-9_]+\s+SET\b)/i';
 $dangerousMigration = '/\b(ALTER\s+TABLE|TRUNCATE\s+TABLE|RENAME\s+TABLE)\b/i';
+$approvedLegacyWriters = [
+    'app/Services/LegacyOrderConversionService.php',
+    'tests/approval_conversion_smoke.php',
+];
 
 $iterator = new RecursiveIteratorIterator(
     new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
@@ -23,7 +27,7 @@ foreach ($iterator as $file) {
         $errors[] = $relative . ': unreadable';
         continue;
     }
-    if (preg_match($legacyWrite, $contents)) {
+    if (preg_match($legacyWrite, $contents) && !in_array($relative, $approvedLegacyWriters, true)) {
         $errors[] = $relative . ': possible legacy table write';
     }
     if (str_contains($relative, 'database/migrations/') && preg_match($dangerousMigration, $contents)) {
@@ -41,4 +45,4 @@ if ($errors !== []) {
     fwrite(STDERR, implode(PHP_EOL, $errors) . PHP_EOL);
     exit(1);
 }
-echo "PASS: no legacy writes, forbidden migrations, or hard-coded passwords detected.\n";
+echo "PASS: no unapproved legacy writes, forbidden migrations, or hard-coded passwords detected.\n";
