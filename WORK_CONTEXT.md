@@ -2,6 +2,15 @@
 
 更新时间：2026-07-26
 
+## 本次：报价逻辑十步实施 Step 4 状态流、权限、日志和版本快照
+
+- 严格只执行 Step 4，新增统一状态机，覆盖 `draft`、`pricing`、`pending_approval`、`rejected`、`approved`、`sent`、`customer_confirmed`、`converted`、`voided`；非法跨状态拒绝，驳回和作废强制原因。
+- 新增 `QuotePermissionService`，接入统一 ERP `commercial.quote.*` 权限并兼容旧 `quote_user_permissions`，覆盖查看、新建、编辑、删除、审核、驳回、导出、打印、发送、转订单、查看成本/利润、改价和修改锁定字段。
+- 新增幂等迁移 `011_quote_workflow.sql`，建立独立审批、状态历史和详细审计表；记录操作人、时间、IP/User-Agent 哈希、报价编号/类型、对象、修改前后值和原因。
+- 新增 `QuoteWorkflowService` 与 `QuoteWorkflowRepository`：提交、批准、发送和转订单前复制版本并生成正式快照；已审核修改前保留快照并保存为新草稿版本；历史版本可读取。
+- 新增 `tests/quote_workflow_smoke.php` 和 `docs/quote_logic/step04_workflow_permissions_snapshots.md`。本步不进入 Step 5，不接标准品页面闭环、正式导出、发送或真实转订单。
+- 最终迁移、验收、提交、部署和三方一致性见本轮最终结果。
+
 ## 本次：报价逻辑十步实施 Step 3 统一报价公共数据模型
 
 - 严格只执行 Step 3，沿用现有空的 `cc_quotes`、`cc_quote_versions`、`cc_quote_items`、`cc_quote_item_snapshots` 作为唯一新报价主链，不建立第三套主表；旧 `quote_orders` 保持只读兼容。
