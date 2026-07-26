@@ -27,6 +27,7 @@ foreach ($records as $record) {
         (string)($record['source'] ?? 'material_center'), (string)($record['supplier_warranty_years'] ?? ''),
         'id'=>(int)$record['id'],
         'category_id'=>(int)$record['category_id'],
+        'lock_version'=>(int)($record['lock_version']??1),
     ];
 }
 $config['category_code']=$category;
