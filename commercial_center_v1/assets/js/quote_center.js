@@ -30,6 +30,40 @@
     window.location.href = `?page=quote_center&quote_mode=${encodeURIComponent(type)}${quick}`;
   });
 
+  const approvalCenter = $('[data-approval-center]');
+  if (approvalCenter) {
+    const api = approvalCenter.dataset.api, modal = $('[data-approval-modal]', approvalCenter);
+    let csrf = '', currentId = 0;
+    const call = async (payload = null, query = '') => {
+      const response = await fetch(api + query, payload ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, csrf }) } : {});
+      const data = await response.json(); if (!response.ok || !data.ok) throw new Error(data.message || '审核请求失败'); return data;
+    };
+    const renderRows = (rows) => {
+      const body = $('[data-approval-rows]', approvalCenter); body.innerHTML = '';
+      rows.forEach((row) => { const tr = document.createElement('tr'), customer = row.customer?.customer_name || row.customer?.customer_name_en || '';
+        tr.innerHTML = `<td><b></b></td><td></td><td></td><td></td><td></td><td><span class="quote-status"></span></td><td></td><td></td><td></td><td><button data-review-open>审核</button></td>`;
+        const cells = $$('td', tr); cells[0].firstElementChild.textContent = row.quote_no; cells[1].textContent = row.quote_type; cells[2].textContent = customer;
+        cells[3].textContent = `${row.currency} ${Number(row.total_amount).toFixed(2)}`; cells[4].textContent = `${(Number(row.gross_margin || 0) * 100).toFixed(1)}%`;
+        cells[5].firstElementChild.textContent = row.risk.level; cells[6].textContent = (row.risk.reasons || []).join('、') || '无';
+        cells[7].textContent = row.status; cells[8].textContent = row.owner_name || ''; tr.dataset.quoteId = row.id; body.append(tr);
+      });
+    };
+    const load = async () => { const params = new URLSearchParams(); $$('[data-af]', approvalCenter).forEach((x) => { if (x.value) params.set(x.dataset.af, x.value); });
+      const data = await call(null, `?${params}`); csrf = data.csrf; renderRows(data.rows); };
+    $('[data-approval-search]', approvalCenter).addEventListener('click', () => load().catch((e) => alert(e.message)));
+    approvalCenter.addEventListener('click', async (event) => {
+      const open = event.target.closest('[data-review-open]');
+      if (open) { try { currentId = Number(open.closest('tr').dataset.quoteId); const data = await call(null, `?quote_id=${currentId}`); csrf = data.csrf;
+        const q = data.quote, target = $('[data-approval-detail]', modal); target.innerHTML = `<h3>${q.quote_no} · ${q.status}</h3><p>风险：${q.risk.level} ${(q.risk.reasons || []).join('、')}</p><p>客户：${q.customer_snapshot?.customer_name || q.customer_snapshot?.customer_name_en || ''}</p><p>金额：${q.currency} ${Number(q.total_amount).toFixed(2)}　毛利率：${(Number(q.gross_margin || 0) * 100).toFixed(1)}%</p><table><thead><tr><th>产品</th><th>配置</th><th>数量</th><th>单价</th><th>成本</th><th>折扣</th><th>交期</th></tr></thead><tbody>${(q.items || []).map((i) => `<tr><td>${i.product_name || i.description}</td><td>${JSON.stringify(i.configuration_snapshot || {})}</td><td>${i.quantity}</td><td>${i.unit_price}</td><td>${i.cost_amount || ''}</td><td>${Number(i.discount_rate || 0) * 100}%</td><td>${i.lead_time || ''}</td></tr>`).join('')}</tbody></table><h4>历史版本与修改记录</h4><pre>${JSON.stringify(q.review_actions || [], null, 2)}</pre>`;
+        openModal(modal); } catch (e) { alert(e.message); } return; }
+      const decision = event.target.closest('[data-decision]');
+      if (decision) { const action = decision.dataset.decision, opinion = prompt('审核意见（驳回/要求修改必填）') || '', target = action === 'escalate' ? (prompt('上级审核人') || '') : '';
+        try { await call({ action: 'review', quote_id: currentId, decision: action, opinion, target }); closeModal(modal); await load(); } catch (e) { alert(e.message); } }
+      if (event.target.closest('[data-convert-order]')) { try { const data = await call({ action: 'convert', quote_id: currentId }); const links = data.order.documents;
+        $('[data-approval-detail]', modal).insertAdjacentHTML('beforeend', `<h4>正式订单 ${data.order.order_no}</h4><p><a target="_blank" href="${links.pi}">PI</a>　<a target="_blank" href="${links.pi_excel}">PI Excel</a>　<a target="_blank" href="${links.ci}">CI</a>　<a target="_blank" href="${links.ci_excel}">CI Excel</a>　<a target="_blank" href="${links.pl}">Packing List</a>　<a target="_blank" href="${links.pl_excel}">PL Excel</a></p>`); } catch (e) { alert(e.message); } }
+    });
+    load().catch((e) => { $('[data-approval-message]', approvalCenter).textContent = e.message; });
+  }
   const editor = $('[data-quote-editor]');
   if (!editor) return;
   const outputButtons = $$('[data-quote-output]', editor);

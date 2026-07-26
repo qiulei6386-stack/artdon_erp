@@ -19,7 +19,7 @@ final class QuoteWorkflowService
         'pricing' => ['draft', 'pending_approval', 'voided'],
         'pending_approval' => ['approved', 'rejected', 'voided'],
         'rejected' => ['draft', 'pending_approval', 'voided'],
-        'approved' => ['sent', 'voided'],
+        'approved' => ['sent', 'converted', 'voided'],
         'sent' => ['customer_confirmed', 'voided'],
         'customer_confirmed' => ['converted', 'voided'],
         'converted' => [],
