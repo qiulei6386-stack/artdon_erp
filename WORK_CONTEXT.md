@@ -2,6 +2,16 @@
 
 更新时间：2026-07-26
 
+## 本次：物料中心与统一权限中心接入扫描
+
+- 用户反馈线上电源页显示“未登录”，本次仅诊断扫描，未修改业务代码、账号、权限或生产数据库。
+- 线上 `material_center_v1/material/power.php` 未登录访问直接返回 HTTP 200，并创建路径为 `/` 的 `PHPSESSID`；页面右上角显示“未登录”，没有跳转统一 `login.php`。
+- 身份会话已部分复用统一系统：`material_center_v1/bootstrap.php` 引入根目录 `includes/bootstrap.php`，`mc_current_user()` 最终读取统一 `current_user()` 与 `crm_users`；统一登录和物料中心使用同名默认 PHP 会话及根路径 Cookie。
+- 页面访问控制没有接通：电源页及公共 `_page.php` 未调用统一 `require_login()`，也未校验 `material_center.view`，导致未登录用户仍可进入并读取页面数据。
+- 权限模型没有并入统一权限中心：物料中心定义独立 `mc_permissions` / `mc_permission_grants`，生产库有 31 个物料权限定义但授权记录为 0；统一 `crm_permissions` 中没有任何 `material_center.*` 权限，仅有旧 `bom.view` / `bom.edit`。物料权限服务在独立授权为空时按 `.view` 粗略回退 `bom.view`，其他操作统一回退 `bom.edit`。
+- 结论：统一账号身份只完成了半接入，统一页面登录守卫、统一权限定义/角色授权、菜单可见性及逐操作权限尚未打通；需要另行实施统一权限接入，不能仅调整登录提示。
+- 本次只更新 `WORK_CONTEXT.md`；检查、提交、推送、服务器同步和三方一致性以本轮收尾结果为准。
+
 ## 本次：服务器、本地与 GitHub 全仓扫描
 
 - 按用户要求扫描本地工作目录、GitHub `origin/main` 与服务器运行目录；未修改业务代码或生产数据库。
