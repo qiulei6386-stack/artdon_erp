@@ -8,7 +8,7 @@ final class ConfigurationEngineService
     public function evaluate(array $input,int $userId=0): array
     {
         $repo=new ConfigurationRepository();$catalog=$repo->catalog($userId,isset($input['customer_id'])?(int)$input['customer_id']:null);$values=is_array($input['values']??null)?$input['values']:[];
-        $product=$this->product($input,$catalog);$preset=$this->preset((int)($input['preset_id']??0),$catalog['presets']);
+        $product=$this->product($input,$catalog);$catalog['groups']=array_merge($catalog['groups'],$catalog['material_center'][(string)(int)$product['legacy_product_id']]??[]);$preset=$this->preset((int)($input['preset_id']??0),$catalog['presets']);
         $base=[];foreach($preset['values']??[] as $key=>$entry)$base[$key]=$entry['value'];if($product['type']==='stock')$base=array_replace($base,$product['sku_values']);
         $productAllowed=$repo->allowedOptions((int)$product['legacy_product_id']);$allowed=[];$locked=[];foreach($catalog['groups'] as $group){$code=$group['group_code'];$allowed[$code]=$productAllowed[$code]??array_column($group['options'],'option_code');if($product['type']==='stock'&&array_key_exists($code,$product['sku_values']))$locked[$code]=['type'=>'hard','reason'=>'库存SKU核心配置锁定'];}
         foreach($values as $key=>$value){if(isset($locked[$key]))continue;$chosen=is_array($value)?$value:[$value];if(isset($allowed[$key])&&$allowed[$key]!==[]&&array_diff($chosen,$allowed[$key])!==[])continue;$base[$key]=$value;}

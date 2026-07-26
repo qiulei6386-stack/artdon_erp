@@ -15,7 +15,7 @@
       $installation=['internal'=>'内置','external'=>'外置','remote'=>'远置','integrated'=>'一体式','unknown'=>'待确认'][$r['installation_type']??'unknown']??'待确认';
       $warranty=$r['supplier_warranty_years']??'';
       $code=$isSource?'BOM #'.$id:(string)($r['material_code']??'#'.$id);
-      $reviewUrl='power_standardization.php'.(!empty($r['staging_id'])?'?review='.(int)$r['staging_id']:'');
+      $reviewUrl='material/power.php';
     ?><tr tabindex="0" data-power-row data-record-kind="<?=$isSource?'source':'formal'?>" data-record-id="<?=$id?>" data-code="<?=mc_h($code)?>" data-name="<?=mc_h($name)?>" data-brand="<?=mc_h($brand)?>" data-model="<?=mc_h($model)?>" data-spec="<?=mc_h($spec)?>" data-status="<?=mc_h($statusLabel)?>" data-power="<?=mc_h((string)$power)?>" data-installation="<?=mc_h($installation)?>" data-warranty="<?=mc_h((string)$warranty)?>" data-review-url="<?=mc_h($reviewUrl)?>">
       <td class="ui-select-col"><label class="ui-check"><input type="checkbox" data-ui-row-select aria-label="选择 <?=mc_h($name)?>"><span class="ui-check-box"></span></label></td>
       <td><?=mc_h($code)?></td><td><?=mc_h($name)?></td><td><?=mc_h($brand?:'—')?></td><td><?=mc_h($model?:'—')?></td>

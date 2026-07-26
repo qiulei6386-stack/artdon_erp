@@ -37,7 +37,7 @@ final class PowerStandardizationService
             $confidence=$results?array_sum(array_map(static fn(array$item):int=>['high'=>100,'medium'=>70,'low'=>40][$item['confidence']]??0,$results))/count($results):0;
             $this->db->prepare("UPDATE mc_source_records SET parse_result_json=?,confidence_score=?,status='pending' WHERE id=?")->execute([json_encode($results,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$confidence,$sourceRecordId]);
             $this->db->prepare("INSERT INTO mc_operation_logs(module,object_type,object_id,action,new_value_json,actor_id,actor_ip,result,created_at)VALUES('material_center','source_record',?,'stage_power',?,?,?,'success',NOW())")->execute([$sourceRecordId,json_encode(['staging_id'=>$stagingId],JSON_UNESCAPED_UNICODE),$userId,(string)($_SERVER['REMOTE_ADDR']??'cli')]);
-            $this->db->commit();return['staging_id'=>$stagingId,'review_url'=>'power_standardization.php?review='.$stagingId];
+            $this->db->commit();return['staging_id'=>$stagingId,'source_record_id'=>$sourceRecordId];
         }catch(\Throwable$e){if($this->db->inTransaction())$this->db->rollBack();throw$e;}
     }
 

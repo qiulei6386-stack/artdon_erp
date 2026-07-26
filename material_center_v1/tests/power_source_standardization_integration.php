@@ -32,7 +32,7 @@ $original = [
 try {
     $staged = $service->stageSourceRecord((int)$source['id'], 1);
     $stagingId = (int)$staged['staging_id'];
-    if (!$stagingId || $staged['review_url'] !== 'power_standardization.php?review=' . $stagingId) {
+    if (!$stagingId || (int)($staged['source_record_id'] ?? 0) !== (int)$source['id'] || isset($staged['review_url'])) {
         throw new RuntimeException('stage source response mismatch');
     }
     $detail = $service->detail($stagingId);

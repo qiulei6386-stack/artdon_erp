@@ -46,41 +46,78 @@
 .mc-power-drawer .mc-form-error{margin:0 14px 14px;padding:11px;border:1px solid #fecaca;border-radius:8px;background:#fff1f2;color:#b91c1c}
 @media(max-width:640px){.mc-power-drawer{width:100vw;min-width:0;max-width:none}.mc-form-section{margin:9px;padding:13px}.mc-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mc-batch-policy{align-items:flex-start;flex-wrap:wrap}.mc-power-drawer-footer{flex-wrap:wrap;padding:8px 12px}.mc-power-drawer-footer>span{width:100%}}
 
-/* Power standardization review: short values share rows; complex editors stay intact. */
-#standardization-drawer{padding:14px 16px}
-#standardization-drawer .ui-drawer-header{padding-bottom:9px}
-#standardization-drawer .ui-drawer-header h2{margin:2px 0 0}
-#standardization-drawer .ui-drawer-body{padding-top:9px}
-#standardization-drawer [data-original]{margin:0 0 9px;padding:9px 11px}
-#standardization-drawer [data-original] p{display:inline;margin:0 12px 0 0;font-size:12px}
-#standardization-drawer #standard-form{display:flex;flex-direction:column;gap:8px}
-#standardization-drawer .standard-review-section{padding:7px 9px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface)}
-#standardization-drawer .standard-review-section h3{margin:0 0 6px;font-size:11px;color:var(--ui-text-muted)}
-#standardization-drawer .standard-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
-#standardization-drawer .standard-review-section--decision{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:6px 10px;align-items:end}
-#standardization-drawer .standard-review-section--decision h3{grid-column:1/-1}
-#standardization-drawer .ui-field{gap:3px;min-width:0}
-#standardization-drawer .ui-input,#standardization-drawer .ui-select{min-height:32px;height:32px}
-#standardization-drawer .ui-help{min-height:12px;font-size:10px;line-height:1.15}
-#standardization-drawer .standard-fieldset{min-width:0;margin:0;padding:8px 10px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md)}
-#standardization-drawer .standard-fieldset legend{padding:0 4px;font-size:11px;font-weight:700;color:var(--ui-text-muted)}
-#standardization-drawer .standard-fieldset:not(.current-options-fieldset){display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px 10px}
-#standardization-drawer .standard-fieldset:not(.current-options-fieldset) .ui-check{min-height:25px;font-size:11px}
-#standardization-drawer .current-options-head,#standardization-drawer .current-option-row{display:grid;grid-template-columns:42px minmax(0,1fr) 54px;align-items:center;gap:7px}
-#standardization-drawer .current-options-head{font-size:10px;color:var(--ui-text-muted)}
-#standardization-drawer .current-option-row{margin-top:4px}
-#standardization-drawer .current-option-row .ui-input{height:30px;min-height:30px}
-#standardization-drawer .current-options-fieldset>.ui-btn{margin-top:6px}
-#standardization-drawer [data-duplicates]{min-height:32px;margin:0;padding:7px 9px;font-size:11px}
-#standardization-drawer .ui-drawer-footer{padding-top:9px}
-@media(max-width:700px),(max-height:720px){
-  #standardization-drawer{padding:12px}
-}
-@media(max-width:700px){
-  #standardization-drawer .standard-review-grid,#standardization-drawer .standard-review-section--decision{grid-template-columns:1fr}
-  #standardization-drawer .standard-review-section--decision h3{grid-column:auto}
-  #standardization-drawer [data-original] p{display:block;margin-top:3px}
-}
+/* Category material drawers share the power editor's real save workflow. */
+.mc-category-editor-drawer{width:min(620px,calc(100vw - 24px))}
+.mc-category-editor-body{padding:0 0 18px}
+.mc-category-editor-drawer .mc-form-section{margin:14px}
+.mc-category-editor-drawer .mc-field input,.mc-category-editor-drawer .mc-field select{height:38px}
+.mc-category-editor-drawer .mc-field textarea{height:auto;min-height:72px;resize:vertical}
+.mc-category-editor-footer{height:auto;min-height:64px;flex-wrap:wrap}
+.mc-category-editor-footer>[data-category-editor-state]{margin-right:auto;color:var(--muted);font-size:11px}
+.mc-category-editor-drawer .mc-form-error{margin:0 14px;padding:11px;border:1px solid #fecaca;border-radius:8px;background:#fff1f2;color:#b91c1c}
+.mc-empty-inline{grid-column:1/-1;padding:18px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);text-align:center}
+
+/* Product adaptation: one stable three-column business workbench. */
+.mc-page--adaptation-v2{display:flex;flex-direction:column;overflow:hidden;padding:12px 14px 14px}
+.mc-adaptation-head{min-height:52px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.mc-adaptation-head h1{margin:0 0 3px;font-size:var(--title-font-size)}
+.mc-adaptation-head p{margin:0;color:var(--muted);font-size:12px}
+.mc-adaptation-head__actions{display:flex;align-items:center;gap:8px}
+.mc-adaptation-head__actions form{margin:0}
+.mc-adaptation-workspace{flex:1;min-height:0;display:grid;grid-template-columns:250px minmax(420px,1fr) minmax(390px,440px);gap:10px}
+.mc-adaptation-column{min-width:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.mc-adaptation-column__head{min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 13px;border-bottom:1px solid var(--border)}
+.mc-adaptation-column__head>div{min-width:0;display:flex;flex-direction:column}
+.mc-adaptation-column__head strong{font-size:13px}
+.mc-adaptation-column__head span{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.mc-adaptation-search{padding:10px 10px 0}
+.mc-adaptation-products__list,.mc-adaptation-groups{flex:1;min-height:0;overflow:auto;padding:7px}
+.mc-adaptation-products__list>a{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px;border:1px solid transparent;border-radius:8px;color:inherit;text-decoration:none}
+.mc-adaptation-products__list>a:hover{background:#f8fafc}
+.mc-adaptation-products__list>a.is-active{border-color:#f2b7b7;background:var(--selection)}
+.mc-adaptation-products__list>a>span:nth-child(2){min-width:0;display:flex;flex-direction:column}
+.mc-adaptation-products__list strong,.mc-adaptation-products__list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mc-adaptation-products__list small,.mc-adaptation-products__list em{color:var(--muted);font-size:10px;font-style:normal}
+.mc-adaptation-product-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:10px}
+.mc-adaptation-product-summary>div{padding:9px;border:1px solid var(--border);border-radius:8px;background:#f8fafc}
+.mc-adaptation-product-summary span,.mc-adaptation-product-summary strong{display:block}
+.mc-adaptation-product-summary span{color:var(--muted);font-size:10px}
+.mc-adaptation-groups>a{display:grid;grid-template-columns:34px minmax(0,1fr) 82px 58px;align-items:center;gap:9px;margin-bottom:7px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;color:inherit;text-decoration:none}
+.mc-adaptation-groups>a.is-active{border-color:#e6a0a0;background:#fff7f7}
+.mc-adaptation-groups>a>span:nth-child(2){min-width:0;display:flex;flex-direction:column}
+.mc-adaptation-groups small{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.mc-adaptation-group-meta{display:flex;flex-direction:column;text-align:right}
+.mc-adaptation-group-meta em,.mc-adaptation-group-meta b{color:var(--muted);font-size:10px;font-style:normal;font-weight:500}
+.mc-adaptation-options .mc-option-tabs{min-height:40px;overflow-x:auto;white-space:nowrap}
+.mc-adaptation-options .mc-option-tabs button{padding:9px 10px;font-size:11px}
+.mc-adaptation-panel{display:none;flex:1;min-height:0;overflow:auto}
+.mc-adaptation-panel.is-active{display:block}
+.mc-adaptation-option-list{padding:7px 10px}
+.mc-adaptation-option-list article{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 3px;border-bottom:1px solid #edf1f5}
+.mc-adaptation-option-list article>div:first-child{min-width:0;display:flex;flex-direction:column}
+.mc-adaptation-option-list article>div:first-child strong,.mc-adaptation-option-list article>div:first-child span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mc-adaptation-option-list article>div:first-child span{color:var(--muted);font-size:10px}
+.mc-adaptation-option-list article>div:last-child{display:flex;align-items:center;gap:5px}
+.mc-adaptation-option-list em,.mc-adaptation-option-list b,.mc-adaptation-option-list small{padding:3px 6px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:10px;font-style:normal}
+.mc-adaptation-option-list b{background:var(--selection);color:var(--primary)}
+.mc-adaptation-fact,.mc-adaptation-approval,.mc-adaptation-evaluate{margin:12px;padding:14px;border:1px solid var(--border);border-radius:8px}
+.mc-adaptation-fact span,.mc-adaptation-approval>div>span{display:block;color:var(--muted);font-size:10px}
+.mc-adaptation-fact p{color:var(--muted);font-size:11px;line-height:1.6}
+.mc-condition-list{padding:8px 12px}
+.mc-condition-list article{padding:10px 0;border-bottom:1px solid #edf1f5}
+.mc-condition-list article>*{display:block;margin:0 0 4px}
+.mc-condition-list span,.mc-condition-list p{color:var(--muted);font-size:10px}
+.mc-adaptation-approval{display:flex;flex-direction:column;gap:10px}
+.mc-conflict-list p{margin:0 0 6px;padding:8px;border-radius:6px;background:#fff1f2;font-size:11px}
+.mc-conflict-list b{margin-right:6px;color:#b91c1c}
+.mc-adaptation-evaluate>div{max-height:180px;overflow:auto;margin:10px 0}
+.mc-adaptation-evaluate label{display:flex;align-items:center;gap:7px;padding:6px 0;font-size:11px}
+.mc-adaptation-evaluate output{display:block;margin-top:10px;padding:9px;border-radius:7px;background:#f8fafc;font-size:11px}
+.mc-adaptation-evaluate output.is-compatible{background:#e8f7ef;color:#157347}
+.mc-adaptation-evaluate output.is-incompatible{background:#fff1f2;color:#b91c1c}
+@media(max-width:1100px){.mc-adaptation-workspace{grid-template-columns:220px minmax(360px,1fr) 360px}}
+@media(max-width:900px){.mc-page--adaptation-v2{overflow:auto}.mc-adaptation-workspace{display:flex;flex-direction:column}.mc-adaptation-column{min-height:420px}.mc-adaptation-options{position:static;width:auto}.mc-adaptation-head{flex-direction:column}.mc-adaptation-head__actions{width:100%;flex-wrap:wrap}}
+@media(max-width:640px){.mc-category-editor-drawer{width:100vw;max-width:none}.mc-category-editor-footer>[data-category-editor-state]{width:100%}.mc-adaptation-product-summary{grid-template-columns:repeat(2,1fr)}.mc-adaptation-groups>a{grid-template-columns:34px minmax(0,1fr) 56px}.mc-adaptation-groups>a>.mc-badge{display:none}}
 
 /* Material Center brand color: all new and existing primary actions inherit red. */
 .mc-brand__mark{background:linear-gradient(145deg,var(--primary),#7f0000)}

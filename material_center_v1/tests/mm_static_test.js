@@ -7,7 +7,7 @@ for(const marker of ["'up'","'down'",'purchase_price DECIMAL','raw_data_hash','i
 const adapter=read('app/Adapters/LegacyBomMaterialAdapter.php');if(!adapter.includes("preg_match('/^\\s*SELECT"))throw new Error('legacy adapter SELECT guard missing');
 if(/\b(INSERT|UPDATE|DELETE|ALTER|DROP)\s+.*bom_materials/i.test(adapter))throw new Error('legacy adapter writes legacy table');
 const parser=read('app/Domain/PowerSupply/PowerSpecParser.php');for(const marker of ['confidence','parse_rule','is_human_confirmed','installation_type','supplier_warranty_years'])if(!parser.includes(marker))throw new Error(`parser marker missing ${marker}`);
-const workbench=read('power_standardization.php'),workbenchJs=read('assets/js/power-standardization.js'),service=read('app/Services/PowerStandardizationService.php');
-for(const marker of ['current_options_ma[]','data-add-current','default_current'])if(!workbench.includes(marker)&&!workbenchJs.includes(marker))throw new Error(`multi-current UI missing ${marker}`);
-for(const marker of ['mc_power_supply_current_options','is_default','output_current_min_ma','output_current_max_ma'])if(!service.includes(marker)&&!workbenchJs.includes(marker))throw new Error(`multi-current persistence missing ${marker}`);
+const editor=read('components/layout_bottom.php'),editorJs=read('assets/js/power-editor.js'),service=read('app/Services/PowerStandardizationService.php');
+for(const marker of ['data-add-current','data-current-list','default_current'])if(!editor.includes(marker)&&!editorJs.includes(marker))throw new Error(`multi-current UI missing ${marker}`);
+for(const marker of ['mc_power_supply_current_options','is_default','output_current_min_ma','output_current_max_ma'])if(!service.includes(marker)&&!editorJs.includes(marker))throw new Error(`multi-current persistence missing ${marker}`);
 console.log(`MM static safety test passed (${required.length} tables).`);

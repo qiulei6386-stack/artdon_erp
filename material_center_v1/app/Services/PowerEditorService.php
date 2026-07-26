@@ -166,6 +166,31 @@ final class PowerEditorService
         }
     }
 
+    public function createFromSource(int $sourceRecordId, array $data, MaterialCenterUserContext $user): array
+    {
+        if ($sourceRecordId <= 0) {
+            throw new RuntimeException('电源来源记录无效。');
+        }
+        $currentOptions = $this->validateCurrents($data['currents'] ?? []);
+        if (!$currentOptions['values']) {
+            throw new RuntimeException('请至少确认一个有效输出电流。');
+        }
+        $primaryCurrent = $currentOptions['default'] ?? $currentOptions['values'][0];
+        $staged = (new PowerStandardizationService($this->db))->stageSourceRecord($sourceRecordId, $user->id);
+        $confirmed = $data;
+        $confirmed['current_options_ma'] = $currentOptions['values'];
+        $confirmed['output_current_ma'] = $primaryCurrent;
+        $confirmed['output_current_min_ma'] = min($currentOptions['values']);
+        $confirmed['output_current_max_ma'] = max($currentOptions['values']);
+        $materialId = (new PowerStandardizationService($this->db))->confirmAndCreate(
+            (int)$staged['staging_id'],
+            $confirmed,
+            $user->id
+        );
+        $data['lock_version'] = 1;
+        return $this->save($materialId, $data, $user);
+    }
+
     public function batchPreview(array $ids, array $changes, string $policy, MaterialCenterUserContext $user): array
     {
         $ids = $this->validatedIds($ids);

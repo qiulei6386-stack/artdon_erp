@@ -56,8 +56,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     const primary=drawer.querySelector('[data-drawer-primary]');
     const secondary=drawer.querySelector('[data-drawer-secondary]');
     if(data.recordKind==='source'){
-      primary.textContent=data.status==='待确认'?'确认':'进入整理';
-      primary.href=data.reviewUrl||'power_standardization.php';
+      primary.textContent='在电源页设置';
+      primary.href=data.reviewUrl||'material/power.php';
       secondary.hidden=false;
     }else{
       primary.textContent='管理正式物料';

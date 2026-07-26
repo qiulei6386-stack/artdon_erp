@@ -6,9 +6,14 @@ $workspace = file_get_contents($root . '/components/material_workspace.php');
 $layout = file_get_contents($root . '/components/layout_bottom.php');
 $export = file_get_contents($root . '/api/v1/export.php');
 
-foreach (['进入电源整理', '>导入</a>', '>导出</a>', '>日志</a>'] as $label) {
+foreach (['>导入</a>', '>导出</a>', '>日志</a>'] as $label) {
     if (!str_contains($workspace, $label)) {
         throw new RuntimeException("explicit power action missing: $label");
+    }
+}
+foreach (['进入电源整理', 'power_standardization.php', 'data-stage-power-source'] as $removed) {
+    if (str_contains($workspace . $layout . file_get_contents($root . '/assets/js/material-workspace-actions.js'), $removed)) {
+        throw new RuntimeException("removed power standardization entry remains: $removed");
     }
 }
 foreach (['电源整理工作台', '功率档管理', 'power_workbench.php?panel=fields', 'power_workbench.php?panel=mappings', 'power_workbench.php?tab=exception'] as $legacy) {

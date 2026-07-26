@@ -11,7 +11,7 @@
 | 正式电源 | `?tab=formal`、`formal_power_supplies.php` | 正式 | 原服务及旧页面保留 |
 | 重复候选 | `?tab=duplicates` | 异常 + 重复候选 | 参数兼容映射 |
 | 停用/归档 | `?tab=archived` | 异常 + 归档 | 参数兼容映射 |
-| 电源标准化 | `power_standardization.php` | 行抽屉 → 进入整理/确认 | 原页面保留 |
+| 电源设置 | 已删除 `power_standardization.php` | `material/power.php` 行内抽屉直接确认并保存 | 独立页面删除 |
 | 功率档管理 | `power_bands.php` | 更多 → 功率档设置 | 原页面嵌入 |
 | 字段设置 | `?panel=fields` | 更多 → 字段设置 | 原服务 |
 | 批量导入 | 原更多菜单 | 更多 → 批量导入 | 保留未接入真实反馈 |

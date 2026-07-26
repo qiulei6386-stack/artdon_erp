@@ -38,6 +38,14 @@ try {
             );
             $payload = json_decode((string)($_POST['payload'] ?? '{}'), true);
             $data = $service->save((int)($_POST['material_id'] ?? 0), is_array($payload) ? $payload : [], $user);
+        } elseif ($action === 'source_draft') {
+            $permissions->require($user, 'material_center.power.confirm');
+            $payload = json_decode((string)($_POST['payload'] ?? '{}'), true);
+            $data = $service->createFromSource(
+                (int)($_POST['source_record_id'] ?? 0),
+                is_array($payload) ? $payload : [],
+                $user
+            );
         } elseif ($action === 'batch_preview' || $action === 'batch_execute') {
             $permissions->require($user, 'material_center.material.batch');
             $ids = json_decode((string)($_POST['ids'] ?? '[]'), true);

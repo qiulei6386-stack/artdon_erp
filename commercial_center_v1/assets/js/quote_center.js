@@ -555,13 +555,50 @@
     };
     const field = (name) => $(`[data-field="${name}"]`, editor);
     const setField = (name, value) => { const input = field(name); if (input && value !== null && value !== undefined) input.value = value; };
-    const defaultValues = () => {
+    const configurationGroups = (productKey = '') => {
+      const match = String(productKey).match(/^(standard|custom|stock):(\d+)$/);
+      let legacyProductId = match && match[1] !== 'stock' ? match[2] : '';
+      if (match?.[1] === 'stock') {
+        const sku = (bootstrap.configuration.stock_skus || []).find(item => Number(item.id) === Number(match[2]));
+        legacyProductId = sku?.legacy_product_id || '';
+      }
+      const productGroups = legacyProductId ? (bootstrap.configuration.material_center?.[legacyProductId] || []) : [];
+      return [...(bootstrap.configuration.groups || []), ...productGroups];
+    };
+    const defaultValues = (productKey = '') => {
       const values = {};
-      (bootstrap.configuration.groups || []).forEach((group) => {
+      configurationGroups(productKey).forEach((group) => {
         const selected = (group.options || []).find((option) => Number(option.is_default) === 1) || group.options?.[0];
         if (selected) values[group.group_code] = selected.option_code;
       });
       return values;
+    };
+    const renderConfigurationGroups = (productKey = '', values = {}) => {
+      const options = $('[data-config-options]', editor);
+      options.innerHTML = '';
+      configurationGroups(productKey).forEach((group) => {
+        const label = document.createElement('label');
+        const title = document.createElement('b');
+        const select = document.createElement('select');
+        title.textContent = group.name;
+        select.dataset.configGroup = group.group_code;
+        label.append(title, select);
+        (group.options || []).forEach((option) => {
+          const node = document.createElement('option');
+          node.value = option.option_code;
+          node.textContent = option.name;
+          node.selected = values[group.group_code] !== undefined
+            ? values[group.group_code] === option.option_code
+            : Number(option.is_default) === 1;
+          select.append(node);
+        });
+        if (group.source === 'material_center') {
+          const source = document.createElement('small');
+          source.textContent = '物料中心已审批';
+          label.append(source);
+        }
+        options.append(label);
+      });
     };
     const linePayload = (row) => {
       const price = Number($('[data-price]', row)?.value || 0);
@@ -675,21 +712,7 @@
         option.dataset.product = JSON.stringify(product);
         productSelect.append(option);
       });
-      const options = $('[data-config-options]', editor);
-      options.innerHTML = '';
-      (bootstrap.configuration.groups || []).forEach((group) => {
-        const label = document.createElement('label');
-        label.innerHTML = `<b>${group.name}</b><select data-config-group="${group.group_code}"></select>`;
-        const select = $('select', label);
-        (group.options || []).forEach((option) => {
-          const node = document.createElement('option');
-          node.value = option.option_code;
-          node.textContent = option.name;
-          node.selected = Number(option.is_default) === 1;
-          select.append(node);
-        });
-        options.append(label);
-      });
+      renderConfigurationGroups('', defaultValues());
     };
     const showConfiguration = (row = null) => {
       if (!sidebar || !summaryPanel || !configPanel) {
@@ -702,12 +725,11 @@
         message('产品选择器加载失败，请刷新页面后重试。', true);
         return;
       }
-      const values = row ? JSON.parse(row.dataset.configValues || '{}') : defaultValues();
-      productSelect.value = row?.dataset.productKey || '';
+      const productKey = row?.dataset.productKey || '';
+      const values = row ? JSON.parse(row.dataset.configValues || '{}') : defaultValues(productKey);
+      productSelect.value = productKey;
       productSelect.disabled = Boolean(row);
-      $$('[data-config-group]', editor).forEach((select) => {
-        select.value = values[select.dataset.configGroup] || select.value;
-      });
+      renderConfigurationGroups(productKey, values);
       $('[data-config-messages]', editor).textContent = '';
       if (configToggle) configToggle.checked = true;
       sidebar.classList.add('is-configuring');
@@ -780,13 +802,18 @@
         productSelect.disabled = false;
         productSelect.value = '';
       }
-      const values = defaultValues();
-      $$('[data-config-group]', editor).forEach((select) => {
-        select.value = values[select.dataset.configGroup] || select.value;
-      });
+      renderConfigurationGroups('', defaultValues());
       $('[data-config-messages]', editor).textContent = '';
       sidebar?.classList.add('is-configuring');
       if (sidebar) sidebar.scrollTop = 0;
+    });
+    $('[data-config-product]', editor)?.addEventListener('change', (event) => {
+      const productKey = event.target.value || '';
+      renderConfigurationGroups(productKey, defaultValues(productKey));
+      const materialGroups = configurationGroups(productKey).filter(group => group.source === 'material_center');
+      $('[data-config-messages]', editor).textContent = productKey && !materialGroups.length
+        ? '该产品尚无物料中心已审批适配；当前仅显示商务中心基础配置。'
+        : (materialGroups.length ? `已读取 ${materialGroups.length} 个物料中心审批配置组。` : '');
     });
     editor.addEventListener('click', async (event) => {
       const configure = event.target.closest('[data-configure]');

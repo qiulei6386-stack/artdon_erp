@@ -99,7 +99,7 @@ mc_page_start('电源','power',$user);
         <a href="?tab=exception&exception=duplicate">重复检查</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'mappings']))?>">映射记录</a>
         <a href="?<?=mc_h(http_build_query($queryBase+['panel'=>'logs']))?>">操作日志</a>
-        <a href="power_standardization.php">解析规则</a>
+        <a href="material/power.php">电源设置</a>
         <button type="button" data-reset-power-view>恢复默认视图</button>
       </div>
     </div>
@@ -137,7 +137,7 @@ mc_page_start('电源','power',$user);
 <aside class="ui-drawer ui-drawer-xl power-record-drawer" id="power-record-drawer" aria-hidden="true" aria-label="电源详情">
   <header class="ui-drawer-header"><div><h2 data-drawer-title>电源详情</h2><p><span data-drawer-code></span> · <span class="ui-badge" data-drawer-status></span></p></div><button class="ui-btn ui-btn-icon ui-btn-ghost" type="button" data-ui-close aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
   <div class="ui-drawer-body" data-drawer-body><div class="ui-skeleton"></div></div>
-  <footer class="ui-drawer-footer"><a class="ui-btn ui-btn-secondary" data-drawer-secondary href="materials.php">关联已有</a><a class="ui-btn" data-drawer-primary href="power_standardization.php">进入整理</a></footer>
+  <footer class="ui-drawer-footer"><a class="ui-btn ui-btn-secondary" data-drawer-secondary href="materials.php">关联已有</a><a class="ui-btn" data-drawer-primary href="material/power.php">在电源页设置</a></footer>
 </aside>
 <script>window.MC_POWER_CSRF=<?=json_encode($csrf)?>;</script>
 <?php mc_page_end('','assets/js/power-workbench.js');?>

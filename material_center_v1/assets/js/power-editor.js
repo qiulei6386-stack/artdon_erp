@@ -165,6 +165,7 @@
     });
     qa('[data-current-list] button', form).forEach(button => button.disabled = readonly);
     q('[data-power-save]', drawer).hidden = readonly;
+    q('[data-power-submit]', drawer).hidden = readonly;
   };
 
   const fillDetail = data => {
@@ -196,8 +197,9 @@
     q('[data-power-editor-title]', drawer).textContent = data.name || '电源资料';
     q('[data-power-editor-subtitle]', drawer).textContent = `${data.material_code} · ${data.status === 'draft' ? '草稿可编辑' : '只读查看'}`;
     q('[data-power-source-note]', drawer).hidden = true;
-    q('[data-power-stage-source]', drawer).hidden = true;
     q('[data-power-save-state]', drawer).textContent = data.editable ? '未修改' : '当前状态只读';
+    q('[data-power-submit]', drawer).hidden = data.status !== 'draft';
+    q('[data-power-approve]', drawer).hidden = data.status !== 'pending_review';
     q('[data-power-error]', drawer).hidden = true;
     dirty = false;
   };
@@ -219,9 +221,10 @@
     q('[data-power-editor-title]', drawer).textContent = '新建电源';
     q('[data-power-editor-subtitle]', drawer).textContent = '创建物料中心草稿';
     q('[data-power-source-note]', drawer).hidden = true;
-    q('[data-power-stage-source]', drawer).hidden = true;
     qa('[data-price-field]', form).forEach(field => field.hidden = !schema.can_view_price);
     q('[data-power-save-state]', drawer).textContent = '尚未保存';
+    q('[data-power-submit]', drawer).hidden = true;
+    q('[data-power-approve]', drawer).hidden = true;
     q('[data-power-error]', drawer).hidden = true;
     dirty = false;
     openDrawer(drawer);
@@ -253,13 +256,18 @@
     setSelect('brand', record.brand);
     setSelect('model', record.model);
     setSelect('spec_summary', record.spec);
-    setReadonly(true);
+    setSelect('material_id', '');
+    setSelect('lock_version', '1');
+    setSelect('unit', 'PCS');
+    setSelect('installation_type', 'unknown');
+    setSelect('output_type', 'unknown');
+    setReadonly(false);
     q('[data-power-editor-title]', drawer).textContent = record.name || '旧 BOM 电源';
     q('[data-power-editor-subtitle]', drawer).textContent = `${record.code} · 待整理`;
     q('[data-power-source-note]', drawer).hidden = false;
-    q('[data-power-stage-source]', drawer).hidden = false;
-    q('[data-power-stage-source]', drawer).dataset.sourceRecordId = record.source_record_id;
-    q('[data-power-save-state]', drawer).textContent = '来源只读';
+    q('[data-power-save-state]', drawer).textContent = '确认字段后保存为草稿';
+    q('[data-power-submit]', drawer).hidden = true;
+    q('[data-power-approve]', drawer).hidden = true;
     openDrawer(drawer);
   };
 
@@ -296,10 +304,13 @@
     button.disabled = true;
     q('[data-power-save-state]', drawer).textContent = '正在保存…';
     try {
-      const detail = await post('save', {
+      const values = {
         material_id: form.elements.material_id.value,
         payload: JSON.stringify(formPayload()),
-      });
+      };
+      const action = activeRecord?.read_only ? 'source_draft' : 'save';
+      if (activeRecord?.read_only) values.source_record_id = activeRecord.source_record_id;
+      const detail = await post(action, values);
       fillDetail(detail);
       q('[data-power-save-state]', drawer).textContent = '已保存';
       toast('电源已保存', '全部字段、多电流和调光方式已写入。');
@@ -313,19 +324,16 @@
     }
   };
 
-  const stageSource = async button => {
-    button.disabled = true;
-    try {
-      const body = new FormData();
-      body.set('csrf_token', window.MC_CSRF || '');
-      body.set('action', 'stage_source');
-      body.set('source_record_id', button.dataset.sourceRecordId || '');
-      const data = await request(`${window.MC_BASE_URL}/api/v1/power-standardization.php`, { method: 'POST', body });
-      location.href = `${window.MC_BASE_URL}/${data.review_url}`;
-    } catch (error) {
-      toast('整理失败', error.message);
-      button.disabled = false;
-    }
+  const lifecycle = async action => {
+    const materialId = form.elements.material_id.value;
+    if (!materialId) return;
+    const body = new FormData();
+    body.set('csrf_token', window.MC_CSRF || '');
+    body.set('action', action);
+    body.set('material_id', materialId);
+    const response = await request(`${window.MC_BASE_URL}/api/v1/material-master.php`, { method: 'POST', body });
+    toast(action === 'approve' ? '电源已转正式' : '电源已提交确认', response.message || '状态已更新');
+    setTimeout(() => location.reload(), 400);
   };
 
   const batchDefinitions = () => [
@@ -541,7 +549,6 @@
       openBatch(batchButton).catch(error => toast('打开失败', error.message));
       return;
     }
-    if (event.target.closest('[data-stage-power-source]')) return;
     if ((detailButton || row) && row?.closest('[data-workspace]') === workspace && !event.target.closest('input,a')) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -570,7 +577,8 @@
     q('[data-power-save-state]', drawer).textContent = '有未保存修改';
   });
   q('[data-power-save]', drawer).addEventListener('click', save);
-  q('[data-power-stage-source]', drawer).addEventListener('click', event => stageSource(event.currentTarget));
+  q('[data-power-submit]', drawer).addEventListener('click', () => lifecycle('submit').catch(error => toast('提交失败', error.message)));
+  q('[data-power-approve]', drawer).addEventListener('click', () => lifecycle('approve').catch(error => toast('转正式失败', error.message)));
   q('[data-power-batch-preview-button]', batchDrawer).addEventListener('click', previewBatch);
   q('[data-power-batch-execute]', batchDrawer).addEventListener('click', executeBatch);
   qa('[data-close-layer]', drawer).forEach(button => button.addEventListener('click', event => {
