@@ -2,6 +2,14 @@
 
 更新时间：2026-07-26
 
+## 本次：报价逻辑十步实施 Step 2 现有系统审计
+
+- 严格只执行 Step 2，新建 `commercial_center_v1/docs/quote_logic/step02_existing_audit.md`；只读审计报价相关数据表与字段、商务中心及旧报价路由/API、保存/编辑/审核/价格/BOM/佣金/转订单能力，以及正式 PI、人民币订购合同、Commercial Invoice、Packing List 的 PDF、打印和 Excel 入口。
+- 确认正式报价数据仍由旧 `quote_*` 模型承载：审计时 `quote_orders` 35 条、`quote_sales_orders` 8 条、`quote_shipments` 2 条、`quote_logs` 7705 条；预建 `cc_quotes`、`cc_quote_versions`、`cc_quote_items`、`cc_quote_item_snapshots` 均为空。后续必须先制定兼容迁移方案，不得重复建立第三套报价模型。
+- 正式 PI/订购合同模板定位为根目录 `crm_quote_pdf.php` 和 `crm_quote_excel.php`；正式 CI/PL 定位为 `quote_order_doc.php` 和 `quote_order_excel.php`，并保留现有兼容桥。商务中心 `modules/documents` 的 `legacy_v1` 明确是演示模板，不得替代正式模板。
+- 记录旧系统硬删除、运行时改表、JSON 明细/审核快照、定制编辑路由、报价发送和附件规范化等风险；本步未调用任何写数据库动作，未修改业务代码、数据库、菜单、UI、路由、接口或旧报价数据，未进入 Step 3。
+- 修改文件：新增 `commercial_center_v1/docs/quote_logic/step02_existing_audit.md`，更新 `WORK_CONTEXT.md`；最终检查、提交、部署和三方一致性见本轮最终结果。
+
 ## 本次：报价逻辑十步实施 Step 1 UI 冻结
 
 - 已完整读取工作区实际存在的 `commercial_center_v1/docs/Artdon_商务中心_报价逻辑十步实施说明(1).md`；用户指定的不带 `(1)` 文件名当前不存在。
