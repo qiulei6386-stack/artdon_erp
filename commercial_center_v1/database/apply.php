@@ -24,6 +24,7 @@ $allowedMigrations = [
     '007_commercial_foundation.sql' => ['cc_commercial_tasks','cc_quotation_logs','cc_commercial_settings','cc_commercial_permissions','cc_approval_flows'],
     '008_permission_center.sql' => ['cc_roles','cc_permissions','cc_role_permissions','cc_user_roles','cc_field_permissions','cc_data_permissions','cc_system_logs'],
     '009_product_sync.sql' => ['cc_commercial_products','cc_product_sync_logs','cc_product_options'],
+    '010_unified_quote_model.sql' => ['cc_quote_details','cc_quote_item_details','cc_quote_files','cc_quote_item_files','cc_quote_snapshots','cc_quote_legacy_links'],
 ];
 if (!isset($allowedMigrations[$migrationName])) {
     fwrite(STDERR, "Refusing migration: file is not approved.\n");
@@ -90,6 +91,16 @@ try {
         throw new RuntimeException('Connected database does not match the approved target.');
     }
 
+    $checksum = hash_file('sha256', $migrationFile);
+    $existingMigration = $pdo->prepare(
+        'SELECT checksum FROM cc_schema_migrations WHERE migration_name=? LIMIT 1'
+    );
+    $existingMigration->execute([$migrationName]);
+    $existingChecksum = $existingMigration->fetchColumn();
+    if (is_string($existingChecksum) && $existingChecksum !== '' && !hash_equals($existingChecksum, $checksum)) {
+        throw new RuntimeException('Recorded migration checksum does not match the requested file.');
+    }
+
     foreach ($statements as $statement) {
         $pdo->exec($statement);
     }
@@ -107,6 +118,15 @@ try {
     if (count($created) !== count($expectedTables)) {
         throw new RuntimeException('Not all approved tables are present after migration.');
     }
+
+    $record = $pdo->prepare(
+        "INSERT INTO cc_schema_migrations
+            (migration_name,checksum,execution_status,applied_by_legacy_user_id,applied_at,created_at)
+         VALUES (?,?, 'applied', NULL, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+            execution_status='applied',applied_at=NOW()"
+    );
+    $record->execute([$migrationName, $checksum]);
 
     echo "Migration applied to {$databaseName}.\n";
     echo "Verified tables:\n- " . implode("\n- ", $created) . "\n";

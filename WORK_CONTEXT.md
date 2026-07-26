@@ -2,6 +2,15 @@
 
 更新时间：2026-07-26
 
+## 本次：报价逻辑十步实施 Step 3 统一报价公共数据模型
+
+- 严格只执行 Step 3，沿用现有空的 `cc_quotes`、`cc_quote_versions`、`cc_quote_items`、`cc_quote_item_snapshots` 作为唯一新报价主链，不建立第三套主表；旧 `quote_orders` 保持只读兼容。
+- 新增幂等迁移 `commercial_center_v1/database/migrations/010_unified_quote_model.sql`，补齐报价头扩展、明细扩展、报价附件、明细附件、报价版本快照及旧报价映射六张 `cc_*` 表；不修改任何旧表。
+- 新增统一 `QuoteService`、`QuoteRepository`、`QuoteAmountCalculator`、`QuoteNumberService`：三种报价共用保存、重新打开、编辑、金额/成本/毛利计算、编号、版本、快照和日志能力；网站订单强制保存来源订单及来源行快照并锁定。
+- 新增 `tests/quote_model_smoke.php`，用于验证网站订单、标准品、定制品三种测试报价可保存并重开，标准品可编辑为版本 2，旧报价仍可读取；测试数据结束后从 `cc_*` 表清理。
+- 新增 `docs/quote_logic/step03_unified_quote_model.md` 记录表映射、服务边界、保存规则、旧数据兼容和验收方法。本步不接页面保存 API，不执行 Step 4 的状态流、权限和正式审核快照。
+- 修改文件与最终迁移、检查、提交、部署及三方一致性结果见本轮最终结果。
+
 ## 本次：报价逻辑十步实施 Step 2 现有系统审计
 
 - 严格只执行 Step 2，新建 `commercial_center_v1/docs/quote_logic/step02_existing_audit.md`；只读审计报价相关数据表与字段、商务中心及旧报价路由/API、保存/编辑/审核/价格/BOM/佣金/转订单能力，以及正式 PI、人民币订购合同、Commercial Invoice、Packing List 的 PDF、打印和 Excel 入口。
