@@ -53,4 +53,36 @@ final class SourceSyncService
         $summary['errors']=(int)$this->db->query('SELECT COUNT(*) FROM mc_import_errors')->fetchColumn();
         return$summary;
     }
+
+    public function materialRows(string $categoryCode='',int $limit=2000): array
+    {
+        $limit=max(1,min(5000,$limit));
+        $categoryMap=[
+            'power_supply'=>['驱动','电源'],
+            'chip'=>['芯片'],
+            'optical'=>['光学'],
+            'profile'=>['型材','外壳'],
+            'connector'=>['接头'],
+            'accessory'=>['附件'],
+            'packaging'=>['包装'],
+        ];
+        $where="WHERE source_system='guangzhou_bom' AND source_table='bom_materials' AND matched_material_id IS NULL";
+        $params=[];
+        if($categoryCode!==''){
+            $categories=$categoryMap[$categoryCode]??[];
+            if(!$categories)return[];
+            $where.=' AND JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,\'$.category\')) IN ('.implode(',',array_fill(0,count($categories),'?')).')';
+            $params=$categories;
+        }
+        $sql="SELECT id source_record_id,source_pk,status,read_at,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.name')) material_name,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.brand')) brand,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.model')) model,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.spec')) spec,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.unit')) unit_name,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.category')) legacy_category
+            FROM mc_source_records $where ORDER BY CAST(source_pk AS UNSIGNED) DESC,id DESC LIMIT $limit";
+        $stmt=$this->db->prepare($sql);$stmt->execute($params);
+        return$stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }

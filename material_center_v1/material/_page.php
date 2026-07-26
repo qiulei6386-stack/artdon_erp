@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use Artdon\MaterialCenter\Services\MaterialMasterService;
+use Artdon\MaterialCenter\Services\SourceSyncService;
 
 require_once dirname(__DIR__).'/bootstrap.php';
 $pages = require MC_ROOT.'/config/material_pages.php';
@@ -28,6 +29,26 @@ foreach ($records as $record) {
         'id'=>(int)$record['id'],
         'category_id'=>(int)$record['category_id'],
         'lock_version'=>(int)($record['lock_version']??1),
+        'read_only'=>false,
+    ];
+}
+foreach((new SourceSyncService())->materialRows($category) as$record){
+    $spec=trim((string)($record['spec']??''));
+    if($spec==='')$spec=implode(' · ',array_filter([(string)($record['legacy_category']??''),(string)($record['brand']??''),(string)($record['model']??'')]));
+    $rows[]=[
+        'BOM-'.(string)$record['source_pk'],
+        (string)($record['material_name']??''),
+        (string)($record['brand']??''),
+        (string)($record['model']??''),
+        $spec?:'—',
+        $record['status']==='changed'?'异常':'待整理',
+        '旧 BOM（只读）',
+        '',
+        'id'=>0,
+        'source_record_id'=>(int)$record['source_record_id'],
+        'category_id'=>0,
+        'lock_version'=>0,
+        'read_only'=>true,
     ];
 }
 $config['category_code']=$category;
