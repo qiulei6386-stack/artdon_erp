@@ -32,6 +32,230 @@
 
   const editor = $('[data-quote-editor]');
   if (!editor) return;
+  if (editor.matches('[data-custom-quote]')) {
+    const api = editor.dataset.api;
+    const tbody = $('[data-quote-lines]', editor);
+    let csrf = '';
+    let quoteId = Number(editor.dataset.quoteId || 0);
+    let bootstrap = {};
+    const field = (name) => $(`[data-custom-field="${name}"]`, editor);
+    const message = (text, error = false) => {
+      const node = $('[data-custom-message]', editor);
+      node.textContent = text;
+      node.classList.toggle('error', error);
+    };
+    const request = async (payload = null, query = '') => {
+      const response = await fetch(`${api}${query}`, payload ? {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, csrf }),
+      } : {});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || '定制品报价请求失败。');
+      return data;
+    };
+    const recalculate = () => {
+      let subtotal = 0;
+      $$('tr', tbody).forEach((row, index) => {
+        row.firstElementChild.textContent = index + 1;
+        const amount = Number($('[data-qty]', row).value || 0) * Number($('[data-price]', row).value || 0);
+        const cost = Number($('[data-estimated-cost]', row).value || 0) * Number($('[data-qty]', row).value || 0);
+        $('[data-margin]', row).textContent = amount > 0 ? `${(((amount - cost) / amount) * 100).toFixed(1)}%` : '0%';
+        subtotal += amount;
+      });
+      $('[data-subtotal]', editor).textContent = subtotal.toFixed(2);
+      $('[data-grand-total]', editor).textContent = Math.max(0, subtotal
+        - Number($('[data-order-discount]', editor).value || 0)
+        + Number($('[data-shipping]', editor).value || 0)
+        + Number($('[data-tax]', editor).value || 0)).toFixed(2);
+    };
+    const addRow = (item = {}) => {
+      const custom = item.custom_fields || {};
+      const row = document.createElement('tr');
+      row.dataset.itemId = item.id || '';
+      row.innerHTML = `<td></td><td><input data-name><small><input data-material placeholder="材质"><input data-color placeholder="颜色"></small></td>
+        <td><textarea data-spec placeholder="规格 / 尺寸 / 功率 / 安装 / 工艺"></textarea></td><td><input data-unit value="PCS"></td>
+        <td><input data-qty type="number" min=".001" step=".001" value="1"></td><td><input data-price type="number" min="0" step=".01" value="0"></td>
+        <td><input data-target-cost type="number" min="0" step=".01" value="0"></td><td><input data-estimated-cost type="number" min="0" step=".01" value="0"></td>
+        <td data-margin>0%</td><td><input data-lead></td><td><label class="line-upload">上传<input type="file" hidden data-item-upload></label></td>
+        <td><button type="button" data-custom-fields>详细字段</button><button type="button" class="text-danger" data-custom-remove>删除</button></td>`;
+      $('[data-name]', row).value = item.product_name || item.description || '';
+      $('[data-material]', row).value = custom.material || '';
+      $('[data-color]', row).value = custom.color || '';
+      $('[data-spec]', row).value = item.configuration_snapshot?.specification || '';
+      $('[data-unit]', row).value = item.unit || 'PCS';
+      $('[data-qty]', row).value = item.quantity || 1;
+      $('[data-price]', row).value = item.unit_price || 0;
+      $('[data-target-cost]', row).value = custom.target_cost || 0;
+      $('[data-estimated-cost]', row).value = custom.estimated_cost || 0;
+      $('[data-lead]', row).value = item.lead_time || '';
+      row.dataset.custom = JSON.stringify(custom);
+      row.dataset.referenceProductId = item.reference_product_id || '';
+      tbody.append(row);
+      recalculate();
+    };
+    const renderFiles = (quote) => {
+      const target = $('[data-custom-files]', editor);
+      target.innerHTML = '';
+      (quote.files || []).forEach((file) => {
+        const node = document.createElement('span');
+        node.draggable = true;
+        node.dataset.fileId = file.id;
+        node.innerHTML = `<a target="_blank"></a><button type="button" data-delete-file>×</button>`;
+        $('a', node).href = file.storage_path;
+        $('a', node).textContent = file.original_name;
+        target.append(node);
+      });
+    };
+    const renderQuote = (quote) => {
+      if (!quote) return;
+      quoteId = Number(quote.id);
+      editor.dataset.quoteId = quoteId;
+      field('quote_no').value = quote.quote_no;
+      field('customer_id').value = quote.legacy_customer_id || '';
+      ['contact_name','country','currency','valid_until','owner_name','payment_terms','trade_terms','customer_note','internal_note']
+        .forEach((name) => { if (field(name)) field(name).value = quote[name] || ''; });
+      const source = quote.source_snapshot || {};
+      ['project_name','project_type','requirement_summary','crm_opportunity','crm_project']
+        .forEach((name) => { field(name).value = source[name] || ''; });
+      $('[data-order-discount]', editor).value = quote.discount_amount || 0;
+      $('[data-shipping]', editor).value = quote.shipping_amount || 0;
+      $('[data-tax]', editor).value = quote.tax_amount || 0;
+      $('[data-custom-status]', editor).textContent = quote.status;
+      tbody.innerHTML = '';
+      (quote.items || []).forEach(addRow);
+      (quote.item_files || []).forEach((file) => {
+        const row = $$('tr', tbody).find((candidate) => Number(candidate.dataset.itemId) === Number(file.quote_item_id));
+        const label = row ? $('.line-upload', row) : null;
+        if (label) {
+          const link = document.createElement('a');
+          link.href = file.storage_path; link.target = '_blank'; link.textContent = file.original_name;
+          label.before(link);
+        }
+      });
+      renderFiles(quote);
+      recalculate();
+      message(`报价 ${quote.quote_no} 已保存`);
+    };
+    const payload = () => ({
+      id: quoteId, customer_id: Number(field('customer_id').value || 0),
+      contact_name: field('contact_name').value, country: field('country').value, currency: field('currency').value,
+      valid_until: field('valid_until').value || null, payment_terms: field('payment_terms').value,
+      trade_terms: field('trade_terms').value, project_name: field('project_name').value,
+      project_type: field('project_type').value, requirement_summary: field('requirement_summary').value,
+      crm_opportunity: field('crm_opportunity').value, crm_project: field('crm_project').value,
+      customer_note: field('customer_note').value, internal_note: field('internal_note').value,
+      discount_amount: Number($('[data-order-discount]', editor).value || 0),
+      shipping_amount: Number($('[data-shipping]', editor).value || 0),
+      tax_amount: Number($('[data-tax]', editor).value || 0),
+      items: $$('tr', tbody).map((row, index) => {
+        const custom = JSON.parse(row.dataset.custom || '{}');
+        custom.material = $('[data-material]', row).value;
+        custom.color = $('[data-color]', row).value;
+        custom.target_cost = Number($('[data-target-cost]', row).value || 0);
+        custom.estimated_cost = Number($('[data-estimated-cost]', row).value || 0);
+        return {
+          product_name: $('[data-name]', row).value, description: $('[data-name]', row).value,
+          configuration_snapshot: { specification: $('[data-spec]', row).value },
+          unit: $('[data-unit]', row).value, quantity: Number($('[data-qty]', row).value || 0),
+          unit_price: Number($('[data-price]', row).value || 0), lead_time: $('[data-lead]', row).value,
+          reference_product_id: Number(row.dataset.referenceProductId || 0) || null, custom_fields: custom, sort_order: index,
+        };
+      }),
+    });
+    const save = async () => {
+      const data = await request({ action: 'save', quote: payload() });
+      renderQuote(data.quote);
+      history.replaceState(null, '', `?page=quote_center&quote_mode=custom&editor=1&quote_id=${quoteId}`);
+      return data.quote;
+    };
+    const upload = async (input, itemId = '') => {
+      const selectedFile = input.files[0];
+      if (!quoteId) await save();
+      if (itemId === '') {
+        const currentRow = input.closest('tr');
+        const rowIndex = currentRow ? $$('tr', tbody).indexOf(currentRow) : -1;
+        itemId = currentRow?.dataset.itemId || '';
+        if (!itemId && rowIndex >= 0) {
+          await save();
+          itemId = $$('tr', tbody)[rowIndex]?.dataset.itemId || '';
+        }
+      }
+      const form = new FormData();
+      form.append('action', 'upload'); form.append('csrf', csrf); form.append('quote_id', quoteId);
+      form.append('item_id', itemId); form.append('file_type', input.dataset.customUpload || 'document');
+      form.append('file', selectedFile);
+      const response = await fetch(api, { method: 'POST', body: form });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || '上传失败。');
+      renderQuote(data.quote);
+    };
+    $('[data-custom-add]', editor).addEventListener('click', () => addRow());
+    $('[data-custom-save]', editor).addEventListener('click', () => save().catch((error) => message(error.message, true)));
+    $('[data-custom-submit]', editor).addEventListener('click', async () => {
+      try { if (!quoteId) await save(); renderQuote((await request({ action: 'submit', quote_id: quoteId })).quote); }
+      catch (error) { message(error.message, true); }
+    });
+    $('[data-custom-approve]', editor).addEventListener('click', async () => {
+      try { renderQuote((await request({ action: 'approve', quote_id: quoteId, reason: '定制品核价审核通过' })).quote); }
+      catch (error) { message(error.message, true); }
+    });
+    $$('[data-custom-handoff]', editor).forEach((button) => button.addEventListener('click', async () => {
+      try {
+        const data = await request({ action: 'handoff', quote_id: quoteId, type: button.dataset.customHandoff });
+        message(`已建立转${data.handoff.type === 'project' ? '项目' : '订单'}快照。`);
+      } catch (error) { message(error.message, true); }
+    }));
+    editor.addEventListener('input', (event) => {
+      if (event.target.matches('[data-qty],[data-price],[data-estimated-cost],[data-order-discount],[data-shipping],[data-tax]')) recalculate();
+    });
+    editor.addEventListener('change', (event) => {
+      if (event.target.matches('[data-custom-upload],[data-item-upload]') && event.target.files?.[0]) {
+        upload(event.target).catch((error) => message(error.message, true));
+      }
+      if (event.target === field('customer_id')) {
+        const customer = JSON.parse(event.target.selectedOptions[0]?.dataset.customer || '{}');
+        field('contact_name').value = customer.contact_name || '';
+        field('country').value = customer.country || '';
+      }
+    });
+    editor.addEventListener('click', async (event) => {
+      const remove = event.target.closest('[data-custom-remove]');
+      if (remove) { remove.closest('tr').remove(); if (!$('tr', tbody)) addRow(); recalculate(); }
+      const details = event.target.closest('[data-custom-fields]');
+      if (details) {
+        const row = details.closest('tr');
+        const custom = JSON.parse(row.dataset.custom || '{}');
+        custom.dimensions = prompt('尺寸', custom.dimensions || '') ?? custom.dimensions;
+        custom.power = prompt('功率', custom.power || '') ?? custom.power;
+        custom.installation = prompt('安装方式', custom.installation || '') ?? custom.installation;
+        custom.special_process = prompt('特殊工艺', custom.special_process || '') ?? custom.special_process;
+        custom.pricing_opinion = prompt('核价意见', custom.pricing_opinion || '') ?? custom.pricing_opinion;
+        custom.approval_opinion = prompt('审核意见', custom.approval_opinion || '') ?? custom.approval_opinion;
+        const reference = prompt('关联标准产品 ID（可留空）', row.dataset.referenceProductId || '');
+        row.dataset.referenceProductId = reference || '';
+        row.dataset.custom = JSON.stringify(custom);
+      }
+      const deletion = event.target.closest('[data-delete-file]');
+      if (deletion) {
+        try {
+          await request({ action: 'delete_file', quote_id: quoteId, file_id: Number(deletion.parentElement.dataset.fileId), item_file: false });
+          deletion.parentElement.remove();
+        } catch (error) { message(error.message, true); }
+      }
+    });
+    request(null, quoteId ? `?quote_id=${quoteId}` : '').then((data) => {
+      csrf = data.csrf; bootstrap = data.data || {};
+      const customer = field('customer_id');
+      customer.innerHTML = '<option value="">选择 CRM 客户</option>';
+      (bootstrap.customers || []).forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.id; option.textContent = `${item.customer_code || ''} ${item.customer_name || item.customer_name_en || ''}`;
+        option.dataset.customer = JSON.stringify(item); customer.append(option);
+      });
+      if (data.quote) renderQuote(data.quote); else addRow();
+    }).catch((error) => message(error.message, true));
+    return;
+  }
   if (editor.matches('[data-website-quote]')) {
     const api = editor.dataset.api;
     const tbody = $('[data-quote-lines]', editor);

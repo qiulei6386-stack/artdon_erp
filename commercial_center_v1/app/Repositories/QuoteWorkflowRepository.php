@@ -67,10 +67,38 @@ final class QuoteWorkflowRepository
             $newItemId = (int)$this->connection->lastInsertId();
             $this->copyItemDetail($oldItemId, $newItemId);
             $this->copyItemSnapshot($oldItemId, $newItemId);
+            $this->copyItemFiles($oldItemId, $newItemId);
         }
         $update = $this->connection->prepare('UPDATE cc_quotes SET current_version=?,updated_at=NOW() WHERE id=?');
         $update->execute([$newVersionNo, $quoteId]);
         return $newVersionId;
+    }
+
+    private function copyItemFiles(int $oldItemId, int $newItemId): void
+    {
+        $statement = $this->connection->prepare(
+            'SELECT f.*,o.sort_order FROM cc_quote_item_files f
+             LEFT JOIN cc_quote_file_orders o ON o.quote_item_file_id=f.id
+             WHERE f.quote_item_id=? AND f.status=\'active\' ORDER BY COALESCE(o.sort_order,999999),f.id'
+        );
+        $statement->execute([$oldItemId]);
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $file) {
+            $insert = $this->connection->prepare(
+                'INSERT INTO cc_quote_item_files
+                 (quote_item_id,file_type,original_name,storage_path,mime_type,file_size,file_hash,status,
+                  uploaded_by_legacy_user_id,created_at,updated_at)
+                 VALUES (?,?,?,?,?,?,?,\'active\',?,NOW(),NOW())'
+            );
+            $insert->execute([
+                $newItemId,$file['file_type'],$file['original_name'],$file['storage_path'],$file['mime_type'],
+                $file['file_size'],$file['file_hash'],$file['uploaded_by_legacy_user_id'],
+            ]);
+            $newFileId = (int)$this->connection->lastInsertId();
+            $this->connection->prepare(
+                'INSERT INTO cc_quote_file_orders (quote_item_file_id,sort_order,created_at,updated_at)
+                 VALUES (?,?,NOW(),NOW())'
+            )->execute([$newFileId,(int)($file['sort_order'] ?? 0)]);
+        }
     }
 
     public function createSnapshot(int $quoteId, string $type, int $actorId): array

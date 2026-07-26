@@ -23,7 +23,11 @@ if ($quoteMode !== '') {
             $catalogRows[] = ['model_no'=>$product[0],'product_name'=>$product[1],'category'=>$product[2],'image_path'=>$product[3],'bom_cost'=>$product[4] / 1.65,'preview_only'=>true];
         }
     }
-    require __DIR__ . '/quote_' . $quoteMode . '.php';
+    if ($quoteMode === 'custom' && (string)($_GET['editor'] ?? '') === '1') {
+        require __DIR__ . '/quote_custom_editor.php';
+    } else {
+        require __DIR__ . '/quote_' . $quoteMode . '.php';
+    }
     return;
 }
 require __DIR__ . '/quote_custom.php';
