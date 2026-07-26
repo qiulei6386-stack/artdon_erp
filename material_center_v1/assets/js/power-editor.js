@@ -402,13 +402,17 @@
     return request(`${window.MC_BASE_URL}/api/v1/material-master.php`, { method: 'POST', body });
   };
 
-  const save = async (mode = 'draft') => {
+  const save = async (mode = 'draft', trigger = null) => {
     const error = q('[data-power-error]', drawer);
-    const button = q('[data-power-save]', drawer);
+    const button = trigger || q('[data-power-save]', drawer);
+    const idleLabel = button.textContent;
+    const pendingLabel = mode === 'approve' ? '正在转正式…' : (mode === 'submit' ? '正在提交…' : '正在保存…');
     error.hidden = true;
     if (!form.reportValidity()) return;
     button.disabled = true;
-    q('[data-power-save-state]', drawer).textContent = '正在保存…';
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = pendingLabel;
+    q('[data-power-save-state]', drawer).textContent = pendingLabel;
     try {
       const values = {
         material_id: form.elements.material_id.value,
@@ -430,21 +434,55 @@
         mode === 'draft' ? '全部字段、多电流和调光方式已写入。' : '来源映射和生命周期已更新。'
       );
       setTimeout(() => location.reload(), 500);
+      return true;
     } catch (reason) {
       error.textContent = reason.message;
       error.hidden = false;
-      q('[data-power-save-state]', drawer).textContent = '保存失败';
+      q('[data-power-save-state]', drawer).textContent = mode === 'approve' ? '转正式失败' : (mode === 'submit' ? '提交失败' : '保存失败');
+      toast(q('[data-power-save-state]', drawer).textContent, reason.message);
+      return false;
     } finally {
       button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.textContent = idleLabel;
     }
   };
 
-  const lifecycle = async action => {
+  const lifecycle = async (action, trigger) => {
     const materialId = form.elements.material_id.value;
-    if (!materialId) return;
-    const response = await lifecycleRequest(materialId, action);
-    toast(action === 'approve' ? '电源已转正式' : '电源已提交确认', response.message || '状态已更新');
-    setTimeout(() => location.reload(), 400);
+    const error = q('[data-power-error]', drawer);
+    const state = q('[data-power-save-state]', drawer);
+    const idleLabel = trigger.textContent;
+    const pendingLabel = action === 'approve' ? '正在转正式…' : '正在提交…';
+    error.hidden = true;
+    if (!materialId) {
+      error.textContent = '当前电源尚未形成物料草稿，请先保存后再操作。';
+      error.hidden = false;
+      state.textContent = '状态操作失败';
+      return false;
+    }
+    trigger.disabled = true;
+    trigger.setAttribute('aria-busy', 'true');
+    trigger.textContent = pendingLabel;
+    state.textContent = pendingLabel;
+    try {
+      const response = await lifecycleRequest(materialId, action);
+      dirty = false;
+      state.textContent = action === 'approve' ? '已转正式' : '已提交确认';
+      toast(action === 'approve' ? '电源已转正式' : '电源已提交确认', response?.message || '状态已更新');
+      setTimeout(() => location.reload(), 400);
+      return true;
+    } catch (reason) {
+      error.textContent = reason.message;
+      error.hidden = false;
+      state.textContent = action === 'approve' ? '转正式失败' : '提交失败';
+      toast(state.textContent, reason.message);
+      return false;
+    } finally {
+      trigger.disabled = false;
+      trigger.removeAttribute('aria-busy');
+      trigger.textContent = idleLabel;
+    }
   };
 
   const batchDefinitions = () => [
@@ -687,15 +725,22 @@
     dirty = true;
     q('[data-power-save-state]', drawer).textContent = '有未保存修改';
   });
-  q('[data-power-save]', drawer).addEventListener('click', () => save('draft'));
-  q('[data-power-submit]', drawer).addEventListener('click', () => {
-    const operation = activeRecord?.read_only ? save('submit') : lifecycle('submit');
-    operation.catch(error => toast('提交失败', error.message));
+  q('[data-power-save]', drawer).addEventListener('click', event => save('draft', event.currentTarget));
+  q('[data-power-submit]', drawer).addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    if (activeRecord?.read_only) save('submit', button);
+    else lifecycle('submit', button);
   });
-  q('[data-power-approve]', drawer).addEventListener('click', () => {
-    if (!confirm('确认字段无误并将电源转为正式？正式物料不能物理删除。')) return;
-    const operation = activeRecord?.read_only ? save('approve') : lifecycle('approve');
-    operation.catch(error => toast('转正式失败', error.message));
+  q('[data-power-approve]', drawer).addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    if (activeRecord?.read_only) save('approve', button);
+    else lifecycle('approve', button);
   });
   q('[data-power-batch-preview-button]', batchDrawer).addEventListener('click', previewBatch);
   q('[data-power-batch-execute]', batchDrawer).addEventListener('click', executeBatch);

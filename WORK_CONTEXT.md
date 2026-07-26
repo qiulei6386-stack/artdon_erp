@@ -1,6 +1,15 @@
 # Artdon ERP 工作上下文
 
-更新时间：2026-07-26
+更新时间：2026-07-27
+
+## 本次：修复电源“确认并转正式”点击无响应
+
+- 生产只读核对：用户电源 `PS-BOM-000647 / 伊戈尔 新款高P无频闪外置驱动` 仍为 `pending_review`，只有 `draft → pending_review` 的提交事件，没有 approve 生命周期或操作日志；账号 `qiulei` 为统一账号超级管理员，审批权限正常，因此没有擅自改动该条生产数据。
+- 根因：统一来源整理改动为电源转正式入口新增了浏览器原生 `confirm()` 门槛；点击未进入 `material-master.php`，错误也只能显示短暂 Toast，造成“点了没反应”。
+- 修复：去掉转正式入口对原生确认框的依赖，按钮点击后立即调用生命周期 API；按钮显示“正在转正式…”，请求期间禁用防止重复提交，成功显示“已转正式”，失败原因同时保留在抽屉内和 Toast。提交确认入口同步增加相同的可见进度和错误反馈。
+- 回归：电源编辑器合同测试新增“审批不得依赖原生确认框”的约束；真实集成测试新增草稿提交、待确认审批、`official / is_official / allow_bom / allow_quote` 四项正式状态校验，并在 finally 中清理临时测试物料。
+- 本地检查：电源脚本已通过 macOS JavaScriptCore 解析，两个改动测试文件已通过服务器 PHP CLI 对本地内容的输入语法检查，`git diff --check` 通过。本机没有 PHP CLI，且当前没有可连接的登录态内置浏览器；部署后必须在服务器执行合同、集成、页面和三方一致性复检。
+- 修改文件：`material_center_v1/assets/js/power-editor.js`、`material_center_v1/tests/power_editor_contract_test.php`、`material_center_v1/tests/power_editor_integration.php`、`WORK_CONTEXT.md`。未修改数据库结构、旧 BOM 或用户现有电源状态；未触碰商务中心既存删除和未跟踪文件。
 
 ## 本次：统一七类来源物料整理逻辑
 

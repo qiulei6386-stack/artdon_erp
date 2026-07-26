@@ -99,7 +99,23 @@ try {
     if ($restored['installation_type'] !== 'internal' || count($restored['currents']) !== 2) {
         throw new RuntimeException('batch rollback did not restore the original values');
     }
-    echo "Power editor integration passed: single save, multi-value fields, batch preview/execute/rollback.\n";
+    $master = new MaterialMasterService($db);
+    $master->transition($materialIds[0], 'submit', $context->id);
+    $master->transition($materialIds[0], 'approve', $context->id);
+    $official = $db->prepare(
+        'SELECT status,is_official,allow_bom,allow_quote FROM mc_materials WHERE id=?'
+    );
+    $official->execute([$materialIds[0]]);
+    $official = $official->fetch(PDO::FETCH_ASSOC);
+    if (
+        ($official['status'] ?? '') !== 'official'
+        || (int)($official['is_official'] ?? 0) !== 1
+        || (int)($official['allow_bom'] ?? 0) !== 1
+        || (int)($official['allow_quote'] ?? 0) !== 1
+    ) {
+        throw new RuntimeException('power approval did not enable the official material flags');
+    }
+    echo "Power editor integration passed: single save, multi-value fields, batch preview/execute/rollback and approval.\n";
 } finally {
     if ($jobUuid !== '') {
         $stmt = $db->prepare('SELECT id FROM mc_batch_jobs WHERE job_uuid=?');

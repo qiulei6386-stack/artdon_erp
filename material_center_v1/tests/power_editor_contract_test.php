@@ -17,11 +17,14 @@ foreach ([
 }
 foreach ([
     'openMaterial', 'openSource', 'collectBatchChanges', 'batch_preview', 'batch_execute', 'rollback',
-    '有未保存修改', '只修改你明确启用的项目',
+    '有未保存修改', '只修改你明确启用的项目', '正在转正式…', "event.stopPropagation();",
 ] as $marker) {
     if (!str_contains($script.$layout, $marker)) {
         throw new RuntimeException("power interaction missing: {$marker}");
     }
+}
+if (str_contains($script, "confirm('确认字段无误并将电源转为正式")) {
+    throw new RuntimeException('power approval must immediately call the lifecycle API instead of relying on a native confirm dialog');
 }
 foreach ([
     'mc_power_supply_current_options', 'mc_power_supply_dimming_modes', 'mc_batch_jobs',
