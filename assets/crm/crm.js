@@ -8763,6 +8763,10 @@
       });
       document.querySelector('[data-mail-compose-close]')?.addEventListener('click', function () { self.closeCompose(); });
       document.querySelector('[data-mail-compose-cancel]')?.addEventListener('click', function () { self.closeCompose(); });
+      document.querySelector('[data-mail-compose-dialog]')?.addEventListener('cancel', function (event) {
+        event.preventDefault();
+        self.closeCompose();
+      });
       document.querySelector('[data-mail-save-draft]')?.addEventListener('click', function () { self.saveDraft(); });
       document.querySelector('[data-mail-insert-signature]')?.addEventListener('change', function () { self.updateComposeFooterStatus(); });
       document.querySelector('[data-mail-compose-form]')?.addEventListener('submit', function (event) {
@@ -12160,6 +12164,7 @@
       });
     },
     openCompose: function (mode, mail) {
+      if (!this.inited) this.init();
       mail = (mail && typeof mail === 'object') ? mail : null;
       if (mail) {
         mail = Object.assign({
