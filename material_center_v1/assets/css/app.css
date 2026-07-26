@@ -47,13 +47,18 @@
 @media(max-width:640px){.mc-power-drawer{width:100vw;min-width:0;max-width:none}.mc-form-section{margin:9px;padding:13px}.mc-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mc-batch-policy{align-items:flex-start;flex-wrap:wrap}.mc-power-drawer-footer{flex-wrap:wrap;padding:8px 12px}.mc-power-drawer-footer>span{width:100%}}
 
 /* Power standardization review: short values share rows; complex editors stay intact. */
-#standardization-drawer{width:min(920px,96vw);max-width:min(920px,96vw);padding:14px 16px}
+#standardization-drawer{padding:14px 16px}
 #standardization-drawer .ui-drawer-header{padding-bottom:9px}
 #standardization-drawer .ui-drawer-header h2{margin:2px 0 0}
 #standardization-drawer .ui-drawer-body{padding-top:9px}
 #standardization-drawer [data-original]{margin:0 0 9px;padding:9px 11px}
 #standardization-drawer [data-original] p{display:inline;margin:0 12px 0 0;font-size:12px}
-#standardization-drawer #standard-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;align-items:start}
+#standardization-drawer #standard-form{display:flex;flex-direction:column;gap:8px}
+#standardization-drawer .standard-review-section{padding:7px 9px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-md);background:var(--ui-surface)}
+#standardization-drawer .standard-review-section h3{margin:0 0 6px;font-size:11px;color:var(--ui-text-muted)}
+#standardization-drawer .standard-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
+#standardization-drawer .standard-review-section--decision{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:6px 10px;align-items:end}
+#standardization-drawer .standard-review-section--decision h3{grid-column:1/-1}
 #standardization-drawer .ui-field{gap:3px;min-width:0}
 #standardization-drawer .ui-input,#standardization-drawer .ui-select{min-height:32px;height:32px}
 #standardization-drawer .ui-help{min-height:12px;font-size:10px;line-height:1.15}
@@ -66,12 +71,13 @@
 #standardization-drawer .current-option-row{margin-top:4px}
 #standardization-drawer .current-option-row .ui-input{height:30px;min-height:30px}
 #standardization-drawer .current-options-fieldset>.ui-btn{margin-top:6px}
-#standardization-drawer [data-duplicates]{min-height:0;margin:0;padding:8px 10px;font-size:11px}
+#standardization-drawer [data-duplicates]{min-height:32px;margin:0;padding:7px 9px;font-size:11px}
 #standardization-drawer .ui-drawer-footer{padding-top:9px}
 @media(max-width:700px),(max-height:720px){
-  #standardization-drawer{width:100vw;max-width:none;min-width:0;padding:12px}
+  #standardization-drawer{padding:12px}
 }
 @media(max-width:700px){
-  #standardization-drawer #standard-form{grid-template-columns:1fr}
+  #standardization-drawer .standard-review-grid,#standardization-drawer .standard-review-section--decision{grid-template-columns:1fr}
+  #standardization-drawer .standard-review-section--decision h3{grid-column:auto}
   #standardization-drawer [data-original] p{display:block;margin-top:3px}
 }
