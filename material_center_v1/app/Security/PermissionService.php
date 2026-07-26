@@ -13,14 +13,19 @@ final class PermissionService
     {
         if (!$user) return false;
         if ($user->isSuperAdmin) return true;
-        if (\mc_table_exists('mc_permission_grants')) {
-            $stmt = $this->db->prepare("SELECT effect FROM mc_permission_grants WHERE permission_key=? AND (expires_at IS NULL OR expires_at>NOW()) AND ((subject_type='user' AND subject_id=?) OR (subject_type='role' AND subject_id=?)) ORDER BY FIELD(effect,'deny','allow') LIMIT 1");
-            $stmt->execute([$permission, (string)$user->id, $user->roleKey]);
-            $effect = $stmt->fetchColumn();
-            if ($effect !== false) return $effect === 'allow';
+        $sessionUser = function_exists('current_user') ? \current_user() : null;
+        if (is_array($sessionUser) && (int) ($sessionUser['id'] ?? 0) === $user->id && function_exists('has_permission')) {
+            return (bool) \has_permission($permission);
         }
-        $legacy = str_contains($permission, '.view') ? 'bom.view' : 'bom.edit';
-        return function_exists('has_permission') && (bool)\has_permission($legacy);
+        $deny = $this->db->prepare("SELECT 1 FROM crm_user_permissions WHERE user_id=? AND permission_key=? AND effect='deny' LIMIT 1");
+        $deny->execute([$user->id, $permission]);
+        if ($deny->fetchColumn()) return false;
+        $allow = $this->db->prepare("SELECT 1 FROM crm_user_permissions WHERE user_id=? AND permission_key=? AND effect='allow' LIMIT 1");
+        $allow->execute([$user->id, $permission]);
+        if ($allow->fetchColumn()) return true;
+        $role = $this->db->prepare('SELECT 1 FROM crm_roles r JOIN crm_role_permissions rp ON rp.role_id=r.id WHERE r.role_key=? AND rp.permission_key=? LIMIT 1');
+        $role->execute([$user->roleKey, $permission]);
+        return (bool) $role->fetchColumn();
     }
 
     public function require(?MaterialCenterUserContext $user, string $permission): void
@@ -45,7 +50,6 @@ final class PermissionService
     public function dataScope(?MaterialCenterUserContext$user,string$permission):array
     {
         if(!$user)return['type'=>'none'];if($user->isSuperAdmin)return['type'=>'all'];
-        if(!\mc_table_exists('mc_permission_grants'))return['type'=>'legacy'];
-        $stmt=$this->db->prepare("SELECT data_scope_json FROM mc_permission_grants WHERE permission_key=? AND effect='allow' AND ((subject_type='user' AND subject_id=?) OR (subject_type='role' AND subject_id=?)) ORDER BY FIELD(subject_type,'user','role') LIMIT 1");$stmt->execute([$permission,(string)$user->id,$user->roleKey]);$json=$stmt->fetchColumn();return$json?json_decode((string)$json,true):['type'=>'legacy'];
+        return $this->allows($user,$permission)?['type'=>'unified_permission_center']:['type'=>'none'];
     }
 }

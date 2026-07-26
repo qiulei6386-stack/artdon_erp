@@ -8,7 +8,10 @@ $menu=[
  ['group'=>'业务','items'=>[
   ['adaptation','产品适配','branch','adaptation/index.php'],['supplier','供应商与价格','users','supplier/index.php'],
   ['substitute','替代与版本','repeat','substitute/index.php'],['data','数据接入','upload','data/index.php'],['documents','文档与日志','file','documents/index.php']]],
- ['group'=>'系统','items'=>[['settings','系统与设置','settings','settings/index.php']]],
+ ['group'=>'系统','items'=>array_values(array_filter([
+  ['settings','系统与设置','settings','settings/index.php'],
+  has_permission('material_center.permissions.manage')?['permissions','统一权限中心','users','../permissions.php?tab=matrix']:null,
+ ]))],
 ];
 ?>
 <div class="mc-brand"><div class="mc-brand__mark">A</div><div class="mc-brand__text"><strong>物料中心</strong><span>Material Center</span></div></div>

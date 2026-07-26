@@ -234,8 +234,28 @@ function artdon_template_permissions(string $profile): array
 function artdon_department_permission_templates(): array
 {
     $templates = artdon_department_template_defs();
+    $materialView = ['material_center.view','material_center.material.view','material_center.settings.view','material_center.settings.manage_self','material_center.power.rules.view'];
+    $materialEngineering = [
+        'material_center.material.create','material_center.material.copy','material_center.material.edit','material_center.material.batch',
+        'material_center.material.lifecycle','material_center.material.formalize','material_center.material.reject','material_center.material.disable',
+        'material_center.material.archive','material_center.material.delete_draft','material_center.material.merge',
+        'material_center.adaptation.manage','material_center.approve','material_center.documents.manage','material_center.field.sensitive',
+        'material_center.power.standardize','material_center.power.confirm','material_center.power.rules.manage','material_center.power.simulate',
+    ];
+    $materialPurchase = [
+        'material_center.material.create','material_center.material.copy','material_center.material.edit','material_center.material.batch',
+        'material_center.import','material_center.export','material_center.purchase_price.view','material_center.purchase_price.edit',
+        'material_center.supplier.manage','material_center.documents.manage',
+    ];
     foreach ($templates as $key => $template) {
-        $templates[$key]['permissions'] = artdon_template_permissions((string)($template['profile'] ?? 'readonly'));
+        $profile = (string)($template['profile'] ?? 'readonly');
+        $permissions = artdon_template_permissions($profile);
+        if ($profile !== 'boss') {
+            $permissions = array_merge($permissions, $materialView);
+            if ($profile === 'engineering') $permissions = array_merge($permissions, $materialEngineering);
+            if ($profile === 'purchase') $permissions = array_merge($permissions, $materialPurchase);
+        }
+        $templates[$key]['permissions'] = array_values(array_unique($permissions));
     }
     return $templates;
 }

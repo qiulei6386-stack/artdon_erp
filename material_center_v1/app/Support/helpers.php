@@ -69,7 +69,7 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
         '替代与版本'=>['alternatives'=>[$prefix.'substitute/index.php','替','替代物料'],'versions'=>[$prefix.'substitute/index.php','版','物料版本'],'changes'=>[$prefix.'substitute/index.php','变','变更记录']],
         '数据接入'=>['excel_import'=>[$prefix.'data/index.php','入','Excel 导入任务'],'exports'=>[$prefix.'data/index.php','出','导出任务'],'sync_logs'=>[$prefix.'data/index.php','同','同步日志']],
         '文档与日志'=>['documents'=>[$prefix.'documents/index.php','文','规格与认证文件'],'images'=>[$prefix.'documents/index.php','图','图片资料'],'logs'=>[$prefix.'documents/index.php?tab=logs','志','操作日志']],
-        '系统与设置'=>['settings'=>[$prefix.'settings/index.php','设','外观与主题'],'permissions'=>[$prefix.'settings/index.php?tab=permission','权','权限与角色'],'status'=>[$prefix.'system_status.php','态','系统状态'],'gallery'=>[$prefix.'ui-gallery.php','UI','组件展示'],'design_spec'=>[$prefix.'docs/UI_BASELINE.md','规','设计规范']],
+        '系统与设置'=>['settings'=>[$prefix.'settings/index.php','设','外观与主题'],'permissions'=>[$prefix.'../permissions.php?tab=matrix','权','统一权限中心'],'status'=>[$prefix.'system_status.php','态','系统状态'],'gallery'=>[$prefix.'ui-gallery.php','UI','组件展示'],'design_spec'=>[$prefix.'docs/UI_BASELINE.md','规','设计规范']],
     ];
     echo '<!doctype html><html lang="zh-CN" data-theme="system"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
     $theme=(string)($uiValues['theme.mode']??'light');

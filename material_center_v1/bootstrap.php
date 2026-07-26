@@ -19,3 +19,33 @@ spl_autoload_register(static function (string $class): void {
 require_once MC_ROOT . '/lib/helpers.php';
 require_once MC_ROOT . '/app/Support/helpers.php';
 require_once MC_LEGACY_ROOT . '/includes/bootstrap.php';
+
+if (PHP_SAPI !== 'cli') {
+    $requestPath = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    $isApiRequest = str_contains($requestPath, '/material_center_v1/api/');
+    $user = mc_current_user();
+
+    if (!$user) {
+        if ($isApiRequest) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'message' => '请先使用统一账号登录。', 'code' => 'AUTH_REQUIRED'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $legacyBaseUrl = rtrim(str_replace(DIRECTORY_SEPARATOR, '/', dirname(MC_BASE_URL)), '/');
+        $returnUrl = auth_safe_redirect((string) ($_SERVER['REQUEST_URI'] ?? ''), '');
+        header('Location: ' . $legacyBaseUrl . '/login.php' . ($returnUrl !== '' ? '?redirect=' . rawurlencode($returnUrl) : ''), true, 302);
+        exit;
+    }
+
+    if (!has_permission('material_center.view')) {
+        if ($isApiRequest) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'message' => '没有访问物料中心的权限。', 'code' => 'PERMISSION_DENIED'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        http_response_code(403);
+        exit('没有访问物料中心的权限，请在统一权限中心申请 material_center.view。');
+    }
+}
