@@ -8,6 +8,10 @@
 - 审核通过或客户确认报价可事务化转换到正式 `quote_sales_orders/items`，冻结转换快照并建立新旧关联；后续订单修改不反写报价。
 - 完全复用旧 PI、CI、Packing List 正式模板入口，只增加字段映射与调用桥；模板源文件未修改。
 - 最终迁移、闭环、模板哈希、回归、提交、部署及三方一致性见本轮最终结果。
+- 数据库与验收：`015_approval_conversion.sql` 连续执行两次通过；风险触发、上级审批、通过、要求修改、正式订单/明细、单证草稿出货、三份单证快照、新旧关联及 `converted` 状态闭环通过。
+- 模板保护：`crm_quote_pdf.php`、`crm_quote_excel.php`、`quote_order_pi_export.php`、`quote_order_doc.php`、`quote_order_pdf.php`、`quote_order_excel.php` 六个正式文件哈希与冻结基线一致，未修改模板。
+- 回归与清理：底座、报价中心、安全扫描、审核页面 HTTP 200、未登录 API 401 通过；测试报价/订单/出货/单证全部清理，旧报价35条、旧订单8个。
+- Git/部署：主提交 `f10faf9`、转换修复 `bcdc3c3`、旧表写入最小白名单 `d84d732` 已推送并同步；最终收尾提交后再次核对三方一致。
 
 ## 本次：报价逻辑十步实施 Step 8 统一输出与发送
 
