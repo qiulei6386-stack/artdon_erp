@@ -2,6 +2,15 @@
 
 更新时间：2026-07-26
 
+## 本次：电源人工确认抽屉两列紧凑布局
+
+- 将 `PARSED → CONFIRMED / 人工确认电源字段` 抽屉从窄长单列改为最大 920px 的紧凑两列布局；安装方式、输出类型、功率档、质保及短数字字段两项并排。
+- 原始资料压缩为同行摘要；输入框、置信度提示、区块间距和页脚适度收紧。输出电流、调光方式、重复候选和关联已有保持各自完整控件逻辑，不改变字段、数据或按钮行为。
+- 常见电脑屏幕优先一屏显示主要内容；宽度小于 700px 时恢复单列，低高度和手机仍保留滚动兜底，避免内容被裁切。
+- 新增 `power_standardization_layout_contract.php`，验证抽屉专属两列选择器、复杂控件保留及手机单列回退；服务器 `/tmp` PHP 语法与布局契约通过。当前无可连接的登录态浏览器窗口，未伪报真实点击或截图。
+- 修改文件：`material_center_v1/assets/css/app.css`、`material_center_v1/tests/power_standardization_layout_contract.php`、`WORK_CONTEXT.md`；未触碰用户已有商务中心删除及未跟踪文件。
+- 最终提交、GitHub 推送、服务器同步、线上资源验证与三方一致性以本轮收尾结果为准。
+
 ## 本次：定位 PARSED → CONFIRMED 电源人工确认弹窗
 
 - 只读确认该弹窗位于 `material_center_v1/power_standardization.php`，标题为“人工确认电源字段”，属于旧 BOM 电源资料标准化流程，不是普通电源单条编辑抽屉。
