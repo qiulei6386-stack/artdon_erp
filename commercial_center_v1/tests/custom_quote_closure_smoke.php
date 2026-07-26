@@ -58,6 +58,12 @@ try {
     if (count($repository->files($quoteId)) !== 1 || count($repository->itemFiles($quoteId)) !== 1) {
         throw new RuntimeException('Quote/item attachment persistence failed.');
     }
+    $payload['id']=$quoteId;
+    $payload['items'][1]['custom_fields']['color']='White';
+    $resaved=$service->save($payload,$actor);
+    if ((int)$resaved['current_version'] !== 3 || count($resaved['item_files']) !== 1) {
+        throw new RuntimeException('Item attachment was not inherited by edited draft version.');
+    }
     $submitted=$service->submit($quoteId,$actor);
     if (($submitted['status']??'') !== 'pending_approval') throw new RuntimeException('Submit failed.');
     $approved=$service->approve($quoteId,$actor,'Engineering and pricing approved');

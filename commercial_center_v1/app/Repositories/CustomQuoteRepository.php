@@ -33,7 +33,7 @@ final class CustomQuoteRepository
     public function itemFiles(int $quoteId): array
     {
         $statement = $this->connection->prepare(
-            'SELECT f.*,o.sort_order,i.id AS quote_item_id FROM cc_quote_item_files f
+            'SELECT f.*,o.sort_order,i.id AS quote_item_id,i.sort_order AS item_sort_order FROM cc_quote_item_files f
              INNER JOIN cc_quote_items i ON i.id=f.quote_item_id
              INNER JOIN cc_quote_versions v ON v.id=i.quote_version_id
              INNER JOIN cc_quotes q ON q.id=v.quote_id AND q.current_version=v.version_no
@@ -42,6 +42,34 @@ final class CustomQuoteRepository
         );
         $statement->execute([$quoteId]);
         return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function copyFilesToCurrentItems(int $quoteId, array $priorFiles): void
+    {
+        if ($priorFiles === []) {
+            return;
+        }
+        $statement = $this->connection->prepare(
+            'SELECT i.id,i.sort_order FROM cc_quote_items i
+             INNER JOIN cc_quote_versions v ON v.id=i.quote_version_id
+             INNER JOIN cc_quotes q ON q.id=v.quote_id AND q.current_version=v.version_no
+             WHERE q.id=?'
+        );
+        $statement->execute([$quoteId]);
+        $current = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $item) {
+            $current[(int)$item['sort_order']] = (int)$item['id'];
+        }
+        foreach ($priorFiles as $file) {
+            $newItemId = $current[(int)$file['item_sort_order']] ?? 0;
+            if ($newItemId <= 0) {
+                continue;
+            }
+            $this->saveFile($quoteId, $newItemId, (string)$file['file_type'], [
+                'name'=>(string)$file['original_name'],'path'=>(string)$file['storage_path'],
+                'mime'=>(string)$file['mime_type'],'size'=>(int)$file['file_size'],'hash'=>(string)$file['file_hash'],
+            ], (int)($file['uploaded_by_legacy_user_id'] ?? 0));
+        }
     }
 
     public function saveFile(int $quoteId, ?int $itemId, string $type, array $file, int $actorId): int

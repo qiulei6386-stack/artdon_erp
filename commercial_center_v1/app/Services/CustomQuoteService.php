@@ -40,6 +40,8 @@ final class CustomQuoteService
 
     public function save(array $payload, array $actor): array
     {
+        $existingId = max(0, (int)($payload['id'] ?? 0));
+        $priorItemFiles = $existingId > 0 ? $this->custom->itemFiles($existingId) : [];
         $customerId = (int)($payload['customer_id'] ?? 0);
         $customer = $this->catalog->customer($customerId);
         if ($customer === null) {
@@ -103,6 +105,7 @@ final class CustomQuoteService
         $quote = $input['id'] > 0
             ? $this->workflow->editDraft($input, $actor)
             : $this->workflow->createDraft($input, $actor);
+        $this->custom->copyFilesToCurrentItems((int)$quote['id'], $priorItemFiles);
         return $this->withFiles($quote);
     }
 
