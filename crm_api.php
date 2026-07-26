@@ -1442,6 +1442,10 @@ try {
     if ($action === 'quote_followup_file') {
         crm_quote_followup_stream_file((int)($_GET['file_id'] ?? $_POST['file_id'] ?? 0));
     }
+    if ($action === 'quote_followup_file_delete') {
+        require_csrf();
+        api_response(true, '沟通截图已删除', crm_quote_followup_delete_file((int)($_POST['file_id'] ?? 0)));
+    }
     if ($action === 'quote_followup_bind_mail') {
         require_csrf();
         api_response(true, '邮件已自动绑定报价跟进', crm_quote_followup_bind_mail($_POST));

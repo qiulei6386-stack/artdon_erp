@@ -22759,7 +22759,7 @@
       var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
       if (!rows.length) return '<p class="entry-muted">还没有跟进记录。</p>';
       return rows.map(function (item) {
-        var files = (item.files || []).map(function (file) { return '<a href="crm_api.php?action=quote_followup_file&file_id=' + esc(file.id) + '" target="_blank">' + esc(file.original_name || '沟通截图') + '</a>'; }).join('');
+        var files = (item.files || []).map(function (file) { return '<span class="quote-followup-file"><button type="button" data-quote-followup-preview="' + esc(file.id) + '">' + esc(file.original_name || '沟通截图') + '</button><button type="button" class="danger" data-quote-followup-file-delete="' + esc(file.id) + '">删除</button></span>'; }).join('');
         return '<article class="quote-followup-history-item"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.mail_id ? '<a href="#mail:' + esc(item.mail_id) + '">邮件：' + esc(item.mail_subject || ('#' + item.mail_id)) + '</a>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + files + '</footer></article>';
       }).join('');
     },
@@ -22783,12 +22783,47 @@
             '<label class="visit-pill-field"><span>绑定邮件</span><select name="mail_id">' + mailOptions + '</select></label>' +
             '<label class="visit-pill-field"><span>沟通结果</span><select name="result"><option value="waiting_reply">等待回复</option><option value="interested">有兴趣</option><option value="need_revision">需要修改报价</option><option value="need_sample">需要样品</option><option value="accepted">接受报价</option><option value="rejected">拒绝报价</option><option value="no_response">暂无回复</option><option value="other">其他</option></select></label>' +
             '<label class="visit-date-card"><span>下次跟进</span><input type="datetime-local" name="next_followup_at"></label>' +
-          '</div><div class="visit-note-grid"><label class="wide">沟通结果 *<textarea name="content" rows="4" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="2"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="填写邮件、文件或网盘链接说明"></label><label class="wide">线下沟通截图<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-quote-followup-files></label><label class="tag-chip wide"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复</span></label></div></section>' +
+          '</div><div class="visit-note-grid"><label class="wide">沟通结果 *<textarea name="content" rows="4" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="2"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="填写邮件、文件或网盘链接说明"></label><div class="wide quote-followup-drop" data-quote-followup-drop tabindex="0"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-quote-followup-files><strong>拖入或点击选择沟通截图</strong><span>也可以直接复制图片后，在这里按 Ctrl/⌘ + V</span><div class="quote-followup-local-previews" data-quote-followup-local-previews></div></div><label class="tag-chip wide"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复</span></label></div></section>' +
           '<section class="visit-work-section quote-followup-history"><h3>历史跟进（' + esc((data.activities || []).length) + '）</h3>' + TaskCenterModule.quoteFollowupHistoryHtml(data.activities || []) + '</section></div>' +
           '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-quote-followup-save>保存跟进</button></div>';
         CustomerModule.openBusinessDialog('报价跟进', html, '保存后同步更新流程节点、任务提醒和客户时间线。', function (dialog) {
           document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
           var form = dialog.querySelector('[data-quote-followup-form]');
+          var fileInput = dialog.querySelector('[data-quote-followup-files]');
+          var dropBox = dialog.querySelector('[data-quote-followup-drop]');
+          var applyFiles = function (incoming) {
+            if (!fileInput || !window.DataTransfer) return;
+            var dt = new DataTransfer(), seen = {};
+            Array.prototype.slice.call(fileInput.files || []).concat(Array.prototype.slice.call(incoming || [])).forEach(function (file) {
+              var key = [file.name,file.size,file.lastModified].join(':');
+              if (!seen[key] && /^image\/(jpeg|png|webp|gif)$/i.test(file.type || '')) { seen[key] = true; dt.items.add(file); }
+            });
+            fileInput.files = dt.files;
+            TaskCenterModule.renderQuoteLocalPreviews(fileInput, dialog.querySelector('[data-quote-followup-local-previews]'));
+          };
+          fileInput?.addEventListener('change', function () { TaskCenterModule.renderQuoteLocalPreviews(fileInput, dialog.querySelector('[data-quote-followup-local-previews]')); });
+          dropBox?.addEventListener('dragover', function (event) { event.preventDefault(); dropBox.classList.add('dragging'); });
+          dropBox?.addEventListener('dragleave', function () { dropBox.classList.remove('dragging'); });
+          dropBox?.addEventListener('drop', function (event) { event.preventDefault(); dropBox.classList.remove('dragging'); applyFiles(event.dataTransfer && event.dataTransfer.files); });
+          dialog.addEventListener('paste', function (event) {
+            var images = Array.prototype.slice.call((event.clipboardData && event.clipboardData.files) || []).filter(function (file) { return /^image\//i.test(file.type || ''); });
+            if (images.length) { event.preventDefault(); applyFiles(images); toast('已加入剪贴板截图'); }
+          });
+          dialog.addEventListener('click', function (event) {
+            var preview = event.target.closest('[data-quote-followup-preview]');
+            if (preview) { window.open('crm_api.php?action=quote_followup_file&file_id=' + encodeURIComponent(preview.getAttribute('data-quote-followup-preview')), '_blank'); return; }
+            var removeLocal = event.target.closest('[data-quote-local-remove]');
+            if (removeLocal && fileInput && window.DataTransfer) {
+              var removeIndex = Number(removeLocal.getAttribute('data-quote-local-remove')); var dt = new DataTransfer();
+              Array.prototype.slice.call(fileInput.files || []).forEach(function (file,index) { if (index !== removeIndex) dt.items.add(file); });
+              fileInput.files = dt.files; TaskCenterModule.renderQuoteLocalPreviews(fileInput, dialog.querySelector('[data-quote-followup-local-previews]')); return;
+            }
+            var del = event.target.closest('[data-quote-followup-file-delete]');
+            if (del) post('quote_followup_file_delete',{file_id:del.getAttribute('data-quote-followup-file-delete')}).then(function (res) {
+              if (!res.success) return toast(res.message || '删除失败');
+              toast('沟通截图已删除'); CustomerModule.closeDialog(); TaskCenterModule.openQuoteFollowupDialog(row,markReplied); if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
+            });
+          });
           form.querySelector('[name="mode"]')?.addEventListener('change', function () {
             var select = form.querySelector('[name="channel"]');
             if (select) select.innerHTML = TaskCenterModule.quoteFollowupChannelOptions(this.value, '');
@@ -22815,6 +22850,16 @@
             });
           });
         });
+      });
+    },
+    renderQuoteLocalPreviews: function (input, box) {
+      if (!box) return;
+      var files = Array.prototype.slice.call((input && input.files) || []);
+      box.innerHTML = files.map(function (file,index) {
+        return '<article><img data-quote-local-image="' + index + '" alt="' + esc(file.name) + '"><span>' + esc(file.name) + '</span><button type="button" data-quote-local-remove="' + index + '">移除</button></article>';
+      }).join('');
+      files.forEach(function (file,index) {
+        var reader = new FileReader(); reader.onload = function () { var img = box.querySelector('[data-quote-local-image="' + index + '"]'); if (img) img.src = reader.result; }; reader.readAsDataURL(file);
       });
     },
     writeQuoteFollowupMail: function (row) {

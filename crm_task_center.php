@@ -1071,6 +1071,19 @@ function crm_quote_followup_stream_file(int $fileId): void
     exit;
 }
 
+function crm_quote_followup_delete_file(int $fileId): array
+{
+    crm_require('task.edit');
+    $stmt = db()->prepare("SELECT f.*,a.quote_source,a.quote_id,a.task_id FROM crm_quote_followup_files f JOIN crm_quote_followup_activities a ON a.id=f.activity_id WHERE f.id=? AND f.deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$fileId]);
+    $file = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$file) throw new RuntimeException('沟通截图不存在或已删除。');
+    if (!empty($file['task_id'])) crm_task_row((int)$file['task_id']);
+    db()->prepare("UPDATE crm_quote_followup_files SET deleted_at=NOW() WHERE id=?")->execute([$fileId]);
+    crm_log_event('tasks','quote_followup_file_delete','quote_followup_file',(string)$fileId,$file,['deleted_at'=>date('Y-m-d H:i:s')]);
+    return ['deleted'=>true,'file_id'=>$fileId,'activity_id'=>(int)$file['activity_id']];
+}
+
 function crm_quote_followup_bind_mail(array $input): array
 {
     crm_require('task.edit');
