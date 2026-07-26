@@ -1,9 +1,11 @@
 <?php
 declare(strict_types=1);
 
-function mc_h(mixed $value): string
-{
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+if (!function_exists('mc_h')) {
+    function mc_h(mixed $value): string
+    {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    }
 }
 
 function mc_current_user(): ?array
