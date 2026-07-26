@@ -175,8 +175,8 @@ function dn_require(string $cap, string $message): void
 
 function dn_can_edit_task(array $task, string $field = ''): bool
 {
-    if (dn_is_admin() || dn_can('edit_all')) return true;
     if ($field === 'due_at') return dn_can_change_due_at($task);
+    if (dn_is_admin() || dn_can('edit_all')) return true;
     return dn_can('edit') || dn_can('edit_cell') || dn_can('edit_own') || dn_can('edit_assigned');
 }
 
@@ -184,7 +184,8 @@ function dn_can_change_due_at(array $task): bool
 {
     $uid = dn_uid();
     if ($uid > 0 && (int)($task['created_by'] ?? 0) === $uid) return true;
-    if ($uid > 0 && (int)($task['assigned_to'] ?? 0) === $uid && !dn_due_has_passed($task['due_at'] ?? null)) return true;
+    $dueDate = substr((string)($task['due_at'] ?? ''), 0, 10);
+    if ($uid > 0 && (int)($task['assigned_to'] ?? 0) === $uid && $dueDate !== '' && $dueDate > date('Y-m-d')) return true;
     return false;
 }
 
@@ -1191,6 +1192,7 @@ function dn_decorate_task(array $r): array
     $due = dn_due_status($r['due_at'] ?? null, (string)$r['status']);
     $r['due_state'] = $due['state'];
     $r['due_label'] = $due['label'];
+    $r['can_change_due_at'] = dn_can_change_due_at($r);
     $r['highlight_recent_create'] = dn_recent_create_highlight($r['created_by'], $r['created_at'] ?? '');
     $mailId = dn_task_mail_id($r);
     $r['mail_preview_task_id'] = $mailId > 0 ? (int)$r['id'] : 0;
@@ -1637,7 +1639,10 @@ function dn_update_task(array $in): array
     $changes = [];
     foreach ($allowed as $f) {
         if (!array_key_exists($f, $in)) continue;
-        if (!dn_can_edit_task($task, $f)) dn_fail('没有修改多人或该字段的权限', 403);
+        if (!dn_can_edit_task($task, $f)) {
+            if ($f === 'due_at') dn_fail('截止日期当天起只有派工创建人可以修改', 403);
+            dn_fail('没有修改多人或该字段的权限', 403);
+        }
         $old = $task[$f] ?? '';
         $new = $in[$f];
         if ($f === 'title') $new = dn_str($new, 240);
@@ -3565,7 +3570,10 @@ function dn_update_cell(array $in): array
     $value = $in['value'] ?? '';
     $task = dn_task($id);
     dn_check_task_conflict($task, $in);
-    if (!dn_can_edit_task($task, $field)) dn_fail('没有修改权限', 403);
+    if (!dn_can_edit_task($task, $field)) {
+        if ($field === 'due_at') dn_fail('截止日期当天起只有派工创建人可以修改', 403);
+        dn_fail('没有修改权限', 403);
+    }
     $nextDue = $field === 'due_at' ? dn_due_dt($value) : dn_due_dt($task['due_at'] ?? null);
     if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
     $map = [
