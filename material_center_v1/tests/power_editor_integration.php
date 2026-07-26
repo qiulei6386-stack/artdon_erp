@@ -80,8 +80,15 @@ try {
     }
     foreach ($materialIds as $id) {
         $row = $service->detail($id, $context);
-        if ($row['installation_type'] !== 'external' || count($row['currents']) !== 2 || $row['dimming_modes'][0]['mode'] !== 'triac') {
-            throw new RuntimeException('batch values were not persisted');
+        if ($row['installation_type'] !== 'external' || count($row['currents']) !== 2 || ($row['dimming_modes'][0]['mode'] ?? '') !== 'triac') {
+            throw new RuntimeException(
+                'batch values were not persisted: '.json_encode([
+                    'id' => $id,
+                    'installation_type' => $row['installation_type'],
+                    'currents' => $row['currents'],
+                    'dimming_modes' => $row['dimming_modes'],
+                ], JSON_UNESCAPED_UNICODE)
+            );
         }
     }
     $rolledBack = $service->rollback($jobUuid, $context);
