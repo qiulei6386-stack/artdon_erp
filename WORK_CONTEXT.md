@@ -10,6 +10,10 @@
 - 新增 `tests/standard_quote_closure_smoke.php` 和 `docs/quote_logic/step05_standard_quote_closure.md`，用真实 CRM 客户、真实产品和真实配置/价格/BOM 来源完成可自动清理验收。
 - 本步不进入 Step 6，不开发网站订单导入、定制附件或正式 PDF/Excel/邮件/转订单。
 - 最终验收、提交、部署和三方一致性见本轮最终结果。
+- 回归修复：旧报价中心回归要求标准品页面保留精确关键词“产品适配规则”，已补回兼容文案；修复提交 `7513e80` 已推送并部署。
+- 验收：真实 CRM 客户、真实产品、配置护照、价格/BOM、金额/毛利、保存、重开和提交审核全链路通过；API 未登录返回 401，标准品页面返回 200。测试数据已清理，`cc_quotes` 测试记录为 0，旧 `quote_orders` 保持 35 条。
+- 数据库/路由：本步无新数据库迁移；新增正式 API `api/v1/standard_quotes.php`，旧 URL 和页面路由不变。
+- Git/部署：Step 5 主提交 `ac0c7a7` 及回归修复 `7513e80` 已推送 GitHub并同步服务器；最终收尾提交后再次核对本地、`origin/main`、服务器 HEAD 和 Step 5 文件哈希一致。
 
 ## 本次：报价逻辑十步实施 Step 4 状态流、权限、日志和版本快照
 
