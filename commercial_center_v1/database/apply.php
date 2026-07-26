@@ -26,6 +26,7 @@ $allowedMigrations = [
     '009_product_sync.sql' => ['cc_commercial_products','cc_product_sync_logs','cc_product_options'],
     '010_unified_quote_model.sql' => ['cc_quote_details','cc_quote_item_details','cc_quote_files','cc_quote_item_files','cc_quote_snapshots','cc_quote_legacy_links'],
     '011_quote_workflow.sql' => ['cc_quote_approvals','cc_quote_state_history','cc_quote_audit_logs'],
+    '012_website_quote_import.sql' => ['cc_website_order_snapshots','cc_quote_unlock_requests'],
 ];
 if (!isset($allowedMigrations[$migrationName])) {
     fwrite(STDERR, "Refusing migration: file is not approved.\n");

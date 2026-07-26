@@ -32,6 +32,199 @@
 
   const editor = $('[data-quote-editor]');
   if (!editor) return;
+  if (editor.matches('[data-website-quote]')) {
+    const api = editor.dataset.api;
+    const tbody = $('[data-quote-lines]', editor);
+    const modal = $('[data-web-import-modal]', editor);
+    let csrf = '';
+    let quoteId = Number(editor.dataset.quoteId || 0);
+    let bootstrap = {};
+    const message = (text, error = false) => {
+      const node = $('[data-web-message]', editor);
+      node.textContent = text;
+      node.classList.toggle('error', error);
+    };
+    const request = async (payload = null, query = '') => {
+      const response = await fetch(`${api}${query}`, payload ? {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, csrf }),
+      } : {});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || '网站报价请求失败。');
+      return data;
+    };
+    const display = (name, value) => $$(`[data-web-field="${name}"]`, editor)
+      .forEach((node) => { node.textContent = value || '—'; });
+    const recalculate = () => {
+      let subtotal = 0;
+      $$('tr', tbody).forEach((row) => {
+        const total = Number($('[data-qty]', row).value) * Number($('[data-price]', row).value)
+          * (1 - Number($('[data-discount]', row).value) / 100);
+        $('[data-line-total]', row).textContent = Math.max(0, total).toFixed(2);
+        subtotal += Math.max(0, total);
+      });
+      $('[data-subtotal]', editor).textContent = subtotal.toFixed(2);
+      $('[data-grand-total]', editor).textContent = Math.max(0, subtotal
+        - Number($('[data-order-discount]', editor).value || 0)
+        + Number($('[data-shipping]', editor).value || 0)
+        + Number($('[data-tax]', editor).value || 0)).toFixed(2);
+    };
+    const renderQuote = (quote) => {
+      if (!quote) return;
+      quoteId = Number(quote.id);
+      editor.dataset.quoteId = String(quoteId);
+      const source = quote.source_snapshot || {};
+      display('source_order_no', quote.source_order_no);
+      display('placed_at', source.placed_at);
+      display('quote_no', quote.quote_no);
+      display('owner_name', quote.owner_name);
+      display('customer_name', quote.customer_snapshot?.customer_name || quote.customer_snapshot?.customer_name_en);
+      display('country', quote.country);
+      display('contact_name', quote.contact_name);
+      display('currency', quote.currency);
+      $('[data-web-customer-note]', editor).value = quote.customer_note || '';
+      $('[data-web-internal-note]', editor).value = quote.internal_note || '';
+      $('[data-web-payment]', editor).value = quote.payment_terms || '';
+      $('[data-web-trade]', editor).value = quote.trade_terms || '';
+      $('[data-shipping]', editor).value = quote.shipping_amount || 0;
+      $('[data-order-discount]', editor).value = quote.discount_amount || 0;
+      $('[data-tax]', editor).value = quote.tax_amount || 0;
+      tbody.innerHTML = '';
+      (quote.items || []).forEach((item, index) => {
+        const sourceLine = item.source_line_snapshot || {};
+        const row = document.createElement('tr');
+        row.dataset.itemId = item.id;
+        row.innerHTML = `<td>${index + 1}</td><td><b data-model></b><small data-sku></small></td>
+          <td data-name></td><td data-config></td><td><input data-qty type="number" step=".001" readonly></td>
+          <td data-site-price></td><td><input data-price type="number" min="0" step=".01"></td>
+          <td><input data-discount type="number" min="0" max="100"></td><td data-line-total></td>
+          <td><input data-lead></td><td><button type="button" data-request-qty>申请改数量</button></td>`;
+        $('[data-model]', row).textContent = item.model_no || '—';
+        $('[data-sku]', row).textContent = item.sku_code || '—';
+        $('[data-name]', row).textContent = item.product_name || item.description || '—';
+        $('[data-config]', row).textContent = Object.values(sourceLine.configuration || {}).join(' / ') || '标准配置';
+        $('[data-qty]', row).value = item.quantity;
+        $('[data-site-price]', row).textContent = Number(sourceLine.website_unit_price || 0).toFixed(2);
+        $('[data-price]', row).value = item.unit_price;
+        $('[data-discount]', row).value = Number(item.discount_rate || 0) * 100;
+        $('[data-lead]', row).value = item.lead_time || '';
+        tbody.append(row);
+      });
+      $('[data-line-count]', editor).textContent = `共 ${(quote.items || []).length} 项`;
+      recalculate();
+      message(`报价 ${quote.quote_no} · ${quote.status}`);
+    };
+    const importField = (name) => $(`[data-import-field="${name}"]`, modal);
+    const renderBootstrap = () => {
+      const customers = importField('customer_id');
+      customers.innerHTML = '<option value="">选择真实 CRM 客户</option>';
+      (bootstrap.customers || []).forEach((customer) => {
+        const option = document.createElement('option');
+        option.value = customer.id;
+        option.textContent = `${customer.customer_code || ''} ${customer.customer_name || customer.customer_name_en || ''}`.trim();
+        customers.append(option);
+      });
+      const products = importField('product');
+      products.innerHTML = '<option value="">选择网站销售产品</option>';
+      (bootstrap.configuration?.products || []).forEach((product) => {
+        const option = document.createElement('option');
+        option.value = product.id;
+        option.dataset.product = JSON.stringify(product);
+        option.textContent = `${product.model_no} · ${product.product_name}`;
+        products.append(option);
+      });
+      $('[data-channel-status]', modal).textContent = bootstrap.channel?.live_api_status === 'not_configured'
+        ? '实时渠道未配置；当前使用鉴权载荷导入' : '实时渠道已连接';
+    };
+    const reviewPayload = () => ({
+      action: 'review', quote_id: quoteId, reason: '网站订单审核调整',
+      changes: {
+        shipping_amount: Number($('[data-shipping]', editor).value || 0),
+        discount_amount: Number($('[data-order-discount]', editor).value || 0),
+        tax_amount: Number($('[data-tax]', editor).value || 0),
+        internal_note: $('[data-web-internal-note]', editor).value,
+        payment_terms: $('[data-web-payment]', editor).value,
+        trade_terms: $('[data-web-trade]', editor).value,
+        items: $$('tr', tbody).map((row) => ({
+          unit_price: Number($('[data-price]', row).value || 0),
+          discount_rate: Number($('[data-discount]', row).value || 0) / 100,
+          lead_time: $('[data-lead]', row).value,
+        })),
+      },
+    });
+    $('[data-new-website]', editor)?.addEventListener('click', () => openModal(modal));
+    importField('product')?.addEventListener('change', (event) => {
+      const value = event.target.selectedOptions[0]?.dataset.product;
+      if (!value) return;
+      const product = JSON.parse(value);
+      importField('sku_code').value = product.sku_code || product.model_no || '';
+    });
+    $('[data-import-submit]', modal)?.addEventListener('click', async () => {
+      try {
+        const product = JSON.parse(importField('product').selectedOptions[0]?.dataset.product || '{}');
+        const order = {
+          external_order_no: importField('external_order_no').value,
+          customer_id: Number(importField('customer_id').value || 0), currency: 'USD',
+          shipping_amount: Number(importField('shipping').value || 0),
+          placed_at: importField('placed_at').value, customer_note: importField('customer_note').value,
+          attachments: [], shipping: {}, items: [{
+            legacy_product_id: Number(product.id || 0), sku_code: importField('sku_code').value,
+            model_no: product.model_no || '', product_name: product.product_name || '',
+            configuration: { summary: importField('configuration').value },
+            quantity: Number(importField('quantity').value || 0),
+            website_unit_price: Number(importField('price').value || 0),
+            customer_requirement: importField('requirement').value,
+          }],
+        };
+        const data = await request({ action: importField('action').value, order });
+        renderQuote(data.result.quote);
+        closeModal(modal);
+        history.replaceState(null, '', `?page=quote_center&quote_mode=website&quote_id=${quoteId}`);
+      } catch (error) { message(error.message, true); }
+    });
+    $('[data-web-save]', editor)?.addEventListener('click', async () => {
+      try {
+        if (!quoteId) throw new Error('请先导入网站订单。');
+        renderQuote((await request(reviewPayload())).quote);
+      } catch (error) { message(error.message, true); }
+    });
+    $('[data-web-approve]', editor)?.addEventListener('click', async () => {
+      try {
+        if (!quoteId) throw new Error('请先导入网站订单。');
+        renderQuote((await request({ action: 'approve', quote_id: quoteId, reason: '网站订单审核通过' })).quote);
+      } catch (error) { message(error.message, true); }
+    });
+    $('[data-web-reject]', editor)?.addEventListener('click', async () => {
+      const reason = prompt('请输入驳回原因');
+      if (!reason) return;
+      try { renderQuote((await request({ action: 'reject', quote_id: quoteId, reason })).quote); }
+      catch (error) { message(error.message, true); }
+    });
+    tbody.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-request-qty]');
+      if (!button) return;
+      const value = prompt('申请修改后的数量');
+      const reason = value === null ? '' : prompt('请输入解锁原因');
+      if (!reason) return;
+      try {
+        await request({ action: 'request_unlock', quote_id: quoteId,
+          item_id: Number(button.closest('tr').dataset.itemId), field: 'quantity',
+          requested_value: Number(value), reason });
+        message('数量解锁申请已提交，须由有权限的审核人批准。');
+      } catch (error) { message(error.message, true); }
+    });
+    editor.addEventListener('input', (event) => {
+      if (event.target.matches('[data-price],[data-discount],[data-shipping],[data-order-discount],[data-tax]')) recalculate();
+    });
+    request(null, quoteId ? `?quote_id=${quoteId}` : '').then((data) => {
+      csrf = data.csrf;
+      bootstrap = data.data || {};
+      renderBootstrap();
+      renderQuote(data.quote);
+      if (!quoteId) message('请选择导入或业务员代客户下单。');
+    }).catch((error) => message(error.message, true));
+    return;
+  }
   if (editor.matches('[data-standard-quote]')) {
     const api = editor.dataset.api;
     const tbody = $('[data-quote-lines]', editor);

@@ -30,7 +30,9 @@ final class QuoteRepository
                 if ($locked === null) {
                     throw new \RuntimeException('报价不存在。');
                 }
-                if ((string)$locked['status'] !== 'draft') {
+                $reviewSave = ($quote['save_context'] ?? '') === 'approval_review'
+                    && (string)$locked['status'] === 'pending_approval';
+                if ((string)$locked['status'] !== 'draft' && !$reviewSave) {
                     throw new \RuntimeException('当前状态不允许编辑。');
                 }
                 $quote['quote_no'] = (string)$locked['quote_no'];
@@ -69,13 +71,15 @@ final class QuoteRepository
 
             $snapshot = $this->snapshotPayload($quoteId, $versionId, $versionNo, $quote, $amounts);
             $snapshotJson = $this->json($snapshot);
+            $snapshotType = ($quote['save_context'] ?? '') === 'approval_review' ? 'approval_review' : 'draft';
             $snapshotStatement = $this->connection->prepare(
                 'INSERT INTO cc_quote_snapshots
                  (quote_id,quote_version_id,snapshot_type,snapshot_json,snapshot_hash,created_by_legacy_user_id,created_at)
-                 VALUES (?,?,\'draft\',?,?,?,?)'
+                 VALUES (?,?,?,?,?,?,?)'
             );
             $snapshotStatement->execute([
-                $quoteId, $versionId, $snapshotJson, hash('sha256', $snapshotJson), $actorUserId ?: null, $now,
+                $quoteId, $versionId, $snapshotType, $snapshotJson, hash('sha256', $snapshotJson),
+                $actorUserId ?: null, $now,
             ]);
 
             $log = $this->connection->prepare(
@@ -211,14 +215,15 @@ final class QuoteRepository
             'INSERT INTO cc_quote_versions
              (quote_id,version_no,customer_snapshot,terms_snapshot,pricing_snapshot,cost_snapshot,exchange_rate,
               template_version,status,created_by_legacy_user_id,created_at)
-             VALUES (?,?,?,?,?,?,?,?,\'draft\',?,?)'
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)'
         );
+        $versionStatus = ($quote['save_context'] ?? '') === 'approval_review' ? 'pending_approval' : 'draft';
         $statement->execute([
             $quoteId, $versionNo, $this->json($quote['customer_snapshot']),
             $this->json(['payment_terms' => $quote['payment_terms'], 'trade_terms' => $quote['trade_terms']]),
             $this->json($this->pricingSnapshot($amounts)),
             $this->json(['total_cost' => $amounts['total_cost'], 'gross_profit' => $amounts['gross_profit']]),
-            $quote['exchange_rate'], $quote['template_version'], $actorUserId ?: null, $now,
+            $quote['exchange_rate'], $quote['template_version'], $versionStatus, $actorUserId ?: null, $now,
         ]);
         return (int)$this->connection->lastInsertId();
     }

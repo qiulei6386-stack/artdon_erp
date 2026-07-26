@@ -2,6 +2,15 @@
 
 更新时间：2026-07-26
 
+## 本次：报价逻辑十步实施 Step 6 网站订单报价
+
+- 严格只执行 Step 6，新增 `012_website_quote_import.sql`，建立网站订单完整来源快照和锁定字段解锁申请表；渠道订单号与幂等键双重去重，只创建 `cc_*` 表。
+- 新增 `WebsiteQuoteRepository`、`WebsiteQuoteService` 和 `api/v1/website_quotes.php`：支持新加坡待审核订单正式载荷导入、业务员代客户建立、重复导入返回原报价、完整来源快照及哈希。
+- 网站报价默认锁定型号、SKU、配置、原始数量、来源行和客户原始要求；审核可调整价格、折扣、运费、交期、付款和贸易条款。锁定字段必须申请解锁、填写原因、经 `edit_locked` 权限批准并一次性消费。
+- 导入/代建自动进入 `pending_approval`；审核调整保存新版本，可审核通过或填写原因驳回，全部复用 Step 4 状态、版本、快照、审批和审计。
+- 新增 `tests/website_quote_closure_smoke.php` 和 `docs/quote_logic/step06_website_order_quotes.md`。新加坡实时 API 仍明确为 `not_configured`，不伪造外部同步。
+- 本步不进入 Step 7，不开发定制品文件上传或真实转订单。最终迁移、验收、提交、部署和三方一致性见本轮最终结果。
+
 ## 本次：报价逻辑十步实施 Step 5 标准品报价完整闭环
 
 - 严格只执行 Step 5，新增 `StandardQuoteRepository`、`StandardQuoteService` 和 `api/v1/standard_quotes.php`，串联 CRM 客户/联系人、真实产品目录、配置适配规则、价格策略/客户等级/阶梯价、BOM 成本、佣金提醒及 Step 3/4 报价工作流。

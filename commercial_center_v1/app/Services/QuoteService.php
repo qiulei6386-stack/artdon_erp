@@ -38,6 +38,17 @@ final class QuoteService
         return $this->repository->saveDraft($quote, $amounts, $actorUserId);
     }
 
+    public function saveApprovalReview(array $input, int $actorUserId = 0): array
+    {
+        $quote = $this->normalizeQuote($input);
+        if ((int)$quote['id'] <= 0) {
+            throw new \InvalidArgumentException('审核调整必须指定报价。');
+        }
+        $quote['save_context'] = 'approval_review';
+        $amounts = $this->calculator->calculate($quote['items'], $quote);
+        return $this->repository->saveDraft($quote, $amounts, $actorUserId);
+    }
+
     public function open(int $quoteId): ?array
     {
         return $this->repository->find($quoteId);

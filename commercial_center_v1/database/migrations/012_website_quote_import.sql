@@ -1,0 +1,51 @@
+-- Step 6 website order quotation import and unlock workflow. cc_* only.
+
+CREATE TABLE IF NOT EXISTS cc_website_order_snapshots (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    channel VARCHAR(40) NOT NULL DEFAULT 'singapore_web',
+    external_order_no VARCHAR(120) NOT NULL,
+    idempotency_key VARCHAR(190) NOT NULL,
+    source_type VARCHAR(40) NOT NULL DEFAULT 'website_import',
+    payload_json LONGTEXT NOT NULL,
+    payload_hash CHAR(64) NOT NULL,
+    customer_snapshot LONGTEXT NOT NULL,
+    contact_snapshot LONGTEXT NULL,
+    items_snapshot LONGTEXT NOT NULL,
+    shipping_snapshot LONGTEXT NULL,
+    attachment_snapshot LONGTEXT NULL,
+    customer_note LONGTEXT NULL,
+    placed_at DATETIME NULL,
+    quote_id BIGINT UNSIGNED NULL,
+    import_status VARCHAR(40) NOT NULL DEFAULT 'imported',
+    is_test TINYINT(1) NOT NULL DEFAULT 0,
+    imported_by_legacy_user_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_cc_website_order_channel_no (channel, external_order_no),
+    UNIQUE KEY uq_cc_website_order_idempotency (channel, idempotency_key),
+    UNIQUE KEY uq_cc_website_order_quote (quote_id),
+    KEY idx_cc_website_order_status (import_status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cc_quote_unlock_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    quote_id BIGINT UNSIGNED NOT NULL,
+    quote_item_id BIGINT UNSIGNED NULL,
+    field_code VARCHAR(80) NOT NULL,
+    reason VARCHAR(1000) NOT NULL,
+    before_json LONGTEXT NOT NULL,
+    requested_after_json LONGTEXT NULL,
+    approval_status VARCHAR(40) NOT NULL DEFAULT 'pending',
+    requested_by_legacy_user_id INT UNSIGNED NULL,
+    requested_by_name VARCHAR(190) NULL,
+    reviewed_by_legacy_user_id INT UNSIGNED NULL,
+    reviewed_by_name VARCHAR(190) NULL,
+    review_note VARCHAR(1000) NULL,
+    requested_at DATETIME NOT NULL,
+    reviewed_at DATETIME NULL,
+    used_at DATETIME NULL,
+    PRIMARY KEY (id),
+    KEY idx_cc_unlock_quote (quote_id, approval_status, requested_at),
+    KEY idx_cc_unlock_item (quote_item_id, field_code, approval_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
