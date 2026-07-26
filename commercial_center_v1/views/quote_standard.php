@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-$rows = array_slice($catalogRows, 0, 8);
+// 新报价必须从空明细开始；产品目录只供“添加产品”时选择。
+$rows = [];
 $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
 ?>
 <section class="ref-quote ref-standard" data-quote-editor data-quote-type="standard_product"

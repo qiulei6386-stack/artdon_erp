@@ -56,4 +56,13 @@ foreach ([
         }
     }
 }
+$standardView = (string)file_get_contents($root . '/views/quote_standard.php');
+if (str_contains($standardView, 'array_slice($catalogRows')) {
+    fwrite(STDERR, "FAIL: new standard quote must not preload catalog products\n");
+    exit(1);
+}
+if (!str_contains($standardView, '$rows = [];')) {
+    fwrite(STDERR, "FAIL: new standard quote must start with empty line items\n");
+    exit(1);
+}
 echo "PASS: six-item menu, legacy mappings, shared quote center and three quote modes verified.\n";
