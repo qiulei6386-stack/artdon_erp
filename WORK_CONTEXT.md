@@ -10,6 +10,7 @@
 - 修改文件：`dispatch_next.php`、`WORK_CONTEXT.md`。
 - 前一版功能提交 `8895749` 已由纠正提交 `13017f8` 收窄：页面 JavaScript 经本地 Node 语法检查通过，`git diff --check` 通过，服务器 `php -l dispatch_next.php` 通过。
 - Git/部署：`13017f8` 已推送 GitHub 并快进同步服务器；上下文收尾提交后再次核对三方一致。
+- 标题行固定修正提交 `c6aa522` 已推送 GitHub、同步服务器并通过 PHP 语法复检；本轮上下文收尾提交后再次核对三方一致。
 
 ## 本次：统一登录密码重置入口定位
 
