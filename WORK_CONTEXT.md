@@ -10,6 +10,9 @@
 - 新增 `QuoteWorkflowService` 与 `QuoteWorkflowRepository`：提交、批准、发送和转订单前复制版本并生成正式快照；已审核修改前保留快照并保存为新草稿版本；历史版本可读取。
 - 新增 `tests/quote_workflow_smoke.php` 和 `docs/quote_logic/step04_workflow_permissions_snapshots.md`。本步不进入 Step 5，不接标准品页面闭环、正式导出、发送或真实转订单。
 - 最终迁移、验收、提交、部署和三方一致性见本轮最终结果。
+- 安全修复：首次服务器安全扫描正确拦截动态 `cc_*` 表名 SQL；已全部改为明确固定表名并通过扫描，修复提交 `99ea0ef` 已推送和部署。
+- 数据库与验收：`011_quote_workflow.sql` 连续执行两次通过并登记 SHA-256；无权限状态变化被拒绝，完整状态流、审批、审计、正式快照、已审核修订和历史版本验收通过。测试数据已清理，`cc_quotes` 测试记录为 0，旧 `quote_orders` 保持 35 条。
+- Git/部署：Step 4 主提交 `5a4291e` 及安全修复 `99ea0ef` 已推送 GitHub并同步服务器；同期主分支包含物料中心独立提交，本轮未编辑或覆盖其内容。最终收尾提交后再次核对本地、`origin/main`、服务器 HEAD 和 Step 4 文件哈希一致。
 
 ## 本次：报价逻辑十步实施 Step 3 统一报价公共数据模型
 
