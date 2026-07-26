@@ -13,4 +13,5 @@ final class LegacyProductAdapter
         $sql.=" ORDER BY updated_at DESC,id DESC LIMIT ".max(1,min(200,$limit));$stmt=$this->db->prepare($sql);$stmt->execute($params);return$stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     public function find(int $id):?array{$stmt=$this->db->prepare('SELECT id,model_no,category,item_name,product_name,status,remark,dim_length,dim_width,dim_height FROM naming_models WHERE id=?');$stmt->execute([$id]);return$stmt->fetch(PDO::FETCH_ASSOC)?:null;}
+    public function allAfter(int $afterId=0,int $limit=500):array{$stmt=$this->db->prepare('SELECT id,model_no,category,item_name,product_name,status,remark,dim_length,dim_width,dim_height FROM naming_models WHERE id>? AND COALESCE(website_deleted,0)=0 ORDER BY id LIMIT '.max(1,min(1000,$limit)));$stmt->execute([$afterId]);return$stmt->fetchAll(PDO::FETCH_ASSOC);}
 }
