@@ -188,7 +188,7 @@ final class PowerEditorService
                 $affected++;
             }
             $items[] = [
-                'id' => (int)$row['id'],
+                'id' => (int)$row['target_material_id'],
                 'code' => $row['material_code'],
                 'name' => $row['name'],
                 'changes' => $actual,
@@ -438,7 +438,7 @@ final class PowerEditorService
     {
         $marks = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $this->db->prepare(
-            "SELECT m.id,m.material_code,m.name,m.status,p.*,
+            "SELECT m.id AS target_material_id,m.material_code,m.name,m.status,p.*,
                     (SELECT COUNT(*) FROM mc_power_supply_current_options c WHERE c.material_id=m.id) current_count,
                     (SELECT COUNT(*) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_count
              FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id
