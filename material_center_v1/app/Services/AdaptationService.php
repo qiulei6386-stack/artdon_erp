@@ -1088,7 +1088,7 @@ final class AdaptationService
 
     private function log(int $productId, string $action, array $detail, int $userId): void
     {
-        $stmt = $this->db->prepare('INSERT INTO mc_adaptation_logs(product_id,action,detail_json,created_by,created_at) VALUES(?,?,?,?,NOW())');
-        $stmt->execute([$productId ?: null, $action, json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId]);
+        $stmt = $this->db->prepare('INSERT INTO mc_adaptation_logs(product_id,action,detail_json,actor_id,created_at) VALUES(?,?,?,?,NOW())');
+        $stmt->execute([$productId, $action, json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId]);
     }
 }
