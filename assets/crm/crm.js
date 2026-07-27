@@ -15857,7 +15857,7 @@
           console.error('Promotion step 9 initial mail preview failed:', previewError);
           initialMailPreview = '<section class="promo-preview-mail promo-mail-carousel is-error"><header><div><strong>邮件预览加载异常</strong><span>请返回第 5 步检查邮件主题、正文和渠道；测试发信入口不会再被静默隐藏。</span></div></header></section>';
         }
-        var mailPreviewStage = '<section class="promo-confirm-mail-stage" data-promo-confirm-mail-stage data-promo-preview-build="20260727-2"><header><div><strong>邮件预览与测试发送</strong><span>第 9 步第一屏固定显示；可逐封检查并只向测试邮箱发信。</span></div><em>预览修复版 20260727-2</em></header><div data-promo-wizard-preview>' + initialMailPreview + '</div></section>';
+        var mailPreviewStage = '<section class="promo-confirm-mail-stage" data-promo-confirm-mail-stage data-promo-preview-build="20260728-1"><header><div><strong>邮件预览与测试发送</strong><span>第 9 步第一屏固定显示；已有邮件内容的综合渠道任务也可预览和测试。</span></div><em>邮件判定修复版 20260728-1</em></header><div data-promo-wizard-preview>' + initialMailPreview + '</div></section>';
 	      return '<section class="promo-step-card promo-step-confirm">' + mailPreviewStage + '<div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
 	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
 	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
@@ -16723,6 +16723,17 @@
     buildWizardMailPreviewItems: function (draft, plan) {
       plan = plan || this.buildExecutionPlan(draft);
       var self = this;
+      var previewChannel = this.normalizePromotionChannel(draft.channel_key || '');
+      var previewCampaign = this.normalizePromotionChannel(draft.campaign_type || '');
+      var draftHasMailContent = Boolean(
+        String(draft.mail_subject || '').trim()
+        || String(draft.mail_body_html || '').trim()
+      );
+      var emailPreviewAllowed = this.isEmailPromotionChannel(previewChannel)
+        || this.isEmailPromotionChannel(previewCampaign)
+        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0
+        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewCampaign) >= 0
+        || draftHasMailContent;
       var assignedItems = ((plan.mailItems || []).concat(plan.duplicateMailItems || []));
       var itemKey = function (item) {
         return [Number(item.contact_id || 0), Number(item.customer_id || 0), String(item.email || '').trim().toLowerCase(), String(item.target_level || '')].join('|');
@@ -16738,7 +16749,11 @@
         || accounts[0]
         || null;
       var previewItems = (plan.items || []).filter(function (item) {
-        return self.isEmailPromotionChannel(item.channel || draft.channel_key);
+        if (self.isEmailPromotionChannel(item.channel || draft.channel_key)) return true;
+        // Historical/combined tasks may keep WhatsApp as the execution channel while
+        // retaining an email subject and body. Test mail uses the explicit test
+        // recipient, so a non-group person can still be safely personalized here.
+        return draftHasMailContent && String(item.target_level || '') !== 'group';
       }).map(function (item) {
         var assigned = assignedByKey[itemKey(item)] || {};
         var preview = Object.assign({}, item, assigned);
@@ -16752,12 +16767,6 @@
         preview._preview_only = !assignedByKey[itemKey(item)];
         return preview;
       });
-      var previewChannel = this.normalizePromotionChannel(draft.channel_key || '');
-      var previewCampaign = this.normalizePromotionChannel(draft.campaign_type || '');
-      var emailPreviewAllowed = this.isEmailPromotionChannel(previewChannel)
-        || this.isEmailPromotionChannel(previewCampaign)
-        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0
-        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewCampaign) >= 0;
       if (!previewItems.length && emailPreviewAllowed) {
         previewItems.push({
           customer_id: 0,

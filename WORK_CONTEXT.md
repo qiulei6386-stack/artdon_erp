@@ -1,6 +1,17 @@
 # Artdon ERP 工作上下文
 
-更新时间：2026-07-27
+更新时间：2026-07-28
+
+## 本次：修复综合渠道旧任务被误判为“非邮件渠道”
+
+- 用户在正式页面确认第 5 步测试邮件和第 9 步邮件预览已经显示，但两处都提示“当前任务不是邮件渠道”，导致已有邮件内容仍无法预览或测试发送。
+- 生产数据库只读聚合核对确认根因：当前 2 个 `channel_key=whatsapp / campaign_type=whatsapp` 的推广任务都保存了邮件主题或正文；前端 `buildWizardMailPreviewItems()` 只按渠道枚举判定，完全忽略任务实际是否已有邮件内容，因此两个入口共用的预览清单为空。
+- 本地修复：邮件预览和测试发送判定新增“已有邮件主题或正文”依据；综合/历史任务即使执行渠道为 WhatsApp，只要保留邮件内容，就允许按非群组人员生成逐封个性化预览；没有目标时使用示例人员。测试发送仍只投递到页面明确填写的测试邮箱，不生成或触发正式推广队列。真正没有邮件内容的非邮件任务仍保持禁用。
+- 回归：新增可在 JavaScriptCore 和 Node 双运行时执行的行为测试，实际覆盖“WhatsApp + 邮件内容 + 人员”“WhatsApp + 邮件内容 + 无人员”“WhatsApp 无邮件内容”和普通邮件任务四种场景，不再只检查源码标记；邮件专项 PHP 契约同步约束内容回退和新缓存版本。
+- 缓存与识别：`crm.php` 资源构建号更新为 `promotion-mail-detection-20260728-1`；第 9 步显示“邮件判定修复版 20260728-1”，便于用户确认浏览器已加载本次版本。
+- 本地/隔离检查：本机 JavaScriptCore 语法、邮件预览运行时行为测试和 `git diff --check` 通过；服务器 `/tmp/artdon_promo_mail_20260728_bgosFE` 隔离候选副本 PHP 8.0 检查 379 个 PHP 文件语法及 31 项无数据库契约全部通过，邮件预览专项和 1–9 步流程专项均通过。服务器没有 Node，未在正式目录执行候选代码，也没有发送真实测试邮件。
+- 修改文件：`assets/crm/crm.js`、`crm.php`、`tests/crm_marketing_wizard_mail_preview_contract.php`、新增 `tests/crm_marketing_mail_preview_runtime_test.js`、`tools/ci_js_checks.sh`、`WORK_CONTEXT.md`。用户原有商务中心命令文件删除和未跟踪文档保持原样，不纳入本次提交。
+- Git / 部署：本条记录随功能提交推送 GitHub 后，按固定流程同步同一提交至 `/www/wwwroot/Artdon/artdon_erp/`，再执行正式服务器复检与三方 SHA 核对；当前尚未修改正式服务器目录。
 
 ## 本次：第 9 步邮件预览改为第一屏强制可见
 

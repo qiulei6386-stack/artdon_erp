@@ -25,9 +25,9 @@ $requiredJs = [
     'data-promo-wizard-draft>保存草稿',
     'data-promo-confirm-scheduled>保存为计划',
     'data-promo-confirm-queue>生成执行队列',
-    'data-promo-confirm-mail-stage data-promo-preview-build="20260727-2"',
+    'data-promo-confirm-mail-stage data-promo-preview-build="20260728-1"',
     '邮件预览与测试发送',
-    '预览修复版 20260727-2',
+    '邮件判定修复版 20260728-1',
     'initialMailPreview = this.renderWizardMailCarousel(draft, plan);',
     "console.error('Promotion step 9 initial mail preview failed:', previewError);",
     'box.innerHTML = this.renderWizardMailCarousel(draft, plan) +',
@@ -35,6 +35,9 @@ $requiredJs = [
     'if (initialPreviewBox) this.bindWizardPreviewControls(initialPreviewBox);',
     "console.error('Promotion mail preview refresh failed:', previewError);",
     "['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0",
+    "var draftHasMailContent = Boolean(",
+    "|| draftHasMailContent;",
+    "return draftHasMailContent && String(item.target_level || '') !== 'group';",
     '邮件逐封预览和测试发信固定显示在第 9 步第一屏',
 ];
 foreach ($requiredJs as $marker) {
@@ -116,7 +119,7 @@ foreach ($requiredCss as $marker) {
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'promotion-preview-20260727-2';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'promotion-mail-detection-20260728-1';")) {
     throw new RuntimeException('CRM page must explicitly bust the promotion preview asset cache');
 }
 
