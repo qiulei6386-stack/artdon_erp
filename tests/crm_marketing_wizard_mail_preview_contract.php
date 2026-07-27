@@ -24,7 +24,12 @@ $requiredJs = [
     'data-promo-wizard-draft>保存草稿',
     'data-promo-confirm-scheduled>保存为计划',
     'data-promo-confirm-queue>生成执行队列',
-    '始终显示在右侧“项目操作”',
+    "<div data-promo-wizard-preview>' + this.renderWizardMailCarousel(draft, plan) + '</div>",
+    "var initialPreviewBox = modal.querySelector('[data-promo-wizard-preview]');",
+    'if (initialPreviewBox) this.bindWizardPreviewControls(initialPreviewBox);',
+    "console.error('Promotion mail preview refresh failed:', previewError);",
+    "['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0",
+    '邮件逐封预览和测试发信直接显示在第 9 步',
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
@@ -34,6 +39,9 @@ foreach ($requiredJs as $marker) {
 
 if (str_contains($js, '当前没有可测试的邮件队列')) {
     throw new RuntimeException('test send must not depend on a formal marketing queue');
+}
+if (str_contains($js, '<div data-promo-wizard-preview></div>')) {
+    throw new RuntimeException('step 9 must render an initial mail preview instead of an empty deferred placeholder');
 }
 if (str_contains($js, '<section class="promo-confirm-actions">')) {
     throw new RuntimeException('step 9 must not render a second action bar inside the scroll area');

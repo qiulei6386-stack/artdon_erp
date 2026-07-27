@@ -15478,7 +15478,16 @@
       modal.querySelector('[data-promo-template-copy]')?.addEventListener('click', function () { self.copyCurrentTemplate(); });
       modal.querySelector('[data-promo-execution-detail]')?.addEventListener('click', function () { self.openExecutionPlanDialog(); });
 	      this.bindWizardContentEditor();
-	      this.updateWizardPreview();
+	      var initialPreviewBox = modal.querySelector('[data-promo-wizard-preview]');
+	      if (initialPreviewBox) this.bindWizardPreviewControls(initialPreviewBox);
+	      try {
+	        this.updateWizardPreview();
+	      } catch (previewError) {
+	        console.error('Promotion mail preview refresh failed:', previewError);
+	        if (initialPreviewBox) {
+	          initialPreviewBox.insertAdjacentHTML('afterbegin', '<p class="promo-wizard-note is-warn">邮件预览动态刷新失败，已保留当前邮件内容；仍可切换预览并发送测试邮件。</p>');
+	        }
+	      }
 		      if (current === 'promotion') renderActions('promotion');
 		    },
 	    wizardDraftStatusText: function (draft) {
@@ -15844,7 +15853,7 @@
 	      return '<section class="promo-step-card promo-step-confirm"><div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
 	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
 	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
-	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">保存草稿、保存为计划和生成执行队列始终显示在右侧“项目操作”，提交前会自动检查第 1–9 步。</article></section>';
+	      }).join('') + '</div></section><div data-promo-wizard-preview>' + this.renderWizardMailCarousel(draft, plan) + '</div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">邮件逐封预览和测试发信直接显示在第 9 步；保存草稿、保存为计划和生成执行队列始终显示在右侧“项目操作”。</article></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);
@@ -16735,7 +16744,13 @@
         preview._preview_only = !assignedByKey[itemKey(item)];
         return preview;
       });
-      if (!previewItems.length && this.isEmailPromotionChannel(draft.channel_key || draft.campaign_type || 'email')) {
+      var previewChannel = this.normalizePromotionChannel(draft.channel_key || '');
+      var previewCampaign = this.normalizePromotionChannel(draft.campaign_type || '');
+      var emailPreviewAllowed = this.isEmailPromotionChannel(previewChannel)
+        || this.isEmailPromotionChannel(previewCampaign)
+        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0
+        || ['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewCampaign) >= 0;
+      if (!previewItems.length && emailPreviewAllowed) {
         previewItems.push({
           customer_id: 0,
           customer_name: '示例客户',
