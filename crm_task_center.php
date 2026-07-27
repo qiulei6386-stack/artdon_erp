@@ -962,35 +962,38 @@ function crm_quote_followup_save(array $input): array
     $mailId = (int)($input['mail_id'] ?? 0) ?: null;
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
     $taskSource = $source === 'cc' ? 'cc_quote' : 'quote';
-    db()->beginTransaction();
+    $pdo = db();
+    $pdo->beginTransaction();
     try {
-        $taskStmt = db()->prepare("SELECT id FROM crm_tasks WHERE task_type='quote_followup' AND source_type=? AND source_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
+        $taskStmt = $pdo->prepare("SELECT id FROM crm_tasks WHERE task_type='quote_followup' AND source_type=? AND source_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
         $taskStmt->execute([$taskSource, (string)$quoteId]);
         $taskId = (int)$taskStmt->fetchColumn();
         $taskStatus = $replied && !$nextAt ? 'done' : 'pending';
         $title = '报价跟进：' . ((string)($quote['quote_no'] ?? '') ?: ('ID ' . $quoteId)) . (($quote['customer_name'] ?? '') ? ' / ' . $quote['customer_name'] : '');
         if ($taskId > 0) {
-            db()->prepare("UPDATE crm_tasks SET customer_id=?,contact_id=?,title=?,status=?,due_at=?,reminder_at=?,completed_at=?,completed_by=?,result=?,result_note=?,updated_at=NOW() WHERE id=?")
+            $pdo->prepare("UPDATE crm_tasks SET customer_id=?,contact_id=?,title=?,status=?,due_at=?,reminder_at=?,completed_at=?,completed_by=?,result=?,result_note=?,updated_at=NOW() WHERE id=?")
                 ->execute([$customerId ?: null,$contactId,$title,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$taskId]);
         } else {
             $owner = (int)($quote['owner_legacy_user_id'] ?? 0) ?: $uid;
-            db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,completed_at,completed_by,result,result_note,created_by,created_at,updated_at) VALUES ('quote_followup',?,?,?,?,?,?,?,?,JSON_ARRAY(),'important',?,?,?,?,?,?,?,?,NOW(),NOW())")
+            $pdo->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,completed_at,completed_by,result,result_note,created_by,created_at,updated_at) VALUES ('quote_followup',?,?,?,?,?,?,?,?,JSON_ARRAY(),'important',?,?,?,?,?,?,?,?,NOW(),NOW())")
                 ->execute([$title,$content,$taskSource,(string)$quoteId,$customerId ?: null,$contactId,(string)($quote['quote_no'] ?? $quoteId),$owner,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$uid]);
-            $taskId = (int)db()->lastInsertId();
+            $taskId = (int)$pdo->lastInsertId();
         }
-        db()->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mail_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+        $pdo->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mail_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
             ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
-        $activityId = (int)db()->lastInsertId();
+        $activityId = (int)$pdo->lastInsertId();
         if ($customerId > 0) {
             $channelMap = ['email'=>'邮件','wechat'=>'微信','whatsapp'=>'WhatsApp','online_meeting'=>'线上会议','other_online'=>'其他线上','phone'=>'电话','visit'=>'拜访','exhibition'=>'展会','other_offline'=>'其他线下'];
             crm_customer_timeline_add($customerId, 'quote_followup', '报价跟进：' . ($quote['quote_no'] ?? ''), ($mode === 'online' ? '线上' : '线下') . ' · ' . ($channelMap[$channel] ?? $channel) . ' · ' . $content, 'quote_followup', (string)$activityId);
         }
-        crm_log_event('tasks', 'quote_followup_save', 'quote_followup', (string)$activityId, null, ['quote_source'=>$source,'quote_id'=>$quoteId,'task_id'=>$taskId,'result'=>$result,'next_followup_at'=>$nextAt,'customer_replied'=>$replied]);
-        db()->commit();
+        $pdo->commit();
     } catch (Throwable $e) {
-        if (db()->inTransaction()) db()->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+    // crm_log_event() may initialize CRM log tables with DDL. Keep it outside
+    // the business transaction because MySQL DDL implicitly commits.
+    crm_log_event('tasks', 'quote_followup_save', 'quote_followup', (string)$activityId, null, ['quote_source'=>$source,'quote_id'=>$quoteId,'task_id'=>$taskId,'result'=>$result,'next_followup_at'=>$nextAt,'customer_replied'=>$replied]);
     $resultData = crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
     $resultData['saved_activity_id'] = $activityId;
     return $resultData;
