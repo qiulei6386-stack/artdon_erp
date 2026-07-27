@@ -13,13 +13,13 @@ foreach(['产品列表','配置规则','选项详情','芯片 / 光源','电源 
 foreach(['data-adaptation-tab="options"','data-adaptation-tab="default"','data-adaptation-tab="alternative"','data-adaptation-tab="conditions"','data-adaptation-tab="impact"','data-adaptation-tab="approval"']as$marker){
     if(!str_contains($page,$marker))throw new RuntimeException("adaptation detail tab missing: {$marker}");
 }
-foreach(['initialize_groups','conditions_json','condition_failure_message','price_impact','lead_time_impact_days','approveProduct']as$marker){
+foreach(['initialize_groups','save_conditions','expected_json','failure_message','price_impact','lead_time_impact_days','approveProduct']as$marker){
     if(!str_contains($page.$script.$service.$api,$marker))throw new RuntimeException("adaptation workflow missing: {$marker}");
 }
-foreach(["m.status='official'","m.is_official=1",'至少添加一个正式物料选项后才能审批']as$gate){
+foreach(["m.status='official'","m.is_official=1",'必选组尚未添加选项','暂不能提交审批：']as$gate){
     if(!str_contains($service,$gate))throw new RuntimeException("adaptation approval gate missing: {$gate}");
 }
-foreach(['powerCompatibilityReasons','最大功率','输出电流','输出电压','超过灯体空间','供应商质保','调光方式','认证']as$marker){
+foreach(['powerCompatibilityReasons','comparePower','功率超出产品允许范围','输出电流高于芯片允许值或范围不相交','输出电压范围不匹配','超过灯体内部空间','supplier_warranty_years','调光方式不匹配','certification_required']as$marker){
     if(!str_contains($service,$marker))throw new RuntimeException("power adaptation check missing: {$marker}");
 }
 echo "Product adaptation three-column workflow contract: OK\n";

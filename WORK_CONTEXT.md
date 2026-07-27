@@ -2,6 +2,20 @@
 
 更新时间：2026-07-27
 
+## 本次：建立可持续测试与安全自动部署工作流
+
+- 完成腾讯云实例、站点目录、运行环境、Git、测试网址和安全基线只读扫描；确认生产为 Ubuntu 22.04、Nginx、宝塔 PHP-FPM 8.0、MySQL、原生 PHP 应用，站点目录 `/www/wwwroot/Artdon/artdon_erp`，Git `main` 与 `origin/main` 初始提交均为 `6fac85e`。
+- 修复本机 SSH：保留腾讯云 RSA 公钥并追加办公电脑 `artdon_tencent` ED25519 公钥；`artdon` 和 `qiulei0207_office` 两个别名均已验证可登录。腾讯云下载的 RSA 私钥已安全复制到 `~/.ssh/qiulei0207_office.pem` 并设为 `600`。
+- 原办公电脑 iCloud 仓库无法获得 Codex 写权限，经用户明确授权迁移到 `/Users/qiulei-office/Documents/Codex/Artdon/artdon_erp`，Git 历史与用户已有删除/未跟踪文档完整保留，私钥没有复制到新仓库；`AGENTS.md` 已把办公电脑唯一编辑源更新为新路径。
+- 新增根目录 `/*.pem` 忽略规则，防止私钥误入 Git。旧 iCloud 仓库根目录仍有未跟踪 `qiulei0207_office.pem`，因原目录只读无法由本轮删除，需用户手工清理。
+- 基线测试发现旧 `adaptation_workbench_contract.php` 仍断言已被适配工作流 v2 替代的字段、提示和电源错误文案；业务实现及新版 v2 契约正确，本轮只把旧契约更新为当前 `save_conditions / expected_json / failure_message`、完成度审批门槛和现行电源适配原因。
+- 新增 `tools/ci_php_checks.sh`：用指定 PHP 执行全部已跟踪 PHP 文件语法检查，并运行 20 个不依赖生产配置、不会修改数据库的 PHP 契约测试。两个依赖真实系统配置的电源权限/Tab 测试明确不纳入无数据库 CI，仍保留为受控服务器测试；脚本在不属于 Git 工作区或未发现 PHP 文件时直接失败，避免“检查 0 个文件”误报通过。
+- 新增 `tools/ci_js_checks.sh`：检查全部已跟踪 JavaScript 文件语法，并运行 3 个物料中心 MM/UI 静态、UI 契约及只读安全测试；同样拒绝非 Git 工作区和零文件误报。
+- 重建 `.github/workflows/deploy.yml`：Pull Request 和 `main` 推送先执行 PHP 8.0 与 Node.js 20 检查；仅 `main` 全部通过后部署。部署不再要求服务器访问 GitHub，而是由 Actions 生成校验 Git bundle，通过固定 ED25519 主机公钥上传；服务器工作区非干净、bundle 哈希不符、提交号不符或不能快进时立即停止，部署后同步服务器 `origin/main`、再用生产 PHP 8.0 复检并验证公开登录路由。
+- 新增 `.github/known_hosts` 和 `docs/DEPLOYMENT_WORKFLOW.md`，记录固定主机公钥、所需 GitHub Secrets、测试/部署顺序及生产数据库测试边界。
+- 检查：本地 38 个 JavaScript 文件语法、3 个 Node 静态/契约测试、Shell 语法、Workflow YAML、固定 SSH 主机公钥、私钥忽略和 `git diff --check` 通过；服务器 `/tmp` 干净临时克隆使用生产 PHP 8.0 检查 347 个 PHP 文件语法和 20 个无数据库契约测试，全部通过。临时目录已清理，未修改生产目录或数据库。
+- 用户原有 `commercial_center_v1/离职中心CODEX.command` 删除、商务中心未跟踪文档和命令文件全部保留且不纳入本轮。Git 提交、GitHub 推送、自动/人工部署、服务器复检和三方一致性将在本轮完成后补记。
+
 ## 本次：修复电源“确认并转正式”点击无响应
 
 - 生产只读核对：用户电源 `PS-BOM-000647 / 伊戈尔 新款高P无频闪外置驱动` 仍为 `pending_review`，只有 `draft → pending_review` 的提交事件，没有 approve 生命周期或操作日志；账号 `qiulei` 为统一账号超级管理员，审批权限正常，因此没有擅自改动该条生产数据。

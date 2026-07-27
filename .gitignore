@@ -23,6 +23,7 @@ includes/config.php
 includes/install.lock
 .env
 .env.*
+/*.pem
 
 # Archive artifacts
 *.tar

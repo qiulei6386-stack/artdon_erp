@@ -1,21 +1,62 @@
-name: Deploy to production
+name: Validate and deploy production
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: production-deploy
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Pull latest code on server
+  validate:
+    name: PHP and JavaScript checks
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP 8.0
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.0"
+          coverage: none
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run PHP checks
+        run: bash tools/ci_php_checks.sh
+
+      - name: Run JavaScript checks
+        run: bash tools/ci_js_checks.sh
+
+  deploy:
+    name: Deploy tested commit
+    needs:
+      - validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out full repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Validate deployment secrets
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -23,20 +64,102 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
-          test -n "$SERVER_HOST"
-          test -n "$SERVER_PORT"
-          test -n "$SERVER_USER"
-          test -n "$SERVER_SSH_KEY"
+          set -euo pipefail
+          for secret_name in SERVER_HOST SERVER_PORT SERVER_USER SERVER_SSH_KEY; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "::error::Missing GitHub Actions secret: ${secret_name}"
+              exit 1
+            fi
+          done
+          if ! ssh-keygen -F "$SERVER_HOST" -f .github/known_hosts >/dev/null; then
+            echo "::error::SERVER_HOST is not present in .github/known_hosts"
+            exit 1
+          fi
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT }}
-          script_stop: true
-          script: |
-            cd /www/wwwroot/Artdon/artdon_erp
-            git fetch origin
-            git pull --ff-only origin main
+      - name: Build and transfer verified Git bundle
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/artdon-deploy-key"
+          bundle_path="$RUNNER_TEMP/artdon-${GITHUB_SHA}.bundle"
+          remote_bundle="/tmp/artdon-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.bundle"
+
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > "$key_path"
+          git bundle create "$bundle_path" HEAD
+          bundle_sha="$(sha256sum "$bundle_path" | awk '{print $1}')"
+
+          scp \
+            -i "$key_path" \
+            -P "$SERVER_PORT" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=.github/known_hosts \
+            "$bundle_path" \
+            "${SERVER_USER}@${SERVER_HOST}:${remote_bundle}"
+
+          ssh \
+            -i "$key_path" \
+            -p "$SERVER_PORT" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=.github/known_hosts \
+            "${SERVER_USER}@${SERVER_HOST}" \
+            bash -s -- "$GITHUB_SHA" "$bundle_sha" "$remote_bundle" <<'REMOTE'
+          set -euo pipefail
+          expected_commit="$1"
+          expected_sha="$2"
+          bundle_file="$3"
+          repository="/www/wwwroot/Artdon/artdon_erp"
+
+          trap 'rm -f "$bundle_file"' EXIT
+          cd "$repository"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Server worktree is not clean; deployment stopped." >&2
+            git status --short
+            exit 1
+          fi
+
+          printf '%s  %s\n' "$expected_sha" "$bundle_file" | sha256sum -c -
+          git bundle verify "$bundle_file"
+          git fetch "$bundle_file" HEAD:refs/remotes/deploy/main
+
+          if [ "$(git rev-parse refs/remotes/deploy/main)" != "$expected_commit" ]; then
+            echo "Bundle commit does not match GitHub commit." >&2
+            exit 1
+          fi
+
+          git merge --ff-only refs/remotes/deploy/main
+
+          if [ "$(git rev-parse HEAD)" != "$expected_commit" ]; then
+            echo "Server HEAD does not match the tested commit." >&2
+            exit 1
+          fi
+
+          git update-ref refs/remotes/origin/main "$expected_commit"
+
+          if [ "$(git rev-parse refs/remotes/origin/main)" != "$expected_commit" ]; then
+            echo "Server origin/main does not match the tested commit." >&2
+            exit 1
+          fi
+
+          PHP_BIN=/www/server/php/80/bin/php bash tools/ci_php_checks.sh
+          REMOTE
+
+          rm -f "$key_path" "$bundle_path"
+
+      - name: Verify public login route
+        run: |
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 30 \
+            --output /dev/null \
+            https://novlight.com/artdon_erp/

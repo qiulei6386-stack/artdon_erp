@@ -4,7 +4,7 @@
 
 1. 所有代码修改以当前电脑对应的本地工作目录为唯一编辑源：
    - 家用电脑：`/Users/qiulei-home/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
-   - 办公电脑：`/Users/qiulei-office/Library/Mobile Documents/com~apple~CloudDocs/artdon/artdon_guangzhou/artdon_erp`
+   - 办公电脑：`/Users/qiulei-office/Documents/Codex/Artdon/artdon_erp`
    两个路径属于两台不同电脑；每次只使用当前电脑实际存在的目录，不将另一台电脑路径视为无效。
 2. 不直接在服务器上临时编辑代码。所有修改必须先在本地文件完成，再执行与改动相称的语法、静态和功能检查。
 3. 本地检查通过后，必须先将本地改动提交到当前 Git 分支，并推送到 GitHub `origin`；不得先绕过 GitHub 单独修改或部署服务器。
