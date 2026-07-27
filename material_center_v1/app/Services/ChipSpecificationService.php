@@ -386,7 +386,6 @@ final class ChipSpecificationService
                 VALUES(?,?,?,'active',NOW(),NOW())");
             foreach ($variantIds as $variantId) $insert->execute([$optionId, $variantId, $variantId === $defaultVariantId ? 1 : 0]);
             $productId = (int) $option['product_id'];
-            $this->db->prepare("UPDATE mc_products SET status='active',updated_at=NOW() WHERE id=?")->execute([$productId]);
             $this->db->prepare("UPDATE mc_adaptation_groups SET status='draft',is_enabled=0,updated_by=?,updated_at=NOW() WHERE product_id=? AND status<>'disabled'")
                 ->execute([$userId, $productId]);
             $this->db->prepare("UPDATE mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id
