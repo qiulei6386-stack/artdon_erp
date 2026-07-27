@@ -2,6 +2,16 @@
 
 更新时间：2026-07-28
 
+## 本次：以腾讯云正式服务器为准恢复办公室本地版本
+
+- 用户明确指定腾讯云正式目录 `/www/wwwroot/Artdon/artdon_erp/` 为最新版本，要求先核对服务器，再确认 GitHub，最后同步办公室本地；本轮暂停新的功能修改。
+- 只读核对确认服务器工作区干净，服务器 `HEAD / origin/main` 与 GitHub `main` 均为 `d577fe60e65b847573a60b465d8cb3886aa75db7`；办公室本地仍停在旧提交 `3fd9f677292b7942f96ca4d55a96786ba7f21b04`。因此版本问题是办公室电脑未同步，并非服务器或 GitHub 落后。
+- 同步前已备份办公室本地：`/Users/qiulei-office/Documents/Codex/_sync_backups/artdon_erp_office_20260728_071001/`，包含完整旧 Git bundle 和当前 `commercial_center_v1` 工作副本；bundle SHA-256 为 `370f01caa3bcce9c9610ae8621abba52e14b31668242f693347aa3764faf92e8`。
+- 服务器备份位于 `_codex_backups/server_sync_20260728_071001/`：当前 Git bundle、`d577fe60e` 跟踪代码归档及完整数据库 SQL 压缩包。数据库使用一致性事务和 `--no-tablespaces` 重新完整导出，`gzip -t` 与 `-- Dump completed on 2026-07-28 7:12:03` 结束标记通过，数据库备份 SHA-256 为 `45ecbe21188e14001a91e7272cab48a368c35e28da651887e38c1488acb3dccf`。
+- 办公室本地从 GitHub `main` 做纯快进同步 `3fd9f677 → d577fe60e`；服务器/GitHub带来的 7 个文件与本地未提交内容不重叠。本地原有商务中心命令文件删除及 9 个未跟踪文件全部保持原样，未提交、未删除、未覆盖。
+- 回归：办公室本地 `assets/crm/crm.js` Node 语法、推广邮件预览运行时行为测试和 `git diff --check` 通过；服务器 `crm.php`、`crm_marketing.php` PHP 8.0 语法、推广邮件预览专项契约和 `git diff --check` 通过。服务器没有 Node，因此运行时行为测试由同一代码的办公室本地执行。5 个关键文件本地/服务器 SHA-256 逐项一致；线上 CRM 入口 66ms 返回统一登录 302，路由正常。
+- 本轮除本上下文记录外没有修改功能代码、数据库或业务数据。该记录提交后按固定流程推送 GitHub 并等待自动部署，再核对办公室本地、GitHub、服务器最终提交一致。
+
 ## 本次：修复综合渠道旧任务被误判为“非邮件渠道”
 
 - 用户在正式页面确认第 5 步测试邮件和第 9 步邮件预览已经显示，但两处都提示“当前任务不是邮件渠道”，导致已有邮件内容仍无法预览或测试发送。
