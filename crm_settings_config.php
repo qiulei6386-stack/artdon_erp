@@ -19,6 +19,80 @@ function crm_settings_schema_version(): string
     return '20260706_crm_settings_v4';
 }
 
+function crm_country_region_defaults(): array
+{
+    static $items = null;
+    if ($items === null) {
+        $items = require __DIR__ . '/includes/crm_country_region_defaults.php';
+        if (!is_array($items) || count($items) !== 249) {
+            throw new RuntimeException('国家 / 地区预设必须包含 249 项 ISO 3166-1 数据。');
+        }
+    }
+    return $items;
+}
+
+function crm_country_region_preset_version(): string
+{
+    return '20260727_country_region_249_v1';
+}
+
+function crm_sync_country_region_presets(): void
+{
+    $version = crm_country_region_preset_version();
+    $versionStmt = db()->prepare('SELECT config_json FROM crm_rule_configs WHERE rule_key = ? LIMIT 1');
+    $versionStmt->execute(['crm_country_region_preset_version']);
+    $current = json_decode((string)$versionStmt->fetchColumn(), true) ?: [];
+    if (($current['version'] ?? '') === $version) return;
+
+    $existingStmt = db()->prepare('SELECT item_key, extra_config_json FROM crm_dictionary_items WHERE type_key = ? AND deleted_at IS NULL');
+    $existingStmt->execute(['country_region']);
+    $existing = [];
+    foreach ($existingStmt->fetchAll() as $row) {
+        $existing[(string)$row['item_key']] = json_decode((string)($row['extra_config_json'] ?? '{}'), true) ?: [];
+    }
+
+    $insertStmt = db()->prepare('INSERT IGNORE INTO crm_dictionary_items (type_key, item_key, name_cn, name_en, short_name, color, icon, description, extra_config_json, is_default, is_enabled, sort_order, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, NULL, NOW(), NOW())');
+    $extraStmt = db()->prepare('UPDATE crm_dictionary_items SET extra_config_json = ?, updated_at = NOW() WHERE type_key = ? AND item_key = ? AND deleted_at IS NULL');
+    $sort = 10;
+    foreach (crm_country_region_defaults() as $item) {
+        $key = (string)$item[0];
+        $defaultExtra = is_array($item[6] ?? null) ? $item[6] : [];
+        if (!array_key_exists($key, $existing)) {
+            $insertStmt->execute([
+                'country_region',
+                $key,
+                (string)$item[1],
+                (string)$item[2],
+                (string)$item[3],
+                (string)$item[4],
+                (string)$item[5],
+                '',
+                json_encode($defaultExtra, JSON_UNESCAPED_UNICODE),
+                (int)$item[7],
+                $sort,
+            ]);
+        } else {
+            $extra = $existing[$key];
+            foreach (['iso', 'iso3', 'numeric', 'phone_code', 'region'] as $field) {
+                $extra[$field] = (string)($defaultExtra[$field] ?? '');
+            }
+            if (!array_key_exists('pinned', $extra)) {
+                $extra['pinned'] = (int)($defaultExtra['pinned'] ?? 0);
+            }
+            $extraStmt->execute([json_encode($extra, JSON_UNESCAPED_UNICODE), 'country_region', $key]);
+        }
+        $sort += 10;
+    }
+
+    $countStmt = db()->prepare('SELECT COUNT(*) FROM crm_dictionary_items WHERE type_key = ? AND deleted_at IS NULL');
+    $countStmt->execute(['country_region']);
+    if ((int)$countStmt->fetchColumn() < 249) {
+        throw new RuntimeException('国家 / 地区预设同步未达到 249 项。');
+    }
+    db()->prepare('INSERT INTO crm_rule_configs (rule_key, rule_name, rule_group, config_json, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE config_json=VALUES(config_json), updated_at=NOW()')
+        ->execute(['crm_country_region_preset_version', 'CRM 全球国家 / 地区预设版本', 'system', json_encode(['version' => $version, 'count' => 249], JSON_UNESCAPED_UNICODE)]);
+}
+
 function crm_settings_schema_ready(): bool
 {
     static $ready = null;
@@ -50,6 +124,7 @@ function crm_settings_ensure_tables(): void
     static $done = false;
     if ($done) return;
     if (crm_settings_schema_ready()) {
+        crm_sync_country_region_presets();
         $done = true;
         return;
     }
@@ -145,6 +220,7 @@ function crm_settings_ensure_tables(): void
     crm_seed_rule_configs();
     crm_seed_field_configs();
     crm_settings_ensure_permissions();
+    crm_sync_country_region_presets();
     crm_settings_mark_schema_ready();
     $done = true;
 }
@@ -296,113 +372,7 @@ function crm_dictionary_item_defaults(): array
         'followup_type' => [
             ['mail','邮件','Email','邮件','#2563eb','@',[],1], ['phone','电话','Phone','电话','#f59e0b','☎',[],0], ['whatsapp','WhatsApp','WhatsApp','WA','#059669','WA',[],0], ['wechat','微信','WeChat','微信','#16a34a','WX',[],0], ['visit','拜访','Visit','拜访','#d97706','V',[],0], ['exhibition','展会','Exhibition','展会','#7c3aed','EX',[],0], ['quote','报价','Quote','报价','#8b5cf6','Q',[],0], ['sample','样品','Sample','样品','#0ea5e9','S',[],0], ['service','售后','After-sales','售后','#dc2626','AS',[],0], ['meeting','会议','Meeting','会议','#6366f1','MT',[],0], ['other','其他','Other','其他','#64748b','OT',[],0],
         ],
-        'country_region' => [
-            ['IN','印度','India','India','#f59e0b','IN',['iso'=>'IN','phone_code'=>'+91','region'=>'Asia','pinned'=>1],0],
-            ['KR','韩国','South Korea','Korea','#2563eb','KR',['iso'=>'KR','phone_code'=>'+82','region'=>'Asia','pinned'=>1],0],
-            ['AE','阿联酋 / 迪拜','United Arab Emirates / Dubai','UAE','#059669','AE',['iso'=>'AE','phone_code'=>'+971','region'=>'Middle East','pinned'=>1],0],
-            ['SA','沙特阿拉伯','Saudi Arabia','Saudi','#16a34a','SA',['iso'=>'SA','phone_code'=>'+966','region'=>'Middle East','pinned'=>1],0],
-            ['DE','德国','Germany','Germany','#111827','DE',['iso'=>'DE','phone_code'=>'+49','region'=>'Europe','pinned'=>1],0],
-            ['US','美国','United States','USA','#2563eb','US',['iso'=>'US','phone_code'=>'+1','region'=>'North America','pinned'=>1],0],
-            ['GB','英国','United Kingdom','UK','#1d4ed8','GB',['iso'=>'GB','phone_code'=>'+44','region'=>'Europe','pinned'=>1],0],
-            ['CN','中国','China','China','#dc2626','CN',['iso'=>'CN','phone_code'=>'+86','region'=>'Asia','pinned'=>1],0],
-            ['HK','中国香港','Hong Kong','HK','#ef4444','HK',['iso'=>'HK','phone_code'=>'+852','region'=>'Asia','pinned'=>1],0],
-            ['TW','中国台湾','Taiwan','Taiwan','#ef4444','TW',['iso'=>'TW','phone_code'=>'+886','region'=>'Asia','pinned'=>0],0],
-            ['JP','日本','Japan','Japan','#ef4444','JP',['iso'=>'JP','phone_code'=>'+81','region'=>'Asia','pinned'=>0],0],
-            ['SG','新加坡','Singapore','Singapore','#dc2626','SG',['iso'=>'SG','phone_code'=>'+65','region'=>'Asia','pinned'=>1],0],
-            ['MY','马来西亚','Malaysia','Malaysia','#0ea5e9','MY',['iso'=>'MY','phone_code'=>'+60','region'=>'Asia','pinned'=>0],0],
-            ['TH','泰国','Thailand','Thailand','#2563eb','TH',['iso'=>'TH','phone_code'=>'+66','region'=>'Asia','pinned'=>0],0],
-            ['VN','越南','Vietnam','Vietnam','#dc2626','VN',['iso'=>'VN','phone_code'=>'+84','region'=>'Asia','pinned'=>0],0],
-            ['ID','印度尼西亚','Indonesia','Indonesia','#ef4444','ID',['iso'=>'ID','phone_code'=>'+62','region'=>'Asia','pinned'=>0],0],
-            ['PH','菲律宾','Philippines','Philippines','#2563eb','PH',['iso'=>'PH','phone_code'=>'+63','region'=>'Asia','pinned'=>0],0],
-            ['BD','孟加拉','Bangladesh','Bangladesh','#16a34a','BD',['iso'=>'BD','phone_code'=>'+880','region'=>'Asia','pinned'=>0],0],
-            ['PK','巴基斯坦','Pakistan','Pakistan','#059669','PK',['iso'=>'PK','phone_code'=>'+92','region'=>'Asia','pinned'=>0],0],
-            ['LK','斯里兰卡','Sri Lanka','Sri Lanka','#f59e0b','LK',['iso'=>'LK','phone_code'=>'+94','region'=>'Asia','pinned'=>0],0],
-            ['NP','尼泊尔','Nepal','Nepal','#dc2626','NP',['iso'=>'NP','phone_code'=>'+977','region'=>'Asia','pinned'=>0],0],
-            ['MM','缅甸','Myanmar','Myanmar','#f59e0b','MM',['iso'=>'MM','phone_code'=>'+95','region'=>'Asia','pinned'=>0],0],
-            ['KH','柬埔寨','Cambodia','Cambodia','#2563eb','KH',['iso'=>'KH','phone_code'=>'+855','region'=>'Asia','pinned'=>0],0],
-            ['LA','老挝','Laos','Laos','#2563eb','LA',['iso'=>'LA','phone_code'=>'+856','region'=>'Asia','pinned'=>0],0],
-            ['MN','蒙古','Mongolia','Mongolia','#0ea5e9','MN',['iso'=>'MN','phone_code'=>'+976','region'=>'Asia','pinned'=>0],0],
-            ['KZ','哈萨克斯坦','Kazakhstan','Kazakhstan','#0ea5e9','KZ',['iso'=>'KZ','phone_code'=>'+7','region'=>'Central Asia','pinned'=>0],0],
-            ['UZ','乌兹别克斯坦','Uzbekistan','Uzbekistan','#059669','UZ',['iso'=>'UZ','phone_code'=>'+998','region'=>'Central Asia','pinned'=>0],0],
-            ['KG','吉尔吉斯斯坦','Kyrgyzstan','Kyrgyzstan','#dc2626','KG',['iso'=>'KG','phone_code'=>'+996','region'=>'Central Asia','pinned'=>0],0],
-            ['TJ','塔吉克斯坦','Tajikistan','Tajikistan','#16a34a','TJ',['iso'=>'TJ','phone_code'=>'+992','region'=>'Central Asia','pinned'=>0],0],
-            ['TM','土库曼斯坦','Turkmenistan','Turkmenistan','#059669','TM',['iso'=>'TM','phone_code'=>'+993','region'=>'Central Asia','pinned'=>0],0],
-            ['TR','土耳其','Turkey','Turkey','#dc2626','TR',['iso'=>'TR','phone_code'=>'+90','region'=>'Middle East','pinned'=>1],0],
-            ['QA','卡塔尔','Qatar','Qatar','#7c3aed','QA',['iso'=>'QA','phone_code'=>'+974','region'=>'Middle East','pinned'=>0],0],
-            ['KW','科威特','Kuwait','Kuwait','#16a34a','KW',['iso'=>'KW','phone_code'=>'+965','region'=>'Middle East','pinned'=>0],0],
-            ['OM','阿曼','Oman','Oman','#dc2626','OM',['iso'=>'OM','phone_code'=>'+968','region'=>'Middle East','pinned'=>0],0],
-            ['BH','巴林','Bahrain','Bahrain','#dc2626','BH',['iso'=>'BH','phone_code'=>'+973','region'=>'Middle East','pinned'=>0],0],
-            ['IL','以色列','Israel','Israel','#2563eb','IL',['iso'=>'IL','phone_code'=>'+972','region'=>'Middle East','pinned'=>0],0],
-            ['JO','约旦','Jordan','Jordan','#16a34a','JO',['iso'=>'JO','phone_code'=>'+962','region'=>'Middle East','pinned'=>0],0],
-            ['LB','黎巴嫩','Lebanon','Lebanon','#dc2626','LB',['iso'=>'LB','phone_code'=>'+961','region'=>'Middle East','pinned'=>0],0],
-            ['EG','埃及','Egypt','Egypt','#dc2626','EG',['iso'=>'EG','phone_code'=>'+20','region'=>'Middle East','pinned'=>0],0],
-            ['IR','伊朗','Iran','Iran','#059669','IR',['iso'=>'IR','phone_code'=>'+98','region'=>'Middle East','pinned'=>0],0],
-            ['IQ','伊拉克','Iraq','Iraq','#16a34a','IQ',['iso'=>'IQ','phone_code'=>'+964','region'=>'Middle East','pinned'=>0],0],
-            ['FR','法国','France','France','#2563eb','FR',['iso'=>'FR','phone_code'=>'+33','region'=>'Europe','pinned'=>0],0],
-            ['IT','意大利','Italy','Italy','#16a34a','IT',['iso'=>'IT','phone_code'=>'+39','region'=>'Europe','pinned'=>0],0],
-            ['ES','西班牙','Spain','Spain','#f59e0b','ES',['iso'=>'ES','phone_code'=>'+34','region'=>'Europe','pinned'=>0],0],
-            ['PT','葡萄牙','Portugal','Portugal','#16a34a','PT',['iso'=>'PT','phone_code'=>'+351','region'=>'Europe','pinned'=>0],0],
-            ['NL','荷兰','Netherlands','Netherlands','#f97316','NL',['iso'=>'NL','phone_code'=>'+31','region'=>'Europe','pinned'=>0],0],
-            ['BE','比利时','Belgium','Belgium','#111827','BE',['iso'=>'BE','phone_code'=>'+32','region'=>'Europe','pinned'=>0],0],
-            ['LU','卢森堡','Luxembourg','Luxembourg','#0ea5e9','LU',['iso'=>'LU','phone_code'=>'+352','region'=>'Europe','pinned'=>0],0],
-            ['CH','瑞士','Switzerland','Switzerland','#dc2626','CH',['iso'=>'CH','phone_code'=>'+41','region'=>'Europe','pinned'=>0],0],
-            ['AT','奥地利','Austria','Austria','#dc2626','AT',['iso'=>'AT','phone_code'=>'+43','region'=>'Europe','pinned'=>0],0],
-            ['IE','爱尔兰','Ireland','Ireland','#16a34a','IE',['iso'=>'IE','phone_code'=>'+353','region'=>'Europe','pinned'=>0],0],
-            ['DK','丹麦','Denmark','Denmark','#dc2626','DK',['iso'=>'DK','phone_code'=>'+45','region'=>'Europe','pinned'=>0],0],
-            ['SE','瑞典','Sweden','Sweden','#0ea5e9','SE',['iso'=>'SE','phone_code'=>'+46','region'=>'Europe','pinned'=>0],0],
-            ['NO','挪威','Norway','Norway','#2563eb','NO',['iso'=>'NO','phone_code'=>'+47','region'=>'Europe','pinned'=>0],0],
-            ['FI','芬兰','Finland','Finland','#2563eb','FI',['iso'=>'FI','phone_code'=>'+358','region'=>'Europe','pinned'=>0],0],
-            ['IS','冰岛','Iceland','Iceland','#2563eb','IS',['iso'=>'IS','phone_code'=>'+354','region'=>'Europe','pinned'=>0],0],
-            ['PL','波兰','Poland','Poland','#dc2626','PL',['iso'=>'PL','phone_code'=>'+48','region'=>'Europe','pinned'=>0],0],
-            ['CZ','捷克','Czech Republic','Czech','#2563eb','CZ',['iso'=>'CZ','phone_code'=>'+420','region'=>'Europe','pinned'=>0],0],
-            ['SK','斯洛伐克','Slovakia','Slovakia','#2563eb','SK',['iso'=>'SK','phone_code'=>'+421','region'=>'Europe','pinned'=>0],0],
-            ['HU','匈牙利','Hungary','Hungary','#16a34a','HU',['iso'=>'HU','phone_code'=>'+36','region'=>'Europe','pinned'=>0],0],
-            ['RO','罗马尼亚','Romania','Romania','#2563eb','RO',['iso'=>'RO','phone_code'=>'+40','region'=>'Europe','pinned'=>0],0],
-            ['BG','保加利亚','Bulgaria','Bulgaria','#16a34a','BG',['iso'=>'BG','phone_code'=>'+359','region'=>'Europe','pinned'=>0],0],
-            ['GR','希腊','Greece','Greece','#2563eb','GR',['iso'=>'GR','phone_code'=>'+30','region'=>'Europe','pinned'=>0],0],
-            ['HR','克罗地亚','Croatia','Croatia','#2563eb','HR',['iso'=>'HR','phone_code'=>'+385','region'=>'Europe','pinned'=>0],0],
-            ['SI','斯洛文尼亚','Slovenia','Slovenia','#2563eb','SI',['iso'=>'SI','phone_code'=>'+386','region'=>'Europe','pinned'=>0],0],
-            ['RS','塞尔维亚','Serbia','Serbia','#2563eb','RS',['iso'=>'RS','phone_code'=>'+381','region'=>'Europe','pinned'=>0],0],
-            ['UA','乌克兰','Ukraine','Ukraine','#0ea5e9','UA',['iso'=>'UA','phone_code'=>'+380','region'=>'Europe','pinned'=>0],0],
-            ['RU','俄罗斯','Russia','Russia','#2563eb','RU',['iso'=>'RU','phone_code'=>'+7','region'=>'Europe / Asia','pinned'=>0],0],
-            ['CA','加拿大','Canada','Canada','#dc2626','CA',['iso'=>'CA','phone_code'=>'+1','region'=>'North America','pinned'=>0],0],
-            ['MX','墨西哥','Mexico','Mexico','#16a34a','MX',['iso'=>'MX','phone_code'=>'+52','region'=>'North America','pinned'=>0],0],
-            ['BR','巴西','Brazil','Brazil','#16a34a','BR',['iso'=>'BR','phone_code'=>'+55','region'=>'South America','pinned'=>0],0],
-            ['AR','阿根廷','Argentina','Argentina','#0ea5e9','AR',['iso'=>'AR','phone_code'=>'+54','region'=>'South America','pinned'=>0],0],
-            ['CL','智利','Chile','Chile','#dc2626','CL',['iso'=>'CL','phone_code'=>'+56','region'=>'South America','pinned'=>0],0],
-            ['CO','哥伦比亚','Colombia','Colombia','#f59e0b','CO',['iso'=>'CO','phone_code'=>'+57','region'=>'South America','pinned'=>0],0],
-            ['PE','秘鲁','Peru','Peru','#dc2626','PE',['iso'=>'PE','phone_code'=>'+51','region'=>'South America','pinned'=>0],0],
-            ['EC','厄瓜多尔','Ecuador','Ecuador','#f59e0b','EC',['iso'=>'EC','phone_code'=>'+593','region'=>'South America','pinned'=>0],0],
-            ['UY','乌拉圭','Uruguay','Uruguay','#0ea5e9','UY',['iso'=>'UY','phone_code'=>'+598','region'=>'South America','pinned'=>0],0],
-            ['PY','巴拉圭','Paraguay','Paraguay','#dc2626','PY',['iso'=>'PY','phone_code'=>'+595','region'=>'South America','pinned'=>0],0],
-            ['BO','玻利维亚','Bolivia','Bolivia','#16a34a','BO',['iso'=>'BO','phone_code'=>'+591','region'=>'South America','pinned'=>0],0],
-            ['VE','委内瑞拉','Venezuela','Venezuela','#f59e0b','VE',['iso'=>'VE','phone_code'=>'+58','region'=>'South America','pinned'=>0],0],
-            ['PA','巴拿马','Panama','Panama','#2563eb','PA',['iso'=>'PA','phone_code'=>'+507','region'=>'Central America','pinned'=>0],0],
-            ['CR','哥斯达黎加','Costa Rica','Costa Rica','#2563eb','CR',['iso'=>'CR','phone_code'=>'+506','region'=>'Central America','pinned'=>0],0],
-            ['GT','危地马拉','Guatemala','Guatemala','#2563eb','GT',['iso'=>'GT','phone_code'=>'+502','region'=>'Central America','pinned'=>0],0],
-            ['DO','多米尼加','Dominican Republic','Dominican','#2563eb','DO',['iso'=>'DO','phone_code'=>'+1-809','region'=>'Caribbean','pinned'=>0],0],
-            ['ZA','南非','South Africa','South Africa','#16a34a','ZA',['iso'=>'ZA','phone_code'=>'+27','region'=>'Africa','pinned'=>0],0],
-            ['NG','尼日利亚','Nigeria','Nigeria','#16a34a','NG',['iso'=>'NG','phone_code'=>'+234','region'=>'Africa','pinned'=>0],0],
-            ['KE','肯尼亚','Kenya','Kenya','#111827','KE',['iso'=>'KE','phone_code'=>'+254','region'=>'Africa','pinned'=>0],0],
-            ['TZ','坦桑尼亚','Tanzania','Tanzania','#16a34a','TZ',['iso'=>'TZ','phone_code'=>'+255','region'=>'Africa','pinned'=>0],0],
-            ['UG','乌干达','Uganda','Uganda','#f59e0b','UG',['iso'=>'UG','phone_code'=>'+256','region'=>'Africa','pinned'=>0],0],
-            ['ET','埃塞俄比亚','Ethiopia','Ethiopia','#16a34a','ET',['iso'=>'ET','phone_code'=>'+251','region'=>'Africa','pinned'=>0],0],
-            ['GH','加纳','Ghana','Ghana','#f59e0b','GH',['iso'=>'GH','phone_code'=>'+233','region'=>'Africa','pinned'=>0],0],
-            ['CI','科特迪瓦','Ivory Coast','Ivory Coast','#f59e0b','CI',['iso'=>'CI','phone_code'=>'+225','region'=>'Africa','pinned'=>0],0],
-            ['SN','塞内加尔','Senegal','Senegal','#16a34a','SN',['iso'=>'SN','phone_code'=>'+221','region'=>'Africa','pinned'=>0],0],
-            ['MA','摩洛哥','Morocco','Morocco','#dc2626','MA',['iso'=>'MA','phone_code'=>'+212','region'=>'Africa','pinned'=>0],0],
-            ['DZ','阿尔及利亚','Algeria','Algeria','#16a34a','DZ',['iso'=>'DZ','phone_code'=>'+213','region'=>'Africa','pinned'=>0],0],
-            ['TN','突尼斯','Tunisia','Tunisia','#dc2626','TN',['iso'=>'TN','phone_code'=>'+216','region'=>'Africa','pinned'=>0],0],
-            ['LY','利比亚','Libya','Libya','#16a34a','LY',['iso'=>'LY','phone_code'=>'+218','region'=>'Africa','pinned'=>0],0],
-            ['AO','安哥拉','Angola','Angola','#dc2626','AO',['iso'=>'AO','phone_code'=>'+244','region'=>'Africa','pinned'=>0],0],
-            ['ZM','赞比亚','Zambia','Zambia','#16a34a','ZM',['iso'=>'ZM','phone_code'=>'+260','region'=>'Africa','pinned'=>0],0],
-            ['ZW','津巴布韦','Zimbabwe','Zimbabwe','#16a34a','ZW',['iso'=>'ZW','phone_code'=>'+263','region'=>'Africa','pinned'=>0],0],
-            ['MZ','莫桑比克','Mozambique','Mozambique','#16a34a','MZ',['iso'=>'MZ','phone_code'=>'+258','region'=>'Africa','pinned'=>0],0],
-            ['MU','毛里求斯','Mauritius','Mauritius','#0ea5e9','MU',['iso'=>'MU','phone_code'=>'+230','region'=>'Africa','pinned'=>0],0],
-            ['AU','澳大利亚','Australia','Australia','#2563eb','AU',['iso'=>'AU','phone_code'=>'+61','region'=>'Oceania','pinned'=>0],0],
-            ['NZ','新西兰','New Zealand','New Zealand','#111827','NZ',['iso'=>'NZ','phone_code'=>'+64','region'=>'Oceania','pinned'=>0],0],
-            ['FJ','斐济','Fiji','Fiji','#2563eb','FJ',['iso'=>'FJ','phone_code'=>'+679','region'=>'Oceania','pinned'=>0],0],
-        ],
+        'country_region' => crm_country_region_defaults(),
         'city_region' => [
             ['HK_HONG_KONG','香港','Hong Kong','HK','#ef4444','HK',['country'=>'HK','region'=>'Asia','type'=>'city','aliases'=>['Hong Kong','香港','HK'],'pinned'=>1],1],
             ['CN_GUANGDONG','广东','Guangdong','Guangdong','#dc2626','GD',['country'=>'CN','region'=>'Asia','type'=>'province','aliases'=>['Guangdong','广东','GD'],'pinned'=>1],0],
@@ -658,6 +628,19 @@ function crm_dictionary_save_item(array $input): array
     $before = $stmt->fetch() ?: null;
     $extra = $input['extra_config'] ?? [];
     if (is_string($extra)) $extra = json_decode($extra, true) ?: [];
+    if ($type === 'country_region') {
+        $key = strtoupper($key);
+        $extra['iso'] = strtoupper(trim((string)($extra['iso'] ?? $key)));
+        $extra['phone_code'] = preg_replace('/\s+/', '', trim((string)($extra['phone_code'] ?? '')));
+        $extra['region'] = trim((string)($extra['region'] ?? ''));
+        $extra['pinned'] = !empty($extra['pinned']) ? 1 : 0;
+        if (!preg_match('/^[A-Z]{2}$/', $extra['iso'])) {
+            throw new RuntimeException('国家 / 地区 ISO 编码必须为两位英文字母。');
+        }
+        if (!preg_match('/^\+\d{1,4}$/', $extra['phone_code'])) {
+            throw new RuntimeException('国际电话区号必须以 + 开头并只包含数字，例如 +49。');
+        }
+    }
     db()->prepare('INSERT INTO crm_dictionary_items (type_key, item_key, name_cn, name_en, short_name, color, icon, description, extra_config_json, is_default, is_enabled, sort_order, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()) ON DUPLICATE KEY UPDATE name_cn=VALUES(name_cn), name_en=VALUES(name_en), short_name=VALUES(short_name), color=VALUES(color), icon=VALUES(icon), description=VALUES(description), extra_config_json=VALUES(extra_config_json), is_default=VALUES(is_default), is_enabled=VALUES(is_enabled), sort_order=VALUES(sort_order), updated_by=VALUES(updated_by), updated_at=NOW()')
         ->execute([$type, $key, trim((string)($input['name_cn'] ?? $key)), trim((string)($input['name_en'] ?? '')), trim((string)($input['short_name'] ?? '')), trim((string)($input['color'] ?? '#64748b')), trim((string)($input['icon'] ?? '')), trim((string)($input['description'] ?? '')), json_encode($extra, JSON_UNESCAPED_UNICODE), !empty($input['is_default']) ? 1 : 0, isset($input['is_enabled']) ? (int)!empty($input['is_enabled']) : 1, (int)($input['sort_order'] ?? 100), current_user()['id'] ?? null, current_user()['id'] ?? null]);
     crm_log_event('settings', 'dictionary_save', 'dictionary', $type . ':' . $key, $before, $input);
