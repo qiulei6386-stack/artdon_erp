@@ -20,9 +20,10 @@ if($mcCategoryDrawer){
 <?php if($mcCategoryDrawer): ?>
 <div class="mc-drawer mc-category-editor-drawer" id="category-editor-drawer" data-drawer data-category-editor data-category-code="<?=mc_h($mcCategoryDrawer['code'])?>" data-category-id="<?=intval($mcCategoryDrawer['id'])?>" data-category-title="<?=mc_h($mcCategoryDrawer['title'])?>">
  <div class="mc-drawer__header"><div><strong data-category-editor-title><?=mc_h($mcCategoryDrawer['title'])?>资料</strong><span data-category-editor-subtitle>新建、查看和编辑真实物料字段</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
- <form class="mc-drawer__body mc-category-editor-body" data-category-editor-form>
-  <input type="hidden" name="id"><input type="hidden" name="lock_version"><input type="hidden" name="category_id">
+ <div class="mc-drawer__body mc-category-editor-body">
   <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><?php if($mcCategoryDrawer['code']==='chip'):?><button type="button" data-category-tab="chip_specs">规格组合</button><button type="button" data-category-tab="chip_templates">模板管理</button><?php endif;?><button type="button" data-category-tab="source">原始来源</button></div>
+  <form data-category-editor-form>
+  <input type="hidden" name="id"><input type="hidden" name="lock_version"><input type="hidden" name="category_id">
   <div data-category-pane="fields">
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>基础资料</strong><span>统一编号在保存草稿时自动生成</span></div></div><div class="mc-form-grid">
    <label class="mc-field mc-field--wide"><span>名称 *</span><input name="name" required maxlength="200"></label>
@@ -35,6 +36,7 @@ if($mcCategoryDrawer){
   </div></section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong><?=mc_h($mcCategoryDrawer['title'])?>规格</strong><span>字段来自物料中心字段注册表并真实保存</span></div></div><div class="mc-form-grid" data-category-editor-fields></div></section>
   </div>
+  </form>
   <?php if($mcCategoryDrawer['code']==='chip'):?>
   <div data-category-pane="chip_specs" hidden>
    <section class="mc-form-section mc-chip-spec-pane">
@@ -77,7 +79,7 @@ if($mcCategoryDrawer){
    </section>
   </div>
   <div class="mc-form-error" data-category-editor-error hidden></div>
- </form>
+ </div>
  <div class="mc-drawer__footer mc-category-editor-footer"><span data-category-editor-state>尚未保存</span><button class="mc-button" type="button" data-category-reference hidden>引用检查</button><button class="mc-button" type="button" data-category-copy hidden>复制新增</button><button class="mc-button" type="button" data-category-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-category-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-category-save>保存草稿</button></div>
 </div>
 <?php endif; ?>

@@ -216,6 +216,7 @@
   };
 
   const switchTab = tab => {
+    drawer.dataset.categoryActiveTab = tab;
     qa('[data-category-tab]', drawer).forEach(button => button.classList.toggle('is-active', button.dataset.categoryTab === tab));
     qa('[data-category-pane]', drawer).forEach(pane => { pane.hidden = pane.dataset.categoryPane !== tab; });
   };
