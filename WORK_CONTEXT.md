@@ -11,7 +11,7 @@
 - 缓存与识别：`crm.php` 资源构建号更新为 `promotion-mail-detection-20260728-1`；第 9 步显示“邮件判定修复版 20260728-1”，便于用户确认浏览器已加载本次版本。
 - 本地/隔离检查：本机 JavaScriptCore 语法、邮件预览运行时行为测试和 `git diff --check` 通过；服务器 `/tmp/artdon_promo_mail_20260728_bgosFE` 隔离候选副本 PHP 8.0 检查 379 个 PHP 文件语法及 31 项无数据库契约全部通过，邮件预览专项和 1–9 步流程专项均通过。服务器没有 Node，未在正式目录执行候选代码，也没有发送真实测试邮件。
 - 修改文件：`assets/crm/crm.js`、`crm.php`、`tests/crm_marketing_wizard_mail_preview_contract.php`、新增 `tests/crm_marketing_mail_preview_runtime_test.js`、`tools/ci_js_checks.sh`、`WORK_CONTEXT.md`。用户原有商务中心命令文件删除和未跟踪文档保持原样，不纳入本次提交。
-- Git / 部署：本条记录随功能提交推送 GitHub 后，按固定流程同步同一提交至 `/www/wwwroot/Artdon/artdon_erp/`，再执行正式服务器复检与三方 SHA 核对；当前尚未修改正式服务器目录。
+- Git / 部署：功能提交 `f24586ba5b0da45c7b058a6b54638ed4aa63a2b6` 已推送 GitHub，并由 `Validate and deploy production` 在检查通过后自动同步到 `/www/wwwroot/Artdon/artdon_erp/`；正式服务器再次通过 379 个 PHP 文件语法及 31 项无数据库契约。线上公开脚本已实际返回 `draftHasMailContent` 回退逻辑和“邮件判定修复版 20260728-1”，CRM 入口正常返回登录跳转。功能提交部署后本地 HEAD、GitHub `origin/main`、服务器 HEAD / `origin/main` 均为 `f24586b`，服务器工作区干净；本条最终状态记录将作为收尾提交再次按固定流程同步三方。未发送真实测试邮件，用户登录后的第 5 / 9 步最终点击结果待反馈。
 
 ## 本次：第 9 步邮件预览改为第一屏强制可见
 
