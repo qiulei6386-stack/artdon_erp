@@ -22228,7 +22228,7 @@
       var logs = (detail && detail.logs) || [];
       var types = this.options.task_types || {}, statuses = this.options.task_statuses || {};
       var quoteActivities = detail && detail.quote_followup ? (detail.quote_followup.activities || []) : [];
-      var quoteTimeline = row.task_type === 'quote_followup' ? '<section class="task-detail-note quote-task-followups"><span>报价跟进记录（' + esc(quoteActivities.length) + '）</span>' + this.quoteFollowupHistoryHtml(quoteActivities) + '</section>' : '';
+      var quoteTimeline = row.task_type === 'quote_followup' ? '<section class="task-detail-note quote-task-followups"><span>报价跟进记录（' + esc(quoteActivities.length) + '）</span>' + this.quoteFollowupHistoryHtml(quoteActivities, false) + '</section>' : '';
       box.innerHTML = '<section class="task-detail-card"><header><span>' + esc(types[row.task_type] || row.task_type || '任务') + '</span><strong>' + esc(row.title || '-') + '</strong><em class="' + (Number(row.is_overdue) ? 'danger' : '') + '">' + esc(this.riskText(row)) + '</em></header>' +
         '<div class="task-detail-grid">' +
         '<article><span>状态</span><b>' + esc(statuses[row.status] || row.status || '-') + '</b></article><article><span>优先级</span><b>' + esc(({ urgent:'紧急', important:'重要', normal:'普通', low:'低' })[row.priority] || row.priority || '-') + '</b></article>' +
@@ -22754,14 +22754,65 @@
         : [['email','邮件'],['wechat','微信'],['whatsapp','WhatsApp'],['online_meeting','线上会议'],['other_online','其他线上']];
       return groups.map(function (item) { return '<option value="' + item[0] + '"' + (item[0] === selected ? ' selected' : '') + '>' + item[1] + '</option>'; }).join('');
     },
-    quoteFollowupHistoryHtml: function (rows) {
+    quoteFollowupHistoryHtml: function (rows, interactive) {
       var channel = {email:'邮件',wechat:'微信',whatsapp:'WhatsApp',online_meeting:'线上会议',other_online:'其他线上',phone:'电话',visit:'拜访',exhibition:'展会',other_offline:'其他线下'};
       var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
       if (!rows.length) return '<p class="entry-muted">还没有跟进记录。</p>';
       return rows.map(function (item) {
-        var files = (item.files || []).map(function (file) { return '<span class="quote-followup-file"><button type="button" data-quote-followup-preview="' + esc(file.id) + '">' + esc(file.original_name || '沟通截图') + '</button><button type="button" class="danger" data-quote-followup-file-delete="' + esc(file.id) + '">删除</button></span>'; }).join('');
-        return '<article class="quote-followup-history-item"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.mail_id ? '<a href="#mail:' + esc(item.mail_id) + '">邮件：' + esc(item.mail_subject || ('#' + item.mail_id)) + '</a>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + files + '</footer></article>';
+        var files = (item.files || []).map(function (file) { return '<span class="quote-followup-file"><button type="button" data-quote-followup-preview="' + esc(file.id) + '">' + esc(file.original_name || '沟通截图') + '</button>' + (Number(item.can_edit) ? '<button type="button" class="danger" data-quote-followup-file-delete="' + esc(file.id) + '">删除</button>' : '') + '</span>'; }).join('');
+        var actions = interactive ? '<nav class="quote-followup-history-actions"><button type="button" data-quote-followup-history-view="' + esc(item.id) + '">查看</button>' + (Number(item.can_edit) ? '<button type="button" data-quote-followup-history-edit="' + esc(item.id) + '">修改</button>' : '') + (Number(item.can_delete) ? '<button type="button" class="danger" data-quote-followup-history-delete="' + esc(item.id) + '">删除</button>' : '') + '</nav>' : '';
+        return '<article class="quote-followup-history-item" data-quote-followup-history-item="' + esc(item.id) + '"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + (Number(item.customer_replied) ? ' · 客户已回复' : '') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.mail_id ? '<a href="#mail:' + esc(item.mail_id) + '">邮件：' + esc(item.mail_subject || ('#' + item.mail_id)) + '</a>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + files + '</footer>' + actions + '</article>';
       }).join('');
+    },
+    openQuoteFollowupHistoryView: function (item, editCallback) {
+      if (!item) return toast('没有找到这条历史跟进。');
+      document.querySelector('[data-quote-followup-history-dialog]')?.remove();
+      var channel = {email:'邮件',wechat:'微信',whatsapp:'WhatsApp',online_meeting:'线上会议',other_online:'其他线上',phone:'电话',visit:'拜访',exhibition:'展会',other_offline:'其他线下'};
+      var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
+      var files = (item.files || []).map(function (file) {
+        return '<a target="_blank" rel="noopener" href="crm_api.php?action=quote_followup_file&amp;file_id=' + encodeURIComponent(file.id) + '">' + esc(file.original_name || '沟通截图') + '</a>';
+      }).join('');
+      var dialog = document.createElement('dialog');
+      dialog.className = 'quote-followup-history-dialog';
+      dialog.setAttribute('data-quote-followup-history-dialog','1');
+      dialog.innerHTML = '<header><div><span>历史跟进详情</span><strong>' + esc(String(item.contacted_at || '').slice(0,16)) + '</strong></div><button type="button" data-quote-followup-history-close>关闭</button></header>' +
+        '<section class="quote-followup-history-detail"><dl><div><dt>记录人</dt><dd>' + esc(item.created_name || '-') + '</dd></div><div><dt>沟通方式</dt><dd>' + esc((item.mode === 'online' ? '线上' : '线下') + ' · ' + (channel[item.channel] || item.channel || '-')) + '</dd></div><div><dt>沟通结果</dt><dd>' + esc(result[item.result] || item.result || '-') + '</dd></div><div><dt>联系人</dt><dd>' + esc(item.contact_name || '未指定') + '</dd></div><div><dt>客户回复</dt><dd>' + (Number(item.customer_replied) ? '是' : '否') + '</dd></div><div><dt>下次跟进</dt><dd>' + esc(String(item.next_followup_at || '未设置').slice(0,16)) + '</dd></div></dl><article><span>沟通内容</span><p>' + esc(item.content || '-') + '</p></article><article><span>下一步计划</span><p>' + esc(item.next_plan || '未填写') + '</p></article><article><span>附件或链接</span><p>' + esc(item.attachment_note || '未填写') + '</p></article>' + (files ? '<article><span>沟通截图</span><div class="quote-followup-history-files">' + files + '</div></article>' : '') + '</section>' +
+        '<footer><button type="button" data-quote-followup-history-close>关闭</button>' + (Number(item.can_edit) ? '<button type="button" class="primary" data-quote-followup-history-edit-now>修改这条跟进</button>' : '') + '</footer>';
+      document.body.appendChild(dialog);
+      var close = function () { dialog.close(); dialog.remove(); };
+      dialog.querySelectorAll('[data-quote-followup-history-close]').forEach(function (button) { button.addEventListener('click', close); });
+      dialog.querySelector('[data-quote-followup-history-edit-now]')?.addEventListener('click', function () { close(); if (typeof editCallback === 'function') editCallback(item); });
+      dialog.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
+      dialog.addEventListener('click', function (event) { if (event.target === dialog) close(); });
+      dialog.showModal();
+    },
+    startQuoteFollowupEdit: function (dialog, item) {
+      var form = dialog && dialog.querySelector('[data-quote-followup-form]');
+      if (!form || !item) return;
+      var setValue = function (name, value) { var field = form.querySelector('[name="' + name + '"]'); if (field) field.value = value == null ? '' : value; };
+      setValue('activity_id', item.id);
+      setValue('mode', item.mode || 'online');
+      var channelSelect = form.querySelector('[name="channel"]');
+      if (channelSelect) channelSelect.innerHTML = TaskCenterModule.quoteFollowupChannelOptions(item.mode || 'online', item.channel || '');
+      setValue('contacted_at', String(item.contacted_at || '').replace(' ', 'T').slice(0,16));
+      setValue('contact_id', item.contact_id || '');
+      setValue('mail_id', item.mail_id || '');
+      setValue('result', item.result || 'waiting_reply');
+      setValue('next_followup_at', String(item.next_followup_at || '').replace(' ', 'T').slice(0,16));
+      setValue('content', item.content || '');
+      setValue('next_plan', item.next_plan || '');
+      setValue('attachment_note', item.attachment_note || '');
+      var replied = form.querySelector('[name="customer_replied"]');
+      if (replied) replied.checked = Number(item.customer_replied) > 0;
+      var title = form.querySelector('[data-quote-followup-form-title]');
+      if (title) title.textContent = '修改历史跟进';
+      var save = dialog.querySelector('[data-quote-followup-save]');
+      if (save) save.textContent = '保存修改';
+      var cancelEdit = dialog.querySelector('[data-quote-followup-edit-cancel]');
+      if (cancelEdit) cancelEdit.hidden = false;
+      dialog.querySelectorAll('[data-quote-followup-history-item]').forEach(function (node) { node.classList.toggle('is-editing', Number(node.getAttribute('data-quote-followup-history-item')) === Number(item.id)); });
+      form.scrollIntoView({behavior:'smooth',block:'start'});
+      form.querySelector('[name="content"]')?.focus();
     },
     openQuoteFollowupDialog: function (row, markReplied) {
       row = row || this.selected() || {};
@@ -22773,9 +22824,9 @@
         var contactOptions = '<option value="">未指定联系人</option>' + contacts.map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(item.name + (item.position ? ' · ' + item.position : '')) + '</option>'; }).join('');
         var mailOptions = '<option value="">不绑定邮件</option>' + (data.mails || []).map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(String(item.mail_at || '').slice(0,10) + ' · ' + (item.subject || '(无主题)')) + '</option>'; }).join('');
         var html = '<div class="visit-workspace-form quote-followup-workspace" data-quote-followup-form>' +
-          '<input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
+          '<input type="hidden" name="activity_id" value=""><input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
           '<section class="visit-hero-panel"><div><span>报价跟进</span><strong>' + esc(quote.quote_no || row.quote_no || '-') + '</strong><small>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</small></div><b>FOLLOW</b></section>' +
-          '<section class="visit-work-section"><h3>本次沟通</h3><div class="visit-schedule-grid">' +
+          '<section class="visit-work-section"><h3 data-quote-followup-form-title>本次沟通</h3><div class="visit-schedule-grid">' +
             '<label class="visit-pill-field"><span>线上 / 线下</span><select name="mode"><option value="online">线上</option><option value="offline">线下</option></select></label>' +
             '<label class="visit-pill-field"><span>具体渠道</span><select name="channel">' + TaskCenterModule.quoteFollowupChannelOptions('online','email') + '</select></label>' +
             '<label class="visit-date-card"><span>跟进时间</span><input type="datetime-local" name="contacted_at" value="' + esc(localNow) + '"></label>' +
@@ -22784,8 +22835,8 @@
             '<label class="visit-pill-field"><span>沟通结果</span><select name="result"><option value="waiting_reply">等待回复</option><option value="interested">有兴趣</option><option value="need_revision">需要修改报价</option><option value="need_sample">需要样品</option><option value="accepted">接受报价</option><option value="rejected">拒绝报价</option><option value="no_response">暂无回复</option><option value="other">其他</option></select></label>' +
             '<label class="visit-date-card"><span>下次跟进</span><input type="datetime-local" name="next_followup_at"></label>' +
           '</div><div class="visit-note-grid"><label class="wide">沟通结果 *<textarea name="content" rows="4" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="2"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="填写邮件、文件或网盘链接说明"></label><div class="wide quote-followup-drop" data-quote-followup-drop tabindex="0"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-quote-followup-files><strong>拖入或点击选择沟通截图</strong><span>也可以直接复制图片后，在这里按 Ctrl/⌘ + V</span><div class="quote-followup-local-previews" data-quote-followup-local-previews></div></div><label class="tag-chip wide"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复</span></label></div></section>' +
-          '<section class="visit-work-section quote-followup-history"><h3>历史跟进（' + esc((data.activities || []).length) + '）</h3>' + TaskCenterModule.quoteFollowupHistoryHtml(data.activities || []) + '</section></div>' +
-          '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-quote-followup-save>保存跟进</button></div>';
+          '<section class="visit-work-section quote-followup-history"><h3>历史跟进（' + esc((data.activities || []).length) + '）</h3>' + TaskCenterModule.quoteFollowupHistoryHtml(data.activities || [], true) + '</section></div>' +
+          '<div class="business-dialog-actions"><button type="button" data-quote-followup-edit-cancel hidden>取消修改</button><button type="button" data-business-cancel>关闭</button><button type="button" class="primary" data-quote-followup-save>保存跟进</button></div>';
         CustomerModule.openBusinessDialog('报价跟进', html, '保存后同步更新流程节点、任务提醒和客户时间线。', function (dialog) {
           document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
           var form = dialog.querySelector('[data-quote-followup-form]');
@@ -22810,6 +22861,39 @@
             if (images.length) { event.preventDefault(); applyFiles(images); toast('已加入剪贴板截图'); }
           });
           dialog.addEventListener('click', function (event) {
+            var historyView = event.target.closest('[data-quote-followup-history-view]');
+            if (historyView) {
+              var viewItem = (data.activities || []).find(function (item) { return Number(item.id) === Number(historyView.getAttribute('data-quote-followup-history-view')); });
+              TaskCenterModule.openQuoteFollowupHistoryView(viewItem, function (item) { TaskCenterModule.startQuoteFollowupEdit(dialog,item); });
+              return;
+            }
+            var historyEdit = event.target.closest('[data-quote-followup-history-edit]');
+            if (historyEdit) {
+              var editItem = (data.activities || []).find(function (item) { return Number(item.id) === Number(historyEdit.getAttribute('data-quote-followup-history-edit')); });
+              TaskCenterModule.startQuoteFollowupEdit(dialog,editItem);
+              return;
+            }
+            var historyDelete = event.target.closest('[data-quote-followup-history-delete]');
+            if (historyDelete) {
+              var deleteItem = (data.activities || []).find(function (item) { return Number(item.id) === Number(historyDelete.getAttribute('data-quote-followup-history-delete')); });
+              if (!deleteItem) return toast('没有找到这条历史跟进。');
+              openConfirmModal({
+                title:'删除历史跟进',
+                message:'确认删除 ' + String(deleteItem.contacted_at || '').slice(0,16) + ' 的跟进记录？',
+                detail:'跟进和沟通截图会软删除，客户时间线会同步移除；操作日志仍保留，防止误操作无法追溯。',
+                okText:'确认删除',
+                danger:true,
+                onConfirm:function () {
+                  post('quote_followup_delete',{activity_id:deleteItem.id}).then(function (res) {
+                    if (!res.success) return toast(res.message || '删除失败');
+                    CustomerModule.closeDialog(); toast('历史跟进已删除'); TaskCenterModule.openQuoteFollowupDialog(row,markReplied); TaskCenterModule.load();
+                    if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
+                    if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId,{silent:true});
+                  });
+                }
+              });
+              return;
+            }
             var preview = event.target.closest('[data-quote-followup-preview]');
             if (preview) { window.open('crm_api.php?action=quote_followup_file&file_id=' + encodeURIComponent(preview.getAttribute('data-quote-followup-preview')), '_blank'); return; }
             var removeLocal = event.target.closest('[data-quote-local-remove]');
@@ -22829,12 +22913,22 @@
             if (select) select.innerHTML = TaskCenterModule.quoteFollowupChannelOptions(this.value, '');
           });
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+          dialog.querySelector('[data-quote-followup-edit-cancel]')?.addEventListener('click', function () {
+            CustomerModule.closeDialog();
+            TaskCenterModule.openQuoteFollowupDialog(row,markReplied);
+          });
           dialog.querySelector('[data-quote-followup-save]')?.addEventListener('click', function () {
+            var saveButton = this;
+            if (saveButton.disabled) return;
             var payload = TaskCenterModule.collect(form);
             if (!String(payload.content || '').trim()) return toast('请填写沟通结果');
-            post('quote_followup_save', payload).then(function (res) {
+            var isEdit = Number(payload.activity_id || 0) > 0;
+            var idleText = saveButton.textContent;
+            saveButton.disabled = true;
+            saveButton.textContent = isEdit ? '正在保存修改…' : '正在保存…';
+            post(isEdit ? 'quote_followup_update' : 'quote_followup_save', payload).then(function (res) {
               if (!res.success) return toast(res.message || '保存失败');
-              var activityId = res.data && res.data.saved_activity_id;
+              var activityId = res.data && (res.data.updated_activity_id || res.data.saved_activity_id);
               var input = dialog.querySelector('[data-quote-followup-files]');
               if (!activityId || !input || !input.files || !input.files.length) return res;
               var body = new FormData(); body.set('action','quote_followup_upload'); body.set('activity_id',activityId); if (state.csrf) body.set('csrf_token',state.csrf);
@@ -22842,11 +22936,14 @@
               return fetch('crm_api.php',{method:'POST',body:body,credentials:'same-origin'}).then(function (r) { return r.json(); }).then(function (upload) { if (!upload.success) throw new Error(upload.message || '截图上传失败'); return res; });
             }).then(function (res) {
               if (!res || !res.success) return;
-              CustomerModule.closeDialog(); toast('报价跟进已保存'); TaskCenterModule.load();
+              CustomerModule.closeDialog(); toast(isEdit ? '历史跟进已修改' : '报价跟进已保存'); TaskCenterModule.load();
               if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
               if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
             }).catch(function (error) {
               toast(error.message || '报价跟进保存失败');
+            }).finally(function () {
+              saveButton.disabled = false;
+              saveButton.textContent = idleText;
             });
           });
         });

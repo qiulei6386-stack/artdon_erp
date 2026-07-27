@@ -923,10 +923,15 @@ function crm_quote_followup_context(array $input): array
         WHERE a.quote_source=? AND a.quote_id=? AND a.deleted_at IS NULL ORDER BY a.contacted_at DESC,a.id DESC");
     $historyStmt->execute([$source, $quoteId]);
     $activities = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
+    $canEdit = has_permission('task.edit');
+    $canDeleteAll = has_permission('task.delete');
+    $currentUserId = (int)((current_user() ?: [])['id'] ?? 0);
     foreach ($activities as &$activity) {
         $fileStmt = db()->prepare("SELECT id,original_name,file_size,mime_type,uploaded_at FROM crm_quote_followup_files WHERE activity_id=? AND deleted_at IS NULL ORDER BY id");
         $fileStmt->execute([(int)$activity['id']]);
         $activity['files'] = $fileStmt->fetchAll(PDO::FETCH_ASSOC);
+        $activity['can_edit'] = $canEdit ? 1 : 0;
+        $activity['can_delete'] = ($canDeleteAll || ($canEdit && $currentUserId > 0 && (int)$activity['created_by'] === $currentUserId)) ? 1 : 0;
     }
     unset($activity);
     $mails = [];
@@ -936,6 +941,71 @@ function crm_quote_followup_context(array $input): array
         $mails = $mailStmt->fetchAll(PDO::FETCH_ASSOC);
     }
     return ['quote' => $quote, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $activities, 'mails' => $mails];
+}
+
+function crm_quote_followup_channel_labels(): array
+{
+    return ['email'=>'邮件','wechat'=>'微信','whatsapp'=>'WhatsApp','online_meeting'=>'线上会议','other_online'=>'其他线上','phone'=>'电话','visit'=>'拜访','exhibition'=>'展会','other_offline'=>'其他线下'];
+}
+
+function crm_quote_followup_authorized_activity(int $activityId, string $permission = 'task.view'): array
+{
+    crm_task_center_ensure_tables();
+    crm_require($permission);
+    if ($activityId <= 0) throw new RuntimeException('缺少报价跟进记录。');
+    $stmt = db()->prepare("SELECT * FROM crm_quote_followup_activities WHERE id=? AND deleted_at IS NULL LIMIT 1");
+    $stmt->execute([$activityId]);
+    $activity = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$activity) throw new RuntimeException('报价跟进记录不存在或已删除。');
+    if ((int)($activity['task_id'] ?? 0) <= 0) throw new RuntimeException('报价跟进没有关联任务，无法校验操作权限。');
+    crm_task_row((int)$activity['task_id']);
+    return $activity;
+}
+
+function crm_quote_followup_sync_timeline(PDO $pdo, array $activity): void
+{
+    $customerId = (int)($activity['customer_id'] ?? 0);
+    if ($customerId <= 0) return;
+    $activityId = (int)($activity['id'] ?? 0);
+    $labels = crm_quote_followup_channel_labels();
+    $detail = (($activity['mode'] ?? '') === 'online' ? '线上' : '线下') . ' · ' . ($labels[$activity['channel'] ?? ''] ?? ($activity['channel'] ?? '')) . ' · ' . ($activity['content'] ?? '');
+    $title = '报价跟进：' . ($activity['quote_no'] ?? '');
+    $existingStmt = $pdo->prepare("SELECT id FROM crm_customer_timeline WHERE related_type='quote_followup' AND related_id=? ORDER BY id LIMIT 1");
+    $existingStmt->execute([$activityId]);
+    $timelineId = (int)$existingStmt->fetchColumn();
+    if ($timelineId > 0) {
+        $pdo->prepare("UPDATE crm_customer_timeline SET customer_id=?,event_type='quote_followup',title=?,detail=?,event_time=? WHERE id=?")
+            ->execute([$customerId,$title,$detail,$activity['contacted_at'],$timelineId]);
+        return;
+    }
+    $pdo->prepare("INSERT INTO crm_customer_timeline (customer_id,event_type,title,detail,related_type,related_id,event_time,created_by,created_at) VALUES (?, 'quote_followup', ?, ?, 'quote_followup', ?, ?, ?, NOW())")
+        ->execute([$customerId,$title,$detail,$activityId,$activity['contacted_at'],(int)($activity['created_by'] ?? 0) ?: null]);
+}
+
+function crm_quote_followup_refresh_task(PDO $pdo, int $taskId): void
+{
+    if ($taskId <= 0) return;
+    $stmt = $pdo->prepare("SELECT contact_id,contacted_at,result,content,next_followup_at,customer_replied,created_by FROM crm_quote_followup_activities WHERE task_id=? AND deleted_at IS NULL ORDER BY contacted_at DESC,id DESC LIMIT 1");
+    $stmt->execute([$taskId]);
+    $latest = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$latest) {
+        $pdo->prepare("UPDATE crm_tasks SET contact_id=NULL,status='pending',due_at=NULL,reminder_at=NULL,completed_at=NULL,completed_by=NULL,result='',result_note=NULL,updated_at=NOW() WHERE id=?")
+            ->execute([$taskId]);
+        return;
+    }
+    $done = !empty($latest['customer_replied']) && empty($latest['next_followup_at']);
+    $pdo->prepare("UPDATE crm_tasks SET contact_id=?,status=?,due_at=?,reminder_at=?,completed_at=?,completed_by=?,result=?,result_note=?,updated_at=NOW() WHERE id=?")
+        ->execute([
+            (int)($latest['contact_id'] ?? 0) ?: null,
+            $done ? 'done' : 'pending',
+            $latest['next_followup_at'] ?: null,
+            $latest['next_followup_at'] ?: null,
+            $done ? $latest['contacted_at'] : null,
+            $done ? ((int)($latest['created_by'] ?? 0) ?: null) : null,
+            (string)($latest['result'] ?? ''),
+            (string)($latest['content'] ?? ''),
+            $taskId,
+        ]);
 }
 
 function crm_quote_followup_save(array $input): array
@@ -983,8 +1053,10 @@ function crm_quote_followup_save(array $input): array
             ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
         $activityId = (int)$pdo->lastInsertId();
         if ($customerId > 0) {
-            $channelMap = ['email'=>'邮件','wechat'=>'微信','whatsapp'=>'WhatsApp','online_meeting'=>'线上会议','other_online'=>'其他线上','phone'=>'电话','visit'=>'拜访','exhibition'=>'展会','other_offline'=>'其他线下'];
-            crm_customer_timeline_add($customerId, 'quote_followup', '报价跟进：' . ($quote['quote_no'] ?? ''), ($mode === 'online' ? '线上' : '线下') . ' · ' . ($channelMap[$channel] ?? $channel) . ' · ' . $content, 'quote_followup', (string)$activityId);
+            crm_quote_followup_sync_timeline($pdo, [
+                'id'=>$activityId,'customer_id'=>$customerId,'quote_no'=>(string)($quote['quote_no'] ?? ''),
+                'mode'=>$mode,'channel'=>$channel,'contacted_at'=>$contactedAt,'content'=>$content,'created_by'=>$uid,
+            ]);
         }
         $pdo->commit();
     } catch (Throwable $e) {
@@ -997,6 +1069,79 @@ function crm_quote_followup_save(array $input): array
     $resultData = crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
     $resultData['saved_activity_id'] = $activityId;
     return $resultData;
+}
+
+function crm_quote_followup_update(array $input): array
+{
+    $activityId = (int)($input['activity_id'] ?? 0);
+    $before = crm_quote_followup_authorized_activity($activityId, 'task.edit');
+    $mode = in_array((string)($input['mode'] ?? ''), ['online','offline'], true) ? (string)$input['mode'] : 'online';
+    $channels = $mode === 'online' ? ['email','wechat','whatsapp','online_meeting','other_online'] : ['phone','visit','exhibition','other_offline'];
+    $channel = (string)($input['channel'] ?? '');
+    if (!in_array($channel, $channels, true)) throw new RuntimeException('跟进渠道与线上/线下分类不匹配。');
+    $content = trim((string)($input['content'] ?? ''));
+    if ($content === '') throw new RuntimeException('请填写沟通结果。');
+    $result = preg_replace('/[^a-z_]/', '', (string)($input['result'] ?? 'waiting_reply'));
+    if (!in_array($result, ['waiting_reply','interested','need_revision','need_sample','accepted','rejected','no_response','other'], true)) $result = 'other';
+    $contactedAt = crm_task_datetime($input['contacted_at'] ?? '') ?: date('Y-m-d H:i:s');
+    $nextAt = crm_task_datetime($input['next_followup_at'] ?? '');
+    $replied = !empty($input['customer_replied']) || in_array($result, ['interested','need_revision','need_sample','accepted','rejected'], true);
+    $contactId = (int)($input['contact_id'] ?? 0) ?: null;
+    $mailId = (int)($input['mail_id'] ?? 0) ?: null;
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $lock = $pdo->prepare("SELECT * FROM crm_quote_followup_activities WHERE id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
+        $lock->execute([$activityId]);
+        $current = $lock->fetch(PDO::FETCH_ASSOC);
+        if (!$current) throw new RuntimeException('报价跟进记录不存在或已删除。');
+        $pdo->prepare("UPDATE crm_quote_followup_activities SET contact_id=?,mail_id=?,mode=?,channel=?,contacted_at=?,result=?,content=?,next_plan=?,next_followup_at=?,customer_replied=?,attachment_note=?,updated_at=NOW() WHERE id=?")
+            ->execute([$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$activityId]);
+        $afterStmt = $pdo->prepare("SELECT * FROM crm_quote_followup_activities WHERE id=? LIMIT 1");
+        $afterStmt->execute([$activityId]);
+        $after = $afterStmt->fetch(PDO::FETCH_ASSOC);
+        crm_quote_followup_sync_timeline($pdo, $after);
+        crm_quote_followup_refresh_task($pdo, (int)($after['task_id'] ?? 0));
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    crm_log_event('tasks', 'quote_followup_update', 'quote_followup', (string)$activityId, $before, $after);
+    $resultData = crm_quote_followup_context(['quote_source'=>$after['quote_source'],'quote_id'=>(int)$after['quote_id']]);
+    $resultData['updated_activity_id'] = $activityId;
+    return $resultData;
+}
+
+function crm_quote_followup_delete(array $input): array
+{
+    $activityId = (int)($input['activity_id'] ?? 0);
+    $before = crm_quote_followup_authorized_activity($activityId);
+    $currentUserId = (int)((current_user() ?: [])['id'] ?? 0);
+    if (!has_permission('task.delete')) {
+        crm_require('task.edit');
+        if ($currentUserId <= 0 || (int)($before['created_by'] ?? 0) !== $currentUserId) {
+            throw new RuntimeException('只能删除自己创建的报价跟进。');
+        }
+    }
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $lock = $pdo->prepare("SELECT * FROM crm_quote_followup_activities WHERE id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
+        $lock->execute([$activityId]);
+        $current = $lock->fetch(PDO::FETCH_ASSOC);
+        if (!$current) throw new RuntimeException('报价跟进记录不存在或已删除。');
+        $pdo->prepare("UPDATE crm_quote_followup_activities SET deleted_at=NOW(),updated_at=NOW() WHERE id=?")->execute([$activityId]);
+        $pdo->prepare("UPDATE crm_quote_followup_files SET deleted_at=NOW() WHERE activity_id=? AND deleted_at IS NULL")->execute([$activityId]);
+        $pdo->prepare("DELETE FROM crm_customer_timeline WHERE related_type='quote_followup' AND related_id=?")->execute([$activityId]);
+        crm_quote_followup_refresh_task($pdo, (int)($current['task_id'] ?? 0));
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    crm_log_event('tasks', 'quote_followup_delete', 'quote_followup', (string)$activityId, $before, ['deleted_at'=>date('Y-m-d H:i:s')]);
+    return ['deleted'=>true,'activity_id'=>$activityId,'quote_source'=>$before['quote_source'],'quote_id'=>(int)$before['quote_id']];
 }
 
 function crm_task_detail(int $id): array

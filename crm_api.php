@@ -1435,6 +1435,14 @@ try {
         require_csrf();
         api_response(true, '报价跟进已保存', crm_quote_followup_save($_POST));
     }
+    if ($action === 'quote_followup_update') {
+        require_csrf();
+        api_response(true, '报价跟进已修改', crm_quote_followup_update($_POST));
+    }
+    if ($action === 'quote_followup_delete') {
+        require_csrf();
+        api_response(true, '报价跟进已删除', crm_quote_followup_delete($_POST));
+    }
     if ($action === 'quote_followup_upload') {
         require_csrf();
         api_response(true, '沟通截图已上传', crm_quote_followup_upload((int)($_POST['activity_id'] ?? 0), $_FILES['files'] ?? []));
