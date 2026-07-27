@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Check out full repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -87,24 +87,55 @@ jobs:
           key_path="$RUNNER_TEMP/artdon-deploy-key"
           bundle_path="$RUNNER_TEMP/artdon-${GITHUB_SHA}.bundle"
           remote_bundle="/tmp/artdon-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.bundle"
+          ssh_error="$RUNNER_TEMP/artdon-ssh-error"
 
           umask 077
-          printf '%s\n' "$SERVER_SSH_KEY" > "$key_path"
+          trap 'rm -f "$key_path" "$bundle_path" "$ssh_error"' EXIT
+          printf '%s\n' "$SERVER_SSH_KEY" | tr -d '\r' > "$key_path"
+
+          if ! ssh-keygen -y -f "$key_path" >/dev/null 2>&1; then
+            echo "::error title=Invalid SERVER_SSH_KEY::The deployment secret is not a readable OpenSSH private key."
+            exit 1
+          fi
+
+          if ! ssh \
+            -i "$key_path" \
+            -p "$SERVER_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=.github/known_hosts \
+            "${SERVER_USER}@${SERVER_HOST}" \
+            true 2>"$ssh_error"; then
+            ssh_message="$(tail -n 1 "$ssh_error")"
+            echo "::error title=SSH preflight failed::${ssh_message}"
+            exit 1
+          fi
+
           git bundle create "$bundle_path" HEAD
           bundle_sha="$(sha256sum "$bundle_path" | awk '{print $1}')"
 
-          scp \
+          if ! scp \
             -i "$key_path" \
             -P "$SERVER_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=.github/known_hosts \
             "$bundle_path" \
-            "${SERVER_USER}@${SERVER_HOST}:${remote_bundle}"
+            "${SERVER_USER}@${SERVER_HOST}:${remote_bundle}" 2>"$ssh_error"; then
+            scp_message="$(tail -n 1 "$ssh_error")"
+            echo "::error title=Git bundle transfer failed::${scp_message}"
+            exit 1
+          fi
 
           ssh \
             -i "$key_path" \
             -p "$SERVER_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=.github/known_hosts \
@@ -150,8 +181,6 @@ jobs:
 
           PHP_BIN=/www/server/php/80/bin/php bash tools/ci_php_checks.sh
           REMOTE
-
-          rm -f "$key_path" "$bundle_path"
 
       - name: Verify public login route
         run: |
