@@ -12804,6 +12804,9 @@
     taskReportLoading: {},
     wizardStep: 0,
     wizardDraft: null,
+    wizardAudienceLoading: false,
+    wizardAudienceError: '',
+    wizardAudienceRequestSerial: 0,
     previewMailIndex: 0,
     previewTestEmail: '',
     init: function () {
@@ -15156,6 +15159,26 @@
       draft.template_action = template.action || '';
       this.wizardDraft = draft;
     },
+    wizardAudienceKey: function (draft) {
+      draft = draft || this.defaultWizardDraft();
+      var mode = String(draft.group_mode || 'selected');
+      var key = String(draft.group_key || '');
+      if (mode === 'selected') {
+        key = (draft.customer_ids || []).map(Number).filter(Boolean).sort(function (a, b) { return a - b; }).join(',');
+      } else if (mode === 'all_pool') {
+        var filters = this.poolFilterPayload();
+        key = ['q','status','country','level','owner_id','my_customers','has_email','has_contact','group_id','ungrouped'].map(function (name) {
+          return name + '=' + String(filters[name] || '');
+        }).join('&');
+      }
+      return mode + ':' + key;
+    },
+    resolveWizardAudienceCustomers: function (draft) {
+      var customerIds = this.resolveWizardCustomerIds(draft);
+      return ((this.data && this.data.pool) || []).filter(function (row) {
+        return customerIds.indexOf(Number(row.id)) >= 0;
+      });
+    },
     resolveWizardTargets: function (draft) {
       var customerIds = this.resolveWizardCustomerIds(draft);
       var self = this;
@@ -15176,8 +15199,12 @@
       });
       var skipped = [];
       var validCustomers = customerRows.filter(function (row) {
-        var blocked = Number(row.do_not_contact) || ['blacklist','maintenance_only','stopped','no_promotion'].indexOf(String(row.promotion_status || '')) >= 0;
-        if (blocked) skipped.push({ name: row.customer_name, reason: '客户推广状态限制' });
+        var status = String(row.promotion_status || '');
+        var blocked = Number(row.do_not_contact) || ['blacklist','maintenance_only','stopped','no_promotion'].indexOf(status) >= 0;
+        if (blocked) {
+          var reason = Number(row.do_not_contact) || status === 'blacklist' ? '黑名单或禁止联系客户' : '客户推广状态限制：' + status;
+          skipped.push({ id: Number(row.id || 0), name: row.customer_name, reason: reason });
+        }
         return !blocked;
       });
       var validCustomerIds = validCustomers.map(function (row) { return Number(row.id); });
@@ -15287,6 +15314,9 @@
         contact_ids: Array.from(this.selectedContactIds),
         group_mode: 'selected',
         group_key: '',
+        audience_customer_ids: [],
+        audience_customer_count: 0,
+        audience_source_key: '',
         contact_filter: 'all_valid',
         mail_subject: '',
         mail_body_html: '',
@@ -15343,6 +15373,9 @@
 	    closeWizard: function () {
 	      this.wizardDraft = null;
 	      this.wizardStep = 0;
+        this.wizardAudienceLoading = false;
+        this.wizardAudienceError = '';
+        this.wizardAudienceRequestSerial += 1;
 	      document.body.classList.remove('is-promo-task-editor-open');
 	      document.documentElement.classList.remove('is-promo-task-editor-open');
 	      var host = document.querySelector('[data-promo-wizard-host]');
@@ -15407,20 +15440,36 @@
 	          channel.dispatchEvent(new Event('change', { bubbles: true }));
 	        });
 	      });
+      var refreshAudienceDebounced = debounce(function () { self.refreshWizardAudience(); }, 350);
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
-        input.addEventListener('input', function () { self.collectWizard(); self.updateWizardPreview(); });
-        input.addEventListener('change', function () {
+        input.addEventListener('input', function () {
+          var field = input.getAttribute('data-wizard-field');
           self.collectWizard();
-	          if (input.getAttribute('data-wizard-field') === 'template_key') {
+          if (field === 'group_key' && self.wizardDraft.group_mode === 'country') {
+            refreshAudienceDebounced();
+            return;
+          }
+          self.updateWizardPreview();
+        });
+        input.addEventListener('change', function () {
+          var field = input.getAttribute('data-wizard-field');
+          self.collectWizard();
+	          if (field === 'template_key') {
 	            self.applyWizardTemplate();
 	            self.renderWizard();
 	            return;
 	          }
-	          if (input.getAttribute('data-wizard-field') === 'group_mode') {
+	          if (field === 'group_mode') {
+              self.wizardDraft.group_key = '';
 	            self.renderWizard();
+              self.refreshWizardAudience();
 	            return;
 	          }
-	          if (['executor_rule','mail_executor_rule','mail_executor_id','offline_executor_rule','mail_account_rule','mail_account_id','offline_owner_id'].indexOf(input.getAttribute('data-wizard-field')) >= 0) {
+            if (field === 'group_key') {
+              if (self.wizardDraft.group_mode !== 'country') self.refreshWizardAudience();
+              return;
+            }
+	          if (['executor_rule','mail_executor_rule','mail_executor_id','offline_executor_rule','mail_account_rule','mail_account_id','offline_owner_id'].indexOf(field) >= 0) {
 	            self.renderWizard();
 	            return;
 	          }
@@ -15458,6 +15507,14 @@
 	    renderWizardSidebar: function (draft) {
 	      draft = draft || this.defaultWizardDraft();
 	      var targets = this.resolveWizardTargets(draft);
+        var audienceCustomers = this.resolveWizardAudienceCustomers(draft);
+        var audienceCount = Number(draft.audience_customer_count || 0) || audienceCustomers.length;
+        if (!audienceCount && draft.group_mode === 'selected') audienceCount = (draft.customer_ids || []).length;
+        if (!audienceCount && draft.group_mode === 'group') {
+          var audienceGroup = ((this.data && this.data.groups) || []).find(function (row) { return String(row.id) === String(draft.group_key || ''); });
+          audienceCount = Number((audienceGroup || {}).customer_count || 0);
+        }
+        if (this.wizardAudienceLoading) audienceCount = '读取中...';
 	      var plan = this.buildExecutionPlan(draft);
 	      var value = function (val) {
 	        return val === undefined || val === null || val === '' ? '--' : String(val);
@@ -15480,7 +15537,7 @@
 	        return _;
 	      });
 	      var summaryRows = [
-	        ['客户数', targets.customers.length],
+	        ['客户数', audienceCount],
 	        ['联系人数', targets.contacts.length],
 	        ['邮件目标数', plan.mailItems.length],
 	        ['重复邮箱跳过', duplicateTargets],
@@ -15577,16 +15634,18 @@
 	        var groupField = draft.group_mode === 'group'
 	          ? '<label><span>选择分组</span><select data-wizard-field="group_key">' + this.wizardGroupOptions(draft.group_key) + '</select></label>'
 	          : (draft.group_mode === 'country' ? '<label><span>国家</span><input data-wizard-field="group_key" value="' + esc(draft.group_key || '') + '" placeholder="输入国家，例如 China / India"></label>' : '<label><span>范围说明</span><input value="' + (draft.group_mode === 'selected' ? '使用当前已勾选客户' : '使用当前推广池筛选结果') + '" readonly></label>');
-		        var customerTargets = this.resolveWizardTargets(draft).customers || [];
-		        var allPool = (this.data && this.data.pool) || [];
-		        var selectedIds = {};
-		        customerTargets.forEach(function (row) { selectedIds[Number(row.id)] = true; });
-		        var scopedCustomers = customerTargets.length ? customerTargets : allPool.filter(function (row) { return selectedIds[Number(row.id)]; });
+		        var scopedCustomers = this.resolveWizardAudienceCustomers(draft);
+            var selectedCustomerCount = Number(draft.audience_customer_count || 0) || scopedCustomers.length;
+            if (!selectedCustomerCount && draft.group_mode === 'selected') selectedCustomerCount = (draft.customer_ids || []).length;
+            if (this.wizardAudienceLoading) selectedCustomerCount = '读取中...';
 		        var blacklistCount = scopedCustomers.filter(function (row) { return Number(row.do_not_contact || 0) || String(row.promotion_status || '') === 'blacklist'; }).length;
 		        var duplicateCount = scopedCustomers.filter(function (row) { return Number(row.duplicate_count || row.duplicate_risk || 0) > 0; }).length;
 		        var noContactCount = scopedCustomers.filter(function (row) { return Number(row.contact_count || 0) <= 0; }).length;
 		        var stoppedCount = scopedCustomers.filter(function (row) { return ['stopped','paused','disabled','no_promotion','maintenance_only'].indexOf(String(row.promotion_status || '')) >= 0; }).length;
-		        return '<section class="promo-step-card promo-step-customers"><div class="promo-step-controls"><label><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label>' + groupField + '</div>' + this.renderWizardMiniStats([['选中客户数', scopedCustomers.length || this.selectedCustomerIds.size], ['黑名单数量', blacklistCount], ['重复客户数量', duplicateCount], ['无联系人客户数量', noContactCount], ['停用客户数量', stoppedCount]]) + '<div class="promo-step-dist-grid">' + this.renderWizardDistribution('国家分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.country; })) + this.renderWizardDistribution('负责人分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.owner_name || row.primary_owner; })) + this.renderWizardDistribution('来源分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.source_tags || row.source || row.source_key; })) + '</div>' + this.renderWizardCustomerRows(scopedCustomers) + '</section>';
+            var audienceState = this.wizardAudienceLoading
+              ? '<article class="promo-wizard-note">正在读取所选客户范围，请稍候...</article>'
+              : (this.wizardAudienceError ? '<article class="promo-wizard-note is-warn">' + esc(this.wizardAudienceError) + '</article>' : '');
+		        return '<section class="promo-step-card promo-step-customers"><div class="promo-step-controls"><label><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label>' + groupField + '</div>' + audienceState + this.renderWizardMiniStats([['选中客户数', selectedCustomerCount], ['黑名单数量', blacklistCount], ['重复客户数量', duplicateCount], ['无联系人客户数量', noContactCount], ['停用客户数量', stoppedCount]]) + '<div class="promo-step-dist-grid">' + this.renderWizardDistribution('国家分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.country; })) + this.renderWizardDistribution('负责人分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.owner_name || row.primary_owner; })) + this.renderWizardDistribution('来源分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.source_tags || row.source || row.source_key; })) + '</div>' + this.renderWizardCustomerRows(scopedCustomers) + '</section>';
 		      }
 	      if (step === 2) {
 	        var targetsForContacts = this.resolveWizardTargets(draft);
@@ -15648,7 +15707,7 @@
       if (!groups.length) return '<option value="">暂无推广分组</option>';
       return groups.map(function (row) {
         var selected = String(currentValue || '') === String(row.id) || String(currentValue || '').toLowerCase() === String(row.group_name || '').toLowerCase();
-        return '<option value="' + esc(row.id) + '"' + (selected ? ' selected' : '') + '>' + esc(row.group_name) + '（客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + '）</option>';
+        return '<option value="' + esc(row.id) + '"' + (selected ? ' selected' : '') + '>' + esc(row.group_name) + '（客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + ' / 可推广 ' + esc(row.promotable_contact_count || 0) + '）</option>';
       }).join('');
     },
     userOptions: function (currentValue) {
@@ -15746,6 +15805,8 @@
 	    },
 	    renderConfirmStepLayout: function (draft) {
 	      var targets = this.resolveWizardTargets(draft);
+        var audienceCustomers = this.resolveWizardAudienceCustomers(draft);
+        var audienceCount = Number(draft.audience_customer_count || 0) || audienceCustomers.length;
 	      var schedule = this.buildSchedulePlan(draft);
 	      var plan = schedule.plan || this.buildExecutionPlan(draft);
 	      var rows = schedule.rows || [];
@@ -15764,7 +15825,8 @@
 	      var startTime = rows[0] ? this.formatScheduleDate(rows[0].schedule_send_at) : (draft.scheduled_at || '--');
 	      var summary = [
 	        ['任务名称', draft.task_name || '未命名任务'],
-	        ['客户数', targets.customers.length],
+	        ['客户总数', audienceCount],
+          ['可执行客户', targets.customers.length],
 	        ['联系人数', targets.contacts.length],
 	        ['原始邮件目标', plan.rawMailTargetCount || (plan.mailItems || []).length],
 	        ['去重后邮件目标', (plan.mailItems || []).length],
@@ -16188,22 +16250,66 @@
       this.data.contacts = mergeRows(this.data.contacts || [], data.contacts || []);
       this.data.chat_groups = mergeRows(this.data.chat_groups || [], data.chat_groups || []);
     },
-    loadWizardTargetPreview: function () {
+    refreshWizardAudience: function () {
+      var draft = this.collectWizard();
+      var sourceKey = this.wizardAudienceKey(draft);
+      draft.audience_customer_ids = [];
+      draft.audience_customer_count = 0;
+      draft.audience_source_key = '';
+      this.wizardAudienceLoading = true;
+      this.wizardAudienceError = '';
+      this.wizardDraft = draft;
+      this.renderWizard();
+      return this.loadWizardTargetPreview({ draft: draft, sourceKey: sourceKey, rerender: true });
+    },
+    loadWizardTargetPreview: function (options) {
+      options = options || {};
       var self = this;
-      var draft = this.wizardDraft || this.defaultWizardDraft();
+      var draft = options.draft || this.wizardDraft || this.defaultWizardDraft();
       var customerIds = (draft.customer_ids || []).map(Number).filter(Boolean);
       var contactIds = (draft.contact_ids || []).map(Number).filter(Boolean);
-      if (!customerIds.length && !contactIds.length) return Promise.resolve();
-      return post('marketing_target_preview', {
+      var groupMode = String(draft.group_mode || 'selected');
+      var sourceKey = options.sourceKey || this.wizardAudienceKey(draft);
+      if (groupMode === 'selected' && !customerIds.length && !contactIds.length) {
+        this.wizardAudienceLoading = false;
+        this.wizardAudienceError = '';
+        draft.audience_customer_ids = [];
+        draft.audience_customer_count = 0;
+        draft.audience_source_key = sourceKey;
+        if (options.rerender) this.renderWizard();
+        return Promise.resolve();
+      }
+      var requestSerial = ++this.wizardAudienceRequestSerial;
+      this.wizardAudienceLoading = true;
+      this.wizardAudienceError = '';
+      var poolFilters = this.poolFilterPayload();
+      return post('marketing_target_preview', Object.assign({}, poolFilters, {
         customer_ids: JSON.stringify(customerIds),
         contact_ids: JSON.stringify(contactIds),
+        group_mode: groupMode,
+        group_key: draft.group_key || '',
+        pool_filters: JSON.stringify(poolFilters),
         channel_key: draft.channel_key || '',
         contact_filter: draft.contact_filter || ''
-      }).then(function (json) {
+      })).then(function (json) {
+        if (requestSerial !== self.wizardAudienceRequestSerial) return;
         if (!json.success) throw new Error(json.message || '目标预览加载失败');
-        self.mergeWizardTargetPreview(json.data || {});
-        self.updateWizardPreview();
+        var data = json.data || {};
+        self.mergeWizardTargetPreview(data);
+        draft.audience_customer_ids = (data.audience_customer_ids || []).map(Number).filter(Boolean);
+        draft.audience_customer_count = Number(data.audience_customer_count || draft.audience_customer_ids.length || 0);
+        draft.audience_source_key = sourceKey;
+        draft.contact_preview_limited = Number(data.contact_preview_limited || 0);
+        self.wizardDraft = draft;
+        self.wizardAudienceLoading = false;
+        self.wizardAudienceError = '';
+        if (options.rerender) self.renderWizard();
+        else self.updateWizardPreview();
       }).catch(function (error) {
+        if (requestSerial !== self.wizardAudienceRequestSerial) return;
+        self.wizardAudienceLoading = false;
+        self.wizardAudienceError = error.message || '客户范围加载失败';
+        if (options.rerender) self.renderWizard();
         console.warn('Promotion target preview failed:', error);
       });
     },
@@ -16492,9 +16598,22 @@
     wizardValidationMessage: function (step, draft) {
       if (!draft) return '';
       if (step === 0 && !String(draft.task_name || '').trim()) return '请填写任务名称。';
+      if (step === 1) {
+        if (draft.group_mode === 'group' && !String(draft.group_key || '').trim()) return '请选择客户分组。';
+        if (draft.group_mode === 'country' && !String(draft.group_key || '').trim()) return '请输入客户国家。';
+        if (this.wizardAudienceLoading) return '正在读取客户范围，请稍候。';
+        if (this.wizardAudienceError) return this.wizardAudienceError;
+        var hasSelectedContacts = draft.group_mode === 'selected' && (draft.contact_ids || []).length > 0;
+        if (!this.resolveWizardAudienceCustomers(draft).length && !hasSelectedContacts) return '当前客户范围没有可用客户，请重新选择分组或筛选条件。';
+      }
       if (step === 3 && !String(draft.channel_key || '').trim()) return '请选择推广渠道。';
       if (step === 4 && (draft.campaign_type === 'email' || ['email','edm','mail'].indexOf(String(draft.channel_key || '').toLowerCase()) >= 0) && (!String(draft.mail_subject || '').trim() || !String(draft.mail_body_html || '').trim())) return '邮件推广必须填写主题和正文。';
       if (step === 4 && ['preference','customer_preference','auto_preference'].indexOf(String(draft.channel_key || '').toLowerCase()) >= 0 && !String(draft.mail_body_html || '').trim()) return '按客户偏好推广必须填写邮件正文/人工话术。';
+      if (step === 6 && (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim()) return '定时或自动执行必须设置开始时间。';
+      if (step === 7 && draft.blacklist_policy === 'block_task') {
+        var blockedTargets = this.resolveWizardTargets(draft).skipped || [];
+        if (blockedTargets.some(function (row) { return /黑名单|禁止联系/.test(String(row.reason || '')); })) return '当前客户范围包含黑名单或禁止联系客户，已按策略阻止保存。';
+      }
       if (step === 8) {
         var targets = this.resolveWizardTargets(draft);
         if (!targets.customers.length && !targets.contacts.length && !(targets.chat_groups || []).length) return '请先在客户推广池选择目标，或把客户来源改为当前推广池筛选结果。';
@@ -16504,6 +16623,10 @@
     },
     resolveWizardCustomerIds: function (draft) {
       var rows = (this.data && this.data.pool) || [];
+      var resolvedIds = Array.isArray(draft.audience_customer_ids) ? draft.audience_customer_ids.map(Number).filter(Boolean) : [];
+      if (draft.audience_source_key && draft.audience_source_key === this.wizardAudienceKey(draft)) {
+        return resolvedIds;
+      }
       if (draft.group_mode === 'all_pool') return rows.map(function (row) { return Number(row.id); }).filter(Boolean);
       if (draft.group_mode === 'country') {
         var key = String(draft.group_key || '').trim().toLowerCase();
@@ -16783,9 +16906,25 @@
 	      options = options || {};
 		      var draft = this.collectWizard();
 		      this.applyWizardTemplate();
+		      var targetStatus = status || 'pending';
+		      if (targetStatus !== 'draft') {
+            if (targetStatus === 'scheduled' && !String(draft.scheduled_at || '').trim()) {
+              this.wizardStep = 6;
+              this.renderWizard();
+              this.showError('定时任务必须设置开始时间。');
+              return Promise.resolve();
+            }
+            for (var validationStep = 0; validationStep < this.wizardSteps().length; validationStep++) {
+              var validationMessage = this.wizardValidationMessage(validationStep, draft);
+              if (!validationMessage) continue;
+              this.wizardStep = validationStep;
+              this.renderWizard();
+              this.showError(validationMessage);
+              return Promise.resolve();
+            }
+          }
 		      var targets = this.resolveWizardTargets(draft);
 		      var self = this;
-		      var targetStatus = status || 'pending';
 		      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
 		      var submitButton = document.querySelector('[data-promo-wizard-next]');
 		      var actionButton = options.button || submitButton;
@@ -16862,10 +17001,10 @@
         schedule_type: draft.schedule_type,
         scheduled_at: draft.scheduled_at,
         remark: draft.remark || '',
-        customer_ids: JSON.stringify(targets.customers.map(function (row) { return Number(row.id); })),
+        customer_ids: JSON.stringify(this.resolveWizardCustomerIds(draft)),
         contact_ids: JSON.stringify(targets.contacts.map(function (row) { return Number(row.id); })),
         chat_group_ids: JSON.stringify((targets.chat_groups || []).map(function (row) { return Number(row.id); })),
-        audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, contact_filter: draft.contact_filter }),
+        audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, contact_filter: draft.contact_filter, pool_filters: this.poolFilterPayload(), resolved_customer_count: targets.customers.length }),
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
         failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, duplicate_email_policy: draft.duplicate_email_policy || 'keep_first', smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),

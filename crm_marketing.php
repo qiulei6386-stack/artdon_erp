@@ -319,24 +319,50 @@ function crm_marketing_groups(): array
         COALESCE(owner.real_name, owner.username, '') AS owner_name
         FROM crm_marketing_groups g
         LEFT JOIN (
-            SELECT rg.group_id, COUNT(*) AS customer_count
-            FROM crm_marketing_group_customers rg
-            JOIN crm_customers c ON c.id = rg.customer_id AND c.deleted_at IS NULL
-            GROUP BY rg.group_id
+            SELECT grouped_customers.group_id, COUNT(*) AS customer_count
+            FROM (
+                SELECT rg.group_id, rg.customer_id
+                FROM crm_marketing_group_customers rg
+                JOIN crm_customers c ON c.id = rg.customer_id AND c.deleted_at IS NULL
+                UNION
+                SELECT rg.group_id, ct.customer_id
+                FROM crm_marketing_group_contacts rg
+                JOIN crm_contacts ct ON ct.id = rg.contact_id AND ct.deleted_at IS NULL
+                JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+            ) grouped_customers
+            GROUP BY grouped_customers.group_id
         ) x ON x.group_id = g.id
         LEFT JOIN (
-            SELECT rg.group_id, COUNT(*) AS contact_count
-            FROM crm_marketing_group_contacts rg
-            JOIN crm_contacts ct ON ct.id = rg.contact_id AND ct.deleted_at IS NULL
-            JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
-            GROUP BY rg.group_id
+            SELECT grouped_contacts.group_id, COUNT(*) AS contact_count
+            FROM (
+                SELECT rg.group_id, ct.id AS contact_id
+                FROM crm_marketing_group_customers rg
+                JOIN crm_contacts ct ON ct.customer_id = rg.customer_id AND ct.deleted_at IS NULL
+                JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+                UNION
+                SELECT rg.group_id, ct.id AS contact_id
+                FROM crm_marketing_group_contacts rg
+                JOIN crm_contacts ct ON ct.id = rg.contact_id AND ct.deleted_at IS NULL
+                JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+            ) grouped_contacts
+            GROUP BY grouped_contacts.group_id
         ) y ON y.group_id = g.id
         LEFT JOIN (
-            SELECT rg.group_id, COUNT(*) AS promotable_contact_count
-            FROM crm_marketing_group_customers rg
-            JOIN crm_contacts ct ON ct.customer_id = rg.customer_id AND ct.deleted_at IS NULL
-            WHERE COALESCE(ct.is_left,0)=0 AND COALESCE(ct.do_not_contact,0)=0 AND COALESCE(ct.unsubscribe_email,0)=0 AND COALESCE(ct.email,'') <> ''
-            GROUP BY rg.group_id
+            SELECT promotable_contacts.group_id, COUNT(*) AS promotable_contact_count
+            FROM (
+                SELECT rg.group_id, ct.id AS contact_id
+                FROM crm_marketing_group_customers rg
+                JOIN crm_contacts ct ON ct.customer_id = rg.customer_id AND ct.deleted_at IS NULL
+                JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+                WHERE COALESCE(c.do_not_contact,0)=0 AND COALESCE(ct.is_left,0)=0 AND COALESCE(ct.do_not_contact,0)=0 AND COALESCE(ct.unsubscribe_email,0)=0 AND COALESCE(ct.email,'') <> ''
+                UNION
+                SELECT rg.group_id, ct.id AS contact_id
+                FROM crm_marketing_group_contacts rg
+                JOIN crm_contacts ct ON ct.id = rg.contact_id AND ct.deleted_at IS NULL
+                JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+                WHERE COALESCE(c.do_not_contact,0)=0 AND COALESCE(ct.is_left,0)=0 AND COALESCE(ct.do_not_contact,0)=0 AND COALESCE(ct.unsubscribe_email,0)=0 AND COALESCE(ct.email,'') <> ''
+            ) promotable_contacts
+            GROUP BY promotable_contacts.group_id
         ) z ON z.group_id = g.id
         LEFT JOIN (
             SELECT group_id, GROUP_CONCAT(CONCAT(country, ' ', total) ORDER BY total DESC SEPARATOR ', ') AS country_distribution
@@ -1045,23 +1071,119 @@ function crm_marketing_pool_view(array $input = []): array
     ];
 }
 
+function crm_marketing_audience_filter_input(array $input): array
+{
+    $nested = crm_marketing_decode_json_input($input['pool_filters'] ?? []);
+    $source = array_merge($nested, $input);
+    $allowed = ['q', 'status', 'country', 'level', 'owner_id', 'my_customers', 'has_email', 'has_contact', 'group_id', 'ungrouped'];
+    $filters = [];
+    foreach ($allowed as $key) {
+        if (!array_key_exists($key, $source)) continue;
+        $filters[$key] = $source[$key];
+    }
+    return $filters;
+}
+
+function crm_marketing_resolve_audience_customers(array $input, array $explicitCustomerIds = []): array
+{
+    $mode = strtolower(trim((string)($input['group_mode'] ?? 'selected')));
+    if (!in_array($mode, ['selected', 'all_pool', 'group', 'country'], true)) $mode = 'selected';
+    $poolInput = [];
+    if ($mode === 'group') {
+        $groupKey = trim((string)($input['group_key'] ?? ''));
+        $groupId = ctype_digit($groupKey) ? (int)$groupKey : 0;
+        if ($groupId <= 0 && $groupKey !== '') {
+            $stmt = db()->prepare('SELECT id FROM crm_marketing_groups WHERE group_name = ? AND deleted_at IS NULL LIMIT 1');
+            $stmt->execute([$groupKey]);
+            $groupId = (int)$stmt->fetchColumn();
+        }
+        if ($groupId <= 0) return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
+        $exists = db()->prepare('SELECT id FROM crm_marketing_groups WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+        $exists->execute([$groupId]);
+        if (!$exists->fetchColumn()) throw new RuntimeException('所选推广分组不存在或已删除。');
+        $poolInput['group_id'] = $groupId;
+    } elseif ($mode === 'country') {
+        $country = trim((string)($input['group_key'] ?? ''));
+        if ($country === '') return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
+        $poolInput['country'] = $country;
+    } elseif ($mode === 'all_pool') {
+        $poolInput = crm_marketing_audience_filter_input($input);
+    } else {
+        $explicitCustomerIds = array_values(array_unique(array_filter(array_map('intval', $explicitCustomerIds))));
+        if (!$explicitCustomerIds) return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
+        $poolInput['customer_ids'] = json_encode($explicitCustomerIds);
+    }
+
+    $pageSize = 200;
+    $first = crm_marketing_pool(array_merge($poolInput, [
+        'page' => 1,
+        'page_size' => $pageSize,
+    ]));
+    $total = (int)($first['total'] ?? 0);
+    $maxAudience = 5000;
+    if ($total > $maxAudience) {
+        throw new RuntimeException("当前客户范围共 {$total} 个，超过单个推广任务 {$maxAudience} 个客户的安全上限，请继续缩小筛选范围。");
+    }
+    $rows = $first['rows'] ?? [];
+    $pageCount = max(1, (int)($first['page_count'] ?? 1));
+    for ($page = 2; $page <= $pageCount; $page++) {
+        $next = crm_marketing_pool(array_merge($poolInput, [
+            'page' => $page,
+            'page_size' => $pageSize,
+            'skip_count' => 1,
+        ]));
+        foreach (($next['rows'] ?? []) as $row) $rows[] = $row;
+    }
+    $byId = [];
+    foreach ($rows as $row) {
+        $id = (int)($row['id'] ?? 0);
+        if ($id > 0) $byId[$id] = $row;
+    }
+    return [
+        'rows' => array_values($byId),
+        'customer_ids' => array_map('intval', array_keys($byId)),
+        'total' => count($byId),
+        'mode' => $mode,
+    ];
+}
+
+function crm_marketing_apply_audience_policy(array $customers, string $blacklistPolicy): array
+{
+    $allowed = [];
+    $blocked = [];
+    foreach ($customers as $row) {
+        $id = (int)($row['id'] ?? 0);
+        if ($id <= 0) continue;
+        $status = strtolower(trim((string)($row['promotion_status'] ?? '')));
+        $isBlocked = (int)($row['do_not_contact'] ?? 0) === 1
+            || in_array($status, ['blacklist', 'maintenance_only', 'stopped', 'no_promotion'], true);
+        if ($isBlocked) {
+            $blocked[] = $id;
+            continue;
+        }
+        $allowed[] = $id;
+    }
+    if ($blocked && $blacklistPolicy === 'block_task') {
+        throw new RuntimeException('当前客户范围包含 ' . count($blocked) . ' 个黑名单或禁止推广客户，已按失败处理策略阻止保存。');
+    }
+    return [
+        'customer_ids' => array_values(array_unique($allowed)),
+        'blocked_customer_ids' => array_values(array_unique($blocked)),
+    ];
+}
+
 function crm_marketing_target_preview(array $input = []): array
 {
     crm_marketing_ensure_tables();
     crm_require('promotion.view');
-    $customerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
+    $requestedCustomerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
     $contactIds = crm_mail_input_ids($input['contact_ids'] ?? '');
-    $customers = [];
+    $audience = crm_marketing_resolve_audience_customers($input, $requestedCustomerIds);
+    $customers = $audience['rows'] ?? [];
+    $customerIds = $audience['customer_ids'] ?? [];
     $contacts = [];
     $chatGroups = [];
     if ($customerIds) {
-        $pool = crm_marketing_pool([
-            'customer_ids' => json_encode($customerIds),
-            'page' => 1,
-            'page_size' => min(200, max(20, count($customerIds))),
-            'skip_count' => 1,
-        ]);
-        $customers = $pool['rows'] ?? [];
         $contacts = crm_marketing_contacts([
             'customer_ids' => json_encode($customerIds),
         ]);
@@ -1108,6 +1230,10 @@ function crm_marketing_target_preview(array $input = []): array
         'chat_groups' => $chatGroups,
         'selected_customer_count' => count($customerIds),
         'selected_contact_count' => count($contactIds),
+        'audience_customer_ids' => array_values($customerIds),
+        'audience_customer_count' => count($customerIds),
+        'contact_preview_count' => count($contacts),
+        'contact_preview_limited' => count($contacts) >= 500 ? 1 : 0,
         'duplicate_email_report' => $duplicates,
     ];
 }
@@ -1382,6 +1508,9 @@ function crm_marketing_bootstrap(array $input = []): array
 function crm_marketing_task_create(array $input): array
 {
     crm_marketing_ensure_tables();
+    // Warm the shared operation-log schema before opening the task transaction.
+    // MySQL DDL would otherwise commit a first-use transaction implicitly.
+    crm_ensure_tables();
     crm_require('promotion.task_create');
     $taskId = (int)($input['task_id'] ?? 0);
     $requestedStatus = trim((string)($input['task_status'] ?? 'pending'));
@@ -1402,20 +1531,39 @@ function crm_marketing_task_create(array $input): array
     if (!$isDraft && $preferenceMode && $bodyHtml === '') {
         throw new RuntimeException('按客户偏好推广必须填写执行话术/邮件正文。');
     }
-    $customerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
+    $requestedCustomerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
     $contactIds = crm_mail_input_ids($input['contact_ids'] ?? '');
     $chatGroupIds = crm_mail_input_ids($input['chat_group_ids'] ?? '');
-    if (!$isDraft && !$customerIds && !$contactIds && !$chatGroupIds) throw new RuntimeException('请至少选择客户、联系人或客户群。');
     $audienceConfig = crm_marketing_decode_json_input($input['audience_config'] ?? []);
     $sendRule = crm_marketing_decode_json_input($input['send_rule'] ?? []);
     $scheduleConfig = crm_marketing_decode_json_input($input['schedule_config'] ?? []);
     $failurePolicy = crm_marketing_decode_json_input($input['failure_policy'] ?? []);
     $attachmentConfig = crm_marketing_decode_json_input($input['attachment_config'] ?? []);
     $riskSummary = crm_marketing_decode_json_input($input['risk_summary'] ?? []);
+    $audienceInput = array_merge(
+        crm_marketing_decode_json_input($audienceConfig['pool_filters'] ?? []),
+        [
+            'group_mode' => $audienceConfig['group_mode'] ?? 'selected',
+            'group_key' => $audienceConfig['group_key'] ?? '',
+        ]
+    );
+    $resolvedAudience = crm_marketing_resolve_audience_customers($audienceInput, $requestedCustomerIds);
+    $audiencePolicy = crm_marketing_apply_audience_policy(
+        $resolvedAudience['rows'] ?? [],
+        (string)($failurePolicy['blacklist_policy'] ?? 'skip')
+    );
+    $customerIds = $audiencePolicy['customer_ids'] ?? [];
+    $audienceConfig['resolved_customer_count'] = count($customerIds);
+    $audienceConfig['blocked_customer_count'] = count($audiencePolicy['blocked_customer_ids'] ?? []);
+    if (!$isDraft && !$customerIds && !$contactIds && !$chatGroupIds) throw new RuntimeException('请至少选择客户、联系人或客户群。');
     $scheduledAt = trim((string)($input['scheduled_at'] ?? ''));
     if ($scheduledAt === '' && !empty($scheduleConfig['scheduled_at'])) $scheduledAt = (string)$scheduleConfig['scheduled_at'];
+    $scheduleType = (string)($input['schedule_type'] ?? ($scheduleConfig['schedule_type'] ?? 'manual'));
+    if (!$isDraft && ($requestedStatus === 'scheduled' || in_array($scheduleType, ['scheduled', 'auto'], true)) && $scheduledAt === '') {
+        throw new RuntimeException('定时或自动执行必须设置开始时间。');
+    }
     $allowedStatuses = ['draft', 'pending', 'scheduled', 'running', 'paused', 'partial_failed', 'completed', 'failed', 'cancelled', 'manual_pending'];
-    $status = $isDraft ? 'draft' : (($taskId > 0 && in_array($requestedStatus, $allowedStatuses, true)) ? $requestedStatus : 'pending');
+    $status = $isDraft ? 'draft' : (in_array($requestedStatus, $allowedStatuses, true) ? $requestedStatus : 'pending');
     $taskPayload = [
         $name,
         $channel,
@@ -1430,7 +1578,7 @@ function crm_marketing_task_create(array $input): array
         json_encode($failurePolicy, JSON_UNESCAPED_UNICODE),
         json_encode($riskSummary, JSON_UNESCAPED_UNICODE),
         $status,
-        (string)($input['schedule_type'] ?? ($scheduleConfig['schedule_type'] ?? 'manual')),
+        $scheduleType,
         $scheduledAt ? str_replace('T', ' ', $scheduledAt) : null,
         (string)($input['remark'] ?? ''),
     ];
@@ -1441,6 +1589,10 @@ function crm_marketing_task_create(array $input): array
         $before = $stmt->fetch() ?: null;
         if (!$before) $taskId = 0;
     }
+    $pdo = db();
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
     if ($taskId > 0) {
         db()->prepare('UPDATE crm_marketing_tasks
             SET task_name = ?, channel_key = ?, campaign_type = ?, mail_subject = ?, mail_body_html = ?, signature_key = ?,
@@ -1567,6 +1719,11 @@ function crm_marketing_task_create(array $input): array
         'schedule' => $scheduleConfig,
         'risk_summary' => $riskSummary,
     ]);
+    if ($ownsTransaction) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
     $queue = null;
     if (!$isDraft && !empty($input['build_queue'])) {
         $queue = crm_marketing_queue_build(['task_id' => $taskId]);
