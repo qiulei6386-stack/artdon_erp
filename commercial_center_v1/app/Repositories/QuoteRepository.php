@@ -111,8 +111,12 @@ final class QuoteRepository
                     d.contact_email,d.country,d.exchange_rate_snapshot,d.quote_date,d.valid_until,
                     d.owner_legacy_user_id,d.owner_name,d.payment_terms,d.trade_terms,d.price_template_id,d.project_ref,
                     d.subtotal_amount,d.discount_amount,d.shipping_amount,d.tax_amount,d.other_amount,d.commission_amount,
-                    d.gross_profit,d.gross_margin,d.customer_note,d.internal_note
-             FROM cc_quotes q LEFT JOIN cc_quote_details d ON d.quote_id=q.id WHERE q.id=?',
+                    d.gross_profit,d.gross_margin,d.customer_note,d.internal_note,
+                    x.sales_channel,x.fulfillment_mode,x.configuration_level,x.push_status,x.external_order_id,x.last_outbox_id
+             FROM cc_quotes q
+             LEFT JOIN cc_quote_details d ON d.quote_id=q.id
+             LEFT JOIN cc_quote_channel_context x ON x.quote_id=q.id
+             WHERE q.id=?',
             [$quoteId]
         );
         if ($quote === null) {
@@ -127,9 +131,12 @@ final class QuoteRepository
             $statement = $this->connection->prepare(
                 'SELECT i.*,d.product_source,d.sku_code,d.model_no,d.product_name,d.image_path,d.unit,d.lead_time,
                         d.customer_note,d.internal_note,d.locked,d.unlock_reason,d.source_line_snapshot,
-                        d.custom_fields_json,d.reference_product_id
+                        d.custom_fields_json,d.reference_product_id,
+                        a.configuration_level,a.adaptation_product_id,a.adaptation_version_no,
+                        a.configuration_passport_hash,a.adaptation_snapshot
                  FROM cc_quote_items i
                  LEFT JOIN cc_quote_item_details d ON d.quote_item_id=i.id
+                 LEFT JOIN cc_quote_item_adaptation_refs a ON a.quote_item_id=i.id
                  WHERE i.quote_version_id=? ORDER BY i.sort_order,i.id'
             );
             $statement->execute([(int)$version['id']]);
@@ -201,6 +208,19 @@ final class QuoteRepository
             $amounts['other_amount'], $amounts['commission_amount'], $amounts['gross_profit'],
             $amounts['gross_margin'], $quote['customer_note'], $quote['internal_note'], $now, $now,
         ]);
+        $context = $this->connection->prepare(
+            'INSERT INTO cc_quote_channel_context
+             (quote_id,sales_channel,fulfillment_mode,configuration_level,push_status,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?)
+             ON DUPLICATE KEY UPDATE sales_channel=VALUES(sales_channel),
+              fulfillment_mode=VALUES(fulfillment_mode),configuration_level=VALUES(configuration_level),
+              push_status=IF(push_status IN (\'queued\',\'simulated\',\'sent\'),push_status,VALUES(push_status)),
+              updated_at=VALUES(updated_at)'
+        );
+        $context->execute([
+            $quoteId, $quote['sales_channel'], $quote['fulfillment_mode'], $quote['configuration_level'],
+            $quote['push_status'], $now, $now,
+        ]);
     }
 
     private function saveVersion(
@@ -257,6 +277,17 @@ final class QuoteRepository
             $this->nullableJson($item['source_line_snapshot']), $this->nullableJson($item['custom_fields']),
             $item['reference_product_id'], $now, $now,
         ]);
+        $adaptation = $this->connection->prepare(
+            'INSERT INTO cc_quote_item_adaptation_refs
+             (quote_item_id,configuration_level,adaptation_product_id,adaptation_version_no,
+              configuration_passport_hash,adaptation_snapshot,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?,?)'
+        );
+        $adaptation->execute([
+            $itemId, $item['configuration_level'], $item['adaptation_product_id'],
+            $item['adaptation_version_no'], $item['configuration_passport_hash'],
+            $this->nullableJson($item['adaptation_snapshot']), $now, $now,
+        ]);
         $product = $this->json([
             'source' => $item['product_source'], 'legacy_product_id' => $item['legacy_product_id'],
             'inventory_sku_id' => $item['inventory_sku_id'], 'sku_code' => $item['sku_code'],
@@ -290,6 +321,7 @@ final class QuoteRepository
             $item['configuration_snapshot'] = $this->decode((string)($item['configuration_snapshot'] ?? '{}'), []);
             $item['source_line_snapshot'] = $this->decode((string)($item['source_line_snapshot'] ?? '{}'), []);
             $item['custom_fields'] = $this->decode((string)($item['custom_fields_json'] ?? '{}'), []);
+            $item['adaptation_snapshot'] = $this->decode((string)($item['adaptation_snapshot'] ?? '{}'), []);
         }
         unset($item);
         $quote['items'] = $items;
@@ -311,6 +343,9 @@ final class QuoteRepository
             'quote_type' => $quote['quote_type'],
             'source_type' => $quote['source_type'],
             'source_order_no' => $quote['source_order_no'],
+            'sales_channel' => $quote['sales_channel'],
+            'fulfillment_mode' => $quote['fulfillment_mode'],
+            'configuration_level' => $quote['configuration_level'],
             'customer' => $quote['customer_snapshot'],
             'currency' => $quote['currency'],
             'exchange_rate' => $quote['exchange_rate'],

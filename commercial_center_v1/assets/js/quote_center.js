@@ -64,6 +64,33 @@
     });
     load().catch((e) => { $('[data-approval-message]', approvalCenter).textContent = e.message; });
   }
+  const quoteHub = $('[data-quote-hub]');
+  if (quoteHub) {
+    const applyQuoteFilters = () => {
+      const search = ($('[data-quote-search]', quoteHub)?.value || '').trim().toLowerCase();
+      const filters = {};
+      $$('[data-quote-filter]', quoteHub).forEach((input) => { filters[input.dataset.quoteFilter] = input.value; });
+      let visible = 0;
+      $$('[data-quote-row]', quoteHub).forEach((row) => {
+        const matches = (!search || (row.dataset.search || '').includes(search))
+          && (!filters.type || row.dataset.type === filters.type)
+          && (!filters.status || row.dataset.status === filters.status)
+          && (!filters.channel || row.dataset.channel === filters.channel);
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      });
+      const count = $('[data-visible-count]', quoteHub);
+      if (count) count.textContent = `当前显示 ${visible} 条`;
+    };
+    $('[data-quote-search]', quoteHub)?.addEventListener('input', applyQuoteFilters);
+    $$('[data-quote-filter]', quoteHub).forEach((input) => input.addEventListener('change', applyQuoteFilters));
+    $('[data-quote-reset]', quoteHub)?.addEventListener('click', () => {
+      const search = $('[data-quote-search]', quoteHub);
+      if (search) search.value = '';
+      $$('[data-quote-filter]', quoteHub).forEach((input) => { input.value = ''; });
+      applyQuoteFilters();
+    });
+  }
   const editor = $('[data-quote-editor]');
   if (!editor) return;
   const outputButtons = $$('[data-quote-output]', editor);
@@ -108,6 +135,7 @@
       }
     }));
   }
+  if (editor.matches('[data-stock-quote]')) return;
   if (editor.matches('[data-custom-quote]')) {
     const api = editor.dataset.api;
     const tbody = $('[data-quote-lines]', editor);
@@ -188,8 +216,9 @@
       editor.dataset.quoteId = quoteId;
       field('quote_no').value = quote.quote_no;
       field('customer_id').value = quote.legacy_customer_id || '';
-      ['contact_name','country','currency','valid_until','owner_name','payment_terms','trade_terms','customer_note','internal_note']
+      ['contact_name','country','sales_channel','currency','valid_until','owner_name','payment_terms','trade_terms','customer_note','internal_note']
         .forEach((name) => { if (field(name)) field(name).value = quote[name] || ''; });
+      field('sales_channel').value = quote.sales_channel || 'guangzhou_direct';
       const source = quote.source_snapshot || {};
       ['project_name','project_type','requirement_summary','crm_opportunity','crm_project']
         .forEach((name) => { field(name).value = source[name] || ''; });
@@ -214,7 +243,8 @@
     };
     const payload = () => ({
       id: quoteId, customer_id: Number(field('customer_id').value || 0),
-      contact_name: field('contact_name').value, country: field('country').value, currency: field('currency').value,
+      contact_name: field('contact_name').value, country: field('country').value,
+      sales_channel: field('sales_channel').value, currency: field('currency').value,
       valid_until: field('valid_until').value || null, payment_terms: field('payment_terms').value,
       trade_terms: field('trade_terms').value, project_name: field('project_name').value,
       project_type: field('project_type').value, requirement_summary: field('requirement_summary').value,
@@ -586,7 +616,8 @@
         (group.options || []).forEach((option) => {
           const node = document.createElement('option');
           node.value = option.option_code;
-          node.textContent = option.name;
+          node.textContent = `${option.name}${group.source === 'material_center' && option.match_level
+            ? ` · ${option.match_level}` : ''}`;
           node.selected = values[group.group_code] !== undefined
             ? values[group.group_code] === option.option_code
             : Number(option.is_default) === 1;
@@ -594,7 +625,10 @@
         });
         if (group.source === 'material_center') {
           const source = document.createElement('small');
-          source.textContent = '物料中心已审批';
+          const rules = Object.entries(group.quick_rules || {})
+            .filter(([, value]) => value !== '' && value !== null && value !== 'allowed')
+            .map(([key, value]) => `${key}=${value}`).join('，');
+          source.textContent = `物料中心已审批 V${group.approved_version || '—'}${rules ? ` · 快速规则：${rules}` : ''}`;
           label.append(source);
         }
         options.append(label);
@@ -672,6 +706,7 @@
       setField('customer_id', quote.legacy_customer_id);
       setField('contact_name', quote.contact_name);
       setField('country', quote.country);
+      setField('sales_channel', quote.sales_channel || 'guangzhou_direct');
       setField('currency', quote.currency);
       setField('valid_until', quote.valid_until);
       setField('payment_terms', quote.payment_terms);
@@ -748,6 +783,7 @@
       customer_id: Number(field('customer_id')?.value || 0),
       contact_name: field('contact_name')?.value || '',
       country: field('country')?.value || '',
+      sales_channel: field('sales_channel')?.value || 'guangzhou_direct',
       currency: field('currency')?.value || 'USD',
       valid_until: field('valid_until')?.value || null,
       payment_terms: field('payment_terms')?.value || '',

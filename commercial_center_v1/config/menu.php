@@ -10,6 +10,7 @@ return [
         ['key'=>'quote_center','label'=>'报价单中心'], ['key'=>'commercial_product_library','label'=>'报价产品库'],
         ['key'=>'quote_templates','label'=>'报价模板'], ['key'=>'price_strategy','label'=>'价格策略'],
         ['key'=>'tier_prices','label'=>'阶梯价格'], ['key'=>'quote_approval','label'=>'报价审核'],
+        ['key'=>'singapore_channel','label'=>'新加坡发布'],
     ],
     '物料与配件' => [
         ['key'=>'materials','label'=>'物料与配件'], ['key'=>'material_substitutes','label'=>'替代关系'],

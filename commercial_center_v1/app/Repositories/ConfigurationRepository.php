@@ -32,10 +32,14 @@ final class ConfigurationRepository
     public function materialCenterAdaptations(): array
     {
         foreach(['mc_products','mc_adaptation_groups','mc_adaptation_options','mc_materials','mc_material_categories']as$table)if(!$this->tableExists($table))return[];
-        $rows=$this->all("SELECT p.legacy_id,g.id group_id,g.group_code,g.group_name,g.group_type,g.business_type,g.is_required,g.selection_mode,
+        $rows=$this->all("SELECT p.id adaptation_product_id,p.legacy_id,av.version_no approved_version,
+          g.id group_id,g.group_code,g.group_name,g.group_type,g.business_type,g.is_required,g.selection_mode,
+          g.min_select,g.max_select,g.rule_json,
           o.id option_id,o.option_type,o.is_default,o.price_impact,o.lead_time_impact_days,
+          o.match_level,o.match_reason_json,o.requires_approval,o.exception_approved,
           m.id material_id,m.material_code,m.name material_name,m.brand,m.model,c.code category_code
           FROM mc_products p
+          LEFT JOIN (SELECT product_id,MAX(version_no) version_no FROM mc_adaptation_approvals WHERE status='approved' GROUP BY product_id) av ON av.product_id=p.id
           JOIN mc_adaptation_groups g ON g.product_id=p.id AND g.status='approved' AND g.is_enabled=1
           JOIN mc_adaptation_options o ON o.group_id=g.id AND o.status='approved' AND o.option_type<>'disabled'
           JOIN mc_materials m ON m.id=o.material_id AND m.status='official' AND m.is_official=1 AND m.allow_quote=1 AND m.deleted_at IS NULL
@@ -52,6 +56,11 @@ final class ConfigurationRepository
                 'is_required'=>(int)$row['is_required'],'is_multiple'=>$row['selection_mode']==='multi'?1:0,'sort_order'=>1000+(int)$row['group_id'],
                 'input_type'=>'select','is_advanced'=>0,'customer_visible'=>1,'affects_cost'=>0,'affects_price'=>1,
                 'affects_moq'=>0,'affects_lead_time'=>1,'allow_custom'=>0,'source'=>'material_center','options'=>[],
+                'adaptation_product_id'=>(int)$row['adaptation_product_id'],
+                'approved_version'=>(int)($row['approved_version']??0),
+                'business_type'=>$row['business_type'],'selection_mode'=>$row['selection_mode'],
+                'min_select'=>(int)$row['min_select'],'max_select'=>(int)$row['max_select'],
+                'quick_rules'=>json_decode((string)($row['rule_json']??'{}'),true)?:[],
             ];
             $result[$product][$groupCode]['options'][]=[
                 'id'=>'mc-'.(int)$row['option_id'],'group_id'=>'mc-'.(int)$row['group_id'],
@@ -62,6 +71,10 @@ final class ConfigurationRepository
                 'lead_time_days'=>(int)($row['lead_time_impact_days']??0),
                 'material_id'=>(int)$row['material_id'],'material_code'=>$row['material_code'],
                 'category_code'=>$row['category_code'],'option_type'=>$row['option_type'],'source'=>'material_center',
+                'match_level'=>$row['match_level'],
+                'requires_approval'=>(int)$row['requires_approval'],
+                'exception_approved'=>(int)$row['exception_approved'],
+                'match_reasons'=>json_decode((string)($row['match_reason_json']??'[]'),true)?:[],
             ];
         }
         foreach($result as$product=>$groups)$result[$product]=array_values($groups);

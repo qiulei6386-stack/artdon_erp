@@ -38,6 +38,7 @@ fi
 
 contract_tests=(
   commercial_center_v1/tests/material_center_adaptation_contract.php
+  commercial_center_v1/tests/quote_product_channel_contract.php
   commercial_center_v1/tests/quote_center_regression.php
   commercial_center_v1/tests/safety_scan.php
   commercial_center_v1/tests/standard_quote_button_contract.php

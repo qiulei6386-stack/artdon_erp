@@ -1,104 +1,107 @@
 <?php
 declare(strict_types=1);
 
-$dashboardQuotes = [
-    ['AT-260725EX053-01','标准品报价单','网站订单','Horizons Lumiere','—',3,'32.63','USD','pending','邱磊','2025-07-25 14:32'],
-    ['AT-260725EX147','标准品报价单','网站订单','LED-UNIPROF','—',5,'47.50','USD','approved','邱磊','2025-07-25 11:18'],
-    ['AT-260725EX053','标准品报价单','网站订单','Horizons Lumiere','—',2,'17.62','USD','approved','邱磊','2025-07-25 10:07'],
-    ['AT-260704EX001-01','标准品报价单','网站订单','JAFIROE Marketing Incorporated (JMI)','—',4,'31.00','USD','approved','邱磊','2025-07-04 16:34'],
-    ['AT-260630EX136','标准品报价单','网站订单','Dazzy Dekors Ltd','—',8,'1,350.00','USD','approved','邱磊','2025-06-30 09:41'],
-    ['AT-260724EX028','标准品报价单','网站订单','成都照明','—',12,'3,250.00','RMB','approved','邱磊','2025-06-24 17:09'],
-    ['AT-260710CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',15,'27,605.88','RMB','approved','邱磊','2025-06-10 15:22'],
-    ['AT-260721CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',6,'1,042.50','RMB','approved','邱磊','2025-06-21 10:11'],
-    ['AT-260722CN069','标准品报价单','网站订单','江门市华彩光电有限公司','—',10,'2,958.45','RMB','approved','邱磊','2025-06-22 14:08'],
-    ['AT-260723EX144','标准品报价单','网站订单','Winsan LED','—',9,'6,159.00','USD','approved','邱磊','2025-06-23 09:55'],
-];
+$quoteOverview = ['rows' => [], 'counts' => ['total'=>0,'draft'=>0,'pending_approval'=>0,'sent'=>0,'pending_customer'=>0,'converted'=>0]];
+if (!empty($view['auth']['authenticated']) && is_array($view['auth']['user'] ?? null)) {
+    $quoteOverview = (new Artdon\CommercialCenter\Services\QuoteCenterService())->overview($view['auth']['user']);
+}
+$dashboardQuotes = $quoteOverview['rows'];
+$counts = $quoteOverview['counts'];
 ?>
 <section class="quote-hub" data-quote-hub>
   <header class="qhub-heading">
     <div class="qhub-title-icon">▤</div>
-    <div>
-      <h1>报价单中心</h1>
-      <p>统一管理网站订单、标准品与定制品报价，跟踪报价状态与转化进度。</p>
-    </div>
-    <nav>
-      <button type="button">↧ 导入</button>
-      <button type="button">↧ 导出</button>
-      <button type="button">ⓘ 帮助</button>
-      <button type="button" class="primary" data-new-quote>＋ 新建报价单</button>
-    </nav>
+    <div><h1>报价单中心</h1>
+      <p>按库存品、标准品、定制品创建报价；销售渠道另行选择广州或新加坡。</p></div>
+    <nav><a href="?page=singapore_channel">新加坡发布</a>
+      <a href="?page=quote_center&quote_mode=website">网站订单回流</a>
+      <button type="button" class="primary" data-new-quote>＋ 新建报价单</button></nav>
   </header>
+
+  <section class="quote-info-banner">
+    产品类型决定配置自由度：库存品配置锁定；标准品只允许物料中心已审批范围；定制品可自由录入并走工程、核价与审批。
+    新加坡网站只是销售渠道，不再作为产品类型。
+  </section>
 
   <section class="qhub-kpis" aria-label="报价统计">
     <?php foreach ([
-      ['全部报价','10','—','blue','▣'],
-      ['草稿','0','—','amber','▤'],
-      ['待审核','1','较昨日 +1','purple','◷'],
-      ['已发送','9','较昨日 +2','teal','➤'],
-      ['待客户确认','9','较昨日 +2','orange','♙'],
-      ['已转订单','0','较昨日 —','blue','✓'],
+      ['全部报价',$counts['total'],'blue','▣'],['草稿',$counts['draft'],'amber','▤'],
+      ['待审核',$counts['pending_approval'],'purple','◷'],['已发送',$counts['sent'],'teal','➤'],
+      ['待客户确认',$counts['pending_customer'],'orange','♙'],['已转订单',$counts['converted'],'blue','✓'],
     ] as $kpi): ?>
-      <article>
-        <i class="<?= cc_h($kpi[3]) ?>"><?= cc_h($kpi[4]) ?></i>
-        <div><span><?= cc_h($kpi[0]) ?></span><strong><?= cc_h($kpi[1]) ?></strong><small><?= cc_h($kpi[2]) ?></small></div>
-      </article>
+      <article><i class="<?= cc_h($kpi[2]) ?>"><?= cc_h($kpi[3]) ?></i>
+        <div><span><?= cc_h($kpi[0]) ?></span><strong><?= (int)$kpi[1] ?></strong><small>真实数据</small></div></article>
     <?php endforeach; ?>
   </section>
 
   <section class="qhub-filters">
-    <label class="qhub-search"><input type="search" placeholder="搜索报价单号 / 客户 / 联系人 / 产品型号 / 网站订单号"><b>⌕</b></label>
-    <?php foreach (['报价类型'=>['全部类型','网站订单报价单','标准品报价单','定制品报价单'],'状态'=>['全部状态','pending','approved'],'币种'=>['全部币种','USD','RMB'],'负责人'=>['全部负责人','邱磊']] as $label=>$options): ?>
-      <label><span><?= cc_h($label) ?></span><select><?php foreach($options as $option): ?><option><?= cc_h($option) ?></option><?php endforeach; ?></select></label>
-    <?php endforeach; ?>
-    <label class="qhub-date"><span>更新时间</span><div>▣　开始日期　 ~　 结束日期　⌄</div></label>
-    <button type="button" class="filter-button">⌕ 筛选</button>
-    <button type="button">↻ 重置</button>
+    <label class="qhub-search"><input type="search" data-quote-search placeholder="搜索报价单号 / 客户 / 联系人 / 产品类型"><b>⌕</b></label>
+    <label><span>报价类型</span><select data-quote-filter="type"><option value="">全部类型</option>
+      <option value="stock_product">库存品报价</option><option value="standard_product">标准品报价</option>
+      <option value="custom_product">定制品报价</option><option value="website_order">网站回流订单</option></select></label>
+    <label><span>状态</span><select data-quote-filter="status"><option value="">全部状态</option>
+      <option value="draft">草稿</option><option value="pending_approval">待审核</option><option value="approved">已审核</option>
+      <option value="sent">已发送</option><option value="customer_confirmed">客户已确认</option></select></label>
+    <label><span>渠道</span><select data-quote-filter="channel"><option value="">全部渠道</option>
+      <option value="guangzhou_direct">广州直接销售</option><option value="singapore_web">新加坡网站</option></select></label>
+    <button type="button" data-quote-reset>重置</button>
   </section>
-
-  <nav class="qhub-tabs">
-    <button type="button" class="active">全部报价</button>
-    <button type="button">网站订单</button>
-    <button type="button">标准品</button>
-    <button type="button">定制品</button>
-  </nav>
 
   <div class="qhub-lower">
     <section class="qhub-table-card">
-      <div class="qhub-table-scroll">
-        <table>
-          <thead><tr><th>报价单号</th><th>网站类型</th><th>来源</th><th>客户</th><th>联系人</th><th>产品数</th><th>总金额</th><th>币种</th><th>状态</th><th>负责人</th><th>更新时间</th><th>操作</th></tr></thead>
-          <tbody>
-          <?php foreach($dashboardQuotes as $quote): ?>
-            <tr>
-              <td><b><?= cc_h($quote[0]) ?></b></td>
-              <td><?= cc_h($quote[1]) ?></td><td><?= cc_h($quote[2]) ?></td><td><?= cc_h($quote[3]) ?></td>
-              <td><?= cc_h($quote[4]) ?></td><td><?= (int)$quote[5] ?></td><td><b><?= cc_h($quote[6]) ?></b></td>
-              <td><?= cc_h($quote[7]) ?></td><td><span class="qhub-status <?= cc_h($quote[8]) ?>"><?= cc_h($quote[8]) ?></span></td>
-              <td><?= cc_h($quote[9]) ?></td><td><?= cc_h($quote[10]) ?></td>
-              <td class="qhub-row-actions"><a href="?page=quote_center&quote_mode=website">查看</a><a href="?page=quote_center&quote_mode=standard">编辑</a><button>复制</button><button>PDF</button><button>Excel</button><button>更多⌄</button></td>
-            </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <footer><span>共 10 条</span><div><select><option>10 条/页</option></select><button disabled>‹</button><button class="active">1</button><button>›</button><span>前往</span><input value="1"><span>页</span></div></footer>
+      <div class="qhub-table-scroll"><table>
+        <thead><tr><th>报价单号</th><th>报价类型</th><th>销售渠道 / 来源</th><th>客户</th><th>联系人</th>
+          <th>产品数</th><th>总金额</th><th>状态</th><th>负责人</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody data-real-quote-rows>
+        <?php if ($dashboardQuotes === []): ?>
+          <tr data-empty-row><td colspan="11"><div class="quote-empty"><strong>暂无可见报价</strong><span>点击“新建报价单”开始。</span></div></td></tr>
+        <?php else: foreach ($dashboardQuotes as $quote): ?>
+          <tr data-quote-row data-type="<?= cc_h((string)$quote['quote_type']) ?>"
+              data-status="<?= cc_h((string)$quote['status']) ?>" data-channel="<?= cc_h((string)($quote['sales_channel'] ?? '')) ?>"
+              data-search="<?= cc_h(mb_strtolower(implode(' ', [
+                  $quote['quote_no'],$quote['type_label'],$quote['customer_name'],$quote['contact_name'] ?? '',
+                  $quote['source_label'],$quote['owner_name'] ?? '',
+              ]))) ?>">
+            <td><b><?= cc_h((string)$quote['quote_no']) ?></b></td>
+            <td><?= cc_h((string)$quote['type_label']) ?></td>
+            <td><b><?= cc_h((string)$quote['source_label']) ?></b><small><?= cc_h((string)($quote['sales_channel'] ?? '旧数据未标记')) ?></small></td>
+            <td><?= cc_h((string)$quote['customer_name']) ?></td><td><?= cc_h((string)($quote['contact_name'] ?? '—')) ?></td>
+            <td><?= (int)$quote['item_count'] ?></td><td><b><?= cc_h((string)$quote['currency']) ?> <?= cc_h(number_format((float)$quote['total_amount'], 2)) ?></b></td>
+            <td><span class="qhub-status <?= cc_h((string)$quote['status']) ?>"><?= cc_h((string)$quote['status']) ?></span>
+              <?php if (!empty($quote['push_status']) && $quote['push_status'] !== 'not_required'): ?><small>推送：<?= cc_h((string)$quote['push_status']) ?></small><?php endif; ?></td>
+            <td><?= cc_h((string)($quote['owner_name'] ?? '—')) ?></td><td><?= cc_h((string)$quote['updated_at']) ?></td>
+            <td class="qhub-row-actions"><a href="<?= cc_h((string)$quote['edit_url']) ?>">查看 / 编辑</a></td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table></div>
+      <footer><span data-visible-count>共 <?= count($dashboardQuotes) ?> 条</span></footer>
     </section>
 
     <aside class="qhub-side">
-      <section>
-        <h2>快速开始</h2>
-        <a href="?page=quote_center&quote_mode=website"><i class="blue">▤</i><div><b>新建网站订单报价</b><span>基于网站订单创建报价</span></div><em>›</em></a>
-        <a href="?page=quote_center&quote_mode=standard"><i class="green">▤</i><div><b>新建标准品报价</b><span>快速创建标准品报价</span></div><em>›</em></a>
-        <a href="?page=quote_center&quote_mode=custom&editor=1"><i class="amber">▤</i><div><b>新建定制品报价</b><span>为定制产品创建报价</span></div><em>›</em></a>
-        <a href="?page=quote_approval"><i class="purple">♧</i><div><b>待审核网站订单</b><span>查看待审核的报价单</span></div><mark>1</mark><em>›</em></a>
+      <section><h2>三种新建方式</h2>
+        <a href="?page=quote_center&quote_mode=stock"><i class="blue">库</i><div><b>库存品报价</b><span>配置锁定、实时检查可售库存，可代客下单</span></div><em>›</em></a>
+        <a href="?page=quote_center&quote_mode=standard"><i class="green">标</i><div><b>标准品报价</b><span>读取物料中心已审批适配，范围内灵活选择</span></div><em>›</em></a>
+        <a href="?page=quote_center&quote_mode=custom&editor=1"><i class="amber">定</i><div><b>定制品报价</b><span>高自由度需求、附件、成本、审批与项目流转</span></div><em>›</em></a>
       </section>
-      <section>
-        <h2>帮助与支持</h2>
-        <a href="#"><i class="blue">?</i><div><b>查看报价管理指南</b><span>了解报价流程与操作说明</span></div></a>
-        <a href="#"><i class="teal">▤</i><div><b>常见问题</b><span>获取常见问题解答</span></div></a>
+      <section><h2>新加坡渠道</h2>
+        <a href="?page=singapore_channel"><i class="teal">新</i><div><b>产品发布与待发送</b><span>维护网站公开套餐、模拟发送、失败重试</span></div></a>
+        <a href="?page=quote_center&quote_mode=website"><i class="purple">回</i><div><b>网站订单回流</b><span>保留未来网站订单导入与原始快照审核</span></div></a>
       </section>
     </aside>
   </div>
 
-  <div class="quote-modal" data-type-modal aria-hidden="true"><div><header><div><h2>新建报价单</h2><p>选择需要创建的报价类型</p></div><button type="button" data-modal-close>×</button></header><div class="quote-type-grid"><?php foreach(['website'=>['网站订单报价单','导入或代建新加坡网站订单。'],'standard'=>['标准品报价单','从产品库选品并读取价格规则。'],'custom'=>['定制品报价单','自由录入产品与项目需求。']] as $key=>$type): ?><a href="?page=quote_center&quote_mode=<?= $key ?><?= $key==='custom'?'&editor=1':'' ?>"><i><?= $key==='website'?'网':($key==='standard'?'标':'定') ?></i><strong><?= cc_h($type[0]) ?></strong><span><?= cc_h($type[1]) ?></span><b>选择 →</b></a><?php endforeach; ?></div></div></div>
+  <div class="quote-modal" data-type-modal aria-hidden="true"><div><header><div><h2>新建报价单</h2>
+    <p>先选择产品自由度；进入编辑页后再选择销售渠道。</p></div><button type="button" data-modal-close>×</button></header>
+    <div class="quote-type-grid">
+      <?php foreach([
+        'stock'=>['库存品报价单','库存 SKU 配置锁定，数量与价格可调整；支持新加坡代客下单。','库'],
+        'standard'=>['标准品报价单','读取物料中心已审批适配，在允许范围内配置。','标'],
+        'custom'=>['定制品报价单','自由录入需求、附件、成本和交期，进入工程审批。','定'],
+      ] as $key=>$type): ?>
+        <a href="?page=quote_center&quote_mode=<?= $key ?><?= $key==='custom'?'&editor=1':'' ?>" data-quote-type-link>
+          <i><?= cc_h($type[2]) ?></i><strong><?= cc_h($type[0]) ?></strong><span><?= cc_h($type[1]) ?></span><b>选择 →</b></a>
+      <?php endforeach; ?>
+    </div>
+  </div></div>
 </section>

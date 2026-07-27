@@ -47,11 +47,11 @@ try{
         $db->exec("DELETE FROM cc_quote_output_snapshots WHERE quote_id={$quoteId}");
         $versions=$db->query("SELECT id FROM cc_quote_versions WHERE quote_id={$quoteId}")->fetchAll(PDO::FETCH_COLUMN);
         if($versions){$v=implode(',',array_map('intval',$versions));$items=$db->query("SELECT id FROM cc_quote_items WHERE quote_version_id IN ({$v})")->fetchAll(PDO::FETCH_COLUMN);
-            if($items){$i=implode(',',array_map('intval',$items));$db->exec("DELETE FROM cc_quote_item_snapshots WHERE quote_item_id IN ({$i})");$db->exec("DELETE FROM cc_quote_item_details WHERE quote_item_id IN ({$i})");$db->exec("DELETE FROM cc_quote_items WHERE id IN ({$i})");}}
+            if($items){$i=implode(',',array_map('intval',$items));$db->exec("DELETE FROM cc_quote_item_snapshots WHERE quote_item_id IN ({$i})");$db->exec("DELETE FROM cc_quote_item_adaptation_refs WHERE quote_item_id IN ({$i})");$db->exec("DELETE FROM cc_quote_item_details WHERE quote_item_id IN ({$i})");$db->exec("DELETE FROM cc_quote_items WHERE id IN ({$i})");}}
         $db->exec("DELETE FROM cc_quote_approvals WHERE quote_id={$quoteId}");$db->exec("DELETE FROM cc_quote_state_history WHERE quote_id={$quoteId}");
         $db->exec("DELETE FROM cc_quote_audit_logs WHERE quote_id={$quoteId}");$db->exec("DELETE FROM cc_quote_snapshots WHERE quote_id={$quoteId}");
         $db->exec("DELETE FROM cc_quotation_logs WHERE quote_id={$quoteId}");if($versions)$db->exec("DELETE FROM cc_quote_versions WHERE id IN (".implode(',',array_map('intval',$versions)).")");
-        $db->exec("DELETE FROM cc_quote_details WHERE quote_id={$quoteId}");$db->exec("DELETE FROM cc_quotes WHERE id={$quoteId} AND is_test=1");
+        $db->exec("DELETE FROM cc_quote_channel_context WHERE quote_id={$quoteId}");$db->exec("DELETE FROM cc_quote_details WHERE quote_id={$quoteId}");$db->exec("DELETE FROM cc_quotes WHERE id={$quoteId} AND is_test=1");
     }
     foreach($paths as $path)if(is_file($path))unlink($path);
 }

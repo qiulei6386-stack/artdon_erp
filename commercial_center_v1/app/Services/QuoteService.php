@@ -7,12 +7,15 @@ use Artdon\CommercialCenter\Repositories\QuoteRepository;
 
 final class QuoteService
 {
-    private const TYPES = ['website_order', 'standard_product', 'custom_product'];
+    private const TYPES = ['website_order', 'stock_product', 'standard_product', 'custom_product'];
     private const EDIT_MODES = [
         'website_order' => 'locked',
+        'stock_product' => 'locked',
         'standard_product' => 'semi_free',
         'custom_product' => 'free',
     ];
+    private const SALES_CHANNELS = ['guangzhou_direct', 'singapore_web'];
+    private const FULFILLMENT_MODES = ['inventory', 'standard_production', 'custom_project', 'website_inbound'];
 
     private QuoteRepository $repository;
     private QuoteAmountCalculator $calculator;
@@ -116,9 +119,41 @@ final class QuoteService
                 'source_line_snapshot' => $sourceSnapshot,
                 'custom_fields' => $this->arrayValue($item['custom_fields'] ?? []),
                 'reference_product_id' => $this->nullableInt($item['reference_product_id'] ?? null),
+                'configuration_level' => $this->text(
+                    $item['configuration_level'] ?? match ($type) {
+                        'stock_product', 'website_order' => 'locked',
+                        'custom_product' => 'custom',
+                        default => 'standard',
+                    },
+                    30
+                ),
+                'adaptation_product_id' => $this->nullableInt($item['adaptation_product_id'] ?? null),
+                'adaptation_version_no' => $this->nullableInt($item['adaptation_version_no'] ?? null),
+                'configuration_passport_hash' => $this->nullableText(
+                    $item['configuration_passport_hash']
+                        ?? ($item['configuration_snapshot']['passport_hash'] ?? null),
+                    64
+                ),
+                'adaptation_snapshot' => $this->arrayValue($item['adaptation_snapshot'] ?? []),
             ];
         }
         $customer = $this->arrayValue($input['customer_snapshot'] ?? []);
+        $salesChannel = $this->text($input['sales_channel'] ?? 'guangzhou_direct', 40);
+        if (!in_array($salesChannel, self::SALES_CHANNELS, true)) {
+            throw new \InvalidArgumentException('不支持的销售渠道。');
+        }
+        $fulfillmentMode = $this->text(
+            $input['fulfillment_mode'] ?? match ($type) {
+                'stock_product' => 'inventory',
+                'custom_product' => 'custom_project',
+                'website_order' => 'website_inbound',
+                default => 'standard_production',
+            },
+            40
+        );
+        if (!in_array($fulfillmentMode, self::FULFILLMENT_MODES, true)) {
+            throw new \InvalidArgumentException('不支持的履约方式。');
+        }
         return [
             'id' => max(0, (int)($input['id'] ?? 0)),
             'quote_no' => $this->text($input['quote_no'] ?? '', 80),
@@ -131,6 +166,14 @@ final class QuoteService
             'source_order_no' => $this->nullableText($input['source_order_no'] ?? null, 120),
             'source_snapshot' => $this->arrayValue($input['source_snapshot'] ?? []),
             'edit_mode' => self::EDIT_MODES[$type],
+            'sales_channel' => $salesChannel,
+            'fulfillment_mode' => $fulfillmentMode,
+            'configuration_level' => match ($type) {
+                'stock_product', 'website_order' => 'locked',
+                'custom_product' => 'custom',
+                default => 'standard',
+            },
+            'push_status' => $salesChannel === 'singapore_web' ? 'not_queued' : 'not_required',
             'contact_name' => $this->nullableText($input['contact_name'] ?? $customer['contact_name'] ?? null, 190),
             'contact_phone' => $this->nullableText($input['contact_phone'] ?? $customer['phone'] ?? null, 80),
             'contact_email' => $this->nullableText($input['contact_email'] ?? $customer['email'] ?? null, 190),

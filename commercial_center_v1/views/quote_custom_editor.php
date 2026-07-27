@@ -14,7 +14,8 @@
       <label>客户 *<select data-custom-field="customer_id"><option>加载中…</option></select></label>
       <label>联系人<input data-custom-field="contact_name"></label><label>国家<input data-custom-field="country"></label>
       <label>项目名称<input data-custom-field="project_name"></label><label>项目类型<input data-custom-field="project_type"></label>
-      <label>币种<select data-custom-field="currency"><option>USD</option><option>CNY</option><option>EUR</option></select></label>
+      <label>销售渠道<select data-custom-field="sales_channel"><option value="guangzhou_direct">广州直接销售</option><option value="singapore_web">新加坡网站询价</option></select></label>
+      <label>币种<select data-custom-field="currency"><option>USD</option><option>SGD</option><option>CNY</option><option>EUR</option></select></label>
       <label>有效期<input type="date" data-custom-field="valid_until" value="<?=cc_h(date('Y-m-d',strtotime('+30 days')))?>"></label>
       <label>负责人<input data-custom-field="owner_name" readonly value="<?=cc_h((string)($view['auth']['user']['display_name']??''))?>"></label>
       <label>付款方式<input data-custom-field="payment_terms"></label><label>贸易条款<input data-custom-field="trade_terms"></label>

@@ -82,7 +82,7 @@ header('Cache-Control: no-store, max-age=0');
     </header>
 
     <main class="content">
-      <?php if ($activePage && $requestedPage === 'commercial_product_library'): require __DIR__ . '/views/product_library_v2.php'; elseif ($activePage && $requestedPage === 'price_strategy'): require __DIR__ . '/views/price_strategy.php'; elseif ($activePage && $requestedPage === 'quote_center'): require __DIR__ . '/views/quote_center.php'; elseif ($activePage && $requestedPage === 'quote_approval'): require __DIR__ . '/views/quote_approval.php'; elseif ($activePage && $requestedPage === 'compatibility_rules' && $legacyPage === 'product_config'): ?>
+      <?php if ($activePage && $requestedPage === 'commercial_product_library'): require __DIR__ . '/views/product_library_v2.php'; elseif ($activePage && $requestedPage === 'price_strategy'): require __DIR__ . '/views/price_strategy.php'; elseif ($activePage && $requestedPage === 'quote_center'): require __DIR__ . '/views/quote_center.php'; elseif ($activePage && $requestedPage === 'quote_approval'): require __DIR__ . '/views/quote_approval.php'; elseif ($activePage && $requestedPage === 'singapore_channel'): require __DIR__ . '/views/singapore_channel.php'; elseif ($activePage && $requestedPage === 'compatibility_rules' && $legacyPage === 'product_config'): ?>
         <section class="legacy-route-note"><strong>旧“产品与配置”入口已安全映射</strong><span>配置规则维护已归入“物料与配件 / 适配规则”；商务中心报价编辑只读取规则，不再重复维护。</span></section>
         <?php require __DIR__ . '/views/compatibility_rules.php'; elseif ($activePage && $requestedPage === 'product_sync_center'): $syncStatus=(new Artdon\CommercialCenter\Services\ProductSyncService())->status($view['auth']); ?>
         <section class="page-head"><div><span class="eyebrow">PRODUCT SYNC CENTER</span><h1>产品同步中心</h1><p>命名中心是产品主数据源；商务中心仅维护引用层，不编辑命名中心资料。</p></div><div class="page-meta"><span>连接状态</span><b><?= cc_h($syncStatus['status']) ?></b></div></section>
@@ -272,5 +272,7 @@ header('Cache-Control: no-store, max-age=0');
 <?php if($requestedPage==='price_strategy'):?><script src="assets/js/price_strategy.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/price_strategy.js') ?>" defer></script><?php endif;?>
 <?php if($requestedPage==='product_config'):?><script src="assets/js/product_config.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/product_config.js') ?>" defer></script><?php endif;?>
 <?php if(in_array($requestedPage,['quote_center','quote_approval'],true)):?><script src="assets/js/quote_center.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/quote_center.js') ?>" defer></script><?php endif;?>
+<?php if($requestedPage==='quote_center'):?><script src="assets/js/stock_quote.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/stock_quote.js') ?>" defer></script><?php endif;?>
+<?php if($requestedPage==='singapore_channel'):?><script src="assets/js/singapore_channel.js?v=<?= (int) @filemtime(__DIR__ . '/assets/js/singapore_channel.js') ?>" defer></script><?php endif;?>
 </body>
 </html>

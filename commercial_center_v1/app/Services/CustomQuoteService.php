@@ -51,6 +51,10 @@ final class CustomQuoteService
         if ($items === []) {
             throw new \InvalidArgumentException('定制报价至少需要一项产品。');
         }
+        $materialAdaptations = (new ConfigurationEngineService())->catalog(
+            (int)($actor['id'] ?? 0),
+            $customerId
+        )['material_center'] ?? [];
         foreach ($items as &$item) {
             if (!is_array($item)) {
                 throw new \InvalidArgumentException('定制报价明细格式无效。');
@@ -67,6 +71,27 @@ final class CustomQuoteService
             $item['unit_cost'] = $custom['estimated_cost'];
             $item['product_source'] = !empty($item['reference_product_id']) ? 'standard_reference' : 'manual';
             $item['item_type'] = 'custom_product';
+            $item['configuration_level'] = 'custom';
+            $referenceId = (int)($item['reference_product_id'] ?? 0);
+            $referenceGroups = $referenceId > 0 ? ($materialAdaptations[(string)$referenceId] ?? []) : [];
+            $referenceSnapshot = $referenceGroups === [] ? [] : [
+                'reference_product_id' => $referenceId,
+                'adaptation_product_id' => (int)($referenceGroups[0]['adaptation_product_id'] ?? 0) ?: null,
+                'approved_version' => (int)($referenceGroups[0]['approved_version'] ?? 0) ?: null,
+                'approved_groups' => array_map(static fn(array $group): array => [
+                    'group_id' => $group['id'],
+                    'group_code' => $group['group_code'],
+                    'business_type' => $group['business_type'] ?? '',
+                    'quick_rules' => $group['quick_rules'] ?? [],
+                ], $referenceGroups),
+            ];
+            $item['adaptation_product_id'] = $referenceSnapshot['adaptation_product_id'] ?? null;
+            $item['adaptation_version_no'] = $referenceSnapshot['approved_version'] ?? null;
+            $item['adaptation_snapshot'] = $referenceSnapshot;
+            $item['configuration_passport_hash'] = $referenceSnapshot === [] ? null : hash(
+                'sha256',
+                json_encode([$referenceSnapshot, $custom], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''
+            );
         }
         unset($item);
         $input = [
@@ -76,6 +101,8 @@ final class CustomQuoteService
             'customer_snapshot' => $customer,
             'currency' => $payload['currency'] ?? 'USD',
             'source_type' => 'manual_custom',
+            'sales_channel' => $payload['sales_channel'] ?? 'guangzhou_direct',
+            'fulfillment_mode' => 'custom_project',
             'source_snapshot' => [
                 'project_name' => trim((string)($payload['project_name'] ?? '')),
                 'project_type' => trim((string)($payload['project_type'] ?? '')),

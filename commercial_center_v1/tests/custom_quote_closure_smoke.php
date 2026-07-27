@@ -84,6 +84,7 @@ try {
                 $db->exec("DELETE o FROM cc_quote_file_orders o INNER JOIN cc_quote_item_files f ON f.id=o.quote_item_file_id WHERE f.quote_item_id IN ({$itemIds})");
                 $db->exec("DELETE FROM cc_quote_item_files WHERE quote_item_id IN ({$itemIds})");
                 $db->exec("DELETE FROM cc_quote_item_snapshots WHERE quote_item_id IN ({$itemIds})");
+                $db->exec("DELETE FROM cc_quote_item_adaptation_refs WHERE quote_item_id IN ({$itemIds})");
                 $db->exec("DELETE FROM cc_quote_item_details WHERE quote_item_id IN ({$itemIds})");
                 $db->exec("DELETE FROM cc_quote_items WHERE id IN ({$itemIds})");
             }
@@ -98,6 +99,7 @@ try {
         $db->exec("DELETE FROM cc_quote_legacy_links WHERE quote_id={$quoteId}");
         $db->exec("DELETE FROM cc_quotation_logs WHERE quote_id={$quoteId}");
         if ($versions) $db->exec("DELETE FROM cc_quote_versions WHERE id IN (".implode(',',array_map('intval',$versions)).")");
+        $db->exec("DELETE FROM cc_quote_channel_context WHERE quote_id={$quoteId}");
         $db->exec("DELETE FROM cc_quote_details WHERE quote_id={$quoteId}");
         $db->exec("DELETE FROM cc_quotes WHERE id={$quoteId} AND is_test=1");
     }

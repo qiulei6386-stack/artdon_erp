@@ -28,7 +28,8 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
         <label><span>客户 *</span><select data-field="customer_id" required><option value="">加载 CRM 客户中…</option></select></label>
         <label><span>联系人</span><input data-field="contact_name"></label>
         <label><span>国家/地区 *</span><input data-field="country" required></label>
-        <label><span>币种 *</span><select data-field="currency"><option>USD</option><option>CNY</option><option>EUR</option></select></label>
+        <label><span>销售渠道 *</span><select data-field="sales_channel"><option value="guangzhou_direct">广州直接销售</option><option value="singapore_web">新加坡网站（询价 / 标准生产）</option></select></label>
+        <label><span>币种 *</span><select data-field="currency"><option>USD</option><option>SGD</option><option>CNY</option><option>EUR</option></select></label>
         <label><span>有效期 *</span><input type="date" data-field="valid_until" value="<?= cc_h(date('Y-m-d', strtotime('+30 days'))) ?>"></label>
         <label><span>负责人 *</span><input data-field="owner_name" value="<?= cc_h((string)($view['auth']['user']['display_name'] ?? '')) ?>" readonly></label>
         <label><span>付款方式 *</span><input data-field="payment_terms" value="30% 预付款，70% 发货前"></label>
@@ -89,6 +90,7 @@ $standardQuoteId = max(0, (int)($_GET['quote_id'] ?? 0));
         <article>△<b>MOQ 提醒</b><span data-moq-warning>保存后按真实策略检查</span></article>
         <article>▣<b>交期提醒</b><span data-lead-warning>保存后按配置计算</span></article>
         <article>◇<b>佣金提醒</b><span data-commission-warning>读取客户及产品佣金规则</span></article>
+        <article>适<b>审批适配护照</b><span>保存产品、组、物料、审批版本与校验哈希</span></article>
       </section>
       <section class="ref-panel note-box"><h2>备注信息</h2>
         <textarea data-field="customer_note" placeholder="客户备注"></textarea>

@@ -135,6 +135,91 @@
   }
 }
 
+/* Singapore channel bridge and the stock-quote workflow. */
+.qhub-heading nav a{
+  display:inline-flex;
+  align-items:center;
+  height:38px;
+  padding:0 13px;
+  border:1px solid #d7e0e7;
+  border-radius:5px;
+  background:#fff;
+  color:#405468;
+  font-weight:700;
+}
+.quote-history td small,.qhub-table-card td small{
+  display:block;
+  margin-top:3px;
+  color:#82909d;
+  font-size:11px;
+}
+.singapore-channel{
+  display:grid;
+  gap:14px;
+}
+.singapore-grid{
+  display:grid;
+  grid-template-columns:minmax(300px,420px) minmax(0,1fr);
+  gap:14px;
+}
+.singapore-grid form{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:11px;
+}
+.singapore-grid form label{
+  display:grid;
+  gap:5px;
+  color:#56697a;
+  font-size:12px;
+}
+.singapore-grid form input,.singapore-grid form select,.singapore-grid form textarea{
+  width:100%;
+  min-height:36px;
+  padding:7px 9px;
+  border:1px solid #d7e1e7;
+  border-radius:5px;
+  background:#fff;
+}
+.singapore-grid form label:has(textarea),.singapore-grid form .check-label,.singapore-grid form footer{
+  grid-column:1/-1;
+}
+.singapore-grid form textarea{
+  min-height:82px;
+  resize:vertical;
+}
+.singapore-grid form .check-label{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.singapore-grid form .check-label input{
+  width:auto;
+  min-height:0;
+}
+.singapore-grid form footer{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+.singapore-packages{
+  min-width:0;
+}
+.singapore-channel [data-sg-message].error,.ref-quote [data-stock-message].error{
+  color:#b52525;
+}
+.sg-mode{
+  font-size:17px!important;
+}
+@media(max-width:1050px){
+  .singapore-grid{grid-template-columns:1fr}
+}
+@media(max-width:700px){
+  .singapore-grid form{grid-template-columns:1fr}
+  .singapore-grid form label:has(textarea),.singapore-grid form .check-label,.singapore-grid form footer{grid-column:auto}
+  .qhub-heading nav{flex-wrap:wrap}
+}
+
 /* Quotation center */
 .quote-page{display:grid;gap:12px;color:#243244}
 .quote-page button,.quote-page input,.quote-page select,.quote-page textarea{font:inherit}

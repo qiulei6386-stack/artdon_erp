@@ -147,6 +147,7 @@ try {
                 $items = implode(',', array_map('intval', $itemIds));
                 $connection->exec("DELETE FROM cc_quote_item_files WHERE quote_item_id IN ({$items})");
                 $connection->exec("DELETE FROM cc_quote_item_snapshots WHERE quote_item_id IN ({$items})");
+                $connection->exec("DELETE FROM cc_quote_item_adaptation_refs WHERE quote_item_id IN ({$items})");
                 $connection->exec("DELETE FROM cc_quote_item_details WHERE quote_item_id IN ({$items})");
             }
             $connection->exec("DELETE FROM cc_quote_items WHERE quote_version_id IN ({$versions})");
@@ -161,6 +162,7 @@ try {
         $connection->exec("DELETE FROM cc_quote_legacy_links WHERE quote_id IN ({$ids})");
         $connection->exec("DELETE FROM cc_quotation_logs WHERE quote_id IN ({$ids})");
         $connection->exec("DELETE FROM cc_quote_versions WHERE quote_id IN ({$ids})");
+        $connection->exec("DELETE FROM cc_quote_channel_context WHERE quote_id IN ({$ids})");
         $connection->exec("DELETE FROM cc_quote_details WHERE quote_id IN ({$ids})");
         $connection->exec("DELETE FROM cc_quotes WHERE id IN ({$ids}) AND is_test=1");
     }
