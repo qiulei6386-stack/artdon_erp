@@ -13,7 +13,9 @@
 - 新增 `get_bom_quote_spec` 精确读取接口及操作日志；新增无数据库契约 `quote_manual_component_repair_contract.php` 并纳入 PHP CI。
 - 检查：本机报价页 4 段内联 JavaScript、新修正页 JavaScript 语法及 `git diff --check` 通过；服务器隔离归档中 `quote_api.php`、`quotation.php`、`bom_quote_spec.php` PHP 8.0 语法和新增专项契约通过。第一次隔离检查因服务器 Git 安全目录保护失败，未修改业务代码或数据；改用只读归档后检查成功。
 - 修改范围：`quote_api.php`、`quotation.php`、新增 `bom_quote_spec.php`、新增专项契约、PHP CI 清单和本上下文；用户原有商务中心命令文件删除及未跟踪文档保持原样，未纳入本轮。
-- Git / 部署 / 94.10012 生产旧记录清理及线上回归：待本轮后续完成并补记。
+- Git / 部署：业务提交 `4f1b7129876e934e09d7092cde969dabe665b060` 已推送 `origin/main`；GitHub Actions `Validate and deploy production #622` 的 PHP / JavaScript 检查及生产部署均成功，服务器以同一 Git 对象运行。
+- 生产旧记录清理：已在事务中精确修正 `bom_quote_specs.id=132 / 94.10012`，仅清空错误 Accessories 并从 `quote_spec_json` 移除该项，保留光学 `HERCULUX Dark Series 55@25`；记录已设为人工维护 `auto_generated=0`。修改前完整备份位于服务器 `_codex_backups/bom_quote_specs_94.10012_id132_before_fastener_cleanup_20260727T1940.json`。
+- 线上回归：生产 `quote_api.php`、`quotation.php`、`bom_quote_spec.php` PHP 8.0 语法及专项契约全部通过；新维护页返回统一登录 302 而非 404；修正后数据库 Accessories 为空、报价规格 JSON 仅保留 Optic。业务提交部署后的本地、`origin/main`、服务器 HEAD 均为 `4f1b7129876e934e09d7092cde969dabe665b060`。
 
 ## 本次：修复 CRM 推广向导分组人数为 0，并完成 1–9 步闭环校验
 
