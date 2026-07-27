@@ -898,6 +898,12 @@ try {
     if ($action === 'marketing_bootstrap') {
         api_response(true, '', crm_marketing_bootstrap($_POST));
     }
+    if ($action === 'marketing_task_detail') {
+        api_response(true, '', crm_marketing_task_detail($_POST));
+    }
+    if ($action === 'marketing_signature_content') {
+        api_response(true, '', crm_marketing_signature_content($_POST));
+    }
     if ($action === 'marketing_pool_view') {
         api_response(true, '', crm_marketing_pool_view($_POST));
     }

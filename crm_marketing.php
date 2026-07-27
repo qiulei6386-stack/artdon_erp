@@ -1025,8 +1025,40 @@ function crm_marketing_tasks(): array
 {
     crm_marketing_ensure_tables();
     crm_require('promotion.view');
-    $stmt = db()->query("SELECT t.*, u.username AS created_by_name FROM crm_marketing_tasks t LEFT JOIN crm_users u ON u.id = t.created_by ORDER BY t.id DESC LIMIT 80");
+    $stmt = db()->query("SELECT
+            t.id, t.task_name, t.channel_key, t.campaign_type, t.mail_subject, t.signature_key,
+            t.attachment_config_json, t.audience_config_json, t.send_rule_json, t.schedule_config_json,
+            t.failure_policy_json, t.risk_summary_json, t.task_status, t.schedule_type, t.scheduled_at,
+            t.customer_count, t.contact_count, t.success_count, t.failed_count, t.created_by, t.assigned_to,
+            t.remark, t.created_at, t.updated_at,
+            CASE WHEN COALESCE(t.mail_body_html, '') <> '' THEN 1 ELSE 0 END AS has_mail_body,
+            OCTET_LENGTH(COALESCE(t.mail_body_html, '')) AS mail_body_bytes,
+            u.username AS created_by_name
+        FROM crm_marketing_tasks t
+        LEFT JOIN crm_users u ON u.id = t.created_by
+        ORDER BY t.id DESC
+        LIMIT 80");
     return $stmt->fetchAll();
+}
+
+function crm_marketing_task_detail(array $input = []): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.view');
+    $taskId = (int)($input['task_id'] ?? 0);
+    if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
+    $stmt = db()->prepare("SELECT t.*, u.username AS created_by_name
+        FROM crm_marketing_tasks t
+        LEFT JOIN crm_users u ON u.id = t.created_by
+        WHERE t.id = ?
+        LIMIT 1");
+    $stmt->execute([$taskId]);
+    $task = $stmt->fetch();
+    if (!$task) throw new RuntimeException('推广任务不存在。');
+    $task['_detail_loaded'] = 1;
+    $task['has_mail_body'] = trim((string)($task['mail_body_html'] ?? '')) !== '' ? 1 : 0;
+    $task['mail_body_bytes'] = strlen((string)($task['mail_body_html'] ?? ''));
+    return ['task' => $task];
 }
 
 function crm_marketing_pool_view(array $input = []): array
@@ -1253,7 +1285,9 @@ function crm_marketing_mail_accounts(): array
 {
     crm_marketing_ensure_tables();
     if (!function_exists('db_table_exists') || !db_table_exists('crm_user_mail_accounts')) return [];
-    $stmt = db()->query("SELECT a.id, a.user_id, a.email_address, a.sender_name, a.signature_html, a.is_default,
+    $stmt = db()->query("SELECT a.id, a.user_id, a.email_address, a.sender_name, a.is_default,
+            CASE WHEN COALESCE(a.signature_html, '') <> '' THEN 1 ELSE 0 END AS has_signature,
+            OCTET_LENGTH(COALESCE(a.signature_html, '')) AS signature_bytes,
             COALESCE(NULLIF(a.sender_name, ''), u.real_name, u.username) owner_name, u.username, u.email user_email, u.phone user_phone, u.position user_position, d.name department_name,
             COALESCE(sent.today_sent, 0) today_sent, 200 daily_limit, 50 hourly_limit
         FROM crm_user_mail_accounts a
@@ -1274,9 +1308,63 @@ function crm_marketing_mail_accounts(): array
 function crm_marketing_company_signature(): array
 {
     if (!function_exists('db_table_exists') || !db_table_exists('crm_mail_signature_templates')) return [];
-    $stmt = db()->query('SELECT id, template_name, template_html FROM crm_mail_signature_templates WHERE is_default = 1 ORDER BY id DESC LIMIT 1');
+    $stmt = db()->query("SELECT id, template_name,
+            CASE WHEN COALESCE(template_html, '') <> '' THEN 1 ELSE 0 END AS has_template,
+            OCTET_LENGTH(COALESCE(template_html, '')) AS template_bytes
+        FROM crm_mail_signature_templates
+        WHERE is_default = 1
+        ORDER BY id DESC
+        LIMIT 1");
     $row = $stmt->fetch();
     return $row ?: [];
+}
+
+function crm_marketing_signature_content(array $input = []): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.view');
+    $signatureKey = strtolower(trim((string)($input['signature_key'] ?? 'personal')));
+    if ($signatureKey === 'none') return ['signature_key' => 'none', 'html' => '', 'has_html' => 0];
+    if ($signatureKey === 'company') {
+        if (!function_exists('db_table_exists') || !db_table_exists('crm_mail_signature_templates')) {
+            return ['signature_key' => 'company', 'html' => '', 'has_html' => 0];
+        }
+        $stmt = db()->query("SELECT id, template_name, template_html
+            FROM crm_mail_signature_templates
+            WHERE is_default = 1
+            ORDER BY id DESC
+            LIMIT 1");
+        $row = $stmt->fetch() ?: [];
+        return [
+            'signature_key' => 'company',
+            'signature_id' => (int)($row['id'] ?? 0),
+            'template_name' => (string)($row['template_name'] ?? ''),
+            'html' => (string)($row['template_html'] ?? ''),
+            'has_html' => trim((string)($row['template_html'] ?? '')) !== '' ? 1 : 0,
+        ];
+    }
+    if (!function_exists('db_table_exists') || !db_table_exists('crm_user_mail_accounts')) {
+        return ['signature_key' => 'personal', 'account_id' => 0, 'html' => '', 'has_html' => 0];
+    }
+    $accountId = (int)($input['mail_account_id'] ?? 0);
+    $sql = "SELECT id, signature_html
+        FROM crm_user_mail_accounts
+        WHERE deleted_at IS NULL AND is_enabled = 1";
+    $params = [];
+    if ($accountId > 0) {
+        $sql .= ' AND id = ?';
+        $params[] = $accountId;
+    }
+    $sql .= ' ORDER BY is_default DESC, id DESC LIMIT 1';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $row = $stmt->fetch() ?: [];
+    return [
+        'signature_key' => 'personal',
+        'account_id' => (int)($row['id'] ?? 0),
+        'html' => (string)($row['signature_html'] ?? ''),
+        'has_html' => trim((string)($row['signature_html'] ?? '')) !== '' ? 1 : 0,
+    ];
 }
 
 function crm_marketing_chat_groups(array $input = []): array
@@ -1491,8 +1579,8 @@ function crm_marketing_bootstrap(array $input = []): array
         'groups' => crm_marketing_bootstrap_cached('groups', 'crm_marketing_groups'),
         'templates' => crm_marketing_bootstrap_cached('templates', 'crm_marketing_templates'),
         'users' => crm_marketing_bootstrap_cached('users', 'crm_marketing_users'),
-        'mail_accounts' => crm_marketing_bootstrap_cached('mail_accounts', 'crm_marketing_mail_accounts'),
-        'company_signature' => crm_marketing_bootstrap_cached('company_signature', 'crm_marketing_company_signature'),
+        'mail_accounts' => crm_marketing_bootstrap_cached('mail_accounts_meta_v2', 'crm_marketing_mail_accounts'),
+        'company_signature' => crm_marketing_bootstrap_cached('company_signature_meta_v2', 'crm_marketing_company_signature'),
         'pool' => $pool,
         'pool_pager' => $poolPager,
         'contacts' => $contacts,
@@ -1828,10 +1916,14 @@ function crm_marketing_task_update(array $input): array
     $channel = trim((string)($input['channel_key'] ?? $before['channel_key']));
     $status = trim((string)($input['task_status'] ?? $before['task_status']));
     $scheduleType = trim((string)($input['schedule_type'] ?? $before['schedule_type']));
-    $scheduledAt = trim((string)($input['scheduled_at'] ?? ''));
-    $subject = trim((string)($input['mail_subject'] ?? ''));
-    $bodyHtml = trim((string)($input['mail_body_html'] ?? ''));
-    $remark = trim((string)($input['remark'] ?? ''));
+    $scheduledAt = trim((string)($input['scheduled_at'] ?? ($before['scheduled_at'] ?? '')));
+    $subject = array_key_exists('mail_subject', $input)
+        ? trim((string)$input['mail_subject'])
+        : (string)($before['mail_subject'] ?? '');
+    $bodyHtml = array_key_exists('mail_body_html', $input)
+        ? trim((string)$input['mail_body_html'])
+        : (string)($before['mail_body_html'] ?? '');
+    $remark = trim((string)($input['remark'] ?? ($before['remark'] ?? '')));
     if ($name === '') throw new RuntimeException('任务名称不能为空。');
     if ($channel === '') throw new RuntimeException('请选择推广渠道。');
     if (!in_array($status, $allowedStatus, true)) $status = (string)$before['task_status'];
@@ -1847,7 +1939,15 @@ function crm_marketing_task_update(array $input): array
     $after->execute([$taskId]);
     $updated = $after->fetch() ?: [];
     crm_log_event('promotion', 'task_update', 'marketing_task', (string)$taskId, $before, $updated);
-    return ['task' => $updated, 'tasks' => crm_marketing_tasks(), 'logs' => crm_marketing_logs(['task_id' => $taskId])];
+    $tasks = crm_marketing_tasks();
+    $summary = [];
+    foreach ($tasks as $row) {
+        if ((int)($row['id'] ?? 0) === $taskId) {
+            $summary = $row;
+            break;
+        }
+    }
+    return ['task' => $summary, 'tasks' => $tasks, 'logs' => crm_marketing_logs(['task_id' => $taskId])];
 }
 
 function crm_marketing_task_delete(array $input): array

@@ -12802,6 +12802,8 @@
     autoRefreshTimer: null,
     bootstrapLoadingView: '',
     taskReportLoading: {},
+    taskDetailRequests: {},
+    signatureHtmlCache: {},
     wizardStep: 0,
     wizardDraft: null,
     wizardAudienceLoading: false,
@@ -14557,19 +14559,20 @@
         countries[country] = (countries[country] || 0) + 1;
       });
       var countryText = Object.keys(countries).slice(0, 5).map(function (key) { return key + ' ' + countries[key]; }).join(' / ') || '暂无';
+      var hasMailBody = Number(task.has_mail_body || 0) === 1 || String(task.mail_body_html || '').trim() !== '';
       var stepDefs = [
         ['基础信息', task.task_name && task.campaign_type],
         ['客户/分组', Number(task.customer_count || 0) || audience.group_id || audience.group_mode],
         ['联系人', Number(task.contact_count || 0) || audience.contact_mode],
         ['推广渠道', task.channel_key],
-        ['内容编辑', task.mail_subject || task.mail_body_html || manualTargets.length],
+        ['内容编辑', task.mail_subject || hasMailBody || manualTargets.length],
         ['发送规则', Object.keys(sendRule || {}).length],
         ['时间计划', task.schedule_type || Object.keys(schedule || {}).length],
         ['失败处理', Object.keys(failure || {}).length],
         ['预览确认', task.task_status && task.task_status !== 'draft']
       ];
       var stepHtml = stepDefs.map(function (step, index) {
-        var abnormal = index === 4 && emailTargets.length && !(task.mail_subject || task.mail_body_html);
+        var abnormal = index === 4 && emailTargets.length && !(task.mail_subject || hasMailBody);
         var cls = abnormal ? 'is-warning' : (step[1] ? 'is-done' : 'is-todo');
         return '<article class="' + cls + '"><i>' + esc(index + 1) + '</i><span>' + esc(step[0]) + '</span><em>' + (abnormal ? '异常' : (step[1] ? '已完成' : '未完成')) + '</em></article>';
       }).join('');
@@ -16567,17 +16570,45 @@
       var draft = this.collectWizard();
       if (draft.signature_key === 'none') return toast('当前选择为不插入签名');
       var account = this.selectedWizardMailAccount();
-      var company = (this.data && this.data.company_signature) || {};
-      var html = '';
-      if (draft.signature_key === 'company') html = company.template_html || '';
-      else html = (account && account.signature_html) || '';
-      if (!String(html || '').trim() && draft.signature_key === 'company' && account && account.signature_html) html = account.signature_html;
-      if (!String(html || '').trim()) return toast(draft.signature_key === 'company' ? '还没有设置公司统一签名' : '当前发件邮箱未设置个人签名');
-      MailModule.restoreRichSelection(editor);
-      document.execCommand('insertHTML', false, '<div class="promo-inserted-signature">' + html + '</div>');
-      MailModule.rememberRichSelection(editor);
-      editor.dispatchEvent(new Event('input', { bubbles: true }));
-      toast('签名已插入');
+      var accountId = account ? Number(account.id || 0) : 0;
+      var cacheKey = draft.signature_key === 'company' ? ('company:' + accountId) : ('personal:' + accountId);
+      var self = this;
+      var insert = function (html) {
+        if (!String(html || '').trim()) return toast(draft.signature_key === 'company' ? '还没有设置公司统一签名' : '当前发件邮箱未设置个人签名');
+        MailModule.restoreRichSelection(editor);
+        document.execCommand('insertHTML', false, '<div class="promo-inserted-signature">' + html + '</div>');
+        MailModule.rememberRichSelection(editor);
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        self.collectWizard();
+        self.updateWizardPreview();
+        toast('签名已插入');
+      };
+      if (Object.prototype.hasOwnProperty.call(this.signatureHtmlCache, cacheKey)) {
+        insert(this.signatureHtmlCache[cacheKey]);
+        return;
+      }
+      post('marketing_signature_content', {
+        signature_key: draft.signature_key,
+        mail_account_id: accountId || ''
+      }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '签名读取失败');
+        var html = String(((json.data || {}).html) || '');
+        if (!html.trim() && draft.signature_key === 'company' && accountId) {
+          return post('marketing_signature_content', {
+            signature_key: 'personal',
+            mail_account_id: accountId
+          }).then(function (fallbackJson) {
+            if (!fallbackJson.success) throw new Error(fallbackJson.message || '签名读取失败');
+            return String(((fallbackJson.data || {}).html) || '');
+          });
+        }
+        return html;
+      }).then(function (html) {
+        self.signatureHtmlCache[cacheKey] = html;
+        insert(html);
+      }).catch(function (error) {
+        self.showError(error.message || '签名读取失败');
+      });
     },
     insertWizardVariable: function (editor, variable) {
       if (!editor || !variable) return;
@@ -17132,12 +17163,40 @@
         datasheet_attachments: Array.isArray(attach.datasheet_attachments) ? attach.datasheet_attachments : []
       });
     },
+    ensureTaskDetail: function (taskId) {
+      taskId = Number(taskId || 0);
+      if (!taskId) return Promise.reject(new Error('推广任务不存在'));
+      var task = this.taskById(taskId);
+      if (task && Number(task._detail_loaded || 0) === 1) return Promise.resolve(task);
+      if (this.taskDetailRequests[taskId]) return this.taskDetailRequests[taskId];
+      var self = this;
+      this.taskDetailRequests[taskId] = post('marketing_task_detail', { task_id: taskId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '推广任务详情加载失败');
+        var detail = (json.data && json.data.task) || null;
+        if (!detail) throw new Error('推广任务详情为空');
+        var currentTask = self.taskById(taskId);
+        if (currentTask) Object.assign(currentTask, detail, { _detail_loaded: 1 });
+        else {
+          self.data = self.data || {};
+          self.data.tasks = self.data.tasks || [];
+          self.data.tasks.push(Object.assign({}, detail, { _detail_loaded: 1 }));
+          currentTask = self.taskById(taskId);
+        }
+        return currentTask || detail;
+      }).finally(function () {
+        delete self.taskDetailRequests[taskId];
+      });
+      return this.taskDetailRequests[taskId];
+    },
     previewExistingTask: function (taskId) {
-      var task = ((this.data && this.data.tasks) || []).find(function (row) { return Number(row.id) === Number(taskId); });
-      if (!task) return toast('推广项目不存在');
-      this.wizardDraft = this.taskToWizardDraft(task);
-      this.wizardStep = 8;
-      this.openWizard();
+      var self = this;
+      this.ensureTaskDetail(taskId).then(function (task) {
+        self.wizardDraft = self.taskToWizardDraft(task);
+        self.wizardStep = 8;
+        self.openWizard();
+      }).catch(function (error) {
+        self.showError(error.message || '推广任务详情加载失败');
+      });
     },
     copyMarketingTask: function (taskId) {
       if (!taskId) return toast('请选择要复制的推广项目');
@@ -17146,11 +17205,13 @@
         if (!json.success) throw new Error(json.message || '复制推广项目失败');
         toast((json.data && json.data.new_name ? '已复制为草稿：' + json.data.new_name : '推广项目已复制'));
         self.data.tasks = (json.data && json.data.tasks) || self.data.tasks;
-        var task = (self.data.tasks || []).find(function (row) { return Number(row.id) === Number(json.data.new_id); });
-        if (task) {
-          self.wizardDraft = self.taskToWizardDraft(task);
-          self.wizardStep = 8;
-          self.openWizard();
+        var newId = Number(json.data.new_id || 0);
+        if (newId) {
+          return self.ensureTaskDetail(newId).then(function (task) {
+            self.wizardDraft = self.taskToWizardDraft(task);
+            self.wizardStep = 8;
+            self.openWizard();
+          });
         } else {
           self.load();
         }
@@ -17230,10 +17291,9 @@
       }).join('');
     },
     openEditTaskDialog: function (taskId) {
-      var task = this.taskById(taskId);
-      if (!task) return toast('请选择推广任务');
+      if (!this.taskById(taskId)) return toast('请选择推广任务');
       var self = this;
-      var open = function (targets) {
+      var open = function (task, targets) {
         targets = targets || [];
         var customerIds = [];
         var contactIds = [];
@@ -17261,12 +17321,16 @@
         self.wizardStep = 0;
         self.openWizard();
       };
-      post('marketing_task_targets', { task_id: taskId }).then(function (json) {
-        if (!json.success) throw new Error(json.message || '目标名单加载失败');
-        open(((json.data || {}).targets || []));
+      this.ensureTaskDetail(taskId).then(function (task) {
+        return post('marketing_task_targets', { task_id: taskId }).then(function (json) {
+          if (!json.success) throw new Error(json.message || '目标名单加载失败');
+          open(task, ((json.data || {}).targets || []));
+        }).catch(function (error) {
+          toast(error.message || '目标名单加载失败，将只打开项目基础信息。');
+          open(task, []);
+        });
       }).catch(function (error) {
-        toast(error.message || '目标名单加载失败，将只打开项目基础信息。');
-        open([]);
+        self.showError(error.message || '推广任务详情加载失败');
       });
     },
     openRenameTaskDialog: function (taskId) {
@@ -17284,14 +17348,7 @@
             if (!name) return self.showError('任务名称不能为空');
             post('marketing_task_update', {
               task_id: taskId,
-              task_name: name,
-              channel_key: task.channel_key || '',
-              task_status: task.task_status || 'pending',
-              schedule_type: task.schedule_type || 'manual',
-              scheduled_at: task.scheduled_at || '',
-              mail_subject: task.mail_subject || '',
-              mail_body_html: task.mail_body_html || '',
-              remark: task.remark || ''
+              task_name: name
             }).then(function (json) {
               if (!json.success) throw new Error(json.message || '重命名失败');
               self.data.tasks = (json.data && json.data.tasks) || self.data.tasks;
