@@ -107,7 +107,7 @@ final class ConfigurationRepository
                     'group_id'=>'mc-'.(int)$row['group_id'],
                     'option_code'=>'mc_material_'.(int)$row['material_id'].($variantId?'_variant_'.$variantId:''),
                     'name'=>trim($row['material_code'].' '.$row['material_name'].' '.($row['model']??'').($variant?' · '.$variant['label']:'')),
-                    'is_default'=>$variant?(int)$variant['option_variant_default']:(int)$row['is_default'],'cost_delta'=>0,
+                    'is_default'=>$variant?((int)$row['is_default']&&(int)$variant['option_variant_default']?1:0):(int)$row['is_default'],'cost_delta'=>0,
                     'sales_delta'=>(float)($row['price_impact']??0),'moq_delta'=>0,
                     'lead_time_days'=>max((int)($row['lead_time_impact_days']??0),(int)($variant['variant_lead_time_days']??0)),
                     'material_id'=>(int)$row['material_id'],'material_code'=>$row['material_code'],

@@ -41,6 +41,7 @@ $materialFormEnd = strpos($layout, '</form>', $materialFormStart);
 $templateFormStart = strpos($layout, 'data-chip-template-form');
 $assert($materialFormStart !== false && $materialFormEnd !== false && $templateFormStart !== false && $materialFormEnd < $templateFormStart, 'chip template form must not be nested in the material form');
 $assert(str_contains($repository, '_variant_') && str_contains($repository, "'chip_variant'=>\$chipSnapshot"), 'commercial catalog does not expose concrete chip variants');
+$assert(str_contains($repository, "(int)\$row['is_default']&&(int)\$variant['option_variant_default']"), 'commercial default must combine the default material and default chip variant');
 $assert(str_contains($engine, "'chip_variant'=>\$option['chip_variant']??null"), 'quote adaptation snapshot omits the concrete chip variant');
 
 echo "Chip specification templates and quote bridge contract: OK\n";
