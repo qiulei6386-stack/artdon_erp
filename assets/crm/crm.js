@@ -12836,7 +12836,13 @@
     },
     bindEvents: function () {
       var self = this;
-      document.querySelector('[data-promo-refresh]')?.addEventListener('click', function () { self.load(); });
+      document.querySelector('[data-promo-refresh]')?.addEventListener('click', function () {
+        if (self.currentView === 'customer_pool') {
+          self.loadPoolView();
+          return;
+        }
+        self.load();
+      });
       ['[data-promo-status]','[data-promo-group-select]','[data-promo-country]','[data-promo-level]','[data-promo-owner]','[data-promo-has-email]','[data-promo-has-contact]'].forEach(function (selector) {
         document.querySelector(selector)?.addEventListener('change', function () { self.poolPage = 1; self.allPoolPage = 1; self.currentCustomerId = 0; self.selectedCustomerIds.clear(); self.selectedContactIds.clear(); self.loadPoolView(); });
       });
@@ -12846,7 +12852,14 @@
         self.groupPoolFilterId = self.currentGroupId;
         self.saveState();
       });
-      document.querySelector('[data-promo-search]')?.addEventListener('input', debounce(function () { self.poolPage = 1; self.allPoolPage = 1; self.currentCustomerId = 0; self.loadPoolView(); }, 260));
+      document.querySelector('[data-promo-search]')?.addEventListener('input', debounce(function () {
+        self.poolPage = 1;
+        self.allPoolPage = 1;
+        self.currentCustomerId = 0;
+        self.selectedCustomerIds.clear();
+        self.selectedContactIds.clear();
+        self.loadPoolView();
+      }, 260));
       document.querySelectorAll('[data-promo-quick-filter]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.applyPoolQuickFilter(button.getAttribute('data-promo-quick-filter') || 'all');
@@ -13141,6 +13154,7 @@
         customer_id: this.currentCustomerId || '',
         include_all: this.allPoolExpanded ? 1 : 0,
         only_all: options.onlyAll ? 1 : 0,
+        skip_count: 1,
         page: this.poolPage || 1,
         page_size: this.poolPageSize || 50,
         all_page: this.allPoolPage || 1,
@@ -13154,12 +13168,11 @@
             all_pool_pager: (json.data || {}).all_pool_pager || {}
           });
         } else {
-          self.data = Object.assign({}, self.data || {}, json.data || {});
+          self.data = Object.assign({}, self.data || {}, json.data || {}, { loaded_view: 'customer_pool' });
         }
         self.allPoolLoading = false;
         self.renderPool();
         self.renderPoolPager();
-        self.renderContacts();
         self.renderGroups();
         self.renderSelectionHint();
       }).catch(function (error) {
@@ -13628,7 +13641,7 @@
       box.classList.toggle('is-card-mode', mode !== 'list');
       var renderRows = function (items, emptyText) {
         if (mode === 'list') {
-          return items.length ? '<div class="promo-pool-table"><table><thead><tr><th>选择</th><th>客户名称</th><th>客户代码</th><th>国家</th><th>客户组</th><th>联系人</th><th>可推广联系人</th><th>邮箱</th><th>WhatsApp</th><th>推广状态</th><th>最近推广</th><th>最近回复</th><th>负责人</th><th>标签</th></tr></thead><tbody>' + items.map(function (row) {
+          return items.length ? '<div class="promo-pool-table"><table><thead><tr><th><label class="promo-pool-select-all"><input type="checkbox" data-promo-customer-check-all><span>全选本页</span></label></th><th>客户名称</th><th>客户代码</th><th>国家</th><th>客户组</th><th>联系人</th><th>可推广联系人</th><th>邮箱</th><th>WhatsApp</th><th>推广状态</th><th>最近推广</th><th>最近回复</th><th>负责人</th><th>标签</th></tr></thead><tbody>' + items.map(function (row) {
           var active = self.currentCustomerId === Number(row.id) ? ' active' : '';
           var blocked = Number(row.do_not_contact) || row.promotion_status === 'blacklist';
           var checked = self.selectedCustomerIds.has(Number(row.id)) ? ' checked' : '';
@@ -13655,6 +13668,24 @@
           '<section class="promo-pool-fold"><header><nav><button type="button" data-promo-all-pool-toggle>' + (this.allPoolExpanded ? '收起全部客户' : '展开全部客户') + '</button>' + (this.allPoolExpanded ? '<button type="button" data-promo-all-pool-select>全选本页</button><button type="button" data-promo-all-pool-unselect>取消本页</button><em data-promo-selected-count>已选 ' + esc(this.selectedCustomerIds.size) + ' 个</em>' : '') + '</nav><span>全部客户分页默认关闭，需要时再加载。</span>' + (this.allPoolExpanded ? '<nav><button type="button" data-promo-all-pool-prev ' + (allPage <= 1 || this.allPoolLoading ? 'disabled' : '') + '>上一页</button><em>' + (allTotal ? esc(allTotal) + ' 个 · ' : '') + esc(allPage) + '/' + esc(allPageCount) + '</em><button type="button" data-promo-all-pool-next ' + (allPage >= allPageCount || this.allPoolLoading ? 'disabled' : '') + '>下一页</button></nav>' : '') + '</header>' + (this.allPoolExpanded ? '<div>' + allBody + '</div>' : '') + '</section>';
       } else {
         box.innerHTML = renderRows(rows, '暂无客户推广池数据。');
+      }
+      var currentPageIds = rows.map(function (row) { return Number(row.id || 0); }).filter(Boolean);
+      var currentPageSelected = currentPageIds.filter(function (id) { return self.selectedCustomerIds.has(id); }).length;
+      var selectAll = box.querySelector('[data-promo-customer-check-all]');
+      if (selectAll) {
+        selectAll.checked = currentPageIds.length > 0 && currentPageSelected === currentPageIds.length;
+        selectAll.indeterminate = currentPageSelected > 0 && currentPageSelected < currentPageIds.length;
+        selectAll.addEventListener('click', function (event) { event.stopPropagation(); });
+        selectAll.addEventListener('change', function () {
+          currentPageIds.forEach(function (id) {
+            if (selectAll.checked) self.selectedCustomerIds.add(id);
+            else self.selectedCustomerIds.delete(id);
+          });
+          self.renderPool();
+          self.renderSelectionHint();
+          self.renderGroups();
+          if (current === 'promotion') renderActions('promotion');
+        });
       }
       document.querySelectorAll('[data-promo-pool-selection]').forEach(function (node) {
         var multi = self.selectedCustomerIds.size;
@@ -13724,7 +13755,8 @@
 	          self.selectedContactIds.clear();
 	          self.saveState();
             if (current === 'promotion') renderActions('promotion');
-	          self.loadPoolView();
+	          self.renderPool();
+	          self.renderSelectionHint();
 	        });
 	      });
     },
@@ -13738,6 +13770,9 @@
       var self = this;
       var pager = (this.data && this.data.pool_pager) || {};
       var total = Number(pager.total || 0);
+      var totalIsExact = Number(pager.total_is_exact === undefined ? 1 : pager.total_is_exact) === 1;
+      var shownCount = Number(pager.shown_count === undefined ? (((this.data && this.data.pool) || []).length) : pager.shown_count);
+      var hasMore = Number(pager.has_more || 0) === 1;
       var pageSize = Number(pager.page_size || this.poolPageSize || 50);
       var pageCount = Math.max(1, Number(pager.page_count || Math.ceil(total / Math.max(1, pageSize)) || 1));
       var page = Math.min(Math.max(1, Number(pager.page || this.poolPage || 1)), pageCount);
@@ -13746,8 +13781,11 @@
       var start = total ? ((page - 1) * pageSize + 1) : 0;
       var end = Math.min(total, page * pageSize);
       document.querySelectorAll('[data-promo-pool-pager]').forEach(function (box) {
-        box.innerHTML = '<div class="promo-pager-info"><strong>客户 ' + esc(total) + '</strong><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页 · ' + esc(start) + '-' + esc(end) + '</span></div>' +
-          '<div class="promo-pager-actions"><button type="button" data-promo-pool-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><select data-promo-pool-size><option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50/页</option><option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100/页</option><option value="200"' + (pageSize === 200 ? ' selected' : '') + '>200/页</option></select><button type="button" data-promo-pool-next ' + (page >= pageCount ? 'disabled' : '') + '>下一页</button></div>';
+        var info = totalIsExact
+          ? '<strong>客户 ' + esc(total) + '</strong><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页 · ' + esc(start) + '-' + esc(end) + '</span>'
+          : '<strong>按页加载</strong><span>第 ' + esc(page) + ' 页 · 本页 ' + esc(shownCount) + ' 条' + (hasMore ? ' · 还有下一页' : ' · 已到最后一页') + '</span>';
+        box.innerHTML = '<div class="promo-pager-info">' + info + '</div>' +
+          '<div class="promo-pager-actions"><button type="button" data-promo-pool-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><select data-promo-pool-size><option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50/页</option><option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100/页</option><option value="200"' + (pageSize === 200 ? ' selected' : '') + '>200/页</option></select><button type="button" data-promo-pool-next ' + ((!totalIsExact && !hasMore) || (totalIsExact && page >= pageCount) ? 'disabled' : '') + '>下一页</button></div>';
         box.querySelector('[data-promo-pool-prev]')?.addEventListener('click', function () {
           if (self.poolPage <= 1) return;
           self.poolPage -= 1;

@@ -42,6 +42,7 @@ contract_tests=(
   commercial_center_v1/tests/quote_center_regression.php
   commercial_center_v1/tests/safety_scan.php
   commercial_center_v1/tests/standard_quote_button_contract.php
+  tests/crm_marketing_pool_pagination_contract.php
   tests/crm_quote_followup_history_actions_contract.php
   tests/crm_quote_followup_transaction_contract.php
   tests/dispatch_current_account_visibility_contract.php

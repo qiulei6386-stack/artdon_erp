@@ -12795,6 +12795,19 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-muted-text);
   font-weight: 900;
 }
+.promo-pool-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.promo-pool-select-all input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--crm-primary);
+}
 .promo-pool-table tr:hover,
 .promo-pool-table tr.active,
 .promo-pool-table tr.selected {

@@ -732,7 +732,7 @@ function crm_marketing_pool(array $input = []): array
         $countStmt->execute($params);
         $total = (int)$countStmt->fetchColumn();
     }
-    $queryLimit = $skipCount ? ($pageSize + 1) : $pageSize;
+    $queryLimit = $pageSize;
     $stmt = db()->prepare("SELECT c.id, c.customer_code, c.customer_name, c.country, c.level, c.lifecycle_key, c.do_not_contact,
         c.owner_user_id, c.email,
         (SELECT email FROM crm_contacts pct WHERE pct.customer_id = c.id AND pct.deleted_at IS NULL AND pct.email IS NOT NULL AND pct.email <> '' ORDER BY pct.is_primary DESC, pct.id DESC LIMIT 1) primary_contact_email,
@@ -763,14 +763,23 @@ function crm_marketing_pool(array $input = []): array
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
     $hasMore = false;
-    if ($skipCount && count($rows) > $pageSize) {
-        $hasMore = true;
-        $rows = array_slice($rows, 0, $pageSize);
+    if ($skipCount) {
+        $nextOffset = $offset + $pageSize;
+        $moreStmt = db()->prepare("SELECT 1
+            FROM crm_customers c
+            LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
+            WHERE {$sqlWhere}
+            ORDER BY FIELD(COALESCE(ps.status, 'not_promoted'), 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC
+            LIMIT 1 OFFSET {$nextOffset}");
+        $moreStmt->execute($params);
+        $hasMore = $moreStmt->fetchColumn() !== false;
+        $total = $offset + count($rows) + ($hasMore ? 1 : 0);
     }
-    if ($skipCount) $total = $offset + count($rows) + ($hasMore ? 1 : 0);
     return [
         'rows' => $rows,
         'total' => $total,
+        'total_is_exact' => $skipCount ? 0 : 1,
+        'shown_count' => count($rows),
         'page' => $page,
         'page_size' => $pageSize,
         'page_count' => $skipCount ? ($hasMore ? $page + 1 : $page) : max(1, (int)ceil($total / max(1, $pageSize))),
@@ -1006,6 +1015,7 @@ function crm_marketing_pool_view(array $input = []): array
     if ($groupId > 0 && !$onlyAll) {
         $groupInput = $input;
         $groupInput['group_id'] = $groupId;
+        $groupInput['skip_count'] = 1;
         $result = crm_marketing_pool($groupInput);
         $groupPool = $result['rows'] ?? [];
         $groupPager = $result;
@@ -1024,12 +1034,6 @@ function crm_marketing_pool_view(array $input = []): array
         $allPager = $result;
         unset($allPager['rows']);
     }
-    $contacts = [];
-    if (!$onlyAll) {
-        $contactsInput = $input;
-        $contactsInput['group_id'] = $groupId;
-        $contacts = crm_marketing_contacts($contactsInput);
-    }
     return [
         'group_id' => $groupId,
         'group_pool' => $groupPool,
@@ -1038,7 +1042,6 @@ function crm_marketing_pool_view(array $input = []): array
         'all_pool_pager' => $allPager,
         'pool' => $groupId > 0 ? $groupPool : $allPool,
         'pool_pager' => $groupId > 0 ? $groupPager : $allPager,
-        'contacts' => $contacts,
     ];
 }
 
@@ -1328,7 +1331,9 @@ function crm_marketing_bootstrap(array $input = []): array
     $poolPager = ['total' => 0, 'page' => 1, 'page_size' => 50, 'page_count' => 1];
     if ($view === 'customer_pool' || $view === 'group_management') {
         try {
-            $poolResult = crm_marketing_pool($input);
+            $poolInput = $input;
+            if ($view === 'customer_pool') $poolInput['skip_count'] = 1;
+            $poolResult = crm_marketing_pool($poolInput);
             $pool = $poolResult['rows'] ?? [];
             $poolPager = $poolResult;
             unset($poolPager['rows']);
