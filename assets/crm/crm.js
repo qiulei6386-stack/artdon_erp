@@ -13296,6 +13296,7 @@
         this.safeRender('tasks', this.renderTasks, '[data-promo-tasks]');
         this.safeRender('task_properties', this.renderTaskProperties, '[data-promo-task-properties]');
       } else if (view === 'customer_pool') {
+        this.safeRender('groups', this.renderGroups, '[data-promo-groups]');
         this.safeRender('pool', this.renderPool, '[data-promo-pool]');
         this.safeRender('pool_mode', this.renderPoolMode, '[data-promo-pool-mode]');
         this.safeRender('pool_pager', this.renderPoolPager, '[data-promo-pool-pager]');

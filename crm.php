@@ -775,7 +775,7 @@ $prefStyle = sprintf(
                   <button type="button" data-promo-quick-filter="no_email">无邮箱</button>
                 </div>
               </section>
-              <section class="promo-group-panel" data-promo-group-home hidden>
+              <section class="promo-group-panel" data-promo-group-home>
                 <header><span>推广客户分组</span><strong>推广客户分组</strong></header>
                 <div class="promo-group-list" data-promo-groups><p>正在加载推广分组...</p></div>
               </section>

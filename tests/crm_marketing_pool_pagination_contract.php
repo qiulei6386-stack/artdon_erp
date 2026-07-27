@@ -74,6 +74,15 @@ if (str_contains($viewSource, 'crm_marketing_contacts(')) {
 if (!str_contains($php, "if (\$view === 'customer_pool') \$poolInput['skip_count'] = 1;")) {
     throw new RuntimeException('initial customer pool bootstrap must use bounded pagination');
 }
+if (!preg_match(
+    "/else if \(view === 'customer_pool'\) \{.{0,500}safeRender\('groups', this\.renderGroups, '\[data-promo-groups\]'\);/s",
+    $js
+)) {
+    throw new RuntimeException('initial customer pool render must replace the promotion group loading placeholder');
+}
+if (str_contains($php, 'data-promo-group-home hidden')) {
+    throw new RuntimeException('customer pool promotion group panel must be visible on first render');
+}
 if (!str_contains($css, '.promo-pool-select-all')) {
     throw new RuntimeException('customer pool select-all control styles are missing');
 }
