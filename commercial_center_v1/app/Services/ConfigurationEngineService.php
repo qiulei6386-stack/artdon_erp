@@ -30,6 +30,7 @@ final class ConfigurationEngineService
                 $adaptation['selected_materials'][]=[
                     'group_id'=>$group['id'],'option_id'=>$option['id'],'material_id'=>$option['material_id']??null,
                     'material_code'=>$option['material_code']??null,'match_level'=>$option['match_level']??null,
+                    'chip_variant'=>$option['chip_variant']??null,
                 ];
             }
         }

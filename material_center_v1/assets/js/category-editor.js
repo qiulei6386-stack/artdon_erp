@@ -238,6 +238,18 @@
     `${window.MC_BASE_URL}/api/v1/source-material.php?source_record_id=${encodeURIComponent(sourceRecordId)}&category=${encodeURIComponent(categoryCode)}`
   ).then(payload => payload.data);
 
+  const emitOpened = (materialId, status, editable) => {
+    document.dispatchEvent(new CustomEvent('mc:category-editor-opened', {
+      detail: {
+        categoryCode,
+        materialId: Number(materialId || 0),
+        status: status || '',
+        editable: Boolean(editable),
+        record: active || null,
+      },
+    }));
+  };
+
   const openEditor = async record => {
     active = record || null;
     sourceDetail = null;
@@ -275,11 +287,13 @@
         : `${record?.code || mapped?.material_code || ''} · ${status === 'draft' ? '草稿可编辑' : (status === 'pending_review' ? '等待确认' : '当前状态只读')}`;
       q('[data-category-editor-state]', drawer).textContent = editable ? (record?.read_only ? '确认解析字段后保存草稿' : '等待修改') : '当前状态只读';
       dirty = false;
+      emitOpened(materialId, status, editable);
     } catch (error) {
       q('[data-category-editor-error]', drawer).textContent = error.message;
       q('[data-category-editor-error]', drawer).hidden = false;
       q('[data-category-editor-state]', drawer).textContent = '读取失败';
       setReadonly(true);
+      emitOpened(0, '', false);
     }
   };
 
@@ -399,6 +413,10 @@
   }, true));
 
   const requestedSource = Number(new URLSearchParams(location.search).get('organize_source') || 0);
+  window.MC_CATEGORY_EDITOR = {
+    active: () => active,
+    switchTab,
+  };
   if (requestedSource) {
     const row = qa('[data-row]', workspace).find(candidate => {
       try {

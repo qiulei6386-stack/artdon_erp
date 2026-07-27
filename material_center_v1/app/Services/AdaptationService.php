@@ -271,7 +271,23 @@ final class AdaptationService
             WHERE o.group_id=? AND m.deleted_at IS NULL ORDER BY o.sort_order,o.id");
         $stmt->execute([$groupId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as &$row) $row['match_reasons'] = json_decode((string) ($row['match_reason_json'] ?? '[]'), true) ?: [];
+        $chipService = new ChipSpecificationService($this->db);
+        foreach ($rows as &$row) {
+            $row['match_reasons'] = json_decode((string) ($row['match_reason_json'] ?? '[]'), true) ?: [];
+            if ($row['category_code'] === 'chip') {
+                $specification = $chipService->optionVariants((int) $row['id']);
+                $row['chip_variants'] = $specification['variants'];
+                $row['selected_chip_variant_count'] = count(array_filter(
+                    $specification['variants'],
+                    static fn(array $variant): bool => (bool) $variant['is_selected']
+                ));
+                $default = array_values(array_filter(
+                    $specification['variants'],
+                    static fn(array $variant): bool => (bool) $variant['is_option_default']
+                ));
+                $row['default_chip_variant'] = $default[0]['label'] ?? null;
+            }
+        }
         unset($row);
         return $rows;
     }
@@ -308,7 +324,6 @@ final class AdaptationService
         $product = $this->product($productId);
         if (!$product) throw new RuntimeException('产品不存在或已停用。', 404);
         $groups = $this->groups($productId);
-        if (!$groupId && $groups) $groupId = (int) $groups[0]['id'];
         $activeGroup = null;
         foreach ($groups as $group) {
             if ((int) $group['id'] === $groupId) {
@@ -326,7 +341,49 @@ final class AdaptationService
             'conflicts' => $this->conflicts($productId),
             'approval' => $this->latestApproval($productId),
             'completion' => $completion,
+            'configuration_overview' => $this->configurationOverview($productId),
         ];
+    }
+
+    public function configurationOverview(int $productId): array
+    {
+        $overview = [];
+        foreach ($this->groups($productId) as $group) {
+            $options = $this->options((int) $group['id']);
+            $overview[] = [
+                'id' => (int) $group['id'],
+                'name' => $group['group_name'],
+                'business_type' => $group['business_type'],
+                'is_required' => (int) $group['is_required'],
+                'selection_mode' => $group['selection_mode'],
+                'status' => $group['display_status'],
+                'availability' => $group['quick_rules']['availability'] ?? 'allowed',
+                'quick_rules' => $group['quick_rules'],
+                'default_material' => $group['default_material'],
+                'options' => array_map(static function (array $option): array {
+                    $selectedVariants = array_values(array_filter(
+                        $option['chip_variants'] ?? [],
+                        static fn(array $variant): bool => (bool) ($variant['is_selected'] ?? false)
+                    ));
+                    return [
+                        'id' => (int) $option['id'],
+                        'material_id' => (int) $option['material_id'],
+                        'material_code' => $option['material_code'],
+                        'material_name' => $option['name'],
+                        'option_type' => $option['option_type'],
+                        'is_default' => (int) $option['is_default'],
+                        'match_level' => $option['match_level'],
+                        'chip_variants' => array_map(static fn(array $variant): array => [
+                            'id' => (int) $variant['id'],
+                            'label' => $variant['label'],
+                            'is_default' => (int) ($variant['is_option_default'] ?? 0),
+                            'needs_confirmation' => (int) $variant['needs_confirmation'],
+                        ], $selectedVariants),
+                    ];
+                }, $options),
+            ];
+        }
+        return $overview;
     }
 
     public function initializeGroups(int $productId, int $userId, ?array $templateKeys = null): array
@@ -919,6 +976,9 @@ final class AdaptationService
         $find = $this->db->prepare('SELECT id FROM mc_adaptation_options WHERE group_id=? AND material_id=?');
         $find->execute([$groupId, $materialId]);
         $id = (int) $find->fetchColumn();
+        if ($candidate['category_code'] === 'chip') {
+            (new ChipSpecificationService($this->db))->attachAllActiveToOption($id);
+        }
         $this->markProductDraft((int) $group['product_id']);
         $this->log((int) $group['product_id'], 'save_option', ['option_id' => $id, 'group_id' => $groupId, 'material_id' => $materialId, 'match_level' => $candidate['match_level']], $userId);
         return $id;
@@ -1114,16 +1174,38 @@ final class AdaptationService
         if ($invalidConditions) $issues[] = "存在 {$invalidConditions} 条不完整适用条件";
         else $earned++;
 
+        $chipWithoutStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o
+            JOIN mc_adaptation_groups g ON g.id=o.group_id
+            JOIN mc_materials m ON m.id=o.material_id
+            JOIN mc_material_categories c ON c.id=m.category_id AND c.code='chip'
+            WHERE g.product_id=? AND g.status<>'disabled' AND o.option_type<>'disabled'
+            AND NOT EXISTS(SELECT 1 FROM mc_adaptation_option_chip_variants cv WHERE cv.option_id=o.id AND cv.status='active')");
+        $chipWithoutStmt->execute([$productId]);
+        $chipWithoutVariants = (int) $chipWithoutStmt->fetchColumn();
+        if ($chipWithoutVariants) $issues[] = "存在 {$chipWithoutVariants} 个芯片选项尚未选择具体色温 / 显指 / 色容差";
+        else $earned++;
+
+        $unconfirmedChipStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_option_chip_variants cv
+            JOIN mc_adaptation_options o ON o.id=cv.option_id
+            JOIN mc_adaptation_groups g ON g.id=o.group_id
+            JOIN mc_chip_spec_variants v ON v.id=cv.chip_variant_id
+            WHERE g.product_id=? AND g.status<>'disabled' AND o.option_type<>'disabled'
+            AND cv.status='active' AND (v.status<>'active' OR v.needs_confirmation=1)");
+        $unconfirmedChipStmt->execute([$productId]);
+        $unconfirmedChip = (int) $unconfirmedChipStmt->fetchColumn();
+        if ($unconfirmedChip) $issues[] = "存在 {$unconfirmedChip} 个已停用或待确认的芯片规格";
+        else $earned++;
+
         if ($groups) $earned++;
         else $issues[] = '尚未建立任何配置组';
-        $percent = (int) round($earned / 9 * 100);
+        $percent = (int) round($earned / 11 * 100);
         return [
             'percent' => $percent,
             'ready' => !$issues,
             'issues' => $issues,
             'exception_count' => $exceptions,
             'checks_passed' => $earned,
-            'checks_total' => 9,
+            'checks_total' => 11,
         ];
     }
 
@@ -1217,7 +1299,12 @@ final class AdaptationService
             $versionStmt = $this->db->prepare('SELECT COALESCE(MAX(version_no),0)+1 FROM mc_adaptation_approvals WHERE product_id=?');
             $versionStmt->execute([$productId]);
             $version = (int) $versionStmt->fetchColumn();
-            $snapshot = json_encode(['groups' => $groups, 'conflicts' => $this->conflicts($productId), 'completion' => $completion], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $snapshot = json_encode([
+                'groups' => $groups,
+                'configuration_overview' => $this->configurationOverview($productId),
+                'conflicts' => $this->conflicts($productId),
+                'completion' => $completion,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $this->db->prepare("INSERT INTO mc_approvals(approval_type,entity_type,entity_id,status,requested_by,requested_at,completed_at,current_step,request_json) VALUES('product_adaptation','product',?,'approved',?,NOW(),NOW(),1,?)")
                 ->execute([$productId, $userId, $snapshot]);
             $approvalId = (int) $this->db->lastInsertId();
@@ -1358,6 +1445,7 @@ final class AdaptationService
                     ]);
                 $targetOptionId = (int) $this->db->lastInsertId();
                 $optionMap[(int) $sourceOption['id']] = $targetOptionId;
+                (new ChipSpecificationService($this->db))->copyOptionVariants((int) $sourceOption['id'], $targetOptionId);
                 $optionsCopied++;
                 foreach ($conditionsByOption[(int) $sourceOption['id']] ?? [] as $condition) {
                     $this->db->prepare('INSERT INTO mc_adaptation_conditions

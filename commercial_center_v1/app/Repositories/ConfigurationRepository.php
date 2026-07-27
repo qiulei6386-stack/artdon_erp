@@ -48,6 +48,24 @@ final class ConfigurationRepository
           AND NOT EXISTS(SELECT 1 FROM mc_adaptation_groups gx WHERE gx.product_id=p.id AND gx.status<>'disabled' AND (gx.status<>'approved' OR gx.is_enabled=0))
           AND NOT EXISTS(SELECT 1 FROM mc_adaptation_options ox JOIN mc_adaptation_groups gox ON gox.id=ox.group_id WHERE gox.product_id=p.id AND gox.status<>'disabled' AND ox.status<>'approved')
           ORDER BY p.legacy_id,g.sort_order,g.id,o.sort_order,o.id");
+        $variantsByOption=[];
+        if($rows&&$this->tableExists('mc_chip_spec_variants')&&$this->tableExists('mc_adaptation_option_chip_variants')){
+            $optionIds=array_values(array_unique(array_map('intval',array_column($rows,'option_id'))));
+            $marks=implode(',',array_fill(0,count($optionIds),'?'));
+            $variantRows=$this->all("SELECT cv.option_id,cv.is_default option_variant_default,
+              v.id variant_id,v.variant_code,v.cct_k,v.cct_min_k,v.cct_max_k,v.cri,v.sdcm,v.r9,
+              v.luminous_flux_lm,v.efficacy_lm_w,v.supplier_spec_code,v.purchase_price,v.currency,
+              v.stock_quantity,v.lead_time_days variant_lead_time_days,v.source_type,
+              v.source_template_id,v.source_template_version_no
+              FROM mc_adaptation_option_chip_variants cv
+              JOIN mc_chip_spec_variants v ON v.id=cv.chip_variant_id AND v.status='active'
+              WHERE cv.option_id IN ($marks) AND cv.status='active'
+              ORDER BY cv.option_id,cv.is_default DESC,v.sort_order,v.id",$optionIds);
+            foreach($variantRows as$variant){
+                $variant['label']=$this->chipVariantLabel($variant);
+                $variantsByOption[(int)$variant['option_id']][]=$variant;
+            }
+        }
         $result=[];
         foreach($rows as$row){
             $product=(string)(int)$row['legacy_id'];$groupCode='mc_'.$row['group_code'];
@@ -62,20 +80,45 @@ final class ConfigurationRepository
                 'min_select'=>(int)$row['min_select'],'max_select'=>(int)$row['max_select'],
                 'quick_rules'=>json_decode((string)($row['rule_json']??'{}'),true)?:[],
             ];
-            $result[$product][$groupCode]['options'][]=[
-                'id'=>'mc-'.(int)$row['option_id'],'group_id'=>'mc-'.(int)$row['group_id'],
-                'option_code'=>'mc_material_'.(int)$row['material_id'],
-                'name'=>trim($row['material_code'].' '.$row['material_name'].' '.($row['model']??'')),
-                'is_default'=>(int)$row['is_default'],'cost_delta'=>0,
-                'sales_delta'=>(float)($row['price_impact']??0),'moq_delta'=>0,
-                'lead_time_days'=>(int)($row['lead_time_impact_days']??0),
-                'material_id'=>(int)$row['material_id'],'material_code'=>$row['material_code'],
-                'category_code'=>$row['category_code'],'option_type'=>$row['option_type'],'source'=>'material_center',
-                'match_level'=>$row['match_level'],
-                'requires_approval'=>(int)$row['requires_approval'],
-                'exception_approved'=>(int)$row['exception_approved'],
-                'match_reasons'=>json_decode((string)($row['match_reason_json']??'[]'),true)?:[],
-            ];
+            $chipVariants=$row['category_code']==='chip'?($variantsByOption[(int)$row['option_id']]??[]):[];
+            foreach($chipVariants?:[null] as$variant){
+                $variantId=$variant?(int)$variant['variant_id']:0;
+                $chipSnapshot=$variant?[
+                    'variant_id'=>$variantId,'variant_code'=>$variant['variant_code'],'label'=>$variant['label'],
+                    'cct_k'=>$variant['cct_k']!==null?(int)$variant['cct_k']:null,
+                    'cct_min_k'=>$variant['cct_min_k']!==null?(int)$variant['cct_min_k']:null,
+                    'cct_max_k'=>$variant['cct_max_k']!==null?(int)$variant['cct_max_k']:null,
+                    'cri'=>$variant['cri']!==null?(float)$variant['cri']:null,
+                    'sdcm'=>$variant['sdcm']!==null?(float)$variant['sdcm']:null,
+                    'r9'=>$variant['r9']!==null?(float)$variant['r9']:null,
+                    'luminous_flux_lm'=>$variant['luminous_flux_lm']!==null?(float)$variant['luminous_flux_lm']:null,
+                    'efficacy_lm_w'=>$variant['efficacy_lm_w']!==null?(float)$variant['efficacy_lm_w']:null,
+                    'supplier_spec_code'=>$variant['supplier_spec_code']?:null,
+                    'purchase_price'=>$variant['purchase_price']!==null?(float)$variant['purchase_price']:null,
+                    'currency'=>$variant['currency']?:'USD',
+                    'stock_quantity'=>$variant['stock_quantity']!==null?(float)$variant['stock_quantity']:null,
+                    'lead_time_days'=>$variant['variant_lead_time_days']!==null?(int)$variant['variant_lead_time_days']:null,
+                    'source_type'=>$variant['source_type'],
+                    'source_template_id'=>$variant['source_template_id']!==null?(int)$variant['source_template_id']:null,
+                    'source_template_version_no'=>$variant['source_template_version_no']!==null?(int)$variant['source_template_version_no']:null,
+                ]:null;
+                $result[$product][$groupCode]['options'][]=[
+                    'id'=>'mc-'.(int)$row['option_id'].($variantId?'-variant-'.$variantId:''),
+                    'group_id'=>'mc-'.(int)$row['group_id'],
+                    'option_code'=>'mc_material_'.(int)$row['material_id'].($variantId?'_variant_'.$variantId:''),
+                    'name'=>trim($row['material_code'].' '.$row['material_name'].' '.($row['model']??'').($variant?' · '.$variant['label']:'')),
+                    'is_default'=>$variant?(int)$variant['option_variant_default']:(int)$row['is_default'],'cost_delta'=>0,
+                    'sales_delta'=>(float)($row['price_impact']??0),'moq_delta'=>0,
+                    'lead_time_days'=>max((int)($row['lead_time_impact_days']??0),(int)($variant['variant_lead_time_days']??0)),
+                    'material_id'=>(int)$row['material_id'],'material_code'=>$row['material_code'],
+                    'category_code'=>$row['category_code'],'option_type'=>$row['option_type'],'source'=>'material_center',
+                    'match_level'=>$row['match_level'],
+                    'requires_approval'=>(int)$row['requires_approval'],
+                    'exception_approved'=>(int)$row['exception_approved'],
+                    'match_reasons'=>json_decode((string)($row['match_reason_json']??'[]'),true)?:[],
+                    'chip_variant'=>$chipSnapshot,
+                ];
+            }
         }
         foreach($result as$product=>$groups)$result[$product]=array_values($groups);
         return$result;
@@ -110,6 +153,8 @@ final class ConfigurationRepository
         }catch(\Throwable $e){if($ownsTransaction&&$this->db->inTransaction())$this->db->rollBack();throw $e;}
     }
     private function groupMap(): array{$rows=$this->all('SELECT id,group_code FROM cc_config_groups');$out=[];foreach($rows as $r)$out[$r['group_code']]=(int)$r['id'];return $out;}
+    private function chipVariantLabel(array$variant):string{$cct=$variant['cct_k']!==null?(int)$variant['cct_k'].'K':(($variant['cct_min_k']!==null||$variant['cct_max_k']!==null)?($variant['cct_min_k']??'?').'–'.($variant['cct_max_k']??'?').'K':'色温待确认');$parts=[$cct];if($variant['cri']!==null)$parts[]='CRI'.$this->shortNumber($variant['cri']);if($variant['sdcm']!==null)$parts[]='SDCM≤'.$this->shortNumber($variant['sdcm']);if($variant['r9']!==null)$parts[]='R9 '.$this->shortNumber($variant['r9']);return implode(' / ',$parts);}
+    private function shortNumber(mixed$value):string{return rtrim(rtrim(number_format((float)$value,2,'.',''),'0'),'.');}
     private function tableExists(string$table):bool{$s=$this->db->prepare('SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');$s->execute([$table]);return(bool)$s->fetchColumn();}
     private function all(string $sql,array $params=[]): array{$s=$this->db->prepare($sql);$s->execute($params);return $s->fetchAll(PDO::FETCH_ASSOC);}
     private function uuid(): string{$h=bin2hex(random_bytes(16));return substr($h,0,8).'-'.substr($h,8,4).'-4'.substr($h,13,3).'-a'.substr($h,17,3).'-'.substr($h,20,12);}

@@ -246,6 +246,59 @@
       </div>`;
   };
 
+  const overviewStatusLabel = status => ({
+    enabled: '已启用',
+    pending: '待审批',
+    empty: '未添加',
+    no_default: '缺默认',
+    forbidden: '禁止选配',
+    conflict: '有冲突',
+    disabled: '已停用',
+  }[status] || '待完善');
+
+  const renderOverviewGroup = (group, full = false) => {
+    const options = group.options || [];
+    const defaultOptions = options.filter(option => integer(option.is_default));
+    const optionLines = options.map(option => {
+      const variants = option.chip_variants || [];
+      return `<li>
+        <span><b>${escapeHtml(option.material_code)}</b> ${escapeHtml(option.material_name)}${integer(option.is_default) ? '<em>默认物料</em>' : ''}</span>
+        ${variants.length ? `<small>${variants.map(variant => `${escapeHtml(variant.label)}${integer(variant.is_default) ? '（默认规格）' : ''}`).join('、')}</small>` : ''}
+      </li>`;
+    }).join('');
+    return `<article class="mc-overview-group ${group.availability === 'forbidden' ? 'is-forbidden' : ''}">
+      <header><div><strong>${escapeHtml(group.name)}</strong><span>${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</span></div><b>${escapeHtml(overviewStatusLabel(group.status))}</b></header>
+      <p>标准默认：${defaultOptions.length ? defaultOptions.map(option => escapeHtml(option.material_code)).join('、') : '未设置'} · 可选 ${options.length} 项</p>
+      ${full ? `<ul>${optionLines || '<li><span>暂无物料选项</span></li>'}</ul>
+        <details><summary>查看关键范围</summary><pre>${escapeHtml(JSON.stringify(group.quick_rules || {}, null, 2))}</pre></details>` : ''}
+    </article>`;
+  };
+
+  const renderConfigurationOverview = () => {
+    const root = q('[data-configuration-overview]');
+    const overview = state.workspace?.configuration_overview || [];
+    if (!state.workspace || !overview.length) {
+      root.innerHTML = '';
+      return;
+    }
+    const configured = overview.filter(group => (group.options || []).length).length;
+    const forbidden = overview.filter(group => group.availability === 'forbidden').length;
+    root.innerHTML = `<button type="button" data-configuration-overview-open>
+      <span><strong>当前配置一览</strong><small>${configured} / ${overview.length} 组已有物料${forbidden ? ` · ${forbidden} 组禁止选配` : ''}</small></span>
+      <b>查看完整配置 ›</b>
+    </button>
+    <div>${overview.slice(0, 4).map(group => renderOverviewGroup(group)).join('')}</div>`;
+  };
+
+  const openConfigurationOverview = () => {
+    const overview = state.workspace?.configuration_overview || [];
+    q('[data-configuration-overview-full]').innerHTML = overview.length
+      ? `<div class="mc-overview-full-head"><strong>${escapeHtml(state.workspace.product.product_code)} ${escapeHtml(state.workspace.product.product_name)}</strong><span>${escapeHtml(state.workspace.product.approval_label)} · 配置完成度 ${integer(state.workspace.completion?.percent)}%</span></div>
+        <div class="mc-overview-full-grid">${overview.map(group => renderOverviewGroup(group, true)).join('')}</div>`
+      : '<div class="mc-empty-state"><strong>当前产品尚无配置</strong><span>先生成或建立配置组。</span></div>';
+    openModal('configuration-overview-modal');
+  };
+
   const renderGroups = () => {
     const list = q('[data-group-list]');
     const workspace = state.workspace;
@@ -324,6 +377,10 @@
             <strong>${escapeHtml(`${option.material_code} ${option.name}`)}</strong>
             <span>${escapeHtml(`${option.brand || ''} ${option.model || ''}`.trim() || '未设置品牌 / 型号')}</span>
             ${(option.match_reasons || []).map(reason => `<small class="mc-option-reason">${escapeHtml(reason)}</small>`).join('')}
+            ${option.category_code === 'chip' ? `<div class="mc-option-chip-summary">
+              <span>${integer(option.selected_chip_variant_count)} 个产品可用规格${option.default_chip_variant ? ` · 默认 ${escapeHtml(option.default_chip_variant)}` : ' · 未设默认规格'}</span>
+              <button class="mc-button" type="button" data-chip-option-edit="${integer(option.id)}">设置色温 / 显指 / SDCM</button>
+            </div>` : ''}
           </div>
           <div>
             <em class="mc-match mc-match--${escapeHtml(option.match_level)}">${optionMatchLabel(option)}</em>
@@ -417,8 +474,10 @@
   };
 
   const render = () => {
+    page.dataset.stage = !state.workspace ? 'products' : (selectedGroup() ? 'options' : 'groups');
     renderProducts();
     renderSummary();
+    renderConfigurationOverview();
     renderGroups();
     renderOptionPanel();
     updateUrl();
@@ -432,6 +491,34 @@
     const catalogIndex = state.catalogProducts.findIndex(product => integer(product.id) === integer(productId));
     if (catalogIndex >= 0) state.catalogProducts[catalogIndex] = { ...state.catalogProducts[catalogIndex], ...state.workspace.product };
     render();
+  };
+
+  const updateChipOptionCount = () => {
+    const selected = qa('[name="chip_variant"]:checked', q('[data-chip-variant-form]'));
+    q('[data-chip-option-count]').textContent = `已选择 ${selected.length} 个规格`;
+    const selectedIds = new Set(selected.map(input => input.value));
+    qa('[name="chip_default_variant"]', q('[data-chip-variant-form]')).forEach(input => {
+      input.disabled = !selectedIds.has(input.value);
+      if (input.disabled) input.checked = false;
+    });
+  };
+
+  const openChipOption = optionId => {
+    const option = (state.workspace?.options || []).find(row => integer(row.id) === integer(optionId));
+    if (!option) return;
+    const form = q('[data-chip-variant-form]');
+    form.elements.option_id.value = option.id;
+    q('[data-chip-option-material]').innerHTML = `<strong>${escapeHtml(option.material_code)} ${escapeHtml(option.name)}</strong><span>芯片能力 ${option.chip_variants?.filter(variant => variant.status === 'active').length || 0} 个；仅勾选当前产品真正允许销售的规格。</span>`;
+    q('[data-chip-option-variants]').innerHTML = (option.chip_variants || []).length
+      ? option.chip_variants.map(variant => `<label class="${variant.status !== 'active' ? 'is-disabled' : ''} ${integer(variant.needs_confirmation) ? 'needs-confirmation' : ''}">
+        <input type="checkbox" name="chip_variant" value="${integer(variant.id)}" ${integer(variant.is_selected) ? 'checked' : ''} ${variant.status !== 'active' ? 'disabled' : ''}>
+        <span><strong>${escapeHtml(variant.label)}</strong><small>${escapeHtml(variant.variant_code)} · ${escapeHtml(variant.template_name || (variant.source_type === 'legacy' ? '原始资料' : '手工规格'))}${integer(variant.needs_confirmation) ? ' · 待物料中心确认' : ''}</small></span>
+        <span><input type="radio" name="chip_default_variant" value="${integer(variant.id)}" ${integer(variant.is_option_default) ? 'checked' : ''} ${!integer(variant.is_selected) || variant.status !== 'active' ? 'disabled' : ''}><b>产品默认</b></span>
+      </label>`).join('')
+      : '<div class="mc-empty-state mc-empty-state--compact"><strong>这个芯片还没有具体规格</strong><span>请先到物料中心 → 芯片 → 规格组合，套用模板或手工添加。</span></div>';
+    updateChipOptionCount();
+    state.dirty = false;
+    openModal('chip-variant-modal');
   };
 
   const refreshWorkspace = () => loadWorkspace(selectedProductId(), integer(selectedGroup()?.id));
@@ -794,6 +881,27 @@
       renderOptionPanel();
       return;
     }
+    if (event.target.closest('[data-configuration-overview-open]')) {
+      openConfigurationOverview();
+      return;
+    }
+    const chipOptionEdit = event.target.closest('[data-chip-option-edit]');
+    if (chipOptionEdit) {
+      openChipOption(integer(chipOptionEdit.dataset.chipOptionEdit));
+      return;
+    }
+    if (event.target.closest('[data-chip-option-select-all]')) {
+      qa('[name="chip_variant"]:not(:disabled)', q('[data-chip-variant-form]')).forEach(input => { input.checked = true; });
+      updateChipOptionCount();
+      state.dirty = true;
+      return;
+    }
+    if (event.target.closest('[data-chip-option-clear]')) {
+      qa('[name="chip_variant"],[name="chip_default_variant"]', q('[data-chip-variant-form]')).forEach(input => { input.checked = false; });
+      updateChipOptionCount();
+      state.dirty = true;
+      return;
+    }
     if (event.target.closest('[data-open-quick-rules]')) {
       state.tab = 'quick_rules';
       renderOptionPanel();
@@ -985,6 +1093,11 @@
       renderProducts();
       return;
     }
+    if (event.target.matches('[name="chip_variant"]')) {
+      updateChipOptionCount();
+      state.dirty = true;
+      return;
+    }
     if (event.target.matches('[data-product-status-filter]')) {
       state.productStatusFilter = event.target.value;
       renderProducts();
@@ -1082,7 +1195,11 @@
       state.tab = 'quick_rules';
       state.products = await get('products');
       state.catalogProducts = state.products;
-      if (selectedProductId()) await loadWorkspace(selectedProductId());
+      if (selectedProductId()) {
+        await loadWorkspace(selectedProductId());
+        const firstGroupId = integer(state.workspace?.groups?.[0]?.id);
+        if (firstGroupId) await loadWorkspace(selectedProductId(), firstGroupId);
+      }
       else renderProducts();
       const failureText = result.failed ? `；${result.failed} 个失败` : '';
       notify(state.templateTargetIds.length > 1 ? '批量标准配置已生成' : '标准配置已生成',
@@ -1268,6 +1385,37 @@
     } catch (error) {
       notify('条件保存失败', error.message);
       if (button) button.disabled = false;
+    }
+  });
+
+  q('[data-chip-variant-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const variantIds = qa('[name="chip_variant"]:checked', form).map(input => integer(input.value));
+    const defaultVariantId = integer(q('[name="chip_default_variant"]:checked', form)?.value);
+    if (!variantIds.length) {
+      notify('请至少保留一个规格', '产品芯片选项必须有具体色温、显指和色容差。');
+      return;
+    }
+    if (!defaultVariantId) {
+      notify('请选择产品默认规格', '默认规格用于标准报价和默认出货。');
+      return;
+    }
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      await post('save_option_chip_variants', {
+        option_id: integer(form.elements.option_id.value),
+        variant_ids: variantIds,
+        default_variant_id: defaultVariantId,
+      });
+      state.dirty = false;
+      closeModal(form.closest('[data-adaptation-modal]'));
+      await refreshWorkspace();
+      notify('芯片规格范围已保存', '商务中心只会读取勾选的具体规格，默认规格已同步。');
+    } catch (error) {
+      notify('保存失败', error.message);
+      button.disabled = false;
     }
   });
 

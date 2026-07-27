@@ -11,7 +11,7 @@ $activeMenu = 'adaptation';
 $service = new AdaptationService();
 $search = trim((string) ($_GET['q'] ?? ''));
 $products = $service->products($search);
-$selected = (int) ($_GET['product_id'] ?? ($products[0]['id'] ?? 0));
+$selected = (int) ($_GET['product_id'] ?? 0);
 $groupId = (int) ($_GET['group_id'] ?? 0);
 $workspace = $selected ? $service->workspace($selected, $groupId) : null;
 $bootstrap = [
@@ -24,7 +24,7 @@ $bootstrap = [
 
 include MC_ROOT.'/components/layout_top.php';
 ?>
-<section class="mc-page mc-page--adaptation-v2" data-adaptation>
+<section class="mc-page mc-page--adaptation-v2" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>">
     <header class="mc-adaptation-head">
         <div>
             <h1>产品适配</h1>
@@ -76,6 +76,7 @@ include MC_ROOT.'/components/layout_top.php';
                 <button class="mc-button" type="button" data-group-create disabled>＋ 配置组</button>
             </div>
             <div data-product-summary></div>
+            <div class="mc-configuration-overview" data-configuration-overview></div>
             <div class="mc-config-group-guide">
                 <strong>配置组 = 当前产品的一类选配</strong>
                 <span>例如“芯片 / 光源”组：先填关键范围，再加入符合范围的候选芯片；“批量套用”才是把整套已配置内容复制到其他产品。</span>
@@ -319,6 +320,36 @@ include MC_ROOT.'/components/layout_top.php';
             <div class="mc-modal__footer">
                 <button type="button" class="mc-button" data-modal-close>取消</button>
                 <button class="mc-button mc-button--primary" type="submit">保存适用条件</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="mc-modal" id="configuration-overview-modal" data-adaptation-modal>
+        <div class="mc-modal__panel mc-modal__panel--wide">
+            <div class="mc-modal__header">
+                <div><strong>当前产品配置总览</strong><span>标准默认、可选范围、禁用规则、芯片具体规格和审批状态集中查看</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body" data-configuration-overview-full></div>
+            <div class="mc-modal__footer"><button type="button" class="mc-button" data-modal-close>关闭</button></div>
+        </div>
+    </div>
+
+    <div class="mc-modal" id="chip-variant-modal" data-adaptation-modal>
+        <form class="mc-modal__panel mc-modal__panel--medium" data-chip-variant-form>
+            <div class="mc-modal__header">
+                <div><strong>选择产品允许的芯片规格</strong><span>芯片物料提供全部能力；这个产品只保留可用子集，并指定一个默认规格</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body">
+                <input type="hidden" name="option_id">
+                <div class="mc-chip-option-material" data-chip-option-material></div>
+                <div class="mc-chip-option-toolbar"><button class="mc-button" type="button" data-chip-option-select-all>全选可用</button><button class="mc-button" type="button" data-chip-option-clear>清空</button><span data-chip-option-count></span></div>
+                <div class="mc-chip-option-variants" data-chip-option-variants></div>
+            </div>
+            <div class="mc-modal__footer">
+                <button type="button" class="mc-button" data-modal-close>取消</button>
+                <button class="mc-button mc-button--primary" type="submit">保存产品规格范围</button>
             </div>
         </form>
     </div>

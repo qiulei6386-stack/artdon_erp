@@ -22,7 +22,7 @@ if($mcCategoryDrawer){
  <div class="mc-drawer__header"><div><strong data-category-editor-title><?=mc_h($mcCategoryDrawer['title'])?>资料</strong><span data-category-editor-subtitle>新建、查看和编辑真实物料字段</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
  <form class="mc-drawer__body mc-category-editor-body" data-category-editor-form>
   <input type="hidden" name="id"><input type="hidden" name="lock_version"><input type="hidden" name="category_id">
-  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><button type="button" data-category-tab="source">原始来源</button></div>
+  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><?php if($mcCategoryDrawer['code']==='chip'):?><button type="button" data-category-tab="chip_specs">规格组合</button><button type="button" data-category-tab="chip_templates">模板管理</button><?php endif;?><button type="button" data-category-tab="source">原始来源</button></div>
   <div data-category-pane="fields">
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>基础资料</strong><span>统一编号在保存草稿时自动生成</span></div></div><div class="mc-form-grid">
    <label class="mc-field mc-field--wide"><span>名称 *</span><input name="name" required maxlength="200"></label>
@@ -35,6 +35,40 @@ if($mcCategoryDrawer){
   </div></section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong><?=mc_h($mcCategoryDrawer['title'])?>规格</strong><span>字段来自物料中心字段注册表并真实保存</span></div></div><div class="mc-form-grid" data-category-editor-fields></div></section>
   </div>
+  <?php if($mcCategoryDrawer['code']==='chip'):?>
+  <div data-category-pane="chip_specs" hidden>
+   <section class="mc-form-section mc-chip-spec-pane">
+    <div class="mc-form-section__head"><div><strong>芯片规格组合</strong><span>一个芯片料号维护多个色温、显指和色容差；产品适配时再选择允许的子集</span></div><button class="mc-button mc-button--primary" type="button" data-chip-apply-open>套用模板</button></div>
+    <div class="mc-chip-spec-guide">模板只生成当前芯片能提供的规格，不会自动改动已经审批的产品配置。默认出货规格只能选择一个。</div>
+    <div data-chip-applied-templates></div>
+    <div class="mc-chip-variant-toolbar"><button class="mc-button" type="button" data-chip-manual-open>手工添加组合</button><button class="mc-button mc-button--primary" type="button" data-chip-variant-save>保存启用状态和默认规格</button></div>
+    <div data-chip-variant-list><div class="mc-empty-inline">请先保存芯片草稿，再维护规格组合。</div></div>
+   </section>
+  </div>
+  <div data-category-pane="chip_templates" hidden>
+   <section class="mc-form-section mc-chip-template-pane">
+    <div class="mc-form-section__head"><div><strong>规格模板</strong><span>勾选色温、显指和色容差后自动生成组合；可逐个取消无效组合</span></div><button class="mc-button mc-button--primary" type="button" data-chip-template-new>新建模板</button></div>
+    <div class="mc-chip-template-layout">
+     <div class="mc-chip-template-list" data-chip-template-list></div>
+     <form class="mc-chip-template-editor" data-chip-template-form>
+      <input type="hidden" name="template_id">
+      <label class="mc-field"><span>模板名称 *</span><input name="template_name" maxlength="160" required></label>
+      <label class="mc-field"><span>用途说明</span><input name="description" maxlength="500"></label>
+      <label class="mc-chip-default-toggle"><input type="checkbox" name="is_system_default" value="1"><span>设为系统默认模板</span></label>
+      <div class="mc-chip-template-values">
+       <fieldset><legend>色温（K，可复选）</legend><div data-chip-template-values="cct"></div><label>自定义 <input type="number" min="1000" max="20000" data-chip-template-custom="cct"><button type="button" data-chip-template-add="cct">加入</button></label></fieldset>
+       <fieldset><legend>显指 CRI（可复选）</legend><div data-chip-template-values="cri"></div><label>自定义 <input type="number" min="0" max="100" step="0.1" data-chip-template-custom="cri"><button type="button" data-chip-template-add="cri">加入</button></label></fieldset>
+       <fieldset><legend>色容差 SDCM（可复选）</legend><div data-chip-template-values="sdcm"></div><label>自定义 <input type="number" min="0" max="20" step="0.1" data-chip-template-custom="sdcm"><button type="button" data-chip-template-add="sdcm">加入</button></label></fieldset>
+      </div>
+      <div class="mc-chip-combination-head"><strong>生成的有效组合</strong><span data-chip-combination-count>0 个</span></div>
+      <div class="mc-chip-combination-list" data-chip-combination-list></div>
+      <label class="mc-field"><span>本次版本说明</span><input name="change_note" maxlength="500" placeholder="例如：增加 3000K CRI90 SDCM≤3"></label>
+      <button class="mc-button mc-button--primary" type="submit">保存为新版本</button>
+     </form>
+    </div>
+   </section>
+  </div>
+  <?php endif;?>
   <div data-category-pane="source" hidden>
    <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>原始来源</strong><span>旧 BOM 资料只读，不会被物料中心修改</span></div></div>
     <div class="mc-source-detail-grid" data-category-source-fields><div class="mc-empty-inline">当前物料没有旧 BOM 来源映射。</div></div>
@@ -47,6 +81,39 @@ if($mcCategoryDrawer){
  <div class="mc-drawer__footer mc-category-editor-footer"><span data-category-editor-state>尚未保存</span><button class="mc-button" type="button" data-category-reference hidden>引用检查</button><button class="mc-button" type="button" data-category-copy hidden>复制新增</button><button class="mc-button" type="button" data-category-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-category-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-category-save>保存草稿</button></div>
 </div>
 <?php endif; ?>
+<?php if($mcCategoryDrawer&&$mcCategoryDrawer['code']==='chip'):?>
+<div class="mc-modal" id="chip-template-apply-modal" data-modal>
+ <form class="mc-modal__panel mc-modal__panel--medium" data-chip-apply-form>
+  <div class="mc-modal__header"><div><strong>套用芯片规格模板</strong><span>多个模板会合并并自动去重；先预览影响，再明确执行</span></div><button class="mc-icon-button" type="button" data-chip-modal-close>×</button></div>
+  <div class="mc-modal__body">
+   <div class="mc-chip-apply-target" data-chip-apply-target></div>
+   <div class="mc-chip-apply-template-list" data-chip-apply-template-list></div>
+   <div class="mc-batch-mode mc-chip-apply-mode">
+    <label><input type="radio" name="mode" value="fill_missing" checked><span><b>只补缺失（推荐）</b><small>保留芯片当前已有规格，只添加模板中缺少的组合。</small></span></label>
+    <label><input type="radio" name="mode" value="replace"><span><b>按模板替换</b><small>模板外且未被已审批产品引用的规格会停用；已引用规格受保护。</small></span></label>
+   </div>
+   <div class="mc-chip-apply-preview" data-chip-apply-preview>选择模板后点击“预览影响”。</div>
+  </div>
+  <div class="mc-modal__footer"><button class="mc-button" type="button" data-chip-modal-close>取消</button><button class="mc-button" type="button" data-chip-apply-preview-button>预览影响</button><button class="mc-button mc-button--primary" type="submit" disabled>确认套用</button></div>
+ </form>
+</div>
+<div class="mc-modal" id="chip-manual-variant-modal" data-modal>
+ <form class="mc-modal__panel" data-chip-manual-form>
+  <div class="mc-modal__header"><div><strong>手工添加芯片规格</strong><span>适合个别供应商特殊组合；已有相同组合会自动跳过</span></div><button class="mc-icon-button" type="button" data-chip-modal-close>×</button></div>
+  <div class="mc-modal__body"><div class="mc-form-grid">
+   <label class="mc-field"><span>色温 K *</span><input type="number" name="cct_k" min="1000" max="20000" required></label>
+   <label class="mc-field"><span>显指 CRI *</span><input type="number" name="cri" min="0" max="100" step="0.1" required></label>
+   <label class="mc-field"><span>色容差 SDCM *</span><input type="number" name="sdcm" min="0" max="20" step="0.1" required></label>
+   <label class="mc-field"><span>R9</span><input type="number" name="r9" min="-100" max="100" step="0.1"></label>
+   <label class="mc-field"><span>供应商规格号</span><input name="supplier_spec_code" maxlength="160"></label>
+   <label class="mc-field"><span>采购价</span><input type="number" name="purchase_price" min="0" step="0.0001"></label>
+   <label class="mc-field"><span>库存</span><input type="number" name="stock_quantity" min="0" step="0.001"></label>
+   <label class="mc-field"><span>交期（天）</span><input type="number" name="lead_time_days" min="0"></label>
+  </div></div>
+  <div class="mc-modal__footer"><button class="mc-button" type="button" data-chip-modal-close>取消</button><button class="mc-button mc-button--primary" type="submit">添加规格</button></div>
+ </form>
+</div>
+<?php endif;?>
 <?php if(($activeMenu??'')!=='power'): ?><div class="mc-drawer mc-drawer--medium" id="batch-drawer" data-drawer><div class="mc-drawer__header"><div><strong>批量设置</strong><span data-batch-count>已选择 0 项</span></div><button class="mc-icon-button" data-close-layer>×</button></div><div class="mc-drawer__body"><div class="mc-batch-fields"><div class="mc-batch-field"><label class="mc-field"><span>字段</span><select data-batch-field></select></label><label class="mc-field"><span>新值</span><input data-batch-value placeholder="填写新值"></label></div></div><div class="mc-section-title">覆盖策略</div><div class="mc-radio-list"><label><input type="radio" name="overwrite" value="fill_empty" checked> 只填写空值</label><label><input type="radio" name="overwrite" value="overwrite"> 覆盖已有值</label></div><output data-batch-preview></output></div><div class="mc-drawer__footer"><button class="mc-button" data-close-layer>取消</button><button class="mc-button mc-button--primary" data-batch-run>预览并执行</button></div></div><?php endif; ?>
 <?php if(($activeMenu??'')==='power'): ?>
 <div class="mc-drawer mc-power-drawer" id="power-editor-drawer" data-drawer data-power-editor>
@@ -127,4 +194,4 @@ if($mcCategoryDrawer){
 </div>
 <?php endif; ?>
 <?php if(($activeMenu??'')!=='power'&&!$mcCategoryDrawer): ?><div class="mc-modal" id="new-modal" data-modal><form class="mc-modal__panel" data-material-create><div class="mc-modal__header"><div><strong>新建物料</strong><span>选择类别并创建真实草稿</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div><div class="mc-modal__body"><input type="hidden" name="csrf_token" value="<?=mc_h(function_exists('csrf_token')?csrf_token():'')?>"><div class="mc-form-grid"><label class="mc-field"><span>类别 *</span><select name="category_id" required data-material-category><?php try{foreach((new \Artdon\MaterialCenter\Services\MaterialMasterService())->categories() as $category):?><option value="<?=intval($category['id'])?>" data-category-code="<?=mc_h($category['code'])?>"><?=mc_h($category['name'])?></option><?php endforeach;}catch(Throwable){ }?></select></label><label class="mc-field"><span>名称 *</span><input name="name" required maxlength="200" placeholder="物料名称"></label><label class="mc-field"><span>品牌</span><input name="brand" maxlength="120" placeholder="品牌"></label><label class="mc-field"><span>型号</span><input name="model" maxlength="160" placeholder="型号"></label><label class="mc-field"><span>单位 *</span><input name="unit" required maxlength="30" value="PCS"></label></div><div class="mc-form-grid" data-category-fields></div><div class="mc-form-error" data-material-form-error hidden></div></div><div class="mc-modal__footer"><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="submit">保存草稿</button></div></form></div><?php endif; ?>
-<div class="mc-toast-region" data-toast-region></div><script>window.MC_BASE_URL=<?=json_encode(MC_BASE_URL,JSON_UNESCAPED_UNICODE)?>;window.MC_CSRF=<?=json_encode(function_exists('csrf_token')?csrf_token():'')?>;</script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/app.js')))?>"></script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/material-shell-data.js')))?>"></script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/material-workspace-actions.js')))?>"></script><?php if(($activeMenu??'')==='power'):?><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/power-editor.js')))?>"></script><?php elseif($mcCategoryDrawer):?><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/category-editor.js')))?>"></script><?php endif;?></body></html>
+<div class="mc-toast-region" data-toast-region></div><script>window.MC_BASE_URL=<?=json_encode(MC_BASE_URL,JSON_UNESCAPED_UNICODE)?>;window.MC_CSRF=<?=json_encode(function_exists('csrf_token')?csrf_token():'')?>;</script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/app.js')))?>"></script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/material-shell-data.js')))?>"></script><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/material-workspace-actions.js')))?>"></script><?php if(($activeMenu??'')==='power'):?><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/power-editor.js')))?>"></script><?php elseif($mcCategoryDrawer):?><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/category-editor.js')))?>"></script><?php if($mcCategoryDrawer['code']==='chip'):?><script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/chip-specifications.js')))?>"></script><?php endif;?><?php endif;?></body></html>

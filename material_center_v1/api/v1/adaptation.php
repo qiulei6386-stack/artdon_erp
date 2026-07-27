@@ -6,6 +6,7 @@ require_once dirname(__DIR__, 2).'/bootstrap.php';
 use Artdon\MaterialCenter\Adapters\LegacyAuthAdapter;
 use Artdon\MaterialCenter\Security\PermissionService;
 use Artdon\MaterialCenter\Services\AdaptationService;
+use Artdon\MaterialCenter\Services\ChipSpecificationService;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -65,6 +66,12 @@ try {
         })(),
         'save_option' => ['id' => $service->saveOption($_POST, $user->id)],
         'add_options' => $service->addOptions((int) ($_POST['group_id'] ?? 0), $json('material_ids'), $user->id),
+        'save_option_chip_variants' => (new ChipSpecificationService())->saveOptionVariants(
+            (int) ($_POST['option_id'] ?? 0),
+            $json('variant_ids'),
+            (int) ($_POST['default_variant_id'] ?? 0),
+            $user->id
+        ),
         'set_default' => (static function () use ($service, $user, $json): array {
             $service->setDefault(
                 (int) ($_POST['group_id'] ?? 0),
