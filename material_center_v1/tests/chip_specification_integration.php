@@ -16,6 +16,7 @@ $stamp = date('YmdHis').'-'.bin2hex(random_bytes(3));
 $materialId = 0;
 $templateId = 0;
 $productIds = [];
+$namingModelId = 0;
 $syncLogFloor = (int) $db->query('SELECT COALESCE(MAX(id),0) FROM mc_chip_template_sync_logs')->fetchColumn();
 
 $assert = static function (bool $condition, string $message): void {
@@ -25,11 +26,9 @@ $assert = static function (bool $condition, string $message): void {
 try {
     $categoryId = (int) $db->query("SELECT id FROM mc_material_categories WHERE code='chip' LIMIT 1")->fetchColumn();
     $assert($categoryId > 0, 'chip material category is missing');
-    $legacyId = (int) $db->query("SELECT n.id FROM naming_models n
-        LEFT JOIN mc_products p ON p.legacy_table='naming_models' AND p.legacy_id=n.id
-        WHERE p.id IS NULL AND n.website_deleted=0
-        ORDER BY n.updated_at DESC,n.id DESC LIMIT 1")->fetchColumn();
-    $assert($legacyId > 0, 'no unused naming product is available for quote bridge test');
+    $db->prepare('INSERT INTO naming_models(model_no) VALUES(?)')->execute(['CODEX-CHIP-BRIDGE-'.$stamp]);
+    $namingModelId = (int) $db->lastInsertId();
+    $legacyId = $namingModelId;
 
     $db->prepare("INSERT INTO mc_materials
         (material_uuid,material_code,category_id,brand,model,name,unit,status,source,is_official,allow_bom,allow_quote,allow_customer_display,is_pilot,created_by,updated_by,created_at,updated_at)
@@ -163,4 +162,5 @@ try {
         $db->prepare('DELETE FROM mc_chip_template_sync_logs WHERE id>?')->execute([$syncLogFloor]);
         $db->prepare('DELETE FROM mc_chip_spec_templates WHERE id=?')->execute([$templateId]);
     }
+    if ($namingModelId) $db->prepare('DELETE FROM naming_models WHERE id=?')->execute([$namingModelId]);
 }
