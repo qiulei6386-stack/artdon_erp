@@ -45,6 +45,7 @@ contract_tests=(
   tests/crm_quote_followup_transaction_contract.php
   tests/dispatch_current_account_visibility_contract.php
   material_center_v1/tests/adaptation_batch_quick_rules_contract.php
+  material_center_v1/tests/adaptation_quick_rule_discovery_contract.php
   material_center_v1/tests/adaptation_workbench_contract.php
   material_center_v1/tests/category_editor_drawer_contract.php
   material_center_v1/tests/dropdown_contract_test.php

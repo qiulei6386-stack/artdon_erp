@@ -10,19 +10,19 @@ use RuntimeException;
 final class AdaptationService
 {
     private const BUSINESS_TYPES = [
-        'chip' => ['label' => '芯片', 'category' => 'chip'],
-        'driver' => ['label' => '驱动', 'category' => 'power_supply'],
-        'power' => ['label' => '电源', 'category' => 'power_supply'],
-        'optical' => ['label' => '光学', 'category' => 'optical'],
-        'honeycomb' => ['label' => '蜂巢网', 'category' => 'accessory'],
-        'glass' => ['label' => '玻璃', 'category' => 'optical'],
-        'reflector' => ['label' => '反光杯 / 格栅', 'category' => 'optical'],
-        'accessory' => ['label' => '配件', 'category' => 'accessory'],
-        'color' => ['label' => '颜色', 'category' => 'accessory'],
-        'installation' => ['label' => '安装', 'category' => 'connector'],
-        'dimming' => ['label' => '调光', 'category' => 'power_supply'],
-        'special' => ['label' => '特殊要求', 'category' => 'accessory'],
-        'custom' => ['label' => '自定义', 'category' => null],
+        'chip' => ['label' => '芯片 / 光源', 'category' => 'chip', 'default_name' => '芯片 / 光源'],
+        'driver' => ['label' => '驱动', 'category' => 'power_supply', 'default_name' => '驱动'],
+        'power' => ['label' => '电源 / 驱动', 'category' => 'power_supply', 'default_name' => '电源 / 驱动'],
+        'optical' => ['label' => '光学 / 透镜', 'category' => 'optical', 'default_name' => '光学 / 透镜'],
+        'honeycomb' => ['label' => '蜂巢网', 'category' => 'accessory', 'default_name' => '蜂巢网'],
+        'glass' => ['label' => '玻璃', 'category' => 'optical', 'default_name' => '玻璃'],
+        'reflector' => ['label' => '反光杯 / 格栅', 'category' => 'optical', 'default_name' => '反光杯 / 格栅'],
+        'accessory' => ['label' => '附件配件', 'category' => 'accessory', 'default_name' => '附件配件'],
+        'color' => ['label' => '外观颜色', 'category' => 'accessory', 'default_name' => '外观颜色'],
+        'installation' => ['label' => '安装方式', 'category' => 'connector', 'default_name' => '安装方式'],
+        'dimming' => ['label' => '调光方式', 'category' => 'power_supply', 'default_name' => '调光方式'],
+        'special' => ['label' => '特殊要求', 'category' => 'accessory', 'default_name' => '特殊要求'],
+        'custom' => ['label' => '自定义用途', 'category' => null, 'default_name' => '自定义配置'],
     ];
 
     private const STANDARD_GROUPS = [
@@ -476,7 +476,10 @@ final class AdaptationService
         if (!$productId || !$this->product($productId)) throw new RuntimeException('请选择有效产品。');
         $this->assertMeaningfulName($name);
         if (!isset(self::BUSINESS_TYPES[$businessType])) throw new RuntimeException('请先选择有效的配置组类型。');
-        $category = trim((string) ($data['material_category_code'] ?? (self::BUSINESS_TYPES[$businessType]['category'] ?? '')));
+        $mappedCategory = self::BUSINESS_TYPES[$businessType]['category'] ?? null;
+        $category = $mappedCategory !== null
+            ? (string) $mappedCategory
+            : trim((string) ($data['material_category_code'] ?? ''));
         $validCategories = ['power_supply', 'chip', 'optical', 'profile', 'connector', 'accessory', 'packaging'];
         if ($category !== '' && !in_array($category, $validCategories, true)) throw new RuntimeException('关联物料类别无效。');
         if ($category === '') throw new RuntimeException('请选择配置组对应的物料类别。');

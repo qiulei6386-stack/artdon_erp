@@ -18,7 +18,7 @@ try {
     $insertProduct = $db->prepare("INSERT INTO mc_products
         (legacy_table,legacy_id,product_code,product_name,snapshot_json,snapshot_hash,synced_at,status)
         VALUES('codex_adaptation_test',?,?,?,?,?,NOW(),'active')");
-    foreach (['SOURCE', 'TARGET'] as $index => $suffix) {
+    foreach (['SOURCE', 'TARGET', 'GROUP'] as $index => $suffix) {
         $snapshot = json_encode(['series_name' => 'CODEX-BATCH-'.$stamp], JSON_UNESCAPED_UNICODE);
         $insertProduct->execute([
             990000000 + random_int(1, 999999) + $index,
@@ -29,7 +29,19 @@ try {
         ]);
         $productIds[] = (int) $db->lastInsertId();
     }
-    [$sourceId, $targetId] = $productIds;
+    [$sourceId, $targetId, $groupTestProductId] = $productIds;
+
+    $mappedGroupId = $service->saveGroup([
+        'product_id' => $groupTestProductId,
+        'group_name' => '芯片 / 光源',
+        'business_type' => 'chip',
+        'material_category_code' => 'accessory',
+        'selection_mode' => 'single',
+        'is_required' => 1,
+    ], 1);
+    $mappedCategory = $db->prepare('SELECT material_category_code FROM mc_adaptation_groups WHERE id=?');
+    $mappedCategory->execute([$mappedGroupId]);
+    $assert($mappedCategory->fetchColumn() === 'chip', 'standard group purpose must enforce the matching material category');
 
     $db->prepare("INSERT INTO mc_adaptation_groups
         (product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,

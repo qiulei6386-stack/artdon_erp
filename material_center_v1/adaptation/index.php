@@ -53,21 +53,28 @@ include MC_ROOT.'/components/layout_top.php';
 
         <section class="mc-adaptation-column mc-adaptation-rules">
             <div class="mc-adaptation-column__head">
-                <div><strong>配置规则</strong><span data-rule-subtitle>请选择产品</span></div>
+                <div><strong>配置组（产品选配结构）</strong><span data-rule-subtitle>请选择产品</span></div>
                 <button class="mc-button" type="button" data-group-create disabled>＋ 配置组</button>
             </div>
             <div data-product-summary></div>
+            <div class="mc-config-group-guide">
+                <strong>配置组 = 当前产品的一类选配</strong>
+                <span>例如“芯片 / 光源”组：先填关键范围，再加入符合范围的候选芯片；“批量套用”才是把整套已配置内容复制到其他产品。</span>
+            </div>
             <div class="mc-adaptation-groups" data-group-list></div>
         </section>
 
         <aside class="mc-adaptation-column mc-adaptation-options">
             <div class="mc-adaptation-column__head">
                 <div><strong>选项详情</strong><span data-option-subtitle>请选择配置组</span></div>
-                <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 从物料库添加选项</button>
+                <div class="mc-adaptation-column__actions">
+                    <button class="mc-button mc-button--soft" type="button" data-open-quick-rules disabled>填写关键范围</button>
+                    <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
+                </div>
             </div>
             <div class="mc-option-tabs" role="tablist" data-option-tabs hidden>
                 <button type="button" class="is-active" data-adaptation-tab="options">选项列表</button>
-                <button type="button" data-adaptation-tab="quick_rules">快速规则</button>
+                <button type="button" data-adaptation-tab="quick_rules">关键范围（快速规则）</button>
                 <button type="button" data-adaptation-tab="default">默认设置</button>
                 <button type="button" data-adaptation-tab="alternative">替代关系</button>
                 <button type="button" data-adaptation-tab="conditions">适用条件</button>
@@ -137,19 +144,23 @@ include MC_ROOT.'/components/layout_top.php';
     <div class="mc-modal" id="group-modal" data-adaptation-modal>
         <form class="mc-modal__panel" data-group-form>
             <div class="mc-modal__header">
-                <div><strong data-group-form-title>新建配置组</strong><span>先选择业务类型，再维护名称和选择规则。</span></div>
+                <div><strong data-group-form-title>新建配置组</strong><span>选择“配置用途”即可，候选物料来源由系统自动确定。</span></div>
                 <button type="button" class="mc-icon-button" data-modal-close>×</button>
             </div>
             <div class="mc-modal__body">
                 <input type="hidden" name="id">
                 <div class="mc-form-grid">
                     <label class="mc-field">
-                        <span>配置组类型 *</span>
+                        <span>配置用途 *</span>
                         <select name="business_type" required data-business-type></select>
+                        <small>决定可填写的关键范围和筛选逻辑。</small>
                     </label>
-                    <label class="mc-field">
-                        <span>对应物料类别 *</span>
-                        <select name="material_category_code" required data-material-category>
+                    <div class="mc-field">
+                        <span>候选物料来源</span>
+                        <input type="hidden" name="material_category_code" data-material-category>
+                        <strong class="mc-field-readonly" data-material-category-label>选择配置用途后自动确定</strong>
+                        <select data-custom-material-category hidden>
+                            <option value="">请选择物料类别</option>
                             <option value="power_supply">电源</option>
                             <option value="chip">芯片</option>
                             <option value="optical">光学</option>
@@ -158,10 +169,12 @@ include MC_ROOT.'/components/layout_top.php';
                             <option value="accessory">配件</option>
                             <option value="packaging">包装</option>
                         </select>
-                    </label>
+                        <small data-material-category-help>无需重复选择，系统会自动关联正式物料库。</small>
+                    </div>
                     <label class="mc-field mc-field--wide">
-                        <span>配置组名称 *</span>
-                        <input name="group_name" maxlength="120" required placeholder="例如：应急电源">
+                        <span>页面显示名称 *</span>
+                        <input name="group_name" maxlength="120" required placeholder="选择配置用途后自动填写，也可以改名">
+                        <small>只是页面上看到的名称；需要区分主芯片、备用芯片时再修改。</small>
                     </label>
                     <label class="mc-field">
                         <span>业务要求</span>

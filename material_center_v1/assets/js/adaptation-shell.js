@@ -30,6 +30,17 @@
   const integer = value => Number.parseInt(value || 0, 10) || 0;
   const selectedProductId = () => integer(state.workspace?.product?.id);
   const selectedGroup = () => state.workspace?.active_group || null;
+  const materialCategoryLabels = {
+    power_supply: '电源类正式物料',
+    chip: '芯片类正式物料',
+    optical: '光学类正式物料',
+    profile: '型材 / 散热件类正式物料',
+    connector: '接头 / 安装件类正式物料',
+    accessory: '配件类正式物料',
+    packaging: '包装类正式物料',
+  };
+  const quickRuleCount = group => Object.entries(group?.quick_rules || {})
+    .filter(([key, value]) => key !== 'availability' && value !== '' && value !== null).length;
 
   const notify = (title, message) => {
     const region = q('[data-toast-region]');
@@ -193,13 +204,18 @@
     const activeId = integer(workspace.active_group?.id);
     list.innerHTML = workspace.groups.map(group => {
       const status = statusLabels[group.display_status] || statusLabels.pending;
+      const ruleCount = quickRuleCount(group);
+      const ruleLabel = group.quick_rules?.availability === 'forbidden'
+        ? '不允许选配'
+        : (ruleCount ? `已填写 ${ruleCount} 项` : '待填写');
       return `<article class="mc-adaptation-group-card ${integer(group.id) === activeId ? 'is-active' : ''}" draggable="true" data-group-id="${integer(group.id)}">
         <button class="mc-adaptation-group-card__main" type="button" data-select-group="${integer(group.id)}">
           <span class="mc-drag-handle" title="拖动排序">⋮⋮</span>
           <span class="mc-rule-group__icon">◇</span>
           <span class="mc-adaptation-group-card__name">
             <strong>${escapeHtml(group.group_name)}</strong>
-            <small>${escapeHtml(state.metadata.business_types?.[group.business_type]?.label || group.business_type)} · ${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small>
+            <small>${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'} · 来源：${escapeHtml(materialCategoryLabels[group.material_category_code] || group.material_category_code)}</small>
+            <em class="${ruleCount ? 'is-complete' : ''}">关键范围：${escapeHtml(ruleLabel)}</em>
             <em>默认：${escapeHtml(group.default_material || '未设置')}</em>
           </span>
           <span class="mc-adaptation-group-counts">
@@ -227,6 +243,7 @@
     const detail = q('[data-option-detail]');
     q('[data-option-tabs]').hidden = !group;
     q('[data-candidate-open]').disabled = !group;
+    q('[data-open-quick-rules]').disabled = !group;
     q('[data-option-subtitle]').textContent = group?.group_name || '请选择配置组';
     if (!group) {
       detail.innerHTML = '<div class="mc-empty-state"><strong>请选择配置组</strong><span>配置组切换后，这里会立即显示选项、默认、条件和审批信息。</span></div>';
@@ -251,8 +268,11 @@
         </article>`).join('')}</div>`
         : `<div class="mc-empty-state mc-empty-state--action">
           <strong>当前配置组尚未添加物料选项</strong>
-          <span>只能从对应类别的正式物料库选择，候选项会显示匹配等级和冲突原因。</span>
-          <button class="mc-button mc-button--primary" type="button" data-empty-candidate>从物料库添加选项</button>
+          <span>建议先填写关键范围，系统再从对应类别的正式物料库筛选候选项。</span>
+          <div class="mc-empty-state__actions">
+            <button class="mc-button mc-button--soft" type="button" data-open-quick-rules>先填关键范围（快速规则）</button>
+            <button class="mc-button mc-button--primary" type="button" data-empty-candidate>直接添加候选</button>
+          </div>
         </div>`;
     } else if (state.tab === 'quick_rules') {
       const fields = state.metadata.quick_rule_fields?.[group.business_type] || [];
@@ -260,7 +280,7 @@
       const isPower = group.material_category_code === 'power_supply';
       detail.innerHTML = `<form class="mc-quick-rule-panel" data-quick-rule-form>
         <div class="mc-quick-rule-intro">
-          <div><strong>用少量范围自动筛选候选物料</strong><span>空着表示待确认；资料不完整时系统只会标为“需要审批”，不会假装适配。</span></div>
+          <div><strong>填写关键范围，自动筛选候选物料</strong><span>空着表示待确认；资料不完整时系统只会标为“需要审批”，不会假装适配。</span></div>
           ${isPower ? `<a class="mc-button" href="${escapeHtml(state.baseUrl)}/product_power_rules.php">打开产品电源规则</a>` : ''}
         </div>
         <label class="mc-field mc-quick-rule-availability">
@@ -277,7 +297,7 @@
             ? `<select name="${escapeHtml(field.key)}"><option value="">待确认</option>${Object.entries(field.options || {}).map(([value, label]) => `<option value="${escapeHtml(value)}" ${rules[field.key] === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>`
             : `<input type="${field.type === 'number' ? 'number' : 'text'}" ${field.type === 'number' ? 'min="0" step="0.01"' : ''} name="${escapeHtml(field.key)}" value="${escapeHtml(rules[field.key] ?? '')}" placeholder="${escapeHtml(field.placeholder || '留空表示待确认')}">`}
         </label>`).join('')}</div>` : '<div class="mc-empty-state mc-empty-state--compact"><strong>此组只需设置是否允许</strong><span>更细的组合限制可继续使用“适用条件”和冲突设置。</span></div>'}
-        <button class="mc-button mc-button--primary" type="submit">保存快速规则</button>
+        <button class="mc-button mc-button--primary" type="submit">保存关键范围</button>
       </form>`;
     } else if (state.tab === 'default') {
       const inputType = group.selection_mode === 'single' ? 'radio' : 'checkbox';
@@ -449,13 +469,45 @@
   };
 
   const populateGroupFormTypes = () => {
-    q('[data-business-type]').innerHTML = '<option value="">请选择类型</option>'
+    q('[data-business-type]').innerHTML = '<option value="">请选择配置用途</option>'
       + Object.entries(state.metadata.business_types || {}).map(([key, row]) => `<option value="${escapeHtml(key)}">${escapeHtml(row.label)}</option>`).join('');
+  };
+
+  const syncGroupFormType = (suggestName = false) => {
+    const form = q('[data-group-form]');
+    const type = form.elements.business_type.value;
+    const definition = state.metadata.business_types?.[type] || {};
+    const previousSuggestion = form.dataset.suggestedGroupName || '';
+    const currentName = form.elements.group_name.value.trim();
+    const categoryInput = q('[data-material-category]', form);
+    const categoryLabel = q('[data-material-category-label]', form);
+    const customCategory = q('[data-custom-material-category]', form);
+    const categoryHelp = q('[data-material-category-help]', form);
+    const isCustom = type === 'custom';
+    customCategory.hidden = !isCustom;
+    categoryLabel.hidden = isCustom;
+    if (isCustom) {
+      customCategory.value = categoryInput.value || customCategory.value || '';
+      categoryInput.value = customCategory.value;
+      categoryHelp.textContent = '自定义用途需要选择候选物料来自哪个正式物料库。';
+    } else {
+      categoryInput.value = definition.category || '';
+      categoryLabel.textContent = definition.category
+        ? (materialCategoryLabels[definition.category] || definition.category)
+        : '选择配置用途后自动确定';
+      categoryHelp.textContent = '无需重复选择，系统会自动关联正式物料库。';
+    }
+    const nextSuggestion = definition.default_name || definition.label || '';
+    if (suggestName && (!currentName || currentName === previousSuggestion)) {
+      form.elements.group_name.value = nextSuggestion;
+    }
+    form.dataset.suggestedGroupName = suggestName ? nextSuggestion : '';
   };
 
   const openGroupForm = group => {
     const form = q('[data-group-form]');
     form.reset();
+    form.dataset.suggestedGroupName = '';
     form.elements.id.value = group?.id || '';
     q('[data-group-form-title]').textContent = group ? '编辑配置组' : '新建配置组';
     q('[data-group-delete]').hidden = !group;
@@ -472,6 +524,7 @@
       form.elements.sort_order.value = String((state.workspace?.groups?.length || 0) * 10 + 10);
       form.elements.status.value = 'draft';
     }
+    syncGroupFormType(false);
     state.dirty = false;
     openModal('group-modal');
   };
@@ -557,7 +610,6 @@
     const groupButton = event.target.closest('[data-select-group]');
     if (groupButton) {
       try {
-        state.tab = 'options';
         await loadWorkspace(selectedProductId(), integer(groupButton.dataset.selectGroup));
       } catch (error) {
         notify('配置组加载失败', error.message);
@@ -567,6 +619,11 @@
     const tab = event.target.closest('[data-adaptation-tab]');
     if (tab) {
       state.tab = tab.dataset.adaptationTab;
+      renderOptionPanel();
+      return;
+    }
+    if (event.target.closest('[data-open-quick-rules]')) {
+      state.tab = 'quick_rules';
       renderOptionPanel();
       return;
     }
@@ -715,8 +772,10 @@
     if (event.target.matches('[data-batch-form] [name="mode"], [data-batch-form] [name="include_power_rule"]')) invalidateBatchPreview();
     if (event.target.closest('form')) state.dirty = true;
     if (event.target.matches('[data-business-type]')) {
-      const category = state.metadata.business_types?.[event.target.value]?.category;
-      if (category) q('[data-material-category]').value = category;
+      syncGroupFormType(true);
+    }
+    if (event.target.matches('[data-custom-material-category]')) {
+      q('[data-material-category]', event.target.form).value = event.target.value;
     }
     if (event.target.matches('[name="selection_mode"]')) {
       const form = event.target.form;
@@ -751,8 +810,11 @@
     try {
       const result = await post('apply_template', { product_id: selectedProductId() });
       closeModal(modal);
+      state.tab = 'quick_rules';
       await loadWorkspace(selectedProductId());
-      notify('标准配置已生成', result.created ? `新增 ${result.created} 个配置组。` : '配置组已齐全，没有重复插入。');
+      notify('标准配置已生成', result.created
+        ? `新增 ${result.created} 个配置组，已为你打开第一个组的关键范围。`
+        : '配置组已齐全，已打开第一个组的关键范围。');
     } catch (error) {
       notify('生成失败', error.message);
       if (button) button.disabled = false;
@@ -923,7 +985,7 @@
         const followup = integer(result.incompatible)
           ? `；有 ${integer(result.incompatible)} 个已有选项明确不适配，请更换后再审批`
           : integer(result.needs_review) ? `；有 ${integer(result.needs_review)} 个选项资料不足，需要审批确认` : '';
-        notify('快速规则已保存', `候选物料会立即按新范围筛选${followup}。`);
+        notify('关键范围已保存', `候选物料会立即按新范围筛选${followup}。`);
       } catch (error) {
         notify('保存失败', error.message);
         button.disabled = false;
