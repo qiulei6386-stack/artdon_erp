@@ -46,6 +46,7 @@ contract_tests=(
   tests/crm_marketing_lazy_payload_contract.php
   tests/crm_marketing_wizard_flow_contract.php
   tests/crm_marketing_wizard_mail_preview_contract.php
+  tests/crm_marketing_schedule_preview_contract.php
   tests/crm_quote_followup_history_actions_contract.php
   tests/crm_quote_followup_transaction_contract.php
   tests/dispatch_current_account_visibility_contract.php

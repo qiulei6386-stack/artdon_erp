@@ -15487,12 +15487,20 @@
 	        });
 	      });
       var refreshAudienceDebounced = debounce(function () { self.refreshWizardAudience(); }, 350);
+      var scheduleFields = ['schedule_type', 'scheduled_at', 'timezone_rule', 'send_interval_minutes', 'hourly_limit', 'daily_limit'];
+      var refreshSchedulePreviewDebounced = debounce(function () {
+        if (Number(self.wizardStep || 0) === 6) self.renderWizard();
+      }, 250);
       modal.querySelectorAll('[data-wizard-field]').forEach(function (input) {
         input.addEventListener('input', function () {
           var field = input.getAttribute('data-wizard-field');
           self.collectWizard();
           if (field === 'group_key' && self.wizardDraft.group_mode === 'country') {
             refreshAudienceDebounced();
+            return;
+          }
+          if (Number(self.wizardStep || 0) === 6 && scheduleFields.indexOf(field) >= 0) {
+            refreshSchedulePreviewDebounced();
             return;
           }
           self.updateWizardPreview();
@@ -15519,11 +15527,19 @@
 	            self.renderWizard();
 	            return;
 	          }
+	          if (Number(self.wizardStep || 0) === 6 && scheduleFields.indexOf(field) >= 0) {
+	            self.renderWizard();
+	            return;
+	          }
 	          self.updateWizardPreview();
 	        });
 	      });
       modal.querySelectorAll('[data-wizard-mail-account-check], [data-wizard-offline-user-check]').forEach(function (input) {
-        input.addEventListener('change', function () { self.collectWizard(); self.updateWizardPreview(); });
+        input.addEventListener('change', function () {
+          self.collectWizard();
+          if (Number(self.wizardStep || 0) === 6) self.renderWizard();
+          else self.updateWizardPreview();
+        });
       });
       modal.querySelector('[data-promo-template-copy]')?.addEventListener('click', function () { self.copyCurrentTemplate(); });
       modal.querySelector('[data-promo-execution-detail]')?.addEventListener('click', function () { self.openExecutionPlanDialog(); });
@@ -15813,22 +15829,44 @@
 	    renderScheduleStepLayout: function (draft) {
 	      var schedule = this.buildSchedulePlan(draft);
 	      var rows = schedule.rows || [];
+	      var mailRows = schedule.mailRows || [];
+	      var manualRows = schedule.manualRows || [];
+	      var blockedRows = schedule.blockedRows || [];
+	      var skippedRows = schedule.skippedRows || [];
 	      var accountSummary = {};
-	      rows.forEach(function (row) {
+	      mailRows.forEach(function (row) {
 	        var key = row.send_email || '未匹配发件箱';
 	        accountSummary[key] = (accountSummary[key] || 0) + 1;
 	      });
-	      var accountDist = Object.keys(accountSummary).map(function (key) { return '<span>' + esc(key) + '：' + esc(accountSummary[key]) + '</span>'; }).join('');
+	      var accountDist = Object.keys(accountSummary).map(function (key) { return '<span>' + esc(key) + '：' + esc(accountSummary[key]) + '封</span>'; }).join('');
+	      var manualSummary = {};
+	      manualRows.forEach(function (row) {
+	        var executor = this.mailExecutorLabel(row);
+	        var key = executor + ' · ' + cnChannel(row.channel || 'offline');
+	        manualSummary[key] = (manualSummary[key] || 0) + 1;
+	      }, this);
+	      var manualDist = Object.keys(manualSummary).map(function (key) { return '<span>' + esc(key) + '：' + esc(manualSummary[key]) + '条待办</span>'; }).join('');
 	      var startText = rows[0] ? this.formatScheduleDate(rows[0].schedule_send_at) : '--';
 	      var endText = rows.length ? this.formatScheduleDate(rows[rows.length - 1].schedule_send_at) : '--';
 	      var tableRows = rows.slice(0, 80).map(function (row) {
 	        var executor = this.mailExecutorLabel(row);
 	        var localText = row.schedule_local_at ? this.formatScheduleDate(row.schedule_local_at) : '时区未知';
-	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.send_email || '-') + '</td><td>' + esc(executor) + '</td><td>' + esc(localText) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_delivered_at)) + '</td><td>' + esc(row.schedule_note || '-') + '</td></tr>';
+	        var contact = row.execution_mode === 'mail' ? (row.email || '-') : (row.whatsapp || row.mobile || row.phone || row.email || '-');
+	        var action = row.execution_mode === 'mail' ? '自动邮件' : '人工执行';
+	        return '<tr><td>' + esc(row.schedule_index) + '</td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '-') + '</td><td>' + esc(cnChannel(row.channel || '-')) + '</td><td>' + esc(contact) + '</td><td>' + esc(action) + '</td><td>' + esc(executor) + '</td><td>' + esc(localText) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(row.schedule_note || '-') + '</td></tr>';
 	      }, this).join('');
+	      var blockedHtml = blockedRows.slice(0, 12).map(function (row) {
+	        return '<li><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.variable_contact_name || row.contact_name || '-') + ' · ' + esc(row.email || '-') + ' · ' + esc(row.reason || '未分配发件邮箱') + '</span></li>';
+	      }).join('');
+	      var skippedHtml = skippedRows.slice(0, 12).map(function (row) {
+	        return '<li><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.variable_contact_name || row.contact_name || '-') + ' · ' + esc(row.reason || '按规则跳过') + '</span></li>';
+	      }).join('');
 	      return '<section class="promo-step-card promo-step-schedule"><section class="promo-step-controls promo-schedule-controls"><label><span>执行方式</span><select data-wizard-field="schedule_type"><option value="manual"' + (draft.schedule_type === 'manual' ? ' selected' : '') + '>手动执行</option><option value="scheduled"' + (draft.schedule_type === 'scheduled' ? ' selected' : '') + '>定时执行</option><option value="auto"' + (draft.schedule_type === 'auto' ? ' selected' : '') + '>自动执行</option></select></label><label><span>开始时间</span><input type="datetime-local" data-wizard-field="scheduled_at" value="' + esc(draft.scheduled_at || '') + '"></label><label><span>时区规则</span><select data-wizard-field="timezone_rule"><option value="business_hours"' + (draft.timezone_rule === 'business_hours' ? ' selected' : '') + '>按国家工作时间</option><option value="company_time"' + (draft.timezone_rule === 'company_time' ? ' selected' : '') + '>按公司时间</option><option value="immediate"' + (draft.timezone_rule === 'immediate' ? ' selected' : '') + '>立即执行不等时区</option></select></label><label><span>发送间隔</span><input type="number" min="1" max="240" data-wizard-field="send_interval_minutes" value="' + esc(draft.send_interval_minutes || 3) + '"></label><label><span>每小时上限</span><input type="number" min="1" max="500" data-wizard-field="hourly_limit" value="' + esc(draft.hourly_limit || 50) + '"></label><label><span>每日上限</span><input type="number" min="1" max="3000" data-wizard-field="daily_limit" value="' + esc(draft.daily_limit || 200) + '"></label></section>' +
-	        '<div class="promo-step-mini-stats promo-schedule-summary"><article><strong>' + esc(rows.length) + '</strong><span>总发送数</span></article><article><strong>' + esc(startText) + '</strong><span>预计开始时间</span></article><article><strong>' + esc(endText) + '</strong><span>预计完成时间</span></article><article><strong>' + esc(Object.keys(accountSummary).length) + '</strong><span>发件邮箱数</span></article><article><strong>' + esc(accountDist ? '已分配' : '--') + '</strong><span>各邮箱分配数量</span></article></div><div class="promo-rule-strip">' + (accountDist || '<span>暂无邮件队列</span>') + '</div>' +
-	        '<section class="promo-step-table-wrap promo-schedule-detail-table"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>客户邮箱</th><th>发件邮箱</th><th>执行人</th><th>客户当地时间</th><th>服务器时间</th><th>预计发送时间</th><th>说明</th></tr></thead><tbody>' + (tableRows || '<tr><td colspan="10">当前没有邮件队列。请检查推广渠道、客户邮箱和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">计划阶段只调整显示预览；真实定时、时区和队列生成仍使用原算法。</article></section>';
+	        '<div class="promo-step-mini-stats promo-schedule-summary"><article><strong>' + esc(mailRows.length) + '</strong><span>自动邮件</span></article><article><strong>' + esc(manualRows.length) + '</strong><span>人工执行</span></article><article><strong>' + esc(blockedRows.length) + '</strong><span>待处理</span></article><article><strong>' + esc(skippedRows.length) + '</strong><span>按规则跳过</span></article><article><strong>' + esc(startText) + '</strong><span>预计开始时间</span></article><article><strong>' + esc(endText) + '</strong><span>预计完成时间</span></article></div><div class="promo-rule-strip promo-schedule-distribution">' + (accountDist || '<span>暂无自动邮件</span>') + (manualDist || '<span>暂无人工待办</span>') + '</div>' +
+	        '<section class="promo-schedule-preview-heading"><strong>执行时间预览</strong><span>修改开始时间、间隔、时区后自动重新计算；显示前 80 条。自动邮件按队列发送，人工渠道会在该时间生成待办，不会自动代发。</span></section><section class="promo-step-table-wrap promo-schedule-detail-table"><table class="promo-step-table"><thead><tr><th>#</th><th>客户</th><th>联系人</th><th>推广渠道</th><th>联系方式</th><th>执行方式</th><th>执行人</th><th>客户当地时间</th><th>预计执行时间</th><th>状态 / 说明</th></tr></thead><tbody>' + (tableRows || '<tr><td colspan="10">当前没有可执行目标，请检查客户/联系人选择。</td></tr>') + '</tbody></table></section>' +
+	        (blockedHtml ? '<section class="promo-schedule-exception is-warn"><strong>待处理：未分配发件邮箱（' + esc(blockedRows.length) + '）</strong><span>以下邮件在补齐发件邮箱前不会排入发送时间。</span><ul>' + blockedHtml + '</ul></section>' : '') +
+	        (skippedHtml ? '<section class="promo-schedule-exception"><strong>已跳过（' + esc(skippedRows.length) + '）</strong><span>这些目标按第 8 步规则不进入执行队列。</span><ul>' + skippedHtml + '</ul></section>' : '') +
+	        '<article class="promo-wizard-note">此处为保存前时间预览；生成执行队列时会再次按当前规则核验。</article></section>';
 	    },
 	    renderFailureStepLayout: function (draft) {
 	      var plan = this.buildExecutionPlan(draft);
@@ -16990,44 +17028,68 @@
       var interval = Math.max(1, Number(draft.send_interval_minutes || 3));
       var hourlyLimit = Math.max(1, Number(draft.hourly_limit || 50));
       var dailyLimit = Math.max(1, Number(draft.daily_limit || 200));
-      var base = draft.schedule_type === 'scheduled' && draft.scheduled_at ? new Date(String(draft.scheduled_at).replace(' ', 'T')) : new Date();
+      var base = draft.scheduled_at ? new Date(String(draft.scheduled_at).replace(' ', 'T')) : new Date();
       if (isNaN(base.getTime())) base = new Date();
       var accountCounters = {};
+      var manualCounters = {};
       var self = this;
-      var rows = mailItems.map(function (item, idx) {
-        var accountKey = item.account_id || item.send_email || 'default';
-        var count = accountCounters[accountKey] || 0;
-        accountCounters[accountKey] = count + 1;
+      var scheduleItem = function (item, idx, counters, counterKey, executionMode, notePrefix) {
+        var count = counters[counterKey] || 0;
+        counters[counterKey] = count + 1;
         var dayOffset = Math.floor(count / dailyLimit);
         var withinDay = count % dailyLimit;
         var hourOffset = Math.floor(withinDay / hourlyLimit);
         var minuteOffset = (withinDay % hourlyLimit) * interval;
         var sendAt = self.addMinutes(base, dayOffset * 1440 + hourOffset * 60 + minuteOffset);
         var offset = self.countryUtcOffset(item.country);
-        var note = '按公司时间排队';
+        var note = notePrefix || '按公司时间排队';
         if (draft.timezone_rule === 'business_hours') {
-          if (offset === null) note = '时区未知，按公司时间发送';
+          if (offset === null) note = executionMode === 'mail' ? '时区未知，按公司时间发送' : '时区未知，按公司时间生成待办';
           else {
             var aligned = self.alignBusinessHour(sendAt, offset);
-            if (aligned.getTime() !== sendAt.getTime()) note = '已顺延到客户当地工作时间';
-            else note = '客户当地工作时间内';
+            if (aligned.getTime() !== sendAt.getTime()) note = executionMode === 'mail' ? '已顺延到客户当地工作时间' : '已顺延到客户当地工作时间生成待办';
+            else note = executionMode === 'mail' ? '客户当地工作时间内' : '客户当地工作时间内生成待办';
             sendAt = aligned;
           }
-        } else if (draft.timezone_rule === 'immediate') note = '立即执行不等待时区';
+        } else if (draft.timezone_rule === 'immediate') note = executionMode === 'mail' ? '立即执行不等待时区' : '立即生成线下待办';
         var localAt = self.localizeScheduleTime(sendAt, offset);
-        var deliveredAt = self.addMinutes(sendAt, 2);
-        var localDeliveredAt = self.localizeScheduleTime(deliveredAt, offset);
         return Object.assign({}, item, {
           schedule_index: idx + 1,
+          execution_mode: executionMode,
+          execution_status: executionMode === 'mail' ? '自动邮件' : '人工执行',
           schedule_note: note,
           schedule_send_at: sendAt,
           schedule_local_at: localAt,
-          schedule_delivered_at: deliveredAt,
-          schedule_local_delivered_at: localDeliveredAt,
           timezone_offset: offset
         });
+      };
+      var mailRows = mailItems.map(function (item, idx) {
+        return scheduleItem(item, idx, accountCounters, item.account_id || item.send_email || 'default', 'mail', '按公司时间排队');
       });
-      return { rows: rows, plan: plan, interval: interval, hourlyLimit: hourlyLimit, dailyLimit: dailyLimit, base: base };
+      var blockedRows = [];
+      var skippedRows = [];
+      var manualRows = (plan.offlineItems || []).reduce(function (result, item) {
+        var reason = String(item.reason || '');
+        if (/无匹配发件邮箱/.test(reason)) {
+          blockedRows.push(Object.assign({}, item, { schedule_status: '待处理' }));
+          return result;
+        }
+        if (/无邮箱/.test(reason) && draft.no_email_policy !== 'offline') {
+          skippedRows.push(Object.assign({}, item, { schedule_status: '已跳过', reason: '无邮箱，按规则跳过' }));
+          return result;
+        }
+        if (/重复邮箱/.test(reason) && draft.duplicate_email_policy !== 'manual_confirm') {
+          skippedRows.push(Object.assign({}, item, { schedule_status: '已跳过', reason: '重复邮箱，按规则跳过' }));
+          return result;
+        }
+        var executor = item.executor || {};
+        var counterKey = (executor.id || executor.username || 'unassigned') + ':' + (item.channel || 'offline');
+        result.push(scheduleItem(item, result.length, manualCounters, counterKey, 'manual', '到点生成待办，由执行人手动发送'));
+        return result;
+      }, []);
+      var rows = mailRows.concat(manualRows).sort(function (a, b) { return a.schedule_send_at.getTime() - b.schedule_send_at.getTime(); });
+      rows.forEach(function (row, index) { row.schedule_index = index + 1; });
+      return { rows: rows, mailRows: mailRows, manualRows: manualRows, blockedRows: blockedRows, skippedRows: skippedRows, plan: plan, interval: interval, hourlyLimit: hourlyLimit, dailyLimit: dailyLimit, base: base };
     },
     renderSchedulePreview: function (draft) {
       var schedule = this.buildSchedulePlan(draft);

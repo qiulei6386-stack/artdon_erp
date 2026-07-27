@@ -22231,7 +22231,7 @@ body.is-promo-task-editor-open .promo-schedule-controls {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 body.is-promo-task-editor-open .promo-schedule-summary {
-  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
 }
 body.is-promo-task-editor-open .promo-schedule-summary article strong {
   font-size: 13px !important;
@@ -22239,6 +22239,42 @@ body.is-promo-task-editor-open .promo-schedule-summary article strong {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-schedule-preview-heading,
+body.is-promo-task-editor-open .promo-schedule-exception {
+  display: grid !important;
+  gap: 4px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  padding: 10px 12px !important;
+}
+body.is-promo-task-editor-open .promo-schedule-preview-heading strong,
+body.is-promo-task-editor-open .promo-schedule-exception strong {
+  color: var(--crm-text) !important;
+  font-size: 14px !important;
+}
+body.is-promo-task-editor-open .promo-schedule-preview-heading span,
+body.is-promo-task-editor-open .promo-schedule-exception span,
+body.is-promo-task-editor-open .promo-schedule-exception li span {
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+}
+body.is-promo-task-editor-open .promo-schedule-exception.is-warn {
+  border-color: #fdba74 !important;
+  background: #fff7ed !important;
+}
+body.is-promo-task-editor-open .promo-schedule-exception ul {
+  display: grid !important;
+  gap: 5px !important;
+  margin: 4px 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+body.is-promo-task-editor-open .promo-schedule-exception li {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 4px 8px !important;
 }
 body.is-promo-task-editor-open .promo-step-failure,
 body.is-promo-task-editor-open .promo-step-confirm {
