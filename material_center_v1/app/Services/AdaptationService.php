@@ -14,6 +14,9 @@ final class AdaptationService
         'driver' => ['label' => '驱动', 'category' => 'power_supply'],
         'power' => ['label' => '电源', 'category' => 'power_supply'],
         'optical' => ['label' => '光学', 'category' => 'optical'],
+        'honeycomb' => ['label' => '蜂巢网', 'category' => 'accessory'],
+        'glass' => ['label' => '玻璃', 'category' => 'optical'],
+        'reflector' => ['label' => '反光杯 / 格栅', 'category' => 'optical'],
         'accessory' => ['label' => '配件', 'category' => 'accessory'],
         'color' => ['label' => '颜色', 'category' => 'accessory'],
         'installation' => ['label' => '安装', 'category' => 'connector'],
@@ -27,6 +30,8 @@ final class AdaptationService
         ['power_driver', '电源 / 驱动', 'power', 'power_supply', 1, 'single'],
         ['optical', '光学 / 透镜', 'optical', 'optical', 1, 'single'],
         ['dimming', '调光方式', 'dimming', 'power_supply', 0, 'multi'],
+        ['honeycomb', '蜂巢网', 'honeycomb', 'accessory', 0, 'single'],
+        ['protective_glass', '玻璃', 'glass', 'optical', 0, 'single'],
         ['accessories', '附件配件', 'accessory', 'accessory', 0, 'multi'],
         ['finish_color', '外观颜色', 'color', 'accessory', 0, 'multi'],
         ['installation', '安装方式', 'installation', 'connector', 1, 'single'],
@@ -60,6 +65,65 @@ final class AdaptationService
         'in' => '属于',
     ];
 
+    private const QUICK_RULE_FIELDS = [
+        'chip' => [
+            ['key' => 'power_min_w', 'label' => '芯片功率下限', 'type' => 'number', 'unit' => 'W'],
+            ['key' => 'power_max_w', 'label' => '芯片功率上限', 'type' => 'number', 'unit' => 'W'],
+            ['key' => 'current_min_ma', 'label' => '电流下限', 'type' => 'number', 'unit' => 'mA'],
+            ['key' => 'current_max_ma', 'label' => '电流上限', 'type' => 'number', 'unit' => 'mA'],
+            ['key' => 'voltage_min_v', 'label' => '电压下限', 'type' => 'number', 'unit' => 'V'],
+            ['key' => 'voltage_max_v', 'label' => '电压上限', 'type' => 'number', 'unit' => 'V'],
+            ['key' => 'package_contains', 'label' => '封装包含', 'type' => 'text', 'placeholder' => '例如 COB'],
+            ['key' => 'les_contains', 'label' => 'LES / 尺寸包含', 'type' => 'text', 'placeholder' => '例如 9mm'],
+        ],
+        'optical' => [
+            ['key' => 'diameter_min_mm', 'label' => '直径下限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'diameter_max_mm', 'label' => '直径上限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'height_max_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'beam_min_deg', 'label' => '光束角下限', 'type' => 'number', 'unit' => '°'],
+            ['key' => 'beam_max_deg', 'label' => '光束角上限', 'type' => 'number', 'unit' => '°'],
+            ['key' => 'les_contains', 'label' => '适配 LES 包含', 'type' => 'text', 'placeholder' => '例如 9mm'],
+            ['key' => 'mounting_contains', 'label' => '固定方式包含', 'type' => 'text', 'placeholder' => '例如 卡扣'],
+        ],
+        'glass' => [
+            ['key' => 'diameter_min_mm', 'label' => '玻璃直径下限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'diameter_max_mm', 'label' => '玻璃直径上限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'height_max_mm', 'label' => '最大厚度', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'material_contains', 'label' => '材质包含', 'type' => 'text', 'placeholder' => '例如 钢化'],
+            ['key' => 'allow_with_honeycomb', 'label' => '允许与蜂巢网同时安装', 'type' => 'select', 'options' => ['yes' => '允许', 'no' => '不允许']],
+        ],
+        'reflector' => [
+            ['key' => 'diameter_min_mm', 'label' => '直径下限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'diameter_max_mm', 'label' => '直径上限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'height_max_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'mounting_contains', 'label' => '固定方式包含', 'type' => 'text', 'placeholder' => '例如 卡扣'],
+        ],
+        'honeycomb' => [
+            ['key' => 'diameter_min_mm', 'label' => '蜂巢网直径下限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'diameter_max_mm', 'label' => '蜂巢网直径上限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'thickness_max_mm', 'label' => '最大叠加高度', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'interface_contains', 'label' => '接口包含', 'type' => 'text', 'placeholder' => '例如 卡扣'],
+            ['key' => 'position_contains', 'label' => '安装位置包含', 'type' => 'text', 'placeholder' => '例如 透镜前'],
+            ['key' => 'allow_with_glass', 'label' => '允许与玻璃同时安装', 'type' => 'select', 'options' => ['yes' => '允许', 'no' => '不允许']],
+        ],
+        'accessory' => [
+            ['key' => 'type_contains', 'label' => '配件类别包含', 'type' => 'text', 'placeholder' => '例如 防眩罩'],
+            ['key' => 'diameter_min_mm', 'label' => '直径下限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'diameter_max_mm', 'label' => '直径上限', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'thickness_max_mm', 'label' => '最大厚度 / 高度', 'type' => 'number', 'unit' => 'mm'],
+            ['key' => 'interface_contains', 'label' => '接口包含', 'type' => 'text', 'placeholder' => '例如 卡扣'],
+            ['key' => 'position_contains', 'label' => '安装位置包含', 'type' => 'text', 'placeholder' => '例如 灯体前端'],
+        ],
+        'installation' => [
+            ['key' => 'interface_contains', 'label' => '接口包含', 'type' => 'text', 'placeholder' => '例如 三线轨道'],
+            ['key' => 'installation_contains', 'label' => '安装方式包含', 'type' => 'text', 'placeholder' => '例如 吊装'],
+            ['key' => 'load_min_kg', 'label' => '最低承重', 'type' => 'number', 'unit' => 'kg'],
+        ],
+        'color' => [
+            ['key' => 'color_contains', 'label' => '颜色包含', 'type' => 'text', 'placeholder' => '例如 黑色'],
+        ],
+    ];
+
     public function __construct(private ?PDO $db = null)
     {
         $this->db ??= \db();
@@ -71,6 +135,7 @@ final class AdaptationService
             'business_types' => self::BUSINESS_TYPES,
             'condition_fields' => self::CONDITION_FIELDS,
             'condition_operators' => self::CONDITION_OPERATORS,
+            'quick_rule_fields' => self::QUICK_RULE_FIELDS,
             'template' => $this->templatePreview(),
         ];
     }
@@ -142,7 +207,7 @@ final class AdaptationService
             $like = '%'.$q.'%';
             $params = [$like, $like, $like, $like];
         }
-        $sql .= ' ORDER BY p.product_code LIMIT 500';
+        $sql .= ' ORDER BY p.product_code LIMIT 2000';
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -178,7 +243,10 @@ final class AdaptationService
             FROM mc_adaptation_groups g WHERE g.product_id=? ORDER BY g.sort_order,g.id");
         $stmt->execute([$productId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as &$row) $row['display_status'] = $this->groupDisplayStatus($row);
+        foreach ($rows as &$row) {
+            $row['quick_rules'] = json_decode((string) ($row['rule_json'] ?? '{}'), true) ?: [];
+            $row['display_status'] = $this->groupDisplayStatus($row);
+        }
         unset($row);
         return $rows;
     }
@@ -284,6 +352,110 @@ final class AdaptationService
         }
     }
 
+    public function previewBatchApply(int $sourceProductId, array $targetProductIds, string $mode, bool $includePowerRule): array
+    {
+        $mode = $mode === 'replace_matching' ? 'replace_matching' : 'fill_missing';
+        $source = $this->productRow($sourceProductId);
+        if (!$source) throw new RuntimeException('批量来源产品不存在。');
+        $targets = $this->batchTargets($sourceProductId, $targetProductIds);
+        if (!$targets) throw new RuntimeException('请至少选择一个目标产品。');
+        $sourceGroups = $this->groups($sourceProductId);
+        if (!$sourceGroups && !$includePowerRule) throw new RuntimeException('来源产品还没有可套用的配置。');
+
+        $groupCodes = array_column($sourceGroups, 'group_code');
+        $created = 0;
+        $overwritten = 0;
+        $skipped = 0;
+        foreach ($targets as $target) {
+            $existing = [];
+            $stmt = $this->db->prepare('SELECT group_code FROM mc_adaptation_groups WHERE product_id=?');
+            $stmt->execute([$target['id']]);
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $code) $existing[(string) $code] = true;
+            foreach ($groupCodes as $code) {
+                if (!isset($existing[$code])) $created++;
+                elseif ($mode === 'replace_matching') $overwritten++;
+                else $skipped++;
+            }
+        }
+
+        $power = ['source_exists' => false, 'created' => 0, 'overwritten' => 0, 'skipped' => 0];
+        if ($includePowerRule) {
+            $sourcePower = $this->productPowerRule((int) $source['legacy_id']);
+            $power['source_exists'] = (bool) $sourcePower;
+            if ($sourcePower) {
+                $check = $this->db->prepare("SELECT 1 FROM mc_product_power_rules WHERE legacy_product_table='naming_models' AND legacy_product_id=?");
+                foreach ($targets as $target) {
+                    $check->execute([$target['legacy_id']]);
+                    if (!$check->fetchColumn()) $power['created']++;
+                    elseif ($mode === 'replace_matching') $power['overwritten']++;
+                    else $power['skipped']++;
+                }
+            }
+        }
+        if (!$sourceGroups && !$power['source_exists']) throw new RuntimeException('来源产品还没有可套用的配置或电源范围。');
+        return [
+            'source' => ['id' => (int) $source['id'], 'code' => $source['product_code'], 'name' => $source['product_name']],
+            'targets' => count($targets),
+            'approved_targets' => count(array_filter($targets, static fn(array $row): bool => !empty($row['approved_version']))),
+            'groups' => ['source' => count($sourceGroups), 'created' => $created, 'overwritten' => $overwritten, 'skipped' => $skipped],
+            'power_rule' => $power,
+            'mode' => $mode,
+        ];
+    }
+
+    public function batchApply(int $sourceProductId, array $targetProductIds, string $mode, bool $includePowerRule, int $userId): array
+    {
+        $preview = $this->previewBatchApply($sourceProductId, $targetProductIds, $mode, $includePowerRule);
+        $mode = $preview['mode'];
+        $targets = $this->batchTargets($sourceProductId, $targetProductIds);
+        $batchUuid = $this->uuid();
+        $result = [
+            'batch_uuid' => $batchUuid,
+            'targets' => count($targets),
+            'succeeded' => 0,
+            'failed' => 0,
+            'groups_created' => 0,
+            'groups_overwritten' => 0,
+            'groups_skipped' => 0,
+            'options_copied' => 0,
+            'power_rules_copied' => 0,
+            'failures' => [],
+        ];
+        foreach ($targets as $target) {
+            $this->db->beginTransaction();
+            try {
+                $powerResult = $includePowerRule
+                    ? $this->copyPowerRule($sourceProductId, (int) $target['id'], $mode, $userId)
+                    : 'not_requested';
+                $copy = $this->copyProductConfiguration($sourceProductId, (int) $target['id'], $mode, $batchUuid, $userId);
+                $this->db->commit();
+                $result['succeeded']++;
+                $result['groups_created'] += $copy['groups_created'];
+                $result['groups_overwritten'] += $copy['groups_overwritten'];
+                $result['groups_skipped'] += $copy['groups_skipped'];
+                $result['options_copied'] += $copy['options_copied'];
+                if (in_array($powerResult, ['created', 'overwritten'], true)) $result['power_rules_copied']++;
+            } catch (\Throwable $e) {
+                if ($this->db->inTransaction()) $this->db->rollBack();
+                $result['failed']++;
+                if (count($result['failures']) < 50) {
+                    $result['failures'][] = [
+                        'product_id' => (int) $target['id'],
+                        'product_code' => (string) ($target['product_code'] ?: '#'.$target['id']),
+                        'reason' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+        $this->log($sourceProductId, 'batch_apply_source', [
+            'batch_uuid' => $batchUuid,
+            'mode' => $mode,
+            'include_power_rule' => $includePowerRule,
+            'result' => $result,
+        ], $userId);
+        return $result;
+    }
+
     public function saveGroup(array $data, int $userId): int
     {
         $id = (int) ($data['id'] ?? 0);
@@ -345,6 +517,86 @@ final class AdaptationService
             if ($this->db->inTransaction()) $this->db->rollBack();
             if ((string) $e->getCode() === '23000') throw new RuntimeException('同一产品不能建立重复的配置组代码或模板组。');
             throw $e;
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    public function saveQuickRules(int $groupId, array $rules, int $userId): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM mc_adaptation_groups WHERE id=?');
+        $stmt->execute([$groupId]);
+        $group = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$group) throw new RuntimeException('配置组不存在。');
+
+        $availability = ($rules['availability'] ?? 'allowed') === 'forbidden' ? 'forbidden' : 'allowed';
+        if ((int) $group['is_required'] && $availability === 'forbidden') {
+            throw new RuntimeException('必选配置组不能设为“不允许使用”，请先把它改为可选组。');
+        }
+        $normalized = ['availability' => $availability];
+        $fieldDefinitions = self::QUICK_RULE_FIELDS[(string) $group['business_type']] ?? [];
+        foreach ($fieldDefinitions as $definition) {
+            $key = (string) $definition['key'];
+            $value = $rules[$key] ?? '';
+            if ($value === '' || $value === null) continue;
+            if ($definition['type'] === 'number') {
+                if (!is_numeric($value) || (float) $value < 0) {
+                    throw new RuntimeException($definition['label'].'必须是大于等于 0 的数字。');
+                }
+                $normalized[$key] = (float) $value;
+            } elseif ($definition['type'] === 'select') {
+                $options = $definition['options'] ?? [];
+                if (!isset($options[(string) $value])) throw new RuntimeException($definition['label'].'选项无效。');
+                $normalized[$key] = (string) $value;
+            } else {
+                $normalized[$key] = mb_substr(trim((string) $value), 0, 160);
+            }
+        }
+        foreach ([
+            ['power_min_w', 'power_max_w', '芯片功率'],
+            ['current_min_ma', 'current_max_ma', '芯片电流'],
+            ['voltage_min_v', 'voltage_max_v', '芯片电压'],
+            ['diameter_min_mm', 'diameter_max_mm', '直径'],
+            ['beam_min_deg', 'beam_max_deg', '光束角'],
+        ] as [$minKey, $maxKey, $label]) {
+            if (isset($normalized[$minKey], $normalized[$maxKey]) && $normalized[$minKey] > $normalized[$maxKey]) {
+                throw new RuntimeException($label.'下限不能大于上限。');
+            }
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare("UPDATE mc_adaptation_groups
+                SET rule_json=?,status='draft',is_enabled=0,updated_by=?,updated_at=NOW()
+                WHERE id=?")
+                ->execute([json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId, $groupId]);
+            $this->markProductDraft((int) $group['product_id']);
+            $review = 0;
+            $incompatible = 0;
+            foreach ($this->options($groupId) as $option) {
+                $candidate = $this->candidateMaterials($groupId, ['status' => 'all', 'material_id' => (int) $option['material_id']])[0] ?? null;
+                if (!$candidate) continue;
+                $this->db->prepare("UPDATE mc_adaptation_options
+                    SET match_level=?,match_reason_json=?,requires_approval=?,exception_approved=0,status='draft'
+                    WHERE id=?")
+                    ->execute([
+                        $candidate['match_level'],
+                        json_encode($candidate['conflict_reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                        $candidate['requires_approval'] ? 1 : 0,
+                        $option['id'],
+                    ]);
+                if ($candidate['match_level'] === 'needs_approval') $review++;
+                if ($candidate['match_level'] === 'incompatible') $incompatible++;
+            }
+            $this->log((int) $group['product_id'], 'save_quick_rules', [
+                'group_id' => $groupId,
+                'rules' => $normalized,
+                'needs_review_options' => $review,
+                'incompatible_options' => $incompatible,
+            ], $userId);
+            $this->db->commit();
+            return ['saved' => count($normalized) - 1, 'needs_review' => $review, 'incompatible' => $incompatible];
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
@@ -428,18 +680,41 @@ final class AdaptationService
             ps.output_current_ma,ps.output_current_min_ma,ps.output_current_max_ma,
             ps.output_voltage_min_v,ps.output_voltage_max_v,ps.length_mm,ps.width_mm,ps.height_mm,
             ps.supplier_warranty_years,ps.certification,pb.name power_band,
+            chip.package_type chip_package_type,chip.rated_power_w chip_rated_power_w,
+            chip.max_power_w chip_max_power_w,chip.voltage_v chip_voltage_v,
+            chip.current_ma chip_current_ma,chip.pad_text chip_les_text,chip.size_text chip_size_text,
+            optical.optical_type, optical.compatible_chip optical_compatible_chip,
+            optical.compatible_les optical_compatible_les,optical.diameter_mm optical_diameter_mm,
+            optical.height_mm optical_height_mm,optical.beam_angle_min optical_beam_angle_min,
+            optical.beam_angle_max optical_beam_angle_max,optical.material_text optical_material_text,
+            optical.mounting_structure optical_mounting_structure,
+            accessory.accessory_type,accessory.diameter_mm accessory_diameter_mm,
+            accessory.thickness_mm accessory_thickness_mm,accessory.interface_type accessory_interface_type,
+            accessory.installation_position accessory_installation_position,accessory.size_text accessory_size_text,
+            accessory.color accessory_color,
+            connector.interface_type connector_interface_type,connector.installation_type connector_installation_type,
+            connector.load_kg connector_load_kg,
             (SELECT GROUP_CONCAT(DISTINCT d.mode ORDER BY d.mode) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes,
             (SELECT GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR '、') FROM mc_supplier_materials sm JOIN mc_suppliers s ON s.id=sm.supplier_id AND s.deleted_at IS NULL WHERE sm.material_id=m.id AND sm.status='active') suppliers
             FROM mc_materials m
             JOIN mc_material_categories c ON c.id=m.category_id
             LEFT JOIN mc_power_supply_specs ps ON ps.material_id=m.id
             LEFT JOIN mc_power_bands pb ON pb.id=ps.power_band_id
+            LEFT JOIN mc_material_chip chip ON chip.material_id=m.id
+            LEFT JOIN mc_material_optical optical ON optical.material_id=m.id
+            LEFT JOIN mc_material_accessory accessory ON accessory.material_id=m.id
+            LEFT JOIN mc_material_connector connector ON connector.material_id=m.id
             WHERE c.code=? AND m.is_official=1 AND m.deleted_at IS NULL";
         $params = [$category];
         $status = (string) ($filters['status'] ?? 'official');
         if ($status === 'all') $sql .= " AND m.status IN('official','disabled')";
         elseif ($status === 'disabled') $sql .= " AND m.status='disabled'";
         else $sql .= " AND m.status='official'";
+        $materialId = (int) ($filters['material_id'] ?? 0);
+        if ($materialId) {
+            $sql .= ' AND m.id=?';
+            $params[] = $materialId;
+        }
         $likeFields = [
             'brand' => 'm.brand',
             'model' => 'm.model',
@@ -734,16 +1009,24 @@ final class AdaptationService
         if ($conflicts) $issues[] = '存在 '.count($conflicts).' 条未解决冲突';
         else $earned++;
 
-        $disabledStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id JOIN mc_materials m ON m.id=o.material_id WHERE g.product_id=? AND m.status<>'official'");
+        $disabledStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id JOIN mc_materials m ON m.id=o.material_id WHERE g.product_id=? AND g.status<>'disabled' AND m.status<>'official'");
         $disabledStmt->execute([$productId]);
         $disabled = (int) $disabledStmt->fetchColumn();
         if ($disabled) $issues[] = "存在 {$disabled} 个已停用或非正式物料";
         else $earned++;
 
-        $exceptionStmt = $this->db->prepare('SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND o.requires_approval=1 AND o.exception_approved=0');
+        $exceptionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND g.status<>'disabled' AND o.requires_approval=1 AND o.exception_approved=0");
         $exceptionStmt->execute([$productId]);
         $exceptions = (int) $exceptionStmt->fetchColumn();
         if ($exceptions) $issues[] = "存在 {$exceptions} 个未批准的适配例外";
+        else $earned++;
+
+        $incompatibleStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o
+            JOIN mc_adaptation_groups g ON g.id=o.group_id
+            WHERE g.product_id=? AND g.status<>'disabled' AND o.match_level='incompatible' AND o.option_type<>'disabled'");
+        $incompatibleStmt->execute([$productId]);
+        $incompatible = (int) $incompatibleStmt->fetchColumn();
+        if ($incompatible) $issues[] = "存在 {$incompatible} 个明确不适配的物料选项，不能用例外审批绕过";
         else $earned++;
 
         $invalidConditionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_conditions c JOIN mc_adaptation_options o ON o.id=c.option_id JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND (c.field_code='' OR c.operator='' OR c.expected_json IS NULL)");
@@ -754,14 +1037,14 @@ final class AdaptationService
 
         if ($groups) $earned++;
         else $issues[] = '尚未建立任何配置组';
-        $percent = (int) round($earned / 8 * 100);
+        $percent = (int) round($earned / 9 * 100);
         return [
             'percent' => $percent,
             'ready' => !$issues,
             'issues' => $issues,
             'exception_count' => $exceptions,
             'checks_passed' => $earned,
-            'checks_total' => 8,
+            'checks_total' => 9,
         ];
     }
 
@@ -770,11 +1053,26 @@ final class AdaptationService
         $ids = array_values(array_unique(array_filter(array_map('intval', $optionIds))));
         if (!$ids) return ['compatible' => true, 'reasons' => [], 'price_impact' => 0.0, 'lead_time_impact_days' => 0];
         $marks = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $this->db->prepare("SELECT o.id,o.material_id,o.price_impact,o.lead_time_impact_days,g.group_type FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND o.id IN($marks)");
+        $stmt = $this->db->prepare("SELECT o.id,o.material_id,o.price_impact,o.lead_time_impact_days,
+            g.group_type,g.business_type,g.group_name,g.rule_json
+            FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id
+            WHERE g.product_id=? AND o.id IN($marks)");
         $stmt->execute(array_merge([$productId], $ids));
         $options = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (count($options) !== count($ids)) throw new RuntimeException('选择中包含不属于该产品的适配选项。');
         $reasons = [];
+        $businessTypes = array_column($options, null, 'business_type');
+        if (isset($businessTypes['honeycomb'], $businessTypes['glass'])) {
+            $honeycombRules = json_decode((string) ($businessTypes['honeycomb']['rule_json'] ?? '{}'), true) ?: [];
+            $glassRules = json_decode((string) ($businessTypes['glass']['rule_json'] ?? '{}'), true) ?: [];
+            if (($honeycombRules['allow_with_glass'] ?? 'yes') === 'no' || ($glassRules['allow_with_honeycomb'] ?? 'yes') === 'no') {
+                $reasons[] = [
+                    'type' => 'group_rule',
+                    'severity' => 'block',
+                    'reason' => '当前产品设置为蜂巢网与玻璃不能同时安装',
+                ];
+            }
+        }
         $condition = $this->db->prepare("SELECT option_id,condition_group_no,boolean_connector,field_code,operator,expected_json,failure_message,severity FROM mc_adaptation_conditions WHERE option_id IN($marks) ORDER BY condition_group_no,sort_order,id");
         $condition->execute($ids);
         $conditionGroups = [];
@@ -876,16 +1174,237 @@ final class AdaptationService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    private function copyProductConfiguration(int $sourceProductId, int $targetProductId, string $mode, string $batchUuid, int $userId): array
+    {
+        $sourceGroups = $this->groups($sourceProductId);
+        $optionMap = [];
+        $created = 0;
+        $overwritten = 0;
+        $skipped = 0;
+        $optionsCopied = 0;
+        $changed = false;
+
+        foreach ($sourceGroups as $sourceGroup) {
+            $targetStmt = $this->db->prepare('SELECT * FROM mc_adaptation_groups WHERE product_id=? AND group_code=?');
+            $targetStmt->execute([$targetProductId, $sourceGroup['group_code']]);
+            $targetGroup = $targetStmt->fetch(PDO::FETCH_ASSOC);
+            $sourceOptions = $this->options((int) $sourceGroup['id']);
+
+            if ($targetGroup && $mode === 'fill_missing') {
+                $targetOptionsStmt = $this->db->prepare('SELECT id,material_id FROM mc_adaptation_options WHERE group_id=?');
+                $targetOptionsStmt->execute([$targetGroup['id']]);
+                $byMaterial = [];
+                foreach ($targetOptionsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $byMaterial[(int) $row['material_id']] = (int) $row['id'];
+                foreach ($sourceOptions as $option) {
+                    if (isset($byMaterial[(int) $option['material_id']])) $optionMap[(int) $option['id']] = $byMaterial[(int) $option['material_id']];
+                }
+                $skipped++;
+                continue;
+            }
+
+            if ($targetGroup) {
+                $oldOptionIds = $this->optionIds((int) $targetGroup['id']);
+                if ($oldOptionIds) {
+                    $marks = implode(',', array_fill(0, count($oldOptionIds), '?'));
+                    $this->db->prepare("DELETE FROM mc_adaptation_conflicts WHERE product_id=? AND (left_option_id IN($marks) OR right_option_id IN($marks))")
+                        ->execute(array_merge([$targetProductId], $oldOptionIds, $oldOptionIds));
+                    $this->db->prepare("DELETE FROM mc_adaptation_conditions WHERE option_id IN($marks)")->execute($oldOptionIds);
+                    $this->db->prepare("DELETE FROM mc_adaptation_defaults WHERE group_id=? OR option_id IN($marks)")
+                        ->execute(array_merge([$targetGroup['id']], $oldOptionIds));
+                }
+                $this->db->prepare('DELETE FROM mc_adaptation_options WHERE group_id=?')->execute([$targetGroup['id']]);
+                $this->db->prepare("UPDATE mc_adaptation_groups SET
+                    group_name=?,group_type=?,business_type=?,material_category_code=?,is_required=?,selection_mode=?,
+                    min_select=?,max_select=?,template_key=?,rule_json=?,status=?,is_enabled=0,sort_order=?,
+                    updated_by=?,updated_at=NOW() WHERE id=?")
+                    ->execute([
+                        $sourceGroup['group_name'], $sourceGroup['group_type'], $sourceGroup['business_type'],
+                        $sourceGroup['material_category_code'], $sourceGroup['is_required'], $sourceGroup['selection_mode'],
+                        $sourceGroup['min_select'], $sourceGroup['max_select'], $sourceGroup['template_key'],
+                        $sourceGroup['rule_json'], $sourceGroup['status'] === 'disabled' ? 'disabled' : 'draft',
+                        $sourceGroup['sort_order'], $userId, $targetGroup['id'],
+                    ]);
+                $targetGroupId = (int) $targetGroup['id'];
+                $overwritten++;
+            } else {
+                $this->db->prepare("INSERT INTO mc_adaptation_groups
+                    (product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,
+                    selection_mode,min_select,max_select,template_key,rule_json,status,is_enabled,sort_order,
+                    created_by,updated_by,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,NOW(),NOW())")
+                    ->execute([
+                        $targetProductId, $sourceGroup['group_code'], $sourceGroup['group_name'], $sourceGroup['group_type'],
+                        $sourceGroup['business_type'], $sourceGroup['material_category_code'], $sourceGroup['is_required'],
+                        $sourceGroup['selection_mode'], $sourceGroup['min_select'], $sourceGroup['max_select'],
+                        $sourceGroup['template_key'], $sourceGroup['rule_json'],
+                        $sourceGroup['status'] === 'disabled' ? 'disabled' : 'draft',
+                        $sourceGroup['sort_order'], $userId, $userId,
+                    ]);
+                $targetGroupId = (int) $this->db->lastInsertId();
+                $created++;
+            }
+            $changed = true;
+
+            $conditionsByOption = [];
+            foreach ($this->conditions((int) $sourceGroup['id']) as $condition) {
+                $conditionsByOption[(int) $condition['option_id']][] = $condition;
+            }
+            foreach ($sourceOptions as $sourceOption) {
+                $candidate = $this->candidateMaterials($targetGroupId, [
+                    'status' => 'all',
+                    'material_id' => (int) $sourceOption['material_id'],
+                ])[0] ?? null;
+                if (!$candidate || $candidate['status'] !== 'official') {
+                    throw new RuntimeException($sourceGroup['group_name'].'中的物料 '.$sourceOption['material_code'].' 已不是正式物料。');
+                }
+                if ($candidate['match_level'] === 'incompatible') {
+                    throw new RuntimeException($sourceGroup['group_name'].'中的物料 '.$sourceOption['material_code'].' 不适配：'.implode('；', $candidate['conflict_reasons']));
+                }
+                $this->db->prepare("INSERT INTO mc_adaptation_options
+                    (group_id,material_id,match_level,match_reason_json,requires_approval,exception_approved,
+                    option_type,is_default,price_impact,lead_time_impact_days,status,sort_order)
+                    VALUES(?,?,?,?,?,0,?,?,?,?, 'draft',?)")
+                    ->execute([
+                        $targetGroupId, $sourceOption['material_id'], $candidate['match_level'],
+                        json_encode($candidate['conflict_reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                        $candidate['requires_approval'] ? 1 : 0, $sourceOption['option_type'], $sourceOption['is_default'],
+                        $sourceOption['price_impact'], $sourceOption['lead_time_impact_days'], $sourceOption['sort_order'],
+                    ]);
+                $targetOptionId = (int) $this->db->lastInsertId();
+                $optionMap[(int) $sourceOption['id']] = $targetOptionId;
+                $optionsCopied++;
+                foreach ($conditionsByOption[(int) $sourceOption['id']] ?? [] as $condition) {
+                    $this->db->prepare('INSERT INTO mc_adaptation_conditions
+                        (option_id,condition_group_no,boolean_connector,field_code,operator,expected_json,failure_message,severity,sort_order)
+                        VALUES(?,?,?,?,?,?,?,?,?)')
+                        ->execute([
+                            $targetOptionId, $condition['condition_group_no'], $condition['boolean_connector'],
+                            $condition['field_code'], $condition['operator'],
+                            json_encode($condition['expected'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                            $condition['failure_message'], $condition['severity'], $condition['sort_order'],
+                        ]);
+                }
+            }
+        }
+
+        if ($changed) {
+            foreach ($this->conflicts($sourceProductId) as $conflict) {
+                $left = $optionMap[(int) $conflict['left_option_id']] ?? 0;
+                $right = $optionMap[(int) $conflict['right_option_id']] ?? 0;
+                if (!$left || !$right || $left === $right) continue;
+                if ($left > $right) [$left, $right] = [$right, $left];
+                $this->db->prepare("INSERT INTO mc_adaptation_conflicts
+                    (product_id,left_option_id,right_option_id,reason,severity,status)
+                    VALUES(?,?,?,?,?,'active')
+                    ON DUPLICATE KEY UPDATE reason=VALUES(reason),severity=VALUES(severity),status='active'")
+                    ->execute([$targetProductId, $left, $right, $conflict['reason'], $conflict['severity']]);
+            }
+            $this->markProductDraft($targetProductId);
+        }
+        $detail = [
+            'batch_uuid' => $batchUuid,
+            'source_product_id' => $sourceProductId,
+            'mode' => $mode,
+            'groups_created' => $created,
+            'groups_overwritten' => $overwritten,
+            'groups_skipped' => $skipped,
+            'options_copied' => $optionsCopied,
+        ];
+        $this->log($targetProductId, 'batch_apply_target', $detail, $userId);
+        return $detail;
+    }
+
+    private function copyPowerRule(int $sourceProductId, int $targetProductId, string $mode, int $userId): string
+    {
+        $source = $this->productRow($sourceProductId);
+        $target = $this->productRow($targetProductId);
+        if (!$source || !$target) throw new RuntimeException('批量电源规则的产品不存在。');
+        $stmt = $this->db->prepare("SELECT * FROM mc_product_power_rules WHERE legacy_product_table='naming_models' AND legacy_product_id=?");
+        $stmt->execute([$source['legacy_id']]);
+        $sourceRule = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$sourceRule) return 'source_missing';
+
+        $stmt->execute([$target['legacy_id']]);
+        $targetRule = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($targetRule && $mode === 'fill_missing') return 'skipped';
+        $values = [
+            $sourceRule['rule_name'], $sourceRule['installation_type'], $sourceRule['output_type'],
+            $sourceRule['lamp_power_w'], $sourceRule['power_band_id'], $sourceRule['output_current_min_ma'],
+            $sourceRule['output_current_max_ma'], $sourceRule['output_voltage_min_v'], $sourceRule['output_voltage_max_v'],
+            $sourceRule['max_length_mm'], $sourceRule['max_width_mm'], $sourceRule['max_height_mm'],
+            $sourceRule['minimum_warranty_years'], $sourceRule['certification_required'],
+        ];
+        if ($targetRule) {
+            $this->db->prepare("UPDATE mc_product_power_rules SET
+                rule_name=?,installation_type=?,output_type=?,lamp_power_w=?,power_band_id=?,
+                output_current_min_ma=?,output_current_max_ma=?,output_voltage_min_v=?,output_voltage_max_v=?,
+                max_length_mm=?,max_width_mm=?,max_height_mm=?,minimum_warranty_years=?,
+                certification_required=?,status='draft',updated_by=?,updated_at=NOW() WHERE id=?")
+                ->execute(array_merge($values, [$userId, $targetRule['id']]));
+            $targetRuleId = (int) $targetRule['id'];
+            $action = 'overwritten';
+        } else {
+            $this->db->prepare("INSERT INTO mc_product_power_rules
+                (legacy_product_table,legacy_product_id,rule_name,installation_type,output_type,lamp_power_w,
+                power_band_id,output_current_min_ma,output_current_max_ma,output_voltage_min_v,output_voltage_max_v,
+                max_length_mm,max_width_mm,max_height_mm,minimum_warranty_years,certification_required,status,
+                created_by,updated_by,created_at,updated_at)
+                VALUES('naming_models',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,NOW(),NOW())")
+                ->execute(array_merge([(int) $target['legacy_id']], $values, [$userId, $userId]));
+            $targetRuleId = (int) $this->db->lastInsertId();
+            $action = 'created';
+        }
+        $this->db->prepare('DELETE FROM mc_product_power_rule_dimming_modes WHERE rule_id=?')->execute([$targetRuleId]);
+        $modeStmt = $this->db->prepare('SELECT mode FROM mc_product_power_rule_dimming_modes WHERE rule_id=?');
+        $modeStmt->execute([$sourceRule['id']]);
+        $insert = $this->db->prepare('INSERT INTO mc_product_power_rule_dimming_modes(rule_id,mode) VALUES(?,?)');
+        foreach ($modeStmt->fetchAll(PDO::FETCH_COLUMN) as $dimmingMode) $insert->execute([$targetRuleId, $dimmingMode]);
+        return $action;
+    }
+
+    private function batchTargets(int $sourceProductId, array $targetProductIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $targetProductIds), static fn(int $id): bool => $id > 0 && $id !== $sourceProductId)));
+        if (count($ids) > 1000) throw new RuntimeException('一次最多处理 1000 个目标产品，请分批执行。');
+        if (!$ids) return [];
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare("SELECT p.*,
+            (SELECT MAX(a.version_no) FROM mc_adaptation_approvals a WHERE a.product_id=p.id AND a.status='approved') approved_version
+            FROM mc_products p WHERE p.status='active' AND p.id IN($marks) ORDER BY p.product_code");
+        $stmt->execute($ids);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($rows) !== count($ids)) throw new RuntimeException('目标产品中包含不存在或已停用的记录。');
+        return $rows;
+    }
+
+    private function productRow(int $productId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT p.*,
+            (SELECT MAX(a.version_no) FROM mc_adaptation_approvals a WHERE a.product_id=p.id AND a.status='approved') approved_version
+            FROM mc_products p WHERE p.id=? AND p.status='active'");
+        $stmt->execute([$productId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
     private function candidateMatch(array $material, array $group, ?array $rule): array
     {
         if ($material['status'] !== 'official') {
             return ['match_level' => 'incompatible', 'match_label' => '不适配', 'conflict_reasons' => ['物料已经停用'], 'requires_approval' => true];
         }
+        $quickRules = json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: [];
+        if (($quickRules['availability'] ?? 'allowed') === 'forbidden') {
+            return [
+                'match_level' => 'incompatible',
+                'match_label' => '不适配',
+                'conflict_reasons' => ['当前产品设置为不允许使用'.$group['group_name']],
+                'requires_approval' => true,
+            ];
+        }
         if ($group['material_category_code'] !== 'power_supply') {
             if (($group['business_type'] ?? '') === 'custom') {
                 return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['自定义配置组尚无自动规格规则，需要工程审批'], 'requires_approval' => true];
             }
-            return ['match_level' => 'conditional', 'match_label' => '条件适配', 'conflict_reasons' => ['物料类别匹配，需结合适用条件确认'], 'requires_approval' => false];
+            return $this->componentCandidateMatch($material, $group, $quickRules);
         }
         if (!$rule) {
             return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['当前产品尚未维护电源匹配规则'], 'requires_approval' => true];
@@ -897,6 +1416,97 @@ final class AdaptationService
         if ($reasons) return ['match_level' => 'incompatible', 'match_label' => '不适配', 'conflict_reasons' => $reasons, 'requires_approval' => true];
         if (($rule['status'] ?? '') !== 'approved') {
             return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['产品电源规则尚未审批'], 'requires_approval' => true];
+        }
+        return ['match_level' => 'exact', 'match_label' => '完全适配', 'conflict_reasons' => [], 'requires_approval' => false];
+    }
+
+    private function componentCandidateMatch(array $material, array $group, array $rules): array
+    {
+        $type = (string) ($group['business_type'] ?? '');
+        $mismatches = [];
+        $missing = [];
+        $identity = mb_strtolower(trim(implode(' ', array_filter([
+            $material['name'] ?? '',
+            $material['model'] ?? '',
+            $material['accessory_type'] ?? '',
+            $material['optical_type'] ?? '',
+        ]))));
+        if ($type === 'honeycomb' && !str_contains($identity, '蜂巢') && !str_contains($identity, '蜂窝') && !str_contains($identity, 'honeycomb')) {
+            if (!empty($material['accessory_type'])) $mismatches[] = '配件类别不是蜂巢网';
+            else $missing[] = '配件类别未确认，无法判断是否为蜂巢网';
+        }
+        if ($type === 'glass' && !str_contains($identity, '玻璃') && !str_contains($identity, 'glass')) {
+            if (!empty($material['optical_type'])) $mismatches[] = '光学类别不是玻璃';
+            else $missing[] = '光学类别未确认，无法判断是否为玻璃';
+        }
+        if ($type === 'reflector' && !str_contains($identity, '反光杯') && !str_contains($identity, '格栅') && !str_contains($identity, 'reflector')) {
+            if (!empty($material['optical_type'])) $mismatches[] = '光学类别不是反光杯 / 格栅';
+            else $missing[] = '光学类别未确认，无法判断是否为反光杯 / 格栅';
+        }
+        if ($type === 'optical' && (str_contains($identity, '玻璃') || str_contains($identity, 'glass'))) {
+            $mismatches[] = '玻璃应加入“玻璃”配置组，不应加入主光学组';
+        }
+
+        $numericRules = [
+            'power_min_w' => ['chip_rated_power_w', '芯片额定功率', 'min', 'W'],
+            'power_max_w' => ['chip_rated_power_w', '芯片额定功率', 'max', 'W'],
+            'current_min_ma' => ['chip_current_ma', '芯片电流', 'min', 'mA'],
+            'current_max_ma' => ['chip_current_ma', '芯片电流', 'max', 'mA'],
+            'voltage_min_v' => ['chip_voltage_v', '芯片电压', 'min', 'V'],
+            'voltage_max_v' => ['chip_voltage_v', '芯片电压', 'max', 'V'],
+            'diameter_min_mm' => [$type === 'honeycomb' || $type === 'accessory' ? 'accessory_diameter_mm' : 'optical_diameter_mm', '直径', 'min', 'mm'],
+            'diameter_max_mm' => [$type === 'honeycomb' || $type === 'accessory' ? 'accessory_diameter_mm' : 'optical_diameter_mm', '直径', 'max', 'mm'],
+            'height_max_mm' => ['optical_height_mm', $type === 'glass' ? '玻璃厚度' : '高度', 'max', 'mm'],
+            'thickness_max_mm' => ['accessory_thickness_mm', '厚度 / 叠加高度', 'max', 'mm'],
+            'load_min_kg' => ['connector_load_kg', '承重', 'min', 'kg'],
+        ];
+        foreach ($numericRules as $ruleKey => [$actualKey, $label, $direction, $unit]) {
+            if (!array_key_exists($ruleKey, $rules)) continue;
+            $actual = $material[$actualKey] ?? null;
+            if ($actual === null || $actual === '') {
+                $missing[] = $label.'未确认';
+                continue;
+            }
+            $expected = (float) $rules[$ruleKey];
+            $number = (float) $actual;
+            if ($direction === 'min' && $number < $expected) $mismatches[] = $label.$this->number($number).$unit.'，低于要求 '.$this->number($expected).$unit;
+            if ($direction === 'max' && $number > $expected) $mismatches[] = $label.$this->number($number).$unit.'，超过上限 '.$this->number($expected).$unit;
+        }
+        if (array_key_exists('beam_min_deg', $rules) || array_key_exists('beam_max_deg', $rules)) {
+            $actualMin = $material['optical_beam_angle_min'] ?? null;
+            $actualMax = $material['optical_beam_angle_max'] ?? null;
+            if ($actualMin === null && $actualMax === null) {
+                $missing[] = '光束角未确认';
+            } elseif (!$this->rangeOverlaps($rules['beam_min_deg'] ?? null, $rules['beam_max_deg'] ?? null, $actualMin, $actualMax)) {
+                $mismatches[] = '光束角范围不匹配';
+            }
+        }
+        $textRules = [
+            'package_contains' => ['chip_package_type', '封装'],
+            'les_contains' => [$type === 'chip' ? 'chip_les_text' : 'optical_compatible_les', 'LES / 尺寸'],
+            'mounting_contains' => ['optical_mounting_structure', '固定方式'],
+            'material_contains' => ['optical_material_text', '材质'],
+            'type_contains' => ['accessory_type', '配件类别'],
+            'interface_contains' => [$type === 'installation' ? 'connector_interface_type' : 'accessory_interface_type', '接口'],
+            'position_contains' => ['accessory_installation_position', '安装位置'],
+            'installation_contains' => ['connector_installation_type', '安装方式'],
+            'color_contains' => ['accessory_color', '颜色'],
+        ];
+        foreach ($textRules as $ruleKey => [$actualKey, $label]) {
+            $expected = trim((string) ($rules[$ruleKey] ?? ''));
+            if ($expected === '') continue;
+            $actual = trim((string) ($material[$actualKey] ?? ''));
+            if ($actual === '') $missing[] = $label.'未确认';
+            elseif (!str_contains(mb_strtolower($actual), mb_strtolower($expected))) $mismatches[] = $label.'不包含“'.$expected.'”';
+        }
+
+        $mismatches = array_values(array_unique($mismatches));
+        $missing = array_values(array_unique($missing));
+        if ($mismatches) return ['match_level' => 'incompatible', 'match_label' => '不适配', 'conflict_reasons' => $mismatches, 'requires_approval' => true];
+        if ($missing) return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => $missing, 'requires_approval' => true];
+        $candidateRules = array_diff_key($rules, array_flip(['availability', 'allow_with_glass', 'allow_with_honeycomb']));
+        if (!$candidateRules) {
+            return ['match_level' => 'conditional', 'match_label' => '条件适配', 'conflict_reasons' => ['物料类别匹配，尚未填写快速规格范围'], 'requires_approval' => false];
         }
         return ['match_level' => 'exact', 'match_label' => '完全适配', 'conflict_reasons' => [], 'requires_approval' => false];
     }
@@ -963,6 +1573,8 @@ final class AdaptationService
     private function groupDisplayStatus(array $group): string
     {
         if (($group['status'] ?? '') === 'disabled') return 'disabled';
+        $rules = $group['quick_rules'] ?? (json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: []);
+        if (($rules['availability'] ?? 'allowed') === 'forbidden') return 'forbidden';
         if ((int) ($group['conflict_count'] ?? 0)) return 'conflict';
         if (!(int) ($group['option_count'] ?? 0)) return 'empty';
         if (($group['selection_mode'] ?? 'single') === 'single' && (int) ($group['is_required'] ?? 0) && empty($group['default_material'])) return 'no_default';
@@ -1000,6 +1612,40 @@ final class AdaptationService
 
     private function keySpecs(array $row, string $category): string
     {
+        if ($category === 'chip') {
+            return implode(' · ', array_filter([
+                $row['chip_package_type'] ?? null,
+                $row['chip_rated_power_w'] !== null ? $this->number((float) $row['chip_rated_power_w']).'W' : null,
+                $row['chip_current_ma'] !== null ? $this->number((float) $row['chip_current_ma']).'mA' : null,
+                $row['chip_voltage_v'] !== null ? $this->number((float) $row['chip_voltage_v']).'V' : null,
+                $row['chip_les_text'] ?? null,
+            ]));
+        }
+        if ($category === 'optical') {
+            return implode(' · ', array_filter([
+                $row['optical_type'] ?? null,
+                $row['optical_diameter_mm'] !== null ? 'Φ'.$this->number((float) $row['optical_diameter_mm']).'mm' : null,
+                $row['optical_height_mm'] !== null ? '高/厚 '.$this->number((float) $row['optical_height_mm']).'mm' : null,
+                $row['optical_compatible_les'] ?? null,
+                $row['optical_mounting_structure'] ?? null,
+            ]));
+        }
+        if ($category === 'accessory') {
+            return implode(' · ', array_filter([
+                $row['accessory_type'] ?? null,
+                $row['accessory_diameter_mm'] !== null ? 'Φ'.$this->number((float) $row['accessory_diameter_mm']).'mm' : null,
+                $row['accessory_thickness_mm'] !== null ? '厚 '.$this->number((float) $row['accessory_thickness_mm']).'mm' : null,
+                $row['accessory_interface_type'] ?? null,
+                $row['accessory_installation_position'] ?? null,
+            ]));
+        }
+        if ($category === 'connector') {
+            return implode(' · ', array_filter([
+                $row['connector_interface_type'] ?? null,
+                $row['connector_installation_type'] ?? null,
+                $row['connector_load_kg'] !== null ? '承重 '.$this->number((float) $row['connector_load_kg']).'kg' : null,
+            ]));
+        }
         if ($category !== 'power_supply') return trim(($row['brand'] ?? '').' '.($row['model'] ?? ''));
         $parts = [];
         if ($row['power_band']) $parts[] = $row['power_band'];
@@ -1084,6 +1730,14 @@ final class AdaptationService
     private function number(float $value): string
     {
         return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
+        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function log(int $productId, string $action, array $detail, int $userId): void

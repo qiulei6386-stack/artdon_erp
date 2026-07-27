@@ -32,6 +32,7 @@ include MC_ROOT.'/components/layout_top.php';
         </div>
         <div class="mc-adaptation-head__actions">
             <button class="mc-button" type="button" data-sync-products>同步产品</button>
+            <button class="mc-button" type="button" data-batch-open disabled>批量套用</button>
             <button class="mc-button mc-button--primary" type="button" data-template-open disabled>生成标准配置</button>
         </div>
     </header>
@@ -66,6 +67,7 @@ include MC_ROOT.'/components/layout_top.php';
             </div>
             <div class="mc-option-tabs" role="tablist" data-option-tabs hidden>
                 <button type="button" class="is-active" data-adaptation-tab="options">选项列表</button>
+                <button type="button" data-adaptation-tab="quick_rules">快速规则</button>
                 <button type="button" data-adaptation-tab="default">默认设置</button>
                 <button type="button" data-adaptation-tab="alternative">替代关系</button>
                 <button type="button" data-adaptation-tab="conditions">适用条件</button>
@@ -89,6 +91,45 @@ include MC_ROOT.'/components/layout_top.php';
             <div class="mc-modal__footer">
                 <button type="button" class="mc-button" data-modal-close>取消</button>
                 <button class="mc-button mc-button--primary" type="submit">确认生成</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="mc-modal" id="batch-modal" data-adaptation-modal>
+        <form class="mc-modal__panel mc-modal__panel--wide" data-batch-form>
+            <div class="mc-modal__header">
+                <div><strong>批量套用产品适配</strong><span>先把当前产品设置好，再一次套到同系列或所选产品；执行后目标产品进入待重审。</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body mc-adaptation-batch">
+                <div class="mc-batch-source" data-batch-source></div>
+                <div class="mc-batch-mode">
+                    <strong>1. 选择套用方式</strong>
+                    <label><input type="radio" name="mode" value="fill_missing" checked><span><b>只补空白（推荐）</b><small>目标产品已有的同名配置不改，只补缺少的配置组。</small></span></label>
+                    <label><input type="radio" name="mode" value="replace_matching"><span><b>覆盖同名配置组</b><small>用当前产品覆盖目标产品的同名组、选项、快速规则和冲突；原审批不会继续生效。</small></span></label>
+                    <label class="mc-batch-power"><input type="checkbox" name="include_power_rule" value="1" checked><span><b>同时套用电源范围</b><small>外置 / 内置、功率、电流、电压、空间、调光和质保一起复制。</small></span></label>
+                </div>
+                <div class="mc-batch-targets">
+                    <div class="mc-batch-targets__head">
+                        <div><strong>2. 选择目标产品</strong><span data-batch-selection>已选择 0 个</span></div>
+                        <label class="mc-search mc-search--small"><?=mc_icon('search', 16)?><input type="search" data-batch-search placeholder="搜索型号 / 名称 / 系列"></label>
+                        <button class="mc-button" type="button" data-batch-same-series>选择同系列</button>
+                        <button class="mc-button" type="button" data-batch-select-visible>全选当前结果</button>
+                        <button class="mc-button" type="button" data-batch-clear>清空</button>
+                    </div>
+                    <div class="mc-batch-product-list" data-batch-product-list></div>
+                </div>
+                <div class="mc-batch-preview-card" data-batch-preview>
+                    <strong>3. 先预览，再执行</strong>
+                    <span>选择目标产品后点击“预览影响”，系统会先计算新增、覆盖和跳过数量。</span>
+                </div>
+            </div>
+            <div class="mc-modal__footer">
+                <span data-batch-footer-selection>已选择 0 个产品</span>
+                <span class="mc-modal__spacer"></span>
+                <button type="button" class="mc-button" data-modal-close>取消</button>
+                <button type="button" class="mc-button" data-batch-preview-button>预览影响</button>
+                <button class="mc-button mc-button--primary" type="submit" data-batch-apply disabled>确认批量套用</button>
             </div>
         </form>
     </div>

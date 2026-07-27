@@ -44,6 +44,7 @@ try {
         'sync' => $service->syncProducts($user->id),
         'initialize_groups', 'apply_template' => $service->initializeGroups((int) ($_POST['product_id'] ?? 0), $user->id),
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
+        'save_quick_rules' => $service->saveQuickRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'delete_group' => (static function () use ($service, $user): array {
             $service->deleteGroup((int) ($_POST['group_id'] ?? 0), $user->id);
             return [];
@@ -71,6 +72,27 @@ try {
             $json('option_ids'),
             $json('context_json')
         ),
+        'preview_batch' => (static function () use ($service, $user, $json): array {
+            $includePower = !empty($_POST['include_power_rule']);
+            if ($includePower) (new PermissionService())->require($user, 'material_center.power.rules.manage');
+            return $service->previewBatchApply(
+                (int) ($_POST['source_product_id'] ?? 0),
+                $json('target_product_ids'),
+                (string) ($_POST['mode'] ?? 'fill_missing'),
+                $includePower
+            );
+        })(),
+        'batch_apply' => (static function () use ($service, $user, $json): array {
+            $includePower = !empty($_POST['include_power_rule']);
+            if ($includePower) (new PermissionService())->require($user, 'material_center.power.rules.manage');
+            return $service->batchApply(
+                (int) ($_POST['source_product_id'] ?? 0),
+                $json('target_product_ids'),
+                (string) ($_POST['mode'] ?? 'fill_missing'),
+                $includePower,
+                $user->id
+            );
+        })(),
         'approve' => (static function () use ($service, $user): array {
             (new PermissionService())->require($user, 'material_center.approve');
             $service->approveProduct((int) ($_POST['product_id'] ?? 0), $user->id, !empty($_POST['approve_exceptions']));

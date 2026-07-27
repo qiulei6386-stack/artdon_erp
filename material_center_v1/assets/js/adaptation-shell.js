@@ -16,6 +16,9 @@
     candidates: [],
     dirty: false,
     draggingGroupId: 0,
+    batchSelected: new Set(),
+    batchPreview: null,
+    batchQuery: '',
   };
 
   const escapeHtml = value => String(value ?? '')
@@ -136,6 +139,7 @@
     conflict: ['存在冲突', 'danger'],
     pending: ['待审批', 'warning'],
     enabled: ['已启用', 'success'],
+    forbidden: ['不允许选配', 'muted'],
     disabled: ['已停用', 'muted'],
   };
 
@@ -172,6 +176,7 @@
     const workspace = state.workspace;
     q('[data-group-create]').disabled = !workspace;
     q('[data-template-open]').disabled = !workspace;
+    q('[data-batch-open]').disabled = !workspace?.groups?.length;
     q('[data-template-open]').textContent = workspace?.groups?.length ? '重新套用配置模板' : '生成标准配置';
     if (!workspace) {
       list.innerHTML = '<div class="mc-empty-state"><strong>请选择产品</strong><span>从左侧产品列表开始。</span></div>';
@@ -249,6 +254,31 @@
           <span>只能从对应类别的正式物料库选择，候选项会显示匹配等级和冲突原因。</span>
           <button class="mc-button mc-button--primary" type="button" data-empty-candidate>从物料库添加选项</button>
         </div>`;
+    } else if (state.tab === 'quick_rules') {
+      const fields = state.metadata.quick_rule_fields?.[group.business_type] || [];
+      const rules = group.quick_rules || {};
+      const isPower = group.material_category_code === 'power_supply';
+      detail.innerHTML = `<form class="mc-quick-rule-panel" data-quick-rule-form>
+        <div class="mc-quick-rule-intro">
+          <div><strong>用少量范围自动筛选候选物料</strong><span>空着表示待确认；资料不完整时系统只会标为“需要审批”，不会假装适配。</span></div>
+          ${isPower ? `<a class="mc-button" href="${escapeHtml(state.baseUrl)}/product_power_rules.php">打开产品电源规则</a>` : ''}
+        </div>
+        <label class="mc-field mc-quick-rule-availability">
+          <span>这个产品是否允许使用“${escapeHtml(group.group_name)}”</span>
+          <select name="availability" ${integer(group.is_required) ? 'disabled' : ''}>
+            <option value="allowed" ${(rules.availability || 'allowed') === 'allowed' ? 'selected' : ''}>允许使用</option>
+            <option value="forbidden" ${rules.availability === 'forbidden' ? 'selected' : ''}>不允许使用</option>
+          </select>
+          ${integer(group.is_required) ? '<small>这是必选组；如需禁止，请先把配置组改为可选。</small>' : ''}
+        </label>
+        ${isPower ? '<div class="mc-empty-state mc-empty-state--compact"><strong>电源范围使用现有专用规则</strong><span>设置外置 / 内置、功率、电流、电压、空间、调光和质保后，候选电源会自动过滤；批量套用时可一并复制。</span></div>' : fields.length ? `<div class="mc-quick-rule-grid">${fields.map(field => `<label class="mc-field">
+          <span>${escapeHtml(field.label)}${field.unit ? `（${escapeHtml(field.unit)}）` : ''}</span>
+          ${field.type === 'select'
+            ? `<select name="${escapeHtml(field.key)}"><option value="">待确认</option>${Object.entries(field.options || {}).map(([value, label]) => `<option value="${escapeHtml(value)}" ${rules[field.key] === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>`
+            : `<input type="${field.type === 'number' ? 'number' : 'text'}" ${field.type === 'number' ? 'min="0" step="0.01"' : ''} name="${escapeHtml(field.key)}" value="${escapeHtml(rules[field.key] ?? '')}" placeholder="${escapeHtml(field.placeholder || '留空表示待确认')}">`}
+        </label>`).join('')}</div>` : '<div class="mc-empty-state mc-empty-state--compact"><strong>此组只需设置是否允许</strong><span>更细的组合限制可继续使用“适用条件”和冲突设置。</span></div>'}
+        <button class="mc-button mc-button--primary" type="submit">保存快速规则</button>
+      </form>`;
     } else if (state.tab === 'default') {
       const inputType = group.selection_mode === 'single' ? 'radio' : 'checkbox';
       detail.innerHTML = `<form class="mc-default-panel" data-default-form>
@@ -324,6 +354,98 @@
     q('[data-template-preview]').innerHTML = (state.metadata.template || []).map((group, index) => `<div>
       <b>${index + 1}</b><span><strong>${escapeHtml(group.name)}</strong><small>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></span>
     </div>`).join('');
+  };
+
+  const visibleBatchProducts = () => {
+    const query = state.batchQuery.trim().toLowerCase();
+    return state.products.filter(product => {
+      if (integer(product.id) === selectedProductId()) return false;
+      if (!query) return true;
+      return [product.product_code, product.product_name, product.series_name]
+        .some(value => String(value || '').toLowerCase().includes(query));
+    });
+  };
+
+  const invalidateBatchPreview = () => {
+    state.batchPreview = null;
+    q('[data-batch-apply]').disabled = true;
+    q('[data-batch-preview]').innerHTML = '<strong>3. 先预览，再执行</strong><span>目标或套用方式已变化，请重新点击“预览影响”。</span>';
+  };
+
+  const updateBatchSelection = (invalidate = true) => {
+    const count = state.batchSelected.size;
+    q('[data-batch-selection]').textContent = `已选择 ${count} 个`;
+    q('[data-batch-footer-selection]').textContent = `已选择 ${count} 个产品`;
+    if (invalidate) invalidateBatchPreview();
+  };
+
+  const renderBatchProducts = () => {
+    const products = visibleBatchProducts();
+    q('[data-batch-product-list]').innerHTML = products.length ? products.map(product => `<label class="mc-batch-product">
+      <input type="checkbox" name="batch_product" value="${integer(product.id)}" ${state.batchSelected.has(integer(product.id)) ? 'checked' : ''}>
+      <span><strong>${escapeHtml(product.product_code || '未编号')}</strong><small>${escapeHtml(product.product_name || '未命名')}</small></span>
+      <em>${escapeHtml(product.series_name || '未设置系列')}</em>
+      <b class="mc-badge mc-badge--${product.approval_label === '已启用' ? 'success' : 'warning'}">${escapeHtml(product.approval_label)}</b>
+    </label>`).join('') : '<div class="mc-empty-state mc-empty-state--compact"><strong>没有符合条件的目标产品</strong><span>请调整搜索词，或先同步产品。</span></div>';
+  };
+
+  const openBatch = () => {
+    const source = state.workspace?.product;
+    if (!source || !state.workspace?.groups?.length) {
+      notify('暂不能批量套用', '请先选择并设置好一个来源产品。');
+      return;
+    }
+    state.batchSelected = new Set();
+    state.batchPreview = null;
+    state.batchQuery = '';
+    const form = q('[data-batch-form]');
+    form.reset();
+    q('[data-batch-search]').value = '';
+    q('[data-batch-source]').innerHTML = `<span>当前来源产品</span><strong>${escapeHtml(source.product_code || '未编号')} · ${escapeHtml(source.product_name || '未命名')}</strong><small>${state.workspace.groups.length} 个配置组；目标产品执行后统一进入待重审。</small>`;
+    renderBatchProducts();
+    updateBatchSelection(false);
+    q('[data-batch-preview]').innerHTML = '<strong>3. 先预览，再执行</strong><span>选择目标产品后点击“预览影响”，系统会先计算新增、覆盖和跳过数量。</span>';
+    q('[data-batch-apply]').disabled = true;
+    state.dirty = false;
+    openModal('batch-modal');
+  };
+
+  const batchRequestValues = () => {
+    const form = q('[data-batch-form]');
+    return {
+      source_product_id: selectedProductId(),
+      target_product_ids: [...state.batchSelected],
+      mode: new FormData(form).get('mode') || 'fill_missing',
+      include_power_rule: form.elements.include_power_rule.checked ? 1 : 0,
+    };
+  };
+
+  const previewBatch = async () => {
+    if (!state.batchSelected.size) {
+      notify('尚未选择产品', '请先选择至少一个目标产品。');
+      return;
+    }
+    const button = q('[data-batch-preview-button]');
+    button.disabled = true;
+    try {
+      state.batchPreview = await post('preview_batch', batchRequestValues());
+      const preview = state.batchPreview;
+      q('[data-batch-preview]').innerHTML = `<strong>预览完成：${integer(preview.targets)} 个目标产品</strong>
+        <div class="mc-batch-preview-metrics">
+          <span><b>${integer(preview.groups.created)}</b> 新增配置组</span>
+          <span><b>${integer(preview.groups.overwritten)}</b> 覆盖同名组</span>
+          <span><b>${integer(preview.groups.skipped)}</b> 保留并跳过</span>
+          <span><b>${integer(preview.approved_targets)}</b> 个已有审批</span>
+          <span><b>${integer(preview.power_rule.created) + integer(preview.power_rule.overwritten)}</b> 条电源范围</span>
+        </div>
+        <small>${preview.mode === 'replace_matching' ? '覆盖模式会让目标产品重新进入审批；未命中的其他配置组保持不变。' : '只补空白模式不会改目标产品已有的同名配置组。'}</small>`;
+      q('[data-batch-apply]').disabled = false;
+    } catch (error) {
+      notify('预览失败', error.message);
+      q('[data-batch-apply]').disabled = true;
+    } finally {
+      button.disabled = false;
+    }
   };
 
   const populateGroupFormTypes = () => {
@@ -453,6 +575,45 @@
       openModal('template-modal');
       return;
     }
+    if (event.target.closest('[data-batch-open]')) {
+      openBatch();
+      return;
+    }
+    if (event.target.closest('[data-batch-same-series]')) {
+      const series = String(state.workspace?.product?.series_name || '').trim();
+      if (!series) {
+        notify('当前产品没有系列', '请使用搜索或手工勾选目标产品。');
+        return;
+      }
+      state.batchSelected = new Set(state.products
+        .filter(product => integer(product.id) !== selectedProductId() && String(product.series_name || '').trim() === series)
+        .slice(0, 1000)
+        .map(product => integer(product.id)));
+      renderBatchProducts();
+      updateBatchSelection();
+      return;
+    }
+    if (event.target.closest('[data-batch-select-visible]')) {
+      const next = new Set(state.batchSelected);
+      visibleBatchProducts().forEach(product => {
+        if (next.size < 1000) next.add(integer(product.id));
+      });
+      state.batchSelected = next;
+      renderBatchProducts();
+      updateBatchSelection();
+      if (visibleBatchProducts().length > 1000) notify('已选择前 1000 个产品', '一次最多处理 1000 个，请分批执行剩余产品。');
+      return;
+    }
+    if (event.target.closest('[data-batch-clear]')) {
+      state.batchSelected = new Set();
+      renderBatchProducts();
+      updateBatchSelection();
+      return;
+    }
+    if (event.target.closest('[data-batch-preview-button]')) {
+      await previewBatch();
+      return;
+    }
     if (event.target.closest('[data-group-create]')) {
       openGroupForm(null);
       return;
@@ -537,6 +698,21 @@
 
   page.addEventListener('change', event => {
     if (event.target.matches('[name="material_choice"]')) updateCandidateSelection();
+    if (event.target.matches('[name="batch_product"]')) {
+      const id = integer(event.target.value);
+      if (event.target.checked) {
+        if (state.batchSelected.size >= 1000) {
+          event.target.checked = false;
+          notify('一次最多选择 1000 个产品', '请先执行这一批，再处理剩余产品。');
+        } else {
+          state.batchSelected.add(id);
+        }
+      } else {
+        state.batchSelected.delete(id);
+      }
+      updateBatchSelection();
+    }
+    if (event.target.matches('[data-batch-form] [name="mode"], [data-batch-form] [name="include_power_rule"]')) invalidateBatchPreview();
     if (event.target.closest('form')) state.dirty = true;
     if (event.target.matches('[data-business-type]')) {
       const category = state.metadata.business_types?.[event.target.value]?.category;
@@ -549,6 +725,11 @@
         form.elements.min_select.value = form.elements.is_required.value === '1' ? '1' : '0';
       }
     }
+  });
+
+  q('[data-batch-search]').addEventListener('input', event => {
+    state.batchQuery = event.currentTarget.value;
+    renderBatchProducts();
   });
 
   q('[data-product-search]').addEventListener('submit', async event => {
@@ -575,6 +756,65 @@
     } catch (error) {
       notify('生成失败', error.message);
       if (button) button.disabled = false;
+    }
+  });
+
+  q('[data-batch-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!state.batchPreview) {
+      notify('请先预览影响', '目标或套用方式变化后，需要重新预览。');
+      return;
+    }
+    const form = event.currentTarget;
+    const button = event.submitter || q('[data-batch-apply]', form);
+    button.disabled = true;
+    button.textContent = '正在批量套用…';
+    let completedBatches = 0;
+    let totalBatches = 0;
+    try {
+      const values = batchRequestValues();
+      const chunks = [];
+      for (let index = 0; index < values.target_product_ids.length; index += 100) {
+        chunks.push(values.target_product_ids.slice(index, index + 100));
+      }
+      totalBatches = chunks.length;
+      const result = {
+        targets: values.target_product_ids.length,
+        succeeded: 0,
+        failed: 0,
+        groups_created: 0,
+        groups_overwritten: 0,
+        groups_skipped: 0,
+        options_copied: 0,
+        power_rules_copied: 0,
+        failures: [],
+      };
+      for (const [index, targetIds] of chunks.entries()) {
+        button.textContent = `正在处理第 ${index + 1} / ${chunks.length} 批…`;
+        const part = await post('batch_apply', { ...values, target_product_ids: targetIds });
+        ['succeeded', 'failed', 'groups_created', 'groups_overwritten', 'groups_skipped', 'options_copied', 'power_rules_copied']
+          .forEach(key => { result[key] += integer(part[key]); });
+        result.failures.push(...(part.failures || []));
+        completedBatches++;
+      }
+      state.dirty = false;
+      state.products = await get('products');
+      await loadWorkspace(selectedProductId(), integer(selectedGroup()?.id));
+      const failureText = integer(result.failed) ? `；失败 ${integer(result.failed)} 个，可根据失败原因修正后重试` : '';
+      notify('批量套用完成', `成功 ${integer(result.succeeded)} 个产品，复制 ${integer(result.groups_created) + integer(result.groups_overwritten)} 个配置组和 ${integer(result.options_copied)} 个物料选项${failureText}。`);
+      if (integer(result.failed) && result.failures?.length) {
+        state.batchPreview = null;
+        q('[data-batch-preview]').innerHTML = `<strong>以下产品未套用，其他产品已经完成</strong>${result.failures.map(row => `<p>${escapeHtml(row.product_code)}：${escapeHtml(row.reason)}</p>`).join('')}`;
+      } else {
+        closeModal(form.closest('[data-adaptation-modal]'));
+      }
+    } catch (error) {
+      state.batchPreview = null;
+      const progress = completedBatches ? `前 ${completedBatches} / ${totalBatches} 批已经完成；` : '';
+      notify('批量套用中断', `${progress}${error.message}`);
+    } finally {
+      button.disabled = !state.batchPreview;
+      button.textContent = '确认批量套用';
     }
   });
 
@@ -668,6 +908,28 @@
   });
 
   page.addEventListener('submit', async event => {
+    const quickRuleForm = event.target.closest('[data-quick-rule-form]');
+    if (quickRuleForm) {
+      event.preventDefault();
+      const button = event.submitter;
+      button.disabled = true;
+      const rules = Object.fromEntries(new FormData(quickRuleForm));
+      if (!('availability' in rules)) rules.availability = 'allowed';
+      try {
+        const result = await post('save_quick_rules', { group_id: selectedGroup().id, rules });
+        await refreshWorkspace();
+        state.tab = 'quick_rules';
+        renderOptionPanel();
+        const followup = integer(result.incompatible)
+          ? `；有 ${integer(result.incompatible)} 个已有选项明确不适配，请更换后再审批`
+          : integer(result.needs_review) ? `；有 ${integer(result.needs_review)} 个选项资料不足，需要审批确认` : '';
+        notify('快速规则已保存', `候选物料会立即按新范围筛选${followup}。`);
+      } catch (error) {
+        notify('保存失败', error.message);
+        button.disabled = false;
+      }
+      return;
+    }
     const defaultForm = event.target.closest('[data-default-form]');
     if (defaultForm) {
       event.preventDefault();
