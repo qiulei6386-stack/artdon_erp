@@ -22061,8 +22061,11 @@ body.is-promo-task-editor-open .promo-wizard-layout {
 body.is-promo-task-editor-open .promo-wizard-main-scroll {
   min-width: 0 !important;
   min-height: 0 !important;
+  box-sizing: border-box !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
+  padding: 12px 12px 28px !important;
+  scroll-padding-bottom: 28px !important;
 }
 body.is-promo-task-editor-open .promo-wizard-side {
   min-width: 0 !important;
@@ -22479,18 +22482,27 @@ body.is-promo-task-editor-open .promo-channel-cards span {
   font-size: 12px !important;
 }
 body.is-promo-task-editor-open .promo-wizard-foot {
+  position: relative !important;
+  z-index: 5 !important;
   min-height: 56px !important;
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr) auto !important;
   align-items: center !important;
   gap: 12px !important;
+  border-top: 1px solid var(--crm-border) !important;
+  background: var(--crm-card-bg) !important;
+  box-shadow: 0 -8px 20px rgb(15 23 42 / .06) !important;
   padding: 9px 14px !important;
 }
 body.is-promo-task-editor-open .promo-wizard-foot-left,
 body.is-promo-task-editor-open .promo-wizard-foot-right {
   display: inline-flex !important;
   align-items: center !important;
+  flex-wrap: wrap !important;
   gap: 8px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-foot-right.is-confirm {
+  justify-content: flex-end !important;
 }
 body.is-promo-task-editor-open .promo-wizard-foot-status {
   min-width: 0 !important;
@@ -22510,6 +22522,7 @@ body.is-promo-task-editor-open .promo-wizard-foot button {
   padding: 0 12px !important;
   font-size: 12px !important;
   font-weight: 850 !important;
+  white-space: nowrap !important;
 }
 body.is-promo-task-editor-open .promo-wizard-foot button.primary,
 body.is-promo-task-editor-open .promo-wizard-foot [data-promo-wizard-next] {
@@ -22615,6 +22628,9 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
     width: 100% !important;
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  body.is-promo-task-editor-open .promo-wizard-foot-right.is-confirm {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
   body.is-promo-task-editor-open .promo-wizard-foot button,
   body.is-promo-task-editor-open .promo-confirm-actions button {

@@ -15395,12 +15395,17 @@
 	      var isEdit = Number(draft.task_id || 0) > 0;
 	      var statusText = this.wizardDraftStatusText(draft);
 	      var saveText = this.wizardSaveStatusText(draft);
-	      var nextText = step >= steps.length - 1 ? '生成执行队列' : '下一步';
+	      var isConfirmStep = step >= steps.length - 1;
+	      var nextText = isConfirmStep ? '生成执行队列' : '下一步';
+	      var footerRightClass = 'promo-wizard-foot-right' + (isConfirmStep ? ' is-confirm' : '');
+	      var footerActions = '<button type="button" data-promo-wizard-draft>保存草稿</button>' +
+	        (isConfirmStep ? '<button type="button" data-promo-confirm-scheduled>保存为计划</button>' : '') +
+	        '<button type="button" class="primary" data-promo-wizard-next>' + esc(nextText) + '</button>';
 	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
 	        '<header class="promo-wizard-head crm-modal-header"><button type="button" class="promo-wizard-close" data-promo-wizard-close>关闭</button><div class="promo-wizard-title"><span>' + (isEdit ? '编辑推广任务' : '新建推广任务') + '</span><h2 class="crm-modal-title">' + esc(draft.task_name || (isEdit ? '编辑推广任务' : '未命名推广任务')) + '</h2></div><div class="promo-wizard-meta"><b>' + esc(statusText) + '</b><em data-promo-wizard-save-status>' + esc(saveText) + '</em></div></header>' +
 	        '<nav class="promo-wizard-steps">' + this.renderWizardStepNav(steps, step) + '</nav>' +
 	        '<main class="promo-wizard-body crm-modal-body"><div class="promo-wizard-layout"><section class="promo-wizard-main-scroll">' + this.renderWizardStep(step, draft) + '</section>' + this.renderWizardSidebar(draft) + '</div></main>' +
-	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="promo-wizard-foot-right"><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" class="primary" data-promo-wizard-next>' + esc(nextText) + '</button></div></footer>' +
+	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="' + footerRightClass + '">' + footerActions + '</div></footer>' +
 	        '</section>';
 	      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
 	        button.addEventListener('click', function () {
@@ -15851,7 +15856,7 @@
 	      return '<section class="promo-step-card promo-step-confirm"><div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
 	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
 	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
-	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><section class="promo-confirm-actions"><button type="button" data-promo-confirm-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为已计划</button><button type="button" data-promo-confirm-queue>生成执行队列</button></section></section>';
+	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">保存草稿、保存为计划和生成执行队列统一固定在底部操作栏，不会再被内容区遮挡。</article></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);
@@ -16682,10 +16687,65 @@
       if (item.executor) return item.executor.display_name || item.executor.username || ('#' + item.executor.id);
       return account.owner_name || account.sender_name || account.username || item.mail_user_name || item.send_email || account.email_address || '未匹配';
     },
+    buildWizardMailPreviewItems: function (draft, plan) {
+      plan = plan || this.buildExecutionPlan(draft);
+      var self = this;
+      var assignedItems = ((plan.mailItems || []).concat(plan.duplicateMailItems || []));
+      var itemKey = function (item) {
+        return [Number(item.contact_id || 0), Number(item.customer_id || 0), String(item.email || '').trim().toLowerCase(), String(item.target_level || '')].join('|');
+      };
+      var assignedByKey = {};
+      assignedItems.forEach(function (item) { assignedByKey[itemKey(item)] = item; });
+      var accounts = (this.data && this.data.mail_accounts) || [];
+      var selectedIds = (draft.mail_account_ids || []).map(Number).filter(Boolean);
+      if (draft.mail_account_id && selectedIds.indexOf(Number(draft.mail_account_id)) < 0) selectedIds.unshift(Number(draft.mail_account_id));
+      var currentUserId = Number((state.user || {}).id || 0);
+      var fallbackAccount = accounts.find(function (account) { return selectedIds.indexOf(Number(account.id)) >= 0; })
+        || accounts.find(function (account) { return Number(account.user_id || 0) === currentUserId; })
+        || accounts[0]
+        || null;
+      var previewItems = (plan.items || []).filter(function (item) {
+        return self.isEmailPromotionChannel(item.channel || draft.channel_key);
+      }).map(function (item) {
+        var assigned = assignedByKey[itemKey(item)] || {};
+        var preview = Object.assign({}, item, assigned);
+        var account = preview.mail_account || fallbackAccount;
+        if (account && !preview.mail_account) preview.mail_account = account;
+        if (account && !preview.account_id) preview.account_id = account.id;
+        if (account && !preview.send_email) preview.send_email = account.email_address || '';
+        if (account && !preview.mail_user_name) preview.mail_user_name = account.owner_name || account.sender_name || account.username || '';
+        if (account && !preview.mail_user_mobile) preview.mail_user_mobile = account.user_phone || account.owner_phone || '';
+        if (account && !preview.mail_user_position) preview.mail_user_position = account.user_position || account.position || '';
+        preview._preview_only = !assignedByKey[itemKey(item)];
+        return preview;
+      });
+      if (!previewItems.length && this.isEmailPromotionChannel(draft.channel_key || draft.campaign_type || 'email')) {
+        previewItems.push({
+          customer_id: 0,
+          customer_name: '示例客户',
+          customer_person_name: '客户',
+          contact_id: 0,
+          contact_name: '客户',
+          variable_contact_name: '客户',
+          target_level: 'preview',
+          email: '',
+          channel: 'email',
+          account_id: fallbackAccount ? fallbackAccount.id : '',
+          mail_account: fallbackAccount || {},
+          send_email: fallbackAccount ? (fallbackAccount.email_address || '') : '',
+          mail_user_name: fallbackAccount ? (fallbackAccount.owner_name || fallbackAccount.sender_name || fallbackAccount.username || '') : '',
+          mail_user_mobile: fallbackAccount ? (fallbackAccount.user_phone || fallbackAccount.owner_phone || '') : '',
+          mail_user_position: fallbackAccount ? (fallbackAccount.user_position || fallbackAccount.position || '') : '',
+          _preview_only: true,
+          _sample_preview: true
+        });
+      }
+      return previewItems;
+    },
     renderWizardMailCarousel: function (draft, plan) {
-      var mailItems = (plan && plan.mailItems) || [];
+      var mailItems = this.buildWizardMailPreviewItems(draft, plan);
       if (!mailItems.length) {
-        return '<section class="promo-preview-mail promo-mail-carousel"><header><div><strong>客户邮箱预览</strong><span>当前规则没有生成邮件队列，请检查渠道、客户邮箱或发件邮箱规则。</span></div></header></section>';
+        return '<section class="promo-preview-mail promo-mail-carousel"><header><div><strong>客户邮箱预览</strong><span>当前任务不是邮件渠道，因此没有邮件内容可预览。</span></div></header></section>';
       }
       var index = Math.max(0, Math.min(Number(this.previewMailIndex || 0), mailItems.length - 1));
       this.previewMailIndex = index;
@@ -16694,9 +16754,10 @@
       var body = this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft);
       var executor = this.mailExecutorLabel(item);
       var currentEmail = this.previewTestEmail || (state.user && state.user.email) || '';
-      return '<section class="promo-preview-mail promo-mail-carousel">' +
-        '<header><div><strong>客户邮箱预览</strong><span>切换客户检查称呼、变量、发件箱和执行人是否正确</span></div><div class="promo-mail-carousel-nav"><button type="button" data-promo-mail-prev>← 上一位</button><span>' + (index + 1) + ' / ' + mailItems.length + '</span><button type="button" data-promo-mail-next>下一位 →</button></div></header>' +
-        '<div class="promo-mail-preview-meta"><span>客户：' + esc(item.customer_name || '-') + '</span><span>联系人/称呼：' + esc(item.variable_contact_name || item.contact_name || '-') + (item.target_level === 'customer' ? '（客户级）' : '') + '</span><span>客户邮箱：' + esc(item.email || '-') + '</span><span>发件箱：' + esc(item.send_email || '-') + '</span><span>邮件执行人：' + esc(executor) + '</span></div>' +
+      var previewHint = item._sample_preview ? '当前没有邮件人员，先用示例称呼预览；选定客户后会自动按人员展开。' : '按人员逐封预览，不需要先生成正式队列；到最后一封后可继续回到第一封。';
+      return '<section class="promo-preview-mail promo-mail-carousel" data-promo-mail-count="' + mailItems.length + '">' +
+        '<header><div><strong>客户邮箱预览</strong><span>' + esc(previewHint) + '</span></div><div class="promo-mail-carousel-nav"><button type="button" data-promo-mail-prev>← 上一封</button><span>第 ' + (index + 1) + ' / ' + mailItems.length + ' 封</span><button type="button" data-promo-mail-next>下一封 →</button></div></header>' +
+        '<div class="promo-mail-preview-meta"><span>客户：' + esc(item.customer_name || '-') + '</span><span>联系人/称呼：' + esc(item.variable_contact_name || item.contact_name || '-') + (item.target_level === 'customer' ? '（客户级）' : '') + '</span><span>客户邮箱：' + esc(item.email || '未填写（仅预览）') + '</span><span>发件箱：' + esc(item.send_email || '测试时使用当前账号邮箱') + '</span><span>邮件执行人：' + esc(executor) + '</span></div>' +
         '<label class="promo-mail-preview-subject"><span>主题预览</span><input readonly value="' + esc(subject) + '"></label>' +
         '<div class="promo-mail-preview-body">' + body + '</div>' +
         '<div class="promo-mail-test-row"><label><span>测试收件人</span><input type="email" data-promo-test-email value="' + esc(currentEmail) + '" placeholder="输入自己的邮箱，只发送测试邮件"></label><button type="button" class="primary" data-promo-test-send>发送测试邮件</button></div>' +
@@ -16705,12 +16766,14 @@
     },
     bindWizardPreviewControls: function (box) {
       var self = this;
-      box.querySelector('[data-promo-mail-prev]')?.addEventListener('click', function () {
-        self.previewMailIndex = Math.max(0, Number(self.previewMailIndex || 0) - 1);
+      box.querySelector('[data-promo-mail-prev]')?.addEventListener('click', function (event) {
+        var count = Math.max(1, Number(event.currentTarget.closest('[data-promo-mail-count]')?.getAttribute('data-promo-mail-count') || 1));
+        self.previewMailIndex = (Number(self.previewMailIndex || 0) - 1 + count) % count;
         self.updateWizardPreview();
       });
-      box.querySelector('[data-promo-mail-next]')?.addEventListener('click', function () {
-        self.previewMailIndex = Number(self.previewMailIndex || 0) + 1;
+      box.querySelector('[data-promo-mail-next]')?.addEventListener('click', function (event) {
+        var count = Math.max(1, Number(event.currentTarget.closest('[data-promo-mail-count]')?.getAttribute('data-promo-mail-count') || 1));
+        self.previewMailIndex = (Number(self.previewMailIndex || 0) + 1) % count;
         self.updateWizardPreview();
       });
       box.querySelector('[data-promo-test-email]')?.addEventListener('input', function (event) {
@@ -16723,8 +16786,8 @@
     sendWizardTestMail: function (button) {
       var draft = this.collectWizard();
       var plan = this.buildExecutionPlan(draft);
-      var mailItems = plan.mailItems || [];
-      if (!mailItems.length) return toast('当前没有可测试的邮件队列，请先检查客户邮箱和发件箱规则');
+      var mailItems = this.buildWizardMailPreviewItems(draft, plan);
+      if (!mailItems.length) return toast('当前任务不是邮件渠道，无法发送邮件测试');
       var index = Math.max(0, Math.min(Number(this.previewMailIndex || 0), mailItems.length - 1));
       var item = mailItems[index] || {};
       var testInput = document.querySelector('[data-promo-test-email]');
@@ -16743,13 +16806,14 @@
         contact_name: item.variable_contact_name || item.contact_name || item.customer_name || '',
         target_email: item.email || ''
       };
-      if (button) button.disabled = true;
+      var buttonText = button ? button.textContent : '';
+      if (button) { button.disabled = true; button.textContent = '发送中...'; }
       post('marketing_test_send', payload).then(function (json) {
         toast((json && json.message) || '测试邮件已发送');
       }).catch(function (err) {
         toast(err.message || '测试邮件发送失败');
       }).finally(function () {
-        if (button) button.disabled = false;
+        if (button) { button.disabled = false; button.textContent = buttonText || '发送测试邮件'; }
       });
     },
     countryUtcOffset: function (country) {
