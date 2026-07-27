@@ -15360,6 +15360,10 @@
 	      try {
 	        this.renderBootstrapChannels();
 	        if (!this.wizardDraft) this.wizardStep = 0;
+	        if (!this.wizardDraft) {
+	          this.wizardConfirmSections = null;
+	          this.wizardConfirmExceptionGroups = null;
+	        }
 	        this.wizardDraft = Object.assign(this.defaultWizardDraft(), this.wizardDraft || {});
 	        this.wizardReturnScrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
 	        document.body.classList.add('is-promo-task-editor-open');
@@ -15376,6 +15380,8 @@
 	    closeWizard: function () {
 	      this.wizardDraft = null;
 	      this.wizardStep = 0;
+	      this.wizardConfirmSections = null;
+	      this.wizardConfirmExceptionGroups = null;
         this.wizardAudienceLoading = false;
         this.wizardAudienceError = '';
         this.wizardAudienceRequestSerial += 1;
@@ -15400,7 +15406,7 @@
 	      var saveText = this.wizardSaveStatusText(draft);
 	      var isConfirmStep = step >= steps.length - 1;
 	      var footerActions = isConfirmStep ? '' : '<button type="button" class="primary" data-promo-wizard-next>下一步</button>';
-	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
+	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style' + (isConfirmStep ? ' is-confirm-step' : '') + '" data-promo-wizard>' +
 	        '<header class="promo-wizard-head crm-modal-header"><button type="button" class="promo-wizard-close" data-promo-wizard-close>关闭</button><div class="promo-wizard-title"><span>' + (isEdit ? '编辑推广任务' : '新建推广任务') + '</span><h2 class="crm-modal-title">' + esc(draft.task_name || (isEdit ? '编辑推广任务' : '未命名推广任务')) + '</h2></div><div class="promo-wizard-meta"><b>' + esc(statusText) + '</b><em data-promo-wizard-save-status>' + esc(saveText) + '</em></div></header>' +
 	        '<nav class="promo-wizard-steps">' + this.renderWizardStepNav(steps, step) + '</nav>' +
 	        '<main class="promo-wizard-body crm-modal-body"><div class="promo-wizard-layout"><section class="promo-wizard-main-scroll">' + this.renderWizardStep(step, draft) + '</section>' + this.renderWizardSidebar(draft) + '</div></main>' +
@@ -15424,6 +15430,50 @@
 	      modal.querySelector('[data-promo-confirm-draft]')?.addEventListener('click', function (event) { self.saveDraftFromWizard(event.currentTarget); });
 	      modal.querySelector('[data-promo-confirm-scheduled]')?.addEventListener('click', function (event) { self.createTaskFromWizard('scheduled', { button: event.currentTarget }); });
 	      modal.querySelector('[data-promo-confirm-queue]')?.addEventListener('click', function (event) { self.createTaskFromWizard('pending', { queue: true, button: event.currentTarget }); });
+	      modal.querySelectorAll('[data-promo-confirm-toggle]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          var name = button.getAttribute('data-promo-confirm-toggle') || '';
+	          if (!name) return;
+	          self.wizardConfirmSections = self.wizardConfirmSections || {};
+	          self.wizardConfirmSections[name] = !self.wizardConfirmSections[name];
+	          self.renderWizard();
+	        });
+	      });
+	      modal.querySelector('[data-promo-confirm-collapse-all]')?.addEventListener('click', function () {
+	        self.wizardConfirmSections = { mail: false, recipients: false, summary: false, quality: false, exceptions: false };
+	        self.renderWizard();
+	      });
+	      modal.querySelector('[data-promo-confirm-expand-all]')?.addEventListener('click', function () {
+	        self.wizardConfirmSections = { mail: true, recipients: true, summary: true, quality: true, exceptions: true };
+	        self.renderWizard();
+	      });
+	      modal.querySelector('[data-promo-confirm-mail-large]')?.addEventListener('click', function () { self.openConfirmMailPreviewDialog(); });
+	      modal.querySelector('[data-promo-confirm-queue-large]')?.addEventListener('click', function () { self.openConfirmQueuePreviewDialog(); });
+	      modal.querySelectorAll('[data-promo-confirm-exception-toggle]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          var name = button.getAttribute('data-promo-confirm-exception-toggle') || '';
+	          if (!name) return;
+	          self.wizardConfirmSections = self.wizardConfirmSections || {};
+	          self.wizardConfirmSections.exceptions = true;
+	          self.wizardConfirmExceptionGroups = self.wizardConfirmExceptionGroups || {};
+	          self.wizardConfirmExceptionGroups[name] = !self.wizardConfirmExceptionGroups[name];
+	          self.renderWizard();
+	        });
+	      });
+	      modal.querySelectorAll('[data-promo-confirm-focus]').forEach(function (button) {
+	        button.addEventListener('click', function () {
+	          var selector = button.getAttribute('data-promo-confirm-focus');
+	          var target = selector ? modal.querySelector(selector) : null;
+	          if (!target) return;
+	          self.wizardConfirmSections = self.wizardConfirmSections || {};
+	          self.wizardConfirmSections.quality = true;
+	          self.renderWizard();
+	          requestAnimationFrame(function () {
+	            var nextTarget = document.querySelector(selector);
+	            if (nextTarget) nextTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	          });
+	        });
+	      });
 	      modal.querySelectorAll('[data-promo-channel-card]').forEach(function (button) {
 	        button.addEventListener('click', function () {
 	          var map = { email: ['email', 'email'], social: ['whatsapp', 'whatsapp'], phone: ['phone', 'phone'], offline: ['offline', 'offline'] };
@@ -15535,7 +15585,7 @@
 	        return /无匹配发件邮箱/.test(String(item.reason || ''));
 	      }).length;
 	      var missingSchedule = (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim();
-	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile'];
+	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile','country','email','mobile','phone','name','customer_full_name','user_name','position'];
 	      var varIssues = 0;
 	      String((draft.mail_subject || '') + ' ' + (draft.mail_body_html || '')).replace(/\{([^}]+)\}/g, function (_, name) {
 	        if (allowedVars.indexOf(String(name || '').trim()) < 0) varIssues += 1;
@@ -15559,11 +15609,12 @@
 	        ['未设置发送时间', missingSchedule ? '未设置' : '--'],
 	        ['内容变量异常', varIssues]
 	      ];
-	      return '<aside class="promo-wizard-side"><section class="promo-wizard-project-actions"><header>项目操作</header><nav><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为计划</button><button type="button" class="primary" data-promo-confirm-queue>生成执行队列</button></nav></section><details open><summary>任务摘要</summary><div>' + summaryRows.map(function (row) {
+	      var qualityAlertCount = qualityRows.filter(function (row) { return row[1] !== '--' && row[1] !== 0 && row[1] !== '0'; }).length;
+	      return '<aside class="promo-wizard-side"><section class="promo-wizard-project-actions"><header>项目操作</header><nav><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为计划</button><button type="button" class="primary" data-promo-confirm-queue>生成执行队列</button></nav></section><details><summary>任务摘要</summary><div>' + summaryRows.map(function (row) {
 	        return '<article><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
-	      }).join('') + '</div></details><details open><summary>质量检查</summary><div>' + qualityRows.map(function (row) {
+	      }).join('') + '</div></details><details' + (qualityAlertCount ? ' open' : '') + '><summary>质量快照' + (qualityAlertCount ? ' · ' + qualityAlertCount + ' 项待处理' : '') + '</summary><div>' + qualityRows.map(function (row) {
 	        var isWarn = row[1] !== '--' && row[1] !== 0 && row[1] !== '0';
-	        return '<article class="' + (isWarn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
+	        return '<button type="button" class="' + (isWarn ? 'is-warn' : '') + '"' + (isWarn ? ' data-promo-confirm-focus="[data-promo-confirm-quality]"' : '') + '><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></button>';
 	      }).join('') + '</div></details></aside>';
 	    },
 	    wizardTopCounts: function (rows, getter, limit) {
@@ -15805,63 +15856,81 @@
 	      }).join('');
 	      return '<section class="promo-step-card promo-step-failure"><div class="promo-failure-rule-grid">' + cards + '</div><article class="promo-failure-summary"><strong>当前失败处理摘要</strong><span>失败后最多重试 ' + esc(retryCount) + ' 次，间隔 ' + esc(retryInterval) + ' 分钟；' + esc(blacklistText) + '；无邮箱' + esc(noEmailText) + '；' + esc(duplicateText) + '；SMTP失败' + esc(smtpText) + '；客户日志' + esc(logText) + '；默认动作：' + esc(failureText) + '。</span></article><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><input type="hidden" data-wizard-field="failure_action" value="' + esc(draft.failure_action || 'mark_failed') + '"></section>';
 	    },
+	    confirmSectionOpen: function (name, defaultOpen) {
+	      this.wizardConfirmSections = this.wizardConfirmSections || {};
+	      if (typeof this.wizardConfirmSections[name] !== 'boolean') this.wizardConfirmSections[name] = Boolean(defaultOpen);
+	      return this.wizardConfirmSections[name];
+	    },
+	    renderConfirmSection: function (name, title, subtitle, badges, body, options) {
+	      options = options || {};
+	      var open = this.confirmSectionOpen(name, options.defaultOpen);
+	      var badgeHtml = (badges || []).filter(Boolean).map(function (badge) { return '<em class="' + (badge.warn ? 'is-warn' : '') + '">' + esc(badge.text) + '</em>'; }).join('');
+	      var actionHtml = options.action ? '<button type="button" class="promo-confirm-section-action" ' + options.action.attr + '>' + esc(options.action.label) + '</button>' : '';
+	      return '<section class="promo-confirm-section' + (open ? ' is-open' : '') + '" data-promo-confirm-section="' + esc(name) + '"><header><div><strong>' + esc(title) + '</strong><span>' + esc(subtitle || '') + '</span></div><div class="promo-confirm-section-tools">' + badgeHtml + actionHtml + '<button type="button" class="promo-confirm-section-toggle" data-promo-confirm-toggle="' + esc(name) + '">' + (open ? '收起⌃' : '展开⌄') + '</button></div></header>' + (open ? '<div class="promo-confirm-section-body">' + body + '</div>' : '') + '</section>';
+	    },
 	    renderConfirmStepLayout: function (draft) {
 	      var targets = this.resolveWizardTargets(draft);
-        var audienceCustomers = this.resolveWizardAudienceCustomers(draft);
-        var audienceCount = Number(draft.audience_customer_count || 0) || audienceCustomers.length;
+	      var audienceCustomers = this.resolveWizardAudienceCustomers(draft);
+	      var audienceCount = Number(draft.audience_customer_count || 0) || audienceCustomers.length;
 	      var schedule = this.buildSchedulePlan(draft);
 	      var plan = schedule.plan || this.buildExecutionPlan(draft);
 	      var rows = schedule.rows || [];
 	      var duplicateReport = plan.duplicateEmailReport || {};
 	      var duplicateTargets = duplicateReport.duplicate_email_skipped_count || 0;
-	      var noEmail = (targets.contacts || []).filter(function (row) { return !String(row.email || row.contact_email || row.primary_contact_email || '').trim(); }).length;
-	      var blacklist = (targets.skipped || []).filter(function (row) { return /黑名单/.test(String(row.reason || '')); }).length;
-	      var unassignedMail = (plan.offlineItems || []).filter(function (item) { return /无匹配发件邮箱/.test(String(item.reason || '')); }).length;
-	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile'];
-	      var varIssues = 0;
+	      var noEmailRows = (targets.contacts || []).filter(function (row) { return !String(row.email || row.contact_email || row.primary_contact_email || '').trim(); });
+	      var noEmail = noEmailRows.length;
+	      var blacklistRows = (targets.skipped || []).filter(function (row) { return /黑名单|禁止联系/.test(String(row.reason || '')); });
+	      var blacklist = blacklistRows.length;
+	      var unassignedRows = (plan.offlineItems || []).filter(function (item) { return /无匹配发件邮箱/.test(String(item.reason || '')); });
+	      var unassignedMail = unassignedRows.length;
+	      var ownerRule = (draft.mail_executor_rule || draft.executor_rule || 'owner') === 'owner' || (draft.offline_executor_rule || draft.executor_rule || 'owner') === 'owner';
+	      var noExecutorRows = ownerRule ? (plan.items || []).filter(function (item) { return !Number(item.owner_user_id || 0); }) : [];
+	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile','country','email','mobile','phone','name','customer_full_name','user_name','position'];
+	      var unknownVars = [];
 	      String((draft.mail_subject || '') + ' ' + (draft.mail_body_html || '')).replace(/\{([^}]+)\}/g, function (_, name) {
-	        if (allowedVars.indexOf(String(name || '').trim()) < 0) varIssues += 1;
+	        name = String(name || '').trim();
+	        if (allowedVars.indexOf(name) < 0 && unknownVars.indexOf(name) < 0) unknownVars.push(name);
 	        return _;
 	      });
+	      var varIssues = unknownVars.length;
 	      var timeIssue = (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim();
 	      var startTime = rows[0] ? this.formatScheduleDate(rows[0].schedule_send_at) : (draft.scheduled_at || '--');
-	      var summary = [
-	        ['任务名称', draft.task_name || '未命名任务'],
-	        ['客户总数', audienceCount],
-          ['可执行客户', targets.customers.length],
-	        ['联系人数', targets.contacts.length],
-	        ['原始邮件目标', plan.rawMailTargetCount || (plan.mailItems || []).length],
-	        ['去重后邮件目标', (plan.mailItems || []).length],
-	        ['发件邮箱数', (plan.mailBuckets || []).length],
-	        ['计划时间', startTime]
-	      ];
-	      var checks = [
-	        ['重复目标', duplicateTargets],
-	        ['无邮箱', noEmail],
-	        ['黑名单', blacklist],
-	        ['未分配邮箱', unassignedMail],
-	        ['变量异常', varIssues],
-	        ['时间异常', timeIssue ? '未设置' : 0]
-	      ];
-	      var listRows = rows.slice(0, 120).map(function (row) {
-	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.send_email || '-') + '</td><td>' + esc(this.mailExecutorLabel(row)) + '</td><td>' + esc(this.formatScheduleDate(row.schedule_send_at)) + '</td><td>' + esc(cnChannel(row.channel || draft.channel_key || '-')) + '</td></tr>';
+	      var summary = [['任务名称', draft.task_name || '未命名任务'], ['客户总数', audienceCount], ['可执行客户', (plan.items || []).length], ['联系人数量', targets.contacts.length], ['原始邮件目标', plan.rawMailTargetCount || (plan.mailItems || []).length], ['去重后邮件目标', (plan.mailItems || []).length], ['发件邮箱数', (plan.mailBuckets || []).length], ['计划发送时间', startTime], ['推广渠道', cnChannel(draft.channel_key || '-')]];
+	      var checks = [['无邮箱', noEmail, 'no_email'], ['重复目标', duplicateTargets, 'duplicate'], ['黑名单', blacklist, 'blacklist'], ['未分配邮箱', unassignedMail, 'unassigned_mail'], ['未分配执行人', noExecutorRows.length, 'executor'], ['发送异常', 0, 'send'], ['时间异常', timeIssue ? 1 : 0, 'time'], ['内容变量异常', varIssues, 'variables']];
+	      var riskCount = checks.filter(function (row) { return Number(row[1]) > 0; }).reduce(function (sum, row) { return sum + Number(row[1] || 0); }, 0);
+	      var recipientRows = (rows.length ? rows : (plan.items || [])).slice(0, 8).map(function (row) {
+	        var scheduleText = row.schedule_send_at ? this.formatScheduleDate(row.schedule_send_at) : (draft.scheduled_at || '按规则执行');
+	        return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.variable_contact_name || row.contact_name || '客户级目标') + '</span><span>' + esc(row.email || row.mobile || row.whatsapp || '线下处理') + '</span><span>' + esc(cnChannel(row.channel || draft.channel_key || '-')) + '</span><span>' + esc(scheduleText) + '</span><span>' + esc(this.mailExecutorLabel(row)) + '</span></article>';
 	      }, this).join('');
-	      var duplicateRows = (duplicateReport.duplicate_email_details || []).slice(0, 10).map(function (item) {
-	        var kept = item.kept || {};
-	        return '<tr><td>' + esc(item.email || '-') + '</td><td>' + esc(item.count || 0) + '</td><td>' + esc(kept.customer_name || '-') + ' / ' + esc(kept.contact_name || kept.variable_contact_name || '-') + '</td><td>' + esc((item.skipped || []).map(function (row) { return (row.customer_name || '-') + ' / ' + (row.contact_name || row.variable_contact_name || '-'); }).join('；') || '-') + '</td></tr>';
-	      }).join('');
-        var initialMailPreview = '';
-        try {
-          initialMailPreview = this.renderWizardMailCarousel(draft, plan);
-        } catch (previewError) {
-          console.error('Promotion step 9 initial mail preview failed:', previewError);
-          initialMailPreview = '<section class="promo-preview-mail promo-mail-carousel is-error"><header><div><strong>邮件预览加载异常</strong><span>请返回第 5 步检查邮件主题、正文和渠道；测试发信入口不会再被静默隐藏。</span></div></header></section>';
-        }
-        var mailPreviewStage = '<section class="promo-confirm-mail-stage" data-promo-confirm-mail-stage data-promo-preview-build="20260728-1"><header><div><strong>邮件预览与测试发送</strong><span>第 9 步第一屏固定显示；已有邮件内容的综合渠道任务也可预览和测试。</span></div><em>邮件判定修复版 20260728-1</em></header><div data-promo-wizard-preview>' + initialMailPreview + '</div></section>';
-	      return '<section class="promo-step-card promo-step-confirm">' + mailPreviewStage + '<div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
-	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
-	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
-	      }).join('') + '</div></section><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">邮件逐封预览和测试发信固定显示在第 9 步第一屏；保存草稿、保存为计划和生成执行队列始终显示在右侧“项目操作”。</article></section>';
+	      var exceptionGroups = [
+	        { key: 'no_email', label: '无邮箱', rows: noEmailRows.map(function (row) { return { customer: row.customer_name, contact: row.name || row.contact_name, channel: row.whatsapp || row.phone || '-', advice: draft.no_email_policy === 'offline' ? '将进入线下执行清单' : '补充邮箱或调整为线下执行' }; }) },
+	        { key: 'unassigned_mail', label: '未分配邮箱', rows: unassignedRows.map(function (row) { return { customer: row.customer_name, contact: row.variable_contact_name || row.contact_name, channel: row.email || '-', advice: '在第 6 步选择可用发件邮箱或调整分配规则' }; }) },
+	        { key: 'executor', label: '未分配执行人', rows: noExecutorRows.map(function (row) { return { customer: row.customer_name, contact: row.variable_contact_name || row.contact_name, channel: row.email || row.mobile || '-', advice: '在第 6 步指定执行人或为客户补充负责人' }; }) },
+	        { key: 'blacklist', label: '黑名单', rows: blacklistRows.map(function (row) { return { customer: row.name || row.customer_name, contact: row.contact_name || '-', channel: '-', advice: '解除黑名单后再纳入推广，或保持跳过' }; }) },
+	        { key: 'duplicate', label: '重复目标', rows: (duplicateReport.duplicate_email_details || []).map(function (row) { return { customer: (row.kept || {}).customer_name || '-', contact: (row.kept || {}).contact_name || '-', channel: row.email || '-', advice: '已按当前重复邮箱策略处理' }; }) },
+	        { key: 'time', label: '时间异常', rows: timeIssue ? [{ customer: '计划发送时间', contact: '-', channel: '-', advice: '请返回第 7 步设置计划发送时间' }] : [] },
+	        { key: 'variables', label: '内容变量异常', rows: unknownVars.map(function (name) { return { customer: '{' + name + '}', contact: '-', channel: '-', advice: '替换为系统支持的变量，或删除该变量' }; }) }
+	      ].filter(function (group) { return group.rows.length; });
+	      var exceptionHtml = exceptionGroups.length ? exceptionGroups.map(function (group) {
+	        var isOpen = Boolean((this.wizardConfirmExceptionGroups || {})[group.key]);
+	        var detail = isOpen ? '<div class="promo-confirm-exception-rows">' + group.rows.map(function (row) { return '<article><strong>' + esc(row.customer || '-') + '</strong><span>' + esc(row.contact || '-') + ' · ' + esc(row.channel || '-') + '</span><small>' + esc(row.advice || '-') + '</small></article>'; }).join('') + '</div>' : '';
+	        return '<section class="promo-confirm-exception-group' + (isOpen ? ' is-open' : '') + '"><button type="button" data-promo-confirm-exception-toggle="' + esc(group.key) + '"><span>' + esc(group.label) + '</span><em>' + esc(group.rows.length) + '</em><b>' + (isOpen ? '收起⌃' : '查看⌄') + '</b></button>' + detail + '</section>';
+	      }, this).join('') : '<p class="promo-confirm-empty">当前没有需要展开的异常明细。</p>';
+	      var initialMailPreview = '';
+	      try { initialMailPreview = this.renderWizardMailCarousel(draft, plan); }
+	      catch (previewError) { console.error('Promotion step 9 initial mail preview failed:', previewError); initialMailPreview = '<section class="promo-preview-mail promo-mail-carousel is-error"><header><div><strong>邮件预览加载异常</strong><span>请返回第 5 步检查邮件主题、正文和渠道。</span></div></header></section>'; }
+	      var mailBody = '<section class="promo-confirm-mail-stage" data-promo-confirm-mail-stage data-promo-preview-build="20260728-2"><div data-promo-wizard-preview>' + initialMailPreview + '</div></section>';
+	      var recipientBody = '<div class="promo-confirm-recipient-head"><span>仅显示前 ' + Math.min(8, (rows.length ? rows : (plan.items || [])).length) + ' 条，完整名单在弹窗中分页查看。</span></div><div class="promo-confirm-recipient-list">' + (recipientRows || '<p class="promo-confirm-empty">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</p>') + '</div>';
+	      var summaryBody = '<div class="promo-confirm-kpis">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div>';
+	      var qualityBody = '<div class="promo-confirm-quality-grid">' + checks.map(function (row) { var warn = Number(row[1]) > 0; return '<button type="button" class="' + (warn ? 'is-warn' : '') + '"' + (warn ? ' data-promo-confirm-exception-toggle="' + esc(row[2]) + '"' : '') + '><span>' + esc(row[0]) + '</span><strong>' + esc(row[1]) + '</strong></button>'; }).join('') + '</div>';
+	      var header = '<section class="promo-confirm-page-head"><div><strong>第 9 步：邮件预览与发送队列</strong><span>确认邮件内容、执行名单与任务数据，生成执行队列并开始发送。</span></div><nav><button type="button" data-promo-confirm-collapse-all>折叠全部</button><button type="button" data-promo-confirm-expand-all>展开全部</button></nav><p>减少滚动条，默认折叠非关键模块</p></section>';
+	      return '<section class="promo-step-card promo-step-confirm">' + header +
+	        this.renderConfirmSection('mail', '邮件预览', '核对主题、收件人和正文；完整内容在大预览中查看。', [], mailBody, { defaultOpen: true, action: { attr: 'data-promo-confirm-mail-large', label: '展开大预览' } }) +
+	        this.renderConfirmSection('recipients', '执行名单预览', '客户、联系人、联系方式、渠道、时间与执行人。', [{ text: ((rows.length ? rows : (plan.items || [])).length) + ' 个' }], recipientBody, { defaultOpen: true, action: { attr: 'data-promo-confirm-queue-large', label: '查看全部 ' + ((rows.length ? rows : (plan.items || [])).length) + ' 个' } }) +
+	        this.renderConfirmSection('summary', '任务摘要', '任务规模、邮件目标与计划发送时间。', [], summaryBody, { defaultOpen: false }) +
+	        this.renderConfirmSection('quality', '质量检查', riskCount ? '发现 ' + riskCount + ' 项待处理问题，点击卡片查看明细。' : '未发现需要处理的质量问题。', riskCount ? [{ text: riskCount + ' 项问题', warn: true }] : [{ text: '正常' }], qualityBody, { defaultOpen: riskCount > 0 }) +
+	        this.renderConfirmSection('exceptions', '异常明细', exceptionGroups.length ? '按问题类型展开后查看客户与处理建议。' : '没有需要处理的异常。', exceptionGroups.length ? [{ text: exceptionGroups.reduce(function (sum, group) { return sum + group.rows.length; }, 0) + ' 项', warn: true }] : [{ text: '0 项' }], exceptionHtml, { defaultOpen: false }) +
+	        '<article class="promo-confirm-ready ' + (riskCount ? 'is-warn' : 'is-ok') + '"><strong>' + (riskCount ? '请先确认质量检查中的风险，再生成执行队列。' : '检查完成，可以生成执行队列。') + '</strong><span>右侧“生成执行队列”会在提交前再次执行最终校验。</span></article></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);
@@ -16076,7 +16145,7 @@
         missingOwners: items.filter(function (item) { return !item.owner_user_id; }).length
       };
     },
-    openExecutionPlanDialog: function () {
+	    openExecutionPlanDialog: function () {
       var draft = this.collectWizard();
       var plan = this.buildExecutionPlan(draft);
       var mailHtml = plan.mailBuckets.length ? plan.mailBuckets.map(function (bucket) {
@@ -16981,39 +17050,45 @@
         '<div class="promo-schedule-kpis"><article><strong>' + esc(rows.length) + '</strong><span>邮件队列</span></article><article><strong>' + esc(schedule.interval) + ' 分钟</strong><span>发送间隔</span></article><article><strong>' + esc(schedule.hourlyLimit) + '</strong><span>每小时上限</span></article><article><strong>' + esc(schedule.dailyLimit) + '</strong><span>每日上限</span></article></div>' +
         '<div class="promo-schedule-table-wrap"><table class="promo-schedule-table"><thead><tr><th>#</th><th>客户 / 联系人</th><th>国家</th><th>客户邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发信时间</th><th>客户当地时间</th><th>预计送达时间</th><th>说明</th></tr></thead><tbody>' + (tableRows || '<tr><td colspan="10">当前没有邮件队列。请检查推广渠道、客户邮箱和发件邮箱规则。</td></tr>') + '</tbody></table></div></section>';
     },
-    updateWizardPreview: function () {
-      var box = document.querySelector('[data-promo-wizard-preview]');
-      if (!box) return;
-      var self = this;
-      var draft = this.collectWizard();
-      var targets = this.resolveWizardTargets(draft);
-      var plan = this.buildExecutionPlan(draft);
-      var selectedCustomers = targets.customers.length;
-      var selectedContacts = targets.contacts.length;
-      var selectedChatGroups = (targets.chat_groups || []).length;
-      var countries = {};
-      targets.customers.forEach(function (row) {
-        var key = row.country || '未填';
-        countries[key] = (countries[key] || 0) + 1;
-      });
-      var risks = [
-        '黑名单策略：' + (draft.blacklist_policy === 'block_task' ? '阻止任务' : '自动跳过'),
-        '不推广联系人：自动跳过',
-        '无邮箱策略：' + (draft.no_email_policy === 'offline' ? '转线下执行' : '跳过'),
-        '发送规则：' + draft.mail_account_rule,
-        '时区规则：' + draft.timezone_rule
-      ];
-      var previewRows = selectedChatGroups ? (targets.chat_groups || []).slice(0, 18).map(function (row) { return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.group_name || '-') + ' · 渠道：' + esc(row._resolved_channel || row.group_platform || draft.channel_key || '-') + ' · 群负责人：' + esc(row.group_owner || row.owner_name || '-').slice(0, 80) + '</span></article>'; }).join('') : (targets.contacts.length ? targets.contacts.slice(0, 18).map(function (row) { return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.name || '客户级') + ' · 渠道：' + esc(row._resolved_channel || draft.channel_key || '-') + ' · ' + esc(row.email || row.whatsapp || row.phone || '线下处理') + '</span></article>'; }).join('') : targets.customers.slice(0, 18).map(function (row) { return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.customer_code || '-') + ' · 渠道：' + esc(self.resolvePreferredChannel(row, draft)) + ' · ' + esc(row.country || '未填') + '</span></article>'; }).join(''));
-      box.innerHTML = this.renderWizardMailCarousel(draft, plan) +
-        '<div class="promo-preview-grid"><article><strong>' + esc(draft.task_name || '未命名任务') + '</strong><span>' + esc(cnChannel(draft.channel_key || '-')) + ' · ' + esc(cnStatus(draft.schedule_type || 'manual')) + '</span></article><article><strong>' + selectedCustomers + '</strong><span>选中客户</span></article><article><strong>' + selectedContacts + '</strong><span>选中联系人</span></article><article><strong>' + selectedChatGroups + '</strong><span>客户群</span></article></div>' +
-        '<div class="promo-rule-strip">' + risks.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') + '</div>' +
-        '<section class="promo-target-preview"><header><strong>执行名单预览</strong><span>按国家/负责人/邮箱规则拆分</span></header>' +
-        '<div class="promo-target-list">' + previewRows + '</div>' +
-        '<div class="promo-rule-strip">' + Object.keys(countries).slice(0, 8).map(function (key) { return '<span>' + esc(key) + ' ' + esc(countries[key]) + '</span>'; }).join('') + '<span>邮箱规则：' + esc(draft.mail_account_rule || '-') + '</span><span>联动：' + esc(draft.template_action || '推广记录/失败处理/跟进') + '</span></div>' +
-        (targets.skipped.length ? '<div class="promo-skip-list"><strong>跳过目标</strong>' + targets.skipped.slice(0, 10).map(function (row) { return '<span>' + esc(row.name || '-') + '：' + esc(row.reason || '-') + '</span>'; }).join('') + '</div>' : '') +
-        '</section>';
-      this.bindWizardPreviewControls(box);
-    },
+	    updateWizardPreview: function () {
+	      var box = document.querySelector('[data-promo-wizard-preview]');
+	      if (!box) return;
+	      var draft = this.collectWizard();
+	      var plan = this.buildExecutionPlan(draft);
+	      box.innerHTML = this.renderWizardMailCarousel(draft, plan);
+	      this.bindWizardPreviewControls(box);
+	    },
+	    finalQueueValidation: function (draft) {
+	      var targets = this.resolveWizardTargets(draft);
+	      var plan = this.buildExecutionPlan(draft);
+	      var emailItems = (plan.items || []).filter(function (item) { return PromotionModule.isEmailPromotionChannel(item.channel); });
+	      var noEmailItems = emailItems.filter(function (item) { return !String(item.email || '').trim(); });
+	      var missingMailboxes = (plan.offlineItems || []).filter(function (item) { return /无匹配发件邮箱/.test(String(item.reason || '')); });
+	      var mailOwnerRequired = (draft.mail_executor_rule || draft.executor_rule || 'owner') === 'owner';
+	      var offlineOwnerRequired = (draft.offline_executor_rule || draft.executor_rule || 'owner') === 'owner';
+	      var missingExecutors = (plan.items || []).filter(function (item) {
+	        return !Number(item.owner_user_id || 0) && (PromotionModule.isEmailPromotionChannel(item.channel) ? mailOwnerRequired : offlineOwnerRequired);
+	      });
+	      var allowedVars = ['customer_name','contact_name','company_name','mail_user_name','mail_user_position','send_email','mail_user_mobile','country','email','mobile','phone','name','customer_full_name','user_name','position'];
+	      var unknownVars = [];
+	      String((draft.mail_subject || '') + ' ' + (draft.mail_body_html || '')).replace(/\{([^}]+)\}/g, function (_, name) {
+	        name = String(name || '').trim();
+	        if (allowedVars.indexOf(name) < 0 && unknownVars.indexOf(name) < 0) unknownVars.push(name);
+	        return _;
+	      });
+	      var fail = function (message) { return { ok: false, message: message, selector: '[data-promo-confirm-quality]' }; };
+	      if (!targets.customers.length && !targets.contacts.length && !(targets.chat_groups || []).length) return fail('没有可执行客户，无法生成执行队列。');
+	      if (!(plan.items || []).length) return fail('当前没有可执行目标，无法生成执行队列。');
+	      if (emailItems.length && !String(draft.mail_subject || '').trim()) return fail('邮件主题为空，无法生成执行队列。');
+	      if (emailItems.length && !String(draft.mail_body_html || '').trim()) return fail('邮件内容为空，无法生成执行队列。');
+	      if (emailItems.length && !plan.mailBuckets.length) return fail('邮件渠道存在但可用发件邮箱为 0，请返回第 6 步配置邮箱。');
+	      if (emailItems.length && noEmailItems.length === emailItems.length) return fail('所有邮件客户都没有邮箱，请补充邮箱或改为线下执行后再生成队列。');
+	      if (missingMailboxes.length) return fail('存在未分配发件邮箱的客户，请返回第 6 步修正邮箱分配。');
+	      if (missingExecutors.length) return fail('存在未分配执行人的客户，请返回第 6 步指定执行人或补充负责人。');
+	      if ((draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim()) return fail('计划发送时间为空，请返回第 7 步设置时间。');
+	      if (unknownVars.length) return fail('邮件中存在未识别变量：' + unknownVars.map(function (name) { return '{' + name + '}'; }).join('、') + '。');
+	      return { ok: true, confirmMessage: noEmailItems.length ? ('当前有 ' + noEmailItems.length + ' 个客户无邮箱，将按当前策略' + (draft.no_email_policy === 'offline' ? '进入线下执行清单' : '跳过') + '，是否继续生成执行队列？') : '' };
+	    },
 	    createTaskFromWizard: function (status, options) {
 	      options = options || {};
 		      var draft = this.collectWizard();
@@ -17026,15 +17101,31 @@
               this.showError('定时任务必须设置开始时间。');
               return Promise.resolve();
             }
-            for (var validationStep = 0; validationStep < this.wizardSteps().length; validationStep++) {
+	            for (var validationStep = 0; validationStep < this.wizardSteps().length; validationStep++) {
               var validationMessage = this.wizardValidationMessage(validationStep, draft);
               if (!validationMessage) continue;
               this.wizardStep = validationStep;
               this.renderWizard();
               this.showError(validationMessage);
-              return Promise.resolve();
-            }
-          }
+	              return Promise.resolve();
+	            }
+	            if (options.queue) {
+	              var finalValidation = this.finalQueueValidation(draft);
+	              if (!finalValidation.ok) {
+	                this.wizardStep = this.wizardSteps().length - 1;
+	                this.wizardConfirmSections = this.wizardConfirmSections || {};
+	                this.wizardConfirmSections.quality = true;
+	                this.renderWizard();
+	                this.showError(finalValidation.message);
+	                requestAnimationFrame(function () {
+	                  var target = document.querySelector(finalValidation.selector || '[data-promo-confirm-quality]');
+	                  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	                });
+	                return Promise.resolve();
+	              }
+	              if (finalValidation.confirmMessage && typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(finalValidation.confirmMessage)) return Promise.resolve();
+	            }
+	          }
 		      var targets = this.resolveWizardTargets(draft);
 		      var self = this;
 		      var statusBox = document.querySelector('[data-promo-wizard-save-status]');
@@ -17097,6 +17188,63 @@
 	        if (button) { button.disabled = false; button.textContent = buttonText || '保存草稿'; }
 	        if (footerButton && footerButton !== button) { footerButton.disabled = false; }
 	        if (statusBox) statusBox.textContent = self.wizardSaveStatusText(self.wizardDraft || draft);
+	      });
+	    },
+	    openConfirmMailPreviewDialog: function () {
+	      var draft = this.collectWizard();
+	      var plan = this.buildExecutionPlan(draft);
+	      var mailItems = this.buildWizardMailPreviewItems(draft, plan);
+	      if (!mailItems.length) return this.showError('当前没有可展开的邮件预览，请先检查邮件内容和目标客户。');
+	      var index = Math.max(0, Math.min(Number(this.previewMailIndex || 0), mailItems.length - 1));
+	      var item = mailItems[index] || {};
+	      var subject = this.renderWizardTemplate(draft.mail_subject || '未填写邮件主题', item, draft);
+	      var body = this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft);
+	      this.openDialog({
+	        title: '完整邮件预览',
+	        description: '第 ' + (index + 1) + ' / ' + mailItems.length + ' 封：内容与生成队列前的当前预览一致。',
+	        body: '<section class="promo-confirm-mail-dialog"><div class="promo-mail-preview-meta"><span>客户：' + esc(item.customer_name || '-') + '</span><span>联系人：' + esc(item.variable_contact_name || item.contact_name || '-') + '</span><span>客户邮箱：' + esc(item.email || '仅预览') + '</span><span>发件人：' + esc(item.send_email || '测试时使用当前账号') + '</span></div><label class="promo-mail-preview-subject"><span>主题</span><input readonly value="' + esc(subject) + '"></label><article class="promo-confirm-mail-full-body">' + body + '</article></section>',
+	        hint: '完整内容只在弹窗内滚动，不影响第 9 步确认页面。'
+	      });
+	    },
+	    openConfirmQueuePreviewDialog: function () {
+	      var draft = this.collectWizard();
+	      var schedule = this.buildSchedulePlan(draft);
+	      var rows = schedule.rows && schedule.rows.length ? schedule.rows : (schedule.plan.items || []);
+	      var self = this;
+	      var pageSize = 25;
+	      var renderRows = function (modal, page, keyword) {
+	        keyword = String(keyword || '').trim().toLowerCase();
+	        var filtered = rows.filter(function (row) {
+	          if (!keyword) return true;
+	          return [row.customer_name, row.variable_contact_name, row.contact_name, row.email, row.mobile, row.whatsapp, row.channel, row.send_email].join(' ').toLowerCase().indexOf(keyword) >= 0;
+	        });
+	        var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+	        page = Math.max(1, Math.min(page, totalPages));
+	        var start = (page - 1) * pageSize;
+	        var html = filtered.slice(start, start + pageSize).map(function (row) {
+	          var time = row.schedule_send_at ? self.formatScheduleDate(row.schedule_send_at) : (draft.scheduled_at || '按规则执行');
+	          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.variable_contact_name || row.contact_name || '客户级目标') + '</td><td>' + esc(row.email || row.mobile || row.whatsapp || '线下处理') + '</td><td>' + esc(cnChannel(row.channel || draft.channel_key || '-')) + '</td><td>' + esc(time) + '</td><td>' + esc(self.mailExecutorLabel(row)) + '</td></tr>';
+	        }).join('') || '<tr><td colspan="6">没有符合条件的执行名单。</td></tr>';
+	        var target = modal.querySelector('[data-promo-confirm-queue-rows]');
+	        var status = modal.querySelector('[data-promo-confirm-queue-status]');
+	        if (target) target.innerHTML = html;
+	        if (status) status.textContent = '共 ' + filtered.length + ' 条 · 第 ' + page + ' / ' + totalPages + ' 页';
+	        modal.querySelector('[data-promo-confirm-queue-prev]').disabled = page <= 1;
+	        modal.querySelector('[data-promo-confirm-queue-next]').disabled = page >= totalPages;
+	        modal.setAttribute('data-promo-confirm-queue-page', String(page));
+	      };
+	      this.openDialog({
+	        title: '完整执行名单',
+	        description: '显示当前规则实时计算的完整名单；生成队列前会再次校验。',
+	        body: '<section class="promo-confirm-queue-dialog"><label>搜索客户、联系人、邮箱或渠道<input type="search" data-promo-confirm-queue-search placeholder="输入关键词筛选"></label><div class="promo-confirm-queue-table"><table><thead><tr><th>客户名称</th><th>联系人</th><th>邮箱 / 联系方式</th><th>推广渠道</th><th>计划发送时间</th><th>执行人</th></tr></thead><tbody data-promo-confirm-queue-rows></tbody></table></div><footer><span data-promo-confirm-queue-status></span><div><button type="button" data-promo-confirm-queue-prev>上一页</button><button type="button" data-promo-confirm-queue-next>下一页</button></div></footer></section>',
+	        hint: '弹窗内支持搜索与分页；主确认页不会加载完整长名单。',
+	        bind: function (modal) {
+	          var keyword = '';
+	          renderRows(modal, 1, keyword);
+	          modal.querySelector('[data-promo-confirm-queue-search]').addEventListener('input', function (event) { keyword = event.target.value || ''; renderRows(modal, 1, keyword); });
+	          modal.querySelector('[data-promo-confirm-queue-prev]').addEventListener('click', function () { renderRows(modal, Number(modal.getAttribute('data-promo-confirm-queue-page') || 1) - 1, keyword); });
+	          modal.querySelector('[data-promo-confirm-queue-next]').addEventListener('click', function () { renderRows(modal, Number(modal.getAttribute('data-promo-confirm-queue-page') || 1) + 1, keyword); });
+	        }
 	      });
 	    },
     wizardTaskPayload: function (draft, targets, status) {

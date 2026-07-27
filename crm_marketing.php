@@ -2068,14 +2068,27 @@ function crm_marketing_plan_time(int $index, array $schedule, ?string $country):
 
 function crm_marketing_render_queue_template(string $text, array $row, array $account): string
 {
+    $recipientName = (string)($row['contact_name'] ?: ($row['customer_name'] ?? ''));
+    $senderName = (string)($account['sender_name'] ?: ($account['owner_name'] ?? $account['username'] ?? ''));
+    $senderMobile = (string)($account['user_phone'] ?? $account['owner_phone'] ?? '');
+    $senderPosition = (string)($account['user_position'] ?? $account['position'] ?? '');
+    $senderEmail = (string)($account['email_address'] ?? '');
     $vars = [
-        '{customer_name}' => (string)($row['contact_name'] ?: ($row['customer_name'] ?? '')),
-        '{contact_name}' => (string)($row['contact_name'] ?? ''),
-        '{company_name}' => (string)($row['customer_name'] ?? ''),
+        '{customer_name}' => $recipientName,
+        '{contact_name}' => $recipientName,
+        '{company_name}' => $recipientName,
         '{country}' => (string)($row['country'] ?? ''),
-        '{mail_user_name}' => (string)($account['sender_name'] ?: ($account['owner_name'] ?? $account['username'] ?? '')),
-        '{send_email}' => (string)($account['email_address'] ?? ''),
-        '{email}' => (string)($account['email_address'] ?? ''),
+        '{mail_user_name}' => $senderName,
+        '{mail_user_mobile}' => $senderMobile,
+        '{mail_user_position}' => $senderPosition,
+        '{send_email}' => $senderEmail,
+        '{email}' => $senderEmail,
+        '{mobile}' => $senderMobile,
+        '{phone}' => $senderMobile,
+        '{name}' => $recipientName,
+        '{customer_full_name}' => $recipientName,
+        '{user_name}' => $senderName,
+        '{position}' => $senderPosition,
     ];
     return strtr($text, $vars);
 }
@@ -2116,9 +2129,22 @@ function crm_marketing_queue_build(array $input): array
         ORDER BY mt.id");
     $targets->execute([$taskId]);
     $rows = $targets->fetchAll();
+    if (!$rows) throw new RuntimeException('当前没有可执行客户，无法生成发送队列。');
     $emailTargetCount = 0;
+    $emailAddressableCount = 0;
+    $missingMailExecutorCount = 0;
+    $missingOfflineExecutorCount = 0;
+    $mailExecutorRule = (string)($sendRule['mail_executor_rule'] ?? $sendRule['executor_rule'] ?? 'owner');
+    $offlineExecutorRule = (string)($sendRule['offline_executor_rule'] ?? $sendRule['executor_rule'] ?? 'owner');
     foreach ($rows as $targetRow) {
-        if (crm_marketing_is_email_channel((string)$targetRow['channel_key'])) $emailTargetCount++;
+        $isEmailTarget = crm_marketing_is_email_channel((string)$targetRow['channel_key']);
+        if ($isEmailTarget) {
+            $emailTargetCount++;
+            if (trim((string)($targetRow['receiver_email'] ?? '')) !== '') $emailAddressableCount++;
+            if ($mailExecutorRule === 'owner' && (int)($targetRow['owner_user_id'] ?? 0) <= 0) $missingMailExecutorCount++;
+        } elseif ($offlineExecutorRule === 'owner' && (int)($targetRow['owner_user_id'] ?? 0) <= 0) {
+            $missingOfflineExecutorCount++;
+        }
     }
     if ($emailTargetCount === 0) {
         db()->prepare("UPDATE crm_marketing_tasks SET task_status='manual_pending', updated_at=NOW() WHERE id=?")->execute([$taskId]);
@@ -2126,6 +2152,16 @@ function crm_marketing_queue_build(array $input): array
     }
     if ($subject === '') throw new RuntimeException('邮件主题为空，不能启动正式队列。');
     if ($body === '') throw new RuntimeException('邮件正文为空，不能启动正式队列。');
+    if ($emailAddressableCount === 0) throw new RuntimeException('所有邮件客户都没有可用邮箱，不能启动正式队列。');
+    if ($missingMailExecutorCount > 0 || $missingOfflineExecutorCount > 0) throw new RuntimeException('存在未分配执行人的客户，请先在推广向导中指定执行人或补充客户负责人。');
+    if (in_array((string)($schedule['schedule_type'] ?? $task['schedule_type'] ?? ''), ['scheduled', 'auto'], true) && trim((string)($schedule['scheduled_at'] ?? $task['scheduled_at'] ?? '')) === '') {
+        throw new RuntimeException('计划发送时间为空，不能启动正式队列。');
+    }
+    $allowedTemplateVars = ['customer_name', 'contact_name', 'company_name', 'mail_user_name', 'mail_user_position', 'send_email', 'mail_user_mobile', 'country', 'email', 'mobile', 'phone', 'name', 'customer_full_name', 'user_name', 'position'];
+    if (preg_match_all('/\{([^}]+)\}/', $subject . ' ' . $body, $matches)) {
+        $unknownTemplateVars = array_values(array_unique(array_filter(array_map('trim', $matches[1]), static fn(string $name): bool => !in_array($name, $allowedTemplateVars, true))));
+        if ($unknownTemplateVars) throw new RuntimeException('邮件中存在未识别变量：' . implode('、', array_map(static fn(string $name): string => '{' . $name . '}', $unknownTemplateVars)) . '。');
+    }
     $accounts = db()->query("SELECT a.*, COALESCE(u.real_name, u.username, '') owner_name, u.username
         FROM crm_user_mail_accounts a
         LEFT JOIN crm_users u ON u.id = a.user_id
@@ -2135,6 +2171,10 @@ function crm_marketing_queue_build(array $input): array
     foreach ($accounts as $account) if (!isset($accountsByUser[(int)$account['user_id']])) $accountsByUser[(int)$account['user_id']] = $account;
     $selectedIds = array_filter(array_map('intval', $sendRule['mail_account_ids'] ?? []));
     $selectedAccounts = $selectedIds ? array_values(array_filter($accounts, fn($a) => in_array((int)$a['id'], $selectedIds, true))) : $accounts;
+    $mailAccountRule = (string)($sendRule['mail_account_rule'] ?? 'owner_mailbox');
+    if (!$accounts || (($mailAccountRule === 'selected_mailbox' || $mailAccountRule === 'balanced' || $mailAccountRule === 'group_by_country') && !$selectedAccounts)) {
+        throw new RuntimeException('邮件渠道存在但可用发件邮箱为 0，请先配置可用邮箱。');
+    }
     $queueCount = 0; $skipped = 0; $errors = 0; $first = null; $last = null; $index = 0; $balanced = 0; $seenReceivers = [];
     foreach ($rows as $row) {
         $channel = crm_marketing_normalize_channel((string)$row['channel_key']);

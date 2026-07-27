@@ -25,12 +25,17 @@ $requiredJs = [
     'data-promo-wizard-draft>保存草稿',
     'data-promo-confirm-scheduled>保存为计划',
     'data-promo-confirm-queue>生成执行队列',
-    'data-promo-confirm-mail-stage data-promo-preview-build="20260728-1"',
-    '邮件预览与测试发送',
-    '邮件判定修复版 20260728-1',
+    'data-promo-confirm-mail-stage data-promo-preview-build="20260728-2"',
+    '第 9 步：邮件预览与发送队列',
+    'data-promo-confirm-collapse-all',
+    'data-promo-confirm-expand-all',
+    'renderConfirmSection: function',
+    'openConfirmMailPreviewDialog: function',
+    'openConfirmQueuePreviewDialog: function',
+    'finalQueueValidation: function',
     'initialMailPreview = this.renderWizardMailCarousel(draft, plan);',
     "console.error('Promotion step 9 initial mail preview failed:', previewError);",
-    'box.innerHTML = this.renderWizardMailCarousel(draft, plan) +',
+    'box.innerHTML = this.renderWizardMailCarousel(draft, plan);',
     "var initialPreviewBox = modal.querySelector('[data-promo-wizard-preview]');",
     'if (initialPreviewBox) this.bindWizardPreviewControls(initialPreviewBox);',
     "console.error('Promotion mail preview refresh failed:', previewError);",
@@ -38,7 +43,7 @@ $requiredJs = [
     "var draftHasMailContent = Boolean(",
     "|| draftHasMailContent;",
     "return draftHasMailContent && String(item.target_level || '') !== 'group';",
-    '邮件逐封预览和测试发信固定显示在第 9 步第一屏',
+    '完整名单在弹窗中分页查看',
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
@@ -68,10 +73,15 @@ if ($confirmStart === false || $confirmEnd === false || $confirmEnd <= $confirmS
     throw new RuntimeException('wizard confirmation step source boundary is missing');
 }
 $confirm = substr($js, $confirmStart, $confirmEnd - $confirmStart);
-$mailStagePosition = strpos($confirm, "' + mailPreviewStage + '");
-$summaryPosition = strpos($confirm, '<div class="promo-step-mini-stats promo-confirm-summary">');
-if ($mailStagePosition === false || $summaryPosition === false || $mailStagePosition >= $summaryPosition) {
-    throw new RuntimeException('step 9 mail preview and test-send stage must render before summary and quality cards');
+$mailSectionPosition = strpos($confirm, "this.renderConfirmSection('mail'");
+$recipientSectionPosition = strpos($confirm, "this.renderConfirmSection('recipients'");
+$summarySectionPosition = strpos($confirm, "this.renderConfirmSection('summary'");
+$qualitySectionPosition = strpos($confirm, "this.renderConfirmSection('quality'");
+if ($mailSectionPosition === false || $recipientSectionPosition === false || $summarySectionPosition === false || $qualitySectionPosition === false || !($mailSectionPosition < $recipientSectionPosition && $recipientSectionPosition < $summarySectionPosition && $summarySectionPosition < $qualitySectionPosition)) {
+    throw new RuntimeException('step 9 must render mail preview and recipient preview before folded summary and quality sections');
+}
+if (str_contains($confirm, 'rows.slice(0, 120)')) {
+    throw new RuntimeException('step 9 must not render the full execution list inside the main page');
 }
 
 $sidebarStart = strpos($js, 'renderWizardSidebar: function (draft)');
@@ -109,8 +119,12 @@ $requiredCss = [
     'body.is-promo-task-editor-open .promo-wizard-project-actions',
     'nav button[data-promo-confirm-queue]',
     'body.is-promo-task-editor-open .promo-confirm-mail-stage',
-    'order: -10 !important;',
-    'border: 2px solid #2563eb !important;',
+    'Promotion wizard step 9: one-scroll final confirmation layout.',
+    'body.is-promo-task-editor-open .promo-confirm-section',
+    'body.is-promo-task-editor-open .promo-confirm-recipient-list',
+    'body.is-promo-task-editor-open .promo-confirm-queue-dialog',
+    'max-height: 210px !important;',
+    'position: sticky !important;',
     'box-shadow: 0 -8px 20px rgb(15 23 42 / .06) !important;',
 ];
 foreach ($requiredCss as $marker) {
@@ -119,7 +133,7 @@ foreach ($requiredCss as $marker) {
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'promotion-mail-detection-20260728-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'promotion-confirmation-layout-20260728-1';")) {
     throw new RuntimeException('CRM page must explicitly bust the promotion preview asset cache');
 }
 
@@ -140,6 +154,25 @@ foreach ([
 }
 if (str_contains($testSend, 'crm_marketing_send_queue')) {
     throw new RuntimeException('server test send must remain independent from the formal send queue');
+}
+
+$queueStart = strpos($php, 'function crm_marketing_queue_build(array $input): array');
+$queueEnd = strpos($php, 'function crm_marketing_queue_status_counts', $queueStart === false ? 0 : $queueStart);
+if ($queueStart === false || $queueEnd === false || $queueEnd <= $queueStart) {
+    throw new RuntimeException('CRM marketing queue-build function boundary is missing');
+}
+$queueBuild = substr($php, $queueStart, $queueEnd - $queueStart);
+foreach ([
+    '当前没有可执行客户，无法生成发送队列。',
+    '所有邮件客户都没有可用邮箱，不能启动正式队列。',
+    '存在未分配执行人的客户',
+    '计划发送时间为空，不能启动正式队列。',
+    '邮件中存在未识别变量：',
+    '邮件渠道存在但可用发件邮箱为 0',
+] as $marker) {
+    if (!str_contains($queueBuild, $marker)) {
+        throw new RuntimeException("final queue validation marker missing: {$marker}");
+    }
 }
 
 echo "CRM marketing wizard mail preview contract: OK\n";

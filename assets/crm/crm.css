@@ -22727,6 +22727,231 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
   }
 }
 
+/* Promotion wizard step 9: one-scroll final confirmation layout. */
+body.is-promo-task-editor-open .promo-wizard-main-scroll {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+body.is-promo-task-editor-open .promo-wizard-side {
+  position: sticky !important;
+  top: 0 !important;
+  align-self: start !important;
+  height: fit-content !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details > div > button {
+  min-height: 32px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 1px solid var(--crm-border) !important;
+  border-radius: 8px !important;
+  background: var(--crm-input-bg, #fff) !important;
+  color: var(--crm-text) !important;
+  padding: 6px 8px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details > div > button.is-warn {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+}
+body.is-promo-task-editor-open .promo-wizard-side details > div > button.is-warn strong { color: #c2410c !important; }
+body.is-promo-task-editor-open .promo-step-confirm {
+  gap: 14px !important;
+  padding-bottom: 12px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-page-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px 14px !important;
+  align-items: center !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 12px !important;
+  background: #f8fbff !important;
+  padding: 13px 15px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-page-head > div { display: grid !important; gap: 4px !important; }
+body.is-promo-task-editor-open .promo-confirm-page-head strong { color: #1d4ed8 !important; font-size: 17px !important; }
+body.is-promo-task-editor-open .promo-confirm-page-head span,
+body.is-promo-task-editor-open .promo-confirm-page-head p { color: var(--crm-muted-text) !important; font-size: 12px !important; line-height: 1.45 !important; }
+body.is-promo-task-editor-open .promo-confirm-page-head p { grid-column: 1 / -1 !important; margin: 0 !important; }
+body.is-promo-task-editor-open .promo-confirm-page-head nav { display: inline-flex !important; gap: 7px !important; }
+body.is-promo-task-editor-open .promo-confirm-page-head button,
+body.is-promo-task-editor-open .promo-confirm-section-action,
+body.is-promo-task-editor-open .promo-confirm-section-toggle {
+  min-height: 32px !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: #1d4ed8 !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+}
+body.is-promo-task-editor-open .promo-confirm-section {
+  min-width: 0 !important;
+  border: 1px solid #dbe7f5 !important;
+  border-radius: 12px !important;
+  background: var(--crm-card-bg) !important;
+  overflow: hidden !important;
+}
+body.is-promo-task-editor-open .promo-confirm-section > header {
+  min-height: 50px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-section > header > div:first-child { min-width: 0 !important; display: grid !important; gap: 3px !important; }
+body.is-promo-task-editor-open .promo-confirm-section > header strong { color: var(--crm-text) !important; font-size: 15px !important; }
+body.is-promo-task-editor-open .promo-confirm-section > header span { color: var(--crm-muted-text) !important; font-size: 12px !important; line-height: 1.35 !important; }
+body.is-promo-task-editor-open .promo-confirm-section-tools { display: inline-flex !important; align-items: center !important; justify-content: flex-end !important; flex-wrap: wrap !important; gap: 6px !important; }
+body.is-promo-task-editor-open .promo-confirm-section-tools em {
+  border-radius: 999px !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  font-style: normal !important;
+  font-weight: 850 !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-confirm-section-tools em.is-warn { background: #fff7ed !important; color: #c2410c !important; }
+body.is-promo-task-editor-open .promo-confirm-section-body { border-top: 1px solid #e5edf7 !important; padding: 14px !important; }
+body.is-promo-task-editor-open .promo-confirm-mail-stage {
+  display: block !important;
+  order: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage .promo-preview-mail {
+  border: 1px solid #bfdbfe !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage .promo-mail-preview-body {
+  max-height: 210px !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage .promo-mail-preview-body::after {
+  position: absolute !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  height: 34px !important;
+  background: linear-gradient(transparent, var(--crm-card-bg)) !important;
+  content: '' !important;
+  pointer-events: none !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage .promo-mail-preview-body img { max-height: 118px !important; object-fit: contain !important; }
+body.is-promo-task-editor-open .promo-confirm-recipient-head { color: var(--crm-muted-text) !important; font-size: 12px !important; margin-bottom: 9px !important; }
+body.is-promo-task-editor-open .promo-confirm-recipient-list { display: grid !important; gap: 7px !important; }
+body.is-promo-task-editor-open .promo-confirm-recipient-list article {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(160px, 1.4fr) minmax(90px, .8fr) minmax(132px, 1fr) minmax(90px, .8fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: 1px solid #e4edf7 !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  padding: 9px 10px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-recipient-list strong { color: var(--crm-text) !important; font-size: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-recipient-list span { min-width: 0 !important; overflow: hidden !important; color: var(--crm-muted-text) !important; font-size: 11px !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+body.is-promo-task-editor-open .promo-confirm-kpis,
+body.is-promo-task-editor-open .promo-confirm-quality-grid { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 8px !important; }
+body.is-promo-task-editor-open .promo-confirm-kpis article,
+body.is-promo-task-editor-open .promo-confirm-quality-grid button {
+  min-width: 0 !important;
+  min-height: 66px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 5px !important;
+  border: 1px solid #dbe7f5 !important;
+  border-radius: 9px !important;
+  background: #fbfdff !important;
+  padding: 9px !important;
+  text-align: left !important;
+}
+body.is-promo-task-editor-open .promo-confirm-kpis strong,
+body.is-promo-task-editor-open .promo-confirm-quality-grid strong { color: var(--crm-text) !important; font-size: 16px !important; line-height: 1.1 !important; }
+body.is-promo-task-editor-open .promo-confirm-kpis span,
+body.is-promo-task-editor-open .promo-confirm-quality-grid span { color: var(--crm-muted-text) !important; font-size: 11px !important; font-weight: 800 !important; }
+body.is-promo-task-editor-open .promo-confirm-quality-grid button { cursor: default !important; }
+body.is-promo-task-editor-open .promo-confirm-quality-grid button.is-warn { border-color: #fed7aa !important; background: #fff7ed !important; cursor: pointer !important; }
+body.is-promo-task-editor-open .promo-confirm-quality-grid button.is-warn strong { color: #c2410c !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-group { border-top: 1px solid #edf2f7 !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-group:first-child { border-top: 0 !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-group > button {
+  width: 100% !important;
+  min-height: 42px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  align-items: center !important;
+  gap: 9px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--crm-text) !important;
+  padding: 0 2px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+body.is-promo-task-editor-open .promo-confirm-exception-group > button em { border-radius: 999px !important; background: #fff7ed !important; color: #c2410c !important; padding: 3px 8px !important; font-size: 11px !important; font-style: normal !important; font-weight: 850 !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-group > button b { color: #64748b !important; font-size: 11px !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-rows { display: grid !important; gap: 7px !important; padding: 0 0 10px !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-rows article { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(180px, 1.4fr) !important; gap: 8px !important; border: 1px solid #fde7cf !important; border-radius: 8px !important; background: #fffaf5 !important; padding: 8px !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-rows strong { color: var(--crm-text) !important; font-size: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-exception-rows span,
+body.is-promo-task-editor-open .promo-confirm-exception-rows small { color: var(--crm-muted-text) !important; font-size: 11px !important; line-height: 1.4 !important; }
+body.is-promo-task-editor-open .promo-confirm-empty { margin: 0 !important; color: var(--crm-muted-text) !important; font-size: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-ready { display: grid !important; gap: 4px !important; border: 1px solid #bbf7d0 !important; border-radius: 10px !important; background: #f0fdf4 !important; padding: 11px 13px !important; }
+body.is-promo-task-editor-open .promo-confirm-ready.is-warn { border-color: #fed7aa !important; background: #fff7ed !important; }
+body.is-promo-task-editor-open .promo-confirm-ready strong { color: #166534 !important; font-size: 13px !important; }
+body.is-promo-task-editor-open .promo-confirm-ready.is-warn strong { color: #c2410c !important; }
+body.is-promo-task-editor-open .promo-confirm-ready span { color: var(--crm-muted-text) !important; font-size: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-mail-dialog,
+body.is-promo-task-editor-open .promo-confirm-queue-dialog { display: grid !important; gap: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-mail-full-body { min-height: 180px !important; overflow: auto !important; border: 1px solid #dbe7f5 !important; border-radius: 10px !important; background: #fff !important; padding: 14px !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-dialog > label { display: grid !important; gap: 6px !important; color: var(--crm-muted-text) !important; font-size: 12px !important; font-weight: 800 !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-table { overflow: auto !important; border: 1px solid #dbe7f5 !important; border-radius: 10px !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-table table { width: 100% !important; min-width: 800px !important; border-collapse: collapse !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-table th,
+body.is-promo-task-editor-open .promo-confirm-queue-table td { border-bottom: 1px solid #edf2f7 !important; padding: 9px !important; color: var(--crm-text) !important; font-size: 12px !important; text-align: left !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-dialog > footer { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; color: var(--crm-muted-text) !important; font-size: 12px !important; }
+body.is-promo-task-editor-open .promo-confirm-queue-dialog > footer > div { display: flex !important; gap: 7px !important; }
+@media (max-width: 1180px) {
+  body.is-promo-task-editor-open .promo-wizard-side { position:static !important; overflow:visible !important; }
+  body.is-promo-task-editor-open .promo-confirm-recipient-list article { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 760px) {
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-side { position: fixed !important; right: 0 !important; bottom: 0 !important; left: 0 !important; z-index: 20 !important; width: auto !important; display: block !important; border-top: 1px solid #bfdbfe !important; background: #fff !important; padding: 8px !important; box-shadow: 0 -8px 22px rgb(15 23 42 / .12) !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-side details { display: none !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-project-actions > header { display: none !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-project-actions { border: 0 !important; box-shadow: none !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-project-actions > nav { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; padding: 0 !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-project-actions nav button { min-height: 42px !important; padding: 0 5px !important; font-size: 11px !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-body { padding-bottom: 66px !important; }
+  body.is-promo-task-editor-open .promo-wizard-shell.is-confirm-step .promo-wizard-foot { display: none !important; }
+  body.is-promo-task-editor-open .promo-confirm-page-head { grid-template-columns: 1fr !important; }
+  body.is-promo-task-editor-open .promo-confirm-page-head nav { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  body.is-promo-task-editor-open .promo-confirm-section > header { align-items: flex-start !important; flex-direction: column !important; }
+  body.is-promo-task-editor-open .promo-confirm-section-tools { justify-content: flex-start !important; }
+  body.is-promo-task-editor-open .promo-confirm-recipient-list article,
+  body.is-promo-task-editor-open .promo-confirm-exception-rows article { grid-template-columns: 1fr !important; gap: 4px !important; }
+  body.is-promo-task-editor-open .promo-confirm-kpis,
+  body.is-promo-task-editor-open .promo-confirm-quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
 /* CRM workspace analysis refinement - final layer. */
 body.is-workspace-module .workspace-console {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
