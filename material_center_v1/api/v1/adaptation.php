@@ -42,7 +42,17 @@ try {
 
     $data = match ($action) {
         'sync' => $service->syncProducts($user->id),
-        'initialize_groups', 'apply_template' => $service->initializeGroups((int) ($_POST['product_id'] ?? 0), $user->id),
+        'initialize_groups' => $service->initializeGroups((int) ($_POST['product_id'] ?? 0), $user->id),
+        'apply_template' => $service->initializeGroups(
+            (int) ($_POST['product_id'] ?? 0),
+            $user->id,
+            array_key_exists('template_keys', $_POST) ? $json('template_keys') : null
+        ),
+        'batch_initialize_groups' => $service->batchInitializeGroups(
+            $json('product_ids'),
+            $json('template_keys'),
+            $user->id
+        ),
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
         'save_quick_rules' => $service->saveQuickRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'delete_group' => (static function () use ($service, $user): array {
@@ -79,7 +89,8 @@ try {
                 (int) ($_POST['source_product_id'] ?? 0),
                 $json('target_product_ids'),
                 (string) ($_POST['mode'] ?? 'fill_missing'),
-                $includePower
+                $includePower,
+                array_key_exists('source_group_ids', $_POST) ? $json('source_group_ids') : null
             );
         })(),
         'batch_apply' => (static function () use ($service, $user, $json): array {
@@ -90,7 +101,8 @@ try {
                 $json('target_product_ids'),
                 (string) ($_POST['mode'] ?? 'fill_missing'),
                 $includePower,
-                $user->id
+                $user->id,
+                array_key_exists('source_group_ids', $_POST) ? $json('source_group_ids') : null
             );
         })(),
         'approve' => (static function () use ($service, $user): array {

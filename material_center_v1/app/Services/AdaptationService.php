@@ -195,12 +195,15 @@ final class AdaptationService
     public function products(string $q = ''): array
     {
         $sql = "SELECT p.*,
+            COALESCE(NULLIF(n.web_image_url,''),NULLIF(n.source_image_url,''),NULLIF(n.image_path,'')) source_image_url,
             (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id) group_count,
             (SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=p.id) option_count,
             (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status<>'disabled' AND (g.status<>'approved' OR g.is_enabled=0)) pending_group_count,
             (SELECT COUNT(*) FROM mc_adaptation_conflicts c WHERE c.product_id=p.id AND c.status='active') conflict_count,
             (SELECT MAX(a.version_no) FROM mc_adaptation_approvals a WHERE a.product_id=p.id AND a.status='approved') approved_version
-            FROM mc_products p WHERE p.status='active'";
+            FROM mc_products p
+            LEFT JOIN naming_models n ON p.legacy_table='naming_models' AND n.id=p.legacy_id
+            WHERE p.status='active'";
         $params = [];
         if ($q !== '') {
             $sql .= " AND (p.product_code LIKE ? OR p.product_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.series_name')) LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.category')) LIKE ?)";
@@ -214,11 +217,18 @@ final class AdaptationService
         foreach ($rows as &$row) {
             $snapshot = json_decode((string) ($row['snapshot_json'] ?? '{}'), true) ?: [];
             $row['series_name'] = $snapshot['series_name'] ?? $snapshot['category'] ?? '';
-            $row['image_url'] = $snapshot['image_url'] ?? '';
+            $row['image_url'] = !empty($snapshot['image_url'])
+                ? $snapshot['image_url']
+                : ($row['source_image_url'] ?? '');
             $row['approval_label'] = empty($row['approved_version'])
                 ? ((int) $row['group_count'] ? '待审批' : '未配置')
                 : ((int) $row['pending_group_count'] ? '待重审' : '已启用');
             $row['has_conflict'] = (int) $row['conflict_count'] > 0;
+            $row['configuration_state'] = !(int) $row['group_count']
+                ? 'unconfigured'
+                : (empty($row['approved_version'])
+                    ? 'pending_approval'
+                    : ((int) $row['pending_group_count'] ? 'needs_review' : 'enabled'));
         }
         unset($row);
         return $rows;
@@ -319,15 +329,30 @@ final class AdaptationService
         ];
     }
 
-    public function initializeGroups(int $productId, int $userId): array
+    public function initializeGroups(int $productId, int $userId, ?array $templateKeys = null): array
     {
         $exists = $this->db->prepare("SELECT 1 FROM mc_products WHERE id=? AND status='active'");
         $exists->execute([$productId]);
         if (!$exists->fetchColumn()) throw new RuntimeException('产品不存在或已停用。');
+        $templates = self::STANDARD_GROUPS;
+        if ($templateKeys !== null) {
+            $templateKeys = array_values(array_unique(array_filter(array_map(
+                static fn(mixed $key): string => trim((string) $key),
+                $templateKeys
+            ))));
+            if (!$templateKeys) throw new RuntimeException('请至少选择一个要生成的配置组。');
+            $validKeys = array_column(self::STANDARD_GROUPS, 0);
+            $invalidKeys = array_diff($templateKeys, $validKeys);
+            if ($invalidKeys) throw new RuntimeException('所选标准配置组无效，请刷新页面后重试。');
+            $templates = array_filter(
+                self::STANDARD_GROUPS,
+                static fn(array $group): bool => in_array($group[0], $templateKeys, true)
+            );
+        }
         $created = 0;
         $this->db->beginTransaction();
         try {
-            foreach (self::STANDARD_GROUPS as $sort => $group) {
+            foreach ($templates as $sort => $group) {
                 $legacyType = $this->legacyGroupType($group[3]);
                 $stmt = $this->db->prepare("INSERT INTO mc_adaptation_groups
                     (product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,selection_mode,min_select,max_select,template_key,status,is_enabled,sort_order,created_by,updated_by,created_at,updated_at)
@@ -343,23 +368,59 @@ final class AdaptationService
                 if ($stmt->rowCount() === 1) $created++;
             }
             $this->markProductDraft($productId);
-            $this->log($productId, 'apply_standard_template', ['created' => $created, 'template_total' => count(self::STANDARD_GROUPS)], $userId);
+            $this->log($productId, 'apply_standard_template', [
+                'created' => $created,
+                'template_total' => count($templates),
+                'template_keys' => array_column($templates, 0),
+            ], $userId);
             $this->db->commit();
-            return ['created' => $created, 'total' => count(self::STANDARD_GROUPS)];
+            return ['created' => $created, 'total' => count($templates)];
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
         }
     }
 
-    public function previewBatchApply(int $sourceProductId, array $targetProductIds, string $mode, bool $includePowerRule): array
+    public function batchInitializeGroups(array $productIds, array $templateKeys, int $userId): array
+    {
+        $productIds = array_values(array_unique(array_filter(array_map('intval', $productIds))));
+        if (!$productIds) throw new RuntimeException('请至少选择一个产品。');
+        if (count($productIds) > 1000) throw new RuntimeException('一次最多处理 1000 个产品，请分批执行。');
+        $result = ['targets' => count($productIds), 'succeeded' => 0, 'failed' => 0, 'created' => 0, 'failures' => []];
+        foreach ($productIds as $productId) {
+            try {
+                $part = $this->initializeGroups($productId, $userId, $templateKeys);
+                $result['succeeded']++;
+                $result['created'] += (int) $part['created'];
+            } catch (\Throwable $e) {
+                $result['failed']++;
+                $product = $this->productRow($productId);
+                if (count($result['failures']) < 50) {
+                    $result['failures'][] = [
+                        'product_id' => $productId,
+                        'product_code' => (string) ($product['product_code'] ?? '#'.$productId),
+                        'reason' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+        return $result;
+    }
+
+    public function previewBatchApply(
+        int $sourceProductId,
+        array $targetProductIds,
+        string $mode,
+        bool $includePowerRule,
+        ?array $sourceGroupIds = null
+    ): array
     {
         $mode = $mode === 'replace_matching' ? 'replace_matching' : 'fill_missing';
         $source = $this->productRow($sourceProductId);
         if (!$source) throw new RuntimeException('批量来源产品不存在。');
         $targets = $this->batchTargets($sourceProductId, $targetProductIds);
         if (!$targets) throw new RuntimeException('请至少选择一个目标产品。');
-        $sourceGroups = $this->groups($sourceProductId);
+        $sourceGroups = $this->selectedSourceGroups($sourceProductId, $sourceGroupIds);
         if (!$sourceGroups && !$includePowerRule) throw new RuntimeException('来源产品还没有可套用的配置。');
 
         $groupCodes = array_column($sourceGroups, 'group_code');
@@ -403,9 +464,16 @@ final class AdaptationService
         ];
     }
 
-    public function batchApply(int $sourceProductId, array $targetProductIds, string $mode, bool $includePowerRule, int $userId): array
+    public function batchApply(
+        int $sourceProductId,
+        array $targetProductIds,
+        string $mode,
+        bool $includePowerRule,
+        int $userId,
+        ?array $sourceGroupIds = null
+    ): array
     {
-        $preview = $this->previewBatchApply($sourceProductId, $targetProductIds, $mode, $includePowerRule);
+        $preview = $this->previewBatchApply($sourceProductId, $targetProductIds, $mode, $includePowerRule, $sourceGroupIds);
         $mode = $preview['mode'];
         $targets = $this->batchTargets($sourceProductId, $targetProductIds);
         $batchUuid = $this->uuid();
@@ -427,7 +495,14 @@ final class AdaptationService
                 $powerResult = $includePowerRule
                     ? $this->copyPowerRule($sourceProductId, (int) $target['id'], $mode, $userId)
                     : 'not_requested';
-                $copy = $this->copyProductConfiguration($sourceProductId, (int) $target['id'], $mode, $batchUuid, $userId);
+                $copy = $this->copyProductConfiguration(
+                    $sourceProductId,
+                    (int) $target['id'],
+                    $mode,
+                    $batchUuid,
+                    $userId,
+                    $sourceGroupIds
+                );
                 $this->db->commit();
                 $result['succeeded']++;
                 $result['groups_created'] += $copy['groups_created'];
@@ -451,6 +526,7 @@ final class AdaptationService
             'batch_uuid' => $batchUuid,
             'mode' => $mode,
             'include_power_rule' => $includePowerRule,
+            'source_group_ids' => $sourceGroupIds,
             'result' => $result,
         ], $userId);
         return $result;
@@ -1177,9 +1253,16 @@ final class AdaptationService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function copyProductConfiguration(int $sourceProductId, int $targetProductId, string $mode, string $batchUuid, int $userId): array
+    private function copyProductConfiguration(
+        int $sourceProductId,
+        int $targetProductId,
+        string $mode,
+        string $batchUuid,
+        int $userId,
+        ?array $sourceGroupIds = null
+    ): array
     {
-        $sourceGroups = $this->groups($sourceProductId);
+        $sourceGroups = $this->selectedSourceGroups($sourceProductId, $sourceGroupIds);
         $optionMap = [];
         $created = 0;
         $overwritten = 0;
@@ -1307,6 +1390,7 @@ final class AdaptationService
         $detail = [
             'batch_uuid' => $batchUuid,
             'source_product_id' => $sourceProductId,
+            'source_group_ids' => array_map('intval', array_column($sourceGroups, 'id')),
             'mode' => $mode,
             'groups_created' => $created,
             'groups_overwritten' => $overwritten,
@@ -1315,6 +1399,22 @@ final class AdaptationService
         ];
         $this->log($targetProductId, 'batch_apply_target', $detail, $userId);
         return $detail;
+    }
+
+    private function selectedSourceGroups(int $sourceProductId, ?array $sourceGroupIds): array
+    {
+        $groups = $this->groups($sourceProductId);
+        if ($sourceGroupIds === null) return $groups;
+        $requested = array_values(array_unique(array_filter(array_map('intval', $sourceGroupIds))));
+        if (!$requested) return [];
+        $selected = array_values(array_filter(
+            $groups,
+            static fn(array $group): bool => in_array((int) $group['id'], $requested, true)
+        ));
+        if (count($selected) !== count($requested)) {
+            throw new RuntimeException('所选配置组不属于来源产品，请刷新页面后重试。');
+        }
+        return $selected;
     }
 
     private function copyPowerRule(int $sourceProductId, int $targetProductId, string $mode, int $userId): string

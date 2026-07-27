@@ -11,6 +11,8 @@ $migration = file_get_contents($root.'/database/migrations/20260727_017_adaptati
 foreach ([
     '批量套用', '只补空白（推荐）', '覆盖同名配置组', '同时套用电源范围',
     '选择同系列', '全选当前结果', '预览影响', 'data-adaptation-tab="quick_rules"',
+    '套用现有配置', 'data-product-status-filter', '未配置', '已配置', '待审批',
+    '批量生成配置', 'data-template-select-core', 'data-reuse-group-list',
 ] as $label) {
     if (!str_contains($page, $label)) throw new RuntimeException("batch adaptation UI missing: {$label}");
 }
@@ -19,6 +21,8 @@ foreach ([
     'batchSelected: new Set()', 'openBatch', 'visibleBatchProducts', 'previewBatch',
     "'preview_batch'", "'batch_apply'", "'save_quick_rules'", '一次最多选择 1000 个产品',
     'data-quick-rule-form', '候选物料会立即按新范围筛选', 'index += 100',
+    'productSelected: new Set()', 'visibleProducts', 'configuration_state', 'data-product-check', 'data-product-image',
+    'openReuse', 'reuseRequestValues', "'batch_initialize_groups'", 'source_group_ids',
 ] as $marker) {
     if (!str_contains($script, $marker)) throw new RuntimeException("batch adaptation interaction missing: {$marker}");
 }
@@ -29,12 +33,15 @@ foreach ([
     '一次最多处理 1000 个目标产品', 'LIMIT 2000', "match_level='incompatible'",
     '不能用例外审批绕过', 'allow_with_glass', 'allow_with_honeycomb',
     '当前产品设置为蜂巢网与玻璃不能同时安装',
+    'batchInitializeGroups', 'selectedSourceGroups', 'source_image_url', 'configuration_state',
+    '?array $templateKeys = null', '?array $sourceGroupIds = null',
 ] as $marker) {
     if (!str_contains($service, $marker)) throw new RuntimeException("batch adaptation service missing: {$marker}");
 }
 
 foreach ([
-    "'save_quick_rules'", "'preview_batch'", "'batch_apply'", 'material_center.power.rules.manage',
+    "'save_quick_rules'", "'preview_batch'", "'batch_apply'", "'batch_initialize_groups'",
+    'source_group_ids', 'template_keys', 'material_center.power.rules.manage',
 ] as $marker) {
     if (!str_contains($api, $marker)) throw new RuntimeException("batch adaptation API guard missing: {$marker}");
 }

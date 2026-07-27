@@ -43,6 +43,14 @@ try {
     $mappedCategory->execute([$mappedGroupId]);
     $assert($mappedCategory->fetchColumn() === 'chip', 'standard group purpose must enforce the matching material category');
 
+    $selectiveTemplate = $service->initializeGroups($groupTestProductId, 1, ['installation']);
+    $assert($selectiveTemplate['total'] === 1 && $selectiveTemplate['created'] === 1, 'selective standard template did not create exactly one group');
+    $templateCount = $db->prepare("SELECT COUNT(*) FROM mc_adaptation_groups WHERE product_id=? AND template_key IN('installation','power_driver')");
+    $templateCount->execute([$groupTestProductId]);
+    $assert((int) $templateCount->fetchColumn() === 1, 'unselected standard template group was unexpectedly created');
+    $batchTemplate = $service->batchInitializeGroups([$targetId], ['finish_color'], 1);
+    $assert($batchTemplate['succeeded'] === 1 && $batchTemplate['created'] === 1, 'batch standard template generation failed');
+
     $db->prepare("INSERT INTO mc_adaptation_groups
         (product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,
         selection_mode,min_select,max_select,template_key,rule_json,status,is_enabled,sort_order,
@@ -61,12 +69,17 @@ try {
     ], 1);
     $assert($saved['saved'] === 4, 'quick rule saved-field count mismatch');
 
-    $preview = $service->previewBatchApply($sourceId, [$targetId], 'fill_missing', false);
+    $service->initializeGroups($sourceId, 1, ['installation']);
+    $preview = $service->previewBatchApply($sourceId, [$targetId], 'fill_missing', false, [$sourceGroupId]);
     $assert($preview['targets'] === 1, 'batch preview target count mismatch');
+    $assert($preview['groups']['source'] === 1, 'selected source-group count mismatch');
     $assert($preview['groups']['created'] === 1, 'batch preview created-group count mismatch');
 
-    $result = $service->batchApply($sourceId, [$targetId], 'fill_missing', false, 1);
+    $result = $service->batchApply($sourceId, [$targetId], 'fill_missing', false, 1, [$sourceGroupId]);
     $assert($result['succeeded'] === 1 && $result['failed'] === 0, 'batch fill-missing execution failed');
+    $unexpectedGroup = $db->prepare("SELECT COUNT(*) FROM mc_adaptation_groups WHERE product_id=? AND group_code='installation'");
+    $unexpectedGroup->execute([$targetId]);
+    $assert((int) $unexpectedGroup->fetchColumn() === 0, 'unselected source group was copied');
     $target = $db->prepare("SELECT rule_json,status,is_enabled FROM mc_adaptation_groups WHERE product_id=? AND group_code='honeycomb'");
     $target->execute([$targetId]);
     $targetGroup = $target->fetch(PDO::FETCH_ASSOC);
@@ -79,7 +92,7 @@ try {
         'availability' => 'forbidden',
         'allow_with_glass' => 'no',
     ], 1);
-    $replace = $service->batchApply($sourceId, [$targetId], 'replace_matching', false, 1);
+    $replace = $service->batchApply($sourceId, [$targetId], 'replace_matching', false, 1, [$sourceGroupId]);
     $assert($replace['groups_overwritten'] === 1, 'replace-matching did not overwrite the target group');
     $target->execute([$targetId]);
     $replacedRules = json_decode((string) ($target->fetchColumn() ?: '{}'), true) ?: [];

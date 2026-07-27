@@ -32,6 +32,7 @@ include MC_ROOT.'/components/layout_top.php';
         </div>
         <div class="mc-adaptation-head__actions">
             <button class="mc-button" type="button" data-sync-products>同步产品</button>
+            <button class="mc-button" type="button" data-reuse-open disabled>套用现有配置</button>
             <button class="mc-button" type="button" data-batch-open disabled>批量套用</button>
             <button class="mc-button mc-button--primary" type="button" data-template-open disabled>生成标准配置</button>
         </div>
@@ -48,6 +49,24 @@ include MC_ROOT.'/components/layout_top.php';
                     <input name="q" value="<?=mc_h($search)?>" placeholder="搜索型号 / 名称 / 系列" autocomplete="off">
                 </label>
             </form>
+            <div class="mc-product-filter">
+                <select data-product-status-filter aria-label="按配置状态筛选">
+                    <option value="all">全部状态</option>
+                    <option value="unconfigured">未配置</option>
+                    <option value="configured">已配置</option>
+                    <option value="pending_approval">待审批</option>
+                    <option value="needs_review">待重审</option>
+                    <option value="enabled">已启用</option>
+                    <option value="conflict">有冲突</option>
+                </select>
+                <button class="mc-button" type="button" data-product-select-visible>全选当前</button>
+            </div>
+            <div class="mc-product-selection" data-product-selection-bar hidden>
+                <strong data-product-selection-count>已选择 0 个</strong>
+                <button type="button" data-selected-template>批量生成配置</button>
+                <button type="button" data-selected-batch>用当前产品套用</button>
+                <button type="button" data-product-selection-clear>清空</button>
+            </div>
             <div class="mc-adaptation-products__list" data-product-list></div>
         </aside>
 
@@ -92,7 +111,14 @@ include MC_ROOT.'/components/layout_top.php';
                 <button type="button" class="mc-icon-button" data-modal-close>×</button>
             </div>
             <div class="mc-modal__body">
-                <p class="mc-adaptation-guide">将按以下业务顺序建立配置组：</p>
+                <div class="mc-template-target" data-template-target></div>
+                <div class="mc-template-toolbar">
+                    <span>勾选本次需要的配置组：</span>
+                    <button class="mc-button" type="button" data-template-select-all>全选</button>
+                    <button class="mc-button" type="button" data-template-select-core>仅必选核心</button>
+                    <button class="mc-button" type="button" data-template-clear>清空</button>
+                    <b data-template-selection>已选择 0 组</b>
+                </div>
                 <div class="mc-template-preview" data-template-preview></div>
             </div>
             <div class="mc-modal__footer">
@@ -137,6 +163,41 @@ include MC_ROOT.'/components/layout_top.php';
                 <button type="button" class="mc-button" data-modal-close>取消</button>
                 <button type="button" class="mc-button" data-batch-preview-button>预览影响</button>
                 <button class="mc-button mc-button--primary" type="submit" data-batch-apply disabled>确认批量套用</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="mc-modal" id="reuse-modal" data-adaptation-modal>
+        <form class="mc-modal__panel mc-modal__panel--medium" data-reuse-form>
+            <div class="mc-modal__header">
+                <div><strong>套用现有配置</strong><span>从已经配置好的产品选择需要的配置组，套到当前产品。</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body mc-reuse-config">
+                <div class="mc-reuse-target" data-reuse-target></div>
+                <label class="mc-field">
+                    <span>1. 选择来源产品</span>
+                    <select data-reuse-source required></select>
+                </label>
+                <div class="mc-reuse-groups">
+                    <div><strong>2. 选择要套用的配置组</strong><button type="button" data-reuse-select-all>全选</button></div>
+                    <div data-reuse-group-list></div>
+                </div>
+                <div class="mc-batch-mode mc-reuse-mode">
+                    <strong>3. 选择套用方式</strong>
+                    <label><input type="radio" name="mode" value="fill_missing" checked><span><b>只补空白（推荐）</b><small>当前产品已有的同名组不变。</small></span></label>
+                    <label><input type="radio" name="mode" value="replace_matching"><span><b>覆盖同名配置组</b><small>所选同名组、选项、关键范围和冲突由来源产品替换。</small></span></label>
+                    <label class="mc-batch-power"><input type="checkbox" name="include_power_rule" value="1"><span><b>同时套用电源范围</b><small>来源产品有电源范围时一并复制。</small></span></label>
+                </div>
+                <div class="mc-batch-preview-card" data-reuse-preview>
+                    <strong>4. 先预览，再执行</strong>
+                    <span>系统会先显示新增、覆盖和保留数量。</span>
+                </div>
+            </div>
+            <div class="mc-modal__footer">
+                <button type="button" class="mc-button" data-modal-close>取消</button>
+                <button type="button" class="mc-button" data-reuse-preview-button>预览影响</button>
+                <button class="mc-button mc-button--primary" type="submit" data-reuse-apply disabled>确认套用</button>
             </div>
         </form>
     </div>

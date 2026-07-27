@@ -8,6 +8,7 @@
   const bootstrap = JSON.parse(bootstrapNode.textContent || '{}');
   const state = {
     products: bootstrap.products || [],
+    catalogProducts: bootstrap.products || [],
     workspace: bootstrap.workspace || null,
     metadata: bootstrap.metadata || {},
     csrf: bootstrap.csrf || '',
@@ -19,6 +20,11 @@
     batchSelected: new Set(),
     batchPreview: null,
     batchQuery: '',
+    productSelected: new Set(),
+    productStatusFilter: 'all',
+    templateTargetIds: [],
+    reuseSourceWorkspace: null,
+    reusePreview: null,
   };
 
   const escapeHtml = value => String(value ?? '')
@@ -114,34 +120,92 @@
     history.replaceState({}, '', url);
   };
 
+  const productMatchesStatus = product => {
+    if (state.productStatusFilter === 'all') return true;
+    if (state.productStatusFilter === 'configured') return integer(product.group_count) > 0;
+    if (state.productStatusFilter === 'conflict') return integer(product.conflict_count) > 0;
+    return product.configuration_state === state.productStatusFilter;
+  };
+
+  const visibleProducts = () => state.products.filter(productMatchesStatus);
+
+  const renderProductSelection = () => {
+    const count = state.productSelected.size;
+    q('[data-product-selection-bar]').hidden = !count;
+    q('[data-product-selection-count]').textContent = `已选择 ${count} 个`;
+    q('[data-selected-template]').disabled = !count;
+    q('[data-selected-batch]').disabled = !count || !state.workspace?.groups?.length;
+  };
+
+  const renderProductFilter = () => {
+    const counts = {
+      all: state.products.length,
+      unconfigured: state.products.filter(product => product.configuration_state === 'unconfigured').length,
+      configured: state.products.filter(product => integer(product.group_count) > 0).length,
+      pending_approval: state.products.filter(product => product.configuration_state === 'pending_approval').length,
+      needs_review: state.products.filter(product => product.configuration_state === 'needs_review').length,
+      enabled: state.products.filter(product => product.configuration_state === 'enabled').length,
+      conflict: state.products.filter(product => integer(product.conflict_count) > 0).length,
+    };
+    const labels = {
+      all: '全部状态',
+      unconfigured: '未配置',
+      configured: '已配置',
+      pending_approval: '待审批',
+      needs_review: '待重审',
+      enabled: '已启用',
+      conflict: '有冲突',
+    };
+    qa('option', q('[data-product-status-filter]')).forEach(option => {
+      option.textContent = `${labels[option.value]}（${counts[option.value] || 0}）`;
+    });
+    q('[data-product-status-filter]').value = state.productStatusFilter;
+  };
+
   const renderProducts = () => {
-    q('[data-product-count]').textContent = `${state.products.length} 个产品`;
+    renderProductFilter();
+    const products = visibleProducts();
+    q('[data-product-count]').textContent = `显示 ${products.length} / 共 ${state.products.length} 个`;
     const activeId = selectedProductId();
-    q('[data-product-list]').innerHTML = state.products.length
-      ? state.products.map(product => {
+    const list = q('[data-product-list]');
+    list.innerHTML = products.length
+      ? products.map(product => {
         const rawImage = String(product.image_url || '');
         const imageUrl = !rawImage || rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('/')
           ? rawImage
           : `${state.baseUrl.replace('/material_center_v1', '')}/${rawImage.startsWith('./') ? rawImage.slice(2) : rawImage}`;
         const image = imageUrl
-          ? `<img src="${escapeHtml(imageUrl)}" alt="" loading="lazy">`
+          ? `<img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" data-product-image>`
           : '<span class="mc-product-thumb__placeholder">◇</span>';
         const approvalClass = product.approval_label === '已启用' ? 'success' : 'warning';
-        return `<button type="button" class="mc-product-card ${integer(product.id) === activeId ? 'is-active' : ''}" data-product-id="${integer(product.id)}">
-          <span class="mc-product-thumb">${image}</span>
-          <span class="mc-product-card__main">
-            <strong>${escapeHtml(product.product_code || '未编号')}</strong>
-            <small>${escapeHtml(product.product_name || '未命名产品')}</small>
-            <em>${escapeHtml(product.series_name || '未设置系列')}</em>
-            <span class="mc-product-card__stats">${integer(product.group_count)} 组 · ${integer(product.option_count)} 选项</span>
-          </span>
-          <span class="mc-product-card__state">
-            <b class="mc-badge mc-badge--${approvalClass}">${escapeHtml(product.approval_label)}</b>
-            ${integer(product.conflict_count) ? '<i>存在冲突</i>' : '<i class="is-clear">无冲突</i>'}
-          </span>
-        </button>`;
+        const productId = integer(product.id);
+        return `<article class="mc-product-row ${productId === activeId ? 'is-active' : ''} ${state.productSelected.has(productId) ? 'is-selected' : ''}">
+          <label class="mc-product-check" title="选择产品">
+            <input type="checkbox" data-product-check value="${productId}" ${state.productSelected.has(productId) ? 'checked' : ''}>
+          </label>
+          <button type="button" class="mc-product-card" data-product-id="${productId}">
+            <span class="mc-product-thumb">${image}</span>
+            <span class="mc-product-card__main">
+              <strong>${escapeHtml(product.product_code || '未编号')}</strong>
+              <small>${escapeHtml(product.product_name || '未命名产品')}</small>
+              <em>${escapeHtml(product.series_name || '未设置系列')}</em>
+              <span class="mc-product-card__stats">${integer(product.group_count)} 组 · ${integer(product.option_count)} 选项</span>
+            </span>
+            <span class="mc-product-card__state">
+              <b class="mc-badge mc-badge--${approvalClass}">${escapeHtml(product.approval_label)}</b>
+              ${integer(product.conflict_count) ? '<i>存在冲突</i>' : '<i class="is-clear">无冲突</i>'}
+            </span>
+          </button>
+        </article>`;
       }).join('')
-      : '<div class="mc-empty-state"><strong>没有产品</strong><span>同步命名系统或调整搜索条件。</span></div>';
+      : '<div class="mc-empty-state"><strong>没有符合筛选的产品</strong><span>调整配置状态或搜索条件。</span></div>';
+    qa('[data-product-image]', list).forEach(image => image.addEventListener('error', () => {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'mc-product-thumb__placeholder';
+      placeholder.textContent = '◇';
+      image.replaceWith(placeholder);
+    }, { once: true }));
+    renderProductSelection();
   };
 
   const statusLabels = {
@@ -188,7 +252,9 @@
     q('[data-group-create]').disabled = !workspace;
     q('[data-template-open]').disabled = !workspace;
     q('[data-batch-open]').disabled = !workspace?.groups?.length;
+    q('[data-reuse-open]').disabled = !workspace;
     q('[data-template-open]').textContent = workspace?.groups?.length ? '重新套用配置模板' : '生成标准配置';
+    renderProductSelection();
     if (!workspace) {
       list.innerHTML = '<div class="mc-empty-state"><strong>请选择产品</strong><span>从左侧产品列表开始。</span></div>';
       return;
@@ -363,6 +429,8 @@
     state.workspace = await get('workspace', { product_id: productId, group_id: groupId });
     const productIndex = state.products.findIndex(product => integer(product.id) === integer(productId));
     if (productIndex >= 0) state.products[productIndex] = { ...state.products[productIndex], ...state.workspace.product };
+    const catalogIndex = state.catalogProducts.findIndex(product => integer(product.id) === integer(productId));
+    if (catalogIndex >= 0) state.catalogProducts[catalogIndex] = { ...state.catalogProducts[catalogIndex], ...state.workspace.product };
     render();
   };
 
@@ -370,15 +438,29 @@
 
   const formatExpected = value => Array.isArray(value) ? value.join(' ～ ') : String(value ?? '');
 
-  const populateTemplate = () => {
-    q('[data-template-preview]').innerHTML = (state.metadata.template || []).map((group, index) => `<div>
+  const updateTemplateSelection = () => {
+    const count = qa('[name="template_group"]:checked', q('[data-template-form]')).length;
+    q('[data-template-selection]').textContent = `已选择 ${count} 组`;
+    q('[data-template-form] button[type="submit"]').disabled = !count;
+  };
+
+  const populateTemplate = (productIds = [selectedProductId()]) => {
+    state.templateTargetIds = [...new Set(productIds.map(integer).filter(Boolean))];
+    const targetProducts = state.catalogProducts.filter(product => state.templateTargetIds.includes(integer(product.id)));
+    q('[data-template-target]').innerHTML = state.templateTargetIds.length > 1
+      ? `<strong>批量生成到 ${state.templateTargetIds.length} 个产品</strong><span>每个产品只补齐所选配置组，不重复插入。</span>`
+      : `<strong>当前产品：${escapeHtml(targetProducts[0]?.product_code || state.workspace?.product?.product_code || '未编号')}</strong><span>重新生成只会补齐或校正所选配置组。</span>`;
+    q('[data-template-preview]').innerHTML = (state.metadata.template || []).map((group, index) => `<label>
+      <input type="checkbox" name="template_group" value="${escapeHtml(group.key)}" checked>
       <b>${index + 1}</b><span><strong>${escapeHtml(group.name)}</strong><small>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></span>
-    </div>`).join('');
+    </label>`).join('');
+    updateTemplateSelection();
+    state.dirty = false;
   };
 
   const visibleBatchProducts = () => {
     const query = state.batchQuery.trim().toLowerCase();
-    return state.products.filter(product => {
+    return state.catalogProducts.filter(product => {
       if (integer(product.id) === selectedProductId()) return false;
       if (!query) return true;
       return [product.product_code, product.product_name, product.series_name]
@@ -409,13 +491,13 @@
     </label>`).join('') : '<div class="mc-empty-state mc-empty-state--compact"><strong>没有符合条件的目标产品</strong><span>请调整搜索词，或先同步产品。</span></div>';
   };
 
-  const openBatch = () => {
+  const openBatch = (preselected = []) => {
     const source = state.workspace?.product;
     if (!source || !state.workspace?.groups?.length) {
       notify('暂不能批量套用', '请先选择并设置好一个来源产品。');
       return;
     }
-    state.batchSelected = new Set();
+    state.batchSelected = new Set(preselected.map(integer).filter(id => id && id !== selectedProductId()).slice(0, 1000));
     state.batchPreview = null;
     state.batchQuery = '';
     const form = q('[data-batch-form]');
@@ -463,6 +545,96 @@
     } catch (error) {
       notify('预览失败', error.message);
       q('[data-batch-apply]').disabled = true;
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  const invalidateReusePreview = () => {
+    state.reusePreview = null;
+    q('[data-reuse-apply]').disabled = true;
+    q('[data-reuse-preview]').innerHTML = '<strong>4. 先预览，再执行</strong><span>来源、配置组或套用方式已变化，请重新预览。</span>';
+  };
+
+  const renderReuseGroups = () => {
+    const groups = state.reuseSourceWorkspace?.groups || [];
+    q('[data-reuse-group-list]').innerHTML = groups.length
+      ? groups.map(group => `<label>
+        <input type="checkbox" name="reuse_group" value="${integer(group.id)}" checked>
+        <span><strong>${escapeHtml(group.group_name)}</strong><small>${integer(group.option_count)} 个选项 · ${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></span>
+      </label>`).join('')
+      : '<div class="mc-empty-state mc-empty-state--compact"><strong>来源产品没有配置组</strong><span>请换一个来源产品。</span></div>';
+    invalidateReusePreview();
+  };
+
+  const loadReuseSource = async sourceProductId => {
+    q('[data-reuse-group-list]').innerHTML = '<div class="mc-empty-state mc-empty-state--compact"><strong>正在读取来源配置</strong></div>';
+    state.reuseSourceWorkspace = await get('workspace', { product_id: sourceProductId });
+    renderReuseGroups();
+  };
+
+  const openReuse = async () => {
+    const target = state.workspace?.product;
+    if (!target) {
+      notify('请先选择产品', '先选择需要接收配置的当前产品。');
+      return;
+    }
+    const sources = state.catalogProducts.filter(product => integer(product.id) !== selectedProductId() && integer(product.group_count) > 0);
+    if (!sources.length) {
+      notify('没有可用来源', '请先为至少一个其他产品建立配置组。');
+      return;
+    }
+    const sameSeries = sources.find(product => String(product.series_name || '') === String(target.series_name || ''));
+    const source = sameSeries || sources[0];
+    const form = q('[data-reuse-form]');
+    form.reset();
+    q('[data-reuse-target]').innerHTML = `<span>接收配置的当前产品</span><strong>${escapeHtml(target.product_code || '未编号')} · ${escapeHtml(target.product_name || '未命名')}</strong>`;
+    q('[data-reuse-source]').innerHTML = sources.map(product => `<option value="${integer(product.id)}" ${integer(product.id) === integer(source.id) ? 'selected' : ''}>${escapeHtml(product.product_code || '未编号')} · ${escapeHtml(product.product_name || '未命名')}（${integer(product.group_count)} 组）</option>`).join('');
+    state.reuseSourceWorkspace = null;
+    state.reusePreview = null;
+    state.dirty = false;
+    openModal('reuse-modal');
+    try {
+      await loadReuseSource(integer(source.id));
+      state.dirty = false;
+    } catch (error) {
+      notify('来源配置读取失败', error.message);
+    }
+  };
+
+  const reuseRequestValues = () => {
+    const form = q('[data-reuse-form]');
+    return {
+      source_product_id: integer(q('[data-reuse-source]').value),
+      target_product_ids: [selectedProductId()],
+      source_group_ids: qa('[name="reuse_group"]:checked', form).map(input => integer(input.value)),
+      mode: new FormData(form).get('mode') || 'fill_missing',
+      include_power_rule: form.elements.include_power_rule.checked ? 1 : 0,
+    };
+  };
+
+  const previewReuse = async () => {
+    const values = reuseRequestValues();
+    if (!values.source_group_ids.length && !values.include_power_rule) {
+      notify('尚未选择配置', '请至少选择一个配置组，或勾选电源范围。');
+      return;
+    }
+    const button = q('[data-reuse-preview-button]');
+    button.disabled = true;
+    try {
+      state.reusePreview = await post('preview_batch', values);
+      const preview = state.reusePreview;
+      q('[data-reuse-preview]').innerHTML = `<strong>预览完成：将套用 ${integer(preview.groups.source)} 个配置组</strong>
+        <div class="mc-batch-preview-metrics">
+          <span><b>${integer(preview.groups.created)}</b> 新增配置组</span>
+          <span><b>${integer(preview.groups.overwritten)}</b> 覆盖同名组</span>
+          <span><b>${integer(preview.groups.skipped)}</b> 保留并跳过</span>
+          <span><b>${integer(preview.power_rule.created) + integer(preview.power_rule.overwritten)}</b> 条电源范围</span>
+        </div>`;
+      q('[data-reuse-apply]').disabled = false;
+    } catch (error) {
+      notify('预览失败', error.message);
+      q('[data-reuse-apply]').disabled = true;
     } finally {
       button.disabled = false;
     }
@@ -628,12 +800,64 @@
       return;
     }
     if (event.target.closest('[data-template-open], [data-empty-template]')) {
-      populateTemplate();
+      populateTemplate([selectedProductId()]);
       openModal('template-modal');
+      return;
+    }
+    if (event.target.closest('[data-template-select-all]')) {
+      qa('[name="template_group"]', q('[data-template-form]')).forEach(input => { input.checked = true; });
+      updateTemplateSelection();
+      return;
+    }
+    if (event.target.closest('[data-template-select-core]')) {
+      const requiredKeys = new Set((state.metadata.template || []).filter(group => group.is_required).map(group => group.key));
+      qa('[name="template_group"]', q('[data-template-form]')).forEach(input => { input.checked = requiredKeys.has(input.value); });
+      updateTemplateSelection();
+      return;
+    }
+    if (event.target.closest('[data-template-clear]')) {
+      qa('[name="template_group"]', q('[data-template-form]')).forEach(input => { input.checked = false; });
+      updateTemplateSelection();
+      return;
+    }
+    if (event.target.closest('[data-reuse-open]')) {
+      await openReuse();
+      return;
+    }
+    if (event.target.closest('[data-reuse-select-all]')) {
+      qa('[name="reuse_group"]', q('[data-reuse-form]')).forEach(input => { input.checked = true; });
+      invalidateReusePreview();
+      return;
+    }
+    if (event.target.closest('[data-reuse-preview-button]')) {
+      await previewReuse();
       return;
     }
     if (event.target.closest('[data-batch-open]')) {
       openBatch();
+      return;
+    }
+    if (event.target.closest('[data-product-select-visible]')) {
+      const next = new Set(state.productSelected);
+      visibleProducts().forEach(product => {
+        if (next.size < 1000) next.add(integer(product.id));
+      });
+      state.productSelected = next;
+      renderProducts();
+      return;
+    }
+    if (event.target.closest('[data-product-selection-clear]')) {
+      state.productSelected = new Set();
+      renderProducts();
+      return;
+    }
+    if (event.target.closest('[data-selected-template]')) {
+      populateTemplate([...state.productSelected]);
+      openModal('template-modal');
+      return;
+    }
+    if (event.target.closest('[data-selected-batch]')) {
+      openBatch([...state.productSelected]);
       return;
     }
     if (event.target.closest('[data-batch-same-series]')) {
@@ -642,7 +866,7 @@
         notify('当前产品没有系列', '请使用搜索或手工勾选目标产品。');
         return;
       }
-      state.batchSelected = new Set(state.products
+      state.batchSelected = new Set(state.catalogProducts
         .filter(product => integer(product.id) !== selectedProductId() && String(product.series_name || '').trim() === series)
         .slice(0, 1000)
         .map(product => integer(product.id)));
@@ -724,6 +948,7 @@
       try {
         const result = await post('sync');
         state.products = await get('products');
+        state.catalogProducts = state.products;
         renderProducts();
         notify('产品同步完成', `读取 ${result.seen} 条，新增 ${result.created} 条，更新 ${result.changed} 条。`);
       } catch (error) {
@@ -753,7 +978,19 @@
     }
   });
 
-  page.addEventListener('change', event => {
+  page.addEventListener('change', async event => {
+    if (event.target.matches('[data-product-check]')) {
+      const id = integer(event.target.value);
+      event.target.checked ? state.productSelected.add(id) : state.productSelected.delete(id);
+      renderProducts();
+      return;
+    }
+    if (event.target.matches('[data-product-status-filter]')) {
+      state.productStatusFilter = event.target.value;
+      renderProducts();
+      return;
+    }
+    if (event.target.matches('[name="template_group"]')) updateTemplateSelection();
     if (event.target.matches('[name="material_choice"]')) updateCandidateSelection();
     if (event.target.matches('[name="batch_product"]')) {
       const id = integer(event.target.value);
@@ -770,6 +1007,14 @@
       updateBatchSelection();
     }
     if (event.target.matches('[data-batch-form] [name="mode"], [data-batch-form] [name="include_power_rule"]')) invalidateBatchPreview();
+    if (event.target.matches('[data-reuse-source]')) {
+      try {
+        await loadReuseSource(integer(event.target.value));
+      } catch (error) {
+        notify('来源配置读取失败', error.message);
+      }
+    }
+    if (event.target.matches('[data-reuse-form] [name="mode"], [data-reuse-form] [name="include_power_rule"], [name="reuse_group"]')) invalidateReusePreview();
     if (event.target.closest('form')) state.dirty = true;
     if (event.target.matches('[data-business-type]')) {
       syncGroupFormType(true);
@@ -806,18 +1051,74 @@
     const form = event.currentTarget;
     const modal = form.closest('[data-adaptation-modal]');
     const button = event.submitter || q('button[type="submit"]', form);
+    const templateKeys = qa('[name="template_group"]:checked', form).map(input => input.value);
+    if (!templateKeys.length || !state.templateTargetIds.length) {
+      notify('尚未选择配置组', '请至少勾选一个要生成的配置组。');
+      return;
+    }
     if (button) button.disabled = true;
     try {
-      const result = await post('apply_template', { product_id: selectedProductId() });
+      const result = { succeeded: 0, failed: 0, created: 0, failures: [] };
+      if (state.templateTargetIds.length === 1) {
+        const part = await post('apply_template', {
+          product_id: state.templateTargetIds[0],
+          template_keys: templateKeys,
+        });
+        result.succeeded = 1;
+        result.created = integer(part.created);
+      } else {
+        for (let index = 0; index < state.templateTargetIds.length; index += 100) {
+          const part = await post('batch_initialize_groups', {
+            product_ids: state.templateTargetIds.slice(index, index + 100),
+            template_keys: templateKeys,
+          });
+          result.succeeded += integer(part.succeeded);
+          result.failed += integer(part.failed);
+          result.created += integer(part.created);
+          result.failures.push(...(part.failures || []));
+        }
+      }
       closeModal(modal);
       state.tab = 'quick_rules';
-      await loadWorkspace(selectedProductId());
-      notify('标准配置已生成', result.created
-        ? `新增 ${result.created} 个配置组，已为你打开第一个组的关键范围。`
-        : '配置组已齐全，已打开第一个组的关键范围。');
+      state.products = await get('products');
+      state.catalogProducts = state.products;
+      if (selectedProductId()) await loadWorkspace(selectedProductId());
+      else renderProducts();
+      const failureText = result.failed ? `；${result.failed} 个失败` : '';
+      notify(state.templateTargetIds.length > 1 ? '批量标准配置已生成' : '标准配置已生成',
+        state.templateTargetIds.length > 1
+          ? `成功处理 ${result.succeeded} 个产品，新增 ${result.created} 个配置组${failureText}。`
+          : `新增 ${result.created} 个配置组，已为你打开第一个组的关键范围。`);
     } catch (error) {
       notify('生成失败', error.message);
       if (button) button.disabled = false;
+    }
+  });
+
+  q('[data-reuse-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!state.reusePreview) {
+      notify('请先预览影响', '来源、配置组或套用方式变化后，需要重新预览。');
+      return;
+    }
+    const form = event.currentTarget;
+    const button = event.submitter || q('[data-reuse-apply]', form);
+    button.disabled = true;
+    button.textContent = '正在套用…';
+    try {
+      const result = await post('batch_apply', reuseRequestValues());
+      state.dirty = false;
+      closeModal(form.closest('[data-adaptation-modal]'));
+      state.products = await get('products');
+      state.catalogProducts = state.products;
+      await loadWorkspace(selectedProductId());
+      notify('现有配置已套用', `新增 ${integer(result.groups_created)} 组，覆盖 ${integer(result.groups_overwritten)} 组，保留 ${integer(result.groups_skipped)} 组。`);
+    } catch (error) {
+      state.reusePreview = null;
+      notify('套用失败', error.message);
+    } finally {
+      button.disabled = !state.reusePreview;
+      button.textContent = '确认套用';
     }
   });
 
@@ -861,6 +1162,7 @@
       }
       state.dirty = false;
       state.products = await get('products');
+      state.catalogProducts = state.products;
       await loadWorkspace(selectedProductId(), integer(selectedGroup()?.id));
       const failureText = integer(result.failed) ? `；失败 ${integer(result.failed)} 个，可根据失败原因修正后重试` : '';
       notify('批量套用完成', `成功 ${integer(result.succeeded)} 个产品，复制 ${integer(result.groups_created) + integer(result.groups_overwritten)} 个配置组和 ${integer(result.options_copied)} 个物料选项${failureText}。`);
