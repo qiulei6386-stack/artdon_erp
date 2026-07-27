@@ -27,7 +27,7 @@ $requiredJs = [
     'customer_ids: JSON.stringify(this.resolveWizardCustomerIds(draft))',
     'pool_filters: this.poolFilterPayload()',
     "['客户总数', audienceCount]",
-    "['可执行客户', targets.customers.length]",
+    "['可执行客户', (plan.items || []).length]",
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
