@@ -1208,6 +1208,12 @@ function qspec_is_packaging_text($txt){
   if($s==='') return false;
   return preg_match('/纸卡|纸箱|纸盒|内盒|外盒|外箱|彩盒|包装|包材|吸塑|珍珠棉|泡棉|护角|标签|贴纸|说明书|吊牌|卡纸|opp\\s*袋|pe\\s*袋|poly\\s*bag|carton|inner\\s*box|outer\\s*box|gift\\s*box|color\\s*box|packing|packaging|label|manual|k\\s*=\\s*a|k6a|牛皮色/iu',$s)===1;
 }
+function qspec_is_internal_fastener_text($txt){
+  $s=mb_strtolower(trim((string)$txt),'UTF-8');
+  if($s==='') return false;
+  // 装配螺丝、螺母、垫圈等属于整灯内部标准紧固件，不是客户可选的报价 Accessories。
+  return preg_match('/螺丝|螺钉|螺栓|螺母|机牙|介机牙|自攻|牙条|紧固件|平垫|弹垫|垫圈|\\bscrews?\\b|\\bbolts?\\b|\\bnuts?\\b|\\bwashers?\\b|\\bfasteners?\\b/iu',$s)===1;
+}
 function qspec_component_label_key($label){
   $k=mb_strtolower(trim((string)$label),'UTF-8');
   if(in_array($k,['led','芯片','cob'],true)) return 'led';
@@ -1222,6 +1228,7 @@ function qspec_component_value_conflicts($label,$value){
   $s=mb_strtolower(trim((string)$value),'UTF-8');
   if($key==='' || $s==='') return false;
   if(qspec_is_packaging_text($s)) return true;
+  if($key==='accessories' && qspec_is_internal_fastener_text($s)) return true;
   $isDriver=preg_match('/\\bled\\s*driver\\b|\\bdriver\\b|power\\s*supply|constant\\s*current|eaglerise|lifud|tridonic|mean\\s*well|电源|驱动|伊戈尔|恒流/iu',$s)===1;
   $isConnector=preg_match('/connector|adapter|track\\s*head|接头|转接|导轨头|连接器/iu',$s)===1;
   $isOptic=preg_match('/optic|optics|lens|reflector|dark\\s*series|herculux|透镜|反光杯|反光|光学|恒坤|honeycomb|蜂窝|格栅|防眩/iu',$s)===1;
@@ -1292,6 +1299,8 @@ function qspec_classify_component($txt){
   $s=strtolower((string)$txt);
   // 包装材料不属于灯具附件，不能进入报价单 Accessories。
   if(qspec_is_packaging_text($txt)) return '';
+  // 装配紧固件属于整灯内部成本，不是客户可选附件。
+  if(qspec_is_internal_fastener_text($txt)) return '';
   // 先识别电源/接头/光学，再识别 LED，避免 “LED Driver” 被归到芯片。
   if(preg_match('/\bled\s*driver\b|\bdriver\b|power\s*supply|constant\s*current|eaglerise|lifud|tridonic|mean\s*well|电源|驱动|伊戈尔|恒流/u',$s)) return 'driver';
   if(preg_match('/connector|adapter|track\s*head|接头|转接|导轨头|连接器/u',$s)) return 'connector';
@@ -1336,7 +1345,7 @@ function qspec_guess_components_from_bom($pdo,$model){
       }
     }
   }
-  return ['hits'=>$hits,'source_hash'=>sha1('qspec-classifier-v2|'.implode('|',array_slice($sourceHashParts,0,50)))];
+  return ['hits'=>$hits,'source_hash'=>sha1('qspec-classifier-v3|'.implode('|',array_slice($sourceHashParts,0,50)))];
 }
 
 function qspec_spec_json_from_fields($d){
@@ -1803,7 +1812,7 @@ function qperm_require($pdo,$perm='can_access'){
 }
 function qperm_action_perm($action){
   $map=[
-    'init'=>'can_access','list_bom_quote_specs'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
+    'init'=>'can_access','list_bom_quote_specs'=>'product_view','get_bom_quote_spec'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
     'create_backup'=>'settings_manage','list_backups'=>'settings_manage','download_backup'=>'settings_manage','restore_backup'=>'settings_manage','save_header'=>'doc_settings_manage','delete_header'=>'doc_settings_manage','save_bank'=>'doc_settings_manage','delete_bank'=>'doc_settings_manage','save_template'=>'doc_settings_manage','delete_template'=>'doc_settings_manage','save_exchange_rate'=>'rate_manage','save_price_level'=>'settings_manage','delete_price_level'=>'settings_manage','save_option'=>'settings_manage','delete_option'=>'settings_manage',
     'price_policy_list'=>'product_view','price_policy_match'=>'product_view','price_tier_list'=>'product_view','price_policy_levels_list'=>'product_view','price_stock_log_list'=>'product_view','price_policy_options_list'=>'product_view',
@@ -3978,6 +3987,15 @@ if($action==='init'){
  if($action==='price_policy_options_init_defaults'){ ok(quote_price_policy_options_init_defaults($pdo,$__quote_user,true)); }
 
  if($action==='list_bom_quote_specs') { ensure_bom_quote_spec_schema($pdo); ok(['specs'=>rows($pdo,"SELECT * FROM bom_quote_specs ORDER BY updated_at DESC, id DESC LIMIT 5000")]); }
+ if($action==='get_bom_quote_spec') {
+   ensure_bom_quote_spec_schema($pdo);
+   $model=trim((string)($_GET['product_model']??$_GET['model']??''));
+   $namingId=trim((string)($_GET['naming_id']??''));
+   $spec=null;
+   if($namingId!=='') $spec=row($pdo,"SELECT * FROM bom_quote_specs WHERE naming_id=? ORDER BY id DESC LIMIT 1",[$namingId]);
+   if(!$spec && $model!=='') $spec=row($pdo,"SELECT * FROM bom_quote_specs WHERE product_model=? ORDER BY id DESC LIMIT 1",[$model]);
+   ok(['spec'=>$spec]);
+ }
  if($action==='save_bom_quote_spec') {
    ensure_bom_quote_spec_schema($pdo); $d=input_json();
    $model=trim((string)($d['product_model']??$d['model']??'')); if($model==='') fail('缺少产品型号');
@@ -3990,7 +4008,17 @@ if($action==='init'){
    if($old) $d['id']=$old['id'];
    $d['product_model']=$model; $d['quote_spec_json']=$json;
    $id=save_row($pdo,'bom_quote_specs',$d,['naming_id','product_model','product_name','product_image','power','size','cutout','led','driver','optic','accessories','connector','other','quote_spec_json','note']);
-   ok(['id'=>$id]);
+   // 人工保存后冻结为人工维护；后续普通自动检查不得覆盖用户修正。
+   $pdo->prepare("UPDATE bom_quote_specs SET auto_generated=0,source_hash='',last_sync_at=NULL WHERE id=?")->execute([(int)$id]);
+   $saved=row($pdo,'SELECT * FROM bom_quote_specs WHERE id=?',[(int)$id]);
+   quote_log_event($pdo,[
+     'action'=>'save_bom_quote_spec',
+     'event'=>'人工修正报价关键件',
+     'user_name'=>$__quote_user['username']??'',
+     'summary'=>'人工修正报价关键件：'.$model,
+     'detail'=>['id'=>(int)$id,'product_model'=>$model,'fields'=>array_keys(qspec_payload_from_row($saved?:[]))]
+   ]);
+   ok(['id'=>$id,'row'=>$saved,'spec'=>$saved?qspec_row_to_payload_rec($saved):null]);
  }
  if($action==='delete_bom_quote_spec') { ensure_bom_quote_spec_schema($pdo); $d=input_json(); if(!empty($d['id'])) $pdo->prepare('DELETE FROM bom_quote_specs WHERE id=?')->execute([intval($d['id'])]); elseif(!empty($d['product_model'])) $pdo->prepare('DELETE FROM bom_quote_specs WHERE product_model=?')->execute([$d['product_model']]); ok(); }
 

@@ -1169,9 +1169,37 @@ function productBaseCostRmb(p){return Number(p?.cost_rmb||0)||Number(p?.price_rm
 function productCostText(p){let c=productBaseCostRmb(p); if(!c)return '未找到成本'; return 'BOM/基础成本 RMB '+money(c)+(p?.cost_updated_at?' ｜ '+p.cost_updated_at:'')}
 function qspecModelOfProduct(p=null){p=p||S.product||{};return String(p.code||p.model||p.naming_model_no||p.name||'').trim()}
 function bomQuoteSpecUrl(p=null){p=p||S.product||{};let u='bom_quote_spec.php';let qs=[];let model=qspecModelOfProduct(p);if(model)qs.push('model='+encodeURIComponent(model));if(p.naming_id)qs.push('naming_id='+encodeURIComponent(p.naming_id));return u+(qs.length?'?'+qs.join('&'):'')}
-function openBomQuoteSpec(p=null){let u=bomQuoteSpecUrl(p);window.open(u,'_blank')}
+function openBomQuoteSpec(p=null){let u=bomQuoteSpecUrl(p);window.open(u,'artdonQuoteSpecEditor')}
 async function forceSyncBomQuoteSpecForSelectedProduct(){let p=S.product;if(!p){alert('请先选择命名系统产品');return;}let el=$('productLinkHint');if(el)el.innerHTML=productSourceBadge(p)+' <b>'+esc(p.code||p.name||'')+'</b><br>正在从 BOM 手动重新拉取关键件...';try{let res=await api('sync_bom_quote_spec',{force:1,product:{id:p.id,source:p.source,naming_id:p.naming_id,code:p.code,model:p.model,name:p.name,image:p.image,power:p.power,size:p.size,cutout:p.cutout,bom_match:p.bom_match,bom_match_key:p.bom_match_key}});if(res&&res.spec){let spec=res.spec;Object.assign(S.product,{bom_quote_spec_id:spec.id,quote_spec:spec.quote_spec||{},quote_spec_json:JSON.stringify(spec.quote_spec||{}),quote_spec_source:'bom_quote_specs',quote_spec_updated_at:spec.updated_at||'',quote_spec_auto_generated:spec.auto_generated||1});['power','size','cutout'].forEach(k=>{if(spec[k])S.product[k]=spec[k]});let idx=(DB.products||[]).findIndex(x=>String(x.id)===String(S.product.id));if(idx>=0)DB.products[idx]=Object.assign(DB.products[idx],S.product);renderParts();render();updatePriceLevelHint();updateProductLinkHint();alert('已从 BOM 重新拉取并保存关键件。若文字还需调整，请点“手动修正关键件”。')}else{updateProductLinkHint();alert('未从 BOM 提取到关键件，可点“手动修正关键件”自行填写。')}}catch(e){updateProductLinkHint();alert('重新拉取失败：'+e.message)}}
 function updateProductLinkHint(){let el=$('productLinkHint'); if(!el)return;let p=S.product;if(!p){el.innerHTML='产品主数据优先来自命名中心；成本价优先匹配 BOM。';return;}let src=productSourceLabel(p), bom=Number(p.bom_match||0), qn=productQuoteSpec(p).length;let auto=Number(p.quote_spec_auto_generated||0)?'自动同步':'人工维护';let actions=p.source==='naming'?`<div class="quote-spec-actions"><button type="button" class="mini-sync" onclick="forceSyncBomQuoteSpecForSelectedProduct()">重新从BOM拉取关键件</button><button type="button" class="mini-link" onclick="openBomQuoteSpec()">手动修正关键件</button></div>`:'';el.className='hint product-link-hint';el.innerHTML=`${productSourceBadge(p)} <b>${esc(p.code||p.name||'')}</b>${qn?'<span class="quote-spec-badge">已设报价关键件 '+qn+' 项</span>':''}<br>来源：${esc(src)} ｜ ${bom?'已匹配 BOM 成本':'未匹配 BOM，可先按空壳/手动价报价'} ｜ ${esc(productCostText(p))}${p.bom_cost_source?' ｜ 成本源：'+esc(p.bom_cost_source):''}${qn?' ｜ 关键件来自 BOM 报价设置（'+auto+'）':''}${actions}`}
+function quoteSpecMatchesProduct(spec,p){
+  if(!spec||!p)return false;
+  let specNaming=String(spec.naming_id||''),productNaming=String(p.naming_id||'');
+  if(specNaming&&productNaming&&specNaming===productNaming)return true;
+  let specModel=String(spec.product_model||'').trim().toLowerCase();
+  let productModel=qspecModelOfProduct(p).toLowerCase();
+  return !!specModel&&specModel===productModel;
+}
+function applySavedQuoteSpec(spec){
+  if(!spec)return;
+  let patch={
+    bom_quote_spec_id:spec.id,
+    quote_spec:spec.quote_spec||{},
+    quote_spec_json:JSON.stringify(spec.quote_spec||{}),
+    quote_spec_source:'bom_quote_specs',
+    quote_spec_updated_at:spec.updated_at||'',
+    quote_spec_auto_generated:Number(spec.auto_generated||0)
+  };
+  ['power','size','cutout'].forEach(k=>{if(spec[k])patch[k]=spec[k]});
+  (DB.products||[]).forEach(p=>{if(quoteSpecMatchesProduct(spec,p))Object.assign(p,patch)});
+  (S.items||[]).forEach(item=>{if(item&&quoteSpecMatchesProduct(spec,item.product))Object.assign(item.product,patch)});
+  if(S.product&&quoteSpecMatchesProduct(spec,S.product))Object.assign(S.product,patch);
+  renderParts();renderQuoteItems();updateProductLinkHint();updatePriceLevelHint();render();
+}
+window.addEventListener('message',event=>{
+  if(event.origin!==location.origin||!event.data||event.data.type!=='artdon:quote-spec-saved')return;
+  applySavedQuoteSpec(event.data.spec||null);
+});
 function passText(v,kw){return !kw || String(v||'').toLowerCase().includes(String(kw).toLowerCase())}
 function firstLetter(s){s=String(s||'').trim(); return s? s[0].toUpperCase() : '#'}
 function quoteCustomer(q){try{return JSON.parse(q.customer_json||'{}')}catch(e){return {}}}
