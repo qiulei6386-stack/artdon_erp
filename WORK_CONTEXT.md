@@ -11,8 +11,8 @@
 - 生成队列前新增前端最终校验并定位质量卡片：无可执行目标、邮件内容为空、可用发件邮箱为 0、所有邮件客户无邮箱、未分配邮箱、未分配执行人、缺少计划时间、未识别变量都会阻止生成；只有部分客户无邮箱时会按当前“跳过 / 转线下”策略二次确认。服务端 `crm_marketing_queue_build()` 同步执行同类最终校验，避免绕过前端直接生成不一致的队列。
 - 预览 / 正式发送一致性：服务端模板渲染补全发件人职位、手机及兼容变量，且与第 9 步预览使用同一含义；避免预览正确但实际入队邮件变量未替换。
 - 修改文件：`assets/crm/crm.js`、`assets/crm/crm.css`、`crm.php`、`crm_marketing.php`、`tests/crm_marketing_wizard_mail_preview_contract.php`、本上下文。没有修改推广客户、分组、任务、发送队列或数据库数据；用户原有商务中心删除和未跟踪文档保持原样且未纳入提交。
-- 本地检查：`node --check assets/crm/crm.js`、`node tests/crm_marketing_mail_preview_runtime_test.js`、`git diff --check` 通过。当前办公室电脑未安装 PHP，PHP 语法与推广专项契约待 GitHub 推送及服务器同一提交部署后复检。
-- Git：功能提交 `e0913e9`（`feat: redesign promotion step 9 confirmation`）已创建，尚待推送 GitHub、自动部署腾讯云及三方提交号核对。本条最终部署状态记录会作为后续收尾提交一并同步。
+- 检查：办公室本地 `node --check assets/crm/crm.js`、`node tests/crm_marketing_mail_preview_runtime_test.js`、`git diff --check` 通过。办公室电脑没有 PHP；服务器同一提交已通过 `crm.php` / `crm_marketing.php` PHP 8.0 语法、推广邮件预览专项契约和完整 1–9 步流程契约。首轮部署发现旧流程契约仍期望“可执行客户”按旧客户数组计算，已在本地修正为统一执行名单 `plan.items` 口径并重新部署；不是业务功能失败。
+- Git / 部署：功能提交 `e0913e9` 与契约修正提交 `d61071e` 已推送 GitHub。服务器因运行账号没有 GitHub 拉取凭据，自动部署未及时接管；已使用与工作流一致的已推送提交 Git bundle、SHA-256 校验和仅快进合并部署，未在服务器直接改代码。部署后服务器 HEAD / `origin/main` 均为 `d61071e07332efc0179d8adc544de954c05dd7eb`，工作区干净。本条最终记录将作为最后收尾提交再同步三方。
 
 ## 本次：以腾讯云正式服务器为准恢复办公室本地版本
 
