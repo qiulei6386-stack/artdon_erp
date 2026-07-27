@@ -222,19 +222,29 @@ function dn_visible_sql(string $alias = 't'): array
     $uid = dn_uid();
     $rules = dn_visibility_rule_for($uid);
     $deny = array_values(array_unique(array_map('intval', (array)($rules['deny'] ?? []))));
+    $ownSql = "({$alias}.created_by = ? OR {$alias}.assigned_to = ?)";
+    $ownParams = [$uid, $uid];
     $privateSql = "({$alias}.task_type <> 'private' OR {$alias}.created_by = ?)";
     if (dn_is_admin()) {
-        if (!$deny) return [$privateSql, [$uid]];
-        [$denySql, $denyParams] = dn_user_scope_sql($alias, $deny);
-        return ["{$privateSql} AND NOT ({$denySql})", array_merge([$uid], $denyParams)];
+        $scopeSql = $privateSql;
+        $scopeParams = [$uid];
+        if ($deny) {
+            [$denySql, $denyParams] = dn_user_scope_sql($alias, $deny);
+            $scopeSql .= " AND NOT ({$denySql})";
+            $scopeParams = array_merge($scopeParams, $denyParams);
+        }
+        return ["({$ownSql} OR ({$scopeSql}))", array_merge($ownParams, $scopeParams)];
     }
     $allow = array_values(array_unique(array_filter(array_merge([$uid], array_map('intval', (array)($rules['allow'] ?? []))), fn($v) => $v > 0)));
     [$allowSql, $allowParams] = dn_user_scope_sql($alias, $allow);
+    $scopeSql = "{$privateSql} AND {$allowSql}";
+    $scopeParams = array_merge([$uid], $allowParams);
     if ($deny) {
         [$denySql, $denyParams] = dn_user_scope_sql($alias, $deny);
-        return ["{$privateSql} AND ({$allowSql}) AND NOT ({$denySql})", array_merge([$uid], $allowParams, $denyParams)];
+        $scopeSql .= " AND NOT ({$denySql})";
+        $scopeParams = array_merge($scopeParams, $denyParams);
     }
-    return ["{$privateSql} AND {$allowSql}", array_merge([$uid], $allowParams)];
+    return ["({$ownSql} OR ({$scopeSql}))", array_merge($ownParams, $scopeParams)];
 }
 
 function dn_visibility_rules(): array
@@ -1019,8 +1029,8 @@ function dn_list(array $in): array
     $groupMemberParams = [];
     if ($dispatchPersonIds) {
         $marks = implode(',', array_fill(0, count($dispatchPersonIds), '?'));
-        $groupMemberWhere = " AND mt.assigned_to IN ({$marks})";
-        $groupMemberParams = $dispatchPersonIds;
+        $groupMemberWhere = " AND (mt.assigned_to IN ({$marks}) OR mt.created_by = ? OR mt.assigned_to = ?)";
+        $groupMemberParams = array_merge($dispatchPersonIds, [dn_uid(), dn_uid()]);
     }
     $groupSt = $pdo->prepare("SELECT DISTINCT mt.parent_group_id
         FROM dispatch_next_tasks mt
@@ -1136,6 +1146,7 @@ function dn_task_owner_sort_key(array $task): string
 function dn_task_matches_people(array $task, array $personIds, bool $includeCreator = true): bool
 {
     if (!$personIds) return true;
+    if (dn_task_has_user_in_primary_columns($task, dn_uid())) return true;
     $ids = array_map('intval', $personIds);
     if ($includeCreator && in_array((int)($task['created_by'] ?? 0), $ids, true)) return true;
     if (in_array((int)($task['assigned_to'] ?? 0), $ids, true)) return true;
@@ -1144,6 +1155,13 @@ function dn_task_matches_people(array $task, array $personIds, bool $includeCrea
         if (in_array((int)$id, $ids, true)) return true;
     }
     return false;
+}
+
+function dn_task_has_user_in_primary_columns(array $task, int $uid): bool
+{
+    if ($uid <= 0) return false;
+    return (int)($task['created_by'] ?? 0) === $uid
+        || (int)($task['assigned_to'] ?? 0) === $uid;
 }
 
 function dn_recent_create_highlight($createdBy, $createdAt): int
