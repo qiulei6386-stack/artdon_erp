@@ -22244,6 +22244,60 @@ body.is-promo-task-editor-open .promo-step-failure,
 body.is-promo-task-editor-open .promo-step-confirm {
   align-content: start !important;
 }
+body.is-promo-task-editor-open .promo-confirm-mail-stage {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 10px !important;
+  order: -10 !important;
+  border: 2px solid #2563eb !important;
+  border-radius: 12px !important;
+  background: color-mix(in srgb, #eff6ff 72%, var(--crm-card-bg)) !important;
+  padding: 12px !important;
+  box-shadow: 0 10px 24px rgb(37 99 235 / .12) !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage > header {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage > header > div {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage > header strong {
+  color: #1d4ed8 !important;
+  font-size: 16px !important;
+  font-weight: 950 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage > header span {
+  color: var(--crm-muted-text) !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage > header em {
+  flex: 0 0 auto !important;
+  border-radius: 999px !important;
+  background: #2563eb !important;
+  color: #fff !important;
+  padding: 4px 9px !important;
+  font-size: 10px !important;
+  font-style: normal !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage [data-promo-wizard-preview] {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 10px !important;
+}
+body.is-promo-task-editor-open .promo-confirm-mail-stage .promo-preview-mail {
+  margin: 0 !important;
+  border-color: #93c5fd !important;
+  background: var(--crm-card-bg) !important;
+}
 body.is-promo-task-editor-open .promo-failure-rule-grid {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;

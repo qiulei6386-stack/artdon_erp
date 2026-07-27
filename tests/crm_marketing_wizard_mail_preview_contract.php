@@ -3,9 +3,10 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $php = file_get_contents($root . '/crm_marketing.php');
+$page = file_get_contents($root . '/crm.php');
 $js = file_get_contents($root . '/assets/crm/crm.js');
 $css = file_get_contents($root . '/assets/crm/crm.css');
-if ($php === false || $js === false || $css === false) {
+if ($php === false || $page === false || $js === false || $css === false) {
     throw new RuntimeException('CRM marketing wizard preview sources are not readable');
 }
 
@@ -24,12 +25,17 @@ $requiredJs = [
     'data-promo-wizard-draft>保存草稿',
     'data-promo-confirm-scheduled>保存为计划',
     'data-promo-confirm-queue>生成执行队列',
-    "<div data-promo-wizard-preview>' + this.renderWizardMailCarousel(draft, plan) + '</div>",
+    'data-promo-confirm-mail-stage data-promo-preview-build="20260727-2"',
+    '邮件预览与测试发送',
+    '预览修复版 20260727-2',
+    'initialMailPreview = this.renderWizardMailCarousel(draft, plan);',
+    "console.error('Promotion step 9 initial mail preview failed:', previewError);",
+    'box.innerHTML = this.renderWizardMailCarousel(draft, plan) +',
     "var initialPreviewBox = modal.querySelector('[data-promo-wizard-preview]');",
     'if (initialPreviewBox) this.bindWizardPreviewControls(initialPreviewBox);',
     "console.error('Promotion mail preview refresh failed:', previewError);",
     "['preference', 'customer_preference', 'auto_preference', 'mixed'].indexOf(previewChannel) >= 0",
-    '邮件逐封预览和测试发信直接显示在第 9 步',
+    '邮件逐封预览和测试发信固定显示在第 9 步第一屏',
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
@@ -51,6 +57,18 @@ if (str_contains($js, 'data-promo-aside-check') || str_contains($js, '<summary>�
 }
 if (str_contains($js, "footerRightClass = 'promo-wizard-foot-right'")) {
     throw new RuntimeException('project save and execution actions must not depend on the footer confirmation step');
+}
+
+$confirmStart = strpos($js, 'renderConfirmStepLayout: function (draft)');
+$confirmEnd = strpos($js, 'renderExecutionRulePreview: function', $confirmStart === false ? 0 : $confirmStart);
+if ($confirmStart === false || $confirmEnd === false || $confirmEnd <= $confirmStart) {
+    throw new RuntimeException('wizard confirmation step source boundary is missing');
+}
+$confirm = substr($js, $confirmStart, $confirmEnd - $confirmStart);
+$mailStagePosition = strpos($confirm, "' + mailPreviewStage + '");
+$summaryPosition = strpos($confirm, '<div class="promo-step-mini-stats promo-confirm-summary">');
+if ($mailStagePosition === false || $summaryPosition === false || $mailStagePosition >= $summaryPosition) {
+    throw new RuntimeException('step 9 mail preview and test-send stage must render before summary and quality cards');
 }
 
 $sidebarStart = strpos($js, 'renderWizardSidebar: function (draft)');
@@ -87,12 +105,19 @@ $requiredCss = [
     'scroll-padding-bottom: 28px !important;',
     'body.is-promo-task-editor-open .promo-wizard-project-actions',
     'nav button[data-promo-confirm-queue]',
+    'body.is-promo-task-editor-open .promo-confirm-mail-stage',
+    'order: -10 !important;',
+    'border: 2px solid #2563eb !important;',
     'box-shadow: 0 -8px 20px rgb(15 23 42 / .06) !important;',
 ];
 foreach ($requiredCss as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("CRM wizard footer layout marker missing: {$marker}");
     }
+}
+
+if (!str_contains($page, "\$crmAssetBuild = 'promotion-preview-20260727-2';")) {
+    throw new RuntimeException('CRM page must explicitly bust the promotion preview asset cache');
 }
 
 $start = strpos($php, 'function crm_marketing_test_send(array $input): array');
