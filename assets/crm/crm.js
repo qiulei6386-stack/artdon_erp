@@ -15399,16 +15399,12 @@
 	      var statusText = this.wizardDraftStatusText(draft);
 	      var saveText = this.wizardSaveStatusText(draft);
 	      var isConfirmStep = step >= steps.length - 1;
-	      var nextText = isConfirmStep ? '生成执行队列' : '下一步';
-	      var footerRightClass = 'promo-wizard-foot-right' + (isConfirmStep ? ' is-confirm' : '');
-	      var footerActions = '<button type="button" data-promo-wizard-draft>保存草稿</button>' +
-	        (isConfirmStep ? '<button type="button" data-promo-confirm-scheduled>保存为计划</button>' : '') +
-	        '<button type="button" class="primary" data-promo-wizard-next>' + esc(nextText) + '</button>';
+	      var footerActions = isConfirmStep ? '' : '<button type="button" class="primary" data-promo-wizard-next>下一步</button>';
 	      modal.innerHTML = '<section class="promo-wizard-shell promo-visit-style" data-promo-wizard>' +
 	        '<header class="promo-wizard-head crm-modal-header"><button type="button" class="promo-wizard-close" data-promo-wizard-close>关闭</button><div class="promo-wizard-title"><span>' + (isEdit ? '编辑推广任务' : '新建推广任务') + '</span><h2 class="crm-modal-title">' + esc(draft.task_name || (isEdit ? '编辑推广任务' : '未命名推广任务')) + '</h2></div><div class="promo-wizard-meta"><b>' + esc(statusText) + '</b><em data-promo-wizard-save-status>' + esc(saveText) + '</em></div></header>' +
 	        '<nav class="promo-wizard-steps">' + this.renderWizardStepNav(steps, step) + '</nav>' +
 	        '<main class="promo-wizard-body crm-modal-body"><div class="promo-wizard-layout"><section class="promo-wizard-main-scroll">' + this.renderWizardStep(step, draft) + '</section>' + this.renderWizardSidebar(draft) + '</div></main>' +
-	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="' + footerRightClass + '">' + footerActions + '</div></footer>' +
+	        '<footer class="promo-wizard-foot crm-modal-footer"><div class="promo-wizard-foot-left"><button type="button" data-promo-wizard-cancel>取消</button><button type="button" data-promo-wizard-prev' + (step <= 0 ? ' disabled' : '') + '>上一步</button></div><div class="promo-wizard-foot-status" data-promo-wizard-alert>' + esc(this.wizardValidationMessage(step, draft) || saveText) + '</div><div class="promo-wizard-foot-right">' + footerActions + '</div></footer>' +
 	        '</section>';
 	      modal.querySelectorAll('[data-promo-wizard-step]').forEach(function (button) {
 	        button.addEventListener('click', function () {
@@ -15428,14 +15424,6 @@
 	      modal.querySelector('[data-promo-confirm-draft]')?.addEventListener('click', function (event) { self.saveDraftFromWizard(event.currentTarget); });
 	      modal.querySelector('[data-promo-confirm-scheduled]')?.addEventListener('click', function (event) { self.createTaskFromWizard('scheduled', { button: event.currentTarget }); });
 	      modal.querySelector('[data-promo-confirm-queue]')?.addEventListener('click', function (event) { self.createTaskFromWizard('pending', { queue: true, button: event.currentTarget }); });
-	      modal.querySelectorAll('[data-promo-aside-check]').forEach(function (button) {
-	        button.addEventListener('click', function () {
-	          self.collectWizard();
-	          self.wizardStep = self.wizardSteps().length - 1;
-	          self.renderWizard();
-	          toast((button.getAttribute('data-promo-aside-check') || '检查') + '已切换到预览确认。');
-	        });
-	      });
 	      modal.querySelectorAll('[data-promo-channel-card]').forEach(function (button) {
 	        button.addEventListener('click', function () {
 	          var map = { email: ['email', 'email'], social: ['whatsapp', 'whatsapp'], phone: ['phone', 'phone'], offline: ['offline', 'offline'] };
@@ -15562,15 +15550,12 @@
 	        ['未设置发送时间', missingSchedule ? '未设置' : '--'],
 	        ['内容变量异常', varIssues]
 	      ];
-	      var quickRows = ['预览客户', '预览联系人', '检查邮箱', '检查黑名单', '检查重复目标'];
-	      return '<aside class="promo-wizard-side"><details open><summary>任务摘要</summary><div>' + summaryRows.map(function (row) {
+	      return '<aside class="promo-wizard-side"><section class="promo-wizard-project-actions"><header>项目操作</header><nav><button type="button" data-promo-wizard-draft>保存草稿</button><button type="button" data-promo-confirm-scheduled>保存为计划</button><button type="button" class="primary" data-promo-confirm-queue>生成执行队列</button></nav></section><details open><summary>任务摘要</summary><div>' + summaryRows.map(function (row) {
 	        return '<article><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
 	      }).join('') + '</div></details><details open><summary>质量检查</summary><div>' + qualityRows.map(function (row) {
 	        var isWarn = row[1] !== '--' && row[1] !== 0 && row[1] !== '0';
 	        return '<article class="' + (isWarn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(value(row[1])) + '</strong></article>';
-	      }).join('') + '</div></details><details open><summary>快捷检查</summary><nav>' + quickRows.map(function (label) {
-	        return '<button type="button" data-promo-aside-check="' + esc(label) + '">' + esc(label) + '</button>';
-	      }).join('') + '</nav></details></aside>';
+	      }).join('') + '</div></details></aside>';
 	    },
 	    wizardTopCounts: function (rows, getter, limit) {
 	      var map = {};
@@ -15859,7 +15844,7 @@
 	      return '<section class="promo-step-card promo-step-confirm"><div class="promo-step-mini-stats promo-confirm-summary">' + summary.map(function (row) { return '<article><strong>' + esc(row[1]) + '</strong><span>' + esc(row[0]) + '</span></article>'; }).join('') + '</div><section class="promo-confirm-quality"><header><strong>质量检查</strong></header><div>' + checks.map(function (row) {
 	        var warn = row[1] !== 0 && row[1] !== '0' && row[1] !== '--';
 	        return '<article class="' + (warn ? 'is-warn' : '') + '"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1] || 0) + '</strong></article>';
-	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">保存草稿、保存为计划和生成执行队列统一固定在底部操作栏，不会再被内容区遮挡。</article></section>';
+	      }).join('') + '</div></section><div data-promo-wizard-preview></div><section class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>重复邮箱</th><th>出现次数</th><th>保留对象</th><th>跳过对象</th></tr></thead><tbody>' + (duplicateRows || '<tr><td colspan="4">当前没有重复邮箱。</td></tr>') + '</tbody></table></section><section class="promo-step-table-wrap promo-confirm-list"><table class="promo-step-table"><thead><tr><th>客户</th><th>联系人</th><th>邮箱</th><th>发件邮箱</th><th>执行人</th><th>预计发送时间</th><th>渠道</th></tr></thead><tbody>' + (listRows || '<tr><td colspan="7">当前没有执行名单。请检查客户、联系人、渠道和发件邮箱规则。</td></tr>') + '</tbody></table></section><article class="promo-wizard-note">保存草稿、保存为计划和生成执行队列始终显示在右侧“项目操作”，提交前会自动检查第 1–9 步。</article></section>';
 	    },
 	    renderExecutionRulePreview: function (draft) {
       var plan = this.buildExecutionPlan(draft);

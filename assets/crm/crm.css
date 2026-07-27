@@ -22151,6 +22151,43 @@ body.is-promo-task-editor-open .promo-wizard-side nav button:hover {
   background: #eff6ff !important;
   color: #2563eb !important;
 }
+body.is-promo-task-editor-open .promo-wizard-project-actions {
+  flex: 0 0 auto !important;
+  overflow: hidden !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 10px !important;
+  background: var(--crm-card-bg) !important;
+  border-color: #bfdbfe !important;
+  box-shadow: 0 8px 18px rgb(37 99 235 / .08) !important;
+}
+body.is-promo-task-editor-open .promo-wizard-project-actions > header {
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+body.is-promo-task-editor-open .promo-wizard-project-actions > nav {
+  display: grid !important;
+  gap: 6px !important;
+  padding: 8px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-project-actions nav button {
+  min-height: 36px !important;
+}
+body.is-promo-task-editor-open .promo-wizard-project-actions nav button[data-promo-confirm-queue] {
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+body.is-promo-task-editor-open .promo-wizard-project-actions nav button[data-promo-confirm-queue]:hover {
+  border-color: #1d4ed8 !important;
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+}
 body.is-promo-task-editor-open .promo-step-card {
   display: grid !important;
   gap: 12px !important;
@@ -22501,9 +22538,6 @@ body.is-promo-task-editor-open .promo-wizard-foot-right {
   flex-wrap: wrap !important;
   gap: 8px !important;
 }
-body.is-promo-task-editor-open .promo-wizard-foot-right.is-confirm {
-  justify-content: flex-end !important;
-}
 body.is-promo-task-editor-open .promo-wizard-foot-status {
   min-width: 0 !important;
   overflow: hidden !important;
@@ -22629,8 +22663,8 @@ body.is-promo-task-editor-open .promo-wizard-foot button:disabled {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-  body.is-promo-task-editor-open .promo-wizard-foot-right.is-confirm {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  body.is-promo-task-editor-open .promo-wizard-foot-right {
+    grid-template-columns: 1fr !important;
   }
   body.is-promo-task-editor-open .promo-wizard-foot button,
   body.is-promo-task-editor-open .promo-confirm-actions button {

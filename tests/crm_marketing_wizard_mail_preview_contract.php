@@ -19,9 +19,12 @@ $requiredJs = [
     '下一封 →',
     '% count',
     "button.textContent = '发送中...'",
+    'promo-wizard-project-actions',
+    '<header>项目操作</header>',
+    'data-promo-wizard-draft>保存草稿',
     'data-promo-confirm-scheduled>保存为计划',
-    "footerRightClass = 'promo-wizard-foot-right' + (isConfirmStep ? ' is-confirm' : '')",
-    '保存草稿、保存为计划和生成执行队列统一固定在底部操作栏',
+    'data-promo-confirm-queue>生成执行队列',
+    '始终显示在右侧“项目操作”',
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
@@ -35,12 +38,47 @@ if (str_contains($js, '当前没有可测试的邮件队列')) {
 if (str_contains($js, '<section class="promo-confirm-actions">')) {
     throw new RuntimeException('step 9 must not render a second action bar inside the scroll area');
 }
+if (str_contains($js, 'data-promo-aside-check') || str_contains($js, '<summary>快捷检查</summary>')) {
+    throw new RuntimeException('redundant sidebar quick checks must be replaced by persistent project actions');
+}
+if (str_contains($js, "footerRightClass = 'promo-wizard-foot-right'")) {
+    throw new RuntimeException('project save and execution actions must not depend on the footer confirmation step');
+}
+
+$sidebarStart = strpos($js, 'renderWizardSidebar: function (draft)');
+$sidebarEnd = strpos($js, 'wizardTopCounts: function', $sidebarStart === false ? 0 : $sidebarStart);
+if ($sidebarStart === false || $sidebarEnd === false || $sidebarEnd <= $sidebarStart) {
+    throw new RuntimeException('wizard sidebar source boundary is missing');
+}
+$sidebar = substr($js, $sidebarStart, $sidebarEnd - $sidebarStart);
+foreach ([
+    '<section class="promo-wizard-project-actions">',
+    'data-promo-wizard-draft>保存草稿',
+    'data-promo-confirm-scheduled>保存为计划',
+    'data-promo-confirm-queue>生成执行队列',
+] as $marker) {
+    if (!str_contains($sidebar, $marker)) {
+        throw new RuntimeException("persistent project action is missing from wizard sidebar: {$marker}");
+    }
+}
+
+$footerStart = strpos($js, '<footer class="promo-wizard-foot');
+$footerEnd = strpos($js, '</footer>', $footerStart === false ? 0 : $footerStart);
+if ($footerStart === false || $footerEnd === false || $footerEnd <= $footerStart) {
+    throw new RuntimeException('wizard footer source boundary is missing');
+}
+$footer = substr($js, $footerStart, $footerEnd - $footerStart);
+foreach (['data-promo-wizard-draft', 'data-promo-confirm-scheduled', 'data-promo-confirm-queue'] as $marker) {
+    if (str_contains($footer, $marker)) {
+        throw new RuntimeException("project action must not remain in wizard footer: {$marker}");
+    }
+}
 
 $requiredCss = [
     'padding: 12px 12px 28px !important;',
     'scroll-padding-bottom: 28px !important;',
-    'body.is-promo-task-editor-open .promo-wizard-foot-right.is-confirm',
-    'grid-template-columns: repeat(3, minmax(0, 1fr)) !important;',
+    'body.is-promo-task-editor-open .promo-wizard-project-actions',
+    'nav button[data-promo-confirm-queue]',
     'box-shadow: 0 -8px 20px rgb(15 23 42 / .06) !important;',
 ];
 foreach ($requiredCss as $marker) {
