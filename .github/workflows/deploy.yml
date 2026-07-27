@@ -97,6 +97,8 @@ jobs:
             echo "::error title=Invalid SERVER_SSH_KEY::The deployment secret is not a readable OpenSSH private key."
             exit 1
           fi
+          deployment_public_key="$(ssh-keygen -y -f "$key_path")"
+          deployment_fingerprint="$(printf '%s\n' "$deployment_public_key" | ssh-keygen -lf - | awk '{print $2}')"
 
           if ! ssh \
             -i "$key_path" \
@@ -109,7 +111,8 @@ jobs:
             "${SERVER_USER}@${SERVER_HOST}" \
             true 2>"$ssh_error"; then
             ssh_message="$(tail -n 1 "$ssh_error")"
-            echo "::error title=SSH preflight failed::${ssh_message}"
+            echo "::error title=SSH preflight failed::${ssh_message} Deployment key fingerprint: ${deployment_fingerprint}"
+            echo "::notice title=Deployment public key::${deployment_public_key}"
             exit 1
           fi
 
