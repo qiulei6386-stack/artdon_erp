@@ -14,7 +14,10 @@
 - 重建 `.github/workflows/deploy.yml`：Pull Request 和 `main` 推送先执行 PHP 8.0 与 Node.js 20 检查；仅 `main` 全部通过后部署。部署不再要求服务器访问 GitHub，而是由 Actions 生成校验 Git bundle，通过固定 ED25519 主机公钥上传；服务器工作区非干净、bundle 哈希不符、提交号不符或不能快进时立即停止，部署后同步服务器 `origin/main`、再用生产 PHP 8.0 复检并验证公开登录路由。
 - 新增 `.github/known_hosts` 和 `docs/DEPLOYMENT_WORKFLOW.md`，记录固定主机公钥、所需 GitHub Secrets、测试/部署顺序及生产数据库测试边界。
 - 检查：本地 38 个 JavaScript 文件语法、3 个 Node 静态/契约测试、Shell 语法、Workflow YAML、固定 SSH 主机公钥、私钥忽略和 `git diff --check` 通过；服务器 `/tmp` 干净临时克隆使用生产 PHP 8.0 检查 347 个 PHP 文件语法和 20 个无数据库契约测试，全部通过。临时目录已清理，未修改生产目录或数据库。
-- 用户原有 `commercial_center_v1/离职中心CODEX.command` 删除、商务中心未跟踪文档和命令文件全部保留且不纳入本轮。Git 提交、GitHub 推送、自动/人工部署、服务器复检和三方一致性将在本轮完成后补记。
+- Git / 部署：工作流主体提交 `0c7042a8039c6d24484da7282e2d3571e5e39b92`、SSH 预检与诊断加固 `6136445c08b9e7c5c6eb5c59b4a1ffd719238509`、部署密钥身份诊断 `c4108c7f254a5b414fbf72c10e227226f0067402` 均已推送 GitHub 并以校验 Git bundle 快进到服务器；每次服务器复检均为 PHP 347/347、契约 20/20 通过。
+- 首次自动运行确认现有 GitHub `SERVER_SSH_KEY` 未获服务器授权；只导出其 ED25519 公钥并核对指纹 `SHA256:EPXiCzpAVY8MqF4pvMnyU0nsxCuX3Q1dQyh7vZigNmo` 后加入 `authorized_keys`，没有输出或复制私钥。变更前备份为 `/home/ubuntu/.ssh/authorized_keys.codex-backup-20260727-actions`，原腾讯云 RSA 和办公电脑 ED25519 公钥均保留。
+- 端到端验收提交 `65ad0bfaf9c4654920239d03ec03fb864c7858bf` 只用于验证自动化；GitHub Actions 第 593 次运行的“PHP and JavaScript checks”和“Deploy tested commit”两个任务均成功，Actions 独立完成测试、bundle 传输、服务器快进、生产 PHP 复检和公网路由检查。验收后本地 HEAD、GitHub `main`、服务器 HEAD 与服务器 `origin/main` 四处均为该提交，服务器工作区干净，`https://novlight.com/artdon_erp/` 返回 HTTP 200。
+- 用户原有 `commercial_center_v1/离职中心CODEX.command` 删除、商务中心未跟踪文档和命令文件全部保留且未纳入本轮。唯一人工清理项是旧只读 iCloud 仓库根目录的未跟踪 `qiulei0207_office.pem`；新仓库没有该私钥且已忽略根目录 PEM。
 
 ## 本次：修复电源“确认并转正式”点击无响应
 
