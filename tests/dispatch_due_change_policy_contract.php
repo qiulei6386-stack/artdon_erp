@@ -59,4 +59,15 @@ foreach (['due_change_hint', '当前不能修改截止日期', 'function renderM
     }
 }
 
+foreach ([
+    'const dispatchBaseDefaultColorPrefs=defaultColorPrefs;',
+    "due_today_bg:'#fff1f2'",
+    "overdue_bg:'#ffe4e6'",
+    "due_row_fill:'on'",
+] as $marker) {
+    if (!str_contains($page, $marker)) {
+        throw new RuntimeException("dispatch due-color default marker missing: {$marker}");
+    }
+}
+
 echo "Dispatch due-change policy contract: OK\n";
