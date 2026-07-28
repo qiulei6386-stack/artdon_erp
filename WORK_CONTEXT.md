@@ -1,11 +1,13 @@
 # Artdon ERP 工作上下文
 
-## 本次：修复 Office 邮件兼容阅读版显示 HTML 标签（待发布）
+## 本次：修复 Office 邮件兼容阅读版显示 HTML 标签（已发布）
 
 - 用户反馈 CRM 邮箱此前“正文空白”问题修复后，当前邮件正文改为直接显示大量 `</span>`、`<td>` 等 Office HTML 标签。
 - 只读核对生产数据确认：邮件 HTML 正文实际保存正常；问题来自兼容阅读版错误直接显示 `body_text`，而该字段在部分 Office/Outlook 邮件中会在正常文字后混入完整 HTML 片段。
 - 修复：兼容阅读版检测到混入 HTML 时，在浏览器隔离解析为纯可读文字，再显示；移除脚本、样式、嵌入对象等非正文节点，保留可读邮件内容。没有把原始 HTML 直接插入页面，也没有放开外部脚本。
-- 修改文件：`assets/crm/crm.js`、新增 `tests/crm_mail_office_readable_contract.php`、本上下文。待本地检查、GitHub 推送、正式服务器复检后发布。
+- 修改文件：`assets/crm/crm.js`、新增 `tests/crm_mail_office_readable_contract.php`、本上下文。用户原有商务中心命令文件删除和未跟踪文档均未触碰。
+- 检查：办公室本地 JavaScript 语法与空白差异检查通过；正式服务器 `crm.php`、`crm_mail.php` PHP 语法和 Office 邮件专项契约通过。
+- Git / 部署：功能提交 `ecb12764a407af8782a25f17d75fb9e51982e4a8` 已推送 GitHub，并用 SHA-256 `f0b92b5fa249eeaf30399537d510865105470abd41368ca065aaa7c01073bfca` 的 Git bundle 在正式服务器只快进部署。本记录收尾同步后再核对三方提交一致。
 
 ## 本次：CRM 与派工统一公司 LOGO 上传（已发布）
 
