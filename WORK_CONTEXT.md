@@ -1463,3 +1463,10 @@
 - 安全规则：每次执行仍复用原有批量套用的正式物料、适配性、默认项、条件、冲突关系和审批校验。模板保留来源产品的已选配置组引用，因此来源产品的共用配置更新后，下一次套用会使用最新内容；如果来源组被删除，模板会明确标为需重建并禁止套用。
 - 修改文件：`material_center_v1/database/migrations/20260728_019_adaptation_reuse_templates.php`、`material_center_v1/app/Services/AdaptationService.php`、`material_center_v1/api/v1/adaptation.php`、`material_center_v1/adaptation/index.php`、`material_center_v1/assets/js/adaptation-shell.js`、`material_center_v1/assets/css/app.css`、`material_center_v1/tests/adaptation_reuse_templates_contract.php`、`tools/ci_php_checks.sh`、`WORK_CONTEXT.md`。
 - 检查与发布：待完成本地 JavaScript / 差异检查、提交推送、正式服务器迁移与 PHP 合同回归后补充提交号。
+
+## 2026-07-28：派工操作列仅完成行对齐
+
+- 问题修正：上一版把固定四个操作位应用到了全部派工行，导致未完成的个人派工和多人派工也被拉宽，破坏原有紧凑排版。
+- 正确范围：未完成行恢复原有按实际可用操作紧凑显示；只有已完成或已取消行保留固定操作位，让“查看 / 删除”等剩余按钮跨行对齐。
+- 防回归：多人派工表格合同明确验证固定操作位只能出现在完成或取消分支。
+- 检查与发布：内联 JavaScript 语法和差异检查通过；功能提交 `5af255c4d78a74232bd8bd45bb296ebc38f1b0f5` 已推送 GitHub，并以同一 Git bundle 快进正式服务器。服务器 `dispatch_next.php` 语法与“仅完成或取消行使用固定操作位”合同均通过；本发布记录提交后继续同步，并以最终三方 HEAD 核对为准。
