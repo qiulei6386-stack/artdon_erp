@@ -60,6 +60,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             require_permission('settings.edit');
             save_settings_customer_tabs($_POST);
             $message = 'CRM 客户中心选项卡已保存。';
+        } elseif ($action === 'save_dispatch_due_change_settings') {
+            require_permission('settings.edit');
+            save_dispatch_due_change_settings($_POST);
+            $message = '派工截止日期修改规则已保存。';
         } elseif ($action === 'save_security_settings') {
             require_permission('settings.edit');
             save_security_settings($_POST);
@@ -119,6 +123,7 @@ $backupStats = get_backup_stats();
 $schemaScan = json_decode((string)app_setting('schema_last_scan_json', '{}'), true) ?: get_schema_scan();
 $crmCustomerTabConfig = crm_rule_config('customer_detail_tabs');
 $crmCustomerTabs = $crmCustomerTabConfig['tabs'] ?? [];
+$dispatchDueChangeSettings = get_dispatch_due_change_settings();
 usort($crmCustomerTabs, fn($a, $b) => ((int)($a['sort'] ?? 100) <=> (int)($b['sort'] ?? 100)));
 
 function checked_setting($value): string { return (int)$value === 1 ? 'checked' : ''; }
@@ -163,7 +168,7 @@ if ($error) flash($error, 'error');
 
   <div class="settings-workspace">
     <nav class="settings-control-nav" aria-label="设置分类">
-      <?php foreach (['system'=>'系统信息','company'=>'公司信息','ui'=>'界面与主题','crm-tabs'=>'CRM客户Tab','security'=>'安全设置','storage'=>'存储使用','backup'=>'备份设置','schema'=>'字段检测','notification'=>'通知设置','logs'=>'日志设置'] as $id => $label): ?>
+      <?php foreach (['system'=>'系统信息','company'=>'公司信息','ui'=>'界面与主题','crm-tabs'=>'CRM客户Tab','dispatch-rules'=>'派工规则','security'=>'安全设置','storage'=>'存储使用','backup'=>'备份设置','schema'=>'字段检测','notification'=>'通知设置','logs'=>'日志设置'] as $id => $label): ?>
       <a href="#<?= h($id) ?>"><?= h($label) ?></a>
       <?php endforeach; ?>
     </nav>
@@ -252,6 +257,17 @@ if ($error) flash($error, 'error');
             <button type="submit" <?= has_permission('settings.edit') ? '' : 'disabled' ?>>保存客户中心选项卡</button>
             <span>常用：联系人、跟进、邮件、报价、PLM、BOM、派工、订单、资料、关系、日志都在这里直接打勾控制。</span>
           </div>
+        </form>
+      </section>
+
+      <section id="dispatch-rules" class="settings-control-section">
+        <header><div><span>Dispatch</span><h3>派工截止日期修改规则</h3></div><?= has_permission('settings.edit') ? status_chip('可编辑', 'ok') : status_chip('只读', 'wait') ?></header>
+        <p class="settings-note">管理员不受此限制。其他账号修改派工截止日期时，系统会先检查到期锁定范围，再检查当天该条派工已修改的次数；多人派工按整组统一计算。</p>
+        <form method="post" class="settings-form-grid">
+          <?= csrf_field() ?><input type="hidden" name="action" value="save_dispatch_due_change_settings">
+          <label>每条派工每日最多修改次数<input type="number" name="max_changes_per_day" min="0" max="20" value="<?= h($dispatchDueChangeSettings['max_changes_per_day']) ?>"><small>默认 2 次；填 0 表示不限制次数。</small></label>
+          <label>到期前禁改天数<input type="number" name="lock_before_due_days" min="0" max="30" value="<?= h($dispatchDueChangeSettings['lock_before_due_days']) ?>"><small>默认 0：当天到期及逾期即禁止非管理员修改；填 2 表示到期前 2 天内也锁定。</small></label>
+          <button type="submit" <?= has_permission('settings.edit') ? '' : 'disabled' ?>>保存派工规则</button>
         </form>
       </section>
 

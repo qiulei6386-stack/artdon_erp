@@ -341,6 +341,21 @@ function dispatch_next_init_schema(): array
         KEY idx_dispatch_next_online_filters (department, device_type, browser, online_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
+    $sql[] = "CREATE TABLE IF NOT EXISTS dispatch_next_due_change_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        task_id BIGINT UNSIGNED NULL,
+        group_id BIGINT UNSIGNED NULL,
+        user_id INT UNSIGNED NOT NULL,
+        old_due_at DATETIME NULL,
+        new_due_at DATETIME NULL,
+        source VARCHAR(40) NOT NULL DEFAULT 'update_task',
+        policy_date DATE NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_dispatch_next_due_change_task_day (task_id, policy_date),
+        KEY idx_dispatch_next_due_change_group_day (group_id, policy_date),
+        KEY idx_dispatch_next_due_change_user_day (user_id, policy_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
     foreach ($sql as $stmt) {
         $pdo->exec($stmt);
     }
@@ -359,7 +374,7 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_status', "converted_status VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER converted_at");
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
-    return ['tables' => 15, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
+    return ['tables' => 16, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }
 
 if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) === 'dispatch_next_schema.php') {

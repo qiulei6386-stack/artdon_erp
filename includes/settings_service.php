@@ -51,6 +51,30 @@ function save_json_setting($key, array $value, $group, $description, $auditActio
     }
 }
 
+function get_dispatch_due_change_settings(): array
+{
+    $defaults = [
+        'max_changes_per_day' => 2,
+        'lock_before_due_days' => 0,
+    ];
+    $saved = json_decode((string)app_setting('dispatch_due_change_settings', '{}'), true) ?: [];
+    return [
+        'max_changes_per_day' => max(0, min(20, (int)($saved['max_changes_per_day'] ?? $defaults['max_changes_per_day']))),
+        'lock_before_due_days' => max(0, min(30, (int)($saved['lock_before_due_days'] ?? $defaults['lock_before_due_days']))),
+    ];
+}
+
+function save_dispatch_due_change_settings(array $input): array
+{
+    $before = get_dispatch_due_change_settings();
+    $next = [
+        'max_changes_per_day' => max(0, min(20, (int)($input['max_changes_per_day'] ?? $before['max_changes_per_day']))),
+        'lock_before_due_days' => max(0, min(30, (int)($input['lock_before_due_days'] ?? $before['lock_before_due_days']))),
+    ];
+    save_json_setting('dispatch_due_change_settings', $next, 'dispatch', '派工截止日期修改限制', 'save_dispatch_due_change_settings');
+    return $next;
+}
+
 function settings_default_company(): array
 {
     $config = db_config();

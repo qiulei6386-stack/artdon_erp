@@ -131,6 +131,84 @@ function dn_is_admin(): bool
     return artdon_sso_role_is_admin($u) || artdon_sso_can('dispatch', 'admin', $u);
 }
 
+function dn_dispatch_due_change_policy(): array
+{
+    $settings = function_exists('get_dispatch_due_change_settings') ? get_dispatch_due_change_settings() : [];
+    return [
+        'max_changes_per_day' => max(0, min(20, (int)($settings['max_changes_per_day'] ?? 2))),
+        'lock_before_due_days' => max(0, min(30, (int)($settings['lock_before_due_days'] ?? 0))),
+    ];
+}
+
+function dn_has_due_change_permission(array $task): bool
+{
+    if (dn_is_admin()) return true;
+    $uid = dn_uid();
+    if ($uid > 0 && (int)($task['created_by'] ?? 0) === $uid) return true;
+    $dueDate = substr((string)($task['due_at'] ?? ''), 0, 10);
+    return $uid > 0 && (int)($task['assigned_to'] ?? 0) === $uid && $dueDate !== '' && $dueDate > date('Y-m-d');
+}
+
+function dn_due_change_scope(array $task, ?array $group = null): array
+{
+    $groupId = (int)($group['id'] ?? $task['parent_group_id'] ?? 0);
+    return ['task_id' => (int)($task['id'] ?? 0), 'group_id' => $groupId];
+}
+
+function dn_due_change_count_today(array $task, ?array $group = null): int
+{
+    $scope = dn_due_change_scope($task, $group);
+    static $todayCounts = null;
+    if ($todayCounts === null) {
+        $todayCounts = ['task' => [], 'group' => []];
+        $rows = dispatch_next_db()->query('SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events WHERE policy_date=CURDATE() GROUP BY task_id,group_id')->fetchAll();
+        foreach ($rows as $row) {
+            $count = (int)($row['change_count'] ?? 0);
+            if ((int)($row['group_id'] ?? 0) > 0) $todayCounts['group'][(int)$row['group_id']] = $count;
+            elseif ((int)($row['task_id'] ?? 0) > 0) $todayCounts['task'][(int)$row['task_id']] = $count;
+        }
+    }
+    return $scope['group_id'] > 0
+        ? (int)($todayCounts['group'][$scope['group_id']] ?? 0)
+        : (int)($todayCounts['task'][$scope['task_id']] ?? 0);
+}
+
+function dn_due_change_block_reason(array $task, ?array $group = null): ?string
+{
+    if (dn_is_admin() || (string)($task['task_type'] ?? 'dispatch') !== 'dispatch') return null;
+    $policy = dn_dispatch_due_change_policy();
+    $dueAt = (string)($group['due_at'] ?? $task['due_at'] ?? '');
+    $dueDate = substr($dueAt, 0, 10);
+    $lockDate = date('Y-m-d', strtotime('+' . $policy['lock_before_due_days'] . ' days'));
+    if ($dueDate !== '' && $dueDate <= $lockDate) {
+        return $policy['lock_before_due_days'] > 0
+            ? '该派工将在 ' . $policy['lock_before_due_days'] . ' 天内到期，非管理员不能修改截止日期。'
+            : '该派工当天到期或已逾期，非管理员不能修改截止日期。';
+    }
+    if ($policy['max_changes_per_day'] > 0) {
+        $used = dn_due_change_count_today($task, $group);
+        if ($used >= $policy['max_changes_per_day']) {
+            return '该派工今天已修改截止日期 ' . $used . '/' . $policy['max_changes_per_day'] . ' 次，不能再修改。';
+        }
+    }
+    return null;
+}
+
+function dn_assert_due_change_allowed(array $task, ?array $group = null): void
+{
+    if (dn_is_admin()) return;
+    if (!dn_has_due_change_permission($task)) dn_fail('没有修改该派工截止日期的权限', 403);
+    $reason = dn_due_change_block_reason($task, $group);
+    if ($reason !== null) dn_fail($reason, 403);
+}
+
+function dn_record_due_change(array $task, $oldDue, $newDue, string $source, ?array $group = null): void
+{
+    $scope = dn_due_change_scope($task, $group);
+    dispatch_next_db()->prepare('INSERT INTO dispatch_next_due_change_events(task_id,group_id,user_id,old_due_at,new_due_at,source,policy_date,created_at) VALUES(?,?,?,?,?,?,CURDATE(),NOW())')
+        ->execute([$scope['task_id'] ?: null, $scope['group_id'] ?: null, dn_uid(), $oldDue ?: null, $newDue ?: null, $source]);
+}
+
 function dn_can(string $cap): bool
 {
     if (dn_is_admin() || artdon_sso_can('dispatch', $cap, dn_user())) return true;
@@ -182,11 +260,8 @@ function dn_can_edit_task(array $task, string $field = ''): bool
 
 function dn_can_change_due_at(array $task): bool
 {
-    $uid = dn_uid();
-    if ($uid > 0 && (int)($task['created_by'] ?? 0) === $uid) return true;
-    $dueDate = substr((string)($task['due_at'] ?? ''), 0, 10);
-    if ($uid > 0 && (int)($task['assigned_to'] ?? 0) === $uid && $dueDate !== '' && $dueDate > date('Y-m-d')) return true;
-    return false;
+    if (!dn_has_due_change_permission($task)) return false;
+    return dn_due_change_block_reason($task) === null;
 }
 
 function dn_users(): array
@@ -1211,6 +1286,7 @@ function dn_decorate_task(array $r): array
     $r['due_state'] = $due['state'];
     $r['due_label'] = $due['label'];
     $r['can_change_due_at'] = dn_can_change_due_at($r);
+    $r['due_change_hint'] = $r['can_change_due_at'] ? '' : (dn_has_due_change_permission($r) ? (dn_due_change_block_reason($r) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
     $r['highlight_recent_create'] = dn_recent_create_highlight($r['created_by'], $r['created_at'] ?? '');
     $mailId = dn_task_mail_id($r);
     $r['mail_preview_task_id'] = $mailId > 0 ? (int)$r['id'] : 0;
@@ -1305,6 +1381,9 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     $stepRow = $stepSt->fetch() ?: ['step_count' => 0, 'step_done_count' => 0];
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
     $due = dn_due_status($g['due_at'] ?? null, $groupStatus);
+    $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $g['due_at'] ?? '', 'parent_group_id' => $gid];
+    $canChangeDueAt = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $g) === null;
+    $dueChangeHint = $canChangeDueAt ? '' : (dn_has_due_change_permission($groupPolicyTask) ? (dn_due_change_block_reason($groupPolicyTask, $g) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
     return [
         'id' => 'g' . $gid,
         'group_id' => $gid,
@@ -1321,6 +1400,8 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'highlight_recent_create' => dn_recent_create_highlight((int)$g['created_by'], $g['created_at'] ?? ''),
         'due_state' => $due['state'],
         'due_label' => $due['label'],
+        'can_change_due_at' => $canChangeDueAt,
+        'due_change_hint' => $dueChangeHint,
         'is_overdue' => $due['state'] === 'overdue',
         'created_by' => (int)$g['created_by'],
         'creator_name' => dn_user_name((int)$g['created_by']),
@@ -1443,6 +1524,9 @@ function dn_multi_group_detail(array $in): array
     $group['running_count'] = $running;
     $group['overdue_count'] = $overdue;
     $group['progress'] = $total > 0 ? (int)floor($done * 100 / $total) : 0;
+    $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$group['created_by'], 'assigned_to' => (int)$group['created_by'], 'due_at' => $group['due_at'] ?? '', 'parent_group_id' => $groupId];
+    $group['can_change_due_at'] = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $group) === null;
+    $group['due_change_hint'] = $group['can_change_due_at'] ? '' : (dn_has_due_change_permission($groupPolicyTask) ? (dn_due_change_block_reason($groupPolicyTask, $group) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
     $ids = array_column($members, 'task_id');
     $logs = [];
     $comments = [];
@@ -1657,10 +1741,6 @@ function dn_update_task(array $in): array
     $changes = [];
     foreach ($allowed as $f) {
         if (!array_key_exists($f, $in)) continue;
-        if (!dn_can_edit_task($task, $f)) {
-            if ($f === 'due_at') dn_fail('截止日期当天起只有派工创建人可以修改', 403);
-            dn_fail('没有修改多人或该字段的权限', 403);
-        }
         $old = $task[$f] ?? '';
         $new = $in[$f];
         if ($f === 'title') $new = dn_str($new, 240);
@@ -1673,6 +1753,8 @@ function dn_update_task(array $in): array
         if ($f === 'due_at') $new = dn_due_dt($new);
         if ($f === 'task_date') $new = dn_date($new, (string)$task['task_date']);
         if ((string)$old === (string)$new) continue;
+        if ($f === 'due_at') dn_assert_due_change_allowed($task);
+        elseif (!dn_can_edit_task($task, $f)) dn_fail('没有修改多人或该字段的权限', 403);
         $sets[] = "{$f}=?";
         $params[] = $new;
         $changes[] = [$f, $old, $new];
@@ -1696,7 +1778,10 @@ function dn_update_task(array $in): array
     }
     $params[] = $id;
     dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET " . implode(',', $sets) . ", updated_at=NOW() WHERE id=?")->execute($params);
-    foreach ($changes as $change) dn_notify_task_change($task, $change[0], $change[1], $change[2]);
+    foreach ($changes as $change) {
+        if ($change[0] === 'due_at') dn_record_due_change($task, $change[1], $change[2], 'update_task');
+        dn_notify_task_change($task, $change[0], $change[1], $change[2]);
+    }
     dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     return ['id' => $id, 'changed' => count($sets), 'updated_at' => dn_task_updated_at($id)];
 }
@@ -1920,6 +2005,8 @@ function dn_update_multi(array $in): array
     if (array_key_exists('due_at', $in)) {
         $newDue = dn_required_due_dt($in['due_at']);
         if ((string)($g['due_at'] ?? '') !== (string)$newDue) {
+            $groupTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $g['due_at'] ?? '', 'parent_group_id' => $gid];
+            dn_assert_due_change_allowed($groupTask, $g);
             $sets[] = "due_at=?";
             $params[] = $newDue;
             dn_log(null, 'update_multi', 'due_at', $g['due_at'] ?? '', $newDue, '修改多人组截止时间');
@@ -1929,6 +2016,9 @@ function dn_update_multi(array $in): array
     if ($sets) {
         $params[] = $gid;
         $pdo->prepare("UPDATE dispatch_next_groups SET " . implode(',', $sets) . ", updated_at=NOW() WHERE id=?")->execute($params);
+    }
+    if (isset($newDue) && (string)($g['due_at'] ?? '') !== (string)$newDue) {
+        dn_record_due_change(['task_type' => 'dispatch', 'parent_group_id' => $gid], $g['due_at'] ?? '', $newDue, 'update_multi', $g);
     }
     dn_refresh_group($gid);
     return ['group_id' => $gid, 'changed' => count($sets)];
@@ -3588,8 +3678,7 @@ function dn_update_cell(array $in): array
     $value = $in['value'] ?? '';
     $task = dn_task($id);
     dn_check_task_conflict($task, $in);
-    if (!dn_can_edit_task($task, $field)) {
-        if ($field === 'due_at') dn_fail('截止日期当天起只有派工创建人可以修改', 403);
+    if ($field !== 'due_at' && !dn_can_edit_task($task, $field)) {
         dn_fail('没有修改权限', 403);
     }
     $nextDue = $field === 'due_at' ? dn_due_dt($value) : dn_due_dt($task['due_at'] ?? null);
@@ -3650,11 +3739,13 @@ function dn_update_cell(array $in): array
     elseif ($meta['type'] === 'progress') $new = max(0, min(100, (int)$value));
     else $new = dn_str($value, 500);
     if ((string)$old !== (string)$new) {
+        if ($field === 'due_at') dn_assert_due_change_allowed($task);
         $extra = '';
         if ($field === 'status' && $new === 'done') $extra = ", completed_at=NOW(), progress=100";
         if ($field === 'status' && $new === 'in_progress') $extra = ", started_at=COALESCE(started_at,NOW()), completed_at=NULL, cancelled_at=NULL";
         dispatch_next_db()->prepare("UPDATE dispatch_next_tasks SET {$meta['col']}=?{$extra}, updated_at=NOW() WHERE id=?")->execute([$new, $id]);
         dn_log($id, 'update_cell', $field, $old, $new, '表格单元格编辑');
+        if ($field === 'due_at') dn_record_due_change($task, $old, $new, 'update_cell');
         dn_notify_task_change($task, $field, $old, $new);
         dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     }
