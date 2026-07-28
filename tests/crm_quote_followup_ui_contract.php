@@ -38,10 +38,13 @@ foreach (['.customer-dialog.quote-followup-modal', '.quote-followup-modal .custo
         throw new RuntimeException("quote follow-up CSS marker missing: {$marker}");
     }
 }
-foreach (['function crm_quote_followup_legacy_preview', 'function crm_quote_followup_cc_preview', '截图超过服务器允许大小，请选择较小图片后重试。', '截图临时文件无效，请重新选择图片。'] as $marker) {
+foreach (['function crm_quote_followup_legacy_preview', 'function crm_quote_followup_cc_preview', '截图超过服务器允许大小，请选择较小图片后重试。', '截图临时文件无效，请重新选择图片。', 'storage/visit_files/quote_followups/', '沟通截图目录不可写', '!is_file($target)'] as $marker) {
     if (!str_contains($service, $marker)) {
         throw new RuntimeException("quote follow-up upload marker missing: {$marker}");
     }
+}
+if (str_contains($service, 'uploads/crm_quote_followups/')) {
+    throw new RuntimeException('quote follow-up upload must not use deployment-owned uploads root');
 }
 
 echo "CRM quote follow-up UI contract: OK\n";

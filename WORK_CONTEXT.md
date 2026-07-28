@@ -1362,3 +1362,9 @@
 - 数据核查：用户反馈的 Boris 邮件在 CRM 数据库中并未丢失正文；对应记录 `2102` 的 HTML 正文约 440 KB、纯文本约 54 KB，纯文本开头即为 “Hi Amy / If we are going to develop…”。问题只发生在浏览器展示 Outlook / Office 完整 HTML 文档时，并非收信失败。
 - 修复：识别含 Word / VML / Mso 标记的 Outlook / Office 邮件；当其已保存纯文本正文时，邮箱主阅读区及客户侧邮件预览改用兼容阅读版显示正文、换行和签名，避免隔离原 HTML 框渲染成空白。普通 HTML 邮件仍按原显示方式处理。
 - 防回归与发布：新增 Office / Outlook 邮件正文可读性静态合同。本地 JavaScript 语法、差异检查通过；功能提交 `2081448751362c6f48b32cf6dfc16982e2899ee6` 已推送 GitHub 并以同一 Git bundle 快进正式服务器。服务器 `crm_mail.php`、`crm_api.php` 语法及新合同均通过；本发布记录提交后继续按同一流程同步，最终以三方 HEAD 核对为准。
+
+## 2026-07-28：报价跟进沟通截图上传失败修复
+
+- 数据核查：用户刚新增的 14:29 跟进记录 `29` 仍为 0 张，服务器全部有效报价跟进截图也是 0 张，证实不是历史展示漏图，而是文件没有上传成功。
+- 根因：上传代码写入 `uploads/crm_quote_followups`，但生产环境 PHP-FPM 以 `www` 账户运行，而 `uploads` 根目录不允许 `www` 创建子目录；实际检查为 `www_can_write_uploads=no`。可写的应用存储目录 `storage/visit_files` 已验证为 `www_can_write_visit_storage=yes`。
+- 修复：截图改存 `storage/visit_files/quote_followups/{跟进ID}`；创建后检查可写权限，移动后再次检查实际文件已存在，失败会返回明确原因而不伪报上传成功。待完成本地检查、GitHub 推送、服务器同步及真实写入回归。

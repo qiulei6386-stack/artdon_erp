@@ -1363,8 +1363,13 @@ function crm_quote_followup_upload(int $activityId, array $files): array
     if (!$activity) throw new RuntimeException('报价跟进记录不存在。');
     if (!isset($files['name'])) throw new RuntimeException('请选择沟通截图。');
     if (!is_array($files['name'])) $files = ['name'=>[$files['name']], 'tmp_name'=>[$files['tmp_name']], 'size'=>[$files['size']], 'type'=>[$files['type']], 'error'=>[$files['error']]];
-    $base = __DIR__ . '/uploads/crm_quote_followups/' . $activityId;
-    if (!is_dir($base) && !mkdir($base, 0777, true) && !is_dir($base)) throw new RuntimeException('沟通截图目录无法创建。');
+    // The public uploads root belongs to the deployment account, while PHP-FPM
+    // runs as www. Store screenshots in the application storage tree so a
+    // saved follow-up can always create and write its own file directory.
+    $relativeBase = 'storage/visit_files/quote_followups/' . $activityId;
+    $base = __DIR__ . '/' . $relativeBase;
+    if (!is_dir($base) && !mkdir($base, 0775, true) && !is_dir($base)) throw new RuntimeException('沟通截图目录无法创建，请联系管理员检查存储权限。');
+    if (!is_writable($base)) throw new RuntimeException('沟通截图目录不可写，请联系管理员检查存储权限。');
     $saved = [];
     $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
     foreach ($files['name'] as $i => $name) {
@@ -1386,8 +1391,9 @@ function crm_quote_followup_upload(int $activityId, array $files): array
         if ($size > 10 * 1024 * 1024) throw new RuntimeException('单张沟通截图不能超过10MB。');
         $mime = $finfo ? (string)finfo_file($finfo, (string)$files['tmp_name'][$i]) : (string)($files['type'][$i] ?? '');
         $fileName = date('YmdHis') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-        if (!move_uploaded_file((string)$files['tmp_name'][$i], $base . '/' . $fileName)) throw new RuntimeException('截图保存失败。');
-        $rel = 'uploads/crm_quote_followups/' . $activityId . '/' . $fileName;
+        $target = $base . '/' . $fileName;
+        if (!move_uploaded_file((string)$files['tmp_name'][$i], $target) || !is_file($target)) throw new RuntimeException('截图保存失败。');
+        $rel = $relativeBase . '/' . $fileName;
         db()->prepare("INSERT INTO crm_quote_followup_files(activity_id,customer_id,file_name,original_name,file_path,file_size,mime_type,uploaded_by,uploaded_at) VALUES(?,?,?,?,?,?,?,?,NOW())")
             ->execute([$activityId,$activity['customer_id'],$fileName,$original,$rel,$size,$mime,(int)((current_user() ?: [])['id'] ?? 0)]);
         $saved[] = (int)db()->lastInsertId();
