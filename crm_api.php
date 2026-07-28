@@ -210,6 +210,63 @@ try {
         crm_require('settings.view');
         api_response(true, '企业信息已保存', ['company' => save_company_settings($_POST)]);
     }
+    if ($action === 'company_logo_upload') {
+        require_csrf();
+        crm_require('settings.view');
+        $file = $_FILES['logo'] ?? null;
+        if (!is_array($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            api_response(false, '请选择一张 LOGO 图片后再上传。', [], 'LOGO_FILE_REQUIRED');
+        }
+        $size = (int)($file['size'] ?? 0);
+        if ($size < 1 || $size > 2 * 1024 * 1024) {
+            api_response(false, 'LOGO 图片必须小于 2MB。', [], 'LOGO_FILE_SIZE');
+        }
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        $imageInfo = $tmpName !== '' ? @getimagesize($tmpName) : false;
+        $mime = is_array($imageInfo) ? strtolower((string)($imageInfo['mime'] ?? '')) : '';
+        $extensions = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+        ];
+        if (!isset($extensions[$mime])) {
+            api_response(false, '仅支持 JPG、PNG、WebP 或 GIF 图片。', [], 'LOGO_FILE_TYPE');
+        }
+        $directory = __DIR__ . '/uploads/company_brand';
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            api_response(false, 'LOGO 上传目录无法创建，请检查服务器目录权限。', [], 'LOGO_DIRECTORY_FAILED');
+        }
+        $filename = 'company_logo_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . '.' . $extensions[$mime];
+        $absolutePath = $directory . '/' . $filename;
+        if (!move_uploaded_file($tmpName, $absolutePath)) {
+            api_response(false, 'LOGO 文件保存失败，请重试。', [], 'LOGO_MOVE_FAILED');
+        }
+        $relativePath = 'uploads/company_brand/' . $filename;
+        $before = get_company_settings();
+        save_app_setting('company_logo', $relativePath, 'company', '统一公司 LOGO（CRM 与派工）');
+        save_app_setting('topbar_logo', $relativePath, 'company', '统一公司 LOGO（CRM 与派工）');
+        $company = get_company_settings();
+        audit_log('company_logo_upload', 'settings', 'company', 'company_logo', ['company_logo' => $before['company_logo'] ?? ''], ['company_logo' => $relativePath]);
+        if (function_exists('sys_action_log')) {
+            sys_action_log('settings', 'company_logo_upload', 'company', 'company_logo', ['company_logo' => $before['company_logo'] ?? ''], ['company_logo' => $relativePath], '上传统一公司 LOGO', 'sensitive');
+        }
+        api_response(true, 'LOGO 已上传，并已应用到 CRM 与派工。', [
+            'company' => $company,
+            'logo_path' => $relativePath,
+            'logo_url' => company_brand_logo_url($company),
+        ]);
+    }
+    if ($action === 'company_logo_reset') {
+        require_csrf();
+        crm_require('settings.view');
+        $before = get_company_settings();
+        save_app_setting('company_logo', '', 'company', '统一公司 LOGO（CRM 与派工）');
+        save_app_setting('topbar_logo', '', 'company', '统一公司 LOGO（CRM 与派工）');
+        $company = get_company_settings();
+        audit_log('company_logo_reset', 'settings', 'company', 'company_logo', ['company_logo' => $before['company_logo'] ?? ''], ['company_logo' => '']);
+        api_response(true, '已恢复默认 AD 图标。', ['company' => $company]);
+    }
     if ($action === 'module_settings_get') {
         require_csrf();
         crm_require('settings.view');

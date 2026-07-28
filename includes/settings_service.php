@@ -112,6 +112,32 @@ function get_company_settings(): array
     return $settings;
 }
 
+/**
+ * Return only a locally uploaded, public company brand image.  Keeping this
+ * whitelist deliberately narrow prevents a settings value from becoming an
+ * arbitrary file path in the application header.
+ */
+function company_brand_logo_path(?array $settings = null): string
+{
+    $settings = $settings ?? get_company_settings();
+    foreach (['company_logo', 'topbar_logo'] as $key) {
+        $path = trim((string)($settings[$key] ?? ''));
+        if (preg_match('#^uploads/company_brand/[a-zA-Z0-9][a-zA-Z0-9._-]*$#', $path)) {
+            return $path;
+        }
+    }
+    return '';
+}
+
+function company_brand_logo_url(?array $settings = null): string
+{
+    $path = company_brand_logo_path($settings);
+    if ($path === '') return '';
+    $absolute = dirname(__DIR__) . '/' . $path;
+    $version = is_file($absolute) ? (string)filemtime($absolute) : '0';
+    return $path . '?v=' . rawurlencode($version);
+}
+
 function save_company_settings(array $input): array
 {
     $before = get_company_settings();

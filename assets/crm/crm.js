@@ -24427,6 +24427,14 @@
           event.preventDefault();
           SettingsConsole.saveCompanySettings();
         });
+        var logoFile = company.querySelector('[data-company-logo-file]');
+        var logoUpload = company.querySelector('[data-company-logo-upload]');
+        var logoReset = company.querySelector('[data-company-logo-reset]');
+        if (logoUpload && logoFile) logoUpload.addEventListener('click', function () { logoFile.click(); });
+        if (logoFile) logoFile.addEventListener('change', function () {
+          if (logoFile.files && logoFile.files[0]) SettingsConsole.uploadCompanyLogo(logoFile.files[0]);
+        });
+        if (logoReset) logoReset.addEventListener('click', function () { SettingsConsole.resetCompanyLogo(); });
         this.renderCompanyPreview();
       }
       root.querySelectorAll('[data-module-setting-form]').forEach(function (form) {
@@ -24519,6 +24527,69 @@
       }).catch(function (error) {
         if (hint) hint.textContent = error.message || '企业信息保存失败';
         toast(error.message || '企业信息保存失败');
+      });
+    },
+    uploadCompanyLogo: function (file) {
+      var form = document.querySelector('[data-company-settings-form]');
+      var hint = document.querySelector('[data-company-logo-hint]');
+      if (!form || !file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        if (hint) hint.textContent = 'LOGO 图片必须小于 2MB。';
+        toast('LOGO 图片必须小于 2MB');
+        return;
+      }
+      var data = new FormData();
+      data.append('action', 'company_logo_upload');
+      data.append('csrf_token', state.csrf || '');
+      data.append('logo', file);
+      if (hint) hint.textContent = '正在上传并应用 LOGO…';
+      fetch('crm_api.php', { method: 'POST', body: data, credentials: 'same-origin' }).then(function (res) {
+        return res.text().then(function (text) {
+          try { return JSON.parse(text); } catch (error) { return { success: false, message: 'LOGO 上传接口返回格式错误。' }; }
+        });
+      }).then(function (json) {
+        if (!json.success) throw new Error(json.message || 'LOGO 上传失败');
+        var company = (json.data || {}).company || {};
+        var url = (json.data || {}).logo_url || '';
+        var preview = document.querySelector('[data-company-logo-preview]');
+        var hiddenLogo = form.querySelector('[name="company_logo"]');
+        var hiddenTopbar = form.querySelector('[name="topbar_logo"]');
+        if (hiddenLogo) hiddenLogo.value = company.company_logo || '';
+        if (hiddenTopbar) hiddenTopbar.value = company.topbar_logo || '';
+        if (preview) preview.innerHTML = url ? '<img src="' + esc(url) + '" alt="当前公司 LOGO">' : '<b>AD</b>';
+        document.querySelectorAll('.status-logo').forEach(function (node) {
+          node.innerHTML = url ? '<img src="' + esc(url) + '" alt="公司 LOGO">' : 'AD';
+        });
+        if (hint) hint.textContent = '已上传并应用到 CRM 与派工。';
+        toast('LOGO 已上传并应用');
+      }).catch(function (error) {
+        if (hint) hint.textContent = error.message || 'LOGO 上传失败';
+        toast(error.message || 'LOGO 上传失败');
+      }).finally(function () {
+        var input = form.querySelector('[data-company-logo-file]');
+        if (input) input.value = '';
+      });
+    },
+    resetCompanyLogo: function () {
+      var form = document.querySelector('[data-company-settings-form]');
+      var hint = document.querySelector('[data-company-logo-hint]');
+      if (!form) return;
+      if (!window.confirm('确定恢复默认 AD 图标吗？已上传的文件不会删除。')) return;
+      if (hint) hint.textContent = '正在恢复默认图标…';
+      post('company_logo_reset', {}).then(function (json) {
+        if (!json.success) throw new Error(json.message || '恢复默认图标失败');
+        ['company_logo', 'topbar_logo'].forEach(function (name) {
+          var input = form.querySelector('[name="' + name + '"]');
+          if (input) input.value = '';
+        });
+        var preview = document.querySelector('[data-company-logo-preview]');
+        if (preview) preview.innerHTML = '<b>AD</b>';
+        document.querySelectorAll('.status-logo').forEach(function (node) { node.textContent = 'AD'; });
+        if (hint) hint.textContent = '已恢复默认 AD 图标。';
+        toast('已恢复默认 AD 图标');
+      }).catch(function (error) {
+        if (hint) hint.textContent = error.message || '恢复默认图标失败';
+        toast(error.message || '恢复默认图标失败');
       });
     },
     renderCompanyPreview: function () {

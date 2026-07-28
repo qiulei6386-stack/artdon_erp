@@ -23,6 +23,7 @@ $modules = crm_top_modules($allModules);
 $prefs = crm_preferences((int)$user['id']);
 $crmConfig = crm_config_bootstrap();
 $companySettings = get_company_settings();
+$companyBrandLogoUrl = company_brand_logo_url($companySettings);
 $moduleSettings = crm_module_settings_all();
 $customerFilterUsers = db()->query("SELECT u.id, u.username, COALESCE(u.real_name, u.username) AS display_name, d.name AS department_name FROM crm_users u LEFT JOIN crm_departments d ON d.id = u.department_id WHERE u.status = 'active' ORDER BY d.sort_order, u.username")->fetchAll();
 $onlineCount = crm_online_count();
@@ -293,14 +294,18 @@ $prefStyle = sprintf(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Artdon CRM - Artdon Office V20</title>
+  <title><?= h($systemName) ?> CRM - <?= h($companySettings['system_name'] ?? 'Artdon Office V20') ?></title>
   <link rel="stylesheet" href="assets/crm/themes.css?v=<?= filemtime(__DIR__ . '/assets/crm/themes.css') ?>">
   <link rel="stylesheet" href="assets/crm/crm.css?v=<?= filemtime(__DIR__ . '/assets/crm/crm.css') ?>">
 </head>
 <body class="crm-app" style="<?= h($prefStyle) ?>">
   <header class="crm-status-console">
     <section class="status-brand-zone">
-      <a class="status-logo" href="index.php" title="返回 Office 首页">AD</a>
+      <a class="status-logo" href="index.php" title="返回 Office 首页">
+        <?php if ($companyBrandLogoUrl !== ''): ?>
+          <img src="<?= h($companyBrandLogoUrl) ?>" alt="<?= h($systemName) ?> LOGO">
+        <?php else: ?>AD<?php endif; ?>
+      </a>
       <div class="status-brand-text">
         <strong><?= h($systemName) ?></strong>
         <span>Artdon Office V20</span>
@@ -1139,12 +1144,26 @@ $prefStyle = sprintf(
                   <label>默认语言<input name="default_language" value="<?= h($companySettings['default_language'] ?? 'zh-CN') ?>"></label>
                   <label>默认币种<input name="default_currency" value="<?= h($companySettings['default_currency'] ?? 'USD') ?>"></label>
                 </section>
-                <section class="settings-form-card">
-                  <h3>LOGO 路径</h3>
-                  <label>公司 LOGO<input name="company_logo" placeholder="uploads/logo/company.png" value="<?= h($companySettings['company_logo'] ?? '') ?>"></label>
-                  <label>登录页 LOGO<input name="login_logo" placeholder="uploads/logo/login.png" value="<?= h($companySettings['login_logo'] ?? '') ?>"></label>
-                  <label>顶部 LOGO<input name="topbar_logo" placeholder="uploads/logo/topbar.png" value="<?= h($companySettings['topbar_logo'] ?? '') ?>"></label>
-                  <p class="entry-muted wide">本阶段先保存 LOGO 路径，文件上传入口后续接 Office 设置上传服务；不会假装上传成功。</p>
+                <section class="settings-form-card company-logo-card">
+                  <h3>统一顶部 LOGO</h3>
+                  <div class="company-logo-upload wide">
+                    <div class="company-logo-preview" data-company-logo-preview>
+                      <?php if ($companyBrandLogoUrl !== ''): ?>
+                        <img src="<?= h($companyBrandLogoUrl) ?>" alt="当前公司 LOGO">
+                      <?php else: ?><b>AD</b><?php endif; ?>
+                    </div>
+                    <div class="company-logo-copy">
+                      <strong>上传一次，同时应用到 CRM 和派工左上角</strong>
+                      <span>支持 JPG、PNG、WebP、GIF，文件不超过 2MB。未上传时保留默认 AD 图标。</span>
+                    </div>
+                    <input type="hidden" name="company_logo" value="<?= h($companySettings['company_logo'] ?? '') ?>">
+                    <input type="hidden" name="topbar_logo" value="<?= h($companySettings['topbar_logo'] ?? '') ?>">
+                    <input class="company-logo-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-company-logo-file>
+                    <button type="button" class="company-logo-upload-button" data-company-logo-upload>选择并上传 LOGO</button>
+                    <button type="button" class="company-logo-reset-button" data-company-logo-reset>恢复默认图标</button>
+                    <p class="entry-muted wide" data-company-logo-hint>当前设置：<?= $companyBrandLogoUrl !== '' ? '已使用自定义 LOGO' : '使用默认 AD 图标' ?>。</p>
+                  </div>
+                  <label class="wide">登录页 LOGO 路径（可选，暂不影响 CRM 与派工顶部）<input name="login_logo" placeholder="uploads/logo/login.png" value="<?= h($companySettings['login_logo'] ?? '') ?>"></label>
                 </section>
                 <div class="display-savebar"><span data-company-save-hint>企业信息会写入 crm_system_settings，并记录设置日志。</span><button type="submit">保存企业信息</button></div>
               </form>
