@@ -1361,4 +1361,4 @@
 
 - 数据核查：用户反馈的 Boris 邮件在 CRM 数据库中并未丢失正文；对应记录 `2102` 的 HTML 正文约 440 KB、纯文本约 54 KB，纯文本开头即为 “Hi Amy / If we are going to develop…”。问题只发生在浏览器展示 Outlook / Office 完整 HTML 文档时，并非收信失败。
 - 修复：识别含 Word / VML / Mso 标记的 Outlook / Office 邮件；当其已保存纯文本正文时，邮箱主阅读区及客户侧邮件预览改用兼容阅读版显示正文、换行和签名，避免隔离原 HTML 框渲染成空白。普通 HTML 邮件仍按原显示方式处理。
-- 防回归：新增 Office / Outlook 邮件正文可读性静态合同；待完成服务器检查、GitHub 推送、正式服务器同步和三方版本核对。
+- 防回归与发布：新增 Office / Outlook 邮件正文可读性静态合同。本地 JavaScript 语法、差异检查通过；功能提交 `2081448751362c6f48b32cf6dfc16982e2899ee6` 已推送 GitHub 并以同一 Git bundle 快进正式服务器。服务器 `crm_mail.php`、`crm_api.php` 语法及新合同均通过；本发布记录提交后继续按同一流程同步，最终以三方 HEAD 核对为准。
