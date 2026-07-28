@@ -63,7 +63,12 @@ foreach ([
     'const dispatchBaseDefaultColorPrefs=defaultColorPrefs;',
     "due_today_bg:'#fff1f2'",
     "overdue_bg:'#ffe4e6'",
-    "due_row_fill:'on'",
+    "function normalizeDueRowFill(value)",
+    "due_row_fill:'critical'",
+    '整行填充范围',
+    '不填充（仅保留日期和左线）',
+    '只填充今天到期与逾期（推荐）',
+    'data-apply-water-red',
 ] as $marker) {
     if (!str_contains($page, $marker)) {
         throw new RuntimeException("dispatch due-color default marker missing: {$marker}");
