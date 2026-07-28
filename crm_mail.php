@@ -622,7 +622,7 @@ function crm_mail_dashboard_summary(): array
     $stmt = db()->prepare("SELECT
         SUM(CASE WHEN folder = 'inbox' AND DATE(COALESCE(received_at, created_at)) = CURDATE() THEN 1 ELSE 0 END) AS today_received,
         SUM(CASE WHEN is_read = 0 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unread,
-        SUM(CASE WHEN is_unreplied = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unreplied,
+        SUM(CASE WHEN folder = 'sent' AND is_unreplied = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unreplied,
         SUM(CASE WHEN is_deleted = 0 AND EXISTS (SELECT 1 FROM crm_mail_attachments a WHERE a.mail_id = m.id AND a.user_id = m.user_id AND COALESCE(a.is_inline,0) = 0 AND COALESCE(a.is_signature_image,0) = 0) THEN 1 ELSE 0 END) AS with_attachments
         FROM crm_mails m WHERE user_id = ? AND mail_account_id = ?");
     $stmt->execute($params);
@@ -657,7 +657,7 @@ function crm_mail_folder_counts(?array $account = null): array
         SUM(CASE WHEN is_deleted = 1 OR folder = 'deleted' THEN 1 ELSE 0 END) AS deleted,
         SUM(CASE WHEN is_read = 0 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unread,
         SUM(CASE WHEN is_starred = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) AS starred,
-        SUM(CASE WHEN is_unreplied = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unreplied,
+        SUM(CASE WHEN folder = 'sent' AND is_unreplied = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) AS unreplied,
         SUM(CASE WHEN is_deleted = 0 AND EXISTS (SELECT 1 FROM crm_mail_attachments a WHERE a.mail_id = m.id AND a.user_id = m.user_id AND COALESCE(a.is_inline,0) = 0 AND COALESCE(a.is_signature_image,0) = 0) THEN 1 ELSE 0 END) AS attachments,
         SUM(CASE WHEN linked_customer_id IS NOT NULL AND is_deleted = 0 THEN 1 ELSE 0 END) AS linked,
         SUM(CASE WHEN linked_customer_id IS NULL AND is_deleted = 0 THEN 1 ELSE 0 END) AS unlinked,
@@ -755,6 +755,12 @@ function crm_mail_refresh_unreplied_flags(array $account, int $days = 3): void
     $days = max(1, min(60, $days));
     $userId = (int)$account['user_id'];
     $accountId = (int)$account['id'];
+    // A received mail cannot be "customer has not replied". Older inbox rows
+    // were incorrectly inserted with this flag, so clear them before
+    // recalculating the sent-mail follow-up queue.
+    db()->prepare("UPDATE crm_mails SET is_unreplied = 0, updated_at = NOW()
+        WHERE user_id = ? AND mail_account_id = ? AND folder <> 'sent' AND is_unreplied = 1")
+        ->execute([$userId, $accountId]);
     $clearStmt = db()->prepare("SELECT m.id FROM crm_mails m
         WHERE m.user_id = ? AND m.mail_account_id = ? AND m.folder = 'sent'
           AND (m.is_unreplied = 1)
@@ -2990,7 +2996,7 @@ function crm_mail_imap_fetch_recent(array $account, int $limit = 30, int $sinceD
                 foreach (['subject', 'from_name', 'to_emails', 'cc_emails', 'body_html', 'body_text'] as $field) {
                     $mail[$field] = crm_mail_clean_utf8((string)($mail[$field] ?? ''));
                 }
-                db()->prepare('INSERT IGNORE INTO crm_mails (user_id, mail_account_id, message_uid, message_id_header, folder, subject, from_email, from_name, to_emails, cc_emails, received_at, body_html, body_text, body_status, has_body, has_attachment, attachment_count, is_read, is_unreplied, raw_headers_json, raw_headers, raw_eml_path, parse_status, parse_error, mail_source, source_flags_json, body_hash, imap_mailbox, tags_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, ?, "imap_inbox", ?, ?, "INBOX", ?, NOW(), NOW())')
+                db()->prepare('INSERT IGNORE INTO crm_mails (user_id, mail_account_id, message_uid, message_id_header, folder, subject, from_email, from_name, to_emails, cc_emails, received_at, body_html, body_text, body_status, has_body, has_attachment, attachment_count, is_read, is_unreplied, raw_headers_json, raw_headers, raw_eml_path, parse_status, parse_error, mail_source, source_flags_json, body_hash, imap_mailbox, tags_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, "imap_inbox", ?, ?, "INBOX", ?, NOW(), NOW())')
                     ->execute([(int)$account['user_id'], (int)$account['id'], $mail['message_uid'], $mail['message_id_header'], 'inbox', $mail['subject'], $mail['from_email'], $mail['from_name'], $mail['to_emails'], $mail['cc_emails'], $mail['received_at'], $mail['body_html'], $mail['body_text'], $mail['body_status'], $mail['has_body'], $mail['has_attachment'], $mail['attachment_count'], $mail['raw_headers_json'], $mail['raw_headers'] ?? '', $mail['raw_eml_path'] ?? '', $mail['parse_status'] ?? 'parsed', $mail['parse_error'] ?? '', json_encode(['imap_inbox'], JSON_UNESCAPED_UNICODE), $mail['body_hash'] ?? crm_mail_body_hash((string)$mail['body_html'], (string)$mail['body_text']), json_encode($mail['has_attachment'] ? ['有附件'] : ['客户邮件'], JSON_UNESCAPED_UNICODE)]);
                 $mailId = (int)db()->lastInsertId();
                 if ($mailId > 0) {
@@ -3251,7 +3257,7 @@ function crm_mail_list(array $input): array
     $where = ['m.user_id = ?', 'm.mail_account_id = ?'];
     if ($folder === 'unread') $where[] = 'm.is_read = 0';
     elseif ($folder === 'starred') $where[] = 'm.is_starred = 1';
-    elseif ($folder === 'unreplied') $where[] = 'm.is_unreplied = 1';
+    elseif ($folder === 'unreplied') $where[] = "m.folder = 'sent' AND m.is_unreplied = 1";
     elseif ($folder === 'attachments') $where[] = 'EXISTS (SELECT 1 FROM crm_mail_attachments a WHERE a.mail_id = m.id AND a.user_id = m.user_id AND COALESCE(a.is_inline,0) = 0 AND COALESCE(a.is_signature_image,0) = 0)';
     elseif ($folder === 'linked') $where[] = 'm.linked_customer_id IS NOT NULL';
     elseif ($folder === 'unlinked') $where[] = 'm.linked_customer_id IS NULL';
@@ -3285,7 +3291,7 @@ function crm_mail_list(array $input): array
     $quick = trim((string)($input['quick'] ?? ''));
     if ($quick === 'no_body_attach') $where[] = "m.body_status = 'no_body_with_attachments'";
     if ($quick === 'unread') $where[] = 'm.is_read = 0';
-    if ($quick === 'unreplied') $where[] = 'm.is_unreplied = 1';
+    if ($quick === 'unreplied') $where[] = "m.folder = 'sent' AND m.is_unreplied = 1";
     if ($quick === 'attachments') $where[] = 'EXISTS (SELECT 1 FROM crm_mail_attachments a WHERE a.mail_id = m.id AND a.user_id = m.user_id AND COALESCE(a.is_inline,0) = 0 AND COALESCE(a.is_signature_image,0) = 0)';
     if ($quick === 'linked') $where[] = 'm.linked_customer_id IS NOT NULL';
     if ($quick === 'unlinked') $where[] = 'm.linked_customer_id IS NULL';

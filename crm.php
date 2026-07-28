@@ -671,13 +671,13 @@ $prefStyle = sprintf(
             <div class="mail-grid">
               <aside class="mail-folder-pane" data-mail-folders>
                 <div class="mail-account-mini"><strong data-mail-account-email>--</strong><span data-mail-account-sync>最近同步：--</span></div>
-                <?php foreach ([['inbox','收件箱'],['scheduled','待发送'],['unread','未读'],['starred','星标'],['unreplied','未回复'],['important','重要'],['sent','已发送'],['drafts','草稿'],['archive','已归档'],['deleted','已删除'],['attachments','有附件'],['linked','已关联客户'],['unlinked','未关联客户'],['promotion','推广邮件'],['quote','报价邮件'],['sample','样品邮件'],['service','售后邮件']] as $folder): ?>
+                <?php foreach ([['inbox','收件箱'],['scheduled','待发送'],['unread','未读'],['starred','星标'],['unreplied','已发未回复'],['important','重要'],['sent','已发送'],['drafts','草稿'],['archive','已归档'],['deleted','已删除'],['attachments','有附件'],['linked','已关联客户'],['unlinked','未关联客户'],['promotion','推广邮件'],['quote','报价邮件'],['sample','样品邮件'],['service','售后邮件']] as $folder): ?>
                 <button type="button" data-mail-folder="<?= h($folder[0]) ?>"><?= h($folder[1]) ?><span data-mail-folder-count="<?= h($folder[0]) ?>"></span></button>
                 <?php endforeach; ?>
               </aside>
               <section class="mail-list-pane">
                 <div class="mail-quick-filters">
-                  <?php foreach ([['unread','未读'],['unreplied','未回复'],['attachments','有附件'],['no_body_attach','无正文有附件'],['linked','已关联客户'],['unlinked','未关联客户'],['today','今天'],['7d','7天'],['important','重要'],['todo','待处理']] as $filter): ?>
+                  <?php foreach ([['unread','未读'],['unreplied','已发未回复'],['attachments','有附件'],['no_body_attach','无正文有附件'],['linked','已关联客户'],['unlinked','未关联客户'],['today','今天'],['7d','7天'],['important','重要'],['todo','待处理']] as $filter): ?>
                   <button type="button" data-mail-quick="<?= h($filter[0]) ?>"><?= h($filter[1]) ?></button>
                   <?php endforeach; ?>
                 </div>
