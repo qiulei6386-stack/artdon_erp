@@ -31,6 +31,9 @@ foreach ([
     '.tbl td[data-field="assigned_to"] .groupAssigneeName{display:flex',
     '.tbl td[data-field="actions"] .rowActions{display:flex!important;width:100%!important',
     'function tableRowActions(r)',
+    'const normal=`<div class="rowActions ${actionIconClass()}">${detail}${primary}${urge}${remove}</div>`;',
+    "const completed=['done','cancelled'].includes(String(r.status||''));",
+    'if(!completed)return normal;',
     'rowActionSlot(detail,\'detail\')',
     'rowActionSlot(primary,\'primary\')',
     'rowActionSlot(urge,\'urge\')',
@@ -42,6 +45,10 @@ foreach ([
     if (!str_contains($page, $marker)) {
         throw new RuntimeException("dispatch table alignment style marker missing: {$marker}");
     }
+}
+
+if (!preg_match('/function tableRowActions\\(r\\)\\{.*?if\\(!completed\\)return normal;.*?fixedActionRail/s', $page)) {
+    throw new RuntimeException('only completed or cancelled tasks may use the fixed action rail');
 }
 
 echo "Dispatch multi-table alignment contract: OK\n";
