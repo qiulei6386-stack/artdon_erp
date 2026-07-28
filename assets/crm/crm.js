@@ -137,8 +137,34 @@
     return /(?:xmlns:(?:o|v|w|m)=|<\/?(?:o|v|w):|class\s*=\s*["'][^"']*\bMso|class\s*=\s*["']WordSection|\bmso-[a-z-]+\s*:)/i.test(html);
   }
 
+  function officeMailTextHasHtmlMarkup(text) {
+    text = String(text || '');
+    return (text.match(/<\/?[a-z][^>]*>/ig) || []).length >= 3;
+  }
+
+  function officeMailToReadableText(source) {
+    source = String(source || '');
+    if (!source) return '';
+    try {
+      var doc = new DOMParser().parseFromString(source, 'text/html');
+      doc.querySelectorAll('script,style,head,meta,link,iframe,object,embed,template,noscript,svg').forEach(function (node) { node.remove(); });
+      doc.querySelectorAll('br').forEach(function (node) { node.replaceWith(doc.createTextNode('\n')); });
+      doc.querySelectorAll('p,div,li,tr,table,h1,h2,h3,h4,h5,h6,blockquote').forEach(function (node) {
+        node.appendChild(doc.createTextNode('\n'));
+      });
+      source = (doc.body && doc.body.textContent) || '';
+    } catch (error) {
+      source = source.replace(/<[^>]*>/g, ' ');
+    }
+    return source.replace(/\u00a0/g, ' ').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function officeMailReadableBody(mail) {
     var text = String((mail && mail.body_text) || '').trim();
+    // Some Office clients put a readable reply first and then append a full
+    // HTML fragment to text/plain.  Never print those tags literally.
+    if (officeMailTextHasHtmlMarkup(text)) text = officeMailToReadableText(text);
+    if (!text) text = officeMailToReadableText((mail && mail.body_html) || '');
     if (!text) return '';
     return '<section class="mail-office-readable">' +
       '<div class="mail-office-readable-note">已使用 Office 邮件兼容阅读版</div>' +
