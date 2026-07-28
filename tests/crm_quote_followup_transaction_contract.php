@@ -17,7 +17,7 @@ $begin = strpos($function, '$pdo->beginTransaction();');
 $saveTimeline = strpos($function, 'crm_quote_followup_sync_timeline($pdo,');
 $commit = $saveTimeline === false ? false : strpos($function, '$pdo->commit();', $saveTimeline);
 $log = strpos($function, "crm_log_event('tasks', 'quote_followup_save'");
-$reload = strpos($function, '$resultData = crm_quote_followup_context');
+$reload = strrpos($function, '$resultData = crm_quote_followup_context');
 
 if ($begin === false || $commit === false || $log === false || $reload === false) {
     throw new RuntimeException('quote follow-up transaction markers are incomplete');
