@@ -552,11 +552,11 @@ body.due-row-fill-off .mobileTaskCard.due-soon,body.due-row-fill-off .mobileTask
 .tbl td[data-field="assigned_to"] .groupAssigneeSep{display:none!important}
 .tbl td[data-field="actions"]{text-align:center!important;padding-left:6px!important;padding-right:6px!important}
 .tbl td[data-field="actions"] .rowActions{display:flex!important;width:100%!important;min-height:30px;align-items:center!important;justify-content:center!important;gap:8px!important;box-sizing:border-box!important}
-.tbl td[data-field="actions"] .rowActions.fixedActionRail{display:grid!important;grid-template-columns:repeat(4,32px);justify-content:center!important;align-items:center!important;gap:8px!important}
+.tbl td[data-field="actions"] .rowActions.fixedActionRail{display:grid!important;grid-template-columns:repeat(3,32px);justify-content:center!important;align-items:center!important;gap:8px!important}
 .tbl td[data-field="actions"] .fixedActionRail .rowActionSlot{width:32px;height:30px;display:flex;align-items:center;justify-content:center}
 .tbl td[data-field="actions"] .fixedActionRail .rowActionSlot:empty{visibility:hidden}
 .tbl td[data-field="actions"] .fixedActionRail .rowActionSlot .iconBtn{margin:0!important}
-.tbl td[data-field="actions"] .fixedActionRail:has(.actionTextMode){grid-template-columns:repeat(4,minmax(58px,max-content))}
+.tbl td[data-field="actions"] .fixedActionRail:has(.actionTextMode){grid-template-columns:repeat(3,minmax(58px,max-content))}
 .tbl td[data-field="actions"] .fixedActionRail:has(.actionTextMode) .rowActionSlot{width:auto;min-width:58px}
 .tbl tr.done td[data-field="actions"],.tbl tr.done td[data-field="actions"] .rowActions,.tbl tr.cancelled td[data-field="actions"],.tbl tr.cancelled td[data-field="actions"] .rowActions{text-align:center!important;justify-content:center!important}
 @media(max-width:760px){.tbl td[data-field="actions"] .rowActions{gap:3px!important}}
@@ -700,7 +700,9 @@ function tableRowActions(r){
   const normal=`<div class="rowActions ${actionIconClass()}">${detail}${primary}${urge}${remove}</div>`;
   const completed=['done','cancelled'].includes(String(r.status||''));
   if(!completed)return normal;
-  return `<div class="rowActions ${actionIconClass()} fixedActionRail">${rowActionSlot(detail,'detail')}${rowActionSlot(primary,'primary')}${rowActionSlot(urge,'urge')}${rowActionSlot(remove,'danger')}</div>`
+  // 已完成行不会显示催办；保留三格而不是旧的四格，才能与未完成行
+  // “查看 / 修改或转派 / 删除”的自然三按钮位置完全重合。
+  return `<div class="rowActions ${actionIconClass()} fixedActionRail">${rowActionSlot(detail,'detail')}${rowActionSlot(primary||urge,'middle')}${rowActionSlot(remove,'danger')}</div>`
 }
 function transferIcon(){return iconSvg('transfer')}
 function transferButtonHtml(id){return actionButton('action-transfer','转派任务',`data-transfer="${esc(id)}"`,transferIcon(),'转派')}

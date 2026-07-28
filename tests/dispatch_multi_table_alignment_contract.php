@@ -35,10 +35,9 @@ foreach ([
     "const completed=['done','cancelled'].includes(String(r.status||''));",
     'if(!completed)return normal;',
     'rowActionSlot(detail,\'detail\')',
-    'rowActionSlot(primary,\'primary\')',
-    'rowActionSlot(urge,\'urge\')',
+    "rowActionSlot(primary||urge,'middle')",
     'rowActionSlot(remove,\'danger\')',
-    '.tbl td[data-field="actions"] .rowActions.fixedActionRail{display:grid!important;grid-template-columns:repeat(4,32px)',
+    '.tbl td[data-field="actions"] .rowActions.fixedActionRail{display:grid!important;grid-template-columns:repeat(3,32px)',
     '.tbl td[data-field="actions"] .fixedActionRail .rowActionSlot:empty{visibility:hidden}',
     '.tbl tr.done td[data-field="actions"],.tbl tr.done td[data-field="actions"] .rowActions',
 ] as $marker) {
