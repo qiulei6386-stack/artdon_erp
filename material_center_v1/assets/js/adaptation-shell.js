@@ -40,6 +40,7 @@
   const integer = value => Number.parseInt(value || 0, 10) || 0;
   const selectedProductId = () => integer(state.workspace?.product?.id);
   const selectedGroup = () => state.workspace?.active_group || null;
+  const workspaceWidthStorageKey = 'artdon.material.adaptation.workspace-widths.v1';
   const materialCategoryLabels = {
     power_supply: '电源类正式物料',
     chip: '芯片类正式物料',
@@ -139,6 +140,14 @@
 
   const visibleProducts = () => state.products.filter(productMatchesStatus);
 
+  const focusSelectedProduct = (behavior = 'smooth') => {
+    const activeId = selectedProductId();
+    if (!activeId) return;
+    requestAnimationFrame(() => {
+      q(`[data-product-id="${activeId}"]`, q('[data-product-list]'))?.scrollIntoView({ block: 'nearest', behavior });
+    });
+  };
+
   const renderProductSelection = () => {
     const count = state.productSelected.size;
     q('[data-product-selection-bar]').hidden = !count;
@@ -179,7 +188,12 @@
     q('[data-product-count]').textContent = `显示 ${products.length} / 共 ${state.products.length} 个`;
     const activeId = selectedProductId();
     const list = q('[data-product-list]');
-    list.innerHTML = products.length
+    const activeProduct = state.workspace?.product || state.products.find(product => integer(product.id) === activeId);
+    const lockedProduct = activeProduct ? `<section class="mc-product-lock" data-product-lock>
+        <div><span>当前锁定产品</span><strong>${escapeHtml(activeProduct.product_code || '未编号')} · ${escapeHtml(activeProduct.product_name || '未命名产品')}</strong><small>${escapeHtml(activeProduct.series_name || '未设置系列')} · 已选中，不会因生成配置组而切换</small></div>
+        <button class="mc-button" type="button" data-product-locate>定位</button>
+      </section>` : '';
+    list.innerHTML = `${lockedProduct}${products.length
       ? products.map(product => {
         const rawImage = String(product.image_url || '');
         const imageUrl = !rawImage || rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('/')
@@ -209,7 +223,7 @@
           </button>
         </article>`;
       }).join('')
-      : '<div class="mc-empty-state"><strong>没有符合筛选的产品</strong><span>调整配置状态或搜索条件。</span></div>';
+      : '<div class="mc-empty-state"><strong>没有符合筛选的产品</strong><span>调整配置状态或搜索条件。</span></div>'}`;
     qa('[data-product-image]', list).forEach(image => image.addEventListener('error', () => {
       const placeholder = document.createElement('span');
       placeholder.className = 'mc-product-thumb__placeholder';
@@ -217,6 +231,7 @@
       image.replaceWith(placeholder);
     }, { once: true }));
     renderProductSelection();
+    focusSelectedProduct('auto');
   };
 
   const statusLabels = {
@@ -635,6 +650,83 @@
     renderCandidateDiscovery();
   };
 
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const applyWorkspaceWidths = widths => {
+    const productWidth = integer(widths?.products);
+    const groupWidth = integer(widths?.groups);
+    if (productWidth) page.style.setProperty('--mc-adaptation-products-width', `${productWidth}px`);
+    if (groupWidth) page.style.setProperty('--mc-adaptation-groups-width', `${groupWidth}px`);
+  };
+
+  const saveWorkspaceWidths = widths => {
+    try {
+      localStorage.setItem(workspaceWidthStorageKey, JSON.stringify(widths));
+    } catch {
+      // 宽度只影响当前浏览器体验，无法保存时仍可正常拖动。
+    }
+  };
+
+  const setupWorkspaceResizers = () => {
+    const workspace = q('.mc-adaptation-workspace');
+    if (!workspace) return;
+    try {
+      applyWorkspaceWidths(JSON.parse(localStorage.getItem(workspaceWidthStorageKey) || '{}'));
+    } catch {
+      // 旧格式或异常存储直接使用页面默认宽度。
+    }
+    qa('[data-adaptation-resize]', workspace).forEach(handle => {
+      handle.addEventListener('pointerdown', event => {
+        if (window.matchMedia('(max-width: 900px)').matches) return;
+        event.preventDefault();
+        const bounds = workspace.getBoundingClientRect();
+        const style = getComputedStyle(page);
+        const startProducts = Number.parseFloat(style.getPropertyValue('--mc-adaptation-products-width')) || 310;
+        const startGroups = Number.parseFloat(style.getPropertyValue('--mc-adaptation-groups-width')) || 350;
+        const startX = event.clientX;
+        const minimumMiddle = 430;
+        const gutters = 20;
+        page.classList.add('is-resizing-workspace');
+        const move = moveEvent => {
+          const delta = moveEvent.clientX - startX;
+          const next = { products: startProducts, groups: startGroups };
+          if (handle.dataset.adaptationResize === 'products') {
+            next.products = clamp(startProducts + delta, 240, Math.max(240, bounds.width - startGroups - minimumMiddle - gutters));
+          } else {
+            next.groups = clamp(startGroups - delta, 280, Math.max(280, bounds.width - startProducts - minimumMiddle - gutters));
+          }
+          applyWorkspaceWidths(next);
+        };
+        const stop = () => {
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', stop);
+          page.classList.remove('is-resizing-workspace');
+          const styleAfter = getComputedStyle(page);
+          saveWorkspaceWidths({
+            products: Math.round(Number.parseFloat(styleAfter.getPropertyValue('--mc-adaptation-products-width')) || startProducts),
+            groups: Math.round(Number.parseFloat(styleAfter.getPropertyValue('--mc-adaptation-groups-width')) || startGroups),
+          });
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', stop, { once: true });
+      });
+      handle.addEventListener('keydown', event => {
+        const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+        if (!direction || window.matchMedia('(max-width: 900px)').matches) return;
+        event.preventDefault();
+        const style = getComputedStyle(page);
+        const products = Number.parseFloat(style.getPropertyValue('--mc-adaptation-products-width')) || 310;
+        const groups = Number.parseFloat(style.getPropertyValue('--mc-adaptation-groups-width')) || 350;
+        const step = event.shiftKey ? 40 : 16;
+        const next = handle.dataset.adaptationResize === 'products'
+          ? { products: clamp(products + direction * step, 240, 520), groups }
+          : { products, groups: clamp(groups - direction * step, 280, 520) };
+        applyWorkspaceWidths(next);
+        saveWorkspaceWidths(next);
+      });
+    });
+  };
+
   const formatExpected = value => Array.isArray(value) ? value.join(' ～ ') : String(value ?? '');
 
   const updateTemplateSelection = () => {
@@ -1033,6 +1125,21 @@
   };
 
   page.addEventListener('click', async event => {
+    if (event.target.closest('[data-product-locate]')) {
+      const product = state.workspace?.product;
+      if (!product) return;
+      const search = q('[data-product-search] input[name="q"]');
+      if (search) search.value = product.product_code || '';
+      state.productStatusFilter = 'all';
+      try {
+        state.products = await get('products', { q: product.product_code || '' });
+        renderProducts();
+        focusSelectedProduct();
+      } catch (error) {
+        notify('定位当前产品失败', error.message);
+      }
+      return;
+    }
     const productButton = event.target.closest('[data-product-id]');
     if (productButton) {
       try {
@@ -1814,6 +1921,7 @@
   });
 
   populateGroupFormTypes();
+  setupWorkspaceResizers();
   render();
   if (hasCandidateDiscoveryRules(selectedGroup())) {
     loadCandidateDiscovery().catch(error => notify('候选物料暂未加载', error.message));

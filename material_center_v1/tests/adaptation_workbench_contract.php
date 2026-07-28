@@ -23,7 +23,7 @@ foreach(["m.status='official'","m.is_official=1",'必选组尚未添加选项','
 foreach(['powerCompatibilityReasons','comparePower','功率超出产品允许范围','输出电流高于芯片允许值或范围不相交','输出电压范围不匹配','超过灯体内部空间','supplier_warranty_years','调光方式不匹配','certification_required']as$marker){
     if(!str_contains($service,$marker))throw new RuntimeException("power adaptation check missing: {$marker}");
 }
-foreach(['Start with a real product catalogue','grid-template-columns:repeat(auto-fill,minmax(305px,1fr))','mc-product-row{min-height:94px','mc-page--adaptation-v2 .mc-adaptation-workspace{grid-template-columns:250px minmax(620px,1fr) minmax(310px,360px)}'] as $marker){
+foreach(['Start with a real product catalogue','grid-template-columns:repeat(auto-fill,minmax(305px,1fr))','mc-product-row{min-height:94px','mc-page--adaptation-v2:not([data-stage="products"]) .mc-adaptation-workspace{grid-template-columns:var(--mc-adaptation-products-width) 10px minmax(0,1fr) 10px var(--mc-adaptation-groups-width);gap:0}'] as $marker){
     if(!str_contains($css,$marker))throw new RuntimeException("adaptation progressive layout marker missing: {$marker}");
 }
 echo "Product adaptation three-column workflow contract: OK\n";

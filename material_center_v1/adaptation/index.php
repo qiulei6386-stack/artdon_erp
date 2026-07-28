@@ -71,6 +71,7 @@ include MC_ROOT.'/components/layout_top.php';
             </div>
             <div class="mc-adaptation-products__list" data-product-list></div>
         </aside>
+        <div class="mc-adaptation-splitter" data-adaptation-resize="products" role="separator" aria-label="调整产品列表宽度" aria-orientation="vertical" tabindex="0"></div>
 
         <section class="mc-adaptation-column mc-adaptation-options">
             <div class="mc-adaptation-column__head">
@@ -94,6 +95,7 @@ include MC_ROOT.'/components/layout_top.php';
             <section class="mc-candidate-discovery" data-candidate-discovery hidden></section>
             <div class="mc-adaptation-detail" data-option-detail></div>
         </section>
+        <div class="mc-adaptation-splitter" data-adaptation-resize="groups" role="separator" aria-label="调整配置组工作区宽度" aria-orientation="vertical" tabindex="0"></div>
 
         <aside class="mc-adaptation-column mc-adaptation-rules">
             <div class="mc-adaptation-column__head">

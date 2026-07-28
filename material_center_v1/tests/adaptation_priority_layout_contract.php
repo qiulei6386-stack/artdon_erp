@@ -24,7 +24,7 @@ foreach ([
     }
 }
 foreach ([
-    '.mc-page--adaptation-v2 .mc-adaptation-workspace{grid-template-columns:250px minmax(620px,1fr) minmax(310px,360px)}',
+    '.mc-page--adaptation-v2:not([data-stage="products"]) .mc-adaptation-workspace{grid-template-columns:var(--mc-adaptation-products-width) 10px minmax(0,1fr) 10px var(--mc-adaptation-groups-width);gap:0}',
     '.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list{grid-template-columns:1fr}',
     '.mc-candidate-discovery__head',
 ] as $marker) {
