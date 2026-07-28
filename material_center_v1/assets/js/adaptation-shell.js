@@ -274,6 +274,31 @@
     </article>`;
   };
 
+  const configuredMaterialText = group => {
+    const defaults = (group.options || []).filter(option => integer(option.is_default));
+    const visible = defaults.length ? defaults : (group.options || []);
+    return visible.length
+      ? visible.map(option => `${option.material_code}${option.chip_variants?.length ? `（${option.chip_variants.map(variant => variant.label).join('、')}）` : ''}`).join('、')
+      : '未添加物料';
+  };
+
+  const renderPersistentConfiguration = () => {
+    const target = q('[data-selected-configuration]');
+    const workspace = state.workspace;
+    if (!workspace?.configuration_overview?.length) {
+      target.hidden = true;
+      target.innerHTML = '';
+      return;
+    }
+    const activeId = integer(workspace.active_group?.id);
+    target.hidden = false;
+    target.innerHTML = `<div class="mc-selected-configuration__head"><div><strong>已选物料持续显示</strong><span>切换配置组不会丢失；点击任一项可直接返回编辑。</span></div><button type="button" data-configuration-overview-open>完整清单</button></div>
+      <div class="mc-selected-configuration__list">${workspace.configuration_overview.map(group => `<button type="button" class="${integer(group.id) === activeId ? 'is-active' : ''}" data-select-group="${integer(group.id)}">
+        <span><strong>${escapeHtml(group.name)}</strong><small>${escapeHtml(configuredMaterialText(group))}</small></span>
+        <em>${escapeHtml(overviewStatusLabel(group.status))}</em>
+      </button>`).join('')}</div>`;
+  };
+
   const renderConfigurationOverview = () => {
     const root = q('[data-configuration-overview]');
     const overview = state.workspace?.configuration_overview || [];
@@ -306,7 +331,7 @@
     q('[data-template-open]').disabled = !workspace;
     q('[data-batch-open]').disabled = !workspace?.groups?.length;
     q('[data-reuse-open]').disabled = !workspace;
-    q('[data-template-open]').textContent = workspace?.groups?.length ? '重新套用配置模板' : '生成标准配置';
+    q('[data-template-open]').textContent = workspace?.groups?.length ? '补齐完整标准模板' : '套用完整标准模板';
     renderProductSelection();
     if (!workspace) {
       list.innerHTML = '<div class="mc-empty-state"><strong>请选择产品</strong><span>从左侧产品列表开始。</span></div>';
@@ -314,16 +339,17 @@
     }
     if (!workspace.groups.length) {
       list.innerHTML = `<div class="mc-empty-state mc-empty-state--action">
-        <strong>当前产品尚未建立配置规则</strong>
-        <span>先生成标准配置，再逐组添加正式物料、默认项和适用条件。</span>
-        <button class="mc-button mc-button--primary" type="button" data-empty-template>生成标准配置</button>
+        <strong>当前产品尚未建立完整选配结构</strong>
+        <span>一键建立全部 10 个标准配置组，再逐组添加正式物料、默认项和适用条件。</span>
+        <button class="mc-button mc-button--primary" type="button" data-empty-template>套用完整标准模板</button>
       </div>`;
       return;
     }
     const activeId = integer(workspace.active_group?.id);
     list.innerHTML = workspace.groups.map(group => {
       const status = statusLabels[group.display_status] || statusLabels.pending;
-      const ruleCount = quickRuleCount(group);
+      const powerRule = group.material_category_code === 'power_supply' ? (workspace.power_rule || {}) : null;
+      const ruleCount = powerRule ? Object.entries(powerRule).filter(([key, value]) => !['id', 'legacy_product_id', 'rule_name', 'status', 'created_at', 'updated_at', 'created_by', 'updated_by', 'required_dimming_modes'].includes(key) && value !== '' && value !== null && value !== 'unknown').length + integer(powerRule.required_dimming_modes?.length) : quickRuleCount(group);
       const ruleLabel = group.quick_rules?.availability === 'forbidden'
         ? '不允许选配'
         : (ruleCount ? `已填写 ${ruleCount} 项` : '待填写');
@@ -360,6 +386,7 @@
     const workspace = state.workspace;
     const group = selectedGroup();
     const detail = q('[data-option-detail]');
+    renderPersistentConfiguration();
     q('[data-option-tabs]').hidden = !group;
     q('[data-candidate-open]').disabled = !group;
     q('[data-open-quick-rules]').disabled = !group;
@@ -401,10 +428,23 @@
       const fields = state.metadata.quick_rule_fields?.[group.business_type] || [];
       const rules = group.quick_rules || {};
       const isPower = group.material_category_code === 'power_supply';
+      if (isPower) {
+        const powerRule = workspace.power_rule || {};
+        const fields = state.metadata.power_rule_fields || [];
+        const dimmingModes = powerRule.required_dimming_modes || [];
+        detail.innerHTML = `<form class="mc-quick-rule-panel" data-power-rule-form>
+          <div class="mc-quick-rule-intro"><div><strong>电源 / 驱动关键范围</strong><span>此处就是该产品的电源筛选规则：保存后，候选电源会立即按功率、电流、电压、空间、调光和认证重新判断。</span></div></div>
+          <div class="mc-quick-rule-grid">${fields.map(field => `<label class="mc-field"><span>${escapeHtml(field.label)}${field.unit ? `（${escapeHtml(field.unit)}）` : ''}</span>${field.type === 'select'
+            ? `<select name="${escapeHtml(field.key)}">${Object.entries(field.options || {}).map(([value, label]) => `<option value="${escapeHtml(value)}" ${String(powerRule[field.key] ?? (value === 'unknown' ? 'unknown' : '')) === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>`
+            : `<input type="${field.type === 'number' ? 'number' : 'text'}" ${field.type === 'number' ? 'min="0" step="0.01"' : ''} name="${escapeHtml(field.key)}" value="${escapeHtml(powerRule[field.key] ?? '')}" placeholder="${escapeHtml(field.placeholder || '留空表示待确认')}">`}</label>`).join('')}</div>
+          <fieldset class="mc-power-dimming"><legend>要求支持的调光方式（可多选）</legend>${['0-10V', 'DALI', 'TRIAC', 'PWM', 'On/Off'].map(mode => `<label><input type="checkbox" name="dimming_mode" value="${mode}" ${dimmingModes.includes(mode) ? 'checked' : ''}>${mode}</label>`).join('')}</fieldset>
+          <button class="mc-button mc-button--primary" type="submit">保存电源关键范围</button>
+        </form>`;
+        return;
+      }
       detail.innerHTML = `<form class="mc-quick-rule-panel" data-quick-rule-form>
         <div class="mc-quick-rule-intro">
           <div><strong>填写关键范围，自动筛选候选物料</strong><span>空着表示待确认；资料不完整时系统只会标为“需要审批”，不会假装适配。</span></div>
-          ${isPower ? `<a class="mc-button" href="${escapeHtml(state.baseUrl)}/product_power_rules.php">打开产品电源规则</a>` : ''}
         </div>
         <label class="mc-field mc-quick-rule-availability">
           <span>这个产品是否允许使用“${escapeHtml(group.group_name)}”</span>
@@ -414,7 +454,7 @@
           </select>
           ${integer(group.is_required) ? '<small>这是必选组；如需禁止，请先把配置组改为可选。</small>' : ''}
         </label>
-        ${isPower ? '<div class="mc-empty-state mc-empty-state--compact"><strong>电源范围使用现有专用规则</strong><span>设置外置 / 内置、功率、电流、电压、空间、调光和质保后，候选电源会自动过滤；批量套用时可一并复制。</span></div>' : fields.length ? `<div class="mc-quick-rule-grid">${fields.map(field => `<label class="mc-field">
+        ${fields.length ? `<div class="mc-quick-rule-grid">${fields.map(field => `<label class="mc-field">
           <span>${escapeHtml(field.label)}${field.unit ? `（${escapeHtml(field.unit)}）` : ''}</span>
           ${field.type === 'select'
             ? `<select name="${escapeHtml(field.key)}"><option value="">待确认</option>${Object.entries(field.options || {}).map(([value, label]) => `<option value="${escapeHtml(value)}" ${rules[field.key] === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select>`
@@ -1420,6 +1460,28 @@
   });
 
   page.addEventListener('submit', async event => {
+    const powerRuleForm = event.target.closest('[data-power-rule-form]');
+    if (powerRuleForm) {
+      event.preventDefault();
+      const button = event.submitter;
+      button.disabled = true;
+      const rules = Object.fromEntries(new FormData(powerRuleForm));
+      rules.dimming_modes = qa('[name="dimming_mode"]:checked', powerRuleForm).map(input => input.value);
+      try {
+        const result = await post('save_power_rules', { group_id: selectedGroup().id, rules });
+        await refreshWorkspace();
+        state.tab = 'quick_rules';
+        renderOptionPanel();
+        const followup = integer(result.incompatible)
+          ? `；有 ${integer(result.incompatible)} 个已有电源不再适配，请处理后再审批`
+          : integer(result.needs_review) ? `；有 ${integer(result.needs_review)} 个电源资料不足，需要审批确认` : '';
+        notify('电源关键范围已保存', `候选电源会立即按新范围筛选${followup}。`);
+      } catch (error) {
+        notify('保存失败', error.message);
+        button.disabled = false;
+      }
+      return;
+    }
     const quickRuleForm = event.target.closest('[data-quick-rule-form]');
     if (quickRuleForm) {
       event.preventDefault();

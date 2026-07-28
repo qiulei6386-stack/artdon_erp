@@ -34,7 +34,7 @@ include MC_ROOT.'/components/layout_top.php';
             <button class="mc-button" type="button" data-sync-products>同步产品</button>
             <button class="mc-button" type="button" data-reuse-open disabled>套用现有配置</button>
             <button class="mc-button" type="button" data-batch-open disabled>批量套用</button>
-            <button class="mc-button mc-button--primary" type="button" data-template-open disabled>生成标准配置</button>
+            <button class="mc-button mc-button--primary" type="button" data-template-open disabled>套用完整标准模板</button>
         </div>
     </header>
 
@@ -92,6 +92,7 @@ include MC_ROOT.'/components/layout_top.php';
                     <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
                 </div>
             </div>
+            <section class="mc-selected-configuration" data-selected-configuration hidden></section>
             <div class="mc-option-tabs" role="tablist" data-option-tabs hidden>
                 <button type="button" class="is-active" data-adaptation-tab="options">选项列表</button>
                 <button type="button" data-adaptation-tab="quick_rules">关键范围（快速规则）</button>
@@ -108,13 +109,13 @@ include MC_ROOT.'/components/layout_top.php';
     <div class="mc-modal" id="template-modal" data-adaptation-modal>
         <form class="mc-modal__panel mc-modal__panel--medium" data-template-form>
             <div class="mc-modal__header">
-                <div><strong>生成标准配置</strong><span>确认后一次生成；重新套用时只补齐缺失组，不重复插入。</span></div>
+                <div><strong>完整标准配置模板</strong><span>默认勾选全部标准组；确认后补齐缺失组，不重复插入已有配置。</span></div>
                 <button type="button" class="mc-icon-button" data-modal-close>×</button>
             </div>
             <div class="mc-modal__body">
                 <div class="mc-template-target" data-template-target></div>
                 <div class="mc-template-toolbar">
-                    <span>勾选本次需要的配置组：</span>
+                    <span>默认建立完整选配结构；如有特殊产品再取消不需要的组：</span>
                     <button class="mc-button" type="button" data-template-select-all>全选</button>
                     <button class="mc-button" type="button" data-template-select-core>仅必选核心</button>
                     <button class="mc-button" type="button" data-template-clear>清空</button>

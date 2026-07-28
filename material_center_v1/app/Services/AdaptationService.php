@@ -124,6 +124,21 @@ final class AdaptationService
         ],
     ];
 
+    private const POWER_RULE_FIELDS = [
+        ['key' => 'installation_type', 'label' => '安装方式', 'type' => 'select', 'options' => ['unknown' => '待确认', 'internal' => '内置', 'external' => '外置']],
+        ['key' => 'output_type', 'label' => '输出类型', 'type' => 'select', 'options' => ['unknown' => '待确认', 'constant_current' => '恒流', 'constant_voltage' => '恒压']],
+        ['key' => 'lamp_power_w', 'label' => '灯具功率', 'type' => 'number', 'unit' => 'W'],
+        ['key' => 'output_current_min_ma', 'label' => '输出电流下限', 'type' => 'number', 'unit' => 'mA'],
+        ['key' => 'output_current_max_ma', 'label' => '输出电流上限', 'type' => 'number', 'unit' => 'mA'],
+        ['key' => 'output_voltage_min_v', 'label' => '输出电压下限', 'type' => 'number', 'unit' => 'V'],
+        ['key' => 'output_voltage_max_v', 'label' => '输出电压上限', 'type' => 'number', 'unit' => 'V'],
+        ['key' => 'max_length_mm', 'label' => '最大长度', 'type' => 'number', 'unit' => 'mm'],
+        ['key' => 'max_width_mm', 'label' => '最大宽度', 'type' => 'number', 'unit' => 'mm'],
+        ['key' => 'max_height_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm'],
+        ['key' => 'minimum_warranty_years', 'label' => '最低供应商质保', 'type' => 'number', 'unit' => '年'],
+        ['key' => 'certification_required', 'label' => '必须认证', 'type' => 'text', 'placeholder' => '例如 CE / ENEC'],
+    ];
+
     public function __construct(private ?PDO $db = null)
     {
         $this->db ??= \db();
@@ -136,6 +151,7 @@ final class AdaptationService
             'condition_fields' => self::CONDITION_FIELDS,
             'condition_operators' => self::CONDITION_OPERATORS,
             'quick_rule_fields' => self::QUICK_RULE_FIELDS,
+            'power_rule_fields' => self::POWER_RULE_FIELDS,
             'template' => $this->templatePreview(),
         ];
     }
@@ -342,6 +358,7 @@ final class AdaptationService
             'approval' => $this->latestApproval($productId),
             'completion' => $completion,
             'configuration_overview' => $this->configurationOverview($productId),
+            'power_rule' => $this->productPowerRule((int) ($product['legacy_id'] ?? 0)),
         ];
     }
 
@@ -733,6 +750,68 @@ final class AdaptationService
             ], $userId);
             $this->db->commit();
             return ['saved' => count($normalized) - 1, 'needs_review' => $review, 'incompatible' => $incompatible];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Save the product-level power envelope from the power group itself. */
+    public function savePowerRules(int $groupId, array $rules, int $userId): array
+    {
+        $stmt = $this->db->prepare('SELECT g.*,p.legacy_id FROM mc_adaptation_groups g JOIN mc_products p ON p.id=g.product_id WHERE g.id=?');
+        $stmt->execute([$groupId]);
+        $group = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$group) throw new RuntimeException('配置组不存在。');
+        if (($group['material_category_code'] ?? '') !== 'power_supply') throw new RuntimeException('只有电源 / 驱动配置组可以保存电源关键范围。');
+
+        $normalized = [
+            'legacy_product_id' => (int) $group['legacy_id'],
+            'rule_name' => trim((string) ($rules['rule_name'] ?? '')) ?: ((string) $group['group_name'].'关键范围'),
+            'installation_type' => (string) ($rules['installation_type'] ?? 'unknown'),
+            'output_type' => (string) ($rules['output_type'] ?? 'unknown'),
+            'certification_required' => mb_substr(trim((string) ($rules['certification_required'] ?? '')), 0, 160),
+            'dimming_modes' => array_values(array_unique(array_filter(array_map('trim', (array) ($rules['dimming_modes'] ?? []))))),
+        ];
+        foreach (self::POWER_RULE_FIELDS as $definition) {
+            if (($definition['type'] ?? '') !== 'number') continue;
+            $key = (string) $definition['key'];
+            $value = $rules[$key] ?? '';
+            if ($value === '' || $value === null) {
+                $normalized[$key] = null;
+                continue;
+            }
+            if (!is_numeric($value) || (float) $value < 0) throw new RuntimeException($definition['label'].'必须是大于等于 0 的数字。');
+            $normalized[$key] = (float) $value;
+        }
+        foreach ([
+            ['output_current_min_ma', 'output_current_max_ma', '输出电流'],
+            ['output_voltage_min_v', 'output_voltage_max_v', '输出电压'],
+        ] as [$minKey, $maxKey, $label]) {
+            if ($normalized[$minKey] !== null && $normalized[$maxKey] !== null && $normalized[$minKey] > $normalized[$maxKey]) {
+                throw new RuntimeException($label.'下限不能大于上限。');
+            }
+        }
+
+        $ruleId = (new ProductPowerRuleService($this->db))->save($normalized, $userId);
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare("UPDATE mc_adaptation_groups SET status='draft',is_enabled=0,updated_by=?,updated_at=NOW() WHERE id=?")
+                ->execute([$userId, $groupId]);
+            $this->markProductDraft((int) $group['product_id']);
+            $review = 0;
+            $incompatible = 0;
+            foreach ($this->options($groupId) as $option) {
+                $candidate = $this->candidateMaterials($groupId, ['status' => 'all', 'material_id' => (int) $option['material_id']])[0] ?? null;
+                if (!$candidate) continue;
+                $this->db->prepare("UPDATE mc_adaptation_options SET match_level=?,match_reason_json=?,requires_approval=?,exception_approved=0,status='draft' WHERE id=?")
+                    ->execute([$candidate['match_level'], json_encode($candidate['conflict_reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $candidate['requires_approval'] ? 1 : 0, $option['id']]);
+                if ($candidate['match_level'] === 'needs_approval') $review++;
+                if ($candidate['match_level'] === 'incompatible') $incompatible++;
+            }
+            $this->log((int) $group['product_id'], 'save_power_rules_from_adaptation', ['group_id' => $groupId, 'rule_id' => $ruleId, 'rules' => $normalized], $userId);
+            $this->db->commit();
+            return ['saved' => $ruleId, 'needs_review' => $review, 'incompatible' => $incompatible];
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;

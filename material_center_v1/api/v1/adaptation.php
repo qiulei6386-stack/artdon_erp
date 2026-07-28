@@ -56,6 +56,7 @@ try {
         ),
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
         'save_quick_rules' => $service->saveQuickRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
+        'save_power_rules' => $service->savePowerRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'delete_group' => (static function () use ($service, $user): array {
             $service->deleteGroup((int) ($_POST['group_id'] ?? 0), $user->id);
             return [];
