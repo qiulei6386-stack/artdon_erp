@@ -16,7 +16,7 @@ final class PowerEditorService
     private const OUTPUT_TYPES = ['unknown', 'constant_current', 'constant_voltage'];
     private const DIMMING_MODES = ['none', 'dali', 'dali_2', 'triac', '0_10v', '1_10v', 'push', 'dmx', 'nfc'];
     private const SCALAR_FIELDS = [
-        'nominal_power_w', 'max_output_power_w', 'power_band_id',
+        'nominal_power_w', 'min_output_power_w', 'max_output_power_w', 'power_band_id',
         'input_voltage_min_v', 'input_voltage_max_v',
         'input_frequency_min_hz', 'input_frequency_max_hz',
         'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
@@ -407,6 +407,11 @@ final class PowerEditorService
         if (array_key_exists('purchase_price', $fields) && !$user->isSuperAdmin && !$this->canEditSensitive($user)) {
             throw new RuntimeException('没有修改采购价的权限。', 403);
         }
+        $minimum = $fields['min_output_power_w'] ?? null;
+        $maximum = $fields['max_output_power_w'] ?? null;
+        if ($minimum !== null && $maximum !== null && $minimum > $maximum) {
+            throw new RuntimeException('电源最低输出功率不能高于最高输出功率。');
+        }
         return $fields;
     }
 
@@ -578,6 +583,16 @@ final class PowerEditorService
     {
         if (!$fields) {
             return;
+        }
+        if (array_key_exists('min_output_power_w', $fields) || array_key_exists('max_output_power_w', $fields)) {
+            $range = $this->db->prepare('SELECT min_output_power_w,max_output_power_w FROM mc_power_supply_specs WHERE material_id=?');
+            $range->execute([$materialId]);
+            $existing = $range->fetch(PDO::FETCH_ASSOC) ?: [];
+            $minimum = $fields['min_output_power_w'] ?? $existing['min_output_power_w'] ?? null;
+            $maximum = $fields['max_output_power_w'] ?? $existing['max_output_power_w'] ?? null;
+            if ($minimum !== null && $maximum !== null && (float)$minimum > (float)$maximum) {
+                throw new RuntimeException('电源最低输出功率不能高于最高输出功率。');
+            }
         }
         $sets = [];
         $values = [];

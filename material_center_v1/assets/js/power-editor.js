@@ -231,7 +231,7 @@
     const basic = ['material_id', 'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary', 'supplier_text', 'remark'];
     basic.forEach(key => setSelect(key, data[key]));
     const scalar = [
-      'nominal_power_w', 'max_output_power_w', 'power_band_id',
+      'nominal_power_w', 'min_output_power_w', 'max_output_power_w', 'power_band_id',
       'input_voltage_min_v', 'input_voltage_max_v', 'input_frequency_min_hz', 'input_frequency_max_hz',
       'power_factor', 'efficiency', 'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
       'installation_type', 'length_mm', 'width_mm', 'height_mm', 'ip_rating',
@@ -339,7 +339,7 @@
     setSelect('installation_type', 'unknown');
     setSelect('output_type', 'unknown');
     [
-      'nominal_power_w', 'max_output_power_w', 'power_band_id',
+      'nominal_power_w', 'min_output_power_w', 'max_output_power_w', 'power_band_id',
       'input_voltage_min_v', 'input_voltage_max_v', 'input_frequency_min_hz', 'input_frequency_max_hz',
       'power_factor', 'efficiency', 'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
       'installation_type', 'length_mm', 'width_mm', 'height_mm', 'supplier_warranty_years',
@@ -373,7 +373,7 @@
     const payload = {};
     const names = [
       'lock_version', 'name', 'brand', 'model', 'unit', 'spec_summary', 'supplier_text', 'remark',
-      'nominal_power_w', 'max_output_power_w', 'power_band_id',
+      'nominal_power_w', 'min_output_power_w', 'max_output_power_w', 'power_band_id',
       'input_voltage_min_v', 'input_voltage_max_v', 'input_frequency_min_hz', 'input_frequency_max_hz',
       'power_factor', 'efficiency', 'output_type', 'output_voltage_min_v', 'output_voltage_max_v',
       'installation_type', 'length_mm', 'width_mm', 'height_mm', 'ip_rating',
@@ -493,6 +493,7 @@
     { key: 'dimming_modes', label: '调光方式', help: '可多选；不调光不能与其他方式并存', type: 'choices', options: schema.dimming_modes.map(item => [item.value, item.label]) },
     { key: 'supplier_warranty_years', label: '供应商质保', help: '单位年；常用 3 或 5，也可填写其他年限', type: 'number' },
     { key: 'nominal_power_w', label: '额定功率', help: '单位 W', type: 'number' },
+    { key: 'min_output_power_w', label: '最低输出功率', help: '单位 W', type: 'number' },
     { key: 'max_output_power_w', label: '最大输出功率', help: '单位 W', type: 'number' },
     { key: 'ip_rating', label: '防护等级', help: '如 IP20、IP65', type: 'text', placeholder: 'IP20' },
     { key: 'certification', label: '认证', help: '如 CE、ENEC、UL', type: 'text', placeholder: 'CE, ENEC' },

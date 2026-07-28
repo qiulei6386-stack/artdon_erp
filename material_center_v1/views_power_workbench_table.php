@@ -11,7 +11,9 @@
       $spec=(string)($r['raw_spec']??$r['spec']??'');
       $statusCode=(string)($r['mapping_status']??$r['status']??'pending');
       $statusLabel=['pending'=>'待整理','parsed'=>'待确认','needs_review'=>'待确认','duplicate_candidate'=>'异常','confirmed'=>'待确认','imported'=>'正式','official'=>'正式','draft'=>'待确认','pending_review'=>'待确认','disabled'=>'停用','archived'=>'归档','rejected'=>'异常'][$statusCode]??($isSource?'待整理':'正式');
-      $power=$r['max_output_power_w']??$r['nominal_power_w']??'';
+      $powerMin=$r['min_output_power_w']??null;
+      $powerMax=$r['max_output_power_w']??$r['nominal_power_w']??'';
+      $power=$powerMin!==null&&$powerMax!==''?(string)$powerMin.'–'.(string)$powerMax:$powerMax;
       $installation=['internal'=>'内置','external'=>'外置','remote'=>'远置','integrated'=>'一体式','unknown'=>'待确认'][$r['installation_type']??'unknown']??'待确认';
       $warranty=$r['supplier_warranty_years']??'';
       $code=$isSource?'BOM #'.$id:(string)($r['material_code']??'#'.$id);

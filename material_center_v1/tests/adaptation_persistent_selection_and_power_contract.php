@@ -6,7 +6,9 @@ $page = file_get_contents($root.'/adaptation/index.php');
 $script = file_get_contents($root.'/assets/js/adaptation-shell.js');
 $service = file_get_contents($root.'/app/Services/AdaptationService.php');
 $powerService = file_get_contents($root.'/app/Services/ProductPowerRuleService.php');
+$powerEditor = file_get_contents($root.'/app/Services/PowerEditorService.php');
 $migration = file_get_contents($root.'/database/migrations/20260728_020_adaptation_power_range.php');
+$materialMigration = file_get_contents($root.'/database/migrations/20260728_021_power_output_range.php');
 $api = file_get_contents($root.'/api/v1/adaptation.php');
 
 foreach ([
@@ -46,6 +48,12 @@ foreach (['lamp_power_min_w DECIMAL', 'lamp_power_max_w DECIMAL'] as $marker) {
 }
 foreach (['lamp_power_min_w', 'lamp_power_max_w'] as $marker) {
     if (!str_contains($powerService, $marker)) throw new RuntimeException("power rule persistence missing: {$marker}");
+}
+foreach (['min_output_power_w', '最低输出功率不能高于最高输出功率'] as $marker) {
+    if (!str_contains($powerEditor, $marker)) throw new RuntimeException("power material range handling missing: {$marker}");
+}
+foreach (['min_output_power_w DECIMAL', 'power.min_output_power_w'] as $marker) {
+    if (!str_contains($materialMigration, $marker)) throw new RuntimeException("power material range migration missing: {$marker}");
 }
 
 echo "Product adaptation persistent selection and inline power contract: OK\n";

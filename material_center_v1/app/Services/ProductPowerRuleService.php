@@ -31,6 +31,8 @@ final class ProductPowerRuleService
         foreach($this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC)as$p){$reasons=[];$ok=true;
             foreach(['installation_type'=>'安装方式','output_type'=>'输出类型']as$k=>$label)if($r[$k]!=='unknown'&&$p[$k]!==$r[$k]){$ok=false;$reasons[]=$label.'不符';}
             $lampPowerMax=$r['lamp_power_max_w']??$r['lamp_power_w'];
+            $lampPowerMin=$r['lamp_power_min_w']??null;
+            if($lampPowerMin!==null&&($p['min_output_power_w']===null||(float)$p['min_output_power_w']>(float)$lampPowerMin)){$ok=false;$reasons[]='最低功率范围不符';}
             if($lampPowerMax!==null&&($p['max_output_power_w']===null||(float)$p['max_output_power_w']<(float)$lampPowerMax)){$ok=false;$reasons[]='最高功率不足';}
             if($r['minimum_warranty_years']!==null&&($p['supplier_warranty_years']===null||(float)$p['supplier_warranty_years']<(float)$r['minimum_warranty_years'])){$ok=false;$reasons[]='供应商质保不足';}
             foreach(['length','width','height']as$d)if($r['max_'.$d.'_mm']!==null&&($p[$d.'_mm']===null||(float)$p[$d.'_mm']>(float)$r['max_'.$d.'_mm'])){$ok=false;$reasons[]='尺寸超限';break;}

@@ -136,6 +136,7 @@ if($mcCategoryDrawer){
   </div></section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>功率与输入</strong><span>功率档按系统边界自动校验</span></div></div><div class="mc-form-grid">
    <label class="mc-field"><span>额定功率（W）</span><input type="number" step="0.01" min="0" name="nominal_power_w"></label>
+   <label class="mc-field"><span>最低输出功率（W）</span><input type="number" step="0.01" min="0" name="min_output_power_w"></label>
    <label class="mc-field"><span>最大输出功率（W）</span><input type="number" step="0.01" min="0" name="max_output_power_w"></label>
    <label class="mc-field mc-field--wide"><span>功率档</span><select name="power_band_id" data-power-band></select></label>
    <label class="mc-field"><span>输入电压最小（V）</span><input type="number" step="0.01" min="0" name="input_voltage_min_v"></label>

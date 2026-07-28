@@ -34,7 +34,7 @@ final class PowerWorkbenchService
 
     public function formal(string $tab,string $search=''):array
     {
-        $sql="SELECT m.id,m.material_code,m.name,m.brand,m.model,m.source,m.status,m.updated_at,p.installation_type,p.output_type,p.nominal_power_w,p.max_output_power_w,p.output_current_ma,p.output_voltage_min_v,p.output_voltage_max_v,p.supplier_warranty_years,b.name power_band,(SELECT GROUP_CONCAT(mode ORDER BY is_primary DESC) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id LEFT JOIN mc_power_bands b ON b.id=p.power_band_id WHERE m.deleted_at IS NULL";
+        $sql="SELECT m.id,m.material_code,m.name,m.brand,m.model,m.source,m.status,m.updated_at,p.installation_type,p.output_type,p.nominal_power_w,p.min_output_power_w,p.max_output_power_w,p.output_current_ma,p.output_voltage_min_v,p.output_voltage_max_v,p.supplier_warranty_years,b.name power_band,(SELECT GROUP_CONCAT(mode ORDER BY is_primary DESC) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id LEFT JOIN mc_power_bands b ON b.id=p.power_band_id WHERE m.deleted_at IS NULL";
         $params=[];if($tab==='formal')$sql.=" AND m.status IN('official','draft','pending_review')";if($tab==='archived')$sql.=" AND m.status IN('disabled','archived')";if($search!==''){$sql.=" AND (m.material_code LIKE ? OR m.name LIKE ? OR m.brand LIKE ? OR m.model LIKE ?)";$v='%'.$search.'%';$params=[$v,$v,$v,$v];}$sql.=" ORDER BY m.updated_at DESC";
         $stmt=$this->db->prepare($sql);$stmt->execute($params);return$stmt->fetchAll(PDO::FETCH_ASSOC);
     }

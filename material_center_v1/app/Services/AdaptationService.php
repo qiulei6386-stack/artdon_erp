@@ -1029,7 +1029,7 @@ final class AdaptationService
         $category = (string) ($group['material_category_code'] ?? '');
         if ($category === '') return [];
         $sql = "SELECT m.id,m.material_code,m.name,m.brand,m.model,m.status,m.is_official,c.code category_code,
-            ps.installation_type,ps.output_type,ps.nominal_power_w,ps.max_output_power_w,
+            ps.installation_type,ps.output_type,ps.nominal_power_w,ps.min_output_power_w,ps.max_output_power_w,
             ps.output_current_ma,ps.output_current_min_ma,ps.output_current_max_ma,
             ps.output_voltage_min_v,ps.output_voltage_max_v,ps.length_mm,ps.width_mm,ps.height_mm,
             ps.supplier_warranty_years,ps.certification,pb.name power_band,
@@ -1820,6 +1820,10 @@ final class AdaptationService
         if ($material['max_output_power_w'] === null) {
             return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['电源关键规格不完整，无法自动完成匹配'], 'requires_approval' => true];
         }
+        $lampPowerMin = $rule['lamp_power_min_w'] ?? null;
+        if ($lampPowerMin !== null && $material['min_output_power_w'] === null) {
+            return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['电源最低输出功率未确认，无法核验产品最低功率范围'], 'requires_approval' => true];
+        }
         $reasons = $this->comparePower($material, $rule);
         if ($reasons) return ['match_level' => 'incompatible', 'match_label' => '不适配', 'conflict_reasons' => $reasons, 'requires_approval' => true];
         if (($rule['status'] ?? '') !== 'approved') {
@@ -1926,6 +1930,8 @@ final class AdaptationService
         if ($rule['installation_type'] !== 'unknown' && $power['installation_type'] !== $rule['installation_type']) $reasons[] = '安装方式不匹配';
         if ($rule['output_type'] !== 'unknown' && $power['output_type'] !== $rule['output_type']) $reasons[] = '输出类型不匹配';
         $lampPowerMax = $rule['lamp_power_max_w'] ?? $rule['lamp_power_w'] ?? null;
+        $lampPowerMin = $rule['lamp_power_min_w'] ?? null;
+        if ($lampPowerMin !== null && ($power['min_output_power_w'] === null || (float) $power['min_output_power_w'] > (float) $lampPowerMin)) $reasons[] = '电源最低输出功率高于产品要求的 '. $this->number((float) $lampPowerMin).'W';
         if ($lampPowerMax !== null && ($power['max_output_power_w'] === null || (float) $power['max_output_power_w'] < (float) $lampPowerMax)) $reasons[] = '电源最高功率低于产品要求的 '. $this->number((float) $lampPowerMax).'W';
         if (!$this->rangeOverlaps($rule['output_current_min_ma'], $rule['output_current_max_ma'], $power['output_current_min_ma'], $power['output_current_max_ma'])) $reasons[] = '输出电流高于芯片允许值或范围不相交';
         if (!$this->rangeOverlaps($rule['output_voltage_min_v'], $rule['output_voltage_max_v'], $power['output_voltage_min_v'], $power['output_voltage_max_v'])) $reasons[] = '输出电压范围不匹配';
