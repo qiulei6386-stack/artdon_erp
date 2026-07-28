@@ -1,13 +1,15 @@
 # Artdon ERP 工作上下文
 
-## 本次：修复统一 LOGO 的真实上传目录（待发布）
+## 本次：修复统一 LOGO 的真实上传目录（已发布）
 
 - 用户反馈“设置 → 企业信息”仍只看到旧版“LOGO 路径”三个文本框，无法选择文件上传；此前不能只凭代码结论称已完成。
 - 运行环境复核：正式服务器当前代码已包含“选择并上传 LOGO”按钮和真实上传接口，但截图中的“三个路径输入框 + 本阶段先保存路径”是提交 `ff71c14` 之前的旧页面内容，需在用户浏览器强制刷新后重新进入企业信息验证。
 - 同时发现生产 `uploads/company_brand` 目录不存在；根目录 `uploads` 属于部署账号 `ubuntu:ubuntu`（775），PHP-FPM 运行用户为 `www`，无法在该根目录创建新目录，因此旧接口即使显示上传按钮也会在首次上传时失败。
 - 修复：统一 LOGO 改存入已经由 PHP-FPM 管理且公开可访问的 `uploads/dispatch_next/company_brand/`；继续兼容旧 `uploads/company_brand/` 路径，仍严格限制为本地图片白名单。上传后 CRM 与派工沿用同一设置和缓存版本 URL。
 - 修改文件：`includes/settings_service.php`、`crm_api.php`、`tests/company_brand_logo_contract.php`、本上下文。未触碰用户原有商务中心命令文件删除与未跟踪文档。
-- 本地检查：`git diff --check` 与 `node --check assets/crm/crm.js` 通过；提交、GitHub 同步、服务器部署及 PHP 上传专项回归待本轮完成。
+- 检查：办公室本地 `git diff --check` 与 `node --check assets/crm/crm.js` 通过；正式服务器 `includes/settings_service.php`、`crm_api.php` PHP 语法和 `company_brand_logo_contract.php` 均通过。
+- 运行验证：服务器以真实 PHP-FPM 用户 `www` 创建了 `uploads/dispatch_next/company_brand/`，目录所有者为 `www:www` 且该用户可写；没有上传、替换或删除任何实际公司 LOGO。
+- Git / 部署：功能提交 `62af481348fc57f42fa35c6859d0ef689b026837` 已推送 GitHub，并以 SHA-256 校验 Git bundle 在正式服务器仅快进部署。当前记录收尾提交后将再次同步并核对本地、GitHub 与服务器提交一致。
 
 ## 本次：修复 Office 邮件兼容阅读版显示 HTML 标签（已发布）
 
