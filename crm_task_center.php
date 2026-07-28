@@ -1185,7 +1185,17 @@ function crm_quote_followup_upload(int $activityId, array $files): array
     $saved = [];
     $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
     foreach ($files['name'] as $i => $name) {
-        if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string)($files['tmp_name'][$i] ?? ''))) throw new RuntimeException('截图上传失败。');
+        $uploadError = (int)($files['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+        if ($uploadError !== UPLOAD_ERR_OK) {
+            $message = match ($uploadError) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => '截图超过服务器允许大小，请选择较小图片后重试。',
+                UPLOAD_ERR_PARTIAL => '截图只上传了一部分，请重新选择后再试。',
+                UPLOAD_ERR_NO_FILE => '没有收到沟通截图，请重新选择图片。',
+                default => '截图上传失败，请稍后重试。',
+            };
+            throw new RuntimeException($message);
+        }
+        if (!is_uploaded_file((string)($files['tmp_name'][$i] ?? ''))) throw new RuntimeException('截图临时文件无效，请重新选择图片。');
         $original = basename((string)$name);
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
         if (!in_array($ext, ['jpg','jpeg','png','webp','gif'], true)) throw new RuntimeException('沟通截图仅支持 jpg/png/webp/gif。');

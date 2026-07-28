@@ -23351,7 +23351,7 @@
         var mailOptions = '<option value="">不绑定邮件</option>' + (data.mails || []).map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(String(item.mail_at || '').slice(0,10) + ' · ' + (item.subject || '(无主题)')) + '</option>'; }).join('');
         var html = '<div class="visit-workspace-form quote-followup-workspace" data-quote-followup-form>' +
           '<input type="hidden" name="activity_id" value=""><input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
-          '<section class="visit-hero-panel"><div><span>报价跟进</span><strong>' + esc(quote.quote_no || row.quote_no || '-') + '</strong><small>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</small></div><b>FOLLOW</b></section>' +
+          '<section class="visit-hero-panel quote-followup-hero"><div><span>报价跟进</span><strong>' + esc(quote.quote_no || row.quote_no || '-') + '</strong><small>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</small></div><aside><b>' + esc((quote.currency || row.currency || '') + ' ' + (quote.total_amount || row.current_amount || row.amount || '—')) + '</b><span>本次只记录客户沟通，不进入报价编辑</span></aside></section>' +
           '<section class="visit-work-section"><h3 data-quote-followup-form-title>本次沟通</h3><div class="visit-schedule-grid">' +
             '<label class="visit-pill-field"><span>线上 / 线下</span><select name="mode"><option value="online">线上</option><option value="offline">线下</option></select></label>' +
             '<label class="visit-pill-field"><span>具体渠道</span><select name="channel">' + TaskCenterModule.quoteFollowupChannelOptions('online','email') + '</select></label>' +
@@ -23360,11 +23360,12 @@
             '<label class="visit-pill-field"><span>绑定邮件</span><select name="mail_id">' + mailOptions + '</select></label>' +
             '<label class="visit-pill-field"><span>沟通结果</span><select name="result"><option value="waiting_reply">等待回复</option><option value="interested">有兴趣</option><option value="need_revision">需要修改报价</option><option value="need_sample">需要样品</option><option value="accepted">接受报价</option><option value="rejected">拒绝报价</option><option value="no_response">暂无回复</option><option value="other">其他</option></select></label>' +
             '<label class="visit-date-card"><span>下次跟进</span><input type="datetime-local" name="next_followup_at"></label>' +
-          '</div><div class="visit-note-grid"><label class="wide">沟通结果 *<textarea name="content" rows="4" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="2"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="填写邮件、文件或网盘链接说明"></label><div class="wide quote-followup-drop" data-quote-followup-drop tabindex="0"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-quote-followup-files><strong>拖入或点击选择沟通截图</strong><span>也可以直接复制图片后，在这里按 Ctrl/⌘ + V</span><div class="quote-followup-local-previews" data-quote-followup-local-previews></div></div><label class="tag-chip wide"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复</span></label></div></section>' +
+          '</div><div class="visit-note-grid quote-followup-notes"><label class="wide">沟通结果 *<textarea name="content" rows="5" placeholder="记录客户反馈、疑问和本次沟通结论"></textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="3" placeholder="例如：下周二电话确认预算与样品"></textarea></label><label class="wide">附件或链接<input name="attachment_note" placeholder="邮件主题、文件地址或网盘链接"></label><div class="wide quote-followup-upload-card"><div class="quote-followup-upload-head"><div><strong>沟通截图</strong><span>可拖入、选择或粘贴；大图会自动压缩，每次最多 4 张</span></div><button type="button" data-quote-followup-choose>选择图片</button></div><div class="quote-followup-drop" data-quote-followup-drop tabindex="0"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-quote-followup-files><strong>将截图拖到这里，或点击此处选择</strong><span>支持 JPG、PNG、WebP、GIF；也可 Ctrl/⌘ + V 粘贴</span><div class="quote-followup-local-previews" data-quote-followup-local-previews></div></div></div><label class="tag-chip wide quote-followup-replied"><input type="checkbox" name="customer_replied"' + (markReplied ? ' checked' : '') + '><span>客户已经明确回复（无需再提醒时，留空“下次跟进”）</span></label></div></section>' +
           '<section class="visit-work-section quote-followup-history"><h3>历史跟进（' + esc((data.activities || []).length) + '）</h3>' + TaskCenterModule.quoteFollowupHistoryHtml(data.activities || [], true) + '</section></div>' +
           '<div class="business-dialog-actions"><button type="button" data-quote-followup-edit-cancel hidden>取消修改</button><button type="button" data-business-cancel>关闭</button><button type="button" class="primary" data-quote-followup-save>保存跟进</button></div>';
         CustomerModule.openBusinessDialog('报价跟进', html, '保存后同步更新流程节点、任务提醒和客户时间线。', function (dialog) {
-          document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
+          document.querySelector('[data-customer-dialog]')?.classList.remove('visit-modal-large');
+          document.querySelector('[data-customer-dialog]')?.classList.add('quote-followup-modal');
           var form = dialog.querySelector('[data-quote-followup-form]');
           var fileInput = dialog.querySelector('[data-quote-followup-files]');
           var dropBox = dialog.querySelector('[data-quote-followup-drop]');
@@ -23443,6 +23444,8 @@
             CustomerModule.closeDialog();
             TaskCenterModule.openQuoteFollowupDialog(row,markReplied);
           });
+          dropBox?.addEventListener('click', function (event) { if (!event.target.closest('[data-quote-local-remove]')) fileInput?.click(); });
+          dialog.querySelector('[data-quote-followup-choose]')?.addEventListener('click', function () { fileInput?.click(); });
           dialog.querySelector('[data-quote-followup-save]')?.addEventListener('click', function () {
             var saveButton = this;
             if (saveButton.disabled) return;
@@ -23457,16 +23460,20 @@
               var activityId = res.data && (res.data.updated_activity_id || res.data.saved_activity_id);
               var input = dialog.querySelector('[data-quote-followup-files]');
               if (!activityId || !input || !input.files || !input.files.length) return res;
-              var body = new FormData(); body.set('action','quote_followup_upload'); body.set('activity_id',activityId); if (state.csrf) body.set('csrf_token',state.csrf);
-              Array.prototype.forEach.call(input.files,function (file) { body.append('files[]',file,file.name); });
-              return fetch('crm_api.php',{method:'POST',body:body,credentials:'same-origin'}).then(function (r) { return r.json(); }).then(function (upload) { if (!upload.success) throw new Error(upload.message || '截图上传失败'); return res; });
+              return TaskCenterModule.uploadQuoteFollowupFiles(activityId, input).then(function () { return res; });
             }).then(function (res) {
               if (!res || !res.success) return;
               CustomerModule.closeDialog(); toast(isEdit ? '历史跟进已修改' : '报价跟进已保存'); TaskCenterModule.load();
               if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
               if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
             }).catch(function (error) {
-              toast(error.message || '报价跟进保存失败');
+              var saved = error && error.quoteFollowupSaved;
+              if (saved) {
+                CustomerModule.closeDialog(); TaskCenterModule.load();
+                if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
+                if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
+                toast('跟进已保存，但截图未上传：' + (error.message || '请压缩图片后在历史记录中重新上传'));
+              } else toast(error.message || '报价跟进保存失败');
             }).finally(function () {
               saveButton.disabled = false;
               saveButton.textContent = idleText;
@@ -23484,6 +23491,45 @@
       files.forEach(function (file,index) {
         var reader = new FileReader(); reader.onload = function () { var img = box.querySelector('[data-quote-local-image="' + index + '"]'); if (img) img.src = reader.result; }; reader.readAsDataURL(file);
       });
+    },
+    compressQuoteFollowupImage: function (file) {
+      var maxBytes = 1500 * 1024;
+      if (file.size <= maxBytes) return Promise.resolve(file);
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type || '')) return Promise.reject(new Error('GIF 图片过大，请先压缩到 1.5MB 以内。'));
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file), image = new Image();
+        image.onload = function () {
+          try {
+            var maxSide = 1600, scale = Math.min(1, maxSide / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+            var canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(function (blob) {
+              URL.revokeObjectURL(url);
+              if (!blob || blob.size > maxBytes) return reject(new Error('图片压缩后仍超过 1.5MB，请先裁剪或换一张图片。'));
+              var base = String(file.name || '沟通截图').replace(/\.[^.]+$/, '');
+              resolve(new File([blob], base + '.jpg', {type:'image/jpeg'}));
+            }, 'image/jpeg', 0.78);
+          } catch (error) { URL.revokeObjectURL(url); reject(new Error('图片压缩失败，请换一张图片后再试。')); }
+        };
+        image.onerror = function () { URL.revokeObjectURL(url); reject(new Error('无法读取这张图片，请换一张图片后再试。')); };
+        image.src = url;
+      });
+    },
+    uploadQuoteFollowupFiles: function (activityId, input) {
+      var files = Array.prototype.slice.call((input && input.files) || []);
+      if (!files.length) return Promise.resolve({success:true});
+      if (files.length > 4) return Promise.reject(new Error('一次最多上传 4 张沟通截图。'));
+      return Promise.all(files.map(function (file) { return TaskCenterModule.compressQuoteFollowupImage(file); })).then(function (prepared) {
+        var body = new FormData(); body.set('action','quote_followup_upload'); body.set('activity_id',activityId); if (state.csrf) body.set('csrf_token',state.csrf);
+        prepared.forEach(function (file) { body.append('files[]',file,file.name); });
+        return fetch('crm_api.php',{method:'POST',body:body,credentials:'same-origin'}).then(function (response) {
+          return response.text().then(function (text) {
+            var json; try { json = JSON.parse(text); } catch (error) { throw new Error('服务器未返回上传结果，请检查图片大小后重试。'); }
+            if (!json.success) throw new Error(json.message || '截图上传失败');
+            return json;
+          });
+        });
+      }).catch(function (error) { error.quoteFollowupSaved = true; throw error; });
     },
     writeQuoteFollowupMail: function (row) {
       row = row || this.selected() || {};
@@ -23523,26 +23569,29 @@
     openQuotePreview: function (row) {
       row = row || this.selected() || {};
       var source = row.quote_source || (row.source_type === 'cc_quote' ? 'cc' : 'legacy');
-      var quoteId = source === 'cc' ? Number(row.source_id || row.quote_id || 0) : Number(row.source_id || row.quote_id || 0);
+      var quoteId = Number(row.source_id || row.quote_id || 0);
       var quoteNo = row.quote_no || row.quote_id || '';
       if (!quoteId) return toast('没有关联报价。');
-      var url = source === 'cc'
-        ? 'commercial_center_v1/index.php?page=quote_center&quote_id=' + encodeURIComponent(quoteId) + '&preview=1'
-        : 'quotation.php?quote_id=' + encodeURIComponent(quoteId) + '&quote_no=' + encodeURIComponent(quoteNo) + '&preview=1';
-      document.querySelector('[data-quote-preview-dialog]')?.remove();
-      var dialog = document.createElement('dialog');
-      dialog.className = 'quote-preview-dialog';
-      dialog.setAttribute('data-quote-preview-dialog','1');
-      dialog.innerHTML = '<header><div><span>报价预览</span><strong>' + esc(quoteNo || ('报价 #' + quoteId)) + '</strong></div><nav><a href="' + esc(url.replace('&preview=1','')) + '" target="_blank" rel="noopener">新窗口打开</a><button type="button" data-quote-preview-close>关闭</button></nav></header><section><div class="quote-preview-loading" data-quote-preview-loading>正在加载报价预览...</div><iframe src="' + esc(url) + '" title="报价预览" data-quote-preview-frame></iframe></section>';
-      document.body.appendChild(dialog);
-      var close = function () { dialog.close(); dialog.remove(); };
-      dialog.querySelector('[data-quote-preview-close]')?.addEventListener('click',close);
-      dialog.addEventListener('cancel',function (event) { event.preventDefault(); close(); });
-      dialog.addEventListener('click',function (event) { if (event.target === dialog) close(); });
-      var frame = dialog.querySelector('[data-quote-preview-frame]');
-      frame?.addEventListener('load',function () { dialog.querySelector('[data-quote-preview-loading]')?.remove(); frame.classList.add('loaded'); });
-      frame?.addEventListener('error',function () { var box=dialog.querySelector('[data-quote-preview-loading]'); if(box) box.textContent='报价预览加载失败，请使用“新窗口打开”。'; });
-      dialog.showModal();
+      post('quote_followup_context', {quote_source:source,quote_id:quoteId}).then(function (json) {
+        if (!json.success) return toast(json.message || '读取报价信息失败');
+        var data = json.data || {}, quote = data.quote || {}, amount = quote.total_amount || row.current_amount || row.amount || '—';
+        document.querySelector('[data-quote-preview-dialog]')?.remove();
+        var dialog = document.createElement('dialog');
+        dialog.className = 'quote-preview-dialog quote-preview-summary-dialog';
+        dialog.setAttribute('data-quote-preview-dialog','1');
+        dialog.innerHTML = '<header><div><span>报价摘要</span><strong>' + esc(quote.quote_no || quoteNo || ('报价 #' + quoteId)) + '</strong></div><nav><button type="button" data-quote-preview-close>关闭</button></nav></header>' +
+          '<section class="quote-preview-summary"><p class="quote-preview-summary-tip">CRM 只显示与跟进有关的报价资料；报价编辑、产品明细和正式单据仍在商务中心处理。</p><dl>' +
+          '<div><dt>客户</dt><dd>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</dd></div><div><dt>报价金额</dt><dd class="quote-preview-amount">' + esc((quote.currency || row.currency || '') + ' ' + amount) + '</dd></div>' +
+          '<div><dt>报价日期</dt><dd>' + esc(quote.quote_date || row.created_at || row.task_created_at || '—') + '</dd></div><div><dt>负责人</dt><dd>' + esc(quote.user_name || quote.owner_name || row.owner_name || row.assigned_name || '—') + '</dd></div>' +
+          '<div><dt>联系人</dt><dd>' + esc(quote.contact_name || row.contact_name || '未指定') + '</dd></div><div><dt>已有跟进</dt><dd>' + esc(String((data.activities || []).length)) + ' 条</dd></div>' +
+          '</dl><article><span>当前流程</span><strong>' + esc(row.next_action || row.stage_label || '可直接写跟进或标记客户回复') + '</strong><p>' + esc(row.next_followup_at ? ('下次跟进：' + row.next_followup_at) : '尚未设置下次跟进时间') + '</p></article></section>';
+        document.body.appendChild(dialog);
+        var close = function () { dialog.close(); dialog.remove(); };
+        dialog.querySelector('[data-quote-preview-close]')?.addEventListener('click',close);
+        dialog.addEventListener('cancel',function (event) { event.preventDefault(); close(); });
+        dialog.addEventListener('click',function (event) { if (event.target === dialog) close(); });
+        dialog.showModal();
+      });
     },
     handleAction: function (label) {
       var row = this.selected();
