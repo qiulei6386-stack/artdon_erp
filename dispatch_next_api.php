@@ -140,6 +140,29 @@ function dn_dispatch_due_change_policy(): array
     ];
 }
 
+function dn_require_due_change_policy_admin(): void
+{
+    if (!dn_is_admin()) dn_fail('只有管理员可以调整截止时间规则', 403);
+}
+
+function dn_get_due_change_settings(): array
+{
+    dn_require_due_change_policy_admin();
+    return function_exists('get_dispatch_due_change_settings') ? get_dispatch_due_change_settings() : dn_dispatch_due_change_policy();
+}
+
+function dn_save_due_change_settings(array $in): array
+{
+    dn_require_due_change_policy_admin();
+    if (!function_exists('get_dispatch_due_change_settings') || !function_exists('save_dispatch_due_change_settings')) {
+        dn_fail('截止时间规则服务不可用', 500);
+    }
+    $before = get_dispatch_due_change_settings();
+    $saved = save_dispatch_due_change_settings($in);
+    dn_log(null, 'save_due_change_settings', 'due_change_settings', dn_json($before), dn_json($saved), '保存派工截止时间修改规则');
+    return $saved;
+}
+
 function dn_has_due_change_permission(array $task): bool
 {
     if (dn_is_admin()) return true;
@@ -5707,6 +5730,8 @@ try {
         case 'get_permissions':
             if (!dn_can('manage_visibility') && !dn_can('manage_permissions')) dn_fail('没有权限设置权限', 403);
             dn_ok(['permissions' => dn_dispatch_permissions_get()]);
+        case 'get_due_change_settings': dn_ok(dn_get_due_change_settings());
+        case 'save_due_change_settings': dn_ok(dn_save_due_change_settings($in));
         case 'backup': dn_ok(dn_backup());
         case 'list_backups': dn_ok(dn_list_backups());
         case 'upload_backup': dn_ok(dn_upload_backup($in));
