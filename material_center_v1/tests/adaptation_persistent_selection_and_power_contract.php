@@ -28,7 +28,7 @@ foreach ([
 foreach ([
     'POWER_RULE_FIELDS',
     'savePowerRules',
-    "'power_rule' => $this->productPowerRule",
+    '$this->productPowerRule',
     'save_power_rules_from_adaptation',
 ] as $marker) {
     if (!str_contains($service, $marker)) throw new RuntimeException("adaptation power rule service missing: {$marker}");
