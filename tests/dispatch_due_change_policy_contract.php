@@ -18,12 +18,10 @@ foreach ([
     'function dn_record_due_change(array $task, $oldDue, $newDue, string $source, ?array $group = null): void',
     'SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events WHERE policy_date=CURDATE() GROUP BY task_id,group_id',
     'dispatch_next_due_change_events',
-    "'max_changes_per_day' => 2",
-    "'lock_before_due_days' => 0",
     'dn_assert_due_change_allowed($task);',
-    "dn_record_due_change($task, $change[1], $change[2], 'update_task');",
-    "dn_record_due_change($task, $old, $new, 'update_cell');",
-    "dn_record_due_change(['task_type' => 'dispatch', 'parent_group_id' => $gid]",
+    'dn_record_due_change($task, $change[1], $change[2], \'update_task\');',
+    'dn_record_due_change($task, $old, $new, \'update_cell\');',
+    'dn_record_due_change([\'task_type\' => \'dispatch\', \'parent_group_id\' => $gid]',
 ] as $marker) {
     if (!str_contains($api, $marker)) {
         throw new RuntimeException("dispatch due-change API marker missing: {$marker}");
@@ -43,6 +41,8 @@ foreach ([
 foreach ([
     'function get_dispatch_due_change_settings(): array',
     'function save_dispatch_due_change_settings(array $input): array',
+    "'max_changes_per_day' => 2",
+    "'lock_before_due_days' => 0",
     "save_json_setting('dispatch_due_change_settings'",
 ] as $marker) {
     if (!str_contains($service, $marker)) {
