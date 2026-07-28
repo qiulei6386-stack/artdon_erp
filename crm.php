@@ -904,7 +904,7 @@ $prefStyle = sprintf(
           <main class="task-main">
             <header class="task-toolbar">
               <div><strong data-task-title>我的任务</strong><span data-task-subtitle>点击任务或样品寄送后，右侧 ACTIONS 会显示可用操作。</span></div>
-              <label class="task-search"><input data-task-search placeholder="搜索客户 / 联系人 / 商机 / 标题 / 快递单号 / 型号 / 负责人"></label>
+              <label class="task-search"><input data-task-search placeholder="搜索客户 / 联系人 / 报价号 / 订单号 / 商机 / 标题 / 快递单号 / 型号 / 负责人"></label>
             </header>
             <section class="task-kpis" data-task-kpis>
               <article><strong>0</strong><span>今日必须处理</span></article>

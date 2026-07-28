@@ -476,7 +476,9 @@ function crm_task_center_list(array $input = []): array
     $rows = $stmt->fetchAll();
     $extra = [];
     if ($view === 'quote') {
-        $extra['quote_flow'] = crm_task_quote_flow_summary();
+        // 报价流程不是 crm_tasks 的附属列表；搜索必须同时传入报价 / 订单来源，
+        // 否则输入报价号（例如 EX022）只会过滤普通任务，流程卡仍显示全部记录。
+        $extra['quote_flow'] = crm_task_quote_flow_summary($q);
     }
     return array_merge(['rows' => $rows, 'stats' => crm_task_center_stats(), 'options' => crm_task_center_options()], $extra);
 }
@@ -719,7 +721,7 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
     return $out;
 }
 
-function crm_task_cc_quote_flow_records(): array
+function crm_task_cc_quote_flow_records(array $recordWhere = [], array $recordParams = []): array
 {
     if (!db_table_exists('cc_quotes')) return [];
     $detailJoin = db_table_exists('cc_quote_details') ? 'LEFT JOIN cc_quote_details d ON d.quote_id=q.id' : '';
@@ -733,8 +735,16 @@ function crm_task_cc_quote_flow_records(): array
         FROM cc_quotes q {$detailJoin}
         LEFT JOIN crm_tasks t ON t.deleted_at IS NULL AND t.task_type='quote_followup' COLLATE utf8mb4_unicode_ci AND t.source_type='cc_quote' COLLATE utf8mb4_unicode_ci AND t.source_id COLLATE utf8mb4_unicode_ci=CAST(q.id AS CHAR) COLLATE utf8mb4_unicode_ci
         LEFT JOIN crm_users u ON u.id=t.assigned_user_id
-        WHERE q.is_test=0 ORDER BY q.updated_at DESC LIMIT 300";
-    try { $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return []; }
+        WHERE q.is_test=0" . ($recordWhere ? ' AND (' . implode(') AND (', $recordWhere) . ')' : '') . " ORDER BY q.updated_at DESC LIMIT 300";
+    try {
+        if ($recordParams) {
+            $stmt = db()->prepare($sql);
+            $stmt->execute($recordParams);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Throwable $e) { return []; }
     $activityRollups = crm_task_quote_followup_rollups('cc', array_column($rows, 'quote_id'));
     $out = [];
     foreach ($rows as $r) {
@@ -792,7 +802,7 @@ function crm_task_cc_quote_flow_records(): array
     return $out;
 }
 
-function crm_task_quote_flow_summary(): array
+function crm_task_quote_flow_summary(string $search = ''): array
 {
     $quoteCols = crm_task_quote_table_cols('quote_orders');
     $orderCols = crm_task_quote_table_cols('quote_sales_orders');
@@ -872,7 +882,36 @@ function crm_task_quote_flow_summary(): array
         ['key' => 'quote_follow_overdue', 'label' => '客户未回复超期', 'count' => $quoteFollowOverdue],
         ['key' => 'payment_due', 'label' => '未收款/尾款', 'count' => max($unpaid, $balanceDue)],
     ];
-    $records = array_merge(crm_task_quote_flow_records($quoteCols, $orderCols, $shipCols), crm_task_cc_quote_flow_records());
+    $search = trim($search);
+    $legacyWhere = [];
+    $legacyParams = [];
+    $ccWhere = [];
+    $ccParams = [];
+    if ($search !== '') {
+        $like = '%' . $search . '%';
+        // 只拼接已确认存在的列；值始终以预处理参数传入。
+        $legacyParts = ['CAST(q.id AS CHAR) LIKE ?'];
+        if (in_array('quote_no', $quoteCols, true)) $legacyParts[] = 'q.quote_no LIKE ?';
+        if (in_array('customer_name', $quoteCols, true)) $legacyParts[] = 'q.customer_name LIKE ?';
+        if (in_array('user_name', $quoteCols, true)) $legacyParts[] = 'q.user_name LIKE ?';
+        if (in_array('customer_json', $quoteCols, true)) $legacyParts[] = 'q.customer_json LIKE ?';
+        if (in_array('order_no', $orderCols, true)) $legacyParts[] = 'o.order_no LIKE ?';
+        $legacyWhere[] = implode(' OR ', $legacyParts);
+        $legacyParams = array_fill(0, count($legacyParts), $like);
+
+        $ccParts = ['CAST(q.id AS CHAR) LIKE ?', 'q.quote_no LIKE ?', 'q.customer_snapshot LIKE ?'];
+        if (db_table_exists('cc_quote_details')) {
+            $ccParts[] = 'd.contact_name LIKE ?';
+            $ccParts[] = 'd.owner_name LIKE ?';
+            $ccParts[] = 'd.converted_order_no LIKE ?';
+        }
+        $ccWhere[] = implode(' OR ', $ccParts);
+        $ccParams = array_fill(0, count($ccParts), $like);
+    }
+    $records = array_merge(
+        crm_task_quote_flow_records($quoteCols, $orderCols, $shipCols, $legacyWhere, $legacyParams),
+        crm_task_cc_quote_flow_records($ccWhere, $ccParams)
+    );
     usort($records, fn($a, $b) => strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')));
     return [
         'steps' => $steps,

@@ -21225,6 +21225,7 @@
       button.setAttribute('data-tooltip', actionDescription(label));
       if (/删除|批量删除|取消任务|取消未发送队列|批量取消未发送队列/.test(label)) button.classList.add('danger');
       if (name === 'tasks' && TaskCenterModule.isViewAction(label)) button.classList.toggle('active', TaskCenterModule.view === TaskCenterModule.viewKeyFromLabel(label));
+      if (name === 'tasks' && TaskCenterModule.isQuoteFlowFilterAction(label)) button.classList.toggle('active', TaskCenterModule.view === 'quote' && TaskCenterModule.quoteFlowFilter === TaskCenterModule.quoteFlowFilterKeyFromLabel(label));
       if (isActiveAction(label)) button.classList.add('active');
       if (name === 'mail' && MailModule.canMailAction && !MailModule.canMailAction(label)) {
         button.disabled = true;
@@ -21408,8 +21409,12 @@
     }
     if (name === 'tasks') {
       var selectedTask = TaskCenterModule.selected();
-      renderGroup({ title: '任务视图', items: ['我的任务', '今日任务', '本周任务', '逾期中心', '待确认', '推广执行', '样品寄送', '已完成'] });
-      if (!selectedTask) {
+      renderGroup({ title: '任务视图', items: ['我的任务', '今日任务', '本周任务', '逾期中心', '待确认', '报价订单流程', '推广执行', '样品寄送', '已完成'] });
+      if (TaskCenterModule.view === 'quote') {
+        renderGroup({ title: '报价订单筛选', items: ['全部报价', '未跟进报价', '跟进中', '客户未回复', '客户已回复', '待审核报价', '已驳回报价', '未转订单', '已转订单', '待收款', '待出货', '待单证', '流程完成'] });
+        renderGroup({ title: '报价流程工具', items: ['刷新报价流程', '清除报价筛选'] });
+        if (selectedTask && TaskCenterModule.selectedType === 'quote_flow') renderGroup({ title: '当前报价', items: TaskCenterModule.quoteFlowDetailActions(selectedTask) });
+      } else if (!selectedTask) {
         renderGroup({ title: '任务中心', items: ['新建任务', '新建跟进', '新建样品寄送', '查看今日任务', '查看逾期任务', '查看样品寄送', '导出任务'] });
       } else if (TaskCenterModule.selectedType === 'quote_flow') {
         renderGroup({ title: '报价订单流程', items: TaskCenterModule.quoteFlowDetailActions(selectedTask) });
@@ -22177,7 +22182,7 @@
   if (current === 'opportunities') safeInit('商机中心', function () { OpportunityModule.init(); });
 
   var TaskCenterModule = {
-    inited: false, view: 'my', selectedType: '', selectedId: 0, rows: [], samples: [], options: {}, q: '', currentDetail: null, quoteFlow: null, quoteFlowNode: 'quote', selectedQuoteRecord: null, selectedQuoteNode: '', selectedSampleNode: '', detailCollapsed: true, detailRequestKey: '',
+    inited: false, view: 'my', selectedType: '', selectedId: 0, rows: [], samples: [], options: {}, q: '', currentDetail: null, quoteFlow: null, quoteFlowNode: 'quote', quoteFlowFilter: 'all', selectedQuoteRecord: null, selectedQuoteNode: '', selectedSampleNode: '', detailCollapsed: true, detailRequestKey: '',
     requestToken: function (prefix) {
       var nonce = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
       return (prefix || 'crm') + '-' + nonce;
@@ -22212,6 +22217,7 @@
         '本周任务': 'week',
         '逾期中心': 'overdue',
         '待确认': 'confirming',
+        '报价订单流程': 'quote',
         '推广执行': 'promotion',
         '样品寄送': 'sample',
         '已完成': 'done'
@@ -22219,6 +22225,46 @@
     },
     isViewAction: function (label) {
       return !!this.viewKeyFromLabel(label);
+    },
+    quoteFlowFilterKeyFromLabel: function (label) {
+      return {
+        '全部报价': 'all', '未跟进报价': 'unfollowed', '跟进中': 'following', '客户未回复': 'unreplied', '客户已回复': 'replied',
+        '待审核报价': 'review', '已驳回报价': 'rejected', '未转订单': 'not_converted', '已转订单': 'ordered', '待收款': 'payment_due',
+        '待出货': 'shipping_due', '待单证': 'documents_due', '流程完成': 'completed'
+      }[label] || '';
+    },
+    isQuoteFlowFilterAction: function (label) {
+      return !!this.quoteFlowFilterKeyFromLabel(label);
+    },
+    quoteFlowFilterOptions: function () {
+      return [
+        ['all', '全部'], ['unfollowed', '未跟进'], ['following', '跟进中'], ['unreplied', '客户未回复'], ['replied', '客户已回复'],
+        ['review', '待审核'], ['rejected', '已驳回'], ['not_converted', '未转订单'], ['ordered', '已转订单'], ['payment_due', '待收款'],
+        ['shipping_due', '待出货'], ['documents_due', '待单证'], ['completed', '流程完成']
+      ];
+    },
+    quoteFlowMatchesFilter: function (row, filter) {
+      var stages = row.stages || [], has = function (key) { return stages.indexOf(key) >= 0; }, hasOrder = Number(row.order_id || 0) > 0;
+      if (filter === 'all') return true;
+      if (filter === 'unfollowed') return Number(row.followup_count || 0) <= 0 && !hasOrder && !has('review') && !has('review_rejected');
+      if (filter === 'following') return Number(row.followup_count || 0) > 0 && !hasOrder && !has('review_rejected');
+      if (filter === 'unreplied') return has('unreplied');
+      if (filter === 'replied') return has('replied');
+      if (filter === 'review') return has('review');
+      if (filter === 'rejected') return has('review_rejected');
+      if (filter === 'not_converted') return !hasOrder && has('quote_done');
+      if (filter === 'ordered') return hasOrder;
+      if (filter === 'payment_due') return has('deposit_unpaid') || has('balance_unpaid');
+      if (filter === 'shipping_due') return hasOrder && !has('shipping_done');
+      if (filter === 'documents_due') return has('documents_pending');
+      if (filter === 'completed') return hasOrder && has('balance_paid') && has('shipping_done') && has('documents') && !has('documents_pending');
+      return true;
+    },
+    applyQuoteFlowFilter: function (filter) {
+      this.quoteFlowFilter = filter || 'all';
+      this.selectedType = ''; this.selectedId = 0; this.selectedQuoteRecord = null; this.selectedQuoteNode = '';
+      this.renderTasks({ stats: {}, quote_flow: this.quoteFlow || {} });
+      renderActions('tasks');
     },
     switchView: function (view) {
       this.view = view || 'my';
@@ -22255,6 +22301,12 @@
         if (task) { self.selectedType = 'task'; self.selectedId = Number(task.getAttribute('data-task-id') || 0); self.detailCollapsed = false; self.updateDetailPanel(); self.markSelected(); self.loadSelectedDetail(); renderActions('tasks'); }
       });
       document.querySelector('[data-task-list]')?.addEventListener('click', function (event) {
+        var quoteFilter = event.target.closest('[data-quote-flow-filter]');
+        if (quoteFilter) {
+          self.applyQuoteFlowFilter(quoteFilter.getAttribute('data-quote-flow-filter') || 'all');
+          event.stopPropagation();
+          return;
+        }
         var inlineAction = event.target.closest('[data-task-detail-action]');
         if (inlineAction) {
           var actionRecord = event.target.closest('[data-quote-flow-record]');
@@ -22351,6 +22403,7 @@
         self.options = (json.data && json.data.options) || self.options || {};
         self.quoteFlow = (json.data && json.data.quote_flow) || null;
         self.renderTasks(json.data || {});
+        renderActions('tasks');
         if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') self.loadSamples();
       }).catch(function (error) { if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>'; });
     },
@@ -22392,7 +22445,10 @@
         var danger = Number(r.count || 0) > 0 ? ' danger' : '';
         return '<span class="quote-flow-risk' + danger + '">' + esc(r.label || '-') + '<b>' + esc(r.count || 0) + '</b></span>';
       }).join('');
-      return '<section class="quote-task-flow"><header><div><span>QUOTE ORDER FLOW</span><strong>报价订单流程中心</strong><p>报价 → 审核/驳回 → 客户回复 → 转订单 → 收款 → 出货 → 单证</p></div><aside><em>更新时间 ' + esc((flow.updated_at || '').slice(0, 16) || '-') + '</em><div class="quote-flow-risks">' + riskHtml + '</div></aside></header><div class="quote-flow-summary">' +
+      var filters = this.quoteFlowFilterOptions().map(function (item) {
+        return '<button type="button" data-quote-flow-filter="' + esc(item[0]) + '" class="' + (TaskCenterModule.quoteFlowFilter === item[0] ? 'active' : '') + '">' + esc(item[1]) + '</button>';
+      }).join('');
+      return '<section class="quote-task-flow"><header><div><span>QUOTE ORDER FLOW</span><strong>报价订单流程中心</strong><p>报价 → 审核/驳回 → 客户回复 → 转订单 → 收款 → 出货 → 单证</p></div><aside><em>更新时间 ' + esc((flow.updated_at || '').slice(0, 16) || '-') + '</em><div class="quote-flow-risks">' + riskHtml + '</div></aside></header><div class="quote-flow-controls"><strong>快速筛选</strong><nav>' + filters + '</nav></div><div class="quote-flow-summary">' +
         '<article><b>' + esc(summary.quote_total || 0) + '</b><span>报价总数</span></article>' +
         '<article><b>' + esc(summary.order_total || 0) + '</b><span>订单总数</span></article>' +
         '<article class="' + (Number(summary.unreplied || 0) ? 'warn' : '') + '"><b>' + esc(summary.unreplied || 0) + '</b><span>客户未回复</span></article>' +
@@ -22432,9 +22488,13 @@
     },
     filteredQuoteFlowRecords: function () {
       var keys = this.quoteNodeRecordKeys(this.quoteFlowNode || 'quote');
+      var keyword = String(this.q || '').trim().toLowerCase(), filter = this.quoteFlowFilter || 'all';
       return this.quoteFlowRecords().filter(function (row) {
         var stages = row.stages || [];
-        return keys.some(function (k) { return stages.indexOf(k) >= 0; });
+        var nodeMatch = keys.some(function (k) { return stages.indexOf(k) >= 0; });
+        var filterMatch = TaskCenterModule.quoteFlowMatchesFilter(row, filter);
+        var searchMatch = !keyword || [row.quote_no, row.order_no, row.customer_name, row.contact_name, row.quote_owner, row.assigned_name, row.current_stage, row.current_status, row.last_followup_result].some(function (value) { return String(value || '').toLowerCase().indexOf(keyword) >= 0; });
+        return nodeMatch && filterMatch && searchMatch;
       });
     },
     moneyText: function (currency, amount) {
@@ -22538,6 +22598,7 @@
       if (title) title.textContent = titleMap[this.view] || '任务中心';
       var queueTitle = document.querySelector('[data-task-queue-title]');
       if (queueTitle) queueTitle.textContent = this.view === 'quote' ? '每单流程导航图' : (this.view === 'sample' || this.view === 'sample_pending_ship' || this.view === 'sample_follow_overdue' ? '样品寄送队列' : '任务工作队列');
+      document.querySelector('[data-task-center]')?.classList.toggle('is-quote-flow', this.view === 'quote');
       this.renderKpis((data && data.stats) || {});
       var box = document.querySelector('[data-task-list]'), types = (this.options.task_types || {}), statuses = (this.options.task_statuses || {});
       if (!box) return;
@@ -23665,6 +23726,14 @@
     handleAction: function (label) {
       var row = this.selected();
       if (this.isViewAction(label)) return this.switchView(this.viewKeyFromLabel(label));
+      var quoteFilter = this.quoteFlowFilterKeyFromLabel(label);
+      if (this.view === 'quote' && quoteFilter) return this.applyQuoteFlowFilter(quoteFilter);
+      if (this.view === 'quote' && label === '刷新报价流程') return this.load();
+      if (this.view === 'quote' && label === '清除报价筛选') {
+        this.q = ''; this.quoteFlowNode = 'quote'; this.quoteFlowFilter = 'all';
+        var search = document.querySelector('[data-task-search]'); if (search) search.value = '';
+        return this.load();
+      }
       if (this.selectedType === 'quote_flow') {
         if (label === '查看报价' || label === '预览报价') return this.openQuotePreview(row);
         if (label === '查看订单') { window.open('quotation.php?order_id=' + encodeURIComponent(row.order_id || '') + '&order_no=' + encodeURIComponent(row.order_no || ''), '_blank'); return; }
