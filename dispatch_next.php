@@ -538,7 +538,8 @@ body.dark .dispatch-blank-row td{background:#151c29!important;color:#64748b!impo
 #linkPreviewModal .bomPreviewTableWrap{max-width:100%;overflow-x:auto;overflow-y:visible}
 /* Deadline fill is deliberately simple: none, critical only, or every deadline stage. */
 body.due-row-fill-off .tbl tr.due-soon>td,body.due-row-fill-off .tbl tr.due-overdue>td{background:var(--dispatch-bg,#fff)!important}
-body.due-row-fill-critical .tbl tr.due-soon>td{background:var(--due-soon-bg,#fff7ed)!important}body.due-row-fill-critical .tbl tr.due-overdue>td{background:var(--due-overdue-bg,#ffe4e6)!important}
+/* Match the legacy rule specificity so a saved colour always wins over its former hard-coded fallback. */
+body.due-row-fill-critical .tbl tr.due-soon:not(.done):not(.complete):not(.completed):not(.cancelled):not(.canceled)>td,body.due-row-fill-critical .tbl tr.due-soon:not(.done):not(.complete):not(.completed):not(.cancelled):not(.canceled):hover>td{background:var(--due-soon-bg,#fffbea)!important}body.due-row-fill-critical .tbl tr.due-overdue:not(.done):not(.complete):not(.completed):not(.cancelled):not(.canceled)>td,body.due-row-fill-critical .tbl tr.due-overdue:not(.done):not(.complete):not(.completed):not(.cancelled):not(.canceled):hover>td{background:var(--due-overdue-bg,#fdfaf7)!important}
 body.due-row-fill-off .mobileTaskCard.due-soon,body.due-row-fill-off .mobileTaskCard.due-overdue{background:var(--dispatch-bg,#fff)!important}body.due-row-fill-critical .mobileTaskCard.due-soon{background:var(--due-soon-bg,#fff7ed)!important}body.due-row-fill-critical .mobileTaskCard.due-overdue{background:var(--due-overdue-bg,#ffe4e6)!important}
 </style>
 </head>
