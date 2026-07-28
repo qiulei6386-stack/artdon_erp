@@ -394,6 +394,10 @@ function dispatch_next_init_schema(): array
     // These indexes keep that check constant-time even as the task history grows.
     dispatch_next_add_index_if_missing($pdo, 'dispatch_next_tasks', 'idx_dispatch_next_tasks_updated', 'INDEX idx_dispatch_next_tasks_updated (updated_at)');
     dispatch_next_add_index_if_missing($pdo, 'dispatch_next_groups', 'idx_dispatch_next_groups_updated', 'INDEX idx_dispatch_next_groups_updated (updated_at)');
+    // Deadline-change limits now count the whole life of a task/group, so do
+    // not rely on the former day-based composite indexes for this lookup.
+    dispatch_next_add_index_if_missing($pdo, 'dispatch_next_due_change_events', 'idx_dispatch_next_due_change_task_total', 'INDEX idx_dispatch_next_due_change_task_total (task_id)');
+    dispatch_next_add_index_if_missing($pdo, 'dispatch_next_due_change_events', 'idx_dispatch_next_due_change_group_total', 'INDEX idx_dispatch_next_due_change_group_total (group_id)');
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 16, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }

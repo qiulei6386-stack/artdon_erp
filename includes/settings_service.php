@@ -54,12 +54,17 @@ function save_json_setting($key, array $value, $group, $description, $auditActio
 function get_dispatch_due_change_settings(): array
 {
     $defaults = [
-        'max_changes_per_day' => 2,
+        // A deadline may be adjusted only this many times during the life of
+        // one task (or one multi-dispatch group).  This is intentionally not
+        // a daily quota.
+        'max_changes_total' => 2,
         'lock_before_due_days' => 0,
     ];
     $saved = json_decode((string)app_setting('dispatch_due_change_settings', '{}'), true) ?: [];
     return [
-        'max_changes_per_day' => max(0, min(20, (int)($saved['max_changes_per_day'] ?? $defaults['max_changes_per_day']))),
+        // Keep the old saved key readable so existing installations retain
+        // their configured numeric value when upgrading this rule.
+        'max_changes_total' => max(0, min(20, (int)($saved['max_changes_total'] ?? $saved['max_changes_per_day'] ?? $defaults['max_changes_total']))),
         'lock_before_due_days' => max(0, min(30, (int)($saved['lock_before_due_days'] ?? $defaults['lock_before_due_days']))),
     ];
 }
@@ -68,7 +73,7 @@ function save_dispatch_due_change_settings(array $input): array
 {
     $before = get_dispatch_due_change_settings();
     $next = [
-        'max_changes_per_day' => max(0, min(20, (int)($input['max_changes_per_day'] ?? $before['max_changes_per_day']))),
+        'max_changes_total' => max(0, min(20, (int)($input['max_changes_total'] ?? $input['max_changes_per_day'] ?? $before['max_changes_total']))),
         'lock_before_due_days' => max(0, min(30, (int)($input['lock_before_due_days'] ?? $before['lock_before_due_days']))),
     ];
     save_json_setting('dispatch_due_change_settings', $next, 'dispatch', '派工截止日期修改限制', 'save_dispatch_due_change_settings');

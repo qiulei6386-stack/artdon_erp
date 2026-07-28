@@ -19,7 +19,9 @@ foreach ([
     'function dn_save_due_change_settings(array $in): array',
     "case 'get_due_change_settings': dn_ok(dn_get_due_change_settings());",
     "case 'save_due_change_settings': dn_ok(dn_save_due_change_settings(\$in));",
-    'SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events WHERE policy_date=CURDATE() GROUP BY task_id,group_id',
+    'function dn_due_change_count_total(array $task, ?array $group = null): int',
+    'SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events GROUP BY task_id,group_id',
+    '已累计修改',
     'dispatch_next_due_change_events',
     'dn_assert_due_change_allowed($task);',
     'dn_record_due_change($task, $change[1], $change[2], \'update_task\');',
@@ -43,6 +45,8 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS dispatch_next_due_change_events',
     'idx_dispatch_next_due_change_task_day',
     'idx_dispatch_next_due_change_group_day',
+    'idx_dispatch_next_due_change_task_total',
+    'idx_dispatch_next_due_change_group_total',
 ] as $marker) {
     if (!str_contains($schema, $marker)) {
         throw new RuntimeException("dispatch due-change schema marker missing: {$marker}");
@@ -60,7 +64,7 @@ foreach ([
 foreach ([
     'function get_dispatch_due_change_settings(): array',
     'function save_dispatch_due_change_settings(array $input): array',
-    "'max_changes_per_day' => 2",
+    "'max_changes_total' => 2",
     "'lock_before_due_days' => 0",
     "save_json_setting('dispatch_due_change_settings'",
 ] as $marker) {

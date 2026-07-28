@@ -135,7 +135,7 @@ function dn_dispatch_due_change_policy(): array
 {
     $settings = function_exists('get_dispatch_due_change_settings') ? get_dispatch_due_change_settings() : [];
     return [
-        'max_changes_per_day' => max(0, min(20, (int)($settings['max_changes_per_day'] ?? 2))),
+        'max_changes_total' => max(0, min(20, (int)($settings['max_changes_total'] ?? $settings['max_changes_per_day'] ?? 2))),
         'lock_before_due_days' => max(0, min(30, (int)($settings['lock_before_due_days'] ?? 0))),
     ];
 }
@@ -178,22 +178,22 @@ function dn_due_change_scope(array $task, ?array $group = null): array
     return ['task_id' => (int)($task['id'] ?? 0), 'group_id' => $groupId];
 }
 
-function dn_due_change_count_today(array $task, ?array $group = null): int
+function dn_due_change_count_total(array $task, ?array $group = null): int
 {
     $scope = dn_due_change_scope($task, $group);
-    static $todayCounts = null;
-    if ($todayCounts === null) {
-        $todayCounts = ['task' => [], 'group' => []];
-        $rows = dispatch_next_db()->query('SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events WHERE policy_date=CURDATE() GROUP BY task_id,group_id')->fetchAll();
+    static $totalCounts = null;
+    if ($totalCounts === null) {
+        $totalCounts = ['task' => [], 'group' => []];
+        $rows = dispatch_next_db()->query('SELECT task_id,group_id,COUNT(*) AS change_count FROM dispatch_next_due_change_events GROUP BY task_id,group_id')->fetchAll();
         foreach ($rows as $row) {
             $count = (int)($row['change_count'] ?? 0);
-            if ((int)($row['group_id'] ?? 0) > 0) $todayCounts['group'][(int)$row['group_id']] = $count;
-            elseif ((int)($row['task_id'] ?? 0) > 0) $todayCounts['task'][(int)$row['task_id']] = $count;
+            if ((int)($row['group_id'] ?? 0) > 0) $totalCounts['group'][(int)$row['group_id']] = $count;
+            elseif ((int)($row['task_id'] ?? 0) > 0) $totalCounts['task'][(int)$row['task_id']] = $count;
         }
     }
     return $scope['group_id'] > 0
-        ? (int)($todayCounts['group'][$scope['group_id']] ?? 0)
-        : (int)($todayCounts['task'][$scope['task_id']] ?? 0);
+        ? (int)($totalCounts['group'][$scope['group_id']] ?? 0)
+        : (int)($totalCounts['task'][$scope['task_id']] ?? 0);
 }
 
 function dn_due_change_block_reason(array $task, ?array $group = null): ?string
@@ -210,10 +210,10 @@ function dn_due_change_block_reason(array $task, ?array $group = null): ?string
             ? '该派工将在 ' . $policy['lock_before_due_days'] . ' 天内到期，非管理员不能修改截止日期。'
             : '该派工当天到期或已逾期，非管理员不能修改截止日期。';
     }
-    if ($policy['max_changes_per_day'] > 0) {
-        $used = dn_due_change_count_today($task, $group);
-        if ($used >= $policy['max_changes_per_day']) {
-            return '该派工今天已修改截止日期 ' . $used . '/' . $policy['max_changes_per_day'] . ' 次，不能再修改。';
+    if ($policy['max_changes_total'] > 0) {
+        $used = dn_due_change_count_total($task, $group);
+        if ($used >= $policy['max_changes_total']) {
+            return '该派工截止日期已累计修改 ' . $used . '/' . $policy['max_changes_total'] . ' 次，不能再修改。';
         }
     }
     return null;
