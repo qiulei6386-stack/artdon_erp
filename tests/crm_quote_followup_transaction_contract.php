@@ -14,7 +14,7 @@ if ($functionStart === false || $functionEnd === false) {
 
 $function = substr($source, $functionStart, $functionEnd - $functionStart);
 $begin = strpos($function, '$pdo->beginTransaction();');
-$commit = strpos($function, '$pdo->commit();');
+$commit = strrpos($function, '$pdo->commit();');
 $log = strpos($function, "crm_log_event('tasks', 'quote_followup_save'");
 $reload = strpos($function, '$resultData = crm_quote_followup_context');
 
