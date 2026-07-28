@@ -1367,4 +1367,4 @@
 
 - 数据核查：用户刚新增的 14:29 跟进记录 `29` 仍为 0 张，服务器全部有效报价跟进截图也是 0 张，证实不是历史展示漏图，而是文件没有上传成功。
 - 根因：上传代码写入 `uploads/crm_quote_followups`，但生产环境 PHP-FPM 以 `www` 账户运行，而 `uploads` 根目录不允许 `www` 创建子目录；实际检查为 `www_can_write_uploads=no`。可写的应用存储目录 `storage/visit_files` 已验证为 `www_can_write_visit_storage=yes`。
-- 修复：截图改存 `storage/visit_files/quote_followups/{跟进ID}`；创建后检查可写权限，移动后再次检查实际文件已存在，失败会返回明确原因而不伪报上传成功。待完成本地检查、GitHub 推送、服务器同步及真实写入回归。
+- 修复与发布：截图改存 `storage/visit_files/quote_followups/{跟进ID}`；创建后检查可写权限，移动后再次检查实际文件已存在，失败会返回明确原因而不伪报上传成功。功能提交 `4b5388ad5cb8c0f23ea13302ddad9887957935b3` 已推送 GitHub 并以同一 Git bundle 快进正式服务器。服务器 PHP 语法、报价跟进 UI 合同均通过，并以 `www` 账户真实验证新目录可创建、可写、测试目录已清理；本发布记录提交后继续按同一流程同步，最终以三方 HEAD 核对为准。
