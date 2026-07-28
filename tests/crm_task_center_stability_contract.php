@@ -29,6 +29,9 @@ foreach ([
     [$js, "document.body.classList.toggle('is-tasks-module', name === 'tasks');", '任务中心单滚动状态标识'],
     [$css, '.task-list,.sample-list{display:grid;gap:0;min-height:0}', '任务列表取消内部纵向滚动'],
     [$css, 'body.is-tasks-module .crm-action-list', '任务中心右栏单滚动约束'],
+    [$css, '.task-workbench-board{grid-template-columns:minmax(0,1fr) minmax(320px,340px)}', '报价流程跟进属性面板紧凑宽度'],
+    [$css, '.task-workbench-board.detail-collapsed{grid-template-columns:minmax(0,1fr) 42px}', '报价流程属性面板收起布局'],
+    [$css, '@media(max-width:1100px){.task-kpis{grid-template-columns:repeat(4,1fr)}.task-workbench-board{grid-template-columns:1fr}', '报价流程窄屏属性面板自适应'],
 ] as [$source, $needle, $label]) {
     if (strpos($source, $needle) === false) $errors[] = '缺少：' . $label;
 }

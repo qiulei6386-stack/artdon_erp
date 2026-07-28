@@ -249,7 +249,7 @@ body.is-workspace-module .crm-actionbar { display: none !important; }
 .task-quick-groups button b{min-width:18px;height:18px;border-radius:999px;background:#f1f5f9;color:#475569;display:grid;place-items:center;font-size:10px}
 .task-quick-groups button.active{background:#111827;border-color:#111827;color:#fff}
 .task-quick-groups button.active b{background:#fff;color:#111827}
-.task-workbench-board{grid-template-columns:minmax(0,1fr) minmax(360px,.42fr)}
+.task-workbench-board{grid-template-columns:minmax(0,1fr) minmax(320px,340px)}
 .task-workbench-board.detail-collapsed{grid-template-columns:minmax(0,1fr) 42px}
 .task-detail-panel{position:sticky;top:78px;align-self:start}
 .task-detail-panel.is-collapsed{min-width:42px}
