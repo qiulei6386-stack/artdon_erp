@@ -8,7 +8,7 @@
 - 报价流程将原先每条报价各自查询“最新跟进 + 跟进次数”的 N+1 查询改为按 legacy / cc 两个来源批量汇总；任务中心非样品页面不再额外下载样品列表。详情请求增加选择标识校验，慢请求不能覆盖用户已切换的另一条详情。
 - 对尚未接通的报价/订单/收款/物流等动作，界面现在直接禁用并标注“待接入”，不再让用户点击后才提示接口未接入。
 - 修改文件：`crm_task_center.php`、`crm_customer.php`、`assets/crm/crm.js`、新增 `tests/crm_task_center_stability_contract.php`、本上下文。用户原有商务中心命令文件删除及未跟踪文档保持不动，不纳入提交。
-- 本地检查：`node --check assets/crm/crm.js` 与 `git diff --check` 已通过；本机没有 PHP CLI，PHP 语法和专项契约将在推送后以服务器同一提交复检。Git / 部署：待完成本地提交 → GitHub → 同一提交服务器部署与三方一致性核对。
+- 检查：本地 `node --check assets/crm/crm.js`、`git diff --check` 通过；服务器同一提交通过 `crm_task_center.php` / `crm_customer.php` PHP 语法、`crm_task_center_stability_contract.php`、报价跟进事务契约和报价跟进界面契约。Git / 部署：功能提交已推送 GitHub 并以 Git bundle SHA-256 校验后快进部署到正式服务器；本条最终记录提交后再次核对本地、GitHub、服务器一致。
 
 更新时间：2026-07-28
 
