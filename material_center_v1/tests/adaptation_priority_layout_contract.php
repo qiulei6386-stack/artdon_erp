@@ -6,7 +6,7 @@ $page = file_get_contents($root.'/adaptation/index.php');
 $script = file_get_contents($root.'/assets/js/adaptation-shell.js');
 $css = file_get_contents($root.'/assets/css/app.css');
 
-foreach (['配置组工作区', '已选物料会持续显示在右侧'] as $marker) {
+foreach (['配置组工作区', '选择一个组后，中间区可维护关键范围、候选物料、默认项和条件。', 'data-candidate-discovery'] as $marker) {
     if (!str_contains($page, $marker)) {
         throw new RuntimeException("adaptation priority guidance missing: {$marker}");
     }
@@ -15,15 +15,18 @@ foreach ([
     "product.product_code || '未编号产品'} · 配置组工作区",
     'if (!state.workspace || !overview.length || selectedGroup())',
     'root.hidden = true;',
+    'renderCandidateDiscovery',
+    'loadCandidateDiscovery',
+    '查看全部并选择',
 ] as $marker) {
     if (!str_contains($script, $marker)) {
         throw new RuntimeException("adaptation priority behavior missing: {$marker}");
     }
 }
 foreach ([
-    '.mc-page--adaptation-v2[data-stage="options"] .mc-adaptation-progress-card{display:grid;',
-    '.mc-page--adaptation-v2[data-stage="options"] .mc-config-group-guide{display:flex;',
-    '.mc-page--adaptation-v2[data-stage="options"] .mc-adaptation-groups{padding-top:5px;background:#f8fafc}',
+    '.mc-page--adaptation-v2 .mc-adaptation-workspace{grid-template-columns:250px minmax(620px,1fr) minmax(310px,360px)}',
+    '.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list{grid-template-columns:1fr}',
+    '.mc-candidate-discovery__head',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("adaptation priority layout missing: {$marker}");

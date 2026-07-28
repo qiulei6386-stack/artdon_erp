@@ -72,21 +72,7 @@ include MC_ROOT.'/components/layout_top.php';
             <div class="mc-adaptation-products__list" data-product-list></div>
         </aside>
 
-        <section class="mc-adaptation-column mc-adaptation-rules">
-            <div class="mc-adaptation-column__head">
-                <div><strong>配置组（产品选配结构）</strong><span data-rule-subtitle>请选择产品</span></div>
-                <button class="mc-button" type="button" data-group-create disabled>＋ 配置组</button>
-            </div>
-            <div data-product-summary></div>
-            <div class="mc-configuration-overview" data-configuration-overview></div>
-            <div class="mc-config-group-guide">
-                <strong>配置组工作区</strong>
-                <span>先选一个组，再填关键范围、添加候选和设置默认项；已选物料会持续显示在右侧。</span>
-            </div>
-            <div class="mc-adaptation-groups" data-group-list></div>
-        </section>
-
-        <aside class="mc-adaptation-column mc-adaptation-options">
+        <section class="mc-adaptation-column mc-adaptation-options">
             <div class="mc-adaptation-column__head">
                 <div><strong>选项详情</strong><span data-option-subtitle>请选择配置组</span></div>
                 <div class="mc-adaptation-column__actions">
@@ -94,7 +80,8 @@ include MC_ROOT.'/components/layout_top.php';
                     <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
                 </div>
             </div>
-            <section class="mc-selected-configuration" data-selected-configuration hidden></section>
+            <div data-product-summary></div>
+            <div class="mc-configuration-overview" data-configuration-overview></div>
             <div class="mc-option-tabs" role="tablist" data-option-tabs hidden>
                 <button type="button" class="is-active" data-adaptation-tab="options">选项列表</button>
                 <button type="button" data-adaptation-tab="quick_rules">关键范围（快速规则）</button>
@@ -104,7 +91,21 @@ include MC_ROOT.'/components/layout_top.php';
                 <button type="button" data-adaptation-tab="impact">价格 / 交期</button>
                 <button type="button" data-adaptation-tab="approval">审批</button>
             </div>
+            <section class="mc-candidate-discovery" data-candidate-discovery hidden></section>
             <div class="mc-adaptation-detail" data-option-detail></div>
+        </section>
+
+        <aside class="mc-adaptation-column mc-adaptation-rules">
+            <div class="mc-adaptation-column__head">
+                <div><strong>配置组工作区</strong><span data-rule-subtitle>请选择产品</span></div>
+                <button class="mc-button" type="button" data-group-create disabled>＋ 配置组</button>
+            </div>
+            <section class="mc-selected-configuration" data-selected-configuration hidden></section>
+            <div class="mc-config-group-guide">
+                <strong>配置组</strong>
+                <span>选择一个组后，中间区可维护关键范围、候选物料、默认项和条件。</span>
+            </div>
+            <div class="mc-adaptation-groups" data-group-list></div>
         </aside>
     </div>
 

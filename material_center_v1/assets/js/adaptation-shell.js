@@ -15,6 +15,8 @@
     baseUrl: bootstrap.baseUrl || '/artdon_erp/material_center_v1',
     tab: 'options',
     candidates: [],
+    candidateDiscoveryGroupId: 0,
+    candidateDiscoveryRows: [],
     dirty: false,
     draggingGroupId: 0,
     batchSelected: new Set(),
@@ -49,6 +51,12 @@
   };
   const quickRuleCount = group => Object.entries(group?.quick_rules || {})
     .filter(([key, value]) => key !== 'availability' && value !== '' && value !== null).length;
+  const hasCandidateDiscoveryRules = group => {
+    if (!group) return false;
+    if (group.material_category_code !== 'power_supply') return quickRuleCount(group) > 0;
+    const ignored = new Set(['id', 'legacy_product_id', 'rule_name', 'status', 'created_at', 'updated_at', 'created_by', 'updated_by']);
+    return Object.entries(state.workspace?.power_rule || {}).some(([key, value]) => !ignored.has(key) && value !== '' && value !== null && value !== 'unknown' && (!Array.isArray(value) || value.length));
+  };
 
   const notify = (title, message) => {
     const region = q('[data-toast-region]');
@@ -302,6 +310,41 @@
       </button>`).join('')}</div>`;
   };
 
+  const renderCandidateDiscovery = () => {
+    const target = q('[data-candidate-discovery]');
+    const group = selectedGroup();
+    const sameGroup = group && integer(state.candidateDiscoveryGroupId) === integer(group.id);
+    if (!target || state.tab !== 'options' || !sameGroup) {
+      if (target) {
+        target.hidden = true;
+        target.innerHTML = '';
+      }
+      return;
+    }
+    const rows = state.candidateDiscoveryRows || [];
+    const addable = rows.filter(row => row.status === 'official' && row.match_level !== 'incompatible');
+    const exact = rows.filter(row => row.match_level === 'exact').length;
+    const review = rows.filter(row => row.match_level === 'needs_approval').length;
+    const conditional = rows.filter(row => row.match_level === 'conditional').length;
+    target.hidden = false;
+    target.innerHTML = `<div class="mc-candidate-discovery__head">
+        <div><strong>关键范围筛选结果</strong><span>已按“${escapeHtml(group.group_name)}”当前范围检查正式物料；结果只供选择，不会自动加入产品。</span></div>
+        <button class="mc-button mc-button--primary" type="button" data-candidate-discovery-open>查看全部并选择</button>
+      </div>
+      <div class="mc-candidate-discovery__metrics">
+        <span><b>${rows.length}</b> 正式物料</span>
+        <span><b>${addable.length}</b> 可加入</span>
+        <span><b>${exact}</b> 完全适配</span>
+        <span><b>${conditional}</b> 条件适配</span>
+        <span><b>${review}</b> 需确认</span>
+      </div>
+      ${rows.length ? `<div class="mc-candidate-discovery__list">${rows.slice(0, 6).map(material => `<article class="mc-candidate-discovery__row mc-candidate-discovery__row--${escapeHtml(material.match_level)}">
+          <div><strong>${escapeHtml(material.material_code)} · ${escapeHtml(`${material.brand || ''} ${material.model || material.name || ''}`.trim())}</strong><span>${escapeHtml(material.key_specs || '暂无关键规格')}</span></div>
+          <b>${escapeHtml(material.match_label)}</b>
+          <small>${escapeHtml((material.conflict_reasons || []).join('；') || '符合当前关键范围')}</small>
+        </article>`).join('')}</div>${rows.length > 6 ? `<p class="mc-candidate-discovery__more">另有 ${rows.length - 6} 项物料，请点“查看全部并选择”。</p>` : ''}` : `<div class="mc-empty-state mc-empty-state--compact"><strong>当前分类没有可检查的正式物料</strong><span>请确认对应分类是否已有已转正式物料，并补齐芯片、电源或光学的关键规格。</span></div>`}`;
+  };
+
   const renderConfigurationOverview = () => {
     const root = q('[data-configuration-overview]');
     const overview = state.workspace?.configuration_overview || [];
@@ -394,6 +437,7 @@
     const group = selectedGroup();
     const detail = q('[data-option-detail]');
     renderPersistentConfiguration();
+    renderCandidateDiscovery();
     q('[data-option-tabs]').hidden = !group;
     q('[data-candidate-open]').disabled = !group;
     q('[data-open-quick-rules]').disabled = !group;
@@ -537,7 +581,16 @@
     if (productIndex >= 0) state.products[productIndex] = { ...state.products[productIndex], ...state.workspace.product };
     const catalogIndex = state.catalogProducts.findIndex(product => integer(product.id) === integer(productId));
     if (catalogIndex >= 0) state.catalogProducts[catalogIndex] = { ...state.catalogProducts[catalogIndex], ...state.workspace.product };
+    state.candidateDiscoveryGroupId = 0;
+    state.candidateDiscoveryRows = [];
     render();
+    if (hasCandidateDiscoveryRules(selectedGroup())) {
+      try {
+        await loadCandidateDiscovery();
+      } catch (error) {
+        notify('候选物料暂未加载', error.message);
+      }
+    }
   };
 
   const updateChipOptionCount = () => {
@@ -569,6 +622,18 @@
   };
 
   const refreshWorkspace = () => loadWorkspace(selectedProductId(), integer(selectedGroup()?.id));
+
+  const loadCandidateDiscovery = async () => {
+    const group = selectedGroup();
+    if (!group) return;
+    state.candidateDiscoveryGroupId = integer(group.id);
+    state.candidateDiscoveryRows = [];
+    renderCandidateDiscovery();
+    const rows = await get('candidates', { group_id: group.id, status: 'official' });
+    if (integer(selectedGroup()?.id) !== integer(group.id)) return;
+    state.candidateDiscoveryRows = rows;
+    renderCandidateDiscovery();
+  };
 
   const formatExpected = value => Array.isArray(value) ? value.join(' ～ ') : String(value ?? '');
 
@@ -1165,7 +1230,7 @@
       openGroupForm(group);
       return;
     }
-    if (event.target.closest('[data-candidate-open], [data-empty-candidate]')) {
+    if (event.target.closest('[data-candidate-open], [data-empty-candidate], [data-candidate-discovery-open]')) {
       q('[data-candidate-form]').reset();
       openModal('candidate-modal');
       try {
@@ -1532,6 +1597,8 @@
       const result = await post('add_options', { group_id: selectedGroup().id, material_ids: ids });
       closeModal(modal);
       await refreshWorkspace();
+      state.tab = 'options';
+      renderOptionPanel();
       notify('物料选项已添加', `成功 ${result.added} 项，跳过 ${result.skipped} 项。`);
     } catch (error) {
       notify('添加失败', error.message);
@@ -1617,12 +1684,12 @@
       try {
         const result = await post('save_power_rules', { group_id: selectedGroup().id, rules });
         await refreshWorkspace();
-        state.tab = 'quick_rules';
+        state.tab = 'options';
         renderOptionPanel();
         const followup = integer(result.incompatible)
           ? `；有 ${integer(result.incompatible)} 个已有电源不再适配，请处理后再审批`
           : integer(result.needs_review) ? `；有 ${integer(result.needs_review)} 个电源资料不足，需要审批确认` : '';
-        notify('电源关键范围已保存', `候选电源会立即按新范围筛选${followup}。`);
+        notify('电源关键范围已保存', `筛选结果已显示在中间区域；请选择需要加入的候选电源${followup}。`);
       } catch (error) {
         notify('保存失败', error.message);
         button.disabled = false;
@@ -1639,12 +1706,12 @@
       try {
         const result = await post('save_quick_rules', { group_id: selectedGroup().id, rules });
         await refreshWorkspace();
-        state.tab = 'quick_rules';
+        state.tab = 'options';
         renderOptionPanel();
         const followup = integer(result.incompatible)
           ? `；有 ${integer(result.incompatible)} 个已有选项明确不适配，请更换后再审批`
           : integer(result.needs_review) ? `；有 ${integer(result.needs_review)} 个选项资料不足，需要审批确认` : '';
-        notify('关键范围已保存', `候选物料会立即按新范围筛选${followup}。`);
+        notify('关键范围已保存', `筛选结果已显示在中间区域；请选择需要加入的候选物料${followup}。`);
       } catch (error) {
         notify('保存失败', error.message);
         button.disabled = false;
@@ -1748,4 +1815,7 @@
 
   populateGroupFormTypes();
   render();
+  if (hasCandidateDiscoveryRules(selectedGroup())) {
+    loadCandidateDiscovery().catch(error => notify('候选物料暂未加载', error.message));
+  }
 })();

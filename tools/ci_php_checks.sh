@@ -57,6 +57,7 @@ contract_tests=(
   material_center_v1/tests/adaptation_quick_rule_discovery_contract.php
   material_center_v1/tests/adaptation_reuse_templates_contract.php
   material_center_v1/tests/adaptation_priority_layout_contract.php
+  material_center_v1/tests/adaptation_option_workspace_and_discovery_contract.php
   material_center_v1/tests/adaptation_workbench_contract.php
   material_center_v1/tests/category_editor_drawer_contract.php
   material_center_v1/tests/dropdown_contract_test.php
