@@ -24459,8 +24459,10 @@ body.is-workspace-module .workspace-mail-more {
 .quote-followup-history-actions button:hover{border-color:#2563eb;color:#2563eb}
 .quote-followup-history-actions button.danger{border-color:#fecaca;color:#dc2626;background:#fff7f7}
 .quote-followup-file{display:inline-flex;align-items:center;gap:4px}
-.quote-followup-file button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#2563eb;padding:3px 7px;font-size:12px}
+.quote-followup-file button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#2563eb;padding:3px 7px;font-size:12px;display:inline-flex;align-items:center;gap:5px;max-width:190px}
+.quote-followup-file button img{width:30px;height:30px;object-fit:cover;border-radius:4px;background:#f1f5f9}.quote-followup-file button b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .quote-followup-file button.danger{color:#dc2626}
+.quote-followup-file-count{color:#64748b;font-size:11px;font-weight:800}
 .quote-followup-drop{border:1.5px dashed #94a3b8;border-radius:12px;background:#f8fafc;padding:16px;display:grid;gap:5px;text-align:center;cursor:pointer}
 .quote-followup-drop.dragging{border-color:#2563eb;background:#eff6ff}
 .quote-followup-drop>input{margin:auto}
@@ -24482,7 +24484,7 @@ body.is-workspace-module .workspace-mail-more {
 .quote-followup-history-detail dl div,.quote-followup-history-detail article{border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:11px 13px}
 .quote-followup-history-detail dt,.quote-followup-history-detail article>span{font-size:12px;color:#64748b}.quote-followup-history-detail dd{margin:4px 0 0;color:#0f172a;font-weight:600}
 .quote-followup-history-detail article{margin-top:10px}.quote-followup-history-detail article p{white-space:pre-wrap;margin:7px 0 0;color:#1e293b;line-height:1.6}
-.quote-followup-history-files{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.quote-followup-history-files a{border:1px solid #bfdbfe;border-radius:7px;background:#eff6ff;color:#1d4ed8;padding:5px 9px}
+.quote-followup-history-files{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.quote-followup-history-file{width:128px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;color:#1d4ed8;padding:6px;display:grid;gap:5px;text-decoration:none;font-size:11px;font-weight:800}.quote-followup-history-file img{display:block;width:100%;height:82px;object-fit:cover;border-radius:5px;background:#fff}.quote-followup-history-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.quote-followup-history-empty{color:#64748b!important;font-size:12px!important}
 @media(max-width:620px){.quote-followup-history-detail dl{grid-template-columns:1fr}}
 .quote-preview-dialog{width:min(1480px,96vw);height:min(920px,94vh);max-width:none;max-height:none;border:0;border-radius:16px;padding:0;overflow:hidden;background:#fff;box-shadow:0 30px 90px rgba(15,23,42,.35)}
 .quote-preview-dialog::backdrop{background:rgba(15,23,42,.58);backdrop-filter:blur(2px)}

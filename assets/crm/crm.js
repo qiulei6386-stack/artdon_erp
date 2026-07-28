@@ -23392,9 +23392,12 @@
       var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
       if (!rows.length) return '<p class="entry-muted">还没有跟进记录。</p>';
       return rows.map(function (item) {
-        var files = (item.files || []).map(function (file) { return '<span class="quote-followup-file"><button type="button" data-quote-followup-preview="' + esc(file.id) + '">' + esc(file.original_name || '沟通截图') + '</button>' + (Number(item.can_edit) ? '<button type="button" class="danger" data-quote-followup-file-delete="' + esc(file.id) + '">删除</button>' : '') + '</span>'; }).join('');
+        var files = (item.files || []).map(function (file) {
+          var fileUrl = 'crm_api.php?action=quote_followup_file&file_id=' + encodeURIComponent(file.id);
+          return '<span class="quote-followup-file"><button type="button" data-quote-followup-preview="' + esc(file.id) + '" title="查看沟通截图"><img src="' + esc(fileUrl) + '" alt="' + esc(file.original_name || '沟通截图') + '"><b>' + esc(file.original_name || '沟通截图') + '</b></button>' + (Number(item.can_edit) ? '<button type="button" class="danger" data-quote-followup-file-delete="' + esc(file.id) + '">删除</button>' : '') + '</span>';
+        }).join('');
         var actions = interactive ? '<nav class="quote-followup-history-actions"><button type="button" data-quote-followup-history-view="' + esc(item.id) + '">查看</button>' + (Number(item.can_edit) ? '<button type="button" data-quote-followup-history-edit="' + esc(item.id) + '">修改</button>' : '') + (Number(item.can_delete) ? '<button type="button" class="danger" data-quote-followup-history-delete="' + esc(item.id) + '">删除</button>' : '') + '</nav>' : '';
-        return '<article class="quote-followup-history-item" data-quote-followup-history-item="' + esc(item.id) + '"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + (Number(item.customer_replied) ? ' · 客户已回复' : '') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.mail_id ? '<a href="#mail:' + esc(item.mail_id) + '">邮件：' + esc(item.mail_subject || ('#' + item.mail_id)) + '</a>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + files + '</footer>' + actions + '</article>';
+        return '<article class="quote-followup-history-item" data-quote-followup-history-item="' + esc(item.id) + '"><header><strong>' + esc(item.created_name || '-') + '</strong><span>' + esc(item.mode === 'online' ? '线上' : '线下') + ' · ' + esc(channel[item.channel] || item.channel) + '</span><time>' + esc(String(item.contacted_at || '').slice(0,16)) + '</time></header><p>' + esc(item.content || '') + '</p><footer><b>' + esc(result[item.result] || item.result || '-') + (Number(item.customer_replied) ? ' · 客户已回复' : '') + '</b>' + (item.contact_name ? '<span>联系人：' + esc(item.contact_name) + '</span>' : '') + (item.mail_id ? '<a href="#mail:' + esc(item.mail_id) + '">邮件：' + esc(item.mail_subject || ('#' + item.mail_id)) + '</a>' : '') + (item.next_followup_at ? '<span>下次：' + esc(String(item.next_followup_at).slice(0,16)) + '</span>' : '') + (item.attachment_note ? '<span>附件/链接：' + esc(item.attachment_note) + '</span>' : '') + '<span class="quote-followup-file-count">沟通截图 ' + esc((item.files || []).length) + ' 张</span>' + files + '</footer>' + actions + '</article>';
       }).join('');
     },
     openQuoteFollowupHistoryView: function (item, editCallback) {
@@ -23403,14 +23406,15 @@
       var channel = {email:'邮件',wechat:'微信',whatsapp:'WhatsApp',online_meeting:'线上会议',other_online:'其他线上',phone:'电话',visit:'拜访',exhibition:'展会',other_offline:'其他线下'};
       var result = {waiting_reply:'等待回复',interested:'有兴趣',need_revision:'需要修改报价',need_sample:'需要样品',accepted:'接受报价',rejected:'拒绝报价',no_response:'暂无回复',other:'其他'};
       var files = (item.files || []).map(function (file) {
-        return '<a target="_blank" rel="noopener" href="crm_api.php?action=quote_followup_file&amp;file_id=' + encodeURIComponent(file.id) + '">' + esc(file.original_name || '沟通截图') + '</a>';
+        var fileUrl = 'crm_api.php?action=quote_followup_file&file_id=' + encodeURIComponent(file.id);
+        return '<a class="quote-followup-history-file" target="_blank" rel="noopener" href="' + esc(fileUrl) + '"><img src="' + esc(fileUrl) + '" alt="' + esc(file.original_name || '沟通截图') + '"><span>' + esc(file.original_name || '沟通截图') + '</span></a>';
       }).join('');
       var dialog = document.createElement('dialog');
       dialog.className = 'quote-followup-history-dialog';
       dialog.setAttribute('data-quote-followup-history-dialog','1');
       dialog.innerHTML = '<header><div><span>历史跟进详情</span><strong>' + esc(String(item.contacted_at || '').slice(0,16)) + '</strong></div><button type="button" data-quote-followup-history-close>关闭</button></header>' +
-        '<section class="quote-followup-history-detail"><dl><div><dt>记录人</dt><dd>' + esc(item.created_name || '-') + '</dd></div><div><dt>沟通方式</dt><dd>' + esc((item.mode === 'online' ? '线上' : '线下') + ' · ' + (channel[item.channel] || item.channel || '-')) + '</dd></div><div><dt>沟通结果</dt><dd>' + esc(result[item.result] || item.result || '-') + '</dd></div><div><dt>联系人</dt><dd>' + esc(item.contact_name || '未指定') + '</dd></div><div><dt>客户回复</dt><dd>' + (Number(item.customer_replied) ? '是' : '否') + '</dd></div><div><dt>下次跟进</dt><dd>' + esc(String(item.next_followup_at || '未设置').slice(0,16)) + '</dd></div></dl><article><span>沟通内容</span><p>' + esc(item.content || '-') + '</p></article><article><span>下一步计划</span><p>' + esc(item.next_plan || '未填写') + '</p></article><article><span>附件或链接</span><p>' + esc(item.attachment_note || '未填写') + '</p></article>' + (files ? '<article><span>沟通截图</span><div class="quote-followup-history-files">' + files + '</div></article>' : '') + '</section>' +
-        '<footer><button type="button" data-quote-followup-history-close>关闭</button>' + (Number(item.can_edit) ? '<button type="button" class="primary" data-quote-followup-history-edit-now>修改这条跟进</button>' : '') + '</footer>';
+        '<section class="quote-followup-history-detail"><dl><div><dt>记录人</dt><dd>' + esc(item.created_name || '-') + '</dd></div><div><dt>沟通方式</dt><dd>' + esc((item.mode === 'online' ? '线上' : '线下') + ' · ' + (channel[item.channel] || item.channel || '-')) + '</dd></div><div><dt>沟通结果</dt><dd>' + esc(result[item.result] || item.result || '-') + '</dd></div><div><dt>联系人</dt><dd>' + esc(item.contact_name || '未指定') + '</dd></div><div><dt>客户回复</dt><dd>' + (Number(item.customer_replied) ? '是' : '否') + '</dd></div><div><dt>下次跟进</dt><dd>' + esc(String(item.next_followup_at || '未设置').slice(0,16)) + '</dd></div></dl><article><span>沟通内容</span><p>' + esc(item.content || '-') + '</p></article><article><span>下一步计划</span><p>' + esc(item.next_plan || '未填写') + '</p></article><article><span>附件或链接</span><p>' + esc(item.attachment_note || '未填写') + '</p></article><article><span>沟通截图（' + esc((item.files || []).length) + ' 张）</span>' + (files ? '<div class="quote-followup-history-files">' + files + '</div>' : '<p class="quote-followup-history-empty">此记录没有成功保存沟通截图。可通过“修改并补传图片”重新上传。</p>') + '</article></section>' +
+        '<footer><button type="button" data-quote-followup-history-close>关闭</button>' + (Number(item.can_edit) ? '<button type="button" class="primary" data-quote-followup-history-edit-now>修改并补传图片</button>' : '') + '</footer>';
       document.body.appendChild(dialog);
       var close = function () { dialog.close(); dialog.remove(); };
       dialog.querySelectorAll('[data-quote-followup-history-close]').forEach(function (button) { button.addEventListener('click', close); });
@@ -23572,10 +23576,11 @@
               var activityId = res.data && (res.data.updated_activity_id || res.data.saved_activity_id);
               var input = dialog.querySelector('[data-quote-followup-files]');
               if (!activityId || !input || !input.files || !input.files.length) return res;
-              return TaskCenterModule.uploadQuoteFollowupFiles(activityId, input).then(function () { return res; });
+              return TaskCenterModule.uploadQuoteFollowupFiles(activityId, input).then(function (upload) { res.data = res.data || {}; res.data.uploaded_image_count = (upload.data.saved_ids || []).length; return res; });
             }).then(function (res) {
               if (!res || !res.success) return;
-              CustomerModule.closeDialog(); toast(isEdit ? '历史跟进已修改' : (res.data && res.data.reused ? '这次保存已完成，未重复新增跟进' : '报价跟进已保存')); TaskCenterModule.load();
+              var imageText = Number(res.data && res.data.uploaded_image_count) > 0 ? '，沟通截图已保存 ' + Number(res.data.uploaded_image_count) + ' 张' : '';
+              CustomerModule.closeDialog(); toast((isEdit ? '历史跟进已修改' : (res.data && res.data.reused ? '这次保存已完成，未重复新增跟进' : '报价跟进已保存')) + imageText); TaskCenterModule.load();
               if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
               if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
             }).catch(function (error) {
@@ -23639,6 +23644,8 @@
           return response.text().then(function (text) {
             var json; try { json = JSON.parse(text); } catch (error) { throw new Error('服务器未返回上传结果，请检查图片大小后重试。'); }
             if (!json.success) throw new Error(json.message || '截图上传失败');
+            var savedIds = json.data && json.data.saved_ids;
+            if (!Array.isArray(savedIds) || savedIds.length !== prepared.length) throw new Error('服务器没有完整保存截图，请在历史记录中重新上传。');
             return json;
           });
         });
