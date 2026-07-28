@@ -4,6 +4,7 @@ declare(strict_types=1);
 $root=dirname(__DIR__);
 $page=file_get_contents($root.'/adaptation/index.php');
 $script=file_get_contents($root.'/assets/js/adaptation-shell.js');
+$css=file_get_contents($root.'/assets/css/app.css');
 $service=file_get_contents($root.'/app/Services/AdaptationService.php');
 $api=file_get_contents($root.'/api/v1/adaptation.php');
 
@@ -21,5 +22,8 @@ foreach(["m.status='official'","m.is_official=1",'必选组尚未添加选项','
 }
 foreach(['powerCompatibilityReasons','comparePower','功率超出产品允许范围','输出电流高于芯片允许值或范围不相交','输出电压范围不匹配','超过灯体内部空间','supplier_warranty_years','调光方式不匹配','certification_required']as$marker){
     if(!str_contains($service,$marker))throw new RuntimeException("power adaptation check missing: {$marker}");
+}
+foreach(['Start with a real product catalogue','grid-template-columns:repeat(auto-fill,minmax(305px,1fr))','mc-product-row{min-height:94px','mc-adaptation-workspace{grid-template-columns:minmax(330px,.78fr) minmax(640px,1.72fr)}'] as $marker){
+    if(!str_contains($css,$marker))throw new RuntimeException("adaptation progressive layout marker missing: {$marker}");
 }
 echo "Product adaptation three-column workflow contract: OK\n";
