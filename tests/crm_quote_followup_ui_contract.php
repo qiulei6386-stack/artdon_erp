@@ -12,7 +12,10 @@ if ($js === false || $css === false || $service === false) {
 foreach ([
     "post('quote_followup_context', {quote_source:source,quote_id:quoteId})",
     '报价摘要',
-    'CRM 只显示与跟进有关的报价资料',
+    'CRM 显示只读的报价、产品与订单关联快照',
+    'quote_preview',
+    'quote-preview-products',
+    '订单信息',
     'return response.text().then(function (text) {',
     'error.quoteFollowupSaved = true',
     '跟进已保存，但截图未上传：',
@@ -26,12 +29,12 @@ foreach ([
         throw new RuntimeException("quote follow-up UI marker missing: {$marker}");
     }
 }
-foreach (['.customer-dialog.quote-followup-modal', '.quote-followup-upload-card', '.quote-preview-summary-dialog'] as $marker) {
+foreach (['.customer-dialog.quote-followup-modal', '.quote-followup-modal .customer-dialog-body', 'overflow:visible!important', '.quote-preview-product'] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("quote follow-up CSS marker missing: {$marker}");
     }
 }
-foreach (['截图超过服务器允许大小，请选择较小图片后重试。', '截图临时文件无效，请重新选择图片。'] as $marker) {
+foreach (['function crm_quote_followup_legacy_preview', 'function crm_quote_followup_cc_preview', '截图超过服务器允许大小，请选择较小图片后重试。', '截图临时文件无效，请重新选择图片。'] as $marker) {
     if (!str_contains($service, $marker)) {
         throw new RuntimeException("quote follow-up upload marker missing: {$marker}");
     }

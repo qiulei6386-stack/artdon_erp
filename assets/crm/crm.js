@@ -23574,17 +23574,39 @@
       if (!quoteId) return toast('没有关联报价。');
       post('quote_followup_context', {quote_source:source,quote_id:quoteId}).then(function (json) {
         if (!json.success) return toast(json.message || '读取报价信息失败');
-        var data = json.data || {}, quote = data.quote || {}, amount = quote.total_amount || row.current_amount || row.amount || '—';
+        var data = json.data || {}, quote = data.quote || {}, preview = data.quote_preview || {}, amount = quote.total_amount || row.current_amount || row.amount || '—';
+        var currency = quote.currency || row.currency || '';
+        var money = function (value) {
+          var number = Number(value);
+          return Number.isFinite(number) ? number.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+        };
+        var productRows = (preview.items || []).map(function (item, index) {
+          var image = item.image
+            ? '<img src="' + esc(item.image) + '" alt="' + esc(item.name || item.model || '产品图片') + '">'
+            : '<span class="quote-preview-product-placeholder">产品</span>';
+          var components = (item.components || []).slice(0, 4).map(function (part) { return '<span>' + esc(part) + '</span>'; }).join('');
+          return '<article class="quote-preview-product">' +
+            '<div class="quote-preview-product-image">' + image + '</div>' +
+            '<div class="quote-preview-product-main"><span class="quote-preview-product-index">产品 ' + (index + 1) + '</span><strong>' + esc(item.name || item.model || '未命名产品') + '</strong>' +
+            (item.model ? '<b>型号：' + esc(item.model) + '</b>' : '') +
+            (item.specification ? '<p>' + esc(item.specification) + '</p>' : '') +
+            (components ? '<div class="quote-preview-components">' + components + '</div>' : '') + '</div>' +
+            '<div class="quote-preview-product-price"><span>数量 ' + esc(String(item.quantity || 0)) + '</span><span>单价 ' + esc(currency + ' ' + money(item.unit_price)) + '</span><strong>' + esc(currency + ' ' + money(item.line_amount)) + '</strong></div></article>';
+        }).join('');
+        if (!productRows) productRows = '<p class="quote-preview-empty">此报价尚未保存可显示的产品明细。</p>';
+        var orderInfo = preview.order_no
+          ? '<article class="quote-preview-order"><span>订单信息</span><strong>' + esc(preview.order_no) + '</strong><p>' + esc([preview.order_status, preview.payment_status ? ('收款：' + preview.payment_status) : '', preview.shipment_status ? ('出货：' + preview.shipment_status) : '', preview.expected_ship_at ? ('预计出货：' + preview.expected_ship_at) : ''].filter(Boolean).join(' · ') || '订单已关联，等待后续状态更新') + '</p></article>'
+          : '<article class="quote-preview-order"><span>订单信息</span><strong>尚未转订单</strong><p>该报价暂未生成订单。</p></article>';
         document.querySelector('[data-quote-preview-dialog]')?.remove();
         var dialog = document.createElement('dialog');
         dialog.className = 'quote-preview-dialog quote-preview-summary-dialog';
         dialog.setAttribute('data-quote-preview-dialog','1');
         dialog.innerHTML = '<header><div><span>报价摘要</span><strong>' + esc(quote.quote_no || quoteNo || ('报价 #' + quoteId)) + '</strong></div><nav><button type="button" data-quote-preview-close>关闭</button></nav></header>' +
-          '<section class="quote-preview-summary"><p class="quote-preview-summary-tip">CRM 只显示与跟进有关的报价资料；报价编辑、产品明细和正式单据仍在商务中心处理。</p><dl>' +
-          '<div><dt>客户</dt><dd>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</dd></div><div><dt>报价金额</dt><dd class="quote-preview-amount">' + esc((quote.currency || row.currency || '') + ' ' + amount) + '</dd></div>' +
+          '<section class="quote-preview-summary"><p class="quote-preview-summary-tip">CRM 显示只读的报价、产品与订单关联快照；需要修改报价或正式单据时，仍在商务中心处理。</p><dl>' +
+          '<div><dt>客户</dt><dd>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</dd></div><div><dt>报价金额</dt><dd class="quote-preview-amount">' + esc(currency + ' ' + money(amount)) + '</dd></div>' +
           '<div><dt>报价日期</dt><dd>' + esc(quote.quote_date || row.created_at || row.task_created_at || '—') + '</dd></div><div><dt>负责人</dt><dd>' + esc(quote.user_name || quote.owner_name || row.owner_name || row.assigned_name || '—') + '</dd></div>' +
           '<div><dt>联系人</dt><dd>' + esc(quote.contact_name || row.contact_name || '未指定') + '</dd></div><div><dt>已有跟进</dt><dd>' + esc(String((data.activities || []).length)) + ' 条</dd></div>' +
-          '</dl><article><span>当前流程</span><strong>' + esc(row.next_action || row.stage_label || '可直接写跟进或标记客户回复') + '</strong><p>' + esc(row.next_followup_at ? ('下次跟进：' + row.next_followup_at) : '尚未设置下次跟进时间') + '</p></article></section>';
+          '</dl><section class="quote-preview-products"><h3>产品明细</h3>' + productRows + '</section>' + orderInfo + '<article><span>当前流程</span><strong>' + esc(row.next_action || row.stage_label || '可直接写跟进或标记客户回复') + '</strong><p>' + esc(row.next_followup_at ? ('下次跟进：' + row.next_followup_at) : '尚未设置下次跟进时间') + '</p></article></section>';
         document.body.appendChild(dialog);
         var close = function () { dialog.close(); dialog.remove(); };
         dialog.querySelector('[data-quote-preview-close]')?.addEventListener('click',close);

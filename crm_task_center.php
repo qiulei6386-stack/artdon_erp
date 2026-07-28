@@ -887,6 +887,108 @@ function crm_task_center_stats(): array
     ];
 }
 
+function crm_quote_followup_preview_specs(array $values): string
+{
+    $clean = [];
+    foreach ($values as $value) {
+        $value = trim((string)$value);
+        if ($value !== '' && !in_array($value, $clean, true)) $clean[] = $value;
+    }
+    return implode(' · ', $clean);
+}
+
+function crm_quote_followup_legacy_preview(array $quote): array
+{
+    $items = json_decode((string)($quote['items_json'] ?? ''), true);
+    if (!is_array($items) || !$items) {
+        $product = json_decode((string)($quote['product_json'] ?? ''), true);
+        $items = [[
+            'product' => is_array($product) ? $product : [],
+            'parts' => json_decode((string)($quote['parts_json'] ?? ''), true),
+            'qty' => $quote['qty'] ?? 0, 'price' => $quote['price'] ?? 0, 'amount' => $quote['total_amount'] ?? 0,
+            'power' => $quote['power'] ?? '', 'cct' => $quote['cct'] ?? '', 'cri' => $quote['cri'] ?? '',
+            'color' => $quote['color'] ?? '', 'extra_spec' => $quote['extra_spec'] ?? '',
+        ]];
+    }
+    $previewItems = [];
+    foreach (array_slice($items, 0, 60) as $item) {
+        if (!is_array($item)) continue;
+        $product = is_array($item['product'] ?? null) ? $item['product'] : [];
+        $parts = is_array($item['parts'] ?? null) ? $item['parts'] : [];
+        $components = [];
+        foreach ($parts as $part) {
+            if (!is_array($part)) continue;
+            $name = trim((string)($part['brand'] ?? '') . ' ' . (string)($part['model'] ?? $part['name'] ?? ''));
+            if ($name !== '') $components[] = $name;
+        }
+        $previewItems[] = [
+            'model' => (string)($product['code'] ?? $product['model'] ?? ''),
+            'name' => (string)($product['name'] ?? $item['description'] ?? '未命名产品'),
+            'image' => (string)($product['image'] ?? ''),
+            'specification' => crm_quote_followup_preview_specs([
+                $product['size'] ?? '', $item['power'] ?? $product['power'] ?? '', $item['cct'] ?? $product['cct'] ?? '',
+                $item['cri'] ?? $product['cri'] ?? '', $item['beam_angle'] ?? '', $item['color'] ?? $product['color'] ?? '',
+                $item['ip'] ?? $product['ip'] ?? '', $item['extra_spec'] ?? '',
+            ]),
+            'components' => $components,
+            'quantity' => (float)($item['qty'] ?? $item['quantity'] ?? 0),
+            'unit_price' => (float)($item['unit_price'] ?? $item['price'] ?? 0),
+            'line_amount' => (float)($item['amount'] ?? $item['line_amount'] ?? 0),
+        ];
+    }
+    return [
+        'quote_date' => (string)($quote['quote_date'] ?? ''),
+        'status' => (string)($quote['quote_status'] ?? $quote['status'] ?? ''),
+        'approval_status' => (string)($quote['approval_status'] ?? ''),
+        'approved_at' => (string)($quote['approved_at'] ?? ''),
+        'order_id' => (int)($quote['converted_order_id'] ?? 0),
+        'order_no' => (string)($quote['converted_order_no'] ?? ''),
+        'items' => $previewItems,
+    ];
+}
+
+function crm_quote_followup_cc_preview(array $quote): array
+{
+    $items = [];
+    if (db_table_exists('cc_quote_versions') && db_table_exists('cc_quote_items')) {
+        $versionStmt = db()->prepare('SELECT id FROM cc_quote_versions WHERE quote_id=? AND version_no=? ORDER BY id DESC LIMIT 1');
+        $versionStmt->execute([(int)$quote['id'], (int)($quote['current_version'] ?? 0)]);
+        $versionId = (int)$versionStmt->fetchColumn();
+        if ($versionId > 0) {
+            $itemStmt = db()->prepare('SELECT description,configuration_snapshot,quantity,unit_price,line_amount FROM cc_quote_items WHERE quote_version_id=? ORDER BY sort_order,id');
+            $itemStmt->execute([$versionId]);
+            foreach ($itemStmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+                $config = json_decode((string)($item['configuration_snapshot'] ?? ''), true);
+                $config = is_array($config) ? $config : [];
+                $items[] = [
+                    'model' => (string)($config['model'] ?? $config['product_model'] ?? $config['sku'] ?? ''),
+                    'name' => (string)($config['product_name'] ?? $item['description'] ?? '未命名产品'),
+                    'image' => (string)($config['image'] ?? $config['image_url'] ?? ''),
+                    'specification' => crm_quote_followup_preview_specs([$config['specification'] ?? '', $config['configuration_name'] ?? '']),
+                    'components' => [],
+                    'quantity' => (float)($item['quantity'] ?? 0), 'unit_price' => (float)($item['unit_price'] ?? 0), 'line_amount' => (float)($item['line_amount'] ?? 0),
+                ];
+            }
+        }
+    }
+    $order = [];
+    $orderId = (int)($quote['converted_order_id'] ?? 0);
+    if ($orderId > 0 && db_table_exists('cc_orders')) {
+        $orderStmt = db()->prepare('SELECT order_no,internal_status,customer_status,payment_status,shipment_status,expected_ship_at FROM cc_orders WHERE id=? AND is_test=0 LIMIT 1');
+        $orderStmt->execute([$orderId]);
+        $order = $orderStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+    return [
+        'quote_date' => (string)($quote['quote_date'] ?? ''), 'status' => (string)($quote['status'] ?? ''),
+        'approval_status' => (string)($quote['approval_status'] ?? ''), 'approved_at' => (string)($quote['approved_at'] ?? ''),
+        'order_id' => $orderId, 'order_no' => (string)($order['order_no'] ?? $quote['converted_order_no'] ?? ''),
+        'order_status' => (string)($order['internal_status'] ?? $order['customer_status'] ?? ''),
+        'payment_status' => (string)($order['payment_status'] ?? ''), 'shipment_status' => (string)($order['shipment_status'] ?? ''),
+        'expected_ship_at' => (string)($order['expected_ship_at'] ?? ''),
+        'payment_terms' => (string)($quote['payment_terms'] ?? ''), 'trade_terms' => (string)($quote['trade_terms'] ?? ''), 'items' => $items,
+    ];
+}
+
 function crm_quote_followup_context(array $input): array
 {
     crm_task_center_ensure_tables();
@@ -897,11 +999,11 @@ function crm_quote_followup_context(array $input): array
     if ($source === 'cc') {
         if (!db_table_exists('cc_quotes')) throw new RuntimeException('新版报价表不存在。');
         $detailJoin = db_table_exists('cc_quote_details') ? 'LEFT JOIN cc_quote_details d ON d.quote_id=q.id' : '';
-        $detailSelect = db_table_exists('cc_quote_details') ? "d.contact_name,d.owner_legacy_user_id" : "'' AS contact_name,q.created_by_legacy_user_id AS owner_legacy_user_id";
-        $stmt = db()->prepare("SELECT q.id,q.quote_no,q.legacy_customer_id AS customer_id,q.customer_snapshot,q.currency,q.total_amount,{$detailSelect} FROM cc_quotes q {$detailJoin} WHERE q.id=? AND q.is_test=0 LIMIT 1");
+        $detailSelect = db_table_exists('cc_quote_details') ? "d.contact_name,d.owner_legacy_user_id,d.owner_name,d.quote_date,d.payment_terms,d.trade_terms,d.converted_order_id,d.converted_order_no,d.converted_at" : "'' AS contact_name,q.created_by_legacy_user_id AS owner_legacy_user_id,'' AS owner_name,NULL AS quote_date,'' AS payment_terms,'' AS trade_terms,0 AS converted_order_id,'' AS converted_order_no,NULL AS converted_at";
+        $stmt = db()->prepare("SELECT q.id,q.quote_no,q.legacy_customer_id AS customer_id,q.customer_snapshot,q.currency,q.total_amount,q.current_version,q.status,{$detailSelect} FROM cc_quotes q {$detailJoin} WHERE q.id=? AND q.is_test=0 LIMIT 1");
     } else {
         if (!db_table_exists('quote_orders')) throw new RuntimeException('报价表不存在。');
-        $stmt = db()->prepare("SELECT id,quote_no,customer_id,customer_name,currency,amount AS total_amount,user_name FROM quote_orders WHERE id=? LIMIT 1");
+        $stmt = db()->prepare("SELECT id,quote_no,customer_id,customer_name,currency,amount AS total_amount,user_name AS owner_name,quote_date,qty,price,product_json,parts_json,items_json,extra_spec,status,quote_status,approval_status,approved_at,converted_order_id,converted_order_no FROM quote_orders WHERE id=? LIMIT 1");
     }
     $stmt->execute([$quoteId]);
     $quote = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -910,6 +1012,7 @@ function crm_quote_followup_context(array $input): array
         $snapshot = json_decode((string)($quote['customer_snapshot'] ?? ''), true);
         $quote['customer_name'] = is_array($snapshot) ? (string)($snapshot['customer_name'] ?? $snapshot['name'] ?? '') : '';
     }
+    $preview = $source === 'cc' ? crm_quote_followup_cc_preview($quote) : crm_quote_followup_legacy_preview($quote);
     $customerId = (int)($quote['customer_id'] ?? 0);
     $contacts = [];
     if ($customerId > 0) {
@@ -940,7 +1043,7 @@ function crm_quote_followup_context(array $input): array
         $mailStmt->execute([$customerId]);
         $mails = $mailStmt->fetchAll(PDO::FETCH_ASSOC);
     }
-    return ['quote' => $quote, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $activities, 'mails' => $mails];
+    return ['quote' => $quote, 'quote_preview' => $preview, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $activities, 'mails' => $mails];
 }
 
 function crm_quote_followup_channel_labels(): array
