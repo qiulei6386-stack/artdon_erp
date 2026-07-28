@@ -20,7 +20,7 @@ foreach ([
 foreach ([
     'batchSelected: new Set()', 'openBatch', 'visibleBatchProducts', 'previewBatch',
     "'preview_batch'", "'batch_apply'", "'save_quick_rules'", '一次最多选择 1000 个产品',
-    'data-quick-rule-form', '候选物料会立即按新范围筛选', 'index += 100',
+    'data-quick-rule-form', '筛选结果已显示在中间区域', 'loadCandidateDiscovery', 'index += 100',
     'productSelected: new Set()', 'visibleProducts', 'configuration_state', 'data-product-check', 'data-product-image',
     'openReuse', 'reuseRequestValues', "'batch_initialize_groups'", 'source_group_ids',
 ] as $marker) {
