@@ -10,7 +10,7 @@
 - ACTIONS：切到“报价订单流程”后右侧立即切换为“报价订单筛选 / 报价流程工具”；支持刷新与清除筛选。选中某条报价后才追加该报价的具体操作，不再显示无关的普通任务菜单。
 - 修改文件：`crm_task_center.php`、`assets/crm/crm.js`、`assets/crm/crm.css`、`crm.php`、`tests/crm_task_center_stability_contract.php`、本上下文。用户已有的商务中心命令文件删除和未跟踪文档均保持原样，未纳入提交。
 - 检查：本地 `node --check assets/crm/crm.js` 与 `git diff --check` 通过；本机未安装 PHP。GitHub Actions `Validate and deploy production #663` 已成功；正式服务器 `crm_task_center.php`、`crm.php` PHP 语法及 `crm_task_center_stability_contract.php` 均通过。
-- Git / 部署：功能提交 `3d9dd0662c761b1c5577f20fe5e0da5792016ce5` 已推送并自动部署。部署后正式服务器 `HEAD / origin/main` 与本地同为该提交，工作区干净。本条记录提交后将再经同一自动流程同步三方。
+- Git / 部署：功能提交 `3d9dd0662c761b1c5577f20fe5e0da5792016ce5` 已推送并由 GitHub Actions #663 自动部署成功。交接记录提交 `75f634b0fefc4c52e1475be5e1e5e0077caff9ae` 的 Actions #664 代码检查成功，但“传输已验证 Git 包”步骤失败；不是代码或检查失败。已将同一已推送提交制作 Git bundle，校验 SHA-256 `4eaa87aa4f2ae7b4ae437d17527e1aae6aae67395773fd170e3fbbddb6203f8c` 后在正式服务器仅快进合并，未直接编辑任何服务器文件；PHP 与专项契约再次通过。服务器本地 `origin/main` 追踪标记因服务器没有 GitHub SSH 拉取凭据仍停留在 `3d9dd06`，但服务器实际 `HEAD`、办公室本地和 GitHub `main` 均为 `75f634b`。本条更正记录提交后将再次按相同方式同步三方。
 
 ## 本次：任务中心稳定性与报价流程加载修复及历史重复跟进清理（已发布）
 
