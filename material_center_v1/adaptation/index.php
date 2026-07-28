@@ -80,8 +80,8 @@ include MC_ROOT.'/components/layout_top.php';
             <div data-product-summary></div>
             <div class="mc-configuration-overview" data-configuration-overview></div>
             <div class="mc-config-group-guide">
-                <strong>配置组 = 当前产品的一类选配</strong>
-                <span>例如“芯片 / 光源”组：先填关键范围，再加入符合范围的候选芯片；“批量套用”才是把整套已配置内容复制到其他产品。</span>
+                <strong>配置组工作区</strong>
+                <span>先选一个组，再填关键范围、添加候选和设置默认项；已选物料会持续显示在右侧。</span>
             </div>
             <div class="mc-adaptation-groups" data-group-list></div>
         </section>

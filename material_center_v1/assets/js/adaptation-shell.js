@@ -231,7 +231,7 @@
     }
     const product = workspace.product;
     const completion = workspace.completion || { percent: 0 };
-    q('[data-rule-subtitle]').textContent = product.product_code || '未编号产品';
+    q('[data-rule-subtitle]').textContent = `${product.product_code || '未编号产品'} · 配置组工作区`;
     target.innerHTML = `<div class="mc-adaptation-product-identity">
         <div><span>产品型号</span><strong>${escapeHtml(product.product_code || '—')}</strong></div>
         <div><span>产品名称</span><strong>${escapeHtml(product.product_name || '—')}</strong></div>
@@ -305,10 +305,14 @@
   const renderConfigurationOverview = () => {
     const root = q('[data-configuration-overview]');
     const overview = state.workspace?.configuration_overview || [];
-    if (!state.workspace || !overview.length) {
+    // 编辑单个配置组时，右侧已有“已选物料持续显示”。中间再重复一整块总览会
+    // 挤压真正需要操作的配置组；只有尚未进入某个组时才在中间展示总览。
+    if (!state.workspace || !overview.length || selectedGroup()) {
+      root.hidden = true;
       root.innerHTML = '';
       return;
     }
+    root.hidden = false;
     const configured = overview.filter(group => (group.options || []).length).length;
     const forbidden = overview.filter(group => group.availability === 'forbidden').length;
     root.innerHTML = `<button type="button" data-configuration-overview-open>
