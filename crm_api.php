@@ -233,7 +233,8 @@ try {
         if (!isset($extensions[$mime])) {
             api_response(false, '仅支持 JPG、PNG、WebP 或 GIF 图片。', [], 'LOGO_FILE_TYPE');
         }
-        $directory = __DIR__ . '/uploads/company_brand';
+        $relativeDirectory = company_brand_upload_relative_dir();
+        $directory = __DIR__ . '/' . $relativeDirectory;
         if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
             api_response(false, 'LOGO 上传目录无法创建，请检查服务器目录权限。', [], 'LOGO_DIRECTORY_FAILED');
         }
@@ -242,7 +243,7 @@ try {
         if (!move_uploaded_file($tmpName, $absolutePath)) {
             api_response(false, 'LOGO 文件保存失败，请重试。', [], 'LOGO_MOVE_FAILED');
         }
-        $relativePath = 'uploads/company_brand/' . $filename;
+        $relativePath = $relativeDirectory . '/' . $filename;
         $before = get_company_settings();
         save_app_setting('company_logo', $relativePath, 'company', '统一公司 LOGO（CRM 与派工）');
         save_app_setting('topbar_logo', $relativePath, 'company', '统一公司 LOGO（CRM 与派工）');

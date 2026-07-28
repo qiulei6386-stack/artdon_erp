@@ -15,9 +15,12 @@ if (in_array(false, [$settings, $api, $crm, $dispatch, $js, $css], true)) {
 
 foreach ([
     [$settings, 'function company_brand_logo_path', '共享 LOGO 安全路径服务'],
-    [$settings, 'uploads/company_brand/', '共享 LOGO 上传目录白名单'],
+    [$settings, 'function company_brand_upload_relative_dir', '共享 LOGO 上传目录服务'],
+    [$settings, 'uploads/dispatch_next/company_brand', '共享 LOGO 可写目录白名单'],
+    [$settings, 'uploads/(?:company_brand|dispatch_next/company_brand)', '历史与当前 LOGO 路径兼容白名单'],
     [$settings, 'function company_brand_logo_url', '共享 LOGO 缓存版本 URL'],
     [$api, "\$action === 'company_logo_upload'", 'LOGO 上传接口'],
+    [$api, 'company_brand_upload_relative_dir()', 'LOGO 上传可写目录'],
     [$api, "\$action === 'company_logo_reset'", 'LOGO 恢复默认接口'],
     [$api, "'image/webp' => 'webp'", 'WebP 上传校验'],
     [$api, '2 * 1024 * 1024', '2MB 上传限制'],

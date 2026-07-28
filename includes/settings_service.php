@@ -117,12 +117,21 @@ function get_company_settings(): array
  * whitelist deliberately narrow prevents a settings value from becoming an
  * arbitrary file path in the application header.
  */
+function company_brand_upload_relative_dir(): string
+{
+    // `uploads/` itself is owned by the deployment account on production, so
+    // PHP-FPM cannot create a brand-new sibling directory there.  The dispatch
+    // upload root is already owned by PHP-FPM and is still public, making it a
+    // safe, durable home for the shared CRM / dispatch brand image.
+    return 'uploads/dispatch_next/company_brand';
+}
+
 function company_brand_logo_path(?array $settings = null): string
 {
     $settings = $settings ?? get_company_settings();
     foreach (['company_logo', 'topbar_logo'] as $key) {
         $path = trim((string)($settings[$key] ?? ''));
-        if (preg_match('#^uploads/company_brand/[a-zA-Z0-9][a-zA-Z0-9._-]*$#', $path)) {
+        if (preg_match('#^uploads/(?:company_brand|dispatch_next/company_brand)/[a-zA-Z0-9][a-zA-Z0-9._-]*$#', $path)) {
             return $path;
         }
     }
