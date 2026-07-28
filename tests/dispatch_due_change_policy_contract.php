@@ -69,6 +69,11 @@ foreach ([
     '不填充（仅保留日期和左线）',
     '只填充今天到期与逾期（推荐）',
     'data-apply-water-red',
+    'function dueClass(r)',
+    'due_soon_days??1',
+    "return 'due-overdue'",
+    '两种到期填充颜色',
+    '填充快到期与已过期',
 ] as $marker) {
     if (!str_contains($page, $marker)) {
         throw new RuntimeException("dispatch due-color default marker missing: {$marker}");
