@@ -297,3 +297,71 @@
 @media(max-width:1380px){.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace{grid-template-columns:minmax(540px,1fr) 365px}.mc-overview-product-hero{grid-template-columns:80px minmax(220px,1fr) 82px minmax(220px,.8fr);gap:10px;padding:14px}.mc-overview-product-image{width:76px;height:70px}.mc-overview-completion>b{width:64px;height:64px}.mc-overview-completion>b:before{inset:6px}.mc-overview-hero-metrics{gap:6px}.mc-overview-hero-metrics b{font-size:18px}.mc-overview-groups{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:980px){.mc-adaptation-view-tabs{order:3;width:100%;justify-content:flex-start}.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace{display:flex;flex-direction:column}.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-overview{overflow:visible}.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options{min-height:480px}.mc-overview-product-hero{grid-template-columns:74px 1fr}.mc-overview-completion,.mc-overview-hero-metrics{grid-column:2}.mc-overview-hero-metrics{max-width:360px}.mc-overview-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.mc-adaptation-view-tabs button{padding:0 9px;font-size:10px}.mc-overview-product-hero{grid-template-columns:1fr}.mc-overview-product-image{display:none}.mc-overview-completion,.mc-overview-hero-metrics{grid-column:auto}.mc-overview-next-step{align-items:flex-start;flex-wrap:wrap}.mc-overview-next-step>div{min-width:calc(100% - 45px)}.mc-overview-next-step span:not(.mc-overview-next-step__icon){white-space:normal}.mc-overview-groups{grid-template-columns:1fr}.mc-overview-hero-metrics{grid-template-columns:repeat(4,minmax(0,1fr));max-width:none}}
+
+/* Product adaptation desk: overview and guided configuration intentionally use separate layouts. */
+.mc-page--adaptation-v2[data-view="overview"]{overflow:auto;padding:16px 18px 24px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-head{min-height:66px;align-items:center}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-head h1{font-size:22px;letter-spacing:-.02em}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-head p{font-size:12px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace{display:grid!important;grid-template-columns:minmax(0,1fr) 420px!important;align-items:start;gap:16px!important;min-height:0}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-products,.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-rules,.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-splitter{display:none!important}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-overview{display:block!important;min-width:0;overflow:visible!important;padding:0}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options{display:flex!important;align-self:start;min-width:0;overflow:visible!important;border:1px solid #dbe5ea;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.045)}
+.mc-page--adaptation-v2[data-view="overview"] [data-product-summary],.mc-page--adaptation-v2[data-view="overview"] [data-configuration-overview]{display:none!important}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options>.mc-adaptation-column__head{padding:17px 18px 11px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options>.mc-adaptation-column__head h2{font-size:17px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options>.mc-adaptation-column__head p{font-size:11px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-column__actions .mc-button{height:33px;padding:0 10px;font-size:11px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-option-tabs{padding:0 16px;overflow:visible}
+.mc-page--adaptation-v2[data-view="overview"] .mc-option-tabs button{padding:12px 9px;font-size:11px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-detail{overflow:visible;padding:0 0 16px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery{margin:0 16px 14px;border:0;border-radius:0;background:transparent}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__head{padding:12px 0;border-bottom:1px solid #e7edf1}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__head strong{font-size:14px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__head span{font-size:10px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__metrics{display:none!important}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__list{display:grid;gap:10px;padding:12px 0}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px 10px;width:100%;padding:13px;border:1px solid #dfe7eb;border-radius:9px;background:#fff;text-align:left;cursor:pointer}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row:hover{border-color:#84c9cc;background:#f5ffff}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row--exact{border-color:#43aeb5;background:#f1ffff;box-shadow:inset 0 0 0 1px rgba(22,151,160,.1)}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__radio{width:14px;height:14px;align-self:start;border:1px solid #aebdc5;border-radius:50%}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row--exact .mc-candidate-discovery__radio{border:4px solid #078b94}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row span{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row em{align-self:start;padding:3px 6px;border-radius:5px;font-size:9px}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__row small{grid-column:2/-1;overflow:hidden;color:#6a7c89;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery__more{padding:5px 0 0;font-size:10px}
+.mc-overview-product-hero{grid-template-columns:112px minmax(230px,1fr) 112px minmax(310px,.9fr);gap:20px;min-height:146px;padding:20px 22px;border-color:#e0e8ed;border-radius:12px;box-shadow:0 5px 18px rgba(15,23,42,.035)}
+.mc-overview-product-image{width:108px;height:106px;border-radius:12px}
+.mc-overview-product-info{gap:9px}
+.mc-overview-product-info strong{font-size:17px;white-space:normal;line-height:1.3}
+.mc-overview-product-info strong b{margin-right:12px}
+.mc-overview-product-meta{display:flex;gap:7px;flex-wrap:wrap}
+.mc-overview-product-meta span{padding:3px 7px;border-radius:999px;background:#f4f7f9;color:#58717d;font-size:10px}
+.mc-overview-product-info small{font-size:10px}
+.mc-overview-completion>b{width:88px;height:88px;font-size:19px}
+.mc-overview-completion>b:before{inset:8px}
+.mc-overview-completion span{font-size:10px}
+.mc-overview-hero-metrics{gap:0}
+.mc-overview-hero-metrics>div{min-height:64px;padding:4px 14px;border-left:1px solid #e7edf0}
+.mc-overview-hero-metrics b{font-size:25px}
+.mc-overview-hero-metrics span{font-size:10px}
+.mc-overview-next-step{min-height:64px;margin:12px 0 14px;padding:13px 16px;border-radius:10px}
+.mc-overview-next-step strong{font-size:12px}.mc-overview-next-step span{font-size:10px}
+.mc-overview-groups{grid-template-columns:repeat(4,minmax(190px,1fr));gap:10px}
+.mc-overview-group-card{min-height:190px;padding:17px 16px;border-radius:10px;background:#fff;box-shadow:0 4px 14px rgba(15,23,42,.025)}
+.mc-overview-group-card.is-empty,.mc-overview-group-card.is-no_default,.mc-overview-group-card.is-conflict{border-color:#f3c1b7;background:#fffdfc}
+.mc-overview-group-card__head{grid-template-columns:42px minmax(0,1fr) auto;gap:10px}
+.mc-overview-group-card__head>span{width:42px;height:42px;border-radius:50%;font-size:19px}
+.mc-overview-group-card__head strong{font-size:14px}
+.mc-overview-group-card__head small{font-size:10px}
+.mc-overview-group-card__head em{align-self:start;padding:4px 6px;border-radius:5px;background:#fff1ed;color:#dc6549;font-size:9px;font-style:normal;white-space:nowrap}
+.mc-overview-group-card p{min-height:33px;margin:16px 0 12px;font-size:10px}
+.mc-overview-group-card__facts{gap:10px;margin-bottom:13px;font-size:10px}
+.mc-overview-group-card button{height:32px;border-radius:6px;font-size:10px}
+/* The guide is the original real three-column editor, never a squeezed overview. */
+.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-overview{display:none!important}
+.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-workspace{display:grid!important;grid-template-columns:var(--mc-adaptation-products-width) 10px minmax(0,1fr) 10px var(--mc-adaptation-groups-width)!important;gap:0!important}
+.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-products,.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-rules,.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-options,.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-splitter{display:flex!important}
+.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-rules{display:flex!important}
+@media(max-width:1380px){.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace{grid-template-columns:minmax(0,1fr) 380px!important}.mc-overview-product-hero{grid-template-columns:86px minmax(190px,1fr) 82px minmax(240px,.9fr);gap:13px;padding:16px}.mc-overview-product-image{width:82px;height:78px}.mc-overview-completion>b{width:70px;height:70px}.mc-overview-groups{grid-template-columns:repeat(3,minmax(190px,1fr))}}
+@media(max-width:980px){.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace{display:flex!important;flex-direction:column;gap:12px!important}.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-options{width:100%}.mc-overview-product-hero{grid-template-columns:78px 1fr}.mc-overview-completion,.mc-overview-hero-metrics{grid-column:2}.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-workspace{display:flex!important;flex-direction:column}.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-splitter{display:none!important}.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-products,.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-rules,.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-options{width:100%!important}}

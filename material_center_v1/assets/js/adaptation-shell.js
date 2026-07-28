@@ -370,7 +370,7 @@
     target.hidden = false;
     target.innerHTML = `<section class="mc-overview-product-hero">
       <div class="mc-overview-product-image">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" data-overview-product-image>` : '<span>◇</span>'}</div>
-      <div class="mc-overview-product-info"><strong>${escapeHtml(product.product_code || '未编号')}　${escapeHtml(product.product_name || '未命名产品')}</strong><span>系列：${escapeHtml(product.series_name || '未设置系列')}</span><small>产品状态：${escapeHtml(product.approval_label || '未配置')}　·　${groups.length ? `已建立 ${groups.length} 个配置组` : '尚未建立配置组'}</small></div>
+      <div class="mc-overview-product-info"><strong><b>${escapeHtml(product.product_code || '未编号')}</b>${escapeHtml(product.product_name || '未命名产品')}</strong><div class="mc-overview-product-meta"><span>系列：${escapeHtml(product.series_name || '未设置系列')}</span><span>状态：${escapeHtml(product.approval_label || '未配置')}</span></div><small>${groups.length ? `已建立 ${groups.length} 个配置组` : '尚未建立配置组'} · 当前编辑项会持续保留在右侧</small></div>
       <div class="mc-overview-completion"><b style="--completion:${Math.min(100, integer(completion.percent))}"><i>${integer(completion.percent)}%</i></b><span>配置完成度</span></div>
       <div class="mc-overview-hero-metrics"><span><b>${missing.length}</b>缺失项</span><span><b>${integer(workspace.conflicts?.length)}</b>冲突项</span><span><b>${pending.length}</b>待审批</span><span><b>${integer(product.option_count)}</b>正式选项</span></div>
     </section>
@@ -380,8 +380,8 @@
       const status = group.display_status || details.status || 'empty';
       const defaultText = configuredMaterialText(details);
       return `<article class="mc-overview-group-card ${integer(group.id) === activeId ? 'is-active' : ''} is-${escapeHtml(status)}">
-        <div class="mc-overview-group-card__head"><span class="mc-overview-group-card__icon">${overviewGroupIcon(group)}</span><div><strong>${escapeHtml(group.group_name)}</strong><small>${status === 'enabled' ? '已完成' : escapeHtml(overviewStatusLabel(status))}</small></div></div>
-        <p>默认：${escapeHtml(defaultText)}</p>
+        <div class="mc-overview-group-card__head"><span class="mc-overview-group-card__icon">${overviewGroupIcon(group)}</span><div><strong>${escapeHtml(group.group_name)}</strong><small>${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></div><em>${status === 'enabled' ? '已完成' : escapeHtml(overviewStatusLabel(status))}</em></div>
+        <p><b>默认：</b>${escapeHtml(defaultText)}</p>
         <div class="mc-overview-group-card__facts"><span>正式 ${integer(group.option_count)} </span><span>候选 ${integer(group.alternative_count)}</span><span>冲突 ${integer(group.conflict_count)}</span></div>
         <button type="button" data-select-group="${integer(group.id)}">${escapeHtml(overviewGroupAction(group))}</button>
       </article>`;
@@ -428,21 +428,21 @@
     const conditional = rows.filter(row => row.match_level === 'conditional').length;
     target.hidden = false;
     target.innerHTML = `<div class="mc-candidate-discovery__head">
-        <div><strong>关键范围筛选结果</strong><span>已按“${escapeHtml(group.group_name)}”当前范围检查正式物料；结果只供选择，不会自动加入产品。</span></div>
-        <button class="mc-button mc-button--primary" type="button" data-candidate-discovery-open>查看全部并选择</button>
+        <div><strong>候选物料</strong><span>已按“${escapeHtml(group.group_name)}”当前关键范围实时筛选；点击某项进入真实物料库勾选，不会直接写入产品。</span></div>
+        <button class="mc-button mc-button--primary" type="button" data-candidate-discovery-open>从物料库添加</button>
       </div>
       <div class="mc-candidate-discovery__metrics">
-        <span><b>${rows.length}</b> 正式物料</span>
-        <span><b>${addable.length}</b> 可加入</span>
-        <span><b>${exact}</b> 完全适配</span>
-        <span><b>${conditional}</b> 条件适配</span>
-        <span><b>${review}</b> 需确认</span>
+        <span><b>${rows.length}</b>正式物料</span>
+        <span><b>${addable.length}</b>可加入</span>
+        <span><b>${exact}</b>完全适配</span>
+        <span><b>${conditional}</b>条件适配</span>
+        <span><b>${review}</b>需确认</span>
       </div>
-      ${rows.length ? `<div class="mc-candidate-discovery__list">${rows.slice(0, 6).map(material => `<article class="mc-candidate-discovery__row mc-candidate-discovery__row--${escapeHtml(material.match_level)}">
-          <div><strong>${escapeHtml(material.material_code)} · ${escapeHtml(`${material.brand || ''} ${material.model || material.name || ''}`.trim())}</strong><span>${escapeHtml(material.key_specs || '暂无关键规格')}</span></div>
+      ${rows.length ? `<div class="mc-candidate-discovery__list">${rows.slice(0, 6).map(material => `<button type="button" class="mc-candidate-discovery__row mc-candidate-discovery__row--${escapeHtml(material.match_level)}" data-candidate-discovery-open>
+          <span class="mc-candidate-discovery__radio" aria-hidden="true"></span><div><strong>${escapeHtml(material.material_code)} · ${escapeHtml(`${material.brand || ''} ${material.model || material.name || ''}`.trim())}</strong><span>${escapeHtml(material.key_specs || '暂无关键规格')}</span></div>
           <b>${escapeHtml(material.match_label)}</b>
           <small>${escapeHtml((material.conflict_reasons || []).join('；') || '符合当前关键范围')}</small>
-        </article>`).join('')}</div>${rows.length > 6 ? `<p class="mc-candidate-discovery__more">另有 ${rows.length - 6} 项物料，请点“查看全部并选择”。</p>` : ''}` : `<div class="mc-empty-state mc-empty-state--compact"><strong>当前分类没有可检查的正式物料</strong><span>请确认对应分类是否已有已转正式物料，并补齐芯片、电源或光学的关键规格。</span></div>`}`;
+        </button>`).join('')}</div>${rows.length > 6 ? `<p class="mc-candidate-discovery__more">还有 ${rows.length - 6} 项候选，请从物料库继续查看。</p>` : ''}` : `<div class="mc-empty-state mc-empty-state--compact"><strong>当前分类没有可检查的正式物料</strong><span>请确认对应分类是否已有已转正式物料，并补齐芯片、电源或光学的关键规格。</span></div>`}`;
   };
 
   const renderConfigurationOverview = () => {

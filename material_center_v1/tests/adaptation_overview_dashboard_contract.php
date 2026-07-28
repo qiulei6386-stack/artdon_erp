@@ -34,9 +34,12 @@ foreach ([
 
 foreach ([
     '.mc-page--adaptation-v2[data-view="overview"] .mc-adaptation-workspace',
+    'grid-template-columns:minmax(0,1fr) 420px!important',
+    '.mc-page--adaptation-v2[data-view="guide"] .mc-adaptation-workspace',
     '.mc-overview-product-hero',
     '.mc-overview-groups',
     '.mc-page--adaptation-v2[data-view="overview"] .mc-candidate-discovery',
+    '.mc-candidate-discovery__radio',
 ] as $marker) {
     if (!str_contains($css, $marker)) throw new RuntimeException("adaptation overview layout missing: {$marker}");
 }
