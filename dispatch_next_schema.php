@@ -25,6 +25,20 @@ function dispatch_next_add_column_if_missing(PDO $pdo, string $table, string $co
     }
 }
 
+function dispatch_next_index_exists(PDO $pdo, string $table, string $index): bool
+{
+    $st = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1");
+    $st->execute([$table, $index]);
+    return (bool)$st->fetch();
+}
+
+function dispatch_next_add_index_if_missing(PDO $pdo, string $table, string $index, string $definition): void
+{
+    if (!dispatch_next_index_exists($pdo, $table, $index)) {
+        $pdo->exec("ALTER TABLE `{$table}` ADD {$definition}");
+    }
+}
+
 function dispatch_next_seed_step_templates(PDO $pdo): int
 {
     $templates = [
@@ -376,6 +390,10 @@ function dispatch_next_init_schema(): array
     $pdo->exec("ALTER TABLE dispatch_next_tasks MODIFY project TEXT NULL");
     $pdo->exec("ALTER TABLE dispatch_next_groups MODIFY project TEXT NULL");
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
+    // The five-second lightweight sync only reads the newest task/group change.
+    // These indexes keep that check constant-time even as the task history grows.
+    dispatch_next_add_index_if_missing($pdo, 'dispatch_next_tasks', 'idx_dispatch_next_tasks_updated', 'INDEX idx_dispatch_next_tasks_updated (updated_at)');
+    dispatch_next_add_index_if_missing($pdo, 'dispatch_next_groups', 'idx_dispatch_next_groups_updated', 'INDEX idx_dispatch_next_groups_updated (updated_at)');
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 16, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
 }

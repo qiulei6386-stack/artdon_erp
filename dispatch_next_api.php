@@ -1083,12 +1083,7 @@ function dn_list(array $in): array
     }
     $sql = "SELECT t.*,
         cu.username AS creator_username, COALESCE(NULLIF(cu.real_name,''), cu.username) AS creator_name,
-        au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name,
-        (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.is_deleted=0) AS attachment_count,
-        (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.file_kind='image' AND a.is_deleted=0) AS image_count,
-        (SELECT COUNT(*) FROM dispatch_next_attachments a WHERE a.task_id=t.id AND a.is_deleted=0 AND (a.expires_at IS NULL OR a.expires_at>NOW())) AS valid_attachment_count,
-        (SELECT COUNT(*) FROM dispatch_next_steps s WHERE s.task_id=t.id AND s.is_deleted=0) AS step_count,
-        (SELECT COUNT(*) FROM dispatch_next_steps s WHERE s.task_id=t.id AND s.is_deleted=0 AND s.status='done') AS step_done_count
+        au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name
         FROM dispatch_next_tasks t
         LEFT JOIN crm_users cu ON cu.id=t.created_by
         LEFT JOIN crm_users au ON au.id=t.assigned_to
@@ -1102,6 +1097,7 @@ function dn_list(array $in): array
     $groupIds = [];
     $rows = $st->fetchAll();
     dn_attach_custom_values($rows);
+    dn_attach_list_counts($rows);
     $orders = dn_task_orders();
     foreach ($rows as $r) {
         $r = dn_decorate_task($r);
@@ -1184,22 +1180,17 @@ function dn_list(array $in): array
 function dn_sync_version(): array
 {
     $pdo = dispatch_next_db();
+    // This endpoint is polled frequently.  Only task and group changes affect the
+    // visible board; notifications have their own lightweight refresh cycle.
     $queries = [
-        'dispatch_next_tasks' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_tasks",
-        'dispatch_next_groups' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_groups",
-        'dispatch_next_comments' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(created_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_comments",
-        'dispatch_next_attachments' => "SELECT COALESCE(MAX(GREATEST(UNIX_TIMESTAMP(created_at),COALESCE(UNIX_TIMESTAMP(deleted_at),0))),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_attachments",
-        'dispatch_next_notifications' => "SELECT COALESCE(MAX(GREATEST(UNIX_TIMESTAMP(created_at),COALESCE(UNIX_TIMESTAMP(read_at),0))),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_notifications",
-        'dispatch_next_logs' => "SELECT COALESCE(MAX(GREATEST(UNIX_TIMESTAMP(created_at),COALESCE(UNIX_TIMESTAMP(updated_at),0))),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_logs",
-        'dispatch_next_task_values' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_task_values",
-        'dispatch_next_task_orders' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_task_orders",
-        'dispatch_next_custom_fields' => "SELECT COALESCE(MAX(UNIX_TIMESTAMP(updated_at)),0) AS ts, COUNT(*) AS cnt, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_custom_fields",
+        'dispatch_next_tasks' => "SELECT MAX(updated_at) AS updated_at, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_tasks",
+        'dispatch_next_groups' => "SELECT MAX(updated_at) AS updated_at, COALESCE(MAX(id),0) AS max_id FROM dispatch_next_groups",
     ];
     $parts = [];
     foreach ($queries as $table => $sql) {
         if (!artdon_sso_table_exists($table)) continue;
-        $row = $pdo->query($sql)->fetch() ?: ['ts' => 0, 'cnt' => 0, 'max_id' => 0];
-        $parts[] = $table . ':' . (int)$row['ts'] . ':' . (int)$row['cnt'] . ':' . (int)$row['max_id'];
+        $row = $pdo->query($sql)->fetch() ?: ['updated_at' => '', 'max_id' => 0];
+        $parts[] = $table . ':' . (string)($row['updated_at'] ?? '') . ':' . (int)$row['max_id'];
     }
     return ['version' => hash('sha1', implode('|', $parts)), 'server_time' => date('Y-m-d H:i:s')];
 }
@@ -1218,6 +1209,34 @@ function dn_attach_custom_values(array &$rows): void
     foreach ($rows as &$row) {
         $row['custom_values'] = $values[(int)$row['id']] ?? [];
     }
+}
+
+/** Add list-only counts in two bounded aggregate queries rather than five subqueries per row. */
+function dn_attach_list_counts(array &$rows): void
+{
+    $ids = array_values(array_filter(array_map(fn($r) => (int)($r['id'] ?? 0), $rows)));
+    if (!$ids) return;
+    $pdo = dispatch_next_db();
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $attachments = $pdo->prepare("SELECT task_id, COUNT(*) AS attachment_count, SUM(file_kind='image') AS image_count, SUM(expires_at IS NULL OR expires_at>NOW()) AS valid_attachment_count FROM dispatch_next_attachments WHERE is_deleted=0 AND task_id IN ({$marks}) GROUP BY task_id");
+    $attachments->execute($ids);
+    $attachmentMap = [];
+    foreach ($attachments->fetchAll() as $row) $attachmentMap[(int)$row['task_id']] = $row;
+    $steps = $pdo->prepare("SELECT task_id, COUNT(*) AS step_count, SUM(status='done') AS step_done_count FROM dispatch_next_steps WHERE is_deleted=0 AND task_id IN ({$marks}) GROUP BY task_id");
+    $steps->execute($ids);
+    $stepMap = [];
+    foreach ($steps->fetchAll() as $row) $stepMap[(int)$row['task_id']] = $row;
+    foreach ($rows as &$row) {
+        $id = (int)$row['id'];
+        $a = $attachmentMap[$id] ?? [];
+        $s = $stepMap[$id] ?? [];
+        $row['attachment_count'] = (int)($a['attachment_count'] ?? 0);
+        $row['image_count'] = (int)($a['image_count'] ?? 0);
+        $row['valid_attachment_count'] = (int)($a['valid_attachment_count'] ?? 0);
+        $row['step_count'] = (int)($s['step_count'] ?? 0);
+        $row['step_done_count'] = (int)($s['step_done_count'] ?? 0);
+    }
+    unset($row);
 }
 
 function dn_task_orders(): array
