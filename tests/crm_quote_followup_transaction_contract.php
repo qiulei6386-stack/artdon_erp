@@ -14,7 +14,8 @@ if ($functionStart === false || $functionEnd === false) {
 
 $function = substr($source, $functionStart, $functionEnd - $functionStart);
 $begin = strpos($function, '$pdo->beginTransaction();');
-$commit = strrpos($function, '$pdo->commit();');
+$saveTimeline = strpos($function, 'crm_quote_followup_sync_timeline($pdo,');
+$commit = $saveTimeline === false ? false : strpos($function, '$pdo->commit();', $saveTimeline);
 $log = strpos($function, "crm_log_event('tasks', 'quote_followup_save'");
 $reload = strpos($function, '$resultData = crm_quote_followup_context');
 
