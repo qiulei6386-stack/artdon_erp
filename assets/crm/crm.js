@@ -139,7 +139,9 @@
 
   function officeMailTextHasHtmlMarkup(text) {
     text = String(text || '');
-    return (text.match(/<\/?[a-z][^>]*>/ig) || []).length >= 3;
+    // 邮件正文里常见 <name@example.com>、<https://...> 这种地址包裹；它们不是
+    // HTML 标签。旧规则会把它们误判为标签并交给 DOMParser，从而吞掉同封邮件前面的正文。
+    return /<\/?(?:html|head|body|div|span|font|p|br|table|tr|td|style|meta|link|img|h[1-6]|ul|ol|li|blockquote|section|article|o:[a-z]+|v:[a-z]+|w:[a-z]+)\b(?:\s[^<>]*)?\s*\/?>/i.test(text);
   }
 
   function officeMailToReadableText(source) {
