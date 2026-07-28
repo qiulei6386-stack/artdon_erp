@@ -5,6 +5,7 @@ $root = dirname(__DIR__);
 $task = file_get_contents($root . '/crm_task_center.php');
 $customer = file_get_contents($root . '/crm_customer.php');
 $js = file_get_contents($root . '/assets/crm/crm.js');
+$css = file_get_contents($root . '/assets/crm/crm.css');
 $errors = [];
 
 foreach ([
@@ -25,6 +26,9 @@ foreach ([
     [$js, 'quoteFlowFilterOptions: function', '报价流程完整筛选'],
     [$js, 'data-quote-flow-filter', '报价流程筛选控件'],
     [$js, '清除报价筛选', '报价流程右侧操作联动'],
+    [$js, "document.body.classList.toggle('is-tasks-module', name === 'tasks');", '任务中心单滚动状态标识'],
+    [$css, '.task-list,.sample-list{display:grid;gap:0;min-height:0}', '任务列表取消内部纵向滚动'],
+    [$css, 'body.is-tasks-module .crm-action-list', '任务中心右栏单滚动约束'],
 ] as [$source, $needle, $label]) {
     if (strpos($source, $needle) === false) $errors[] = '缺少：' . $label;
 }

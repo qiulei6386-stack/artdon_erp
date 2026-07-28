@@ -21409,11 +21409,15 @@
     }
     if (name === 'tasks') {
       var selectedTask = TaskCenterModule.selected();
-      renderGroup({ title: '任务视图', items: ['我的任务', '今日任务', '本周任务', '逾期中心', '待确认', '报价订单流程', '推广执行', '样品寄送', '已完成'] });
       if (TaskCenterModule.view === 'quote') {
         renderGroup({ title: '报价订单筛选', items: ['全部报价', '未跟进报价', '跟进中', '客户未回复', '客户已回复', '待审核报价', '已驳回报价', '未转订单', '已转订单', '待收款', '待出货', '待单证', '流程完成'] });
         renderGroup({ title: '报价流程工具', items: ['刷新报价流程', '清除报价筛选'] });
         if (selectedTask && TaskCenterModule.selectedType === 'quote_flow') renderGroup({ title: '当前报价', items: TaskCenterModule.quoteFlowDetailActions(selectedTask) });
+      } else {
+        renderGroup({ title: '任务视图', items: ['我的任务', '今日任务', '本周任务', '逾期中心', '待确认', '报价订单流程', '推广执行', '样品寄送', '已完成'] });
+      }
+      if (TaskCenterModule.view === 'quote') {
+        return;
       } else if (!selectedTask) {
         renderGroup({ title: '任务中心', items: ['新建任务', '新建跟进', '新建样品寄送', '查看今日任务', '查看逾期任务', '查看样品寄送', '导出任务'] });
       } else if (TaskCenterModule.selectedType === 'quote_flow') {
@@ -21638,6 +21642,7 @@
     document.body.classList.toggle('is-mail-module', name === 'mail');
     document.body.classList.toggle('is-workspace-module', name === 'workspace');
     document.body.classList.toggle('is-promotion-module', name === 'promotion');
+    document.body.classList.toggle('is-tasks-module', name === 'tasks');
 	    if (name !== 'promotion') {
 	      document.body.classList.remove('is-promo-project-fullscreen', 'is-promo-task-editor-open');
 	      document.documentElement.classList.remove('is-promo-task-editor-open');
