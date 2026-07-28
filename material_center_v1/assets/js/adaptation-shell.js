@@ -25,6 +25,8 @@
     templateTargetIds: [],
     reuseSourceWorkspace: null,
     reusePreview: null,
+    reuseTemplates: [],
+    batchReuseTemplate: null,
   };
 
   const escapeHtml = value => String(value ?? '')
@@ -134,6 +136,7 @@
     q('[data-product-selection-bar]').hidden = !count;
     q('[data-product-selection-count]').textContent = `已选择 ${count} 个`;
     q('[data-selected-template]').disabled = !count;
+    q('[data-selected-reuse-template]').disabled = !count;
     q('[data-selected-batch]').disabled = !count || !state.workspace?.groups?.length;
   };
 
@@ -585,10 +588,63 @@
     state.dirty = false;
   };
 
+  const renderReuseTemplateCreate = () => {
+    const root = q('[data-reuse-template-create]');
+    const product = state.workspace?.product;
+    const groups = state.workspace?.groups || [];
+    if (!product || !groups.length) {
+      root.innerHTML = `<div class="mc-empty-state mc-empty-state--compact"><strong>先选择一个已配置的来源产品</strong><span>模板会从当前产品保存所选配置组；例如只勾选“电源 / 驱动”，即可建立电源模板。</span></div>`;
+      q('[data-reuse-template-save]').disabled = true;
+      return;
+    }
+    const defaultChecked = group => integer(group.option_count) > 0 ? 'checked' : '';
+    root.innerHTML = `<div class="mc-reuse-template-source"><span>当前模板来源</span><strong>${escapeHtml(product.product_code || '未编号')} · ${escapeHtml(product.product_name || '未命名')}</strong><small>可任意组合配置组；未勾选的组不会被模板覆盖。</small></div>
+      <div class="mc-form-grid">
+        <label class="mc-field"><span>模板名称 *</span><input name="template_name" maxlength="160" required placeholder="例如：35mm 轨道灯外置电源 + 芯片"></label>
+        <label class="mc-field"><span>模板说明</span><input name="description" maxlength="500" placeholder="适用产品、尺寸或安装方式"></label>
+      </div>
+      <div class="mc-reuse-template-groups"><div><strong>选择模板内容</strong><span>只会复制勾选组及其物料、关键范围、默认项、条件和冲突关系。</span></div>
+        <div>${groups.map(group => `<label><input type="checkbox" name="reuse_template_group" value="${integer(group.id)}" ${defaultChecked(group)}><span><strong>${escapeHtml(group.group_name)}</strong><small>${integer(group.option_count)} 个候选 · ${integer(group.is_required) ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small></span></label>`).join('')}</div>
+        <label class="mc-reuse-template-power"><input type="checkbox" name="include_power_rule" value="1" ${state.workspace?.power_rule ? 'checked' : ''}><span><strong>同时保存电源关键范围</strong><small>内置 / 外置、功率、电流、电压、空间、调光、质保和认证随模板一起映射。</small></span></label>
+      </div>`;
+    q('[data-reuse-template-save]').disabled = false;
+  };
+
+  const renderReuseTemplateList = () => {
+    const root = q('[data-reuse-template-list]');
+    const templates = state.reuseTemplates || [];
+    root.innerHTML = templates.length ? templates.map(template => {
+      const groups = (template.group_names || []).map(escapeHtml).join('、') || '仅电源关键范围';
+      const stale = Boolean(template.is_stale);
+      return `<article class="mc-reuse-template-card">
+        <div><strong>${escapeHtml(template.template_name)}</strong><span>${escapeHtml(template.product_code || '未编号')} · ${escapeHtml(template.product_name || '未命名')}</span><small>${groups}${template.include_power_rule ? ' · 含电源范围' : ''}</small>${stale ? '<em class="mc-reuse-template-warning">来源配置组已变更，请停用后重新建立模板。</em>' : ''}${template.description ? `<em>${escapeHtml(template.description)}</em>` : ''}</div>
+        <div><b>${integer(template.group_count)} 组</b><button class="mc-button mc-button--primary" type="button" data-use-reuse-template="${integer(template.id)}" ${stale ? 'disabled' : ''}>映射到产品</button><button class="mc-button mc-button--danger" type="button" data-disable-reuse-template="${integer(template.id)}">停用</button></div>
+      </article>`;
+    }).join('') : '<div class="mc-empty-state mc-empty-state--compact"><strong>还没有保存模板</strong><span>从当前产品勾选配置组后保存；以后可反复映射到任意产品。</span></div>';
+  };
+
+  const loadReuseTemplates = async () => {
+    state.reuseTemplates = await get('reuse_templates');
+    renderReuseTemplateList();
+  };
+
+  const openReuseTemplateLibrary = async () => {
+    renderReuseTemplateCreate();
+    renderReuseTemplateList();
+    state.dirty = false;
+    openModal('reuse-template-modal');
+    try {
+      await loadReuseTemplates();
+    } catch (error) {
+      notify('模板读取失败', error.message);
+    }
+  };
+
   const visibleBatchProducts = () => {
     const query = state.batchQuery.trim().toLowerCase();
+    const sourceProductId = integer(state.batchReuseTemplate?.source_product_id || selectedProductId());
     return state.catalogProducts.filter(product => {
-      if (integer(product.id) === selectedProductId()) return false;
+      if (integer(product.id) === sourceProductId) return false;
       if (!query) return true;
       return [product.product_code, product.product_name, product.series_name]
         .some(value => String(value || '').toLowerCase().includes(query));
@@ -618,19 +674,24 @@
     </label>`).join('') : '<div class="mc-empty-state mc-empty-state--compact"><strong>没有符合条件的目标产品</strong><span>请调整搜索词，或先同步产品。</span></div>';
   };
 
-  const openBatch = (preselected = []) => {
-    const source = state.workspace?.product;
-    if (!source || !state.workspace?.groups?.length) {
+  const openBatch = (preselected = [], reuseTemplate = null) => {
+    const source = reuseTemplate || state.workspace?.product;
+    if (!source || (!reuseTemplate && !state.workspace?.groups?.length)) {
       notify('暂不能批量套用', '请先选择并设置好一个来源产品。');
       return;
     }
-    state.batchSelected = new Set(preselected.map(integer).filter(id => id && id !== selectedProductId()).slice(0, 1000));
+    const sourceProductId = integer(reuseTemplate?.source_product_id || selectedProductId());
+    state.batchReuseTemplate = reuseTemplate;
+    state.batchSelected = new Set(preselected.map(integer).filter(id => id && id !== sourceProductId).slice(0, 1000));
     state.batchPreview = null;
     state.batchQuery = '';
     const form = q('[data-batch-form]');
     form.reset();
     q('[data-batch-search]').value = '';
-    q('[data-batch-source]').innerHTML = `<span>当前来源产品</span><strong>${escapeHtml(source.product_code || '未编号')} · ${escapeHtml(source.product_name || '未命名')}</strong><small>${state.workspace.groups.length} 个配置组；目标产品执行后统一进入待重审。</small>`;
+    q('[data-batch-source]').innerHTML = reuseTemplate
+      ? `<span>正在套用配置模板</span><strong>${escapeHtml(reuseTemplate.template_name || '未命名模板')}</strong><small>来源：${escapeHtml(reuseTemplate.product_code || '未编号')} · ${escapeHtml(reuseTemplate.product_name || '未命名')}；${integer(reuseTemplate.group_count)} 个配置组${reuseTemplate.include_power_rule ? '，含电源范围' : ''}。</small>`
+      : `<span>当前来源产品</span><strong>${escapeHtml(source.product_code || '未编号')} · ${escapeHtml(source.product_name || '未命名')}</strong><small>${state.workspace.groups.length} 个配置组；目标产品执行后统一进入待重审。</small>`;
+    q('[data-batch-form] .mc-batch-power').hidden = !!reuseTemplate;
     renderBatchProducts();
     updateBatchSelection(false);
     q('[data-batch-preview]').innerHTML = '<strong>3. 先预览，再执行</strong><span>选择目标产品后点击“预览影响”，系统会先计算新增、覆盖和跳过数量。</span>';
@@ -641,6 +702,13 @@
 
   const batchRequestValues = () => {
     const form = q('[data-batch-form]');
+    if (state.batchReuseTemplate) {
+      return {
+        reuse_template_id: integer(state.batchReuseTemplate.id),
+        target_product_ids: [...state.batchSelected],
+        mode: new FormData(form).get('mode') || 'fill_missing',
+      };
+    }
     return {
       source_product_id: selectedProductId(),
       target_product_ids: [...state.batchSelected],
@@ -657,7 +725,7 @@
     const button = q('[data-batch-preview-button]');
     button.disabled = true;
     try {
-      state.batchPreview = await post('preview_batch', batchRequestValues());
+      state.batchPreview = await post(state.batchReuseTemplate ? 'preview_reuse_template' : 'preview_batch', batchRequestValues());
       const preview = state.batchPreview;
       q('[data-batch-preview]').innerHTML = `<strong>预览完成：${integer(preview.targets)} 个目标产品</strong>
         <div class="mc-batch-preview-metrics">
@@ -972,6 +1040,46 @@
       await openReuse();
       return;
     }
+    if (event.target.closest('[data-reuse-template-open]')) {
+      await openReuseTemplateLibrary();
+      return;
+    }
+    if (event.target.closest('[data-selected-reuse-template]')) {
+      await openReuseTemplateLibrary();
+      return;
+    }
+    if (event.target.closest('[data-reuse-template-refresh]')) {
+      await loadReuseTemplates();
+      return;
+    }
+    const useReuseTemplate = event.target.closest('[data-use-reuse-template]');
+    if (useReuseTemplate) {
+      const template = state.reuseTemplates.find(row => integer(row.id) === integer(useReuseTemplate.dataset.useReuseTemplate));
+      if (!template) {
+        notify('模板已变化', '请刷新模板列表后重试。');
+        return;
+      }
+      if (template.is_stale) {
+        notify('模板需要重建', '来源配置组已变更，请停用旧模板后从来源产品重新保存。');
+        return;
+      }
+      closeModal(q('#reuse-template-modal'));
+      openBatch([...state.productSelected], template);
+      return;
+    }
+    const disableReuseTemplate = event.target.closest('[data-disable-reuse-template]');
+    if (disableReuseTemplate) {
+      const template = state.reuseTemplates.find(row => integer(row.id) === integer(disableReuseTemplate.dataset.disableReuseTemplate));
+      if (!template || !confirm(`停用模板“${template.template_name}”？已映射的产品不会受到影响。`)) return;
+      try {
+        await post('disable_reuse_template', { reuse_template_id: integer(template.id) });
+        await loadReuseTemplates();
+        notify('模板已停用', '该模板不会再显示，历史产品配置保持不变。');
+      } catch (error) {
+        notify('停用失败', error.message);
+      }
+      return;
+    }
     if (event.target.closest('[data-reuse-select-all]')) {
       qa('[name="reuse_group"]', q('[data-reuse-form]')).forEach(input => { input.checked = true; });
       invalidateReusePreview();
@@ -1279,6 +1387,40 @@
     }
   });
 
+  q('[data-reuse-template-form]').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const sourceProductId = selectedProductId();
+    const groupIds = qa('[name="reuse_template_group"]:checked', form).map(input => integer(input.value));
+    const includePowerRule = !!form.elements.include_power_rule?.checked;
+    if (!sourceProductId || (!groupIds.length && !includePowerRule)) {
+      notify('模板内容为空', '请至少选择一个配置组，或勾选电源关键范围。');
+      return;
+    }
+    const button = event.submitter || q('[data-reuse-template-save]', form);
+    button.disabled = true;
+    button.textContent = '正在保存…';
+    try {
+      const values = new FormData(form);
+      await post('save_reuse_template', {
+        source_product_id: sourceProductId,
+        template_name: values.get('template_name') || '',
+        description: values.get('description') || '',
+        source_group_ids: groupIds,
+        include_power_rule: includePowerRule ? 1 : 0,
+      });
+      form.reset();
+      renderReuseTemplateCreate();
+      await loadReuseTemplates();
+      notify('配置模板已保存', `已保存 ${groupIds.length} 个配置组；现在可点击“映射到产品”批量套用。`);
+    } catch (error) {
+      notify('模板保存失败', error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = '保存为模板';
+    }
+  });
+
   q('[data-batch-form]').addEventListener('submit', async event => {
     event.preventDefault();
     if (!state.batchPreview) {
@@ -1311,7 +1453,7 @@
       };
       for (const [index, targetIds] of chunks.entries()) {
         button.textContent = `正在处理第 ${index + 1} / ${chunks.length} 批…`;
-        const part = await post('batch_apply', { ...values, target_product_ids: targetIds });
+        const part = await post(state.batchReuseTemplate ? 'apply_reuse_template' : 'batch_apply', { ...values, target_product_ids: targetIds });
         ['succeeded', 'failed', 'groups_created', 'groups_overwritten', 'groups_skipped', 'options_copied', 'power_rules_copied']
           .forEach(key => { result[key] += integer(part[key]); });
         result.failures.push(...(part.failures || []));
@@ -1329,6 +1471,7 @@
       } else {
         closeModal(form.closest('[data-adaptation-modal]'));
       }
+      state.batchReuseTemplate = null;
     } catch (error) {
       state.batchPreview = null;
       const progress = completedBatches ? `前 ${completedBatches} / ${totalBatches} 批已经完成；` : '';

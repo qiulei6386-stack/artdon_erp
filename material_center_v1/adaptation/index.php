@@ -32,7 +32,8 @@ include MC_ROOT.'/components/layout_top.php';
         </div>
         <div class="mc-adaptation-head__actions">
             <button class="mc-button" type="button" data-sync-products>同步产品</button>
-            <button class="mc-button" type="button" data-reuse-open disabled>套用现有配置</button>
+            <button class="mc-button" type="button" data-reuse-template-open>配置模板</button>
+            <button class="mc-button" type="button" data-reuse-open disabled>从产品复制</button>
             <button class="mc-button" type="button" data-batch-open disabled>批量套用</button>
             <button class="mc-button mc-button--primary" type="button" data-template-open disabled>套用完整标准模板</button>
         </div>
@@ -64,6 +65,7 @@ include MC_ROOT.'/components/layout_top.php';
             <div class="mc-product-selection" data-product-selection-bar hidden>
                 <strong data-product-selection-count>已选择 0 个</strong>
                 <button type="button" data-selected-template>批量生成配置</button>
+                <button type="button" data-selected-reuse-template>套用配置模板</button>
                 <button type="button" data-selected-batch>用当前产品套用</button>
                 <button type="button" data-product-selection-clear>清空</button>
             </div>
@@ -200,6 +202,28 @@ include MC_ROOT.'/components/layout_top.php';
                 <button type="button" class="mc-button" data-modal-close>取消</button>
                 <button type="button" class="mc-button" data-reuse-preview-button>预览影响</button>
                 <button class="mc-button mc-button--primary" type="submit" data-reuse-apply disabled>确认套用</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="mc-modal" id="reuse-template-modal" data-adaptation-modal>
+        <form class="mc-modal__panel mc-modal__panel--wide" data-reuse-template-form>
+            <div class="mc-modal__header">
+                <div><strong>配置模板库</strong><span>模板可自由包含电源、芯片、光学或其他任意配置组；套用时不影响模板未包含的组。</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body mc-reuse-template-library">
+                <section class="mc-reuse-template-create" data-reuse-template-create></section>
+                <section class="mc-reuse-template-saved">
+                    <div class="mc-reuse-template-saved__head"><div><strong>已保存模板</strong><span>选择模板后可映射到一个或多个产品。</span></div><button class="mc-button" type="button" data-reuse-template-refresh>刷新</button></div>
+                    <div data-reuse-template-list></div>
+                </section>
+            </div>
+            <div class="mc-modal__footer">
+                <span>模板来源产品更新后，下一次套用自动使用最新配置。</span>
+                <span class="mc-modal__spacer"></span>
+                <button type="button" class="mc-button" data-modal-close>关闭</button>
+                <button class="mc-button mc-button--primary" type="submit" data-reuse-template-save>保存为模板</button>
             </div>
         </form>
     </div>

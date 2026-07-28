@@ -1455,3 +1455,11 @@
 - 修复：桌面表格操作列改为固定四个操作位：查看、转派或多人修改、催办、删除。无权限的操作位保留空位且不可点击，因此每一类图标在所有行始终处于同一水平位置；手机横屏继续保留“更多”菜单，避免强行压缩。
 - 防回归：更新多人派工表格对齐合同，覆盖固定操作位及空位保留规则。
 - 发布：待完成本地检查、GitHub 推送及正式服务器复检后补充提交号。
+
+## 2026-07-28：产品适配可复用配置模板库
+
+- 目标：把“同一电源 / 芯片 / 光学要重复选五次”的逐产品操作，改为一次保存、可反复映射的配置模板。模板可以自由勾选任意配置组，例如仅电源、芯片 + 电源、或芯片 + 电源 + 光学；未勾选的组绝不覆盖目标产品。
+- 实现：新增 `mc_adaptation_reuse_templates` 数据表与产品适配模板库。模板记录来源产品、所选配置组和是否包含电源关键范围；保存后可从模板库选择一个或多个目标产品，先预览新增 / 覆盖 / 保留数量，再按“只补空白”或“覆盖同名组”执行。
+- 安全规则：每次执行仍复用原有批量套用的正式物料、适配性、默认项、条件、冲突关系和审批校验。模板保留来源产品的已选配置组引用，因此来源产品的共用配置更新后，下一次套用会使用最新内容；如果来源组被删除，模板会明确标为需重建并禁止套用。
+- 修改文件：`material_center_v1/database/migrations/20260728_019_adaptation_reuse_templates.php`、`material_center_v1/app/Services/AdaptationService.php`、`material_center_v1/api/v1/adaptation.php`、`material_center_v1/adaptation/index.php`、`material_center_v1/assets/js/adaptation-shell.js`、`material_center_v1/assets/css/app.css`、`material_center_v1/tests/adaptation_reuse_templates_contract.php`、`tools/ci_php_checks.sh`、`WORK_CONTEXT.md`。
+- 检查与发布：待完成本地 JavaScript / 差异检查、提交推送、正式服务器迁移与 PHP 合同回归后补充提交号。

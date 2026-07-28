@@ -30,6 +30,7 @@ try {
             'workspace' => $service->workspace((int) ($_GET['product_id'] ?? 0), (int) ($_GET['group_id'] ?? 0)),
             'candidates' => $service->candidateMaterials((int) ($_GET['group_id'] ?? 0), $_GET),
             'metadata' => $service->metadata(),
+            'reuse_templates' => $service->reuseTemplates(),
             default => throw new RuntimeException('读取操作无效。', 400),
         };
         echo json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -112,6 +113,30 @@ try {
                 $user->id,
                 array_key_exists('source_group_ids', $_POST) ? $json('source_group_ids') : null
             );
+        })(),
+        'save_reuse_template' => (static function () use ($service, $user, $json): array {
+            if (!empty($_POST['include_power_rule'])) (new PermissionService())->require($user, 'material_center.power.rules.manage');
+            return $service->saveReuseTemplate([
+                'source_product_id' => (int) ($_POST['source_product_id'] ?? 0),
+                'template_name' => (string) ($_POST['template_name'] ?? ''),
+                'description' => (string) ($_POST['description'] ?? ''),
+                'source_group_ids' => $json('source_group_ids'),
+                'include_power_rule' => !empty($_POST['include_power_rule']),
+            ], $user->id);
+        })(),
+        'preview_reuse_template' => (static function () use ($service, $user, $json): array {
+            $templateId = (int) ($_POST['reuse_template_id'] ?? 0);
+            if ($service->reuseTemplateIncludesPower($templateId)) (new PermissionService())->require($user, 'material_center.power.rules.manage');
+            return $service->previewReuseTemplate($templateId, $json('target_product_ids'), (string) ($_POST['mode'] ?? 'fill_missing'));
+        })(),
+        'apply_reuse_template' => (static function () use ($service, $user, $json): array {
+            $templateId = (int) ($_POST['reuse_template_id'] ?? 0);
+            if ($service->reuseTemplateIncludesPower($templateId)) (new PermissionService())->require($user, 'material_center.power.rules.manage');
+            return $service->applyReuseTemplate($templateId, $json('target_product_ids'), (string) ($_POST['mode'] ?? 'fill_missing'), $user->id);
+        })(),
+        'disable_reuse_template' => (static function () use ($service, $user): array {
+            $service->disableReuseTemplate((int) ($_POST['reuse_template_id'] ?? 0), $user->id);
+            return [];
         })(),
         'approve' => (static function () use ($service, $user): array {
             (new PermissionService())->require($user, 'material_center.approve');

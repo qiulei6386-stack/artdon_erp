@@ -606,6 +606,140 @@ final class AdaptationService
         return $result;
     }
 
+    /**
+     * Reusable mapping templates deliberately retain the selected source groups,
+     * so a later correction to the common source product is available to every
+     * product mapped from that template.  The actual copy still re-checks formal
+     * materials and target compatibility at execution time.
+     */
+    public function reuseTemplates(): array
+    {
+        $rows = $this->db->query("SELECT t.*,p.product_code,p.product_name,p.series_name
+            FROM mc_adaptation_reuse_templates t
+            JOIN mc_products p ON p.id=t.source_product_id AND p.status='active'
+            WHERE t.status='active'
+            ORDER BY t.updated_at DESC,t.id DESC")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $groupIds = array_values(array_unique(array_filter(array_map('intval', json_decode((string) $row['source_group_ids_json'], true) ?: []))));
+            $row['source_group_ids'] = $groupIds;
+            $groups = array_values(array_filter($this->groups((int) $row['source_product_id']), static fn(array $group): bool => in_array((int) $group['id'], $groupIds, true)));
+            $row['group_count'] = count($groups);
+            $row['group_names'] = array_values(array_map(static fn(array $group): string => (string) $group['group_name'], $groups));
+            $row['is_stale'] = count($groups) !== count($groupIds);
+            $row['include_power_rule'] = (bool) $row['include_power_rule'];
+            unset($row['source_group_ids_json']);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public function saveReuseTemplate(array $data, int $userId): array
+    {
+        $sourceProductId = (int) ($data['source_product_id'] ?? 0);
+        $name = trim((string) ($data['template_name'] ?? ''));
+        $description = trim((string) ($data['description'] ?? ''));
+        $includePowerRule = !empty($data['include_power_rule']);
+        if ($name === '') throw new RuntimeException('请填写模板名称。');
+        if (mb_strlen($name) > 160) throw new RuntimeException('模板名称不能超过 160 个字符。');
+        if (mb_strlen($description) > 500) throw new RuntimeException('模板说明不能超过 500 个字符。');
+        $source = $this->productRow($sourceProductId);
+        if (!$source) throw new RuntimeException('模板来源产品不存在或已停用。');
+        $requestedGroupIds = array_values(array_unique(array_filter(array_map('intval', $data['source_group_ids'] ?? []))));
+        $groups = $this->selectedSourceGroups($sourceProductId, $requestedGroupIds);
+        if (!$groups && !$includePowerRule) throw new RuntimeException('请至少选择一个配置组，或勾选电源范围。');
+        if ($includePowerRule && !$this->productPowerRule((int) $source['legacy_id'])) {
+            throw new RuntimeException('来源产品尚未设置电源范围，不能把电源范围放入模板。');
+        }
+        $code = 'APT-'.strtoupper(substr(str_replace('-', '', $this->uuid()), 0, 12));
+        $this->db->prepare("INSERT INTO mc_adaptation_reuse_templates
+            (template_code,template_name,description,source_product_id,source_group_ids_json,include_power_rule,status,created_by,updated_by,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,'active',?,?,NOW(),NOW())")
+            ->execute([$code, $name, $description !== '' ? $description : null, $sourceProductId,
+                json_encode(array_map('intval', array_column($groups, 'id')), JSON_UNESCAPED_UNICODE), $includePowerRule ? 1 : 0, $userId, $userId]);
+        $id = (int) $this->db->lastInsertId();
+        $this->log($sourceProductId, 'save_reuse_template', [
+            'template_id' => $id,
+            'template_name' => $name,
+            'source_group_ids' => array_map('intval', array_column($groups, 'id')),
+            'include_power_rule' => $includePowerRule,
+        ], $userId);
+        return ['id' => $id, 'template_code' => $code, 'group_count' => count($groups)];
+    }
+
+    public function previewReuseTemplate(int $templateId, array $targetProductIds, string $mode): array
+    {
+        $template = $this->reuseTemplateRow($templateId);
+        $preview = $this->previewBatchApply(
+            (int) $template['source_product_id'],
+            $targetProductIds,
+            $mode,
+            (bool) $template['include_power_rule'],
+            $template['source_group_ids']
+        );
+        $preview['template'] = $this->templateSummary($template);
+        return $preview;
+    }
+
+    public function reuseTemplateIncludesPower(int $templateId): bool
+    {
+        return (bool) $this->reuseTemplateRow($templateId)['include_power_rule'];
+    }
+
+    public function applyReuseTemplate(int $templateId, array $targetProductIds, string $mode, int $userId): array
+    {
+        $template = $this->reuseTemplateRow($templateId);
+        $result = $this->batchApply(
+            (int) $template['source_product_id'],
+            $targetProductIds,
+            $mode,
+            (bool) $template['include_power_rule'],
+            $userId,
+            $template['source_group_ids']
+        );
+        $this->db->prepare('UPDATE mc_adaptation_reuse_templates SET updated_by=?,updated_at=NOW() WHERE id=?')
+            ->execute([$userId, $templateId]);
+        return $result;
+    }
+
+    public function disableReuseTemplate(int $templateId, int $userId): void
+    {
+        $template = $this->reuseTemplateRow($templateId);
+        $this->db->prepare("UPDATE mc_adaptation_reuse_templates SET status='disabled',updated_by=?,updated_at=NOW() WHERE id=?")
+            ->execute([$userId, $templateId]);
+        $this->log((int) $template['source_product_id'], 'disable_reuse_template', ['template_id' => $templateId], $userId);
+    }
+
+    private function reuseTemplateRow(int $templateId): array
+    {
+        $stmt = $this->db->prepare("SELECT t.*,p.product_code,p.product_name,p.series_name
+            FROM mc_adaptation_reuse_templates t
+            JOIN mc_products p ON p.id=t.source_product_id AND p.status='active'
+            WHERE t.id=? AND t.status='active'");
+        $stmt->execute([$templateId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) throw new RuntimeException('配置模板不存在、已停用或来源产品已停用。');
+        $row['source_group_ids'] = array_values(array_unique(array_filter(array_map('intval', json_decode((string) $row['source_group_ids_json'], true) ?: []))));
+        if ($row['source_group_ids']) $this->selectedSourceGroups((int) $row['source_product_id'], $row['source_group_ids']);
+        if (!$row['source_group_ids'] && empty($row['include_power_rule'])) throw new RuntimeException('配置模板没有可套用内容。');
+        return $row;
+    }
+
+    private function templateSummary(array $template): array
+    {
+        $groups = !empty($template['source_group_ids'])
+            ? $this->selectedSourceGroups((int) $template['source_product_id'], $template['source_group_ids'])
+            : [];
+        return [
+            'id' => (int) $template['id'],
+            'template_code' => (string) $template['template_code'],
+            'template_name' => (string) $template['template_name'],
+            'source_product_id' => (int) $template['source_product_id'],
+            'source_product_code' => (string) $template['product_code'],
+            'group_names' => array_values(array_map(static fn(array $group): string => (string) $group['group_name'], $groups)),
+            'include_power_rule' => (bool) $template['include_power_rule'],
+        ];
+    }
+
     public function saveGroup(array $data, int $userId): int
     {
         $id = (int) ($data['id'] ?? 0);
