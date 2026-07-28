@@ -21,8 +21,6 @@ foreach ([
     '已选物料持续显示',
     'data-power-rule-form',
     '保存电源关键范围',
-    '灯具最低功率',
-    '灯具最高功率',
     "post('save_power_rules'",
     '套用完整标准模板',
 ] as $marker) {
@@ -32,6 +30,8 @@ foreach ([
 foreach ([
     'POWER_RULE_FIELDS',
     'savePowerRules',
+    '灯具最低功率',
+    '灯具最高功率',
     'lamp_power_min_w',
     'lamp_power_max_w',
     '$this->productPowerRule',
