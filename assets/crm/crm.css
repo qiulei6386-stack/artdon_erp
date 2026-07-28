@@ -9617,6 +9617,31 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border: 0;
   background: #fff;
 }
+.mail-office-readable {
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.mail-office-readable-note {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--crm-border);
+  background: #f8fafc;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.mail-office-readable pre {
+  margin: 0;
+  padding: 16px;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--crm-text);
+  font: inherit;
+  line-height: 1.7;
+}
 .mail-reader-scroll {
   min-height: 0;
   overflow: auto;

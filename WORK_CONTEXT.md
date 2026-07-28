@@ -1356,3 +1356,9 @@
 - 上传确认：保存跟进后，前端必须收到与所选数量一致的服务器 `saved_ids` 才会提示图片已保存；否则清晰提示“跟进已保存，但截图未上传”，避免把本地缩略图误认为已入库。
 - 修改文件：`assets/crm/crm.js`、`assets/crm/crm.css`、`tests/crm_quote_followup_ui_contract.php`、`WORK_CONTEXT.md`。
 - 检查与发布：本地 JavaScript 语法和差异检查通过；功能提交 `a0556afae7e9e3bdc2ab0728b30544903b5444d8` 已推送 GitHub 并以同一 Git bundle 快进正式服务器。服务器 `crm_task_center.php`、`crm_api.php` 语法和报价跟进 UI 合同均通过；发布记录提交后继续按同一流程同步，最终以三方 HEAD 核对为准。
+
+## 2026-07-28：CRM Outlook / Foxmail 邮件正文空白修复
+
+- 数据核查：用户反馈的 Boris 邮件在 CRM 数据库中并未丢失正文；对应记录 `2102` 的 HTML 正文约 440 KB、纯文本约 54 KB，纯文本开头即为 “Hi Amy / If we are going to develop…”。问题只发生在浏览器展示 Outlook / Office 完整 HTML 文档时，并非收信失败。
+- 修复：识别含 Word / VML / Mso 标记的 Outlook / Office 邮件；当其已保存纯文本正文时，邮箱主阅读区及客户侧邮件预览改用兼容阅读版显示正文、换行和签名，避免隔离原 HTML 框渲染成空白。普通 HTML 邮件仍按原显示方式处理。
+- 防回归：新增 Office / Outlook 邮件正文可读性静态合同；待完成服务器检查、GitHub 推送、正式服务器同步和三方版本核对。
