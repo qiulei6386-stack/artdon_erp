@@ -29,6 +29,7 @@ function crm_task_center_ensure_tables(): void
         completed_by INT UNSIGNED NULL,
         result VARCHAR(120) NOT NULL DEFAULT '',
         result_note TEXT NULL,
+        request_token VARCHAR(100) NULL,
         created_by INT UNSIGNED NULL,
         created_at DATETIME NOT NULL,
         updated_at DATETIME NOT NULL,
@@ -38,7 +39,8 @@ function crm_task_center_ensure_tables(): void
         KEY idx_task_due (due_at),
         KEY idx_task_customer (customer_id),
         KEY idx_task_assignee (assigned_user_id),
-        KEY idx_task_deleted (deleted_at)
+        KEY idx_task_deleted (deleted_at),
+        UNIQUE KEY uk_task_request (created_by, request_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_sample_shipments (
@@ -132,6 +134,7 @@ function crm_task_center_ensure_tables(): void
         next_followup_at DATETIME NULL,
         customer_replied TINYINT(1) NOT NULL DEFAULT 0,
         attachment_note TEXT NULL,
+        request_token VARCHAR(100) NULL,
         created_by INT UNSIGNED NULL,
         created_at DATETIME NOT NULL,
         updated_at DATETIME NOT NULL,
@@ -140,9 +143,11 @@ function crm_task_center_ensure_tables(): void
         KEY idx_quote_followup_task (task_id),
         KEY idx_quote_followup_customer (customer_id, contacted_at),
         KEY idx_quote_followup_mail (mail_id),
-        KEY idx_quote_followup_next (next_followup_at)
+        KEY idx_quote_followup_next (next_followup_at),
+        UNIQUE KEY uk_quote_followup_request (created_by, request_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     try { db()->exec("ALTER TABLE crm_quote_followup_activities ADD COLUMN mail_id BIGINT UNSIGNED NULL AFTER contact_id"); } catch (Throwable $e) {}
+    try { db()->exec("ALTER TABLE crm_quote_followup_activities ADD COLUMN request_token VARCHAR(100) NULL AFTER attachment_note"); } catch (Throwable $e) {}
     try { db()->exec("ALTER TABLE crm_quote_followup_activities ADD KEY idx_quote_followup_mail (mail_id)"); } catch (Throwable $e) {}
     db()->exec("CREATE TABLE IF NOT EXISTS crm_quote_followup_files (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -163,10 +168,13 @@ function crm_task_center_ensure_tables(): void
         "ALTER TABLE crm_tasks ADD KEY idx_task_deleted_type_due (deleted_at, task_type, due_at)",
         "ALTER TABLE crm_tasks ADD KEY idx_task_source_lookup (deleted_at, task_type, source_type, source_id)",
         "ALTER TABLE crm_tasks ADD KEY idx_task_assignee_deleted_due (assigned_user_id, deleted_at, due_at)",
+        "ALTER TABLE crm_tasks ADD COLUMN request_token VARCHAR(100) NULL AFTER result_note",
+        "ALTER TABLE crm_tasks ADD UNIQUE KEY uk_task_request (created_by, request_token)",
         "ALTER TABLE crm_sample_shipments ADD KEY idx_sample_deleted_status_follow (deleted_at, status, followup_time)",
         "ALTER TABLE crm_sample_shipments ADD KEY idx_sample_owner_deleted_status (owner_user_id, deleted_at, status)",
         "ALTER TABLE crm_sample_shipment_files ADD KEY idx_sample_file_ship_type_deleted (shipment_id, file_type, deleted_at)",
         "ALTER TABLE crm_quote_followup_activities ADD KEY idx_quote_followup_quote_time (quote_source, quote_id, deleted_at, contacted_at)",
+        "ALTER TABLE crm_quote_followup_activities ADD UNIQUE KEY uk_quote_followup_request (created_by, request_token)",
     ] as $indexSql) {
         try { db()->exec($indexSql); } catch (Throwable $e) {}
     }
@@ -490,6 +498,26 @@ function crm_task_quote_count(string $sql): int
     try { return (int)db()->query($sql)->fetchColumn(); } catch (Throwable $e) { return 0; }
 }
 
+/** Fetch quote-followup counts and the newest activity in one query per quote source. */
+function crm_task_quote_followup_rollups(string $source, array $quoteIds): array
+{
+    $quoteIds = array_values(array_unique(array_filter(array_map('intval', $quoteIds))));
+    if (!$quoteIds) return [];
+    $marks = implode(',', array_fill(0, count($quoteIds), '?'));
+    $stmt = db()->prepare("SELECT quote_id,contacted_at,mode,channel,result,next_followup_at,customer_replied,content,id
+        FROM crm_quote_followup_activities
+        WHERE quote_source=? AND deleted_at IS NULL AND quote_id IN ({$marks})
+        ORDER BY quote_id ASC, contacted_at DESC, id DESC");
+    $stmt->execute(array_merge([$source], $quoteIds));
+    $rollups = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $activity) {
+        $quoteId = (int)$activity['quote_id'];
+        if (!isset($rollups[$quoteId])) $rollups[$quoteId] = ['count'=>0, 'latest'=>$activity];
+        $rollups[$quoteId]['count']++;
+    }
+    return $rollups;
+}
+
 function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $shipCols, array $recordWhere = [], array $recordParams = []): array
 {
     if (!$quoteCols) return [];
@@ -564,6 +592,7 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
         }
     } catch (Throwable $e) { return []; }
+    $activityRollups = crm_task_quote_followup_rollups('legacy', array_column($rows, 'quote_id'));
     $out = [];
     foreach ($rows as $r) {
         $approval = strtolower((string)($r['approval_status'] ?: 'pending'));
@@ -626,9 +655,8 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             }
         }
         $currentStage = $orderId ? ($balance > 0 ? '尾款/收款' : (($pl > 0 || $ci > 0) ? '单证' : '出货')) : ($approval === 'rejected' ? '审核驳回' : ($approval === 'pending' ? '待审核' : ($taskDone ? '客户已回复' : '客户未回复')));
-        $activityStmt = db()->prepare("SELECT contacted_at,mode,channel,result,next_followup_at,customer_replied,content FROM crm_quote_followup_activities WHERE quote_source='legacy' AND quote_id=? AND deleted_at IS NULL ORDER BY contacted_at DESC,id DESC LIMIT 1");
-        $activityStmt->execute([(int)$r['quote_id']]);
-        $latestActivity = $activityStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $activityRollup = $activityRollups[(int)$r['quote_id']] ?? [];
+        $latestActivity = $activityRollup['latest'] ?? [];
         if (!empty($latestActivity['customer_replied'])) {
             $stages = array_values(array_diff($stages, ['unreplied']));
             $stages[] = 'replied';
@@ -656,7 +684,7 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             'task_due_at' => (string)($r['task_due_at'] ?? ''),
             'replied_at' => (string)($r['replied_at'] ?? ''),
             'reply_summary' => (string)($r['task_result_note'] ?: $r['task_result'] ?: ''),
-            'followup_count' => crm_task_quote_count("SELECT COUNT(*) FROM crm_quote_followup_activities WHERE quote_source='legacy' AND quote_id=" . (int)$r['quote_id'] . " AND deleted_at IS NULL"),
+            'followup_count' => (int)($activityRollup['count'] ?? 0),
             'last_followup_at' => (string)($latestActivity['contacted_at'] ?? ''),
             'last_followup_mode' => (string)($latestActivity['mode'] ?? ''),
             'last_followup_channel' => (string)($latestActivity['channel'] ?? ''),
@@ -707,6 +735,7 @@ function crm_task_cc_quote_flow_records(): array
         LEFT JOIN crm_users u ON u.id=t.assigned_user_id
         WHERE q.is_test=0 ORDER BY q.updated_at DESC LIMIT 300";
     try { $rows = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return []; }
+    $activityRollups = crm_task_quote_followup_rollups('cc', array_column($rows, 'quote_id'));
     $out = [];
     foreach ($rows as $r) {
         $snapshot = json_decode((string)($r['customer_snapshot'] ?? ''), true);
@@ -716,9 +745,8 @@ function crm_task_cc_quote_flow_records(): array
         $rejected = in_array($status, ['rejected','void','cancelled'], true);
         $orderId = (int)($r['converted_order_id'] ?? 0);
         $taskDone = in_array((string)($r['task_status'] ?? ''), ['done','closed'], true);
-        $activityStmt = db()->prepare("SELECT contacted_at,mode,channel,result,next_followup_at,customer_replied,content FROM crm_quote_followup_activities WHERE quote_source='cc' AND quote_id=? AND deleted_at IS NULL ORDER BY contacted_at DESC,id DESC LIMIT 1");
-        $activityStmt->execute([(int)$r['quote_id']]);
-        $activity = $activityStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $activityRollup = $activityRollups[(int)$r['quote_id']] ?? [];
+        $activity = $activityRollup['latest'] ?? [];
         $replied = $taskDone || !empty($activity['customer_replied']);
         $stages = ['quote'];
         if (!$approved && !$rejected) $stages[] = 'review';
@@ -753,7 +781,7 @@ function crm_task_cc_quote_flow_records(): array
             'next_action' => $orderId ? '推进订单' : ($rejected ? '修改后重提' : (!$approved ? '审核报价' : ($replied ? '推进转订单' : '跟进客户回复'))),
             'updated_at' => (string)($r['detail_updated_at'] ?: $base),
             'stages' => array_values(array_unique($stages)),
-            'followup_count' => crm_task_quote_count("SELECT COUNT(*) FROM crm_quote_followup_activities WHERE quote_source='cc' AND quote_id=" . (int)$r['quote_id'] . " AND deleted_at IS NULL"),
+            'followup_count' => (int)($activityRollup['count'] ?? 0),
             'last_followup_at' => (string)($activity['contacted_at'] ?? ''),
             'last_followup_mode' => (string)($activity['mode'] ?? ''),
             'last_followup_channel' => (string)($activity['channel'] ?? ''),
@@ -1134,10 +1162,23 @@ function crm_quote_followup_save(array $input): array
     $contactId = (int)($input['contact_id'] ?? 0) ?: null;
     $mailId = (int)($input['mail_id'] ?? 0) ?: null;
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $requestToken = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($input['request_token'] ?? ''));
     $taskSource = $source === 'cc' ? 'cc_quote' : 'quote';
     $pdo = db();
     $pdo->beginTransaction();
     try {
+        if ($requestToken !== '') {
+            $repeatStmt = $pdo->prepare("SELECT id FROM crm_quote_followup_activities WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
+            $repeatStmt->execute([$uid, $requestToken]);
+            $repeatId = (int)$repeatStmt->fetchColumn();
+            if ($repeatId > 0) {
+                $pdo->commit();
+                $resultData = crm_quote_followup_context(['quote_source'=>$source,'quote_id'=>$quoteId]);
+                $resultData['saved_activity_id'] = $repeatId;
+                $resultData['reused'] = true;
+                return $resultData;
+            }
+        }
         $taskStmt = $pdo->prepare("SELECT id FROM crm_tasks WHERE task_type='quote_followup' AND source_type=? AND source_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE");
         $taskStmt->execute([$taskSource, (string)$quoteId]);
         $taskId = (int)$taskStmt->fetchColumn();
@@ -1152,8 +1193,8 @@ function crm_quote_followup_save(array $input): array
                 ->execute([$title,$content,$taskSource,(string)$quoteId,$customerId ?: null,$contactId,(string)($quote['quote_no'] ?? $quoteId),$owner,$taskStatus,$nextAt,$nextAt,$taskStatus === 'done' ? date('Y-m-d H:i:s') : null,$taskStatus === 'done' ? $uid : null,$result,$content,$uid]);
             $taskId = (int)$pdo->lastInsertId();
         }
-        $pdo->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mail_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
-            ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$uid]);
+        $pdo->prepare("INSERT INTO crm_quote_followup_activities (quote_source,quote_id,quote_no,task_id,customer_id,contact_id,mail_id,mode,channel,contacted_at,result,content,next_plan,next_followup_at,customer_replied,attachment_note,request_token,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+            ->execute([$source,$quoteId,(string)($quote['quote_no'] ?? ''),$taskId,$customerId ?: null,$contactId,$mailId,$mode,$channel,$contactedAt,$result,$content,trim((string)($input['next_plan'] ?? '')),$nextAt,$replied ? 1 : 0,trim((string)($input['attachment_note'] ?? '')),$requestToken ?: null,$uid]);
         $activityId = (int)$pdo->lastInsertId();
         if ($customerId > 0) {
             crm_quote_followup_sync_timeline($pdo, [
@@ -1407,14 +1448,30 @@ function crm_task_save(array $input): array
     if ($data['title'] === '') throw new RuntimeException('请输入任务标题。');
     if ($data['task_type'] === 'dispatch_confirm' && !$data['due_at']) throw new RuntimeException('派工待办必须填写截止时间。');
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $requestToken = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($input['request_token'] ?? ''));
     if ($id > 0) {
         $before = crm_task_row($id);
         db()->prepare("UPDATE crm_tasks SET task_type=?, title=?, description=?, source_type=?, source_id=?, customer_id=?, contact_id=?, opportunity_id=?, quote_id=?, assigned_user_id=?, priority=?, status=?, due_at=?, reminder_at=?, updated_at=NOW() WHERE id=?")
             ->execute(array_merge(array_values($data), [$id]));
         crm_log_event('tasks', 'task_update', 'task', (string)$id, $before, $data);
     } else {
-        db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,JSON_ARRAY(),?,?,?,?,?,NOW(),NOW())")
-            ->execute([$data['task_type'],$data['title'],$data['description'],$data['source_type'],$data['source_id'],$data['customer_id'],$data['contact_id'],$data['opportunity_id'],$data['quote_id'],$data['assigned_user_id'],$data['priority'],$data['status'],$data['due_at'],$data['reminder_at'],$uid]);
+        if ($requestToken !== '') {
+            $repeatStmt = db()->prepare('SELECT id FROM crm_tasks WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1');
+            $repeatStmt->execute([$uid, $requestToken]);
+            $existingId = (int)$repeatStmt->fetchColumn();
+            if ($existingId > 0) return ['task' => crm_task_row($existingId), 'reused' => true];
+        }
+        try {
+            db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,request_token,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,JSON_ARRAY(),?,?,?,?,?,?,NOW(),NOW())")
+                ->execute([$data['task_type'],$data['title'],$data['description'],$data['source_type'],$data['source_id'],$data['customer_id'],$data['contact_id'],$data['opportunity_id'],$data['quote_id'],$data['assigned_user_id'],$data['priority'],$data['status'],$data['due_at'],$data['reminder_at'],$requestToken ?: null,$uid]);
+        } catch (PDOException $e) {
+            if ($requestToken === '') throw $e;
+            $repeatStmt = db()->prepare('SELECT id FROM crm_tasks WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1');
+            $repeatStmt->execute([$uid, $requestToken]);
+            $existingId = (int)$repeatStmt->fetchColumn();
+            if ($existingId <= 0) throw $e;
+            return ['task' => crm_task_row($existingId), 'reused' => true];
+        }
         $id = (int)db()->lastInsertId();
         crm_log_event('tasks', 'task_create', 'task', (string)$id, null, $data);
     }

@@ -450,6 +450,7 @@ function crm_customer_ensure_tables(): void
         status VARCHAR(40) NOT NULL DEFAULT 'open',
         related_email_id INT UNSIGNED NULL,
         related_quote_id INT UNSIGNED NULL,
+        request_token VARCHAR(100) NULL,
         created_by INT UNSIGNED NULL,
         updated_by INT UNSIGNED NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -457,7 +458,8 @@ function crm_customer_ensure_tables(): void
         deleted_at DATETIME NULL,
         KEY idx_follow_customer (customer_id),
         KEY idx_follow_deleted (deleted_at),
-        KEY idx_follow_time (followup_time)
+        KEY idx_follow_time (followup_time),
+        UNIQUE KEY uk_followup_request (created_by, request_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_customer_files (
@@ -484,7 +486,9 @@ function crm_customer_ensure_tables(): void
     crm_add_index_safe('crm_customers', 'idx_customer_website_deleted', '(website, deleted_at, id)');
     crm_add_index_safe('crm_contacts', 'idx_contact_customer_deleted_email', '(customer_id, deleted_at, email)');
     crm_add_index_safe('crm_contacts', 'idx_contact_search', '(customer_id, deleted_at, name, email, phone, whatsapp)');
+    crm_add_column_safe('crm_customer_followups', 'request_token', 'VARCHAR(100) NULL AFTER related_quote_id');
     crm_add_index_safe('crm_customer_followups', 'idx_follow_customer_deleted_time', '(customer_id, deleted_at, followup_time)');
+    try { db()->exec('ALTER TABLE crm_customer_followups ADD UNIQUE KEY uk_followup_request (created_by, request_token)'); } catch (Throwable $e) {}
     crm_add_index_safe('crm_customer_group_relations', 'idx_customer_group_customer_group', '(customer_id, group_id)');
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_logs (
@@ -4978,6 +4982,7 @@ function crm_followup_list(array $input): array
 function crm_followup_create(array $input): array
 {
     crm_require('follow.create');
+    crm_customer_ensure_tables();
     $customerId = (int)($input['customer_id'] ?? 0);
     crm_customer_get($customerId);
     $content = trim((string)($input['content'] ?? ''));
@@ -4986,8 +4991,31 @@ function crm_followup_create(array $input): array
     if (!$followupTime) $followupTime = date('Y-m-d H:i:s');
     $nextRemind = function_exists('crm_task_datetime') ? crm_task_datetime($input['next_remind_time'] ?? '') : null;
     $status = preg_replace('/[^a-z_]/i', '', (string)($input['status'] ?? 'open')) ?: 'open';
-    db()->prepare('INSERT INTO crm_customer_followups (customer_id, contact_id, followup_time, followup_type, content, next_plan, next_remind_time, status, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
-        ->execute([$customerId, (int)($input['contact_id'] ?? 0) ?: null, $followupTime, trim((string)($input['followup_type'] ?? '')) ?: 'other', $content, trim((string)($input['next_plan'] ?? '')), $nextRemind, $status, current_user()['id'], current_user()['id']]);
+    $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $requestToken = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($input['request_token'] ?? ''));
+    if ($requestToken !== '') {
+        $existing = db()->prepare('SELECT id FROM crm_customer_followups WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1');
+        $existing->execute([$uid, $requestToken]);
+        $existingId = (int)$existing->fetchColumn();
+        if ($existingId > 0) {
+            $detail = crm_followup_get($existingId);
+            $detail['reused'] = true;
+            return $detail;
+        }
+    }
+    try {
+        db()->prepare('INSERT INTO crm_customer_followups (customer_id, contact_id, followup_time, followup_type, content, next_plan, next_remind_time, status, request_token, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
+            ->execute([$customerId, (int)($input['contact_id'] ?? 0) ?: null, $followupTime, trim((string)($input['followup_type'] ?? '')) ?: 'other', $content, trim((string)($input['next_plan'] ?? '')), $nextRemind, $status, $requestToken ?: null, $uid, $uid]);
+    } catch (PDOException $e) {
+        if ($requestToken === '') throw $e;
+        $existing = db()->prepare('SELECT id FROM crm_customer_followups WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1');
+        $existing->execute([$uid, $requestToken]);
+        $existingId = (int)$existing->fetchColumn();
+        if ($existingId <= 0) throw $e;
+        $detail = crm_followup_get($existingId);
+        $detail['reused'] = true;
+        return $detail;
+    }
     $id = (int)db()->lastInsertId();
     crm_customer_log('followup_create', 'followup', $id, $customerId, null, $input, '新建跟进');
     crm_customer_timeline_add($customerId, 'followup_create', '新建跟进', $content, 'followup', (string)$id);

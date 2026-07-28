@@ -6646,7 +6646,7 @@
       ].map(function (item) {
         return '<option value="' + esc(item[0]) + '"' + (String(row.status || 'open') === item[0] ? ' selected' : '') + '>' + esc(item[1]) + '</option>';
       }).join('');
-      var html = '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '"><input type="hidden" name="followup_id" value="' + esc(row.id || '') + '">' +
+      var html = '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '"><input type="hidden" name="followup_id" value="' + esc(row.id || '') + '"><input type="hidden" name="request_token" value="' + esc(row.id ? '' : ((window.TaskCenterModule && TaskCenterModule.requestToken) ? TaskCenterModule.requestToken('followup') : ('followup-' + Date.now() + '-' + Math.random().toString(36).slice(2)))) + '">' +
         '<section class="entity-section followup-entry-system"><h3>' + (isEdit ? '编辑跟进' : '客户跟进') + '</h3><div class="business-confirm-card"><strong>' + esc(customer.customer_name || ('客户 #' + this.currentId)) + '</strong><span>保存后会写入客户跟进、客户时间轴，并按下次提醒同步任务中心。</span></div><div class="entity-grid">' +
         '<label class="entity-field"><span>联系人</span><select name="contact_id">' + contactOptions + '</select></label>' +
         '<label class="entity-field"><span>跟进方式</span><select name="followup_type">' + typeOptions + '</select></label>' +
@@ -7798,6 +7798,7 @@
     submitDialog: function () {
       var self = this;
       var form = document.querySelector('[data-customer-form]');
+      if (!form || form.dataset.submitting === '1') return;
       var action = form.dataset.action;
       if (action === '__readonly') return;
       if (action === 'customer_import_commit') return this.commitCustomerImport();
@@ -7807,6 +7808,10 @@
         return this.showCustomerError('存在高风险重复客户，请先选择使用已有、继续新建或进暂存池。');
       }
       if (action === 'customer_create' && (data.entry_mode === 'direct' || data.entry_mode === 'force')) action = 'customer_create_confirmed';
+      var submitButton = document.querySelector('[data-dialog-submit]');
+      var idleText = submitButton ? submitButton.textContent : '';
+      form.dataset.submitting = '1';
+      if (submitButton) { submitButton.disabled = true; submitButton.textContent = '正在保存…'; }
       post(action, data).then(function (json) {
         if (!json.success) return self.showCustomerError(json.message || '保存失败');
         self.closeDialog();
@@ -7841,6 +7846,9 @@
         });
       }).catch(function (error) {
         self.showCustomerError(error.message || '保存失败');
+      }).finally(function () {
+        delete form.dataset.submitting;
+        if (submitButton) { submitButton.disabled = false; submitButton.textContent = idleText; }
       });
     },
     deleteCustomer: function () {
@@ -22169,7 +22177,30 @@
   if (current === 'opportunities') safeInit('商机中心', function () { OpportunityModule.init(); });
 
   var TaskCenterModule = {
-    inited: false, view: 'my', selectedType: '', selectedId: 0, rows: [], samples: [], options: {}, q: '', currentDetail: null, quoteFlow: null, quoteFlowNode: 'quote', selectedQuoteRecord: null, selectedQuoteNode: '', selectedSampleNode: '', detailCollapsed: true,
+    inited: false, view: 'my', selectedType: '', selectedId: 0, rows: [], samples: [], options: {}, q: '', currentDetail: null, quoteFlow: null, quoteFlowNode: 'quote', selectedQuoteRecord: null, selectedQuoteNode: '', selectedSampleNode: '', detailCollapsed: true, detailRequestKey: '',
+    requestToken: function (prefix) {
+      var nonce = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+      return (prefix || 'crm') + '-' + nonce;
+    },
+    runBusy: function (button, busyText, work) {
+      if (!button || button.dataset.taskBusy === '1') return Promise.resolve(null);
+      button.dataset.taskBusy = '1';
+      var idleText = button.textContent;
+      button.disabled = true;
+      if (busyText) button.textContent = busyText;
+      return Promise.resolve().then(work).finally(function () {
+        delete button.dataset.taskBusy;
+        button.disabled = false;
+        button.textContent = idleText;
+      });
+    },
+    actionPending: function (label) {
+      return ['审核通过','驳回报价','编辑报价','修改报价','重新提交审核','查看邮件','AI 分析客户回复','AI 分析回复','创建商机','创建报价','导入报价','转订单','创建样品任务','创建资料任务','创建收款提醒','标记已收款','标记已收定金','标记已收尾款','新增出货批次','标记部分出货','标记全部出货','上传出货附件','创建单证任务','创建 Packing List','创建 Commercial Invoice','上传单证附件','标记单证完成','查询物流','创建派工','生成资料'].indexOf(label) >= 0;
+    },
+    actionButton: function (label) {
+      var pending = this.actionPending(label);
+      return '<button type="button" data-task-detail-action="' + esc(label) + '"' + (pending ? ' disabled title="该功能尚未接入，不能执行"' : '') + '>' + esc(label) + (pending ? '（待接入）' : '') + '</button>';
+    },
     init: function () {
       if (this.inited || !document.querySelector('[data-task-center]')) return;
       this.inited = true; this.bind(); this.load();
@@ -22320,7 +22351,7 @@
         self.options = (json.data && json.data.options) || self.options || {};
         self.quoteFlow = (json.data && json.data.quote_flow) || null;
         self.renderTasks(json.data || {});
-        self.loadSamples();
+        if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') self.loadSamples();
       }).catch(function (error) { if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>'; });
     },
     loadSamples: function () {
@@ -22497,7 +22528,7 @@
               var cls = TaskCenterModule.quoteNodeStateClass(node.state) + (node.key === selectedNode ? ' active-node' : '') + (node.key === currentKey ? ' current-node' : '');
               return '<button type="button" class="quote-mini-node ' + esc(cls) + '" data-quote-record-node="' + esc(node.key) + '"><i>' + esc(node.icon || (idx + 1)) + '</i><span>' + esc(node.label) + '</span><strong>' + esc(node.status || '-') + '</strong><small>' + esc(node.meta || '') + '</small></button>';
             }).join('') + '</div>' +
-            '<aside class="quote-flow-card-next"><span>当前：' + esc(row.current_stage || nodes.find(function (n) { return n.key === currentKey; })?.status || '-') + '</span><strong>下一步：' + esc(TaskCenterModule.quoteNextText(row)) + '</strong><nav>' + quick.map(function (a) { return '<button type="button" data-task-detail-action="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</nav></aside>' +
+            '<aside class="quote-flow-card-next"><span>当前：' + esc(row.current_stage || nodes.find(function (n) { return n.key === currentKey; })?.status || '-') + '</span><strong>下一步：' + esc(TaskCenterModule.quoteNextText(row)) + '</strong><nav>' + quick.map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></aside>' +
             '</article>';
         }).join('') + '</div>' : '<div class="task-empty quote-flow-empty"><strong>暂无报价流程</strong><p>报价发出后，会在这里显示报价 → 审核 → 回复 → 订单 → 收款 → 出货 → 单证的完整流程。</p><nav><button type="button" data-task-detail-action="创建报价">新建报价</button><button type="button" data-task-detail-action="创建商机">从商机创建报价</button><button type="button" data-task-detail-action="导入报价">导入报价</button><button type="button" data-task-detail-action="查看日志">查看历史报价</button></nav></div>') + '</section>';
     },
@@ -22623,7 +22654,7 @@
             var cls = TaskCenterModule.quoteNodeStateClass(node.state) + (node.key === selectedNode ? ' active-node' : '') + (node.key === currentKey ? ' current-node' : '');
             return '<button type="button" class="quote-mini-node sample-mini-node ' + esc(cls) + '" data-sample-flow-node="' + esc(node.key) + '"><i>' + esc(node.icon || '•') + '</i><span>' + esc(node.label) + '</span><strong>' + esc(node.status || '-') + '</strong><small>' + esc(node.meta || '') + '</small></button>';
           }).join('') + '</div>' +
-          '<aside class="quote-flow-card-next"><span>当前：' + esc(statuses[row.status] || row.status || '-').replace('样品', '') + '</span><strong>下一步：' + esc(TaskCenterModule.sampleNextText(row)) + '</strong><nav>' + quick.map(function (a) { return '<button type="button" data-task-detail-action="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</nav></aside>' +
+          '<aside class="quote-flow-card-next"><span>当前：' + esc(statuses[row.status] || row.status || '-').replace('样品', '') + '</span><strong>下一步：' + esc(TaskCenterModule.sampleNextText(row)) + '</strong><nav>' + quick.map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></aside>' +
           '</article>';
       }).join('') || '<div class="task-empty quote-flow-empty"><strong>暂无样品寄送流程</strong><p>创建样品寄送后，会在这里显示建单 → 备样 → 待寄出 → 已寄出 → 运输中 → 已签收 → 反馈跟进。</p><nav><button type="button" data-task-detail-action="新建样品寄送">新建样品寄送</button></nav></div>';
       this.markSelected();
@@ -22652,18 +22683,20 @@
     },
     loadSelectedDetail: function () {
       var row = this.selected(), self = this;
+      var requestKey = String(this.selectedType || '') + ':' + String(this.selectedId || '');
+      this.detailRequestKey = requestKey;
       this.currentDetail = null;
       this.renderDetail();
       if (!row) return;
       if (this.selectedType === 'quote_flow') return;
       if (this.selectedType === 'sample') {
         post('sample_shipment_detail', { shipment_id: row.id }).then(function (json) {
-          if (json.success) { self.currentDetail = json.data || null; self.renderDetail(); }
+          if (json.success && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
         }).catch(function () {});
         return;
       }
       post('task_detail', { task_id: row.id }).then(function (json) {
-        if (json.success) { self.currentDetail = json.data || null; self.renderDetail(); }
+        if (json.success && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
       }).catch(function () {});
     },
     sourceText: function (row) {
@@ -22735,7 +22768,7 @@
         '</div>' +
         (row.reject_reason ? '<section class="task-detail-note"><span>驳回原因 / 审核备注</span><p>' + esc(row.reject_reason) + '</p></section>' : '') +
         '<section class="task-next-action"><span>下一步动作</span><strong>' + esc(this.quoteNextText(row)) + '</strong></section>' +
-        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return '<button type="button" data-task-detail-action="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</nav></section>';
+        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></section>';
     },
     renderDetail: function () {
       var box = document.querySelector('[data-task-detail]');
@@ -22764,7 +22797,7 @@
         '</div><section class="task-detail-note"><span>任务说明</span><p>' + esc(row.description || '暂无说明') + '</p></section>' + quoteTimeline +
         '<section class="task-next-action"><span>下一步建议</span><strong>' + esc(this.nextAction(row)) + '</strong></section>' +
         '<section class="task-detail-note"><span>最近日志</span>' + (logs.length ? logs.slice(0, 5).map(function (log) { return '<p><b>' + esc(log.operator_name || '-') + '</b> · ' + esc(log.action_key || '-') + ' · ' + esc(log.created_at || '') + '</p>'; }).join('') : '<p>暂无任务日志</p>') + '</section>' +
-        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return '<button type="button" data-task-detail-action="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</nav></section>';
+        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></section>';
     },
     renderSampleDetail: function (row, box) {
       var detail = this.currentDetail && this.currentDetail.shipment && Number(this.currentDetail.shipment.id) === Number(row.id) ? this.currentDetail : null;
@@ -22780,7 +22813,7 @@
         '<section class="task-next-action"><span>下一步建议</span><strong>' + esc(this.sampleNextText(row)) + '</strong></section>' +
         '<section class="task-detail-note"><span>图片 / 附件</span><p>' + esc('图片 ' + files.filter(function (f) { return f.file_type === 'image'; }).length + ' · 附件 ' + files.filter(function (f) { return f.file_type === 'attachment'; }).length) + '</p></section>' +
         '<section class="task-detail-note"><span>最近日志</span>' + (logs.length ? logs.slice(0, 5).map(function (log) { return '<p><b>' + esc(log.operator_name || '-') + '</b> · ' + esc(log.action_key || '-') + ' · ' + esc(log.created_at || '') + '</p>'; }).join('') : '<p>暂无样品日志</p>') + '</section>' +
-        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return '<button type="button" data-task-detail-action="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</nav></section>';
+        '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></section>';
     },
     userOptions: function (selected) {
       selected = Number(selected || (state.user || {}).id || 0);
@@ -22797,7 +22830,7 @@
       row = row || {};
       var typeOptions = Object.keys(this.options.task_types || {}).map(function (k) { return '<option value="' + esc(k) + '"' + (k === row.task_type ? ' selected' : '') + '>' + esc(TaskCenterModule.options.task_types[k]) + '</option>'; }).join('');
       var priorityOptions = [['urgent','紧急'],['important','重要'],['normal','普通'],['low','低']].map(function (item) { return '<option value="' + item[0] + '"' + ((row.priority || 'normal') === item[0] ? ' selected' : '') + '>' + item[1] + '</option>'; }).join('');
-      var html = '<div class="visit-workspace-form task-form" data-task-form><input type="hidden" name="task_id" value="' + esc(row.id || '') + '">' +
+      var html = '<div class="visit-workspace-form task-form" data-task-form><input type="hidden" name="task_id" value="' + esc(row.id || '') + '"><input type="hidden" name="request_token" value="' + esc(row.id ? '' : this.requestToken('task')) + '">' +
         '<section class="visit-hero-panel"><div><span>任务与提醒</span><input name="title" value="' + esc(row.title || '') + '" placeholder="输入任务标题"></div><b>Task</b></section>' +
         '<section class="visit-work-section"><h3>任务信息</h3><div class="visit-schedule-grid">' +
           '<label class="visit-pill-field"><span>任务类型</span><select name="task_type">' + typeOptions + '</select></label>' +
@@ -22931,9 +22964,12 @@
     },
     saveTask: function (dialog) {
       var form = dialog.querySelector('[data-task-form]');
-      post('task_save', this.collect(form)).then(function (json) {
-        if (!json.success) return toast(json.message || '保存失败');
-        CustomerModule.closeDialog(); toast('任务已保存'); TaskCenterModule.load();
+      var button = dialog.querySelector('[data-task-save]');
+      return this.runBusy(button, '正在保存…', function () {
+        return post('task_save', TaskCenterModule.collect(form)).then(function (json) {
+          if (!json.success) return toast(json.message || '保存失败');
+          CustomerModule.closeDialog(); toast(json.data && json.data.reused ? '这次保存已完成，未重复新增任务' : '任务已保存'); TaskCenterModule.load();
+        });
       });
     },
     isFollowupTask: function (row) {
@@ -22974,13 +23010,14 @@
           document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
           dialog.querySelector('[data-followup-task-save]')?.addEventListener('click', function () {
+            var button = this;
             var form = dialog.querySelector('[data-followup-task-form]');
             var data = TaskCenterModule.collect(form);
             if (!String(data.content || '').trim()) return toast('请填写跟进内容');
-            post('followup_update', data).then(function (res) {
+            TaskCenterModule.runBusy(button, '正在保存…', function () { return post('followup_update', data).then(function (res) {
               if (!res.success) return toast(res.message || '保存失败');
               CustomerModule.closeDialog(); toast(res.message || '跟进已保存'); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
-            });
+            }); });
           });
         });
       });
@@ -23139,12 +23176,13 @@
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
         dialog.querySelector('[data-task-complete-save]')?.addEventListener('click', function () {
+          var button = this;
           var result = dialog.querySelector('[name="result"]')?.value || '', note = dialog.querySelector('[name="result_note"]')?.value || '';
           if (!result) return toast('请选择完成结果');
-          post('task_status_update', { task_id: TaskCenterModule.selectedId, status: 'done', result: result, result_note: note }).then(function (json) {
+          TaskCenterModule.runBusy(button, '正在完成…', function () { return post('task_status_update', { task_id: TaskCenterModule.selectedId, status: 'done', result: result, result_note: note }).then(function (json) {
             if (!json.success) return toast(json.message || '完成失败');
             CustomerModule.closeDialog(); toast('任务已完成'); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
-          });
+          }); });
         });
       });
     },
@@ -23159,9 +23197,10 @@
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
         dialog.querySelector('[data-task-delay-save]')?.addEventListener('click', function () {
+          var button = this;
           var due = dialog.querySelector('[name="due_at"]')?.value || '';
           if (!due) return toast('请选择新的截止时间');
-          post('task_delay', { task_id: TaskCenterModule.selectedId, due_at: due }).then(function (json) { toast(json.message || '已延期'); if (json.success) { CustomerModule.closeDialog(); TaskCenterModule.load(); } });
+          TaskCenterModule.runBusy(button, '正在延期…', function () { return post('task_delay', { task_id: TaskCenterModule.selectedId, due_at: due }).then(function (json) { toast(json.message || '已延期'); if (json.success) { CustomerModule.closeDialog(); TaskCenterModule.load(); } }); });
         });
       });
     },
@@ -23199,15 +23238,16 @@
           document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
           dialog.querySelector('[data-sample-quick-save]')?.addEventListener('click', function () {
+            var button = this;
             var form = dialog.querySelector('[data-sample-quick-form]'), data = TaskCenterModule.collect(form);
             data.quick_action = kind;
             if ((kind === 'tracking' || kind === 'shipped' || kind === 'signed') && !String(data.tracking_no || '').trim()) return toast('请填写快递单号');
             if (kind === 'feedback' && !String(data.feedback_note || '').trim()) return toast('请填写客户反馈');
-            post('sample_shipment_quick_update', data).then(function (json) {
+            TaskCenterModule.runBusy(button, '正在保存…', function () { return post('sample_shipment_quick_update', data).then(function (json) {
               if (!json.success) return toast(json.message || '更新失败');
               CustomerModule.closeDialog(); toast(json.message || '样品寄送已更新');
               TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
-            });
+            }); });
           });
         });
       });
@@ -23218,20 +23258,21 @@
         if (!row.customer_id) return toast('样品寄送没有关联客户。');
         var now = new Date().toISOString().slice(0, 16).replace('T', ' ');
         var content = '样品寄送跟进：' + (row.sample_name || '') + (row.tracking_no ? '，快递单号 ' + row.tracking_no : '');
-        var html = '<div class="visit-workspace-form" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '">' +
+        var html = '<div class="visit-workspace-form" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
           '<section class="visit-work-section"><h3>样品跟进</h3><div class="visit-schedule-grid"><label class="visit-date-card"><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label class="visit-pill-field"><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label></div><div class="visit-note-grid"><label class="wide">跟进内容 *<textarea name="content" rows="4">' + esc(content) + '</textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="3">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label><label>下次提醒<input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section></div>' +
           '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-followup-save>创建跟进</button></div>';
         CustomerModule.openBusinessDialog('创建样品跟进', html, '保存后会写入客户跟进和任务提醒。', function (dialog) {
           document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
           dialog.querySelector('[data-sample-followup-save]')?.addEventListener('click', function () {
+            var button = this;
             var data = TaskCenterModule.collect(dialog.querySelector('[data-sample-followup-form]'));
             if (!String(data.content || '').trim()) return toast('请填写跟进内容');
-            post('followup_create', data).then(function (json) {
+            TaskCenterModule.runBusy(button, '正在保存…', function () { return post('followup_create', data).then(function (json) {
               if (!json.success) return toast(json.message || '创建跟进失败');
-              CustomerModule.closeDialog(); toast(json.message || '跟进已创建');
+              CustomerModule.closeDialog(); toast(json.data && json.data.reused ? '这次保存已完成，未重复新增跟进' : (json.message || '跟进已创建'));
               TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
-            });
+            }); });
           });
         });
       });
@@ -23350,7 +23391,7 @@
         var contactOptions = '<option value="">未指定联系人</option>' + contacts.map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(item.name + (item.position ? ' · ' + item.position : '')) + '</option>'; }).join('');
         var mailOptions = '<option value="">不绑定邮件</option>' + (data.mails || []).map(function (item) { return '<option value="' + esc(item.id) + '">' + esc(String(item.mail_at || '').slice(0,10) + ' · ' + (item.subject || '(无主题)')) + '</option>'; }).join('');
         var html = '<div class="visit-workspace-form quote-followup-workspace" data-quote-followup-form>' +
-          '<input type="hidden" name="activity_id" value=""><input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
+          '<input type="hidden" name="activity_id" value=""><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('quote-followup')) + '"><input type="hidden" name="quote_source" value="' + esc(data.quote_source || row.quote_source || 'legacy') + '"><input type="hidden" name="quote_id" value="' + esc(quote.id || row.quote_id) + '">' +
           '<section class="visit-hero-panel quote-followup-hero"><div><span>报价跟进</span><strong>' + esc(quote.quote_no || row.quote_no || '-') + '</strong><small>' + esc(quote.customer_name || row.customer_name || '未绑定客户') + '</small></div><aside><b>' + esc((quote.currency || row.currency || '') + ' ' + (quote.total_amount || row.current_amount || row.amount || '—')) + '</b><span>本次只记录客户沟通，不进入报价编辑</span></aside></section>' +
           '<section class="visit-work-section"><h3 data-quote-followup-form-title>本次沟通</h3><div class="visit-schedule-grid">' +
             '<label class="visit-pill-field"><span>线上 / 线下</span><select name="mode"><option value="online">线上</option><option value="offline">线下</option></select></label>' +
@@ -23369,6 +23410,10 @@
           var form = dialog.querySelector('[data-quote-followup-form]');
           var fileInput = dialog.querySelector('[data-quote-followup-files]');
           var dropBox = dialog.querySelector('[data-quote-followup-drop]');
+          if (dialog._quoteFollowupAbort) dialog._quoteFollowupAbort.abort();
+          var listenerAbort = typeof AbortController === 'function' ? new AbortController() : null;
+          dialog._quoteFollowupAbort = listenerAbort;
+          var listenerOptions = listenerAbort ? { signal: listenerAbort.signal } : false;
           var applyFiles = function (incoming) {
             if (!fileInput || !window.DataTransfer) return;
             var dt = new DataTransfer(), seen = {};
@@ -23386,7 +23431,7 @@
           dialog.addEventListener('paste', function (event) {
             var images = Array.prototype.slice.call((event.clipboardData && event.clipboardData.files) || []).filter(function (file) { return /^image\//i.test(file.type || ''); });
             if (images.length) { event.preventDefault(); applyFiles(images); toast('已加入剪贴板截图'); }
-          });
+          }, listenerOptions);
           dialog.addEventListener('click', function (event) {
             var historyView = event.target.closest('[data-quote-followup-history-view]');
             if (historyView) {
@@ -23434,7 +23479,7 @@
               if (!res.success) return toast(res.message || '删除失败');
               toast('沟通截图已删除'); CustomerModule.closeDialog(); TaskCenterModule.openQuoteFollowupDialog(row,markReplied); if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
             });
-          });
+          }, listenerOptions);
           form.querySelector('[name="mode"]')?.addEventListener('change', function () {
             var select = form.querySelector('[name="channel"]');
             if (select) select.innerHTML = TaskCenterModule.quoteFollowupChannelOptions(this.value, '');
@@ -23448,11 +23493,12 @@
           dialog.querySelector('[data-quote-followup-choose]')?.addEventListener('click', function () { fileInput?.click(); });
           dialog.querySelector('[data-quote-followup-save]')?.addEventListener('click', function () {
             var saveButton = this;
-            if (saveButton.disabled) return;
+            if (dialog.dataset.quoteFollowupSaving === '1') return;
             var payload = TaskCenterModule.collect(form);
             if (!String(payload.content || '').trim()) return toast('请填写沟通结果');
             var isEdit = Number(payload.activity_id || 0) > 0;
             var idleText = saveButton.textContent;
+            dialog.dataset.quoteFollowupSaving = '1';
             saveButton.disabled = true;
             saveButton.textContent = isEdit ? '正在保存修改…' : '正在保存…';
             post(isEdit ? 'quote_followup_update' : 'quote_followup_save', payload).then(function (res) {
@@ -23463,7 +23509,7 @@
               return TaskCenterModule.uploadQuoteFollowupFiles(activityId, input).then(function () { return res; });
             }).then(function (res) {
               if (!res || !res.success) return;
-              CustomerModule.closeDialog(); toast(isEdit ? '历史跟进已修改' : '报价跟进已保存'); TaskCenterModule.load();
+              CustomerModule.closeDialog(); toast(isEdit ? '历史跟进已修改' : (res.data && res.data.reused ? '这次保存已完成，未重复新增跟进' : '报价跟进已保存')); TaskCenterModule.load();
               if (TaskCenterModule.selectedType === 'task') TaskCenterModule.loadSelectedDetail();
               if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent:true });
             }).catch(function (error) {
@@ -23475,6 +23521,7 @@
                 toast('跟进已保存，但截图未上传：' + (error.message || '请压缩图片后在历史记录中重新上传'));
               } else toast(error.message || '报价跟进保存失败');
             }).finally(function () {
+              delete dialog.dataset.quoteFollowupSaving;
               saveButton.disabled = false;
               saveButton.textContent = idleText;
             });
