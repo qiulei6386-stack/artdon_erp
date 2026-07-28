@@ -24,22 +24,29 @@ $bootstrap = [
 
 include MC_ROOT.'/components/layout_top.php';
 ?>
-<section class="mc-page mc-page--adaptation-v2" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>">
+<section class="mc-page mc-page--adaptation-v2" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="<?=$workspace ? 'overview' : 'products'?>">
     <header class="mc-adaptation-head">
         <div>
-            <h1>产品适配</h1>
-            <p>按“选择产品 → 建立配置组 → 添加正式物料 → 设置默认与条件 → 检查并审批”的顺序完成配置。</p>
+            <h1>产品适配总览</h1>
+            <p>先看配置是否完整、可生产、可报价；需要时再进入单个配置组处理真实物料和规则。</p>
         </div>
+        <nav class="mc-adaptation-view-tabs" aria-label="产品适配工作方式">
+            <button type="button" class="is-active" data-adaptation-view="overview">配置总览</button>
+            <button type="button" data-adaptation-view="guide">引导配置</button>
+            <button type="button" data-adaptation-view="batch">批量矩阵</button>
+        </nav>
         <div class="mc-adaptation-head__actions">
             <button class="mc-button" type="button" data-sync-products>同步产品</button>
-            <button class="mc-button" type="button" data-reuse-template-open>配置模板</button>
+            <button class="mc-button" type="button" data-reuse-template-open>套用配置模板</button>
             <button class="mc-button" type="button" data-reuse-open disabled>从产品复制</button>
-            <button class="mc-button" type="button" data-batch-open disabled>批量套用</button>
-            <button class="mc-button mc-button--primary" type="button" data-template-open disabled>套用完整标准模板</button>
+            <button class="mc-button" type="button" data-batch-open disabled>批量矩阵</button>
+            <button class="mc-button" type="button" data-overview-switch-product>切换产品</button>
+            <button class="mc-button mc-button--primary" type="button" data-overview-submit disabled>检查配置 / 提交审批</button>
         </div>
     </header>
 
     <div class="mc-adaptation-workspace">
+        <section class="mc-adaptation-overview" data-overview-dashboard hidden></section>
         <aside class="mc-adaptation-column mc-adaptation-products">
             <div class="mc-adaptation-column__head">
                 <div><strong>产品列表</strong><span data-product-count>0 个产品</span></div>
@@ -75,7 +82,7 @@ include MC_ROOT.'/components/layout_top.php';
 
         <section class="mc-adaptation-column mc-adaptation-options">
             <div class="mc-adaptation-column__head">
-                <div><strong>选项详情</strong><span data-option-subtitle>请选择配置组</span></div>
+                <div><strong data-option-title>选项详情</strong><span data-option-subtitle>请选择配置组</span></div>
                 <div class="mc-adaptation-column__actions">
                     <button class="mc-button mc-button--soft" type="button" data-open-quick-rules disabled>填写关键范围</button>
                     <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
@@ -110,6 +117,19 @@ include MC_ROOT.'/components/layout_top.php';
             </div>
             <div class="mc-adaptation-groups" data-group-list></div>
         </aside>
+    </div>
+
+    <div class="mc-modal" id="overview-product-modal" data-adaptation-modal>
+        <section class="mc-modal__panel mc-modal__panel--medium mc-overview-product-modal">
+            <div class="mc-modal__header">
+                <div><strong>切换产品</strong><span>选择产品后保留在配置总览，不会丢失当前已保存的配置。</span></div>
+                <button type="button" class="mc-icon-button" data-modal-close>×</button>
+            </div>
+            <div class="mc-modal__body">
+                <label class="mc-search"><span><?=mc_icon('search', 16)?></span><input type="search" data-overview-product-search placeholder="搜索型号 / 名称 / 系列" autocomplete="off"></label>
+                <div class="mc-overview-product-list" data-overview-product-list></div>
+            </div>
+        </section>
     </div>
 
     <div class="mc-modal" id="template-modal" data-adaptation-modal>

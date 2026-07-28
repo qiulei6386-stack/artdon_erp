@@ -30,6 +30,8 @@
     reuseTemplates: [],
     batchReuseTemplate: null,
     productSearchTimer: 0,
+    view: bootstrap.workspace ? 'overview' : 'products',
+    overviewProductQuery: '',
   };
 
   const escapeHtml = value => String(value ?? '')
@@ -309,6 +311,88 @@
       : '未添加物料';
   };
 
+  const overviewGroupIcon = group => ({
+    chip: '◉', power_supply: 'ϟ', optical: '◎', profile: '▧', connector: '⌁', accessory: '◇', packaging: '□',
+  }[group?.material_category_code] || '◇');
+
+  const overviewGroupAction = group => {
+    const status = group?.display_status || group?.status || 'empty';
+    if (status === 'empty') return '添加选项';
+    if (status === 'no_default') return '设置默认';
+    if (status === 'conflict') return '处理冲突';
+    if (status === 'pending') return '检查审批';
+    return '管理';
+  };
+
+  const productImageUrl = product => {
+    const rawImage = String(product?.image_url || '');
+    if (!rawImage) return '';
+    return rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('/')
+      ? rawImage
+      : `${state.baseUrl.replace('/material_center_v1', '')}/${rawImage.startsWith('./') ? rawImage.slice(2) : rawImage}`;
+  };
+
+  const renderOverviewProductList = () => {
+    const target = q('[data-overview-product-list]');
+    if (!target) return;
+    const query = state.overviewProductQuery.trim().toLowerCase();
+    const selectedId = selectedProductId();
+    const products = state.catalogProducts.filter(product => !query || [product.product_code, product.product_name, product.series_name]
+      .some(value => String(value || '').toLowerCase().includes(query))).slice(0, 80);
+    target.innerHTML = products.length ? products.map(product => {
+      const id = integer(product.id);
+      return `<button type="button" class="${id === selectedId ? 'is-active' : ''}" data-overview-product-id="${id}">
+        <span><strong>${escapeHtml(product.product_code || '未编号')}</strong><small>${escapeHtml(product.product_name || '未命名产品')} · ${escapeHtml(product.series_name || '未设置系列')}</small></span>
+        <em>${escapeHtml(product.approval_label || '未配置')}</em>
+      </button>`;
+    }).join('') : '<div class="mc-empty-state mc-empty-state--compact"><strong>没有符合条件的产品</strong><span>请调整型号、名称或系列关键词。</span></div>';
+  };
+
+  const renderOverviewDashboard = () => {
+    const target = q('[data-overview-dashboard]');
+    const workspace = state.workspace;
+    if (!target) return;
+    if (!workspace) {
+      target.hidden = true;
+      target.innerHTML = '';
+      return;
+    }
+    const product = workspace.product || {};
+    const completion = workspace.completion || {};
+    const groups = workspace.groups || [];
+    const overviewById = new Map((workspace.configuration_overview || []).map(group => [integer(group.id), group]));
+    const missing = groups.filter(group => ['empty', 'no_default', 'conflict'].includes(group.display_status || group.status));
+    const pending = groups.filter(group => (group.display_status || group.status) === 'pending');
+    const activeId = integer(workspace.active_group?.id);
+    const nextGroup = groups.find(group => ['empty', 'no_default', 'conflict', 'pending'].includes(group.display_status || group.status)) || groups[0];
+    const imageUrl = productImageUrl(product);
+    const issueText = (completion.issues || [])[0] || (nextGroup ? `${nextGroup.group_name}：${overviewGroupAction(nextGroup)}` : '先建立完整标准配置组，再逐项补齐正式物料。');
+    target.hidden = false;
+    target.innerHTML = `<section class="mc-overview-product-hero">
+      <div class="mc-overview-product-image">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" data-overview-product-image>` : '<span>◇</span>'}</div>
+      <div class="mc-overview-product-info"><strong>${escapeHtml(product.product_code || '未编号')}　${escapeHtml(product.product_name || '未命名产品')}</strong><span>系列：${escapeHtml(product.series_name || '未设置系列')}</span><small>产品状态：${escapeHtml(product.approval_label || '未配置')}　·　${groups.length ? `已建立 ${groups.length} 个配置组` : '尚未建立配置组'}</small></div>
+      <div class="mc-overview-completion"><b style="--completion:${Math.min(100, integer(completion.percent))}"><i>${integer(completion.percent)}%</i></b><span>配置完成度</span></div>
+      <div class="mc-overview-hero-metrics"><span><b>${missing.length}</b>缺失项</span><span><b>${integer(workspace.conflicts?.length)}</b>冲突项</span><span><b>${pending.length}</b>待审批</span><span><b>${integer(product.option_count)}</b>正式选项</span></div>
+    </section>
+    <section class="mc-overview-next-step ${nextGroup ? '' : 'is-ready'}"><span class="mc-overview-next-step__icon">${nextGroup ? '!' : '✓'}</span><div><strong>${nextGroup ? '下一步建议' : '配置检查通过'}</strong><span>${escapeHtml(issueText)}</span></div>${nextGroup ? `<button type="button" class="mc-button mc-button--primary" data-select-group="${integer(nextGroup.id)}">${escapeHtml(overviewGroupAction(nextGroup))}</button>` : '<button type="button" class="mc-button" data-overview-submit>提交审批</button>'}</section>
+    <section class="mc-overview-groups">${groups.length ? groups.map(group => {
+      const details = overviewById.get(integer(group.id)) || group;
+      const status = group.display_status || details.status || 'empty';
+      const defaultText = configuredMaterialText(details);
+      return `<article class="mc-overview-group-card ${integer(group.id) === activeId ? 'is-active' : ''} is-${escapeHtml(status)}">
+        <div class="mc-overview-group-card__head"><span class="mc-overview-group-card__icon">${overviewGroupIcon(group)}</span><div><strong>${escapeHtml(group.group_name)}</strong><small>${status === 'enabled' ? '已完成' : escapeHtml(overviewStatusLabel(status))}</small></div></div>
+        <p>默认：${escapeHtml(defaultText)}</p>
+        <div class="mc-overview-group-card__facts"><span>正式 ${integer(group.option_count)} </span><span>候选 ${integer(group.alternative_count)}</span><span>冲突 ${integer(group.conflict_count)}</span></div>
+        <button type="button" data-select-group="${integer(group.id)}">${escapeHtml(overviewGroupAction(group))}</button>
+      </article>`;
+    }).join('') : `<article class="mc-overview-empty-groups"><strong>还没有配置组</strong><span>标准模板会一次建立芯片、电源、光学、安装方式等完整结构；随后可使用“配置模板”映射到多个产品。</span><button class="mc-button mc-button--primary" type="button" data-overview-template>建立标准配置组</button></article>`}</section>`;
+    qa('[data-overview-product-image]', target).forEach(image => image.addEventListener('error', () => {
+      const fallback = document.createElement('span');
+      fallback.textContent = '◇';
+      image.replaceWith(fallback);
+    }, { once: true }));
+  };
+
   const renderPersistentConfiguration = () => {
     const target = q('[data-selected-configuration]');
     const workspace = state.workspace;
@@ -394,10 +478,12 @@
     const list = q('[data-group-list]');
     const workspace = state.workspace;
     q('[data-group-create]').disabled = !workspace;
-    q('[data-template-open]').disabled = !workspace;
+    const templateButton = q('[data-template-open]');
+    if (templateButton) templateButton.disabled = !workspace;
     q('[data-batch-open]').disabled = !workspace?.groups?.length;
     q('[data-reuse-open]').disabled = !workspace;
-    q('[data-template-open]').textContent = workspace?.groups?.length ? '补齐完整标准模板' : '套用完整标准模板';
+    q('[data-overview-submit]').disabled = !workspace;
+    if (templateButton) templateButton.textContent = workspace?.groups?.length ? '补齐完整标准模板' : '套用完整标准模板';
     renderProductSelection();
     if (!workspace) {
       list.innerHTML = '<div class="mc-empty-state"><strong>请选择产品</strong><span>从左侧产品列表开始。</span></div>';
@@ -459,6 +545,7 @@
     q('[data-open-quick-rules]').disabled = !group;
     q('[data-open-approval]').disabled = !group;
     q('[data-option-subtitle]').textContent = group?.group_name || '请选择配置组';
+    q('[data-option-title]').textContent = group?.group_name || '选项详情';
     if (!group) {
       detail.innerHTML = '<div class="mc-empty-state"><strong>请选择配置组</strong><span>配置组切换后，这里会立即显示选项、默认、条件和审批信息。</span></div>';
       return;
@@ -582,12 +669,17 @@
   };
 
   const render = () => {
+    if (!state.workspace) state.view = 'products';
+    page.dataset.view = state.view;
     page.dataset.stage = !state.workspace ? 'products' : (selectedGroup() ? 'options' : 'groups');
+    qa('[data-adaptation-view]').forEach(button => button.classList.toggle('is-active', button.dataset.adaptationView === state.view));
     renderProducts();
     renderSummary();
     renderConfigurationOverview();
     renderGroups();
     renderOptionPanel();
+    renderOverviewDashboard();
+    renderOverviewProductList();
     updateUrl();
   };
 
@@ -1127,6 +1219,67 @@
   };
 
   page.addEventListener('click', async event => {
+    const viewButton = event.target.closest('[data-adaptation-view]');
+    if (viewButton) {
+      const view = viewButton.dataset.adaptationView;
+      if (view === 'batch') {
+        if (!state.workspace?.groups?.length) {
+          notify('请先选择已配置产品', '批量矩阵以当前产品的真实配置为来源。');
+        } else {
+          openBatch();
+        }
+        return;
+      }
+      state.view = view;
+      render();
+      return;
+    }
+    if (event.target.closest('[data-overview-switch-product]')) {
+      state.overviewProductQuery = '';
+      const input = q('[data-overview-product-search]');
+      if (input) input.value = '';
+      renderOverviewProductList();
+      openModal('overview-product-modal');
+      input?.focus();
+      return;
+    }
+    const overviewProduct = event.target.closest('[data-overview-product-id]');
+    if (overviewProduct) {
+      try {
+        state.tab = 'options';
+        state.view = 'overview';
+        await loadWorkspace(integer(overviewProduct.dataset.overviewProductId));
+        closeModal(q('#overview-product-modal'));
+      } catch (error) {
+        notify('产品加载失败', error.message);
+      }
+      return;
+    }
+    if (event.target.closest('[data-overview-template]')) {
+      populateTemplate([selectedProductId()]);
+      openModal('template-modal');
+      return;
+    }
+    if (event.target.closest('[data-overview-submit]')) {
+      if (!state.workspace) {
+        notify('请先选择产品', '先选定产品后才能检查配置。');
+        return;
+      }
+      if (!state.workspace.groups?.length) {
+        populateTemplate([selectedProductId()]);
+        openModal('template-modal');
+        return;
+      }
+      try {
+        state.tab = 'approval';
+        const groupId = integer(selectedGroup()?.id) || integer(state.workspace.groups[0]?.id);
+        if (groupId && integer(selectedGroup()?.id) !== groupId) await loadWorkspace(selectedProductId(), groupId);
+        else renderOptionPanel();
+      } catch (error) {
+        notify('配置检查暂不可用', error.message);
+      }
+      return;
+    }
     if (event.target.closest('[data-product-locate]')) {
       if (q(`[data-product-id="${selectedProductId()}"]`, q('[data-product-list]'))) focusSelectedProduct();
       else notify('当前产品不在搜索结果中', '搜索条件保持不变；清空搜索后即可在列表中定位。');
@@ -1492,6 +1645,11 @@
     const query = event.currentTarget.value.trim();
     clearTimeout(state.productSearchTimer);
     state.productSearchTimer = window.setTimeout(() => searchProducts(query), 220);
+  });
+
+  q('[data-overview-product-search]').addEventListener('input', event => {
+    state.overviewProductQuery = event.currentTarget.value;
+    renderOverviewProductList();
   });
 
   q('[data-template-form]').addEventListener('submit', async event => {
