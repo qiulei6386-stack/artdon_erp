@@ -1355,4 +1355,4 @@
 - 历史查看：每条历史跟进现明确显示“沟通截图 N 张”；详情始终显示截图区。存在图片时显示缩略图，点击可打开原图；没有图片时会明确说明该条没有成功保存截图，并提供“修改并补传图片”入口。
 - 上传确认：保存跟进后，前端必须收到与所选数量一致的服务器 `saved_ids` 才会提示图片已保存；否则清晰提示“跟进已保存，但截图未上传”，避免把本地缩略图误认为已入库。
 - 修改文件：`assets/crm/crm.js`、`assets/crm/crm.css`、`tests/crm_quote_followup_ui_contract.php`、`WORK_CONTEXT.md`。
-- 检查与发布：待完成本地静态检查、GitHub 推送、正式服务器回归和三方版本核对后补充。
+- 检查与发布：本地 JavaScript 语法和差异检查通过；功能提交 `a0556afae7e9e3bdc2ab0728b30544903b5444d8` 已推送 GitHub 并以同一 Git bundle 快进正式服务器。服务器 `crm_task_center.php`、`crm_api.php` 语法和报价跟进 UI 合同均通过；发布记录提交后继续按同一流程同步，最终以三方 HEAD 核对为准。
