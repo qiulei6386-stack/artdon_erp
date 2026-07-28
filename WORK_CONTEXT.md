@@ -1,12 +1,13 @@
 # Artdon ERP 工作上下文
 
-## 本次：CRM 与派工统一公司 LOGO 上传（待发布）
+## 本次：CRM 与派工统一公司 LOGO 上传（已发布）
 
 - 用户要求将 CRM 与派工顶部当前固定的 AD 图标改为可自行上传的公司 LOGO，并且两端一致。
 - 新增统一品牌上传：在 CRM 的“设置 → 企业信息 → 统一顶部 LOGO”选择 JPG、PNG、WebP 或 GIF（最大 2MB）后上传一次，同时写入 CRM 与派工共用的公司设置；两端下次打开即使用同一图片。未上传时继续显示默认 AD 图标。
 - 上传使用服务端真实文件校验、随机文件名和仅限 `uploads/company_brand/` 的公开路径白名单；不接受任意路径或 SVG。支持“恢复默认图标”，只取消当前引用，不删除旧上传文件，避免误删。
 - 修改文件：`includes/settings_service.php`、`crm_api.php`、`crm.php`、`dispatch_next.php`、`assets/crm/crm.js`、`assets/crm/crm.css`、新增 `tests/company_brand_logo_contract.php`、本上下文。未触碰用户原有商务中心命令文件删除和未跟踪文档。
-- 检查与发布：待完成本地语法/契约检查后，按本地 → GitHub → 正式服务器 → 三方提交一致性流程发布。
+- 检查：办公室本地 JavaScript 语法、空白差异检查通过（办公室电脑没有 PHP）；正式服务器 `crm.php`、`crm_api.php`、`dispatch_next.php`、`includes/settings_service.php` PHP 语法与 `company_brand_logo_contract.php` 均通过，服务器工作区检查无本次差异。
+- Git / 部署：功能提交 `ff71c14b021a543b1f39808f3684fb7579825a2c` 已推送 GitHub；通过 SHA-256 为 `918f79374394c70479acfe02d60bdc552db62804796353431c339ceae8f228e6` 的 Git bundle 在正式服务器仅快进合并发布，未直接编辑服务器代码。本记录收尾提交后再同步三方并核对最终提交一致。
 
 ## 本次：重排推广项目首页，突出项目重点并收起明细（已发布）
 
