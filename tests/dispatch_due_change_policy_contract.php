@@ -30,6 +30,14 @@ foreach ([
         throw new RuntimeException("dispatch due-change API marker missing: {$marker}");
     }
 }
+if (str_contains($api, "(string)(\$task['task_type'] ?? 'dispatch') !== 'dispatch'")) {
+    throw new RuntimeException('personal tasks must not bypass the due-change policy');
+}
+foreach (["dn_str(\$in['project'] ?? '', 8000)", "'project' => 8000"] as $marker) {
+    if (!str_contains($api, $marker)) {
+        throw new RuntimeException("dispatch long work-list API marker missing: {$marker}");
+    }
+}
 
 foreach ([
     'CREATE TABLE IF NOT EXISTS dispatch_next_due_change_events',
@@ -38,6 +46,14 @@ foreach ([
 ] as $marker) {
     if (!str_contains($schema, $marker)) {
         throw new RuntimeException("dispatch due-change schema marker missing: {$marker}");
+    }
+}
+foreach ([
+    'ALTER TABLE dispatch_next_tasks MODIFY project TEXT NULL',
+    'ALTER TABLE dispatch_next_groups MODIFY project TEXT NULL',
+] as $marker) {
+    if (!str_contains($schema, $marker)) {
+        throw new RuntimeException("dispatch long work-list schema marker missing: {$marker}");
     }
 }
 
@@ -56,6 +72,11 @@ foreach ([
 foreach (['due_change_hint', '当前不能修改截止日期', 'function renderMultiEditForm(g){let canDue=!!g.can_change_due_at', 'data-open="due_policy"', 'function renderDuePolicySettings()', "api('get_due_change_settings')", "api('save_due_change_settings'"] as $marker) {
     if (!str_contains($page, $marker)) {
         throw new RuntimeException("dispatch due-change UI feedback marker missing: {$marker}");
+    }
+}
+foreach (['taskWorkList', '项目 / 工作清单', 'taskAssigneeReadOnly', '请选择至少一位执行人', '保存失败：'] as $marker) {
+    if (!str_contains($page, $marker)) {
+        throw new RuntimeException("dispatch unified-create-form marker missing: {$marker}");
     }
 }
 

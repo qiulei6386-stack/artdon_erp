@@ -198,7 +198,9 @@ function dn_due_change_count_today(array $task, ?array $group = null): int
 
 function dn_due_change_block_reason(array $task, ?array $group = null): ?string
 {
-    if (dn_is_admin() || (string)($task['task_type'] ?? 'dispatch') !== 'dispatch') return null;
+    // The deadline policy protects every actionable task: personal, single and multi dispatch.
+    // Administrators remain the only explicit exception.
+    if (dn_is_admin()) return null;
     $policy = dn_dispatch_due_change_policy();
     $dueAt = (string)($group['due_at'] ?? $task['due_at'] ?? '');
     $dueDate = substr($dueAt, 0, 10);
@@ -1675,7 +1677,7 @@ function dn_create_task(array $in): array
         'task_type' => $type,
         'dispatch_mode' => $type === 'dispatch' ? 'single' : 'single',
         'title' => $title,
-        'project' => dn_str($in['project'] ?? '', 180),
+        'project' => dn_str($in['project'] ?? '', 8000),
         'description' => dn_str($in['description'] ?? '', 8000),
         'priority' => dn_priority($in['priority'] ?? 'normal'),
         'status' => $type === 'dispatch' && $assigned !== $uid ? 'pending_accept' : 'in_progress',
@@ -1767,7 +1769,7 @@ function dn_update_task(array $in): array
         $old = $task[$f] ?? '';
         $new = $in[$f];
         if ($f === 'title') $new = dn_str($new, 240);
-        if ($f === 'project') $new = dn_str($new, 180);
+        if ($f === 'project') $new = dn_str($new, 8000);
         if ($f === 'description') $new = dn_str($new, 8000);
         if ($f === 'priority') $new = dn_priority($new);
         if ($f === 'status') $new = dn_status($new);
@@ -1846,12 +1848,12 @@ function dn_create_multi(array $in): array
     $dueAt = dn_required_due_dt($in['due_at'] ?? null);
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_groups(group_no,group_type,title,project,description,created_by,assignee_ids_json,total_count,task_date,due_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
-        ->execute([dn_task_no('DG'), 'multi', $title, dn_str($in['project'] ?? '', 180), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), dn_date($in['task_date'] ?? null), $dueAt]);
+        ->execute([dn_task_no('DG'), 'multi', $title, dn_str($in['project'] ?? '', 8000), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), dn_date($in['task_date'] ?? null), $dueAt]);
     $gid = (int)$pdo->lastInsertId();
     foreach ($ids as $aid) {
         $childId = dn_insert_task([
             'task_type' => 'dispatch', 'dispatch_mode' => 'multi', 'parent_group_id' => $gid,
-            'title' => $title, 'project' => dn_str($in['project'] ?? '', 180), 'description' => dn_str($in['description'] ?? '', 8000),
+            'title' => $title, 'project' => dn_str($in['project'] ?? '', 8000), 'description' => dn_str($in['description'] ?? '', 8000),
             'priority' => dn_priority($in['priority'] ?? 'normal'), 'status' => $aid === dn_uid() ? 'in_progress' : 'pending_accept',
             'created_by' => dn_uid(), 'assigned_to' => $aid, 'task_date' => dn_date($in['task_date'] ?? null), 'due_at' => $dueAt,
             'is_read' => $aid === dn_uid() ? 1 : 0,
@@ -2013,7 +2015,7 @@ function dn_update_multi(array $in): array
     if (!$g) dn_fail('多人组不存在', 404);
     if (!dn_is_admin() && (int)$g['created_by'] !== dn_uid()) dn_fail('只有派工人可以修改多人组', 403);
     if (dn_due_dt(array_key_exists('due_at', $in) ? $in['due_at'] : ($g['due_at'] ?? null)) === null) dn_fail('派工待办必须填写截止日期');
-    $fields = ['title' => 240, 'project' => 180, 'description' => 8000];
+    $fields = ['title' => 240, 'project' => 8000, 'description' => 8000];
     $sets = [];
     $params = [];
     foreach ($fields as $f => $max) {
@@ -2075,7 +2077,7 @@ function dn_create_recurring(array $in): array
     $dueAt = dn_required_due_dt($in['due_at'] ?? null);
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_groups(group_no,group_type,title,project,description,created_by,assignee_ids_json,total_count,task_date,due_at,recurring_rule_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
-        ->execute([dn_task_no('DR'), 'recurring', $title, dn_str($in['project'] ?? '', 180), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), $rule['start_date'], $dueAt, dn_json($rule)]);
+        ->execute([dn_task_no('DR'), 'recurring', $title, dn_str($in['project'] ?? '', 8000), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), $rule['start_date'], $dueAt, dn_json($rule)]);
     return ['group_id' => (int)$pdo->lastInsertId(), 'rule' => $rule];
 }
 
@@ -3708,7 +3710,7 @@ function dn_update_cell(array $in): array
     if ($nextDue === null) dn_fail('派工待办必须填写截止日期');
     $map = [
         'title' => ['col'=>'title','type'=>'string','max'=>240],
-        'project' => ['col'=>'project','type'=>'string','max'=>180],
+        'project' => ['col'=>'project','type'=>'string','max'=>8000],
         'description' => ['col'=>'description','type'=>'string','max'=>8000],
         'priority' => ['col'=>'priority','type'=>'priority'],
         'status' => ['col'=>'status','type'=>'status'],

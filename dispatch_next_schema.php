@@ -78,7 +78,7 @@ function dispatch_next_init_schema(): array
         dispatch_mode ENUM('single','multi','plan','recurring') NOT NULL DEFAULT 'single',
         parent_group_id BIGINT UNSIGNED NULL,
         title VARCHAR(240) NOT NULL,
-        project VARCHAR(180) NULL,
+        project TEXT NULL,
         description TEXT NULL,
         priority ENUM('normal','important','urgent','today') NOT NULL DEFAULT 'normal',
         status ENUM('pending_accept','accepted','in_progress','paused','submitted','returned','rejected','done','cancelled') NOT NULL DEFAULT 'in_progress',
@@ -121,7 +121,7 @@ function dispatch_next_init_schema(): array
         group_no VARCHAR(40) NOT NULL,
         group_type ENUM('multi','recurring') NOT NULL DEFAULT 'multi',
         title VARCHAR(240) NOT NULL,
-        project VARCHAR(180) NULL,
+        project TEXT NULL,
         description TEXT NULL,
         created_by INT UNSIGNED NOT NULL,
         assignee_ids_json JSON NULL,
@@ -372,6 +372,9 @@ function dispatch_next_init_schema(): array
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_group_id', 'converted_group_id BIGINT UNSIGNED NULL AFTER converted_task_id');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_at', 'converted_at DATETIME NULL AFTER converted_group_id');
     dispatch_next_add_column_if_missing($pdo, 'dispatch_next_tasks', 'converted_status', "converted_status VARCHAR(20) NOT NULL DEFAULT 'normal' AFTER converted_at");
+    // Work lists are intentionally long-form: a project can contain many numbered lines.
+    $pdo->exec("ALTER TABLE dispatch_next_tasks MODIFY project TEXT NULL");
+    $pdo->exec("ALTER TABLE dispatch_next_groups MODIFY project TEXT NULL");
     $pdo->exec("ALTER TABLE dispatch_next_steps MODIFY task_id BIGINT UNSIGNED NULL");
     $seeded = dispatch_next_seed_step_templates($pdo);
     return ['tables' => 16, 'prefix' => 'dispatch_next_', 'database' => (string)$pdo->query('SELECT DATABASE()')->fetchColumn(), 'step_templates_seeded' => $seeded];
