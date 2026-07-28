@@ -29,6 +29,7 @@
     reusePreview: null,
     reuseTemplates: [],
     batchReuseTemplate: null,
+    productSearchTimer: 0,
   };
 
   const escapeHtml = value => String(value ?? '')
@@ -456,6 +457,7 @@
     q('[data-option-tabs]').hidden = !group;
     q('[data-candidate-open]').disabled = !group;
     q('[data-open-quick-rules]').disabled = !group;
+    q('[data-open-approval]').disabled = !group;
     q('[data-option-subtitle]').textContent = group?.group_name || '请选择配置组';
     if (!group) {
       detail.innerHTML = '<div class="mc-empty-state"><strong>请选择配置组</strong><span>配置组切换后，这里会立即显示选项、默认、条件和审批信息。</span></div>';
@@ -1126,18 +1128,8 @@
 
   page.addEventListener('click', async event => {
     if (event.target.closest('[data-product-locate]')) {
-      const product = state.workspace?.product;
-      if (!product) return;
-      const search = q('[data-product-search] input[name="q"]');
-      if (search) search.value = product.product_code || '';
-      state.productStatusFilter = 'all';
-      try {
-        state.products = await get('products', { q: product.product_code || '' });
-        renderProducts();
-        focusSelectedProduct();
-      } catch (error) {
-        notify('定位当前产品失败', error.message);
-      }
+      if (q(`[data-product-id="${selectedProductId()}"]`, q('[data-product-list]'))) focusSelectedProduct();
+      else notify('当前产品不在搜索结果中', '搜索条件保持不变；清空搜索后即可在列表中定位。');
       return;
     }
     const productButton = event.target.closest('[data-product-id]');
@@ -1189,6 +1181,12 @@
     if (event.target.closest('[data-open-quick-rules]')) {
       state.tab = 'quick_rules';
       renderOptionPanel();
+      return;
+    }
+    if (event.target.closest('[data-open-approval]')) {
+      state.tab = 'approval';
+      renderOptionPanel();
+      q('[data-option-tabs]')?.scrollTo({ left: q('[data-option-tabs]').scrollWidth, behavior: 'smooth' });
       return;
     }
     if (event.target.closest('[data-template-open], [data-empty-template]')) {
@@ -1473,14 +1471,27 @@
     renderBatchProducts();
   });
 
-  q('[data-product-search]').addEventListener('submit', async event => {
-    event.preventDefault();
+  const searchProducts = async query => {
     try {
-      state.products = await get('products', { q: new FormData(event.currentTarget).get('q') });
+      const products = await get('products', { q: query });
+      const input = q('[data-product-search] input[name="q"]');
+      if (input && input.value.trim() !== query) return;
+      state.products = products;
       renderProducts();
     } catch (error) {
       notify('搜索失败', error.message);
     }
+  };
+
+  q('[data-product-search]').addEventListener('submit', async event => {
+    event.preventDefault();
+    await searchProducts(String(new FormData(event.currentTarget).get('q') || '').trim());
+  });
+
+  q('[data-product-search] input[name="q"]').addEventListener('input', event => {
+    const query = event.currentTarget.value.trim();
+    clearTimeout(state.productSearchTimer);
+    state.productSearchTimer = window.setTimeout(() => searchProducts(query), 220);
   });
 
   q('[data-template-form]').addEventListener('submit', async event => {

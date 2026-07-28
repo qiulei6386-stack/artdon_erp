@@ -274,6 +274,11 @@
 .mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__name small,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__name em{font-size:8px}
 .mc-page--adaptation-v2 .mc-adaptation-rules .mc-badge{padding:3px 5px;font-size:8px;white-space:normal;text-align:center}
 .mc-page--adaptation-v2 .mc-adaptation-rules .mc-group-edit{width:24px;margin-right:3px}
+.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list>button,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card{border-radius:8px}
+.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list strong,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__name strong{font-size:13px;line-height:1.25}
+.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list small,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list em,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__name small,.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__name em{font-size:10px;line-height:1.35}
+.mc-page--adaptation-v2 .mc-adaptation-rules .mc-selected-configuration__list>button{min-height:55px;padding:9px 10px}
+.mc-page--adaptation-v2 .mc-adaptation-rules .mc-adaptation-group-card__main{min-height:55px;padding-top:9px;padding-bottom:9px}
 .mc-candidate-discovery{flex:none;margin:8px 10px 0;border:1px solid #bfdbfe;border-radius:9px;background:#f8fbff;overflow:hidden}
 .mc-candidate-discovery__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #dbeafe}
 .mc-candidate-discovery__head>div{min-width:0;display:flex;flex-direction:column;gap:2px}.mc-candidate-discovery__head strong{font-size:12px}.mc-candidate-discovery__head span,.mc-candidate-discovery__more{margin:0;color:#475569;font-size:10px;line-height:1.45}.mc-candidate-discovery__head .mc-button{height:30px;flex:none;padding:0 9px;font-size:10px}

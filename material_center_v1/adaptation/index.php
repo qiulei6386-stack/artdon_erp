@@ -79,6 +79,7 @@ include MC_ROOT.'/components/layout_top.php';
                 <div class="mc-adaptation-column__actions">
                     <button class="mc-button mc-button--soft" type="button" data-open-quick-rules disabled>填写关键范围</button>
                     <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
+                    <button class="mc-button" type="button" data-open-approval disabled>审批 / 发布</button>
                 </div>
             </div>
             <div data-product-summary></div>

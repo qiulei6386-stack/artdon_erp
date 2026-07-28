@@ -11,7 +11,7 @@ $rulesPosition = strpos($page, 'mc-adaptation-column mc-adaptation-rules');
 if ($optionsPosition === false || $rulesPosition === false || $optionsPosition > $rulesPosition) {
     throw new RuntimeException('option detail must occupy the middle work area before the right configuration navigator');
 }
-foreach (['data-product-summary', 'data-option-detail', 'data-candidate-discovery', 'data-selected-configuration', 'data-group-list', 'data-adaptation-resize="products"', 'data-adaptation-resize="groups"'] as $marker) {
+foreach (['data-product-summary', 'data-option-detail', 'data-candidate-discovery', 'data-selected-configuration', 'data-group-list', 'data-adaptation-resize="products"', 'data-adaptation-resize="groups"', 'data-open-approval'] as $marker) {
     if (!str_contains($page, $marker)) throw new RuntimeException("adaptation workspace marker missing: {$marker}");
 }
 foreach ([
@@ -23,6 +23,9 @@ foreach ([
     'setupWorkspaceResizers',
     'focusSelectedProduct',
     'data-product-locate',
+    'productSearchTimer',
+    'searchProducts',
+    'data-open-approval',
     "get('candidates', { group_id: group.id, status: 'official' })",
     'data-candidate-discovery-open',
     'state.tab = \'options\';',

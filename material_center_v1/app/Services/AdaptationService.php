@@ -127,7 +127,8 @@ final class AdaptationService
     private const POWER_RULE_FIELDS = [
         ['key' => 'installation_type', 'label' => '安装方式', 'type' => 'select', 'options' => ['unknown' => '待确认', 'internal' => '内置', 'external' => '外置']],
         ['key' => 'output_type', 'label' => '输出类型', 'type' => 'select', 'options' => ['unknown' => '待确认', 'constant_current' => '恒流', 'constant_voltage' => '恒压']],
-        ['key' => 'lamp_power_w', 'label' => '灯具功率', 'type' => 'number', 'unit' => 'W'],
+        ['key' => 'lamp_power_min_w', 'label' => '灯具最低功率', 'type' => 'number', 'unit' => 'W'],
+        ['key' => 'lamp_power_max_w', 'label' => '灯具最高功率', 'type' => 'number', 'unit' => 'W'],
         ['key' => 'output_current_min_ma', 'label' => '输出电流下限', 'type' => 'number', 'unit' => 'mA'],
         ['key' => 'output_current_max_ma', 'label' => '输出电流上限', 'type' => 'number', 'unit' => 'mA'],
         ['key' => 'output_voltage_min_v', 'label' => '输出电压下限', 'type' => 'number', 'unit' => 'V'],
@@ -918,7 +919,10 @@ final class AdaptationService
             if (!is_numeric($value) || (float) $value < 0) throw new RuntimeException($definition['label'].'必须是大于等于 0 的数字。');
             $normalized[$key] = (float) $value;
         }
+        // 保留旧字段是为了兼容此前已保存的单一功率规则；新页面一律写入范围。
+        $normalized['lamp_power_w'] = $normalized['lamp_power_max_w'] ?? null;
         foreach ([
+            ['lamp_power_min_w', 'lamp_power_max_w', '灯具功率'],
             ['output_current_min_ma', 'output_current_max_ma', '输出电流'],
             ['output_voltage_min_v', 'output_voltage_max_v', '输出电压'],
         ] as [$minKey, $maxKey, $label]) {
@@ -1733,14 +1737,14 @@ final class AdaptationService
         if ($targetRule && $mode === 'fill_missing') return 'skipped';
         $values = [
             $sourceRule['rule_name'], $sourceRule['installation_type'], $sourceRule['output_type'],
-            $sourceRule['lamp_power_w'], $sourceRule['power_band_id'], $sourceRule['output_current_min_ma'],
+            $sourceRule['lamp_power_w'], $sourceRule['lamp_power_min_w'], $sourceRule['lamp_power_max_w'], $sourceRule['power_band_id'], $sourceRule['output_current_min_ma'],
             $sourceRule['output_current_max_ma'], $sourceRule['output_voltage_min_v'], $sourceRule['output_voltage_max_v'],
             $sourceRule['max_length_mm'], $sourceRule['max_width_mm'], $sourceRule['max_height_mm'],
             $sourceRule['minimum_warranty_years'], $sourceRule['certification_required'],
         ];
         if ($targetRule) {
             $this->db->prepare("UPDATE mc_product_power_rules SET
-                rule_name=?,installation_type=?,output_type=?,lamp_power_w=?,power_band_id=?,
+                rule_name=?,installation_type=?,output_type=?,lamp_power_w=?,lamp_power_min_w=?,lamp_power_max_w=?,power_band_id=?,
                 output_current_min_ma=?,output_current_max_ma=?,output_voltage_min_v=?,output_voltage_max_v=?,
                 max_length_mm=?,max_width_mm=?,max_height_mm=?,minimum_warranty_years=?,
                 certification_required=?,status='draft',updated_by=?,updated_at=NOW() WHERE id=?")
@@ -1750,10 +1754,10 @@ final class AdaptationService
         } else {
             $this->db->prepare("INSERT INTO mc_product_power_rules
                 (legacy_product_table,legacy_product_id,rule_name,installation_type,output_type,lamp_power_w,
-                power_band_id,output_current_min_ma,output_current_max_ma,output_voltage_min_v,output_voltage_max_v,
+                lamp_power_min_w,lamp_power_max_w,power_band_id,output_current_min_ma,output_current_max_ma,output_voltage_min_v,output_voltage_max_v,
                 max_length_mm,max_width_mm,max_height_mm,minimum_warranty_years,certification_required,status,
                 created_by,updated_by,created_at,updated_at)
-                VALUES('naming_models',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,NOW(),NOW())")
+                VALUES('naming_models',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,NOW(),NOW())")
                 ->execute(array_merge([(int) $target['legacy_id']], $values, [$userId, $userId]));
             $targetRuleId = (int) $this->db->lastInsertId();
             $action = 'created';
@@ -1921,7 +1925,8 @@ final class AdaptationService
         $reasons = [];
         if ($rule['installation_type'] !== 'unknown' && $power['installation_type'] !== $rule['installation_type']) $reasons[] = '安装方式不匹配';
         if ($rule['output_type'] !== 'unknown' && $power['output_type'] !== $rule['output_type']) $reasons[] = '输出类型不匹配';
-        if ($rule['lamp_power_w'] !== null && ($power['max_output_power_w'] === null || (float) $power['max_output_power_w'] < (float) $rule['lamp_power_w'])) $reasons[] = '功率超出产品允许范围';
+        $lampPowerMax = $rule['lamp_power_max_w'] ?? $rule['lamp_power_w'] ?? null;
+        if ($lampPowerMax !== null && ($power['max_output_power_w'] === null || (float) $power['max_output_power_w'] < (float) $lampPowerMax)) $reasons[] = '电源最高功率低于产品要求的 '. $this->number((float) $lampPowerMax).'W';
         if (!$this->rangeOverlaps($rule['output_current_min_ma'], $rule['output_current_max_ma'], $power['output_current_min_ma'], $power['output_current_max_ma'])) $reasons[] = '输出电流高于芯片允许值或范围不相交';
         if (!$this->rangeOverlaps($rule['output_voltage_min_v'], $rule['output_voltage_max_v'], $power['output_voltage_min_v'], $power['output_voltage_max_v'])) $reasons[] = '输出电压范围不匹配';
         foreach (['length' => '长度', 'width' => '宽度', 'height' => '高度'] as $key => $label) {
