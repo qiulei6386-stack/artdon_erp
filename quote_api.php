@@ -20,7 +20,7 @@ if (!function_exists('str_starts_with')) { function str_starts_with($haystack,$n
 
 $pdo = db();
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-if (!in_array($action,['download_backup','price_policy_export_excel','commission_rule_export'],true)) {
+if (!in_array($action,['download_backup','price_policy_export_excel','commission_rule_export','quotation_summary_export_excel'],true)) {
   ob_start();
   register_shutdown_function(function() {
     $err = error_get_last();
@@ -1820,7 +1820,8 @@ function qperm_action_perm($action){
     'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
     'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
     'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
-    'save_quote'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage'
+    'save_quote'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage',
+    'quotation_summary_filters'=>'history_view','quotation_summary_overview'=>'history_view','quotation_summary_trend'=>'history_view','quotation_summary_pie'=>'history_view','quotation_summary_rank'=>'history_view','quotation_summary_list'=>'history_view','quotation_summary_export_excel'=>'history_view'
   ];
   return $map[$action]??'can_access';
 }
@@ -3805,6 +3806,118 @@ function quote_delete_test_order(PDO $pdo, array $d, array $actor): array {
 /* ===== V6.8.5.1 订单作废 / 测试订单彻底删除 END ===== */
 
 
+/* ===== 报价总结 / Quotation Summary =====
+ * 只读取现有报价、订单、出货与收款记录；不写入任何业务表。
+ * 统计始终在服务端完成，金额按币种分别累计，绝不换汇混加。
+ */
+function quote_summary_currency($value){
+  $v=strtoupper(trim((string)$value));
+  if(in_array($v,['CNY','CN¥','RMB','¥'],true)) return 'RMB';
+  return $v!==''?$v:'USD';
+}
+function quote_summary_day($value){
+  $v=trim((string)$value);
+  return preg_match('/^\d{4}-\d{2}-\d{2}$/',$v)?$v:'';
+}
+function quote_summary_filters($input){
+  $today=date('Y-m-d');
+  $first=date('Y-m-01');
+  $d=[
+    'date_type'=>in_array(($input['date_type']??''),['quote','order','shipment','payment'],true)?$input['date_type']:'quote',
+    'date_from'=>quote_summary_day($input['date_from']??'') ?: $first,
+    'date_to'=>quote_summary_day($input['date_to']??'') ?: $today,
+    'currency'=>quote_summary_currency($input['currency']??''),
+    'owner'=>s($input['owner']??'',120),'customer'=>s($input['customer']??'',255),
+    'country'=>s($input['country']??'',120),'status'=>s($input['status']??'all',40),
+    'keyword'=>s($input['keyword']??'',160),'page'=>max(1,(int)($input['page']??1)),
+    'page_size'=>min(200,max(20,(int)($input['page_size']??50))),
+    'sort_field'=>s($input['sort_field']??'date',40),
+    'sort_order'=>strtolower((string)($input['sort_order']??'desc'))==='asc'?'asc':'desc'
+  ];
+  if(trim((string)($input['currency']??''))==='') $d['currency']='';
+  if($d['date_from']>$d['date_to']){ $x=$d['date_from'];$d['date_from']=$d['date_to'];$d['date_to']=$x; }
+  return $d;
+}
+function quote_summary_base_sql(PDO $pdo){
+  $hasOrders=table_exists($pdo,'quote_sales_orders');
+  $hasPayments=table_exists($pdo,'quote_order_payments');
+  $hasShipments=table_exists($pdo,'quote_shipments');
+  $hasCustomers=table_exists($pdo,'quote_customers');
+  $ordersJoin=$hasOrders?"LEFT JOIN quote_sales_orders o ON o.id=(SELECT oo.id FROM quote_sales_orders oo WHERE oo.source_quote_id=q.id OR (COALESCE(oo.source_quote_id,0)=0 AND oo.quote_no=q.quote_no) ORDER BY oo.id DESC LIMIT 1)":"LEFT JOIN (SELECT NULL id,NULL order_no,NULL source_quote_id,NULL amount,NULL currency,NULL order_date,NULL status,NULL shipment_status,NULL payment_status,NULL qty,NULL user_name,NULL created_at) o ON 1=0";
+  $paymentsJoin=$hasPayments?"LEFT JOIN (SELECT order_id, SUM(COALESCE(amount,0)) paid_amount, MAX(payment_date) payment_date FROM quote_order_payments GROUP BY order_id) pay ON pay.order_id=o.id":"LEFT JOIN (SELECT NULL order_id,0 paid_amount,NULL payment_date) pay ON 1=0";
+  $shipmentsJoin=$hasShipments?"LEFT JOIN (SELECT order_id, COUNT(*) shipment_count, MAX(ship_date) shipment_date FROM quote_shipments GROUP BY order_id) ship ON ship.order_id=o.id":"LEFT JOIN (SELECT NULL order_id,0 shipment_count,NULL shipment_date) ship ON 1=0";
+  $customersJoin=$hasCustomers?"LEFT JOIN quote_customers qc ON qc.id=CAST(q.customer_id AS UNSIGNED)":"LEFT JOIN (SELECT NULL id,NULL country) qc ON 1=0";
+  $country="COALESCE(NULLIF(qc.country,''), CASE WHEN JSON_VALID(COALESCE(q.customer_json,'')) THEN NULLIF(JSON_UNQUOTE(JSON_EXTRACT(q.customer_json,'$.country')),'') ELSE NULL END, '')";
+  return "SELECT q.id AS quote_id,q.quote_no,COALESCE(q.quote_date,DATE(q.created_at)) quote_date,
+    COALESCE(NULLIF(q.user_name,''),NULLIF(q.submitted_by,''),'未指定') owner,
+    COALESCE(NULLIF(q.customer_name,''),'未指定客户') customer_name,$country country,
+    UPPER(COALESCE(q.currency,'USD')) quote_currency,COALESCE(q.amount,0) quote_amount,COALESCE(q.qty,0) quote_qty,
+    COALESCE(q.approval_status,'pending') approval_status,
+    o.id order_id,o.order_no,COALESCE(o.order_date,DATE(o.created_at)) order_date,UPPER(COALESCE(o.currency,q.currency,'USD')) order_currency,COALESCE(o.amount,0) order_amount,COALESCE(o.qty,0) order_qty,
+    COALESCE(o.status,'') order_status,COALESCE(o.shipment_status,'') shipment_status,COALESCE(o.payment_status,'') payment_status,
+    COALESCE(pay.paid_amount,0) paid_amount,pay.payment_date,COALESCE(ship.shipment_count,0) shipment_count,ship.shipment_date
+    FROM quote_orders q $ordersJoin $paymentsJoin $shipmentsJoin $customersJoin";
+}
+function quote_summary_filtered_sql(PDO $pdo,array $f,&$params){
+  $params=[];$where=[];
+  $dateField=['quote'=>'quote_date','order'=>'order_date','shipment'=>'shipment_date','payment'=>'payment_date'][$f['date_type']]??'quote_date';
+  $where[]="x.`$dateField` BETWEEN ? AND ?";$params[]=$f['date_from'];$params[]=$f['date_to'];
+  if($f['currency']!==''){$where[]='(x.quote_currency=? OR x.order_currency=?)';$params[]=$f['currency'];$params[]=$f['currency'];}
+  foreach(['owner','customer','country'] as $key){if($f[$key]!==''){$where[]="x.$key=?";$params[]=$f[$key];}}
+  if($f['keyword']!==''){$where[]='(x.quote_no LIKE ? OR x.order_no LIKE ? OR x.customer_name LIKE ?)';$like='%'.$f['keyword'].'%';$params[]=$like;$params[]=$like;$params[]=$like;}
+  $status=$f['status'];
+  if($status==='pending')$where[]="x.approval_status IN ('pending','draft','')";
+  elseif($status==='approved')$where[]="x.approval_status='approved' AND x.order_id IS NULL";
+  elseif($status==='ordered')$where[]='x.order_id IS NOT NULL';
+  elseif($status==='shipped')$where[]='x.shipment_count>0';
+  elseif($status==='paid')$where[]='x.order_id IS NOT NULL AND x.order_amount>0 AND x.paid_amount>=x.order_amount';
+  elseif($status==='partial_paid')$where[]='x.paid_amount>0 AND x.paid_amount<x.order_amount';
+  elseif($status==='unpaid')$where[]='x.order_id IS NOT NULL AND x.paid_amount<=0';
+  return 'SELECT * FROM ('.quote_summary_base_sql($pdo).') x WHERE '.implode(' AND ',$where);
+}
+function quote_summary_rows(PDO $pdo,array $f){
+  $params=[];$sql=quote_summary_filtered_sql($pdo,$f,$params);
+  return rows($pdo,$sql,$params);
+}
+function quote_summary_status(array $r){
+  if(empty($r['order_id'])) return ($r['approval_status']??'')==='approved'?'已审核未转单':(($r['approval_status']??'')==='rejected'?'已驳回':'未审核');
+  $amount=(float)($r['order_amount']??0);$paid=(float)($r['paid_amount']??0);
+  if($amount>0 && $paid>=$amount) return '已收齐';
+  if($paid>0) return '部分收款';
+  if((int)($r['shipment_count']??0)>0) return '已出货';
+  return '已转订单';
+}
+function quote_summary_money_bucket(){return ['RMB'=>0.0,'USD'=>0.0];}
+function quote_summary_add(&$bucket,$currency,$amount){$currency=quote_summary_currency($currency);if(!isset($bucket[$currency]))$bucket[$currency]=0.0;$bucket[$currency]+=(float)$amount;}
+function quote_summary_overview_data(PDO $pdo,array $f){
+  $params=[];$base=quote_summary_filtered_sql($pdo,$f,$params);
+  $sql="SELECT COUNT(*) quote_count,SUM(approval_status='approved') approved_count,SUM(approval_status<>'approved') pending_count,SUM(order_id IS NOT NULL) order_count,SUM(order_id IS NOT NULL AND shipment_count>0) shipment_count,SUM(order_id IS NOT NULL AND order_amount>0 AND paid_amount>=order_amount) paid_count,SUM(order_id IS NOT NULL AND paid_amount>0 AND paid_amount<order_amount) partial_paid_count,SUM(order_id IS NOT NULL AND paid_amount<=0) unpaid_count,"
+    ."SUM(CASE WHEN quote_currency='RMB' THEN quote_amount ELSE 0 END) quote_rmb,SUM(CASE WHEN quote_currency<>'RMB' THEN quote_amount ELSE 0 END) quote_usd,"
+    ."SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN order_amount ELSE 0 END) order_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN order_amount ELSE 0 END) order_usd,"
+    ."SUM(CASE WHEN order_id IS NOT NULL AND shipment_count>0 AND order_currency='RMB' THEN order_amount ELSE 0 END) shipment_rmb,SUM(CASE WHEN order_id IS NOT NULL AND shipment_count>0 AND order_currency<>'RMB' THEN order_amount ELSE 0 END) shipment_usd,"
+    ."SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN paid_amount ELSE 0 END) paid_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN paid_amount ELSE 0 END) paid_usd,"
+    ."SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN GREATEST(order_amount-paid_amount,0) ELSE 0 END) receivable_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN GREATEST(order_amount-paid_amount,0) ELSE 0 END) receivable_usd FROM ($base) x";
+  $r=row($pdo,$sql,$params)?:[];$totals=['quote_count'=>(int)($r['quote_count']??0),'approved_count'=>(int)($r['approved_count']??0),'pending_count'=>(int)($r['pending_count']??0),'order_count'=>(int)($r['order_count']??0),'shipment_count'=>(int)($r['shipment_count']??0),'paid_count'=>(int)($r['paid_count']??0),'partial_paid_count'=>(int)($r['partial_paid_count']??0),'unpaid_count'=>(int)($r['unpaid_count']??0)];foreach(['quote','order','shipment','paid','receivable'] as $key)$totals[$key.'_amount']=['RMB'=>(float)($r[$key.'_rmb']??0),'USD'=>(float)($r[$key.'_usd']??0)];$totals['conversion_rate']=$totals['quote_count']?round($totals['order_count']*100/$totals['quote_count'],2):0;$totals['shipment_rate']=$totals['order_count']?round($totals['shipment_count']*100/$totals['order_count'],2):0;$totals['payment_rate']=$totals['order_count']?round($totals['paid_count']*100/$totals['order_count'],2):0;return $totals;
+}
+function quote_summary_trend_data(PDO $pdo,array $f){
+  $params=[];$base=quote_summary_filtered_sql($pdo,$f,$params);$dateKey=['quote'=>'quote_date','order'=>'order_date','shipment'=>'shipment_date','payment'=>'payment_date'][$f['date_type']]??'quote_date';
+  $sql="SELECT `$dateKey` date,COUNT(*) quotes,SUM(order_id IS NOT NULL) orders,SUM(order_id IS NOT NULL AND shipment_count>0) shipments,SUM(order_id IS NOT NULL AND order_amount>0 AND paid_amount>=order_amount) paid_orders,SUM(CASE WHEN quote_currency='RMB' THEN quote_amount ELSE 0 END) quote_rmb,SUM(CASE WHEN quote_currency<>'RMB' THEN quote_amount ELSE 0 END) quote_usd,SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN order_amount ELSE 0 END) order_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN order_amount ELSE 0 END) order_usd,SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN paid_amount ELSE 0 END) paid_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN paid_amount ELSE 0 END) paid_usd,SUM(CASE WHEN order_id IS NOT NULL AND order_currency='RMB' THEN GREATEST(order_amount-paid_amount,0) ELSE 0 END) receivable_rmb,SUM(CASE WHEN order_id IS NOT NULL AND order_currency<>'RMB' THEN GREATEST(order_amount-paid_amount,0) ELSE 0 END) receivable_usd FROM ($base) x GROUP BY `$dateKey` ORDER BY `$dateKey`";
+  $out=[];foreach(rows($pdo,$sql,$params) as $r)$out[]=['date'=>$r['date'],'quotes'=>(int)$r['quotes'],'orders'=>(int)$r['orders'],'shipments'=>(int)$r['shipments'],'paid_orders'=>(int)$r['paid_orders'],'rmb'=>['quote'=>(float)$r['quote_rmb'],'order'=>(float)$r['order_rmb'],'paid'=>(float)$r['paid_rmb'],'receivable'=>(float)$r['receivable_rmb']],'usd'=>['quote'=>(float)$r['quote_usd'],'order'=>(float)$r['order_usd'],'paid'=>(float)$r['paid_usd'],'receivable'=>(float)$r['receivable_usd']]];return $out;
+}
+function quote_summary_pie_data(PDO $pdo,array $f){
+  $business=[];$payment=[];foreach(quote_summary_rows($pdo,$f) as $r){$s=quote_summary_status($r);$business[$s]=($business[$s]??0)+1;if(!empty($r['order_id'])){$p=(float)$r['paid_amount']<=0?'未收款':((float)$r['paid_amount']>=(float)$r['order_amount']?'已收齐':'部分收款');$payment[$p]=($payment[$p]??0)+1;}}$pack=function($a){$out=[];foreach($a as $name=>$value)$out[]=['name'=>$name,'value'=>$value];return $out;};return ['business'=>$pack($business),'payment'=>$pack($payment)];}
+function quote_summary_rank_data(PDO $pdo,array $f){
+  $groups=['owner'=>[],'customer'=>[]];foreach(quote_summary_rows($pdo,$f) as $r){foreach($groups as $key=>&$list){$name=trim((string)($r[$key==='owner'?'owner':'customer_name']??''))?:'未指定';if(!isset($list[$name]))$list[$name]=['name'=>$name,'quote_count'=>0,'order_count'=>0,'shipment_count'=>0,'quote_amount'=>quote_summary_money_bucket(),'order_amount'=>quote_summary_money_bucket(),'paid_amount'=>quote_summary_money_bucket(),'receivable_amount'=>quote_summary_money_bucket()];$x=&$list[$name];$x['quote_count']++;quote_summary_add($x['quote_amount'],$r['quote_currency'],$r['quote_amount']);if(!empty($r['order_id'])){$x['order_count']++;$x['shipment_count']+=(int)$r['shipment_count']>0?1:0;quote_summary_add($x['order_amount'],$r['order_currency'],$r['order_amount']);quote_summary_add($x['paid_amount'],$r['order_currency'],$r['paid_amount']);quote_summary_add($x['receivable_amount'],$r['order_currency'],max(0,(float)$r['order_amount']-(float)$r['paid_amount']));}unset($x);}unset($list);}
+  foreach($groups as &$list){$list=array_values($list);usort($list,function($a,$b){$usd=(float)$b['order_amount']['USD']<=>(float)$a['order_amount']['USD'];if($usd!==0)return $usd;$rmb=(float)$b['order_amount']['RMB']<=>(float)$a['order_amount']['RMB'];if($rmb!==0)return $rmb;return (int)$b['order_count']<=>(int)$a['order_count'];});$list=array_slice($list,0,10);}unset($list);return $groups;
+}
+function quote_summary_list_data(PDO $pdo,array $f){
+  $params=[];$base=quote_summary_filtered_sql($pdo,$f,$params);$field=['date'=>'quote_date','quote_no'=>'quote_no','order_no'=>'order_no','quote_date'=>'quote_date','order_date'=>'order_date','shipment_date'=>'shipment_date','payment_date'=>'payment_date','quote_amount'=>'quote_amount','order_amount'=>'order_amount','paid_amount'=>'paid_amount','customer'=>'customer_name','owner'=>'owner'][$f['sort_field']]??'quote_date';$order=strtoupper($f['sort_order'])==='ASC'?'ASC':'DESC';$count=(int)(row($pdo,'SELECT COUNT(*) c FROM ('.$base.') z',$params)['c']??0);$offset=($f['page']-1)*$f['page_size'];$data=rows($pdo,$base." ORDER BY `$field` $order, quote_id DESC LIMIT ".(int)$f['page_size'].' OFFSET '.(int)$offset,$params);foreach($data as &$r){$r['status_label']=quote_summary_status($r);$r['receivable_amount']=max(0,(float)$r['order_amount']-(float)$r['paid_amount']);$r['quote_currency']=quote_summary_currency($r['quote_currency']);$r['order_currency']=quote_summary_currency($r['order_currency']);}unset($r);return ['list'=>$data,'total'=>$count,'page'=>$f['page'],'page_size'=>$f['page_size'],'pages'=>max(1,(int)ceil($count/$f['page_size']))];}
+function quote_summary_filter_options(PDO $pdo){
+  $rows=rows($pdo,'SELECT user_name,customer_name,customer_json FROM quote_orders ORDER BY id DESC LIMIT 5000');$owners=[];$customers=[];$countries=[];foreach($rows as $r){$o=trim((string)($r['user_name']??''));$c=trim((string)($r['customer_name']??''));if($o!=='')$owners[$o]=1;if($c!=='')$customers[$c]=1;$j=json_decode((string)($r['customer_json']??''),true);$co=trim((string)($j['country']??''));if($co!=='')$countries[$co]=1;}foreach([$owners,$customers,$countries] as &$v){ksort($v);$v=array_keys($v);}unset($v);return ['owners'=>$owners,'customers'=>$customers,'countries'=>$countries];}
+function quote_summary_export_excel(PDO $pdo,array $f){
+  $params=[];$base=quote_summary_filtered_sql($pdo,$f,$params);$data=rows($pdo,$base.' ORDER BY quote_date DESC, quote_id DESC LIMIT 10000',$params);foreach($data as &$r){$r['status_label']=quote_summary_status($r);$r['receivable_amount']=max(0,(float)$r['order_amount']-(float)$r['paid_amount']);$r['quote_currency']=quote_summary_currency($r['quote_currency']);$r['order_currency']=quote_summary_currency($r['order_currency']);}unset($r);$overview=quote_summary_overview_data($pdo,$f);while(ob_get_level()>0)@ob_end_clean();header('Content-Type: application/vnd.ms-excel; charset=utf-8');header('Content-Disposition: attachment; filename="quotation-summary-'.date('Ymd-His').'.xls"');echo "\xEF\xBB\xBF";echo "报价总结\tRMB\tUSD\n";foreach(['quote_amount'=>'报价金额','order_amount'=>'转订单金额','shipment_amount'=>'已出货金额','paid_amount'=>'已收款金额','receivable_amount'=>'应收/未收金额'] as $key=>$label)echo $label."\t".number_format((float)($overview[$key]['RMB']??0),2,'.','')."\t".number_format((float)($overview[$key]['USD']??0),2,'.','')."\n";echo "\n报价号\t订单号\t客户\t国家/地区\t负责人\t报价日期\t订单日期\t出货日期\t收款日期\t流程状态\t报价金额\t报价币种\t订单金额\t订单币种\t已收款\t未收款\t产品数量\n";foreach($data as $r){$line=[ $r['quote_no'],$r['order_no'],$r['customer_name'],$r['country'],$r['owner'],$r['quote_date'],$r['order_date'],$r['shipment_date'],$r['payment_date'],$r['status_label'],number_format((float)$r['quote_amount'],2,'.',''),$r['quote_currency'],number_format((float)$r['order_amount'],2,'.',''),$r['order_currency'],number_format((float)$r['paid_amount'],2,'.',''),number_format((float)$r['receivable_amount'],2,'.',''),$r['quote_qty'] ];echo implode("\t",array_map(function($v){return str_replace(["\t","\r","\n"],[' ',' ',' '],(string)$v);},$line))."\n";}exit;
+}
+
 try{
  ensure_quote_core_schema($pdo);
  ensure_quote_settings($pdo);
@@ -3824,6 +3937,16 @@ try{
  }
  if($action==='auth_status'){ $u=qperm_current_user($pdo); if(!$u) ok(['logged_in'=>0,'user'=>null,'permissions'=>[],'login_source'=>'PLM/统一账号']); $pub=qperm_public_user($pdo,$u); ok(['logged_in'=>1,'user'=>$pub,'permissions'=>$pub['permissions'],'login_source'=>$pub['user_table']]); }
  $needPerm=qperm_action_perm($action); [$__quote_user,$__quote_perms]=qperm_require($pdo,$needPerm);
+ if(strpos($action,'quotation_summary_')===0){
+   $d=input_json();$filters=quote_summary_filters(array_merge($_GET,is_array($d)?$d:[]));
+   if($action==='quotation_summary_filters') ok(quote_summary_filter_options($pdo));
+   if($action==='quotation_summary_overview') ok(quote_summary_overview_data($pdo,$filters));
+   if($action==='quotation_summary_trend') ok(['list'=>quote_summary_trend_data($pdo,$filters)]);
+   if($action==='quotation_summary_pie') ok(quote_summary_pie_data($pdo,$filters));
+   if($action==='quotation_summary_rank') ok(quote_summary_rank_data($pdo,$filters));
+   if($action==='quotation_summary_list') ok(quote_summary_list_data($pdo,$filters));
+   if($action==='quotation_summary_export_excel') quote_summary_export_excel($pdo,$filters);
+ }
  if($action==='create_backup'){ $res=qbackup_make($pdo,$__quote_user,'manual'); quote_log_event($pdo,['action'=>'create_backup','event'=>'生成报价备份','user_name'=>$__quote_user['username']??'','summary'=>'生成报价备份：'.$res['file'],'detail'=>$res]); ok($res); }
  if($action==='list_backups'){ ok(['backups'=>qbackup_list()]); }
  if($action==='download_backup'){ qbackup_download($_GET['file']??''); }
