@@ -429,6 +429,7 @@ final class AdaptationService
         // defaults in the new technical step until the user explicitly confirms the profile.
         $product = $this->product($productId);
         $power = $product ? $this->productPowerRule((int) ($product['legacy_id'] ?? 0)) : [];
+        $power = is_array($power) ? $power : [];
         foreach (self::POWER_RULE_FIELDS as $field) {
             $key = (string) $field['key'];
             if (!array_key_exists($key, $values) && array_key_exists($key, $power)) $values[$key] = $power[$key];
