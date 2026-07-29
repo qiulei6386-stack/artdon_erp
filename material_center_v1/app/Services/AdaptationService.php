@@ -147,26 +147,37 @@ final class AdaptationService
     /* Product-level technical facts are deliberately independent from a configuration group.
        A group can be copied or disabled; the engineering envelope of the lamp must not vanish. */
     private const TECHNICAL_PROFILE_FIELDS = [
-        ['key' => 'lamp_power_min_w', 'label' => '灯具最低功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围'],
-        ['key' => 'lamp_power_max_w', 'label' => '灯具最高功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围'],
+        ['key' => 'rated_power_w', 'label' => '产品额定功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围', 'hint' => '整灯设计额定功率；可与功率范围同时填写。'],
+        ['key' => 'lamp_power_min_w', 'label' => '灯具最低功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围', 'required' => true],
+        ['key' => 'lamp_power_max_w', 'label' => '灯具最高功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围', 'required' => true],
+        ['key' => 'chip_current_ma', 'label' => '芯片工作电流', 'type' => 'number', 'unit' => 'mA', 'section' => '电气范围'],
         ['key' => 'output_current_min_ma', 'label' => '输出电流下限', 'type' => 'number', 'unit' => 'mA', 'section' => '电气范围'],
         ['key' => 'output_current_max_ma', 'label' => '输出电流上限', 'type' => 'number', 'unit' => 'mA', 'section' => '电气范围'],
         ['key' => 'output_voltage_min_v', 'label' => '输出电压下限', 'type' => 'number', 'unit' => 'V', 'section' => '电气范围'],
         ['key' => 'output_voltage_max_v', 'label' => '输出电压上限', 'type' => 'number', 'unit' => 'V', 'section' => '电气范围'],
-        ['key' => 'installation_type', 'label' => '电源安装方式', 'type' => 'select', 'section' => '结构与环境', 'options' => ['unknown' => '待确认', 'internal' => '内置', 'external' => '外置']],
-        ['key' => 'max_length_mm', 'label' => '最大长度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
-        ['key' => 'max_width_mm', 'label' => '最大宽度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
-        ['key' => 'max_height_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
-        ['key' => 'ip_rating', 'label' => '防护等级', 'type' => 'text', 'section' => '结构与环境', 'placeholder' => '例如 IP65'],
-        ['key' => 'certification_required', 'label' => '必须认证', 'type' => 'text', 'section' => '结构与环境', 'placeholder' => '例如 CE / ENEC'],
-        ['key' => 'minimum_warranty_years', 'label' => '最低供应商质保', 'type' => 'number', 'unit' => '年', 'section' => '结构与环境'],
+        ['key' => 'input_voltage_v', 'label' => '产品输入电压', 'type' => 'text', 'unit' => 'V', 'section' => '电气范围', 'placeholder' => '例如 220–240Vac'],
+        ['key' => 'installation_type', 'label' => '电源安装方式', 'type' => 'select', 'section' => '结构与空间', 'required' => true, 'options' => ['unknown' => '待确认', 'internal' => '内置', 'external' => '外置']],
+        ['key' => 'max_length_mm', 'label' => '最大长度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与空间'],
+        ['key' => 'max_width_mm', 'label' => '最大宽度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与空间'],
+        ['key' => 'max_height_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与空间'],
+        ['key' => 'internal_space_note', 'label' => '灯体内部可用空间说明', 'type' => 'textarea', 'section' => '结构与空间'],
+        ['key' => 'mounting_structure', 'label' => '安装结构', 'type' => 'text', 'section' => '结构与空间', 'placeholder' => '例如 弹簧卡扣 / 轨道'],
+        ['key' => 'ip_rating', 'label' => '防护等级', 'type' => 'text', 'section' => '环境与要求', 'placeholder' => '例如 IP65'],
+        ['key' => 'certification_required', 'label' => '必须认证', 'type' => 'text', 'section' => '环境与要求', 'placeholder' => '例如 CE / ENEC'],
+        ['key' => 'minimum_warranty_years', 'label' => '最低供应商质保', 'type' => 'number', 'unit' => '年', 'section' => '环境与要求'],
+        ['key' => 'dimming_modes', 'label' => '调光方式', 'type' => 'multi', 'section' => '环境与要求', 'options' => ['0-10V' => '0-10V', 'DALI' => 'DALI', 'TRIAC' => 'TRIAC', 'PWM' => 'PWM', 'On/Off' => 'On/Off']],
+        ['key' => 'working_environment', 'label' => '工作环境', 'type' => 'text', 'section' => '环境与要求', 'placeholder' => '例如 室内干燥 / 户外'],
+        ['key' => 'customer_warranty_years', 'label' => '客户整灯质保', 'type' => 'number', 'unit' => '年', 'section' => '环境与要求'],
         ['key' => 'optical_les_mm', 'label' => 'LES 尺寸', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
         ['key' => 'optical_diameter_mm', 'label' => '光学直径', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
         ['key' => 'optical_height_mm', 'label' => '光学最大高度', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
         ['key' => 'beam_angle_min_deg', 'label' => '光束角下限', 'type' => 'number', 'unit' => '°', 'section' => '光学范围'],
         ['key' => 'beam_angle_max_deg', 'label' => '光束角上限', 'type' => 'number', 'unit' => '°', 'section' => '光学范围'],
-        ['key' => 'dimming_modes', 'label' => '调光方式', 'type' => 'multi', 'section' => '结构与环境', 'options' => ['0-10V' => '0-10V', 'DALI' => 'DALI', 'TRIAC' => 'TRIAC', 'PWM' => 'PWM', 'On/Off' => 'On/Off']],
+        ['key' => 'optical_type_requirement', 'label' => '光型要求', 'type' => 'text', 'section' => '光学范围', 'placeholder' => '例如 窄角 / 防眩'],
+        ['key' => 'focus_adjustable', 'label' => '是否调焦', 'type' => 'select', 'section' => '光学范围', 'options' => ['unknown' => '待确认', 'yes' => '需要', 'no' => '不需要']],
         ['key' => 'engineering_note', 'label' => '工程备注', 'type' => 'textarea', 'section' => '补充说明'],
+        ['key' => 'data_source_note', 'label' => '数据来源说明', 'type' => 'textarea', 'section' => '补充说明'],
+        ['key' => 'attachments_reference', 'label' => '附件或图纸', 'type' => 'textarea', 'section' => '补充说明'],
     ];
 
     public function __construct(private ?PDO $db = null)
@@ -438,7 +449,7 @@ final class AdaptationService
         return ['fields' => self::TECHNICAL_PROFILE_FIELDS, 'values' => $values, 'confirmed_at' => $confirmedAt, 'updated_at' => $updatedAt];
     }
 
-    public function saveTechnicalProfile(int $productId, array $values, int $userId): array
+    public function saveTechnicalProfile(int $productId, array $values, int $userId, bool $confirm = true): array
     {
         $product = $this->product($productId);
         if (!$product) throw new RuntimeException('产品不存在或已停用。');
@@ -460,17 +471,19 @@ final class AdaptationService
         foreach ([['lamp_power_min_w', 'lamp_power_max_w', '灯具功率'], ['output_current_min_ma', 'output_current_max_ma', '输出电流'], ['output_voltage_min_v', 'output_voltage_max_v', '输出电压'], ['beam_angle_min_deg', 'beam_angle_max_deg', '光束角']] as [$min, $max, $label]) {
             if ($normalized[$min] !== null && $normalized[$max] !== null && $normalized[$min] > $normalized[$max]) throw new RuntimeException($label.'下限不能大于上限。');
         }
-        $stmt = $this->db->prepare("INSERT INTO mc_adaptation_product_profiles(product_id,profile_json,confirmed_by,confirmed_at,created_by,updated_by,created_at,updated_at)
-            VALUES(?,?,?,NOW(),?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE profile_json=VALUES(profile_json),confirmed_by=VALUES(confirmed_by),confirmed_at=NOW(),updated_by=VALUES(updated_by),updated_at=NOW()");
-        $stmt->execute([$productId, json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId, $userId, $userId]);
-        // Synchronise the same electrical envelope into the established power-rule table so
-        // candidate matching, quotations and historic API consumers keep seeing one value.
-        $groupStmt = $this->db->prepare("SELECT id FROM mc_adaptation_groups WHERE product_id=? AND group_code='power_driver' LIMIT 1");
-        $groupStmt->execute([$productId]);
-        $powerGroupId = (int) $groupStmt->fetchColumn();
-        if ($powerGroupId) $this->savePowerRules($powerGroupId, $normalized, $userId);
+        if ($confirm) {
+            $stmt = $this->db->prepare("INSERT INTO mc_adaptation_product_profiles(product_id,profile_json,confirmed_by,confirmed_at,created_by,updated_by,created_at,updated_at)
+                VALUES(?,?,?,NOW(),?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE profile_json=VALUES(profile_json),confirmed_by=VALUES(confirmed_by),confirmed_at=NOW(),updated_by=VALUES(updated_by),updated_at=NOW()");
+            $stmt->execute([$productId, json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId, $userId, $userId]);
+        } else {
+            $stmt = $this->db->prepare("INSERT INTO mc_adaptation_product_profiles(product_id,profile_json,confirmed_by,confirmed_at,created_by,updated_by,created_at,updated_at)
+                VALUES(?,?,NULL,NULL,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE profile_json=VALUES(profile_json),updated_by=VALUES(updated_by),updated_at=NOW()");
+            $stmt->execute([$productId, json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId, $userId]);
+        }
+        // Stop-loss repair: a technical-profile save must not alter core-material rules or
+        // candidate matching until the following workflow steps have been stabilised.
         $this->markProductDraft($productId);
-        $this->log($productId, 'save_technical_profile', ['fields' => array_keys(array_filter($normalized, static fn(mixed $value): bool => $value !== null && $value !== '' && $value !== []))], $userId);
+        $this->log($productId, $confirm ? 'save_technical_profile' : 'save_technical_draft', ['fields' => array_keys(array_filter($normalized, static fn(mixed $value): bool => $value !== null && $value !== '' && $value !== []))], $userId);
         return $this->technicalProfile($productId);
     }
 
