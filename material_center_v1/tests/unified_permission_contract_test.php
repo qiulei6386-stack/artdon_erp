@@ -7,6 +7,7 @@ $permissionService = file_get_contents($root.'/app/Security/PermissionService.ph
 $migration = file_get_contents($root.'/database/migrations/20260726_013_unified_permission_center.php');
 $settings = file_get_contents($root.'/settings/index.php');
 $legacyApi = file_get_contents($root.'/api/v1/permissions.php');
+$permissionCenter = file_get_contents(dirname($root).'/permissions.php');
 
 foreach ([
     "PHP_SAPI !== 'cli'",
@@ -37,6 +38,9 @@ $requiredPermissions = [
 ];
 foreach ($requiredPermissions as $permission) {
     if (!str_contains($migration, $permission)) throw new RuntimeException("unified permission migration missing: $permission");
+}
+foreach (["'material_center'", "'label' => '物料中心'", "'prefixes' => ['material_center.']", "'domains' => ['material_center']"] as $marker) {
+    if (!str_contains($permissionCenter, $marker)) throw new RuntimeException("unified permission center tab missing: $marker");
 }
 if (str_contains($settings, 'new PermissionAdminService')) throw new RuntimeException('independent permission admin remains active');
 if (!str_contains($legacyApi, 'USE_UNIFIED_PERMISSION_CENTER')) throw new RuntimeException('legacy permission API is not retired');

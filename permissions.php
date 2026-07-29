@@ -437,6 +437,12 @@ function permission_system_definitions(): array
         'dispatch' => ['label' => '派工待办', 'modules' => ['dispatch'], 'prefixes' => ['dispatch.'], 'domains' => ['dispatch']],
         'quote' => ['label' => '报价系统', 'modules' => ['quote'], 'prefixes' => ['quote.'], 'domains' => ['quote']],
         'bom' => ['label' => 'BOM 系统', 'modules' => ['bom'], 'prefixes' => ['bom.'], 'domains' => ['bom']],
+        'material_center' => [
+            'label' => '物料中心',
+            'modules' => ['material_center'],
+            'prefixes' => ['material_center.'],
+            'domains' => ['material_center'],
+        ],
         'naming' => ['label' => '型号命名', 'modules' => ['naming'], 'prefixes' => ['naming.'], 'domains' => ['naming']],
         'datasheet' => ['label' => '资料生成', 'modules' => ['datasheet'], 'prefixes' => ['datasheet.'], 'domains' => ['datasheet']],
         'ai' => ['label' => 'AI 机器人', 'modules' => ['ai'], 'prefixes' => ['ai.'], 'domains' => ['ai']],
@@ -501,6 +507,7 @@ function permission_system_domain(array $p): string
     if (strpos($key, 'dispatch.') === 0 || $module === 'dispatch') return 'dispatch';
     if (strpos($key, 'quote.') === 0 || $module === 'quote') return 'quote';
     if (strpos($key, 'bom.') === 0 || $module === 'bom') return 'bom';
+    if (strpos($key, 'material_center.') === 0 || $module === 'material_center') return 'material_center';
     if (strpos($key, 'naming.') === 0 || $module === 'naming') return 'naming';
     if (strpos($key, 'datasheet.') === 0 || $module === 'datasheet') return 'datasheet';
     if (strpos($key, 'ai.') === 0 || $module === 'ai') return 'ai';
@@ -531,6 +538,7 @@ function permission_domain_label(string $domain): string
         'dispatch' => '派工待办',
         'quote' => '报价系统',
         'bom' => 'BOM 系统',
+        'material_center' => '物料中心',
         'naming' => '型号命名',
         'datasheet' => '资料生成',
         'ai' => 'AI 机器人',
