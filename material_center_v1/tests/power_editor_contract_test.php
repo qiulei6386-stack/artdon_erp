@@ -28,11 +28,14 @@ if (str_contains($script, "confirm('确认字段无误并将电源转为正式")
 }
 foreach ([
     'mc_power_supply_current_options', 'mc_power_supply_dimming_modes', 'mc_batch_jobs',
-    'beginTransaction', 'rollBack', 'lock_version', 'material_center.field.sensitive',
+    'beginTransaction', 'rollBack', 'lock_version', 'material_center.purchase_price.edit',
 ] as $marker) {
     if (!str_contains($service, $marker)) {
         throw new RuntimeException("power service safety missing: {$marker}");
     }
+}
+if (!preg_match("/function canEditSensitive\\(.*?material_center\\.purchase_price\\.edit.*?mc_permission_grants/s", $service)) {
+    throw new RuntimeException('power purchase-price authorization must use the unified permission before legacy fallback');
 }
 foreach (['material_center.view', 'material_center.material.edit', 'material_center.material.batch', 'verify_csrf'] as $marker) {
     if (!str_contains($api, $marker)) {

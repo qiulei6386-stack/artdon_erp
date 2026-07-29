@@ -665,6 +665,15 @@ final class PowerEditorService
 
     private function canEditSensitive(MaterialCenterUserContext $user): bool
     {
+        // The unified permission center is the source of truth.  Older
+        // mc_permission_grants records are retained only as a migration
+        // fallback, otherwise a user can appear authorised in the UI but be
+        // rejected when a power material carries a purchase price.
+        if ((new \Artdon\MaterialCenter\Security\PermissionService($this->db))
+            ->allows($user, 'material_center.purchase_price.edit')) {
+            return true;
+        }
+
         $stmt = $this->db->prepare(
             "SELECT 1 FROM mc_permission_grants
              WHERE permission_key='material_center.field.sensitive'
