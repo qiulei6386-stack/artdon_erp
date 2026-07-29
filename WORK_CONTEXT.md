@@ -1,11 +1,12 @@
 # Artdon ERP 工作上下文
 
-## 本次：报价总结联动 CRM 下次跟进时间（待发布）
+## 本次：报价总结联动 CRM 下次跟进时间（已发布）
 
 - 报价总结“报价明细”新增“下次跟进时间”。它只按同一报价 ID 和 `legacy` 来源读取 CRM 的最新有效报价跟进记录，不会误带同一客户的其他报价或客户级跟进。
 - Excel 导出改为只输出当前筛选条件下的报价明细表，不再附带统计汇总、图表或其他页面数据；导出字段也包含“下次跟进时间”。
 - 修改文件：`quote_api.php`、`quotation.php`、`tests/quotation_summary_contract.php`、本上下文。只读关联 CRM 跟进数据，不修改报价、订单、CRM 跟进或任何业务数据。
-- 下一步：完成 PHP 语法、专项契约和正式服务器回归后，按本地 → GitHub → 正式服务器发布。
+- 检查：本地报价页脚本与空白差异检查通过；腾讯云 PHP 对本地 `quote_api.php`、`quotation.php` 语法检查通过。正式服务器同一提交通过两份 PHP 语法检查和 `quotation_summary_contract.php` 专项契约。
+- Git / 部署：功能提交 `23a79aac6d8129c93d36a83fca2453e6ead80942` 已推送 GitHub `main`，并以 SHA-256 `bd8dcbdc001747ac447d9c76099663a9c4373fdafff3fd00a45c50f8f5b86d79` 校验的 Git bundle 在正式服务器仅快进发布；未直接编辑服务器代码。
 
 ## 本次：恢复统一权限中心的 PLM 分类与梁文钊 PLM 授权（已发布）
 
