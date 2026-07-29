@@ -4219,7 +4219,8 @@
         }
       });
       var promotionChannels = Array.isArray(merged.promotion_channels) ? merged.promotion_channels : [];
-      if ((merged.promotion_status === 'no_promotion' || promotionChannels.indexOf('no_promotion') >= 0) && !String(merged.no_promotion_reason || '').trim()) {
+      var promotionRestrictionChanged = Object.prototype.hasOwnProperty.call(data, 'promotion_status') || Object.prototype.hasOwnProperty.call(data, 'promotion_channels');
+      if (promotionRestrictionChanged && (merged.promotion_status === 'no_promotion' || promotionChannels.indexOf('no_promotion') >= 0) && !String(merged.no_promotion_reason || '').trim()) {
         mark('no_promotion_reason');
         throw new Error('设置不推广时必须填写不推广原因。');
       }

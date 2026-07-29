@@ -2094,7 +2094,11 @@ function crm_customer_attribute_save(int $id, array $input): array
     }
     $incomingPromotionChannels = array_key_exists('promotion_channels', $input) ? (array)$input['promotion_channels'] : (array)($attributeBefore['promotion_channels'] ?? []);
     $incomingNoPromotionReason = array_key_exists('no_promotion_reason', $input) ? trim((string)$input['no_promotion_reason']) : trim((string)($before['no_promotion_reason'] ?? ''));
-    if (($incomingPromotionStatus === 'no_promotion' || in_array('no_promotion', $incomingPromotionChannels, true)) && $incomingNoPromotionReason === '') {
+    // 仅在本次操作主动改为“不推广”时要求原因。历史客户可能已是该状态但未填写原因；
+    // 修改客户代码等无关字段时不能因此被拦截。
+    $promotionRestrictionChanged = (array_key_exists('promotion_status', $input) && $incomingPromotionStatus === 'no_promotion')
+        || (array_key_exists('promotion_channels', $input) && in_array('no_promotion', $incomingPromotionChannels, true));
+    if ($promotionRestrictionChanged && $incomingNoPromotionReason === '') {
         throw new RuntimeException('设置不推广时必须填写不推广原因。');
     }
     $mergeFields = ['customer_code','customer_name','customer_name_en','country','city','address','website','email','backup_email','phone','whatsapp','wechat','linkedin','customer_domain','customer_type','industry','postal_code','shipping_address','billing_address','common_port','timezone','no_promotion_reason','blacklist_reason','customer_tags','visibility_scope','source','level','status','lifecycle_key','risk_level','do_not_contact','owner_user_id','owner_department','remark'];
