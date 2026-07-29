@@ -14,32 +14,32 @@ $products = $service->products($search);
 $selected = (int) ($_GET['product_id'] ?? 0);
 $groupId = (int) ($_GET['group_id'] ?? 0);
 $workspace = $selected ? $service->workspace($selected, $groupId) : null;
+$requestedView = (string) ($_GET['view'] ?? '');
+$initialView = in_array($requestedView, ['home', 'products', 'workspace'], true) ? $requestedView : ($workspace ? 'workspace' : 'home');
 $bootstrap = [
     'csrf' => csrf_token(),
     'products' => $products,
     'workspace' => $workspace,
     'metadata' => $service->metadata(),
     'baseUrl' => MC_BASE_URL,
+    'view' => $initialView,
 ];
 
 include MC_ROOT.'/components/layout_top.php';
 ?>
-<section class="mc-page mc-page--adaptation-v2 mc-page--adaptation-workbench" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="overview">
+<section class="mc-page mc-page--adaptation-v3" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="<?=mc_h($initialView)?>">
     <header class="mc-adaptation-head">
         <div>
             <h1>产品配置工作台</h1>
-            <p>按步骤完成产品配置：先选产品，再配置核心物料，再补充可选件，最后检查并发布。</p>
+            <p>先定义产品技术范围，再配置核心物料、可选件、规则与版本发布。</p>
         </div>
         <div class="mc-adaptation-head__actions">
-            <button class="mc-button" type="button" data-overview-switch-product>切换产品</button>
-            <button class="mc-button" type="button" data-reuse-template-open>套用配置模板</button>
-            <button class="mc-button" type="button" data-reuse-open disabled>从产品复制</button>
-            <details class="mc-adaptation-more-actions"><summary class="mc-button">更多操作</summary><div>
-                <button class="mc-button" type="button" data-sync-products>同步产品</button>
-                <button class="mc-button" type="button" data-batch-open disabled>批量矩阵</button>
-                <button class="mc-button" type="button" data-group-create disabled>新增配置组</button>
-            </div></details>
-            <button class="mc-button mc-button--primary" type="button" data-overview-submit disabled>检查配置 / 提交审批</button>
+            <button class="mc-button" type="button" data-v3-home>适配首页</button>
+            <button class="mc-button" type="button" data-v3-products>全部产品</button>
+            <button class="mc-button" type="button" data-v3-select-product>选择产品</button>
+            <button class="mc-button" type="button" data-v3-template>配置模板</button>
+            <button class="mc-button" type="button" data-v3-batch>批量工具</button>
+            <button class="mc-button mc-button--primary" type="button" data-v3-approve hidden>检查并提交审批</button>
         </div>
     </header>
 
@@ -364,5 +364,5 @@ include MC_ROOT.'/components/layout_top.php';
 </section>
 
 <script type="application/json" id="adaptation-bootstrap"><?=json_encode($bootstrap, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP)?></script>
-<script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/adaptation-shell.js')))?>" defer></script>
+<script src="<?=mc_h(mc_url(mc_ui_asset('assets/js/adaptation-v3.js')))?>" defer></script>
 <?php include MC_ROOT.'/components/layout_bottom.php'; ?>

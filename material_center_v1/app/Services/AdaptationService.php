@@ -144,6 +144,31 @@ final class AdaptationService
         ['key' => 'certification_required', 'label' => '必须认证', 'type' => 'text', 'placeholder' => '例如 CE / ENEC'],
     ];
 
+    /* Product-level technical facts are deliberately independent from a configuration group.
+       A group can be copied or disabled; the engineering envelope of the lamp must not vanish. */
+    private const TECHNICAL_PROFILE_FIELDS = [
+        ['key' => 'lamp_power_min_w', 'label' => '灯具最低功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围'],
+        ['key' => 'lamp_power_max_w', 'label' => '灯具最高功率', 'type' => 'number', 'unit' => 'W', 'section' => '电气范围'],
+        ['key' => 'output_current_min_ma', 'label' => '输出电流下限', 'type' => 'number', 'unit' => 'mA', 'section' => '电气范围'],
+        ['key' => 'output_current_max_ma', 'label' => '输出电流上限', 'type' => 'number', 'unit' => 'mA', 'section' => '电气范围'],
+        ['key' => 'output_voltage_min_v', 'label' => '输出电压下限', 'type' => 'number', 'unit' => 'V', 'section' => '电气范围'],
+        ['key' => 'output_voltage_max_v', 'label' => '输出电压上限', 'type' => 'number', 'unit' => 'V', 'section' => '电气范围'],
+        ['key' => 'installation_type', 'label' => '电源安装方式', 'type' => 'select', 'section' => '结构与环境', 'options' => ['unknown' => '待确认', 'internal' => '内置', 'external' => '外置']],
+        ['key' => 'max_length_mm', 'label' => '最大长度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
+        ['key' => 'max_width_mm', 'label' => '最大宽度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
+        ['key' => 'max_height_mm', 'label' => '最大高度', 'type' => 'number', 'unit' => 'mm', 'section' => '结构与环境'],
+        ['key' => 'ip_rating', 'label' => '防护等级', 'type' => 'text', 'section' => '结构与环境', 'placeholder' => '例如 IP65'],
+        ['key' => 'certification_required', 'label' => '必须认证', 'type' => 'text', 'section' => '结构与环境', 'placeholder' => '例如 CE / ENEC'],
+        ['key' => 'minimum_warranty_years', 'label' => '最低供应商质保', 'type' => 'number', 'unit' => '年', 'section' => '结构与环境'],
+        ['key' => 'optical_les_mm', 'label' => 'LES 尺寸', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
+        ['key' => 'optical_diameter_mm', 'label' => '光学直径', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
+        ['key' => 'optical_height_mm', 'label' => '光学最大高度', 'type' => 'number', 'unit' => 'mm', 'section' => '光学范围'],
+        ['key' => 'beam_angle_min_deg', 'label' => '光束角下限', 'type' => 'number', 'unit' => '°', 'section' => '光学范围'],
+        ['key' => 'beam_angle_max_deg', 'label' => '光束角上限', 'type' => 'number', 'unit' => '°', 'section' => '光学范围'],
+        ['key' => 'dimming_modes', 'label' => '调光方式', 'type' => 'multi', 'section' => '结构与环境', 'options' => ['0-10V' => '0-10V', 'DALI' => 'DALI', 'TRIAC' => 'TRIAC', 'PWM' => 'PWM', 'On/Off' => 'On/Off']],
+        ['key' => 'engineering_note', 'label' => '工程备注', 'type' => 'textarea', 'section' => '补充说明'],
+    ];
+
     public function __construct(private ?PDO $db = null)
     {
         $this->db ??= \db();
@@ -157,6 +182,7 @@ final class AdaptationService
             'condition_operators' => self::CONDITION_OPERATORS,
             'quick_rule_fields' => self::QUICK_RULE_FIELDS,
             'power_rule_fields' => self::POWER_RULE_FIELDS,
+            'technical_profile_fields' => self::TECHNICAL_PROFILE_FIELDS,
             'template' => $this->templatePreview(),
         ];
     }
@@ -380,7 +406,71 @@ final class AdaptationService
             'completion' => $completion,
             'configuration_overview' => $this->configurationOverview($productId),
             'power_rule' => $this->productPowerRule((int) ($product['legacy_id'] ?? 0)),
+            'technical_profile' => $this->technicalProfile($productId),
         ];
+    }
+
+    /** @return array{fields:array<int,array<string,mixed>>,values:array<string,mixed>,confirmed_at:?string,updated_at:?string} */
+    public function technicalProfile(int $productId): array
+    {
+        $values = [];
+        $confirmedAt = null;
+        $updatedAt = null;
+        if ($this->tableExists('mc_adaptation_product_profiles')) {
+            $stmt = $this->db->prepare('SELECT profile_json,confirmed_at,updated_at FROM mc_adaptation_product_profiles WHERE product_id=? LIMIT 1');
+            $stmt->execute([$productId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $decoded = json_decode((string) ($row['profile_json'] ?? '{}'), true);
+            $values = is_array($decoded) ? $decoded : [];
+            $confirmedAt = $row['confirmed_at'] ?? null;
+            $updatedAt = $row['updated_at'] ?? null;
+        }
+        // Existing power rules remain the source of truth for legacy readers. Surface them as
+        // defaults in the new technical step until the user explicitly confirms the profile.
+        $product = $this->product($productId);
+        $power = $product ? $this->productPowerRule((int) ($product['legacy_id'] ?? 0)) : [];
+        foreach (self::POWER_RULE_FIELDS as $field) {
+            $key = (string) $field['key'];
+            if (!array_key_exists($key, $values) && array_key_exists($key, $power)) $values[$key] = $power[$key];
+        }
+        if (!isset($values['dimming_modes']) && isset($power['required_dimming_modes'])) $values['dimming_modes'] = $power['required_dimming_modes'];
+        return ['fields' => self::TECHNICAL_PROFILE_FIELDS, 'values' => $values, 'confirmed_at' => $confirmedAt, 'updated_at' => $updatedAt];
+    }
+
+    public function saveTechnicalProfile(int $productId, array $values, int $userId): array
+    {
+        $product = $this->product($productId);
+        if (!$product) throw new RuntimeException('产品不存在或已停用。');
+        if (!$this->tableExists('mc_adaptation_product_profiles')) throw new RuntimeException('技术范围表尚未升级，请联系管理员执行物料中心升级。');
+        $normalized = [];
+        foreach (self::TECHNICAL_PROFILE_FIELDS as $field) {
+            $key = (string) $field['key'];
+            $value = $values[$key] ?? null;
+            if ($field['type'] === 'number') {
+                if ($value === '' || $value === null) { $normalized[$key] = null; continue; }
+                if (!is_numeric($value) || (float) $value < 0) throw new RuntimeException($field['label'].'必须是大于等于 0 的数字。');
+                $normalized[$key] = (float) $value;
+            } elseif ($field['type'] === 'multi') {
+                $normalized[$key] = array_values(array_intersect(array_keys($field['options']), array_unique(array_filter(array_map('strval', (array) $value)))));
+            } else {
+                $normalized[$key] = mb_substr(trim((string) $value), 0, $field['type'] === 'textarea' ? 2000 : 160);
+            }
+        }
+        foreach ([['lamp_power_min_w', 'lamp_power_max_w', '灯具功率'], ['output_current_min_ma', 'output_current_max_ma', '输出电流'], ['output_voltage_min_v', 'output_voltage_max_v', '输出电压'], ['beam_angle_min_deg', 'beam_angle_max_deg', '光束角']] as [$min, $max, $label]) {
+            if ($normalized[$min] !== null && $normalized[$max] !== null && $normalized[$min] > $normalized[$max]) throw new RuntimeException($label.'下限不能大于上限。');
+        }
+        $stmt = $this->db->prepare("INSERT INTO mc_adaptation_product_profiles(product_id,profile_json,confirmed_by,confirmed_at,created_by,updated_by,created_at,updated_at)
+            VALUES(?,?,?,NOW(),?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE profile_json=VALUES(profile_json),confirmed_by=VALUES(confirmed_by),confirmed_at=NOW(),updated_by=VALUES(updated_by),updated_at=NOW()");
+        $stmt->execute([$productId, json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $userId, $userId, $userId]);
+        // Synchronise the same electrical envelope into the established power-rule table so
+        // candidate matching, quotations and historic API consumers keep seeing one value.
+        $groupStmt = $this->db->prepare("SELECT id FROM mc_adaptation_groups WHERE product_id=? AND group_code='power_driver' LIMIT 1");
+        $groupStmt->execute([$productId]);
+        $powerGroupId = (int) $groupStmt->fetchColumn();
+        if ($powerGroupId) $this->savePowerRules($powerGroupId, $normalized, $userId);
+        $this->markProductDraft($productId);
+        $this->log($productId, 'save_technical_profile', ['fields' => array_keys(array_filter($normalized, static fn(mixed $value): bool => $value !== null && $value !== '' && $value !== []))], $userId);
+        return $this->technicalProfile($productId);
     }
 
     public function configurationOverview(int $productId): array
@@ -1118,7 +1208,14 @@ final class AdaptationService
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $profile = $this->technicalProfile((int) $group['product_id'])['values'];
+        $quickRules = json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: [];
+        $quickRules = $this->mergeTechnicalProfileIntoQuickRules($quickRules, (string) ($group['business_type'] ?? ''), $profile);
+        $group['rule_json'] = json_encode($quickRules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $rule = $category === 'power_supply' ? $this->productPowerRule((int) $group['legacy_id']) : null;
+        if ($category === 'power_supply' && !$rule && $profile) {
+            $rule = $this->powerRuleFromTechnicalProfile($profile);
+        }
         foreach ($rows as &$row) {
             $match = $this->candidateMatch($row, $group, $rule);
             $row += $match;
@@ -1135,6 +1232,7 @@ final class AdaptationService
         if (!$ids) throw new RuntimeException('请至少选择一个物料。');
         $added = 0;
         $skipped = 0;
+        $optionIds = [];
         $this->db->beginTransaction();
         try {
             foreach ($ids as $materialId) {
@@ -1142,7 +1240,7 @@ final class AdaptationService
                     $skipped++;
                     continue;
                 }
-                $this->saveOptionInternal([
+                $optionIds[] = $this->saveOptionInternal([
                     'group_id' => $groupId,
                     'material_id' => $materialId,
                     'option_type' => 'optional',
@@ -1153,7 +1251,7 @@ final class AdaptationService
                 $added++;
             }
             $this->db->commit();
-            return compact('added', 'skipped');
+            return compact('added', 'skipped', 'optionIds');
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
@@ -1369,90 +1467,61 @@ final class AdaptationService
     public function completion(int $productId): array
     {
         $groups = $this->groups($productId);
-        $byTemplate = [];
         $issues = [];
-        $earned = 0;
-        foreach ($groups as $group) if ($group['template_key'] && $group['status'] !== 'disabled') $byTemplate[$group['template_key']] = $group;
-        $requiredTemplates = array_filter(self::STANDARD_GROUPS, static fn(array $row): bool => (bool) $row[4]);
-        $missing = [];
-        foreach ($requiredTemplates as $template) if (!isset($byTemplate[$template[0]])) $missing[] = $template[1];
-        if ($missing) $issues[] = '缺少必选配置组：'.implode('、', $missing);
-        else $earned++;
+        $segments = ['technical' => 0, 'core' => 0, 'optional' => 10, 'rules' => 10, 'check' => 10];
+        $profile = $this->technicalProfile($productId)['values'];
+        $technicalRequired = ['lamp_power_min_w', 'lamp_power_max_w', 'installation_type'];
+        $technicalFilled = array_filter($technicalRequired, static fn(string $key): bool => ($profile[$key] ?? '') !== '' && ($profile[$key] ?? null) !== null && ($profile[$key] ?? 'unknown') !== 'unknown');
+        $segments['technical'] = (int) round(20 * count($technicalFilled) / count($technicalRequired));
+        if (count($technicalFilled) !== count($technicalRequired)) $issues[] = '技术范围尚未完整确认（功率范围与安装方式为必填）。';
 
-        $requiredWithoutOptions = [];
-        $singleWithoutDefault = [];
-        foreach ($groups as $group) {
-            if ($group['status'] === 'disabled') continue;
-            if ((int) $group['is_required'] && !(int) $group['option_count']) $requiredWithoutOptions[] = $group['group_name'];
-            if ((int) $group['is_required'] && $group['selection_mode'] === 'single' && !$group['default_material']) $singleWithoutDefault[] = $group['group_name'];
+        $required = array_values(array_filter($groups, static fn(array $group): bool => $group['status'] !== 'disabled' && (int) $group['is_required']));
+        if (!$required) {
+            $issues[] = '尚未建立核心配置组。';
+        } else {
+            $completeCore = [];
+            foreach ($required as $group) {
+                if ((int) $group['option_count'] && ($group['selection_mode'] !== 'single' || $group['default_material'])) $completeCore[] = $group['group_name'];
+                else $issues[] = '核心必配未完成：'.$group['group_name'];
+            }
+            $segments['core'] = (int) round(50 * count($completeCore) / count($required));
         }
-        if ($requiredWithoutOptions) $issues[] = '必选组尚未添加选项：'.implode('、', $requiredWithoutOptions);
-        else $earned++;
-        if ($singleWithoutDefault) $issues[] = '单选必选组尚未设置默认：'.implode('、', $singleWithoutDefault);
-        else $earned++;
 
-        $conflicts = $this->conflicts($productId);
-        if ($conflicts) $issues[] = '存在 '.count($conflicts).' 条未解决冲突';
-        else $earned++;
-
-        $disabledStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id JOIN mc_materials m ON m.id=o.material_id WHERE g.product_id=? AND g.status<>'disabled' AND m.status<>'official'");
-        $disabledStmt->execute([$productId]);
-        $disabled = (int) $disabledStmt->fetchColumn();
-        if ($disabled) $issues[] = "存在 {$disabled} 个已停用或非正式物料";
-        else $earned++;
-
-        $exceptionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND g.status<>'disabled' AND o.requires_approval=1 AND o.exception_approved=0");
-        $exceptionStmt->execute([$productId]);
-        $exceptions = (int) $exceptionStmt->fetchColumn();
-        if ($exceptions) $issues[] = "存在 {$exceptions} 个未批准的适配例外";
-        else $earned++;
-
-        $incompatibleStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o
-            JOIN mc_adaptation_groups g ON g.id=o.group_id
-            WHERE g.product_id=? AND g.status<>'disabled' AND o.match_level='incompatible' AND o.option_type<>'disabled'");
-        $incompatibleStmt->execute([$productId]);
-        $incompatible = (int) $incompatibleStmt->fetchColumn();
-        if ($incompatible) $issues[] = "存在 {$incompatible} 个明确不适配的物料选项，不能用例外审批绕过";
-        else $earned++;
+        $later = [];
+        foreach ($groups as $group) {
+            if ((int) $group['is_required'] || $group['status'] === 'disabled') continue;
+            $availability = $group['quick_rules']['availability'] ?? 'allowed';
+            if ($availability === 'later') $later[] = $group['group_name'];
+        }
+        if ($later) { $segments['optional'] = 0; $issues[] = '可选配置仍标记为稍后处理：'.implode('、', $later); }
 
         $invalidConditionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_conditions c JOIN mc_adaptation_options o ON o.id=c.option_id JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND (c.field_code='' OR c.operator='' OR c.expected_json IS NULL)");
         $invalidConditionStmt->execute([$productId]);
         $invalidConditions = (int) $invalidConditionStmt->fetchColumn();
-        if ($invalidConditions) $issues[] = "存在 {$invalidConditions} 条不完整适用条件";
-        else $earned++;
+        if ($invalidConditions) { $segments['rules'] = 0; $issues[] = "存在 {$invalidConditions} 条不完整适用条件"; }
 
-        $chipWithoutStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o
-            JOIN mc_adaptation_groups g ON g.id=o.group_id
-            JOIN mc_materials m ON m.id=o.material_id
-            JOIN mc_material_categories c ON c.id=m.category_id AND c.code='chip'
-            WHERE g.product_id=? AND g.status<>'disabled' AND o.option_type<>'disabled'
-            AND NOT EXISTS(SELECT 1 FROM mc_adaptation_option_chip_variants cv WHERE cv.option_id=o.id AND cv.status='active')");
-        $chipWithoutStmt->execute([$productId]);
-        $chipWithoutVariants = (int) $chipWithoutStmt->fetchColumn();
-        if ($chipWithoutVariants) $issues[] = "存在 {$chipWithoutVariants} 个芯片选项尚未选择具体色温 / 显指 / 色容差";
-        else $earned++;
-
-        $unconfirmedChipStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_option_chip_variants cv
-            JOIN mc_adaptation_options o ON o.id=cv.option_id
-            JOIN mc_adaptation_groups g ON g.id=o.group_id
-            JOIN mc_chip_spec_variants v ON v.id=cv.chip_variant_id
-            WHERE g.product_id=? AND g.status<>'disabled' AND o.option_type<>'disabled'
-            AND cv.status='active' AND (v.status<>'active' OR v.needs_confirmation=1)");
-        $unconfirmedChipStmt->execute([$productId]);
-        $unconfirmedChip = (int) $unconfirmedChipStmt->fetchColumn();
-        if ($unconfirmedChip) $issues[] = "存在 {$unconfirmedChip} 个已停用或待确认的芯片规格";
-        else $earned++;
-
-        if ($groups) $earned++;
-        else $issues[] = '尚未建立任何配置组';
-        $percent = (int) round($earned / 11 * 100);
+        $conflicts = $this->conflicts($productId);
+        $exceptionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND g.status<>'disabled' AND o.requires_approval=1 AND o.exception_approved=0");
+        $exceptionStmt->execute([$productId]);
+        $exceptions = (int) $exceptionStmt->fetchColumn();
+        $invalidMaterialStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id JOIN mc_materials m ON m.id=o.material_id WHERE g.product_id=? AND g.status<>'disabled' AND (m.status<>'official' OR o.match_level='incompatible')");
+        $invalidMaterialStmt->execute([$productId]);
+        $invalidMaterials = (int) $invalidMaterialStmt->fetchColumn();
+        if ($conflicts || $exceptions || $invalidMaterials) {
+            $segments['check'] = 0;
+            if ($conflicts) $issues[] = '存在 '.count($conflicts).' 条未解决冲突';
+            if ($exceptions) $issues[] = "存在 {$exceptions} 个未批准的适配例外";
+            if ($invalidMaterials) $issues[] = "存在 {$invalidMaterials} 个非正式或不适配物料";
+        }
+        $percent = array_sum($segments);
         return [
             'percent' => $percent,
             'ready' => !$issues,
             'issues' => $issues,
             'exception_count' => $exceptions,
-            'checks_passed' => $earned,
-            'checks_total' => 11,
+            'checks_passed' => count(array_filter($segments, static fn(int $score): bool => $score > 0)),
+            'checks_total' => 5,
+            'segments' => $segments,
         ];
     }
 
@@ -1895,6 +1964,58 @@ final class AdaptationService
             return ['match_level' => 'needs_approval', 'match_label' => '需要审批', 'conflict_reasons' => ['产品电源规则尚未审批'], 'requires_approval' => true];
         }
         return ['match_level' => 'exact', 'match_label' => '完全适配', 'conflict_reasons' => [], 'requires_approval' => false];
+    }
+
+    /** Merge product-level engineering boundaries into group rules without erasing more precise group rules. */
+    private function mergeTechnicalProfileIntoQuickRules(array $rules, string $businessType, array $profile): array
+    {
+        $maps = [
+            'chip' => [
+                'lamp_power_min_w' => 'power_min_w', 'lamp_power_max_w' => 'power_max_w',
+                'output_current_min_ma' => 'current_min_ma', 'output_current_max_ma' => 'current_max_ma',
+                'output_voltage_min_v' => 'voltage_min_v', 'output_voltage_max_v' => 'voltage_max_v',
+                'optical_les_mm' => 'les_contains',
+            ],
+            'optical' => [
+                'optical_diameter_mm' => 'diameter_min_mm', 'optical_diameter_mm' => 'diameter_max_mm',
+                'optical_height_mm' => 'height_max_mm', 'beam_angle_min_deg' => 'beam_min_deg',
+                'beam_angle_max_deg' => 'beam_max_deg', 'optical_les_mm' => 'les_contains',
+            ],
+            'glass' => ['optical_diameter_mm' => 'diameter_min_mm', 'optical_diameter_mm' => 'diameter_max_mm', 'optical_height_mm' => 'height_max_mm'],
+            'reflector' => ['optical_diameter_mm' => 'diameter_min_mm', 'optical_diameter_mm' => 'diameter_max_mm', 'optical_height_mm' => 'height_max_mm'],
+        ];
+        // PHP arrays cannot repeat a source key, so map exact optical diameter separately.
+        if (in_array($businessType, ['optical', 'glass', 'reflector'], true) && !array_key_exists('diameter_min_mm', $rules) && !empty($profile['optical_diameter_mm'])) {
+            $rules['diameter_min_mm'] = $profile['optical_diameter_mm'];
+        }
+        foreach ($maps[$businessType] ?? [] as $source => $target) {
+            if (array_key_exists($target, $rules) || !isset($profile[$source]) || $profile[$source] === '') continue;
+            $rules[$target] = $source === 'optical_les_mm' ? (string) $profile[$source].'mm' : $profile[$source];
+        }
+        return $rules;
+    }
+
+    /** Keep candidate screening useful before an older power-rule record exists. */
+    private function powerRuleFromTechnicalProfile(array $profile): array
+    {
+        return [
+            'status' => 'draft',
+            'installation_type' => (string) ($profile['installation_type'] ?? 'unknown'),
+            'output_type' => 'unknown',
+            'lamp_power_w' => $profile['lamp_power_max_w'] ?? null,
+            'lamp_power_min_w' => $profile['lamp_power_min_w'] ?? null,
+            'lamp_power_max_w' => $profile['lamp_power_max_w'] ?? null,
+            'output_current_min_ma' => $profile['output_current_min_ma'] ?? null,
+            'output_current_max_ma' => $profile['output_current_max_ma'] ?? null,
+            'output_voltage_min_v' => $profile['output_voltage_min_v'] ?? null,
+            'output_voltage_max_v' => $profile['output_voltage_max_v'] ?? null,
+            'max_length_mm' => $profile['max_length_mm'] ?? null,
+            'max_width_mm' => $profile['max_width_mm'] ?? null,
+            'max_height_mm' => $profile['max_height_mm'] ?? null,
+            'minimum_warranty_years' => $profile['minimum_warranty_years'] ?? null,
+            'certification_required' => $profile['certification_required'] ?? '',
+            'required_dimming_modes' => is_array($profile['dimming_modes'] ?? null) ? $profile['dimming_modes'] : [],
+        ];
     }
 
     private function componentCandidateMatch(array $material, array $group, array $rules): array
