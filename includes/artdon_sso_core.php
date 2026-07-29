@@ -287,6 +287,11 @@ function artdon_plm_ensure_permissions(): void
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
         SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
         WHERE r.role_key IN ('manager') AND p.permission_key IN ('plm.view','plm.create','plm.edit','plm.export')");
+    // 工程部的职责定义包含 PLM 技术确认、样品与资料维护。这里授予
+    // 非破坏性的日常 PLM 操作权限；删除与管理员权限仍只限管理员单独授予。
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key = 'engineering' AND p.permission_key IN ('plm.view','plm.create','plm.edit','plm.export')");
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
         SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
         WHERE r.role_key IN ('sales','marketing','finance','viewer') AND p.permission_key = 'plm.view'");

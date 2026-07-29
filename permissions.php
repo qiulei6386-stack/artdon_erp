@@ -7,6 +7,9 @@ ensure_user_create_permission();
 ensure_user_profile_schema();
 ensure_default_departments();
 crm_ensure_permissions();
+// PLM 的权限项由统一权限表承载。权限中心本身也要确保这组
+// 基础权限已登记，避免只因未进入 PLM 页面而在授权页中看不到它们。
+artdon_plm_ensure_permissions();
 ensure_artdon_department_permission_templates();
 
 $message = $error = '';
@@ -190,6 +193,7 @@ function permission_module_name(string $module): string
         'dispatch' => '派工待办',
         'quote' => '报价系统',
         'bom' => 'BOM 系统',
+        'plm' => 'PLM',
         'naming' => '型号命名',
         'datasheet' => '资料生成',
         'ai' => 'AI 机器人',
@@ -442,6 +446,7 @@ function permission_system_definitions(): array
         'dispatch' => ['label' => '派工待办', 'modules' => ['dispatch'], 'prefixes' => ['dispatch.'], 'domains' => ['dispatch']],
         'quote' => ['label' => '报价系统', 'modules' => ['quote'], 'prefixes' => ['quote.'], 'domains' => ['quote']],
         'bom' => ['label' => 'BOM 系统', 'modules' => ['bom'], 'prefixes' => ['bom.'], 'domains' => ['bom']],
+        'plm' => ['label' => 'PLM', 'modules' => ['plm'], 'prefixes' => ['plm.'], 'domains' => ['plm']],
         'material_center' => [
             'label' => '物料中心',
             'modules' => ['material_center'],
@@ -512,6 +517,7 @@ function permission_system_domain(array $p): string
     if (strpos($key, 'dispatch.') === 0 || $module === 'dispatch') return 'dispatch';
     if (strpos($key, 'quote.') === 0 || $module === 'quote') return 'quote';
     if (strpos($key, 'bom.') === 0 || $module === 'bom') return 'bom';
+    if (strpos($key, 'plm.') === 0 || $module === 'plm') return 'plm';
     if (strpos($key, 'material_center.') === 0 || $module === 'material_center') return 'material_center';
     if (strpos($key, 'naming.') === 0 || $module === 'naming') return 'naming';
     if (strpos($key, 'datasheet.') === 0 || $module === 'datasheet') return 'datasheet';
@@ -543,6 +549,7 @@ function permission_domain_label(string $domain): string
         'dispatch' => '派工待办',
         'quote' => '报价系统',
         'bom' => 'BOM 系统',
+        'plm' => 'PLM',
         'material_center' => '物料中心',
         'naming' => '型号命名',
         'datasheet' => '资料生成',
