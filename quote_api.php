@@ -2226,8 +2226,36 @@ function quote_price_policy_list($pdo){
     'categories'=>array_values(array_filter(array_map(fn($r)=>(string)$r['category'],rows($pdo,"SELECT DISTINCT category FROM quote_price_policies WHERE category<>'' ORDER BY category ASC LIMIT 500"))))
   ];
 }
+/**
+ * 佣金页面是高频读取页面，不能在每一次读取时重复执行建表、补字段或重建索引。
+ * 版本状态表只会在首次安装/升级时触发完整迁移；后续请求只做一次轻量版本读取。
+ */
 function quote_commission_schema($pdo){
   static $done=false;if($done)return;$done=true;
+  $version=3;
+  try{
+    $state=row($pdo,"SELECT schema_version FROM quote_commission_schema_state WHERE module_code='commission' LIMIT 1");
+    if((int)($state['schema_version']??0)>=$version)return;
+  }catch(Throwable $e){
+    ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_schema_state (
+      module_code VARCHAR(80) NOT NULL PRIMARY KEY,schema_version INT NOT NULL DEFAULT 0,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  }
+  $lockName='artdon_quote_commission_schema';
+  $locked=false;
+  try{$lock=row($pdo,'SELECT GET_LOCK(?,12) AS locked',[$lockName]);$locked=(int)($lock['locked']??0)===1;}catch(Throwable $e){}
+  if(!$locked)throw new RuntimeException('佣金页面正在完成一次性初始化，请稍后刷新。');
+  try{
+    $state=row($pdo,"SELECT schema_version FROM quote_commission_schema_state WHERE module_code='commission' LIMIT 1");
+    if((int)($state['schema_version']??0)>=$version)return;
+    quote_commission_schema_migrate($pdo);
+    $st=$pdo->prepare("INSERT INTO quote_commission_schema_state(module_code,schema_version) VALUES('commission',?) ON DUPLICATE KEY UPDATE schema_version=VALUES(schema_version),updated_at=CURRENT_TIMESTAMP");
+    $st->execute([$version]);
+  }finally{
+    try{$pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);}catch(Throwable $e){}
+  }
+}
+function quote_commission_schema_migrate($pdo){
   ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_rules (
     id INT AUTO_INCREMENT PRIMARY KEY,rule_name VARCHAR(160) DEFAULT '',target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',target_contact VARCHAR(160) DEFAULT '',
     commission_mode VARCHAR(50) DEFAULT 'percent',commission_value DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',calc_base VARCHAR(50) DEFAULT 'order_amount',settle_node VARCHAR(50) DEFAULT 'payment_received',settle_status VARCHAR(50) DEFAULT 'unsettled',
@@ -2263,6 +2291,7 @@ function quote_commission_schema($pdo){
     created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_commission_order_item(order_item_id),KEY idx_commission_item_order(order_id),KEY idx_commission_item_model(product_model),KEY idx_commission_item_settle(settle_status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  ensure_col($pdo,'quote_commission_item_snapshots','is_commission_enabled','`is_commission_enabled` TINYINT(1) DEFAULT 1');
   ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_commission_options (
     id INT AUTO_INCREMENT PRIMARY KEY,option_group VARCHAR(80) NOT NULL,option_code VARCHAR(120) DEFAULT '',option_name VARCHAR(160) NOT NULL,option_value VARCHAR(255) DEFAULT '',extra_json LONGTEXT NULL,
     is_system TINYINT(1) DEFAULT 0,is_default TINYINT(1) DEFAULT 0,is_active TINYINT(1) DEFAULT 1,sort_order INT DEFAULT 0,note TEXT NULL,created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',
@@ -2377,7 +2406,10 @@ function quote_commission_rule_list($pdo){
   quote_commission_schema($pdo);$w=[];$a=[];$q=trim((string)($_GET['keyword']??''));if($q!==''){$w[]='(target_name LIKE ? OR customer_name LIKE ? OR product_model LIKE ? OR rule_name LIKE ? OR note LIKE ?)';for($i=0;$i<5;$i++)$a[]='%'.$q.'%';}
   foreach(['target_type','commission_mode','calc_base','settle_node','settle_status','currency'] as $f){$v=trim((string)($_GET[$f]??''));if($v!==''){$w[]='`'.$f.'`=?';$a[]=$v;}}if(isset($_GET['status'])&&$_GET['status']!==''){$w[]='is_active=?';$a[]=(int)$_GET['status'];}
   $size=max(10,min(200,(int)($_GET['page_size']??50)));$page=max(1,(int)($_GET['page']??1));$where=$w?' WHERE '.implode(' AND ',$w):'';$total=(int)row($pdo,'SELECT COUNT(*) c FROM quote_commission_rules'.$where,$a)['c'];$pages=max(1,(int)ceil($total/$size));$page=min($page,$pages);$offset=($page-1)*$size;
-  $list=rows($pdo,'SELECT * FROM quote_commission_rules'.$where.' ORDER BY updated_at DESC,id DESC LIMIT '.$size.' OFFSET '.$offset,$a);return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
+  $list=rows($pdo,'SELECT * FROM quote_commission_rules'.$where.' ORDER BY updated_at DESC,id DESC LIMIT '.$size.' OFFSET '.$offset,$a);
+  // 首屏同时需要下拉选项；随规则列表一起返回，避免浏览器再发一个初始化请求。
+  $options=rows($pdo,'SELECT * FROM quote_commission_options ORDER BY option_group,is_active DESC,sort_order,id');
+  return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages,'options'=>$options];
 }
 function quote_commission_rule_save($pdo,$d,$user){
   quote_commission_schema($pdo);$id=(int)($d['id']??0);$before=$id?row($pdo,'SELECT * FROM quote_commission_rules WHERE id=?',[$id]):null;$actor=quote_price_policy_actor($user);$allowed=['rule_name','target_type','target_name','target_contact','commission_mode','commission_value','currency','calc_base','settle_node','settle_status','apply_scope','customer_id','customer_name','product_model','category','settled_amount','is_active','note'];
