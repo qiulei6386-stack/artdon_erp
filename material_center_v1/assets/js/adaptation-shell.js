@@ -44,6 +44,10 @@
   const integer = value => Number.parseInt(value || 0, 10) || 0;
   const selectedProductId = () => integer(state.workspace?.product?.id);
   const selectedGroup = () => state.workspace?.active_group || null;
+  const setOptionSubtitle = value => {
+    const subtitle = q('[data-option-subtitle]');
+    if (subtitle) subtitle.textContent = value;
+  };
   const workspaceWidthStorageKey = 'artdon.material.adaptation.workspace-widths.v1';
   const drawerWidthStorageKey = 'artdon.material.adaptation.drawer-width.v1';
   const materialCategoryLabels = {
@@ -292,12 +296,12 @@
     const workspace = state.workspace;
     if (!workspace) {
       target.innerHTML = '';
-      q('[data-rule-subtitle]').textContent = '请选择产品';
+      setOptionSubtitle('请选择配置组');
       return;
     }
     const product = workspace.product;
     const completion = workspace.completion || { percent: 0 };
-    q('[data-rule-subtitle]').textContent = `${product.product_code || '未编号产品'} · 配置组工作区`;
+    setOptionSubtitle(`${product.product_code || '未编号产品'} · 配置组工作区`);
     target.innerHTML = `<div class="mc-adaptation-product-identity">
         <div><span>产品型号</span><strong>${escapeHtml(product.product_code || '—')}</strong></div>
         <div><span>产品名称</span><strong>${escapeHtml(product.product_name || '—')}</strong></div>
@@ -2212,12 +2216,21 @@
     closeModal(modal);
   });
 
-  populateGroupFormTypes();
-  restoreDrawerWidth();
-  bindDrawerResize();
-  setupWorkspaceResizers();
-  render();
-  if (hasCandidateDiscoveryRules(selectedGroup())) {
-    loadCandidateDiscovery().catch(error => notify('候选物料暂未加载', error.message));
+  try {
+    populateGroupFormTypes();
+    restoreDrawerWidth();
+    bindDrawerResize();
+    setupWorkspaceResizers();
+    render();
+    if (hasCandidateDiscoveryRules(selectedGroup())) {
+      loadCandidateDiscovery().catch(error => notify('候选物料暂未加载', error.message));
+    }
+  } catch (error) {
+    console.error('产品配置工作台初始化失败', error);
+    const target = q('[data-overview-dashboard]');
+    if (target) {
+      target.hidden = false;
+      target.innerHTML = '<section class="mc-workbench-welcome"><div><span>产品适配</span><h2>工作台暂时无法加载</h2><p>请刷新页面后重试；若问题仍然存在，系统已保留产品配置数据，不会丢失。</p><button class="mc-button mc-button--primary" type="button" onclick="location.reload()">重新加载</button></div></section>';
+    }
   }
 })();

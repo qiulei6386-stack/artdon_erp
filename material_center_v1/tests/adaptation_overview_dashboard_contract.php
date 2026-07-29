@@ -21,6 +21,7 @@ foreach ([
 
 foreach ([
     'renderOverviewDashboard',
+    'setOptionSubtitle',
     'mc-workbench-steps',
     'mc-workbench-group-section',
     'setWorkspaceUrl',
@@ -32,6 +33,13 @@ foreach ([
     'published_versions',
 ] as $marker) {
     if (!str_contains($script, $marker)) throw new RuntimeException("adaptation workbench interaction missing: {$marker}");
+}
+
+if (str_contains($script, '[data-rule-subtitle]')) {
+    throw new RuntimeException('adaptation workbench still references a removed subtitle node');
+}
+if (!str_contains($script, '工作台暂时无法加载')) {
+    throw new RuntimeException('adaptation workbench is missing its initialization fallback');
 }
 
 foreach ([
