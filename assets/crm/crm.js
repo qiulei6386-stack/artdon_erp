@@ -7137,10 +7137,9 @@
       if (typeof MailModule !== 'undefined' && typeof MailModule.normalizeMailBodyLocalUrls === 'function') {
         bodyHtml = MailModule.normalizeMailBodyLocalUrls(bodyHtml);
       }
-      var isOfficeMail = isOutlookOfficeMailHtml(bodyHtml);
       var useFrame = typeof MailModule !== 'undefined' && typeof MailModule.isFullHtmlMail === 'function' && MailModule.isFullHtmlMail(mail);
       var body = bodyHtml
-        ? (isOfficeMail && mail.body_text ? officeMailReadableBody(mail) : (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
+        ? (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml)
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
       if (!body && Number(mail.has_attachment || mail.attachment_count || 0)) {
         body = '<div class="mail-no-body"><strong>此邮件没有正文，但包含附件。</strong><span>附件已正常入库，可在下方下载或预览。</span></div>';
@@ -10368,9 +10367,8 @@
       var recallNotice = recalled ? '<section class="mail-recall-notice">已撤回：系统已发送撤回通知给原收件人。</section>' : '';
       var useBodyFrame = isDbsAdvice || this.isFullHtmlMail(mail);
       var bodyHtml = this.normalizeMailBodyLocalUrls(mail.body_html || '');
-      var isOfficeMail = this.isOutlookOfficeMail(mail);
       var body = mail.body_html
-        ? (isOfficeMail && mail.body_text ? officeMailReadableBody(mail) : (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
+        ? (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml)
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
       if (!body && Number(mail.has_attachment)) body = '<div class="mail-no-body"><strong>此邮件没有正文，但包含附件。</strong><span>附件已正常入库，可下载、预览或保存到客户文件/资料系统。</span></div>';
       var attachmentHtml = attachments.length ? '<section class="mail-attachments compact"><h3>附件 ' + attachments.length + '</h3><div class="mail-attachment-chips">' + attachments.map(function (a) {
