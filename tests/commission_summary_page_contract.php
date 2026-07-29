@@ -12,7 +12,7 @@ $checks = [
         && str_contains($page, 'commissionSummaryDateFrom')
         && str_contains($page, 'commissionSummarySettle'),
     '页面读取数据' => str_contains($page, "if(p==='commission-summary'){loadCommissionSummaryPage();return;}"),
-    '编辑页不嵌入汇总' => str_contains($page, "renderCommissionOrderSummary=function(){$('commissionOrderSummary')?.remove()}"),
+    '编辑页不嵌入汇总' => str_contains($page, 'renderCommissionOrderSummary=function(){$(\'commissionOrderSummary\')?.remove()}'),
     '独立接口实现' => str_contains($api, 'function qo_commission_summary_list'),
     '客户代码筛选' => str_contains($api, 'customer_code'),
     '日期筛选' => str_contains($api, 'date_from'),
