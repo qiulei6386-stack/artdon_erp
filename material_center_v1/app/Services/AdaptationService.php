@@ -57,12 +57,16 @@ final class AdaptationService
         'eq' => '等于',
         'neq' => '不等于',
         'contains' => '包含',
+        'not_contains' => '不包含',
         'gt' => '大于',
         'gte' => '大于等于',
         'lt' => '小于',
         'lte' => '小于等于',
         'between' => '介于',
         'in' => '属于',
+        'not_in' => '不属于',
+        'has_value' => '有值',
+        'no_value' => '无值',
     ];
 
     private const QUICK_RULE_FIELDS = [
@@ -234,6 +238,7 @@ final class AdaptationService
         foreach ($rows as &$row) {
             $snapshot = json_decode((string) ($row['snapshot_json'] ?? '{}'), true) ?: [];
             $row['series_name'] = $snapshot['series_name'] ?? $snapshot['category'] ?? '';
+            $row['product_type'] = $snapshot['product_type'] ?? $snapshot['product_type_name'] ?? $snapshot['category'] ?? '';
             $row['image_url'] = !empty($snapshot['image_url'])
                 ? $snapshot['image_url']
                 : ($row['source_image_url'] ?? '');
@@ -336,6 +341,20 @@ final class AdaptationService
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    /** @return array<int,array<string,mixed>> */
+    public function publishedVersions(int $productId): array
+    {
+        if (!$this->tableExists('mc_adaptation_published_versions')) return [];
+        $stmt = $this->db->prepare("SELECT v.version_no,v.status,v.published_at,v.approval_id,
+                COALESCE(u.real_name,u.username,'系统管理员') publisher_name
+            FROM mc_adaptation_published_versions v
+            LEFT JOIN crm_users u ON u.id=v.published_by
+            WHERE v.product_id=? AND v.status='published'
+            ORDER BY v.version_no DESC LIMIT 12");
+        $stmt->execute([$productId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function workspace(int $productId, int $groupId = 0): array
     {
         $product = $this->product($productId);
@@ -357,6 +376,7 @@ final class AdaptationService
             'conditions' => $activeGroup ? $this->conditions((int) $activeGroup['id']) : [],
             'conflicts' => $this->conflicts($productId),
             'approval' => $this->latestApproval($productId),
+            'published_versions' => $this->publishedVersions($productId),
             'completion' => $completion,
             'configuration_overview' => $this->configurationOverview($productId),
             'power_rule' => $this->productPowerRule((int) ($product['legacy_id'] ?? 0)),
@@ -818,9 +838,10 @@ final class AdaptationService
         $group = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$group) throw new RuntimeException('配置组不存在。');
 
-        $availability = ($rules['availability'] ?? 'allowed') === 'forbidden' ? 'forbidden' : 'allowed';
-        if ((int) $group['is_required'] && $availability === 'forbidden') {
-            throw new RuntimeException('必选配置组不能设为“不允许使用”，请先把它改为可选组。');
+        $availability = (string) ($rules['availability'] ?? 'allowed');
+        if (!in_array($availability, ['allowed', 'forbidden', 'not_applicable', 'not_offered', 'later'], true)) $availability = 'allowed';
+        if ((int) $group['is_required'] && $availability !== 'allowed') {
+            throw new RuntimeException('核心必配组不能标记为“不适用、未提供或稍后处理”。');
         }
         $normalized = ['availability' => $availability];
         $fieldDefinitions = self::QUICK_RULE_FIELDS[(string) $group['business_type']] ?? [];
@@ -1108,7 +1129,7 @@ final class AdaptationService
         return $rows;
     }
 
-    public function addOptions(int $groupId, array $materialIds, int $userId): array
+    public function addOptions(int $groupId, array $materialIds, int $userId, string $forceExceptionReason = ''): array
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $materialIds))));
         if (!$ids) throw new RuntimeException('请至少选择一个物料。');
@@ -1127,6 +1148,7 @@ final class AdaptationService
                     'option_type' => 'optional',
                     'is_default' => 0,
                     'sort_order' => ($added + 1) * 10,
+                    'force_exception_reason' => $forceExceptionReason,
                 ], $userId);
                 $added++;
             }
@@ -1164,8 +1186,15 @@ final class AdaptationService
         $candidate = null;
         foreach ($candidates as $row) if ((int) $row['id'] === $materialId) $candidate = $row;
         if (!$candidate || $candidate['status'] !== 'official') throw new RuntimeException('只有当前类别的正式物料可以加入配置组。');
+        $forceExceptionReason = trim((string) ($data['force_exception_reason'] ?? ''));
+        $exceptionApplied = false;
         if ($candidate['match_level'] === 'incompatible') {
-            throw new RuntimeException('该物料不适配：'.implode('；', $candidate['conflict_reasons']));
+            if ($forceExceptionReason === '') {
+                throw new RuntimeException('该物料不适配：'.implode('；', $candidate['conflict_reasons']).'。如确需加入，请填写强制添加说明后提交审批。');
+            }
+            $candidate['requires_approval'] = true;
+            $candidate['conflict_reasons'][] = '强制添加说明：'.$forceExceptionReason;
+            $exceptionApplied = true;
         }
         $groupStmt = $this->db->prepare('SELECT product_id,selection_mode FROM mc_adaptation_groups WHERE id=?');
         $groupStmt->execute([$groupId]);
@@ -1197,7 +1226,7 @@ final class AdaptationService
             (new ChipSpecificationService($this->db))->attachAllActiveToOption($id);
         }
         $this->markProductDraft((int) $group['product_id']);
-        $this->log((int) $group['product_id'], 'save_option', ['option_id' => $id, 'group_id' => $groupId, 'material_id' => $materialId, 'match_level' => $candidate['match_level']], $userId);
+        $this->log((int) $group['product_id'], 'save_option', ['option_id' => $id, 'group_id' => $groupId, 'material_id' => $materialId, 'match_level' => $candidate['match_level'], 'force_exception_reason' => $exceptionApplied ? $forceExceptionReason : null], $userId);
         return $id;
     }
 
@@ -1257,7 +1286,8 @@ final class AdaptationService
             if (!isset(self::CONDITION_OPERATORS[$operator])) throw new RuntimeException('条件运算符无效。');
             if (!in_array($connector, ['AND', 'OR'], true)) throw new RuntimeException('条件组合只能使用 AND 或 OR。');
             $expected = $row['expected'] ?? null;
-            if ($expected === '' || $expected === null || ($operator === 'between' && (!is_array($expected) || count($expected) !== 2))) {
+            $valueFreeOperator = in_array($operator, ['has_value', 'no_value'], true);
+            if ((!$valueFreeOperator && ($expected === '' || $expected === null)) || ($operator === 'between' && (!is_array($expected) || count($expected) !== 2))) {
                 throw new RuntimeException('条件值不完整。');
             }
             $normalized[] = [
@@ -1266,7 +1296,7 @@ final class AdaptationService
                 'boolean_connector' => $index === 0 ? 'AND' : $connector,
                 'field_code' => $field,
                 'operator' => $operator,
-                'expected' => $expected,
+                'expected' => $valueFreeOperator ? null : $expected,
                 'failure_message' => mb_substr(trim((string) ($row['failure_message'] ?? '当前物料不满足适用条件')), 0, 500),
                 'severity' => ($row['severity'] ?? 'block') === 'warn' ? 'warn' : 'block',
                 'sort_order' => ($index + 1) * 10,
@@ -1516,17 +1546,26 @@ final class AdaptationService
             $versionStmt = $this->db->prepare('SELECT COALESCE(MAX(version_no),0)+1 FROM mc_adaptation_approvals WHERE product_id=?');
             $versionStmt->execute([$productId]);
             $version = (int) $versionStmt->fetchColumn();
+            // Build the commercial payload before the current working rows are changed to approved.
+            // This is the immutable release that quotation/BOM readers use until the next release.
+            $commercialRows = $this->commercialRowsForProduct($productId);
             $snapshot = json_encode([
                 'groups' => $groups,
                 'configuration_overview' => $this->configurationOverview($productId),
                 'conflicts' => $this->conflicts($productId),
                 'completion' => $completion,
+                'commercial_rows' => $commercialRows,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $this->db->prepare("INSERT INTO mc_approvals(approval_type,entity_type,entity_id,status,requested_by,requested_at,completed_at,current_step,request_json) VALUES('product_adaptation','product',?,'approved',?,NOW(),NOW(),1,?)")
                 ->execute([$productId, $userId, $snapshot]);
             $approvalId = (int) $this->db->lastInsertId();
             $this->db->prepare("INSERT INTO mc_adaptation_approvals(product_id,approval_id,version_no,status) VALUES(?,?,?,'approved')")
                 ->execute([$productId, $approvalId, $version]);
+            if ($this->tableExists('mc_adaptation_published_versions')) {
+                $this->db->prepare("INSERT INTO mc_adaptation_published_versions(product_id,version_no,status,snapshot_json,approval_id,published_by,published_at)
+                    VALUES(?,?, 'published', ?,?,?,NOW())")
+                    ->execute([$productId, $version, $snapshot, $approvalId, $userId]);
+            }
             $this->db->prepare('INSERT INTO mc_approval_logs(approval_id,action,actor_id,detail_json,created_at) VALUES(?,?,?,?,NOW())')
                 ->execute([$approvalId, 'approve', $userId, json_encode(['version' => $version, 'exceptions_approved' => $approveExceptions], JSON_UNESCAPED_UNICODE)]);
             $this->db->prepare("UPDATE mc_adaptation_groups SET status='approved',is_enabled=1,updated_by=?,updated_at=NOW() WHERE product_id=? AND status<>'disabled'")
@@ -1543,17 +1582,43 @@ final class AdaptationService
 
     public function approved(int $legacyProductId): array
     {
+        if ($this->tableExists('mc_adaptation_published_versions')) {
+            $published = $this->db->prepare("SELECT v.snapshot_json
+                FROM mc_adaptation_published_versions v
+                JOIN mc_products p ON p.id=v.product_id
+                WHERE p.legacy_table='naming_models' AND p.legacy_id=? AND v.status='published'
+                ORDER BY v.version_no DESC LIMIT 1");
+            $published->execute([$legacyProductId]);
+            $snapshot = $published->fetchColumn();
+            if (is_string($snapshot) && $snapshot !== '') {
+                $rows = json_decode($snapshot, true);
+                if (is_array($rows) && is_array($rows['commercial_rows'] ?? null)) return $rows['commercial_rows'];
+            }
+        }
+        // Compatibility fallback for historic releases created before the immutable-version table.
+        // It deliberately reads only the old fully approved state, never a later working draft.
+        return $this->commercialRowsForProduct($legacyProductId, true, true);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function commercialRowsForProduct(int $productReference, bool $isLegacyId = false, bool $requireApproved = false): array
+    {
+        $productWhere = $isLegacyId ? "p.legacy_table='naming_models' AND p.legacy_id=?" : 'p.id=?';
+        $groupState = $requireApproved ? " AND g.status='approved' AND g.is_enabled=1" : " AND g.status<>'disabled'";
+        $optionState = $requireApproved ? " AND o.status='approved'" : '';
+        $historicReleaseGuard = $requireApproved
+            ? " AND NOT EXISTS(SELECT 1 FROM mc_adaptation_groups gx WHERE gx.product_id=p.id AND gx.status<>'disabled' AND (gx.status<>'approved' OR gx.is_enabled=0))
+                AND NOT EXISTS(SELECT 1 FROM mc_adaptation_options ox JOIN mc_adaptation_groups gox ON gox.id=ox.group_id WHERE gox.product_id=p.id AND gox.status<>'disabled' AND ox.status<>'approved')"
+            : '';
         $stmt = $this->db->prepare("SELECT p.product_code,p.product_name,g.group_code,g.group_name,g.business_type,g.is_required,g.selection_mode,
             o.option_type,o.is_default,o.price_impact,o.lead_time_impact_days,m.id material_id,m.material_code,m.name material_name,m.brand,m.model
             FROM mc_products p
-            JOIN mc_adaptation_groups g ON g.product_id=p.id AND g.status='approved' AND g.is_enabled=1
-            JOIN mc_adaptation_options o ON o.group_id=g.id AND o.status='approved' AND o.option_type<>'disabled'
+            JOIN mc_adaptation_groups g ON g.product_id=p.id{$groupState}
+            JOIN mc_adaptation_options o ON o.group_id=g.id AND o.option_type<>'disabled'{$optionState}
             JOIN mc_materials m ON m.id=o.material_id AND m.status='official' AND m.is_official=1 AND m.deleted_at IS NULL
-            WHERE p.legacy_table='naming_models' AND p.legacy_id=?
-            AND NOT EXISTS(SELECT 1 FROM mc_adaptation_groups gx WHERE gx.product_id=p.id AND gx.status<>'disabled' AND (gx.status<>'approved' OR gx.is_enabled=0))
-            AND NOT EXISTS(SELECT 1 FROM mc_adaptation_options ox JOIN mc_adaptation_groups gox ON gox.id=ox.group_id WHERE gox.product_id=p.id AND gox.status<>'disabled' AND ox.status<>'approved')
+            WHERE {$productWhere}{$historicReleaseGuard}
             ORDER BY g.sort_order,o.sort_order");
-        $stmt->execute([$legacyProductId]);
+        $stmt->execute([$productReference]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -1800,11 +1865,11 @@ final class AdaptationService
             return ['match_level' => 'incompatible', 'match_label' => '不适配', 'conflict_reasons' => ['物料已经停用'], 'requires_approval' => true];
         }
         $quickRules = json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: [];
-        if (($quickRules['availability'] ?? 'allowed') === 'forbidden') {
+        if (($quickRules['availability'] ?? 'allowed') !== 'allowed') {
             return [
                 'match_level' => 'incompatible',
                 'match_label' => '不适配',
-                'conflict_reasons' => ['当前产品设置为不允许使用'.$group['group_name']],
+                'conflict_reasons' => ['当前产品未启用'.$group['group_name'].'配置（'.$this->availabilityLabel((string) $quickRules['availability']).'）'],
                 'requires_approval' => true,
             ];
         }
@@ -1989,7 +2054,7 @@ final class AdaptationService
     {
         if (($group['status'] ?? '') === 'disabled') return 'disabled';
         $rules = $group['quick_rules'] ?? (json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: []);
-        if (($rules['availability'] ?? 'allowed') === 'forbidden') return 'forbidden';
+        if (($rules['availability'] ?? 'allowed') !== 'allowed') return 'forbidden';
         if ((int) ($group['conflict_count'] ?? 0)) return 'conflict';
         if (!(int) ($group['option_count'] ?? 0)) return 'empty';
         if (($group['selection_mode'] ?? 'single') === 'single' && (int) ($group['is_required'] ?? 0) && empty($group['default_material'])) return 'no_default';
@@ -2084,8 +2149,23 @@ final class AdaptationService
             'lte' => is_numeric($actual) && is_numeric($expected) && $actual <= $expected,
             'between' => is_numeric($actual) && is_array($expected) && count($expected) === 2 && $actual >= $expected[0] && $actual <= $expected[1],
             'in' => is_array($expected) && in_array($actual, $expected, true),
+            'not_in' => is_array($expected) && !in_array($actual, $expected, true),
             'contains' => str_contains((string) $actual, (string) $expected),
+            'not_contains' => !str_contains((string) $actual, (string) $expected),
+            'has_value' => !($actual === null || $actual === '' || (is_array($actual) && !$actual)),
+            'no_value' => $actual === null || $actual === '' || (is_array($actual) && !$actual),
             default => false,
+        };
+    }
+
+    private function availabilityLabel(string $availability): string
+    {
+        return match ($availability) {
+            'forbidden' => '不允许使用',
+            'not_applicable' => '不适用',
+            'not_offered' => '暂不提供',
+            'later' => '稍后处理',
+            default => '允许使用',
         };
     }
 

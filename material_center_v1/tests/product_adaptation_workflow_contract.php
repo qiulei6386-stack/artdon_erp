@@ -9,7 +9,7 @@ $api = file_get_contents($root.'/api/v1/adaptation.php');
 $migration = file_get_contents($root.'/database/migrations/20260726_015_adaptation_workflow_v2.php');
 
 foreach ([
-    '产品列表', '配置规则', '选项详情', '完整标准配置模板', '从物料库添加选项',
+    '产品配置工作台', '切换产品', '选项详情', '完整标准配置模板', '从物料库添加选项',
     '选项列表', '默认设置', '替代关系', '适用条件', '价格 / 交期', '审批',
 ] as $label) {
     if (!str_contains($page, $label)) throw new RuntimeException("adaptation UI missing: {$label}");

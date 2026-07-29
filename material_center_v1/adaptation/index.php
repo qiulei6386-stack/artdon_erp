@@ -5,8 +5,8 @@ require_once dirname(__DIR__).'/bootstrap.php';
 
 use Artdon\MaterialCenter\Services\AdaptationService;
 
-$pageTitle = '产品适配';
-$pageDescription = '产品列表、配置规则与选项详情统一维护。';
+$pageTitle = '产品配置工作台';
+$pageDescription = '按步骤完成产品配置、适配检查与发布。';
 $activeMenu = 'adaptation';
 $service = new AdaptationService();
 $search = trim((string) ($_GET['q'] ?? ''));
@@ -24,66 +24,34 @@ $bootstrap = [
 
 include MC_ROOT.'/components/layout_top.php';
 ?>
-<section class="mc-page mc-page--adaptation-v2" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="<?=$workspace ? 'overview' : 'products'?>">
+<section class="mc-page mc-page--adaptation-v2 mc-page--adaptation-workbench" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="overview">
     <header class="mc-adaptation-head">
         <div>
-            <h1>产品适配总览</h1>
-            <p>先看配置是否完整、可生产、可报价；需要时再进入单个配置组处理真实物料和规则。</p>
+            <h1>产品配置工作台</h1>
+            <p>按步骤完成产品配置：先选产品，再配置核心物料，再补充可选件，最后检查并发布。</p>
         </div>
-        <nav class="mc-adaptation-view-tabs" aria-label="产品适配工作方式">
-            <button type="button" class="is-active" data-adaptation-view="overview">配置总览</button>
-            <button type="button" data-adaptation-view="guide">引导配置</button>
-            <button type="button" data-adaptation-view="batch">批量矩阵</button>
-        </nav>
         <div class="mc-adaptation-head__actions">
-            <button class="mc-button" type="button" data-sync-products>同步产品</button>
+            <button class="mc-button" type="button" data-overview-switch-product>切换产品</button>
             <button class="mc-button" type="button" data-reuse-template-open>套用配置模板</button>
             <button class="mc-button" type="button" data-reuse-open disabled>从产品复制</button>
-            <button class="mc-button" type="button" data-batch-open disabled>批量矩阵</button>
-            <button class="mc-button" type="button" data-overview-switch-product>切换产品</button>
+            <details class="mc-adaptation-more-actions"><summary class="mc-button">更多操作</summary><div>
+                <button class="mc-button" type="button" data-sync-products>同步产品</button>
+                <button class="mc-button" type="button" data-batch-open disabled>批量矩阵</button>
+                <button class="mc-button" type="button" data-group-create disabled>新增配置组</button>
+            </div></details>
             <button class="mc-button mc-button--primary" type="button" data-overview-submit disabled>检查配置 / 提交审批</button>
         </div>
     </header>
 
     <div class="mc-adaptation-workspace">
         <section class="mc-adaptation-overview" data-overview-dashboard hidden></section>
-        <aside class="mc-adaptation-column mc-adaptation-products">
-            <div class="mc-adaptation-column__head">
-                <div><strong>产品列表</strong><span data-product-count>0 个产品</span></div>
-            </div>
-            <form class="mc-adaptation-search" data-product-search>
-                <label class="mc-search mc-search--small">
-                    <?=mc_icon('search', 16)?>
-                    <input name="q" value="<?=mc_h($search)?>" placeholder="搜索型号 / 名称 / 系列" autocomplete="off">
-                </label>
-            </form>
-            <div class="mc-product-filter">
-                <select data-product-status-filter aria-label="按配置状态筛选">
-                    <option value="all">全部状态</option>
-                    <option value="unconfigured">未配置</option>
-                    <option value="configured">已配置</option>
-                    <option value="pending_approval">待审批</option>
-                    <option value="needs_review">待重审</option>
-                    <option value="enabled">已启用</option>
-                    <option value="conflict">有冲突</option>
-                </select>
-                <button class="mc-button" type="button" data-product-select-visible>全选当前</button>
-            </div>
-            <div class="mc-product-selection" data-product-selection-bar hidden>
-                <strong data-product-selection-count>已选择 0 个</strong>
-                <button type="button" data-selected-template>批量生成配置</button>
-                <button type="button" data-selected-reuse-template>套用配置模板</button>
-                <button type="button" data-selected-batch>用当前产品套用</button>
-                <button type="button" data-product-selection-clear>清空</button>
-            </div>
-            <div class="mc-adaptation-products__list" data-product-list></div>
-        </aside>
-        <div class="mc-adaptation-splitter" data-adaptation-resize="products" role="separator" aria-label="调整产品列表宽度" aria-orientation="vertical" tabindex="0"></div>
-
-        <section class="mc-adaptation-column mc-adaptation-options">
+        <div class="mc-adaptation-groups" data-group-list hidden aria-hidden="true"></div>
+        <aside class="mc-adaptation-column mc-adaptation-options" aria-label="当前配置抽屉">
+            <div class="mc-workbench-drawer-resizer" data-workbench-drawer-resizer aria-hidden="true"></div>
             <div class="mc-adaptation-column__head">
                 <div><strong data-option-title>选项详情</strong><span data-option-subtitle>请选择配置组</span></div>
                 <div class="mc-adaptation-column__actions">
+                    <button class="mc-icon-button" type="button" data-workbench-drawer-close title="关闭配置抽屉">×</button>
                     <button class="mc-button mc-button--soft" type="button" data-open-quick-rules disabled>填写关键范围</button>
                     <button class="mc-button mc-button--primary" type="button" data-candidate-open disabled>＋ 添加候选</button>
                     <button class="mc-button" type="button" data-open-approval disabled>审批 / 发布</button>
@@ -101,33 +69,23 @@ include MC_ROOT.'/components/layout_top.php';
                 <button type="button" data-adaptation-tab="approval">审批</button>
             </div>
             <section class="mc-candidate-discovery" data-candidate-discovery hidden></section>
-            <div class="mc-adaptation-detail" data-option-detail></div>
-        </section>
-        <div class="mc-adaptation-splitter" data-adaptation-resize="groups" role="separator" aria-label="调整配置组工作区宽度" aria-orientation="vertical" tabindex="0"></div>
-
-        <aside class="mc-adaptation-column mc-adaptation-rules">
-            <div class="mc-adaptation-column__head">
-                <div><strong>配置组工作区</strong><span data-rule-subtitle>请选择产品</span></div>
-                <button class="mc-button" type="button" data-group-create disabled>＋ 配置组</button>
-            </div>
             <section class="mc-selected-configuration" data-selected-configuration hidden></section>
-            <div class="mc-config-group-guide">
-                <strong>配置组</strong>
-                <span>选择一个组后，中间区可维护关键范围、候选物料、默认项和条件。</span>
-            </div>
-            <div class="mc-adaptation-groups" data-group-list></div>
+            <div class="mc-adaptation-detail" data-option-detail></div>
         </aside>
     </div>
 
     <div class="mc-modal" id="overview-product-modal" data-adaptation-modal>
-        <section class="mc-modal__panel mc-modal__panel--medium mc-overview-product-modal">
+        <section class="mc-modal__panel mc-modal__panel--wide mc-overview-product-modal">
             <div class="mc-modal__header">
-                <div><strong>切换产品</strong><span>选择产品后保留在配置总览，不会丢失当前已保存的配置。</span></div>
+                <div><strong>切换产品</strong><span>选择后锁定在工作台顶部；已保存的配置不会丢失。</span></div>
                 <button type="button" class="mc-icon-button" data-modal-close>×</button>
             </div>
             <div class="mc-modal__body">
-                <label class="mc-search"><span><?=mc_icon('search', 16)?></span><input type="search" data-overview-product-search placeholder="搜索型号 / 名称 / 系列" autocomplete="off"></label>
-                <div class="mc-overview-product-list" data-overview-product-list></div>
+                <form class="mc-adaptation-search" data-product-search><label class="mc-search"><span><?=mc_icon('search', 16)?></span><input name="q" value="<?=mc_h($search)?>" placeholder="搜索型号 / 名称 / 系列" autocomplete="off"></label></form>
+                <div class="mc-product-filter"><select data-product-type-filter aria-label="按产品类型筛选"><option value="all">全部类型</option></select><select data-product-status-filter aria-label="按配置状态筛选"><option value="all">全部状态</option><option value="unconfigured">未配置</option><option value="configured">已配置</option><option value="pending_approval">待审批</option><option value="needs_review">待重审</option><option value="enabled">已启用</option><option value="conflict">有冲突</option></select><button class="mc-button" type="button" data-product-select-visible>全选当前</button></div>
+                <div class="mc-product-selection" data-product-selection-bar hidden><strong data-product-selection-count>已选择 0 个</strong><button type="button" data-selected-template>批量生成配置</button><button type="button" data-selected-reuse-template>套用配置模板</button><button type="button" data-selected-batch>用当前产品套用</button><button type="button" data-product-selection-clear>清空</button></div>
+                <div class="mc-adaptation-products__list" data-product-list></div>
+                <div class="mc-overview-product-list" data-overview-product-list hidden></div>
             </div>
         </section>
     </div>
@@ -325,7 +283,7 @@ include MC_ROOT.'/components/layout_top.php';
     <div class="mc-modal" id="candidate-modal" data-adaptation-modal>
         <form class="mc-modal__panel mc-modal__panel--wide" data-candidate-form>
             <div class="mc-modal__header">
-                <div><strong>从物料库添加选项</strong><span>只显示当前配置组对应类别的正式物料；停用物料仅供识别，不能添加。</span></div>
+                <div><strong>从物料库添加选项</strong><span>只显示当前配置组对应类别的正式物料；不适配项可以强制加入，但必须写明原因并进入审批。</span></div>
                 <button type="button" class="mc-icon-button" data-modal-close>×</button>
             </div>
             <div class="mc-modal__body mc-candidate-body">
@@ -345,6 +303,7 @@ include MC_ROOT.'/components/layout_top.php';
                 </div>
                 <div class="mc-candidate-summary" data-candidate-summary></div>
                 <div class="mc-candidate-list" data-candidate-list></div>
+                <label class="mc-field mc-candidate-exception-reason"><span>强制添加说明 <small>仅选择“不适配”物料时必填；保存后会进入审批并写入操作日志。</small></span><textarea name="force_exception_reason" rows="2" placeholder="例如：客户指定型号，工程已确认可采用，待主管审批"></textarea></label>
             </div>
             <div class="mc-modal__footer">
                 <span data-candidate-selection>已选择 0 项</span>

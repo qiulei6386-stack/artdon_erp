@@ -67,7 +67,12 @@ try {
             return [];
         })(),
         'save_option' => ['id' => $service->saveOption($_POST, $user->id)],
-        'add_options' => $service->addOptions((int) ($_POST['group_id'] ?? 0), $json('material_ids'), $user->id),
+        'add_options' => $service->addOptions(
+            (int) ($_POST['group_id'] ?? 0),
+            $json('material_ids'),
+            $user->id,
+            trim((string) ($_POST['force_exception_reason'] ?? ''))
+        ),
         'save_option_chip_variants' => (new ChipSpecificationService())->saveOptionVariants(
             (int) ($_POST['option_id'] ?? 0),
             $json('variant_ids'),

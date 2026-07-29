@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配重构为统一“产品配置工作台”（本地完成，待发布）
+
+- 用户明确要求不再修补原来的“产品列表 + 配置总览 + 引导配置 + 批量矩阵”并列页面，而是按完整配置流程改为单一连续工作台：选择产品 → 核心必配 → 扩展可配 → 条件规则 → 检查发布。左侧物料中心菜单和顶部 ERP 导航保持不变。
+- 页面已改为：默认不长期显示产品列表；“切换产品”打开抽屉，选择后锁定在顶部产品摘要，并使用 AJAX 更新 `product_id` 和浏览器前进/后退历史。主体按核心必配、扩展可配和下一步建议呈现；点击卡片再打开右侧配置详情抽屉。
+- 右侧抽屉已支持 560–720px 拖动调整并记住个人宽度；候选物料、已选物料、默认、替代、条件、价格/交期和审批仍连接原有真实数据接口。候选不适配物料若有覆盖权限，必须填写“强制添加说明”，后端会标为需要审批并写入操作日志；普通物料不能借此绕过校验。
+- 产品适配已新增不可变发布版本表 `mc_adaptation_published_versions`。发布时保留完整快照、版本号、发布人、发布时间和审批关联；商务中心优先读取最后一版已发布快照，后续草稿修改不再静默改变已发布商务数据。迁移尚未在正式库执行。
+- 同时补齐并重写产品适配专项契约，使其校验新工作台结构、右侧抽屉、候选选择、强制说明、发布版本以及旧 URL/核心服务兼容；本机 JavaScript 语法与空白差异检查已通过。本机没有 PHP，PHP 语法、迁移和专项契约将在正式服务器同一提交上执行。
+- 修改文件：`material_center_v1/adaptation/index.php`、`material_center_v1/api/v1/adaptation.php`、`material_center_v1/app/Services/AdaptationService.php`、`material_center_v1/assets/css/app.css`、`material_center_v1/assets/js/adaptation-shell.js`、`material_center_v1/database/migrations/20260729_021_adaptation_published_versions.php`、`material_center_v1/docs/product-adaptation-workbench-mapping.md`、多份 `material_center_v1/tests/*adaptation*contract*.php` 与本上下文。
+- 发布前备份完成：本地 Git bundle `/tmp/artdon_adaptation_preworkbench_20260729.bundle`（SHA-256 `09d9a4bb8b733d21427b4eba5e8c6146f25ef793df1aa8caab40a485dde47d73`）；正式服务器数据库备份 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/adaptation_workbench_20260729/database_20260729_094045.sql.gz`（SHA-256 `531fec41465d8f57f79d2b31d6c6c47fd8d5c2106df2e6fe48669b6ff49e748e`，已验证压缩包）。未删除、重置或修改任何现有产品、物料、配置、审批、BOM 或用户数据；用户原有商务中心未跟踪文件保持不动。
+- 下一步：完成专项契约检查 → 提交并推送 GitHub → 使用已推送提交的校验 bundle 在正式服务器仅快进发布 → 执行迁移、PHP 语法和专项回归 → 核对本地、GitHub 和服务器 HEAD 一致。
+
 ## 本次：统一权限中心中文化与物料中心中文授权名称（待发布）
 
 - 用户确认统一权限中心需要中文展示，并要求物料中心所有授权项在该中心明确标注为“物料中心权限”。
