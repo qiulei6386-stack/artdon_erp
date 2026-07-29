@@ -1785,11 +1785,10 @@ async function loadCommissionOrders(){
   const optionRequest=COMMISSION_OPTIONS.length?Promise.resolve(null):api('commission_options_list');
   const orderRequest=orderApi('commission_order_list',payload);
   const quoteRequest=COMMISSION_ORDER_PAGE===1?api('commission_quote_list',{keyword:payload.keyword,page:1,page_size:quoteSize}):Promise.resolve({list:[],total:0});
-  let d,options;
+  let d;
   try{
-    [d,options]=await Promise.all([orderRequest,optionRequest]);
+    d=await orderRequest;
     if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-    if(options){COMMISSION_OPTIONS=Array.isArray(options.options)?options.options:[];refreshCommissionOrderOptions()}
     COMMISSION_ORDER_ROWS=Array.isArray(d.list)?d.list:[];
     COMMISSION_ORDER_TOTAL=Number(d.total||0);
     COMMISSION_ORDER_PAGE=Number(d.page||COMMISSION_ORDER_PAGE);
@@ -1803,6 +1802,12 @@ async function loadCommissionOrders(){
     if(stats)stats.textContent='报价/订单读取失败';
     return;
   }
+  optionRequest.then(options=>{
+    if(token!==COMMISSION_ORDER_LOAD_TOKEN||!options)return;
+    COMMISSION_OPTIONS=Array.isArray(options.options)?options.options:[];
+    refreshCommissionOrderOptions();
+    renderCommissionOrderRows();
+  }).catch(()=>{});
   try{
     const qd=await quoteRequest;
     if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
