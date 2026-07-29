@@ -590,6 +590,25 @@ function qo_commission_order_list(PDO $pdo,$d){
   foreach($list as &$r){$r['items']=$grouped[(int)$r['order_id']]??[];if(($r['commission_scope']??'')==='line'){$r['commission_amount']=array_sum(array_map(fn($x)=>(float)($x['commission_amount']??0),$r['items']));}}unset($r);
   return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
 }
+function qo_commission_summary_list(PDO $pdo,$d){
+  qo_ensure_schema($pdo);qo_commission_schema($pdo);$where=[];$args=[];
+  $q=qo_s($d['keyword']??'',160);if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ?)';for($i=0;$i<4;$i++)$args[]='%'.$q.'%';}
+  $customer=qo_s($d['customer_name']??'',160);if($customer!==''){$where[]='o.customer_name LIKE ?';$args[]='%'.$customer.'%';}
+  $customerCode=qo_s($d['customer_code']??'',160);if($customerCode!==''){$where[]='(CAST(o.customer_id AS CHAR) LIKE ? OR o.customer_json LIKE ?)';$args[]='%'.$customerCode.'%';$args[]='%'.$customerCode.'%';}
+  $user=qo_s($d['user_name']??'',160);if($user!==''){$where[]='o.user_name LIKE ?';$args[]='%'.$user.'%';}
+  $currency=qo_s($d['currency']??'',20);if($currency!==''){$where[]='o.currency=?';$args[]=$currency;}
+  $settle=qo_s($d['settle_status']??'',50);if($settle!==''){$where[]='COALESCE(s.settle_status,?)=?';$args[]='unsettled';$args[]=$settle;}
+  $dateFrom=qo_s($d['date_from']??'',20);if($dateFrom!==''){$where[]='DATE(COALESCE(o.order_date,o.created_at))>=?';$args[]=$dateFrom;}
+  $dateTo=qo_s($d['date_to']??'',20);if($dateTo!==''){$where[]='DATE(COALESCE(o.order_date,o.created_at))<=?';$args[]=$dateTo;}
+  $sqlWhere=$where?' WHERE '.implode(' AND ',$where):'';$limit=max(20,min(500,(int)($d['page_size']??300)));
+  $join=' LEFT JOIN quote_commission_snapshots s ON s.id=(SELECT sx.id FROM quote_commission_snapshots sx WHERE sx.order_id=o.id ORDER BY (sx.rule_id=0) DESC,sx.id DESC LIMIT 1)';
+  $total=(int)(qo_row($pdo,'SELECT COUNT(*) c FROM quote_sales_orders o'.$join.$sqlWhere,$args)['c']??0);
+  $list=qo_rows($pdo,'SELECT o.id AS order_id,o.order_no,o.quote_no,o.customer_id,o.customer_name,o.customer_json,o.user_name,o.amount AS order_amount,o.qty AS total_qty,o.currency AS order_currency,o.paid_amount,o.balance_amount,o.payment_status,o.shipment_status,o.status AS order_status,o.created_at AS order_created_at,COALESCE(o.order_date,o.created_at) AS order_date,(SELECT COALESCE(SUM(p.commission_deduct_amount),0) FROM quote_order_payments p WHERE p.order_id=o.id) AS commission_deduct_amount_calc,s.id AS snapshot_id,s.rule_id,s.target_name,s.target_type,s.commission_mode,s.commission_value,s.calc_base,s.base_amount,s.commission_amount,s.currency,s.settle_node,s.settle_status,s.settled_amount,s.commission_scope,s.receivable_effect,s.deduct_amount,s.deduct_confirmed,s.deduct_reason,s.deduct_note,s.note,s.settled_at,s.settled_by FROM quote_sales_orders o'.$join.$sqlWhere.' ORDER BY COALESCE(o.order_date,o.created_at) DESC,o.id DESC LIMIT '.$limit,$args);
+  $ids=array_values(array_filter(array_map(fn($r)=>(int)$r['order_id'],$list)));$grouped=[];
+  if($ids){$marks=implode(',',array_fill(0,count($ids),'?'));$children=qo_rows($pdo,"SELECT i.id order_item_id,i.order_id,i.item_index,i.image,i.product_code product_model,i.customer_code customer_model,i.product_name,i.color,i.qty,i.unit_price,i.amount product_amount,l.id line_id,l.snapshot_id,l.is_commission_enabled,l.target_type,l.target_name,l.commission_mode,l.commission_value,l.calc_base,l.base_amount,l.commission_amount,l.currency,l.receivable_effect,l.settle_status,l.note FROM quote_sales_order_items i LEFT JOIN quote_commission_lines l ON l.order_item_id=i.id WHERE i.order_id IN ($marks) ORDER BY i.order_id,i.item_index,i.id",$ids);foreach($children as $c)$grouped[(int)$c['order_id']][]=$c;}
+  foreach($list as &$r){$r['items']=$grouped[(int)$r['order_id']]??[];}unset($r);
+  return ['list'=>$list,'total'=>$total];
+}
 function qo_commission_order_save(PDO $pdo,$d){
   qo_commission_schema($pdo);$orderId=(int)($d['order_id']??0);$o=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=?',[$orderId]);if(!$o)throw new RuntimeException('订单不存在');
   $mode=qo_s($d['commission_mode']??'percent',50);$value=max(0,qo_num($d['commission_value']??0));$baseCode=qo_s($d['calc_base']??'order_amount',50);$base=$baseCode==='received_amount'?qo_num($o['paid_amount']??0):qo_num($o['amount']??0);$commission=qo_commission_amount($mode,$value,$base,qo_num($o['qty']??0));if($commission===null)throw new RuntimeException('毛利数据不足，暂不能计算');
@@ -625,6 +644,7 @@ try{
   if($action==='next_doc_numbers'){ $d=qo_input(); qo_ok(qo_next_doc_numbers($pdo,(int)($d['order_id']??0),qo_s($d['ship_date']??'',20))); }
   if($action==='list') qo_ok(['orders'=>qo_list_orders($pdo)]);
   if($action==='commission_order_list') qo_ok(qo_commission_order_list($pdo,qo_input()));
+  if($action==='commission_summary_list') qo_ok(qo_commission_summary_list($pdo,qo_input()));
   if($action==='commission_order_save') qo_ok(qo_commission_order_save($pdo,qo_input()));
   if($action==='commission_order_batch_save'){ $d=qo_input();$saved=[];$errors=[];foreach(($d['items']??[]) as $x){try{$saved[]=qo_commission_order_save($pdo,$x);}catch(Throwable $e){$errors[]=['order_id'=>$x['order_id']??0,'reason'=>$e->getMessage()];}}qo_ok(['saved'=>$saved,'errors'=>$errors]); }
   if($action==='commission_line_save') qo_ok(qo_commission_line_save($pdo,qo_input()));
