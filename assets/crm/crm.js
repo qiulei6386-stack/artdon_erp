@@ -162,15 +162,33 @@
   }
 
   function officeMailReadableBody(mail) {
+    var html = String((mail && mail.body_html) || '').trim();
     var text = String((mail && mail.body_text) || '').trim();
-    // Some Office clients put a readable reply first and then append a full
-    // HTML fragment to text/plain.  Never print those tags literally.
-    if (officeMailTextHasHtmlMarkup(text)) text = officeMailToReadableText(text);
-    if (!text) text = officeMailToReadableText((mail && mail.body_html) || '');
-    if (!text) return '';
+    // HTML 是邮件的原始版式；body_text 只是同步时生成的副本。以前这里优先
+    // 使用 body_text，遇到 CRM 已发送邮件附带 Office 引用时会把 &nbsp;、签名和
+    // 全部历史往来拼成一行。优先从 HTML 取可读文本，只有 HTML 没有可读内容时
+    // 才回退到纯文本副本。
+    var htmlForRead = html;
+    if (htmlForRead && /mail-inline-quote/i.test(htmlForRead)) {
+      try {
+        var quoteDoc = new DOMParser().parseFromString(htmlForRead, 'text/html');
+        quoteDoc.querySelectorAll('.mail-inline-quote').forEach(function (node) { node.remove(); });
+        htmlForRead = (quoteDoc.body && quoteDoc.body.innerHTML) || htmlForRead;
+      } catch (error) {}
+    }
+    var htmlText = officeMailTextHasHtmlMarkup(htmlForRead) ? officeMailToReadableText(htmlForRead) : '';
+    if (officeMailTextHasHtmlMarkup(text)) {
+      text = officeMailToReadableText(text);
+    } else {
+      // Keep addresses such as <sales@example.com> intact, but decode the
+      // whitespace entities that Outlook leaves in text/plain copies.
+      text = text.replace(/&(nbsp|#160|#x0*a0);/gi, ' ').replace(/\u00a0/g, ' ');
+    }
+    var readable = htmlText || text;
+    if (!readable) return '';
     return '<section class="mail-office-readable">' +
       '<div class="mail-office-readable-note">已使用 Office 邮件兼容阅读版</div>' +
-      '<pre>' + esc(text) + '</pre>' +
+      '<pre>' + esc(readable) + '</pre>' +
       '</section>';
   }
 
