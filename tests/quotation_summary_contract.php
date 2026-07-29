@@ -29,7 +29,11 @@ foreach ([
 need_summary(strpos($api, 'quote_sales_orders') !== false, '报价总结没有读取订单数据');
 need_summary(strpos($api, 'quote_order_payments') !== false, '报价总结没有读取收款数据');
 need_summary(strpos($api, 'quote_shipments') !== false, '报价总结没有读取出货数据');
+need_summary(strpos($api, 'quote_summary_attach_next_followup') !== false, '报价总结没有联动 CRM 下次跟进时间');
+need_summary(strpos($api, "quote_source='legacy'") !== false && strpos($api, 'crm_quote_followup_activities') !== false, '报价总结没有按报价来源精确读取 CRM 跟进记录');
 need_summary(strpos($api, 'LIMIT 10000') !== false, '报价总结导出没有读取完整筛选明细的上限');
+need_summary(strpos($api, '报价号\\t订单号\\t客户\\t国家/地区\\t负责人\\t报价日期\\t下次跟进时间') !== false, '报价总结 Excel 没有导出下次跟进时间');
+need_summary(strpos($api, '报价总结\\tRMB\\tUSD') === false, '报价总结 Excel 不应导出统计卡和图表汇总');
 need_summary(strpos($api, "['RMB'=>(float)") !== false, '金额统计没有保留 RMB / USD 分开口径');
 need_summary(strpos($api, 'ksort($owners);$owners=array_values(array_keys($owners));') !== false, '报价总结筛选负责人没有返回 JSON 列表');
 need_summary(strpos($api, 'ksort($customers);$customers=array_values(array_keys($customers));') !== false, '报价总结筛选客户没有返回 JSON 列表');
@@ -40,6 +44,7 @@ need_summary(strpos($page, 'summaryBusinessTrend') !== false, '数量趋势图�
 need_summary(strpos($page, 'summaryAmountTrend') !== false, '金额趋势图容器缺失');
 need_summary(strpos($page, 'summaryOwnerRank') !== false && strpos($page, 'summaryCustomerRank') !== false, '排行容器缺失');
 need_summary(strpos($page, 'summaryTableRows') !== false && strpos($page, 'summaryPager') !== false, '分页明细缺失');
+need_summary(strpos($page, '>下次跟进时间</th>') !== false && strpos($page, 'r.next_followup_at') !== false, '报价明细没有显示 CRM 下次跟进时间');
 need_summary(strpos($page, 'exportQuotationSummary') !== false, '导出入口缺失');
 need_summary(strpos($page, 'function quotationSummaryArray(values)') !== false, '报价总结缺少列表响应兼容处理');
 need_summary(strpos($page, 'quotationSummaryArray(values).map') !== false, '报价总结筛选下拉未使用列表响应兼容处理');
