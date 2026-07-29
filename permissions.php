@@ -197,6 +197,7 @@ function permission_module_name(string $module): string
         'notifications' => '通知中心',
         'task' => '任务中心',
         'sample' => '样品寄送',
+        'material_center' => '物料中心',
     ];
     return $map[$module] ?? $module;
 }
@@ -396,10 +397,14 @@ function permission_view_meta(array $p): array
     $isDanger = is_dangerous_permission($key) || in_array($riskLevel, ['dangerous', 'high'], true);
     $risk = $isDanger ? 'danger' : ($riskLevel === 'medium' ? 'sensitive' : 'normal');
     $riskText = $risk === 'danger' ? '高危' : ($risk === 'sensitive' ? '敏感' : '普通');
-    $title = permission_module_name($module) . ' - ' . permission_action_name((string)$p['action']);
     $desc = trim((string)($p['description'] ?? ''));
+    // 物料中心沿用统一权限表中已维护好的中文业务名称，避免把
+    // power_rules_manage 之类的底层动作编码直接展示给使用人员。
+    $title = $module === 'material_center' && $desc !== ''
+        ? $desc
+        : permission_action_name((string)$p['action']);
     if ($desc === '') {
-        $desc = '允许执行“' . $title . '”相关操作。';
+        $desc = '允许执行“' . permission_module_name($module) . ' - ' . $title . '”相关操作。';
     }
     if (strpos($key, 'customer.view_') === 0) {
         $title = '客户字段 - ' . permission_action_name(substr($key, strlen('customer.')));
@@ -797,20 +802,20 @@ if (!$requestTablesReady) flash('权限申请表尚未初始化。请到设置�
 <section class="acl-page">
   <div class="acl-hero">
     <div>
-      <span class="acl-kicker">Access Control Center</span>
+      <span class="acl-kicker">统一权限中心</span>
       <h2>企业权限管理系统</h2>
       <p>集中管理员工、角色、权限申请、审批、临时授权和审计记录。权限底层校验仍由后端统一执行。</p>
     </div>
-    <label class="acl-advanced"><input type="checkbox" data-acl-advanced> 高级模式显示 key</label>
+    <label class="acl-advanced"><input type="checkbox" data-acl-advanced> 高级模式显示权限编码</label>
   </div>
 
   <div class="acl-metrics">
-    <div><span>用户总数</span><strong><?= h($counts['users']) ?></strong><em>People</em></div>
-    <div><span>角色数量</span><strong><?= h($counts['roles']) ?></strong><em>Roles</em></div>
-    <div><span>权限总数</span><strong><?= h($counts['perms']) ?></strong><em>Rules</em></div>
-    <div><span><?= h(permission_system_label($selectedSystemKey)) ?>权限</span><strong><?= h($counts['system_perms']) ?></strong><em>System ACL</em></div>
-    <div><span>待审核用户</span><strong><?= h($counts['pending_users']) ?></strong><em>Review</em></div>
-    <div><span>待审批权限</span><strong><?= h($counts['pending_requests']) ?></strong><em>Approval</em></div>
+    <div><span>用户总数</span><strong><?= h($counts['users']) ?></strong><em>人员</em></div>
+    <div><span>角色数量</span><strong><?= h($counts['roles']) ?></strong><em>角色</em></div>
+    <div><span>权限总数</span><strong><?= h($counts['perms']) ?></strong><em>授权项</em></div>
+    <div><span><?= h(permission_system_label($selectedSystemKey)) ?>权限</span><strong><?= h($counts['system_perms']) ?></strong><em>系统权限</em></div>
+    <div><span>待审核用户</span><strong><?= h($counts['pending_users']) ?></strong><em>待审核</em></div>
+    <div><span>待审批权限</span><strong><?= h($counts['pending_requests']) ?></strong><em>待审批</em></div>
   </div>
 
   <nav class="acl-tabs">
@@ -924,7 +929,7 @@ if (!$requestTablesReady) flash('权限申请表尚未初始化。请到设置�
     <main class="acl-detail">
       <section class="crm-acl-summary">
         <div>
-          <span><?= h(permission_system_label($selectedSystemKey)) ?> Access</span>
+          <span><?= h(permission_system_label($selectedSystemKey)) ?>授权概览</span>
           <h3><?= h($selectedUser['real_name'] ?: $selectedUser['username']) ?></h3>
           <p><?= h(($selectedUser['role_name'] ?: '未分配角色') . ' / ' . ($selectedUser['department_name'] ?: '未分配部门')) ?></p>
         </div>
@@ -940,7 +945,7 @@ if (!$requestTablesReady) flash('权限申请表尚未初始化。请到设置�
       <section class="acl-preset-panel">
         <div class="acl-preset-head">
           <div>
-            <span>Permission Presets</span>
+            <span>权限预设</span>
             <h3><?= h(permission_system_label($selectedSystemKey)) ?>权限预设模板</h3>
             <p>模板只作用于当前系统。应用后会刷新当前员工的单独授权/禁止，其他系统不受影响。</p>
           </div>

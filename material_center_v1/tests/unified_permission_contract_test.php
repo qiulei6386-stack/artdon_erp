@@ -39,7 +39,16 @@ $requiredPermissions = [
 foreach ($requiredPermissions as $permission) {
     if (!str_contains($migration, $permission)) throw new RuntimeException("unified permission migration missing: $permission");
 }
-foreach (["'material_center'", "'label' => '物料中心'", "'prefixes' => ['material_center.']", "'domains' => ['material_center']"] as $marker) {
+foreach ([
+    "'material_center'",
+    "'label' => '物料中心'",
+    "'prefixes' => ['material_center.']",
+    "'domains' => ['material_center']",
+    "'material_center' => '物料中心'",
+    '统一权限中心',
+    '高级模式显示权限编码',
+    "\$module === 'material_center' && \$desc !== ''",
+] as $marker) {
     if (!str_contains($permissionCenter, $marker)) throw new RuntimeException("unified permission center tab missing: $marker");
 }
 if (str_contains($settings, 'new PermissionAdminService')) throw new RuntimeException('independent permission admin remains active');
