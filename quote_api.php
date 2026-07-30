@@ -724,13 +724,14 @@ function norm_key($v){
 
 function quote_no_no_nested($no){
   $no=trim((string)$no);
-  $no=preg_replace('/-V\d+$/i','',$no);
+  $version='';
+  if(preg_match('/-V\d+$/i',$no,$vm)){ $version=strtoupper($vm[0]); $no=substr($no,0,-strlen($vm[0])); }
   if(preg_match('/^(AT-\d{6}[A-Z0-9]+)((?:-\d{2})+)$/i',$no,$m)){
     preg_match_all('/-(\d{2})/',$m[2],$mm);
     $first=$mm[1][0]??'';
-    return $m[1].($first!==''?'-'.$first:'');
+    return $m[1].($first!==''?'-'.$first:'').$version;
   }
-  return $no;
+  return $no.$version;
 }
 function product_type_from_category($v){
   $s=strtolower((string)$v);
@@ -3001,6 +3002,11 @@ function qlog_customer_name($d){
   if(isset($d['customer']) && is_array($d['customer'])) return (string)($d['customer']['company']??$d['customer']['name']??'');
   return '';
 }
+function quote_save_identity_norm($v){
+  $s=trim((string)$v);
+  $s=preg_replace('/\s+/u',' ',$s);
+  return strtolower((string)$s);
+}
 function qlog_summary($action,$d){
   $no=$d['quote_no']??''; $cn=qlog_customer_name($d); $id=$d['id']??'';
   $map=[
@@ -4402,6 +4408,18 @@ if($action==='init'){
    $before=null;
    if(!empty($d['id'])) $before=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($d['id'])]);
    if($before){
+     $oldNo=quote_no_no_nested((string)($before['quote_no']??''));
+     $newNo=quote_no_no_nested((string)($d['quote_no']??''));
+     $oldCustomer=quote_save_identity_norm(qlog_customer_name($before));
+     $newCustomer=quote_save_identity_norm(qlog_customer_name($d));
+     if($oldNo!=='' && $newNo!=='' && $oldNo!==$newNo){
+       quote_log_event($pdo,['level'=>'WARN','action'=>'save_quote_identity_blocked','event'=>'阻止报价跨单覆盖','quote_id'=>intval($d['id']),'quote_no'=>$newNo,'customer_name'=>qlog_customer_name($d),'summary'=>'阻止报价保存覆盖：ID '.intval($d['id']).' 属于 '.$oldNo.'，提交为 '.$newNo,'detail'=>$d,'before'=>$before]);
+       fail('系统已阻止可能覆盖其它报价：当前保存ID属于 '.$oldNo.'，但页面提交的是 '.$newNo.'。请重新打开报价，或使用“另存版本/新报价”。');
+     }
+     if($oldCustomer!=='' && $newCustomer!=='' && $oldCustomer!==$newCustomer){
+       quote_log_event($pdo,['level'=>'WARN','action'=>'save_quote_identity_blocked','event'=>'阻止报价跨客户覆盖','quote_id'=>intval($d['id']),'quote_no'=>$newNo,'customer_name'=>qlog_customer_name($d),'summary'=>'阻止报价保存覆盖：ID '.intval($d['id']).' 客户为 '.qlog_customer_name($before).'，提交客户为 '.qlog_customer_name($d),'detail'=>$d,'before'=>$before]);
+       fail('系统已阻止可能覆盖其它客户的报价：当前保存ID客户为 '.qlog_customer_name($before).'，页面提交客户为 '.qlog_customer_name($d).'。请重新打开报价，或使用“另存版本/新报价”。');
+     }
      if(quote_approval_status_of($before)==='approved') fail('这张报价已经审核通过，已锁定快照，不能再修改。请复制/另存新版本后重新报价。');
      $oldOwner=quote_sales_owner_from_quote($before,(string)($d['user_name']??($__quote_user['username']??'')));
      if($oldOwner!=='') $d['user_name']=$oldOwner;
