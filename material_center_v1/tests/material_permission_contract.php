@@ -44,9 +44,9 @@ foreach ([
 }
 
 foreach ([
-    $materialMasterApi => ['requireMaterialTransition($user,$action)', "requireMaterialTransition($user,'delete_draft')", 'material_center.material.copy'],
+    $materialMasterApi => ['requireMaterialTransition($user,$action)', 'requireMaterialTransition($user,\'delete_draft\')', 'material_center.material.copy'],
     $materialsApi => ['requireMaterialTransition($user,(string)$_POST[\'transition\'])'],
-    $sourceApi => ["requireMaterialTransition($user, 'approve')", "requireMaterialTransition($user, 'submit')"],
+    $sourceApi => ['requireMaterialTransition($user, \'approve\')', 'requireMaterialTransition($user, \'submit\')'],
     $sourceService => ['canFormalize($user)'],
     $categoryFieldsApi => ['canFormalize($user)'],
     $powerService => ['canFormalize($user)'],
