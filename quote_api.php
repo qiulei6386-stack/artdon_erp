@@ -3258,6 +3258,15 @@ function quote_can_approve(array $u, array $perms): bool {
 function quote_require_approver(array $u, array $perms): void {
   if(!quote_can_approve($u,$perms)) fail('当前账号没有审核权限：请到统一权限中心 → 报价系统 → 勾选“审核报价/驳回/改价”。');
 }
+function quote_review_moq_value($v): string {
+  $s=trim((string)$v);
+  if($s==='') return '';
+  if(is_numeric($s)){
+    $n=max(0,(float)$s);
+    return abs($n-round($n))<0.000001 ? (string)(int)round($n) : rtrim(rtrim(number_format($n,4,'.',''),'0'),'.');
+  }
+  return quote_v640_substr($s,0,60);
+}
 function quote_apply_review_items(array $items): array {
   $out=[];
   foreach($items as $it){
@@ -3272,6 +3281,7 @@ function quote_apply_review_items(array $items): array {
     $it['manual_price']=true;
     $it['approved_price']=$price;
     $it['approved_qty']=$qty;
+    if(array_key_exists('moq',$it)){ $it['moq']=quote_review_moq_value($it['moq']); $it['approved_moq']=$it['moq']; }
     if($mult>0){ $it['price_multiplier']=$mult; $it['approved_multiplier']=$mult; }
     $out[]=$it;
   }
@@ -3288,12 +3298,15 @@ function quote_merge_review_items(array $savedItems, array $reviewItems): array 
     $qty=max(0,(float)($review['qty']??$saved['qty']??0));
     $price=max(0,(float)($review['price']??$review['unit_price']??$saved['price']??$saved['unit_price']??0));
     $mult=max(0,(float)($review['price_multiplier']??$review['approved_multiplier']??$review['multiplier']??$saved['price_multiplier']??0));
-    // 审核只允许调整数量、单价及倍率；产品、图片、规格和部件始终以已保存报价为准。
+    // 审核只允许调整数量、单价、倍率及 MOQ；产品、图片、规格和部件始终以已保存报价为准。
     $merged=$saved;
+    $moq=array_key_exists('moq',$review)?quote_review_moq_value($review['moq']):quote_review_moq_value($saved['moq']??'');
     $merged['qty']=$qty;
     $merged['price']=$price;
     $merged['unit_price']=$price;
     $merged['amount']=$qty*$price;
+    $merged['moq']=$moq;
+    $merged['approved_moq']=$moq;
     $merged['manual_price']=true;
     $merged['approved_price']=$price;
     $merged['approved_qty']=$qty;
@@ -3321,15 +3334,17 @@ function quote_review_item_changes(array $before, array $after): array {
     $oldQty=(float)($b['qty']??0); $newQty=(float)($a['qty']??0);
     $oldPrice=(float)($b['price']??$b['unit_price']??0); $newPrice=(float)($a['price']??$a['unit_price']??0);
     $oldMult=(float)($b['price_multiplier']??$b['approved_multiplier']??0); $newMult=(float)($a['price_multiplier']??$a['approved_multiplier']??0);
+    $oldMoq=quote_review_moq_value($b['moq']??''); $newMoq=quote_review_moq_value($a['moq']??'');
     $oldAmount=(float)($b['amount']??($oldQty*$oldPrice)); $newAmount=(float)($a['amount']??($newQty*$newPrice));
-    $qtyChanged=abs($oldQty-$newQty)>0.000001; $priceChanged=abs($oldPrice-$newPrice)>0.000001; $multChanged=($oldMult>0 || $newMult>0) && abs($oldMult-$newMult)>0.000001; $amountChanged=abs($oldAmount-$newAmount)>0.000001;
-    if($qtyChanged||$priceChanged||$multChanged||$amountChanged){
+    $qtyChanged=abs($oldQty-$newQty)>0.000001; $priceChanged=abs($oldPrice-$newPrice)>0.000001; $multChanged=($oldMult>0 || $newMult>0) && abs($oldMult-$newMult)>0.000001; $moqChanged=$oldMoq!==$newMoq; $amountChanged=abs($oldAmount-$newAmount)>0.000001;
+    if($qtyChanged||$priceChanged||$multChanged||$moqChanged||$amountChanged){
       $changes[]=[
         'index'=>$i,
         'name'=>quote_item_name_for_log($a?:$b,$i),
         'old_qty'=>$oldQty+0,'new_qty'=>$newQty+0,'qty_changed'=>$qtyChanged?1:0,
         'old_multiplier'=>quote_money_log($oldMult),'new_multiplier'=>quote_money_log($newMult),'multiplier_changed'=>$multChanged?1:0,
         'old_price'=>quote_money_log($oldPrice),'new_price'=>quote_money_log($newPrice),'price_changed'=>$priceChanged?1:0,
+        'old_moq'=>$oldMoq,'new_moq'=>$newMoq,'moq_changed'=>$moqChanged?1:0,
         'old_amount'=>quote_money_log($oldAmount),'new_amount'=>quote_money_log($newAmount),'amount_changed'=>$amountChanged?1:0
       ];
     }
