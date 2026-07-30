@@ -56,7 +56,7 @@ foreach ([
     '.mc-v3-recent',
     '.mc-v3-product-table',
     '.mc-v3-product-summary',
-    '.mc-v3-workbench',
+    '.mc-v3-workarea',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("adaptation v3 layout missing restored marker: {$marker}");
