@@ -1,13 +1,13 @@
 # Artdon ERP 工作上下文
 
-## 本次：报价审核预览增加 MOQ 审核列（待发布）
+## 本次：报价审核预览增加 MOQ 审核列（已发布）
 
 - 用户要求在“报价审核预览”的“成本公式”后增加 `MOQ` 列：报价产品行已有 MOQ 时自动带入；没有填则显示为空，审核时可手工填写。
 - 前端调整：审核弹窗表头改为 `成本公式 → MOQ → Specification`；每个产品行新增可编辑 `review-moq` 数字输入框，只读取已保存产品行的 `it.moq`，不额外用产品库默认值补空；审核提交时将 `moq` 和 `approved_moq` 写入审核产品快照。
 - 后端调整：审核通过合并产品明细时，允许审核修改 MOQ，并保留空白；审核日志差异增加 MOQ 修改记录。产品、图片、规格和部件仍继续以已保存报价为准。
 - 修改文件：`quotation.php`、`quote_api.php`、新增 `tests/quote_review_moq_contract.php`、本上下文。未修改报价、订单、客户、佣金或其它业务数据。
 - 本地检查：`git diff --check` 通过；报价页 5 个内嵌 JavaScript 块 `node --check` 通过；借腾讯云 PHP 解释器对 `quotation.php`、`quote_api.php` 和新增契约测试文件做语法检查通过。
-- Git / 部署：待提交、推送 GitHub 并同步正式服务器；发布后需在服务器执行 PHP 语法和 MOQ 专项契约。
+- Git / 部署：功能提交 `0bec910fc9abc1c0c648ea63abf3698ff3485f68` 已推送 GitHub `main`，并通过 SHA-256 为 `3e14631bf5dd82a257a2ef83eac85302e8ad958d3b3c2e65b1c8eb87c269aac7` 的 Git bundle 在正式服务器仅快进发布。服务器 `quotation.php`、`quote_api.php` 语法通过；`tests/quote_review_moq_contract.php` 和 `tests/quote_save_identity_guard_contract.php` 均通过。
 
 ## 本次：修复报价保存跨单覆盖防线（已发布）
 
