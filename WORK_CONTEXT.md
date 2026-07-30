@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：修复报价保存跨单覆盖防线（待发布）
+## 本次：修复报价保存跨单覆盖防线（已发布）
 
 - 用户要求先修复报价单保存问题，重点防止历史报价打开/另存版本时复用旧数据库 ID，导致 A 报价被 B 报价号和客户覆盖。
 - 前端修复：`另存版本` 改为强制新增保存，不再携带当前 `S.currentQuoteId`；报价号规范化保留 `-V2/-V3` 版本尾巴；版本号正则修复为可正确识别已有版本；历史报价完整明细未加载完成时禁止保存；慢请求返回时如果用户已经打开其它报价，会丢弃旧响应，避免旧状态回写。
@@ -8,7 +8,7 @@
 - 新增 `tests/quote_save_identity_guard_contract.php`，固定检查“另存版本必须新增、加载中禁止保存、旧响应不能覆盖新打开动作、后端拒绝 ID/报价号/客户不一致”的关键防线。
 - 修改文件：`quotation.php`、`quote_api.php`、`tests/quote_save_identity_guard_contract.php`、本上下文。未修改或回填任何报价、订单、客户、佣金或其它业务数据；用户原有商务中心未提交文件继续保持不动。
 - 本地检查：`git diff --check` 通过；报价页 5 个内嵌 JavaScript 块 `node --check` 通过；既有报价物料名称去重测试通过；借腾讯云 PHP 解释器对 `quotation.php`、`quote_api.php` 和新增契约测试文件做语法检查通过。
-- Git / 部署：待提交、推送 GitHub 并同步正式服务器；发布后需在服务器执行 PHP 语法、报价保存身份防线契约、报价运行性能契约和历史打开相关回归。
+- Git / 部署：修复提交 `20e768e915d93f02c0b9d506769194b78fb3e0f3` 已推送 GitHub `main`，并通过 SHA-256 为 `67a28bec0e09443776b249fe507a83e9af70be332e784e91cf52bae1aed5a67e` 的 Git bundle 在正式服务器仅快进发布。服务器 `quotation.php`、`quote_api.php` 语法通过；`tests/quote_save_identity_guard_contract.php` 和 `tests/quotation_runtime_performance_contract.php` 均通过；三端已核对为同一提交。
 
 ## 本次：找回并恢复被覆盖的 AT-260730CN010 报价（已完成）
 
