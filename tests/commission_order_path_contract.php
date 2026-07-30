@@ -17,6 +17,14 @@ $checks = [
         => str_contains($page, 'let candidates=[c?.crm_customer_id,c?.id]'),
     '客户 ID 兼容 crm_数字 标识'
         => str_contains($page, "/^(?:crm_)?(\\d+)$/i"),
+    '佣金报价订单页只保留稳定版单数据源读取'
+        => substr_count($page, 'async function loadCommissionOrders()') === 1
+            && !str_contains($page, 'const quoteRequest=')
+            && !str_contains($page, '正在补充报价')
+            && !str_contains($page, '含报价与订单'),
+    '订单中心列表读取具备并发复用保护'
+        => str_contains($page, 'let ORDERS_LOADING_PROMISE=null;')
+            && str_contains($page, 'if(ORDERS_LOADING_PROMISE)return ORDERS_LOADING_PROMISE;'),
 ];
 
 $failed = [];

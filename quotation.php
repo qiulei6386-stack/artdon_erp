@@ -1081,19 +1081,25 @@ async function ensureQuoteDetail(id){
   if(!found)DB.quotes.push(full);
   return (DB.quotes||[]).find(x=>String(x.id)===String(id))||full;
 }
+function quoteStartupParam(k){try{return new URLSearchParams(location.search).get(k)||''}catch(e){return ''}}
+function quoteStartupHashPage(){let h=String(location.hash||'').replace(/^#/,'');return h==='orders'?'orders':''}
+function quoteStartupRequestedPage(){
+  let orderId=Number(quoteStartupParam('order_id')||quoteStartupParam('id')||0),orderNo=quoteStartupParam('order_no');
+  if(orderId||orderNo)return 'orders';
+  return quoteStartupParam('page')||quoteStartupHashPage()||'';
+}
 async function load(){
   if(!(await checkAuth()))return;
   DB=await api('init');
   if(DB.me){AUTH.user=DB.me;AUTH.permissions=DB.permissions||DB.me.permissions||AUTH.permissions||{};}
   ensureCommissionSummaryPage();
   updateAuthUi();initDefaults();bind();
-  let ctx=openedContext(),page=localStorage.getItem('artdon_quote_current_page')||'quote';
-  if(ctx?.type==='quote'&&page==='quote'){
-    await Promise.resolve(loadQuote(ctx.id));
-  }else{
-    newQuote();renderCore();
-    if(ctx?.type==='order'&&page==='orders')await viewOrder(ctx.id);
+  newQuote();renderCore();
+  if(quoteStartupRequestedPage()){
     restoreLastPage();
+  }else{
+    try{localStorage.removeItem('artdon_quote_open_context')}catch(e){}
+    showPage('quote');
   }
   restoreQuoteConfigCollapsed();restoreTopDashCollapsed();startCrmCustomerAutoSync();startQuoteRuntimeAutoSync();
   loadDocumentSettings().catch(()=>{});
@@ -1180,7 +1186,7 @@ function showPage(p){
   clientLog('open_page','打开页面：'+p,{target_page:p});
 }
 function restoreLastPage(){
-  let p=localStorage.getItem('artdon_quote_current_page')||'quote';
+  let p=quoteStartupRequestedPage()||'quote';
   if(!$('page-'+p)) p='quote';
   showPage(p);
 }
@@ -1925,60 +1931,6 @@ function commissionSummaryRow(c){return `<tr><td><span class="commission-summary
 function renderCommissionSummaryPage(list,total){let rows=(Array.isArray(list)?list:[]).filter(r=>{let t=commissionSummaryTotals(r);return t.expected>0||t.settled>0}),groups={},currencies={};rows.forEach(r=>{let t=commissionSummaryTotals(r),code=commissionCustomerCode(r),name=String(r.customer_name||'未命名客户'),key=[name,code,t.currency].join('|'),g=groups[key]||(groups[key]={name,code,...t,orders:0});g.orders++;g.amount+=t.amount;g.paid+=t.paid;g.balance+=t.balance;g.expected+=t.expected;g.settled+=t.settled;let c=currencies[t.currency]||(currencies[t.currency]={...t,orders:0});c.orders++;c.amount+=t.amount;c.paid+=t.paid;c.balance+=t.balance;c.expected+=t.expected;c.settled+=t.settled;});$('commissionSummaryStats').textContent=`显示 ${rows.length} 条有佣金订单${Number(total)>rows.length?` / 共 ${Number(total)} 条`:''}`;let currencyRows=Object.values(currencies).sort((a,b)=>a.currency.localeCompare(b.currency)).map(commissionSummaryRow).join('');let currencyBox=$('commissionSummaryCurrencyRows');if(currencyBox)currencyBox.innerHTML=currencyRows||'<tr><td class="commission-summary-empty" colspan="8">当前筛选没有佣金订单</td></tr>';$('commissionSummaryCustomerRows').innerHTML=Object.values(groups).sort((a,b)=>b.expected-a.expected).map(g=>`<tr><td class="commission-summary-customer">${esc(g.name)}</td><td class="commission-summary-code">${esc(g.code||'-')}</td><td><span class="commission-summary-currency">${esc(g.currency)}</span></td><td class="commission-summary-number">${g.orders}</td><td class="commission-summary-number">${commissionSummaryAmount(g.amount)}</td><td class="commission-summary-number">${commissionSummaryAmount(g.paid,'received')}</td><td class="commission-summary-number">${commissionSummaryAmount(g.balance,'outstanding')}</td><td class="commission-summary-number">${commissionSummaryAmount(g.expected,'commission')}</td><td class="commission-summary-number">${commissionSummaryAmount(g.settled)}</td><td class="commission-summary-number">${commissionSummaryAmount(Math.max(0,g.expected-g.settled),'commission')}</td></tr>`).join('')||'<tr><td class="commission-summary-empty" colspan="10">当前筛选没有佣金订单</td></tr>';$('commissionSummaryOrderRows').innerHTML=rows.map(r=>{let t=commissionSummaryTotals(r);return `<tr><td><button class="commission-summary-order-link" onclick="showPage('orders');setTimeout(()=>viewOrder(${Number(r.order_id)}),0)">${esc(r.order_no||'-')}</button></td><td>${esc(r.quote_no||'-')}</td><td class="commission-summary-customer">${esc(r.customer_name||'-')}</td><td class="commission-summary-code">${esc(commissionCustomerCode(r)||'-')}</td><td>${esc(r.user_name||'-')}</td><td>${esc(String(r.order_date||r.order_created_at||'-').slice(0,10))}</td><td><span class="commission-summary-currency">${esc(t.currency)}</span></td><td class="commission-summary-number">${commissionSummaryAmount(t.amount)}</td><td class="commission-summary-number">${commissionSummaryAmount(t.paid,'received')}</td><td class="commission-summary-number">${commissionSummaryAmount(t.balance,'outstanding')}</td><td class="commission-summary-number">${commissionSummaryAmount(t.expected,'commission')}</td><td>${commissionSummaryStatus(r.settle_status)}</td></tr>`}).join('')||'<tr><td class="commission-summary-empty" colspan="12">当前筛选没有佣金订单</td></tr>'}
 async function loadCommissionSummaryPage(){if(!$('commissionSummaryOrderRows'))return;let token=++COMMISSION_SUMMARY_LOAD_TOKEN;$('commissionSummaryStats').textContent='正在读取有佣金订单…';let currencyBox=$('commissionSummaryCurrencyRows');if(currencyBox)currencyBox.innerHTML='<tr><td colspan="8" style="text-align:center;padding:24px">正在读取…</td></tr>';$('commissionSummaryCustomerRows').innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px">正在读取…</td></tr>';$('commissionSummaryOrderRows').innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px">正在读取…</td></tr>';try{let d=await orderApi('commission_summary_list',commissionSummaryFilters());if(token!==COMMISSION_SUMMARY_LOAD_TOKEN)return;COMMISSION_SUMMARY_ROWS=Array.isArray(d.list)?d.list:[];renderCommissionSummaryPage(COMMISSION_SUMMARY_ROWS,Number(d.total||COMMISSION_SUMMARY_ROWS.length))}catch(e){if(token!==COMMISSION_SUMMARY_LOAD_TOKEN)return;let msg=esc(e.message||'读取失败');$('commissionSummaryStats').textContent='读取失败';if(currencyBox)currencyBox.innerHTML=`<tr><td colspan="8" style="color:#dc2626;padding:24px">${msg}</td></tr>`;$('commissionSummaryCustomerRows').innerHTML=`<tr><td colspan="10" style="color:#dc2626;padding:24px">${msg}</td></tr>`;$('commissionSummaryOrderRows').innerHTML=`<tr><td colspan="12" style="color:#dc2626;padding:24px">${msg}</td></tr>`}}
 
-async function loadCommissionOrders(){
-  ensureCommissionOrderArea();
-  const token=++COMMISSION_ORDER_LOAD_TOKEN,rows=$('commissionOrderRows'),stats=$('commissionOrderStats'),pager=$('commissionOrderPager');
-  if(rows)rows.innerHTML='<tr><td colspan="20" style="text-align:center;padding:40px;color:#64748b">正在读取订单…</td></tr>';
-  if(stats)stats.textContent='正在读取订单…';
-  if(pager)pager.innerHTML='';
-  const payload={page:COMMISSION_ORDER_PAGE,page_size:COMMISSION_ORDER_SIZE,keyword:$('commissionOrderKeyword')?.value||'',settle_status:$('commissionOrderSettle')?.value||'',currency:$('commissionOrderCurrency')?.value||'',missing_only:Number($('commissionOrderMissing')?.value||0)};
-  const quoteSize=Math.min(15,Math.max(10,Math.floor(COMMISSION_ORDER_SIZE/3)));
-  const optionRequest=COMMISSION_OPTIONS.length?Promise.resolve(null):api('commission_options_list');
-  const orderRequest=orderApi('commission_order_list',payload);
-  const quoteRequest=COMMISSION_ORDER_PAGE===1?api('commission_quote_list',{keyword:payload.keyword,page:1,page_size:quoteSize}):Promise.resolve({list:[],total:0});
-  let d;
-  try{
-    d=await orderRequest;
-    if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-    COMMISSION_ORDER_ROWS=Array.isArray(d.list)?d.list:[];
-    COMMISSION_ORDER_TOTAL=Number(d.total||0);
-    COMMISSION_ORDER_PAGE=Number(d.page||COMMISSION_ORDER_PAGE);
-    COMMISSION_ORDER_PAGES=Math.max(1,Math.ceil(COMMISSION_ORDER_TOTAL/COMMISSION_ORDER_SIZE));
-    renderCommissionOrderRows();
-    if(stats)stats.textContent=COMMISSION_ORDER_PAGE===1?'订单已显示，正在补充报价…':'订单已显示';
-  }catch(e){
-    if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-    COMMISSION_ORDER_ROWS=[];COMMISSION_ORDER_TOTAL=0;
-    if(rows)rows.innerHTML=`<tr><td colspan="20" style="text-align:center;padding:40px;color:#dc2626">报价/订单读取失败：${esc(e.message||'未知错误')}　<button class="gray" onclick="loadCommissionOrders()">重新加载</button></td></tr>`;
-    if(stats)stats.textContent='报价/订单读取失败';
-    return;
-  }
-  optionRequest.then(options=>{
-    if(token!==COMMISSION_ORDER_LOAD_TOKEN||!options)return;
-    COMMISSION_OPTIONS=Array.isArray(options.options)?options.options:[];
-    refreshCommissionOrderOptions();
-    renderCommissionOrderRows();
-  }).catch(()=>{});
-  try{
-    const qd=await quoteRequest;
-    if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-    const quoteRows=Array.isArray(qd.list)?qd.list:[];
-    const orderRows=Array.isArray(d.list)?d.list:[];
-    COMMISSION_ORDER_ROWS=[...quoteRows,...orderRows].slice(0,COMMISSION_ORDER_SIZE);
-    COMMISSION_ORDER_TOTAL=Number(d.total||0)+Number(qd.total||0);
-    COMMISSION_ORDER_PAGES=Math.max(1,Math.ceil(COMMISSION_ORDER_TOTAL/COMMISSION_ORDER_SIZE));
-    renderCommissionOrderRows();
-    if(stats)stats.textContent='已显示报价与订单';
-  }catch(e){
-    if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-    if(stats)stats.textContent='订单已显示；报价暂时读取失败';
-  }
-  if(token!==COMMISSION_ORDER_LOAD_TOKEN)return;
-  if(pager)pager.innerHTML=`<span>共 ${COMMISSION_ORDER_TOTAL} 条（含报价与订单）</span><button ${COMMISSION_ORDER_PAGE<=1?'disabled':''} onclick="commissionOrderGo(${COMMISSION_ORDER_PAGE-1})">上一页</button><span>第 ${COMMISSION_ORDER_PAGE} / ${COMMISSION_ORDER_PAGES} 页</span><button ${COMMISSION_ORDER_PAGE>=COMMISSION_ORDER_PAGES?'disabled':''} onclick="commissionOrderGo(${COMMISSION_ORDER_PAGE+1})">下一页</button><span class="spacer"></span><select style="width:80px" onchange="COMMISSION_ORDER_SIZE=Number(this.value);COMMISSION_ORDER_PAGE=1;loadCommissionOrders()"><option ${COMMISSION_ORDER_SIZE===50?'selected':''}>50</option><option ${COMMISSION_ORDER_SIZE===100?'selected':''}>100</option><option ${COMMISSION_ORDER_SIZE===200?'selected':''}>200</option></select>`;
-}
-async function resolveCommissionOrderDrafts(){if(!Object.keys(COMMISSION_ORDER_DRAFTS).length&&!Object.keys(COMMISSION_ITEM_DRAFTS).length)return true;if(!confirm('当前页有未保存佣金，点击确定先保存。'))return false;return saveCommissionOrderDrafts(true)}
-function commissionOrderFilter(debounce=false){clearTimeout(COMMISSION_ORDER_TIMER);COMMISSION_ORDER_TIMER=setTimeout(async()=>{if(!(await resolveCommissionOrderDrafts()))return;COMMISSION_ORDER_PAGE=1;loadCommissionOrders()},debounce?300:0)}
-async function commissionOrderGo(p){if(!(await resolveCommissionOrderDrafts()))return;COMMISSION_ORDER_PAGE=p;loadCommissionOrders()}
 async function saveCommissionOrderDrafts(silent=false){let orders=Object.values(COMMISSION_ORDER_DRAFTS),items=Object.values(COMMISSION_ITEM_DRAFTS);if(!orders.length&&!items.length){if(!silent)alert('没有未保存的佣金');return true}for(let d of orders){let r=COMMISSION_ORDER_ROWS.find(x=>Number(x.order_id)===Number(d.order_id));Object.assign(d,{entity_type:r.entity_type||'order',quote_id:r.quote_id||0,target_name:d.target_name??r.target_name??'',target_type:d.target_type??r.target_type??'other',commission_mode:d.commission_mode??r.commission_mode??'percent',commission_value:d.commission_value??r.commission_value??0,calc_base:d.calc_base??r.calc_base??'order_amount',currency:d.currency??r.currency??r.order_currency??'USD',settle_node:d.settle_node??r.settle_node??'manual',settle_status:d.settle_status??r.settle_status??'unsettled',settled_amount:d.settled_amount??r.settled_amount??0,commission_scope:d.commission_scope??r.commission_scope??'order',receivable_effect:d.receivable_effect??r.receivable_effect??'none',note:d.note??r.note??'佣金'})}for(let d of items){let it=null,r=null;for(let o of COMMISSION_ORDER_ROWS){let found=(o.items||[]).find(x=>Number(x.order_item_id)===Number(d.order_item_id));if(found){it=found;r=o;break}}if(!it)continue;Object.assign(d,{entity_type:r.entity_type||'order',quote_id:r.quote_id||0,quote_item_index:it.quote_item_index??0,target_name:d.target_name??it.target_name??'',target_type:d.target_type??it.target_type??'other',commission_mode:d.commission_mode??it.commission_mode??'percent',commission_value:d.commission_value??it.commission_value??0,calc_base:'product_amount',currency:d.currency??it.currency??r.order_currency??'USD',settle_status:d.settle_status??it.settle_status??'unsettled',is_commission_enabled:d.is_commission_enabled??it.is_commission_enabled??1,receivable_effect:d.receivable_effect??it.receivable_effect??'none',note:d.note??it.note??'产品佣金'})}let errors=[],orderRows=orders.filter(x=>x.entity_type!=='quote'),quoteRows=orders.filter(x=>x.entity_type==='quote'),orderItems=items.filter(x=>x.entity_type!=='quote'),quoteItems=items.filter(x=>x.entity_type==='quote');if(orderRows.length){let x=await orderApi('commission_order_batch_save',{items:orderRows});errors.push(...(x.errors||[]).map(e=>`订单 ${e.order_id}：${e.reason}`))}for(let q of quoteRows){try{await api('commission_quote_save',q)}catch(e){errors.push(`报价 ${q.quote_id}：${e.message}`)}}if(orderItems.length){let x=await orderApi('commission_line_batch_save',{items:orderItems});errors.push(...(x.errors||[]).map(e=>`产品 ${e.order_item_id}：${e.reason}`))}if(quoteItems.length){let x=await api('commission_quote_lines_save',{items:quoteItems});errors.push(...(x.errors||[]).map(e=>`报价 ${e.quote_id}：${e.reason}`))}if(errors.length){alert(errors.join('\\n'));return false}COMMISSION_ORDER_DRAFTS={};COMMISSION_ITEM_DRAFTS={};await loadCommissionOrders();return true}
 /* 稳定版：报价与订单各自使用唯一数据源分页，避免两个接口互相覆盖页码和总数。 */
 function ensureCommissionOrderArea(){
@@ -3197,8 +3149,8 @@ function renderDash(){
   let docReadyIds=new Set(docs.filter(d=>d.pl_generated_at||d.ci_generated_at).map(d=>String(d.order_id||'')));let noDocs=orders.length?orders.filter(o=>!docReadyIds.has(String(o.id||''))).length:0;
   if($('dNoShip'))$('dNoShip').textContent=noShip;if($('dNoDocs'))$('dNoDocs').textContent=noDocs;if($('dDocsShipSub'))$('dDocsShipSub').textContent=DASH_DOCS_LOADED?'订单 '+orders.length+' ｜ 批次 '+docs.length:'按订单统计';
   let balanceBucket=quoteCurrencyBucket();orders.forEach(o=>quoteAddToCurrencyBucket(balanceBucket,{amount:o.balance_amount||0,currency:o.currency||o.order_currency||cur()}));if($('dBalance'))$('dBalance').textContent=dashPrimaryCurrencyText(balanceBucket);if($('dBalanceSub'))$('dBalanceSub').textContent=dashSecondaryCurrencyText(balanceBucket).replace(' ｜ 原币种统计','')+' 未收';
-  let note=$('dashOrderNote');if(note)note.textContent=DASH_ORDERS_LOADED?'订单数据已同步':'订单数据自动读取';
-  applyDashTemplate();updateDashMiniSummary();ensureDashOrderData();ensureDashDocData();
+  let note=$('dashOrderNote');if(note)note.textContent=DASH_ORDERS_LOADED?'订单数据已同步':'订单数据进入订单/单证页后同步';
+  applyDashTemplate();updateDashMiniSummary();
 }
 function newQuote(){QUOTE_OPEN_TOKEN++;S.loadingQuoteId=0;S.currentQuoteId=0;S.currentQuoteOwner='';S.currentApprovalStatus='new';S.quoteCommission=null;CUSTOMER_COMMISSION_CHECK=null;CUSTOMER_COMMISSION_REMINDER_KEYS.clear();updateQuoteApprovalStrip();clearQuoteCustomerSelection(false);$('quoteDate').value=today();$('quoteNo').value=qno();if($('quoteStatus'))$('quoteStatus').value='Quotation sheet';$('qty').value=1;$('manualPrice').value='';$('moq').value=200;fillOptionSelect('color',colorItems(),'White');if($('beamAngle'))$('beamAngle').value='';if($('power'))$('power').value='';if($('cct'))$('cct').value='';if($('cri'))$('cri').value='';if($('ip'))$('ip').value='';if($('customerCode'))$('customerCode').value='';$('extraSpec').value='';clearQuoteRemarksForm();syncPriceMultiplierFromLevel(false);S.parts={};S.product=null;S.items=[];S.editingIndex=-1;if($('productSelect')){$('productSelect').value='';syncProductSearchFromSelect();}renderParts();render()}
 function baseQuoteNo(no){return normalizeQuoteNoNoNested(String(no||'').replace(/-V\d+$/i,''))}
@@ -4016,7 +3968,26 @@ async function quoteDeleteTestSalesOrder(id){
   }catch(e){alert('删除失败：'+e.message)}
 }
 
-async function loadOrders(){if(!hasPerm('order_convert'))return;try{if($('orderList'))$('orderList').innerHTML='<div class="order-detail-empty">正在读取订单摘要...</div>';let t0=Date.now();let d=await orderApi('list');DB.orders=d.orders||[];DASH_ORDERS_LOADED=true;renderOrders();renderDash();if($('orderCount'))$('orderCount').textContent=($('orderCount').textContent||'')+' ｜ '+(Date.now()-t0)+'ms';}catch(e){if($('orderList'))$('orderList').innerHTML='<div class="order-detail-empty">读取订单失败：'+esc(e.message)+'</div>';}}
+let ORDERS_LOADING_PROMISE=null;
+async function loadOrders(){
+  if(!hasPerm('order_convert'))return;
+  if(ORDERS_LOADING_PROMISE)return ORDERS_LOADING_PROMISE;
+  ORDERS_LOADING_PROMISE=(async()=>{
+    try{
+      if($('orderList'))$('orderList').innerHTML='<div class="order-detail-empty">正在读取订单摘要...</div>';
+      let t0=Date.now(),d=await orderApi('list');
+      DB.orders=d.orders||[];DASH_ORDERS_LOADED=true;renderOrders();renderDash();
+      if($('orderCount'))$('orderCount').textContent=($('orderCount').textContent||'')+' ｜ '+(Date.now()-t0)+'ms';
+      return d;
+    }catch(e){
+      if($('orderList'))$('orderList').innerHTML='<div class="order-detail-empty">读取订单失败：'+esc(e.message)+'</div>';
+      throw e;
+    }finally{
+      ORDERS_LOADING_PROMISE=null;
+    }
+  })();
+  return ORDERS_LOADING_PROMISE;
+}
 function renderOrders(){let kw=($('orderSearch')?.value||'').toLowerCase(), st=$('orderStatus')?.value||'', sort=$('orderSort')?.value||'new';let arr=(DB.orders||[]).filter(o=>(!kw||orderText(o).includes(kw))&&(!st||String(o.status||'')===st));arr.sort((a,b)=>{if(sort==='amountDesc')return Number(b.amount||0)-Number(a.amount||0);if(sort==='amountAsc')return Number(a.amount||0)-Number(b.amount||0);if(sort==='customer')return String(a.customer_name||'').localeCompare(String(b.customer_name||''),'zh');return String(b.created_at||'').localeCompare(String(a.created_at||''));});if($('orderCount'))$('orderCount').textContent='共 '+arr.length+' / '+(DB.orders||[]).length+' 个订单';if(!$('orderList'))return;$('orderList').innerHTML=orderFinanceStrip(arr)+(arr.length?arr.map(o=>{let cls=/已作废|取消/.test(o.status||'')?'voided':(/已完成|已出货/.test(o.status||'')?'done':(/待出货|部分出货|生产中/.test(o.status||'')?'warn':''));let pst=o.payment_status||'未收款';return `<div class="order-card" onclick="viewOrder(${Number(o.id)})"><div><b>${esc(quoteOrderNoAtV68522(o.order_no,o.quote_no)||'')}</b> <span class="order-status ${cls}">${esc(o.status||'待确认')}</span><small>来源报价：${esc(o.quote_no||'')} ｜ 客户：${esc(o.customer_name||'未选客户')} ｜ ${esc(o.order_date||'')} ｜ ${esc(o.currency||'USD')} ${money(o.amount)}</small><small>数量 ${Number(o.qty||0)} PCS ｜ 出货：${esc(o.shipment_status||'未出货')} ｜ 收款：${esc(pst)} ｜ 未收 ${esc(o.currency||'USD')} ${money(o.balance_amount)}</small></div><div class="order-list-actions"><button class="gray" onclick="event.stopPropagation();viewOrder(${Number(o.id)})">详情</button></div></div>`}).join(''):'<div class="order-detail-empty">暂无订单。先在报价单页面点“一键转订单”。</div>');}
 async function viewOrder(id){try{let d=await orderApi('detail',{id});renderOrderDetail(d.order,d.items||[]);document.querySelectorAll('.order-card').forEach(x=>x.classList.remove('active'));}catch(e){alert(e.message)}}
 function renderOrderDetail(o,items){if(!o||!$('orderDetail'))return;let c=orderCustomer(o);let rows=(items||[]).map((it,i)=>{let item={};try{item=JSON.parse(it.item_json||'{}')}catch(e){}let img=it.image||item.product?.image||'';return `<tr><td>${img?`<img class="order-item-img" src="${img}">`:''}</td><td>${i+1}</td><td>${esc(it.customer_code||item.customer_code||'')}</td><td>${esc(it.product_code||item.product?.code||'')}</td><td>${esc(it.product_name||item.product?.name||'')}</td><td>${esc(it.color||item.color||'')}</td><td>${Number(it.qty||0)}</td><td>${money(it.unit_price)}</td><td>${money(it.amount)}</td><td>${Number(it.shipped_qty||0)}</td></tr>`}).join('');$('orderDetail').className='card';$('orderDetail').innerHTML=`<div class="card-head"><div><b>${esc(quoteOrderNoAtV68522(o.order_no,o.quote_no)||'')}</b><div class="hint">来源报价：${esc(o.quote_no||'')} ｜ 创建：${esc(o.created_at||'')}</div></div><div class="btns" style="margin-top:0"><button class="gray" onclick="showPage('quote');">返回报价</button><button class="blue" onclick="alert('下一步开发：出货批次 + Packing List + Commercial Invoice')">生成单证</button></div></div><div class="card-body"><div class="order-kv"><div><b>客户</b><span>${esc(o.customer_name||c.company||'')}</span></div><div><b>订单状态</b><span>${esc(o.status||'待确认')}</span></div><div><b>订单金额</b><span>${esc(o.currency||'USD')} ${money(o.amount)}</span></div><div><b>数量</b><span>${Number(o.qty||0)} PCS</span></div><div><b>报价日期</b><span>${esc(o.quote_date||'')}</span></div><div><b>订单日期</b><span>${esc(o.order_date||'')}</span></div><div><b>出货状态</b><span>${esc(o.shipment_status||'未出货')}</span></div><div><b>付款状态</b><span>${esc(o.payment_status||'未收款')}</span></div></div><div class="order-detail-actions"><button class="blue" onclick="updateOrderStatus(${Number(o.id)},'已确认')">确认订单</button><button class="gray" onclick="updateOrderStatus(${Number(o.id)},'生产中')">生产中</button><button class="gray" onclick="updateOrderStatus(${Number(o.id)},'待出货')">待出货</button><button class="green" onclick="updateOrderStatus(${Number(o.id)},'已完成')">完成</button><button class="red" onclick="updateOrderStatus(${Number(o.id)},'取消')">取消</button>${quoteOrderExtraButtons(o.id,false)}</div><table class="table"><tr><th>图</th><th>#</th><th>Customer Code</th><th>型号</th><th>产品</th><th>颜色</th><th>订单数量</th><th>单价</th><th>金额</th><th>已出货</th></tr>${rows||'<tr><td colspan="10">无产品明细</td></tr>'}</table><div class="order-note" style="margin-top:12px"><b>订单快照：</b> 订单已独立保存产品、价格、客户、Specification JSON。后续修改报价单，不会影响这个订单。下一步会在这里继续加出货批次、Packing List 和 CI。</div></div>`;}
@@ -4285,7 +4256,7 @@ loadPiCommissionReminder=async function(){
   function qHashPage(){ const h=String(location.hash||'').replace(/^#/,''); return h==='orders'?'orders':''; }
   window.quoteRequestedOrderIdV68515 = function(){ return Number(qParam('order_id') || qParam('id') || 0); };
   window.quoteRequestedOrderNoV68515 = function(){ return qParam('order_no') || ''; };
-  window.quoteRequestedPageV68515 = function(){ return qParam('page') || qHashPage() || ''; };
+  window.quoteRequestedPageV68515 = function(){ return (quoteRequestedOrderIdV68515()||quoteRequestedOrderNoV68515()) ? 'orders' : (qParam('page') || qHashPage() || ''); };
   window.quoteAutoOpenOrderFromUrlV68515 = async function(force){
     if(window.__QUOTE_ORDER_URL_OPENED_V68515 && !force) return;
     const id = quoteRequestedOrderIdV68515();

@@ -20,6 +20,20 @@ $checks = [
     '复制报价等待单条详情读取完成'
         => str_contains($page, 'async function copyQuote(id)')
             && str_contains($page, 'let q=await loadQuote(id)'),
+    '普通打开报价首页不再恢复上次订单或上次报价'
+        => str_contains($page, 'function quoteStartupRequestedPage()')
+            && str_contains($page, "if(quoteStartupRequestedPage()){\n    restoreLastPage();\n  }else{")
+            && str_contains($page, "localStorage.removeItem('artdon_quote_open_context')")
+            && str_contains($page, "showPage('quote');"),
+    '恢复页面只接受明确URL请求，不再读取上次页面localStorage'
+        => str_contains($page, "let p=quoteStartupRequestedPage()||'quote';")
+            && !str_contains($page, "let p=localStorage.getItem('artdon_quote_current_page')||'quote';"),
+    '首页仪表盘不再首屏自动拉订单和单证接口'
+        => str_contains($page, "订单数据进入订单/单证页后同步")
+            && !str_contains($page, 'applyDashTemplate();updateDashMiniSummary();ensureDashOrderData();ensureDashDocData();'),
+    '订单列表加载具备并发复用保护'
+        => str_contains($page, 'let ORDERS_LOADING_PROMISE=null;')
+            && str_contains($page, 'if(ORDERS_LOADING_PROMISE)return ORDERS_LOADING_PROMISE;'),
 ];
 
 $failed = [];
