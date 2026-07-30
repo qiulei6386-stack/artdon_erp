@@ -600,6 +600,7 @@ function qo_commission_summary_list(PDO $pdo,$d){
   $settle=qo_s($d['settle_status']??'',50);if($settle!==''){$where[]='COALESCE(s.settle_status,?)=?';$args[]='unsettled';$args[]=$settle;}
   $dateFrom=qo_s($d['date_from']??'',20);if($dateFrom!==''){$where[]='DATE(COALESCE(o.order_date,o.created_at))>=?';$args[]=$dateFrom;}
   $dateTo=qo_s($d['date_to']??'',20);if($dateTo!==''){$where[]='DATE(COALESCE(o.order_date,o.created_at))<=?';$args[]=$dateTo;}
+  if((int)($d['has_commission']??0)===1){$where[]='(COALESCE(s.commission_amount,0)>0 OR COALESCE(s.settled_amount,0)>0 OR EXISTS (SELECT 1 FROM quote_commission_lines l WHERE l.order_id=o.id AND l.is_commission_enabled=1 AND COALESCE(l.commission_amount,0)>0))';}
   $sqlWhere=$where?' WHERE '.implode(' AND ',$where):'';$limit=max(20,min(500,(int)($d['page_size']??300)));
   $join=' LEFT JOIN quote_commission_snapshots s ON s.id=(SELECT sx.id FROM quote_commission_snapshots sx WHERE sx.order_id=o.id ORDER BY (sx.rule_id=0) DESC,sx.id DESC LIMIT 1)';
   $total=(int)(qo_row($pdo,'SELECT COUNT(*) c FROM quote_sales_orders o'.$join.$sqlWhere,$args)['c']??0);

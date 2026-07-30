@@ -16,6 +16,10 @@ $checks = [
     '独立接口实现' => str_contains($api, 'function qo_commission_summary_list'),
     '客户代码筛选' => str_contains($api, 'customer_code'),
     '日期筛选' => str_contains($api, 'date_from'),
+    '默认排除零佣金订单' => str_contains($api, "has_commission")
+        && str_contains($api, 'COALESCE(s.commission_amount,0)>0'),
+    '币种汇总采用表格' => str_contains($page, 'id="commissionSummaryCurrencyRows"')
+        && str_contains($page, '币种佣金汇总'),
     '接口已分发' => str_contains($api, "commission_summary_list"),
 ];
 
