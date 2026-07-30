@@ -46,7 +46,7 @@ foreach (['source_system', 'source_table', 'source_pk', 'FOR UPDATE', 'mc_source
         throw new RuntimeException("source idempotency service marker missing: {$marker}");
     }
 }
-foreach (['material_center.approve', 'material_center.material.create', 'material_center.material.edit'] as $permission) {
+foreach (['requireMaterialTransition($user, \'approve\')', 'material_center.material.create', 'material_center.material.edit'] as $permission) {
     if (!str_contains($api, $permission)) {
         throw new RuntimeException("server permission check missing: {$permission}");
     }

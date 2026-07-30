@@ -27,14 +27,19 @@ try {
         }
         $mode = (string) ($_POST['mode'] ?? 'draft');
         $mappedMaterialId = $service->mappedMaterialId($sourceRecordId, $category);
-        $permissions->require(
-            $user,
-            $mappedMaterialId > 0 ? 'material_center.material.edit' : 'material_center.material.create'
-        );
         if ($mode === 'approve') {
-            $permissions->require($user, 'material_center.approve');
+            $permissions->requireMaterialTransition($user, 'approve');
         } elseif ($mode === 'submit') {
-            $permissions->require($user, 'material_center.material.lifecycle');
+            $permissions->require(
+                $user,
+                $mappedMaterialId > 0 ? 'material_center.material.edit' : 'material_center.material.create'
+            );
+            $permissions->requireMaterialTransition($user, 'submit');
+        } else {
+            $permissions->require(
+                $user,
+                $mappedMaterialId > 0 ? 'material_center.material.edit' : 'material_center.material.create'
+            );
         }
         $payload = json_decode((string) ($_POST['payload'] ?? '{}'), true);
         $data = $service->save(

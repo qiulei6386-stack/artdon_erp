@@ -76,7 +76,7 @@ final class SourceMaterialOrganizerService
             'material' => $material,
             'values' => $values,
             'can_approve' => $user->isSuperAdmin
-                || (new \Artdon\MaterialCenter\Security\PermissionService($this->db))->allows($user, 'material_center.approve'),
+                || (new \Artdon\MaterialCenter\Security\PermissionService($this->db))->canFormalize($user),
         ];
     }
 

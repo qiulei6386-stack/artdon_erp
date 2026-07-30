@@ -34,6 +34,70 @@ final class PermissionService
         if (!$this->allows($user, $permission)) throw new RuntimeException('没有执行此操作的权限。', 403);
     }
 
+    public function allowsAny(?MaterialCenterUserContext $user, array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($this->allows($user, (string) $permission)) return true;
+        }
+        return false;
+    }
+
+    public function requireAny(?MaterialCenterUserContext $user, array $permissions): void
+    {
+        if (!$user) throw new RuntimeException('请先登录。', 401);
+        if (!$this->allowsAny($user, $permissions)) throw new RuntimeException('没有执行此操作的权限。', 403);
+    }
+
+    public function canFormalize(?MaterialCenterUserContext $user): bool
+    {
+        return $this->allowsAny($user, [
+            'material_center.material.formalize',
+            // Compatibility for accounts configured before the lifecycle split.
+            'material_center.approve',
+            'material_center.power.confirm',
+            'material_center.material.lifecycle',
+        ]);
+    }
+
+    public function materialTransitionPermissions(string $transition): array
+    {
+        return match ($transition) {
+            'approve' => [
+                'material_center.material.formalize',
+                'material_center.approve',
+                'material_center.power.confirm',
+                'material_center.material.lifecycle',
+            ],
+            'submit' => [
+                'material_center.material.lifecycle',
+                'material_center.material.edit',
+            ],
+            'reject' => [
+                'material_center.material.reject',
+                'material_center.approve',
+                'material_center.material.lifecycle',
+            ],
+            'disable', 'restore' => [
+                'material_center.material.disable',
+                'material_center.material.lifecycle',
+            ],
+            'archive' => [
+                'material_center.material.archive',
+                'material_center.material.lifecycle',
+            ],
+            'delete_draft' => [
+                'material_center.material.delete_draft',
+                'material_center.material.lifecycle',
+            ],
+            default => ['material_center.material.lifecycle'],
+        };
+    }
+
+    public function requireMaterialTransition(?MaterialCenterUserContext $user, string $transition): void
+    {
+        $this->requireAny($user, $this->materialTransitionPermissions($transition));
+    }
+
     public function fieldAccess(?MaterialCenterUserContext $user,string $category,string $field,string $default='read'):string
     {
         if(!$user)return'none';if($user->isSuperAdmin)return'edit';

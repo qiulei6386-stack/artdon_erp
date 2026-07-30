@@ -225,6 +225,7 @@
   };
 
   const fillDetail = data => {
+    if (activeRecord) activeRecord = { ...activeRecord, status: data.status, material_id: data.material_id || data.id };
     form.reset();
     q('[data-current-list]', form).replaceChildren();
     qa('input[name="dimming_modes"]', form).forEach(input => { input.checked = false; });
@@ -408,6 +409,27 @@
     const idleLabel = button.textContent;
     const pendingLabel = mode === 'approve' ? '正在转正式…' : (mode === 'submit' ? '正在提交…' : '正在保存…');
     error.hidden = true;
+    if (mode === 'approve' && !activeRecord?.read_only && activeRecord?.status === 'pending_review') {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.textContent = pendingLabel;
+      q('[data-power-save-state]', drawer).textContent = pendingLabel;
+      try {
+        await lifecycleRequest(activeRecord.material_id || form.elements.material_id.value, 'approve');
+        toast('电源已转正式', '生命周期已更新。');
+        setTimeout(() => location.reload(), 500);
+        return true;
+      } catch (reason) {
+        error.textContent = reason instanceof Error ? reason.message : '保存失败。';
+        error.hidden = false;
+        q('[data-power-save-state]', drawer).textContent = '转正式失败';
+        return false;
+      } finally {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        button.textContent = idleLabel;
+      }
+    }
     if (!form.reportValidity()) return;
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
