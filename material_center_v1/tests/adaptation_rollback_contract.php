@@ -64,10 +64,11 @@ foreach ([
 }
 
 foreach ([
-    "'home'",
     "'products'",
     "'workspace'",
-    "'overview'",
+    "'metadata'",
+    "'apply_template'",
+    "'batch_apply'",
 ] as $marker) {
     if (!str_contains($api, $marker)) {
         throw new RuntimeException("adaptation API missing restored endpoint marker: {$marker}");
