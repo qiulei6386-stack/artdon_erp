@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：历史报价列表显示前 4 个产品小图（已发布）
+
+- 用户要求历史报价列表右侧图片区显示第 1–第 4 个产品图片，而不是只显示 1 张；图片卡片要缩窄到接近图片宽度，并向左靠近报价/订单信息，保证小显示器也能看到 4 张。
+- 根因：前次为了提速，`init` 首屏只返回报价摘要并把完整 `items_json` 清成 `[]`；历史列表前端虽然已经有 `items.slice(0,4)`，但拿不到产品明细，只能退回 `product_json` 的首个产品。
+- 修复：`quote_api.php` 的 `init` 摘要新增前 4 个产品的轻量缩略图数据，只包含图片、型号、名称、客户代码和颜色，并保留 `history_item_count`；完整报价明细仍然只在点击打开时按单读取，不恢复首屏全量明细下载。
+- 布局：历史列表右侧图片区改成 `4 × 82px` 固定小卡、按内容宽度显示并靠近左侧报价信息；900px 以下压缩为 `4 × 70px`，700px 以下为 `4 × 64px`，仍保持 4 张一排。
+- 修改文件：`quotation.php`、`quote_api.php`、新增 `tests/history_quote_products_contract.php`、本上下文。未修改、删除或回填任何报价、订单、客户、佣金、收款、出货或其它业务数据。
+- 检查：`git diff --check` 通过；报价页 5 个内嵌 JavaScript 块 `node --check` 通过；服务器 PHP 对 `quotation.php`、`quote_api.php`、新增测试语法检查通过；正式服务器 `tests/history_quote_products_contract.php` 与 `tests/quotation_runtime_performance_contract.php` 均通过。
+- Git / 部署：功能提交 `105807fb5c5540c2dfffbe6d7642ceede7b72694` 已推送 GitHub `main`，并用 SHA-256 为 `a7a43e74cea22b0034e54a74a377fdd12a0452388e0263ba298859d69f46b7a8` 的 Git bundle 在正式服务器仅快进发布。服务器 HEAD 为 `105807fb5c5540c2dfffbe6d7642ceede7b72694` 且工作树干净。
+
 ## 本次：修复报价首页误恢复订单与首页/佣金入口慢（已发布）
 
 - 用户反馈直接打开 `https://novlight.com/artdon_erp/quotation.php` 时，有时会自动打开旧订单，例如 `AT-260728CN010`；报价首页打开慢，“佣金策略 → 报价/订单佣金”也慢。
