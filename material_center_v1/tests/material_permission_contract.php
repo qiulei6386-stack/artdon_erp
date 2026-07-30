@@ -92,8 +92,8 @@ foreach ([
     "'label' => '物料中心'",
     "'prefixes' => ['material_center.']",
     "'domains' => ['material_center']",
-    'permission_system_keys($systemKey)',
-    'permission_preset_keys($systemKey, $presetKey, $perms)',
+    'function permission_system_keys',
+    'function permission_preset_keys',
 ] as $marker) {
     if (!str_contains($permissionCenter, $marker)) {
         throw new RuntimeException("permission center material binding missing: {$marker}");
