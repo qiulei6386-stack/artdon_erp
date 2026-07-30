@@ -2387,13 +2387,78 @@ function quote_commission_quote_list($pdo,$d){
   return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
 }
 function quote_commission_quote_save($pdo,$d,$user){
-  quote_commission_schema($pdo);$id=(int)($d['quote_id']??abs((int)($d['order_id']??0)));$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$id]);if(!$q)fail('报价不存在');$before=json_decode((string)($q['commission_json']??''),true);if(!is_array($before))$before=[];$mode=s($d['commission_mode']??($before['commission_mode']??'percent'),50);$value=max(0,(float)($d['commission_value']??($before['commission_value']??0)));$amount=(float)$q['amount'];$commission=quote_commission_calc($mode,$value,$amount,(float)$q['qty']);if($commission===null)$commission=(float)($before['commission_estimated_amount']??0);
-  $scope=in_array(($d['commission_scope']??($before['commission_scope']??'order')),['order','line','mixed'],true)?($d['commission_scope']??($before['commission_scope']??'order')):'order';
-  $after=array_merge($before,['commission_required'=>$value>0?1:0,'commission_confirm_status'=>$before['commission_confirm_status']??'quote_manual','commission_source'=>'quote_commission_table','commission_target_name'=>s($d['target_name']??($before['commission_target_name']??''),160),'commission_mode'=>$mode,'commission_value'=>$value,'commission_calc_base'=>s($d['calc_base']??($before['commission_calc_base']??'order_amount'),50),'commission_estimated_amount'=>$commission,'commission_currency'=>s($d['currency']??$q['currency'],20),'commission_receivable_effect'=>s($d['receivable_effect']??($before['commission_receivable_effect']??'none'),50),'commission_settle_node'=>s($d['settle_node']??($before['commission_settle_node']??'manual'),50),'commission_scope'=>$scope,'commission_note'=>s($d['note']??($before['commission_note']??''),5000),'updated_at'=>date('c')]);$pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);quote_log_event($pdo,['action'=>'commission_quote_save','event'=>'保存报价佣金','quote_id'=>$id,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'before'=>$before,'after'=>$after]);return ['quote_id'=>$id,'commission'=>$after];
+  quote_commission_schema($pdo);
+  $id=(int)($d['quote_id']??abs((int)($d['order_id']??0)));
+  $q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$id]);
+  if(!$q)fail('报价不存在');
+  $before=json_decode((string)($q['commission_json']??''),true);
+  if(!is_array($before))$before=[];
+  $mode=s($d['commission_mode']??($before['commission_mode']??'percent'),50);
+  $value=max(0,(float)($d['commission_value']??($before['commission_value']??0)));
+  $amount=(float)$q['amount'];
+  $commission=quote_commission_calc($mode,$value,$amount,(float)$q['qty']);
+  if($commission===null)$commission=(float)($before['commission_estimated_amount']??0);
+  $scope=in_array(($d['commission_scope']??($before['commission_scope']??'order')),['order','line','mixed'],true)
+    ?($d['commission_scope']??($before['commission_scope']??'order')):'order';
+  $lineTotal=0.0;
+  foreach(($before['lines']??[]) as $line){
+    if(!is_array($line)||empty($line['is_commission_enabled']))continue;
+    $lineTotal+=(float)($line['estimated_amount']??0);
+  }
+  $isLineScope=$scope==='line';
+  $after=array_merge($before,[
+    'commission_required'=>$isLineScope?($lineTotal>0?1:0):($value>0?1:0),
+    'commission_confirm_status'=>$before['commission_confirm_status']??'quote_manual',
+    'commission_source'=>'quote_commission_table',
+    'commission_target_name'=>s($d['target_name']??($before['commission_target_name']??''),160),
+    'commission_mode'=>$mode,
+    'commission_value'=>$value,
+    'commission_calc_base'=>s($d['calc_base']??($before['commission_calc_base']??'order_amount'),50),
+    'commission_estimated_amount'=>$isLineScope?$lineTotal:$commission,
+    'commission_currency'=>s($d['currency']??$q['currency'],20),
+    'commission_receivable_effect'=>s($d['receivable_effect']??($before['commission_receivable_effect']??'none'),50),
+    'commission_settle_node'=>s($d['settle_node']??($before['commission_settle_node']??'manual'),50),
+    'commission_scope'=>$scope,
+    'commission_note'=>s($d['note']??($before['commission_note']??''),5000),
+    'updated_at'=>date('c')
+  ]);
+  $pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);
+  quote_log_event($pdo,['action'=>'commission_quote_save','event'=>'保存报价佣金','quote_id'=>$id,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'before'=>$before,'after'=>$after]);
+  return ['quote_id'=>$id,'commission'=>$after];
 }
 function quote_commission_quote_lines_save($pdo,$d,$user){
-  $group=[];foreach(($d['items']??[]) as $x){$qid=(int)($x['quote_id']??0);if(!$qid&&isset($x['order_id']))$qid=abs((int)$x['order_id']);if($qid)$group[$qid][]=$x;}$saved=[];$errors=[];
-  foreach($group as $qid=>$edits){try{$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$qid]);if(!$q)throw new RuntimeException('报价不存在');$c=json_decode((string)($q['commission_json']??''),true);if(!is_array($c))$c=[];$items=json_decode((string)($q['items_json']??'[]'),true);if(!is_array($items))$items=[];$lines=$c['lines']??[];if(!is_array($lines))$lines=[];foreach($edits as $e){$idx=(int)($e['quote_item_index']??0);$it=$items[$idx]??[];$p=$it['product']??[];$mode=s($e['commission_mode']??'percent',50);$value=max(0,(float)($e['commission_value']??0));$base=(float)($it['amount']??0);$est=quote_commission_calc($mode,$value,$base,(float)($it['qty']??0));$lines[$idx]=['item_index'=>$idx,'item_key'=>(string)($p['code']??$p['model']??$idx),'product_model'=>$p['code']??$p['model']??'','product_name'=>$p['name']??'','qty'=>(float)($it['qty']??0),'unit_price'=>(float)($it['price']??0),'amount'=>$base,'is_commission_enabled'=>array_key_exists('is_commission_enabled',$e)?(int)!empty($e['is_commission_enabled']):1,'included_in_price'=>$e['included_in_price']??'included','target_type'=>$e['target_type']??'other','mode'=>$mode,'value'=>$value,'estimated_amount'=>$est??0,'currency'=>$e['currency']??$q['currency'],'target_name'=>$e['target_name']??'','note'=>$e['note']??''];}$c['lines']=array_values($lines);$c['commission_scope']=($c['commission_scope']??'')==='mixed'?'mixed':'line';$c['commission_confirm_status']='line_confirmed';$c['commission_estimated_amount']=array_sum(array_map(fn($x)=>(float)($x['estimated_amount']??0),$c['lines']));$pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qid]);$saved[]=$qid;}catch(Throwable $e){$errors[]=['quote_id'=>$qid,'reason'=>$e->getMessage()];}}
+  $group=[];
+  foreach(($d['items']??[]) as $x){$qid=(int)($x['quote_id']??0);if(!$qid&&isset($x['order_id']))$qid=abs((int)$x['order_id']);if($qid)$group[$qid][]=$x;}
+  $saved=[];$errors=[];
+  foreach($group as $qid=>$edits){
+    try{
+      $q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$qid]);
+      if(!$q)throw new RuntimeException('报价不存在');
+      $c=json_decode((string)($q['commission_json']??''),true);
+      if(!is_array($c))$c=[];
+      $items=json_decode((string)($q['items_json']??'[]'),true);
+      if(!is_array($items))$items=[];
+      $lines=$c['lines']??[];
+      if(!is_array($lines))$lines=[];
+      foreach($edits as $e){
+        $idx=(int)($e['quote_item_index']??0);$it=$items[$idx]??[];$p=$it['product']??[];
+        $mode=s($e['commission_mode']??'percent',50);$value=max(0,(float)($e['commission_value']??0));
+        $base=(float)($it['amount']??0);$est=quote_commission_calc($mode,$value,$base,(float)($it['qty']??0));
+        $lines[$idx]=['item_index'=>$idx,'item_key'=>(string)($p['code']??$p['model']??$idx),'product_model'=>$p['code']??$p['model']??'','product_name'=>$p['name']??'','qty'=>(float)($it['qty']??0),'unit_price'=>(float)($it['price']??0),'amount'=>$base,'is_commission_enabled'=>array_key_exists('is_commission_enabled',$e)?(int)!empty($e['is_commission_enabled']):1,'included_in_price'=>$e['included_in_price']??'included','target_type'=>$e['target_type']??'other','mode'=>$mode,'value'=>$value,'estimated_amount'=>$est??0,'currency'=>$e['currency']??$q['currency'],'target_name'=>$e['target_name']??'','note'=>$e['note']??''];
+      }
+      $c['lines']=array_values($lines);
+      $wasMixed=($c['commission_scope']??'')==='mixed';
+      $c['commission_scope']=$wasMixed?'mixed':'line';
+      $c['commission_confirm_status']='line_confirmed';
+      $lineTotal=array_sum(array_map(fn($x)=>!empty($x['is_commission_enabled'])?(float)($x['estimated_amount']??0):0,$c['lines']));
+      if(!$wasMixed){
+        $c['commission_required']=$lineTotal>0?1:0;
+        $c['commission_estimated_amount']=$lineTotal;
+      }
+      $pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qid]);
+      $saved[]=$qid;
+    }catch(Throwable $e){$errors[]=['quote_id'=>$qid,'reason'=>$e->getMessage()];}
+  }
   return ['saved'=>$saved,'errors'=>$errors];
 }
 function quote_commission_item_save($pdo,$d,$user){

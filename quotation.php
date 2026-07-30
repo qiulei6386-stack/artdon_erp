@@ -4053,6 +4053,60 @@ rejectQuoteFromModal = async function(){
   await openQuoteRejectReasonModalV68446(Number(modal.dataset.quoteId||0),$('quoteReviewNote')?.value||'');
 };
 
+/* 报价产品佣金：扣款规则保存于报价主单，转订单后才实际从货款扣除。 */
+function commissionQuoteOwnerForItem(id){
+  return COMMISSION_ORDER_ROWS.find(row=>String(row.entity_type||'')==='quote'&&
+    (row.items||[]).some(item=>Number(item.order_item_id)===Number(id)))||null;
+}
+function commissionItemValue(it,f){
+  let draft=COMMISSION_ITEM_DRAFTS[Number(it.order_item_id)]||{};
+  if(Object.prototype.hasOwnProperty.call(draft,f))return draft[f];
+  if(f==='receivable_effect'){
+    let owner=commissionQuoteOwnerForItem(it.order_item_id);
+    if(owner)return commissionOrderValue(owner,f)||(it[f]??'none');
+  }
+  return it[f]??'';
+}
+function commissionEffectSelect(id,v,isItem=false,disabled=false){
+  let lock=disabled?' disabled title="整单佣金无需逐项设置"':'';
+  let deductLabel=Number(id)<0?'转订单后货款扣佣':'货款扣佣';
+  return `<select class="commission-edit"${lock} onchange="${isItem?'stageCommissionItem':'stageCommissionOrder'}(${id},'receivable_effect',this.value)"><option value="none" ${v==='none'?'selected':''}>不影响应收</option><option value="deduct_from_payment" ${v==='deduct_from_payment'?'selected':''}>${deductLabel}</option><option value="pending_confirm" ${v==='pending_confirm'?'selected':''}>待确认</option></select>`;
+}
+function stageCommissionItem(id,f,v){
+  id=Number(id);
+  if(['commission_value','settled_amount','is_commission_enabled'].includes(f))v=Number(v||0);
+  let quoteOwner=f==='receivable_effect'?commissionQuoteOwnerForItem(id):null;
+  if(quoteOwner){stageCommissionOrder(quoteOwner.order_id,'receivable_effect',v);return;}
+  let base=commissionItemBaseValue(id,f);
+  if(commissionValueEqual(v,base)){
+    if(COMMISSION_ITEM_DRAFTS[id])delete COMMISSION_ITEM_DRAFTS[id][f];
+  }else{
+    if(!COMMISSION_ITEM_DRAFTS[id])COMMISSION_ITEM_DRAFTS[id]={order_item_id:id};
+    COMMISSION_ITEM_DRAFTS[id][f]=v;
+    if(['is_commission_enabled','target_name','target_type','commission_mode','commission_value','calc_base','currency','receivable_effect','settle_status'].includes(f))COMMISSION_ITEM_DRAFTS[id].commission_configured=1;
+  }
+  pruneCommissionItemDraft(id);
+  renderCommissionOrderRows();
+}
+const loadPiCommissionReminderBase=loadPiCommissionReminder;
+loadPiCommissionReminder=async function(){
+  let q=S.quoteCommission;
+  if(q?.commission_confirm_status==='line_confirmed'&&Number(q.commission_estimated_amount||0)>0){
+    if(!PI_ORDER_DRAFT)return;
+    let body=$('piOrderModal')?.querySelector('.card-body');
+    if(!body)return;
+    let card=$('piCommissionReminder');
+    if(!card){card=document.createElement('div');card.id='piCommissionReminder';card.className='order-note';card.style.margin='10px 0';body.insertBefore(card,body.querySelector('.pi-order-grid'));}
+    let total=Number(q.commission_estimated_amount||0);
+    let effect=q.commission_receivable_effect||'none';
+    PI_ORDER_DRAFT.commission_choice='apply';
+    PI_ORDER_DRAFT.commission_apply={target_name:q.commission_target_name||'报价产品佣金',target_type:'other',commission_mode:'fixed_order',commission_value:total,calc_base:'order_amount',receivable_effect:effect,settle_node:q.commission_settle_node||'payment_received',currency:q.commission_currency||$('piOrderCurrency')?.value||'USD',note:`${q.commission_note||''}（由报价产品佣金汇总）`};
+    card.innerHTML=`<b>内部佣金</b><br>已读取报价产品佣金：${money(total)}；${effect==='deduct_from_payment'?'转订单后从货款扣佣':'不影响应收'}。只有订单已生成且登记收款后才实际扣除。`;
+    return;
+  }
+  return loadPiCommissionReminderBase();
+};
+
 </script>
 <style>
 /* V6.8.4.46 驳回原因分类 */
