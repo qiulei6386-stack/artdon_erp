@@ -4164,6 +4164,57 @@ if($action==='ensure_bom_quote_spec' || $action==='sync_bom_quote_spec'){
    quote_log_event($pdo,['action'=>$action,'event'=>$force?'强制同步报价关键件':'自动检查报价关键件','summary'=>($res['message']??'').'：'.($p['code']??$p['model']??''),'detail'=>['product'=>$p,'result'=>$res]]);
    ok($res);
  }
+function quote_history_preview_text($v,$max=160){
+  $s=trim((string)($v??''));
+  if($max>0 && function_exists('mb_strlen') && mb_strlen($s,'UTF-8')>$max) return mb_substr($s,0,$max,'UTF-8');
+  if($max>0 && !function_exists('mb_strlen') && strlen($s)>$max) return substr($s,0,$max);
+  return $s;
+}
+function quote_history_preview_first(array $sources,array $keys){
+  foreach($sources as $src){
+    if(!is_array($src)) continue;
+    foreach($keys as $k){
+      if(isset($src[$k]) && !is_array($src[$k]) && trim((string)$src[$k])!=='') return quote_history_preview_text($src[$k],255);
+    }
+  }
+  return '';
+}
+function quote_history_preview_items($itemsRaw,$productRaw): array {
+  $items=json_decode((string)($itemsRaw??'[]'),true);
+  if(!is_array($items)) $items=[];
+  $product=json_decode((string)($productRaw??'{}'),true);
+  if(!is_array($product)) $product=[];
+  $sourceItems=$items ?: ($product ? [['product'=>$product]] : []);
+  $out=[];
+  foreach(array_slice($sourceItems,0,4) as $it){
+    if(!is_array($it)) continue;
+    $p=(isset($it['product']) && is_array($it['product']))?$it['product']:[];
+    $out[]=[
+      'product'=>[
+        'image_display'=>quote_history_preview_first([$p,$it],['image_display','web_image_url','cover_image_url','source_image_url','product_image','main_image','image_path','image','image_url']),
+        'image'=>quote_history_preview_first([$p,$it],['image','product_image','main_image','image_url']),
+        'code'=>quote_history_preview_first([$p,$it],['code','model','model_no','manufacturer_code','factory_model','product_code']),
+        'model'=>quote_history_preview_first([$p,$it],['model','code','model_no','manufacturer_code','factory_model','product_code']),
+        'name'=>quote_history_preview_first([$p,$it],['name','product_name','title','series']),
+        'series'=>quote_history_preview_first([$p,$it],['series','name','product_name']),
+        'color'=>quote_history_preview_first([$p,$it],['color'])
+      ],
+      'customer_code'=>quote_history_preview_first([$it,$p],['customer_code','customer_model','customerCode']),
+      'color'=>quote_history_preview_first([$it,$p],['color'])
+    ];
+  }
+  return ['items'=>$out,'count'=>count($items)];
+}
+function quote_history_summary_rows(PDO $pdo): array {
+  $rows=rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json','parts_json']).", '{}' AS parts_json, 0 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000");
+  foreach($rows as &$r){
+    $preview=quote_history_preview_items($r['items_json']??'[]',$r['product_json']??'{}');
+    $r['items_json']=json_encode($preview['items'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    $r['history_item_count']=(int)($preview['count']?:count($preview['items']));
+  }
+  unset($r);
+  return $rows;
+}
 if($action==='init'){
    $ownerRepairCount=0;
    ok([
@@ -4178,8 +4229,8 @@ if($action==='init'){
     'headers'=>rows($pdo,"SELECT * FROM quote_headers ORDER BY id DESC"),
     'banks'=>rows($pdo,"SELECT * FROM quote_banks ORDER BY id DESC"),
     'templates'=>rows($pdo,"SELECT * FROM quote_templates ORDER BY id DESC"),
-    // 首屏只返回摘要；大体积报价明细在页面可用后异步补齐。
-    'quotes'=>rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json','items_json','parts_json']).", '[]' AS items_json, '{}' AS parts_json, 0 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000"),
+    // 首屏只返回摘要；历史列表额外带前 4 个产品缩略图摘要，完整报价明细点击打开时再按单读取。
+    'quotes'=>quote_history_summary_rows($pdo),
     'materials'=>get_materials($pdo),
     'price_levels'=>get_price_levels($pdo),
     'options'=>get_options($pdo),
