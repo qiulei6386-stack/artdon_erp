@@ -1774,3 +1774,13 @@
 - 修复：按产品填写佣金时，“货款扣佣”以前被错误留在产品行草稿；真正保存佣金设置的报价主单没有同步该值，刷新后看起来像没有保存。现在产品行选择该项会写入对应报价主单，并显示为“转订单后货款扣佣”。
 - 统计保护：产品行佣金保存后会按已启用项目重新汇总，不会再被报价主单默认的零佣金覆盖；报价转订单时会把该产品佣金总额和扣款方式一并带入订单。
 - 业务边界：报价阶段即可保存；但真正从货款抵扣仍只会在订单已生成、且登记收款时执行。这样报价金额不会被提前扣减，也不会遗漏正式收款时的抵扣规则。
+
+## 2026-07-31：产品适配停止开发并恢复上一可用版本
+
+- 执行边界：按用户要求立即停止继续开发产品适配模块；本轮只做“备份当前错误版本 + 寻找最后可用版本 + 恢复 + 检查”，不重构业务、不改数据库、不删除任何 `mc_*` 业务数据。
+- 错误版本备份：服务器当前错误适配目录已备份到 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/adaptation_broken_backup_20260731_074053`，用于后续比较。
+- 恢复点：选择 `a5eeb37d344fcd841fe178daf4cde467a711d8d3`，这是“基础页面修复中”占位页出现前最后一个仍包含最近产品、状态统计、全部产品、产品选择和单产品工作台的可用版本。
+- 恢复内容：恢复 `material_center_v1/adaptation/index.php`、`material_center_v1/assets/js/adaptation-v3.js`、`material_center_v1/assets/css/app.css`、`material_center_v1/api/v1/adaptation.php`、`material_center_v1/app/Services/AdaptationService.php`；删除错误版本新增的 `material_center_v1/adaptation/docs/ADAPTATION_REPAIR_LOG.md`，并新增回滚报告 `material_center_v1/docs/ADAPTATION_ROLLBACK_REPORT.md` 和防占位回归测试 `material_center_v1/tests/adaptation_rollback_contract.php`。
+- 检查结果：服务器 PHP 语法通过；`php material_center_v1/tests/adaptation_rollback_contract.php` 通过；占位词 `基础页面修复中/repairMode/mc-page--adaptation-baseline/renderPausedStep` 在运行文件中无命中；入口、`view=products`、`view=workspace&product_id=83`、旧入口 `product_id=83` 通过 CLI 渲染，均输出 V3 页面且无 Fatal；CSS/JS 静态资源 HTTP 200。
+- 数据安全：只读查询确认 `mc_adaptation_groups=118`、`mc_adaptation_options=6` 等记录仍在；本轮未执行数据库写入、清空、迁移或结构变更。
+- 发布：恢复提交 `0b334d7`、测试/CSS 修正 `f3fdb17`、测试标记修正 `f6e065d` 已推送 GitHub 并用 Git bundle 快进腾讯云服务器。功能恢复验证时本地、GitHub main、腾讯云服务器均为 `f6e065d3bbba61d697ca3d3ff5a8d6bee0346c0c`；本上下文记录会形成后续文档同步提交，文档同步后以当前 Git HEAD 为准。本轮恢复完成后停止，等待下一步指令。

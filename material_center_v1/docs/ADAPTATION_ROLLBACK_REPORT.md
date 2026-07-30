@@ -100,4 +100,71 @@
 
 ## 测试记录
 
-待恢复、部署后补充。
+恢复与部署时间：2026-07-31 07:46–07:56 CST
+
+功能恢复验证提交：`f6e065d3bbba61d697ca3d3ff5a8d6bee0346c0c`
+
+### 恢复结果
+
+- `material_center_v1/adaptation/index.php` 已恢复为 `mc-page--adaptation-v3` 完整入口，不再显示“基础页面修复中”。
+- 首页恢复“产品配置工作台”标题、适配首页、全部产品、选择产品、配置模板、批量工具入口。
+- `adaptation-v3.js` 恢复最近产品、状态统计、全部产品表格、单产品步骤工作台、模板和批量工具渲染逻辑。
+- `app.css` 移除 `mc-page--adaptation-baseline` 占位页样式，并保留 V3 工作台样式。
+- `api/v1/adaptation.php` 和 `AdaptationService.php` 恢复到 `a5eeb37` 的可用工作流接口。
+- 删除错误版本新增的 `material_center_v1/adaptation/docs/ADAPTATION_REPAIR_LOG.md`；错误版本已在服务器备份中保留。
+- 未执行任何数据库写入、删除、清空或结构变更。
+
+### 服务器检查结果
+
+1. PHP 语法：
+   - `material_center_v1/adaptation/index.php`：通过。
+   - `material_center_v1/api/v1/adaptation.php`：通过。
+   - `material_center_v1/app/Services/AdaptationService.php`：通过。
+   - `material_center_v1/tests/adaptation_rollback_contract.php`：通过。
+
+2. 回归契约：
+   - `php material_center_v1/tests/adaptation_rollback_contract.php`
+   - 结果：`Product adaptation rollback contract: OK`
+   - 检查内容：占位标记不存在；入口页、全部产品、选择产品、工作台、JS 渲染函数、CSS V3 布局、API action 和服务方法存在。
+
+3. 占位词扫描：
+   - 目标文件：`adaptation/index.php`、`adaptation-v3.js`、`app.css`、`api/v1/adaptation.php`、`AdaptationService.php`
+   - 搜索词：`基础页面修复中`、`repairMode`、`mc-page--adaptation-baseline`、`renderPausedStep`
+   - 结果：无命中。
+
+4. URL / 页面渲染：
+   - 未登录访问线上 URL 会返回 302 到登录页，符合权限拦截。
+   - 服务器 PHP CLI 显式设置 `$_GET` 渲染以下入口均成功，无 Fatal Error，无占位词：
+     - `index.php`：`status=ok`，`view=home`，`bad=0`，`good=7`
+     - `index.php?view=products`：`status=ok`，`view=products`，`bad=0`，`good=7`
+     - `index.php?view=workspace&product_id=83`：`status=ok`，`view=workspace`，`bad=0`，`good=7`
+     - `index.php?product_id=83`：`status=ok`，`view=workspace`，`bad=0`，`good=7`
+
+5. CSS / JavaScript 静态资源：
+   - `/artdon_erp/material_center_v1/assets/css/app.css`：HTTP 200，134325 bytes。
+   - `/artdon_erp/material_center_v1/assets/js/adaptation-v3.js`：HTTP 200，30170 bytes。
+
+6. 数据库记录只读检查：
+   - `mc_adaptation_groups=118`
+   - `mc_adaptation_options=6`
+   - `mc_adaptation_product_profiles=0`
+   - `mc_adaptation_conflicts=0`
+   - `mc_adaptation_published_versions=0`
+   - `mc_adaptation_rules=missing`
+   - 说明：仅执行 `COUNT(*)` 只读查询；未修改业务数据。
+
+7. 其他物料中心入口 PHP 语法：
+   - `material_center_v1/index.php`：通过。
+   - `material_center_v1/material/all.php`：通过。
+   - `material_center_v1/material/power.php`：通过。
+   - `material_center_v1/material/chip.php`：通过。
+   - `material_center_v1/material/optical.php`：通过。
+   - `material_center_v1/supplier/index.php`：通过。
+   - `material_center_v1/power_workbench.php`：通过。
+
+### 三端版本
+
+- 功能恢复验证时，本地正式仓库、GitHub main、腾讯云服务器均为 `f6e065d3bbba61d697ca3d3ff5a8d6bee0346c0c`。
+- 本报告与 `WORK_CONTEXT.md` 的测试结果补充会形成后续文档同步提交；文档同步后以当前 Git HEAD 为准。
+
+本轮到此停止；不继续开发产品适配核心物料、规则、审批或发布。
