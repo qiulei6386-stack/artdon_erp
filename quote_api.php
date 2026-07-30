@@ -162,6 +162,28 @@ function ensure_quote_core_schema($pdo){
   }
   quote_v640_doc_schema_fix($pdo);
 }
+function quote_runtime_schema_ready(PDO $pdo): void {
+  static $ready=false;
+  if($ready)return;
+  $version=2026073001;
+  try{
+    $state=row($pdo,"SELECT schema_version FROM quote_runtime_schema_state WHERE module_code='quotation' LIMIT 1");
+    if((int)($state['schema_version']??0)>=$version){$ready=true;return;}
+  }catch(Throwable $e){}
+  ensure_quote_core_schema($pdo);
+  ensure_quote_settings($pdo);
+  ensure_quote_price_policy_schema($pdo);
+  ensure_quote_permission_schema($pdo);
+  quote_approval_schema($pdo);
+  quote_ensure_customer_schema($pdo);
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_runtime_schema_state (
+    module_code VARCHAR(80) NOT NULL PRIMARY KEY,
+    schema_version BIGINT NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $pdo->prepare("INSERT INTO quote_runtime_schema_state(module_code,schema_version) VALUES('quotation',?) ON DUPLICATE KEY UPDATE schema_version=VALUES(schema_version),updated_at=CURRENT_TIMESTAMP")->execute([$version]);
+  $ready=true;
+}
 function rows($pdo,$sql,$p=[]){ $s=$pdo->prepare($sql); $s->execute($p); return $s->fetchAll(PDO::FETCH_ASSOC); }
 function row($pdo,$sql,$p=[]){ $s=$pdo->prepare($sql); $s->execute($p); return $s->fetch(PDO::FETCH_ASSOC); }
 function quote_select_columns_except($pdo,$table,array $exclude=[]){
@@ -1733,7 +1755,6 @@ function ensure_quote_permission_schema($pdo){
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 function qperm_saved($pdo,$u){
-  ensure_quote_permission_schema($pdo);
   $ut=(string)($u['user_table']??''); $uid=(string)($u['user_id']??''); $un=(string)($u['username']??'');
   $r=row($pdo,"SELECT * FROM quote_user_permissions WHERE user_table=? AND user_id=? AND username=? LIMIT 1",[$ut,$uid,$un]);
   if($r) return $r;
@@ -4037,11 +4058,7 @@ function quote_summary_export_excel(PDO $pdo,array $f){
 }
 
 try{
- ensure_quote_core_schema($pdo);
- ensure_quote_settings($pdo);
- ensure_quote_price_policy_schema($pdo);
- ensure_quote_permission_schema($pdo);
- quote_approval_schema($pdo);
+ quote_runtime_schema_ready($pdo);
  if($action==='login'){ $d=input_json(); ok(qperm_login($pdo,$d['username']??'', $d['password']??'')); }
  if($action==='logout'){ $u=qperm_current_user($pdo); if($u) quote_log_event($pdo,['action'=>'logout','event'=>'报价系统退出','user_name'=>$u['username']??'','summary'=>'用户退出报价系统：'.($u['username']??'')]); unset($_SESSION['quote_user'],$_SESSION['quote_permissions']); ok(); }
  if($action==='permission_feature_defs'){
@@ -4127,8 +4144,6 @@ if($action==='ensure_bom_quote_spec' || $action==='sync_bom_quote_spec'){
    ok($res);
  }
 if($action==='init'){
-   quote_v640_doc_schema_fix($pdo);
-   quote_ensure_customer_schema($pdo);
    $ownerRepairCount=0;
    ok([
     'me'=>qperm_public_user($pdo,$__quote_user),
