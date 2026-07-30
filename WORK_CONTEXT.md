@@ -1,5 +1,18 @@
 # Artdon ERP 工作上下文
 
+## 本次：修复报价首页误恢复订单与首页/佣金入口慢（已发布）
+
+- 用户反馈直接打开 `https://novlight.com/artdon_erp/quotation.php` 时，有时会自动打开旧订单，例如 `AT-260728CN010`；报价首页打开慢，“佣金策略 → 报价/订单佣金”也慢。
+- 根因一：报价页保存了 `artdon_quote_current_page` 和 `artdon_quote_open_context`，启动时会读取上次页面和上次打开对象；后续“CRM订单直达/自动打开订单”补丁又包装了 `restoreLastPage()`。因此普通首页 URL 没有任何订单参数时，也可能按浏览器旧 localStorage 回到订单页并打开旧订单。
+- 修复一：普通打开 `quotation.php` 一律初始化为空白报价首页，并清除旧的打开上下文；只有 URL 明确带 `page=orders`、`#orders`、`order_id` 或 `order_no` 时才进入订单页/自动打开订单。订单直达功能保留，但不再污染普通首页入口。
+- 根因二：首页 `renderDash()` 首屏会自动调用 `ensureDashOrderData()` 和 `ensureDashDocData()`，一打开报价首页就额外拉订单与单证接口；订单自动打开时还可能并发重复触发订单列表读取。
+- 修复二：首页仪表盘首屏不再自动拉订单/单证，改为进入订单中心或单证中心后同步；订单列表读取增加 `ORDERS_LOADING_PROMISE` 并发复用，避免同一时刻重复请求。佣金页清除旧版“订单 + 报价阶段双接口混拉”的残留函数，只保留稳定版单数据源分页。
+- 正式库只读扫描：报价 64、订单 14、订单产品 39、佣金快照 4、佣金产品行 1；佣金订单计数与列表 SQL 约 `0.2–0.3 ms`，确认不是业务数据量导致慢。扫描未写入任何业务数据。
+- 修改文件：`quotation.php`、`tests/quotation_runtime_performance_contract.php`、`tests/commission_order_path_contract.php`、本上下文。未修改、删除或回填任何报价、订单、客户、佣金、收款、出货或其它业务数据；用户原有商务中心未跟踪/删除文件继续保持不动。
+- 检查：`git diff --check` 通过；报价页 5 个内嵌 JavaScript 块 `node --check` 通过；服务器 PHP 对 `quotation.php`、`quote_api.php`、`quote_order_api.php` 语法检查通过；正式服务器专项契约 `quotation_runtime_performance_contract.php`、`commission_order_path_contract.php`、`commission_summary_page_contract.php`、`quote_save_identity_guard_contract.php` 全部通过。
+- Git / 部署：功能提交 `eb8894c45406ff921b20d55bf1765d2bd75439b0` 已推送 GitHub `main`；因服务器无法直接 `git pull` GitHub（publickey 被拒），已用 SHA-256 为 `3d0bda2e749d1283f685b7eba127d611a008fd38f8fd5069b2f2fab2d77d0ed2` 的本地 Git bundle 在正式服务器仅快进发布。服务器 HEAD 为 `eb8894c45406ff921b20d55bf1765d2bd75439b0` 且工作树干净。
+- 待用户登录浏览器强制刷新后验收：普通打开 `quotation.php` 应停留在空白报价首页，不再自动打开 `AT-260728CN010` 或其它旧订单；首页首屏不应再被订单/单证接口拖住；进入“佣金策略 → 报价/订单佣金”应只按当前来源读取一页数据。
+
 ## 本次：报价审核预览增加 MOQ 审核列（已发布）
 
 - 用户要求在“报价审核预览”的“成本公式”后增加 `MOQ` 列：报价产品行已有 MOQ 时自动带入；没有填则显示为空，审核时可手工填写。
