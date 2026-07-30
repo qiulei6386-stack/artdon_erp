@@ -522,6 +522,11 @@ function qo_list_orders(PDO $pdo){
 }
 function qo_commission_schema(PDO $pdo){
   static $done=false;if($done)return;$done=true;
+  $version=3;
+  try{
+    $state=qo_row($pdo,"SELECT schema_version FROM quote_commission_schema_state WHERE module_code='commission' LIMIT 1");
+    if((int)($state['schema_version']??0)>=$version)return;
+  }catch(Throwable $e){}
   $pdo->exec("CREATE TABLE IF NOT EXISTS quote_commission_rules (
     id INT AUTO_INCREMENT PRIMARY KEY,rule_name VARCHAR(160) DEFAULT '',target_type VARCHAR(50) DEFAULT '',target_name VARCHAR(160) DEFAULT '',target_contact VARCHAR(160) DEFAULT '',commission_mode VARCHAR(50) DEFAULT 'percent',commission_value DECIMAL(12,4) DEFAULT 0,currency VARCHAR(20) DEFAULT 'USD',calc_base VARCHAR(50) DEFAULT 'order_amount',settle_node VARCHAR(50) DEFAULT 'payment_received',settle_status VARCHAR(50) DEFAULT 'unsettled',apply_scope VARCHAR(50) DEFAULT 'all',customer_id VARCHAR(120) DEFAULT '',customer_name VARCHAR(255) DEFAULT '',product_model VARCHAR(120) DEFAULT '',category VARCHAR(160) DEFAULT '',estimated_commission DECIMAL(12,4) DEFAULT 0,settled_amount DECIMAL(12,4) DEFAULT 0,is_active TINYINT(1) DEFAULT 1,note TEXT NULL,created_by VARCHAR(120) DEFAULT '',updated_by VARCHAR(120) DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,KEY idx_commission_target(target_type,target_name),KEY idx_commission_status(is_active,settle_status)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
   $pdo->exec("CREATE TABLE IF NOT EXISTS quote_commission_snapshots (
@@ -537,6 +542,10 @@ function qo_commission_schema(PDO $pdo){
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_commission_line_item(order_item_id),KEY idx_commission_line_order(order_id),KEY idx_commission_line_model(product_model)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $pdo->exec("CREATE TABLE IF NOT EXISTS quote_commission_schema_state (
+    module_code VARCHAR(80) NOT NULL PRIMARY KEY,schema_version INT NOT NULL DEFAULT 0,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  $pdo->prepare("INSERT INTO quote_commission_schema_state(module_code,schema_version) VALUES('commission',?) ON DUPLICATE KEY UPDATE schema_version=VALUES(schema_version),updated_at=CURRENT_TIMESTAMP")->execute([$version]);
 }
 function qo_commission_payment_info(PDO $pdo,int $orderId): array {
   qo_commission_schema($pdo);
@@ -579,7 +588,7 @@ function qo_apply_conversion_commission(PDO $pdo,int $orderId,array $d,float $am
   return true;
 }
 function qo_commission_order_list(PDO $pdo,$d){
-  qo_ensure_schema($pdo);qo_commission_schema($pdo);$where=[];$args=[];$q=qo_s($d['keyword']??'',160);if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ? OR s.target_name LIKE ? OR s.note LIKE ?)';for($i=0;$i<6;$i++)$args[]='%'.$q.'%';}
+  qo_commission_schema($pdo);$where=[];$args=[];$q=qo_s($d['keyword']??'',160);if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ? OR s.target_name LIKE ? OR s.note LIKE ?)';for($i=0;$i<6;$i++)$args[]='%'.$q.'%';}
   $settle=qo_s($d['settle_status']??'',50);if($settle!==''){$where[]='COALESCE(s.settle_status,?)=?';$args[]='unsettled';$args[]=$settle;}$missing=(int)($d['missing_only']??0);if($missing)$where[]='s.id IS NULL';
   $currency=qo_s($d['currency']??'',20);if($currency!==''){$where[]='o.currency=?';$args[]=$currency;}$sqlWhere=$where?' WHERE '.implode(' AND ',$where):'';$size=max(10,min(200,(int)($d['page_size']??50)));$page=max(1,(int)($d['page']??1));
   $join=' LEFT JOIN quote_commission_snapshots s ON s.id=(SELECT sx.id FROM quote_commission_snapshots sx WHERE sx.order_id=o.id ORDER BY (sx.rule_id=0) DESC,sx.id DESC LIMIT 1)';
@@ -591,7 +600,7 @@ function qo_commission_order_list(PDO $pdo,$d){
   return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
 }
 function qo_commission_summary_list(PDO $pdo,$d){
-  qo_ensure_schema($pdo);qo_commission_schema($pdo);$where=[];$args=[];
+  qo_commission_schema($pdo);$where=[];$args=[];
   $q=qo_s($d['keyword']??'',160);if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ?)';for($i=0;$i<4;$i++)$args[]='%'.$q.'%';}
   $customer=qo_s($d['customer_name']??'',160);if($customer!==''){$where[]='o.customer_name LIKE ?';$args[]='%'.$customer.'%';}
   $customerCode=qo_s($d['customer_code']??'',160);if($customerCode!==''){$where[]='(CAST(o.customer_id AS CHAR) LIKE ? OR o.customer_json LIKE ?)';$args[]='%'.$customerCode.'%';$args[]='%'.$customerCode.'%';}
@@ -617,7 +626,7 @@ function qo_commission_order_save(PDO $pdo,$d){
   $scope=in_array(($d['commission_scope']??'order'),['order','line','mixed'],true)?$d['commission_scope']:'order';$effect=in_array(($d['receivable_effect']??'none'),['none','deduct_from_payment','pending_confirm'],true)?$d['receivable_effect']:'none';
   $params=[(int)($o['source_quote_id']??0),$o['quote_no'],$o['order_no'],qo_s($d['target_type']??'other',50),qo_s($d['target_name']??'',160),$mode,$value,$baseCode,$base,$commission,qo_s($d['currency']??$o['currency'],20),qo_s($d['settle_node']??'manual',50),qo_s($d['settle_status']??'unsettled',50),max(0,qo_num($d['settled_amount']??0)),$scope,$effect,json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),qo_s($d['note']??'后补佣金',5000)];
   if($old){$pdo->prepare('UPDATE quote_commission_snapshots SET quote_id=?,quote_no=?,order_no=?,target_type=?,target_name=?,commission_mode=?,commission_value=?,calc_base=?,base_amount=?,commission_amount=?,currency=?,settle_node=?,settle_status=?,settled_amount=?,commission_scope=?,receivable_effect=?,snapshot_json=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($params,[(int)$old['id']]));$id=(int)$old['id'];}
-  else{$pdo->prepare("INSERT INTO quote_commission_snapshots(quote_id,order_id,quote_no,order_no,rule_id,rule_name,target_type,target_name,commission_mode,commission_value,calc_base,base_amount,commission_amount,currency,settle_node,settle_status,settled_amount,commission_scope,receivable_effect,snapshot_json,note) VALUES(?,?,?,?,0,'订单手填佣金',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute(array_merge(array_slice($params,0,3),[$orderId],array_slice($params,3)));$id=(int)$pdo->lastInsertId();}
+  else{$insertParams=array_merge([$params[0],$orderId,$params[1],$params[2]],array_slice($params,3));$pdo->prepare("INSERT INTO quote_commission_snapshots(quote_id,order_id,quote_no,order_no,rule_id,rule_name,target_type,target_name,commission_mode,commission_value,calc_base,base_amount,commission_amount,currency,settle_node,settle_status,settled_amount,commission_scope,receivable_effect,snapshot_json,note) VALUES(?,?,?,?,0,'订单手填佣金',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute($insertParams);$id=(int)$pdo->lastInsertId();}
   return ['id'=>$id,'snapshot'=>qo_row($pdo,'SELECT * FROM quote_commission_snapshots WHERE id=?',[$id])];
 }
 function qo_commission_line_save(PDO $pdo,array $d): array {
@@ -639,7 +648,8 @@ function qo_order_detail(PDO $pdo,$id){
 }
 
 try{
-  qo_ensure_schema($pdo);
+  $commissionActions=['commission_order_list','commission_summary_list','commission_order_save','commission_order_batch_save','commission_line_save','commission_line_batch_save','commission_payment_info','commission_history'];
+  if(!in_array($action,$commissionActions,true))qo_ensure_schema($pdo);
   if($action==='get_document_settings') qo_ok(['settings'=>qo_doc_settings($pdo)]);
   if($action==='save_document_settings') qo_ok(['settings'=>qo_save_doc_settings($pdo,qo_input())]);
   if($action==='next_doc_numbers'){ $d=qo_input(); qo_ok(qo_next_doc_numbers($pdo,(int)($d['order_id']??0),qo_s($d['ship_date']??'',20))); }

@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：重新扫描并修复佣金打开/搜索慢、订单保存字段错位与客户 ID 变 0（待发布）
+
+- 用户再次反馈报价／订单佣金页面打开和搜索约需 8 秒，保存订单 27 时仍报 `Incorrect integer value: 'AT-260724EX028' for column 'order_id'`，选择客户后客户 ID 显示为 0。
+- 根因一：上次提交 `034d5ea` 只修复了 `quote_api.php` 中的同名佣金保存函数，但页面订单佣金实际调用 `quote_order_api.php`；后者仍把参数按 `quote_id, quote_no, order_no, order_id` 拼入 `quote_id, order_id, quote_no, order_no`，所以业务订单号仍会写入整型 `order_id`。本次已修正真实入口，并新增同时约束两套接口的专项契约。
+- 根因二：正式库只读核对订单 27（`AT-260724EX028`）客户名称为“成勋照明”，但 `customer_id` 为空；现有 13 个订单的客户名称均正常，但 `customer_id` 全为空。前端 `customerDbId()` 只接受纯数字 `id`，没有读取 CRM 客户的 `crm_customer_id`，也不兼容 `crm_123` 标识。本次改为优先读取 `crm_customer_id` 并兼容两种 ID 形式，后续新建/更新订单会保存真实 CRM 客户 ID；未擅自回填历史订单。
+- 根因三：正式库佣金列表、计数与搜索 SQL 实测均约 `0.2–0.4 ms`，数据量仅 13 单，不是 SQL 数据量导致 8 秒。真实订单接口在每次佣金读取前仍执行整套订单表结构检查，并在佣金结构函数中反复执行建表/补字段检查。本次佣金动作跳过全量订单结构扫描，佣金结构优先读取已存在的 `quote_commission_schema_state` 版本，只有首次安装/升级才执行迁移。
+- 修改文件：`quote_order_api.php`、`quotation.php`、新增 `tests/commission_order_path_contract.php`、本上下文。用户原有商务中心命令文件删除和未跟踪文档保持不动。
+- 检查：`git diff --check`、报价页内嵌 JavaScript 语法通过；腾讯云 PHP 对 `quote_order_api.php`、`quotation.php` 语法检查通过；专项契约 6 项全部通过。正式库扫描及性能测量均为只读，没有修改报价、订单、客户、佣金或其他业务数据。
+- 待完成：提交并推送 GitHub `main` → 用同一提交同步正式服务器 → 服务器语法/专项回归 → 登录页面实测打开、搜索和订单 27 保存 → 核对本地、GitHub、服务器版本一致。
+
 ## 本次：修复报价配件名称重复显示（已发布）
 
 - 修复数字开头型号被误识别为品牌的问题，`2 Wire I-connector` 不再显示成 `2 2 Wire I-connector`。

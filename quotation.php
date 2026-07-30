@@ -944,7 +944,14 @@ window.addEventListener('resize', () => { if(localStorage.getItem('artdon_quote_
 let AUTH={user:null,permissions:{},logged_in:0},PERM_USERS=[];
 let QUOTE_LAST_CURRENCY='USD';
 let DB={customers:[],products:[],headers:[],banks:[],templates:[],quotes:[],materials:[],orders:[]}, S={customer:null,product:null,header:null,bank:null,template:null,parts:{},items:[],editingIndex:-1,partTab:'led',currentQuoteId:0,currentApprovalStatus:'new'};let CUSTOMER_BATCH=false;let CRM_CUSTOMER_AUTO_SYNC_TIMER=null;let DASH_LOADING_ORDERS=false,DASH_ORDERS_LOADED=false,DASH_LOADING_DOCS=false,DASH_DOCS_LOADED=false;let DOCUMENTS=[];let DOC_SETTINGS=null;let QUOTE_PRICE_POLICY_MATCH=null,QUOTE_PRICE_POLICY_REQUEST=0,QUOTE_PRICE_POLICY_TIMER=null;let productView='gallery', partModalState={k:'',name:'',cats:''};const $=id=>document.getElementById(id), money=n=>(Number(n)||0).toFixed(2), esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'), attr=s=>esc(s).replaceAll('"','&quot;'), jsq=s=>String(s??'').replaceAll('\\','\\\\').replaceAll("'","\\'").replaceAll('<','\\x3C');
-function customerDbId(c){let id=String(c?.id||'');return /^\d+$/.test(id)?Number(id):null}
+function customerDbId(c){
+  let candidates=[c?.crm_customer_id,c?.id];
+  for(let value of candidates){
+    let id=String(value??'').trim(),match=id.match(/^(?:crm_)?(\d+)$/i);
+    if(match&&Number(match[1])>0)return Number(match[1]);
+  }
+  return null;
+}
 function quoteTermsFontSizeValue(v){v=Number(v||7.5);if(!isFinite(v))v=7.5;if(v<6)v=6;if(v>12)v=12;return Math.round(v*10)/10}
 
 let historyView='list';try{historyView=localStorage.getItem('artdon_quote_history_view')||'list'}catch(e){}
