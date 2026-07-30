@@ -1,277 +1,125 @@
 (() => {
   'use strict';
-
   const page = document.querySelector('[data-adaptation]');
-  const source = document.getElementById('adaptation-bootstrap');
-  const root = page?.querySelector('[data-overview-dashboard]');
-  if (!page || !source || !root) return;
-
-  let bootstrap = {};
-  try { bootstrap = JSON.parse(source.textContent || '{}'); } catch (_) { bootstrap = { pageLoadError: '页面初始化资料格式错误，请刷新后重试。' }; }
-
-  const state = {
-    products: Array.isArray(bootstrap.products) ? bootstrap.products : [],
-    metadata: bootstrap.metadata && typeof bootstrap.metadata === 'object' ? bootstrap.metadata : {},
-    workspace: bootstrap.workspace && typeof bootstrap.workspace === 'object' ? bootstrap.workspace : null,
-    view: ['home', 'products', 'workspace'].includes(bootstrap.view) ? bootstrap.view : 'home',
-    step: Math.min(6, Math.max(1, Number(bootstrap.step) || 1)),
-    query: '', status: 'all', sort: 'code', page: 1, pageSize: 50, busy: false,
-  };
-  const baseUrl = String(bootstrap.baseUrl || '').replace(/\/$/, '');
-
-  const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const num = (value) => Number(value || 0);
-  const text = (value, fallback = '—') => value === undefined || value === null || value === '' ? fallback : String(value);
-  const image = (url) => url ? `<img src="${esc(url)}" alt="" loading="lazy">` : '<span class="mc-adaptation-image__fallback">无图</span>';
-  const productName = (product) => text(product.product_name || product.name || product.product_code);
-  const stage = (product) => ({ unconfigured: '未配置', pending_approval: '待审批', needs_review: '待检查', enabled: '已发布' }[product.configuration_state] || text(product.approval_label, '配置中'));
-
-  const toast = (message, type = 'success') => {
-    let node = document.querySelector('[data-adaptation-toast]');
-    if (!node) { node = document.createElement('div'); node.dataset.adaptationToast = ''; document.body.appendChild(node); }
-    node.className = `mc-adaptation-toast is-${type}`;
-    node.textContent = message;
-    node.hidden = false;
-    window.clearTimeout(toast.timer);
-    toast.timer = window.setTimeout(() => { node.hidden = true; }, 3600);
-  };
-
-  const api = async (action, payload = {}, method = 'GET') => {
-    const query = new URLSearchParams({ action, ...(method === 'GET' ? payload : {}) });
-    const url = `${baseUrl}/api/v1/adaptation.php?${query.toString()}`;
-    const options = method === 'GET' ? { credentials: 'same-origin' } : {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-      body: new URLSearchParams({ action, csrf_token: String(bootstrap.csrf || ''), ...payload }).toString(),
-    };
-    const response = await fetch(url, options);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.ok) throw new Error(body.error || body.message || `请求失败（${response.status}）`);
-    return body.data;
-  };
-
-  const urlFor = (view, extras = {}) => {
-    const query = new URLSearchParams();
-    query.set('view', view);
-    const productId = extras.productId ?? state.workspace?.product?.id;
-    if (view === 'workspace' && productId) {
-      query.set('product_id', String(productId));
-      query.set('step', String(extras.step ?? state.step));
+  const bootstrapNode = document.getElementById('adaptation-bootstrap');
+  if (!page || !bootstrapNode) return;
+  let bootstrap;
+  try { bootstrap = JSON.parse(bootstrapNode.textContent || '{}'); } catch { bootstrap = {}; }
+  const root = page.querySelector('[data-overview-dashboard]');
+  if (!root) return;
+  // The legacy shell left this container hidden until it initialized. V3 owns
+  // the screen lifecycle, so its independent entry page must reveal it itself.
+  root.hidden = false;
+  const state = { products: Array.isArray(bootstrap.products) ? bootstrap.products : [], workspace: bootstrap.workspace || null, metadata: bootstrap.metadata || {}, screen: bootstrap.view || (bootstrap.workspace ? 'workspace' : 'home'), step: 1, materials: [], materialGroup: null };
+  const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char]));
+  const number = value => Number.parseInt(value || 0, 10) || 0;
+  const api = async (action, values = null) => {
+    const [actionName, ...queryParts] = String(action).split('&');
+    const query = queryParts.length ? `&${queryParts.join('&')}` : '';
+    let url = `${bootstrap.baseUrl}/api/v1/adaptation.php?action=${encodeURIComponent(actionName)}${query}`;
+    const options = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
+    if (values) {
+      const body = new FormData(); body.set('csrf_token', bootstrap.csrf || ''); body.set('action', action);
+      Object.entries(values).forEach(([key, value]) => body.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')));
+      url = `${bootstrap.baseUrl}/api/v1/adaptation.php`; options.method = 'POST'; options.body = body;
     }
-    return `${window.location.pathname}?${query.toString()}`;
+    const response = await fetch(url, options); const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.message || '操作失败，请稍后重试。');
+    return payload.data;
   };
-
-  const navigate = (view, extras = {}, replace = false) => {
-    state.view = view;
-    if (extras.step) state.step = extras.step;
-    const target = urlFor(view, extras);
-    window.history[replace ? 'replaceState' : 'pushState']({}, '', target);
-    render();
+  const toast = (message, bad = false) => {
+    const region = document.querySelector('[data-toast-region]'); if (!region) return;
+    const item = document.createElement('div'); item.className = 'mc-toast'; item.innerHTML = `<strong>${bad ? '未完成' : '已完成'}</strong><span>${esc(message)}</span>`; region.append(item); setTimeout(() => item.remove(), 4200);
   };
-
-  const openWorkspace = async (id, step = 1) => {
-    if (!id) return;
-    root.innerHTML = '<div class="mc-adaptation-loading">正在打开产品工作台…</div>';
+  const selectedProduct = () => state.workspace?.product || null;
+  const configState = product => product?.config_state || product?.configuration_state || 'unconfigured';
+  const statusLabel = stateValue => ({ unconfigured:'未配置', configured:'配置中', pending_approval:'待审批', needs_review:'待检查', enabled:'已发布', conflict:'有冲突' }[stateValue] || '配置中');
+  const showApproval = () => { const button = document.querySelector('[data-v3-approve]'); if (button) button.hidden = !selectedProduct(); };
+  const navigate = (screen, replace = false) => {
+    state.screen = screen; page.dataset.view = screen; const url = new URL(location.href); url.searchParams.set('view', screen);
+    if (selectedProduct()) url.searchParams.set('product_id', String(selectedProduct().id)); else { url.searchParams.delete('product_id'); url.searchParams.delete('group_id'); }
+    history[replace ? 'replaceState' : 'pushState']({}, '', url); render();
+  };
+  const loadWorkspace = async (productId, groupId = 0) => {
+    root.innerHTML = '<div class="mc-v3-loading">正在载入产品配置工作台…</div>';
+    state.workspace = await api(`workspace&product_id=${encodeURIComponent(productId)}&group_id=${encodeURIComponent(groupId)}`);
+    state.products = state.products.map(product => number(product.id) === number(productId) ? { ...product, ...state.workspace.product } : product);
+    state.screen = 'workspace'; state.step = groupId ? 2 : 1; state.materials = []; state.materialGroup = null; navigate('workspace');
+  };
+  const productName = product => `${product.product_code || product.model || product.code || ''} ${product.product_name || product.name || ''}`.trim() || '未命名产品';
+  const productRows = (products, compact = false) => products.map(product => `<button class="mc-v3-product-row ${number(selectedProduct()?.id) === number(product.id) ? 'is-current' : ''}" data-v3-open-product="${number(product.id)}" type="button">
+    <span class="mc-v3-product-row__image">${product.image_url ? `<img src="${esc(product.image_url)}" alt="">` : '◈'}</span><span><b>${esc(product.product_code || product.model || product.code || '—')}</b><small>${esc(product.product_name || product.name || product.series_name || '未命名产品')}</small></span><span class="mc-v3-status mc-v3-status--${esc(configState(product))}">${esc(statusLabel(configState(product)))}</span>${compact ? '' : `<span>${number(product.group_count)} 组 · ${number(product.option_count)} 项</span>`}</button>`).join('');
+  const renderHome = () => {
+    const counts = { unconfigured:0, configured:0, pending_approval:0, needs_review:0, enabled:0, conflict:0 };
+    state.products.forEach(product => { const key = configState(product); counts[key] = (counts[key] || 0) + 1; if (number(product.conflict_count)) counts.conflict++; });
+    root.innerHTML = `<section class="mc-v3-home"><div class="mc-v3-welcome"><div><span>PRODUCT ADAPTATION</span><h2>产品适配工作台</h2><p>按产品完成技术范围、核心物料、可选件、条件规则和审批发布。产品未选择前不会出现无关的复制、检查或发布操作。</p></div><div class="mc-v3-welcome__actions"><button class="mc-button mc-button--primary" data-v3-products type="button">选择产品开始</button><button class="mc-button" data-v3-template type="button">使用配置模板</button><button class="mc-button" data-v3-batch type="button">批量套用</button></div></div>
+      <div class="mc-v3-metrics">${[['unconfigured','未配置'],['configured','配置中'],['pending_approval','待审批'],['needs_review','待检查'],['enabled','已发布'],['conflict','有冲突']].map(([key,label]) => `<button type="button" data-v3-filter="${key}"><b>${number(counts[key])}</b><span>${label}</span></button>`).join('')}</div>
+      <section class="mc-v3-panel"><div class="mc-v3-panel__head"><div><h2>最近产品</h2><p>从这里继续上一次的配置；不会丢失已有草稿或审批记录。</p></div><button class="mc-button" type="button" data-v3-products>查看全部产品</button></div><div class="mc-v3-recent">${productRows(state.products.slice(0, 8)) || '<p class="mc-v3-empty">暂无可配置产品，请先同步产品。</p>'}</div></section></section>`;
+  };
+  const renderProducts = () => {
+    root.innerHTML = `<section class="mc-v3-products"><div class="mc-v3-panel__head"><div><span>PRODUCT MANAGEMENT</span><h2>全部产品配置管理</h2><p>搜索支持型号、名称、系列和类别的模糊匹配；选择一个产品后才进入工作台。</p></div><button class="mc-button" data-v3-home type="button">返回首页</button></div><div class="mc-v3-toolbar"><label class="mc-search"><span>⌕</span><input data-v3-search placeholder="搜索型号 / 名称 / 系列 / 类别"></label><select data-v3-status><option value="all">全部状态</option><option value="unconfigured">未配置</option><option value="configured">配置中</option><option value="needs_review">待检查</option><option value="pending_approval">待审批</option><option value="enabled">已发布</option><option value="conflict">有冲突</option></select><button class="mc-button" data-v3-sync type="button">同步产品</button></div><div class="mc-v3-product-table"><div class="mc-v3-product-table__head"><span>产品</span><span>系列 / 类别</span><span>配置状态</span><span>配置组</span><span>冲突</span><span></span></div><div data-v3-product-table>${renderProductTable(state.products)}</div></div></section>`;
+  };
+  const renderProductTable = products => products.length ? products.map(product => `<article><span><b>${esc(product.product_code || product.model || product.code || '—')}</b><small>${esc(product.product_name || product.name || '未命名产品')}</small></span><span>${esc(product.series_name || product.product_series || '—')}</span><span class="mc-v3-status mc-v3-status--${esc(configState(product))}">${esc(statusLabel(configState(product)))}</span><span>${number(product.group_count)} 组 / ${number(product.option_count)} 项</span><span>${number(product.conflict_count)}</span><button class="mc-button mc-button--primary" data-v3-open-product="${number(product.id)}" type="button">打开工作台</button></article>`).join('') : '<div class="mc-v3-empty">没有匹配的产品。</div>';
+  const groupCard = group => {
+    const overview = (state.workspace.configuration_overview || []).find(row => number(row.id) === number(group.id)) || group;
+    const defaultValue = overview.default_material || '未设置默认物料'; const isDone = number(group.option_count) && (group.selection_mode !== 'single' || defaultValue !== '未设置默认物料');
+    const availability = group.quick_rules?.availability || 'allowed';
+    const optionalState = group.is_required ? '' : `<label class="mc-v3-group-card__state"><span>供货状态</span><select data-v3-optional-state="${number(group.id)}"><option value="allowed" ${availability === 'allowed' ? 'selected' : ''}>允许选择</option><option value="not_applicable" ${availability === 'not_applicable' ? 'selected' : ''}>不适用</option><option value="not_offered" ${availability === 'not_offered' ? 'selected' : ''}>暂不提供</option><option value="later" ${availability === 'later' ? 'selected' : ''}>稍后处理</option></select></label>`;
+    return `<article class="mc-v3-group-card ${isDone ? 'is-done' : 'is-pending'}"><div><span>${esc(group.business_type === 'power' ? 'ϟ' : '◇')}</span><strong>${esc(group.group_name)}</strong><small>${group.is_required ? '核心必配' : '可选配置'} · ${group.selection_mode === 'single' ? '单选' : '多选'}</small></div><p>默认：${esc(defaultValue)}</p>${optionalState}<footer><span>正式 ${number(group.option_count)} · 候选 ${number(group.alternative_count)}</span><button type="button" data-v3-manage-group="${number(group.id)}">${isDone ? '管理' : '立即处理'}</button></footer></article>`;
+  };
+  const profileFields = () => state.workspace?.technical_profile?.fields || state.metadata.technical_profile_fields || [];
+  const profileInput = field => { const value = state.workspace?.technical_profile?.values?.[field.key]; if (field.type === 'select') return `<select name="${esc(field.key)}">${Object.entries(field.options || {}).map(([key,label]) => `<option value="${esc(key)}" ${String(value || 'unknown') === key ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`; if (field.type === 'multi') return `<span class="mc-v3-checkboxes">${Object.entries(field.options || {}).map(([key,label]) => `<label><input type="checkbox" name="${esc(field.key)}" value="${esc(key)}" ${(value || []).includes(key) ? 'checked' : ''}>${esc(label)}</label>`).join('')}</span>`; if (field.type === 'textarea') return `<textarea name="${esc(field.key)}" rows="3" placeholder="补充产品工程限制与说明">${esc(value)}</textarea>`; return `<input type="${field.type === 'number' ? 'number' : 'text'}" ${field.type === 'number' ? 'min="0" step="0.01"' : ''} name="${esc(field.key)}" value="${esc(value)}" placeholder="待确认">`; };
+  const renderTechnical = () => { const fields = profileFields(); const sections = [...new Set(fields.map(field => field.section || '技术范围'))]; return `<form data-v3-profile class="mc-v3-technical"><div class="mc-v3-step-intro"><div><span>STEP 1</span><h2>技术范围</h2><p>先定义产品可使用的功率、电流、电压、空间、安装、认证和光学边界。此信息会同步用于电源和光学候选筛选。</p></div><span>${state.workspace.technical_profile?.confirmed_at ? `最近确认：${esc(state.workspace.technical_profile.confirmed_at)}` : '尚未确认'}</span></div>${sections.map(section => `<fieldset><legend>${esc(section)}</legend><div class="mc-v3-field-grid">${fields.filter(field => (field.section || '技术范围') === section).map(field => `<label><span>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</span>${profileInput(field)}</label>`).join('')}</div></fieldset>`).join('')}<footer><button class="mc-button mc-button--primary" type="submit">保存并确认技术范围</button><button class="mc-button" type="button" data-v3-step="2">下一步：核心必配</button></footer></form>`; };
+  const renderGroups = (core) => { const groups = (state.workspace.groups || []).filter(group => Boolean(number(group.is_required)) === core); return `<section><div class="mc-v3-step-intro"><div><span>STEP ${core ? 2 : 3}</span><h2>${core ? '核心必配' : '扩展可配'}</h2><p>${core ? '必须完成芯片、驱动、光学和安装方式。' : '可明确标记不适用、暂不提供或稍后处理；只有“稍后处理”会计入缺失。'}</p></div></div><div class="mc-v3-group-grid">${groups.map(groupCard).join('') || '<div class="mc-v3-empty">尚未建立配置组。可先使用完整标准模板生成。</div>'}</div></section>`; };
+  const renderRules = () => `<section class="mc-v3-rule-step"><div class="mc-v3-step-intro"><div><span>STEP 4</span><h2>条件规则</h2><p>规则用于限制组合、替代关系和例外；任何不适配物料都会在发布前阻断。</p></div></div><div class="mc-v3-rule-grid">${(state.workspace.groups || []).map(group => `<article><strong>${esc(group.group_name)}</strong><span>${number(group.condition_count)} 条适用条件 · ${number(group.conflict_count)} 条冲突</span><button type="button" data-v3-manage-group="${number(group.id)}">管理条件与候选</button></article>`).join('')}</div></section>`;
+  const renderCheck = () => { const completion = state.workspace.completion || {}; return `<section class="mc-v3-check"><div class="mc-v3-step-intro"><div><span>STEP 5</span><h2>检查与审批</h2><p>完成度按技术范围 20%、核心必配 50%、可选配置 10%、规则 10%、检查 10% 计算；不会再因仅生成配置组显示虚高完成度。</p></div><b>${number(completion.percent)}%</b></div><div class="mc-v3-check-grid">${Object.entries(completion.segments || {}).map(([key,value]) => `<span><b>${number(value)}%</b><small>${({technical:'技术范围',core:'核心必配',optional:'可选配置',rules:'条件规则',check:'检查'}[key] || key)}</small></span>`).join('')}</div>${completion.issues?.length ? `<div class="mc-v3-issues">${completion.issues.map(issue => `<p>• ${esc(issue)}</p>`).join('')}</div>` : '<div class="mc-v3-ready">所有检查已通过，可以提交审批并发布版本。</div>'}<button class="mc-button mc-button--primary" data-v3-approve type="button">检查并提交审批</button></section>`; };
+  const renderVersions = () => `<section class="mc-v3-version"><div class="mc-v3-step-intro"><div><span>STEP 6</span><h2>版本与发布</h2><p>发布后会生成不可变版本，报价与订单只读取已发布版本。</p></div></div><div class="mc-v3-version-list">${(state.workspace.published_versions || []).map(version => `<article><b>V${number(version.version_no)}</b><span>${esc(version.published_at || '')}</span><span>${esc(version.publisher_name || '')}</span></article>`).join('') || '<div class="mc-v3-empty">尚未发布版本。</div>'}</div></section>`;
+  const renderWorkbench = () => { const product = selectedProduct(); if (!product) return renderHome(); const completion = state.workspace.completion || {}; const steps = [['1','技术范围'],['2','核心必配'],['3','扩展可配'],['4','条件规则'],['5','检查审批'],['6','版本发布']]; const content = ({1:renderTechnical,2:() => renderGroups(true),3:() => renderGroups(false),4:renderRules,5:renderCheck,6:renderVersions}[state.step] || renderTechnical)(); root.innerHTML = `<section class="mc-v3-workbench"><div class="mc-v3-product-summary"><div class="mc-v3-product-image">${product.image_url ? `<img src="${esc(product.image_url)}" alt="">` : '◈'}</div><div><h2>${esc(product.product_code || product.model || '—')} <small>${esc(product.product_name || product.name || '')}</small></h2><p>系列：${esc(product.series_name || product.product_series || '—')}　状态：${esc(statusLabel(configState(product)))}</p></div><div class="mc-v3-completion" style="--completion:${number(completion.percent)}"><b>${number(completion.percent)}%</b><span>配置完成度</span></div><div class="mc-v3-summary-metrics"><span><b>${Math.max(0, 100 - number(completion.percent))}</b>缺失项</span><span><b>${number((state.workspace.conflicts || []).length)}</b>冲突项</span><span><b>${number((state.workspace.published_versions || []).length)}</b>已发布版本</span></div></div><nav class="mc-v3-steps">${steps.map(([id,label]) => `<button type="button" class="${number(id) === state.step ? 'is-active' : ''}" data-v3-step="${id}"><b>${id}</b><span>${label}</span></button>`).join('')}</nav><div class="mc-v3-workarea">${content}</div></section>`; };
+  const renderMaterials = () => { const group = state.materialGroup; if (!group) return renderWorkbench(); const rows = state.materials || []; root.innerHTML = `<section class="mc-v3-materials"><div class="mc-v3-panel__head"><div><span>FULL WIDTH MATERIAL COMPARISON</span><h2>${esc(group.group_name)} · 候选物料</h2><p>只有正式物料可直接加入。若工程必须例外，可填写原因后进入审批；非正式物料始终不可加入。</p></div><button class="mc-button" type="button" data-v3-return-workspace>返回工作台</button></div><div class="mc-v3-material-context"><b>${esc(selectedProduct()?.product_code || '')}</b><span>技术范围和当前配置会参与候选判断。</span></div><div class="mc-v3-material-table"><div class="mc-v3-material-table__head"><span>物料</span><span>规格 / 范围</span><span>适配结果</span><span>原因</span><span></span></div>${rows.map(row => { const official = (row.status || row.material_status) === 'official'; const incompatible = row.match_level === 'incompatible'; const added = Boolean(number(row.already_added)); const action = !official ? '<button class="mc-button" disabled type="button">非正式物料</button>' : added ? '<button class="mc-button" disabled type="button">已加入配置</button>' : incompatible ? `<button class="mc-button" type="button" data-v3-exception-material="${number(row.id || row.material_id)}">申请例外</button>` : `<button class="mc-button mc-button--primary" type="button" data-v3-add-material="${number(row.id || row.material_id)}">加入配置</button>`; return `<article><span><b>${esc(row.material_code || '')}</b><small>${esc(row.name || '')}</small></span><span>${esc([row.max_output_power_w && `${row.max_output_power_w}W`, row.output_current_ma && `${row.output_current_ma}mA`, row.output_voltage_min_v && `${row.output_voltage_min_v}V`, row.dimming_modes].filter(Boolean).join(' · ') || '待补充规格')}</span><span class="mc-v3-match mc-v3-match--${esc(row.match_level || '')}">${esc(({exact:'完全适配',conditional:'条件适配',needs_approval:'需要审批',incompatible:'不适配'}[row.match_level] || '待判断'))}</span><span>${esc((row.conflict_reasons || []).join('；') || '—')}</span>${action}</article>`; }).join('') || '<div class="mc-v3-empty">当前范围没有找到候选物料。请回到技术范围补充或放宽可确认的条件。</div>'}</div></section>`; };
+  const renderTemplate = () => { const product = selectedProduct(); root.innerHTML = `<section class="mc-v3-template"><div class="mc-v3-panel__head"><div><span>CONFIGURATION TEMPLATE</span><h2>标准配置模板</h2><p>模板可自由组合：只套电源，或电源 + 芯片，或电源 + 芯片 + 光学；不会重复插入已有配置组。</p></div><button class="mc-button" data-v3-home type="button">返回首页</button></div>${product ? `<div class="mc-v3-template-target">当前产品：<b>${esc(productName(product))}</b></div><form data-v3-template-form><div class="mc-v3-template-options">${(state.metadata.template || []).map(group => `<label><input type="checkbox" name="template_key" value="${esc(group.key)}" ${group.is_required ? 'checked' : ''}><span><b>${esc(group.name)}</b><small>${group.is_required ? '核心必配' : '可选配置'} · ${esc(group.selection_mode === 'single' ? '单选' : '多选')}</small></span></label>`).join('')}</div><button class="mc-button mc-button--primary" type="submit">套用所选配置组</button></form>` : '<div class="mc-v3-empty">请先选择一个产品，再建立或套用模板。<br><button class="mc-button mc-button--primary" data-v3-products type="button">选择产品</button></div>'}</section>`; };
+  const renderBatch = () => { const source = selectedProduct(); root.innerHTML = `<section class="mc-v3-template"><div class="mc-v3-panel__head"><div><span>BATCH APPLY</span><h2>批量套用</h2><p>先选一个已配置的来源产品，再选择目标产品。可自由组合只套电源，或电源 + 芯片 + 光学等配置组。</p></div><button class="mc-button" data-v3-home type="button">返回首页</button></div>${source ? `<form data-v3-batch-form><div class="mc-v3-template-target">来源产品：<b>${esc(productName(source))}</b></div><label class="mc-field"><span>套用方式</span><select name="mode"><option value="fill_missing">只补空白（推荐）</option><option value="replace_matching">覆盖同名配置组</option></select></label><fieldset class="mc-v3-template-options"><legend>选择要映射的配置组</legend>${(state.workspace.groups || []).map(group => `<label><input type="checkbox" name="source_group" value="${number(group.id)}" checked><span><b>${esc(group.group_name)}</b><small>${group.is_required ? '核心必配' : '可选配置'}</small></span></label>`).join('')}</fieldset><div class="mc-v3-target-list">${state.products.filter(product => number(product.id) !== number(source.id)).map(product => `<label><input type="checkbox" name="target_product" value="${number(product.id)}"><span>${esc(productName(product))}</span><small>${esc(statusLabel(configState(product)))}</small></label>`).join('')}</div><button class="mc-button mc-button--primary" type="submit">确认批量套用</button></form>` : '<div class="mc-v3-empty">请先选择来源产品。</div>'}</section>`; };
+  const render = () => { showApproval(); if (!root) return; if (state.screen === 'products') renderProducts(); else if (state.screen === 'workspace') renderWorkbench(); else if (state.screen === 'materials') renderMaterials(); else if (state.screen === 'template') renderTemplate(); else if (state.screen === 'batch') renderBatch(); else renderHome(); };
+  const openGroup = async groupId => { const group = (state.workspace.groups || []).find(row => number(row.id) === number(groupId)); if (!group) return; state.materialGroup = group; state.materials = []; state.screen = 'materials'; render(); try { state.materials = await api(`candidates&group_id=${group.id}&status=official`); } catch (error) { toast(error.message, true); } render(); };
+  page.addEventListener('click', async event => { const button = event.target.closest('button'); if (!button) return; try {
+    if (button.matches('[data-v3-home]')) return navigate('home');
+    if (button.matches('[data-v3-filter]')) { const filter = button.dataset.v3Filter || 'all'; navigate('products'); requestAnimationFrame(() => { const select = page.querySelector('[data-v3-status]'); if (!select) return; select.value = filter; select.dispatchEvent(new Event('change', { bubbles: true })); }); return; }
+    if (button.matches('[data-v3-products],[data-v3-select-product]')) return navigate('products');
+    if (button.matches('[data-v3-template]')) return navigate('template');
+    if (button.matches('[data-v3-batch]')) return navigate('batch');
+    if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct));
+    if (button.matches('[data-v3-step]')) { state.step = number(button.dataset.v3Step); state.screen = 'workspace'; return render(); }
+    if (button.matches('[data-v3-manage-group]')) return openGroup(number(button.dataset.v3ManageGroup));
+    if (button.matches('[data-v3-return-workspace]')) { state.screen = 'workspace'; return render(); }
+    if (button.matches('[data-v3-add-material]')) { const result = await api('add_options', { group_id: state.materialGroup.id, material_ids: [number(button.dataset.v3AddMaterial)] }); if (state.materialGroup.selection_mode === 'single' && result.optionIds?.[0]) await api('set_default', { group_id: state.materialGroup.id, option_ids: [result.optionIds[0]], min_select: state.materialGroup.is_required ? 1 : 0, max_select: 1 }); toast(state.materialGroup.selection_mode === 'single' ? '物料已加入并设为默认项。' : '物料已加入配置。'); return loadWorkspace(selectedProduct().id, state.materialGroup.id); }
+    if (button.matches('[data-v3-exception-material]')) { const reason = prompt('请填写必须使用该不适配物料的工程例外原因：'); if (!reason?.trim()) return; await api('add_options', { group_id: state.materialGroup.id, material_ids: [number(button.dataset.v3ExceptionMaterial)], force_exception_reason: reason.trim() }); toast('例外物料已加入，并会在检查时进入审批。'); return loadWorkspace(selectedProduct().id, state.materialGroup.id); }
+    if (button.matches('[data-v3-sync]')) { const result = await api('sync'); toast(`已同步 ${number(result.synced || result.count || 0)} 个产品`); const products = await api('products'); state.products = Array.isArray(products) ? products : []; return renderProducts(); }
+    if (button.matches('[data-v3-approve]')) { if (!confirm('确认检查并提交审批发布吗？发布后会生成不可变版本。')) return; await api('approve', { product_id: selectedProduct().id }); toast('配置已审批并发布。'); return loadWorkspace(selectedProduct().id); }
+  } catch (error) { toast(error.message, true); } });
+  page.addEventListener('input', event => { if (!event.target.matches('[data-v3-search]')) return; const query = event.target.value.trim().toLowerCase(); const status = page.querySelector('[data-v3-status]')?.value || 'all'; const rows = state.products.filter(product => { const text = `${product.product_code || ''} ${product.product_name || ''} ${product.series_name || ''} ${product.product_type || product.category_name || ''}`.toLowerCase(); return (!query || text.includes(query)) && (status === 'all' || configState(product) === status || (status === 'conflict' && number(product.conflict_count))); }); const target = page.querySelector('[data-v3-product-table]'); if (target) target.innerHTML = renderProductTable(rows); });
+  page.addEventListener('change', async event => {
+    if (event.target.matches('[data-v3-status]')) {
+      page.querySelector('[data-v3-search]')?.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (!event.target.matches('[data-v3-optional-state]')) return;
+    const group = (state.workspace?.groups || []).find(row => number(row.id) === number(event.target.dataset.v3OptionalState));
+    if (!group) return;
     try {
-      state.workspace = await api('workspace', { product_id: String(id) }, 'GET');
-      state.step = step;
-      state.view = 'workspace';
-      window.history.pushState({}, '', urlFor('workspace', { productId: id, step }));
+      await api('save_quick_rules', { group_id: group.id, rules: { ...(group.quick_rules || {}), availability: event.target.value } });
+      toast(event.target.value === 'later' ? '已标记为稍后处理，会计入待处理项。' : '可选组状态已保存。');
+      await loadWorkspace(selectedProduct().id);
+      state.step = 3;
       render();
     } catch (error) {
-      renderFailure(error);
+      toast(error.message, true);
+      event.target.value = group.quick_rules?.availability || 'allowed';
     }
-  };
-
-  const filteredProducts = () => {
-    const query = state.query.trim().toLowerCase();
-    let rows = state.products.filter((product) => {
-      if (state.status === 'unconfigured' && product.configuration_state !== 'unconfigured') return false;
-      if (state.status === 'configured' && num(product.group_count) === 0) return false;
-      if (state.status === 'needs_review' && product.configuration_state !== 'needs_review') return false;
-      if (state.status === 'pending_approval' && product.configuration_state !== 'pending_approval') return false;
-      if (state.status === 'enabled' && product.configuration_state !== 'enabled') return false;
-      if (state.status === 'conflict' && !product.has_conflict) return false;
-      if (!query) return true;
-      return [product.product_code, product.product_name, product.series_name, product.product_type].join(' ').toLowerCase().includes(query);
-    });
-    rows = rows.sort((a, b) => {
-      if (state.sort === 'name') return productName(a).localeCompare(productName(b));
-      if (state.sort === 'updated') return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
-      return String(a.product_code || '').localeCompare(String(b.product_code || ''));
-    });
-    return rows;
-  };
-
-  const statusCounts = () => ({
-    all: state.products.length,
-    unconfigured: state.products.filter((item) => item.configuration_state === 'unconfigured').length,
-    configured: state.products.filter((item) => num(item.group_count) > 0).length,
-    needs_review: state.products.filter((item) => item.configuration_state === 'needs_review').length,
-    pending_approval: state.products.filter((item) => item.configuration_state === 'pending_approval').length,
-    enabled: state.products.filter((item) => item.configuration_state === 'enabled').length,
-    conflict: state.products.filter((item) => item.has_conflict).length,
   });
-
-  const renderHome = () => {
-    const counts = statusCounts();
-    const labels = [['all','全部产品'], ['unconfigured','未配置'], ['configured','配置中'], ['needs_review','待检查'], ['pending_approval','待审批'], ['enabled','已发布'], ['conflict','存在冲突']];
-    const recent = [...state.products].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))).slice(0, 8);
-    root.innerHTML = `
-      <section class="mc-adaptation-home-intro">
-        <div><h2>从一个产品开始</h2><p>基础页面已恢复为统一工作台。先完成技术范围，再继续核心物料等后续步骤。</p></div>
-        <div class="mc-adaptation-home-intro__actions"><button class="mc-button mc-button--primary" type="button" data-v3-products>选择产品开始</button><button class="mc-button" type="button" data-v3-products>查看全部产品</button><button class="mc-button" type="button" data-v3-disabled>配置模板</button><button class="mc-button" type="button" data-v3-disabled>批量工具</button></div>
-      </section>
-      <section class="mc-adaptation-status-grid">${labels.map(([key, label]) => `<button class="mc-adaptation-status-card" data-v3-filter="${key}" type="button"><span>${label}</span><strong>${counts[key]}</strong><small>点击查看产品</small></button>`).join('')}</section>
-      <section class="mc-adaptation-panel"><div class="mc-adaptation-panel__head"><div><h2>最近产品</h2><p>显示最近有更新的产品配置。</p></div><button class="mc-button" type="button" data-v3-products>全部产品</button></div><div class="mc-adaptation-recent">${recent.length ? recent.map(productRow).join('') : '<div class="mc-empty-state">还没有可显示的产品。</div>'}</div></section>`;
-  };
-
-  const productRow = (product) => `<button type="button" class="mc-adaptation-recent__row" data-v3-open-product="${num(product.id)}"><span class="mc-adaptation-image">${image(product.image_url)}</span><span><b>${esc(product.product_code)}</b><small>${esc(productName(product))}</small></span><span>${esc(stage(product))}</span><span>${num(product.group_count)} 组 · ${num(product.option_count)} 项</span><span>${num(product.conflict_count)} 冲突</span><span>进入工作台 →</span></button>`;
-
-  const renderProducts = () => {
-    const counts = statusCounts();
-    const tabs = [['all','全部'],['unconfigured','未配置'],['configured','配置中'],['needs_review','待检查'],['pending_approval','待审批'],['enabled','已发布'],['conflict','存在冲突']];
-    const rows = filteredProducts();
-    const pages = Math.max(1, Math.ceil(rows.length / state.pageSize));
-    state.page = Math.min(state.page, pages);
-    const start = (state.page - 1) * state.pageSize;
-    const visible = rows.slice(start, start + state.pageSize);
-    root.innerHTML = `
-      <section class="mc-adaptation-products-page">
-        <div class="mc-adaptation-panel__head"><div><h2>全部产品配置</h2><p>搜索、筛选和分页仅影响产品列表，不会修改已有配置。</p></div><div><button class="mc-button" type="button" data-v3-home>返回适配首页</button><button class="mc-button" type="button" data-v3-refresh>刷新</button><button class="mc-button" type="button" data-v3-disabled>列设置（暂未开放）</button></div></div>
-        <nav class="mc-adaptation-tabs">${tabs.map(([key, label]) => `<button type="button" class="${state.status === key ? 'is-active' : ''}" data-v3-filter="${key}">${label}<b>${counts[key]}</b></button>`).join('')}</nav>
-        <div class="mc-adaptation-list-tools"><label>搜索<input type="search" data-v3-search value="${esc(state.query)}" placeholder="型号、名称、系列或类型"></label><label>排序<select data-v3-sort><option value="code">型号</option><option value="name">名称</option><option value="updated">最近更新</option></select></label><label>每页<select data-v3-page-size><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label><span>共 ${rows.length} 个产品</span></div>
-        <div class="mc-adaptation-table-wrap"><table class="mc-adaptation-table"><thead><tr><th>产品</th><th>类型 / 系列</th><th>当前阶段</th><th>完成度</th><th>技术范围缺失</th><th>核心物料状态</th><th>冲突</th><th>待审批</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${visible.length ? visible.map((product) => {
-          const stageText = stage(product);
-          return `<tr><td><div class="mc-adaptation-product-cell"><span class="mc-adaptation-image">${image(product.image_url)}</span><span><b>${esc(product.product_code)}</b><small>${esc(productName(product))}</small></span></div></td><td>${esc(text(product.product_type))}<small>${esc(text(product.series_name))}</small></td><td><span class="mc-adaptation-stage">${esc(stageText)}</span></td><td>${num(product.group_count) ? '进行中' : '未开始'}</td><td>${num(product.group_count) ? '待确认' : '—'}</td><td>暂停</td><td>${num(product.conflict_count)}</td><td>${stageText === '待审批' ? 1 : 0}</td><td>草稿 ${num(product.group_count)} / 发布 ${text(product.approved_version, '—')}</td><td>${esc(text(product.updated_at))}</td><td><button type="button" class="mc-button mc-button--small ${product.configuration_state === 'unconfigured' ? 'mc-button--primary' : ''}" data-v3-open-product="${num(product.id)}">${product.configuration_state === 'unconfigured' ? '开始配置' : '继续配置'}</button></td></tr>`;
-        }).join('') : '<tr><td colspan="11"><div class="mc-empty-state">没有符合条件的产品。</div></td></tr>'}</tbody></table></div>
-        <footer class="mc-adaptation-pager"><span>第 ${state.page} / ${pages} 页 · 显示 ${visible.length} 条</span><div><button class="mc-button mc-button--small" type="button" data-v3-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}>上一页</button><button class="mc-button mc-button--small" type="button" data-v3-page="${state.page + 1}" ${state.page >= pages ? 'disabled' : ''}>下一页</button></div></footer>
-      </section>`;
-    const sort = root.querySelector('[data-v3-sort]'); if (sort) sort.value = state.sort;
-    const pageSize = root.querySelector('[data-v3-page-size]'); if (pageSize) pageSize.value = String(state.pageSize);
-  };
-
-  const completion = (workspace) => {
-    const profile = workspace.technical_profile || {};
-    const fields = Array.isArray(profile.fields) ? profile.fields : [];
-    const values = profile.values || {};
-    const filled = fields.filter((field) => { const value = values[field.key]; return Array.isArray(value) ? value.length : value !== null && value !== undefined && value !== ''; }).length;
-    const total = fields.length || 1;
-    const technicalConfirmed = Boolean(profile.confirmed_at);
-    const techPercent = technicalConfirmed ? 20 : 0;
-    // Stop-loss mode deliberately does not invent completion data for paused steps.
-    const missing = { technical: technicalConfirmed ? 0 : Math.max(1, total - filled), core: null, optional: null, rules: null, approval: null, conflict: (workspace.conflicts || []).filter((item) => item.status === 'active').length };
-    return { percent: techPercent, technicalConfirmed, filled, total, missing };
-  };
-
-  const steps = [{ id:1, label:'技术范围' }, { id:2, label:'核心物料' }, { id:3, label:'扩展可选' }, { id:4, label:'条件规则' }, { id:5, label:'检查审批' }, { id:6, label:'版本发布' }];
-
-  const renderWorkspace = () => {
-    const workspace = state.workspace;
-    if (!workspace?.product) { renderProducts(); return; }
-    const product = workspace.product; const result = completion(workspace);
-    root.innerHTML = `
-      <section class="mc-adaptation-product-summary"><div class="mc-adaptation-product-summary__identity"><span class="mc-adaptation-image mc-adaptation-image--large">${image(product.image_url)}</span><div><p>当前产品</p><h2>${esc(product.product_code)} <small>${esc(productName(product))}</small></h2><span>系列：${esc(text(product.series_name))}</span><span>类型：${esc(text(product.product_type))}</span><span>状态：${esc(stage(product))}</span></div></div><div class="mc-adaptation-product-summary__metrics"><div><b>${result.percent}%</b><small>基础完成度</small></div><div><b>${result.missing.technical}</b><small>技术范围缺失</small></div><div><b>—</b><small>核心物料（暂停）</small></div><div><b>${result.missing.conflict}</b><small>冲突</small></div><div><b>—</b><small>审批发布（暂停）</small></div></div></section>
-      <nav class="mc-adaptation-steps" aria-label="产品配置步骤">${steps.map((step) => `<button type="button" class="${state.step === step.id ? 'is-active' : ''} ${step.id === 1 && result.technicalConfirmed ? 'is-done' : ''}" data-v3-step="${step.id}"><b>${step.id}</b><span>${step.label}</span><small>${step.id === 1 ? (result.technicalConfirmed ? '已确认' : '进行中') : '暂未开放'}</small></button>`).join('')}</nav>
-      ${state.step === 1 ? renderTechnical(workspace, result) : renderPausedStep(steps[state.step - 1])}`;
-  };
-
-  const renderPausedStep = (step) => `<section class="mc-adaptation-paused"><h2>${esc(step.label)}</h2><p>当前处于产品适配基础页面止损修复阶段。本步骤暂未开放，不会生成核心物料、规则、审批或发布数据。</p><button class="mc-button mc-button--primary" type="button" data-v3-step="1">返回技术范围</button></section>`;
-
-  const renderTechnical = (workspace, result) => {
-    const profile = workspace.technical_profile || {}; const fields = Array.isArray(profile.fields) ? profile.fields : []; const values = profile.values || {};
-    const sections = ['电气范围', '结构与空间', '环境与要求', '光学范围', '补充说明'];
-    const formGroups = sections.map((section) => {
-      const members = fields.filter((field) => field.section === section);
-      if (!members.length) return '';
-      return `<fieldset class="mc-technical-section"><legend>${section}</legend><p class="mc-technical-section__legend">标注单位、建议来源与确认状态；保存草稿不会进入后续物料和规则流程。</p><div class="mc-technical-grid">${members.map((field) => technicalField(field, values[field.key])).join('')}</div></fieldset>`;
-    }).join('');
-    const confirmed = profile.confirmed_at ? `已人工确认：${esc(profile.confirmed_at)}` : '待确认：保存并确认技术范围后生效';
-    return `<section class="mc-technical-workspace"><div class="mc-adaptation-panel__head"><div><h2>步骤 1 · 技术范围</h2><p>已填写 ${result.filled} / ${result.total} 项。${confirmed}</p></div><button class="mc-button" type="button" data-v3-products>切换产品</button></div><form data-v3-technical-form novalidate>${formGroups}<footer class="mc-technical-footer"><div><strong>技术范围状态</strong><span>${confirmed}</span></div><div><button class="mc-button" type="submit" data-v3-save="draft">保存草稿</button><button class="mc-button mc-button--primary" type="submit" data-v3-save="confirm">保存并确认技术范围</button><button class="mc-button" type="submit" data-v3-save="enter-core">保存并进入核心物料</button></div></footer></form></section>`;
-  };
-
-  const technicalField = (field, value) => {
-    const current = value === null || value === undefined ? '' : value;
-    const label = `${esc(field.label)}${field.unit ? ` <em>${esc(field.unit)}</em>` : ''}`;
-    const className = `mc-technical-field${field.required ? ' is-required' : ''}`;
-    const meta = `<span class="mc-technical-field__meta">${field.required ? '必填' : '可补充'} · 建议：技术资料 · 状态：${current === '' || current === 'unknown' || (Array.isArray(current) && !current.length) ? '待确认' : '已填写'}</span>`;
-    if (field.type === 'textarea') return `<label class="${className} mc-technical-field--wide"><span>${label}</span><textarea name="${esc(field.key)}" placeholder="${esc(field.placeholder || '填写说明')}">${esc(current)}</textarea>${meta}</label>`;
-    if (field.type === 'select') return `<label class="${className}"><span>${label}</span><select name="${esc(field.key)}">${Object.entries(field.options || {}).map(([key, item]) => `<option value="${esc(key)}" ${String(current) === key ? 'selected' : ''}>${esc(item)}</option>`).join('')}</select>${meta}</label>`;
-    if (field.type === 'multi') return `<fieldset class="${className} mc-technical-field--wide"><legend>${label}</legend><div class="mc-technical-checks">${Object.entries(field.options || {}).map(([key, item]) => `<label><input type="checkbox" name="${esc(field.key)}[]" value="${esc(key)}" ${Array.isArray(current) && current.includes(key) ? 'checked' : ''}>${esc(item)}</label>`).join('')}</div>${meta}</fieldset>`;
-    return `<label class="${className}"><span>${label}</span><input name="${esc(field.key)}" type="${field.type === 'number' ? 'number' : 'text'}" ${field.type === 'number' ? 'min="0" step="0.01"' : ''} value="${esc(current)}" placeholder="${esc(field.placeholder || '待确认')}">${meta}</label>`;
-  };
-
-  const renderFailure = (error) => {
-    const message = error instanceof Error ? error.message : String(error || '页面暂时无法显示。');
-    root.innerHTML = `<section class="mc-empty-state mc-empty-state--error"><h2>产品适配页面未能加载</h2><p>${esc(message)}</p><button class="mc-button mc-button--primary" type="button" data-v3-retry>重新加载</button><button class="mc-button" type="button" data-v3-products>返回全部产品</button></section>`;
-  };
-
-  const render = () => {
-    try {
-      if (bootstrap.pageLoadError) { renderFailure(bootstrap.pageLoadError); return; }
-      if (state.view === 'workspace') renderWorkspace(); else if (state.view === 'products') renderProducts(); else renderHome();
-    } catch (error) { renderFailure(error); }
-  };
-
-  page.addEventListener('click', (event) => {
-    const trigger = event.target.closest('button'); if (!trigger) return;
-    if (trigger.dataset.v3Home !== undefined) { navigate('home'); return; }
-    if (trigger.dataset.v3Products !== undefined) { navigate('products'); return; }
-    if (trigger.dataset.v3Disabled !== undefined) { toast('当前处于基础页面止损修复阶段，此功能暂未开放。', 'info'); return; }
-    if (trigger.dataset.v3Filter !== undefined) { state.status = trigger.dataset.v3Filter; state.page = 1; navigate('products', {}, true); return; }
-    if (trigger.dataset.v3OpenProduct) { openWorkspace(Number(trigger.dataset.v3OpenProduct)); return; }
-    if (trigger.dataset.v3Step) { state.step = Number(trigger.dataset.v3Step); navigate('workspace', { step: state.step }); return; }
-    if (trigger.dataset.v3Page) { state.page = Math.max(1, Number(trigger.dataset.v3Page)); render(); return; }
-    if (trigger.dataset.v3Refresh !== undefined || trigger.dataset.v3Retry !== undefined) { window.location.reload(); }
-  });
-
-  root.addEventListener('input', (event) => {
-    if (event.target.matches('[data-v3-search]')) { state.query = event.target.value; state.page = 1; renderProducts(); }
-  });
-  root.addEventListener('change', (event) => {
-    if (event.target.matches('[data-v3-sort]')) { state.sort = event.target.value; state.page = 1; renderProducts(); }
-    if (event.target.matches('[data-v3-page-size]')) { state.pageSize = Number(event.target.value) || 50; state.page = 1; renderProducts(); }
-  });
-  root.addEventListener('submit', async (event) => {
-    const form = event.target.closest('[data-v3-technical-form]'); if (!form) return;
-    event.preventDefault();
-    if (state.busy || !state.workspace?.product?.id) return;
-    const submitter = event.submitter; const mode = submitter?.dataset.v3Save || 'draft';
-    const profile = {};
-    new FormData(form).forEach((value, key) => {
-      if (key.endsWith('[]')) { const name = key.slice(0, -2); (profile[name] ||= []).push(value); }
-      else profile[key] = value;
-    });
-    const fields = Array.isArray(state.workspace.technical_profile?.fields) ? state.workspace.technical_profile.fields : [];
-    if (mode !== 'draft') {
-      const missing = fields.filter((field) => field.required && (profile[field.key] === undefined || profile[field.key] === '' || profile[field.key] === 'unknown' || (Array.isArray(profile[field.key]) && !profile[field.key].length)));
-      if (missing.length) {
-        form.querySelectorAll('.mc-technical-field.is-error').forEach((node) => node.classList.remove('is-error'));
-        missing.forEach((field) => form.querySelector(`[name="${CSS.escape(field.key)}"], [name="${CSS.escape(field.key)}[]"]`)?.closest('.mc-technical-field')?.classList.add('is-error'));
-        form.querySelector(`[name="${CSS.escape(missing[0].key)}"], [name="${CSS.escape(missing[0].key)}[]"]`)?.focus();
-        toast(`请先填写必填项目：${missing.map((field) => field.label).join('、')}`, 'error');
-        return;
-      }
-    }
-    state.busy = true; form.querySelectorAll('button').forEach((button) => { button.disabled = true; });
-    try {
-      const action = mode === 'draft' ? 'save_technical_draft' : 'save_technical_profile';
-      const saved = await api(action, { product_id: String(state.workspace.product.id), profile: JSON.stringify(profile) }, 'POST');
-      state.workspace.technical_profile = saved;
-      if (mode === 'enter-core') { toast('技术范围已保存。核心物料步骤当前暂停开放。'); state.step = 2; navigate('workspace', { step: 2 }); }
-      else { toast(mode === 'confirm' ? '技术范围已确认保存。' : '技术范围草稿已保存。'); render(); }
-    } catch (error) {
-      toast(error instanceof Error ? error.message : '保存失败。', 'error');
-      form.querySelectorAll('button').forEach((button) => { button.disabled = false; });
-    } finally { state.busy = false; }
-  });
-
-  window.addEventListener('popstate', () => {
-    const query = new URLSearchParams(window.location.search); const view = query.get('view') || 'home'; const id = Number(query.get('product_id') || 0); const step = Math.min(6, Math.max(1, Number(query.get('step')) || 1));
-    state.step = step;
-    if (view === 'workspace' && id && Number(state.workspace?.product?.id) !== id) openWorkspace(id, step); else { state.view = ['home','products','workspace'].includes(view) ? view : 'home'; render(); }
-  });
-
-  window.addEventListener('error', (event) => { if (event.error) console.error('[adaptation baseline]', event.error); });
+  page.addEventListener('submit', async event => { try {
+    if (event.target.matches('[data-v3-profile]')) { event.preventDefault(); const form = new FormData(event.target); const profile = {}; profileFields().forEach(field => { profile[field.key] = field.type === 'multi' ? form.getAll(field.key) : form.get(field.key); }); await api('save_technical_profile', { product_id: selectedProduct().id, profile }); toast('技术范围已保存，并已同步至电源候选筛选。'); return loadWorkspace(selectedProduct().id); }
+    if (event.target.matches('[data-v3-template-form]')) { event.preventDefault(); const keys = new FormData(event.target).getAll('template_key'); if (!keys.length) throw new Error('请至少选择一个配置组。'); await api('apply_template', { product_id: selectedProduct().id, template_keys: keys }); toast('配置模板已套用。'); return loadWorkspace(selectedProduct().id); }
+    if (event.target.matches('[data-v3-batch-form]')) { event.preventDefault(); const form = new FormData(event.target); const targets = form.getAll('target_product').map(number); const sourceGroupIds = form.getAll('source_group').map(number); if (!targets.length) throw new Error('请至少选择一个目标产品。'); if (!sourceGroupIds.length) throw new Error('请至少选择一个要映射的配置组。'); const powerGroup = (state.workspace.groups || []).find(group => group.group_key === 'power_driver'); await api('batch_apply', { source_product_id: selectedProduct().id, target_product_ids: targets, source_group_ids: sourceGroupIds, mode: form.get('mode'), include_power_rule: powerGroup && sourceGroupIds.includes(number(powerGroup.id)) ? 1 : 0 }); toast(`已将所选配置组套用到 ${targets.length} 个产品。`); return navigate('workspace'); }
+  } catch (error) { toast(error.message, true); } });
+  window.addEventListener('popstate', () => { const params = new URLSearchParams(location.search); const productId = number(params.get('product_id')); state.screen = params.get('view') || (productId ? 'workspace' : 'home'); if (productId && number(selectedProduct()?.id) !== productId) loadWorkspace(productId); else render(); });
   render();
 })();

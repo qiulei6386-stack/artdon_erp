@@ -58,8 +58,7 @@ try {
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
         'save_quick_rules' => $service->saveQuickRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'save_power_rules' => $service->savePowerRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
-        'save_technical_draft' => $service->saveTechnicalProfile((int) ($_POST['product_id'] ?? 0), $json('profile'), $user->id, false),
-        'save_technical_profile' => $service->saveTechnicalProfile((int) ($_POST['product_id'] ?? 0), $json('profile'), $user->id, true),
+        'save_technical_profile' => $service->saveTechnicalProfile((int) ($_POST['product_id'] ?? 0), $json('profile'), $user->id),
         'delete_group' => (static function () use ($service, $user): array {
             $service->deleteGroup((int) ($_POST['group_id'] ?? 0), $user->id);
             return [];
