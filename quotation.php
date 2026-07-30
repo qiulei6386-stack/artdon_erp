@@ -2271,9 +2271,39 @@ function quotePartStopWords(){return /^(led|cob|driver|optic|optics|lens|reflect
 function quoteDropMaterialNameTokens(raw){
   return String(raw||'').split(/\s+/).map(x=>x.trim()).filter(Boolean).filter(t=>!/[\u4e00-\u9fff]/.test(t)&&!quotePartStopWords().test(t));
 }
+function quoteDisplayNorm(value){
+  return String(value||'').trim().replace(/\s+/g,' ').toLowerCase();
+}
+function quoteBrandCandidate(value){
+  value=cleanParam(value);
+  return /^\d+(?:[.,]\d+)?$/.test(value)?'':value;
+}
+function quoteJoinBrandModel(brand,model){
+  brand=quoteBrandCandidate(brand);
+  model=cleanParam(model);
+  let brandNorm=quoteDisplayNorm(brand), modelNorm=quoteDisplayNorm(model);
+  if(brandNorm&&modelNorm){
+    if(modelNorm===brandNorm||modelNorm.startsWith(brandNorm+' '))return model;
+    if(brandNorm.startsWith(modelNorm+' '))return brand;
+  }
+  return [brand,model].filter(Boolean).join(' ').trim();
+}
+function quoteUniqueDisplayParts(values,separator=' ｜ '){
+  let output=[],seen=new Set();
+  (Array.isArray(values)?values:[]).forEach(function(value){
+    let text=String(value||'').trim();
+    if(!text)return;
+    let normalized=quoteDisplayNorm(text);
+    if(seen.has(normalized))return;
+    seen.add(normalized);
+    output.push(text);
+  });
+  return output.join(separator);
+}
 function quoteModelFromAsciiText(raw,modelHint=''){
   let hint=cleanParam(modelHint); if(hint)return hint;
   let toks=quoteDropMaterialNameTokens(raw); if(!toks.length)return '';
+  if(/^\d+(?:[.,]\d+)?$/.test(toks[0]||'')&&/[A-Za-z]/.test(toks.slice(1).join(' ')))return toks.join(' ');
   let s=toks.join(' ');
   let m=s.match(/([A-Za-z0-9._-]+\s+Series\s*[A-Za-z0-9@._-]+(?:\s*[A-Za-z0-9@._-]+){0,2})/i); if(m)return m[1].replace(/\s+/g,' ').trim();
   m=s.match(/([A-Z]{1,8}[-_]?\d[A-Z0-9._-]*(?:\s+[A-Z0-9]{1,6}){0,3})$/i); if(m)return m[1].replace(/\s+/g,' ').trim();
@@ -2285,21 +2315,21 @@ function quoteModelFromAsciiText(raw,modelHint=''){
 function quoteBrandFromAsciiText(raw,brandHint=''){
   let hint=cleanParam(brandHint); if(hint)return hint;
   let toks=quoteDropMaterialNameTokens(raw); if(!toks.length)return '';
-  return toks[0]||'';
+  return quoteBrandCandidate(toks[0]||'');
 }
 function quoteBrandModelOnly(input,label=''){
   if(input&&typeof input==='object'){
-    let brand=cleanParam(input.brand||input.manufacturer||input.factory||'');
+    let brand=quoteBrandCandidate(input.brand||input.manufacturer||input.factory||'');
     let model=cleanParam(input.model||input.model_no||input.product_model||input.code||input.sku||input.series||input.series_name||'');
     if(!model){ model=quoteModelFromAsciiText([input.name,input.spec,input.description].filter(Boolean).join(' ')); }
     if(!brand){ brand=quoteBrandFromAsciiText([input.brand,input.name,input.spec,input.description].filter(Boolean).join(' ')); }
-    let out=[brand,model].filter(Boolean).join(' ').trim();
+    let out=quoteJoinBrandModel(brand,model);
     return out||model||brand||cleanParam(input.spec||input.name||'');
   }
   let raw=cleanParam(input); if(!raw)return '';
   let brand=quoteBrandFromAsciiText(raw), model=quoteModelFromAsciiText(raw);
   if(model&&brand&&model.toLowerCase().startsWith(brand.toLowerCase()))return model;
-  let out=[brand,model].filter(Boolean).join(' ').trim();
+  let out=quoteJoinBrandModel(brand,model);
   return out||quoteDropMaterialNameTokens(raw).join(' ')||raw;
 }
 function quoteBrandModelFromProduct(p){p=p||{};let name=quoteBrandModelOnly({brand:p.brand||'',model:p.model||p.code||p.product_model||'',name:p.name||p.product_name||'',spec:p.spec||p.size||''});return name||p.code||p.model||p.name||'Material'}
@@ -2313,7 +2343,7 @@ function quoteMaterialKind(m){let t=matText(m);if(!t||quotePartIsPackagingText(t
 function filterMatForPart(k,cats,kw=''){kw=String(kw||'').toLowerCase();let base=materialBase(cats);let byCat=DB.materials.filter(m=>quoteCategoryMatchesPart(k,m));let seen=new Set(),arr=[...byCat,...base].filter(m=>{let id=String(m.id||m.model||m.name||'');if(id&&seen.has(id))return false;if(id)seen.add(id);return quoteCategoryMatchesPart(k,m)||quoteMaterialKind(m)===k});return arr.filter(m=>!kw||matText(m).includes(kw))}
 function filterMat(cats,kw=''){kw=String(kw||'').toLowerCase();return materialBase(cats).filter(m=>!kw||matText(m).includes(kw))}
 function matName(m){return quoteBrandModelOnly(m)||'物料'}
-function materialPickTitle(m){return [m.name,m.model].map(x=>String(x||'').trim()).filter(Boolean).join(' ｜ ')||matName(m)}
+function materialPickTitle(m){return quoteUniqueDisplayParts([m.name,m.model])||matName(m)}
 function materialPickMeta(m){let spec=String(m.spec||'').trim(),keyword=String(m.keyword||'').trim();return [m.category,m.brand,spec,keyword,m.supplier,m.unit].map(x=>String(x||'').trim()).filter(Boolean).join(' ｜ ')}
 function materialPickFull(m){let meta=materialPickMeta(m);return [materialPickTitle(m),meta].filter(Boolean).join(' ｜ ')}
 function partChosenName(k){let m=S.parts&&S.parts[k];if(!m)return '未选';if(m.none)return '选无';return materialPickTitle(m)}
