@@ -29,6 +29,30 @@ $checks = [
         => str_contains($script, 'mc-v3-wide-picker')
             && str_contains($style, '.mc-v3-picker-box')
             && str_contains($style, 'height:min(78vh,760px)'),
+    '配置来源确认后折叠为摘要栏'
+        => str_contains($script, 'mc-v3-source-summary')
+            && str_contains($script, 'data-v3-change-source')
+            && str_contains($script, 'renderSourcePickerModal'),
+    '顶部不再重复显示复制配置和套用模板'
+        => !str_contains($script, '<div class="mc-v3-screen-actions"><button class="mc-button" data-v3-batch type="button">复制配置</button><button class="mc-button" data-v3-template type="button">套用模板</button>'),
+    '候选物料使用紧凑表格'
+        => str_contains($script, 'mc-v3-candidate-table')
+            && str_contains($script, 'mc-v3-candidate-head')
+            && str_contains($style, 'min-height:68px')
+            && str_contains($style, 'mc-v3-material-thumb'),
+    '候选行点击选择且底部统一确认'
+        => str_contains($script, 'data-v3-pick-material')
+            && str_contains($script, 'state.selectedMaterialIds')
+            && str_contains($script, 'data-v3-confirm-material')
+            && str_contains($script, '请先选择一个正式可选物料'),
+    '不适配物料不能直接选择并走例外弹窗'
+        => str_contains($script, 'data-v3-blocked="1"')
+            && str_contains($script, 'renderExceptionModal')
+            && str_contains($script, 'data-v3-exception-form'),
+    '检查摘要合并到底部操作栏'
+        => str_contains($script, 'mc-v3-footer-checks')
+            && str_contains($script, '查看完整检查')
+            && str_contains($style, '.mc-v3-footer-checks'),
     '主工作台使用一屏固定工作区'
         => str_contains($style, '.mc-page--adaptation-v3 .mc-v3-workbench-page')
             && str_contains($style, 'height:calc(100vh - 116px)')
