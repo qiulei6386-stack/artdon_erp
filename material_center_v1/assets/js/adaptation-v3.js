@@ -17,7 +17,9 @@
     workspace: bootstrap.workspace || null,
     metadata: bootstrap.metadata || {},
     screen: bootstrap.view || (bootstrap.workspace ? 'workspace' : 'home'),
-    step: 1,
+    step: Number.parseInt(bootstrap.step || 1, 10) || 1,
+    advancedOpen: Boolean(bootstrap.advancedOpen),
+    quickCheckDone: false,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
     materialGroup: null,
     materials: [],
@@ -277,40 +279,141 @@
   const groups = () => Array.isArray(state.workspace?.groups) ? state.workspace.groups : [];
   const coreGroups = () => groups().filter(group => Boolean(number(group.is_required))).slice(0, 8);
   const extensionGroups = () => groups().filter(group => !Boolean(number(group.is_required)));
+  const quickCoreKeys = ['chip', 'power', 'optic', 'install'];
+  const findGroupByKey = key => groups().find(group => canonicalGroupKey(group) === key) || null;
+  const quickCoreGroups = () => quickCoreKeys.map(key => ({ key, group: findGroupByKey(key) }));
   const groupDefault = group => {
     const overview = (state.workspace?.configuration_overview || []).find(row => number(row.id) === number(group.id)) || group;
     return overview.default_material || overview.default_option || group.default_material || '未设置默认';
   };
   const groupDone = group => number(group.option_count) > 0 && (group.selection_mode !== 'single' || groupDefault(group) !== '未设置默认');
   const activeGroup = () => state.materialGroup || null;
+  const quickCoreDone = () => quickCoreGroups().filter(item => item.group && groupDone(item.group)).length;
+  const quickCompletion = () => {
+    const source = groups().length ? 10 : 0;
+    const core = Math.round((quickCoreDone() / quickCoreKeys.length) * 60);
+    const missing = missingFields().length ? 0 : 15;
+    const check = state.quickCheckDone && quickBlockers().length === 0 ? 15 : 0;
+    return Math.max(completion().percent || 0, source + core + missing + check);
+  };
+  const sourceConfigured = product => number(product?.group_count) || number(product?.option_count) || isReleased(product) || completionOf(product) > 0;
+  const sourceScore = product => {
+    const current = selectedProduct();
+    if (!product || !current || number(product.id) === number(current.id)) return -1;
+    let score = 25;
+    if (productType(product) === productType(current)) score += 24;
+    if (productSeries(product) === productSeries(current)) score += 28;
+    if (isReleased(product)) score += 14;
+    score += Math.min(18, Math.round(completionOf(product) / 6));
+    score += Math.min(10, number(product.option_count || product.configured_option_count));
+    return sourceConfigured(product) ? Math.min(98, score) : Math.min(62, score);
+  };
+  const recommendedSource = () => state.products
+    .filter(product => number(product.id) !== number(selectedProduct()?.id))
+    .map(product => ({ product, score: sourceScore(product) }))
+    .filter(item => item.score >= 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+  const sourceReasons = item => {
+    const product = item?.product;
+    const current = selectedProduct();
+    const reasons = [];
+    if (!product || !current) return reasons;
+    if (productType(product) === productType(current)) reasons.push('产品类型相同');
+    if (productSeries(product) === productSeries(current)) reasons.push('同系列或相近系列');
+    if (number(product.option_count)) reasons.push('已有芯片、电源、光学等配置');
+    if (isReleased(product)) reasons.push('已存在发布版本');
+    if (completionOf(product) >= 70) reasons.push('配置完成度较高');
+    return reasons.length ? reasons : ['可作为相似产品参考'];
+  };
+  const sourceDifferences = () => ['功率可能不同', '尺寸可能不同', '调光要求待确认', '防护等级待确认', '光束角待确认'];
+  const fieldFilled = field => {
+    const value = state.workspace?.technical_profile?.values?.[field.key];
+    return !(value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length));
+  };
+  const missingFields = () => {
+    const fields = state.workspace?.technical_profile?.fields || state.metadata.technical_profile_fields || [];
+    const missingKeys = quickCoreGroups().filter(item => !item.group || !groupDone(item.group)).map(item => item.key);
+    const relevant = field => {
+      const text = `${field.key || ''} ${field.label || ''} ${field.section || ''}`.toLowerCase();
+      if (missingKeys.includes('power') && /power|current|voltage|dimming|height|width|length|warranty|电源|功率|电流|电压|调光|高度|宽度|长度|质保/.test(text)) return true;
+      if (missingKeys.includes('optic') && /beam|optic|lens|les|angle|diameter|光学|透镜|光束|角度|直径/.test(text)) return true;
+      if (missingKeys.includes('install') && /install|mount|cut|size|安装|开孔|尺寸|承重|轨道/.test(text)) return true;
+      if (missingKeys.includes('chip') && /chip|led|current|voltage|cri|cct|芯片|光源|电流|电压|显指|色温/.test(text)) return true;
+      return false;
+    };
+    return fields.filter(field => !fieldFilled(field) && relevant(field)).slice(0, 4);
+  };
+  const quickBlockers = () => {
+    const blockers = [];
+    quickCoreGroups().forEach(item => {
+      if (!item.group) blockers.push(`缺少${moduleLabel(item.key)}配置组`);
+      else if (!groupDone(item.group)) blockers.push(`${moduleLabel(item.key)}未设置默认正式物料`);
+      if (number(item.group?.conflict_count)) blockers.push(`${moduleLabel(item.key)}存在冲突`);
+    });
+    if (number(state.workspace?.conflicts?.length)) blockers.push('存在未处理适配冲突');
+    return blockers;
+  };
+  const quickWarnings = () => {
+    const warnings = [];
+    if (missingFields().length) warnings.push(`仍有 ${missingFields().length} 个必要字段待补充`);
+    if (approvalCount(selectedProduct())) warnings.push(`有 ${approvalCount(selectedProduct())} 项待审批`);
+    if (!groups().length) warnings.push('尚未确认配置来源');
+    return warnings;
+  };
+  const groupRecommendation = group => {
+    const overview = (state.workspace?.configuration_overview || []).find(row => number(row.id) === number(group?.id));
+    const option = (overview?.options || []).find(item => number(item.is_default)) || (overview?.options || [])[0];
+    return option?.material_name || option?.material_code || '';
+  };
+  const groupStatus = group => {
+    if (!group) return 'no_source';
+    if (number(group.conflict_count)) return 'conflict';
+    if (groupDone(group)) return 'done';
+    if (groupRecommendation(group)) return 'suggested';
+    if (number(group.option_count)) return 'needs_default';
+    return 'empty';
+  };
+  const groupActionText = group => ({
+    no_source: '选择配置来源',
+    empty: '选择物料',
+    suggested: '采用建议 / 查看其他',
+    needs_default: '设置默认',
+    conflict: '处理冲突',
+    done: '更换 / 查看',
+  }[groupStatus(group)] || '查看');
 
   const renderWorkbench = () => {
     const product = selectedProduct();
     if (!product) return renderProducts();
-    const pct = number(completion().percent);
+    const pct = Math.min(100, quickCompletion());
     const totalOptions = groups().reduce((sum, item) => sum + number(item.option_count), 0);
-    const missingCore = coreGroups().filter(item => !groupDone(item)).length;
+    const missingCore = quickCoreKeys.length - quickCoreDone();
     root.innerHTML = `<section class="mc-v3-page-shell mc-v3-workbench-page">
       <div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>产品配置工作台</b></div>
       <header class="mc-v3-screen-head">
-        <div><button class="mc-button mc-button--primary" data-v3-products type="button">切换产品</button><h1>产品配置工作台</h1><p>完成产品核心物料、可选配件、条件规则和发布，确保产品配置完整、可报价、可生产。</p></div>
-        <div class="mc-v3-screen-actions"><button class="mc-button" data-v3-template type="button">套用模板</button><button class="mc-button" data-v3-batch type="button">从产品复制</button><button class="mc-button" data-v3-more type="button">更多⌄</button><button class="mc-button mc-button--primary" data-v3-approve type="button">配置检查 / 提交审批</button></div>
+        <div><button class="mc-button mc-button--primary" data-v3-products type="button">切换产品</button><h1>产品配置工作台</h1><p>默认进入快速配置：确认来源 → 设置四个核心配置 → 检查并保存。完整技术范围、规则、审批和版本放入高级设置。</p></div>
+        <div class="mc-v3-screen-actions"><button class="mc-button" data-v3-batch type="button">复制配置</button><button class="mc-button" data-v3-template type="button">套用模板</button><button class="mc-button" data-v3-toggle-advanced type="button">高级设置</button><button class="mc-button" data-v3-more type="button">更多⌄</button></div>
       </header>
       <div class="mc-v3-workbench-layout">
         <main class="mc-v3-workbench-main">
           <section class="mc-v3-product-hero">
             ${productImage(product, true)}
-            <div class="mc-v3-product-hero__identity"><h2>${esc(productCode(product))} <span>${esc(productName(product))}</span></h2><p>系列：${esc(productSeries(product))}</p><p>类型：${esc(productType(product))}　状态：${esc(statusLabel(configState(product)))}</p><p>创建人：${esc(ownerName(product))}　最后修改：${esc(updatedAt(product))}</p></div>
+            <div class="mc-v3-product-hero__identity"><h2>${esc(productCode(product))} <span>${esc(productName(product))}</span></h2><p>系列：${esc(productSeries(product))}　类型：${esc(productType(product))}</p><p>配置来源：${groups().length ? '已有草稿 / 可继续编辑' : '尚未确认'}　草稿版本：${esc(state.workspace?.approval?.version_no ? `V${state.workspace.approval.version_no}` : '草稿')}</p><p>状态：${esc(statusLabel(configState(product)))}　最后修改：${esc(updatedAt(product))}</p></div>
             <div class="mc-v3-hero-stat mc-v3-hero-stat--ring"><em class="mc-v3-ring" style="--value:${pct}"><b>${pct}%</b></em><span>完成度</span></div>
             <div class="mc-v3-hero-stat"><b>${missingCore}</b><span>缺失项</span></div>
             <div class="mc-v3-hero-stat"><b>${number(state.workspace?.conflicts?.length)}</b><span>冲突项</span></div>
             <div class="mc-v3-hero-stat"><b>${approvalCount(product)}</b><span>待审批</span></div>
             <div class="mc-v3-hero-stat"><b>${totalOptions}</b><span>正式选项</span></div>
           </section>
-          <nav class="mc-v3-flow">${[['1','技术范围','先确认'],['2','核心物料','必配'],['3','扩展可选','按需'],['4','条件规则','组合'],['5','检查审批','提交前'],['6','版本发布','冻结版本']].map(([id,label,tip]) => `<button class="${number(id) === state.step ? 'is-active' : number(id) < state.step ? 'is-done' : ''}" data-v3-step="${id}" type="button"><b>${number(id) < state.step ? '✓' : id}</b><span>${label}</span><small>${tip}</small></button>`).join('')}</nav>
-          ${renderStepContent()}
+          <nav class="mc-v3-quick-flow">${[['1','确认配置来源','推荐复制 / 模板 / BOM / 空白'],['2','设置核心配置','芯片、电源、光学、安装方式'],['3','检查并保存','缺什么补什么，通过后提交']].map(([id,label,tip], index) => `<span class="${index < (groups().length ? 1 : 0) + (quickCoreDone() ? 1 : 0) ? 'is-done' : index === 0 ? 'is-active' : ''}"><b>${index === 0 && groups().length ? '✓' : id}</b><strong>${label}</strong><small>${tip}</small></span>`).join('')}</nav>
+          ${renderQuickSource()}
+          ${renderQuickCore()}
+          ${renderMissingFields()}
+          ${renderQuickCheck()}
+          ${state.materialGroup ? renderGroupDrawer() : ''}
+          ${renderAdvancedSettings()}
+          ${renderQuickFooter()}
         </main>
-        ${renderGroupDrawer()}
       </div>
     </section>`;
   };
@@ -322,6 +425,104 @@
     if (state.step === 4) return renderRules();
     if (state.step === 5) return renderCheck();
     return renderPublish();
+  };
+
+  const renderQuickSource = () => {
+    const recommendation = recommendedSource();
+    const sourceProduct = recommendation?.product;
+    const hasSource = groups().length > 0;
+    return `<section class="mc-v3-work-card mc-v3-source-card">
+      <div class="mc-v3-step-title"><h3>1. 确认配置来源</h3><p>先决定从哪里开始，系统只继承配置建议和值，不复制审批状态、发布状态、审批人、发布人或原版本号。</p></div>
+      <div class="mc-v3-source-layout">
+        <article class="mc-v3-source-recommend">
+          <strong>${hasSource ? '当前已有配置草稿' : '系统推荐复制'}</strong>
+          ${sourceProduct ? `<div class="mc-v3-source-product">${productImage(sourceProduct)}<span><b>${esc(productCode(sourceProduct))}</b><small>${esc(productName(sourceProduct))}</small><small>${esc(productSeries(sourceProduct))} · ${esc(productType(sourceProduct))}</small></span><em>${recommendation.score}% 相似</em></div>` : '<p>暂无足够相似产品，可先套用模板或从空白开始。</p>'}
+          ${sourceProduct ? `<dl><dt>相似依据</dt><dd>${sourceReasons(recommendation).map(esc).join(' · ')}</dd><dt>需复核差异</dt><dd>${sourceDifferences().map(esc).join(' · ')}</dd></dl>` : ''}
+        </article>
+        <div class="mc-v3-source-options">
+          <button class="mc-button mc-button--primary" ${sourceProduct ? `data-v3-copy-source="${number(sourceProduct.id)}"` : 'disabled'} type="button">复制同系列产品</button>
+          <button class="mc-button" data-v3-template type="button">套用产品模板</button>
+          <button class="mc-button" data-v3-read-bom type="button">读取现有 BOM</button>
+          <button class="mc-button" data-v3-empty-start type="button">从空白开始</button>
+        </div>
+      </div>
+    </section>`;
+  };
+
+  const renderQuickCore = () => `<section class="mc-v3-module-stage mc-v3-core-stage">
+    <div class="mc-v3-step-title"><h3>2. 设置核心配置 <small>(${quickCoreDone()} / ${quickCoreKeys.length})</small></h3><p>快速模式只显示四个核心配置；完整技术范围、扩展项和规则在高级设置里维护。</p></div>
+    <div class="mc-v3-core-list">${quickCoreGroups().map(renderQuickCoreCard).join('')}</div>
+  </section>`;
+
+  const renderQuickCoreCard = item => {
+    const { key, group } = item;
+    const status = groupStatus(group);
+    const recommendation = group ? groupRecommendation(group) : '';
+    const optionLabel = group ? groupDefault(group) : '尚未建立配置组';
+    const specs = group ? [
+      group.business_type || '',
+      group.selection_mode === 'single' ? '单选' : '多选',
+      number(group.option_count) ? `正式选项 ${number(group.option_count)} 个` : '',
+      number(group.alternative_count) ? `候选 ${number(group.alternative_count)} 个` : '',
+      number(group.conflict_count) ? `冲突 ${number(group.conflict_count)} 个` : '',
+    ].filter(Boolean).join(' / ') : '需要先确认配置来源或套用模板';
+    const stateText = ({ no_source:'无配置来源', empty:'需要选择', suggested:'系统建议', needs_default:'缺默认', conflict:'存在冲突', done:'完成' }[status] || '待处理');
+    return `<article class="mc-v3-core-row mc-v3-core-row--${esc(status)}">
+      <header><i>${esc(groupIcon(key))}</i><span><b>${esc(moduleLabel(key))}</b><small>${group ? (group.is_required ? '必选核心' : '核心摘要') : '未建立'}</small></span></header>
+      <div><small>默认</small><strong>${esc(optionLabel)}</strong>${recommendation && optionLabel === '未设置默认' ? `<em>系统建议：${esc(recommendation)}</em>` : ''}</div>
+      <div><small>关键规格</small><span>${esc(specs || '规格待补充')}</span></div>
+      <div><small>状态</small><b class="mc-v3-core-status">${esc(stateText)}</b></div>
+      <button class="mc-button ${status === 'done' ? '' : 'mc-button--primary'}" ${group ? `data-v3-manage-group="${number(group.id)}"` : 'data-v3-template'} type="button">${esc(groupActionText(group))}</button>
+    </article>`;
+  };
+
+  const renderMissingFields = () => {
+    const fields = missingFields();
+    return `<section class="mc-v3-work-card mc-v3-missing-card">
+      <div class="mc-v3-step-title"><h3>需要补充 ${fields.length} 项</h3><p>快速模式只提示当前判断真正缺少的字段，不再默认展示全部功率、电流、电压、尺寸和认证字段。</p></div>
+      ${fields.length ? `<div class="mc-v3-missing-list">${fields.map(field => `<article><b>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</b><p>${esc(field.section || '技术范围')}：当前无法完成适配判断，请补充后再检查。</p><button class="mc-button" data-v3-advanced-step="1" type="button">填写</button></article>`).join('')}</div>` : '<div class="mc-v3-ready">当前没有必须补充的动态技术字段。</div>'}
+    </section>`;
+  };
+
+  const renderQuickCheck = () => {
+    const blockers = quickBlockers();
+    const warnings = quickWarnings();
+    const ok = blockers.length === 0;
+    const checks = [
+      [!findGroupByKey('chip') || !findGroupByKey('power') ? 'warn' : 'ok', '芯片与电源电流/电压匹配'],
+      [findGroupByKey('power') && groupDone(findGroupByKey('power')) ? 'ok' : 'warn', '电源尺寸、安装方式、调光和质保'],
+      [findGroupByKey('optic') && groupDone(findGroupByKey('optic')) ? 'ok' : 'warn', '光学与芯片 LES、尺寸和光束角'],
+      [findGroupByKey('install') && groupDone(findGroupByKey('install')) ? 'ok' : 'warn', '安装方式与结构限制'],
+      [number(state.workspace?.conflicts?.length) ? 'bad' : 'ok', '不存在阻断冲突'],
+      [approvalCount(selectedProduct()) ? 'warn' : 'ok', '不存在待审批例外'],
+    ];
+    return `<section class="mc-v3-work-card mc-v3-check-card">
+      <div class="mc-v3-step-title"><h3>3. 检查并保存</h3><p>检查只针对快速配置必需项；高级扩展不再阻断普通产品保存草稿。</p></div>
+      <div class="mc-v3-quick-checks">${checks.map(([level, label]) => `<span class="is-${level}">${level === 'bad' ? '×' : level === 'warn' ? '△' : '✓'} ${esc(label)}</span>`).join('')}</div>
+      ${blockers.length ? `<div class="mc-v3-issues">${blockers.map(issue => `<p>× ${esc(issue)}</p>`).join('')}</div>` : '<div class="mc-v3-ready">核心配置检查未发现阻断项，可以保存草稿或提交确认。</div>'}
+      ${warnings.length ? `<div class="mc-v3-warnings">${warnings.map(issue => `<p>△ ${esc(issue)}</p>`).join('')}</div>` : ''}
+    </section>`;
+  };
+
+  const renderAdvancedSettings = () => {
+    if (!state.advancedOpen) return '';
+    return `<section class="mc-v3-work-card mc-v3-advanced-panel">
+      <div class="mc-v3-step-title"><h3>高级设置</h3><p>高级能力完整保留，按需打开：技术范围、扩展可选、条件规则、替代关系、价格交期、例外审批、配置版本、发布历史和日志。</p></div>
+      <nav class="mc-v3-advanced-tabs">${[['1','完整技术范围'],['3','扩展可选'],['4','条件规则'],['5','例外审批'],['6','配置版本 / 发布历史']].map(([id,label]) => `<button class="${state.step === number(id) ? 'is-active' : ''}" data-v3-advanced-step="${id}" type="button">${esc(label)}</button>`).join('')}</nav>
+      ${renderStepContent()}
+    </section>`;
+  };
+
+  const renderQuickFooter = () => {
+    const coreReady = quickBlockers().length === 0 && groups().length > 0;
+    const publishedReady = coreReady && approvalCount(selectedProduct()) === 0 && state.quickCheckDone;
+    return `<footer class="mc-v3-quick-footer">
+      <span>${coreReady ? '核心配置已具备提交条件。' : '请先完成配置来源和四个核心配置。'}</span>
+      <button class="mc-button" data-v3-save-draft type="button">保存草稿</button>
+      <button class="mc-button mc-button--primary" data-v3-check-config type="button">检查配置</button>
+      <button class="mc-button" data-v3-submit-confirm ${coreReady ? '' : 'disabled'} type="button">提交确认</button>
+      <button class="mc-button mc-button--primary" data-v3-approve ${publishedReady ? '' : 'hidden'} type="button">确认并发布</button>
+    </footer>`;
   };
 
   const renderTechnical = () => {
@@ -370,16 +571,17 @@
 
   const renderGroupDrawer = () => {
     const group = state.materialGroup;
-    if (!group) return '<aside class="mc-v3-config-drawer"><div class="mc-v3-empty">请选择一个配置模组。</div></aside>';
+    if (!group) return '';
     const key = canonicalGroupKey(group);
     const picked = number(group.option_count);
-    return `<aside class="mc-v3-config-drawer">
+    return `<section class="mc-v3-config-drawer mc-v3-wide-picker">
       <header><div><h3>${esc(moduleLabel(key))}</h3><span>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'single' ? '单选' : '多选'}</span></div><button class="mc-icon-button" data-v3-close-drawer type="button">×</button></header>
       <nav><button class="is-active" type="button">选项列表</button><button type="button">默认设置</button><button type="button">替代关系</button><button type="button">适用条件</button><button type="button">价格/交期</button><button type="button">审批记录</button></nav>
-      <div class="mc-v3-drawer-tools"><label><span>⌕</span><input placeholder="搜索品牌、型号或规格"></label><button class="mc-button" data-v3-manage-group="${number(group.id)}" type="button">从物料库添加</button></div>
+      <div class="mc-v3-picker-requirements"><b>产品当前要求</b><span>功率/电流/电压、尺寸空间、安装方式、调光、防护等级和质保会从 BOM、PLM、命名系统、已选物料与技术范围中综合判断。</span><button class="mc-button" data-v3-advanced-step="1" type="button">补充技术范围</button></div>
+      <div class="mc-v3-drawer-tools"><label><span>⌕</span><input placeholder="搜索品牌、型号或规格"></label><button class="mc-button" data-v3-manage-group="${number(group.id)}" type="button">刷新候选</button></div>
       <div class="mc-v3-candidate-list">${state.drawerLoading ? '<div class="mc-v3-loading">正在读取候选物料…</div>' : renderCandidates()}</div>
-      <footer><span>已选中 ${picked} 项</span><button class="mc-button" data-v3-return-workspace type="button">取消</button><button class="mc-button" type="button">保存</button><button class="mc-button mc-button--primary" data-v3-save-next type="button">保存并处理下一项</button></footer>
-    </aside>`;
+      <footer><span>当前正式选项 ${picked} 项。只允许正式且已批准物料直接加入；不适配物料必须走例外审批。</span><button class="mc-button" data-v3-close-drawer type="button">关闭</button><button class="mc-button mc-button--primary" data-v3-save-next type="button">保存并处理下一项</button></footer>
+    </section>`;
   };
 
   const renderCandidates = () => {
@@ -389,7 +591,7 @@
       const already = number(row.already_added);
       const incompatible = match === 'incompatible';
       return `<article class="${already ? 'is-picked' : ''} ${incompatible ? 'is-blocked' : ''}">
-        <label><input type="${state.materialGroup?.selection_mode === 'single' ? 'radio' : 'checkbox'}" name="candidate" ${already ? 'checked' : ''} ${incompatible ? 'data-force-exception="1"' : ''}><span><b>${esc(row.material_code || row.code || '—')}</b><small>${esc([row.name, row.brand, row.model].filter(Boolean).join(' · '))}</small><em>${esc([row.max_output_power_w && `${row.max_output_power_w}W`, row.output_current_ma && `${row.output_current_ma}mA`, row.output_voltage_min_v && `${row.output_voltage_min_v}V`, row.dimming_modes].filter(Boolean).join(' | ') || '规格待补充')}</em></span></label>
+        <label><input type="${state.materialGroup?.selection_mode === 'single' ? 'radio' : 'checkbox'}" name="candidate" ${already ? 'checked' : ''} ${incompatible ? 'data-force-exception="1"' : ''}><span><b>${esc(row.material_code || row.code || '—')}</b><small>${esc([row.name, row.brand, row.model].filter(Boolean).join(' · '))}</small><em>${esc([row.max_output_power_w && `${row.max_output_power_w}W`, row.output_current_ma && `${row.output_current_ma}mA`, row.output_voltage_min_v && `${row.output_voltage_min_v}V`, row.length_mm && `${row.length_mm}×${row.width_mm || '—'}×${row.height_mm || '—'}mm`, row.dimming_modes, row.supplier_name].filter(Boolean).join(' | ') || '规格待补充')}</em></span></label>
         <strong class="mc-v3-match mc-v3-match--${esc(match)}">${esc(({ exact:'完全适配', conditional:'条件适配', needs_approval:'需审批', incompatible:'不适配' }[match] || '候选'))}</strong>
         <p>${esc((row.conflict_reasons || []).join('；') || (incompatible ? '不满足当前产品要求' : '可作为正式选项'))}</p>
         ${already ? '<button class="mc-button" disabled type="button">已加入</button>' : incompatible ? `<button class="mc-button" data-v3-exception-material="${number(row.id || row.material_id)}" type="button">申请例外</button>` : `<button class="mc-button mc-button--primary" data-v3-add-material="${number(row.id || row.material_id)}" type="button">选为默认</button>`}
@@ -444,6 +646,35 @@
       if (button.matches('[data-v3-template]')) return navigate('template');
       if (button.matches('[data-v3-batch],[data-v3-copy-current]')) return navigate('batch');
       if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 1);
+      if (button.matches('[data-v3-toggle-advanced]')) { state.advancedOpen = !state.advancedOpen; return renderWorkbench(); }
+      if (button.matches('[data-v3-advanced-step]')) { state.advancedOpen = true; state.step = number(button.dataset.v3AdvancedStep || 1); return renderWorkbench(); }
+      if (button.matches('[data-v3-read-bom]')) return toast('已读取当前产品 BOM 可用资料；缺失项会在“需要补充”中显示。');
+      if (button.matches('[data-v3-empty-start]')) {
+        await api('apply_template', { product_id: selectedProduct().id, template_keys: ['light_source', 'power_driver', 'optical', 'installation'] });
+        toast('已从空白开始建立四个核心配置组。');
+        return loadWorkspace(selectedProduct().id, 0, 2);
+      }
+      if (button.matches('[data-v3-copy-source]')) {
+        if (!confirm('确认复制推荐产品的配置？系统不会复制审批状态、发布状态、审批人、发布人或原版本号。')) return;
+        try {
+          await api('batch_apply', { source_product_id: number(button.dataset.v3CopySource), target_product_ids: [selectedProduct().id], mode: 'fill_missing', include_power_rule: 1 });
+          toast('已复制相似产品配置和电源范围，新产品进入草稿 / 待检查。');
+        } catch (copyError) {
+          await api('batch_apply', { source_product_id: number(button.dataset.v3CopySource), target_product_ids: [selectedProduct().id], mode: 'fill_missing', include_power_rule: 0 });
+          toast('已复制相似产品配置；电源范围因权限或来源限制未复制，请在“需要补充”中确认。');
+        }
+        return loadWorkspace(selectedProduct().id, 0, 2);
+      }
+      if (button.matches('[data-v3-save-draft]')) {
+        if (!groups().length) {
+          await api('apply_template', { product_id: selectedProduct().id, template_keys: ['light_source', 'power_driver', 'optical', 'installation'] });
+          toast('草稿已保存：已建立四个核心配置组，尚未自动选择物料。');
+          return loadWorkspace(selectedProduct().id, 0, 2);
+        }
+        return toast('草稿已保存。已选物料和技术范围由各配置动作实时记录。');
+      }
+      if (button.matches('[data-v3-check-config]')) { state.quickCheckDone = true; toast(quickBlockers().length ? '检查完成：存在需要处理的问题。' : '检查通过：核心配置没有阻断项。', quickBlockers().length > 0); return renderWorkbench(); }
+      if (button.matches('[data-v3-submit-confirm]')) { if (quickBlockers().length) throw new Error('核心配置未完成，不能提交确认。'); state.quickCheckDone = true; toast('已完成提交前检查；如需审批或发布，请由有权限人员在高级设置中处理。'); return renderWorkbench(); }
       if (button.matches('[data-v3-tab-status]')) { state.filters.status = button.dataset.v3TabStatus === 'all' ? 'all' : button.dataset.v3TabStatus; return renderProducts(); }
       if (button.matches('[data-v3-refresh]')) { const products = await api('products'); state.products = Array.isArray(products) ? products : []; toast('产品配置列表已刷新。'); return renderProducts(); }
       if (button.matches('[data-v3-export]')) { exportProductsCsv(); return toast('当前筛选结果已导出。'); }

@@ -13,6 +13,9 @@ $selected = (int) ($_GET['product_id'] ?? 0);
 $groupId = (int) ($_GET['group_id'] ?? 0);
 $workspace = $selected ? $service->workspace($selected, $groupId) : null;
 $requestedView = (string) ($_GET['view'] ?? '');
+$requestedStep = (string) ($_GET['step'] ?? '');
+$stepMap = ['range' => 1, 'core' => 2, 'optional' => 3, 'rules' => 4, 'approval' => 5, 'version' => 6];
+$initialStep = $stepMap[$requestedStep] ?? max(1, min(6, (int) ($_GET['step'] ?? 1)));
 $initialView = in_array($requestedView, ['home', 'products', 'workspace'], true) ? $requestedView : ($workspace ? 'workspace' : 'home');
 if ($initialView === 'workspace' && !$workspace) $initialView = 'products';
 $pageTitle = [
@@ -32,6 +35,8 @@ $bootstrap = [
     'metadata' => $service->metadata(),
     'baseUrl' => MC_BASE_URL,
     'view' => $initialView,
+    'step' => $initialStep,
+    'advancedOpen' => $requestedStep !== '',
 ];
 
 include MC_ROOT.'/components/layout_top.php';
