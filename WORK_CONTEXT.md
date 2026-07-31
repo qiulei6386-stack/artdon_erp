@@ -1,5 +1,13 @@
 # Artdon ERP 工作上下文
 
+## 本次：修复报价选择 EX097 客户不弹出佣金提醒（进行中）
+
+- 用户反馈报价中心已建立佣金规则 `EX097`，但在新建报价选择客户 `EX097 | Glist lighting | 印度` 时，没有弹出“此客户需要确认佣金”提醒。
+- 根因定位：报价页前端 `checkSelectedCustomerCommission()` 已正确传入 `customer_code:c.code`，但后端 `quote_commission_customer_check()` 对客户代码只错误匹配了 `quote_commission_rules.customer_id`，没有匹配新规则编辑器保存的“佣金对象”字段 `target_name`。因此截图中 `target_name=EX097`、`target_type=代理` 的启用规则不会被识别，`has_rule=false`，前端自然不弹窗。
+- 修复：客户代码现在同时兼容早期 `customer_id=EX097` 写法和新规则 `target_name=EX097` 写法；历史佣金查询也兼容订单 `customer_json` 中保存的客户代码，不引用不存在的订单 `customer_code` 字段。
+- 修改文件：`quote_api.php`、新增 `tests/commission_customer_code_rule_contract.php`、本上下文。未修改、删除或回填任何报价、订单、客户、佣金或其它业务数据。
+- 当前检查：`git diff --check` 通过；本地 Node 静态契约 5 项通过；借 `artdon-hongkong` PHP 对修改后的 `quote_api.php` 做语法检查通过。正式运行 alias `artdon` 当前 SSH 被服务端重置，尚未提交、推送或部署，待 SSH 恢复后继续固定发布流程。
+
 ## 本次：历史报价列表显示前 4 个产品小图（已发布）
 
 - 用户要求历史报价列表右侧图片区显示第 1–第 4 个产品图片，而不是只显示 1 张；图片卡片要缩窄到接近图片宽度，并向左靠近报价/订单信息，保证小显示器也能看到 4 张。

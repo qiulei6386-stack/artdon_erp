@@ -2341,11 +2341,18 @@ function quote_commission_customer_check($pdo,$d,$user){
   $rule=null;$args=[];$parts=[];
   if($cid!==''){$parts[]='customer_id=?';$args[]=$cid;}
   if($name!==''){$parts[]='customer_name=?';$args[]=$name;}
-  if($code!==''){$parts[]='customer_id=?';$args[]=$code;}
+  if($code!==''){
+    // 兼容两种历史录入方式：
+    // 1) 早期规则把客户代码写入 customer_id；
+    // 2) 新规则编辑器把 EX097 这类代理/客户代码写入“佣金对象” target_name。
+    $parts[]='customer_id=?';$args[]=$code;
+    $parts[]='target_name=?';$args[]=$code;
+  }
   if($parts)$rule=row($pdo,"SELECT * FROM quote_commission_rules WHERE is_active=1 AND (".implode(' OR ',$parts).") ORDER BY updated_at DESC,id DESC LIMIT 1",$args);
   $histArgs=[];$histWhere=[];
   if($cid!==''){$histWhere[]='o.customer_id=?';$histArgs[]=$cid;}
   if($name!==''){$histWhere[]='o.customer_name=?';$histArgs[]=$name;}
+  if($code!==''){$histWhere[]='(o.customer_id=? OR o.customer_json LIKE ?)';$histArgs[]=$code;$histArgs[]='%'.$code.'%';}
   $history=$histWhere?rows($pdo,"SELECT o.order_date,o.order_no,o.quote_no,o.customer_name,s.* FROM quote_commission_snapshots s JOIN quote_sales_orders o ON o.id=s.order_id WHERE (".implode(' OR ',$histWhere).") ORDER BY COALESCE(o.order_date,o.created_at) DESC,s.id DESC LIMIT 5",$histArgs):[];
   $reminders=rows($pdo,"SELECT * FROM quote_commission_reminder_rules WHERE scene='quote_customer_selected' AND is_active=1 AND (COALESCE(customer_scope,'all')='all' OR customer_id=? OR customer_code=? OR customer_name=?) ORDER BY sort_order,id",[$cid,$code,$name]);$activeTriggers=array_column($reminders,'trigger_condition');$explicitReminder=false;foreach($reminders as $rr)if(($rr['customer_scope']??'all')==='specific'){$explicitReminder=true;break;}$shouldRemind=(bool)($explicitReminder||($rule&&in_array('customer_has_commission_rule',$activeTriggers,true))||($history&&in_array('customer_has_commission_history',$activeTriggers,true)));
   $result=['has_commission'=>(bool)($rule||$history||$explicitReminder),'has_rule'=>(bool)$rule,'has_history'=>(bool)$history,'has_explicit_reminder'=>$explicitReminder,'should_remind'=>$shouldRemind,'customer_name'=>$name,'latest_rule'=>$rule?:null,'latest_snapshot'=>$history[0]??null,'recent_records'=>$history,'reminder_rules'=>$reminders];
