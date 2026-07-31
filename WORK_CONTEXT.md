@@ -1784,3 +1784,11 @@
 - 检查结果：服务器 PHP 语法通过；`php material_center_v1/tests/adaptation_rollback_contract.php` 通过；占位词 `基础页面修复中/repairMode/mc-page--adaptation-baseline/renderPausedStep` 在运行文件中无命中；入口、`view=products`、`view=workspace&product_id=83`、旧入口 `product_id=83` 通过 CLI 渲染，均输出 V3 页面且无 Fatal；CSS/JS 静态资源 HTTP 200。
 - 数据安全：只读查询确认 `mc_adaptation_groups=118`、`mc_adaptation_options=6` 等记录仍在；本轮未执行数据库写入、清空、迁移或结构变更。
 - 发布：恢复提交 `0b334d7`、测试/CSS 修正 `f3fdb17`、测试标记修正 `f6e065d` 已推送 GitHub 并用 Git bundle 快进腾讯云服务器。功能恢复验证时本地、GitHub main、腾讯云服务器均为 `f6e065d3bbba61d697ca3d3ff5a8d6bee0346c0c`；本上下文记录会形成后续文档同步提交，文档同步后以当前 Git HEAD 为准。本轮恢复完成后停止，等待下一步指令。
+
+## 2026-07-31：物料中心统一权限联动修复
+
+- 根因：统一权限中心已经登记 `material_center.material.formalize`（物料转正式），但物料中心运行代码仍有多处使用旧的 `material_center.approve`、`material_center.power.confirm` 或笼统的 `material_center.material.lifecycle`。现有账号 `sweet` 只读检查显示 `formalize=1`、`lifecycle=0`，旧通用生命周期接口会因此拒绝转正式。
+- 修复：在 `PermissionService` 统一新增 `allowsAny`、`requireAny`、`canFormalize`、`materialTransitionPermissions`、`requireMaterialTransition`；转正式优先认 `material_center.material.formalize`，并兼容旧 `approve`、`power.confirm`、`lifecycle`。停用、归档、删除草稿等也映射到对应细分权限，并兼容旧 lifecycle。
+- 接入范围：`api/v1/material-master.php`、`api/v1/materials.php`、`api/v1/source-material.php`、`api/v1/category-fields.php`、`SourceMaterialOrganizerService`、`PowerEditorService`、`assets/js/power-editor.js`。电源待确认记录转正式现在直接调用生命周期，不再先强制保存而被 edit 权限误挡。
+- 审计：服务器 `crm_permissions` 中共有 31 个 `material_center.*` 权限项；旧 `mc_permission_grants` 未发现物料中心残留授权；权限中心系统页仍通过 `material_center.` 前缀绑定物料中心。
+- 测试：服务器 PHP 语法通过；本地 `node --check material_center_v1/assets/js/power-editor.js` 通过；服务器 `material_permission_contract.php`、`unified_permission_contract_test.php`、`source_material_organizer_contract.php`、`power_editor_contract_test.php` 均通过。报告写入 `material_center_v1/docs/MATERIAL_PERMISSION_AUDIT_REPORT.md`。
