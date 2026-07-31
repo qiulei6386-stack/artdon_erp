@@ -5,8 +5,6 @@ require_once dirname(__DIR__).'/bootstrap.php';
 
 use Artdon\MaterialCenter\Services\AdaptationService;
 
-$pageTitle = '产品配置工作台';
-$pageDescription = '按步骤完成产品配置、适配检查与发布。';
 $activeMenu = 'adaptation';
 $service = new AdaptationService();
 $search = trim((string) ($_GET['q'] ?? ''));
@@ -16,6 +14,17 @@ $groupId = (int) ($_GET['group_id'] ?? 0);
 $workspace = $selected ? $service->workspace($selected, $groupId) : null;
 $requestedView = (string) ($_GET['view'] ?? '');
 $initialView = in_array($requestedView, ['home', 'products', 'workspace'], true) ? $requestedView : ($workspace ? 'workspace' : 'home');
+if ($initialView === 'workspace' && !$workspace) $initialView = 'products';
+$pageTitle = [
+    'home' => '产品适配',
+    'products' => '全部产品配置',
+    'workspace' => '产品配置工作台',
+][$initialView] ?? '产品适配';
+$pageDescription = [
+    'home' => '管理产品技术范围、核心物料、扩展可选、条件规则、检查审批与版本发布。',
+    'products' => '管理所有产品的物料配置状态、适配规则和发布情况。',
+    'workspace' => '按步骤完成产品配置、适配检查与发布。',
+][$initialView] ?? '产品适配';
 $bootstrap = [
     'csrf' => csrf_token(),
     'products' => $products,
@@ -30,8 +39,8 @@ include MC_ROOT.'/components/layout_top.php';
 <section class="mc-page mc-page--adaptation-v3" data-adaptation data-stage="<?=$workspace?($workspace['active_group']?'options':'groups'):'products'?>" data-view="<?=mc_h($initialView)?>">
     <header class="mc-adaptation-head">
         <div>
-            <h1>产品配置工作台</h1>
-            <p>先定义产品技术范围，再配置核心物料、可选件、规则与版本发布。</p>
+            <h1><?=mc_h($pageTitle)?></h1>
+            <p><?=mc_h($pageDescription)?></p>
         </div>
         <div class="mc-adaptation-head__actions">
             <button class="mc-button" type="button" data-v3-home>适配首页</button>

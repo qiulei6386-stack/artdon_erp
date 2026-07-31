@@ -17,7 +17,7 @@
     workspace: bootstrap.workspace || null,
     metadata: bootstrap.metadata || {},
     screen: bootstrap.view || (bootstrap.workspace ? 'workspace' : 'home'),
-    step: bootstrap.workspace ? 2 : 1,
+    step: 1,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
     materialGroup: null,
     materials: [],
@@ -59,8 +59,8 @@
   };
 
   const selectedProduct = () => state.workspace?.product || null;
-  const configState = product => product?.config_state || product?.configuration_state || (number(product?.group_count) ? 'configured' : 'unconfigured');
-  const statusLabel = value => ({ unconfigured:'未配置', configured:'配置中', pending_approval:'待审批', needs_review:'待检查', enabled:'已发布', conflict:'存在冲突' }[value] || '配置中');
+  const configState = product => product?.config_state || product?.configuration_state || (number(product?.group_count) ? 'configuring' : 'unconfigured');
+  const statusLabel = value => ({ unconfigured:'未配置', configuring:'配置中', configured:'配置中', needs_check:'待检查', needs_review:'待检查', pending_approval:'待审批', published:'已发布', enabled:'已发布', conflict:'存在冲突' }[value] || '配置中');
   const badgeClass = value => `mc-v3-badge mc-v3-badge--${esc(value || 'muted')}`;
   const productCode = product => product?.product_code || product?.model || product?.code || '—';
   const productName = product => product?.product_name || product?.name || '未命名产品';
@@ -74,7 +74,7 @@
   const approvalCount = product => number(product?.pending_approval_count || product?.approval_count);
   const updatedAt = product => product?.updated_at || product?.last_configured_at || product?.last_updated_at || '—';
   const ownerName = product => product?.owner_name || product?.updated_by_name || product?.creator_name || '—';
-  const isReleased = product => configState(product) === 'enabled' || number(product?.published_version_count || product?.published_versions_count) > 0;
+  const isReleased = product => ['published', 'enabled'].includes(configState(product)) || number(product?.published_version_count || product?.published_versions_count) > 0;
 
   const showApproval = () => {
     const button = document.querySelector('[data-v3-approve]');
@@ -83,7 +83,8 @@
 
   const setUrl = (replace = false) => {
     const url = new URL(location.href);
-    url.searchParams.set('view', state.screen === 'home' ? 'products' : state.screen);
+    if (state.screen === 'home') url.searchParams.delete('view');
+    else url.searchParams.set('view', state.screen);
     if (selectedProduct()) url.searchParams.set('product_id', String(selectedProduct().id));
     else url.searchParams.delete('product_id');
     history[replace ? 'replaceState' : 'pushState']({}, '', url);
@@ -96,7 +97,7 @@
     render();
   };
 
-  const loadWorkspace = async (productId, groupId = 0, step = 2) => {
+  const loadWorkspace = async (productId, groupId = 0, step = 1) => {
     root.innerHTML = '<div class="mc-v3-loading">正在载入产品配置工作台…</div>';
     state.workspace = await api(`workspace&product_id=${encodeURIComponent(productId)}&group_id=${encodeURIComponent(groupId)}`);
     state.products = state.products.map(product => number(product.id) === number(productId) ? { ...product, ...state.workspace.product } : product);
@@ -110,7 +111,7 @@
   };
 
   const counts = () => {
-    const base = { all: state.products.length, unconfigured: 0, configured: 0, pending_approval: 0, enabled: 0, conflict: 0 };
+    const base = { all: state.products.length, unconfigured: 0, configuring: 0, needs_check: 0, pending_approval: 0, published: 0, conflict: 0 };
     state.products.forEach(product => {
       const key = configState(product);
       if (key in base) base[key]++;
@@ -164,7 +165,43 @@
     });
   };
 
-  const renderHome = () => renderProducts(true);
+  const renderHome = () => {
+    const c = counts();
+    const recent = [...state.products]
+      .filter(product => configState(product) !== 'unconfigured' || number(product.group_count) || number(product.option_count))
+      .sort((left, right) => String(updatedAt(right)).localeCompare(String(updatedAt(left))))
+      .slice(0, 5);
+    root.innerHTML = `<section class="mc-v3-page-shell mc-v3-home">
+      <div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / <b>产品适配</b></div>
+      <header class="mc-v3-screen-head">
+        <div><h1>产品适配</h1><p>按产品管理技术范围、核心物料、扩展可选、条件规则、检查审批和版本发布。首页只放入口和最近配置，不直接铺开全部产品。</p></div>
+        <div class="mc-v3-screen-actions">
+          <button class="mc-button mc-button--primary" data-v3-products type="button">选择产品 / 全部产品</button>
+          <button class="mc-button" data-v3-template type="button">配置模板</button>
+          <button class="mc-button" data-v3-batch type="button">批量矩阵</button>
+        </div>
+      </header>
+      <section class="mc-v3-metrics">
+        ${[['unconfigured','未配置'],['configuring','配置中'],['needs_check','待检查'],['pending_approval','待审批'],['published','已发布'],['conflict','存在冲突']].map(([key,label]) => `<button class="mc-v3-metric" data-v3-home-status="${key}" type="button"><b>${number(c[key])}</b><small>${label}</small></button>`).join('')}
+      </section>
+      <section class="mc-v3-panel">
+        <div class="mc-v3-panel__head"><div><h2>继续最近配置</h2><p>显示最近 5 个已有配置动作的产品，可直接回到单产品工作台。</p></div><button class="mc-button" data-v3-products type="button">查看全部产品</button></div>
+        <div class="mc-v3-recent">${recent.length ? recent.map(product => `<button class="mc-v3-product-row" data-v3-open-product="${number(product.id)}" type="button">${productImage(product)}<span><b>${esc(productCode(product))}</b><small>${esc(productName(product))} · ${esc(productSeries(product))}</small></span><b class="${badgeClass(configState(product))}">${esc(statusLabel(configState(product)))}</b><span>${completionOf(product)}% · 缺 ${Math.max(0, number(product.required_group_count) - number(product.complete_required_group_count))} · 冲突 ${conflictCount(product)}</span></button>`).join('') : '<div class="mc-v3-empty">暂无最近配置产品，请先进入“全部产品”选择一个产品。</div>'}</div>
+      </section>
+      <section class="mc-v3-panel">
+        <div class="mc-v3-panel__head"><div><h2>快速入口</h2><p>入口页不显示产品级保存、检查或发布按钮，避免误操作。</p></div></div>
+        <div class="mc-v3-quick-grid">
+          <button class="mc-button mc-button--primary" data-v3-products type="button">选择产品</button>
+          <button class="mc-button" data-v3-products type="button">全部产品</button>
+          <button class="mc-button" data-v3-template type="button">配置模板</button>
+          <button class="mc-button" data-v3-copy-current type="button">从产品复制</button>
+          <button class="mc-button" data-v3-batch type="button">批量矩阵</button>
+          <button class="mc-button" data-v3-home-status="pending_approval" type="button">审批中心</button>
+        </div>
+      </section>
+    </section>`;
+    page.dataset.view = 'home';
+  };
 
   const renderProducts = (isHome = false) => {
     const c = counts();
@@ -177,27 +214,25 @@
       <header class="mc-v3-screen-head">
         <div><h1>全部产品配置</h1><p>全部产品配置管理：管理所有产品的物料配置状态、适配规则和发布情况。产品适配工作台从这里进入。</p></div>
         <div class="mc-v3-screen-actions">
-          <button class="mc-button" data-v3-template type="button">配置模板</button>
-          <button class="mc-button" data-v3-copy-current type="button">从产品复制</button>
-          <button class="mc-button" data-v3-batch type="button">批量矩阵</button>
-          <button class="mc-button mc-button--primary" data-v3-new-config type="button">新建产品配置</button>
+          <button class="mc-button" data-v3-home type="button">返回适配首页</button>
+          <button class="mc-button" data-v3-more type="button">更多：模板 / 复制 / 批量</button>
+          <button class="mc-button mc-button--primary" data-v3-new-config type="button">选择未配置产品</button>
         </div>
       </header>
       <section class="mc-v3-filter-card">
         <label class="mc-v3-filter-search"><span>⌕</span><input data-v3-filter-keyword value="${esc(state.filters.keyword)}" placeholder="搜索型号 / 名称 / 系列 / 创建人"></label>
         <label><span>产品类型</span><select data-v3-filter-type><option value="all">全部类型</option>${types.map(type => `<option value="${esc(type)}" ${state.filters.type === type ? 'selected' : ''}>${esc(type)}</option>`).join('')}</select></label>
         <label><span>系列</span><select data-v3-filter-series><option value="all">全部系列</option>${series.map(item => `<option value="${esc(item)}" ${state.filters.series === item ? 'selected' : ''}>${esc(item)}</option>`).join('')}</select></label>
-        <label><span>配置状态</span><select data-v3-filter-status>${[['all','全部状态'],['unconfigured','未配置'],['configured','配置中'],['pending_approval','待审批'],['enabled','已发布']].map(([value,label]) => `<option value="${value}" ${state.filters.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+        <label><span>配置状态</span><select data-v3-filter-status>${[['all','全部状态'],['unconfigured','未配置'],['configuring','配置中'],['needs_check','待检查'],['pending_approval','待审批'],['published','已发布'],['conflict','存在冲突']].map(([value,label]) => `<option value="${value}" ${state.filters.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label><span>发布状态</span><select data-v3-filter-release>${[['all','全部状态'],['released','已发布'],['unreleased','未发布']].map(([value,label]) => `<option value="${value}" ${state.filters.release === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label><span>冲突状态</span><select data-v3-filter-conflict>${[['all','全部状态'],['yes','存在冲突'],['no','无冲突']].map(([value,label]) => `<option value="${value}" ${state.filters.conflict === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <label><span>排序</span><select data-v3-sort>${[['updated','更新时间 ↓'],['completion','完成度 ↓'],['code','产品编号 ↑']].map(([value,label]) => `<option value="${value}" ${state.filters.sort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
         <button class="mc-button" data-v3-collapse-filter type="button">收起 ^</button>
       </section>
       <nav class="mc-v3-status-tabs">
-        ${[['all','全部'],['unconfigured','未配置'],['configured','配置中'],['pending_approval','待审批'],['enabled','已发布'],['conflict','存在冲突']].map(([key,label]) => `<button class="${(key === 'all' ? state.filters.status === 'all' : state.filters.status === key) ? 'is-active' : ''}" data-v3-tab-status="${key}" type="button">${label} <b>${number(c[key])}</b></button>`).join('')}
+        ${[['all','全部'],['unconfigured','未配置'],['configuring','配置中'],['needs_check','待检查'],['pending_approval','待审批'],['published','已发布'],['conflict','存在冲突']].map(([key,label]) => `<button class="${(key === 'all' ? state.filters.status === 'all' : state.filters.status === key) ? 'is-active' : ''}" data-v3-tab-status="${key}" type="button">${label} <b>${number(c[key])}</b></button>`).join('')}
         <span></span><button class="mc-button" data-v3-refresh type="button">刷新</button><button class="mc-button" data-v3-export type="button">导出</button><button class="mc-button" data-v3-columns type="button">列设置</button>
       </nav>
-      <section class="mc-v3-recent mc-v3-recent-strip"><strong>最近产品</strong>${recent.map(product => `<button data-v3-open-product="${number(product.id)}" title="打开工作台" type="button">${productImage(product)}<span><b>${esc(productCode(product))}</b><small>${esc(productName(product))}</small></span></button>`).join('') || '<em>暂无最近产品</em>'}</section>
       <section class="mc-v3-product-table mc-v3-product-table--spec">
         <div class="mc-v3-product-table__head"><span>产品信息</span><span>产品类型 / 系列</span><span>配置完成度</span><span>配置状态</span><span>发布状态</span><span>冲突数</span><span>待审批数</span><span>更新时间</span><span>操作</span></div>
         <div data-v3-product-table>${renderProductTable(rows)}</div>
@@ -247,14 +282,12 @@
     return overview.default_material || overview.default_option || group.default_material || '未设置默认';
   };
   const groupDone = group => number(group.option_count) > 0 && (group.selection_mode !== 'single' || groupDefault(group) !== '未设置默认');
-  const activeGroup = () => state.materialGroup || coreGroups().find(group => canonicalGroupKey(group) === 'power') || coreGroups()[0] || groups()[0] || null;
+  const activeGroup = () => state.materialGroup || null;
 
   const renderWorkbench = () => {
     const product = selectedProduct();
     if (!product) return renderProducts();
     const pct = number(completion().percent);
-    const group = activeGroup();
-    if (!state.materialGroup && group) state.materialGroup = group;
     const totalOptions = groups().reduce((sum, item) => sum + number(item.option_count), 0);
     const missingCore = coreGroups().filter(item => !groupDone(item)).length;
     root.innerHTML = `<section class="mc-v3-page-shell mc-v3-workbench-page">
@@ -274,7 +307,7 @@
             <div class="mc-v3-hero-stat"><b>${approvalCount(product)}</b><span>待审批</span></div>
             <div class="mc-v3-hero-stat"><b>${totalOptions}</b><span>正式选项</span></div>
           </section>
-          <nav class="mc-v3-flow">${[['1','选择产品','已完成'],['2','核心必配','进行中'],['3','扩展可配','未开始'],['4','条件规则','未开始'],['5','检查发布','未开始']].map(([id,label,tip]) => `<button class="${number(id) === state.step ? 'is-active' : number(id) < state.step ? 'is-done' : ''}" data-v3-step="${id}" type="button"><b>${number(id) < state.step ? '✓' : id}</b><span>${label}</span><small>${tip}</small></button>`).join('')}</nav>
+          <nav class="mc-v3-flow">${[['1','技术范围','先确认'],['2','核心物料','必配'],['3','扩展可选','按需'],['4','条件规则','组合'],['5','检查审批','提交前'],['6','版本发布','冻结版本']].map(([id,label,tip]) => `<button class="${number(id) === state.step ? 'is-active' : number(id) < state.step ? 'is-done' : ''}" data-v3-step="${id}" type="button"><b>${number(id) < state.step ? '✓' : id}</b><span>${label}</span><small>${tip}</small></button>`).join('')}</nav>
           ${renderStepContent()}
         </main>
         ${renderGroupDrawer()}
@@ -287,13 +320,14 @@
     if (state.step === 2) return renderGroupStage(true);
     if (state.step === 3) return renderGroupStage(false);
     if (state.step === 4) return renderRules();
-    return renderCheck();
+    if (state.step === 5) return renderCheck();
+    return renderPublish();
   };
 
   const renderTechnical = () => {
     const fields = state.workspace?.technical_profile?.fields || state.metadata.technical_profile_fields || [];
     const sections = uniq(fields.map(field => field.section || '技术范围'));
-    return `<form data-v3-profile class="mc-v3-technical mc-v3-work-card"><div class="mc-v3-step-title"><h3>选择产品 / 技术范围</h3><p>先确认产品功率、电流、电压、结构空间、认证和光学边界；后续候选物料会按这里筛选。</p></div>${sections.map(section => `<fieldset><legend>${esc(section)}</legend><div class="mc-v3-field-grid">${fields.filter(field => (field.section || '技术范围') === section).map(field => `<label><span>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</span>${profileInput(field)}</label>`).join('')}</div></fieldset>`).join('')}<footer><button class="mc-button mc-button--primary" type="submit">保存并确认技术范围</button><button class="mc-button" type="button" data-v3-step="2">下一步：核心必配</button></footer></form>`;
+    return `<form data-v3-profile class="mc-v3-technical mc-v3-work-card"><div class="mc-v3-step-title"><h3>技术范围</h3><p>先确认产品功率、电流、电压、结构空间、认证和光学边界；没有确认技术范围时，候选物料只能显示为候选，不能判为“完全适配”。</p></div>${sections.map(section => `<fieldset><legend>${esc(section)}</legend><div class="mc-v3-field-grid">${fields.filter(field => (field.section || '技术范围') === section).map(field => `<label><span>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</span>${profileInput(field)}<small>当前值来自产品资料或电源规则；审核时可手填确认。</small></label>`).join('')}</div></fieldset>`).join('')}<footer><button class="mc-button mc-button--primary" type="submit">保存并确认技术范围</button><button class="mc-button" type="button" data-v3-step="2">下一步：核心物料</button></footer></form>`;
   };
 
   const profileInput = field => {
@@ -326,7 +360,12 @@
 
   const renderCheck = () => {
     const issues = completion().issues || [];
-    return `<section class="mc-v3-work-card"><div class="mc-v3-step-title"><h3>检查发布</h3><p>第五步检查配置完整性、冲突、规则和审批，支持提交审批并发布。</p></div><div class="mc-v3-check-grid">${Object.entries(completion().segments || {}).map(([key,value]) => `<span><b>${number(value)}%</b><small>${esc(({technical:'技术范围',core:'核心必配',optional:'扩展可配',rules:'条件规则',check:'检查'}[key] || key))}</small></span>`).join('')}</div>${issues.length ? `<div class="mc-v3-issues">${issues.map(issue => `<p>• ${esc(issue)}</p>`).join('')}</div>` : '<div class="mc-v3-ready">配置检查通过，可以提交审批并发布版本。</div>'}<button class="mc-button mc-button--primary" data-v3-approve type="button">提交审批 / 发布</button></section>`;
+    return `<section class="mc-v3-work-card"><div class="mc-v3-step-title"><h3>检查审批</h3><p>第五步检查配置完整性、冲突、规则和审批条件；通过后才能提交审批。</p></div><div class="mc-v3-check-grid">${Object.entries(completion().segments || {}).map(([key,value]) => `<span><b>${number(value)}%</b><small>${esc(({technical:'技术范围',core:'核心物料',optional:'扩展可选',rules:'条件规则',check:'检查'}[key] || key))}</small></span>`).join('')}</div>${issues.length ? `<div class="mc-v3-issues">${issues.map(issue => `<p>• ${esc(issue)}</p>`).join('')}</div>` : '<div class="mc-v3-ready">配置检查通过，可以提交审批。</div>'}<button class="mc-button mc-button--primary" data-v3-approve type="button">提交审批</button></section>`;
+  };
+
+  const renderPublish = () => {
+    const versions = state.workspace?.published_versions || [];
+    return `<section class="mc-v3-work-card"><div class="mc-v3-step-title"><h3>版本发布</h3><p>审批通过后生成不可变发布版本，商务中心只读取已发布版本，不读取工作草稿。</p></div><div class="mc-v3-version-list">${versions.length ? versions.map(version => `<article><b>V${number(version.version_no)}</b><span>${esc(version.published_at || '—')}</span><span>${esc(version.publisher_name || '系统')}</span></article>`).join('') : '<div class="mc-v3-empty">尚未发布版本。</div>'}</div></section>`;
   };
 
   const renderGroupDrawer = () => {
@@ -374,7 +413,8 @@
     if (state.screen === 'workspace') renderWorkbench();
     else if (state.screen === 'template') renderTemplate();
     else if (state.screen === 'batch') renderBatch();
-    else renderProducts(state.screen === 'home');
+    else if (state.screen === 'products') renderProducts();
+    else renderHome();
   };
 
   const loadDrawerMaterials = async groupId => {
@@ -400,9 +440,10 @@
     try {
       if (button.matches('[data-v3-home]')) return navigate('home');
       if (button.matches('[data-v3-products],[data-v3-select-product],[data-v3-new-config]')) return navigate('products');
+      if (button.matches('[data-v3-home-status]')) { state.filters.status = button.dataset.v3HomeStatus || 'all'; return navigate('products'); }
       if (button.matches('[data-v3-template]')) return navigate('template');
       if (button.matches('[data-v3-batch],[data-v3-copy-current]')) return navigate('batch');
-      if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 2);
+      if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 1);
       if (button.matches('[data-v3-tab-status]')) { state.filters.status = button.dataset.v3TabStatus === 'all' ? 'all' : button.dataset.v3TabStatus; return renderProducts(); }
       if (button.matches('[data-v3-refresh]')) { const products = await api('products'); state.products = Array.isArray(products) ? products : []; toast('产品配置列表已刷新。'); return renderProducts(); }
       if (button.matches('[data-v3-export]')) { exportProductsCsv(); return toast('当前筛选结果已导出。'); }

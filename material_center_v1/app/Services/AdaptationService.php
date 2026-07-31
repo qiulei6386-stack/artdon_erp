@@ -241,42 +241,66 @@ final class AdaptationService
 
     public function products(string $q = ''): array
     {
+        return $this->productRows($q);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function productRows(string $q = '', int $productId = 0): array
+    {
+        $publishedVersionSql = $this->tableExists('mc_adaptation_published_versions')
+            ? "(SELECT MAX(v.version_no) FROM mc_adaptation_published_versions v WHERE v.product_id=p.id AND v.status='published') published_version,"
+            : "0 published_version,";
+        $publishedCountSql = $this->tableExists('mc_adaptation_published_versions')
+            ? "(SELECT COUNT(*) FROM mc_adaptation_published_versions v WHERE v.product_id=p.id AND v.status='published') published_version_count,"
+            : "0 published_version_count,";
+        $profileSql = $this->tableExists('mc_adaptation_product_profiles')
+            ? "(SELECT pp.confirmed_at FROM mc_adaptation_product_profiles pp WHERE pp.product_id=p.id LIMIT 1) profile_confirmed_at,
+            (SELECT pp.updated_at FROM mc_adaptation_product_profiles pp WHERE pp.product_id=p.id LIMIT 1) profile_updated_at,"
+            : "NULL profile_confirmed_at, NULL profile_updated_at,";
+        $lastProfileUpdatedSql = $this->tableExists('mc_adaptation_product_profiles')
+            ? "COALESCE((SELECT MAX(pp.updated_at) FROM mc_adaptation_product_profiles pp WHERE pp.product_id=p.id),'1970-01-01 00:00:00')"
+            : "'1970-01-01 00:00:00'";
+
         $sql = "SELECT p.*,
             COALESCE(NULLIF(n.web_image_url,''),NULLIF(n.source_image_url,''),NULLIF(n.image_path,'')) source_image_url,
             (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id) group_count,
+            (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status<>'disabled') active_group_count,
+            (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status<>'disabled' AND g.is_required=1) required_group_count,
+            (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status<>'disabled' AND g.is_required=1 AND EXISTS(SELECT 1 FROM mc_adaptation_options o WHERE o.group_id=g.id) AND (g.selection_mode<>'single' OR EXISTS(SELECT 1 FROM mc_adaptation_options od WHERE od.group_id=g.id AND od.is_default=1))) complete_required_group_count,
             (SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=p.id) option_count,
             (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status<>'disabled' AND (g.status<>'approved' OR g.is_enabled=0)) pending_group_count,
+            (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE g.product_id=p.id AND g.status='draft') draft_group_count,
+            (SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=p.id AND o.status='draft') draft_option_count,
             (SELECT COUNT(*) FROM mc_adaptation_conflicts c WHERE c.product_id=p.id AND c.status='active') conflict_count,
-            (SELECT MAX(a.version_no) FROM mc_adaptation_approvals a WHERE a.product_id=p.id AND a.status='approved') approved_version
+            (SELECT COUNT(*) FROM mc_adaptation_approvals aa JOIN mc_approvals ap ON ap.id=aa.approval_id WHERE aa.product_id=p.id AND aa.status='pending' AND ap.status='pending') pending_approval_count,
+            (SELECT MAX(a.version_no) FROM mc_adaptation_approvals a WHERE a.product_id=p.id AND a.status='approved') approved_version,
+            {$publishedVersionSql}
+            {$publishedCountSql}
+            {$profileSql}
+            GREATEST(
+                COALESCE(p.synced_at,'1970-01-01 00:00:00'),
+                COALESCE((SELECT MAX(g.updated_at) FROM mc_adaptation_groups g WHERE g.product_id=p.id),'1970-01-01 00:00:00'),
+                {$lastProfileUpdatedSql}
+            ) last_configured_at
             FROM mc_products p
             LEFT JOIN naming_models n ON p.legacy_table='naming_models' AND n.id=p.legacy_id
             WHERE p.status='active'";
         $params = [];
+        if ($productId > 0) {
+            $sql .= ' AND p.id=?';
+            $params[] = $productId;
+        }
         if ($q !== '') {
             $sql .= " AND (p.product_code LIKE ? OR p.product_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.series_name')) LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.category')) LIKE ?)";
             $like = '%'.$q.'%';
-            $params = [$like, $like, $like, $like];
+            array_push($params, $like, $like, $like, $like);
         }
         $sql .= ' ORDER BY p.product_code LIMIT 2000';
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$row) {
-            $snapshot = json_decode((string) ($row['snapshot_json'] ?? '{}'), true) ?: [];
-            $row['series_name'] = $snapshot['series_name'] ?? $snapshot['category'] ?? '';
-            $row['product_type'] = $snapshot['product_type'] ?? $snapshot['product_type_name'] ?? $snapshot['category'] ?? '';
-            $row['image_url'] = !empty($snapshot['image_url'])
-                ? $snapshot['image_url']
-                : ($row['source_image_url'] ?? '');
-            $row['approval_label'] = empty($row['approved_version'])
-                ? ((int) $row['group_count'] ? '待审批' : '未配置')
-                : ((int) $row['pending_group_count'] ? '待重审' : '已启用');
-            $row['has_conflict'] = (int) $row['conflict_count'] > 0;
-            $row['configuration_state'] = !(int) $row['group_count']
-                ? 'unconfigured'
-                : (empty($row['approved_version'])
-                    ? 'pending_approval'
-                    : ((int) $row['pending_group_count'] ? 'needs_review' : 'enabled'));
+            $this->decorateProductRow($row);
         }
         unset($row);
         return $rows;
@@ -284,10 +308,71 @@ final class AdaptationService
 
     public function product(int $productId): ?array
     {
-        foreach ($this->products() as $product) {
-            if ((int) $product['id'] === $productId) return $product;
+        return $this->productRows('', $productId)[0] ?? null;
+    }
+
+    /** @param array<string,mixed> $row */
+    private function decorateProductRow(array &$row): void
+    {
+        $snapshot = json_decode((string) ($row['snapshot_json'] ?? '{}'), true) ?: [];
+        $row['series_name'] = $snapshot['series_name'] ?? $snapshot['category'] ?? '';
+        $row['product_type'] = $snapshot['product_type'] ?? $snapshot['product_type_name'] ?? $snapshot['category'] ?? '';
+        $row['image_url'] = !empty($snapshot['image_url'])
+            ? $snapshot['image_url']
+            : ($row['source_image_url'] ?? '');
+
+        $activeGroups = (int) ($row['active_group_count'] ?? $row['group_count'] ?? 0);
+        $optionCount = (int) ($row['option_count'] ?? 0);
+        $requiredGroups = (int) ($row['required_group_count'] ?? 0);
+        $completeRequired = (int) ($row['complete_required_group_count'] ?? 0);
+        $conflicts = (int) ($row['conflict_count'] ?? 0);
+        $pendingApprovals = (int) ($row['pending_approval_count'] ?? 0);
+        $publishedVersion = (int) ($row['published_version'] ?? 0);
+        $draftCount = (int) ($row['draft_group_count'] ?? 0) + (int) ($row['draft_option_count'] ?? 0);
+        $profileConfirmed = !empty($row['profile_confirmed_at']);
+        $hasWorkingData = $activeGroups > 0 || $optionCount > 0 || $profileConfirmed;
+
+        if ($conflicts > 0) {
+            $state = 'conflict';
+        } elseif ($pendingApprovals > 0) {
+            $state = 'pending_approval';
+        } elseif ($publishedVersion > 0 && $draftCount === 0) {
+            $state = 'published';
+        } elseif (!$hasWorkingData) {
+            $state = 'unconfigured';
+        } elseif (!$profileConfirmed || $requiredGroups === 0 || $completeRequired < $requiredGroups) {
+            $state = 'configuring';
+        } else {
+            $state = 'needs_check';
         }
-        return null;
+
+        $technicalScore = $profileConfirmed ? 20 : 0;
+        $coreScore = $requiredGroups > 0 ? (int) round(50 * min($completeRequired, $requiredGroups) / $requiredGroups) : 0;
+        $optionalScore = $activeGroups > $requiredGroups ? 10 : 0;
+        $rulesScore = $activeGroups > 0 ? 10 : 0;
+        $checkScore = ($profileConfirmed && $requiredGroups > 0 && $completeRequired >= $requiredGroups && !$conflicts && !$pendingApprovals) ? 10 : 0;
+        if (!$hasWorkingData) {
+            $technicalScore = $coreScore = $optionalScore = $rulesScore = $checkScore = 0;
+        }
+
+        $labels = [
+            'unconfigured' => '未配置',
+            'configuring' => '配置中',
+            'needs_check' => '待检查',
+            'pending_approval' => '待审批',
+            'published' => '已发布',
+            'conflict' => '存在冲突',
+        ];
+        $row['has_conflict'] = $conflicts > 0;
+        $row['configuration_state'] = $state;
+        $row['config_state'] = $state;
+        $row['approval_label'] = $labels[$state] ?? '配置中';
+        $row['completion_percent'] = min(100, $technicalScore + $coreScore + $optionalScore + $rulesScore + $checkScore);
+        $row['current_step_label'] = $state === 'unconfigured'
+            ? '技术范围'
+            : ($state === 'published' ? '版本发布' : ($completeRequired < $requiredGroups ? '核心物料' : '检查审批'));
+        $row['published_version'] = $publishedVersion ?: null;
+        $row['updated_at'] = $row['last_configured_at'] ?: ($row['synced_at'] ?? null);
     }
 
     public function groups(int $productId): array
@@ -1469,12 +1554,15 @@ final class AdaptationService
     {
         $groups = $this->groups($productId);
         $issues = [];
-        $segments = ['technical' => 0, 'core' => 0, 'optional' => 10, 'rules' => 10, 'check' => 10];
-        $profile = $this->technicalProfile($productId)['values'];
+        $segments = ['technical' => 0, 'core' => 0, 'optional' => 0, 'rules' => 0, 'check' => 0];
+        $profileData = $this->technicalProfile($productId);
+        $profile = $profileData['values'];
         $technicalRequired = ['lamp_power_min_w', 'lamp_power_max_w', 'installation_type'];
         $technicalFilled = array_filter($technicalRequired, static fn(string $key): bool => ($profile[$key] ?? '') !== '' && ($profile[$key] ?? null) !== null && ($profile[$key] ?? 'unknown') !== 'unknown');
-        $segments['technical'] = (int) round(20 * count($technicalFilled) / count($technicalRequired));
-        if (count($technicalFilled) !== count($technicalRequired)) $issues[] = '技术范围尚未完整确认（功率范围与安装方式为必填）。';
+        if (!empty($profileData['confirmed_at'])) {
+            $segments['technical'] = (int) round(20 * count($technicalFilled) / count($technicalRequired));
+        }
+        if (empty($profileData['confirmed_at']) || count($technicalFilled) !== count($technicalRequired)) $issues[] = '技术范围尚未完整确认（功率范围与安装方式为必填）。';
 
         $required = array_values(array_filter($groups, static fn(array $group): bool => $group['status'] !== 'disabled' && (int) $group['is_required']));
         if (!$required) {
@@ -1495,11 +1583,13 @@ final class AdaptationService
             if ($availability === 'later') $later[] = $group['group_name'];
         }
         if ($later) { $segments['optional'] = 0; $issues[] = '可选配置仍标记为稍后处理：'.implode('、', $later); }
+        elseif ($groups) $segments['optional'] = 10;
 
         $invalidConditionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_conditions c JOIN mc_adaptation_options o ON o.id=c.option_id JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND (c.field_code='' OR c.operator='' OR c.expected_json IS NULL)");
         $invalidConditionStmt->execute([$productId]);
         $invalidConditions = (int) $invalidConditionStmt->fetchColumn();
         if ($invalidConditions) { $segments['rules'] = 0; $issues[] = "存在 {$invalidConditions} 条不完整适用条件"; }
+        elseif ($groups) $segments['rules'] = 10;
 
         $conflicts = $this->conflicts($productId);
         $exceptionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND g.status<>'disabled' AND o.requires_approval=1 AND o.exception_approved=0");
@@ -1513,6 +1603,8 @@ final class AdaptationService
             if ($conflicts) $issues[] = '存在 '.count($conflicts).' 条未解决冲突';
             if ($exceptions) $issues[] = "存在 {$exceptions} 个未批准的适配例外";
             if ($invalidMaterials) $issues[] = "存在 {$invalidMaterials} 个非正式或不适配物料";
+        } elseif (!$issues) {
+            $segments['check'] = 10;
         }
         $percent = array_sum($segments);
         return [
