@@ -1,5 +1,20 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配 V2 第 2 阶段基础数据模型和分类/配置组中心（待发布）
+
+- 用户要求继续产品适配 V2：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 使用独立 `material_center_v1/adaptation_v2/`；V2 新表使用 `mc_pa2_` 前缀；完成第 1 阶段后不用停，进入第 2 阶段直至完成。
+- 已确认用户提供的主说明 `/Users/qiulei-office/Downloads/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md` 与仓库 `material_center_v1/docs/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md` 完全一致。
+- 第 2 阶段本地实现：新增 V2 基础库 `adaptation_v2/lib/foundation.php`，新增 V2 专用迁移器 `adaptation_v2/lib/migration_runner.php` 和 CLI 工具 `adaptation_v2/tools/migrate.php`，迁移文件为 `adaptation_v2/database/migrations/20260801_001_phase2_foundation.php`。
+- 第 2 阶段新表仅限 V2 旁路：`mc_pa2_product_categories`、`mc_pa2_product_category_mappings`、`mc_pa2_group_definitions`、`mc_pa2_group_option_definitions`，并用 `mc_pa2_schema_migrations` 记录 V2 迁移账本。
+- 第 2 阶段页面：`adaptation_v2/index.php` 升级为基础状态首页，新增产品分类中心、配置组定义中心和产品分类映射页面；模板中心、工作台、配置包、审批和发布仍保持后续阶段占位，不开发业务功能。
+- 第 2 阶段 API：`adaptation_v2/api/index.php` 支持 `status/categories/category_save/groups/group_save/group_option_save/products/product_map_save`；写操作服务端检查 `adaptation_v2.*` 统一权限或既有 `material_center.adaptation.manage` 兼容权限，并写入既有 `mc_operation_logs`（`module=adaptation_v2`）。
+- 统一权限：迁移会写入主说明要求的 `adaptation_v2.view/manage_category/manage_group_definition/manage_template/publish_template/configure_product/override_product/select_material/override_conflict/manage_rule/manage_package/approve/publish/view_price/manage_channel/view_log` 到 `crm_permissions`，不建立第二套账号或权限表。
+- `material_center_v1/bootstrap.php` 仅补充识别 `/material_center_v1/adaptation_v2/api/` 为 JSON API，避免未登录或无权限时返回 HTML 重定向；不改旧版适配业务。
+- 文档：新增 `adaptation_v2/docs/02_FOUNDATION_MODEL.md`，更新 `adaptation_v2/docs/EXECUTION_LOG.md`。新增 `material_center_v1/tests/adaptation_v2_phase2_contract.php` 锁定第 2 阶段边界和能力。
+- 本地检查：`git diff --check` 通过；办公室电脑无 PHP。已将候选文件临时复制到正式服务器 `/tmp/artdon_pa2_phase2_candidate/` 做 PHP 语法和静态契约检查：`index.php`、`api/index.php`、`foundation.php`、`migration_runner.php`、`tools/migrate.php`、迁移文件和新增契约测试均无语法错误；`adaptation_v2_phase2_contract.php` 全部通过。
+- 旧版边界检查：`git diff -- material_center_v1/adaptation material_center_v1/api/v1/adaptation.php material_center_v1/app/Services/AdaptationService.php material_center_v1/database/migrations` 为 0 行，本轮没有改旧版适配目录、旧适配 API、旧服务或旧迁移；未修改旧 BOM。
+- 待发布步骤：提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 创建 V2 新表/种子/权限；服务器复检 PHP 语法、契约、V2 状态 API 和页面 HTTP 200；核对本地/GitHub/服务器同一 HEAD。
+
 ## 本次：产品适配 V2 第 1 阶段冻结、审计和蓝图落地（直接服务器发布）
 
 - 用户提供主说明 `/Users/qiulei/Downloads/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md`，要求只执行“第 1 阶段：冻结旧版、审计和 V2 蓝图落地”，不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单，V2 使用独立 `adaptation_v2` 目录，后续新表统一使用 `mc_pa2_` 前缀，完成后停止等待验收，不进入第 2 阶段。

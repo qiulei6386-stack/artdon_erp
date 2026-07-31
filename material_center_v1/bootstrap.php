@@ -22,7 +22,8 @@ require_once MC_LEGACY_ROOT . '/includes/bootstrap.php';
 
 if (PHP_SAPI !== 'cli') {
     $requestPath = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
-    $isApiRequest = str_contains($requestPath, '/material_center_v1/api/');
+    $isApiRequest = str_contains($requestPath, '/material_center_v1/api/')
+        || str_contains($requestPath, '/material_center_v1/adaptation_v2/api/');
     $user = mc_current_user();
 
     if (!$user) {
