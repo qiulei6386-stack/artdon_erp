@@ -1792,3 +1792,11 @@
 - 接入范围：`api/v1/material-master.php`、`api/v1/materials.php`、`api/v1/source-material.php`、`api/v1/category-fields.php`、`SourceMaterialOrganizerService`、`PowerEditorService`、`assets/js/power-editor.js`。电源待确认记录转正式现在直接调用生命周期，不再先强制保存而被 edit 权限误挡。
 - 审计：服务器 `crm_permissions` 中共有 31 个 `material_center.*` 权限项；旧 `mc_permission_grants` 未发现物料中心残留授权；权限中心系统页仍通过 `material_center.` 前缀绑定物料中心。
 - 测试：服务器 PHP 语法通过；本地 `node --check material_center_v1/assets/js/power-editor.js` 通过；服务器 `material_permission_contract.php`、`unified_permission_contract_test.php`、`source_material_organizer_contract.php`、`power_editor_contract_test.php` 均通过。报告写入 `material_center_v1/docs/MATERIAL_PERMISSION_AUDIT_REPORT.md`。
+
+## 2026-07-31：产品适配主页与产品配置工作台视觉加强
+
+- 范围：按用户提供的两张参考图，加强产品适配主页和单产品配置工作台；本轮只改前端渲染与样式，不改数据库结构、不迁移、不清空任何 `mc_*` 适配数据。
+- 主页：`adaptation-v3.js` 重新组织为“全部产品配置”业务页，包含高级筛选、状态 tab、最近产品、产品表格、完成度圆环、配置/发布/冲突/待审批列、排序与当前筛选导出 CSV。保留“最近产品”“打开工作台”等恢复验收锚点，避免回到空白占位页。
+- 工作台：单产品页改为参考图的产品 hero、五步流程（选择产品、核心必配、扩展可配、条件规则、检查发布）、核心/扩展模组卡和右侧配置抽屉。核心模组按芯片/光源、电源/驱动、光学/透镜、安装方式等识别；候选物料仍通过原 `candidates`、`add_options`、`set_default`、`approve` 等接口，沿用正式物料和审批规则。
+- 回归保护：新增 `material_center_v1/tests/adaptation_visual_upgrade_contract.php`，检查新版主页/工作台关键结构，并阻止“基础页面修复中”“暂未开放”“repairMode”等占位逻辑回归。既有 `adaptation_rollback_contract.php` 同时保持通过。
+- 发布与验证：提交 `6bbd9cc7b1f3fab159ef4da913f8cb20c90a2ec7` 已推送 GitHub，并用 Git bundle 快进腾讯云服务器。服务器 PHP 语法通过；回滚合同和视觉加强合同均通过；CLI 实际渲染 `index.php`、`?view=products`、`?view=workspace&product_id=83`、旧兼容 `?product_id=83` 均 OK，输出新版 V3 页面且无占位文字。
