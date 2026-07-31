@@ -36,6 +36,9 @@ if (!in_array($action,['download_backup','price_policy_export_excel','commission
 function ok($data=[]){ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
 function fail($msg){ echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE); exit; }
 function fail_auth($msg='请先登录'){ echo json_encode(['ok'=>false,'msg'=>$msg,'auth_required'=>true], JSON_UNESCAPED_UNICODE); exit; }
+function quote_release_session_lock(){
+  if(session_status()===PHP_SESSION_ACTIVE) @session_write_close();
+}
 function input_json(){ static $cache=null; if($cache!==null) return $cache; $raw=file_get_contents('php://input'); $j=json_decode($raw,true); $cache=is_array($j)?$j:($_POST?:[]); return $cache; }
 function quote_size_text($bytes){
   $bytes=(float)$bytes;
@@ -4091,8 +4094,9 @@ try{
    ];
    ok(['module'=>'quote','features'=>$defs]);
  }
- if($action==='auth_status'){ $u=qperm_current_user($pdo); if(!$u) ok(['logged_in'=>0,'user'=>null,'permissions'=>[],'login_source'=>'PLM/统一账号']); $pub=qperm_public_user($pdo,$u); ok(['logged_in'=>1,'user'=>$pub,'permissions'=>$pub['permissions'],'login_source'=>$pub['user_table']]); }
+ if($action==='auth_status'){ $u=qperm_current_user($pdo); quote_release_session_lock(); if(!$u) ok(['logged_in'=>0,'user'=>null,'permissions'=>[],'login_source'=>'PLM/统一账号']); $pub=qperm_public_user($pdo,$u); ok(['logged_in'=>1,'user'=>$pub,'permissions'=>$pub['permissions'],'login_source'=>$pub['user_table']]); }
  $needPerm=qperm_action_perm($action); [$__quote_user,$__quote_perms]=qperm_require($pdo,$needPerm);
+ quote_release_session_lock();
  if(strpos($action,'quotation_summary_')===0){
    $d=input_json();$filters=quote_summary_filters(array_merge($_GET,is_array($d)?$d:[]));
    if($action==='quotation_summary_filters') ok(quote_summary_filter_options($pdo));

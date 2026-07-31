@@ -13,6 +13,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 function qo_ok($data=[]){ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
 function qo_fail($msg){ echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
+function qo_release_session_lock(){ if(session_status()===PHP_SESSION_ACTIVE) @session_write_close(); }
 function qo_input(){ static $j=null; if($j!==null) return $j; $raw=file_get_contents('php://input'); $a=json_decode((string)$raw,true); $j=is_array($a)?$a:($_POST?:[]); return $j; }
 function qo_s($v,$max=5000){ $s=trim((string)($v ?? '')); if($max>0){ if(function_exists('mb_strlen') && mb_strlen($s,'UTF-8')>$max) $s=mb_substr($s,0,$max,'UTF-8'); elseif(!function_exists('mb_strlen') && strlen($s)>$max) $s=substr($s,0,$max); } return $s; }
 function qo_json($v,$def=[]){ if(is_array($v)) return $v; $a=json_decode((string)$v,true); return is_array($a)?$a:$def; }
@@ -650,6 +651,7 @@ function qo_order_detail(PDO $pdo,$id){
 try{
   $commissionActions=['commission_order_list','commission_summary_list','commission_order_save','commission_order_batch_save','commission_line_save','commission_line_batch_save','commission_payment_info','commission_history'];
   if(!in_array($action,$commissionActions,true))qo_ensure_schema($pdo);
+  qo_release_session_lock();
   if($action==='get_document_settings') qo_ok(['settings'=>qo_doc_settings($pdo)]);
   if($action==='save_document_settings') qo_ok(['settings'=>qo_save_doc_settings($pdo,qo_input())]);
   if($action==='next_doc_numbers'){ $d=qo_input(); qo_ok(qo_next_doc_numbers($pdo,(int)($d['order_id']??0),qo_s($d['ship_date']??'',20))); }

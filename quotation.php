@@ -1094,7 +1094,7 @@ async function load(){
   if(DB.me){AUTH.user=DB.me;AUTH.permissions=DB.permissions||DB.me.permissions||AUTH.permissions||{};}
   ensureCommissionSummaryPage();
   updateAuthUi();initDefaults();bind();
-  newQuote();renderCore();
+  newQuote();
   if(quoteStartupRequestedPage()){
     restoreLastPage();
   }else{
