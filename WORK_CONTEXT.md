@@ -1800,3 +1800,11 @@
 - 工作台：单产品页改为参考图的产品 hero、五步流程（选择产品、核心必配、扩展可配、条件规则、检查发布）、核心/扩展模组卡和右侧配置抽屉。核心模组按芯片/光源、电源/驱动、光学/透镜、安装方式等识别；候选物料仍通过原 `candidates`、`add_options`、`set_default`、`approve` 等接口，沿用正式物料和审批规则。
 - 回归保护：新增 `material_center_v1/tests/adaptation_visual_upgrade_contract.php`，检查新版主页/工作台关键结构，并阻止“基础页面修复中”“暂未开放”“repairMode”等占位逻辑回归。既有 `adaptation_rollback_contract.php` 同时保持通过。
 - 发布与验证：提交 `6bbd9cc7b1f3fab159ef4da913f8cb20c90a2ec7` 已推送 GitHub，并用 Git bundle 快进腾讯云服务器。服务器 PHP 语法通过；回滚合同和视觉加强合同均通过；CLI 实际渲染 `index.php`、`?view=products`、`?view=workspace&product_id=83`、旧兼容 `?product_id=83` 均 OK，输出新版 V3 页面且无占位文字。
+
+## 2026-07-31：佣金“报价 / 订单佣金”加载解耦提速
+
+- 现象：佣金策略 → 报价 / 订单佣金进入后长时间停在“正在读取订单…”，用户现场约 10 秒才显示订单信息。
+- 定位：服务器只读计时显示 `commission_order_list` 相关订单 SQL 约 `0.89ms`，当前订单 14 个、产品明细 39 行，数据库不是慢点。前端 `loadCommissionOrders()` 旧逻辑把订单列表与 `commission_options_list` 放在同一个 `Promise.all` 中，导致下拉选项/初始化接口慢时，订单数据也被一起阻塞。
+- 修复：新增佣金下拉兜底选项，进入订单佣金页时先独立读取并渲染订单列表；`commission_options_list` 改为后台异步刷新下拉选项，不再阻塞订单信息。页面状态文字新增实际用时，方便现场判断接口耗时。
+- 回归保护：新增 `tests/commission_order_loading_contract.php`，禁止 `loadCommissionOrders()` 再直接等待 `commission_options_list` 或使用 `Promise.all` 绑定选项与订单列表。
+- 发布与验证：提交 `b9a3ad4a1eaaa82e2dda1e4703570840c2bc9561` 已推送 GitHub 并快进腾讯云服务器。服务器 `quotation.php` 语法通过，`commission_order_loading_contract.php`、`commission_order_path_contract.php`、`commission_summary_page_contract.php` 均通过。
