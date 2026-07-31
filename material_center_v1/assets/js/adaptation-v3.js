@@ -406,7 +406,7 @@
             <div class="mc-v3-hero-stat"><b>${approvalCount(product)}</b><span>待审批</span></div>
             <div class="mc-v3-hero-stat"><b>${totalOptions}</b><span>正式选项</span></div>
           </section>
-          <nav class="mc-v3-quick-flow">${[['1','确认配置来源','推荐复制 / 模板 / BOM / 空白'],['2','设置核心配置','芯片、电源、光学、安装方式'],['3','检查并保存','缺什么补什么，通过后提交']].map(([id,label,tip], index) => `<span class="${index < (groups().length ? 1 : 0) + (quickCoreDone() ? 1 : 0) ? 'is-done' : index === 0 ? 'is-active' : ''}"><b>${index === 0 && groups().length ? '✓' : id}</b><strong>${label}</strong><small>${tip}</small></span>`).join('')}</nav>
+          <nav class="mc-v3-quick-flow">${[['1','确认配置来源','推荐复制 / 模板 / BOM / 空白'],['2','设置核心配置','芯片、电源、光学、安装方式'],['3','检查发布 / 保存','缺什么补什么，通过后提交']].map(([id,label,tip], index) => `<span class="${index < (groups().length ? 1 : 0) + (quickCoreDone() ? 1 : 0) ? 'is-done' : index === 0 ? 'is-active' : ''}"><b>${index === 0 && groups().length ? '✓' : id}</b><strong>${label}</strong><small>${tip}</small></span>`).join('')}</nav>
           ${renderQuickSource()}
           ${renderQuickCore()}
           <section class="mc-v3-one-screen-bottom">${renderMissingFields()}${renderQuickCheck()}</section>
