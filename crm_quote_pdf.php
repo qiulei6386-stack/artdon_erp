@@ -26,6 +26,24 @@ function clean_param($v): string {
     if (in_array($low, ['undefined','null','none','未选','未选择','选无','请选择','-'], true)) return '';
     return $s;
 }
+function quote_pdf_has_cjk($v): bool { return preg_match('/[\x{4e00}-\x{9fff}]/u', (string)($v ?? '')) === 1; }
+function quote_pdf_public_product_text($v): string {
+    $s = clean_param($v);
+    if ($s === '') return '';
+    if (quote_pdf_has_cjk($s)) return '';
+    return $s;
+}
+function quote_pdf_spec_lines_for_export(array $lines): array {
+    $out = [];
+    foreach ($lines as $line) {
+        $line = clean_param($line);
+        if ($line === '' || quote_pdf_has_cjk($line)) continue;
+        $line = trim(preg_replace('/^\s*\d+\.\s*/u', '', $line));
+        if ($line === '') continue;
+        $out[] = count($out) + 1 . '. ' . $line;
+    }
+    return $out;
+}
 function maybe_json($v, $def = []) {
     if (is_array($v) || is_object($v)) return $v;
     $s = s_trim($v);
@@ -240,6 +258,7 @@ function quote_display_size($p): string {
     if ($D!=='' && $H!=='') return ($round?'Φ':'').$D.'*'.$H;
     if ($D!=='') return ($round?'Φ':'').$D.($H!==''?'*'.$H:'');
     $v = clean_param(arr_first($p, ['quote_display_size','size','dimension','dimensions']));
+    if (quote_pdf_has_cjk($v)) return '';
     if ($v!=='' && !$round) $v = preg_replace('/^\s*[ΦφØø]\s*/u', '', $v);
     return $v;
 }
@@ -317,7 +336,7 @@ function quote_sanitize_saved_spec($spec,$item=[]): string {
             $label=spec_label($m[2]); $val=quote_sanitize_component_value($label,$m[3]); $out[]=$m[1].$label.': '.$val;
         } else { $out[]=$line; }
     }
-    return implode("\n",$out);
+    return implode("\n",quote_pdf_spec_lines_for_export($out));
 }
 function quote_part_name($m): string { return quote_brand_model_only($m); }
 function quote_text_ascii_series($v): string {
@@ -361,12 +380,15 @@ function build_spec($item): string {
     // V6.8.5.21：已保存报价/已转订单如果带有完整 Specification，导出时优先原样使用。
     // 避免订单导出只剩产品、功率、尺寸、开孔，丢失 LED / Driver / Optic / IP 等原报价参数。
     $savedSpec = clean_param(arr_get($item, 'specification', ''));
-    if ($savedSpec !== '') return quote_sanitize_saved_spec($savedSpec,$item);
+    if ($savedSpec !== '') {
+        $safeSavedSpec = quote_sanitize_saved_spec($savedSpec,$item);
+        if ($safeSavedSpec !== '') return $safeSavedSpec;
+    }
     $p = is_array(arr_get($item, 'product', [])) ? arr_get($item, 'product', []) : [];
     $parts = is_array(arr_get($item, 'parts', [])) ? arr_get($item, 'parts', []) : [];
     $lines=[]; $n=1; $used=[];
-    $add=function($label,$val) use (&$lines,&$n,&$used) { $label=spec_label($label); $val=clean_param($val); if($val!==''){ $lines[] = ($n++).'. '.$label.': '.$val; $used[$label]=true; } };
-    $series=product_series_line($p); if($series!=='') $lines[]=($n++).'. '.$series;
+    $add=function($label,$val) use (&$lines,&$n,&$used) { $label=spec_label($label); $val=clean_param($val); if($val!=='' && !quote_pdf_has_cjk($val)){ $lines[] = ($n++).'. '.$label.': '.$val; $used[$label]=true; } };
+    $series=quote_pdf_public_product_text(product_series_line($p)); if($series!=='') $lines[]=($n++).'. '.$series;
     $add('Power', format_power_spec(arr_first($item, ['power']) ?: arr_first($p, ['power'])));
     $add('Size', quote_display_size($p));
     $add('Cut out', quote_display_cutout($p));
@@ -386,8 +408,8 @@ function build_spec($item): string {
     }
     $ip = norm_ip(arr_get($item,'ip'));
     if ($ip!=='') $lines[]=($n++).'. '.$ip;
-    foreach (quote_remarks_of_item($item) as $x) $lines[]=($n++).'. '.$x;
-    if (!$lines && arr_get($item, 'specification', '') !== '') return (string)arr_get($item, 'specification');
+    foreach (quote_remarks_of_item($item) as $x) { $x=quote_pdf_public_product_text($x); if($x!=='') $lines[]=($n++).'. '.$x; }
+    $lines = quote_pdf_spec_lines_for_export($lines);
     return $lines ? implode("\n", $lines) : 'Please select product and accessories';
 }
 function item_price($it): float { return num($it['price'] ?? $it['unit_price'] ?? 0); }

@@ -1904,3 +1904,11 @@
 - 工作台联动：单产品快速工作台的核心配置名称改为来自动态配置组；“从空白开始”和“保存草稿”不再硬套 `light_source/power_driver/optical/installation`，改为读取当前产品匹配模板并走 `apply_config_template_to_product`。
 - 回归保护：更新 `adaptation_template_page_contract.php`，锁定动态模板中心、DB/API/权限/日志、套用预览和非固定模板入口；更新 `adaptation_quick_workspace_contract.php`，防止快速工作台回退到固定四核心键或固定 template_keys。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js`、`git diff --check` 通过；服务器 `php -l` 检查 `AdaptationService.php`、`api/v1/adaptation.php`、新增迁移、模板契约测试和快速工作台契约测试均通过；临时同步到服务器 `/tmp/artdon_template_contract` 后执行 `adaptation_template_page_contract.php`、`master_spec_contract_test.php`、`adaptation_quick_workspace_contract.php` 全部通过。
+
+## 2026-07-31：报价 PDF 产品字段中文兜底过滤
+
+- 问题：报价预览正常，但导出 PDF 时产品明细出现中文。以 `AT-260731EX133` 为例，审核快照里的 `product.size` 保存为 `JB-M-AR 嵌入式低压导轨，L1000*W70*H52.2mm，黑色，不含尾盖`；PDF 导出使用审核快照重新拼 `Size or Drawing` 和 `Specification`，因此把中文 size 带进 PDF。网页预览使用当前前端实时英文规格，所以两边不一致。
+- 修复：`crm_quote_pdf.php` 新增产品明细导出专用 CJK 过滤。`quote_display_size()` 遇到中文来源尺寸直接留空；`build_spec()` 和已保存 `specification` 清洗时跳过含中文的产品规格行，并在保存规格全是中文时继续尝试按结构化字段重建英文规格，不再把原始中文兜底吐回 PDF。
+- 范围：只过滤 PDF 产品明细的 Size / Specification 相关产品字段；不全局删除中文，避免误伤公司资料、抬头、银行信息或系统提示。
+- 回归保护：新增 `tests/quote_pdf_product_english_contract.php`，模拟含中文 `product.size` 和含中文 `specification` 的导出 payload，确认 PDF HTML 保留英文产品规格、不输出中文产品 size/spec。
+- 检查：本地 `git diff --check` 通过；服务器 `php -l` 检查 `crm_quote_pdf.php` 和新增测试通过；服务器临时目录执行 `quote_pdf_product_english_contract.php` 通过；用修改后的临时 PDF 文件读取真实 `AT-260731EX133` 审核快照验证，`has_product_cjk=0`、`has_english=1`。
