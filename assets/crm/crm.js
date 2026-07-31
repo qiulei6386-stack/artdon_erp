@@ -5331,53 +5331,29 @@
     },
     phoneDialOptions: function (selected) {
       selected = String(selected || '+86');
-      var options = [
-        ['+86', '中国 +86'],
-        ['+852', '香港 +852'],
-        ['+853', '澳门 +853'],
-        ['+886', '台湾 +886'],
-        ['+1', '美国/加拿大 +1'],
-        ['+44', '英国 +44'],
-        ['+49', '德国 +49'],
-        ['+33', '法国 +33'],
-        ['+39', '意大利 +39'],
-        ['+34', '西班牙 +34'],
-        ['+31', '荷兰 +31'],
-        ['+971', '阿联酋 +971'],
-        ['+966', '沙特 +966'],
-        ['+974', '卡塔尔 +974'],
-        ['+965', '科威特 +965'],
-        ['+968', '阿曼 +968'],
-        ['+973', '巴林 +973'],
-        ['+90', '土耳其 +90'],
-        ['+91', '印度 +91'],
-        ['+92', '巴基斯坦 +92'],
-        ['+880', '孟加拉 +880'],
-        ['+94', '斯里兰卡 +94'],
-        ['+977', '尼泊尔 +977'],
-        ['+81', '日本 +81'],
-        ['+82', '韩国 +82'],
-        ['+65', '新加坡 +65'],
-        ['+60', '马来西亚 +60'],
-        ['+66', '泰国 +66'],
-        ['+84', '越南 +84'],
-        ['+62', '印尼 +62'],
-        ['+63', '菲律宾 +63'],
-        ['+61', '澳大利亚 +61'],
-        ['+64', '新西兰 +64'],
-        ['+7', '俄罗斯/哈萨克 +7'],
-        ['+27', '南非 +27'],
-        ['+20', '埃及 +20'],
-        ['+234', '尼日利亚 +234'],
-        ['+254', '肯尼亚 +254'],
-        ['+55', '巴西 +55'],
-        ['+52', '墨西哥 +52'],
-        ['+56', '智利 +56']
-      ];
-      var exists = options.some(function (item) { return item[0] === selected; });
-      if (selected && !exists) options.unshift([selected, '自定义 ' + selected]);
+      var options = this.dictItems('country_region').map(function (item) {
+        var extra = item.extra_config || {};
+        var dial = String(extra.phone_code || '').trim();
+        var iso = String(extra.iso || item.item_key || '').toUpperCase();
+        var name = item.name_cn || item.name_en || iso;
+        return {
+          dial: dial,
+          iso: iso,
+          label: [countryFlag(iso), name, iso, dial].filter(Boolean).join(' '),
+          pinned: Number(extra.pinned || 0)
+        };
+      }).filter(function (item) { return /^\+\d{1,4}$/.test(item.dial); });
+      options.sort(function (left, right) {
+        if (left.pinned !== right.pinned) return right.pinned - left.pinned;
+        return left.label.localeCompare(right.label, 'zh-CN');
+      });
+      var exists = options.some(function (item) { return item.dial === selected; });
+      if (selected && !exists) options.unshift({ dial: selected, iso: '', label: '自定义 ' + selected, pinned: 1 });
+      var selectedApplied = false;
       return options.map(function (item) {
-        return '<option value="' + esc(item[0]) + '"' + (item[0] === selected ? ' selected' : '') + '>' + esc(item[1]) + '</option>';
+        var isSelected = !selectedApplied && item.dial === selected;
+        if (isSelected) selectedApplied = true;
+        return '<option value="' + esc(item.dial) + '"' + (isSelected ? ' selected' : '') + '>' + esc(item.label) + '</option>';
       }).join('');
     },
     splitPhoneValue: function (value, fallbackDial) {
@@ -5388,52 +5364,17 @@
       return { dial: fallback, number: raw };
     },
     dialForCountry: function (country) {
-      var key = String(country || '').trim().toLowerCase();
-      var compact = key.replace(/\s+/g, '');
-      var map = {
-        cn: '+86', china: '+86', '中国': '+86', mainland: '+86',
-        hk: '+852', hongkong: '+852', '香港': '+852',
-        mo: '+853', macau: '+853', macao: '+853', '澳门': '+853',
-        tw: '+886', taiwan: '+886', '台湾': '+886',
-        us: '+1', usa: '+1', unitedstates: '+1', '美国': '+1', ca: '+1', canada: '+1', '加拿大': '+1',
-        gb: '+44', uk: '+44', unitedkingdom: '+44', britain: '+44', '英国': '+44',
-        de: '+49', germany: '+49', '德国': '+49',
-        fr: '+33', france: '+33', '法国': '+33',
-        it: '+39', italy: '+39', '意大利': '+39',
-        es: '+34', spain: '+34', '西班牙': '+34',
-        nl: '+31', netherlands: '+31', holland: '+31', '荷兰': '+31',
-        ae: '+971', uae: '+971', dubai: '+971', unitedarabemirates: '+971', '阿联酋': '+971',
-        sa: '+966', saudiarabia: '+966', '沙特': '+966',
-        qa: '+974', qatar: '+974', '卡塔尔': '+974',
-        kw: '+965', kuwait: '+965', '科威特': '+965',
-        om: '+968', oman: '+968', '阿曼': '+968',
-        bh: '+973', bahrain: '+973', '巴林': '+973',
-        tr: '+90', turkey: '+90', '土耳其': '+90',
-        in: '+91', india: '+91', '印度': '+91',
-        pk: '+92', pakistan: '+92', '巴基斯坦': '+92',
-        bd: '+880', bangladesh: '+880', '孟加拉': '+880',
-        lk: '+94', srilanka: '+94', '斯里兰卡': '+94',
-        np: '+977', nepal: '+977', '尼泊尔': '+977',
-        jp: '+81', japan: '+81', '日本': '+81',
-        kr: '+82', korea: '+82', southkorea: '+82', '韩国': '+82',
-        sg: '+65', singapore: '+65', '新加坡': '+65',
-        my: '+60', malaysia: '+60', '马来西亚': '+60',
-        th: '+66', thailand: '+66', '泰国': '+66',
-        vn: '+84', vietnam: '+84', '越南': '+84',
-        id: '+62', indonesia: '+62', '印尼': '+62',
-        ph: '+63', philippines: '+63', '菲律宾': '+63',
-        au: '+61', australia: '+61', '澳大利亚': '+61',
-        nz: '+64', newzealand: '+64', '新西兰': '+64',
-        ru: '+7', russia: '+7', '俄罗斯': '+7',
-        za: '+27', southafrica: '+27', '南非': '+27',
-        eg: '+20', egypt: '+20', '埃及': '+20',
-        ng: '+234', nigeria: '+234', '尼日利亚': '+234',
-        ke: '+254', kenya: '+254', '肯尼亚': '+254',
-        br: '+55', brazil: '+55', '巴西': '+55',
-        mx: '+52', mexico: '+52', '墨西哥': '+52',
-        cl: '+56', chile: '+56', '智利': '+56'
-      };
-      return map[compact] || map[key] || '+86';
+      var key = this.countryKeyFromValue(country);
+      var countries = this.dictItems('country_region');
+      for (var i = 0; i < countries.length; i++) {
+        var item = countries[i] || {};
+        var extra = item.extra_config || {};
+        var iso = String(extra.iso || item.item_key || '').toUpperCase();
+        if (iso === String(key || '').toUpperCase()) {
+          return String(extra.phone_code || '').trim() || '+86';
+        }
+      }
+      return '+86';
     },
     phoneLine: function (icon, label, name, value, placeholder, attrs, fallbackDial) {
       var parts = this.splitPhoneValue(value, fallbackDial || '+86');
@@ -24954,6 +24895,13 @@
     editItem: function (item) {
       item = item || {};
       var typeKey = item.type_key || this.currentType;
+      var extra = item.extra_config || {};
+      var countryFields = typeKey === 'country_region'
+        ? '<label>ISO 两位代码<input name="country_iso" maxlength="2" value="' + esc(extra.iso || item.item_key || '') + '" placeholder="例如 DE"></label>' +
+          '<label>国际电话区号<input name="country_phone_code" required value="' + esc(extra.phone_code || '') + '" placeholder="例如 +49"></label>' +
+          '<label>所属区域<input name="country_region_name" value="' + esc(extra.region || '') + '" placeholder="例如 Europe"></label>' +
+          '<label class="tag-chip"><input name="country_pinned" type="checkbox" ' + (Number(extra.pinned) ? 'checked' : '') + '><span>常用国家置顶</span></label>'
+        : '';
       CustomerModule.openBusinessDialog('编辑字典配置', '<div class="crm-modal-form promo-business-form" data-config-item-form>' +
         '<label>配置编码<input name="item_key" required value="' + esc(item.item_key || '') + '" placeholder="例如 customer_level_p1"></label>' +
         '<label>排序<input name="sort_order" type="number" value="' + esc(item.sort_order || 100) + '"></label>' +
@@ -24962,6 +24910,7 @@
         '<label>简称<input name="short_name" value="' + esc(item.short_name || '') + '"></label>' +
         '<label>颜色<input name="color" type="color" value="' + esc(item.color || '#64748b') + '"></label>' +
         '<label>图标/字母<input name="icon" value="' + esc(item.icon || '') + '"></label>' +
+        countryFields +
         '<label class="tag-chip"><input name="is_default" type="checkbox" ' + (Number(item.is_default) ? 'checked' : '') + '><span>设为默认项</span></label>' +
         '<p class="entry-muted wide" data-config-item-error></p>' +
         '</div><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-config-item-save>保存配置</button></div>', '管理员维护的字典项会立即影响业务下拉和标签。', function (dialog) {
@@ -24969,6 +24918,17 @@
           var error = dialog.querySelector('[data-config-item-error]');
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
           dialog.querySelector('[data-config-item-save]')?.addEventListener('click', function () {
+            var nextExtra = Object.assign({}, item.extra_config || {});
+            if (typeKey === 'country_region') {
+              nextExtra.iso = String(form.querySelector('[name="country_iso"]')?.value || form.querySelector('[name="item_key"]')?.value || '').trim().toUpperCase();
+              nextExtra.phone_code = String(form.querySelector('[name="country_phone_code"]')?.value || '').trim();
+              nextExtra.region = String(form.querySelector('[name="country_region_name"]')?.value || '').trim();
+              nextExtra.pinned = form.querySelector('[name="country_pinned"]')?.checked ? 1 : 0;
+              if (!/^\+\d{1,4}$/.test(nextExtra.phone_code)) {
+                if (error) error.textContent = '国际电话区号必须以 + 开头并只包含数字，例如 +49。';
+                return;
+              }
+            }
             var next = {
               type_key: typeKey,
               item_key: String(form.querySelector('[name="item_key"]')?.value || '').trim(),
@@ -24980,7 +24940,7 @@
               sort_order: Number(form.querySelector('[name="sort_order"]')?.value || 100),
               is_enabled: 1,
               is_default: form.querySelector('[name="is_default"]')?.checked ? 1 : 0,
-              extra_config: item.extra_config || {}
+              extra_config: nextExtra
             };
             if (!next.item_key || !next.name_cn) {
               if (error) error.textContent = '配置编码和中文名称不能为空。';

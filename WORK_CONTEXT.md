@@ -1,5 +1,17 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配 V2 第 1 阶段冻结、审计和蓝图落地（直接服务器发布）
+
+- 用户提供主说明 `/Users/qiulei/Downloads/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md`，要求只执行“第 1 阶段：冻结旧版、审计和 V2 蓝图落地”，不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单，V2 使用独立 `adaptation_v2` 目录，后续新表统一使用 `mc_pa2_` 前缀，完成后停止等待验收，不进入第 2 阶段。
+- 已完整阅读主说明，并复制到仓库 `material_center_v1/docs/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md`，作为后续阶段唯一主说明文件。
+- 服务器备份已完成：旧 `material_center_v1/adaptation/` 目录备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/adaptation_v2_phase1_20260731_223720/adaptation_directory.tar.gz`；旧适配相关 24 张表 SQL 备份到同目录 `old_adaptation_tables.sql`；表结构和行数审计为 `database_audit.json`，表清单为 `table_list.txt`。备份校验：目录包 `98e5704abf4c68f638b0d77cda2209606e3cd156e55593d17934f010abdc8801`，SQL `3f7b812caf311b1e2a0b2a7552cb02906d4171bec5986ff1bfa5b1605c4741c6`，审计 JSON `34ecf8712f425cb27f9b599a36eb667b9ffd6aae90378a7b880f9d4fe0d77701`。
+- 本地新增 V2 旁路骨架：`material_center_v1/adaptation_v2/index.php` 为空首页并复用物料中心现有顶部和左侧布局；`material_center_v1/adaptation_v2/api/index.php` 只开放第 1 阶段状态接口；`material_center_v1/adaptation_v2/lib/response.php` 建立统一 JSON 响应；`material_center_v1/adaptation_v2/database/migrations/.gitkeep` 只保留迁移目录，不创建 `mc_pa2_*` 业务表。
+- 文档落地：新增 `adaptation_v2/docs/01_CURRENT_AUDIT.md`、`01_ROUTE_MAP.md`、`01_DATABASE_AUDIT.md`、`EXECUTION_LOG.md`，记录旧功能清单、旧代码/接口/迁移/测试清单、V2 路由蓝图、旧表行数和备份位置。
+- 新增 `material_center_v1/tests/adaptation_v2_phase1_contract.php`，用于固定第 1 阶段边界：正式菜单仍指旧版、V2 独立目录存在、API 不写业务、迁移目录无业务迁移、文档和执行日志齐全、上下文记录包含“停止等待验收”。
+- 数据库变化：未创建、未修改、未删除任何业务表；未创建 `mc_pa2_*` 表；未修改旧 `mc_*` 表或旧 BOM。服务器只做备份和只读审计，没有直接编辑线上代码。
+- 检查：本地 `git diff --check` 通过；本机无 PHP，已将候选文件临时复制到服务器 `/tmp/artdon_pa2_phase1_candidate/` 做只读检查，`adaptation_v2/index.php`、`adaptation_v2/api/index.php`、`adaptation_v2/lib/response.php`、`tests/adaptation_v2_phase1_contract.php` PHP 语法均通过；第 1 阶段契约 9 项通过。旧版 `adaptation/`、旧适配 API、旧适配服务、旧 adaptation JS 和旧适配迁移均无本地 diff。
+- Git / 发布状态：本地已提交本阶段代码；当前 `main` 领先 `origin/main` 2 个提交（此前 CRM 全球电话区号提交 + 本次产品适配 V2 第 1 阶段提交）。`git push origin main` 被 GitHub 拒绝，原因是当前 SSH key 为 deploy key，缺少 `qiulei6386-stack/artdon_erp.git` 写权限；本机也未安装并登录 GitHub CLI `gh`，无法改用已认证账号推送。用户随后明确确认“直接推服务器，包含这两个提交”，因此本轮按用户授权临时绕过 GitHub，用本地 Git bundle 直接快进正式服务器；GitHub 仍待后续配置可写凭证后补同步。
+
 ## 本次：简化物料中心单产品配置工作台（已发布）
 
 - 用户要求只改 `/material_center_v1/adaptation/` 的单产品工作台，入口首页和全部产品页暂时保留；目标是把默认六步工程流程改为“快速配置为主 + 高级设置按需打开”，不删除现有技术范围、配置组、规则、审批、版本、旧 BOM 或权限系统。
@@ -453,6 +465,17 @@
 - 功能提交 `0afc5d9394b9a893a5d9dab372d1c0f5a5d01088` 已推送 GitHub；GitHub Actions 第 615 次运行的 PHP / JavaScript 检查和自动部署均成功，同一提交已快进到腾讯云。部署后服务器 PHP 语法、分页契约、生产数据库只读回归和差异检查再次通过，50 条线上读取耗时 45 毫秒；线上 JavaScript / CSS 已包含“全选本页”，未登录 CRM 入口仍按统一登录规则返回 302。
 - 修改范围：`crm_marketing.php`、CRM JavaScript / CSS、两份新增测试、PHP CI 清单和本上下文。用户原有商务中心命令文件删除及未跟踪文档保持原样，未纳入本轮。
 - 本上下文收尾提交后再次等待自动部署，并核对本地、GitHub 与服务器三方最终一致；业务功能无待实现项，用户刷新 CRM 后可直接复核筛选结果和“全选本页”。
+
+## 本次：CRM 新建客户补齐全球 249 项国家 / 地区电话区号
+
+- 用户确认把“新建客户”的电话区号从现有 41 项扩展为 249 项，并要求以后可以在 CRM 内自行新增和维护。
+- 新增独立国家 / 地区数据文件，按当前有效的 249 个 ISO 3166-1 alpha-2 项生成中文名、英文名、ISO 三位码、数字码、区域和国际电话区号；数据基于 Unicode CLDR 48 与 Google libphonenumber E.164 元数据，南极洲等未由 libphonenumber单列的 7 项补充其所属国际号码体系。
+- “新建客户”电话和 WhatsApp 区号不再使用 41 项前端硬编码，统一读取启用状态的 `country_region` 字典；显示国旗、国家 / 地区名、ISO 编码和区号，常用国家置顶，同一区号对应多个国家时保留各自国家项。
+- `CRM → 设置 → 字典配置 → 国家 / 地区预设` 新增 ISO 两位代码、国际电话区号、所属区域和常用置顶字段；管理员新增、编辑或停用国家后会直接影响新建客户区号下拉。前后端都校验区号必须为 `+` 加数字。
+- 新增幂等数据版本 `20260727_country_region_249_v1`：现有 105 项保留名称、启用/停用状态和自定义置顶设置，只同步标准 ISO / 区号元数据并补入缺少项目；不会修改现有客户、联系人或电话号码。
+- 新增无数据库契约和受控真实数据库集成测试；生产事务预演从 105 项成功得到 249 项后完整回滚，回滚后仍为 105 项，没有提前写入生产。
+- 检查：本机 41 个 JavaScript 文件语法及 3 个前端契约通过，`git diff --check` 和 Shell 语法通过；服务器隔离候选目录使用生产 PHP 8.0 检查 372 个 PHP 文件语法和 27 个无数据库契约全部通过；真实数据库同步预演通过且已回滚。
+- 修改范围：`crm_settings_config.php`、CRM JavaScript、249 项数据文件、两份测试、PHP CI 清单和本上下文。该提交因家用电脑 GitHub deploy key 无写权限未推送 GitHub；用户已确认和产品适配 V2 第 1 阶段一起直接推服务器，生产数据升级仍需通过登录页面或后续受控接口触发，本轮不会擅自写客户业务数据。
 
 ## 本次：产品适配关键范围入口与配置组简化
 
