@@ -1838,3 +1838,16 @@
 - 修改文件：`material_center_v1/assets/js/adaptation-v3.js`、`material_center_v1/assets/css/app.css`、`material_center_v1/tests/adaptation_quick_workspace_contract.php`。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=82` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error。
 - 发布：功能提交 `2c5828b2fb0286edc6eac577fe43a701d22cdff9`，恢复合同锚点补丁 `cbe9e5baea31a0b086e1958c4e9f766ec75a952e`、`78fd835f1fe5f5efbdd9ab0baa8ffca6f9331b1c`、`d819afe5e594c267a2a4a4c06474b0765df2efcf` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
+
+## 2026-07-31：产品适配快速工作台层级压缩与候选物料紧凑表格
+
+- 范围：继续优化 `/material_center_v1/adaptation/index.php?view=workspace&product_id=100` 的快速配置工作台和正式物料选择弹窗；本轮只改前端层级、组件尺寸和选择交互，不改左侧菜单、ERP 顶部导航、旧 BOM、数据库结构或现有 `mc_*` 业务数据。
+- 备份：修改前服务器目录已备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_compact_workspace_backup_20260731_173620`；89 张 `mc_*` 表已导出到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/mc_tables_compact_workspace_20260731_173657.sql`（6,378,417 bytes）。
+- 主页面：顶部常驻按钮只保留“切换产品 / 高级设置 / 更多”；已确认配置来源折叠为 48–56px 摘要栏，包含来源、相似度、已确认状态、查看差异和更换来源；更换来源改为弹窗，集中放复制同系列、套用模板、读取 BOM、从空白开始。
+- 核心配置：四个核心项保持两列两行，卡片高度压缩到约 90–110px，只显示图标、配置组名称、当前默认物料、3–4 项关键规格、匹配状态、正式选项数量和一个主按钮；按钮文案按状态区分采用建议、选择物料、更换、设置默认、查看条件或处理冲突。
+- 底部与补充：需要补充区保持一行最多 4 项，点击填写打开小弹窗；检查摘要合并到底部固定操作栏，左侧最多显示 3 条检查摘要并提供“查看完整检查”，右侧固定保存草稿、检查配置、提交确认。
+- 候选弹窗：芯片/光源、电源/驱动、光学/透镜和安装方式统一改为紧凑表格框架；弹窗固定标题栏、筛选栏、独立滚动候选列表和底部操作栏。候选行高度约 64–76px，小图使用 40–48px 占位；点击整行单选/多选，底部统一“确认选择”，不再在每行放大面积“选为默认”按钮。
+- 不适配与详情：不适配行显示浅红背景、禁用选择框，并保留小文字“申请例外”；例外改为小弹窗填写原因和审批/备注。详情使用右侧 320px 面板，不放大候选行。
+- 颜色：产品适配页内普通主操作统一青绿色，次操作白底灰边，警告操作橙色；红色仅用于不适配、危险和例外相关操作。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=100` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error；未登录 HTTP 访问返回 302 登录跳转属正常鉴权。
+- 发布：功能提交 `c68cbf0d9eca7f06339f4d654f87da97e9bbbb0d` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
