@@ -533,7 +533,7 @@
     const coreReady = quickBlockers().length === 0 && groups().length > 0;
     const publishedReady = coreReady && approvalCount(selectedProduct()) === 0 && state.quickCheckDone;
     return `<footer class="mc-v3-quick-footer">
-      <span>${coreReady ? '核心配置已具备提交条件。' : '请先完成配置来源和四个核心配置。'}</span>
+      <span>配置检查 / 提交审批：${coreReady ? '核心配置已具备提交条件。' : '请先完成配置来源和四个核心配置。'}</span>
       <button class="mc-button" data-v3-save-draft type="button">保存草稿</button>
       <button class="mc-button mc-button--primary" data-v3-check-config type="button">检查配置</button>
       <button class="mc-button" data-v3-submit-confirm ${coreReady ? '' : 'disabled'} type="button">提交确认</button>
