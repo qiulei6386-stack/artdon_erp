@@ -1885,3 +1885,11 @@
 - 入口：`adaptation/index.php` 允许服务端直接打开 `view=template` 和 `view=batch`，刷新页面不会再退回工作台或首页。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js`、`git diff --check` 通过；服务器 `php -l` 检查 `index.php`、`api/v1/adaptation.php`、`AdaptationService.php`、`adaptation_template_page_contract.php` 均通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出正常；只做无写入检查，未向正式库插入测试分类。
 - 发布：功能提交 `b26b2a840c3792de99405c3e6df5855f6b5e4fc2` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
+
+## 2026-07-31：报价系统颜色支持空白
+
+- 问题：报价单工作区“颜色”下拉没有空白选项，配件或特殊产品没有颜色时会被迫选择一个颜色；旧逻辑还在多处默认回填 `White`，导致空色产品保存/打开后可能被自动带上颜色。
+- 修复：`colorItems()` 统一在颜色下拉首位加入真实空白选项；`fillOptionSelect()` 改为保留显式 `value=""`，不再把空值误当成没有值。新报价、清空当前产品、选择产品、产品库清空默认均改为空白；打开历史报价明细时，如果明细已有 `color:''`，不会再被产品颜色或 `White` 覆盖。
+- 范围：仅修改报价系统 `quotation.php` 的颜色下拉与默认值逻辑，不修改数据库、不删除业务数据、不影响物料中心。
+- 回归保护：新增 `tests/quote_color_blank_contract.php`，锁定空白颜色选项、显式空值渲染、历史明细空色不被覆盖，以及禁止旧的强制 `White` 默认回归。
+- 检查：本地 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 通过检查 `quotation.php` 和新增测试文件；临时复制到服务器 `/tmp` 执行 `quote_color_blank_contract.php` 通过。
