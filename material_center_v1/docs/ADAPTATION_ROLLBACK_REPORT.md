@@ -168,3 +168,26 @@
 - 本报告与 `WORK_CONTEXT.md` 的测试结果补充会形成后续文档同步提交；文档同步后以当前 Git HEAD 为准。
 
 本轮到此停止；不继续开发产品适配核心物料、规则、审批或发布。
+
+## 2026-07-31 10:00 后续修复验证
+
+本轮在上一可用版本基础上继续修正产品适配入口、全部产品、单产品工作台的路由和状态计算，但仍未修改数据库业务数据。
+
+- 新提交：`5a101fc70b454cffb83bee49503b3d897d63b6ee`
+- 服务器备份：
+  - 目录备份：`/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_backup_20260731_094029`
+  - `mc_*` 表备份：`/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation/backups/adaptation_task_20260731_094029/mc_tables.sql`
+- 直接修改文件：
+  - `material_center_v1/adaptation/index.php`
+  - `material_center_v1/app/Services/AdaptationService.php`
+  - `material_center_v1/assets/js/adaptation-v3.js`
+  - `material_center_v1/assets/css/app.css`
+- 占位词复扫：`基础页面修复中`、`暂未开放`、`adaptation repair`、`maintenance`、`feature flag`、`repair mode` 均无命中。
+- 状态重算报告：`material_center_v1/adaptation/docs/PRODUCT_STATUS_RECALCULATION.md`
+- URL 复测：
+  - 入口首页 HTTP 200，约 0.51s。
+  - 全部产品 HTTP 200，约 1.88s。
+  - `view=workspace&product_id=82` HTTP 200，约 0.90s。
+  - 旧兼容入口 `product_id=82` HTTP 200，约 1.63s。
+
+本轮仍只处理产品适配页面和状态/完成度逻辑；没有继续开发核心物料、规则、审批或发布的新业务。
