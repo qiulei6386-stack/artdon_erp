@@ -938,6 +938,102 @@ final class AdaptationService
         ];
     }
 
+    public function saveTemplateCategory(array $data, int $userId): array
+    {
+        $productId = (int) ($data['product_id'] ?? 0);
+        $id = (int) ($data['id'] ?? 0);
+        $name = trim((string) ($data['group_name'] ?? $data['category_name'] ?? ''));
+        $this->assertMeaningfulName($name);
+        $productType = mb_substr(trim((string) ($data['product_type'] ?? '')), 0, 80);
+        $fieldName = mb_substr(trim((string) ($data['field_name'] ?? '')), 0, 80);
+        $selection = ($data['selection_mode'] ?? 'single') === 'multi' ? 'multi' : 'single';
+        $optionValues = array_values(array_unique(array_filter(array_map(
+            static fn(mixed $value): string => mb_substr(trim((string) $value), 0, 60),
+            is_array($data['option_values'] ?? null) ? $data['option_values'] : []
+        ))));
+        if (!$productId || !$this->productRow($productId)) throw new RuntimeException('请选择有效产品。');
+        if ($productType === '') throw new RuntimeException('请选择适用产品类型。');
+        if ($fieldName === '') $fieldName = $name.'选项';
+        if (count($optionValues) > 30) throw new RuntimeException('一个自定义分类最多保留 30 个选项。');
+        $category = $this->templateMaterialCategory($name.' '.$productType.' '.$fieldName);
+        $ruleJson = json_encode([
+            'availability' => 'allowed',
+            'template_custom_category' => true,
+            'product_type' => $productType,
+            'field_name' => $fieldName,
+            'option_values' => $optionValues,
+            'selection_mode' => $selection,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->db->beginTransaction();
+        try {
+            if ($id > 0) {
+                $stmt = $this->db->prepare('SELECT * FROM mc_adaptation_groups WHERE id=? AND product_id=?');
+                $stmt->execute([$id, $productId]);
+                $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$existing) throw new RuntimeException('自定义分类不存在。');
+                $oldRules = json_decode((string) ($existing['rule_json'] ?? '{}'), true) ?: [];
+                if (($existing['business_type'] ?? '') !== 'custom' && empty($oldRules['template_custom_category'])) {
+                    throw new RuntimeException('标准配置组不能在模板分类面板中编辑。');
+                }
+                if (($existing['status'] ?? '') === 'approved' || (int) ($existing['is_enabled'] ?? 0)) {
+                    throw new RuntimeException('已审批或已启用分类不能直接编辑，请建立新版本。');
+                }
+                $update = $this->db->prepare("UPDATE mc_adaptation_groups
+                    SET group_name=?,group_type=?,business_type='custom',material_category_code=?,selection_mode=?,
+                        min_select=0,max_select=?,rule_json=?,status='draft',is_enabled=0,updated_by=?,updated_at=NOW()
+                    WHERE id=? AND product_id=?");
+                $update->execute([$name, $this->legacyGroupType($category), $category, $selection, $selection === 'single' ? 1 : max(1, count($optionValues)), $ruleJson, $userId, $id, $productId]);
+            } else {
+                $code = 'custom_template_'.substr(hash('sha1', $productId.'|'.$name.'|'.microtime(true).'|'.random_int(1, PHP_INT_MAX)), 0, 12);
+                $sortOrder = 500 + count($this->groups($productId)) * 10;
+                $insert = $this->db->prepare("INSERT INTO mc_adaptation_groups
+                    (product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,selection_mode,min_select,max_select,template_key,rule_json,status,is_enabled,sort_order,created_by,updated_by,created_at,updated_at)
+                    VALUES(?,?,?,?, 'custom', ?,0,?,0,?,?,?,'draft',0,?,?,?,NOW(),NOW())");
+                $insert->execute([$productId, $code, $name, $this->legacyGroupType($category), $category, $selection, $selection === 'single' ? 1 : max(1, count($optionValues)), $code, $ruleJson, $sortOrder, $userId, $userId]);
+                $id = (int) $this->db->lastInsertId();
+            }
+            $this->markProductDraft($productId);
+            $this->log($productId, 'save_template_category', [
+                'group_id' => $id,
+                'name' => $name,
+                'product_type' => $productType,
+                'field_name' => $fieldName,
+                'option_values' => $optionValues,
+            ], $userId);
+            $this->db->commit();
+            $row = array_values(array_filter($this->groups($productId), static fn(array $group): bool => (int) $group['id'] === $id))[0] ?? [];
+            return ['id' => $id, 'group' => $row];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    public function deleteTemplateCategory(int $productId, int $groupId, int $userId): void
+    {
+        if (!$productId || !$groupId) throw new RuntimeException('请选择要删除的自定义分类。');
+        $stmt = $this->db->prepare('SELECT * FROM mc_adaptation_groups WHERE id=? AND product_id=?');
+        $stmt->execute([$groupId, $productId]);
+        $group = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$group) throw new RuntimeException('自定义分类不存在。');
+        $rules = json_decode((string) ($group['rule_json'] ?? '{}'), true) ?: [];
+        if (($group['business_type'] ?? '') !== 'custom' && empty($rules['template_custom_category'])) {
+            throw new RuntimeException('标准配置组不能在模板分类面板中删除。');
+        }
+        $this->deleteGroup($groupId, $userId);
+    }
+
+    private function templateMaterialCategory(string $text): string
+    {
+        if (preg_match('/电源|驱动|调光|dimming|driver|power/i', $text)) return 'power_supply';
+        if (preg_match('/芯片|光源|chip|led/i', $text)) return 'chip';
+        if (preg_match('/光学|透镜|玻璃|lens|optic|glass/i', $text)) return 'optical';
+        if (preg_match('/接头|安装|导轨|轨道|connector|mount|install|track/i', $text)) return 'connector';
+        if (preg_match('/包装|pack/i', $text)) return 'packaging';
+        if (preg_match('/型材|散热|profile|heatsink/i', $text)) return 'profile';
+        return 'accessory';
+    }
+
     public function saveGroup(array $data, int $userId): int
     {
         $id = (int) ($data['id'] ?? 0);

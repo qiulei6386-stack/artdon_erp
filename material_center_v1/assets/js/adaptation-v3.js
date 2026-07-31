@@ -23,6 +23,8 @@
     paramField: null,
     missingModalOpen: false,
     sourcePickerOpen: false,
+    templateTab: 'common',
+    templateEditingCategory: 0,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
     materialGroup: null,
     materials: [],
@@ -862,22 +864,101 @@
     return rows;
   };
 
-  const templateCategoryCards = () => [
-    { title: 'A. 导轨灯分类', applies: '适用于：导轨灯', field: '接头线数', options: ['2线', '3线', '4线', '6线'] },
-    { title: 'B. 磁吸灯分类', applies: '适用于：磁吸灯', field: '灯体长度', options: ['短款', '长款'] },
-    { title: 'C. 磁吸配件', applies: '适用于：磁吸灯 / 配件', field: '连接件类型', options: ['直通', 'L角', 'T角', '十字'] },
+  const templateProductTypes = () => uniq(['导轨灯', '磁吸灯', '筒灯 / 射灯', productType(selectedProduct()), ...state.products.map(productType)]).filter(value => value && value !== '全部类型');
+  const templateStandardKeys = () => new Set((state.metadata.template || []).map(group => group.key));
+  const templateSelectedKeySet = modules => {
+    const core = modules.filter(group => Number(group.is_required) === 1).map(group => group.key);
+    const typeText = `${productType(selectedProduct())} ${productSeries(selectedProduct())}`;
+    const extra = [];
+    if (state.templateTab === 'product') {
+      if (/导轨|轨道|track/i.test(typeText)) extra.push('dimming', 'honeycomb', 'finish_color');
+      else if (/磁吸|magnetic/i.test(typeText)) extra.push('accessories', 'finish_color');
+      else if (/筒灯|射灯|downlight|spot/i.test(typeText)) extra.push('dimming', 'protective_glass', 'finish_color');
+    }
+    if (state.templateTab === 'custom') extra.push(...templateCategories().filter(card => !card.suggested).map(card => card.template_key).filter(Boolean));
+    return new Set([...core, ...extra].filter(key => modules.some(group => group.key === key)));
+  };
+  const suggestedTemplateCategories = () => [
+    { id: 0, suggested: true, name: '导轨灯分类', applies: '导轨灯', field: '接头线数', options: ['2线', '3线', '4线', '6线'], selection_mode: 'single' },
+    { id: 0, suggested: true, name: '磁吸灯分类', applies: '磁吸灯', field: '灯体长度', options: ['短款', '长款'], selection_mode: 'single' },
+    { id: 0, suggested: true, name: '磁吸配件', applies: '磁吸灯 / 配件', field: '连接件类型', options: ['直通', 'L角', 'T角', '十字'], selection_mode: 'multi' },
   ];
+  const templateCategoryFromGroup = group => {
+    const rules = group.quick_rules || {};
+    return {
+      id: number(group.id),
+      name: group.group_name || '自定义分类',
+      applies: rules.product_type || productType(selectedProduct()),
+      field: rules.field_name || `${group.group_name || '分类'}选项`,
+      options: Array.isArray(rules.option_values) ? rules.option_values : [],
+      selection_mode: rules.selection_mode || group.selection_mode || 'single',
+      template_key: group.template_key || group.group_code || '',
+      group,
+    };
+  };
+  const templateCategories = () => {
+    const standardKeys = templateStandardKeys();
+    const rows = groups().filter(group => group.status !== 'disabled' && ((group.quick_rules || {}).template_custom_category || (group.business_type === 'custom' && !standardKeys.has(group.template_key || group.group_code || '')))).map(templateCategoryFromGroup);
+    return rows.length ? rows : suggestedTemplateCategories();
+  };
 
   const updateTemplateCount = form => {
     const counter = form?.querySelector('[data-v3-template-count]');
     if (counter) counter.textContent = String(form.querySelectorAll('input[name="template_key"]:checked').length);
   };
+  const updateTemplateCategoryCount = () => {
+    const counter = root.querySelector('[data-v3-template-category-count]');
+    if (counter) counter.textContent = String(templateCategories().filter(card => !card.suggested).length);
+  };
+  const templateCategoryPayload = form => {
+    const name = String(form.querySelector('[name="template_category_name"]')?.value || '').trim();
+    const productTypeValue = String(form.querySelector('[name="template_product_type"]')?.value || '').trim();
+    const fieldName = String(form.querySelector('[name="template_field_name"]')?.value || '').trim();
+    const optionValues = String(form.querySelector('[name="template_option_values"]')?.value || '').split(/[，,]/).map(value => value.trim()).filter(Boolean);
+    const mode = form.querySelector('[name="template_pick_mode"]:checked')?.value || 'single';
+    return { id: state.templateEditingCategory, product_id: selectedProduct()?.id, category_name: name, product_type: productTypeValue, field_name: fieldName, option_values: optionValues, selection_mode: mode };
+  };
+  const fillTemplateCategoryForm = card => {
+    const form = root.querySelector('[data-v3-template-form]');
+    if (!form) return;
+    form.querySelector('[name="template_category_name"]').value = card?.name || '';
+    form.querySelector('[name="template_product_type"]').value = card?.applies || productType(selectedProduct()) || '';
+    form.querySelector('[name="template_field_name"]').value = card?.field || '';
+    form.querySelector('[name="template_option_values"]').value = (card?.options || []).join('，');
+    form.querySelectorAll('[name="template_pick_mode"]').forEach(input => { input.checked = input.value === (card?.selection_mode || 'single'); });
+  };
+  const saveTemplateCategoryFromForm = async form => {
+    const payload = templateCategoryPayload(form);
+    if (!payload.category_name && !payload.field_name && !payload.option_values.length) return null;
+    if (!payload.category_name) throw new Error('请填写分类名称。');
+    if (!payload.product_type) throw new Error('请选择适用产品类型。');
+    const data = await api('save_template_category', payload);
+    state.templateEditingCategory = 0;
+    toast(`自定义分类“${payload.category_name}”已保存。`);
+    await refreshWorkspaceInPlace(selectedProduct().id);
+    return data;
+  };
+  const applyTemplatePage = async (form, openWorkspace = true) => {
+    const product = selectedProduct();
+    if (!product) throw new Error('请先选择产品。');
+    const keys = new FormData(form).getAll('template_key');
+    if (!keys.length) throw new Error('请至少选择一个配置组。');
+    await api('apply_template', { product_id: product.id, template_keys: keys });
+    await saveTemplateCategoryFromForm(form);
+    toast(openWorkspace ? '配置模板已套用，正在打开工作台。' : '配置模板草稿已保存到当前产品。');
+    return openWorkspace ? loadWorkspace(product.id, 0, 2) : refreshWorkspaceInPlace(product.id);
+  };
 
   const renderTemplate = () => {
     const product = selectedProduct();
     const modules = templateModules();
-    const selectedCount = modules.filter(group => Number(group.is_required) === 1).length;
+    const selectedKeys = templateSelectedKeySet(modules);
+    const selectedCount = modules.filter(group => selectedKeys.has(group.key)).length;
     const productCodeText = product ? productCode(product) : '—';
+    const categories = templateCategories();
+    const savedCategoryCount = categories.filter(card => !card.suggested).length;
+    const editing = categories.find(card => number(card.id) === number(state.templateEditingCategory)) || null;
+    const productTypes = templateProductTypes();
     root.innerHTML = `<section class="mc-v3-page-shell mc-v3-template mc-v3-template-page">
       <div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>配置模板</b></div>
       <header class="mc-v3-screen-head mc-v3-template-head">
@@ -891,18 +972,19 @@
         <div class="mc-v3-template-shell">
           <section class="mc-v3-template-board">
             <nav class="mc-v3-template-tabs" aria-label="配置模板分类">
-              <button class="is-active" type="button">通用模板</button>
-              <button data-v3-template-ui-action type="button">按产品分类</button>
-              <button data-v3-template-ui-action type="button">自定义分类模板</button>
+              <button class="${state.templateTab === 'common' ? 'is-active' : ''}" data-v3-template-tab="common" type="button">通用模板</button>
+              <button class="${state.templateTab === 'product' ? 'is-active' : ''}" data-v3-template-tab="product" type="button">按产品分类</button>
+              <button class="${state.templateTab === 'custom' ? 'is-active' : ''}" data-v3-template-tab="custom" type="button">自定义分类模板</button>
             </nav>
             <div class="mc-v3-template-card-panel">
-              <header><div><h2>模板模块选择</h2><p>选择本模板中需要包含的配置模块，核心必配模块将用于生成产品适配的基础配置项。</p></div><span><button class="mc-button" data-v3-template-reset type="button">⟲ 重置</button><button class="mc-button" data-v3-template-all type="button">✓ 全选</button></span></header>
+              <header><div><h2>模板模块选择</h2><p>${state.templateTab === 'product' ? '已按当前产品类型预选扩展模块；仍可手动增减。' : (state.templateTab === 'custom' ? '标准模块与右侧自定义分类会一起保存到当前产品。' : '选择本模板中需要包含的配置模块，核心必配模块将用于生成产品适配的基础配置项。')}</p></div><span><button class="mc-button" data-v3-template-reset type="button">⟲ 重置</button><button class="mc-button" data-v3-template-all type="button">✓ 全选</button></span></header>
               <div class="mc-v3-template-card-grid">
                 ${modules.map(group => {
                   const isCore = Number(group.is_required) === 1;
                   const mode = group.selection_mode === 'multi' ? '多选' : '单选';
-                  return `<label class="mc-v3-template-module ${isCore ? 'is-selected' : ''}">
-                    <input type="checkbox" name="template_key" value="${esc(group.key)}" data-v3-core="${isCore ? '1' : '0'}" ${isCore ? 'checked' : ''}>
+                  const checked = selectedKeys.has(group.key);
+                  return `<label class="mc-v3-template-module ${checked ? 'is-selected' : ''}">
+                    <input type="checkbox" name="template_key" value="${esc(group.key)}" data-v3-core="${isCore ? '1' : '0'}" ${checked ? 'checked' : ''}>
                     <span class="mc-v3-template-icon">${esc(group.icon || '□')}</span>
                     <span><b>${esc(group.name)}</b><small><em class="${isCore ? 'is-core' : 'is-extend'}">${isCore ? '核心必配' : '扩展可配'}</em><em>${esc(mode)}</em></small></span>
                   </label>`;
@@ -913,22 +995,25 @@
           <aside class="mc-v3-template-rule-panel">
             <header><h2>自定义分类 / 分类规则</h2><p>创建并管理自定义分类，定义适用范围与选项规则。</p></header>
             <div class="mc-v3-rule-form">
-              <label><span>分类名称</span><input type="text" placeholder="请输入分类名称" aria-label="分类名称"></label>
-              <label><span>适用产品类型</span><select aria-label="适用产品类型"><option>请选择产品类型</option><option>导轨灯</option><option>磁吸灯</option><option>筒灯 / 射灯</option></select></label>
-              <fieldset><legend>选择方式</legend><label><input type="radio" name="template_pick_mode" checked> 单选</label><label><input type="radio" name="template_pick_mode"> 多选</label></fieldset>
-              <button class="mc-v3-dashed-button" data-v3-template-ui-action type="button">＋ 新增分类</button>
+              <label><span>分类名称</span><input name="template_category_name" type="text" placeholder="请输入分类名称" value="${esc(editing?.name || '')}"></label>
+              <label><span>适用产品类型</span><select name="template_product_type">${productTypes.map(type => `<option value="${esc(type)}" ${type === (editing?.applies || productType(product)) ? 'selected' : ''}>${esc(type)}</option>`).join('')}</select></label>
+              <fieldset><legend>选择方式</legend><label><input type="radio" name="template_pick_mode" value="single" ${editing?.selection_mode !== 'multi' ? 'checked' : ''}> 单选</label><label><input type="radio" name="template_pick_mode" value="multi" ${editing?.selection_mode === 'multi' ? 'checked' : ''}> 多选</label></fieldset>
+              <label><span>字段名称</span><input name="template_field_name" type="text" placeholder="例如 接头线数 / 灯体长度" value="${esc(editing?.field || '')}"></label>
+              <label class="mc-v3-rule-form__wide"><span>默认选项</span><input name="template_option_values" type="text" placeholder="多个选项用逗号分隔，例如 2线，3线，4线" value="${esc((editing?.options || []).join('，'))}"></label>
+              <button class="mc-v3-dashed-button" data-v3-template-save-category type="button">${editing ? '✓ 保存修改' : '＋ 新增分类'}</button>
+              ${editing ? '<button class="mc-button" data-v3-template-cancel-edit type="button">取消编辑</button>' : ''}
             </div>
             <h3>已创建的自定义分类</h3>
             <div class="mc-v3-custom-category-list">
-              ${templateCategoryCards().map(card => `<article class="mc-v3-custom-category-card">
-                <header><span>::</span><b>${esc(card.title)}</b><em>${esc(card.applies)}</em><button data-v3-template-ui-action type="button">编辑</button><button class="is-danger" data-v3-template-ui-action type="button">删除</button><button data-v3-template-ui-action type="button">⌄</button></header>
-                <section><div><strong>${esc(card.field)}</strong><button data-v3-template-ui-action type="button">⊕ 新增选项</button></div><p>${card.options.map(option => `<span>${esc(option)} <i>×</i></span>`).join('')}</p></section>
+              ${categories.map((card, index) => `<article class="mc-v3-custom-category-card ${card.suggested ? 'is-suggested' : ''}">
+                <header><span>::</span><b>${esc(String.fromCharCode(65 + index))}. ${esc(card.name)}</b><em>${card.suggested ? '建议：' : '适用于：'}${esc(card.applies || '当前产品')}</em>${card.suggested ? `<button data-v3-template-use-suggestion="${index}" type="button">加入</button>` : `<button data-v3-template-edit-category="${number(card.id)}" type="button">编辑</button><button class="is-danger" data-v3-template-delete-category="${number(card.id)}" type="button">删除</button>`}<button data-v3-template-ui-action type="button">⌄</button></header>
+                <section><div><strong>${esc(card.field)}</strong>${card.suggested ? '<span>保存后可在工作台添加正式物料</span>' : `<button data-v3-template-add-option="${number(card.id)}" type="button">⊕ 新增选项</button>`}</div><p>${(card.options || []).map(option => `<span>${esc(option)} ${card.suggested ? '' : `<button data-v3-template-remove-option="${number(card.id)}" data-option="${esc(option)}" type="button">×</button>`}</span>`).join('') || '<small>暂无选项说明，可编辑后补充。</small>'}</p></section>
               </article>`).join('')}
             </div>
           </aside>
         </div>
         <footer class="mc-v3-template-footer">
-          <div><span><b>✓</b> 已选模块 <strong data-v3-template-count>${selectedCount}</strong> 项</span><i></i><span><b>■</b> 自定义分类 <strong>${templateCategoryCards().length}</strong> 项</span><i></i><span><b>◆</b> 适用产品：导轨灯 / 磁吸灯</span></div>
+          <div><span><b>✓</b> 已选模块 <strong data-v3-template-count>${selectedCount}</strong> 项</span><i></i><span><b>■</b> 自定义分类 <strong data-v3-template-category-count>${savedCategoryCount}</strong> 项</span><i></i><span><b>◆</b> 适用产品：${esc(productType(product) || '当前产品')}</span></div>
           <section><button class="mc-button" data-v3-template-draft type="button">▣ 保存草稿</button><button class="mc-button mc-button--primary" type="submit">▶ 套用配置模板</button></section>
         </footer>
       </form>
@@ -989,6 +1074,7 @@
       if (button.matches('[data-v3-products],[data-v3-select-product],[data-v3-new-config]')) return navigate('products');
       if (button.matches('[data-v3-home-status]')) { state.filters.status = button.dataset.v3HomeStatus || 'all'; return navigate('products'); }
       if (button.matches('[data-v3-template]')) return navigate('template');
+      if (button.matches('[data-v3-template-tab]')) { state.templateTab = button.dataset.v3TemplateTab || 'common'; return renderTemplate(); }
       if (button.matches('[data-v3-template-all]')) {
         const form = button.closest('[data-v3-template-form]');
         form?.querySelectorAll('input[name="template_key"]').forEach(input => { input.checked = true; input.closest('.mc-v3-template-module')?.classList.add('is-selected'); });
@@ -1004,7 +1090,46 @@
         updateTemplateCount(form);
         return;
       }
-      if (button.matches('[data-v3-template-draft]')) return toast('配置模板草稿已保留在当前页面，点击“套用配置模板”后才会写入产品配置。');
+      if (button.matches('[data-v3-template-draft]')) return applyTemplatePage(button.closest('[data-v3-template-form]'), false);
+      if (button.matches('[data-v3-template-save-category]')) return saveTemplateCategoryFromForm(button.closest('[data-v3-template-form]'));
+      if (button.matches('[data-v3-template-cancel-edit]')) { state.templateEditingCategory = 0; return renderTemplate(); }
+      if (button.matches('[data-v3-template-use-suggestion]')) {
+        const card = templateCategories()[number(button.dataset.v3TemplateUseSuggestion)] || null;
+        state.templateEditingCategory = 0;
+        fillTemplateCategoryForm(card);
+        return;
+      }
+      if (button.matches('[data-v3-template-edit-category]')) {
+        state.templateEditingCategory = number(button.dataset.v3TemplateEditCategory);
+        return renderTemplate();
+      }
+      if (button.matches('[data-v3-template-delete-category]')) {
+        const id = number(button.dataset.v3TemplateDeleteCategory);
+        if (!confirm('确认删除这个自定义分类配置组？已审批、已启用或被引用的配置组不会被删除。')) return;
+        await api('delete_template_category', { product_id: selectedProduct().id, group_id: id });
+        state.templateEditingCategory = 0;
+        toast('自定义分类已删除。');
+        return refreshWorkspaceInPlace(selectedProduct().id);
+      }
+      if (button.matches('[data-v3-template-add-option]')) {
+        const id = number(button.dataset.v3TemplateAddOption);
+        const card = templateCategories().find(item => number(item.id) === id);
+        if (!card) throw new Error('自定义分类不存在。');
+        const value = String(prompt('请输入新增选项名称，例如 5线 / 超长款：') || '').trim();
+        if (!value) return;
+        await api('save_template_category', { id, product_id: selectedProduct().id, category_name: card.name, product_type: card.applies, field_name: card.field, option_values: [...(card.options || []), value], selection_mode: card.selection_mode });
+        toast('分类选项已新增。');
+        return refreshWorkspaceInPlace(selectedProduct().id);
+      }
+      if (button.matches('[data-v3-template-remove-option]')) {
+        const id = number(button.dataset.v3TemplateRemoveOption);
+        const card = templateCategories().find(item => number(item.id) === id);
+        if (!card) throw new Error('自定义分类不存在。');
+        const option = button.dataset.option || '';
+        await api('save_template_category', { id, product_id: selectedProduct().id, category_name: card.name, product_type: card.applies, field_name: card.field, option_values: (card.options || []).filter(value => value !== option), selection_mode: card.selection_mode });
+        toast('分类选项已移除。');
+        return refreshWorkspaceInPlace(selectedProduct().id);
+      }
       if (button.matches('[data-v3-template-ui-action]')) return toast('分类规则界面已整理完成；正式保存分类规则需要下一步接入独立规则接口。');
       if (button.matches('[data-v3-batch],[data-v3-copy-current]')) return navigate('batch');
       if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 1);
@@ -1171,12 +1296,7 @@
       }
       if (event.target.matches('[data-v3-template-form]')) {
         event.preventDefault();
-        const keys = new FormData(event.target).getAll('template_key');
-        if (!selectedProduct()) throw new Error('请先选择产品。');
-        if (!keys.length) throw new Error('请至少选择一个配置组。');
-        await api('apply_template', { product_id: selectedProduct().id, template_keys: keys });
-        toast('配置模板已套用。');
-        return loadWorkspace(selectedProduct().id, 0, 2);
+        return applyTemplatePage(event.target, true);
       }
       if (event.target.matches('[data-v3-batch-form]')) {
         event.preventDefault();

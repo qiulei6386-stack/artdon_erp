@@ -56,6 +56,11 @@ try {
             $user->id
         ),
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
+        'save_template_category' => $service->saveTemplateCategory(array_merge($_POST, ['option_values' => $json('option_values')]), $user->id),
+        'delete_template_category' => (static function () use ($service, $user): array {
+            $service->deleteTemplateCategory((int) ($_POST['product_id'] ?? 0), (int) ($_POST['group_id'] ?? 0), $user->id);
+            return [];
+        })(),
         'save_quick_rules' => $service->saveQuickRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'save_power_rules' => $service->savePowerRules((int) ($_POST['group_id'] ?? 0), $json('rules'), $user->id),
         'save_technical_profile' => $service->saveTechnicalProfile((int) ($_POST['product_id'] ?? 0), $json('profile'), $user->id),

@@ -16,17 +16,21 @@ $requestedView = (string) ($_GET['view'] ?? '');
 $requestedStep = (string) ($_GET['step'] ?? '');
 $stepMap = ['range' => 1, 'core' => 2, 'optional' => 3, 'rules' => 4, 'approval' => 5, 'version' => 6];
 $initialStep = $stepMap[$requestedStep] ?? max(1, min(6, (int) ($_GET['step'] ?? 1)));
-$initialView = in_array($requestedView, ['home', 'products', 'workspace'], true) ? $requestedView : ($workspace ? 'workspace' : 'home');
+$initialView = in_array($requestedView, ['home', 'products', 'workspace', 'template', 'batch'], true) ? $requestedView : ($workspace ? 'workspace' : 'home');
 if ($initialView === 'workspace' && !$workspace) $initialView = 'products';
 $pageTitle = [
     'home' => '产品适配',
     'products' => '全部产品配置',
     'workspace' => '产品配置工作台',
+    'template' => '配置模板',
+    'batch' => '批量矩阵',
 ][$initialView] ?? '产品适配';
 $pageDescription = [
     'home' => '管理产品技术范围、核心物料、扩展可选、条件规则、检查审批与版本发布。',
     'products' => '管理所有产品的物料配置状态、适配规则和发布情况。',
     'workspace' => '按步骤完成产品配置、适配检查与发布。',
+    'template' => '管理产品标准配置组和自定义分类规则。',
+    'batch' => '批量复制或套用产品配置。',
 ][$initialView] ?? '产品适配';
 $bootstrap = [
     'csrf' => csrf_token(),
