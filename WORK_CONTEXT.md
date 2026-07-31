@@ -1862,3 +1862,15 @@
 - 保存：保存参数继续调用现有 `save_technical_profile` 接口；“保存并重新检查”关闭弹窗后通过 AJAX 原位重新读取工作台数据，更新缺失数量、完成度和检查摘要，不做整页刷新，不改变页面位置。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=67` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error。
 - 发布：功能提交 `c60e8f4edcc9302a5e42f6254cf68cb29896cdbc` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
+
+## 2026-07-31：产品适配配置模板页视觉重排
+
+- 范围：按用户截图重排 `/material_center_v1/adaptation/index.php?view=template&product_id=67` 配置模板页；本轮只改产品适配前端模板页和契约测试，不改数据库结构、不写入或删除 `mc_*` 业务数据、不影响其他物料中心页面。
+- 备份：修改前服务器当前适配目录已备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_template_page_backup_20260731_180958`。
+- 页面：配置模板页改为截图式双栏布局：顶部面包屑和标题说明、当前产品卡片（图片/产品编码/名称/更换产品）、左侧“通用模板 / 按产品分类 / 自定义分类模板”标签与模块卡片、右侧“自定义分类 / 分类规则”面板，以及底部选中统计和保存/套用按钮。
+- 模板：左侧显示 10 个标准模块卡片（芯片/光源、电源/驱动、光学/透镜、安装方式、调光方式、蜂巢网、玻璃、附件配件、外观颜色、特殊要求）；核心必配默认勾选，保留真实 `template_key` checkbox 和现有 `apply_template` 提交，不破坏原模板套用逻辑。
+- 分类规则：右侧先建立分类规则界面骨架，包含分类名称、适用产品类型、单选/多选、新增分类、已创建分类卡和选项 chip；当前仅作为页面管理入口提示，正式保存分类规则需后续接入独立规则接口。
+- 交互：新增全选、重置、选择数量实时更新；“保存草稿”只给页面提示，不写数据库；“套用配置模板”继续调用现有产品适配模板接口。
+- 回归保护：新增 `material_center_v1/tests/adaptation_template_page_contract.php`，锁定配置模板页的产品卡、三类标签、模块卡片、右侧规则面板、底部操作栏和真实模板提交字段。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 检查新增测试文件语法。服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_template_page_contract.php` 通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出 `配置模板`、`adaptation-bootstrap` 和 `adaptation-v3.js`，无 Fatal Error。
+- 发布：功能提交 `5e1b9d98e742214770eb68fcae5e274394911b69` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
