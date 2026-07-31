@@ -1827,3 +1827,14 @@
 - 修复：新增佣金下拉兜底选项，进入订单佣金页时先独立读取并渲染订单列表；`commission_options_list` 改为后台异步刷新下拉选项，不再阻塞订单信息。页面状态文字新增实际用时，方便现场判断接口耗时。
 - 回归保护：新增 `tests/commission_order_loading_contract.php`，禁止 `loadCommissionOrders()` 再直接等待 `commission_options_list` 或使用 `Promise.all` 绑定选项与订单列表。
 - 发布与验证：提交 `b9a3ad4a1eaaa82e2dda1e4703570840c2bc9561` 已推送 GitHub 并快进腾讯云服务器。服务器 `quotation.php` 语法通过，`commission_order_loading_contract.php`、`commission_order_path_contract.php`、`commission_summary_page_contract.php` 均通过。
+
+## 2026-07-31：产品适配单产品工作台一屏化与宽版选择弹窗
+
+- 范围：按用户最新截图与文字要求，继续调整物料中心“单产品配置工作台”；保留适配首页和全部产品页，不改数据库、不删除 `mc_*` 数据、不回滚旧 BOM、不继续开发核心规则/审批/发布新业务。
+- 备份：动手前已在服务器备份当前适配目录到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_one_screen_backup_20260731_170824`；并导出 89 张 `mc_*` 表到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/mc_tables_one_screen_20260731_170824.sql`（约 6.2MB）。
+- 页面：单产品工作台默认压缩为一屏主操作：顶部产品摘要、三步快速流程、配置来源、四个核心配置、最多四项缺失参数、检查摘要和底部保存/检查/提交动作；正常配置不再靠整页向下滚动完成。
+- 物料选择：点击芯片/光源、电源/驱动、光学/透镜、安装方式等核心项后，使用居中的宽版弹窗展示候选物料；弹窗内部有固定标题、产品要求、筛选栏、独立滚动候选区和底部确认区。选择物料后关闭弹窗并回到主工作台。
+- 缺失参数：缺失技术字段只显示前 4 项，点击“填写”打开小弹窗补单个参数；更多字段进入高级设置。高级设置改为覆盖式面板，内部滚动，技术范围、扩展可选、条件规则、例外审批、版本/历史能力仍保留但不默认铺在主页面。
+- 修改文件：`material_center_v1/assets/js/adaptation-v3.js`、`material_center_v1/assets/css/app.css`、`material_center_v1/tests/adaptation_quick_workspace_contract.php`。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=82` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error。
+- 发布：功能提交 `2c5828b2fb0286edc6eac577fe43a701d22cdff9`，恢复合同锚点补丁 `cbe9e5baea31a0b086e1958c4e9f766ec75a952e`、`78fd835f1fe5f5efbdd9ab0baa8ffca6f9331b1c`、`d819afe5e594c267a2a4a4c06474b0765df2efcf` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
