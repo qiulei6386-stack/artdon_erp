@@ -61,6 +61,25 @@ $checks = [
         => str_contains($script, 'renderParamModal')
             && str_contains($script, 'data-v3-param-form')
             && str_contains($style, '.mc-v3-param-modal'),
+    '主页面不再展开需要补充字段卡片'
+        => !str_contains($script, '${renderMissingFields()}')
+            && str_contains($script, 'data-v3-open-missing')
+            && str_contains($script, 'renderMissingParamsModal'),
+    '必要技术参数使用集中补充弹窗'
+        => str_contains($script, '补充必要技术参数')
+            && str_contains($script, 'data-v3-missing-profile-form')
+            && str_contains($script, '保存并重新检查')
+            && str_contains($style, '.mc-v3-missing-box')
+            && str_contains($style, 'max-height:70vh'),
+    '底部栏是工作台布局行不覆盖内容'
+        => str_contains($style, 'grid-template-rows:90px 44px 54px minmax(0,1fr) auto')
+            && str_contains($style, '.mc-page--adaptation-v3 .mc-v3-quick-footer{position:relative')
+            && str_contains($style, '.mc-v3-footer-missing')
+            && str_contains($style, '.mc-v3-footer-left'),
+    '保存补充字段后用 AJAX 原位重新检查'
+        => str_contains($script, 'refreshWorkspaceInPlace')
+            && str_contains($script, "api('save_technical_profile'")
+            && str_contains($script, 'state.missingModalOpen = false'),
     '高级设置是覆盖式面板且内部滚动'
         => str_contains($style, '.mc-v3-advanced-panel{position:fixed')
             && str_contains($style, '.mc-v3-advanced-scroll'),

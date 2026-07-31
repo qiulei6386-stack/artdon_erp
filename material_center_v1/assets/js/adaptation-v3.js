@@ -21,6 +21,7 @@
     advancedOpen: Boolean(bootstrap.advancedOpen),
     quickCheckDone: false,
     paramField: null,
+    missingModalOpen: false,
     sourcePickerOpen: false,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
     materialGroup: null,
@@ -118,6 +119,18 @@
     state.materialDetailId = 0;
     setUrl();
     if (state.materialGroup) await loadDrawerMaterials(state.materialGroup.id);
+    render();
+  };
+
+  const refreshWorkspaceInPlace = async (productId = number(selectedProduct()?.id)) => {
+    if (!productId) return;
+    const workspace = await api(`workspace&product_id=${encodeURIComponent(productId)}&group_id=0`);
+    state.workspace = workspace;
+    state.products = state.products.map(product => number(product.id) === number(productId) ? { ...product, ...workspace.product } : product);
+    state.materialGroup = null;
+    state.materials = [];
+    state.selectedMaterialIds = [];
+    state.materialDetailId = 0;
     render();
   };
 
@@ -350,7 +363,7 @@
       if (missingKeys.includes('chip') && /chip|led|current|voltage|cri|cct|芯片|光源|电流|电压|显指|色温/.test(text)) return true;
       return false;
     };
-    return fields.filter(field => !fieldFilled(field) && relevant(field)).slice(0, 4);
+    return fields.filter(field => !fieldFilled(field) && relevant(field));
   };
   const quickBlockers = () => {
     const blockers = [];
@@ -434,10 +447,10 @@
           <nav class="mc-v3-quick-flow">${[['1','确认配置来源','推荐复制 / 模板 / BOM / 空白'],['2','设置核心配置','芯片、电源、光学、安装方式'],['3','检查发布 / 保存','缺什么补什么，通过后提交']].map(([id,label,tip], index) => `<span class="${index < (groups().length ? 1 : 0) + (quickCoreDone() ? 1 : 0) ? 'is-done' : index === 0 ? 'is-active' : ''}"><b>${index === 0 && groups().length ? '✓' : id}</b><strong>${label}</strong><small>${tip}</small></span>`).join('')}</nav>
           ${renderQuickSource()}
           ${renderQuickCore()}
-          ${renderMissingFields()}
           ${state.materialGroup ? renderGroupDrawer() : ''}
           ${renderAdvancedSettings()}
           ${renderParamModal()}
+          ${state.missingModalOpen ? renderMissingParamsModal() : ''}
           ${state.sourcePickerOpen ? renderSourcePickerModal() : ''}
           ${state.exceptionMaterialId ? renderExceptionModal() : ''}
           ${renderQuickFooter()}
@@ -568,12 +581,57 @@
     </section>`;
   };
 
+  const fieldSuggestion = field => {
+    const value = field.suggested_value || field.default_value || '';
+    const source = field.suggested_source || '同系列产品 / BOM / 命名系统 / 已选物料综合判断';
+    return { value, source };
+  };
+
+  const fieldMissingReason = field => {
+    const text = `${field.key || ''} ${field.label || ''}`.toLowerCase();
+    if (/power|功率/.test(text)) return '无法判断候选电源是否满足功率范围。';
+    if (/current|电流/.test(text)) return '无法判断芯片、电源和光源电流是否匹配。';
+    if (/voltage|电压/.test(text)) return '无法判断候选电源输出电压是否满足产品要求。';
+    if (/beam|les|optic|光学|透镜|光束/.test(text)) return '无法判断光学、LES 和光束角是否匹配。';
+    return '系统当前无法完成适配判断，需要补充该字段。';
+  };
+
+  const renderMissingParamsModal = () => {
+    const fields = missingFields();
+    return `<section class="mc-v3-missing-modal" role="dialog" aria-modal="true">
+      <form class="mc-v3-missing-box" data-v3-missing-profile-form>
+        <header><div><h3>补充必要技术参数</h3><p>以下字段是系统当前无法完成适配判断所必需的数据。</p></div><button class="mc-icon-button" data-v3-close-missing type="button">×</button></header>
+        <div class="mc-v3-missing-fields">${fields.length ? fields.slice(0, 8).map(field => {
+          const suggestion = fieldSuggestion(field);
+          const current = state.workspace?.technical_profile?.values?.[field.key] ?? '';
+          return `<article>
+            <div><h4>${esc(field.label)}${field.unit ? ` <small>${esc(field.unit)}</small>` : ''}</h4><span class="mc-v3-required">必填</span></div>
+            <p><b>当前值：</b>${current === '' || current === null ? '空' : esc(current)}</p>
+            <p><b>系统建议：</b>${suggestion.value ? esc(suggestion.value) : '暂无明确建议'}</p>
+            <p><b>建议来源：</b>${esc(suggestion.source)}</p>
+            <label><span>输入${field.unit ? `（${esc(field.unit)}）` : ''}</span>${profileInput(field)}</label>
+            <em>${esc(fieldMissingReason(field))}</em>
+          </article>`;
+        }).join('') : '<div class="mc-v3-ready">必要技术参数已完整。</div>'}</div>
+        <footer><button class="mc-button" data-v3-close-missing type="button">取消</button><button class="mc-button" name="mode" value="draft" type="submit">保存草稿</button><button class="mc-button mc-button--primary" name="mode" value="check" type="submit">保存并重新检查</button></footer>
+      </form>
+    </section>`;
+  };
+
   const renderQuickFooter = () => {
     const coreReady = quickBlockers().length === 0 && groups().length > 0;
     const publishedReady = coreReady && approvalCount(selectedProduct()) === 0 && state.quickCheckDone;
-    const checks = quickCheckRows().slice(0, 3);
+    const checks = quickCheckRows();
+    const visibleChecks = checks.slice(0, 3);
+    const missing = missingFields();
+    const okCount = checks.filter(([level]) => level === 'ok').length;
+    const warnCount = checks.filter(([level]) => level === 'warn').length;
+    const badCount = checks.filter(([level]) => level === 'bad').length;
     return `<footer class="mc-v3-quick-footer">
-      <div class="mc-v3-footer-checks"><strong>配置检查 / 提交审批</strong>${checks.map(([level, label]) => `<span class="is-${level}">${level === 'bad' ? '×' : level === 'warn' ? '△' : '✓'} ${esc(label)}</span>`).join('')}<button class="mc-link-button" data-v3-advanced-step="5" type="button">查看完整检查</button></div>
+      <div class="mc-v3-footer-left">
+        ${missing.length ? `<div class="mc-v3-footer-missing"><strong>需要补充 ${missing.length} 项</strong><button class="mc-button mc-button--warn" data-v3-open-missing type="button">立即补充</button></div>` : '<div class="mc-v3-footer-complete">✓ 必要技术参数已完整</div>'}
+        <div class="mc-v3-footer-checks"><strong>配置检查 / 提交审批</strong><span class="is-ok">✓ ${okCount}项通过</span><span class="is-warn">△ ${warnCount}项待确认</span><span class="is-bad">× ${badCount}项阻断</span>${visibleChecks.map(([level, label]) => `<em class="is-${level}">${level === 'bad' ? '×' : level === 'warn' ? '△' : '✓'} ${esc(label)}</em>`).join('')}<button class="mc-link-button" data-v3-advanced-step="5" type="button">查看完整检查</button></div>
+      </div>
       <button class="mc-button" data-v3-save-draft type="button">保存草稿</button>
       <button class="mc-button mc-button--primary" data-v3-check-config type="button">检查配置</button>
       <button class="mc-button mc-button--primary" data-v3-submit-confirm ${coreReady ? '' : 'disabled'} type="button">提交确认</button>
@@ -832,6 +890,8 @@
       if (button.matches('[data-v3-change-source]')) { state.sourcePickerOpen = true; return renderWorkbench(); }
       if (button.matches('[data-v3-close-source]')) { state.sourcePickerOpen = false; return renderWorkbench(); }
       if (button.matches('[data-v3-source-diff]')) return toast(`差异提示：${sourceDifferences().join('；')}`);
+      if (button.matches('[data-v3-open-missing]')) { state.missingModalOpen = true; return renderWorkbench(); }
+      if (button.matches('[data-v3-close-missing]')) { state.missingModalOpen = false; return renderWorkbench(); }
       if (button.matches('[data-v3-param-field]')) { state.paramField = button.dataset.v3ParamField || ''; return renderWorkbench(); }
       if (button.matches('[data-v3-close-param]')) { state.paramField = null; return renderWorkbench(); }
       if (button.matches('[data-v3-close-exception]')) { state.exceptionMaterialId = 0; return renderWorkbench(); }
@@ -946,6 +1006,28 @@
         state.quickCheckDone = false;
         toast('技术参数已补充，匹配结果将重新计算。');
         return loadWorkspace(selectedProduct().id, 0, 2);
+      }
+      if (event.target.matches('[data-v3-missing-profile-form]')) {
+        event.preventDefault();
+        const fields = missingFields();
+        const old = { ...(state.workspace?.technical_profile?.values || {}) };
+        const form = new FormData(event.target);
+        fields.forEach(field => {
+          if (!form.has(field.key)) return;
+          old[field.key] = field.type === 'multi' ? form.getAll(field.key) : form.get(field.key);
+        });
+        await api('save_technical_profile', { product_id: selectedProduct().id, profile: old });
+        state.workspace.technical_profile = state.workspace.technical_profile || {};
+        state.workspace.technical_profile.values = old;
+        state.quickCheckDone = false;
+        const mode = String(event.submitter?.value || 'check');
+        if (mode === 'draft') {
+          toast('必要技术参数草稿已保存。');
+          return renderWorkbench();
+        }
+        state.missingModalOpen = false;
+        toast('技术参数已保存，正在重新检查适配结果。');
+        return refreshWorkspaceInPlace(selectedProduct().id);
       }
       if (event.target.matches('[data-v3-exception-form]')) {
         event.preventDefault();
