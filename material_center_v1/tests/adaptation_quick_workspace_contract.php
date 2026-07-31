@@ -16,8 +16,11 @@ $checks = [
             && str_contains($script, '确认配置来源')
             && str_contains($script, '设置核心配置')
             && str_contains($script, '检查并保存'),
-    '默认只显示四个核心配置'
-        => str_contains($script, "const quickCoreKeys = ['chip', 'power', 'optic', 'install'];"),
+    '默认只显示动态模板前四个核心配置'
+        => str_contains($script, 'const quickCoreGroups = () =>')
+            && str_contains($script, 'coreGroups().slice(0, 4)')
+            && str_contains($script, 'groupLabel(group)')
+            && !str_contains($script, "const quickCoreKeys = ['chip', 'power', 'optic', 'install'];"),
     '六步高级能力仍保留但按需打开'
         => str_contains($script, 'renderAdvancedSettings')
             && str_contains($script, '完整技术范围')
@@ -89,8 +92,11 @@ $checks = [
         => str_contains($script, '不会复制审批状态、发布状态、审批人、发布人或原版本号'),
     '提交确认不直接发布'
         => str_contains($script, '如需审批或发布，请由有权限人员在高级设置中处理。'),
-    '快速保存草稿只建立核心组骨架'
-        => str_contains($script, "template_keys: ['light_source', 'power_driver', 'optical', 'installation']"),
+    '快速保存草稿按当前动态模板补齐缺失组'
+        => str_contains($script, "api(`config_templates&product_id=")
+            && str_contains($script, "api('apply_config_template_to_product'")
+            && str_contains($script, "strategy: 'fill_missing'")
+            && !str_contains($script, "template_keys: ['light_source', 'power_driver', 'optical', 'installation']"),
 ];
 
 $failed = [];

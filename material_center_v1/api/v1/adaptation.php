@@ -31,13 +31,45 @@ try {
             'candidates' => $service->candidateMaterials((int) ($_GET['group_id'] ?? 0), $_GET),
             'metadata' => $service->metadata(),
             'reuse_templates' => $service->reuseTemplates(),
+            'config_templates' => (static function () use ($service, $permission, $user): array {
+                $permission->requireAny($user, ['config_template.view', 'material_center.adaptation.manage']);
+                return $service->configTemplateCenter((int) ($_GET['product_id'] ?? 0));
+            })(),
             default => throw new RuntimeException('读取操作无效。', 400),
         };
         echo json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 
-    $permission->require($user, 'material_center.adaptation.manage');
+    $configTemplateActions = [
+        'save_config_template',
+        'copy_config_template',
+        'disable_config_template',
+        'delete_config_template',
+        'save_config_group_definition',
+        'save_config_template_group',
+        'save_config_group_option',
+        'save_config_group_condition',
+        'preview_config_template_apply',
+        'apply_config_template_to_product',
+    ];
+    if (in_array($action, $configTemplateActions, true)) {
+        $permission->requireAny($user, [
+            'config_template.create',
+            'config_template.edit',
+            'config_template.delete',
+            'config_template.disable',
+            'config_template.apply',
+            'config_template.create_group',
+            'config_template.edit_group',
+            'config_template.create_option',
+            'config_template.manage_condition',
+            'config_template.publish',
+            'material_center.adaptation.manage',
+        ]);
+    } else {
+        $permission->require($user, 'material_center.adaptation.manage');
+    }
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_csrf((string) ($_POST['csrf_token'] ?? ''))) {
         throw new RuntimeException('安全令牌已过期。', 419);
     }
@@ -55,6 +87,46 @@ try {
             $json('template_keys'),
             $user->id
         ),
+        'save_config_template' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.create', 'config_template.edit', 'material_center.adaptation.manage']);
+            return $service->saveConfigTemplate($_POST, $user->id);
+        })(),
+        'copy_config_template' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.create', 'material_center.adaptation.manage']);
+            return $service->copyConfigTemplate((int) ($_POST['template_id'] ?? 0), $user->id);
+        })(),
+        'disable_config_template' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.disable', 'material_center.adaptation.manage']);
+            return $service->disableConfigTemplate((int) ($_POST['template_id'] ?? 0), $user->id);
+        })(),
+        'delete_config_template' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.delete', 'material_center.adaptation.manage']);
+            return $service->deleteConfigTemplate((int) ($_POST['template_id'] ?? 0), $user->id);
+        })(),
+        'save_config_group_definition' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.create_group', 'config_template.edit_group', 'material_center.adaptation.manage']);
+            return $service->saveConfigGroupDefinition($_POST, $user->id);
+        })(),
+        'save_config_template_group' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.edit_group', 'material_center.adaptation.manage']);
+            return $service->saveConfigTemplateGroup($_POST, $user->id);
+        })(),
+        'save_config_group_option' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.create_option', 'material_center.adaptation.manage']);
+            return $service->saveConfigGroupOption($_POST, $user->id);
+        })(),
+        'save_config_group_condition' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.manage_condition', 'material_center.adaptation.manage']);
+            return $service->saveConfigGroupCondition($_POST, $user->id);
+        })(),
+        'preview_config_template_apply' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.apply', 'material_center.adaptation.manage']);
+            return $service->previewConfigTemplateApply((int) ($_POST['product_id'] ?? 0), (int) ($_POST['template_id'] ?? 0), (string) ($_POST['strategy'] ?? 'fill_missing'));
+        })(),
+        'apply_config_template_to_product' => (static function () use ($service, $permission, $user): array {
+            $permission->requireAny($user, ['config_template.apply', 'material_center.adaptation.manage']);
+            return $service->applyConfigTemplateToProduct((int) ($_POST['product_id'] ?? 0), (int) ($_POST['template_id'] ?? 0), (string) ($_POST['strategy'] ?? 'fill_missing'), $user->id);
+        })(),
         'save_group' => ['id' => $service->saveGroup($_POST, $user->id)],
         'save_template_category' => $service->saveTemplateCategory(array_merge($_POST, ['option_values' => $json('option_values')]), $user->id),
         'delete_template_category' => (static function () use ($service, $user): array {

@@ -23,6 +23,12 @@
     paramField: null,
     missingModalOpen: false,
     sourcePickerOpen: false,
+    templateCenter: null,
+    templateCenterLoading: false,
+    selectedTemplateId: 0,
+    selectedTemplateGroupId: 0,
+    templateApplyPreview: null,
+    templateDefinitionOpen: false,
     templateTab: 'common',
     templateEditingCategory: 0,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
@@ -108,21 +114,23 @@
     render();
   };
 
-  const loadWorkspace = async (productId, groupId = 0, step = 1) => {
-    root.innerHTML = '<div class="mc-v3-loading">正在载入产品配置工作台…</div>';
+  const loadProductContext = async (productId, screen = 'workspace', groupId = 0, step = 1, updateUrl = true) => {
+    root.innerHTML = `<div class="mc-v3-loading">正在载入${screen === 'template' ? '配置模板中心' : '产品配置工作台'}…</div>`;
     state.workspace = await api(`workspace&product_id=${encodeURIComponent(productId)}&group_id=${encodeURIComponent(groupId)}`);
     state.products = state.products.map(product => number(product.id) === number(productId) ? { ...product, ...state.workspace.product } : product);
-    state.screen = 'workspace';
+    state.screen = screen;
     state.step = step;
     state.sourcePickerOpen = false;
-    state.materialGroup = groupId ? (state.workspace.groups || []).find(group => number(group.id) === number(groupId)) || null : null;
+    state.materialGroup = screen === 'workspace' && groupId ? (state.workspace.groups || []).find(group => number(group.id) === number(groupId)) || null : null;
     state.materials = [];
     state.selectedMaterialIds = [];
     state.materialDetailId = 0;
-    setUrl();
+    if (updateUrl) setUrl();
     if (state.materialGroup) await loadDrawerMaterials(state.materialGroup.id);
     render();
   };
+
+  const loadWorkspace = async (productId, groupId = 0, step = 1) => loadProductContext(productId, 'workspace', groupId, step, true);
 
   const refreshWorkspaceInPlace = async (productId = number(selectedProduct()?.id)) => {
     if (!productId) return;
@@ -298,19 +306,26 @@
 
   const groupIcon = key => ({ chip:'◉', power:'ϟ', optic:'◎', install:'⌁', dimming:'◌', glass:'◇', accessory:'＋', custom:'◆' }[key] || '◆');
   const moduleLabel = key => ({ chip:'芯片 / 光源', power:'电源 / 驱动', optic:'光学 / 透镜', install:'安装方式', dimming:'调光方式', glass:'玻璃 / 面罩', accessory:'附件配件', custom:'特殊要求' }[key] || '配置组');
+  const groupLabel = group => group?.group_name || group?.effective_group_name || moduleLabel(canonicalGroupKey(group || {}));
 
   const completion = () => state.workspace?.completion || {};
   const groups = () => Array.isArray(state.workspace?.groups) ? state.workspace.groups : [];
   const coreGroups = () => groups().filter(group => Boolean(number(group.is_required))).slice(0, 8);
   const extensionGroups = () => groups().filter(group => !Boolean(number(group.is_required)));
-  const quickCoreKeys = ['chip', 'power', 'optic', 'install'];
   const findGroupByKey = key => groups().find(group => canonicalGroupKey(group) === key) || null;
-  const quickCoreGroups = () => quickCoreKeys.map(key => ({ key, group: findGroupByKey(key) }));
+  const quickCoreGroups = () => {
+    const required = coreGroups().slice(0, 4).map(group => ({ key: canonicalGroupKey(group), group }));
+    return required.length ? required : ['chip', 'power', 'optic', 'install'].map(key => ({ key, group: findGroupByKey(key) }));
+  };
   const groupDefault = group => {
     const overview = (state.workspace?.configuration_overview || []).find(row => number(row.id) === number(group.id)) || group;
     return overview.default_material || overview.default_option || group.default_material || '未设置默认';
   };
-  const groupDone = group => number(group.option_count) > 0 && (group.selection_mode !== 'single' || groupDefault(group) !== '未设置默认');
+  const groupDone = group => {
+    const attrOptions = Array.isArray(group?.quick_rules?.attribute_options) ? group.quick_rules.attribute_options.filter(option => Number(option.is_enabled) !== 0) : [];
+    if ((group?.quick_rules?.group_type || group?.group_type) === 'attribute') return !number(group.is_required) || attrOptions.length > 0;
+    return number(group.option_count) > 0 && (group.selection_mode !== 'single' || groupDefault(group) !== '未设置默认');
+  };
   const activeGroup = () => state.materialGroup || null;
   const quickCoreDone = () => quickCoreGroups().filter(item => item.group && groupDone(item.group)).length;
   const quickCompletion = () => {
@@ -371,8 +386,8 @@
     const blockers = [];
     quickCoreGroups().forEach(item => {
       if (!item.group) blockers.push(`缺少${moduleLabel(item.key)}配置组`);
-      else if (!groupDone(item.group)) blockers.push(`${moduleLabel(item.key)}未设置默认正式物料`);
-      if (number(item.group?.conflict_count)) blockers.push(`${moduleLabel(item.key)}存在冲突`);
+      else if (!groupDone(item.group)) blockers.push(`${groupLabel(item.group)}未设置默认正式物料或属性选项`);
+      if (number(item.group?.conflict_count)) blockers.push(`${groupLabel(item.group)}存在冲突`);
     });
     if (number(state.workspace?.conflicts?.length)) blockers.push('存在未处理适配冲突');
     return blockers;
@@ -520,7 +535,7 @@
   };
 
   const renderQuickCore = () => `<section class="mc-v3-module-stage mc-v3-core-stage">
-    <div class="mc-v3-step-title"><h3>四个核心配置 <small>(${quickCoreDone()} / ${quickCoreKeys.length})</small></h3><p>点击配置项后使用宽版弹窗选择物料，主页面不向下展开候选列表。</p></div>
+    <div class="mc-v3-step-title"><h3>核心配置 <small>(${quickCoreDone()} / ${quickCoreGroups().length})</small></h3><p>核心配置来自当前产品套用的动态模板；点击配置项后使用宽版弹窗选择物料，主页面不向下展开候选列表。</p></div>
     <div class="mc-v3-core-list">${quickCoreGroups().map(renderQuickCoreCard).join('')}</div>
   </section>`;
 
@@ -531,7 +546,7 @@
     const optionLabel = group ? groupDefault(group) : '尚未建立配置组';
     const action = status === 'empty' && key === 'power' ? '选择电源' : (status === 'conflict' ? '处理冲突' : (status === 'suggested' ? '采用建议' : groupActionText(group)));
     return `<article class="mc-v3-core-row mc-v3-core-row--${esc(status)}">
-      <header><i>${esc(groupIcon(key))}</i><span><b>${esc(moduleLabel(key))}</b><small>${number(group?.option_count) ? `正式可选 ${number(group.option_count)} 项` : '正式可选待确认'}</small></span></header>
+      <header><i>${esc(groupIcon(key))}</i><span><b>${esc(group ? groupLabel(group) : moduleLabel(key))}</b><small>${number(group?.option_count) ? `正式可选 ${number(group.option_count)} 项` : ((group?.quick_rules?.attribute_options || []).length ? `属性选项 ${(group.quick_rules.attribute_options || []).length} 项` : '正式可选待确认')}</small></span></header>
       <div class="mc-v3-core-main"><strong>${esc(optionLabel)}</strong>${recommendation && optionLabel === '未设置默认' ? `<em>建议：${esc(recommendation)}</em>` : ''}<small>${esc(importantSpecs(group, key))}</small></div>
       <div class="mc-v3-core-side"><b class="mc-v3-core-status mc-v3-core-status--${esc(status)}">${esc(statusText(status))}</b><small>${number(group?.conflict_count) ? `冲突 ${number(group.conflict_count)} 项` : `正式选项 ${number(group?.option_count)} 项`}</small></div>
       <button class="mc-button ${status === 'conflict' ? 'mc-button--warn' : (status === 'done' ? '' : 'mc-button--primary')}" ${group ? `data-v3-manage-group="${number(group.id)}"` : 'data-v3-change-source'} type="button">${esc(action)}</button>
@@ -666,7 +681,8 @@
 
   const renderGroupStage = core => {
     const rows = core ? coreGroups() : extensionGroups();
-    return `<section class="mc-v3-module-stage"><div class="mc-v3-step-title"><h3>${core ? '核心必配' : '扩展可配'} <small>(${rows.filter(groupDone).length} / ${rows.length})</small></h3><p>${core ? '所有核心模组必须完成默认选项设置才能进入下一步。' : '扩展模组可设置“不适用 / 暂不提供 / 稍后配置”，只有稍后配置进入待处理。'}</p></div><div class="mc-v3-module-grid">${rows.map(renderGroupCard).join('') || '<div class="mc-v3-empty">尚未建立配置组，可先套用配置模板。</div>'}</div>${core && rows.some(group => !groupDone(group)) ? `<div class="mc-v3-next-tip"><span>i</span><b>下一步建议</b><p>请优先处理“${esc(moduleLabel(canonicalGroupKey(rows.find(group => !groupDone(group)))))}”，设置默认物料后再提交检查。</p><button class="mc-button mc-button--primary" data-v3-manage-group="${number(rows.find(group => !groupDone(group)).id)}" type="button">立即处理</button></div>` : ''}</section>`;
+    const nextMissing = rows.find(group => !groupDone(group));
+    return `<section class="mc-v3-module-stage"><div class="mc-v3-step-title"><h3>${core ? '核心必配' : '扩展可配'} <small>(${rows.filter(groupDone).length} / ${rows.length})</small></h3><p>${core ? '所有核心模组必须完成默认选项设置才能进入下一步。' : '扩展模组可设置“不适用 / 暂不提供 / 稍后配置”，只有稍后配置进入待处理。'}</p></div><div class="mc-v3-module-grid">${rows.map(renderGroupCard).join('') || '<div class="mc-v3-empty">尚未建立配置组，可先套用配置模板。</div>'}</div>${core && nextMissing ? `<div class="mc-v3-next-tip"><span>i</span><b>下一步建议</b><p>请优先处理“${esc(groupLabel(nextMissing))}”，设置默认物料或属性选项后再提交检查。</p><button class="mc-button mc-button--primary" data-v3-manage-group="${number(nextMissing.id)}" type="button">立即处理</button></div>` : ''}</section>`;
   };
 
   const renderGroupCard = group => {
@@ -675,7 +691,7 @@
     const active = number(state.materialGroup?.id) === number(group.id);
     const required = Boolean(number(group.is_required));
     return `<article class="mc-v3-module-card ${active ? 'is-active' : ''} ${done ? 'is-done' : 'is-missing'}">
-      <header><i>${esc(groupIcon(key))}</i><div><h4>${esc(moduleLabel(key))}</h4><small>${required ? '必选 · ' : '可选 · '}${group.selection_mode === 'single' ? '单选' : '多选'}</small></div></header>
+      <header><i>${esc(groupIcon(key))}</i><div><h4>${esc(groupLabel(group))}</h4><small>${required ? '必选 · ' : '可选 · '}${group.selection_mode === 'single' ? '单选' : '多选'}</small></div></header>
       <p>${done ? '已完成' : '未设置默认'}${required ? '' : ' · 可标记状态'}</p>
       <dl><div><dt>默认</dt><dd>${esc(groupDefault(group))}</dd></div><div><dt>正式选项</dt><dd>${number(group.option_count)} 个</dd></div><div><dt>候选</dt><dd>${number(group.alternative_count)} 个</dd></div></dl>
       <button class="mc-button ${done ? '' : 'mc-button--primary'}" data-v3-manage-group="${number(group.id)}" type="button">${done ? '管理' : '立即处理'}</button>
@@ -1020,6 +1036,121 @@
     </section>`;
   };
 
+  const loadConfigTemplateCenter = async () => {
+    if (state.templateCenterLoading) return;
+    state.templateCenterLoading = true;
+    try {
+      state.templateCenter = await api(`config_templates&product_id=${encodeURIComponent(selectedProduct()?.id || 0)}`);
+      const activeId = number(state.templateCenter?.active_template?.id);
+      if (!state.selectedTemplateId && activeId) state.selectedTemplateId = activeId;
+      const groups = selectedConfigTemplateGroups();
+      if (!state.selectedTemplateGroupId && groups.length) state.selectedTemplateGroupId = number(groups[0].id);
+    } catch (error) {
+      toast(error.message, true);
+      state.templateCenter = { ready: false, message: error.message, templates: [], group_definitions: [], groups_by_template: {} };
+    } finally {
+      state.templateCenterLoading = false;
+      render();
+    }
+  };
+  const configTemplateCenter = () => state.templateCenter || {};
+  const configTemplates = () => Array.isArray(configTemplateCenter().templates) ? configTemplateCenter().templates : [];
+  const selectedConfigTemplate = () => configTemplates().find(template => number(template.id) === number(state.selectedTemplateId)) || configTemplateCenter().active_template || configTemplates()[0] || null;
+  const selectedConfigTemplateGroups = () => {
+    const template = selectedConfigTemplate();
+    if (!template) return [];
+    const map = configTemplateCenter().groups_by_template || {};
+    return Array.isArray(map[String(template.id)]) ? map[String(template.id)] : (number(template.id) === number(configTemplateCenter().active_template?.id) ? (configTemplateCenter().active_template_groups || []) : []);
+  };
+  const selectedConfigTemplateGroup = () => selectedConfigTemplateGroups().find(group => number(group.id) === number(state.selectedTemplateGroupId)) || selectedConfigTemplateGroups()[0] || null;
+  const templateScopeLabel = template => ({ system:'系统通用', category:'产品分类', series:'产品系列', product:'指定产品', custom:'自定义' }[template?.scope_type] || '产品分类');
+  const groupTypeLabel = type => ({ material:'物料选择组', attribute:'属性选项组', mixed:'混合配置组' }[type] || '物料选择组');
+  const templateGroupRuleText = group => {
+    if (!group) return '请选择左侧配置组进行编辑。';
+    const conditions = group.conditions || [];
+    if (!conditions.length) return '无显示条件，默认按模板顺序显示。';
+    return conditions.map(row => `${row.source_field || '字段'} ${row.operator || '='} ${row.expected_value || ''} → ${row.action_type || 'show'} ${row.action_target || group.group_code}`).join('；');
+  };
+  const templateGroupFilterText = group => {
+    const filter = (group?.material_filters || [])[0] || {};
+    return [filter.material_category_code, filter.material_subcategory_code, filter.installation_type, filter.formal_status ? `状态 ${filter.formal_status}` : '', Number(filter.approved_required) ? '需审批通过' : ''].filter(Boolean).join(' · ') || '未设置物料筛选；属性组选项来自自定义字典。';
+  };
+  const renderConfigTemplateCenter = () => {
+    if (!state.templateCenter && !state.templateCenterLoading) {
+      root.innerHTML = '<div class="mc-v3-loading">正在读取产品分类配置模板中心…</div>';
+      loadConfigTemplateCenter();
+      return;
+    }
+    if (state.templateCenterLoading) {
+      root.innerHTML = '<div class="mc-v3-loading">正在读取产品分类配置模板中心…</div>';
+      return;
+    }
+    const center = configTemplateCenter();
+    const product = selectedProduct() || center.product;
+    const template = selectedConfigTemplate();
+    const templateGroups = selectedConfigTemplateGroups();
+    const activeGroup = selectedConfigTemplateGroup();
+    const definitions = Array.isArray(center.group_definitions) ? center.group_definitions : [];
+    const enabledTemplates = configTemplates();
+    const preview = state.templateApplyPreview;
+    root.innerHTML = `<section class="mc-v3-page-shell mc-v3-template mc-v3-template-page mc-v3-template-center">
+      <div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>产品分类配置模板中心</b></div>
+      <header class="mc-v3-screen-head mc-v3-template-head">
+        <div><h1>产品分类配置模板中心</h1><p>模板只定义“这个类别的产品需要配置什么，以及怎么配置”，不保存具体产品的物料选择结果。</p></div>
+        <div class="mc-v3-head-actions"><button class="mc-button" data-v3-products type="button">更换产品</button><button class="mc-button" data-v3-template-preview type="button">预览模板</button><button class="mc-button mc-button--primary" data-v3-template-new type="button">新建产品分类模板</button></div>
+      </header>
+      <div class="mc-v3-template-product-card mc-v3-template-product-card--rich">
+        <div>${product ? productImage(product) : '<span class="mc-v3-product-photo"><i>IMG</i></span>'}<span><small>当前产品</small><b>${esc(product ? productCode(product) : '—')}</b><strong>${esc(product ? productName(product) : '请先选择产品')}</strong></span></div>
+        <dl><div><dt>产品分类</dt><dd>${esc(productType(product))}</dd></div><div><dt>产品系列</dt><dd>${esc(productSeries(product))}</dd></div><div><dt>当前使用模板</dt><dd>${esc(template?.template_name || '未选择')}</dd></div><div><dt>模板版本 / 状态</dt><dd>${esc(template?.version_no || '—')} · ${esc(template?.status || '—')}</dd></div></dl>
+      </div>
+      <section class="mc-v3-template-library">
+        <div class="mc-v3-panel__head"><div><h2>产品分类模板</h2><p>不同产品分类可使用完全不同的配置结构；支持通用、分类、系列和指定产品层级。</p></div><button class="mc-button" data-v3-template-refresh type="button">刷新</button></div>
+        <div class="mc-v3-template-card-strip">${enabledTemplates.map(item => `<article class="mc-v3-template-card ${number(item.id) === number(template?.id) ? 'is-active' : ''}" data-v3-config-template-card="${number(item.id)}">
+          <header><b>${esc(item.template_name)}</b><span>${esc(templateScopeLabel(item))}</span></header>
+          <p>${esc(item.description || '管理员可编辑配置组、选项、条件和物料来源。')}</p>
+          <dl><div><dt>适用</dt><dd>${esc(item.product_type || item.product_series || (item.product_id ? `产品 #${item.product_id}` : '全部'))}</dd></div><div><dt>配置组</dt><dd>${number(item.group_count)} 个</dd></div><div><dt>版本</dt><dd>${esc(item.version_no || 'v1.0')}</dd></div><div><dt>引用产品</dt><dd>${number(item.referenced_product_count || item.usage_count)} 个</dd></div></dl>
+          <footer><button class="mc-button" data-v3-template-copy="${number(item.id)}" type="button">复制</button><button class="mc-button" data-v3-template-edit="${number(item.id)}" type="button">编辑模板</button><button class="mc-button mc-button--warn" data-v3-template-disable="${number(item.id)}" type="button">停用</button></footer>
+        </article>`).join('') || '<div class="mc-v3-empty">暂无模板，请先新建产品分类模板。</div>'}</div>
+      </section>
+      <form class="mc-v3-config-template-workspace" data-v3-config-template-form>
+        <section class="mc-v3-template-group-list">
+          <header><div><h2>当前模板配置组</h2><p>${esc(template?.template_name || '未选择模板')} · ${templateGroups.length} 个配置组</p></div><button class="mc-button mc-button--primary" data-v3-template-add-group type="button">新增配置组</button></header>
+          <div class="mc-v3-template-groups">${templateGroups.map((group, index) => `<article class="${number(activeGroup?.id) === number(group.id) ? 'is-active' : ''}" data-v3-template-group="${number(group.id)}">
+            <span class="mc-v3-template-sort">${index + 1}</span><i>${esc(group.icon || '◆')}</i><div><b>${esc(group.effective_group_name || group.group_name)}</b><small>${esc(groupTypeLabel(group.group_type))} · ${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'multi' ? '多选' : '单选'}</small><em>${esc(templateGroupFilterText(group))}</em></div><strong>${group.is_enabled ? '启用' : '停用'}</strong>
+          </article>`).join('') || '<div class="mc-v3-empty">当前模板还没有配置组。</div>'}</div>
+        </section>
+        <aside class="mc-v3-template-detail-panel">
+          ${activeGroup ? `<header><div><h2>${esc(activeGroup.effective_group_name || activeGroup.group_name)}</h2><p>${esc(activeGroup.description || '配置该组的来源、选项、条件、默认和审批规则。')}</p></div><button class="mc-button" data-v3-template-edit-group="${number(activeGroup.id)}" type="button">保存规则</button></header>
+          <nav class="mc-v3-template-detail-tabs"><span>基本设置</span><span>数据来源</span><span>选项管理</span><span>显示条件</span><span>价格 / 交期</span><span>审批设置</span></nav>
+          <div class="mc-v3-template-detail-scroll">
+            <fieldset><legend>基本设置</legend><div class="mc-v3-template-form-grid">
+              <label><span>配置组名称</span><input name="group_name_override" value="${esc(activeGroup.effective_group_name || '')}"></label>
+              <label><span>配置组编码</span><input value="${esc(activeGroup.group_code || '')}" disabled></label>
+              <label><span>配置组类型</span><select name="group_type" disabled><option>${esc(groupTypeLabel(activeGroup.group_type))}</option></select></label>
+              <label><span>必选/可选</span><select name="is_required"><option value="1" ${activeGroup.is_required ? 'selected' : ''}>必选</option><option value="0" ${!activeGroup.is_required ? 'selected' : ''}>可选</option></select></label>
+              <label><span>单选/多选</span><select name="selection_mode"><option value="single" ${activeGroup.selection_mode !== 'multi' ? 'selected' : ''}>单选</option><option value="multi" ${activeGroup.selection_mode === 'multi' ? 'selected' : ''}>多选</option></select></label>
+              <label><span>最多选择数量</span><input name="max_select" type="number" min="1" value="${number(activeGroup.max_select) || 1}"></label>
+            </div></fieldset>
+            <fieldset><legend>数据来源</legend><p>${esc(templateGroupFilterText(activeGroup))}</p><div class="mc-v3-template-form-grid">
+              <label><span>物料大分类</span><input name="material_category_code" value="${esc(activeGroup.material_category_code || '')}" placeholder="power_supply / connector / accessory"></label>
+              <label><span>安装方式</span><input name="installation_type" value="${esc((activeGroup.material_filters || [])[0]?.installation_type || '')}" placeholder="内置 / 外置 / INTRACK / 磁吸"></label>
+              <label><span>正式状态要求</span><select name="formal_status"><option value="official">正式物料</option><option value="active">启用物料</option></select></label>
+              <label><span>允许待审批物料</span><select name="allow_pending"><option value="0">不允许</option><option value="1">允许</option></select></label>
+            </div></fieldset>
+            <fieldset><legend>选项管理</legend><div class="mc-v3-option-chip-list">${(activeGroup.options || []).map(option => `<span>${esc(option.option_name)}${option.is_default ? ' · 默认' : ''}</span>`).join('') || '<small>物料选择组从正式物料库读取；属性组可新增选项。</small>'}</div><button class="mc-button" data-v3-template-add-option="${number(activeGroup.group_definition_id)}" type="button">新增属性选项</button></fieldset>
+            <fieldset><legend>显示条件</legend><p>${esc(templateGroupRuleText(activeGroup))}</p><button class="mc-button" data-v3-template-add-condition="${number(activeGroup.id)}" type="button">新增条件</button></fieldset>
+            <fieldset><legend>价格 / 交期 / 审批</legend><div class="mc-v3-template-checks"><span>${activeGroup.affects_price ? '✓ 影响价格' : '— 不影响价格'}</span><span>${activeGroup.affects_lead_time ? '✓ 影响交期' : '— 不影响交期'}</span><span>${activeGroup.requires_approval ? '✓ 需要审批' : '— 不需要审批'}</span><span>${activeGroup.customer_selectable ? '✓ 客户可选' : '— 客户不可选'}</span></div></fieldset>
+          </div>` : '<div class="mc-v3-empty">请选择左侧配置组进行编辑。</div>'}
+        </aside>
+      </form>
+      <footer class="mc-v3-template-footer mc-v3-template-center-footer">
+        <div><span><b>✓</b> 当前模板 <strong>${esc(template?.template_name || '—')}</strong></span><i></i><span><b>■</b> 配置组 <strong>${templateGroups.length}</strong> 项</span><i></i><span><b>◆</b> 继承层级：指定产品 > 系列 > 分类 > 系统通用</span></div>
+        <section><button class="mc-button" data-v3-template-save-draft type="button">保存草稿</button><button class="mc-button" data-v3-template-preview type="button">预览效果</button><button class="mc-button mc-button--primary" data-v3-template-apply="${number(template?.id)}" type="button">保存并套用模板</button></section>
+      </footer>
+      ${preview ? `<section class="mc-v3-param-modal" role="dialog" aria-modal="true"><div class="mc-v3-template-preview-box"><header><div><h3>套用模板影响预览</h3><p>${esc(preview.template?.template_name || '')} → ${esc(preview.product?.product_code || '')}</p></div><button class="mc-icon-button" data-v3-template-close-preview type="button">×</button></header><div class="mc-v3-template-preview-grid"><article><b>将新增</b>${(preview.will_add || []).map(name => `<span>${esc(name)}</span>`).join('') || '<small>无</small>'}</article><article><b>将同步规则</b>${(preview.will_update || []).map(name => `<span>${esc(name)}</span>`).join('') || '<small>无</small>'}</article><article><b>将保留</b>${(preview.will_skip || []).map(name => `<span>${esc(name)}</span>`).join('') || '<small>无</small>'}</article><article><b>保护策略</b><span>保留当前已选物料</span><span>${preview.published_version_locked ? '已发布版本不直接覆盖' : '创建 / 更新草稿'}</span></article></div><footer><button class="mc-button" data-v3-template-close-preview type="button">取消</button><button class="mc-button mc-button--primary" data-v3-template-confirm-apply="${number(template?.id)}" type="button">确认套用</button></footer></div></section>` : ''}
+    </section>`;
+  };
+
   const renderBatch = () => {
     const source = selectedProduct();
     root.innerHTML = `<section class="mc-v3-page-shell mc-v3-template"><div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>批量矩阵</b></div><header class="mc-v3-screen-head"><div><h1>批量矩阵</h1><p>从已配置产品复制部分模组到目标产品，执行后目标产品进入待检查。</p></div><button class="mc-button" data-v3-home type="button">返回产品列表</button></header>${source ? `<form data-v3-batch-form><div class="mc-v3-template-target">来源产品：<b>${esc(productCode(source))}</b> ${esc(productName(source))}</div><label class="mc-field"><span>套用方式</span><select name="mode"><option value="fill_missing">只补空白（推荐）</option><option value="replace_matching">覆盖同名配置组</option></select></label><fieldset class="mc-v3-template-options"><legend>选择配置模组</legend>${groups().map(group => `<label><input type="checkbox" name="source_group" value="${number(group.id)}" checked><span><b>${esc(group.group_name)}</b><small>${group.is_required ? '核心必配' : '扩展可配'}</small></span></label>`).join('')}</fieldset><div class="mc-v3-target-list">${state.products.filter(product => number(product.id) !== number(source.id)).map(product => `<label><input type="checkbox" name="target_product" value="${number(product.id)}"><span>${esc(productCode(product))} ${esc(productName(product))}</span><small>${esc(statusLabel(configState(product)))}</small></label>`).join('')}</div><button class="mc-button mc-button--primary" type="submit">确认批量套用</button></form>` : '<div class="mc-v3-empty">请先打开一个来源产品，再执行批量复制。</div>'}</section>`;
@@ -1028,7 +1159,7 @@
   const render = () => {
     showApproval();
     if (state.screen === 'workspace') renderWorkbench();
-    else if (state.screen === 'template') renderTemplate();
+    else if (state.screen === 'template') renderConfigTemplateCenter();
     else if (state.screen === 'batch') renderBatch();
     else if (state.screen === 'products') renderProducts();
     else renderHome();
@@ -1059,6 +1190,8 @@
   page.addEventListener('click', async event => {
     const button = event.target.closest('button');
     const candidateRow = event.target.closest('[data-v3-pick-material]');
+    const templateCard = event.target.closest('[data-v3-config-template-card]');
+    const templateGroupRow = event.target.closest('[data-v3-template-group]');
     if (!button && candidateRow) {
       if (candidateRow.dataset.v3Blocked) return;
       const id = number(candidateRow.dataset.v3PickMaterial);
@@ -1068,12 +1201,149 @@
       state.materialDetailId = 0;
       return renderWorkbench();
     }
+    if (!button && templateCard) {
+      state.selectedTemplateId = number(templateCard.dataset.v3ConfigTemplateCard);
+      state.templateApplyPreview = null;
+      const firstGroup = selectedConfigTemplateGroups()[0];
+      state.selectedTemplateGroupId = number(firstGroup?.id || 0);
+      return renderConfigTemplateCenter();
+    }
+    if (!button && templateGroupRow) { state.selectedTemplateGroupId = number(templateGroupRow.dataset.v3TemplateGroup); return renderConfigTemplateCenter(); }
     if (!button) return;
     try {
       if (button.matches('[data-v3-home]')) return navigate('home');
       if (button.matches('[data-v3-products],[data-v3-select-product],[data-v3-new-config]')) return navigate('products');
       if (button.matches('[data-v3-home-status]')) { state.filters.status = button.dataset.v3HomeStatus || 'all'; return navigate('products'); }
       if (button.matches('[data-v3-template]')) return navigate('template');
+      if (button.matches('[data-v3-template-refresh]')) { state.templateCenter = null; state.templateApplyPreview = null; return renderConfigTemplateCenter(); }
+      if (button.matches('[data-v3-config-template-card]')) {
+        state.selectedTemplateId = number(button.dataset.v3ConfigTemplateCard);
+        state.templateApplyPreview = null;
+        const firstGroup = selectedConfigTemplateGroups()[0];
+        state.selectedTemplateGroupId = number(firstGroup?.id || 0);
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-group]')) { state.selectedTemplateGroupId = number(button.dataset.v3TemplateGroup); return renderConfigTemplateCenter(); }
+      if (button.matches('[data-v3-template-new]')) {
+        const product = selectedProduct();
+        const name = String(prompt('请输入模板名称，例如 户外灯模板：') || '').trim();
+        if (!name) return;
+        const scope = String(prompt('适用范围：system / category / series / product', 'category') || 'category').trim();
+        const productTypeValue = scope === 'category' ? String(prompt('适用产品分类：', productType(product)) || productType(product)).trim() : '';
+        const data = await api('save_config_template', { template_name: name, scope_type: scope, product_type: productTypeValue, product_series: scope === 'series' ? productSeries(product) : '', product_id: scope === 'product' ? number(product?.id) : 0, status: 'draft', is_enabled: 1 });
+        state.templateCenter = null;
+        state.selectedTemplateId = number(data.template?.id);
+        toast('产品分类模板已新建。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-edit]')) {
+        const id = number(button.dataset.v3TemplateEdit);
+        const template = configTemplates().find(item => number(item.id) === id);
+        if (!template) return;
+        const name = String(prompt('修改模板名称：', template.template_name || '') || '').trim();
+        if (!name) return;
+        await api('save_config_template', { ...template, id, template_name: name, status: template.status || 'draft', is_enabled: template.is_enabled || 1 });
+        state.templateCenter = null;
+        toast('模板信息已保存。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-copy]')) {
+        const data = await api('copy_config_template', { template_id: number(button.dataset.v3TemplateCopy) });
+        state.templateCenter = null;
+        state.selectedTemplateId = number(data.template?.id);
+        toast('已复制为新的草稿模板。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-disable]')) {
+        if (!confirm('确认停用这个模板？已套用到产品的历史配置不会被删除。')) return;
+        await api('disable_config_template', { template_id: number(button.dataset.v3TemplateDisable) });
+        state.templateCenter = null;
+        toast('模板已停用。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-add-group]')) {
+        const template = selectedConfigTemplate();
+        if (!template) throw new Error('请先选择模板。');
+        const definitions = configTemplateCenter().group_definitions || [];
+        const name = String(prompt('配置组名称，例如 INTRACK接头 / 防水结构：') || '').trim();
+        if (!name) return;
+        let definition = definitions.find(row => row.group_name === name || row.group_code === name);
+        if (!definition) {
+          const groupType = String(prompt('配置组类型：material / attribute / mixed', 'material') || 'material').trim();
+          const groupCode = String(prompt('配置组编码，必须唯一，例如 intrack_connector：', name.toLowerCase().replace(/\s+/g, '_')) || '').trim();
+          const created = await api('save_config_group_definition', { group_name: name, group_code: groupCode, group_type: groupType, material_category_code: groupType === 'attribute' ? '' : 'accessory', business_type: 'custom', is_enabled: 1 });
+          definition = created.definition;
+        }
+        await api('save_config_template_group', { template_id: number(template.id), group_definition_id: number(definition.id), is_required: 0, selection_mode: 'single', allow_empty: 1, allow_default: 1, salesperson_editable: 1, customer_selectable: 0, is_enabled: 1, sort_order: selectedConfigTemplateGroups().length * 10 + 10, material_category_code: definition.material_category_code || '' });
+        state.templateCenter = null;
+        toast('配置组已加入当前模板。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-save-draft]')) {
+        const group = selectedConfigTemplateGroup();
+        const form = root.querySelector('[data-v3-config-template-form]');
+        if (!group || !form) { toast('当前没有需要保存的配置组。'); return; }
+        const fd = new FormData(form);
+        await api('save_config_template_group', { id: group.id, template_id: group.template_id, group_definition_id: group.group_definition_id, group_name_override: fd.get('group_name_override') || '', is_required: fd.get('is_required') || 0, selection_mode: fd.get('selection_mode') || 'single', max_select: fd.get('max_select') || 1, allow_empty: group.allow_empty, allow_default: group.allow_default, salesperson_editable: group.salesperson_editable, customer_selectable: group.customer_selectable, affects_price: group.affects_price, affects_lead_time: group.affects_lead_time, requires_approval: group.requires_approval, is_enabled: group.is_enabled, sort_order: group.sort_order, material_category_code: fd.get('material_category_code') || group.material_category_code || '', installation_type: fd.get('installation_type') || '', formal_status: fd.get('formal_status') || 'official', allow_pending: fd.get('allow_pending') || 0 });
+        state.templateCenter = null;
+        toast('模板草稿已保存。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-edit-group]')) {
+        const group = selectedConfigTemplateGroup();
+        if (!group) return;
+        const form = button.closest('[data-v3-config-template-form]');
+        const fd = new FormData(form);
+        await api('save_config_template_group', { id: group.id, template_id: group.template_id, group_definition_id: group.group_definition_id, group_name_override: fd.get('group_name_override') || '', is_required: fd.get('is_required') || 0, selection_mode: fd.get('selection_mode') || 'single', max_select: fd.get('max_select') || 1, allow_empty: group.allow_empty, allow_default: group.allow_default, salesperson_editable: group.salesperson_editable, customer_selectable: group.customer_selectable, affects_price: group.affects_price, affects_lead_time: group.affects_lead_time, requires_approval: group.requires_approval, is_enabled: group.is_enabled, sort_order: group.sort_order, material_category_code: fd.get('material_category_code') || group.material_category_code || '', installation_type: fd.get('installation_type') || '', formal_status: fd.get('formal_status') || 'official', allow_pending: fd.get('allow_pending') || 0 });
+        state.templateCenter = null;
+        toast('配置组规则已保存。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-add-option]')) {
+        const definitionId = number(button.dataset.v3TemplateAddOption);
+        const optionName = String(prompt('请输入选项名称，例如 长款 / 2线：') || '').trim();
+        if (!optionName) return;
+        const optionCode = String(prompt('请输入选项编码，例如 long / 2wire：', optionName.replace(/\s+/g, '_')) || '').trim();
+        await api('save_config_group_option', { group_definition_id: definitionId, option_name: optionName, option_code: optionCode, is_default: 0, is_enabled: 1, sort_order: 100 });
+        state.templateCenter = null;
+        toast('配置组选项已保存。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-add-condition]')) {
+        const groupId = number(button.dataset.v3TemplateAddCondition);
+        const source = String(prompt('条件来源字段或配置组编码，例如 connector_type：') || '').trim();
+        if (!source) return;
+        const expected = String(prompt('条件值，例如 intrack：') || '').trim();
+        await api('save_config_group_condition', { template_group_id: groupId, source_field: source, operator: 'eq', expected_value: expected, action_type: 'show', action_target: selectedConfigTemplateGroup()?.group_code || '', is_enabled: 1, sort_order: 100 });
+        state.templateCenter = null;
+        toast('显示条件已保存。');
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-preview]')) {
+        const product = selectedProduct();
+        const template = selectedConfigTemplate();
+        if (!product || !template) throw new Error('请先选择产品和模板。');
+        state.templateApplyPreview = await api('preview_config_template_apply', { product_id: product.id, template_id: template.id, strategy: 'fill_missing' });
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-close-preview]')) { state.templateApplyPreview = null; return renderConfigTemplateCenter(); }
+      if (button.matches('[data-v3-template-apply]')) {
+        const product = selectedProduct();
+        const template = selectedConfigTemplate();
+        if (!product || !template) throw new Error('请先选择产品和模板。');
+        state.templateApplyPreview = await api('preview_config_template_apply', { product_id: product.id, template_id: template.id, strategy: 'fill_missing' });
+        return renderConfigTemplateCenter();
+      }
+      if (button.matches('[data-v3-template-confirm-apply]')) {
+        const product = selectedProduct();
+        const template = selectedConfigTemplate();
+        if (!product || !template) throw new Error('请先选择产品和模板。');
+        const result = await api('apply_config_template_to_product', { product_id: product.id, template_id: template.id, strategy: 'fill_missing' });
+        state.templateCenter = null;
+        state.templateApplyPreview = null;
+        toast(`模板已套用：新增 ${number(result.created)}，保留 ${number(result.skipped)}，同步 ${number(result.updated)}。`);
+        return loadWorkspace(product.id, 0, 2);
+      }
       if (button.matches('[data-v3-template-tab]')) { state.templateTab = button.dataset.v3TemplateTab || 'common'; return renderTemplate(); }
       if (button.matches('[data-v3-template-all]')) {
         const form = button.closest('[data-v3-template-form]');
@@ -1146,8 +1416,12 @@
       if (button.matches('[data-v3-close-exception]')) { state.exceptionMaterialId = 0; return renderWorkbench(); }
       if (button.matches('[data-v3-read-bom]')) return toast('已读取当前产品 BOM 可用资料；缺失项会在“需要补充”中显示。');
       if (button.matches('[data-v3-empty-start]')) {
-        await api('apply_template', { product_id: selectedProduct().id, template_keys: ['light_source', 'power_driver', 'optical', 'installation'] });
-        toast('已从空白开始建立四个核心配置组。');
+        const product = selectedProduct();
+        const center = state.templateCenter || await api(`config_templates&product_id=${encodeURIComponent(product.id)}`);
+        const template = center.active_template || (center.templates || [])[0];
+        if (!template) throw new Error('请先在配置模板中心建立可用模板。');
+        await api('apply_config_template_to_product', { product_id: product.id, template_id: template.id, strategy: 'fill_missing' });
+        toast(`已按“${template.template_name}”建立动态配置组。`);
         return loadWorkspace(selectedProduct().id, 0, 2);
       }
       if (button.matches('[data-v3-copy-source]')) {
@@ -1164,9 +1438,13 @@
       }
       if (button.matches('[data-v3-save-draft]')) {
         if (!groups().length) {
-          await api('apply_template', { product_id: selectedProduct().id, template_keys: ['light_source', 'power_driver', 'optical', 'installation'] });
-          toast('草稿已保存：已建立四个核心配置组，尚未自动选择物料。');
-          return loadWorkspace(selectedProduct().id, 0, 2);
+          const product = selectedProduct();
+          const center = state.templateCenter || await api(`config_templates&product_id=${encodeURIComponent(product.id)}`);
+          const template = center.active_template || (center.templates || [])[0];
+          if (!template) throw new Error('请先在配置模板中心建立可用模板。');
+          await api('apply_config_template_to_product', { product_id: product.id, template_id: template.id, strategy: 'fill_missing' });
+          toast(`草稿已保存：已按“${template.template_name}”建立动态配置组，尚未自动选择物料。`);
+          return loadWorkspace(product.id, 0, 2);
         }
         return toast('草稿已保存。已选物料和技术范围由各配置动作实时记录。');
       }
@@ -1316,7 +1594,7 @@
     const params = new URLSearchParams(location.search);
     const productId = number(params.get('product_id'));
     state.screen = params.get('view') || (productId ? 'workspace' : 'home');
-    if (productId && number(selectedProduct()?.id) !== productId) loadWorkspace(productId);
+    if (productId && number(selectedProduct()?.id) !== productId) loadProductContext(productId, state.screen, 0, 1, false);
     else render();
   });
 

@@ -1893,3 +1893,14 @@
 - 范围：仅修改报价系统 `quotation.php` 的颜色下拉与默认值逻辑，不修改数据库、不删除业务数据、不影响物料中心。
 - 回归保护：新增 `tests/quote_color_blank_contract.php`，锁定空白颜色选项、显式空值渲染、历史明细空色不被覆盖，以及禁止旧的强制 `White` 默认回归。
 - 检查：本地 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 通过检查 `quotation.php` 和新增测试文件；临时复制到服务器 `/tmp` 执行 `quote_color_blank_contract.php` 通过。
+
+## 2026-07-31：产品适配“配置模板中心”动态化重建
+
+- 范围：按用户最新文字要求，重新规划并开发 `/material_center_v1/adaptation/index.php?product_id=100&view=template`，将配置模板页从固定模块视觉页升级为“产品分类配置模板中心”。本轮涉及物料中心产品适配模板页、适配 API、`AdaptationService`、迁移和契约测试；不回滚旧 BOM、不删除现有 `mc_*` 业务数据、不影响其他物料分类页面。
+- 备份：动手前服务器适配目录已备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_template_rebuild_backup_20260731_192910`；89 张 `mc_*` 表已导出到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/mc_tables_template_rebuild_20260731_192910.sql`（约 6.1MB）。
+- 数据结构：新增迁移 `20260731_023_config_template_center.php`，创建 `mc_config_templates`、`mc_config_group_definitions`、`mc_config_template_groups`、`mc_config_group_options`、`mc_config_group_conditions`、`mc_config_group_material_filters`、`mc_config_template_versions`、`mc_config_template_logs`；写入 `config_template.*` 统一权限并预置导轨灯、嵌入式灯具、磁吸式灯具、系统通用模板示例。
+- 后端：`AdaptationService` 新增模板中心读取、模板 CRUD、复制/停用/删除、配置组定义、模板配置组保存、属性组选项、显示条件、套用预览和套用到产品；套用默认 `fill_missing`，只补缺失配置组，保留已有选择，不直接覆盖已发布版本。
+- 前端：`view=template` 改为渲染新的产品分类配置模板中心，包含当前产品/模板来源卡片、动态模板库卡片、左侧配置组列表、右侧配置组详情、底部保存/预览/套用操作栏和套用影响预览弹窗。页面数据来自 API/DB，不再用 PHP/JS 固定十个模块作为业务结构。
+- 工作台联动：单产品快速工作台的核心配置名称改为来自动态配置组；“从空白开始”和“保存草稿”不再硬套 `light_source/power_driver/optical/installation`，改为读取当前产品匹配模板并走 `apply_config_template_to_product`。
+- 回归保护：更新 `adaptation_template_page_contract.php`，锁定动态模板中心、DB/API/权限/日志、套用预览和非固定模板入口；更新 `adaptation_quick_workspace_contract.php`，防止快速工作台回退到固定四核心键或固定 template_keys。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js`、`git diff --check` 通过；服务器 `php -l` 检查 `AdaptationService.php`、`api/v1/adaptation.php`、新增迁移、模板契约测试和快速工作台契约测试均通过；临时同步到服务器 `/tmp/artdon_template_contract` 后执行 `adaptation_template_page_contract.php`、`master_spec_contract_test.php`、`adaptation_quick_workspace_contract.php` 全部通过。

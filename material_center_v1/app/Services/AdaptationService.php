@@ -938,6 +938,402 @@ final class AdaptationService
         ];
     }
 
+    public function configTemplateCenter(int $productId = 0): array
+    {
+        if (!$this->tableExists('mc_config_templates')) {
+            return [
+                'ready' => false,
+                'product' => $productId ? $this->product($productId) : null,
+                'templates' => [],
+                'active_template' => null,
+                'active_template_groups' => [],
+                'group_definitions' => [],
+                'message' => '配置模板中心数据表尚未升级。',
+            ];
+        }
+        $product = $productId ? $this->product($productId) : null;
+        $active = $product ? $this->resolveConfigTemplateForProduct($product) : ($this->configTemplates()[0] ?? null);
+        $templates = $this->configTemplates();
+        $groupsByTemplate = [];
+        foreach ($templates as $template) $groupsByTemplate[(string) $template['id']] = $this->configTemplateGroups((int) $template['id']);
+        return [
+            'ready' => true,
+            'product' => $product,
+            'templates' => $templates,
+            'active_template' => $active,
+            'active_template_groups' => $active ? $this->configTemplateGroups((int) $active['id']) : [],
+            'groups_by_template' => $groupsByTemplate,
+            'group_definitions' => $this->configGroupDefinitions(),
+            'scope_priority' => ['product', 'series', 'category', 'system'],
+            'apply_strategies' => [
+                ['key' => 'fill_missing', 'label' => '只补齐缺失配置组（推荐）'],
+                ['key' => 'sync_rules_keep_options', 'label' => '同步模板规则，保留已选物料'],
+                ['key' => 'new_draft_version', 'label' => '创建新草稿版本后套用'],
+            ],
+        ];
+    }
+
+    public function configTemplates(): array
+    {
+        if (!$this->tableExists('mc_config_templates')) return [];
+        $rows = $this->db->query("SELECT t.*,
+                (SELECT COUNT(*) FROM mc_config_template_groups g WHERE g.template_id=t.id AND g.is_enabled=1) group_count,
+                (SELECT COUNT(DISTINCT p.id) FROM mc_products p WHERE
+                    (t.scope_type='system')
+                    OR (t.scope_type='category' AND JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.category'))=t.product_type)
+                    OR (t.scope_type='series' AND JSON_UNQUOTE(JSON_EXTRACT(p.snapshot_json,'$.series_name'))=t.product_series)
+                    OR (t.scope_type='product' AND p.id=t.product_id)
+                ) referenced_product_count
+            FROM mc_config_templates t
+            ORDER BY FIELD(t.scope_type,'system','category','series','product','custom'),t.template_name,t.id")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['settings'] = json_decode((string) ($row['settings_json'] ?? '{}'), true) ?: [];
+            $row['id'] = (int) $row['id'];
+            $row['group_count'] = (int) ($row['group_count'] ?? 0);
+            $row['referenced_product_count'] = (int) ($row['referenced_product_count'] ?? 0);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public function configGroupDefinitions(): array
+    {
+        if (!$this->tableExists('mc_config_group_definitions')) return [];
+        $rows = $this->db->query("SELECT d.*,
+                (SELECT COUNT(*) FROM mc_config_template_groups tg WHERE tg.group_definition_id=d.id) template_usage_count,
+                (SELECT COUNT(*) FROM mc_config_group_options o WHERE o.group_definition_id=d.id AND o.is_enabled=1) option_count
+            FROM mc_config_group_definitions d
+            ORDER BY d.is_system DESC,d.group_type,d.group_name")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['template_usage_count'] = (int) ($row['template_usage_count'] ?? 0);
+            $row['option_count'] = (int) ($row['option_count'] ?? 0);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public function configTemplateGroups(int $templateId): array
+    {
+        if (!$this->tableExists('mc_config_template_groups')) return [];
+        $stmt = $this->db->prepare("SELECT tg.*,d.group_name,d.group_type,d.business_type,d.material_category_code,d.description,d.icon,d.is_system,
+                (SELECT COUNT(*) FROM mc_config_group_conditions c WHERE c.template_group_id=tg.id AND c.is_enabled=1) condition_count,
+                (SELECT COUNT(*) FROM mc_config_group_material_filters f WHERE f.template_group_id=tg.id) filter_count
+            FROM mc_config_template_groups tg
+            JOIN mc_config_group_definitions d ON d.id=tg.group_definition_id
+            WHERE tg.template_id=?
+            ORDER BY tg.sort_order,tg.id");
+        $stmt->execute([$templateId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['template_id'] = (int) $row['template_id'];
+            $row['group_definition_id'] = (int) $row['group_definition_id'];
+            $row['effective_group_name'] = $row['group_name_override'] ?: $row['group_name'];
+            $row['settings'] = json_decode((string) ($row['settings_json'] ?? '{}'), true) ?: [];
+            $row['options'] = $this->configGroupOptions((int) $row['group_definition_id']);
+            $row['conditions'] = $this->configGroupConditions((int) $row['id']);
+            $row['material_filters'] = $this->configGroupMaterialFilters((int) $row['id']);
+            $row['condition_count'] = (int) ($row['condition_count'] ?? 0);
+            $row['filter_count'] = (int) ($row['filter_count'] ?? 0);
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public function saveConfigTemplate(array $data, int $userId): array
+    {
+        if (!$this->tableExists('mc_config_templates')) throw new RuntimeException('配置模板中心数据表尚未升级。');
+        $id = (int) ($data['id'] ?? 0);
+        $name = trim((string) ($data['template_name'] ?? ''));
+        if ($name === '' || mb_strlen($name) < 2) throw new RuntimeException('请填写模板名称。');
+        $scope = in_array(($data['scope_type'] ?? ''), ['system','category','series','product','custom'], true) ? (string) $data['scope_type'] : 'category';
+        $code = trim((string) ($data['template_code'] ?? ''));
+        if ($code === '') $code = 'tpl_'.substr(hash('sha1', $scope.'|'.$name.'|'.microtime(true)), 0, 12);
+        if (!preg_match('/^[a-zA-Z0-9_\-]{2,80}$/', $code)) throw new RuntimeException('模板编码只能使用字母、数字、下划线或横线。');
+        $status = in_array(($data['status'] ?? ''), ['draft','active','disabled'], true) ? (string) $data['status'] : 'draft';
+        $enabled = empty($data['is_enabled']) && $status !== 'active' ? 0 : 1;
+        if ($id > 0) {
+            $before = $this->configTemplateRow($id);
+            if (!$before) throw new RuntimeException('模板不存在。');
+            $stmt = $this->db->prepare('UPDATE mc_config_templates SET template_code=?,template_name=?,scope_type=?,product_type=?,product_series=?,product_id=?,parent_template_id=?,version_no=?,status=?,is_enabled=?,description=?,settings_json=?,updated_by=?,updated_at=NOW() WHERE id=?');
+            $stmt->execute([$code,$name,$scope,trim((string)($data['product_type'] ?? '')) ?: null,trim((string)($data['product_series'] ?? '')) ?: null,(int)($data['product_id'] ?? 0) ?: null,(int)($data['parent_template_id'] ?? 0) ?: null,trim((string)($data['version_no'] ?? 'v1.0')) ?: 'v1.0',$status,$enabled,mb_substr(trim((string)($data['description'] ?? '')),0,500) ?: null,json_encode(['scope_type'=>$scope], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),$userId,$id]);
+            $this->configTemplateLog($id, 0, 'update_template', $before, $data, $userId);
+        } else {
+            $stmt = $this->db->prepare('INSERT INTO mc_config_templates(template_code,template_name,scope_type,product_type,product_series,product_id,parent_template_id,version_no,status,is_enabled,description,settings_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+            $stmt->execute([$code,$name,$scope,trim((string)($data['product_type'] ?? '')) ?: null,trim((string)($data['product_series'] ?? '')) ?: null,(int)($data['product_id'] ?? 0) ?: null,(int)($data['parent_template_id'] ?? 0) ?: null,trim((string)($data['version_no'] ?? 'v1.0')) ?: 'v1.0',$status,$enabled,mb_substr(trim((string)($data['description'] ?? '')),0,500) ?: null,json_encode(['scope_type'=>$scope], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),$userId,$userId]);
+            $id = (int) $this->db->lastInsertId();
+            $this->configTemplateLog($id, 0, 'create_template', null, $data, $userId);
+        }
+        return ['template' => $this->configTemplateRow($id), 'groups' => $this->configTemplateGroups($id)];
+    }
+
+    public function copyConfigTemplate(int $templateId, int $userId): array
+    {
+        $template = $this->configTemplateRow($templateId);
+        if (!$template) throw new RuntimeException('模板不存在。');
+        $this->db->beginTransaction();
+        try {
+            $code = 'tpl_copy_'.substr(hash('sha1', $templateId.'|'.microtime(true)), 0, 12);
+            $stmt = $this->db->prepare("INSERT INTO mc_config_templates(template_code,template_name,scope_type,product_type,product_series,product_id,parent_template_id,version_no,status,is_enabled,description,settings_json,created_by,updated_by,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,'v1.0','draft',0,?,?,?, ?,NOW(),NOW())");
+            $stmt->execute([$code, $template['template_name'].' 副本', $template['scope_type'], $template['product_type'], $template['product_series'], $template['product_id'], $templateId, $template['description'], $template['settings_json'], $userId, $userId]);
+            $newId = (int) $this->db->lastInsertId();
+            foreach ($this->configTemplateGroups($templateId) as $group) {
+                $insert = $this->db->prepare("INSERT INTO mc_config_template_groups(template_id,group_definition_id,group_code,group_name_override,is_required,selection_mode,allow_empty,min_select,max_select,allow_default,salesperson_editable,customer_selectable,affects_price,affects_lead_time,requires_approval,sort_order,is_enabled,settings_json,created_by,updated_by,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())");
+                $insert->execute([$newId,$group['group_definition_id'],$group['group_code'],$group['group_name_override'],$group['is_required'],$group['selection_mode'],$group['allow_empty'],$group['min_select'],$group['max_select'],$group['allow_default'],$group['salesperson_editable'],$group['customer_selectable'],$group['affects_price'],$group['affects_lead_time'],$group['requires_approval'],$group['sort_order'],$group['is_enabled'],$group['settings_json'],$userId,$userId]);
+                $newGroupId = (int) $this->db->lastInsertId();
+                foreach ($group['conditions'] as $condition) {
+                    $this->db->prepare('INSERT INTO mc_config_group_conditions(template_group_id,source_field,operator,expected_value,action_type,action_target,condition_json,sort_order,is_enabled,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())')
+                        ->execute([$newGroupId,$condition['source_field'],$condition['operator'],$condition['expected_value'],$condition['action_type'],$condition['action_target'],$condition['condition_json'],$condition['sort_order'],$condition['is_enabled'],$userId,$userId]);
+                }
+                foreach ($group['material_filters'] as $filter) {
+                    $this->db->prepare('INSERT INTO mc_config_group_material_filters(template_group_id,material_category_code,material_subcategory_code,brand_limit,model_limit,installation_type,power_min,power_max,io_type,ip_rating,formal_status,approved_required,allow_pending,allow_alternative,filter_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())')
+                        ->execute([$newGroupId,$filter['material_category_code'],$filter['material_subcategory_code'],$filter['brand_limit'],$filter['model_limit'],$filter['installation_type'],$filter['power_min'],$filter['power_max'],$filter['io_type'],$filter['ip_rating'],$filter['formal_status'],$filter['approved_required'],$filter['allow_pending'],$filter['allow_alternative'],$filter['filter_json'],$userId,$userId]);
+                }
+            }
+            $this->configTemplateLog($newId, 0, 'copy_template', ['source_template_id' => $templateId], ['template_id' => $newId], $userId);
+            $this->db->commit();
+            return ['template' => $this->configTemplateRow($newId), 'groups' => $this->configTemplateGroups($newId)];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    public function disableConfigTemplate(int $templateId, int $userId): array
+    {
+        $before = $this->configTemplateRow($templateId);
+        if (!$before) throw new RuntimeException('模板不存在。');
+        $this->db->prepare("UPDATE mc_config_templates SET status='disabled',is_enabled=0,updated_by=?,updated_at=NOW() WHERE id=?")->execute([$userId, $templateId]);
+        $this->configTemplateLog($templateId, 0, 'disable_template', $before, ['status' => 'disabled'], $userId);
+        return ['template' => $this->configTemplateRow($templateId)];
+    }
+
+    public function deleteConfigTemplate(int $templateId, int $userId): array
+    {
+        $template = $this->configTemplateRow($templateId);
+        if (!$template) throw new RuntimeException('模板不存在。');
+        if (($template['status'] ?? '') !== 'draft' || (int) ($template['referenced_product_count'] ?? 0) > 0) {
+            throw new RuntimeException('只能删除未使用的草稿模板；已启用或已有引用的模板请停用。');
+        }
+        foreach ($this->configTemplateGroups($templateId) as $group) {
+            $this->db->prepare('DELETE FROM mc_config_group_material_filters WHERE template_group_id=?')->execute([$group['id']]);
+            $this->db->prepare('DELETE FROM mc_config_group_conditions WHERE template_group_id=?')->execute([$group['id']]);
+        }
+        $this->db->prepare('DELETE FROM mc_config_template_groups WHERE template_id=?')->execute([$templateId]);
+        $this->db->prepare('DELETE FROM mc_config_templates WHERE id=?')->execute([$templateId]);
+        $this->configTemplateLog($templateId, 0, 'delete_template', $template, null, $userId);
+        return [];
+    }
+
+    public function saveConfigGroupDefinition(array $data, int $userId): array
+    {
+        $id = (int) ($data['id'] ?? 0);
+        $name = trim((string) ($data['group_name'] ?? ''));
+        $this->assertMeaningfulName($name);
+        $code = trim((string) ($data['group_code'] ?? ''));
+        if ($code === '') $code = 'custom_'.substr(hash('sha1', $name.'|'.microtime(true)), 0, 12);
+        if (!preg_match('/^[a-zA-Z0-9_\-]{2,80}$/', $code)) throw new RuntimeException('配置组编码只能使用字母、数字、下划线或横线。');
+        $type = in_array(($data['group_type'] ?? ''), ['material','attribute','mixed'], true) ? (string) $data['group_type'] : 'material';
+        $category = trim((string) ($data['material_category_code'] ?? '')) ?: null;
+        $business = trim((string) ($data['business_type'] ?? '')) ?: ($category ? $this->legacyGroupType($category) : 'custom');
+        if ($id > 0) {
+            $before = $this->configGroupDefinitionRow($id);
+            if (!$before) throw new RuntimeException('配置组定义不存在。');
+            $stmt = $this->db->prepare('UPDATE mc_config_group_definitions SET group_code=?,group_name=?,group_type=?,business_type=?,material_category_code=?,description=?,icon=?,is_enabled=?,updated_by=?,updated_at=NOW() WHERE id=?');
+            $stmt->execute([$code,$name,$type,$business,$category,mb_substr(trim((string)($data['description'] ?? '')),0,500) ?: null,mb_substr(trim((string)($data['icon'] ?? '◆')),0,40),empty($data['is_enabled']) ? 0 : 1,$userId,$id]);
+            $this->configTemplateLog(0, 0, 'update_group_definition', $before, $data, $userId);
+        } else {
+            $stmt = $this->db->prepare('INSERT INTO mc_config_group_definitions(group_code,group_name,group_type,business_type,material_category_code,description,icon,is_system,is_enabled,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+            $stmt->execute([$code,$name,$type,$business,$category,mb_substr(trim((string)($data['description'] ?? '')),0,500) ?: null,mb_substr(trim((string)($data['icon'] ?? '◆')),0,40),0,empty($data['is_enabled']) ? 0 : 1,$userId,$userId]);
+            $id = (int) $this->db->lastInsertId();
+            $this->configTemplateLog(0, 0, 'create_group_definition', null, $data, $userId);
+        }
+        return ['definition' => $this->configGroupDefinitionRow($id)];
+    }
+
+    public function saveConfigTemplateGroup(array $data, int $userId): array
+    {
+        $templateId = (int) ($data['template_id'] ?? 0);
+        $definitionId = (int) ($data['group_definition_id'] ?? 0);
+        if (!$this->configTemplateRow($templateId)) throw new RuntimeException('模板不存在。');
+        $definition = $this->configGroupDefinitionRow($definitionId);
+        if (!$definition) throw new RuntimeException('请选择有效配置组类型。');
+        $id = (int) ($data['id'] ?? 0);
+        $required = !empty($data['is_required']) ? 1 : 0;
+        $selection = ($data['selection_mode'] ?? 'single') === 'multi' ? 'multi' : 'single';
+        $min = max(0, (int) ($data['min_select'] ?? ($required ? 1 : 0)));
+        $max = max($selection === 'multi' ? max(1, $min) : 1, (int) ($data['max_select'] ?? ($selection === 'multi' ? 99 : 1)));
+        $params = [
+            $definitionId,
+            $definition['group_code'],
+            trim((string)($data['group_name_override'] ?? '')) ?: null,
+            $required,
+            $selection,
+            !empty($data['allow_empty']) ? 1 : 0,
+            $min,
+            $max,
+            !empty($data['allow_default']) ? 1 : 0,
+            !empty($data['salesperson_editable']) ? 1 : 0,
+            !empty($data['customer_selectable']) ? 1 : 0,
+            !empty($data['affects_price']) ? 1 : 0,
+            !empty($data['affects_lead_time']) ? 1 : 0,
+            !empty($data['requires_approval']) ? 1 : 0,
+            (int)($data['sort_order'] ?? 100),
+            empty($data['is_enabled']) ? 0 : 1,
+            json_encode(['dynamic_template_group' => true], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $userId,
+        ];
+        if ($id > 0) {
+            $before = $this->configTemplateGroupRow($id);
+            if (!$before) throw new RuntimeException('模板配置组不存在。');
+            $stmt = $this->db->prepare('UPDATE mc_config_template_groups SET group_definition_id=?,group_code=?,group_name_override=?,is_required=?,selection_mode=?,allow_empty=?,min_select=?,max_select=?,allow_default=?,salesperson_editable=?,customer_selectable=?,affects_price=?,affects_lead_time=?,requires_approval=?,sort_order=?,is_enabled=?,settings_json=?,updated_by=?,updated_at=NOW() WHERE id=? AND template_id=?');
+            $stmt->execute([...$params, $id, $templateId]);
+            $templateGroupId = $id;
+            $this->configTemplateLog($templateId, 0, 'update_template_group', $before, $data, $userId);
+        } else {
+            $stmt = $this->db->prepare('INSERT INTO mc_config_template_groups(template_id,group_definition_id,group_code,group_name_override,is_required,selection_mode,allow_empty,min_select,max_select,allow_default,salesperson_editable,customer_selectable,affects_price,affects_lead_time,requires_approval,sort_order,is_enabled,settings_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+            $stmt->execute([$templateId, ...$params, $userId]);
+            $templateGroupId = (int) $this->db->lastInsertId();
+            $this->configTemplateLog($templateId, 0, 'create_template_group', null, $data, $userId);
+        }
+        $this->saveConfigMaterialFilterFromPayload($templateGroupId, $data, $userId);
+        return ['groups' => $this->configTemplateGroups($templateId), 'template_group_id' => $templateGroupId];
+    }
+
+    public function saveConfigGroupOption(array $data, int $userId): array
+    {
+        $definitionId = (int) ($data['group_definition_id'] ?? 0);
+        if (!$this->configGroupDefinitionRow($definitionId)) throw new RuntimeException('配置组定义不存在。');
+        $name = trim((string) ($data['option_name'] ?? ''));
+        if ($name === '') throw new RuntimeException('请填写选项名称。');
+        $code = trim((string) ($data['option_code'] ?? ''));
+        if ($code === '') $code = 'opt_'.substr(hash('sha1', $definitionId.'|'.$name.'|'.microtime(true)), 0, 10);
+        $stmt = $this->db->prepare('INSERT INTO mc_config_group_options(group_definition_id,option_code,option_name,option_image,is_default,is_enabled,sort_order,price_effect,lead_time_effect,settings_json,created_by,updated_by,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+            ON DUPLICATE KEY UPDATE option_name=VALUES(option_name),option_image=VALUES(option_image),is_default=VALUES(is_default),is_enabled=VALUES(is_enabled),sort_order=VALUES(sort_order),price_effect=VALUES(price_effect),lead_time_effect=VALUES(lead_time_effect),settings_json=VALUES(settings_json),updated_by=VALUES(updated_by),updated_at=NOW()');
+        $stmt->execute([$definitionId,$code,$name,trim((string)($data['option_image'] ?? '')) ?: null,!empty($data['is_default']) ? 1 : 0,empty($data['is_enabled']) ? 0 : 1,(int)($data['sort_order'] ?? 100),(float)($data['price_effect'] ?? 0),(int)($data['lead_time_effect'] ?? 0),json_encode(['scope' => trim((string)($data['scope'] ?? '')), 'note' => trim((string)($data['note'] ?? ''))], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),$userId,$userId]);
+        $this->configTemplateLog(0, 0, 'save_group_option', null, $data, $userId);
+        return ['options' => $this->configGroupOptions($definitionId)];
+    }
+
+    public function saveConfigGroupCondition(array $data, int $userId): array
+    {
+        $templateGroupId = (int) ($data['template_group_id'] ?? 0);
+        $group = $this->configTemplateGroupRow($templateGroupId);
+        if (!$group) throw new RuntimeException('模板配置组不存在。');
+        $condition = [
+            'source_field' => trim((string) ($data['source_field'] ?? '')),
+            'operator' => trim((string) ($data['operator'] ?? 'eq')) ?: 'eq',
+            'expected_value' => trim((string) ($data['expected_value'] ?? '')),
+            'action_type' => trim((string) ($data['action_type'] ?? 'show')) ?: 'show',
+            'action_target' => trim((string) ($data['action_target'] ?? '')),
+            'sort_order' => (int) ($data['sort_order'] ?? 100),
+            'is_enabled' => empty($data['is_enabled']) ? 0 : 1,
+        ];
+        if ($condition['source_field'] === '') throw new RuntimeException('请选择条件字段或配置组。');
+        $this->db->prepare('INSERT INTO mc_config_group_conditions(template_group_id,source_field,operator,expected_value,action_type,action_target,condition_json,sort_order,is_enabled,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())')
+            ->execute([$templateGroupId,$condition['source_field'],$condition['operator'],$condition['expected_value'],$condition['action_type'],$condition['action_target'],json_encode($condition, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),$condition['sort_order'],$condition['is_enabled'],$userId,$userId]);
+        $this->configTemplateLog((int) $group['template_id'], 0, 'save_group_condition', null, $condition, $userId);
+        return ['groups' => $this->configTemplateGroups((int) $group['template_id'])];
+    }
+
+    public function previewConfigTemplateApply(int $productId, int $templateId, string $strategy = 'fill_missing'): array
+    {
+        $product = $this->product($productId);
+        if (!$product) throw new RuntimeException('产品不存在或已停用。');
+        $template = $this->configTemplateRow($templateId);
+        if (!$template) throw new RuntimeException('模板不存在。');
+        $templateGroups = $this->configTemplateGroups($templateId);
+        $existing = [];
+        foreach ($this->groups($productId) as $group) $existing[(string) $group['group_code']] = $group;
+        $add = $update = $skip = [];
+        foreach ($templateGroups as $group) {
+            $code = (string) $group['group_code'];
+            if (!isset($existing[$code])) $add[] = $group;
+            elseif ($strategy === 'fill_missing') $skip[] = $group;
+            else $update[] = $group;
+        }
+        return [
+            'product' => $product,
+            'template' => $template,
+            'strategy' => $strategy,
+            'will_add' => array_map(static fn(array $g): string => (string) $g['effective_group_name'], $add),
+            'will_update' => array_map(static fn(array $g): string => (string) $g['effective_group_name'], $update),
+            'will_skip' => array_map(static fn(array $g): string => (string) $g['effective_group_name'], $skip),
+            'will_keep_selected_materials' => true,
+            'published_version_locked' => (int) ($product['published_version_count'] ?? 0) > 0,
+            'conflicts' => [],
+            'recommended_strategy' => 'fill_missing',
+        ];
+    }
+
+    public function applyConfigTemplateToProduct(int $productId, int $templateId, string $strategy, int $userId): array
+    {
+        $preview = $this->previewConfigTemplateApply($productId, $templateId, $strategy);
+        $strategy = in_array($strategy, ['fill_missing','sync_rules_keep_options','new_draft_version'], true) ? $strategy : 'fill_missing';
+        $groups = $this->configTemplateGroups($templateId);
+        $created = $updated = $skipped = 0;
+        $this->db->beginTransaction();
+        try {
+            foreach ($groups as $group) {
+                if (!(int) ($group['is_enabled'] ?? 0)) continue;
+                $existing = $this->db->prepare('SELECT * FROM mc_adaptation_groups WHERE product_id=? AND group_code=? LIMIT 1');
+                $existing->execute([$productId, $group['group_code']]);
+                $old = $existing->fetch(PDO::FETCH_ASSOC);
+                $definitionType = (string) ($group['group_type'] ?? 'material');
+                $category = (string) ($group['material_category_code'] ?? '');
+                $ruleJson = json_encode([
+                    'availability' => 'allowed',
+                    'dynamic_template_group' => true,
+                    'template_id' => $templateId,
+                    'template_group_id' => (int) $group['id'],
+                    'group_definition_id' => (int) $group['group_definition_id'],
+                    'group_type' => $definitionType,
+                    'attribute_options' => array_map(static fn(array $option): array => [
+                        'code' => (string) $option['option_code'],
+                        'name' => (string) $option['option_name'],
+                        'is_default' => (int) $option['is_default'],
+                        'is_enabled' => (int) $option['is_enabled'],
+                        'sort_order' => (int) $option['sort_order'],
+                    ], $group['options'] ?? []),
+                    'display_conditions' => $group['conditions'] ?? [],
+                    'material_filters' => $group['material_filters'] ?? [],
+                    'allow_empty' => (int) ($group['allow_empty'] ?? 1),
+                    'allow_default' => (int) ($group['allow_default'] ?? 1),
+                    'customer_selectable' => (int) ($group['customer_selectable'] ?? 0),
+                    'affects_price' => (int) ($group['affects_price'] ?? 0),
+                    'affects_lead_time' => (int) ($group['affects_lead_time'] ?? 0),
+                    'requires_approval' => (int) ($group['requires_approval'] ?? 0),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $name = (string) ($group['effective_group_name'] ?? $group['group_name'] ?? $group['group_code']);
+                $legacyType = $definitionType === 'attribute' ? 'custom' : $this->legacyGroupType($category ?: 'custom');
+                if ($old) {
+                    if ($strategy === 'fill_missing') { $skipped++; continue; }
+                    $this->db->prepare("UPDATE mc_adaptation_groups SET group_name=?,group_type=?,business_type=?,material_category_code=?,is_required=?,selection_mode=?,min_select=?,max_select=?,template_key=?,rule_json=?,status='draft',is_enabled=0,sort_order=?,updated_by=?,updated_at=NOW() WHERE id=?")
+                        ->execute([$name,$legacyType,$group['business_type'] ?: 'custom',$category ?: null,(int)$group['is_required'],$group['selection_mode'],(int)$group['min_select'],(int)$group['max_select'],$group['group_code'],$ruleJson,(int)$group['sort_order'],$userId,(int)$old['id']]);
+                    $updated++;
+                } else {
+                    $this->db->prepare("INSERT INTO mc_adaptation_groups(product_id,group_code,group_name,group_type,business_type,material_category_code,is_required,selection_mode,min_select,max_select,template_key,rule_json,status,is_enabled,sort_order,created_by,updated_by,created_at,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'draft',0,?,?,?,NOW(),NOW())")
+                        ->execute([$productId,$group['group_code'],$name,$legacyType,$group['business_type'] ?: 'custom',$category ?: null,(int)$group['is_required'],$group['selection_mode'],(int)$group['min_select'],(int)$group['max_select'],$group['group_code'],$ruleJson,(int)$group['sort_order'],$userId,$userId]);
+                    $created++;
+                }
+            }
+            $this->db->prepare('UPDATE mc_config_templates SET usage_count=usage_count+1,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$userId,$templateId]);
+            $this->markProductDraft($productId);
+            $this->log($productId, 'apply_config_template', ['template_id' => $templateId, 'strategy' => $strategy, 'created' => $created, 'updated' => $updated, 'skipped' => $skipped], $userId);
+            $this->configTemplateLog($templateId, $productId, 'apply_template', $preview, compact('created','updated','skipped','strategy'), $userId);
+            $this->db->commit();
+            return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'preview' => $preview];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
     public function saveTemplateCategory(array $data, int $userId): array
     {
         $productId = (int) ($data['product_id'] ?? 0);
@@ -2526,6 +2922,160 @@ final class AdaptationService
     private function hasCycle(int $productId): bool
     {
         return false;
+    }
+
+    private function configTemplateRow(int $id): ?array
+    {
+        if (!$id || !$this->tableExists('mc_config_templates')) return null;
+        $stmt = $this->db->prepare("SELECT t.*,
+                (SELECT COUNT(*) FROM mc_config_template_groups g WHERE g.template_id=t.id AND g.is_enabled=1) group_count,
+                (SELECT COUNT(*) FROM mc_adaptation_groups g WHERE JSON_EXTRACT(g.rule_json,'$.template_id')=t.id) referenced_product_count
+            FROM mc_config_templates t WHERE t.id=? LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($row) {
+            $row['id'] = (int) $row['id'];
+            $row['group_count'] = (int) ($row['group_count'] ?? 0);
+            $row['referenced_product_count'] = (int) ($row['referenced_product_count'] ?? 0);
+            $row['settings'] = json_decode((string) ($row['settings_json'] ?? '{}'), true) ?: [];
+        }
+        return $row ?: null;
+    }
+
+    private function configGroupDefinitionRow(int $id): ?array
+    {
+        if (!$id || !$this->tableExists('mc_config_group_definitions')) return null;
+        $stmt = $this->db->prepare('SELECT * FROM mc_config_group_definitions WHERE id=? LIMIT 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($row) $row['id'] = (int) $row['id'];
+        return $row ?: null;
+    }
+
+    private function configTemplateGroupRow(int $id): ?array
+    {
+        if (!$id || !$this->tableExists('mc_config_template_groups')) return null;
+        $stmt = $this->db->prepare('SELECT * FROM mc_config_template_groups WHERE id=? LIMIT 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($row) $row['id'] = (int) $row['id'];
+        return $row ?: null;
+    }
+
+    private function configGroupOptions(int $definitionId): array
+    {
+        if (!$this->tableExists('mc_config_group_options')) return [];
+        $stmt = $this->db->prepare('SELECT * FROM mc_config_group_options WHERE group_definition_id=? ORDER BY sort_order,id');
+        $stmt->execute([$definitionId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['settings'] = json_decode((string) ($row['settings_json'] ?? '{}'), true) ?: [];
+        }
+        unset($row);
+        return $rows;
+    }
+
+    private function configGroupConditions(int $templateGroupId): array
+    {
+        if (!$this->tableExists('mc_config_group_conditions')) return [];
+        $stmt = $this->db->prepare('SELECT * FROM mc_config_group_conditions WHERE template_group_id=? ORDER BY sort_order,id');
+        $stmt->execute([$templateGroupId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['condition'] = json_decode((string) ($row['condition_json'] ?? '{}'), true) ?: [];
+        }
+        unset($row);
+        return $rows;
+    }
+
+    private function configGroupMaterialFilters(int $templateGroupId): array
+    {
+        if (!$this->tableExists('mc_config_group_material_filters')) return [];
+        $stmt = $this->db->prepare('SELECT * FROM mc_config_group_material_filters WHERE template_group_id=? ORDER BY id');
+        $stmt->execute([$templateGroupId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['filter'] = json_decode((string) ($row['filter_json'] ?? '{}'), true) ?: [];
+        }
+        unset($row);
+        return $rows;
+    }
+
+    private function resolveConfigTemplateForProduct(array $product): ?array
+    {
+        $templates = $this->configTemplates();
+        if (!$templates) return null;
+        $productId = (int) ($product['id'] ?? 0);
+        $series = (string) ($product['series_name'] ?? '');
+        $type = (string) ($product['product_type'] ?? '');
+        $normalized = $type.' '.$series.' '.($product['product_name'] ?? '');
+        foreach ($templates as $template) {
+            if (($template['status'] ?? '') === 'disabled' || !(int) ($template['is_enabled'] ?? 0)) continue;
+            if (($template['scope_type'] ?? '') === 'product' && (int) ($template['product_id'] ?? 0) === $productId) return $template;
+        }
+        foreach ($templates as $template) {
+            if (($template['status'] ?? '') === 'disabled' || !(int) ($template['is_enabled'] ?? 0)) continue;
+            if (($template['scope_type'] ?? '') === 'series' && (string) ($template['product_series'] ?? '') !== '' && (string) $template['product_series'] === $series) return $template;
+        }
+        foreach ($templates as $template) {
+            if (($template['status'] ?? '') === 'disabled' || !(int) ($template['is_enabled'] ?? 0) || ($template['scope_type'] ?? '') !== 'category') continue;
+            $templateType = (string) ($template['product_type'] ?? '');
+            if ($templateType !== '' && ($templateType === $type || str_contains($type, $templateType) || str_contains($templateType, $type))) return $template;
+            if (preg_match('/导轨|轨道|track/i', $normalized) && str_contains($template['template_code'], 'track')) return $template;
+            if (preg_match('/嵌入|筒灯|射灯|downlight|recess/i', $normalized) && str_contains($template['template_code'], 'recessed')) return $template;
+            if (preg_match('/磁吸|magnetic/i', $normalized) && str_contains($template['template_code'], 'magnetic')) return $template;
+        }
+        foreach ($templates as $template) {
+            if (($template['scope_type'] ?? '') === 'system' && ($template['status'] ?? '') !== 'disabled' && (int) ($template['is_enabled'] ?? 0)) return $template;
+        }
+        return $templates[0] ?? null;
+    }
+
+    private function saveConfigMaterialFilterFromPayload(int $templateGroupId, array $data, int $userId): void
+    {
+        if (!$this->tableExists('mc_config_group_material_filters')) return;
+        $keys = ['material_category_code','material_subcategory_code','brand_limit','model_limit','installation_type','io_type','ip_rating'];
+        $hasFilter = false;
+        foreach ($keys as $key) if (trim((string) ($data[$key] ?? '')) !== '') $hasFilter = true;
+        if (!$hasFilter && !isset($data['allow_pending']) && !isset($data['allow_alternative'])) return;
+        $this->db->prepare('DELETE FROM mc_config_group_material_filters WHERE template_group_id=?')->execute([$templateGroupId]);
+        $stmt = $this->db->prepare('INSERT INTO mc_config_group_material_filters(template_group_id,material_category_code,material_subcategory_code,brand_limit,model_limit,installation_type,power_min,power_max,io_type,ip_rating,formal_status,approved_required,allow_pending,allow_alternative,filter_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+        $stmt->execute([
+            $templateGroupId,
+            trim((string) ($data['material_category_code'] ?? '')) ?: null,
+            trim((string) ($data['material_subcategory_code'] ?? '')) ?: null,
+            trim((string) ($data['brand_limit'] ?? '')) ?: null,
+            trim((string) ($data['model_limit'] ?? '')) ?: null,
+            trim((string) ($data['installation_type'] ?? '')) ?: null,
+            ($data['power_min'] ?? '') === '' ? null : (float) $data['power_min'],
+            ($data['power_max'] ?? '') === '' ? null : (float) $data['power_max'],
+            trim((string) ($data['io_type'] ?? '')) ?: null,
+            trim((string) ($data['ip_rating'] ?? '')) ?: null,
+            trim((string) ($data['formal_status'] ?? 'official')) ?: 'official',
+            array_key_exists('approved_required', $data) ? (empty($data['approved_required']) ? 0 : 1) : 1,
+            empty($data['allow_pending']) ? 0 : 1,
+            array_key_exists('allow_alternative', $data) ? (empty($data['allow_alternative']) ? 0 : 1) : 1,
+            json_encode(['source' => 'template_group_form'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $userId,
+            $userId,
+        ]);
+    }
+
+    private function configTemplateLog(int $templateId, int $productId, string $action, mixed $before, mixed $after, int $userId): void
+    {
+        if (!$this->tableExists('mc_config_template_logs')) return;
+        $stmt = $this->db->prepare('INSERT INTO mc_config_template_logs(template_id,product_id,action,before_json,after_json,actor_id,created_at) VALUES(?,?,?,?,?,?,NOW())');
+        $stmt->execute([
+            $templateId ?: null,
+            $productId ?: null,
+            $action,
+            $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $userId,
+        ]);
     }
 
     private function tableExists(string $table): bool
