@@ -188,7 +188,7 @@
         ${[['unconfigured','未配置'],['configuring','配置中'],['needs_check','待检查'],['pending_approval','待审批'],['published','已发布'],['conflict','存在冲突']].map(([key,label]) => `<button class="mc-v3-metric" data-v3-home-status="${key}" type="button"><b>${number(c[key])}</b><small>${label}</small></button>`).join('')}
       </section>
       <section class="mc-v3-panel">
-        <div class="mc-v3-panel__head"><div><h2>继续最近配置</h2><p>显示最近 5 个已有配置动作的产品，可直接回到单产品工作台。</p></div><button class="mc-button" data-v3-products type="button">查看全部产品</button></div>
+        <div class="mc-v3-panel__head"><div><h2>最近产品 / 继续最近配置</h2><p>显示最近 5 个已有配置动作的产品，可直接回到单产品工作台。</p></div><button class="mc-button" data-v3-products type="button">查看全部产品</button></div>
         <div class="mc-v3-recent">${recent.length ? recent.map(product => `<button class="mc-v3-product-row" data-v3-open-product="${number(product.id)}" type="button">${productImage(product)}<span><b>${esc(productCode(product))}</b><small>${esc(productName(product))} · ${esc(productSeries(product))}</small></span><b class="${badgeClass(configState(product))}">${esc(statusLabel(configState(product)))}</b><span>${completionOf(product)}% · 缺 ${Math.max(0, number(product.required_group_count) - number(product.complete_required_group_count))} · 冲突 ${conflictCount(product)}</span></button>`).join('') : '<div class="mc-v3-empty">暂无最近配置产品，请先进入“全部产品”选择一个产品。</div>'}</div>
       </section>
       <section class="mc-v3-panel">
