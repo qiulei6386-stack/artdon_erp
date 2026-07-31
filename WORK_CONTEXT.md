@@ -1851,3 +1851,14 @@
 - 颜色：产品适配页内普通主操作统一青绿色，次操作白底灰边，警告操作橙色；红色仅用于不适配、危险和例外相关操作。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=100` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error；未登录 HTTP 访问返回 302 登录跳转属正常鉴权。
 - 发布：功能提交 `c68cbf0d9eca7f06339f4d654f87da97e9bbbb0d` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
+
+## 2026-07-31：产品适配“需要补充”遮挡修复
+
+- 范围：修复 `/material_center_v1/adaptation/index.php?view=workspace&product_id=67` 单产品配置工作台中“需要补充 N 项”被底部“配置检查 / 提交审批”栏遮挡的问题；本轮只改前端布局和参数补充交互，不改数据库结构、不修改旧 BOM、不影响其他物料中心页面。
+- 备份：修改前服务器当前适配目录已备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_missing_footer_backup_20260731_175410`。
+- 布局：主工作区改为产品摘要、三步流程、配置来源摘要、四个核心配置、底部操作栏五行 grid；底部栏作为真实布局最后一行，不再 fixed 覆盖主内容，也不通过增加 `margin-bottom` 临时规避。
+- 需要补充：主页面不再长期展开 4 张补充字段卡片；底部栏左侧显示“需要补充 N 项 + 立即补充”，无缺失时显示“必要技术参数已完整”。检查摘要合并在同一底部区域，显示通过、待确认和阻断数量。
+- 弹窗：点击“立即补充”打开“补充必要技术参数”集中弹窗，宽度 720–860px、最大高度 70vh、两列字段布局、头部和底部固定、字段区内部滚动；支持一次填写多个字段，并提供“保存草稿”和“保存并重新检查”。
+- 保存：保存参数继续调用现有 `save_technical_profile` 接口；“保存并重新检查”关闭弹窗后通过 AJAX 原位重新读取工作台数据，更新缺失数量、完成度和检查摘要，不做整页刷新，不改变页面位置。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；服务器 `adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=workspace&product_id=67` 输出 `adaptation-bootstrap`、`adaptation-v3.js` 和 `app.css`，无 Fatal Error。
+- 发布：功能提交 `c60e8f4edcc9302a5e42f6254cf68cb29896cdbc` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
