@@ -1874,3 +1874,14 @@
 - 回归保护：新增 `material_center_v1/tests/adaptation_template_page_contract.php`，锁定配置模板页的产品卡、三类标签、模块卡片、右侧规则面板、底部操作栏和真实模板提交字段。
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 检查新增测试文件语法。服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_template_page_contract.php` 通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出 `配置模板`、`adaptation-bootstrap` 和 `adaptation-v3.js`，无 Fatal Error。
 - 发布：功能提交 `5e1b9d98e742214770eb68fcae5e274394911b69` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
+
+## 2026-07-31：产品适配配置模板页逻辑打通
+
+- 问题：配置模板页上一版主要是视觉界面，右侧“自定义分类 / 分类规则”、Tab、保存草稿等动作没有真正串到产品适配业务；服务端直开 `?view=template` 也未作为合法初始视图处理。
+- 备份：部署前服务器相关文件已备份到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_template_logic_backup_20260731_183153`，包含入口页、API、`AdaptationService`、前端 JS/CSS 和模板页契约测试。
+- 后端：`adaptation.php` 新增 `save_template_category`、`delete_template_category` 动作；`AdaptationService` 新增 `saveTemplateCategory()`、`deleteTemplateCategory()`。自定义分类保存为当前产品的 `mc_adaptation_groups` 自定义配置组，`rule_json` 保存 `template_custom_category`、适用产品类型、字段名称、选项值和单/多选设置；不新增表、不改数据库结构。
+- 前端：配置模板页 Tab 可切换；“按产品分类”按当前产品类型预选扩展模块；右侧建议分类可“加入”到表单，已保存分类可编辑、删除、新增选项、移除选项；“保存草稿”会保存当前标准模块和自定义分类并停留模板页；“套用配置模板”保存后进入产品工作台。
+- 业务边界：自定义分类只建立配置组和分类规则说明，不凭空生成正式物料选项；后续仍需在工作台从正式物料库添加候选物料。删除分类走现有配置组删除规则，已审批、已启用或被报价/订单引用的配置组不会被删除。
+- 入口：`adaptation/index.php` 允许服务端直接打开 `view=template` 和 `view=batch`，刷新页面不会再退回工作台或首页。
+- 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js`、`git diff --check` 通过；服务器 `php -l` 检查 `index.php`、`api/v1/adaptation.php`、`AdaptationService.php`、`adaptation_template_page_contract.php` 均通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出正常；只做无写入检查，未向正式库插入测试分类。
+- 发布：功能提交 `b26b2a840c3792de99405c3e6df5855f6b5e4fc2` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
