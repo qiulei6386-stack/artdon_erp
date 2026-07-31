@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 2 阶段基础数据模型和分类/配置组中心（待发布）
+## 本次：产品适配 V2 第 2 阶段基础数据模型和分类/配置组中心（已发布）
 
 - 用户要求继续产品适配 V2：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 使用独立 `material_center_v1/adaptation_v2/`；V2 新表使用 `mc_pa2_` 前缀；完成第 1 阶段后不用停，进入第 2 阶段直至完成。
 - 已确认用户提供的主说明 `/Users/qiulei-office/Downloads/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md` 与仓库 `material_center_v1/docs/ARTDON_PRODUCT_ADAPTATION_V2_MASTER_IMPLEMENTATION_SPEC.md` 完全一致。
@@ -13,7 +13,11 @@
 - 文档：新增 `adaptation_v2/docs/02_FOUNDATION_MODEL.md`，更新 `adaptation_v2/docs/EXECUTION_LOG.md`。新增 `material_center_v1/tests/adaptation_v2_phase2_contract.php` 锁定第 2 阶段边界和能力。
 - 本地检查：`git diff --check` 通过；办公室电脑无 PHP。已将候选文件临时复制到正式服务器 `/tmp/artdon_pa2_phase2_candidate/` 做 PHP 语法和静态契约检查：`index.php`、`api/index.php`、`foundation.php`、`migration_runner.php`、`tools/migrate.php`、迁移文件和新增契约测试均无语法错误；`adaptation_v2_phase2_contract.php` 全部通过。
 - 旧版边界检查：`git diff -- material_center_v1/adaptation material_center_v1/api/v1/adaptation.php material_center_v1/app/Services/AdaptationService.php material_center_v1/database/migrations` 为 0 行，本轮没有改旧版适配目录、旧适配 API、旧服务或旧迁移；未修改旧 BOM。
-- 待发布步骤：提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 创建 V2 新表/种子/权限；服务器复检 PHP 语法、契约、V2 状态 API 和页面 HTTP 200；核对本地/GitHub/服务器同一 HEAD。
+- 发布：第 2 阶段功能提交先推送到 GitHub 并同步服务器，随后为避免强推 GitHub 主分支，用普通 merge 提交 `35822157b4054e653b39f8c6e89066961d8441ca` 收尾；该提交已推送 GitHub `main` 并快进发布到正式服务器。
+- 数据库：正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_001_phase2_foundation`。当前行数：`mc_pa2_schema_migrations=1`、`mc_pa2_product_categories=10`、`mc_pa2_product_category_mappings=0`、`mc_pa2_group_definitions=18`、`mc_pa2_group_option_definitions=13`、`adaptation_v2_permissions=16`。
+- 服务器复检：V2 迁移二次执行返回 `applied=[]`（可重跑）；`bootstrap.php`、`adaptation_v2/index.php`、`adaptation_v2/api/index.php` PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase2_contract.php` 全部通过；`home/categories/groups/products/logs` 五个 V2 页面 CLI 渲染无 Fatal。
+- 旧版边界：正式菜单未切换，旧版 `material_center_v1/adaptation/` 仍保留；本轮未修改旧适配业务、旧适配 API、旧适配服务、旧 BOM 或旧 `mc_adaptation_*` 业务数据。
+- 待最终收尾：本条上下文记录提交并同步后，再核对本地/GitHub/服务器同一 HEAD。
 
 ## 本次：产品适配 V2 第 1 阶段冻结、审计和蓝图落地（直接服务器发布）
 
