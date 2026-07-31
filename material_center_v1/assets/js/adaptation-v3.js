@@ -20,6 +20,7 @@
     step: Number.parseInt(bootstrap.step || 1, 10) || 1,
     advancedOpen: Boolean(bootstrap.advancedOpen),
     quickCheckDone: false,
+    paramField: null,
     filters: { keyword: '', status: 'all', series: 'all', type: 'all', conflict: 'all', release: 'all', sort: 'updated' },
     materialGroup: null,
     materials: [],
@@ -408,10 +409,10 @@
           <nav class="mc-v3-quick-flow">${[['1','确认配置来源','推荐复制 / 模板 / BOM / 空白'],['2','设置核心配置','芯片、电源、光学、安装方式'],['3','检查并保存','缺什么补什么，通过后提交']].map(([id,label,tip], index) => `<span class="${index < (groups().length ? 1 : 0) + (quickCoreDone() ? 1 : 0) ? 'is-done' : index === 0 ? 'is-active' : ''}"><b>${index === 0 && groups().length ? '✓' : id}</b><strong>${label}</strong><small>${tip}</small></span>`).join('')}</nav>
           ${renderQuickSource()}
           ${renderQuickCore()}
-          ${renderMissingFields()}
-          ${renderQuickCheck()}
+          <section class="mc-v3-one-screen-bottom">${renderMissingFields()}${renderQuickCheck()}</section>
           ${state.materialGroup ? renderGroupDrawer() : ''}
           ${renderAdvancedSettings()}
+          ${renderParamModal()}
           ${renderQuickFooter()}
         </main>
       </div>
@@ -432,7 +433,7 @@
     const sourceProduct = recommendation?.product;
     const hasSource = groups().length > 0;
     return `<section class="mc-v3-work-card mc-v3-source-card">
-      <div class="mc-v3-step-title"><h3>1. 确认配置来源</h3><p>先决定从哪里开始，系统只继承配置建议和值，不复制审批状态、发布状态、审批人、发布人或原版本号。</p></div>
+      <div class="mc-v3-step-title"><h3>确认配置来源</h3><p>系统只继承配置建议和值，不复制审批状态、发布状态、审批人或版本号。</p></div>
       <div class="mc-v3-source-layout">
         <article class="mc-v3-source-recommend">
           <strong>${hasSource ? '当前已有配置草稿' : '系统推荐复制'}</strong>
@@ -450,7 +451,7 @@
   };
 
   const renderQuickCore = () => `<section class="mc-v3-module-stage mc-v3-core-stage">
-    <div class="mc-v3-step-title"><h3>2. 设置核心配置 <small>(${quickCoreDone()} / ${quickCoreKeys.length})</small></h3><p>快速模式只显示四个核心配置；完整技术范围、扩展项和规则在高级设置里维护。</p></div>
+    <div class="mc-v3-step-title"><h3>四个核心配置 <small>(${quickCoreDone()} / ${quickCoreKeys.length})</small></h3><p>点击配置项后使用宽版弹窗选择物料，主页面不向下展开候选列表。</p></div>
     <div class="mc-v3-core-list">${quickCoreGroups().map(renderQuickCoreCard).join('')}</div>
   </section>`;
 
@@ -472,15 +473,15 @@
       <div><small>默认</small><strong>${esc(optionLabel)}</strong>${recommendation && optionLabel === '未设置默认' ? `<em>系统建议：${esc(recommendation)}</em>` : ''}</div>
       <div><small>关键规格</small><span>${esc(specs || '规格待补充')}</span></div>
       <div><small>状态</small><b class="mc-v3-core-status">${esc(stateText)}</b></div>
-      <button class="mc-button ${status === 'done' ? '' : 'mc-button--primary'}" ${group ? `data-v3-manage-group="${number(group.id)}"` : 'data-v3-template'} type="button">${esc(groupActionText(group))}</button>
+      <button class="mc-button ${status === 'done' ? '' : 'mc-button--primary'}" ${group ? `data-v3-manage-group="${number(group.id)}"` : 'data-v3-template'} type="button">${esc(status === 'empty' && key === 'power' ? '选择电源' : groupActionText(group))}</button>
     </article>`;
   };
 
   const renderMissingFields = () => {
     const fields = missingFields();
     return `<section class="mc-v3-work-card mc-v3-missing-card">
-      <div class="mc-v3-step-title"><h3>需要补充 ${fields.length} 项</h3><p>快速模式只提示当前判断真正缺少的字段，不再默认展示全部功率、电流、电压、尺寸和认证字段。</p></div>
-      ${fields.length ? `<div class="mc-v3-missing-list">${fields.map(field => `<article><b>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</b><p>${esc(field.section || '技术范围')}：当前无法完成适配判断，请补充后再检查。</p><button class="mc-button" data-v3-advanced-step="1" type="button">填写</button></article>`).join('')}</div>` : '<div class="mc-v3-ready">当前没有必须补充的动态技术字段。</div>'}
+      <div class="mc-v3-step-title"><h3>需要补充 ${fields.length} 项</h3><p>${fields.length > 4 ? `先显示前 4 项，另有 ${fields.length - 4} 项可集中补充。` : '只显示当前无法判断的必要字段。'}</p></div>
+      ${fields.length ? `<div class="mc-v3-missing-list">${fields.slice(0, 4).map(field => `<article><b>${esc(field.label)}${field.unit ? `（${esc(field.unit)}）` : ''}</b><p>${esc(field.section || '技术范围')}缺失，无法判断适配。</p><button class="mc-button" data-v3-param-field="${esc(field.key)}" type="button">填写</button></article>`).join('')}${fields.length > 4 ? `<article class="mc-v3-missing-more"><b>其余 ${fields.length - 4} 项</b><p>集中补充更多技术参数。</p><button class="mc-button" data-v3-advanced-step="1" type="button">查看</button></article>` : ''}</div>` : '<div class="mc-v3-ready">当前没有必须补充的动态技术字段。</div>'}
     </section>`;
   };
 
@@ -497,7 +498,7 @@
       [approvalCount(selectedProduct()) ? 'warn' : 'ok', '不存在待审批例外'],
     ];
     return `<section class="mc-v3-work-card mc-v3-check-card">
-      <div class="mc-v3-step-title"><h3>3. 检查并保存</h3><p>检查只针对快速配置必需项；高级扩展不再阻断普通产品保存草稿。</p></div>
+      <div class="mc-v3-step-title"><h3>检查摘要</h3><p>完整检查结果可在高级设置查看。</p></div>
       <div class="mc-v3-quick-checks">${checks.map(([level, label]) => `<span class="is-${level}">${level === 'bad' ? '×' : level === 'warn' ? '△' : '✓'} ${esc(label)}</span>`).join('')}</div>
       ${blockers.length ? `<div class="mc-v3-issues">${blockers.map(issue => `<p>× ${esc(issue)}</p>`).join('')}</div>` : '<div class="mc-v3-ready">核心配置检查未发现阻断项，可以保存草稿或提交确认。</div>'}
       ${warnings.length ? `<div class="mc-v3-warnings">${warnings.map(issue => `<p>△ ${esc(issue)}</p>`).join('')}</div>` : ''}
@@ -507,9 +508,24 @@
   const renderAdvancedSettings = () => {
     if (!state.advancedOpen) return '';
     return `<section class="mc-v3-work-card mc-v3-advanced-panel">
-      <div class="mc-v3-step-title"><h3>高级设置</h3><p>高级能力完整保留，按需打开：技术范围、扩展可选、条件规则、替代关系、价格交期、例外审批、配置版本、发布历史和日志。</p></div>
+      <div class="mc-v3-step-title"><h3>高级设置</h3><p>高级能力完整保留，内部滚动：技术范围、扩展可选、条件规则、例外审批、配置版本、发布历史和日志。</p><button class="mc-icon-button" data-v3-close-advanced type="button">×</button></div>
       <nav class="mc-v3-advanced-tabs">${[['1','完整技术范围'],['3','扩展可选'],['4','条件规则'],['5','例外审批'],['6','配置版本 / 发布历史']].map(([id,label]) => `<button class="${state.step === number(id) ? 'is-active' : ''}" data-v3-advanced-step="${id}" type="button">${esc(label)}</button>`).join('')}</nav>
-      ${renderStepContent()}
+      <div class="mc-v3-advanced-scroll">${renderStepContent()}</div>
+    </section>`;
+  };
+
+  const renderParamModal = () => {
+    if (!state.paramField) return '';
+    const fields = state.workspace?.technical_profile?.fields || state.metadata.technical_profile_fields || [];
+    const field = fields.find(item => item.key === state.paramField);
+    if (!field) return '';
+    const value = state.workspace?.technical_profile?.values?.[field.key] ?? '';
+    return `<section class="mc-v3-param-modal" role="dialog" aria-modal="true">
+      <form class="mc-v3-param-box" data-v3-param-form>
+        <header><div><h3>补充技术参数</h3><p>${esc(field.label)}${field.unit ? ` · ${esc(field.unit)}` : ''}</p></div><button class="mc-icon-button" data-v3-close-param type="button">×</button></header>
+        <div class="mc-v3-param-body"><label><span>字段名称</span><b>${esc(field.label)}</b></label><label><span>当前建议值</span><b>${value === '' || value === null ? '暂无建议' : esc(value)}</b></label><label><span>建议来源</span><b>BOM / PLM / 命名系统 / 已选物料综合判断</b></label><label><span>确认值${field.unit ? `（${esc(field.unit)}）` : ''}</span>${profileInput(field)}</label></div>
+        <footer><button class="mc-button" data-v3-close-param type="button">取消</button><button class="mc-button mc-button--primary" type="submit">确认填写</button></footer>
+      </form>
     </section>`;
   };
 
@@ -574,13 +590,14 @@
     if (!group) return '';
     const key = canonicalGroupKey(group);
     const picked = number(group.option_count);
-    return `<section class="mc-v3-config-drawer mc-v3-wide-picker">
-      <header><div><h3>${esc(moduleLabel(key))}</h3><span>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'single' ? '单选' : '多选'}</span></div><button class="mc-icon-button" data-v3-close-drawer type="button">×</button></header>
-      <nav><button class="is-active" type="button">选项列表</button><button type="button">默认设置</button><button type="button">替代关系</button><button type="button">适用条件</button><button type="button">价格/交期</button><button type="button">审批记录</button></nav>
-      <div class="mc-v3-picker-requirements"><b>产品当前要求</b><span>功率/电流/电压、尺寸空间、安装方式、调光、防护等级和质保会从 BOM、PLM、命名系统、已选物料与技术范围中综合判断。</span><button class="mc-button" data-v3-advanced-step="1" type="button">补充技术范围</button></div>
-      <div class="mc-v3-drawer-tools"><label><span>⌕</span><input placeholder="搜索品牌、型号或规格"></label><button class="mc-button" data-v3-manage-group="${number(group.id)}" type="button">刷新候选</button></div>
-      <div class="mc-v3-candidate-list">${state.drawerLoading ? '<div class="mc-v3-loading">正在读取候选物料…</div>' : renderCandidates()}</div>
-      <footer><span>当前正式选项 ${picked} 项。只允许正式且已批准物料直接加入；不适配物料必须走例外审批。</span><button class="mc-button" data-v3-close-drawer type="button">关闭</button><button class="mc-button mc-button--primary" data-v3-save-next type="button">保存并处理下一项</button></footer>
+    return `<section class="mc-v3-config-drawer mc-v3-wide-picker" role="dialog" aria-modal="true">
+      <div class="mc-v3-picker-box">
+        <header><div><h3>选择 ${esc(moduleLabel(key))}</h3><span>${group.is_required ? '必选' : '可选'} · ${group.selection_mode === 'single' ? '单选' : '多选'} · 默认只允许正式可选物料直接加入</span></div><button class="mc-icon-button" data-v3-close-drawer type="button">×</button></header>
+        <div class="mc-v3-picker-requirements"><b>当前产品要求</b><span>输出电流 / 输出功率 / 输出电压 / 输入电压 / 最大尺寸 / 安装方式 / 调光方式 / 防护等级 / 质保要求</span><button class="mc-button" data-v3-advanced-step="1" type="button">补充技术范围</button></div>
+        <div class="mc-v3-picker-filters"><button class="is-active" type="button">正式可选 ${state.materials.length || picked}</button><button type="button">待确认</button><button type="button">待整理来源</button><button type="button">异常</button><select><option>输出电流：全部</option></select><select><option>输入电压：全部</option></select><select><option>调光方式：全部</option></select><button class="mc-button" type="button">更多筛选</button><label><input placeholder="搜索品牌 / 型号 / 关键字"><span>⌕</span></label></div>
+        <div class="mc-v3-candidate-list">${state.drawerLoading ? '<div class="mc-v3-loading">正在读取候选物料…</div>' : renderCandidates()}</div>
+        <footer><span>当前选中 ${picked} 项</span><button class="mc-button" data-v3-close-drawer type="button">取消</button><button class="mc-button mc-button--primary" data-v3-save-next type="button">确认选择</button></footer>
+      </div>
     </section>`;
   };
 
@@ -647,7 +664,10 @@
       if (button.matches('[data-v3-batch],[data-v3-copy-current]')) return navigate('batch');
       if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 1);
       if (button.matches('[data-v3-toggle-advanced]')) { state.advancedOpen = !state.advancedOpen; return renderWorkbench(); }
+      if (button.matches('[data-v3-close-advanced]')) { state.advancedOpen = false; return renderWorkbench(); }
       if (button.matches('[data-v3-advanced-step]')) { state.advancedOpen = true; state.step = number(button.dataset.v3AdvancedStep || 1); return renderWorkbench(); }
+      if (button.matches('[data-v3-param-field]')) { state.paramField = button.dataset.v3ParamField || ''; return renderWorkbench(); }
+      if (button.matches('[data-v3-close-param]')) { state.paramField = null; return renderWorkbench(); }
       if (button.matches('[data-v3-read-bom]')) return toast('已读取当前产品 BOM 可用资料；缺失项会在“需要补充”中显示。');
       if (button.matches('[data-v3-empty-start]')) {
         await api('apply_template', { product_id: selectedProduct().id, template_keys: ['light_source', 'power_driver', 'optical', 'installation'] });
@@ -689,7 +709,7 @@
         const result = await api('add_options', { group_id: state.materialGroup.id, material_ids: [number(button.dataset.v3AddMaterial)] });
         if (state.materialGroup.selection_mode === 'single' && result.optionIds?.[0]) await api('set_default', { group_id: state.materialGroup.id, option_ids: [result.optionIds[0]], min_select: state.materialGroup.is_required ? 1 : 0, max_select: 1 });
         toast('物料已加入配置。');
-        return loadWorkspace(selectedProduct().id, state.materialGroup.id, state.step);
+        return loadWorkspace(selectedProduct().id, 0, state.step);
       }
       if (button.matches('[data-v3-exception-material]')) {
         const reason = prompt('请填写必须使用该不适配物料的工程例外原因：');
@@ -735,6 +755,21 @@
         fields.forEach(field => { profile[field.key] = field.type === 'multi' ? form.getAll(field.key) : form.get(field.key); });
         await api('save_technical_profile', { product_id: selectedProduct().id, profile });
         toast('技术范围已保存。');
+        return loadWorkspace(selectedProduct().id, 0, 2);
+      }
+      if (event.target.matches('[data-v3-param-form]')) {
+        event.preventDefault();
+        const fields = state.workspace?.technical_profile?.fields || state.metadata.technical_profile_fields || [];
+        const old = { ...(state.workspace?.technical_profile?.values || {}) };
+        const form = new FormData(event.target);
+        fields.forEach(field => {
+          if (field.key !== state.paramField) return;
+          old[field.key] = field.type === 'multi' ? form.getAll(field.key) : form.get(field.key);
+        });
+        await api('save_technical_profile', { product_id: selectedProduct().id, profile: old });
+        state.paramField = null;
+        state.quickCheckDone = false;
+        toast('技术参数已补充，匹配结果将重新计算。');
         return loadWorkspace(selectedProduct().id, 0, 2);
       }
       if (event.target.matches('[data-v3-template-form]')) {

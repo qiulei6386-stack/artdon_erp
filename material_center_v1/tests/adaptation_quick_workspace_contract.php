@@ -27,7 +27,21 @@ $checks = [
         => str_contains($script, "if (!group) return '';"),
     '物料选择改为宽版比较区域'
         => str_contains($script, 'mc-v3-wide-picker')
-            && str_contains($style, '.mc-v3-wide-picker .mc-v3-candidate-list'),
+            && str_contains($style, '.mc-v3-picker-box')
+            && str_contains($style, 'height:min(78vh,760px)'),
+    '主工作台使用一屏固定工作区'
+        => str_contains($style, '.mc-page--adaptation-v3 .mc-v3-workbench-page')
+            && str_contains($style, 'height:calc(100vh - 116px)')
+            && str_contains($style, 'overflow:hidden'),
+    '缺失字段使用小弹窗填写'
+        => str_contains($script, 'renderParamModal')
+            && str_contains($script, 'data-v3-param-form')
+            && str_contains($style, '.mc-v3-param-modal'),
+    '高级设置是覆盖式面板且内部滚动'
+        => str_contains($style, '.mc-v3-advanced-panel{position:fixed')
+            && str_contains($style, '.mc-v3-advanced-scroll'),
+    '选择物料后关闭弹窗回到主页面'
+        => str_contains($script, 'return loadWorkspace(selectedProduct().id, 0, state.step);'),
     '配置来源复制不复制审批发布状态提示'
         => str_contains($script, '不会复制审批状态、发布状态、审批人、发布人或原版本号'),
     '提交确认不直接发布'
