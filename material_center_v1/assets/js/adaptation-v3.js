@@ -823,9 +823,116 @@
   };
 
   const renderMaterials = () => renderWorkbench();
+  const templateModules = () => {
+    const base = [
+      { key: 'light_source', name: '芯片 / 光源', icon: '▦', type: 'core', selection_mode: 'single' },
+      { key: 'power_driver', name: '电源 / 驱动', icon: '♙', type: 'core', selection_mode: 'single' },
+      { key: 'optical', name: '光学 / 透镜', icon: '◉', type: 'core', selection_mode: 'single' },
+      { key: 'installation', name: '安装方式', icon: '⌁', type: 'core', selection_mode: 'single' },
+      { key: 'dimming', name: '调光方式', icon: '◔', type: 'extend', selection_mode: 'multi' },
+      { key: 'honeycomb', name: '蜂巢网', icon: '◎', type: 'extend', selection_mode: 'single' },
+      { key: 'protective_glass', name: '玻璃', icon: '▯', type: 'extend', selection_mode: 'single' },
+      { key: 'accessories', name: '附件配件', icon: '✣', type: 'extend', selection_mode: 'multi' },
+      { key: 'finish_color', name: '外观颜色', icon: '●', type: 'extend', selection_mode: 'multi' },
+      { key: 'special_requirements', name: '特殊要求', icon: '✧', type: 'extend', selection_mode: 'multi' },
+    ];
+    const metadata = Array.isArray(state.metadata.template) ? state.metadata.template : [];
+    const used = new Set();
+    const rows = base.map(item => {
+      const meta = metadata.find(group => group.key === item.key || group.name === item.name);
+      if (meta) used.add(meta.key);
+      const required = Number(meta?.is_required ?? (item.type === 'core' ? 1 : 0)) === 1;
+      return {
+        ...item,
+        ...meta,
+        key: meta?.key || item.key,
+        name: meta?.name || item.name,
+        icon: item.icon,
+        type: required ? 'core' : item.type,
+        selection_mode: meta?.selection_mode || item.selection_mode,
+        is_required: required ? 1 : 0,
+      };
+    });
+    metadata.filter(group => !used.has(group.key)).forEach(group => rows.push({
+      ...group,
+      icon: '□',
+      type: Number(group.is_required) ? 'core' : 'extend',
+      selection_mode: group.selection_mode || 'single',
+    }));
+    return rows;
+  };
+
+  const templateCategoryCards = () => [
+    { title: 'A. 导轨灯分类', applies: '适用于：导轨灯', field: '接头线数', options: ['2线', '3线', '4线', '6线'] },
+    { title: 'B. 磁吸灯分类', applies: '适用于：磁吸灯', field: '灯体长度', options: ['短款', '长款'] },
+    { title: 'C. 磁吸配件', applies: '适用于：磁吸灯 / 配件', field: '连接件类型', options: ['直通', 'L角', 'T角', '十字'] },
+  ];
+
+  const updateTemplateCount = form => {
+    const counter = form?.querySelector('[data-v3-template-count]');
+    if (counter) counter.textContent = String(form.querySelectorAll('input[name="template_key"]:checked').length);
+  };
+
   const renderTemplate = () => {
     const product = selectedProduct();
-    root.innerHTML = `<section class="mc-v3-page-shell mc-v3-template"><div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>配置模板</b></div><header class="mc-v3-screen-head"><div><h1>配置模板</h1><p>按核心模组快速生成配置骨架，不重复插入已有配置组。</p></div><button class="mc-button" data-v3-home type="button">返回产品列表</button></header>${product ? `<div class="mc-v3-template-target">当前产品：<b>${esc(productCode(product))}</b> ${esc(productName(product))}</div>` : ''}<form data-v3-template-form><div class="mc-v3-template-options">${(state.metadata.template || []).map(group => `<label><input type="checkbox" name="template_key" value="${esc(group.key)}" ${group.is_required ? 'checked' : ''}><span><b>${esc(group.name)}</b><small>${group.is_required ? '核心必配' : '扩展可配'} · ${esc(group.selection_mode === 'single' ? '单选' : '多选')}</small></span></label>`).join('')}</div><button class="mc-button mc-button--primary" type="submit">套用所选模板</button></form></section>`;
+    const modules = templateModules();
+    const selectedCount = modules.filter(group => Number(group.is_required) === 1).length;
+    const productCodeText = product ? productCode(product) : '—';
+    root.innerHTML = `<section class="mc-v3-page-shell mc-v3-template mc-v3-template-page">
+      <div class="mc-v3-breadcrumb">Artdon ERP / 物料中心 / 产品适配 / <b>配置模板</b></div>
+      <header class="mc-v3-screen-head mc-v3-template-head">
+        <div><h1>配置模板</h1><p>通过清晰、紧凑的模板配置，快速定义产品适配所需模块，并支持自定义分类构建，提升配置效率。</p></div>
+      </header>
+      <form class="mc-v3-template-form" data-v3-template-form>
+        <div class="mc-v3-template-product-card">
+          <div>${product ? productImage(product) : '<span class="mc-v3-product-photo"><i>IMG</i></span>'}<span>当前产品：<b>${esc(productCodeText)}</b><strong>${esc(product ? productName(product) : '请先选择产品')}</strong></span></div>
+          <button class="mc-button" data-v3-products type="button">更换产品</button>
+        </div>
+        <div class="mc-v3-template-shell">
+          <section class="mc-v3-template-board">
+            <nav class="mc-v3-template-tabs" aria-label="配置模板分类">
+              <button class="is-active" type="button">通用模板</button>
+              <button data-v3-template-ui-action type="button">按产品分类</button>
+              <button data-v3-template-ui-action type="button">自定义分类模板</button>
+            </nav>
+            <div class="mc-v3-template-card-panel">
+              <header><div><h2>模板模块选择</h2><p>选择本模板中需要包含的配置模块，核心必配模块将用于生成产品适配的基础配置项。</p></div><span><button class="mc-button" data-v3-template-reset type="button">⟲ 重置</button><button class="mc-button" data-v3-template-all type="button">✓ 全选</button></span></header>
+              <div class="mc-v3-template-card-grid">
+                ${modules.map(group => {
+                  const isCore = Number(group.is_required) === 1;
+                  const mode = group.selection_mode === 'multi' ? '多选' : '单选';
+                  return `<label class="mc-v3-template-module ${isCore ? 'is-selected' : ''}">
+                    <input type="checkbox" name="template_key" value="${esc(group.key)}" data-v3-core="${isCore ? '1' : '0'}" ${isCore ? 'checked' : ''}>
+                    <span class="mc-v3-template-icon">${esc(group.icon || '□')}</span>
+                    <span><b>${esc(group.name)}</b><small><em class="${isCore ? 'is-core' : 'is-extend'}">${isCore ? '核心必配' : '扩展可配'}</em><em>${esc(mode)}</em></small></span>
+                  </label>`;
+                }).join('')}
+              </div>
+            </div>
+          </section>
+          <aside class="mc-v3-template-rule-panel">
+            <header><h2>自定义分类 / 分类规则</h2><p>创建并管理自定义分类，定义适用范围与选项规则。</p></header>
+            <div class="mc-v3-rule-form">
+              <label><span>分类名称</span><input type="text" placeholder="请输入分类名称" aria-label="分类名称"></label>
+              <label><span>适用产品类型</span><select aria-label="适用产品类型"><option>请选择产品类型</option><option>导轨灯</option><option>磁吸灯</option><option>筒灯 / 射灯</option></select></label>
+              <fieldset><legend>选择方式</legend><label><input type="radio" name="template_pick_mode" checked> 单选</label><label><input type="radio" name="template_pick_mode"> 多选</label></fieldset>
+              <button class="mc-v3-dashed-button" data-v3-template-ui-action type="button">＋ 新增分类</button>
+            </div>
+            <h3>已创建的自定义分类</h3>
+            <div class="mc-v3-custom-category-list">
+              ${templateCategoryCards().map(card => `<article class="mc-v3-custom-category-card">
+                <header><span>::</span><b>${esc(card.title)}</b><em>${esc(card.applies)}</em><button data-v3-template-ui-action type="button">编辑</button><button class="is-danger" data-v3-template-ui-action type="button">删除</button><button data-v3-template-ui-action type="button">⌄</button></header>
+                <section><div><strong>${esc(card.field)}</strong><button data-v3-template-ui-action type="button">⊕ 新增选项</button></div><p>${card.options.map(option => `<span>${esc(option)} <i>×</i></span>`).join('')}</p></section>
+              </article>`).join('')}
+            </div>
+          </aside>
+        </div>
+        <footer class="mc-v3-template-footer">
+          <div><span><b>✓</b> 已选模块 <strong data-v3-template-count>${selectedCount}</strong> 项</span><i></i><span><b>■</b> 自定义分类 <strong>${templateCategoryCards().length}</strong> 项</span><i></i><span><b>◆</b> 适用产品：导轨灯 / 磁吸灯</span></div>
+          <section><button class="mc-button" data-v3-template-draft type="button">▣ 保存草稿</button><button class="mc-button mc-button--primary" type="submit">▶ 套用配置模板</button></section>
+        </footer>
+      </form>
+    </section>`;
   };
 
   const renderBatch = () => {
@@ -882,6 +989,23 @@
       if (button.matches('[data-v3-products],[data-v3-select-product],[data-v3-new-config]')) return navigate('products');
       if (button.matches('[data-v3-home-status]')) { state.filters.status = button.dataset.v3HomeStatus || 'all'; return navigate('products'); }
       if (button.matches('[data-v3-template]')) return navigate('template');
+      if (button.matches('[data-v3-template-all]')) {
+        const form = button.closest('[data-v3-template-form]');
+        form?.querySelectorAll('input[name="template_key"]').forEach(input => { input.checked = true; input.closest('.mc-v3-template-module')?.classList.add('is-selected'); });
+        updateTemplateCount(form);
+        return;
+      }
+      if (button.matches('[data-v3-template-reset]')) {
+        const form = button.closest('[data-v3-template-form]');
+        form?.querySelectorAll('input[name="template_key"]').forEach(input => {
+          input.checked = input.dataset.v3Core === '1';
+          input.closest('.mc-v3-template-module')?.classList.toggle('is-selected', input.checked);
+        });
+        updateTemplateCount(form);
+        return;
+      }
+      if (button.matches('[data-v3-template-draft]')) return toast('配置模板草稿已保留在当前页面，点击“套用配置模板”后才会写入产品配置。');
+      if (button.matches('[data-v3-template-ui-action]')) return toast('分类规则界面已整理完成；正式保存分类规则需要下一步接入独立规则接口。');
       if (button.matches('[data-v3-batch],[data-v3-copy-current]')) return navigate('batch');
       if (button.matches('[data-v3-open-product]')) return loadWorkspace(number(button.dataset.v3OpenProduct), 0, 1);
       if (button.matches('[data-v3-toggle-advanced]')) { state.advancedOpen = !state.advancedOpen; return renderWorkbench(); }
@@ -970,6 +1094,11 @@
 
   page.addEventListener('change', event => {
     const target = event.target;
+    if (target.matches('input[name="template_key"]')) {
+      target.closest('.mc-v3-template-module')?.classList.toggle('is-selected', target.checked);
+      updateTemplateCount(target.closest('[data-v3-template-form]'));
+      return;
+    }
     if (target.matches('[data-v3-filter-status]')) state.filters.status = target.value;
     else if (target.matches('[data-v3-filter-series]')) state.filters.series = target.value;
     else if (target.matches('[data-v3-filter-type]')) state.filters.type = target.value;
