@@ -1,13 +1,14 @@
 # Artdon ERP 工作上下文
 
-## 本次：简化物料中心单产品配置工作台（进行中）
+## 本次：简化物料中心单产品配置工作台（已发布）
 
 - 用户要求只改 `/material_center_v1/adaptation/` 的单产品工作台，入口首页和全部产品页暂时保留；目标是把默认六步工程流程改为“快速配置为主 + 高级设置按需打开”，不删除现有技术范围、配置组、规则、审批、版本、旧 BOM 或权限系统。
 - 服务器备份：已备份当前 adaptation 目录到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/adaptation_workspace_simplify_backup_20260731_153302`；已导出 89 张 `mc_*` 表 SQL 到 `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/mc_tables_workspace_simplify_20260731_153356.sql`（约 6.2MB）。另有表清单 JSON `/www/wwwroot/Artdon/artdon_erp/material_center_v1/backups/mc_tables_workspace_simplify_20260731_153302.json`。未修改数据库业务数据。
 - 本地改造：`adaptation/index.php` 增加旧 `step=range/core/optional/rules/approval/version` 路由映射，高级设置可按旧 step 打开；`assets/js/adaptation-v3.js` 将默认工作台改成三步快速配置：确认配置来源、四个核心配置、检查并保存；完整技术范围、扩展可选、条件规则、例外审批、配置版本/发布历史保留在“高级设置”；没有配置组时右侧抽屉不再占位；点击配置项时打开宽版候选物料比较区；保存草稿只建立四个核心配置组骨架，不自动选物料；推荐复制产品不复制审批/发布状态。
 - 样式：`assets/css/app.css` 增加快速工作台、核心配置行、动态缺失字段、检查结果、宽版候选区和底部操作条样式；1440 宽度下主工作区全宽，不保留空白右栏。
 - 新增 `material_center_v1/tests/adaptation_quick_workspace_contract.php`，固定检查快速三步、四个核心配置、高级设置保留、右栏收起、宽版候选区和旧 step 兼容。
-- 当前检查：`node --check material_center_v1/assets/js/adaptation-v3.js` 通过；`git diff --check` 通过；借正式服务器 PHP 对 `material_center_v1/adaptation/index.php` 和新增契约文件做语法检查通过。待提交、推送、部署后在服务器运行专项契约和复检。
+- 检查与部署：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 通过；`git diff --check` 通过；正式服务器 `php -l material_center_v1/adaptation/index.php` 和 `php -l material_center_v1/tests/adaptation_quick_workspace_contract.php` 通过；正式服务器专项契约 `adaptation_quick_workspace_contract.php` 9 项通过；服务器 PHP CLI 渲染 `product_id=82` 与旧 URL `step=rules` 均无 Fatal，并确认测试对象 `32.05315 BEAMX TRACK LIGHT` 的 `product_id=82`。服务器无 Node，JS 语法以本地 Node 检查为准。
+- Git / 部署：功能提交 `f0237e7f49a50cc93927f3653043f0df45324d2e` 已推送 GitHub `main`，并通过 Git bundle 在正式服务器 `/www/wwwroot/Artdon/artdon_erp/` 仅快进发布。未修改、删除或回填任何 `mc_*` 业务数据、旧 BOM 或其它物料中心页面。服务器仍保留未跟踪备份目录 `material_center_v1/adaptation_backup_20260731_094029/` 和本次 `material_center_v1/adaptation_workspace_simplify_backup_20260731_153302/`，本次未纳入 Git。
 
 ## 本次：修复报价选择 EX097 客户不弹出佣金提醒（已发布）
 
