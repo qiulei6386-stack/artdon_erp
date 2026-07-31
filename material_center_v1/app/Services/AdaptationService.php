@@ -348,9 +348,10 @@ final class AdaptationService
 
         $technicalScore = $profileConfirmed ? 20 : 0;
         $coreScore = $requiredGroups > 0 ? (int) round(50 * min($completeRequired, $requiredGroups) / $requiredGroups) : 0;
-        $optionalScore = $activeGroups > $requiredGroups ? 10 : 0;
-        $rulesScore = $activeGroups > 0 ? 10 : 0;
-        $checkScore = ($profileConfirmed && $requiredGroups > 0 && $completeRequired >= $requiredGroups && !$conflicts && !$pendingApprovals) ? 10 : 0;
+        $coreReady = $profileConfirmed && $requiredGroups > 0 && $completeRequired >= $requiredGroups;
+        $optionalScore = $coreReady && $activeGroups > $requiredGroups ? 10 : 0;
+        $rulesScore = $coreReady && $activeGroups > 0 ? 10 : 0;
+        $checkScore = ($coreReady && !$conflicts && !$pendingApprovals) ? 10 : 0;
         if (!$hasWorkingData) {
             $technicalScore = $coreScore = $optionalScore = $rulesScore = $checkScore = 0;
         }
@@ -1582,14 +1583,16 @@ final class AdaptationService
             $availability = $group['quick_rules']['availability'] ?? 'allowed';
             if ($availability === 'later') $later[] = $group['group_name'];
         }
+        $technicalReady = !empty($profileData['confirmed_at']) && count($technicalFilled) === count($technicalRequired);
+        $coreReady = $required && count($required) === count($completeCore ?? []);
         if ($later) { $segments['optional'] = 0; $issues[] = '可选配置仍标记为稍后处理：'.implode('、', $later); }
-        elseif ($groups) $segments['optional'] = 10;
+        elseif ($technicalReady && $coreReady && $groups) $segments['optional'] = 10;
 
         $invalidConditionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_conditions c JOIN mc_adaptation_options o ON o.id=c.option_id JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND (c.field_code='' OR c.operator='' OR c.expected_json IS NULL)");
         $invalidConditionStmt->execute([$productId]);
         $invalidConditions = (int) $invalidConditionStmt->fetchColumn();
         if ($invalidConditions) { $segments['rules'] = 0; $issues[] = "存在 {$invalidConditions} 条不完整适用条件"; }
-        elseif ($groups) $segments['rules'] = 10;
+        elseif ($technicalReady && $coreReady && $groups) $segments['rules'] = 10;
 
         $conflicts = $this->conflicts($productId);
         $exceptionStmt = $this->db->prepare("SELECT COUNT(*) FROM mc_adaptation_options o JOIN mc_adaptation_groups g ON g.id=o.group_id WHERE g.product_id=? AND g.status<>'disabled' AND o.requires_approval=1 AND o.exception_approved=0");
