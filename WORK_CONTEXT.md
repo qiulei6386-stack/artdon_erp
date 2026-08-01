@@ -1,13 +1,15 @@
 # Artdon ERP 工作上下文
 
-## 本次：商务中心真实发布到新加坡网站（进行中）
+## 本次：商务中心真实发布到新加坡网站（已完成）
 
 - 用户明确要求打通商务中心发布功能，不再通过 SSH 手工写入新加坡数据库，并指定继续用 `57.10511` 做真实链路验收。
 - 广州端已实现：新加坡发布页读取物料中心当前已发布产品；生成带幂等键的 `product.upsert` 任务；HMAC-SHA256 签名真实发送；成功/失败响应、外部产品编号和重试状态回写 `cc_channel_outbox`、`cc_channel_entity_links`。
 - 新加坡端已新增签名接收接口 `api/channel_product.php`：校验 5 分钟重放窗口、HMAC 和幂等键；按 SKU 新增/更新产品；生成新的活动配置版本并归档旧版本；记录 `audit_logs`。密钥只从 `/www/secure/artdon_singapore_channel.key` 读取，不进入 Git。
-- 新加坡接收端提交 `37d45c0833ec0dd80ddb2e7a07d9cb1bac055cc4` 已推送 GitHub，并通过 Git bundle 快进同步服务器；正式 PHP 语法和 7 项接收契约通过。
-- 广州端候选检查：JavaScript 语法、`git diff --check`、服务器 PHP 语法和 7 项真实发布契约通过。
-- 待完成：提交并推送广州端、同步广州服务器、为两端写入同一私有密钥、从商务中心为 `57.10511` 生成并真实发送任务，最后核验两端状态和新加坡公开页面。
+- 新加坡接收端最终提交 `4ea6485e1db911034c1d6683b4d088bf029f0bcc` 已推送 GitHub，并通过 Git bundle 快进同步服务器；正式 PHP 语法和 7 项接收契约通过。
+- 广州端最终功能提交 `787b44d8814fda8c97d61d97fe06791abb07529d` 已推送 GitHub，并通过 Git bundle 快进同步服务器；JavaScript 语法、PHP 语法和 8 项真实发布契约通过。
+- 两端同一 HMAC 密钥已安装到各自受保护的 `storage/channel_sync_secret`，属主为网站进程、权限 `0640`；密钥未提交 Git、未输出到聊天。原 `/www/secure` 方案因 PHP `open_basedir` 不可读而弃用。
+- `57.10511` 已从商务中心服务真实发布：`cc_channel_outbox.id=1`、状态 `sent`、外部编号 `SG-PRODUCT-37`，实体映射状态 `published`。新加坡产品 `id=37` 已更新为来源 `artdon_erp_material_center_v2`、来源 ID `269`、版本 `V1`、状态 `active`、价格模式 `review`，活动配置包含 A/B 两套，渠道审计记录已写入。
+- 线上验收：产品页与配置页均 HTTP 200，产品显示 `Request quote`，配置页生成 `57.10511-A`，活动配置 JSON 确认 A/B 共 2 套；重复发布通过 SKU upsert 与幂等键保护，不会重复建产品。
 
 ## 本次：商务中心 A/B 配置方案选择
 
