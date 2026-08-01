@@ -16,6 +16,9 @@ $checks = [
     'api actions' => str_contains($api, 'queue_published_product') && str_contains($api, "action === 'send'"),
     'published product UI' => str_contains($view, 'data-sg-published-products') && str_contains($js, 'data-sg-publish-product'),
     'real send UI' => str_contains($js, 'data-sg-send') && str_contains($js, "'send'"),
+    'unpublish queue' => str_contains($service, 'queueUnpublishProduct') && str_contains($api, 'queue_unpublish_product'),
+    'unpublish UI' => str_contains($js, 'data-sg-unpublish-product') && str_contains($js, '下架原因'),
+    'withdrawn state' => str_contains($service, "'withdrawn'") && str_contains($service, 'product_unpublish'),
 ];
 foreach ($checks as $label => $passed) {
     if (!$passed) { fwrite(STDERR, "FAIL: {$label}\n"); exit(1); }

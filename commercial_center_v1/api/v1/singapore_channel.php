@@ -52,6 +52,10 @@ try {
         $job = $service->queuePublishedProduct((int)($input['legacy_product_id'] ?? 0), $actor);
         $reply(['ok' => true, 'job' => $job, 'message' => '已生成新加坡产品发布任务。']);
     }
+    if ($action === 'queue_unpublish_product') {
+        $job = $service->queueUnpublishProduct((int)($input['legacy_product_id'] ?? 0), (string)($input['reason'] ?? ''), $actor);
+        $reply(['ok' => true, 'job' => $job, 'message' => '已生成新加坡产品下架任务。']);
+    }
     if ($action === 'send') {
         $job = $service->send((int)($input['outbox_id'] ?? 0), $actor);
         $reply(['ok' => true, 'job' => $job, 'message' => '已由商务中心真实发布到新加坡网站。']);

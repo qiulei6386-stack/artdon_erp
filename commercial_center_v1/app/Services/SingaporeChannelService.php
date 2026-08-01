@@ -49,10 +49,7 @@ final class SingaporeChannelService
                  ORDER BY id DESC LIMIT 100",
                 [self::CHANNEL_CODE]
             ),
-            'published_products' => array_values(array_filter(
-                (new LegacyCatalogReadRepository())->products('', '', 500),
-                static fn(array $product): bool => !empty($product['commercial_version_id'])
-            )),
+            'published_products' => $this->publishedProducts(),
             'counts' => [
                 'draft_packages' => (int)$this->scalar(
                     "SELECT COUNT(*) FROM cc_channel_packages p
@@ -83,6 +80,7 @@ final class SingaporeChannelService
             throw new \InvalidArgumentException('只能发布物料中心当前已发布的产品。');
         }
         $configuration = is_array($product['commercial_configuration'] ?? null) ? $product['commercial_configuration'] : [];
+        $link = $this->one('SELECT * FROM cc_channel_entity_links WHERE channel_code=? AND entity_type=\'published_product\' AND entity_id=?', [self::CHANNEL_CODE, $legacyProductId]);
         $image = trim((string)($product['image_path'] ?? ''));
         if ($image !== '' && !preg_match('#^https?://#i', $image)) $image = 'https://novlight.com/artdon_erp/' . ltrim($image, '/');
         $payload = ['schema_version' => '2026-08-01.2', 'event_type' => 'product.upsert', 'channel' => self::CHANNEL_CODE,
@@ -93,8 +91,28 @@ final class SingaporeChannelService
                 'dimensions' => ['opening' => $product['dim_opening'] ?? null, 'outer_diameter' => $product['dim_outer_d'] ?? null,
                     'length' => $product['dim_length'] ?? null, 'width' => $product['dim_width'] ?? null, 'height' => $product['dim_height'] ?? null],
                 'configuration' => $configuration, 'price_mode' => 'review', 'currency' => 'USD',
-                'allow_order' => true, 'inquiry_only' => true, 'stock' => 0, 'moq' => 1, 'lead_time_days' => null]];
+                'allow_order' => true, 'inquiry_only' => true, 'stock' => 0, 'moq' => 1, 'lead_time_days' => null,
+                'channel_state_version' => (string)($link['last_synced_at'] ?? '')]];
         return $this->enqueue('product_publish', 'published_product', $legacyProductId, $payload, $actor, false);
+    }
+
+    public function queueUnpublishProduct(int $legacyProductId, string $reason, array $actor): array
+    {
+        $this->permissions->assert($actor, 'send');
+        $link = $this->one("SELECT * FROM cc_channel_entity_links WHERE channel_code=? AND entity_type='published_product' AND entity_id=? AND sync_status='published'", [self::CHANNEL_CODE, $legacyProductId]);
+        if ($link === null) throw new \InvalidArgumentException('该产品尚未在新加坡网站上架，不能下架。');
+        $product = null;
+        foreach ((new LegacyCatalogReadRepository())->products('', '', 500) as $candidate) {
+            if ((int)($candidate['id'] ?? 0) === $legacyProductId) { $product = $candidate; break; }
+        }
+        if ($product === null) throw new \InvalidArgumentException('产品不存在。');
+        $reason = trim($reason);
+        if ($reason === '') $reason = 'Stopped selling';
+        $payload = ['schema_version' => '2026-08-02.1', 'event_type' => 'product.unpublish', 'channel' => self::CHANNEL_CODE,
+            'product' => ['source_id' => (string)$legacyProductId, 'sku' => (string)$product['model_no'],
+                'reason' => function_exists('mb_substr') ? mb_substr($reason, 0, 300) : substr($reason, 0, 300),
+                'channel_state_version' => (string)($link['last_synced_at'] ?? '')]];
+        return $this->enqueue('product_unpublish', 'published_product', $legacyProductId, $payload, $actor, false);
     }
 
     public function send(int $outboxId, array $actor): array
@@ -111,7 +129,8 @@ final class SingaporeChannelService
             if ((string)$job['entity_type'] === 'channel_package') {
                 $this->connection->prepare("UPDATE cc_channel_packages SET status='published',updated_at=NOW() WHERE id=?")->execute([(int)$job['entity_id']]);
             }
-            $this->saveEntityLink((string)$job['entity_type'], (int)$job['entity_id'], $reference, 'published', (string)$job['payload_hash']);
+            $syncStatus = (string)$job['operation_type'] === 'product_unpublish' ? 'withdrawn' : 'published';
+            $this->saveEntityLink((string)$job['entity_type'], (int)$job['entity_id'], $reference, $syncStatus, (string)$job['payload_hash']);
         } catch (Throwable $error) {
             $this->connection->prepare("UPDATE cc_channel_outbox SET status='failed',attempts=attempts+1,last_error=?,updated_at=NOW() WHERE id=?")
                 ->execute([substr($error->getMessage(), 0, 1000), $outboxId]);
@@ -386,6 +405,18 @@ final class SingaporeChannelService
              ORDER BY p.id DESC LIMIT 200",
             [self::CHANNEL_CODE]
         );
+    }
+
+    private function publishedProducts(): array
+    {
+        $products = array_values(array_filter((new LegacyCatalogReadRepository())->products('', '', 500),
+            static fn(array $product): bool => !empty($product['commercial_version_id'])));
+        $links = $this->all("SELECT entity_id,external_id,sync_status,last_synced_at FROM cc_channel_entity_links WHERE channel_code=? AND entity_type='published_product'", [self::CHANNEL_CODE]);
+        $byId = [];
+        foreach ($links as $link) $byId[(int)$link['entity_id']] = $link;
+        foreach ($products as &$product) $product['singapore_publication'] = $byId[(int)$product['id']] ?? null;
+        unset($product);
+        return $products;
     }
 
     private function package(int $id): ?array

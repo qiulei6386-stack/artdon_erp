@@ -47,12 +47,16 @@
       const row = document.createElement('tr');
       const schemes = item.commercial_configuration?.schemes || [];
       row.dataset.publishedProductId = item.id;
-      row.innerHTML = '<td><b></b></td><td></td><td></td><td></td><td></td><td><button type="button" data-sg-publish-product>生成发布任务</button></td>';
+      const publication = item.singapore_publication || {};
+      const published = publication.sync_status === 'published';
+      row.innerHTML = `<td><b></b></td><td></td><td></td><td></td><td></td><td><span class="quote-status"></span> <button type="button" ${published ? 'data-sg-unpublish-product' : 'data-sg-publish-product'}></button></td>`;
       row.children[0].firstElementChild.textContent = item.model_no;
       row.children[1].textContent = item.product_name || item.model_no;
       row.children[2].textContent = `${item.category || '—'} / ${item.series_name || '—'}`;
       row.children[3].textContent = item.commercial_version_no || '—';
       row.children[4].textContent = schemes.length ? schemes.map((scheme) => scheme.code || scheme.name).join(' / ') : '—';
+      row.children[5].querySelector('span').textContent = publication.sync_status || '未发布';
+      row.children[5].querySelector('button').textContent = published ? '下架' : (publication.sync_status === 'withdrawn' ? '重新上架' : '生成发布任务');
       published.append(row);
     });
     const packages = $('[data-sg-packages]');
@@ -96,9 +100,18 @@
   };
   $('[data-sg-published-products]').addEventListener('click', async (event) => {
     const row = event.target.closest('tr[data-published-product-id]');
-    if (!row || !event.target.closest('[data-sg-publish-product]')) return;
+    if (!row) return;
+    const unpublish = event.target.closest('[data-sg-unpublish-product]');
+    const publish = event.target.closest('[data-sg-publish-product]');
+    if (!unpublish && !publish) return;
     try {
-      const result = await request({ action: 'queue_published_product', legacy_product_id: Number(row.dataset.publishedProductId) });
+      let payload = { action: 'queue_published_product', legacy_product_id: Number(row.dataset.publishedProductId) };
+      if (unpublish) {
+        const reason = window.prompt('请输入下架原因', '停止销售');
+        if (reason === null) return;
+        payload = { action: 'queue_unpublish_product', legacy_product_id: Number(row.dataset.publishedProductId), reason };
+      }
+      const result = await request(payload);
       tell(result.message);
       await reload();
     } catch (error) { tell(error.message, true); }
