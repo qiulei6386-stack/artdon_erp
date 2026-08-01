@@ -590,7 +590,11 @@
 
 测试记录：
 
-- 待完成：PHP 语法检查、页面渲染检查、服务器部署核验。
+- 本地 `git diff --check` 通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/lib/foundation.php`、`api/index.php`、`index.php`。
+- 服务器 API 状态核验通过：`workspace_source_save` 已进入允许动作列表。
+- 服务器工作台 CLI 渲染通过：HTML 中确认存在 `pa2-workspace-category-dialog`、`pa2-workspace-template-dialog`。
+- 命令行渲染没有登录用户权限上下文，因此按钮文字是否显示以网页登录配置权限账号为准。
 
 ## 2026-08-01 产品分类中心和模板中心新增弹窗化
 
