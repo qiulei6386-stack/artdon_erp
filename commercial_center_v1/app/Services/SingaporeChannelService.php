@@ -51,7 +51,7 @@ final class SingaporeChannelService
             ),
             'published_products' => array_values(array_filter(
                 (new LegacyCatalogReadRepository())->products('', '', 500),
-                static fn(array $product): bool => !empty($product['commercial_version_id']) && ($product['status'] ?? '') === '可报价'
+                static fn(array $product): bool => !empty($product['commercial_version_id'])
             )),
             'counts' => [
                 'draft_packages' => (int)$this->scalar(
@@ -79,7 +79,7 @@ final class SingaporeChannelService
         foreach ((new LegacyCatalogReadRepository())->products('', '', 500) as $candidate) {
             if ((int)($candidate['id'] ?? 0) === $legacyProductId) { $product = $candidate; break; }
         }
-        if ($product === null || empty($product['commercial_version_id']) || ($product['status'] ?? '') !== '可报价') {
+        if ($product === null || empty($product['commercial_version_id'])) {
             throw new \InvalidArgumentException('只能发布物料中心当前已发布的产品。');
         }
         $configuration = is_array($product['commercial_configuration'] ?? null) ? $product['commercial_configuration'] : [];

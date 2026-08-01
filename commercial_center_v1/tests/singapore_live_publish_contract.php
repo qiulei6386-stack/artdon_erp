@@ -9,6 +9,7 @@ $view = file_get_contents($root . '/views/singapore_channel.php');
 $js = file_get_contents($root . '/assets/js/singapore_channel.js');
 $checks = [
     'published product source' => str_contains($service, 'published_products') && str_contains($service, 'queuePublishedProduct'),
+    'published version authority' => str_contains($service, "empty(\$product['commercial_version_id'])") && !str_contains($service, "empty(\$product['commercial_version_id']) || (\$product['status']"),
     'real sender' => str_contains($service, 'public function send') && str_contains($adapter, 'X-Artdon-Signature'),
     'secret outside repository' => str_contains($adapter, '/www/secure/artdon_singapore_channel.key'),
     'idempotency' => str_contains($adapter, 'Idempotency-Key') && str_contains($service, 'idempotency_key'),
