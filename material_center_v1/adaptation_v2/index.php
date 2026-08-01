@@ -61,6 +61,7 @@ $canManageGroup = pa2_can_any(['adaptation_v2.manage_group_definition', 'materia
 $canManageTemplate = pa2_can_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage']);
 $canPublishTemplate = pa2_can_any(['adaptation_v2.publish_template', 'material_center.adaptation.manage']);
 $canManageRule = pa2_can_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage']);
+$canConfigureProduct = pa2_can_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage']);
 $canApproveProduct = pa2_can_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage']);
 $canPublishProduct = pa2_can_any(['adaptation_v2.publish_product', 'material_center.adaptation.manage']);
 $canManagePackage = pa2_can_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage']);
@@ -802,6 +803,10 @@ include MC_ROOT . '/components/layout_top.php';
                         <p class="pa2-muted">V2 分类：<?=mc_h($wpProduct['category_name'] ?: '未映射')?> · 系列：<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '—')?> · 模板：<?=mc_h($wpTemplate['template_name'] ?? '待生成')?> · 版本：<?=mc_h(($wpVersion['version_no'] ?? '—').' / '.$wpVersionLabel)?></p>
                     </div>
                     <div class="pa2-template-actions">
+                        <?php if ($canConfigureProduct): ?>
+                            <button class="mc-button" type="button" data-open-workspace-category>设置分类</button>
+                            <button class="mc-button mc-button--primary" type="button" data-open-workspace-template>套用模板</button>
+                        <?php endif; ?>
                         <?php if (!$wpConfig): ?>
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
                         <?php else: ?>
@@ -813,6 +818,56 @@ include MC_ROOT . '/components/layout_top.php';
                         <a class="mc-button" href="<?=mc_h(pa2_view_url('products'))?>">返回产品列表</a>
                     </div>
                 </div>
+                <?php if ($canConfigureProduct): ?>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-workspace-category-dialog">
+                    <div class="pa2-dialog__head">
+                        <div><h3>设置当前产品分类</h3><p>用于这一个产品的 V2 模板匹配，不修改旧版产品适配和旧 BOM。</p></div>
+                        <button class="mc-button" type="button" data-close-workspace-category>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_source_save'))?>">
+                        <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <div class="pa2-dialog-hint full">例如嵌入式灯：先选择“嵌入式”分类；如有专用模板，可同时选择“嵌入式模板”。保存后会补齐该模板里的配置组，已选配置不清空。</div>
+                                <label><span>产品分类 *</span><select name="category_id" required><option value="">请选择分类</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>" <?=((int)($wpProduct['category_id'] ?? 0)===(int)$c['id']?'selected':'')?>><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
+                                <label><span>系列编码</span><input name="series_code" value="<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '')?>" placeholder="例如 RECESSED"></label>
+                                <label class="full"><span>同时套用模板</span><select name="template_id"><option value="">按分类自动匹配模板</option><?php foreach ($templates as $t): ?><?php if ((int)($t['is_enabled'] ?? 1) !== 1) continue; ?><option value="<?=intval($t['id'])?>" <?=((int)($wpTemplate['id'] ?? 0)===(int)$t['id']?'selected':'')?>><?=mc_h($t['template_name'])?> · <?=mc_h($t['template_level'])?> · <?=mc_h($t['category_name'] ?: '全局')?></option><?php endforeach; ?></select></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">保存后自动生成/刷新当前产品草稿。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-workspace-category>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存并刷新工作台</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-workspace-template-dialog">
+                    <div class="pa2-dialog__head">
+                        <div><h3>套用配置模板</h3><p>把当前产品切换到指定模板；只补齐模板配置组，不删除已选物料和属性。</p></div>
+                        <button class="mc-button" type="button" data-close-workspace-template>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_source_save'))?>">
+                        <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                        <input type="hidden" name="series_code" value="<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '')?>">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <div class="pa2-dialog-hint full">适合你说的场景：这只灯是嵌入式，就直接在这里选择“嵌入式模板”。如果模板本身绑定了分类，系统会同步写入这只产品的 V2 分类。</div>
+                                <label class="full"><span>配置模板 *</span><select name="template_id" required><option value="">请选择模板</option><?php foreach ($templates as $t): ?><?php if ((int)($t['is_enabled'] ?? 1) !== 1) continue; ?><option value="<?=intval($t['id'])?>" <?=((int)($wpTemplate['id'] ?? 0)===(int)$t['id']?'selected':'')?>><?=mc_h($t['template_name'])?> · <?=mc_h($t['template_level'])?> · <?=mc_h($t['category_name'] ?: '全局')?> · <?=intval($t['direct_group_count'] ?? 0)?> 组</option><?php endforeach; ?></select></label>
+                                <label class="full"><span>处理方式</span><input value="保留当前已选配置，只补齐模板新增配置组" disabled></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">不会修改模板本身，也不会修改旧 BOM。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-workspace-template>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">套用并刷新工作台</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
+                <?php endif; ?>
                 <div class="pa2-steps">
                     <div class="pa2-step"><b>1</b><strong>确认配置来源</strong><p class="pa2-muted">来自 <?=mc_h($wpTemplate['template_name'] ?? '模板待匹配')?>，继承结果会生成草稿配置组。</p></div>
                     <div class="pa2-step"><b>2</b><strong>设置核心配置</strong><p class="pa2-muted">芯片、电源、光学、导轨系统等优先处理；复杂选择打开宽版弹窗。</p></div>
@@ -1392,6 +1447,26 @@ function pa2SetField(form,name,value){
     btn.addEventListener('click',()=>pa2OpenDialog(dialog));
   });
   document.querySelectorAll('[data-close-template-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-workspace-category-dialog');
+  if(!dialog)return;
+  document.querySelectorAll('[data-open-workspace-category]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2OpenDialog(dialog));
+  });
+  document.querySelectorAll('[data-close-workspace-category]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-workspace-template-dialog');
+  if(!dialog)return;
+  document.querySelectorAll('[data-open-workspace-template]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2OpenDialog(dialog));
+  });
+  document.querySelectorAll('[data-close-workspace-template]').forEach((btn)=>{
     btn.addEventListener('click',()=>pa2CloseDialog(dialog));
   });
 })();

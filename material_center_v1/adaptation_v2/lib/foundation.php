@@ -1052,13 +1052,18 @@ function pa2_workspace_check_summary(array $groups): array
     return $summary;
 }
 
-function pa2_prepare_workspace(int $productId): array
+function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'adaptation_v2.view', 'material_center.adaptation.manage'], '没有配置产品的权限。');
     if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
     $product = pa2_fetch_product($productId);
     if (!$product) throw new RuntimeException('产品不存在。');
-    $template = pa2_template_for_product($product);
+    if ($forcedTemplateId > 0) {
+        $template = pa2_fetch_template($forcedTemplateId);
+        if (!$template || (int)($template['is_enabled'] ?? 0) !== 1) throw new RuntimeException('选择的模板不存在或已停用。');
+    } else {
+        $template = pa2_template_for_product($product);
+    }
     if (!$template) throw new RuntimeException('没有可用模板。');
     $preview = pa2_template_effective_groups((int)$template['id']);
     $userId = pa2_current_user_id();
@@ -1106,6 +1111,13 @@ function pa2_prepare_workspace(int $productId): array
         }
     }
     $versionId = (int)$config['active_draft_version_id'];
+    $templateSnapshot = pa2_json_encode([
+        'source' => $forcedTemplateId > 0 ? 'manual_template' : 'template',
+        'template_id' => (int)$template['id'],
+        'template_name' => (string)($template['template_name'] ?? ''),
+    ]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET source_template_id=?,product_category_id=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([(int)$template['id'],$categoryId,$userId,(int)$config['id']]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET source_template_id=?,source_template_version_id=?,configuration_snapshot_json=? WHERE id=?')->execute([(int)$template['id'],$template['active_version_id'] ?? null,$templateSnapshot,$versionId]);
     foreach ($preview['groups'] as $group) {
         $settings = [
             'template_group' => $group,
@@ -1133,6 +1145,60 @@ function pa2_prepare_workspace(int $productId): array
         ]);
     }
     return pa2_workspace_detail($productId);
+}
+
+function pa2_save_workspace_source(array $input): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有设置产品配置来源的权限。');
+    if (!pa2_foundation_ready() || !pa2_workspace_tables_ready()) throw new RuntimeException('V2 基础表或工作台表尚未迁移。');
+    $productId = (int)($input['product_id'] ?? 0);
+    if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+    $product = pa2_fetch_product($productId);
+    if (!$product) throw new RuntimeException('产品不存在。');
+    $templateId = (int)($input['template_id'] ?? 0);
+    $template = $templateId > 0 ? pa2_fetch_template($templateId) : null;
+    if ($templateId > 0 && (!$template || (int)($template['is_enabled'] ?? 0) !== 1)) {
+        throw new RuntimeException('选择的模板不存在或已停用。');
+    }
+    $categoryId = (int)($input['category_id'] ?? 0);
+    if ($categoryId <= 0 && $template && (int)($template['product_category_id'] ?? 0) > 0) {
+        $categoryId = (int)$template['product_category_id'];
+    }
+    $seriesCode = trim((string)($input['series_code'] ?? ($product['series_code'] ?? '')));
+    $userId = pa2_current_user_id();
+    pa2_db()->beginTransaction();
+    try {
+        if ($categoryId > 0) {
+            $categoryStmt = pa2_db()->prepare('SELECT category_code,category_name FROM mc_pa2_product_categories WHERE id=? AND is_enabled=1 LIMIT 1');
+            $categoryStmt->execute([$categoryId]);
+            $category = $categoryStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$category) throw new RuntimeException('选择的产品分类不存在或已停用。');
+            $beforeStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_category_mappings WHERE product_id=? LIMIT 1');
+            $beforeStmt->execute([$productId]);
+            $before = $beforeStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $stmt = pa2_db()->prepare(
+                'INSERT INTO mc_pa2_product_category_mappings(product_id,category_id,category_code,category_name,series_code,source_type,confidence,confirmed_by,confirmed_at,created_at,updated_at)
+                 VALUES(?,?,?,?,?,"workspace",100,?,NOW(),NOW(),NOW())
+                 ON DUPLICATE KEY UPDATE category_id=VALUES(category_id),category_code=VALUES(category_code),category_name=VALUES(category_name),series_code=VALUES(series_code),source_type="workspace",confidence=100,confirmed_by=VALUES(confirmed_by),confirmed_at=NOW(),updated_at=NOW()'
+            );
+            $stmt->execute([$productId,$categoryId,$category['category_code'],$category['category_name'],$seriesCode,$userId]);
+            pa2_log('workspace_source_category', 'product', $productId, $before, [
+                'category_id' => $categoryId,
+                'category_name' => $category['category_name'],
+                'series_code' => $seriesCode,
+            ]);
+        }
+        $detail = pa2_prepare_workspace($productId, $templateId);
+        pa2_log('workspace_source_template', 'product', $productId, [], [
+            'template_id' => $templateId > 0 ? $templateId : (int)($detail['template']['id'] ?? 0),
+            'template_name' => (string)($detail['template']['template_name'] ?? ''),
+        ]);
+        pa2_db()->commit();
+        return $detail;
+    } catch (Throwable $e) {
+        if (pa2_db()->inTransaction()) pa2_db()->rollBack();
+        throw $e;
+    }
 }
 
 function pa2_workspace_detail(int $productId): array
