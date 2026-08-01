@@ -137,13 +137,38 @@ function pa2_fetch_groups(bool $withOptions = true): array
             $optionsByGroup[$gid][] = $option;
         }
     }
+    $behaviorsByGroup = [];
+    if (pa2_phase4_tables_ready()) {
+        $behaviorRows = pa2_db()->query(
+            "SELECT * FROM mc_pa2_group_behavior_settings ORDER BY group_code"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($behaviorRows as $behavior) {
+            $gid = (int)$behavior['group_definition_id'];
+            foreach (['id','group_definition_id','is_required_default','min_select_default','max_select_default'] as $key) {
+                $behavior[$key] = (int)$behavior[$key];
+            }
+            foreach (['material_filter_json','attribute_source_json','default_rule_json','visibility_condition_json','validation_json'] as $key) {
+                $behavior[str_replace('_json', '', $key)] = pa2_json_decode_array($behavior[$key] ?? '');
+            }
+            $behaviorsByGroup[$gid] = $behavior;
+        }
+    }
     foreach ($rows as &$row) {
         $row['id'] = (int)$row['id'];
         $row['is_system'] = (int)$row['is_system'];
         $row['is_enabled'] = (int)$row['is_enabled'];
         $row['options'] = $optionsByGroup[(int)$row['id']] ?? [];
+        $row['behavior'] = $behaviorsByGroup[(int)$row['id']] ?? null;
     }
     return $rows;
+}
+
+function pa2_phase4_tables_ready(): bool
+{
+    foreach (['mc_pa2_group_behavior_settings','mc_pa2_rule_definitions'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
 }
 
 function pa2_foundation_summary(): array
@@ -157,6 +182,9 @@ function pa2_foundation_summary(): array
         'mapping_count' => 0,
         'template_count' => 0,
         'template_version_count' => 0,
+        'group_behavior_count' => 0,
+        'rule_count' => 0,
+        'rule_cycle_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -178,6 +206,11 @@ function pa2_foundation_summary(): array
         if (pa2_template_tables_ready()) {
             $summary['template_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_templates')->fetchColumn();
             $summary['template_version_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_template_versions')->fetchColumn();
+        }
+        if (pa2_phase4_tables_ready()) {
+            $summary['group_behavior_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_group_behavior_settings')->fetchColumn();
+            $summary['rule_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_rule_definitions')->fetchColumn();
+            $summary['rule_cycle_count'] = count(pa2_detect_rule_cycles(pa2_fetch_rules(false))['cycles']);
         }
     }
     return $summary;
@@ -301,6 +334,226 @@ function pa2_add_group_option(array $input): array
     ]);
     pa2_log('group_option_upsert', 'group_definition', $groupId, [], ['option_code' => $code, 'option_name' => $name]);
     return ['group_definition_id' => $groupId, 'option_code' => $code, 'option_name' => $name];
+}
+
+function pa2_group_type_to_selection_kind(string $groupType): string
+{
+    return match ($groupType) {
+        'material_select' => 'material',
+        'enum_select', 'boolean' => 'attribute',
+        'hybrid_select' => 'hybrid',
+        'number_input' => 'number',
+        'text_input' => 'text',
+        default => 'material',
+    };
+}
+
+function pa2_upsert_group_behavior(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_rule', 'adaptation_v2.manage_group_definition', 'material_center.adaptation.manage'], '没有维护配置组行为的权限。');
+    if (!pa2_phase4_tables_ready()) throw new RuntimeException('V2 第 4 阶段规则表尚未迁移。');
+    $groupId = (int)($input['group_definition_id'] ?? 0);
+    if ($groupId <= 0) throw new RuntimeException('配置组不能为空。');
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_group_definitions WHERE id=? LIMIT 1');
+    $stmt->execute([$groupId]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) throw new RuntimeException('配置组不存在。');
+    $kind = trim((string)($input['selection_kind'] ?? ''));
+    if ($kind === '') $kind = pa2_group_type_to_selection_kind((string)$group['group_type']);
+    if (!in_array($kind, ['material','attribute','hybrid','number','text'], true)) $kind = 'material';
+    $sourceMode = trim((string)($input['source_mode'] ?? ''));
+    if ($sourceMode === '') {
+        $sourceMode = in_array($kind, ['material','hybrid'], true) ? 'official_material' : ($kind === 'attribute' ? 'static_options' : 'manual_input');
+    }
+    $selectionMode = trim((string)($input['selection_mode_default'] ?? 'single'));
+    if (!in_array($selectionMode, ['single','multiple'], true)) $selectionMode = 'single';
+    $min = max(0, (int)($input['min_select_default'] ?? 0));
+    $max = max($min, (int)($input['max_select_default'] ?? ($selectionMode === 'multiple' ? 99 : 1)));
+    if ($selectionMode === 'single') $max = min($max, 1);
+    $jsonFields = [];
+    foreach (['material_filter','attribute_source','default_rule','visibility_condition','validation'] as $field) {
+        $raw = trim((string)($input[$field . '_json'] ?? $input[$field] ?? ''));
+        if ($raw === '') {
+            $jsonFields[$field] = null;
+            continue;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) throw new RuntimeException($field . ' 必须是合法 JSON 对象。');
+        $jsonFields[$field] = pa2_json_encode($decoded);
+    }
+    $beforeStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_group_behavior_settings WHERE group_definition_id=? LIMIT 1');
+    $beforeStmt->execute([$groupId]);
+    $before = $beforeStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $upsert = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_group_behavior_settings(group_definition_id,group_code,selection_kind,source_mode,material_category_code,material_filter_json,attribute_source_json,numeric_unit,text_format,is_required_default,selection_mode_default,min_select_default,max_select_default,default_rule_json,visibility_condition_json,validation_json,created_by,updated_by,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+         ON DUPLICATE KEY UPDATE selection_kind=VALUES(selection_kind),source_mode=VALUES(source_mode),material_category_code=VALUES(material_category_code),material_filter_json=VALUES(material_filter_json),attribute_source_json=VALUES(attribute_source_json),numeric_unit=VALUES(numeric_unit),text_format=VALUES(text_format),is_required_default=VALUES(is_required_default),selection_mode_default=VALUES(selection_mode_default),min_select_default=VALUES(min_select_default),max_select_default=VALUES(max_select_default),default_rule_json=VALUES(default_rule_json),visibility_condition_json=VALUES(visibility_condition_json),validation_json=VALUES(validation_json),updated_by=VALUES(updated_by),updated_at=NOW()'
+    );
+    $userId = pa2_current_user_id();
+    $upsert->execute([
+        $groupId,
+        (string)$group['group_code'],
+        $kind,
+        $sourceMode,
+        trim((string)($input['material_category_code'] ?? '')) ?: null,
+        $jsonFields['material_filter'],
+        $jsonFields['attribute_source'],
+        trim((string)($input['numeric_unit'] ?? '')) ?: null,
+        trim((string)($input['text_format'] ?? '')) ?: null,
+        !empty($input['is_required_default']) ? 1 : 0,
+        $selectionMode,
+        $min,
+        $max,
+        $jsonFields['default_rule'],
+        $jsonFields['visibility_condition'],
+        $jsonFields['validation'],
+        $userId,
+        $userId,
+    ]);
+    $afterStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_group_behavior_settings WHERE group_definition_id=? LIMIT 1');
+    $afterStmt->execute([$groupId]);
+    $after = $afterStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    pa2_log('group_behavior_upsert', 'group_definition', $groupId, $before, $after);
+    return $after;
+}
+
+function pa2_fetch_rules(bool $withCycles = true): array
+{
+    if (!pa2_phase4_tables_ready()) return [];
+    $rows = pa2_db()->query(
+        "SELECT r.*, t.template_name, c.category_name
+         FROM mc_pa2_rule_definitions r
+         LEFT JOIN mc_pa2_templates t ON t.id=r.template_id
+         LEFT JOIN mc_pa2_product_categories c ON c.id=r.product_category_id
+         ORDER BY r.priority,r.id"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) {
+        foreach (['id','template_id','product_category_id','priority','is_enabled'] as $key) {
+            $row[$key] = $row[$key] === null ? null : (int)$row[$key];
+        }
+        $row['effect'] = pa2_json_decode_array($row['effect_json'] ?? '');
+        $row['has_cycle'] = false;
+    }
+    if ($withCycles) {
+        $cycleMap = [];
+        foreach (pa2_detect_rule_cycles($rows)['cycles'] as $cycle) {
+            foreach ($cycle as $code) $cycleMap[$code] = true;
+        }
+        foreach ($rows as &$row) {
+            $row['has_cycle'] = isset($cycleMap[(string)$row['trigger_group_code']]) && isset($cycleMap[(string)$row['target_group_code']]);
+        }
+    }
+    return $rows;
+}
+
+function pa2_detect_rule_cycles(array $rules): array
+{
+    $graph = [];
+    foreach ($rules as $rule) {
+        if ((int)($rule['is_enabled'] ?? 1) !== 1) continue;
+        $from = trim((string)($rule['trigger_group_code'] ?? ''));
+        $to = trim((string)($rule['target_group_code'] ?? ''));
+        if ($from === '' || $to === '' || $from === $to) {
+            if ($from !== '') $graph[$from][] = $to;
+            continue;
+        }
+        $graph[$from][] = $to;
+    }
+    $visited = [];
+    $stack = [];
+    $cycles = [];
+    $walk = function (string $node, array $path) use (&$walk, &$graph, &$visited, &$stack, &$cycles): void {
+        $visited[$node] = true;
+        $stack[$node] = true;
+        $path[] = $node;
+        foreach ($graph[$node] ?? [] as $next) {
+            $next = (string)$next;
+            if ($next === '') continue;
+            if (!isset($visited[$next])) {
+                $walk($next, $path);
+            } elseif (isset($stack[$next])) {
+                $pos = array_search($next, $path, true);
+                $cycles[] = $pos === false ? [$node, $next] : array_slice($path, (int)$pos);
+            }
+        }
+        unset($stack[$node]);
+    };
+    foreach (array_keys($graph) as $node) {
+        if (!isset($visited[$node])) $walk((string)$node, []);
+    }
+    $unique = [];
+    foreach ($cycles as $cycle) {
+        $key = implode('>', $cycle);
+        $unique[$key] = $cycle;
+    }
+    return ['cycles' => array_values($unique), 'edges' => $graph];
+}
+
+function pa2_upsert_rule(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage'], '没有维护配置规则的权限。');
+    if (!pa2_phase4_tables_ready()) throw new RuntimeException('V2 第 4 阶段规则表尚未迁移。');
+    $id = (int)($input['id'] ?? 0);
+    $name = trim((string)($input['rule_name'] ?? ''));
+    if ($name === '') throw new RuntimeException('规则名称不能为空。');
+    $code = trim((string)($input['rule_code'] ?? '')) ?: pa2_slug($name, 'rule');
+    $trigger = trim((string)($input['trigger_group_code'] ?? ''));
+    $target = trim((string)($input['target_group_code'] ?? ''));
+    if ($trigger === '' || $target === '') throw new RuntimeException('触发配置组和目标配置组不能为空。');
+    $operator = trim((string)($input['trigger_operator'] ?? 'eq'));
+    if (!in_array($operator, ['eq','neq','in','not_in','exists','empty'], true)) $operator = 'eq';
+    $action = trim((string)($input['effect_action'] ?? 'show'));
+    if (!in_array($action, ['show','hide','require','optional','material_filter','set_default','limit_options'], true)) $action = 'show';
+    $effectRaw = trim((string)($input['effect_json'] ?? ''));
+    $effectJson = null;
+    if ($effectRaw !== '') {
+        $decoded = json_decode($effectRaw, true);
+        if (!is_array($decoded)) throw new RuntimeException('规则效果必须是合法 JSON 对象。');
+        $effectJson = pa2_json_encode($decoded);
+    }
+    $templateId = (int)($input['template_id'] ?? 0) ?: null;
+    $categoryId = (int)($input['product_category_id'] ?? 0) ?: null;
+    $scope = $templateId ? 'template' : ($categoryId ? 'category' : 'global');
+    $userId = pa2_current_user_id();
+    $before = [];
+    if ($id > 0) {
+        $beforeStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_rule_definitions WHERE id=? LIMIT 1');
+        $beforeStmt->execute([$id]);
+        $before = $beforeStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (!$before) throw new RuntimeException('规则不存在。');
+        $stmt = pa2_db()->prepare(
+            'UPDATE mc_pa2_rule_definitions SET rule_code=?,rule_name=?,rule_scope=?,template_id=?,product_category_id=?,trigger_group_code=?,trigger_operator=?,trigger_value=?,target_group_code=?,effect_action=?,effect_json=?,priority=?,is_enabled=?,description=?,updated_by=?,updated_at=NOW() WHERE id=?'
+        );
+        $stmt->execute([$code,$name,$scope,$templateId,$categoryId,$trigger,$operator,trim((string)($input['trigger_value'] ?? '')),$target,$action,$effectJson,(int)($input['priority'] ?? 100),isset($input['is_enabled']) ? (int)$input['is_enabled'] : 1,trim((string)($input['description'] ?? '')),$userId,$id]);
+    } else {
+        $stmt = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_rule_definitions(rule_code,rule_name,rule_scope,template_id,product_category_id,trigger_group_code,trigger_operator,trigger_value,target_group_code,effect_action,effect_json,priority,is_enabled,description,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+             ON DUPLICATE KEY UPDATE rule_name=VALUES(rule_name),rule_scope=VALUES(rule_scope),template_id=VALUES(template_id),product_category_id=VALUES(product_category_id),trigger_group_code=VALUES(trigger_group_code),trigger_operator=VALUES(trigger_operator),trigger_value=VALUES(trigger_value),target_group_code=VALUES(target_group_code),effect_action=VALUES(effect_action),effect_json=VALUES(effect_json),priority=VALUES(priority),is_enabled=VALUES(is_enabled),description=VALUES(description),updated_by=VALUES(updated_by),updated_at=NOW()'
+        );
+        $stmt->execute([$code,$name,$scope,$templateId,$categoryId,$trigger,$operator,trim((string)($input['trigger_value'] ?? '')),$target,$action,$effectJson,(int)($input['priority'] ?? 100),isset($input['is_enabled']) ? (int)$input['is_enabled'] : 1,trim((string)($input['description'] ?? '')),$userId,$userId]);
+        $id = (int)pa2_db()->lastInsertId();
+        if ($id === 0) {
+            $lookup = pa2_db()->prepare('SELECT id FROM mc_pa2_rule_definitions WHERE rule_code=? LIMIT 1');
+            $lookup->execute([$code]);
+            $id = (int)$lookup->fetchColumn();
+        }
+    }
+    $afterStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_rule_definitions WHERE id=? LIMIT 1');
+    $afterStmt->execute([$id]);
+    $after = $afterStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $cycles = pa2_detect_rule_cycles(pa2_fetch_rules(false))['cycles'];
+    if ($cycles) {
+        if ($before) {
+            pa2_db()->prepare('UPDATE mc_pa2_rule_definitions SET rule_code=?,rule_name=?,rule_scope=?,template_id=?,product_category_id=?,trigger_group_code=?,trigger_operator=?,trigger_value=?,target_group_code=?,effect_action=?,effect_json=?,priority=?,is_enabled=?,description=?,updated_by=?,updated_at=NOW() WHERE id=?')
+                ->execute([$before['rule_code'],$before['rule_name'],$before['rule_scope'],$before['template_id'],$before['product_category_id'],$before['trigger_group_code'],$before['trigger_operator'],$before['trigger_value'],$before['target_group_code'],$before['effect_action'],$before['effect_json'],$before['priority'],$before['is_enabled'],$before['description'],$userId,$id]);
+        } else {
+            pa2_db()->prepare('DELETE FROM mc_pa2_rule_definitions WHERE id=?')->execute([$id]);
+        }
+        throw new RuntimeException('规则存在循环依赖，已阻止保存：' . pa2_json_encode($cycles));
+    }
+    pa2_log($before ? 'rule_update' : 'rule_create', 'rule_definition', $id, $before, $after);
+    return $after;
 }
 
 function pa2_search_products(string $keyword = '', int $limit = 30): array

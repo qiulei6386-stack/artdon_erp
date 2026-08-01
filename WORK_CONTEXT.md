@@ -1,6 +1,21 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 3 阶段模板中心和继承引擎（已发布）
+## 本次：产品适配 V2 第 4 阶段配置组选项、物料来源和规则编辑器（待发布）
+
+- 用户继续要求推进 V2。按主说明进入第 4 阶段：配置组选项、物料来源和规则编辑器。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_003_phase4_group_rules.php`，新增 `mc_pa2_group_behavior_settings` 和 `mc_pa2_rule_definitions`。
+- `mc_pa2_group_behavior_settings` 保存配置组行为：物料来源、物料过滤器、属性来源、默认项规则、显示条件、必选/可选、单选/多选、选择数量限制和校验。
+- `mc_pa2_rule_definitions` 保存配置组规则：触发配置组、判断方式、触发值、目标配置组、显示/隐藏/必选/可选/物料过滤/默认项/限制选项等动作。
+- 新增 `track_system` 配置组和 `standard_track / intrack` 属性选项，并把 `track_system` 加入 `track_light_base` 模板。
+- 写入验收种子规则：导轨灯选择 INTRACK 后显示 INTRACK 接头和 INTRACK 电源，隐藏普通接头和普通内置电源；普通导轨反向显示/隐藏；磁吸灯短款对磁吸头执行短款物料过滤。
+- `foundation.php` 新增第 4 阶段服务函数：配置组行为保存、规则读取、规则保存、规则循环检测。保存规则时若形成循环依赖，会回滚并拒绝保存。
+- `api/index.php` 状态更新为 `phase=4`，新增动作 `group_behavior_save`、`rules`、`rule_save`、`rule_cycle_check`。
+- `index.php` 新增 `rules` 规则编辑器页面；配置组定义中心增加行为/来源设置区；首页显示行为设置数、规则数和循环数。
+- 新增文档 `adaptation_v2/docs/04_GROUP_RULE_EDITOR.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase4_contract.php`。
+- 待发布步骤：本地静态检查；服务器候选 PHP 语法和契约检查；提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 应用第 4 阶段迁移；服务器复检语法、契约、页面渲染和数据库行数；核对三端 HEAD 一致。
+
+## 上次：产品适配 V2 第 3 阶段模板中心和继承引擎（已发布）
 
 - 用户看过 V2 第 2 阶段后反馈“还比较生硬”，并要求继续。按主说明进入第 3 阶段：模板中心和继承引擎，同时把模板页从硬表格改为更柔和的卡片/工作台布局。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。

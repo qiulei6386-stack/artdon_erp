@@ -14,6 +14,7 @@ $allowedViews = [
     'groups',
     'templates',
     'template_editor',
+    'rules',
     'workspace',
     'packages',
     'publish',
@@ -23,10 +24,12 @@ $allowedViews = [
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 3 阶段：模板中心、继承引擎和版本发布。';
+$pageDescription = '第 4 阶段：配置组选项、物料来源和规则编辑器。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
+$rules = pa2_fetch_rules(true);
+$cycleCheck = pa2_detect_rule_cycles($rules);
 $products = $summary['ready'] ? pa2_search_products((string)($_GET['q'] ?? ''), 40) : [];
 $templates = pa2_fetch_templates();
 $selectedTemplateId = (int)($_GET['template_id'] ?? 0);
@@ -38,6 +41,7 @@ $canManageCategory = pa2_can_any(['adaptation_v2.manage_category', 'material_cen
 $canManageGroup = pa2_can_any(['adaptation_v2.manage_group_definition', 'material_center.adaptation.manage']);
 $canManageTemplate = pa2_can_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage']);
 $canPublishTemplate = pa2_can_any(['adaptation_v2.publish_template', 'material_center.adaptation.manage']);
+$canManageRule = pa2_can_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage']);
 
 $routeCards = [
     ['home', '首页', 'V2 基础状态、模板状态和阶段入口。'],
@@ -45,6 +49,7 @@ $routeCards = [
     ['categories', '产品分类中心', '维护产品分类、父子分类、启停和排序。'],
     ['groups', '配置组定义中心', '维护数据化配置组和属性选项。'],
     ['templates', '模板中心', '维护通用、分类、系列和产品模板。'],
+    ['rules', '规则编辑器', '第 4 阶段维护显示条件、物料过滤、默认项和循环检测。'],
     ['workspace', '单产品配置工作台', '第 5 阶段建立模板驱动配置。'],
     ['packages', '配置包中心', '第 8 阶段发布渠道配置包。'],
     ['publish', '渠道发布', '第 9 阶段提供下游发布接口。'],
@@ -74,10 +79,11 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
-@media(max-width:1280px){.pa2-template-shell{grid-template-columns:1fr}.pa2-template-actions{justify-content:flex-start}}
+@media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-template-actions{justify-content:flex-start}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="3" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="4" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -105,11 +111,11 @@ include MC_ROOT . '/components/layout_top.php';
         <section class="pa2-grid">
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
-            <article class="pa2-card"><strong>属性选项</strong><b><?=intval($summary['option_count'])?></b><p>颜色、调光、安装方式等选项不写死在页面。</p></article>
-            <article class="pa2-card"><strong>模板数量</strong><b><?=count($templates)?></b><p>系统通用、分类、系列和产品模板逐层继承。</p></article>
+            <article class="pa2-card"><strong>行为设置</strong><b><?=intval($summary['group_behavior_count'])?></b><p>物料来源、过滤器、默认项、数量限制和必选规则。</p></article>
+            <article class="pa2-card"><strong>规则数量</strong><b><?=intval($summary['rule_count'])?></b><p>显示/隐藏、物料过滤、默认项和选项限制规则。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 3 阶段开放模板中心和继承预览；规则、工作台和配置包仍按后续阶段开发。</p></div></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 4 阶段开放配置组行为和规则编辑器；单产品工作台、审批和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -167,7 +173,7 @@ include MC_ROOT . '/components/layout_top.php';
         </section>
     <?php elseif ($view === 'groups'): ?>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>配置组定义中心</h2><p>配置组可以新增、编辑、启停和排序；属性组选项在这里维护，不再写死到页面代码。</p></div></div>
+            <div class="pa2-panel__head"><div><h2>配置组定义中心</h2><p>第 4 阶段：配置组可以设置物料来源、属性来源、默认项、必选/可选、单选/多选和数量限制。</p></div><a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('rules'))?>">打开规则编辑器</a></div>
             <div class="pa2-panel__body pa2-section-gap">
                 <?php if ($canManageGroup): ?>
                 <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_save'))?>">
@@ -182,7 +188,7 @@ include MC_ROOT . '/components/layout_top.php';
                 </form>
                 <?php endif; ?>
                 <table class="pa2-table">
-                    <thead><tr><th>编码</th><th>配置组</th><th>类型</th><th>属性选项</th><th>排序/状态</th><th>编辑</th></tr></thead>
+                    <thead><tr><th>编码</th><th>配置组</th><th>类型</th><th>属性选项</th><th>行为 / 来源</th><th>排序/状态</th><th>编辑</th></tr></thead>
                     <tbody>
                     <?php foreach ($groups as $g): ?>
                         <tr>
@@ -199,6 +205,42 @@ include MC_ROOT . '/components/layout_top.php';
                                     <label><input type="checkbox" name="is_default" value="1"> 默认</label>
                                     <button class="mc-button" type="submit">新增选项</button>
                                 </form>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php $behavior = $g['behavior'] ?? null; ?>
+                                <?php if ($behavior): ?>
+                                    <div class="pa2-behavior">
+                                        <div><span class="pa2-badge"><?=mc_h($behavior['selection_kind'])?></span> <span class="pa2-chip"><?=mc_h($behavior['source_mode'])?></span></div>
+                                        <div class="pa2-muted">物料分类：<?=mc_h($behavior['material_category_code'] ?: '—')?> · <?=((int)$behavior['is_required_default']===1?'必选':'可选')?> · <?=mc_h($behavior['selection_mode_default'])?> · <?=intval($behavior['min_select_default'])?>-<?=intval($behavior['max_select_default'])?></div>
+                                        <?php if (!empty($behavior['material_filter'])): ?><details><summary>物料过滤器</summary><pre class="pa2-json"><?=mc_h(pa2_json_encode($behavior['material_filter']))?></pre></details><?php endif; ?>
+                                        <?php if (!empty($behavior['visibility_condition'])): ?><details><summary>显示条件</summary><pre class="pa2-json"><?=mc_h(pa2_json_encode($behavior['visibility_condition']))?></pre></details><?php endif; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="pa2-muted">未设置行为</span>
+                                <?php endif; ?>
+                                <?php if ($canManageRule): ?>
+                                <details class="pa2-behavior">
+                                    <summary>编辑行为</summary>
+                                    <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_behavior_save'))?>">
+                                        <input type="hidden" name="group_definition_id" value="<?=intval($g['id'])?>">
+                                        <select name="selection_kind">
+                                            <?php foreach (['material'=>'物料选择组','attribute'=>'属性选择组','hybrid'=>'混合选择组','number'=>'数值组','text'=>'文本组'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($behavior && $behavior['selection_kind']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
+                                        </select>
+                                        <select name="source_mode">
+                                            <?php foreach (['official_material'=>'正式物料','static_options'=>'静态属性选项','manual_input'=>'手工输入','mixed'=>'混合来源'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($behavior && $behavior['source_mode']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
+                                        </select>
+                                        <input name="material_category_code" value="<?=mc_h($behavior['material_category_code'] ?? '')?>" placeholder="物料分类编码">
+                                        <select name="is_required_default"><option value="0" <?=(!$behavior || (int)$behavior['is_required_default']===0?'selected':'')?>>可选</option><option value="1" <?=($behavior && (int)$behavior['is_required_default']===1?'selected':'')?>>必选</option></select>
+                                        <select name="selection_mode_default"><option value="single" <?=(!$behavior || $behavior['selection_mode_default']==='single'?'selected':'')?>>单选</option><option value="multiple" <?=($behavior && $behavior['selection_mode_default']==='multiple'?'selected':'')?>>多选</option></select>
+                                        <input type="number" name="min_select_default" value="<?=intval($behavior['min_select_default'] ?? 0)?>" placeholder="最少">
+                                        <input type="number" name="max_select_default" value="<?=intval($behavior['max_select_default'] ?? 1)?>" placeholder="最多">
+                                        <input name="default_rule_json" value="<?=mc_h(isset($behavior['default_rule']) ? pa2_json_encode($behavior['default_rule']) : '')?>" placeholder='默认项 JSON，例如 {"option_code":"white"}'>
+                                        <input name="material_filter_json" value="<?=mc_h(isset($behavior['material_filter']) ? pa2_json_encode($behavior['material_filter']) : '')?>" placeholder='物料过滤 JSON'>
+                                        <input name="visibility_condition_json" value="<?=mc_h(isset($behavior['visibility_condition']) ? pa2_json_encode($behavior['visibility_condition']) : '')?>" placeholder='显示条件 JSON'>
+                                        <button class="mc-button" type="submit">保存行为</button>
+                                    </form>
+                                </details>
                                 <?php endif; ?>
                             </td>
                             <td><?=intval($g['sort_order'])?> · <?=((int)$g['is_enabled'] === 1 ? '启用' : '停用')?></td>
@@ -330,6 +372,68 @@ include MC_ROOT . '/components/layout_top.php';
                 </div>
             </aside>
         </section>
+    <?php elseif ($view === 'rules'): ?>
+        <section class="pa2-rule-board">
+            <section class="pa2-panel">
+                <div class="pa2-panel__head">
+                    <div><h2>规则编辑器</h2><p>用“触发配置组 → 目标配置组”的方式维护显示条件、物料过滤、默认项和数量限制；保存时自动做循环检测。</p></div>
+                    <span class="pa2-pill <?=empty($cycleCheck['cycles'])?'pa2-pill--ok':'pa2-pill--warn'?>"><?=empty($cycleCheck['cycles'])?'无循环':'发现循环 '.count($cycleCheck['cycles']).' 个'?></span>
+                </div>
+                <div class="pa2-panel__body pa2-section-gap">
+                    <?php foreach ($rules as $rule): ?>
+                        <article class="pa2-rule-card <?=!empty($rule['has_cycle'])?'is-cycle':''?>">
+                            <div class="pa2-rule-line">
+                                <strong><?=mc_h($rule['rule_name'])?></strong>
+                                <span class="pa2-chip"><?=mc_h($rule['template_name'] ?: ($rule['category_name'] ?: '全局'))?></span>
+                                <span class="pa2-chip <?=in_array($rule['effect_action'], ['show','require'], true)?'pa2-chip--show':(in_array($rule['effect_action'], ['hide','optional'], true)?'pa2-chip--hide':'pa2-chip--filter')?>"><?=mc_h($rule['effect_action'])?></span>
+                            </div>
+                            <div class="pa2-rule-line">
+                                <code><?=mc_h($rule['trigger_group_code'])?></code>
+                                <span><?=mc_h($rule['trigger_operator'])?></span>
+                                <code><?=mc_h($rule['trigger_value'] ?: '—')?></code>
+                                <span>→</span>
+                                <code><?=mc_h($rule['target_group_code'])?></code>
+                            </div>
+                            <p class="pa2-muted"><?=mc_h($rule['description'] ?? '')?></p>
+                            <?php if (!empty($rule['effect'])): ?><pre class="pa2-json"><?=mc_h(pa2_json_encode($rule['effect']))?></pre><?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+            <aside class="pa2-panel">
+                <div class="pa2-panel__head"><div><h2>新增 / 修改规则</h2><p>红色只留给循环和阻断；普通显示隐藏用柔和状态色。</p></div></div>
+                <div class="pa2-panel__body pa2-section-gap">
+                    <?php if ($canManageRule): ?>
+                    <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=rule_save'))?>">
+                        <label class="wide"><span>规则编码</span><input name="rule_code" placeholder="例如 track_intrack_show_driver"></label>
+                        <label class="wide"><span>规则名称 *</span><input name="rule_name" required placeholder="选择 INTRACK 时显示 INTRACK 电源"></label>
+                        <label><span>模板范围</span><select name="template_id"><option value="">全局 / 分类</option><?php foreach ($templates as $t): ?><option value="<?=intval($t['id'])?>"><?=mc_h($t['template_name'])?></option><?php endforeach; ?></select></label>
+                        <label><span>产品分类</span><select name="product_category_id"><option value="">不限定</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
+                        <label><span>触发配置组</span><select name="trigger_group_code" required><?php foreach ($groups as $g): ?><option value="<?=mc_h($g['group_code'])?>"><?=mc_h($g['group_name'])?> · <?=mc_h($g['group_code'])?></option><?php endforeach; ?></select></label>
+                        <label><span>判断</span><select name="trigger_operator"><option value="eq">等于</option><option value="neq">不等于</option><option value="in">包含于</option><option value="not_in">不包含于</option><option value="exists">有值</option><option value="empty">为空</option></select></label>
+                        <label><span>触发值</span><input name="trigger_value" placeholder="例如 intrack"></label>
+                        <label><span>目标配置组</span><select name="target_group_code" required><?php foreach ($groups as $g): ?><option value="<?=mc_h($g['group_code'])?>"><?=mc_h($g['group_name'])?> · <?=mc_h($g['group_code'])?></option><?php endforeach; ?></select></label>
+                        <label><span>动作</span><select name="effect_action"><option value="show">显示</option><option value="hide">隐藏</option><option value="require">设为必选</option><option value="optional">设为可选</option><option value="material_filter">物料过滤</option><option value="set_default">设置默认项</option><option value="limit_options">限制选项</option></select></label>
+                        <label><span>优先级</span><input type="number" name="priority" value="100"></label>
+                        <label><span>状态</span><select name="is_enabled"><option value="1">启用</option><option value="0">停用</option></select></label>
+                        <label class="full"><span>效果 JSON</span><textarea name="effect_json" rows="3" placeholder='例如 {"keyword":"短款"}'></textarea></label>
+                        <label class="full"><span>说明</span><input name="description" placeholder="规则业务原因，便于审批和后续排错"></label>
+                        <button class="mc-button mc-button--primary" type="submit">保存规则并检测循环</button>
+                    </form>
+                    <?php else: ?>
+                        <div class="pa2-alert">当前账号只能查看规则，没有维护规则权限。</div>
+                    <?php endif; ?>
+                    <div class="pa2-side-note">
+                        <strong>验收示例已内置</strong>
+                        <p>导轨灯选择 <code>INTRACK</code>：显示 INTRACK 接头、电源；隐藏普通接头、普通内置电源。</p>
+                        <p>磁吸灯选择 <code>短款</code>：对磁吸头执行短款物料过滤。</p>
+                    </div>
+                    <?php if (!empty($cycleCheck['cycles'])): ?>
+                        <div class="pa2-alert">循环链：<?=mc_h(pa2_json_encode($cycleCheck['cycles']))?></div>
+                    <?php endif; ?>
+                </div>
+            </aside>
+        </section>
     <?php elseif ($view === 'products'): ?>
         <section class="pa2-panel">
             <div class="pa2-panel__head"><div><h2>全部产品 / 分类映射</h2><p>本阶段只维护“产品 → V2 产品分类 / 系列”的基础映射，不做模板套用或工作台配置。</p></div></div>
@@ -374,6 +478,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 1 阶段数据库审计</td><td><code>adaptation_v2/docs/01_DATABASE_AUDIT.md</code></td></tr>
                         <tr><td>第 2 阶段执行记录</td><td><code>adaptation_v2/docs/02_FOUNDATION_MODEL.md</code></td></tr>
                         <tr><td>第 3 阶段模板继承</td><td><code>adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md</code></td></tr>
+                        <tr><td>第 4 阶段配置组和规则</td><td><code>adaptation_v2/docs/04_GROUP_RULE_EDITOR.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>

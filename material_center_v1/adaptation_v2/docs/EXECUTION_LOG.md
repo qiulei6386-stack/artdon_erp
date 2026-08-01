@@ -169,3 +169,45 @@
 - 正式服务器 `adaptation_v2_phase3_contract.php` 通过。
 - 正式服务器页面渲染通过：`home`、`templates`、`template_editor`、`logs`。
 - 正式服务器继承预览核验：当前 4 个模板，`track_light_base` 继承链 2 层，继承后 9 个有效配置组。
+
+## 2026-08-01 第 4 阶段：配置组选项、物料来源和规则编辑器
+
+执行范围：
+
+- 用户要求继续。
+- 按主说明进入第 4 阶段：配置组选项、物料来源和规则编辑器。
+- 继续不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_003_phase4_group_rules.php`。
+- 新增 `mc_pa2_group_behavior_settings`，保存配置组来源、过滤器、默认项、显示条件、数量限制和校验规则。
+- 新增 `mc_pa2_rule_definitions`，保存配置组之间的显示、隐藏、必选、可选、物料过滤、默认项和选项限制规则。
+- 新增 `track_system` 配置组和 `standard_track / intrack` 属性选项。
+- 将 `track_system` 加入 `track_light_base` 模板。
+- 写入 INTRACK 显示/隐藏普通接头、电源的首批规则。
+- 写入磁吸灯短款过滤磁吸头的首批规则。
+- 服务层新增配置组行为保存、规则保存、规则读取和规则循环检测。
+- API 新增 `group_behavior_save`、`rules`、`rule_save`、`rule_cycle_check`。
+- 页面新增 `rules` 规则编辑器，配置组定义中心增加行为设置区。
+- 新增第 4 阶段文档和契约测试。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_003_phase4_group_rules.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/04_GROUP_RULE_EDITOR.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase4_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 4 阶段 `mc_pa2_*` 表和种子规则。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地静态检查、服务器 PHP 语法检查、迁移、阶段契约和页面渲染验证后补充。

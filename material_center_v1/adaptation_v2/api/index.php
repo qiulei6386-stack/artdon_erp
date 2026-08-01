@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 2,
-            'phase_name' => '基础数据模型和产品分类中心',
+            'phase' => 4,
+            'phase_name' => '配置组选项、物料来源和规则编辑器',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -48,6 +48,10 @@ try {
                 'template_preview',
                 'template_publish',
                 'template_reference_check',
+                'group_behavior_save',
+                'rules',
+                'rule_save',
+                'rule_cycle_check',
             ],
             'routes' => [
                 '/material_center_v1/adaptation_v2/index.php?view=home',
@@ -55,6 +59,7 @@ try {
                 '/material_center_v1/adaptation_v2/index.php?view=categories',
                 '/material_center_v1/adaptation_v2/index.php?view=groups',
                 '/material_center_v1/adaptation_v2/index.php?view=templates',
+                '/material_center_v1/adaptation_v2/index.php?view=rules',
                 '/material_center_v1/adaptation_v2/index.php?view=workspace',
             ],
         ]);
@@ -88,6 +93,12 @@ try {
     if ($action === 'group_option_save') {
         $row = pa2_add_group_option(pa2_request_data());
         pa2_json_response(['option' => $row], '配置组选项已保存');
+        exit;
+    }
+
+    if ($action === 'group_behavior_save') {
+        $row = pa2_upsert_group_behavior(pa2_request_data());
+        pa2_json_response(['behavior' => $row], '配置组行为已保存');
         exit;
     }
 
@@ -152,8 +163,30 @@ try {
         exit;
     }
 
+    if ($action === 'rules') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看配置规则的权限。');
+        $rules = pa2_fetch_rules(true);
+        pa2_json_response([
+            'rules' => $rules,
+            'cycle_check' => pa2_detect_rule_cycles($rules),
+        ]);
+        exit;
+    }
+
+    if ($action === 'rule_save') {
+        $row = pa2_upsert_rule(pa2_request_data());
+        pa2_json_response(['rule' => $row, 'cycle_check' => pa2_detect_rule_cycles(pa2_fetch_rules(false))], '配置规则已保存');
+        exit;
+    }
+
+    if ($action === 'rule_cycle_check') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看规则循环检测的权限。');
+        pa2_json_response(['cycle_check' => pa2_detect_rule_cycles(pa2_fetch_rules(false))]);
+        exit;
+    }
+
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','products','product_map_save','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],
