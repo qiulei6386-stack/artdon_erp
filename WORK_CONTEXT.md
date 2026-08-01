@@ -1,5 +1,12 @@
 # Artdon ERP 工作上下文
 
+## 本次：56.03711 产品详情页直接展示 A/B 配置（已完成）
+
+- 用户再次反馈“配置没过来”。浏览器实际验收确认配置数据和配置服务均正常：`/configure/56.03711` 有 A/B 下拉选项，默认 B，服务端验证完成并启用加入项目按钮；问题是普通 `/product/56.03711` 产品详情页没有渲染活动配置，导致用户直观看不到。
+- 新加坡修复提交 `4fde5b6702f75af9c48fd18b1d57b05d66cbe98d` 已推送 `artdon_order/main` 并通过 Git bundle 快进部署。产品详情页读取 `configuration_schema.options[configuration].values`，直接展示 Published configurations、Configuration A、Configuration B 和完整芯片/电源组合，并保留进入配置页的选择链接。
+- 部署前已备份线上模板到 `/www/backup/artdon_order_20260728_admin/product_before_config_display_20260801.php`，原未提交模板改动保存为服务器 Git stash `before-config-display`；新提交已包含此前由本任务上线的媒体图片和询价价格兼容改动。
+- 正式检查：`templates/product.php` PHP 语法通过，渠道契约 10 项通过。浏览器对产品详情页实测：Published configurations 1 处、Configuration A 1 处、Configuration B 1 处；A 显示科锐 CXA1816 + 锐高 PS-BOM-001020，B 显示科锐 CXA1816 + 伊戈尔 PS-BOM-000646。
+
 ## 本次：56.03711 新加坡图片与配置同步修复（已完成）
 
 - 用户反馈通过商务中心发布 `56.03711 NOVAL RECESSED DOWNLIGHT` 后，新加坡站点没有同步图片和配置。
