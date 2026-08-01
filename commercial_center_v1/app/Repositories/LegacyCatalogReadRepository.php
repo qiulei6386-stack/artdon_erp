@@ -32,7 +32,8 @@ final class LegacyCatalogReadRepository
                     {$imageExpr},
                     {$drawingExpr},
                     n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height,n.bom_allowed,n.updated_at,
-                    pv.published_at AS commercial_published_at
+                    pv.id AS commercial_version_id,pv.version_no AS commercial_version_no,
+                    pv.published_at AS commercial_published_at,ps.snapshot_json AS commercial_snapshot_json
              FROM naming_models n
              LEFT JOIN mc_products mp
                ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
@@ -40,13 +41,30 @@ final class LegacyCatalogReadRepository
                ON pc.product_id=mp.id
              LEFT JOIN mc_pa2_product_config_versions pv
                ON pv.id=pc.active_published_version_id
+             LEFT JOIN mc_pa2_product_version_snapshots ps
+               ON ps.id=(
+                    SELECT MAX(ps2.id)
+                    FROM mc_pa2_product_version_snapshots ps2
+                    WHERE ps2.product_config_version_id=pv.id AND ps2.snapshot_type='published'
+               )
              WHERE " . implode(' AND ', $where) . '
              ORDER BY (pv.published_at IS NULL),pv.published_at DESC,n.updated_at DESC,n.id DESC';
         $sql .= $limit > 0 ? ' LIMIT ' . $this->limit($limit) . ' OFFSET ' . max(0, $offset) : '';
-        return $this->selectAll(
+        $rows = $this->selectAll(
             $sql,
             $params
         );
+        foreach ($rows as &$row) {
+            $snapshot = json_decode((string)($row['commercial_snapshot_json'] ?? ''), true);
+            $row['commercial_configuration'] = $this->publishedConfiguration(
+                is_array($snapshot) ? $snapshot : [],
+                (string)($row['commercial_version_no'] ?? ''),
+                (string)($row['commercial_published_at'] ?? '')
+            );
+            unset($row['commercial_snapshot_json']);
+        }
+        unset($row);
+        return $rows;
     }
 
     public function productCount(string $search = '', string $category = ''): int
@@ -186,6 +204,62 @@ final class LegacyCatalogReadRepository
             $params[] = $category;
         }
         return [$where, $params];
+    }
+
+    private function publishedConfiguration(array $snapshot, string $versionNo, string $publishedAt): array
+    {
+        if ($snapshot === []) return [];
+        $technical = is_array($snapshot['technical_range'] ?? null) ? $snapshot['technical_range'] : [];
+        $groups = [];
+        foreach ((array)($snapshot['groups'] ?? []) as $group) {
+            if (!is_array($group)) continue;
+            $values = [];
+            foreach ((array)($group['selected_options'] ?? []) as $option) {
+                if (!is_array($option)) continue;
+                $name = trim((string)($option['material_name'] ?? $option['option_name'] ?? $option['text_value'] ?? ''));
+                $code = trim((string)($option['material_code'] ?? $option['option_code'] ?? ''));
+                if ($name === '' && $code === '' && isset($option['numeric_value'])) $name = (string)$option['numeric_value'];
+                if ($name === '' && $code === '' && isset($option['boolean_value'])) $name = (int)$option['boolean_value'] === 1 ? '是' : '否';
+                $label = trim($code . ($code !== '' && $name !== '' ? ' · ' : '') . $name);
+                if ($label !== '') $values[] = $label;
+            }
+            $groups[] = [
+                'code' => (string)($group['group_code'] ?? ''),
+                'name' => (string)($group['display_name'] ?? $group['group_code'] ?? '配置'),
+                'values' => $values,
+            ];
+        }
+        return [
+            'version' => $versionNo,
+            'published_at' => $publishedAt,
+            'technical' => [
+                'power' => $this->rangeLabel($technical, 'power_values_w', 'power_min_w', 'power_max_w', 'W'),
+                'beam_angle' => $this->rangeLabel($technical, 'beam_angle_values', 'beam_angle_min', 'beam_angle_max', '°'),
+                'current' => $this->rangeLabel($technical, 'current_values_ma', 'current_min_ma', 'current_max_ma', 'mA'),
+                'cct' => $this->valueListLabel($technical['cct_values_k'] ?? [], 'K'),
+                'cri' => isset($technical['cri_min']) && $technical['cri_min'] !== null ? '≥' . $technical['cri_min'] : '',
+                'ip_rating' => trim((string)($technical['ip_rating'] ?? '')),
+            ],
+            'groups' => $groups,
+        ];
+    }
+
+    private function rangeLabel(array $technical, string $valuesKey, string $minKey, string $maxKey, string $unit): string
+    {
+        $values = $technical[$valuesKey] ?? [];
+        if (is_array($values) && $values !== []) return $this->valueListLabel($values, $unit);
+        $min = $technical[$minKey] ?? null;
+        $max = $technical[$maxKey] ?? null;
+        if ($min === null && $max === null) return '';
+        if ($min !== null && $max !== null && (string)$min !== (string)$max) return $min . '–' . $max . $unit;
+        return (string)($min ?? $max) . $unit;
+    }
+
+    private function valueListLabel($values, string $unit): string
+    {
+        if (!is_array($values)) return '';
+        $values = array_values(array_unique(array_filter(array_map('strval', $values), static fn(string $value): bool => $value !== '')));
+        return $values === [] ? '' : implode(' / ', $values) . $unit;
     }
 
     private function tableColumns(string $table): array

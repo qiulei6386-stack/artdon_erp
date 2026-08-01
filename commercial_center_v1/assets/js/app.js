@@ -99,8 +99,37 @@ if (productLibrary && productSearchForm && !productLibrary.classList.contains('i
   }
 }
 document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('.product-library-grid .library-card p').forEach(function(el){var parts=el.textContent.split(' · BOM成本 ');if(parts.length<2)return;el.textContent='';el.append(document.createTextNode(parts[0]+' · '));var s=document.createElement('strong');s.className='library-bom-cost';s.textContent='BOM成本 '+parts.slice(1).join(' · BOM成本 ');el.append(s);});});
-document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('.product-library-grid .library-card').forEach(function(card){card.addEventListener('click',function(e){if(e.target.closest('a,button'))return;if(!d||!c)return;var v=card.querySelector('h3')?.textContent||'';var s=card.querySelector('small')?.textContent||'';c.replaceChildren();[['型号',v],['系列/类别',s],['状态',card.querySelector('footer span')?.textContent||'']].forEach(function(x){var t=document.createElement('dt'),q=document.createElement('dd');t.textContent=x[0];q.textContent=x[1];c.append(t,q)});d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});
-document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('[data-product-detail]').forEach(function(card){card.addEventListener('click',function(){if(!d||!c)return;c.innerHTML='<dt>型号</dt><dd>'+card.dataset.model+'</dd><dt>基础资料</dt><dd>系列、类别、尺寸和参数</dd><dt>配置</dt><dd>光源、电源、安装方式、附件</dd><dt>资料</dt><dd>产品图、尺寸图、IES、测试报告</dd>';d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});
-document.addEventListener('DOMContentLoaded',function(){var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');document.querySelectorAll('[data-product-detail]').forEach(function(card){card.addEventListener('click',function(){if(!d||!c)return;var img=card.querySelector('img')?.getAttribute('src')||'';var model=card.dataset.model||'';var meta=card.querySelector('small')?.textContent||'';var price=card.querySelector('.product-price')?.textContent||'参考报价：—';c.innerHTML='<div class="drawer-product-head">'+(img?'<img src="'+img+'" alt="">':'')+'<div><h3>'+model+'</h3><p>'+meta+'</p><span class="tag">可报价</span></div></div><section class="drawer-section"><h4><i>1</i>基础资料</h4><dl><dt>型号</dt><dd>'+model+'</dd><dt>系列</dt><dd>'+meta.split(' · ')[0]+'</dd><dt>类别</dt><dd>'+meta.split(' · ')[1]+'</dd><dt>状态</dt><dd class="drawer-ok">可报价</dd></dl></section><section class="drawer-section"><h4><i>2</i>尺寸与参数</h4><dl><dt>尺寸</dt><dd>'+((card.querySelector('.product-size')||{}).textContent||'—')+'</dd><dt>功率</dt><dd>—</dd><dt>光束角</dt><dd>—</dd><dt>输入电压</dt><dd>—</dd><dt>材质</dt><dd>—</dd></dl></section><section class="drawer-section"><h4><i>3</i>报价信息</h4><dl><dt>参考报价</dt><dd class="drawer-price">'+price+'</dd><dt>币种</dt><dd>USD</dd><dt>MOQ</dt><dd>—</dd><dt>交期</dt><dd>—</dd></dl></section><section class="drawer-section"><h4><i>4</i>配置选项</h4><div class="drawer-tags"><span>光源：—</span><span>驱动：—</span><span>电源：—</span><span>安装方式：—</span><span>附件：—</span></div></section><section class="drawer-section"><h4><i>5</i>资料文件</h4><div class="drawer-files"><span>产品图</span><span>尺寸图</span><span>IES 文件</span><span>测试报告</span></div></section><footer class="drawer-actions"><button class="primary">加入报价</button><button type="button" data-detail-close>关闭</button></footer>';d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')})})});
 document.addEventListener('click',function(e){var card=e.target.closest('[data-product-detail]');if(!card||e.target.closest('button,a'))return;var d=document.querySelector('[data-detail-drawer]');if(d){d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')}});
 document.addEventListener('click',function(e){var button=e.target.closest('.library-card .text-button');if(!button)return;var card=button.closest('[data-product-detail]');var d=document.querySelector('[data-detail-drawer]');if(card&&d){e.preventDefault();d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open')}});
+document.addEventListener('click',function(e){
+  var card=e.target.closest('[data-product-detail]');
+  if(!card)return;
+  var d=document.querySelector('[data-detail-drawer]'),c=document.querySelector('[data-detail-content]');
+  if(!d||!c)return;
+  var esc=function(value){return String(value??'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]})};
+  var config={};
+  try{config=JSON.parse(card.dataset.productConfig||'{}')}catch(error){config={}};
+  var technical=config.technical||{},groups=Array.isArray(config.groups)?config.groups:[];
+  var groupHtml=groups.map(function(group){
+    var values=Array.isArray(group.values)&&group.values.length?group.values.join('；'):'—';
+    return '<span><b>'+esc(group.name||group.code||'配置')+'：</b>'+esc(values)+'</span>';
+  }).join('');
+  if(!groupHtml)groupHtml='<span>尚无已发布配置</span>';
+  var image=card.querySelector('img')?.getAttribute('src')||'',model=card.dataset.model||'';
+  var meta=card.querySelector('small')?.textContent||'',metaParts=meta.split(' · ');
+  var price=card.querySelector('.product-price')?.textContent||'参考报价：—';
+  var status=(card.querySelector('footer span')?.textContent||'状态：—').replace(/^状态：/,'');
+  c.innerHTML='<div class="drawer-product-head">'+(image?'<img src="'+esc(image)+'" alt="">':'')+'<div><h3>'+esc(model)+'</h3><p>'+esc(meta)+'</p><span class="tag">'+esc(status)+'</span></div></div>'+
+    '<section class="drawer-section"><h4><i>1</i>基础资料</h4><dl><dt>型号</dt><dd>'+esc(model)+'</dd><dt>系列</dt><dd>'+esc(metaParts[0]||'—')+'</dd><dt>类别</dt><dd>'+esc(metaParts[1]||'—')+'</dd><dt>状态</dt><dd class="drawer-ok">'+esc(status)+'</dd></dl></section>'+
+    '<section class="drawer-section"><h4><i>2</i>尺寸与参数</h4><dl><dt>尺寸</dt><dd>'+esc((card.querySelector('.product-size')||{}).textContent||'—')+'</dd><dt>功率</dt><dd>'+esc(technical.power||'—')+'</dd><dt>光束角</dt><dd>'+esc(technical.beam_angle||'—')+'</dd><dt>色温</dt><dd>'+esc(technical.cct||'—')+'</dd><dt>显色指数</dt><dd>'+esc(technical.cri||'—')+'</dd><dt>输出电流</dt><dd>'+esc(technical.current||'—')+'</dd><dt>防护等级</dt><dd>'+esc(technical.ip_rating||'—')+'</dd></dl></section>'+
+    '<section class="drawer-section"><h4><i>3</i>报价信息</h4><dl><dt>参考报价</dt><dd class="drawer-price">'+esc(price)+'</dd><dt>币种</dt><dd>USD</dd><dt>MOQ</dt><dd>—</dd><dt>交期</dt><dd>—</dd></dl></section>'+
+    '<section class="drawer-section"><h4><i>4</i>已发布配置'+(config.version?' · '+esc(config.version):'')+'</h4><div class="drawer-tags">'+groupHtml+'</div></section>'+
+    '<section class="drawer-section"><h4><i>5</i>资料文件</h4><div class="drawer-files"><span>产品图</span><span>尺寸图</span><span>IES 文件</span><span>测试报告</span></div></section><footer class="drawer-actions"><button class="primary">加入报价</button><button type="button" data-detail-close>关闭</button></footer>';
+  d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open');
+});
+document.addEventListener('click',function(e){
+  if(!e.target.closest('[data-detail-close]'))return;
+  var d=document.querySelector('[data-detail-drawer]');
+  if(!d)return;
+  d.classList.remove('open');d.setAttribute('aria-hidden','true');document.body.classList.remove('drawer-open');
+});
