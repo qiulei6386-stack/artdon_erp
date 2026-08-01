@@ -770,6 +770,7 @@ function pa2_fetch_template_direct_groups(int $templateId): array
         foreach (['id','template_id','group_definition_id','is_required','allow_empty','min_select','max_select','allow_default','customer_selectable','affects_price','affects_lead_time','requires_approval','sort_order','is_enabled'] as $key) {
             $row[$key] = (int)$row[$key];
         }
+        $row['settings'] = pa2_json_decode_array($row['settings_json'] ?? '');
         $row['display_name'] = trim((string)($row['group_name_override'] ?? '')) ?: (string)$row['group_name'];
         $row['display_type'] = trim((string)($row['group_type_override'] ?? '')) ?: (string)$row['group_type'];
     }
@@ -883,10 +884,11 @@ function pa2_upsert_template_group(array $input): array
     $beforeStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_template_groups WHERE template_id=? AND group_code=? LIMIT 1');
     $beforeStmt->execute([$templateId,$groupCode]);
     $before = $beforeStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $settingsJson = pa2_json_encode(pa2_group_logic_settings_from_input($input));
     $stmt = pa2_db()->prepare(
-        'INSERT INTO mc_pa2_template_groups(template_id,group_definition_id,group_code,group_name_override,group_type_override,is_required,selection_mode,allow_empty,min_select,max_select,allow_default,customer_selectable,affects_price,affects_lead_time,requires_approval,sort_order,is_enabled,inheritance_action,created_by,updated_by,created_at,updated_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
-         ON DUPLICATE KEY UPDATE group_definition_id=VALUES(group_definition_id),group_name_override=VALUES(group_name_override),group_type_override=VALUES(group_type_override),is_required=VALUES(is_required),selection_mode=VALUES(selection_mode),allow_empty=VALUES(allow_empty),min_select=VALUES(min_select),max_select=VALUES(max_select),allow_default=VALUES(allow_default),customer_selectable=VALUES(customer_selectable),affects_price=VALUES(affects_price),affects_lead_time=VALUES(affects_lead_time),requires_approval=VALUES(requires_approval),sort_order=VALUES(sort_order),is_enabled=VALUES(is_enabled),inheritance_action=VALUES(inheritance_action),updated_by=VALUES(updated_by),updated_at=NOW()'
+        'INSERT INTO mc_pa2_template_groups(template_id,group_definition_id,group_code,group_name_override,group_type_override,is_required,selection_mode,allow_empty,min_select,max_select,allow_default,customer_selectable,affects_price,affects_lead_time,requires_approval,sort_order,is_enabled,inheritance_action,settings_json,created_by,updated_by,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+         ON DUPLICATE KEY UPDATE group_definition_id=VALUES(group_definition_id),group_name_override=VALUES(group_name_override),group_type_override=VALUES(group_type_override),is_required=VALUES(is_required),selection_mode=VALUES(selection_mode),allow_empty=VALUES(allow_empty),min_select=VALUES(min_select),max_select=VALUES(max_select),allow_default=VALUES(allow_default),customer_selectable=VALUES(customer_selectable),affects_price=VALUES(affects_price),affects_lead_time=VALUES(affects_lead_time),requires_approval=VALUES(requires_approval),sort_order=VALUES(sort_order),is_enabled=VALUES(is_enabled),inheritance_action=VALUES(inheritance_action),settings_json=VALUES(settings_json),updated_by=VALUES(updated_by),updated_at=NOW()'
     );
     $stmt->execute([
         $templateId,
@@ -907,6 +909,7 @@ function pa2_upsert_template_group(array $input): array
         (int)($input['sort_order'] ?? 100),
         isset($input['is_enabled']) ? (int)$input['is_enabled'] : 1,
         $action,
+        $settingsJson,
         $userId,
         $userId,
     ]);
@@ -1152,9 +1155,29 @@ function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0, string
         }
     }
     foreach ($preview['groups'] as $group) {
+        $existingStmt = pa2_db()->prepare('SELECT effective_settings_json FROM mc_pa2_product_group_configs WHERE product_config_version_id=? AND group_code=? LIMIT 1');
+        $existingStmt->execute([$versionId, (string)$group['group_code']]);
+        $existingSettings = pa2_json_decode_array((string)($existingStmt->fetchColumn() ?: ''));
+        $templateGroupSettings = isset($group['settings']) && is_array($group['settings']) ? $group['settings'] : [];
+        $templateLogic = isset($templateGroupSettings['template_logic']) && is_array($templateGroupSettings['template_logic']) ? $templateGroupSettings['template_logic'] : [];
+        $templateBehavior = isset($templateGroupSettings['behavior']) && is_array($templateGroupSettings['behavior']) ? $templateGroupSettings['behavior'] : [];
+        $existingLogicSource = (string)($existingSettings['logic_source'] ?? '');
+        $existingProductLogic = isset($existingSettings['product_logic']) && is_array($existingSettings['product_logic']) ? $existingSettings['product_logic'] : [];
+        $existingBehavior = isset($existingSettings['behavior']) && is_array($existingSettings['behavior']) ? $existingSettings['behavior'] : [];
+        $logicSource = $existingLogicSource ?: 'template';
+        $productLogic = $existingProductLogic ?: $templateLogic;
+        $behavior = $existingBehavior ?: $templateBehavior;
+        if ($logicSource === 'template') {
+            $productLogic = $templateLogic;
+            $behavior = $templateBehavior;
+        }
         $settings = [
             'template_group' => $group,
-            'behavior' => $group['behavior'] ?? null,
+            'template_logic' => $templateLogic,
+            'template_behavior' => $templateBehavior,
+            'product_logic' => $productLogic,
+            'logic_source' => $logicSource,
+            'behavior' => $behavior ?: ($group['behavior'] ?? null),
             'is_required' => (int)($group['is_required'] ?? 0),
             'selection_mode' => (string)($group['selection_mode'] ?? 'single'),
             'min_select' => (int)($group['min_select'] ?? 0),
@@ -1431,6 +1454,66 @@ function pa2_input_float_or_null(array $input, string $key): ?float
     return (float)$value;
 }
 
+function pa2_group_logic_settings_from_input(array $input): array
+{
+    $selectionMode = trim((string)($input['selection_mode'] ?? 'single'));
+    if (!in_array($selectionMode, ['single','multiple'], true)) $selectionMode = 'single';
+    $minSelect = max(0, (int)($input['min_select'] ?? 0));
+    $maxSelect = max($minSelect, (int)($input['max_select'] ?? ($selectionMode === 'multiple' ? 99 : 1)));
+    if ($selectionMode === 'single') $maxSelect = 1;
+
+    $behavior = [];
+    $materialCategory = trim((string)($input['material_category_code'] ?? ''));
+    if ($materialCategory !== '') $behavior['material_category_code'] = $materialCategory;
+    $filter = [];
+    if (!empty($input['require_official'])) $filter['formal_status'] = 'official';
+    $keyword = trim((string)($input['keyword'] ?? ''));
+    if ($keyword !== '') $filter['keyword'] = $keyword;
+    $driverType = trim((string)($input['driver_type'] ?? ''));
+    if ($driverType !== '') $filter['driver_type'] = $driverType;
+    if ($filter) $behavior['material_filter'] = $filter;
+
+    $logic = [
+        'power_min_w' => pa2_input_float_or_null($input, 'power_min_w'),
+        'power_max_w' => pa2_input_float_or_null($input, 'power_max_w'),
+        'current_min_ma' => pa2_input_float_or_null($input, 'current_min_ma'),
+        'current_max_ma' => pa2_input_float_or_null($input, 'current_max_ma'),
+        'voltage_min_v' => pa2_input_float_or_null($input, 'voltage_min_v'),
+        'voltage_max_v' => pa2_input_float_or_null($input, 'voltage_max_v'),
+        'cct_k' => pa2_input_float_or_null($input, 'cct_k'),
+        'cri_min' => pa2_input_float_or_null($input, 'cri_min'),
+        'beam_angle' => pa2_input_float_or_null($input, 'beam_angle'),
+        'dimming_mode' => trim((string)($input['dimming_mode'] ?? '')),
+        'note' => trim((string)($input['note'] ?? '')),
+    ];
+    foreach ($logic as $key => $value) {
+        if ($value === null || $value === '') unset($logic[$key]);
+    }
+    if (isset($logic['power_min_w'], $logic['power_max_w']) && (float)$logic['power_min_w'] > (float)$logic['power_max_w']) {
+        throw new RuntimeException('功率下限不能大于功率上限。');
+    }
+    if (isset($logic['current_min_ma'], $logic['current_max_ma']) && (float)$logic['current_min_ma'] > (float)$logic['current_max_ma']) {
+        throw new RuntimeException('电流下限不能大于电流上限。');
+    }
+    if (isset($logic['voltage_min_v'], $logic['voltage_max_v']) && (float)$logic['voltage_min_v'] > (float)$logic['voltage_max_v']) {
+        throw new RuntimeException('电压下限不能大于电压上限。');
+    }
+
+    $settings = [
+        'is_required' => !empty($input['is_required']) ? 1 : 0,
+        'selection_mode' => $selectionMode,
+        'min_select' => $minSelect,
+        'max_select' => $maxSelect,
+        'allow_empty' => isset($input['allow_empty']) ? (int)$input['allow_empty'] : (!empty($input['is_required']) ? 0 : 1),
+        'template_logic' => $logic,
+        'logic_version' => 1,
+        'logic_updated_at' => date('Y-m-d H:i:s'),
+        'logic_updated_by' => pa2_current_user_id(),
+    ];
+    if ($behavior) $settings['behavior'] = $behavior;
+    return $settings;
+}
+
 function pa2_save_product_group_logic(array $input): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有保存产品配置逻辑的权限。');
@@ -1453,63 +1536,37 @@ function pa2_save_product_group_logic(array $input): array
     }
     $settings = pa2_json_decode_array($group['effective_settings_json'] ?? '');
     $before = $settings;
-    $selectionMode = trim((string)($input['selection_mode'] ?? ($settings['selection_mode'] ?? 'single')));
-    if (!in_array($selectionMode, ['single','multiple'], true)) $selectionMode = 'single';
-    $minSelect = max(0, (int)($input['min_select'] ?? ($settings['min_select'] ?? 0)));
-    $maxSelect = max($minSelect, (int)($input['max_select'] ?? ($settings['max_select'] ?? ($selectionMode === 'multiple' ? 99 : 1))));
-    if ($selectionMode === 'single') $maxSelect = 1;
-    $settings['is_required'] = !empty($input['is_required']) ? 1 : 0;
-    $settings['selection_mode'] = $selectionMode;
-    $settings['min_select'] = $minSelect;
-    $settings['max_select'] = $maxSelect;
-    $settings['allow_empty'] = isset($input['allow_empty']) ? (int)$input['allow_empty'] : ($settings['is_required'] ? 0 : 1);
+    $templateLogic = isset($settings['template_logic']) && is_array($settings['template_logic']) ? $settings['template_logic'] : [];
+    $templateBehavior = isset($settings['template_behavior']) && is_array($settings['template_behavior']) ? $settings['template_behavior'] : [];
+    $logicSource = trim((string)($input['logic_source'] ?? 'custom'));
+    if (!in_array($logicSource, ['template','custom','blank'], true)) $logicSource = 'custom';
 
-    $behavior = isset($settings['behavior']) && is_array($settings['behavior']) ? $settings['behavior'] : [];
-    $materialCategory = trim((string)($input['material_category_code'] ?? ''));
-    if ($materialCategory !== '') $behavior['material_category_code'] = $materialCategory;
-    $filter = isset($behavior['material_filter']) && is_array($behavior['material_filter']) ? $behavior['material_filter'] : [];
-    if (!empty($input['require_official'])) $filter['formal_status'] = 'official';
-    else unset($filter['formal_status']);
-    $keyword = trim((string)($input['keyword'] ?? ''));
-    if ($keyword !== '') $filter['keyword'] = $keyword;
-    else unset($filter['keyword']);
-    $driverType = trim((string)($input['driver_type'] ?? ''));
-    if ($driverType !== '') $filter['driver_type'] = $driverType;
-    else unset($filter['driver_type']);
-    $behavior['material_filter'] = $filter;
-    $settings['behavior'] = $behavior;
+    $newSettings = pa2_group_logic_settings_from_input($input);
+    foreach (['is_required','selection_mode','min_select','max_select','allow_empty'] as $key) {
+        $settings[$key] = $newSettings[$key];
+    }
+    $settings['template_logic'] = $templateLogic;
+    if ($templateBehavior) $settings['template_behavior'] = $templateBehavior;
 
-    $logic = [
-        'power_min_w' => pa2_input_float_or_null($input, 'power_min_w'),
-        'power_max_w' => pa2_input_float_or_null($input, 'power_max_w'),
-        'current_min_ma' => pa2_input_float_or_null($input, 'current_min_ma'),
-        'current_max_ma' => pa2_input_float_or_null($input, 'current_max_ma'),
-        'voltage_min_v' => pa2_input_float_or_null($input, 'voltage_min_v'),
-        'voltage_max_v' => pa2_input_float_or_null($input, 'voltage_max_v'),
-        'cct_k' => pa2_input_float_or_null($input, 'cct_k'),
-        'cri_min' => pa2_input_float_or_null($input, 'cri_min'),
-        'beam_angle' => pa2_input_float_or_null($input, 'beam_angle'),
-        'dimming_mode' => trim((string)($input['dimming_mode'] ?? '')),
-        'note' => trim((string)($input['note'] ?? '')),
-        'updated_at' => date('Y-m-d H:i:s'),
-        'updated_by' => pa2_current_user_id(),
-    ];
-    foreach ($logic as $key => $value) {
-        if ($value === null || $value === '') unset($logic[$key]);
+    if ($logicSource === 'template') {
+        $settings['product_logic'] = $templateLogic;
+        $settings['behavior'] = $templateBehavior;
+        $settings['logic_source'] = 'template';
+    } elseif ($logicSource === 'blank') {
+        $settings['product_logic'] = [];
+        unset($settings['behavior']['material_filter']);
+        $settings['logic_source'] = 'blank';
+    } else {
+        $settings['product_logic'] = $newSettings['template_logic'] ?? [];
+        $settings['behavior'] = $newSettings['behavior'] ?? [];
+        $settings['logic_source'] = 'custom';
     }
-    if (isset($logic['power_min_w'], $logic['power_max_w']) && (float)$logic['power_min_w'] > (float)$logic['power_max_w']) {
-        throw new RuntimeException('功率下限不能大于功率上限。');
-    }
-    if (isset($logic['current_min_ma'], $logic['current_max_ma']) && (float)$logic['current_min_ma'] > (float)$logic['current_max_ma']) {
-        throw new RuntimeException('电流下限不能大于电流上限。');
-    }
-    if (isset($logic['voltage_min_v'], $logic['voltage_max_v']) && (float)$logic['voltage_min_v'] > (float)$logic['voltage_max_v']) {
-        throw new RuntimeException('电压下限不能大于电压上限。');
-    }
-    $settings['product_logic'] = $logic;
+    $settings['logic_updated_at'] = date('Y-m-d H:i:s');
+    $settings['logic_updated_by'] = pa2_current_user_id();
     $userId = pa2_current_user_id();
-    pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET effective_settings_json=?,is_overridden=1,override_source="product_logic",updated_by=?,updated_at=NOW() WHERE id=?')
-        ->execute([pa2_json_encode($settings), $userId, $groupConfigId]);
+    $overrideSource = $logicSource === 'template' ? 'template_logic' : ($logicSource === 'blank' ? 'blank_logic' : 'product_logic');
+    pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET effective_settings_json=?,is_overridden=?,override_source=?,updated_by=?,updated_at=NOW() WHERE id=?')
+        ->execute([pa2_json_encode($settings), $logicSource === 'custom' ? 1 : 0, $overrideSource, $userId, $groupConfigId]);
     pa2_log('workspace_group_logic_save', 'product_group_config', $groupConfigId, $before, $settings);
     if (pa2_engine_tables_ready()) {
         try {

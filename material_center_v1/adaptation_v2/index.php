@@ -675,6 +675,22 @@ include MC_ROOT . '/components/layout_top.php';
                         <label><span>影响价格</span><select name="affects_price"><option value="0">否</option><option value="1">是</option></select></label>
                         <label><span>影响交期</span><select name="affects_lead_time"><option value="0">否</option><option value="1">是</option></select></label>
                         <label><span>需要审批</span><select name="requires_approval"><option value="0">否</option><option value="1">是</option></select></label>
+                        <div class="pa2-dialog-hint full"><strong>模板默认逻辑</strong>：这里设置会成为产品草稿的默认判断逻辑；单产品仍可在工作台里改成自定义覆盖。</div>
+                        <label><span>物料分类</span><select name="material_category_code"><option value="">跟随配置组</option><?php foreach ($pa2MaterialCategoryLabels as $code=>$label): ?><option value="<?=mc_h($code)?>"><?=mc_h($label)?></option><?php endforeach; ?></select></label>
+                        <label><span>只用正式物料</span><select name="require_official"><option value="1">是</option><option value="0">否</option></select></label>
+                        <label><span>关键词过滤</span><input name="keyword" placeholder="例如 外置 / 内置 / CREE"></label>
+                        <label><span>电源类型</span><select name="driver_type"><option value="">不限定</option><option value="external">只要外置电源</option><option value="internal">只要内置电源</option><option value="intrack">只要 INTRACK 电源</option></select></label>
+                        <label><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
+                        <label><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
+                        <label><span>电流下限 mA</span><input type="number" step="0.01" min="0" name="current_min_ma"></label>
+                        <label><span>电流上限 mA</span><input type="number" step="0.01" min="0" name="current_max_ma"></label>
+                        <label><span>电压下限 V</span><input type="number" step="0.01" min="0" name="voltage_min_v"></label>
+                        <label><span>电压上限 V</span><input type="number" step="0.01" min="0" name="voltage_max_v"></label>
+                        <label><span>调光方式</span><input name="dimming_mode" placeholder="例如 DALI / 0-10V"></label>
+                        <label><span>色温 K</span><input type="number" min="1000" max="20000" name="cct_k"></label>
+                        <label><span>最低显指 CRI</span><input type="number" step="0.1" min="0" max="100" name="cri_min"></label>
+                        <label><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
+                        <label class="wide"><span>逻辑备注</span><input name="note" placeholder="说明模板逻辑用途，例如嵌入式只允许外置电源"></label>
                         <button class="mc-button" type="button" data-template-group-reset>清空为新增</button>
                         <button class="mc-button mc-button--primary" type="submit" data-template-group-submit>保存配置组设置</button>
                     </form>
@@ -685,11 +701,21 @@ include MC_ROOT . '/components/layout_top.php';
                                 $templateGroupAction = (string)$g['inheritance_action'];
                                 $templateGroupBadge = $templateGroupAction === 'disable' ? 'disable' : ($templateGroupAction === 'override' ? 'override' : 'add');
                                 $templateGroupNextAction = $templateGroupAction === 'disable' ? 'add' : 'disable';
+                                $templateGroupSettings = isset($g['settings']) && is_array($g['settings']) ? $g['settings'] : [];
+                                $templateLogic = isset($templateGroupSettings['template_logic']) && is_array($templateGroupSettings['template_logic']) ? $templateGroupSettings['template_logic'] : [];
+                                $templateBehavior = isset($templateGroupSettings['behavior']) && is_array($templateGroupSettings['behavior']) ? $templateGroupSettings['behavior'] : [];
+                                $templateFilter = isset($templateBehavior['material_filter']) && is_array($templateBehavior['material_filter']) ? $templateBehavior['material_filter'] : [];
+                                $templateLogicTags = [];
+                                if (($templateFilter['driver_type'] ?? '') !== '') $templateLogicTags[] = ['internal'=>'内置电源','external'=>'外置电源','intrack'=>'INTRACK 电源'][(string)$templateFilter['driver_type']] ?? (string)$templateFilter['driver_type'];
+                                if (($templateFilter['formal_status'] ?? '') === 'official') $templateLogicTags[] = '正式物料';
+                                if (isset($templateLogic['power_min_w'], $templateLogic['power_max_w'])) $templateLogicTags[] = '功率 '.$templateLogic['power_min_w'].'-'.$templateLogic['power_max_w'].'W';
+                                if (isset($templateLogic['current_min_ma'], $templateLogic['current_max_ma'])) $templateLogicTags[] = '电流 '.$templateLogic['current_min_ma'].'-'.$templateLogic['current_max_ma'].'mA';
                             ?>
                             <article class="pa2-group-card">
                                 <div>
                                     <strong><?=mc_h($g['display_name'])?></strong><br>
                                     <small><?=mc_h($g['group_code'])?> · <?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?> · <?=($g['is_required']?'必选':'可选')?> · <?=mc_h($pa2SelectionModeLabels[$g['selection_mode']] ?? $g['selection_mode'])?> · <?=intval($g['min_select'])?>-<?=intval($g['max_select'])?> 项 · <?=((int)$g['allow_empty']===1?'允许为空':'不允许为空')?> · 价格<?=((int)$g['affects_price']===1?'是':'否')?> · 交期<?=((int)$g['affects_lead_time']===1?'是':'否')?> · 审批<?=((int)$g['requires_approval']===1?'是':'否')?> · 排序 <?=intval($g['sort_order'])?></small>
+                                    <?php if ($templateLogicTags): ?><div class="pa2-logic-tags"><?php foreach ($templateLogicTags as $tag): ?><span><?=mc_h($tag)?></span><?php endforeach; ?></div><?php endif; ?>
                                 </div>
                                 <div class="pa2-template-actions">
                                     <span class="pa2-badge pa2-badge--<?=mc_h($templateGroupBadge)?>"><?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?></span>
@@ -710,6 +736,7 @@ include MC_ROOT . '/components/layout_top.php';
                                         data-affects-price="<?=intval($g['affects_price'])?>"
                                         data-affects-lead-time="<?=intval($g['affects_lead_time'])?>"
                                         data-requires-approval="<?=intval($g['requires_approval'])?>"
+                                        data-template-settings="<?=mc_h(pa2_json_encode($templateGroupSettings))?>"
                                     >编辑</button>
                                     <form data-pa2-form data-confirm="<?=mc_h($templateGroupAction === 'disable' ? '确认重新加入这个配置组？' : '确认从当前模板移除这个配置组？右侧继承预览会立即不再显示它。')?>" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
                                         <input type="hidden" name="template_id" value="<?=intval($selectedTemplate['id'])?>">
@@ -939,6 +966,8 @@ include MC_ROOT . '/components/layout_top.php';
                         <?php
                             $settings = $g['effective_settings'] ?? [];
                             $productLogic = isset($settings['product_logic']) && is_array($settings['product_logic']) ? $settings['product_logic'] : [];
+                            $templateLogic = isset($settings['template_logic']) && is_array($settings['template_logic']) ? $settings['template_logic'] : [];
+                            $logicSource = (string)($settings['logic_source'] ?? ($productLogic ? 'custom' : 'template'));
                             $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
                             $selected = $g['selected_options'] ?? [];
                             $selectedMaterialIds = array_values(array_filter(array_map(static fn($s) => (int)($s['material_id'] ?? 0), $selected)));
@@ -949,6 +978,9 @@ include MC_ROOT . '/components/layout_top.php';
                             $behavior = isset($settings['behavior']) && is_array($settings['behavior']) ? $settings['behavior'] : [];
                             $materialFilter = isset($behavior['material_filter']) && is_array($behavior['material_filter']) ? $behavior['material_filter'] : [];
                             $logicTags = [];
+                            if ($logicSource === 'template') $logicTags[] = '使用模板逻辑';
+                            elseif ($logicSource === 'custom') $logicTags[] = '产品自定义逻辑';
+                            elseif ($logicSource === 'blank') $logicTags[] = '不使用逻辑';
                             if (($materialFilter['driver_type'] ?? '') !== '') $logicTags[] = ['internal'=>'内置电源','external'=>'外置电源','intrack'=>'INTRACK 电源'][(string)$materialFilter['driver_type']] ?? (string)$materialFilter['driver_type'];
                             if (($materialFilter['formal_status'] ?? '') === 'official') $logicTags[] = '只用正式物料';
                             if (isset($productLogic['power_max_w'])) $logicTags[] = '功率≤'.$productLogic['power_max_w'].'W';
@@ -997,7 +1029,7 @@ include MC_ROOT . '/components/layout_top.php';
                                 <span class="pa2-muted">当前版本已锁定，如需修改请生成下一版草稿。</span>
                             <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
                                 <div class="pa2-card-actions">
-                                    <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>">设置逻辑</button>
+                                    <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>" data-template-logic="<?=mc_h(pa2_json_encode($templateLogic))?>" data-logic-source="<?=mc_h($logicSource)?>">设置逻辑</button>
                                     <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
                                 </div>
                             <?php elseif (($definition['options'] ?? [])): ?>
@@ -1098,6 +1130,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <div class="pa2-dialog-hint">这里设置的是“这个产品”的判断逻辑：例如嵌入式灯具只要外置电源、芯片要求 CRI90、电源电流要覆盖 250–300mA。保存后会立即重新计算当前候选结果。</div>
                         <div class="pa2-logic-form">
                             <div class="pa2-logic-section">基础规则</div>
+                            <label class="wide"><span>逻辑来源</span><select name="logic_source"><option value="template">使用模板逻辑</option><option value="custom">自定义覆盖当前产品</option><option value="blank">不使用逻辑 / 清空当前产品逻辑</option></select></label>
                             <label><span>是否必选</span><select name="is_required"><option value="1">必选</option><option value="0">可选</option></select></label>
                             <label><span>选择方式</span><select name="selection_mode"><option value="single">单选</option><option value="multiple">多选</option></select></label>
                             <label><span>最少选择</span><input type="number" min="0" name="min_select"></label>
@@ -1534,6 +1567,12 @@ function pa2SetField(form,name,value){
   if(!form||!form.elements[name])return;
   form.elements[name].value=value??'';
 }
+function pa2ParseJson(raw, fallback={}){
+  try{
+    const value=JSON.parse(raw||'{}');
+    return value&&typeof value==='object'?value:fallback;
+  }catch(err){return fallback;}
+}
 (()=>{
   const form=document.querySelector('[data-template-group-form]');
   if(!form)return;
@@ -1556,6 +1595,17 @@ function pa2SetField(form,name,value){
       pa2SetField(form,'affects_price',btn.getAttribute('data-affects-price')||'0');
       pa2SetField(form,'affects_lead_time',btn.getAttribute('data-affects-lead-time')||'0');
       pa2SetField(form,'requires_approval',btn.getAttribute('data-requires-approval')||'0');
+      const settings=pa2ParseJson(btn.getAttribute('data-template-settings')||'{}');
+      const logic=settings.template_logic||{};
+      const behavior=settings.behavior||{};
+      const filter=behavior.material_filter||{};
+      pa2SetField(form,'material_category_code',behavior.material_category_code||'');
+      pa2SetField(form,'require_official',filter.formal_status==='official'?'1':'0');
+      pa2SetField(form,'keyword',filter.keyword||'');
+      pa2SetField(form,'driver_type',filter.driver_type||'');
+      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','note'].forEach((key)=>{
+        pa2SetField(form,key,logic[key]||'');
+      });
       setMode('正在编辑：'+(btn.getAttribute('data-group-name')||'配置组'));
       form.scrollIntoView({behavior:'smooth',block:'center'});
     });
@@ -1642,11 +1692,7 @@ function pa2SetField(form,name,value){
   const subtitle=document.getElementById('pa2-group-logic-subtitle');
   if(!dialog||!form)return;
   function parseJsonAttr(btn,name){
-    try{
-      const raw=btn.getAttribute(name)||'{}';
-      const value=JSON.parse(raw);
-      return value&&typeof value==='object'?value:{};
-    }catch(err){return {};}
+    return pa2ParseJson(btn.getAttribute(name)||'{}',{});
   }
   function value(obj,key,def=''){
     return obj&&Object.prototype.hasOwnProperty.call(obj,key)?obj[key]:def;
@@ -1657,7 +1703,9 @@ function pa2SetField(form,name,value){
       const groupCode=btn.getAttribute('data-group-code')||'';
       const filter=parseJsonAttr(btn,'data-material-filter');
       const logic=parseJsonAttr(btn,'data-product-logic');
+      const templateLogic=parseJsonAttr(btn,'data-template-logic');
       pa2SetField(form,'product_group_config_id',btn.getAttribute('data-group-id')||'');
+      pa2SetField(form,'logic_source',btn.getAttribute('data-logic-source')||'template');
       pa2SetField(form,'is_required',btn.getAttribute('data-is-required')||'0');
       pa2SetField(form,'selection_mode',btn.getAttribute('data-selection-mode')||'single');
       pa2SetField(form,'min_select',btn.getAttribute('data-min-select')||'0');
@@ -1671,8 +1719,9 @@ function pa2SetField(form,name,value){
       if(!driverType&&groupCode==='intrack_driver')driverType='intrack';
       if(!driverType&&groupCode==='driver')driverType='';
       pa2SetField(form,'driver_type',driverType);
+      const visibleLogic=Object.keys(logic).length?logic:templateLogic;
       ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','note'].forEach((key)=>{
-        pa2SetField(form,key,value(logic,key,''));
+        pa2SetField(form,key,value(visibleLogic,key,''));
       });
       if(title) title.textContent='设置逻辑 · '+(btn.getAttribute('data-group-name')||groupCode);
       if(subtitle) subtitle.textContent='当前产品级覆盖，不修改模板：'+(groupCode||'配置组');
