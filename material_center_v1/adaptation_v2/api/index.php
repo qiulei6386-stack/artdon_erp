@@ -64,6 +64,7 @@ try {
                 'product_version_reject',
                 'product_version_publish',
                 'product_version_rollback',
+                'product_scheme_select',
                 'product_group_logic_save',
                 'product_group_save',
                 'material_candidates',
@@ -236,6 +237,11 @@ try {
     if ($action === 'product_version_rollback') {
         $data = pa2_request_data();
         pa2_json_response(pa2_product_version_rollback((int)($data['product_id'] ?? 0), (int)($data['target_version_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已回滚');
+        exit;
+    }
+
+    if ($action === 'product_scheme_select') {
+        pa2_json_response(pa2_select_product_scheme(pa2_request_data()), '默认配置方案已更新');
         exit;
     }
 
@@ -425,7 +431,7 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_source_save','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_logic_save','product_group_save','material_candidates','packages','package_detail','package_save','package_version_prepare','package_group_save','package_option_save','package_preview','package_publish','channel_clients','channel_packages','channel_package_detail','channel_order_snapshot','cutover_readiness','cutover_audit_record','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_source_save','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_scheme_select','product_group_logic_save','product_group_save','material_candidates','packages','package_detail','package_save','package_version_prepare','package_group_save','package_option_save','package_preview','package_publish','channel_clients','channel_packages','channel_package_detail','channel_order_snapshot','cutover_readiness','cutover_audit_record','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],

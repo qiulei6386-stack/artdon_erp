@@ -872,3 +872,31 @@
 - 本地 `git diff --check` 通过。
 - 使用服务器 PHP 对本地新代码执行语法检查通过：`material_center_v1/adaptation_v2/index.php`、`material_center_v1/adaptation_v2/lib/foundation.php`。
 - 待上线后在真实页面验证：模板编辑器中模板逻辑回填/保存；单产品工作台中“使用模板逻辑 / 自定义覆盖当前产品 / 清空当前产品逻辑”保存并重新计算。
+
+## 2026-08-01 单产品配置 A/B/C 方案组合选择
+
+执行范围：
+
+- 用户要求物料中心配置支持类似截图中的“配置 A / B / C”组合选择。
+- 本次只基于 V2 当前已选配置组生成组合方案，不修改旧版产品适配、不修改旧 BOM、不新增数据库表。
+
+完成内容：
+
+- 单产品工作台根据各配置组已选项顺序自动生成配置方案：
+  - 每个配置组第 1 个选项组成配置 A；
+  - 每个配置组第 2 个选项组成配置 B；
+  - 每个配置组第 3 个选项组成配置 C；
+  - 只有一个选项的配置组会复用到所有方案。
+- 工作台新增“配置方案 · 当前版本”区域，展示每个方案中的芯片、电源、光学等已选物料。
+- 支持在草稿/驳回状态下点击“设为采用”，保存默认采用方案到当前版本 `configuration_snapshot_json.selected_scheme`。
+- 版本快照新增 `schemes`，发布后商务中心读取物料中心发布的方案，保留用户在物料中心选择的默认方案。
+- 生成下一版草稿时会继承上一版本已选择的默认方案。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 使用服务器 PHP 对本地新代码执行语法检查通过：
+  - `material_center_v1/adaptation_v2/index.php`
+  - `material_center_v1/adaptation_v2/lib/foundation.php`
+  - `material_center_v1/adaptation_v2/api/index.php`
+  - `commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`

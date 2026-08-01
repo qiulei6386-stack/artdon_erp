@@ -1358,6 +1358,9 @@ function pa2_workspace_detail(int $productId): array
     if ($version) {
         pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET check_summary_json=? WHERE id=?')->execute([pa2_json_encode($summary),$versionId]);
     }
+    $configurationSnapshot = $version ? pa2_json_decode_array($version['configuration_snapshot_json'] ?? '') : [];
+    $selectedSchemeCode = trim((string)($configurationSnapshot['selected_scheme'] ?? 'A')) ?: 'A';
+    $schemes = pa2_build_configuration_schemes($groups, $selectedSchemeCode);
     return [
         'product' => $product,
         'config' => $config,
@@ -1366,9 +1369,111 @@ function pa2_workspace_detail(int $productId): array
         'template' => $config['source_template_id'] ? pa2_fetch_template((int)$config['source_template_id']) : pa2_template_for_product($product),
         'template_preview' => $config['source_template_id'] ? pa2_template_effective_groups((int)$config['source_template_id']) : [],
         'groups' => $groups,
+        'schemes' => $schemes,
         'check_summary' => $summary,
         'adaptation_results' => $cachedFlat,
     ];
+}
+
+function pa2_option_display_label(array $option): string
+{
+    $code = trim((string)($option['material_code'] ?? $option['option_code'] ?? ''));
+    $name = trim((string)($option['material_name'] ?? $option['option_name'] ?? $option['text_value'] ?? ''));
+    if ($name === '' && $code === '' && isset($option['numeric_value']) && $option['numeric_value'] !== null) $name = (string)$option['numeric_value'];
+    if ($name === '' && $code === '' && isset($option['boolean_value']) && $option['boolean_value'] !== null) $name = (int)$option['boolean_value'] === 1 ? '是' : '否';
+    return trim($code . ($code !== '' && $name !== '' ? ' · ' : '') . $name);
+}
+
+function pa2_build_configuration_schemes(array $groups, string $selectedSchemeCode = 'A'): array
+{
+    $schemeGroups = [];
+    foreach ($groups as $group) {
+        $values = [];
+        foreach ((array)($group['selected_options'] ?? []) as $option) {
+            if (!is_array($option)) continue;
+            $label = pa2_option_display_label($option);
+            if ($label === '') continue;
+            $values[] = [
+                'label' => $label,
+                'material_id' => $option['material_id'] ?? null,
+                'material_code' => $option['material_code'] ?? null,
+                'material_name' => $option['material_name'] ?? null,
+                'option_definition_id' => $option['option_definition_id'] ?? null,
+                'option_code' => $option['option_code'] ?? null,
+                'option_name' => $option['option_name'] ?? null,
+            ];
+        }
+        if (!$values) continue;
+        $schemeGroups[] = [
+            'code' => (string)($group['group_code'] ?? ''),
+            'name' => (string)($group['display_name'] ?? $group['group_name'] ?? $group['group_code'] ?? '配置'),
+            'values' => $values,
+        ];
+    }
+    $schemeCount = 0;
+    foreach ($schemeGroups as $group) $schemeCount = max($schemeCount, count($group['values']));
+    $schemeCount = min($schemeCount, 26);
+    $selectedSchemeCode = strtoupper(trim($selectedSchemeCode)) ?: 'A';
+    $schemes = [];
+    for ($index = 0; $index < $schemeCount; $index++) {
+        $code = chr(65 + $index);
+        $selections = [];
+        foreach ($schemeGroups as $group) {
+            $values = $group['values'];
+            $value = count($values) === 1 ? $values[0] : ($values[$index] ?? null);
+            if (!$value) continue;
+            $selections[] = [
+                'group_code' => $group['code'],
+                'group' => $group['name'],
+                'value' => $value['label'],
+                'material_id' => $value['material_id'],
+                'material_code' => $value['material_code'],
+                'material_name' => $value['material_name'],
+                'option_definition_id' => $value['option_definition_id'],
+                'option_code' => $value['option_code'],
+                'option_name' => $value['option_name'],
+            ];
+        }
+        if ($selections) {
+            $schemes[] = [
+                'code' => $code,
+                'name' => '配置 ' . $code,
+                'is_default' => $code === $selectedSchemeCode || ($selectedSchemeCode === '' && $index === 0),
+                'selections' => $selections,
+            ];
+        }
+    }
+    if ($schemes && !array_filter($schemes, static fn($scheme) => !empty($scheme['is_default']))) {
+        $schemes[0]['is_default'] = true;
+    }
+    return $schemes;
+}
+
+function pa2_select_product_scheme(array $input): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有选择配置方案的权限。');
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $productId = (int)($input['product_id'] ?? 0);
+    $schemeCode = strtoupper(trim((string)($input['scheme_code'] ?? '')));
+    if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+    if (!preg_match('/^[A-Z]$/', $schemeCode)) throw new RuntimeException('配置方案编号不正确。');
+    $detail = pa2_workspace_detail($productId);
+    $version = $detail['version'] ?? null;
+    if (!$version) throw new RuntimeException('当前产品还没有配置版本。');
+    if (!in_array((string)$version['status'], ['draft','rejected'], true)) {
+        throw new RuntimeException('当前版本已提交、审批或发布，请先生成新的草稿再选择配置方案。');
+    }
+    $validCodes = array_map(static fn($scheme) => (string)$scheme['code'], (array)($detail['schemes'] ?? []));
+    if (!in_array($schemeCode, $validCodes, true)) throw new RuntimeException('当前配置方案不存在。');
+    $snapshot = pa2_json_decode_array($version['configuration_snapshot_json'] ?? '');
+    $before = $snapshot;
+    $snapshot['selected_scheme'] = $schemeCode;
+    $snapshot['scheme_selected_at'] = date('Y-m-d H:i:s');
+    $snapshot['scheme_selected_by'] = pa2_current_user_id();
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET configuration_snapshot_json=? WHERE id=?')
+        ->execute([pa2_json_encode($snapshot), (int)$version['id']]);
+    pa2_log('workspace_scheme_select', 'product_config_version', (int)$version['id'], $before, $snapshot);
+    return pa2_workspace_detail($productId);
 }
 
 function pa2_material_candidates(string $groupCode, string $keyword = '', int $limit = 30, int $productId = 0, int $productGroupConfigId = 0): array
@@ -2400,6 +2505,14 @@ function pa2_build_version_snapshot(int $versionId): array
             'selected_options' => $selectedByGroup[(int)$group['id']] ?? [],
         ];
     }
+    $configurationSnapshot = pa2_json_decode_array($version['configuration_snapshot_json'] ?? '');
+    $selectedSchemeCode = trim((string)($configurationSnapshot['selected_scheme'] ?? 'A')) ?: 'A';
+    $snapshotGroupsForSchemes = $snapshotGroups;
+    foreach ($snapshotGroupsForSchemes as &$schemeGroup) {
+        $schemeGroup['display_name'] = (string)($schemeGroup['display_name'] ?? $schemeGroup['group_code'] ?? '配置');
+    }
+    unset($schemeGroup);
+    $schemes = pa2_build_configuration_schemes($snapshotGroupsForSchemes, $selectedSchemeCode);
     return [
         'product_config_id' => (int)$version['product_config_id'],
         'product_id' => (int)($config['product_id'] ?? 0),
@@ -2409,10 +2522,11 @@ function pa2_build_version_snapshot(int $versionId): array
         'version_no' => (string)$version['version_no'],
         'status' => (string)$version['status'],
         'source_template_id' => $version['source_template_id'],
-        'configuration_snapshot' => pa2_json_decode_array($version['configuration_snapshot_json'] ?? ''),
+        'configuration_snapshot' => $configurationSnapshot,
         'technical_range' => pa2_json_decode_array($version['technical_range_json'] ?? ''),
         'check_summary' => pa2_json_decode_array($version['check_summary_json'] ?? ''),
         'groups' => $snapshotGroups,
+        'schemes' => $schemes,
     ];
 }
 
@@ -2498,6 +2612,9 @@ function pa2_clone_version_as_draft(int $sourceVersionId, int $configId, string 
     $userId = pa2_current_user_id();
     $versionNo = pa2_next_draft_version_no($configId);
     $snapshot = pa2_build_version_snapshot($sourceVersionId);
+    $sourceConfiguration = pa2_json_decode_array($source['configuration_snapshot_json'] ?? '');
+    $draftConfiguration = ['source' => 'clone', 'source_version_id' => $sourceVersionId, 'reason' => $reason, 'cloned_at' => date('Y-m-d H:i:s')];
+    if (!empty($sourceConfiguration['selected_scheme'])) $draftConfiguration['selected_scheme'] = (string)$sourceConfiguration['selected_scheme'];
     $insert = pa2_db()->prepare(
         'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,technical_range_json,check_summary_json,created_by,created_at)
          VALUES(?,?,?,?, "draft", ?, ?, ?, ?, NOW())'
@@ -2507,7 +2624,7 @@ function pa2_clone_version_as_draft(int $sourceVersionId, int $configId, string 
         $versionNo,
         $source['source_template_id'] ?? null,
         $source['source_template_version_id'] ?? null,
-        pa2_json_encode(['source' => 'clone', 'source_version_id' => $sourceVersionId, 'reason' => $reason, 'cloned_at' => date('Y-m-d H:i:s')]),
+        pa2_json_encode($draftConfiguration),
         $source['technical_range_json'] ?? null,
         $source['check_summary_json'] ?? null,
         $userId,
