@@ -24,14 +24,27 @@ final class LegacyCatalogReadRepository
         $imageExpr = $imageColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $imageColumns)) . ') AS image_path' : 'NULL AS image_path';
         $drawingExpr = $drawingColumns ? 'COALESCE(' . implode(',', array_map(static fn(string $c): string => "NULLIF(`{$c}`, '')", $drawingColumns)) . ') AS drawing_path' : 'NULL AS drawing_path';
         [$where, $params] = $this->productWhere($search, $category);
+        $sql = "SELECT n.id,n.model_no,n.category,n.product_name,n.series_name,n.lamp_type,
+                    CASE
+                        WHEN pc.status='published' AND pv.status='published' THEN '可报价'
+                        ELSE n.status
+                    END AS status,
+                    {$imageExpr},
+                    {$drawingExpr},
+                    n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height,n.bom_allowed,n.updated_at,
+                    pv.published_at AS commercial_published_at
+             FROM naming_models n
+             LEFT JOIN mc_products mp
+               ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
+             LEFT JOIN mc_pa2_product_configs pc
+               ON pc.product_id=mp.id
+             LEFT JOIN mc_pa2_product_config_versions pv
+               ON pv.id=pc.active_published_version_id
+             WHERE " . implode(' AND ', $where) . '
+             ORDER BY (pv.published_at IS NULL),pv.published_at DESC,n.updated_at DESC,n.id DESC';
+        $sql .= $limit > 0 ? ' LIMIT ' . $this->limit($limit) . ' OFFSET ' . max(0, $offset) : '';
         return $this->selectAll(
-            'SELECT id,model_no,category,product_name,series_name,lamp_type,status,
-                    ' . $imageExpr . ',
-                    ' . $drawingExpr . ',
-                    dim_opening,dim_outer_d,dim_length,dim_width,dim_height,bom_allowed,updated_at
-             FROM naming_models
-             WHERE ' . implode(' AND ', $where) . '
-             ORDER BY updated_at DESC,id DESC' . ($limit > 0 ? ' LIMIT ' . $this->limit($limit) . ' OFFSET ' . max(0, $offset) : ''),
+            $sql,
             $params
         );
     }
@@ -40,7 +53,7 @@ final class LegacyCatalogReadRepository
     {
         [$where, $params] = $this->productWhere($search, $category);
         return (int)$this->selectValue(
-            'SELECT COUNT(*) FROM naming_models WHERE ' . implode(' AND ', $where),
+            'SELECT COUNT(*) FROM naming_models n WHERE ' . implode(' AND ', $where),
             $params
         );
     }
@@ -49,7 +62,20 @@ final class LegacyCatalogReadRepository
     {
         [$where, $params] = $this->productWhere($search, $category);
         $rows = $this->selectAll(
-            'SELECT status,COUNT(*) AS total FROM naming_models WHERE ' . implode(' AND ', $where) . ' GROUP BY status',
+            "SELECT CASE
+                        WHEN pc.status='published' AND pv.status='published' THEN '可报价'
+                        ELSE n.status
+                    END AS status,
+                    COUNT(*) AS total
+             FROM naming_models n
+             LEFT JOIN mc_products mp
+               ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
+             LEFT JOIN mc_pa2_product_configs pc
+               ON pc.product_id=mp.id
+             LEFT JOIN mc_pa2_product_config_versions pv
+               ON pv.id=pc.active_published_version_id
+             WHERE " . implode(' AND ', $where) . '
+             GROUP BY status',
             $params
         );
         $counts = ['可报价'=>0, '开发中'=>0, '停售'=>0];
@@ -144,19 +170,19 @@ final class LegacyCatalogReadRepository
 
     private function productWhere(string $search, string $category): array
     {
-        $where = ['website_deleted=0'];
+        $where = ['n.website_deleted=0'];
         $params = [];
         $search = trim($search);
         if ($search !== '') {
             $keywords = preg_split('/[\s,，;；]+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-            $haystack = "CONCAT_WS(' ',model_no,product_name,item_name,series_name,web_series,category,lamp_type,status,customer,remark,size_code,web_size_name,web_dimensions,dim_opening,dim_outer_d,dim_length,dim_width,dim_height)";
+            $haystack = "CONCAT_WS(' ',n.model_no,n.product_name,n.item_name,n.series_name,n.web_series,n.category,n.lamp_type,n.status,n.customer,n.remark,n.size_code,n.web_size_name,n.web_dimensions,n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height)";
             foreach (array_slice($keywords, 0, 8) as $keyword) {
                 $where[] = $haystack . ' LIKE ?';
                 $params[] = '%' . $keyword . '%';
             }
         }
         if ($category !== '') {
-            $where[] = 'category=?';
+            $where[] = 'n.category=?';
             $params[] = $category;
         }
         return [$where, $params];
