@@ -85,7 +85,7 @@ final class SingaporeChannelService
         $configuration = is_array($product['commercial_configuration'] ?? null) ? $product['commercial_configuration'] : [];
         $image = trim((string)($product['image_path'] ?? ''));
         if ($image !== '' && !preg_match('#^https?://#i', $image)) $image = 'https://novlight.com/artdon_erp/' . ltrim($image, '/');
-        $payload = ['schema_version' => '2026-08-01', 'event_type' => 'product.upsert', 'channel' => self::CHANNEL_CODE,
+        $payload = ['schema_version' => '2026-08-01.2', 'event_type' => 'product.upsert', 'channel' => self::CHANNEL_CODE,
             'product' => ['source_id' => (string)$product['id'], 'source_version' => (string)($product['commercial_version_no'] ?? ''),
                 'sku' => (string)$product['model_no'], 'name' => (string)($product['product_name'] ?: $product['model_no']),
                 'series' => (string)($product['series_name'] ?? ''), 'category' => (string)($product['category'] ?? ''),
