@@ -1,6 +1,18 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 9 阶段下游渠道接口（已发布）
+## 本次：产品适配 V2 第 10 阶段最终验收和切换评估（进行中）
+
+- 用户要求继续余下步骤。按阶段纪律继续第 10 阶段。本阶段只做最终验收和切换评估，不切换正式菜单。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_009_phase10_cutover_readiness.php`，新增 `mc_pa2_cutover_audits`、`mc_pa2_cutover_check_items`。
+- 第 10 阶段 API 状态更新为 `phase=10`，新增 `cutover_readiness`、`cutover_audit_record`。
+- `pa2_cutover_readiness()` 检查旧版边界、正式菜单状态、第 2–9 阶段表、规则循环、配置包发布和真实业务回归要求。
+- `index.php?view=cutover` 新增最终验收页，显示决策、阻断项和全量检查项。
+- 当前预期结果是 blocked/不得切换正式菜单，因为配置包尚未发布，商务中心/新加坡网站真实接入和业务回归还未完成。
+- 新增文档 `adaptation_v2/docs/10_CUTOVER_READINESS.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase10_contract.php`。
+- 当前正在做本地静态检查、候选服务器语法/契约测试，随后再提交、推送、部署和正式服务器迁移。
+
+## 上次：产品适配 V2 第 9 阶段下游渠道接口（已发布）
 
 - 用户要求继续余下步骤。按阶段纪律继续第 9 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。

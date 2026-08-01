@@ -472,3 +472,41 @@
 - 下游只读核验：`commercial_visible=0`、`singapore_visible=0`，原因是第 8 阶段首批配置包仍为草稿；接口按规则不暴露草稿。
 - 缓存核验：调用只读函数后 `mc_pa2_channel_cache=2`。
 - 签名核验：未签名访问 `channel_packages` 返回失败，消息为“缺少渠道签名。”，并写入访问日志，`mc_pa2_channel_access_logs=1`。
+
+## 2026-08-01 第 10 阶段：最终验收和切换评估
+
+执行范围：
+
+- 用户要求继续余下步骤。
+- 本阶段只做 V2 最终验收、切换评估、阻断清单和审计记录。
+- 本阶段不切换正式菜单，不修改旧版产品适配业务，不修改旧 BOM。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_009_phase10_cutover_readiness.php`。
+- 新增 `mc_pa2_cutover_audits`、`mc_pa2_cutover_check_items`。
+- 实现 `pa2_cutover_readiness()`：检查旧版边界、正式菜单状态、第 2–9 阶段表、规则循环、配置包发布和真实业务回归要求。
+- 实现 `pa2_record_cutover_audit()`：把本次 readiness 结果写入审计表和检查项表。
+- API 新增 `cutover_readiness`、`cutover_audit_record`。
+- 页面新增 `cutover` 最终验收视图，显示当前决策、阻断项和全量检查项。
+- 当前逻辑会明确输出“不允许切换正式菜单”，直到已发布配置包和真实业务回归完成。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_009_phase10_cutover_readiness.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/10_CUTOVER_READINESS.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase10_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 10 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。

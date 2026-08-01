@@ -203,6 +203,14 @@ function pa2_phase9_tables_ready(): bool
     return true;
 }
 
+function pa2_phase10_tables_ready(): bool
+{
+    foreach (['mc_pa2_cutover_audits','mc_pa2_cutover_check_items'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
 function pa2_foundation_summary(): array
 {
     $summary = [
@@ -231,6 +239,8 @@ function pa2_foundation_summary(): array
         'channel_snapshot_count' => 0,
         'channel_access_log_count' => 0,
         'channel_order_snapshot_count' => 0,
+        'cutover_audit_count' => 0,
+        'cutover_blocker_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -281,6 +291,10 @@ function pa2_foundation_summary(): array
             $summary['channel_snapshot_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_package_snapshots')->fetchColumn();
             $summary['channel_access_log_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_access_logs')->fetchColumn();
             $summary['channel_order_snapshot_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_order_snapshots')->fetchColumn();
+        }
+        if (pa2_phase10_tables_ready()) {
+            $summary['cutover_audit_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_cutover_audits')->fetchColumn();
+            $summary['cutover_blocker_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_cutover_check_items WHERE result='blocked'")->fetchColumn();
         }
     }
     return $summary;
@@ -2815,4 +2829,58 @@ function pa2_channel_order_snapshot(array $input, array $context): array
     $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_channel_order_snapshots(channel_code,client_code,external_order_no,package_id,package_version_id,payload_json,payload_hash,source_system,created_at) SELECT ?,?,?,p.id,?,?,?,?,NOW() FROM mc_pa2_config_packages p WHERE p.package_code=? LIMIT 1 ON DUPLICATE KEY UPDATE created_at=created_at');
     $stmt->execute([(string)$client['channel_code'],(string)$client['client_code'],$externalOrderNo,(int)$package['version_id'],$json,$hash,(string)($payload['source_system'] ?? ''),$packageCode]);
     return ['external_order_no' => $externalOrderNo, 'package_code' => $packageCode, 'package_version_id' => (int)$package['version_id'], 'payload_hash' => $hash];
+}
+
+function pa2_cutover_readiness(): array
+{
+    $summary = pa2_foundation_summary();
+    $checks = [];
+    $add = function (string $code, string $name, bool $passed, string $severity, array $evidence = []) use (&$checks): void {
+        $checks[] = [
+            'check_code' => $code,
+            'check_name' => $name,
+            'result' => $passed ? 'passed' : 'blocked',
+            'severity' => $severity,
+            'evidence' => $evidence,
+        ];
+    };
+    $add('legacy_business_untouched', '旧版产品适配业务未切换', is_file(dirname(__DIR__, 2) . '/adaptation/index.php'), 'critical', ['legacy_entry' => 'material_center_v1/adaptation/index.php']);
+    $add('old_bom_untouched', '旧 BOM 不在 V2 阶段修改范围内', is_file(dirname(__DIR__, 3) . '/bom.php'), 'critical', ['old_bom' => 'bom.php']);
+    $add('formal_menu_not_switched', '正式菜单未切换到 V2', true, 'critical', ['menu_switched' => false]);
+    $add('phase2_foundation_ready', '第 2 阶段基础表就绪', pa2_foundation_ready(), 'critical', ['category_count' => $summary['category_count'], 'group_count' => $summary['group_count']]);
+    $add('phase3_templates_ready', '第 3 阶段模板表就绪', pa2_template_tables_ready(), 'high', ['template_count' => $summary['template_count']]);
+    $add('phase4_rules_ready', '第 4 阶段规则表就绪且无循环', pa2_phase4_tables_ready() && (int)$summary['rule_cycle_count'] === 0, 'high', ['rule_count' => $summary['rule_count'], 'rule_cycle_count' => $summary['rule_cycle_count']]);
+    $add('phase5_workspace_ready', '第 5 阶段单产品工作台表就绪', pa2_workspace_tables_ready(), 'high', ['product_config_count' => $summary['product_config_count']]);
+    $add('phase6_engine_ready', '第 6 阶段适配计算表就绪', pa2_engine_tables_ready(), 'high', ['adaptation_result_count' => $summary['adaptation_result_count']]);
+    $add('phase7_version_ready', '第 7 阶段版本审批表就绪', pa2_phase7_tables_ready(), 'high', ['published_version_count' => $summary['published_version_count']]);
+    $add('phase8_package_ready', '第 8 阶段配置包表就绪', pa2_phase8_tables_ready(), 'high', ['package_count' => $summary['package_count']]);
+    $add('phase9_channel_ready', '第 9 阶段渠道接口表就绪', pa2_phase9_tables_ready(), 'high', ['channel_client_count' => $summary['channel_client_count']]);
+    $add('published_packages_exist', '至少存在已发布配置包供下游读取', (int)($summary['published_package_count'] ?? 0) > 0, 'critical', ['published_package_count' => $summary['published_package_count'] ?? 0]);
+    $add('real_business_regression_required', '真实业务回归需人工验收后才能切换正式菜单', false, 'critical', ['required' => ['产品适配真实产品配置', '配置包发布', '商务中心读取', '新加坡网站读取', '订单快照']]);
+    $blocked = array_values(array_filter($checks, fn($check) => $check['result'] === 'blocked'));
+    return [
+        'ready_to_switch' => count($blocked) === 0,
+        'status' => count($blocked) === 0 ? 'passed' : 'blocked',
+        'summary' => $summary,
+        'checks' => $checks,
+        'blockers' => $blocked,
+        'decision' => count($blocked) === 0 ? '可以进入正式切换审批' : '不得切换正式菜单',
+    ];
+}
+
+function pa2_record_cutover_audit(string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.manage_channel', 'adaptation_v2.publish', 'material_center.adaptation.manage'], '没有记录切换验收的权限。');
+    if (!pa2_phase10_tables_ready()) throw new RuntimeException('V2 第 10 阶段验收表尚未迁移。');
+    $readiness = pa2_cutover_readiness();
+    $auditCode = 'cutover_' . date('Ymd_His');
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_cutover_audits(audit_code,status,readiness_json,legacy_mutated,old_bom_mutated,menu_switched,note,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,NOW())');
+    $stmt->execute([$auditCode,$readiness['status'],pa2_json_encode($readiness),0,0,0,$note,pa2_current_user_id()]);
+    $auditId = (int)pa2_db()->lastInsertId();
+    foreach ($readiness['checks'] as $check) {
+        $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_cutover_check_items(audit_id,check_code,check_name,result,severity,evidence_json,created_at) VALUES(?,?,?,?,?,?,NOW())');
+        $stmt->execute([$auditId,$check['check_code'],$check['check_name'],$check['result'],$check['severity'],pa2_json_encode($check['evidence'] ?? [])]);
+    }
+    pa2_log('record_cutover_audit', 'pa2_cutover_audit', $auditId, [], $readiness);
+    return ['audit_id' => $auditId, 'audit_code' => $auditCode, 'readiness' => $readiness];
 }

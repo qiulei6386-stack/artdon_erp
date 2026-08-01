@@ -19,12 +19,13 @@ $allowedViews = [
     'packages',
     'publish',
     'approvals',
+    'cutover',
     'logs',
 ];
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 9 阶段：下游渠道接口。';
+$pageDescription = '第 10 阶段：最终验收和切换评估。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
@@ -64,6 +65,7 @@ if ($selectedPackageId <= 0 && $packages) $selectedPackageId = (int)$packages[0]
 $selectedPackage = $selectedPackageId > 0 ? pa2_fetch_package($selectedPackageId) : null;
 $selectedPackagePreview = $selectedPackage ? pa2_package_preview((int)$selectedPackage['id']) : null;
 $pa2PackageLockLabels = pa2_package_rule_labels();
+$cutoverReadiness = pa2_cutover_readiness();
 $pa2ResultLabels = [
     'full_match' => '完全适配',
     'conditional_match' => '条件适配',
@@ -88,6 +90,7 @@ $routeCards = [
     ['packages', '配置包中心', '第 8 阶段维护渠道配置包、锁定范围、价格、MOQ、库存和交期规则。'],
     ['publish', '渠道发布', '第 9 阶段提供下游只读接口、签名、缓存、快照和日志。'],
     ['approvals', '审批中心', '第 7 阶段接入审批和发布。'],
+    ['cutover', '最终验收', '第 10 阶段全量检查和切换评估；未通过前不切菜单。'],
     ['logs', '日志与版本', '查看 V2 执行记录和阶段文档。'],
 ];
 
@@ -115,11 +118,11 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate small{color:var(--pa2-muted)}
-.pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}
+.pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="9" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="10" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -148,10 +151,10 @@ include MC_ROOT . '/components/layout_top.php';
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
             <article class="pa2-card"><strong>产品配置草稿</strong><b><?=intval($summary['product_config_count'])?></b><p>第 5 阶段开始保存 V2 单产品草稿配置。</p></article>
-            <article class="pa2-card"><strong>渠道客户端</strong><b><?=intval($summary['channel_client_count'] ?? 0)?></b><p>缓存 <?=intval($summary['channel_cache_count'] ?? 0)?>；快照 <?=intval($summary['channel_snapshot_count'] ?? 0)?>；访问日志 <?=intval($summary['channel_access_log_count'] ?? 0)?>。</p></article>
+            <article class="pa2-card"><strong>最终验收</strong><b><?=intval($summary['cutover_blocker_count'] ?? count($cutoverReadiness['blockers'] ?? []))?></b><p>阻断项；审计记录 <?=intval($summary['cutover_audit_count'] ?? 0)?> 条。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 9 阶段开放 V2 下游只读接口：商务中心和新加坡网站只能读取已发布配置包版本；草稿不出接口；接口带签名、缓存、快照和日志。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 10 阶段开放最终验收和切换评估；当前仍不切正式菜单。只有全部阻断项消除后，才允许进入正式切换审批。</p></div><span class="pa2-pill <?=($cutoverReadiness['ready_to_switch'] ?? false)?'pa2-pill--ok':'pa2-pill--warn'?>"><?=mc_h($cutoverReadiness['decision'] ?? '待检查')?></span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -955,6 +958,51 @@ include MC_ROOT . '/components/layout_top.php';
                 </section>
             </div>
         </section>
+    <?php elseif ($view === 'cutover'): ?>
+        <section class="pa2-panel">
+            <div class="pa2-panel__head">
+                <div><h2>最终验收 / 切换评估</h2><p>这是 V2 切换闸门：只评估并记录，不自动修改正式菜单。</p></div>
+                <?php if (pa2_phase10_tables_ready() && pa2_can_any(['adaptation_v2.manage_channel','adaptation_v2.publish','material_center.adaptation.manage'])): ?>
+                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=cutover_audit_record'))?>">
+                    <input type="hidden" name="note" value="manual cutover readiness audit">
+                    <button class="mc-button mc-button--primary" type="submit">记录本次验收</button>
+                </form>
+                <?php endif; ?>
+            </div>
+            <div class="pa2-panel__body pa2-section-gap">
+                <div class="pa2-cutover-banner <?=($cutoverReadiness['ready_to_switch'] ?? false)?'is-ready':''?>">
+                    <div>
+                        <strong><?=mc_h($cutoverReadiness['decision'] ?? '待检查')?></strong>
+                        <p class="pa2-muted">当前状态：<?=mc_h($cutoverReadiness['status'] ?? 'unknown')?>；阻断项 <?=count($cutoverReadiness['blockers'] ?? [])?> 个。正式菜单仍保持旧版入口。</p>
+                    </div>
+                    <span class="pa2-pill <?=($cutoverReadiness['ready_to_switch'] ?? false)?'pa2-pill--ok':'pa2-pill--warn'?>"><?=($cutoverReadiness['ready_to_switch'] ?? false)?'可进入切换审批':'禁止切换'?></span>
+                </div>
+                <?php if (!empty($cutoverReadiness['blockers'])): ?>
+                <section class="pa2-panel">
+                    <div class="pa2-panel__head"><div><h2>阻断项</h2><p>以下项目未完成前，不允许把正式菜单切换到 V2。</p></div></div>
+                    <div class="pa2-panel__body pa2-check-list">
+                        <?php foreach ($cutoverReadiness['blockers'] as $check): ?>
+                            <article class="pa2-check-item is-blocked">
+                                <div><strong><?=mc_h($check['check_name'])?></strong><br><span class="pa2-muted"><?=mc_h($check['check_code'])?> · <?=mc_h($check['severity'])?></span></div>
+                                <span class="pa2-badge pa2-badge--block">blocked</span>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </section>
+                <?php endif; ?>
+                <section class="pa2-panel">
+                    <div class="pa2-panel__head"><div><h2>全量检查项</h2><p>包含旧版边界、各阶段表、规则循环、配置包发布和真实业务回归要求。</p></div></div>
+                    <div class="pa2-panel__body pa2-check-list">
+                        <?php foreach (($cutoverReadiness['checks'] ?? []) as $check): ?>
+                            <article class="pa2-check-item <?=($check['result']==='passed')?'is-passed':'is-blocked'?>">
+                                <div><strong><?=mc_h($check['check_name'])?></strong><br><span class="pa2-muted"><?=mc_h($check['check_code'])?> · <?=mc_h(pa2_json_encode($check['evidence'] ?? []))?></span></div>
+                                <span class="pa2-badge <?=($check['result']==='passed')?'pa2-badge--match':'pa2-badge--block'?>"><?=mc_h($check['result'])?></span>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </section>
+            </div>
+        </section>
     <?php elseif ($view === 'logs'): ?>
         <section class="pa2-panel">
             <div class="pa2-panel__head"><div><h2>执行日志与审计文档</h2><p>阶段文档保存在 V2 独立目录，便于验收和回滚。</p></div></div>
@@ -971,6 +1019,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 7 阶段版本审批</td><td><code>adaptation_v2/docs/07_VERSION_APPROVAL.md</code></td></tr>
                         <tr><td>第 8 阶段配置包中心</td><td><code>adaptation_v2/docs/08_CONFIG_PACKAGE_CENTER.md</code></td></tr>
                         <tr><td>第 9 阶段渠道接口</td><td><code>adaptation_v2/docs/09_CHANNEL_API.md</code></td></tr>
+                        <tr><td>第 10 阶段最终验收</td><td><code>adaptation_v2/docs/10_CUTOVER_READINESS.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>
