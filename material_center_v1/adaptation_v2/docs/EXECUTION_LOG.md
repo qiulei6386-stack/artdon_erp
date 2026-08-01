@@ -258,4 +258,13 @@
 
 测试记录：
 
-- 待本地静态检查、服务器 PHP 语法检查、迁移、阶段契约和页面渲染验证后补充。
+- 本地 `git diff --check` 通过。
+- 旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase5_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 5 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase5_contract.php` 通过。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_004_phase5_workspace`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 5 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase5_contract.php` 通过。
+- 正式服务器页面渲染通过：`home`、`workspace`、`products`、`rules`、`logs`。
+- 正式服务器只读核验：`mc_pa2_product_configs=0`、`mc_pa2_product_config_versions=0`、`mc_pa2_product_group_configs=0`、`mc_pa2_product_selected_options=0`、`mc_pa2_schema_migrations=4`。草稿配置数为 0 是正常初始状态，用户打开产品并点击“生成配置草稿”后才写入。
+- 正式服务器样品工作台只读核验：可读取产品 `266`，当前尚无配置草稿，模板回退为系统通用模板。

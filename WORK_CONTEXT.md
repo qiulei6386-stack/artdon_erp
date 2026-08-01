@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 5 阶段单产品配置工作台（待发布）
+## 本次：产品适配 V2 第 5 阶段单产品配置工作台（已发布）
 
 - 用户要求先进行第 5 步。按主说明进入第 5 阶段：单产品配置工作台。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -11,7 +11,12 @@
 - `api/index.php` 状态更新为 `phase=5`，新增动作 `workspace`、`workspace_prepare`、`product_group_save`、`material_candidates`。
 - `index.php` 的 `workspace` 从占位改为工作台：无产品时显示可选产品列表；有产品时显示产品摘要、模板来源、三步快速流程、动态配置卡片、需要补充数量、宽版物料选择弹窗、保存草稿和检查配置。
 - 新增文档 `adaptation_v2/docs/05_PRODUCT_WORKSPACE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase5_contract.php`。
-- 待发布步骤：本地静态检查；服务器候选 PHP 语法和契约检查；提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 应用第 5 阶段迁移；服务器复检语法、契约、页面渲染、状态 API 和数据库行数；核对三端 HEAD 一致。
+- 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase5_candidate/` 对候选文件做语法检查：`index.php`、`api/index.php`、`foundation.php`、第 5 阶段迁移和新增契约测试均无语法错误；候选 `adaptation_v2_phase5_contract.php` 全部通过。
+- 发布：第 5 阶段功能提交 `075c40790c23f00a395adc28a9fd434b12749e8e` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_004_phase5_workspace`。
+- 数据库：正式服务器当前 `mc_pa2_product_configs=0`、`mc_pa2_product_config_versions=0`、`mc_pa2_product_group_configs=0`、`mc_pa2_product_selected_options=0`、`mc_pa2_schema_migrations=4`。草稿配置数为 0 是正常初始状态，用户打开产品并点击“生成配置草稿”后才写入。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 5 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase5_contract.php` 全部通过；`home`、`workspace`、`products`、`rules`、`logs` 页面 CLI 渲染无 Fatal；样品产品 `266` 可读取工作台详情，尚无草稿时模板回退为系统通用模板。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 待最终收尾：本条上下文记录提交并同步后，再核对本地/GitHub/服务器同一 HEAD。
 
 ## 上次：产品适配 V2 第 4 阶段配置组选项、物料来源和规则编辑器（已发布）
 
