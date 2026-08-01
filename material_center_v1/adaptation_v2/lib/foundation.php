@@ -179,6 +179,14 @@ function pa2_engine_tables_ready(): bool
     return true;
 }
 
+function pa2_phase7_tables_ready(): bool
+{
+    foreach (['mc_pa2_product_version_events','mc_pa2_product_version_snapshots','mc_pa2_product_version_diffs'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
 function pa2_foundation_summary(): array
 {
     $summary = [
@@ -197,6 +205,8 @@ function pa2_foundation_summary(): array
         'draft_config_count' => 0,
         'adaptation_result_count' => 0,
         'open_conflict_count' => 0,
+        'published_version_count' => 0,
+        'approval_event_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -231,6 +241,10 @@ function pa2_foundation_summary(): array
         if (pa2_engine_tables_ready()) {
             $summary['adaptation_result_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_adaptation_result_cache')->fetchColumn();
             $summary['open_conflict_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_adaptation_conflicts WHERE is_resolved=0')->fetchColumn();
+        }
+        if (pa2_phase7_tables_ready()) {
+            $summary['published_version_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_product_config_versions WHERE status='published'")->fetchColumn();
+            $summary['approval_event_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_product_version_events')->fetchColumn();
         }
     }
     return $summary;
@@ -1022,6 +1036,14 @@ function pa2_prepare_workspace(int $productId): array
     } else {
         $config['id'] = (int)$config['id'];
         $versionId = (int)($config['active_draft_version_id'] ?? 0);
+        $draftVersion = $versionId > 0 ? pa2_fetch_version($versionId) : null;
+        if ($versionId > 0 && $draftVersion && !in_array((string)$draftVersion['status'], ['draft','rejected'], true)) {
+            $versionId = 0;
+        }
+        if ($versionId <= 0 && (int)($config['active_published_version_id'] ?? 0) > 0 && pa2_phase7_tables_ready()) {
+            $versionId = pa2_clone_version_as_draft((int)$config['active_published_version_id'], (int)$config['id'], 'edit_after_publish');
+            $config['active_draft_version_id'] = $versionId;
+        }
         if ($versionId <= 0) {
             $versionInsert = pa2_db()->prepare(
                 'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,created_by,created_at)
@@ -1078,10 +1100,13 @@ function pa2_workspace_detail(int $productId): array
     $configStmt->execute([$productId]);
     $config = $configStmt->fetch(PDO::FETCH_ASSOC);
     if (!$config) return ['product'=>$product,'config'=>null,'version'=>null,'template'=>pa2_template_for_product($product),'template_preview'=>[],'groups'=>[],'check_summary'=>['missing_required'=>0]];
-    $versionId = (int)($config['active_draft_version_id'] ?? 0);
+    $activeDraftVersionId = (int)($config['active_draft_version_id'] ?? 0);
+    $activePublishedVersionId = (int)($config['active_published_version_id'] ?? 0);
+    $versionId = $activeDraftVersionId > 0 ? $activeDraftVersionId : $activePublishedVersionId;
     $versionStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_config_versions WHERE id=? LIMIT 1');
     $versionStmt->execute([$versionId]);
     $version = $versionStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    $hasEditableDraft = $activeDraftVersionId > 0 && $version && in_array((string)$version['status'], ['draft','rejected','submitted','approved'], true);
     $groupsStmt = pa2_db()->prepare(
         "SELECT pg.*, gd.group_name, gd.group_type AS definition_type, gd.icon, bs.selection_kind, bs.source_mode, bs.material_category_code
          FROM mc_pa2_product_group_configs pg
@@ -1162,6 +1187,7 @@ function pa2_workspace_detail(int $productId): array
         'product' => $product,
         'config' => $config,
         'version' => $version,
+        'has_editable_draft' => $hasEditableDraft,
         'template' => $config['source_template_id'] ? pa2_fetch_template((int)$config['source_template_id']) : pa2_template_for_product($product),
         'template_preview' => $config['source_template_id'] ? pa2_template_effective_groups((int)$config['source_template_id']) : [],
         'groups' => $groups,
@@ -1254,6 +1280,10 @@ function pa2_save_product_group_selection(array $input): array
     $groupStmt->execute([$groupConfigId]);
     $group = $groupStmt->fetch(PDO::FETCH_ASSOC);
     if (!$group) throw new RuntimeException('产品配置组不存在。');
+    $version = pa2_fetch_version((int)$group['product_config_version_id']);
+    if (!$version || !in_array((string)$version['status'], ['draft','rejected'], true)) {
+        throw new RuntimeException('当前版本已提交、审批或发布，请先生成新的草稿再修改。');
+    }
     $optionType = trim((string)($input['option_type'] ?? 'attribute'));
     if (!in_array($optionType, ['material','attribute','number','text','boolean'], true)) $optionType = 'attribute';
     $replace = isset($input['replace']) ? (int)$input['replace'] : 1;
@@ -1866,4 +1896,374 @@ function pa2_recalculate_workspace(int $productId, string $reason = 'manual'): a
         pa2_db()->prepare('UPDATE mc_pa2_adaptation_recalc_jobs SET status="failed",summary_json=?,finished_at=NOW(),updated_at=NOW() WHERE id=?')->execute([pa2_json_encode(['error' => $e->getMessage()]),$jobId]);
         throw $e;
     }
+}
+
+function pa2_version_event(int $configId, int $versionId, string $eventType, ?string $fromStatus, ?string $toStatus, string $note = '', array $payload = []): void
+{
+    if (!pa2_phase7_tables_ready()) return;
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_product_version_events(product_config_id,product_config_version_id,event_type,from_status,to_status,actor_user_id,note,payload_json,created_at)
+         VALUES(?,?,?,?,?,?,?,?,NOW())'
+    );
+    $stmt->execute([$configId,$versionId,$eventType,$fromStatus,$toStatus,pa2_current_user_id(),mb_substr($note, 0, 680),pa2_json_encode($payload)]);
+}
+
+function pa2_fetch_config_by_product(int $productId): ?array
+{
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_configs WHERE product_id=? LIMIT 1');
+    $stmt->execute([$productId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    foreach (['id','product_id','active_draft_version_id','active_published_version_id','source_template_id'] as $key) {
+        if (array_key_exists($key, $row)) $row[$key] = $row[$key] === null ? null : (int)$row[$key];
+    }
+    return $row;
+}
+
+function pa2_fetch_version(int $versionId): ?array
+{
+    if ($versionId <= 0) return null;
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_config_versions WHERE id=? LIMIT 1');
+    $stmt->execute([$versionId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    foreach (['id','product_config_id','source_template_id','source_template_version_id'] as $key) {
+        if (array_key_exists($key, $row)) $row[$key] = $row[$key] === null ? null : (int)$row[$key];
+    }
+    return $row;
+}
+
+function pa2_product_versions(int $productId): array
+{
+    $config = pa2_fetch_config_by_product($productId);
+    if (!$config) return ['config' => null, 'versions' => [], 'events' => []];
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_config_versions WHERE product_config_id=? ORDER BY id DESC');
+    $stmt->execute([(int)$config['id']]);
+    $versions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($versions as &$version) {
+        $version['id'] = (int)$version['id'];
+        $version['product_config_id'] = (int)$version['product_config_id'];
+        $version['is_active_draft'] = (int)($config['active_draft_version_id'] ?? 0) === (int)$version['id'];
+        $version['is_active_published'] = (int)($config['active_published_version_id'] ?? 0) === (int)$version['id'];
+    }
+    unset($version);
+    $events = [];
+    if (pa2_phase7_tables_ready()) {
+        $eventStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_version_events WHERE product_config_id=? ORDER BY id DESC LIMIT 80');
+        $eventStmt->execute([(int)$config['id']]);
+        $events = $eventStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return ['config' => $config, 'versions' => $versions, 'events' => $events];
+}
+
+function pa2_build_version_snapshot(int $versionId): array
+{
+    $version = pa2_fetch_version($versionId);
+    if (!$version) throw new RuntimeException('产品配置版本不存在。');
+    $configStmt = pa2_db()->prepare('SELECT pc.*, p.product_code, p.product_name FROM mc_pa2_product_configs pc JOIN mc_products p ON p.id=pc.product_id WHERE pc.id=? LIMIT 1');
+    $configStmt->execute([(int)$version['product_config_id']]);
+    $config = $configStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $groupsStmt = pa2_db()->prepare(
+        "SELECT pg.*, gd.group_name, gd.group_type AS definition_type
+         FROM mc_pa2_product_group_configs pg
+         LEFT JOIN mc_pa2_group_definitions gd ON gd.id=pg.group_definition_id
+         WHERE pg.product_config_version_id=?
+         ORDER BY pg.sort_order,pg.id"
+    );
+    $groupsStmt->execute([$versionId]);
+    $groups = $groupsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $selectedByGroup = [];
+    if ($groups) {
+        $ids = array_map(static fn($g) => (int)$g['id'], $groups);
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $selectedStmt = pa2_db()->prepare(
+            "SELECT so.*, m.material_code,m.name AS material_name,o.option_code,o.option_name
+             FROM mc_pa2_product_selected_options so
+             LEFT JOIN mc_materials m ON m.id=so.material_id
+             LEFT JOIN mc_pa2_group_option_definitions o ON o.id=so.option_definition_id
+             WHERE so.product_group_config_id IN ($marks)
+             ORDER BY so.product_group_config_id,so.sort_order,so.id"
+        );
+        $selectedStmt->execute($ids);
+        foreach ($selectedStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $selectedByGroup[(int)$row['product_group_config_id']][] = [
+                'option_type' => (string)$row['option_type'],
+                'material_id' => $row['material_id'] === null ? null : (int)$row['material_id'],
+                'material_code' => $row['material_code'] ?? null,
+                'material_name' => $row['material_name'] ?? null,
+                'option_definition_id' => $row['option_definition_id'] === null ? null : (int)$row['option_definition_id'],
+                'option_code' => $row['option_code'] ?? null,
+                'option_name' => $row['option_name'] ?? null,
+                'numeric_value' => $row['numeric_value'] === null ? null : (float)$row['numeric_value'],
+                'text_value' => $row['text_value'] ?? null,
+                'boolean_value' => $row['boolean_value'] === null ? null : (int)$row['boolean_value'],
+                'is_default' => (int)$row['is_default'],
+                'is_alternative' => (int)$row['is_alternative'],
+            ];
+        }
+    }
+    $snapshotGroups = [];
+    foreach ($groups as $group) {
+        $snapshotGroups[] = [
+            'group_code' => (string)$group['group_code'],
+            'display_name' => (string)($group['display_name'] ?: $group['group_name']),
+            'group_type' => (string)($group['group_type'] ?: $group['definition_type']),
+            'status' => (string)$group['status'],
+            'settings' => pa2_json_decode_array($group['effective_settings_json'] ?? ''),
+            'selected_options' => $selectedByGroup[(int)$group['id']] ?? [],
+        ];
+    }
+    return [
+        'product_config_id' => (int)$version['product_config_id'],
+        'product_id' => (int)($config['product_id'] ?? 0),
+        'product_code' => (string)($config['product_code'] ?? ''),
+        'product_name' => (string)($config['product_name'] ?? ''),
+        'version_id' => (int)$version['id'],
+        'version_no' => (string)$version['version_no'],
+        'status' => (string)$version['status'],
+        'source_template_id' => $version['source_template_id'],
+        'configuration_snapshot' => pa2_json_decode_array($version['configuration_snapshot_json'] ?? ''),
+        'technical_range' => pa2_json_decode_array($version['technical_range_json'] ?? ''),
+        'check_summary' => pa2_json_decode_array($version['check_summary_json'] ?? ''),
+        'groups' => $snapshotGroups,
+    ];
+}
+
+function pa2_store_version_snapshot(int $versionId, string $snapshotType): array
+{
+    if (!pa2_phase7_tables_ready()) throw new RuntimeException('V2 第 7 阶段版本表尚未迁移。');
+    $snapshot = pa2_build_version_snapshot($versionId);
+    $hash = hash('sha256', pa2_json_encode($snapshot));
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_product_version_snapshots(product_config_id,product_config_version_id,snapshot_type,snapshot_json,snapshot_hash,created_by,created_at)
+         VALUES(?,?,?,?,?,?,NOW())
+         ON DUPLICATE KEY UPDATE created_at=created_at'
+    );
+    $stmt->execute([(int)$snapshot['product_config_id'],$versionId,$snapshotType,pa2_json_encode($snapshot),$hash,pa2_current_user_id()]);
+    return ['snapshot' => $snapshot, 'snapshot_hash' => $hash];
+}
+
+function pa2_compare_version_snapshots(?array $base, array $compare): array
+{
+    $baseGroups = [];
+    foreach ((array)($base['groups'] ?? []) as $group) $baseGroups[(string)$group['group_code']] = $group;
+    $compareGroups = [];
+    foreach ((array)($compare['groups'] ?? []) as $group) $compareGroups[(string)$group['group_code']] = $group;
+    $changes = [];
+    foreach ($compareGroups as $code => $group) {
+        if (!isset($baseGroups[$code])) {
+            $changes[] = ['type' => 'group_added', 'group_code' => $code, 'label' => $group['display_name'] ?? $code];
+            continue;
+        }
+        $old = pa2_json_encode($baseGroups[$code]['selected_options'] ?? []);
+        $new = pa2_json_encode($group['selected_options'] ?? []);
+        if ($old !== $new) {
+            $changes[] = ['type' => 'selection_changed', 'group_code' => $code, 'label' => $group['display_name'] ?? $code, 'before' => $baseGroups[$code]['selected_options'] ?? [], 'after' => $group['selected_options'] ?? []];
+        }
+    }
+    foreach ($baseGroups as $code => $group) {
+        if (!isset($compareGroups[$code])) $changes[] = ['type' => 'group_removed', 'group_code' => $code, 'label' => $group['display_name'] ?? $code];
+    }
+    return [
+        'base_version_id' => $base['version_id'] ?? null,
+        'compare_version_id' => $compare['version_id'] ?? null,
+        'change_count' => count($changes),
+        'changes' => $changes,
+    ];
+}
+
+function pa2_store_version_diff(int $configId, ?int $baseVersionId, int $compareVersionId): array
+{
+    if (!pa2_phase7_tables_ready()) throw new RuntimeException('V2 第 7 阶段版本表尚未迁移。');
+    $base = $baseVersionId ? pa2_build_version_snapshot($baseVersionId) : null;
+    $compare = pa2_build_version_snapshot($compareVersionId);
+    $diff = pa2_compare_version_snapshots($base, $compare);
+    $hash = hash('sha256', pa2_json_encode($diff));
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_product_version_diffs(product_config_id,base_version_id,compare_version_id,diff_json,diff_hash,created_by,created_at)
+         VALUES(?,?,?,?,?,?,NOW())
+         ON DUPLICATE KEY UPDATE diff_json=VALUES(diff_json),created_at=NOW()'
+    );
+    $stmt->execute([$configId,$baseVersionId,$compareVersionId,pa2_json_encode($diff),$hash,pa2_current_user_id()]);
+    return $diff;
+}
+
+function pa2_next_product_version_no(int $configId): string
+{
+    $stmt = pa2_db()->prepare("SELECT version_no FROM mc_pa2_product_config_versions WHERE product_config_id=? AND version_no REGEXP '^V[0-9]+$' ORDER BY CAST(SUBSTRING(version_no,2) AS UNSIGNED) DESC LIMIT 1");
+    $stmt->execute([$configId]);
+    $last = (string)($stmt->fetchColumn() ?: '');
+    $next = $last !== '' ? ((int)substr($last, 1) + 1) : 1;
+    return 'V' . $next;
+}
+
+function pa2_next_draft_version_no(int $configId): string
+{
+    $stmt = pa2_db()->prepare("SELECT COUNT(*) FROM mc_pa2_product_config_versions WHERE product_config_id=? AND status='draft'");
+    $stmt->execute([$configId]);
+    return 'draft-' . ((int)$stmt->fetchColumn() + 1) . '-' . date('YmdHis');
+}
+
+function pa2_clone_version_as_draft(int $sourceVersionId, int $configId, string $reason = 'edit_after_publish'): int
+{
+    $source = pa2_fetch_version($sourceVersionId);
+    if (!$source) throw new RuntimeException('来源版本不存在，无法生成新草稿。');
+    $userId = pa2_current_user_id();
+    $versionNo = pa2_next_draft_version_no($configId);
+    $snapshot = pa2_build_version_snapshot($sourceVersionId);
+    $insert = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,technical_range_json,check_summary_json,created_by,created_at)
+         VALUES(?,?,?,?, "draft", ?, ?, ?, ?, NOW())'
+    );
+    $insert->execute([
+        $configId,
+        $versionNo,
+        $source['source_template_id'] ?? null,
+        $source['source_template_version_id'] ?? null,
+        pa2_json_encode(['source' => 'clone', 'source_version_id' => $sourceVersionId, 'reason' => $reason, 'cloned_at' => date('Y-m-d H:i:s')]),
+        $source['technical_range_json'] ?? null,
+        $source['check_summary_json'] ?? null,
+        $userId,
+    ]);
+    $newVersionId = (int)pa2_db()->lastInsertId();
+    $groupIdMap = [];
+    $groupsStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_group_configs WHERE product_config_version_id=? ORDER BY sort_order,id');
+    $groupsStmt->execute([$sourceVersionId]);
+    foreach ($groupsStmt->fetchAll(PDO::FETCH_ASSOC) as $group) {
+        $stmt = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_product_group_configs(product_config_version_id,group_code,group_definition_id,display_name,group_type,effective_settings_json,status,is_overridden,override_source,sort_order,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())'
+        );
+        $stmt->execute([
+            $newVersionId,
+            $group['group_code'],
+            $group['group_definition_id'],
+            $group['display_name'],
+            $group['group_type'],
+            $group['effective_settings_json'],
+            'missing',
+            $group['is_overridden'],
+            'version_clone',
+            $group['sort_order'],
+            $userId,
+            $userId,
+        ]);
+        $groupIdMap[(int)$group['id']] = (int)pa2_db()->lastInsertId();
+    }
+    if ($groupIdMap) {
+        $ids = array_keys($groupIdMap);
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $selectedStmt = pa2_db()->prepare("SELECT * FROM mc_pa2_product_selected_options WHERE product_group_config_id IN ($marks) ORDER BY product_group_config_id,sort_order,id");
+        $selectedStmt->execute($ids);
+        $insertSelected = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_product_selected_options(product_group_config_id,option_type,material_id,option_definition_id,numeric_value,text_value,boolean_value,value_json,is_default,is_alternative,sort_order,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())'
+        );
+        foreach ($selectedStmt->fetchAll(PDO::FETCH_ASSOC) as $selected) {
+            $insertSelected->execute([
+                $groupIdMap[(int)$selected['product_group_config_id']],
+                $selected['option_type'],
+                $selected['material_id'],
+                $selected['option_definition_id'],
+                $selected['numeric_value'],
+                $selected['text_value'],
+                $selected['boolean_value'],
+                $selected['value_json'],
+                $selected['is_default'],
+                $selected['is_alternative'],
+                $selected['sort_order'],
+                $userId,
+                $userId,
+            ]);
+        }
+    }
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=?,status="draft",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$newVersionId,$userId,$configId]);
+    pa2_version_event($configId, $newVersionId, 'draft_created', null, 'draft', '从已发布版本生成新草稿', ['source_version_id' => $sourceVersionId, 'snapshot' => $snapshot['version_no'] ?? '']);
+    return $newVersionId;
+}
+
+function pa2_product_version_submit(int $productId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有提交产品配置的权限。');
+    $detail = pa2_workspace_detail($productId);
+    $config = (array)($detail['config'] ?? []);
+    $version = (array)($detail['version'] ?? []);
+    $configId = (int)($config['id'] ?? 0);
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$configId || !$versionId) throw new RuntimeException('请先生成产品配置草稿。');
+    if (!in_array((string)$version['status'], ['draft','rejected'], true)) throw new RuntimeException('只有草稿或驳回版本可以提交。');
+    if (($detail['check_summary']['missing_required'] ?? 0) > 0) throw new RuntimeException('仍有必选配置未完成，不能提交审批。');
+    if (pa2_engine_tables_ready()) {
+        $calc = pa2_calculate_workspace($productId, true);
+        if (($calc['summary']['engine']['incompatible'] ?? 0) > 0) throw new RuntimeException('存在不适配项，请处理后再提交审批。');
+    }
+    $before = (string)$version['status'];
+    pa2_store_version_snapshot($versionId, 'submitted');
+    pa2_store_version_diff($configId, (int)($config['active_published_version_id'] ?? 0) ?: null, $versionId);
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET status="submitted",submitted_by=?,submitted_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET status="submitted",updated_by=?,updated_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$configId]);
+    pa2_version_event($configId, $versionId, 'submitted', $before, 'submitted', $note);
+    return ['product_id' => $productId, 'version_id' => $versionId, 'status' => 'submitted'];
+}
+
+function pa2_product_version_approve(int $productId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage'], '没有审批产品配置的权限。');
+    $detail = pa2_workspace_detail($productId);
+    $config = (array)($detail['config'] ?? []);
+    $version = (array)($detail['version'] ?? []);
+    $configId = (int)($config['id'] ?? 0);
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$versionId || (string)($version['status'] ?? '') !== 'submitted') throw new RuntimeException('只有已提交版本可以审批通过。');
+    pa2_store_version_snapshot($versionId, 'approved');
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET status="approved",approved_by=?,approved_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET status="approved",updated_by=?,updated_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$configId]);
+    pa2_version_event($configId, $versionId, 'approved', 'submitted', 'approved', $note);
+    return ['product_id' => $productId, 'version_id' => $versionId, 'status' => 'approved'];
+}
+
+function pa2_product_version_reject(int $productId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage'], '没有驳回产品配置的权限。');
+    $detail = pa2_workspace_detail($productId);
+    $config = (array)($detail['config'] ?? []);
+    $version = (array)($detail['version'] ?? []);
+    $configId = (int)($config['id'] ?? 0);
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$versionId || !in_array((string)($version['status'] ?? ''), ['submitted','approved'], true)) throw new RuntimeException('只有已提交或已审批版本可以驳回。');
+    $from = (string)$version['status'];
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET status="rejected" WHERE id=?')->execute([$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET status="draft",updated_by=?,updated_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$configId]);
+    pa2_version_event($configId, $versionId, 'rejected', $from, 'rejected', $note);
+    return ['product_id' => $productId, 'version_id' => $versionId, 'status' => 'rejected'];
+}
+
+function pa2_product_version_publish(int $productId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.publish_product', 'material_center.adaptation.manage'], '没有发布产品配置的权限。');
+    $detail = pa2_workspace_detail($productId);
+    $config = (array)($detail['config'] ?? []);
+    $version = (array)($detail['version'] ?? []);
+    $configId = (int)($config['id'] ?? 0);
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$versionId || (string)($version['status'] ?? '') !== 'approved') throw new RuntimeException('只有已审批版本可以发布。');
+    $versionNo = pa2_next_product_version_no($configId);
+    pa2_store_version_snapshot($versionId, 'published');
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET status="published",version_no=?,published_by=?,published_at=NOW() WHERE id=?')->execute([$versionNo,pa2_current_user_id(),$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_published_version_id=?,active_draft_version_id=NULL,status="published",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,pa2_current_user_id(),$configId]);
+    pa2_version_event($configId, $versionId, 'published', 'approved', 'published', $note, ['version_no' => $versionNo, 'previous_published_version_id' => $config['active_published_version_id'] ?? null]);
+    return ['product_id' => $productId, 'version_id' => $versionId, 'version_no' => $versionNo, 'status' => 'published'];
+}
+
+function pa2_product_version_rollback(int $productId, int $targetVersionId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.publish_product', 'material_center.adaptation.manage'], '没有回滚产品配置的权限。');
+    $config = pa2_fetch_config_by_product($productId);
+    if (!$config) throw new RuntimeException('产品配置不存在。');
+    $target = pa2_fetch_version($targetVersionId);
+    if (!$target || (int)$target['product_config_id'] !== (int)$config['id'] || (string)$target['status'] !== 'published') throw new RuntimeException('只能回滚到同产品的已发布版本。');
+    pa2_store_version_snapshot($targetVersionId, 'rollback');
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_published_version_id=?,active_draft_version_id=NULL,status="published",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$targetVersionId,pa2_current_user_id(),(int)$config['id']]);
+    pa2_version_event((int)$config['id'], $targetVersionId, 'rollback', 'published', 'published', $note, ['previous_published_version_id' => $config['active_published_version_id'] ?? null]);
+    return ['product_id' => $productId, 'version_id' => $targetVersionId, 'status' => 'published'];
 }

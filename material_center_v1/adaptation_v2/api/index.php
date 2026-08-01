@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 6,
-            'phase_name' => '适配计算和冲突引擎',
+            'phase' => 7,
+            'phase_name' => '产品差异、审批和版本',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -56,6 +56,13 @@ try {
                 'workspace_prepare',
                 'workspace_recalculate',
                 'adaptation_results',
+                'product_versions',
+                'product_version_diff',
+                'product_version_submit',
+                'product_version_approve',
+                'product_version_reject',
+                'product_version_publish',
+                'product_version_rollback',
                 'product_group_save',
                 'material_candidates',
             ],
@@ -157,6 +164,58 @@ try {
         exit;
     }
 
+    if ($action === 'product_versions') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看产品版本的权限。');
+        $productId = (int)($_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        pa2_json_response(pa2_product_versions($productId));
+        exit;
+    }
+
+    if ($action === 'product_version_diff') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看版本差异的权限。');
+        $data = pa2_request_data();
+        $productId = (int)($data['product_id'] ?? $_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        $config = pa2_fetch_config_by_product($productId);
+        if (!$config) throw new RuntimeException('产品配置不存在。');
+        $base = (int)($data['base_version_id'] ?? $_GET['base_version_id'] ?? ($config['active_published_version_id'] ?? 0)) ?: null;
+        $compare = (int)($data['compare_version_id'] ?? $_GET['compare_version_id'] ?? ($config['active_draft_version_id'] ?? 0));
+        if ($compare <= 0) throw new RuntimeException('对比版本不能为空。');
+        pa2_json_response(['diff' => pa2_store_version_diff((int)$config['id'], $base, $compare)]);
+        exit;
+    }
+
+    if ($action === 'product_version_submit') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_product_version_submit((int)($data['product_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已提交审批');
+        exit;
+    }
+
+    if ($action === 'product_version_approve') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_product_version_approve((int)($data['product_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已审批通过');
+        exit;
+    }
+
+    if ($action === 'product_version_reject') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_product_version_reject((int)($data['product_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已驳回');
+        exit;
+    }
+
+    if ($action === 'product_version_publish') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_product_version_publish((int)($data['product_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已发布');
+        exit;
+    }
+
+    if ($action === 'product_version_rollback') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_product_version_rollback((int)($data['product_id'] ?? 0), (int)($data['target_version_id'] ?? 0), (string)($data['note'] ?? '')), '产品配置已回滚');
+        exit;
+    }
+
     if ($action === 'product_group_save') {
         $row = pa2_save_product_group_selection(pa2_request_data());
         pa2_json_response(['selection' => $row], '产品配置已保存');
@@ -243,7 +302,7 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],

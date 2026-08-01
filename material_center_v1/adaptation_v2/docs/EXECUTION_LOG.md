@@ -320,3 +320,43 @@
 - 正式服务器 API 状态返回 `phase=6`。
 - 正式服务器只读核验：`mc_pa2_adaptation_result_cache=0`、`mc_pa2_adaptation_conflicts=0`、`mc_pa2_adaptation_recalc_jobs=0`、`mc_pa2_schema_migrations=5`。结果缓存数为 0 是正常初始状态，用户对具体产品生成 V2 草稿并重新计算后才写入。
 - 正式服务器样品引擎只读核验：产品 `266` + 电源物料 `120198` 返回 `conditional_match` / `条件适配` / `76` 分，无 Fatal Error。
+
+## 2026-08-01 第 7 阶段：产品差异、审批和版本
+
+执行范围：
+
+- 用户要求继续，并询问余下步骤能否一起完成。
+- 按阶段纪律继续第 7 阶段，后续阶段可连续推进但不混合提交。
+- 本阶段只开发 V2 产品版本生命周期，不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_006_phase7_versions.php`。
+- 新增 `mc_pa2_product_version_events`、`mc_pa2_product_version_snapshots`、`mc_pa2_product_version_diffs`。
+- 实现产品配置版本事件、快照、差异比较。
+- 实现草稿提交、审批通过、驳回、发布、回滚。
+- 发布后清空活动草稿；再次编辑时从当前发布版本克隆新草稿，保护旧发布版本。
+- 保存配置时拒绝修改已提交、已审批或已发布版本。
+- API 新增 `product_versions`、`product_version_diff`、`product_version_submit`、`product_version_approve`、`product_version_reject`、`product_version_publish`、`product_version_rollback`。
+- 工作台显示版本状态、版本列表和审批/发布/回滚动作。
+- 新增第 7 阶段文档和契约测试。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_006_phase7_versions.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/07_VERSION_APPROVAL.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase7_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 7 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地和正式服务器验证后补充。

@@ -24,7 +24,7 @@ $allowedViews = [
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 6 阶段：适配计算和冲突引擎。';
+$pageDescription = '第 7 阶段：产品差异、审批和版本。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
@@ -53,6 +53,8 @@ $canManageGroup = pa2_can_any(['adaptation_v2.manage_group_definition', 'materia
 $canManageTemplate = pa2_can_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage']);
 $canPublishTemplate = pa2_can_any(['adaptation_v2.publish_template', 'material_center.adaptation.manage']);
 $canManageRule = pa2_can_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage']);
+$canApproveProduct = pa2_can_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage']);
+$canPublishProduct = pa2_can_any(['adaptation_v2.publish_product', 'material_center.adaptation.manage']);
 $pa2ResultLabels = [
     'full_match' => '完全适配',
     'conditional_match' => '条件适配',
@@ -73,7 +75,7 @@ $routeCards = [
     ['groups', '配置组定义中心', '维护数据化配置组和属性选项。'],
     ['templates', '模板中心', '维护通用、分类、系列和产品模板。'],
     ['rules', '规则编辑器', '第 4 阶段维护显示条件、物料过滤、默认项和循环检测。'],
-    ['workspace', '单产品配置工作台', '第 6 阶段显示适配结论、冲突原因和重算结果。'],
+    ['workspace', '单产品配置工作台', '第 7 阶段支持草稿、提交、审批、发布、版本差异和回滚。'],
     ['packages', '配置包中心', '第 8 阶段发布渠道配置包。'],
     ['publish', '渠道发布', '第 9 阶段提供下游发布接口。'],
     ['approvals', '审批中心', '第 7 阶段接入审批和发布。'],
@@ -107,7 +109,7 @@ include MC_ROOT . '/components/layout_top.php';
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid{grid-template-columns:1fr}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="6" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="7" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -136,10 +138,10 @@ include MC_ROOT . '/components/layout_top.php';
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
             <article class="pa2-card"><strong>产品配置草稿</strong><b><?=intval($summary['product_config_count'])?></b><p>第 5 阶段开始保存 V2 单产品草稿配置。</p></article>
-            <article class="pa2-card"><strong>适配结果缓存</strong><b><?=intval($summary['adaptation_result_count'] ?? 0)?></b><p>第 6 阶段保存候选适配结论，当前未解决冲突 <?=intval($summary['open_conflict_count'] ?? 0)?> 个。</p></article>
+            <article class="pa2-card"><strong>已发布版本</strong><b><?=intval($summary['published_version_count'] ?? 0)?></b><p>审批事件 <?=intval($summary['approval_event_count'] ?? 0)?> 条；结果缓存 <?=intval($summary['adaptation_result_count'] ?? 0)?> 条。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 6 阶段开放候选适配结论、冲突原因、结果缓存和手动重新计算；审批发布和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 7 阶段开放产品版本生命周期：草稿、提交、审批、驳回、发布、差异、快照和回滚；配置包与下游接口仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -489,10 +491,21 @@ include MC_ROOT . '/components/layout_top.php';
             <?php
                 $wpProduct = $workspace['product'] ?? [];
                 $wpConfig = $workspace['config'] ?? null;
+                $wpVersion = $workspace['version'] ?? null;
                 $wpTemplate = $workspace['template'] ?? null;
                 $wpGroups = $workspace['groups'] ?? [];
                 $wpSummary = $workspace['check_summary'] ?? ['missing_required'=>0,'completed_required'=>0,'required_total'=>0];
                 $wpEngineSummary = $wpSummary['engine'] ?? ['candidate_total'=>0,'full_match'=>0,'conditional_match'=>0,'approval_required'=>0,'incompatible'=>0,'average_score'=>0,'last_calculated_at'=>null];
+                $wpLifecycle = $workspaceProductId > 0 ? pa2_product_versions($workspaceProductId) : ['versions'=>[],'events'=>[]];
+                $wpVersionStatus = (string)($wpVersion['status'] ?? '');
+                $wpCanEditVersion = in_array($wpVersionStatus, ['draft','rejected'], true);
+                $wpVersionLabel = [
+                    'draft' => '草稿',
+                    'submitted' => '待审批',
+                    'approved' => '已审批',
+                    'rejected' => '已驳回',
+                    'published' => '已发布',
+                ][$wpVersionStatus] ?? ($wpVersionStatus ?: '未生成');
             ?>
             <section class="pa2-workspace">
                 <div class="pa2-product-hero">
@@ -500,13 +513,16 @@ include MC_ROOT . '/components/layout_top.php';
                     <div>
                         <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2 / 单产品配置工作台</div>
                         <h2><?=mc_h($wpProduct['product_code'] ?: ('#'.$workspaceProductId))?>　<?=mc_h($wpProduct['product_name'] ?? '')?></h2>
-                        <p class="pa2-muted">V2 分类：<?=mc_h($wpProduct['category_name'] ?: '未映射')?> · 系列：<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '—')?> · 模板：<?=mc_h($wpTemplate['template_name'] ?? '待生成')?></p>
+                        <p class="pa2-muted">V2 分类：<?=mc_h($wpProduct['category_name'] ?: '未映射')?> · 系列：<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '—')?> · 模板：<?=mc_h($wpTemplate['template_name'] ?? '待生成')?> · 版本：<?=mc_h(($wpVersion['version_no'] ?? '—').' / '.$wpVersionLabel)?></p>
                     </div>
                     <div class="pa2-template-actions">
                         <?php if (!$wpConfig): ?>
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
                         <?php else: ?>
-                            <span class="pa2-pill pa2-pill--ok">草稿已建立</span>
+                            <span class="pa2-pill pa2-pill--ok"><?=mc_h($wpVersionLabel)?></span>
+                            <?php if (($wpConfig['active_draft_version_id'] ?? null) === null && !empty($wpConfig['active_published_version_id'])): ?>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成下一版草稿</button></form>
+                            <?php endif; ?>
                         <?php endif; ?>
                         <a class="mc-button" href="<?=mc_h(pa2_view_url('products'))?>">返回产品列表</a>
                     </div>
@@ -558,7 +574,9 @@ include MC_ROOT . '/components/layout_top.php';
                                     <small>尚未计算。保存选择或点击底部“重新计算”后生成结论。</small>
                                 <?php endif; ?>
                             </div>
-                            <?php if (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
+                            <?php if (!$wpCanEditVersion): ?>
+                                <span class="pa2-muted">当前版本已锁定，如需修改请生成下一版草稿。</span>
+                            <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
                                 <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>">选择正式物料</button>
                             <?php elseif (($definition['options'] ?? [])): ?>
                                 <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
@@ -603,9 +621,48 @@ include MC_ROOT . '/components/layout_top.php';
                         <div class="pa2-template-actions">
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_recalculate'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><input type="hidden" name="reason" value="workspace_button"><button class="mc-button" type="submit">重新计算</button></form>
                             <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>$workspaceProductId]))?>">保存草稿</a>
-                            <button class="mc-button" type="button" disabled title="第 7 阶段开放">提交审批</button>
+                            <?php if (in_array($wpVersionStatus, ['draft','rejected'], true)): ?>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_submit'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">提交审批</button></form>
+                            <?php elseif ($wpVersionStatus === 'submitted' && $canApproveProduct): ?>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_approve'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">审批通过</button></form>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_reject'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button" type="submit">驳回</button></form>
+                            <?php elseif ($wpVersionStatus === 'approved' && $canPublishProduct): ?>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_publish'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">发布版本</button></form>
+                            <?php else: ?>
+                                <span class="pa2-muted">当前状态：<?=mc_h($wpVersionLabel)?></span>
+                            <?php endif; ?>
                         </div>
                     </div>
+                    <?php if (!empty($wpLifecycle['versions'])): ?>
+                        <section class="pa2-panel">
+                            <div class="pa2-panel__head"><div><h2>版本和审批记录</h2><p>产品级覆盖只保存在产品版本中，不修改模板；历史发布版本保留可回滚。</p></div></div>
+                            <div class="pa2-panel__body">
+                                <table class="pa2-table">
+                                    <thead><tr><th>版本</th><th>状态</th><th>提交/审批/发布</th><th>操作</th></tr></thead>
+                                    <tbody>
+                                    <?php foreach ($wpLifecycle['versions'] as $versionRow): ?>
+                                        <tr>
+                                            <td><strong><?=mc_h($versionRow['version_no'])?></strong><?=!empty($versionRow['is_active_published'])?' · 当前发布':''?><?=!empty($versionRow['is_active_draft'])?' · 当前草稿':''?></td>
+                                            <td><?=mc_h($versionRow['status'])?></td>
+                                            <td><?=mc_h(trim(($versionRow['submitted_at'] ?? '').' / '.($versionRow['approved_at'] ?? '').' / '.($versionRow['published_at'] ?? ''), ' /'))?></td>
+                                            <td>
+                                                <?php if (($versionRow['status'] ?? '') === 'published' && empty($versionRow['is_active_published']) && $canPublishProduct): ?>
+                                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_rollback'))?>">
+                                                    <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                                                    <input type="hidden" name="target_version_id" value="<?=intval($versionRow['id'])?>">
+                                                    <button class="mc-button" type="submit">回滚到此版本</button>
+                                                </form>
+                                                <?php else: ?>
+                                                    <span class="pa2-muted">—</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
             <dialog class="pa2-dialog" id="pa2-material-dialog">
@@ -664,6 +721,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 4 阶段配置组和规则</td><td><code>adaptation_v2/docs/04_GROUP_RULE_EDITOR.md</code></td></tr>
                         <tr><td>第 5 阶段单产品工作台</td><td><code>adaptation_v2/docs/05_PRODUCT_WORKSPACE.md</code></td></tr>
                         <tr><td>第 6 阶段适配计算</td><td><code>adaptation_v2/docs/06_ADAPTATION_ENGINE.md</code></td></tr>
+                        <tr><td>第 7 阶段版本审批</td><td><code>adaptation_v2/docs/07_VERSION_APPROVAL.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>

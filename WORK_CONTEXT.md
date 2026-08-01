@@ -1,6 +1,19 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 6 阶段适配计算和冲突引擎（已发布）
+## 本次：产品适配 V2 第 7 阶段产品差异、审批和版本（进行中）
+
+- 用户要求继续，并询问余下步骤能否一起完成。按阶段纪律继续第 7 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_006_phase7_versions.php`，新增 `mc_pa2_product_version_events`、`mc_pa2_product_version_snapshots`、`mc_pa2_product_version_diffs`。
+- 版本服务：生成版本事件、完整快照、版本差异；支持草稿提交、审批通过、驳回、发布、回滚。
+- 发布保护：发布后清空活动草稿，再次编辑时从当前发布版本克隆下一版草稿，旧发布版本和快照保留。
+- 锁定保护：已提交、已审批、已发布版本不能继续保存配置项，必须生成新草稿后再改。
+- `api/index.php` 状态更新为 `phase=7`，新增动作 `product_versions`、`product_version_diff`、`product_version_submit`、`product_version_approve`、`product_version_reject`、`product_version_publish`、`product_version_rollback`。
+- `index.php` 工作台显示版本状态、审批/发布/回滚动作、版本列表和旧版本回滚入口。
+- 新增文档 `adaptation_v2/docs/07_VERSION_APPROVAL.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase7_contract.php`。
+- 待收尾：本地检查、服务器候选语法检查、提交推送、正式服务器迁移和页面/接口复检。
+
+## 上次：产品适配 V2 第 6 阶段适配计算和冲突引擎（已发布）
 
 - 用户要求继续第 6 步，并在完成后说明现在能验证什么。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
