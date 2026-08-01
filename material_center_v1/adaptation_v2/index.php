@@ -206,7 +206,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
-.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:center}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
+.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
 .pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(860px,92vw)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
@@ -866,6 +866,28 @@ include MC_ROOT . '/components/layout_top.php';
                 $wpTemplate = $workspace['template'] ?? null;
                 $wpGroups = $workspace['groups'] ?? [];
                 $wpSchemes = $workspace['schemes'] ?? [];
+                $wpSchemeEditableGroups = [];
+                foreach ($wpGroups as $schemeGroup) {
+                    $schemeOptions = [];
+                    foreach ((array)($schemeGroup['selected_options'] ?? []) as $schemeOption) {
+                        if (!is_array($schemeOption)) continue;
+                        $schemeOptionId = (int)($schemeOption['id'] ?? 0);
+                        if ($schemeOptionId <= 0) continue;
+                        $schemeLabel = pa2_option_display_label($schemeOption);
+                        if ($schemeLabel === '') continue;
+                        $schemeOptions[] = [
+                            'id' => $schemeOptionId,
+                            'label' => $schemeLabel,
+                        ];
+                    }
+                    if ($schemeOptions) {
+                        $wpSchemeEditableGroups[] = [
+                            'code' => (string)($schemeGroup['group_code'] ?? ''),
+                            'name' => (string)($schemeGroup['display_name'] ?? $schemeGroup['group_name'] ?? $schemeGroup['group_code'] ?? '配置组'),
+                            'options' => $schemeOptions,
+                        ];
+                    }
+                }
                 $wpSummary = $workspace['check_summary'] ?? ['missing_required'=>0,'completed_required'=>0,'required_total'=>0];
                 $wpEngineSummary = $wpSummary['engine'] ?? ['candidate_total'=>0,'full_match'=>0,'conditional_match'=>0,'approval_required'=>0,'incompatible'=>0,'average_score'=>0,'last_calculated_at'=>null];
                 $wpLifecycle = $workspaceProductId > 0 ? pa2_product_versions($workspaceProductId) : ['versions'=>[],'events'=>[]];
@@ -1063,7 +1085,7 @@ include MC_ROOT . '/components/layout_top.php';
                     <?php if ($wpSchemes): ?>
                     <section class="pa2-panel pa2-scheme-panel">
                         <div class="pa2-panel__head">
-                            <div><h2>配置方案 · <?=mc_h($wpVersion['version_no'] ?? 'V1')?></h2><p>按每个配置组的第 1 / 第 2 / 第 3 个已选项自动组成 A / B / C 方案；只有一个选项的配置组会复用到所有方案。</p></div>
+                            <div><h2>配置方案 · <?=mc_h($wpVersion['version_no'] ?? 'V1')?></h2><p>系统只给 A / B / C 空白方案位；点击“编辑方案”，从当前已加入的芯片、电源、光学等选项里自己搭配。</p></div>
                         </div>
                         <div class="pa2-panel__body">
                             <div class="pa2-scheme-grid">
@@ -1072,26 +1094,65 @@ include MC_ROOT . '/components/layout_top.php';
                                     <div class="pa2-scheme-card__head">
                                         <strong><?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?><?=!empty($scheme['is_default'])?' · 已选择':''?></strong>
                                         <?php if ($wpCanEditVersion): ?>
-                                        <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_scheme_select'))?>">
-                                            <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
-                                            <input type="hidden" name="scheme_code" value="<?=mc_h($scheme['code'])?>">
-                                            <button class="mc-button" type="submit"><?=!empty($scheme['is_default'])?'当前采用':'设为采用'?></button>
-                                        </form>
+                                        <div class="pa2-scheme-actions">
+                                            <button class="mc-button" type="button" data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>">编辑方案</button>
+                                            <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_scheme_select'))?>">
+                                                <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                                                <input type="hidden" name="scheme_code" value="<?=mc_h($scheme['code'])?>">
+                                                <button class="mc-button" type="submit"><?=!empty($scheme['is_default'])?'当前采用':'设为采用'?></button>
+                                            </form>
+                                        </div>
                                         <?php endif; ?>
                                     </div>
                                     <div class="pa2-scheme-lines">
-                                        <?php foreach ((array)($scheme['selections'] ?? []) as $selection): ?>
+                                        <?php if (!empty($scheme['selections'])): foreach ((array)($scheme['selections'] ?? []) as $selection): ?>
                                             <div><b><?=mc_h($selection['group'])?>：</b><span><?=mc_h($selection['value'])?></span></div>
-                                        <?php endforeach; ?>
+                                        <?php endforeach; else: ?>
+                                            <div class="pa2-scheme-placeholder">空白方案。点击“编辑方案”，自己加入芯片、电源、光学或其他已选项。</div>
+                                        <?php endif; ?>
                                     </div>
                                 </article>
                                 <?php endforeach; ?>
                             </div>
                         </div>
                     </section>
-                    <?php elseif ($wpGroups): ?>
-                    <div class="pa2-alert">当前还不能生成 A/B/C 配置方案：至少需要先在芯片、电源、光学等配置组里选择正式物料或选项。</div>
                     <?php endif; ?>
+                    <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-scheme-dialog">
+                        <div class="pa2-dialog__head">
+                            <div><h3 id="pa2-scheme-dialog-title">编辑配置方案</h3><p>只从当前工作台已加入的选项中选择；如需更多物料，先在上方配置卡片里“添加/调整正式物料”。</p></div>
+                            <button class="mc-button" type="button" data-close-scheme-editor>关闭</button>
+                        </div>
+                        <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_scheme_save'))?>">
+                            <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                            <input type="hidden" name="scheme_code" value="A">
+                            <div class="pa2-dialog__body">
+                                <div class="pa2-dialog-form">
+                                    <div class="pa2-dialog-hint full">A / B / C 都是空白方案位。你可以让 A 用某个芯片+某个电源，B 用另一个芯片+另一个电源；没有选择的组会保持空白。</div>
+                                    <label class="full"><span>方案名称</span><input name="scheme_name" value="配置 A" placeholder="例如 配置 A"></label>
+                                    <?php if ($wpSchemeEditableGroups): foreach ($wpSchemeEditableGroups as $schemeGroup): ?>
+                                        <label class="full"><span><?=mc_h($schemeGroup['name'])?></span>
+                                            <select name="scheme_selection[<?=mc_h($schemeGroup['code'])?>]" data-scheme-select="<?=mc_h($schemeGroup['code'])?>">
+                                                <option value="">不加入此组</option>
+                                                <?php foreach ($schemeGroup['options'] as $schemeOption): ?>
+                                                    <option value="<?=intval($schemeOption['id'])?>"><?=mc_h($schemeOption['label'])?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </label>
+                                    <?php endforeach; else: ?>
+                                        <div class="pa2-alert full">当前还没有可搭配的已选物料。请先在芯片、电源、光学等配置卡片里添加正式物料，再回来编辑 A/B/C 方案。</div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="pa2-dialog__foot">
+                                <span class="pa2-muted">保存只影响当前 V2 草稿，不修改旧版适配或旧 BOM。</span>
+                                <div class="pa2-template-actions">
+                                    <button class="mc-button" type="button" data-close-scheme-editor>取消</button>
+                                    <button class="mc-button" type="submit">保存方案</button>
+                                    <button class="mc-button mc-button--primary" type="submit" name="set_as_default" value="1">保存并采用</button>
+                                </div>
+                            </div>
+                        </form>
+                    </dialog>
                     <div class="pa2-footerbar">
                         <div>
                             <strong>需要补充 <?=intval($wpSummary['missing_required'] ?? 0)?> 项</strong>
@@ -1562,10 +1623,13 @@ document.querySelectorAll('[data-pa2-form]').forEach((form)=>{
     event.preventDefault();
     const confirmText=form.getAttribute('data-confirm');
     if(confirmText && !window.confirm(confirmText)) return;
-    const button=form.querySelector('button[type="submit"]');
+    const clickedButton=event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+    const button=clickedButton || form.querySelector('button[type="submit"]');
     if(button) button.disabled=true;
     try{
-      const res=await fetch(form.action,{method:'POST',body:new FormData(form),credentials:'same-origin'});
+      const formData=new FormData(form);
+      if(clickedButton && clickedButton.name) formData.append(clickedButton.name, clickedButton.value || '1');
+      const res=await fetch(form.action,{method:'POST',body:formData,credentials:'same-origin'});
       const data=await res.json();
       if(!data.success) throw new Error(data.message||'保存失败');
       location.reload();
@@ -1606,6 +1670,31 @@ function pa2ParseJson(raw, fallback={}){
     return value&&typeof value==='object'?value:fallback;
   }catch(err){return fallback;}
 }
+(()=>{
+  const dialog=document.getElementById('pa2-scheme-dialog');
+  if(!dialog)return;
+  const form=dialog.querySelector('form');
+  const title=document.getElementById('pa2-scheme-dialog-title');
+  const codeInput=form?.elements['scheme_code'];
+  const nameInput=form?.elements['scheme_name'];
+  document.querySelectorAll('[data-open-scheme-editor]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      const code=btn.getAttribute('data-scheme-code')||'A';
+      const name=btn.getAttribute('data-scheme-name')||('配置 '+code);
+      const selections=pa2ParseJson(btn.getAttribute('data-scheme-selections')||'{}',{});
+      if(title) title.textContent='编辑配置方案 · '+code;
+      if(codeInput) codeInput.value=code;
+      if(nameInput) nameInput.value=name;
+      dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
+        if(!(select instanceof HTMLSelectElement))return;
+        const groupCode=select.getAttribute('data-scheme-select')||'';
+        select.value=selections[groupCode] ? String(selections[groupCode]) : '';
+      });
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-scheme-editor]').forEach((btn)=>btn.addEventListener('click',()=>pa2CloseDialog(dialog)));
+})();
 (()=>{
   const form=document.querySelector('[data-template-group-form]');
   if(!form)return;

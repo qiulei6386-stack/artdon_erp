@@ -900,3 +900,28 @@
   - `material_center_v1/adaptation_v2/lib/foundation.php`
   - `material_center_v1/adaptation_v2/api/index.php`
   - `commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`
+
+## 2026-08-01 配置 A/B/C 改为空白手工搭配
+
+执行范围：
+
+- 用户反馈自动按第 1 / 第 2 个物料生成配置 A/B 不符合实际使用，需要系统只提供空白方案位，由业务人员自行加入和搭配。
+- 本次只修改产品适配 V2 `adaptation_v2` 与 `mc_pa2_` 数据结构中的版本快照 JSON，不修改旧版产品适配、不修改旧 BOM、不新增数据库表。
+
+完成内容：
+
+- 单产品工作台的配置方案固定显示 A / B / C 三个空白方案位。
+- 取消按选项顺序自动组合芯片、电源、光学等配置。
+- 新增“编辑方案”弹窗，可从当前草稿已加入的正式物料/属性选项中，按配置组选入当前方案。
+- 支持“保存方案”和“保存并采用”，采用状态保存到 `configuration_snapshot_json.selected_scheme`。
+- 每个方案的手工搭配保存到 `configuration_snapshot_json.manual_schemes`，发布快照中的 `schemes` 也读取手工方案。
+- 生成下一版草稿时继承已保存的手工 A/B/C 方案。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 使用服务器 PHP 对本地新代码执行语法检查通过：
+  - `material_center_v1/adaptation_v2/index.php`
+  - `material_center_v1/adaptation_v2/lib/foundation.php`
+  - `material_center_v1/adaptation_v2/api/index.php`
+- 待上线后在真实页面验证：空白 A/B/C 显示、编辑方案弹窗回填、保存并采用、刷新后不丢失、发布快照包含手工方案。
