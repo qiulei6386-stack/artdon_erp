@@ -1671,7 +1671,14 @@ function pa2_group_logic_settings_from_input(array $input): array
         'chip_series_keyword' => trim((string)($input['chip_series_keyword'] ?? '')),
         'optical_type' => trim((string)($input['optical_type'] ?? '')),
         'lens_material' => trim((string)($input['lens_material'] ?? '')),
+        'optical_diameter_mm' => pa2_input_float_or_null($input, 'optical_diameter_mm'),
+        'optical_height_mm' => pa2_input_float_or_null($input, 'optical_height_mm'),
+        'optical_size_keyword' => trim((string)($input['optical_size_keyword'] ?? '')),
         'optical_keyword' => trim((string)($input['optical_keyword'] ?? '')),
+        'part_size_keyword' => trim((string)($input['part_size_keyword'] ?? '')),
+        'part_material_keyword' => trim((string)($input['part_material_keyword'] ?? '')),
+        'part_color_keyword' => trim((string)($input['part_color_keyword'] ?? '')),
+        'part_usage_keyword' => trim((string)($input['part_usage_keyword'] ?? '')),
         'note' => trim((string)($input['note'] ?? '')),
     ];
     foreach ($logic as $key => $value) {
@@ -1717,8 +1724,8 @@ function pa2_sanitize_logic_for_kind(array $logic, string $kind): array
     $allowed = [
         'chip' => ['current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','chip_brand_keyword','chip_series_keyword','note'],
         'driver' => ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','dimming_mode','note'],
-        'optical' => ['beam_angle','optical_type','lens_material','optical_keyword','note'],
-        'general' => ['note'],
+        'optical' => ['beam_angle','optical_type','lens_material','optical_diameter_mm','optical_height_mm','optical_size_keyword','optical_keyword','note'],
+        'general' => ['part_size_keyword','part_material_keyword','part_color_keyword','part_usage_keyword','note'],
     ][$kind] ?? ['note'];
     $clean = [];
     foreach ($allowed as $key) {
@@ -1977,6 +1984,30 @@ function pa2_flatten_text($value): string
     return '';
 }
 
+function pa2_first_numeric_spec(array $spec, array $keys): ?float
+{
+    foreach ($keys as $key) {
+        if (isset($spec[$key]) && $spec[$key] !== null && $spec[$key] !== '' && is_numeric($spec[$key])) {
+            return (float)$spec[$key];
+        }
+    }
+    return null;
+}
+
+function pa2_apply_text_rule(string $text, string $expectedText, string $label, string $fieldKey, string &$status, float &$score, array &$fields, array &$reasons, float $scoreLimit = 74): void
+{
+    $expectedText = trim($expectedText);
+    if ($expectedText === '') return;
+    if (mb_stripos($text, mb_strtolower($expectedText)) === false) {
+        $status = $status === 'full_match' ? 'conditional_match' : $status;
+        $score = min($score, $scoreLimit);
+        $fields[] = $fieldKey;
+        $reasons[] = "规则要求{$label}包含“{$expectedText}”，候选未明确匹配。";
+    } else {
+        $reasons[] = "{$label}“{$expectedText}”匹配。";
+    }
+}
+
 function pa2_extract_product_technical_range(array $product): array
 {
     $snapshot = (array)($product['snapshot'] ?? []);
@@ -2156,6 +2187,15 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
         $reasons[] = "未命中规则关键词“{$keyword}”，需要人工确认是否适用。";
     }
 
+    foreach ([
+        'part_size_keyword' => '规格/尺寸',
+        'part_material_keyword' => '材质',
+        'part_color_keyword' => '颜色/表面',
+        'part_usage_keyword' => '用途/安装位置',
+    ] as $logicKey => $label) {
+        pa2_apply_text_rule($text, (string)($logic[$logicKey] ?? ''), $label, $logicKey, $status, $score, $fields, $reasons, 76);
+    }
+
     if ($category === 'power_supply') {
         $minPower = isset($spec['min_output_power_w']) && $spec['min_output_power_w'] !== null ? (float)$spec['min_output_power_w'] : 0.0;
         $maxPower = null;
@@ -2239,16 +2279,7 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
         }
     } elseif ($category === 'chip') {
         foreach (['chip_brand_keyword' => '芯片品牌', 'chip_series_keyword' => '芯片型号/系列'] as $logicKey => $label) {
-            $expectedText = trim((string)($logic[$logicKey] ?? ''));
-            if ($expectedText === '') continue;
-            if (mb_stripos($text, mb_strtolower($expectedText)) === false) {
-                $status = $status === 'full_match' ? 'conditional_match' : $status;
-                $score = min($score, 74);
-                $fields[] = $logicKey;
-                $reasons[] = "规则要求{$label}包含“{$expectedText}”，候选未明确匹配。";
-            } else {
-                $reasons[] = "{$label}“{$expectedText}”匹配。";
-            }
+            pa2_apply_text_rule($text, (string)($logic[$logicKey] ?? ''), $label, $logicKey, $status, $score, $fields, $reasons, 74);
         }
         $productPower = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
         $chipMax = null;
@@ -2285,16 +2316,45 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             $reasons[] = "显指满足 CRI≥{$logic['cri_min']}。";
         }
     } elseif ($category === 'optical') {
-        foreach (['optical_type' => '光学类型', 'lens_material' => '光学材质/表面', 'optical_keyword' => '光学关键词'] as $logicKey => $label) {
-            $expectedText = trim((string)($logic[$logicKey] ?? ''));
-            if ($expectedText === '') continue;
-            if (mb_stripos($text, mb_strtolower($expectedText)) === false) {
-                $status = $status === 'full_match' ? 'conditional_match' : $status;
-                $score = min($score, 74);
-                $fields[] = $logicKey;
-                $reasons[] = "规则要求{$label}包含“{$expectedText}”，候选未明确匹配。";
+        foreach (['optical_type' => '光学类型', 'lens_material' => '光学材质/表面', 'optical_size_keyword' => '光学尺寸', 'optical_keyword' => '光学关键词'] as $logicKey => $label) {
+            pa2_apply_text_rule($text, (string)($logic[$logicKey] ?? ''), $label, $logicKey, $status, $score, $fields, $reasons, 74);
+        }
+        $needDiameter = $logic['optical_diameter_mm'] ?? null;
+        if ($needDiameter !== null) {
+            $candidateDiameter = pa2_first_numeric_spec($spec, ['outer_diameter_mm','diameter_mm','lens_diameter_mm','optic_diameter_mm','cutout_mm']);
+            if ($candidateDiameter !== null) {
+                if (abs((float)$needDiameter - $candidateDiameter) > 0.8) {
+                    $status = $status === 'full_match' ? 'conditional_match' : $status;
+                    $score = min($score, 72);
+                    $fields[] = 'optical_diameter_mm';
+                    $reasons[] = "规则要求光学口径约 {$needDiameter}mm，候选结构化口径为 {$candidateDiameter}mm，需确认。";
+                } else {
+                    $reasons[] = "光学口径 {$candidateDiameter}mm 与规则基本一致。";
+                }
             } else {
-                $reasons[] = "{$label}“{$expectedText}”匹配。";
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 80);
+                $fields[] = 'optical_diameter_mm';
+                $reasons[] = "规则要求光学口径 {$needDiameter}mm，候选缺少结构化口径数据，需人工确认。";
+            }
+        }
+        $needHeight = $logic['optical_height_mm'] ?? null;
+        if ($needHeight !== null) {
+            $candidateHeight = pa2_first_numeric_spec($spec, ['height_mm','thickness_mm','lens_height_mm','optic_height_mm','depth_mm']);
+            if ($candidateHeight !== null) {
+                if (abs((float)$needHeight - $candidateHeight) > 0.8) {
+                    $status = $status === 'full_match' ? 'conditional_match' : $status;
+                    $score = min($score, 72);
+                    $fields[] = 'optical_height_mm';
+                    $reasons[] = "规则要求光学高度/厚度约 {$needHeight}mm，候选结构化高度/厚度为 {$candidateHeight}mm，需确认。";
+                } else {
+                    $reasons[] = "光学高度/厚度 {$candidateHeight}mm 与规则基本一致。";
+                }
+            } else {
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 80);
+                $fields[] = 'optical_height_mm';
+                $reasons[] = "规则要求光学高度/厚度 {$needHeight}mm，候选缺少结构化尺寸数据，需人工确认。";
             }
         }
         $beam = $logic['beam_angle'] ?? ($technical['beam_angle_max'] ?? null);

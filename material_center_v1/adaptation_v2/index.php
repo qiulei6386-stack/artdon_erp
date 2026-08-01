@@ -208,7 +208,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
-.pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(860px,92vw)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}.pa2-logic-section small{display:block;color:var(--pa2-muted);font-weight:600;margin-top:3px}.pa2-logic-zone.is-hidden{display:none!important}.pa2-logic-type-chip{background:#eef4ff;color:#1d4ed8}.pa2-logic-type-driver{background:#fff7ed;color:#c2410c}.pa2-logic-type-optical{background:#f0fdfa;color:#0b7773}.pa2-logic-help{grid-column:1/-1;border:1px solid #e6edf5;background:#fbfdff;border-radius:12px;padding:10px;color:#667085}
+.pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(960px,94vw)}.pa2-dialog--logic[data-logic-kind="chip"] .pa2-dialog__head{background:linear-gradient(135deg,#eef4ff,#fff)}.pa2-dialog--logic[data-logic-kind="driver"] .pa2-dialog__head{background:linear-gradient(135deg,#fff7ed,#fff)}.pa2-dialog--logic[data-logic-kind="optical"] .pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#fff)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}.pa2-logic-section small{display:block;color:var(--pa2-muted);font-weight:600;margin-top:3px}.pa2-logic-zone.is-hidden{display:none!important}.pa2-logic-type-chip{background:#eef4ff;color:#1d4ed8}.pa2-logic-type-driver{background:#fff7ed;color:#c2410c}.pa2-logic-type-optical{background:#f0fdfa;color:#0b7773}.pa2-logic-help{grid-column:1/-1;border:1px solid #e6edf5;background:#fbfdff;border-radius:12px;padding:10px;color:#667085}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid,.pa2-scheme-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-scheme-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
 </style>
@@ -1017,7 +1017,13 @@ include MC_ROOT . '/components/layout_top.php';
                             if (!empty($productLogic['chip_series_keyword'])) $logicTags[] = '芯片系列 '.$productLogic['chip_series_keyword'];
                             if (!empty($productLogic['optical_type'])) $logicTags[] = '光学类型 '.$productLogic['optical_type'];
                             if (!empty($productLogic['lens_material'])) $logicTags[] = '材质 '.$productLogic['lens_material'];
+                            if (isset($productLogic['optical_diameter_mm'])) $logicTags[] = '口径 '.$productLogic['optical_diameter_mm'].'mm';
+                            if (isset($productLogic['optical_height_mm'])) $logicTags[] = '厚度 '.$productLogic['optical_height_mm'].'mm';
+                            if (!empty($productLogic['optical_size_keyword'])) $logicTags[] = '尺寸 '.$productLogic['optical_size_keyword'];
                             if (!empty($productLogic['optical_keyword'])) $logicTags[] = '光学关键词 '.$productLogic['optical_keyword'];
+                            foreach (['part_size_keyword'=>'规格','part_material_keyword'=>'材质','part_color_keyword'=>'颜色','part_usage_keyword'=>'用途'] as $logicKey => $logicLabel) {
+                                if (!empty($productLogic[$logicKey])) $logicTags[] = $logicLabel.' '.$productLogic[$logicKey];
+                            }
                             $done = count($selected) > 0;
                             $sourceMode = (string)($g['source_mode'] ?? '');
                             $selectionKind = (string)($g['selection_kind'] ?? '');
@@ -1270,7 +1276,16 @@ include MC_ROOT . '/components/layout_top.php';
                             <label data-logic-zone="optical"><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
                             <label data-logic-zone="optical"><span>光学类型</span><input name="optical_type" placeholder="例如 lens / reflector / diffuser"></label>
                             <label data-logic-zone="optical"><span>材质 / 表面</span><input name="lens_material" placeholder="例如 PMMA / PC / glass / black"></label>
-                            <label data-logic-zone="optical"><span>光学关键词</span><input name="optical_keyword" placeholder="例如 蜂窝网 / 光学膜 / 四叶片"></label>
+                            <label data-logic-zone="optical"><span>外径 / 口径 mm</span><input type="number" step="0.01" min="0" name="optical_diameter_mm" placeholder="例如 75"></label>
+                            <label data-logic-zone="optical"><span>高度 / 厚度 mm</span><input type="number" step="0.01" min="0" name="optical_height_mm" placeholder="例如 18.5"></label>
+                            <label data-logic-zone="optical"><span>尺寸关键词</span><input name="optical_size_keyword" placeholder="例如 Φ75 / 24mm / 50x50"></label>
+                            <label class="wide" data-logic-zone="optical"><span>光学关键词</span><input name="optical_keyword" placeholder="例如 蜂窝网 / 光学膜 / 四叶片 / 透镜"></label>
+
+                            <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="general">通用配件 / 其他分类逻辑<small>用于玻璃、蜂窝网、四叶片、光学膜、包装等非芯片/电源/光学主件。</small></div>
+                            <label data-logic-zone="general"><span>规格 / 尺寸关键词</span><input name="part_size_keyword" placeholder="例如 50x50 / Φ75 / 2mm"></label>
+                            <label data-logic-zone="general"><span>材质关键词</span><input name="part_material_keyword" placeholder="例如 glass / aluminum / PC"></label>
+                            <label data-logic-zone="general"><span>颜色 / 表面关键词</span><input name="part_color_keyword" placeholder="例如 black / frosted / clear"></label>
+                            <label data-logic-zone="general"><span>用途 / 安装位置</span><input name="part_usage_keyword" placeholder="例如 trimless / recessed / magnetic"></label>
 
                             <label class="wide"><span>备注</span><input name="note" placeholder="说明这条产品级逻辑的原因"></label>
                         </div>
@@ -1881,6 +1896,7 @@ function pa2ParseJson(raw, fallback={}){
   function applyLogicKind(kind){
     const meta={
       chip:{
+        title:'设置芯片 / 光源逻辑',
         badge:'芯片 / 光源逻辑',
         badgeClass:'pa2-logic-type-chip',
         text:'只显示芯片品牌、型号、色温、显指、电流/电压等字段；不会提交调光方式和电源类型。',
@@ -1893,6 +1909,7 @@ function pa2ParseJson(raw, fallback={}){
         electric:'芯片时表示芯片工作电流/正向电压要求。'
       },
       driver:{
+        title:'设置电源 / 驱动逻辑',
         badge:'电源 / 驱动逻辑',
         badgeClass:'pa2-logic-type-driver',
         text:'只显示电源类型、输出功率/电流/电压和调光方式；调光方式只属于电源逻辑。',
@@ -1905,11 +1922,12 @@ function pa2ParseJson(raw, fallback={}){
         electric:'电源时表示输出电流/输出电压范围。'
       },
       optical:{
+        title:'设置光学 / 透镜逻辑',
         badge:'光学 / 透镜逻辑',
         badgeClass:'pa2-logic-type-optical',
-        text:'只显示光束角、光学类型、材质和光学关键词；不显示电源或芯片字段。',
+        text:'只显示光束角、口径、厚度、光学类型、材质和关键词；不显示电源或芯片字段。',
         keyword:'光学关键词',
-        hint:'光学逻辑用于判断透镜、反光杯、蜂窝网、四叶片、光学膜等光学件。',
+        hint:'光学逻辑用于判断透镜、反光杯、蜂窝网、四叶片、光学膜等光学件，重点是角度、口径、厚度和材质。',
         currentMin:'电流下限 mA',
         currentMax:'电流上限 mA',
         voltageMin:'电压下限 V',
@@ -1917,11 +1935,12 @@ function pa2ParseJson(raw, fallback={}){
         electric:''
       },
       general:{
-        badge:'通用配置逻辑',
+        title:'设置通用配件 / 其他分类逻辑',
+        badge:'通用配件逻辑',
         badgeClass:'',
-        text:'当前配置组不是芯片、电源或光学，只保留基础规则和关键词过滤。',
-        keyword:'物料关键词',
-        hint:'通用逻辑用于配件、玻璃、包装等配置组，通常只需要物料分类、正式物料和关键词。',
+        text:'当前配置组不是芯片、电源或光学，显示规格、材质、颜色、用途等通用筛选字段。',
+        keyword:'通用关键词',
+        hint:'通用配件逻辑用于配件、玻璃、蜂窝网、四叶片、光学膜、包装等分类，重点是规格、材质、颜色和用途。',
         currentMin:'电流下限 mA',
         currentMax:'电流上限 mA',
         voltageMin:'电压下限 V',
@@ -1943,6 +1962,7 @@ function pa2ParseJson(raw, fallback={}){
     if(keywordLabel) keywordLabel.textContent=meta.keyword||'物料关键词';
     if(hint) hint.textContent=meta.hint||'这里设置的是当前产品的判断逻辑。';
     if(electricHelp) electricHelp.textContent=meta.electric||'';
+    dialog.setAttribute('data-logic-kind', kind);
     const labels={
       'data-logic-label-current-min':meta.currentMin,
       'data-logic-label-current-max':meta.currentMax,
@@ -1960,7 +1980,14 @@ function pa2ParseJson(raw, fallback={}){
       const groupCode=btn.getAttribute('data-group-code')||'';
       currentLogicGroupCode=groupCode;
       const materialCategory=btn.getAttribute('data-material-category-code')||'';
-      applyLogicKind(logicKind(groupCode, materialCategory));
+      const kind=logicKind(groupCode, materialCategory);
+      applyLogicKind(kind);
+      const titlePrefix={
+        chip:'设置芯片 / 光源逻辑',
+        driver:'设置电源 / 驱动逻辑',
+        optical:'设置光学 / 透镜逻辑',
+        general:'设置通用配件 / 其他分类逻辑'
+      }[kind]||'设置配置逻辑';
       const filter=parseJsonAttr(btn,'data-material-filter');
       const logic=parseJsonAttr(btn,'data-product-logic');
       const templateLogic=parseJsonAttr(btn,'data-template-logic');
@@ -1980,10 +2007,10 @@ function pa2ParseJson(raw, fallback={}){
       if(!driverType&&groupCode==='driver')driverType='';
       pa2SetField(form,'driver_type',driverType);
       const visibleLogic=Object.keys(logic).length?logic:templateLogic;
-      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','chip_brand_keyword','chip_series_keyword','optical_type','lens_material','optical_keyword','note'].forEach((key)=>{
+      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','chip_brand_keyword','chip_series_keyword','optical_type','lens_material','optical_diameter_mm','optical_height_mm','optical_size_keyword','optical_keyword','part_size_keyword','part_material_keyword','part_color_keyword','part_usage_keyword','note'].forEach((key)=>{
         pa2SetField(form,key,value(visibleLogic,key,''));
       });
-      if(title) title.textContent='设置逻辑 · '+(btn.getAttribute('data-group-name')||groupCode);
+      if(title) title.textContent=titlePrefix+' · '+(btn.getAttribute('data-group-name')||groupCode);
       if(subtitle) subtitle.textContent='当前产品级覆盖，不修改模板：'+(groupCode||'配置组');
       pa2OpenDialog(dialog);
     });
