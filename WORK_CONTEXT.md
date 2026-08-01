@@ -8,6 +8,7 @@
 - 本阶段不直接修改生产配置数据，也不触碰正在并行编辑的物料中心 V2 文件；下一阶段再在物料中心增加显式方案命名、排序与发布维护入口，并让“加入报价”保存方案快照。
 - 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`commercial_center_v1/assets/js/app.js`、`commercial_center_v1/assets/css/app.css`、`commercial_center_v1/tests/published_product_catalog_contract.php`、`WORK_CONTEXT.md`。
 - 隔离检查：本机 JavaScript 语法与 `git diff --check` 通过；服务器 PHP 8.0 候选仓库语法和更新契约通过；连接生产库只读实测准确生成 A（CXA1816 + 000641）与 B（CXA1512 + 000646），测试未写入数据库。
+- Git / 部署：功能提交 `4fb7e379d8b0a3035b90bacb7ca8af416fbe6df9` 已推送 GitHub并快进同步正式服务器；正式 PHP 语法、发布产品契约及安全扫描通过。功能提交同步时本地、GitHub、服务器一致。
 
 ## 本次续作：商务产品详情读取物料中心发布配置
 
