@@ -187,6 +187,14 @@ function pa2_phase7_tables_ready(): bool
     return true;
 }
 
+function pa2_phase8_tables_ready(): bool
+{
+    foreach (['mc_pa2_config_packages','mc_pa2_config_package_versions','mc_pa2_config_package_groups','mc_pa2_config_package_options'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
 function pa2_foundation_summary(): array
 {
     $summary = [
@@ -207,6 +215,9 @@ function pa2_foundation_summary(): array
         'open_conflict_count' => 0,
         'published_version_count' => 0,
         'approval_event_count' => 0,
+        'package_count' => 0,
+        'package_version_count' => 0,
+        'published_package_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -245,6 +256,11 @@ function pa2_foundation_summary(): array
         if (pa2_phase7_tables_ready()) {
             $summary['published_version_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_product_config_versions WHERE status='published'")->fetchColumn();
             $summary['approval_event_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_product_version_events')->fetchColumn();
+        }
+        if (pa2_phase8_tables_ready()) {
+            $summary['package_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_config_packages')->fetchColumn();
+            $summary['package_version_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_config_package_versions')->fetchColumn();
+            $summary['published_package_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_config_packages WHERE status='published'")->fetchColumn();
         }
     }
     return $summary;
@@ -2266,4 +2282,283 @@ function pa2_product_version_rollback(int $productId, int $targetVersionId, stri
     pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_published_version_id=?,active_draft_version_id=NULL,status="published",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$targetVersionId,pa2_current_user_id(),(int)$config['id']]);
     pa2_version_event((int)$config['id'], $targetVersionId, 'rollback', 'published', 'published', $note, ['previous_published_version_id' => $config['active_published_version_id'] ?? null]);
     return ['product_id' => $productId, 'version_id' => $targetVersionId, 'status' => 'published'];
+}
+
+function pa2_package_rule_labels(): array
+{
+    return [
+        'open' => '开放选择',
+        'locked' => '锁定',
+        'range_limited' => '范围限定',
+        'default_locked' => '锁默认项',
+    ];
+}
+
+function pa2_fetch_packages(): array
+{
+    if (!pa2_phase8_tables_ready()) return [];
+    $sql = "SELECT p.*,
+                v.version_no active_version_no,
+                v.status active_version_status,
+                COUNT(DISTINCT g.id) group_count,
+                SUM(CASE WHEN g.lock_mode='locked' THEN 1 ELSE 0 END) locked_group_count,
+                SUM(CASE WHEN g.lock_mode='range_limited' THEN 1 ELSE 0 END) limited_group_count,
+                SUM(CASE WHEN g.lock_mode='default_locked' THEN 1 ELSE 0 END) default_locked_group_count,
+                COUNT(DISTINCT o.id) option_count
+            FROM mc_pa2_config_packages p
+            LEFT JOIN mc_pa2_config_package_versions v ON v.id=p.active_version_id
+            LEFT JOIN mc_pa2_config_package_groups g ON g.package_version_id=v.id
+            LEFT JOIN mc_pa2_config_package_options o ON o.package_group_id=g.id
+            GROUP BY p.id
+            ORDER BY FIELD(p.package_code,'commercial_flexible','singapore_standard','singapore_dali','singapore_ready_stock'),p.id";
+    return pa2_db()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function pa2_fetch_package(int $packageId): ?array
+{
+    if (!pa2_phase8_tables_ready() || $packageId <= 0) return null;
+    $stmt = pa2_db()->prepare("SELECT p.*,v.version_no active_version_no,v.status active_version_status,v.snapshot_json,v.package_rules_json,v.published_at
+        FROM mc_pa2_config_packages p
+        LEFT JOIN mc_pa2_config_package_versions v ON v.id=p.active_version_id
+        WHERE p.id=? LIMIT 1");
+    $stmt->execute([$packageId]);
+    $package = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$package) return null;
+    foreach (['snapshot_json','package_rules_json'] as $field) $package[$field] = pa2_json_decode_array($package[$field] ?? null);
+
+    $stmt = pa2_db()->prepare("SELECT g.*,d.group_name,d.group_type,d.icon
+        FROM mc_pa2_config_package_groups g
+        LEFT JOIN mc_pa2_group_definitions d ON d.id=g.group_definition_id
+        WHERE g.package_version_id=?
+        ORDER BY g.sort_order,g.id");
+    $stmt->execute([(int)($package['active_version_id'] ?? 0)]);
+    $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($groups as &$group) {
+        foreach (['allowed_scope_json','default_selection_json','price_rule_json','inventory_rule_json','moq_rule_json','lead_time_rule_json'] as $field) {
+            $group[$field] = pa2_json_decode_array($group[$field] ?? null);
+        }
+        $optStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_config_package_options WHERE package_group_id=? ORDER BY sort_order,id');
+        $optStmt->execute([(int)$group['id']]);
+        $options = $optStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($options as &$option) {
+            $option['rule_json'] = pa2_json_decode_array($option['rule_json'] ?? null);
+        }
+        unset($option);
+        $group['options'] = $options;
+    }
+    unset($group);
+    $package['groups'] = $groups;
+    return $package;
+}
+
+function pa2_upsert_package(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage'], '没有维护配置包的权限。');
+    if (!pa2_phase8_tables_ready()) throw new RuntimeException('V2 第 8 阶段配置包表尚未迁移。');
+    $id = (int)($input['id'] ?? 0);
+    $name = trim((string)($input['package_name'] ?? ''));
+    if ($name === '') throw new RuntimeException('配置包名称不能为空。');
+    $code = trim((string)($input['package_code'] ?? ''));
+    if ($code === '') $code = pa2_slug($name, 'package');
+    $channel = trim((string)($input['channel_code'] ?? 'commercial')) ?: 'commercial';
+    $type = trim((string)($input['package_type'] ?? $code)) ?: $code;
+    $status = in_array((string)($input['status'] ?? 'draft'), ['draft','published','disabled'], true) ? (string)$input['status'] : 'draft';
+    $description = trim((string)($input['description'] ?? ''));
+    if ($id > 0) {
+        $before = pa2_fetch_package($id) ?: [];
+        $stmt = pa2_db()->prepare('UPDATE mc_pa2_config_packages SET package_code=?,package_name=?,channel_code=?,package_type=?,description=?,status=?,updated_by=?,updated_at=NOW() WHERE id=?');
+        $stmt->execute([$code,$name,$channel,$type,$description,$status,pa2_current_user_id(),$id]);
+    } else {
+        $before = [];
+        $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_packages(package_code,package_name,channel_code,package_type,description,status,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,NOW(),NOW())');
+        $stmt->execute([$code,$name,$channel,$type,$description,$status,pa2_current_user_id(),pa2_current_user_id()]);
+        $id = (int)pa2_db()->lastInsertId();
+        pa2_prepare_package_version($id);
+    }
+    $after = pa2_fetch_package($id) ?: [];
+    pa2_log($before ? 'update_package' : 'create_package', 'pa2_config_package', $id, $before, $after);
+    return $after;
+}
+
+function pa2_next_package_version_no(int $packageId): string
+{
+    $stmt = pa2_db()->prepare("SELECT COUNT(*) FROM mc_pa2_config_package_versions WHERE package_id=? AND version_no LIKE 'V%'");
+    $stmt->execute([$packageId]);
+    return 'V' . ((int)$stmt->fetchColumn() + 1);
+}
+
+function pa2_next_package_draft_no(int $packageId): string
+{
+    $stmt = pa2_db()->prepare("SELECT COUNT(*) FROM mc_pa2_config_package_versions WHERE package_id=? AND status='draft'");
+    $stmt->execute([$packageId]);
+    return 'draft-' . ((int)$stmt->fetchColumn() + 1);
+}
+
+function pa2_prepare_package_version(int $packageId, int $sourceProductConfigVersionId = 0): array
+{
+    pa2_require_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage'], '没有维护配置包版本的权限。');
+    if (!pa2_phase8_tables_ready()) throw new RuntimeException('V2 第 8 阶段配置包表尚未迁移。');
+    $package = pa2_fetch_package($packageId);
+    if (!$package) throw new RuntimeException('配置包不存在。');
+    $versionNo = pa2_next_package_draft_no($packageId);
+    $snapshot = [
+        'package_code' => $package['package_code'],
+        'package_type' => $package['package_type'],
+        'source_product_config_version_id' => $sourceProductConfigVersionId ?: null,
+        'created_reason' => 'manual_draft',
+    ];
+    $rules = [
+        'lock_policy' => 'channel_package',
+        'price' => 'package_group_or_option_rule',
+        'moq' => 'package_group_or_option_rule',
+        'inventory' => 'package_group_or_option_rule',
+        'lead_time' => 'package_group_or_option_rule',
+    ];
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_package_versions(package_id,version_no,status,source_product_config_version_id,snapshot_json,package_rules_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,NOW())');
+    $stmt->execute([$packageId,$versionNo,'draft',$sourceProductConfigVersionId ?: null,pa2_json_encode($snapshot),pa2_json_encode($rules),pa2_current_user_id()]);
+    $versionId = (int)pa2_db()->lastInsertId();
+    pa2_db()->prepare('UPDATE mc_pa2_config_packages SET active_version_id=?,status="draft",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,pa2_current_user_id(),$packageId]);
+    foreach ($package['groups'] ?? [] as $group) {
+        $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_package_groups(package_version_id,group_code,group_definition_id,display_name,lock_mode,is_required,allow_empty,min_select,max_select,allowed_scope_json,default_selection_json,price_rule_json,inventory_rule_json,moq_rule_json,lead_time_rule_json,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+        $stmt->execute([$versionId,$group['group_code'],$group['group_definition_id'] ?: null,$group['display_name'],$group['lock_mode'],(int)$group['is_required'],(int)$group['allow_empty'],(int)$group['min_select'],(int)$group['max_select'],pa2_json_encode($group['allowed_scope_json'] ?? []),pa2_json_encode($group['default_selection_json'] ?? []),pa2_json_encode($group['price_rule_json'] ?? []),pa2_json_encode($group['inventory_rule_json'] ?? []),pa2_json_encode($group['moq_rule_json'] ?? []),pa2_json_encode($group['lead_time_rule_json'] ?? []),(int)$group['sort_order']]);
+        $newGroupId = (int)pa2_db()->lastInsertId();
+        foreach ($group['options'] ?? [] as $option) {
+            $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_package_options(package_group_id,option_key,option_type,material_id,option_definition_id,option_code,option_label,is_default,is_locked,price_delta,currency,moq,stock_qty,lead_time_days,valid_from,valid_to,rule_json,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())');
+            $stmt->execute([$newGroupId,$option['option_key'],$option['option_type'],$option['material_id'] ?: null,$option['option_definition_id'] ?: null,$option['option_code'],$option['option_label'],(int)$option['is_default'],(int)$option['is_locked'],$option['price_delta'],$option['currency'],$option['moq'],$option['stock_qty'],$option['lead_time_days'],$option['valid_from'],$option['valid_to'],pa2_json_encode($option['rule_json'] ?? []),(int)$option['sort_order']]);
+        }
+    }
+    $after = pa2_fetch_package($packageId) ?: [];
+    pa2_log('prepare_package_version', 'pa2_config_package', $packageId, $package, $after);
+    return $after;
+}
+
+function pa2_save_package_group(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage'], '没有维护配置包组规则的权限。');
+    if (!pa2_phase8_tables_ready()) throw new RuntimeException('V2 第 8 阶段配置包表尚未迁移。');
+    $packageId = (int)($input['package_id'] ?? 0);
+    $groupId = (int)($input['group_id'] ?? 0);
+    $package = pa2_fetch_package($packageId);
+    if (!$package || (int)($package['active_version_id'] ?? 0) <= 0) throw new RuntimeException('配置包或版本不存在。');
+    if ((string)($package['active_version_status'] ?? '') !== 'draft') throw new RuntimeException('只有草稿配置包版本可以修改。');
+    $groupDefId = (int)($input['group_definition_id'] ?? 0);
+    $groupDef = null;
+    if ($groupDefId > 0) {
+        $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_group_definitions WHERE id=? LIMIT 1');
+        $stmt->execute([$groupDefId]);
+        $groupDef = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    $groupCode = trim((string)($input['group_code'] ?? ($groupDef['group_code'] ?? '')));
+    if ($groupCode === '') throw new RuntimeException('配置组不能为空。');
+    $displayName = trim((string)($input['display_name'] ?? ($groupDef['group_name'] ?? $groupCode)));
+    $lockMode = (string)($input['lock_mode'] ?? 'open');
+    if (!isset(pa2_package_rule_labels()[$lockMode])) $lockMode = 'open';
+    $jsonFields = [];
+    foreach (['allowed_scope_json','default_selection_json','price_rule_json','inventory_rule_json','moq_rule_json','lead_time_rule_json'] as $field) {
+        $value = trim((string)($input[$field] ?? ''));
+        $jsonFields[$field] = $value === '' ? [] : pa2_json_decode_array($value);
+    }
+    if ($groupId > 0) {
+        $before = pa2_fetch_package($packageId);
+        $stmt = pa2_db()->prepare('UPDATE mc_pa2_config_package_groups SET group_code=?,group_definition_id=?,display_name=?,lock_mode=?,is_required=?,allow_empty=?,min_select=?,max_select=?,allowed_scope_json=?,default_selection_json=?,price_rule_json=?,inventory_rule_json=?,moq_rule_json=?,lead_time_rule_json=?,sort_order=?,updated_at=NOW() WHERE id=? AND package_version_id=?');
+        $stmt->execute([$groupCode,$groupDefId ?: null,$displayName,$lockMode,(int)($input['is_required'] ?? 0),(int)($input['allow_empty'] ?? 1),(int)($input['min_select'] ?? 0),(int)($input['max_select'] ?? 1),pa2_json_encode($jsonFields['allowed_scope_json']),pa2_json_encode($jsonFields['default_selection_json']),pa2_json_encode($jsonFields['price_rule_json']),pa2_json_encode($jsonFields['inventory_rule_json']),pa2_json_encode($jsonFields['moq_rule_json']),pa2_json_encode($jsonFields['lead_time_rule_json']),(int)($input['sort_order'] ?? 100),$groupId,(int)$package['active_version_id']]);
+    } else {
+        $before = pa2_fetch_package($packageId);
+        $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_package_groups(package_version_id,group_code,group_definition_id,display_name,lock_mode,is_required,allow_empty,min_select,max_select,allowed_scope_json,default_selection_json,price_rule_json,inventory_rule_json,moq_rule_json,lead_time_rule_json,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE group_definition_id=VALUES(group_definition_id),display_name=VALUES(display_name),lock_mode=VALUES(lock_mode),is_required=VALUES(is_required),allow_empty=VALUES(allow_empty),min_select=VALUES(min_select),max_select=VALUES(max_select),allowed_scope_json=VALUES(allowed_scope_json),default_selection_json=VALUES(default_selection_json),price_rule_json=VALUES(price_rule_json),inventory_rule_json=VALUES(inventory_rule_json),moq_rule_json=VALUES(moq_rule_json),lead_time_rule_json=VALUES(lead_time_rule_json),sort_order=VALUES(sort_order),updated_at=NOW()');
+        $stmt->execute([(int)$package['active_version_id'],$groupCode,$groupDefId ?: null,$displayName,$lockMode,(int)($input['is_required'] ?? 0),(int)($input['allow_empty'] ?? 1),(int)($input['min_select'] ?? 0),(int)($input['max_select'] ?? 1),pa2_json_encode($jsonFields['allowed_scope_json']),pa2_json_encode($jsonFields['default_selection_json']),pa2_json_encode($jsonFields['price_rule_json']),pa2_json_encode($jsonFields['inventory_rule_json']),pa2_json_encode($jsonFields['moq_rule_json']),pa2_json_encode($jsonFields['lead_time_rule_json']),(int)($input['sort_order'] ?? 100)]);
+    }
+    $after = pa2_fetch_package($packageId) ?: [];
+    pa2_log('save_package_group', 'pa2_config_package', $packageId, $before ?: [], $after);
+    return $after;
+}
+
+function pa2_save_package_option(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage'], '没有维护配置包选项的权限。');
+    if (!pa2_phase8_tables_ready()) throw new RuntimeException('V2 第 8 阶段配置包表尚未迁移。');
+    $packageGroupId = (int)($input['package_group_id'] ?? 0);
+    if ($packageGroupId <= 0) throw new RuntimeException('配置包组不能为空。');
+    $stmt = pa2_db()->prepare('SELECT g.*,v.package_id FROM mc_pa2_config_package_groups g JOIN mc_pa2_config_package_versions v ON v.id=g.package_version_id WHERE g.id=? LIMIT 1');
+    $stmt->execute([$packageGroupId]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) throw new RuntimeException('配置包组不存在。');
+    $package = pa2_fetch_package((int)$group['package_id']);
+    if (!$package || (string)($package['active_version_status'] ?? '') !== 'draft') throw new RuntimeException('只有草稿配置包版本可以修改选项。');
+    $optionKey = trim((string)($input['option_key'] ?? ''));
+    $label = trim((string)($input['option_label'] ?? ''));
+    if ($label === '') throw new RuntimeException('选项名称不能为空。');
+    if ($optionKey === '') $optionKey = pa2_slug($label, 'option');
+    $ruleJson = trim((string)($input['rule_json'] ?? ''));
+    $rule = $ruleJson === '' ? [] : pa2_json_decode_array($ruleJson);
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_config_package_options(package_group_id,option_key,option_type,material_id,option_definition_id,option_code,option_label,is_default,is_locked,price_delta,currency,moq,stock_qty,lead_time_days,valid_from,valid_to,rule_json,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE option_type=VALUES(option_type),material_id=VALUES(material_id),option_definition_id=VALUES(option_definition_id),option_code=VALUES(option_code),option_label=VALUES(option_label),is_default=VALUES(is_default),is_locked=VALUES(is_locked),price_delta=VALUES(price_delta),currency=VALUES(currency),moq=VALUES(moq),stock_qty=VALUES(stock_qty),lead_time_days=VALUES(lead_time_days),valid_from=VALUES(valid_from),valid_to=VALUES(valid_to),rule_json=VALUES(rule_json),sort_order=VALUES(sort_order),updated_at=NOW()');
+    $stmt->execute([$packageGroupId,$optionKey,(string)($input['option_type'] ?? 'attribute'),(int)($input['material_id'] ?? 0) ?: null,(int)($input['option_definition_id'] ?? 0) ?: null,trim((string)($input['option_code'] ?? '')) ?: null,$label,(int)($input['is_default'] ?? 0),(int)($input['is_locked'] ?? 0),($input['price_delta'] ?? null) === '' ? null : $input['price_delta'],trim((string)($input['currency'] ?? '')) ?: null,($input['moq'] ?? null) === '' ? null : (int)$input['moq'],($input['stock_qty'] ?? null) === '' ? null : (int)$input['stock_qty'],($input['lead_time_days'] ?? null) === '' ? null : (int)$input['lead_time_days'],trim((string)($input['valid_from'] ?? '')) ?: null,trim((string)($input['valid_to'] ?? '')) ?: null,pa2_json_encode($rule),(int)($input['sort_order'] ?? 100)]);
+    $after = pa2_fetch_package((int)$group['package_id']) ?: [];
+    pa2_log('save_package_option', 'pa2_config_package', (int)$group['package_id'], $package ?: [], $after);
+    return $after;
+}
+
+function pa2_package_preview(int $packageId): array
+{
+    $package = pa2_fetch_package($packageId);
+    if (!$package) throw new RuntimeException('配置包不存在。');
+    $groups = $package['groups'] ?? [];
+    $byCode = [];
+    foreach ($groups as $group) $byCode[(string)$group['group_code']] = $group;
+    $keyCodes = ['chip','driver','optical','finish_color'];
+    $readyStockLocked = true;
+    foreach ($keyCodes as $code) {
+        if (($byCode[$code]['lock_mode'] ?? '') !== 'locked') $readyStockLocked = false;
+    }
+    $standardLimited = (($byCode['optical']['lock_mode'] ?? '') === 'range_limited') && (($byCode['finish_color']['lock_mode'] ?? '') === 'range_limited');
+    $daliFixed = (($byCode['dimming']['lock_mode'] ?? '') === 'locked') || (($byCode['driver']['default_selection_json']['option_code'] ?? '') === 'dali_driver') || str_contains(strtolower(pa2_json_encode($byCode['driver']['allowed_scope_json'] ?? [])), 'dali');
+    $traceable = (int)($package['active_version_id'] ?? 0) > 0 && (string)($package['active_version_no'] ?? '') !== '';
+    $totalOptions = 0;
+    foreach ($groups as $group) $totalOptions += count($group['options'] ?? []);
+    $checks = [
+        'ready_stock_locked' => ['passed' => (string)$package['package_code'] !== 'singapore_ready_stock' || $readyStockLocked, 'label' => 'Ready Stock 关键物料全部锁定'],
+        'standard_limited' => ['passed' => (string)$package['package_code'] !== 'singapore_standard' || $standardLimited, 'label' => 'Standard 只开放指定光学/颜色范围'],
+        'dali_fixed' => ['passed' => (string)$package['package_code'] !== 'singapore_dali' || $daliFixed, 'label' => 'DALI 固定 DALI 电源/调光'],
+        'traceable' => ['passed' => $traceable, 'label' => '配置包版本可追溯'],
+    ];
+    return [
+        'package' => $package,
+        'summary' => [
+            'group_count' => count($groups),
+            'option_count' => $totalOptions,
+            'locked_group_count' => count(array_filter($groups, fn($g) => ($g['lock_mode'] ?? '') === 'locked')),
+            'limited_group_count' => count(array_filter($groups, fn($g) => ($g['lock_mode'] ?? '') === 'range_limited')),
+            'default_locked_group_count' => count(array_filter($groups, fn($g) => ($g['lock_mode'] ?? '') === 'default_locked')),
+        ],
+        'checks' => $checks,
+    ];
+}
+
+function pa2_publish_package(int $packageId): array
+{
+    pa2_require_any(['adaptation_v2.manage_package', 'adaptation_v2.publish', 'material_center.adaptation.manage'], '没有发布配置包的权限。');
+    $preview = pa2_package_preview($packageId);
+    foreach ($preview['checks'] as $check) {
+        if (empty($check['passed'])) throw new RuntimeException('配置包预览未通过：' . $check['label']);
+    }
+    $package = $preview['package'];
+    $versionId = (int)($package['active_version_id'] ?? 0);
+    if ($versionId <= 0) throw new RuntimeException('配置包版本不存在。');
+    if ((string)($package['active_version_status'] ?? '') !== 'draft') throw new RuntimeException('只有草稿配置包版本可以发布。');
+    $versionNo = pa2_next_package_version_no($packageId);
+    $snapshot = [
+        'package' => [
+            'package_code' => $package['package_code'],
+            'package_name' => $package['package_name'],
+            'channel_code' => $package['channel_code'],
+            'package_type' => $package['package_type'],
+        ],
+        'summary' => $preview['summary'],
+        'checks' => $preview['checks'],
+        'groups' => $package['groups'],
+    ];
+    pa2_db()->prepare('UPDATE mc_pa2_config_package_versions SET status="published",version_no=?,snapshot_json=?,published_by=?,published_at=NOW() WHERE id=?')->execute([$versionNo,pa2_json_encode($snapshot),pa2_current_user_id(),$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_config_packages SET status="published",updated_by=?,updated_at=NOW() WHERE id=?')->execute([pa2_current_user_id(),$packageId]);
+    $after = pa2_fetch_package($packageId) ?: [];
+    pa2_log('publish_package', 'pa2_config_package', $packageId, $package, $after);
+    return ['package' => $after, 'version_no' => $versionNo, 'checks' => $preview['checks']];
 }

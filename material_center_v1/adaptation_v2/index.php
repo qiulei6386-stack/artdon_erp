@@ -24,7 +24,7 @@ $allowedViews = [
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 7 阶段：产品差异、审批和版本。';
+$pageDescription = '第 8 阶段：配置包中心。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
@@ -55,6 +55,14 @@ $canPublishTemplate = pa2_can_any(['adaptation_v2.publish_template', 'material_c
 $canManageRule = pa2_can_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage']);
 $canApproveProduct = pa2_can_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage']);
 $canPublishProduct = pa2_can_any(['adaptation_v2.publish_product', 'material_center.adaptation.manage']);
+$canManagePackage = pa2_can_any(['adaptation_v2.manage_package', 'material_center.adaptation.manage']);
+$canPublishPackage = pa2_can_any(['adaptation_v2.publish', 'material_center.adaptation.manage']);
+$packages = pa2_fetch_packages();
+$selectedPackageId = (int)($_GET['package_id'] ?? 0);
+if ($selectedPackageId <= 0 && $packages) $selectedPackageId = (int)$packages[0]['id'];
+$selectedPackage = $selectedPackageId > 0 ? pa2_fetch_package($selectedPackageId) : null;
+$selectedPackagePreview = $selectedPackage ? pa2_package_preview((int)$selectedPackage['id']) : null;
+$pa2PackageLockLabels = pa2_package_rule_labels();
 $pa2ResultLabels = [
     'full_match' => '完全适配',
     'conditional_match' => '条件适配',
@@ -76,7 +84,7 @@ $routeCards = [
     ['templates', '模板中心', '维护通用、分类、系列和产品模板。'],
     ['rules', '规则编辑器', '第 4 阶段维护显示条件、物料过滤、默认项和循环检测。'],
     ['workspace', '单产品配置工作台', '第 7 阶段支持草稿、提交、审批、发布、版本差异和回滚。'],
-    ['packages', '配置包中心', '第 8 阶段发布渠道配置包。'],
+    ['packages', '配置包中心', '第 8 阶段维护渠道配置包、锁定范围、价格、MOQ、库存和交期规则。'],
     ['publish', '渠道发布', '第 9 阶段提供下游发布接口。'],
     ['approvals', '审批中心', '第 7 阶段接入审批和发布。'],
     ['logs', '日志与版本', '查看 V2 执行记录和阶段文档。'],
@@ -106,10 +114,11 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate small{color:var(--pa2-muted)}
+.pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
-@media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid{grid-template-columns:1fr}}
+@media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row{grid-template-columns:1fr}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="7" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="8" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -138,10 +147,10 @@ include MC_ROOT . '/components/layout_top.php';
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
             <article class="pa2-card"><strong>产品配置草稿</strong><b><?=intval($summary['product_config_count'])?></b><p>第 5 阶段开始保存 V2 单产品草稿配置。</p></article>
-            <article class="pa2-card"><strong>已发布版本</strong><b><?=intval($summary['published_version_count'] ?? 0)?></b><p>审批事件 <?=intval($summary['approval_event_count'] ?? 0)?> 条；结果缓存 <?=intval($summary['adaptation_result_count'] ?? 0)?> 条。</p></article>
+            <article class="pa2-card"><strong>配置包</strong><b><?=intval($summary['package_count'] ?? 0)?></b><p>已发布 <?=intval($summary['published_package_count'] ?? 0)?> 个；配置包版本 <?=intval($summary['package_version_count'] ?? 0)?> 个。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 7 阶段开放产品版本生命周期：草稿、提交、审批、驳回、发布、差异、快照和回滚；配置包与下游接口仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 8 阶段开放配置包中心：渠道包、包版本、锁定模式、允许范围、默认项、价格、MOQ、库存、交期、预览和发布；下游接口仍在第 9 阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -708,6 +717,181 @@ include MC_ROOT . '/components/layout_top.php';
                 </table>
             </div>
         </section>
+    <?php elseif ($view === 'packages'): ?>
+        <section class="pa2-package-shell">
+            <aside class="pa2-panel">
+                <div class="pa2-panel__head">
+                    <div><h2>配置包中心</h2><p>按渠道沉淀可发布配置包；第 8 阶段只服务 V2，不暴露给旧版和正式菜单。</p></div>
+                </div>
+                <div class="pa2-panel__body pa2-package-list">
+                    <?php foreach ($packages as $packageRow): ?>
+                        <a class="pa2-package-item <?=((int)$packageRow['id']===$selectedPackageId?'is-active':'')?>" href="<?=mc_h(pa2_view_url('packages', ['package_id'=>(int)$packageRow['id']]))?>">
+                            <strong><?=mc_h($packageRow['package_name'])?></strong>
+                            <span class="pa2-muted"><?=mc_h($packageRow['package_code'])?> · <?=mc_h($packageRow['channel_code'])?> · <?=mc_h($packageRow['package_type'])?></span>
+                            <span class="pa2-package-item__meta">
+                                <span class="pa2-badge"><?=mc_h($packageRow['status'])?></span>
+                                <span class="pa2-chip"><?=mc_h($packageRow['active_version_no'] ?: '无版本')?></span>
+                                <span class="pa2-chip">组 <?=intval($packageRow['group_count'])?></span>
+                                <span class="pa2-chip">锁定 <?=intval($packageRow['locked_group_count'])?></span>
+                            </span>
+                        </a>
+                    <?php endforeach; ?>
+                    <?php if ($canManagePackage): ?>
+                    <details class="pa2-side-note">
+                        <summary><strong>新增配置包</strong></summary>
+                        <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_save'))?>">
+                            <label><span>编码</span><input name="package_code" placeholder="例如 singapore_custom"></label>
+                            <label><span>名称 *</span><input name="package_name" required placeholder="例如 Singapore Custom"></label>
+                            <label><span>渠道</span><input name="channel_code" value="singapore"></label>
+                            <label><span>类型</span><input name="package_type" value="custom"></label>
+                            <label class="full"><span>说明</span><input name="description" placeholder="说明配置包用途和限制"></label>
+                            <button class="mc-button mc-button--primary" type="submit">新增配置包</button>
+                        </form>
+                    </details>
+                    <?php endif; ?>
+                </div>
+            </aside>
+            <section class="pa2-panel">
+                <div class="pa2-panel__head">
+                    <div>
+                        <h2><?=mc_h($selectedPackage['package_name'] ?? '选择配置包')?></h2>
+                        <p><?=mc_h($selectedPackage['description'] ?? '左侧选择配置包后查看版本、锁定规则、价格、MOQ、库存和交期。')?></p>
+                    </div>
+                    <?php if ($selectedPackage && $canManagePackage): ?>
+                    <div class="pa2-template-actions">
+                        <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_version_prepare'))?>">
+                            <input type="hidden" name="package_id" value="<?=intval($selectedPackage['id'])?>">
+                            <button class="mc-button" type="submit">生成新草稿</button>
+                        </form>
+                        <?php if (($selectedPackage['active_version_status'] ?? '') === 'draft' && $canPublishPackage): ?>
+                        <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_publish'))?>">
+                            <input type="hidden" name="package_id" value="<?=intval($selectedPackage['id'])?>">
+                            <button class="mc-button mc-button--primary" type="submit">发布配置包</button>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <div class="pa2-panel__body pa2-section-gap">
+                    <?php if (!$selectedPackage): ?>
+                        <div class="pa2-placeholder">配置包表尚未迁移或没有配置包。执行第 8 阶段迁移后会自动生成 4 个首批配置包。</div>
+                    <?php else: ?>
+                        <div class="pa2-package-stats">
+                            <div class="pa2-package-stat"><strong>当前版本</strong><b><?=mc_h($selectedPackage['active_version_no'] ?: '—')?></b><p class="pa2-muted"><?=mc_h($selectedPackage['active_version_status'] ?: '—')?></p></div>
+                            <div class="pa2-package-stat"><strong>配置组</strong><b><?=intval($selectedPackagePreview['summary']['group_count'] ?? 0)?></b><p class="pa2-muted">选项 <?=intval($selectedPackagePreview['summary']['option_count'] ?? 0)?></p></div>
+                            <div class="pa2-package-stat"><strong>锁定组</strong><b><?=intval($selectedPackagePreview['summary']['locked_group_count'] ?? 0)?></b><p class="pa2-muted">默认锁定 <?=intval($selectedPackagePreview['summary']['default_locked_group_count'] ?? 0)?></p></div>
+                            <div class="pa2-package-stat"><strong>范围限定</strong><b><?=intval($selectedPackagePreview['summary']['limited_group_count'] ?? 0)?></b><p class="pa2-muted">光学/颜色等开放范围</p></div>
+                        </div>
+                        <?php if ($selectedPackagePreview): ?>
+                        <div class="pa2-package-checks">
+                            <?php foreach ($selectedPackagePreview['checks'] as $check): ?>
+                                <div class="pa2-package-check <?=!empty($check['passed'])?'is-pass':'is-fail'?>"><strong><?=!empty($check['passed'])?'✓':'×'?> <?=mc_h($check['label'])?></strong><p class="pa2-muted"><?=!empty($check['passed'])?'已满足当前配置包验收规则。':'当前配置包还不满足此验收规则。'?></p></div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php if ($canManagePackage): ?>
+                        <details class="pa2-side-note">
+                            <summary><strong>编辑配置包基本信息</strong></summary>
+                            <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_save'))?>">
+                                <input type="hidden" name="id" value="<?=intval($selectedPackage['id'])?>">
+                                <label><span>编码</span><input name="package_code" value="<?=mc_h($selectedPackage['package_code'])?>"></label>
+                                <label><span>名称</span><input name="package_name" value="<?=mc_h($selectedPackage['package_name'])?>" required></label>
+                                <label><span>渠道</span><input name="channel_code" value="<?=mc_h($selectedPackage['channel_code'])?>"></label>
+                                <label><span>类型</span><input name="package_type" value="<?=mc_h($selectedPackage['package_type'])?>"></label>
+                                <label class="wide"><span>说明</span><input name="description" value="<?=mc_h($selectedPackage['description'] ?? '')?>"></label>
+                                <label><span>状态</span><select name="status"><option value="draft" <?=($selectedPackage['status']==='draft'?'selected':'')?>>草稿</option><option value="published" <?=($selectedPackage['status']==='published'?'selected':'')?>>已发布</option><option value="disabled" <?=($selectedPackage['status']==='disabled'?'selected':'')?>>停用</option></select></label>
+                                <button class="mc-button" type="submit">保存基本信息</button>
+                            </form>
+                        </details>
+                        <?php endif; ?>
+                        <div class="pa2-group-grid">
+                            <?php foreach (($selectedPackage['groups'] ?? []) as $packageGroup): ?>
+                                <article class="pa2-package-group">
+                                    <div class="pa2-package-group__head">
+                                        <div>
+                                            <strong><?=mc_h($packageGroup['display_name'])?></strong>
+                                            <p class="pa2-muted"><?=mc_h($packageGroup['group_code'])?> · <?=mc_h($packageGroup['group_type'] ?: '配置组')?> · <?=mc_h($pa2PackageLockLabels[$packageGroup['lock_mode']] ?? $packageGroup['lock_mode'])?></p>
+                                        </div>
+                                        <span class="pa2-badge <?=($packageGroup['lock_mode']==='locked'?'pa2-badge--block':($packageGroup['lock_mode']==='range_limited'?'pa2-badge--condition':'pa2-badge--match'))?>"><?=mc_h($packageGroup['lock_mode'])?></span>
+                                    </div>
+                                    <div class="pa2-package-rule-row">
+                                        <div><strong>允许范围</strong><br><code><?=mc_h(pa2_json_encode($packageGroup['allowed_scope_json'] ?? []))?></code></div>
+                                        <div><strong>默认项</strong><br><code><?=mc_h(pa2_json_encode($packageGroup['default_selection_json'] ?? []))?></code></div>
+                                        <div><strong>MOQ</strong><br><code><?=mc_h(pa2_json_encode($packageGroup['moq_rule_json'] ?? []))?></code></div>
+                                        <div><strong>库存/交期</strong><br><code><?=mc_h(pa2_json_encode(['inventory'=>$packageGroup['inventory_rule_json'] ?? [], 'lead_time'=>$packageGroup['lead_time_rule_json'] ?? []]))?></code></div>
+                                    </div>
+                                    <div class="pa2-package-options">
+                                        <?php foreach (($packageGroup['options'] ?? []) as $option): ?>
+                                            <span class="<?=((int)$option['is_locked']===1?'is-locked ':'')?><?=((int)$option['is_default']===1?'is-default':'')?>"><?=mc_h($option['option_label'])?><?=((int)$option['is_locked']===1?' · 锁定':'')?><?=((int)$option['is_default']===1?' · 默认':'')?><?=($option['moq']!==null?' · MOQ '.intval($option['moq']):'')?><?=($option['stock_qty']!==null?' · 库存 '.intval($option['stock_qty']):'')?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <?php if ($canManagePackage && ($selectedPackage['active_version_status'] ?? '') === 'draft'): ?>
+                                    <details>
+                                        <summary>编辑此配置组规则</summary>
+                                        <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_group_save'))?>">
+                                            <input type="hidden" name="package_id" value="<?=intval($selectedPackage['id'])?>">
+                                            <input type="hidden" name="group_id" value="<?=intval($packageGroup['id'])?>">
+                                            <input type="hidden" name="group_definition_id" value="<?=intval($packageGroup['group_definition_id'] ?? 0)?>">
+                                            <label><span>显示名称</span><input name="display_name" value="<?=mc_h($packageGroup['display_name'])?>"></label>
+                                            <label><span>组编码</span><input name="group_code" value="<?=mc_h($packageGroup['group_code'])?>"></label>
+                                            <label><span>锁定模式</span><select name="lock_mode"><?php foreach ($pa2PackageLockLabels as $mode=>$label): ?><option value="<?=mc_h($mode)?>" <?=($packageGroup['lock_mode']===$mode?'selected':'')?>><?=mc_h($label)?></option><?php endforeach; ?></select></label>
+                                            <label><span>必选</span><select name="is_required"><option value="1" <?=((int)$packageGroup['is_required']===1?'selected':'')?>>必选</option><option value="0" <?=((int)$packageGroup['is_required']===0?'selected':'')?>>可选</option></select></label>
+                                            <label><span>允许为空</span><select name="allow_empty"><option value="1" <?=((int)$packageGroup['allow_empty']===1?'selected':'')?>>允许</option><option value="0" <?=((int)$packageGroup['allow_empty']===0?'selected':'')?>>不允许</option></select></label>
+                                            <label><span>最少</span><input type="number" name="min_select" value="<?=intval($packageGroup['min_select'])?>"></label>
+                                            <label><span>最多</span><input type="number" name="max_select" value="<?=intval($packageGroup['max_select'])?>"></label>
+                                            <label><span>排序</span><input type="number" name="sort_order" value="<?=intval($packageGroup['sort_order'])?>"></label>
+                                            <label class="wide"><span>允许范围 JSON</span><input name="allowed_scope_json" value="<?=mc_h(pa2_json_encode($packageGroup['allowed_scope_json'] ?? []))?>"></label>
+                                            <label class="wide"><span>默认项 JSON</span><input name="default_selection_json" value="<?=mc_h(pa2_json_encode($packageGroup['default_selection_json'] ?? []))?>"></label>
+                                            <label class="wide"><span>价格规则 JSON</span><input name="price_rule_json" value="<?=mc_h(pa2_json_encode($packageGroup['price_rule_json'] ?? []))?>"></label>
+                                            <label class="wide"><span>MOQ 规则 JSON</span><input name="moq_rule_json" value="<?=mc_h(pa2_json_encode($packageGroup['moq_rule_json'] ?? []))?>"></label>
+                                            <label class="wide"><span>库存规则 JSON</span><input name="inventory_rule_json" value="<?=mc_h(pa2_json_encode($packageGroup['inventory_rule_json'] ?? []))?>"></label>
+                                            <label class="wide"><span>交期规则 JSON</span><input name="lead_time_rule_json" value="<?=mc_h(pa2_json_encode($packageGroup['lead_time_rule_json'] ?? []))?>"></label>
+                                            <button class="mc-button" type="submit">保存组规则</button>
+                                        </form>
+                                        <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_option_save'))?>">
+                                            <input type="hidden" name="package_group_id" value="<?=intval($packageGroup['id'])?>">
+                                            <label><span>选项键</span><input name="option_key" placeholder="例如 beam_15"></label>
+                                            <label><span>选项名称 *</span><input name="option_label" required placeholder="例如 15° 光学"></label>
+                                            <label><span>选项编码</span><input name="option_code" placeholder="例如 beam_15"></label>
+                                            <label><span>类型</span><select name="option_type"><option value="attribute">属性</option><option value="rule">规则</option><option value="material">正式物料</option></select></label>
+                                            <label><span>默认</span><select name="is_default"><option value="0">否</option><option value="1">是</option></select></label>
+                                            <label><span>锁定</span><select name="is_locked"><option value="0">否</option><option value="1">是</option></select></label>
+                                            <label><span>价格差异</span><input name="price_delta" placeholder="0.00"></label>
+                                            <label><span>币种</span><input name="currency" placeholder="SGD"></label>
+                                            <label><span>MOQ</span><input type="number" name="moq" placeholder="100"></label>
+                                            <label><span>库存</span><input type="number" name="stock_qty" placeholder="50"></label>
+                                            <label><span>交期天数</span><input type="number" name="lead_time_days" placeholder="14"></label>
+                                            <label class="wide"><span>规则 JSON</span><input name="rule_json" placeholder='{"scope":"specified"}'></label>
+                                            <button class="mc-button" type="submit">新增/更新选项</button>
+                                        </form>
+                                    </details>
+                                    <?php endif; ?>
+                                </article>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php if ($canManagePackage && ($selectedPackage['active_version_status'] ?? '') === 'draft'): ?>
+                        <details class="pa2-side-note">
+                            <summary><strong>新增配置组到当前配置包</strong></summary>
+                            <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=package_group_save'))?>">
+                                <input type="hidden" name="package_id" value="<?=intval($selectedPackage['id'])?>">
+                                <label><span>配置组定义</span><select name="group_definition_id"><option value="">手工编码</option><?php foreach ($groups as $groupDef): ?><option value="<?=intval($groupDef['id'])?>"><?=mc_h($groupDef['group_name'])?> · <?=mc_h($groupDef['group_code'])?></option><?php endforeach; ?></select></label>
+                                <label><span>组编码</span><input name="group_code" placeholder="例如 optical"></label>
+                                <label><span>显示名称</span><input name="display_name" placeholder="例如 光学 / 透镜"></label>
+                                <label><span>锁定模式</span><select name="lock_mode"><?php foreach ($pa2PackageLockLabels as $mode=>$label): ?><option value="<?=mc_h($mode)?>"><?=mc_h($label)?></option><?php endforeach; ?></select></label>
+                                <label><span>必选</span><select name="is_required"><option value="1">必选</option><option value="0">可选</option></select></label>
+                                <label><span>允许为空</span><select name="allow_empty"><option value="0">不允许</option><option value="1">允许</option></select></label>
+                                <label><span>最少</span><input type="number" name="min_select" value="1"></label>
+                                <label><span>最多</span><input type="number" name="max_select" value="1"></label>
+                                <label class="wide"><span>允许范围 JSON</span><input name="allowed_scope_json" placeholder='{"scope":"all_official_materials"}'></label>
+                                <label class="wide"><span>默认项 JSON</span><input name="default_selection_json" placeholder='{"source":"published_product_default"}'></label>
+                                <button class="mc-button" type="submit">新增配置组</button>
+                            </form>
+                        </details>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </section>
+        </section>
     <?php elseif ($view === 'logs'): ?>
         <section class="pa2-panel">
             <div class="pa2-panel__head"><div><h2>执行日志与审计文档</h2><p>阶段文档保存在 V2 独立目录，便于验收和回滚。</p></div></div>
@@ -722,6 +906,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 5 阶段单产品工作台</td><td><code>adaptation_v2/docs/05_PRODUCT_WORKSPACE.md</code></td></tr>
                         <tr><td>第 6 阶段适配计算</td><td><code>adaptation_v2/docs/06_ADAPTATION_ENGINE.md</code></td></tr>
                         <tr><td>第 7 阶段版本审批</td><td><code>adaptation_v2/docs/07_VERSION_APPROVAL.md</code></td></tr>
+                        <tr><td>第 8 阶段配置包中心</td><td><code>adaptation_v2/docs/08_CONFIG_PACKAGE_CENTER.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>

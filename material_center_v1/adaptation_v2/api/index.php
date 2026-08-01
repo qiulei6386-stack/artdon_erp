@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 7,
-            'phase_name' => '产品差异、审批和版本',
+            'phase' => 8,
+            'phase_name' => '配置包中心',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -65,6 +65,14 @@ try {
                 'product_version_rollback',
                 'product_group_save',
                 'material_candidates',
+                'packages',
+                'package_detail',
+                'package_save',
+                'package_version_prepare',
+                'package_group_save',
+                'package_option_save',
+                'package_preview',
+                'package_publish',
             ],
             'routes' => [
                 '/material_center_v1/adaptation_v2/index.php?view=home',
@@ -74,6 +82,7 @@ try {
                 '/material_center_v1/adaptation_v2/index.php?view=templates',
                 '/material_center_v1/adaptation_v2/index.php?view=rules',
                 '/material_center_v1/adaptation_v2/index.php?view=workspace',
+                '/material_center_v1/adaptation_v2/index.php?view=packages',
             ],
         ]);
         exit;
@@ -230,6 +239,53 @@ try {
         exit;
     }
 
+    if ($action === 'packages') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看配置包中心的权限。');
+        pa2_json_response(['packages' => pa2_fetch_packages()]);
+        exit;
+    }
+
+    if ($action === 'package_detail') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看配置包详情的权限。');
+        $package = pa2_fetch_package((int)($_GET['package_id'] ?? 0));
+        if (!$package) throw new RuntimeException('配置包不存在。');
+        pa2_json_response(['package' => $package, 'preview' => pa2_package_preview((int)$package['id'])]);
+        exit;
+    }
+
+    if ($action === 'package_save') {
+        pa2_json_response(['package' => pa2_upsert_package(pa2_request_data())], '配置包已保存');
+        exit;
+    }
+
+    if ($action === 'package_version_prepare') {
+        $data = pa2_request_data();
+        pa2_json_response(['package' => pa2_prepare_package_version((int)($data['package_id'] ?? 0), (int)($data['source_product_config_version_id'] ?? 0))], '配置包草稿版本已准备');
+        exit;
+    }
+
+    if ($action === 'package_group_save') {
+        pa2_json_response(['package' => pa2_save_package_group(pa2_request_data())], '配置包组规则已保存');
+        exit;
+    }
+
+    if ($action === 'package_option_save') {
+        pa2_json_response(['package' => pa2_save_package_option(pa2_request_data())], '配置包选项已保存');
+        exit;
+    }
+
+    if ($action === 'package_preview') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有预览配置包的权限。');
+        pa2_json_response(['preview' => pa2_package_preview((int)($_GET['package_id'] ?? 0))]);
+        exit;
+    }
+
+    if ($action === 'package_publish') {
+        $data = pa2_request_data();
+        pa2_json_response(pa2_publish_package((int)($data['package_id'] ?? 0)), '配置包已发布');
+        exit;
+    }
+
     if ($action === 'templates') {
         pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看产品适配 V2 的权限。');
         pa2_json_response(['templates' => pa2_fetch_templates()]);
@@ -302,7 +358,7 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_save','material_candidates','packages','package_detail','package_save','package_version_prepare','package_group_save','package_option_save','package_preview','package_publish','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],

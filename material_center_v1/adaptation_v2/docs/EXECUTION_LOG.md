@@ -370,3 +370,44 @@
 - 正式服务器 API 状态返回 `phase=7`。
 - 正式服务器只读核验：`mc_pa2_product_version_events=0`、`mc_pa2_product_version_snapshots=0`、`mc_pa2_product_version_diffs=0`、`mc_pa2_schema_migrations=6`。事件/快照/差异为 0 是正常初始状态，用户提交/审批/发布后才写入。
 - 正式服务器样品版本只读核验：产品 `266` 可读取 `version_count=1`，无 Fatal Error。
+
+## 2026-08-01 第 8 阶段：配置包中心
+
+执行范围：
+
+- 用户要求继续余下步骤。
+- 本阶段开发 V2 配置包中心，作为第 9 阶段商务中心/新加坡网站下游接口的前置数据模型。
+- 本阶段仍不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_007_phase8_packages.php`。
+- 新增 `mc_pa2_config_packages`、`mc_pa2_config_package_versions`、`mc_pa2_config_package_groups`、`mc_pa2_config_package_options`。
+- 首批种子配置包：Commercial Flexible、Singapore Standard、Singapore DALI、Singapore Ready Stock。
+- 每个首批配置包带 1 个草稿版本、配置组规则和必要选项。
+- 支持锁定模式：`open`、`locked`、`range_limited`、`default_locked`。
+- 组规则承载允许范围、默认项、价格、MOQ、库存和交期规则。
+- 选项承载默认、锁定、价格差异、MOQ、库存、交期和规则 JSON。
+- API 新增配置包列表、详情、保存、准备草稿、保存组、保存选项、预览、发布。
+- 页面新增配置包中心，显示版本、统计、预览检查、组规则和选项摘要。
+- 发布前检查：Ready Stock 关键物料锁定、Standard 指定光学/颜色范围、DALI 固定 DALI、电包版本可追溯。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_007_phase8_packages.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/08_CONFIG_PACKAGE_CENTER.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase8_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 8 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。
