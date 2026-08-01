@@ -1090,17 +1090,19 @@ include MC_ROOT . '/components/layout_top.php';
                         <div class="pa2-panel__body">
                             <div class="pa2-scheme-grid">
                                 <?php foreach ($wpSchemes as $scheme): ?>
-                                <article class="pa2-scheme-card <?=!empty($scheme['is_default'])?'is-selected':''?>" <?php if ($wpCanEditVersion): ?>data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" title="双击编辑这个配置方案"<?php endif; ?>>
+                                <article class="pa2-scheme-card <?=!empty($scheme['is_default'])?'is-selected':''?>" <?php if ($canConfigureProduct): ?>data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>" title="双击编辑这个配置方案"<?php endif; ?>>
                                     <div class="pa2-scheme-card__head">
                                         <strong><?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?><?=!empty($scheme['is_default'])?' · 已选择':''?></strong>
-                                        <?php if ($wpCanEditVersion): ?>
+                                        <?php if ($canConfigureProduct): ?>
                                         <div class="pa2-scheme-actions">
-                                            <button class="mc-button" type="button" data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>">编辑方案</button>
+                                            <button class="mc-button" type="button" data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>"><?= $wpCanEditVersion ? '编辑方案' : '查看方案' ?></button>
+                                            <?php if ($wpCanEditVersion): ?>
                                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_scheme_select'))?>">
                                                 <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
                                                 <input type="hidden" name="scheme_code" value="<?=mc_h($scheme['code'])?>">
                                                 <button class="mc-button" type="submit"><?=!empty($scheme['is_default'])?'当前采用':'设为采用'?></button>
                                             </form>
+                                            <?php endif; ?>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -1127,6 +1129,9 @@ include MC_ROOT . '/components/layout_top.php';
                             <input type="hidden" name="scheme_code" value="A">
                             <div class="pa2-dialog__body">
                                 <div class="pa2-dialog-form">
+                                    <?php if (!$wpCanEditVersion): ?>
+                                        <div class="pa2-alert full">当前版本不是草稿/驳回状态，不能直接保存修改。请先生成下一版草稿，再编辑 A/B/C 方案。</div>
+                                    <?php endif; ?>
                                     <div class="pa2-dialog-hint full">A / B / C 都是空白方案位。你可以让 A 用某个芯片+某个电源，B 用另一个芯片+另一个电源；没有选择的组会保持空白。</div>
                                     <label class="full"><span>方案名称</span><input name="scheme_name" value="配置 A" placeholder="例如 配置 A"></label>
                                     <?php if ($wpSchemeEditableGroups): foreach ($wpSchemeEditableGroups as $schemeGroup): ?>
@@ -1147,8 +1152,10 @@ include MC_ROOT . '/components/layout_top.php';
                                 <span class="pa2-muted">保存只影响当前 V2 草稿，不修改旧版适配或旧 BOM。</span>
                                 <div class="pa2-template-actions">
                                     <button class="mc-button" type="button" data-close-scheme-editor>取消</button>
-                                    <button class="mc-button" type="submit">保存方案</button>
-                                    <button class="mc-button mc-button--primary" type="submit" name="set_as_default" value="1">保存并采用</button>
+                                    <?php if ($wpCanEditVersion): ?>
+                                        <button class="mc-button" type="submit">保存方案</button>
+                                        <button class="mc-button mc-button--primary" type="submit" name="set_as_default" value="1">保存并采用</button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </form>
@@ -1677,13 +1684,21 @@ function pa2ParseJson(raw, fallback={}){
   const title=document.getElementById('pa2-scheme-dialog-title');
   const codeInput=form?.elements['scheme_code'];
   const nameInput=form?.elements['scheme_name'];
+  function setSchemeFormEnabled(canSave){
+    dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
+      if(select instanceof HTMLSelectElement) select.disabled=!canSave;
+    });
+    if(nameInput) nameInput.disabled=!canSave;
+  }
   function openSchemeEditor(source){
       const code=source.getAttribute('data-scheme-code')||'A';
       const name=source.getAttribute('data-scheme-name')||('配置 '+code);
       const selections=pa2ParseJson(source.getAttribute('data-scheme-selections')||'{}',{});
+      const canSave=(source.getAttribute('data-scheme-can-save')||'1')==='1';
       if(title) title.textContent='编辑配置方案 · '+code;
       if(codeInput) codeInput.value=code;
       if(nameInput) nameInput.value=name;
+      setSchemeFormEnabled(canSave);
       dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
         if(!(select instanceof HTMLSelectElement))return;
         const groupCode=select.getAttribute('data-scheme-select')||'';
@@ -1691,15 +1706,18 @@ function pa2ParseJson(raw, fallback={}){
       });
       pa2OpenDialog(dialog);
   }
-  document.querySelectorAll('[data-open-scheme-editor]').forEach((node)=>{
-    if(node instanceof HTMLButtonElement){
-      node.addEventListener('click',()=>openSchemeEditor(node));
-      return;
-    }
-    node.addEventListener('dblclick',(event)=>{
-      if(event.target instanceof Element && event.target.closest('button,form,a,input,select,textarea')) return;
-      openSchemeEditor(node);
-    });
+  document.addEventListener('click',(event)=>{
+    const button=event.target instanceof Element ? event.target.closest('button[data-open-scheme-editor]') : null;
+    if(!button)return;
+    event.preventDefault();
+    openSchemeEditor(button);
+  });
+  document.addEventListener('dblclick',(event)=>{
+    const card=event.target instanceof Element ? event.target.closest('.pa2-scheme-card[data-open-scheme-editor]') : null;
+    if(!card)return;
+    if(event.target instanceof Element && event.target.closest('button,form,a,input,select,textarea')) return;
+    event.preventDefault();
+    openSchemeEditor(card);
   });
   document.querySelectorAll('[data-close-scheme-editor]').forEach((btn)=>btn.addEventListener('click',()=>pa2CloseDialog(dialog)));
 })();
