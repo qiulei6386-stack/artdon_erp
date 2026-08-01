@@ -359,4 +359,14 @@
 
 测试记录：
 
-- 待本地和正式服务器验证后补充。
+- 本地 `git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase7_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 7 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase7_contract.php` 通过。
+- 发布提交 `362a8ed1392ef27a7e50ff4a4c35aa7a4d4b4cd5` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_006_phase7_versions`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 7 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase7_contract.php` 通过。
+- 正式服务器页面渲染通过：`home`、`workspace`、`products`、`rules`、`logs`。
+- 正式服务器 API 状态返回 `phase=7`。
+- 正式服务器只读核验：`mc_pa2_product_version_events=0`、`mc_pa2_product_version_snapshots=0`、`mc_pa2_product_version_diffs=0`、`mc_pa2_schema_migrations=6`。事件/快照/差异为 0 是正常初始状态，用户提交/审批/发布后才写入。
+- 正式服务器样品版本只读核验：产品 `266` 可读取 `version_count=1`，无 Fatal Error。

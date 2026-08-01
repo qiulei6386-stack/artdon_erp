@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 7 阶段产品差异、审批和版本（进行中）
+## 本次：产品适配 V2 第 7 阶段产品差异、审批和版本（已发布）
 
 - 用户要求继续，并询问余下步骤能否一起完成。按阶段纪律继续第 7 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -11,7 +11,12 @@
 - `api/index.php` 状态更新为 `phase=7`，新增动作 `product_versions`、`product_version_diff`、`product_version_submit`、`product_version_approve`、`product_version_reject`、`product_version_publish`、`product_version_rollback`。
 - `index.php` 工作台显示版本状态、审批/发布/回滚动作、版本列表和旧版本回滚入口。
 - 新增文档 `adaptation_v2/docs/07_VERSION_APPROVAL.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase7_contract.php`。
-- 待收尾：本地检查、服务器候选语法检查、提交推送、正式服务器迁移和页面/接口复检。
+- 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase7_candidate/` 对候选文件做 PHP 语法检查和契约测试，全部通过。
+- 发布：第 7 阶段功能提交 `362a8ed1392ef27a7e50ff4a4c35aa7a4d4b4cd5` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_006_phase7_versions`。
+- 数据库：正式服务器当前 `mc_pa2_product_version_events=0`、`mc_pa2_product_version_snapshots=0`、`mc_pa2_product_version_diffs=0`、`mc_pa2_schema_migrations=6`。事件/快照/差异为 0 是正常初始状态，提交/审批/发布/回滚后才写入。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 7 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase7_contract.php` 全部通过；`home`、`workspace`、`products`、`rules`、`logs` 页面 CLI 渲染无 Fatal；API `status` 返回 `phase=7`；样品版本只读核验：产品 `266` 可读取 `version_count=1`。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 待下一阶段：第 8 阶段配置包中心；当前第 7 阶段不处理商务中心/新加坡网站读取。
 
 ## 上次：产品适配 V2 第 6 阶段适配计算和冲突引擎（已发布）
 
