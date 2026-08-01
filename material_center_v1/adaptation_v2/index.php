@@ -660,8 +660,9 @@ include MC_ROOT . '/components/layout_top.php';
                         <label><span>状态</span><select name="is_enabled"><option value="1" <?=((int)$selectedTemplate['is_enabled']===1?'selected':'')?>>启用</option><option value="0" <?=((int)$selectedTemplate['is_enabled']===0?'selected':'')?>>停用</option></select></label>
                         <button class="mc-button" type="submit">保存模板</button>
                     </form>
-                    <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
+                    <form class="pa2-form" data-pa2-form data-template-group-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
                         <input type="hidden" name="template_id" value="<?=intval($selectedTemplate['id'])?>">
+                        <div class="pa2-dialog-hint full"><strong data-template-group-mode>新增或覆盖配置组</strong>：点击下方已有配置组的“编辑”，会把当前设置回填到这里，修改后直接保存。</div>
                         <label><span>配置组</span><select name="group_definition_id" required><?php foreach ($groups as $g): ?><option value="<?=intval($g['id'])?>"><?=mc_h($g['group_name'])?> · <?=mc_h($g['group_code'])?></option><?php endforeach; ?></select></label>
                         <label><span>继承动作</span><select name="inheritance_action"><option value="add">新增/使用</option><option value="override">覆盖父模板</option><option value="disable">禁用父模板组</option></select></label>
                         <label><span>选择方式</span><select name="selection_mode"><option value="single">单选</option><option value="multiple">多选</option></select></label>
@@ -673,7 +674,8 @@ include MC_ROOT . '/components/layout_top.php';
                         <label><span>影响价格</span><select name="affects_price"><option value="0">否</option><option value="1">是</option></select></label>
                         <label><span>影响交期</span><select name="affects_lead_time"><option value="0">否</option><option value="1">是</option></select></label>
                         <label><span>需要审批</span><select name="requires_approval"><option value="0">否</option><option value="1">是</option></select></label>
-                        <button class="mc-button mc-button--primary" type="submit">加入 / 覆盖配置组</button>
+                        <button class="mc-button" type="button" data-template-group-reset>清空为新增</button>
+                        <button class="mc-button mc-button--primary" type="submit" data-template-group-submit>保存配置组设置</button>
                     </form>
                     <?php endif; ?>
                     <div class="pa2-group-grid">
@@ -686,11 +688,28 @@ include MC_ROOT . '/components/layout_top.php';
                             <article class="pa2-group-card">
                                 <div>
                                     <strong><?=mc_h($g['display_name'])?></strong><br>
-                                    <small><?=mc_h($g['group_code'])?> · <?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?> · <?=($g['is_required']?'必选':'可选')?> · <?=mc_h($pa2SelectionModeLabels[$g['selection_mode']] ?? $g['selection_mode'])?> · 排序 <?=intval($g['sort_order'])?></small>
+                                    <small><?=mc_h($g['group_code'])?> · <?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?> · <?=($g['is_required']?'必选':'可选')?> · <?=mc_h($pa2SelectionModeLabels[$g['selection_mode']] ?? $g['selection_mode'])?> · <?=intval($g['min_select'])?>-<?=intval($g['max_select'])?> 项 · <?=((int)$g['allow_empty']===1?'允许为空':'不允许为空')?> · 价格<?=((int)$g['affects_price']===1?'是':'否')?> · 交期<?=((int)$g['affects_lead_time']===1?'是':'否')?> · 审批<?=((int)$g['requires_approval']===1?'是':'否')?> · 排序 <?=intval($g['sort_order'])?></small>
                                 </div>
                                 <div class="pa2-template-actions">
                                     <span class="pa2-badge pa2-badge--<?=mc_h($templateGroupBadge)?>"><?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?></span>
                                     <?php if ($canManageTemplate): ?>
+                                    <button
+                                        class="mc-button"
+                                        type="button"
+                                        data-template-group-edit
+                                        data-group-name="<?=mc_h($g['display_name'])?>"
+                                        data-group-definition-id="<?=intval($g['group_definition_id'])?>"
+                                        data-inheritance-action="<?=mc_h($templateGroupAction)?>"
+                                        data-selection-mode="<?=mc_h($g['selection_mode'])?>"
+                                        data-sort-order="<?=intval($g['sort_order'])?>"
+                                        data-min-select="<?=intval($g['min_select'])?>"
+                                        data-max-select="<?=intval($g['max_select'])?>"
+                                        data-is-required="<?=intval($g['is_required'])?>"
+                                        data-allow-empty="<?=intval($g['allow_empty'])?>"
+                                        data-affects-price="<?=intval($g['affects_price'])?>"
+                                        data-affects-lead-time="<?=intval($g['affects_lead_time'])?>"
+                                        data-requires-approval="<?=intval($g['requires_approval'])?>"
+                                    >编辑</button>
                                     <form data-pa2-form data-confirm="<?=mc_h($templateGroupAction === 'disable' ? '确认重新加入这个配置组？' : '确认从当前模板移除这个配置组？右侧继承预览会立即不再显示它。')?>" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
                                         <input type="hidden" name="template_id" value="<?=intval($selectedTemplate['id'])?>">
                                         <input type="hidden" name="group_definition_id" value="<?=intval($g['group_definition_id'])?>">
@@ -1443,6 +1462,41 @@ function pa2SetField(form,name,value){
   if(!form||!form.elements[name])return;
   form.elements[name].value=value??'';
 }
+(()=>{
+  const form=document.querySelector('[data-template-group-form]');
+  if(!form)return;
+  const mode=document.querySelector('[data-template-group-mode]');
+  const submit=form.querySelector('[data-template-group-submit]');
+  function setMode(text){
+    if(mode) mode.textContent=text;
+    if(submit) submit.textContent='保存配置组设置';
+  }
+  document.querySelectorAll('[data-template-group-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      pa2SetField(form,'group_definition_id',btn.getAttribute('data-group-definition-id')||'');
+      pa2SetField(form,'inheritance_action',btn.getAttribute('data-inheritance-action')||'add');
+      pa2SetField(form,'selection_mode',btn.getAttribute('data-selection-mode')||'single');
+      pa2SetField(form,'sort_order',btn.getAttribute('data-sort-order')||'100');
+      pa2SetField(form,'min_select',btn.getAttribute('data-min-select')||'0');
+      pa2SetField(form,'max_select',btn.getAttribute('data-max-select')||'1');
+      pa2SetField(form,'is_required',btn.getAttribute('data-is-required')||'0');
+      pa2SetField(form,'allow_empty',btn.getAttribute('data-allow-empty')||'1');
+      pa2SetField(form,'affects_price',btn.getAttribute('data-affects-price')||'0');
+      pa2SetField(form,'affects_lead_time',btn.getAttribute('data-affects-lead-time')||'0');
+      pa2SetField(form,'requires_approval',btn.getAttribute('data-requires-approval')||'0');
+      setMode('正在编辑：'+(btn.getAttribute('data-group-name')||'配置组'));
+      form.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  document.querySelectorAll('[data-template-group-reset]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      form.reset();
+      setMode('新增或覆盖配置组');
+      if(submit) submit.textContent='保存配置组设置';
+      form.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+})();
 (()=>{
   const dialog=document.getElementById('pa2-category-create-dialog');
   if(!dialog)return;
