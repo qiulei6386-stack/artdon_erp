@@ -2946,9 +2946,15 @@ function pa2_cutover_readiness(): array
             'evidence' => $evidence,
         ];
     };
-    $add('legacy_business_untouched', '旧版产品适配业务未切换', is_file(dirname(__DIR__, 2) . '/adaptation/index.php'), 'critical', ['legacy_entry' => 'material_center_v1/adaptation/index.php']);
+    $sidebarFile = dirname(__DIR__, 2) . '/components/sidebar.php';
+    $sidebar = is_file($sidebarFile) ? (string)file_get_contents($sidebarFile) : '';
+    $legacyEntryFile = dirname(__DIR__, 2) . '/adaptation/index.php';
+    $legacyEntry = is_file($legacyEntryFile) ? (string)file_get_contents($legacyEntryFile) : '';
+    $menuPointsToV2 = str_contains($sidebar, 'adaptation_v2/index.php') && !str_contains($sidebar, "['adaptation','产品适配','branch','adaptation/index.php']");
+    $legacyRedirectsToV2 = str_contains($legacyEntry, "mc_url('adaptation_v2/index.php?");
+    $add('legacy_business_preserved', '旧版产品适配目录保留但默认入口不再进入旧版', is_file($legacyEntryFile) && $legacyRedirectsToV2, 'critical', ['legacy_entry' => 'material_center_v1/adaptation/index.php', 'redirects_to_v2' => $legacyRedirectsToV2]);
     $add('old_bom_untouched', '旧 BOM 不在 V2 阶段修改范围内', is_file(dirname(__DIR__, 3) . '/bom.php'), 'critical', ['old_bom' => 'bom.php']);
-    $add('formal_menu_not_switched', '正式菜单未切换到 V2', true, 'critical', ['menu_switched' => false]);
+    $add('formal_menu_points_to_v2', '正式产品适配入口已指向 V2', $menuPointsToV2, 'critical', ['menu_switched' => $menuPointsToV2]);
     $add('phase2_foundation_ready', '第 2 阶段基础表就绪', pa2_foundation_ready(), 'critical', ['category_count' => $summary['category_count'], 'group_count' => $summary['group_count']]);
     $add('phase3_templates_ready', '第 3 阶段模板表就绪', pa2_template_tables_ready(), 'high', ['template_count' => $summary['template_count']]);
     $add('phase4_rules_ready', '第 4 阶段规则表就绪且无循环', pa2_phase4_tables_ready() && (int)$summary['rule_cycle_count'] === 0, 'high', ['rule_count' => $summary['rule_count'], 'rule_cycle_count' => $summary['rule_cycle_count']]);
@@ -2958,7 +2964,7 @@ function pa2_cutover_readiness(): array
     $add('phase8_package_ready', '第 8 阶段配置包表就绪', pa2_phase8_tables_ready(), 'high', ['package_count' => $summary['package_count']]);
     $add('phase9_channel_ready', '第 9 阶段渠道接口表就绪', pa2_phase9_tables_ready(), 'high', ['channel_client_count' => $summary['channel_client_count']]);
     $add('published_packages_exist', '至少存在已发布配置包供下游读取', (int)($summary['published_package_count'] ?? 0) > 0, 'critical', ['published_package_count' => $summary['published_package_count'] ?? 0]);
-    $add('real_business_regression_required', '真实业务回归需人工验收后才能切换正式菜单', false, 'critical', ['required' => ['产品适配真实产品配置', '配置包发布', '商务中心读取', '新加坡网站读取', '订单快照']]);
+    $add('real_business_regression_required', '正式入口已切换，仍需继续完成真实业务回归', false, 'critical', ['required' => ['产品适配真实产品配置', '配置包发布', '商务中心读取', '新加坡网站读取', '订单快照']]);
     $blocked = array_values(array_filter($checks, fn($check) => $check['result'] === 'blocked'));
     return [
         'ready_to_switch' => count($blocked) === 0,
@@ -2966,7 +2972,7 @@ function pa2_cutover_readiness(): array
         'summary' => $summary,
         'checks' => $checks,
         'blockers' => $blocked,
-        'decision' => count($blocked) === 0 ? '可以进入正式切换审批' : '不得切换正式菜单',
+        'decision' => count($blocked) === 0 ? '正式入口已切换且检查通过' : '正式入口已切换，仍有业务回归阻断项',
     ];
 }
 

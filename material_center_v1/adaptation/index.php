@@ -3,6 +3,21 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__).'/bootstrap.php';
 
+$legacyView = (string)($_GET['view'] ?? '');
+$legacyProductId = (int)($_GET['product_id'] ?? 0);
+$v2Params = ['view' => 'home'];
+if ($legacyProductId > 0) {
+    $v2Params = ['view' => 'workspace', 'product_id' => $legacyProductId];
+} elseif ($legacyView === 'products') {
+    $v2Params = ['view' => 'products'];
+} elseif ($legacyView === 'workspace') {
+    $v2Params = ['view' => 'products'];
+} elseif ($legacyView === 'template') {
+    $v2Params = ['view' => 'templates'];
+}
+header('Location: ' . mc_url('adaptation_v2/index.php?' . http_build_query($v2Params)), true, 302);
+exit;
+
 use Artdon\MaterialCenter\Services\AdaptationService;
 
 $activeMenu = 'adaptation';

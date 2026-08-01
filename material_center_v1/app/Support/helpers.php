@@ -64,7 +64,7 @@ function mc_page_start(string $title, string $active, ?array $user = null, strin
     $groups = [
         '工作台'=>['home'=>[$prefix.'./','⌂','物料总览']],
         '物料库'=>['materials'=>[$prefix.'materials.php','物','全部物料'],'power'=>[$prefix.'power_workbench.php','电','电源'],'chips'=>[$prefix.'category_workbench.php?category=chips','芯','芯片'],'optics'=>[$prefix.'category_workbench.php?category=optics','光','光学'],'profiles'=>[$prefix.'category_workbench.php?category=profiles','型','型材 / 散热件'],'mounting'=>[$prefix.'category_workbench.php?category=mounting','装','接头 / 安装件'],'accessories'=>[$prefix.'category_workbench.php?category=accessories','配','配件'],'packaging'=>[$prefix.'category_workbench.php?category=packaging','包','包装']],
-        '产品适配'=>['adaptation'=>[$prefix.'product_adaptation.php','适','产品适配']],
+        '产品适配'=>['adaptation'=>[$prefix.'adaptation_v2/index.php','适','产品适配']],
         '供应商与价格'=>['suppliers'=>[$prefix.'supplier/index.php','供','供应商资料'],'supplier_materials'=>[$prefix.'supplier/index.php','料','供应商物料'],'prices'=>[$prefix.'supplier/index.php','价','采购价管理'],'price_history'=>[$prefix.'supplier/index.php','史','价格历史'],'moq'=>[$prefix.'supplier/index.php','期','MOQ / 交期']],
         '替代与版本'=>['alternatives'=>[$prefix.'substitute/index.php','替','替代物料'],'versions'=>[$prefix.'substitute/index.php','版','物料版本'],'changes'=>[$prefix.'substitute/index.php','变','变更记录']],
         '数据接入'=>['excel_import'=>[$prefix.'data/index.php','入','Excel 导入任务'],'exports'=>[$prefix.'data/index.php','出','导出任务'],'sync_logs'=>[$prefix.'data/index.php','同','同步日志']],

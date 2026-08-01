@@ -6,7 +6,7 @@ $menu=[
   ['optical','光学','aperture','material/optical.php'],['profile','型材 / 散热件','box','material/profile.php'],
   ['connector','接头 / 安装件','plug','material/connector.php'],['accessories','配件','puzzle','material/accessories.php'],['packaging','包装','package','material/packaging.php']]],
  ['group'=>'业务','items'=>[
-  ['adaptation','产品适配','branch','adaptation/index.php'],['supplier','供应商与价格','users','supplier/index.php'],
+  ['adaptation','产品适配','branch','adaptation_v2/index.php'],['supplier','供应商与价格','users','supplier/index.php'],
   ['substitute','替代与版本','repeat','substitute/index.php'],['data','数据接入','upload','data/index.php'],['documents','文档与日志','file','documents/index.php']]],
  ['group'=>'系统','items'=>array_values(array_filter([
   ['settings','系统与设置','settings','settings/index.php'],

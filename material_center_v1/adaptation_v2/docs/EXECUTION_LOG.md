@@ -596,6 +596,32 @@
 - 本地 `git diff --check` 通过。
 - 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`、`material_center_v1/adaptation_v2/lib/foundation.php`。
 
+## 2026-08-01 产品适配正式入口切到 V2
+
+执行范围：
+
+- 用户明确要求旧版产品适配不要作为入口；点击“产品适配”应进入当前 V2 版本。
+- 本次只切换入口和兼容跳转；不删除旧版目录、不删除旧数据、不修改旧 BOM。
+
+完成内容：
+
+- 物料中心侧边栏“产品适配”链接从 `adaptation/index.php` 改为 `adaptation_v2/index.php`。
+- 物料中心首页“产品适配存在冲突”和“快速进入 / 产品适配”链接改为 V2。
+- `material_center_v1/product_adaptation.php` 兼容入口改为跳转 V2。
+- `material_center_v1/module.php` 中适配总览、芯片适配规则、光学适配规则、适配冲突映射改为 V2。
+- 旧入口 `material_center_v1/adaptation/index.php` 增加 302 兼容跳转：
+  - 旧首页跳 V2 首页；
+  - 旧 `view=products` 跳 V2 全部产品；
+  - 旧 `product_id=...` 跳 V2 单产品工作台。
+- V2 页面顶部和最终验收页文案改为“正式入口已切到 V2”，不再显示“返回旧版产品适配”。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 入口静态核验通过：侧边栏、物料中心首页产品适配链接、`product_adaptation.php`、`module.php`、旧 `adaptation/index.php` 均指向 V2 或跳转 V2。
+- 物料中心首页仍保留为 `material_center_v1/index.php` 工作台，只修改其中“产品适配”链接，不把首页本身改成 V2。
+- 服务器 PHP 语法检查通过：`adaptation/index.php`、`adaptation_v2/index.php`、`adaptation_v2/api/index.php`、`adaptation_v2/lib/foundation.php`、`components/sidebar.php`、`product_adaptation.php`、`index.php`、`module.php`、`app/Support/helpers.php`。
+
 ## 2026-08-01 模板配置组回填编辑
 
 执行范围：

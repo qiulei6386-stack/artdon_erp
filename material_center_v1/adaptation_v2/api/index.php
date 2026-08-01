@@ -29,7 +29,7 @@ try {
             'phase_name' => '最终验收和切换评估',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
-            'menu_switched' => false,
+            'menu_switched' => true,
             'table_prefix' => 'mc_pa2_',
             'foundation' => pa2_foundation_summary(),
             'allowed_actions' => [

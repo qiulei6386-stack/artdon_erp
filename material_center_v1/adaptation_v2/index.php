@@ -216,11 +216,11 @@ include MC_ROOT . '/components/layout_top.php';
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
             <h1>产品适配 V2</h1>
-            <p>独立旁路开发中：旧版业务、旧 BOM 和正式菜单保持不变；V2 仅使用 <code>adaptation_v2/</code> 与 <code>mc_pa2_</code> 新表。</p>
+            <p>产品适配正式入口已指向 V2；旧版目录与旧 BOM 保留不删除，V2 继续使用 <code>adaptation_v2/</code> 与 <code>mc_pa2_</code> 新表。</p>
         </div>
         <div class="pa2-actions">
             <span class="pa2-pill <?= $summary['ready'] ? 'pa2-pill--ok' : 'pa2-pill--warn' ?>"><?= $summary['ready'] ? '基础表已就绪' : '待执行 V2 迁移' ?></span>
-            <a class="mc-button" href="<?=mc_h(mc_url('adaptation/index.php'))?>">返回旧版产品适配</a>
+            <a class="mc-button" href="<?=mc_h(mc_url('index.php'))?>">返回物料中心</a>
             <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('logs'))?>">查看阶段日志</a>
         </div>
     </header>
@@ -243,7 +243,7 @@ include MC_ROOT . '/components/layout_top.php';
             <article class="pa2-card"><strong>最终验收</strong><b><?=intval($summary['cutover_blocker_count'] ?? count($cutoverReadiness['blockers'] ?? []))?></b><p>阻断项；审计记录 <?=intval($summary['cutover_audit_count'] ?? 0)?> 条。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 10 阶段开放最终验收和切换评估；当前仍不切正式菜单。只有全部阻断项消除后，才允许进入正式切换审批。</p></div><span class="pa2-pill <?=($cutoverReadiness['ready_to_switch'] ?? false)?'pa2-pill--ok':'pa2-pill--warn'?>"><?=mc_h($cutoverReadiness['decision'] ?? '待检查')?></span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>正式产品适配入口已指向 V2；旧版目录和旧 BOM 保留不删除，剩余阻断项用于继续跟踪真实业务回归。</p></div><span class="pa2-pill <?=($cutoverReadiness['ready_to_switch'] ?? false)?'pa2-pill--ok':'pa2-pill--warn'?>"><?=mc_h($cutoverReadiness['decision'] ?? '待检查')?></span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -1110,7 +1110,7 @@ include MC_ROOT . '/components/layout_top.php';
         <section class="pa2-package-shell">
             <aside class="pa2-panel">
                 <div class="pa2-panel__head">
-                    <div><h2>配置包中心</h2><p>按渠道沉淀可发布配置包；第 8 阶段只服务 V2，不暴露给旧版和正式菜单。</p></div>
+                    <div><h2>配置包中心</h2><p>按渠道沉淀可发布配置包；第 8 阶段只服务 V2，不暴露给旧版适配。</p></div>
                 </div>
                 <div class="pa2-panel__body pa2-package-list">
                     <?php foreach ($packages as $packageRow): ?>
@@ -1346,7 +1346,7 @@ include MC_ROOT . '/components/layout_top.php';
     <?php elseif ($view === 'cutover'): ?>
         <section class="pa2-panel">
             <div class="pa2-panel__head">
-                <div><h2>最终验收 / 切换评估</h2><p>这是 V2 切换闸门：只评估并记录，不自动修改正式菜单。</p></div>
+                <div><h2>最终验收 / 切换评估</h2><p>正式入口已切到 V2；这里继续记录业务回归、配置包和下游联动验收。</p></div>
                 <?php if (pa2_phase10_tables_ready() && pa2_can_any(['adaptation_v2.manage_channel','adaptation_v2.publish','material_center.adaptation.manage'])): ?>
                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=cutover_audit_record'))?>">
                     <input type="hidden" name="note" value="manual cutover readiness audit">
@@ -1358,13 +1358,13 @@ include MC_ROOT . '/components/layout_top.php';
                 <div class="pa2-cutover-banner <?=($cutoverReadiness['ready_to_switch'] ?? false)?'is-ready':''?>">
                     <div>
                         <strong><?=mc_h($cutoverReadiness['decision'] ?? '待检查')?></strong>
-                        <p class="pa2-muted">当前状态：<?=mc_h($cutoverReadiness['status'] ?? 'unknown')?>；阻断项 <?=count($cutoverReadiness['blockers'] ?? [])?> 个。正式菜单仍保持旧版入口。</p>
+                        <p class="pa2-muted">当前状态：<?=mc_h($cutoverReadiness['status'] ?? 'unknown')?>；阻断项 <?=count($cutoverReadiness['blockers'] ?? [])?> 个。正式产品适配入口已指向 V2。</p>
                     </div>
                     <span class="pa2-pill <?=($cutoverReadiness['ready_to_switch'] ?? false)?'pa2-pill--ok':'pa2-pill--warn'?>"><?=($cutoverReadiness['ready_to_switch'] ?? false)?'可进入切换审批':'禁止切换'?></span>
                 </div>
                 <?php if (!empty($cutoverReadiness['blockers'])): ?>
                 <section class="pa2-panel">
-                    <div class="pa2-panel__head"><div><h2>阻断项</h2><p>以下项目未完成前，不允许把正式菜单切换到 V2。</p></div></div>
+                    <div class="pa2-panel__head"><div><h2>阻断项</h2><p>以下项目用于继续跟踪真实业务回归，不影响当前产品适配入口已切到 V2。</p></div></div>
                     <div class="pa2-panel__body pa2-check-list">
                         <?php foreach ($cutoverReadiness['blockers'] as $check): ?>
                             <article class="pa2-check-item is-blocked">
