@@ -1,6 +1,17 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 10 阶段最终验收和切换评估（已发布）
+## 本次：产品适配 V2 配置组定义中心扩展（进行中）
+
+- 用户要求在 V2 配置组定义中心加上：配件、玻璃、蜂窝网、四叶片、光学膜。
+- 本次只扩展 V2 配置组定义和默认行为；不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+- 新增迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_010_accessory_group_definitions.php`。
+- 新增配置组：`accessory` 配件、`glass` 玻璃、`honeycomb` 蜂窝网、`four_leaf_louver` 四叶片、`optical_film` 光学膜。
+- 5 个配置组均为 `material_select`，默认从正式配件物料分类 `accessory` 中选择。
+- 默认行为：配件/光学膜可多选；玻璃/蜂窝网/四叶片单选；玻璃、蜂窝网、四叶片、光学膜带候选关键词过滤。
+- 新增契约测试 `material_center_v1/tests/adaptation_v2_accessory_groups_contract.php`。
+- 当前正在做本地检查、服务器迁移和回归验证。
+
+## 上次：产品适配 V2 第 10 阶段最终验收和切换评估（已发布）
 
 - 用户要求继续余下步骤。按阶段纪律继续第 10 阶段。本阶段只做最终验收和切换评估，不切换正式菜单。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。

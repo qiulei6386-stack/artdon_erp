@@ -521,3 +521,27 @@
 - 正式服务器数据库核验：`mc_pa2_schema_migrations=9`、`mc_pa2_cutover_audits=0`、`mc_pa2_cutover_check_items=0`。审计表为 0 是因为本轮未绕过权限直接写入，需有权限账号在页面点击“记录本次验收”后写入。
 - 最终切换评估核验：`status=blocked`、`ready_to_switch=false`、`decision=不得切换正式菜单`。
 - 当前阻断项：`published_packages_exist`、`real_business_regression_required`。
+
+## 2026-08-01 配置组定义中心扩展：配件、玻璃、蜂窝网、四叶片、光学膜
+
+执行范围：
+
+- 用户要求在配置组定义中心加上配件、玻璃、蜂窝网、四叶片、光学膜。
+- 本次只扩展 V2 配置组定义和默认行为，不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_010_accessory_group_definitions.php`。
+- 新增配置组：`accessory` 配件、`glass` 玻璃、`honeycomb` 蜂窝网、`four_leaf_louver` 四叶片、`optical_film` 光学膜。
+- 5 个配置组均为 `material_select`，来源均为正式物料 `mc_material_accessory` 对应的 `accessory` 物料分类。
+- 默认行为：
+  - 配件：可选，多选。
+  - 玻璃：可选，单选，候选关键词“玻璃”。
+  - 蜂窝网：可选，单选，候选关键词“蜂”。
+  - 四叶片：可选，单选，候选关键词“四叶片”。
+  - 光学膜：可选，多选，候选关键词“膜”。
+- 新增契约测试 `material_center_v1/tests/adaptation_v2_accessory_groups_contract.php`。
+
+测试记录：
+
+- 待本地契约、服务器迁移和回归验证后补充。
