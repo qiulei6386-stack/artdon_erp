@@ -573,6 +573,29 @@
 - 本地 `git diff --check` 通过。
 - 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
 
+## 2026-08-01 配置组定义中心滚动修复
+
+执行范围：
+
+- 用户反馈配置组定义中心页面无法继续向下滚动，导致排序靠后的配件、玻璃、蜂窝网、四叶片、光学膜看不到。
+- 本次只修复 V2 页面滚动和快速定位交互，不修改数据库、不修改旧版产品适配、不修改旧 BOM。
+
+原因判断：
+
+- 物料中心通用布局中 `mc-main` 使用 `overflow:hidden`，页面需要自己提供可滚动容器。
+- V2 根页面虽然使用了 `mc-page`，但自定义网格布局和面板 `overflow:hidden` 会在当前分辨率下裁剪长表格，造成“看得到上面、滚不到下面”。
+
+完成内容：
+
+- V2 根容器 `mc-pa2-page` 明确设置 `height:100%`、`overflow:auto`、`grid-auto-rows:max-content` 和底部留白。
+- V2 面板不再裁剪长内容。
+- 顶部新增配件组快捷入口增加 `scrollIntoView` 兜底，点击“蜂窝网 / 四叶片”等按钮可直接滚到目标行。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
+
 ## 2026-08-01 配置组定义中心新增配件组定位
 
 执行范围：
