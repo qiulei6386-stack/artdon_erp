@@ -1,13 +1,14 @@
 # Artdon ERP 工作上下文
 
-## 本次：56.03711 新加坡图片与配置同步修复（待新加坡部署）
+## 本次：56.03711 新加坡图片与配置同步修复（已完成）
 
 - 用户反馈通过商务中心发布 `56.03711 NOVAL RECESSED DOWNLIGHT` 后，新加坡站点没有同步图片和配置。
 - 广州生产任务只读核验：`cc_channel_outbox.id=2` 已 `sent`，载荷完整包含产品图 `https://artdonlighting.com/uploads/website/products/2026/07/20260702_104652_noval-37_0dcda92c.webp`，以及 A/B 两套配置；新加坡返回 `SG-PRODUCT-39`。因此商务中心发送数据无缺失，图片问题位于新加坡接收端未消费 `image_url`。
 - 新加坡修复提交 `b87559f` 已推送 `artdon_order/main`：接收端仅允许 HTTPS 和指定 Artdon 域名，限制 10MB，验证 JPEG/PNG/WebP，按 SHA-256 文件名写私有媒体库并登记 `cms_media`；响应增加 `media_synced` 与 `configuration_count`。候选 PHP 语法与 9 项契约通过。
 - 广州提交 `612b5ff8dd803c35d25070613070df0821b575a4` 已推送并通过 Git bundle 快进部署：发布协议版本升级为 `2026-08-01.2`，可为同一产品生成新的幂等任务；正式 PHP 语法通过。
-- 当前阻断：macOS 突然拒绝读取 iCloud 私钥 `artdon-singapore/QIUlei0207.pem`（读取、复制、`xattr` 均返回 `Operation not permitted`），因此新加坡提交尚未同步服务器，也没有重新发布 `56.03711`。不得声称线上已修复。
-- 下一步：用户重新授权/重新提供新加坡 SSH 私钥后，把 GitHub `b87559f` 快进部署到 `/www/wwwroot/artdon_order`，运行 PHP 和契约检查；再从商务中心重新生成并真实发送 `56.03711`，核验 `image_path=media:*`、活动配置 A/B=2、图片/产品/配置页 HTTP 200。
+- 用户将新加坡 SSH 私钥复制到 `/Users/qiulei-office/Documents/QIUlei0207.pem` 后连接恢复。新加坡提交 `b87559f9dd9f7a3122c1ca3d83bd98ce094431a2` 已通过 Git bundle 快进部署到 `/www/wwwroot/artdon_order`；正式 PHP 语法和 9 项接收契约通过。
+- 已从商务中心重新真实发布 `56.03711`：新任务 `cc_channel_outbox.id=3`、状态 `sent`、尝试 1 次、外部编号 `SG-PRODUCT-39`；新加坡响应 `media_synced=true`、`configuration_count=2`。
+- 最终验收：新加坡产品 `id=39`、来源版本 `V1`；`image_path=media:channel_d3e60384fa127128582c53ac98428356`，媒体为有效 WebP `1200×1200 / 7340 bytes / active`；活动配置版本为 2，配置代码 A/B 共 2 套；产品页和配置页均 HTTP 200，页面实际引用渠道媒体 URL并显示配置 A、配置 B。
 
 ## 本次：商务中心真实发布到新加坡网站（已完成）
 
