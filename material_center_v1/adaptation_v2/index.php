@@ -24,13 +24,24 @@ $allowedViews = [
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 4 阶段：配置组选项、物料来源和规则编辑器。';
+$pageDescription = '第 5 阶段：单产品配置工作台。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
+$groupsById = [];
+foreach ($groups as $groupRow) $groupsById[(int)$groupRow['id']] = $groupRow;
 $rules = pa2_fetch_rules(true);
 $cycleCheck = pa2_detect_rule_cycles($rules);
 $products = $summary['ready'] ? pa2_search_products((string)($_GET['q'] ?? ''), 40) : [];
+$workspaceProductId = (int)($_GET['product_id'] ?? 0);
+$workspace = null;
+if ($view === 'workspace' && $workspaceProductId > 0 && pa2_workspace_tables_ready()) {
+    try {
+        $workspace = pa2_workspace_detail($workspaceProductId);
+    } catch (Throwable $e) {
+        $workspace = ['error' => $e->getMessage()];
+    }
+}
 $templates = pa2_fetch_templates();
 $selectedTemplateId = (int)($_GET['template_id'] ?? 0);
 if ($selectedTemplateId <= 0 && $templates) $selectedTemplateId = (int)$templates[0]['id'];
@@ -80,10 +91,11 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
+.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate small{color:var(--pa2-muted)}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
-@media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-template-actions{justify-content:flex-start}}
+@media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid{grid-template-columns:1fr}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="4" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="5" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -111,11 +123,11 @@ include MC_ROOT . '/components/layout_top.php';
         <section class="pa2-grid">
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
-            <article class="pa2-card"><strong>行为设置</strong><b><?=intval($summary['group_behavior_count'])?></b><p>物料来源、过滤器、默认项、数量限制和必选规则。</p></article>
+            <article class="pa2-card"><strong>产品配置草稿</strong><b><?=intval($summary['product_config_count'])?></b><p>第 5 阶段开始保存 V2 单产品草稿配置。</p></article>
             <article class="pa2-card"><strong>规则数量</strong><b><?=intval($summary['rule_count'])?></b><p>显示/隐藏、物料过滤、默认项和选项限制规则。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 4 阶段开放配置组行为和规则编辑器；单产品工作台、审批和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 5 阶段开放单产品配置工作台；适配计算、审批发布和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -434,6 +446,140 @@ include MC_ROOT . '/components/layout_top.php';
                 </div>
             </aside>
         </section>
+    <?php elseif ($view === 'workspace'): ?>
+        <?php if ($workspaceProductId <= 0): ?>
+            <section class="pa2-panel">
+                <div class="pa2-panel__head"><div><h2>选择产品进入工作台</h2><p>第 5 阶段工作台按产品打开；先从产品列表选择一个产品。</p></div></div>
+                <div class="pa2-panel__body pa2-section-gap">
+                    <form class="pa2-form" method="get" action="<?=mc_h(mc_url('adaptation_v2/index.php'))?>">
+                        <input type="hidden" name="view" value="workspace">
+                        <label class="wide"><span>搜索产品</span><input name="q" value="<?=mc_h((string)($_GET['q'] ?? ''))?>" placeholder="型号 / 名称 / 旧分类"></label>
+                        <button class="mc-button" type="submit">搜索</button>
+                    </form>
+                    <table class="pa2-table">
+                        <thead><tr><th>产品</th><th>V2 分类</th><th>系列</th><th>操作</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($products as $p): ?>
+                            <tr>
+                                <td><strong><?=mc_h($p['product_code'] ?: ('#'.$p['id']))?></strong><br><?=mc_h($p['product_name'] ?? '')?></td>
+                                <td><?=mc_h($p['category_name'] ?: '未映射')?></td>
+                                <td><?=mc_h($p['series_code'] ?: $p['series_name'] ?: '—')?></td>
+                                <td><a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>(int)$p['id']]))?>">打开工作台</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        <?php elseif (!empty($workspace['error'])): ?>
+            <div class="pa2-alert"><?=mc_h($workspace['error'])?></div>
+        <?php else: ?>
+            <?php
+                $wpProduct = $workspace['product'] ?? [];
+                $wpConfig = $workspace['config'] ?? null;
+                $wpTemplate = $workspace['template'] ?? null;
+                $wpGroups = $workspace['groups'] ?? [];
+                $wpSummary = $workspace['check_summary'] ?? ['missing_required'=>0,'completed_required'=>0,'required_total'=>0];
+            ?>
+            <section class="pa2-workspace">
+                <div class="pa2-product-hero">
+                    <?php if (!empty($wpProduct['image_url'])): ?><img src="<?=mc_h($wpProduct['image_url'])?>" alt=""><?php else: ?><div class="pa2-card" style="width:88px;height:88px;display:grid;place-items:center">无图</div><?php endif; ?>
+                    <div>
+                        <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2 / 单产品配置工作台</div>
+                        <h2><?=mc_h($wpProduct['product_code'] ?: ('#'.$workspaceProductId))?>　<?=mc_h($wpProduct['product_name'] ?? '')?></h2>
+                        <p class="pa2-muted">V2 分类：<?=mc_h($wpProduct['category_name'] ?: '未映射')?> · 系列：<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '—')?> · 模板：<?=mc_h($wpTemplate['template_name'] ?? '待生成')?></p>
+                    </div>
+                    <div class="pa2-template-actions">
+                        <?php if (!$wpConfig): ?>
+                            <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
+                        <?php else: ?>
+                            <span class="pa2-pill pa2-pill--ok">草稿已建立</span>
+                        <?php endif; ?>
+                        <a class="mc-button" href="<?=mc_h(pa2_view_url('products'))?>">返回产品列表</a>
+                    </div>
+                </div>
+                <div class="pa2-steps">
+                    <div class="pa2-step"><b>1</b><strong>确认配置来源</strong><p class="pa2-muted">来自 <?=mc_h($wpTemplate['template_name'] ?? '模板待匹配')?>，继承结果会生成草稿配置组。</p></div>
+                    <div class="pa2-step"><b>2</b><strong>设置核心配置</strong><p class="pa2-muted">芯片、电源、光学、导轨系统等优先处理；复杂选择打开宽版弹窗。</p></div>
+                    <div class="pa2-step"><b>3</b><strong>检查和保存</strong><p class="pa2-muted">当前只做草稿检查；适配计算和审批发布留第 6/7 阶段。</p></div>
+                </div>
+                <?php if (!$wpConfig): ?>
+                    <div class="pa2-alert">当前产品还没有 V2 配置草稿。点击“生成配置草稿”后，系统会按模板继承结果生成配置组，不会修改旧版适配或旧 BOM。</div>
+                <?php else: ?>
+                    <div class="pa2-work-grid">
+                    <?php foreach ($wpGroups as $g): ?>
+                        <?php
+                            $settings = $g['effective_settings'] ?? [];
+                            $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
+                            $selected = $g['selected_options'] ?? [];
+                            $done = count($selected) > 0;
+                            $sourceMode = (string)($g['source_mode'] ?? '');
+                            $selectionKind = (string)($g['selection_kind'] ?? '');
+                            $definition = $groupsById[(int)$g['group_definition_id']] ?? null;
+                        ?>
+                        <article class="pa2-config-card <?=$done?'is-done':($required?'is-missing':'')?>">
+                            <div class="pa2-config-card__head">
+                                <div><strong><?=mc_h($g['icon'] ? $g['icon'].' ' : '')?><?=mc_h($g['display_name'])?></strong><br><small class="pa2-muted"><?=mc_h($g['group_code'])?> · <?=mc_h($selectionKind ?: $g['definition_type'])?> · <?=mc_h($required?'必选':'可选')?></small></div>
+                                <span class="pa2-badge <?=$done?'pa2-badge--add':($required?'pa2-badge--override':'')?>"><?=$done?'已配置':($required?'待补充':'可选')?></span>
+                            </div>
+                            <div class="pa2-selected">
+                                <?php if ($selected): foreach ($selected as $s): ?>
+                                    <span><?=mc_h($s['material_code'] ?: $s['option_name'] ?: $s['numeric_value'] ?: $s['text_value'] ?: (($s['boolean_value'] ?? null) === null ? '已选择' : ((int)$s['boolean_value'] ? '是' : '否')))?> <?=mc_h($s['material_name'] ? ' · '.$s['material_name'] : '')?></span>
+                                <?php endforeach; else: ?>
+                                    <span class="pa2-muted">未选择，普通配置可以缺什么补什么。</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
+                                <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>">选择正式物料</button>
+                            <?php elseif (($definition['options'] ?? [])): ?>
+                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
+                                    <input type="hidden" name="product_group_config_id" value="<?=intval($g['id'])?>">
+                                    <input type="hidden" name="option_type" value="attribute">
+                                    <select name="option_definition_id" required>
+                                        <?php foreach ($definition['options'] as $o): ?><option value="<?=intval($o['id'])?>"><?=mc_h($o['option_name'])?></option><?php endforeach; ?>
+                                    </select>
+                                    <button class="mc-button" type="submit">保存</button>
+                                </form>
+                            <?php elseif (in_array($selectionKind, ['number'], true) || $g['definition_type'] === 'number_input'): ?>
+                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
+                                    <input type="hidden" name="product_group_config_id" value="<?=intval($g['id'])?>">
+                                    <input type="hidden" name="option_type" value="number">
+                                    <input type="number" step="0.0001" name="numeric_value" placeholder="输入数值">
+                                    <button class="mc-button" type="submit">保存</button>
+                                </form>
+                            <?php else: ?>
+                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
+                                    <input type="hidden" name="product_group_config_id" value="<?=intval($g['id'])?>">
+                                    <input type="hidden" name="option_type" value="text">
+                                    <input name="text_value" placeholder="填写说明">
+                                    <button class="mc-button" type="submit">保存</button>
+                                </form>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                    </div>
+                    <div class="pa2-footerbar">
+                        <div>
+                            <strong>需要补充 <?=intval($wpSummary['missing_required'] ?? 0)?> 项</strong>
+                            <span class="pa2-muted">已完成 <?=intval($wpSummary['completed_required'] ?? 0)?> / <?=intval($wpSummary['required_total'] ?? 0)?> 个必选配置；可选项不阻断保存草稿。</span>
+                        </div>
+                        <div class="pa2-template-actions">
+                            <button class="mc-button" type="button" onclick="location.reload()">检查配置</button>
+                            <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>$workspaceProductId]))?>">保存草稿</a>
+                            <button class="mc-button" type="button" disabled title="第 7 阶段开放">提交审批</button>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </section>
+            <dialog class="pa2-dialog" id="pa2-material-dialog">
+                <div class="pa2-dialog__head"><div><strong id="pa2-material-title">选择正式物料</strong><p class="pa2-muted">第 5 阶段只做候选选择；适配打分和冲突判断在第 6 阶段接入。</p></div><button class="mc-button" type="button" data-close-material-picker>关闭</button></div>
+                <div class="pa2-dialog__body">
+                    <form class="pa2-mini-form" id="pa2-material-search"><input name="q" placeholder="搜索物料编号 / 名称 / 品牌 / 型号"><button class="mc-button" type="submit">搜索</button></form>
+                    <div class="pa2-candidate-list" id="pa2-material-list"><div class="pa2-placeholder">正在等待选择配置组。</div></div>
+                </div>
+                <div class="pa2-dialog__foot"><span class="pa2-muted">宽版弹窗用于复杂物料选择，小屏也不挤主页面。</span><button class="mc-button" type="button" data-close-material-picker>取消</button></div>
+            </dialog>
+        <?php endif; ?>
     <?php elseif ($view === 'products'): ?>
         <section class="pa2-panel">
             <div class="pa2-panel__head"><div><h2>全部产品 / 分类映射</h2><p>本阶段只维护“产品 → V2 产品分类 / 系列”的基础映射，不做模板套用或工作台配置。</p></div></div>
@@ -479,6 +625,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 2 阶段执行记录</td><td><code>adaptation_v2/docs/02_FOUNDATION_MODEL.md</code></td></tr>
                         <tr><td>第 3 阶段模板继承</td><td><code>adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md</code></td></tr>
                         <tr><td>第 4 阶段配置组和规则</td><td><code>adaptation_v2/docs/04_GROUP_RULE_EDITOR.md</code></td></tr>
+                        <tr><td>第 5 阶段单产品工作台</td><td><code>adaptation_v2/docs/05_PRODUCT_WORKSPACE.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>
@@ -510,5 +657,72 @@ document.querySelectorAll('[data-pa2-form]').forEach((form)=>{
     }
   });
 });
+(()=>{
+  const dialog=document.getElementById('pa2-material-dialog');
+  const list=document.getElementById('pa2-material-list');
+  const title=document.getElementById('pa2-material-title');
+  const search=document.getElementById('pa2-material-search');
+  let currentGroupId='';
+  let currentGroupCode='';
+  async function loadCandidates(q=''){
+    if(!dialog||!list||!currentGroupCode)return;
+    list.innerHTML='<div class="pa2-placeholder">正在读取候选物料...</div>';
+    try{
+      const url=new URL('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=material_candidates'))?>', location.origin);
+      url.searchParams.set('group_code', currentGroupCode);
+      if(q) url.searchParams.set('q', q);
+      const res=await fetch(url.toString(),{credentials:'same-origin'});
+      const data=await res.json();
+      if(!data.success) throw new Error(data.message||'读取失败');
+      const rows=(data.data&&data.data.materials)||[];
+      if(!rows.length){list.innerHTML='<div class="pa2-placeholder">没有找到候选物料。可以换关键词搜索，或在第6阶段适配规则里补过滤条件。</div>';return;}
+      list.innerHTML=rows.map((m)=>`
+        <div class="pa2-candidate">
+          <div><strong>${escapeHtml(m.material_code||('#'+m.id))} ${escapeHtml(m.name||'')}</strong><br><small>${escapeHtml([m.brand,m.model,m.category_name,m.status].filter(Boolean).join(' · '))}</small><br><small>${escapeHtml(m.spec_summary||'')}</small></div>
+          <form data-pa2-picker-save>
+            <input type="hidden" name="product_group_config_id" value="${escapeHtml(currentGroupId)}">
+            <input type="hidden" name="option_type" value="material">
+            <input type="hidden" name="material_id" value="${escapeHtml(String(m.id))}">
+            <button class="mc-button mc-button--primary" type="submit">选择</button>
+          </form>
+        </div>`).join('');
+    }catch(err){
+      list.innerHTML='<div class="pa2-alert">'+escapeHtml(err.message||'读取失败')+'</div>';
+    }
+  }
+  function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));}
+  document.querySelectorAll('[data-open-material-picker]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      currentGroupId=btn.getAttribute('data-group-id')||'';
+      currentGroupCode=btn.getAttribute('data-group-code')||'';
+      if(title) title.textContent='选择正式物料 · '+(btn.getAttribute('data-group-name')||currentGroupCode);
+      if(dialog&&typeof dialog.showModal==='function') dialog.showModal();
+      loadCandidates('');
+    });
+  });
+  document.querySelectorAll('[data-close-material-picker]').forEach((btn)=>btn.addEventListener('click',()=>dialog&&dialog.close()));
+  if(search){
+    search.addEventListener('submit',(event)=>{
+      event.preventDefault();
+      loadCandidates(new FormData(search).get('q')||'');
+    });
+  }
+  document.addEventListener('submit',async(event)=>{
+    const form=event.target;
+    if(!(form instanceof HTMLFormElement)||!form.matches('[data-pa2-picker-save]'))return;
+    event.preventDefault();
+    const button=form.querySelector('button[type="submit"]');
+    if(button)button.disabled=true;
+    try{
+      const res=await fetch('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>',{method:'POST',body:new FormData(form),credentials:'same-origin'});
+      const data=await res.json();
+      if(!data.success) throw new Error(data.message||'保存失败');
+      location.reload();
+    }catch(err){
+      alert(err.message||'保存失败');
+      if(button)button.disabled=false;
+    }
+  });
+})();
 </script>
 <?php include MC_ROOT . '/components/layout_bottom.php'; ?>

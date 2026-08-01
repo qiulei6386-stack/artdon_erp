@@ -1,6 +1,19 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 4 阶段配置组选项、物料来源和规则编辑器（已发布）
+## 本次：产品适配 V2 第 5 阶段单产品配置工作台（待发布）
+
+- 用户要求先进行第 5 步。按主说明进入第 5 阶段：单产品配置工作台。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_004_phase5_workspace.php`，新增 `mc_pa2_product_configs`、`mc_pa2_product_config_versions`、`mc_pa2_product_group_configs`、`mc_pa2_product_selected_options`。
+- 工作台服务：按产品读取 `mc_products` 和 V2 分类映射，自动匹配产品级/系列/分类/系统模板；按模板继承结果生成产品配置草稿；读取工作台详情、配置组、已选项和检查摘要。
+- 候选物料服务：只读现有 `mc_materials`、`mc_material_categories`、`mc_material_metadata`，按第 4 阶段配置组行为做轻量过滤；完整适配计算、打分、冲突和替代推荐留第 6 阶段。
+- 保存能力：支持物料、属性、数值、文本、布尔配置项保存到 V2 草稿，不写旧 BOM、不写旧适配。
+- `api/index.php` 状态更新为 `phase=5`，新增动作 `workspace`、`workspace_prepare`、`product_group_save`、`material_candidates`。
+- `index.php` 的 `workspace` 从占位改为工作台：无产品时显示可选产品列表；有产品时显示产品摘要、模板来源、三步快速流程、动态配置卡片、需要补充数量、宽版物料选择弹窗、保存草稿和检查配置。
+- 新增文档 `adaptation_v2/docs/05_PRODUCT_WORKSPACE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase5_contract.php`。
+- 待发布步骤：本地静态检查；服务器候选 PHP 语法和契约检查；提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 应用第 5 阶段迁移；服务器复检语法、契约、页面渲染、状态 API 和数据库行数；核对三端 HEAD 一致。
+
+## 上次：产品适配 V2 第 4 阶段配置组选项、物料来源和规则编辑器（已发布）
 
 - 用户继续要求推进 V2。按主说明进入第 4 阶段：配置组选项、物料来源和规则编辑器。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。

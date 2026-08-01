@@ -185,6 +185,8 @@ function pa2_foundation_summary(): array
         'group_behavior_count' => 0,
         'rule_count' => 0,
         'rule_cycle_count' => 0,
+        'product_config_count' => 0,
+        'draft_config_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -211,6 +213,10 @@ function pa2_foundation_summary(): array
             $summary['group_behavior_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_group_behavior_settings')->fetchColumn();
             $summary['rule_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_rule_definitions')->fetchColumn();
             $summary['rule_cycle_count'] = count(pa2_detect_rule_cycles(pa2_fetch_rules(false))['cycles']);
+        }
+        if (pa2_workspace_tables_ready()) {
+            $summary['product_config_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_product_configs')->fetchColumn();
+            $summary['draft_config_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_product_configs WHERE status='draft'")->fetchColumn();
         }
     }
     return $summary;
@@ -875,4 +881,339 @@ function pa2_template_reference_check(int $templateId): array
         'safe_to_disable' => true,
         'note' => '第 3 阶段只检查模板继承和版本引用；产品配置引用将在第 5-7 阶段接入。',
     ];
+}
+
+function pa2_workspace_tables_ready(): bool
+{
+    foreach (['mc_pa2_product_configs','mc_pa2_product_config_versions','mc_pa2_product_group_configs','mc_pa2_product_selected_options'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
+function pa2_fetch_product(int $productId): ?array
+{
+    if (!pa2_table_exists('mc_products') || $productId <= 0) return null;
+    $stmt = pa2_db()->prepare(
+        "SELECT p.id,p.product_code,p.product_name,p.status,p.snapshot_json,
+                m.category_id,m.category_code,m.category_name,m.series_code,m.source_type,m.confidence
+         FROM mc_products p
+         LEFT JOIN mc_pa2_product_category_mappings m ON m.product_id=p.id
+         WHERE p.id=? LIMIT 1"
+    );
+    $stmt->execute([$productId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $snap = pa2_json_decode_array($row['snapshot_json'] ?? '');
+    $row['id'] = (int)$row['id'];
+    $row['category_id'] = $row['category_id'] === null ? null : (int)$row['category_id'];
+    $row['snapshot'] = $snap;
+    $row['image_url'] = (string)($snap['image_url'] ?? $snap['image'] ?? '');
+    $row['legacy_category'] = (string)($snap['category'] ?? '');
+    $row['series_name'] = (string)($snap['series_name'] ?? '');
+    unset($row['snapshot_json']);
+    return $row;
+}
+
+function pa2_template_for_product(array $product): ?array
+{
+    if (!pa2_template_tables_ready()) return null;
+    $productId = (int)($product['id'] ?? 0);
+    $categoryId = (int)($product['category_id'] ?? 0);
+    $seriesCode = trim((string)($product['series_code'] ?? ''));
+    $candidates = [];
+    if ($productId > 0) {
+        $stmt = pa2_db()->prepare("SELECT * FROM mc_pa2_templates WHERE product_id=? AND is_enabled=1 ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$productId]);
+        $candidates[] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    if ($categoryId > 0 && $seriesCode !== '') {
+        $stmt = pa2_db()->prepare("SELECT * FROM mc_pa2_templates WHERE product_category_id=? AND series_code=? AND is_enabled=1 ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$categoryId,$seriesCode]);
+        $candidates[] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    if ($categoryId > 0) {
+        $stmt = pa2_db()->prepare("SELECT * FROM mc_pa2_templates WHERE product_category_id=? AND template_level='category' AND is_enabled=1 ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$categoryId]);
+        $candidates[] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+    $stmt = pa2_db()->query("SELECT * FROM mc_pa2_templates WHERE template_code='system_common' AND is_enabled=1 LIMIT 1");
+    $candidates[] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    foreach ($candidates as $candidate) {
+        if ($candidate) {
+            $candidate['id'] = (int)$candidate['id'];
+            return $candidate;
+        }
+    }
+    return null;
+}
+
+function pa2_workspace_check_summary(array $groups): array
+{
+    $summary = ['required_total' => 0, 'completed_required' => 0, 'missing_required' => 0, 'optional_total' => 0, 'selected_total' => 0, 'items' => []];
+    foreach ($groups as $group) {
+        $settings = $group['effective_settings'] ?? [];
+        $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
+        $selected = count($group['selected_options'] ?? []);
+        if ($required) {
+            $summary['required_total']++;
+            if ($selected > 0) $summary['completed_required']++;
+            else $summary['missing_required']++;
+        } else {
+            $summary['optional_total']++;
+        }
+        if ($selected > 0) $summary['selected_total']++;
+        $summary['items'][] = [
+            'group_code' => $group['group_code'],
+            'display_name' => $group['display_name'],
+            'required' => $required,
+            'selected' => $selected,
+            'status' => $selected > 0 ? 'completed' : ($required ? 'missing' : 'optional'),
+        ];
+    }
+    return $summary;
+}
+
+function pa2_prepare_workspace(int $productId): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'adaptation_v2.view', 'material_center.adaptation.manage'], '没有配置产品的权限。');
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $product = pa2_fetch_product($productId);
+    if (!$product) throw new RuntimeException('产品不存在。');
+    $template = pa2_template_for_product($product);
+    if (!$template) throw new RuntimeException('没有可用模板。');
+    $preview = pa2_template_effective_groups((int)$template['id']);
+    $userId = pa2_current_user_id();
+    $categoryId = (int)($product['category_id'] ?? 0) ?: null;
+    $configStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_configs WHERE product_id=? LIMIT 1');
+    $configStmt->execute([$productId]);
+    $config = $configStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$config) {
+        $insert = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_product_configs(product_id,product_category_id,source_template_id,status,owner_user_id,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,"draft",?,?,?,NOW(),NOW())'
+        );
+        $insert->execute([$productId,$categoryId,(int)$template['id'],$userId,$userId,$userId]);
+        $configId = (int)pa2_db()->lastInsertId();
+        $version = 'draft-1';
+        $versionInsert = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,created_by,created_at)
+             VALUES(?,?,?,?, "draft", ?, ?, NOW())'
+        );
+        $versionInsert->execute([$configId,$version,(int)$template['id'],$template['active_version_id'] ?? null,pa2_json_encode(['source' => 'template', 'template_id' => (int)$template['id']]),$userId]);
+        $versionId = (int)pa2_db()->lastInsertId();
+        pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=? WHERE id=?')->execute([$versionId,$configId]);
+        $config = ['id'=>$configId,'product_id'=>$productId,'active_draft_version_id'=>$versionId,'source_template_id'=>(int)$template['id'],'status'=>'draft'];
+        pa2_log('workspace_create', 'product_config', $configId, [], ['product_id' => $productId, 'template_id' => (int)$template['id']]);
+    } else {
+        $config['id'] = (int)$config['id'];
+        $versionId = (int)($config['active_draft_version_id'] ?? 0);
+        if ($versionId <= 0) {
+            $versionInsert = pa2_db()->prepare(
+                'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,created_by,created_at)
+                 VALUES(?,?,?,?, "draft", ?, ?, NOW())'
+            );
+            $versionInsert->execute([(int)$config['id'],'draft-1',(int)$template['id'],$template['active_version_id'] ?? null,pa2_json_encode(['source' => 'template', 'template_id' => (int)$template['id']]),$userId]);
+            $versionId = (int)pa2_db()->lastInsertId();
+            pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=?,source_template_id=?,product_category_id=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,(int)$template['id'],$categoryId,$userId,(int)$config['id']]);
+            $config['active_draft_version_id'] = $versionId;
+        }
+    }
+    $versionId = (int)$config['active_draft_version_id'];
+    foreach ($preview['groups'] as $group) {
+        $settings = [
+            'template_group' => $group,
+            'behavior' => $group['behavior'] ?? null,
+            'is_required' => (int)($group['is_required'] ?? 0),
+            'selection_mode' => (string)($group['selection_mode'] ?? 'single'),
+            'min_select' => (int)($group['min_select'] ?? 0),
+            'max_select' => (int)($group['max_select'] ?? 1),
+        ];
+        $stmt = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_product_group_configs(product_config_version_id,group_code,group_definition_id,display_name,group_type,effective_settings_json,status,is_overridden,override_source,sort_order,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,?,? ,?,"missing",0,"template",?,?,?,NOW(),NOW())
+             ON DUPLICATE KEY UPDATE group_definition_id=VALUES(group_definition_id),display_name=VALUES(display_name),group_type=VALUES(group_type),effective_settings_json=VALUES(effective_settings_json),sort_order=VALUES(sort_order),updated_by=VALUES(updated_by),updated_at=NOW()'
+        );
+        $stmt->execute([
+            $versionId,
+            (string)$group['group_code'],
+            (int)$group['group_definition_id'],
+            (string)$group['display_name'],
+            (string)$group['display_type'],
+            pa2_json_encode($settings),
+            (int)$group['sort_order'],
+            $userId,
+            $userId,
+        ]);
+    }
+    return pa2_workspace_detail($productId);
+}
+
+function pa2_workspace_detail(int $productId): array
+{
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $product = pa2_fetch_product($productId);
+    if (!$product) throw new RuntimeException('产品不存在。');
+    $configStmt = pa2_db()->prepare(
+        "SELECT pc.*, t.template_name, t.template_code, t.active_version_id, tv.version_no AS active_template_version_no
+         FROM mc_pa2_product_configs pc
+         LEFT JOIN mc_pa2_templates t ON t.id=pc.source_template_id
+         LEFT JOIN mc_pa2_template_versions tv ON tv.id=t.active_version_id
+         WHERE pc.product_id=? LIMIT 1"
+    );
+    $configStmt->execute([$productId]);
+    $config = $configStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$config) return ['product'=>$product,'config'=>null,'version'=>null,'template'=>pa2_template_for_product($product),'template_preview'=>[],'groups'=>[],'check_summary'=>['missing_required'=>0]];
+    $versionId = (int)($config['active_draft_version_id'] ?? 0);
+    $versionStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_config_versions WHERE id=? LIMIT 1');
+    $versionStmt->execute([$versionId]);
+    $version = $versionStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    $groupsStmt = pa2_db()->prepare(
+        "SELECT pg.*, gd.group_name, gd.group_type AS definition_type, gd.icon, bs.selection_kind, bs.source_mode, bs.material_category_code
+         FROM mc_pa2_product_group_configs pg
+         JOIN mc_pa2_group_definitions gd ON gd.id=pg.group_definition_id
+         LEFT JOIN mc_pa2_group_behavior_settings bs ON bs.group_definition_id=pg.group_definition_id
+         WHERE pg.product_config_version_id=?
+         ORDER BY pg.sort_order,pg.id"
+    );
+    $groupsStmt->execute([$versionId]);
+    $groups = $groupsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $selectedByGroup = [];
+    if ($groups) {
+        $ids = array_map(static fn($g) => (int)$g['id'], $groups);
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $selectedStmt = pa2_db()->prepare(
+            "SELECT so.*, m.material_code,m.name AS material_name,m.brand,m.model,o.option_code,o.option_name
+             FROM mc_pa2_product_selected_options so
+             LEFT JOIN mc_materials m ON m.id=so.material_id
+             LEFT JOIN mc_pa2_group_option_definitions o ON o.id=so.option_definition_id
+             WHERE so.product_group_config_id IN ($marks)
+             ORDER BY so.product_group_config_id,so.sort_order,so.id"
+        );
+        $selectedStmt->execute($ids);
+        foreach ($selectedStmt->fetchAll(PDO::FETCH_ASSOC) as $selected) {
+            $gid = (int)$selected['product_group_config_id'];
+            $selected['id'] = (int)$selected['id'];
+            $selected['material_id'] = $selected['material_id'] === null ? null : (int)$selected['material_id'];
+            $selected['option_definition_id'] = $selected['option_definition_id'] === null ? null : (int)$selected['option_definition_id'];
+            $selectedByGroup[$gid][] = $selected;
+        }
+    }
+    foreach ($groups as &$group) {
+        $group['id'] = (int)$group['id'];
+        $group['group_definition_id'] = (int)$group['group_definition_id'];
+        $group['sort_order'] = (int)$group['sort_order'];
+        $group['effective_settings'] = pa2_json_decode_array($group['effective_settings_json'] ?? '');
+        $group['display_name'] = trim((string)($group['display_name'] ?? '')) ?: (string)$group['group_name'];
+        $group['selected_options'] = $selectedByGroup[(int)$group['id']] ?? [];
+    }
+    $summary = pa2_workspace_check_summary($groups);
+    if ($version) {
+        pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET check_summary_json=? WHERE id=?')->execute([pa2_json_encode($summary),$versionId]);
+    }
+    return [
+        'product' => $product,
+        'config' => $config,
+        'version' => $version,
+        'template' => $config['source_template_id'] ? pa2_fetch_template((int)$config['source_template_id']) : pa2_template_for_product($product),
+        'template_preview' => $config['source_template_id'] ? pa2_template_effective_groups((int)$config['source_template_id']) : [],
+        'groups' => $groups,
+        'check_summary' => $summary,
+    ];
+}
+
+function pa2_material_candidates(string $groupCode, string $keyword = '', int $limit = 30): array
+{
+    if (!pa2_table_exists('mc_materials')) return [];
+    $limit = max(1, min(80, $limit));
+    $behaviorStmt = pa2_db()->prepare(
+        "SELECT bs.*, gd.group_name
+         FROM mc_pa2_group_behavior_settings bs
+         JOIN mc_pa2_group_definitions gd ON gd.id=bs.group_definition_id
+         WHERE bs.group_code=? LIMIT 1"
+    );
+    $behaviorStmt->execute([$groupCode]);
+    $behavior = $behaviorStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $category = trim((string)($behavior['material_category_code'] ?? ''));
+    $filter = pa2_json_decode_array($behavior['material_filter_json'] ?? '');
+    $sql = "SELECT m.id,m.material_code,m.name,m.brand,m.model,m.status,m.is_official,c.code AS category_code,c.name AS category_name,md.spec_summary
+            FROM mc_materials m
+            JOIN mc_material_categories c ON c.id=m.category_id
+            LEFT JOIN mc_material_metadata md ON md.material_id=m.id
+            WHERE m.deleted_at IS NULL";
+    $params = [];
+    if ($category !== '') {
+        $sql .= ' AND c.code=?';
+        $params[] = $category;
+    }
+    if (($filter['formal_status'] ?? '') === 'official') {
+        $sql .= " AND (m.is_official=1 OR m.status='official')";
+    }
+    $keyword = trim($keyword);
+    $filterText = trim((string)($filter['keyword'] ?? ''));
+    $searchText = $keyword !== '' ? $keyword : $filterText;
+    if ($searchText !== '') {
+        $sql .= ' AND (m.material_code LIKE ? OR m.name LIKE ? OR m.brand LIKE ? OR m.model LIKE ? OR md.spec_summary LIKE ?)';
+        $like = '%' . $searchText . '%';
+        array_push($params, $like, $like, $like, $like, $like);
+    }
+    $sql .= " ORDER BY m.is_official DESC,m.updated_at DESC,m.id DESC LIMIT {$limit}";
+    $stmt = pa2_db()->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) {
+        $row['id'] = (int)$row['id'];
+        $row['is_official'] = (int)$row['is_official'];
+    }
+    return $rows;
+}
+
+function pa2_save_product_group_selection(array $input): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有保存产品配置的权限。');
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $groupConfigId = (int)($input['product_group_config_id'] ?? 0);
+    if ($groupConfigId <= 0) throw new RuntimeException('配置组不能为空。');
+    $groupStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_group_configs WHERE id=? LIMIT 1');
+    $groupStmt->execute([$groupConfigId]);
+    $group = $groupStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) throw new RuntimeException('产品配置组不存在。');
+    $optionType = trim((string)($input['option_type'] ?? 'attribute'));
+    if (!in_array($optionType, ['material','attribute','number','text','boolean'], true)) $optionType = 'attribute';
+    $replace = isset($input['replace']) ? (int)$input['replace'] : 1;
+    $userId = pa2_current_user_id();
+    if ($replace === 1) {
+        pa2_db()->prepare('DELETE FROM mc_pa2_product_selected_options WHERE product_group_config_id=?')->execute([$groupConfigId]);
+    }
+    $materialId = (int)($input['material_id'] ?? 0) ?: null;
+    $optionDefinitionId = (int)($input['option_definition_id'] ?? 0) ?: null;
+    $numeric = trim((string)($input['numeric_value'] ?? ''));
+    $text = trim((string)($input['text_value'] ?? ''));
+    $boolean = isset($input['boolean_value']) && $input['boolean_value'] !== '' ? (int)$input['boolean_value'] : null;
+    if ($optionType === 'material' && !$materialId) throw new RuntimeException('请选择正式物料。');
+    if ($optionType === 'attribute' && !$optionDefinitionId) throw new RuntimeException('请选择属性选项。');
+    if ($optionType === 'number' && ($numeric === '' || !is_numeric($numeric))) throw new RuntimeException('请输入数值。');
+    if ($optionType === 'text' && $text === '') throw new RuntimeException('请输入文本。');
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_product_selected_options(product_group_config_id,option_type,material_id,option_definition_id,numeric_value,text_value,boolean_value,value_json,is_default,is_alternative,sort_order,created_by,updated_by,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())'
+    );
+    $stmt->execute([
+        $groupConfigId,
+        $optionType,
+        $materialId,
+        $optionDefinitionId,
+        $numeric !== '' ? (float)$numeric : null,
+        $text !== '' ? $text : null,
+        $boolean,
+        pa2_json_encode(['source' => 'workspace', 'saved_at' => date('Y-m-d H:i:s')]),
+        !empty($input['is_default']) ? 1 : 0,
+        !empty($input['is_alternative']) ? 1 : 0,
+        (int)($input['sort_order'] ?? 100),
+        $userId,
+        $userId,
+    ]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET status="configured",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$userId,$groupConfigId]);
+    pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'option_definition_id' => $optionDefinitionId]);
+    return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => (int)pa2_db()->lastInsertId()];
 }

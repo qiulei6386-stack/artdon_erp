@@ -220,3 +220,42 @@
 - 正式服务器页面渲染通过：`home`、`groups`、`rules`、`templates`、`logs`。
 - 正式服务器只读核验：`mc_pa2_group_behavior_settings=16`、`mc_pa2_rule_definitions=9`、`mc_pa2_group_option_definitions=18`、`mc_pa2_template_groups=17`、`mc_pa2_schema_migrations=3`。
 - 正式服务器规则循环检测：`cycle_count=0`、`phase4_rules=9`。
+
+## 2026-08-01 第 5 阶段：单产品配置工作台
+
+执行范围：
+
+- 用户要求先进行第 5 步。
+- 按主说明进入第 5 阶段：单产品配置工作台。
+- 继续不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_004_phase5_workspace.php`。
+- 新增 `mc_pa2_product_configs`、`mc_pa2_product_config_versions`、`mc_pa2_product_group_configs`、`mc_pa2_product_selected_options`。
+- 实现按产品查找 V2 分类和来源模板。
+- 实现按模板继承结果生成产品配置草稿。
+- 实现工作台详情读取、配置组检查摘要、候选物料读取和配置项保存。
+- API 新增 `workspace`、`workspace_prepare`、`product_group_save`、`material_candidates`。
+- 页面 `workspace` 从占位改为单产品工作台：产品摘要、三步快速流程、动态配置卡片、需要补充数量、宽版候选物料弹窗、保存草稿和检查摘要。
+- 新增第 5 阶段文档和契约测试。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_004_phase5_workspace.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/05_PRODUCT_WORKSPACE.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase5_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 5 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地静态检查、服务器 PHP 语法检查、迁移、阶段契约和页面渲染验证后补充。

@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 4,
-            'phase_name' => '配置组选项、物料来源和规则编辑器',
+            'phase' => 5,
+            'phase_name' => '单产品配置工作台',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -52,6 +52,10 @@ try {
                 'rules',
                 'rule_save',
                 'rule_cycle_check',
+                'workspace',
+                'workspace_prepare',
+                'product_group_save',
+                'material_candidates',
             ],
             'routes' => [
                 '/material_center_v1/adaptation_v2/index.php?view=home',
@@ -111,6 +115,36 @@ try {
     if ($action === 'product_map_save') {
         $row = pa2_map_product_category(pa2_request_data());
         pa2_json_response(['mapping' => $row], '产品分类映射已保存');
+        exit;
+    }
+
+    if ($action === 'workspace') {
+        pa2_require_any(['adaptation_v2.view', 'adaptation_v2.configure_product', 'material_center.view'], '没有查看产品工作台的权限。');
+        $productId = (int)($_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        pa2_json_response(pa2_workspace_detail($productId));
+        exit;
+    }
+
+    if ($action === 'workspace_prepare') {
+        $data = pa2_request_data();
+        $productId = (int)($data['product_id'] ?? $_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        pa2_json_response(pa2_prepare_workspace($productId), '工作台草稿已准备');
+        exit;
+    }
+
+    if ($action === 'product_group_save') {
+        $row = pa2_save_product_group_selection(pa2_request_data());
+        pa2_json_response(['selection' => $row], '产品配置已保存');
+        exit;
+    }
+
+    if ($action === 'material_candidates') {
+        pa2_require_any(['adaptation_v2.view', 'adaptation_v2.configure_product', 'material_center.view'], '没有查看候选物料的权限。');
+        pa2_json_response([
+            'materials' => pa2_material_candidates((string)($_GET['group_code'] ?? ''), (string)($_GET['q'] ?? ''), (int)($_GET['limit'] ?? 30)),
+        ]);
         exit;
     }
 
@@ -186,7 +220,7 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],
