@@ -5,7 +5,7 @@
   const api = root.dataset.api;
   const form = $('[data-sg-package-form]');
   let csrf = '';
-  let state = { stock_skus: [], packages: [], outbox: [], counts: {} };
+  let state = { stock_skus: [], published_products: [], packages: [], outbox: [], counts: {} };
   const tell = (text, error = false) => {
     const node = $('[data-sg-message]');
     node.textContent = text;
@@ -40,6 +40,21 @@
       option.textContent = `${sku.sku_code} · ${sku.model_no || ''} ${sku.product_name || ''} · 可售 ${sku.sellable_stock}`;
       skuSelect.append(option);
     });
+    const published = $('[data-sg-published-products]');
+    published.innerHTML = '';
+    if (!(state.published_products || []).length) published.innerHTML = '<tr><td colspan="6">暂无物料中心已发布产品。</td></tr>';
+    (state.published_products || []).forEach((item) => {
+      const row = document.createElement('tr');
+      const schemes = item.commercial_configuration?.schemes || [];
+      row.dataset.publishedProductId = item.id;
+      row.innerHTML = '<td><b></b></td><td></td><td></td><td></td><td></td><td><button type="button" data-sg-publish-product>生成发布任务</button></td>';
+      row.children[0].firstElementChild.textContent = item.model_no;
+      row.children[1].textContent = item.product_name || item.model_no;
+      row.children[2].textContent = `${item.category || '—'} / ${item.series_name || '—'}`;
+      row.children[3].textContent = item.commercial_version_no || '—';
+      row.children[4].textContent = schemes.length ? schemes.map((scheme) => scheme.code || scheme.name).join(' / ') : '—';
+      published.append(row);
+    });
     const packages = $('[data-sg-packages]');
     packages.innerHTML = '';
     if (!(state.packages || []).length) packages.innerHTML = '<tr><td colspan="7">暂无套餐。请从左侧选择库存 SKU 建立第一条公开套餐。</td></tr>';
@@ -64,7 +79,7 @@
       const row = document.createElement('tr');
       row.dataset.outboxId = item.id;
       row.innerHTML = `<td></td><td></td><td></td><td><span class="quote-status"></span></td><td></td><td></td><td></td><td></td>
-        <td><button type="button" data-sg-simulate>模拟发送</button><button type="button" data-sg-retry>重试</button></td>`;
+        <td><button type="button" data-sg-send>真实发送</button><button type="button" data-sg-simulate>模拟发送</button><button type="button" data-sg-retry>重试</button></td>`;
       row.children[0].textContent = item.id;
       row.children[1].textContent = item.operation_type === 'product_publish' ? '产品发布' : '代客订单';
       row.children[2].textContent = `${item.entity_type} #${item.entity_id}`;
@@ -74,10 +89,20 @@
       row.children[6].textContent = item.last_error || '—';
       row.children[7].textContent = item.updated_at || item.created_at;
       row.querySelector('[data-sg-simulate]').hidden = !['pending', 'failed'].includes(item.status);
+      row.querySelector('[data-sg-send]').hidden = !['pending', 'failed'].includes(item.status);
       row.querySelector('[data-sg-retry]').hidden = item.status !== 'failed';
       outbox.append(row);
     });
   };
+  $('[data-sg-published-products]').addEventListener('click', async (event) => {
+    const row = event.target.closest('tr[data-published-product-id]');
+    if (!row || !event.target.closest('[data-sg-publish-product]')) return;
+    try {
+      const result = await request({ action: 'queue_published_product', legacy_product_id: Number(row.dataset.publishedProductId) });
+      tell(result.message);
+      await reload();
+    } catch (error) { tell(error.message, true); }
+  });
   const reload = async () => {
     const result = await request();
     csrf = result.csrf;
@@ -126,8 +151,9 @@
   $('[data-sg-outbox]').addEventListener('click', async (event) => {
     const row = event.target.closest('tr[data-outbox-id]');
     if (!row) return;
-    const action = event.target.closest('[data-sg-retry]') ? 'retry'
-      : (event.target.closest('[data-sg-simulate]') ? 'simulate' : '');
+    const action = event.target.closest('[data-sg-send]') ? 'send'
+      : (event.target.closest('[data-sg-retry]') ? 'retry'
+        : (event.target.closest('[data-sg-simulate]') ? 'simulate' : ''));
     if (!action) return;
     try {
       const result = await request({ action, outbox_id: Number(row.dataset.outboxId) });

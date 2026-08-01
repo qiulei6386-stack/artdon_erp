@@ -48,6 +48,14 @@ try {
         $job = $service->queueProduct((int)($input['package_id'] ?? 0), $actor);
         $reply(['ok' => true, 'job' => $job, 'message' => '产品已进入待发送队列。']);
     }
+    if ($action === 'queue_published_product') {
+        $job = $service->queuePublishedProduct((int)($input['legacy_product_id'] ?? 0), $actor);
+        $reply(['ok' => true, 'job' => $job, 'message' => '已生成新加坡产品发布任务。']);
+    }
+    if ($action === 'send') {
+        $job = $service->send((int)($input['outbox_id'] ?? 0), $actor);
+        $reply(['ok' => true, 'job' => $job, 'message' => '已由商务中心真实发布到新加坡网站。']);
+    }
     if ($action === 'queue_order') {
         $job = $service->queueAssistedOrder((int)($input['quote_id'] ?? 0), $actor);
         $reply(['ok' => true, 'job' => $job, 'message' => '代客订单已进入待发送队列。']);

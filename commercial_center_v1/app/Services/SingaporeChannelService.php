@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Artdon\CommercialCenter\Services;
 
 use Artdon\CommercialCenter\Adapters\SingaporeChannelAdapter;
+use Artdon\CommercialCenter\Repositories\LegacyCatalogReadRepository;
 use Artdon\CommercialCenter\Repositories\QuoteRepository;
 use PDO;
 use Throwable;
@@ -48,6 +49,10 @@ final class SingaporeChannelService
                  ORDER BY id DESC LIMIT 100",
                 [self::CHANNEL_CODE]
             ),
+            'published_products' => array_values(array_filter(
+                (new LegacyCatalogReadRepository())->products('', '', 500),
+                static fn(array $product): bool => !empty($product['commercial_version_id']) && ($product['status'] ?? '') === '可报价'
+            )),
             'counts' => [
                 'draft_packages' => (int)$this->scalar(
                     "SELECT COUNT(*) FROM cc_channel_packages p
@@ -65,6 +70,54 @@ final class SingaporeChannelService
                 ),
             ],
         ];
+    }
+
+    public function queuePublishedProduct(int $legacyProductId, array $actor): array
+    {
+        $this->permissions->assert($actor, 'send');
+        $product = null;
+        foreach ((new LegacyCatalogReadRepository())->products('', '', 500) as $candidate) {
+            if ((int)($candidate['id'] ?? 0) === $legacyProductId) { $product = $candidate; break; }
+        }
+        if ($product === null || empty($product['commercial_version_id']) || ($product['status'] ?? '') !== '可报价') {
+            throw new \InvalidArgumentException('只能发布物料中心当前已发布的产品。');
+        }
+        $configuration = is_array($product['commercial_configuration'] ?? null) ? $product['commercial_configuration'] : [];
+        $image = trim((string)($product['image_path'] ?? ''));
+        if ($image !== '' && !preg_match('#^https?://#i', $image)) $image = 'https://novlight.com/artdon_erp/' . ltrim($image, '/');
+        $payload = ['schema_version' => '2026-08-01', 'event_type' => 'product.upsert', 'channel' => self::CHANNEL_CODE,
+            'product' => ['source_id' => (string)$product['id'], 'source_version' => (string)($product['commercial_version_no'] ?? ''),
+                'sku' => (string)$product['model_no'], 'name' => (string)($product['product_name'] ?: $product['model_no']),
+                'series' => (string)($product['series_name'] ?? ''), 'category' => (string)($product['category'] ?? ''),
+                'lamp_type' => (string)($product['lamp_type'] ?? ''), 'image_url' => $image,
+                'dimensions' => ['opening' => $product['dim_opening'] ?? null, 'outer_diameter' => $product['dim_outer_d'] ?? null,
+                    'length' => $product['dim_length'] ?? null, 'width' => $product['dim_width'] ?? null, 'height' => $product['dim_height'] ?? null],
+                'configuration' => $configuration, 'price_mode' => 'review', 'currency' => 'USD',
+                'allow_order' => true, 'inquiry_only' => true, 'stock' => 0, 'moq' => 1, 'lead_time_days' => null]];
+        return $this->enqueue('product_publish', 'published_product', $legacyProductId, $payload, $actor, false);
+    }
+
+    public function send(int $outboxId, array $actor): array
+    {
+        $this->permissions->assert($actor, 'send');
+        $job = $this->one('SELECT * FROM cc_channel_outbox WHERE id=? AND channel_code=? FOR UPDATE', [$outboxId, self::CHANNEL_CODE]);
+        if ($job === null) throw new \RuntimeException('待发送记录不存在。');
+        if (!in_array((string)$job['status'], ['pending', 'failed'], true)) return $this->decodeJob($job);
+        try {
+            $response = (new SingaporeChannelAdapter())->publish($this->decode((string)$job['payload_json']), (string)$job['idempotency_key']);
+            $reference = (string)($response['external_reference'] ?? ($response['product']['id'] ?? ''));
+            $this->connection->prepare("UPDATE cc_channel_outbox SET status='sent',attempts=attempts+1,external_reference=?,response_json=?,last_error=NULL,updated_at=NOW(),sent_at=NOW() WHERE id=?")
+                ->execute([$reference, $this->json($response), $outboxId]);
+            if ((string)$job['entity_type'] === 'channel_package') {
+                $this->connection->prepare("UPDATE cc_channel_packages SET status='published',updated_at=NOW() WHERE id=?")->execute([(int)$job['entity_id']]);
+            }
+            $this->saveEntityLink((string)$job['entity_type'], (int)$job['entity_id'], $reference, 'published', (string)$job['payload_hash']);
+        } catch (Throwable $error) {
+            $this->connection->prepare("UPDATE cc_channel_outbox SET status='failed',attempts=attempts+1,last_error=?,updated_at=NOW() WHERE id=?")
+                ->execute([substr($error->getMessage(), 0, 1000), $outboxId]);
+            throw $error;
+        }
+        return $this->decodeJob($this->one('SELECT * FROM cc_channel_outbox WHERE id=?', [$outboxId]) ?? []);
     }
 
     public function savePackage(array $input, array $actor): array
