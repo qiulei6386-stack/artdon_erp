@@ -509,4 +509,15 @@
 
 测试记录：
 
-- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。
+- 本地 `git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务、旧迁移和旧 BOM diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase10_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 10 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase10_contract.php` 通过。
+- 发布提交 `1dad932788bc48fcc3b6089c8a3a21e1f356f504` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_009_phase10_cutover_readiness`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 10 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase10_contract.php` 通过。
+- 正式服务器页面渲染通过：`cutover`。
+- 正式服务器 API 状态返回 `phase=10`，并包含 `cutover_readiness`。
+- 正式服务器数据库核验：`mc_pa2_schema_migrations=9`、`mc_pa2_cutover_audits=0`、`mc_pa2_cutover_check_items=0`。审计表为 0 是因为本轮未绕过权限直接写入，需有权限账号在页面点击“记录本次验收”后写入。
+- 最终切换评估核验：`status=blocked`、`ready_to_switch=false`、`decision=不得切换正式菜单`。
+- 当前阻断项：`published_packages_exist`、`real_business_regression_required`。

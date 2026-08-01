@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 10 阶段最终验收和切换评估（进行中）
+## 本次：产品适配 V2 第 10 阶段最终验收和切换评估（已发布）
 
 - 用户要求继续余下步骤。按阶段纪律继续第 10 阶段。本阶段只做最终验收和切换评估，不切换正式菜单。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -10,7 +10,13 @@
 - `index.php?view=cutover` 新增最终验收页，显示决策、阻断项和全量检查项。
 - 当前预期结果是 blocked/不得切换正式菜单，因为配置包尚未发布，商务中心/新加坡网站真实接入和业务回归还未完成。
 - 新增文档 `adaptation_v2/docs/10_CUTOVER_READINESS.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase10_contract.php`。
-- 当前正在做本地静态检查、候选服务器语法/契约测试，随后再提交、推送、部署和正式服务器迁移。
+- 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务、旧迁移和旧 BOM diff 为 0 行。办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase10_candidate/` 对候选文件做 PHP 语法检查和契约测试，全部通过。
+- 发布：第 10 阶段功能提交 `1dad932788bc48fcc3b6089c8a3a21e1f356f504` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_009_phase10_cutover_readiness`。
+- 数据库：正式服务器当前 `mc_pa2_schema_migrations=9`、`mc_pa2_cutover_audits=0`、`mc_pa2_cutover_check_items=0`。审计表为 0 是因为本轮未绕过权限直接写入，需有权限账号在页面点击“记录本次验收”后写入。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 10 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase10_contract.php` 全部通过；`cutover` 页面 CLI 渲染无 Fatal；API `status` 返回 `phase=10`。
+- 最终评估：`status=blocked`、`ready_to_switch=false`、`decision=不得切换正式菜单`；当前阻断项为 `published_packages_exist` 和 `real_business_regression_required`。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 下一步需要人工业务动作：发布至少一个配置包，完成商务中心/新加坡网站真实读取和订单快照回归，然后再由用户明确授权是否切换正式菜单。
 
 ## 上次：产品适配 V2 第 9 阶段下游渠道接口（已发布）
 
