@@ -14,7 +14,7 @@
 - `index.php` 新增 `rules` 规则编辑器页面；配置组定义中心增加行为/来源设置区；首页显示行为设置数、规则数和循环数。
 - 新增文档 `adaptation_v2/docs/04_GROUP_RULE_EDITOR.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase4_contract.php`。
 - 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase4_candidate/` 对候选文件做语法检查：`index.php`、`api/index.php`、`foundation.php`、第 4 阶段迁移和新增契约测试均无语法错误；候选 `adaptation_v2_phase4_contract.php` 全部通过。
-- 发布：第 4 阶段功能提交 `b4f19ae91f71f44a2dfdfd9ee36c7ad33d636a2f` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_003_phase4_group_rules`。
+- 发布：第 4 阶段功能提交 `b4f19ae916a543f78c82cc61a9720fd96b4a79dc` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_003_phase4_group_rules`。
 - 数据库：正式服务器当前 `mc_pa2_group_behavior_settings=16`、`mc_pa2_rule_definitions=9`、`mc_pa2_group_option_definitions=18`、`mc_pa2_template_groups=17`、`mc_pa2_schema_migrations=3`；规则循环检测 `cycle_count=0`。
 - 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 4 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase4_contract.php` 全部通过；`home`、`groups`、`rules`、`templates`、`logs` 页面 CLI 渲染无 Fatal。
 - 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
