@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：商务中心 A/B 配置方案选择
+
+- 用户确认物料中心发布配置已联动成功，并要求明确“哪个芯片 + 哪个电源”为配置 A、哪个为配置 B，且可在商务中心选择。
+- 当前阶段采用发布快照同序配对：各配置组第 1 个选项组成 A，第 2 个组成 B；某组只有一个选项时作为所有方案共用项。按 `57.10511` 当前发布顺序，A 为 CXA1816 + PS-BOM-000641，B 为 CXA1512 + PS-BOM-000646。
+- 商务产品仓库从真实发布快照生成结构化 `schemes`；详情抽屉将原始配置组展示升级为 A/B 方案卡，默认选择 A，点击可切换唯一选中方案。未发布配置不生成方案。
+- 本阶段不直接修改生产配置数据，也不触碰正在并行编辑的物料中心 V2 文件；下一阶段再在物料中心增加显式方案命名、排序与发布维护入口，并让“加入报价”保存方案快照。
+- 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`commercial_center_v1/assets/js/app.js`、`commercial_center_v1/assets/css/app.css`、`commercial_center_v1/tests/published_product_catalog_contract.php`、`WORK_CONTEXT.md`。
+- 隔离检查：本机 JavaScript 语法与 `git diff --check` 通过；服务器 PHP 8.0 候选仓库语法和更新契约通过；连接生产库只读实测准确生成 A（CXA1816 + 000641）与 B（CXA1512 + 000646），测试未写入数据库。
+
 ## 本次续作：商务产品详情读取物料中心发布配置
 
 - 用户复核发现 `57.10511` 虽已进入商务中心首屏并显示可报价，但详情抽屉的功率、光束角、光源、电源等仍全部是 `—`，指出这不是真正联动物料中心。

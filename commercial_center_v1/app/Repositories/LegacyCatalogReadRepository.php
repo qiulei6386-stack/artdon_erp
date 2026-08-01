@@ -229,6 +229,26 @@ final class LegacyCatalogReadRepository
                 'values' => $values,
             ];
         }
+        $schemeCount = 0;
+        foreach ($groups as $group) $schemeCount = max($schemeCount, count($group['values']));
+        $schemes = [];
+        for ($index = 0; $index < $schemeCount; $index++) {
+            $selections = [];
+            foreach ($groups as $group) {
+                $values = $group['values'];
+                if ($values === []) continue;
+                $value = count($values) === 1 ? $values[0] : ($values[$index] ?? null);
+                if ($value !== null) $selections[] = ['group' => $group['name'], 'value' => $value];
+            }
+            if ($selections !== []) {
+                $schemes[] = [
+                    'code' => chr(65 + $index),
+                    'name' => '配置 ' . chr(65 + $index),
+                    'is_default' => $index === 0,
+                    'selections' => $selections,
+                ];
+            }
+        }
         return [
             'version' => $versionNo,
             'published_at' => $publishedAt,
@@ -241,6 +261,7 @@ final class LegacyCatalogReadRepository
                 'ip_rating' => trim((string)($technical['ip_rating'] ?? '')),
             ],
             'groups' => $groups,
+            'schemes' => $schemes,
         ];
     }
 

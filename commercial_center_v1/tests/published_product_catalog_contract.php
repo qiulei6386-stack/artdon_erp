@@ -21,7 +21,7 @@ foreach ([
 $view = file_get_contents(__DIR__ . '/../views/product_library_v2.php');
 $script = file_get_contents(__DIR__ . '/../assets/js/app.js');
 if (!str_contains((string)$view, 'data-product-config')) $errors[] = '产品卡片必须携带已发布配置';
-foreach (['config.groups', 'technical.power', 'technical.beam_angle', '已发布配置'] as $needle) {
+foreach (['config.groups', 'config.schemes', 'technical.power', 'technical.beam_angle', '配置方案', 'drawer-scheme'] as $needle) {
     if (!str_contains((string)$script, $needle)) $errors[] = '产品抽屉缺少发布配置渲染标记：' . $needle;
 }
 foreach (['光源：—', '电源：—', '<dt>功率</dt><dd>—</dd>'] as $forbidden) {

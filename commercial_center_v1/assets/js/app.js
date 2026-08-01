@@ -109,12 +109,16 @@ document.addEventListener('click',function(e){
   var esc=function(value){return String(value??'').replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]})};
   var config={};
   try{config=JSON.parse(card.dataset.productConfig||'{}')}catch(error){config={}};
-  var technical=config.technical||{},groups=Array.isArray(config.groups)?config.groups:[];
+  var technical=config.technical||{},groups=Array.isArray(config.groups)?config.groups:[],schemes=Array.isArray(config.schemes)?config.schemes:[];
   var groupHtml=groups.map(function(group){
     var values=Array.isArray(group.values)&&group.values.length?group.values.join('；'):'—';
     return '<span><b>'+esc(group.name||group.code||'配置')+'：</b>'+esc(values)+'</span>';
   }).join('');
   if(!groupHtml)groupHtml='<span>尚无已发布配置</span>';
+  var schemeHtml=schemes.map(function(scheme,index){
+    var selections=(scheme.selections||[]).map(function(item){return '<small><b>'+esc(item.group)+'：</b>'+esc(item.value)+'</small>'}).join('');
+    return '<button type="button" class="drawer-scheme'+((scheme.is_default||index===0)?' is-selected':'')+'" data-scheme-code="'+esc(scheme.code)+'"><strong>'+esc(scheme.name||scheme.code)+'</strong>'+selections+'</button>';
+  }).join('');
   var image=card.querySelector('img')?.getAttribute('src')||'',model=card.dataset.model||'';
   var meta=card.querySelector('small')?.textContent||'',metaParts=meta.split(' · ');
   var price=card.querySelector('.product-price')?.textContent||'参考报价：—';
@@ -123,9 +127,16 @@ document.addEventListener('click',function(e){
     '<section class="drawer-section"><h4><i>1</i>基础资料</h4><dl><dt>型号</dt><dd>'+esc(model)+'</dd><dt>系列</dt><dd>'+esc(metaParts[0]||'—')+'</dd><dt>类别</dt><dd>'+esc(metaParts[1]||'—')+'</dd><dt>状态</dt><dd class="drawer-ok">'+esc(status)+'</dd></dl></section>'+
     '<section class="drawer-section"><h4><i>2</i>尺寸与参数</h4><dl><dt>尺寸</dt><dd>'+esc((card.querySelector('.product-size')||{}).textContent||'—')+'</dd><dt>功率</dt><dd>'+esc(technical.power||'—')+'</dd><dt>光束角</dt><dd>'+esc(technical.beam_angle||'—')+'</dd><dt>色温</dt><dd>'+esc(technical.cct||'—')+'</dd><dt>显色指数</dt><dd>'+esc(technical.cri||'—')+'</dd><dt>输出电流</dt><dd>'+esc(technical.current||'—')+'</dd><dt>防护等级</dt><dd>'+esc(technical.ip_rating||'—')+'</dd></dl></section>'+
     '<section class="drawer-section"><h4><i>3</i>报价信息</h4><dl><dt>参考报价</dt><dd class="drawer-price">'+esc(price)+'</dd><dt>币种</dt><dd>USD</dd><dt>MOQ</dt><dd>—</dd><dt>交期</dt><dd>—</dd></dl></section>'+
-    '<section class="drawer-section"><h4><i>4</i>已发布配置'+(config.version?' · '+esc(config.version):'')+'</h4><div class="drawer-tags">'+groupHtml+'</div></section>'+
+    '<section class="drawer-section"><h4><i>4</i>配置方案'+(config.version?' · '+esc(config.version):'')+'</h4>'+(schemeHtml?'<div class="drawer-schemes">'+schemeHtml+'</div>':'<div class="drawer-tags">'+groupHtml+'</div>')+'</section>'+
     '<section class="drawer-section"><h4><i>5</i>资料文件</h4><div class="drawer-files"><span>产品图</span><span>尺寸图</span><span>IES 文件</span><span>测试报告</span></div></section><footer class="drawer-actions"><button class="primary">加入报价</button><button type="button" data-detail-close>关闭</button></footer>';
   d.classList.add('open');d.setAttribute('aria-hidden','false');document.body.classList.add('drawer-open');
+});
+document.addEventListener('click',function(e){
+  var option=e.target.closest('.drawer-scheme');
+  if(!option)return;
+  option.closest('.drawer-schemes')?.querySelectorAll('.drawer-scheme').forEach(function(item){item.classList.toggle('is-selected',item===option)});
+  var drawer=option.closest('[data-detail-drawer]');
+  if(drawer)drawer.dataset.selectedScheme=option.dataset.schemeCode||'';
 });
 document.addEventListener('click',function(e){
   if(!e.target.closest('[data-detail-close]'))return;
