@@ -208,7 +208,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
-.pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(860px,92vw)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}
+.pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(860px,92vw)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}.pa2-logic-section small{display:block;color:var(--pa2-muted);font-weight:600;margin-top:3px}.pa2-logic-zone.is-hidden{display:none!important}.pa2-logic-type-chip{background:#eef4ff;color:#1d4ed8}.pa2-logic-type-driver{background:#fff7ed;color:#c2410c}.pa2-logic-type-optical{background:#f0fdfa;color:#0b7773}.pa2-logic-help{grid-column:1/-1;border:1px solid #e6edf5;background:#fbfdff;border-radius:12px;padding:10px;color:#667085}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid,.pa2-scheme-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-scheme-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
 </style>
@@ -1012,6 +1012,12 @@ include MC_ROOT . '/components/layout_top.php';
                             if (isset($productLogic['cct_k'])) $logicTags[] = '色温 '.$productLogic['cct_k'].'K';
                             if (isset($productLogic['cri_min'])) $logicTags[] = 'CRI≥'.$productLogic['cri_min'];
                             if (isset($productLogic['beam_angle'])) $logicTags[] = '光束角 '.$productLogic['beam_angle'].'°';
+                            if (!empty($productLogic['dimming_mode'])) $logicTags[] = '调光 '.$productLogic['dimming_mode'];
+                            if (!empty($productLogic['chip_brand_keyword'])) $logicTags[] = '芯片品牌 '.$productLogic['chip_brand_keyword'];
+                            if (!empty($productLogic['chip_series_keyword'])) $logicTags[] = '芯片系列 '.$productLogic['chip_series_keyword'];
+                            if (!empty($productLogic['optical_type'])) $logicTags[] = '光学类型 '.$productLogic['optical_type'];
+                            if (!empty($productLogic['lens_material'])) $logicTags[] = '材质 '.$productLogic['lens_material'];
+                            if (!empty($productLogic['optical_keyword'])) $logicTags[] = '光学关键词 '.$productLogic['optical_keyword'];
                             $done = count($selected) > 0;
                             $sourceMode = (string)($g['source_mode'] ?? '');
                             $selectionKind = (string)($g['selection_kind'] ?? '');
@@ -1228,7 +1234,7 @@ include MC_ROOT . '/components/layout_top.php';
                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_logic_save'))?>">
                     <input type="hidden" name="product_group_config_id">
                     <div class="pa2-dialog__body">
-                        <div class="pa2-dialog-hint">这里设置的是“这个产品”的判断逻辑：例如嵌入式灯具只要外置电源、芯片要求 CRI90、电源电流要覆盖 250–300mA。保存后会立即重新计算当前候选结果。</div>
+                        <div class="pa2-dialog-hint" id="pa2-group-logic-hint">这里设置的是“这个产品”的判断逻辑。弹窗会按芯片、电源、光学自动切换字段，保存后会立即重新计算当前候选结果。</div>
                         <div class="pa2-logic-form">
                             <div class="pa2-logic-section">基础规则</div>
                             <label class="wide"><span>逻辑来源</span><select name="logic_source"><option value="template">使用模板逻辑</option><option value="custom">自定义覆盖当前产品</option><option value="blank">不使用逻辑 / 清空当前产品逻辑</option></select></label>
@@ -1239,20 +1245,33 @@ include MC_ROOT . '/components/layout_top.php';
                             <label><span>允许为空</span><select name="allow_empty"><option value="1">允许</option><option value="0">不允许</option></select></label>
                             <label><span>物料分类</span><select name="material_category_code"><option value="">不限定</option><?php foreach ($pa2MaterialCategoryLabels as $code=>$label): ?><option value="<?=mc_h($code)?>"><?=mc_h($label)?></option><?php endforeach; ?></select></label>
                             <label><span>只用正式物料</span><select name="require_official"><option value="1">是</option><option value="0">否</option></select></label>
-                            <label><span>关键词过滤</span><input name="keyword" placeholder="例如 外置 / CREE / 透镜"></label>
-                            <div class="pa2-logic-section">电源逻辑</div>
-                            <label><span>电源类型</span><select name="driver_type"><option value="">不限定</option><option value="external">只要外置电源</option><option value="internal">只要内置电源</option><option value="intrack">只要 INTRACK 电源</option></select></label>
-                            <label><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
-                            <label><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
-                            <label><span>调光方式</span><input name="dimming_mode" placeholder="例如 DALI / 0-10V"></label>
-                            <label><span>电流下限 mA</span><input type="number" step="0.01" min="0" name="current_min_ma"></label>
-                            <label><span>电流上限 mA</span><input type="number" step="0.01" min="0" name="current_max_ma"></label>
-                            <label><span>电压下限 V</span><input type="number" step="0.01" min="0" name="voltage_min_v"></label>
-                            <label><span>电压上限 V</span><input type="number" step="0.01" min="0" name="voltage_max_v"></label>
-                            <div class="pa2-logic-section">芯片 / 光学逻辑</div>
-                            <label><span>色温 K</span><input type="number" min="1000" max="20000" name="cct_k"></label>
-                            <label><span>最低显指 CRI</span><input type="number" step="0.1" min="0" max="100" name="cri_min"></label>
-                            <label><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
+                            <label class="wide"><span id="pa2-keyword-label">物料关键词</span><input name="keyword" placeholder="例如 CREE / 透镜 / 外置"></label>
+                            <div class="pa2-logic-help"><span class="pa2-badge" id="pa2-logic-type-badge">自动识别配置类型</span> <span id="pa2-logic-type-text">不同配置组只显示相关字段。</span></div>
+
+                            <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="chip">芯片 / 光源逻辑<small>用于判断芯片或光源是否符合当前产品；不会出现调光方式、电源类型。</small></div>
+                            <label data-logic-zone="chip"><span>芯片品牌 / 光源品牌</span><input name="chip_brand_keyword" placeholder="例如 CREE / Bridgelux / LUXEON"></label>
+                            <label data-logic-zone="chip"><span>芯片型号 / 系列关键词</span><input name="chip_series_keyword" placeholder="例如 CXA / XHP / 2835"></label>
+                            <label data-logic-zone="chip"><span>色温 K</span><input type="number" min="1000" max="20000" name="cct_k"></label>
+                            <label data-logic-zone="chip"><span>最低显指 CRI</span><input type="number" step="0.1" min="0" max="100" name="cri_min"></label>
+
+                            <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="driver">电源 / 驱动逻辑<small>用于判断内置、外置、INTRACK 电源及输出范围；调光方式只在这里设置。</small></div>
+                            <label data-logic-zone="driver"><span>电源类型</span><select name="driver_type"><option value="">不限定</option><option value="external">只要外置电源</option><option value="internal">只要内置电源</option><option value="intrack">只要 INTRACK 电源</option></select></label>
+                            <label data-logic-zone="driver"><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
+                            <label data-logic-zone="driver"><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
+                            <label data-logic-zone="driver"><span>调光方式</span><input name="dimming_mode" placeholder="例如 DALI / 0-10V / Triac / 非调光"></label>
+
+                            <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="chip driver">电气范围<small id="pa2-electric-help">电源时表示输出范围；芯片时表示芯片工作电流/电压要求。</small></div>
+                            <label data-logic-zone="chip driver"><span data-logic-label-current-min>电流下限 mA</span><input type="number" step="0.01" min="0" name="current_min_ma"></label>
+                            <label data-logic-zone="chip driver"><span data-logic-label-current-max>电流上限 mA</span><input type="number" step="0.01" min="0" name="current_max_ma"></label>
+                            <label data-logic-zone="chip driver"><span data-logic-label-voltage-min>电压下限 V</span><input type="number" step="0.01" min="0" name="voltage_min_v"></label>
+                            <label data-logic-zone="chip driver"><span data-logic-label-voltage-max>电压上限 V</span><input type="number" step="0.01" min="0" name="voltage_max_v"></label>
+
+                            <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="optical">光学 / 透镜逻辑<small>用于判断透镜、反光杯、蜂窝网、光学膜等光学件。</small></div>
+                            <label data-logic-zone="optical"><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
+                            <label data-logic-zone="optical"><span>光学类型</span><input name="optical_type" placeholder="例如 lens / reflector / diffuser"></label>
+                            <label data-logic-zone="optical"><span>材质 / 表面</span><input name="lens_material" placeholder="例如 PMMA / PC / glass / black"></label>
+                            <label data-logic-zone="optical"><span>光学关键词</span><input name="optical_keyword" placeholder="例如 蜂窝网 / 光学膜 / 四叶片"></label>
+
                             <label class="wide"><span>备注</span><input name="note" placeholder="说明这条产品级逻辑的原因"></label>
                         </div>
                     </div>
@@ -1838,6 +1857,11 @@ function pa2ParseJson(raw, fallback={}){
   const form=dialog?dialog.querySelector('form'):null;
   const title=document.getElementById('pa2-group-logic-title');
   const subtitle=document.getElementById('pa2-group-logic-subtitle');
+  const hint=document.getElementById('pa2-group-logic-hint');
+  const typeBadge=document.getElementById('pa2-logic-type-badge');
+  const typeText=document.getElementById('pa2-logic-type-text');
+  const keywordLabel=document.getElementById('pa2-keyword-label');
+  const electricHelp=document.getElementById('pa2-electric-help');
   if(!dialog||!form)return;
   function parseJsonAttr(btn,name){
     return pa2ParseJson(btn.getAttribute(name)||'{}',{});
@@ -1845,10 +1869,98 @@ function pa2ParseJson(raw, fallback={}){
   function value(obj,key,def=''){
     return obj&&Object.prototype.hasOwnProperty.call(obj,key)?obj[key]:def;
   }
+  let currentLogicGroupCode='';
+  function logicKind(groupCode, materialCategory){
+    const code=String(groupCode||'').toLowerCase();
+    const category=String(materialCategory||'').toLowerCase();
+    if(category==='chip'||/chip|led|light_source|source/.test(code)) return 'chip';
+    if(category==='power_supply'||/driver|power|supply|intrack/.test(code)) return 'driver';
+    if(category==='optical'||/optical|lens|beam|reflector|diffuser/.test(code)) return 'optical';
+    return 'general';
+  }
+  function applyLogicKind(kind){
+    const meta={
+      chip:{
+        badge:'芯片 / 光源逻辑',
+        badgeClass:'pa2-logic-type-chip',
+        text:'只显示芯片品牌、型号、色温、显指、电流/电压等字段；不会提交调光方式和电源类型。',
+        keyword:'芯片关键词',
+        hint:'芯片逻辑用于判断当前产品可用的芯片/光源，例如 CREE、Bridgelux、色温 3000K、CRI90、电流范围。',
+        currentMin:'芯片工作电流下限 mA',
+        currentMax:'芯片工作电流上限 mA',
+        voltageMin:'芯片正向电压下限 V',
+        voltageMax:'芯片正向电压上限 V',
+        electric:'芯片时表示芯片工作电流/正向电压要求。'
+      },
+      driver:{
+        badge:'电源 / 驱动逻辑',
+        badgeClass:'pa2-logic-type-driver',
+        text:'只显示电源类型、输出功率/电流/电压和调光方式；调光方式只属于电源逻辑。',
+        keyword:'电源关键词',
+        hint:'电源逻辑用于判断内置、外置、INTRACK 电源，以及输出功率、电流、电压和调光方式。',
+        currentMin:'输出电流下限 mA',
+        currentMax:'输出电流上限 mA',
+        voltageMin:'输出电压下限 V',
+        voltageMax:'输出电压上限 V',
+        electric:'电源时表示输出电流/输出电压范围。'
+      },
+      optical:{
+        badge:'光学 / 透镜逻辑',
+        badgeClass:'pa2-logic-type-optical',
+        text:'只显示光束角、光学类型、材质和光学关键词；不显示电源或芯片字段。',
+        keyword:'光学关键词',
+        hint:'光学逻辑用于判断透镜、反光杯、蜂窝网、四叶片、光学膜等光学件。',
+        currentMin:'电流下限 mA',
+        currentMax:'电流上限 mA',
+        voltageMin:'电压下限 V',
+        voltageMax:'电压上限 V',
+        electric:''
+      },
+      general:{
+        badge:'通用配置逻辑',
+        badgeClass:'',
+        text:'当前配置组不是芯片、电源或光学，只保留基础规则和关键词过滤。',
+        keyword:'物料关键词',
+        hint:'通用逻辑用于配件、玻璃、包装等配置组，通常只需要物料分类、正式物料和关键词。',
+        currentMin:'电流下限 mA',
+        currentMax:'电流上限 mA',
+        voltageMin:'电压下限 V',
+        voltageMax:'电压上限 V',
+        electric:''
+      }
+    }[kind]||{};
+    dialog.querySelectorAll('[data-logic-zone]').forEach((node)=>{
+      const zones=String(node.getAttribute('data-logic-zone')||'').split(/\s+/).filter(Boolean);
+      const visible=zones.includes(kind);
+      node.classList.toggle('is-hidden', !visible);
+      node.querySelectorAll('input,select,textarea').forEach((field)=>{field.disabled=!visible;});
+    });
+    if(typeBadge){
+      typeBadge.className='pa2-badge '+(meta.badgeClass||'');
+      typeBadge.textContent=meta.badge||'通用配置逻辑';
+    }
+    if(typeText) typeText.textContent=meta.text||'';
+    if(keywordLabel) keywordLabel.textContent=meta.keyword||'物料关键词';
+    if(hint) hint.textContent=meta.hint||'这里设置的是当前产品的判断逻辑。';
+    if(electricHelp) electricHelp.textContent=meta.electric||'';
+    const labels={
+      'data-logic-label-current-min':meta.currentMin,
+      'data-logic-label-current-max':meta.currentMax,
+      'data-logic-label-voltage-min':meta.voltageMin,
+      'data-logic-label-voltage-max':meta.voltageMax
+    };
+    Object.entries(labels).forEach(([attr,text])=>{
+      const el=dialog.querySelector('['+attr+']');
+      if(el) el.textContent=text||'';
+    });
+  }
   document.querySelectorAll('[data-open-group-logic]').forEach((btn)=>{
     btn.addEventListener('click',()=>{
       form.reset();
       const groupCode=btn.getAttribute('data-group-code')||'';
+      currentLogicGroupCode=groupCode;
+      const materialCategory=btn.getAttribute('data-material-category-code')||'';
+      applyLogicKind(logicKind(groupCode, materialCategory));
       const filter=parseJsonAttr(btn,'data-material-filter');
       const logic=parseJsonAttr(btn,'data-product-logic');
       const templateLogic=parseJsonAttr(btn,'data-template-logic');
@@ -1868,7 +1980,7 @@ function pa2ParseJson(raw, fallback={}){
       if(!driverType&&groupCode==='driver')driverType='';
       pa2SetField(form,'driver_type',driverType);
       const visibleLogic=Object.keys(logic).length?logic:templateLogic;
-      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','note'].forEach((key)=>{
+      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','chip_brand_keyword','chip_series_keyword','optical_type','lens_material','optical_keyword','note'].forEach((key)=>{
         pa2SetField(form,key,value(visibleLogic,key,''));
       });
       if(title) title.textContent='设置逻辑 · '+(btn.getAttribute('data-group-name')||groupCode);
@@ -1879,6 +1991,11 @@ function pa2ParseJson(raw, fallback={}){
   document.querySelectorAll('[data-close-group-logic]').forEach((btn)=>{
     btn.addEventListener('click',()=>pa2CloseDialog(dialog));
   });
+  if(form.elements.material_category_code){
+    form.elements.material_category_code.addEventListener('change',()=>{
+      applyLogicKind(logicKind(currentLogicGroupCode, form.elements.material_category_code.value||''));
+    });
+  }
 })();
 (()=>{
   const dialog=document.getElementById('pa2-group-create-dialog');

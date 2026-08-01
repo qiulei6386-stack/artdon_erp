@@ -1667,6 +1667,11 @@ function pa2_group_logic_settings_from_input(array $input): array
         'cri_min' => pa2_input_float_or_null($input, 'cri_min'),
         'beam_angle' => pa2_input_float_or_null($input, 'beam_angle'),
         'dimming_mode' => trim((string)($input['dimming_mode'] ?? '')),
+        'chip_brand_keyword' => trim((string)($input['chip_brand_keyword'] ?? '')),
+        'chip_series_keyword' => trim((string)($input['chip_series_keyword'] ?? '')),
+        'optical_type' => trim((string)($input['optical_type'] ?? '')),
+        'lens_material' => trim((string)($input['lens_material'] ?? '')),
+        'optical_keyword' => trim((string)($input['optical_keyword'] ?? '')),
         'note' => trim((string)($input['note'] ?? '')),
     ];
     foreach ($logic as $key => $value) {
@@ -1697,6 +1702,40 @@ function pa2_group_logic_settings_from_input(array $input): array
     return $settings;
 }
 
+function pa2_logic_kind_from_group(string $groupCode, string $materialCategory = ''): string
+{
+    $code = strtolower($groupCode);
+    $category = strtolower($materialCategory);
+    if ($category === 'chip' || preg_match('/chip|led|light_source|source/', $code)) return 'chip';
+    if ($category === 'power_supply' || preg_match('/driver|power|supply|intrack/', $code)) return 'driver';
+    if ($category === 'optical' || preg_match('/optical|lens|beam|reflector|diffuser/', $code)) return 'optical';
+    return 'general';
+}
+
+function pa2_sanitize_logic_for_kind(array $logic, string $kind): array
+{
+    $allowed = [
+        'chip' => ['current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','chip_brand_keyword','chip_series_keyword','note'],
+        'driver' => ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','dimming_mode','note'],
+        'optical' => ['beam_angle','optical_type','lens_material','optical_keyword','note'],
+        'general' => ['note'],
+    ][$kind] ?? ['note'];
+    $clean = [];
+    foreach ($allowed as $key) {
+        if (array_key_exists($key, $logic) && $logic[$key] !== null && $logic[$key] !== '') $clean[$key] = $logic[$key];
+    }
+    return $clean;
+}
+
+function pa2_sanitize_behavior_for_kind(array $behavior, string $kind): array
+{
+    if (isset($behavior['material_filter']) && is_array($behavior['material_filter']) && $kind !== 'driver') {
+        unset($behavior['material_filter']['driver_type']);
+        if (!$behavior['material_filter']) unset($behavior['material_filter']);
+    }
+    return $behavior;
+}
+
 function pa2_save_product_group_logic(array $input): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有保存产品配置逻辑的权限。');
@@ -1725,6 +1764,9 @@ function pa2_save_product_group_logic(array $input): array
     if (!in_array($logicSource, ['template','custom','blank'], true)) $logicSource = 'custom';
 
     $newSettings = pa2_group_logic_settings_from_input($input);
+    $behaviorForKind = isset($newSettings['behavior']) && is_array($newSettings['behavior']) ? $newSettings['behavior'] : [];
+    $materialCategoryForKind = (string)($behaviorForKind['material_category_code'] ?? ($group['group_code'] ?? ''));
+    $logicKind = pa2_logic_kind_from_group((string)($group['group_code'] ?? ''), $materialCategoryForKind);
     foreach (['is_required','selection_mode','min_select','max_select','allow_empty'] as $key) {
         $settings[$key] = $newSettings[$key];
     }
@@ -1732,16 +1774,16 @@ function pa2_save_product_group_logic(array $input): array
     if ($templateBehavior) $settings['template_behavior'] = $templateBehavior;
 
     if ($logicSource === 'template') {
-        $settings['product_logic'] = $templateLogic;
-        $settings['behavior'] = $templateBehavior;
+        $settings['product_logic'] = pa2_sanitize_logic_for_kind($templateLogic, $logicKind);
+        $settings['behavior'] = pa2_sanitize_behavior_for_kind($templateBehavior, $logicKind);
         $settings['logic_source'] = 'template';
     } elseif ($logicSource === 'blank') {
         $settings['product_logic'] = [];
         unset($settings['behavior']['material_filter']);
         $settings['logic_source'] = 'blank';
     } else {
-        $settings['product_logic'] = $newSettings['template_logic'] ?? [];
-        $settings['behavior'] = $newSettings['behavior'] ?? [];
+        $settings['product_logic'] = pa2_sanitize_logic_for_kind($newSettings['template_logic'] ?? [], $logicKind);
+        $settings['behavior'] = pa2_sanitize_behavior_for_kind($newSettings['behavior'] ?? [], $logicKind);
         $settings['logic_source'] = 'custom';
     }
     $settings['logic_updated_at'] = date('Y-m-d H:i:s');
@@ -2196,6 +2238,18 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             }
         }
     } elseif ($category === 'chip') {
+        foreach (['chip_brand_keyword' => '芯片品牌', 'chip_series_keyword' => '芯片型号/系列'] as $logicKey => $label) {
+            $expectedText = trim((string)($logic[$logicKey] ?? ''));
+            if ($expectedText === '') continue;
+            if (mb_stripos($text, mb_strtolower($expectedText)) === false) {
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 74);
+                $fields[] = $logicKey;
+                $reasons[] = "规则要求{$label}包含“{$expectedText}”，候选未明确匹配。";
+            } else {
+                $reasons[] = "{$label}“{$expectedText}”匹配。";
+            }
+        }
         $productPower = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
         $chipMax = null;
         foreach (['max_power_w','rated_power_w'] as $key) {
@@ -2231,6 +2285,18 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             $reasons[] = "显指满足 CRI≥{$logic['cri_min']}。";
         }
     } elseif ($category === 'optical') {
+        foreach (['optical_type' => '光学类型', 'lens_material' => '光学材质/表面', 'optical_keyword' => '光学关键词'] as $logicKey => $label) {
+            $expectedText = trim((string)($logic[$logicKey] ?? ''));
+            if ($expectedText === '') continue;
+            if (mb_stripos($text, mb_strtolower($expectedText)) === false) {
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 74);
+                $fields[] = $logicKey;
+                $reasons[] = "规则要求{$label}包含“{$expectedText}”，候选未明确匹配。";
+            } else {
+                $reasons[] = "{$label}“{$expectedText}”匹配。";
+            }
+        }
         $beam = $logic['beam_angle'] ?? ($technical['beam_angle_max'] ?? null);
         if ($beam !== null && isset($spec['beam_angle_min'],$spec['beam_angle_max']) && $spec['beam_angle_min'] !== null && $spec['beam_angle_max'] !== null) {
             if ((float)$beam < (float)$spec['beam_angle_min'] || (float)$beam > (float)$spec['beam_angle_max']) {
