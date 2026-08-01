@@ -8,7 +8,7 @@
 - 修复：商务中心只读关联当前发布版本的最新 `published` 快照，在仓库层解析技术范围和全部配置组，再随产品卡片传给详情抽屉；抽屉动态展示真实发布版本、已选物料名称/编码和技术参数，源数据为空时才显示 `—`，不猜测、不伪造。
 - 修改文件：`commercial_center_v1/app/Repositories/LegacyCatalogReadRepository.php`、`commercial_center_v1/views/product_library_v2.php`、`commercial_center_v1/assets/js/app.js`、`commercial_center_v1/tests/published_product_catalog_contract.php`、`WORK_CONTEXT.md`。
 - 隔离检查：本机 `node --check` 与 `git diff --check` 通过；服务器 PHP 8.0 对候选仓库类和页面语法检查通过；更新后的发布产品契约通过。候选代码连接生产库只读实测返回 V1、3 个配置组，以及芯片/光源和外置电源各 2 个真实已选物料；技术范围空值保持为空，测试未修改数据库。
-- Git / 部署：功能提交、GitHub 推送、正式服务器同步与三方一致性结果在本轮完成后补记。
+- Git / 部署：功能提交 `326adcd688009335ef1c9f1ac7c49a8da36d0a65` 已推送 GitHub，并以同一提交快进同步正式服务器。正式服务器仓库类与页面 PHP 语法、发布产品契约及商务中心安全扫描通过；正式只读查询返回 V1 和 3 个真实配置组。功能提交同步时本地、GitHub、服务器三方一致；服务器与本地原有并行/未跟踪文件保持原样。
 
 ## 本次：物料中心已发布产品进入商务中心
 
