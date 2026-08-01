@@ -251,18 +251,65 @@ include MC_ROOT . '/components/layout_top.php';
         </section>
     <?php elseif ($view === 'categories'): ?>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>产品分类中心</h2><p>维护 V2 产品业务分类；分类不是物料分类，后续用于模板继承和配置包发布。</p></div></div>
+            <div class="pa2-panel__head">
+                <div><h2>产品分类中心</h2><p>维护 V2 产品业务分类；分类不是物料分类，后续用于模板继承和配置包发布。</p></div>
+                <div class="pa2-template-actions">
+                    <?php if ($canManageCategory): ?><button class="mc-button mc-button--primary" type="button" data-open-category-create>新增分类</button><?php endif; ?>
+                </div>
+            </div>
             <div class="pa2-panel__body pa2-section-gap">
                 <?php if ($canManageCategory): ?>
-                <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=category_save'))?>">
-                    <label><span>分类编码</span><input name="category_code" placeholder="例如 track_light"></label>
-                    <label><span>分类名称 *</span><input name="category_name" required placeholder="例如 导轨灯"></label>
-                    <label><span>父分类</span><select name="parent_id"><option value="">无父分类</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
-                    <label><span>排序</span><input type="number" name="sort_order" value="100"></label>
-                    <label class="wide"><span>说明</span><input name="description" placeholder="分类用途和适用范围"></label>
-                    <label><span>状态</span><select name="is_enabled"><option value="1">启用</option><option value="0">停用</option></select></label>
-                    <button class="mc-button mc-button--primary" type="submit">新增分类</button>
-                </form>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-category-create-dialog">
+                    <div class="pa2-dialog__head">
+                        <div><h3>新增产品分类</h3><p>建立 V2 产品业务分类，用于模板继承和配置包发布。</p></div>
+                        <button class="mc-button" type="button" data-close-category-create>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=category_save'))?>">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <label><span>分类编码</span><input name="category_code" placeholder="例如 track_light"></label>
+                                <label><span>分类名称 *</span><input name="category_name" required placeholder="例如 导轨灯"></label>
+                                <label><span>父分类</span><select name="parent_id"><option value="">无父分类</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
+                                <label><span>排序</span><input type="number" name="sort_order" value="100"></label>
+                                <label><span>状态</span><select name="is_enabled"><option value="1">启用</option><option value="0">停用</option></select></label>
+                                <label class="full"><span>说明</span><input name="description" placeholder="分类用途和适用范围"></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">保存后自动刷新分类列表。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-category-create>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存分类</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-category-edit-dialog">
+                    <div class="pa2-dialog__head">
+                        <div><h3>编辑产品分类</h3><p id="pa2-category-edit-subtitle">修改分类基础资料。</p></div>
+                        <button class="mc-button" type="button" data-close-category-edit>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=category_save'))?>">
+                        <input type="hidden" name="id">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <label><span>分类编码</span><input name="category_code"></label>
+                                <label><span>分类名称 *</span><input name="category_name" required></label>
+                                <label><span>父分类</span><select name="parent_id"><option value="">无父分类</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
+                                <label><span>排序</span><input type="number" name="sort_order"></label>
+                                <label><span>状态</span><select name="is_enabled"><option value="1">启用</option><option value="0">停用</option></select></label>
+                                <label class="full"><span>说明</span><input name="description"></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">不会修改旧版产品适配分类。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-category-edit>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存分类</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
                 <?php endif; ?>
                 <table class="pa2-table">
                     <thead><tr><th>编码</th><th>分类</th><th>父分类</th><th>产品数</th><th>排序/状态</th><th>编辑</th></tr></thead>
@@ -276,15 +323,15 @@ include MC_ROOT . '/components/layout_top.php';
                             <td><?=intval($c['sort_order'])?> · <?=((int)$c['is_enabled'] === 1 ? '启用' : '停用')?></td>
                             <td>
                                 <?php if ($canManageCategory): ?>
-                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=category_save'))?>">
-                                    <input type="hidden" name="id" value="<?=intval($c['id'])?>">
-                                    <input name="category_code" value="<?=mc_h($c['category_code'])?>">
-                                    <input name="category_name" value="<?=mc_h($c['category_name'])?>" required>
-                                    <select name="parent_id"><option value="">无父分类</option><?php foreach ($categories as $p): if ((int)$p['id'] === (int)$c['id']) continue; ?><option value="<?=intval($p['id'])?>" <?=((int)($c['parent_id'] ?? 0)===(int)$p['id']?'selected':'')?>><?=mc_h($p['category_name'])?></option><?php endforeach; ?></select>
-                                    <input type="number" name="sort_order" value="<?=intval($c['sort_order'])?>">
-                                    <select name="is_enabled"><option value="1" <?=((int)$c['is_enabled']===1?'selected':'')?>>启用</option><option value="0" <?=((int)$c['is_enabled']===0?'selected':'')?>>停用</option></select>
-                                    <button class="mc-button" type="submit">保存</button>
-                                </form>
+                                <button class="mc-button" type="button"
+                                    data-open-category-edit
+                                    data-category-id="<?=intval($c['id'])?>"
+                                    data-category-code="<?=mc_h($c['category_code'])?>"
+                                    data-category-name="<?=mc_h($c['category_name'])?>"
+                                    data-parent-id="<?=intval($c['parent_id'] ?? 0)?>"
+                                    data-sort-order="<?=intval($c['sort_order'])?>"
+                                    data-is-enabled="<?=intval($c['is_enabled'])?>"
+                                    data-description="<?=mc_h($c['description'] ?? '')?>">编辑</button>
                                 <?php else: ?>只读<?php endif; ?>
                             </td>
                         </tr>
@@ -513,20 +560,39 @@ include MC_ROOT . '/components/layout_top.php';
         <section class="pa2-panel">
             <div class="pa2-panel__head">
                 <div><h2>模板中心</h2><p>模板决定产品需要哪些配置组；具体产品后续只保存差异，不从零配置。</p></div>
-                <div class="pa2-template-actions"><?php if ($selectedTemplate): ?><a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('template_editor', ['template_id' => (int)$selectedTemplate['id']]))?>">打开模板编辑器</a><?php endif; ?></div>
+                <div class="pa2-template-actions">
+                    <?php if ($canManageTemplate): ?><button class="mc-button mc-button--primary" type="button" data-open-template-create>新增模板</button><?php endif; ?>
+                    <?php if ($selectedTemplate): ?><a class="mc-button" href="<?=mc_h(pa2_view_url('template_editor', ['template_id' => (int)$selectedTemplate['id']]))?>">打开模板编辑器</a><?php endif; ?>
+                </div>
             </div>
             <div class="pa2-panel__body pa2-section-gap">
                 <?php if ($canManageTemplate): ?>
-                <form class="pa2-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_save'))?>">
-                    <label><span>模板编码</span><input name="template_code" placeholder="例如 track_light_standard"></label>
-                    <label><span>模板名称 *</span><input name="template_name" required placeholder="例如 导轨灯标准模板"></label>
-                    <label><span>模板层级</span><select name="template_level"><option value="category">分类模板</option><option value="system">系统模板</option><option value="series">系列模板</option><option value="product">产品模板</option></select></label>
-                    <label><span>父模板</span><select name="parent_template_id"><option value="">无父模板</option><?php foreach ($templates as $t): ?><option value="<?=intval($t['id'])?>"><?=mc_h($t['template_name'])?></option><?php endforeach; ?></select></label>
-                    <label><span>适用分类</span><select name="product_category_id"><option value="">不限定</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
-                    <label><span>系列编码</span><input name="series_code" placeholder="例如 ARTAX"></label>
-                    <label class="wide"><span>说明</span><input name="description" placeholder="说明继承范围、用途和注意事项"></label>
-                    <button class="mc-button mc-button--primary" type="submit">新增模板</button>
-                </form>
+                <dialog class="pa2-dialog" id="pa2-template-create-dialog">
+                    <div class="pa2-dialog__head">
+                        <div><h3>新增配置模板</h3><p>先建立模板基础资料，再进入模板编辑器配置结构。</p></div>
+                        <button class="mc-button" type="button" data-close-template-create>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_save'))?>">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <label><span>模板编码</span><input name="template_code" placeholder="例如 track_light_standard"></label>
+                                <label><span>模板名称 *</span><input name="template_name" required placeholder="例如 导轨灯标准模板"></label>
+                                <label><span>模板层级</span><select name="template_level"><option value="category">分类模板</option><option value="system">系统模板</option><option value="series">系列模板</option><option value="product">产品模板</option></select></label>
+                                <label><span>父模板</span><select name="parent_template_id"><option value="">无父模板</option><?php foreach ($templates as $t): ?><option value="<?=intval($t['id'])?>"><?=mc_h($t['template_name'])?></option><?php endforeach; ?></select></label>
+                                <label><span>适用分类</span><select name="product_category_id"><option value="">不限定</option><?php foreach ($categories as $c): ?><option value="<?=intval($c['id'])?>"><?=mc_h($c['category_name'])?></option><?php endforeach; ?></select></label>
+                                <label><span>系列编码</span><input name="series_code" placeholder="例如 ARTAX"></label>
+                                <label class="full"><span>说明</span><input name="description" placeholder="说明继承范围、用途和注意事项"></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">保存后自动刷新模板列表。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-template-create>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存模板</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
                 <?php endif; ?>
                 <div class="pa2-template-shell">
                     <aside class="pa2-template-list">
@@ -1283,6 +1349,52 @@ function pa2SetField(form,name,value){
   if(!form||!form.elements[name])return;
   form.elements[name].value=value??'';
 }
+(()=>{
+  const dialog=document.getElementById('pa2-category-create-dialog');
+  if(!dialog)return;
+  document.querySelectorAll('[data-open-category-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2OpenDialog(dialog));
+  });
+  document.querySelectorAll('[data-close-category-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-category-edit-dialog');
+  const form=dialog?dialog.querySelector('form'):null;
+  const subtitle=document.getElementById('pa2-category-edit-subtitle');
+  if(!dialog||!form)return;
+  document.querySelectorAll('[data-open-category-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      const currentId=btn.getAttribute('data-category-id')||'';
+      pa2SetField(form,'id',currentId);
+      pa2SetField(form,'category_code',btn.getAttribute('data-category-code')||'');
+      pa2SetField(form,'category_name',btn.getAttribute('data-category-name')||'');
+      pa2SetField(form,'parent_id',btn.getAttribute('data-parent-id')||'');
+      pa2SetField(form,'sort_order',btn.getAttribute('data-sort-order')||'100');
+      pa2SetField(form,'is_enabled',btn.getAttribute('data-is-enabled')||'1');
+      pa2SetField(form,'description',btn.getAttribute('data-description')||'');
+      Array.from(form.elements.parent_id.options).forEach((option)=>{
+        option.disabled=currentId!=='' && option.value===currentId;
+      });
+      if(subtitle) subtitle.textContent='修改「'+(btn.getAttribute('data-category-name')||'产品分类')+'」基础资料。';
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-category-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-template-create-dialog');
+  if(!dialog)return;
+  document.querySelectorAll('[data-open-template-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2OpenDialog(dialog));
+  });
+  document.querySelectorAll('[data-close-template-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
 (()=>{
   const dialog=document.getElementById('pa2-group-create-dialog');
   if(!dialog)return;
