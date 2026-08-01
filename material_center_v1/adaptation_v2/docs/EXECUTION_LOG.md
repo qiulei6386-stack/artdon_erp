@@ -544,4 +544,11 @@
 
 测试记录：
 
-- 待本地契约、服务器迁移和回归验证后补充。
+- 本地 `git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务、旧迁移和旧 BOM diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_accessory_groups_candidate/` 检查，第 10 追加迁移和契约测试 PHP 语法通过。
+- 候选 `adaptation_v2_accessory_groups_contract.php` 通过。
+- 发布提交 `86f0004ec44bee0e15f3514de67544cefccec119` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_010_accessory_group_definitions`。
+- 正式服务器 `adaptation_v2_accessory_groups_contract.php` 通过。
+- 正式服务器 `groups` 页面 CLI 渲染无 Fatal。
+- 正式服务器数据库核验：5 个配置组均存在，且默认行为均为 `official_material` / `accessory`；配件和光学膜为多选，玻璃、蜂窝网、四叶片为单选；`mc_pa2_schema_migrations=10`。
