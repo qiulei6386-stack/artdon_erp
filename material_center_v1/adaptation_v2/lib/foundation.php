@@ -195,6 +195,14 @@ function pa2_phase8_tables_ready(): bool
     return true;
 }
 
+function pa2_phase9_tables_ready(): bool
+{
+    foreach (['mc_pa2_channel_clients','mc_pa2_channel_package_snapshots','mc_pa2_channel_cache','mc_pa2_channel_access_logs','mc_pa2_channel_order_snapshots'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
 function pa2_foundation_summary(): array
 {
     $summary = [
@@ -218,6 +226,11 @@ function pa2_foundation_summary(): array
         'package_count' => 0,
         'package_version_count' => 0,
         'published_package_count' => 0,
+        'channel_client_count' => 0,
+        'channel_cache_count' => 0,
+        'channel_snapshot_count' => 0,
+        'channel_access_log_count' => 0,
+        'channel_order_snapshot_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -261,6 +274,13 @@ function pa2_foundation_summary(): array
             $summary['package_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_config_packages')->fetchColumn();
             $summary['package_version_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_config_package_versions')->fetchColumn();
             $summary['published_package_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_config_packages WHERE status='published'")->fetchColumn();
+        }
+        if (pa2_phase9_tables_ready()) {
+            $summary['channel_client_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_clients')->fetchColumn();
+            $summary['channel_cache_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_cache')->fetchColumn();
+            $summary['channel_snapshot_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_package_snapshots')->fetchColumn();
+            $summary['channel_access_log_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_access_logs')->fetchColumn();
+            $summary['channel_order_snapshot_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_channel_order_snapshots')->fetchColumn();
         }
     }
     return $summary;
@@ -2561,4 +2581,238 @@ function pa2_publish_package(int $packageId): array
     $after = pa2_fetch_package($packageId) ?: [];
     pa2_log('publish_package', 'pa2_config_package', $packageId, $package, $after);
     return ['package' => $after, 'version_no' => $versionNo, 'checks' => $preview['checks']];
+}
+
+function pa2_channel_clients(): array
+{
+    if (!pa2_phase9_tables_ready()) return [];
+    $rows = pa2_db()->query('SELECT * FROM mc_pa2_channel_clients ORDER BY channel_code,client_code')->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) $row['allowed_scope_json'] = pa2_json_decode_array($row['allowed_scope_json'] ?? null);
+    unset($row);
+    return $rows;
+}
+
+function pa2_channel_client(string $clientCode): ?array
+{
+    if (!pa2_phase9_tables_ready() || trim($clientCode) === '') return null;
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_channel_clients WHERE client_code=? AND is_enabled=1 LIMIT 1');
+    $stmt->execute([trim($clientCode)]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $row['allowed_scope_json'] = pa2_json_decode_array($row['allowed_scope_json'] ?? null);
+    return $row;
+}
+
+function pa2_channel_secret_for_client(array $client): string
+{
+    $scope = pa2_json_decode_array($client['allowed_scope_json'] ?? null);
+    $envName = (string)($scope['env_secret'] ?? '');
+    $secret = $envName !== '' ? (string)getenv($envName) : '';
+    if ($secret === '') throw new RuntimeException('渠道客户端签名密钥未配置：' . ($envName ?: (string)($client['client_code'] ?? 'unknown')));
+    return $secret;
+}
+
+function pa2_channel_request_headers(): array
+{
+    return [
+        'client_code' => (string)($_SERVER['HTTP_X_PA2_CLIENT'] ?? $_GET['client_code'] ?? ''),
+        'timestamp' => (string)($_SERVER['HTTP_X_PA2_TIMESTAMP'] ?? $_GET['timestamp'] ?? ''),
+        'signature' => (string)($_SERVER['HTTP_X_PA2_SIGNATURE'] ?? $_GET['signature'] ?? ''),
+        'ip_address' => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
+        'user_agent' => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
+    ];
+}
+
+function pa2_channel_auth_context(string $rawBody = ''): array
+{
+    if (!pa2_phase9_tables_ready()) throw new RuntimeException('V2 第 9 阶段渠道接口表尚未迁移。');
+    $headers = pa2_channel_request_headers();
+    $client = pa2_channel_client($headers['client_code']);
+    if (!$client) throw new RuntimeException('渠道客户端不存在或已停用。');
+    if ((int)($client['signature_required'] ?? 1) === 1) {
+        if ($headers['timestamp'] === '' || $headers['signature'] === '') throw new RuntimeException('缺少渠道签名。');
+        if (abs(time() - (int)$headers['timestamp']) > 300) throw new RuntimeException('渠道签名已过期。');
+        $base = $headers['timestamp'] . "\n" . $headers['client_code'] . "\n" . $rawBody;
+        $expected = hash_hmac('sha256', $base, pa2_channel_secret_for_client($client));
+        if (!hash_equals($expected, $headers['signature'])) throw new RuntimeException('渠道签名无效。');
+    }
+    pa2_db()->prepare('UPDATE mc_pa2_channel_clients SET last_used_at=NOW() WHERE id=?')->execute([(int)$client['id']]);
+    return ['client' => $client, 'headers' => $headers];
+}
+
+function pa2_channel_log(string $action, ?array $context, int $statusCode, string $message, array $request = [], array $response = []): void
+{
+    if (!pa2_phase9_tables_ready()) return;
+    try {
+        $client = (array)($context['client'] ?? []);
+        $headers = (array)($context['headers'] ?? pa2_channel_request_headers());
+        $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_channel_access_logs(client_code,channel_code,action,request_hash,response_hash,status_code,message,ip_address,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())');
+        $stmt->execute([
+            $client['client_code'] ?? ($headers['client_code'] ?? null),
+            $client['channel_code'] ?? null,
+            $action,
+            $request ? hash('sha256', pa2_json_encode($request)) : null,
+            $response ? hash('sha256', pa2_json_encode($response)) : null,
+            $statusCode,
+            mb_substr($message, 0, 500),
+            $headers['ip_address'] ?? null,
+            mb_substr((string)($headers['user_agent'] ?? ''), 0, 300),
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+function pa2_channel_package_payload(array $package): array
+{
+    $groups = [];
+    foreach ($package['groups'] ?? [] as $group) {
+        $options = [];
+        foreach ($group['options'] ?? [] as $option) {
+            $options[] = [
+                'option_key' => $option['option_key'],
+                'option_type' => $option['option_type'],
+                'material_id' => $option['material_id'],
+                'option_code' => $option['option_code'],
+                'option_label' => $option['option_label'],
+                'is_default' => (int)$option['is_default'] === 1,
+                'is_locked' => (int)$option['is_locked'] === 1,
+                'price_delta' => $option['price_delta'],
+                'currency' => $option['currency'],
+                'moq' => $option['moq'],
+                'stock_qty' => $option['stock_qty'],
+                'lead_time_days' => $option['lead_time_days'],
+                'rule' => $option['rule_json'] ?? [],
+            ];
+        }
+        $groups[] = [
+            'group_code' => $group['group_code'],
+            'display_name' => $group['display_name'],
+            'lock_mode' => $group['lock_mode'],
+            'is_required' => (int)$group['is_required'] === 1,
+            'allow_empty' => (int)$group['allow_empty'] === 1,
+            'min_select' => (int)$group['min_select'],
+            'max_select' => (int)$group['max_select'],
+            'allowed_scope' => $group['allowed_scope_json'] ?? [],
+            'default_selection' => $group['default_selection_json'] ?? [],
+            'price_rule' => $group['price_rule_json'] ?? [],
+            'inventory_rule' => $group['inventory_rule_json'] ?? [],
+            'moq_rule' => $group['moq_rule_json'] ?? [],
+            'lead_time_rule' => $group['lead_time_rule_json'] ?? [],
+            'options' => $options,
+        ];
+    }
+    return [
+        'package_code' => $package['package_code'],
+        'package_name' => $package['package_name'],
+        'channel_code' => $package['channel_code'],
+        'package_type' => $package['package_type'],
+        'status' => 'published',
+        'version_id' => (int)$package['active_version_id'],
+        'version_no' => $package['active_version_no'],
+        'published_at' => $package['published_at'] ?? null,
+        'groups' => $groups,
+    ];
+}
+
+function pa2_channel_cache_get(string $cacheKey): ?array
+{
+    if (!pa2_phase9_tables_ready()) return null;
+    $stmt = pa2_db()->prepare('SELECT payload_json FROM mc_pa2_channel_cache WHERE cache_key=? AND expires_at>NOW() LIMIT 1');
+    $stmt->execute([$cacheKey]);
+    $payload = $stmt->fetchColumn();
+    return $payload ? pa2_json_decode_array($payload) : null;
+}
+
+function pa2_channel_cache_put(string $cacheKey, string $channelCode, ?int $packageId, ?int $versionId, array $payload, int $ttlSeconds = 300): void
+{
+    if (!pa2_phase9_tables_ready()) return;
+    $json = pa2_json_encode($payload);
+    $hash = hash('sha256', $json);
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_channel_cache(cache_key,channel_code,package_id,package_version_id,payload_json,payload_hash,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,DATE_ADD(NOW(), INTERVAL ? SECOND),NOW(),NOW()) ON DUPLICATE KEY UPDATE payload_json=VALUES(payload_json),payload_hash=VALUES(payload_hash),expires_at=VALUES(expires_at),updated_at=NOW()');
+    $stmt->execute([$cacheKey,$channelCode,$packageId,$versionId,$json,$hash,$ttlSeconds]);
+}
+
+function pa2_channel_published_packages(string $channelCode, bool $useCache = true): array
+{
+    if (!pa2_phase9_tables_ready()) return ['packages' => [], 'cached' => false];
+    $channelCode = trim($channelCode);
+    if ($channelCode === '') throw new RuntimeException('渠道不能为空。');
+    $cacheKey = 'packages:' . $channelCode;
+    if ($useCache) {
+        $cached = pa2_channel_cache_get($cacheKey);
+        if ($cached) return ['packages' => $cached['packages'] ?? [], 'cached' => true];
+    }
+    $stmt = pa2_db()->prepare("SELECT p.id
+        FROM mc_pa2_config_packages p
+        JOIN mc_pa2_config_package_versions v ON v.id=p.active_version_id
+        WHERE p.channel_code=? AND p.status='published' AND v.status='published'
+        ORDER BY p.package_code");
+    $stmt->execute([$channelCode]);
+    $packages = [];
+    while ($id = $stmt->fetchColumn()) {
+        $package = pa2_fetch_package((int)$id);
+        if ($package) $packages[] = pa2_channel_package_payload($package);
+    }
+    pa2_channel_cache_put($cacheKey, $channelCode, null, null, ['packages' => $packages]);
+    return ['packages' => $packages, 'cached' => false];
+}
+
+function pa2_channel_published_package_detail(string $channelCode, string $packageCode, bool $useCache = true): array
+{
+    if (!pa2_phase9_tables_ready()) throw new RuntimeException('V2 第 9 阶段渠道接口表尚未迁移。');
+    $cacheKey = 'package:' . trim($channelCode) . ':' . trim($packageCode);
+    if ($useCache) {
+        $cached = pa2_channel_cache_get($cacheKey);
+        if ($cached) return ['package' => $cached['package'] ?? null, 'cached' => true];
+    }
+    $stmt = pa2_db()->prepare("SELECT p.id
+        FROM mc_pa2_config_packages p
+        JOIN mc_pa2_config_package_versions v ON v.id=p.active_version_id
+        WHERE p.channel_code=? AND p.package_code=? AND p.status='published' AND v.status='published'
+        LIMIT 1");
+    $stmt->execute([trim($channelCode),trim($packageCode)]);
+    $id = (int)$stmt->fetchColumn();
+    if ($id <= 0) throw new RuntimeException('未找到已发布配置包，草稿不会暴露给下游。');
+    $package = pa2_fetch_package($id);
+    $payload = pa2_channel_package_payload($package ?: []);
+    pa2_channel_cache_put($cacheKey, trim($channelCode), $id, (int)($package['active_version_id'] ?? 0), ['package' => $payload]);
+    return ['package' => $payload, 'cached' => false];
+}
+
+function pa2_store_channel_package_snapshot(int $packageId): array
+{
+    if (!pa2_phase9_tables_ready()) throw new RuntimeException('V2 第 9 阶段渠道接口表尚未迁移。');
+    $package = pa2_fetch_package($packageId);
+    if (!$package || (string)($package['status'] ?? '') !== 'published' || (string)($package['active_version_status'] ?? '') !== 'published') throw new RuntimeException('只能为已发布配置包生成下游快照。');
+    $payload = pa2_channel_package_payload($package);
+    $json = pa2_json_encode($payload);
+    $hash = hash('sha256', $json);
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_channel_package_snapshots(channel_code,package_id,package_version_id,snapshot_type,payload_json,payload_hash,created_by,created_at) VALUES(?,?,?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE created_at=created_at');
+    $stmt->execute([$package['channel_code'],(int)$package['id'],(int)$package['active_version_id'],'published_payload',$json,$hash,pa2_current_user_id()]);
+    return ['payload_hash' => $hash, 'package' => $payload];
+}
+
+function pa2_channel_order_snapshot(array $input, array $context): array
+{
+    if (!pa2_phase9_tables_ready()) throw new RuntimeException('V2 第 9 阶段渠道接口表尚未迁移。');
+    $client = (array)($context['client'] ?? []);
+    $externalOrderNo = trim((string)($input['external_order_no'] ?? ''));
+    $packageCode = trim((string)($input['package_code'] ?? ''));
+    if ($externalOrderNo === '') throw new RuntimeException('下游订单号不能为空。');
+    if ($packageCode === '') throw new RuntimeException('配置包编码不能为空。');
+    $detail = pa2_channel_published_package_detail((string)$client['channel_code'], $packageCode, false);
+    $package = $detail['package'];
+    $payload = [
+        'external_order_no' => $externalOrderNo,
+        'source_system' => (string)($input['source_system'] ?? $client['client_code']),
+        'package_code' => $packageCode,
+        'package_version_id' => (int)$package['version_id'],
+        'order_payload' => $input['order_payload'] ?? [],
+        'captured_package' => $package,
+    ];
+    $json = pa2_json_encode($payload);
+    $hash = hash('sha256', $json);
+    $stmt = pa2_db()->prepare('INSERT INTO mc_pa2_channel_order_snapshots(channel_code,client_code,external_order_no,package_id,package_version_id,payload_json,payload_hash,source_system,created_at) SELECT ?,?,?,p.id,?,?,?,?,NOW() FROM mc_pa2_config_packages p WHERE p.package_code=? LIMIT 1 ON DUPLICATE KEY UPDATE created_at=created_at');
+    $stmt->execute([(string)$client['channel_code'],(string)$client['client_code'],$externalOrderNo,(int)$package['version_id'],$json,$hash,(string)($payload['source_system'] ?? ''),$packageCode]);
+    return ['external_order_no' => $externalOrderNo, 'package_code' => $packageCode, 'package_version_id' => (int)$package['version_id'], 'payload_hash' => $hash];
 }

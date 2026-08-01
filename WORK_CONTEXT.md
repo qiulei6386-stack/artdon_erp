@@ -1,6 +1,17 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 8 阶段配置包中心（已发布）
+## 本次：产品适配 V2 第 9 阶段下游渠道接口（进行中）
+
+- 用户要求继续余下步骤。按阶段纪律继续第 9 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_008_phase9_channel_api.php`，新增 `mc_pa2_channel_clients`、`mc_pa2_channel_package_snapshots`、`mc_pa2_channel_cache`、`mc_pa2_channel_access_logs`、`mc_pa2_channel_order_snapshots`。
+- 第 9 阶段 API 状态更新为 `phase=9`，新增 `channel_clients`、`channel_packages`、`channel_package_detail`、`channel_order_snapshot`。
+- 下游接口使用 HMAC-SHA256 签名，密钥从环境变量读取；只返回 `published` 配置包和 `published` 活动版本，草稿不暴露。
+- `index.php?view=publish` 新增渠道发布页，显示客户端、签名说明、接口、缓存/快照/日志和配置包下游可见状态。
+- 新增文档 `adaptation_v2/docs/09_CHANNEL_API.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase9_contract.php`。
+- 当前正在做本地静态检查、候选服务器语法/契约测试，随后再提交、推送、部署和正式服务器迁移。
+
+## 上次：产品适配 V2 第 8 阶段配置包中心（已发布）
 
 - 用户要求继续余下步骤。按阶段纪律继续第 8 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -15,7 +26,7 @@
 - 数据库：正式服务器当前 `mc_pa2_config_packages=4`、`mc_pa2_config_package_versions=4`、`mc_pa2_config_package_groups=17`、`mc_pa2_config_package_options=13`、`mc_pa2_schema_migrations=7`。
 - 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 8 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase8_contract.php` 全部通过；`home`、`packages` 页面 CLI 渲染无 Fatal；API `status` 返回 `phase=8`；四个配置包预览检查均通过。
 - 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
-- 待下一阶段：第 9 阶段商务中心/新加坡网站下游读取接口、签名、缓存、版本和订单快照。
+- 待下一阶段：第 10 阶段迁移、全量测试和最终切换评估；未满足条件前不切正式菜单。
 
 ## 上次：产品适配 V2 第 7 阶段产品差异、审批和版本（已发布）
 

@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 8,
-            'phase_name' => '配置包中心',
+            'phase' => 9,
+            'phase_name' => '下游渠道接口',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -73,6 +73,10 @@ try {
                 'package_option_save',
                 'package_preview',
                 'package_publish',
+                'channel_clients',
+                'channel_packages',
+                'channel_package_detail',
+                'channel_order_snapshot',
             ],
             'routes' => [
                 '/material_center_v1/adaptation_v2/index.php?view=home',
@@ -83,6 +87,7 @@ try {
                 '/material_center_v1/adaptation_v2/index.php?view=rules',
                 '/material_center_v1/adaptation_v2/index.php?view=workspace',
                 '/material_center_v1/adaptation_v2/index.php?view=packages',
+                '/material_center_v1/adaptation_v2/index.php?view=publish',
             ],
         ]);
         exit;
@@ -286,6 +291,41 @@ try {
         exit;
     }
 
+    if ($action === 'channel_clients') {
+        pa2_require_any(['adaptation_v2.manage_channel', 'material_center.adaptation.manage'], '没有查看渠道客户端的权限。');
+        pa2_json_response(['clients' => pa2_channel_clients()]);
+        exit;
+    }
+
+    if ($action === 'channel_packages') {
+        $raw = file_get_contents('php://input') ?: '';
+        $context = pa2_channel_auth_context($raw);
+        $payload = pa2_channel_published_packages((string)$context['client']['channel_code']);
+        pa2_channel_log($action, $context, 200, 'ok', $_GET, $payload);
+        pa2_json_response($payload, '已读取已发布配置包');
+        exit;
+    }
+
+    if ($action === 'channel_package_detail') {
+        $raw = file_get_contents('php://input') ?: '';
+        $context = pa2_channel_auth_context($raw);
+        $packageCode = (string)($_GET['package_code'] ?? '');
+        $payload = pa2_channel_published_package_detail((string)$context['client']['channel_code'], $packageCode);
+        pa2_channel_log($action, $context, 200, 'ok', $_GET, $payload);
+        pa2_json_response($payload, '已读取已发布配置包详情');
+        exit;
+    }
+
+    if ($action === 'channel_order_snapshot') {
+        $raw = file_get_contents('php://input') ?: '';
+        $context = pa2_channel_auth_context($raw);
+        $data = pa2_request_data();
+        $payload = pa2_channel_order_snapshot($data, $context);
+        pa2_channel_log($action, $context, 200, 'ok', $data, $payload);
+        pa2_json_response($payload, '下游订单快照已保存');
+        exit;
+    }
+
     if ($action === 'templates') {
         pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看产品适配 V2 的权限。');
         pa2_json_response(['templates' => pa2_fetch_templates()]);
@@ -358,12 +398,15 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_save','material_candidates','packages','package_detail','package_save','package_version_prepare','package_group_save','package_option_save','package_preview','package_publish','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback','product_group_save','material_candidates','packages','package_detail','package_save','package_version_prepare','package_group_save','package_option_save','package_preview','package_publish','channel_clients','channel_packages','channel_package_detail','channel_order_snapshot','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],
         404
     );
 } catch (Throwable $e) {
+    if (str_starts_with($action, 'channel_')) {
+        pa2_channel_log($action, null, 400, $e->getMessage(), $_GET, []);
+    }
     pa2_json_response([], $e->getMessage(), false, ['PA2_API_ERROR'], 400);
 }

@@ -421,3 +421,42 @@
 - 正式服务器 API 状态返回 `phase=8`、`phase_name=配置包中心`，并包含 `package_publish`。
 - 正式服务器数据库核验：`mc_pa2_config_packages=4`、`mc_pa2_config_package_versions=4`、`mc_pa2_config_package_groups=17`、`mc_pa2_config_package_options=13`、`mc_pa2_schema_migrations=7`。
 - 正式服务器配置包预览核验：Commercial Flexible、Singapore Standard、Singapore DALI、Singapore Ready Stock 均有 `draft-1` 版本；Ready Stock 锁定组 4 个；Standard 范围限定组 2 个；DALI 锁定组 2 个；四个包的预览检查均通过。
+
+## 2026-08-01 第 9 阶段：下游渠道接口
+
+执行范围：
+
+- 用户要求继续余下步骤。
+- 本阶段开发 V2 下游只读接口，为商务中心和新加坡网站接入准备。
+- 本阶段仍不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_008_phase9_channel_api.php`。
+- 新增 `mc_pa2_channel_clients`、`mc_pa2_channel_package_snapshots`、`mc_pa2_channel_cache`、`mc_pa2_channel_access_logs`、`mc_pa2_channel_order_snapshots`。
+- 首批渠道客户端：`commercial_center`、`singapore_site`。
+- 签名机制：`X-PA2-Client`、`X-PA2-Timestamp`、`X-PA2-Signature`，HMAC-SHA256，密钥从服务器环境变量读取。
+- 下游接口只读 `published` 配置包和 `published` 活动版本，不暴露草稿。
+- API 新增 `channel_clients`、`channel_packages`、`channel_package_detail`、`channel_order_snapshot`。
+- 新增渠道缓存、发布包载荷快照、访问日志、订单配置快照。
+- 页面新增渠道发布状态页，显示客户端、接口、签名方式、缓存/快照/日志和配置包下游可见状态。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_008_phase9_channel_api.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/09_CHANNEL_API.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase9_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 9 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。
