@@ -459,4 +459,16 @@
 
 测试记录：
 
-- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。
+- 本地 `git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase9_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 9 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase9_contract.php` 通过。
+- 发布提交 `caa9d39bbffbea25339f10e5db743dd47b01f9f8` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_008_phase9_channel_api`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 9 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase9_contract.php` 通过。
+- 正式服务器页面渲染通过：`publish`。
+- 正式服务器 API 状态返回 `phase=9`，并包含 `channel_packages`。
+- 正式服务器数据库核验：`mc_pa2_channel_clients=2`、`mc_pa2_schema_migrations=8`。
+- 下游只读核验：`commercial_visible=0`、`singapore_visible=0`，原因是第 8 阶段首批配置包仍为草稿；接口按规则不暴露草稿。
+- 缓存核验：调用只读函数后 `mc_pa2_channel_cache=2`。
+- 签名核验：未签名访问 `channel_packages` 返回失败，消息为“缺少渠道签名。”，并写入访问日志，`mc_pa2_channel_access_logs=1`。

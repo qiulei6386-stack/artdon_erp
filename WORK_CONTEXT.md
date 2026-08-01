@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 9 阶段下游渠道接口（进行中）
+## 本次：产品适配 V2 第 9 阶段下游渠道接口（已发布）
 
 - 用户要求继续余下步骤。按阶段纪律继续第 9 阶段，后续阶段可连续推进但必须单独迁移、测试、提交和记录。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -9,7 +9,13 @@
 - 下游接口使用 HMAC-SHA256 签名，密钥从环境变量读取；只返回 `published` 配置包和 `published` 活动版本，草稿不暴露。
 - `index.php?view=publish` 新增渠道发布页，显示客户端、签名说明、接口、缓存/快照/日志和配置包下游可见状态。
 - 新增文档 `adaptation_v2/docs/09_CHANNEL_API.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase9_contract.php`。
-- 当前正在做本地静态检查、候选服务器语法/契约测试，随后再提交、推送、部署和正式服务器迁移。
+- 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase9_candidate/` 对候选文件做 PHP 语法检查和契约测试，全部通过。
+- 发布：第 9 阶段功能提交 `caa9d39bbffbea25339f10e5db743dd47b01f9f8` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_008_phase9_channel_api`。
+- 数据库：正式服务器当前 `mc_pa2_channel_clients=2`、`mc_pa2_channel_cache=2`、`mc_pa2_channel_access_logs=1`、`mc_pa2_schema_migrations=8`。包快照和订单快照尚为 0，需发布配置包并产生下游订单后写入。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 9 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase9_contract.php` 全部通过；`publish` 页面 CLI 渲染无 Fatal；API `status` 返回 `phase=9`；未签名访问被拒绝并写访问日志。
+- 下游只读核验：`commercial_visible=0`、`singapore_visible=0`，原因是第 8 阶段首批配置包仍为草稿；接口按规则不暴露草稿。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 待下一阶段：第 10 阶段迁移、全量测试和最终切换评估；未满足条件前不切正式菜单。
 
 ## 上次：产品适配 V2 第 8 阶段配置包中心（已发布）
 
