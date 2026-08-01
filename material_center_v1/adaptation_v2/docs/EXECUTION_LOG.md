@@ -410,4 +410,14 @@
 
 测试记录：
 
-- 待本地契约、候选服务器 PHP 语法、正式服务器迁移和回归验证后补充。
+- 本地 `git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase8_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 8 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase8_contract.php` 通过。
+- 发布提交 `4990059429e3132f552e79743927bde01aa54a3d` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_007_phase8_packages`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 8 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase8_contract.php` 通过。
+- 正式服务器页面渲染通过：`home`、`packages`。
+- 正式服务器 API 状态返回 `phase=8`、`phase_name=配置包中心`，并包含 `package_publish`。
+- 正式服务器数据库核验：`mc_pa2_config_packages=4`、`mc_pa2_config_package_versions=4`、`mc_pa2_config_package_groups=17`、`mc_pa2_config_package_options=13`、`mc_pa2_schema_migrations=7`。
+- 正式服务器配置包预览核验：Commercial Flexible、Singapore Standard、Singapore DALI、Singapore Ready Stock 均有 `draft-1` 版本；Ready Stock 锁定组 4 个；Standard 范围限定组 2 个；DALI 锁定组 2 个；四个包的预览检查均通过。
