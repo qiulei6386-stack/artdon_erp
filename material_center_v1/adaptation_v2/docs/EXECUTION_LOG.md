@@ -210,4 +210,13 @@
 
 测试记录：
 
-- 待本地静态检查、服务器 PHP 语法检查、迁移、阶段契约和页面渲染验证后补充。
+- 本地 `git diff --check` 通过。
+- 旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。
+- 候选文件已复制到服务器 `/tmp/artdon_pa2_phase4_candidate/` 检查，PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 4 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase4_contract.php` 通过。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_003_phase4_group_rules`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 4 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase4_contract.php` 通过。
+- 正式服务器页面渲染通过：`home`、`groups`、`rules`、`templates`、`logs`。
+- 正式服务器只读核验：`mc_pa2_group_behavior_settings=16`、`mc_pa2_rule_definitions=9`、`mc_pa2_group_option_definitions=18`、`mc_pa2_template_groups=17`、`mc_pa2_schema_migrations=3`。
+- 正式服务器规则循环检测：`cycle_count=0`、`phase4_rules=9`。
