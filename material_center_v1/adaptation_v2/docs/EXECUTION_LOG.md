@@ -597,6 +597,40 @@
 - 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/lib/foundation.php`。
 - 本地抽取页面内嵌 JavaScript 做语法检查通过。
 
+## 2026-08-01 单产品工作台配置逻辑弹窗
+
+执行范围：
+
+- 用户询问当前产品如何设置电源逻辑、芯片逻辑，并确认开始制作。
+- 本次只修改 V2 单产品配置工作台、V2 API 和 V2 适配引擎。
+- 不修改旧版产品适配业务、不修改旧 BOM、不修改模板本体。
+
+完成内容：
+
+- 单产品工作台的物料配置卡新增“设置逻辑”按钮。
+- 新增“设置配置逻辑”弹窗，支持回填和保存当前产品级覆盖：
+  - 是否必选、单选/多选、最少/最多选择、是否允许为空；
+  - 物料分类、只用正式物料、关键词过滤；
+  - 电源类型：外置、内置、INTRACK；
+  - 功率范围、电流范围、电压范围、调光方式；
+  - 芯片色温、最低 CRI；
+  - 光学光束角和备注。
+- 新增 API 动作 `product_group_logic_save`。
+- 产品级逻辑保存到 `mc_pa2_product_group_configs.effective_settings_json` 的 `product_logic` / `behavior.material_filter`，只影响当前产品草稿。
+- 保存后自动重新计算当前产品适配结果。
+- 适配引擎新增读取产品级逻辑：
+  - 电源按产品级功率、电流、电压、内置/外置/INTRACK、调光方式判断；
+  - 芯片按产品级功率、色温、CRI 判断；
+  - 光学按产品级光束角判断。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 本地抽取页面内嵌 JavaScript 做语法检查通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/lib/foundation.php`。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/api/index.php`。
+
 ## 2026-08-01 单产品添加配置模板处理方式
 
 执行范围：

@@ -208,6 +208,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
+.pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(860px,92vw)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
 </style>
@@ -937,12 +938,25 @@ include MC_ROOT . '/components/layout_top.php';
                     <?php foreach ($wpGroups as $g): ?>
                         <?php
                             $settings = $g['effective_settings'] ?? [];
+                            $productLogic = isset($settings['product_logic']) && is_array($settings['product_logic']) ? $settings['product_logic'] : [];
                             $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
                             $selected = $g['selected_options'] ?? [];
                             $selectedMaterialIds = array_values(array_filter(array_map(static fn($s) => (int)($s['material_id'] ?? 0), $selected)));
                             $selectionMode = (string)($settings['selection_mode'] ?? 'single');
                             $maxSelect = (int)($settings['max_select'] ?? 1);
                             $materialPickerMax = $maxSelect > 1 ? $maxSelect : 99;
+                            $allowEmpty = (int)($settings['allow_empty'] ?? ($required ? 0 : 1));
+                            $behavior = isset($settings['behavior']) && is_array($settings['behavior']) ? $settings['behavior'] : [];
+                            $materialFilter = isset($behavior['material_filter']) && is_array($behavior['material_filter']) ? $behavior['material_filter'] : [];
+                            $logicTags = [];
+                            if (($materialFilter['driver_type'] ?? '') !== '') $logicTags[] = ['internal'=>'内置电源','external'=>'外置电源','intrack'=>'INTRACK 电源'][(string)$materialFilter['driver_type']] ?? (string)$materialFilter['driver_type'];
+                            if (($materialFilter['formal_status'] ?? '') === 'official') $logicTags[] = '只用正式物料';
+                            if (isset($productLogic['power_max_w'])) $logicTags[] = '功率≤'.$productLogic['power_max_w'].'W';
+                            if (isset($productLogic['current_min_ma'],$productLogic['current_max_ma'])) $logicTags[] = '电流 '.$productLogic['current_min_ma'].'-'.$productLogic['current_max_ma'].'mA';
+                            if (isset($productLogic['voltage_min_v'],$productLogic['voltage_max_v'])) $logicTags[] = '电压 '.$productLogic['voltage_min_v'].'-'.$productLogic['voltage_max_v'].'V';
+                            if (isset($productLogic['cct_k'])) $logicTags[] = '色温 '.$productLogic['cct_k'].'K';
+                            if (isset($productLogic['cri_min'])) $logicTags[] = 'CRI≥'.$productLogic['cri_min'];
+                            if (isset($productLogic['beam_angle'])) $logicTags[] = '光束角 '.$productLogic['beam_angle'].'°';
                             $done = count($selected) > 0;
                             $sourceMode = (string)($g['source_mode'] ?? '');
                             $selectionKind = (string)($g['selection_kind'] ?? '');
@@ -976,10 +990,16 @@ include MC_ROOT . '/components/layout_top.php';
                                     <small>尚未计算。保存选择或点击底部“重新计算”后生成结论。</small>
                                 <?php endif; ?>
                             </div>
+                            <?php if ($logicTags): ?>
+                                <div class="pa2-logic-tags"><?php foreach ($logicTags as $tag): ?><span><?=mc_h($tag)?></span><?php endforeach; ?></div>
+                            <?php endif; ?>
                             <?php if (!$wpCanEditVersion): ?>
                                 <span class="pa2-muted">当前版本已锁定，如需修改请生成下一版草稿。</span>
                             <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
-                                <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
+                                <div class="pa2-card-actions">
+                                    <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>">设置逻辑</button>
+                                    <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
+                                </div>
                             <?php elseif (($definition['options'] ?? [])): ?>
                                 <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
                                     <input type="hidden" name="product_group_config_id" value="<?=intval($g['id'])?>">
@@ -1067,6 +1087,47 @@ include MC_ROOT . '/components/layout_top.php';
                     <?php endif; ?>
                 <?php endif; ?>
             </section>
+            <dialog class="pa2-dialog pa2-dialog--logic" id="pa2-group-logic-dialog">
+                <div class="pa2-dialog__head">
+                    <div><strong id="pa2-group-logic-title">设置配置逻辑</strong><p class="pa2-muted" id="pa2-group-logic-subtitle">只保存到当前产品草稿，不修改模板和旧 BOM。</p></div>
+                    <button class="mc-button" type="button" data-close-group-logic>关闭</button>
+                </div>
+                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_logic_save'))?>">
+                    <input type="hidden" name="product_group_config_id">
+                    <div class="pa2-dialog__body">
+                        <div class="pa2-dialog-hint">这里设置的是“这个产品”的判断逻辑：例如嵌入式灯具只要外置电源、芯片要求 CRI90、电源电流要覆盖 250–300mA。保存后会立即重新计算当前候选结果。</div>
+                        <div class="pa2-logic-form">
+                            <div class="pa2-logic-section">基础规则</div>
+                            <label><span>是否必选</span><select name="is_required"><option value="1">必选</option><option value="0">可选</option></select></label>
+                            <label><span>选择方式</span><select name="selection_mode"><option value="single">单选</option><option value="multiple">多选</option></select></label>
+                            <label><span>最少选择</span><input type="number" min="0" name="min_select"></label>
+                            <label><span>最多选择</span><input type="number" min="1" name="max_select"></label>
+                            <label><span>允许为空</span><select name="allow_empty"><option value="1">允许</option><option value="0">不允许</option></select></label>
+                            <label><span>物料分类</span><select name="material_category_code"><option value="">不限定</option><?php foreach ($pa2MaterialCategoryLabels as $code=>$label): ?><option value="<?=mc_h($code)?>"><?=mc_h($label)?></option><?php endforeach; ?></select></label>
+                            <label><span>只用正式物料</span><select name="require_official"><option value="1">是</option><option value="0">否</option></select></label>
+                            <label><span>关键词过滤</span><input name="keyword" placeholder="例如 外置 / CREE / 透镜"></label>
+                            <div class="pa2-logic-section">电源逻辑</div>
+                            <label><span>电源类型</span><select name="driver_type"><option value="">不限定</option><option value="external">只要外置电源</option><option value="internal">只要内置电源</option><option value="intrack">只要 INTRACK 电源</option></select></label>
+                            <label><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
+                            <label><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
+                            <label><span>调光方式</span><input name="dimming_mode" placeholder="例如 DALI / 0-10V"></label>
+                            <label><span>电流下限 mA</span><input type="number" step="0.01" min="0" name="current_min_ma"></label>
+                            <label><span>电流上限 mA</span><input type="number" step="0.01" min="0" name="current_max_ma"></label>
+                            <label><span>电压下限 V</span><input type="number" step="0.01" min="0" name="voltage_min_v"></label>
+                            <label><span>电压上限 V</span><input type="number" step="0.01" min="0" name="voltage_max_v"></label>
+                            <div class="pa2-logic-section">芯片 / 光学逻辑</div>
+                            <label><span>色温 K</span><input type="number" min="1000" max="20000" name="cct_k"></label>
+                            <label><span>最低显指 CRI</span><input type="number" step="0.1" min="0" max="100" name="cri_min"></label>
+                            <label><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
+                            <label class="wide"><span>备注</span><input name="note" placeholder="说明这条产品级逻辑的原因"></label>
+                        </div>
+                    </div>
+                    <div class="pa2-dialog__foot">
+                        <span class="pa2-muted">产品级覆盖只影响当前草稿；要沉淀为通用规则，可后续再同步到模板。</span>
+                        <div class="pa2-picker-actions"><button class="mc-button" type="button" data-close-group-logic>取消</button><button class="mc-button mc-button--primary" type="submit">保存并重新计算</button></div>
+                    </div>
+                </form>
+            </dialog>
             <dialog class="pa2-dialog" id="pa2-material-dialog">
                 <div class="pa2-dialog__head"><div><strong id="pa2-material-title">选择正式物料</strong><p class="pa2-muted">每条候选会即时显示完全适配、条件适配、需要审批或不适配，并给出明确原因。</p></div><button class="mc-button" type="button" data-close-material-picker>关闭</button></div>
                 <div class="pa2-dialog__body">
@@ -1571,6 +1632,54 @@ function pa2SetField(form,name,value){
     btn.addEventListener('click',()=>pa2OpenDialog(dialog));
   });
   document.querySelectorAll('[data-close-workspace-template]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-group-logic-dialog');
+  const form=dialog?dialog.querySelector('form'):null;
+  const title=document.getElementById('pa2-group-logic-title');
+  const subtitle=document.getElementById('pa2-group-logic-subtitle');
+  if(!dialog||!form)return;
+  function parseJsonAttr(btn,name){
+    try{
+      const raw=btn.getAttribute(name)||'{}';
+      const value=JSON.parse(raw);
+      return value&&typeof value==='object'?value:{};
+    }catch(err){return {};}
+  }
+  function value(obj,key,def=''){
+    return obj&&Object.prototype.hasOwnProperty.call(obj,key)?obj[key]:def;
+  }
+  document.querySelectorAll('[data-open-group-logic]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      form.reset();
+      const groupCode=btn.getAttribute('data-group-code')||'';
+      const filter=parseJsonAttr(btn,'data-material-filter');
+      const logic=parseJsonAttr(btn,'data-product-logic');
+      pa2SetField(form,'product_group_config_id',btn.getAttribute('data-group-id')||'');
+      pa2SetField(form,'is_required',btn.getAttribute('data-is-required')||'0');
+      pa2SetField(form,'selection_mode',btn.getAttribute('data-selection-mode')||'single');
+      pa2SetField(form,'min_select',btn.getAttribute('data-min-select')||'0');
+      pa2SetField(form,'max_select',btn.getAttribute('data-max-select')||'1');
+      pa2SetField(form,'allow_empty',btn.getAttribute('data-allow-empty')||'1');
+      pa2SetField(form,'material_category_code',btn.getAttribute('data-material-category-code')||'');
+      pa2SetField(form,'require_official',value(filter,'formal_status','official')==='official'?'1':'0');
+      pa2SetField(form,'keyword',value(filter,'keyword',''));
+      let driverType=value(filter,'driver_type','');
+      if(!driverType&&groupCode==='external_driver')driverType='external';
+      if(!driverType&&groupCode==='intrack_driver')driverType='intrack';
+      if(!driverType&&groupCode==='driver')driverType='';
+      pa2SetField(form,'driver_type',driverType);
+      ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','note'].forEach((key)=>{
+        pa2SetField(form,key,value(logic,key,''));
+      });
+      if(title) title.textContent='设置逻辑 · '+(btn.getAttribute('data-group-name')||groupCode);
+      if(subtitle) subtitle.textContent='当前产品级覆盖，不修改模板：'+(groupCode||'配置组');
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-group-logic]').forEach((btn)=>{
     btn.addEventListener('click',()=>pa2CloseDialog(dialog));
   });
 })();

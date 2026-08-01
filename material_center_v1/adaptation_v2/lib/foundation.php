@@ -1422,6 +1422,109 @@ function pa2_evaluate_material_candidate_for_group(int $productId, int $productG
     ]);
 }
 
+function pa2_input_float_or_null(array $input, string $key): ?float
+{
+    if (!array_key_exists($key, $input)) return null;
+    $value = trim((string)$input[$key]);
+    if ($value === '') return null;
+    if (!is_numeric($value)) throw new RuntimeException('字段 ' . $key . ' 必须是数字。');
+    return (float)$value;
+}
+
+function pa2_save_product_group_logic(array $input): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有保存产品配置逻辑的权限。');
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $groupConfigId = (int)($input['product_group_config_id'] ?? 0);
+    if ($groupConfigId <= 0) throw new RuntimeException('配置组不能为空。');
+    $groupStmt = pa2_db()->prepare(
+        'SELECT pg.*, pc.product_id
+         FROM mc_pa2_product_group_configs pg
+         JOIN mc_pa2_product_config_versions v ON v.id=pg.product_config_version_id
+         JOIN mc_pa2_product_configs pc ON pc.id=v.product_config_id
+         WHERE pg.id=? LIMIT 1'
+    );
+    $groupStmt->execute([$groupConfigId]);
+    $group = $groupStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) throw new RuntimeException('产品配置组不存在。');
+    $version = pa2_fetch_version((int)$group['product_config_version_id']);
+    if (!$version || !in_array((string)$version['status'], ['draft','rejected'], true)) {
+        throw new RuntimeException('当前版本已提交、审批或发布，请先生成新的草稿再修改。');
+    }
+    $settings = pa2_json_decode_array($group['effective_settings_json'] ?? '');
+    $before = $settings;
+    $selectionMode = trim((string)($input['selection_mode'] ?? ($settings['selection_mode'] ?? 'single')));
+    if (!in_array($selectionMode, ['single','multiple'], true)) $selectionMode = 'single';
+    $minSelect = max(0, (int)($input['min_select'] ?? ($settings['min_select'] ?? 0)));
+    $maxSelect = max($minSelect, (int)($input['max_select'] ?? ($settings['max_select'] ?? ($selectionMode === 'multiple' ? 99 : 1))));
+    if ($selectionMode === 'single') $maxSelect = 1;
+    $settings['is_required'] = !empty($input['is_required']) ? 1 : 0;
+    $settings['selection_mode'] = $selectionMode;
+    $settings['min_select'] = $minSelect;
+    $settings['max_select'] = $maxSelect;
+    $settings['allow_empty'] = isset($input['allow_empty']) ? (int)$input['allow_empty'] : ($settings['is_required'] ? 0 : 1);
+
+    $behavior = isset($settings['behavior']) && is_array($settings['behavior']) ? $settings['behavior'] : [];
+    $materialCategory = trim((string)($input['material_category_code'] ?? ''));
+    if ($materialCategory !== '') $behavior['material_category_code'] = $materialCategory;
+    $filter = isset($behavior['material_filter']) && is_array($behavior['material_filter']) ? $behavior['material_filter'] : [];
+    if (!empty($input['require_official'])) $filter['formal_status'] = 'official';
+    else unset($filter['formal_status']);
+    $keyword = trim((string)($input['keyword'] ?? ''));
+    if ($keyword !== '') $filter['keyword'] = $keyword;
+    else unset($filter['keyword']);
+    $driverType = trim((string)($input['driver_type'] ?? ''));
+    if ($driverType !== '') $filter['driver_type'] = $driverType;
+    else unset($filter['driver_type']);
+    $behavior['material_filter'] = $filter;
+    $settings['behavior'] = $behavior;
+
+    $logic = [
+        'power_min_w' => pa2_input_float_or_null($input, 'power_min_w'),
+        'power_max_w' => pa2_input_float_or_null($input, 'power_max_w'),
+        'current_min_ma' => pa2_input_float_or_null($input, 'current_min_ma'),
+        'current_max_ma' => pa2_input_float_or_null($input, 'current_max_ma'),
+        'voltage_min_v' => pa2_input_float_or_null($input, 'voltage_min_v'),
+        'voltage_max_v' => pa2_input_float_or_null($input, 'voltage_max_v'),
+        'cct_k' => pa2_input_float_or_null($input, 'cct_k'),
+        'cri_min' => pa2_input_float_or_null($input, 'cri_min'),
+        'beam_angle' => pa2_input_float_or_null($input, 'beam_angle'),
+        'dimming_mode' => trim((string)($input['dimming_mode'] ?? '')),
+        'note' => trim((string)($input['note'] ?? '')),
+        'updated_at' => date('Y-m-d H:i:s'),
+        'updated_by' => pa2_current_user_id(),
+    ];
+    foreach ($logic as $key => $value) {
+        if ($value === null || $value === '') unset($logic[$key]);
+    }
+    if (isset($logic['power_min_w'], $logic['power_max_w']) && (float)$logic['power_min_w'] > (float)$logic['power_max_w']) {
+        throw new RuntimeException('功率下限不能大于功率上限。');
+    }
+    if (isset($logic['current_min_ma'], $logic['current_max_ma']) && (float)$logic['current_min_ma'] > (float)$logic['current_max_ma']) {
+        throw new RuntimeException('电流下限不能大于电流上限。');
+    }
+    if (isset($logic['voltage_min_v'], $logic['voltage_max_v']) && (float)$logic['voltage_min_v'] > (float)$logic['voltage_max_v']) {
+        throw new RuntimeException('电压下限不能大于电压上限。');
+    }
+    $settings['product_logic'] = $logic;
+    $userId = pa2_current_user_id();
+    pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET effective_settings_json=?,is_overridden=1,override_source="product_logic",updated_by=?,updated_at=NOW() WHERE id=?')
+        ->execute([pa2_json_encode($settings), $userId, $groupConfigId]);
+    pa2_log('workspace_group_logic_save', 'product_group_config', $groupConfigId, $before, $settings);
+    if (pa2_engine_tables_ready()) {
+        try {
+            pa2_calculate_workspace((int)$group['product_id'], true);
+        } catch (Throwable $e) {
+            pa2_log('workspace_recalculate_after_logic_failed', 'product_group_config', $groupConfigId, [], ['error' => $e->getMessage()]);
+        }
+    }
+    $detail = pa2_workspace_detail((int)$group['product_id']);
+    foreach ((array)($detail['groups'] ?? []) as $row) {
+        if ((int)$row['id'] === $groupConfigId) return $row;
+    }
+    return ['id' => $groupConfigId, 'effective_settings' => $settings];
+}
+
 function pa2_save_product_group_selection(array $input): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有保存产品配置的权限。');
@@ -1713,6 +1816,7 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
     $required = !empty($settings['is_required']) || !empty($settings['is_required_default']) || !empty($behavior['is_required_default']);
     $groupCode = (string)($group['group_code'] ?? '');
     $technical = (array)($context['technical_range'] ?? []);
+    $logic = isset($settings['product_logic']) && is_array($settings['product_logic']) ? $settings['product_logic'] : [];
     $selection = (array)($context['selection'] ?? []);
     $type = (string)($selection['option_type'] ?? ($candidate ? 'material' : ''));
 
@@ -1779,8 +1883,8 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
                 break;
             }
         }
-        $productMax = $technical['power_max_w'] ?? null;
-        $productMin = $technical['power_min_w'] ?? null;
+        $productMax = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
+        $productMin = $logic['power_min_w'] ?? ($technical['power_min_w'] ?? null);
         if ($productMax !== null && $maxPower !== null) {
             if ((float)$productMax > $maxPower) {
                 return pa2_result('incompatible', 25, ["产品最大功率 {$productMax}W 高于电源可输出 {$maxPower}W。"], ['power_max_w','max_output_power_w'], $trace + ['failed' => 'power_range']);
@@ -1799,14 +1903,26 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             $fields[] = $productMax === null ? 'product.power' : 'power.max_output_power_w';
             $reasons[] = $productMax === null ? '产品缺少功率范围，暂按条件适配处理。' : '电源缺少最大输出功率，暂按条件适配处理。';
         }
-        $productCurrent = $technical['current_max_ma'] ?? null;
+        $productCurrent = $logic['current_max_ma'] ?? ($technical['current_max_ma'] ?? null);
+        $productCurrentMin = $logic['current_min_ma'] ?? ($technical['current_min_ma'] ?? null);
         $currentMin = isset($spec['output_current_min_ma']) && $spec['output_current_min_ma'] !== null ? (float)$spec['output_current_min_ma'] : null;
         $currentMax = isset($spec['output_current_max_ma']) && $spec['output_current_max_ma'] !== null ? (float)$spec['output_current_max_ma'] : null;
         if ($productCurrent !== null && $currentMin !== null && $currentMax !== null) {
-            if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax) {
-                return pa2_result('incompatible', 30, ["产品电流 {$productCurrent}mA 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
+            if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax || ($productCurrentMin !== null && (float)$productCurrentMin < $currentMin)) {
+                $needText = $productCurrentMin !== null ? "{$productCurrentMin}-{$productCurrent}mA" : "{$productCurrent}mA";
+                return pa2_result('incompatible', 30, ["产品电流要求 {$needText} 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
             }
             $reasons[] = "输出电流范围覆盖产品需求（{$currentMin}-{$currentMax}mA）。";
+        }
+        $needVoltMin = $logic['voltage_min_v'] ?? null;
+        $needVoltMax = $logic['voltage_max_v'] ?? null;
+        $outVoltMin = isset($spec['output_voltage_min_v']) && $spec['output_voltage_min_v'] !== null ? (float)$spec['output_voltage_min_v'] : null;
+        $outVoltMax = isset($spec['output_voltage_max_v']) && $spec['output_voltage_max_v'] !== null ? (float)$spec['output_voltage_max_v'] : null;
+        if ($needVoltMin !== null && $needVoltMax !== null && $outVoltMin !== null && $outVoltMax !== null) {
+            if ((float)$needVoltMin < $outVoltMin || (float)$needVoltMax > $outVoltMax) {
+                return pa2_result('incompatible', 30, ["产品电压要求 {$needVoltMin}-{$needVoltMax}V 不在电源输出电压 {$outVoltMin}-{$outVoltMax}V 范围内。"], ['output_voltage_range'], $trace + ['failed' => 'voltage_range']);
+            }
+            $reasons[] = "输出电压范围覆盖产品需求（{$outVoltMin}-{$outVoltMax}V）。";
         }
         $driverType = (string)($filter['driver_type'] ?? '');
         if ($driverType === 'intrack' && mb_stripos($text, 'intrack') === false) {
@@ -1821,8 +1937,26 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             $fields[] = 'installation_type';
             $reasons[] = '规则要求外置电源，候选安装方式未明确。';
         }
+        if ($driverType === 'internal' && !preg_match('/internal|内置|built[ -]?in/u', $text)) {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 80);
+            $fields[] = 'installation_type';
+            $reasons[] = '规则要求内置电源，候选安装方式未明确。';
+        }
+        $dimming = trim((string)($logic['dimming_mode'] ?? ''));
+        if ($dimming !== '') {
+            $dimmingText = mb_strtolower(pa2_flatten_text($material['dimming_modes'] ?? []) . ' ' . $text);
+            if (mb_stripos($dimmingText, mb_strtolower($dimming)) === false) {
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 78);
+                $fields[] = 'dimming_mode';
+                $reasons[] = "规则要求调光方式 {$dimming}，候选未明确匹配。";
+            } else {
+                $reasons[] = "调光方式 {$dimming} 匹配。";
+            }
+        }
     } elseif ($category === 'chip') {
-        $productPower = $technical['power_max_w'] ?? null;
+        $productPower = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
         $chipMax = null;
         foreach (['max_power_w','rated_power_w'] as $key) {
             if (isset($spec[$key]) && $spec[$key] !== null && (float)$spec[$key] > 0) {
@@ -1841,16 +1975,23 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             $fields[] = $productPower === null ? 'product.power' : 'chip.power';
             $reasons[] = '产品或芯片功率资料不完整，需按条件适配确认。';
         }
-        if (($technical['cct_values_k'] ?? []) && isset($spec['cct_min_k'],$spec['cct_max_k']) && $spec['cct_min_k'] !== null && $spec['cct_max_k'] !== null) {
-            foreach ((array)$technical['cct_values_k'] as $cct) {
+        $requiredCcts = isset($logic['cct_k']) ? [(int)$logic['cct_k']] : (array)($technical['cct_values_k'] ?? []);
+        if ($requiredCcts && isset($spec['cct_min_k'],$spec['cct_max_k']) && $spec['cct_min_k'] !== null && $spec['cct_max_k'] !== null) {
+            foreach ($requiredCcts as $cct) {
                 if ($cct < (int)$spec['cct_min_k'] || $cct > (int)$spec['cct_max_k']) {
                     return pa2_result('incompatible', 45, ["产品色温 {$cct}K 不在芯片色温范围 {$spec['cct_min_k']}-{$spec['cct_max_k']}K。"], ['cct'], $trace + ['failed' => 'cct']);
                 }
             }
             $reasons[] = '色温范围匹配。';
         }
+        if (isset($logic['cri_min']) && isset($spec['cri']) && $spec['cri'] !== null) {
+            if ((float)$spec['cri'] < (float)$logic['cri_min']) {
+                return pa2_result('incompatible', 42, ["产品要求 CRI≥{$logic['cri_min']}，芯片 CRI 为 {$spec['cri']}。"], ['cri'], $trace + ['failed' => 'cri']);
+            }
+            $reasons[] = "显指满足 CRI≥{$logic['cri_min']}。";
+        }
     } elseif ($category === 'optical') {
-        $beam = $technical['beam_angle_max'] ?? null;
+        $beam = $logic['beam_angle'] ?? ($technical['beam_angle_max'] ?? null);
         if ($beam !== null && isset($spec['beam_angle_min'],$spec['beam_angle_max']) && $spec['beam_angle_min'] !== null && $spec['beam_angle_max'] !== null) {
             if ((float)$beam < (float)$spec['beam_angle_min'] || (float)$beam > (float)$spec['beam_angle_max']) {
                 return pa2_result('incompatible', 38, ["产品光束角 {$beam}° 不在光学范围 {$spec['beam_angle_min']}-{$spec['beam_angle_max']}°。"], ['beam_angle'], $trace + ['failed' => 'beam_angle']);
