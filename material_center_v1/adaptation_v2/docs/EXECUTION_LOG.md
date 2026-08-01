@@ -309,4 +309,14 @@
 
 测试记录：
 
-- 待本地和正式服务器验证后补充。
+- 本地 `git diff --check` 通过；办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase6_candidate/` 对候选文件做 PHP 语法和契约测试。
+- 候选文件 PHP 语法通过：`index.php`、`api/index.php`、`foundation.php`、第 6 阶段迁移和新增契约测试。
+- 候选 `adaptation_v2_phase6_contract.php` 通过。
+- 发布提交 `e9bdf380b283bbf2657018e5eceb0cd02d21d175` 已推送 GitHub `main`，并用 Git bundle 快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_005_phase6_engine`。
+- 正式服务器 PHP 语法检查通过：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 6 阶段迁移、阶段契约测试。
+- 正式服务器 `adaptation_v2_phase6_contract.php` 通过。
+- 正式服务器页面渲染通过：`home`、`workspace`、`products`、`rules`、`logs`。
+- 正式服务器 API 状态返回 `phase=6`。
+- 正式服务器只读核验：`mc_pa2_adaptation_result_cache=0`、`mc_pa2_adaptation_conflicts=0`、`mc_pa2_adaptation_recalc_jobs=0`、`mc_pa2_schema_migrations=5`。结果缓存数为 0 是正常初始状态，用户对具体产品生成 V2 草稿并重新计算后才写入。
+- 正式服务器样品引擎只读核验：产品 `266` + 电源物料 `120198` 返回 `conditional_match` / `条件适配` / `76` 分，无 Fatal Error。

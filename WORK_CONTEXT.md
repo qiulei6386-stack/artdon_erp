@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 6 阶段适配计算和冲突引擎（进行中）
+## 本次：产品适配 V2 第 6 阶段适配计算和冲突引擎（已发布）
 
 - 用户要求继续第 6 步，并在完成后说明现在能验证什么。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -12,7 +12,12 @@
 - `api/index.php` 状态更新为 `phase=6`，新增动作 `workspace_recalculate`、`adaptation_results`，候选接口支持携带产品和配置组上下文返回即时适配结论。
 - `index.php` 工作台显示卡片结论、候选弹窗结论、底部统计和重算按钮。
 - 新增文档 `adaptation_v2/docs/06_ADAPTATION_ENGINE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase6_contract.php`。
-- 待收尾：本地检查、服务器候选语法检查、提交推送、正式服务器迁移和页面/接口复检。
+- 本地检查：`git diff --check` 通过；办公室电脑无 PHP，已使用服务器 `/tmp/artdon_pa2_phase6_candidate/` 对候选文件做 PHP 语法检查和契约测试，全部通过。
+- 发布：第 6 阶段功能提交 `e9bdf380b283bbf2657018e5eceb0cd02d21d175` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_005_phase6_engine`。
+- 数据库：正式服务器当前 `mc_pa2_adaptation_result_cache=0`、`mc_pa2_adaptation_conflicts=0`、`mc_pa2_adaptation_recalc_jobs=0`、`mc_pa2_schema_migrations=5`。结果缓存数为 0 是正常初始状态，用户对具体产品生成 V2 草稿并点击“重新计算”后才写入。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 6 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase6_contract.php` 全部通过；`home`、`workspace`、`products`、`rules`、`logs` 页面 CLI 渲染无 Fatal；API `status` 返回 `phase=6`；样品只读引擎核验：产品 `266` + 电源物料 `120198` 返回 `conditional_match` / `条件适配` / `76` 分。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 待下一阶段：第 7 阶段接产品差异、审批和版本；当前第 6 阶段不处理正式发布、审批流和下游配置包。
 
 ## 上次：产品适配 V2 第 5 阶段单产品配置工作台（已发布）
 
