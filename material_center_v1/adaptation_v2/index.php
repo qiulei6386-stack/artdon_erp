@@ -111,6 +111,11 @@ $pa2SelectionModeLabels = [
     'single' => '单选',
     'multiple' => '多选',
 ];
+$pa2InheritanceActionLabels = [
+    'add' => '新增',
+    'override' => '覆盖',
+    'disable' => '已移除',
+];
 $pa2MaterialCategoryLabels = [
     'chip' => '芯片 / 光源',
     'power_supply' => '电源 / 驱动',
@@ -672,7 +677,39 @@ include MC_ROOT . '/components/layout_top.php';
                     </form>
                     <?php endif; ?>
                     <div class="pa2-group-grid">
-                        <?php foreach ($selectedTemplateGroups as $g): ?><article class="pa2-group-card"><div><strong><?=mc_h($g['display_name'])?></strong><br><small><?=mc_h($g['group_code'])?> · <?=mc_h($g['inheritance_action'])?> · <?=($g['is_required']?'必选':'可选')?> · <?=mc_h($g['selection_mode'])?> · 排序 <?=intval($g['sort_order'])?></small></div><span class="pa2-badge pa2-badge--<?=mc_h($g['inheritance_action']==='disable'?'disable':($g['inheritance_action']==='override'?'override':'add'))?>"><?=mc_h($g['inheritance_action'])?></span></article><?php endforeach; ?>
+                        <?php foreach ($selectedTemplateGroups as $g): ?>
+                            <?php
+                                $templateGroupAction = (string)$g['inheritance_action'];
+                                $templateGroupBadge = $templateGroupAction === 'disable' ? 'disable' : ($templateGroupAction === 'override' ? 'override' : 'add');
+                                $templateGroupNextAction = $templateGroupAction === 'disable' ? 'add' : 'disable';
+                            ?>
+                            <article class="pa2-group-card">
+                                <div>
+                                    <strong><?=mc_h($g['display_name'])?></strong><br>
+                                    <small><?=mc_h($g['group_code'])?> · <?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?> · <?=($g['is_required']?'必选':'可选')?> · <?=mc_h($pa2SelectionModeLabels[$g['selection_mode']] ?? $g['selection_mode'])?> · 排序 <?=intval($g['sort_order'])?></small>
+                                </div>
+                                <div class="pa2-template-actions">
+                                    <span class="pa2-badge pa2-badge--<?=mc_h($templateGroupBadge)?>"><?=mc_h($pa2InheritanceActionLabels[$templateGroupAction] ?? $templateGroupAction)?></span>
+                                    <?php if ($canManageTemplate): ?>
+                                    <form data-pa2-form data-confirm="<?=mc_h($templateGroupAction === 'disable' ? '确认重新加入这个配置组？' : '确认从当前模板移除这个配置组？右侧继承预览会立即不再显示它。')?>" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
+                                        <input type="hidden" name="template_id" value="<?=intval($selectedTemplate['id'])?>">
+                                        <input type="hidden" name="group_definition_id" value="<?=intval($g['group_definition_id'])?>">
+                                        <input type="hidden" name="inheritance_action" value="<?=mc_h($templateGroupNextAction)?>">
+                                        <input type="hidden" name="selection_mode" value="<?=mc_h($g['selection_mode'])?>">
+                                        <input type="hidden" name="sort_order" value="<?=intval($g['sort_order'])?>">
+                                        <input type="hidden" name="min_select" value="<?=intval($g['min_select'])?>">
+                                        <input type="hidden" name="max_select" value="<?=intval($g['max_select'])?>">
+                                        <input type="hidden" name="is_required" value="<?=intval($g['is_required'])?>">
+                                        <input type="hidden" name="allow_empty" value="<?=intval($g['allow_empty'])?>">
+                                        <input type="hidden" name="affects_price" value="<?=intval($g['affects_price'])?>">
+                                        <input type="hidden" name="affects_lead_time" value="<?=intval($g['affects_lead_time'])?>">
+                                        <input type="hidden" name="requires_approval" value="<?=intval($g['requires_approval'])?>">
+                                        <button class="mc-button" type="submit"><?=($templateGroupAction === 'disable' ? '重新加入' : '移除')?></button>
+                                    </form>
+                                    <?php endif; ?>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </section>
@@ -1366,6 +1403,8 @@ include MC_ROOT . '/components/layout_top.php';
 document.querySelectorAll('[data-pa2-form]').forEach((form)=>{
   form.addEventListener('submit', async (event)=>{
     event.preventDefault();
+    const confirmText=form.getAttribute('data-confirm');
+    if(confirmText && !window.confirm(confirmText)) return;
     const button=form.querySelector('button[type="submit"]');
     if(button) button.disabled=true;
     try{
