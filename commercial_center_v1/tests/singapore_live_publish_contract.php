@@ -11,7 +11,7 @@ $checks = [
     'published product source' => str_contains($service, 'published_products') && str_contains($service, 'queuePublishedProduct'),
     'published version authority' => str_contains($service, "empty(\$product['commercial_version_id'])") && !str_contains($service, "empty(\$product['commercial_version_id']) || (\$product['status']"),
     'real sender' => str_contains($service, 'public function send') && str_contains($adapter, 'X-Artdon-Signature'),
-    'secret outside repository' => str_contains($adapter, '/www/secure/artdon_singapore_channel.key'),
+    'private storage secret' => str_contains($adapter, "CC_STORAGE . '/channel_sync_secret'"),
     'idempotency' => str_contains($adapter, 'Idempotency-Key') && str_contains($service, 'idempotency_key'),
     'api actions' => str_contains($api, 'queue_published_product') && str_contains($api, "action === 'send'"),
     'published product UI' => str_contains($view, 'data-sg-published-products') && str_contains($js, 'data-sg-publish-product'),

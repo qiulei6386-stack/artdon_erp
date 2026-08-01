@@ -4,18 +4,17 @@ namespace Artdon\CommercialCenter\Adapters;
 final class SingaporeChannelAdapter
 {
     private const ENDPOINT = 'https://shop.artdonlighting.com/api/channel_product.php';
-    private const SECRET_FILE = '/www/secure/artdon_singapore_channel.key';
 
     public function status(): array
     {
-        $ready = function_exists('curl_init') && is_readable(self::SECRET_FILE);
+        $ready = function_exists('curl_init') && is_readable(CC_STORAGE . '/channel_sync_secret');
         return ['status' => $ready ? 'connected' : 'not_configured', 'can_read' => false, 'can_write' => $ready,
             'message' => $ready ? '新加坡产品发布 API 已配置。' : '新加坡 API 密钥未配置。'];
     }
 
     public function publish(array $payload, string $idempotencyKey): array
     {
-        $secret = trim((string)@file_get_contents(self::SECRET_FILE));
+        $secret = trim((string)@file_get_contents(CC_STORAGE . '/channel_sync_secret'));
         if ($secret === '' || !function_exists('curl_init')) throw new \RuntimeException('新加坡发布接口尚未配置。');
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
         if ($body === false) throw new \RuntimeException('发布数据无法序列化。');
