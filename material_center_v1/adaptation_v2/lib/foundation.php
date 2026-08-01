@@ -171,6 +171,14 @@ function pa2_phase4_tables_ready(): bool
     return true;
 }
 
+function pa2_engine_tables_ready(): bool
+{
+    foreach (['mc_pa2_adaptation_result_cache','mc_pa2_adaptation_conflicts','mc_pa2_adaptation_recalc_jobs'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
 function pa2_foundation_summary(): array
 {
     $summary = [
@@ -187,6 +195,8 @@ function pa2_foundation_summary(): array
         'rule_cycle_count' => 0,
         'product_config_count' => 0,
         'draft_config_count' => 0,
+        'adaptation_result_count' => 0,
+        'open_conflict_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -217,6 +227,10 @@ function pa2_foundation_summary(): array
         if (pa2_workspace_tables_ready()) {
             $summary['product_config_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_product_configs')->fetchColumn();
             $summary['draft_config_count'] = (int)pa2_db()->query("SELECT COUNT(*) FROM mc_pa2_product_configs WHERE status='draft'")->fetchColumn();
+        }
+        if (pa2_engine_tables_ready()) {
+            $summary['adaptation_result_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_adaptation_result_cache')->fetchColumn();
+            $summary['open_conflict_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_adaptation_conflicts WHERE is_resolved=0')->fetchColumn();
         }
     }
     return $summary;
@@ -1107,7 +1121,40 @@ function pa2_workspace_detail(int $productId): array
         $group['display_name'] = trim((string)($group['display_name'] ?? '')) ?: (string)$group['group_name'];
         $group['selected_options'] = $selectedByGroup[(int)$group['id']] ?? [];
     }
+    unset($group);
+    $cachedByGroup = [];
+    $cachedFlat = [];
+    if ($version && pa2_engine_tables_ready()) {
+        $cachedByGroup = pa2_cached_results_for_version($versionId);
+        $cachedFlat = pa2_flat_cached_results($cachedByGroup);
+        foreach ($groups as &$group) {
+            $gid = (int)$group['id'];
+            $group['adaptation_results'] = $cachedByGroup[$gid] ?? [];
+            foreach ($group['selected_options'] as &$selected) {
+                $selected['adaptation_result'] = null;
+                foreach ($group['adaptation_results'] as $result) {
+                    $sameMaterial = $selected['material_id'] !== null && $result['material_id'] !== null && (int)$selected['material_id'] === (int)$result['material_id'];
+                    $sameOption = $selected['option_definition_id'] !== null && $result['option_definition_id'] !== null && (int)$selected['option_definition_id'] === (int)$result['option_definition_id'];
+                    if ($sameMaterial || $sameOption) {
+                        $selected['adaptation_result'] = $result;
+                        break;
+                    }
+                }
+            }
+            unset($selected);
+        }
+        unset($group);
+    }
     $summary = pa2_workspace_check_summary($groups);
+    $existingSummary = $version ? pa2_json_decode_array($version['check_summary_json'] ?? '') : [];
+    if ($cachedFlat) {
+        $summary['engine'] = pa2_engine_summary_from_results($cachedFlat);
+    } elseif (isset($existingSummary['engine']) && is_array($existingSummary['engine'])) {
+        $summary['engine'] = $existingSummary['engine'];
+    }
+    if (isset($existingSummary['technical_range']) && is_array($existingSummary['technical_range'])) {
+        $summary['technical_range'] = $existingSummary['technical_range'];
+    }
     if ($version) {
         pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET check_summary_json=? WHERE id=?')->execute([pa2_json_encode($summary),$versionId]);
     }
@@ -1119,10 +1166,11 @@ function pa2_workspace_detail(int $productId): array
         'template_preview' => $config['source_template_id'] ? pa2_template_effective_groups((int)$config['source_template_id']) : [],
         'groups' => $groups,
         'check_summary' => $summary,
+        'adaptation_results' => $cachedFlat,
     ];
 }
 
-function pa2_material_candidates(string $groupCode, string $keyword = '', int $limit = 30): array
+function pa2_material_candidates(string $groupCode, string $keyword = '', int $limit = 30, int $productId = 0, int $productGroupConfigId = 0): array
 {
     if (!pa2_table_exists('mc_materials')) return [];
     $limit = max(1, min(80, $limit));
@@ -1164,8 +1212,36 @@ function pa2_material_candidates(string $groupCode, string $keyword = '', int $l
     foreach ($rows as &$row) {
         $row['id'] = (int)$row['id'];
         $row['is_official'] = (int)$row['is_official'];
+        if ($productId > 0 && $productGroupConfigId > 0) {
+            $row['adaptation_result'] = pa2_evaluate_material_candidate_for_group($productId, $productGroupConfigId, $row);
+        }
     }
     return $rows;
+}
+
+function pa2_evaluate_material_candidate_for_group(int $productId, int $productGroupConfigId, array $candidate): array
+{
+    $product = pa2_fetch_product($productId);
+    if (!$product) return pa2_result('incompatible', 0, ['产品不存在，无法计算候选适配。'], ['product_id']);
+    $stmt = pa2_db()->prepare(
+        "SELECT pg.*, gd.group_name, gd.group_type AS definition_type, gd.icon, bs.selection_kind, bs.source_mode, bs.material_category_code, bs.material_filter_json, bs.validation_json
+         FROM mc_pa2_product_group_configs pg
+         JOIN mc_pa2_group_definitions gd ON gd.id=pg.group_definition_id
+         LEFT JOIN mc_pa2_group_behavior_settings bs ON bs.group_definition_id=pg.group_definition_id
+         WHERE pg.id=? LIMIT 1"
+    );
+    $stmt->execute([$productGroupConfigId]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) return pa2_result('incompatible', 0, ['产品配置组不存在，无法计算候选适配。'], ['product_group_config_id']);
+    $group['id'] = (int)$group['id'];
+    $group['effective_settings'] = pa2_json_decode_array($group['effective_settings_json'] ?? '');
+    $group['display_name'] = trim((string)($group['display_name'] ?? '')) ?: (string)$group['group_name'];
+    $material = pa2_material_detail((int)($candidate['id'] ?? 0));
+    return pa2_candidate_status_for_group($group, $material ?: $candidate, [
+        'product' => $product,
+        'technical_range' => pa2_extract_product_technical_range($product),
+        'selection' => ['option_type' => 'material', 'material_id' => (int)($candidate['id'] ?? 0)],
+    ]);
 }
 
 function pa2_save_product_group_selection(array $input): array
@@ -1215,5 +1291,579 @@ function pa2_save_product_group_selection(array $input): array
     ]);
     pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET status="configured",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$userId,$groupConfigId]);
     pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'option_definition_id' => $optionDefinitionId]);
-    return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => (int)pa2_db()->lastInsertId()];
+    $savedOptionId = (int)pa2_db()->lastInsertId();
+    if (pa2_engine_tables_ready()) {
+        try {
+            $productStmt = pa2_db()->prepare(
+                'SELECT pc.product_id
+                 FROM mc_pa2_product_group_configs pg
+                 JOIN mc_pa2_product_config_versions v ON v.id=pg.product_config_version_id
+                 JOIN mc_pa2_product_configs pc ON pc.id=v.product_config_id
+                 WHERE pg.id=? LIMIT 1'
+            );
+            $productStmt->execute([$groupConfigId]);
+            $productId = (int)$productStmt->fetchColumn();
+            if ($productId > 0) pa2_calculate_workspace($productId, true);
+        } catch (Throwable $e) {
+            pa2_log('workspace_recalculate_after_save_failed', 'product_group_config', $groupConfigId, [], ['error' => $e->getMessage()]);
+        }
+    }
+    return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => $savedOptionId];
+}
+
+function pa2_material_detail(int $materialId): ?array
+{
+    if ($materialId <= 0 || !pa2_table_exists('mc_materials')) return null;
+    $stmt = pa2_db()->prepare(
+        "SELECT m.*, c.code AS category_code, c.name AS category_name, md.spec_summary, md.source_snapshot_json, md.confidence_score
+         FROM mc_materials m
+         JOIN mc_material_categories c ON c.id=m.category_id
+         LEFT JOIN mc_material_metadata md ON md.material_id=m.id
+         WHERE m.id=? AND m.deleted_at IS NULL LIMIT 1"
+    );
+    $stmt->execute([$materialId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $row['id'] = (int)$row['id'];
+    $row['is_official'] = (int)($row['is_official'] ?? 0);
+    $row['category_id'] = (int)($row['category_id'] ?? 0);
+    $row['source_snapshot'] = pa2_json_decode_array($row['source_snapshot_json'] ?? '');
+    unset($row['source_snapshot_json']);
+    $category = (string)($row['category_code'] ?? '');
+    $specTable = [
+        'power_supply' => 'mc_power_supply_specs',
+        'chip' => 'mc_material_chip',
+        'optical' => 'mc_material_optical',
+        'connector' => 'mc_material_connector',
+        'accessory' => 'mc_material_accessory',
+    ][$category] ?? '';
+    $row['domain_spec'] = [];
+    if ($specTable !== '' && pa2_table_exists($specTable)) {
+        $specStmt = pa2_db()->prepare("SELECT * FROM `$specTable` WHERE material_id=? LIMIT 1");
+        $specStmt->execute([$materialId]);
+        $row['domain_spec'] = $specStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+    if ($category === 'power_supply') {
+        if (pa2_table_exists('mc_power_supply_current_options')) {
+            $currentStmt = pa2_db()->prepare('SELECT current_ma,is_default FROM mc_power_supply_current_options WHERE material_id=? ORDER BY is_default DESC,current_ma');
+            $currentStmt->execute([$materialId]);
+            $row['current_options'] = $currentStmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $row['current_options'] = [];
+        }
+        if (pa2_table_exists('mc_power_supply_dimming_modes')) {
+            $dimmingStmt = pa2_db()->prepare('SELECT mode,is_primary FROM mc_power_supply_dimming_modes WHERE material_id=? ORDER BY is_primary DESC,mode');
+            $dimmingStmt->execute([$materialId]);
+            $row['dimming_modes'] = $dimmingStmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $row['dimming_modes'] = [];
+        }
+    }
+    return $row;
+}
+
+function pa2_flatten_text($value): string
+{
+    if (is_array($value)) {
+        $parts = [];
+        foreach ($value as $item) $parts[] = pa2_flatten_text($item);
+        return implode(' ', array_filter($parts, static fn($part) => trim((string)$part) !== ''));
+    }
+    if (is_scalar($value)) return (string)$value;
+    return '';
+}
+
+function pa2_extract_product_technical_range(array $product): array
+{
+    $snapshot = (array)($product['snapshot'] ?? []);
+    $text = trim(implode(' ', [
+        (string)($product['product_code'] ?? ''),
+        (string)($product['product_name'] ?? ''),
+        (string)($product['category_name'] ?? ''),
+        (string)($product['series_code'] ?? ''),
+        (string)($product['series_name'] ?? ''),
+        pa2_flatten_text($snapshot),
+    ]));
+    $range = [
+        'source' => 'product_snapshot',
+        'power_values_w' => [],
+        'power_min_w' => null,
+        'power_max_w' => null,
+        'current_values_ma' => [],
+        'current_min_ma' => null,
+        'current_max_ma' => null,
+        'beam_angle_values' => [],
+        'beam_angle_min' => null,
+        'beam_angle_max' => null,
+        'cct_values_k' => [],
+        'cri_min' => null,
+        'ip_rating' => null,
+        'track_system' => stripos($text, 'INTRACK') !== false ? 'intrack' : null,
+        'raw_text_hash' => hash('sha256', mb_substr($text, 0, 4000)),
+    ];
+    if (preg_match_all('/(?<![\d.])(\d+(?:\.\d+)?)\s*W\b/iu', $text, $matches)) {
+        foreach ($matches[1] as $value) {
+            $float = (float)$value;
+            if ($float > 0 && $float <= 1000) $range['power_values_w'][] = $float;
+        }
+    }
+    if ($range['power_values_w']) {
+        $range['power_min_w'] = min($range['power_values_w']);
+        $range['power_max_w'] = max($range['power_values_w']);
+    }
+    if (preg_match_all('/(?<![\d.])(\d+(?:\.\d+)?)\s*mA\b/iu', $text, $matches)) {
+        foreach ($matches[1] as $value) {
+            $float = (float)$value;
+            if ($float > 0 && $float <= 10000) $range['current_values_ma'][] = $float;
+        }
+    }
+    if ($range['current_values_ma']) {
+        $range['current_min_ma'] = min($range['current_values_ma']);
+        $range['current_max_ma'] = max($range['current_values_ma']);
+    }
+    if (preg_match_all('/(?<![\d.])(\d+(?:\.\d+)?)\s*(?:°|度)/u', $text, $matches)) {
+        foreach ($matches[1] as $value) {
+            $float = (float)$value;
+            if ($float > 0 && $float <= 180) $range['beam_angle_values'][] = $float;
+        }
+    }
+    if ($range['beam_angle_values']) {
+        $range['beam_angle_min'] = min($range['beam_angle_values']);
+        $range['beam_angle_max'] = max($range['beam_angle_values']);
+    }
+    if (preg_match_all('/(?<!\d)(\d{4})\s*K\b/iu', $text, $matches)) {
+        foreach ($matches[1] as $value) {
+            $int = (int)$value;
+            if ($int >= 1800 && $int <= 8000) $range['cct_values_k'][] = $int;
+        }
+    }
+    if (preg_match('/(?:CRI|Ra)\s*[≥>:：]?\s*(\d+(?:\.\d+)?)/iu', $text, $match)) {
+        $range['cri_min'] = (float)$match[1];
+    }
+    if (preg_match('/\bIP\s*([0-9]{2})\b/iu', $text, $match)) {
+        $range['ip_rating'] = 'IP' . $match[1];
+    }
+    return $range;
+}
+
+function pa2_result(string $status, float $score, array $reasons, array $fields = [], array $trace = []): array
+{
+    $labels = [
+        'full_match' => '完全适配',
+        'conditional_match' => '条件适配',
+        'approval_required' => '需要审批',
+        'incompatible' => '不适配',
+    ];
+    if (!isset($labels[$status])) $status = 'conditional_match';
+    return [
+        'result_status' => $status,
+        'status_label' => $labels[$status],
+        'match_score' => max(0, min(100, round($score, 2))),
+        'reasons' => array_values(array_filter($reasons, static fn($reason) => trim((string)$reason) !== '')),
+        'conflict_fields' => array_values(array_unique(array_filter($fields))),
+        'rule_trace' => $trace,
+    ];
+}
+
+function pa2_worst_result_status(array $results): string
+{
+    $rank = ['full_match' => 1, 'conditional_match' => 2, 'approval_required' => 3, 'incompatible' => 4];
+    $worst = 'full_match';
+    foreach ($results as $result) {
+        $status = (string)($result['result_status'] ?? 'conditional_match');
+        if (($rank[$status] ?? 2) > ($rank[$worst] ?? 1)) $worst = $status;
+    }
+    return $worst;
+}
+
+function pa2_candidate_status_for_group(array $group, ?array $candidate, array $context = []): array
+{
+    $settings = (array)($group['effective_settings'] ?? []);
+    $behavior = [
+        'selection_kind' => (string)($group['selection_kind'] ?? ($settings['behavior']['selection_kind'] ?? '')),
+        'source_mode' => (string)($group['source_mode'] ?? ($settings['behavior']['source_mode'] ?? '')),
+        'material_category_code' => (string)($group['material_category_code'] ?? ($settings['behavior']['material_category_code'] ?? '')),
+        'material_filter' => pa2_json_decode_array($group['material_filter_json'] ?? ($settings['behavior']['material_filter_json'] ?? '')),
+        'validation' => pa2_json_decode_array($group['validation_json'] ?? ($settings['behavior']['validation_json'] ?? '')),
+    ];
+    if (isset($settings['behavior']) && is_array($settings['behavior'])) {
+        $behavior = array_merge($behavior, $settings['behavior']);
+        if (isset($settings['behavior']['material_filter'])) $behavior['material_filter'] = (array)$settings['behavior']['material_filter'];
+        if (isset($settings['behavior']['validation'])) $behavior['validation'] = (array)$settings['behavior']['validation'];
+    }
+    $required = !empty($settings['is_required']) || !empty($settings['is_required_default']) || !empty($behavior['is_required_default']);
+    $groupCode = (string)($group['group_code'] ?? '');
+    $technical = (array)($context['technical_range'] ?? []);
+    $selection = (array)($context['selection'] ?? []);
+    $type = (string)($selection['option_type'] ?? ($candidate ? 'material' : ''));
+
+    if (!$candidate && $type === 'attribute') {
+        return pa2_result('full_match', 100, ['属性选项已选择，符合当前配置组要求。'], [], ['engine' => 'phase6_attribute']);
+    }
+    if (!$candidate && in_array($type, ['number','text','boolean'], true)) {
+        return pa2_result('conditional_match', 82, ['人工输入项已保存，后续审批阶段可确认取值。'], ['manual_value'], ['engine' => 'phase6_manual']);
+    }
+    if (!$candidate) {
+        return pa2_result($required ? 'incompatible' : 'conditional_match', $required ? 0 : 60, [$required ? '必选配置组尚未选择候选，无法完成适配。' : '可选配置组未选择候选，不阻断草稿保存。'], ['selection'], ['engine' => 'phase6_missing']);
+    }
+
+    $material = array_key_exists('domain_spec', $candidate) ? $candidate : pa2_material_detail((int)($candidate['id'] ?? 0));
+    if (!$material) {
+        return pa2_result('incompatible', 0, ['候选物料不存在或已删除。'], ['material_id'], ['engine' => 'phase6_missing_material']);
+    }
+
+    $category = (string)($material['category_code'] ?? '');
+    $expectedCategory = trim((string)($behavior['material_category_code'] ?? ''));
+    $spec = (array)($material['domain_spec'] ?? []);
+    $filter = (array)($behavior['material_filter'] ?? []);
+    $text = mb_strtolower(pa2_flatten_text([
+        $material['material_code'] ?? '',
+        $material['name'] ?? '',
+        $material['brand'] ?? '',
+        $material['model'] ?? '',
+        $material['spec_summary'] ?? '',
+        $spec,
+        $material['source_snapshot'] ?? [],
+    ]));
+    $score = 100.0;
+    $status = 'full_match';
+    $reasons = [];
+    $fields = [];
+    $trace = ['engine' => 'phase6_material', 'group_code' => $groupCode, 'checks' => []];
+
+    if ($expectedCategory !== '' && $category !== $expectedCategory) {
+        return pa2_result('incompatible', 20, ["物料分类为 {$category}，配置组要求 {$expectedCategory}。"], ['material_category_code'], $trace + ['failed' => 'category']);
+    }
+    $reasons[] = $expectedCategory !== '' ? "物料分类 {$category} 符合配置组要求。" : '配置组未限制物料分类。';
+
+    if (($filter['formal_status'] ?? '') === 'official' && (int)($material['is_official'] ?? 0) !== 1 && (string)($material['status'] ?? '') !== 'official') {
+        $status = 'approval_required';
+        $score = min($score, 68);
+        $fields[] = 'is_official';
+        $reasons[] = '候选不是正式物料，需要例外审批后才能进入正式配置。';
+    }
+
+    $keyword = trim((string)($filter['keyword'] ?? ''));
+    if ($keyword !== '' && mb_stripos($text, mb_strtolower($keyword)) === false) {
+        $status = $status === 'full_match' ? 'conditional_match' : $status;
+        $score = min($score, 72);
+        $fields[] = 'material_filter.keyword';
+        $reasons[] = "未命中规则关键词“{$keyword}”，需要人工确认是否适用。";
+    }
+
+    if ($category === 'power_supply') {
+        $minPower = isset($spec['min_output_power_w']) && $spec['min_output_power_w'] !== null ? (float)$spec['min_output_power_w'] : 0.0;
+        $maxPower = null;
+        foreach (['max_output_power_w','nominal_power_w'] as $key) {
+            if (isset($spec[$key]) && $spec[$key] !== null && (float)$spec[$key] > 0) {
+                $maxPower = (float)$spec[$key];
+                break;
+            }
+        }
+        $productMax = $technical['power_max_w'] ?? null;
+        $productMin = $technical['power_min_w'] ?? null;
+        if ($productMax !== null && $maxPower !== null) {
+            if ((float)$productMax > $maxPower) {
+                return pa2_result('incompatible', 25, ["产品最大功率 {$productMax}W 高于电源可输出 {$maxPower}W。"], ['power_max_w','max_output_power_w'], $trace + ['failed' => 'power_range']);
+            }
+            if ($productMin !== null && $minPower > 0 && (float)$productMin < $minPower) {
+                $status = $status === 'full_match' ? 'conditional_match' : $status;
+                $score = min($score, 78);
+                $fields[] = 'min_output_power_w';
+                $reasons[] = "产品功率下限 {$productMin}W 低于电源最低输出 {$minPower}W，需确认是否可稳定工作。";
+            } else {
+                $reasons[] = "电源输出功率覆盖产品需求（产品最高 {$productMax}W，电源最高 {$maxPower}W）。";
+            }
+        } else {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 76);
+            $fields[] = $productMax === null ? 'product.power' : 'power.max_output_power_w';
+            $reasons[] = $productMax === null ? '产品缺少功率范围，暂按条件适配处理。' : '电源缺少最大输出功率，暂按条件适配处理。';
+        }
+        $productCurrent = $technical['current_max_ma'] ?? null;
+        $currentMin = isset($spec['output_current_min_ma']) && $spec['output_current_min_ma'] !== null ? (float)$spec['output_current_min_ma'] : null;
+        $currentMax = isset($spec['output_current_max_ma']) && $spec['output_current_max_ma'] !== null ? (float)$spec['output_current_max_ma'] : null;
+        if ($productCurrent !== null && $currentMin !== null && $currentMax !== null) {
+            if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax) {
+                return pa2_result('incompatible', 30, ["产品电流 {$productCurrent}mA 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
+            }
+            $reasons[] = "输出电流范围覆盖产品需求（{$currentMin}-{$currentMax}mA）。";
+        }
+        $driverType = (string)($filter['driver_type'] ?? '');
+        if ($driverType === 'intrack' && mb_stripos($text, 'intrack') === false) {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 74);
+            $fields[] = 'driver_type';
+            $reasons[] = '规则要求 INTRACK 电源，但候选规格未明确标注 INTRACK。';
+        }
+        if ($driverType === 'external' && !preg_match('/external|外置/u', $text)) {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 80);
+            $fields[] = 'installation_type';
+            $reasons[] = '规则要求外置电源，候选安装方式未明确。';
+        }
+    } elseif ($category === 'chip') {
+        $productPower = $technical['power_max_w'] ?? null;
+        $chipMax = null;
+        foreach (['max_power_w','rated_power_w'] as $key) {
+            if (isset($spec[$key]) && $spec[$key] !== null && (float)$spec[$key] > 0) {
+                $chipMax = (float)$spec[$key];
+                break;
+            }
+        }
+        if ($productPower !== null && $chipMax !== null) {
+            if ((float)$productPower > $chipMax * 1.15) {
+                return pa2_result('incompatible', 35, ["产品功率 {$productPower}W 明显高于芯片额定/最大 {$chipMax}W。"], ['power_max_w','chip.max_power_w'], $trace + ['failed' => 'chip_power']);
+            }
+            $reasons[] = "芯片功率与产品功率区间基本匹配（产品 {$productPower}W，芯片 {$chipMax}W）。";
+        } else {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 78);
+            $fields[] = $productPower === null ? 'product.power' : 'chip.power';
+            $reasons[] = '产品或芯片功率资料不完整，需按条件适配确认。';
+        }
+        if (($technical['cct_values_k'] ?? []) && isset($spec['cct_min_k'],$spec['cct_max_k']) && $spec['cct_min_k'] !== null && $spec['cct_max_k'] !== null) {
+            foreach ((array)$technical['cct_values_k'] as $cct) {
+                if ($cct < (int)$spec['cct_min_k'] || $cct > (int)$spec['cct_max_k']) {
+                    return pa2_result('incompatible', 45, ["产品色温 {$cct}K 不在芯片色温范围 {$spec['cct_min_k']}-{$spec['cct_max_k']}K。"], ['cct'], $trace + ['failed' => 'cct']);
+                }
+            }
+            $reasons[] = '色温范围匹配。';
+        }
+    } elseif ($category === 'optical') {
+        $beam = $technical['beam_angle_max'] ?? null;
+        if ($beam !== null && isset($spec['beam_angle_min'],$spec['beam_angle_max']) && $spec['beam_angle_min'] !== null && $spec['beam_angle_max'] !== null) {
+            if ((float)$beam < (float)$spec['beam_angle_min'] || (float)$beam > (float)$spec['beam_angle_max']) {
+                return pa2_result('incompatible', 38, ["产品光束角 {$beam}° 不在光学范围 {$spec['beam_angle_min']}-{$spec['beam_angle_max']}°。"], ['beam_angle'], $trace + ['failed' => 'beam_angle']);
+            }
+            $reasons[] = "光束角范围匹配（{$spec['beam_angle_min']}-{$spec['beam_angle_max']}°）。";
+        } else {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 80);
+            $fields[] = 'beam_angle';
+            $reasons[] = '产品或光学物料缺少光束角范围，需人工确认。';
+        }
+    } elseif (in_array($category, ['connector','accessory'], true)) {
+        $trackSystem = (string)($filter['track_system'] ?? ($filter['system'] ?? ''));
+        if ($trackSystem !== '' && mb_stripos($text, mb_strtolower($trackSystem)) === false) {
+            $status = $status === 'full_match' ? 'conditional_match' : $status;
+            $score = min($score, 76);
+            $fields[] = 'system_type';
+            $reasons[] = "规则要求系统 {$trackSystem}，候选规格未明确标注。";
+        } else {
+            $reasons[] = '接头/配件系统字段与当前规则没有明显冲突。';
+        }
+    } else {
+        $status = $status === 'full_match' ? 'conditional_match' : $status;
+        $score = min($score, 82);
+        $reasons[] = '该类别暂无专用适配器，按通用分类和正式状态检查。';
+    }
+
+    if ($status === 'full_match' && $score < 90) $status = 'conditional_match';
+    return pa2_result($status, $score, $reasons, $fields, $trace);
+}
+
+function pa2_engine_summary_from_results(array $results): array
+{
+    $summary = [
+        'full_match' => 0,
+        'conditional_match' => 0,
+        'approval_required' => 0,
+        'incompatible' => 0,
+        'candidate_total' => 0,
+        'average_score' => 0,
+        'last_calculated_at' => null,
+    ];
+    $scoreSum = 0.0;
+    foreach ($results as $result) {
+        $status = (string)($result['result_status'] ?? 'conditional_match');
+        if (!isset($summary[$status])) $status = 'conditional_match';
+        $summary[$status]++;
+        $summary['candidate_total']++;
+        $scoreSum += (float)($result['match_score'] ?? 0);
+        $calculatedAt = (string)($result['calculated_at'] ?? '');
+        if ($calculatedAt !== '' && ($summary['last_calculated_at'] === null || $calculatedAt > $summary['last_calculated_at'])) {
+            $summary['last_calculated_at'] = $calculatedAt;
+        }
+    }
+    if ($summary['candidate_total'] > 0) {
+        $summary['average_score'] = round($scoreSum / $summary['candidate_total'], 2);
+    }
+    return $summary;
+}
+
+function pa2_cached_results_for_version(int $versionId): array
+{
+    if ($versionId <= 0 || !pa2_engine_tables_ready()) return [];
+    $stmt = pa2_db()->prepare('SELECT * FROM mc_pa2_adaptation_result_cache WHERE product_config_version_id=? ORDER BY product_group_config_id,id');
+    $stmt->execute([$versionId]);
+    $byGroup = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $row['id'] = (int)$row['id'];
+        $row['product_group_config_id'] = (int)$row['product_group_config_id'];
+        $row['material_id'] = $row['material_id'] === null ? null : (int)$row['material_id'];
+        $row['option_definition_id'] = $row['option_definition_id'] === null ? null : (int)$row['option_definition_id'];
+        $row['match_score'] = (float)$row['match_score'];
+        $row['reasons'] = pa2_json_decode_array($row['reason_json'] ?? '');
+        $row['conflict_fields'] = pa2_json_decode_array($row['conflict_fields_json'] ?? '');
+        $row['rule_trace'] = pa2_json_decode_array($row['rule_trace_json'] ?? '');
+        $byGroup[(int)$row['product_group_config_id']][] = $row;
+    }
+    return $byGroup;
+}
+
+function pa2_flat_cached_results(array $byGroup): array
+{
+    $rows = [];
+    foreach ($byGroup as $groupRows) {
+        foreach ($groupRows as $row) $rows[] = $row;
+    }
+    return $rows;
+}
+
+function pa2_persist_adaptation_result(int $versionId, array $group, ?array $selection, array $result): void
+{
+    $candidateType = (string)($selection['option_type'] ?? 'group');
+    $materialId = isset($selection['material_id']) && $selection['material_id'] !== null ? (int)$selection['material_id'] : null;
+    $optionDefinitionId = isset($selection['option_definition_id']) && $selection['option_definition_id'] !== null ? (int)$selection['option_definition_id'] : null;
+    $hash = hash('sha256', implode('|', [
+        $versionId,
+        (int)$group['id'],
+        $candidateType,
+        $materialId ?: 0,
+        $optionDefinitionId ?: 0,
+        (string)($selection['numeric_value'] ?? ''),
+        (string)($selection['text_value'] ?? ''),
+        (string)($selection['boolean_value'] ?? ''),
+    ]));
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_adaptation_result_cache(product_config_version_id,product_group_config_id,group_code,candidate_type,material_id,option_definition_id,result_status,match_score,reason_json,conflict_fields_json,rule_trace_json,calculated_hash,calculated_at,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),NOW())
+         ON DUPLICATE KEY UPDATE result_status=VALUES(result_status),match_score=VALUES(match_score),reason_json=VALUES(reason_json),conflict_fields_json=VALUES(conflict_fields_json),rule_trace_json=VALUES(rule_trace_json),calculated_at=NOW(),updated_at=NOW()'
+    );
+    $stmt->execute([
+        $versionId,
+        (int)$group['id'],
+        (string)$group['group_code'],
+        $candidateType,
+        $materialId,
+        $optionDefinitionId,
+        (string)$result['result_status'],
+        (float)$result['match_score'],
+        pa2_json_encode($result['reasons'] ?? []),
+        pa2_json_encode($result['conflict_fields'] ?? []),
+        pa2_json_encode($result['rule_trace'] ?? []),
+        $hash,
+    ]);
+    if (($result['result_status'] ?? '') !== 'full_match') {
+        $level = ['conditional_match' => 'warning', 'approval_required' => 'approval_required', 'incompatible' => 'block'][(string)$result['result_status']] ?? 'warning';
+        $reason = implode('；', array_slice((array)($result['reasons'] ?? []), 0, 3));
+        $conflictCode = ((string)$group['group_code']) . '_' . ((string)$result['result_status']);
+        $conflict = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_adaptation_conflicts(product_config_version_id,product_group_config_id,group_code,conflict_code,conflict_level,result_status,material_id,option_definition_id,conflict_fields_json,reason_text,is_resolved,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,?,?,0,NOW(),NOW())'
+        );
+        $conflict->execute([
+            $versionId,
+            (int)$group['id'],
+            (string)$group['group_code'],
+            $conflictCode,
+            $level,
+            (string)$result['result_status'],
+            $materialId,
+            $optionDefinitionId,
+            pa2_json_encode($result['conflict_fields'] ?? []),
+            mb_substr($reason, 0, 650),
+        ]);
+    }
+}
+
+function pa2_calculate_workspace(int $productId, bool $persist = true): array
+{
+    if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    if ($persist && !pa2_engine_tables_ready()) throw new RuntimeException('V2 第 6 阶段适配计算表尚未迁移。');
+    $detail = pa2_workspace_detail($productId);
+    $version = $detail['version'] ?? null;
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$versionId) throw new RuntimeException('产品尚未生成 V2 配置草稿。');
+    $product = (array)($detail['product'] ?? []);
+    $technical = pa2_extract_product_technical_range($product);
+    if ($persist) {
+        pa2_db()->prepare('DELETE FROM mc_pa2_adaptation_result_cache WHERE product_config_version_id=?')->execute([$versionId]);
+        pa2_db()->prepare('DELETE FROM mc_pa2_adaptation_conflicts WHERE product_config_version_id=? AND is_resolved=0')->execute([$versionId]);
+    }
+    $results = [];
+    foreach ((array)($detail['groups'] ?? []) as $group) {
+        $groupResults = [];
+        $selected = (array)($group['selected_options'] ?? []);
+        if (!$selected) {
+            $result = pa2_candidate_status_for_group($group, null, ['product' => $product, 'technical_range' => $technical]);
+            $groupResults[] = $result;
+            if ($persist) pa2_persist_adaptation_result($versionId, $group, null, $result);
+        } else {
+            foreach ($selected as $selection) {
+                $material = ((string)($selection['option_type'] ?? '') === 'material' && (int)($selection['material_id'] ?? 0) > 0)
+                    ? pa2_material_detail((int)$selection['material_id'])
+                    : null;
+                $result = pa2_candidate_status_for_group($group, $material, [
+                    'product' => $product,
+                    'technical_range' => $technical,
+                    'selection' => $selection,
+                ]);
+                $groupResults[] = $result;
+                if ($persist) pa2_persist_adaptation_result($versionId, $group, $selection, $result);
+            }
+        }
+        $status = pa2_worst_result_status($groupResults);
+        if ($persist) {
+            $groupStatus = ['full_match' => 'configured', 'conditional_match' => 'conditional', 'approval_required' => 'approval_required', 'incompatible' => 'blocked'][$status] ?? 'conditional';
+            pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET status=?,updated_at=NOW() WHERE id=?')->execute([$groupStatus,(int)$group['id']]);
+        }
+        foreach ($groupResults as $result) {
+            $result['group_code'] = (string)$group['group_code'];
+            $result['group_name'] = (string)$group['display_name'];
+            $results[] = $result;
+        }
+    }
+    $engine = pa2_engine_summary_from_results($results);
+    $summary = pa2_workspace_check_summary((array)($detail['groups'] ?? []));
+    $summary['engine'] = $engine;
+    $summary['technical_range'] = $technical;
+    if ($persist) {
+        pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET technical_range_json=?,check_summary_json=? WHERE id=?')->execute([pa2_json_encode($technical),pa2_json_encode($summary),$versionId]);
+        pa2_log('workspace_recalculate', 'product_config_version', $versionId, [], ['product_id' => $productId, 'engine' => $engine]);
+    }
+    return [
+        'product_id' => $productId,
+        'product_config_version_id' => $versionId,
+        'technical_range' => $technical,
+        'summary' => $summary,
+        'results' => $results,
+    ];
+}
+
+function pa2_recalculate_workspace(int $productId, string $reason = 'manual'): array
+{
+    pa2_require_any(['adaptation_v2.configure_product', 'material_center.adaptation.manage'], '没有重新计算产品适配的权限。');
+    if (!pa2_engine_tables_ready()) throw new RuntimeException('V2 第 6 阶段适配计算表尚未迁移。');
+    $detail = pa2_workspace_detail($productId);
+    $versionId = (int)($detail['version']['id'] ?? 0);
+    if ($versionId <= 0) throw new RuntimeException('产品尚未生成 V2 配置草稿。');
+    $userId = pa2_current_user_id();
+    $jobStmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_adaptation_recalc_jobs(product_config_version_id,status,request_reason,requested_by,created_at,updated_at)
+         VALUES(?,"running",?,?,NOW(),NOW())'
+    );
+    $jobStmt->execute([$versionId, mb_substr($reason, 0, 220), $userId]);
+    $jobId = (int)pa2_db()->lastInsertId();
+    try {
+        pa2_db()->prepare('UPDATE mc_pa2_adaptation_recalc_jobs SET started_at=NOW(),updated_at=NOW() WHERE id=?')->execute([$jobId]);
+        $result = pa2_calculate_workspace($productId, true);
+        pa2_db()->prepare('UPDATE mc_pa2_adaptation_recalc_jobs SET status="done",summary_json=?,finished_at=NOW(),updated_at=NOW() WHERE id=?')->execute([pa2_json_encode($result['summary'] ?? []),$jobId]);
+        $result['job_id'] = $jobId;
+        return $result;
+    } catch (Throwable $e) {
+        pa2_db()->prepare('UPDATE mc_pa2_adaptation_recalc_jobs SET status="failed",summary_json=?,finished_at=NOW(),updated_at=NOW() WHERE id=?')->execute([pa2_json_encode(['error' => $e->getMessage()]),$jobId]);
+        throw $e;
+    }
 }

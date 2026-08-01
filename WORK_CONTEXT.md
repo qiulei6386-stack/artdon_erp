@@ -1,6 +1,20 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 5 阶段单产品配置工作台（已发布）
+## 本次：产品适配 V2 第 6 阶段适配计算和冲突引擎（进行中）
+
+- 用户要求继续第 6 步，并在完成后说明现在能验证什么。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_005_phase6_engine.php`，新增 `mc_pa2_adaptation_result_cache`、`mc_pa2_adaptation_conflicts`、`mc_pa2_adaptation_recalc_jobs`。
+- 引擎服务：读取现有正式物料表和规格表，保守解析产品技术范围，计算候选物料的适配结论、匹配度、冲突字段、原因和规则轨迹。
+- 结论类型：完全适配、条件适配、需要审批、不适配。资料不足时按条件适配，不误判为完全适配。
+- 覆盖方向：电源、芯片、光学、接头、配件和通用物料类别；正式状态不足会转入需要审批。
+- 缓存和重算：适配结果写入 V2 缓存表，冲突写入 V2 冲突表；保存产品配置后自动尝试重新计算；工作台提供手动“重新计算”。
+- `api/index.php` 状态更新为 `phase=6`，新增动作 `workspace_recalculate`、`adaptation_results`，候选接口支持携带产品和配置组上下文返回即时适配结论。
+- `index.php` 工作台显示卡片结论、候选弹窗结论、底部统计和重算按钮。
+- 新增文档 `adaptation_v2/docs/06_ADAPTATION_ENGINE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase6_contract.php`。
+- 待收尾：本地检查、服务器候选语法检查、提交推送、正式服务器迁移和页面/接口复检。
+
+## 上次：产品适配 V2 第 5 阶段单产品配置工作台（已发布）
 
 - 用户要求先进行第 5 步。按主说明进入第 5 阶段：单产品配置工作台。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。

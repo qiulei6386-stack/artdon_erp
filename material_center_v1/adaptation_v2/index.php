@@ -24,7 +24,7 @@ $allowedViews = [
 if (!in_array($view, $allowedViews, true)) $view = 'home';
 
 $pageTitle = '产品适配 V2';
-$pageDescription = '第 5 阶段：单产品配置工作台。';
+$pageDescription = '第 6 阶段：适配计算和冲突引擎。';
 $summary = pa2_foundation_summary();
 $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
@@ -53,6 +53,18 @@ $canManageGroup = pa2_can_any(['adaptation_v2.manage_group_definition', 'materia
 $canManageTemplate = pa2_can_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage']);
 $canPublishTemplate = pa2_can_any(['adaptation_v2.publish_template', 'material_center.adaptation.manage']);
 $canManageRule = pa2_can_any(['adaptation_v2.manage_rule', 'material_center.adaptation.manage']);
+$pa2ResultLabels = [
+    'full_match' => '完全适配',
+    'conditional_match' => '条件适配',
+    'approval_required' => '需要审批',
+    'incompatible' => '不适配',
+];
+$pa2ResultBadge = [
+    'full_match' => 'pa2-badge--match',
+    'conditional_match' => 'pa2-badge--condition',
+    'approval_required' => 'pa2-badge--approval',
+    'incompatible' => 'pa2-badge--block',
+];
 
 $routeCards = [
     ['home', '首页', 'V2 基础状态、模板状态和阶段入口。'],
@@ -61,7 +73,7 @@ $routeCards = [
     ['groups', '配置组定义中心', '维护数据化配置组和属性选项。'],
     ['templates', '模板中心', '维护通用、分类、系列和产品模板。'],
     ['rules', '规则编辑器', '第 4 阶段维护显示条件、物料过滤、默认项和循环检测。'],
-    ['workspace', '单产品配置工作台', '第 5 阶段建立模板驱动配置。'],
+    ['workspace', '单产品配置工作台', '第 6 阶段显示适配结论、冲突原因和重算结果。'],
     ['packages', '配置包中心', '第 8 阶段发布渠道配置包。'],
     ['publish', '渠道发布', '第 9 阶段提供下游发布接口。'],
     ['approvals', '审批中心', '第 7 阶段接入审批和发布。'],
@@ -89,13 +101,13 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-panel__body{padding:18px}.pa2-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.pa2-form label{display:grid;gap:6px;color:#344054;font-weight:700}.pa2-form input,.pa2-form select,.pa2-form textarea{width:100%;border:1px solid #cfd8e6;border-radius:10px;padding:9px 10px;background:#fff}.pa2-form .wide{grid-column:span 2}.pa2-form .full{grid-column:1/-1}
 .pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
-.pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
 .pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate small{color:var(--pa2-muted)}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid{grid-template-columns:1fr}}
 </style>
-<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="5" data-view="<?=mc_h($view)?>">
+<section class="mc-page mc-pa2-page" data-adaptation-v2 data-phase="6" data-view="<?=mc_h($view)?>">
     <header class="pa2-hero">
         <div>
             <div class="mc-breadcrumb">Artdon ERP / 物料中心 / 产品适配 V2</div>
@@ -124,10 +136,10 @@ include MC_ROOT . '/components/layout_top.php';
             <article class="pa2-card"><strong>产品分类</strong><b><?=intval($summary['category_count'])?></b><p>首批分类种子：导轨灯、嵌入式、磁吸式等。</p></article>
             <article class="pa2-card"><strong>配置组定义</strong><b><?=intval($summary['group_count'])?></b><p>芯片、电源、光学、安装、颜色等全部数据化。</p></article>
             <article class="pa2-card"><strong>产品配置草稿</strong><b><?=intval($summary['product_config_count'])?></b><p>第 5 阶段开始保存 V2 单产品草稿配置。</p></article>
-            <article class="pa2-card"><strong>规则数量</strong><b><?=intval($summary['rule_count'])?></b><p>显示/隐藏、物料过滤、默认项和选项限制规则。</p></article>
+            <article class="pa2-card"><strong>适配结果缓存</strong><b><?=intval($summary['adaptation_result_count'] ?? 0)?></b><p>第 6 阶段保存候选适配结论，当前未解决冲突 <?=intval($summary['open_conflict_count'] ?? 0)?> 个。</p></article>
         </section>
         <section class="pa2-panel">
-            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 5 阶段开放单产品配置工作台；适配计算、审批发布和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
+            <div class="pa2-panel__head"><div><h2>阶段路由和边界</h2><p>第 6 阶段开放候选适配结论、冲突原因、结果缓存和手动重新计算；审批发布和配置包仍按后续阶段开发。</p></div><span class="pa2-pill <?=intval($summary['rule_cycle_count'])===0?'pa2-pill--ok':'pa2-pill--warn'?>">规则循环 <?=intval($summary['rule_cycle_count'])?> 个</span></div>
             <div class="pa2-panel__body">
                 <table class="pa2-table">
                     <thead><tr><th>视图</th><th>入口</th><th>阶段说明</th></tr></thead>
@@ -480,6 +492,7 @@ include MC_ROOT . '/components/layout_top.php';
                 $wpTemplate = $workspace['template'] ?? null;
                 $wpGroups = $workspace['groups'] ?? [];
                 $wpSummary = $workspace['check_summary'] ?? ['missing_required'=>0,'completed_required'=>0,'required_total'=>0];
+                $wpEngineSummary = $wpSummary['engine'] ?? ['candidate_total'=>0,'full_match'=>0,'conditional_match'=>0,'approval_required'=>0,'incompatible'=>0,'average_score'=>0,'last_calculated_at'=>null];
             ?>
             <section class="pa2-workspace">
                 <div class="pa2-product-hero">
@@ -501,7 +514,7 @@ include MC_ROOT . '/components/layout_top.php';
                 <div class="pa2-steps">
                     <div class="pa2-step"><b>1</b><strong>确认配置来源</strong><p class="pa2-muted">来自 <?=mc_h($wpTemplate['template_name'] ?? '模板待匹配')?>，继承结果会生成草稿配置组。</p></div>
                     <div class="pa2-step"><b>2</b><strong>设置核心配置</strong><p class="pa2-muted">芯片、电源、光学、导轨系统等优先处理；复杂选择打开宽版弹窗。</p></div>
-                    <div class="pa2-step"><b>3</b><strong>检查和保存</strong><p class="pa2-muted">当前只做草稿检查；适配计算和审批发布留第 6/7 阶段。</p></div>
+                    <div class="pa2-step"><b>3</b><strong>计算和保存</strong><p class="pa2-muted">候选物料显示适配结论、匹配度和冲突原因；审批发布留第 7 阶段。</p></div>
                 </div>
                 <?php if (!$wpConfig): ?>
                     <div class="pa2-alert">当前产品还没有 V2 配置草稿。点击“生成配置草稿”后，系统会按模板继承结果生成配置组，不会修改旧版适配或旧 BOM。</div>
@@ -516,17 +529,33 @@ include MC_ROOT . '/components/layout_top.php';
                             $sourceMode = (string)($g['source_mode'] ?? '');
                             $selectionKind = (string)($g['selection_kind'] ?? '');
                             $definition = $groupsById[(int)$g['group_definition_id']] ?? null;
+                            $groupResults = $g['adaptation_results'] ?? [];
+                            $primaryResult = $groupResults[0] ?? null;
+                            if (!$primaryResult && !empty($selected[0]['adaptation_result'])) $primaryResult = $selected[0]['adaptation_result'];
+                            $status = (string)($primaryResult['result_status'] ?? '');
+                            $statusLabel = $status !== '' ? ($pa2ResultLabels[$status] ?? $status) : '待计算';
+                            $statusClass = $pa2ResultBadge[$status] ?? '';
+                            $score = $primaryResult ? (float)($primaryResult['match_score'] ?? 0) : null;
+                            $reasons = $primaryResult['reasons'] ?? [];
                         ?>
                         <article class="pa2-config-card <?=$done?'is-done':($required?'is-missing':'')?>">
                             <div class="pa2-config-card__head">
                                 <div><strong><?=mc_h($g['icon'] ? $g['icon'].' ' : '')?><?=mc_h($g['display_name'])?></strong><br><small class="pa2-muted"><?=mc_h($g['group_code'])?> · <?=mc_h($selectionKind ?: $g['definition_type'])?> · <?=mc_h($required?'必选':'可选')?></small></div>
-                                <span class="pa2-badge <?=$done?'pa2-badge--add':($required?'pa2-badge--override':'')?>"><?=$done?'已配置':($required?'待补充':'可选')?></span>
+                                <span class="pa2-badge <?=$statusClass ?: ($done?'pa2-badge--add':($required?'pa2-badge--override':''))?>"><?=mc_h($primaryResult ? $statusLabel : ($done?'待计算':($required?'待补充':'可选')))?></span>
                             </div>
                             <div class="pa2-selected">
                                 <?php if ($selected): foreach ($selected as $s): ?>
                                     <span><?=mc_h($s['material_code'] ?: $s['option_name'] ?: $s['numeric_value'] ?: $s['text_value'] ?: (($s['boolean_value'] ?? null) === null ? '已选择' : ((int)$s['boolean_value'] ? '是' : '否')))?> <?=mc_h($s['material_name'] ? ' · '.$s['material_name'] : '')?></span>
                                 <?php endforeach; else: ?>
                                     <span class="pa2-muted">未选择，普通配置可以缺什么补什么。</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="pa2-result-note">
+                                <?php if ($primaryResult): ?>
+                                    <small><strong><?=mc_h($statusLabel)?></strong><?= $score !== null ? ' · '.mc_h((string)$score).'%' : '' ?></small>
+                                    <small><?=mc_h($reasons ? (string)$reasons[0] : '已完成第 6 阶段适配计算。')?></small>
+                                <?php else: ?>
+                                    <small>尚未计算。保存选择或点击底部“重新计算”后生成结论。</small>
                                 <?php endif; ?>
                             </div>
                             <?php if (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
@@ -562,9 +591,17 @@ include MC_ROOT . '/components/layout_top.php';
                         <div>
                             <strong>需要补充 <?=intval($wpSummary['missing_required'] ?? 0)?> 项</strong>
                             <span class="pa2-muted">已完成 <?=intval($wpSummary['completed_required'] ?? 0)?> / <?=intval($wpSummary['required_total'] ?? 0)?> 个必选配置；可选项不阻断保存草稿。</span>
+                            <div class="pa2-engine-summary">
+                                <span>适配结果 <?=intval($wpEngineSummary['candidate_total'] ?? 0)?> 条</span>
+                                <span>完全 <?=intval($wpEngineSummary['full_match'] ?? 0)?></span>
+                                <span>条件 <?=intval($wpEngineSummary['conditional_match'] ?? 0)?></span>
+                                <span>审批 <?=intval($wpEngineSummary['approval_required'] ?? 0)?></span>
+                                <span>不适配 <?=intval($wpEngineSummary['incompatible'] ?? 0)?></span>
+                                <?php if (!empty($wpEngineSummary['last_calculated_at'])): ?><span>最后计算 <?=mc_h($wpEngineSummary['last_calculated_at'])?></span><?php endif; ?>
+                            </div>
                         </div>
                         <div class="pa2-template-actions">
-                            <button class="mc-button" type="button" onclick="location.reload()">检查配置</button>
+                            <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_recalculate'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><input type="hidden" name="reason" value="workspace_button"><button class="mc-button" type="submit">重新计算</button></form>
                             <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>$workspaceProductId]))?>">保存草稿</a>
                             <button class="mc-button" type="button" disabled title="第 7 阶段开放">提交审批</button>
                         </div>
@@ -572,7 +609,7 @@ include MC_ROOT . '/components/layout_top.php';
                 <?php endif; ?>
             </section>
             <dialog class="pa2-dialog" id="pa2-material-dialog">
-                <div class="pa2-dialog__head"><div><strong id="pa2-material-title">选择正式物料</strong><p class="pa2-muted">第 5 阶段只做候选选择；适配打分和冲突判断在第 6 阶段接入。</p></div><button class="mc-button" type="button" data-close-material-picker>关闭</button></div>
+                <div class="pa2-dialog__head"><div><strong id="pa2-material-title">选择正式物料</strong><p class="pa2-muted">每条候选会即时显示完全适配、条件适配、需要审批或不适配，并给出明确原因。</p></div><button class="mc-button" type="button" data-close-material-picker>关闭</button></div>
                 <div class="pa2-dialog__body">
                     <form class="pa2-mini-form" id="pa2-material-search"><input name="q" placeholder="搜索物料编号 / 名称 / 品牌 / 型号"><button class="mc-button" type="submit">搜索</button></form>
                     <div class="pa2-candidate-list" id="pa2-material-list"><div class="pa2-placeholder">正在等待选择配置组。</div></div>
@@ -626,6 +663,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr><td>第 3 阶段模板继承</td><td><code>adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md</code></td></tr>
                         <tr><td>第 4 阶段配置组和规则</td><td><code>adaptation_v2/docs/04_GROUP_RULE_EDITOR.md</code></td></tr>
                         <tr><td>第 5 阶段单产品工作台</td><td><code>adaptation_v2/docs/05_PRODUCT_WORKSPACE.md</code></td></tr>
+                        <tr><td>第 6 阶段适配计算</td><td><code>adaptation_v2/docs/06_ADAPTATION_ENGINE.md</code></td></tr>
                         <tr><td>总执行日志</td><td><code>adaptation_v2/docs/EXECUTION_LOG.md</code></td></tr>
                     </tbody>
                 </table>
@@ -670,26 +708,36 @@ document.querySelectorAll('[data-pa2-form]').forEach((form)=>{
     try{
       const url=new URL('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=material_candidates'))?>', location.origin);
       url.searchParams.set('group_code', currentGroupCode);
+      url.searchParams.set('product_id', '<?=intval($workspaceProductId)?>');
+      url.searchParams.set('product_group_config_id', currentGroupId);
       if(q) url.searchParams.set('q', q);
       const res=await fetch(url.toString(),{credentials:'same-origin'});
       const data=await res.json();
       if(!data.success) throw new Error(data.message||'读取失败');
       const rows=(data.data&&data.data.materials)||[];
       if(!rows.length){list.innerHTML='<div class="pa2-placeholder">没有找到候选物料。可以换关键词搜索，或在第6阶段适配规则里补过滤条件。</div>';return;}
-      list.innerHTML=rows.map((m)=>`
+      list.innerHTML=rows.map((m)=>{
+        const r=m.adaptation_result||{};
+        const cls=statusClass(r.result_status||'');
+        const label=escapeHtml(r.status_label||statusLabel(r.result_status)||'待计算');
+        const score=Number.isFinite(Number(r.match_score))?` · ${escapeHtml(String(r.match_score))}%`:'';
+        const reason=(Array.isArray(r.reasons)&&r.reasons.length)?r.reasons[0]:'暂无原因，请重新计算或补充规格。';
+        return `
         <div class="pa2-candidate">
-          <div><strong>${escapeHtml(m.material_code||('#'+m.id))} ${escapeHtml(m.name||'')}</strong><br><small>${escapeHtml([m.brand,m.model,m.category_name,m.status].filter(Boolean).join(' · '))}</small><br><small>${escapeHtml(m.spec_summary||'')}</small></div>
+          <div><strong>${escapeHtml(m.material_code||('#'+m.id))} ${escapeHtml(m.name||'')}</strong><br><small>${escapeHtml([m.brand,m.model,m.category_name,m.status].filter(Boolean).join(' · '))}</small><br><small>${escapeHtml(m.spec_summary||'')}</small><br><span class="pa2-badge ${cls}">${label}${score}</span> <small>${escapeHtml(reason)}</small></div>
           <form data-pa2-picker-save>
             <input type="hidden" name="product_group_config_id" value="${escapeHtml(currentGroupId)}">
             <input type="hidden" name="option_type" value="material">
             <input type="hidden" name="material_id" value="${escapeHtml(String(m.id))}">
             <button class="mc-button mc-button--primary" type="submit">选择</button>
           </form>
-        </div>`).join('');
+        </div>`}).join('');
     }catch(err){
       list.innerHTML='<div class="pa2-alert">'+escapeHtml(err.message||'读取失败')+'</div>';
     }
   }
+  function statusLabel(status){return {full_match:'完全适配',conditional_match:'条件适配',approval_required:'需要审批',incompatible:'不适配'}[status]||'';}
+  function statusClass(status){return {full_match:'pa2-badge--match',conditional_match:'pa2-badge--condition',approval_required:'pa2-badge--approval',incompatible:'pa2-badge--block'}[status]||'';}
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));}
   document.querySelectorAll('[data-open-material-picker]').forEach((btn)=>{
     btn.addEventListener('click',()=>{

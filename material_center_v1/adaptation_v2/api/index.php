@@ -25,8 +25,8 @@ function pa2_request_data(): array
 try {
     if ($action === 'status') {
         pa2_json_response([
-            'phase' => 5,
-            'phase_name' => '单产品配置工作台',
+            'phase' => 6,
+            'phase_name' => '适配计算和冲突引擎',
             'legacy_adaptation_mutated' => false,
             'legacy_bom_mutated' => false,
             'menu_switched' => false,
@@ -54,6 +54,8 @@ try {
                 'rule_cycle_check',
                 'workspace',
                 'workspace_prepare',
+                'workspace_recalculate',
+                'adaptation_results',
                 'product_group_save',
                 'material_candidates',
             ],
@@ -134,6 +136,27 @@ try {
         exit;
     }
 
+    if ($action === 'workspace_recalculate') {
+        $data = pa2_request_data();
+        $productId = (int)($data['product_id'] ?? $_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        pa2_json_response(pa2_recalculate_workspace($productId, (string)($data['reason'] ?? 'manual')), '适配结果已重新计算');
+        exit;
+    }
+
+    if ($action === 'adaptation_results') {
+        pa2_require_any(['adaptation_v2.view', 'adaptation_v2.configure_product', 'material_center.view'], '没有查看适配结果的权限。');
+        $productId = (int)($_GET['product_id'] ?? 0);
+        if ($productId <= 0) throw new RuntimeException('产品不能为空。');
+        $detail = pa2_workspace_detail($productId);
+        pa2_json_response([
+            'summary' => $detail['check_summary']['engine'] ?? [],
+            'technical_range' => $detail['check_summary']['technical_range'] ?? [],
+            'results' => $detail['adaptation_results'] ?? [],
+        ]);
+        exit;
+    }
+
     if ($action === 'product_group_save') {
         $row = pa2_save_product_group_selection(pa2_request_data());
         pa2_json_response(['selection' => $row], '产品配置已保存');
@@ -143,7 +166,7 @@ try {
     if ($action === 'material_candidates') {
         pa2_require_any(['adaptation_v2.view', 'adaptation_v2.configure_product', 'material_center.view'], '没有查看候选物料的权限。');
         pa2_json_response([
-            'materials' => pa2_material_candidates((string)($_GET['group_code'] ?? ''), (string)($_GET['q'] ?? ''), (int)($_GET['limit'] ?? 30)),
+            'materials' => pa2_material_candidates((string)($_GET['group_code'] ?? ''), (string)($_GET['q'] ?? ''), (int)($_GET['limit'] ?? 30), (int)($_GET['product_id'] ?? 0), (int)($_GET['product_group_config_id'] ?? 0)),
         ]);
         exit;
     }
@@ -220,7 +243,7 @@ try {
     }
 
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','group_behavior_save','products','product_map_save','workspace','workspace_prepare','workspace_recalculate','adaptation_results','product_group_save','material_candidates','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check','rules','rule_save','rule_cycle_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],

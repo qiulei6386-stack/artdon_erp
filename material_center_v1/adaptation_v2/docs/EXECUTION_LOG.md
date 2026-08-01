@@ -268,3 +268,45 @@
 - 正式服务器页面渲染通过：`home`、`workspace`、`products`、`rules`、`logs`。
 - 正式服务器只读核验：`mc_pa2_product_configs=0`、`mc_pa2_product_config_versions=0`、`mc_pa2_product_group_configs=0`、`mc_pa2_product_selected_options=0`、`mc_pa2_schema_migrations=4`。草稿配置数为 0 是正常初始状态，用户打开产品并点击“生成配置草稿”后才写入。
 - 正式服务器样品工作台只读核验：可读取产品 `266`，当前尚无配置草稿，模板回退为系统通用模板。
+
+## 2026-08-01 第 6 阶段：适配计算和冲突引擎
+
+执行范围：
+
+- 用户要求继续第 6 步。
+- 本阶段只开发 V2 独立适配计算层。
+- 继续不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 迁移 `20260801_005_phase6_engine.php`。
+- 新增 `mc_pa2_adaptation_result_cache`、`mc_pa2_adaptation_conflicts`、`mc_pa2_adaptation_recalc_jobs`。
+- 实现产品技术范围保守解析：功率、电流、光束角、CCT、CRI、IP、INTRACK 标记。
+- 实现电源、芯片、光学、接头、配件和通用物料候选适配判断。
+- 实现四类结论：完全适配、条件适配、需要审批、不适配。
+- 实现匹配度、冲突字段、原因和规则轨迹。
+- 实现结果缓存、冲突明细和重新计算任务。
+- 保存产品配置后自动尝试重新计算。
+- API 新增 `workspace_recalculate`、`adaptation_results`，候选物料接口可返回即时适配结论。
+- 工作台卡片、底部栏和候选弹窗显示第 6 阶段适配结论。
+- 新增第 6 阶段文档和契约测试。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_005_phase6_engine.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/06_ADAPTATION_ENGINE.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase6_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 第 6 阶段 `mc_pa2_*` 表。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地和正式服务器验证后补充。
