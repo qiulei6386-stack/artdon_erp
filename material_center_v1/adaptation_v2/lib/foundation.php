@@ -1052,10 +1052,11 @@ function pa2_workspace_check_summary(array $groups): array
     return $summary;
 }
 
-function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0): array
+function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0, string $applyMode = 'append'): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'adaptation_v2.view', 'material_center.adaptation.manage'], '没有配置产品的权限。');
     if (!pa2_workspace_tables_ready()) throw new RuntimeException('V2 第 5 阶段工作台表尚未迁移。');
+    $applyMode = $applyMode === 'replace' ? 'replace' : 'append';
     $product = pa2_fetch_product($productId);
     if (!$product) throw new RuntimeException('产品不存在。');
     if ($forcedTemplateId > 0) {
@@ -1066,6 +1067,9 @@ function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0): array
     }
     if (!$template) throw new RuntimeException('没有可用模板。');
     $preview = pa2_template_effective_groups((int)$template['id']);
+    if ($applyMode === 'replace' && empty($preview['groups'])) {
+        throw new RuntimeException('新模板没有有效配置组，不能执行“添加并移除旧配置组”。');
+    }
     $userId = pa2_current_user_id();
     $categoryId = (int)($product['category_id'] ?? 0) ?: null;
     $configStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_product_configs WHERE product_id=? LIMIT 1');
@@ -1118,6 +1122,35 @@ function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0): array
     ]);
     pa2_db()->prepare('UPDATE mc_pa2_product_configs SET source_template_id=?,product_category_id=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([(int)$template['id'],$categoryId,$userId,(int)$config['id']]);
     pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET source_template_id=?,source_template_version_id=?,configuration_snapshot_json=? WHERE id=?')->execute([(int)$template['id'],$template['active_version_id'] ?? null,$templateSnapshot,$versionId]);
+    if ($applyMode === 'replace') {
+        $newGroupCodes = array_values(array_unique(array_map(static fn($group) => (string)$group['group_code'], $preview['groups'])));
+        if ($newGroupCodes) {
+            $marks = implode(',', array_fill(0, count($newGroupCodes), '?'));
+            $removeStmt = pa2_db()->prepare("SELECT id,group_code FROM mc_pa2_product_group_configs WHERE product_config_version_id=? AND group_code NOT IN ($marks)");
+            $removeStmt->execute(array_merge([$versionId], $newGroupCodes));
+            $removeRows = $removeStmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $removeStmt = pa2_db()->prepare('SELECT id,group_code FROM mc_pa2_product_group_configs WHERE product_config_version_id=?');
+            $removeStmt->execute([$versionId]);
+            $removeRows = $removeStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+        if (!empty($removeRows)) {
+            $removeIds = array_map(static fn($row) => (int)$row['id'], $removeRows);
+            $idMarks = implode(',', array_fill(0, count($removeIds), '?'));
+            pa2_db()->prepare("DELETE FROM mc_pa2_product_selected_options WHERE product_group_config_id IN ($idMarks)")->execute($removeIds);
+            if (pa2_table_exists('mc_pa2_adaptation_result_cache')) {
+                pa2_db()->prepare("DELETE FROM mc_pa2_adaptation_result_cache WHERE product_group_config_id IN ($idMarks)")->execute($removeIds);
+            }
+            if (pa2_table_exists('mc_pa2_adaptation_conflicts')) {
+                pa2_db()->prepare("DELETE FROM mc_pa2_adaptation_conflicts WHERE product_group_config_id IN ($idMarks)")->execute($removeIds);
+            }
+            pa2_db()->prepare("DELETE FROM mc_pa2_product_group_configs WHERE id IN ($idMarks)")->execute($removeIds);
+            pa2_log('workspace_template_replace_remove_groups', 'product_config_version', $versionId, ['removed_group_count' => count($removeRows)], [
+                'template_id' => (int)$template['id'],
+                'removed_groups' => array_map(static fn($row) => (string)$row['group_code'], $removeRows),
+            ]);
+        }
+    }
     foreach ($preview['groups'] as $group) {
         $settings = [
             'template_group' => $group,
@@ -1165,6 +1198,8 @@ function pa2_save_workspace_source(array $input): array
         $categoryId = (int)$template['product_category_id'];
     }
     $seriesCode = trim((string)($input['series_code'] ?? ($product['series_code'] ?? '')));
+    $applyMode = (string)($input['apply_mode'] ?? 'append');
+    $applyMode = $applyMode === 'replace' ? 'replace' : 'append';
     $userId = pa2_current_user_id();
     pa2_db()->beginTransaction();
     try {
@@ -1188,10 +1223,11 @@ function pa2_save_workspace_source(array $input): array
                 'series_code' => $seriesCode,
             ]);
         }
-        $detail = pa2_prepare_workspace($productId, $templateId);
+        $detail = pa2_prepare_workspace($productId, $templateId, $applyMode);
         pa2_log('workspace_source_template', 'product', $productId, [], [
             'template_id' => $templateId > 0 ? $templateId : (int)($detail['template']['id'] ?? 0),
             'template_name' => (string)($detail['template']['template_name'] ?? ''),
+            'apply_mode' => $applyMode,
         ]);
         pa2_db()->commit();
         return $detail;

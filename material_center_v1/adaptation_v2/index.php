@@ -861,7 +861,7 @@ include MC_ROOT . '/components/layout_top.php';
                     <div class="pa2-template-actions">
                         <?php if ($canConfigureProduct): ?>
                             <button class="mc-button" type="button" data-open-workspace-category>设置分类</button>
-                            <button class="mc-button mc-button--primary" type="button" data-open-workspace-template>套用模板</button>
+                            <button class="mc-button mc-button--primary" type="button" data-open-workspace-template>添加配置模板</button>
                         <?php endif; ?>
                         <?php if (!$wpConfig): ?>
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
@@ -882,6 +882,7 @@ include MC_ROOT . '/components/layout_top.php';
                     </div>
                     <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_source_save'))?>">
                         <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
+                        <input type="hidden" name="apply_mode" value="append">
                         <div class="pa2-dialog__body">
                             <div class="pa2-dialog-form">
                                 <div class="pa2-dialog-hint full">例如嵌入式灯：先选择“嵌入式”分类；如有专用模板，可同时选择“嵌入式模板”。保存后会补齐该模板里的配置组，已选配置不清空。</div>
@@ -901,24 +902,24 @@ include MC_ROOT . '/components/layout_top.php';
                 </dialog>
                 <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-workspace-template-dialog">
                     <div class="pa2-dialog__head">
-                        <div><h3>套用配置模板</h3><p>把当前产品切换到指定模板；只补齐模板配置组，不删除已选物料和属性。</p></div>
+                        <div><h3>添加配置模板</h3><p>可选择只添加新模板配置组，或添加后移除当前草稿里不属于新模板的旧配置组。</p></div>
                         <button class="mc-button" type="button" data-close-workspace-template>关闭</button>
                     </div>
-                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_source_save'))?>">
+                    <form data-pa2-form data-confirm="确认按所选处理方式应用模板？如果选择“添加并移除旧配置组”，旧组下已选内容会从当前 V2 草稿中移除。" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_source_save'))?>">
                         <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
                         <input type="hidden" name="series_code" value="<?=mc_h($wpProduct['series_code'] ?: $wpProduct['series_name'] ?: '')?>">
                         <div class="pa2-dialog__body">
                             <div class="pa2-dialog-form">
-                                <div class="pa2-dialog-hint full">适合你说的场景：这只灯是嵌入式，就直接在这里选择“嵌入式模板”。如果模板本身绑定了分类，系统会同步写入这只产品的 V2 分类。</div>
+                                <div class="pa2-dialog-hint full">适合你说的场景：这只灯是嵌入式，就直接在这里选择“嵌入式模板”。默认“添加”不会删除已有配置；需要重套结构时再选“添加并移除旧配置组”。</div>
                                 <label class="full"><span>配置模板 *</span><select name="template_id" required><option value="">请选择模板</option><?php foreach ($templates as $t): ?><?php if ((int)($t['is_enabled'] ?? 1) !== 1) continue; ?><option value="<?=intval($t['id'])?>" <?=((int)($wpTemplate['id'] ?? 0)===(int)$t['id']?'selected':'')?>><?=mc_h($t['template_name'])?> · <?=mc_h($t['template_level'])?> · <?=mc_h($t['category_name'] ?: '全局')?> · <?=intval($t['direct_group_count'] ?? 0)?> 组</option><?php endforeach; ?></select></label>
-                                <label class="full"><span>处理方式</span><input value="保留当前已选配置，只补齐模板新增配置组" disabled></label>
+                                <label class="full"><span>处理方式</span><select name="apply_mode"><option value="append">添加：保留当前配置，只补齐模板新增配置组</option><option value="replace">添加并移除旧配置组：移除当前草稿中不属于新模板的配置组</option></select></label>
                             </div>
                         </div>
                         <div class="pa2-dialog__foot">
                             <span class="pa2-muted">不会修改模板本身，也不会修改旧 BOM。</span>
                             <div class="pa2-template-actions">
                                 <button class="mc-button" type="button" data-close-workspace-template>取消</button>
-                                <button class="mc-button mc-button--primary" type="submit">套用并刷新工作台</button>
+                                <button class="mc-button mc-button--primary" type="submit">应用并刷新工作台</button>
                             </div>
                         </div>
                     </form>
