@@ -121,3 +121,43 @@
 测试记录：
 
 - 待本地静态检查、服务器 PHP 语法检查、V2 迁移执行、阶段契约测试和 HTTP/API 验证后补充。
+
+## 2026-08-01 第 3 阶段：模板中心和继承引擎
+
+执行范围：
+
+- 用户反馈第 2 阶段页面“还比较生硬”，要求继续。
+- 按主说明进入第 3 阶段：模板中心和继承引擎。
+- 继续不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单。
+
+完成内容：
+
+- 新增 V2 模板迁移 `20260801_002_phase3_templates.php`。
+- 新增 `mc_pa2_templates`、`mc_pa2_template_versions`、`mc_pa2_template_groups`。
+- 写入首批模板：系统通用模板、导轨灯模板、嵌入式模板、磁吸式模板。
+- 写入首批模板配置组。
+- 实现父模板继承、配置组覆盖、禁用父模板配置组、最终有效配置组预览。
+- 实现模板新增/编辑、配置组加入/覆盖、发布模板版本、引用检查 API。
+- `templates` 页面从占位改为模板中心；`template_editor` 改为三栏模板编辑器。
+- 页面视觉从硬表格调整为卡片、工作台和柔和状态区。
+- 新增第 3 阶段文档和契约测试。
+
+本阶段新增或修改文件：
+
+- `material_center_v1/adaptation_v2/database/migrations/20260801_002_phase3_templates.php`
+- `material_center_v1/adaptation_v2/lib/foundation.php`
+- `material_center_v1/adaptation_v2/api/index.php`
+- `material_center_v1/adaptation_v2/index.php`
+- `material_center_v1/adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md`
+- `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`
+- `material_center_v1/tests/adaptation_v2_phase3_contract.php`
+- `WORK_CONTEXT.md`
+
+数据库变化：
+
+- 只新增 V2 模板相关 `mc_pa2_*` 表和种子。
+- 未修改旧 `mc_adaptation_*`、旧 BOM 或正式菜单。
+
+测试记录：
+
+- 待本地静态检查、服务器 PHP 语法检查、迁移、阶段契约和页面渲染验证后补充。

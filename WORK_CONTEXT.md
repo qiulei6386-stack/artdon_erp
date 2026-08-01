@@ -1,5 +1,18 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配 V2 第 3 阶段模板中心和继承引擎（待发布）
+
+- 用户看过 V2 第 2 阶段后反馈“还比较生硬”，并要求继续。按主说明进入第 3 阶段：模板中心和继承引擎，同时把模板页从硬表格改为更柔和的卡片/工作台布局。
+- 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
+- 新增 V2 模板迁移 `material_center_v1/adaptation_v2/database/migrations/20260801_002_phase3_templates.php`，新增 `mc_pa2_templates`、`mc_pa2_template_versions`、`mc_pa2_template_groups`。
+- 迁移写入首批模板：`system_common` 系统通用模板、`track_light_base` 导轨灯模板、`recessed_base` 嵌入式模板、`magnetic_base` 磁吸式模板，并写入首批模板配置组。
+- `foundation.php` 新增模板服务函数：模板列表、模板详情、直接配置组、继承链、有效配置组合并、模板新增/编辑、模板配置组加入/覆盖/禁用、发布版本、引用检查。继承按 `group_code` 合并，支持 `add / override / disable`。
+- `api/index.php` 新增动作：`templates`、`template_detail`、`template_save`、`template_group_save`、`template_preview`、`template_publish`、`template_reference_check`。
+- `index.php` 第 3 阶段页面：`templates` 从占位改为模板中心；`template_editor` 改为三栏模板编辑器，含左侧模板导航、中间模板结构编辑、右侧继承预览；页面样式调整为柔和卡片、工作台和继承流。
+- 新增文档 `adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase3_contract.php`。
+- 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 PHP 对候选文件做语法检查：`index.php`、`api/index.php`、`foundation.php`、第 3 阶段迁移和新增契约测试均无语法错误；候选 `adaptation_v2_phase3_contract.php` 全部通过。
+- 待发布步骤：提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 应用第 3 阶段模板迁移；服务器复检语法、契约、页面渲染、状态 API；核对三端 HEAD 一致。
+
 ## 本次：产品适配 V2 第 2 阶段基础数据模型和分类/配置组中心（已发布）
 
 - 用户要求继续产品适配 V2：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 使用独立 `material_center_v1/adaptation_v2/`；V2 新表使用 `mc_pa2_` 前缀；完成第 1 阶段后不用停，进入第 2 阶段直至完成。

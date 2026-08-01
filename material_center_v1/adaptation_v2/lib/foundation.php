@@ -155,6 +155,8 @@ function pa2_foundation_summary(): array
         'group_count' => 0,
         'option_count' => 0,
         'mapping_count' => 0,
+        'template_count' => 0,
+        'template_version_count' => 0,
     ];
     foreach (pa2_required_tables() as $table) {
         $exists = pa2_table_exists($table);
@@ -173,6 +175,10 @@ function pa2_foundation_summary(): array
         $summary['group_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_group_definitions')->fetchColumn();
         $summary['option_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_group_option_definitions')->fetchColumn();
         $summary['mapping_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_product_category_mappings')->fetchColumn();
+        if (pa2_template_tables_ready()) {
+            $summary['template_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_templates')->fetchColumn();
+            $summary['template_version_count'] = (int)pa2_db()->query('SELECT COUNT(*) FROM mc_pa2_template_versions')->fetchColumn();
+        }
     }
     return $summary;
 }
@@ -356,4 +362,264 @@ function pa2_map_product_category(array $input): array
     $after = $afterStmt->fetch(PDO::FETCH_ASSOC) ?: [];
     pa2_log('product_category_map', 'product', $productId, $before, $after);
     return $after;
+}
+
+function pa2_template_tables_ready(): bool
+{
+    foreach (['mc_pa2_templates','mc_pa2_template_versions','mc_pa2_template_groups'] as $table) {
+        if (!pa2_table_exists($table)) return false;
+    }
+    return true;
+}
+
+function pa2_fetch_templates(): array
+{
+    if (!pa2_template_tables_ready()) return [];
+    $rows = pa2_db()->query(
+        "SELECT t.*, c.category_name,
+            p.template_name AS parent_template_name,
+            v.version_no AS active_version_no,
+            (SELECT COUNT(*) FROM mc_pa2_template_groups g WHERE g.template_id=t.id AND g.is_enabled=1 AND g.inheritance_action<>'disable') AS direct_group_count
+         FROM mc_pa2_templates t
+         LEFT JOIN mc_pa2_product_categories c ON c.id=t.product_category_id
+         LEFT JOIN mc_pa2_templates p ON p.id=t.parent_template_id
+         LEFT JOIN mc_pa2_template_versions v ON v.id=t.active_version_id
+         ORDER BY FIELD(t.template_level,'system','category','series','product'), t.id"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) {
+        $row['id'] = (int)$row['id'];
+        $row['parent_template_id'] = $row['parent_template_id'] === null ? null : (int)$row['parent_template_id'];
+        $row['product_category_id'] = $row['product_category_id'] === null ? null : (int)$row['product_category_id'];
+        $row['direct_group_count'] = (int)$row['direct_group_count'];
+        $row['is_enabled'] = (int)$row['is_enabled'];
+    }
+    return $rows;
+}
+
+function pa2_fetch_template(int $id): ?array
+{
+    if (!pa2_template_tables_ready() || $id <= 0) return null;
+    $stmt = pa2_db()->prepare(
+        "SELECT t.*, c.category_name, p.template_name AS parent_template_name, v.version_no AS active_version_no
+         FROM mc_pa2_templates t
+         LEFT JOIN mc_pa2_product_categories c ON c.id=t.product_category_id
+         LEFT JOIN mc_pa2_templates p ON p.id=t.parent_template_id
+         LEFT JOIN mc_pa2_template_versions v ON v.id=t.active_version_id
+         WHERE t.id=? LIMIT 1"
+    );
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $row['id'] = (int)$row['id'];
+    $row['parent_template_id'] = $row['parent_template_id'] === null ? null : (int)$row['parent_template_id'];
+    $row['product_category_id'] = $row['product_category_id'] === null ? null : (int)$row['product_category_id'];
+    $row['is_enabled'] = (int)$row['is_enabled'];
+    return $row;
+}
+
+function pa2_fetch_template_direct_groups(int $templateId): array
+{
+    if (!pa2_template_tables_ready() || $templateId <= 0) return [];
+    $stmt = pa2_db()->prepare(
+        "SELECT tg.*, gd.group_name, gd.group_type, gd.icon, gd.description AS group_description
+         FROM mc_pa2_template_groups tg
+         JOIN mc_pa2_group_definitions gd ON gd.id=tg.group_definition_id
+         WHERE tg.template_id=?
+         ORDER BY tg.sort_order,tg.id"
+    );
+    $stmt->execute([$templateId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) {
+        foreach (['id','template_id','group_definition_id','is_required','allow_empty','min_select','max_select','allow_default','customer_selectable','affects_price','affects_lead_time','requires_approval','sort_order','is_enabled'] as $key) {
+            $row[$key] = (int)$row[$key];
+        }
+        $row['display_name'] = trim((string)($row['group_name_override'] ?? '')) ?: (string)$row['group_name'];
+        $row['display_type'] = trim((string)($row['group_type_override'] ?? '')) ?: (string)$row['group_type'];
+    }
+    return $rows;
+}
+
+function pa2_template_ancestry(int $templateId): array
+{
+    $chain = [];
+    $seen = [];
+    $current = pa2_fetch_template($templateId);
+    while ($current) {
+        if (isset($seen[$current['id']])) throw new RuntimeException('模板继承存在循环。');
+        $seen[$current['id']] = true;
+        array_unshift($chain, $current);
+        $parentId = (int)($current['parent_template_id'] ?? 0);
+        $current = $parentId > 0 ? pa2_fetch_template($parentId) : null;
+    }
+    return $chain;
+}
+
+function pa2_template_effective_groups(int $templateId): array
+{
+    $chain = pa2_template_ancestry($templateId);
+    $effective = [];
+    $changes = [];
+    foreach ($chain as $template) {
+        foreach (pa2_fetch_template_direct_groups((int)$template['id']) as $group) {
+            $code = (string)$group['group_code'];
+            $action = (string)$group['inheritance_action'];
+            if ($action === 'disable') {
+                if (isset($effective[$code])) {
+                    $changes[] = ['group_code' => $code, 'type' => 'disable', 'template_name' => $template['template_name']];
+                }
+                unset($effective[$code]);
+                continue;
+            }
+            $type = isset($effective[$code]) ? 'override' : 'add';
+            $group['source_template_id'] = (int)$template['id'];
+            $group['source_template_name'] = (string)$template['template_name'];
+            $group['effective_change_type'] = $type;
+            $effective[$code] = $group;
+            $changes[] = ['group_code' => $code, 'type' => $type, 'template_name' => $template['template_name']];
+        }
+    }
+    uasort($effective, static fn($a, $b) => ((int)$a['sort_order'] <=> (int)$b['sort_order']) ?: ((int)$a['id'] <=> (int)$b['id']));
+    return ['chain' => $chain, 'groups' => array_values($effective), 'changes' => $changes];
+}
+
+function pa2_template_next_version_no(int $templateId): string
+{
+    $stmt = pa2_db()->prepare("SELECT COUNT(*) FROM mc_pa2_template_versions WHERE template_id=?");
+    $stmt->execute([$templateId]);
+    return 'v' . ((int)$stmt->fetchColumn() + 1);
+}
+
+function pa2_upsert_template(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage'], '没有维护模板的权限。');
+    if (!pa2_template_tables_ready()) throw new RuntimeException('V2 模板表尚未迁移。');
+    $id = (int)($input['id'] ?? 0);
+    $name = trim((string)($input['template_name'] ?? ''));
+    if ($name === '') throw new RuntimeException('模板名称不能为空。');
+    $code = trim((string)($input['template_code'] ?? '')) ?: pa2_slug($name, 'template');
+    $level = trim((string)($input['template_level'] ?? 'category'));
+    if (!in_array($level, ['system','category','series','product'], true)) $level = 'category';
+    $scope = trim((string)($input['scope_type'] ?? $level));
+    $categoryId = (int)($input['product_category_id'] ?? 0) ?: null;
+    $parentId = (int)($input['parent_template_id'] ?? 0) ?: null;
+    if ($id > 0 && $parentId === $id) throw new RuntimeException('父模板不能选择自己。');
+    $seriesCode = trim((string)($input['series_code'] ?? ''));
+    $productId = (int)($input['product_id'] ?? 0) ?: null;
+    $enabled = isset($input['is_enabled']) ? (int)$input['is_enabled'] : 1;
+    $description = trim((string)($input['description'] ?? ''));
+    $userId = pa2_current_user_id();
+    if ($id > 0) {
+        $before = pa2_fetch_template($id) ?: [];
+        if (!$before) throw new RuntimeException('模板不存在。');
+        $stmt = pa2_db()->prepare(
+            'UPDATE mc_pa2_templates SET template_code=?,template_name=?,template_level=?,scope_type=?,product_category_id=?,series_code=?,product_id=?,parent_template_id=?,is_enabled=?,description=?,updated_by=?,updated_at=NOW() WHERE id=?'
+        );
+        $stmt->execute([$code,$name,$level,$scope,$categoryId,$seriesCode,$productId,$parentId,$enabled,$description,$userId,$id]);
+        $after = pa2_fetch_template($id) ?: [];
+        pa2_log('template_update', 'template', $id, $before, $after);
+    } else {
+        $stmt = pa2_db()->prepare(
+            'INSERT INTO mc_pa2_templates(template_code,template_name,template_level,scope_type,product_category_id,series_code,product_id,parent_template_id,status,is_enabled,description,created_by,updated_by,created_at,updated_at)
+             VALUES(?,?,?,?,?,?,?,?,\'draft\',?,?,?, ?,NOW(),NOW())'
+        );
+        $stmt->execute([$code,$name,$level,$scope,$categoryId,$seriesCode,$productId,$parentId,$enabled,$description,$userId,$userId]);
+        $id = (int)pa2_db()->lastInsertId();
+        pa2_log('template_create', 'template', $id, [], ['template_code' => $code, 'template_name' => $name]);
+    }
+    return pa2_fetch_template($id) ?: [];
+}
+
+function pa2_upsert_template_group(array $input): array
+{
+    pa2_require_any(['adaptation_v2.manage_template', 'material_center.adaptation.manage'], '没有维护模板配置组的权限。');
+    if (!pa2_template_tables_ready()) throw new RuntimeException('V2 模板表尚未迁移。');
+    $templateId = (int)($input['template_id'] ?? 0);
+    $groupId = (int)($input['group_definition_id'] ?? 0);
+    if ($templateId <= 0 || $groupId <= 0) throw new RuntimeException('模板和配置组不能为空。');
+    $groupStmt = pa2_db()->prepare('SELECT group_code FROM mc_pa2_group_definitions WHERE id=? LIMIT 1');
+    $groupStmt->execute([$groupId]);
+    $groupCode = (string)$groupStmt->fetchColumn();
+    if ($groupCode === '') throw new RuntimeException('配置组不存在。');
+    $action = trim((string)($input['inheritance_action'] ?? 'add'));
+    if (!in_array($action, ['add','override','disable'], true)) $action = 'add';
+    $userId = pa2_current_user_id();
+    $beforeStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_template_groups WHERE template_id=? AND group_code=? LIMIT 1');
+    $beforeStmt->execute([$templateId,$groupCode]);
+    $before = $beforeStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_template_groups(template_id,group_definition_id,group_code,group_name_override,group_type_override,is_required,selection_mode,allow_empty,min_select,max_select,allow_default,customer_selectable,affects_price,affects_lead_time,requires_approval,sort_order,is_enabled,inheritance_action,created_by,updated_by,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+         ON DUPLICATE KEY UPDATE group_definition_id=VALUES(group_definition_id),group_name_override=VALUES(group_name_override),group_type_override=VALUES(group_type_override),is_required=VALUES(is_required),selection_mode=VALUES(selection_mode),allow_empty=VALUES(allow_empty),min_select=VALUES(min_select),max_select=VALUES(max_select),allow_default=VALUES(allow_default),customer_selectable=VALUES(customer_selectable),affects_price=VALUES(affects_price),affects_lead_time=VALUES(affects_lead_time),requires_approval=VALUES(requires_approval),sort_order=VALUES(sort_order),is_enabled=VALUES(is_enabled),inheritance_action=VALUES(inheritance_action),updated_by=VALUES(updated_by),updated_at=NOW()'
+    );
+    $stmt->execute([
+        $templateId,
+        $groupId,
+        $groupCode,
+        trim((string)($input['group_name_override'] ?? '')) ?: null,
+        trim((string)($input['group_type_override'] ?? '')) ?: null,
+        !empty($input['is_required']) ? 1 : 0,
+        trim((string)($input['selection_mode'] ?? 'single')) ?: 'single',
+        isset($input['allow_empty']) ? (int)$input['allow_empty'] : 1,
+        (int)($input['min_select'] ?? 0),
+        (int)($input['max_select'] ?? 1),
+        !empty($input['allow_default']) ? 1 : 0,
+        !empty($input['customer_selectable']) ? 1 : 0,
+        !empty($input['affects_price']) ? 1 : 0,
+        !empty($input['affects_lead_time']) ? 1 : 0,
+        !empty($input['requires_approval']) ? 1 : 0,
+        (int)($input['sort_order'] ?? 100),
+        isset($input['is_enabled']) ? (int)$input['is_enabled'] : 1,
+        $action,
+        $userId,
+        $userId,
+    ]);
+    $afterStmt = pa2_db()->prepare('SELECT * FROM mc_pa2_template_groups WHERE template_id=? AND group_code=? LIMIT 1');
+    $afterStmt->execute([$templateId,$groupCode]);
+    $after = $afterStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    pa2_log($before ? 'template_group_update' : 'template_group_create', 'template', $templateId, $before, $after);
+    return $after;
+}
+
+function pa2_publish_template(int $templateId): array
+{
+    pa2_require_any(['adaptation_v2.publish_template', 'material_center.adaptation.manage'], '没有发布模板的权限。');
+    $template = pa2_fetch_template($templateId);
+    if (!$template) throw new RuntimeException('模板不存在。');
+    $preview = pa2_template_effective_groups($templateId);
+    if (!$preview['groups']) throw new RuntimeException('模板没有有效配置组，不能发布。');
+    $versionNo = pa2_template_next_version_no($templateId);
+    $snapshot = [
+        'template' => $template,
+        'chain' => $preview['chain'],
+        'groups' => $preview['groups'],
+        'changes' => $preview['changes'],
+        'published_at' => date('Y-m-d H:i:s'),
+    ];
+    $userId = pa2_current_user_id();
+    $stmt = pa2_db()->prepare(
+        'INSERT INTO mc_pa2_template_versions(template_id,version_no,status,snapshot_json,created_by,published_by,created_at,published_at)
+         VALUES(?,?,\'published\',?,?,?,NOW(),NOW())'
+    );
+    $stmt->execute([$templateId,$versionNo,pa2_json_encode($snapshot),$userId,$userId]);
+    $versionId = (int)pa2_db()->lastInsertId();
+    pa2_db()->prepare("UPDATE mc_pa2_templates SET active_version_id=?,status='published',updated_by=?,updated_at=NOW() WHERE id=?")->execute([$versionId,$userId,$templateId]);
+    pa2_log('template_publish', 'template', $templateId, [], ['version_id' => $versionId, 'version_no' => $versionNo]);
+    return ['version_id' => $versionId, 'version_no' => $versionNo, 'snapshot' => $snapshot];
+}
+
+function pa2_template_reference_check(int $templateId): array
+{
+    $template = pa2_fetch_template($templateId);
+    if (!$template) throw new RuntimeException('模板不存在。');
+    $childStmt = pa2_db()->prepare('SELECT COUNT(*) FROM mc_pa2_templates WHERE parent_template_id=?');
+    $childStmt->execute([$templateId]);
+    $versionStmt = pa2_db()->prepare('SELECT COUNT(*) FROM mc_pa2_template_versions WHERE template_id=?');
+    $versionStmt->execute([$templateId]);
+    return [
+        'child_templates' => (int)$childStmt->fetchColumn(),
+        'published_versions' => (int)$versionStmt->fetchColumn(),
+        'product_configs' => 0,
+        'safe_to_disable' => true,
+        'note' => '第 3 阶段只检查模板继承和版本引用；产品配置引用将在第 5-7 阶段接入。',
+    ];
 }

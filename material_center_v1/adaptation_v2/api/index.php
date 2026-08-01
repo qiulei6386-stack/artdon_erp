@@ -41,6 +41,13 @@ try {
                 'group_option_save',
                 'products',
                 'product_map_save',
+                'templates',
+                'template_detail',
+                'template_save',
+                'template_group_save',
+                'template_preview',
+                'template_publish',
+                'template_reference_check',
             ],
             'routes' => [
                 '/material_center_v1/adaptation_v2/index.php?view=home',
@@ -96,8 +103,57 @@ try {
         exit;
     }
 
+    if ($action === 'templates') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看产品适配 V2 的权限。');
+        pa2_json_response(['templates' => pa2_fetch_templates()]);
+        exit;
+    }
+
+    if ($action === 'template_detail') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看产品适配 V2 的权限。');
+        $id = (int)($_GET['id'] ?? 0);
+        $template = pa2_fetch_template($id);
+        if (!$template) throw new RuntimeException('模板不存在。');
+        pa2_json_response([
+            'template' => $template,
+            'direct_groups' => pa2_fetch_template_direct_groups($id),
+            'preview' => pa2_template_effective_groups($id),
+        ]);
+        exit;
+    }
+
+    if ($action === 'template_save') {
+        $row = pa2_upsert_template(pa2_request_data());
+        pa2_json_response(['template' => $row], '模板已保存');
+        exit;
+    }
+
+    if ($action === 'template_group_save') {
+        $row = pa2_upsert_template_group(pa2_request_data());
+        pa2_json_response(['template_group' => $row], '模板配置组已保存');
+        exit;
+    }
+
+    if ($action === 'template_preview') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看模板预览的权限。');
+        pa2_json_response(['preview' => pa2_template_effective_groups((int)($_GET['template_id'] ?? 0))]);
+        exit;
+    }
+
+    if ($action === 'template_publish') {
+        $row = pa2_publish_template((int)(pa2_request_data()['template_id'] ?? 0));
+        pa2_json_response(['version' => $row], '模板版本已发布');
+        exit;
+    }
+
+    if ($action === 'template_reference_check') {
+        pa2_require_any(['adaptation_v2.view', 'material_center.view'], '没有查看模板引用的权限。');
+        pa2_json_response(['references' => pa2_template_reference_check((int)($_GET['template_id'] ?? 0))]);
+        exit;
+    }
+
     pa2_json_response(
-        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','products','product_map_save']],
+        ['allowed_actions' => ['status','categories','category_save','groups','group_save','group_option_save','products','product_map_save','templates','template_detail','template_save','template_group_save','template_preview','template_publish','template_reference_check']],
         '未知的产品适配 V2 接口动作。',
         false,
         ['ACTION_NOT_FOUND'],
