@@ -552,3 +552,24 @@
 - 正式服务器 `adaptation_v2_accessory_groups_contract.php` 通过。
 - 正式服务器 `groups` 页面 CLI 渲染无 Fatal。
 - 正式服务器数据库核验：5 个配置组均存在，且默认行为均为 `official_material` / `accessory`；配件和光学膜为多选，玻璃、蜂窝网、四叶片为单选；`mc_pa2_schema_migrations=10`。
+
+## 2026-08-01 配置组定义中心 UI 优化：新增配置组改为窄版弹窗
+
+执行范围：
+
+- 用户要求将“新增配置组”从页面内联填空表单改为弹窗新建，减少主页面占用，并提升视觉设计。
+- 本次只修改 V2 页面 `material_center_v1/adaptation_v2/index.php`，不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单、不修改数据库结构。
+
+完成内容：
+
+- 配置组定义中心顶部新增“新增配置组”按钮。
+- 原页面内联新增表单移入窄版弹窗 `pa2-group-create-dialog`。
+- 弹窗支持组编码、配置组名称、组类型、排序、图标、启用状态、说明等字段。
+- 弹窗增加编码提示，便于后续继续创建 `glass`、`honeycomb`、`optical_film` 等规则化配置组。
+- 增加前端打开/关闭逻辑；保存仍沿用原有 `group_save` API。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
+- 服务器 `groups` 页面 CLI 渲染成功，HTML 中确认存在 `pa2-group-create-dialog` 和 `data-open-group-create`。
