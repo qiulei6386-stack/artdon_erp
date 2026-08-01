@@ -1440,40 +1440,77 @@ function pa2_save_product_group_selection(array $input): array
     if (!in_array($optionType, ['material','attribute','number','text','boolean'], true)) $optionType = 'attribute';
     $replace = isset($input['replace']) ? (int)$input['replace'] : 1;
     $userId = pa2_current_user_id();
-    if ($replace === 1) {
-        pa2_db()->prepare('DELETE FROM mc_pa2_product_selected_options WHERE product_group_config_id=?')->execute([$groupConfigId]);
-    }
     $materialId = (int)($input['material_id'] ?? 0) ?: null;
+    $materialIds = [];
+    if ($optionType === 'material') {
+        $rawMaterialIds = $input['material_ids'] ?? [];
+        if (!is_array($rawMaterialIds)) {
+            $rawMaterialIds = $rawMaterialIds === '' ? [] : preg_split('/\s*,\s*/', (string)$rawMaterialIds);
+        }
+        foreach ($rawMaterialIds as $rawId) {
+            $id = (int)$rawId;
+            if ($id > 0) $materialIds[$id] = $id;
+        }
+        if ($materialId) $materialIds[$materialId] = $materialId;
+        $materialIds = array_values($materialIds);
+    }
     $optionDefinitionId = (int)($input['option_definition_id'] ?? 0) ?: null;
     $numeric = trim((string)($input['numeric_value'] ?? ''));
     $text = trim((string)($input['text_value'] ?? ''));
     $boolean = isset($input['boolean_value']) && $input['boolean_value'] !== '' ? (int)$input['boolean_value'] : null;
-    if ($optionType === 'material' && !$materialId) throw new RuntimeException('请选择正式物料。');
+    if ($optionType === 'material' && !$materialIds) throw new RuntimeException('请选择正式物料。');
     if ($optionType === 'attribute' && !$optionDefinitionId) throw new RuntimeException('请选择属性选项。');
     if ($optionType === 'number' && ($numeric === '' || !is_numeric($numeric))) throw new RuntimeException('请输入数值。');
     if ($optionType === 'text' && $text === '') throw new RuntimeException('请输入文本。');
+    if ($optionType === 'material') {
+        $settings = pa2_json_decode_array($group['effective_settings_json'] ?? '');
+        $maxSelect = (int)($settings['max_select'] ?? 0);
+        if ($maxSelect > 1 && count($materialIds) > $maxSelect) {
+            throw new RuntimeException('当前配置组最多可选择 ' . $maxSelect . ' 个物料。');
+        }
+        if ($replace !== 1 && $materialIds) {
+            $marks = implode(',', array_fill(0, count($materialIds), '?'));
+            $existsStmt = pa2_db()->prepare("SELECT material_id FROM mc_pa2_product_selected_options WHERE product_group_config_id=? AND material_id IN ($marks)");
+            $existsStmt->execute(array_merge([$groupConfigId], $materialIds));
+            $existing = array_map('intval', $existsStmt->fetchAll(PDO::FETCH_COLUMN));
+            if ($existing) {
+                $materialIds = array_values(array_diff($materialIds, $existing));
+            }
+        }
+        if (!$materialIds) {
+            return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => 0, 'selected_count' => 0];
+        }
+    }
+    if ($replace === 1) {
+        pa2_db()->prepare('DELETE FROM mc_pa2_product_selected_options WHERE product_group_config_id=?')->execute([$groupConfigId]);
+    }
     $stmt = pa2_db()->prepare(
         'INSERT INTO mc_pa2_product_selected_options(product_group_config_id,option_type,material_id,option_definition_id,numeric_value,text_value,boolean_value,value_json,is_default,is_alternative,sort_order,created_by,updated_by,created_at,updated_at)
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())'
     );
-    $stmt->execute([
-        $groupConfigId,
-        $optionType,
-        $materialId,
-        $optionDefinitionId,
-        $numeric !== '' ? (float)$numeric : null,
-        $text !== '' ? $text : null,
-        $boolean,
-        pa2_json_encode(['source' => 'workspace', 'saved_at' => date('Y-m-d H:i:s')]),
-        !empty($input['is_default']) ? 1 : 0,
-        !empty($input['is_alternative']) ? 1 : 0,
-        (int)($input['sort_order'] ?? 100),
-        $userId,
-        $userId,
-    ]);
+    $savedOptionId = 0;
+    $baseSortOrder = (int)($input['sort_order'] ?? 100);
+    $insertMaterialIds = $optionType === 'material' ? $materialIds : [$materialId];
+    foreach ($insertMaterialIds as $idx => $insertMaterialId) {
+        $stmt->execute([
+            $groupConfigId,
+            $optionType,
+            $insertMaterialId,
+            $optionDefinitionId,
+            $numeric !== '' ? (float)$numeric : null,
+            $text !== '' ? $text : null,
+            $boolean,
+            pa2_json_encode(['source' => 'workspace', 'saved_at' => date('Y-m-d H:i:s')]),
+            !empty($input['is_default']) && $idx === 0 ? 1 : 0,
+            !empty($input['is_alternative']) ? 1 : 0,
+            $baseSortOrder + $idx,
+            $userId,
+            $userId,
+        ]);
+        $savedOptionId = (int)pa2_db()->lastInsertId();
+    }
     pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET status="configured",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$userId,$groupConfigId]);
-    pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'option_definition_id' => $optionDefinitionId]);
-    $savedOptionId = (int)pa2_db()->lastInsertId();
+    pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'material_ids' => $materialIds, 'option_definition_id' => $optionDefinitionId]);
     if (pa2_engine_tables_ready()) {
         try {
             $productStmt = pa2_db()->prepare(
@@ -1490,7 +1527,7 @@ function pa2_save_product_group_selection(array $input): array
             pa2_log('workspace_recalculate_after_save_failed', 'product_group_config', $groupConfigId, [], ['error' => $e->getMessage()]);
         }
     }
-    return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => $savedOptionId];
+    return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => $savedOptionId, 'selected_count' => $optionType === 'material' ? count($materialIds) : 1];
 }
 
 function pa2_material_detail(int $materialId): ?array

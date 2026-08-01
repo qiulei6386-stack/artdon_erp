@@ -206,7 +206,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
-.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate small{color:var(--pa2-muted)}
+.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
@@ -939,6 +939,10 @@ include MC_ROOT . '/components/layout_top.php';
                             $settings = $g['effective_settings'] ?? [];
                             $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
                             $selected = $g['selected_options'] ?? [];
+                            $selectedMaterialIds = array_values(array_filter(array_map(static fn($s) => (int)($s['material_id'] ?? 0), $selected)));
+                            $selectionMode = (string)($settings['selection_mode'] ?? 'single');
+                            $maxSelect = (int)($settings['max_select'] ?? 1);
+                            $materialPickerMax = $maxSelect > 1 ? $maxSelect : 99;
                             $done = count($selected) > 0;
                             $sourceMode = (string)($g['source_mode'] ?? '');
                             $selectionKind = (string)($g['selection_kind'] ?? '');
@@ -954,7 +958,7 @@ include MC_ROOT . '/components/layout_top.php';
                         ?>
                         <article class="pa2-config-card <?=$done?'is-done':($required?'is-missing':'')?>">
                             <div class="pa2-config-card__head">
-                                <div><strong><?=mc_h($g['icon'] ? $g['icon'].' ' : '')?><?=mc_h($g['display_name'])?></strong><br><small class="pa2-muted"><?=mc_h($g['group_code'])?> · <?=mc_h($selectionKind ?: $g['definition_type'])?> · <?=mc_h($required?'必选':'可选')?></small></div>
+                                <div><strong><?=mc_h($g['icon'] ? $g['icon'].' ' : '')?><?=mc_h($g['display_name'])?></strong><br><small class="pa2-muted"><?=mc_h($g['group_code'])?> · <?=mc_h($selectionKind ?: $g['definition_type'])?> · <?=mc_h($required?'必选':'可选')?><?= $selectedMaterialIds ? ' · 已选 '.count($selectedMaterialIds).' 个' : '' ?></small></div>
                                 <span class="pa2-badge <?=$statusClass ?: ($done?'pa2-badge--add':($required?'pa2-badge--override':''))?>"><?=mc_h($primaryResult ? $statusLabel : ($done?'待计算':($required?'待补充':'可选')))?></span>
                             </div>
                             <div class="pa2-selected">
@@ -975,7 +979,7 @@ include MC_ROOT . '/components/layout_top.php';
                             <?php if (!$wpCanEditVersion): ?>
                                 <span class="pa2-muted">当前版本已锁定，如需修改请生成下一版草稿。</span>
                             <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
-                                <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>">选择正式物料</button>
+                                <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
                             <?php elseif (($definition['options'] ?? [])): ?>
                                 <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
                                     <input type="hidden" name="product_group_config_id" value="<?=intval($g['id'])?>">
@@ -1069,7 +1073,13 @@ include MC_ROOT . '/components/layout_top.php';
                     <form class="pa2-mini-form" id="pa2-material-search"><input name="q" placeholder="搜索物料编号 / 名称 / 品牌 / 型号"><button class="mc-button" type="submit">搜索</button></form>
                     <div class="pa2-candidate-list" id="pa2-material-list"><div class="pa2-placeholder">正在等待选择配置组。</div></div>
                 </div>
-                <div class="pa2-dialog__foot"><span class="pa2-muted">宽版弹窗用于复杂物料选择，小屏也不挤主页面。</span><button class="mc-button" type="button" data-close-material-picker>取消</button></div>
+                <div class="pa2-dialog__foot">
+                    <span class="pa2-picker-summary" id="pa2-material-summary">可勾选多个物料后统一保存。</span>
+                    <div class="pa2-picker-actions">
+                        <button class="mc-button" type="button" data-close-material-picker>取消</button>
+                        <button class="mc-button mc-button--primary" type="button" id="pa2-material-confirm">保存所选物料</button>
+                    </div>
+                </div>
             </dialog>
         <?php endif; ?>
     <?php elseif ($view === 'products'): ?>
@@ -1643,8 +1653,18 @@ function pa2SetField(form,name,value){
   const list=document.getElementById('pa2-material-list');
   const title=document.getElementById('pa2-material-title');
   const search=document.getElementById('pa2-material-search');
+  const summary=document.getElementById('pa2-material-summary');
+  const confirmBtn=document.getElementById('pa2-material-confirm');
   let currentGroupId='';
   let currentGroupCode='';
+  let currentMaxSelect=99;
+  let selectedMaterialIds=new Set();
+  function updateSummary(){
+    if(!summary)return;
+    const count=selectedMaterialIds.size;
+    const maxText=currentMaxSelect>0&&currentMaxSelect<99?`最多 ${currentMaxSelect} 个`:'可选多个';
+    summary.textContent=`已选 ${count} 个，${maxText}；取消勾选后保存即可移除。`;
+  }
   async function loadCandidates(q=''){
     if(!dialog||!list||!currentGroupCode)return;
     list.innerHTML='<div class="pa2-placeholder">正在读取候选物料...</div>';
@@ -1665,16 +1685,17 @@ function pa2SetField(form,name,value){
         const label=escapeHtml(r.status_label||statusLabel(r.result_status)||'待计算');
         const score=Number.isFinite(Number(r.match_score))?` · ${escapeHtml(String(r.match_score))}%`:'';
         const reason=(Array.isArray(r.reasons)&&r.reasons.length)?r.reasons[0]:'暂无原因，请重新计算或补充规格。';
+        const id=String(m.id);
+        const checked=selectedMaterialIds.has(id);
         return `
-        <div class="pa2-candidate">
+        <div class="pa2-candidate ${checked?'is-selected':''}">
           <div><strong>${escapeHtml(m.material_code||('#'+m.id))} ${escapeHtml(m.name||'')}</strong><br><small>${escapeHtml([m.brand,m.model,m.category_name,m.status].filter(Boolean).join(' · '))}</small><br><small>${escapeHtml(m.spec_summary||'')}</small><br><span class="pa2-badge ${cls}">${label}${score}</span> <small>${escapeHtml(reason)}</small></div>
-          <form data-pa2-picker-save>
-            <input type="hidden" name="product_group_config_id" value="${escapeHtml(currentGroupId)}">
-            <input type="hidden" name="option_type" value="material">
-            <input type="hidden" name="material_id" value="${escapeHtml(String(m.id))}">
-            <button class="mc-button mc-button--primary" type="submit">选择</button>
-          </form>
+          <label class="pa2-candidate-check">
+            <input type="checkbox" data-pa2-picker-check value="${escapeHtml(id)}" ${checked?'checked':''}>
+            <span>${checked?'已选':'选择'}</span>
+          </label>
         </div>`}).join('');
+      updateSummary();
     }catch(err){
       list.innerHTML='<div class="pa2-alert">'+escapeHtml(err.message||'读取失败')+'</div>';
     }
@@ -1686,7 +1707,14 @@ function pa2SetField(form,name,value){
     btn.addEventListener('click',()=>{
       currentGroupId=btn.getAttribute('data-group-id')||'';
       currentGroupCode=btn.getAttribute('data-group-code')||'';
+      currentMaxSelect=parseInt(btn.getAttribute('data-max-select')||'99',10)||99;
+      selectedMaterialIds=new Set();
+      try{
+        const ids=JSON.parse(btn.getAttribute('data-selected-material-ids')||'[]');
+        if(Array.isArray(ids)) ids.forEach((id)=>{if(parseInt(id,10)>0) selectedMaterialIds.add(String(parseInt(id,10)));});
+      }catch(err){}
       if(title) title.textContent='选择正式物料 · '+(btn.getAttribute('data-group-name')||currentGroupCode);
+      updateSummary();
       if(dialog&&typeof dialog.showModal==='function') dialog.showModal();
       loadCandidates('');
     });
@@ -1698,22 +1726,50 @@ function pa2SetField(form,name,value){
       loadCandidates(new FormData(search).get('q')||'');
     });
   }
-  document.addEventListener('submit',async(event)=>{
-    const form=event.target;
-    if(!(form instanceof HTMLFormElement)||!form.matches('[data-pa2-picker-save]'))return;
-    event.preventDefault();
-    const button=form.querySelector('button[type="submit"]');
-    if(button)button.disabled=true;
+  document.addEventListener('change',(event)=>{
+    const input=event.target;
+    if(!(input instanceof HTMLInputElement)||!input.matches('[data-pa2-picker-check]'))return;
+    const id=String(parseInt(input.value||'0',10));
+    if(input.checked){
+      if(currentMaxSelect>0&&currentMaxSelect<99&&selectedMaterialIds.size>=currentMaxSelect&&!selectedMaterialIds.has(id)){
+        input.checked=false;
+        alert('当前配置组最多可选择 '+currentMaxSelect+' 个物料。');
+        return;
+      }
+      selectedMaterialIds.add(id);
+      input.closest('.pa2-candidate')?.classList.add('is-selected');
+      const text=input.parentElement?.querySelector('span');
+      if(text) text.textContent='已选';
+    }else{
+      selectedMaterialIds.delete(id);
+      input.closest('.pa2-candidate')?.classList.remove('is-selected');
+      const text=input.parentElement?.querySelector('span');
+      if(text) text.textContent='选择';
+    }
+    updateSummary();
+  });
+  if(confirmBtn){
+    confirmBtn.addEventListener('click',async()=>{
+      if(!currentGroupId)return;
+      if(!selectedMaterialIds.size){alert('请至少选择一个正式物料。');return;}
+      if(currentMaxSelect>0&&currentMaxSelect<99&&selectedMaterialIds.size>currentMaxSelect){alert('当前配置组最多可选择 '+currentMaxSelect+' 个物料。');return;}
+      confirmBtn.disabled=true;
+      const formData=new FormData();
+      formData.set('product_group_config_id', currentGroupId);
+      formData.set('option_type', 'material');
+      formData.set('replace', '1');
+      Array.from(selectedMaterialIds).forEach((id)=>formData.append('material_ids[]', id));
     try{
-      const res=await fetch('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>',{method:'POST',body:new FormData(form),credentials:'same-origin'});
+      const res=await fetch('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>',{method:'POST',body:formData,credentials:'same-origin'});
       const data=await res.json();
       if(!data.success) throw new Error(data.message||'保存失败');
       location.reload();
     }catch(err){
       alert(err.message||'保存失败');
-      if(button)button.disabled=false;
+      confirmBtn.disabled=false;
     }
-  });
+    });
+  }
 })();
 </script>
 <?php include MC_ROOT . '/components/layout_bottom.php'; ?>
