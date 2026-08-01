@@ -334,6 +334,101 @@ include MC_ROOT . '/components/layout_top.php';
                         </div>
                     </form>
                 </dialog>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-option-create-dialog">
+                    <div class="pa2-dialog__head">
+                        <div>
+                            <h3>新增属性选项</h3>
+                            <p id="pa2-option-create-subtitle">给当前配置组增加可选项。</p>
+                        </div>
+                        <button class="mc-button" type="button" data-close-option-create>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_option_save'))?>">
+                        <input type="hidden" name="group_definition_id">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-hint">选项编码建议使用英文或数字，例如 <code>white</code>、<code>black</code>；选项名称给业务人员看，可以写中文。</div>
+                            <div class="pa2-dialog-form" style="margin-top:12px">
+                                <label><span>选项编码</span><input name="option_code" placeholder="例如 white"></label>
+                                <label><span>选项名称 *</span><input name="option_name" required placeholder="例如 白色"></label>
+                                <label class="full"><span>默认项</span><select name="is_default"><option value="0">不是默认</option><option value="1">设为默认</option></select></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">保存后自动刷新列表。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-option-create>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存选项</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
+                <dialog class="pa2-dialog pa2-dialog--narrow" id="pa2-group-edit-dialog">
+                    <div class="pa2-dialog__head">
+                        <div>
+                            <h3>编辑配置组</h3>
+                            <p id="pa2-group-edit-subtitle">修改配置组基础资料。</p>
+                        </div>
+                        <button class="mc-button" type="button" data-close-group-edit>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_save'))?>">
+                        <input type="hidden" name="id">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <label><span>组编码</span><input name="group_code"></label>
+                                <label><span>配置组名称 *</span><input name="group_name" required></label>
+                                <label><span>组类型</span><select name="group_type"><?php foreach (['material_select'=>'物料选择','enum_select'=>'属性选择','hybrid_select'=>'混合选择','number_input'=>'数值输入','text_input'=>'文本输入','boolean'=>'布尔开关'] as $k=>$v): ?><option value="<?=mc_h($k)?>"><?=mc_h($v)?></option><?php endforeach; ?></select></label>
+                                <label><span>排序</span><input type="number" name="sort_order"></label>
+                                <label class="full"><span>状态</span><select name="is_enabled"><option value="1">启用</option><option value="0">停用</option></select></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">只修改 V2 配置组定义。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-group-edit>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存配置组</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
+                <dialog class="pa2-dialog" id="pa2-behavior-edit-dialog">
+                    <div class="pa2-dialog__head">
+                        <div>
+                            <h3>编辑行为 / 来源</h3>
+                            <p id="pa2-behavior-edit-subtitle">设置配置组的数据来源、必选规则、选择方式和过滤条件。</p>
+                        </div>
+                        <button class="mc-button" type="button" data-close-behavior-edit>关闭</button>
+                    </div>
+                    <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_behavior_save'))?>">
+                        <input type="hidden" name="group_definition_id">
+                        <div class="pa2-dialog__body">
+                            <div class="pa2-dialog-form">
+                                <label><span>选择组类型</span><select name="selection_kind">
+                                    <?php foreach (['material'=>'物料选择组','attribute'=>'属性选择组','hybrid'=>'混合选择组','number'=>'数值组','text'=>'文本组'] as $k=>$v): ?><option value="<?=mc_h($k)?>"><?=mc_h($v)?></option><?php endforeach; ?>
+                                </select></label>
+                                <label><span>数据来源</span><select name="source_mode">
+                                    <?php foreach (['official_material'=>'正式物料','static_options'=>'静态属性选项','manual_input'=>'手工输入','mixed'=>'混合来源'] as $k=>$v): ?><option value="<?=mc_h($k)?>"><?=mc_h($v)?></option><?php endforeach; ?>
+                                </select></label>
+                                <label><span>物料分类</span><select name="material_category_code">
+                                    <option value="">不限定分类</option>
+                                    <?php foreach ($pa2MaterialCategoryLabels as $k=>$v): ?><option value="<?=mc_h($k)?>"><?=mc_h($v)?></option><?php endforeach; ?>
+                                </select></label>
+                                <label><span>必选/可选</span><select name="is_required_default"><option value="0">可选</option><option value="1">必选</option></select></label>
+                                <label><span>单选/多选</span><select name="selection_mode_default"><option value="single">单选</option><option value="multiple">多选</option></select></label>
+                                <label><span>最少选择</span><input type="number" name="min_select_default" placeholder="最少"></label>
+                                <label><span>最多选择</span><input type="number" name="max_select_default" placeholder="最多"></label>
+                                <label><span>默认项 JSON</span><input name="default_rule_json" placeholder='例如 {"option_code":"white"}'></label>
+                                <label class="full"><span>物料过滤 JSON</span><input name="material_filter_json" placeholder='例如 {"formal_status":"official"}'></label>
+                                <label class="full"><span>显示条件 JSON</span><input name="visibility_condition_json" placeholder='例如 {"controlled_by":"track_system"}'></label>
+                            </div>
+                        </div>
+                        <div class="pa2-dialog__foot">
+                            <span class="pa2-muted">高级 JSON 保留原样；保存后自动刷新列表。</span>
+                            <div class="pa2-template-actions">
+                                <button class="mc-button" type="button" data-close-behavior-edit>取消</button>
+                                <button class="mc-button mc-button--primary" type="submit">保存行为</button>
+                            </div>
+                        </div>
+                    </form>
+                </dialog>
                 <?php endif; ?>
                 <?php if ($pa2AccessoryGroups): ?>
                 <div class="pa2-jump-card">
@@ -356,13 +451,7 @@ include MC_ROOT . '/components/layout_top.php';
                             <td>
                                 <div class="pa2-options"><?php foreach ($g['options'] as $o): ?><span><?=mc_h($o['option_name'])?><?=((int)$o['is_default']===1?' · 默认':'')?></span><?php endforeach; ?></div>
                                 <?php if ($canManageGroup && in_array($g['group_type'], ['enum_select','hybrid_select','boolean'], true)): ?>
-                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_option_save'))?>">
-                                    <input type="hidden" name="group_definition_id" value="<?=intval($g['id'])?>">
-                                    <input name="option_code" placeholder="选项编码">
-                                    <input name="option_name" placeholder="选项名称" required>
-                                    <label><input type="checkbox" name="is_default" value="1"> 默认</label>
-                                    <button class="mc-button" type="submit">新增选项</button>
-                                </form>
+                                <button class="mc-button" type="button" data-open-option-create data-group-id="<?=intval($g['id'])?>" data-group-name="<?=mc_h($g['group_name'])?>">新增选项</button>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -385,46 +474,33 @@ include MC_ROOT . '/components/layout_top.php';
                                     <span class="pa2-muted">未设置行为</span>
                                 <?php endif; ?>
                                 <?php if ($canManageRule): ?>
-                                <details class="pa2-behavior">
-                                    <summary>编辑行为</summary>
-                                    <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_behavior_save'))?>">
-                                        <input type="hidden" name="group_definition_id" value="<?=intval($g['id'])?>">
-                                        <select name="selection_kind">
-                                            <?php foreach (['material'=>'物料选择组','attribute'=>'属性选择组','hybrid'=>'混合选择组','number'=>'数值组','text'=>'文本组'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($behavior && $behavior['selection_kind']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
-                                        </select>
-                                        <select name="source_mode">
-                                            <?php foreach (['official_material'=>'正式物料','static_options'=>'静态属性选项','manual_input'=>'手工输入','mixed'=>'混合来源'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($behavior && $behavior['source_mode']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
-                                        </select>
-                                        <select name="material_category_code">
-                                            <option value="">不限定分类</option>
-                                            <?php $currentMaterialCategory = (string)($behavior['material_category_code'] ?? ''); ?>
-                                            <?php if ($currentMaterialCategory !== '' && !isset($pa2MaterialCategoryLabels[$currentMaterialCategory])): ?><option value="<?=mc_h($currentMaterialCategory)?>" selected><?=mc_h($currentMaterialCategory)?></option><?php endif; ?>
-                                            <?php foreach ($pa2MaterialCategoryLabels as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($currentMaterialCategory===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
-                                        </select>
-                                        <select name="is_required_default"><option value="0" <?=(!$behavior || (int)$behavior['is_required_default']===0?'selected':'')?>>可选</option><option value="1" <?=($behavior && (int)$behavior['is_required_default']===1?'selected':'')?>>必选</option></select>
-                                        <select name="selection_mode_default"><option value="single" <?=(!$behavior || $behavior['selection_mode_default']==='single'?'selected':'')?>>单选</option><option value="multiple" <?=($behavior && $behavior['selection_mode_default']==='multiple'?'selected':'')?>>多选</option></select>
-                                        <input type="number" name="min_select_default" value="<?=intval($behavior['min_select_default'] ?? 0)?>" placeholder="最少">
-                                        <input type="number" name="max_select_default" value="<?=intval($behavior['max_select_default'] ?? 1)?>" placeholder="最多">
-                                        <input name="default_rule_json" value="<?=mc_h(isset($behavior['default_rule']) ? pa2_json_encode($behavior['default_rule']) : '')?>" placeholder='默认项 JSON，例如 {"option_code":"white"}'>
-                                        <input name="material_filter_json" value="<?=mc_h(isset($behavior['material_filter']) ? pa2_json_encode($behavior['material_filter']) : '')?>" placeholder='物料过滤 JSON'>
-                                        <input name="visibility_condition_json" value="<?=mc_h(isset($behavior['visibility_condition']) ? pa2_json_encode($behavior['visibility_condition']) : '')?>" placeholder='显示条件 JSON'>
-                                        <button class="mc-button" type="submit">保存行为</button>
-                                    </form>
-                                </details>
+                                <button class="mc-button" type="button"
+                                    data-open-behavior-edit
+                                    data-group-id="<?=intval($g['id'])?>"
+                                    data-group-name="<?=mc_h($g['group_name'])?>"
+                                    data-selection-kind="<?=mc_h($behavior['selection_kind'] ?? 'material')?>"
+                                    data-source-mode="<?=mc_h($behavior['source_mode'] ?? 'official_material')?>"
+                                    data-material-category-code="<?=mc_h($behavior['material_category_code'] ?? '')?>"
+                                    data-is-required="<?=intval($behavior['is_required_default'] ?? 0)?>"
+                                    data-selection-mode="<?=mc_h($behavior['selection_mode_default'] ?? 'single')?>"
+                                    data-min-select="<?=intval($behavior['min_select_default'] ?? 0)?>"
+                                    data-max-select="<?=intval($behavior['max_select_default'] ?? 1)?>"
+                                    data-default-rule="<?=mc_h(isset($behavior['default_rule']) ? pa2_json_encode($behavior['default_rule']) : '')?>"
+                                    data-material-filter="<?=mc_h(isset($behavior['material_filter']) ? pa2_json_encode($behavior['material_filter']) : '')?>"
+                                    data-visibility-condition="<?=mc_h(isset($behavior['visibility_condition']) ? pa2_json_encode($behavior['visibility_condition']) : '')?>">编辑行为</button>
                                 <?php endif; ?>
                             </td>
                             <td><?=intval($g['sort_order'])?> · <?=((int)$g['is_enabled'] === 1 ? '启用' : '停用')?></td>
                             <td>
                                 <?php if ($canManageGroup): ?>
-                                <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=group_save'))?>">
-                                    <input type="hidden" name="id" value="<?=intval($g['id'])?>">
-                                    <input name="group_code" value="<?=mc_h($g['group_code'])?>">
-                                    <input name="group_name" value="<?=mc_h($g['group_name'])?>" required>
-                                    <select name="group_type"><?php foreach (['material_select'=>'物料选择','enum_select'=>'属性选择','hybrid_select'=>'混合选择','number_input'=>'数值输入','text_input'=>'文本输入','boolean'=>'布尔开关'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($g['group_type']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?></select>
-                                    <input type="number" name="sort_order" value="<?=intval($g['sort_order'])?>">
-                                    <select name="is_enabled"><option value="1" <?=((int)$g['is_enabled']===1?'selected':'')?>>启用</option><option value="0" <?=((int)$g['is_enabled']===0?'selected':'')?>>停用</option></select>
-                                    <button class="mc-button" type="submit">保存</button>
-                                </form>
+                                <button class="mc-button" type="button"
+                                    data-open-group-edit
+                                    data-group-id="<?=intval($g['id'])?>"
+                                    data-group-code="<?=mc_h($g['group_code'])?>"
+                                    data-group-name="<?=mc_h($g['group_name'])?>"
+                                    data-group-type="<?=mc_h($g['group_type'])?>"
+                                    data-sort-order="<?=intval($g['sort_order'])?>"
+                                    data-is-enabled="<?=intval($g['is_enabled'])?>">编辑</button>
                                 <?php else: ?>只读<?php endif; ?>
                             </td>
                         </tr>
@@ -1191,22 +1267,94 @@ document.querySelectorAll('.pa2-jump-links a[href^="#pa2-group-"]').forEach((lin
     history.replaceState(null,'',link.getAttribute('href'));
   });
 });
+function pa2OpenDialog(dialog){
+  if(!dialog)return;
+  if(typeof dialog.showModal==='function'){
+    dialog.showModal();
+    return;
+  }
+  dialog.setAttribute('open','open');
+}
+function pa2CloseDialog(dialog){
+  if(!dialog)return;
+  dialog.close ? dialog.close() : dialog.removeAttribute('open');
+}
+function pa2SetField(form,name,value){
+  if(!form||!form.elements[name])return;
+  form.elements[name].value=value??'';
+}
 (()=>{
   const dialog=document.getElementById('pa2-group-create-dialog');
   if(!dialog)return;
-  const open=()=>{
-    if(typeof dialog.showModal==='function'){
-      dialog.showModal();
-      return;
-    }
-    dialog.setAttribute('open','open');
-  };
-  const close=()=>dialog.close ? dialog.close() : dialog.removeAttribute('open');
   document.querySelectorAll('[data-open-group-create]').forEach((btn)=>{
-    btn.addEventListener('click',open);
+    btn.addEventListener('click',()=>pa2OpenDialog(dialog));
   });
   document.querySelectorAll('[data-close-group-create]').forEach((btn)=>{
-    btn.addEventListener('click',close);
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-option-create-dialog');
+  const form=dialog?dialog.querySelector('form'):null;
+  const subtitle=document.getElementById('pa2-option-create-subtitle');
+  if(!dialog||!form)return;
+  document.querySelectorAll('[data-open-option-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      form.reset();
+      pa2SetField(form,'group_definition_id',btn.getAttribute('data-group-id')||'');
+      if(subtitle) subtitle.textContent='给「'+(btn.getAttribute('data-group-name')||'当前配置组')+'」增加可选项。';
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-option-create]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-group-edit-dialog');
+  const form=dialog?dialog.querySelector('form'):null;
+  const subtitle=document.getElementById('pa2-group-edit-subtitle');
+  if(!dialog||!form)return;
+  document.querySelectorAll('[data-open-group-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      pa2SetField(form,'id',btn.getAttribute('data-group-id')||'');
+      pa2SetField(form,'group_code',btn.getAttribute('data-group-code')||'');
+      pa2SetField(form,'group_name',btn.getAttribute('data-group-name')||'');
+      pa2SetField(form,'group_type',btn.getAttribute('data-group-type')||'material_select');
+      pa2SetField(form,'sort_order',btn.getAttribute('data-sort-order')||'100');
+      pa2SetField(form,'is_enabled',btn.getAttribute('data-is-enabled')||'1');
+      if(subtitle) subtitle.textContent='修改「'+(btn.getAttribute('data-group-name')||'配置组')+'」基础资料。';
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-group-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
+  });
+})();
+(()=>{
+  const dialog=document.getElementById('pa2-behavior-edit-dialog');
+  const form=dialog?dialog.querySelector('form'):null;
+  const subtitle=document.getElementById('pa2-behavior-edit-subtitle');
+  if(!dialog||!form)return;
+  document.querySelectorAll('[data-open-behavior-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>{
+      pa2SetField(form,'group_definition_id',btn.getAttribute('data-group-id')||'');
+      pa2SetField(form,'selection_kind',btn.getAttribute('data-selection-kind')||'material');
+      pa2SetField(form,'source_mode',btn.getAttribute('data-source-mode')||'official_material');
+      pa2SetField(form,'material_category_code',btn.getAttribute('data-material-category-code')||'');
+      pa2SetField(form,'is_required_default',btn.getAttribute('data-is-required')||'0');
+      pa2SetField(form,'selection_mode_default',btn.getAttribute('data-selection-mode')||'single');
+      pa2SetField(form,'min_select_default',btn.getAttribute('data-min-select')||'0');
+      pa2SetField(form,'max_select_default',btn.getAttribute('data-max-select')||'1');
+      pa2SetField(form,'default_rule_json',btn.getAttribute('data-default-rule')||'');
+      pa2SetField(form,'material_filter_json',btn.getAttribute('data-material-filter')||'');
+      pa2SetField(form,'visibility_condition_json',btn.getAttribute('data-visibility-condition')||'');
+      if(subtitle) subtitle.textContent='设置「'+(btn.getAttribute('data-group-name')||'配置组')+'」的数据来源、必选规则和过滤条件。';
+      pa2OpenDialog(dialog);
+    });
+  });
+  document.querySelectorAll('[data-close-behavior-edit]').forEach((btn)=>{
+    btn.addEventListener('click',()=>pa2CloseDialog(dialog));
   });
 })();
 (()=>{
