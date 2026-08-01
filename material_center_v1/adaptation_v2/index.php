@@ -78,6 +78,42 @@ $pa2ResultBadge = [
     'approval_required' => 'pa2-badge--approval',
     'incompatible' => 'pa2-badge--block',
 ];
+$pa2GroupTypeLabels = [
+    'material_select' => '物料选择',
+    'enum_select' => '属性选择',
+    'hybrid_select' => '混合选择',
+    'number_input' => '数值输入',
+    'text_input' => '文本输入',
+    'boolean' => '开关选择',
+];
+$pa2SelectionKindLabels = [
+    'material' => '物料',
+    'attribute' => '属性',
+    'hybrid' => '混合',
+    'number' => '数值',
+    'text' => '文本',
+];
+$pa2SourceModeLabels = [
+    'official_material' => '正式物料',
+    'static_options' => '固定选项',
+    'manual_input' => '手工输入',
+    'mixed' => '混合来源',
+];
+$pa2SelectionModeLabels = [
+    'single' => '单选',
+    'multiple' => '多选',
+];
+$pa2MaterialCategoryLabels = [
+    'chip' => '芯片 / 光源',
+    'power_supply' => '电源 / 驱动',
+    'optic' => '光学 / 透镜',
+    'installation' => '安装方式',
+    'accessory' => '配件',
+    'glass' => '玻璃',
+    'honeycomb' => '蜂窝网',
+    'four_leaf_louver' => '四叶片',
+    'optical_film' => '光学膜',
+];
 
 $routeCards = [
     ['home', '首页', 'V2 基础状态、模板状态和阶段入口。'],
@@ -101,6 +137,46 @@ if (!function_exists('pa2_view_url')) {
         return mc_url('adaptation_v2/index.php?' . http_build_query($query));
     }
 }
+if (!function_exists('pa2_material_filter_summary_cn')) {
+    function pa2_material_filter_summary_cn(array $filter): array
+    {
+        $items = [];
+        if (isset($filter['formal_status'])) {
+            $status = [
+                'official' => '正式物料',
+                'draft' => '草稿物料',
+                'pending' => '待审核物料',
+                'archived' => '归档物料',
+            ][(string)$filter['formal_status']] ?? (string)$filter['formal_status'];
+            $items[] = '物料状态：' . $status;
+        }
+        if (array_key_exists('approved_required', $filter)) {
+            $items[] = '审核要求：' . ($filter['approved_required'] ? '必须已审核' : '不强制审核');
+        }
+        if (isset($filter['keyword'])) {
+            $items[] = '关键词：' . (string)$filter['keyword'];
+        }
+        if (isset($filter['keywords']) && is_array($filter['keywords'])) {
+            $items[] = '关键词：' . implode('、', array_map('strval', $filter['keywords']));
+        }
+        if (isset($filter['material_category_code'])) {
+            $categoryLabels = [
+                'chip' => '芯片 / 光源',
+                'power_supply' => '电源 / 驱动',
+                'optic' => '光学 / 透镜',
+                'installation' => '安装方式',
+                'accessory' => '配件',
+                'glass' => '玻璃',
+                'honeycomb' => '蜂窝网',
+                'four_leaf_louver' => '四叶片',
+                'optical_film' => '光学膜',
+            ];
+            $categoryCode = (string)$filter['material_category_code'];
+            $items[] = '物料分类：' . ($categoryLabels[$categoryCode] ?? $categoryCode);
+        }
+        return $items ?: ['已设置过滤条件'];
+    }
+}
 
 include MC_ROOT . '/components/layout_top.php';
 ?>
@@ -113,7 +189,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-tabs{display:flex;gap:10px;flex-wrap:wrap}.pa2-tabs a{border:1px solid var(--pa2-border);background:#fff;border-radius:999px;padding:9px 14px;color:#344054;text-decoration:none;font-weight:700}.pa2-tabs a.is-active{background:var(--pa2-teal);border-color:var(--pa2-teal);color:#fff}
 .pa2-panel{background:#fff;border:1px solid var(--pa2-border);border-radius:18px;overflow:hidden}.pa2-panel__head{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-panel__head h2{margin:0;font-size:20px}.pa2-panel__head p{margin:4px 0 0;color:var(--pa2-muted)}
 .pa2-panel__body{padding:18px}.pa2-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.pa2-form label{display:grid;gap:6px;color:#344054;font-weight:700}.pa2-form input,.pa2-form select,.pa2-form textarea{width:100%;border:1px solid #cfd8e6;border-radius:10px;padding:9px 10px;background:#fff}.pa2-form .wide{grid-column:span 2}.pa2-form .full{grid-column:1/-1}
-.pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}
+.pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pa2-filter-chips span{background:#ecfdf3;color:#067647;border:1px solid #abefc6;border-radius:999px;padding:5px 9px;font-size:12px}
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
@@ -259,7 +335,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <tr>
                             <td><code><?=mc_h($g['group_code'])?></code></td>
                             <td><strong><?=mc_h($g['icon'] ? $g['icon'] . ' ' : '')?><?=mc_h($g['group_name'])?></strong><br><span class="pa2-muted"><?=mc_h($g['description'] ?? '')?></span></td>
-                            <td><?=mc_h($g['group_type'])?></td>
+                            <td><?=mc_h($pa2GroupTypeLabels[$g['group_type']] ?? $g['group_type'])?></td>
                             <td>
                                 <div class="pa2-options"><?php foreach ($g['options'] as $o): ?><span><?=mc_h($o['option_name'])?><?=((int)$o['is_default']===1?' · 默认':'')?></span><?php endforeach; ?></div>
                                 <?php if ($canManageGroup && in_array($g['group_type'], ['enum_select','hybrid_select','boolean'], true)): ?>
@@ -275,10 +351,17 @@ include MC_ROOT . '/components/layout_top.php';
                             <td>
                                 <?php $behavior = $g['behavior'] ?? null; ?>
                                 <?php if ($behavior): ?>
+                                    <?php
+                                    $selectionKind = (string)($behavior['selection_kind'] ?? '');
+                                    $sourceMode = (string)($behavior['source_mode'] ?? '');
+                                    $categoryCode = (string)($behavior['material_category_code'] ?? '');
+                                    $selectionMode = (string)($behavior['selection_mode_default'] ?? '');
+                                    $filterSummary = !empty($behavior['material_filter']) && is_array($behavior['material_filter']) ? pa2_material_filter_summary_cn($behavior['material_filter']) : [];
+                                    ?>
                                     <div class="pa2-behavior">
-                                        <div><span class="pa2-badge"><?=mc_h($behavior['selection_kind'])?></span> <span class="pa2-chip"><?=mc_h($behavior['source_mode'])?></span></div>
-                                        <div class="pa2-muted">物料分类：<?=mc_h($behavior['material_category_code'] ?: '—')?> · <?=((int)$behavior['is_required_default']===1?'必选':'可选')?> · <?=mc_h($behavior['selection_mode_default'])?> · <?=intval($behavior['min_select_default'])?>-<?=intval($behavior['max_select_default'])?></div>
-                                        <?php if (!empty($behavior['material_filter'])): ?><details><summary>物料过滤器</summary><pre class="pa2-json"><?=mc_h(pa2_json_encode($behavior['material_filter']))?></pre></details><?php endif; ?>
+                                        <div><span class="pa2-badge"><?=mc_h($pa2SelectionKindLabels[$selectionKind] ?? $selectionKind)?></span> <span class="pa2-chip"><?=mc_h($pa2SourceModeLabels[$sourceMode] ?? $sourceMode)?></span></div>
+                                        <div class="pa2-muted">物料分类：<?=mc_h($categoryCode !== '' ? ($pa2MaterialCategoryLabels[$categoryCode] ?? $categoryCode) : '—')?> · <?=((int)$behavior['is_required_default']===1?'必选':'可选')?> · <?=mc_h($pa2SelectionModeLabels[$selectionMode] ?? $selectionMode)?> · <?=intval($behavior['min_select_default'])?>-<?=intval($behavior['max_select_default'])?></div>
+                                        <?php if ($filterSummary): ?><details><summary>物料过滤器</summary><div class="pa2-filter-chips"><?php foreach ($filterSummary as $filterText): ?><span><?=mc_h($filterText)?></span><?php endforeach; ?></div><details><summary>查看原始条件</summary><pre class="pa2-json"><?=mc_h(pa2_json_encode($behavior['material_filter']))?></pre></details></details><?php endif; ?>
                                         <?php if (!empty($behavior['visibility_condition'])): ?><details><summary>显示条件</summary><pre class="pa2-json"><?=mc_h(pa2_json_encode($behavior['visibility_condition']))?></pre></details><?php endif; ?>
                                     </div>
                                 <?php else: ?>
@@ -295,7 +378,12 @@ include MC_ROOT . '/components/layout_top.php';
                                         <select name="source_mode">
                                             <?php foreach (['official_material'=>'正式物料','static_options'=>'静态属性选项','manual_input'=>'手工输入','mixed'=>'混合来源'] as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($behavior && $behavior['source_mode']===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
                                         </select>
-                                        <input name="material_category_code" value="<?=mc_h($behavior['material_category_code'] ?? '')?>" placeholder="物料分类编码">
+                                        <select name="material_category_code">
+                                            <option value="">不限定分类</option>
+                                            <?php $currentMaterialCategory = (string)($behavior['material_category_code'] ?? ''); ?>
+                                            <?php if ($currentMaterialCategory !== '' && !isset($pa2MaterialCategoryLabels[$currentMaterialCategory])): ?><option value="<?=mc_h($currentMaterialCategory)?>" selected><?=mc_h($currentMaterialCategory)?></option><?php endif; ?>
+                                            <?php foreach ($pa2MaterialCategoryLabels as $k=>$v): ?><option value="<?=mc_h($k)?>" <?=($currentMaterialCategory===$k?'selected':'')?>><?=mc_h($v)?></option><?php endforeach; ?>
+                                        </select>
                                         <select name="is_required_default"><option value="0" <?=(!$behavior || (int)$behavior['is_required_default']===0?'selected':'')?>>可选</option><option value="1" <?=($behavior && (int)$behavior['is_required_default']===1?'selected':'')?>>必选</option></select>
                                         <select name="selection_mode_default"><option value="single" <?=(!$behavior || $behavior['selection_mode_default']==='single'?'selected':'')?>>单选</option><option value="multiple" <?=($behavior && $behavior['selection_mode_default']==='multiple'?'selected':'')?>>多选</option></select>
                                         <input type="number" name="min_select_default" value="<?=intval($behavior['min_select_default'] ?? 0)?>" placeholder="最少">

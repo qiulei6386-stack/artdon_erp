@@ -573,3 +573,24 @@
 - 本地 `git diff --check` 通过。
 - 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
 - 服务器 `groups` 页面 CLI 渲染成功，HTML 中确认存在 `pa2-group-create-dialog` 和 `data-open-group-create`。
+
+## 2026-08-01 配置组定义中心中文化显示
+
+执行范围：
+
+- 用户指出配置组定义中心里 `material_select`、`official_material`、`chip`、`single` 等英文编码不适合直接显示给业务用户。
+- 本次只做 V2 页面展示层中文化，不修改保存值、不修改数据库、不修改旧版产品适配、不修改旧 BOM。
+
+完成内容：
+
+- 配置组类型显示改为中文，例如 `material_select` 显示为“物料选择”。
+- 行为来源显示改为中文，例如 `material` / `official_material` 显示为“物料 / 正式物料”。
+- 物料分类显示改为中文，例如 `chip` 显示为“芯片 / 光源”，`power_supply` 显示为“电源 / 驱动”。
+- 选择方式显示改为中文，例如 `single` / `multiple` 显示为“单选 / 多选”。
+- 物料过滤器优先显示中文摘要，例如“物料状态：正式物料”“审核要求：必须已审核”；原始 JSON 仅保留在“查看原始条件”的高级展开里。
+- “编辑行为”中的物料分类由手填英文编码改为中文下拉，提交值仍为系统编码。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
