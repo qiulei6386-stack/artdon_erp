@@ -31,6 +31,13 @@ $categories = pa2_fetch_categories();
 $groups = pa2_fetch_groups(true);
 $groupsById = [];
 foreach ($groups as $groupRow) $groupsById[(int)$groupRow['id']] = $groupRow;
+$pa2AccessoryGroupCodes = ['accessory', 'glass', 'honeycomb', 'four_leaf_louver', 'optical_film'];
+$pa2AccessoryGroups = [];
+foreach ($groups as $groupRow) {
+    if (in_array((string)$groupRow['group_code'], $pa2AccessoryGroupCodes, true)) {
+        $pa2AccessoryGroups[] = $groupRow;
+    }
+}
 $rules = pa2_fetch_rules(true);
 $cycleCheck = pa2_detect_rule_cycles($rules);
 $products = $summary['ready'] ? pa2_search_products((string)($_GET['q'] ?? ''), 40) : [];
@@ -189,7 +196,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-tabs{display:flex;gap:10px;flex-wrap:wrap}.pa2-tabs a{border:1px solid var(--pa2-border);background:#fff;border-radius:999px;padding:9px 14px;color:#344054;text-decoration:none;font-weight:700}.pa2-tabs a.is-active{background:var(--pa2-teal);border-color:var(--pa2-teal);color:#fff}
 .pa2-panel{background:#fff;border:1px solid var(--pa2-border);border-radius:18px;overflow:hidden}.pa2-panel__head{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-panel__head h2{margin:0;font-size:20px}.pa2-panel__head p{margin:4px 0 0;color:var(--pa2-muted)}
 .pa2-panel__body{padding:18px}.pa2-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.pa2-form label{display:grid;gap:6px;color:#344054;font-weight:700}.pa2-form input,.pa2-form select,.pa2-form textarea{width:100%;border:1px solid #cfd8e6;border-radius:10px;padding:9px 10px;background:#fff}.pa2-form .wide{grid-column:span 2}.pa2-form .full{grid-column:1/-1}
-.pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pa2-filter-chips span{background:#ecfdf3;color:#067647;border:1px solid #abefc6;border-radius:999px;padding:5px 9px;font-size:12px}
+.pa2-table{width:100%;border-collapse:separate;border-spacing:0}.pa2-table th,.pa2-table td{border-bottom:1px solid #e6edf5;padding:11px;text-align:left;vertical-align:top}.pa2-table th{background:#f8fafc;color:#344054;font-size:13px}.pa2-table tr:target td{background:#fffbeb}.pa2-table code{background:#f1f5f9;border-radius:6px;padding:2px 6px}.pa2-mini-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-mini-form input,.pa2-mini-form select{border:1px solid #cfd8e6;border-radius:9px;padding:7px 9px;min-width:110px}.pa2-options{display:flex;gap:6px;flex-wrap:wrap}.pa2-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-filter-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pa2-filter-chips span{background:#ecfdf3;color:#067647;border:1px solid #abefc6;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-jump-card{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid #b7e4e2;background:linear-gradient(135deg,#f0fdfa,#fff);border-radius:16px;padding:12px 14px}.pa2-jump-card strong{color:#0b7773}.pa2-jump-links{display:flex;gap:8px;flex-wrap:wrap}.pa2-jump-links a{display:inline-flex;align-items:center;border:1px solid #c9eeeb;background:#fff;color:#0b7773;text-decoration:none;border-radius:999px;padding:7px 11px;font-weight:800}
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
@@ -328,11 +335,21 @@ include MC_ROOT . '/components/layout_top.php';
                     </form>
                 </dialog>
                 <?php endif; ?>
+                <?php if ($pa2AccessoryGroups): ?>
+                <div class="pa2-jump-card">
+                    <div><strong>新增配件配置组已创建</strong><br><span class="pa2-muted">配件、玻璃、蜂窝网、四叶片、光学膜在列表排序 121–125，点击可直接定位。</span></div>
+                    <div class="pa2-jump-links">
+                        <?php foreach ($pa2AccessoryGroups as $jumpGroup): ?>
+                            <a href="#pa2-group-<?=mc_h($jumpGroup['group_code'])?>"><?=mc_h($jumpGroup['group_name'])?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <table class="pa2-table">
                     <thead><tr><th>编码</th><th>配置组</th><th>类型</th><th>属性选项</th><th>行为 / 来源</th><th>排序/状态</th><th>编辑</th></tr></thead>
                     <tbody>
                     <?php foreach ($groups as $g): ?>
-                        <tr>
+                        <tr id="pa2-group-<?=mc_h($g['group_code'])?>">
                             <td><code><?=mc_h($g['group_code'])?></code></td>
                             <td><strong><?=mc_h($g['icon'] ? $g['icon'] . ' ' : '')?><?=mc_h($g['group_name'])?></strong><br><span class="pa2-muted"><?=mc_h($g['description'] ?? '')?></span></td>
                             <td><?=mc_h($pa2GroupTypeLabels[$g['group_type']] ?? $g['group_type'])?></td>

@@ -572,6 +572,26 @@
 
 - 本地 `git diff --check` 通过。
 - 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
+
+## 2026-08-01 配置组定义中心新增配件组定位
+
+执行范围：
+
+- 用户反馈看不到此前新增的配件、玻璃、蜂窝网、四叶片、光学膜配置组。
+- 经服务器只读核验，5 个配置组均已存在并启用，排序为 121–125；列表默认从排序 10 开始展示，需向下滚动才能看到。
+
+完成内容：
+
+- 在配置组定义中心顶部增加“新增配件配置组已创建”快速定位条。
+- 快速定位条列出配件、玻璃、蜂窝网、四叶片、光学膜。
+- 点击任一名称可跳转到对应表格行，并对目标行做浅黄色高亮。
+- 本次只修改 V2 页面展示，不修改数据库、不修改旧版产品适配、不修改旧 BOM。
+
+测试记录：
+
+- 服务器只读核验：`accessory`、`glass`、`honeycomb`、`four_leaf_louver`、`optical_film` 均存在且启用。
+- 本地 `git diff --check` 通过。
+- 服务器 PHP 语法检查通过：`material_center_v1/adaptation_v2/index.php`。
 - 服务器 `groups` 页面 CLI 渲染成功，HTML 中确认存在 `pa2-group-create-dialog` 和 `data-open-group-create`。
 
 ## 2026-08-01 配置组定义中心中文化显示
