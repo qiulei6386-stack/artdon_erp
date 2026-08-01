@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：产品适配 V2 第 3 阶段模板中心和继承引擎（待发布）
+## 本次：产品适配 V2 第 3 阶段模板中心和继承引擎（已发布）
 
 - 用户看过 V2 第 2 阶段后反馈“还比较生硬”，并要求继续。按主说明进入第 3 阶段：模板中心和继承引擎，同时把模板页从硬表格改为更柔和的卡片/工作台布局。
 - 继续遵守边界：不修改旧版产品适配业务、不修改旧 BOM、不切换正式菜单；V2 仍在 `material_center_v1/adaptation_v2/` 旁路开发；新表继续使用 `mc_pa2_` 前缀。
@@ -11,7 +11,11 @@
 - `index.php` 第 3 阶段页面：`templates` 从占位改为模板中心；`template_editor` 改为三栏模板编辑器，含左侧模板导航、中间模板结构编辑、右侧继承预览；页面样式调整为柔和卡片、工作台和继承流。
 - 新增文档 `adaptation_v2/docs/03_TEMPLATE_INHERITANCE.md`，更新 `EXECUTION_LOG.md`。新增契约测试 `material_center_v1/tests/adaptation_v2_phase3_contract.php`。
 - 本地检查：`git diff --check` 通过；旧版适配目录、旧适配 API、旧适配服务和旧迁移 diff 为 0 行。办公室电脑无 PHP，已使用服务器 PHP 对候选文件做语法检查：`index.php`、`api/index.php`、`foundation.php`、第 3 阶段迁移和新增契约测试均无语法错误；候选 `adaptation_v2_phase3_contract.php` 全部通过。
-- 待发布步骤：提交并推送 GitHub；同步同一提交到正式服务器；执行 `php material_center_v1/adaptation_v2/tools/migrate.php up` 应用第 3 阶段模板迁移；服务器复检语法、契约、页面渲染、状态 API；核对三端 HEAD 一致。
+- 发布：第 3 阶段功能提交 `ae5f626b5ec2ae2d82614b52e389f10f62ef7282` 已推送 GitHub `main`，并快进同步到正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。正式服务器已执行 `php material_center_v1/adaptation_v2/tools/migrate.php up`，应用 `20260801_002_phase3_templates`。
+- 数据库：正式服务器当前 `mc_pa2_templates=4`、`mc_pa2_template_groups=16`、`mc_pa2_template_versions=0`、`mc_pa2_schema_migrations=2`。版本表为 0 是正常状态，发布版本功能已实现，但尚未由用户在页面点“发布模板”生成正式版本。
+- 服务器复检：`adaptation_v2/index.php`、`api/index.php`、`lib/foundation.php`、第 3 阶段迁移和阶段契约测试 PHP 语法通过；`material_center_v1/tests/adaptation_v2_phase3_contract.php` 全部通过；`home`、`templates`、`template_editor`、`logs` 页面 CLI 渲染无 Fatal；继承预览核验为当前 4 个模板，`track_light_base` 继承链 2 层，继承后 9 个有效配置组。
+- 旧版边界：未修改旧版 `material_center_v1/adaptation/` 业务、旧 BOM、旧适配 API、旧适配服务、旧迁移，也未切换正式菜单；V2 仍为独立旁路入口。
+- 待最终收尾：本条上下文记录提交并同步后，再核对本地/GitHub/服务器同一 HEAD。
 
 ## 本次：产品适配 V2 第 2 阶段基础数据模型和分类/配置组中心（已发布）
 
