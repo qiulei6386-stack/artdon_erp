@@ -23474,15 +23474,25 @@
         body = '<div class="visit-preview-fallback"><strong>' + esc(name) + '</strong><span>' + esc(tip) + '</span><a href="' + esc(downloadUrl) + '">下载文件</a></div>';
       }
       document.querySelector('[data-crm-file-preview-layer]')?.remove();
-      var node = document.createElement('div');
-      node.innerHTML = '<div class="visit-preview-layer" data-crm-file-preview-layer><div><header><strong>' + esc(name) + '</strong><button type="button" data-crm-file-preview-close>关闭</button></header>' + body + '<p><a href="' + esc(downloadUrl) + '">下载</a> · 图片、PDF、文本支持在线预览，Office/压缩包请下载查看。</p></div></div>';
-      var layer = node.firstChild;
+      var layer = document.createElement('dialog');
+      layer.className = 'visit-preview-layer';
+      layer.setAttribute('data-crm-file-preview-layer', '1');
+      layer.innerHTML = '<div><header><strong>' + esc(name) + '</strong><button type="button" data-crm-file-preview-close>关闭</button></header>' + body + '<p><a href="' + esc(downloadUrl) + '">下载</a> · 图片、PDF、文本支持在线预览，Office/压缩包请下载查看。</p></div>';
       document.body.appendChild(layer);
-      var close = function () { layer.remove(); document.removeEventListener('keydown', onKey); };
-      var onKey = function (event) { if (event.key === 'Escape') close(); };
+      var close = function () {
+        if (typeof layer.close === 'function' && layer.open) layer.close();
+        else layer.remove();
+      };
       layer.querySelector('[data-crm-file-preview-close]')?.addEventListener('click', close);
       layer.addEventListener('click', function (event) { if (event.target === layer) close(); });
-      document.addEventListener('keydown', onKey);
+      layer.addEventListener('cancel', function (event) { event.preventDefault(); close(); });
+      layer.addEventListener('close', function () { layer.remove(); }, { once: true });
+      try {
+        if (typeof layer.showModal === 'function') layer.showModal();
+        else layer.setAttribute('open', 'open');
+      } catch (error) {
+        layer.setAttribute('open', 'open');
+      }
     },
     sampleFileKind: function (file) {
       return this.filePreviewKind(file);

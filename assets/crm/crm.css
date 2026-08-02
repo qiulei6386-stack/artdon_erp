@@ -15797,6 +15797,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .mail-datasheet-preview-layer {
   z-index: 9999;
 }
+.visit-preview-layer::backdrop,
 .mail-datasheet-preview-layer::backdrop {
   background: rgba(15, 23, 42, .58);
 }

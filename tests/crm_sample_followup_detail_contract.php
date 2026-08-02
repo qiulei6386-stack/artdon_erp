@@ -63,7 +63,9 @@ foreach ([
     'data-sample-copy-file',
     "document.querySelector('[data-crm-file-preview-layer]')?.remove();",
     "if (event.target === layer) close();",
-    "if (event.key === 'Escape') close();",
+    "layer.addEventListener('cancel'",
+    "layer.addEventListener('close'",
+    "layer.showModal()",
     "dialog.addEventListener('paste'",
     'sample-row-tools',
     "var rowTools = ['编辑寄送信息', '删除样品寄送'];",
@@ -84,6 +86,7 @@ foreach ([
     '.sample-followup-history-panel .sample-followup-list',
     '.quote-flow-card-next .sample-row-tools button[data-task-detail-action="删除样品寄送"]',
     'z-index: 120000;',
+    '.visit-preview-layer::backdrop',
     '.visit-preview-layer > div',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
