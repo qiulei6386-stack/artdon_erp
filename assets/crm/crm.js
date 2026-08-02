@@ -18173,6 +18173,7 @@
     seedPage: 1,
     seedSelected: new Set(),
     selectedTaskIds: new Set(),
+    selectedTemplateIds: new Set(),
     seedFilters: { q: '', model_key: '', sample_type: '', status: '', country: '' },
     keywordFilters: { q: '', model_key: '', language: '', country: '', status: '' },
     taskSubView: readLocalString('crm_radar_task_subview', 'tasks'),
@@ -19034,9 +19035,10 @@
       var box = document.querySelector('[data-radar-task-subcontent]') || document.querySelector('[data-radar-content]');
       if (!box) return;
       var self = this;
-      box.innerHTML = '<section class="radar-panel radar-workbench"><div class="radar-toolbar"><div><h3>搜索模板库</h3><span>模板只负责生成搜索词和草稿任务；不会自动执行搜索。</span></div><nav><button type="button" data-radar-template-new>新建模板</button><button type="button" data-radar-template-refresh>刷新</button></nav></div>' +
+      box.innerHTML = '<section class="radar-panel radar-workbench radar-template-workbench-v2"><div class="radar-toolbar radar-template-head-v2"><div><h3>搜索模板库</h3><span>模板只负责生成搜索词和草稿任务；单击选择，双击编辑。</span></div><nav><button type="button" data-radar-template-new>新建模板</button><button type="button" data-radar-template-refresh>刷新</button></nav></div>' +
         '<div class="radar-filter-row"><input data-radar-template-q placeholder="模板名称 / 代码 / 国家"><select data-radar-template-country><option value="">全部国家</option><option value="VN">越南</option><option value="ID">印度尼西亚</option><option value="AE">迪拜/UAE</option></select><select data-radar-template-model>' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, this.templateFilters.model_key, '全部模型') + '</select><select data-radar-template-status><option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option></select><button type="button" data-radar-template-search>筛选</button></div>' +
-        '<div class="radar-table"><table><thead><tr><th>模板</th><th>国家</th><th>模型</th><th>状态</th><th>服务</th><th>效果统计</th><th>系统</th><th>时间</th><th>操作</th></tr></thead><tbody data-radar-template-rows><tr><td colspan="9">正在加载...</td></tr></tbody></table></div></section>';
+        '<div class="radar-template-actionbar-v2"><strong data-radar-template-selected-count>已选 0 个</strong><button type="button" data-radar-template-action="preview">预览</button><button type="button" data-radar-template-action="edit">编辑</button><button type="button" data-radar-template-action="task">创建任务</button><button type="button" data-radar-template-action="copy">复制</button><button type="button" data-radar-template-action="active">批量启用</button><button type="button" data-radar-template-action="inactive">批量停用</button><button type="button" data-radar-template-action="restore">批量恢复</button><button type="button" data-radar-template-action="delete" class="danger">批量删除</button><button type="button" data-radar-template-action="select-page">全选本页</button><button type="button" data-radar-template-action="clear">清空选择</button></div>' +
+        '<div class="radar-table radar-template-table-v2"><table><thead><tr><th><input type="checkbox" data-radar-template-check-all></th><th>模板</th><th>国家</th><th>模型</th><th>状态</th><th>服务</th><th>效果统计</th><th>系统</th><th>时间</th></tr></thead><tbody data-radar-template-rows><tr><td colspan="9">正在加载...</td></tr></tbody></table></div></section>';
       box.querySelector('[data-radar-template-new]')?.addEventListener('click', function () { self.openTemplateEditor(); });
       box.querySelector('[data-radar-template-refresh]')?.addEventListener('click', function () { self.loadTemplates(); });
       box.querySelector('[data-radar-template-search]')?.addEventListener('click', function () {
@@ -19045,6 +19047,12 @@
         self.templateFilters.model_key = box.querySelector('[data-radar-template-model]').value || '';
         self.templateFilters.status = box.querySelector('[data-radar-template-status]').value || '';
         self.loadTemplates();
+      });
+      box.querySelectorAll('[data-radar-template-action]').forEach(function (button) {
+        button.addEventListener('click', function () { self.handleTemplateAction(button.getAttribute('data-radar-template-action') || ''); });
+      });
+      box.querySelector('[data-radar-template-check-all]')?.addEventListener('change', function (event) {
+        self.selectVisibleTemplates(event.target.checked);
       });
       this.loadTemplates();
     },
@@ -19061,17 +19069,115 @@
       if (!tbody) return;
       var self = this;
       var rows = (this.data.templates || {}).rows || [];
+      var visibleIds = new Set(rows.map(function (row) { return Number(row.id || 0); }).filter(Boolean));
+      this.selectedTemplateIds = new Set(this.selectedTemplateIdArray().filter(function (id) { return visibleIds.has(id); }));
+      var selected = this.selectedTemplateIds || new Set();
       tbody.innerHTML = rows.length ? rows.map(function (row) {
         var s = row.stats || {};
-        return '<tr><td><strong>' + esc(row.template_name || '-') + '</strong><small>' + esc(row.template_code || '-') + '</small></td><td>' + esc(row.country || '-') + '<small>' + esc(row.country_code || '') + '</small></td><td><em class="radar-chip">' + esc(self.modelLabel(row.model_key)) + '</em></td><td>' + esc(row.status === 'active' ? '启用' : '停用') + '</td><td>' + esc(row.search_service_key || '-') + '</td><td><small>使用 ' + esc(s.use_count || row.use_count || 0) + ' / 结果 ' + esc(s.result_count || 0) + ' / 公司 ' + esc(s.company_count || 0) + '</small><small>A ' + esc(s.grade_a_count || 0) + ' · B ' + esc(s.grade_b_count || 0) + ' · 有效成本 ' + esc(s.avg_valid_customer_cost || 0) + '</small></td><td>' + (Number(row.is_system) ? '系统预设' : '自定义') + '</td><td><small>' + esc(row.created_at || '-') + '</small><small>' + esc(row.updated_at || '-') + '</small></td><td><button type="button" data-radar-template-preview="' + esc(row.id) + '">预览</button><button type="button" data-radar-template-task="' + esc(row.id) + '">创建任务</button><button type="button" data-radar-template-edit="' + esc(row.id) + '">编辑</button><button type="button" data-radar-template-copy="' + esc(row.id) + '">复制</button><button type="button" data-radar-template-status="' + esc(row.id) + '" data-status="' + (row.status === 'active' ? 'inactive' : 'active') + '">' + (row.status === 'active' ? '停用' : '启用') + '</button><button type="button" data-radar-template-restore="' + esc(row.id) + '">恢复</button><button type="button" data-radar-template-delete="' + esc(row.id) + '">删除</button></td></tr>';
+        var id = Number(row.id || 0);
+        return '<tr data-radar-template-row="' + esc(id) + '" class="' + (selected.has(id) ? 'selected' : '') + '"><td><input type="checkbox" data-radar-template-check="' + esc(id) + '"' + (selected.has(id) ? ' checked' : '') + '></td><td><strong>' + esc(row.template_name || '-') + '</strong><small>' + esc(row.template_code || '-') + '</small></td><td>' + esc(row.country || '-') + '<small>' + esc(row.country_code || '') + '</small></td><td><em class="radar-chip">' + esc(self.modelLabel(row.model_key)) + '</em></td><td>' + esc(row.status === 'active' ? '启用' : '停用') + '</td><td>' + esc(row.search_service_key || '-') + '</td><td><small>使用 ' + esc(s.use_count || row.use_count || 0) + ' / 结果 ' + esc(s.result_count || 0) + ' / 公司 ' + esc(s.company_count || 0) + '</small><small>A ' + esc(s.grade_a_count || 0) + ' · B ' + esc(s.grade_b_count || 0) + ' · 有效成本 ' + esc(s.avg_valid_customer_cost || 0) + '</small></td><td>' + (Number(row.is_system) ? '系统预设' : '自定义') + '</td><td><small>' + esc(row.created_at || '-') + '</small><small>' + esc(row.updated_at || '-') + '</small></td></tr>';
       }).join('') : '<tr><td colspan="9">暂无搜索模板。</td></tr>';
-      tbody.querySelectorAll('[data-radar-template-preview]').forEach(function (b) { b.addEventListener('click', function () { self.openTemplatePreview(Number(b.getAttribute('data-radar-template-preview'))); }); });
-      tbody.querySelectorAll('[data-radar-template-task]').forEach(function (b) { b.addEventListener('click', function () { self.createTaskFromTemplate(Number(b.getAttribute('data-radar-template-task'))); }); });
-      tbody.querySelectorAll('[data-radar-template-edit]').forEach(function (b) { b.addEventListener('click', function () { self.openTemplateEditor(Number(b.getAttribute('data-radar-template-edit'))); }); });
-      tbody.querySelectorAll('[data-radar-template-copy]').forEach(function (b) { b.addEventListener('click', function () { self.openTemplateCopy(Number(b.getAttribute('data-radar-template-copy'))); }); });
-      tbody.querySelectorAll('[data-radar-template-status]').forEach(function (b) { b.addEventListener('click', function () { self.templateStatus(Number(b.getAttribute('data-radar-template-status')), b.getAttribute('data-status')); }); });
-      tbody.querySelectorAll('[data-radar-template-restore]').forEach(function (b) { b.addEventListener('click', function () { if (confirm('确认恢复系统模板默认内容？')) self.templateSimpleAction('radar_template_restore', Number(b.getAttribute('data-radar-template-restore'))); }); });
-      tbody.querySelectorAll('[data-radar-template-delete]').forEach(function (b) { b.addEventListener('click', function () { if (confirm('确认删除该自定义模板？系统模板不能删除。')) self.templateSimpleAction('radar_template_delete', Number(b.getAttribute('data-radar-template-delete'))); }); });
+      tbody.querySelectorAll('[data-radar-template-row]').forEach(function (rowNode) {
+        rowNode.addEventListener('click', function (event) {
+          if (event.target && event.target.matches('input[type="checkbox"]')) return;
+          self.selectedTemplateIds = new Set([Number(rowNode.getAttribute('data-radar-template-row') || 0)].filter(Boolean));
+          self.syncTemplateSelectionUi();
+        });
+        rowNode.addEventListener('dblclick', function () {
+          self.openTemplateEditor(Number(rowNode.getAttribute('data-radar-template-row') || 0));
+        });
+      });
+      tbody.querySelectorAll('[data-radar-template-check]').forEach(function (check) {
+        check.addEventListener('change', function () {
+          var id = Number(check.getAttribute('data-radar-template-check') || 0);
+          if (!id) return;
+          if (check.checked) self.selectedTemplateIds.add(id);
+          else self.selectedTemplateIds.delete(id);
+          self.syncTemplateSelectionUi();
+        });
+      });
+      this.syncTemplateSelectionUi();
+    },
+    selectedTemplateIdArray: function () {
+      return Array.from(this.selectedTemplateIds || new Set()).map(Number).filter(Boolean);
+    },
+    selectVisibleTemplates: function (checked) {
+      var self = this;
+      if (checked) {
+        ((this.data.templates || {}).rows || []).forEach(function (row) {
+          var id = Number(row.id || 0);
+          if (id) self.selectedTemplateIds.add(id);
+        });
+      } else {
+        ((this.data.templates || {}).rows || []).forEach(function (row) {
+          self.selectedTemplateIds.delete(Number(row.id || 0));
+        });
+      }
+      this.syncTemplateSelectionUi();
+    },
+    syncTemplateSelectionUi: function () {
+      var ids = this.selectedTemplateIdArray();
+      var idMap = new Set(ids);
+      document.querySelectorAll('[data-radar-template-row]').forEach(function (row) {
+        var id = Number(row.getAttribute('data-radar-template-row') || 0);
+        row.classList.toggle('selected', idMap.has(id));
+      });
+      document.querySelectorAll('[data-radar-template-check]').forEach(function (check) {
+        check.checked = idMap.has(Number(check.getAttribute('data-radar-template-check') || 0));
+      });
+      var count = document.querySelector('[data-radar-template-selected-count]');
+      if (count) count.textContent = '已选 ' + ids.length + ' 个';
+      var visible = ((this.data.templates || {}).rows || []).map(function (row) { return Number(row.id || 0); }).filter(Boolean);
+      var all = document.querySelector('[data-radar-template-check-all]');
+      if (all) {
+        all.checked = visible.length > 0 && visible.every(function (id) { return idMap.has(id); });
+        all.indeterminate = visible.some(function (id) { return idMap.has(id); }) && !all.checked;
+      }
+      document.querySelectorAll('[data-radar-template-action]').forEach(function (button) {
+        var action = button.getAttribute('data-radar-template-action') || '';
+        var singleOnly = ['preview', 'edit', 'task', 'copy'].indexOf(action) >= 0;
+        button.disabled = singleOnly ? ids.length !== 1 : (['active', 'inactive', 'restore', 'delete', 'clear'].indexOf(action) >= 0 ? ids.length < 1 : false);
+      });
+    },
+    handleTemplateAction: function (action) {
+      var ids = this.selectedTemplateIdArray();
+      if (action === 'select-page') return this.selectVisibleTemplates(true);
+      if (action === 'clear') { this.selectedTemplateIds.clear(); return this.syncTemplateSelectionUi(); }
+      if (['preview', 'edit', 'task', 'copy'].indexOf(action) >= 0 && ids.length !== 1) return toast('请选择一个模板');
+      if (action === 'preview') return this.openTemplatePreview(ids[0]);
+      if (action === 'edit') return this.openTemplateEditor(ids[0]);
+      if (action === 'task') return this.createTaskFromTemplate(ids[0]);
+      if (action === 'copy') return this.openTemplateCopy(ids[0]);
+      if (action === 'active') return this.templateActionMany('status', ids, '确认启用选中的 {count} 个模板？', 'active');
+      if (action === 'inactive') return this.templateActionMany('status', ids, '确认停用选中的 {count} 个模板？', 'inactive');
+      if (action === 'restore') return this.templateActionMany('restore', ids, '确认恢复选中的 {count} 个系统模板默认内容？');
+      if (action === 'delete') return this.templateActionMany('delete', ids, '确认批量删除选中的 {count} 个模板？系统模板不能删除。');
+      return false;
+    },
+    templateActionMany: function (action, ids, confirmText, status) {
+      ids = (ids || this.selectedTemplateIdArray()).map(Number).filter(Boolean);
+      if (!ids.length) return toast('请先选择搜索模板');
+      if (confirmText && !confirm(confirmText.replace('{count}', ids.length))) return;
+      var self = this;
+      var ok = 0, fail = 0, errors = [];
+      ids.reduce(function (chain, id) {
+        return chain.then(function () {
+          var request = action === 'status'
+            ? radarPost('radar_template_status', { id: id, status: status })
+            : radarPost(action === 'restore' ? 'radar_template_restore' : 'radar_template_delete', { id: id });
+          return request.then(function (json) {
+            if (!json.success) throw new Error(json.message || '操作失败');
+            ok++;
+            self.selectedTemplateIds.delete(id);
+          }).catch(function (error) {
+            fail++;
+            errors.push('#' + id + ' ' + (error.message || '操作失败'));
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        toast('批量操作完成：成功 ' + ok + '，失败 ' + fail + (errors.length ? '；' + errors.slice(0, 2).join('；') : ''));
+        self.loadTemplates();
+      });
     },
     templateSimpleAction: function (action, id) {
       var self = this;
