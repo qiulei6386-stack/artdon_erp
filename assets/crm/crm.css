@@ -13307,6 +13307,20 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-manual-table tr.is-overdue td {
   background: color-mix(in srgb, #ef4444 7%, var(--crm-card-bg));
 }
+.promo-manual-table tr.is-group-target td {
+  background: color-mix(in srgb, var(--crm-primary) 8%, var(--crm-card-bg));
+}
+.promo-manual-group-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-primary) 14%, var(--crm-card-bg));
+  color: var(--crm-primary);
+  font-size: 12px;
+  font-weight: 850;
+}
 .promo-manual-done-table {
   margin-top: 10px;
 }

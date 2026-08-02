@@ -17754,12 +17754,26 @@
           return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
         });
         manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
+        manualTargets.sort(function (a, b) {
+          var aGroup = (a.chat_group_id || self.isGroupPromotionChannel(a.channel_key)) ? 1 : 0;
+          var bGroup = (b.chat_group_id || self.isGroupPromotionChannel(b.channel_key)) ? 1 : 0;
+          if (aGroup !== bGroup) return bGroup - aGroup;
+          var aStatus = String(a.target_status || '').toLowerCase();
+          var bStatus = String(b.target_status || '').toLowerCase();
+          var order = { failed: 1, pending: 2, skipped: 3, success: 4 };
+          if ((order[aStatus] || 9) !== (order[bStatus] || 9)) return (order[aStatus] || 9) - (order[bStatus] || 9);
+          return Number(b.id || 0) - Number(a.id || 0);
+        });
         var pending = manualTargets.filter(function (row) {
           var status = String(row.target_status || '').toLowerCase();
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           return ['pending','failed'].indexOf(status) >= 0 || (emailChannels.indexOf(channel) >= 0 && status === 'skipped');
         });
         var done = manualTargets.filter(function (row) { return row.target_status === 'success'; });
+        var groupTargets = manualTargets.filter(function (row) { return row.chat_group_id || self.isGroupPromotionChannel(row.channel_key); });
+        var wechatGroupCount = groupTargets.filter(function (row) { return self.normalizePromotionChannel(row.chat_group_platform || row.channel_key) === 'wechat_group'; }).length;
+        var whatsappGroupCount = groupTargets.filter(function (row) { return self.normalizePromotionChannel(row.chat_group_platform || row.channel_key) === 'whatsapp_group'; }).length;
+        var emailFallbackCount = manualTargets.filter(function (row) { return emailChannels.indexOf(self.normalizePromotionChannel(row.channel_key || '')) >= 0; }).length;
         var sendRule = {};
         try { sendRule = JSON.parse(task.send_rule_json || '{}') || {}; } catch (error) {}
         var owners = (sendRule.offline_owner_ids || []).map(Number).filter(Boolean);
@@ -17784,12 +17798,13 @@
         var pendingRows = pending.length ? pending.map(function (row, index) {
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           var isMailFollowup = emailChannels.indexOf(channel) >= 0;
+          var isGroupTarget = row.chat_group_id || self.isGroupPromotionChannel(row.channel_key);
           var method = row.contact_method || row.manual_group_name || (isMailFollowup ? (row.email || '-') : '-');
           var reason = row.failure_reason || (isMailFollowup ? '邮件未自动触达' : '');
           var executor = row.executor_name || row.operator_name || ownerName(index);
           var due = String(row.due_at || '').slice(0, 16) || '-';
           var overdue = row.manual_status === 'overdue' ? ' is-overdue' : '';
-          return '<tr class="' + overdue + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '</td><td>' + esc(due) + '</td></tr>';
+          return '<tr class="' + (isGroupTarget ? 'is-group-target' : '') + overdue + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + (isGroupTarget ? '<b class="promo-manual-group-badge">' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</b>' : esc(cnChannel(row.channel_key || '-'))) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '</td><td>' + esc(due) + '</td></tr>';
         }).join('') : '<tr><td colspan="7">当前任务没有待勾选的人工执行目标。</td></tr>';
         var doneRows = done.length ? done.slice(0, 80).map(function (row) {
           return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(renderManualName(row)) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(row.executor_name || '-') + '</td><td>' + esc(row.manual_checked_by_name || row.operator_name || '-') + '</td><td>' + esc(String(row.executed_at || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || '-') + '</td></tr>';
@@ -17797,7 +17812,7 @@
         self.openDialog({
           title: '手动执行推广',
           description: task.task_name + ' · 勾选后记录完成时间、执行负责人和打勾账号',
-          body: '<section class="promo-preview-grid promo-manual-summary"><article><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></article><article><strong>' + esc(pending.length) + '</strong><span>待勾选</span></article><article><strong>' + esc(done.length) + '</strong><span>已执行</span></article><article><strong>' + esc(Object.keys(manualActorCount).length || '-') + '</strong><span>执行负责人</span></article></section>' +
+          body: '<section class="promo-preview-grid promo-manual-summary"><article><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></article><article><strong>' + esc(groupTargets.length) + '</strong><span>群推广</span></article><article><strong>' + esc(wechatGroupCount) + ' / ' + esc(whatsappGroupCount) + '</strong><span>微信群 / WhatsApp群</span></article><article><strong>' + esc(emailFallbackCount) + '</strong><span>邮件转人工</span></article></section>' +
             '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>确认后，所选行会写入执行完成时间，并记录由当前账号打勾。</span></section>' +
             '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 全选待执行</label><span data-promo-manual-selected>已选 0 条</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '</tbody></table></div></section>' +
             '<details class="promo-manual-done-table"><summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th></tr></thead><tbody>' + doneRows + '</tbody></table></div></details>',
