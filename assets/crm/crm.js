@@ -14557,6 +14557,8 @@
       var queue = report.queue || { rows: [], status: {} };
       var queueRows = queue.rows || [];
       var queueStatus = queue.status || {};
+      var executionSummary = report.execution_summary || {};
+      var mailExecutionSummary = executionSummary.mail || {};
       var targetTotal = Number(task.customer_count || 0) + Number(task.contact_count || 0);
       var emailChannels = ['email','mail','edm'];
       var manualChannels = ['wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin'];
@@ -14583,13 +14585,14 @@
       var noEmailSkipped = targets.filter(function (row) { return /邮箱|email/i.test(String(row.failure_reason || row.skip_reason || '')); }).length;
       var mailRuleText = sendRule.mail_account_rule === 'group_by_country' ? '按国家分配邮箱' : (sendRule.mail_account_rule === 'owner_mailbox' ? '按第一负责人邮箱' : (sendRule.mail_account_rule === 'selected_mailbox' ? '按当前勾选邮箱' : '多邮箱平均分配'));
       var scheduleText = this.taskScheduleText(task, schedule);
-      var taskSuccessCount = Number(task.success_count || 0);
-      var taskFailedCount = Number(task.failed_count || 0);
+      var taskSuccessCount = Number(task.success_count || 0) || Number(mailExecutionSummary.success || 0);
+      var taskFailedCount = Number(task.failed_count || 0) || Number(mailExecutionSummary.failed || 0);
+      var taskPendingCount = Number(mailExecutionSummary.pending || 0);
       var taskCompletedCount = taskSuccessCount + taskFailedCount;
-      var queueTotal = queueRows.length || Object.keys(queueStatus).reduce(function (sum, key) { return ['first_planned_time','last_planned_time'].indexOf(key) >= 0 ? sum : sum + Number(queueStatus[key] || 0); }, 0) || taskCompletedCount;
+      var queueTotal = queueRows.length || Object.keys(queueStatus).reduce(function (sum, key) { return ['first_planned_time','last_planned_time'].indexOf(key) >= 0 ? sum : sum + Number(queueStatus[key] || 0); }, 0) || taskCompletedCount || Number(mailExecutionSummary.total || 0);
       var emailTargetCount = queueTotal > 0 ? queueTotal : (uniqueEmailTargetCount || rawEmailTargetCount);
       var duplicateEmailSkipped = Math.max(0, rawEmailTargetCount - emailTargetCount, Number(risk.duplicate_email_skipped || 0));
-      var pendingQueue = Number(queueStatus.pending || 0) + Number(queueStatus.scheduled || 0) + Number(queueStatus.sending || 0);
+      var pendingQueue = Number(queueStatus.pending || 0) + Number(queueStatus.scheduled || 0) + Number(queueStatus.sending || 0) || taskPendingCount;
       var sentQueue = Number(queueStatus.sent || 0) || taskSuccessCount;
       var failedQueue = Number(queueStatus.failed || 0) || taskFailedCount;
       var retryQueue = Number(queueStatus.waiting_retry || 0);
@@ -14627,7 +14630,11 @@
       var mailAccountCount = (sendRule.mail_account_ids || []).length || (sendRule.mail_account_id ? 1 : 0) || '自动';
       var countryWorkTime = (sendRule.timezone_rule || schedule.timezone_rule || '') === 'business_hours' ? '是' : (sendRule.timezone_rule || schedule.timezone_rule || '未设置');
       var attention = failedQueue ? ('有 ' + failedQueue + ' 条发送失败，需要处理') : (retryQueue ? ('有 ' + retryQueue + ' 条待重试') : (sentQueue ? ('已发送 ' + sentQueue + ' 条邮件') : (queueTotal ? queueHint : '尚未生成执行队列')));
-      var manualPending = manualTargets.filter(function (r) { return ['pending','failed'].indexOf(r.target_status) >= 0; }).length;
+      var manualPending = manualTargets.filter(function (r) {
+        var channel = normalizeChannel(r.channel_key || task.channel_key || '');
+        var status = String(r.target_status || '').toLowerCase();
+        return ['pending','failed'].indexOf(status) >= 0 || (emailChannels.indexOf(channel) >= 0 && status === 'skipped');
+      }).length;
       var targetMetrics = [['客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['国家', countryText], ['已过滤', skippedTargets.length || risk.skipped || 0]];
       var scheduleMetrics = [['执行方式', cnStatus(task.schedule_type || schedule.schedule_type || 'manual')], ['首批时间', queueStatus.first_planned_time || task.scheduled_at || '-'], ['待发送', pendingQueue], ['已发送', sentQueue]];
       var mailRuleHtml = '<article><header><strong>邮件自动发送</strong><span>邮箱、队列与发送上限</span></header><div class="promo-task-rule-list"><p><span>发件邮箱规则</span><b>' + esc(mailRuleText) + '</b></p><p><span>发件邮箱数量</span><b>' + esc(mailAccountCount) + '</b></p><p><span>邮件目标</span><b>' + esc(emailTargetCount) + '</b></p><p><span>重复跳过</span><b>' + esc(duplicateEmailSkipped) + '</b></p><p><span>每小时 / 每日上限</span><b>' + esc(sendRule.hourly_limit || sendRule.per_hour_limit || '-') + ' / ' + esc(sendRule.daily_limit || sendRule.per_day_limit || '-') + '</b></p></div></article>';

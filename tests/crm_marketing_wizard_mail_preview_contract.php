@@ -133,7 +133,7 @@ foreach ($requiredCss as $marker) {
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'promotion-manual-email-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'promotion-schedule-summary-20260802-1';")) {
     throw new RuntimeException('CRM page must explicitly bust the promotion preview asset cache');
 }
 

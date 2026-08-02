@@ -58,7 +58,7 @@ if ($propertiesStart === false || $propertiesEnd === false || $propertiesEnd <= 
     throw new RuntimeException('Promotion task properties function boundary is missing');
 }
 $properties = substr($js, $propertiesStart, $propertiesEnd - $propertiesStart);
-foreach (['var taskCompletedCount = taskSuccessCount + taskFailedCount;', "('已发送 ' + sentQueue + ' 条邮件')"] as $marker) {
+foreach (['var mailExecutionSummary = executionSummary.mail || {};', 'var taskPendingCount = Number(mailExecutionSummary.pending || 0);', 'Number(mailExecutionSummary.total || 0)', "('已发送 ' + sentQueue + ' 条邮件')"] as $marker) {
     if (!str_contains($properties, $marker)) {
         throw new RuntimeException("Promotion task properties fallback marker missing: {$marker}");
     }
