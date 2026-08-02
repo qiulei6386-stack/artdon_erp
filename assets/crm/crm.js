@@ -20281,14 +20281,19 @@
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
       var settings = this.data.settings || {};
-      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>AI设置</strong><span>保存后立即应用到 AI 获客、报价草稿和资料草稿。</span></div><button type="button" data-ai-settings-save>保存设置</button></header><div class="ai-settings-grid">' +
-        '<article><strong>自动获客设置</strong><label><input type="checkbox" data-ai-setting="lead.enabled" ' + ((settings.lead || {}).enabled ? 'checked' : '') + '>启用邮件/官网/推广回复识别</label><label>最低置信度<input type="number" min="1" max="100" data-ai-setting="lead.min_confidence" value="' + esc((settings.lead || {}).min_confidence || 70) + '"></label></article>' +
-        '<article><strong>报价 AI 设置</strong><label><input type="checkbox" data-ai-setting="quote.enabled" ' + ((settings.quote || {}).enabled ? 'checked' : '') + '>启用报价草稿</label><label>最低置信度<input type="number" min="1" max="100" data-ai-setting="quote.min_confidence" value="' + esc((settings.quote || {}).min_confidence || 75) + '"></label></article>' +
-        '<article><strong>资料 AI 设置</strong><label><input type="checkbox" data-ai-setting="material.enabled" ' + ((settings.material || {}).enabled ? 'checked' : '') + '>启用资料草稿</label><span>资料匹配、资料任务、资料包草稿接口预留。</span></article>' +
-        '<article><strong>安全设置</strong><label><input type="checkbox" checked disabled>人工确认强制开启</label><span>自动发邮件、自动发正式报价、自动发资料保持关闭。</span></article>' +
-      '</div></section>';
-      var save = box.querySelector('[data-ai-settings-save]');
-      if (save) save.addEventListener('click', function () {
+      var lead = settings.lead || {};
+      var quote = settings.quote || {};
+      var material = settings.material || {};
+      var enabledCount = [lead.enabled, quote.enabled, material.enabled].filter(Boolean).length;
+      box.innerHTML = '<section class="ai-settings-page-v2"><section class="ai-settings-hero-v2"><div><span>AI Control Center</span><h2>AI设置</h2><p>统一管理 AI 获客、报价草稿、资料草稿和人工确认安全规则。保存后立即应用到现有 AI 草稿流程。</p></div><nav><button type="button" data-ai-open-tasks>AI任务</button><button type="button" data-ai-open-logs>运行记录</button><button type="button" class="primary" data-ai-settings-save>保存设置</button></nav></section>' +
+        '<section class="ai-settings-summary-v2"><article><span>已启用模块</span><strong>' + esc(enabledCount) + ' / 3</strong><em>获客 / 报价 / 资料</em></article><article><span>获客置信度</span><strong>' + esc(lead.min_confidence || 70) + '%</strong><em>低于阈值需复核</em></article><article><span>报价置信度</span><strong>' + esc(quote.min_confidence || 75) + '%</strong><em>草稿生成参考线</em></article><article data-tone="safe"><span>安全模式</span><strong>人工确认</strong><em>正式动作不自动执行</em></article></section>' +
+        '<section class="ai-settings-layout-v2"><main><article class="ai-setting-card-v2"><header><i>L</i><div><strong>自动获客设置</strong><span>邮件、官网、推广回复进入客户草稿前的识别规则。</span></div></header><label><span><strong>启用识别</strong><em>开启后允许生成客户草稿和确认任务。</em></span><input type="checkbox" data-ai-setting="lead.enabled" ' + (lead.enabled ? 'checked' : '') + '></label><label><span><strong>最低置信度</strong><em>低于该值时保留为待确认或异常。</em></span><input type="number" min="1" max="100" data-ai-setting="lead.min_confidence" value="' + esc(lead.min_confidence || 70) + '"></label></article>' +
+        '<article class="ai-setting-card-v2"><header><i>Q</i><div><strong>报价 AI 设置</strong><span>询盘、需求文本和 AI 任务转报价草稿的置信度控制。</span></div></header><label><span><strong>启用报价草稿</strong><em>只生成草稿，不直接发送正式报价。</em></span><input type="checkbox" data-ai-setting="quote.enabled" ' + (quote.enabled ? 'checked' : '') + '></label><label><span><strong>最低置信度</strong><em>用于判断是否建议进入报价确认。</em></span><input type="number" min="1" max="100" data-ai-setting="quote.min_confidence" value="' + esc(quote.min_confidence || 75) + '"></label></article>' +
+        '<article class="ai-setting-card-v2"><header><i>M</i><div><strong>资料 AI 设置</strong><span>资料匹配、资料任务和资料包草稿的入口控制。</span></div></header><label><span><strong>启用资料草稿</strong><em>接口预留开启后才展示资料草稿建议。</em></span><input type="checkbox" data-ai-setting="material.enabled" ' + (material.enabled ? 'checked' : '') + '></label><p>资料匹配、资料任务、资料包草稿接口预留；正式发送仍需人工确认。</p></article></main>' +
+        '<aside><article class="ai-settings-side-v2"><header><strong>安全策略</strong><span>系统不会绕过人工确认。</span></header><ul><li><i>1</i><span><strong>人工确认强制开启</strong><em>生成客户、报价、资料前必须复核。</em></span></li><li><i>2</i><span><strong>禁止自动外发</strong><em>邮件、报价和资料发送保持关闭。</em></span></li><li><i>3</i><span><strong>权限后端校验</strong><em>前端只展示状态，接口仍按权限执行。</em></span></li></ul></article><article class="ai-settings-side-v2"><header><strong>保存影响</strong><span>修改会立即影响后续新草稿。</span></header><p>当前页面只保存 AI 模块设置，不改任务执行逻辑、不改数据库结构、不改权限规则。</p><button type="button" class="primary" data-ai-settings-save>保存当前设置</button></article></aside></section></section>';
+      box.querySelector('[data-ai-open-tasks]')?.addEventListener('click', function () { self.renderCenter('tasks'); });
+      box.querySelector('[data-ai-open-logs]')?.addEventListener('click', function () { self.renderCenter('records'); });
+      box.querySelectorAll('[data-ai-settings-save]').forEach(function (saveButton) { saveButton.addEventListener('click', function () {
         var next = JSON.parse(JSON.stringify(settings || {}));
         box.querySelectorAll('[data-ai-setting]').forEach(function (field) {
           var parts = String(field.getAttribute('data-ai-setting') || '').split('.');
@@ -20302,7 +20307,7 @@
           toast('AI 设置已保存');
           self.renderSettings();
         }).catch(function (error) { toast(error.message || 'AI 设置保存失败'); });
-      });
+      }); });
     },
     openTaskDetail: function (id) {
       var self = this;
