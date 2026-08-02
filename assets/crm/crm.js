@@ -22949,13 +22949,14 @@
         var info = [row.customer_name || '-', row.contact_name || '', row.country || '', row.product_model || ''].filter(Boolean).join(' · ');
         var logistics = [row.courier_company || '未选快递', row.tracking_no || '未填单号'].join(' · ');
         var quick = TaskCenterModule.sampleNodeActions(row, currentKey).slice(0, 2);
+        var rowTools = ['编辑寄送信息', '删除样品寄送'];
         return '<article class="sample-flow-card quote-flow-record quote-flow-card' + danger + selected + '" data-sample-id="' + esc(row.id) + '">' +
           '<div class="quote-flow-card-info"><strong>' + esc(row.sample_name || '-') + '</strong><span>' + esc(info) + '</span><b>' + esc((row.quantity || 0) + ' ' + (row.unit || 'pcs')) + '</b><em>' + esc(logistics) + '</em></div>' +
           '<div class="quote-flow-card-nodes sample-flow-card-nodes">' + nodes.map(function (node) {
             var cls = TaskCenterModule.quoteNodeStateClass(node.state) + (node.key === selectedNode ? ' active-node' : '') + (node.key === currentKey ? ' current-node' : '');
             return '<button type="button" class="quote-mini-node sample-mini-node ' + esc(cls) + '" data-sample-flow-node="' + esc(node.key) + '"><i>' + esc(node.icon || '•') + '</i><span>' + esc(node.label) + '</span><strong>' + esc(node.status || '-') + '</strong><small>' + esc(node.meta || '') + '</small></button>';
           }).join('') + '</div>' +
-          '<aside class="quote-flow-card-next"><span>当前：' + esc(statuses[row.status] || row.status || '-').replace('样品', '') + '</span><strong>下一步：' + esc(TaskCenterModule.sampleNextText(row)) + '</strong><nav>' + quick.map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></aside>' +
+          '<aside class="quote-flow-card-next"><span>当前：' + esc(statuses[row.status] || row.status || '-').replace('样品', '') + '</span><strong>下一步：' + esc(TaskCenterModule.sampleNextText(row)) + '</strong><nav>' + quick.map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav><nav class="sample-row-tools">' + rowTools.map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></aside>' +
           '</article>';
       }).join('') || '<div class="task-empty quote-flow-empty"><strong>暂无样品寄送流程</strong><p>创建样品寄送后，会在这里显示建单 → 备样 → 待寄出 → 已寄出 → 运输中 → 已签收 → 反馈跟进。</p><nav><button type="button" data-task-detail-action="新建样品寄送">新建样品寄送</button></nav></div>';
       this.markSelected();

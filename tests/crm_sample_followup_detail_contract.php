@@ -62,6 +62,8 @@ foreach ([
     'copySampleFileLink',
     'data-sample-copy-file',
     "dialog.addEventListener('paste'",
+    'sample-row-tools',
+    "var rowTools = ['编辑寄送信息', '删除样品寄送'];",
 ] as $marker) {
     if (!str_contains($js, $marker)) {
         throw new RuntimeException("Sample followup UI marker missing in crm.js: {$marker}");
@@ -77,13 +79,14 @@ foreach ([
     '.sample-followup-local-files',
     '.sample-followup-existing .sample-files',
     '.sample-followup-history-panel .sample-followup-list',
+    '.quote-flow-card-next .sample-row-tools button[data-task-detail-action="删除样品寄送"]',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Sample followup style marker missing in crm.css: {$marker}");
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'sample-followup-sidebar-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'sample-row-actions-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for sample followup detail changes');
 }
 
