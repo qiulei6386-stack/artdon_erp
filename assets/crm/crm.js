@@ -23206,6 +23206,8 @@
       dialog.addEventListener('click', function (event) {
         var del = event.target.closest('[data-sample-delete-file]');
         if (del) return self.deleteSampleFile(del.getAttribute('data-sample-delete-file'), dialog);
+        var copy = event.target.closest('[data-sample-copy-file]');
+        if (copy) return self.copySampleFileLink(copy.getAttribute('data-sample-copy-file'));
         var preview = event.target.closest('[data-sample-preview-file]');
         if (preview) return self.previewSampleFile(preview.getAttribute('data-sample-preview-file'), preview);
       });
@@ -23411,10 +23413,15 @@
       return Promise.all(jobs);
     },
     uploadFileInput: function (shipmentId, type, input) {
+      return this.uploadSampleFiles(shipmentId, type, Array.prototype.slice.call((input && input.files) || []));
+    },
+    uploadSampleFiles: function (shipmentId, type, files) {
+      files = files || [];
+      if (!files.length) return Promise.resolve({ success: true, data: { saved_ids: [] } });
       var body = new FormData();
       body.set('action', 'sample_shipment_file_upload'); body.set('shipment_id', shipmentId); body.set('file_type', type);
       if (state.csrf) body.set('csrf_token', state.csrf);
-      Array.prototype.forEach.call(input.files || [], function (file) { body.append('files[]', file); });
+      files.forEach(function (file) { body.append('files[]', file, file.name); });
       return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
         return res.text().then(function (text) {
           try { return JSON.parse(text); } catch (error) { return { success: false, message: (text || '接口返回格式错误').slice(0, 300), data: {} }; }
@@ -23457,10 +23464,19 @@
       if (!files.length) return '<p class="task-empty">暂无图片或附件。</p>';
       return '<div class="sample-files">' + files.map(function (file) {
         var kind = TaskCenterModule.sampleFileKind(file), isImg = kind === 'image', url = TaskCenterModule.fileUrl(file.id, true);
-        return '<article data-sample-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '">' + (isImg ? '<img src="' + esc(url) + '" alt="' + esc(file.original_name || '') + '">' : '<b>' + esc(kind === 'pdf' ? 'PDF' : kind.toUpperCase()) + '</b>') + '<span>' + esc(file.original_name || file.file_name) + '</span><nav><button type="button" data-sample-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(TaskCenterModule.fileUrl(file.id, false)) + '">下载</a><button type="button" data-sample-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
+        return '<article data-sample-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '">' + (isImg ? '<img src="' + esc(url) + '" alt="' + esc(file.original_name || '') + '">' : '<b>' + esc(kind === 'pdf' ? 'PDF' : kind.toUpperCase()) + '</b>') + '<span>' + esc(file.original_name || file.file_name) + '</span><nav><button type="button" data-sample-preview-file="' + esc(file.id) + '">预览</button><button type="button" data-sample-copy-file="' + esc(file.id) + '">复制链接</button><a href="' + esc(TaskCenterModule.fileUrl(file.id, false)) + '">下载</a><button type="button" data-sample-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
       }).join('') + '</div>';
     },
     fileUrl: function (id, inline) { return 'crm_api.php?action=sample_shipment_file_download&file_id=' + encodeURIComponent(id) + (inline ? '&inline=1' : ''); },
+    copySampleFileLink: function (id) {
+      if (!id) return;
+      var url = new URL(this.fileUrl(id, true), window.location.href).href;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () { toast('文件链接已复制'); }).catch(function () { toast('复制失败，请打开预览后复制地址'); });
+      } else {
+        toast('当前浏览器不支持自动复制，请打开预览后复制地址');
+      }
+    },
     previewSampleFile: function (id, trigger) {
       var file = null;
       if (this.currentDetail && this.currentDetail.files) file = this.currentDetail.files.find(function (f) { return Number(f.id) === Number(id); });
@@ -23468,10 +23484,18 @@
       if (!file && article) file = { id: id, original_name: article.getAttribute('data-file-name') || '', mime_type: article.getAttribute('data-file-mime') || '' };
       this.openFilePreviewLayer(file || { id: id, original_name: '样品文件' }, this.fileUrl(id, true), this.fileUrl(id, false), '样品文件预览');
     },
-    deleteSampleFile: function (id, dialog) {
+    deleteSampleFile: function (id, dialog, shipmentId) {
       post('sample_shipment_file_delete', { file_id: id }).then(function (json) {
         if (!json.success) return toast(json.message || '删除失败');
-        dialog.querySelector('[data-sample-file-id="' + id + '"]')?.remove(); toast('文件已删除');
+        dialog.querySelectorAll('[data-sample-file-id="' + id + '"]').forEach(function (node) { node.remove(); });
+        toast('文件已删除');
+        if (shipmentId) TaskCenterModule.refreshSampleFiles(shipmentId, dialog).then(function (files) {
+          var followupFiles = dialog.querySelector('[data-sample-followup-file-list]');
+          if (followupFiles) followupFiles.innerHTML = TaskCenterModule.sampleFilesHtml(files);
+          var count = dialog.querySelector('[data-sample-followup-file-count]');
+          if (count) count.textContent = files.length + ' 个文件';
+        }).catch(function () {});
+        TaskCenterModule.loadSelectedDetail();
       });
     },
     openSampleDetail: function (row) {
@@ -23543,7 +23567,11 @@
       if (!id) return toast('请先选择样品寄送。');
       post('sample_shipment_detail', { shipment_id: id }).then(function (json) {
         if (!json.success) return toast(json.message || '读取样品寄送失败');
-        callback((json.data && json.data.shipment) || row, id);
+        var detail = json.data || {};
+        var shipment = detail.shipment || row;
+        shipment.files = detail.files || shipment.files || [];
+        shipment.followups = detail.followups || shipment.followups || [];
+        callback(shipment, id, detail);
       });
     },
     openSampleQuickDialog: function (kind) {
@@ -23578,15 +23606,24 @@
     },
     openSampleFollowupDialog: function () {
       var self = this;
-      this.sampleQuickDefaults(this.selected(), function (row) {
+      this.sampleQuickDefaults(this.selected(), function (row, shipmentId) {
         if (!row.customer_id) return toast('样品寄送没有关联客户。');
-        var now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        var nowDate = new Date();
+        var now = new Date(nowDate.getTime() - nowDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16).replace('T', ' ');
         var content = '样品寄送跟进：' + (row.sample_name || '') + (row.tracking_no ? '，快递单号 ' + row.tracking_no : '');
-        var html = '<div class="visit-workspace-form" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="source_type" value="sample_shipment"><input type="hidden" name="source_id" value="' + esc(row.id || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
-          '<section class="visit-work-section"><h3>样品跟进</h3><div class="visit-schedule-grid"><label class="visit-date-card"><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label class="visit-pill-field"><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label></div><div class="visit-note-grid"><label class="wide">跟进内容 *<textarea name="content" rows="4">' + esc(content) + '</textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="3">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label><label>下次提醒<input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section></div>' +
+        var html = '<div class="sample-followup-workspace" data-sample-followup-workspace><form class="sample-followup-form-panel" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="source_type" value="sample_shipment"><input type="hidden" name="source_id" value="' + esc(row.id || shipmentId || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
+          '<section class="sample-followup-hero"><div><span>样品跟进</span><strong>' + esc(row.sample_name || '-') + '</strong><em>' + esc([row.customer_name, row.product_model, row.tracking_no ? ('单号 ' + row.tracking_no) : ''].filter(Boolean).join(' · ')) + '</em></div><b>Sample</b></section>' +
+          '<section class="sample-followup-card"><header><strong>跟进信息</strong><span>保存后进入客户跟进和任务提醒</span></header><div class="sample-followup-meta-grid"><label><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label><label><span>下次提醒</span><input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section>' +
+          '<section class="sample-followup-card sample-followup-notes"><label><span>跟进内容 *</span><textarea name="content" rows="6">' + esc(content) + '</textarea></label><label><span>下一步计划</span><textarea name="next_plan" rows="4">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label></section><p class="sample-followup-error" data-sample-followup-error></p></form>' +
+          '<aside class="sample-followup-upload-panel"><section class="sample-followup-card"><header><div><strong>图片与附件</strong><span>拖入、粘贴或选择文件；图片可直接预览</span></div><button type="button" data-sample-followup-choose>选择文件</button></header><div class="sample-followup-drop" data-sample-followup-drop tabindex="0"><input type="file" multiple data-sample-followup-files><strong>把图片或附件拖到这里</strong><span>支持 Ctrl/⌘ + V 粘贴图片，也可点右上角选择</span></div><div class="sample-followup-local-files" data-sample-followup-local-files></div></section>' +
+          '<section class="sample-followup-card sample-followup-existing"><header><strong>已上传资料</strong><span data-sample-followup-file-count>' + esc((row.files || []).length) + ' 个文件</span></header><div data-sample-followup-file-list>' + TaskCenterModule.sampleFilesHtml(row.files || []) + '</div></section></aside></div>' +
           '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-followup-save>创建跟进</button></div>';
         CustomerModule.openBusinessDialog('创建样品跟进', html, '保存后会写入客户跟进和任务提醒。', function (dialog) {
-          document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
+          var modal = document.querySelector('[data-customer-dialog]');
+          modal?.classList.remove('visit-modal-large');
+          modal?.classList.add('sample-followup-modal');
+          modal?.addEventListener('close', function () { modal.classList.remove('sample-followup-modal'); }, { once: true });
+          TaskCenterModule.bindSampleFollowupDialog(dialog, shipmentId);
           dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
           dialog.querySelector('[data-sample-followup-save]')?.addEventListener('click', function () {
             var button = this;
@@ -23594,11 +23631,127 @@
             if (!String(data.content || '').trim()) return toast('请填写跟进内容');
             TaskCenterModule.runBusy(button, '正在保存…', function () { return post('followup_create', data).then(function (json) {
               if (!json.success) return toast(json.message || '创建跟进失败');
-              CustomerModule.closeDialog(); toast(json.data && json.data.reused ? '这次保存已完成，未重复新增跟进' : (json.message || '跟进已创建'));
-              TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+              return TaskCenterModule.uploadSampleFollowupFiles(shipmentId, dialog).then(function (upload) {
+                var fileCount = Number(upload && upload.file_count || 0);
+                CustomerModule.closeDialog(); toast((json.data && json.data.reused ? '这次保存已完成，未重复新增跟进' : (json.message || '跟进已创建')) + (fileCount ? '，资料已上传 ' + fileCount + ' 个' : ''));
+                TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+              }).catch(function (error) {
+                CustomerModule.closeDialog(); toast('跟进已创建，但资料上传失败：' + (error.message || '请检查文件大小后重试'));
+                TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load();
+              });
             }); });
           });
         });
+      });
+    },
+    bindSampleFollowupDialog: function (dialog, shipmentId) {
+      var self = this;
+      var input = dialog.querySelector('[data-sample-followup-files]');
+      var drop = dialog.querySelector('[data-sample-followup-drop]');
+      var applyFiles = function (incoming) {
+        self.mergeSampleFollowupFiles(input, incoming);
+        self.renderSampleFollowupLocalFiles(dialog);
+      };
+      input?.addEventListener('change', function () { self.renderSampleFollowupLocalFiles(dialog); });
+      dialog.querySelector('[data-sample-followup-choose]')?.addEventListener('click', function () { input?.click(); });
+      drop?.addEventListener('click', function (event) { if (!event.target.closest('[data-sample-followup-local-remove]')) input?.click(); });
+      drop?.addEventListener('dragover', function (event) { event.preventDefault(); drop.classList.add('dragging'); });
+      drop?.addEventListener('dragleave', function () { drop.classList.remove('dragging'); });
+      drop?.addEventListener('drop', function (event) { event.preventDefault(); drop.classList.remove('dragging'); applyFiles(event.dataTransfer && event.dataTransfer.files); });
+      dialog.addEventListener('paste', function (event) {
+        var files = Array.prototype.slice.call((event.clipboardData && event.clipboardData.files) || []);
+        if (!files.length) return;
+        event.preventDefault();
+        applyFiles(files);
+        toast('已加入剪贴板文件');
+      });
+      dialog.addEventListener('click', function (event) {
+        var remove = event.target.closest('[data-sample-followup-local-remove]');
+        if (remove && input && window.DataTransfer) {
+          var removeIndex = Number(remove.getAttribute('data-sample-followup-local-remove'));
+          var dt = new DataTransfer();
+          Array.prototype.slice.call(input.files || []).forEach(function (file, index) { if (index !== removeIndex) dt.items.add(file); });
+          input.files = dt.files;
+          self.renderSampleFollowupLocalFiles(dialog);
+          return;
+        }
+        var preview = event.target.closest('[data-sample-preview-file]');
+        if (preview) return self.previewSampleFile(preview.getAttribute('data-sample-preview-file'), preview);
+        var copy = event.target.closest('[data-sample-copy-file]');
+        if (copy) return self.copySampleFileLink(copy.getAttribute('data-sample-copy-file'));
+        var del = event.target.closest('[data-sample-delete-file]');
+        if (del) return self.deleteSampleFile(del.getAttribute('data-sample-delete-file'), dialog, shipmentId);
+      });
+    },
+    mergeSampleFollowupFiles: function (input, incoming) {
+      if (!input || !window.DataTransfer) return;
+      var dt = new DataTransfer(), seen = {};
+      Array.prototype.slice.call(input.files || []).concat(Array.prototype.slice.call(incoming || [])).forEach(function (file) {
+        var key = [file.name, file.size, file.lastModified].join(':');
+        if (!file || seen[key]) return;
+        seen[key] = true;
+        dt.items.add(file);
+      });
+      input.files = dt.files;
+    },
+    renderSampleFollowupLocalFiles: function (dialog) {
+      var input = dialog.querySelector('[data-sample-followup-files]');
+      var box = dialog.querySelector('[data-sample-followup-local-files]');
+      if (!box) return;
+      var files = Array.prototype.slice.call((input && input.files) || []);
+      if (!files.length) { box.innerHTML = ''; return; }
+      box.innerHTML = files.map(function (file, index) {
+        var isImg = /^image\//i.test(file.type || '') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name || '');
+        return '<article class="' + (isImg ? 'is-image' : 'is-file') + '"><div class="sample-followup-local-preview">' + (isImg ? '<img data-sample-followup-local-image="' + index + '" alt="' + esc(file.name) + '">' : '<b>' + esc((file.name.split('.').pop() || 'FILE').slice(0, 5).toUpperCase()) + '</b>') + '</div><div><strong>' + esc(file.name) + '</strong><span>待上传 · ' + esc(Math.max(1, Math.round(file.size / 1024))) + 'KB</span></div><button type="button" data-sample-followup-local-remove="' + index + '">删除</button></article>';
+      }).join('');
+      files.forEach(function (file, index) {
+        if (!(/^image\//i.test(file.type || '') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name || ''))) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var img = box.querySelector('[data-sample-followup-local-image="' + index + '"]');
+          if (img) img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+    compressSampleFollowupImage: function (file) {
+      var maxBytes = 500 * 1024;
+      if (file.size <= maxBytes) return Promise.resolve(file);
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type || '')) return Promise.reject(new Error('图片“' + file.name + '”超过 500KB，请先压缩后上传。'));
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file), image = new Image();
+        image.onload = function () {
+          try {
+            var maxSide = 1280, scale = Math.min(1, maxSide / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(function (blob) {
+              URL.revokeObjectURL(url);
+              if (!blob || blob.size > maxBytes) return reject(new Error('图片“' + file.name + '”压缩后仍超过 500KB，请裁剪后再上传。'));
+              var base = String(file.name || '样品图片').replace(/\.[^.]+$/, '');
+              resolve(new File([blob], base + '.jpg', { type: 'image/jpeg' }));
+            }, 'image/jpeg', 0.72);
+          } catch (error) { URL.revokeObjectURL(url); reject(new Error('图片压缩失败，请换一张图片后再试。')); }
+        };
+        image.onerror = function () { URL.revokeObjectURL(url); reject(new Error('无法读取图片“' + file.name + '”。')); };
+        image.src = url;
+      });
+    },
+    uploadSampleFollowupFiles: function (shipmentId, dialog) {
+      var input = dialog.querySelector('[data-sample-followup-files]');
+      var files = Array.prototype.slice.call((input && input.files) || []);
+      if (!files.length) return Promise.resolve({ file_count: 0 });
+      var images = files.filter(function (file) { return /^image\//i.test(file.type || '') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name || ''); });
+      var attachments = files.filter(function (file) { return images.indexOf(file) < 0; });
+      var badAttachment = attachments.find(function (file) { return file.size > 100 * 1024 * 1024; });
+      if (badAttachment) return Promise.reject(new Error('附件“' + badAttachment.name + '”超过 100MB。'));
+      return Promise.all(images.map(function (file) { return TaskCenterModule.compressSampleFollowupImage(file); })).then(function (preparedImages) {
+        var jobs = [];
+        if (preparedImages.length) jobs.push(TaskCenterModule.uploadSampleFiles(shipmentId, 'image', preparedImages));
+        if (attachments.length) jobs.push(TaskCenterModule.uploadSampleFiles(shipmentId, 'attachment', attachments));
+        return Promise.all(jobs).then(function () { return { file_count: files.length }; });
       });
     },
     deleteSampleFollowup: function (followupId) {

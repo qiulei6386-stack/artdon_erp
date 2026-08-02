@@ -41,6 +41,19 @@ foreach ([
     'name="source_type" value="sample_shipment"',
     'name="source_id" value="',
     'TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load();',
+    'sample-followup-workspace',
+    'data-sample-followup-drop',
+    'data-sample-followup-files',
+    'data-sample-followup-local-files',
+    'data-sample-followup-file-list',
+    'bindSampleFollowupDialog',
+    'mergeSampleFollowupFiles',
+    'renderSampleFollowupLocalFiles',
+    'uploadSampleFollowupFiles',
+    'uploadSampleFiles',
+    'copySampleFileLink',
+    'data-sample-copy-file',
+    "dialog.addEventListener('paste'",
 ] as $marker) {
     if (!str_contains($js, $marker)) {
         throw new RuntimeException("Sample followup UI marker missing in crm.js: {$marker}");
@@ -50,13 +63,18 @@ foreach ([
 foreach ([
     '.sample-followup-list',
     '.sample-followup-list button.danger',
+    '.customer-dialog.sample-followup-modal',
+    '.sample-followup-workspace',
+    '.sample-followup-drop.dragging',
+    '.sample-followup-local-files',
+    '.sample-followup-existing .sample-files',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Sample followup style marker missing in crm.css: {$marker}");
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'sample-followup-detail-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'sample-followup-upload-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for sample followup detail changes');
 }
 
