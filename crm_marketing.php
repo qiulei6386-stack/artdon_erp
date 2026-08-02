@@ -1389,6 +1389,7 @@ function crm_marketing_task_targets(array $input = []): array
     if ($taskId > 0) {
         crm_marketing_reconcile_task_targets_from_queue($taskId);
         crm_marketing_reconcile_group_targets($taskId);
+        crm_marketing_reconcile_email_group_followups($taskId);
     }
     $status = trim((string)($input['status'] ?? ''));
     $params = [];
@@ -1610,6 +1611,68 @@ function crm_marketing_reconcile_group_targets(int $taskId): void
     $counts = $countStmt->fetch() ?: [];
     db()->prepare('UPDATE crm_marketing_tasks SET customer_count = ?, contact_count = ?, updated_at = NOW() WHERE id = ?')
         ->execute([(int)($counts['customers'] ?? 0), (int)($counts['contacts'] ?? 0) + (int)($counts['groups'] ?? 0), $taskId]);
+}
+
+function crm_marketing_reconcile_email_group_followups(int $taskId): void
+{
+    if ($taskId <= 0) return;
+    $taskStmt = db()->prepare('SELECT channel_key, scheduled_at FROM crm_marketing_tasks WHERE id = ? LIMIT 1');
+    $taskStmt->execute([$taskId]);
+    $task = $taskStmt->fetch();
+    if (!$task || !crm_marketing_is_email_channel((string)($task['channel_key'] ?? ''))) return;
+
+    $customerStmt = db()->prepare("SELECT DISTINCT mt.customer_id, c.owner_user_id, c.email, c.phone, c.whatsapp, c.address, COALESCE(mt.planned_at, ?) planned_at, COALESCE(mt.due_at, ?) due_at
+        FROM crm_marketing_task_targets mt
+        JOIN crm_customers c ON c.id = mt.customer_id AND c.deleted_at IS NULL
+        LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id
+        WHERE mt.task_id = ?
+          AND LOWER(mt.channel_key) IN ('email','mail','edm')
+          AND mt.target_status IN ('skipped','failed')
+          AND (mt.failure_reason LIKE '%邮箱为空%' OR COALESCE(NULLIF(ct.email, ''), NULLIF(c.email, ''), '') = '')");
+    [$defaultPlannedAt, $defaultDueAt] = crm_marketing_manual_schedule((string)($task['scheduled_at'] ?? ''));
+    $customerStmt->execute([$defaultPlannedAt, $defaultDueAt, $taskId]);
+    $customers = $customerStmt->fetchAll();
+    if (!$customers) return;
+
+    $groupStmt = db()->prepare('SELECT g.id, g.customer_id, g.group_name, g.group_platform, c.owner_user_id, c.email, c.phone, c.whatsapp, c.address
+        FROM crm_customer_chat_groups g
+        JOIN crm_customers c ON c.id = g.customer_id
+        WHERE g.customer_id = ? AND g.deleted_at IS NULL AND g.status = "active" AND g.use_for_promotion = 1 AND c.deleted_at IS NULL
+        ORDER BY FIELD(g.group_platform, "wechat_group", "whatsapp_group"), g.updated_at DESC, g.id DESC');
+    $existsStmt = db()->prepare('SELECT id FROM crm_marketing_task_targets WHERE task_id = ? AND chat_group_id = ? LIMIT 1');
+    $insertStmt = db()->prepare('INSERT INTO crm_marketing_task_targets (task_id, customer_id, contact_id, chat_group_id, channel_key, contact_method, manual_group_name, executor_user_id, planned_at, due_at, target_status, failure_reason, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, "pending", "邮件无收件邮箱，转群人工执行", NOW())');
+    $inserted = 0;
+
+    foreach ($customers as $customer) {
+        $groupStmt->execute([(int)$customer['customer_id']]);
+        foreach ($groupStmt->fetchAll() as $group) {
+            $groupId = (int)$group['id'];
+            $existsStmt->execute([$taskId, $groupId]);
+            if ((int)$existsStmt->fetchColumn() > 0) continue;
+            $meta = crm_marketing_manual_target_meta((string)$group['group_platform'], $group, [], $group);
+            if ($meta['contact_method'] === '') continue;
+            $insertStmt->execute([
+                $taskId,
+                (int)$customer['customer_id'],
+                $groupId,
+                (string)$group['group_platform'],
+                $meta['contact_method'],
+                $meta['manual_group_name'],
+                (int)($customer['owner_user_id'] ?? 0) ?: (int)($group['owner_user_id'] ?? 0) ?: null,
+                $customer['planned_at'] ?: $defaultPlannedAt,
+                $customer['due_at'] ?: $defaultDueAt,
+            ]);
+            $inserted++;
+        }
+    }
+
+    if ($inserted > 0) {
+        $countStmt = db()->prepare('SELECT COUNT(DISTINCT customer_id) AS customers, COUNT(DISTINCT contact_id) AS contacts, COUNT(DISTINCT chat_group_id) AS groups FROM crm_marketing_task_targets WHERE task_id = ?');
+        $countStmt->execute([$taskId]);
+        $counts = $countStmt->fetch() ?: [];
+        db()->prepare('UPDATE crm_marketing_tasks SET customer_count = ?, contact_count = ?, updated_at = NOW() WHERE id = ?')
+            ->execute([(int)($counts['customers'] ?? 0), (int)($counts['contacts'] ?? 0) + (int)($counts['groups'] ?? 0), $taskId]);
+    }
 }
 
 function crm_marketing_analytics(): array

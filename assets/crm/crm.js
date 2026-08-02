@@ -14569,6 +14569,7 @@
         var status = String(row.target_status || '').toLowerCase();
         return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
       });
+      manualTargets = this.collapseEmailFollowupsWithGroupTargets(manualTargets);
       var hasLoadedTargets = targets.length > 0;
       var taskChannel = normalizeChannel(task.channel_key || task.campaign_type || '');
       var rawEmailTargetCount = hasLoadedTargets ? emailTargets.length : (emailChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0);
@@ -14701,6 +14702,7 @@
           var status = String(row.target_status || '').toLowerCase();
           return manualChannels.indexOf(channel) >= 0 || row.chat_group_id || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
         });
+        targets = self.collapseEmailFollowupsWithGroupTargets(targets);
         var nowTs = Date.now();
         targets = targets.map(function (row) {
           var dueTs = row.due_at ? Date.parse(String(row.due_at).replace(' ', 'T')) : 0;
@@ -15334,6 +15336,20 @@
     isGroupPromotionChannel: function (channel) {
       var normalized = this.normalizePromotionChannel(channel);
       return normalized === 'wechat_group' || normalized === 'whatsapp_group';
+    },
+    collapseEmailFollowupsWithGroupTargets: function (rows) {
+      var self = this;
+      var groupCustomerIds = {};
+      (rows || []).forEach(function (row) {
+        if (row.chat_group_id || self.isGroupPromotionChannel(row.channel_key)) {
+          groupCustomerIds[Number(row.customer_id || 0)] = true;
+        }
+      });
+      return (rows || []).filter(function (row) {
+        var channel = self.normalizePromotionChannel(row.channel_key || '');
+        var status = String(row.target_status || '').toLowerCase();
+        return !(groupCustomerIds[Number(row.customer_id || 0)] && channel === 'email' && ['pending','failed','skipped'].indexOf(status) >= 0);
+      });
     },
     resolveTargetEmail: function (row, customer) {
       return String(row.email || row.contact_email || row.primary_contact_email || customer.email || customer.contact_email || customer.primary_contact_email || '').trim();
@@ -17737,6 +17753,7 @@
           var status = String(row.target_status || '').toLowerCase();
           return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
         });
+        manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
         var pending = manualTargets.filter(function (row) {
           var status = String(row.target_status || '').toLowerCase();
           var channel = self.normalizePromotionChannel(row.channel_key || '');

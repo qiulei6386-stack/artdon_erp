@@ -27,6 +27,9 @@ $markers = [
     'function crm_marketing_reconcile_group_targets(int $taskId): void',
     'crm_marketing_reconcile_group_targets($taskId);',
     "DELETE FROM crm_marketing_task_targets WHERE id = ? AND target_status IN ('pending','failed') AND executed_at IS NULL",
+    'function crm_marketing_reconcile_email_group_followups(int $taskId): void',
+    'crm_marketing_reconcile_email_group_followups($taskId);',
+    '邮件无收件邮箱，转群人工执行',
 ];
 
 foreach ($markers as $marker) {
@@ -77,7 +80,7 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)'] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets'] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
     }
