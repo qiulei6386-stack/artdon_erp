@@ -11,7 +11,7 @@ $markers = [
     'function crm_marketing_reconcile_task_targets_from_queue(int $taskId): array',
     'crm_marketing_reconcile_task_targets_from_queue($taskId);',
     "UPDATE crm_marketing_task_targets SET target_status='skipped'",
-    "crm_marketing_update_target_from_queue($row, 'success', '')",
+    'crm_marketing_update_target_from_queue($row, \'success\', \'\')',
     'if ($next === \'failed\') crm_marketing_update_target_from_queue($row, \'failed\', $e->getMessage());',
     "q.send_status = 'sent'",
     "ml.action_key = 'queue_skipped'",
