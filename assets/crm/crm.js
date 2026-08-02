@@ -18356,7 +18356,7 @@
     },
     renderQuickActionsRail: function () {
       var groups = [
-        { title: '客户探索', items: [['客户雷达','发现高潜在客户','R'], ['雷达首页','客户雷达总览','H']] },
+        { title: '客户探索', items: [['客户雷达','发现高潜在客户','R']] },
         { title: '数据与资料', items: [['智能资料','AI资料生成与补全','M'], ['客户画像','360度客户洞察','P'], ['智能报价','报价草稿与确认','Q']] },
         { title: '任务与执行', items: [['AI任务','AI建议与确认','A'], ['搜索任务','搜索任务管理','S'], ['线索客户池','管理AI线索','L'], ['运行日志','查看运行日志','G'], ['运行记录','AI运行记录','N'], ['雷达设置','雷达规则与配置','C'], ['AI设置','AI安全与置信度','T']] }
       ];
@@ -21820,7 +21820,7 @@
     }
     if (name === 'ai') {
       var isRadarSearchTaskPage = (AiModule.view || 'radar') === 'radar' && (RadarModule.view || 'home') === 'tasks' && (RadarModule.taskSubView || 'tasks') === 'tasks';
-      renderGroup({ title: '客户探索', items: ['客户雷达', '雷达首页'] });
+      renderGroup({ title: '客户探索', items: ['客户雷达'] });
       renderGroup({ title: '数据与资料', items: ['智能资料', '客户画像', '智能报价'] });
       renderGroup({ title: '任务与执行', items: ['AI任务', '搜索任务', '线索客户池', '运行记录', '运行日志', 'AI设置', '雷达设置'] });
       if (isRadarSearchTaskPage) {

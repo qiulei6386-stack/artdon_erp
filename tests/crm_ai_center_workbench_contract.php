@@ -24,6 +24,7 @@ foreach ([
     'ai-home-layout',
     'ai-home-main',
     'renderQuickActionsRail: function',
+    "{ title: '客户探索', items: [['客户雷达','发现高潜在客户','R']] }",
     'data-ai-home-action',
     'ai-main-grid',
     'ai-bottom-grid',
@@ -44,6 +45,10 @@ foreach ([
     if (!str_contains($js, $marker)) {
         throw new RuntimeException("AI center logic marker missing in crm.js: {$marker}");
     }
+}
+
+if (str_contains($js, "renderGroup({ title: '客户探索', items: ['客户雷达', '雷达首页'] });")) {
+    throw new RuntimeException('AI center action rail should keep only one customer radar entry');
 }
 
 foreach ([
@@ -83,7 +88,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-home-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-home-actions-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
