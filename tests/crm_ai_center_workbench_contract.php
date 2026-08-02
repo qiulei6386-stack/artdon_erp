@@ -48,6 +48,16 @@ foreach ([
     "if (this.view === 'quote') return rows.filter",
     "if (this.view === 'material') return rows.filter",
     'data-ai-new-analysis',
+    'AI任务工作台',
+    'ai-task-page-v2',
+    'ai-task-hero-v2',
+    'ai-task-kpis-v2',
+    'ai-task-board-v2',
+    'ai-task-queue-v2',
+    'ai-task-detail-v2',
+    'data-ai-task-filter',
+    'data-ai-to-quote',
+    'data-ai-copy-json',
     'data-ai-settings-save',
     "post('ai_settings_save'",
 ] as $marker) {
@@ -88,6 +98,14 @@ foreach ([
     '.ai-dashboard-kpis',
     '.ai-main-grid',
     '.ai-bottom-grid',
+    '.ai-task-page-v2',
+    '.ai-task-hero-v2',
+    '.ai-task-kpis-v2',
+    '.ai-task-board-v2',
+    '.ai-task-queue-v2',
+    '.ai-task-detail-v2',
+    '.ai-task-bottom-grid-v2',
+    '.ai-result-grid-v2',
     'body.is-ai-module .action_command::after',
     '.crm-modal.ai-dialog',
     '.radar-drawer-backdrop',
@@ -110,7 +128,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-candidate-page-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-task-workbench-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 

@@ -19779,6 +19779,11 @@
     view: readLocalString('crm_ai_center_view', 'radar'),
     data: { kpis: {}, tasks: [], logs: [], settings: {} },
     loadingView: '',
+    taskFilter: 'all',
+    taskQuery: '',
+    taskPage: 1,
+    taskPageSize: 8,
+    selectedTaskId: 0,
     init: function () {
       if (!document.querySelector('[data-ai-module]')) return;
       if (!this.inited) {
@@ -19835,12 +19840,13 @@
       if (!box) return;
       this.loadingView = view;
       if (kpis) kpis.innerHTML = '';
+      if (kpis) kpis.hidden = false;
       box.innerHTML = '<section class="ai-workbench-panel"><div class="ai-empty-state"><strong>正在加载 AI 获客中心...</strong><span>正在同步任务、草稿、运行记录和设置。</span></div></section>';
       this.fetchData().then(function () {
         if (self.loadingView !== view) return;
-        self.renderKpis();
-        if (view === 'records') return self.renderLogs();
-        if (view === 'settings') return self.renderSettings();
+        if (view === 'records') { self.renderKpis(); return self.renderLogs(); }
+        if (view === 'settings') { self.renderKpis(); return self.renderSettings(); }
+        if (kpis) kpis.hidden = true;
         self.renderTasks();
       }).catch(function (error) {
         box.innerHTML = '<section class="ai-workbench-panel"><div class="ai-empty-state is-error"><strong>AI 中心加载失败</strong><span>' + esc(error.message || '请稍后重试') + '</span></div></section>';
@@ -19851,6 +19857,57 @@
     },
     statusLabel: function (status) {
       return { pending: '待识别', analyzed: '已识别', draft_created: '已生成草稿', waiting_confirm: '待确认', confirmed: '已确认', rejected: '已驳回', sent: '已发送', failed: '异常', interface_pending: '接口待接入' }[status] || status || '-';
+    },
+    canPermission: function (key) {
+      return !!(state.user && state.user.is_super_admin) || !state.permissions || state.permissions[key] !== false;
+    },
+    canConfirmTask: function (row) {
+      if (!row) return false;
+      if (row.task_type === 'lead_capture') return this.canPermission('ai.confirm_customer') || this.canPermission('ai.confirm_opportunity');
+      if (row.task_type === 'quote_draft') return this.canPermission('ai.confirm_quote');
+      if (row.task_type === 'material_draft') return this.canPermission('ai.confirm_material');
+      return this.canPermission('ai.view');
+    },
+    sourceLabel: function (source) {
+      return { manual: '手动文本', mail: '邮件附件 / PDF', email: '邮件附件 / PDF', pdf: 'PDF识别', ocr: 'OCR扫描', customer: '客户资料', opportunity: '商机', promotion: '推广回复', ai_task: 'AI任务' }[source] || source || '-';
+    },
+    parseTaskResult: function (row) {
+      try { return JSON.parse((row || {}).ai_result_json || '{}') || {}; } catch (error) { return {}; }
+    },
+    taskDraft: function (row) {
+      var result = this.parseTaskResult(row);
+      return result.customer_draft || result.customer || result.company || {};
+    },
+    taskNeed: function (row) {
+      return this.parseTaskResult(row).need || {};
+    },
+    detailValue: function (obj, keys, fallback) {
+      for (var i = 0; i < keys.length; i++) {
+        var value = obj && obj[keys[i]];
+        if (value != null && String(value).trim() !== '') return value;
+      }
+      return fallback || '-';
+    },
+    taskObjectName: function (row) {
+      var draft = this.taskDraft(row);
+      var need = this.taskNeed(row);
+      return this.detailValue(draft, ['customer_name', 'company_name', 'name', 'english_name'], '') ||
+        this.detailValue(need, ['project_name', 'summary', 'product_model'], '') ||
+        row.customer_name || row.opportunity_name || row.ai_summary || ('AI任务 #' + (row.id || ''));
+    },
+    confidenceLabel: function (value) {
+      var num = Number(value || 0);
+      if (num >= 80) return '高置信度';
+      if (num >= 60) return '中置信度';
+      if (num > 0) return '低置信度';
+      return '未评分';
+    },
+    statusTone: function (status) {
+      if (status === 'confirmed' || status === 'sent') return 'good';
+      if (status === 'rejected') return 'danger';
+      if (status === 'failed' || status === 'interface_pending') return 'warn';
+      if (status === 'waiting_confirm' || status === 'analyzed' || status === 'draft_created') return 'pending';
+      return 'info';
     },
     render: function () {
       this.renderCenter(this.view || 'radar');
@@ -19885,30 +19942,136 @@
       if (this.view === 'exceptions') return rows.filter(function (row) { return row.status === 'failed' || row.status === 'interface_pending' || (row.missing_fields || []).length; });
       return rows;
     },
+    taskWorkbenchRows: function () {
+      var self = this;
+      var rows = this.filteredTasks();
+      var filter = this.taskFilter || 'all';
+      var q = String(this.taskQuery || '').trim().toLowerCase();
+      rows = rows.filter(function (row) {
+        if (filter === 'customer') return row.task_type === 'lead_capture';
+        if (filter === 'quote') return row.task_type === 'quote_draft';
+        if (filter === 'waiting') return ['pending', 'analyzed', 'draft_created', 'waiting_confirm'].indexOf(String(row.status || '')) >= 0;
+        if (filter === 'rejected') return row.status === 'rejected';
+        if (filter === 'exceptions') return row.status === 'failed' || row.status === 'interface_pending' || (row.missing_fields || []).length;
+        return true;
+      });
+      if (q) {
+        rows = rows.filter(function (row) {
+          return [self.taskTypeLabel(row.task_type), self.sourceLabel(row.source_type), self.taskObjectName(row), self.statusLabel(row.status), row.assigned_user_name, row.ai_summary].join(' ').toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      return rows;
+    },
+    taskKpiCards: function () {
+      var k = this.data.kpis || {};
+      var delta = function (value) { return Number(value || 0) > 0 ? '较昨日 +' + value : '较昨日 0'; };
+      return [
+        { key: 'today', icon: 'Q', title: '今日搜索', value: k.today_leads || 0, hint: delta(k.today_leads), tone: 'info' },
+        { key: 'customer', icon: 'C', title: '客户草稿', value: k.customer_drafts || 0, hint: delta(k.customer_drafts), tone: 'info' },
+        { key: 'quote', icon: 'P', title: '报价草稿', value: k.quote_drafts || 0, hint: delta(k.quote_drafts), tone: 'info' },
+        { key: 'confirmed', icon: 'Y', title: '已确认', value: k.confirmed || 0, hint: delta(k.confirmed), tone: 'good' },
+        { key: 'rejected', icon: 'R', title: '已驳回', value: k.rejected || 0, hint: delta(k.rejected), tone: 'danger' },
+        { key: 'failed', icon: 'E', title: '异常待接入', value: k.failed || 0, hint: delta(k.failed), tone: 'warn' }
+      ];
+    },
+    renderTaskDetailCard: function (row) {
+      if (!row) return '<section class="ai-task-detail-v2"><div class="ai-empty-state"><strong>暂无识别结果</strong><span>请选择左侧任务查看结构化结果。</span></div></section>';
+      var draft = this.taskDraft(row);
+      var need = this.taskNeed(row);
+      var confidence = Number(row.confidence || (this.parseTaskResult(row).confidence || 0));
+      var country = this.detailValue(draft, ['country', 'country_code'], '-');
+      var city = this.detailValue(draft, ['city'], '-');
+      var status = String(row.status || '');
+      var canConfirm = this.canConfirmTask(row);
+      var canReject = this.canPermission('ai.reject');
+      var canQuote = this.canPermission('ai.quote_draft');
+      var actionDisabled = ['confirmed', 'rejected', 'sent'].indexOf(status) >= 0;
+      var fields = [
+        ['客户名称', this.taskObjectName(row)],
+        ['英文名', this.detailValue(draft, ['english_name', 'customer_name', 'company_name', 'name'], '-')],
+        ['国家', '<em>' + esc(country) + '</em>', true],
+        ['城市', '<em>' + esc(city) + '</em>', true],
+        ['地址', this.detailValue(draft, ['address', 'street', 'full_address'], '-')],
+        ['网站', this.detailValue(draft, ['website', 'domain', 'url'], '-')],
+        ['联系人', this.detailValue(draft, ['contact_name', 'contact', 'person'], row.contact_name || '-')],
+        ['邮箱', this.detailValue(draft, ['email', 'mail'], '-')],
+        ['电话', this.detailValue(draft, ['phone', 'tel', 'mobile', 'whatsapp'], '-')],
+        ['识别置信度', '<strong class="ai-confidence-v2"><i style="width:' + Math.max(0, Math.min(100, confidence)) + '%"></i></strong><b>' + esc(confidence) + '% ' + esc(this.confidenceLabel(confidence)) + '</b>', true]
+      ];
+      var summary = need.summary || row.ai_summary || '暂无识别摘要。';
+      var quoteButton = row.task_type === 'quote_draft' ? '查看报价草稿' : '转为报价草稿';
+      return '<section class="ai-task-detail-v2"><header><div><strong>自动识别结果 #' + esc(row.id) + '</strong><span>结构化确认区</span></div><nav><em>' + esc(this.taskTypeLabel(row.task_type)) + '</em><em>识别来源：' + esc(this.sourceLabel(row.source_type)) + '</em></nav></header>' +
+        '<div class="ai-detail-fields-v2">' + fields.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + (item[2] ? item[1] : esc(item[1] || '-')) + '</strong></article>'; }).join('') + '</div>' +
+        '<article class="ai-detail-summary-v2"><strong>识别摘要</strong><p>' + esc(summary) + '</p></article>' +
+        '<footer><button type="button" data-ai-task-detail="' + esc(row.id) + '">查看识别结果</button><button type="button" class="primary" data-ai-confirm="' + esc(row.id) + '"' + (!canConfirm || actionDisabled ? ' disabled' : '') + '>通过并生成客户</button><button type="button" class="danger" data-ai-reject="' + esc(row.id) + '"' + (!canReject || actionDisabled ? ' disabled' : '') + '>驳回</button><button type="button" data-ai-to-quote="' + esc(row.id) + '"' + (!canQuote ? ' disabled' : '') + '>' + quoteButton + '</button></footer></section>';
+    },
+    renderTaskBottomPanels: function () {
+      var logs = (this.data.logs || []).slice(0, 3);
+      var settings = this.data.settings || {};
+      var leadConf = (settings.lead || {}).min_confidence || 70;
+      var quoteConf = (settings.quote || {}).min_confidence || 75;
+      var reviewItems = logs.length ? logs.map(function (row) {
+        var ok = String(row.action_key || '').indexOf('confirmed') >= 0 || row.result_status === 'success';
+        return '<li data-tone="' + (ok ? 'good' : 'danger') + '"><i>' + (ok ? '✓' : '!') + '</i><span><strong>' + esc(row.action_key || 'AI 审核记录') + '</strong><em>' + esc((row.operator_name || '-') + ' · ' + String(row.created_at || '').slice(11, 16)) + '</em></span></li>';
+      }).join('') : '<li><span><strong>暂无审核记录</strong><em>完成审核后会显示在这里。</em></span></li>';
+      return '<section class="ai-task-bottom-grid-v2">' +
+        '<article><header><strong>处理规则提醒</strong><button type="button" data-ai-open-settings>查看全部</button></header><ul><li><i>R</i><span><strong>客户去重规则已更新</strong><em>相似度阈值建议 ' + esc(leadConf) + '% 以上重点复核。</em></span></li><li data-tone="warn"><i>!</i><span><strong>缺失联系人或电话将标记异常</strong><em>请补充信息后再生成客户。</em></span></li><li><i>I</i><span><strong>报价草稿确认阈值</strong><em>当前建议置信度 ' + esc(quoteConf) + '%。</em></span></li></ul></article>' +
+        '<article><header><strong>最近审核记录</strong><button type="button" data-ai-open-logs>查看全部</button></header><ul>' + reviewItems + '</ul></article>' +
+        '<article><header><strong>系统异常 / 接口状态</strong><button type="button" data-ai-open-logs>查看详情</button></header><div class="ai-interface-list-v2"><p><strong>API 接口</strong><em data-tone="good">正常</em><span>已连接</span></p><p><strong>OCR 队列</strong><em data-tone="' + ((this.data.kpis || {}).failed ? 'warn' : 'good') + '">' + ((this.data.kpis || {}).failed ? '待处理' : '正常') + '</em><span>异常 ' + esc((this.data.kpis || {}).failed || 0) + '</span></p><p><strong>邮件抓取</strong><em data-tone="good">正常</em><span>运行记录可查</span></p></div></article>' +
+      '</section>';
+    },
     renderTasks: function () {
       var self = this;
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
-      var rows = this.filteredTasks();
-      var heading = { quote: '智能报价草稿', material: '智能资料草稿', tasks: 'AI任务总览', lead_capture: '自动获客任务' }[this.view] || 'AI任务总览';
-      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>' + esc(heading) + '</strong><span>AI 只生成草稿和确认项，正式动作必须人工确认。</span></div><button type="button" data-ai-new-analysis>粘贴内容识别</button></header><div class="ai-list">' + (rows.length ? rows.map(function (row) {
-        var missing = row.missing_fields || [];
-        var actions = row.suggested_actions || [];
-        return '<article class="ai-task-card" data-ai-task="' + esc(row.id) + '">' +
-          '<header><strong>' + esc(self.taskTypeLabel(row.task_type)) + ' #' + esc(row.id) + '</strong><em>' + esc(self.statusLabel(row.status)) + '</em></header>' +
-          '<p>' + esc(row.ai_summary || '暂无摘要') + '</p>' +
-          '<div class="ai-meta"><span>客户：' + esc(row.customer_name || '-') + '</span><span>联系人：' + esc(row.contact_name || '-') + '</span><span>置信度：' + esc(row.confidence || 0) + '%</span><span>负责人：' + esc(row.assigned_user_name || '-') + '</span></div>' +
-          '<div class="promo-tags">' + missing.map(function (m) { return '<em>缺 ' + esc(m) + '</em>'; }).join('') + actions.map(function (a) { return '<em>' + esc(a) + '</em>'; }).join('') + '</div>' +
-          '<nav><button type="button" data-ai-task-detail="' + esc(row.id) + '">查看识别结果</button><button type="button" data-ai-confirm="' + esc(row.id) + '">通过</button><button type="button" data-ai-reject="' + esc(row.id) + '">驳回</button></nav>' +
-        '</article>';
-      }).join('') : '<p class="promo-empty">暂无 AI 任务。可以点击“粘贴内容识别”生成客户/报价/资料草稿。</p>') + '</div></section>';
-      var newButton = box.querySelector('[data-ai-new-analysis]');
-      if (newButton) newButton.addEventListener('click', function () {
+      var rows = this.taskWorkbenchRows();
+      var total = rows.length;
+      var pages = Math.max(1, Math.ceil(total / Math.max(1, this.taskPageSize)));
+      this.taskPage = Math.min(Math.max(1, this.taskPage), pages);
+      var start = (this.taskPage - 1) * this.taskPageSize;
+      var pageRows = rows.slice(start, start + this.taskPageSize);
+      var selected = rows.find(function (row) { return Number(row.id) === Number(self.selectedTaskId); }) || pageRows[0] || rows[0] || null;
+      this.selectedTaskId = selected ? Number(selected.id) : 0;
+      var filters = [['all', '全部'], ['customer', '客户草稿'], ['quote', '报价草稿'], ['waiting', '待确认'], ['rejected', '已驳回'], ['exceptions', '异常']];
+      var kpiHtml = this.taskKpiCards().map(function (item) {
+        return '<article data-tone="' + esc(item.tone) + '"><i>' + esc(item.icon) + '</i><div><span>' + esc(item.title) + '</span><strong>' + esc(item.value) + '</strong><em>' + esc(item.hint) + '</em></div></article>';
+      }).join('');
+      var rowHtml = pageRows.length ? pageRows.map(function (row) {
+        var active = selected && Number(selected.id) === Number(row.id);
+        var actionLabel = row.status === 'failed' || row.status === 'interface_pending' ? '处理' : (row.status === 'confirmed' || row.status === 'rejected' ? '查看' : '审核');
+        return '<tr class="' + (active ? 'active' : '') + '" data-ai-select-task="' + esc(row.id) + '"><td>' + esc(self.taskTypeLabel(row.task_type)) + '</td><td>' + esc(self.sourceLabel(row.source_type)) + '</td><td><strong title="' + esc(self.taskObjectName(row)) + '">' + esc(self.taskObjectName(row)) + '</strong></td><td><em data-tone="' + esc(self.statusTone(row.status)) + '">' + esc(self.statusLabel(row.status)) + '</em></td><td>' + esc(row.assigned_user_name || row.created_by_name || '-') + '</td><td>' + esc(String(row.updated_at || row.created_at || '').slice(11, 16) || '-').trim() + '</td><td><button type="button" data-ai-task-detail="' + esc(row.id) + '">' + esc(actionLabel) + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="7"><p class="promo-empty">暂无任务。可以点击“新建AI任务”生成客户/报价/资料草稿。</p></td></tr>';
+      box.innerHTML = '<section class="ai-task-page-v2"><section class="ai-task-hero-v2"><div class="ai-task-mark-v2">AI</div><div><span>AI Workbench</span><h2>AI任务工作台</h2><p>识别结果审核、客户草稿处理、报价草稿处理与异常任务跟进</p></div><nav><button type="button" class="primary" data-ai-new-analysis>+ 新建AI任务</button><button type="button" data-ai-filter-shortcut="waiting">批量审核</button><button type="button" data-ai-open-settings>规则设置</button></nav></section>' +
+        '<section class="ai-task-kpis-v2">' + kpiHtml + '</section>' +
+        '<section class="ai-task-board-v2"><article class="ai-task-queue-v2"><header><div><strong>待处理任务队列</strong><span>AI草稿、确认项和异常任务集中处理</span></div><nav>' + filters.map(function (item) { return '<button type="button" data-ai-task-filter="' + esc(item[0]) + '"' + (self.taskFilter === item[0] ? ' class="active"' : '') + '>' + esc(item[1]) + '</button>'; }).join('') + '</nav></header><div class="ai-task-tools-v2"><input data-ai-task-search placeholder="搜索识别对象或客户名称" value="' + esc(this.taskQuery || '') + '"><select data-ai-task-sort><option value="updated_desc">更新时间降序</option></select><button type="button" data-ai-refresh>刷新</button></div><div class="ai-task-table-v2"><table><thead><tr><th>类型</th><th>识别来源</th><th>识别对象</th><th>状态</th><th>负责人</th><th>更新时间</th><th>操作</th></tr></thead><tbody>' + rowHtml + '</tbody></table></div><footer><span>共 ' + esc(total) + ' 条 · 第 ' + esc(this.taskPage) + ' / ' + esc(pages) + ' 页</span><div><button type="button" data-ai-task-prev' + (this.taskPage <= 1 ? ' disabled' : '') + '>上一页</button><select data-ai-task-page-size><option value="8"' + (this.taskPageSize === 8 ? ' selected' : '') + '>8条/页</option><option value="20"' + (this.taskPageSize === 20 ? ' selected' : '') + '>20条/页</option><option value="50"' + (this.taskPageSize === 50 ? ' selected' : '') + '>50条/页</option></select><button type="button" data-ai-task-next' + (this.taskPage >= pages ? ' disabled' : '') + '>下一页</button></div></footer></article>' + this.renderTaskDetailCard(selected) + '</section>' + this.renderTaskBottomPanels() + '</section>';
+      box.querySelector('[data-ai-new-analysis]')?.addEventListener('click', function () {
         var type = self.view === 'quote' ? 'quote_draft' : (self.view === 'material' ? 'material_draft' : 'lead_capture');
         self.openAnalysisDialog(type, {});
       });
+      box.querySelector('[data-ai-open-settings]')?.addEventListener('click', function () { self.renderCenter('settings'); });
+      box.querySelectorAll('[data-ai-open-logs]').forEach(function (button) { button.addEventListener('click', function () { self.renderCenter('records'); }); });
+      box.querySelector('[data-ai-refresh]')?.addEventListener('click', function () { self.load(); });
+      box.querySelector('[data-ai-task-search]')?.addEventListener('input', function (event) { self.taskQuery = event.target.value || ''; self.taskPage = 1; self.renderTasks(); });
+      box.querySelectorAll('[data-ai-task-filter], [data-ai-filter-shortcut]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          self.taskFilter = button.getAttribute('data-ai-task-filter') || button.getAttribute('data-ai-filter-shortcut') || 'all';
+          self.taskPage = 1;
+          self.renderTasks();
+        });
+      });
+      box.querySelector('[data-ai-task-prev]')?.addEventListener('click', function () { if (self.taskPage > 1) { self.taskPage--; self.renderTasks(); } });
+      box.querySelector('[data-ai-task-next]')?.addEventListener('click', function () { if (self.taskPage < pages) { self.taskPage++; self.renderTasks(); } });
+      box.querySelector('[data-ai-task-page-size]')?.addEventListener('change', function (event) { self.taskPageSize = Number(event.target.value || 8); self.taskPage = 1; self.renderTasks(); });
+      box.querySelectorAll('[data-ai-select-task]').forEach(function (row) {
+        row.addEventListener('click', function (event) {
+          if (event.target.closest('button')) return;
+          self.selectedTaskId = Number(row.getAttribute('data-ai-select-task') || 0);
+          self.renderTasks();
+        });
+      });
       box.querySelectorAll('[data-ai-task-detail]').forEach(function (button) {
         button.addEventListener('click', function () {
+          self.selectedTaskId = Number(button.getAttribute('data-ai-task-detail') || 0);
           self.openTaskDetail(Number(button.getAttribute('data-ai-task-detail') || 0));
         });
       });
@@ -19917,6 +20080,12 @@
       });
       box.querySelectorAll('[data-ai-reject]').forEach(function (button) {
         button.addEventListener('click', function () { self.updateConfirm(Number(button.getAttribute('data-ai-reject') || 0), 'rejected'); });
+      });
+      box.querySelectorAll('[data-ai-to-quote]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var row = (self.data.tasks || []).find(function (item) { return Number(item.id) === Number(button.getAttribute('data-ai-to-quote') || 0); });
+          self.openAnalysisDialog('quote_draft', { source_type: 'ai_task', source_id: row ? row.id : '', content: row ? (row.ai_summary || '') : '' });
+        });
       });
     },
     renderLogs: function () {
@@ -19956,14 +20125,42 @@
       });
     },
     openTaskDetail: function (id) {
+      var self = this;
       var row = (this.data.tasks || []).find(function (item) { return Number(item.id) === Number(id); });
       if (!row) return toast('AI 任务不存在');
       var result = {};
       try { result = JSON.parse(row.ai_result_json || '{}'); } catch (error) {}
+      var draft = result.customer_draft || {};
+      var need = result.need || {};
+      var rawJson = JSON.stringify(result || {}, null, 2);
+      var field = function (label, value) {
+        return '<article><strong>' + esc(label) + '</strong><span>' + esc(value || '-') + '</span></article>';
+      };
       this.openDialog({
         title: 'AI 识别结果 #' + id,
-        body: '<section class="ai-result-grid"><article><strong>识别摘要</strong><span>' + esc(row.ai_summary || '-') + '</span></article><article><strong>置信度</strong><span>' + esc(row.confidence || 0) + '%</span></article><article><strong>客户草稿</strong><pre>' + esc(JSON.stringify(result.customer_draft || {}, null, 2)) + '</pre></article><article><strong>需求识别</strong><pre>' + esc(JSON.stringify(result.need || {}, null, 2)) + '</pre></article><article><strong>识别依据</strong><span>' + esc((result.basis || []).join(' / ') || '-') + '</span></article><article><strong>缺失项</strong><span>' + esc((row.missing_fields || []).join('、') || '无') + '</span></article></section>',
-        actions: '<button type="button" data-ai-dialog-close>关闭</button>'
+        body: '<section class="ai-result-grid ai-result-grid-v2">' +
+          field('识别摘要', row.ai_summary || (need.summary || '-')) +
+          field('置信度', (row.confidence || 0) + '% ' + this.confidenceLabel(row.confidence || 0)) +
+          field('客户名称', draft.customer_name || draft.company_name || row.customer_name || '-') +
+          field('联系人', draft.contact_name || row.contact_name || '-') +
+          field('邮箱', draft.email || '-') +
+          field('国家', draft.country || '-') +
+          field('产品型号', need.product_model || '-') +
+          field('数量', need.quantity || '-') +
+          field('识别依据', (result.basis || []).join(' / ') || '-') +
+          field('缺失项', (row.missing_fields || []).join('、') || '无') +
+          '<article class="wide"><header><strong>原始 JSON</strong><button type="button" data-ai-copy-json>复制</button></header><pre data-ai-raw-json>' + esc(rawJson) + '</pre></article></section>',
+        actions: '<button type="button" data-ai-dialog-close>关闭</button>',
+        bind: function (dialog) {
+          dialog.querySelector('[data-ai-copy-json]')?.addEventListener('click', function () {
+            var text = dialog.querySelector('[data-ai-raw-json]')?.textContent || '';
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(function () { toast('JSON 已复制'); }).catch(function () { toast('复制失败，请手动选择复制'); });
+            } else {
+              toast('当前浏览器不支持自动复制，请手动选择复制');
+            }
+          });
+        }
       });
     },
     openFromContext: function (label, context) {
