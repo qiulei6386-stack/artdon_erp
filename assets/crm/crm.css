@@ -13215,7 +13215,32 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   margin-top: 8px;
 }
 .promo-manual-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 10px;
+}
+.promo-manual-summary button {
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  text-align: left;
+  cursor: pointer;
+}
+.promo-manual-summary button:hover,
+.promo-manual-summary button.is-active {
+  border-color: var(--crm-primary);
+  background: color-mix(in srgb, var(--crm-primary) 8%, var(--crm-card-bg));
+}
+.promo-manual-summary button.is-active span {
+  color: var(--crm-primary);
+  font-weight: 850;
+}
+@media (max-width: 920px) {
+  .promo-manual-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .promo-manual-note {
   display: flex;

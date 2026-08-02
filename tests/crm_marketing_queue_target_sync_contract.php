@@ -88,12 +88,12 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', '<span>群推广</span>', '<span>微信群 / WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name', '确认勾选 '] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', 'data-promo-manual-filter="group"', 'data-promo-manual-filter="wechat_group"', 'data-promo-manual-filter="whatsapp_group"', 'data-promo-manual-filter="email"', '全选当前筛选', 'data-promo-manual-empty', 'visibleCheckboxes', '<span>群推广</span>', '<span>微信群</span>', '<span>WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name', '确认勾选 '] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
     }
 }
-foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table-wrap', '.promo-manual-table tr.is-overdue', '.promo-manual-table tr.is-group-target', '.promo-manual-group-badge'] as $marker) {
+foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table-wrap', '.promo-manual-table tr.is-overdue', '.promo-manual-table tr.is-group-target', '.promo-manual-group-badge', '.promo-manual-summary button', '.promo-manual-summary button.is-active'] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Promotion manual execution layout style missing: {$marker}");
     }
