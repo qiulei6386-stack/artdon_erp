@@ -96,7 +96,7 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', 'isManualCheckedEmail', "emailChannels.indexOf(channel) >= 0 && (['pending','failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail)", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', 'modalClass: \'promo-manual-execution-modal\'', 'dialogClass: \'promo-manual-execution-dialog\'', 'data-promo-manual-filter="group"', 'data-promo-manual-filter="wechat_group"', 'data-promo-manual-filter="whatsapp_group"', 'data-promo-manual-filter="email"', '批量勾选当前筛选', '勾选即记录', 'data-promo-manual-empty', 'visibleCheckboxes', 'runImmediateExecute', "post('marketing_manual_execute'", "post('marketing_manual_unexecute'", 'data-promo-manual-undo', '取消执行', 'self.openManualExecutionDialog(task.id)', '<span>群推广</span>', '<span>微信群</span>', '<span>WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name'] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', 'isManualCheckedEmail', "emailChannels.indexOf(channel) >= 0 && (['pending','failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail)", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', 'modalClass: \'promo-manual-execution-modal\'', 'dialogClass: \'promo-manual-execution-dialog\'', 'data-promo-manual-filter="group"', 'data-promo-manual-filter="wechat_group"', 'data-promo-manual-filter="whatsapp_group"', 'data-promo-manual-filter="email"', '批量勾选当前筛选', '勾选即记录', 'data-promo-manual-empty', 'data-promo-manual-done-body', 'data-promo-manual-done-summary', 'renderManualDoneRow', 'visibleCheckboxes', 'runImmediateExecute', 'input.isConnected', 'doneBody.insertAdjacentHTML(\'afterbegin\'', "post('marketing_manual_execute'", "post('marketing_manual_unexecute'", 'data-promo-manual-undo', '取消执行', '<span>群推广</span>', '<span>微信群</span>', '<span>WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name'] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
     }
@@ -108,6 +108,9 @@ foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table
 }
 if (!str_contains($js, "['pending','running','partial_failed','paused','completed','failed','manual_pending'].indexOf(row.task_status) >= 0")) {
     throw new RuntimeException('Promotion manual execution action must include completed email tasks');
+}
+if (str_contains($manual, "toast('已记录 ' + ids.length + ' 条人工执行');\n                self.closeDialog();")) {
+    throw new RuntimeException('Promotion manual execution checkbox must update in-place without closing the dialog');
 }
 
 $queueListStart = strpos($php, 'function crm_marketing_queue_list(array $input): array');

@@ -17803,6 +17803,9 @@
           var isGroup = row.chat_group_name || row.manual_group_name || row.chat_group_id;
           return isGroup ? (row.chat_group_name || row.manual_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
         };
+        var renderManualDoneRow = function (row) {
+          return '<tr data-promo-manual-done-row="' + esc(row.id) + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(renderManualName(row)) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(row.executor_name || '-') + '</td><td>' + esc(row.manual_checked_by_name || row.operator_name || '-') + '</td><td>' + esc(String(row.executed_at || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || '-') + '</td><td><button type="button" class="promo-manual-undo" data-promo-manual-undo="' + esc(row.id) + '">取消执行</button></td></tr>';
+        };
         var pendingRows = pending.length ? pending.map(function (row, index) {
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           var isMailFollowup = emailChannels.indexOf(channel) >= 0;
@@ -17816,9 +17819,7 @@
           var filterPlatform = isGroupTarget ? self.normalizePromotionChannel(row.chat_group_platform || row.channel_key || '') : '';
           return '<tr class="' + (isGroupTarget ? 'is-group-target' : '') + overdue + '" data-promo-manual-row data-manual-filter-type="' + esc(filterType) + '" data-manual-filter-platform="' + esc(filterPlatform) + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + (isGroupTarget ? '<b class="promo-manual-group-badge">' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</b>' : esc(cnChannel(row.channel_key || '-'))) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '</td><td>' + esc(due) + '</td></tr>';
         }).join('') : '<tr><td colspan="7">当前任务没有待勾选的人工执行目标。</td></tr>';
-        var doneRows = done.length ? done.slice(0, 80).map(function (row) {
-          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(renderManualName(row)) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(row.executor_name || '-') + '</td><td>' + esc(row.manual_checked_by_name || row.operator_name || '-') + '</td><td>' + esc(String(row.executed_at || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || '-') + '</td><td><button type="button" class="promo-manual-undo" data-promo-manual-undo="' + esc(row.id) + '">取消执行</button></td></tr>';
-        }).join('') : '<tr><td colspan="8">暂无已勾选记录。</td></tr>';
+        var doneRows = done.length ? done.slice(0, 80).map(renderManualDoneRow).join('') : '<tr data-promo-manual-done-empty><td colspan="8">暂无已勾选记录。</td></tr>';
         self.openDialog({
           modalClass: 'promo-manual-execution-modal',
           dialogClass: 'promo-manual-execution-dialog',
@@ -17827,7 +17828,7 @@
           body: '<section class="promo-preview-grid promo-manual-summary"><button type="button" class="is-active" data-promo-manual-filter="all"><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></button><button type="button" data-promo-manual-filter="group"><strong>' + esc(groupTargets.length) + '</strong><span>群推广</span></button><button type="button" data-promo-manual-filter="wechat_group"><strong>' + esc(wechatGroupCount) + '</strong><span>微信群</span></button><button type="button" data-promo-manual-filter="whatsapp_group"><strong>' + esc(whatsappGroupCount) + '</strong><span>WhatsApp群</span></button><button type="button" data-promo-manual-filter="email"><strong>' + esc(emailFallbackCount) + '</strong><span>邮件转人工</span></button></section>' +
             '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>勾选后立即写入执行完成时间，并记录由当前账号打勾。</span></section>' +
             '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 批量勾选当前筛选</label><span data-promo-manual-selected>勾选即记录</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '<tr class="promo-manual-filter-empty" data-promo-manual-empty hidden><td colspan="7">当前筛选没有待勾选目标。</td></tr></tbody></table></div></section>' +
-            '<details class="promo-manual-done-table"><summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th><th>操作</th></tr></thead><tbody>' + doneRows + '</tbody></table></div></details>',
+            '<details class="promo-manual-done-table"><summary data-promo-manual-done-summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th><th>操作</th></tr></thead><tbody data-promo-manual-done-body>' + doneRows + '</tbody></table></div></details>',
           actions: '<button type="button" data-promo-dialog-close>关闭</button>',
           bind: function (modal) {
             var selectedText = modal.querySelector('[data-promo-manual-selected]');
@@ -17870,46 +17871,9 @@
               });
               syncSelection();
             };
-            var runImmediateExecute = function (ids, inputs) {
-              ids = (ids || []).map(Number).filter(Boolean);
-              inputs = inputs || [];
-              if (!ids.length) return;
-              inputs.forEach(function (input) { input.disabled = true; input.checked = true; });
-              if (selectAll) selectAll.disabled = true;
-              post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids) }).then(function (result) {
-                if (!result.success) throw new Error(result.message || '手动执行记录失败');
-                self.data.tasks = (result.data && result.data.tasks) || self.data.tasks;
-                self.data.logs = (result.data && result.data.logs) || self.data.logs;
-                self.data.targets = (result.data && result.data.targets) || self.data.targets;
-                self.data.failed_targets = (result.data && result.data.failed_targets) || self.data.failed_targets;
-                toast('已记录 ' + ids.length + ' 条人工执行');
-                self.closeDialog();
-                self.renderTasks();
-                self.renderTaskProperties();
-                self.renderExecutionCenter();
-                self.openManualExecutionDialog(task.id);
-              }).catch(function (error) {
-                inputs.forEach(function (input) { input.disabled = false; input.checked = false; });
-                if (selectAll) selectAll.disabled = false;
-                syncSelection();
-                self.showError(error.message || '手动执行记录失败');
-              });
-            };
-            checkboxes.forEach(function (input) {
-              input.addEventListener('change', function () {
-                if (!input.checked) return syncSelection();
-                runImmediateExecute([Number(input.value || 0)], [input]);
-              });
-            });
-            if (selectAll) selectAll.addEventListener('change', function () {
-              if (!selectAll.checked) return syncSelection();
-              var visible = visibleCheckboxes().filter(function (input) { return !input.checked && !input.disabled; });
-              runImmediateExecute(visible.map(function (input) { return Number(input.value || 0); }), visible);
-            });
-            filterButtons.forEach(function (button) {
-              button.addEventListener('click', function () { applyFilter(button.getAttribute('data-promo-manual-filter') || 'all'); });
-            });
-            modal.querySelectorAll('[data-promo-manual-undo]').forEach(function (button) {
+            var bindUndoButton = function (button) {
+              if (!button || button.getAttribute('data-promo-manual-undo-bound') === '1') return;
+              button.setAttribute('data-promo-manual-undo-bound', '1');
               button.addEventListener('click', function () {
                 var targetId = Number(button.getAttribute('data-promo-manual-undo') || 0);
                 if (!targetId) return;
@@ -17933,7 +17897,69 @@
                   self.showError(error.message || '取消执行失败');
                 });
               });
+            };
+            var runImmediateExecute = function (ids, inputs) {
+              ids = (ids || []).map(Number).filter(Boolean);
+              inputs = inputs || [];
+              if (!ids.length) return;
+              inputs.forEach(function (input) { input.disabled = true; input.checked = true; });
+              if (selectAll) selectAll.disabled = true;
+              post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids) }).then(function (result) {
+                if (!result.success) throw new Error(result.message || '手动执行记录失败');
+                self.data.tasks = (result.data && result.data.tasks) || self.data.tasks;
+                self.data.logs = (result.data && result.data.logs) || self.data.logs;
+                self.data.targets = (result.data && result.data.targets) || self.data.targets;
+                self.data.failed_targets = (result.data && result.data.failed_targets) || self.data.failed_targets;
+                var latestTargets = ((result.data || {}).targets || []);
+                var latestById = {};
+                latestTargets.forEach(function (row) { latestById[Number(row.id || 0)] = row; });
+                var doneBody = modal.querySelector('[data-promo-manual-done-body]');
+                var doneSummary = modal.querySelector('[data-promo-manual-done-summary]');
+                var doneCount = latestTargets.filter(function (row) { return String(row.target_status || '').toLowerCase() === 'success'; }).length;
+                inputs.forEach(function (input) {
+                  var row = input.closest('[data-promo-manual-row]');
+                  if (row) row.remove();
+                });
+                checkboxes = checkboxes.filter(function (input) { return input.isConnected; });
+                manualRows = manualRows.filter(function (row) { return row.isConnected; });
+                if (doneBody) {
+                  var emptyDone = doneBody.querySelector('[data-promo-manual-done-empty]');
+                  if (emptyDone) emptyDone.remove();
+                  ids.forEach(function (id) {
+                    var target = latestById[id];
+                    if (!target) return;
+                    doneBody.insertAdjacentHTML('afterbegin', renderManualDoneRow(target));
+                  });
+                  doneBody.querySelectorAll('[data-promo-manual-undo]').forEach(bindUndoButton);
+                }
+                if (doneSummary) doneSummary.textContent = '已执行记录 ' + doneCount + ' 条';
+                toast('已记录 ' + ids.length + ' 条人工执行');
+                self.renderTasks();
+                self.renderTaskProperties();
+                self.renderExecutionCenter();
+                applyFilter(activeFilter);
+              }).catch(function (error) {
+                inputs.forEach(function (input) { input.disabled = false; input.checked = false; });
+                if (selectAll) selectAll.disabled = false;
+                syncSelection();
+                self.showError(error.message || '手动执行记录失败');
+              });
+            };
+            checkboxes.forEach(function (input) {
+              input.addEventListener('change', function () {
+                if (!input.checked) return syncSelection();
+                runImmediateExecute([Number(input.value || 0)], [input]);
+              });
             });
+            if (selectAll) selectAll.addEventListener('change', function () {
+              if (!selectAll.checked) return syncSelection();
+              var visible = visibleCheckboxes().filter(function (input) { return !input.checked && !input.disabled; });
+              runImmediateExecute(visible.map(function (input) { return Number(input.value || 0); }), visible);
+            });
+            filterButtons.forEach(function (button) {
+              button.addEventListener('click', function () { applyFilter(button.getAttribute('data-promo-manual-filter') || 'all'); });
+            });
+            modal.querySelectorAll('[data-promo-manual-undo]').forEach(bindUndoButton);
             applyFilter(activeFilter);
           }
         });
