@@ -14738,7 +14738,7 @@
         ].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('');
         var manualBody = targets.length ? targets.slice(0, 180).map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'manual' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
-          var targetName = row.chat_group_name || row.contact_name || '客户级';
+          var targetName = row.chat_group_name || row.manual_group_name || row.contact_name || '客户级';
           var statusText = row.failure_reason ? cnStatus(row.manual_status) + ' · ' + row.failure_reason : cnStatus(row.manual_status || row.target_status || '-');
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="manual" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td><input type="checkbox" data-promo-manual-done="' + esc(row.id) + '" ' + (row.target_status === 'success' ? 'checked' : '') + '></td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(targetName) + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(row.contact_method || row.manual_group_name || '-') + '</td><td>' + esc(row.executor_name || row.operator_name || row.owner_name || '-') + '</td><td>' + esc(row.planned_at || row.created_at || '-').slice(0, 16) + '</td><td>' + esc(row.due_at || '-').slice(0, 16) + '</td><td>' + esc(statusText) + '</td><td>' + esc(row.executed_at || '-') + '</td><td>' + esc(row.manual_result || '-') + '</td></tr>';
         }).join('') : '<tr><td colspan="11">暂无人工执行清单。创建推广项目选择电话、微信、WhatsApp、群推广、LinkedIn 或拜访后会生成清单。</td></tr>';
@@ -17755,17 +17755,18 @@
           return user ? (user.display_name || user.username || ('#' + user.id)) : ('#' + owners[index % owners.length]);
         };
         var pendingHtml = pending.length ? pending.map(function (row, index) {
-          var isGroup = row.chat_group_name || row.chat_group_id;
+          var isGroup = row.chat_group_name || row.manual_group_name || row.chat_group_id;
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           var isMailFollowup = emailChannels.indexOf(channel) >= 0;
-          var title = isGroup ? (row.chat_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
+          var title = isGroup ? (row.chat_group_name || row.manual_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
           var mailHint = isMailFollowup ? (' · 邮件未自动触达：' + (row.failure_reason || cnStatus(row.target_status || '-'))) : '';
           var contactHint = isMailFollowup && row.email ? (' · ' + row.email) : '';
           var detail = isGroup ? ('客户：' + (row.customer_name || '-') + ' · 群负责人：' + (row.chat_group_owner || '-') + ' · ' + cnChannel(row.chat_group_platform || row.channel_key || '-')) : ((row.customer_name || '-') + contactHint + ' · ' + cnChannel(isMailFollowup ? 'offline' : (row.channel_key || '-')) + mailHint);
           return '<label class="promo-check-row promo-manual-target-row' + (isGroup ? ' is-group-target' : '') + '"><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"><span><strong>' + esc(title) + '</strong><em>' + esc(detail) + ' · 手动执行：' + esc(ownerName(index)) + '</em></span></label>';
         }).join('') : '<p class="promo-empty">当前任务没有待手动执行目标。</p>';
         var doneHtml = done.length ? '<section class="promo-manual-done"><strong>已执行</strong>' + done.slice(0, 30).map(function (row) {
-          return '<span>' + esc(row.chat_group_name ? (row.chat_group_name + ' · 客户：' + (row.customer_name || '-')) : ((row.customer_name || '-') + ' · ' + (row.contact_name || row.customer_name || '客户级目标'))) + ' · ' + esc(row.executed_at || '-') + '</span>';
+          var groupName = row.chat_group_name || row.manual_group_name || '';
+          return '<span>' + esc(groupName ? (groupName + ' · 客户：' + (row.customer_name || '-')) : ((row.customer_name || '-') + ' · ' + (row.contact_name || row.customer_name || '客户级目标'))) + ' · ' + esc(row.executed_at || '-') + '</span>';
         }).join('') + '</section>' : '';
         self.openDialog({
           title: '手动执行推广',

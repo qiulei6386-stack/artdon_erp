@@ -20,6 +20,13 @@ $markers = [
     'function crm_marketing_task_execution_summary(int $taskId): array',
     '\'execution_summary\' => crm_marketing_task_execution_summary($taskId)',
     "'wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin', 'email', 'mail', 'edm'",
+    '$insertedChatGroupIds = [];',
+    "WHERE g.customer_id = ? AND g.group_platform = ? AND g.deleted_at IS NULL AND g.status = \"active\" AND g.use_for_promotion = 1",
+    '$insertedChatGroupIds[$groupId] = true;',
+    '缺少可推广客户群',
+    'function crm_marketing_reconcile_group_targets(int $taskId): void',
+    'crm_marketing_reconcile_group_targets($taskId);',
+    "DELETE FROM crm_marketing_task_targets WHERE id = ? AND target_status IN ('pending','failed') AND executed_at IS NULL",
 ];
 
 foreach ($markers as $marker) {
@@ -70,7 +77,7 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：'] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)'] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
     }
