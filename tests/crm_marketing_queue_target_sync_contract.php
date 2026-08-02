@@ -2,7 +2,8 @@
 $root = dirname(__DIR__);
 $php = file_get_contents($root . '/crm_marketing.php');
 $js = file_get_contents($root . '/assets/crm/crm.js');
-if ($php === false || $js === false) {
+$css = file_get_contents($root . '/assets/crm/crm.css');
+if ($php === false || $js === false || $css === false) {
     throw new RuntimeException('Promotion queue target sync sources are not readable');
 }
 
@@ -31,6 +32,8 @@ $markers = [
     'crm_marketing_reconcile_email_group_followups($taskId);',
     '邮件无收件邮箱，转群人工执行',
     'q.sender_user_id, q.sender_email, q.receiver_email, q.subject',
+    'manual_checked_by_user_id',
+    'COALESCE(chk.real_name, chk.username) AS manual_checked_by_name',
 ];
 
 foreach ($markers as $marker) {
@@ -81,9 +84,14 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets'] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name', '确认勾选 '] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
+    }
+}
+foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table-wrap', '.promo-manual-table tr.is-overdue'] as $marker) {
+    if (!str_contains($css, $marker)) {
+        throw new RuntimeException("Promotion manual execution layout style missing: {$marker}");
     }
 }
 if (!str_contains($js, "['pending','running','partial_failed','paused','completed','failed','manual_pending'].indexOf(row.task_status) >= 0")) {

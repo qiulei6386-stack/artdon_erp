@@ -13214,6 +13214,106 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   gap: 5px;
   margin-top: 8px;
 }
+.promo-manual-summary {
+  margin-bottom: 10px;
+}
+.promo-manual-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crm-primary) 7%, var(--crm-card-bg));
+  margin-bottom: 10px;
+}
+.promo-manual-note strong {
+  color: var(--crm-text);
+  font-size: 13px;
+}
+.promo-manual-note span {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+}
+.promo-manual-table-card,
+.promo-manual-done-table {
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-card-bg);
+  overflow: hidden;
+}
+.promo-manual-table-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--crm-border);
+  background: color-mix(in srgb, var(--crm-hover-bg) 70%, transparent);
+}
+.promo-manual-table-card label,
+.promo-manual-table-card span,
+.promo-manual-done-table summary {
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.promo-manual-table-wrap {
+  max-height: min(48vh, 520px);
+  overflow: auto;
+}
+.promo-manual-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.promo-manual-table th,
+.promo-manual-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--crm-border);
+  color: var(--crm-text);
+  font-size: 12px;
+  vertical-align: middle;
+}
+.promo-manual-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--crm-card-bg);
+  color: var(--crm-muted-text);
+  font-weight: 850;
+  text-align: left;
+}
+.promo-manual-table th:first-child,
+.promo-manual-table td:first-child {
+  width: 54px;
+  text-align: center;
+}
+.promo-manual-table td strong,
+.promo-manual-table td span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.promo-manual-table td span {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.promo-manual-table tr.is-overdue td {
+  background: color-mix(in srgb, #ef4444 7%, var(--crm-card-bg));
+}
+.promo-manual-done-table {
+  margin-top: 10px;
+}
+.promo-manual-done-table summary {
+  cursor: pointer;
+  padding: 9px 12px;
+}
 .promo-pool-pager {
   min-height: 36px;
   display: flex;

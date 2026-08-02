@@ -150,6 +150,7 @@ function crm_marketing_ensure_tables(): void
     crm_marketing_add_column_if_missing('crm_marketing_task_targets', 'manual_result', "VARCHAR(120) NULL AFTER executed_at");
     crm_marketing_add_column_if_missing('crm_marketing_task_targets', 'manual_remark', "TEXT NULL AFTER manual_result");
     crm_marketing_add_column_if_missing('crm_marketing_task_targets', 'manual_attachment_json', "TEXT NULL AFTER manual_remark");
+    crm_marketing_add_column_if_missing('crm_marketing_task_targets', 'manual_checked_by_user_id', "INT UNSIGNED NULL AFTER manual_attachment_json");
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_marketing_logs (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1408,6 +1409,7 @@ function crm_marketing_task_targets(array $input = []): array
         ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, ct.linkedin, ct.position, ct.is_left,
         cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform, cg.group_owner AS chat_group_owner,
         COALESCE(ex.real_name, ex.username) AS executor_name,
+        COALESCE(chk.real_name, chk.username) AS manual_checked_by_name,
         CASE WHEN mt.target_status IN ('pending','failed') AND mt.due_at IS NOT NULL AND mt.due_at < NOW() THEN 'overdue' ELSE mt.target_status END AS manual_status,
         COALESCE(ps.status, 'not_promoted') customer_promotion_status
         FROM crm_marketing_task_targets mt
@@ -1416,6 +1418,7 @@ function crm_marketing_task_targets(array $input = []): array
         LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id
         LEFT JOIN crm_customer_chat_groups cg ON cg.id = mt.chat_group_id
         LEFT JOIN crm_users ex ON ex.id = mt.executor_user_id
+        LEFT JOIN crm_users chk ON chk.id = mt.manual_checked_by_user_id
         LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY FIELD(mt.target_status, 'failed','pending','success'), mt.id DESC
@@ -2903,7 +2906,7 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
     if (!$targets) throw new RuntimeException('没有可执行的手动目标。');
     $attachment = crm_marketing_manual_upload($files);
     $failureReason = $manualStatus === 'success' ? '' : ($manualResult ?: ($manualStatus === 'skipped' ? '已跳过' : '人工执行失败'));
-    $update = db()->prepare('UPDATE crm_marketing_task_targets SET target_status = ?, failure_reason = ?, manual_result = ?, manual_remark = ?, manual_attachment_json = ?, executor_user_id = ?, executed_at = NOW() WHERE id = ?');
+    $update = db()->prepare('UPDATE crm_marketing_task_targets SET target_status = ?, failure_reason = ?, manual_result = ?, manual_remark = ?, manual_attachment_json = ?, manual_checked_by_user_id = ?, executed_at = NOW() WHERE id = ?');
     $log = db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, ?, "manual_execute", ?, ?, ?, ?, NOW(), NOW())');
     foreach ($targets as $target) {
         $update->execute([

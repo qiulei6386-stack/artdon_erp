@@ -17771,38 +17771,71 @@
           var user = userById[owners[index % owners.length]];
           return user ? (user.display_name || user.username || ('#' + user.id)) : ('#' + owners[index % owners.length]);
         };
-        var pendingHtml = pending.length ? pending.map(function (row, index) {
+        var currentUserName = ((state.user || {}).real_name || (state.user || {}).name || '').trim() || '当前账号';
+        var manualActorCount = {};
+        manualTargets.forEach(function (row, index) {
+          var name = row.executor_name || row.operator_name || ownerName(index);
+          if (name) manualActorCount[name] = true;
+        });
+        var renderManualName = function (row) {
           var isGroup = row.chat_group_name || row.manual_group_name || row.chat_group_id;
+          return isGroup ? (row.chat_group_name || row.manual_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
+        };
+        var pendingRows = pending.length ? pending.map(function (row, index) {
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           var isMailFollowup = emailChannels.indexOf(channel) >= 0;
-          var title = isGroup ? (row.chat_group_name || row.manual_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
-          var mailHint = isMailFollowup ? (' · 邮件未自动触达：' + (row.failure_reason || cnStatus(row.target_status || '-'))) : '';
-          var contactHint = isMailFollowup && row.email ? (' · ' + row.email) : '';
-          var detail = isGroup ? ('客户：' + (row.customer_name || '-') + ' · 群负责人：' + (row.chat_group_owner || '-') + ' · ' + cnChannel(row.chat_group_platform || row.channel_key || '-')) : ((row.customer_name || '-') + contactHint + ' · ' + cnChannel(isMailFollowup ? 'offline' : (row.channel_key || '-')) + mailHint);
-          return '<label class="promo-check-row promo-manual-target-row' + (isGroup ? ' is-group-target' : '') + '"><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"><span><strong>' + esc(title) + '</strong><em>' + esc(detail) + ' · 手动执行：' + esc(ownerName(index)) + '</em></span></label>';
-        }).join('') : '<p class="promo-empty">当前任务没有待手动执行目标。</p>';
-        var doneHtml = done.length ? '<section class="promo-manual-done"><strong>已执行</strong>' + done.slice(0, 30).map(function (row) {
-          var groupName = row.chat_group_name || row.manual_group_name || '';
-          return '<span>' + esc(groupName ? (groupName + ' · 客户：' + (row.customer_name || '-')) : ((row.customer_name || '-') + ' · ' + (row.contact_name || row.customer_name || '客户级目标'))) + ' · ' + esc(row.executed_at || '-') + '</span>';
-        }).join('') + '</section>' : '';
+          var method = row.contact_method || row.manual_group_name || (isMailFollowup ? (row.email || '-') : '-');
+          var reason = row.failure_reason || (isMailFollowup ? '邮件未自动触达' : '');
+          var executor = row.executor_name || row.operator_name || ownerName(index);
+          var due = String(row.due_at || '').slice(0, 16) || '-';
+          var overdue = row.manual_status === 'overdue' ? ' is-overdue' : '';
+          return '<tr class="' + overdue + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '</td><td>' + esc(due) + '</td></tr>';
+        }).join('') : '<tr><td colspan="7">当前任务没有待勾选的人工执行目标。</td></tr>';
+        var doneRows = done.length ? done.slice(0, 80).map(function (row) {
+          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(renderManualName(row)) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(row.executor_name || '-') + '</td><td>' + esc(row.manual_checked_by_name || row.operator_name || '-') + '</td><td>' + esc(String(row.executed_at || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || '-') + '</td></tr>';
+        }).join('') : '<tr><td colspan="7">暂无已勾选记录。</td></tr>';
         self.openDialog({
           title: '手动执行推广',
-          description: task.task_name + ' · 勾选后会逐条记录执行时间',
-          body: '<section class="promo-preview-grid"><article><strong>' + esc(manualTargets.length) + '</strong><span>手动目标</span></article><article><strong>' + esc(pending.length) + '</strong><span>待勾选</span></article><article><strong>' + esc(done.length) + '</strong><span>已执行</span></article><article><strong>' + esc((sendRule.offline_owner_ids || []).length || '-') + '</strong><span>手动执行人</span></article></section><div class="promo-check-panel promo-manual-targets">' + pendingHtml + '</div>' + doneHtml,
-          actions: '<button type="button" data-promo-dialog-close>关闭</button><button type="button" data-promo-manual-confirm ' + (pending.length ? '' : 'disabled') + '>确认手动执行</button>',
+          description: task.task_name + ' · 勾选后记录完成时间、执行负责人和打勾账号',
+          body: '<section class="promo-preview-grid promo-manual-summary"><article><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></article><article><strong>' + esc(pending.length) + '</strong><span>待勾选</span></article><article><strong>' + esc(done.length) + '</strong><span>已执行</span></article><article><strong>' + esc(Object.keys(manualActorCount).length || '-') + '</strong><span>执行负责人</span></article></section>' +
+            '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>确认后，所选行会写入执行完成时间，并记录由当前账号打勾。</span></section>' +
+            '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 全选待执行</label><span data-promo-manual-selected>已选 0 条</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '</tbody></table></div></section>' +
+            '<details class="promo-manual-done-table"><summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th></tr></thead><tbody>' + doneRows + '</tbody></table></div></details>',
+          actions: '<button type="button" data-promo-dialog-close>关闭</button><button type="button" data-promo-manual-confirm disabled>确认勾选 0 条</button>',
           bind: function (modal) {
-            modal.querySelector('[data-promo-manual-confirm]')?.addEventListener('click', function () {
+            var confirmButton = modal.querySelector('[data-promo-manual-confirm]');
+            var selectedText = modal.querySelector('[data-promo-manual-selected]');
+            var selectAll = modal.querySelector('[data-promo-manual-select-all]');
+            var checkboxes = Array.from(modal.querySelectorAll('[data-promo-manual-target]'));
+            var syncSelection = function () {
+              var count = checkboxes.filter(function (input) { return input.checked; }).length;
+              if (selectedText) selectedText.textContent = '已选 ' + count + ' 条';
+              if (confirmButton) {
+                confirmButton.disabled = count <= 0;
+                confirmButton.textContent = '确认勾选 ' + count + ' 条';
+              }
+              if (selectAll) selectAll.checked = checkboxes.length > 0 && count === checkboxes.length;
+            };
+            checkboxes.forEach(function (input) { input.addEventListener('change', syncSelection); });
+            if (selectAll) selectAll.addEventListener('change', function () {
+              checkboxes.forEach(function (input) { input.checked = selectAll.checked; });
+              syncSelection();
+            });
+            syncSelection();
+            confirmButton?.addEventListener('click', function () {
               var ids = Array.from(modal.querySelectorAll('[data-promo-manual-target]:checked')).map(function (input) { return Number(input.value || 0); }).filter(Boolean);
               if (!ids.length) return self.showError('请先勾选要记录的手动执行目标');
               post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids) }).then(function (result) {
                 if (!result.success) throw new Error(result.message || '手动执行记录失败');
                 self.data.tasks = (result.data && result.data.tasks) || self.data.tasks;
                 self.data.logs = (result.data && result.data.logs) || self.data.logs;
+                self.data.targets = (result.data && result.data.targets) || self.data.targets;
                 self.data.failed_targets = (result.data && result.data.failed_targets) || self.data.failed_targets;
-                toast('已记录 ' + ids.length + ' 条手动执行时间');
+                toast('已勾选并记录 ' + ids.length + ' 条人工执行');
                 self.closeDialog();
                 self.renderTasks();
                 self.renderTaskProperties();
+                self.renderExecutionCenter();
               }).catch(function (error) { self.showError(error.message || '手动执行记录失败'); });
             });
           }
