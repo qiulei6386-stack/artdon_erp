@@ -19,6 +19,16 @@ foreach ([
 foreach ([
     "post('ai_bootstrap'",
     'renderWorkbench: function',
+    'ai-dashboard-hero',
+    'ai-dashboard-kpis',
+    'ai-dashboard-main',
+    'ai-dashboard-bottom',
+    'renderWorkflow: function',
+    'data-radar-home-candidate',
+    "renderGroup({ title: '客户探索'",
+    "renderGroup({ title: '数据与资料'",
+    "renderGroup({ title: '任务与执行'",
+    "'线索客户池': 'candidates'",
     "if (view === 'records') return self.renderLogs();",
     "if (view === 'settings') return self.renderSettings();",
     "if (this.view === 'quote') return rows.filter",
@@ -36,6 +46,11 @@ foreach ([
     '.ai-workbench',
     '.ai-workbench-panel',
     '.ai-panel-head',
+    '.ai-dashboard-hero',
+    '.ai-dashboard-kpis',
+    '.ai-dashboard-main',
+    '.ai-dashboard-bottom',
+    'body.is-ai-module .action_command::after',
     '.crm-modal.ai-dialog',
     '.radar-drawer-backdrop',
     'z-index: 120000 !important',
@@ -57,7 +72,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-center-workbench-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-center-dashboard-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 

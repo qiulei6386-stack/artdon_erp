@@ -18294,56 +18294,99 @@
       if (!box) return;
       var c = this.data.counts || {};
       var recent = this.data.recent || {};
+      var self = this;
       var cards = [
-        ['种子客户', c.seed_customers || 0],
-        ['正向样本', c.positive_seeds || 0],
-        ['负向样本', c.negative_seeds || 0],
-        ['搜索任务', c.search_tasks || 0],
-        ['正在执行任务', c.running_tasks || 0],
-        ['今日新发现客户', c.today_candidates || 0],
-        ['待审核客户', c.pending_candidates || 0],
-        ['A级候选客户', c.grade_a_candidates || 0],
-        ['B级候选客户', c.grade_b_candidates || 0],
-        ['已转入CRM', c.converted_to_crm || 0],
-        ['重复客户', c.duplicate_candidates || 0],
-        ['不精准客户', c.not_precise_candidates || 0],
-        ['本月发现客户', c.month_candidates || 0],
-        ['本月API费用', c.month_cost || 0],
-        ['有效客户平均成本', c.cost_per_valid_customer || 0]
+        { key: 'seeds', title: '种子客户', value: c.seed_customers || 0, hint: '较昨日 -', tone: 'muted' },
+        { key: 'positive', title: '正向样本', value: c.positive_seeds || 0, hint: '训练参考样本', tone: 'good' },
+        { key: 'negative', title: '负向样本', value: c.negative_seeds || 0, hint: '排除参考样本', tone: 'muted' },
+        { key: 'tasks', title: '搜索任务', value: c.search_tasks || 0, hint: Number(c.today_tasks || 0) ? '今日 +' + c.today_tasks : '较昨日 -', tone: Number(c.today_tasks || 0) ? 'good' : 'muted' },
+        { key: 'running', title: '正在执行任务', value: c.running_tasks || 0, hint: '队列执行中', tone: Number(c.running_tasks || 0) ? 'info' : 'muted' },
+        { key: 'pending', title: '待审核客户', value: c.pending_candidates || 0, hint: '需要人工判断', tone: Number(c.pending_candidates || 0) ? 'warn' : 'muted' },
+        { key: 'leads', title: 'AI线索客户', value: c.month_candidates || 0, hint: '本月发现', tone: 'info' },
+        { key: 'duplicates', title: '重复客户', value: c.duplicate_candidates || 0, hint: '需复核合并', tone: Number(c.duplicate_candidates || 0) ? 'danger' : 'muted' },
+        { key: 'converted', title: '已转入CRM', value: c.converted_to_crm || 0, hint: '正式客户库', tone: 'good' },
+        { key: 'cost', title: '本月API费用', value: c.month_cost || 0, hint: '平均成本 ' + (c.cost_per_valid_customer || 0), tone: 'muted' }
       ];
-      box.innerHTML = '<section class="radar-kpi-grid">' + cards.map(function (item) {
-        return '<article><strong>' + esc(item[1]) + '</strong><span>' + esc(item[0]) + '</span></article>';
-      }).join('') + '</section>' +
-      '<section class="radar-home-grid">' +
-        '<article><h3>最近任务</h3>' + this.renderTaskRows(recent.tasks || []) + '</article>' +
-        '<article><h3>最近发现客户</h3>' + this.renderCandidateRows(recent.candidates || []) + '</article>' +
-        '<article><h3>运行异常</h3>' + this.renderErrorRows(recent.errors || []) + '</article>' +
-        '<article><h3>系统状态</h3>' + this.renderSystemStatus() + '</article>' +
-      '</section>';
+      box.innerHTML =
+        '<section class="ai-dashboard-hero">' +
+          '<div class="ai-dashboard-mark">AI</div>' +
+          '<div><span>AI Center</span><h1>AI中心</h1><p>客户洞察、搜索任务、智能资料与AI任务总览</p></div>' +
+          '<aside><strong>' + esc(c.running_tasks || 0) + '</strong><span>正在执行</span></aside>' +
+        '</section>' +
+        '<section class="radar-kpi-grid ai-dashboard-kpis">' + cards.map(function (item) {
+          return '<article class="ai-dashboard-kpi" data-tone="' + esc(item.tone) + '"><i>' + esc(self.metricIcon(item.key)) + '</i><div><span>' + esc(item.title) + '</span><strong>' + esc(item.value) + '</strong><em>' + esc(item.hint) + '</em></div></article>';
+        }).join('') + '</section>' +
+        '<section class="ai-dashboard-main">' +
+          '<article class="ai-dashboard-card"><header><h3>最近任务</h3><button type="button" data-radar-home-link="tasks">全部任务 &gt;</button></header>' + this.renderTaskRows((recent.tasks || []).slice(0, 8)) + '</article>' +
+          '<article class="ai-dashboard-card"><header><h3>最近发现客户</h3><button type="button" data-radar-home-link="candidates">全部客户 &gt;</button></header>' + this.renderCandidateRows((recent.candidates || []).slice(0, 8)) + '</article>' +
+        '</section>' +
+        '<section class="ai-dashboard-bottom">' +
+          '<article class="ai-dashboard-card"><header><h3>运行异常</h3><button type="button" data-radar-home-link="logs">查看全部 &gt;</button></header>' + this.renderErrorRows((recent.errors || []).slice(0, 3)) + '</article>' +
+          '<article class="ai-dashboard-card"><header><h3>系统状态</h3><button type="button" data-radar-refresh title="刷新">刷新</button></header>' + this.renderSystemStatus() + '</article>' +
+          '<article class="ai-dashboard-card"><header><h3>AI工作流概览</h3><span>近7天</span></header>' + this.renderWorkflow(c) + '</article>' +
+        '</section>';
+      box.querySelectorAll('[data-radar-home-link]').forEach(function (button) {
+        button.addEventListener('click', function () { self.switchView(button.getAttribute('data-radar-home-link') || 'home'); });
+      });
+      box.querySelectorAll('[data-radar-home-task]').forEach(function (button) {
+        button.addEventListener('click', function () { self.openTaskDetail(Number(button.getAttribute('data-radar-home-task') || 0)); });
+      });
+      box.querySelectorAll('[data-radar-home-candidate]').forEach(function (button) {
+        button.addEventListener('click', function () { self.openCandidateDetail(Number(button.getAttribute('data-radar-home-candidate') || 0)); });
+      });
+      box.querySelector('[data-radar-refresh]')?.addEventListener('click', function () { self.load(); });
+    },
+    metricIcon: function (key) {
+      return ({ seeds: 'S', positive: '+', negative: '-', tasks: 'T', running: 'R', pending: 'P', leads: 'L', duplicates: 'D', converted: 'C', cost: '$' })[key] || 'AI';
     },
     renderTaskRows: function (rows) {
       if (!rows.length) return this.emptyList('暂无最近任务', '第一步不创建搜索任务。');
-      return '<div class="radar-list">' + rows.map(function (row) {
-        return '<article><strong>' + esc(row.task_name || '-') + '</strong><span>' + esc(row.task_status || '-') + ' · ' + esc(row.created_at || '') + '</span></article>';
+      var self = this;
+      return '<div class="radar-list ai-dashboard-task-list">' + rows.map(function (row) {
+        var status = row.task_status || '';
+        return '<article><i data-status="' + esc(status) + '"></i><div><strong>' + esc(row.task_name || '-') + '</strong><span><em data-status="' + esc(status) + '">' + esc(self.taskStatusLabel(status)) + '</em>' + esc(row.created_at || '') + '</span></div><button type="button" data-radar-home-task="' + esc(row.id || 0) + '">查看</button></article>';
       }).join('') + '</div>';
     },
     renderCandidateRows: function (rows) {
       if (!rows.length) return this.emptyList('暂无发现客户', '本阶段不搜索网络客户。');
-      return '<div class="radar-list">' + rows.map(function (row) {
-        return '<article><strong>' + esc(row.company_name || '-') + '</strong><span>' + esc(row.country || '-') + ' · ' + esc(row.grade || '-') + ' · ' + esc(row.radar_score || 0) + '</span></article>';
+      return '<div class="radar-list ai-dashboard-candidate-list">' + rows.map(function (row) {
+        var grade = row.grade || 'D';
+        return '<article><div><strong>' + esc(row.company_name || '-') + '</strong><span>' + esc(row.country || '-') + '</span></div><em data-grade="' + esc(grade) + '">' + esc(grade) + ' · ' + esc(row.radar_score || 0) + '</em><button type="button" data-radar-home-candidate="' + esc(row.id || 0) + '">查看详情</button></article>';
       }).join('') + '</div>';
     },
     renderErrorRows: function (rows) {
       if (!rows.length) return this.emptyList('暂无运行异常', '系统底座正常时这里为空。');
-      return '<div class="radar-list">' + rows.map(function (row) {
-        return '<article><strong>' + esc(row.action_key || '-') + '</strong><span>' + esc(row.error_message || '-') + ' · ' + esc(row.created_at || '') + '</span></article>';
+      return '<div class="radar-list ai-dashboard-error-list">' + rows.map(function (row) {
+        return '<article><i></i><div><strong>' + esc(row.action_key || '-') + '</strong><span>' + esc(row.error_message || '-') + '</span><time>' + esc(row.created_at || '') + '</time></div></article>';
       }).join('') + '</div>';
     },
     renderSystemStatus: function () {
       var ready = this.data.tables_ready ? '已升级' : '待升级';
       var settings = this.data.settings || {};
-      var enabled = Number(((settings.basic || {}).module_enabled) || 0) ? '已启用' : '未启用';
-      return '<div class="radar-status-list"><article><span>数据库</span><strong>' + esc(ready) + '</strong></article><article><span>模块状态</span><strong>' + esc(enabled) + '</strong></article><article><span>网络搜索</span><strong>未接入</strong></article><article><span>AI接口</span><strong>未接入</strong></article></div>';
+      var enabled = Number(((settings.basic || {}).module_enabled) || 0);
+      var worker = Number(((settings.task || {}).worker_enabled) || 0);
+      return '<div class="radar-status-list ai-dashboard-status">' +
+        '<article><strong>数据库</strong><span data-state="' + (this.data.tables_ready ? 'ok' : 'warn') + '">' + esc(ready) + '</span></article>' +
+        '<article><strong>模块状态</strong><span data-state="' + (enabled ? 'ok' : 'warn') + '">' + esc(enabled ? '已启用' : '未启用') + '</span></article>' +
+        '<article><strong>网络搜索</strong><span data-state="warn">未接入</span></article>' +
+        '<article><strong>AI接口</strong><span data-state="warn">未接入</span></article>' +
+        '<article><strong>后台任务</strong><span data-state="' + (worker ? 'ok' : 'warn') + '">' + esc(worker ? '已启用' : '未启用') + '</span></article>' +
+        '<article><strong>更新时间</strong><span data-state="neutral">' + esc(new Date().toLocaleString('zh-CN', { hour12: false })) + '</span></article>' +
+      '</div>';
+    },
+    renderWorkflow: function (counts) {
+      var items = [
+        ['搜索任务', counts.search_tasks || 0],
+        ['执行中', counts.running_tasks || 0],
+        ['待审核客户', counts.pending_candidates || 0],
+        ['AI线索客户', counts.month_candidates || 0],
+        ['转入CRM', counts.converted_to_crm || 0]
+      ];
+      var max = Math.max.apply(Math, items.map(function (item) { return Number(item[1] || 0); }).concat([1]));
+      return '<div class="ai-workflow-funnel">' + items.map(function (item, index) {
+        var width = Math.max(10, Math.round((Number(item[1] || 0) / max) * 100));
+        return '<div><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong><i style="width:' + width + '%" data-step="' + esc(index + 1) + '"></i></div>';
+      }).join('') + '</div>';
     },
     renderSeeds: function () {
       var box = document.querySelector('[data-radar-content]');
@@ -21150,7 +21193,7 @@
   function renderActions(name) {
     var module = state.modules[name] || {};
     var actions = name === 'customers' ? CustomerModule.actions() : (name === 'visits' ? VisitModule.actions() : (state.actions[name] || []));
-    if (actionTitle) actionTitle.textContent = name === 'customers' && CustomerModule.attributeViewMode ? '客户属性' : (module.short || name);
+    if (actionTitle) actionTitle.textContent = name === 'ai' ? '快捷操作' : (name === 'customers' && CustomerModule.attributeViewMode ? '客户属性' : (module.short || name));
     if (!actionList) return;
     actionList.innerHTML = '';
     var root = document.createElement('div');
@@ -21371,6 +21414,7 @@
         '客户画像': '客户画像下一阶段接入',
         '搜索关键词': '维护搜索关键词库，不触发真实搜索',
         '候选客户池': '查看候选客户、评分、匹配理由、风险提示和CRM重复检查',
+        '线索客户池': '管理AI发现的线索客户、评分和CRM重复检查',
         '审核中心': '审核中心下一阶段接入',
         '运行日志': '查看客户雷达运行日志',
         '雷达设置': '进入客户雷达基础、费用和任务设置',
@@ -21505,6 +21549,7 @@
         '客户画像': 'profiles',
         '搜索任务': 'tasks',
         '候选客户池': 'candidates',
+        '线索客户池': 'candidates',
         '审核中心': 'reviews',
         '运行日志': 'logs',
         '雷达设置': 'settings'
@@ -21747,8 +21792,9 @@
     }
     if (name === 'ai') {
       var isRadarSearchTaskPage = (AiModule.view || 'radar') === 'radar' && (RadarModule.view || 'home') === 'tasks' && (RadarModule.taskSubView || 'tasks') === 'tasks';
-      renderGroup({ title: 'AI 中心', items: ['客户雷达', '智能报价', '智能资料', 'AI任务', '运行记录', 'AI设置'] });
-      renderGroup({ title: '客户雷达', items: ['雷达首页', '种子客户', '客户画像', '搜索任务', '候选客户池', '审核中心', '运行日志', '雷达设置'] });
+      renderGroup({ title: '客户探索', items: ['客户雷达', '雷达首页'] });
+      renderGroup({ title: '数据与资料', items: ['智能资料', '客户画像', '智能报价'] });
+      renderGroup({ title: '任务与执行', items: ['AI任务', '搜索任务', '线索客户池', '运行记录', '运行日志', 'AI设置', '雷达设置'] });
       if (isRadarSearchTaskPage) {
         var selectedCount = RadarModule.selectedTaskIds ? RadarModule.selectedTaskIds.size : 0;
         var selectedRows = RadarModule.selectedTaskRows ? RadarModule.selectedTaskRows() : [];
@@ -21943,6 +21989,7 @@
     document.body.classList.toggle('is-workspace-module', name === 'workspace');
     document.body.classList.toggle('is-promotion-module', name === 'promotion');
     document.body.classList.toggle('is-tasks-module', name === 'tasks');
+    document.body.classList.toggle('is-ai-module', name === 'ai');
 	    if (name !== 'promotion') {
 	      document.body.classList.remove('is-promo-project-fullscreen', 'is-promo-task-editor-open');
 	      document.documentElement.classList.remove('is-promo-task-editor-open');
@@ -25701,6 +25748,7 @@
       '搜索任务': 'tasks',
       '搜索关键词': 'tasks',
       '候选客户池': 'candidates',
+      '线索客户池': 'candidates',
       '审核中心': 'reviews',
       '运行日志': 'logs',
       '雷达设置': 'settings'

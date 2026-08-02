@@ -94,7 +94,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-center-workbench-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-center-dashboard-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for sample followup detail changes');
 }
 
