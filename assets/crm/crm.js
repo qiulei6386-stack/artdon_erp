@@ -18179,6 +18179,8 @@
     templateFilters: { q: '', country_code: '', model_key: '', status: '' },
     candidateSelected: new Set(),
     candidateFilters: { q: '', country: '', city: '', model_key: '', company_type: '', grade: '', duplicate: '', review_status: '', page: 1, page_size: 20 },
+    logFilters: { q: '', result: 'all', action: 'all' },
+    selectedRadarLogId: 0,
     data: { counts: {}, recent: {}, settings: {}, permissions: {}, tables_ready: false, seeds: { rows: [], total: 0, page: 1, page_size: 20 }, profiles: { rows: [] }, keywords: { rows: [] }, tasks: { rows: [] }, templates: { rows: [] } },
     init: function () {
       if (!document.querySelector('[data-radar-module]')) return;
@@ -19670,13 +19672,89 @@
       if (!box) return;
       box.innerHTML = '<section class="radar-panel"><h3>' + esc(title) + '</h3>' + this.emptyList('下一阶段接入', '本步骤不制作该业务功能。') + '</section>';
     },
+    radarLogTone: function (row) {
+      return Number((row || {}).success) ? 'good' : 'danger';
+    },
+    radarLogResult: function (row) {
+      return Number((row || {}).success) ? '成功' : '失败';
+    },
+    radarLogSummary: function (row) {
+      if (!row) return '-';
+      if (row.error_message) return row.error_message;
+      return (row.action_key || '运行操作') + ' 已记录';
+    },
+    radarLogRows: function () {
+      var self = this;
+      var filters = this.logFilters || { q: '', result: 'all', action: 'all' };
+      var q = String(filters.q || '').trim().toLowerCase();
+      return (((this.data.recent || {}).logs || [])).filter(function (row) {
+        if (filters.result === 'success' && !Number(row.success)) return false;
+        if (filters.result === 'failed' && Number(row.success)) return false;
+        if (filters.action !== 'all' && String(row.action_key || '') !== filters.action) return false;
+        if (!q) return true;
+        return [row.created_at, row.action_key, row.user_account, row.error_message, self.radarLogResult(row)].join(' ').toLowerCase().indexOf(q) >= 0;
+      });
+    },
+    radarLogStats: function () {
+      var rows = ((this.data.recent || {}).logs || []);
+      var success = rows.filter(function (row) { return Number(row.success); }).length;
+      var failed = rows.length - success;
+      var latest = rows[0] ? String(rows[0].created_at || '').slice(11, 16) : '-';
+      var autoRows = rows.filter(function (row) { return /cron|worker|database/i.test(String(row.action_key || '')); }).length;
+      return [
+        ['总日志', rows.length, '最近运行记录', 'info'],
+        ['成功', success, '正常完成', 'good'],
+        ['失败', failed, '需要排查', failed ? 'danger' : 'info'],
+        ['自动任务', autoRows, 'Cron / Worker', 'info'],
+        ['最近时间', latest, '最新写入', 'info']
+      ];
+    },
+    renderRadarLogDetail: function (row) {
+      if (!row) return '<aside class="radar-log-detail-v2"><div class="radar-empty"><strong>暂无日志详情</strong><span>运行日志会在这里展示详情。</span></div></aside>';
+      var fields = [
+        ['时间', row.created_at || '-'],
+        ['操作', row.action_key || '-'],
+        ['操作人', row.user_account || '-'],
+        ['结果', this.radarLogResult(row)],
+        ['日志ID', row.id || '-']
+      ];
+      return '<aside class="radar-log-detail-v2"><header><div><strong>日志详情 #' + esc(row.id || '-') + '</strong><span>点选左侧记录查看完整状态</span></div><em data-tone="' + esc(this.radarLogTone(row)) + '">' + esc(this.radarLogResult(row)) + '</em></header>' +
+        '<div class="radar-log-fields-v2">' + fields.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') + '</div>' +
+        '<section><strong>错误 / 摘要</strong><p>' + esc(this.radarLogSummary(row)) + '</p></section></aside>';
+    },
     renderLogs: function () {
       var box = document.querySelector('[data-radar-content]');
       if (!box) return;
-      var rows = ((this.data.recent || {}).logs || []);
-      box.innerHTML = '<section class="radar-panel"><h3>运行日志</h3>' + (rows.length ? '<div class="radar-table"><table><thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>结果</th><th>错误</th></tr></thead><tbody>' + rows.map(function (row) {
-        return '<tr><td>' + esc(row.created_at || '-') + '</td><td>' + esc(row.action_key || '-') + '</td><td>' + esc(row.user_account || '-') + '</td><td>' + (Number(row.success) ? '成功' : '失败') + '</td><td>' + esc(row.error_message || '-') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : this.emptyList('暂无运行日志', '执行数据库升级或保存设置后会出现日志。')) + '</section>';
+      var self = this;
+      var rows = this.radarLogRows();
+      var allRows = ((this.data.recent || {}).logs || []);
+      var actions = Array.from(new Set(allRows.map(function (row) { return row.action_key || ''; }).filter(Boolean))).sort();
+      var selected = rows.find(function (row) { return Number(row.id) === Number(self.selectedRadarLogId); }) || rows[0] || null;
+      this.selectedRadarLogId = selected ? Number(selected.id || 0) : 0;
+      var stats = this.radarLogStats().map(function (item) {
+        return '<article data-tone="' + esc(item[3]) + '"><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong><em>' + esc(item[2]) + '</em></article>';
+      }).join('');
+      var table = rows.length ? rows.map(function (row) {
+        var active = selected && Number(selected.id) === Number(row.id);
+        return '<tr class="' + (active ? 'active' : '') + '" data-radar-log-row="' + esc(row.id || '') + '"><td>' + esc(String(row.created_at || '').slice(5, 16) || '-') + '</td><td><strong title="' + esc(row.action_key || '-') + '">' + esc(row.action_key || '-') + '</strong></td><td>' + esc(row.user_account || '-') + '</td><td><em data-tone="' + esc(self.radarLogTone(row)) + '">' + esc(self.radarLogResult(row)) + '</em></td><td><span title="' + esc(self.radarLogSummary(row)) + '">' + esc(self.radarLogSummary(row)) + '</span></td></tr>';
+      }).join('') : '<tr><td colspan="5"><p class="radar-candidate-empty-v2">暂无符合条件的运行日志。</p></td></tr>';
+      box.innerHTML = '<section class="radar-log-workbench-v2"><section class="radar-log-hero-v2"><div><span>Radar Operation Log</span><h3>运行日志</h3><p>查看客户雷达后台任务、数据库升级、页面访问和接口执行结果，失败项会在右侧展开原因。</p></div><nav><button type="button" data-radar-log-refresh>刷新</button><button type="button" data-radar-log-failed>只看失败</button><button type="button" data-radar-open-settings>雷达设置</button></nav></section>' +
+        '<section class="radar-log-kpis-v2">' + stats + '</section>' +
+        '<section class="radar-log-grid-v2"><article class="radar-log-list-v2"><header><div><strong>日志列表</strong><span>最近 ' + esc(allRows.length) + ' 条 · 当前筛选 ' + esc(rows.length) + ' 条</span></div></header>' +
+        '<div class="radar-log-tools-v2"><input data-radar-log-q placeholder="搜索时间、操作、人员、错误" value="' + esc((this.logFilters || {}).q || '') + '"><select data-radar-log-result><option value="all">全部结果</option><option value="success"' + (this.logFilters.result === 'success' ? ' selected' : '') + '>成功</option><option value="failed"' + (this.logFilters.result === 'failed' ? ' selected' : '') + '>失败</option></select><select data-radar-log-action><option value="all">全部操作</option>' + actions.map(function (key) { return '<option value="' + esc(key) + '"' + (self.logFilters.action === key ? ' selected' : '') + '>' + esc(key) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="radar-log-table-v2"><table><thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>结果</th><th>错误 / 摘要</th></tr></thead><tbody>' + table + '</tbody></table></div></article>' + this.renderRadarLogDetail(selected) + '</section></section>';
+      box.querySelector('[data-radar-log-refresh]')?.addEventListener('click', function () { self.load(); });
+      box.querySelector('[data-radar-open-settings]')?.addEventListener('click', function () { self.switchView('settings'); });
+      box.querySelector('[data-radar-log-failed]')?.addEventListener('click', function () { self.logFilters.result = 'failed'; self.renderLogs(); });
+      box.querySelector('[data-radar-log-q]')?.addEventListener('input', function (event) { self.logFilters.q = event.target.value || ''; self.renderLogs(); });
+      box.querySelector('[data-radar-log-result]')?.addEventListener('change', function (event) { self.logFilters.result = event.target.value || 'all'; self.renderLogs(); });
+      box.querySelector('[data-radar-log-action]')?.addEventListener('change', function (event) { self.logFilters.action = event.target.value || 'all'; self.renderLogs(); });
+      box.querySelectorAll('[data-radar-log-row]').forEach(function (row) {
+        row.addEventListener('click', function () {
+          self.selectedRadarLogId = Number(row.getAttribute('data-radar-log-row') || 0);
+          self.renderLogs();
+        });
+      });
     },
     renderSettings: function () {
       var box = document.querySelector('[data-radar-content]');
