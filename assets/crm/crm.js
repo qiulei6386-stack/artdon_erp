@@ -14632,7 +14632,10 @@
       var tasks = (this.data && this.data.tasks) || [];
       var reports = (this.data && this.data.task_reports) || {};
       if (tab === 'mail_queue') {
-        tasks.slice(0, 12).forEach(function (task) { self.ensureTaskReport(Number(task.id || 0)); });
+        var reportTaskIds = tasks.slice(0, 12).map(function (task) { return Number(task.id || 0); }).filter(Boolean);
+        var selectedTaskId = Number(this.selectedTaskId || 0);
+        if (selectedTaskId && reportTaskIds.indexOf(selectedTaskId) < 0) reportTaskIds.unshift(selectedTaskId);
+        reportTaskIds.forEach(function (taskId) { self.ensureTaskReport(taskId); });
         var queueRows = [];
         Object.keys(reports).forEach(function (taskId) {
           var task = self.taskById(taskId) || {};

@@ -1386,6 +1386,7 @@ function crm_marketing_task_targets(array $input = []): array
     crm_marketing_ensure_tables();
     crm_require('promotion.view');
     $taskId = (int)($input['task_id'] ?? 0);
+    if ($taskId > 0) crm_marketing_reconcile_task_targets_from_queue($taskId);
     $status = trim((string)($input['status'] ?? ''));
     $params = [];
     $where = ['1=1'];
@@ -2188,6 +2189,8 @@ function crm_marketing_queue_build(array $input): array
         elseif ($receiverKey !== '' && isset($seenReceivers[$receiverKey])) $skipReason = '重复邮箱';
         if ($skipReason !== '') {
             $skipped++;
+            db()->prepare("UPDATE crm_marketing_task_targets SET target_status='skipped', failure_reason=?, executed_at=NOW() WHERE id=? AND target_status <> 'success'")
+                ->execute([$skipReason, (int)$row['id']]);
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_skipped", "skipped", ?, ?, ?, NOW(), NOW())')
                 ->execute([$taskId, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, $skipReason, current_user()['id'] ?? null, json_encode(['receiver_email' => $receiver, 'duplicate_of' => $seenReceivers[$receiverKey] ?? null], JSON_UNESCAPED_UNICODE)]);
             continue;
@@ -2212,6 +2215,8 @@ function crm_marketing_queue_build(array $input): array
         $dup->execute([$taskId, $receiverKey]);
         if ($dup->fetchColumn()) {
             $skipped++;
+            db()->prepare("UPDATE crm_marketing_task_targets SET target_status='skipped', failure_reason='重复邮箱', executed_at=NOW() WHERE id=? AND target_status <> 'success'")
+                ->execute([(int)$row['id']]);
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_skipped", "skipped", "重复邮箱", ?, ?, NOW(), NOW())')
                 ->execute([$taskId, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, current_user()['id'] ?? null, json_encode(['receiver_email' => $receiver, 'source' => 'existing_queue'], JSON_UNESCAPED_UNICODE)]);
             continue;
@@ -2246,12 +2251,80 @@ function crm_marketing_queue_status_counts(int $taskId): array
     return $counts + ($time->fetch() ?: []);
 }
 
+function crm_marketing_update_target_from_queue(array $queueRow, string $status, string $failureReason = ''): void
+{
+    $taskId = (int)($queueRow['task_id'] ?? 0);
+    $customerId = (int)($queueRow['customer_id'] ?? 0);
+    if ($taskId <= 0 || $customerId <= 0) return;
+    $contactId = (int)($queueRow['contact_id'] ?? 0);
+    $params = [$status, $failureReason, $status, $taskId, $customerId];
+    $contactWhere = 'mt.contact_id IS NULL';
+    if ($contactId > 0) {
+        $contactWhere = 'mt.contact_id = ?';
+        $params[] = $contactId;
+    }
+    db()->prepare("UPDATE crm_marketing_task_targets mt
+        SET mt.target_status = ?, mt.failure_reason = ?, mt.executed_at = IF(? IN ('success','failed','skipped'), COALESCE(mt.executed_at, NOW()), mt.executed_at)
+        WHERE mt.task_id = ? AND mt.customer_id = ? AND {$contactWhere}
+          AND LOWER(mt.channel_key) IN ('email','mail','edm')
+          AND mt.target_status <> 'success'")
+        ->execute($params);
+}
+
+function crm_marketing_reconcile_task_targets_from_queue(int $taskId): array
+{
+    crm_marketing_ensure_tables();
+    if ($taskId <= 0) return ['success' => 0, 'failed' => 0, 'skipped' => 0];
+    $success = db()->prepare("UPDATE crm_marketing_task_targets mt
+        JOIN crm_marketing_send_queue q ON q.task_id = mt.task_id
+            AND q.customer_id = mt.customer_id
+            AND (q.contact_id <=> mt.contact_id)
+        SET mt.target_status = 'success',
+            mt.failure_reason = '',
+            mt.executed_at = COALESCE(mt.executed_at, q.sent_at, q.updated_at, NOW())
+        WHERE mt.task_id = ?
+          AND q.send_status = 'sent'
+          AND LOWER(mt.channel_key) IN ('email','mail','edm')
+          AND mt.target_status <> 'success'");
+    $success->execute([$taskId]);
+
+    $failed = db()->prepare("UPDATE crm_marketing_task_targets mt
+        JOIN crm_marketing_send_queue q ON q.task_id = mt.task_id
+            AND q.customer_id = mt.customer_id
+            AND (q.contact_id <=> mt.contact_id)
+        SET mt.target_status = 'failed',
+            mt.failure_reason = COALESCE(NULLIF(q.last_error, ''), '邮件发送失败'),
+            mt.executed_at = COALESCE(mt.executed_at, q.updated_at, NOW())
+        WHERE mt.task_id = ?
+          AND q.send_status = 'failed'
+          AND LOWER(mt.channel_key) IN ('email','mail','edm')
+          AND mt.target_status NOT IN ('success','failed')");
+    $failed->execute([$taskId]);
+
+    $skipped = db()->prepare("UPDATE crm_marketing_task_targets mt
+        JOIN crm_marketing_logs ml ON ml.task_id = mt.task_id
+            AND ml.customer_id = mt.customer_id
+            AND (ml.contact_id <=> mt.contact_id)
+        SET mt.target_status = 'skipped',
+            mt.failure_reason = COALESCE(NULLIF(ml.failure_reason, ''), '队列生成时跳过'),
+            mt.executed_at = COALESCE(mt.executed_at, ml.touched_at, ml.created_at, NOW())
+        WHERE mt.task_id = ?
+          AND ml.action_key = 'queue_skipped'
+          AND ml.result_status = 'skipped'
+          AND LOWER(mt.channel_key) IN ('email','mail','edm')
+          AND mt.target_status = 'pending'");
+    $skipped->execute([$taskId]);
+
+    return ['success' => $success->rowCount(), 'failed' => $failed->rowCount(), 'skipped' => $skipped->rowCount()];
+}
+
 function crm_marketing_queue_list(array $input): array
 {
     crm_marketing_ensure_tables();
     crm_require('promotion.view');
     $taskId = (int)($input['task_id'] ?? 0);
     if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
+    crm_marketing_reconcile_task_targets_from_queue($taskId);
     $status = trim((string)($input['status'] ?? ''));
     $where = ['q.task_id = ?'];
     $params = [$taskId];
@@ -2332,6 +2405,7 @@ function crm_marketing_queue_run_due(int $limit = 30): array
                 VALUES (?, ?, "sent", ?, ?, ?, ?, NOW(), ?, ?, 1, 0, 0, ?, ?, ?, ?, NOW(), NOW())')
                 ->execute([(int)$account['user_id'], (int)$account['id'], (string)$row['subject'], (string)$account['email_address'], (string)($account['sender_name'] ?: $account['email_address']), (string)$row['receiver_email'], (string)$row['body'], strip_tags((string)$row['body']), (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, json_encode(['推广队列'], JSON_UNESCAPED_UNICODE), json_encode(['marketing_queue_id' => (int)$row['id'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
             db()->prepare("UPDATE crm_marketing_send_queue SET send_status='sent', last_error=NULL, sent_at=NOW(), updated_at=NOW() WHERE id=?")->execute([(int)$row['id']]);
+            crm_marketing_update_target_from_queue($row, 'success', '');
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_send", "success", "", ?, ?, NOW(), NOW())')
                 ->execute([(int)$row['task_id'], (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, (int)$row['sender_user_id'], json_encode(['queue_id' => (int)$row['id'], 'sender_email' => $row['sender_email'], 'receiver_email' => $row['receiver_email'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
             $sent++;
@@ -2339,6 +2413,7 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             $next = ((int)$row['send_attempts'] + 1) < (int)$row['max_attempts'] ? 'waiting_retry' : 'failed';
             $retryAt = $next === 'waiting_retry' ? ", planned_server_time=DATE_ADD(NOW(), INTERVAL 30 MINUTE)" : '';
             db()->prepare("UPDATE crm_marketing_send_queue SET send_status='{$next}', last_error=?, updated_at=NOW() {$retryAt} WHERE id=?")->execute([$e->getMessage(), (int)$row['id']]);
+            if ($next === 'failed') crm_marketing_update_target_from_queue($row, 'failed', $e->getMessage());
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_send", "failed", ?, ?, ?, NOW(), NOW())')
                 ->execute([(int)$row['task_id'], (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, $e->getMessage(), (int)$row['sender_user_id'], json_encode(['queue_id' => (int)$row['id'], 'sender_email' => $row['sender_email'], 'receiver_email' => $row['receiver_email']], JSON_UNESCAPED_UNICODE)]);
             $failed++;
