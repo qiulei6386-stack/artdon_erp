@@ -18714,10 +18714,12 @@
       if (shell) box = shell;
       if (!box) return;
       var self = this;
-      box.innerHTML = '<section class="radar-panel radar-workbench"><div class="radar-toolbar"><div><h3>搜索任务管理</h3><span>任务进入数据库队列后由 Cron/Worker 后台执行；操作已移到右侧菜单栏。</span></div></div>' +
-        '<div class="radar-filter-row"><input data-radar-task-q placeholder="搜索任务/国家/城市"><select data-radar-task-status><option value="">全部状态</option><option value="draft">草稿</option><option value="pending">等待执行</option><option value="searching">正在搜索</option><option value="paused">已暂停</option><option value="waiting_analysis">等待后续分析</option><option value="partial_completed">部分完成</option><option value="failed">执行失败</option></select><select data-radar-task-model>' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, '', '全部模型') + '</select><button type="button" data-radar-task-search>筛选</button></div>' +
-        '<div class="radar-batch-row"><span data-radar-task-selected>已选 0 个</span><span>勾选任务后，在右侧菜单栏执行查看、启动、暂停、继续、复制、取消、删除等操作；拖动左侧排序手柄可调整队列先后。</span></div>' +
-        '<div class="radar-table"><table><thead><tr><th>排序</th><th><input type="checkbox" data-radar-task-check-all></th><th>任务</th><th>国家/城市</th><th>模型</th><th>状态</th><th>进度</th><th>搜索次数</th><th>网页/公司/失败</th><th>执行</th><th>时间</th></tr></thead><tbody data-radar-task-rows><tr><td colspan="11">正在加载...</td></tr></tbody></table></div></section>';
+      box.innerHTML = '<section class="radar-panel radar-workbench radar-task-workbench-v2">' +
+        '<header class="radar-task-hero-v2"><div><span>Search Operations</span><h3>搜索任务管理</h3><p>任务进入数据库队列后由 Cron / Worker 后台执行；右侧菜单负责启动、暂停、复制、取消和删除。</p></div><aside><article><strong data-radar-task-total>0</strong><span>任务总数</span></article><article><strong data-radar-task-active>0</strong><span>执行中/待分析</span></article><article><strong data-radar-task-done>0</strong><span>已完成</span></article><article><strong data-radar-task-found>0</strong><span>发现公司</span></article></aside></header>' +
+        '<section class="radar-task-control-v2"><div class="radar-task-filter-v2"><label><span>搜索</span><input data-radar-task-q placeholder="任务 / 国家 / 城市"></label><label><span>状态</span><select data-radar-task-status><option value="">全部状态</option><option value="draft">草稿</option><option value="pending">等待执行</option><option value="searching">正在搜索</option><option value="paused">已暂停</option><option value="waiting_analysis">等待后续分析</option><option value="partial_completed">部分完成</option><option value="failed">执行失败</option></select></label><label><span>模型</span><select data-radar-task-model>' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, '', '全部模型') + '</select></label><button type="button" data-radar-task-search>筛选</button></div>' +
+        '<div class="radar-task-selection-v2"><label><input type="checkbox" data-radar-task-check-all><span>全选当前筛选</span></label><strong data-radar-task-selected>已选 0 个</strong></div></section>' +
+        '<section class="radar-task-board-v2" data-radar-task-rows><p class="promo-empty">正在加载搜索任务...</p></section>' +
+      '</section>';
       box.querySelector('[data-radar-task-new]')?.addEventListener('click', function () { self.openTaskEditor(); });
       box.querySelector('[data-radar-task-worker]')?.addEventListener('click', function () { self.runWorkerOnce(); });
       box.querySelector('[data-radar-task-select-visible]')?.addEventListener('click', function () { self.selectVisibleTasks(); });
@@ -18787,17 +18789,40 @@
       this.updateTaskSelectionUi();
     },
     renderSearchTaskRows: function () {
-      var tbody = document.querySelector('[data-radar-task-rows]');
-      if (!tbody) return;
+      var list = document.querySelector('[data-radar-task-rows]');
+      if (!list) return;
       var self = this;
       var rows = (this.data.tasks || {}).rows || [];
+      var activeCount = rows.filter(function (row) {
+        return ['pending', 'generating_keywords', 'searching', 'fetching_pages', 'identifying_company', 'waiting_analysis'].indexOf(String(row.task_status || '')) >= 0;
+      }).length;
+      var doneCount = rows.filter(function (row) {
+        return ['done', 'completed', 'partial_completed'].indexOf(String(row.task_status || '')) >= 0;
+      }).length;
+      var foundCount = rows.reduce(function (sum, row) { return sum + Number(row.found_companies || 0); }, 0);
+      var totalNode = document.querySelector('[data-radar-task-total]');
+      var activeNode = document.querySelector('[data-radar-task-active]');
+      var doneNode = document.querySelector('[data-radar-task-done]');
+      var foundNode = document.querySelector('[data-radar-task-found]');
+      if (totalNode) totalNode.textContent = String(rows.length);
+      if (activeNode) activeNode.textContent = String(activeCount);
+      if (doneNode) doneNode.textContent = String(doneCount);
+      if (foundNode) foundNode.textContent = String(foundCount);
       var renderTaskRow = function (row) {
         var status = self.taskStatusLabel(row.task_status);
         var progress = Number(row.progress_percent || 0);
         var searchTotal = Number(row.search_total_count || 0);
         var searchCurrent = Number(row.search_current_no || 0);
         var checked = self.selectedTaskIds.has(Number(row.id || 0)) ? ' checked' : '';
-        return '<tr data-radar-task-row="' + esc(row.id) + '"' + (checked ? ' class="selected"' : '') + '><td><span class="radar-drag-handle" draggable="true" data-radar-task-drag="' + esc(row.id) + '" title="拖动调整任务顺序">::</span></td><td><input type="checkbox" data-radar-task-check value="' + esc(row.id) + '"' + checked + '></td><td><strong>' + esc(row.task_name || '-') + '</strong><small>创建：' + esc(row.created_by_name || '-') + '</small></td><td>' + esc(row.country || '-') + '<small>' + esc(row.city || '') + '</small></td><td><em class="radar-chip">' + esc(self.modelLabel(row.model_key)) + '</em></td><td>' + esc(status) + '</td><td><div class="radar-progress"><span style="width:' + Math.max(0, Math.min(100, progress)) + '%"></span></div><small>' + esc(progress) + '%</small></td><td><strong>' + (searchTotal ? '第 ' + esc(searchCurrent) + ' / 共 ' + esc(searchTotal) + ' 次' : '-') + '</strong><small>完成 ' + esc(row.search_done_count || 0) + ' · 等待 ' + esc(row.search_pending_count || 0) + ' · 失败 ' + esc(row.search_failed_count || 0) + '</small></td><td><small>网页 ' + esc(row.searched_pages || 0) + ' / 公司 ' + esc(row.found_companies || 0) + ' / 失败 ' + esc(row.failed_count || 0) + '</small></td><td>' + esc(({ manual: '手动', scheduled: '定时', daily: '每日', weekly: '每周' })[row.execute_mode] || row.execute_mode || '-') + '</td><td><small>开始 ' + esc(row.started_at || '-') + '</small><small>完成 ' + esc(row.finished_at || '-') + '</small></td></tr>';
+        return '<article class="radar-task-card-v2' + (checked ? ' selected' : '') + '" data-radar-task-row="' + esc(row.id) + '">' +
+          '<div class="radar-task-select-v2"><span class="radar-drag-handle" draggable="true" data-radar-task-drag="' + esc(row.id) + '" title="拖动调整任务顺序">::</span><input type="checkbox" data-radar-task-check value="' + esc(row.id) + '"' + checked + '></div>' +
+          '<div class="radar-task-main-v2"><strong>' + esc(row.task_name || '-') + '</strong><span>创建：' + esc(row.created_by_name || '-') + '</span><em class="radar-chip">' + esc(self.modelLabel(row.model_key)) + '</em></div>' +
+          '<div class="radar-task-place-v2"><strong>' + esc(row.country || '-') + '</strong><span>' + esc(row.city || '') + '</span></div>' +
+          '<div class="radar-task-status-v2"><em data-status="' + esc(row.task_status || '') + '">' + esc(status) + '</em><span>' + esc(({ manual: '手动', scheduled: '定时', daily: '每日', weekly: '每周' })[row.execute_mode] || row.execute_mode || '-') + '</span></div>' +
+          '<div class="radar-task-progress-v2"><div class="radar-progress"><span style="width:' + Math.max(0, Math.min(100, progress)) + '%"></span></div><strong>' + esc(progress) + '%</strong></div>' +
+          '<div class="radar-task-counts-v2"><strong>' + (searchTotal ? '第 ' + esc(searchCurrent) + ' / 共 ' + esc(searchTotal) + ' 次' : '-') + '</strong><span>完成 ' + esc(row.search_done_count || 0) + ' · 等待 ' + esc(row.search_pending_count || 0) + ' · 失败 ' + esc(row.search_failed_count || 0) + '</span><span>网页 ' + esc(row.searched_pages || 0) + ' / 公司 ' + esc(row.found_companies || 0) + ' / 失败 ' + esc(row.failed_count || 0) + '</span></div>' +
+          '<div class="radar-task-time-v2"><span>开始 ' + esc(row.started_at || '-') + '</span><span>完成 ' + esc(row.finished_at || '-') + '</span></div>' +
+        '</article>';
       };
       var groupedHtml = '';
       if (rows.length) {
@@ -18812,11 +18837,11 @@
           groupMap[country].rows.push(row);
         });
         groupedHtml = groups.map(function (group) {
-          return '<tr class="radar-task-country-row"><td colspan="11"><strong>' + esc(group.country) + '</strong><span>' + esc(group.rows.length) + ' 个搜索任务</span></td></tr>' + group.rows.map(renderTaskRow).join('');
+          return '<section class="radar-task-country-v2"><header><strong>' + esc(group.country) + '</strong><span>' + esc(group.rows.length) + ' 个搜索任务</span></header><div>' + group.rows.map(renderTaskRow).join('') + '</div></section>';
         }).join('');
       }
-      tbody.innerHTML = groupedHtml || '<tr><td colspan="11">暂无搜索任务。系统会自动建立“越南精准客户第一轮测试”草稿任务。</td></tr>';
-      tbody.querySelectorAll('[data-radar-task-check]').forEach(function (input) {
+      list.innerHTML = groupedHtml || '<p class="promo-empty radar-task-empty-v2">暂无搜索任务。系统会自动建立“越南精准客户第一轮测试”草稿任务。</p>';
+      list.querySelectorAll('[data-radar-task-check]').forEach(function (input) {
         input.addEventListener('change', function () {
           var id = Number(input.value || 0);
           if (!id) return;
@@ -18827,7 +18852,7 @@
           self.updateTaskSelectionUi();
         });
       });
-      tbody.querySelectorAll('[data-radar-task-row]').forEach(function (rowNode) {
+      list.querySelectorAll('[data-radar-task-row]').forEach(function (rowNode) {
         rowNode.addEventListener('click', function (event) {
           if (event.target.closest('[data-radar-task-check], [data-radar-task-drag]')) return;
           var id = Number(rowNode.getAttribute('data-radar-task-row') || 0);
@@ -18840,7 +18865,7 @@
           self.openTaskDetail(Number(rowNode.getAttribute('data-radar-task-row') || 0));
         });
       });
-      this.bindTaskDrag(tbody);
+      this.bindTaskDrag(list);
       self.updateTaskSelectionUi();
     },
     bindTaskDrag: function (tbody) {
@@ -18878,9 +18903,10 @@
           rowNode.classList.remove('is-drag-over');
           var dragged = tbody.querySelector('[data-radar-task-row="' + draggingId + '"]');
           if (!dragged || dragged === rowNode) return;
+          var targetParent = rowNode.parentNode || tbody;
           var box = rowNode.getBoundingClientRect();
           var after = event.clientY > box.top + box.height / 2;
-          tbody.insertBefore(dragged, after ? rowNode.nextSibling : rowNode);
+          targetParent.insertBefore(dragged, after ? rowNode.nextSibling : rowNode);
           self.saveTaskOrder(Array.prototype.slice.call(tbody.querySelectorAll('[data-radar-task-row]')).map(function (node) {
             return Number(node.getAttribute('data-radar-task-row') || 0);
           }).filter(Boolean));

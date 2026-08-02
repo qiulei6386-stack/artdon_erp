@@ -26,6 +26,10 @@ foreach ([
     'renderQuickActionsRail: function',
     "{ title: '客户探索', items: [['客户雷达','发现高潜在客户','R']] }",
     'data-ai-home-action',
+    'radar-task-workbench-v2',
+    'data-radar-task-total',
+    'radar-task-card-v2',
+    'radar-task-country-v2',
     'ai-main-grid',
     'ai-bottom-grid',
     'renderWorkflow: function',
@@ -61,6 +65,10 @@ foreach ([
     'grid-template-columns: minmax(0, 1fr) 260px !important;',
     'body.is-ai-module:not(.is-ai-home) .crm-actionbar',
     'body.is-ai-module .crm-action-list',
+    '.radar-task-workbench-v2',
+    '.radar-task-hero-v2',
+    '.radar-task-card-v2',
+    '.radar-task-board-v2',
     '.ai-home-layout',
     'grid-template-columns: minmax(0, 1fr) 260px;',
     '.ai-home-main',
@@ -92,7 +100,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-actionbar-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-task-page-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
