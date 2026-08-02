@@ -17,7 +17,8 @@ foreach ([
     'if (officeMailTextHasHtmlMarkup(text)) {',
     'var readable = htmlText || text;',
     'var isOfficeMail = this.isOutlookOfficeMail(mail);',
-    'var readableBody = isOfficeMail ? officeMailReadableBody(mail) : \'\';',
+    'var isFullHtml = this.isFullHtmlMail(mail);',
+    'var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml ? mailPlainReadableBody(mail, \'已使用邮件可读正文\') : \'\');',
 ] as $needle) {
     if (!str_contains($source, $needle)) throw new RuntimeException('Office 邮件可读正文修复缺少标记：' . $needle);
 }
