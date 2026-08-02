@@ -123,6 +123,18 @@ function crm_marketing_ensure_tables(): void
         KEY idx_marketing_queue_customer (customer_id),
         KEY idx_marketing_queue_sender (sender_email)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    crm_marketing_add_column_if_missing('crm_marketing_send_queue', 'body_ref_id', "BIGINT UNSIGNED NULL AFTER body");
+    db()->exec("CREATE TABLE IF NOT EXISTS crm_marketing_queue_bodies (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        task_id BIGINT UNSIGNED NOT NULL,
+        body_hash CHAR(64) NOT NULL,
+        body_html MEDIUMTEXT NOT NULL,
+        body_bytes INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_marketing_queue_body (task_id, body_hash),
+        KEY idx_marketing_queue_body_task (task_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_marketing_task_targets (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -2286,6 +2298,53 @@ function crm_marketing_render_queue_template(string $text, array $row, array $ac
     return strtr($text, $vars);
 }
 
+function crm_marketing_queue_body_store(int $taskId, string $bodyHtml): int
+{
+    $bodyHtml = (string)$bodyHtml;
+    if ($taskId <= 0 || $bodyHtml === '') return 0;
+    $hash = hash('sha256', $bodyHtml);
+    db()->prepare('INSERT INTO crm_marketing_queue_bodies (task_id, body_hash, body_html, body_bytes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), body_html=VALUES(body_html), body_bytes=VALUES(body_bytes), updated_at=NOW()')
+        ->execute([$taskId, $hash, $bodyHtml, strlen($bodyHtml)]);
+    return (int)db()->lastInsertId();
+}
+
+function crm_marketing_compact_queue_bodies(int $taskId = 0, int $limit = 500): array
+{
+    crm_marketing_ensure_tables();
+    $limit = max(1, min(2000, $limit));
+    $where = ["COALESCE(q.body, '') <> ''"];
+    $params = [];
+    if ($taskId > 0) {
+        $where[] = 'q.task_id = ?';
+        $params[] = $taskId;
+    }
+    $stmt = db()->prepare('SELECT q.id, q.task_id, q.body FROM crm_marketing_send_queue q WHERE ' . implode(' AND ', $where) . " ORDER BY q.id ASC LIMIT {$limit}");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    $update = db()->prepare("UPDATE crm_marketing_send_queue SET body_ref_id = ?, body = '', updated_at = NOW() WHERE id = ?");
+    $compacted = 0;
+    $bytesBefore = 0;
+    $bodyRefs = [];
+    foreach ($rows as $row) {
+        $body = (string)($row['body'] ?? '');
+        if ($body === '') continue;
+        $bytesBefore += strlen($body);
+        $bodyRefId = crm_marketing_queue_body_store((int)$row['task_id'], $body);
+        if ($bodyRefId <= 0) continue;
+        $update->execute([$bodyRefId, (int)$row['id']]);
+        $compacted += $update->rowCount();
+        $bodyRefs[$bodyRefId] = true;
+    }
+    return [
+        'scanned' => count($rows),
+        'compacted' => $compacted,
+        'body_refs' => count($bodyRefs),
+        'bytes_before' => $bytesBefore,
+    ];
+}
+
 function crm_marketing_task_row(int $taskId): array
 {
     $stmt = db()->prepare('SELECT * FROM crm_marketing_tasks WHERE id = ? LIMIT 1');
@@ -2368,6 +2427,8 @@ function crm_marketing_queue_build(array $input): array
     if (!$accounts || (($mailAccountRule === 'selected_mailbox' || $mailAccountRule === 'balanced' || $mailAccountRule === 'group_by_country') && !$selectedAccounts)) {
         throw new RuntimeException('邮件渠道存在但可用发件邮箱为 0，请先配置可用邮箱。');
     }
+    $bodyRefId = crm_marketing_queue_body_store($taskId, $body);
+    if ($bodyRefId <= 0) throw new RuntimeException('邮件正文引用保存失败，不能启动正式队列。');
     $queueCount = 0; $skipped = 0; $errors = 0; $first = null; $last = null; $index = 0; $balanced = 0; $seenReceivers = [];
     foreach ($rows as $row) {
         $channel = crm_marketing_normalize_channel((string)$row['channel_key']);
@@ -2402,7 +2463,6 @@ function crm_marketing_queue_build(array $input): array
         }
         $planned = crm_marketing_plan_time($index++, $schedule, (string)($row['country'] ?? ''));
         $queueSubject = crm_marketing_render_queue_template($subject, $row, $account);
-        $queueBody = crm_marketing_render_queue_template($body, $row, $account);
         $dup = db()->prepare('SELECT id FROM crm_marketing_send_queue WHERE task_id=? AND LOWER(receiver_email)=? LIMIT 1');
         $dup->execute([$taskId, $receiverKey]);
         if ($dup->fetchColumn()) {
@@ -2414,10 +2474,10 @@ function crm_marketing_queue_build(array $input): array
             continue;
         }
         db()->prepare("INSERT INTO crm_marketing_send_queue
-            (task_id, campaign_id, customer_id, contact_id, sender_user_id, sender_email, receiver_email, subject, body, attachment_json, country, customer_timezone, planned_customer_time, planned_server_time, send_status, send_attempts, max_attempts, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())
-            ON DUPLICATE KEY UPDATE sender_user_id=VALUES(sender_user_id), sender_email=VALUES(sender_email), subject=VALUES(subject), body=VALUES(body), attachment_json=VALUES(attachment_json), country=VALUES(country), customer_timezone=VALUES(customer_timezone), planned_customer_time=VALUES(planned_customer_time), planned_server_time=VALUES(planned_server_time), send_status=IF(send_status IN ('sent','sending'), send_status, VALUES(send_status)), max_attempts=VALUES(max_attempts), updated_at=NOW()")
-            ->execute([$taskId, null, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, (int)$account['user_id'], (string)$account['email_address'], $receiver, $queueSubject, $queueBody, (string)($task['attachment_config_json'] ?? '[]'), (string)($row['country'] ?? ''), $planned['timezone'], $planned['customer'], $planned['server'], strtotime($planned['server']) <= time() ? 'pending' : 'scheduled', $maxAttempts]);
+            (task_id, campaign_id, customer_id, contact_id, sender_user_id, sender_email, receiver_email, subject, body, body_ref_id, attachment_json, country, customer_timezone, planned_customer_time, planned_server_time, send_status, send_attempts, max_attempts, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE sender_user_id=VALUES(sender_user_id), sender_email=VALUES(sender_email), subject=VALUES(subject), body=VALUES(body), body_ref_id=VALUES(body_ref_id), attachment_json=VALUES(attachment_json), country=VALUES(country), customer_timezone=VALUES(customer_timezone), planned_customer_time=VALUES(planned_customer_time), planned_server_time=VALUES(planned_server_time), send_status=IF(send_status IN ('sent','sending'), send_status, VALUES(send_status)), max_attempts=VALUES(max_attempts), updated_at=NOW()")
+            ->execute([$taskId, null, (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, (int)$account['user_id'], (string)$account['email_address'], $receiver, $queueSubject, $bodyRefId, (string)($task['attachment_config_json'] ?? '[]'), (string)($row['country'] ?? ''), $planned['timezone'], $planned['customer'], $planned['server'], strtotime($planned['server']) <= time() ? 'pending' : 'scheduled', $maxAttempts]);
         $queueCount++;
         $first = $first === null || $planned['server'] < $first ? $planned['server'] : $first;
         $last = $last === null || $planned['server'] > $last ? $planned['server'] : $last;
@@ -2582,7 +2642,13 @@ function crm_marketing_queue_run_due(int $limit = 30): array
     crm_marketing_ensure_tables();
     crm_mail_ensure_tables();
     $limit = max(1, min(200, $limit));
-    $stmt = db()->prepare("SELECT * FROM crm_marketing_send_queue WHERE send_status IN ('pending','scheduled','waiting_retry') AND planned_server_time <= NOW() ORDER BY planned_server_time ASC, id ASC LIMIT {$limit}");
+    $stmt = db()->prepare("SELECT q.*, qb.body_html AS queue_body_template, c.customer_name, COALESCE(ct.name, '') contact_name
+        FROM crm_marketing_send_queue q
+        LEFT JOIN crm_marketing_queue_bodies qb ON qb.id = q.body_ref_id
+        LEFT JOIN crm_customers c ON c.id = q.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = q.contact_id
+        WHERE q.send_status IN ('pending','scheduled','waiting_retry') AND q.planned_server_time <= NOW()
+        ORDER BY q.planned_server_time ASC, q.id ASC LIMIT {$limit}");
     $stmt->execute();
     $rows = $stmt->fetchAll();
     $sent = 0; $failed = 0; $skipped = 0;
@@ -2591,17 +2657,24 @@ function crm_marketing_queue_run_due(int $limit = 30): array
         $lock->execute([(int)$row['id']]);
         if ($lock->rowCount() !== 1) continue;
         try {
-            $accountStmt = db()->prepare('SELECT * FROM crm_user_mail_accounts WHERE email_address=? AND user_id=? AND deleted_at IS NULL AND is_enabled=1 LIMIT 1');
+            $accountStmt = db()->prepare("SELECT a.*, COALESCE(u.real_name, u.username, '') owner_name, u.username, u.phone user_phone, u.position user_position
+                FROM crm_user_mail_accounts a
+                LEFT JOIN crm_users u ON u.id = a.user_id
+                WHERE a.email_address=? AND a.user_id=? AND a.deleted_at IS NULL AND a.is_enabled=1
+                LIMIT 1");
             $accountStmt->execute([(string)$row['sender_email'], (int)$row['sender_user_id']]);
             $account = $accountStmt->fetch();
             if (!$account) throw new RuntimeException('发件邮箱不可用');
             $account['mail_secret'] = crm_mail_decrypt($account['email_password_encrypted'] ?? '');
             unset($account['email_password_encrypted']);
             if ((string)$account['mail_secret'] === '') throw new RuntimeException('发件邮箱未配置 SMTP 密码');
-            $result = crm_mail_smtp_send($account, ['to_emails' => (string)$row['receiver_email'], 'subject' => (string)$row['subject'], 'body_html' => (string)$row['body']], []);
+            $bodyTemplate = trim((string)($row['queue_body_template'] ?? ''));
+            $bodyHtml = $bodyTemplate !== '' ? crm_marketing_render_queue_template($bodyTemplate, $row, $account) : (string)$row['body'];
+            if (trim($bodyHtml) === '') throw new RuntimeException('队列邮件正文为空');
+            $result = crm_mail_smtp_send($account, ['to_emails' => (string)$row['receiver_email'], 'subject' => (string)$row['subject'], 'body_html' => $bodyHtml], []);
             db()->prepare('INSERT INTO crm_mails (user_id, mail_account_id, folder, subject, from_email, from_name, to_emails, sent_at, body_html, body_text, has_body, has_attachment, attachment_count, linked_customer_id, linked_contact_id, tags_json, raw_headers_json, created_at, updated_at)
                 VALUES (?, ?, "sent", ?, ?, ?, ?, NOW(), ?, ?, 1, 0, 0, ?, ?, ?, ?, NOW(), NOW())')
-                ->execute([(int)$account['user_id'], (int)$account['id'], (string)$row['subject'], (string)$account['email_address'], (string)($account['sender_name'] ?: $account['email_address']), (string)$row['receiver_email'], (string)$row['body'], strip_tags((string)$row['body']), (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, json_encode(['推广队列'], JSON_UNESCAPED_UNICODE), json_encode(['marketing_queue_id' => (int)$row['id'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
+                ->execute([(int)$account['user_id'], (int)$account['id'], (string)$row['subject'], (string)$account['email_address'], (string)($account['sender_name'] ?: $account['email_address']), (string)$row['receiver_email'], $bodyHtml, strip_tags($bodyHtml), (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, json_encode(['推广队列'], JSON_UNESCAPED_UNICODE), json_encode(['marketing_queue_id' => (int)$row['id'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
             db()->prepare("UPDATE crm_marketing_send_queue SET send_status='sent', last_error=NULL, sent_at=NOW(), updated_at=NOW() WHERE id=?")->execute([(int)$row['id']]);
             crm_marketing_update_target_from_queue($row, 'success', '');
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_send", "success", "", ?, ?, NOW(), NOW())')

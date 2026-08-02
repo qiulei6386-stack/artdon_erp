@@ -34,6 +34,10 @@ $markers = [
     'q.sender_user_id, q.sender_email, q.receiver_email, q.subject',
     'manual_checked_by_user_id',
     'COALESCE(chk.real_name, chk.username) AS manual_checked_by_name',
+    'crm_marketing_queue_bodies',
+    'body_ref_id',
+    'function crm_marketing_queue_body_store',
+    'function crm_marketing_compact_queue_bodies',
 ];
 
 foreach ($markers as $marker) {
@@ -110,6 +114,30 @@ if (str_contains($queueList, 'SELECT q.*')) {
 foreach (['q.id, q.task_id', 'q.sender_email, q.receiver_email, q.subject', 'q.last_error', 'c.customer_name, ct.name contact_name'] as $marker) {
     if (!str_contains($queueList, $marker)) {
         throw new RuntimeException("Promotion queue list lightweight marker missing: {$marker}");
+    }
+}
+
+$queueBuildStart = strpos($php, 'function crm_marketing_queue_build(array $input): array');
+$queueBuildEnd = strpos($php, 'function crm_marketing_queue_status_counts', $queueBuildStart === false ? 0 : $queueBuildStart);
+if ($queueBuildStart === false || $queueBuildEnd === false || $queueBuildEnd <= $queueBuildStart) {
+    throw new RuntimeException('Promotion queue build function boundary is missing');
+}
+$queueBuild = substr($php, $queueBuildStart, $queueBuildEnd - $queueBuildStart);
+foreach (['crm_marketing_queue_body_store($taskId, $body)', "body, body_ref_id", "VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?", 'body_ref_id=VALUES(body_ref_id)'] as $marker) {
+    if (!str_contains($queueBuild, $marker)) {
+        throw new RuntimeException("Promotion queue build compact body marker missing: {$marker}");
+    }
+}
+
+$queueRunStart = strpos($php, 'function crm_marketing_queue_run_due(int $limit = 30): array');
+$queueRunEnd = strpos($php, 'function crm_marketing_template_copy', $queueRunStart === false ? 0 : $queueRunStart);
+if ($queueRunStart === false || $queueRunEnd === false || $queueRunEnd <= $queueRunStart) {
+    throw new RuntimeException('Promotion queue runner function boundary is missing');
+}
+$queueRun = substr($php, $queueRunStart, $queueRunEnd - $queueRunStart);
+foreach (['qb.body_html AS queue_body_template', 'LEFT JOIN crm_marketing_queue_bodies qb ON qb.id = q.body_ref_id', 'crm_marketing_render_queue_template($bodyTemplate, $row, $account)', '队列邮件正文为空'] as $marker) {
+    if (!str_contains($queueRun, $marker)) {
+        throw new RuntimeException("Promotion queue runner compact body marker missing: {$marker}");
     }
 }
 

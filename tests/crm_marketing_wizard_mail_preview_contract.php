@@ -169,6 +169,7 @@ foreach ([
     '计划发送时间为空，不能启动正式队列。',
     '邮件中存在未识别变量：',
     '邮件渠道存在但可用发件邮箱为 0',
+    '邮件正文引用保存失败，不能启动正式队列。',
 ] as $marker) {
     if (!str_contains($queueBuild, $marker)) {
         throw new RuntimeException("final queue validation marker missing: {$marker}");
