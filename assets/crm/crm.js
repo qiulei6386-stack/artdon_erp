@@ -19305,13 +19305,14 @@
       var isReviewCenter = this.view === 'reviews';
       var panelTitle = isReviewCenter ? '审核中心' : '候选客户池';
       var panelHint = isReviewCenter ? '人工审核、反馈、查重和转入CRM；批量操作必须确认。' : '规则识别、评分、CRM重复检查和人工审核；转入CRM必须先通过审核。';
-      box.innerHTML = '<section class="radar-panel radar-workbench"><div class="radar-toolbar"><div><h3>' + panelTitle + '</h3><span>' + panelHint + '</span></div><nav><button type="button" data-radar-candidate-refresh>刷新</button><button type="button" data-radar-candidate-batch="need_more_info">批量待补</button><button type="button" data-radar-candidate-batch="archived">批量归档</button></nav></div>' +
-        '<div class="radar-filter-row"><input data-radar-candidate-q placeholder="搜索公司/官网/国家/城市/产品/理由" value="' + esc(this.candidateFilters.q || '') + '"><input data-radar-candidate-country placeholder="国家（可点下方分类）" value="' + esc(this.candidateFilters.country || '') + '"><input data-radar-candidate-city placeholder="城市" value="' + esc(this.candidateFilters.city || '') + '"><select data-radar-candidate-model>' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, this.candidateFilters.model_key, '全部模型') + '</select><select data-radar-candidate-type>' + this.candidateTypeOptionsHtml(this.candidateFilters.company_type) + '</select><select data-radar-candidate-grade><option value="">全部等级</option><option value="A">A级</option><option value="B">B级</option><option value="C">C级</option><option value="D">D级</option></select><select data-radar-candidate-duplicate><option value="">全部重复状态</option><option value="new">新客户</option><option value="duplicate">疑似/完全重复</option></select><select data-radar-candidate-website><option value="">官网不限</option><option value="1">有官网</option><option value="0">无官网</option></select><select data-radar-candidate-email><option value="">邮箱不限</option><option value="1">有邮箱</option><option value="0">无邮箱</option></select><select data-radar-candidate-status><option value="">全部审核状态</option><option value="pending">待审核</option><option value="precise">精准</option><option value="basic_precise">基本精准</option><option value="normal">一般</option><option value="not_precise">不精准</option><option value="need_more_info">待补资料</option><option value="duplicate">重复客户</option><option value="blacklisted">黑名单</option><option value="converted">已转CRM</option></select><button type="button" data-radar-candidate-search>筛选</button></div>' +
-        '<div class="radar-country-filter" data-radar-candidate-country-filter></div>' +
-        '<div class="radar-batch-row"><span data-radar-candidate-selected>已选 0 个</span><button type="button" data-radar-candidate-batch="precise">标记精准</button><button type="button" data-radar-candidate-batch="basic_precise">标记基本精准</button><button type="button" data-radar-candidate-batch="normal">标记一般</button><button type="button" data-radar-candidate-batch="not_precise">标记不精准</button><button type="button" data-radar-candidate-batch="duplicate">重复客户</button><button type="button" data-radar-candidate-batch="blacklisted">加入黑名单</button></div>' +
-        '<div class="radar-pager radar-candidate-pager" data-radar-candidate-pager="top"></div>' +
-        '<div class="radar-table radar-candidate-table"><table><thead><tr><th><input type="checkbox" data-radar-candidate-check-all></th><th>公司</th><th>国家/城市</th><th>类型/模型</th><th>分数</th><th>官网</th><th>产品/项目</th><th>联系方式</th><th>完整度</th><th>CRM重复</th><th>理由/风险</th><th>来源/任务</th><th>审核</th><th>操作</th></tr></thead><tbody data-radar-candidate-rows><tr><td colspan="14">正在加载...</td></tr></tbody></table></div></section>';
-      box.querySelector('.radar-candidate-table')?.insertAdjacentHTML('afterend', '<div class="radar-pager radar-candidate-pager" data-radar-candidate-pager="bottom"></div>');
+      box.innerHTML = '<section class="radar-panel radar-workbench radar-candidate-workbench-v2">' +
+        '<div class="radar-candidate-hero-v2"><div><span>Lead Review</span><h3>' + panelTitle + '</h3><p>' + panelHint + '</p></div><aside><article><strong data-radar-candidate-total>0</strong><span>候选总数</span></article><article><strong data-radar-candidate-visible>0</strong><span>当前页</span></article><article><strong data-radar-candidate-selected>已选 0 个</strong><span>批量处理</span></article></aside><nav><button type="button" data-radar-candidate-refresh>刷新</button><button type="button" data-radar-candidate-batch="need_more_info">批量待补</button><button type="button" data-radar-candidate-batch="archived">批量归档</button></nav></div>' +
+        '<div class="radar-candidate-control-v2"><div class="radar-candidate-filter-v2"><label><span>关键词</span><input data-radar-candidate-q placeholder="公司/官网/产品/理由" value="' + esc(this.candidateFilters.q || '') + '"></label><label><span>国家</span><input data-radar-candidate-country placeholder="可点下方国家" value="' + esc(this.candidateFilters.country || '') + '"></label><label><span>城市</span><input data-radar-candidate-city placeholder="城市" value="' + esc(this.candidateFilters.city || '') + '"></label><label><span>模型</span><select data-radar-candidate-model>' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, this.candidateFilters.model_key, '全部模型') + '</select></label><label><span>类型</span><select data-radar-candidate-type>' + this.candidateTypeOptionsHtml(this.candidateFilters.company_type) + '</select></label><label><span>等级</span><select data-radar-candidate-grade>' + this.renderOptions({ A: 'A级', B: 'B级', C: 'C级', D: 'D级' }, this.candidateFilters.grade, '全部等级') + '</select></label><label><span>重复</span><select data-radar-candidate-duplicate>' + this.renderOptions({ new: '新客户', duplicate: '疑似/完全重复' }, this.candidateFilters.duplicate, '全部重复状态') + '</select></label><label><span>官网</span><select data-radar-candidate-website>' + this.renderOptions({ 1: '有官网', 0: '无官网' }, this.candidateFilters.has_website, '官网不限') + '</select></label><label><span>邮箱</span><select data-radar-candidate-email>' + this.renderOptions({ 1: '有邮箱', 0: '无邮箱' }, this.candidateFilters.has_email, '邮箱不限') + '</select></label><label><span>审核</span><select data-radar-candidate-status>' + this.renderOptions({ pending: '待审核', precise: '精准', basic_precise: '基本精准', normal: '一般', not_precise: '不精准', need_more_info: '待补资料', duplicate: '重复客户', blacklisted: '黑名单', converted: '已转CRM' }, this.candidateFilters.review_status, '全部审核状态') + '</select></label><button type="button" data-radar-candidate-search>筛选</button></div><div class="radar-candidate-country-strip-v2" data-radar-candidate-country-filter></div></div>' +
+        '<div class="radar-candidate-batch-v2"><label><input type="checkbox" data-radar-candidate-check-all><span>全选当前页</span></label><div><button type="button" data-radar-candidate-batch="precise">精准</button><button type="button" data-radar-candidate-batch="basic_precise">基本精准</button><button type="button" data-radar-candidate-batch="normal">一般</button><button type="button" data-radar-candidate-batch="not_precise">不精准</button><button type="button" data-radar-candidate-batch="duplicate">重复</button><button type="button" data-radar-candidate-batch="blacklisted">黑名单</button></div></div>' +
+        '<div class="radar-pager radar-candidate-pager radar-candidate-pager-v2" data-radar-candidate-pager="top"></div>' +
+        '<div class="radar-candidate-list-v2" data-radar-candidate-rows><p class="radar-candidate-empty-v2">正在加载...</p></div>' +
+        '<div class="radar-pager radar-candidate-pager radar-candidate-pager-v2" data-radar-candidate-pager="bottom"></div>' +
+        '</section>';
       box.querySelector('[data-radar-candidate-refresh]')?.addEventListener('click', function () { self.loadCandidates(); });
       box.querySelector('[data-radar-candidate-q]')?.addEventListener('keydown', function (event) {
         if (event.key !== 'Enter') return;
@@ -19380,8 +19381,8 @@
     },
     loadCandidates: function () {
       var self = this;
-      var tbody = document.querySelector('[data-radar-candidate-rows]');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="14">正在加载...</td></tr>';
+      var list = document.querySelector('[data-radar-candidate-rows]');
+      if (list) list.innerHTML = '<p class="radar-candidate-empty-v2">正在加载...</p>';
       radarPost('radar_candidates_list', this.candidateFilters).then(function (json) {
         if (!json.success) throw new Error(json.message || '候选客户读取失败');
         self.data.candidates = json.data || { rows: [] };
@@ -19390,57 +19391,60 @@
         self.renderCandidateCountryFilters();
         self.renderCandidateTable();
       }).catch(function (error) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="14">' + esc(error.message || '候选客户读取失败') + '</td></tr>';
+        if (list) list.innerHTML = '<p class="radar-candidate-empty-v2">' + esc(error.message || '候选客户读取失败') + '</p>';
       });
     },
     renderCandidateTable: function () {
-      var tbody = document.querySelector('[data-radar-candidate-rows]');
-      if (!tbody) return;
+      var list = document.querySelector('[data-radar-candidate-rows]');
+      if (!list) return;
       var self = this;
       var rows = ((this.data.candidates || {}).rows || []);
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="14">' + this.emptyList('暂无候选客户', '运行第三步搜索并完成网页抓取后，第四步会在这里生成候选。') + '</td></tr>';
+        list.innerHTML = '<div class="radar-candidate-empty-v2">' + this.emptyList('暂无候选客户', '运行第三步搜索并完成网页抓取后，第四步会在这里生成候选。') + '</div>';
         this.renderCandidatePager();
         return;
       }
       var currentCountry = null;
-      tbody.innerHTML = rows.map(function (row) {
+      list.innerHTML = rows.map(function (row) {
         var country = row.country || '未标记国家';
         var groupRow = '';
         if (country !== currentCountry) {
           currentCountry = country;
-          groupRow = '<tr class="radar-country-group"><td colspan="14"><strong>' + esc(country) + '</strong><span>按国家分类</span></td></tr>';
+          groupRow = '<div class="radar-candidate-country-v2"><strong>' + esc(country) + '</strong><span>按国家分类</span></div>';
         }
         var reasons = self.safeJsonList(row.match_reasons_json).slice(0, 2).join('；') || '-';
         var risks = self.safeJsonList(row.risk_warnings_json).slice(0, 2).join('；') || '-';
-        var contact = [row.contact_name && row.contact_name !== '未找到' ? row.contact_name : '', row.email && row.email !== '未找到' ? row.email : '', row.phone && row.phone !== '未找到' ? row.phone : ''].filter(Boolean).join('<br>') || '未找到';
-        return groupRow + '<tr><td><input type="checkbox" data-radar-candidate-check value="' + esc(row.id) + '"' + (self.candidateSelected.has(Number(row.id)) ? ' checked' : '') + '></td>' +
-          '<td><strong>' + esc(row.company_name || '未找到') + '</strong><small>' + esc(row.local_name || row.domain || '') + '</small></td>' +
-          '<td>' + esc(row.country || '-') + '<small>' + esc(row.city || '-') + '</small></td>' +
-          '<td>' + esc(row.company_type || '-') + '<small>' + esc(self.modelLabel(row.model_key)) + '</small></td>' +
-          '<td><b class="radar-grade radar-grade-' + esc(row.grade || 'D') + '">' + esc(self.gradeLabel(row.grade)) + '</b><small>' + esc(row.radar_score || 0) + '</small></td>' +
-          '<td>' + (row.website ? '<a href="' + esc(row.website) + '" target="_blank" rel="noopener">官网</a>' : '未找到') + '<small>' + esc(row.domain || '') + '</small></td>' +
-          '<td><small>' + esc(row.main_products || '未找到') + '</small><small>' + esc(row.project_types || '未找到') + '</small></td>' +
-          '<td><small>' + contact + '</small></td>' +
-          '<td>' + esc(row.data_completeness || 0) + '%</td><td>' + esc(row.crm_duplicate_status || '新客户') + '</td>' +
-          '<td><small>' + esc(reasons) + '</small><small class="radar-risk">' + esc(risks) + '</small></td>' +
-          '<td><small>' + esc(row.source_title || row.source_url || '-') + '</small><small>' + esc(row.task_name || '-') + '</small></td>' +
-          '<td>' + esc(self.reviewStatusLabel(row.review_status)) + '</td>' +
-          '<td><button type="button" data-radar-candidate-view="' + esc(row.id) + '">详情</button><button type="button" data-radar-candidate-recheck="' + esc(row.id) + '">查重</button><button type="button" data-radar-candidate-convert="' + esc(row.id) + '">转CRM</button><button type="button" data-radar-candidate-feedback="' + esc(row.id) + '">反馈</button><button type="button" data-radar-candidate-more="' + esc(row.id) + '">待补</button><button type="button" data-radar-candidate-archive="' + esc(row.id) + '">归档</button></td></tr>';
+        var contactParts = [row.contact_name && row.contact_name !== '未找到' ? row.contact_name : '', row.email && row.email !== '未找到' ? row.email : '', row.phone && row.phone !== '未找到' ? row.phone : ''].filter(Boolean);
+        var contact = contactParts.length ? contactParts.map(function (item) { return esc(item); }).join('<br>') : '未找到';
+        var selected = self.candidateSelected.has(Number(row.id));
+        var domain = row.domain || (row.website || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        var location = [row.country || '', row.city || ''].filter(Boolean).join(' / ') || '-';
+        return groupRow + '<article class="radar-candidate-card-v2' + (selected ? ' selected' : '') + '">' +
+          '<label class="radar-candidate-check-v2"><input type="checkbox" data-radar-candidate-check value="' + esc(row.id) + '"' + (selected ? ' checked' : '') + '><span></span></label>' +
+          '<div class="radar-candidate-company-v2"><strong title="' + esc(row.company_name || '未找到') + '">' + esc(row.company_name || '未找到') + '</strong><span title="' + esc(row.local_name || domain || '') + '">' + esc(row.local_name || domain || '未找到') + '</span><em>' + esc(row.crm_duplicate_status || '新客户') + '</em></div>' +
+          '<div class="radar-candidate-score-v2"><b class="radar-grade radar-grade-' + esc(row.grade || 'D') + '">' + esc(self.gradeLabel(row.grade)) + '</b><strong>' + esc(row.radar_score || 0) + '</strong><span>完整度 ' + esc(row.data_completeness || 0) + '%</span></div>' +
+          '<div class="radar-candidate-market-v2"><strong title="' + esc(location) + '">' + esc(location) + '</strong><span title="' + esc(row.company_type || '-') + '">' + esc(row.company_type || '-') + '</span><em>' + esc(self.modelLabel(row.model_key)) + '</em></div>' +
+          '<div class="radar-candidate-product-v2"><strong title="' + esc(row.main_products || '未找到') + '">' + esc(row.main_products || '未找到') + '</strong><span title="' + esc(row.project_types || '未找到') + '">' + esc(row.project_types || '未找到') + '</span></div>' +
+          '<div class="radar-candidate-contact-v2"><strong>' + contact + '</strong><span>' + (row.website ? '<a href="' + esc(row.website) + '" target="_blank" rel="noopener">官网</a>' : '无官网') + (domain ? ' · ' + esc(domain) : '') + '</span></div>' +
+          '<div class="radar-candidate-evidence-v2"><strong title="' + esc(reasons) + '">' + esc(reasons) + '</strong><span title="' + esc(risks) + '">' + esc(risks) + '</span></div>' +
+          '<div class="radar-candidate-source-v2"><strong title="' + esc(row.source_title || row.source_url || '-') + '">' + esc(row.source_title || row.source_url || '-') + '</strong><span title="' + esc(row.task_name || '-') + '">' + esc(row.task_name || '-') + '</span><em>' + esc(self.reviewStatusLabel(row.review_status)) + '</em></div>' +
+          '<div class="radar-candidate-actions-v2"><button type="button" data-radar-candidate-view="' + esc(row.id) + '">详情</button><button type="button" data-radar-candidate-convert="' + esc(row.id) + '">转CRM</button><button type="button" data-radar-candidate-recheck="' + esc(row.id) + '">查重</button><button type="button" data-radar-candidate-feedback="' + esc(row.id) + '">反馈</button><button type="button" data-radar-candidate-more="' + esc(row.id) + '">待补</button><button type="button" data-radar-candidate-archive="' + esc(row.id) + '">归档</button></div>' +
+          '</article>';
       }).join('');
-      tbody.querySelectorAll('[data-radar-candidate-check]').forEach(function (check) {
+      list.querySelectorAll('[data-radar-candidate-check]').forEach(function (check) {
         check.addEventListener('change', function () {
           var id = Number(check.value || 0);
           if (id) check.checked ? self.candidateSelected.add(id) : self.candidateSelected.delete(id);
+          check.closest('.radar-candidate-card-v2')?.classList.toggle('selected', check.checked);
           self.renderCandidateSelection();
         });
       });
-      tbody.querySelectorAll('[data-radar-candidate-view]').forEach(function (button) { button.addEventListener('click', function () { self.openCandidateDetail(Number(button.getAttribute('data-radar-candidate-view'))); }); });
-      tbody.querySelectorAll('[data-radar-candidate-recheck]').forEach(function (button) { button.addEventListener('click', function () { self.recheckCandidate(Number(button.getAttribute('data-radar-candidate-recheck'))); }); });
-      tbody.querySelectorAll('[data-radar-candidate-convert]').forEach(function (button) { button.addEventListener('click', function () { self.openConvertDialog(Number(button.getAttribute('data-radar-candidate-convert'))); }); });
-      tbody.querySelectorAll('[data-radar-candidate-feedback]').forEach(function (button) { button.addEventListener('click', function () { self.openFeedbackDialog(Number(button.getAttribute('data-radar-candidate-feedback'))); }); });
-      tbody.querySelectorAll('[data-radar-candidate-more]').forEach(function (button) { button.addEventListener('click', function () { self.updateCandidateStatus([Number(button.getAttribute('data-radar-candidate-more'))], 'need_more_info'); }); });
-      tbody.querySelectorAll('[data-radar-candidate-archive]').forEach(function (button) { button.addEventListener('click', function () { self.updateCandidateStatus([Number(button.getAttribute('data-radar-candidate-archive'))], 'archived'); }); });
+      list.querySelectorAll('[data-radar-candidate-view]').forEach(function (button) { button.addEventListener('click', function () { self.openCandidateDetail(Number(button.getAttribute('data-radar-candidate-view'))); }); });
+      list.querySelectorAll('[data-radar-candidate-recheck]').forEach(function (button) { button.addEventListener('click', function () { self.recheckCandidate(Number(button.getAttribute('data-radar-candidate-recheck'))); }); });
+      list.querySelectorAll('[data-radar-candidate-convert]').forEach(function (button) { button.addEventListener('click', function () { self.openConvertDialog(Number(button.getAttribute('data-radar-candidate-convert'))); }); });
+      list.querySelectorAll('[data-radar-candidate-feedback]').forEach(function (button) { button.addEventListener('click', function () { self.openFeedbackDialog(Number(button.getAttribute('data-radar-candidate-feedback'))); }); });
+      list.querySelectorAll('[data-radar-candidate-more]').forEach(function (button) { button.addEventListener('click', function () { self.updateCandidateStatus([Number(button.getAttribute('data-radar-candidate-more'))], 'need_more_info'); }); });
+      list.querySelectorAll('[data-radar-candidate-archive]').forEach(function (button) { button.addEventListener('click', function () { self.updateCandidateStatus([Number(button.getAttribute('data-radar-candidate-archive'))], 'archived'); }); });
       this.renderCandidateSelection();
       this.renderCandidatePager();
     },
@@ -19454,8 +19458,10 @@
       var end = Math.min(total, page * pageSize);
       this.candidateFilters.page = page;
       this.candidateFilters.page_size = pageSize;
+      document.querySelectorAll('[data-radar-candidate-total]').forEach(function (node) { node.textContent = total; });
+      document.querySelectorAll('[data-radar-candidate-visible]').forEach(function (node) { node.textContent = start && end ? (start + '-' + end) : '0'; });
       document.querySelectorAll('[data-radar-candidate-pager]').forEach(function (box) {
-        box.innerHTML = '<span>共 ' + esc(total) + ' 个候选客户 · 第 ' + esc(page) + ' / ' + esc(pages) + ' 页 · ' + esc(start) + '-' + esc(end) + '</span><div><button type="button" data-radar-candidate-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><select data-radar-candidate-page-size><option value="20"' + (pageSize === 20 ? ' selected' : '') + '>20/页</option><option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50/页</option><option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100/页</option></select><button type="button" data-radar-candidate-next ' + (page >= pages ? 'disabled' : '') + '>下一页</button></div>';
+        box.innerHTML = '<span>共 ' + esc(total) + ' 个 · 第 ' + esc(page) + ' / ' + esc(pages) + ' 页 · ' + esc(start) + '-' + esc(end) + '</span><div><button type="button" data-radar-candidate-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><select data-radar-candidate-page-size><option value="20"' + (pageSize === 20 ? ' selected' : '') + '>20/页</option><option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50/页</option><option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100/页</option></select><button type="button" data-radar-candidate-next ' + (page >= pages ? 'disabled' : '') + '>下一页</button></div>';
       });
     },
     renderCandidateCountryFilters: function () {
@@ -19478,8 +19484,16 @@
       } catch (e) { return []; }
     },
     renderCandidateSelection: function () {
-      var node = document.querySelector('[data-radar-candidate-selected]');
-      if (node) node.textContent = '已选 ' + this.candidateSelected.size + ' 个';
+      var self = this;
+      document.querySelectorAll('[data-radar-candidate-selected]').forEach(function (node) {
+        node.textContent = '已选 ' + self.candidateSelected.size + ' 个';
+      });
+      var checks = Array.from(document.querySelectorAll('[data-radar-candidate-check]'));
+      var all = document.querySelector('[data-radar-candidate-check-all]');
+      if (!all) return;
+      var checked = checks.filter(function (check) { return check.checked; }).length;
+      all.checked = checks.length > 0 && checked === checks.length;
+      all.indeterminate = checked > 0 && checked < checks.length;
     },
     openCandidateDetail: function (id) {
       var self = this;

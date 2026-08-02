@@ -30,6 +30,11 @@ foreach ([
     'data-radar-task-total',
     'radar-task-card-v2',
     'radar-task-country-v2',
+    'radar-candidate-workbench-v2',
+    'radar-candidate-list-v2',
+    'radar-candidate-card-v2',
+    'data-radar-candidate-total',
+    'data-radar-candidate-visible',
     'ai-main-grid',
     'ai-bottom-grid',
     'renderWorkflow: function',
@@ -69,6 +74,11 @@ foreach ([
     '.radar-task-hero-v2',
     '.radar-task-card-v2',
     '.radar-task-board-v2',
+    '.radar-candidate-workbench-v2',
+    '.radar-candidate-hero-v2',
+    '.radar-candidate-filter-v2',
+    '.radar-candidate-card-v2',
+    '.radar-candidate-actions-v2',
     '.ai-home-layout',
     'grid-template-columns: minmax(0, 1fr) 260px;',
     '.ai-home-main',
@@ -100,7 +110,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-task-page-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-candidate-page-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
