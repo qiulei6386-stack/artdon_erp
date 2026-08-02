@@ -18987,18 +18987,165 @@
     },
     openTaskEditor: function (row) {
       row = row || { task_name: '', country: '越南', city: '胡志明市', model_key: 'direct_buyer', target_candidate_count: 10, min_score: 60, must_have_website: 1, exclude_factory: 1, exclude_retailer: 1, exclude_decorative: 1, exclude_brand_branch: 1, check_crm_duplicate: 1, enrich_contacts: 0, verify_email: 0, execute_mode: 'manual', keywords: 'Vietnam architectural lighting distributor\nVietnam commercial lighting supplier', languages: 'en\nvi' };
+      var countries = [
+        { country: '越南', code: 'VN', cities: ['胡志明市', '河内', '岘港', '海防', '芽庄', '平阳'] },
+        { country: '印度尼西亚', code: 'ID', cities: ['Jakarta', 'Surabaya', 'Bali / Denpasar', 'Bandung', 'Medan', 'Semarang'] },
+        { country: 'United Arab Emirates', code: 'AE', cities: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman'] },
+        { country: 'India', code: 'IN', cities: ['Mumbai', 'Delhi', 'Bengaluru', 'Hyderabad', 'Chennai', 'Ahmedabad'] },
+        { country: 'Philippines', code: 'PH', cities: ['Manila', 'Cebu', 'Davao', 'Quezon City'] },
+        { country: 'Malaysia', code: 'MY', cities: ['Kuala Lumpur', 'Penang', 'Johor Bahru', 'Selangor'] },
+        { country: 'Singapore', code: 'SG', cities: ['Singapore'] },
+        { country: 'Thailand', code: 'TH', cities: ['Bangkok', 'Phuket', 'Chiang Mai'] },
+        { country: 'Saudi Arabia', code: 'SA', cities: ['Riyadh', 'Jeddah', 'Dammam'] },
+        { country: 'Qatar', code: 'QA', cities: ['Doha'] }
+      ];
+      var modelPresets = [
+        { label: '工程型', model: 'project_procurement', desc: '项目、承包商、顾问与工程采购', keywords: ['{country} architectural lighting contractor', '{country} commercial lighting project supplier', '{city} hotel lighting supplier', '{country} lighting consultant'], projects: ['Hotel', 'Shopping mall', 'Office', 'Commercial project'], products: ['Downlight', 'Track Light', 'Linear Light', 'Outdoor Light'], flags: { allow_design_studio: 1, exclude_retailer: 1 } },
+        { label: '批发型', model: 'direct_buyer', desc: '渠道商、进口商、批发采购', keywords: ['{country} lighting distributor', '{country} LED lighting wholesaler', '{city} lighting importer', '{country} commercial lighting supplier'], projects: ['Wholesale', 'Distribution', 'Dealer network'], products: ['Downlight', 'Track Light', 'LED Strip', 'Magnetic Track Light'], flags: { exclude_factory: 1, exclude_retailer: 0 } },
+        { label: '零售型', model: 'direct_buyer', desc: '门店、展厅、当地灯具零售', keywords: ['{country} lighting showroom', '{city} lighting store', '{country} decorative lighting retailer', '{city} home lighting shop'], projects: ['Retail shop', 'Showroom', 'Residential project'], products: ['Pendant Light', 'LED Strip', 'Smart Lighting'], flags: { exclude_retailer: 0, exclude_decorative: 0 } },
+        { label: '品牌/OEM', model: 'brand_oem', desc: '品牌商、OEM、进口贴牌', keywords: ['{country} lighting brand OEM', '{country} LED lighting brand', '{city} lighting importer OEM'], projects: ['OEM', 'Private label', 'Brand distribution'], products: ['Commercial lighting', 'LED lighting', 'Outdoor Light'], flags: { exclude_brand_branch: 1 } },
+        { label: '设计顾问', model: 'design_influencer', desc: '设计院、顾问、照明设计影响者', keywords: ['{country} lighting design consultant', '{country} architectural lighting designer', '{city} interior lighting design'], projects: ['Lighting design', 'Architecture', 'Interior project'], products: ['Architectural lighting', 'Linear Light', 'Wall Washer'], flags: { allow_design_studio: 1, exclude_retailer: 1 } }
+      ];
+      var keywordChips = ['{country} architectural lighting distributor', '{country} commercial lighting supplier', '{country} lighting distributor', '{country} LED lighting wholesaler', '{city} lighting importer', '{city} lighting showroom', '{country} lighting contractor', '{country} lighting consultant', '{country} project lighting supplier', '{country} outdoor lighting supplier', '{country} downlight supplier', '{country} track light supplier'];
+      var excludeChips = ['factory', 'manufacturer', 'factory direct', 'retail only', 'B2C', 'Amazon', 'home decor only', 'furniture', 'chandelier only', 'lamp shop', 'spare parts', 'Alibaba', 'Made-in-China'];
+      var productChips = ['Downlight', 'Track Light', 'Linear Light', 'Magnetic Track Light', 'LED Strip', 'Outdoor Light', 'Wall Washer', 'Pendant Light', 'Emergency Light', 'Smart Lighting'];
+      var projectChips = ['Hotel', 'Villa', 'Retail shop', 'Shopping mall', 'Office', 'Museum', 'Restaurant', 'Landscape', 'Residential project', 'Commercial project'];
+      var uid = 'radar-task-editor-' + Date.now();
       var dialog = document.createElement('div');
       dialog.className = 'radar-drawer-backdrop';
       var check = function (key) { return Number(row[key] || 0) ? ' checked' : ''; };
-      dialog.innerHTML = '<form class="radar-drawer radar-task-editor"><header><strong>' + (row.id ? '编辑搜索任务' : '新增搜索任务') + '</strong><button type="button" data-radar-drawer-close>关闭</button></header><main><section>' +
-        '<label class="wide"><span>任务名称</span><input name="task_name" value="' + esc(row.task_name || '') + '"></label><label><span>国家</span><input name="country" value="' + esc(row.country || '越南') + '"></label><label><span>城市</span><input name="city" value="' + esc(row.city || '') + '"></label><label><span>客户模型</span><select name="model_key">' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, row.model_key, '') + '</select></label><label><span>目标数量</span><input type="number" name="target_candidate_count" value="' + esc(row.target_candidate_count || 10) + '"></label><label><span>最低评分</span><input type="number" name="min_score" value="' + esc(row.min_score || 60) + '"></label><label class="wide"><span>关键词（一行一个）</span><textarea name="keywords" rows="5">' + esc(Array.isArray(row.keywords) ? row.keywords.join('\n') : (row.keywords || '')) + '</textarea></label><label class="wide"><span>排除关键词（一行一个）</span><textarea name="exclude_keywords" rows="3">' + esc(Array.isArray(row.exclude_keywords) ? row.exclude_keywords.join('\n') : (row.exclude_keywords || '')) + '</textarea></label><label class="wide"><span>目标产品</span><textarea name="target_products" rows="3">' + esc(row.target_products || '') + '</textarea></label><label class="wide"><span>目标项目类型</span><textarea name="target_project_types" rows="3">' + esc(row.target_project_types || '') + '</textarea></label>' +
-        '<label><span>执行方式</span><select name="execute_mode"><option value="manual">手动立即执行</option><option value="scheduled">指定时间执行</option><option value="daily">每日执行</option><option value="weekly">每周执行</option></select></label><label><span>执行时间</span><input name="execute_at" value="' + esc(row.execute_at || '') + '" placeholder="YYYY-MM-DD HH:MM:SS"></label><label><span>单任务费用上限</span><input type="number" step="0.01" name="single_task_cost_limit" value="' + esc(row.single_task_cost_limit || 0) + '"></label><label><span>每日费用上限</span><input type="number" step="0.01" name="daily_cost_limit" value="' + esc(row.daily_cost_limit || 0) + '"></label>' +
+      var renderChip = function (field, value, label) { return '<button type="button" class="radar-task-chip-v2" data-task-chip="' + esc(field) + '" data-value="' + esc(value) + '">' + esc(label || value) + '</button>'; };
+      dialog.innerHTML = '<form class="radar-drawer radar-task-editor radar-task-editor-v2"><header><div><strong>' + (row.id ? '编辑搜索任务' : '新增搜索任务') + '</strong><span>选择区域、客户模型和关键词预设；也可以直接手工修改字段。</span></div><button type="button" data-radar-drawer-close>关闭</button></header><main>' +
+        '<section class="radar-task-editor-hero-v2"><div><span>SEARCH BRIEF</span><h3>' + esc(row.task_name || '新建客户搜索任务') + '</h3><p>' + esc((row.country || '越南') + ' · ' + this.modelLabel(row.model_key || 'direct_buyer') + ' · 最低评分 ' + (row.min_score || 60)) + '</p></div><strong>AI Radar</strong></section>' +
+        '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2"><header><div><h3>任务基础</h3><span>决定任务名称、区域、数量和执行方式</span></div></header><div class="radar-task-form-grid-v2">' +
+        '<label class="wide"><span>任务名称</span><input name="task_name" value="' + esc(row.task_name || '') + '" placeholder="例如：越南 建筑商业照明采购客户"></label>' +
+        '<label><span>国家</span><input name="country" list="' + uid + '-countries" value="' + esc(row.country || '越南') + '"></label><label><span>城市</span><input name="city" list="' + uid + '-cities" value="' + esc(row.city || '') + '"></label>' +
+        '<label><span>客户模型</span><select name="model_key">' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, row.model_key, '') + '</select></label>' +
+        '<label><span>目标数量</span><input type="number" min="1" name="target_candidate_count" value="' + esc(row.target_candidate_count || 10) + '"></label><label><span>最低评分</span><input type="number" min="0" max="100" name="min_score" value="' + esc(row.min_score || 60) + '"></label>' +
+        '<label><span>执行方式</span><select name="execute_mode"><option value="manual">手动立即执行</option><option value="scheduled">指定时间执行</option><option value="daily">每日执行</option><option value="weekly">每周执行</option></select></label><label><span>执行时间</span><input name="execute_at" value="' + esc(row.execute_at || '') + '" placeholder="YYYY-MM-DD HH:MM:SS"></label>' +
+        '<label><span>单任务费用上限</span><input type="number" step="0.01" name="single_task_cost_limit" value="' + esc(row.single_task_cost_limit || 0) + '"></label><label><span>每日费用上限</span><input type="number" step="0.01" name="daily_cost_limit" value="' + esc(row.daily_cost_limit || 0) + '"></label></div>' +
+        '<datalist id="' + uid + '-countries">' + countries.map(function (item) { return '<option value="' + esc(item.country) + '">' + esc(item.code) + '</option>'; }).join('') + '</datalist><datalist id="' + uid + '-cities"></datalist></div>' +
+        '<div class="radar-task-editor-card-v2"><header><div><h3>区域预设</h3><span>先点国家，再点城市；输入框仍可手工改</span></div></header><div class="radar-task-country-grid-v2">' + countries.map(function (item, index) { return '<button type="button" data-task-country-preset="' + index + '"><strong>' + esc(item.country) + '</strong><span>' + esc(item.cities.slice(0, 3).join(' / ')) + '</span></button>'; }).join('') + '</div><div class="radar-task-city-strip-v2" data-task-city-chips></div></div>' +
+        '<div class="radar-task-editor-card-v2 wide"><header><div><h3>客户模型预设</h3><span>点击后会写入模型、关键词、产品和项目类型</span></div></header><div class="radar-task-model-grid-v2">' + modelPresets.map(function (item, index) { return '<button type="button" data-task-model-preset="' + index + '"><strong>' + esc(item.label) + '</strong><span>' + esc(item.desc) + '</span></button>'; }).join('') + '</div></div></section>' +
+        '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2"><header><div><h3>关键词</h3><span>多选芯片会自动写入下方，一行一个</span></div></header><div class="radar-task-chip-grid-v2">' + keywordChips.map(function (value) { return renderChip('keywords', value, value); }).join('') + '</div><label class="wide"><span>已选关键词</span><textarea name="keywords" rows="7">' + esc(Array.isArray(row.keywords) ? row.keywords.join('\n') : (row.keywords || '')) + '</textarea></label></div>' +
+        '<div class="radar-task-editor-card-v2"><header><div><h3>排除关键词</h3><span>过滤工厂、纯零售、平台和无关行业</span></div></header><div class="radar-task-chip-grid-v2">' + excludeChips.map(function (value) { return renderChip('exclude_keywords', value, value); }).join('') + '</div><label class="wide"><span>已选排除词</span><textarea name="exclude_keywords" rows="7">' + esc(Array.isArray(row.exclude_keywords) ? row.exclude_keywords.join('\n') : (row.exclude_keywords || '')) + '</textarea></label></div>' +
+        '<div class="radar-task-editor-card-v2"><header><div><h3>目标产品</h3><span>帮助 AI 聚焦品类</span></div></header><div class="radar-task-chip-grid-v2">' + productChips.map(function (value) { return renderChip('target_products', value, value); }).join('') + '</div><label class="wide"><span>产品清单</span><textarea name="target_products" rows="5">' + esc(row.target_products || '') + '</textarea></label></div>' +
+        '<div class="radar-task-editor-card-v2"><header><div><h3>项目类型</h3><span>用于识别客户业务场景</span></div></header><div class="radar-task-chip-grid-v2">' + projectChips.map(function (value) { return renderChip('target_project_types', value, value); }).join('') + '</div><label class="wide"><span>项目清单</span><textarea name="target_project_types" rows="5">' + esc(row.target_project_types || '') + '</textarea></label></div>' +
+        '<div class="radar-task-editor-card-v2 wide"><header><div><h3>高级规则</h3><span>勾选后直接随任务保存</span></div></header><div class="radar-task-flags-v2">' +
         ['must_have_website','must_have_email','must_have_contact','allow_design_studio','exclude_factory','exclude_retailer','exclude_decorative','exclude_brand_branch','check_crm_duplicate','enrich_contacts','verify_email'].map(function (key) { var label = ({ must_have_website:'必须有官网', must_have_email:'必须有邮箱', must_have_contact:'必须有联系人', allow_design_studio:'允许设计事务所', exclude_factory:'排除制造工厂', exclude_retailer:'排除纯零售商', exclude_decorative:'排除装饰灯公司', exclude_brand_branch:'排除国际品牌直属分公司', check_crm_duplicate:'检查CRM重复', enrich_contacts:'补全联系人', verify_email:'验证邮箱' })[key]; return '<label class="tag-chip"><input type="checkbox" name="' + key + '" value="1"' + check(key) + '><span>' + label + '</span></label>'; }).join('') +
-        '</section></main><footer><span>保存只创建或修改任务，不会自动执行。</span><button type="submit">保存任务</button></footer></form>';
+        '</div></div></section></main><footer><span>保存后按当前执行方式进入任务流程；不会改动搜索任务接口。</span><button type="submit">保存任务</button></footer></form>';
       document.body.appendChild(dialog);
       dialog.querySelector('[name="execute_mode"]').value = row.execute_mode || 'manual';
       var self = this;
+      var getField = function (name) { return dialog.querySelector('[name="' + name + '"]'); };
+      var activeModelPreset = -1;
+      var normalizeLine = function (value) { return String(value || '').trim().toLowerCase(); };
+      var materialize = function (value) {
+        return String(value || '').replace(/\{country\}/g, getField('country')?.value || '越南').replace(/\{city\}/g, getField('city')?.value || '');
+      };
+      var fieldLines = function (name) {
+        var field = getField(name);
+        return field ? String(field.value || '').split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean) : [];
+      };
+      var writeLines = function (name, lines) {
+        var field = getField(name);
+        if (!field) return;
+        field.value = lines.filter(Boolean).join('\n');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      var addLines = function (name, lines) {
+        var current = fieldLines(name);
+        var seen = current.reduce(function (map, line) { map[normalizeLine(line)] = true; return map; }, {});
+        lines.map(materialize).map(function (line) { return line.trim(); }).filter(Boolean).forEach(function (line) {
+          if (!seen[normalizeLine(line)]) {
+            current.push(line);
+            seen[normalizeLine(line)] = true;
+          }
+        });
+        writeLines(name, current);
+      };
+      var toggleLine = function (name, value) {
+        value = materialize(value).trim();
+        if (!value) return;
+        var target = normalizeLine(value);
+        var current = fieldLines(name);
+        var exists = current.some(function (line) { return normalizeLine(line) === target; });
+        writeLines(name, exists ? current.filter(function (line) { return normalizeLine(line) !== target; }) : current.concat([value]));
+      };
+      var syncChipState = function () {
+        dialog.querySelectorAll('[data-task-chip]').forEach(function (button) {
+          var name = button.getAttribute('data-task-chip') || '';
+          var value = materialize(button.getAttribute('data-value') || '');
+          var selected = fieldLines(name).some(function (line) { return normalizeLine(line) === normalizeLine(value); });
+          button.classList.toggle('selected', selected);
+        });
+        dialog.querySelectorAll('[data-task-model-preset]').forEach(function (button) {
+          button.classList.toggle('selected', Number(button.getAttribute('data-task-model-preset') || 0) === activeModelPreset);
+        });
+      };
+      var renderCityPresets = function () {
+        var countryValue = getField('country')?.value || '';
+        var active = countries.find(function (item) { return item.country === countryValue || item.code === countryValue; }) || countries[0];
+        dialog.querySelectorAll('[data-task-country-preset]').forEach(function (button) {
+          var preset = countries[Number(button.getAttribute('data-task-country-preset') || 0)] || {};
+          button.classList.toggle('selected', preset.country === active.country);
+        });
+        var cityList = dialog.querySelector('#' + uid + '-cities');
+        if (cityList) cityList.innerHTML = active.cities.map(function (city) { return '<option value="' + esc(city) + '"></option>'; }).join('');
+        var wrap = dialog.querySelector('[data-task-city-chips]');
+        if (!wrap) return;
+        wrap.innerHTML = active.cities.map(function (city) { return '<button type="button" data-task-city-preset="' + esc(city) + '">' + esc(city) + '</button>'; }).join('');
+        wrap.querySelectorAll('[data-task-city-preset]').forEach(function (button) {
+          button.addEventListener('click', function () {
+            getField('city').value = button.getAttribute('data-task-city-preset') || '';
+            renderCityPresets();
+            syncChipState();
+          });
+          button.classList.toggle('selected', button.getAttribute('data-task-city-preset') === (getField('city')?.value || ''));
+        });
+      };
       dialog.querySelector('[data-radar-drawer-close]').addEventListener('click', function () { dialog.remove(); });
+      dialog.querySelectorAll('[data-task-country-preset]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var preset = countries[Number(button.getAttribute('data-task-country-preset') || 0)] || countries[0];
+          getField('country').value = preset.country;
+          if (!getField('city').value || !preset.cities.includes(getField('city').value)) getField('city').value = preset.cities[0] || '';
+          renderCityPresets();
+          syncChipState();
+        });
+      });
+      getField('country')?.addEventListener('input', function () { renderCityPresets(); syncChipState(); });
+      getField('city')?.addEventListener('input', syncChipState);
+      getField('model_key')?.addEventListener('change', function () {
+        activeModelPreset = -1;
+        syncChipState();
+      });
+      dialog.querySelectorAll('[data-task-model-preset]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          activeModelPreset = Number(button.getAttribute('data-task-model-preset') || 0);
+          var preset = modelPresets[activeModelPreset] || modelPresets[0];
+          getField('model_key').value = preset.model;
+          addLines('keywords', preset.keywords || []);
+          addLines('target_products', preset.products || []);
+          addLines('target_project_types', preset.projects || []);
+          Object.keys(preset.flags || {}).forEach(function (key) {
+            var input = getField(key);
+            if (input) input.checked = Number(preset.flags[key]) === 1;
+          });
+          syncChipState();
+        });
+      });
+      dialog.querySelectorAll('[data-task-chip]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          toggleLine(button.getAttribute('data-task-chip') || '', button.getAttribute('data-value') || '');
+          syncChipState();
+        });
+      });
+      ['keywords', 'exclude_keywords', 'target_products', 'target_project_types'].forEach(function (name) {
+        getField(name)?.addEventListener('input', syncChipState);
+      });
+      renderCityPresets();
+      syncChipState();
       dialog.querySelector('form').addEventListener('submit', function (event) {
         event.preventDefault();
         var data = {};
