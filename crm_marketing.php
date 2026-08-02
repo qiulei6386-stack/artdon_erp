@@ -2345,13 +2345,13 @@ function crm_marketing_compact_queue_bodies(int $taskId = 0, int $limit = 500): 
         $compacted += $update->rowCount();
         $bodyRefs[$bodyRefId] = true;
     }
-    $deleteWhere = ['NOT EXISTS (SELECT 1 FROM crm_marketing_send_queue q WHERE q.body_ref_id = b.id)'];
+    $deleteWhere = ['NOT EXISTS (SELECT 1 FROM crm_marketing_send_queue q WHERE q.body_ref_id = crm_marketing_queue_bodies.id)'];
     $deleteParams = [];
     if ($taskId > 0) {
-        $deleteWhere[] = 'b.task_id = ?';
+        $deleteWhere[] = 'task_id = ?';
         $deleteParams[] = $taskId;
     }
-    $delete = db()->prepare('DELETE FROM crm_marketing_queue_bodies b WHERE ' . implode(' AND ', $deleteWhere));
+    $delete = db()->prepare('DELETE FROM crm_marketing_queue_bodies WHERE ' . implode(' AND ', $deleteWhere));
     $delete->execute($deleteParams);
     return [
         'scanned' => count($rows),
