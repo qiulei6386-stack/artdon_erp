@@ -5051,7 +5051,7 @@ function crm_followup_create(array $input): array
         'followup' => crm_followup_get($id)['followup'],
     ];
     if (db_table_exists('crm_tasks')) {
-        $taskStmt = db()->prepare("SELECT id, title, status, due_at, reminder_at FROM crm_tasks WHERE source_type = 'followup' AND source_id = ? AND task_type = 'customer_followup' AND deleted_at IS NULL LIMIT 1");
+        $taskStmt = db()->prepare("SELECT id, title, status, due_at, reminder_at FROM crm_tasks WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup' COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND task_type = 'customer_followup' COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL LIMIT 1");
         $taskStmt->execute([(string)$id]);
         $detail['task'] = $taskStmt->fetch() ?: null;
     }
@@ -5116,7 +5116,7 @@ function crm_followup_delete(array $input): array
 
     db()->prepare('UPDATE crm_customer_followups SET deleted_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ?')
         ->execute([current_user()['id'] ?? 0, $id]);
-    db()->prepare('UPDATE crm_tasks SET deleted_at = NOW(), updated_at = NOW() WHERE source_type = ? AND source_id = ? AND deleted_at IS NULL')
+    db()->prepare('UPDATE crm_tasks SET deleted_at = NOW(), updated_at = NOW() WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL')
         ->execute(['followup', $id]);
 
     crm_customer_log('followup_delete', 'followup', $id, $customerId, $row, ['deleted_at' => date('Y-m-d H:i:s')], '删除跟进');

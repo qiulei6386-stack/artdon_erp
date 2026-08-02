@@ -1797,10 +1797,10 @@ function crm_sample_followups(array $shipment): array
     foreach ([$sampleName, $trackingNo, $productModel] as $value) {
         if ($value !== '') $fallback[] = '%' . $value . '%';
     }
-    $where = ["(f.source_type='sample_shipment' AND f.source_id=?)"];
+    $where = ["(CONVERT(f.source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'sample_shipment' COLLATE utf8mb4_unicode_ci AND CONVERT(f.source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci)"];
     $params = [$customerId, $shipmentId];
     foreach ($fallback as $value) {
-        $where[] = "(f.followup_type='样品' AND (f.content LIKE ? OR f.next_plan LIKE ?))";
+        $where[] = "(CONVERT(f.followup_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = '样品' COLLATE utf8mb4_unicode_ci AND (CONVERT(f.content USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci OR CONVERT(f.next_plan USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci))";
         $params[] = $value;
         $params[] = $value;
     }
@@ -1808,7 +1808,7 @@ function crm_sample_followups(array $shipment): array
         FROM crm_customer_followups f
         LEFT JOIN crm_users u ON u.id=f.created_by
         LEFT JOIN crm_contacts ct ON ct.id=f.contact_id
-        LEFT JOIN crm_tasks t ON t.source_type='followup' AND t.source_id=CAST(f.id AS CHAR) AND t.deleted_at IS NULL
+        LEFT JOIN crm_tasks t ON CONVERT(t.source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup' COLLATE utf8mb4_unicode_ci AND CONVERT(t.source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CAST(f.id AS CHAR) COLLATE utf8mb4_unicode_ci AND t.deleted_at IS NULL
         WHERE f.customer_id=? AND f.deleted_at IS NULL AND (" . implode(' OR ', $where) . ")
         ORDER BY f.followup_time DESC, f.id DESC LIMIT 30";
     $stmt = db()->prepare($sql);
@@ -2007,7 +2007,7 @@ function crm_sample_create_signed_followup(array $shipment): void
 
 function crm_sample_create_followup_task(array $shipment, string $prefix, string $description): void
 {
-    $exists = db()->prepare("SELECT id FROM crm_tasks WHERE source_type='sample_shipment' AND source_id=? AND task_type='customer_followup' AND deleted_at IS NULL LIMIT 1");
+    $exists = db()->prepare("SELECT id FROM crm_tasks WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'sample_shipment' COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND task_type='customer_followup' COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL LIMIT 1");
     $exists->execute([(string)$shipment['id']]);
     if ($exists->fetchColumn()) return;
     db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,created_by,created_at,updated_at) VALUES ('customer_followup',?,?,?,?,?,?,?,?,?,JSON_ARRAY(),'important','pending',?,?,?,NOW(),NOW())")
@@ -2197,7 +2197,7 @@ function crm_task_upsert_from_followup(array $followup): void
     $title = '客户跟进：' . substr(trim((string)($followup['content'] ?? '跟进提醒')), 0, 80);
     $description = trim(implode("\n", array_filter([trim((string)($followup['content'] ?? '')), trim((string)($followup['next_plan'] ?? ''))])));
     $status = in_array((string)($followup['status'] ?? 'open'), ['done','completed','closed'], true) ? 'done' : 'pending';
-    $stmt = db()->prepare("SELECT id FROM crm_tasks WHERE source_type='followup' AND source_id=? AND task_type='customer_followup' AND deleted_at IS NULL LIMIT 1");
+    $stmt = db()->prepare("SELECT id FROM crm_tasks WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup' COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND task_type='customer_followup' COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL LIMIT 1");
     $stmt->execute([(string)$followupId]);
     $taskId = (int)$stmt->fetchColumn();
     if ($taskId > 0) {

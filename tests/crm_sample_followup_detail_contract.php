@@ -13,6 +13,8 @@ foreach ([
     'idx_follow_source',
     'INSERT INTO crm_customer_followups',
     'source_type=?, source_id=?',
+    "CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup'",
+    'CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4)',
 ] as $marker) {
     if (!str_contains($customer, $marker)) {
         throw new RuntimeException("Sample followup source marker missing in crm_customer.php: {$marker}");
@@ -22,9 +24,12 @@ foreach ([
 foreach ([
     "'followups' => crm_sample_followups",
     'function crm_sample_followups(array $shipment): array',
-    "f.source_type='sample_shipment'",
-    "f.followup_type='样品'",
-    'f.content LIKE ? OR f.next_plan LIKE ?',
+    "CONVERT(f.source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'sample_shipment'",
+    "CONVERT(f.followup_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = '样品'",
+    'CONVERT(f.content USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE',
+    "CONVERT(t.source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup'",
+    "CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'sample_shipment'",
+    "CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup'",
 ] as $marker) {
     if (!str_contains($task, $marker)) {
         throw new RuntimeException("Sample followup detail marker missing in crm_task_center.php: {$marker}");
