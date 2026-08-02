@@ -2521,7 +2521,13 @@ function crm_marketing_queue_list(array $input): array
         $where[] = 'q.send_status = ?';
         $params[] = $status;
     }
-    $stmt = db()->prepare('SELECT q.*, c.customer_name, ct.name contact_name
+    $stmt = db()->prepare('SELECT
+            q.id, q.task_id, q.campaign_id, q.customer_id, q.contact_id,
+            q.sender_user_id, q.sender_email, q.receiver_email, q.subject,
+            q.country, q.customer_timezone, q.planned_customer_time, q.planned_server_time,
+            q.send_status, q.send_attempts, q.max_attempts, q.last_error,
+            q.sent_at, q.created_at, q.updated_at,
+            c.customer_name, ct.name contact_name
         FROM crm_marketing_send_queue q
         LEFT JOIN crm_customers c ON c.id = q.customer_id
         LEFT JOIN crm_contacts ct ON ct.id = q.contact_id

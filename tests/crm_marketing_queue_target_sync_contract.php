@@ -30,6 +30,7 @@ $markers = [
     'function crm_marketing_reconcile_email_group_followups(int $taskId): void',
     'crm_marketing_reconcile_email_group_followups($taskId);',
     '邮件无收件邮箱，转群人工执行',
+    'q.sender_user_id, q.sender_email, q.receiver_email, q.subject',
 ];
 
 foreach ($markers as $marker) {
@@ -87,6 +88,21 @@ foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.
 }
 if (!str_contains($js, "['pending','running','partial_failed','paused','completed','failed','manual_pending'].indexOf(row.task_status) >= 0")) {
     throw new RuntimeException('Promotion manual execution action must include completed email tasks');
+}
+
+$queueListStart = strpos($php, 'function crm_marketing_queue_list(array $input): array');
+$queueListEnd = strpos($php, 'function crm_marketing_queue_retry_failed(array $input): array', $queueListStart === false ? 0 : $queueListStart);
+if ($queueListStart === false || $queueListEnd === false || $queueListEnd <= $queueListStart) {
+    throw new RuntimeException('Promotion queue list function boundary is missing');
+}
+$queueList = substr($php, $queueListStart, $queueListEnd - $queueListStart);
+if (str_contains($queueList, 'SELECT q.*')) {
+    throw new RuntimeException('Promotion queue list must not return queue body payloads');
+}
+foreach (['q.id, q.task_id', 'q.sender_email, q.receiver_email, q.subject', 'q.last_error', 'c.customer_name, ct.name contact_name'] as $marker) {
+    if (!str_contains($queueList, $marker)) {
+        throw new RuntimeException("Promotion queue list lightweight marker missing: {$marker}");
+    }
 }
 
 echo "crm_marketing_queue_target_sync_contract: OK\n";
