@@ -11877,6 +11877,106 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-muted-text);
   font-size: 12px;
 }
+.ai-workbench {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ai-workbench[hidden] {
+  display: none !important;
+}
+.ai-content {
+  min-width: 0;
+}
+.ai-workbench-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--crm-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--crm-card-bg) 96%, #f8fafc), var(--crm-card-bg));
+  box-shadow: var(--crm-shadow);
+  padding: 14px;
+}
+.ai-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 1px solid var(--crm-border);
+  padding-bottom: 12px;
+}
+.ai-panel-head div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.ai-panel-head strong {
+  color: var(--crm-text);
+  font-size: 17px;
+  font-weight: 1000;
+}
+.ai-panel-head span,
+.ai-empty-state span {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.ai-panel-head button {
+  min-height: 36px;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 42%, var(--crm-border));
+  border-radius: 10px;
+  background: var(--crm-active-bg);
+  color: var(--crm-primary);
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+.ai-empty-state {
+  display: grid;
+  gap: 5px;
+  min-height: 160px;
+  align-content: center;
+  justify-items: center;
+  color: var(--crm-text);
+  text-align: center;
+}
+.ai-empty-state strong {
+  font-size: 16px;
+  font-weight: 1000;
+}
+.ai-empty-state.is-error strong {
+  color: var(--crm-danger);
+}
+.ai-settings-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  border-top: 1px solid var(--crm-border);
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 850;
+  padding-top: 8px;
+}
+.ai-settings-grid input[type="number"] {
+  width: 92px;
+  min-height: 32px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-input-bg, var(--crm-card-bg));
+  color: var(--crm-text);
+  padding: 0 8px;
+  font: inherit;
+  font-weight: 850;
+}
+.ai-settings-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
 @media (max-width: 1180px) {
   .promo-engine {
     grid-template-columns: 1fr;
@@ -24900,4 +25000,98 @@ body.is-tasks-module .action_command {
 }
 .promo-business-shell.promo-visit-style.promo-manual-execution-dialog .promo-manual-table-wrap {
   max-height: none !important;
+}
+
+/* AI lead center dialogs: one visual language and one vertical scroll surface. */
+.crm-modal.ai-dialog {
+  z-index: 120000 !important;
+}
+.crm-modal.ai-dialog::backdrop {
+  background: rgb(15 23 42 / .48) !important;
+}
+.crm-modal.ai-dialog .ai-dialog-panel {
+  width: min(1040px, calc(100vw - 40px)) !important;
+  max-height: min(860px, calc(100vh - 40px)) !important;
+  border-radius: 18px !important;
+  border-color: #dbeafe !important;
+  background: #ffffff !important;
+  box-shadow: 0 28px 80px rgb(15 23 42 / .24) !important;
+}
+.crm-modal.ai-dialog .crm-modal-header,
+.crm-modal.ai-dialog .crm-modal-footer {
+  min-height: 62px !important;
+  background: linear-gradient(180deg, #f8fbff, #ffffff) !important;
+}
+.crm-modal.ai-dialog .crm-modal-body {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: #f8fafc !important;
+  padding: 18px !important;
+}
+.radar-drawer-backdrop {
+  z-index: 120000 !important;
+  display: grid !important;
+  place-items: center !important;
+  justify-content: initial !important;
+  padding: 20px !important;
+  background: rgb(15 23 42 / .48) !important;
+}
+.radar-drawer {
+  width: min(1120px, calc(100vw - 40px)) !important;
+  height: auto !important;
+  max-height: min(860px, calc(100vh - 40px)) !important;
+  border: 1px solid #dbeafe !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 28px 80px rgb(15 23 42 / .24) !important;
+  overflow: hidden !important;
+}
+.radar-drawer > header,
+.radar-drawer > footer {
+  min-height: 62px !important;
+  background: linear-gradient(180deg, #f8fbff, #ffffff) !important;
+  padding: 12px 18px !important;
+}
+.radar-drawer > nav {
+  background: #f8fafc !important;
+  padding: 10px 14px !important;
+}
+.radar-drawer > main {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: #f8fafc !important;
+  padding: 16px !important;
+}
+.radar-drawer > main > section,
+.radar-drawer .radar-task-detail section {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgb(15 23 42 / .08);
+  padding: 14px;
+}
+.radar-drawer .radar-table {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  max-height: none !important;
+}
+.radar-drawer .radar-table table {
+  min-width: 720px;
+}
+@media (max-width: 780px) {
+  .crm-modal.ai-dialog .ai-dialog-panel,
+  .radar-drawer {
+    width: calc(100vw - 18px) !important;
+    max-height: calc(100vh - 18px) !important;
+    border-radius: 14px !important;
+  }
+  .radar-drawer-backdrop {
+    padding: 9px !important;
+  }
+  .radar-drawer section,
+  .ai-analysis-form,
+  .ai-result-grid,
+  .ai-settings-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

@@ -19668,6 +19668,7 @@
     inited: false,
     view: readLocalString('crm_ai_center_view', 'radar'),
     data: { kpis: {}, tasks: [], logs: [], settings: {} },
+    loadingView: '',
     init: function () {
       if (!document.querySelector('[data-ai-module]')) return;
       if (!this.inited) {
@@ -19685,10 +19686,6 @@
             RadarModule.view = 'home';
             writeLocalString('crm_radar_view', RadarModule.view);
           }
-          if (view === 'settings') {
-            RadarModule.view = 'settings';
-            writeLocalString('crm_radar_view', RadarModule.view);
-          }
           self.renderCenter(view);
         });
       });
@@ -19700,22 +19697,43 @@
         button.classList.toggle('active', button.getAttribute('data-ai-center-view') === AiModule.view);
       });
       var radar = document.querySelector('[data-radar-module]');
+      var workbench = document.querySelector('[data-ai-workbench]');
       var pending = document.querySelector('[data-ai-pending]');
-      var radarVisible = this.view === 'radar' || this.view === 'settings';
+      var radarVisible = this.view === 'radar';
       if (radar) radar.hidden = !radarVisible;
-      if (pending) pending.hidden = radarVisible;
+      if (workbench) workbench.hidden = radarVisible;
+      if (pending) pending.hidden = true;
       if (this.view === 'radar') return RadarModule.init();
-      if (this.view === 'settings') {
-        RadarModule.view = 'settings';
-        writeLocalString('crm_radar_view', RadarModule.view);
-        return RadarModule.inited ? RadarModule.switchView('settings') : RadarModule.init();
-      }
-      var titleMap = { quote: '智能报价', material: '智能资料', tasks: 'AI任务', records: '运行记录', settings: 'AI设置' };
-      var title = document.querySelector('[data-ai-pending-title]');
-      if (title) title.textContent = titleMap[this.view] || '功能待接入';
+      this.renderWorkbench(this.view);
     },
     load: function () {
       this.renderCenter(this.view || 'radar');
+    },
+    fetchData: function () {
+      var self = this;
+      return post('ai_bootstrap', {}).then(function (json) {
+        if (!json.success) throw new Error(json.message || 'AI 中心加载失败');
+        self.data = Object.assign({ kpis: {}, tasks: [], logs: [], settings: {} }, json.data || {});
+        return self.data;
+      });
+    },
+    renderWorkbench: function (view) {
+      var self = this;
+      var box = document.querySelector('[data-ai-content]');
+      var kpis = document.querySelector('[data-ai-kpis]');
+      if (!box) return;
+      this.loadingView = view;
+      if (kpis) kpis.innerHTML = '';
+      box.innerHTML = '<section class="ai-workbench-panel"><div class="ai-empty-state"><strong>正在加载 AI 获客中心...</strong><span>正在同步任务、草稿、运行记录和设置。</span></div></section>';
+      this.fetchData().then(function () {
+        if (self.loadingView !== view) return;
+        self.renderKpis();
+        if (view === 'records') return self.renderLogs();
+        if (view === 'settings') return self.renderSettings();
+        self.renderTasks();
+      }).catch(function (error) {
+        box.innerHTML = '<section class="ai-workbench-panel"><div class="ai-empty-state is-error"><strong>AI 中心加载失败</strong><span>' + esc(error.message || '请稍后重试') + '</span></div></section>';
+      });
     },
     taskTypeLabel: function (type) {
       return { lead_capture: '自动获客', quote_draft: '报价草稿', material_draft: '资料草稿', confirm_task: '确认任务' }[type] || type || '-';
@@ -19746,6 +19764,9 @@
     filteredTasks: function () {
       var rows = this.data.tasks || [];
       if (this.view === 'overview') return rows.slice(0, 30);
+      if (this.view === 'quote') return rows.filter(function (row) { return row.task_type === 'quote_draft'; });
+      if (this.view === 'material') return rows.filter(function (row) { return row.task_type === 'material_draft'; });
+      if (this.view === 'tasks') return rows;
       if (this.view === 'lead_capture') return rows.filter(function (row) { return row.task_type === 'lead_capture'; });
       if (this.view === 'quote_draft') return rows.filter(function (row) { return row.task_type === 'quote_draft'; });
       if (this.view === 'material_draft') return rows.filter(function (row) { return row.task_type === 'material_draft'; });
@@ -19758,7 +19779,8 @@
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
       var rows = this.filteredTasks();
-      box.innerHTML = '<div class="ai-list">' + (rows.length ? rows.map(function (row) {
+      var heading = { quote: '智能报价草稿', material: '智能资料草稿', tasks: 'AI任务总览', lead_capture: '自动获客任务' }[this.view] || 'AI任务总览';
+      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>' + esc(heading) + '</strong><span>AI 只生成草稿和确认项，正式动作必须人工确认。</span></div><button type="button" data-ai-new-analysis>粘贴内容识别</button></header><div class="ai-list">' + (rows.length ? rows.map(function (row) {
         var missing = row.missing_fields || [];
         var actions = row.suggested_actions || [];
         return '<article class="ai-task-card" data-ai-task="' + esc(row.id) + '">' +
@@ -19768,7 +19790,12 @@
           '<div class="promo-tags">' + missing.map(function (m) { return '<em>缺 ' + esc(m) + '</em>'; }).join('') + actions.map(function (a) { return '<em>' + esc(a) + '</em>'; }).join('') + '</div>' +
           '<nav><button type="button" data-ai-task-detail="' + esc(row.id) + '">查看识别结果</button><button type="button" data-ai-confirm="' + esc(row.id) + '">通过</button><button type="button" data-ai-reject="' + esc(row.id) + '">驳回</button></nav>' +
         '</article>';
-      }).join('') : '<p class="promo-empty">暂无 AI 任务。可以点击“粘贴内容识别”生成客户/报价/资料草稿。</p>') + '</div>';
+      }).join('') : '<p class="promo-empty">暂无 AI 任务。可以点击“粘贴内容识别”生成客户/报价/资料草稿。</p>') + '</div></section>';
+      var newButton = box.querySelector('[data-ai-new-analysis]');
+      if (newButton) newButton.addEventListener('click', function () {
+        var type = self.view === 'quote' ? 'quote_draft' : (self.view === 'material' ? 'material_draft' : 'lead_capture');
+        self.openAnalysisDialog(type, {});
+      });
       box.querySelectorAll('[data-ai-task-detail]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openTaskDetail(Number(button.getAttribute('data-ai-task-detail') || 0));
@@ -19785,20 +19812,37 @@
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
       var rows = this.data.logs || [];
-      box.innerHTML = '<div class="ai-list">' + (rows.length ? rows.map(function (row) {
+      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>AI运行记录</strong><span>记录 AI 获客、草稿、确认和接口待接入结果。</span></div></header><div class="ai-list">' + (rows.length ? rows.map(function (row) {
         return '<article class="ai-task-card"><header><strong>' + esc(row.action_key || '-') + '</strong><em>' + esc(row.result_status || '-') + '</em></header><p>' + esc(row.failure_reason || row.detail_json || '') + '</p><div class="ai-meta"><span>操作人：' + esc(row.operator_name || '-') + '</span><span>时间：' + esc(String(row.created_at || '').slice(0, 16)) + '</span></div></article>';
-      }).join('') : '<p class="promo-empty">暂无 AI 日志。</p>') + '</div>';
+      }).join('') : '<p class="promo-empty">暂无 AI 日志。</p>') + '</div></section>';
     },
     renderSettings: function () {
+      var self = this;
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
       var settings = this.data.settings || {};
-      box.innerHTML = '<div class="ai-settings-grid">' +
-        '<article><strong>自动获客设置</strong><span>邮件/官网/推广回复识别 · 最低置信度 ' + esc((settings.lead || {}).min_confidence || 70) + '%</span></article>' +
-        '<article><strong>报价 AI 设置</strong><span>报价草稿最低置信度 ' + esc((settings.quote || {}).min_confidence || 75) + '% · 只生成草稿</span></article>' +
-        '<article><strong>资料 AI 设置</strong><span>资料匹配、资料任务、资料包草稿 · 接口预留</span></article>' +
-        '<article><strong>安全设置</strong><span>自动发邮件/报价/资料全部关闭，人工确认强制开启。</span></article>' +
-      '</div><p class="promo-empty">AI 安全设置第一阶段强制：不能自动发送正式邮件、报价和资料。</p>';
+      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>AI设置</strong><span>保存后立即应用到 AI 获客、报价草稿和资料草稿。</span></div><button type="button" data-ai-settings-save>保存设置</button></header><div class="ai-settings-grid">' +
+        '<article><strong>自动获客设置</strong><label><input type="checkbox" data-ai-setting="lead.enabled" ' + ((settings.lead || {}).enabled ? 'checked' : '') + '>启用邮件/官网/推广回复识别</label><label>最低置信度<input type="number" min="1" max="100" data-ai-setting="lead.min_confidence" value="' + esc((settings.lead || {}).min_confidence || 70) + '"></label></article>' +
+        '<article><strong>报价 AI 设置</strong><label><input type="checkbox" data-ai-setting="quote.enabled" ' + ((settings.quote || {}).enabled ? 'checked' : '') + '>启用报价草稿</label><label>最低置信度<input type="number" min="1" max="100" data-ai-setting="quote.min_confidence" value="' + esc((settings.quote || {}).min_confidence || 75) + '"></label></article>' +
+        '<article><strong>资料 AI 设置</strong><label><input type="checkbox" data-ai-setting="material.enabled" ' + ((settings.material || {}).enabled ? 'checked' : '') + '>启用资料草稿</label><span>资料匹配、资料任务、资料包草稿接口预留。</span></article>' +
+        '<article><strong>安全设置</strong><label><input type="checkbox" checked disabled>人工确认强制开启</label><span>自动发邮件、自动发正式报价、自动发资料保持关闭。</span></article>' +
+      '</div></section>';
+      var save = box.querySelector('[data-ai-settings-save]');
+      if (save) save.addEventListener('click', function () {
+        var next = JSON.parse(JSON.stringify(settings || {}));
+        box.querySelectorAll('[data-ai-setting]').forEach(function (field) {
+          var parts = String(field.getAttribute('data-ai-setting') || '').split('.');
+          if (parts.length !== 2) return;
+          next[parts[0]] = next[parts[0]] || {};
+          next[parts[0]][parts[1]] = field.type === 'checkbox' ? (field.checked ? 1 : 0) : Number(field.value || 0);
+        });
+        post('ai_settings_save', { settings: JSON.stringify(next) }).then(function (json) {
+          if (!json.success) throw new Error(json.message || 'AI 设置保存失败');
+          self.data.settings = (json.data || {}).settings || next;
+          toast('AI 设置已保存');
+          self.renderSettings();
+        }).catch(function (error) { toast(error.message || 'AI 设置保存失败'); });
+      });
     },
     openTaskDetail: function (id) {
       var row = (this.data.tasks || []).find(function (item) { return Number(item.id) === Number(id); });

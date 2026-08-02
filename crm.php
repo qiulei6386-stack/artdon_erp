@@ -1058,6 +1058,10 @@ $prefStyle = sprintf(
                 <div data-radar-content><p class="promo-empty">正在加载客户雷达...</p></div>
               </section>
             </section>
+            <section class="ai-workbench" data-ai-workbench hidden>
+              <section class="ai-kpi-grid" data-ai-kpis></section>
+              <section class="ai-content" data-ai-content></section>
+            </section>
             <section class="ai-pending-panel" data-ai-pending hidden>
               <strong data-ai-pending-title>功能待接入</strong>
               <p>该 AI 中心功能将在后续阶段接入。本步骤只建立客户雷达底座。</p>
@@ -1636,7 +1640,7 @@ $prefStyle = sprintf(
   <script>
     window.CRM_BOOTSTRAP = <?= json_encode(['csrf' => csrf_token(), 'modules' => $allModules, 'top_modules' => $modules, 'actions' => crm_action_map(), 'action_permissions' => $actionPermissions, 'permissions' => $crmPermissionState, 'preferences' => $prefs, 'config' => $crmConfig, 'module_settings' => $moduleSettings, 'users' => $customerFilterUsers, 'user' => ['id' => $user['id'], 'name' => $user['username'], 'real_name' => $user['real_name'] ?? '', 'english_name' => $user['english_name'] ?? '', 'department_name' => $user['department_name'] ?? '', 'role_name' => $user['role_name'] ?? '', 'position' => $user['position'] ?? '', 'email' => $user['email'] ?? '', 'phone' => $user['phone'] ?? '', 'is_super_admin' => is_super_admin()]], JSON_UNESCAPED_UNICODE) ?>;
   </script>
-  <?php $crmAssetBuild = 'sample-row-actions-20260802-1'; ?>
+  <?php $crmAssetBuild = 'ai-center-workbench-20260802-1'; ?>
   <script src="assets/crm/modules.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/modules.js') ?>"></script>
   <script src="assets/crm/preferences.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/preferences.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>
