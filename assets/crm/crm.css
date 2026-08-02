@@ -29444,6 +29444,182 @@ body.is-ai-module .crm-actionbar.is-collapsed .crm-actionbar-head {
   background: #2563eb !important;
   color: #ffffff !important;
 }
+.radar-task-detail-v2 .radar-task-detail-hero-v2 > strong {
+  background: linear-gradient(135deg, #2563eb, #0f172a);
+  font-size: 22px;
+}
+.radar-task-detail-kpis-v2 {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.radar-task-detail-kpis-v2 article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dbe7f7;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgb(15 23 42 / .06);
+  padding: 13px;
+}
+.radar-task-detail-kpis-v2 span,
+.radar-task-detail-kpis-v2 em {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radar-task-detail-kpis-v2 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 1000;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radar-task-detail-grid-v2 {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr) !important;
+}
+.radar-task-detail-facts-v2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.radar-task-detail-facts-v2 article {
+  min-width: 0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.radar-task-detail-facts-v2 b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radar-task-mini-table-v2,
+.radar-task-result-list-v2,
+.radar-task-log-list-v2 {
+  min-width: 0;
+  overflow-x: hidden;
+}
+.radar-task-mini-table-v2 table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.radar-task-mini-table-v2 th,
+.radar-task-mini-table-v2 td {
+  min-width: 0;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 6px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radar-task-mini-table-v2 th {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+}
+.radar-task-mini-table-v2 em {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #2563eb;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+.radar-task-result-list-v2,
+.radar-task-log-list-v2 {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.radar-task-result-list-v2 article {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px 76px 48px minmax(120px, .4fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px;
+}
+.radar-task-result-list-v2 div,
+.radar-task-log-list-v2 article {
+  min-width: 0;
+}
+.radar-task-result-list-v2 strong,
+.radar-task-result-list-v2 span,
+.radar-task-result-list-v2 p,
+.radar-task-log-list-v2 strong,
+.radar-task-log-list-v2 span,
+.radar-task-log-list-v2 em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radar-task-result-list-v2 strong,
+.radar-task-log-list-v2 strong {
+  display: block;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 1000;
+}
+.radar-task-result-list-v2 span,
+.radar-task-result-list-v2 p,
+.radar-task-log-list-v2 span {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.radar-task-result-list-v2 a {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 950;
+  text-decoration: none;
+}
+.radar-task-result-list-v2 em,
+.radar-task-result-list-v2 small,
+.radar-task-log-list-v2 em {
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #2563eb;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+  text-align: center;
+}
+.radar-task-log-list-v2 article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, .6fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px;
+}
 @media (max-width: 780px) {
   .crm-modal.ai-dialog .ai-dialog-panel,
   .radar-drawer {
@@ -29462,6 +29638,8 @@ body.is-ai-module .crm-actionbar.is-collapsed .crm-actionbar-head {
   }
   .radar-task-editor-hero-v2,
   .radar-task-editor-grid-v2,
+  .radar-task-detail-kpis-v2,
+  .radar-task-detail-grid-v2,
   .radar-task-form-grid-v2,
   .radar-task-country-grid-v2,
   .radar-task-model-grid-v2 {
@@ -29469,5 +29647,10 @@ body.is-ai-module .crm-actionbar.is-collapsed .crm-actionbar-head {
   }
   .radar-task-editor-hero-v2 > strong {
     display: none;
+  }
+  .radar-task-result-list-v2 article,
+  .radar-task-log-list-v2 article {
+    grid-template-columns: 1fr !important;
+    align-items: start;
   }
 }
