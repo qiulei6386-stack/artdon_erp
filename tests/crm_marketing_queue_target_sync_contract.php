@@ -33,9 +33,21 @@ if ($executionStart === false || $executionEnd === false || $executionEnd <= $ex
     throw new RuntimeException('Promotion execution center function boundary is missing');
 }
 $execution = substr($js, $executionStart, $executionEnd - $executionStart);
-foreach (['var reportTaskIds = tasks.slice(0, 12).map', 'reportTaskIds.unshift(selectedTaskId)', 'self.ensureTaskReport(taskId)', 'var executionSummary = report.execution_summary || {};', '成功 \' + esc(successText(mailSummary, mailRows)) + \' / 跳过 '] as $marker) {
+foreach (['var reportTaskIds = tasks.slice(0, 12).map', 'reportTaskIds.unshift(selectedTaskId)', 'self.ensureTaskReport(taskId)'] as $marker) {
     if (!str_contains($execution, $marker)) {
         throw new RuntimeException("Promotion execution center selected-task queue marker missing: {$marker}");
+    }
+}
+
+$reportStart = strpos($js, 'taskExecutionReportHtml: function (task)');
+$reportEnd = strpos($js, 'renderTaskProperties: function ()', $reportStart === false ? 0 : $reportStart);
+if ($reportStart === false || $reportEnd === false || $reportEnd <= $reportStart) {
+    throw new RuntimeException('Promotion task execution report function boundary is missing');
+}
+$report = substr($js, $reportStart, $reportEnd - $reportStart);
+foreach (['var executionSummary = report.execution_summary || {};', '成功 \' + esc(successText(mailSummary, mailRows)) + \' / 跳过 '] as $marker) {
+    if (!str_contains($report, $marker)) {
+        throw new RuntimeException("Promotion task execution summary marker missing: {$marker}");
     }
 }
 
