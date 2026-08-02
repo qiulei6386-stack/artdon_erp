@@ -2314,13 +2314,16 @@ function crm_marketing_compact_queue_bodies(int $taskId = 0, int $limit = 500): 
 {
     crm_marketing_ensure_tables();
     $limit = max(1, min(2000, $limit));
-    $where = ["COALESCE(q.body, '') <> ''"];
+    $where = ["(COALESCE(q.body, '') <> '' OR (q.send_status = 'sent' AND q.body_ref_id IS NOT NULL AND COALESCE(t.mail_body_html, '') <> ''))"];
     $params = [];
     if ($taskId > 0) {
         $where[] = 'q.task_id = ?';
         $params[] = $taskId;
     }
-    $stmt = db()->prepare('SELECT q.id, q.task_id, q.body FROM crm_marketing_send_queue q WHERE ' . implode(' AND ', $where) . " ORDER BY q.id ASC LIMIT {$limit}");
+    $stmt = db()->prepare('SELECT q.id, q.task_id, q.send_status, q.body, t.mail_body_html
+        FROM crm_marketing_send_queue q
+        LEFT JOIN crm_marketing_tasks t ON t.id = q.task_id
+        WHERE ' . implode(' AND ', $where) . " ORDER BY q.id ASC LIMIT {$limit}");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
     $update = db()->prepare("UPDATE crm_marketing_send_queue SET body_ref_id = ?, body = '', updated_at = NOW() WHERE id = ?");
@@ -2329,19 +2332,33 @@ function crm_marketing_compact_queue_bodies(int $taskId = 0, int $limit = 500): 
     $bodyRefs = [];
     foreach ($rows as $row) {
         $body = (string)($row['body'] ?? '');
-        if ($body === '') continue;
+        $sentWithTaskBody = (string)($row['send_status'] ?? '') === 'sent' && trim((string)($row['mail_body_html'] ?? '')) !== '';
+        if ($body === '' && !$sentWithTaskBody) continue;
+        $bodyForStorage = $body;
+        if ($sentWithTaskBody) {
+            $bodyForStorage = (string)$row['mail_body_html'];
+        }
         $bytesBefore += strlen($body);
-        $bodyRefId = crm_marketing_queue_body_store((int)$row['task_id'], $body);
+        $bodyRefId = crm_marketing_queue_body_store((int)$row['task_id'], $bodyForStorage);
         if ($bodyRefId <= 0) continue;
         $update->execute([$bodyRefId, (int)$row['id']]);
         $compacted += $update->rowCount();
         $bodyRefs[$bodyRefId] = true;
     }
+    $deleteWhere = ['NOT EXISTS (SELECT 1 FROM crm_marketing_send_queue q WHERE q.body_ref_id = b.id)'];
+    $deleteParams = [];
+    if ($taskId > 0) {
+        $deleteWhere[] = 'b.task_id = ?';
+        $deleteParams[] = $taskId;
+    }
+    $delete = db()->prepare('DELETE FROM crm_marketing_queue_bodies b WHERE ' . implode(' AND ', $deleteWhere));
+    $delete->execute($deleteParams);
     return [
         'scanned' => count($rows),
         'compacted' => $compacted,
         'body_refs' => count($bodyRefs),
         'bytes_before' => $bytesBefore,
+        'orphan_bodies_deleted' => $delete->rowCount(),
     ];
 }
 
