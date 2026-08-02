@@ -24845,3 +24845,28 @@ body.is-tasks-module .action_command {
   .promo-project-detail-fold > summary { align-items: flex-start; flex-wrap: wrap; padding: 11px 12px; }
   .promo-project-detail-fold > summary em { width: calc(100% - 30px); margin-left: 30px; text-align: left; }
 }
+
+/* Manual promotion execution uses one outer modal scrollbar. */
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog {
+  display: block !important;
+  height: auto !important;
+  max-height: min(88vh, calc(100vh - 32px)) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog > .promo-business-head,
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog > .promo-business-foot {
+  position: static !important;
+}
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog > .promo-business-body {
+  min-height: auto !important;
+  overflow: visible !important;
+}
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog .promo-manual-table-card,
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog .promo-manual-done-table,
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog .promo-manual-table-wrap {
+  overflow: visible !important;
+}
+.promo-business-shell.promo-visit-style.promo-manual-execution-dialog .promo-manual-table-wrap {
+  max-height: none !important;
+}

@@ -13243,7 +13243,8 @@
       var modal = this.ensureDialog();
       var title = options.title || '推广中心';
       var description = options.description || '执行推广业务操作。';
-      modal.innerHTML = '<form method="dialog" class="promo-business-shell crm-modal-panel promo-visit-style">' +
+      var dialogClass = options.dialogClass ? (' ' + String(options.dialogClass).replace(/[^\w\s-]/g, '').trim()) : '';
+      modal.innerHTML = '<form method="dialog" class="promo-business-shell crm-modal-panel promo-visit-style' + dialogClass + '">' +
         '<header class="promo-business-head crm-modal-header"><div><strong class="crm-modal-title">' + esc(title) + '</strong><span class="crm-modal-subtitle">' + esc(description) + '</span></div><button type="button" class="crm-modal-close" data-promo-dialog-close>关闭</button></header>' +
         '<main class="promo-business-body crm-modal-body">' + (options.body || '') + '</main>' +
         '<footer class="promo-business-foot crm-modal-footer"><span>' + esc(options.hint || '操作会写入推广任务、目标和执行日志。') + '</span><div>' + (options.actions || '<button type="button" data-promo-dialog-close>完成</button>') + '</div></footer>' +
@@ -17813,6 +17814,7 @@
           return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(renderManualName(row)) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(row.executor_name || '-') + '</td><td>' + esc(row.manual_checked_by_name || row.operator_name || '-') + '</td><td>' + esc(String(row.executed_at || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || '-') + '</td><td><button type="button" class="promo-manual-undo" data-promo-manual-undo="' + esc(row.id) + '">取消执行</button></td></tr>';
         }).join('') : '<tr><td colspan="8">暂无已勾选记录。</td></tr>';
         self.openDialog({
+          dialogClass: 'promo-manual-execution-dialog',
           title: '手动执行推广',
           description: task.task_name + ' · 勾选即记录完成时间、执行负责人和打勾账号',
           body: '<section class="promo-preview-grid promo-manual-summary"><button type="button" class="is-active" data-promo-manual-filter="all"><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></button><button type="button" data-promo-manual-filter="group"><strong>' + esc(groupTargets.length) + '</strong><span>群推广</span></button><button type="button" data-promo-manual-filter="wechat_group"><strong>' + esc(wechatGroupCount) + '</strong><span>微信群</span></button><button type="button" data-promo-manual-filter="whatsapp_group"><strong>' + esc(whatsappGroupCount) + '</strong><span>WhatsApp群</span></button><button type="button" data-promo-manual-filter="email"><strong>' + esc(emailFallbackCount) + '</strong><span>邮件转人工</span></button></section>' +
