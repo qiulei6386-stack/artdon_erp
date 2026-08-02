@@ -1781,7 +1781,39 @@ function crm_sample_shipment_detail(int $id): array
     $stmt->execute([$id]);
     $row = $stmt->fetch();
     if (!$row) throw new RuntimeException('样品寄送记录不存在或无权查看。');
-    return ['shipment' => $row, 'files' => crm_sample_files($id), 'logs' => crm_sample_logs($id)];
+    return ['shipment' => $row, 'files' => crm_sample_files($id), 'logs' => crm_sample_logs($id), 'followups' => crm_sample_followups($row)];
+}
+
+function crm_sample_followups(array $shipment): array
+{
+    crm_customer_ensure_tables();
+    $shipmentId = (string)($shipment['id'] ?? '');
+    $customerId = (int)($shipment['customer_id'] ?? 0);
+    if ($shipmentId === '' || $customerId <= 0) return [];
+    $sampleName = trim((string)($shipment['sample_name'] ?? ''));
+    $trackingNo = trim((string)($shipment['tracking_no'] ?? ''));
+    $productModel = trim((string)($shipment['product_model'] ?? ''));
+    $fallback = [];
+    foreach ([$sampleName, $trackingNo, $productModel] as $value) {
+        if ($value !== '') $fallback[] = '%' . $value . '%';
+    }
+    $where = ["(f.source_type='sample_shipment' AND f.source_id=?)"];
+    $params = [$customerId, $shipmentId];
+    foreach ($fallback as $value) {
+        $where[] = "(f.followup_type='样品' AND (f.content LIKE ? OR f.next_plan LIKE ?))";
+        $params[] = $value;
+        $params[] = $value;
+    }
+    $sql = "SELECT f.*, u.username AS creator_name, ct.name AS contact_name, t.id AS task_id, t.status AS task_status, t.due_at AS task_due_at
+        FROM crm_customer_followups f
+        LEFT JOIN crm_users u ON u.id=f.created_by
+        LEFT JOIN crm_contacts ct ON ct.id=f.contact_id
+        LEFT JOIN crm_tasks t ON t.source_type='followup' AND t.source_id=CAST(f.id AS CHAR) AND t.deleted_at IS NULL
+        WHERE f.customer_id=? AND f.deleted_at IS NULL AND (" . implode(' OR ', $where) . ")
+        ORDER BY f.followup_time DESC, f.id DESC LIMIT 30";
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
 }
 
 function crm_sample_files(int $shipmentId): array

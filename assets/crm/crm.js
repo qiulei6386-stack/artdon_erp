@@ -23071,6 +23071,14 @@
         '<section class="task-next-action"><span>下一步动作</span><strong>' + esc(this.quoteNextText(row)) + '</strong></section>' +
         '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></section>';
     },
+    sampleFollowupsHtml: function (rows) {
+      rows = rows || [];
+      if (!rows.length) return '<p>暂无样品跟进记录。点击右侧“创建跟进”后会显示在这里。</p>';
+      return '<div class="sample-followup-list">' + rows.map(function (item) {
+        var taskStatus = item.task_status ? (' · 任务 ' + cnStatus(item.task_status)) : '';
+        return '<article data-sample-followup-id="' + esc(item.id) + '"><header><strong>' + esc(item.creator_name || '-') + '</strong><span>' + esc(item.followup_type || '样品') + ' · ' + esc(String(item.followup_time || '').slice(0, 16)) + taskStatus + '</span></header><p>' + esc(item.content || '-') + '</p>' + (item.next_plan ? '<p><b>下一步：</b>' + esc(item.next_plan) + '</p>' : '') + '<footer><span>提醒：' + esc(String(item.next_remind_time || item.task_due_at || '-').slice(0, 16)) + '</span><nav><button type="button" data-sample-followup-edit="' + esc(item.id) + '">编辑</button><button type="button" class="danger" data-sample-followup-delete="' + esc(item.id) + '">删除</button></nav></footer></article>';
+      }).join('') + '</div>';
+    },
     renderDetail: function () {
       var box = document.querySelector('[data-task-detail]');
       if (!box) return;
@@ -23103,18 +23111,33 @@
     renderSampleDetail: function (row, box) {
       var detail = this.currentDetail && this.currentDetail.shipment && Number(this.currentDetail.shipment.id) === Number(row.id) ? this.currentDetail : null;
       if (detail && detail.shipment) row = Object.assign({}, row, detail.shipment);
-      var files = (detail && detail.files) || [], logs = (detail && detail.logs) || [];
+      var files = (detail && detail.files) || [], logs = (detail && detail.logs) || [], followups = (detail && detail.followups) || [];
       var statuses = this.options.sample_statuses || {}, tracking = row.tracking_no ? '<button type="button" data-copy-tracking="' + esc(row.tracking_no) + '">' + esc(row.tracking_no) + '</button>' : '<b class="danger">未填写单号</b>';
       var node = this.sampleNodeByKey(row, this.selectedSampleNode || this.sampleCurrentNodeKey(row)) || {};
       var nodeRows = this.sampleNodeDetailRows(row, node);
+      var feedback = String(row.feedback_note || '').trim();
       box.innerHTML = '<section class="task-detail-card sample-detail-card"><header><span>样品寄送 · ' + esc(node.label || '当前节点') + '</span><strong>' + esc(row.sample_name || '-') + '</strong><em>' + esc(node.status || statuses[row.status] || row.status || '-') + '</em></header>' +
         '<div class="sample-flow">' + ['preparing','sample_ready','pending_ship','shipped','in_transit','signed','feedback'].map(function (s) { return '<i class="' + (s === row.status ? 'active' : '') + '">' + esc(statuses[s] || s) + '</i>'; }).join('') + '</div>' +
         '<div class="task-detail-grid"><article><span>客户</span><b>' + esc(row.customer_name || '-') + '</b></article><article><span>联系人</span><b>' + esc(row.contact_name || '-') + '</b></article><article><span>国家</span><b>' + esc(row.country || '-') + '</b></article><article><span>型号</span><b>' + esc(row.product_model || '-') + '</b></article><article><span>数量</span><b>' + esc(row.quantity || 0) + ' ' + esc(row.unit || '') + '</b></article><article><span>快递</span><b>' + esc(row.courier_company || '未选择') + '</b></article><article><span>单号</span>' + tracking + '</article><article><span>预计到达</span><b>' + esc(row.expected_arrival_date || '-') + '</b></article></div>' +
         '<div class="task-detail-grid">' + nodeRows.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><b>' + esc(item[1]) + '</b></article>'; }).join('') + '</div>' +
         '<section class="task-next-action"><span>下一步建议</span><strong>' + esc(this.sampleNextText(row)) + '</strong></section>' +
+        '<section class="task-detail-note sample-feedback-note"><span>客户反馈</span>' + (feedback ? '<p>' + esc(feedback) + '</p>' : '<p>暂无客户反馈。点击右侧“填写客户反馈”录入。</p>') + '</section>' +
+        '<section class="task-detail-note sample-followup-note"><span>样品跟进记录（' + esc(followups.length) + '）</span>' + this.sampleFollowupsHtml(followups) + '</section>' +
         '<section class="task-detail-note"><span>图片 / 附件</span><p>' + esc('图片 ' + files.filter(function (f) { return f.file_type === 'image'; }).length + ' · 附件 ' + files.filter(function (f) { return f.file_type === 'attachment'; }).length) + '</p></section>' +
         '<section class="task-detail-note"><span>最近日志</span>' + (logs.length ? logs.slice(0, 5).map(function (log) { return '<p><b>' + esc(log.operator_name || '-') + '</b> · ' + esc(log.action_key || '-') + ' · ' + esc(log.created_at || '') + '</p>'; }).join('') : '<p>暂无样品日志</p>') + '</section>' +
         '<nav class="task-detail-actions">' + this.detailActions().map(function (a) { return TaskCenterModule.actionButton(a); }).join('') + '</nav></section>';
+      box.querySelectorAll('[data-sample-followup-edit]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id = Number(button.getAttribute('data-sample-followup-edit') || 0);
+          if (id) TaskCenterModule.openFollowupTaskDialog({ source_id: id, customer_id: row.customer_id, contact_id: row.contact_id, customer_name: row.customer_name });
+        });
+      });
+      box.querySelectorAll('[data-sample-followup-delete]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id = Number(button.getAttribute('data-sample-followup-delete') || 0);
+          if (id) TaskCenterModule.deleteSampleFollowup(id);
+        });
+      });
     },
     userOptions: function (selected) {
       selected = Number(selected || (state.user || {}).id || 0);
@@ -23559,7 +23582,7 @@
         if (!row.customer_id) return toast('样品寄送没有关联客户。');
         var now = new Date().toISOString().slice(0, 16).replace('T', ' ');
         var content = '样品寄送跟进：' + (row.sample_name || '') + (row.tracking_no ? '，快递单号 ' + row.tracking_no : '');
-        var html = '<div class="visit-workspace-form" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
+        var html = '<div class="visit-workspace-form" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="source_type" value="sample_shipment"><input type="hidden" name="source_id" value="' + esc(row.id || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
           '<section class="visit-work-section"><h3>样品跟进</h3><div class="visit-schedule-grid"><label class="visit-date-card"><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label class="visit-pill-field"><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label></div><div class="visit-note-grid"><label class="wide">跟进内容 *<textarea name="content" rows="4">' + esc(content) + '</textarea></label><label class="wide">下一步计划<textarea name="next_plan" rows="3">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label><label>下次提醒<input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section></div>' +
           '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-followup-save>创建跟进</button></div>';
         CustomerModule.openBusinessDialog('创建样品跟进', html, '保存后会写入客户跟进和任务提醒。', function (dialog) {
@@ -23572,10 +23595,26 @@
             TaskCenterModule.runBusy(button, '正在保存…', function () { return post('followup_create', data).then(function (json) {
               if (!json.success) return toast(json.message || '创建跟进失败');
               CustomerModule.closeDialog(); toast(json.data && json.data.reused ? '这次保存已完成，未重复新增跟进' : (json.message || '跟进已创建'));
-              TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+              TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
             }); });
           });
         });
+      });
+    },
+    deleteSampleFollowup: function (followupId) {
+      if (!followupId) return;
+      openConfirmModal({
+        title: '删除样品跟进',
+        message: '确认删除这条样品跟进记录？',
+        detail: '会软删除客户跟进，并同步删除由该跟进生成的任务提醒；客户时间轴会保留删除日志。',
+        okText: '确认删除',
+        danger: true,
+        onConfirm: function () {
+          post('followup_delete', { followup_id: followupId }).then(function (json) {
+            toast(json.message || '跟进已删除');
+            if (json.success) { TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true }); }
+          });
+        }
       });
     },
     deleteSelectedTask: function () {

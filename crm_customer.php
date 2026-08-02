@@ -461,6 +461,13 @@ function crm_customer_ensure_tables(): void
         KEY idx_follow_time (followup_time),
         UNIQUE KEY uk_followup_request (created_by, request_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    foreach ([
+        ['crm_customer_followups', 'source_type', 'VARCHAR(60) NOT NULL DEFAULT "" AFTER request_token'],
+        ['crm_customer_followups', 'source_id', 'VARCHAR(80) NOT NULL DEFAULT "" AFTER source_type'],
+    ] as $columnDef) {
+        crm_add_column_safe($columnDef[0], $columnDef[1], $columnDef[2]);
+    }
+    crm_add_index_safe('crm_customer_followups', 'idx_follow_source', '(source_type, source_id)');
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_customer_files (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -5008,8 +5015,10 @@ function crm_followup_create(array $input): array
         }
     }
     try {
-        db()->prepare('INSERT INTO crm_customer_followups (customer_id, contact_id, followup_time, followup_type, content, next_plan, next_remind_time, status, request_token, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
-            ->execute([$customerId, (int)($input['contact_id'] ?? 0) ?: null, $followupTime, trim((string)($input['followup_type'] ?? '')) ?: 'other', $content, trim((string)($input['next_plan'] ?? '')), $nextRemind, $status, $requestToken ?: null, $uid, $uid]);
+        $sourceType = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($input['source_type'] ?? ''));
+        $sourceId = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($input['source_id'] ?? ''));
+        db()->prepare('INSERT INTO crm_customer_followups (customer_id, contact_id, followup_time, followup_type, content, next_plan, next_remind_time, status, request_token, source_type, source_id, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
+            ->execute([$customerId, (int)($input['contact_id'] ?? 0) ?: null, $followupTime, trim((string)($input['followup_type'] ?? '')) ?: 'other', $content, trim((string)($input['next_plan'] ?? '')), $nextRemind, $status, $requestToken ?: null, $sourceType, $sourceId, $uid, $uid]);
     } catch (PDOException $e) {
         if ($requestToken === '') throw $e;
         $existing = db()->prepare('SELECT id FROM crm_customer_followups WHERE created_by=? AND request_token=? AND deleted_at IS NULL LIMIT 1');
@@ -5080,10 +5089,12 @@ function crm_followup_update(int $id, array $input): array
         'next_plan' => trim((string)($input['next_plan'] ?? '')),
         'next_remind_time' => $nextRemind,
         'status' => $status,
+        'source_type' => array_key_exists('source_type', $input) ? preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$input['source_type']) : (string)($current['source_type'] ?? ''),
+        'source_id' => array_key_exists('source_id', $input) ? preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)$input['source_id']) : (string)($current['source_id'] ?? ''),
         'updated_by' => current_user()['id'] ?? 0,
     ];
-    db()->prepare('UPDATE crm_customer_followups SET customer_id=?, contact_id=?, followup_time=?, followup_type=?, content=?, next_plan=?, next_remind_time=?, status=?, updated_by=?, updated_at=NOW() WHERE id=?')
-        ->execute([$data['customer_id'], $data['contact_id'], $data['followup_time'], $data['followup_type'], $data['content'], $data['next_plan'], $data['next_remind_time'], $data['status'], $data['updated_by'], $id]);
+    db()->prepare('UPDATE crm_customer_followups SET customer_id=?, contact_id=?, followup_time=?, followup_type=?, content=?, next_plan=?, next_remind_time=?, status=?, source_type=?, source_id=?, updated_by=?, updated_at=NOW() WHERE id=?')
+        ->execute([$data['customer_id'], $data['contact_id'], $data['followup_time'], $data['followup_type'], $data['content'], $data['next_plan'], $data['next_remind_time'], $data['status'], $data['source_type'], $data['source_id'], $data['updated_by'], $id]);
     $after = crm_followup_get($id)['followup'];
     crm_customer_log('followup_update', 'followup', $id, $customerId, $current, $after, '编辑跟进');
     crm_customer_timeline_add($customerId, 'followup_update', '编辑跟进', $content, 'followup', (string)$id);
