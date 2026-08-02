@@ -19764,31 +19764,33 @@
       var item = function (title, desc, control) {
         return '<label><span><strong>' + esc(title) + '</strong><em>' + esc(desc) + '</em></span>' + control + '</label>';
       };
-      box.innerHTML = '<form class="radar-settings-form" data-radar-settings-form>' +
-        '<section><h3>基础设置</h3>' +
+      box.innerHTML = '<section class="radar-settings-workbench-v2"><section class="radar-settings-hero-v2"><div><span>Radar Configuration</span><h3>雷达设置</h3><p>集中管理客户雷达的默认国家、搜索数量、费用上限、任务超时和搜索服务。保存配置不会触发付费 API。</p></div><nav><button type="button" data-radar-open-tasks>搜索任务</button><button type="button" data-radar-service-refresh>刷新服务</button><button type="submit" form="radar-settings-form-main">保存雷达设置</button></nav></section>' +
+        '<section class="radar-settings-summary-v2"><article><span>模块状态</span><strong>' + (Number(basic.module_enabled) ? '已启用' : '已关闭') + '</strong><em>客户雷达入口与建议状态</em></article><article><span>默认国家</span><strong>' + esc(basic.default_country || '-') + '</strong><em>新建任务自动带入</em></article><article><span>默认搜索数</span><strong>' + esc(basic.default_search_count || 20) + '</strong><em>每个任务计划结果</em></article><article><span>Worker</span><strong>' + (Number(task.worker_enabled) ? '运行中' : '关闭') + '</strong><em>Cron / Worker 后台处理</em></article></section>' +
+        '<form id="radar-settings-form-main" class="radar-settings-form radar-settings-form-v2" data-radar-settings-form>' +
+        '<section class="radar-settings-grid-v2"><article class="radar-setting-block-v2"><header><i>B</i><div><strong>基础设置</strong><span>控制新任务默认值和候选客户入池门槛。</span></div></header>' +
         item('模块启用', '关闭后保留页面入口，但不建议启动后台任务。', '<input type="checkbox" name="module_enabled" ' + (Number(basic.module_enabled) ? 'checked' : '') + '>') +
         item('默认国家', '新建搜索任务时自动带入的国家。', '<input name="default_country" value="' + esc(basic.default_country || '') + '">') +
         item('默认搜索数量', '新任务默认计划搜索的结果数量。', '<input type="number" name="default_search_count" value="' + esc(basic.default_search_count || 20) + '">') +
         item('默认最低评分', '后续候选客户分析的默认入池门槛。', '<input type="number" name="default_min_score" value="' + esc(basic.default_min_score || 70) + '">') +
         item('默认每日任务数量', '控制无人值守任务每天最多生成多少轮。', '<input type="number" name="default_daily_tasks" value="' + esc(basic.default_daily_tasks || 5) + '">') +
         item('默认每日候选客户上限', '达到上限后暂停继续发现新候选。', '<input type="number" name="default_daily_candidate_limit" value="' + esc(basic.default_daily_candidate_limit || 100) + '">') +
-        '</section>' +
-        '<section><h3>费用设置</h3>' +
+        '</article>' +
+        '<article class="radar-setting-block-v2"><header><i>C</i><div><strong>费用设置</strong><span>限制 AI、补全和验证相关预算。</span></div></header>' +
         item('每日AI费用上限', '当天累计费用达到上限后自动暂停。', '<input type="number" step="0.01" name="daily_ai_cost_limit" value="' + esc(cost.daily_ai_cost_limit || 0) + '">') +
         item('每月AI费用上限', '月度总费用控制，0 表示不限制。', '<input type="number" step="0.01" name="monthly_ai_cost_limit" value="' + esc(cost.monthly_ai_cost_limit || 0) + '">') +
         item('单任务费用上限', '单个搜索任务可消耗的最高费用。', '<input type="number" step="0.01" name="single_task_cost_limit" value="' + esc(cost.single_task_cost_limit || 0) + '">') +
         item('联系人补全每日上限', '预留给联系人补全接口的每日调用限额。', '<input type="number" name="contact_enrich_daily_limit" value="' + esc(cost.contact_enrich_daily_limit || 0) + '">') +
         item('邮箱验证每日上限', '预留给邮箱验证接口的每日调用限额。', '<input type="number" name="email_verify_daily_limit" value="' + esc(cost.email_verify_daily_limit || 0) + '">') +
-        '</section>' +
-        '<section><h3>任务设置</h3>' +
+        '</article>' +
+        '<article class="radar-setting-block-v2"><header><i>T</i><div><strong>任务设置</strong><span>控制失败重试、分析超时和后台队列开关。</span></div></header>' +
         item('最大失败重试次数', '单个队列任务失败后的自动重试次数。', '<input type="number" name="max_retry_count" value="' + esc(task.max_retry_count || 3) + '">') +
         item('单公司分析超时时间', '单个公司网页分析允许的最长秒数。', '<input type="number" name="company_analysis_timeout" value="' + esc(task.company_analysis_timeout || 60) + '">') +
         item('任务执行超时时间', '主任务超过该时间未完成时释放锁。', '<input type="number" name="task_execution_timeout" value="' + esc(task.task_execution_timeout || 600) + '">') +
         item('Cron安全密钥', '服务器定时执行入口必须携带该密钥。', '<input name="cron_secret" value="' + esc(task.cron_secret || '') + '">') +
         item('后台任务启用', '开启后 Cron/Worker 才会真正处理队列。', '<input type="checkbox" name="worker_enabled" ' + (Number(task.worker_enabled) ? 'checked' : '') + '>') +
-        '</section>' +
+        '</article><aside class="radar-settings-note-v2"><article><strong>保存说明</strong><span>会记录修改人和修改时间，不会连接任何付费 API。</span></article><article><strong>执行保护</strong><span>后台任务只有在 Worker 启用且 Cron 携带安全密钥时才处理队列。</span></article><article><strong>费用保护</strong><span>日/月/单任务上限为 0 时表示不限制。</span></article></aside></section>' +
         '<footer><span>保存会记录修改人和修改时间，不连接任何付费 API。</span><button type="submit">保存雷达设置</button></footer></form>' +
-        '<section class="radar-panel"><div class="radar-toolbar"><div><h3>搜索服务配置</h3><span>Brave Search 可用 service_key=brave，API 地址填 https://api.search.brave.com/res/v1/web/search。</span></div><nav><button type="button" data-radar-service-refresh>刷新</button></nav></div><div data-radar-search-services>' + this.emptyList('正在读取搜索服务', '请稍候') + '</div></section>';
+        '<section class="radar-service-workbench-v2"><header><div><span>Search Provider</span><h3>搜索服务配置</h3><p>Brave Search 可用 service_key=brave，API 地址填 https://api.search.brave.com/res/v1/web/search。</p></div><button type="button" data-radar-service-refresh>刷新</button></header><div class="radar-service-list-v2" data-radar-search-services>' + this.emptyList('正在读取搜索服务', '请稍候') + '</div></section></section>';
       var self = this;
       box.querySelector('[data-radar-settings-form]')?.addEventListener('submit', function (event) {
         event.preventDefault();
@@ -19802,7 +19804,8 @@
           self.renderSettings();
         }).catch(function (error) { toast(error.message || '保存雷达设置失败'); });
       });
-      box.querySelector('[data-radar-service-refresh]')?.addEventListener('click', function () { self.loadSearchServices(); });
+      box.querySelectorAll('[data-radar-service-refresh]').forEach(function (button) { button.addEventListener('click', function () { self.loadSearchServices(); }); });
+      box.querySelector('[data-radar-open-tasks]')?.addEventListener('click', function () { self.switchView('tasks'); });
       this.loadSearchServices();
     },
     loadSearchServices: function () {
@@ -19813,7 +19816,7 @@
         if (!json.success) throw new Error(json.message || '搜索服务读取失败');
         var rows = (json.data || {}).rows || [];
         box.innerHTML = rows.map(function (row) {
-          return '<form class="radar-service-form" data-radar-service-form="' + esc(row.id) + '"><input type="hidden" name="id" value="' + esc(row.id) + '"><label><span>服务Key</span><input name="service_key" value="' + esc(row.service_key || '') + '" placeholder="brave"></label><label><span>服务名称</span><input name="service_name" value="' + esc(row.service_name || '') + '" placeholder="Brave Search"></label><label class="wide"><span>API地址</span><input name="api_url" value="' + esc(row.api_url || '') + '" placeholder="https://api.search.brave.com/res/v1/web/search"></label><label><span>API密钥</span><input name="api_key" placeholder="' + (Number(row.has_api_key) ? '已保存，留空不改' : 'Brave API Key') + '"></label><label><span>每次结果</span><input type="number" name="result_limit" value="' + esc(row.result_limit || 5) + '"></label><label><span>每日上限</span><input type="number" name="daily_limit" value="' + esc(row.daily_limit || 100) + '"></label><label><span>优先级</span><input type="number" name="priority_order" value="' + esc(row.priority_order || 100) + '"></label><label><span>超时秒</span><input type="number" name="timeout_seconds" value="' + esc(row.timeout_seconds || 15) + '"></label><label><span>重试次数</span><input type="number" name="retry_count" value="' + esc(row.retry_count || 2) + '"></label><label><span>单次费用</span><input type="number" step="0.0001" name="cost_per_call" value="' + esc(row.cost_per_call || 0) + '"></label><label class="tag-chip"><input type="checkbox" name="is_enabled" value="1"' + (Number(row.is_enabled) ? ' checked' : '') + '><span>启用</span></label><button type="submit">保存服务</button></form>';
+          return '<form class="radar-service-form radar-service-card-v2" data-radar-service-form="' + esc(row.id) + '"><input type="hidden" name="id" value="' + esc(row.id) + '"><header><div><strong>' + esc(row.service_name || row.service_key || '搜索服务') + '</strong><span>' + esc(row.service_key || '-') + '</span></div><em>' + (Number(row.is_enabled) ? '已启用' : '停用') + '</em></header><div class="radar-service-fields-v2"><label><span>服务Key</span><input name="service_key" value="' + esc(row.service_key || '') + '" placeholder="brave"></label><label><span>服务名称</span><input name="service_name" value="' + esc(row.service_name || '') + '" placeholder="Brave Search"></label><label class="wide"><span>API地址</span><input name="api_url" value="' + esc(row.api_url || '') + '" placeholder="https://api.search.brave.com/res/v1/web/search"></label><label><span>API密钥</span><input name="api_key" placeholder="' + (Number(row.has_api_key) ? '已保存，留空不改' : 'Brave API Key') + '"></label><label><span>每次结果</span><input type="number" name="result_limit" value="' + esc(row.result_limit || 5) + '"></label><label><span>每日上限</span><input type="number" name="daily_limit" value="' + esc(row.daily_limit || 100) + '"></label><label><span>优先级</span><input type="number" name="priority_order" value="' + esc(row.priority_order || 100) + '"></label><label><span>超时秒</span><input type="number" name="timeout_seconds" value="' + esc(row.timeout_seconds || 15) + '"></label><label><span>重试次数</span><input type="number" name="retry_count" value="' + esc(row.retry_count || 2) + '"></label><label><span>单次费用</span><input type="number" step="0.0001" name="cost_per_call" value="' + esc(row.cost_per_call || 0) + '"></label></div><footer><label class="tag-chip"><input type="checkbox" name="is_enabled" value="1"' + (Number(row.is_enabled) ? ' checked' : '') + '><span>启用服务</span></label><button type="submit">保存服务</button></footer></form>';
         }).join('') || self.emptyList('暂无搜索服务', '数据库升级会自动建立一个配置位。');
         box.querySelectorAll('[data-radar-service-form]').forEach(function (form) {
           form.addEventListener('submit', function (event) {

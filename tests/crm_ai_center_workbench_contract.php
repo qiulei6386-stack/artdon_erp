@@ -42,6 +42,14 @@ foreach ([
     'radar-log-list-v2',
     'radar-log-detail-v2',
     'data-radar-log-q',
+    'radar-settings-workbench-v2',
+    'radar-settings-hero-v2',
+    'radar-settings-summary-v2',
+    'radar-settings-grid-v2',
+    'radar-setting-block-v2',
+    'radar-service-workbench-v2',
+    'radar-service-card-v2',
+    'radar-service-fields-v2',
     'ai-main-grid',
     'ai-bottom-grid',
     'renderWorkflow: function',
@@ -118,6 +126,14 @@ foreach ([
     '.radar-log-grid-v2',
     '.radar-log-table-v2',
     '.radar-log-detail-v2',
+    '.radar-settings-workbench-v2',
+    '.radar-settings-hero-v2',
+    '.radar-settings-summary-v2',
+    '.radar-settings-grid-v2',
+    '.radar-setting-block-v2',
+    '.radar-service-workbench-v2',
+    '.radar-service-card-v2',
+    '.radar-service-fields-v2',
     '.ai-home-layout',
     'grid-template-columns: minmax(0, 1fr) 260px;',
     '.ai-home-main',
@@ -170,7 +186,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-settings-workbench-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'radar-settings-workbench-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
