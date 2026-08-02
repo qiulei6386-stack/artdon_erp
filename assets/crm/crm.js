@@ -14493,6 +14493,9 @@
       rows.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
       var mailRows = rows.filter(function (row) { return self.isEmailPromotionChannel(row.channel); });
       var manualRows = rows.filter(function (row) { return !self.isEmailPromotionChannel(row.channel); });
+      var executionSummary = report.execution_summary || {};
+      var mailSummary = executionSummary.mail || {};
+      var manualSummary = executionSummary.manual || {};
       var latestTime = function (list) {
         var row = list.find(function (item) { return item.time; });
         return row ? row.time : '-';
@@ -14502,6 +14505,21 @@
       };
       var failedCount = function (list) {
         return list.filter(function (item) { return String(item.status || '').toLowerCase() === 'failed'; }).length;
+      };
+      var totalText = function (summary, list) {
+        return Number(summary.total || 0) || list.length;
+      };
+      var successText = function (summary, list) {
+        return Number(summary.success || 0) || successCount(list);
+      };
+      var failedText = function (summary, list) {
+        return Number(summary.failed || 0) || failedCount(list);
+      };
+      var skippedText = function (summary, list) {
+        return Number(summary.skipped || 0) || list.filter(function (item) { return String(item.status || '').toLowerCase() === 'skipped'; }).length;
+      };
+      var latestText = function (summary, list) {
+        return summary.latest_time || latestTime(list);
       };
       var renderList = function (list, emptyText) {
         if (!list.length) return '<p class="promo-empty">' + esc(emptyText) + '</p>';
@@ -14513,8 +14531,8 @@
       return '<section class="promo-property-block promo-exec-report"><h3>执行报表</h3>' +
         (loading ? '<p class="promo-empty">正在读取执行报表...</p>' : '') +
         '<div class="promo-exec-report-grid">' +
-          '<article><i>@</i><div><span>邮件执行</span><strong>' + esc(mailRows.length) + ' 条</strong><em>成功 ' + esc(successCount(mailRows)) + ' / 失败 ' + esc(failedCount(mailRows)) + ' · 最近 ' + esc(latestTime(mailRows)) + '</em></div></article>' +
-          '<article><i>✓</i><div><span>手动执行</span><strong>' + esc(manualRows.length) + ' 条</strong><em>成功 ' + esc(successCount(manualRows)) + ' / 失败 ' + esc(failedCount(manualRows)) + ' · 最近 ' + esc(latestTime(manualRows)) + '</em></div></article>' +
+          '<article><i>@</i><div><span>邮件执行</span><strong>' + esc(totalText(mailSummary, mailRows)) + ' 条</strong><em>成功 ' + esc(successText(mailSummary, mailRows)) + ' / 跳过 ' + esc(skippedText(mailSummary, mailRows)) + ' / 失败 ' + esc(failedText(mailSummary, mailRows)) + ' · 最近 ' + esc(latestText(mailSummary, mailRows)) + '</em></div></article>' +
+          '<article><i>✓</i><div><span>手动执行</span><strong>' + esc(totalText(manualSummary, manualRows)) + ' 条</strong><em>成功 ' + esc(successText(manualSummary, manualRows)) + ' / 跳过 ' + esc(skippedText(manualSummary, manualRows)) + ' / 失败 ' + esc(failedText(manualSummary, manualRows)) + ' · 最近 ' + esc(latestText(manualSummary, manualRows)) + '</em></div></article>' +
         '</div>' +
         '<div class="promo-exec-report-columns"><section><header><strong>邮件执行明细</strong><span>显示邮箱推广的执行时间</span></header>' + renderList(mailRows, '暂无邮件执行记录。') + '</section><section><header><strong>手动执行明细</strong><span>微信、电话、拜访等人工触达时间</span></header>' + renderList(manualRows, '暂无手动执行记录。') + '</section></div>' +
         '</section>';

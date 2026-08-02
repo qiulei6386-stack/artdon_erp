@@ -15,6 +15,10 @@ $markers = [
     'if ($next === \'failed\') crm_marketing_update_target_from_queue($row, \'failed\', $e->getMessage());',
     "q.send_status = 'sent'",
     "ml.action_key = 'queue_skipped'",
+    '$limit = $taskId > 0 ? 1000 : 200;',
+    '$limit = $taskId > 0 ? 1000 : 100;',
+    'function crm_marketing_task_execution_summary(int $taskId): array',
+    '\'execution_summary\' => crm_marketing_task_execution_summary($taskId)',
 ];
 
 foreach ($markers as $marker) {
@@ -29,7 +33,7 @@ if ($executionStart === false || $executionEnd === false || $executionEnd <= $ex
     throw new RuntimeException('Promotion execution center function boundary is missing');
 }
 $execution = substr($js, $executionStart, $executionEnd - $executionStart);
-foreach (['var reportTaskIds = tasks.slice(0, 12).map', 'reportTaskIds.unshift(selectedTaskId)', 'self.ensureTaskReport(taskId)'] as $marker) {
+foreach (['var reportTaskIds = tasks.slice(0, 12).map', 'reportTaskIds.unshift(selectedTaskId)', 'self.ensureTaskReport(taskId)', 'var executionSummary = report.execution_summary || {};', '成功 \' + esc(successText(mailSummary, mailRows)) + \' / 跳过 '] as $marker) {
     if (!str_contains($execution, $marker)) {
         throw new RuntimeException("Promotion execution center selected-task queue marker missing: {$marker}");
     }

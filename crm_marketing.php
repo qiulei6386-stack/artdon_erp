@@ -1398,6 +1398,7 @@ function crm_marketing_task_targets(array $input = []): array
         $where[] = 'mt.target_status = ?';
         $params[] = $status;
     }
+    $limit = $taskId > 0 ? 1000 : 200;
     $stmt = db()->prepare("SELECT mt.*, t.task_name, t.task_status, t.campaign_type, t.mail_subject,
         c.customer_name, c.customer_code, c.country, c.do_not_contact, c.phone AS customer_phone, c.whatsapp AS customer_whatsapp, c.owner_user_id,
         ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, ct.linkedin, ct.position, ct.is_left,
@@ -1414,7 +1415,7 @@ function crm_marketing_task_targets(array $input = []): array
         LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY FIELD(mt.target_status, 'failed','pending','success'), mt.id DESC
-        LIMIT 200");
+        LIMIT {$limit}");
     $stmt->execute($params);
     return $stmt->fetchAll();
 }
@@ -1430,15 +1431,47 @@ function crm_marketing_logs(array $input = []): array
         $where[] = 'ml.task_id = ?';
         $params[] = $taskId;
     }
+    $limit = $taskId > 0 ? 1000 : 100;
     $stmt = db()->prepare("SELECT ml.*, c.customer_name, ct.name AS contact_name, u.username AS operator_name
         FROM crm_marketing_logs ml
         LEFT JOIN crm_customers c ON c.id = ml.customer_id
         LEFT JOIN crm_contacts ct ON ct.id = ml.contact_id
         LEFT JOIN crm_users u ON u.id = ml.operator_id
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY ml.touched_at DESC, ml.id DESC LIMIT 100");
+        ORDER BY ml.touched_at DESC, ml.id DESC LIMIT {$limit}");
     $stmt->execute($params);
     return $stmt->fetchAll();
+}
+
+function crm_marketing_task_execution_summary(int $taskId): array
+{
+    crm_marketing_reconcile_task_targets_from_queue($taskId);
+    $summary = [
+        'mail' => ['total' => 0, 'success' => 0, 'failed' => 0, 'skipped' => 0, 'pending' => 0, 'latest_time' => null],
+        'manual' => ['total' => 0, 'success' => 0, 'failed' => 0, 'skipped' => 0, 'pending' => 0, 'latest_time' => null],
+    ];
+    $stmt = db()->prepare("SELECT
+            CASE WHEN LOWER(channel_key) IN ('email','mail','edm') THEN 'mail' ELSE 'manual' END AS mode_key,
+            target_status,
+            COUNT(*) AS total,
+            MAX(executed_at) AS latest_time
+        FROM crm_marketing_task_targets
+        WHERE task_id = ?
+        GROUP BY mode_key, target_status");
+    $stmt->execute([$taskId]);
+    foreach ($stmt->fetchAll() as $row) {
+        $mode = (string)($row['mode_key'] ?? 'manual');
+        $status = (string)($row['target_status'] ?? 'pending');
+        if (!isset($summary[$mode])) continue;
+        $count = (int)($row['total'] ?? 0);
+        $summary[$mode]['total'] += $count;
+        if (isset($summary[$mode][$status])) $summary[$mode][$status] += $count;
+        $latest = $row['latest_time'] ?? null;
+        if ($latest && (!$summary[$mode]['latest_time'] || $latest > $summary[$mode]['latest_time'])) {
+            $summary[$mode]['latest_time'] = $latest;
+        }
+    }
+    return $summary;
 }
 
 function crm_marketing_task_report(array $input = []): array
@@ -1452,6 +1485,7 @@ function crm_marketing_task_report(array $input = []): array
     return [
         'targets' => crm_marketing_task_targets(['task_id' => $taskId]),
         'logs' => crm_marketing_logs(['task_id' => $taskId]),
+        'execution_summary' => crm_marketing_task_execution_summary($taskId),
     ];
 }
 
