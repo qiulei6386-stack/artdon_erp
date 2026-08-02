@@ -2729,7 +2729,7 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
     $task = $taskStmt->fetch();
     if (!$task) throw new RuntimeException('推广任务不存在。');
     $placeholders = implode(',', array_fill(0, count($targetIds), '?'));
-    $manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin'];
+    $manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin', 'email', 'mail', 'edm'];
     $channelPlaceholders = implode(',', array_fill(0, count($manualChannels), '?'));
     $stmt = db()->prepare("SELECT mt.*, c.customer_name, ct.name AS contact_name, cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform
         FROM crm_marketing_task_targets mt

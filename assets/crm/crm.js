@@ -14562,7 +14562,11 @@
       var manualChannels = ['wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin'];
       var normalizeChannel = this.normalizePromotionChannel.bind(this);
       var emailTargets = targets.filter(function (row) { return emailChannels.indexOf(normalizeChannel(row.channel_key || task.channel_key || '')) >= 0; });
-      var manualTargets = targets.filter(function (row) { return manualChannels.indexOf(normalizeChannel(row.channel_key || task.channel_key || '')) >= 0; });
+      var manualTargets = targets.filter(function (row) {
+        var channel = normalizeChannel(row.channel_key || task.channel_key || '');
+        var status = String(row.target_status || '').toLowerCase();
+        return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
+      });
       var hasLoadedTargets = targets.length > 0;
       var taskChannel = normalizeChannel(task.channel_key || task.campaign_type || '');
       var rawEmailTargetCount = hasLoadedTargets ? emailTargets.length : (emailChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0);
@@ -14684,8 +14688,11 @@
         box.innerHTML = '<section class="promo-exec-stat-grid">' + statHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>计划发送时间</th><th>客户当地时间</th><th>状态</th><th>失败原因</th></tr></thead><tbody>' + body + '</tbody></table></div>';
       } else if (tab === 'manual') {
         var manualChannels = ['wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin'];
+        var emailChannels = ['email','mail','edm'];
         var targets = ((this.data && this.data.targets) || []).filter(function (row) {
-          return manualChannels.indexOf(self.normalizePromotionChannel(row.channel_key || '')) >= 0 || row.chat_group_id;
+          var channel = self.normalizePromotionChannel(row.channel_key || '');
+          var status = String(row.target_status || '').toLowerCase();
+          return manualChannels.indexOf(channel) >= 0 || row.chat_group_id || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
         });
         var nowTs = Date.now();
         targets = targets.map(function (row) {
@@ -17717,10 +17724,17 @@
         if (!json.success) throw new Error(json.message || '手动执行清单加载失败');
         var targets = ((json.data || {}).targets || []);
         var manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin'];
+        var emailChannels = ['email', 'mail', 'edm'];
         var manualTargets = targets.filter(function (row) {
-          return manualChannels.indexOf(String(row.channel_key || '').toLowerCase()) >= 0;
+          var channel = self.normalizePromotionChannel(row.channel_key || '');
+          var status = String(row.target_status || '').toLowerCase();
+          return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0);
         });
-        var pending = manualTargets.filter(function (row) { return ['pending','failed'].indexOf(row.target_status) >= 0; });
+        var pending = manualTargets.filter(function (row) {
+          var status = String(row.target_status || '').toLowerCase();
+          var channel = self.normalizePromotionChannel(row.channel_key || '');
+          return ['pending','failed'].indexOf(status) >= 0 || (emailChannels.indexOf(channel) >= 0 && status === 'skipped');
+        });
         var done = manualTargets.filter(function (row) { return row.target_status === 'success'; });
         var sendRule = {};
         try { sendRule = JSON.parse(task.send_rule_json || '{}') || {}; } catch (error) {}
@@ -17735,8 +17749,12 @@
         };
         var pendingHtml = pending.length ? pending.map(function (row, index) {
           var isGroup = row.chat_group_name || row.chat_group_id;
+          var channel = self.normalizePromotionChannel(row.channel_key || '');
+          var isMailFollowup = emailChannels.indexOf(channel) >= 0;
           var title = isGroup ? (row.chat_group_name || ('客户群 #' + row.chat_group_id)) : (row.contact_name || row.customer_name || '客户级目标');
-          var detail = isGroup ? ('客户：' + (row.customer_name || '-') + ' · 群负责人：' + (row.chat_group_owner || '-') + ' · ' + cnChannel(row.chat_group_platform || row.channel_key || '-')) : ((row.customer_name || '-') + ' · ' + cnChannel(row.channel_key || '-'));
+          var mailHint = isMailFollowup ? (' · 邮件未自动触达：' + (row.failure_reason || cnStatus(row.target_status || '-'))) : '';
+          var contactHint = isMailFollowup && row.email ? (' · ' + row.email) : '';
+          var detail = isGroup ? ('客户：' + (row.customer_name || '-') + ' · 群负责人：' + (row.chat_group_owner || '-') + ' · ' + cnChannel(row.chat_group_platform || row.channel_key || '-')) : ((row.customer_name || '-') + contactHint + ' · ' + cnChannel(isMailFollowup ? 'offline' : (row.channel_key || '-')) + mailHint);
           return '<label class="promo-check-row promo-manual-target-row' + (isGroup ? ' is-group-target' : '') + '"><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"><span><strong>' + esc(title) + '</strong><em>' + esc(detail) + ' · 手动执行：' + esc(ownerName(index)) + '</em></span></label>';
         }).join('') : '<p class="promo-empty">当前任务没有待手动执行目标。</p>';
         var doneHtml = done.length ? '<section class="promo-manual-done"><strong>已执行</strong>' + done.slice(0, 30).map(function (row) {
@@ -20677,7 +20695,7 @@
       '手动执行': {
         empty: '当前没有可手动执行的推广任务。',
         button: '手动执行',
-        filter: function (row) { return ['pending','running','partial_failed','paused'].indexOf(row.task_status) >= 0; },
+        filter: function (row) { return ['pending','running','partial_failed','paused','completed','failed','manual_pending'].indexOf(row.task_status) >= 0; },
         run: function (taskId) { PromotionModule.openManualExecutionDialog(taskId); }
       },
       '查看推广目标': {

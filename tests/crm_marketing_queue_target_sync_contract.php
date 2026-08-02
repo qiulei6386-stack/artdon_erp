@@ -19,6 +19,7 @@ $markers = [
     '$limit = $taskId > 0 ? 1000 : 100;',
     'function crm_marketing_task_execution_summary(int $taskId): array',
     '\'execution_summary\' => crm_marketing_task_execution_summary($taskId)',
+    "'wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin', 'email', 'mail', 'edm'",
 ];
 
 foreach ($markers as $marker) {
@@ -61,6 +62,21 @@ foreach (['var taskCompletedCount = taskSuccessCount + taskFailedCount;', "('已
     if (!str_contains($properties, $marker)) {
         throw new RuntimeException("Promotion task properties fallback marker missing: {$marker}");
     }
+}
+
+$manualStart = strpos($js, 'openManualExecutionDialog: function (taskId)');
+$manualEnd = strpos($js, 'openStatusDialog: function', $manualStart === false ? 0 : $manualStart);
+if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart) {
+    throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
+}
+$manual = substr($js, $manualStart, $manualEnd - $manualStart);
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达：'] as $marker) {
+    if (!str_contains($manual, $marker)) {
+        throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
+    }
+}
+if (!str_contains($js, "['pending','running','partial_failed','paused','completed','failed','manual_pending'].indexOf(row.task_status) >= 0")) {
+    throw new RuntimeException('Promotion manual execution action must include completed email tasks');
 }
 
 echo "crm_marketing_queue_target_sync_contract: OK\n";
