@@ -24847,12 +24847,15 @@ body.is-tasks-module .action_command {
 }
 
 /* Manual promotion execution uses one outer modal scrollbar. */
+.promo-business-dialog.promo-manual-execution-modal {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
 .promo-business-shell.promo-visit-style.promo-manual-execution-dialog {
   display: block !important;
   height: auto !important;
-  max-height: min(88vh, calc(100vh - 32px)) !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 .promo-business-shell.promo-visit-style.promo-manual-execution-dialog > .promo-business-head,
 .promo-business-shell.promo-visit-style.promo-manual-execution-dialog > .promo-business-foot {
