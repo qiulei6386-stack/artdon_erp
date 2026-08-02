@@ -1051,6 +1051,10 @@ try {
         require_csrf();
         api_response(true, '手动执行已记录', crm_marketing_manual_execute($_POST, $_FILES));
     }
+    if ($action === 'marketing_manual_unexecute') {
+        require_csrf();
+        api_response(true, '手动执行已取消', crm_marketing_manual_unexecute($_POST));
+    }
     if ($action === 'marketing_task_targets') {
         api_response(true, '', ['targets' => crm_marketing_task_targets($_POST)]);
     }

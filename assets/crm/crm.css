@@ -13285,8 +13285,8 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 800;
 }
 .promo-manual-table-wrap {
-  max-height: min(48vh, 520px);
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 .promo-manual-table {
   width: 100%;
@@ -13345,6 +13345,21 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-primary);
   font-size: 12px;
   font-weight: 850;
+}
+.promo-manual-undo {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--crm-border));
+  border-radius: 7px;
+  background: color-mix(in srgb, #ef4444 8%, var(--crm-card-bg));
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.promo-manual-undo:disabled {
+  cursor: wait;
+  opacity: .72;
 }
 .promo-manual-done-table {
   margin-top: 10px;

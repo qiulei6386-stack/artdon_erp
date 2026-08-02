@@ -3054,6 +3054,60 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
     return ['checked_count' => count($targets), 'tasks' => crm_marketing_tasks(), 'logs' => crm_marketing_logs(), 'targets' => crm_marketing_task_targets(['task_id' => $taskId]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'analytics' => crm_can('promotion.analytics') ? crm_marketing_analytics() : []];
 }
 
+function crm_marketing_manual_unexecute(array $input): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.execute');
+    $taskId = (int)($input['task_id'] ?? 0);
+    $targetId = (int)($input['target_id'] ?? 0);
+    if ($taskId <= 0 || $targetId <= 0) throw new RuntimeException('请选择要取消的人工执行记录。');
+    $stmt = db()->prepare("SELECT mt.*, t.task_name, c.customer_name, ct.name AS contact_name, cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform
+        FROM crm_marketing_task_targets mt
+        JOIN crm_marketing_tasks t ON t.id = mt.task_id
+        JOIN crm_customers c ON c.id = mt.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id
+        LEFT JOIN crm_customer_chat_groups cg ON cg.id = mt.chat_group_id
+        WHERE mt.task_id = ? AND mt.id = ? AND mt.target_status = 'success'
+        LIMIT 1");
+    $stmt->execute([$taskId, $targetId]);
+    $target = $stmt->fetch();
+    if (!$target) throw new RuntimeException('没有可取消的已执行记录。');
+    $channel = crm_marketing_normalize_channel((string)($target['channel_key'] ?? ''));
+    $failureReason = '';
+    if (in_array($channel, ['email', 'mail', 'edm'], true)) {
+        $failureReason = '邮件无收件邮箱，转人工执行';
+    } elseif (!empty($target['chat_group_id']) || in_array($channel, ['wechat_group', 'whatsapp_group'], true)) {
+        $failureReason = '邮件无收件邮箱，转群人工执行';
+    }
+    db()->prepare('UPDATE crm_marketing_task_targets
+        SET target_status = "pending", failure_reason = ?, manual_result = NULL, manual_remark = NULL, manual_attachment_json = NULL, manual_checked_by_user_id = NULL, executed_at = NULL
+        WHERE id = ?')
+        ->execute([$failureReason, $targetId]);
+    $detail = [
+        'target_id' => $targetId,
+        'task_name' => $target['task_name'],
+        'previous_manual_result' => $target['manual_result'] ?? '',
+        'previous_executed_at' => $target['executed_at'] ?? '',
+        'chat_group_id' => $target['chat_group_id'] ? (int)$target['chat_group_id'] : null,
+        'chat_group_name' => $target['chat_group_name'] ?? '',
+        'chat_group_platform' => $target['chat_group_platform'] ?? '',
+    ];
+    db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, ?, "manual_execute_cancel", "pending", ?, ?, ?, NOW(), NOW())')
+        ->execute([$taskId, (int)$target['customer_id'], $target['contact_id'] ? (int)$target['contact_id'] : null, (string)$target['channel_key'], '取消人工执行，恢复待执行', current_user()['id'] ?? null, json_encode($detail, JSON_UNESCAPED_UNICODE)]);
+    $countStmt = db()->prepare("SELECT
+        SUM(target_status = 'success') success_count,
+        SUM(target_status = 'failed') failed_count,
+        SUM(target_status = 'pending') remaining_count
+        FROM crm_marketing_task_targets WHERE task_id = ?");
+    $countStmt->execute([$taskId]);
+    $counts = $countStmt->fetch() ?: ['success_count' => 0, 'failed_count' => 0, 'remaining_count' => 0];
+    $nextStatus = ((int)($counts['remaining_count'] ?? 0) === 0) ? (((int)($counts['failed_count'] ?? 0) > 0) ? 'partial_failed' : 'completed') : 'manual_pending';
+    db()->prepare('UPDATE crm_marketing_tasks SET success_count = ?, failed_count = ?, task_status = ?, updated_at = NOW() WHERE id = ?')
+        ->execute([(int)($counts['success_count'] ?? 0), (int)($counts['failed_count'] ?? 0), $nextStatus, $taskId]);
+    crm_log_event('promotion', 'manual_execute_cancel', 'marketing_task', (string)$taskId, null, ['target_id' => $targetId]);
+    return ['cancelled_id' => $targetId, 'tasks' => crm_marketing_tasks(), 'logs' => crm_marketing_logs(), 'targets' => crm_marketing_task_targets(['task_id' => $taskId]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'analytics' => crm_can('promotion.analytics') ? crm_marketing_analytics() : []];
+}
+
 function crm_marketing_log_touch(array $input): array
 {
     crm_marketing_ensure_tables();

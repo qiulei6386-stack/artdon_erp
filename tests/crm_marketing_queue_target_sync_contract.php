@@ -1,9 +1,10 @@
 <?php
 $root = dirname(__DIR__);
 $php = file_get_contents($root . '/crm_marketing.php');
+$api = file_get_contents($root . '/crm_api.php');
 $js = file_get_contents($root . '/assets/crm/crm.js');
 $css = file_get_contents($root . '/assets/crm/crm.css');
-if ($php === false || $js === false || $css === false) {
+if ($php === false || $api === false || $js === false || $css === false) {
     throw new RuntimeException('Promotion queue target sync sources are not readable');
 }
 
@@ -34,6 +35,8 @@ $markers = [
     'q.sender_user_id, q.sender_email, q.receiver_email, q.subject',
     'manual_checked_by_user_id',
     'COALESCE(chk.real_name, chk.username) AS manual_checked_by_name',
+    'function crm_marketing_manual_unexecute',
+    'manual_execute_cancel',
     'crm_marketing_queue_bodies',
     'body_ref_id',
     'function crm_marketing_queue_body_store',
@@ -43,6 +46,11 @@ $markers = [
 foreach ($markers as $marker) {
     if (!str_contains($php, $marker)) {
         throw new RuntimeException("Marketing queue target sync marker missing: {$marker}");
+    }
+}
+foreach (["\$action === 'marketing_manual_unexecute'", 'crm_marketing_manual_unexecute($_POST)'] as $marker) {
+    if (!str_contains($api, $marker)) {
+        throw new RuntimeException("Promotion manual undo API marker missing: {$marker}");
     }
 }
 
@@ -88,12 +96,12 @@ if ($manualStart === false || $manualEnd === false || $manualEnd <= $manualStart
     throw new RuntimeException('Promotion manual execution dialog function boundary is missing');
 }
 $manual = substr($js, $manualStart, $manualEnd - $manualStart);
-foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', "emailChannels.indexOf(channel) >= 0 && ['pending','failed','skipped'].indexOf(status) >= 0", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', 'data-promo-manual-filter="group"', 'data-promo-manual-filter="wechat_group"', 'data-promo-manual-filter="whatsapp_group"', 'data-promo-manual-filter="email"', '批量勾选当前筛选', '勾选即记录', 'data-promo-manual-empty', 'visibleCheckboxes', 'runImmediateExecute', "post('marketing_manual_execute'", 'self.openManualExecutionDialog(task.id)', '<span>群推广</span>', '<span>微信群</span>', '<span>WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name'] as $marker) {
+foreach (['var emailChannels = [\'email\', \'mail\', \'edm\'];', 'isManualCheckedEmail', "emailChannels.indexOf(channel) >= 0 && (['pending','failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail)", '邮件未自动触达', 'row.chat_group_name || row.manual_group_name || row.chat_group_id', 'row.chat_group_name || row.manual_group_name || (\'客户群 #\' + row.chat_group_id)', 'collapseEmailFollowupsWithGroupTargets', 'isGroupPromotionChannel(a.channel_key)', 'promo-manual-group-badge', 'data-promo-manual-filter="group"', 'data-promo-manual-filter="wechat_group"', 'data-promo-manual-filter="whatsapp_group"', 'data-promo-manual-filter="email"', '批量勾选当前筛选', '勾选即记录', 'data-promo-manual-empty', 'visibleCheckboxes', 'runImmediateExecute', "post('marketing_manual_execute'", "post('marketing_manual_unexecute'", 'data-promo-manual-undo', '取消执行', 'self.openManualExecutionDialog(task.id)', '<span>群推广</span>', '<span>微信群</span>', '<span>WhatsApp群</span>', '<span>邮件转人工</span>', 'promo-manual-table', 'data-promo-manual-select-all', 'manual_checked_by_name'] as $marker) {
     if (!str_contains($manual, $marker)) {
         throw new RuntimeException("Promotion manual execution email fallback marker missing: {$marker}");
     }
 }
-foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table-wrap', '.promo-manual-table tr.is-overdue', '.promo-manual-table tr.is-group-target', '.promo-manual-group-badge', '.promo-manual-summary button', '.promo-manual-summary button.is-active'] as $marker) {
+foreach (['.promo-manual-table-card', '.promo-manual-note', '.promo-manual-table-wrap', 'max-height: none;', 'overflow: visible;', '.promo-manual-table tr.is-overdue', '.promo-manual-table tr.is-group-target', '.promo-manual-group-badge', '.promo-manual-undo', '.promo-manual-summary button', '.promo-manual-summary button.is-active'] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Promotion manual execution layout style missing: {$marker}");
     }
