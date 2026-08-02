@@ -23473,10 +23473,16 @@
         var tip = kind === 'excel' ? 'Excel 文件当前请下载查看。' : (kind === 'word' ? 'Word 文件当前请下载查看。' : (kind === 'archive' ? '压缩包不在线展开，请下载查看。' : '此格式当前不支持在线预览，请下载查看。'));
         body = '<div class="visit-preview-fallback"><strong>' + esc(name) + '</strong><span>' + esc(tip) + '</span><a href="' + esc(downloadUrl) + '">下载文件</a></div>';
       }
+      document.querySelector('[data-crm-file-preview-layer]')?.remove();
       var node = document.createElement('div');
       node.innerHTML = '<div class="visit-preview-layer" data-crm-file-preview-layer><div><header><strong>' + esc(name) + '</strong><button type="button" data-crm-file-preview-close>关闭</button></header>' + body + '<p><a href="' + esc(downloadUrl) + '">下载</a> · 图片、PDF、文本支持在线预览，Office/压缩包请下载查看。</p></div></div>';
-      document.body.appendChild(node.firstChild);
-      document.querySelector('[data-crm-file-preview-close]')?.addEventListener('click', function () { document.querySelector('[data-crm-file-preview-layer]')?.remove(); });
+      var layer = node.firstChild;
+      document.body.appendChild(layer);
+      var close = function () { layer.remove(); document.removeEventListener('keydown', onKey); };
+      var onKey = function (event) { if (event.key === 'Escape') close(); };
+      layer.querySelector('[data-crm-file-preview-close]')?.addEventListener('click', close);
+      layer.addEventListener('click', function (event) { if (event.target === layer) close(); });
+      document.addEventListener('keydown', onKey);
     },
     sampleFileKind: function (file) {
       return this.filePreviewKind(file);

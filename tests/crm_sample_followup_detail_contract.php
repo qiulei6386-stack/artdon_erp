@@ -61,6 +61,9 @@ foreach ([
     'uploadSampleFiles',
     'copySampleFileLink',
     'data-sample-copy-file',
+    "document.querySelector('[data-crm-file-preview-layer]')?.remove();",
+    "if (event.target === layer) close();",
+    "if (event.key === 'Escape') close();",
     "dialog.addEventListener('paste'",
     'sample-row-tools',
     "var rowTools = ['编辑寄送信息', '删除样品寄送'];",
@@ -80,6 +83,8 @@ foreach ([
     '.sample-followup-existing .sample-files',
     '.sample-followup-history-panel .sample-followup-list',
     '.quote-flow-card-next .sample-row-tools button[data-task-detail-action="删除样品寄送"]',
+    'z-index: 120000;',
+    '.visit-preview-layer > div',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Sample followup style marker missing in crm.css: {$marker}");
