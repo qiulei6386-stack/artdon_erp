@@ -43,7 +43,7 @@ foreach ([
     "renderGroup({ title: '数据与资料'",
     "renderGroup({ title: '任务与执行'",
     "'线索客户池': 'candidates'",
-    "if (view === 'records') { self.renderKpis(); return self.renderLogs(); }",
+    "if (view === 'records') { if (kpis) kpis.hidden = true; return self.renderLogs(); }",
     "if (view === 'settings') { self.renderKpis(); return self.renderSettings(); }",
     "if (this.view === 'quote') return rows.filter",
     "if (this.view === 'material') return rows.filter",
