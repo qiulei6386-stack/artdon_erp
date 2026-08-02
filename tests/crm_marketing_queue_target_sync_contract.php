@@ -51,4 +51,16 @@ foreach (['var executionSummary = report.execution_summary || {};', '成功 \' +
     }
 }
 
+$propertiesStart = strpos($js, 'renderTaskProperties: function ()');
+$propertiesEnd = strpos($js, 'renderExecutionCenter: function ()', $propertiesStart === false ? 0 : $propertiesStart);
+if ($propertiesStart === false || $propertiesEnd === false || $propertiesEnd <= $propertiesStart) {
+    throw new RuntimeException('Promotion task properties function boundary is missing');
+}
+$properties = substr($js, $propertiesStart, $propertiesEnd - $propertiesStart);
+foreach (['var taskCompletedCount = taskSuccessCount + taskFailedCount;', "('已发送 ' + sentQueue + ' 条邮件')"] as $marker) {
+    if (!str_contains($properties, $marker)) {
+        throw new RuntimeException("Promotion task properties fallback marker missing: {$marker}");
+    }
+}
+
 echo "crm_marketing_queue_target_sync_contract: OK\n";
