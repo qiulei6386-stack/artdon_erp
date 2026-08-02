@@ -23611,11 +23611,13 @@
         var nowDate = new Date();
         var now = new Date(nowDate.getTime() - nowDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16).replace('T', ' ');
         var content = '样品寄送跟进：' + (row.sample_name || '') + (row.tracking_no ? '，快递单号 ' + row.tracking_no : '');
-        var html = '<div class="sample-followup-workspace" data-sample-followup-workspace><form class="sample-followup-form-panel" data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="source_type" value="sample_shipment"><input type="hidden" name="source_id" value="' + esc(row.id || shipmentId || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '">' +
+        var followups = row.followups || [];
+        var html = '<div class="sample-followup-workspace" data-sample-followup-workspace data-sample-followup-form><input type="hidden" name="customer_id" value="' + esc(row.customer_id) + '"><input type="hidden" name="contact_id" value="' + esc(row.contact_id || '') + '"><input type="hidden" name="source_type" value="sample_shipment"><input type="hidden" name="source_id" value="' + esc(row.id || shipmentId || '') + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('sample-followup')) + '"><div class="sample-followup-form-panel">' +
           '<section class="sample-followup-hero"><div><span>样品跟进</span><strong>' + esc(row.sample_name || '-') + '</strong><em>' + esc([row.customer_name, row.product_model, row.tracking_no ? ('单号 ' + row.tracking_no) : ''].filter(Boolean).join(' · ')) + '</em></div><b>Sample</b></section>' +
-          '<section class="sample-followup-card"><header><strong>跟进信息</strong><span>保存后进入客户跟进和任务提醒</span></header><div class="sample-followup-meta-grid"><label><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label><label><span>下次提醒</span><input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section>' +
-          '<section class="sample-followup-card sample-followup-notes"><label><span>跟进内容 *</span><textarea name="content" rows="6">' + esc(content) + '</textarea></label><label><span>下一步计划</span><textarea name="next_plan" rows="4">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label></section><p class="sample-followup-error" data-sample-followup-error></p></form>' +
-          '<aside class="sample-followup-upload-panel"><section class="sample-followup-card"><header><div><strong>图片与附件</strong><span>拖入、粘贴或选择文件；图片可直接预览</span></div><button type="button" data-sample-followup-choose>选择文件</button></header><div class="sample-followup-drop" data-sample-followup-drop tabindex="0"><input type="file" multiple data-sample-followup-files><strong>把图片或附件拖到这里</strong><span>支持 Ctrl/⌘ + V 粘贴图片，也可点右上角选择</span></div><div class="sample-followup-local-files" data-sample-followup-local-files></div></section>' +
+          '<section class="sample-followup-card sample-followup-notes"><label><span>跟进内容 *</span><textarea name="content" rows="7">' + esc(content) + '</textarea></label><label><span>下一步计划</span><textarea name="next_plan" rows="5">确认客户收样、测试反馈和后续报价/订单需求。</textarea></label></section><p class="sample-followup-error" data-sample-followup-error></p></div>' +
+          '<aside class="sample-followup-upload-panel"><section class="sample-followup-card"><header><strong>跟进信息</strong><span>保存后进入客户跟进和任务提醒</span></header><div class="sample-followup-meta-grid"><label><span>跟进时间</span><input name="followup_time" value="' + esc(now) + '"></label><label><span>方式</span><select name="followup_type"><option selected>样品</option><option>邮件</option><option>电话</option><option>WhatsApp</option><option>微信</option><option>其他</option></select></label><label><span>下次提醒</span><input name="next_remind_time" placeholder="YYYY-MM-DD HH:MM"></label></div></section>' +
+          '<section class="sample-followup-card sample-followup-history-panel"><header><strong>已有跟进记录</strong><span>' + esc(followups.length) + ' 条</span></header><div data-sample-followup-history>' + TaskCenterModule.sampleFollowupsHtml(followups) + '</div></section>' +
+          '<section class="sample-followup-card"><header><div><strong>图片与附件</strong><span>拖入、粘贴或选择文件；图片可直接预览</span></div><button type="button" data-sample-followup-choose>选择文件</button></header><div class="sample-followup-drop" data-sample-followup-drop tabindex="0"><input type="file" multiple data-sample-followup-files><strong>把图片或附件拖到这里</strong><span>支持 Ctrl/⌘ + V 粘贴图片，也可点右上角选择</span></div><div class="sample-followup-local-files" data-sample-followup-local-files></div></section>' +
           '<section class="sample-followup-card sample-followup-existing"><header><strong>已上传资料</strong><span data-sample-followup-file-count>' + esc((row.files || []).length) + ' 个文件</span></header><div data-sample-followup-file-list>' + TaskCenterModule.sampleFilesHtml(row.files || []) + '</div></section></aside></div>' +
           '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-sample-followup-save>创建跟进</button></div>';
         CustomerModule.openBusinessDialog('创建样品跟进', html, '保存后会写入客户跟进和任务提醒。', function (dialog) {
@@ -23681,6 +23683,16 @@
         if (copy) return self.copySampleFileLink(copy.getAttribute('data-sample-copy-file'));
         var del = event.target.closest('[data-sample-delete-file]');
         if (del) return self.deleteSampleFile(del.getAttribute('data-sample-delete-file'), dialog, shipmentId);
+        var editFollowup = event.target.closest('[data-sample-followup-edit]');
+        if (editFollowup) {
+          var editId = Number(editFollowup.getAttribute('data-sample-followup-edit') || 0);
+          if (editId) return self.openFollowupTaskDialog({ source_id: editId });
+        }
+        var deleteFollowup = event.target.closest('[data-sample-followup-delete]');
+        if (deleteFollowup) {
+          var deleteId = Number(deleteFollowup.getAttribute('data-sample-followup-delete') || 0);
+          if (deleteId) return self.deleteSampleFollowup(deleteId);
+        }
       });
     },
     mergeSampleFollowupFiles: function (input, incoming) {

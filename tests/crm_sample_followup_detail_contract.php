@@ -47,6 +47,9 @@ foreach ([
     'name="source_id" value="',
     'TaskCenterModule.loadSelectedDetail(); TaskCenterModule.load();',
     'sample-followup-workspace',
+    'data-sample-followup-workspace data-sample-followup-form',
+    'sample-followup-history-panel',
+    'data-sample-followup-history',
     'data-sample-followup-drop',
     'data-sample-followup-files',
     'data-sample-followup-local-files',
@@ -73,13 +76,14 @@ foreach ([
     '.sample-followup-drop.dragging',
     '.sample-followup-local-files',
     '.sample-followup-existing .sample-files',
+    '.sample-followup-history-panel .sample-followup-list',
 ] as $marker) {
     if (!str_contains($css, $marker)) {
         throw new RuntimeException("Sample followup style marker missing in crm.css: {$marker}");
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'sample-followup-upload-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'sample-followup-sidebar-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for sample followup detail changes');
 }
 
