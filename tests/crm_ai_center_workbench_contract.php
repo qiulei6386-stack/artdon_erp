@@ -21,8 +21,12 @@ foreach ([
     'renderWorkbench: function',
     'ai-dashboard-hero',
     'ai-dashboard-kpis',
-    'ai-dashboard-main',
-    'ai-dashboard-bottom',
+    'ai-home-layout',
+    'ai-home-main',
+    'renderQuickActionsRail: function',
+    'data-ai-home-action',
+    'ai-main-grid',
+    'ai-bottom-grid',
     'renderWorkflow: function',
     'data-radar-home-candidate',
     "renderGroup({ title: '客户探索'",
@@ -46,10 +50,17 @@ foreach ([
     '.ai-workbench',
     '.ai-workbench-panel',
     '.ai-panel-head',
+    'body.is-ai-home .crm-shell',
+    'body.is-ai-home .crm-actionbar',
+    '.ai-home-layout',
+    'grid-template-columns: minmax(0, 1fr) 260px;',
+    '.ai-home-main',
+    '.ai-home-right',
+    '.ai-kpi-section',
     '.ai-dashboard-hero',
     '.ai-dashboard-kpis',
-    '.ai-dashboard-main',
-    '.ai-dashboard-bottom',
+    '.ai-main-grid',
+    '.ai-bottom-grid',
     'body.is-ai-module .action_command::after',
     '.crm-modal.ai-dialog',
     '.radar-drawer-backdrop',
@@ -72,7 +83,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-center-dashboard-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-home-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
