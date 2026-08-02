@@ -11,9 +11,13 @@ foreach ([
     'function officeMailToReadableText(source)',
     "new DOMParser().parseFromString(source, 'text/html')",
     "doc.querySelectorAll('script,style,head,meta,link,iframe,object,embed,template,noscript,svg')",
-    'Some Office clients put a readable reply first',
-    'if (officeMailTextHasHtmlMarkup(text)) text = officeMailToReadableText(text);',
-    "if (!text) text = officeMailToReadableText((mail && mail.body_html) || '');",
+    'function mailPlainReadableBody(mail, note)',
+    '已使用邮件可读正文',
+    'var htmlText = officeMailTextHasHtmlMarkup(htmlForRead) ? officeMailToReadableText(htmlForRead) : \'\';',
+    'if (officeMailTextHasHtmlMarkup(text)) {',
+    'var readable = htmlText || text;',
+    'var isOfficeMail = this.isOutlookOfficeMail(mail);',
+    'var readableBody = isOfficeMail ? officeMailReadableBody(mail) : \'\';',
 ] as $needle) {
     if (!str_contains($source, $needle)) throw new RuntimeException('Office 邮件可读正文修复缺少标记：' . $needle);
 }

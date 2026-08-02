@@ -161,6 +161,20 @@
     return source.replace(/\u00a0/g, ' ').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  function mailPlainReadableBody(mail, note) {
+    var text = String((mail && mail.body_text) || '').trim();
+    if (officeMailTextHasHtmlMarkup(text)) {
+      text = officeMailToReadableText(text);
+    } else {
+      text = text.replace(/&(nbsp|#160|#x0*a0);/gi, ' ').replace(/\u00a0/g, ' ');
+    }
+    if (!text) return '';
+    return '<section class="mail-office-readable">' +
+      '<div class="mail-office-readable-note">' + esc(note || '已使用邮件可读正文') + '</div>' +
+      '<pre>' + esc(text) + '</pre>' +
+      '</section>';
+  }
+
   function officeMailReadableBody(mail) {
     var html = String((mail && mail.body_html) || '').trim();
     var text = String((mail && mail.body_text) || '').trim();
@@ -7079,9 +7093,13 @@
       if (typeof MailModule !== 'undefined' && typeof MailModule.normalizeMailBodyLocalUrls === 'function') {
         bodyHtml = MailModule.normalizeMailBodyLocalUrls(bodyHtml);
       }
+      var isOfficeMail = typeof MailModule !== 'undefined' && typeof MailModule.isOutlookOfficeMail === 'function' && MailModule.isOutlookOfficeMail(mail);
       var useFrame = typeof MailModule !== 'undefined' && typeof MailModule.isFullHtmlMail === 'function' && MailModule.isFullHtmlMail(mail);
+      var readableBody = isOfficeMail && typeof officeMailReadableBody === 'function'
+        ? officeMailReadableBody(mail)
+        : (useFrame ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
       var body = bodyHtml
-        ? (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml)
+        ? (readableBody || (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
       if (!body && Number(mail.has_attachment || mail.attachment_count || 0)) {
         body = '<div class="mail-no-body"><strong>此邮件没有正文，但包含附件。</strong><span>附件已正常入库，可在下方下载或预览。</span></div>';
@@ -10307,10 +10325,13 @@
       var resendButton = this.canResendEditMail(mail) ? '<button type="button" data-mail-resend-edit>再次编辑</button>' : '';
       var recallButton = (isSent && !recalled) ? '<button type="button" data-mail-recall>撤回</button>' : '';
       var recallNotice = recalled ? '<section class="mail-recall-notice">已撤回：系统已发送撤回通知给原收件人。</section>' : '';
-      var useBodyFrame = isDbsAdvice || this.isFullHtmlMail(mail);
+      var isOfficeMail = this.isOutlookOfficeMail(mail);
+      var isFullHtml = this.isFullHtmlMail(mail);
+      var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
+      var useBodyFrame = isDbsAdvice || isFullHtml;
       var bodyHtml = this.normalizeMailBodyLocalUrls(mail.body_html || '');
       var body = mail.body_html
-        ? (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml)
+        ? (readableBody || (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
       if (!body && Number(mail.has_attachment)) body = '<div class="mail-no-body"><strong>此邮件没有正文，但包含附件。</strong><span>附件已正常入库，可下载、预览或保存到客户文件/资料系统。</span></div>';
       var attachmentHtml = attachments.length ? '<section class="mail-attachments compact"><h3>附件 ' + attachments.length + '</h3><div class="mail-attachment-chips">' + attachments.map(function (a) {

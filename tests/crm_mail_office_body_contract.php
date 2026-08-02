@@ -15,7 +15,11 @@ function require_contract(bool $condition, string $message): void
 
 require_contract(str_contains($js, 'function isOutlookOfficeMailHtml(html)'), 'missing Office / Outlook HTML detector');
 require_contract(str_contains($js, 'function officeMailReadableBody(mail)'), 'missing readable Office mail fallback');
-require_contract(substr_count($js, 'isOfficeMail && mail.body_text ? officeMailReadableBody(mail)') >= 2, 'mail and customer preview must both use readable Office fallback');
+require_contract(str_contains($js, 'function mailPlainReadableBody(mail, note)'), 'missing generic readable full-html fallback');
+require_contract(str_contains($js, 'var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml ? mailPlainReadableBody(mail, \'已使用邮件可读正文\') : \'\');'), 'mail detail must use readable Office fallback');
+require_contract(str_contains($js, 'var readableBody = isOfficeMail && typeof officeMailReadableBody === \'function\''), 'customer preview must use readable Office fallback');
+require_contract(str_contains($js, 'isFullHtml ? mailPlainReadableBody(mail, \'已使用邮件可读正文\')'), 'mail detail must use generic readable full-html fallback');
+require_contract(str_contains($js, 'useFrame ? mailPlainReadableBody(mail, \'已使用邮件可读正文\')'), 'customer preview must use generic readable full-html fallback');
 require_contract(str_contains($js, 'isOutlookOfficeMail: function (mail)'), 'mail module must expose Office detection');
 require_contract(str_contains($css, '.mail-office-readable'), 'missing readable Office mail styles');
 
