@@ -17813,21 +17813,20 @@
         }).join('') : '<tr><td colspan="7">暂无已勾选记录。</td></tr>';
         self.openDialog({
           title: '手动执行推广',
-          description: task.task_name + ' · 勾选后记录完成时间、执行负责人和打勾账号',
+          description: task.task_name + ' · 勾选即记录完成时间、执行负责人和打勾账号',
           body: '<section class="promo-preview-grid promo-manual-summary"><button type="button" class="is-active" data-promo-manual-filter="all"><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></button><button type="button" data-promo-manual-filter="group"><strong>' + esc(groupTargets.length) + '</strong><span>群推广</span></button><button type="button" data-promo-manual-filter="wechat_group"><strong>' + esc(wechatGroupCount) + '</strong><span>微信群</span></button><button type="button" data-promo-manual-filter="whatsapp_group"><strong>' + esc(whatsappGroupCount) + '</strong><span>WhatsApp群</span></button><button type="button" data-promo-manual-filter="email"><strong>' + esc(emailFallbackCount) + '</strong><span>邮件转人工</span></button></section>' +
-            '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>确认后，所选行会写入执行完成时间，并记录由当前账号打勾。</span></section>' +
-            '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 全选当前筛选</label><span data-promo-manual-selected>已选 0 条</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '<tr class="promo-manual-filter-empty" data-promo-manual-empty hidden><td colspan="7">当前筛选没有待勾选目标。</td></tr></tbody></table></div></section>' +
+            '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>勾选后立即写入执行完成时间，并记录由当前账号打勾。</span></section>' +
+            '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 批量勾选当前筛选</label><span data-promo-manual-selected>勾选即记录</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '<tr class="promo-manual-filter-empty" data-promo-manual-empty hidden><td colspan="7">当前筛选没有待勾选目标。</td></tr></tbody></table></div></section>' +
             '<details class="promo-manual-done-table"><summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th></tr></thead><tbody>' + doneRows + '</tbody></table></div></details>',
-          actions: '<button type="button" data-promo-dialog-close>关闭</button><button type="button" data-promo-manual-confirm disabled>确认勾选 0 条</button>',
+          actions: '<button type="button" data-promo-dialog-close>关闭</button>',
           bind: function (modal) {
-            var confirmButton = modal.querySelector('[data-promo-manual-confirm]');
             var selectedText = modal.querySelector('[data-promo-manual-selected]');
             var selectAll = modal.querySelector('[data-promo-manual-select-all]');
             var checkboxes = Array.from(modal.querySelectorAll('[data-promo-manual-target]'));
             var filterButtons = Array.from(modal.querySelectorAll('[data-promo-manual-filter]'));
             var manualRows = Array.from(modal.querySelectorAll('[data-promo-manual-row]'));
             var emptyRow = modal.querySelector('[data-promo-manual-empty]');
-            var activeFilter = 'all';
+            var activeFilter = self.manualExecutionFilter || 'all';
             var visibleCheckboxes = function () {
               return checkboxes.filter(function (input) {
                 var row = input.closest('[data-promo-manual-row]');
@@ -17835,21 +17834,18 @@
               });
             };
             var syncSelection = function () {
-              var count = checkboxes.filter(function (input) { return input.checked; }).length;
               var visible = visibleCheckboxes();
               var visibleChecked = visible.filter(function (input) { return input.checked; }).length;
-              if (selectedText) selectedText.textContent = '已选 ' + count + ' 条';
-              if (confirmButton) {
-                confirmButton.disabled = count <= 0;
-                confirmButton.textContent = '确认勾选 ' + count + ' 条';
-              }
+              if (selectedText) selectedText.textContent = '当前筛选 ' + visible.length + ' 条 · 勾选即记录';
               if (selectAll) {
                 selectAll.checked = visible.length > 0 && visibleChecked === visible.length;
                 selectAll.indeterminate = visibleChecked > 0 && visibleChecked < visible.length;
+                selectAll.disabled = visible.length <= 0;
               }
             };
             var applyFilter = function (filter) {
               activeFilter = filter || 'all';
+              self.manualExecutionFilter = activeFilter;
               var visibleCount = 0;
               manualRows.forEach(function (row) {
                 var type = row.getAttribute('data-manual-filter-type') || '';
@@ -17864,32 +17860,46 @@
               });
               syncSelection();
             };
-            checkboxes.forEach(function (input) { input.addEventListener('change', syncSelection); });
-            if (selectAll) selectAll.addEventListener('change', function () {
-              visibleCheckboxes().forEach(function (input) { input.checked = selectAll.checked; });
-              syncSelection();
-            });
-            filterButtons.forEach(function (button) {
-              button.addEventListener('click', function () { applyFilter(button.getAttribute('data-promo-manual-filter') || 'all'); });
-            });
-            applyFilter('all');
-            syncSelection();
-            confirmButton?.addEventListener('click', function () {
-              var ids = Array.from(modal.querySelectorAll('[data-promo-manual-target]:checked')).map(function (input) { return Number(input.value || 0); }).filter(Boolean);
-              if (!ids.length) return self.showError('请先勾选要记录的手动执行目标');
+            var runImmediateExecute = function (ids, inputs) {
+              ids = (ids || []).map(Number).filter(Boolean);
+              inputs = inputs || [];
+              if (!ids.length) return;
+              inputs.forEach(function (input) { input.disabled = true; input.checked = true; });
+              if (selectAll) selectAll.disabled = true;
               post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids) }).then(function (result) {
                 if (!result.success) throw new Error(result.message || '手动执行记录失败');
                 self.data.tasks = (result.data && result.data.tasks) || self.data.tasks;
                 self.data.logs = (result.data && result.data.logs) || self.data.logs;
                 self.data.targets = (result.data && result.data.targets) || self.data.targets;
                 self.data.failed_targets = (result.data && result.data.failed_targets) || self.data.failed_targets;
-                toast('已勾选并记录 ' + ids.length + ' 条人工执行');
+                toast('已记录 ' + ids.length + ' 条人工执行');
                 self.closeDialog();
                 self.renderTasks();
                 self.renderTaskProperties();
                 self.renderExecutionCenter();
-              }).catch(function (error) { self.showError(error.message || '手动执行记录失败'); });
+                self.openManualExecutionDialog(task.id);
+              }).catch(function (error) {
+                inputs.forEach(function (input) { input.disabled = false; input.checked = false; });
+                if (selectAll) selectAll.disabled = false;
+                syncSelection();
+                self.showError(error.message || '手动执行记录失败');
+              });
+            };
+            checkboxes.forEach(function (input) {
+              input.addEventListener('change', function () {
+                if (!input.checked) return syncSelection();
+                runImmediateExecute([Number(input.value || 0)], [input]);
+              });
             });
+            if (selectAll) selectAll.addEventListener('change', function () {
+              if (!selectAll.checked) return syncSelection();
+              var visible = visibleCheckboxes().filter(function (input) { return !input.checked && !input.disabled; });
+              runImmediateExecute(visible.map(function (input) { return Number(input.value || 0); }), visible);
+            });
+            filterButtons.forEach(function (button) {
+              button.addEventListener('click', function () { applyFilter(button.getAttribute('data-promo-manual-filter') || 'all'); });
+            });
+            applyFilter(activeFilter);
           }
         });
       }).catch(function (error) { self.showError(error.message || '手动执行清单加载失败'); });
