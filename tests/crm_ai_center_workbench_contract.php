@@ -57,6 +57,10 @@ foreach ([
     '.ai-panel-head',
     'body.is-ai-home .crm-shell',
     'body.is-ai-home .crm-actionbar',
+    'body.is-ai-module:not(.is-ai-home) .crm-shell:not(.is-actionbar-collapsed)',
+    'grid-template-columns: minmax(0, 1fr) 260px !important;',
+    'body.is-ai-module:not(.is-ai-home) .crm-actionbar',
+    'body.is-ai-module .crm-action-list',
     '.ai-home-layout',
     'grid-template-columns: minmax(0, 1fr) 260px;',
     '.ai-home-main',
@@ -88,7 +92,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-home-actions-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-actionbar-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 

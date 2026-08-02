@@ -25004,7 +25004,59 @@ body.is-tasks-module .action_command {
 
 /* AI center home dashboard refresh. */
 body.is-ai-module {
-  --crm-actionbar-width: 280px;
+  --crm-actionbar-width: 260px;
+}
+body.is-ai-module:not(.is-ai-home) .crm-shell:not(.is-actionbar-collapsed) {
+  grid-template-columns: minmax(0, 1fr) 260px !important;
+  gap: 14px !important;
+  padding: 10px 12px !important;
+  overflow-x: hidden !important;
+}
+body.is-ai-module:not(.is-ai-home) .crm-shell.is-actionbar-collapsed {
+  grid-template-columns: minmax(0, 1fr) 60px !important;
+}
+body.is-ai-module:not(.is-ai-home) .crm-main,
+body.is-ai-module:not(.is-ai-home) .crm-module[data-crm-module="ai"].active,
+body.is-ai-module:not(.is-ai-home) .ai-center-shell,
+body.is-ai-module:not(.is-ai-home) .ai-center-main,
+body.is-ai-module:not(.is-ai-home) .ai-workbench,
+body.is-ai-module:not(.is-ai-home) .ai-workbench-panel,
+body.is-ai-module:not(.is-ai-home) .ai-content,
+body.is-ai-module:not(.is-ai-home) .ai-list,
+body.is-ai-module:not(.is-ai-home) .ai-task-card,
+body.is-ai-module:not(.is-ai-home) .ai-kpi-grid,
+body.is-ai-module:not(.is-ai-home) .ai-kpi-grid article {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+body.is-ai-module:not(.is-ai-home) .crm-module[data-crm-module="ai"].active {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+body.is-ai-module:not(.is-ai-home) .ai-workbench {
+  align-content: start;
+}
+body.is-ai-module:not(.is-ai-home) .ai-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+body.is-ai-module:not(.is-ai-home) .ai-task-card header,
+body.is-ai-module:not(.is-ai-home) .ai-panel-head {
+  min-width: 0 !important;
+}
+body.is-ai-module:not(.is-ai-home) .ai-task-card header strong,
+body.is-ai-module:not(.is-ai-home) .ai-panel-head strong,
+body.is-ai-module:not(.is-ai-home) .ai-panel-head span,
+body.is-ai-module:not(.is-ai-home) .ai-meta span,
+body.is-ai-module:not(.is-ai-home) .ai-kpi-grid span,
+body.is-ai-module:not(.is-ai-home) .ai-kpi-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.is-ai-module:not(.is-ai-home) .ai-task-card p {
+  overflow-wrap: anywhere;
 }
 body.is-ai-home .crm-shell {
   grid-template-columns: minmax(0, 1fr) !important;
@@ -25546,7 +25598,13 @@ body.is-ai-home .radar-content {
   background: linear-gradient(90deg, #2563eb, #0ea5e9);
 }
 body.is-ai-module .crm-actionbar {
-  padding: 10px 8px 10px 14px;
+  width: 260px;
+  min-width: 0;
+  max-width: 260px;
+  align-self: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 10px 0 10px 10px;
 }
 body.is-ai-module .crm-actionbar-head {
   min-height: 48px;
@@ -25555,6 +25613,15 @@ body.is-ai-module .crm-actionbar-head {
   background: #ffffff;
   box-shadow: 0 10px 24px rgb(15 23 42 / .05);
   padding: 10px 12px 10px 34px;
+}
+body.is-ai-module .crm-actionbar-toggle {
+  left: 2px;
+}
+body.is-ai-module .crm-action-list {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 body.is-ai-module .crm-actionbar-head span {
   color: #2563eb;
@@ -25565,10 +25632,12 @@ body.is-ai-module .crm-actionbar-head strong {
 }
 body.is-ai-module .action_console_root {
   gap: 12px;
-  padding-right: 2px;
+  min-width: 0;
+  padding: 0 2px 8px 0;
 }
 body.is-ai-module .action_section {
   gap: 7px;
+  min-width: 0;
   border: 1px solid #e5eaf3;
   border-radius: 14px;
   background: #ffffff;
@@ -25578,10 +25647,16 @@ body.is-ai-module .action_section {
 body.is-ai-module .action_section h3 {
   margin: 0 0 2px;
   padding: 0 2px;
+  overflow: hidden;
   color: #64748b;
   font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 body.is-ai-module .action_command {
+  width: 100%;
+  min-width: 0;
   min-height: 58px;
   height: auto;
   display: block;
@@ -25593,6 +25668,10 @@ body.is-ai-module .action_command {
   padding: 9px 28px 9px 10px;
   font-size: 13px;
   font-weight: 950;
+  line-height: 1.22;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 body.is-ai-module .action_command::after {
   content: attr(data-tooltip);
@@ -25620,7 +25699,18 @@ body.is-ai-module .action_command.active {
   background: #eff6ff;
   color: #2563eb;
 }
+body.is-ai-module .crm-actionbar.is-collapsed {
+  width: 60px;
+  max-width: 60px;
+  padding: 8px 5px;
+}
+body.is-ai-module .crm-actionbar.is-collapsed .crm-actionbar-head {
+  padding-left: 30px;
+}
 @media (max-width: 1280px) {
+  body.is-ai-module:not(.is-ai-home) .ai-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
   .radar-kpi-grid.ai-dashboard-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -25632,6 +25722,13 @@ body.is-ai-module .action_command.active {
   }
 }
 @media (max-width: 1200px) {
+  body.is-ai-module:not(.is-ai-home) .crm-shell:not(.is-actionbar-collapsed),
+  body.is-ai-module:not(.is-ai-home) .crm-shell.is-actionbar-collapsed {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  body.is-ai-module:not(.is-ai-home) .crm-actionbar {
+    display: none !important;
+  }
   .ai-home-layout {
     grid-template-columns: minmax(0, 1fr);
   }
