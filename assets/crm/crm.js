@@ -19784,6 +19784,10 @@
     taskPage: 1,
     taskPageSize: 8,
     selectedTaskId: 0,
+    logQuery: '',
+    logStatus: 'all',
+    logAction: 'all',
+    selectedLogId: 0,
     init: function () {
       if (!document.querySelector('[data-ai-module]')) return;
       if (!this.inited) {
@@ -19844,7 +19848,7 @@
       box.innerHTML = '<section class="ai-workbench-panel"><div class="ai-empty-state"><strong>正在加载 AI 获客中心...</strong><span>正在同步任务、草稿、运行记录和设置。</span></div></section>';
       this.fetchData().then(function () {
         if (self.loadingView !== view) return;
-        if (view === 'records') { self.renderKpis(); return self.renderLogs(); }
+        if (view === 'records') { if (kpis) kpis.hidden = true; return self.renderLogs(); }
         if (view === 'settings') { self.renderKpis(); return self.renderSettings(); }
         if (kpis) kpis.hidden = true;
         self.renderTasks();
@@ -20020,6 +20024,68 @@
         '<article><header><strong>系统异常 / 接口状态</strong><button type="button" data-ai-open-logs>查看详情</button></header><div class="ai-interface-list-v2"><p><strong>API 接口</strong><em data-tone="good">正常</em><span>已连接</span></p><p><strong>OCR 队列</strong><em data-tone="' + ((this.data.kpis || {}).failed ? 'warn' : 'good') + '">' + ((this.data.kpis || {}).failed ? '待处理' : '正常') + '</em><span>异常 ' + esc((this.data.kpis || {}).failed || 0) + '</span></p><p><strong>邮件抓取</strong><em data-tone="good">正常</em><span>运行记录可查</span></p></div></article>' +
       '</section>';
     },
+    logResultTone: function (status) {
+      status = String(status || '').toLowerCase();
+      if (status === 'success' || status === 'ok' || status === 'done') return 'good';
+      if (status === 'failed' || status === 'error') return 'danger';
+      if (status === 'pending' || status === 'interface_pending') return 'warn';
+      return 'info';
+    },
+    parseLogDetail: function (row) {
+      try { return JSON.parse((row || {}).detail_json || '{}') || {}; } catch (error) { return {}; }
+    },
+    logSummary: function (row) {
+      if (!row) return '-';
+      if (row.failure_reason) return row.failure_reason;
+      var detail = this.parseLogDetail(row);
+      if (detail.reason) return detail.reason;
+      if (detail.status) return '状态：' + detail.status;
+      if (detail.task_type) return '任务类型：' + this.taskTypeLabel(detail.task_type);
+      var raw = String(row.detail_json || '').trim();
+      return raw ? raw.replace(/\s+/g, ' ').slice(0, 120) : '暂无详情';
+    },
+    filteredLogs: function () {
+      var self = this;
+      var q = String(this.logQuery || '').trim().toLowerCase();
+      return (this.data.logs || []).filter(function (row) {
+        if (self.logStatus !== 'all' && String(row.result_status || '') !== self.logStatus) return false;
+        if (self.logAction !== 'all' && String(row.action_key || '') !== self.logAction) return false;
+        if (!q) return true;
+        return [row.action_key, row.result_status, row.operator_name, row.failure_reason, row.detail_json, row.created_at].join(' ').toLowerCase().indexOf(q) >= 0;
+      });
+    },
+    logKpiCards: function () {
+      var rows = this.data.logs || [];
+      var now = new Date();
+      var today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      var success = rows.filter(function (row) { return String(row.result_status || '').toLowerCase() === 'success'; }).length;
+      var failed = rows.filter(function (row) { return ['failed', 'error'].indexOf(String(row.result_status || '').toLowerCase()) >= 0; }).length;
+      var todayRows = rows.filter(function (row) { return String(row.created_at || '').slice(0, 10) === today; }).length;
+      return [
+        { icon: 'L', title: '总记录', value: rows.length, hint: 'AI操作日志', tone: 'info' },
+        { icon: 'S', title: '成功', value: success, hint: '已正常完成', tone: 'good' },
+        { icon: 'E', title: '失败 / 异常', value: failed, hint: '需排查记录', tone: failed ? 'danger' : 'info' },
+        { icon: 'T', title: '今日新增', value: todayRows, hint: '当天写入', tone: 'info' }
+      ];
+    },
+    renderLogDetailCard: function (row) {
+      if (!row) return '<aside class="ai-log-detail-v2"><div class="ai-empty-state"><strong>暂无运行记录</strong><span>有 AI 操作后会显示详情。</span></div></aside>';
+      var detail = this.parseLogDetail(row);
+      var raw = row.detail_json ? JSON.stringify(detail, null, 2) : '';
+      var fields = [
+        ['动作', row.action_key || '-'],
+        ['结果', row.result_status || '-'],
+        ['操作人', row.operator_name || '-'],
+        ['时间', String(row.created_at || '').slice(0, 16) || '-'],
+        ['对象', (row.target_type || '-') + (row.target_id ? (' #' + row.target_id) : '')],
+        ['来源', row.source_table || '-']
+      ];
+      return '<aside class="ai-log-detail-v2"><header><div><strong>运行详情 #' + esc(row.id || '-').trim() + '</strong><span>结构化查看，不在列表裸露 JSON</span></div><em data-tone="' + esc(this.logResultTone(row.result_status)) + '">' + esc(row.result_status || '-') + '</em></header>' +
+        '<div class="ai-log-fields-v2">' + fields.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') + '</div>' +
+        '<section><strong>摘要</strong><p>' + esc(this.logSummary(row)) + '</p></section>' +
+        (raw ? '<section class="ai-log-json-v2"><header><strong>详情 JSON</strong><button type="button" data-ai-copy-log="' + esc(row.id || '') + '">复制</button></header><pre data-ai-log-json="' + esc(row.id || '') + '">' + esc(raw) + '</pre></section>' : '') +
+      '</aside>';
+    },
     renderTasks: function () {
       var self = this;
       var box = document.querySelector('[data-ai-content]');
@@ -20089,12 +20155,48 @@
       });
     },
     renderLogs: function () {
+      var self = this;
       var box = document.querySelector('[data-ai-content]');
       if (!box) return;
-      var rows = this.data.logs || [];
-      box.innerHTML = '<section class="ai-workbench-panel"><header class="ai-panel-head"><div><strong>AI运行记录</strong><span>记录 AI 获客、草稿、确认和接口待接入结果。</span></div></header><div class="ai-list">' + (rows.length ? rows.map(function (row) {
-        return '<article class="ai-task-card"><header><strong>' + esc(row.action_key || '-') + '</strong><em>' + esc(row.result_status || '-') + '</em></header><p>' + esc(row.failure_reason || row.detail_json || '') + '</p><div class="ai-meta"><span>操作人：' + esc(row.operator_name || '-') + '</span><span>时间：' + esc(String(row.created_at || '').slice(0, 16)) + '</span></div></article>';
-      }).join('') : '<p class="promo-empty">暂无 AI 日志。</p>') + '</div></section>';
+      var rows = this.filteredLogs();
+      var selected = rows.find(function (row) { return Number(row.id) === Number(self.selectedLogId); }) || rows[0] || null;
+      this.selectedLogId = selected ? Number(selected.id || 0) : 0;
+      var actionOptions = Array.from(new Set((this.data.logs || []).map(function (row) { return row.action_key || ''; }).filter(Boolean))).sort();
+      var kpiHtml = this.logKpiCards().map(function (item) {
+        return '<article data-tone="' + esc(item.tone) + '"><i>' + esc(item.icon) + '</i><div><span>' + esc(item.title) + '</span><strong>' + esc(item.value) + '</strong><em>' + esc(item.hint) + '</em></div></article>';
+      }).join('');
+      var rowHtml = rows.length ? rows.slice(0, 20).map(function (row) {
+        var active = selected && Number(selected.id) === Number(row.id);
+        return '<tr class="' + (active ? 'active' : '') + '" data-ai-select-log="' + esc(row.id || '') + '"><td>' + esc(String(row.created_at || '').slice(5, 16) || '-') + '</td><td><strong title="' + esc(row.action_key || '-') + '">' + esc(row.action_key || '-') + '</strong></td><td><em data-tone="' + esc(self.logResultTone(row.result_status)) + '">' + esc(row.result_status || '-') + '</em></td><td>' + esc(row.operator_name || '-') + '</td><td><span title="' + esc(self.logSummary(row)) + '">' + esc(self.logSummary(row)) + '</span></td></tr>';
+      }).join('') : '<tr><td colspan="5"><p class="promo-empty">暂无符合条件的 AI 运行记录。</p></td></tr>';
+      box.innerHTML = '<section class="ai-log-page-v2"><section class="ai-log-hero-v2"><div><span>AI Operation Logs</span><h2>AI运行记录</h2><p>集中查看 AI 草稿、审核、确认和接口待接入结果，默认隐藏原始 JSON，点选记录后在右侧查看详情。</p></div><nav><button type="button" class="primary" data-ai-refresh>刷新记录</button><button type="button" data-ai-open-tasks>AI任务</button><button type="button" data-ai-open-settings>规则设置</button></nav></section>' +
+        '<section class="ai-log-kpis-v2">' + kpiHtml + '</section>' +
+        '<section class="ai-log-layout-v2"><article class="ai-log-list-v2"><header><div><strong>运行日志列表</strong><span>最多显示当前筛选前 20 条，点击行查看详情。</span></div><em>当前 ' + esc(rows.length) + ' 条</em></header>' +
+        '<div class="ai-log-tools-v2"><input data-ai-log-search placeholder="搜索动作、操作人、详情" value="' + esc(this.logQuery || '') + '"><select data-ai-log-status><option value="all">全部结果</option><option value="success"' + (this.logStatus === 'success' ? ' selected' : '') + '>success</option><option value="failed"' + (this.logStatus === 'failed' ? ' selected' : '') + '>failed</option><option value="pending"' + (this.logStatus === 'pending' ? ' selected' : '') + '>pending</option></select><select data-ai-log-action><option value="all">全部动作</option>' + actionOptions.map(function (key) { return '<option value="' + esc(key) + '"' + (self.logAction === key ? ' selected' : '') + '>' + esc(key) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="ai-log-table-v2"><table><thead><tr><th>时间</th><th>动作</th><th>结果</th><th>操作人</th><th>摘要</th></tr></thead><tbody>' + rowHtml + '</tbody></table></div></article>' + this.renderLogDetailCard(selected) + '</section></section>';
+      box.querySelector('[data-ai-refresh]')?.addEventListener('click', function () { self.load(); });
+      box.querySelector('[data-ai-open-tasks]')?.addEventListener('click', function () { self.renderCenter('tasks'); });
+      box.querySelector('[data-ai-open-settings]')?.addEventListener('click', function () { self.renderCenter('settings'); });
+      box.querySelector('[data-ai-log-search]')?.addEventListener('input', function (event) { self.logQuery = event.target.value || ''; self.renderLogs(); });
+      box.querySelector('[data-ai-log-status]')?.addEventListener('change', function (event) { self.logStatus = event.target.value || 'all'; self.renderLogs(); });
+      box.querySelector('[data-ai-log-action]')?.addEventListener('change', function (event) { self.logAction = event.target.value || 'all'; self.renderLogs(); });
+      box.querySelectorAll('[data-ai-select-log]').forEach(function (row) {
+        row.addEventListener('click', function () {
+          self.selectedLogId = Number(row.getAttribute('data-ai-select-log') || 0);
+          self.renderLogs();
+        });
+      });
+      box.querySelectorAll('[data-ai-copy-log]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id = button.getAttribute('data-ai-copy-log') || '';
+          var text = box.querySelector('[data-ai-log-json="' + id + '"]')?.textContent || '';
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { toast('运行详情已复制'); }).catch(function () { toast('复制失败，请手动选择复制'); });
+          } else {
+            toast('当前浏览器不支持自动复制，请手动选择复制');
+          }
+        });
+      });
     },
     renderSettings: function () {
       var self = this;

@@ -58,6 +58,14 @@ foreach ([
     'data-ai-task-filter',
     'data-ai-to-quote',
     'data-ai-copy-json',
+    'ai-log-page-v2',
+    'ai-log-hero-v2',
+    'ai-log-kpis-v2',
+    'ai-log-layout-v2',
+    'ai-log-list-v2',
+    'ai-log-detail-v2',
+    'data-ai-log-search',
+    'data-ai-copy-log',
     'data-ai-settings-save',
     "post('ai_settings_save'",
 ] as $marker) {
@@ -106,6 +114,13 @@ foreach ([
     '.ai-task-detail-v2',
     '.ai-task-bottom-grid-v2',
     '.ai-result-grid-v2',
+    '.ai-log-page-v2',
+    '.ai-log-hero-v2',
+    '.ai-log-kpis-v2',
+    '.ai-log-layout-v2',
+    '.ai-log-table-v2',
+    '.ai-log-detail-v2',
+    '.ai-log-json-v2',
     'body.is-ai-module .action_command::after',
     '.crm-modal.ai-dialog',
     '.radar-drawer-backdrop',
@@ -128,7 +143,7 @@ foreach ([
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-task-workbench-layout-20260802-1';")) {
+if (!str_contains($page, "\$crmAssetBuild = 'ai-log-workbench-layout-20260802-1';")) {
     throw new RuntimeException('CRM asset build must bust cache for AI center workbench changes');
 }
 
