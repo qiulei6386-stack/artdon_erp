@@ -3888,7 +3888,7 @@
       function subPanel(key, label, active) {
         var html = panelContent[key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(label || key) + '</span><strong>0</strong><em>接口待接入</em></button></div></section>';
         var className = 'customer-tab-panel customer-tab-subpanel customer-section' + (active ? ' active' : '');
-        var sectionHead = '<header class="customer-section-head"><strong>' + esc(label || key) + '</strong><span>当前页面目录定位：' + esc(label || key) + '</span></header>';
+        var sectionHead = key === 'customer_attribute' ? '' : '<header class="customer-section-head"><strong>' + esc(label || key) + '</strong><span>当前页面目录定位：' + esc(label || key) + '</span></header>';
         return html
           .replace('customer-tab-panel active"', className + '"')
           .replace('customer-tab-panel"', className + '"')
@@ -3976,6 +3976,11 @@
       var primaryOwner = owners.find(function (row) { return Number(row.is_primary) === 1 || row.role_type === 'primary'; });
       var primaryOwnerId = String((primaryOwner && primaryOwner.user_id) || c.owner_user_id || '');
       if (primaryOwnerId && ownerIds.indexOf(primaryOwnerId) < 0) ownerIds.unshift(primaryOwnerId);
+      var profileName = c.customer_name || c.customer_name_en || c.company_name || '未命名客户';
+      var profileInitial = (String(profileName).match(/[A-Za-z0-9]/) || [String(profileName).charAt(0) || 'C'])[0].toUpperCase();
+      var profilePlace = [c.country, c.city].filter(Boolean).join(' / ') || '国家城市未填';
+      var channelText = (data.promotion_channels || []).join(' / ') || '未设置';
+      var sourceText = (data.source_tags || []).join(' / ') || c.source || '未记录';
       var field = function (label, name, value, attrs) {
         return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '"' + disabled + ' ' + (attrs || '') + '></label>';
       };
@@ -3983,22 +3988,25 @@
         return '<label class="entity-field is-readonly"><span>' + esc(label) + ' 🔒</span><input value="' + esc(value || '未填') + '" disabled></label>';
       };
       return '<form class="archive-attribute-panel archive-profile-editor" data-archive-attribute-form>' +
-        '<header class="archive-attribute-commandbar"><div><strong>客户核心资料</strong><span>双击联系人、地址、客户群行仍可进入原编辑流程。</span></div><div class="customer-tab-stats"><span>完整度 ' + esc(completeness.score || 0) + '%</span><span>缺失 ' + esc(missing.length) + '</span><span>' + esc(missing.slice(0, 5).join(' / ') || '资料较完整') + '</span></div><div class="archive-attribute-toolbar"><button type="button" data-archive-edit>编辑档案</button><button type="button" class="primary" data-archive-save ' + (this.archiveEditMode ? '' : 'disabled') + '>保存档案</button><button type="button" data-archive-cancel ' + (this.archiveEditMode ? '' : 'disabled') + '>取消修改</button><button type="button" data-archive-missing>补全缺失资料</button></div></header>' +
+        '<header class="archive-attribute-commandbar"><div><strong>客户档案工作台</strong><span>左侧快速识别客户，右侧集中维护资料。双击联系人、地址、客户群行仍进入原编辑流程。</span></div><div class="archive-attribute-toolbar"><button type="button" data-archive-edit>编辑档案</button><button type="button" class="primary" data-archive-save ' + (this.archiveEditMode ? '' : 'disabled') + '>保存档案</button><button type="button" data-archive-cancel ' + (this.archiveEditMode ? '' : 'disabled') + '>取消修改</button><button type="button" data-archive-missing>补全缺失资料</button></div></header>' +
         '<input type="hidden" name="customer_id" value="' + esc(this.currentId || c.id || '') + '">' +
-        '<div class="archive-attribute-sections">' +
-          '<section class="archive-attribute-card primary"><header><b>基础身份</b><span>客户名称、代码与区域</span></header><div class="entity-grid archive-attribute-grid">' +
-            field('客户名称 *', 'customer_name', c.customer_name, 'required') +
-            field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
-            field('国家', 'country', c.country, 'list="crm-country-options"') +
-            field('城市', 'city', c.city, 'list="crm-address-region-options-filtered"') +
-          '</div></section>' +
-          '<section class="archive-attribute-card"><header><b>来源与分层</b><span>获客来源、推广方式和生命周期</span></header><div class="entity-grid archive-attribute-grid">' +
-            field('网站', 'website', c.website, 'placeholder="https://"') +
-            field('来源', 'source_tags', (data.source_tags || []).join(','), 'placeholder="website, linkedin"') +
-            field('推广方式', 'promotion_channels', (data.promotion_channels || []).join(','), 'placeholder="email, whatsapp"') +
-            field('客户等级', 'level', c.level || 'P3') +
-            field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
-          '</div></section>' +
+        '<div class="archive-attribute-sections archive-profile-layout">' +
+          '<aside class="archive-profile-snapshot"><div class="archive-snapshot-avatar">' + esc(profileInitial) + '</div><p>Customer Profile</p><h3>' + esc(profileName) + '</h3><span>' + esc(c.customer_code || c.code || '无客户代码') + ' · ' + esc(profilePlace) + '</span><div class="archive-snapshot-progress"><b>完整度 ' + esc(completeness.score || 0) + '%</b><i><em style="width:' + Math.max(0, Math.min(100, Number(completeness.score || 0))) + '%"></em></i></div><div class="archive-snapshot-kpis"><div><strong>' + esc((data.contacts || []).length) + '</strong><span>联系人</span></div><div><strong>' + esc((data.chat_groups || []).length) + '</strong><span>客户群</span></div><div><strong>' + esc(missing.length) + '</strong><span>缺失项</span></div></div><dl><dt>负责人</dt><dd>' + esc(ownerText || '未分配') + '</dd><dt>来源</dt><dd>' + esc(sourceText) + '</dd><dt>推广</dt><dd>' + esc(channelText) + '</dd></dl></aside>' +
+          '<div class="archive-profile-formgrid">' +
+            '<section class="archive-attribute-card primary"><header><b>基础身份</b><span>客户名称、代码与区域</span></header><div class="entity-grid archive-attribute-grid">' +
+              field('客户名称 *', 'customer_name', c.customer_name, 'required') +
+              field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
+              field('国家', 'country', c.country, 'list="crm-country-options"') +
+              field('城市', 'city', c.city, 'list="crm-address-region-options-filtered"') +
+            '</div></section>' +
+            '<section class="archive-attribute-card"><header><b>来源与分层</b><span>获客来源、推广方式和生命周期</span></header><div class="entity-grid archive-attribute-grid">' +
+              field('网站', 'website', c.website, 'placeholder="https://"') +
+              field('来源', 'source_tags', (data.source_tags || []).join(','), 'placeholder="website, linkedin"') +
+              field('推广方式', 'promotion_channels', (data.promotion_channels || []).join(','), 'placeholder="email, whatsapp"') +
+              field('客户等级', 'level', c.level || 'P3') +
+              field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
+            '</div></section>' +
+          '</div>' +
           '<section class="archive-attribute-card wide"><header><b>负责人</b><span>先勾选第一负责人，后续勾选为协助人</span></header><div class="entity-field" data-attribute-field="owner_user_ids"><div class="entry-checks entry-owner-checks">' + this.customerOwnerChecks(ownerIds, primaryOwnerId, this.archiveEditMode ? '' : 'disabled') + '</div></div></section>' +
           '<section class="archive-attribute-card wide remark"><header><b>备注</b><span>客户背景、LinkedIn、特殊要求或沟通记录摘要</span></header><label class="entity-field" data-attribute-field="remark"><textarea name="remark" rows="4"' + disabled + '>' + esc(c.remark || '') + '</textarea></label></section>' +
         '</div>' +

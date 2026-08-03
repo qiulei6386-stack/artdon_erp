@@ -7377,14 +7377,15 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .archive-attribute-commandbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-width: 0;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--crm-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #fff, #f8fafc);
+  background: #fff;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, .05);
 }
 .archive-attribute-commandbar > div:first-child {
   min-width: 0;
@@ -7406,6 +7407,140 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.archive-profile-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: stretch;
+}
+.archive-profile-snapshot {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  padding: 16px;
+  border-radius: 8px;
+  color: #e5eefc;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(34,197,94,.3), transparent 25%),
+    radial-gradient(circle at 12% 88%, rgba(37,99,235,.34), transparent 28%),
+    linear-gradient(145deg, #0f172a, #1e293b 66%, #0f766e);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, .16);
+}
+.archive-snapshot-avatar {
+  width: 62px;
+  height: 62px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 950;
+}
+.archive-profile-snapshot p,
+.archive-profile-snapshot h3,
+.archive-profile-snapshot span {
+  min-width: 0;
+  margin: 0;
+}
+.archive-profile-snapshot p {
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.archive-profile-snapshot h3 {
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.archive-profile-snapshot > span {
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.archive-snapshot-progress {
+  display: grid;
+  gap: 7px;
+  margin-top: 4px;
+}
+.archive-snapshot-progress b {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+.archive-snapshot-progress i {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.16);
+  overflow: hidden;
+}
+.archive-snapshot-progress em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+}
+.archive-snapshot-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.archive-snapshot-kpis div {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.archive-snapshot-kpis strong,
+.archive-snapshot-kpis span {
+  display: block;
+}
+.archive-snapshot-kpis strong {
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+}
+.archive-snapshot-kpis span {
+  margin-top: 5px;
+  color: #cbd5e1;
+  font-size: 10px;
+  font-weight: 900;
+}
+.archive-profile-snapshot dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.14);
+}
+.archive-profile-snapshot dt,
+.archive-profile-snapshot dd {
+  margin: 0;
+  min-width: 0;
+}
+.archive-profile-snapshot dt {
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 950;
+}
+.archive-profile-snapshot dd {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.archive-profile-formgrid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
 .archive-attribute-card {
   min-width: 0;
   display: grid;
@@ -7420,6 +7555,9 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border-color: color-mix(in srgb, var(--crm-primary) 24%, var(--crm-border));
 }
 .archive-attribute-card.wide {
+  grid-column: 1 / -1;
+}
+.archive-profile-layout > .archive-attribute-card.wide {
   grid-column: 1 / -1;
 }
 .archive-attribute-card header {
@@ -7542,7 +7680,9 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
     grid-template-columns: 1fr;
   }
   .archive-attribute-commandbar,
-  .archive-attribute-sections {
+  .archive-attribute-sections,
+  .archive-profile-layout,
+  .archive-profile-formgrid {
     grid-template-columns: 1fr;
   }
 }
