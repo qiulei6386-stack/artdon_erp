@@ -3926,7 +3926,39 @@
         groupPanel('project', '项目', groupChildren('project'), this.detailSubTabsForGroup('project'), activeSubTab),
         groupPanel('records', '记录', groupChildren('records'), this.detailSubTabsForGroup('records'), activeSubTab)
       ].join('');
-      box.innerHTML = '<div class="customer-detail-shell" data-customer-detail-shell>' + tabHtml + '<div class="customer-main-content" data-customer-main-content>' + panelHtml + '</div></div>';
+      var profileName = c.customer_name || c.customer_name_en || c.company_name || '未命名客户';
+      var profileInitial = (String(profileName).match(/[A-Za-z0-9]/) || [String(profileName).charAt(0) || 'C'])[0].toUpperCase();
+      var profilePlace = [c.country, c.city].filter(Boolean).join(' / ') || '国家城市未填';
+      var profileCode = c.customer_code || c.code || '无客户代码';
+      var profileLevel = c.level || c.customer_level || '未定级';
+      var profileLife = c.lifecycle_key || c.lifecycle || 'lead';
+      var profileUpdated = c.updated_at || c.last_contact_at || c.created_at || '-';
+      var missingItems = Array.isArray(completeness.missing) ? completeness.missing : [];
+      var missingPreview = missingItems.slice(0, 6).map(function (item) {
+        return '<span>' + esc(item) + '</span>';
+      }).join('') || '<span>资料较完整</span>';
+      var railLogs = (data.logs || []).slice(0, 4).map(function (log) {
+        return '<li><b>' + esc(log.created_at || log.time || '-') + '</b><span>' + esc(log.action_label || log.action || log.event_type || '客户记录') + '</span><em>' + esc(log.operator_name || log.username || log.created_by || '-') + '</em></li>';
+      }).join('') || '<li class="empty"><span>暂无客户日志</span></li>';
+      var channelChips = promotionChannels.slice(0, 4).map(function (channel) {
+        return '<span>' + esc(channel) + '</span>';
+      }).join('') || '<span>未设置推广方式</span>';
+      var customerProfileHeader = '<section class="customer-profile-head">' +
+        '<div class="customer-profile-identity"><div class="customer-profile-avatar">' + esc(profileInitial) + '</div><div><p>客户档案</p><h2>' + esc(profileName) + '</h2><span>' + esc(profileCode) + ' · ' + esc(profilePlace) + ' · 负责人 ' + esc(ownerText || '未分配') + '</span></div></div>' +
+        '<div class="customer-profile-chips"><span>' + esc(profileLevel) + '</span><span>' + esc(cnStatus(profileLife)) + '</span>' + channelChips + '</div>' +
+        '<div class="customer-profile-metrics">' +
+          '<button type="button" data-summary-jump="contacts"><strong>' + esc((data.contacts || []).length) + '</strong><span>联系人</span></button>' +
+          '<button type="button" data-summary-jump="chat_groups"><strong>' + esc((data.chat_groups || []).length) + '</strong><span>客户群</span></button>' +
+          '<button type="button" data-summary-jump="quote"><strong>' + esc(((data.linkage || {}).quote || {}).total || 0) + '</strong><span>报价</span></button>' +
+          '<button type="button" data-summary-jump="followups"><strong>' + esc((data.followups || []).length) + '</strong><span>跟进</span></button>' +
+        '</div>' +
+      '</section>';
+      var customerProfileRail = '<aside class="customer-profile-side">' +
+        '<section class="customer-profile-card health"><header><strong>资料健康度</strong><b>' + esc(completeness.score || 0) + '%</b></header><div class="customer-profile-progress"><i style="width:' + Math.max(0, Math.min(100, Number(completeness.score || 0))) + '%"></i></div><div class="customer-profile-missing">' + missingPreview + '</div><button type="button" data-archive-missing>补全缺失资料</button></section>' +
+        '<section class="customer-profile-card actions"><header><strong>快捷处理</strong><span>保留双击编辑</span></header><button type="button" data-archive-edit>编辑档案</button><button type="button" data-customer-new-followup>新建跟进</button><button type="button" data-customer-new-opportunity>新建商机</button><button type="button" data-customer-new-sample>样品寄送</button><button type="button" data-summary-jump="quote">查看报价</button><button type="button" data-customer-ai-analysis>AI 分析</button></section>' +
+        '<section class="customer-profile-card timeline"><header><strong>最近记录</strong><span>' + esc(profileUpdated) + '</span></header><ul>' + railLogs + '</ul></section>' +
+      '</aside>';
+      box.innerHTML = '<div class="customer-detail-shell customer-profile-workbench" data-customer-detail-shell>' + customerProfileHeader + '<div class="customer-profile-body"><main class="customer-profile-main">' + tabHtml + '<div class="customer-main-content" data-customer-main-content>' + panelHtml + '</div></main>' + customerProfileRail + '</div></div>';
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
@@ -5145,25 +5177,30 @@
       });
       this.bindOrderPreviewShortcuts();
       this.bindOwnerPickEvents(document.querySelector('[data-archive-attribute-form]'));
+      function bindAll(selector, handler) {
+        document.querySelectorAll(selector).forEach(function (node) {
+          node.addEventListener('click', handler);
+        });
+      }
       document.querySelectorAll('[data-customer-attribute-open]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.openCustomerAttributeView(false, true);
         });
       });
-      document.querySelector('[data-archive-edit]')?.addEventListener('click', function () {
+      bindAll('[data-archive-edit]', function () {
         self.archiveEditMode = true;
         self.renderDetail(self.currentDetail);
         self.switchDetailTab('customer_attribute');
         renderActions('customers');
       });
-      document.querySelector('[data-archive-save]')?.addEventListener('click', function () { self.saveArchiveAttribute(); });
-      document.querySelector('[data-archive-cancel]')?.addEventListener('click', function () {
+      bindAll('[data-archive-save]', function () { self.saveArchiveAttribute(); });
+      bindAll('[data-archive-cancel]', function () {
         self.archiveEditMode = false;
         self.renderDetail(self.currentDetail);
         self.switchDetailTab('customer_attribute');
         renderActions('customers');
       });
-      document.querySelector('[data-archive-missing]')?.addEventListener('click', function () {
+      bindAll('[data-archive-missing]', function () {
         self.archiveEditMode = true;
         self.renderDetail(self.currentDetail);
         self.switchDetailTab('customer_attribute');
@@ -5208,12 +5245,12 @@
           self.openChatGroupDialog();
         });
       });
-      document.querySelector('[data-customer-new-followup]')?.addEventListener('click', function () { self.openFollowupDialog(); });
-      document.querySelector('[data-customer-ai-analysis]')?.addEventListener('click', function () { self.handleAction('AI 分析客户'); });
-      document.querySelector('[data-customer-new-visit]')?.addEventListener('click', function () { VisitModule.openVisitDialog('customer_visit'); });
-      document.querySelector('[data-customer-new-arrival]')?.addEventListener('click', function () { VisitModule.openVisitDialog('customer_arrival'); });
-      document.querySelector('[data-customer-new-opportunity]')?.addEventListener('click', function () { OpportunityModule.openDialog(); });
-      document.querySelector('[data-customer-new-sample]')?.addEventListener('click', function () {
+      bindAll('[data-customer-new-followup]', function () { self.openFollowupDialog(); });
+      bindAll('[data-customer-ai-analysis]', function () { self.handleAction('AI 分析客户'); });
+      bindAll('[data-customer-new-visit]', function () { VisitModule.openVisitDialog('customer_visit'); });
+      bindAll('[data-customer-new-arrival]', function () { VisitModule.openVisitDialog('customer_arrival'); });
+      bindAll('[data-customer-new-opportunity]', function () { OpportunityModule.openDialog(); });
+      bindAll('[data-customer-new-sample]', function () {
         var detail = self.currentDetail || {}, customer = detail.customer || detail || {};
         TaskCenterModule.openSampleDialog({
           customer_id: customer.id || self.currentId || '',
