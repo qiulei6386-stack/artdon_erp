@@ -1841,7 +1841,7 @@ function qperm_action_perm($action){
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
     'create_backup'=>'settings_manage','list_backups'=>'settings_manage','download_backup'=>'settings_manage','restore_backup'=>'settings_manage','save_header'=>'doc_settings_manage','delete_header'=>'doc_settings_manage','save_bank'=>'doc_settings_manage','delete_bank'=>'doc_settings_manage','save_template'=>'doc_settings_manage','delete_template'=>'doc_settings_manage','save_exchange_rate'=>'rate_manage','save_price_level'=>'settings_manage','delete_price_level'=>'settings_manage','save_option'=>'settings_manage','delete_option'=>'settings_manage',
     'price_policy_list'=>'product_view','price_policy_match'=>'product_view','price_tier_list'=>'product_view','price_policy_levels_list'=>'product_view','price_stock_log_list'=>'product_view','price_policy_options_list'=>'product_view',
-    'commission_rule_list'=>'product_view','commission_options_list'=>'product_view','commission_calc_preview'=>'product_view','commission_rule_export'=>'product_view','commission_order_list'=>'product_view','commission_quote_list'=>'product_view','commission_quote_save'=>'product_view','commission_quote_lines_save'=>'product_view','commission_customer_check'=>'can_access','commission_reminder_list'=>'product_view','commission_reminder_save'=>'product_view','commission_reminder_toggle'=>'product_view',
+    'commission_rule_list'=>'product_view','commission_options_list'=>'product_view','commission_calc_preview'=>'product_view','commission_rule_export'=>'product_view','commission_order_list'=>'product_view','commission_quote_list'=>'product_view','commission_quote_save'=>'product_view','commission_quote_lines_save'=>'product_view','commission_customer_check'=>'can_access','commission_reminder_list'=>'product_view','commission_reminder_save'=>'product_view','commission_reminder_toggle'=>'product_view','quote_user_pref_get'=>'can_access','quote_user_pref_save'=>'can_access',
     'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
     'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
     'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
@@ -1849,6 +1849,47 @@ function qperm_action_perm($action){
     'quotation_summary_filters'=>'history_view','quotation_summary_overview'=>'history_view','quotation_summary_trend'=>'history_view','quotation_summary_pie'=>'history_view','quotation_summary_rank'=>'history_view','quotation_summary_list'=>'history_view','quotation_summary_export_excel'=>'history_view'
   ];
   return $map[$action]??'can_access';
+}
+function quote_user_pref_schema(PDO $pdo): void {
+  ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_user_preferences (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_key VARCHAR(180) NOT NULL DEFAULT '',
+    username VARCHAR(120) NOT NULL DEFAULT '',
+    pref_key VARCHAR(120) NOT NULL DEFAULT '',
+    pref_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_quote_user_pref (user_key,pref_key),
+    KEY idx_pref_key (pref_key)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+function quote_user_pref_key(array $user): string {
+  $uid=trim((string)($user['user_id']??$user['id']??''));
+  $ut=trim((string)($user['user_table']??''));
+  $un=trim((string)($user['username']??''));
+  if($uid!=='') return 'id:'.$ut.':'.$uid;
+  return 'name:'.mb_strtolower($un,'UTF-8');
+}
+function quote_user_pref_allowed(string $key): bool {
+  return in_array($key,['commission_order_columns_v1'],true);
+}
+function quote_user_pref_get(PDO $pdo,array $user,string $key): array {
+  if(!quote_user_pref_allowed($key)) fail('不支持的偏好项');
+  quote_user_pref_schema($pdo);
+  $r=row($pdo,'SELECT pref_json FROM quote_user_preferences WHERE user_key=? AND pref_key=? LIMIT 1',[quote_user_pref_key($user),$key]);
+  $v=json_decode((string)($r['pref_json']??'{}'),true);
+  return is_array($v)?$v:[];
+}
+function quote_user_pref_save(PDO $pdo,array $user,string $key,$value): array {
+  if(!quote_user_pref_allowed($key)) fail('不支持的偏好项');
+  if(!is_array($value)) $value=[];
+  quote_user_pref_schema($pdo);
+  $userKey=quote_user_pref_key($user);
+  $username=s($user['username']??'',120);
+  $json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  $st=$pdo->prepare('INSERT INTO quote_user_preferences(user_key,username,pref_key,pref_json) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE username=VALUES(username),pref_json=VALUES(pref_json),updated_at=NOW()');
+  $st->execute([$userKey,$username,$key,$json]);
+  return $value;
 }
 function qperm_user_table_rank($t){
   $priority=qperm_priority_tables();
@@ -4123,6 +4164,17 @@ try{
  if($action==='save_user_permission'){ $d=input_json(); qperm_save_user_permission($pdo,$d,$__quote_user); ok(['users'=>qperm_list_users($pdo)]); }
  if($action==='reset_user_permission'){ $d=input_json(); $pdo->prepare('DELETE FROM quote_user_permissions WHERE user_table=? AND user_id=? AND username=?')->execute([(string)($d['user_table']??''),(string)($d['user_id']??''),(string)($d['username']??'')]); quote_log_event($pdo,['action'=>'reset_user_permission','event'=>'重置报价权限','user_name'=>$__quote_user['username']??'','summary'=>'重置账号权限：'.($d['username']??''),'detail'=>$d]); ok(['users'=>qperm_list_users($pdo)]); }
  if($action==='delete_permission_user'){ $d=input_json(); qperm_delete_permission_user($pdo,$d,$__quote_user); ok(['users'=>qperm_list_users($pdo)]); }
+ if($action==='quote_user_pref_get'){
+   $d=input_json();
+   $key=s($d['key']??($_GET['key']??''),120);
+   ok(['key'=>$key,'value'=>quote_user_pref_get($pdo,$__quote_user,$key)]);
+ }
+ if($action==='quote_user_pref_save'){
+   $d=input_json();
+   $key=s($d['key']??'',120);
+   $value=is_array($d['value']??null)?$d['value']:[];
+   ok(['key'=>$key,'value'=>quote_user_pref_save($pdo,$__quote_user,$key,$value)]);
+ }
  if($action==='log_health'){
    $d=input_json();
    quote_log_event($pdo,['action'=>'log_health','event'=>'日志自检','summary'=>'手动写入日志自检：如果能看到这条，说明日志表和接口正常','detail'=>$d]);
