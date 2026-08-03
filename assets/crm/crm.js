@@ -12827,6 +12827,9 @@
     poolViewMode: 'list',
     groupPage: Number(readLocalJson('crm_promotion_state', {}).groupPage || 1),
     groupPageSize: 20,
+    groupMemberPage: Number(readLocalJson('crm_promotion_state', {}).groupMemberPage || 1),
+    groupMemberPageSize: Number(readLocalJson('crm_promotion_state', {}).groupMemberPageSize || 100),
+    groupMemberLoading: false,
     groupQuickFilter: 'all',
     contactQuickFilter: 'all',
     groupMemberMode: false,
@@ -13028,7 +13031,9 @@
         poolPageSize: Number(this.poolPageSize || 50),
         taskFilter: this.taskFilter || 'all',
         executionTab: this.executionTab || 'mail_queue'
-        , groupPage: Number(this.groupPage || 1)
+        , groupPage: Number(this.groupPage || 1),
+        groupMemberPage: Number(this.groupMemberPage || 1),
+        groupMemberPageSize: Number(this.groupMemberPageSize || 100)
       };
       try { localStorage.setItem('crm_promotion_state', JSON.stringify(state)); } catch (error) {}
       return state;
@@ -13600,7 +13605,11 @@
           var id = Number(input.getAttribute('data-promo-group-check') || 0);
           if (input.checked) self.selectedGroupIds.add(id);
           else self.selectedGroupIds.delete(id);
-          if (self.selectedGroupIds.size === 1) self.currentGroupId = Array.from(self.selectedGroupIds)[0];
+          if (self.selectedGroupIds.size === 1) {
+            var nextGroupId = Array.from(self.selectedGroupIds)[0];
+            if (Number(self.currentGroupId || 0) !== Number(nextGroupId)) self.groupMemberPage = 1;
+            self.currentGroupId = nextGroupId;
+          }
           self.saveState();
           self.renderGroupSelectionText();
           self.renderGroupMemberPreview();
@@ -13615,6 +13624,7 @@
           self.selectedGroupIds.add(self.currentGroupId);
           self.selectedGroupMemberIds.clear();
           self.groupMemberMode = true;
+          self.groupMemberPage = 1;
           self.saveState();
           self.renderGroupManagement();
           self.loadGroupMembers();
@@ -13682,24 +13692,49 @@
         };
       });
     },
-    loadGroupMembers: function () {
+    loadGroupMembers: function (options) {
       if (!this.currentGroupId) return toast('请先选择客户组');
+      options = options || {};
       var self = this;
       this.groupMemberMode = true;
-      this.selectedGroupMemberIds.clear();
+      this.groupMemberPage = Math.max(1, Number(this.groupMemberPage || 1));
+      this.groupMemberPageSize = Math.min(200, Math.max(20, Number(this.groupMemberPageSize || 100)));
+      if (!options.keepSelection) this.selectedGroupMemberIds.clear();
+      this.groupMemberLoading = true;
+      this.saveState();
+      this.renderGroupMemberPreview();
       return post('marketing_pool_view', {
         group_id: this.currentGroupId,
-        page: this.poolPage || 1,
-        page_size: this.groupMemberMode ? 100 : 20
+        exact_count: 1,
+        page: this.groupMemberPage || 1,
+        page_size: this.groupMemberPageSize || 100
       }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户组成员加载失败');
+        var data = json.data || {};
+        var pager = data.group_pool_pager || data.pool_pager || {};
+        var rows = data.group_pool || data.pool || [];
+        var pageCount = Math.max(1, Number(pager.page_count || 1));
+        if (!rows.length && self.groupMemberPage > 1 && Number(pager.total || 0) > 0 && self.groupMemberPage > pageCount) {
+          self.groupMemberPage = pageCount;
+          self.groupMemberLoading = false;
+          return self.loadGroupMembers({ keepSelection: true });
+        }
+        self.groupMemberLoading = false;
+        self.groupMemberPage = Math.min(Math.max(1, Number(pager.page || self.groupMemberPage || 1)), pageCount);
+        self.groupMemberPageSize = Number(pager.page_size || self.groupMemberPageSize || 100);
         self.data = Object.assign({}, self.data || {}, {
-          group_pool: (json.data || {}).group_pool || (json.data || {}).pool || [],
-          group_pool_pager: (json.data || {}).group_pool_pager || (json.data || {}).pool_pager || {}
+          group_pool: rows,
+          group_pool_pager: pager,
+          group_pool_group_id: self.currentGroupId
         });
+        self.saveState();
         self.renderGroupMemberPreview();
         if (current === 'promotion') renderActions('promotion');
-      }).catch(function (error) { self.showError(error.message || '客户组成员加载失败'); });
+      }).catch(function (error) {
+        self.groupMemberLoading = false;
+        self.renderGroupMemberPreview();
+        self.showError(error.message || '客户组成员加载失败');
+      });
     },
     openGroupMemberMoveDialog: function () {
       if (!this.currentGroupId) return toast('请先选择客户组');
@@ -13863,29 +13898,33 @@
         this.renderGroupMemberSelectionText();
         return;
       }
-      var members = ((this.data && this.data.group_pool) || []).slice();
-      if (!members.length || !this.groupMemberMode) {
+      var loadedGroupId = Number((this.data && this.data.group_pool_group_id) || 0);
+      var hasLoadedGroupPage = this.groupMemberMode && loadedGroupId === Number(group.id);
+      var members = hasLoadedGroupPage ? (((this.data && this.data.group_pool) || []).slice()) : [];
+      if (!this.groupMemberMode) {
         var pool = (this.data && this.data.pool) || [];
         members = pool.filter(function (row) {
           return String(row.marketing_group_ids || '').split(',').map(function (id) { return id.trim(); }).indexOf(String(group.id)) >= 0;
         });
       }
-      if (!members.length && !this.groupMemberMode) {
-        this.loadGroupMembers();
-        box.innerHTML = '<p class="promo-empty">正在读取客户组成员...</p>';
-        this.renderGroupMemberSelectionText();
-        return;
-      }
       var shown = members;
-      var body = shown.length ? shown.map(function (row) {
+      var pager = hasLoadedGroupPage ? ((this.data && this.data.group_pool_pager) || {}) : {};
+      var pageSize = Number(pager.page_size || this.groupMemberPageSize || 100);
+      var pageCount = Math.max(1, Number(pager.page_count || 1));
+      var page = Math.min(Math.max(1, Number(pager.page || this.groupMemberPage || 1)), pageCount);
+      var total = Number(pager.total || group.customer_count || shown.length || 0);
+      var start = total ? ((page - 1) * pageSize + 1) : 0;
+      var end = total ? Math.min(total, (page - 1) * pageSize + shown.length) : shown.length;
+      var pagerHtml = this.groupMemberMode ? '<div class="promo-group-member-pager"><div><strong>成员 ' + esc(total || 0) + '</strong><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页' + (total ? ' · ' + esc(start) + '-' + esc(end) : '') + '</span></div><nav><button type="button" data-promo-group-member-prev ' + (page <= 1 || this.groupMemberLoading ? 'disabled' : '') + '>上一页</button><select data-promo-group-member-size><option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50/页</option><option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100/页</option><option value="200"' + (pageSize === 200 ? ' selected' : '') + '>200/页</option></select><button type="button" data-promo-group-member-next ' + (page >= pageCount || this.groupMemberLoading ? 'disabled' : '') + '>下一页</button></nav></div>' : '';
+      var body = this.groupMemberLoading ? '<tr><td colspan="9">正在读取第 ' + esc(page) + ' 页成员...</td></tr>' : (shown.length ? shown.map(function (row) {
         var id = Number(row.id || 0);
         var checked = self.selectedGroupMemberIds.has(id) ? ' checked' : '';
         return '<tr class="' + (checked ? 'selected' : '') + '" data-promo-group-member="' + esc(id) + '"><td><input type="checkbox" data-promo-group-member-check="' + esc(id) + '"' + checked + '></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.primary_contact_email || row.email || '') + '</span></td><td>' + esc(row.customer_code || '-') + '</td><td>' + esc(row.country || '未填') + '</td><td><b>' + esc(row.contact_count || 0) + '</b><small> / ' + esc(row.promotable_contact_count || row.active_contact_channels || 0) + '</small></td><td><b>' + esc(row.email_count || 0) + '</b><small> / ' + esc(row.whatsapp_count || 0) + '</small></td><td><em class="promo-status">' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</em></td><td>' + esc(row.owner_name || '-') + '</td><td>' + esc(row.last_touch_time || '无') + '</td></tr>';
-      }).join('') : '<tr><td colspan="9">当前客户组暂无成员。可以点击“加入客户”。</td></tr>';
+      }).join('') : '<tr><td colspan="9">' + (this.groupMemberMode ? '当前页没有成员。可以切换分页或加入客户。' : '当前客户组暂无成员。可以点击“加入客户”。') + '</td></tr>');
       var memberIds = shown.map(function (row) { return Number(row.id || 0); }).filter(Boolean);
       var selectedOnPage = memberIds.filter(function (id) { return self.selectedGroupMemberIds.has(id); }).length;
       var groupStats = '<div class="promo-group-member-kpis"><span><b>' + esc(group.customer_count || shown.length || 0) + '</b><small>客户</small></span><span><b>' + esc(group.contact_count || 0) + '</b><small>联系人</small></span><span><b>' + esc(group.promotable_contact_count || 0) + '</b><small>可推广</small></span><span><b>' + esc(group.owner_name || group.created_by_name || '-') + '</b><small>负责人</small></span></div>';
-      box.innerHTML = groupStats + '<div class="promo-group-member-summary"><label><input type="checkbox" data-promo-group-member-check-all><span>全选当前名单</span></label><strong>当前显示 ' + esc(shown.length) + ' 个客户</strong><small>联系人/可推广、邮箱/WhatsApp 合并显示。</small></div><div class="promo-pool-table promo-group-member-table"><table><thead><tr><th>选择</th><th>客户名称</th><th>客户代码</th><th>国家</th><th>联系人</th><th>邮箱/WhatsApp</th><th>状态</th><th>负责人</th><th>最近推广</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+      box.innerHTML = groupStats + '<div class="promo-group-member-summary"><label><input type="checkbox" data-promo-group-member-check-all><span>全选当前页</span></label><strong>当前页 ' + esc(shown.length) + ' 个客户</strong><small>联系人/可推广、邮箱/WhatsApp 合并显示。</small></div>' + pagerHtml + '<div class="promo-pool-table promo-group-member-table"><table><thead><tr><th>选择</th><th>客户名称</th><th>客户代码</th><th>国家</th><th>联系人</th><th>邮箱/WhatsApp</th><th>状态</th><th>负责人</th><th>最近推广</th></tr></thead><tbody>' + body + '</tbody></table></div>';
       var checkAll = box.querySelector('[data-promo-group-member-check-all]');
       if (checkAll) {
         checkAll.checked = memberIds.length > 0 && selectedOnPage === memberIds.length;
@@ -13899,6 +13938,23 @@
           if (current === 'promotion') renderActions('promotion');
         });
       }
+      box.querySelector('[data-promo-group-member-prev]')?.addEventListener('click', function () {
+        if (self.groupMemberPage <= 1) return;
+        self.groupMemberPage -= 1;
+        self.loadGroupMembers({ keepSelection: true });
+      });
+      box.querySelector('[data-promo-group-member-next]')?.addEventListener('click', function () {
+        var pager = (self.data && self.data.group_pool_pager) || {};
+        var pageCount = Math.max(1, Number(pager.page_count || 1));
+        if (self.groupMemberPage >= pageCount) return;
+        self.groupMemberPage += 1;
+        self.loadGroupMembers({ keepSelection: true });
+      });
+      box.querySelector('[data-promo-group-member-size]')?.addEventListener('change', function (event) {
+        self.groupMemberPageSize = Number(event.target.value || 100);
+        self.groupMemberPage = 1;
+        self.loadGroupMembers({ keepSelection: true });
+      });
       box.querySelectorAll('[data-promo-group-member-check]').forEach(function (input) {
         input.addEventListener('click', function (event) { event.stopPropagation(); });
         input.addEventListener('change', function () {
@@ -21774,6 +21830,7 @@
     if (label === '查看客户组详情' || label === '查看全部成员') {
       ensurePromotionView('group_management');
       PromotionModule.groupMemberMode = true;
+      PromotionModule.groupMemberPage = 1;
       PromotionModule.loadGroupMembers();
       return;
     }

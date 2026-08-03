@@ -15367,6 +15367,56 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .promo-group-member-summary strong {
   color: var(--crm-text);
 }
+.promo-group-member-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: var(--crm-card-bg);
+  padding: 8px 10px;
+}
+.promo-group-member-pager div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 850;
+}
+.promo-group-member-pager strong {
+  color: var(--crm-primary);
+  font-weight: 950;
+}
+.promo-group-member-pager span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.promo-group-member-pager nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.promo-group-member-pager button,
+.promo-group-member-pager select {
+  min-height: 30px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.promo-group-member-pager button[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+}
 .promo-group-member-table {
   border-radius: 10px;
   background: var(--crm-card-bg);
@@ -15521,6 +15571,14 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   }
   .promo-group-member-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .promo-group-member-pager {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .promo-group-member-pager nav {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 @media (max-width: 1100px) {
