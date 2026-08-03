@@ -1841,7 +1841,7 @@ function qperm_action_perm($action){
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
     'create_backup'=>'settings_manage','list_backups'=>'settings_manage','download_backup'=>'settings_manage','restore_backup'=>'settings_manage','save_header'=>'doc_settings_manage','delete_header'=>'doc_settings_manage','save_bank'=>'doc_settings_manage','delete_bank'=>'doc_settings_manage','save_template'=>'doc_settings_manage','delete_template'=>'doc_settings_manage','save_exchange_rate'=>'rate_manage','save_price_level'=>'settings_manage','delete_price_level'=>'settings_manage','save_option'=>'settings_manage','delete_option'=>'settings_manage',
     'price_policy_list'=>'product_view','price_policy_match'=>'product_view','price_tier_list'=>'product_view','price_policy_levels_list'=>'product_view','price_stock_log_list'=>'product_view','price_policy_options_list'=>'product_view',
-    'commission_rule_list'=>'product_view','commission_options_list'=>'product_view','commission_calc_preview'=>'product_view','commission_rule_export'=>'product_view','commission_order_list'=>'product_view','commission_quote_list'=>'product_view','commission_quote_save'=>'product_view','commission_quote_lines_save'=>'product_view','commission_customer_check'=>'can_access','commission_reminder_list'=>'product_view','commission_reminder_save'=>'product_view','commission_reminder_toggle'=>'product_view','quote_user_pref_get'=>'can_access','quote_user_pref_save'=>'can_access',
+    'commission_rule_list'=>'product_view','commission_options_list'=>'product_view','commission_calc_preview'=>'product_view','commission_rule_export'=>'product_view','commission_order_list'=>'product_view','commission_quote_list'=>'product_view','commission_quote_save'=>'product_view','commission_quote_lines_save'=>'product_view','commission_log_list'=>'product_view','commission_customer_check'=>'can_access','commission_reminder_list'=>'product_view','commission_reminder_save'=>'product_view','commission_reminder_toggle'=>'product_view','quote_user_pref_get'=>'can_access','quote_user_pref_save'=>'can_access',
     'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
     'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
     'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
@@ -2510,6 +2510,7 @@ function quote_commission_quote_lines_save($pdo,$d,$user){
       if(!$q)throw new RuntimeException('报价不存在');
       $c=json_decode((string)($q['commission_json']??''),true);
       if(!is_array($c))$c=[];
+      $before=$c;
       $items=json_decode((string)($q['items_json']??'[]'),true);
       if(!is_array($items))$items=[];
       $lines=$c['lines']??[];
@@ -2530,6 +2531,7 @@ function quote_commission_quote_lines_save($pdo,$d,$user){
         $c['commission_estimated_amount']=$lineTotal;
       }
       $pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qid]);
+      quote_log_event($pdo,['action'=>'commission_quote_lines_save','event'=>'保存报价产品佣金','quote_id'=>$qid,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'summary'=>'保存报价产品佣金：'.$q['quote_no'].' / '.count($edits).' 行','detail'=>['quote_id'=>$qid,'line_count'=>count($edits)],'before'=>$before,'after'=>$c]);
       $saved[]=$qid;
     }catch(Throwable $e){$errors[]=['quote_id'=>$qid,'reason'=>$e->getMessage()];}
   }
@@ -3099,6 +3101,25 @@ function qlog_list($pdo){
   if(!empty($_GET['date_to'])){ $where[]='created_at <= ?'; $p[]=$_GET['date_to'].' 23:59:59'; }
   $sql='FROM quote_logs '.($where?'WHERE '.implode(' AND ',$where):'');
   $limit=max(20,min(500,intval($_GET['limit']??200))); $offset=max(0,intval($_GET['offset']??0));
+  $total=(int)row($pdo,'SELECT COUNT(*) c '.$sql,$p)['c'];
+  $logs=rows($pdo,'SELECT * '.$sql.' ORDER BY id DESC LIMIT '.$limit.' OFFSET '.$offset,$p);
+  return ['logs'=>$logs,'total'=>$total,'limit'=>$limit,'offset'=>$offset];
+}
+function quote_commission_log_list($pdo){
+  ensure_quote_log_schema($pdo);
+  $where=["action LIKE '%commission%'"];
+  $p=[];
+  $kw=trim((string)($_GET['kw']??''));
+  if($kw!==''){
+    $where[]="(action LIKE ? OR event LIKE ? OR summary LIKE ? OR quote_no LIKE ? OR customer_name LIKE ? OR user_name LIKE ? OR before_json LIKE ? OR after_json LIKE ?)";
+    for($i=0;$i<8;$i++)$p[]='%'.$kw.'%';
+  }
+  $op=trim((string)($_GET['op']??''));
+  if($op!==''){$where[]='action LIKE ?';$p[]='%'.$op.'%';}
+  if(!empty($_GET['date_from'])){$where[]='created_at >= ?';$p[]=$_GET['date_from'].' 00:00:00';}
+  if(!empty($_GET['date_to'])){$where[]='created_at <= ?';$p[]=$_GET['date_to'].' 23:59:59';}
+  $sql='FROM quote_logs WHERE '.implode(' AND ',$where);
+  $limit=max(20,min(500,(int)($_GET['limit']??200)));$offset=max(0,(int)($_GET['offset']??0));
   $total=(int)row($pdo,'SELECT COUNT(*) c '.$sql,$p)['c'];
   $logs=rows($pdo,'SELECT * '.$sql.' ORDER BY id DESC LIMIT '.$limit.' OFFSET '.$offset,$p);
   return ['logs'=>$logs,'total'=>$total,'limit'=>$limit,'offset'=>$offset];
@@ -4182,6 +4203,7 @@ try{
    $last=row($pdo,'SELECT * FROM quote_logs ORDER BY id DESC LIMIT 1',[]);
    ok(['table'=>'quote_logs','count'=>$cnt,'last'=>$last]);
  }
+ if($action==='commission_log_list'){ ok(quote_commission_log_list($pdo)); }
  if($action==='list_logs'){ ok(qlog_list($pdo)); }
  if($action==='delete_logs'){
    $d=input_json();
