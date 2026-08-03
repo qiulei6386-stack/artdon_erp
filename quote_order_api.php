@@ -619,6 +619,8 @@ function qo_freeze_commission(PDO $pdo,$orderId,$d,$items,$amount,$qty){
   $rules=qo_rows($pdo,'SELECT * FROM quote_commission_rules WHERE is_active=1 ORDER BY updated_at DESC,id DESC');$best=null;$bestScore=0;$bestReasons=[];
   foreach($rules as $r){$score=0;$reasons=[];
     $ruleCustomerId=qo_s($r['customer_id']??'',120);$ruleCustomerName=qo_s($r['customer_name']??'',255);$ruleTarget=qo_s($r['target_name']??'',160);$ruleProduct=strtoupper(qo_s($r['product_model']??'',120));$ruleCategory=qo_s($r['category']??'',160);
+    $hasScope=$ruleCustomerId!==''||$ruleCustomerName!==''||$ruleProduct!==''||$ruleCategory!==''||($ruleTarget!==''&&$customerCode!=='');
+    if(!$hasScope)continue;
     if($ruleCustomerId!==''&&$customerId!==''&&$norm($ruleCustomerId)===$norm($customerId)){$score+=100;$reasons[]='客户ID命中';}
     if($ruleCustomerName!==''&&$customerName!==''&&strcasecmp($ruleCustomerName,$customerName)===0){$score+=80;$reasons[]='客户名称命中';}
     if($ruleTarget!==''&&$customerCode!==''&&strcasecmp($ruleTarget,$customerCode)===0){$score+=60;$reasons[]='客户代码命中';}
