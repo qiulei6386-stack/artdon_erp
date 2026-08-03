@@ -13085,6 +13085,44 @@
         ungrouped: groupValue === '0' ? '1' : '',
       };
     },
+    resetPoolFilters: function (groupValue) {
+      var values = {
+        '[data-promo-search]': '',
+        '[data-promo-status]': '',
+        '[data-promo-country]': '',
+        '[data-promo-level]': '',
+        '[data-promo-owner]': '',
+        '[data-promo-has-email]': '',
+        '[data-promo-has-contact]': '',
+        '[data-promo-group-select]': groupValue == null ? '' : String(groupValue)
+      };
+      Object.keys(values).forEach(function (selector) {
+        var input = document.querySelector(selector);
+        if (input) input.value = values[selector];
+      });
+      var selectedGroupId = Number(groupValue || 0);
+      this.currentGroupId = selectedGroupId > 0 ? selectedGroupId : 0;
+      this.groupPoolFilterId = this.currentGroupId;
+      this.currentCustomerId = 0;
+      this.selectedCustomerIds.clear();
+      this.selectedContactIds.clear();
+      this.poolQuickFilter = 'all';
+      this.poolPage = 1;
+      this.allPoolPage = 1;
+      this.allPoolExpanded = false;
+      this.saveState();
+    },
+    showAllPool: function () {
+      this.resetPoolFilters('');
+      this.switchView('customer_pool');
+      this.loadPoolView();
+    },
+    selectPoolGroup: function (groupId) {
+      var id = Number(groupId || 0);
+      this.resetPoolFilters(id > 0 ? String(id) : '');
+      this.switchView('customer_pool');
+      this.loadPoolView();
+    },
     contactFilterPayload: function () {
       var groupValue = document.querySelector('[data-promo-contact-group]')?.value || '';
       return {
@@ -13121,16 +13159,16 @@
       this.loadContactStrategy();
     },
     applyPoolQuickFilter: function (key) {
+      if ((key || 'all') === 'all') {
+        this.showAllPool();
+        return;
+      }
       var status = document.querySelector('[data-promo-status]');
       var group = document.querySelector('[data-promo-group-select]');
       var hasEmail = document.querySelector('[data-promo-has-email]');
       var hasContact = document.querySelector('[data-promo-has-contact]');
       var owner = document.querySelector('[data-promo-owner]');
-      if (status) status.value = '';
-      if (group) group.value = '';
-      if (hasEmail) hasEmail.value = '';
-      if (hasContact) hasContact.value = '';
-      if (owner) owner.value = '';
+      this.resetPoolFilters('');
       this.poolQuickFilter = key || 'all';
       if (key === 'my' && owner && state.user && state.user.id) owner.value = String(state.user.id);
       if (key === 'ungrouped' && group) group.value = '0';
@@ -13423,8 +13461,10 @@
       if (!box) return;
       var rows = (this.data && this.data.groups) || [];
 	      var currentGroup = rows.find(function (row) { return Number(row.id) === Number(self.currentGroupId); });
+      var allPager = (this.data && (this.data.all_pool_pager || (!this.currentGroupId ? this.data.pool_pager : null))) || {};
+      var allCount = Number(allPager.total || 0);
 	      var html = '<div class="promo-group-toolbar"><strong>客户组</strong><span>选择分组后，右侧 ACTIONS 显示查看、编辑、复制、删除、移动等操作。</span></div>';
-	      html += '<button type="button" class="promo-group-chip' + (!this.currentGroupId ? ' active' : '') + '" data-promo-group-filter="0"><i style="background:#6b7280"></i>全部客户<small>All</small></button>';
+	      html += '<article class="promo-group-card promo-group-all-card' + (!this.currentGroupId ? ' active' : '') + '" data-promo-group-filter="0" title="清空当前筛选，显示客户推广池全部客户"><header><i style="background:#6b7280"></i><strong>全部客户</strong><small>' + (allCount ? ('客户 ' + esc(allCount)) : 'All') + '</small></header><p>清空分组和筛选</p></article>';
 	      html += rows.map(function (row) {
 	        return '<article class="promo-group-card' + (Number(row.id) === Number(self.currentGroupId) ? ' active' : '') + '" data-promo-group-filter="' + esc(row.id) + '" title="' + esc(row.remark || row.group_name) + '"><header><i style="background:' + esc(row.group_color || '#2563eb') + '"></i><strong>' + esc(row.group_name) + '</strong><small>客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + '</small></header><p>' + esc(row.remark || '无备注') + '</p></article>';
 	      }).join('');
@@ -13433,17 +13473,7 @@
       box.querySelectorAll('[data-promo-group-filter]').forEach(function (button) {
         button.addEventListener('click', function (event) {
 	          if (button.classList.contains('promo-group-card') && event && event.target && event.target.closest('button')) return;
-	          self.currentGroupId = Number(button.getAttribute('data-promo-group-filter') || 0);
-	          self.groupPoolFilterId = self.currentGroupId;
-          self.poolPage = 1;
-          self.allPoolExpanded = false;
-          self.allPoolPage = 1;
-	          self.currentCustomerId = 0;
-	          self.selectedCustomerIds.clear();
-	          self.selectedContactIds.clear();
-	          self.saveState();
-          self.switchView('pool');
-	          self.loadPoolView();
+          self.selectPoolGroup(button.getAttribute('data-promo-group-filter') || 0);
 	        });
       });
     },
@@ -21634,14 +21664,7 @@
     }
     if (label === '全部客户') {
       ensurePromotionView('customer_pool');
-      PromotionModule.currentGroupId = 0;
-      PromotionModule.groupPoolFilterId = 0;
-      PromotionModule.currentCustomerId = 0;
-      PromotionModule.selectedCustomerIds.clear();
-      PromotionModule.selectedContactIds.clear();
-      PromotionModule.poolPage = 1;
-      PromotionModule.allPoolExpanded = true;
-      PromotionModule.load();
+      PromotionModule.showAllPool();
       return;
     }
     if (label === '只看当前组' || label === '查看当前组客户') {
