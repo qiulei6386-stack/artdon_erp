@@ -13756,10 +13756,11 @@
         var page = Number(pager.page || pickerState.page || 1);
         var pageCount = Math.max(page, Number(pager.page_count || page || 1));
         var total = Number(pager.total || 0);
+        var totalLabel = total ? ' · ' + (Number(pager.total_is_exact || 0) === 1 ? '共 ' : '约 ') + esc(total) + ' 个' : '';
         var hasMore = Number(pager.has_more || 0) === 1 || page < pageCount;
         var pagerBox = modal.querySelector('[data-promo-picker-pager]');
         if (pagerBox) {
-          pagerBox.innerHTML = '<button type="button" data-promo-picker-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页' + (total ? ' · 约 ' + esc(total) + ' 个' : '') + '</span><button type="button" data-promo-picker-next ' + (!hasMore ? 'disabled' : '') + '>下一页</button>';
+          pagerBox.innerHTML = '<button type="button" data-promo-picker-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页' + totalLabel + '</span><button type="button" data-promo-picker-next ' + (!hasMore ? 'disabled' : '') + '>下一页</button>';
           pagerBox.querySelector('[data-promo-picker-prev]')?.addEventListener('click', function () {
             if (pickerState.page <= 1) return;
             pickerState.page -= 1;
@@ -13802,7 +13803,8 @@
               q: pickerState.q,
               country: pickerState.country,
               page: pickerState.page,
-              page_size: pickerState.pageSize
+              page_size: pickerState.pageSize,
+              exclude_group_id: self.currentGroupId || 0
             };
             post('marketing_pool_view', requestPayload).then(function (json) {
               if (!json.success) throw new Error(json.message || '客户搜索失败');

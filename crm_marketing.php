@@ -744,6 +744,13 @@ function crm_marketing_pool(array $input = []): array
         $params[] = $groupId;
         $params[] = $groupId;
     }
+    $excludeGroupId = (int)($input['exclude_group_id'] ?? 0);
+    if ($excludeGroupId > 0) {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM crm_marketing_group_customers ex_mgc WHERE ex_mgc.customer_id = c.id AND ex_mgc.group_id = ?)
+            AND NOT EXISTS (SELECT 1 FROM crm_marketing_group_contacts ex_mgct JOIN crm_contacts ex_mgctc ON ex_mgctc.id = ex_mgct.contact_id AND ex_mgctc.deleted_at IS NULL WHERE ex_mgctc.customer_id = c.id AND ex_mgct.group_id = ?)';
+        $params[] = $excludeGroupId;
+        $params[] = $excludeGroupId;
+    }
     $filterCustomerIds = crm_mail_input_ids($input['customer_ids'] ?? '');
     if ($filterCustomerIds) {
         $where[] = 'c.id IN (' . implode(',', array_fill(0, count($filterCustomerIds), '?')) . ')';
