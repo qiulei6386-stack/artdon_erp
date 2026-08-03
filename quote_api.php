@@ -3107,8 +3107,19 @@ function qlog_list($pdo){
 }
 function quote_commission_log_list($pdo){
   ensure_quote_log_schema($pdo);
-  $where=["action LIKE '%commission%'"];
-  $p=[];
+  $businessActions=[
+    'commission_order_save','commission_order_batch_save','commission_quote_save','commission_quote_lines_save',
+    'commission_item_save','commission_item_batch_save','commission_rule_save','commission_rule_batch_save',
+    'commission_rule_delete','commission_rule_import','commission_rule_export','commission_reminder_save',
+    'commission_reminder_toggle','commission_customer_reminder_triggered','quote_commission_confirmation_saved'
+  ];
+  $where=[];$p=[];
+  if(!empty($_GET['include_reads'])){
+    $where[]="action LIKE '%commission%'";
+  }else{
+    $where[]='action IN ('.implode(',',array_fill(0,count($businessActions),'?')).')';
+    foreach($businessActions as $a)$p[]=$a;
+  }
   $kw=trim((string)($_GET['kw']??''));
   if($kw!==''){
     $where[]="(action LIKE ? OR event LIKE ? OR summary LIKE ? OR quote_no LIKE ? OR customer_name LIKE ? OR user_name LIKE ? OR before_json LIKE ? OR after_json LIKE ?)";
