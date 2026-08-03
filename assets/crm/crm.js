@@ -13804,7 +13804,8 @@
               country: pickerState.country,
               page: pickerState.page,
               page_size: pickerState.pageSize,
-              exclude_group_id: self.currentGroupId || 0
+              exclude_group_id: self.currentGroupId || 0,
+              exact_count: 1
             };
             post('marketing_pool_view', requestPayload).then(function (json) {
               if (!json.success) throw new Error(json.message || '客户搜索失败');

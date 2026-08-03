@@ -1093,7 +1093,7 @@ function crm_marketing_pool_view(array $input = []): array
     if ($groupId > 0 && !$onlyAll) {
         $groupInput = $input;
         $groupInput['group_id'] = $groupId;
-        $groupInput['skip_count'] = 1;
+        $groupInput['skip_count'] = empty($input['exact_count']) ? 1 : 0;
         $result = crm_marketing_pool($groupInput);
         $groupPool = $result['rows'] ?? [];
         $groupPager = $result;
@@ -1106,7 +1106,7 @@ function crm_marketing_pool_view(array $input = []): array
         $allInput['group_id'] = 0;
         $allInput['page'] = (int)($input['all_page'] ?? $input['page'] ?? 1);
         $allInput['page_size'] = (int)($input['all_page_size'] ?? $input['page_size'] ?? 50);
-        $allInput['skip_count'] = 1;
+        $allInput['skip_count'] = empty($input['exact_count']) ? 1 : 0;
         $result = crm_marketing_pool($allInput);
         $allPool = $result['rows'] ?? [];
         $allPager = $result;
