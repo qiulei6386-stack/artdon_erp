@@ -13741,7 +13741,7 @@
         var count = modal.querySelector('[data-promo-picker-count]');
         if (count) count.textContent = '已选 ' + picked.size + ' 个';
       };
-      var renderResults = function (modal, rows, pager) {
+      var renderResults = function (modal, rows, pager, notice) {
         pager = pager || {};
         var currentGroupId = String(self.currentGroupId || '');
         var body = rows.length ? rows.map(function (row) {
@@ -13752,7 +13752,7 @@
           return '<label class="promo-picker-row' + (inCurrent ? ' disabled' : '') + '"><input type="checkbox" data-promo-picker-customer="' + esc(id) + '"' + (picked.has(id) ? ' checked' : '') + (inCurrent ? ' disabled' : '') + '><span><strong>' + esc(row.customer_name || '-') + '</strong><small>' + esc(row.customer_code || '-') + ' · ' + esc(row.country || '未填') + ' · ' + esc(row.owner_name || '-') + '</small><small>' + esc(contact) + '</small></span><em>' + (inCurrent ? '已在本组' : '可加入') + '</em></label>';
         }).join('') : '<p class="promo-empty">没有匹配客户。</p>';
         var resultBox = modal.querySelector('[data-promo-picker-results]');
-        if (resultBox) resultBox.innerHTML = body;
+        if (resultBox) resultBox.innerHTML = (notice ? '<p class="promo-picker-notice">' + esc(notice) + '</p>' : '') + body;
         var page = Number(pager.page || pickerState.page || 1);
         var pageCount = Math.max(page, Number(pager.page_count || page || 1));
         var total = Number(pager.total || 0);
@@ -13798,16 +13798,29 @@
             if (!keepPage) pickerState.page = 1;
             var resultBox = modal.querySelector('[data-promo-picker-results]');
             if (resultBox) resultBox.innerHTML = '<p class="promo-empty">正在搜索客户...</p>';
-            post('marketing_pool_view', {
+            var requestPayload = {
               q: pickerState.q,
               country: pickerState.country,
               page: pickerState.page,
               page_size: pickerState.pageSize,
               skip_count: 1
-            }).then(function (json) {
+            };
+            var renderSearchResponse = function (json, relaxed) {
               if (!json.success) throw new Error(json.message || '客户搜索失败');
               var data = json.data || {};
-              renderResults(modal, data.pool || data.all_pool || data.group_pool || [], data.pool_pager || data.all_pool_pager || data.group_pool_pager || {});
+              var rows = data.pool || data.all_pool || data.group_pool || [];
+              renderResults(modal, rows, data.pool_pager || data.all_pool_pager || data.group_pool_pager || {}, relaxed && rows.length ? '严格匹配为空，已按国家/地区放宽搜索。' : '');
+            };
+            post('marketing_pool_view', requestPayload).then(function (json) {
+              var data = json.data || {};
+              var rows = data.pool || data.all_pool || data.group_pool || [];
+              if (rows.length || !pickerState.q || !pickerState.country) {
+                renderSearchResponse(json, false);
+                return;
+              }
+              return post('marketing_pool_view', Object.assign({}, requestPayload, { q: '' })).then(function (relaxedJson) {
+                renderSearchResponse(relaxedJson, true);
+              });
             }).catch(function (error) {
               if (resultBox) resultBox.innerHTML = '<p class="promo-empty">' + esc(error.message || '客户搜索失败') + '</p>';
               var pagerBox = modal.querySelector('[data-promo-picker-pager]');

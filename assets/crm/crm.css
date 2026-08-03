@@ -15192,6 +15192,16 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px;
   font-weight: 800;
 }
+.promo-picker-notice {
+  margin: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 25%, var(--crm-border));
+  border-radius: 9px;
+  background: var(--crm-active-bg);
+  color: var(--crm-primary);
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 850;
+}
 .promo-picker-pager {
   display: flex;
   justify-content: flex-end;
