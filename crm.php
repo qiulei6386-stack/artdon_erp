@@ -835,7 +835,7 @@ $prefStyle = sprintf(
               </section>
             </section>
             <section class="promo-view" data-promo-view="group_management">
-              <div class="promo-board-head"><div><span>Customer Group Management</span><h2>客户组管理</h2><p>客户组管理在中间区域完成；客户组操作统一从右侧 ACTIONS 触发。</p></div></div>
+              <div class="promo-board-head"><div><span>Customer Group Management</span><h2>客户组管理</h2><p>左侧选择客户组，右侧直接管理名单、批量移动、移出或加入客户。</p></div></div>
               <section class="promo-group-manage-filter">
                 <div class="promo-pool-search-row">
                   <label><span>搜索</span><input data-promo-group-search placeholder="客户组名称 / 标签 / 国家 / 负责人"></label>
@@ -853,15 +853,35 @@ $prefStyle = sprintf(
                   <button type="button" data-promo-group-quick="archived">已归档</button>
                 </div>
               </section>
-              <section class="promo-group-management">
-                <header><span>客户组列表</span><strong>客户组列表</strong><em data-promo-group-selection>未选择客户组</em></header>
-                <div class="promo-pool-pager" data-promo-group-pager="top"><span>正在读取客户组...</span></div>
-                <div data-promo-group-table><p class="promo-empty">正在加载客户组...</p></div>
-                <div class="promo-pool-pager" data-promo-group-pager="bottom"><span>正在读取客户组...</span></div>
-              </section>
-              <section class="promo-group-member-preview">
-                <header><span>成员预览</span><strong data-promo-group-member-title>请选择客户组</strong></header>
-                <div data-promo-group-members><p class="promo-empty">选中客户组后显示前 20 个客户成员。</p></div>
+              <section class="promo-group-workbench">
+                <aside class="promo-group-management">
+                  <header><span>客户组</span><strong>客户组列表</strong><em data-promo-group-selection>未选择客户组</em></header>
+                  <div class="promo-group-inline-actions">
+                    <button type="button" data-promo-group-inline="new">新建</button>
+                    <button type="button" data-promo-group-inline="edit">编辑</button>
+                    <button type="button" data-promo-group-inline="copy">复制</button>
+                    <button type="button" data-promo-group-inline="archive_many">批量归档</button>
+                    <button type="button" data-promo-group-inline="disable_many">批量停用</button>
+                    <button type="button" data-promo-group-inline="delete" class="danger">删除</button>
+                    <button type="button" data-promo-group-inline="delete_many" class="danger">批量删除</button>
+                  </div>
+                  <div data-promo-group-table><p class="promo-empty">正在加载客户组...</p></div>
+                  <div class="promo-pool-pager" data-promo-group-pager="bottom"><span>正在读取客户组...</span></div>
+                </aside>
+                <section class="promo-group-member-preview">
+                  <header>
+                    <div><span>成员名单</span><strong data-promo-group-member-title>请选择客户组</strong></div>
+                    <em data-promo-group-member-selection>未选择成员</em>
+                  </header>
+                  <div class="promo-group-member-actions">
+                    <button type="button" data-promo-group-member-action="load">查看全部成员</button>
+                    <button type="button" data-promo-group-member-action="add">加入客户</button>
+                    <button type="button" data-promo-group-member-action="move">移动到其他组</button>
+                    <button type="button" data-promo-group-member-action="remove" class="danger">移出本组</button>
+                    <button type="button" data-promo-group-member-action="campaign">创建推广项目</button>
+                  </div>
+                  <div data-promo-group-members><p class="promo-empty">选中客户组后显示客户名单。</p></div>
+                </section>
               </section>
             </section>
             <section class="promo-view" data-promo-view="execution">

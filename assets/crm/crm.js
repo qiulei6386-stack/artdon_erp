@@ -13582,12 +13582,14 @@
         var id = Number(row.id || 0);
         var checked = self.selectedGroupIds.has(id) ? ' checked' : '';
         var active = Number(self.currentGroupId || 0) === id ? ' active' : '';
-        return '<tr class="promo-group-row' + active + (checked ? ' selected' : '') + '" data-promo-group-row="' + esc(id) + '"><td><input type="checkbox" data-promo-group-check="' + esc(id) + '"' + checked + '></td><td><strong>' + esc(row.group_name || '-') + '</strong><span>' + esc(row.description || row.remark || '') + '</span></td><td>' + esc(self.groupTypeText(row.group_type)) + '</td><td>' + esc(row.customer_count || 0) + '</td><td>' + esc(row.contact_count || 0) + '</td><td>' + esc(row.promotable_contact_count || 0) + '</td><td>' + esc(row.country_distribution || '-') + '</td><td>' + esc(row.last_touch_time || '无') + '</td><td>' + esc(row.task_count || 0) + '</td><td>' + esc(row.owner_name || row.created_by_name || '-') + '</td><td>' + esc(row.tags || '-') + '</td><td><em class="promo-status">' + esc(self.groupStatusText(row.status)) + '</em></td><td>' + esc(String(row.created_at || '').slice(0, 16) || '-').replace('T', ' ') + '</td><td>' + esc(String(row.updated_at || '').slice(0, 16) || '-').replace('T', ' ') + '</td></tr>';
-      }).join('') : '<tr><td colspan="14">暂无客户组。</td></tr>';
-      box.innerHTML = '<div class="promo-pool-table promo-group-table"><table><thead><tr><th>选择</th><th>客户组名称</th><th>类型</th><th>客户数量</th><th>联系人</th><th>可推广联系人</th><th>国家分布</th><th>最近推广</th><th>关联项目</th><th>负责人</th><th>标签</th><th>状态</th><th>创建时间</th><th>最近更新</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+        var tags = String(row.tags || '').split(/[,，]/).map(function (tag) { return tag.trim(); }).filter(Boolean).slice(0, 3).map(function (tag) { return '<em>' + esc(tag) + '</em>'; }).join('');
+        return '<article class="promo-manage-group-card' + active + (checked ? ' selected' : '') + '" data-promo-group-row="' + esc(id) + '"><label><input type="checkbox" data-promo-group-check="' + esc(id) + '"' + checked + '><span></span></label><div><header><strong>' + esc(row.group_name || '-') + '</strong><b>' + esc(self.groupStatusText(row.status)) + '</b></header><p>' + esc(row.description || row.remark || row.country_distribution || '无备注') + '</p><section><span>客户 ' + esc(row.customer_count || 0) + '</span><span>联系人 ' + esc(row.contact_count || 0) + '</span><span>可推广 ' + esc(row.promotable_contact_count || 0) + '</span></section><footer><small>' + esc(self.groupTypeText(row.group_type)) + ' · ' + esc(row.owner_name || row.created_by_name || '-') + '</small><small>' + esc(String(row.updated_at || '').slice(0, 16) || '-') + '</small></footer>' + (tags ? '<nav>' + tags + '</nav>' : '') + '</div></article>';
+      }).join('') : '<p class="promo-empty">暂无客户组。可以点击上方“新建”创建第一个客户组。</p>';
+      box.innerHTML = '<div class="promo-manage-group-list">' + body + '</div>';
       this.renderGroupPager(total, pageCount);
       this.renderGroupMemberPreview();
       this.renderGroupSelectionText();
+      this.bindGroupWorkspaceActions();
       box.querySelectorAll('[data-promo-group-check]').forEach(function (input) {
         input.addEventListener('click', function (event) { event.stopPropagation(); });
         input.addEventListener('change', function () {
@@ -13608,15 +13610,14 @@
           self.selectedGroupIds.clear();
           self.selectedGroupIds.add(self.currentGroupId);
           self.selectedGroupMemberIds.clear();
-          self.groupMemberMode = false;
+          self.groupMemberMode = true;
           self.saveState();
           self.renderGroupManagement();
-          if (current === 'promotion') renderActions('promotion');
+          self.loadGroupMembers();
         });
         row.addEventListener('dblclick', function () {
           self.currentGroupId = Number(row.getAttribute('data-promo-group-row') || 0);
-          self.groupMemberMode = true;
-          self.loadGroupMembers();
+          self.openGroupDialog(self.currentGroupId);
         });
       });
     },
@@ -13632,6 +13633,50 @@
       var group = this.currentGroupRow();
       var text = this.selectedGroupIds.size > 1 ? ('已选 ' + this.selectedGroupIds.size + ' 个客户组') : (group ? ('当前：' + group.group_name) : '未选择客户组');
       document.querySelectorAll('[data-promo-group-selection]').forEach(function (node) { node.textContent = text; });
+    },
+    renderGroupMemberSelectionText: function () {
+      var count = this.selectedGroupMemberIds ? this.selectedGroupMemberIds.size : 0;
+      document.querySelectorAll('[data-promo-group-member-selection]').forEach(function (node) {
+        node.textContent = count ? ('已选 ' + count + ' 个成员') : '未选择成员';
+      });
+    },
+    bindGroupWorkspaceActions: function () {
+      var self = this;
+      document.querySelectorAll('[data-promo-group-inline]').forEach(function (button) {
+        button.onclick = function () {
+          var action = button.getAttribute('data-promo-group-inline') || '';
+          var groupIds = Array.from(self.selectedGroupIds || []).map(Number).filter(Boolean);
+          if (action === 'new') return self.openGroupDialog(0);
+          if (action === 'archive_many' || action === 'disable_many') {
+            if (!groupIds.length) return toast('请先勾选客户组');
+            return self.updateGroupStatus(groupIds, action === 'archive_many' ? 'archived' : 'disabled');
+          }
+          if (action === 'delete_many') {
+            if (!groupIds.length) return toast('请先勾选客户组');
+            return self.deleteMarketingGroups(groupIds);
+          }
+          if (!self.currentGroupId && action !== 'new') return toast('请先选择客户组');
+          if (action === 'edit') return self.openGroupDialog(self.currentGroupId);
+          if (action === 'copy') return self.copyMarketingGroup(self.currentGroupId);
+          if (action === 'delete') return self.deleteMarketingGroup(self.currentGroupId);
+        };
+      });
+      document.querySelectorAll('[data-promo-group-member-action]').forEach(function (button) {
+        button.onclick = function () {
+          var action = button.getAttribute('data-promo-group-member-action') || '';
+          if (!self.currentGroupId) return toast('请先选择客户组');
+          if (action === 'load') return self.loadGroupMembers();
+          if (action === 'add') return self.openGroupCustomerPickerDialog();
+          if (action === 'move') return self.openGroupMemberMoveDialog();
+          if (action === 'remove') {
+            var ids = Array.from(self.selectedGroupMemberIds || []).map(Number).filter(Boolean);
+            if (!ids.length) return toast('请先勾选要移出的成员');
+            self.selectedCustomerIds = new Set(ids);
+            return self.updateGroupCustomers('remove');
+          }
+          if (action === 'campaign') return self.startWizardFromGroup(self.currentGroupId);
+        };
+      });
     },
     loadGroupMembers: function () {
       if (!this.currentGroupId) return toast('请先选择客户组');
@@ -13652,6 +13697,93 @@
         if (current === 'promotion') renderActions('promotion');
       }).catch(function (error) { self.showError(error.message || '客户组成员加载失败'); });
     },
+    openGroupMemberMoveDialog: function () {
+      if (!this.currentGroupId) return toast('请先选择客户组');
+      var ids = Array.from(this.selectedGroupMemberIds || []).map(Number).filter(Boolean);
+      if (!ids.length) return toast('请先勾选要移动的成员');
+      var self = this;
+      var groups = ((this.data && this.data.groups) || []).filter(function (row) { return Number(row.id) !== Number(self.currentGroupId); });
+      if (!groups.length) return toast('没有其他客户组可移动');
+      var body = '<section class="promo-wizard-grid"><label class="wide"><span>移动到客户组</span><select data-promo-member-move-target>' + groups.map(function (row) {
+        return '<option value="' + esc(row.id) + '">' + esc(row.group_name) + '（客户 ' + esc(row.customer_count || 0) + '）</option>';
+      }).join('') + '</select></label><article class="promo-wizard-note">已选择 ' + esc(ids.length) + ' 个客户。确认后会从当前组移出，并加入目标客户组。</article></section>';
+      this.openDialog({
+        title: '移动客户组成员',
+        description: '把当前组选中的客户移动到另一个客户组。',
+        body: body,
+        actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-member-move-confirm>确认移动</button>',
+        bind: function (modal) {
+          modal.querySelector('[data-promo-member-move-confirm]')?.addEventListener('click', function () {
+            var targetId = Number(modal.querySelector('[data-promo-member-move-target]')?.value || 0);
+            if (!targetId) return toast('请选择目标客户组');
+            self.selectedCustomerIds = new Set(ids);
+            self.closeDialog();
+            self.updateGroupCustomers('move', targetId);
+          });
+        }
+      });
+    },
+    openGroupCustomerPickerDialog: function () {
+      if (!this.currentGroupId) return toast('请先选择客户组');
+      var self = this;
+      var group = this.currentGroupRow();
+      var picked = new Set();
+      var renderResults = function (modal, rows) {
+        var currentGroupId = String(self.currentGroupId || '');
+        var body = rows.length ? rows.map(function (row) {
+          var id = Number(row.id || 0);
+          var groupIds = String(row.marketing_group_ids || '').split(',').map(function (item) { return item.trim(); });
+          var inCurrent = groupIds.indexOf(currentGroupId) >= 0;
+          return '<label class="promo-picker-row' + (inCurrent ? ' disabled' : '') + '"><input type="checkbox" data-promo-picker-customer="' + esc(id) + '"' + (picked.has(id) ? ' checked' : '') + (inCurrent ? ' disabled' : '') + '><span><strong>' + esc(row.customer_name || '-') + '</strong><small>' + esc(row.customer_code || '-') + ' · ' + esc(row.country || '未填') + ' · ' + esc(row.owner_name || '-') + '</small></span><em>' + (inCurrent ? '已在本组' : '可加入') + '</em></label>';
+        }).join('') : '<p class="promo-empty">没有匹配客户。</p>';
+        var resultBox = modal.querySelector('[data-promo-picker-results]');
+        if (resultBox) resultBox.innerHTML = body;
+        modal.querySelectorAll('[data-promo-picker-customer]').forEach(function (input) {
+          input.addEventListener('change', function () {
+            var id = Number(input.getAttribute('data-promo-picker-customer') || 0);
+            if (input.checked) picked.add(id);
+            else picked.delete(id);
+            var count = modal.querySelector('[data-promo-picker-count]');
+            if (count) count.textContent = '已选 ' + picked.size + ' 个';
+          });
+        });
+      };
+      var body = '<section class="promo-picker-dialog"><div class="promo-picker-head"><label><span>搜索客户</span><input data-promo-picker-search placeholder="客户名 / 代码 / 国家 / 邮箱"></label><button type="button" data-promo-picker-search-btn>搜索</button><em data-promo-picker-count>已选 0 个</em></div><div data-promo-picker-results><p class="promo-empty">输入关键词或直接搜索最近客户。</p></div></section>';
+      this.openDialog({
+        title: '加入客户到客户组',
+        description: group ? ('目标客户组：' + group.group_name) : '选择客户后加入当前客户组。',
+        body: body,
+        actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-picker-confirm>加入本组</button>',
+        bind: function (modal) {
+          var search = function () {
+            var q = modal.querySelector('[data-promo-picker-search]')?.value || '';
+            var resultBox = modal.querySelector('[data-promo-picker-results]');
+            if (resultBox) resultBox.innerHTML = '<p class="promo-empty">正在搜索客户...</p>';
+            post('marketing_pool_view', { q: q, page: 1, page_size: 50, skip_count: 1 }).then(function (json) {
+              if (!json.success) throw new Error(json.message || '客户搜索失败');
+              renderResults(modal, (json.data && (json.data.pool || json.data.all_pool || json.data.group_pool)) || []);
+            }).catch(function (error) {
+              if (resultBox) resultBox.innerHTML = '<p class="promo-empty">' + esc(error.message || '客户搜索失败') + '</p>';
+            });
+          };
+          modal.querySelector('[data-promo-picker-search-btn]')?.addEventListener('click', search);
+          modal.querySelector('[data-promo-picker-search]')?.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              search();
+            }
+          });
+          modal.querySelector('[data-promo-picker-confirm]')?.addEventListener('click', function () {
+            var ids = Array.from(picked).map(Number).filter(Boolean);
+            if (!ids.length) return toast('请先勾选要加入的客户');
+            self.selectedCustomerIds = new Set(ids);
+            self.closeDialog();
+            self.updateGroupCustomers('add', self.currentGroupId);
+          });
+          search();
+        }
+      });
+    },
     renderGroupMemberPreview: function () {
       var box = document.querySelector('[data-promo-group-members]');
       if (!box) return;
@@ -13661,7 +13793,8 @@
         node.textContent = group ? (group.group_name + (self.groupMemberMode ? ' · 全部成员' : ' · 成员预览')) : '请选择客户组';
       });
       if (!group) {
-        box.innerHTML = '<p class="promo-empty">选中客户组后显示前 20 个客户成员。</p>';
+        box.innerHTML = '<p class="promo-empty">在左侧选择客户组后，右侧会显示成员名单和管理操作。</p>';
+        this.renderGroupMemberSelectionText();
         return;
       }
       var members = ((this.data && this.data.group_pool) || []).slice();
@@ -13674,26 +13807,39 @@
       if (!members.length && !this.groupMemberMode) {
         this.loadGroupMembers();
         box.innerHTML = '<p class="promo-empty">正在读取客户组成员...</p>';
+        this.renderGroupMemberSelectionText();
         return;
       }
-      var shown = this.groupMemberMode ? members : members.slice(0, 20);
+      var shown = members;
       var body = shown.length ? shown.map(function (row) {
         var id = Number(row.id || 0);
         var checked = self.selectedGroupMemberIds.has(id) ? ' checked' : '';
-        if (self.groupMemberMode) {
-          return '<tr data-promo-group-member="' + esc(id) + '"><td><input type="checkbox" data-promo-group-member-check="' + esc(id) + '"' + checked + '></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.primary_contact_email || row.email || '') + '</span></td><td>' + esc(row.customer_code || '-') + '</td><td>' + esc(row.country || '未填') + '</td><td>' + esc(row.contact_count || 0) + '</td><td>' + esc(row.promotable_contact_count || row.active_contact_channels || 0) + '</td><td>' + esc(row.email_count || 0) + '</td><td>' + esc(row.whatsapp_count || 0) + '</td><td>' + esc(row.last_touch_time || '无') + '</td><td><em class="promo-status">' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</em></td><td>' + esc(row.owner_name || '-') + '</td></tr>';
-        }
-        return '<tr><td><strong>' + esc(row.customer_name || '-') + '</strong></td><td>' + esc(row.customer_code || '-') + '</td><td>' + esc(row.country || '未填') + '</td><td>' + esc(row.contact_count || 0) + '</td><td>' + esc(row.promotable_contact_count || row.active_contact_channels || 0) + '</td><td>' + esc(row.last_touch_time || '无') + '</td><td>' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</td><td>' + esc(row.owner_name || '-') + '</td></tr>';
-      }).join('') : '<tr><td colspan="' + (this.groupMemberMode ? '11' : '8') + '">当前客户组暂无成员。</td></tr>';
-      box.innerHTML = this.groupMemberMode
-        ? '<div class="promo-pool-table promo-group-member-table"><table><thead><tr><th>选择</th><th>客户名称</th><th>客户代码</th><th>国家</th><th>联系人</th><th>可推广联系人</th><th>邮箱</th><th>WhatsApp</th><th>最近推广</th><th>推广状态</th><th>负责人</th></tr></thead><tbody>' + body + '</tbody></table></div>'
-        : '<div class="promo-pool-table promo-group-member-table"><table><thead><tr><th>客户名称</th><th>客户代码</th><th>国家</th><th>联系人</th><th>可推广联系人</th><th>最近推广</th><th>推广状态</th><th>负责人</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+        return '<tr class="' + (checked ? 'selected' : '') + '" data-promo-group-member="' + esc(id) + '"><td><input type="checkbox" data-promo-group-member-check="' + esc(id) + '"' + checked + '></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.primary_contact_email || row.email || '') + '</span></td><td>' + esc(row.customer_code || '-') + '</td><td>' + esc(row.country || '未填') + '</td><td>' + esc(row.contact_count || 0) + ' / ' + esc(row.promotable_contact_count || row.active_contact_channels || 0) + '</td><td>' + esc(row.email_count || 0) + ' / ' + esc(row.whatsapp_count || 0) + '</td><td><em class="promo-status">' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</em></td><td>' + esc(row.owner_name || '-') + '</td><td>' + esc(row.last_touch_time || '无') + '</td></tr>';
+      }).join('') : '<tr><td colspan="9">当前客户组暂无成员。可以点击“加入客户”。</td></tr>';
+      var memberIds = shown.map(function (row) { return Number(row.id || 0); }).filter(Boolean);
+      var selectedOnPage = memberIds.filter(function (id) { return self.selectedGroupMemberIds.has(id); }).length;
+      box.innerHTML = '<div class="promo-group-member-summary"><label><input type="checkbox" data-promo-group-member-check-all><span>全选当前名单</span></label><strong>' + esc(shown.length) + ' 个客户</strong><small>联系人 / 可推广、邮箱 / WhatsApp 合并显示，减少横向占用。</small></div><div class="promo-pool-table promo-group-member-table"><table><thead><tr><th>选择</th><th>客户名称</th><th>客户代码</th><th>国家</th><th>联系人</th><th>邮箱/WhatsApp</th><th>状态</th><th>负责人</th><th>最近推广</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+      var checkAll = box.querySelector('[data-promo-group-member-check-all]');
+      if (checkAll) {
+        checkAll.checked = memberIds.length > 0 && selectedOnPage === memberIds.length;
+        checkAll.indeterminate = selectedOnPage > 0 && selectedOnPage < memberIds.length;
+        checkAll.addEventListener('change', function () {
+          memberIds.forEach(function (id) {
+            if (checkAll.checked) self.selectedGroupMemberIds.add(id);
+            else self.selectedGroupMemberIds.delete(id);
+          });
+          self.renderGroupMemberPreview();
+          if (current === 'promotion') renderActions('promotion');
+        });
+      }
       box.querySelectorAll('[data-promo-group-member-check]').forEach(function (input) {
         input.addEventListener('click', function (event) { event.stopPropagation(); });
         input.addEventListener('change', function () {
           var id = Number(input.getAttribute('data-promo-group-member-check') || 0);
           if (input.checked) self.selectedGroupMemberIds.add(id);
           else self.selectedGroupMemberIds.delete(id);
+          self.renderGroupMemberSelectionText();
+          input.closest('tr')?.classList.toggle('selected', input.checked);
           if (current === 'promotion') renderActions('promotion');
         });
       });
@@ -13709,6 +13855,8 @@
           if (current === 'promotion') renderActions('promotion');
         });
       });
+      this.renderGroupMemberSelectionText();
+      this.bindGroupWorkspaceActions();
     },
     renderPool: function () {
       var self = this;
@@ -13964,6 +14112,13 @@
 	        toast(mode === 'remove' ? '已移出推广分组' : (mode === 'move' ? '已移动到目标分组' : '已加入推广分组'));
 	        self.data.groups = (json.data && json.data.groups) || self.data.groups;
 	        self.data.pool = (json.data && json.data.pool) || self.data.pool;
+        self.selectedGroupMemberIds.clear();
+        if (self.currentView === 'group_management') {
+          self.groupMemberMode = true;
+          self.renderGroupManagement();
+          self.loadGroupMembers();
+          return;
+        }
 	        self.load();
 	      }).catch(function (error) { self.showError(error.message || '推广分组成员更新失败'); });
 	    },
