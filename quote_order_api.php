@@ -30,6 +30,7 @@ function qo_order_no_at($orderNo,$quoteNo=''){ $s=trim((string)($orderNo?:$quote
 function qo_safe_no($s){ $s=qo_order_no_at($s); $s=preg_replace('/[^A-Za-z0-9_\-]+/','_',trim($s)); return $s ?: 'DOC'; }
 function qo_actor(){ $u=$_SESSION['quote_user']['username'] ?? ($_SESSION['artdon_username'] ?? ($_SESSION['username'] ?? 'system')); return (string)$u; }
 function qo_commission_log(PDO $pdo,string $action,array $detail): void {try{if(!qo_table_exists($pdo,'quote_logs'))return;$pdo->prepare("INSERT INTO quote_logs(level,module,action,event,quote_id,quote_no,customer_id,customer_name,user_name,ip,user_agent,request_method,request_uri,summary,detail_json,before_json,after_json) VALUES('INFO','commission',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([$action,$detail['event']??$action,(int)($detail['quote_id']??0),qo_s($detail['quote_no']??'',100),qo_s($detail['customer_id']??'',100),qo_s($detail['customer_name']??'',255),qo_actor(),qo_s($_SERVER['REMOTE_ADDR']??'',60),qo_s($_SERVER['HTTP_USER_AGENT']??'',255),qo_s($_SERVER['REQUEST_METHOD']??'',20),qo_s($_SERVER['REQUEST_URI']??'',255),qo_s($detail['summary']??$action,5000),json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),null,json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)]);}catch(Throwable $e){}}
+function qo_order_log(PDO $pdo,string $action,array $detail): void {try{if(!qo_table_exists($pdo,'quote_logs'))return;$pdo->prepare("INSERT INTO quote_logs(level,module,action,event,quote_id,quote_no,customer_id,customer_name,user_name,ip,user_agent,request_method,request_uri,summary,detail_json,before_json,after_json) VALUES('INFO','order',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([$action,$detail['event']??$action,(int)($detail['quote_id']??0),qo_s($detail['quote_no']??'',100),qo_s($detail['customer_id']??'',100),qo_s($detail['customer_name']??'',255),qo_actor(),qo_s($_SERVER['REMOTE_ADDR']??'',60),qo_s($_SERVER['HTTP_USER_AGENT']??'',255),qo_s($_SERVER['REQUEST_METHOD']??'',20),qo_s($_SERVER['REQUEST_URI']??'',255),qo_s($detail['summary']??$action,5000),json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),isset($detail['before'])?json_encode($detail['before'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):null,isset($detail['after'])?json_encode($detail['after'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)]);}catch(Throwable $e){}}
 function qo_actor_user_id(): int { return (int)($_SESSION['artdon_user_id'] ?? $_SESSION['crm_user_id'] ?? 0); }
 function qo_crm_user_ids_by_names(PDO $pdo, array $names): array {
   $names=array_values(array_unique(array_filter(array_map(function($v){ return trim((string)$v); },$names),function($v){ return $v!=='' && $v!=='0'; })));
@@ -154,7 +155,7 @@ function qo_ensure_schema(PDO $pdo){
   try{$pdo->exec('ALTER TABLE quote_order_payments ADD KEY idx_payment_order(order_id)');}catch(Throwable $e){}
 
   $pdo->exec("CREATE TABLE IF NOT EXISTS quote_shipments (id INT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  $shipCols=['order_id'=>'INT NOT NULL DEFAULT 0','shipment_no'=>'VARCHAR(120) DEFAULT \'\'','ship_date'=>'DATE NULL','packing_list_no'=>'VARCHAR(120) DEFAULT \'\'','commercial_invoice_no'=>'VARCHAR(120) DEFAULT \'\'','shipping_mark'=>'VARCHAR(255) DEFAULT \'\'','forwarder'=>'VARCHAR(255) DEFAULT \'\'','ship_method'=>'VARCHAR(160) DEFAULT \'\'','port_loading'=>'VARCHAR(160) DEFAULT \'\'','port_destination'=>'VARCHAR(160) DEFAULT \'\'','country_origin'=>'VARCHAR(120) DEFAULT \'China\'','status'=>'VARCHAR(80) DEFAULT \'草稿\'','total_qty'=>'DECIMAL(14,3) DEFAULT 0','total_cartons'=>'DECIMAL(14,3) DEFAULT 0','total_nw'=>'DECIMAL(14,3) DEFAULT 0','total_gw'=>'DECIMAL(14,3) DEFAULT 0','total_cbm'=>'DECIMAL(14,4) DEFAULT 0','pl_generated_at'=>'DATETIME NULL','ci_generated_at'=>'DATETIME NULL','note'=>'TEXT NULL','created_by'=>'VARCHAR(120) DEFAULT \'\'','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME NULL'];
+  $shipCols=['order_id'=>'INT NOT NULL DEFAULT 0','shipment_no'=>'VARCHAR(120) DEFAULT \'\'','ship_date'=>'DATE NULL','packing_list_no'=>'VARCHAR(120) DEFAULT \'\'','commercial_invoice_no'=>'VARCHAR(120) DEFAULT \'\'','shipping_mark'=>'VARCHAR(255) DEFAULT \'\'','forwarder'=>'VARCHAR(255) DEFAULT \'\'','ship_method'=>'VARCHAR(160) DEFAULT \'\'','port_loading'=>'VARCHAR(160) DEFAULT \'\'','port_destination'=>'VARCHAR(160) DEFAULT \'\'','country_origin'=>'VARCHAR(120) DEFAULT \'China\'','status'=>'VARCHAR(80) DEFAULT \'草稿\'','total_qty'=>'DECIMAL(14,3) DEFAULT 0','total_cartons'=>'DECIMAL(14,3) DEFAULT 0','total_nw'=>'DECIMAL(14,3) DEFAULT 0','total_gw'=>'DECIMAL(14,3) DEFAULT 0','total_cbm'=>'DECIMAL(14,4) DEFAULT 0','pl_generated_at'=>'DATETIME NULL','ci_generated_at'=>'DATETIME NULL','pl_status'=>'VARCHAR(30) DEFAULT \'active\'','ci_status'=>'VARCHAR(30) DEFAULT \'active\'','pl_voided_at'=>'DATETIME NULL','ci_voided_at'=>'DATETIME NULL','pl_voided_by'=>'VARCHAR(120) DEFAULT \'\'','ci_voided_by'=>'VARCHAR(120) DEFAULT \'\'','pl_void_reason'=>'VARCHAR(500) DEFAULT \'\'','ci_void_reason'=>'VARCHAR(500) DEFAULT \'\'','pl_deleted_at'=>'DATETIME NULL','ci_deleted_at'=>'DATETIME NULL','pl_deleted_by'=>'VARCHAR(120) DEFAULT \'\'','ci_deleted_by'=>'VARCHAR(120) DEFAULT \'\'','pl_delete_reason'=>'VARCHAR(500) DEFAULT \'\'','ci_delete_reason'=>'VARCHAR(500) DEFAULT \'\'','note'=>'TEXT NULL','created_by'=>'VARCHAR(120) DEFAULT \'\'','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP','updated_at'=>'DATETIME NULL'];
   foreach($shipCols as $c=>$ddl) qo_ensure_col($pdo,'quote_shipments',$c,$ddl);
   try{$pdo->exec('ALTER TABLE quote_shipments ADD KEY idx_ship_order(order_id)');}catch(Throwable $e){}
 
@@ -417,6 +418,52 @@ function qo_delete_shipment(PDO $pdo,$d){
   try { $pdo->prepare('DELETE FROM quote_shipment_cartons WHERE shipment_id=?')->execute([$shipmentId]); $pdo->prepare('DELETE FROM quote_shipment_items WHERE shipment_id=?')->execute([$shipmentId]); $pdo->prepare('DELETE FROM quote_shipments WHERE id=?')->execute([$shipmentId]); qo_update_item_shipped($pdo,$orderId); qo_recalc_payment($pdo,$orderId); $pdo->commit(); }
   catch(Throwable $e){ if($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
   return ['deleted'=>1,'shipment_no'=>$shipmentNo,'order_id'=>$orderId];
+}
+function qo_doc_type($type){ return ((string)$type)==='ci'?'ci':'pl'; }
+function qo_doc_label($type){ return qo_doc_type($type)==='ci'?'Commercial Invoice':'Packing List'; }
+function qo_doc_status(array $shipment,$type){ $type=qo_doc_type($type); $col=$type.'_status'; $status=qo_s($shipment[$col]??'',30); return $status!==''?$status:'active'; }
+function qo_mark_document_active(PDO $pdo,int $shipmentId,string $type): void {
+  $type=qo_doc_type($type);
+  if($type==='ci'){
+    $pdo->prepare("UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()),ci_status='active',ci_voided_at=NULL,ci_voided_by='',ci_void_reason='',ci_deleted_at=NULL,ci_deleted_by='',ci_delete_reason='',updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
+  }else{
+    $pdo->prepare("UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()),pl_status='active',pl_voided_at=NULL,pl_voided_by='',pl_void_reason='',pl_deleted_at=NULL,pl_deleted_by='',pl_delete_reason='',updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
+  }
+}
+function qo_manage_document(PDO $pdo,array $d){
+  qo_ensure_schema($pdo);
+  $shipmentId=(int)($d['shipment_id']??0); if($shipmentId<=0) qo_fail('缺少出货批次ID');
+  $type=qo_doc_type($d['type']??'pl'); $mode=qo_s($d['mode']??'update',30); $label=qo_doc_label($type);
+  $before=qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[$shipmentId]); if(!$before) qo_fail('出货批次不存在');
+  $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$before['order_id']]) ?: [];
+  $docNoCol=$type==='ci'?'commercial_invoice_no':'packing_list_no';
+  $generatedCol=$type.'_generated_at'; $statusCol=$type.'_status';
+  $voidedAtCol=$type.'_voided_at'; $voidedByCol=$type.'_voided_by'; $voidReasonCol=$type.'_void_reason';
+  $deletedAtCol=$type.'_deleted_at'; $deletedByCol=$type.'_deleted_by'; $deleteReasonCol=$type.'_delete_reason';
+  if($mode==='update'){
+    $docNo=qo_s($d['document_no']??($before[$docNoCol]??''),120); if($docNo==='') qo_fail($label.' 编号不能为空');
+    $pdo->prepare("UPDATE quote_shipments SET `$docNoCol`=?,ship_date=?,shipping_mark=?,ship_method=?,port_loading=?,port_destination=?,country_origin=?,forwarder=?,note=?,updated_at=NOW() WHERE id=?")->execute([
+      $docNo, qo_s($d['ship_date']??($before['ship_date']??qo_today()),20)?:qo_today(), qo_s($d['shipping_mark']??($before['shipping_mark']??''),255), qo_s($d['ship_method']??($before['ship_method']??''),160), qo_s($d['port_loading']??($before['port_loading']??''),160), qo_s($d['port_destination']??($before['port_destination']??''),160), qo_s($d['country_origin']??($before['country_origin']??'China'),120), qo_s($d['forwarder']??($before['forwarder']??''),255), qo_s($d['note']??($before['note']??''),5000), $shipmentId
+    ]);
+    $action='document_update'; $event='修改'.$label; $summary=($order['order_no']??'').' / '.$label.' 修改';
+  }elseif($mode==='void'){
+    $reason=qo_s($d['reason']??'',500); if($reason==='') $reason='手动作废';
+    $pdo->prepare("UPDATE quote_shipments SET `$generatedCol`=COALESCE(`$generatedCol`,NOW()),`$statusCol`='voided',`$voidedAtCol`=NOW(),`$voidedByCol`=?,`$voidReasonCol`=?,updated_at=NOW() WHERE id=?")->execute([qo_actor(),$reason,$shipmentId]);
+    $action='document_void'; $event='作废'.$label; $summary=($order['order_no']??'').' / '.$label.' 作废';
+  }elseif($mode==='delete'){
+    $reason=qo_s($d['reason']??'',500); if($reason==='') $reason='手动删除';
+    $pdo->prepare("UPDATE quote_shipments SET `$generatedCol`=NULL,`$statusCol`='deleted',`$deletedAtCol`=NOW(),`$deletedByCol`=?,`$deleteReasonCol`=?,updated_at=NOW() WHERE id=?")->execute([qo_actor(),$reason,$shipmentId]);
+    $action='document_delete'; $event='删除'.$label; $summary=($order['order_no']??'').' / '.$label.' 删除';
+  }elseif($mode==='restore'){
+    qo_mark_document_active($pdo,$shipmentId,$type);
+    $action='document_restore'; $event='恢复'.$label; $summary=($order['order_no']??'').' / '.$label.' 恢复';
+  }else{
+    qo_fail('未知单证操作');
+  }
+  $after=qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[$shipmentId]) ?: [];
+  qo_order_log($pdo,$action,['event'=>$event,'summary'=>$summary,'order_id'=>(int)($before['order_id']??0),'order_no'=>$order['order_no']??'','quote_no'=>$order['quote_no']??'','customer_id'=>$order['customer_id']??'','customer_name'=>$order['customer_name']??'','shipment_id'=>$shipmentId,'shipment_no'=>$before['shipment_no']??'','doc_type'=>$type,'doc_label'=>$label,'operator'=>qo_actor(),'before'=>$before,'after'=>$after]);
+  $detail=qo_shipment_detail($pdo,$shipmentId); $detail['doc_type']=$type; $detail['doc_status']=qo_doc_status($after,$type); $detail['message']=$event.'完成';
+  return $detail;
 }
 function qo_push_document_notification(PDO $pdo, int $shipmentId, string $type): void {
   if($shipmentId<=0) return;
@@ -763,10 +810,11 @@ try{
   if($action==='shipment_edit_data'){ $d=qo_input(); qo_ok(qo_shipment_edit_data($pdo,(int)($d['id']??0))); }
   if($action==='update_shipment'){ qo_ok(qo_update_shipment($pdo,qo_input())); }
   if($action==='delete_shipment'){ qo_ok(qo_delete_shipment($pdo,qo_input())); }
-  if($action==='quick_document'){ $d=qo_input(); $id=(int)($d['order_id']??0); if(!$id) qo_fail('缺少订单ID'); $type=($d['type']??'pl')==='ci'?'ci':'pl'; $ship=qo_existing_or_quick_shipment($pdo,$id,$type); if($type==='ci') $pdo->prepare('UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()) WHERE id=?')->execute([(int)$ship['id']]); else $pdo->prepare('UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()) WHERE id=?')->execute([(int)$ship['id']]); qo_push_document_notification($pdo,(int)$ship['id'],$type); qo_ok(['shipment_id'=>(int)$ship['id'],'shipment'=>$ship,'type'=>$type]); }
+  if($action==='quick_document'){ $d=qo_input(); $id=(int)($d['order_id']??0); if(!$id) qo_fail('缺少订单ID'); $type=($d['type']??'pl')==='ci'?'ci':'pl'; $ship=qo_existing_or_quick_shipment($pdo,$id,$type); qo_mark_document_active($pdo,(int)$ship['id'],$type); $ship=qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[(int)$ship['id']]) ?: $ship; qo_push_document_notification($pdo,(int)$ship['id'],$type); qo_ok(['shipment_id'=>(int)$ship['id'],'shipment'=>$ship,'type'=>$type]); }
   if($action==='shipment_detail'){ $d=qo_input(); qo_ok(qo_shipment_detail($pdo,(int)($d['id']??0))); }
+  if($action==='manage_document'){ qo_ok(qo_manage_document($pdo,qo_input())); }
   if($action==='list_documents'){ $sql="SELECT s.*,o.order_no,o.quote_no,o.customer_name,o.currency,o.amount FROM quote_shipments s LEFT JOIN quote_sales_orders o ON o.id=s.order_id ORDER BY s.id DESC LIMIT 1000"; qo_ok(['documents'=>qo_rows($pdo,$sql)]); }
-  if($action==='mark_document_generated'){ $d=qo_input(); $sid=(int)($d['shipment_id']??0); $type=($d['type']??'pl')==='ci'?'ci':'pl'; if($sid){ $col=$type==='ci'?'ci_generated_at':'pl_generated_at'; $pdo->prepare('UPDATE quote_shipments SET '.$col.'=COALESCE('.$col.',NOW()) WHERE id=?')->execute([$sid]); qo_push_document_notification($pdo,$sid,$type); } qo_ok(['marked'=>1]); }
+  if($action==='mark_document_generated'){ $d=qo_input(); $sid=(int)($d['shipment_id']??0); $type=($d['type']??'pl')==='ci'?'ci':'pl'; if($sid){ $col=$type==='ci'?'ci_generated_at':'pl_generated_at'; $pdo->prepare('UPDATE quote_shipments SET '.$col.'=COALESCE('.$col.',NOW()),updated_at=NOW() WHERE id=?')->execute([$sid]); qo_push_document_notification($pdo,$sid,$type); } qo_ok(['marked'=>1]); }
   if($action==='packaging_list'){ $d=qo_input(); $kw='%'.qo_s($d['kw']??'',120).'%'; $rows=$kw==='%%'?qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000'):qo_rows($pdo,'SELECT * FROM quote_packaging_profiles WHERE product_code LIKE ? OR product_name LIKE ? OR customer_code LIKE ? OR packing_method LIKE ? ORDER BY id DESC LIMIT 1000',[$kw,$kw,$kw,$kw]); qo_ok(['profiles'=>$rows]); }
   if($action==='save_packaging'){ $d=qo_input(); $id=(int)($d['id']??0); $data=[qo_s($d['product_code']??'',160),qo_s($d['product_name']??'',255),qo_s($d['customer_code']??'',120),qo_num($d['unit_nw']??0),qo_num($d['unit_gw']??0),qo_num($d['pcs_per_ctn']??0),qo_num($d['carton_l']??0),qo_num($d['carton_w']??0),qo_num($d['carton_h']??0),qo_s($d['carton_size']??'',160),qo_num($d['carton_nw']??0),qo_num($d['carton_gw']??0),qo_num($d['carton_cbm']??0),qo_s($d['packing_method']??'',255),qo_s($d['note']??'',5000)]; if($id){ $pdo->prepare('UPDATE quote_packaging_profiles SET product_code=?,product_name=?,customer_code=?,unit_nw=?,unit_gw=?,pcs_per_ctn=?,carton_l=?,carton_w=?,carton_h=?,carton_size=?,carton_nw=?,carton_gw=?,carton_cbm=?,packing_method=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($data,[$id])); } else { $pdo->prepare('INSERT INTO quote_packaging_profiles(product_code,product_name,customer_code,unit_nw,unit_gw,pcs_per_ctn,carton_l,carton_w,carton_h,carton_size,carton_nw,carton_gw,carton_cbm,packing_method,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())')->execute($data); $id=(int)$pdo->lastInsertId(); } qo_ok(['profile'=>qo_row($pdo,'SELECT * FROM quote_packaging_profiles WHERE id=?',[$id]),'profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
   if($action==='delete_packaging'){ $d=qo_input(); $pdo->prepare('DELETE FROM quote_packaging_profiles WHERE id=?')->execute([(int)($d['id']??0)]); qo_ok(['profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
