@@ -1569,18 +1569,41 @@ function dn_detail(array $in): array
 
 function dn_multi_group_detail(array $in): array
 {
+    $pdo = dispatch_next_db();
+    $rawId = (string)($in['group_id'] ?? $in['id'] ?? $in['task_id'] ?? '');
+    $groupId = (int)($in['group_id'] ?? 0);
     $id = (int)($in['id'] ?? $in['task_id'] ?? 0);
-    $task = dn_decorate_task(dn_task($id));
-    $groupId = (int)($task['parent_group_id'] ?? 0);
-    if ($groupId <= 0 && (string)($task['dispatch_mode'] ?? '') === 'multi') {
+    $task = null;
+    if ($groupId <= 0 && preg_match('/^g(\d+)$/i', trim($rawId), $m)) {
+        $groupId = (int)$m[1];
+    }
+    if ($groupId <= 0) {
+        $task = dn_decorate_task(dn_task($id));
         $groupId = (int)($task['parent_group_id'] ?? 0);
+        if ($groupId <= 0 && (string)($task['dispatch_mode'] ?? '') === 'multi') {
+            $groupId = (int)($task['parent_group_id'] ?? 0);
+        }
     }
     if ($groupId <= 0) dn_fail('这不是多人派工任务', 400);
-    $pdo = dispatch_next_db();
     $gst = $pdo->prepare("SELECT g.*, COALESCE(NULLIF(u.real_name,''),u.username) AS creator_name FROM dispatch_next_groups g LEFT JOIN crm_users u ON u.id=g.created_by WHERE g.id=? LIMIT 1");
     $gst->execute([$groupId]);
     $group = $gst->fetch();
     if (!$group) dn_fail('多人派工组不存在', 404);
+    if (!$task) {
+        [$visibleSql, $visibleParams] = dn_visible_sql('t');
+        $tst = $pdo->prepare("SELECT t.*, cu.username AS creator_username, COALESCE(NULLIF(cu.real_name,''), cu.username) AS creator_name, au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name
+            FROM dispatch_next_tasks t
+            LEFT JOIN crm_users cu ON cu.id=t.created_by
+            LEFT JOIN crm_users au ON au.id=t.assigned_to
+            WHERE t.parent_group_id=? AND t.is_deleted=0 AND {$visibleSql}
+            ORDER BY FIELD(t.status,'pending_accept','accepted','in_progress','paused','submitted','returned','done','cancelled'), t.id
+            LIMIT 1");
+        $tst->execute(array_merge([$groupId], $visibleParams));
+        $visibleTask = $tst->fetch();
+        if (!$visibleTask) dn_fail('多人派工组不存在或没有权限', 404);
+        $task = dn_decorate_task($visibleTask);
+        $id = (int)($task['id'] ?? 0);
+    }
     $mst = $pdo->prepare("SELECT t.id AS task_id,t.task_no,t.title,t.project,t.description,t.assigned_to,COALESCE(NULLIF(u.real_name,''),u.username) AS assigned_name,t.status,t.priority,t.progress,t.due_at,t.completed_at,t.created_at,t.updated_at FROM dispatch_next_tasks t LEFT JOIN crm_users u ON u.id=t.assigned_to WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY FIELD(t.status,'pending_accept','accepted','in_progress','paused','submitted','returned','done','cancelled'), t.id");
     $mst->execute([$groupId]);
     $members = $mst->fetchAll();
@@ -1627,7 +1650,7 @@ function dn_multi_group_detail(array $in): array
         $comments = $cst->fetchAll();
     }
     $attachments = $pdo->prepare("SELECT a.*, (a.expires_at IS NULL OR a.expires_at>NOW()) AS is_valid, COALESCE(NULLIF(u.real_name,''), u.username) AS user_name FROM dispatch_next_attachments a LEFT JOIN crm_users u ON u.id=a.user_id WHERE a.task_id=? AND a.is_deleted=0 ORDER BY a.id DESC");
-    $attachments->execute([$id]);
+    $attachments->execute([(int)($task['id'] ?? $id)]);
     $steps = $pdo->prepare("SELECT *, COALESCE((SELECT NULLIF(real_name,'') FROM crm_users WHERE id=owner_id), (SELECT username FROM crm_users WHERE id=owner_id)) AS owner_name FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0 ORDER BY sort_order,id");
     $steps->execute([$groupId]);
     return ['group' => $group, 'members' => $members, 'logs' => $logs, 'comments' => $comments, 'attachments' => $attachments->fetchAll(), 'steps' => $steps->fetchAll(), 'task' => $task];
