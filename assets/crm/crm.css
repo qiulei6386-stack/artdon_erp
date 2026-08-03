@@ -15423,7 +15423,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   overflow: auto;
 }
 .promo-group-member-table table {
-  min-width: 900px;
+  min-width: 1040px;
 }
 .promo-group-member-table th {
   position: sticky;
@@ -15448,6 +15448,32 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-muted-text);
   font-size: 11px;
   font-weight: 800;
+}
+.promo-promote-reason {
+  display: inline-flex;
+  align-items: center;
+  max-width: 150px;
+  min-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+.promo-promote-reason.ok {
+  color: #047857;
+  background: #dcfce7;
+}
+.promo-promote-reason.warn {
+  color: #92400e;
+  background: #fef3c7;
+}
+.promo-promote-reason.bad {
+  color: #b91c1c;
+  background: #fee2e2;
 }
 .promo-picker-dialog {
   display: grid;
