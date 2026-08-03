@@ -43,6 +43,49 @@ function dn_str($v, int $max = 5000): string
     return $max > 0 && mb_strlen($s, 'UTF-8') > $max ? mb_substr($s, 0, $max, 'UTF-8') : $s;
 }
 
+function dn_rich_color(string $color): string
+{
+    $c = strtolower(trim($color));
+    if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/', $c, $m)) {
+        $h = $m[1];
+        return '#' . (strlen($h) === 3 ? $h[0] . $h[0] . $h[1] . $h[1] . $h[2] . $h[2] : $h);
+    }
+    if (preg_match('/rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i', $c, $m)) {
+        return sprintf('#%02x%02x%02x', min(255, (int)$m[1]), min(255, (int)$m[2]), min(255, (int)$m[3]));
+    }
+    return '';
+}
+
+function dn_sanitize_rich_text($v, int $max = 5000): string
+{
+    $s = trim((string)($v ?? ''));
+    if ($s === '') return '';
+    if (!preg_match('/<\/?(span|strong|b|br|font)\b/i', $s)) return dn_str($s, $max);
+    $s = preg_replace('/<!--.*?-->/s', '', $s);
+    $s = preg_replace('/<(script|style)\b[^>]*>.*?<\/\1>/is', '', $s);
+    $s = preg_replace_callback('/<font\b([^>]*)>/i', function ($m) {
+        $color = '';
+        if (preg_match('/\bcolor\s*=\s*([\'"]?)(#[0-9a-f]{3,6}|rgba?\([^)]+\))\1/i', $m[1], $cm)) $color = dn_rich_color($cm[2]);
+        return $color ? '<span style="color:' . $color . '">' : '<span>';
+    }, $s);
+    $s = preg_replace('/<\/font\s*>/i', '</span>', $s);
+    $s = strip_tags($s, '<span><strong><b><br>');
+    $s = preg_replace('/<b\b[^>]*>/i', '<strong>', $s);
+    $s = preg_replace('/<\/b\s*>/i', '</strong>', $s);
+    $s = preg_replace('/<strong\b[^>]*>/i', '<strong>', $s);
+    $s = preg_replace('/<br\b[^>]*\/?>/i', '<br>', $s);
+    $s = preg_replace_callback('/<span\b([^>]*)>/i', function ($m) {
+        $color = '';
+        $weight = '';
+        if (preg_match('/color\s*:\s*(#[0-9a-f]{3,6}|rgba?\([^)]+\))/i', $m[1], $cm)) $color = dn_rich_color($cm[1]);
+        if (preg_match('/font-weight\s*:\s*(bold|[6-9]00)/i', $m[1], $wm)) $weight = ';font-weight:700';
+        return ($color || $weight) ? '<span style="' . ($color ? 'color:' . $color : '') . $weight . '">' : '<span>';
+    }, $s);
+    $s = preg_replace('/<span>\s*<\/span>/i', '', $s);
+    $s = preg_replace('/<strong>\s*<\/strong>/i', '', $s);
+    return dn_str($s, $max);
+}
+
 function dn_date($v, ?string $fallback = null): string
 {
     $s = dn_str($v, 20);
@@ -1689,14 +1732,14 @@ function dn_create_task(array $in): array
     $assigned = (int)($in['assigned_to'] ?? 0);
     if (($type === 'personal' || $type === 'private') && $assigned <= 0) $assigned = $uid;
     if ($assigned <= 0) dn_fail('请选择负责人');
-    $title = dn_str($in['title'] ?? '', 240);
-    if ($title === '') dn_fail('请输入任务标题');
+    $title = dn_sanitize_rich_text($in['title'] ?? '', 240);
+    if (trim(strip_tags(str_replace('<br>', "\n", $title))) === '') dn_fail('请输入任务标题');
     $dueAt = dn_required_due_dt($in['due_at'] ?? null);
     $id = dn_insert_task([
         'task_type' => $type,
         'dispatch_mode' => $type === 'dispatch' ? 'single' : 'single',
         'title' => $title,
-        'project' => dn_str($in['project'] ?? '', 8000),
+        'project' => dn_sanitize_rich_text($in['project'] ?? '', 8000),
         'description' => dn_str($in['description'] ?? '', 8000),
         'priority' => dn_priority($in['priority'] ?? 'normal'),
         'status' => $type === 'dispatch' && $assigned !== $uid ? 'pending_accept' : 'in_progress',
@@ -1787,8 +1830,8 @@ function dn_update_task(array $in): array
         if (!array_key_exists($f, $in)) continue;
         $old = $task[$f] ?? '';
         $new = $in[$f];
-        if ($f === 'title') $new = dn_str($new, 240);
-        if ($f === 'project') $new = dn_str($new, 8000);
+        if ($f === 'title') $new = dn_sanitize_rich_text($new, 240);
+        if ($f === 'project') $new = dn_sanitize_rich_text($new, 8000);
         if ($f === 'description') $new = dn_str($new, 8000);
         if ($f === 'priority') $new = dn_priority($new);
         if ($f === 'status') $new = dn_status($new);
@@ -3773,7 +3816,7 @@ function dn_update_cell(array $in): array
     }
     $meta = $map[$field];
     $old = $task[$meta['col']] ?? '';
-    if ($meta['type'] === 'string') $new = dn_str($value, (int)$meta['max']);
+    if ($meta['type'] === 'string') $new = in_array($field, ['title', 'project'], true) ? dn_sanitize_rich_text($value, (int)$meta['max']) : dn_str($value, (int)$meta['max']);
     elseif ($meta['type'] === 'priority') $new = dn_priority($value);
     elseif ($meta['type'] === 'status') $new = dn_status($value);
     elseif ($meta['type'] === 'int') $new = (int)$value;
