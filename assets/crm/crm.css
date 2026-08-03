@@ -15155,7 +15155,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .promo-picker-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, .9fr) auto auto;
   gap: 8px;
   align-items: end;
 }
@@ -15182,6 +15182,41 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-style: normal;
   font-weight: 850;
   white-space: nowrap;
+}
+.promo-picker-hint {
+  border: 1px dashed var(--crm-border);
+  border-radius: 9px;
+  background: var(--crm-bg);
+  color: var(--crm-muted-text);
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.promo-picker-pager {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.promo-picker-pager button {
+  min-height: 30px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.promo-picker-pager button[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.promo-picker-pager span {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 850;
 }
 .promo-picker-row {
   display: grid;
@@ -15214,6 +15249,14 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
+}
+@media (max-width: 900px) {
+  .promo-picker-head {
+    grid-template-columns: 1fr;
+  }
+  .promo-picker-pager {
+    justify-content: flex-start;
+  }
 }
 @media (max-width: 1100px) {
   .promo-group-workbench {

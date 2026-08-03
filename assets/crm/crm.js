@@ -13728,45 +13728,103 @@
       var self = this;
       var group = this.currentGroupRow();
       var picked = new Set();
-      var renderResults = function (modal, rows) {
+      var pickerState = {
+        page: 1,
+        pageSize: 20,
+        q: '',
+        country: group && String(group.group_type || '') === 'country' ? (group.group_name || '') : ''
+      };
+      if (!pickerState.country && group && group.country_distribution) {
+        pickerState.country = String(group.country_distribution).split(/[0-9\/,，|]/)[0].trim();
+      }
+      var updatePickedCount = function (modal) {
+        var count = modal.querySelector('[data-promo-picker-count]');
+        if (count) count.textContent = '已选 ' + picked.size + ' 个';
+      };
+      var renderResults = function (modal, rows, pager) {
+        pager = pager || {};
         var currentGroupId = String(self.currentGroupId || '');
         var body = rows.length ? rows.map(function (row) {
           var id = Number(row.id || 0);
           var groupIds = String(row.marketing_group_ids || '').split(',').map(function (item) { return item.trim(); });
           var inCurrent = groupIds.indexOf(currentGroupId) >= 0;
-          return '<label class="promo-picker-row' + (inCurrent ? ' disabled' : '') + '"><input type="checkbox" data-promo-picker-customer="' + esc(id) + '"' + (picked.has(id) ? ' checked' : '') + (inCurrent ? ' disabled' : '') + '><span><strong>' + esc(row.customer_name || '-') + '</strong><small>' + esc(row.customer_code || '-') + ' · ' + esc(row.country || '未填') + ' · ' + esc(row.owner_name || '-') + '</small></span><em>' + (inCurrent ? '已在本组' : '可加入') + '</em></label>';
+          var contact = [row.primary_contact_email || row.email || '', row.primary_contact_name || ''].filter(Boolean).join(' / ') || '无联系人信息';
+          return '<label class="promo-picker-row' + (inCurrent ? ' disabled' : '') + '"><input type="checkbox" data-promo-picker-customer="' + esc(id) + '"' + (picked.has(id) ? ' checked' : '') + (inCurrent ? ' disabled' : '') + '><span><strong>' + esc(row.customer_name || '-') + '</strong><small>' + esc(row.customer_code || '-') + ' · ' + esc(row.country || '未填') + ' · ' + esc(row.owner_name || '-') + '</small><small>' + esc(contact) + '</small></span><em>' + (inCurrent ? '已在本组' : '可加入') + '</em></label>';
         }).join('') : '<p class="promo-empty">没有匹配客户。</p>';
         var resultBox = modal.querySelector('[data-promo-picker-results]');
         if (resultBox) resultBox.innerHTML = body;
+        var page = Number(pager.page || pickerState.page || 1);
+        var pageCount = Math.max(page, Number(pager.page_count || page || 1));
+        var total = Number(pager.total || 0);
+        var hasMore = Number(pager.has_more || 0) === 1 || page < pageCount;
+        var pagerBox = modal.querySelector('[data-promo-picker-pager]');
+        if (pagerBox) {
+          pagerBox.innerHTML = '<button type="button" data-promo-picker-prev ' + (page <= 1 ? 'disabled' : '') + '>上一页</button><span>第 ' + esc(page) + ' / ' + esc(pageCount) + ' 页' + (total ? ' · 约 ' + esc(total) + ' 个' : '') + '</span><button type="button" data-promo-picker-next ' + (!hasMore ? 'disabled' : '') + '>下一页</button>';
+          pagerBox.querySelector('[data-promo-picker-prev]')?.addEventListener('click', function () {
+            if (pickerState.page <= 1) return;
+            pickerState.page -= 1;
+            search(true);
+          });
+          pagerBox.querySelector('[data-promo-picker-next]')?.addEventListener('click', function () {
+            if (!hasMore) return;
+            pickerState.page += 1;
+            search(true);
+          });
+        }
         modal.querySelectorAll('[data-promo-picker-customer]').forEach(function (input) {
           input.addEventListener('change', function () {
             var id = Number(input.getAttribute('data-promo-picker-customer') || 0);
             if (input.checked) picked.add(id);
             else picked.delete(id);
-            var count = modal.querySelector('[data-promo-picker-count]');
-            if (count) count.textContent = '已选 ' + picked.size + ' 个';
+            updatePickedCount(modal);
           });
         });
+        updatePickedCount(modal);
       };
-      var body = '<section class="promo-picker-dialog"><div class="promo-picker-head"><label><span>搜索客户</span><input data-promo-picker-search placeholder="客户名 / 代码 / 国家 / 邮箱"></label><button type="button" data-promo-picker-search-btn>搜索</button><em data-promo-picker-count>已选 0 个</em></div><div data-promo-picker-results><p class="promo-empty">输入关键词或直接搜索最近客户。</p></div></section>';
+      var search = function () {};
+      var body = '<section class="promo-picker-dialog"><div class="promo-picker-head"><label><span>模糊搜索</span><input data-promo-picker-search placeholder="客户名 / 代码 / 邮箱 / 负责人 / 网站"></label><label><span>国家 / 地区</span><input data-promo-picker-country placeholder="国家、地区、城市，例如 India / Mumbai"></label><button type="button" data-promo-picker-search-btn>搜索</button><em data-promo-picker-count>已选 0 个</em></div><div class="promo-picker-hint">搜索按页读取，每页 20 条；国家/地区支持中文、英文、国家代码和城市区域。</div><div data-promo-picker-results><p class="promo-empty">输入关键词或国家/地区后搜索。</p></div><div class="promo-picker-pager" data-promo-picker-pager></div></section>';
       this.openDialog({
         title: '加入客户到客户组',
         description: group ? ('目标客户组：' + group.group_name) : '选择客户后加入当前客户组。',
         body: body,
         actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-picker-confirm>加入本组</button>',
         bind: function (modal) {
-          var search = function () {
-            var q = modal.querySelector('[data-promo-picker-search]')?.value || '';
+          var qInput = modal.querySelector('[data-promo-picker-search]');
+          var countryInput = modal.querySelector('[data-promo-picker-country]');
+          if (countryInput) countryInput.value = pickerState.country || '';
+          search = function (keepPage) {
+            pickerState.q = qInput?.value || '';
+            pickerState.country = countryInput?.value || '';
+            if (!keepPage) pickerState.page = 1;
             var resultBox = modal.querySelector('[data-promo-picker-results]');
             if (resultBox) resultBox.innerHTML = '<p class="promo-empty">正在搜索客户...</p>';
-            post('marketing_pool_view', { q: q, page: 1, page_size: 50, skip_count: 1 }).then(function (json) {
+            post('marketing_pool_view', {
+              q: pickerState.q,
+              country: pickerState.country,
+              page: pickerState.page,
+              page_size: pickerState.pageSize,
+              skip_count: 1
+            }).then(function (json) {
               if (!json.success) throw new Error(json.message || '客户搜索失败');
-              renderResults(modal, (json.data && (json.data.pool || json.data.all_pool || json.data.group_pool)) || []);
+              var data = json.data || {};
+              renderResults(modal, data.pool || data.all_pool || data.group_pool || [], data.pool_pager || data.all_pool_pager || data.group_pool_pager || {});
             }).catch(function (error) {
               if (resultBox) resultBox.innerHTML = '<p class="promo-empty">' + esc(error.message || '客户搜索失败') + '</p>';
+              var pagerBox = modal.querySelector('[data-promo-picker-pager]');
+              if (pagerBox) pagerBox.innerHTML = '';
             });
           };
           modal.querySelector('[data-promo-picker-search-btn]')?.addEventListener('click', search);
+          [qInput, countryInput].forEach(function (input) {
+            input?.addEventListener('keydown', function (event) {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                search();
+              }
+            });
+          });
+          qInput?.addEventListener('input', debounce(function () { search(); }, 320));
+          countryInput?.addEventListener('input', debounce(function () { search(); }, 320));
           modal.querySelector('[data-promo-picker-search]')?.addEventListener('keydown', function (event) {
             if (event.key === 'Enter') {
               event.preventDefault();
@@ -13780,7 +13838,7 @@
             self.closeDialog();
             self.updateGroupCustomers('add', self.currentGroupId);
           });
-          search();
+          if (pickerState.country) search();
         }
       });
     },

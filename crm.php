@@ -835,7 +835,6 @@ $prefStyle = sprintf(
               </section>
             </section>
             <section class="promo-view" data-promo-view="group_management">
-              <div class="promo-board-head"><div><span>Customer Group Management</span><h2>客户组管理</h2><p>左侧选择客户组，右侧直接管理名单、批量移动、移出或加入客户。</p></div></div>
               <section class="promo-group-manage-filter">
                 <div class="promo-pool-search-row">
                   <label><span>搜索</span><input data-promo-group-search placeholder="客户组名称 / 标签 / 国家 / 负责人"></label>
