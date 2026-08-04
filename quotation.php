@@ -490,7 +490,7 @@ body.need-login .top,body.need-login .system-nav,body.need-login .quote-func-nav
 .review-modal .review-table th:nth-child(4),.review-modal .review-table td:nth-child(4){width:98px!important;min-width:98px!important;max-width:98px!important;}
 .review-modal .review-table th:nth-child(5),.review-modal .review-table td:nth-child(5){width:104px!important;min-width:104px!important;max-width:104px!important;}
 .review-modal .review-table th.review-cost-th,.review-modal .review-table td.review-action-cell{width:118px!important;min-width:118px!important;max-width:118px!important;}
-.review-modal .review-table th.review-moq-th,.review-modal .review-table td.review-moq-cell{width:78px!important;min-width:78px!important;max-width:78px!important;text-align:center!important;}
+.review-modal .review-table th.review-moq-th,.review-modal .review-table td.review-moq-cell{width:92px!important;min-width:92px!important;max-width:92px!important;text-align:center!important;}
 .review-modal .review-table th:nth-child(8){width:32%!important;}
 .review-modal .review-index-cell{font-size:13px!important;color:#475569!important;font-weight:1000!important;background:#fbfdff!important;}
 .review-modal .review-product-td{background:#fff!important;}
@@ -546,8 +546,8 @@ body.need-login .top,body.need-login .system-nav,body.need-login .quote-func-nav
 .review-modal .review-table input.review-price{width:78px!important;min-width:78px!important;}
 .review-modal .review-table input.review-amount{width:84px!important;min-width:84px!important;background:#f8fafc!important;color:#0f172a!important;}
 .review-modal .review-table input.review-moq{
-  width:58px!important;
-  min-width:58px!important;
+  width:72px!important;
+  min-width:72px!important;
   height:38px!important;
   border:1px solid #cfd8e6!important;
   border-radius:12px!important;
