@@ -18221,6 +18221,17 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   align-content: start;
   gap: 8px;
 }
+.visit-workbench {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 10px;
+  padding: 0;
+}
+.visit-workbench > .visit-list {
+  padding-right: 0;
+}
 .visit-list.compact {
   max-height: 460px;
   padding: 0;
@@ -18441,6 +18452,180 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
+}
+.visit-detail-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 10px 10px 0;
+}
+.visit-detail-empty,
+.visit-detail-card {
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-card-bg);
+}
+.visit-detail-empty {
+  min-height: 198px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  color: var(--crm-muted-text);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 16px;
+}
+.visit-detail-empty strong {
+  color: var(--crm-text);
+  font-size: 14px;
+  font-weight: 950;
+}
+.visit-detail-empty span {
+  max-width: 220px;
+}
+.visit-detail-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+.visit-detail-card header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: start;
+}
+.visit-detail-card header span {
+  grid-column: 1 / -1;
+  color: var(--crm-primary);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+.visit-detail-card header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--crm-text);
+  font-size: 16px;
+  font-weight: 950;
+}
+.visit-detail-card header em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--crm-border);
+  border-radius: 999px;
+  background: var(--crm-bg);
+  color: var(--crm-text);
+  padding: 0 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+.visit-detail-customer {
+  display: grid;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 22%, var(--crm-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crm-primary) 5%, var(--crm-card-bg));
+  padding: 10px;
+}
+.visit-detail-customer b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--crm-text);
+  font-size: 14px;
+  font-weight: 950;
+}
+.visit-detail-customer span,
+.visit-detail-note p {
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.visit-detail-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.visit-detail-card dl div {
+  min-width: 0;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-bg);
+  padding: 8px;
+}
+.visit-detail-card dt,
+.visit-detail-tags strong,
+.visit-detail-note strong {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 950;
+}
+.visit-detail-card dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 4px 0 0;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+.visit-detail-tags,
+.visit-detail-note {
+  display: grid;
+  gap: 7px;
+}
+.visit-detail-tags div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.visit-detail-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid var(--crm-border);
+  border-radius: 999px;
+  background: var(--crm-bg);
+  color: var(--crm-text);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+.visit-detail-note p {
+  max-height: 78px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-bg);
+  padding: 9px;
+  line-height: 1.45;
+}
+.visit-detail-card nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.visit-detail-card nav button {
+  min-height: 32px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-bg);
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 900;
+}
+.visit-detail-card nav button:hover {
+  background: var(--crm-hover-bg);
 }
 .visit-empty {
   min-height: 90px;
@@ -19775,6 +19960,14 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   }
   .visit-card {
     grid-template-columns: 1fr;
+  }
+  .visit-workbench {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+  .visit-workbench > .visit-list,
+  .visit-detail-panel {
+    padding: 10px;
   }
   .visit-form-grid,
   .visit-upload-layout,

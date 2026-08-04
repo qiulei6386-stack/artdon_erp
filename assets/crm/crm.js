@@ -25521,6 +25521,7 @@
         if (card) {
           self.selectedId = Number(card.getAttribute('data-visit-id') || 0);
           document.querySelectorAll('[data-visit-id]').forEach(function (item) { item.classList.toggle('active', item === card); });
+          self.renderDetail();
           renderActions('visits');
         }
         var action = event.target.closest('[data-visit-action]');
@@ -25534,6 +25535,10 @@
           return Number(item.id) === Number(card.getAttribute('data-visit-id') || 0);
         });
         if (row) self.openVisitDialog(row.visit_type || 'customer_visit', row);
+      });
+      document.querySelector('[data-visit-detail]')?.addEventListener('click', function (event) {
+        var action = event.target.closest('[data-visit-action]');
+        if (action) self.handleAction(action.getAttribute('data-visit-action'), Number(action.getAttribute('data-visit-action-id') || self.selectedId || 0));
       });
     },
     loadOptions: function () {
@@ -25553,6 +25558,7 @@
         if (!json.success) throw new Error(json.message || '加载失败');
         self.rows = (json.data && json.data.rows) || [];
         self.render(json.data || {});
+        renderActions('visits');
       }).catch(function (error) {
         if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>';
       });
@@ -25567,8 +25573,12 @@
       if (this.view === 'report') return this.renderReport((data && data.stats) || {});
       var box = document.querySelector('[data-visit-list]'), self = this;
       if (!box) return;
+      if (this.rows.length && !this.rows.some(function (row) { return Number(row.id) === Number(self.selectedId); })) {
+        this.selectedId = Number(this.rows[0].id || 0);
+      }
       box.classList.toggle('is-icon-mode', this.displayMode === 'icon');
       box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">暂无记录。右侧 ACTIONS 可新建拜访或来访。</div>';
+      this.renderDetail();
     },
     renderKpis: function (stats) {
       var box = document.querySelector('[data-visit-kpis]');
@@ -25580,6 +25590,7 @@
     renderFollowupPlaceholder: function () {
       var box = document.querySelector('[data-visit-list]');
       if (box) box.innerHTML = '<div class="visit-empty">跟进任务仍使用客户详情内的跟进记录。拜访/来访完成后可自动创建后续跟进。</div>';
+      this.renderDetail(null, '跟进任务');
     },
     renderReport: function (stats) {
       var box = document.querySelector('[data-visit-list]');
@@ -25587,6 +25598,7 @@
       box.innerHTML = '<section class="visit-report-grid">' + [['today_visits','今日外出拜访'],['today_arrivals','今日来访客户'],['overdue_result','超期未填写结果'],['need_quote','拜访/来访后待报价'],['need_material','拜访/来访后待资料']].map(function (item) {
         return '<article><strong>' + esc(stats[item[0]] || 0) + '</strong><span>' + esc(item[1]) + '</span></article>';
       }).join('') + '</section>';
+      this.renderDetail(null, '拜访报表');
     },
     visitCard: function (row) {
       var type = row.visit_type === 'customer_arrival' ? '来访' : '拜访';
@@ -25603,6 +25615,44 @@
         '<nav class="visit-card-actions"><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
         (this.canDelete(row) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
         '</nav></article>';
+    },
+    renderDetail: function (row, emptyTitle) {
+      var box = document.querySelector('[data-visit-detail]');
+      if (!box) return;
+      row = row || this.selected();
+      if (!row) {
+        box.innerHTML = '<div class="visit-detail-empty"><strong>' + esc(emptyTitle || '拜访属性') + '</strong><span>请选择左侧一条拜访 / 来访记录。</span></div>';
+        return;
+      }
+      var type = row.visit_type === 'customer_arrival' ? '来访' : '拜访';
+      var needs = [];
+      if (Number(row.need_quote)) needs.push('报价');
+      if (Number(row.need_material)) needs.push('资料');
+      if (Number(row.need_sample)) needs.push('样品');
+      if (Number(row.need_technical)) needs.push('技术');
+      if (Number(row.need_boss)) needs.push('老板参与');
+      if (Number(row.need_dispatch)) needs.push('派工');
+      var files = [];
+      if (Number(row.image_count)) files.push('图片 ' + row.image_count);
+      if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
+      var line = function (label, value) {
+        return '<div><dt>' + esc(label) + '</dt><dd>' + esc(value || '-') + '</dd></div>';
+      };
+      box.innerHTML = '<article class="visit-detail-card">' +
+        '<header><span>' + esc(type + '属性') + '</span><strong>' + esc(row.title || type) + '</strong><em>' + esc(cnStatus(row.status || 'pending_confirm')) + '</em></header>' +
+        '<section class="visit-detail-customer"><b>' + esc(row.customer_name || '-') + '</b><span>' + esc([row.customer_code, row.contact_name].filter(Boolean).join(' · ') || '未选联系人') + '</span></section>' +
+        '<dl>' +
+          line('计划时间', [row.visit_date, String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ')) +
+          line('负责人', row.owner_name) +
+          line('国家 / 城市', [row.country, row.city].filter(Boolean).join(' / ')) +
+          line('地点', row.location) +
+          line('结果', row.result) +
+          line('下次跟进', row.next_followup_time) +
+        '</dl>' +
+        '<section class="visit-detail-tags"><strong>后续需求</strong><div>' + (needs.length ? needs.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div></section>' +
+        '<section class="visit-detail-note"><strong>备注</strong><p>' + esc(row.result_note || row.planned_note || row.customer_needs || '暂无备注。') + '</p></section>' +
+        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button><button type="button" data-visit-action="' + esc(row.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访') + '" data-visit-action-id="' + esc(row.id) + '">编辑</button></nav>' +
+        '</article>';
     },
     selected: function () {
       var id = this.selectedId;

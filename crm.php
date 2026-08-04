@@ -979,7 +979,12 @@ $prefStyle = sprintf(
               <button type="button" data-visit-view="outside">外出记录</button>
               <button type="button" data-visit-view="report">拜访报表</button>
             </div>
-            <section class="visit-list" data-visit-list><p>正在加载拜访 / 来访记录...</p></section>
+            <section class="visit-workbench">
+              <section class="visit-list" data-visit-list><p>正在加载拜访 / 来访记录...</p></section>
+              <aside class="visit-detail-panel" data-visit-detail>
+                <div class="visit-detail-empty">请选择一条拜访 / 来访记录。</div>
+              </aside>
+            </section>
           </main>
         </section>
       </section>
