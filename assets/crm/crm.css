@@ -18249,83 +18249,111 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 950;
 }
 .visit-list.is-icon-mode {
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: stretch;
+  grid-auto-rows: 198px;
 }
 .visit-list.is-icon-mode .visit-card {
-  min-height: 220px;
-  display: flex;
-  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  height: 198px;
+  display: grid;
+  grid-template-rows: 68px 26px minmax(20px, 1fr) 30px;
   align-items: stretch;
   gap: 8px;
   position: relative;
+  overflow: hidden;
   cursor: pointer;
 }
 .visit-list.is-icon-mode .visit-type-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: var(--crm-primary);
   color: #fff;
-  font-size: 20px;
+  font-size: 19px;
   font-style: normal;
   font-weight: 950;
   box-shadow: 0 6px 16px rgba(37, 99, 235, .16);
 }
 .visit-list.is-icon-mode .visit-card header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
+  min-height: 0;
+  gap: 8px;
 }
 .visit-list.is-icon-mode .visit-card header > div strong,
 .visit-list.is-icon-mode .visit-card header > div span {
   display: block;
 }
 .visit-list.is-icon-mode .visit-card header > div strong {
-  font-size: 14px;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.2;
 }
 .visit-list.is-icon-mode .visit-customer-line {
-  display: flex !important;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 5px 9px;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin-top: 4px;
+  overflow: hidden;
   color: var(--crm-text) !important;
-  font-size: 15px !important;
-  line-height: 1.35 !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
 }
 .visit-list.is-icon-mode .visit-customer-line b:first-child {
   color: var(--crm-primary);
-  font-size: 16px;
+  font-size: 13px;
+  margin-right: 4px;
 }
 .visit-list.is-icon-mode .visit-customer-line b:last-child {
-  font-size: 16px;
+  font-size: 13px;
 }
 .visit-list.is-icon-mode .visit-contact-line {
-  margin-top: 5px !important;
+  margin-top: 4px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--crm-muted-text) !important;
   font-size: 12px !important;
   line-height: 1.4 !important;
 }
 .visit-list.is-icon-mode .visit-card header > em {
-  position: absolute;
-  top: 14px;
-  right: 14px;
+  position: static;
+  align-self: start;
   font-style: normal;
   font-size: 11px;
   font-weight: 900;
   color: var(--crm-primary);
 }
+.visit-list.is-icon-mode .visit-card-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .visit-list.is-icon-mode .visit-card-needs {
   display: flex;
   flex-wrap: wrap;
+  align-content: start;
   gap: 5px;
+  min-height: 0;
+  overflow: hidden;
 }
 .visit-list.is-icon-mode .visit-card-actions {
-  margin-top: auto;
   display: flex;
+  justify-content: flex-end;
+  align-items: end;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+.visit-list.is-icon-mode .visit-card-actions button {
+  min-width: 48px;
+  height: 30px;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 .visit-card:hover,
 .visit-card.selected {
