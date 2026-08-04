@@ -344,13 +344,19 @@ function qo_shipment_can_change(array $shipment): bool {
     && empty($shipment['pl_generated_at'])
     && empty($shipment['ci_generated_at']);
 }
+function qo_shipment_can_edit(array $shipment): bool {
+  return trim((string)($shipment['status']??'草稿'))==='草稿';
+}
+function qo_shipment_require_editable(array $shipment): void {
+  if(!qo_shipment_can_edit($shipment)) qo_fail('该出货批次已生效，不能再修改');
+}
 function qo_shipment_require_changeable(array $shipment): void {
   if(!qo_shipment_can_change($shipment)) qo_fail('该出货批次已生成 PL/CI 或已生效，不能再修改或删除');
 }
 function qo_shipment_edit_data(PDO $pdo,$shipmentId){
   qo_ensure_schema($pdo);
   $detail=qo_shipment_detail($pdo,$shipmentId);
-  $shipment=$detail['shipment']??[]; qo_shipment_require_changeable($shipment);
+  $shipment=$detail['shipment']??[]; qo_shipment_require_editable($shipment);
   $order=$detail['order']??[]; $orderId=(int)($order['id']??0);
   $current=[];
   foreach(($detail['items']??[]) as $row){ $current[(int)($row['order_item_id']??0)]=$row; }
@@ -390,7 +396,7 @@ function qo_shipment_validate_items(PDO $pdo,$orderId,$shipmentId,array $itemsIn
 function qo_update_shipment(PDO $pdo,$d){
   qo_ensure_schema($pdo); $shipmentId=(int)($d['shipment_id']??0); if($shipmentId<=0) qo_fail('缺少出货批次ID');
   $shipment=qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[$shipmentId]); if(!$shipment) qo_fail('出货批次不存在');
-  qo_shipment_require_changeable($shipment);
+  qo_shipment_require_editable($shipment);
   $orderId=(int)$shipment['order_id']; $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]); if(!$order) qo_fail('关联订单不存在');
   $checked=qo_shipment_validate_items($pdo,$orderId,$shipmentId,is_array($d['items']??null)?$d['items']:[]);
   $tot=$checked['totals']; $rows=$checked['rows']; $cartons=is_array($d['cartons']??null)?$d['cartons']:[];
