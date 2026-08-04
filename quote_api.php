@@ -4466,7 +4466,42 @@ if($action==='init'){
  if($action==='delete_price_level') { $d=input_json(); $pdo->prepare("UPDATE quote_price_levels SET is_active=0 WHERE id=?")->execute([intval($d['id'])]); ok(); }
  if($action==='save_option') { $d=input_json(); ok(['id'=>save_row($pdo,'quote_options',$d,['group_key','value','label','note','is_active','sort_order'])]); }
  if($action==='delete_option') { $d=input_json(); $pdo->prepare("UPDATE quote_options SET is_active=0 WHERE id=?")->execute([intval($d['id'])]); ok(); }
- if($action==='list_pending_quotes') { quote_approval_schema($pdo); ok(['quotes'=>rows($pdo,"SELECT * FROM quote_orders WHERE COALESCE(approval_status,'pending')<>'approved' ORDER BY COALESCE(submitted_at,updated_at,created_at) DESC, id DESC LIMIT 1000")]); }
+ if($action==='list_pending_quotes') {
+   quote_approval_schema($pdo);
+   $d=input_json();
+   $page=max(1,(int)($d['page']??1));
+   $pageSize=max(10,min(100,(int)($d['page_size']??20)));
+   $status=strtolower(trim((string)($d['status']??'pending')));
+   $keyword=trim((string)($d['keyword']??''));
+   $customer=trim((string)($d['customer']??''));
+   $owner=trim((string)($d['owner']??''));
+   $sort=(string)($d['sort']??'new');
+   $where=[]; $args=[];
+   if($status!=='' && $status!=='all'){ $where[]="COALESCE(NULLIF(approval_status,''),'pending')=?"; $args[]=$status; }
+   if($customer!==''){ $where[]="customer_name=?"; $args[]=$customer; }
+   if($owner!==''){ $where[]="(user_name=? OR submitted_by=? OR approved_by=? OR rejected_by=?)"; array_push($args,$owner,$owner,$owner,$owner); }
+   if($keyword!==''){
+     $tokens=preg_split('/[\s,，;；]+/u',$keyword,-1,PREG_SPLIT_NO_EMPTY);
+     foreach($tokens as $tok){
+       $like='%'.$tok.'%';
+       $where[]="(quote_no LIKE ? OR customer_name LIKE ? OR user_name LIKE ? OR submitted_by LIKE ? OR approved_by LIKE ? OR rejected_by LIKE ? OR approval_note LIKE ? OR currency LIKE ? OR product_json LIKE ? OR items_json LIKE ? OR customer_json LIKE ?)";
+       array_push($args,$like,$like,$like,$like,$like,$like,$like,$like,$like,$like,$like);
+     }
+   }
+   $whereSql=$where?(' WHERE '.implode(' AND ',$where)):'';
+   $orderSql="COALESCE(submitted_at,updated_at,created_at) DESC, id DESC";
+   if($sort==='amountDesc') $orderSql="amount DESC, id DESC";
+   if($sort==='customer') $orderSql="customer_name ASC, quote_no ASC, id DESC";
+   $total=(int)(row($pdo,"SELECT COUNT(*) c FROM quote_orders".$whereSql,$args)['c']??0);
+   $totalPages=max(1,(int)ceil($total/$pageSize));
+   if($page>$totalPages) $page=$totalPages;
+   $offset=($page-1)*$pageSize;
+   $cols="id,quote_no,quote_date,user_name,customer_name,qty,amount,currency,approval_status,status,submitted_by,submitted_at,approved_by,approved_at,rejected_by,rejected_at,approval_note,updated_at,created_at";
+   $quotes=rows($pdo,"SELECT ".$cols." FROM quote_orders".$whereSql." ORDER BY ".$orderSql." LIMIT ".$pageSize." OFFSET ".$offset,$args);
+   $customers=array_map(fn($r)=>(string)$r['v'],rows($pdo,"SELECT customer_name v FROM quote_orders WHERE COALESCE(customer_name,'')<>'' GROUP BY customer_name ORDER BY customer_name LIMIT 500"));
+   $owners=array_map(fn($r)=>(string)$r['v'],rows($pdo,"SELECT user_name v FROM quote_orders WHERE COALESCE(user_name,'')<>'' GROUP BY user_name ORDER BY user_name LIMIT 300"));
+   ok(['quotes'=>$quotes,'total'=>$total,'page'=>$page,'page_size'=>$pageSize,'total_pages'=>$totalPages,'customers'=>$customers,'owners'=>$owners]);
+ }
  if($action==='approve_quote') {
    quote_approval_schema($pdo); quote_require_approver($__quote_user,$__quote_perms);
    $d=input_json(); $id=(int)($d['id']??0); if($id<=0) fail('缺少报价ID');

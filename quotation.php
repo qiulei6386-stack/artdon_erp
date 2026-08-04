@@ -4615,6 +4615,111 @@ loadPiCommissionReminder=async function(){
 })();
 
 
+/* ===== Quotation V6.8.5.46：报价审核列表服务端分页 ===== */
+(function(){
+  if(!document.getElementById('approvalPaginationStyle')){
+    let st=document.createElement('style');
+    st.id='approvalPaginationStyle';
+    st.textContent='.approval-list.is-loading{opacity:.62;pointer-events:none}.approval-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:10px 12px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff;color:#64748b;font-size:12px}.approval-pager-info b{color:#1d4ed8}.approval-pager-actions{display:flex;align-items:center;gap:8px}.approval-pager-actions select{width:78px;height:34px}.approval-pager-actions button{height:34px}.approval-pager-actions button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:760px){.approval-pager{align-items:flex-start;flex-direction:column}.approval-pager-actions{flex-wrap:wrap}}';
+    document.head.appendChild(st);
+  }
+  let approvalPage=1, approvalPageSize=20, approvalRows=[], approvalMeta={total:0,total_pages:1,page:1,page_size:20,customers:[],owners:[]}, approvalTimer=null, approvalLoading=false;
+  function approvalVisible(){let page=$('page-approval');return !page||page.classList.contains('active');}
+  function approvalOwner(q){return typeof quoteOwnerOfQuoteV68516==='function'?quoteOwnerOfQuoteV68516(q):String(q?.user_name||q?.submitted_by||q?.approved_by||q?.rejected_by||'').trim();}
+  function approvalPayload(page){
+    return {
+      page:page||approvalPage,
+      page_size:approvalPageSize,
+      keyword:String($('approvalSearch')?.value||'').trim(),
+      customer:String($('approvalCustomer')?.value||'').trim(),
+      owner:String($('approvalOwner')?.value||'').trim(),
+      status:$('approvalStatus')?.value||'pending',
+      sort:$('approvalSort')?.value||'new'
+    };
+  }
+  function setApprovalOptions(id,values,first){
+    if(typeof quoteSetOptionsV68516==='function') return quoteSetOptionsV68516(id,values,first);
+    let el=$(id); if(!el)return; let old=el.value;
+    let arr=[...new Set((values||[]).map(v=>String(v||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+    el.innerHTML='<option value="">'+esc(first||'全部')+'</option>'+arr.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');
+    if(arr.includes(old))el.value=old;
+  }
+  function mergeApprovalRows(rows){
+    let map=new Map((DB.quotes||[]).map(q=>[String(q.id),q]));
+    (rows||[]).forEach(q=>{
+      let key=String(q.id);
+      map.set(key,Object.assign({},map.get(key)||{},q));
+    });
+    DB.quotes=Array.from(map.values());
+  }
+  function approvalPagerHtml(){
+    let total=Number(approvalMeta.total||0), page=Number(approvalMeta.page||approvalPage||1), pages=Math.max(1,Number(approvalMeta.total_pages||1));
+    if(!total) return '';
+    let prev=Math.max(1,page-1), next=Math.min(pages,page+1);
+    return `<div class="approval-pager"><div class="approval-pager-info">第 <b>${page}</b> / ${pages} 页，共 ${total} 条</div><div class="approval-pager-actions"><span>每页</span><select data-approval-page-size><option value="20"${approvalPageSize===20?' selected':''}>20</option><option value="50"${approvalPageSize===50?' selected':''}>50</option><option value="100"${approvalPageSize===100?' selected':''}>100</option></select><button class="gray" data-approval-page="${prev}" ${page<=1?'disabled':''}>上一页</button><button class="gray" data-approval-page="${next}" ${page>=pages?'disabled':''}>下一页</button></div></div>`;
+  }
+  function approvalRowHtml(q){
+    let c=quoteCustomer(q), stNow=quoteApprovalStatus(q), approved=stNow==='approved';
+    let who=approved?('审核：'+(q.approved_by||'-')+' ｜ '+(q.approved_at||'')):(stNow==='rejected'?('驳回：'+(q.rejected_by||'-')+' ｜ '+(q.rejected_at||'')):('提交：'+(q.submitted_at||q.updated_at||q.created_at||'')));
+    let primaryBtn=approved?'查看日志':'审核预览';
+    let actions=hasPerm('quote_approve')?`<button class="blue" onclick="openQuoteReview(${Number(q.id)})">${primaryBtn}</button>${approved?`<button class="orange" onclick="reverseApproveQuoteQuick(${Number(q.id)})">反审</button>`:`<button class="red" onclick="rejectQuoteQuick(${Number(q.id)})">驳回</button>`}`:`<button class="gray" onclick="openQuoteReview(${Number(q.id)})">查看日志</button><span class="hint">无审核权限</span>`;
+    return `<div class="approval-row"><div><b>${quoteApprovalBadge(q)}${esc(q.quote_no||'')}</b><small>${esc(c.company||q.customer_name||'未选客户')} ｜ 负责人：${esc(approvalOwner(q)||'-')} ｜ ${esc(q.quote_date||'')} ｜ ${esc(q.currency||'USD')} ${money(q.amount||0)} ｜ ${esc(who)}</small>${q.approval_note?`<small>审核备注：${esc(q.approval_note)}</small>`:''}</div><div class="approval-actions">${actions}<button class="gray" onclick="openQuoteReview(${Number(q.id)})">日志</button><button class="gray" onclick="loadQuote(${Number(q.id)})">打开</button></div></div>`;
+  }
+  function renderApprovalPageRows(){
+    let box=$('approvalList'); if(!box)return;
+    let total=Number(approvalMeta.total||0), page=Number(approvalMeta.page||approvalPage||1), pages=Math.max(1,Number(approvalMeta.total_pages||1));
+    if($('approvalCount'))$('approvalCount').textContent=approvalLoading?'读取中...':('共 '+total+' 条 ｜ 第 '+page+'/'+pages+' 页');
+    box.innerHTML=(approvalRows.length?approvalRows.map(approvalRowHtml).join(''):'<div class="hint" style="padding:16px">暂无报价。</div>')+approvalPagerHtml();
+  }
+  window.loadApprovalList=async function(page){
+    if(!approvalVisible())return;
+    clearTimeout(approvalTimer);
+    approvalPage=page?Number(page):approvalPage;
+    let box=$('approvalList'); if(box){approvalLoading=true;box.classList.add('is-loading');}
+    if($('approvalCount'))$('approvalCount').textContent='读取中...';
+    try{
+      let data=await api('list_pending_quotes',approvalPayload(approvalPage));
+      approvalRows=data.quotes||[];
+      approvalMeta=Object.assign({total:0,total_pages:1,page:approvalPage,page_size:approvalPageSize,customers:[],owners:[]},data||{});
+      approvalPage=Number(approvalMeta.page||approvalPage||1);
+      approvalPageSize=Number(approvalMeta.page_size||approvalPageSize||20);
+      mergeApprovalRows(approvalRows);
+      setApprovalOptions('approvalCustomer',approvalMeta.customers||[],'全部客户');
+      setApprovalOptions('approvalOwner',approvalMeta.owners||[],'全部负责人');
+    }catch(e){
+      if(box)box.innerHTML='<div class="hint" style="padding:16px;color:#dc2626">审核列表读取失败：'+esc(e?.message||e)+'</div>';
+    }finally{
+      approvalLoading=false;
+      if(box)box.classList.remove('is-loading');
+      renderApprovalPageRows();
+    }
+  };
+  window.renderApproval=function(){
+    if(!approvalVisible())return;
+    approvalPage=1;
+    clearTimeout(approvalTimer);
+    approvalTimer=setTimeout(()=>loadApprovalList(1),220);
+  };
+  window.setApprovalStatus=function(st){
+    let el=$('approvalStatus'); if(el)el.value=st||'pending';
+    approvalPage=1;
+    return loadApprovalList(1);
+  };
+  document.addEventListener('click',function(e){
+    let btn=e.target.closest('[data-approval-page]');
+    if(!btn||btn.disabled)return;
+    e.preventDefault();
+    loadApprovalList(Number(btn.getAttribute('data-approval-page')||1));
+  });
+  document.addEventListener('change',function(e){
+    if(!e.target.matches('[data-approval-page-size]'))return;
+    approvalPageSize=Number(e.target.value||20);
+    approvalPage=1;
+    loadApprovalList(1);
+  });
+})();
+
+
 /* ===== Quotation V6.8.5.25：订单中心一键生成 Packing List / Commercial Invoice ===== */
 (function(){
   window.quickGenerateOrderDoc = async function(orderId,type){
