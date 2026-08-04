@@ -25595,12 +25595,12 @@
       var files = [];
       if (Number(row.image_count)) files.push('图片 ' + row.image_count);
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
+      var schedule = [row.visit_date || '未定日期', String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ');
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
-        '<i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i>' +
-        '<div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div>' +
-        '<em>' + esc(type) + '</em><span>' + esc(row.visit_date || '未定日期') + ' ' + esc(String(row.visit_time || '').slice(0, 5)) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b>' +
-        '<small>' + (need.length ? need.map(function (item) { return '<i>' + esc(item) + '</i>'; }).join('') : '<i>无后续需求</i>') + (files.length ? files.map(function (item) { return '<i class="visit-file-badge">' + esc(item) + '</i>'; }).join('') : '') + '</small>' +
-        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
+        '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
+        '<div class="visit-card-meta"><span>' + esc(schedule) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b></div>' +
+        '<div class="visit-card-needs">' + (need.length ? need.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div>' +
+        '<nav class="visit-card-actions"><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
         (this.canDelete(row) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
         '</nav></article>';
     },
@@ -25994,8 +25994,8 @@
       if (label === '查看拜访记录') { activate('visits'); this.view = 'visits'; return this.load(); }
       if (label === '查看来访记录') { activate('visits'); this.view = 'arrivals'; return this.load(); }
       if (label === '查看拜访' || label === '查看来访' || label === '编辑拜访' || label === '编辑来访') return this.openVisitDialog((row || {}).visit_type || 'customer_visit', row);
-      if (label === '填写拜访结果' || label === '填写接待结果') return this.openResultDialog(row);
-      if (label === '创建派工' || label === '创建接待派工') return this.createDispatchPlaceholder(row);
+      if (label === 'result' || label === '填结果' || label === '填写拜访结果' || label === '填写接待结果') return this.openResultDialog(row);
+      if (label === 'dispatch' || label === '派工' || label === '创建派工' || label === '创建接待派工') return this.createDispatchPlaceholder(row);
       if (label === '创建跟进') return this.createFollowupFromVisit(row);
       if (label === 'delete' || label === '删除记录' || label === '删除拜访' || label === '删除来访') return this.deleteVisit(row);
       if (label === '创建报价') return toast('报价接口待接入，可从报价系统创建草稿。');

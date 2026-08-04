@@ -18229,14 +18229,24 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   border: 1px solid var(--crm-border);
   background: var(--crm-card-bg);
   border-radius: 8px;
-  padding: 10px;
+  padding: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   cursor: pointer;
 }
 .visit-type-icon {
-  display: none;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crm-primary) 10%, var(--crm-bg));
+  color: var(--crm-primary);
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 950;
 }
 .visit-list.is-icon-mode {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -18252,8 +18262,6 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   cursor: pointer;
 }
 .visit-list.is-icon-mode .visit-type-icon {
-  display: grid;
-  place-items: center;
   width: 46px;
   height: 46px;
   border-radius: 14px;
@@ -18264,11 +18272,16 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 950;
   box-shadow: 0 6px 16px rgba(37, 99, 235, .16);
 }
-.visit-list.is-icon-mode .visit-card > div strong,
-.visit-list.is-icon-mode .visit-card > div span {
+.visit-list.is-icon-mode .visit-card header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+.visit-list.is-icon-mode .visit-card header > div strong,
+.visit-list.is-icon-mode .visit-card header > div span {
   display: block;
 }
-.visit-list.is-icon-mode .visit-card > div strong {
+.visit-list.is-icon-mode .visit-card header > div strong {
   font-size: 14px;
 }
 .visit-list.is-icon-mode .visit-customer-line {
@@ -18294,7 +18307,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px !important;
   line-height: 1.4 !important;
 }
-.visit-list.is-icon-mode .visit-card > em {
+.visit-list.is-icon-mode .visit-card header > em {
   position: absolute;
   top: 14px;
   right: 14px;
@@ -18303,12 +18316,12 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-weight: 900;
   color: var(--crm-primary);
 }
-.visit-list.is-icon-mode .visit-card > small {
+.visit-list.is-icon-mode .visit-card-needs {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
-.visit-list.is-icon-mode .visit-card > nav {
+.visit-list.is-icon-mode .visit-card-actions {
   margin-top: auto;
   display: flex;
   gap: 6px;
@@ -18325,6 +18338,12 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   gap: 8px;
   min-width: 0;
 }
+.visit-card header > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
 .visit-card header strong {
   min-width: 0;
   overflow: hidden;
@@ -18333,6 +18352,21 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 13px;
   font-weight: 950;
   color: var(--crm-text);
+}
+.visit-card header em {
+  flex: 0 0 auto;
+  align-self: start;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 32%, var(--crm-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-primary) 6%, var(--crm-card-bg));
+  color: var(--crm-primary);
+  padding: 0 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
 }
 .visit-card p {
   grid-column: 1 / -1;
@@ -18350,6 +18384,16 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-size: 11px;
   color: var(--crm-muted-text);
   font-weight: 850;
+}
+.visit-card-meta {
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+.visit-card-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .visit-card-needs span,
 .visit-status {
