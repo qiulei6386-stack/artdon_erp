@@ -175,6 +175,12 @@
       '</section>';
   }
 
+  function mailHtmlHasRenderableImages(html) {
+    html = String(html || '');
+    return /<img\b[^>]*\bsrc\s*=/i.test(html)
+      || /background(?:-image)?\s*:\s*url\(/i.test(html);
+  }
+
   function officeMailReadableBody(mail) {
     var html = String((mail && mail.body_html) || '').trim();
     var text = String((mail && mail.body_text) || '').trim();
@@ -7137,9 +7143,10 @@
       }
       var isOfficeMail = typeof MailModule !== 'undefined' && typeof MailModule.isOutlookOfficeMail === 'function' && MailModule.isOutlookOfficeMail(mail);
       var useFrame = typeof MailModule !== 'undefined' && typeof MailModule.isFullHtmlMail === 'function' && MailModule.isFullHtmlMail(mail);
+      var hasVisualImages = mailHtmlHasRenderableImages(bodyHtml);
       var readableBody = isOfficeMail && typeof officeMailReadableBody === 'function'
         ? officeMailReadableBody(mail)
-        : (useFrame ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
+        : (useFrame && !hasVisualImages ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
       var body = bodyHtml
         ? (readableBody || (useFrame ? '<iframe class="mail-body-frame customer-mail-body-frame" sandbox="allow-same-origin" scrolling="no" srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
@@ -10369,9 +10376,10 @@
       var recallNotice = recalled ? '<section class="mail-recall-notice">已撤回：系统已发送撤回通知给原收件人。</section>' : '';
       var isOfficeMail = this.isOutlookOfficeMail(mail);
       var isFullHtml = this.isFullHtmlMail(mail);
-      var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
       var useBodyFrame = isDbsAdvice || isFullHtml;
       var bodyHtml = this.normalizeMailBodyLocalUrls(mail.body_html || '');
+      var hasVisualImages = mailHtmlHasRenderableImages(bodyHtml);
+      var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml && !hasVisualImages ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
       var body = mail.body_html
         ? (readableBody || (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
