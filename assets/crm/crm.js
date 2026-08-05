@@ -6351,7 +6351,7 @@
         '</div><div class="temp-pool-filterbar"><div class="temp-pool-chips">' + chips.map(function (chip) {
           return '<button type="button" class="' + (quick === chip[0] ? 'active' : '') + '" data-lead-filter="' + esc(chip[0]) + '">' + esc(chip[1]) + '</button>';
         }).join('') + '</div><label><span>搜索</span><input type="search" value="' + esc(keyword) + '" placeholder="客户名 / 邮箱 / 电话 / 域名 / 国家" data-lead-pool-search></label></div></div>' +
-        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count">当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条</div><div class="temp-pool-rows">' + listHtml + '</div></aside>' +
+        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count"><span>当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条 · 已选 ' + esc((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条</span><nav><button type="button" data-lead-select-page>全选当前页</button><button type="button" data-lead-clear-selection>清空</button><button type="button" data-lead-batch-create>批量加入</button><button type="button" class="danger" data-lead-batch-reject>批量删除</button></nav></div><div class="temp-pool-rows">' + listHtml + '</div></aside>' +
         '<section class="temp-pool-right" data-lead-pool-detail>' + this.renderLeadPoolDetailHtml(this.selectedLead) + '</section></div></section>';
       this.bindLeadPoolWorkbench();
     },
@@ -6422,6 +6422,22 @@
           }, 280);
         });
       }
+      box.querySelector('[data-lead-select-page]')?.addEventListener('click', function (event) {
+        event.preventDefault();
+        self.selectLeadPage();
+      });
+      box.querySelector('[data-lead-clear-selection]')?.addEventListener('click', function (event) {
+        event.preventDefault();
+        self.clearLeadSelection();
+      });
+      box.querySelector('[data-lead-batch-create]')?.addEventListener('click', function (event) {
+        event.preventDefault();
+        self.batchConfirmLeads();
+      });
+      box.querySelector('[data-lead-batch-reject]')?.addEventListener('click', function (event) {
+        event.preventDefault();
+        self.batchRejectLeads();
+      });
       box.querySelectorAll('[data-lead-check]').forEach(function (input) {
         input.addEventListener('click', function (event) {
           event.stopPropagation();
@@ -6451,6 +6467,34 @@
       renderActions('customers');
       if (this.selectedLead) toast('已选中暂存客户：' + (this.selectedLead.raw_name || (this.selectedLead.payload || {}).customer_name || ('#' + leadId)));
     },
+    updateLeadSelectionUi: function () {
+      var self = this;
+      document.querySelectorAll('[data-lead-row]').forEach(function (row) {
+        row.classList.toggle('active', self.selectedLeadIds && self.selectedLeadIds.has(Number(row.getAttribute('data-lead-row'))));
+      });
+      document.querySelectorAll('[data-lead-check]').forEach(function (input) {
+        input.checked = !!(self.selectedLeadIds && self.selectedLeadIds.has(Number(input.getAttribute('data-lead-check'))));
+      });
+      var detail = document.querySelector('[data-lead-pool-detail]');
+      if (detail) detail.innerHTML = this.selectedLeadIds && this.selectedLeadIds.size === 1 ? this.renderLeadPoolDetailHtml(this.selectedLead) : this.renderLeadPoolDetailHtml(null);
+      var count = document.querySelector('.temp-pool-count > span');
+      if (count) count.textContent = '当前 ' + ((this.leadRows || []).length) + ' 条 / 共 ' + (this.leadTotal || 0) + ' 条 · 已选 ' + ((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条';
+      renderActions('customers');
+    },
+    selectLeadPage: function () {
+      var ids = (this.leadRows || []).filter(function (row) { return (row.status || 'pending') === 'pending'; }).map(function (row) { return Number(row.id || 0); }).filter(Boolean);
+      this.selectedLeadIds = new Set(ids);
+      this.selectedLeadId = ids.length === 1 ? ids[0] : 0;
+      this.selectedLead = ids.length === 1 ? ((this.leadRows || []).find(function (row) { return Number(row.id) === ids[0]; }) || null) : null;
+      this.updateLeadSelectionUi();
+      toast(ids.length ? ('已选择当前页待确认暂存客户 ' + ids.length + ' 条') : '当前页没有待确认暂存客户');
+    },
+    clearLeadSelection: function () {
+      this.selectedLeadIds = new Set();
+      this.selectedLeadId = 0;
+      this.selectedLead = null;
+      this.updateLeadSelectionUi();
+    },
     toggleLeadSelection: function (leadId, checked) {
       leadId = Number(leadId || 0);
       if (!this.selectedLeadIds) this.selectedLeadIds = new Set();
@@ -6463,12 +6507,7 @@
         this.selectedLeadId = 0;
         this.selectedLead = null;
       }
-      document.querySelectorAll('[data-lead-row]').forEach(function (row) {
-        row.classList.toggle('active', CustomerModule.selectedLeadIds.has(Number(row.getAttribute('data-lead-row'))));
-      });
-      var detail = document.querySelector('[data-lead-pool-detail]');
-      if (detail) detail.innerHTML = this.selectedLeadIds.size === 1 ? this.renderLeadPoolDetailHtml(this.selectedLead) : this.renderLeadPoolDetailHtml(null);
-      renderActions('customers');
+      this.updateLeadSelectionUi();
     },
     selectedLeadPayload: function () {
       var lead = this.selectedLead || {};
@@ -8107,13 +8146,15 @@
       if (this.isLeadPoolOpen && this.isLeadPoolOpen()) {
         var leadSelectedCount = (this.selectedLeadIds && this.selectedLeadIds.size) || 0;
         if (leadSelectedCount > 1) return [
-          { title: '暂存池批量操作（已选 ' + leadSelectedCount + '）', items: ['批量确认入库', '批量丢弃', '批量标记无重复', '批量补全资料'] }
+          { title: '暂存池批量操作（已选 ' + leadSelectedCount + '）', items: ['批量加入正式库', '批量删除暂存客户', '批量标记无重复', '批量补全资料', '清空选择'] }
         ];
         if (leadSelectedCount === 1 && this.selectedLead && (this.selectedLead.status || 'pending') === 'pending') return [
-          { title: '暂存池客户', items: ['编辑暂存客户', '确认入库', '关联已有客户', '合并到已有客户', '丢弃暂存客户', '标记无重复', '查看原始来源', 'AI 分析重复'] }
+          { title: '暂存池客户', items: ['编辑暂存客户', '加入正式库', '关联已有客户', '合并到已有客户', '删除暂存客户', '标记无重复', '查看原始来源', 'AI 分析重复'] },
+          { title: '批量管理', items: ['全选当前页', '清空选择', '批量加入正式库', '批量删除暂存客户'] }
         ];
         return [
-          { title: '暂存池审核', items: ['刷新暂存池', '查看疑似重复', '查看无重复', '批量补全资料', '批量确认入库'] }
+          { title: '暂存池审核', items: ['刷新暂存池', '查看疑似重复', '查看无重复'] },
+          { title: '批量管理', items: ['全选当前页', '清空选择', '批量加入正式库', '批量删除暂存客户', '批量标记无重复', '批量补全资料'] }
         ];
       }
       if (this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.deleted_at) return [
@@ -8312,18 +8353,20 @@
       if (label === '查看疑似重复') return this.loadLeadPool('duplicate');
       if (label === '查看无重复') return this.loadLeadPool('no_duplicate');
       if (label === '编辑暂存客户') return this.openLeadEditDialog();
-      if (label === '确认加入正式库' || label === '确认入库') return this.confirmLeadCreate(this.selectedLeadId);
+      if (label === '确认加入正式库' || label === '确认入库' || label === '加入正式库') return this.confirmLeadCreate(this.selectedLeadId);
       if (label === '关联已有客户' || label === '合并到已有客户') {
         var best = this.selectedLead && (this.selectedLead.similarity_matches || [])[0];
         if (!best || !best.customer_id) return this.showCustomerError('当前暂存客户没有可直接关联的相似客户。');
         return this.useLeadExisting(this.selectedLeadId, best.customer_id);
       }
-      if (label === '丢弃暂存客户') return this.rejectLead(this.selectedLeadId);
+      if (label === '丢弃暂存客户' || label === '删除暂存客户') return this.rejectLead(this.selectedLeadId);
       if (label === '标记无重复') return this.markLeadNoDuplicate(this.selectedLeadId);
       if (label === '查看原始来源') return this.showLeadRawSource();
       if (label === 'AI 分析重复') return this.createLeadManualTodo();
-      if (label === '批量确认入库') return this.batchConfirmLeads();
-      if (label === '批量丢弃') return this.batchRejectLeads();
+      if (label === '全选当前页') return this.selectLeadPage();
+      if (label === '清空选择') return this.clearLeadSelection();
+      if (label === '批量确认入库' || label === '批量加入正式库') return this.batchConfirmLeads();
+      if (label === '批量丢弃' || label === '批量删除暂存客户') return this.batchRejectLeads();
       if (label === '批量标记无重复') return this.batchMarkLeadNoDuplicate();
       if (label === '批量补全资料') return this.createLeadManualTodo();
       if (label === '导入客户') return this.openCustomerImportDialog();
@@ -22341,8 +22384,15 @@
         '暂存池': '查看待确认客户并执行确认创建、关联已有或丢弃',
         '编辑暂存客户': '修改暂存池客户资料，不会加入正式客户库',
         '确认加入正式库': '把当前选中的暂存客户确认创建为正式客户',
+        '加入正式库': '把当前选中的暂存客户确认创建为正式客户',
+        '批量加入正式库': '把选中的暂存客户批量创建为正式客户',
         '关联已有客户': '把当前暂存客户关联到最相似的已有客户',
         '丢弃暂存客户': '丢弃当前暂存客户并保留处理日志',
+        '删除暂存客户': '把当前暂存客户标记为已丢弃并保留处理日志',
+        '批量删除暂存客户': '把选中的暂存客户批量标记为已丢弃',
+        '全选当前页': '选择当前页全部待确认暂存客户',
+        '清空选择': '清空当前已选暂存客户',
+        '批量标记无重复': '清除选中暂存客户的疑似重复匹配',
         '导入客户': '从 Excel/CSV 预览并批量导入客户',
         '导出客户': '按当前筛选条件导出客户 Excel',
         '导入日志': '查看客户导入成功和失败记录',
@@ -22703,7 +22753,7 @@
       button.title = label;
       button.setAttribute('data-action-command', label);
       button.setAttribute('data-tooltip', actionDescription(label));
-      if (/删除|批量删除|取消任务|取消未发送队列|批量取消未发送队列/.test(label)) button.classList.add('danger');
+      if (/删除|批量删除|丢弃|批量丢弃|取消任务|取消未发送队列|批量取消未发送队列/.test(label)) button.classList.add('danger');
       if (name === 'tasks' && TaskCenterModule.isViewAction(label)) button.classList.toggle('active', TaskCenterModule.view === TaskCenterModule.viewKeyFromLabel(label));
       if (name === 'tasks' && TaskCenterModule.isQuoteFlowFilterAction(label)) button.classList.toggle('active', TaskCenterModule.view === 'quote' && TaskCenterModule.quoteFlowFilter === TaskCenterModule.quoteFlowFilterKeyFromLabel(label));
       if (isActiveAction(label)) button.classList.add('active');

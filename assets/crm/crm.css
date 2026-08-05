@@ -6276,14 +6276,48 @@ body.is-actionbar-resizing * {
   grid-template-rows: auto minmax(0, 1fr);
 }
 .temp-pool-count {
-  height: 34px;
+  min-height: 42px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 0 12px;
   border-bottom: 1px solid var(--crm-border);
   color: var(--crm-muted-text);
   font-size: 12px;
   font-weight: 700;
+}
+.temp-pool-count span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.temp-pool-count nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.temp-pool-count button {
+  min-height: 28px;
+  border: 1px solid var(--crm-border);
+  border-radius: 7px;
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+.temp-pool-count button:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.temp-pool-count button.danger {
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #dc2626;
 }
 .temp-pool-rows {
   overflow: auto;
