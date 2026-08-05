@@ -2494,6 +2494,7 @@
     layoutMode: 'default',
     searchTimer: null,
     leadPage: 1,
+    leadPageSize: 80,
     leadTotal: 0,
     leadRows: [],
     leadPoolQuick: 'pending',
@@ -6264,9 +6265,16 @@
       var searchInput = document.querySelector('[data-lead-pool-search]');
       if (searchInput) this.leadPoolKeyword = searchInput.value || '';
       if (box) box.innerHTML = '<p>正在读取暂存池...</p>';
-      return post('lead_pool_list', { quick_filter: this.leadPoolQuick || 'pending', keyword: this.leadPoolKeyword || '', page: this.leadPage, page_size: 80 }).then(function (json) {
+      return post('lead_pool_list', { quick_filter: this.leadPoolQuick || 'pending', keyword: this.leadPoolKeyword || '', page: this.leadPage, page_size: this.leadPageSize || 80 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '暂存池读取失败');
         self.leadTotal = Number(json.data.total || 0);
+        self.leadPage = Math.max(1, Number(json.data.page || self.leadPage || 1));
+        self.leadPageSize = Math.max(20, Number(json.data.page_size || self.leadPageSize || 80));
+        var leadTotalPages = Math.max(1, Math.ceil(self.leadTotal / self.leadPageSize));
+        if (self.leadPage > leadTotalPages) {
+          self.leadPage = leadTotalPages;
+          return self.loadLeadPool();
+        }
         self.leadCanProcess = !!json.data.can_process;
         self.leadRows = json.data.rows || [];
         self.selectedLeadIds = new Set(Array.from(self.selectedLeadIds || []).filter(function (id) {
@@ -6322,6 +6330,12 @@
       var stats = meta.stats || {};
       var quick = this.leadPoolQuick || 'pending';
       var keyword = this.leadPoolKeyword || '';
+      var page = Math.max(1, Number(meta.page || this.leadPage || 1));
+      var pageSize = Math.max(1, Number(meta.page_size || this.leadPageSize || 80));
+      var total = Number(meta.total || 0);
+      var totalPages = Math.max(1, Math.ceil(total / pageSize));
+      var from = total ? ((page - 1) * pageSize + 1) : 0;
+      var to = total ? Math.min(total, (page - 1) * pageSize + rows.length) : 0;
       var chips = [
         ['all', '全部'],
         ['pending', '待确认'],
@@ -6342,6 +6356,10 @@
           '<p>' + esc(CustomerModule.leadSourceDomain(row)) + ' · 匹配 ' + esc(matches.length) + ' · ' + esc(row.created_at || '-') + '</p></div>' +
           '</article>';
       }).join('') : '<div class="lead-pool-empty"><strong>暂无暂存客户</strong><span>当前筛选下没有数据，可切换到“全部”或清空搜索。</span></div>';
+      var pagerHtml = '<div class="temp-pool-pager"><span>第 ' + esc(page) + ' / ' + esc(totalPages) + ' 页 · ' + esc(from) + '-' + esc(to) + ' / ' + esc(total) + '</span><nav>' +
+        '<button type="button" data-lead-page="prev"' + (page <= 1 ? ' disabled' : '') + '>上一页</button>' +
+        '<button type="button" data-lead-page="next"' + (page >= totalPages ? ' disabled' : '') + '>下一页</button>' +
+        '</nav></div>';
       box.innerHTML = '<section class="temp-pool-workbench">' +
         '<div class="temp-pool-head"><div class="temp-pool-stats">' +
           '<button type="button" data-lead-filter="pending"><span>待确认</span><strong>' + esc(stats.pending || 0) + '</strong></button>' +
@@ -6351,7 +6369,7 @@
         '</div><div class="temp-pool-filterbar"><div class="temp-pool-chips">' + chips.map(function (chip) {
           return '<button type="button" class="' + (quick === chip[0] ? 'active' : '') + '" data-lead-filter="' + esc(chip[0]) + '">' + esc(chip[1]) + '</button>';
         }).join('') + '</div><label><span>搜索</span><input type="search" value="' + esc(keyword) + '" placeholder="客户名 / 邮箱 / 电话 / 域名 / 国家" data-lead-pool-search></label></div></div>' +
-        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count"><span>当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条 · 已选 ' + esc((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条</span><nav><button type="button" data-lead-select-page>全选当前页</button><button type="button" data-lead-clear-selection>清空</button><button type="button" data-lead-batch-create>批量加入</button><button type="button" class="danger" data-lead-batch-reject>批量删除</button></nav></div><div class="temp-pool-rows">' + listHtml + '</div></aside>' +
+        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count"><span>当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条 · 已选 ' + esc((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条</span><nav><button type="button" data-lead-select-page>全选当前页</button><button type="button" data-lead-clear-selection>清空</button><button type="button" data-lead-batch-create>批量加入</button><button type="button" class="danger" data-lead-batch-reject>批量删除</button></nav></div><div class="temp-pool-rows">' + listHtml + '</div>' + pagerHtml + '</aside>' +
         '<section class="temp-pool-right" data-lead-pool-detail>' + this.renderLeadPoolDetailHtml(this.selectedLead) + '</section></div></section>';
       this.bindLeadPoolWorkbench();
     },
@@ -6437,6 +6455,22 @@
       box.querySelector('[data-lead-batch-reject]')?.addEventListener('click', function (event) {
         event.preventDefault();
         self.batchRejectLeads();
+      });
+      box.querySelectorAll('[data-lead-page]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          if (button.disabled) return;
+          var action = button.getAttribute('data-lead-page') || '';
+          var pageSize = Math.max(1, Number(self.leadPageSize || 80));
+          var totalPages = Math.max(1, Math.ceil(Number(self.leadTotal || 0) / pageSize));
+          var nextPage = action === 'prev' ? Math.max(1, self.leadPage - 1) : Math.min(totalPages, self.leadPage + 1);
+          if (nextPage === self.leadPage) return;
+          self.leadPage = nextPage;
+          self.selectedLeadId = 0;
+          self.selectedLead = null;
+          self.selectedLeadIds = new Set();
+          self.loadLeadPool();
+        });
       });
       box.querySelectorAll('[data-lead-check]').forEach(function (input) {
         input.addEventListener('click', function (event) {

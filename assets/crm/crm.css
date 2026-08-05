@@ -6273,7 +6273,7 @@ body.is-actionbar-resizing * {
 }
 .temp-pool-left {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .temp-pool-count {
   min-height: 42px;
@@ -6325,6 +6325,43 @@ body.is-actionbar-resizing * {
   display: grid;
   align-content: start;
   gap: 8px;
+}
+.temp-pool-pager {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--crm-border);
+  background: var(--crm-card-bg);
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 750;
+}
+.temp-pool-pager nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.temp-pool-pager button {
+  min-width: 64px;
+  min-height: 30px;
+  border: 1px solid var(--crm-border);
+  border-radius: 7px;
+  background: #f8fafc;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 850;
+}
+.temp-pool-pager button:not(:disabled):hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.temp-pool-pager button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 .temp-pool-row {
   min-height: 78px;
