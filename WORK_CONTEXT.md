@@ -1,5 +1,17 @@
 # Artdon ERP 工作上下文
 
+## 本次：物料中心新增产品参数功能（进行中）
+
+- 用户明确“这里才是物料中心，需在物料中心加入产品参数功能”。本次把产品功率、电流、电压、光学、尺寸、安装、电源方式和调光方式做成物料中心产品主数据能力，而不是继续放在产品适配 V2 工作台的临时逻辑里。
+- 新增 `material_center_v1/product_parameters.php`：左侧业务菜单增加“产品参数”，页面可搜索 `mc_products` 产品，显示图片、分类/系列、关键参数摘要、完整度和更新时间，并通过弹窗维护参数。
+- 新增 `material_center_v1/api/v1/product-parameters.php`：保存接口经过统一登录、物料中心权限和 CSRF 校验；参数写入 `mc_products.snapshot_json.product_parameters`，不新增数据库表、不修改旧 BOM、不回写旧版产品适配。
+- 修改 `material_center_v1/adaptation_v2/lib/foundation.php`：V2 技术范围解析优先读取物料中心产品参数，用于后续芯片、电源、光学适配判断。
+- 修改 `material_center_v1/components/sidebar.php`：物料中心业务分组新增“产品参数”入口；产品适配入口仍指向 V2，不改物料中心主页。
+- 更新 `material_center_v1/docs/CODEX_EXECUTION_LOG.md` 记录实现边界、存储位置和测试情况。
+- 检查：本地 `git diff --check` 通过；本机无 PHP，已将候选文件传到服务器 `/tmp/artdon_product_params_candidate/` 并用服务器 PHP 完成 `product_parameters.php`、`product-parameters.php`、`foundation.php`、`sidebar.php` 语法检查，均通过。
+- 下一步：提交并推送 GitHub，再以同一提交快进同步正式服务器；同步后在正式目录复检 PHP 语法、页面 CLI 渲染和三端 HEAD 一致性。
+- 注意：办公工作区仍有用户原有的商务中心未提交/未跟踪文件，本次不纳入提交、不覆盖。
+
 ## 本次：商务中心控制新加坡产品下架/重新上架（已上线）
 
 - 用户要求商务中心支持产品停售下架。实现采用软下架，不删除产品、图片、询价、订单或审计历史。

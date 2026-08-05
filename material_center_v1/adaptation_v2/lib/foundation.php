@@ -2027,6 +2027,8 @@ function pa2_extract_product_technical_range(array $product): array
         'current_values_ma' => [],
         'current_min_ma' => null,
         'current_max_ma' => null,
+        'voltage_min_v' => null,
+        'voltage_max_v' => null,
         'beam_angle_values' => [],
         'beam_angle_min' => null,
         'beam_angle_max' => null,
@@ -2077,6 +2079,45 @@ function pa2_extract_product_technical_range(array $product): array
     }
     if (preg_match('/\bIP\s*([0-9]{2})\b/iu', $text, $match)) {
         $range['ip_rating'] = 'IP' . $match[1];
+    }
+    $productParams = isset($snapshot['product_parameters']) && is_array($snapshot['product_parameters'])
+        ? $snapshot['product_parameters']
+        : [];
+    if ($productParams) {
+        foreach ([
+            'power_min_w' => 'power_min_w',
+            'power_max_w' => 'power_max_w',
+            'current_min_ma' => 'current_min_ma',
+            'current_max_ma' => 'current_max_ma',
+            'voltage_min_v' => 'voltage_min_v',
+            'voltage_max_v' => 'voltage_max_v',
+        ] as $paramKey => $rangeKey) {
+            if (isset($productParams[$paramKey]) && $productParams[$paramKey] !== '' && is_numeric($productParams[$paramKey])) {
+                $range[$rangeKey] = (float)$productParams[$paramKey];
+            }
+        }
+        if (isset($productParams['beam_angle']) && $productParams['beam_angle'] !== '' && is_numeric($productParams['beam_angle'])) {
+            $beam = (float)$productParams['beam_angle'];
+            $range['beam_angle_values'] = [$beam];
+            $range['beam_angle_min'] = $beam;
+            $range['beam_angle_max'] = $beam;
+        }
+        if (isset($productParams['cct_k']) && $productParams['cct_k'] !== '' && is_numeric($productParams['cct_k'])) {
+            $range['cct_values_k'] = [(int)$productParams['cct_k']];
+        }
+        if (isset($productParams['cri_min']) && $productParams['cri_min'] !== '' && is_numeric($productParams['cri_min'])) {
+            $range['cri_min'] = (float)$productParams['cri_min'];
+        }
+        if (!empty($productParams['ip_rating'])) {
+            $range['ip_rating'] = (string)$productParams['ip_rating'];
+        }
+        if (!empty($productParams['driver_type'])) {
+            $range['driver_type'] = (string)$productParams['driver_type'];
+        }
+        if (!empty($productParams['dimming_mode'])) {
+            $range['dimming_mode'] = (string)$productParams['dimming_mode'];
+        }
+        $range['source'] = 'product_parameters';
     }
     return $range;
 }

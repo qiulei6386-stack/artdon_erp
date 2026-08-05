@@ -1,3 +1,12 @@
+# 2026-08-05：物料中心产品参数功能
+
+- 用户明确产品参数应属于“物料中心”，不是产品适配页面里的临时设置。本次新增中心化页面 `material_center_v1/product_parameters.php`。
+- 新增左侧业务菜单“产品参数”，用于集中维护产品功率、电流、电压、色温、显指、光束角、尺寸、安装方式、电源方式、调光方式和备注。
+- 新增保存接口 `material_center_v1/api/v1/product-parameters.php`，通过统一登录、物料中心查看权限、编辑权限和 CSRF 校验。
+- 参数保存到 `mc_products.snapshot_json.product_parameters`，不新增表、不修改旧 BOM、不回写旧产品适配业务。
+- 产品适配 V2 技术范围解析优先读取 `product_parameters`，让后续芯片、电源、光学适配可复用物料中心主数据。
+- 本地 `git diff --check` 通过；本机无 PHP，已将候选文件传至服务器 `/tmp` 并用服务器 PHP 完成语法检查。
+
 # Codex 十阶段连续执行日志
 
 ## 第 1 阶段：审计、备份、基线锁定
