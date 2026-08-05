@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：CRM 联系人电话区号支持模糊查找（待发布）
+## 本次：CRM 联系人电话区号支持模糊查找（已上线）
 
 - 用户反馈 CRM“编辑联系人”弹窗中电话 / WhatsApp 的国家区号下拉已有 200 多个国家，`+86` 这类区号无法快速查找。
 - 修复范围：只改 CRM 前端电话组合控件，不改客户、联系人、推广、报价或数据库结构。
@@ -8,8 +8,10 @@
 - 保存仍沿用原隐藏字段 / 组合读取逻辑，最终写入格式仍为 `+86 电话号码`，不会把搜索词写入业务字段。
 - `assets/crm/crm.css` 增加电话区号搜索布局和移动端适配，避免联系人弹窗内区号和号码输入被挤压。
 - 新增 `tests/crm_contact_phone_dial_search_contract.php`，锁定搜索输入、过滤函数、动态联系人编辑器绑定和样式，防止回退成普通下拉。
-- 本机已通过 `node --check assets/crm/crm.js` 与 `git diff --check`；本机无 PHP，PHP 语法和契约测试将在正式服务器 PHP 环境发布前后执行。
-- 待提交、推送 GitHub 并同步正式服务器；用户原有商务中心未提交/未跟踪文件不纳入本次提交。
+- 功能提交 `eb0f9d765f8ac6e2cad08c78a40c4bf70569a38d` 已推送 GitHub `main`，并以 Git bundle 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 检查：本机 `node --check assets/crm/crm.js` 与 `git diff --check` 通过；正式服务器 `crm.php`、`tests/crm_contact_phone_dial_search_contract.php` PHP 语法通过，新增契约测试通过。
+- 服务器仍保留既有物料中心/报价备份目录未跟踪；用户原有商务中心未提交/未跟踪文件不纳入本次提交、不覆盖。
+- 状态记录提交以后以最终 Git HEAD 为准。
 
 ## 本次：产品参数支持类型模板与自定义字段（已上线）
 
