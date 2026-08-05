@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/crm_mail.php';
 
 function crm_marketing_column_exists(string $table, string $column): bool
 {
