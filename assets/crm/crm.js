@@ -3938,14 +3938,6 @@
       var profileCode = c.customer_code || c.code || '无客户代码';
       var profileLevel = c.level || c.customer_level || '未定级';
       var profileLife = c.lifecycle_key || c.lifecycle || 'lead';
-      var profileUpdated = c.updated_at || c.last_contact_at || c.created_at || '-';
-      var missingItems = Array.isArray(completeness.missing) ? completeness.missing : [];
-      var missingPreview = missingItems.slice(0, 6).map(function (item) {
-        return '<span>' + esc(item) + '</span>';
-      }).join('') || '<span>资料较完整</span>';
-      var railLogs = (data.logs || []).slice(0, 4).map(function (log) {
-        return '<li><b>' + esc(log.created_at || log.time || '-') + '</b><span>' + esc(log.action_label || log.action || log.event_type || '客户记录') + '</span><em>' + esc(log.operator_name || log.username || log.created_by || '-') + '</em></li>';
-      }).join('') || '<li class="empty"><span>暂无客户日志</span></li>';
       var channelChips = promotionChannels.slice(0, 4).map(function (channel) {
         return '<span>' + esc(channel) + '</span>';
       }).join('') || '<span>未设置推广方式</span>';
@@ -3959,12 +3951,7 @@
           '<button type="button" data-summary-jump="followups"><strong>' + esc((data.followups || []).length) + '</strong><span>跟进</span></button>' +
         '</div>' +
       '</section>';
-      var customerProfileRail = '<aside class="customer-profile-side">' +
-        '<section class="customer-profile-card health"><header><strong>资料健康度</strong><b>' + esc(completeness.score || 0) + '%</b></header><div class="customer-profile-progress"><i style="width:' + Math.max(0, Math.min(100, Number(completeness.score || 0))) + '%"></i></div><div class="customer-profile-missing">' + missingPreview + '</div><button type="button" data-archive-missing>补全缺失资料</button></section>' +
-        '<section class="customer-profile-card actions"><header><strong>快捷处理</strong><span>保留双击编辑</span></header><button type="button" data-archive-edit>编辑档案</button><button type="button" data-customer-new-followup>新建跟进</button><button type="button" data-customer-new-opportunity>新建商机</button><button type="button" data-customer-new-sample>样品寄送</button><button type="button" data-summary-jump="quote">查看报价</button><button type="button" data-customer-ai-analysis>AI 分析</button></section>' +
-        '<section class="customer-profile-card timeline"><header><strong>最近记录</strong><span>' + esc(profileUpdated) + '</span></header><ul>' + railLogs + '</ul></section>' +
-      '</aside>';
-      box.innerHTML = '<div class="customer-detail-shell customer-profile-workbench" data-customer-detail-shell>' + customerProfileHeader + '<div class="customer-profile-body"><main class="customer-profile-main">' + tabHtml + '<div class="customer-main-content" data-customer-main-content>' + panelHtml + '</div></main>' + customerProfileRail + '</div></div>';
+      box.innerHTML = '<div class="customer-detail-shell customer-profile-workbench" data-customer-detail-shell>' + customerProfileHeader + '<div class="customer-profile-body"><main class="customer-profile-main">' + tabHtml + '<div class="customer-main-content" data-customer-main-content>' + panelHtml + '</div></main></div></div>';
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
@@ -8274,6 +8261,11 @@
         if (sub === 'events') return [
           { title: '恢复记录', items: ['查看恢复记录', '查看全部日志'] }
         ];
+        return [
+          { title: '当前客户', items: ['编辑档案', '补全缺失资料', '新建跟进', '新建商机', '新建样品寄送', '查看报价'] },
+          { title: '客户记录', items: ['查看客户日志', '编辑选项卡'] },
+          { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议'] }
+        ];
       }
       return [
         { title: '客户操作', items: ['新建客户', '导入客户', '导出客户', '查看暂存池', '查看重复客户', '执行客户查重', '批量补全资料'] },
@@ -8283,7 +8275,7 @@
     },
     handleAction: function (label) {
       var inArchivePage = !this.attributeViewMode && this.detailResolveTarget(this.activeDetailTab || 'overview').group === 'archive';
-      if (label === '编辑档案' && inArchivePage) { this.archiveEditMode = true; this.renderDetail(this.currentDetail); this.switchDetailTab('customer_attribute'); renderActions('customers'); return; }
+      if (label === '编辑档案') { this.archiveEditMode = true; this.renderDetail(this.currentDetail); this.switchDetailTab('customer_attribute'); renderActions('customers'); return; }
       if (label === '保存档案' && inArchivePage) return this.saveArchiveAttribute();
       if (label === '取消修改' && inArchivePage) { this.archiveEditMode = false; this.renderDetail(this.currentDetail); this.switchDetailTab('customer_attribute'); renderActions('customers'); return; }
       if (label === '补全缺失资料' && inArchivePage) {
@@ -8295,6 +8287,17 @@
           if (!json.success) throw new Error(json.message || '缺失资料读取失败');
           selfArchive.markCustomerAttributeMissing((json.data && json.data.missing) || []);
         }).catch(function (error) { selfArchive.showCustomerError(error.message || '缺失资料读取失败'); });
+      }
+      if (label === '补全缺失资料' && !this.attributeViewMode && this.currentDetail && this.currentId) {
+        var selfArchiveOverview = this;
+        this.archiveEditMode = true;
+        this.renderDetail(this.currentDetail);
+        this.switchDetailTab('customer_attribute');
+        renderActions('customers');
+        return post('customer_attribute_missing', { customer_id: this.currentId }).then(function (json) {
+          if (!json.success) throw new Error(json.message || '缺失资料读取失败');
+          selfArchiveOverview.markCustomerAttributeMissing((json.data && json.data.missing) || []);
+        }).catch(function (error) { selfArchiveOverview.showCustomerError(error.message || '缺失资料读取失败'); });
       }
       if (label === '编辑客户属性') { this.attributeEditMode = true; this.renderCustomerAttributeView(); renderActions('customers'); return; }
       if (label === '保存修改') return this.saveCustomerAttribute();
@@ -8351,7 +8354,10 @@
       }
       if (label === '查看报价') {
         var quote = this.selectedSalesRow('quote');
-        if (!quote) return this.showCustomerError('请先选择报价。');
+        if (!quote) {
+          if (this.currentId) return this.switchDetailTab('quote');
+          return this.showCustomerError('请先选择客户。');
+        }
         window.open('quotation.php?quote_id=' + encodeURIComponent(quote.id || quote.quote_id || '') + '&quote_no=' + encodeURIComponent(quote.quote_no || ''), '_blank');
         return;
       }
@@ -22348,6 +22354,7 @@
         '补全缺失资料': '读取资料完整度缺失项，并定位需要补充的字段',
         '导出客户资料': '导出当前客户属性数据',
         '返回客户概览': '返回客户详情概览 Tab',
+        '编辑档案': '编辑当前客户档案基础资料',
         '删除客户': '软删除当前客户，保留历史记录',
         '强制删除': '永久删除已软删除客户及其客户关系数据，操作不可恢复',
         '恢复客户': '恢复已软删除客户',
