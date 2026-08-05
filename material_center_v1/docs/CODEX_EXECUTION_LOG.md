@@ -25,6 +25,7 @@
 - 新增自定义参数区：字段名称、参数值、单位、分组；支持快速加入嵌入式/导轨灯/磁吸式/明装式/线性常用字段，也支持空白字段。
 - 保存接口增加新增字段和 `custom_fields` 数组净化保存，仍写入 `mc_products.snapshot_json.product_parameters`；不新增表、不修改旧 BOM、不回写旧产品适配业务。
 - 更新 `material_center_v1/tests/product_parameters_modal_contract.php` 覆盖新增字段、产品类型、自定义字段和服务端保存能力。
+- 功能提交 `8019994538014ff2348a20f0a0b7fa7d8595747e` 已推送并同步正式服务器；正式目录 PHP 语法、合同测试和产品参数页 CLI 渲染通过。
 
 # Codex 十阶段连续执行日志
 
