@@ -2581,15 +2581,41 @@ function crm_customer_should_enter_lead_pool(array $input, array $matches): bool
     return true;
 }
 
+function crm_lead_pool_public_row(array $lead): array
+{
+    $payload = json_decode((string)($lead['payload_json'] ?? '{}'), true) ?: [];
+    $lead['payload'] = $payload;
+    $lead['similarity_matches'] = crm_lead_pool_enrich_matches(json_decode((string)($lead['similarity_matches_json'] ?? '[]'), true) ?: []);
+    $creator = trim((string)($lead['created_by_name'] ?? ''));
+    if ($creator === '') {
+        $creator = trim((string)($lead['created_by_real_name'] ?? '')) ?: trim((string)($lead['created_by_english_name'] ?? '')) ?: trim((string)($lead['created_by_username'] ?? ''));
+    }
+    if ($creator === '' && (int)($lead['created_by'] ?? 0) > 0) $creator = '用户 #' . (int)$lead['created_by'];
+    $lead['created_by_name'] = $creator !== '' ? $creator : '系统/导入';
+    $source = '';
+    foreach (['source_label', 'source_name', 'source', 'source_tag', 'entry_source', 'import_source', 'origin', 'from', 'referrer', 'channel'] as $key) {
+        $value = $payload[$key] ?? '';
+        if (is_array($value)) $value = implode(',', array_filter(array_map('strval', $value)));
+        $value = trim((string)$value);
+        if ($value !== '') {
+            $source = $value;
+            break;
+        }
+    }
+    $lead['source_name'] = $source !== '' ? $source : '未填来源';
+    return $lead;
+}
+
 function crm_lead_pool_get(int $leadId): array
 {
-    $stmt = db()->prepare('SELECT * FROM crm_lead_pool WHERE id = ? LIMIT 1');
+    $stmt = db()->prepare("SELECT lp.*, COALESCE(NULLIF(u.real_name,''), NULLIF(u.english_name,''), u.username) AS created_by_name, u.username AS created_by_username, u.real_name AS created_by_real_name, u.english_name AS created_by_english_name
+        FROM crm_lead_pool lp
+        LEFT JOIN crm_users u ON u.id = lp.created_by
+        WHERE lp.id = ? LIMIT 1");
     $stmt->execute([$leadId]);
     $lead = $stmt->fetch();
     if (!$lead) throw new RuntimeException('暂存客户不存在。');
-    $lead['payload'] = json_decode((string)($lead['payload_json'] ?? '{}'), true) ?: [];
-    $lead['similarity_matches'] = crm_lead_pool_enrich_matches(json_decode((string)($lead['similarity_matches_json'] ?? '[]'), true) ?: []);
-    return $lead;
+    return crm_lead_pool_public_row($lead);
 }
 
 function crm_lead_pool_list(array $input = []): array
@@ -2604,52 +2630,55 @@ function crm_lead_pool_list(array $input = []): array
     $params = [];
     $where = '1=1';
     if ($keyword !== '') {
-        $where .= ' AND (raw_name LIKE ? OR raw_email LIKE ? OR raw_phone LIKE ? OR raw_country LIKE ? OR raw_domain LIKE ? OR payload_json LIKE ?)';
+        $where .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ?)';
         $like = '%' . $keyword . '%';
         array_push($params, $like, $like, $like, $like, $like, $like);
     }
     if ($quick === 'pending') {
-        $where .= ' AND status = "pending"';
+        $where .= ' AND lp.status = "pending"';
     } elseif ($quick === 'duplicate') {
-        $where .= ' AND status = "pending" AND similarity_matches_json IS NOT NULL AND similarity_matches_json <> "" AND similarity_matches_json <> "[]"';
+        $where .= ' AND lp.status = "pending" AND lp.similarity_matches_json IS NOT NULL AND lp.similarity_matches_json <> "" AND lp.similarity_matches_json <> "[]"';
     } elseif ($quick === 'no_duplicate') {
-        $where .= ' AND status = "pending" AND (similarity_matches_json IS NULL OR similarity_matches_json = "" OR similarity_matches_json = "[]")';
+        $where .= ' AND lp.status = "pending" AND (lp.similarity_matches_json IS NULL OR lp.similarity_matches_json = "" OR lp.similarity_matches_json = "[]")';
     } elseif ($quick === 'confirmed') {
-        $where .= ' AND status IN ("confirmed","merged")';
+        $where .= ' AND lp.status IN ("confirmed","merged")';
     } elseif ($quick === 'rejected') {
-        $where .= ' AND status = "rejected"';
+        $where .= ' AND lp.status = "rejected"';
     } elseif ($quick === 'today') {
-        $where .= ' AND DATE(created_at) = CURDATE()';
+        $where .= ' AND DATE(lp.created_at) = CURDATE()';
     } elseif ($quick === 'recent7') {
-        $where .= ' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        $where .= ' AND lp.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
     } elseif (in_array($quick, ['all',''], true)) {
         $where .= '';
     } elseif (in_array($quick, ['merged'], true)) {
-        $where .= ' AND status = "merged"';
+        $where .= ' AND lp.status = "merged"';
     }
-    $count = db()->prepare("SELECT COUNT(*) FROM crm_lead_pool WHERE {$where}");
+    $count = db()->prepare("SELECT COUNT(*) FROM crm_lead_pool lp WHERE {$where}");
     $count->execute($params);
     $offset = ($page - 1) * $pageSize;
-    $stmt = db()->prepare("SELECT * FROM crm_lead_pool WHERE {$where} ORDER BY id DESC LIMIT {$pageSize} OFFSET {$offset}");
+    $stmt = db()->prepare("SELECT lp.*, COALESCE(NULLIF(u.real_name,''), NULLIF(u.english_name,''), u.username) AS created_by_name, u.username AS created_by_username, u.real_name AS created_by_real_name, u.english_name AS created_by_english_name
+        FROM crm_lead_pool lp
+        LEFT JOIN crm_users u ON u.id = lp.created_by
+        WHERE {$where}
+        ORDER BY lp.id DESC LIMIT {$pageSize} OFFSET {$offset}");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
     foreach ($rows as &$row) {
-        $row['payload'] = json_decode((string)($row['payload_json'] ?? '{}'), true) ?: [];
-        $row['similarity_matches'] = crm_lead_pool_enrich_matches(json_decode((string)($row['similarity_matches_json'] ?? '[]'), true) ?: []);
+        $row = crm_lead_pool_public_row($row);
     }
     $statWhere = '1=1';
     $statParams = [];
     if ($keyword !== '') {
-        $statWhere .= ' AND (raw_name LIKE ? OR raw_email LIKE ? OR raw_phone LIKE ? OR raw_country LIKE ? OR raw_domain LIKE ? OR payload_json LIKE ?)';
+        $statWhere .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ?)';
         $like = '%' . $keyword . '%';
         array_push($statParams, $like, $like, $like, $like, $like, $like);
     }
     $statStmt = db()->prepare("SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status = 'pending' AND similarity_matches_json IS NOT NULL AND similarity_matches_json <> '' AND similarity_matches_json <> '[]' THEN 1 ELSE 0 END) AS duplicate,
-        SUM(CASE WHEN status = 'pending' AND (similarity_matches_json IS NULL OR similarity_matches_json = '' OR similarity_matches_json = '[]') THEN 1 ELSE 0 END) AS no_duplicate
-        FROM crm_lead_pool WHERE {$statWhere}");
+        SUM(CASE WHEN lp.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN lp.status = 'pending' AND lp.similarity_matches_json IS NOT NULL AND lp.similarity_matches_json <> '' AND lp.similarity_matches_json <> '[]' THEN 1 ELSE 0 END) AS duplicate,
+        SUM(CASE WHEN lp.status = 'pending' AND (lp.similarity_matches_json IS NULL OR lp.similarity_matches_json = '' OR lp.similarity_matches_json = '[]') THEN 1 ELSE 0 END) AS no_duplicate
+        FROM crm_lead_pool lp WHERE {$statWhere}");
     $statStmt->execute($statParams);
     $stats = $statStmt->fetch() ?: [];
     return [

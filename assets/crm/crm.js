@@ -6323,6 +6323,18 @@
       var payload = row.payload || {};
       return row.raw_domain || payload.domain || payload.website || '未填域名';
     },
+    leadCreatorName: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      return row.created_by_name || payload.created_by_name || payload.creator_name || payload.operator_name || (row.created_by ? ('用户 #' + row.created_by) : '系统/导入');
+    },
+    leadOriginLabel: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      var value = row.source_name || payload.source_label || payload.source_name || payload.source || payload.source_tag || payload.entry_source || payload.import_source || payload.origin || payload.from || payload.referrer || payload.channel || '';
+      if (Array.isArray(value)) value = value.filter(Boolean).join(',');
+      return value || '未填来源';
+    },
     renderLeadPool: function (rows, meta) {
       var box = document.querySelector('[data-lead-pool-list]');
       if (!box) return;
@@ -6349,9 +6361,12 @@
       var listHtml = rows.length ? rows.map(function (row) {
         var matches = row.similarity_matches || [];
         var selected = CustomerModule.selectedLeadIds && CustomerModule.selectedLeadIds.has(Number(row.id || 0));
+        var creator = CustomerModule.leadCreatorName(row);
+        var origin = CustomerModule.leadOriginLabel(row);
+        var metaTitle = '创建：' + creator + '｜来源：' + origin;
         return '<article class="temp-pool-row' + (selected ? ' active' : '') + '" data-lead-row="' + esc(row.id) + '">' +
           '<input type="checkbox" data-lead-check="' + esc(row.id) + '"' + (selected ? ' checked' : '') + '>' +
-          '<div class="temp-pool-row-main"><div><strong>' + esc(CustomerModule.leadDisplayName(row)) + '</strong><span class="temp-pool-status ' + esc(CustomerModule.leadStatusClass(row)) + '">' + esc(CustomerModule.leadStatusLabel(row)) + '</span></div>' +
+          '<div class="temp-pool-row-main"><div><strong>' + esc(CustomerModule.leadDisplayName(row)) + '</strong><span class="temp-pool-status ' + esc(CustomerModule.leadStatusClass(row)) + '">' + esc(CustomerModule.leadStatusLabel(row)) + '</span><span class="temp-pool-origin" title="' + esc(metaTitle) + '">创建：' + esc(creator) + ' · 来源：' + esc(origin) + '</span></div>' +
           '<p>' + esc(CustomerModule.leadContactLine(row)) + '</p>' +
           '<p>' + esc(CustomerModule.leadSourceDomain(row)) + ' · 匹配 ' + esc(matches.length) + ' · ' + esc(row.created_at || '-') + '</p></div>' +
           '</article>';
@@ -6386,7 +6401,8 @@
         ['电话', lead.raw_phone || payload.phone || '未填'],
         ['WhatsApp', payload.whatsapp || '未填'],
         ['域名', this.leadSourceDomain(lead)],
-        ['来源', payload.source || payload.source_tag || '未填'],
+        ['创建人', this.leadCreatorName(lead)],
+        ['来源', this.leadOriginLabel(lead)],
         ['创建时间', lead.created_at || '未填'],
         ['原始备注', payload.remark || payload.notes || payload.note || '未填']
       ];
