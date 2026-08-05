@@ -8936,10 +8936,17 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .phone-composite-line .phone-composite-control { min-width: 0; }
 .phone-composite-control {
   display: grid;
-  grid-template-columns: minmax(112px, 132px) minmax(0, 1fr);
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
   gap: 6px;
   align-items: center;
   width: 100%;
+}
+.phone-dial-picker {
+  display: grid;
+  grid-template-columns: minmax(92px, .92fr) minmax(98px, 1fr);
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
 }
 .phone-composite-control select,
 .phone-composite-control input {
@@ -8957,6 +8964,10 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   color: var(--crm-muted-text);
   font-size: 11px;
 }
+.phone-composite-control input[data-phone-dial-search] {
+  color: var(--crm-text);
+  background: color-mix(in srgb, #eff6ff 54%, var(--crm-card-bg));
+}
 .phone-composite-control input {
   font-size: 12px;
 }
@@ -8966,7 +8977,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   background: var(--crm-card-bg);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--crm-primary) 12%, transparent);
 }
-.phone-field .phone-composite-control { grid-template-columns: minmax(112px, 132px) minmax(0, 1fr); }
+.phone-field .phone-composite-control { grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); }
 .entity-section-muted { background: color-mix(in srgb, var(--crm-card-bg) 94%, var(--crm-hover-bg)); }
 .entity-check { min-height: 30px; display: flex; align-items: center; gap: 7px; color: var(--crm-muted-text); font-weight: 800; }
 .entity-section-note textarea { height: 88px; max-height: 100px; padding: 7px 8px; resize: vertical; line-height: 1.45; }
@@ -27454,8 +27465,11 @@ body.is-workspace-module .workspace-assist-time i {
   }
   .contact-mobile-dialog .phone-composite-control,
   .contact-mobile-dialog .phone-field .phone-composite-control {
-    grid-template-columns: 112px minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 7px !important;
+  }
+  .contact-mobile-dialog .phone-dial-picker {
+    grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) !important;
   }
   .contact-mobile-dialog .phone-composite-control select {
     min-width: 0 !important;

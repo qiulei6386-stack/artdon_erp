@@ -5432,12 +5432,84 @@
         (icon ? '<span class="entity-contact-icon">' + icon + '</span>' : '') +
         '<span class="entity-contact-label">' + esc(label) + '</span>' +
         '<input type="hidden" name="' + esc(name) + '" value="' + esc(value || '') + '" data-phone-full>' +
-        '<span class="phone-composite-control"><select data-phone-dial aria-label="' + esc(label) + '区号">' + this.phoneDialOptions(parts.dial) + '</select><input data-phone-number value="' + esc(parts.number || '') + '" placeholder="' + esc(placeholder || '电话号码') + '" ' + (attrs || '') + '></span>' +
+        '<span class="phone-composite-control"><span class="phone-dial-picker" data-phone-dial-picker><input type="search" data-phone-dial-search placeholder="搜索 +86 / CN / 中国" autocomplete="off" aria-label="' + esc(label) + '区号搜索"><select data-phone-dial aria-label="' + esc(label) + '区号">' + this.phoneDialOptions(parts.dial) + '</select></span><input data-phone-number value="' + esc(parts.number || '') + '" placeholder="' + esc(placeholder || '电话号码') + '" ' + (attrs || '') + '></span>' +
       '</label>';
     },
     phoneField: function (label, value, targetAttr, fallbackDial) {
       var parts = this.splitPhoneValue(value, fallbackDial || '+86');
-      return '<label class="entity-field phone-field"><span>' + esc(label) + '</span><span class="phone-composite-control" data-phone-composite><select data-phone-dial aria-label="' + esc(label) + '区号">' + this.phoneDialOptions(parts.dial) + '</select><input ' + targetAttr + ' data-phone-number value="' + esc(parts.number || '') + '" placeholder="电话号码"></span></label>';
+      return '<label class="entity-field phone-field"><span>' + esc(label) + '</span><span class="phone-composite-control" data-phone-composite><span class="phone-dial-picker" data-phone-dial-picker><input type="search" data-phone-dial-search placeholder="搜索 +86 / CN / 中国" autocomplete="off" aria-label="' + esc(label) + '区号搜索"><select data-phone-dial aria-label="' + esc(label) + '区号">' + this.phoneDialOptions(parts.dial) + '</select></span><input ' + targetAttr + ' data-phone-number value="' + esc(parts.number || '') + '" placeholder="电话号码"></span></label>';
+    },
+    phoneDialSearchTerm: function (value) {
+      return String(value || '').toLowerCase().replace(/\s+/g, '').replace(/^00/, '+');
+    },
+    rememberPhoneDialOptions: function (select) {
+      if (!select || select._crmPhoneDialOptions) return;
+      select._crmPhoneDialOptions = Array.prototype.map.call(select.options || [], function (option) {
+        return {
+          value: option.value || '',
+          text: option.textContent || option.innerText || option.value || ''
+        };
+      });
+      select.dataset.currentDial = select.value || '+86';
+    },
+    filterPhoneDialSelect: function (select, query) {
+      if (!select) return;
+      this.rememberPhoneDialOptions(select);
+      var term = this.phoneDialSearchTerm(query);
+      var numericTerm = term.replace(/^\+/, '');
+      var previous = String(select.value || select.dataset.currentDial || '').trim();
+      var options = select._crmPhoneDialOptions || [];
+      var matches = term ? options.filter(function (option) {
+        var label = CustomerModule.phoneDialSearchTerm((option.text || '') + ' ' + (option.value || ''));
+        var numeric = String(option.value || '').replace(/^\+/, '');
+        return label.indexOf(term) >= 0 || (numericTerm && numeric.indexOf(numericTerm) >= 0);
+      }) : options.slice();
+      select.innerHTML = '';
+      if (!matches.length) {
+        var empty = document.createElement('option');
+        empty.value = previous || '';
+        empty.textContent = '没有匹配区号';
+        select.appendChild(empty);
+        select.value = empty.value;
+        return;
+      }
+      matches.forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = item.value;
+        option.textContent = item.text;
+        select.appendChild(option);
+      });
+      var hasPrevious = matches.some(function (item) { return item.value === previous; });
+      select.value = hasPrevious ? previous : matches[0].value;
+      select.dataset.currentDial = select.value || '';
+    },
+    bindPhoneDialSearch: function (root) {
+      root = root || document;
+      var self = this;
+      root.querySelectorAll('[data-phone-dial-picker]').forEach(function (picker) {
+        if (picker.dataset.phoneDialSearchReady === '1') return;
+        var search = picker.querySelector('[data-phone-dial-search]');
+        var select = picker.querySelector('[data-phone-dial]');
+        if (!search || !select) return;
+        picker.dataset.phoneDialSearchReady = '1';
+        self.rememberPhoneDialOptions(select);
+        search.addEventListener('input', function () {
+          self.filterPhoneDialSelect(select, search.value);
+          self.syncPhoneComposites(root);
+        });
+        search.addEventListener('focus', function () { search.select(); });
+        search.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') {
+            search.value = '';
+            self.filterPhoneDialSelect(select, '');
+            self.syncPhoneComposites(root);
+          }
+        });
+        select.addEventListener('change', function () {
+          select.dataset.currentDial = select.value || '';
+          self.syncPhoneComposites(root);
+        });
+      });
     },
     syncPhoneComposites: function (root) {
       root = root || document;
@@ -7282,6 +7354,7 @@
       this.bindOwnerSelection(body);
       this.bindCountryRegionLink(body);
       this.renderEntryContacts();
+      this.bindPhoneDialSearch(body);
       if (dialog.showModal && !dialog.open) dialog.showModal();
     },
     bindOwnerSelection: function (root) {
@@ -7649,6 +7722,7 @@
         };
       }
       box.insertAdjacentHTML('beforeend', this.entryContactEditor(contact).replace('data-contact-editor', 'data-contact-editor data-contact-edit-index="' + editIndex + '"'));
+      this.bindPhoneDialSearch(box);
       box.querySelector('[data-contact-editor] [data-contact-name]')?.focus();
       function readJsonFromAttribute(value) {
         try { return JSON.parse(value || '[]'); } catch (e) { return []; }
@@ -7722,6 +7796,7 @@
       }).join('') + editorHtml;
       var count = root.querySelector('[data-entry-contact-count]');
       if (count) count.textContent = '已添加 ' + this.entryContacts.length + ' 个联系人';
+      this.bindPhoneDialSearch(box);
     },
     deleteEntryContact: function (card) {
       if (!card) return;
