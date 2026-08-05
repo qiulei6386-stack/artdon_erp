@@ -15,6 +15,7 @@
 - 表单分区调整为“电气参数 / 光学与外观 / 结构尺寸”，并保留原字段、原保存接口与 `mc_products.snapshot_json.product_parameters` 存储位置。
 - 新增 `material_center_v1/tests/product_parameters_modal_contract.php` 锁定弹窗视觉结构与关键字段。
 - 本次仅为 UI 统一与回归测试，不修改旧 BOM、不修改旧产品适配业务、不新增数据库表。
+- 功能提交 `3edc350ce54a09c55bef5ba4359b841e4bbcfdf4` 已推送并同步正式服务器；正式目录 PHP 语法、合同测试和产品参数页 CLI 渲染通过。
 
 # Codex 十阶段连续执行日志
 

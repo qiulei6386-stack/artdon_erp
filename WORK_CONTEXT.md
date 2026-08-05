@@ -1,13 +1,15 @@
 # Artdon ERP 工作上下文
 
-## 本次：物料中心产品参数弹窗统一为 V2 宽版样式（待部署）
+## 本次：物料中心产品参数弹窗统一为 V2 宽版样式（已上线）
 
 - 用户要求“产品参数的弹窗，按图1来制作，要统一”。本次只调整 `material_center_v1/product_parameters.php` 的产品参数维护弹窗视觉与布局，不修改旧 BOM、不修改产品适配 V2 业务逻辑、不新增表。
 - 弹窗改为 V2 逻辑弹窗同款宽版：顶部渐变标题区、文字“关闭”按钮、绿色虚线提示框、内部滚动正文、固定底部操作区。
 - 参数表单从普通 3 列小弹窗改为 4 列宽版表单，分区为“电气参数 / 光学与外观 / 结构尺寸”，并增加共享主数据说明条。
 - 保留原字段、原接口和原保存位置：`mc_products.snapshot_json.product_parameters`。
 - 新增 `material_center_v1/tests/product_parameters_modal_contract.php`，锁定宽版弹窗、关闭按钮、绿色提示、四列布局、关键分区和字段，防止回退成普通小弹窗。
-- 待服务器 PHP 语法与合同测试、提交、推送和同步正式服务器。
+- 功能提交 `3edc350ce54a09c55bef5ba4359b841e4bbcfdf4` 已推送 GitHub `main` 并快进同步正式服务器。
+- 正式服务器检查：`product_parameters.php`、`api/v1/product-parameters.php`、`product_parameters_modal_contract.php` PHP 语法通过；合同测试通过；页面 CLI 渲染生成 174376 字节 HTML 且包含 `mc-param-modal`。
+- 状态记录提交以后以最终 Git HEAD 为准。
 
 ## 本次：产品适配 V2 设置逻辑弹窗字段分区修复（已上线）
 
