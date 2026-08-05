@@ -14402,6 +14402,7 @@
 		        task_name: row ? (row.group_name + ' 推广项目') : '',
 	        group_mode: 'group',
 	        group_key: String(groupId || ''),
+	        group_keys: groupId ? [Number(groupId)] : [],
 	        customer_ids: [],
 	        contact_ids: []
 	      });
@@ -14412,17 +14413,12 @@
 	      var ids = (Array.isArray(groupIds) ? groupIds : [groupIds]).map(Number).filter(Boolean);
 	      if (!ids.length) return toast('请先选择客户组');
 	      var groups = ((this.data && this.data.groups) || []).filter(function (row) { return ids.indexOf(Number(row.id)) >= 0; });
-	      var pool = (this.data && this.data.pool) || [];
-	      var customerIds = pool.filter(function (customer) {
-	        var customerGroupIds = String(customer.marketing_group_ids || '').split(',').map(function (id) { return Number(id.trim() || 0); }).filter(Boolean);
-	        return customerGroupIds.some(function (id) { return ids.indexOf(id) >= 0; });
-	      }).map(function (customer) { return Number(customer.id); }).filter(Boolean);
-	      this.selectedCustomerIds = new Set(customerIds);
 	      this.wizardDraft = Object.assign(this.defaultWizardDraft(), {
 	        task_name: (groups.length ? groups.map(function (row) { return row.group_name; }).slice(0, 2).join('、') : '多个客户组') + ' 推广项目',
-	        group_mode: 'selected',
-	        group_key: ids.join(','),
-	        customer_ids: customerIds,
+	        group_mode: 'group',
+	        group_key: String(ids[0] || ''),
+	        group_keys: ids,
+	        customer_ids: [],
 	        contact_ids: []
 	      });
 	      this.wizardStep = 0;
@@ -15629,6 +15625,7 @@
       draft = draft || this.defaultWizardDraft();
       var mode = String(draft.group_mode || 'selected');
       var key = String(draft.group_key || '');
+      if (mode === 'group') key = this.wizardGroupKeys(draft).join(',');
       if (mode === 'selected') {
         key = (draft.customer_ids || []).map(Number).filter(Boolean).sort(function (a, b) { return a - b; }).join(',');
       } else if (mode === 'all_pool') {
@@ -15794,6 +15791,7 @@
         contact_ids: Array.from(this.selectedContactIds),
         group_mode: 'selected',
         group_key: '',
+        group_keys: [],
         audience_customer_ids: [],
         audience_customer_count: 0,
         audience_source_key: '',
@@ -15992,6 +15990,7 @@
 	          }
 	          if (field === 'group_mode') {
               self.wizardDraft.group_key = '';
+              self.wizardDraft.group_keys = [];
 	            self.renderWizard();
               self.refreshWizardAudience();
 	            return;
@@ -16016,6 +16015,12 @@
           self.collectWizard();
           if (Number(self.wizardStep || 0) === 6) self.renderWizard();
           else self.updateWizardPreview();
+        });
+      });
+      modal.querySelectorAll('[data-wizard-group-check]').forEach(function (input) {
+        input.addEventListener('change', function () {
+          self.collectWizard();
+          self.refreshWizardAudience();
         });
       });
       modal.querySelector('[data-promo-template-copy]')?.addEventListener('click', function () { self.copyCurrentTemplate(); });
@@ -16059,8 +16064,8 @@
         var audienceCount = Number(draft.audience_customer_count || 0) || audienceCustomers.length;
         if (!audienceCount && draft.group_mode === 'selected') audienceCount = (draft.customer_ids || []).length;
         if (!audienceCount && draft.group_mode === 'group') {
-          var audienceGroup = ((this.data && this.data.groups) || []).find(function (row) { return String(row.id) === String(draft.group_key || ''); });
-          audienceCount = Number((audienceGroup || {}).customer_count || 0);
+          var groupIds = this.wizardGroupKeys(draft);
+          audienceCount = ((this.data && this.data.groups) || []).filter(function (row) { return groupIds.indexOf(Number(row.id)) >= 0; }).reduce(function (sum, row) { return sum + Number(row.customer_count || 0); }, 0);
         }
         if (this.wizardAudienceLoading) audienceCount = '读取中...';
 	      var plan = this.buildExecutionPlan(draft);
@@ -16178,7 +16183,7 @@
 	      }
 	      if (step === 1) {
 	        var groupField = draft.group_mode === 'group'
-	          ? '<label><span>选择分组</span><select data-wizard-field="group_key">' + this.wizardGroupOptions(draft.group_key) + '</select></label>'
+	          ? this.wizardGroupCheckboxes(draft)
 	          : (draft.group_mode === 'country' ? '<label><span>国家</span><input data-wizard-field="group_key" value="' + esc(draft.group_key || '') + '" placeholder="输入国家，例如 China / India"></label>' : '<label><span>范围说明</span><input value="' + (draft.group_mode === 'selected' ? '使用当前已勾选客户' : '使用当前推广池筛选结果') + '" readonly></label>');
 		        var scopedCustomers = this.resolveWizardAudienceCustomers(draft);
             var selectedCustomerCount = Number(draft.audience_customer_count || 0) || scopedCustomers.length;
@@ -16248,6 +16253,12 @@
       }
 	      return this.renderConfirmStepLayout(draft);
 	    },
+    wizardGroupKeys: function (draft) {
+      draft = draft || {};
+      var keys = Array.isArray(draft.group_keys) ? draft.group_keys.slice() : [];
+      String(draft.group_key || '').split(',').forEach(function (id) { if (id.trim() !== '') keys.push(id.trim()); });
+      return Array.from(new Set(keys.map(Number).filter(Boolean)));
+    },
     wizardGroupOptions: function (currentValue) {
       var groups = (this.data && this.data.groups) || [];
       if (!groups.length) return '<option value="">暂无推广分组</option>';
@@ -16255,6 +16266,16 @@
         var selected = String(currentValue || '') === String(row.id) || String(currentValue || '').toLowerCase() === String(row.group_name || '').toLowerCase();
         return '<option value="' + esc(row.id) + '"' + (selected ? ' selected' : '') + '>' + esc(row.group_name) + '（客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + ' / 可推广 ' + esc(row.promotable_contact_count || 0) + '）</option>';
       }).join('');
+    },
+    wizardGroupCheckboxes: function (draft) {
+      var groups = (this.data && this.data.groups) || [];
+      var selectedIds = this.wizardGroupKeys(draft);
+      if (!groups.length) return '<div class="promo-check-panel promo-check-compact"><b>客户分组</b><p class="promo-empty">暂无推广分组</p></div>';
+      return '<div class="promo-check-panel promo-check-compact" data-wizard-group-checks><b>客户分组（可多选）</b>' + groups.map(function (row) {
+        var id = Number(row.id || 0);
+        var checked = selectedIds.indexOf(id) >= 0 ? ' checked' : '';
+        return '<label class="promo-check-row"><input type="checkbox" data-wizard-group-check value="' + esc(id) + '"' + checked + '><span>' + esc(row.group_name || ('#' + id)) + '</span><strong>客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + ' / 可推广 ' + esc(row.promotable_contact_count || 0) + '</strong></label>';
+      }).join('') + '</div>';
     },
     userOptions: function (currentValue) {
       var users = (this.data && this.data.users) || [];
@@ -16691,11 +16712,18 @@
       });
       var mailAccountChecks = Array.from(document.querySelectorAll('[data-wizard-mail-account-check]'));
       var offlineOwnerChecks = Array.from(document.querySelectorAll('[data-wizard-offline-user-check]'));
+      var groupChecks = Array.from(document.querySelectorAll('[data-wizard-group-check]'));
       if (mailAccountChecks.length) {
         draft.mail_account_ids = mailAccountChecks.filter(function (input) { return input.checked; }).map(function (input) { return Number(input.value || 0); }).filter(Boolean);
       }
       if (offlineOwnerChecks.length) {
         draft.offline_owner_ids = offlineOwnerChecks.filter(function (input) { return input.checked; }).map(function (input) { return Number(input.value || 0); }).filter(Boolean);
+      }
+      if (groupChecks.length) {
+        draft.group_keys = groupChecks.filter(function (input) { return input.checked; }).map(function (input) { return Number(input.value || 0); }).filter(Boolean);
+        draft.group_key = draft.group_keys[0] ? String(draft.group_keys[0]) : '';
+      } else if (!Array.isArray(draft.group_keys)) {
+        draft.group_keys = this.wizardGroupKeys(draft);
       }
       if (!Array.isArray(draft.mail_account_ids)) draft.mail_account_ids = draft.mail_account_ids ? [draft.mail_account_ids] : [];
       if (!Array.isArray(draft.offline_owner_ids)) draft.offline_owner_ids = draft.offline_owner_ids ? [draft.offline_owner_ids] : [];
@@ -16882,6 +16910,7 @@
         contact_ids: JSON.stringify(contactIds),
         group_mode: groupMode,
         group_key: draft.group_key || '',
+        group_keys: JSON.stringify(this.wizardGroupKeys(draft)),
         pool_filters: JSON.stringify(poolFilters),
         channel_key: draft.channel_key || '',
         contact_filter: draft.contact_filter || ''
@@ -17221,7 +17250,7 @@
       if (!draft) return '';
       if (step === 0 && !String(draft.task_name || '').trim()) return '请填写任务名称。';
       if (step === 1) {
-        if (draft.group_mode === 'group' && !String(draft.group_key || '').trim()) return '请选择客户分组。';
+        if (draft.group_mode === 'group' && !this.wizardGroupKeys(draft).length) return '请选择客户分组。';
         if (draft.group_mode === 'country' && !String(draft.group_key || '').trim()) return '请输入客户国家。';
         if (this.wizardAudienceLoading) return '正在读取客户范围，请稍候。';
         if (this.wizardAudienceError) return this.wizardAudienceError;
@@ -17255,10 +17284,13 @@
         return rows.filter(function (row) { return !key || String(row.country || '').toLowerCase().indexOf(key) >= 0; }).map(function (row) { return Number(row.id); }).filter(Boolean);
       }
       if (draft.group_mode === 'group') {
+        var groupKeys = this.wizardGroupKeys(draft).map(function (id) { return String(id); });
         var groupKey = String(draft.group_key || this.currentGroupId || '').trim().toLowerCase();
         return rows.filter(function (row) {
+          var rowGroupIds = String(row.marketing_group_ids || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+          if (groupKeys.length) return rowGroupIds.some(function (id) { return groupKeys.indexOf(id) >= 0; });
           if (!groupKey) return Number(row.marketing_group_ids || 0) > 0 || String(row.marketing_group_names || '').trim() !== '';
-          return String(row.marketing_group_ids || '').split(',').map(function (x) { return x.trim(); }).indexOf(groupKey) >= 0 ||
+          return rowGroupIds.indexOf(groupKey) >= 0 ||
             String(row.marketing_group_names || '').toLowerCase().indexOf(groupKey) >= 0;
         }).map(function (row) { return Number(row.id); }).filter(Boolean);
       }
@@ -17803,7 +17835,7 @@
         customer_ids: JSON.stringify(this.resolveWizardCustomerIds(draft)),
         contact_ids: JSON.stringify(targets.contacts.map(function (row) { return Number(row.id); })),
         chat_group_ids: JSON.stringify((targets.chat_groups || []).map(function (row) { return Number(row.id); })),
-        audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, contact_filter: draft.contact_filter, pool_filters: this.poolFilterPayload(), resolved_customer_count: targets.customers.length }),
+        audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, group_keys: this.wizardGroupKeys(draft), contact_filter: draft.contact_filter, pool_filters: this.poolFilterPayload(), resolved_customer_count: targets.customers.length }),
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
         failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, duplicate_email_policy: draft.duplicate_email_policy || 'keep_first', smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),
@@ -17839,6 +17871,7 @@
         remark: task.remark || '',
         group_mode: audience.group_mode || 'selected',
         group_key: audience.group_key || '',
+        group_keys: Array.isArray(audience.group_keys) ? audience.group_keys : (audience.group_key ? String(audience.group_key).split(',').map(Number).filter(Boolean) : []),
         contact_filter: audience.contact_filter || 'all_valid',
         executor_rule: sendRule.executor_rule || 'owner',
         mail_executor_rule: sendRule.mail_executor_rule || sendRule.executor_rule || 'owner',

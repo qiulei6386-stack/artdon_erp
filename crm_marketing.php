@@ -1142,18 +1142,45 @@ function crm_marketing_resolve_audience_customers(array $input, array $explicitC
     if (!in_array($mode, ['selected', 'all_pool', 'group', 'country'], true)) $mode = 'selected';
     $poolInput = [];
     if ($mode === 'group') {
+        $groupIds = crm_mail_input_ids($input['group_keys'] ?? []);
         $groupKey = trim((string)($input['group_key'] ?? ''));
-        $groupId = ctype_digit($groupKey) ? (int)$groupKey : 0;
-        if ($groupId <= 0 && $groupKey !== '') {
+        if (!$groupIds && $groupKey !== '') $groupIds = crm_mail_input_ids($groupKey);
+        $groupId = $groupIds[0] ?? (ctype_digit($groupKey) ? (int)$groupKey : 0);
+        if (!$groupIds && $groupId <= 0 && $groupKey !== '') {
             $stmt = db()->prepare('SELECT id FROM crm_marketing_groups WHERE group_name = ? AND deleted_at IS NULL LIMIT 1');
             $stmt->execute([$groupKey]);
             $groupId = (int)$stmt->fetchColumn();
+            if ($groupId > 0) $groupIds = [$groupId];
         }
-        if ($groupId <= 0) return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
-        $exists = db()->prepare('SELECT id FROM crm_marketing_groups WHERE id = ? AND deleted_at IS NULL LIMIT 1');
-        $exists->execute([$groupId]);
-        if (!$exists->fetchColumn()) throw new RuntimeException('所选推广分组不存在或已删除。');
-        $poolInput['group_id'] = $groupId;
+        $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
+        if (!$groupIds) return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
+        $placeholders = implode(',', array_fill(0, count($groupIds), '?'));
+        $exists = db()->prepare("SELECT id FROM crm_marketing_groups WHERE id IN ({$placeholders}) AND deleted_at IS NULL");
+        $exists->execute($groupIds);
+        $foundGroupIds = array_values(array_unique(array_map('intval', array_column($exists->fetchAll(), 'id'))));
+        if (count($foundGroupIds) !== count($groupIds)) throw new RuntimeException('所选推广分组不存在或已删除。');
+        if (count($groupIds) === 1) {
+            $poolInput['group_id'] = $groupIds[0];
+        } else {
+            $memberStmt = db()->prepare("
+                SELECT DISTINCT customer_id FROM (
+                    SELECT rg.customer_id
+                    FROM crm_marketing_group_customers rg
+                    JOIN crm_customers c ON c.id = rg.customer_id AND c.deleted_at IS NULL
+                    WHERE rg.group_id IN ({$placeholders})
+                    UNION
+                    SELECT ct.customer_id
+                    FROM crm_marketing_group_contacts rg
+                    JOIN crm_contacts ct ON ct.id = rg.contact_id AND ct.deleted_at IS NULL
+                    JOIN crm_customers c ON c.id = ct.customer_id AND c.deleted_at IS NULL
+                    WHERE rg.group_id IN ({$placeholders})
+                ) grouped_customers
+            ");
+            $memberStmt->execute(array_merge($groupIds, $groupIds));
+            $customerIds = array_values(array_unique(array_filter(array_map('intval', array_column($memberStmt->fetchAll(), 'customer_id')))));
+            if (!$customerIds) return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
+            $poolInput['customer_ids'] = json_encode($customerIds);
+        }
     } elseif ($mode === 'country') {
         $country = trim((string)($input['group_key'] ?? ''));
         if ($country === '') return ['rows' => [], 'customer_ids' => [], 'total' => 0, 'mode' => $mode];
@@ -1822,6 +1849,7 @@ function crm_marketing_task_create(array $input): array
         [
             'group_mode' => $audienceConfig['group_mode'] ?? 'selected',
             'group_key' => $audienceConfig['group_key'] ?? '',
+            'group_keys' => $audienceConfig['group_keys'] ?? [],
         ]
     );
     $resolvedAudience = crm_marketing_resolve_audience_customers($audienceInput, $requestedCustomerIds);
