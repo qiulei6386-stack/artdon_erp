@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配 V2 设置逻辑弹窗字段分区修复（待部署）
+
+- 用户反馈物料中心产品适配 V2 的“设置物料逻辑”弹窗里，光源、光学、电源看起来仍是同一套弹窗。
+- 根因定位：前端 JS 已按 `chip / driver / optical / general` 给不相关字段加 `is-hidden` 并禁用，但 CSS 只隐藏了分区标题 `.pa2-logic-zone.is-hidden`，普通字段 `label[data-logic-zone]` 没被隐藏，导致电源弹窗仍露出芯片品牌/色温等字段。
+- 修复：`material_center_v1/adaptation_v2/index.php` 增加通用隐藏规则 `[data-logic-zone].is-hidden{display:none!important}`，让芯片、电源、光学、通用配件字段真正按弹窗类型切换。
+- 新增 `material_center_v1/tests/adaptation_v2_logic_dialog_contract.php`，防止以后再出现“字段被禁用但还可见”的回归。
+- 更新 `material_center_v1/adaptation_v2/docs/EXECUTION_LOG.md`。
+- 检查：本地 `git diff --check` 通过；服务器 `/tmp/artdon_logic_dialog_candidate/` 候选目录 PHP 语法检查通过；新增合同测试 `adaptation_v2_logic_dialog_contract.php` 通过。
+- 待提交、推送 GitHub 并同步服务器；本次不触碰旧 BOM、旧版产品适配或商务中心无关改动。
+
 ## 本次：物料中心新增产品参数功能（已上线）
 
 - 用户明确“这里才是物料中心，需在物料中心加入产品参数功能”。本次把产品功率、电流、电压、光学、尺寸、安装、电源方式和调光方式做成物料中心产品主数据能力，而不是继续放在产品适配 V2 工作台的临时逻辑里。

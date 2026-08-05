@@ -1004,6 +1004,28 @@
   - `material_center_v1/adaptation_v2/lib/foundation.php`
 - 待上线后在真实页面分别打开芯片、电源、光学和配件配置组，确认弹窗字段、保存回填和重新计算结果。
 
+## 2026-08-05 单产品设置逻辑弹窗字段隐藏修复
+
+执行范围：
+
+- 用户反馈物料中心产品适配 V2 中“设置物料逻辑”时，光源、光学、电源弹窗仍然显示得一样。
+- 本次只修复 V2 单产品工作台逻辑弹窗的前端分区显示，不修改旧版产品适配、不修改旧 BOM、不改数据库。
+
+完成内容：
+
+- 根因：JS 已经按 `chip / driver / optical / general` 给不相关字段加 `is-hidden` 并禁用，但 CSS 只隐藏 `.pa2-logic-zone.is-hidden` 分区标题，未隐藏普通字段 `label[data-logic-zone]`。
+- 修复：CSS 增加 `[data-logic-zone].is-hidden{display:none!important}`，使芯片、电源、光学、通用配件字段真正按弹窗类型隐藏。
+- 新增合同测试 `material_center_v1/tests/adaptation_v2_logic_dialog_contract.php`，要求所有逻辑字段都能按 `data-logic-zone` 隐藏，并确认服务器保存端仍按类型净化字段。
+
+测试记录：
+
+- 本地 `git diff --check` 通过。
+- 服务器 `/tmp` 候选目录 PHP 语法检查通过：
+  - `material_center_v1/adaptation_v2/index.php`
+  - `material_center_v1/adaptation_v2/lib/foundation.php`
+  - `material_center_v1/tests/adaptation_v2_logic_dialog_contract.php`
+- 新增合同测试 `adaptation_v2_logic_dialog_contract.php` 通过。
+
 ## 2026-08-01 单产品入口增加图片与图标/列表视图
 
 执行范围：
