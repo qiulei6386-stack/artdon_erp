@@ -46,6 +46,33 @@ function mc_pp_text(string $key, int $maxLength = 200): string
     return mb_substr($value, 0, $maxLength);
 }
 
+function mc_pp_custom_fields(): array
+{
+    $labels = $_POST['custom_label'] ?? [];
+    $values = $_POST['custom_value'] ?? [];
+    $units = $_POST['custom_unit'] ?? [];
+    $groups = $_POST['custom_group'] ?? [];
+    if (!is_array($labels) || !is_array($values)) return [];
+    $out = [];
+    $max = min(80, count($labels));
+    for ($i = 0; $i < $max; $i++) {
+        $label = mb_substr(trim((string)($labels[$i] ?? '')), 0, 80);
+        $value = mb_substr(trim((string)($values[$i] ?? '')), 0, 500);
+        $unit = mb_substr(trim((string)(is_array($units) ? ($units[$i] ?? '') : '')), 0, 30);
+        $group = mb_substr(trim((string)(is_array($groups) ? ($groups[$i] ?? '') : '')), 0, 80);
+        if ($label === '' && $value === '') continue;
+        if ($label === '') $label = '自定义参数';
+        if ($value === '') continue;
+        $out[] = [
+            'label' => $label,
+            'value' => $value,
+            'unit' => $unit,
+            'group' => $group !== '' ? $group : '自定义参数',
+        ];
+    }
+    return $out;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     mc_pp_response(false, '只允许 POST 保存产品参数。', [], 405);
 }
@@ -79,6 +106,19 @@ try {
         ['length_mm', 'width_mm', '长度 mm', '宽度 mm'],
     ];
     $params = [
+        'product_type' => mc_pp_text('product_type', 80),
+        'cutout_size_text' => mc_pp_text('cutout_size_text', 120),
+        'dimensions_text' => mc_pp_text('dimensions_text', 160),
+        'power_text' => mc_pp_text('power_text', 160),
+        'luminous_flux_text' => mc_pp_text('luminous_flux_text', 160),
+        'tilt_angle' => mc_pp_text('tilt_angle', 80),
+        'rotation_angle' => mc_pp_text('rotation_angle', 80),
+        'beam_angle_text' => mc_pp_text('beam_angle_text', 160),
+        'cct_text' => mc_pp_text('cct_text', 160),
+        'cri_text' => mc_pp_text('cri_text', 80),
+        'ugr_text' => mc_pp_text('ugr_text', 80),
+        'dimming_method_text' => mc_pp_text('dimming_method_text', 160),
+        'best_for' => mc_pp_text('best_for', 240),
         'power_min_w' => mc_pp_number('power_min_w', '功率下限 W', 0, 5000),
         'power_max_w' => mc_pp_number('power_max_w', '功率上限 W', 0, 5000),
         'current_min_ma' => mc_pp_number('current_min_ma', '电流下限 mA', 0, 50000),
@@ -99,6 +139,9 @@ try {
         'optical_size' => mc_pp_text('optical_size', 120),
         'notes' => mc_pp_text('notes', 800),
     ];
+    if (($params['dimming_mode'] ?? '') === '' && ($params['dimming_method_text'] ?? '') !== '') {
+        $params['dimming_mode'] = $params['dimming_method_text'];
+    }
     foreach ($pairs as [$minKey, $maxKey, $minLabel, $maxLabel]) {
         if ($params[$minKey] !== null && $params[$maxKey] !== null && $params[$minKey] > $params[$maxKey]) {
             throw new RuntimeException($minLabel . '不能大于' . $maxLabel . '。');
@@ -109,6 +152,10 @@ try {
     foreach ($params as $key => $value) {
         if ($value === null || $value === '') continue;
         $clean[$key] = $value;
+    }
+    $customFields = mc_pp_custom_fields();
+    if ($customFields) {
+        $clean['custom_fields'] = $customFields;
     }
     $clean['updated_at'] = date('Y-m-d H:i:s');
     $user = mc_current_user();

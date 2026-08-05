@@ -17,6 +17,15 @@
 - 本次仅为 UI 统一与回归测试，不修改旧 BOM、不修改旧产品适配业务、不新增数据库表。
 - 功能提交 `3edc350ce54a09c55bef5ba4359b841e4bbcfdf4` 已推送并同步正式服务器；正式目录 PHP 语法、合同测试和产品参数页 CLI 渲染通过。
 
+## 2026-08-05：产品参数支持产品类型模板与自定义字段
+
+- 用户补充参数需要覆盖资料表中的 Model、Cut-out Size、Dimensions、Power、Luminous flux、Adjustability、Beam Angle、CCT、CRI、UGR、Dimming method、IP rating、Best for，并且导轨灯、磁吸式、明装式、线性等产品需要不同参数。
+- 产品参数弹窗新增“参数模板 / 产品类型”：嵌入式、导轨灯、磁吸式、明装式、线性、自定义。
+- 新增规格表参数字段：开孔尺寸、外形尺寸、功率规格、光通量、倾斜角、旋转角、光束角文本、CCT 文本、CRI 文本、UGR、调光方式文本、Best for。
+- 新增自定义参数区：字段名称、参数值、单位、分组；支持快速加入嵌入式/导轨灯/磁吸式/明装式/线性常用字段，也支持空白字段。
+- 保存接口增加新增字段和 `custom_fields` 数组净化保存，仍写入 `mc_products.snapshot_json.product_parameters`；不新增表、不修改旧 BOM、不回写旧产品适配业务。
+- 更新 `material_center_v1/tests/product_parameters_modal_contract.php` 覆盖新增字段、产品类型、自定义字段和服务端保存能力。
+
 # Codex 十阶段连续执行日志
 
 ## 第 1 阶段：审计、备份、基线锁定

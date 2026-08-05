@@ -31,12 +31,37 @@ function mc_pp_image(array $snapshot): string
 
 function mc_pp_complete_count(array $params): int
 {
-    $keys = ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','beam_angle','cct_k','cri_min','length_mm','width_mm','height_mm','installation_type','driver_type','dimming_mode'];
+    $keys = [
+        'product_type','cutout_size_text','dimensions_text','power_text','luminous_flux_text','tilt_angle','rotation_angle',
+        'beam_angle_text','cct_text','cri_text','ugr_text','dimming_method_text','ip_rating','best_for',
+        'power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','beam_angle',
+        'cct_k','cri_min','length_mm','width_mm','height_mm','installation_type','driver_type','dimming_mode'
+    ];
     $count = 0;
     foreach ($keys as $key) {
         if (isset($params[$key]) && $params[$key] !== '' && $params[$key] !== null) $count++;
     }
+    foreach (($params['custom_fields'] ?? []) as $field) {
+        if (is_array($field) && trim((string)($field['label'] ?? '')) !== '' && trim((string)($field['value'] ?? '')) !== '') $count++;
+    }
     return $count;
+}
+
+function mc_pp_complete_total(): int
+{
+    return 29;
+}
+
+function mc_pp_type_label(string $type): string
+{
+    return [
+        'recessed' => '嵌入式',
+        'track' => '导轨灯',
+        'magnetic' => '磁吸式',
+        'surface' => '明装式',
+        'linear' => '线性',
+        'custom' => '自定义',
+    ][$type] ?? $type;
 }
 
 $canEdit = has_permission('adaptation_v2.configure_product')
@@ -125,8 +150,18 @@ include MC_ROOT . '/components/layout_top.php';
 .mc-param-guide{padding:18px 20px;border:1px dashed #99f6e4;border-radius:16px;background:#f0fdfa;color:#0f766e;line-height:1.8;margin-bottom:18px;font-size:18px;font-weight:800}
 .mc-param-mode-note{grid-column:1/-1;display:flex;align-items:center;gap:12px;border:1px solid #e6edf5;background:#fbfdff;border-radius:14px;padding:13px 16px;color:#667085;font-size:15px;line-height:1.6}
 .mc-param-mode-note b{display:inline-flex;align-items:center;border-radius:999px;background:#e6fffb;color:#0b7773;padding:5px 12px;white-space:nowrap}
+.mc-param-presets{grid-column:1/-1;display:grid;gap:10px;border:1px dashed #b7e4e2;background:#f8fffe;border-radius:16px;padding:14px}
+.mc-param-presets__head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;color:#0b7773;font-weight:900}
+.mc-param-presets__chips{display:flex;gap:8px;flex-wrap:wrap}
+.mc-param-presets__chips button{height:34px;border:1px solid #9dd8d6;background:#fff;border-radius:999px;padding:0 12px;color:#0b7773;font-weight:800;cursor:pointer}
+.mc-param-custom-list{grid-column:1/-1;display:grid;gap:10px}
+.mc-param-custom-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(200px,1fr) 90px minmax(130px,.7fr) 42px;gap:10px;align-items:end;border:1px solid #e6edf5;border-radius:14px;background:#fbfdff;padding:12px}
+.mc-param-custom-row label{display:grid;gap:6px;font-weight:800;color:#344054}
+.mc-param-custom-row input,.mc-param-custom-row select{height:42px;border:1px solid #cfd8e6;border-radius:11px;padding:0 11px;background:#fff}
+.mc-param-custom-row button{height:42px;border:1px solid #fecaca;border-radius:11px;background:#fff;color:#b91c1c;font-weight:900;cursor:pointer}
 @media (max-width:1100px){.mc-param-hero,.mc-param-toolbar{align-items:stretch;flex-direction:column}.mc-param-modal{width:calc(100vw - 28px);max-height:calc(100dvh - 28px)}.mc-param-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:span 2}}
-@media (max-width:700px){.mc-param-modal{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.mc-param-form-grid{grid-template-columns:1fr}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:1}.mc-param-modal .mc-modal__header,.mc-param-modal .mc-modal__body,.mc-param-modal .mc-modal__footer{padding-left:18px;padding-right:18px}}
+@media (max-width:1100px){.mc-param-custom-row{grid-template-columns:1fr 1fr}.mc-param-custom-row button{grid-column:1/-1}}
+@media (max-width:700px){.mc-param-modal{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.mc-param-form-grid{grid-template-columns:1fr}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:1}.mc-param-modal .mc-modal__header,.mc-param-modal .mc-modal__body,.mc-param-modal .mc-modal__footer{padding-left:18px;padding-right:18px}.mc-param-custom-row{grid-template-columns:1fr}}
 </style>
 <section class="mc-page mc-product-param-page">
   <div class="mc-param-hero">
@@ -162,20 +197,23 @@ include MC_ROOT . '/components/layout_top.php';
           $productParams = (array)($snapshot['product_parameters'] ?? []);
           $image = mc_pp_image($snapshot);
           $complete = mc_pp_complete_count($productParams);
-          $percent = (int)round($complete / 15 * 100);
+          $percent = min(100, (int)round($complete / mc_pp_complete_total() * 100));
           $summary = [
-            '功率' => (mc_pp_value($productParams,'power_min_w') !== '' || mc_pp_value($productParams,'power_max_w') !== '') ? mc_pp_value($productParams,'power_min_w') . '–' . mc_pp_value($productParams,'power_max_w') . 'W' : '',
-            '电流' => (mc_pp_value($productParams,'current_min_ma') !== '' || mc_pp_value($productParams,'current_max_ma') !== '') ? mc_pp_value($productParams,'current_min_ma') . '–' . mc_pp_value($productParams,'current_max_ma') . 'mA' : '',
-            '电压' => (mc_pp_value($productParams,'voltage_min_v') !== '' || mc_pp_value($productParams,'voltage_max_v') !== '') ? mc_pp_value($productParams,'voltage_min_v') . '–' . mc_pp_value($productParams,'voltage_max_v') . 'V' : '',
-            '光束角' => mc_pp_value($productParams,'beam_angle') !== '' ? mc_pp_value($productParams,'beam_angle') . '°' : '',
-            '调光' => mc_pp_value($productParams,'dimming_mode'),
+            '模板' => mc_pp_type_label(mc_pp_value($productParams,'product_type')),
+            '开孔' => mc_pp_value($productParams,'cutout_size_text') !== '' ? mc_pp_value($productParams,'cutout_size_text') : (mc_pp_value($productParams,'cutout_mm') !== '' ? mc_pp_value($productParams,'cutout_mm') . 'mm' : ''),
+            '尺寸' => mc_pp_value($productParams,'dimensions_text'),
+            '功率' => mc_pp_value($productParams,'power_text') !== '' ? mc_pp_value($productParams,'power_text') : ((mc_pp_value($productParams,'power_min_w') !== '' || mc_pp_value($productParams,'power_max_w') !== '') ? mc_pp_value($productParams,'power_min_w') . '–' . mc_pp_value($productParams,'power_max_w') . 'W' : ''),
+            '光束角' => mc_pp_value($productParams,'beam_angle_text') !== '' ? mc_pp_value($productParams,'beam_angle_text') : (mc_pp_value($productParams,'beam_angle') !== '' ? mc_pp_value($productParams,'beam_angle') . '°' : ''),
+            'CCT' => mc_pp_value($productParams,'cct_text') !== '' ? mc_pp_value($productParams,'cct_text') : (mc_pp_value($productParams,'cct_k') !== '' ? mc_pp_value($productParams,'cct_k') . 'K' : ''),
+            'UGR' => mc_pp_value($productParams,'ugr_text'),
+            '调光' => mc_pp_value($productParams,'dimming_method_text') !== '' ? mc_pp_value($productParams,'dimming_method_text') : mc_pp_value($productParams,'dimming_mode'),
           ];
         ?>
           <tr>
             <td><div class="mc-param-product"><div class="mc-param-thumb"><?php if ($image !== ''): ?><img src="<?=mc_h($image)?>" alt=""><?php else: ?>无图<?php endif; ?></div><div><b><?=mc_h((string)($row['product_code'] ?? ''))?></b><small><?=mc_h((string)($row['product_name'] ?? ''))?></small></div></div></td>
             <td><b><?=mc_h((string)($row['category_name'] ?? '未映射'))?></b><br><small><?=mc_h((string)($row['series_code'] ?? ($snapshot['series_name'] ?? '')))?></small></td>
             <td><div class="mc-param-chip-list"><?php foreach ($summary as $label => $value): ?><span class="mc-param-chip <?=$value===''?'is-empty':''?>"><?=mc_h($label . '：' . ($value !== '' ? $value : '未填'))?></span><?php endforeach; ?></div></td>
-            <td><div class="mc-param-complete"><strong><?=intval($percent)?>%</strong><div class="mc-param-meter"><span style="width:<?=intval($percent)?>%"></span></div><small><?=intval($complete)?> / 15 项</small></div></td>
+            <td><div class="mc-param-complete"><strong><?=intval($percent)?>%</strong><div class="mc-param-meter"><span style="width:<?=intval($percent)?>%"></span></div><small><?=intval($complete)?> / <?=intval(mc_pp_complete_total())?> 项</small></div></td>
             <td><?=mc_h((string)($productParams['updated_at'] ?? '—'))?></td>
             <td><button class="mc-button mc-button--primary" type="button" data-open-modal="product-param-modal" data-open-param-editor data-product-id="<?=intval($row['id'])?>" data-product-code="<?=mc_h((string)($row['product_code'] ?? ''))?>" data-product-name="<?=mc_h((string)($row['product_name'] ?? ''))?>" data-params="<?=mc_json_attr($productParams)?>" <?=$canEdit?'':'disabled'?>>维护参数</button></td>
           </tr>
@@ -195,6 +233,20 @@ include MC_ROOT . '/components/layout_top.php';
       <div class="mc-param-guide">建议先填会影响适配判断的硬条件：功率、电流、电压、光束角、色温、显指、尺寸和安装/电源方式。空白字段不会写入，后续可以继续补。</div>
       <div class="mc-param-form-grid">
         <div class="mc-param-mode-note"><b>产品参数</b><span>这里维护的是产品主数据，供芯片、电源、光学适配共同使用；不是某个单产品适配草稿里的临时逻辑。</span></div>
+        <div class="mc-param-section-title">规格表参数<small>用于还原产品资料表：导轨灯、磁吸式、明装式、线性、嵌入式可选择不同模板；字段不够时可在底部自定义。</small></div>
+        <label class="mc-field"><span>参数模板 / 产品类型</span><select name="product_type" data-product-type-select><option value="">未设置</option><option value="recessed">嵌入式</option><option value="track">导轨灯</option><option value="magnetic">磁吸式</option><option value="surface">明装式</option><option value="linear">线性</option><option value="custom">自定义</option></select></label>
+        <label class="mc-field"><span>开孔尺寸</span><input name="cutout_size_text" placeholder="如 55mm / 75mm / 95mm"></label>
+        <label class="mc-field"><span>外形尺寸 Dimensions</span><input name="dimensions_text" placeholder="如 62*103 / L1000*W70*H52"></label>
+        <label class="mc-field"><span>功率规格 Power</span><input name="power_text" placeholder="如 14W 36V 350mA"></label>
+        <label class="mc-field"><span>光通量 Luminous flux</span><input name="luminous_flux_text" placeholder="如 3000K 1469lm"></label>
+        <label class="mc-field"><span>倾斜角 Tilt</span><input name="tilt_angle" placeholder="如 Tilt 20°"></label>
+        <label class="mc-field"><span>旋转角 Rotation</span><input name="rotation_angle" placeholder="如 Rotation 350°"></label>
+        <label class="mc-field"><span>光束角 Beam Angle</span><input name="beam_angle_text" placeholder="如 15°/24°/36°/50°"></label>
+        <label class="mc-field"><span>CCT</span><input name="cct_text" placeholder="如 2700K/3000K/3500K/4000K"></label>
+        <label class="mc-field"><span>CRI</span><input name="cri_text" placeholder="如 CRI90"></label>
+        <label class="mc-field"><span>UGR</span><input name="ugr_text" placeholder="如 <13"></label>
+        <label class="mc-field"><span>Dimming method</span><input name="dimming_method_text" placeholder="如 DALI, 0-10V"></label>
+        <label class="mc-field"><span>Best for</span><input name="best_for" placeholder="如 Gallery / Retail / Office"></label>
         <div class="mc-param-section-title">电气参数<small>用于判断芯片电流/电压范围、电源输出范围、功率和调光方式。</small></div>
         <label class="mc-field"><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
         <label class="mc-field"><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
@@ -216,6 +268,19 @@ include MC_ROOT . '/components/layout_top.php';
         <label class="mc-field"><span>长度 mm</span><input type="number" step="0.01" min="0" name="length_mm"></label>
         <label class="mc-field"><span>宽度 mm</span><input type="number" step="0.01" min="0" name="width_mm"></label>
         <label class="mc-field"><span>高度 mm</span><input type="number" step="0.01" min="0" name="height_mm"></label>
+        <div class="mc-param-section-title">自定义参数<small>不同系列需要不同字段时，在这里直接加。字段会保存到当前产品主数据，不需要改数据库。</small></div>
+        <div class="mc-param-presets">
+          <div class="mc-param-presets__head"><span>快速增加常用字段</span><small>可按产品类型快速加入，也可以自己写字段名。</small></div>
+          <div class="mc-param-presets__chips">
+            <button type="button" data-param-preset="recessed">嵌入式字段</button>
+            <button type="button" data-param-preset="track">导轨灯字段</button>
+            <button type="button" data-param-preset="magnetic">磁吸式字段</button>
+            <button type="button" data-param-preset="surface">明装式字段</button>
+            <button type="button" data-param-preset="linear">线性字段</button>
+            <button type="button" data-add-custom-param>空白字段</button>
+          </div>
+        </div>
+        <div class="mc-param-custom-list" data-custom-param-list></div>
         <label class="mc-field mc-field--full"><span>备注 / 判断依据</span><textarea name="notes" rows="3" placeholder="例如：按同系列 57.10511 资料确认；只适配外置电源。"></textarea></label>
       </div>
       <div class="mc-form-error" data-product-param-error hidden></div>
@@ -228,24 +293,84 @@ include MC_ROOT . '/components/layout_top.php';
 (() => {
   const form = document.querySelector('[data-product-param-form]');
   if (!form) return;
-  const fields = ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','length_mm','width_mm','height_mm','cutout_mm','ip_rating','installation_type','driver_type','dimming_mode','optical_size','notes'];
+  const fields = [
+    'product_type','cutout_size_text','dimensions_text','power_text','luminous_flux_text','tilt_angle','rotation_angle',
+    'beam_angle_text','cct_text','cri_text','ugr_text','dimming_method_text','best_for',
+    'power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min',
+    'beam_angle','length_mm','width_mm','height_mm','cutout_mm','ip_rating','installation_type','driver_type','dimming_mode','optical_size','notes'
+  ];
+  const customList = form.querySelector('[data-custom-param-list]');
+  const presetFields = {
+    recessed: [
+      ['安装深度', '', 'mm', '结构尺寸'], ['开孔形状', '', '', '结构尺寸'], ['防眩杯颜色', '', '', '光学与外观']
+    ],
+    track: [
+      ['轨道类型', '', '', '导轨灯'], ['适配轨道', '', '', '导轨灯'], ['调节方式', '', '', '导轨灯'], ['旋转角', '', '°', '导轨灯']
+    ],
+    magnetic: [
+      ['磁吸系统', '', '', '磁吸式'], ['导轨电压', '', 'V', '磁吸式'], ['安装方式', '', '', '磁吸式'], ['连接方式', '', '', '磁吸式']
+    ],
+    surface: [
+      ['底座尺寸', '', 'mm', '明装式'], ['出线方式', '', '', '明装式'], ['安装孔距', '', 'mm', '明装式']
+    ],
+    linear: [
+      ['长度', '', 'mm', '线性'], ['发光面宽', '', 'mm', '线性'], ['拼接方式', '', '', '线性'], ['端盖类型', '', '', '线性']
+    ]
+  };
   const errorBox = form.querySelector('[data-product-param-error]');
   const setError = (message) => {
     if (!errorBox) return;
     errorBox.hidden = !message;
     errorBox.textContent = message || '';
   };
+  const addCustomField = (field = {}) => {
+    if (!customList) return;
+    const row = document.createElement('div');
+    row.className = 'mc-param-custom-row';
+    row.innerHTML = `
+      <label><span>字段名称</span><input name="custom_label[]" placeholder="如 色容差 / 安装深度"></label>
+      <label><span>参数值</span><input name="custom_value[]" placeholder="如 SDCM&lt;3 / 85"></label>
+      <label><span>单位</span><input name="custom_unit[]" placeholder="mm / ° / lm"></label>
+      <label><span>分组</span><input name="custom_group[]" placeholder="如 光学与外观"></label>
+      <button type="button" data-remove-custom-param>删除</button>
+    `;
+    const inputs = row.querySelectorAll('input');
+    inputs[0].value = field.label || '';
+    inputs[1].value = field.value || '';
+    inputs[2].value = field.unit || '';
+    inputs[3].value = field.group || '';
+    row.querySelector('[data-remove-custom-param]')?.addEventListener('click', () => row.remove());
+    customList.appendChild(row);
+  };
+  form.querySelectorAll('[data-add-custom-param]').forEach((button) => {
+    button.addEventListener('click', () => addCustomField());
+  });
+  form.querySelectorAll('[data-param-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      (presetFields[button.dataset.paramPreset] || []).forEach(([label, value, unit, group]) => addCustomField({label, value, unit, group}));
+    });
+  });
+  form.querySelector('[data-product-type-select]')?.addEventListener('change', (event) => {
+    const preset = event.target.value || '';
+    if (presetFields[preset] && customList && customList.children.length === 0) {
+      presetFields[preset].forEach(([label, value, unit, group]) => addCustomField({label, value, unit, group}));
+    }
+  });
   document.querySelectorAll('[data-open-param-editor]').forEach((button) => {
     button.addEventListener('click', () => {
       let params = {};
       try { params = JSON.parse(button.dataset.params || '{}') || {}; } catch {}
       form.reset();
+      if (customList) customList.innerHTML = '';
       setError('');
       form.elements.product_id.value = button.dataset.productId || '';
       document.querySelector('[data-param-modal-title]').textContent = `维护产品参数：${button.dataset.productCode || ''} ${button.dataset.productName || ''}`.trim();
       fields.forEach((field) => {
         if (form.elements[field]) form.elements[field].value = params[field] ?? '';
       });
+      if (Array.isArray(params.custom_fields)) {
+        params.custom_fields.forEach((field) => addCustomField(field));
+      }
     });
   });
   form.addEventListener('submit', async (event) => {

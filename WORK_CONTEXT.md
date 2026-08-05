@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品参数支持类型模板与自定义字段（待部署）
+
+- 用户反馈产品参数需要覆盖资料表字段，例如 Model、Cut-out Size、Dimensions、Power、Luminous flux、Adjustability、Beam Angle、CCT、CRI、UGR、Dimming method、IP rating、Best for；并且导轨灯、磁吸式、明装式、线性等产品所需参数不同，字段必须可自定义。
+- 本次仍不新增数据库表，继续写入 `mc_products.snapshot_json.product_parameters`，不修改旧 BOM、不回写旧产品适配业务。
+- `material_center_v1/product_parameters.php` 增加“参数模板 / 产品类型”：嵌入式、导轨灯、磁吸式、明装式、线性、自定义；增加规格表参数字段与自定义参数区。
+- 自定义参数支持字段名称、参数值、单位、分组；提供嵌入式、导轨灯、磁吸式、明装式、线性快速字段按钮和空白字段按钮；打开弹窗可回填已保存自定义字段。
+- `material_center_v1/api/v1/product-parameters.php` 增加新增字段和 `custom_fields` 数组保存净化，继续使用统一权限与 CSRF。
+- 更新 `product_parameters_modal_contract.php` 锁定产品类型、自定义字段、图中规格字段和服务端保存白名单。
+- 待服务器 PHP 语法、合同测试、提交、推送和同步正式服务器。
+
 ## 本次：物料中心产品参数弹窗统一为 V2 宽版样式（已上线）
 
 - 用户要求“产品参数的弹窗，按图1来制作，要统一”。本次只调整 `material_center_v1/product_parameters.php` 的产品参数维护弹窗视觉与布局，不修改旧 BOM、不修改产品适配 V2 业务逻辑、不新增表。
