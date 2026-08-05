@@ -105,13 +105,28 @@ include MC_ROOT . '/components/layout_top.php';
 .mc-param-complete{display:flex;flex-direction:column;gap:6px;min-width:130px}
 .mc-param-meter{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}
 .mc-param-meter span{display:block;height:100%;background:#14b8a6}
-.mc-param-modal{max-width:920px}
-.mc-param-modal .mc-modal__body{max-height:68vh;overflow:auto}
-.mc-param-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.mc-param-form-grid .mc-field--wide{grid-column:span 3}
-.mc-param-section-title{grid-column:span 3;margin-top:6px;padding-top:12px;border-top:1px dashed #dbe7f3;color:#0f766e;font-weight:800}
-.mc-param-guide{padding:12px 14px;border:1px dashed #99f6e4;border-radius:16px;background:#f0fdfa;color:#0f766e;line-height:1.7;margin-bottom:14px}
-@media (max-width:1100px){.mc-param-hero,.mc-param-toolbar{align-items:stretch;flex-direction:column}.mc-param-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:span 2}}
+.mc-param-modal{width:min(1280px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 48px);display:flex;flex-direction:column;overflow:hidden;border-radius:22px;box-shadow:0 26px 90px rgba(15,23,42,.28)}
+.mc-param-modal .mc-modal__header{min-height:92px;align-items:flex-start;padding:22px 30px;background:linear-gradient(135deg,#f0fdfa,#f8fbff 58%,#fff)}
+.mc-param-modal .mc-modal__header strong{display:block;font-size:22px;line-height:1.35;color:#0f172a}
+.mc-param-modal .mc-modal__header span{display:block;margin-top:6px;color:#667085;font-size:15px;line-height:1.5}
+.mc-param-modal .mc-modal__body{flex:1;min-height:0;max-height:none;overflow:auto;padding:26px 30px;background:#fff}
+.mc-param-modal .mc-modal__footer{min-height:82px;padding:16px 30px;background:#fbfdff}
+.mc-param-modal .mc-modal__footer .mc-button{height:48px;min-width:104px;border-radius:12px;font-size:16px;font-weight:800}
+.mc-param-modal .mc-modal__footer .mc-button--primary{min-width:178px;background:#d60000;border-color:#d60000}
+.mc-param-close{width:auto;height:52px;padding:0 24px;border-radius:12px;font-size:18px;font-weight:800;background:#fff}
+.mc-param-form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.mc-param-form-grid .mc-field--wide{grid-column:span 2}
+.mc-param-form-grid .mc-field--full{grid-column:1/-1}
+.mc-param-form-grid .mc-field span{font-size:15px;font-weight:800;color:#344054}
+.mc-param-form-grid .mc-field input,.mc-param-form-grid .mc-field select,.mc-param-form-grid .mc-field textarea{height:52px;border:1px solid #cfd8e6;border-radius:13px;padding:0 16px;font-size:16px;background:#fff}
+.mc-param-form-grid .mc-field textarea{height:118px;padding-top:14px;line-height:1.6}
+.mc-param-section-title{grid-column:1/-1;margin-top:8px;padding-top:18px;border-top:1px dashed #dbe7f3;color:#0f766e;font-size:18px;font-weight:900}
+.mc-param-section-title small{display:block;margin-top:6px;color:#667085;font-size:13px;font-weight:700;line-height:1.5}
+.mc-param-guide{padding:18px 20px;border:1px dashed #99f6e4;border-radius:16px;background:#f0fdfa;color:#0f766e;line-height:1.8;margin-bottom:18px;font-size:18px;font-weight:800}
+.mc-param-mode-note{grid-column:1/-1;display:flex;align-items:center;gap:12px;border:1px solid #e6edf5;background:#fbfdff;border-radius:14px;padding:13px 16px;color:#667085;font-size:15px;line-height:1.6}
+.mc-param-mode-note b{display:inline-flex;align-items:center;border-radius:999px;background:#e6fffb;color:#0b7773;padding:5px 12px;white-space:nowrap}
+@media (max-width:1100px){.mc-param-hero,.mc-param-toolbar{align-items:stretch;flex-direction:column}.mc-param-modal{width:calc(100vw - 28px);max-height:calc(100dvh - 28px)}.mc-param-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:span 2}}
+@media (max-width:700px){.mc-param-modal{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.mc-param-form-grid{grid-template-columns:1fr}.mc-param-form-grid .mc-field--wide,.mc-param-section-title{grid-column:1}.mc-param-modal .mc-modal__header,.mc-param-modal .mc-modal__body,.mc-param-modal .mc-modal__footer{padding-left:18px;padding-right:18px}}
 </style>
 <section class="mc-page mc-product-param-page">
   <div class="mc-param-hero">
@@ -173,13 +188,14 @@ include MC_ROOT . '/components/layout_top.php';
 
 <div class="mc-modal" id="product-param-modal" data-modal>
   <form class="mc-modal__panel mc-param-modal" data-product-param-form>
-    <div class="mc-modal__header"><div><strong data-param-modal-title>维护产品参数</strong><span>保存到物料中心产品主数据；不修改旧 BOM。</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
+    <div class="mc-modal__header"><div><strong data-param-modal-title>维护产品参数</strong><span>保存到物料中心产品主数据；不修改旧 BOM。</span></div><button class="mc-icon-button mc-param-close" type="button" data-close-layer>关闭</button></div>
     <div class="mc-modal__body">
       <input type="hidden" name="csrf_token" value="<?=mc_h(csrf_token())?>">
       <input type="hidden" name="product_id">
       <div class="mc-param-guide">建议先填会影响适配判断的硬条件：功率、电流、电压、光束角、色温、显指、尺寸和安装/电源方式。空白字段不会写入，后续可以继续补。</div>
       <div class="mc-param-form-grid">
-        <div class="mc-param-section-title">电气参数</div>
+        <div class="mc-param-mode-note"><b>产品参数</b><span>这里维护的是产品主数据，供芯片、电源、光学适配共同使用；不是某个单产品适配草稿里的临时逻辑。</span></div>
+        <div class="mc-param-section-title">电气参数<small>用于判断芯片电流/电压范围、电源输出范围、功率和调光方式。</small></div>
         <label class="mc-field"><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
         <label class="mc-field"><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
         <label class="mc-field"><span>调光方式</span><input name="dimming_mode" placeholder="如 DALI / 0-10V / TRIAC"></label>
@@ -189,18 +205,18 @@ include MC_ROOT . '/components/layout_top.php';
         <label class="mc-field"><span>电压下限 V</span><input type="number" step="0.01" min="0" name="voltage_min_v"></label>
         <label class="mc-field"><span>电压上限 V</span><input type="number" step="0.01" min="0" name="voltage_max_v"></label>
         <label class="mc-field"><span>安装方式</span><input name="installation_type" placeholder="如 嵌入式 / 明装 / 导轨"></label>
-        <div class="mc-param-section-title">光学与外观</div>
+        <div class="mc-param-section-title">光学与外观<small>用于判断透镜、反光杯、蜂窝网、四叶片、光学膜等光学件匹配条件。</small></div>
         <label class="mc-field"><span>色温 K</span><input type="number" step="1" min="1000" max="20000" name="cct_k"></label>
         <label class="mc-field"><span>最低显指 CRI</span><input type="number" step="0.1" min="0" max="100" name="cri_min"></label>
         <label class="mc-field"><span>光束角 °</span><input type="number" step="0.1" min="0" max="180" name="beam_angle"></label>
         <label class="mc-field"><span>光学尺寸</span><input name="optical_size" placeholder="如 Φ35 / LES 9mm"></label>
         <label class="mc-field"><span>IP 等级</span><input name="ip_rating" maxlength="30" placeholder="如 IP44"></label>
         <label class="mc-field"><span>开孔 mm</span><input type="number" step="0.01" min="0" name="cutout_mm"></label>
-        <div class="mc-param-section-title">结构尺寸</div>
+        <div class="mc-param-section-title">结构尺寸<small>用于判断安装空间、开孔、外形尺寸和包装/结构约束。</small></div>
         <label class="mc-field"><span>长度 mm</span><input type="number" step="0.01" min="0" name="length_mm"></label>
         <label class="mc-field"><span>宽度 mm</span><input type="number" step="0.01" min="0" name="width_mm"></label>
         <label class="mc-field"><span>高度 mm</span><input type="number" step="0.01" min="0" name="height_mm"></label>
-        <label class="mc-field mc-field--wide"><span>备注 / 判断依据</span><textarea name="notes" rows="3" placeholder="例如：按同系列 57.10511 资料确认；只适配外置电源。"></textarea></label>
+        <label class="mc-field mc-field--full"><span>备注 / 判断依据</span><textarea name="notes" rows="3" placeholder="例如：按同系列 57.10511 资料确认；只适配外置电源。"></textarea></label>
       </div>
       <div class="mc-form-error" data-product-param-error hidden></div>
     </div>

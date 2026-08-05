@@ -8,6 +8,14 @@
 - 本地 `git diff --check` 通过；本机无 PHP，已将候选文件传至服务器 `/tmp` 并用服务器 PHP 完成语法检查。
 - 提交 `d797901a42ba5b961d1e3b45f9f599231a0f5392` 已推送 GitHub 并同步正式服务器；正式目录 PHP 语法通过，产品参数页 CLI 渲染无 Fatal。
 
+## 2026-08-05：产品参数弹窗统一为 V2 宽版样式
+
+- 用户要求产品参数维护弹窗按 V2 设置逻辑弹窗样式统一。
+- 调整 `material_center_v1/product_parameters.php`：产品参数维护弹窗改为宽版 1280px 上限、顶部渐变标题区、文字“关闭”按钮、绿色虚线提示、四列表单、内部滚动正文和固定底部操作区。
+- 表单分区调整为“电气参数 / 光学与外观 / 结构尺寸”，并保留原字段、原保存接口与 `mc_products.snapshot_json.product_parameters` 存储位置。
+- 新增 `material_center_v1/tests/product_parameters_modal_contract.php` 锁定弹窗视觉结构与关键字段。
+- 本次仅为 UI 统一与回归测试，不修改旧 BOM、不修改旧产品适配业务、不新增数据库表。
+
 # Codex 十阶段连续执行日志
 
 ## 第 1 阶段：审计、备份、基线锁定
