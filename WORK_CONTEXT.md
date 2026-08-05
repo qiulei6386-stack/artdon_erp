@@ -12,7 +12,7 @@
 - Git / 部署：功能提交 `d797901a42ba5b961d1e3b45f9f599231a0f5392` 已推送 GitHub `main`，并以 Git bundle 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
 - 部署注意：服务器原先有一批 CRM/报价文件显示为脏，但只读比较确认其内容与目标提交完全一致；3 个同内容未跟踪测试文件先移动备份到 `/tmp/artdon_same_target_untracked_backup_20260805_160514`，随后快进部署成功，文件在目标提交中已成为正式跟踪文件。
 - 服务器复检：正式目录 `product_parameters.php`、`api/v1/product-parameters.php`、`adaptation_v2/lib/foundation.php`、`components/sidebar.php` PHP 语法通过；`product_parameters.php` CLI 渲染生成 171410 字节 HTML，页面包含“产品参数”7处。
-- 当前本地、GitHub、服务器 HEAD 一致为 `d797901a42ba5b961d1e3b45f9f599231a0f5392`；服务器仅剩历史备份目录未跟踪。
+- 记录补丁同步后需以最终 Git HEAD 为准；服务器除历史备份目录外无本次相关未跟踪文件。
 - 注意：办公工作区仍有用户原有的商务中心未提交/未跟踪文件，本次不纳入提交、不覆盖。
 
 ## 本次：商务中心控制新加坡产品下架/重新上架（已上线）
