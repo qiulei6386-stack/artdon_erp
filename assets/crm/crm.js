@@ -16129,7 +16129,7 @@
 	      rows = rows || [];
 	      return '<section class="promo-step-dist"><header><strong>' + esc(title) + '</strong></header><div>' + (rows.length ? rows.map(function (row) {
 	        return '<span><b>' + esc(row.key) + '</b><em>' + esc(row.count) + '</em></span>';
-	      }).join('') : '<p>--</p>') + '</div></section>';
+	      }).join('') : '<p>选择分组后生成分布</p>') + '</div></section>';
 	    },
 	    renderWizardMiniStats: function (items) {
 	      return '<div class="promo-step-mini-stats">' + items.map(function (item) {
@@ -16138,7 +16138,7 @@
 	    },
 	    renderWizardCustomerRows: function (customers) {
 	      customers = customers || [];
-	      return '<details class="promo-step-details"><summary>客户明细</summary><div class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>客户</th><th>国家</th><th>负责人</th><th>来源</th><th>联系人</th><th>状态</th></tr></thead><tbody>' + (customers.slice(0, 80).map(function (row) {
+	      return '<details class="promo-step-details"><summary><span>客户明细</span><em>' + esc(customers.length) + ' 个客户</em></summary><div class="promo-step-table-wrap"><table class="promo-step-table"><thead><tr><th>客户</th><th>国家</th><th>负责人</th><th>来源</th><th>联系人</th><th>状态</th></tr></thead><tbody>' + (customers.slice(0, 80).map(function (row) {
 	        return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.owner_name || '-') + '</td><td>' + esc(row.source_tags || row.source || '-') + '</td><td>' + esc(row.contact_count || 0) + '</td><td>' + esc(cnStatus(row.promotion_status || 'not_promoted')) + '</td></tr>';
 	      }).join('') || '<tr><td colspan="6">暂无客户明细</td></tr>') + '</tbody></table></div></details>';
 	    },
@@ -16182,9 +16182,17 @@
 	        return '<section class="promo-step-card promo-step-basic"><div class="promo-step-two-col"><section><label><span>任务名称 *</span><input data-wizard-field="task_name" value="' + esc(draft.task_name) + '" placeholder="例如：7月印度客户 EDM"></label><label><span>任务类型</span><select data-wizard-field="campaign_type"><option value="email"' + (draft.campaign_type === 'email' ? ' selected' : '') + '>邮件营销</option><option value="whatsapp"' + (draft.campaign_type === 'whatsapp' ? ' selected' : '') + '>WhatsApp 触达</option><option value="linkedin"' + (draft.campaign_type === 'linkedin' ? ' selected' : '') + '>LinkedIn 触达</option><option value="phone"' + (draft.campaign_type === 'phone' ? ' selected' : '') + '>电话跟进</option><option value="offline"' + (draft.campaign_type === 'offline' ? ' selected' : '') + '>线下执行</option></select></label><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label></section><section><label><span>复制模板</span><button type="button" data-promo-template-copy>复制当前模板</button></label><label><span>备注</span><textarea rows="4" data-wizard-field="remark" placeholder="内部说明，可选">' + esc(draft.remark || '') + '</textarea></label><article class="promo-step-note"><strong>最近修改信息</strong><span>' + esc(draft.updated_at || draft.created_at || (draft.task_id ? ('任务 #' + draft.task_id) : '未保存')) + '</span></article></section></div></section>';
 	      }
 	      if (step === 1) {
+	        var allGroups = (this.data && this.data.groups) || [];
+	        var selectedGroupIds = this.wizardGroupKeys(draft);
+	        var selectedGroups = allGroups.filter(function (row) { return selectedGroupIds.indexOf(Number(row.id || 0)) >= 0; });
+	        var selectedGroupCustomerTotal = selectedGroups.reduce(function (sum, row) { return sum + Number(row.customer_count || 0); }, 0);
+	        var selectedGroupPromotableTotal = selectedGroups.reduce(function (sum, row) { return sum + Number(row.promotable_contact_count || 0); }, 0);
+	        var sourceLabel = draft.group_mode === 'group'
+	          ? '指定客户分组'
+	          : (draft.group_mode === 'country' ? '按国家' : (draft.group_mode === 'selected' ? '当前选中客户' : '推广池筛选结果'));
 	        var groupField = draft.group_mode === 'group'
-	          ? this.wizardGroupCheckboxes(draft)
-	          : (draft.group_mode === 'country' ? '<label><span>国家</span><input data-wizard-field="group_key" value="' + esc(draft.group_key || '') + '" placeholder="输入国家，例如 China / India"></label>' : '<label><span>范围说明</span><input value="' + (draft.group_mode === 'selected' ? '使用当前已勾选客户' : '使用当前推广池筛选结果') + '" readonly></label>');
+	          ? '<section class="promo-audience-group-panel">' + this.wizardGroupCheckboxes(draft) + '</section>'
+	          : (draft.group_mode === 'country' ? '<section class="promo-audience-filter-panel"><label><span>国家</span><input data-wizard-field="group_key" value="' + esc(draft.group_key || '') + '" placeholder="输入国家，例如 China / India"></label></section>' : '<section class="promo-audience-filter-panel"><strong>' + esc(sourceLabel) + '</strong><span>当前步骤会使用这个范围读取客户，生成统计和后续联系人清单。</span></section>');
 		        var scopedCustomers = this.resolveWizardAudienceCustomers(draft);
             var selectedCustomerCount = Number(draft.audience_customer_count || 0) || scopedCustomers.length;
             if (!selectedCustomerCount && draft.group_mode === 'selected') selectedCustomerCount = (draft.customer_ids || []).length;
@@ -16196,7 +16204,10 @@
             var audienceState = this.wizardAudienceLoading
               ? '<article class="promo-wizard-note">正在读取所选客户范围，请稍候...</article>'
               : (this.wizardAudienceError ? '<article class="promo-wizard-note is-warn">' + esc(this.wizardAudienceError) + '</article>' : '');
-		        return '<section class="promo-step-card promo-step-customers"><div class="promo-step-controls"><label><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label>' + groupField + '</div>' + audienceState + this.renderWizardMiniStats([['选中客户数', selectedCustomerCount], ['黑名单数量', blacklistCount], ['重复客户数量', duplicateCount], ['无联系人客户数量', noContactCount], ['停用客户数量', stoppedCount]]) + '<div class="promo-step-dist-grid">' + this.renderWizardDistribution('国家分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.country; })) + this.renderWizardDistribution('负责人分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.owner_name || row.primary_owner; })) + this.renderWizardDistribution('来源分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.source_tags || row.source || row.source_key; })) + '</div>' + this.renderWizardCustomerRows(scopedCustomers) + '</section>';
+            var selectedGroupText = draft.group_mode === 'group' ? selectedGroups.length + ' 组' : sourceLabel;
+            var coverageText = this.wizardAudienceLoading ? '读取中...' : (draft.group_mode === 'group' && selectedGroups.length ? selectedGroupCustomerTotal : selectedCustomerCount);
+            var promotableText = this.wizardAudienceLoading ? '读取中...' : (draft.group_mode === 'group' && selectedGroups.length ? selectedGroupPromotableTotal : '--');
+		        return '<section class="promo-step-card promo-step-customers promo-step-audience-v2"><section class="promo-audience-source-bar"><label class="promo-audience-source-select"><span>客户来源</span><select data-wizard-field="group_mode"><option value="selected"' + (draft.group_mode === 'selected' ? ' selected' : '') + '>使用当前选中客户</option><option value="all_pool"' + (draft.group_mode === 'all_pool' ? ' selected' : '') + '>当前推广池筛选结果</option><option value="group"' + (draft.group_mode === 'group' ? ' selected' : '') + '>指定客户分组</option><option value="country"' + (draft.group_mode === 'country' ? ' selected' : '') + '>按国家</option></select></label><div class="promo-audience-source-summary"><span>已选 <b>' + esc(selectedGroupText) + '</b></span><span>覆盖客户 <b>' + esc(coverageText) + '</b></span><span>可推广联系人 <b>' + esc(promotableText) + '</b></span></div></section>' + audienceState + groupField + this.renderWizardMiniStats([['选中客户数', selectedCustomerCount], ['黑名单数量', blacklistCount], ['重复客户数量', duplicateCount], ['无联系人客户数量', noContactCount], ['停用客户数量', stoppedCount]]) + '<div class="promo-step-dist-grid">' + this.renderWizardDistribution('国家分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.country; })) + this.renderWizardDistribution('负责人分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.owner_name || row.primary_owner; })) + this.renderWizardDistribution('来源分布', this.wizardTopCounts(scopedCustomers, function (row) { return row.source_tags || row.source || row.source_key; })) + '</div>' + this.renderWizardCustomerRows(scopedCustomers) + '</section>';
 		      }
 	      if (step === 2) {
 	        var targetsForContacts = this.resolveWizardTargets(draft);
