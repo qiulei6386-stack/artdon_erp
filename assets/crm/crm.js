@@ -16274,7 +16274,7 @@
       return '<div class="promo-check-panel promo-check-compact" data-wizard-group-checks><b>客户分组（可多选）</b>' + groups.map(function (row) {
         var id = Number(row.id || 0);
         var checked = selectedIds.indexOf(id) >= 0 ? ' checked' : '';
-        return '<label class="promo-check-row"><input type="checkbox" data-wizard-group-check value="' + esc(id) + '"' + checked + '><span>' + esc(row.group_name || ('#' + id)) + '</span><strong>客户 ' + esc(row.customer_count || 0) + ' / 联系人 ' + esc(row.contact_count || 0) + ' / 可推广 ' + esc(row.promotable_contact_count || 0) + '</strong></label>';
+        return '<label class="promo-check-row promo-group-check-row"><input type="checkbox" data-wizard-group-check value="' + esc(id) + '"' + checked + '><span><strong>' + esc(row.group_name || ('#' + id)) + '</strong><em>联系人 ' + esc(row.contact_count || 0) + ' / 可推广 ' + esc(row.promotable_contact_count || 0) + '</em></span><b class="promo-group-check-count">客户 ' + esc(row.customer_count || 0) + '</b></label>';
       }).join('') + '</div>';
     },
     userOptions: function (currentValue) {
