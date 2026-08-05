@@ -6,6 +6,7 @@
 - 参数保存到 `mc_products.snapshot_json.product_parameters`，不新增表、不修改旧 BOM、不回写旧产品适配业务。
 - 产品适配 V2 技术范围解析优先读取 `product_parameters`，让后续芯片、电源、光学适配可复用物料中心主数据。
 - 本地 `git diff --check` 通过；本机无 PHP，已将候选文件传至服务器 `/tmp` 并用服务器 PHP 完成语法检查。
+- 提交 `d797901a42ba5b961d1e3b45f9f599231a0f5392` 已推送 GitHub 并同步正式服务器；正式目录 PHP 语法通过，产品参数页 CLI 渲染无 Fatal。
 
 # Codex 十阶段连续执行日志
 

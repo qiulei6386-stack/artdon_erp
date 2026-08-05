@@ -1,6 +1,6 @@
 # Artdon ERP 工作上下文
 
-## 本次：物料中心新增产品参数功能（进行中）
+## 本次：物料中心新增产品参数功能（已上线）
 
 - 用户明确“这里才是物料中心，需在物料中心加入产品参数功能”。本次把产品功率、电流、电压、光学、尺寸、安装、电源方式和调光方式做成物料中心产品主数据能力，而不是继续放在产品适配 V2 工作台的临时逻辑里。
 - 新增 `material_center_v1/product_parameters.php`：左侧业务菜单增加“产品参数”，页面可搜索 `mc_products` 产品，显示图片、分类/系列、关键参数摘要、完整度和更新时间，并通过弹窗维护参数。
@@ -9,7 +9,10 @@
 - 修改 `material_center_v1/components/sidebar.php`：物料中心业务分组新增“产品参数”入口；产品适配入口仍指向 V2，不改物料中心主页。
 - 更新 `material_center_v1/docs/CODEX_EXECUTION_LOG.md` 记录实现边界、存储位置和测试情况。
 - 检查：本地 `git diff --check` 通过；本机无 PHP，已将候选文件传到服务器 `/tmp/artdon_product_params_candidate/` 并用服务器 PHP 完成 `product_parameters.php`、`product-parameters.php`、`foundation.php`、`sidebar.php` 语法检查，均通过。
-- 下一步：提交并推送 GitHub，再以同一提交快进同步正式服务器；同步后在正式目录复检 PHP 语法、页面 CLI 渲染和三端 HEAD 一致性。
+- Git / 部署：功能提交 `d797901a42ba5b961d1e3b45f9f599231a0f5392` 已推送 GitHub `main`，并以 Git bundle 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`。
+- 部署注意：服务器原先有一批 CRM/报价文件显示为脏，但只读比较确认其内容与目标提交完全一致；3 个同内容未跟踪测试文件先移动备份到 `/tmp/artdon_same_target_untracked_backup_20260805_160514`，随后快进部署成功，文件在目标提交中已成为正式跟踪文件。
+- 服务器复检：正式目录 `product_parameters.php`、`api/v1/product-parameters.php`、`adaptation_v2/lib/foundation.php`、`components/sidebar.php` PHP 语法通过；`product_parameters.php` CLI 渲染生成 171410 字节 HTML，页面包含“产品参数”7处。
+- 当前本地、GitHub、服务器 HEAD 一致为 `d797901a42ba5b961d1e3b45f9f599231a0f5392`；服务器仅剩历史备份目录未跟踪。
 - 注意：办公工作区仍有用户原有的商务中心未提交/未跟踪文件，本次不纳入提交、不覆盖。
 
 ## 本次：商务中心控制新加坡产品下架/重新上架（已上线）
