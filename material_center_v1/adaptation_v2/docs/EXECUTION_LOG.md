@@ -1025,6 +1025,7 @@
   - `material_center_v1/adaptation_v2/lib/foundation.php`
   - `material_center_v1/tests/adaptation_v2_logic_dialog_contract.php`
 - 新增合同测试 `adaptation_v2_logic_dialog_contract.php` 通过。
+- 正式服务器已同步提交 `2f1b6f08a42e94d72808b78746b6c66d473f08f4`；正式目录再次执行上述 PHP 语法检查和合同测试，均通过。
 
 ## 2026-08-01 单产品入口增加图片与图标/列表视图
 
