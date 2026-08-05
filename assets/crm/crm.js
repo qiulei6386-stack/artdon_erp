@@ -10462,7 +10462,7 @@
       var useBodyFrame = isDbsAdvice || isFullHtml;
       var bodyHtml = this.normalizeMailBodyLocalUrls(mail.body_html || '');
       var hasVisualImages = mailHtmlHasRenderableImages(bodyHtml);
-      var readableBody = isOfficeMail ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml && !hasVisualImages ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
+      var readableBody = isOfficeMail && !hasVisualImages ? officeMailReadableBody(mail) : (!isDbsAdvice && isFullHtml && !hasVisualImages ? mailPlainReadableBody(mail, '已使用邮件可读正文') : '');
       var body = mail.body_html
         ? (readableBody || (useBodyFrame ? '<iframe class="mail-body-frame" sandbox="allow-same-origin" scrolling="no" data-mail-body-frame srcdoc="' + esc(bodyHtml) + '"></iframe>' : bodyHtml))
         : (mail.body_text ? '<pre>' + esc(mail.body_text) + '</pre>' : '');
