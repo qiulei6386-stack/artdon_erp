@@ -2723,14 +2723,27 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             $bodyTemplate = trim((string)($row['queue_body_template'] ?? ''));
             $bodyHtml = $bodyTemplate !== '' ? crm_marketing_render_queue_template($bodyTemplate, $row, $account) : (string)$row['body'];
             if (trim($bodyHtml) === '') throw new RuntimeException('队列邮件正文为空');
-            $result = crm_mail_smtp_send($account, ['to_emails' => (string)$row['receiver_email'], 'subject' => (string)$row['subject'], 'body_html' => $bodyHtml], []);
-            db()->prepare('INSERT INTO crm_mails (user_id, mail_account_id, folder, subject, from_email, from_name, to_emails, sent_at, body_html, body_text, has_body, has_attachment, attachment_count, linked_customer_id, linked_contact_id, tags_json, raw_headers_json, created_at, updated_at)
-                VALUES (?, ?, "sent", ?, ?, ?, ?, NOW(), ?, ?, 1, 0, 0, ?, ?, ?, ?, NOW(), NOW())')
-                ->execute([(int)$account['user_id'], (int)$account['id'], (string)$row['subject'], (string)$account['email_address'], (string)($account['sender_name'] ?: $account['email_address']), (string)$row['receiver_email'], $bodyHtml, strip_tags($bodyHtml), (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, json_encode(['推广队列'], JSON_UNESCAPED_UNICODE), json_encode(['marketing_queue_id' => (int)$row['id'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
+            $prepared = crm_marketing_prepare_mail_inline_images($bodyHtml, $account);
+            $jobId = 'marketing_queue_' . (int)$row['id'] . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+            try {
+                $result = crm_mail_execute_send_job($account, [
+                    'to_emails' => (string)$row['receiver_email'],
+                    'subject' => (string)$row['subject'],
+                    'body_html' => (string)$prepared['body_html'],
+                    'customer_id' => (int)$row['customer_id'],
+                ], $prepared['attachments'], $jobId, (string)$prepared['body_original']);
+            } finally {
+                crm_mail_cleanup_generated_attachments($prepared['attachments']);
+            }
+            $sentMailId = (int)($result['sent_mail_id'] ?? 0);
+            if ($sentMailId > 0) {
+                db()->prepare('UPDATE crm_mails SET linked_contact_id = ?, tags_json = ?, raw_headers_json = ?, updated_at = NOW() WHERE id = ? AND user_id = ?')
+                    ->execute([(int)($row['contact_id'] ?? 0) ?: null, json_encode(['推广队列', 'CRM发送'], JSON_UNESCAPED_UNICODE), json_encode(['marketing_queue_id' => (int)$row['id'], 'smtp_response' => $result['smtp_response'] ?? '', 'inline_image_count' => (int)($result['store_result']['inline'] ?? 0)], JSON_UNESCAPED_UNICODE), $sentMailId, (int)$account['user_id']]);
+            }
             db()->prepare("UPDATE crm_marketing_send_queue SET send_status='sent', last_error=NULL, sent_at=NOW(), updated_at=NOW() WHERE id=?")->execute([(int)$row['id']]);
             crm_marketing_update_target_from_queue($row, 'success', '');
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_send", "success", "", ?, ?, NOW(), NOW())')
-                ->execute([(int)$row['task_id'], (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, (int)$row['sender_user_id'], json_encode(['queue_id' => (int)$row['id'], 'sender_email' => $row['sender_email'], 'receiver_email' => $row['receiver_email'], 'smtp_response' => $result['response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
+                ->execute([(int)$row['task_id'], (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, (int)$row['sender_user_id'], json_encode(['queue_id' => (int)$row['id'], 'sent_mail_id' => $sentMailId, 'sender_email' => $row['sender_email'], 'receiver_email' => $row['receiver_email'], 'inline_image_count' => (int)($result['store_result']['inline'] ?? 0), 'smtp_response' => $result['smtp_response'] ?? ''], JSON_UNESCAPED_UNICODE)]);
             $sent++;
         } catch (Throwable $e) {
             $next = ((int)$row['send_attempts'] + 1) < (int)$row['max_attempts'] ? 'waiting_retry' : 'failed';
@@ -3165,6 +3178,20 @@ function crm_marketing_log_touch(array $input): array
     return ['logs' => crm_marketing_logs(), 'analytics' => crm_can('promotion.analytics') ? crm_marketing_analytics() : ['status' => [], 'channels' => [], 'countries' => [], 'tasks' => []]];
 }
 
+function crm_marketing_prepare_mail_inline_images(string $bodyHtml, array $account): array
+{
+    $bodyOriginal = $bodyHtml;
+    $embeddedInlineResult = crm_mail_extract_embedded_attachment_images($bodyHtml, $account);
+    $bodyHtml = (string)($embeddedInlineResult['html'] ?? $bodyHtml);
+    $inlineResult = crm_mail_extract_inline_data_attachments($bodyHtml);
+    $bodyHtml = (string)($inlineResult['html'] ?? $bodyHtml);
+    return [
+        'body_html' => $bodyHtml,
+        'body_original' => $bodyOriginal,
+        'attachments' => array_merge($embeddedInlineResult['attachments'] ?? [], $inlineResult['attachments'] ?? []),
+    ];
+}
+
 function crm_marketing_test_send(array $input): array
 {
     crm_marketing_ensure_tables();
@@ -3198,12 +3225,20 @@ function crm_marketing_test_send(array $input): array
     if (!$account) $account = crm_mail_current_account(true);
     if (!$account) throw new RuntimeException('请先绑定可用发件邮箱。');
 
+    $bodyHtml = '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;">这是一封推广任务预览测试邮件，仅用于检查客户变量、称呼和正文显示，不会写入正式推广执行结果。</div>' . crm_mail_render_signature_variables($body, $account);
+    $prepared = crm_marketing_prepare_mail_inline_images($bodyHtml, $account);
     $sendInput = [
         'to_emails' => $testEmail,
         'subject' => '[推广测试] ' . $subject,
-        'body_html' => '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;">这是一封推广任务预览测试邮件，仅用于检查客户变量、称呼和正文显示，不会写入正式推广执行结果。</div>' . crm_mail_render_signature_variables($body, $account),
+        'body_html' => (string)$prepared['body_html'],
+        'customer_id' => (int)($input['customer_id'] ?? 0) ?: 0,
     ];
-    $sendResult = crm_mail_smtp_send($account, $sendInput, []);
+    $jobId = 'promo_test_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
+    try {
+        $sendResult = crm_mail_execute_send_job($account, $sendInput, $prepared['attachments'], $jobId, (string)$prepared['body_original']);
+    } finally {
+        crm_mail_cleanup_generated_attachments($prepared['attachments']);
+    }
 
     $detail = [
         'test_email' => $testEmail,
@@ -3215,7 +3250,9 @@ function crm_marketing_test_send(array $input): array
         'target_email' => (string)($input['target_email'] ?? ''),
         'mail_account_id' => (int)$account['id'],
         'send_email' => (string)$account['email_address'],
-        'smtp_response' => (string)($sendResult['response'] ?? ''),
+        'sent_mail_id' => (int)($sendResult['sent_mail_id'] ?? 0),
+        'inline_image_count' => (int)($sendResult['store_result']['inline'] ?? 0),
+        'smtp_response' => (string)($sendResult['smtp_response'] ?? ''),
     ];
     db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "test_send", "success", "", ?, ?, NOW(), NOW())')
         ->execute([(int)($input['task_id'] ?? 0) ?: null, $detail['customer_id'], $detail['contact_id'], current_user()['id'] ?? null, json_encode($detail, JSON_UNESCAPED_UNICODE)]);
@@ -3225,7 +3262,7 @@ function crm_marketing_test_send(array $input): array
         'sent_to' => $testEmail,
         'send_email' => (string)$account['email_address'],
         'customer_name' => $detail['customer_name'],
-        'response' => (string)($sendResult['response'] ?? ''),
+        'response' => (string)($sendResult['smtp_response'] ?? ''),
         'logs' => crm_marketing_logs(['task_id' => (int)($input['task_id'] ?? 0)]),
     ];
 }
