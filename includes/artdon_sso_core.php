@@ -643,6 +643,10 @@ function artdon_sso_user_has_permission(array $user, string $permission): bool
 
 function artdon_perm_module_has_explicit(int $userId, string $module): bool
 {
+    if ($module === 'plm') {
+        artdon_plm_ensure_permissions();
+        return (bool)artdon_sso_user_by_id($userId);
+    }
     if ($module === 'bom') {
         artdon_bom_ensure_permissions();
         return (bool)artdon_sso_user_by_id($userId);
@@ -723,6 +727,44 @@ function artdon_perm_effective_feature_map(int $userId, string $module, ?array $
             'view_logs' => $admin,
             'manage_settings' => $admin,
             'manage_permissions' => $admin,
+        ];
+    }
+    if ($module === 'plm') {
+        artdon_plm_ensure_permissions();
+        $perm = static function (string $key) use ($user): bool {
+            return artdon_sso_user_has_permission($user, $key);
+        };
+        $view = $perm('plm.view');
+        $create = $perm('plm.create');
+        $edit = $perm('plm.edit');
+        $delete = $perm('plm.delete');
+        $export = $perm('plm.export');
+        $admin = $perm('plm.admin');
+        return [
+            'view_project' => $view,
+            'new_project' => $create,
+            'edit_project' => $edit,
+            'delete_project' => $delete,
+            'new_model' => $create,
+            'edit_model' => $edit,
+            'delete_model' => $delete,
+            'edit_flow' => $edit,
+            'view_dashboard' => $view,
+            'view_logs' => $admin,
+            'view_recycle' => $admin,
+            'restore_recycle' => $admin,
+            'manage_permissions' => $admin,
+            'view_bom_cost' => $view,
+            'create_bom' => $create || $edit,
+            'edit_test' => $edit,
+            'delete_test' => $delete,
+            'edit_issue' => $edit,
+            'delete_issue' => $delete,
+            'upload_file' => $edit,
+            'delete_file' => $delete,
+            'create_dispatch' => $create || $edit,
+            'view_dispatch_progress' => $view,
+            'export_package' => $export,
         ];
     }
     if ($module !== 'quote') {

@@ -55,6 +55,12 @@ foreach (['full_match','conditional_match','approval_required','incompatible'] a
     pa6_assert_true(str_contains($foundation, $status), "Engine emits {$status}");
     pa6_assert_true(str_contains($index, $status) || str_contains($index, ['full_match'=>'完全适配','conditional_match'=>'条件适配','approval_required'=>'需要审批','incompatible'=>'不适配'][$status]), "UI displays {$status}");
 }
+pa6_assert_true(str_contains($foundation, 'array_key_exists(\'power_max_w\', $logic)'), 'Power matching uses explicit group logic instead of product power fallback');
+pa6_assert_true(str_contains($foundation, '电源最大输出 {$maxPower}W 高于配置逻辑上限 {$logicMax}W'), 'Driver power blocks only when material output exceeds configured logic max');
+pa6_assert_true(str_contains($foundation, '芯片额定/最大 {$chipMax}W 高于配置逻辑上限 {$productPower}W'), 'Chip power blocks only when material max exceeds configured logic max');
+pa6_assert_true(str_contains($foundation, '未按产品功率自动拦截'), 'Engine explicitly avoids automatic product-power blocking when logic is empty');
+pa6_assert_true(!str_contains($foundation, '产品最大功率 {$productMax}W 高于电源可输出 {$maxPower}W。'), 'Old inverted driver product-power rule is removed');
+pa6_assert_true(!str_contains($foundation, '芯片额定/最大 {$chipMax}W 高于产品最高功率 {$productPower}W。'), 'Old chip product-power reason is removed');
 foreach (['match_score','reason_json','conflict_fields_json','rule_trace_json','calculated_hash'] as $field) {
     pa6_assert_true(str_contains($migration . $foundation, $field), "Engine persists {$field}");
 }
@@ -62,9 +68,9 @@ foreach (['match_score','reason_json','conflict_fields_json','rule_trace_json','
 foreach (['workspace_recalculate','adaptation_results','material_candidates'] as $action) {
     pa6_assert_true(str_contains($api, $action), "API supports {$action}");
 }
-pa6_assert_true(str_contains($api, "'phase' => 6"), 'API status declares phase 6');
+pa6_assert_true((bool)preg_match('/[\'"]phase[\'"]\s*=>\s*(?:6|[1-9][0-9]+)/', $api), 'API status declares phase 6 or later');
 
-pa6_assert_true(str_contains($index, 'data-phase="6"'), 'V2 index declares phase 6');
+pa6_assert_true((bool)preg_match('/data-phase="(?:6|[1-9][0-9]+)"/', $index), 'V2 index declares phase 6 or later');
 pa6_assert_true(str_contains($index, 'pa2-engine-summary') && str_contains($index, '重新计算'), 'Workspace exposes recalculation summary and action');
 pa6_assert_true(str_contains($index, 'statusLabel') && str_contains($index, 'statusClass'), 'Candidate dialog maps engine status to Chinese labels and badges');
 pa6_assert_true(str_contains($index, "url.searchParams.set('product_id'") && str_contains($index, "url.searchParams.set('product_group_config_id'"), 'Candidate dialog requests context-aware fit results');

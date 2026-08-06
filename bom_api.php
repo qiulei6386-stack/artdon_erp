@@ -94,6 +94,97 @@ function bom_material_norm_compact($v){
     $v = preg_replace('/[^\p{L}\p{N}]+/u', '', $v);
     return $v ?: '';
 }
+function bom_quote_cost_norm_model($v){
+    $v = strtoupper(trim((string)($v ?? '')));
+    $v = preg_replace('/\s+/u', '', $v);
+    $v = preg_replace('/[^A-Z0-9\.\-_]+/u', '', $v);
+    return (string)$v;
+}
+function bom_quote_cost_from_project_row(array $project): float{
+    $sum = 0.0;
+    $rows = array();
+    $raw = $project['rows_json'] ?? '';
+    if(is_string($raw) && trim($raw) !== ''){
+        $decoded = json_decode($raw, true);
+        if(is_array($decoded)) $rows = $decoded;
+    }
+    foreach($rows as $row){
+        if(!is_array($row)) continue;
+        $qty = bom_num_zero($row['qty'] ?? ($row['quantity'] ?? ($row['num'] ?? 0)));
+        $price = bom_num_zero($row['price'] ?? ($row['unit_price'] ?? ($row['unitCost'] ?? ($row['unit_cost'] ?? 0))));
+        $process = bom_num_zero($row['process'] ?? ($row['process_cost'] ?? 0));
+        $finish1 = bom_num_zero($row['finishCost'] ?? ($row['finish_cost'] ?? ($row['surface_cost'] ?? 0)));
+        $finish2 = bom_num_zero($row['finishCost2'] ?? ($row['finish_cost2'] ?? ($row['surface_cost2'] ?? 0)));
+        $sum += $qty * ($price + $process + $finish1 + $finish2);
+    }
+    $sum += bom_num_zero($project['labor'] ?? 0) + bom_num_zero($project['other'] ?? 0);
+    return round($sum, 4);
+}
+function bom_quote_estimated_sale_rmb(PDO $pdo, array $policy, float $cost): float{
+    if($cost <= 0) return 0.0;
+    $multiplier = 0.0;
+    $levelId = (int)($policy['level_id'] ?? 0);
+    if($levelId > 0 && table_exists($pdo, 'quote_price_policy_levels')){
+        $st = $pdo->prepare('SELECT base_multiplier FROM quote_price_policy_levels WHERE id=? LIMIT 1');
+        $st->execute(array($levelId));
+        $multiplier = bom_num_zero($st->fetchColumn());
+    }
+    if($multiplier <= 0 && table_exists($pdo, 'quote_price_policy_levels')){
+        $row = $pdo->query("SELECT base_multiplier FROM quote_price_policy_levels WHERE is_default=1 AND is_active=1 ORDER BY sort_order,id LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $multiplier = bom_num_zero(is_array($row) ? ($row['base_multiplier'] ?? 0) : 0);
+    }
+    if($multiplier <= 0) $multiplier = 1.35;
+    return round($cost * $multiplier, 4);
+}
+function bom_sync_quote_cost_snapshot(PDO $pdo, $projectUid, $actor = 'system'){
+    if(!table_exists($pdo, 'bom_projects') || !table_exists($pdo, 'quote_price_policies')) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_table');
+    $needed = array('bom_cost_rmb','estimated_sale_price_rmb','bom_cost_source','bom_match_key','bom_cost_updated_at');
+    foreach($needed as $col){ if(!hascol($pdo, 'quote_price_policies', $col)) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_quote_columns'); }
+    $st = $pdo->prepare('SELECT * FROM bom_projects WHERE project_uid=? LIMIT 1');
+    $st->execute(array((string)$projectUid));
+    $project = $st->fetch(PDO::FETCH_ASSOC);
+    if(!$project) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_project');
+    if(hascol($pdo, 'bom_projects', 'is_active') && isset($project['is_active']) && (int)$project['is_active'] !== 1) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'inactive_project');
+    $model = trim((string)($project['model'] ?? ''));
+    $modelKey = bom_quote_cost_norm_model($model);
+    $linkedSystem = strtoupper(trim((string)($project['linked_system'] ?? '')));
+    $linkedId = trim((string)($project['linked_id'] ?? ''));
+    if($modelKey === '' && $linkedId === '') return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_match_key');
+    $cost = bom_quote_cost_from_project_row($project);
+    $where = array();
+    $args = array();
+    if($linkedId !== '' && (strpos($linkedSystem, 'NAMING') !== false || strpos($linkedSystem, '命名') !== false)){
+        $where[] = "TRIM(COALESCE(naming_id,''))=?";
+        $args[] = $linkedId;
+    }
+    if($modelKey !== ''){
+        $where[] = "UPPER(REPLACE(COALESCE(product_model,''),' ',''))=?";
+        $args[] = $modelKey;
+    }
+    if(!$where) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'no_policy_where');
+    $policies = array();
+    $stmt = $pdo->prepare('SELECT * FROM quote_price_policies WHERE '.implode(' OR ', $where));
+    $stmt->execute($args);
+    $policies = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if(!$policies) return array('matched'=>0,'updated'=>0,'skipped'=>0,'reason'=>'no_policy_match','cost_rmb'=>$cost);
+    $update = $pdo->prepare('UPDATE quote_price_policies SET bom_cost_rmb=?,estimated_sale_price_rmb=?,bom_cost_source=?,bom_match_key=?,bom_cost_updated_at=?,updated_by=?,updated_at=NOW() WHERE id=?');
+    $updated = 0;
+    foreach($policies as $policy){
+        $policySource = strtolower(trim((string)($policy['product_source'] ?? '')));
+        $policyNamingId = trim((string)($policy['naming_id'] ?? ''));
+        $matchKey = ($policySource === 'naming' && $linkedId !== '' && $policyNamingId === $linkedId) ? 'NID'.$linkedId : ($modelKey ?: ('NID'.$linkedId));
+        $estimated = bom_quote_estimated_sale_rmb($pdo, $policy, $cost);
+        $changed = abs(bom_num_zero($policy['bom_cost_rmb'] ?? 0) - $cost) > 0.0001
+            || abs(bom_num_zero($policy['estimated_sale_price_rmb'] ?? 0) - $estimated) > 0.0001
+            || (string)($policy['bom_cost_source'] ?? '') !== 'bom_projects.precise'
+            || (string)($policy['bom_match_key'] ?? '') !== $matchKey
+            || (string)($policy['bom_cost_updated_at'] ?? '') !== (string)($project['updated_at'] ?? '');
+        if(!$changed) continue;
+        $update->execute(array($cost, $estimated, 'bom_projects.precise', $matchKey, (string)($project['updated_at'] ?? ''), (string)$actor, (int)$policy['id']));
+        $updated++;
+    }
+    return array('matched'=>count($policies),'updated'=>$updated,'skipped'=>0,'cost_rmb'=>$cost,'model'=>$model,'model_key'=>$modelKey,'linked_id'=>$linkedId);
+}
 function bom_material_select_cols(PDO $pdo){
     $wanted = array('id','category','brand','name','model','spec','price','unit','supplier','keyword','image','created_at','updated_at');
     $cols = array();
@@ -1036,7 +1127,8 @@ function bom_v68_create_project_from_naming(PDO $pdo, array $user, array $d){
         $pdo->prepare("UPDATE bom_projects SET naming_snapshot_json=?,naming_sync_hash=?,naming_synced_at=NOW(),naming_source_updated_at=? WHERE project_uid=?")
             ->execute(array(json_encode($snap,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),bom_v78_naming_hash($snap),$snap['updated_at']??null,$projectUid));
     }
-    return array('project_uid'=>$projectUid,'model'=>$m,'rows'=>$rows);
+    $quoteSync = bom_sync_quote_cost_snapshot($pdo, $projectUid, $who);
+    return array('project_uid'=>$projectUid,'model'=>$m,'rows'=>$rows,'quote_cost_sync'=>$quoteSync);
 }
 
 function bom_v771_bind_project_to_naming(PDO $pdo, array $user, array $d){
@@ -1090,7 +1182,8 @@ function bom_v771_bind_project_to_naming(PDO $pdo, array $user, array $d){
         $uid
     ));
 
-    return array('project_uid'=>$uid,'model'=>$m);
+    $quoteSync = bom_sync_quote_cost_snapshot($pdo, $uid, $who);
+    return array('project_uid'=>$uid,'model'=>$m,'quote_cost_sync'=>$quoteSync);
 }
 
 function bom_v771_unbind_project_from_naming(PDO $pdo, array $user, array $d){
@@ -1177,7 +1270,8 @@ function bom_v78_naming_sync_apply(PDO $pdo,array $user,array $p){
     $sql="UPDATE bom_projects SET name=?, customer=CASE WHEN ?<>'' THEN ? ELSE customer END, model=?, product_type=?, product_image=CASE WHEN ?<>'' THEN ? ELSE product_image END, linked_system='NAMING', linked_id=?, linked_title=?, linked_json=?, naming_snapshot_json=?, naming_sync_hash=?, naming_synced_at=NOW(), naming_source_updated_at=?, updated_by=?, updated_at=NOW() WHERE project_uid=?";
     $pdo->prepare($sql)->execute(array($setName,(string)($snap['customer']??''),(string)($snap['customer']??''),$modelNo,$ptype,$img,$img,(string)$nid,$modelNo,json_encode($m,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),json_encode($snap,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),bom_v78_naming_hash($snap),($snap['updated_at']??null),$who,(string)$p['project_uid']));
     bom_v78_log_sync($pdo,(string)$p['project_uid'],$nid,'sync_basic',$diffs,$who);
-    return array('ok'=>true,'project_uid'=>(string)$p['project_uid'],'model'=>$m,'diffs'=>$diffs,'message'=>'已同步命名基础资料；BOM 物料、成本、价格没有改动');
+    $quoteSync = bom_sync_quote_cost_snapshot($pdo, (string)$p['project_uid'], $who);
+    return array('ok'=>true,'project_uid'=>(string)$p['project_uid'],'model'=>$m,'diffs'=>$diffs,'quote_cost_sync'=>$quoteSync,'message'=>'已同步命名基础资料；BOM 物料和成本明细没有改动，报价成本快照已按当前 BOM 刷新');
 }
 /* ARTDON_BOM_V78_NAMING_SYNC_END */
 
@@ -1384,7 +1478,8 @@ try{
             $d['product_image']??'', $d['labor']??0, $d['other']??0, $d['profit_rate']??30, $d['quote_mode']??'markup',
             $d['exchange_rate']??1, $d['note']??'', $rows, $createdBy, $who
         ));
-        json_out(array('ok'=>true,'project_uid'=>$uid));
+        $quoteSync = bom_sync_quote_cost_snapshot($pdo, $uid, $who);
+        json_out(array('ok'=>true,'project_uid'=>$uid,'quote_cost_sync'=>$quoteSync));
     }
 
     if($action === 'delete_project'){

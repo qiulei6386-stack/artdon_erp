@@ -78,6 +78,7 @@ function permission_alias_keys(string $permission): array
         'promotion.create_group' => ['promotion.view'],
         'promotion.edit_group' => ['promotion.view'],
         'promotion.move_customer' => ['promotion.view'],
+        'plm.delete_file' => ['plm.delete'],
         'customer.mail_summary' => ['customer.view'],
         'customer.quote_summary' => ['customer.view'],
         'customer.plm_summary' => ['customer.view'],

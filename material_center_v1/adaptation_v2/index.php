@@ -208,7 +208,7 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
-.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected span{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;position:sticky;bottom:10px;box-shadow:0 12px 32px rgba(16,24,40,.08)}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
+.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card.is-blocked{border-color:#fecdca;background:#fff7f5}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center;background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-selected-row small{grid-column:1/-1;color:#667085;line-height:1.45}.pa2-selected-main{min-width:0;overflow-wrap:anywhere}.pa2-selected-empty{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;box-shadow:none}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
 .pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(960px,94vw)}.pa2-dialog--logic[data-logic-kind="chip"] .pa2-dialog__head{background:linear-gradient(135deg,#eef4ff,#fff)}.pa2-dialog--logic[data-logic-kind="driver"] .pa2-dialog__head{background:linear-gradient(135deg,#fff7ed,#fff)}.pa2-dialog--logic[data-logic-kind="optical"] .pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#fff)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}.pa2-logic-section small{display:block;color:var(--pa2-muted);font-weight:600;margin-top:3px}.pa2-logic-zone.is-hidden,[data-logic-zone].is-hidden{display:none!important}.pa2-logic-type-chip{background:#eef4ff;color:#1d4ed8}.pa2-logic-type-driver{background:#fff7ed;color:#c2410c}.pa2-logic-type-optical{background:#f0fdfa;color:#0b7773}.pa2-logic-help{grid-column:1/-1;border:1px solid #e6edf5;background:#fbfdff;border-radius:12px;padding:10px;color:#667085}
 .pa2-product-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.pa2-view-switch{display:flex;gap:8px;align-items:center}.pa2-view-switch a{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--pa2-border);background:#fff;border-radius:12px;padding:8px 11px;text-decoration:none;color:#344054;font-weight:800}.pa2-view-switch a.is-active{background:#e6fffb;border-color:#9dd8d6;color:#0b7773}.pa2-product-grid-select{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.pa2-product-tile{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;align-items:center;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:12px;box-shadow:0 10px 26px rgba(16,24,40,.04);min-height:122px}.pa2-product-tile:hover{border-color:#9dd8d6;box-shadow:0 16px 38px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-product-thumb{width:92px;height:92px;border:1px solid #e6edf5;border-radius:16px;background:linear-gradient(135deg,#f8fafc,#eef4ff);display:grid;place-items:center;overflow:hidden;color:#94a3b8;font-size:28px;font-weight:900;position:relative}.pa2-product-thumb img{width:100%;height:100%;object-fit:contain;background:#fff}.pa2-product-thumb span{position:absolute;inset:0;display:grid;place-items:center}.pa2-product-thumb:has(img) span{display:none}.pa2-product-thumb.is-broken span{display:grid}.pa2-product-info{min-width:0}.pa2-product-info strong{display:block;font-size:15px;color:#122033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-product-info p{margin:4px 0 8px;color:#344054;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pa2-product-meta{display:flex;gap:6px;flex-wrap:wrap}.pa2-product-meta span{border-radius:999px;background:#f2f4f7;color:#667085;padding:4px 8px;font-size:12px}.pa2-product-meta .is-mapped{background:#ecfdf3;color:#067647}.pa2-table-product{display:flex;gap:10px;align-items:center}.pa2-table-product .pa2-product-thumb{width:56px;height:56px;border-radius:12px;font-size:18px;flex:0 0 auto}.pa2-table-product strong{display:block}.pa2-table-product span{color:#667085}
@@ -946,6 +946,7 @@ include MC_ROOT . '/components/layout_top.php';
                     }
                 }
                 $wpSummary = $workspace['check_summary'] ?? ['missing_required'=>0,'completed_required'=>0,'required_total'=>0];
+                $wpTechnicalRange = pa2_extract_product_technical_range($wpProduct);
                 $wpEngineSummary = $wpSummary['engine'] ?? ['candidate_total'=>0,'full_match'=>0,'conditional_match'=>0,'approval_required'=>0,'incompatible'=>0,'average_score'=>0,'last_calculated_at'=>null];
                 $wpLifecycle = $workspaceProductId > 0 ? pa2_product_versions($workspaceProductId) : ['versions'=>[],'events'=>[]];
                 $wpVersionStatus = (string)($wpVersion['status'] ?? '');
@@ -957,6 +958,11 @@ include MC_ROOT . '/components/layout_top.php';
                     'rejected' => '已驳回',
                     'published' => '已发布',
                 ][$wpVersionStatus] ?? ($wpVersionStatus ?: '未生成');
+                $wpHasLockedActiveDraft = $wpConfig && !empty($wpConfig['active_draft_version_id']) && !$wpCanEditVersion;
+                $wpCanGenerateNextDraft = $canConfigureProduct && $wpConfig && (
+                    $wpHasLockedActiveDraft ||
+                    (empty($wpConfig['active_draft_version_id']) && !empty($wpConfig['active_published_version_id']))
+                );
             ?>
             <section class="pa2-workspace">
                 <div class="pa2-product-hero">
@@ -975,7 +981,7 @@ include MC_ROOT . '/components/layout_top.php';
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
                         <?php else: ?>
                             <span class="pa2-pill pa2-pill--ok"><?=mc_h($wpVersionLabel)?></span>
-                            <?php if (($wpConfig['active_draft_version_id'] ?? null) === null && !empty($wpConfig['active_published_version_id'])): ?>
+                            <?php if ($wpCanGenerateNextDraft): ?>
                                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成下一版草稿</button></form>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -1051,6 +1057,17 @@ include MC_ROOT . '/components/layout_top.php';
                             $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
                             $selected = $g['selected_options'] ?? [];
                             $selectedMaterialIds = array_values(array_filter(array_map(static fn($s) => (int)($s['material_id'] ?? 0), $selected)));
+                            $selectedLogicMaterials = [];
+                            foreach ($selected as $selectedRow) {
+                                if ((int)($selectedRow['material_id'] ?? 0) <= 0) continue;
+                                $selectedLogicMaterials[] = [
+                                    'id' => (int)$selectedRow['material_id'],
+                                    'material_code' => (string)($selectedRow['material_code'] ?? ''),
+                                    'material_name' => (string)($selectedRow['material_name'] ?? ''),
+                                    'brand' => (string)($selectedRow['brand'] ?? ''),
+                                    'model' => (string)($selectedRow['model'] ?? ''),
+                                ];
+                            }
                             $selectionMode = (string)($settings['selection_mode'] ?? 'single');
                             $maxSelect = (int)($settings['max_select'] ?? 1);
                             $materialPickerMax = $maxSelect > 1 ? $maxSelect : 99;
@@ -1086,24 +1103,54 @@ include MC_ROOT . '/components/layout_top.php';
                             $selectionKind = (string)($g['selection_kind'] ?? '');
                             $definition = $groupsById[(int)$g['group_definition_id']] ?? null;
                             $groupResults = $g['adaptation_results'] ?? [];
-                            $primaryResult = $groupResults[0] ?? null;
-                            if (!$primaryResult && !empty($selected[0]['adaptation_result'])) $primaryResult = $selected[0]['adaptation_result'];
+                            $pa2ResultRank = ['full_match' => 1, 'conditional_match' => 2, 'approval_required' => 3, 'incompatible' => 4];
+                            $primaryResult = null;
+                            foreach ($selected as $selectedRow) {
+                                if (empty($selectedRow['adaptation_result']) || !is_array($selectedRow['adaptation_result'])) continue;
+                                $candidateResult = $selectedRow['adaptation_result'];
+                                $candidateStatus = (string)($candidateResult['result_status'] ?? 'conditional_match');
+                                $currentStatus = (string)($primaryResult['result_status'] ?? 'full_match');
+                                if (!$primaryResult || (($pa2ResultRank[$candidateStatus] ?? 2) > ($pa2ResultRank[$currentStatus] ?? 2))) {
+                                    $primaryResult = $candidateResult;
+                                }
+                            }
+                            if (!$primaryResult) {
+                                foreach ($groupResults as $candidateResult) {
+                                    $candidateStatus = (string)($candidateResult['result_status'] ?? 'conditional_match');
+                                    $currentStatus = (string)($primaryResult['result_status'] ?? 'full_match');
+                                    if (!$primaryResult || (($pa2ResultRank[$candidateStatus] ?? 2) > ($pa2ResultRank[$currentStatus] ?? 2))) {
+                                        $primaryResult = $candidateResult;
+                                    }
+                                }
+                            }
                             $status = (string)($primaryResult['result_status'] ?? '');
                             $statusLabel = $status !== '' ? ($pa2ResultLabels[$status] ?? $status) : '待计算';
                             $statusClass = $pa2ResultBadge[$status] ?? '';
                             $score = $primaryResult ? (float)($primaryResult['match_score'] ?? 0) : null;
                             $reasons = $primaryResult['reasons'] ?? [];
                         ?>
-                        <article class="pa2-config-card <?=$done?'is-done':($required?'is-missing':'')?>">
+                        <article class="pa2-config-card <?=$status === 'incompatible' ? 'is-blocked' : ($done?'is-done':($required?'is-missing':''))?>">
                             <div class="pa2-config-card__head">
                                 <div><strong><?=mc_h($g['icon'] ? $g['icon'].' ' : '')?><?=mc_h($g['display_name'])?></strong><br><small class="pa2-muted"><?=mc_h($g['group_code'])?> · <?=mc_h($selectionKind ?: $g['definition_type'])?> · <?=mc_h($required?'必选':'可选')?><?= $selectedMaterialIds ? ' · 已选 '.count($selectedMaterialIds).' 个' : '' ?></small></div>
                                 <span class="pa2-badge <?=$statusClass ?: ($done?'pa2-badge--add':($required?'pa2-badge--override':''))?>"><?=mc_h($primaryResult ? $statusLabel : ($done?'待计算':($required?'待补充':'可选')))?></span>
                             </div>
                             <div class="pa2-selected">
                                 <?php if ($selected): foreach ($selected as $s): ?>
-                                    <span><?=mc_h($s['material_code'] ?: $s['option_name'] ?: $s['numeric_value'] ?: $s['text_value'] ?: (($s['boolean_value'] ?? null) === null ? '已选择' : ((int)$s['boolean_value'] ? '是' : '否')))?> <?=mc_h($s['material_name'] ? ' · '.$s['material_name'] : '')?></span>
+                                    <?php
+                                        $selectedResult = isset($s['adaptation_result']) && is_array($s['adaptation_result']) ? $s['adaptation_result'] : null;
+                                        $selectedStatus = (string)($selectedResult['result_status'] ?? '');
+                                        $selectedStatusLabel = $selectedStatus !== '' ? ($pa2ResultLabels[$selectedStatus] ?? $selectedStatus) : '';
+                                        $selectedStatusClass = $pa2ResultBadge[$selectedStatus] ?? '';
+                                        $selectedReasons = $selectedResult['reasons'] ?? [];
+                                        $selectedScore = $selectedResult ? (float)($selectedResult['match_score'] ?? 0) : null;
+                                    ?>
+                                    <div class="pa2-selected-row">
+                                        <span class="pa2-selected-main"><?=mc_h($s['material_code'] ?: $s['option_name'] ?: $s['numeric_value'] ?: $s['text_value'] ?: (($s['boolean_value'] ?? null) === null ? '已选择' : ((int)$s['boolean_value'] ? '是' : '否')))?> <?=mc_h($s['material_name'] ? ' · '.$s['material_name'] : '')?></span>
+                                        <?php if ($selectedResult): ?><span class="pa2-badge <?=mc_h($selectedStatusClass)?>"><?=mc_h($selectedStatusLabel)?><?= $selectedScore !== null ? ' '.mc_h((string)$selectedScore).'%' : '' ?></span><?php endif; ?>
+                                        <?php if ($selectedReasons): ?><small><?=mc_h((string)$selectedReasons[0])?></small><?php endif; ?>
+                                    </div>
                                 <?php endforeach; else: ?>
-                                    <span class="pa2-muted">未选择，普通配置可以缺什么补什么。</span>
+                                    <span class="pa2-muted pa2-selected-empty">未选择，普通配置可以缺什么补什么。</span>
                                 <?php endif; ?>
                             </div>
                             <div class="pa2-result-note">
@@ -1118,10 +1165,10 @@ include MC_ROOT . '/components/layout_top.php';
                                 <div class="pa2-logic-tags"><?php foreach ($logicTags as $tag): ?><span><?=mc_h($tag)?></span><?php endforeach; ?></div>
                             <?php endif; ?>
                             <?php if (!$wpCanEditVersion): ?>
-                                <span class="pa2-muted">当前版本已锁定，如需修改请生成下一版草稿。</span>
+                                <span class="pa2-muted">当前版本已锁定，请先点击“生成下一版草稿”后再选择物料。</span>
                             <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
                                 <div class="pa2-card-actions">
-                                    <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>" data-template-logic="<?=mc_h(pa2_json_encode($templateLogic))?>" data-logic-source="<?=mc_h($logicSource)?>">设置逻辑</button>
+                                    <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>" data-template-logic="<?=mc_h(pa2_json_encode($templateLogic))?>" data-product-technical="<?=mc_h(pa2_json_encode($wpTechnicalRange))?>" data-selected-materials="<?=mc_h(pa2_json_encode($selectedLogicMaterials))?>" data-logic-source="<?=mc_h($logicSource)?>">设置逻辑</button>
                                     <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
                                 </div>
                             <?php elseif (($definition['options'] ?? [])): ?>
@@ -1244,7 +1291,11 @@ include MC_ROOT . '/components/layout_top.php';
                         </div>
                         <div class="pa2-template-actions">
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_recalculate'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><input type="hidden" name="reason" value="workspace_button"><button class="mc-button" type="submit">重新计算</button></form>
-                            <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>$workspaceProductId]))?>">保存草稿</a>
+                            <?php if ($wpCanEditVersion): ?>
+                                <a class="mc-button mc-button--primary" href="<?=mc_h(pa2_view_url('workspace', ['product_id'=>$workspaceProductId]))?>">保存草稿</a>
+                            <?php elseif ($wpCanGenerateNextDraft): ?>
+                                <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成下一版草稿</button></form>
+                            <?php endif; ?>
                             <?php if (in_array($wpVersionStatus, ['draft','rejected'], true)): ?>
                                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_submit'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">提交审批</button></form>
                             <?php elseif ($wpVersionStatus === 'submitted' && $canApproveProduct): ?>
@@ -1319,8 +1370,8 @@ include MC_ROOT . '/components/layout_top.php';
 
                             <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="driver">电源 / 驱动逻辑<small>用于判断内置、外置、INTRACK 电源及输出范围；调光方式只在这里设置。</small></div>
                             <label data-logic-zone="driver"><span>电源类型</span><select name="driver_type"><option value="">不限定</option><option value="external">只要外置电源</option><option value="internal">只要内置电源</option><option value="intrack">只要 INTRACK 电源</option></select></label>
-                            <label data-logic-zone="driver"><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
-                            <label data-logic-zone="driver"><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
+                            <label data-logic-zone="chip driver"><span>功率下限 W</span><input type="number" step="0.01" min="0" name="power_min_w"></label>
+                            <label data-logic-zone="chip driver"><span>功率上限 W</span><input type="number" step="0.01" min="0" name="power_max_w"></label>
                             <label data-logic-zone="driver"><span>调光方式</span><input name="dimming_mode" placeholder="例如 DALI / 0-10V / Triac / 非调光"></label>
 
                             <div class="pa2-logic-section pa2-logic-zone" data-logic-zone="chip driver">电气范围<small id="pa2-electric-help">电源时表示输出范围；芯片时表示芯片工作电流/电压要求。</small></div>
@@ -1941,6 +1992,68 @@ function pa2ParseJson(raw, fallback={}){
   function value(obj,key,def=''){
     return obj&&Object.prototype.hasOwnProperty.call(obj,key)?obj[key]:def;
   }
+  function logicHasValues(obj){
+    if(!obj||typeof obj!=='object') return false;
+    return Object.keys(obj).some((key)=>obj[key]!==null&&obj[key]!==''&&typeof obj[key]!=='undefined');
+  }
+  function firstNonEmpty(values){
+    for(const value of values){
+      if(value!==null&&typeof value!=='undefined'&&String(value).trim()!=='') return value;
+    }
+    return '';
+  }
+  function commonTextValue(rows,key){
+    const values=rows.map((row)=>String(row&&row[key]||'').trim()).filter(Boolean);
+    if(!values.length) return '';
+    const first=values[0];
+    return values.every((value)=>value.toLowerCase()===first.toLowerCase()) ? first : values.filter((value,index,self)=>self.findIndex((item)=>item.toLowerCase()===value.toLowerCase())===index).join(' / ');
+  }
+  function commonAlphaSeries(rows){
+    const tokenSets=rows.map((row)=>{
+      const text=[row&&row.model,row&&row.material_name,row&&row.material_code].filter(Boolean).join(' ');
+      const tokens=(text.match(/[A-Za-z]{2,}[A-Za-z0-9-]*/g)||[])
+        .map((token)=>token.replace(/[-_].*$/,'').replace(/\d+.*$/,'').trim())
+        .filter((token)=>token.length>=2&&!/^(LED|COB|SMD|MC)$/i.test(token));
+      return Array.from(new Set(tokens.map((token)=>token.toUpperCase())));
+    }).filter((tokens)=>tokens.length);
+    if(!tokenSets.length) return '';
+    const common=tokenSets[0].find((token)=>tokenSets.every((tokens)=>tokens.includes(token)));
+    if(common) return common;
+    const firstModel=String(rows[0]&&rows[0].model||'').trim();
+    const match=firstModel.match(/[A-Za-z]{2,}/);
+    return match ? match[0].toUpperCase() : '';
+  }
+  function firstTechnicalCct(technical){
+    const values=technical&&Array.isArray(technical.cct_values_k)?technical.cct_values_k:[];
+    return values.length===1 ? values[0] : '';
+  }
+  function inferredLogicForKind(kind,technical,materials,filter){
+    const t=technical&&typeof technical==='object'?technical:{};
+    const rows=Array.isArray(materials)?materials:[];
+    const logic={};
+    if(kind==='chip'){
+      logic.chip_brand_keyword=commonTextValue(rows,'brand');
+      logic.chip_series_keyword=commonAlphaSeries(rows);
+      logic.cct_k=firstTechnicalCct(t);
+      logic.cri_min=firstNonEmpty([t.cri_min]);
+    }else if(kind==='driver'){
+      logic.current_min_ma=firstNonEmpty([t.current_min_ma]);
+      logic.current_max_ma=firstNonEmpty([t.current_max_ma]);
+      logic.voltage_min_v=firstNonEmpty([t.voltage_min_v]);
+      logic.voltage_max_v=firstNonEmpty([t.voltage_max_v]);
+      logic.dimming_mode=firstNonEmpty([t.dimming_mode]);
+    }else if(kind==='optical'){
+      logic.beam_angle=firstNonEmpty([t.beam_angle_min]);
+      logic.optical_size_keyword=firstNonEmpty([t.cutout_mm,t.dimension_mm]);
+      logic.optical_keyword=firstNonEmpty([filter&&filter.keyword]);
+    }else{
+      logic.part_size_keyword=firstNonEmpty([filter&&filter.keyword]);
+    }
+    Object.keys(logic).forEach((key)=>{
+      if(logic[key]===null||typeof logic[key]==='undefined'||String(logic[key]).trim()==='') delete logic[key];
+    });
+    return logic;
+  }
   let currentLogicGroupCode='';
   function logicKind(groupCode, materialCategory){
     const code=String(groupCode||'').toLowerCase();
@@ -1956,9 +2069,9 @@ function pa2ParseJson(raw, fallback={}){
         title:'设置芯片 / 光源逻辑',
         badge:'芯片 / 光源逻辑',
         badgeClass:'pa2-logic-type-chip',
-        text:'只显示芯片品牌、型号、色温、显指、电流/电压等字段；不会提交调光方式和电源类型。',
+        text:'只显示芯片品牌、型号、功率、色温、显指、电流/电压等字段；不会提交调光方式和电源类型。',
         keyword:'芯片关键词',
-        hint:'芯片逻辑用于判断当前产品可用的芯片/光源，例如 CREE、Bridgelux、色温 3000K、CRI90、电流范围。',
+        hint:'芯片逻辑用于判断当前产品可用的芯片/光源，例如 CREE、Bridgelux、功率上限、色温 3000K、CRI90、电流范围。',
         currentMin:'芯片工作电流下限 mA',
         currentMax:'芯片工作电流上限 mA',
         voltageMin:'芯片正向电压下限 V',
@@ -2048,8 +2161,11 @@ function pa2ParseJson(raw, fallback={}){
       const filter=parseJsonAttr(btn,'data-material-filter');
       const logic=parseJsonAttr(btn,'data-product-logic');
       const templateLogic=parseJsonAttr(btn,'data-template-logic');
+      const technical=parseJsonAttr(btn,'data-product-technical');
+      const selectedMaterials=parseJsonAttr(btn,'data-selected-materials');
+      const savedLogicSource=btn.getAttribute('data-logic-source')||'template';
       pa2SetField(form,'product_group_config_id',btn.getAttribute('data-group-id')||'');
-      pa2SetField(form,'logic_source',btn.getAttribute('data-logic-source')||'template');
+      pa2SetField(form,'logic_source',savedLogicSource);
       pa2SetField(form,'is_required',btn.getAttribute('data-is-required')||'0');
       pa2SetField(form,'selection_mode',btn.getAttribute('data-selection-mode')||'single');
       pa2SetField(form,'min_select',btn.getAttribute('data-min-select')||'0');
@@ -2063,7 +2179,11 @@ function pa2ParseJson(raw, fallback={}){
       if(!driverType&&groupCode==='intrack_driver')driverType='intrack';
       if(!driverType&&groupCode==='driver')driverType='';
       pa2SetField(form,'driver_type',driverType);
-      const visibleLogic=Object.keys(logic).length?logic:templateLogic;
+      const inferredLogic=savedLogicSource==='blank'?{}:inferredLogicForKind(kind,technical,selectedMaterials,filter);
+      const visibleLogic=savedLogicSource==='blank'?{}:(logicHasValues(logic)?logic:(logicHasValues(templateLogic)?templateLogic:inferredLogic));
+      if(!logicHasValues(logic)&&!logicHasValues(templateLogic)&&logicHasValues(inferredLogic)){
+        pa2SetField(form,'logic_source','custom');
+      }
       ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','beam_angle','dimming_mode','chip_brand_keyword','chip_series_keyword','optical_type','lens_material','optical_diameter_mm','optical_height_mm','optical_size_keyword','optical_keyword','part_size_keyword','part_material_keyword','part_color_keyword','part_usage_keyword','note'].forEach((key)=>{
         pa2SetField(form,key,value(visibleLogic,key,''));
       });

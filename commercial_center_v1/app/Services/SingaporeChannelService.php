@@ -83,6 +83,8 @@ final class SingaporeChannelService
         $link = $this->one('SELECT * FROM cc_channel_entity_links WHERE channel_code=? AND entity_type=\'published_product\' AND entity_id=?', [self::CHANNEL_CODE, $legacyProductId]);
         $image = trim((string)($product['image_path'] ?? ''));
         if ($image !== '' && !preg_match('#^https?://#i', $image)) $image = 'https://novlight.com/artdon_erp/' . ltrim($image, '/');
+        $materialParameters = $this->publicMaterialParameters(is_array($product['commercial_product_parameters'] ?? null) ? $product['commercial_product_parameters'] : []);
+        $technicalParameters = $this->publishedProductTechnicalParameters($product, $configuration, $materialParameters);
         $payload = ['schema_version' => '2026-08-01.2', 'event_type' => 'product.upsert', 'channel' => self::CHANNEL_CODE,
             'product' => ['source_id' => (string)$product['id'], 'source_version' => (string)($product['commercial_version_no'] ?? ''),
                 'sku' => (string)$product['model_no'], 'name' => (string)($product['product_name'] ?: $product['model_no']),
@@ -90,7 +92,8 @@ final class SingaporeChannelService
                 'lamp_type' => (string)($product['lamp_type'] ?? ''), 'image_url' => $image,
                 'dimensions' => ['opening' => $product['dim_opening'] ?? null, 'outer_diameter' => $product['dim_outer_d'] ?? null,
                     'length' => $product['dim_length'] ?? null, 'width' => $product['dim_width'] ?? null, 'height' => $product['dim_height'] ?? null],
-                'configuration' => $configuration, 'price_mode' => 'review', 'currency' => 'USD',
+                'parameters' => $technicalParameters, 'technical_parameters' => $technicalParameters,
+                'material_center_parameters' => $materialParameters, 'configuration' => $configuration, 'price_mode' => 'review', 'currency' => 'USD',
                 'allow_order' => true, 'inquiry_only' => true, 'stock' => 0, 'moq' => 1, 'lead_time_days' => null,
                 'channel_state_version' => (string)($link['last_synced_at'] ?? '')]];
         return $this->enqueue('product_publish', 'published_product', $legacyProductId, $payload, $actor, false);
@@ -226,7 +229,9 @@ final class SingaporeChannelService
                 'model' => (string)($package['model_no'] ?? ''),
                 'title' => (string)$package['public_title'],
                 'english_name' => (string)$package['english_name'],
-                'parameters' => $this->decode((string)$package['public_parameters']),
+                'parameters' => $this->packageParameters($package),
+                'technical_parameters' => $this->materialTechnicalParametersForLegacyProduct((int)($package['legacy_product_id'] ?? 0)),
+                'material_center_parameters' => $this->materialParametersForLegacyProduct((int)($package['legacy_product_id'] ?? 0)),
                 'price' => (float)$package['public_price'],
                 'currency' => 'SGD',
                 'moq' => (float)$package['moq'],
@@ -397,7 +402,7 @@ final class SingaporeChannelService
     private function packages(): array
     {
         return $this->all(
-            "SELECT p.*,s.sku_code,s.sellable_stock,s.publishable,n.model_no,n.product_name
+            "SELECT p.*,s.sku_code,s.legacy_product_id,s.sellable_stock,s.publishable,n.model_no,n.product_name
              FROM cc_channel_packages p
              JOIN cc_channels c ON c.id=p.channel_id AND c.channel_code=?
              JOIN cc_inventory_skus s ON s.id=p.inventory_sku_id
@@ -422,13 +427,174 @@ final class SingaporeChannelService
     private function package(int $id): ?array
     {
         return $this->one(
-            "SELECT p.*,s.sku_code,s.sellable_stock,s.publishable,n.model_no,n.product_name
+            "SELECT p.*,s.sku_code,s.legacy_product_id,s.sellable_stock,s.publishable,n.model_no,n.product_name
              FROM cc_channel_packages p
              JOIN cc_channels c ON c.id=p.channel_id AND c.channel_code=?
              JOIN cc_inventory_skus s ON s.id=p.inventory_sku_id
              LEFT JOIN naming_models n ON n.id=s.legacy_product_id
              WHERE p.id=? LIMIT 1",
             [self::CHANNEL_CODE, $id]
+        );
+    }
+
+    private function packageParameters(array $package): array
+    {
+        $material = $this->materialTechnicalParametersForLegacyProduct((int)($package['legacy_product_id'] ?? 0));
+        $public = $this->decode((string)($package['public_parameters'] ?? '{}'));
+        return array_replace($material, $public);
+    }
+
+    private function materialTechnicalParametersForLegacyProduct(int $legacyProductId): array
+    {
+        return $this->technicalParametersFromMaterialParameters($this->materialParametersForLegacyProduct($legacyProductId));
+    }
+
+    private function publicMaterialParameters(array $parameters): array
+    {
+        unset($parameters['updated_at'], $parameters['updated_by']);
+        return $parameters;
+    }
+
+    private function publishedProductTechnicalParameters(array $product, array $configuration, array $materialParameters): array
+    {
+        return array_replace(
+            $this->technicalParameters(['technical' => $this->fallbackTechnicalFromProduct($product)]),
+            $this->technicalParameters($configuration),
+            $this->technicalParametersFromMaterialParameters($materialParameters)
+        );
+    }
+
+    private function materialParametersForLegacyProduct(int $legacyProductId): array
+    {
+        if ($legacyProductId <= 0) return [];
+        if (!$this->tableExists('mc_products')) return [];
+        $row = $this->one(
+            "SELECT snapshot_json FROM mc_products WHERE legacy_table='naming_models' AND legacy_id=? AND status='active' ORDER BY id DESC LIMIT 1",
+            [$legacyProductId]
+        );
+        if ($row === null) return [];
+        $snapshot = $this->decode((string)($row['snapshot_json'] ?? '{}'));
+        $parameters = is_array($snapshot['product_parameters'] ?? null) ? $snapshot['product_parameters'] : [];
+        if ($parameters === []) return [];
+        unset($parameters['updated_at'], $parameters['updated_by']);
+        return $parameters;
+    }
+
+    private function technicalParametersFromMaterialParameters(array $parameters): array
+    {
+        if ($parameters === []) return [];
+        $technical = [
+            'product_type' => $parameters['product_type'] ?? '',
+            'dimensions' => $parameters['dimensions_text'] ?? $this->dimensionText($parameters),
+            'cutout' => $parameters['cutout_size_text'] ?? (isset($parameters['cutout_mm']) ? $parameters['cutout_mm'] . 'mm' : ''),
+            'power' => $parameters['power_text'] ?? $this->rangeText($parameters, 'power_min_w', 'power_max_w', 'W'),
+            'luminous_flux' => $parameters['luminous_flux_text'] ?? '',
+            'beam_angle' => $parameters['beam_angle_text'] ?? (isset($parameters['beam_angle']) ? $parameters['beam_angle'] . '°' : ''),
+            'cct' => $parameters['cct_text'] ?? (isset($parameters['cct_k']) ? $parameters['cct_k'] . 'K' : ''),
+            'cri' => $parameters['cri_text'] ?? (isset($parameters['cri_min']) ? '≥' . $parameters['cri_min'] : ''),
+            'current' => $this->rangeText($parameters, 'current_min_ma', 'current_max_ma', 'mA'),
+            'voltage' => $this->rangeText($parameters, 'voltage_min_v', 'voltage_max_v', 'V'),
+            'ugr' => $parameters['ugr_text'] ?? '',
+            'dimming_method' => $parameters['dimming_method_text'] ?? ($parameters['dimming_mode'] ?? ''),
+            'ip_rating' => $parameters['ip_rating'] ?? '',
+            'protection_class' => $parameters['protection_class'] ?? '',
+            'tilt' => $parameters['tilt_angle'] ?? '',
+            'rotation' => $parameters['rotation_angle'] ?? '',
+            'installation' => $parameters['installation_type'] ?? '',
+            'optical_size' => $parameters['optical_size'] ?? '',
+            'best_for' => $parameters['best_for'] ?? '',
+        ];
+        return $this->appendCustomParameters($this->technicalParameters(['technical' => $technical]), $parameters);
+    }
+
+    private function appendCustomParameters(array $displayParameters, array $materialParameters): array
+    {
+        foreach ((array)($materialParameters['custom_fields'] ?? []) as $field) {
+            if (!is_array($field)) continue;
+            $label = trim((string)($field['label'] ?? ''));
+            $value = trim((string)($field['value'] ?? ''));
+            if ($label === '' || $value === '') continue;
+            $unit = trim((string)($field['unit'] ?? ''));
+            $displayParameters[$label] = $unit !== '' ? trim($value . ' ' . $unit) : $value;
+        }
+        return $displayParameters;
+    }
+
+    private function fallbackTechnicalFromProduct(array $product): array
+    {
+        return [
+            'cutout' => $product['dim_opening'] ?? '',
+            'dimensions' => $this->productDimensionText($product),
+        ];
+    }
+
+    private function productDimensionText(array $product): string
+    {
+        $length = trim((string)($product['dim_length'] ?? ''));
+        $width = trim((string)($product['dim_width'] ?? ''));
+        $height = trim((string)($product['dim_height'] ?? ''));
+        if ($length !== '' && $width !== '' && $height !== '') return $length . '*' . $width . '*' . $height;
+        if ($length !== '' && $height !== '') return $length . '*' . $height;
+        $outer = trim((string)($product['dim_outer_d'] ?? ''));
+        if ($outer !== '' && $height !== '') return $outer . '*' . $height;
+        return '';
+    }
+
+    private function rangeText(array $parameters, string $minKey, string $maxKey, string $unit): string
+    {
+        $min = $parameters[$minKey] ?? null;
+        $max = $parameters[$maxKey] ?? null;
+        if ($min === null && $max === null) return '';
+        if ($min !== null && $max !== null && (string)$min !== (string)$max) return $min . '–' . $max . $unit;
+        return (string)($min ?? $max) . $unit;
+    }
+
+    private function dimensionText(array $parameters): string
+    {
+        $values = [];
+        foreach (['length_mm', 'width_mm', 'height_mm'] as $key) {
+            if (isset($parameters[$key]) && $parameters[$key] !== '') $values[] = (string)$parameters[$key];
+        }
+        return $values === [] ? '' : implode('*', $values) . 'mm';
+    }
+
+    private function technicalParameters(array $configuration): array
+    {
+        $technical = is_array($configuration['technical'] ?? null) ? $configuration['technical'] : [];
+        $labels = [
+            'product_type' => 'Product Type',
+            'dimensions' => 'Dimensions',
+            'cutout' => 'Cut-Out Size',
+            'power' => 'Power',
+            'luminous_flux' => 'Luminous flux',
+            'beam_angle' => 'Beam Angle',
+            'cct' => 'CCT',
+            'cri' => 'CRI',
+            'current' => 'Current',
+            'voltage' => 'Voltage',
+            'ugr' => 'UGR',
+            'dimming_method' => 'Dimming method',
+            'ip_rating' => 'IP rating',
+            'protection_class' => 'Protection class',
+            'tilt' => 'Tilt',
+            'rotation' => 'Rotation',
+            'installation' => 'Installation',
+            'optical_size' => 'Optical size',
+            'best_for' => 'Best for',
+        ];
+        $out = [];
+        foreach ($labels as $key => $label) {
+            $value = trim((string)($technical[$key] ?? ''));
+            if ($value !== '') $out[$label] = $value;
+        }
+        return $out;
+    }
+
+    private function tableExists(string $table): bool
+    {
+        return (bool)$this->scalar(
+            'SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1',
+            [$table]
         );
     }
 

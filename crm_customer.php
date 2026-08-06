@@ -2630,9 +2630,9 @@ function crm_lead_pool_list(array $input = []): array
     $params = [];
     $where = '1=1';
     if ($keyword !== '') {
-        $where .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ?)';
+        $where .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ? OR EXISTS (SELECT 1 FROM crm_users su WHERE su.id = lp.created_by AND (su.username LIKE ? OR su.real_name LIKE ? OR su.english_name LIKE ?)))';
         $like = '%' . $keyword . '%';
-        array_push($params, $like, $like, $like, $like, $like, $like);
+        array_push($params, $like, $like, $like, $like, $like, $like, $like, $like, $like);
     }
     if ($quick === 'pending') {
         $where .= ' AND lp.status = "pending"';
@@ -2669,9 +2669,9 @@ function crm_lead_pool_list(array $input = []): array
     $statWhere = '1=1';
     $statParams = [];
     if ($keyword !== '') {
-        $statWhere .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ?)';
+        $statWhere .= ' AND (lp.raw_name LIKE ? OR lp.raw_email LIKE ? OR lp.raw_phone LIKE ? OR lp.raw_country LIKE ? OR lp.raw_domain LIKE ? OR lp.payload_json LIKE ? OR EXISTS (SELECT 1 FROM crm_users su WHERE su.id = lp.created_by AND (su.username LIKE ? OR su.real_name LIKE ? OR su.english_name LIKE ?)))';
         $like = '%' . $keyword . '%';
-        array_push($statParams, $like, $like, $like, $like, $like, $like);
+        array_push($statParams, $like, $like, $like, $like, $like, $like, $like, $like, $like);
     }
     $statStmt = db()->prepare("SELECT
         COUNT(*) AS total,

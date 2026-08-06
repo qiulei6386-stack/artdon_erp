@@ -1140,17 +1140,16 @@ function find_bom_cost_match($keys,$costMap){
 
 function apply_bom_cost(&$p,$costMap){
   $keys=[];
-  // V6.8.5.4：命名中心产品只按 naming_id 绑定的整灯 BOM 成本单匹配。
-  // 这样 BOM 物料名里出现 52.08012，也不会被当作 52.08012 整灯 BOM。
+  // 命名中心产品优先按 naming_id 绑定的整灯 BOM 成本单匹配。
+  // 如果官网同步重建过 naming_id，则退回到完整型号精确匹配；成本映射本身只来自整灯 BOM 型号字段，不读取物料明细名。
   $source=strtolower(trim((string)($p['source']??'')));
   $namingId=trim((string)($p['naming_id']??''));
   if($source==='naming' && $namingId!==''){
     $keys[]='NID'.$namingId;
-  }else{
-    foreach([$p['code']??'', $p['model']??'', $p['model_no']??'', $p['naming_model_no']??''] as $v){
-      $ex=bom_extract_model_codes_from_text($v);
-      if($ex) $keys=array_merge($keys,$ex);
-    }
+  }
+  foreach([$p['code']??'', $p['model']??'', $p['model_no']??'', $p['naming_model_no']??''] as $v){
+    $ex=bom_extract_model_codes_from_text($v);
+    if($ex) $keys=array_merge($keys,$ex);
   }
   [$mk,$hit,$mode]=find_bom_cost_match($keys,$costMap);
   if($hit){

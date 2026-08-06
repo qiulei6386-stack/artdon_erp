@@ -110,6 +110,28 @@ document.addEventListener('click',function(e){
   var config={};
   try{config=JSON.parse(card.dataset.productConfig||'{}')}catch(error){config={}};
   var technical=config.technical||{},groups=Array.isArray(config.groups)?config.groups:[],schemes=Array.isArray(config.schemes)?config.schemes:[];
+  var technicalRows=[
+    ['尺寸',technical.dimensions||(card.querySelector('.product-size')||{}).textContent||''],
+    ['开孔',technical.cutout||(card.querySelector('.product-opening')||{}).textContent||''],
+    ['功率',technical.power],
+    ['光通量',technical.luminous_flux],
+    ['光束角',technical.beam_angle],
+    ['色温',technical.cct],
+    ['显色指数',technical.cri],
+    ['输出电流',technical.current],
+    ['电压',technical.voltage],
+    ['UGR',technical.ugr],
+    ['调光方式',technical.dimming_method],
+    ['防护等级',technical.ip_rating],
+    ['保护等级',technical.protection_class],
+    ['倾斜',technical.tilt],
+    ['旋转',technical.rotation],
+    ['安装方式',technical.installation],
+    ['光学尺寸',technical.optical_size],
+    ['适用场景',technical.best_for]
+  ].filter(function(row){return String(row[1]||'').replace(/^\\S+：/,'').trim()!==''&&String(row[1]||'').trim()!=='—'});
+  if(!technicalRows.length)technicalRows=[['尺寸',(card.querySelector('.product-size')||{}).textContent||'—']];
+  var technicalHtml=technicalRows.map(function(row){return '<dt>'+esc(row[0])+'</dt><dd>'+esc(row[1])+'</dd>'}).join('');
   var groupHtml=groups.map(function(group){
     var values=Array.isArray(group.values)&&group.values.length?group.values.join('；'):'—';
     return '<span><b>'+esc(group.name||group.code||'配置')+'：</b>'+esc(values)+'</span>';
@@ -125,7 +147,7 @@ document.addEventListener('click',function(e){
   var status=(card.querySelector('footer span')?.textContent||'状态：—').replace(/^状态：/,'');
   c.innerHTML='<div class="drawer-product-head">'+(image?'<img src="'+esc(image)+'" alt="">':'')+'<div><h3>'+esc(model)+'</h3><p>'+esc(meta)+'</p><span class="tag">'+esc(status)+'</span></div></div>'+
     '<section class="drawer-section"><h4><i>1</i>基础资料</h4><dl><dt>型号</dt><dd>'+esc(model)+'</dd><dt>系列</dt><dd>'+esc(metaParts[0]||'—')+'</dd><dt>类别</dt><dd>'+esc(metaParts[1]||'—')+'</dd><dt>状态</dt><dd class="drawer-ok">'+esc(status)+'</dd></dl></section>'+
-    '<section class="drawer-section"><h4><i>2</i>尺寸与参数</h4><dl><dt>尺寸</dt><dd>'+esc((card.querySelector('.product-size')||{}).textContent||'—')+'</dd><dt>功率</dt><dd>'+esc(technical.power||'—')+'</dd><dt>光束角</dt><dd>'+esc(technical.beam_angle||'—')+'</dd><dt>色温</dt><dd>'+esc(technical.cct||'—')+'</dd><dt>显色指数</dt><dd>'+esc(technical.cri||'—')+'</dd><dt>输出电流</dt><dd>'+esc(technical.current||'—')+'</dd><dt>防护等级</dt><dd>'+esc(technical.ip_rating||'—')+'</dd></dl></section>'+
+    '<section class="drawer-section"><h4><i>2</i>尺寸与参数</h4><dl>'+technicalHtml+'</dl></section>'+
     '<section class="drawer-section"><h4><i>3</i>报价信息</h4><dl><dt>参考报价</dt><dd class="drawer-price">'+esc(price)+'</dd><dt>币种</dt><dd>USD</dd><dt>MOQ</dt><dd>—</dd><dt>交期</dt><dd>—</dd></dl></section>'+
     '<section class="drawer-section"><h4><i>4</i>配置方案'+(config.version?' · '+esc(config.version):'')+'</h4>'+(schemeHtml?'<div class="drawer-schemes">'+schemeHtml+'</div>':'<div class="drawer-tags">'+groupHtml+'</div>')+'</section>'+
     '<section class="drawer-section"><h4><i>5</i>资料文件</h4><div class="drawer-files"><span>产品图</span><span>尺寸图</span><span>IES 文件</span><span>测试报告</span></div></section><footer class="drawer-actions"><button class="primary">加入报价</button><button type="button" data-detail-close>关闭</button></footer>';

@@ -40,24 +40,27 @@
       option.textContent = `${sku.sku_code} · ${sku.model_no || ''} ${sku.product_name || ''} · 可售 ${sku.sellable_stock}`;
       skuSelect.append(option);
     });
-    const published = $('[data-sg-published-products]');
-    published.innerHTML = '';
-    if (!(state.published_products || []).length) published.innerHTML = '<tr><td colspan="6">暂无物料中心已发布产品。</td></tr>';
+    const publishedBody = $('[data-sg-published-products]');
+    publishedBody.innerHTML = '';
+    if (!(state.published_products || []).length) publishedBody.innerHTML = '<tr><td colspan="6">暂无物料中心已发布产品。</td></tr>';
     (state.published_products || []).forEach((item) => {
       const row = document.createElement('tr');
       const schemes = item.commercial_configuration?.schemes || [];
+      const technical = item.commercial_configuration?.technical || {};
+      const parameterSummary = ['power', 'cutout', 'dimensions', 'cri', 'ip_rating']
+        .map((key) => technical[key]).filter(Boolean).slice(0, 4).join(' / ');
       row.dataset.publishedProductId = item.id;
       const publication = item.singapore_publication || {};
-      const published = publication.sync_status === 'published';
-      row.innerHTML = `<td><b></b></td><td></td><td></td><td></td><td></td><td><span class="quote-status"></span> <button type="button" ${published ? 'data-sg-unpublish-product' : 'data-sg-publish-product'}></button></td>`;
+      const isPublished = publication.sync_status === 'published';
+      row.innerHTML = `<td><b></b></td><td></td><td></td><td></td><td></td><td><span class="quote-status"></span> <button type="button" ${isPublished ? 'data-sg-unpublish-product' : 'data-sg-publish-product'}></button></td>`;
       row.children[0].firstElementChild.textContent = item.model_no;
       row.children[1].textContent = item.product_name || item.model_no;
       row.children[2].textContent = `${item.category || '—'} / ${item.series_name || '—'}`;
       row.children[3].textContent = item.commercial_version_no || '—';
-      row.children[4].textContent = schemes.length ? schemes.map((scheme) => scheme.code || scheme.name).join(' / ') : '—';
+      row.children[4].textContent = parameterSummary || (schemes.length ? schemes.map((scheme) => scheme.code || scheme.name).join(' / ') : '—');
       row.children[5].querySelector('span').textContent = publication.sync_status || '未发布';
-      row.children[5].querySelector('button').textContent = published ? '下架' : (publication.sync_status === 'withdrawn' ? '重新上架' : '生成发布任务');
-      published.append(row);
+      row.children[5].querySelector('button').textContent = isPublished ? '下架' : (publication.sync_status === 'withdrawn' ? '重新上架' : '生成发布任务');
+      publishedBody.append(row);
     });
     const packages = $('[data-sg-packages]');
     packages.innerHTML = '';

@@ -27,7 +27,27 @@ final class ConfigurationRepository
         $rows=$this->all("SELECT g.group_code,o.option_code FROM cc_product_allowed_options a JOIN cc_config_groups g ON g.id=a.group_id LEFT JOIN cc_config_options o ON o.id=a.option_id WHERE a.legacy_product_id=? AND a.status='active'",[$legacyProductId]);
         $out=[];foreach($rows as $row)if($row['option_code']!==null)$out[$row['group_code']][]=$row['option_code'];return $out;
     }
-    public function products(): array{return $this->all("SELECT id,model_no,product_name,category FROM naming_models WHERE website_deleted=0 ORDER BY updated_at DESC,id DESC LIMIT 100");}
+    public function products(): array
+    {
+        $hasMaterialProducts = $this->tableExists('mc_products');
+        $rows = $this->all($hasMaterialProducts
+          ? "SELECT n.id,n.model_no,n.product_name,n.category,mp.snapshot_json material_center_snapshot_json
+             FROM naming_models n
+             LEFT JOIN mc_products mp ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
+             WHERE n.website_deleted=0
+             ORDER BY n.updated_at DESC,n.id DESC LIMIT 100"
+          : "SELECT id,model_no,product_name,category,NULL material_center_snapshot_json
+             FROM naming_models
+             WHERE website_deleted=0
+             ORDER BY updated_at DESC,id DESC LIMIT 100");
+        foreach ($rows as &$row) {
+            $snapshot = json_decode((string)($row['material_center_snapshot_json'] ?? ''), true);
+            $row['product_parameters'] = is_array($snapshot['product_parameters'] ?? null) ? $snapshot['product_parameters'] : [];
+            unset($row['material_center_snapshot_json']);
+        }
+        unset($row);
+        return $rows;
+    }
     public function stockSkus(): array{return $this->all("SELECT s.id,s.legacy_product_id,s.sku_code,s.configuration_snapshot,s.actual_stock,s.sellable_stock,s.status,s.is_test,n.model_no,n.product_name FROM cc_inventory_skus s LEFT JOIN naming_models n ON n.id=s.legacy_product_id WHERE s.status='active' ORDER BY s.is_test,s.id DESC LIMIT 100");}
     public function materialCenterAdaptations(): array
     {

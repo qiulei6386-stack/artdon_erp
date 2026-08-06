@@ -357,6 +357,97 @@ function nm_repair_website_dimensions_by_model(PDO $pdo): void {
     }
 }
 
+function nm_active_model_condition_sql(array $cols): string {
+    return in_array('website_deleted', $cols, true) ? 'COALESCE(`website_deleted`,0)=0' : '1=1';
+}
+
+function nm_key_text($v): string {
+    $v = strtoupper(trim((string)($v ?? '')));
+    $v = preg_replace('/\s+/u', ' ', $v);
+    return (string)$v;
+}
+
+function nm_key_num($v): string {
+    $v = trim((string)($v ?? ''));
+    if ($v === '') return '';
+    if (preg_match('/([0-9]+(?:\.[0-9]+)?)/', $v, $m)) {
+        $n = ltrim((string)$m[1], '0');
+        if ($n === '' || strpos($n, '.') === 0) $n = '0'.$n;
+        if (strpos($n, '.') !== false) $n = rtrim(rtrim($n, '0'), '.');
+        return $n === '' ? '0' : $n;
+    }
+    return nm_key_text($v);
+}
+
+function nm_model_duplicate_key(array $row): string {
+    $name = '';
+    foreach (array('product_name','series_name','web_series','website_display_name') as $c) {
+        if (isset($row[$c]) && nm_s($row[$c]) !== '') { $name = nm_key_text($row[$c]); break; }
+    }
+    if ($name === '') return '';
+    $model = nm_s($row['model_no'] ?? '');
+    $prefix = nm_key_text($row['prefix'] ?? '');
+    if ($prefix === '') $prefix = nm_key_text(nm_model_prefix($model));
+    $type = '';
+    foreach (array('item_name','lamp_type','web_size_name','category') as $c) {
+        if (isset($row[$c]) && nm_s($row[$c]) !== '') { $type = nm_key_text($row[$c]); break; }
+    }
+    $sizeCode = nm_s($row['size_code'] ?? '');
+    if ($sizeCode === '' && strpos($model, '.') !== false) {
+        $after = explode('.', $model, 2)[1] ?? '';
+        $digits = preg_replace('/\D+/', '', $after);
+        if (strlen($digits) >= 3) $sizeCode = substr($digits, 0, 3);
+    }
+    $dims = array(
+        nm_key_num($sizeCode),
+        nm_key_num($row['dim_opening'] ?? ''),
+        nm_key_num($row['dim_outer_d'] ?? ''),
+        nm_key_num($row['dim_length'] ?? ''),
+        nm_key_num($row['dim_width'] ?? ''),
+        nm_key_num($row['dim_height'] ?? '')
+    );
+    $hasDim = false;
+    foreach ($dims as $d) { if ($d !== '') { $hasDim = true; break; } }
+    if ($prefix === '' || $type === '' || !$hasDim) return '';
+    return implode('|', array_merge(array($name, $prefix, $type), $dims));
+}
+
+function nm_model_freshness(array $row): array {
+    $best = 0;
+    foreach (array('source_updated_at','updated_at','source_synced_at','created_at') as $c) {
+        $v = nm_s($row[$c] ?? '');
+        if ($v === '') continue;
+        $ts = strtotime($v);
+        if ($ts && $ts > $best) $best = $ts;
+    }
+    return array($best, (int)($row['id'] ?? 0));
+}
+
+function nm_sort_latest_rows(array &$rows): void {
+    usort($rows, static function($a, $b) {
+        $fa = nm_model_freshness(is_array($a) ? $a : array());
+        $fb = nm_model_freshness(is_array($b) ? $b : array());
+        if ($fa[0] === $fb[0]) return $fb[1] <=> $fa[1];
+        return $fb[0] <=> $fa[0];
+    });
+}
+
+function nm_find_duplicate_model_row(PDO $pdo, array $item, int $ignoreId = 0): ?array {
+    $key = nm_model_duplicate_key($item);
+    if ($key === '') return null;
+    $cols = nm_cols($pdo, 'naming_models');
+    $cond = nm_active_model_condition_sql($cols);
+    $rows = $pdo->query('SELECT * FROM naming_models WHERE '.$cond.' ORDER BY id DESC LIMIT 10000')->fetchAll() ?: array();
+    $matches = array();
+    foreach ($rows as $r) {
+        if ((int)($r['id'] ?? 0) === $ignoreId) continue;
+        if (nm_model_duplicate_key($r) === $key) $matches[] = $r;
+    }
+    if (!$matches) return null;
+    nm_sort_latest_rows($matches);
+    return $matches[0];
+}
+
 function nm_current_user(): string {
     // 审计字段必须优先使用与页面权限相同的统一 SSO 用户。
     // 旧实现只扫描 Session/Cookie；统一登录可正常识别用户时，这些旧字段未必存在，
@@ -854,6 +945,7 @@ function nm_website_condition_sql(array $cols): string {
 }
 function nm_build_where(array $cols, array $f, array &$args, bool $forFolder = false): string {
     $where = array();
+    if (in_array('website_deleted', $cols, true)) $where[] = nm_active_model_condition_sql($cols);
     // V3.0.8.4 强模糊搜索：型号/无点型号/系列/官网系列/灯具类型/尺寸/备注都参与。
     // 同时兼容 kw / q 两种参数，避免旧页面或其它模块传 q 时搜索不到。
     $kw = nm_s($f['kw'] ?? ($f['q'] ?? ''));
@@ -992,9 +1084,6 @@ function nm_fetch_page(PDO $pdo, array $f, int $page, int $per): array {
     $cols = nm_cols($pdo, 'naming_models');
     $args = array();
     $where = nm_build_where($cols, $f, $args);
-    $stc = $pdo->prepare('SELECT COUNT(*) FROM naming_models'.$where);
-    $stc->execute($args);
-    $total = (int)$stc->fetchColumn();
     $sort = nm_s($f['sort'] ?? 'created_desc');
     $orders = array(
         'created_desc' => in_array('created_at',$cols,true) ? 'created_at DESC,id DESC' : 'id DESC',
@@ -1006,21 +1095,62 @@ function nm_fetch_page(PDO $pdo, array $f, int $page, int $per): array {
     );
     $order = $orders[$sort] ?? $orders['created_desc'];
     $offset = max(0, ($page-1)*$per);
-    $sql = 'SELECT * FROM naming_models'.$where.' ORDER BY '.$order.' LIMIT '.(int)$offset.','.(int)$per;
+    // 官网同步和本地上传可能出现“同产品名 + 同灯具类型 + 同尺寸”的重复规格，
+    // 页面列表只展示最新一条，避免同一规格出现两张卡片。
+    $sql = 'SELECT * FROM naming_models'.$where.' ORDER BY '.$order.' LIMIT 20000';
     $st = $pdo->prepare($sql);
     $st->execute($args);
-    return array('rows'=>$st->fetchAll() ?: array(), 'total'=>$total, 'cols'=>$cols);
+    $all = nm_dedupe_latest_model_rows($st->fetchAll() ?: array(), $sort);
+    $total = count($all);
+    return array('rows'=>array_slice($all, $offset, $per), 'total'=>$total, 'cols'=>$cols);
+}
+
+function nm_dedupe_latest_model_rows(array $rows, string $sort = 'created_desc'): array {
+    $groups = array();
+    $single = array();
+    foreach ($rows as $r) {
+        if (!is_array($r)) continue;
+        $key = nm_model_duplicate_key($r);
+        if ($key === '') { $single[] = $r; continue; }
+        if (!isset($groups[$key])) $groups[$key] = array();
+        $groups[$key][] = $r;
+    }
+    $out = $single;
+    foreach ($groups as $group) {
+        nm_sort_latest_rows($group);
+        $out[] = $group[0];
+    }
+    nm_sort_model_rows_for_list($out, $sort);
+    return $out;
+}
+
+function nm_sort_model_rows_for_list(array &$rows, string $sort): void {
+    usort($rows, static function($a, $b) use ($sort) {
+        $a = is_array($a) ? $a : array();
+        $b = is_array($b) ? $b : array();
+        $cmpText = static function($x, $y): int { return strnatcasecmp((string)$x, (string)$y); };
+        if ($sort === 'created_asc') return strcmp((string)($a['created_at'] ?? ''), (string)($b['created_at'] ?? '')) ?: ((int)($a['id'] ?? 0) <=> (int)($b['id'] ?? 0));
+        if ($sort === 'updated_desc') return strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')) ?: ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0));
+        if ($sort === 'model_asc') return $cmpText($a['model_no'] ?? '', $b['model_no'] ?? '') ?: ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0));
+        if ($sort === 'model_desc') return $cmpText($b['model_no'] ?? '', $a['model_no'] ?? '') ?: ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0));
+        if ($sort === 'category') {
+            return $cmpText(($a['category'] ?? '').' '.($a['item_name'] ?? '').' '.($a['model_no'] ?? ''), ($b['category'] ?? '').' '.($b['item_name'] ?? '').' '.($b['model_no'] ?? ''));
+        }
+        return strcmp((string)($b['created_at'] ?? ''), (string)($a['created_at'] ?? '')) ?: ((int)($b['id'] ?? 0) <=> (int)($a['id'] ?? 0));
+    });
 }
 function nm_distinct(PDO $pdo, string $col, int $limit = 500): array {
     if (!nm_col_exists($pdo, 'naming_models', $col)) return array();
-    $rows = $pdo->query("SELECT DISTINCT `{$col}` FROM naming_models WHERE `{$col}`<>'' ORDER BY `{$col}` ASC LIMIT ".(int)$limit)->fetchAll(PDO::FETCH_COLUMN) ?: array();
+    $cols = nm_cols($pdo, 'naming_models');
+    $rows = $pdo->query("SELECT DISTINCT `{$col}` FROM naming_models WHERE ".nm_active_model_condition_sql($cols)." AND `{$col}`<>'' ORDER BY `{$col}` ASC LIMIT ".(int)$limit)->fetchAll(PDO::FETCH_COLUMN) ?: array();
     $out = array();
     foreach ($rows as $r) { $r=nm_s($r); if ($r!=='' && !in_array($r,$out,true)) $out[]=$r; }
     return $out;
 }
 function nm_folder_counts(PDO $pdo): array {
     if (!nm_col_exists($pdo, 'naming_models', 'category')) return array();
-    $rows = $pdo->query("SELECT IF(category='', '未分类', category) AS folder_name, COUNT(*) AS c FROM naming_models GROUP BY IF(category='', '未分类', category) ORDER BY c DESC, folder_name ASC LIMIT 80")->fetchAll() ?: array();
+    $cols = nm_cols($pdo, 'naming_models');
+    $rows = $pdo->query("SELECT IF(category='', '未分类', category) AS folder_name, COUNT(*) AS c FROM naming_models WHERE ".nm_active_model_condition_sql($cols)." GROUP BY IF(category='', '未分类', category) ORDER BY c DESC, folder_name ASC LIMIT 80")->fetchAll() ?: array();
     return $rows;
 }
 
@@ -1032,25 +1162,25 @@ function nm_board_stats(PDO $pdo): array {
     try {
         if (!nm_table_exists($pdo, 'naming_models')) return $out;
         $cols = nm_cols($pdo, 'naming_models');
-        $out['total'] = (int)$pdo->query('SELECT COUNT(*) FROM naming_models')->fetchColumn();
+        $activeCond = nm_active_model_condition_sql($cols);
+        $out['total'] = (int)(nm_fetch_page($pdo, array(), 1, 1)['total'] ?? 0);
         if (in_array('status', $cols, true)) {
-            $st=$pdo->prepare("SELECT COUNT(*) FROM naming_models WHERE status=?");
-            $st->execute(array('草稿')); $out['draft']=(int)$st->fetchColumn();
-            $st->execute(array('已确认')); $out['confirmed']=(int)$st->fetchColumn();
+            $out['draft'] = (int)(nm_fetch_page($pdo, array('status'=>'草稿'), 1, 1)['total'] ?? 0);
+            $out['confirmed'] = (int)(nm_fetch_page($pdo, array('status'=>'已确认'), 1, 1)['total'] ?? 0);
         }
-        if (in_array('created_at', $cols, true)) $out['today']=(int)$pdo->query("SELECT COUNT(*) FROM naming_models WHERE DATE(created_at)=CURDATE()")->fetchColumn();
-        if (in_array('updated_at', $cols, true)) $out['updated_today']=(int)$pdo->query("SELECT COUNT(*) FROM naming_models WHERE DATE(updated_at)=CURDATE()")->fetchColumn();
+        if (in_array('created_at', $cols, true)) $out['today']=(int)$pdo->query("SELECT COUNT(*) FROM naming_models WHERE ".$activeCond." AND DATE(created_at)=CURDATE()")->fetchColumn();
+        if (in_array('updated_at', $cols, true)) $out['updated_today']=(int)$pdo->query("SELECT COUNT(*) FROM naming_models WHERE ".$activeCond." AND DATE(updated_at)=CURDATE()")->fetchColumn();
         $wc = nm_website_condition_sql($cols);
-        if ($wc !== '0=1') $out['website']=(int)$pdo->query('SELECT COUNT(*) FROM naming_models WHERE '.$wc)->fetchColumn();
+        if ($wc !== '0=1') $out['website']=(int)(nm_fetch_page($pdo, array('source'=>'website'), 1, 1)['total'] ?? 0);
         $imageCols = array_values(array_intersect(array('image_path','web_image_url','source_image_url','cover_image_url'), $cols));
         if ($imageCols) {
             $parts=array(); foreach($imageCols as $c) $parts[]="(`{$c}` IS NOT NULL AND `{$c}`<>'')";
-            $out['no_image']=(int)$pdo->query('SELECT COUNT(*) FROM naming_models WHERE NOT ('.implode(' OR ',$parts).')')->fetchColumn();
+            $out['no_image']=(int)$pdo->query('SELECT COUNT(*) FROM naming_models WHERE '.$activeCond.' AND NOT ('.implode(' OR ',$parts).')')->fetchColumn();
         }
         $drawingCols = array_values(array_intersect(array('drawing_path','web_dimension_url','web_drawing_url','web_size_image_url','source_drawing_url','dimension_url','drawing_url','size_image_url'), $cols));
         if ($drawingCols) {
             $parts=array(); foreach($drawingCols as $c) $parts[]="(`{$c}` IS NOT NULL AND `{$c}`<>'')";
-            $out['no_drawing']=(int)$pdo->query('SELECT COUNT(*) FROM naming_models WHERE NOT ('.implode(' OR ',$parts).')')->fetchColumn();
+            $out['no_drawing']=(int)$pdo->query('SELECT COUNT(*) FROM naming_models WHERE '.$activeCond.' AND NOT ('.implode(' OR ',$parts).')')->fetchColumn();
         }
         if (nm_table_exists($pdo, 'naming_inbox')) {
             $out['inbox_total']=(int)$pdo->query('SELECT COUNT(*) FROM naming_inbox')->fetchColumn();
@@ -1660,7 +1790,14 @@ function nm_website_sync_collect(PDO $pdo, string &$source, string &$err): array
     $items = array();
     foreach ($raw as $i=>$r) { if (is_array($r)) { $n = nm_website_sync_normalize($pdo, $r, (int)$i); if ($n && !empty($n['model_no'])) $items[]=$n; } }
     $dedup = array();
-    foreach ($items as $it) $dedup[(string)$it['source_id'].'|'.(string)$it['model_no']] = $it;
+    foreach ($items as $it) {
+        $key = nm_model_duplicate_key($it);
+        if ($key === '') $key = (string)$it['source_id'].'|'.(string)$it['model_no'];
+        if (!isset($dedup[$key])) { $dedup[$key] = $it; continue; }
+        $pair = array($dedup[$key], $it);
+        nm_sort_latest_rows($pair);
+        $dedup[$key] = $pair[0];
+    }
     if (!$dedup && $err==='') $err = '没有从官网接口/官网数据库读取到可同步型号。请确认官网端 website_naming_sync_api.php 已放到官网根目录，或在 config.php 配置 NM_WEBSITE_SYNC_API / WEBSITE_DB_*。';
     return array_values($dedup);
 }
@@ -1670,9 +1807,11 @@ function nm_website_sync_upsert(PDO $pdo, array $item, string $runId): string {
     $sourceId = nm_s($item['source_id'] ?? $model, 120);
     $hash = sha1(json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     $old = null;
-    $st = $pdo->prepare("SELECT * FROM naming_models WHERE (source_system='artdon_website' AND source_id=?) OR model_no=? ORDER BY source_system='artdon_website' DESC LIMIT 1");
+    $activeCond = nm_active_model_condition_sql($cols);
+    $st = $pdo->prepare("SELECT * FROM naming_models WHERE ".$activeCond." AND ((source_system='artdon_website' AND source_id=?) OR model_no=?) ORDER BY source_system='artdon_website' DESC LIMIT 1");
     $st->execute(array($sourceId,$model));
     $old = $st->fetch();
+    if (!$old) $old = nm_find_duplicate_model_row($pdo, $item);
     $common = $item;
     $common['source_hash']=$hash; $common['source_synced_at']=date('Y-m-d H:i:s'); $common['website_last_seen_at']=date('Y-m-d H:i:s'); $common['website_sync_run_id']=$runId; $common['website_sync_managed']=1; $common['website_deleted']=0; $common['website_deleted_at']=null; $common['updated_by']='官网实时同步';
     if ($old) {

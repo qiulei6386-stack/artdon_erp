@@ -6216,10 +6216,7 @@ body.is-actionbar-resizing * {
 .temp-pool-stats span { color: var(--crm-muted-text); font-size: 12px; font-weight: 700; }
 .temp-pool-stats strong { color: var(--crm-text); font-size: 22px; line-height: 1; }
 .temp-pool-filterbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
-  gap: 10px;
-  align-items: center;
+  display: block;
 }
 .temp-pool-chips {
   display: flex;
@@ -6260,12 +6257,14 @@ body.is-actionbar-resizing * {
 }
 .temp-pool-body {
   display: grid;
-  grid-template-columns: 42% minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  overflow: hidden;
 }
 .temp-pool-left,
 .temp-pool-right {
+  min-width: 0;
   min-height: 0;
   border: 1px solid var(--crm-border);
   border-radius: 14px;
@@ -6274,14 +6273,15 @@ body.is-actionbar-resizing * {
 .temp-pool-left {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 .temp-pool-count {
   min-height: 42px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 0 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--crm-border);
   color: var(--crm-muted-text);
   font-size: 12px;
@@ -6293,10 +6293,31 @@ body.is-actionbar-resizing * {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.temp-pool-search {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-width: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.temp-pool-search input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--crm-card-bg);
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 700;
+}
 .temp-pool-count nav {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .temp-pool-count button {
@@ -6375,6 +6396,7 @@ body.is-actionbar-resizing * {
   background: #fff;
   position: relative;
   cursor: pointer;
+  overflow: hidden;
 }
 .temp-pool-row:hover { background: var(--crm-hover-bg); }
 .temp-pool-row.active {
@@ -6416,8 +6438,8 @@ body.is-actionbar-resizing * {
 }
 .temp-pool-origin {
   margin-left: auto;
-  flex: 0 1 220px;
-  max-width: 220px;
+  flex: 0 1 180px;
+  max-width: 180px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6495,6 +6517,30 @@ body.is-actionbar-resizing * {
 }
 .temp-pool-fields strong.muted,
 .temp-pool-muted { color: var(--crm-muted-text); font-weight: 500; }
+.temp-pool-contact-list {
+  display: grid;
+  gap: 8px;
+}
+.temp-pool-contact {
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+.temp-pool-contact strong {
+  color: var(--crm-text);
+  font-size: 13px;
+}
+.temp-pool-contact span,
+.temp-pool-contact p {
+  margin: 0;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 .temp-pool-table-wrap { overflow: auto; }
 .temp-pool-table {
   width: 100%;

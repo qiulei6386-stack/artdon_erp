@@ -17,6 +17,8 @@ if(!$q){ die('<!doctype html><meta charset="utf-8"><div style="padding:30px;font
 function jarr($s){ $a=json_decode((string)$s,true); return is_array($a)?$a:[]; }
 function money($n){ return number_format((float)$n,2); }
 function firstv($arr,$keys,$def=''){ foreach($keys as $k){ if(isset($arr[$k]) && $arr[$k]!=='' && $arr[$k]!==null) return $arr[$k]; } return $def; }
+function is_virtual_quote_item($it){ return is_array($it) && (!empty($it['is_virtual_item']) || (($it['item_type']??'')==='virtual') || (($it['product_type']??'')==='virtual') || (array_key_exists('shippable',$it) && ($it['shippable']===false || $it['shippable']===0 || $it['shippable']==='0' || $it['shippable']==='false'))); }
+function quote_item_qty_for_total($it){ return is_virtual_quote_item($it) && empty($it['count_in_qty']) ? 0 : (float)($it['qty']??0); }
 $c=jarr($q['customer_json']??'');
 $items=jarr($q['items_json']??'');
 if(!$items){
@@ -30,6 +32,12 @@ $customerName=firstv($c,['company','name','customer_name'],'Please select custom
 $customerCode=firstv($c,['code','customer_code'],'');
 $totalQty=0; $totalAmt=0;
 function spec_lines($it){
+  if(is_virtual_quote_item($it)){
+    $p = (isset($it['product']) && is_array($it['product'])) ? $it['product'] : [];
+    $name=firstv($p,['name','product_name','title','code','model'],'Custom charge');
+    $desc=trim((string)($it['specification']??($it['extra_spec']??'')));
+    return array_values(array_filter([$name, ($desc!==''&&$desc!==$name)?$desc:'']));
+  }
   $p = (isset($it['product']) && is_array($it['product'])) ? $it['product'] : [];
   $parts = (isset($it['parts']) && is_array($it['parts'])) ? $it['parts'] : [];
   $lines=[];
@@ -63,18 +71,18 @@ body{margin:0;background:#eef4fb;font-family:Arial,"Times New Roman","Microsoft 
   </div>
   <table class="quote-table"><thead><tr><th>Picture</th><th>Size or<br>Drawing(mm)</th><th>Customer<br>Code</th><th>Manufacturer<br>Code</th><th>Specification</th><th>Color</th><th>QTY<br>(pcs)</th><th>Unit<br>Price(<?=h($currency)?>)</th><th>Amount<br>(<?=h($currency)?>)</th><th>MOQ<br>(pcs)</th></tr></thead><tbody>
 <?php if(!$items): ?><tr><td colspan="10" class="empty">没有产品明细，请回报价系统检查该报价是否保存了 items_json。</td></tr><?php endif; ?>
-<?php foreach($items as $it): $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; $qty=(float)($it['qty']??1); $price=(float)($it['price']??($it['unit_price']??0)); $amt=(float)($it['amount']??($qty*$price)); $totalQty+=$qty; $totalAmt+=$amt; $img=firstv($p,['image','img','picture'],''); ?>
+<?php foreach($items as $it): $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; $isVirtual=is_virtual_quote_item($it); $qty=(float)($it['qty']??1); $price=(float)($it['price']??($it['unit_price']??0)); $amt=(float)($it['amount']??($qty*$price)); $totalQty+=quote_item_qty_for_total($it); $totalAmt+=$amt; $img=$isVirtual?'':firstv($p,['image','img','picture'],''); ?>
 <tr>
 <td><?php if($img): ?><img class="prod-img" src="<?=h($img)?>"><?php endif; ?></td>
-<td><?=h(firstv($p,['size','dimension','drawing'],''))?></td>
-<td><?=h($customerCode)?></td>
+<td><?=h($isVirtual?'':firstv($p,['size','dimension','drawing'],''))?></td>
+<td><?=h($isVirtual?'':$customerCode)?></td>
 <td><?=h(firstv($p,['code','model','manufacturer_code'],''))?></td>
 <td class="spec"><?php $n=1; foreach(spec_lines($it) as $line){ echo h($n.'. '.$line).'<br>'; $n++; } ?></td>
-<td><?=h($it['color']??($p['color']??''))?></td>
+<td><?=h($isVirtual?'':($it['color']??($p['color']??'')))?></td>
 <td><?=h($qty)?></td>
 <td><?=money($price)?></td>
 <td><?=money($amt)?></td>
-<td><?=h($it['moq']??($p['moq']??''))?></td>
+<td><?=h($isVirtual?'':($it['moq']??($p['moq']??'')))?></td>
 </tr>
 <?php endforeach; ?>
 <tr class="total-row"><td colspan="6"></td><td>Total:<br><?=h($totalQty)?></td><td></td><td><?=money($totalAmt)?></td><td></td></tr>

@@ -77,6 +77,27 @@ function pa2_json_encode($value): string
     return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
+function pa2_public_asset_url(string $path): string
+{
+    $path = trim($path);
+    if ($path === '') return '';
+    if (preg_match('#^(?:[a-z][a-z0-9+.-]*:)?//#i', $path) || str_starts_with($path, '/') || str_starts_with($path, 'data:')) {
+        return $path;
+    }
+    $path = ltrim(preg_replace('#^\./+#', '', $path) ?? $path, '/');
+    $legacyBaseUrl = rtrim(str_replace(DIRECTORY_SEPARATOR, '/', dirname(MC_BASE_URL)), '/');
+    return ($legacyBaseUrl === '' ? '' : $legacyBaseUrl) . '/' . $path;
+}
+
+function pa2_product_image_url(array $snapshot): string
+{
+    foreach (['image_url', 'web_image_url', 'source_image_url', 'image_path', 'image'] as $key) {
+        $value = trim((string)($snapshot[$key] ?? ''));
+        if ($value !== '') return pa2_public_asset_url($value);
+    }
+    return '';
+}
+
 function pa2_log(string $action, string $objectType, ?int $objectId, array $before = [], array $after = []): void
 {
     if (!pa2_table_exists('mc_operation_logs')) return;
@@ -663,7 +684,7 @@ function pa2_search_products(string $keyword = '', int $limit = 30): array
     foreach ($rows as &$row) {
         $snap = pa2_json_decode_array($row['snapshot_json'] ?? '');
         $row['id'] = (int)$row['id'];
-        $row['image_url'] = (string)($snap['image_url'] ?? '');
+        $row['image_url'] = pa2_product_image_url($snap);
         $row['legacy_category'] = (string)($snap['category'] ?? '');
         $row['series_name'] = (string)($snap['series_name'] ?? '');
         $row['category_id'] = $row['category_id'] === null ? null : (int)$row['category_id'];
@@ -989,7 +1010,7 @@ function pa2_fetch_product(int $productId): ?array
     $row['id'] = (int)$row['id'];
     $row['category_id'] = $row['category_id'] === null ? null : (int)$row['category_id'];
     $row['snapshot'] = $snap;
-    $row['image_url'] = (string)($snap['image_url'] ?? $snap['image'] ?? '');
+    $row['image_url'] = pa2_product_image_url($snap);
     $row['legacy_category'] = (string)($snap['category'] ?? '');
     $row['series_name'] = (string)($snap['series_name'] ?? '');
     unset($row['snapshot_json']);
@@ -1055,6 +1076,20 @@ function pa2_workspace_check_summary(array $groups): array
     return $summary;
 }
 
+function pa2_find_editable_product_draft(int $configId): ?array
+{
+    if ($configId <= 0) return null;
+    $stmt = pa2_db()->prepare(
+        "SELECT * FROM mc_pa2_product_config_versions
+         WHERE product_config_id=? AND status IN ('draft','rejected')
+         ORDER BY status='draft' DESC,id DESC
+         LIMIT 1"
+    );
+    $stmt->execute([$configId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
 function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0, string $applyMode = 'append'): array
 {
     pa2_require_any(['adaptation_v2.configure_product', 'adaptation_v2.view', 'material_center.adaptation.manage'], '没有配置产品的权限。');
@@ -1102,16 +1137,25 @@ function pa2_prepare_workspace(int $productId, int $forcedTemplateId = 0, string
         if ($versionId > 0 && $draftVersion && !in_array((string)$draftVersion['status'], ['draft','rejected'], true)) {
             $versionId = 0;
         }
+        if ($versionId <= 0) {
+            $existingDraft = pa2_find_editable_product_draft((int)$config['id']);
+            if ($existingDraft) {
+                $versionId = (int)$existingDraft['id'];
+                pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=?,status="draft",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,$userId,(int)$config['id']]);
+                $config['active_draft_version_id'] = $versionId;
+            }
+        }
         if ($versionId <= 0 && (int)($config['active_published_version_id'] ?? 0) > 0 && pa2_phase7_tables_ready()) {
             $versionId = pa2_clone_version_as_draft((int)$config['active_published_version_id'], (int)$config['id'], 'edit_after_publish');
             $config['active_draft_version_id'] = $versionId;
         }
         if ($versionId <= 0) {
+            $versionNo = pa2_next_draft_version_no((int)$config['id']);
             $versionInsert = pa2_db()->prepare(
                 'INSERT INTO mc_pa2_product_config_versions(product_config_id,version_no,source_template_id,source_template_version_id,status,configuration_snapshot_json,created_by,created_at)
                  VALUES(?,?,?,?, "draft", ?, ?, NOW())'
             );
-            $versionInsert->execute([(int)$config['id'],'draft-1',(int)$template['id'],$template['active_version_id'] ?? null,pa2_json_encode(['source' => 'template', 'template_id' => (int)$template['id']]),$userId]);
+            $versionInsert->execute([(int)$config['id'],$versionNo,(int)$template['id'],$template['active_version_id'] ?? null,pa2_json_encode(['source' => 'template', 'template_id' => (int)$template['id']]),$userId]);
             $versionId = (int)pa2_db()->lastInsertId();
             pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=?,source_template_id=?,product_category_id=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,(int)$template['id'],$categoryId,$userId,(int)$config['id']]);
             $config['active_draft_version_id'] = $versionId;
@@ -1722,7 +1766,7 @@ function pa2_logic_kind_from_group(string $groupCode, string $materialCategory =
 function pa2_sanitize_logic_for_kind(array $logic, string $kind): array
 {
     $allowed = [
-        'chip' => ['current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','chip_brand_keyword','chip_series_keyword','note'],
+        'chip' => ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','cct_k','cri_min','chip_brand_keyword','chip_series_keyword','note'],
         'driver' => ['power_min_w','power_max_w','current_min_ma','current_max_ma','voltage_min_v','voltage_max_v','dimming_mode','note'],
         'optical' => ['beam_angle','optical_type','lens_material','optical_diameter_mm','optical_height_mm','optical_size_keyword','optical_keyword','note'],
         'general' => ['part_size_keyword','part_material_keyword','part_color_keyword','part_usage_keyword','note'],
@@ -2246,36 +2290,41 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
                 break;
             }
         }
-        $productMax = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
-        $productMin = $logic['power_min_w'] ?? ($technical['power_min_w'] ?? null);
-        if ($productMax !== null && $maxPower !== null) {
-            if ((float)$productMax > $maxPower) {
-                return pa2_result('incompatible', 25, ["产品最大功率 {$productMax}W 高于电源可输出 {$maxPower}W。"], ['power_max_w','max_output_power_w'], $trace + ['failed' => 'power_range']);
+        $logicMax = array_key_exists('power_max_w', $logic) ? $logic['power_max_w'] : null;
+        $logicMin = array_key_exists('power_min_w', $logic) ? $logic['power_min_w'] : null;
+        if ($logicMax !== null && $maxPower !== null) {
+            if ($maxPower > (float)$logicMax) {
+                return pa2_result('incompatible', 25, ["电源最大输出 {$maxPower}W 高于配置逻辑上限 {$logicMax}W。"], ['power_max_w','max_output_power_w'], $trace + ['failed' => 'power_range']);
             }
-            if ($productMin !== null && $minPower > 0 && (float)$productMin < $minPower) {
+            if ($logicMin !== null && $maxPower < (float)$logicMin) {
+                return pa2_result('incompatible', 28, ["电源最大输出 {$maxPower}W 低于配置逻辑下限 {$logicMin}W。"], ['power_min_w','max_output_power_w'], $trace + ['failed' => 'power_range']);
+            }
+            if ($logicMin !== null && $minPower > 0 && (float)$logicMin < $minPower) {
                 $status = $status === 'full_match' ? 'conditional_match' : $status;
                 $score = min($score, 78);
                 $fields[] = 'min_output_power_w';
-                $reasons[] = "产品功率下限 {$productMin}W 低于电源最低输出 {$minPower}W，需确认是否可稳定工作。";
+                $reasons[] = "配置逻辑下限 {$logicMin}W 低于电源最低输出 {$minPower}W，需确认是否可稳定工作。";
             } else {
-                $reasons[] = "电源输出功率覆盖产品需求（产品最高 {$productMax}W，电源最高 {$maxPower}W）。";
+                $reasons[] = "电源输出功率符合配置逻辑（上限 {$logicMax}W，电源最高 {$maxPower}W）。";
             }
-        } else {
+        } elseif ($logicMax !== null || $logicMin !== null) {
             $status = $status === 'full_match' ? 'conditional_match' : $status;
             $score = min($score, 76);
-            $fields[] = $productMax === null ? 'product.power' : 'power.max_output_power_w';
-            $reasons[] = $productMax === null ? '产品缺少功率范围，暂按条件适配处理。' : '电源缺少最大输出功率，暂按条件适配处理。';
+            $fields[] = 'power.max_output_power_w';
+            $reasons[] = '电源缺少最大输出功率，已设置功率逻辑但无法完整判断。';
+        } else {
+            $reasons[] = '配置组未设置电源功率逻辑，未按产品功率自动拦截。';
         }
-        $productCurrent = $logic['current_max_ma'] ?? ($technical['current_max_ma'] ?? null);
-        $productCurrentMin = $logic['current_min_ma'] ?? ($technical['current_min_ma'] ?? null);
+        $productCurrent = $logic['current_max_ma'] ?? null;
+        $productCurrentMin = $logic['current_min_ma'] ?? null;
         $currentMin = isset($spec['output_current_min_ma']) && $spec['output_current_min_ma'] !== null ? (float)$spec['output_current_min_ma'] : null;
         $currentMax = isset($spec['output_current_max_ma']) && $spec['output_current_max_ma'] !== null ? (float)$spec['output_current_max_ma'] : null;
         if ($productCurrent !== null && $currentMin !== null && $currentMax !== null) {
             if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax || ($productCurrentMin !== null && (float)$productCurrentMin < $currentMin)) {
                 $needText = $productCurrentMin !== null ? "{$productCurrentMin}-{$productCurrent}mA" : "{$productCurrent}mA";
-                return pa2_result('incompatible', 30, ["产品电流要求 {$needText} 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
+                return pa2_result('incompatible', 30, ["配置逻辑电流 {$needText} 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
             }
-            $reasons[] = "输出电流范围覆盖产品需求（{$currentMin}-{$currentMax}mA）。";
+            $reasons[] = "输出电流范围符合配置逻辑（{$currentMin}-{$currentMax}mA）。";
         }
         $needVoltMin = $logic['voltage_min_v'] ?? null;
         $needVoltMax = $logic['voltage_max_v'] ?? null;
@@ -2322,7 +2371,7 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
         foreach (['chip_brand_keyword' => '芯片品牌', 'chip_series_keyword' => '芯片型号/系列'] as $logicKey => $label) {
             pa2_apply_text_rule($text, (string)($logic[$logicKey] ?? ''), $label, $logicKey, $status, $score, $fields, $reasons, 74);
         }
-        $productPower = $logic['power_max_w'] ?? ($technical['power_max_w'] ?? null);
+        $productPower = array_key_exists('power_max_w', $logic) ? $logic['power_max_w'] : null;
         $chipMax = null;
         foreach (['max_power_w','rated_power_w'] as $key) {
             if (isset($spec[$key]) && $spec[$key] !== null && (float)$spec[$key] > 0) {
@@ -2331,15 +2380,17 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
             }
         }
         if ($productPower !== null && $chipMax !== null) {
-            if ((float)$productPower > $chipMax * 1.15) {
-                return pa2_result('incompatible', 35, ["产品功率 {$productPower}W 明显高于芯片额定/最大 {$chipMax}W。"], ['power_max_w','chip.max_power_w'], $trace + ['failed' => 'chip_power']);
+            if ($chipMax > (float)$productPower) {
+                return pa2_result('incompatible', 35, ["芯片额定/最大 {$chipMax}W 高于配置逻辑上限 {$productPower}W。"], ['power_max_w','chip.max_power_w'], $trace + ['failed' => 'chip_power']);
             }
-            $reasons[] = "芯片功率与产品功率区间基本匹配（产品 {$productPower}W，芯片 {$chipMax}W）。";
-        } else {
+            $reasons[] = "芯片额定/最大 {$chipMax}W 不高于配置逻辑上限 {$productPower}W。";
+        } elseif ($productPower !== null) {
             $status = $status === 'full_match' ? 'conditional_match' : $status;
             $score = min($score, 78);
-            $fields[] = $productPower === null ? 'product.power' : 'chip.power';
-            $reasons[] = '产品或芯片功率资料不完整，需按条件适配确认。';
+            $fields[] = 'chip.power';
+            $reasons[] = '芯片功率资料不完整，已设置功率逻辑但无法完整判断。';
+        } else {
+            $reasons[] = '配置组未设置芯片功率逻辑，未按产品功率自动拦截。';
         }
         $requiredCcts = isset($logic['cct_k']) ? [(int)$logic['cct_k']] : (array)($technical['cct_values_k'] ?? []);
         if ($requiredCcts && isset($spec['cct_min_k'],$spec['cct_max_k']) && $spec['cct_min_k'] !== null && $spec['cct_max_k'] !== null) {
@@ -2577,6 +2628,9 @@ function pa2_calculate_workspace(int $productId, bool $persist = true): array
                     'technical_range' => $technical,
                     'selection' => $selection,
                 ]);
+                $result['material_id'] = (int)($selection['material_id'] ?? 0);
+                $result['option_definition_id'] = isset($selection['option_definition_id']) && $selection['option_definition_id'] !== null ? (int)$selection['option_definition_id'] : null;
+                $result['candidate_label'] = pa2_option_display_label($selection);
                 $groupResults[] = $result;
                 if ($persist) pa2_persist_adaptation_result($versionId, $group, $selection, $result);
             }
@@ -2949,7 +3003,18 @@ function pa2_product_version_submit(int $productId, string $note = ''): array
     if (($detail['check_summary']['missing_required'] ?? 0) > 0) throw new RuntimeException('仍有必选配置未完成，不能提交审批。');
     if (pa2_engine_tables_ready()) {
         $calc = pa2_calculate_workspace($productId, true);
-        if (($calc['summary']['engine']['incompatible'] ?? 0) > 0) throw new RuntimeException('存在不适配项，请处理后再提交审批。');
+        if (($calc['summary']['engine']['incompatible'] ?? 0) > 0) {
+            $blocked = [];
+            foreach ((array)($calc['results'] ?? []) as $result) {
+                if ((string)($result['result_status'] ?? '') !== 'incompatible') continue;
+                $groupName = trim((string)($result['group_name'] ?? $result['group_code'] ?? '配置项'));
+                $candidateLabel = trim((string)($result['candidate_label'] ?? ''));
+                $reason = trim((string)(($result['reasons'][0] ?? '') ?: '未通过适配规则。'));
+                $blocked[] = trim($groupName . ($candidateLabel !== '' ? ' - ' . $candidateLabel : '') . '：' . $reason);
+            }
+            $detailText = $blocked ? ' ' . implode('；', array_slice($blocked, 0, 3)) : '';
+            throw new RuntimeException('存在不适配项，请处理后再提交审批。' . $detailText);
+        }
     }
     $before = (string)$version['status'];
     pa2_store_version_snapshot($versionId, 'submitted');

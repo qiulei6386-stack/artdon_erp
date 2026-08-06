@@ -143,6 +143,8 @@ function qe_format_cutout($v){ $v=qe_clean_param($v); if($v==='') return ''; $v=
 function qe_display_cutout($p){ if(!qe_is_embedded_product($p)) return ''; return qe_format_cutout(qe_first($p,['quote_display_cutout','cutout','dim_opening','hole','opening'],'')); }
 function qe_quote_spec_pairs($p){ $raw=$p['quote_spec']??null; if(!$raw && !empty($p['quote_spec_json'])) $raw=json_decode((string)$p['quote_spec_json'],true); $out=[]; if(is_array($raw)){ foreach($raw as $k=>$v){ $label=$k; $val=''; if(is_array($v)){ $label=$v['label']??$k; $val=$v['value']??($v['text']??''); } else { $val=$v; } $label=qe_spec_label($label); $val=qe_sanitize_component_value($label,$val); $val=qe_clean_param($val); if($val!=='') $out[]=[$label,$val]; } } return $out; }
 function qe_is_material_sale($it){ $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; return !empty($it['is_material_sale']) || (($it['product_type']??'')==='material') || (isset($p['id']) && strpos((string)$p['id'],'mat-')===0); }
+function qe_is_virtual_item($it){ return is_array($it) && (!empty($it['is_virtual_item']) || (($it['item_type']??'')==='virtual') || (($it['product_type']??'')==='virtual') || (array_key_exists('shippable',$it) && ($it['shippable']===false || $it['shippable']===0 || $it['shippable']==='0' || $it['shippable']==='false'))); }
+function qe_item_qty_for_total($it){ return qe_is_virtual_item($it) && empty($it['count_in_qty']) ? 0 : qe_num($it['qty']??0); }
 function qe_item_spec($it){
   // V6.8.5.21：报价/订单导出 Excel 与 PDF 同步，优先使用订单/报价保存时的完整 Specification。
   $saved=qe_clean_param($it['specification']??'');
@@ -319,15 +321,15 @@ function qe_build_xlsx($payload){
   $startItemRow=$r; $totalQty=0; $totalAmt=0;
   if(!$items){ $rows[]=qe_row($r,[qe_cell(1,$r,'Please add products on the left side first.',7)],70); $merges[]='A'.$r.':J'.$r; $r++; }
   foreach($items as $it){
-    $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; $qty=qe_num($it['qty']??1); $price=qe_num($it['price']??($it['unit_price']??0)); $amt=qe_num($it['amount']??($qty*$price)); $totalQty+=$qty; $totalAmt+=$amt; $isMat=qe_is_material_sale($it); $itemRowHeight=qe_item_row_height($it); $img=qe_image_source_to_jpeg(qe_first($p,['image','product_image','image_path','main_image','photo','picture','img','image_url'],'')); if($img){ $img['row']=$r; $img['row_height']=$itemRowHeight; $images[]=$img; }
+    $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; $qty=qe_num($it['qty']??1); $price=qe_num($it['price']??($it['unit_price']??0)); $amt=qe_num($it['amount']??($qty*$price)); $totalQty+=qe_item_qty_for_total($it); $totalAmt+=$amt; $isMat=qe_is_material_sale($it); $isVirtual=qe_is_virtual_item($it); $itemRowHeight=qe_item_row_height($it); $img=$isVirtual?null:qe_image_source_to_jpeg(qe_first($p,['image','product_image','image_path','main_image','photo','picture','img','image_url'],'')); if($img){ $img['row']=$r; $img['row_height']=$itemRowHeight; $images[]=$img; }
     $row=[
-      qe_cell(1,$r,'',6), qe_cell(2,$r,$isMat?'':qe_display_size($p),6), qe_cell(3,$r,$it['customer_code']??'',6), qe_cell(4,$r,qe_first($p,['code','model','manufacturer_code'],''),6), qe_cell(5,$r,qe_item_spec($it),7), qe_cell(6,$r,$it['color']??($p['color']??''),6), qe_cell(7,$r,$qty,6,true), qe_cell(8,$r,$price,8,true), qe_formula(9,$r,'G'.$r.'*H'.$r,8,$amt), qe_cell(10,$r,$it['moq']??($p['moq']??''),6)
+      qe_cell(1,$r,'',6), qe_cell(2,$r,($isMat||$isVirtual)?'':qe_display_size($p),6), qe_cell(3,$r,$isVirtual?'':($it['customer_code']??''),6), qe_cell(4,$r,qe_first($p,['code','model','manufacturer_code'],''),6), qe_cell(5,$r,qe_item_spec($it),7), qe_cell(6,$r,$isVirtual?'':($it['color']??($p['color']??'')),6), qe_cell(7,$r,$qty,6,true), qe_cell(8,$r,$price,8,true), qe_formula(9,$r,'G'.$r.'*H'.$r,8,$amt), qe_cell(10,$r,$isVirtual?'':($it['moq']??($p['moq']??'')),6)
     ];
     $rows[]=qe_row($r,$row,$itemRowHeight); $r++;
     $contentHeightPt += $itemRowHeight;
   }
   $endItemRow=max($startItemRow,$r-1);
-  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_formula(7,$r,'SUM(G'.$startItemRow.':G'.$endItemRow.')',9,$totalQty),qe_formula(9,$r,'SUM(I'.$startItemRow.':I'.$endItemRow.')',10,$totalAmt)],18); $totalRow=$r; $r++;
+  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_cell(7,$r,$totalQty,9,true),qe_formula(9,$r,'SUM(I'.$startItemRow.':I'.$endItemRow.')',10,$totalAmt)],18); $totalRow=$r; $r++;
   $rows[]=qe_row($r,[],14);$r++;
   $paymentText=qe_payment_amount_text($payload,$totalAmt,$currency);
   $summaryLeft="Total Qty: $totalQty PCS".($paymentText!==''?"\n".$paymentText:'')."\nTotal Amount: $currency ".number_format($totalAmt,2,'.','')."\nCurrency: $currency";

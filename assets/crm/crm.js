@@ -6407,6 +6407,30 @@
       if (Array.isArray(value)) value = value.filter(Boolean).join(',');
       return value || '未填来源';
     },
+    leadContacts: function (row) {
+      row = row || {};
+      var payload = row.payload || {};
+      var contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
+      if (!contacts.length && payload.contacts_json) {
+        try {
+          var parsed = typeof payload.contacts_json === 'string' ? JSON.parse(payload.contacts_json) : payload.contacts_json;
+          if (Array.isArray(parsed)) contacts = parsed;
+        } catch (error) {}
+      }
+      if (!contacts.length && (payload.contact_name || payload.contact_email || payload.contact_phone || payload.contact_whatsapp)) {
+        contacts = [{
+          name: payload.contact_name || '',
+          email: payload.contact_email || '',
+          phone: payload.contact_phone || '',
+          whatsapp: payload.contact_whatsapp || '',
+          position: payload.contact_position || payload.position || '',
+          department: payload.contact_department || payload.department || ''
+        }];
+      }
+      return contacts.filter(function (contact) {
+        return contact && (contact.name || contact.email || contact.phone || contact.whatsapp || contact.position || contact.department);
+      });
+    },
     renderLeadPool: function (rows, meta) {
       var box = document.querySelector('[data-lead-pool-list]');
       if (!box) return;
@@ -6455,8 +6479,8 @@
           '<button type="button" data-lead-filter="all"><span>总数</span><strong>' + esc(stats.total || meta.total || rows.length || 0) + '</strong></button>' +
         '</div><div class="temp-pool-filterbar"><div class="temp-pool-chips">' + chips.map(function (chip) {
           return '<button type="button" class="' + (quick === chip[0] ? 'active' : '') + '" data-lead-filter="' + esc(chip[0]) + '">' + esc(chip[1]) + '</button>';
-        }).join('') + '</div><label><span>搜索</span><input type="search" value="' + esc(keyword) + '" placeholder="客户名 / 邮箱 / 电话 / 域名 / 国家" data-lead-pool-search></label></div></div>' +
-        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count"><span>当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条 · 已选 ' + esc((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条</span><nav><button type="button" data-lead-select-page>全选当前页</button><button type="button" data-lead-clear-selection>清空</button><button type="button" data-lead-batch-create>批量加入</button><button type="button" class="danger" data-lead-batch-reject>批量删除</button></nav></div><div class="temp-pool-rows">' + listHtml + '</div>' + pagerHtml + '</aside>' +
+        }).join('') + '</div></div></div>' +
+        '<div class="temp-pool-body"><aside class="temp-pool-left"><div class="temp-pool-count"><span>当前 ' + esc(rows.length) + ' 条 / 共 ' + esc(meta.total || 0) + ' 条 · 已选 ' + esc((this.selectedLeadIds && this.selectedLeadIds.size) || 0) + ' 条</span><label class="temp-pool-search"><span>搜索</span><input type="search" value="' + esc(keyword) + '" placeholder="客户 / 联系人 / 邮箱 / 电话 / 域名 / 国家 / 来源 / 创建人" data-lead-pool-search></label><nav><button type="button" data-lead-select-page>全选当前页</button><button type="button" data-lead-clear-selection>清空</button><button type="button" data-lead-batch-create>批量加入</button><button type="button" class="danger" data-lead-batch-reject>批量删除</button></nav></div><div class="temp-pool-rows">' + listHtml + '</div>' + pagerHtml + '</aside>' +
         '<section class="temp-pool-right" data-lead-pool-detail>' + this.renderLeadPoolDetailHtml(this.selectedLead) + '</section></div></section>';
       this.bindLeadPoolWorkbench();
     },
@@ -6483,6 +6507,13 @@
         var scoreClass = score >= 90 ? 'high' : (score >= 75 ? 'medium' : 'low');
         return '<tr><td><strong>' + esc(match.customer_name || ('客户 #' + (match.customer_id || '-'))) + '</strong><small>' + esc(match.customer_code || '') + '</small></td><td>' + esc(match.country || '-') + '</td><td>' + esc(match.email || '-') + '</td><td>' + esc(match.phone || '-') + '</td><td>' + esc(match.website || '-') + '</td><td><span class="match-score ' + scoreClass + '">' + esc(score) + '%</span></td><td>' + esc((match.reasons || []).join(', ') || '相似') + '</td><td>' + esc(score >= 90 ? '建议合并' : (score >= 75 ? '建议人工确认' : '建议关联')) + '</td></tr>';
       }).join('') : '<tr><td colspan="8" class="temp-pool-muted">未发现明显重复客户，可确认入库。</td></tr>';
+      var contactRows = this.leadContacts(lead);
+      var contactHtml = contactRows.length ? contactRows.map(function (contact) {
+        var tags = Array.isArray(contact.role_tags) ? contact.role_tags.filter(Boolean).join(' / ') : (contact.role_tags || '');
+        var line = [contact.position || '', contact.department || '', tags || ''].filter(Boolean).join(' · ');
+        var phoneLine = [contact.email || '未填邮箱', contact.phone || '未填电话', contact.whatsapp ? ('WhatsApp ' + contact.whatsapp) : ''].filter(Boolean).join(' · ');
+        return '<article class="temp-pool-contact"><strong>' + esc(contact.name || contact.email || '未命名联系人') + '</strong><span>' + esc(line || '未填职位/角色') + '</span><p>' + esc(phoneLine) + '</p></article>';
+      }).join('') : '<p class="temp-pool-muted">暂无联系人。</p>';
       var first = matches[0] || {};
       var diffRows = [
         ['客户名', this.leadDisplayName(lead), first.customer_name || '无匹配'],
@@ -6497,6 +6528,7 @@
       return '<div class="temp-pool-detail-stack"><section class="temp-pool-card"><h3>暂存客户资料</h3><div class="temp-pool-fields">' + fields.map(function (field) {
         return '<div><span>' + esc(field[0]) + '</span><strong class="' + (field[1] === '未填' ? 'muted' : '') + '">' + esc(field[1]) + '</strong></div>';
       }).join('') + '</div></section>' +
+        '<section class="temp-pool-card"><h3>联系人</h3><div class="temp-pool-contact-list">' + contactHtml + '</div></section>' +
         '<section class="temp-pool-card"><h3>疑似重复客户对比</h3><div class="temp-pool-table-wrap"><table class="temp-pool-table"><thead><tr><th>匹配客户</th><th>国家</th><th>邮箱</th><th>电话</th><th>域名</th><th>相似度</th><th>匹配原因</th><th>建议</th></tr></thead><tbody>' + matchRows + '</tbody></table></div></section>' +
         '<section class="temp-pool-card temp-pool-split-card"><div><h3>字段差异</h3><table class="temp-pool-table compact"><tbody>' + diffRows + '</tbody></table></div><div><h3>建议处理</h3><p>' + esc(suggestion) + '</p></div></section></div>';
     },
@@ -6634,10 +6666,13 @@
     selectedLeadPayload: function () {
       var lead = this.selectedLead || {};
       var payload = Object.assign({}, lead.payload || {});
+      var contacts = this.leadContacts(lead);
       payload.customer_name = payload.customer_name || lead.raw_name || '';
       payload.email = payload.email || lead.raw_email || '';
       payload.phone = payload.phone || lead.raw_phone || '';
       payload.country = payload.country || lead.raw_country || '';
+      payload.contacts = contacts;
+      payload.contacts_json = JSON.stringify(contacts);
       payload.id = 0;
       return payload;
     },

@@ -117,7 +117,8 @@
 .product-grid.product-library-grid .product-size{
   margin:8px 0 2px;
 }
-.product-grid.product-library-grid .product-opening{
+.product-grid.product-library-grid .product-opening,
+.product-grid.product-library-grid .product-power{
   margin:0 0 5px;
   color:var(--muted);
   font-size:12px;

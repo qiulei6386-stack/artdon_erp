@@ -61,12 +61,15 @@ pa7_assert_true(str_contains($foundation, 'active_published_version_id') && str_
 foreach (['product_versions','product_version_diff','product_version_submit','product_version_approve','product_version_reject','product_version_publish','product_version_rollback'] as $action) {
     pa7_assert_true(str_contains($api, $action), "API supports {$action}");
 }
-pa7_assert_true(str_contains($api, "'phase' => 7"), 'API status declares phase 7');
+pa7_assert_true(preg_match("/'phase'\\s*=>\\s*(?:[7-9]|[1-9][0-9]+)/", $api) === 1, 'API status declares phase 7 or later');
 
-pa7_assert_true(str_contains($index, 'data-phase="7"'), 'V2 index declares phase 7');
+pa7_assert_true(preg_match('/data-phase="(?:[7-9]|[1-9][0-9]+)"/', $index) === 1, 'V2 index declares phase 7 or later');
 pa7_assert_true(str_contains($index, '提交审批') && str_contains($index, '审批通过') && str_contains($index, '发布版本') && str_contains($index, '回滚到此版本'), 'Workspace exposes approval lifecycle actions');
 pa7_assert_true(str_contains($index, '生成下一版草稿'), 'Workspace exposes edit-after-publish draft creation');
 pa7_assert_true(str_contains($index, '当前版本已锁定'), 'Workspace prevents editing locked versions');
+pa7_assert_true(str_contains($index, '$pa2ResultRank') && str_contains($index, 'pa2-selected-row'), 'Workspace shows worst group status and per-selected adaptation results');
+pa7_assert_true(!str_contains($index, '$primaryResult = $groupResults[0] ?? null'), 'Workspace no longer hides later incompatible selected materials behind the first result');
+pa7_assert_true(str_contains($foundation, 'candidate_label') && str_contains($foundation, '$blocked[]'), 'Submit approval error includes concrete incompatible material details');
 
 pa7_assert_true(str_contains($doc, '旧发布版本保护') && str_contains($doc, '产品级覆盖'), 'Phase 7 document records version protection and product overrides');
 pa7_assert_true(str_contains($execution, '第 7 阶段：产品差异、审批和版本'), 'Execution log records phase 7');

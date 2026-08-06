@@ -244,6 +244,80 @@ function qd_build_document_items(PDO $pdo,$order,$shipmentItems){
   return $out;
 }
 function qd_total($rows,$key){$s=0;foreach($rows as $r)$s+=qd_num($r[$key]??0);return $s;}
+function qd_carton_has_detail($c){foreach(['carton_no','carton_range','items_text','qty','carton_size','nw','gw','cbm','note'] as $k){if(trim((string)($c[$k]??''))!=='')return true;}return false;}
+function qd_carton_count($c){$n=qd_num($c['carton_count']??1);return $n>0?$n:1;}
+function qd_carton_count_total($cartons){$s=0;foreach($cartons as $c){if(qd_carton_has_detail($c))$s+=qd_carton_count($c);}return $s;}
+function qd_packing_total($items,$cartons,$key){
+  $base=qd_total($items,$key);
+  if($key==='qty') return $base+qd_total($cartons,'qty');
+  if($key==='cartons') return $base+qd_carton_count_total($cartons);
+  if(in_array($key,['nw','gw','cbm'],true)) return $base+qd_total($cartons,$key);
+  return $base;
+}
+function qd_carton_qty_parts($text,$fallbackQty=0){
+  $parts=[];
+  if(preg_match('/((?:\d+(?:\.\d+)?\s*\+\s*)+\d+(?:\.\d+)?)\s*pcs\b/i',(string)$text,$m)){
+    foreach(preg_split('/\s*\+\s*/',$m[1]) as $p){ $n=qd_num($p); if($n>0)$parts[]=$n; }
+  }
+  if(!$parts && qd_num($fallbackQty)>0) $parts[]=(float)$fallbackQty;
+  return $parts;
+}
+function qd_carton_pl_rows($cartons,$items=[]){
+  $rows=[];
+  foreach($cartons as $ci=>$c){
+    if(!qd_carton_has_detail($c)) continue;
+    $text=qd_s($c['items_text']??''); $code=''; $desc=$text;
+    if(preg_match('/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$/u',$text,$m)){ $code=$m[1]; $desc=qd_s($m[2]??''); }
+    if($desc==='') $desc=$text!==''?$text:qd_s($c['note']??'Tail carton');
+    $ctns=qd_carton_count($c); $qty=qd_num($c['qty']??0);
+    $parts=qd_carton_qty_parts($text,$qty);
+    $matched=[];
+    if($code!==''){
+      foreach($items as $it){
+        if(qd_s($it['product_code']??'')===$code || qd_s($it['customer_code']??'')===$code) $matched[]=$it;
+      }
+    }
+    if($matched && count($matched)===count($parts)){
+      foreach($matched as $i=>$src){
+        $row=$src;
+        $row['qty']=qd_num($parts[$i]??0);
+        $row['pcs_per_ctn']=$i===0&&$qty>0&&$ctns>0?($qty/$ctns):0;
+        $row['cartons']=$i===0?$ctns:0;
+        $row['carton_size']=$i===0?qd_s($c['carton_size']??''):'';
+        $row['nw']=$i===0?qd_num($c['nw']??0):0;
+        $row['gw']=$i===0?qd_num($c['gw']??0):0;
+        $row['cbm']=$i===0?qd_num($c['cbm']??0):0;
+        $row['_carton_group']='tail_'.$ci;
+        $row['_carton_rowspan']=count($matched);
+        $row['_carton_first']=$i===0;
+        $row['_carton_skip_pack']=$i>0;
+        $rows[]=$row;
+      }
+      continue;
+    }
+    $rows[]=[
+      'customer_code'=>'',
+      'product_code'=>$code,
+      'product_name'=>'',
+      'specification'=>$desc,
+      'description'=>$desc,
+      'color'=>'',
+      'qty'=>$qty,
+      'pcs_per_ctn'=>($qty>0&&$ctns>0)?($qty/$ctns):0,
+      'cartons'=>$ctns,
+      'carton_size'=>qd_s($c['carton_size']??''),
+      'nw'=>qd_num($c['nw']??0),
+      'gw'=>qd_num($c['gw']??0),
+      'cbm'=>qd_num($c['cbm']??0),
+      'image'=>'',
+      '_carton_group'=>'tail_'.$ci,
+      '_carton_rowspan'=>1,
+      '_carton_first'=>true,
+      '_carton_skip_pack'=>false,
+    ];
+  }
+  return $rows;
+}
 function qd_print_style(){return '<style>
 @font-face{font-family:"ARS MaquetteTr";src:url("assets/fonts/ARSMaqLigTr.otf") format("opentype");font-weight:300 900;font-style:normal;font-display:swap}
 html,body,.paper,.paper *,.quote-table,.quote-table *,.terms,.terms *,.bank,.bank *,.bank-terms,.bank-terms *,.final-summary,.final-summary *,.final-sign,.final-sign *,.doc-table,.doc-table *,.box,.box *{font-family:"ARS MaquetteTr","Microsoft YaHei",Arial,sans-serif!important;}@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#eef2f7;color:#000;font-family:"ARS MaquetteTr","Microsoft YaHei",Arial,sans-serif}.toolbar{position:sticky;top:0;background:#fff;border-bottom:1px solid #d8dee9;padding:9px 14px;z-index:10;display:flex;justify-content:space-between;font-family:"ARS MaquetteTr","Microsoft YaHei",Arial,sans-serif}.toolbar button,.toolbar a{background:#111827;color:#fff;border:0;border-radius:8px;padding:8px 12px;text-decoration:none}.toolbar .gray{background:#eef2f7;color:#111827;border:1px solid #d4dbe7}.paper{position:relative;width:210mm;min-height:297mm;background:#fff;margin:12px auto;padding:20mm 15mm 17mm;border:1px solid #cfd6e3;overflow:hidden}.doc-void-watermark{position:absolute;left:19mm;right:19mm;top:128mm;text-align:center;font-size:44pt;font-weight:800;letter-spacing:6px;color:rgba(220,38,38,.13);transform:rotate(-24deg);z-index:0;pointer-events:none}.doc-void-note{position:relative;z-index:1;margin:-8mm 0 5mm;border:1px solid #fecaca;background:#fff1f2;color:#991b1b;border-radius:8px;padding:2mm 3mm;font-size:8.4pt}.top,.doc-table,.summary,.box,.bank{position:relative;z-index:1}.top{display:grid;grid-template-columns:96mm 72mm;gap:12mm;align-items:start}.top>div:last-child{justify-self:end;width:72mm}.seller h1{font-size:16pt;margin:0 0 5mm;font-weight:400;line-height:1.12}.seller .txt,.buyer{font-size:9.2pt;line-height:1.25;white-space:pre-line}.buyer{margin-top:7mm}.brandstamp{text-align:center;color:#0000a0;font-weight:700;font-size:8.6pt;line-height:1.12;white-space:pre-line;min-height:9mm}.brandstamp:empty{min-height:9mm}.doc-title{text-align:center;font-size:15pt;font-weight:700;margin:2mm 0 4mm;line-height:1.15}.terms{width:72mm;border-collapse:collapse;font-size:8.2pt;table-layout:fixed}.terms td{border:1.25px solid #000;padding:1.1mm 2mm;height:4.9mm;vertical-align:middle}.terms td:first-child{font-weight:700;text-align:right;width:34mm}.terms td.doc-edit-cell{background:#fffdf7;outline:1px dashed #fbbf24;outline-offset:-3px}.terms td.doc-edit-cell:empty:before{content:attr(data-placeholder);color:#9ca3af}.doc-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:10mm;font-size:6.4pt;line-height:1.05}.doc-table th,.doc-table td{border:1.25px solid #000;padding:.55mm .5mm;text-align:center;vertical-align:middle;overflow-wrap:anywhere}.doc-table th{font-weight:700;height:7.5mm}.doc-table .desc{text-align:left;white-space:pre-line;line-height:1.08}.doc-table td.pic-cell{overflow:hidden}.pl-img,.ci-img{display:block;margin:0 auto;width:auto;height:auto;max-width:12mm!important;max-height:12mm!important;object-fit:contain}.doc-table td.material-edit,.doc-table th.material-head-edit{background:#fffdf7;outline:1px dashed #fbbf24;outline-offset:-3px;min-height:7mm}.doc-table td.material-edit:empty:before{content:""}.summary{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:8mm}.box{border:1.25px solid #000;padding:2.2mm;font-size:8.6pt;line-height:1.35;white-space:pre-line}.bank{background:#f2f2f2;padding:2.2mm;font-size:7.8pt;line-height:1.23;white-space:pre-line;margin-top:8mm}.nowrap{white-space:nowrap}@media print{.toolbar{display:none!important}body{background:#fff}.terms td.doc-edit-cell,.doc-table td.material-edit,.doc-table th.material-head-edit{background:#fff!important;outline:0!important}.terms td.doc-edit-cell:empty:before,.doc-table td.material-edit:empty:before{content:""!important}.paper{border:0;margin:0;width:210mm;min-height:297mm;page-break-after:auto}.doc-table thead{display:table-header-group}.doc-table tr{page-break-inside:avoid}}</style>';}
@@ -262,6 +336,7 @@ $order=qd_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$
 $shipmentItems=qd_rows($pdo,'SELECT * FROM quote_shipment_items WHERE shipment_id=? ORDER BY item_index,id',[$shipmentId]);
 $items=qd_build_document_items($pdo,$order,$shipmentItems);
 $cartons=qd_rows($pdo,'SELECT * FROM quote_shipment_cartons WHERE shipment_id=? ORDER BY id',[$shipmentId]);
+$plItems=$type==='pl'?array_merge($items,qd_carton_pl_rows($cartons,$items)):$items;
 $settings=qd_settings($pdo);$customer=qd_customer_from_order($order);list($sellerName,$sellerText)=qd_header_seller($order,$settings);$docTitle=$type==='ci'?'COMMERCIAL INVOICE':'PACKING LIST';$docFileTitle=qd_doc_file_title($type,$order);$docNo=$type==='ci'?($ship['commercial_invoice_no']??''):($ship['packing_list_no']??'');if($docNo==='')$docNo=$docTitle.'-'.$shipmentId;$docVoided=$docStatus==='voided';$voidText='作废人：'.qd_s($ship[$type.'_voided_by']??'').' ｜ 作废时间：'.qd_s($ship[$type.'_voided_at']??'').' ｜ 原因：'.qd_s($ship[$type.'_void_reason']??'');
 if($type==='ci' && qd_col_exists($pdo,'quote_shipments','ci_generated_at')){$pdo->prepare('UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()) WHERE id=?')->execute([$shipmentId]);}else if($type!=='ci' && qd_col_exists($pdo,'quote_shipments','pl_generated_at')){$pdo->prepare('UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()) WHERE id=?')->execute([$shipmentId]);}
 if($format==='xls'||$format==='xlsx'||$format==='excel'){
@@ -289,10 +364,9 @@ if($format==='xls'||$format==='xlsx'||$format==='excel'){
   <?php /* V6.8.5.53: CI 不显示银行信息区 */ ?>
 <?php else: ?>
   <table class="doc-table"><colgroup><col style="width:7%"><col style="width:10%"><col style="width:11%"><col style="width:31%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:4.8%"><col style="width:4.8%"><col style="width:4.8%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5%"></colgroup><thead><tr><th>Picture</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>PCS/<br>CTN</th><th>L<br>(cm)</th><th>W<br>(cm)</th><th>H<br>(cm)</th><th>CTNS</th><th>N.W.<br>(KG)</th><th>G.W.<br>(KG)</th><th>CBM</th></tr></thead><tbody>
-  <?php foreach($items as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><td><?=qd_qty($it['pcs_per_ctn']??0)?></td><td><?=qd_h($cl)?></td><td><?=qd_h($cw)?></td><td><?=qd_h($ch)?></td><td><?=qd_qty($it['cartons']??0)?></td><td><?=qd_qty($it['nw']??0,3)?></td><td><?=qd_qty($it['gw']??0,3)?></td><td><?=qd_qty($it['cbm']??0,4)?></td></tr><?php endforeach; ?>
-  <tr><td colspan="5"></td><td><b><?=qd_qty(qd_total($items,'qty'))?></b></td><td></td><td colspan="3"><b>Total:</b></td><td><b><?=qd_qty(qd_total($items,'cartons'))?></b></td><td><b><?=qd_qty(qd_total($items,'nw'),3)?></b></td><td><b><?=qd_qty(qd_total($items,'gw'),3)?></b></td><td><b><?=qd_qty(qd_total($items,'cbm'),4)?></b></td></tr></tbody></table>
-  <?php if($cartons): ?><div class="box" style="margin-top:8mm"><b>Carton Detail</b><br><?php foreach($cartons as $c): ?><?=qd_h(($c['carton_no']?:$c['carton_range']).'  '.$c['items_text'].'  QTY '.qd_qty($c['qty']).'  '.$c['carton_size'].'  N.W. '.qd_qty($c['nw'],3).'  G.W. '.qd_qty($c['gw'],3).'  CBM '.qd_qty($c['cbm'],4))?><br><?php endforeach; ?></div><?php endif; ?>
-  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($items,'qty'))?> PCS<br><b>Total Cartons:</b> <?=qd_qty(qd_total($items,'cartons'))?> CTNS<br><b>Total N.W.:</b> <?=qd_qty(qd_total($items,'nw'),3)?> KG<br><b>Total G.W.:</b> <?=qd_qty(qd_total($items,'gw'),3)?> KG<br><b>Total CBM:</b> <?=qd_qty(qd_total($items,'cbm'),4)?></div><div class="box"><b>Packing List No:</b> <?=qd_h($ship['packing_list_no']??'')?><br><b>PI No.:</b> <?=qd_h(qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
+  <?php foreach($plItems as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); $span=max(1,(int)($it['_carton_rowspan']??1)); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><?php if(empty($it['_carton_skip_pack'])): ?><td rowspan="<?=$span?>"><?=qd_qty($it['pcs_per_ctn']??0)?></td><td rowspan="<?=$span?>"><?=qd_h($cl)?></td><td rowspan="<?=$span?>"><?=qd_h($cw)?></td><td rowspan="<?=$span?>"><?=qd_h($ch)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cartons']??0)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['nw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['gw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cbm']??0,4)?></td><?php endif; ?></tr><?php endforeach; ?>
+  <tr><td colspan="5"></td><td><b><?=qd_qty(qd_total($plItems,'qty'))?></b></td><td></td><td colspan="3"><b>Total:</b></td><td><b><?=qd_qty(qd_total($plItems,'cartons'))?></b></td><td><b><?=qd_qty(qd_total($plItems,'nw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'gw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'cbm'),4)?></b></td></tr></tbody></table>
+  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($plItems,'qty'))?> PCS<br><b>Total Cartons:</b> <?=qd_qty(qd_total($plItems,'cartons'))?> CTNS<br><b>Total N.W.:</b> <?=qd_qty(qd_total($plItems,'nw'),3)?> KG<br><b>Total G.W.:</b> <?=qd_qty(qd_total($plItems,'gw'),3)?> KG<br><b>Total CBM:</b> <?=qd_qty(qd_total($plItems,'cbm'),4)?></div><div class="box"><b>Packing List No:</b> <?=qd_h($ship['packing_list_no']??'')?><br><b>PI No.:</b> <?=qd_h(qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
 <?php endif; ?>
 </div>
 

@@ -33,7 +33,8 @@ final class LegacyCatalogReadRepository
                     {$drawingExpr},
                     n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height,n.bom_allowed,n.updated_at,
                     pv.id AS commercial_version_id,pv.version_no AS commercial_version_no,
-                    pv.published_at AS commercial_published_at,ps.snapshot_json AS commercial_snapshot_json
+                    pv.published_at AS commercial_published_at,ps.snapshot_json AS commercial_snapshot_json,
+                    mp.snapshot_json AS material_center_snapshot_json
              FROM naming_models n
              LEFT JOIN mc_products mp
                ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
@@ -56,12 +57,17 @@ final class LegacyCatalogReadRepository
         );
         foreach ($rows as &$row) {
             $snapshot = json_decode((string)($row['commercial_snapshot_json'] ?? ''), true);
+            $materialSnapshot = json_decode((string)($row['material_center_snapshot_json'] ?? ''), true);
+            $productParameters = $this->productParameters(is_array($materialSnapshot) ? $materialSnapshot : []);
             $row['commercial_configuration'] = $this->publishedConfiguration(
                 is_array($snapshot) ? $snapshot : [],
                 (string)($row['commercial_version_no'] ?? ''),
-                (string)($row['commercial_published_at'] ?? '')
+                (string)($row['commercial_published_at'] ?? ''),
+                $productParameters
             );
+            $row['commercial_product_parameters'] = $productParameters;
             unset($row['commercial_snapshot_json']);
+            unset($row['material_center_snapshot_json']);
         }
         unset($row);
         return $rows;
@@ -71,7 +77,10 @@ final class LegacyCatalogReadRepository
     {
         [$where, $params] = $this->productWhere($search, $category);
         return (int)$this->selectValue(
-            'SELECT COUNT(*) FROM naming_models n WHERE ' . implode(' AND ', $where),
+            "SELECT COUNT(DISTINCT n.id)
+             FROM naming_models n
+             LEFT JOIN mc_products mp ON mp.legacy_table='naming_models' AND mp.legacy_id=n.id
+             WHERE " . implode(' AND ', $where),
             $params
         );
     }
@@ -193,7 +202,7 @@ final class LegacyCatalogReadRepository
         $search = trim($search);
         if ($search !== '') {
             $keywords = preg_split('/[\s,，;；]+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-            $haystack = "CONCAT_WS(' ',n.model_no,n.product_name,n.item_name,n.series_name,n.web_series,n.category,n.lamp_type,n.status,n.customer,n.remark,n.size_code,n.web_size_name,n.web_dimensions,n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height)";
+            $haystack = "CONCAT_WS(' ',n.model_no,n.product_name,n.item_name,n.series_name,n.web_series,n.category,n.lamp_type,n.status,n.customer,n.remark,n.size_code,n.web_size_name,n.web_dimensions,n.dim_opening,n.dim_outer_d,n.dim_length,n.dim_width,n.dim_height,mp.snapshot_json)";
             foreach (array_slice($keywords, 0, 8) as $keyword) {
                 $where[] = $haystack . ' LIKE ?';
                 $params[] = '%' . $keyword . '%';
@@ -206,10 +215,11 @@ final class LegacyCatalogReadRepository
         return [$where, $params];
     }
 
-    private function publishedConfiguration(array $snapshot, string $versionNo, string $publishedAt): array
+    private function publishedConfiguration(array $snapshot, string $versionNo, string $publishedAt, array $productParameters = []): array
     {
-        if ($snapshot === []) return [];
+        if ($snapshot === [] && $productParameters === []) return [];
         $technical = is_array($snapshot['technical_range'] ?? null) ? $snapshot['technical_range'] : [];
+        $technicalFromParameters = $this->productParameterTechnical($productParameters);
         $groups = [];
         foreach ((array)($snapshot['groups'] ?? []) as $group) {
             if (!is_array($group)) continue;
@@ -275,17 +285,122 @@ final class LegacyCatalogReadRepository
         return [
             'version' => $versionNo,
             'published_at' => $publishedAt,
-            'technical' => [
+            'technical' => $this->mergeNonEmpty([
                 'power' => $this->rangeLabel($technical, 'power_values_w', 'power_min_w', 'power_max_w', 'W'),
                 'beam_angle' => $this->rangeLabel($technical, 'beam_angle_values', 'beam_angle_min', 'beam_angle_max', '°'),
                 'current' => $this->rangeLabel($technical, 'current_values_ma', 'current_min_ma', 'current_max_ma', 'mA'),
                 'cct' => $this->valueListLabel($technical['cct_values_k'] ?? [], 'K'),
                 'cri' => isset($technical['cri_min']) && $technical['cri_min'] !== null ? '≥' . $technical['cri_min'] : '',
                 'ip_rating' => trim((string)($technical['ip_rating'] ?? '')),
-            ],
+            ], $technicalFromParameters),
+            'product_parameters' => $productParameters,
             'groups' => $groups,
             'schemes' => $schemes,
         ];
+    }
+
+    private function productParameters(array $materialSnapshot): array
+    {
+        $params = is_array($materialSnapshot['product_parameters'] ?? null) ? $materialSnapshot['product_parameters'] : [];
+        if ($params === []) return [];
+        $allowed = [
+            'product_type', 'cutout_size_text', 'dimensions_text', 'power_text', 'luminous_flux_text',
+            'tilt_angle', 'rotation_angle', 'beam_angle_text', 'cct_text', 'cri_text', 'ugr_text',
+            'dimming_method_text', 'protection_class', 'best_for', 'power_min_w', 'power_max_w',
+            'current_min_ma', 'current_max_ma', 'voltage_min_v', 'voltage_max_v', 'cct_k',
+            'cri_min', 'beam_angle', 'length_mm', 'width_mm', 'height_mm', 'cutout_mm',
+            'ip_rating', 'installation_type', 'driver_type', 'dimming_mode', 'optical_size',
+            'notes', 'custom_fields', 'updated_at', 'updated_by',
+        ];
+        $out = [];
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $params)) continue;
+            $value = $params[$key];
+            if ($value === null || $value === '') continue;
+            if ($key === 'custom_fields') {
+                $custom = [];
+                foreach ((array)$value as $field) {
+                    if (!is_array($field)) continue;
+                    $label = trim((string)($field['label'] ?? ''));
+                    $fieldValue = trim((string)($field['value'] ?? ''));
+                    if ($label === '' || $fieldValue === '') continue;
+                    $custom[] = [
+                        'label' => $label,
+                        'value' => $fieldValue,
+                        'unit' => trim((string)($field['unit'] ?? '')),
+                        'group' => trim((string)($field['group'] ?? '')),
+                    ];
+                }
+                if ($custom !== []) $out[$key] = $custom;
+                continue;
+            }
+            $out[$key] = is_numeric($value) ? $value + 0 : trim((string)$value);
+        }
+        return $out;
+    }
+
+    private function productParameterTechnical(array $params): array
+    {
+        if ($params === []) return [];
+        return $this->mergeNonEmpty([], [
+            'product_type' => $this->textValue($params, 'product_type'),
+            'cutout' => $this->textValue($params, 'cutout_size_text') ?: $this->numberLabel($params, 'cutout_mm', 'mm'),
+            'dimensions' => $this->textValue($params, 'dimensions_text') ?: $this->dimensionLabel($params),
+            'power' => $this->textValue($params, 'power_text') ?: $this->rangeFromParams($params, 'power_min_w', 'power_max_w', 'W'),
+            'luminous_flux' => $this->textValue($params, 'luminous_flux_text'),
+            'beam_angle' => $this->textValue($params, 'beam_angle_text') ?: $this->numberLabel($params, 'beam_angle', '°'),
+            'cct' => $this->textValue($params, 'cct_text') ?: $this->numberLabel($params, 'cct_k', 'K'),
+            'cri' => $this->textValue($params, 'cri_text') ?: (isset($params['cri_min']) ? '≥' . $params['cri_min'] : ''),
+            'current' => $this->rangeFromParams($params, 'current_min_ma', 'current_max_ma', 'mA'),
+            'voltage' => $this->rangeFromParams($params, 'voltage_min_v', 'voltage_max_v', 'V'),
+            'ip_rating' => $this->textValue($params, 'ip_rating'),
+            'ugr' => $this->textValue($params, 'ugr_text'),
+            'dimming_method' => $this->textValue($params, 'dimming_method_text') ?: $this->textValue($params, 'dimming_mode'),
+            'protection_class' => $this->textValue($params, 'protection_class'),
+            'tilt' => $this->textValue($params, 'tilt_angle'),
+            'rotation' => $this->textValue($params, 'rotation_angle'),
+            'installation' => $this->textValue($params, 'installation_type'),
+            'optical_size' => $this->textValue($params, 'optical_size'),
+            'best_for' => $this->textValue($params, 'best_for'),
+        ]);
+    }
+
+    private function mergeNonEmpty(array $base, array $override = []): array
+    {
+        foreach ($override as $key => $value) {
+            if ($value === null || $value === '' || $value === []) continue;
+            $base[$key] = $value;
+        }
+        return $base;
+    }
+
+    private function textValue(array $params, string $key): string
+    {
+        return trim((string)($params[$key] ?? ''));
+    }
+
+    private function numberLabel(array $params, string $key, string $unit): string
+    {
+        if (!isset($params[$key]) || $params[$key] === '') return '';
+        return $params[$key] . $unit;
+    }
+
+    private function rangeFromParams(array $params, string $minKey, string $maxKey, string $unit): string
+    {
+        $min = $params[$minKey] ?? null;
+        $max = $params[$maxKey] ?? null;
+        if ($min === null && $max === null) return '';
+        if ($min !== null && $max !== null && (string)$min !== (string)$max) return $min . '–' . $max . $unit;
+        return (string)($min ?? $max) . $unit;
+    }
+
+    private function dimensionLabel(array $params): string
+    {
+        $values = [];
+        foreach (['length_mm', 'width_mm', 'height_mm'] as $key) {
+            if (isset($params[$key]) && $params[$key] !== '') $values[] = (string)$params[$key];
+        }
+        return $values === [] ? '' : implode('*', $values) . 'mm';
     }
 
     private function rangeLabel(array $technical, string $valuesKey, string $minKey, string $maxKey, string $unit): string

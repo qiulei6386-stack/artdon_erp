@@ -412,6 +412,16 @@ function build_spec($item): string {
     $lines = quote_pdf_spec_lines_for_export($lines);
     return $lines ? implode("\n", $lines) : 'Please select product and accessories';
 }
+function quote_pdf_is_virtual_item($it): bool {
+    if (!is_array($it)) return false;
+    return !empty($it['is_virtual_item'])
+        || (($it['item_type'] ?? '') === 'virtual')
+        || (($it['product_type'] ?? '') === 'virtual')
+        || (array_key_exists('shippable', $it) && ($it['shippable'] === false || $it['shippable'] === 0 || $it['shippable'] === '0' || $it['shippable'] === 'false'));
+}
+function quote_pdf_item_qty_for_total($it): float {
+    return quote_pdf_is_virtual_item($it) && empty($it['count_in_qty']) ? 0.0 : num($it['qty'] ?? 0);
+}
 function item_price($it): float { return num($it['price'] ?? $it['unit_price'] ?? 0); }
 function item_amount($it): float { $qty=num($it['qty'] ?? 0); $p=item_price($it); return num($it['amount'] ?? 0) ?: $qty*$p; }
 
@@ -424,7 +434,7 @@ $customer = is_array($payload['customer'] ?? null) ? $payload['customer'] : [];
 $terms = terms_from_payload($payload);
 $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 $totalQty = 0; $totalAmount = 0;
-foreach ($items as $it) { $totalQty += num($it['qty'] ?? 0); $totalAmount += item_amount($it); }
+foreach ($items as $it) { $totalQty += quote_pdf_item_qty_for_total($it); $totalAmount += item_amount($it); }
 if (isset($payload['total']) && is_array($payload['total'])) {
     $totalQty = num($payload['total']['qty'] ?? $totalQty) ?: $totalQty;
     $totalAmount = num($payload['total']['amount'] ?? $totalAmount) ?: $totalAmount;
@@ -518,18 +528,18 @@ html,body{margin:0;background:#f4f6fa;color:#000;font-family:"ARS MaquetteTr","M
     <colgroup><col style="width:10%"><col style="width:11%"><col style="width:8%"><col style="width:9%"><col style="width:29%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:6%"></colgroup>
     <thead><tr><th>Picture</th><th>Size or<br>Drawing(mm)</th><th>Customer<br>Code</th><th>Manufacturer<br>Code</th><th>Specification</th><th>Color</th><th>QTY<br>(pcs)</th><th>Unit<br>Price(<?=h($currency)?>)</th><th>Amount<br>(<?=h($currency)?>)</th><th>MOQ<br>(pcs)</th></tr></thead>
     <tbody>
-    <?php if($items): foreach($items as $it): $p=is_array($it['product']??null)?$it['product']:[]; $qty=num($it['qty']??0); $price=item_price($it); $amt=item_amount($it); ?>
+    <?php if($items): foreach($items as $it): $p=is_array($it['product']??null)?$it['product']:[]; $isVirtual=quote_pdf_is_virtual_item($it); $qty=num($it['qty']??0); $price=item_price($it); $amt=item_amount($it); ?>
       <tr class="quote-product-row">
-        <td><?php if(clean_param($p['image'] ?? '') !== ''): ?><img class="prod-img" src="<?=h($p['image'])?>"><?php endif; ?></td>
-        <td><?=h(quote_display_size($p))?></td>
-        <td><?=h($it['customer_code'] ?? '')?></td>
+        <td><?php if(!$isVirtual && clean_param($p['image'] ?? '') !== ''): ?><img class="prod-img" src="<?=h($p['image'])?>"><?php endif; ?></td>
+        <td><?=h($isVirtual ? '' : quote_display_size($p))?></td>
+        <td><?=h($isVirtual ? '' : ($it['customer_code'] ?? ''))?></td>
         <td><?=h($p['code'] ?? $p['model'] ?? '')?></td>
         <td class="spec"><?=h(build_spec($it))?></td>
-        <td><?=h($it['color'] ?? '')?></td>
+        <td><?=h($isVirtual ? '' : ($it['color'] ?? ''))?></td>
         <td><?=h($qty)?></td>
         <td><?=h(money_fmt($price))?></td>
         <td><?=h(money_fmt($amt))?></td>
-        <td><?=h($it['moq'] ?? $p['moq'] ?? '')?></td>
+        <td><?=h($isVirtual ? '' : ($it['moq'] ?? $p['moq'] ?? ''))?></td>
       </tr>
     <?php endforeach; else: ?>
       <tr><td colspan="10" class="empty">Please select product and accessories.</td></tr>
