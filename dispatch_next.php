@@ -895,9 +895,9 @@ function renderEditableCell(r,c){
   if(key==='due_at'){let can=!!r.can_change_due_at,title=can?((r.due_label? r.due_label+' · ':'')+(r.due_at||'')):(r.due_change_hint||'当前不能修改截止日期');return `<span class="displayCell dateDisplay ${esc(dueClass(r))} ${can?'':'lockedCell'}" ${can?`data-display-editor="due_at" data-task-id="${r.id}" data-value="${esc((r.due_at||'').slice(0,10))}"`:''} title="${esc(title)}">${esc(formatDue(r.due_at))}</span>`}
   if(key==='dispatch_mode')return `<select class="cell-input methodSelect" data-cell-task="${r.id}" data-cell-field="dispatch_mode">${tableMethodOptions(methodValue(r))}</select>`;
   if(key==='creator_name')return creatorNameHtml(r.creator_name||'-');
-  if(key==='project'){let plain=plainFromRichText(value);return projectCellHtml(r,`<div class="cell-edit multiline" contenteditable="true" title="${esc(taskTimeTitle(r))}" data-raw-value="${esc(plain)}" data-cell-task="${r.id}" data-cell-field="project">${esc(plain)}</div>`)};
+  if(key==='project'){let plain=plainFromRichText(value);return projectCellHtml(r,`<div class="cell-edit multiline" contenteditable="true" title="${esc(taskTimeTitle(r))}" data-raw-value="${esc(plain)}" data-cell-task="${r.id}" data-cell-field="project">${renderLinkedText(plain)}</div>`)};
   if(c.custom)return renderCustomCell(r,c,value);
-  if(key==='title'){let plain=plainFromRichText(value);return `<div class="titleCell"><div class="cell-edit" contenteditable="true" data-raw-value="${esc(plain)}" data-cell-task="${r.id}" data-cell-field="title">${esc(plain)}</div>${statusDots(r)}${statusIconTags(r)}</div>`};
+  if(key==='title'){let plain=plainFromRichText(value);return `<div class="titleCell"><div class="cell-edit" contenteditable="true" data-raw-value="${esc(plain)}" data-cell-task="${r.id}" data-cell-field="title">${renderLinkedText(plain)}</div>${statusDots(r)}${statusIconTags(r)}</div>`};
   return renderLinkedText(value);
 }
 function methodValue(r){if(r.task_type==='private')return 'private';if(r.task_type==='personal')return 'personal';return r.dispatch_mode||'single'}

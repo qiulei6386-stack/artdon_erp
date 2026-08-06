@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：派工待办 @BOM 成本解析恢复（已上线）
+
+- 用户反馈派工待办桌面表格里 `@BOM 52.07540` “解析不出来”，截图显示文本格式正确但没有变成可点联动标签。
+- 根因：`dispatch_next.php` 桌面端可编辑的标题/项目单元格在近期响应速度优化中改成 `${esc(plain)}` 纯文本输出，绕过了 `renderLinkedText()`，因此 `@BOM` 不会生成 `data-linked-preview` 标签，也不会触发 `preview_link` 读取 BOM 成本。移动端和详情页原本仍走联动渲染。
+- 修复：桌面端 `project` 和 `title` 可编辑单元格恢复使用 `renderLinkedText(plain)` 渲染显示，同时保留 `data-raw-value="${esc(plain)}"`，点击空白处编辑仍回到普通文本，点击联动标签才打开预览。
+- 新增 `tests/dispatch_bom_linked_preview_contract.php`，锁定桌面项目/标题单元格必须渲染联动标签，防止再次退回纯文本。
+- 检查：本机 `git diff --check` 通过；本机无 `php`，已将候选文件上传服务器 `/tmp/artdon_dispatch_bom_candidate/`，用正式服务器 PHP 检查 `dispatch_next.php` 语法通过，新增合约测试通过。
+- 部署：本记录随修复提交推送 GitHub `main` 后，以 Git bundle 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；同步后需正式目录复检并核对本地/GitHub/服务器 HEAD 一致。
+- 说明：本次只修前端解析触发层，不修改 BOM 数据、权限、成本计算逻辑或历史备份目录。
+- 状态记录提交以后以最终 Git HEAD 为准。
+
 ## 本次：CRM 联系人电话区号支持模糊查找（已上线）
 
 - 用户反馈 CRM“编辑联系人”弹窗中电话 / WhatsApp 的国家区号下拉已有 200 多个国家，`+86` 这类区号无法快速查找。
