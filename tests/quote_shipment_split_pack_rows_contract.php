@@ -22,7 +22,7 @@ foreach ([
 }
 
 foreach ([
-    '$checked=qo_shipment_validate_items($pdo,$orderId,0,$itemsIn);',
+    '$checked=qo_shipment_validate_multi_items($pdo,$orderIds,0,$itemsIn);',
     '$qtyByItem=[]',
     '$qtyByItem[$oid]=qo_num($qtyByItem[$oid]??0)+$qty;',
     'foreach($qtyByItem as $oid=>$qty)',
