@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：恢复 artdon-erp SSH 并补齐 CRM AI获客修复上线
+
+- 用户要求解决 SSH 问题。根因定位：本机 `~/.ssh/config` 中 `Host artdon-erp` 配置为 `User ubuntu` 且未指定 `IdentityFile`，而服务器 `119.91.27.19` 实际接受的是 `root + ~/.ssh/artdon_hongkong`。因此此前 `ssh artdon-erp` 一直返回 `Permission denied (publickey)`。
+- 已在本机备份 SSH 配置到 `/Users/qiulei/.ssh/config.bak_artdon_erp_20260807_ssh_fix`，并将 `artdon-erp` 修正为 `User root`、`IdentityFile ~/.ssh/artdon_hongkong`、`IdentitiesOnly yes`。验证：`ssh artdon-erp "whoami"` 返回 `root`，可进入 `/www/wwwroot/Artdon/artdon_erp`。
+- 服务器到 GitHub 的 SSH 仍未配置私钥：服务器 `/root/.ssh` 只有 `authorized_keys/known_hosts`，`git fetch origin main` 返回 `git@github.com: Permission denied (publickey)`。为避免把 GitHub 私钥传到服务器，本次采用已验证 GitHub HEAD 的本地 Git bundle 快进服务器，不在服务器保存 GitHub 私钥。
+- 已确认本地 HEAD 与 GitHub `origin/main` 均为 `f6e4ed09dee26896ba035ba756eee41031ded3a9`，并通过 `/tmp/artdon_erp_main_f6e4ed0.bundle` 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/` 到同一提交。
+- 服务器复检通过：`php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_dataforseo_search_contract.php`、`php tests/crm_radar_task_editor_country_language_contract.php`。
+- 三方核对：本地 HEAD、GitHub `main`、服务器 HEAD 均为 `f6e4ed09dee26896ba035ba756eee41031ded3a9`；服务器仍有历史未跟踪备份目录 `material_center_v1/adaptation_backup_*`、`quotation_color_blank_backup_20260731_192138/`，未纳入本次提交，属于既有残留。
+- 待确认：如果后续希望服务器自己 `git pull` GitHub，需要在服务器安装一个 GitHub deploy key/专用 SSH key；这涉及把私钥放到服务器或在服务器生成新 key 后到 GitHub 添加公钥，需用户明确确认。
+
 ## 本次：CRM AI获客搜索任务草稿编辑入口修复（服务器同步待恢复 SSH）
 
 - 用户反馈新建“印度工程型客户-2”后不能编辑。浏览器只读核验：任务 `id=21`，任务名 `印度工程型客户-2`，状态 `draft/草稿`，国家 `India`，城市 `Mumbai`，进度 `0%`，尚未启动；旧任务 `id=20` 仍被页面选中，状态 `waiting_analysis`。
