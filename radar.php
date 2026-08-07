@@ -3587,10 +3587,13 @@ function radar_worker_update_task(int $taskId): void
     $pending = (int)($map['pending'] ?? 0) + (int)($map['running'] ?? 0);
     $progress = $total > 0 ? (int)floor(($done + $failed) * 100 / $total) : 0;
     $rawCount = (int)db()->query('SELECT COUNT(*) FROM crm_radar_raw_results WHERE task_id=' . (int)$taskId)->fetchColumn();
+    $errorStmt = db()->prepare("SELECT last_error FROM crm_radar_job_queue WHERE task_id=? AND job_status IN ('pending','running','failed') AND last_error IS NOT NULL AND last_error<>'' ORDER BY updated_at DESC,id DESC LIMIT 1");
+    $errorStmt->execute([$taskId]);
+    $activeError = (string)($errorStmt->fetchColumn() ?: '');
     $status = null;
     if ($total > 0 && $pending === 0) $status = $failed > 0 ? 'partial_completed' : 'waiting_analysis';
-    $sql = 'UPDATE crm_radar_search_tasks SET progress_percent=?, searched_pages=?, failed_count=?, updated_at=NOW()' . ($status ? ', task_status=?, finished_at=NOW()' : '') . ' WHERE id=?';
-    $params = [$progress, $rawCount, $failed];
+    $sql = 'UPDATE crm_radar_search_tasks SET progress_percent=?, searched_pages=?, failed_count=?, last_error=?, updated_at=NOW()' . ($status ? ', task_status=?, finished_at=NOW()' : '') . ' WHERE id=?';
+    $params = [$progress, $rawCount, $failed, $activeError !== '' ? $activeError : null];
     if ($status) $params[] = $status;
     $params[] = $taskId;
     db()->prepare($sql)->execute($params);

@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：DataForSEO 激活后重试任务并清理旧错误残留
+
+- 用户完成 DataForSEO 账号激活后要求“再试一下”。本次对线上任务 `印度工程型客户-2`（`id=21`）执行重试，触发 DataForSEO 实际搜索请求。
+- 重试前状态：任务已在账号未验证时耗尽 3 次重试，`task_status=partial_completed`，4 个 `search_keyword` 均为 failed，错误为 DataForSEO 40104 账号未验证。
+- 通过现有 `radar_task_start(21)` 重新入队，并执行多轮 `radar_worker_run()`。重试后 DataForSEO 搜索已恢复：4 个 `search_keyword` 全部 done，任务进入 `waiting_analysis`，`progress_percent=100`，`searched_pages=9`，`found_companies=2`。
+- 当前解析结果：抓到 9 条 DataForSEO 网页结果，4 条成功抓取、5 条因目标网站/平台反爬或页面抓取限制失败；生成候选客户 2 个，均为低分 D 级且偏制造工厂，需要人工审核或优化关键词/排除词。
+- 发现并修复一个状态残留问题：任务已经搜索/解析成功后，`crm_radar_search_tasks.last_error` 仍残留旧的 DataForSEO 验证错误。`radar.php` 的 `radar_worker_update_task()` 现会读取仍处于 pending/running/failed 队列的有效错误；没有有效队列错误时清空任务级 `last_error`，避免页面误报旧错误。
+- 新增 `tests/crm_radar_task_last_error_contract.php`，锁定 worker 更新任务状态时必须同步清理旧 `last_error`。
+- 检查：本地 `git diff --check` 通过；候选文件已上传服务器 `/tmp/artdon_radar_last_error_candidate/`，正式 PHP 检查 `php -l radar.php` 与新合约 `php tests/crm_radar_task_last_error_contract.php` 通过。
+- 待部署：本记录随修复提交推送 GitHub `main` 后，使用服务器自身 GitHub SSH `git pull --ff-only origin main` 同步正式服务器，再运行 `php -l radar.php` 和相关 CRM radar 合约，并对任务 21 执行一次 `radar_worker_update_task(21)` 清空旧错误残留。
+
 ## 本次：CRM AI获客搜索失败原因只读诊断
 
 - 用户反馈 AI 获客任务好像都搜索失败了。本次只做线上只读诊断，未修改业务代码、未启动/暂停任务、未修改数据库。
