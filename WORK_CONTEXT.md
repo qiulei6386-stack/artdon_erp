@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：报价系统 CI 按出货批次内订单明细汇总
+
+- 用户确认开始修复出货资料单证逻辑：Packing List 可以按包装/箱规多行展示；Commercial Invoice 不能按包装资料拆行，必须按“当前出货批次内的订单明细行”汇总；不同出货批次不能跨批次合并。
+- `quote_order_doc.php`：新增 `qd_build_ci_items()` 与分组键逻辑，CI 优先按 `order_item_id` 汇总；旧数据缺少 `order_item_id` 时按 `item_index + customer_code + product_code` 兜底；只汇总当前 shipment 传入的出货行，不跨 shipment。
+- `quote_order_doc.php`：HTML CI 改用 `$ciItems` 渲染与统计；PL 继续使用 `$plItems = shipment items + carton detail rows`，不改变装箱/箱规展开逻辑。
+- `quote_order_doc.php`：CI Excel 导出时传入 `$ciItems`，PL Excel 仍传原始 `$items` 并继续在 `quote_order_excel.php` 内展开 carton detail rows。
+- 新增 `tests/quote_ci_group_by_order_item_contract.php`，锁定 CI 汇总维度、CI/PL 分流、HTML/Excel 一致性，防止后续把 CI 又接回包装明细。
+- 待检查/部署：本地静态检查、提交推送、服务器 PHP 语法和契约测试后更新最终 HEAD。
+
 ## 本次：CRM AI获客 Bosnia 任务“搜不到客户”只读诊断
 
 - 用户反馈再次查看 Bosnia 搜索任务，页面似乎搜不到客户，询问是否提示词问题。本次只读查询线上数据库与队列，不修改任务、不启动 worker、不调用搜索 API。
