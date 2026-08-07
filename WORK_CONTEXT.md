@@ -7,8 +7,8 @@
 - `assets/crm/crm.js`：保存并立即执行时，如果“已选关键词”为空但“提示词内容”里能识别出关键词，会自动转入并保存；若仍无关键词，前端拦截并提示“请先填写关键词，或点击使用提示词内容/模板生成关键词”，不再让空任务进入队列。
 - `radar.php`：`radar_task_start()` 增加后端兜底校验；若任务自身和通用关键词库都没有可用关键词，直接拒绝启动并提示先填写/生成关键词，避免再次卡在 `generate_keywords` 队列。
 - `tests/crm_radar_prompt_template_workflow_contract.php` 补充锁定“使用提示词内容作为关键词”、保存前自动转入、空关键词启动拦截和后端启动兜底。
-- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
-- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；正式服务器 `php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_prompt_template_workflow_contract.php`、`php tests/crm_radar_task_editor_country_language_contract.php` 通过。
+- 部署：功能提交 `0ed14884dfc0fa4c275ad237a91c99e76fb6b100` 已推送 GitHub `main`，并使用服务器自身 GitHub SSH 在 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步到同一提交；最终上下文记录提交后以最终 Git HEAD 为准。
 
 ## 本次：CRM AI获客 Bosnia 任务停在生成关键词只读诊断
 
