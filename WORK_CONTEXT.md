@@ -1,5 +1,17 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客新建任务接入提示词模板工作流
+
+- 用户确认开始实施“新建搜索任务的关键词可由 ChatGPT 提示词辅助生成；既可手输关键词，也可下拉选择预设提示词”的第一版方案。
+- 修复范围：CRM AI 获客搜索任务编辑器和搜索模板编辑器；不新增数据库表、不触发搜索任务、不调用 DataForSEO/Brave 搜索 API、不直接接入外部 ChatGPT 付费调用。
+- `assets/crm/crm.js`：在新建/编辑搜索任务抽屉新增“提示词模板”区，可下拉读取启用的搜索模板，可手写提示词，可复制提示词给 ChatGPT；选择模板后自动带入国家、城市、客户模型、产品/项目上下文和提示词内容。
+- `assets/crm/crm.js`：新增“从模板生成并替换关键词 / 追加模板关键词”按钮，调用现有 `radar_template_preview` 只生成预览关键词并写入“已选关键词”；最终搜索仍只按关键词框执行，便于人工检查和删改。
+- `assets/crm/crm.js`：搜索模板编辑器新增“ChatGPT 提示词模板”输入框，支持 `{country}`、`{city}`、`{model}`、`{products}`、`{projects}`、`{client_types}`、`{exclude_keywords}` 占位符，并保存到现有 `config_json.ai_prompt_template`。
+- `radar.php`：模板配置白名单加入 `ai_prompt_template`，兼容后续从结构化字段保存提示词模板。
+- 新增 `tests/crm_radar_prompt_template_workflow_contract.php`，锁定任务编辑器提示词下拉、提示词复制、模板预览生成关键词、模板编辑器保存提示词模板等关键标记。
+- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
+- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+
 ## 本次：CRM AI获客任务列表“第 4 次 / 目标数量 50”文案澄清
 
 - 用户指出 AI 获客任务列表里的“第 4 / 共 4 次”与“目标数量 50”放在一起容易误解。本次确认该 “4/4” 来自 `search_total_count/search_current_no`，表示关键词搜索/API 搜索批次数，不是目标客户数量。

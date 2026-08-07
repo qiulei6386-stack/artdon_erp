@@ -834,7 +834,7 @@ function radar_template_modes(): array
 
 function radar_template_json_keys(): array
 {
-    return ['default_cities','optional_cities','client_types_en','client_types_local','products_en','products_local','projects_en','projects_local','contact_positions_en','contact_positions_local','site_keywords','search_languages','pattern_templates','flags'];
+    return ['default_cities','optional_cities','client_types_en','client_types_local','products_en','products_local','projects_en','projects_local','contact_positions_en','contact_positions_local','site_keywords','search_languages','pattern_templates','ai_prompt_template','flags'];
 }
 
 function radar_template_presets(): array

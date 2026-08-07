@@ -19675,6 +19675,51 @@
         var key = String(country || '').trim();
         return countryLanguages[key] || ['en', 'local'];
       };
+      var taskPromptTemplateRows = [];
+      var promptTemplateById = function (id) {
+        id = Number(id || 0);
+        return taskPromptTemplateRows.find(function (tpl) { return Number(tpl.id || 0) === id; }) || null;
+      };
+      var promptTemplateProducts = function (tpl) {
+        var cfg = (tpl && tpl.config) || {};
+        return [].concat(cfg.products_en || [], cfg.products_local || []).slice(0, 8);
+      };
+      var promptTemplateProjects = function (tpl) {
+        var cfg = (tpl && tpl.config) || {};
+        return [].concat(cfg.projects_en || [], cfg.projects_local || []).slice(0, 8);
+      };
+      var buildPromptText = function (tpl) {
+        tpl = tpl || {};
+        var cfg = tpl.config || {};
+        var country = getField('country')?.value || tpl.country || '';
+        var city = getField('city')?.value || ((cfg.default_cities || [])[0] || '');
+        var products = fieldLines('target_products').concat(promptTemplateProducts(tpl)).filter(Boolean).slice(0, 8);
+        var projects = fieldLines('target_project_types').concat(promptTemplateProjects(tpl)).filter(Boolean).slice(0, 8);
+        var clientTypes = [].concat(cfg.client_types_en || [], cfg.client_types_local || []).slice(0, 8);
+        var excludes = [].concat(((tpl.exclude_keywords || {}).en) || [], ((tpl.exclude_keywords || {}).local) || []).slice(0, 10);
+        var customPrompt = String(cfg.ai_prompt_template || cfg.prompt_template || '').trim();
+        if (customPrompt) {
+          return customPrompt
+            .replace(/\{country\}/g, country)
+            .replace(/\{city\}/g, city)
+            .replace(/\{model\}/g, self.modelLabel(tpl.model_key || getField('model_key')?.value || 'direct_buyer'))
+            .replace(/\{products\}/g, products.join(', '))
+            .replace(/\{projects\}/g, projects.join(', '))
+            .replace(/\{client_types\}/g, clientTypes.join(', '))
+            .replace(/\{exclude_keywords\}/g, excludes.join(', '));
+        }
+        return [
+          '请为 Artdon 建筑照明 CRM 获客任务生成搜索关键词。',
+          '目标国家：' + (country || '请按任务国家'),
+          '重点城市：' + (city || '不限城市'),
+          '客户模型：' + self.modelLabel(tpl.model_key || getField('model_key')?.value || 'direct_buyer'),
+          '目标客户类型：' + (clientTypes.join(', ') || '工程项目采购、照明方案商、进口商、分销商'),
+          '目标产品：' + (products.join(', ') || 'downlight, track light, linear light, architectural lighting'),
+          '项目场景：' + (projects.join(', ') || 'hotel, retail, office, commercial project'),
+          '排除：' + (excludes.join(', ') || 'factory, manufacturer, marketplace, retail only, home decor only'),
+          '输出要求：只输出可直接用于 Google / DataForSEO / Brave 的搜索关键词；每行一个；英文优先，可补充当地语言；不要编号，不要解释。'
+        ].join('\n');
+      };
       var uid = 'radar-task-editor-' + Date.now();
       var dialog = document.createElement('div');
       dialog.className = 'radar-drawer-backdrop';
@@ -19692,6 +19737,7 @@
         '<datalist id="' + uid + '-countries">' + countries.map(function (item) { return '<option value="' + esc(item.country) + '">' + esc(item.code) + '</option>'; }).join('') + '</datalist><datalist id="' + uid + '-cities"></datalist></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>区域预设</h3><span>先点国家，再点城市；输入框仍可手工改</span></div></header><div class="radar-task-country-grid-v2">' + countries.map(function (item, index) { return '<button type="button" data-task-country-preset="' + index + '"><strong>' + esc(item.country) + '</strong><span>' + esc(item.cities.slice(0, 3).join(' / ')) + '</span></button>'; }).join('') + '</div><div class="radar-task-city-strip-v2" data-task-city-chips></div></div>' +
         '<div class="radar-task-editor-card-v2 wide"><header><div><h3>客户模型预设</h3><span>点击后会写入模型、关键词、产品和项目类型</span></div></header><div class="radar-task-model-grid-v2">' + modelPresets.map(function (item, index) { return '<button type="button" data-task-model-preset="' + index + '"><strong>' + esc(item.label) + '</strong><span>' + esc(item.desc) + '</span></button>'; }).join('') + '</div></div></section>' +
+        '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2 wide" data-task-prompt-workbench><header><div><h3>提示词模板</h3><span>可下拉选择预设提示词，也可手写；最终搜索仍以下方关键词为准。</span></div><strong>Prompt</strong></header><div class="radar-task-form-grid-v2"><label><span>预设提示词</span><select name="prompt_template_id" data-task-prompt-template><option value="">读取模板中...</option></select></label><label><span>生成模式</span><select name="prompt_template_mode" data-task-prompt-mode><option value="compact">精简</option><option value="standard" selected>标准</option><option value="deep">深度</option></select></label><label><span>关键词上限</span><input type="number" min="1" max="80" name="prompt_keyword_limit" value="' + esc(Math.max(4, Math.min(80, Number(row.target_candidate_count || 10) || 10))) + '"></label></div><label class="wide"><span>提示词内容（可复制给 ChatGPT，也可人工修改留作思路）</span><textarea name="keyword_prompt" rows="7" placeholder="选择模板后自动填入；也可以直接粘贴你自己的提示词。"></textarea></label><div class="radar-template-keyword-tools"><button type="button" data-task-prompt-replace>从模板生成并替换关键词</button><button type="button" data-task-prompt-append>追加模板关键词</button><button type="button" data-task-prompt-copy>复制提示词</button><span data-task-prompt-status>不会触发搜索 API，只填入任务关键词。</span></div></div></section>' +
         '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2"><header><div><h3>关键词</h3><span>多选芯片会自动写入下方，一行一个</span></div></header><div class="radar-task-chip-grid-v2">' + keywordChips.map(function (value) { return renderChip('keywords', value, value); }).join('') + '</div><label class="wide"><span>已选关键词</span><textarea name="keywords" rows="7">' + esc(Array.isArray(row.keywords) ? row.keywords.join('\n') : (row.keywords || '')) + '</textarea></label></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>排除关键词</h3><span>过滤工厂、纯零售、平台和无关行业</span></div></header><div class="radar-task-chip-grid-v2">' + excludeChips.map(function (value) { return renderChip('exclude_keywords', value, value); }).join('') + '</div><label class="wide"><span>已选排除词</span><textarea name="exclude_keywords" rows="7">' + esc(Array.isArray(row.exclude_keywords) ? row.exclude_keywords.join('\n') : (row.exclude_keywords || '')) + '</textarea></label></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>目标产品</h3><span>帮助 AI 聚焦品类</span></div></header><div class="radar-task-chip-grid-v2">' + productChips.map(function (value) { return renderChip('target_products', value, value); }).join('') + '</div><label class="wide"><span>产品清单</span><textarea name="target_products" rows="5">' + esc(row.target_products || '') + '</textarea></label></div>' +
@@ -19731,6 +19777,72 @@
       };
       var replaceLines = function (name, lines) {
         writeLines(name, (lines || []).map(materialize).map(function (line) { return line.trim(); }).filter(Boolean));
+      };
+      var promptStatus = function (message) {
+        var node = dialog.querySelector('[data-task-prompt-status]');
+        if (node) node.textContent = message || '';
+      };
+      var renderPromptTemplateOptions = function () {
+        var select = getField('prompt_template_id');
+        if (!select) return;
+        var rows = taskPromptTemplateRows || [];
+        select.innerHTML = '<option value="">手写提示词 / 不使用预设</option>' + rows.map(function (tpl) {
+          return '<option value="' + esc(tpl.id) + '">' + esc((tpl.template_name || tpl.template_code || '提示词模板') + ' · ' + (tpl.country || '-') + ' · ' + self.modelLabel(tpl.model_key)) + '</option>';
+        }).join('');
+      };
+      var applyPromptTemplateContext = function (tpl) {
+        if (!tpl) return;
+        var cfg = tpl.config || {};
+        if (tpl.country) getField('country').value = tpl.country;
+        if (!getField('city').value && (cfg.default_cities || []).length) getField('city').value = cfg.default_cities[0] || '';
+        if (tpl.model_key) getField('model_key').value = tpl.model_key;
+        if (!fieldLines('target_products').length && (cfg.products_en || []).length) writeLines('target_products', (cfg.products_en || []).slice(0, 4));
+        if (!fieldLines('target_project_types').length && (cfg.projects_en || []).length) writeLines('target_project_types', (cfg.projects_en || []).slice(0, 4));
+        var promptField = getField('keyword_prompt');
+        if (promptField) promptField.value = buildPromptText(tpl);
+        renderCityPresets();
+        syncChipState();
+      };
+      var promptPreviewPayload = function (tpl) {
+        var city = String(getField('city')?.value || '').trim();
+        return {
+          id: Number((tpl || {}).id || 0),
+          mode: getField('prompt_template_mode')?.value || 'standard',
+          cities: city,
+          products: fieldLines('target_products').join('\n'),
+          projects: fieldLines('target_project_types').join('\n'),
+          max_keywords: Math.max(1, Math.min(80, Number(getField('prompt_keyword_limit')?.value || 20) || 20))
+        };
+      };
+      var applyPromptTemplateKeywords = function (replace) {
+        var tpl = promptTemplateById(getField('prompt_template_id')?.value || 0);
+        if (!tpl) return toast('请先选择一个提示词模板');
+        promptStatus('正在从模板生成关键词...');
+        radarPost('radar_template_preview', promptPreviewPayload(tpl)).then(function (json) {
+          if (!json.success) throw new Error(json.message || '关键词生成失败');
+          var data = json.data || {};
+          var keywords = ((data.keywords || [])).filter(function (item) { return Number(item.enabled || 0) === 1; }).map(function (item) { return item.keyword || ''; }).filter(Boolean);
+          var excludes = data.exclude_keywords || {};
+          if (replace) replaceLines('keywords', keywords);
+          else addLines('keywords', keywords);
+          addLines('exclude_keywords', [].concat(excludes.en || [], excludes.local || []));
+          promptStatus('已生成 ' + keywords.length + ' 个关键词，可继续手工删改。');
+          toast((replace ? '已替换' : '已追加') + '模板关键词 ' + keywords.length + ' 个');
+        }).catch(function (error) {
+          promptStatus(error.message || '关键词生成失败');
+          toast(error.message || '关键词生成失败');
+        });
+      };
+      var loadTaskPromptTemplates = function () {
+        radarPost('radar_templates_list', { status: 'active' }).then(function (json) {
+          if (!json.success) throw new Error(json.message || '模板读取失败');
+          taskPromptTemplateRows = ((json.data || {}).rows || []).filter(function (tpl) { return String(tpl.status || 'active') === 'active'; });
+          renderPromptTemplateOptions();
+          promptStatus(taskPromptTemplateRows.length ? '请选择预设提示词，或直接手写提示词。' : '暂无可用模板，可直接手写提示词和关键词。');
+        }).catch(function (error) {
+          renderPromptTemplateOptions();
+          promptStatus(error.message || '模板读取失败，可直接手写提示词和关键词。');
+        });
       };
       var toggleLine = function (name, value) {
         value = materialize(value).trim();
@@ -19784,6 +19896,32 @@
       });
       getField('country')?.addEventListener('input', function () { renderCityPresets(); syncChipState(); });
       getField('city')?.addEventListener('input', syncChipState);
+      getField('prompt_template_id')?.addEventListener('change', function () {
+        var tpl = promptTemplateById(getField('prompt_template_id')?.value || 0);
+        if (!tpl) {
+          var promptField = getField('keyword_prompt');
+          if (promptField) promptField.value = '';
+          return promptStatus('手写提示词模式：可以粘贴 ChatGPT 提示词或手工输入关键词。');
+        }
+        applyPromptTemplateContext(tpl);
+        promptStatus('已载入提示词模板；可生成关键词后再人工调整。');
+      });
+      getField('prompt_template_mode')?.addEventListener('change', function () {
+        var tpl = promptTemplateById(getField('prompt_template_id')?.value || 0);
+        if (tpl && getField('keyword_prompt')) getField('keyword_prompt').value = buildPromptText(tpl);
+      });
+      dialog.querySelector('[data-task-prompt-replace]')?.addEventListener('click', function () { applyPromptTemplateKeywords(true); });
+      dialog.querySelector('[data-task-prompt-append]')?.addEventListener('click', function () { applyPromptTemplateKeywords(false); });
+      dialog.querySelector('[data-task-prompt-copy]')?.addEventListener('click', function () {
+        var text = String(getField('keyword_prompt')?.value || '').trim();
+        if (!text) return toast('提示词为空');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { toast('提示词已复制'); }).catch(function () { toast('复制失败，请手工复制'); });
+        } else {
+          getField('keyword_prompt')?.select();
+          toast('已选中提示词，请手工复制');
+        }
+      });
       getField('model_key')?.addEventListener('change', function () {
         activeModelPreset = -1;
         syncChipState();
@@ -19814,6 +19952,7 @@
       });
       renderCityPresets();
       syncChipState();
+      loadTaskPromptTemplates();
       dialog.querySelector('form').addEventListener('submit', function (event) {
         event.preventDefault();
         var data = {};
@@ -20062,7 +20201,7 @@
         dialog.innerHTML = '<form class="radar-drawer radar-template-editor"><header><strong>' + (row.id ? '编辑搜索模板' : '新建搜索模板') + '</strong><button type="button" data-radar-drawer-close>关闭</button></header><main><section>' +
           (isSystem ? '<p class="radar-risk">系统预设模板建议复制后编辑；只有管理员可直接恢复默认内容。</p>' : '') +
           '<label><span>模板名称</span><input name="template_name" value="' + esc(row.template_name || '') + '"></label><label><span>模板代码</span><input name="template_code" value="' + esc(row.template_code || '') + '"></label><label><span>国家</span><input name="country" value="' + esc(row.country || '') + '"></label><label><span>国家代码</span><input name="country_code" value="' + esc(row.country_code || '') + '"></label><label><span>当地国家名</span><input name="country_local" value="' + esc(row.country_local || '') + '"></label><label><span>客户模型</span><select name="model_key">' + self.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, row.model_key, '') + '</select></label><label><span>默认模式</span><select name="mode_default"><option value="compact">精简</option><option value="standard">标准</option><option value="deep">深度</option></select></label><label><span>搜索服务</span><input name="search_service_key" value="' + esc(row.search_service_key || 'brave') + '"></label><label><span>状态</span><select name="status"><option value="active">启用</option><option value="inactive">停用</option></select></label>' +
-          '<label class="wide"><span>配置JSON</span><textarea name="config_json" rows="10">' + esc(JSON.stringify(row.config || {}, null, 2)) + '</textarea></label><label class="wide"><span>预设关键词JSON</span><textarea name="preset_keywords_json" rows="6">' + esc(JSON.stringify(row.preset_keywords || {}, null, 2)) + '</textarea></label><label class="wide"><span>排除关键词JSON</span><textarea name="exclude_keywords_json" rows="6">' + esc(JSON.stringify(row.exclude_keywords || {}, null, 2)) + '</textarea></label><label class="wide"><span>提示</span><textarea name="warning_text" rows="3">' + esc(row.warning_text || '') + '</textarea></label>' +
+          '<label class="wide"><span>ChatGPT 提示词模板</span><textarea name="ai_prompt_template" rows="6" placeholder="可使用 {country}、{city}、{model}、{products}、{projects}、{client_types}、{exclude_keywords} 占位符。">' + esc(((row.config || {}).ai_prompt_template) || '') + '</textarea></label><label class="wide"><span>配置JSON</span><textarea name="config_json" rows="10">' + esc(JSON.stringify(row.config || {}, null, 2)) + '</textarea></label><label class="wide"><span>预设关键词JSON</span><textarea name="preset_keywords_json" rows="6">' + esc(JSON.stringify(row.preset_keywords || {}, null, 2)) + '</textarea></label><label class="wide"><span>排除关键词JSON</span><textarea name="exclude_keywords_json" rows="6">' + esc(JSON.stringify(row.exclude_keywords || {}, null, 2)) + '</textarea></label><label class="wide"><span>提示</span><textarea name="warning_text" rows="3">' + esc(row.warning_text || '') + '</textarea></label>' +
           '</section></main><footer><span>保存模板不会执行搜索，也不会改候选池。</span><button type="submit">保存模板</button></footer></form>';
         document.body.appendChild(dialog);
         dialog.querySelector('[name="mode_default"]').value = row.mode_default || 'standard';
@@ -20072,6 +20211,14 @@
           event.preventDefault();
           var data = {};
           new FormData(event.currentTarget).forEach(function (value, key) { data[key] = value; });
+          try {
+            var cfg = JSON.parse(data.config_json || '{}') || {};
+            cfg.ai_prompt_template = String(data.ai_prompt_template || '').trim();
+            data.config_json = JSON.stringify(cfg, null, 2);
+            delete data.ai_prompt_template;
+          } catch (error) {
+            return toast('配置JSON格式不正确');
+          }
           if (row.id) data.id = row.id;
           radarPost('radar_template_save', data).then(function (json) {
             if (!json.success) throw new Error(json.message || '保存失败');
