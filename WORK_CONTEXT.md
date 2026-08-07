@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：服务器 GitHub SSH deploy key 永久读写修复
+
+- 用户已在 GitHub 仓库 `qiulei6386-stack/artdon_erp` 添加服务器新公钥 `artdon_erp_server_deploy_20260807`，并勾选写入权限。
+- 服务器 `/root/.ssh/artdon_erp_github_deploy` 为本次在服务器生成的专用 Ed25519 deploy key；未复制本机 GitHub 私钥到服务器。
+- 服务器 `/root/.ssh/config` 已配置 `Host github.com` 使用 `/root/.ssh/artdon_erp_github_deploy` 且 `IdentitiesOnly yes`。
+- 验证结果：服务器执行 `ssh -o BatchMode=yes -T git@github.com` 返回 `Hi qiulei6386-stack/artdon_erp! You've successfully authenticated`；`git fetch origin main` 成功；`git push --dry-run origin HEAD:main` 返回 `Everything up-to-date`，说明读写权限链路可用且未产生远端写入。
+- 三方状态：修复前本地、GitHub `origin/main`、服务器 `/www/wwwroot/Artdon/artdon_erp/` 均为 `9264624c1af88316dabd015b03536ad09b409531`；服务器仍保留历史未跟踪备份目录 `material_center_v1/adaptation_backup_*`、`quotation_color_blank_backup_20260731_192138/`，不纳入 Git，属于既有残留。
+- 本记录提交后需用服务器自身 GitHub SSH 能力执行 `git pull --ff-only origin main` 完成闭环，并再次核对本地、GitHub、服务器 HEAD 一致。
+
 ## 本次：恢复 artdon-erp SSH 并补齐 CRM AI获客修复上线
 
 - 用户要求解决 SSH 问题。根因定位：本机 `~/.ssh/config` 中 `Host artdon-erp` 配置为 `User ubuntu` 且未指定 `IdentityFile`，而服务器 `119.91.27.19` 实际接受的是 `root + ~/.ssh/artdon_hongkong`。因此此前 `ssh artdon-erp` 一直返回 `Permission denied (publickey)`。
