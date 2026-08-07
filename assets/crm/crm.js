@@ -19614,7 +19614,7 @@
       }).catch(function (error) { toast(error.message || '队列执行失败'); });
     },
     openTaskEditor: function (row) {
-      row = row || { task_name: '', country: '越南', city: '胡志明市', model_key: 'direct_buyer', target_candidate_count: 10, min_score: 60, must_have_website: 1, exclude_factory: 1, exclude_retailer: 1, exclude_decorative: 1, exclude_brand_branch: 1, check_crm_duplicate: 1, enrich_contacts: 0, verify_email: 0, execute_mode: 'manual', keywords: 'Vietnam architectural lighting distributor\nVietnam commercial lighting supplier', languages: 'en\nvi' };
+      row = row || { task_name: '', country: '', city: '', model_key: 'direct_buyer', target_candidate_count: 10, min_score: 60, must_have_website: 1, exclude_factory: 1, exclude_retailer: 1, exclude_decorative: 1, exclude_brand_branch: 1, check_crm_duplicate: 1, enrich_contacts: 0, verify_email: 0, execute_mode: 'manual', keywords: '', languages: '' };
       var countries = [
         { country: '越南', code: 'VN', cities: ['胡志明市', '河内', '岘港', '海防', '芽庄', '平阳'] },
         { country: '印度尼西亚', code: 'ID', cities: ['Jakarta', 'Surabaya', 'Bali / Denpasar', 'Bandung', 'Medan', 'Semarang'] },
@@ -19638,16 +19638,38 @@
       var excludeChips = ['factory', 'manufacturer', 'factory direct', 'retail only', 'B2C', 'Amazon', 'home decor only', 'furniture', 'chandelier only', 'lamp shop', 'spare parts', 'Alibaba', 'Made-in-China'];
       var productChips = ['Downlight', 'Track Light', 'Linear Light', 'Magnetic Track Light', 'LED Strip', 'Outdoor Light', 'Wall Washer', 'Pendant Light', 'Emergency Light', 'Smart Lighting'];
       var projectChips = ['Hotel', 'Villa', 'Retail shop', 'Shopping mall', 'Office', 'Museum', 'Restaurant', 'Landscape', 'Residential project', 'Commercial project'];
+      var countryLanguages = {
+        '越南': ['en', 'vi'],
+        Vietnam: ['en', 'vi'],
+        '印度尼西亚': ['en', 'id'],
+        Indonesia: ['en', 'id'],
+        India: ['en', 'hi'],
+        '印度': ['en', 'hi'],
+        'United Arab Emirates': ['en', 'ar'],
+        UAE: ['en', 'ar'],
+        '阿联酋': ['en', 'ar'],
+        'Saudi Arabia': ['en', 'ar'],
+        '沙特': ['en', 'ar'],
+        Qatar: ['en', 'ar'],
+        Philippines: ['en'],
+        Malaysia: ['en'],
+        Singapore: ['en'],
+        Thailand: ['en', 'th']
+      };
+      var taskLanguagesForCountry = function (country) {
+        var key = String(country || '').trim();
+        return countryLanguages[key] || ['en', 'local'];
+      };
       var uid = 'radar-task-editor-' + Date.now();
       var dialog = document.createElement('div');
       dialog.className = 'radar-drawer-backdrop';
       var check = function (key) { return Number(row[key] || 0) ? ' checked' : ''; };
       var renderChip = function (field, value, label) { return '<button type="button" class="radar-task-chip-v2" data-task-chip="' + esc(field) + '" data-value="' + esc(value) + '">' + esc(label || value) + '</button>'; };
       dialog.innerHTML = '<form class="radar-drawer radar-task-editor radar-task-editor-v2"><header><div><strong>' + (row.id ? '编辑搜索任务' : '新增搜索任务') + '</strong><span>选择区域、客户模型和关键词预设；也可以直接手工修改字段。</span></div><button type="button" data-radar-drawer-close>关闭</button></header><main>' +
-        '<section class="radar-task-editor-hero-v2"><div><span>SEARCH BRIEF</span><h3>' + esc(row.task_name || '新建客户搜索任务') + '</h3><p>' + esc((row.country || '越南') + ' · ' + this.modelLabel(row.model_key || 'direct_buyer') + ' · 最低评分 ' + (row.min_score || 60)) + '</p></div><strong>AI Radar</strong></section>' +
+        '<section class="radar-task-editor-hero-v2"><div><span>SEARCH BRIEF</span><h3>' + esc(row.task_name || '新建客户搜索任务') + '</h3><p>' + esc((row.country || '待选择国家') + ' · ' + this.modelLabel(row.model_key || 'direct_buyer') + ' · 最低评分 ' + (row.min_score || 60)) + '</p></div><strong>AI Radar</strong></section>' +
         '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2"><header><div><h3>任务基础</h3><span>决定任务名称、区域、数量和执行方式</span></div></header><div class="radar-task-form-grid-v2">' +
-        '<label class="wide"><span>任务名称</span><input name="task_name" value="' + esc(row.task_name || '') + '" placeholder="例如：越南 建筑商业照明采购客户"></label>' +
-        '<label><span>国家</span><input name="country" list="' + uid + '-countries" value="' + esc(row.country || '越南') + '"></label><label><span>城市</span><input name="city" list="' + uid + '-cities" value="' + esc(row.city || '') + '"></label>' +
+        '<label class="wide"><span>任务名称</span><input name="task_name" value="' + esc(row.task_name || '') + '" placeholder="例如：印度 工程项目照明客户"></label>' +
+        '<label><span>国家</span><input name="country" list="' + uid + '-countries" value="' + esc(row.country || '') + '"></label><label><span>城市</span><input name="city" list="' + uid + '-cities" value="' + esc(row.city || '') + '"></label>' +
         '<label><span>客户模型</span><select name="model_key">' + this.renderOptions({ direct_buyer: '直接采购型', project_procurement: '工程项目采购型', design_influencer: '设计影响型', brand_oem: '品牌/OEM型' }, row.model_key, '') + '</select></label>' +
         '<label><span>目标数量</span><input type="number" min="1" name="target_candidate_count" value="' + esc(row.target_candidate_count || 10) + '"></label><label><span>最低评分</span><input type="number" min="0" max="100" name="min_score" value="' + esc(row.min_score || 60) + '"></label>' +
         '<label><span>执行方式</span><select name="execute_mode"><option value="manual">手动立即执行</option><option value="scheduled">指定时间执行</option><option value="daily">每日执行</option><option value="weekly">每周执行</option></select></label><label><span>执行时间</span><input name="execute_at" value="' + esc(row.execute_at || '') + '" placeholder="YYYY-MM-DD HH:MM:SS"></label>' +
@@ -19669,7 +19691,7 @@
       var activeModelPreset = -1;
       var normalizeLine = function (value) { return String(value || '').trim().toLowerCase(); };
       var materialize = function (value) {
-        return String(value || '').replace(/\{country\}/g, getField('country')?.value || '越南').replace(/\{city\}/g, getField('city')?.value || '');
+        return String(value || '').replace(/\{country\}/g, getField('country')?.value || '').replace(/\{city\}/g, getField('city')?.value || '').replace(/\s+/g, ' ').trim();
       };
       var fieldLines = function (name) {
         var field = getField(name);
@@ -19691,6 +19713,9 @@
           }
         });
         writeLines(name, current);
+      };
+      var replaceLines = function (name, lines) {
+        writeLines(name, (lines || []).map(materialize).map(function (line) { return line.trim(); }).filter(Boolean));
       };
       var toggleLine = function (name, value) {
         value = materialize(value).trim();
@@ -19753,9 +19778,9 @@
           activeModelPreset = Number(button.getAttribute('data-task-model-preset') || 0);
           var preset = modelPresets[activeModelPreset] || modelPresets[0];
           getField('model_key').value = preset.model;
-          addLines('keywords', preset.keywords || []);
-          addLines('target_products', preset.products || []);
-          addLines('target_project_types', preset.projects || []);
+          replaceLines('keywords', preset.keywords || []);
+          replaceLines('target_products', preset.products || []);
+          replaceLines('target_project_types', preset.projects || []);
           Object.keys(preset.flags || {}).forEach(function (key) {
             var input = getField(key);
             if (input) input.checked = Number(preset.flags[key]) === 1;
@@ -19779,7 +19804,7 @@
         var data = {};
         new FormData(event.currentTarget).forEach(function (value, key) { data[key] = value; });
         ['must_have_website','must_have_email','must_have_contact','allow_design_studio','exclude_factory','exclude_retailer','exclude_decorative','exclude_brand_branch','check_crm_duplicate','enrich_contacts','verify_email'].forEach(function (key) { data[key] = event.currentTarget.querySelector('[name="' + key + '"]')?.checked ? '1' : '0'; });
-        data.languages = 'en\nvi';
+        data.languages = taskLanguagesForCountry(data.country).join('\n');
         if (row.id) data.id = row.id;
         radarPost('radar_task_save', data).then(function (json) {
           if (!json.success) throw new Error(json.message || '保存失败');

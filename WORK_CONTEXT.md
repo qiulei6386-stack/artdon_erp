@@ -1,5 +1,18 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客搜索任务国家/语言默认值修复（服务器同步待恢复 SSH）
+
+- 用户反馈 AI 获客里新建“印度工程型客户”搜索任务后，好像无法开始、需要编辑。浏览器只读核验后确认搜索任务列表接口登录态恢复，任务 `id=20` 当前已执行完搜索阶段：状态 `waiting_analysis`，`10/10` 个关键词任务完成，失败 0，但 `searched_pages=0`、`found_companies=0`。
+- 根因定位：该任务国家/城市为 `India / Mumbai`，但 `keywords_json` 仍带有 `Vietnam architectural lighting distributor`、`Vietnam commercial lighting supplier`，且 `languages_json=["en","vi"]`；前端 `openTaskEditor()` 新建默认值硬编码为越南国家、胡志明市、Vietnam 关键词和 `en/vi` 语言，保存时也固定写入 `data.languages='en\nvi'`，导致印度任务可被创建/启动，但搜索条件明显不对。
+- 同时发现 UI 行为坑：客户模型预设点击时原来是追加关键词/产品/项目，切换模型或国家时容易把旧国家/旧模型关键词叠在一起；任务进入 `waiting_analysis` 后，后端不允许直接编辑，只能复制/取消/重建后再按正确关键词跑。
+- 修复范围：只改 CRM 客户雷达搜索任务编辑器默认值与前端保存逻辑，不改已存在任务数据、不直接触发付费搜索、不改数据库结构。
+- `assets/crm/crm.js`：新建搜索任务默认国家、城市、关键词、语言改为空，不再默认越南；新增国家到搜索语言的映射，India 保存为 `en/hi`，Vietnam 才保存为 `en/vi`，Indonesia 保存为 `en/id`，阿联酋/沙特/Qatar 保存为 `en/ar`，未知国家为 `en/local`。
+- `assets/crm/crm.js`：模型预设从“追加关键词/产品/项目”改为“替换当前预设内容”，并将 `{country}` / `{city}` 按当前输入落地，避免 India 任务继续夹带 Vietnam 关键词。
+- 新增 `tests/crm_radar_task_editor_country_language_contract.php`，锁定不得恢复越南硬编码默认值、不得固定提交 `en/vi`、国家语言映射和模型预设替换行为。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，使用 bundled Python 按新增 PHP 合约相同标记完成静态检查通过；正式 PHP 合约测试需待服务器 SSH 恢复后执行。
+- Git / 部署状态：本记录随修复提交后以最终 Git HEAD 为准；正式服务器 SSH 当前仍因 `artdon-erp` publickey 拒绝无法同步 `/www/wwwroot/Artdon/artdon_erp/`，因此线上尚未应用本修复。SSH 恢复后需按固定流程推送 GitHub、快进服务器、运行 PHP 语法/合约测试并核对三方一致。
+- 下一步：线上任务 `id=20` 已是 `waiting_analysis`，不能直接编辑；修复上线后建议复制或新建一条 India / Mumbai 工程型任务，确认关键词只包含 India/Mumbai 工程照明词后再启动。
+
 ## 本次：CRM AI获客接入 DataForSEO 搜索服务（服务器同步待恢复 SSH）
 
 - 用户确认 Google 搜索接口放弃注册，改用 DataForSEO 作为 CRM / AI获客客户雷达的搜索 API。
