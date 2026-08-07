@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客目标数量 10 但显示共 4 次的原因诊断
+
+- 用户反馈 AI 获客搜索任务目标数量明明是 10，但任务列表显示“共 4 次”，要求先查原因；本次只做扫描和诊断，未改业务代码、未启动搜索任务、未修改数据库。
+- 线上只读核验任务 `印度工程型客户-2`（`id=21`）：`target_candidate_count=10` 已正确保存；任务状态为 `draft`，国家/城市为 `India / Mumbai`，队列为空，关键词实际为 4 条：`India architectural lighting contractor`、`India commercial lighting project supplier`、`Mumbai hotel lighting supplier`、`Mumbai lighting importer`。
+- 根因：列表卡片显示的“第 X / 共 Y 次”来自 `search_total_count`，后端 `radar_tasks_list()` 先统计 `crm_radar_job_queue` 里的 `search_keyword` 子任务数量；草稿任务没有队列时回退为 `count(radar_task_keywords($row))`，也就是关键词条数。因此 4 条关键词会显示“共 4 次”，与目标候选客户数量 10 不是同一个概念。
+- 代码定位：`assets/crm/crm.js` 搜索任务卡片使用 `search_total_count` 渲染“共 N 次”；`radar.php` 的 `radar_task_start()` 启动时创建 `generate_keywords` 队列，Worker 再对每个关键词创建一条 `search_keyword` 队列；当前 `target_candidate_count` 仅用于保存/详情展示，没有参与关键词数量、搜索次数或停止条件计算。
+- 当前线上 DataForSEO 服务已启用，`result_limit=10`，所以该任务运行时预期是 4 个关键词、每个关键词最多取 10 条 SERP 结果；“共 4 次”表示 API 关键词搜索调用次数，不表示目标客户数量只有 4。
+- 建议下一步修复：把列表文案拆成“搜索关键词 4 次 / 目标客户 10 个”，并让后端返回 `target_candidate_count` 与 `estimated_result_count`；如需要更符合业务预期，再增加按目标数量动态扩展关键词或达到目标候选数后停止的逻辑。待用户确认后再实施。
+
 ## 本次：服务器 GitHub SSH deploy key 永久读写修复
 
 - 用户已在 GitHub 仓库 `qiulei6386-stack/artdon_erp` 添加服务器新公钥 `artdon_erp_server_deploy_20260807`，并勾选写入权限。
