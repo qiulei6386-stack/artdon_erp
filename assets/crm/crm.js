@@ -19822,6 +19822,16 @@
         if (row.id) data.id = row.id;
         radarPost('radar_task_save', data).then(function (json) {
           if (!json.success) throw new Error(json.message || '保存失败');
+          var savedTask = (json.data || {}).task || {};
+          var savedId = Number(savedTask.id || data.id || 0);
+          if (String(data.execute_mode || 'manual') === 'manual' && savedId > 0) {
+            return radarPost('radar_task_start', { id: savedId }).then(function (startJson) {
+              if (!startJson.success) throw new Error(startJson.message || '启动失败');
+              dialog.remove();
+              self.loadSearchTasks({});
+              toast('搜索任务已保存并启动');
+            });
+          }
           dialog.remove();
           self.loadSearchTasks({});
           toast('搜索任务已保存');
