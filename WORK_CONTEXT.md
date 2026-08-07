@@ -10,7 +10,7 @@
 - `assets/crm/crm.js`：模型预设从“追加关键词/产品/项目”改为“替换当前预设内容”，并将 `{country}` / `{city}` 按当前输入落地，避免 India 任务继续夹带 Vietnam 关键词。
 - 新增 `tests/crm_radar_task_editor_country_language_contract.php`，锁定不得恢复越南硬编码默认值、不得固定提交 `en/vi`、国家语言映射和模型预设替换行为。
 - 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，使用 bundled Python 按新增 PHP 合约相同标记完成静态检查通过；正式 PHP 合约测试需待服务器 SSH 恢复后执行。
-- Git / 部署状态：本记录随修复提交后以最终 Git HEAD 为准；正式服务器 SSH 当前仍因 `artdon-erp` publickey 拒绝无法同步 `/www/wwwroot/Artdon/artdon_erp/`，因此线上尚未应用本修复。SSH 恢复后需按固定流程推送 GitHub、快进服务器、运行 PHP 语法/合约测试并核对三方一致。
+- Git / 部署状态：功能提交 `fbfbb977887f0a9adcaa5133bebae2820e2cee77` 已推送 GitHub `main`；正式服务器 SSH 当前仍因 `artdon-erp` publickey 拒绝无法同步 `/www/wwwroot/Artdon/artdon_erp/`，因此线上尚未应用本修复。SSH 恢复后需按固定流程快进服务器、运行 PHP 语法/合约测试并核对三方一致。
 - 下一步：线上任务 `id=20` 已是 `waiting_analysis`，不能直接编辑；修复上线后建议复制或新建一条 India / Mumbai 工程型任务，确认关键词只包含 India/Mumbai 工程照明词后再启动。
 
 ## 本次：CRM AI获客接入 DataForSEO 搜索服务（服务器同步待恢复 SSH）
