@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：订单出货批次非整箱不再自动进位箱数（已上线）
+
+- 用户反馈订单 `AT-260629EX004` 新增出货批次时，未出货/本次出货只有 `132 PCS`，但系统按 `PCS/CTN 42` 自动带出 `4 CTNS`，并同步带出按 4 个标准箱计算的 N.W./G.W./CBM。
+- 根因：`quotation.php` 出货弹窗新增批次和数量重算逻辑使用 `Math.ceil(qty / pcs_per_ctn)`，导致 `132 / 42 = 3.142...` 被静默进位成 4 个标准箱；这会让尾箱/拼箱场景的箱数、重量、CBM 看起来像已确认数据。
+- 修复：新增 `shipmentExactCartons()`，只有本次出货数量能被 `PCS/CTN` 整除时才自动带出箱数；非整箱时箱数、按箱重量和 CBM 保持待确认，并在箱规提示/备注中写明“几整箱 + 尾数”，提醒手动确认箱数/重量或录入拼箱明细。
+- 新增 `tests/quote_shipment_partial_carton_contract.php`，锁定新增批次/重算逻辑不得再用 `Math.ceil` 自动进位非整箱箱数。
+- 检查：本机 `git diff --check` 通过；使用 Codex 自带 Node 抽取 `quotation.php` 的 `<script>` 块解析通过；本地计算验证 `132/42` 不自动出箱数、`126/42` 自动为 3；本机无系统 PHP，已将候选文件上传服务器 `/tmp/artdon_quote_shipment_partial_candidate/`，用正式服务器 PHP 检查 `quotation.php` 语法通过，新增合约测试通过。
+- 部署：本记录随修复提交推送 GitHub `main` 后，以 Git bundle 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；同步后需正式目录复检并核对本地/GitHub/服务器 HEAD 一致。
+- 说明：本次只改新增/重算出货批次的自动带数，不改已有出货批次数据、不改订单明细、不改 PL/CI 模板和数据库结构。
+- 状态记录提交以后以最终 Git HEAD 为准。
+
 ## 本次：派工待办 @BOM 成本解析恢复（已上线）
 
 - 用户反馈派工待办桌面表格里 `@BOM 52.07540` “解析不出来”，截图显示文本格式正确但没有变成可点联动标签。
