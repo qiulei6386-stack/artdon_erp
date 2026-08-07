@@ -1,5 +1,17 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客接入 DataForSEO 搜索服务（服务器同步待恢复 SSH）
+
+- 用户确认 Google 搜索接口放弃注册，改用 DataForSEO 作为 CRM / AI获客客户雷达的搜索 API。
+- 修复范围：只改 CRM 客户雷达搜索服务适配，不改客户数据、不改任务数据、不改数据库结构。
+- `radar.php` 在默认搜索服务配置中新增禁用状态的 `dataforseo` 服务位：默认 API 地址 `https://api.dataforseo.com/v3/serp/google/organic/live/advanced`，默认每次 10 条、单次费用参考 `0.002`，未启用前不会调用外网。
+- `radar.php` 增加 DataForSEO 专用适配：识别 `service_key=dataforseo` 或 `api.dataforseo.com`；搜索时改用 `POST` JSON；凭证用 DataForSEO 官方 `API login:API password` 或 Base64 后的 `login:password` 转为 `Authorization: Basic ...`；按任务国家/语言生成 `location_name`、`language_code`；解析 `tasks[].result[].items[]` 中的 `organic` / `featured_snippet` 结果并写入现有 raw results 流程。
+- `assets/crm/crm.js` 的搜索服务配置说明和占位文字增加 DataForSEO 填写方法，保留 Brave 配置提示。
+- 新增 `tests/crm_radar_dataforseo_search_contract.php`，锁定 DataForSEO 默认服务位、POST + Basic Auth、payload 和结果解析，防止以后退回只支持 Brave。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本地环境无 `php`，正式服务器 SSH 当前因 `publickey` 拒绝，暂未能执行服务器 PHP 语法检查、合同测试和部署。
+- DataForSEO 注册入口：`https://app.dataforseo.com/register`；注册后在 Dashboard 的 API Access 查看 API login 和 API password。注意 API password 不是登录密码。
+- 部署状态：本地改动完成；需提交推送 GitHub 后，在服务器 SSH 恢复时按固定流程快进同步 `/www/wwwroot/Artdon/artdon_erp/` 并复检。
+
 ## 本次：出货批次支持同一产品多种装箱尺寸（已上线）
 
 - 用户反馈新增出货批次时当前每个产品只有一行，但实际一个批次可能同一产品有两种或三种装箱尺寸，需要在同一出货批次中拆成多行填写。

@@ -1639,11 +1639,50 @@ function radar_task_order_sql(string $alias = 't'): string
 
 function radar_ensure_default_search_service(): void
 {
-    $stmt = db()->prepare('SELECT id FROM crm_radar_search_services WHERE service_key=? LIMIT 1');
-    $stmt->execute(['manual_config']);
-    if ($stmt->fetchColumn()) return;
-    db()->prepare('INSERT INTO crm_radar_search_services (service_key, service_name, api_url, result_limit, daily_limit, is_enabled, priority_order, timeout_seconds, retry_count, cost_per_call, config_json, created_at, updated_at) VALUES ("manual_config","合法搜索API配置位","",5,100,0,100,15,2,0,?,NOW(),NOW())')
-        ->execute([json_encode(['note' => '填写合法网页搜索API地址和密钥后启用；默认不调用外网。'], JSON_UNESCAPED_UNICODE)]);
+    $defaults = [
+        [
+            'service_key' => 'manual_config',
+            'service_name' => '合法搜索API配置位',
+            'api_url' => '',
+            'result_limit' => 5,
+            'daily_limit' => 100,
+            'priority_order' => 100,
+            'timeout_seconds' => 15,
+            'retry_count' => 2,
+            'cost_per_call' => 0,
+            'config' => ['note' => '填写合法网页搜索API地址和密钥后启用；默认不调用外网。'],
+        ],
+        [
+            'service_key' => 'dataforseo',
+            'service_name' => 'DataForSEO SERP API',
+            'api_url' => 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced',
+            'result_limit' => 10,
+            'daily_limit' => 100,
+            'priority_order' => 20,
+            'timeout_seconds' => 30,
+            'retry_count' => 2,
+            'cost_per_call' => 0.002,
+            'config' => ['note' => 'API密钥填写 DataForSEO API login:API password，或填写 Base64 后的 login:password。默认禁用，启用后才会调用外网。'],
+        ],
+    ];
+    $exists = db()->prepare('SELECT id FROM crm_radar_search_services WHERE service_key=? LIMIT 1');
+    $insert = db()->prepare('INSERT INTO crm_radar_search_services (service_key, service_name, api_url, result_limit, daily_limit, is_enabled, priority_order, timeout_seconds, retry_count, cost_per_call, config_json, created_at, updated_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,NOW(),NOW())');
+    foreach ($defaults as $service) {
+        $exists->execute([$service['service_key']]);
+        if ($exists->fetchColumn()) continue;
+        $insert->execute([
+            $service['service_key'],
+            $service['service_name'],
+            $service['api_url'],
+            $service['result_limit'],
+            $service['daily_limit'],
+            $service['priority_order'],
+            $service['timeout_seconds'],
+            $service['retry_count'],
+            $service['cost_per_call'],
+            json_encode($service['config'], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
 }
 
 function radar_ensure_test_task(): void
@@ -2419,6 +2458,13 @@ function radar_is_brave_search_service(array $service): bool
     return strpos($key, 'brave') !== false || strpos($url, 'api.search.brave.com') !== false;
 }
 
+function radar_is_dataforseo_search_service(array $service): bool
+{
+    $key = strtolower((string)($service['service_key'] ?? ''));
+    $url = strtolower((string)($service['api_url'] ?? ''));
+    return strpos($key, 'dataforseo') !== false || strpos($url, 'api.dataforseo.com') !== false;
+}
+
 function radar_first_language(array $task): string
 {
     $languages = radar_decode_json($task['languages_json'] ?? '');
@@ -2466,6 +2512,150 @@ function radar_country_code(array $task): string
     if ($country === '') return '';
     $code = $map[strtolower($country)] ?? 'ALL';
     return in_array($code, $supported, true) ? $code : 'ALL';
+}
+
+function radar_dataforseo_location_name(array $task): string
+{
+    $country = trim((string)($task['country'] ?? ''));
+    if ($country === '') return '';
+    $lower = strtolower($country);
+    $map = [
+        'vietnam' => 'Vietnam',
+        'viet nam' => 'Vietnam',
+        '越南' => 'Vietnam',
+        'indonesia' => 'Indonesia',
+        '印度尼西亚' => 'Indonesia',
+        'uae' => 'United Arab Emirates',
+        'dubai' => 'United Arab Emirates',
+        '阿联酋' => 'United Arab Emirates',
+        'united arab emirates' => 'United Arab Emirates',
+        'usa' => 'United States',
+        'us' => 'United States',
+        'united states' => 'United States',
+        '美国' => 'United States',
+        'china' => 'China',
+        '中国' => 'China',
+        'hong kong' => 'Hong Kong',
+        '香港' => 'Hong Kong',
+        'india' => 'India',
+        '印度' => 'India',
+        'singapore' => 'Singapore',
+        '新加坡' => 'Singapore',
+        'germany' => 'Germany',
+        '德国' => 'Germany',
+        'france' => 'France',
+        '法国' => 'France',
+        'uk' => 'United Kingdom',
+        'united kingdom' => 'United Kingdom',
+        '英国' => 'United Kingdom',
+    ];
+    return $map[$lower] ?? (preg_match('/^[a-z]{2}$/i', $country) ? '' : mb_substr($country, 0, 120));
+}
+
+function radar_dataforseo_language_code(array $task): string
+{
+    $lang = radar_first_language($task);
+    if ($lang === '' || $lang === 'local') return 'en';
+    if (preg_match('/^[a-z]{2}$/i', $lang)) return strtolower($lang);
+    return 'en';
+}
+
+function radar_dataforseo_auth_header(string $apiKey): string
+{
+    $apiKey = trim(str_replace(["\r", "\n"], '', $apiKey));
+    if ($apiKey === '') return '';
+    if (stripos($apiKey, 'Basic ') === 0) return 'Authorization: ' . $apiKey . "\r\n";
+    $token = strpos($apiKey, ':') !== false ? base64_encode($apiKey) : $apiKey;
+    return "Authorization: Basic {$token}\r\n";
+}
+
+function radar_dataforseo_payload(array $task, string $keyword, int $limit): array
+{
+    $row = [
+        'keyword' => $keyword,
+        'depth' => max(1, min(100, $limit)),
+        'language_code' => radar_dataforseo_language_code($task),
+    ];
+    $location = radar_dataforseo_location_name($task);
+    if ($location !== '') $row['location_name'] = $location;
+    return [$row];
+}
+
+function radar_dataforseo_collect_items(array $items, array &$rows, array &$seen): void
+{
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        if (!empty($item['items']) && is_array($item['items'])) {
+            radar_dataforseo_collect_items($item['items'], $rows, $seen);
+        }
+        $url = trim((string)($item['url'] ?? ''));
+        if ($url === '' || isset($seen[$url])) continue;
+        $type = strtolower((string)($item['type'] ?? ''));
+        if ($type !== '' && !in_array($type, ['organic', 'featured_snippet'], true)) continue;
+        $seen[$url] = true;
+        $rows[] = [
+            'title' => (string)($item['title'] ?? ''),
+            'url' => $url,
+            'snippet' => (string)($item['description'] ?? $item['snippet'] ?? ''),
+            'rank_no' => (int)($item['rank_absolute'] ?? $item['rank_group'] ?? count($rows) + 1),
+        ];
+    }
+}
+
+function radar_dataforseo_rows(array $json, int $limit): array
+{
+    $rows = [];
+    $seen = [];
+    foreach ((array)($json['tasks'] ?? []) as $task) {
+        if (!is_array($task)) continue;
+        foreach ((array)($task['result'] ?? []) as $result) {
+            if (!is_array($result)) continue;
+            radar_dataforseo_collect_items((array)($result['items'] ?? []), $rows, $seen);
+            if (count($rows) >= $limit) break 2;
+        }
+    }
+    return array_slice($rows, 0, $limit);
+}
+
+function radar_dataforseo_error(array $json): string
+{
+    $messages = [];
+    if (!empty($json['status_message'])) $messages[] = (string)$json['status_message'];
+    foreach ((array)($json['tasks'] ?? []) as $task) {
+        if (!is_array($task)) continue;
+        $code = (int)($task['status_code'] ?? 0);
+        if ($code >= 40000 && !empty($task['status_message'])) $messages[] = (string)$task['status_message'];
+    }
+    return trim(implode('；', array_unique($messages))) ?: 'DataForSEO API返回错误';
+}
+
+function radar_dataforseo_search_service_call(array $task, string $keyword, array $service, int $limit, string $apiKey): array
+{
+    $apiUrl = trim((string)($service['api_url'] ?? ''));
+    if ($apiUrl === '') $apiUrl = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
+    $auth = radar_dataforseo_auth_header($apiKey);
+    if ($auth === '') throw new RuntimeException('DataForSEO API凭证未配置，请填写 API login:API password。');
+    $headers = "Accept: application/json\r\nContent-Type: application/json\r\nUser-Agent: Artdon-CRM-Radar/1.0\r\n" . $auth;
+    $body = json_encode(radar_dataforseo_payload($task, $keyword, $limit), JSON_UNESCAPED_UNICODE);
+    $context = stream_context_create(['http' => ['method' => 'POST', 'timeout' => max(3, (int)$service['timeout_seconds']), 'ignore_errors' => true, 'header' => $headers, 'content' => $body]]);
+    $raw = @file_get_contents($apiUrl, false, $context);
+    if ($raw === false || $raw === '') {
+        radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, (float)$service['cost_per_call'], false, 'DataForSEO API请求失败');
+        throw new RuntimeException('DataForSEO API请求失败');
+    }
+    $json = json_decode($raw, true);
+    if (!is_array($json)) throw new RuntimeException('DataForSEO API返回不是JSON');
+    $statusCode = (int)($json['status_code'] ?? 0);
+    $tasksError = (int)($json['tasks_error'] ?? 0);
+    $cost = isset($json['cost']) ? (float)$json['cost'] : (float)$service['cost_per_call'];
+    if ($statusCode >= 40000 || $tasksError > 0) {
+        $message = radar_dataforseo_error($json);
+        radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, $cost, false, $message);
+        throw new RuntimeException($message);
+    }
+    $rows = radar_dataforseo_rows($json, $limit);
+    radar_record_usage((int)$task['id'], $service, 'search_keyword', count($rows), $cost, true);
+    return ['service' => $service, 'rows' => $rows];
 }
 
 function radar_search_service_url(array $service, array $task, string $keyword, int $limit): string
@@ -2525,8 +2715,11 @@ function radar_search_service_call(array $task, string $keyword): array
     $apiUrl = trim((string)($service['api_url'] ?? ''));
     if ($apiUrl === '') throw new RuntimeException('搜索服务 API 地址未配置');
     $limit = max(1, min(20, (int)($service['result_limit'] ?? 5)));
-    $url = radar_search_service_url($service, $task, $keyword, $limit);
     $apiKey = radar_secret_decrypt($service['api_key_encrypted'] ?? '');
+    if (radar_is_dataforseo_search_service($service)) {
+        return radar_dataforseo_search_service_call($task, $keyword, $service, $limit, $apiKey);
+    }
+    $url = radar_search_service_url($service, $task, $keyword, $limit);
     $headers = radar_search_service_headers($service, $apiKey);
     $context = stream_context_create(['http' => ['timeout' => max(3, (int)$service['timeout_seconds']), 'ignore_errors' => true, 'header' => $headers]]);
     $raw = @file_get_contents($url, false, $context);
