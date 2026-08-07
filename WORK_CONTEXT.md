@@ -7,7 +7,8 @@
 - `quote_order_doc.php`：HTML CI 改用 `$ciItems` 渲染与统计；PL 继续使用 `$plItems = shipment items + carton detail rows`，不改变装箱/箱规展开逻辑。
 - `quote_order_doc.php`：CI Excel 导出时传入 `$ciItems`，PL Excel 仍传原始 `$items` 并继续在 `quote_order_excel.php` 内展开 carton detail rows。
 - 新增 `tests/quote_ci_group_by_order_item_contract.php`，锁定 CI 汇总维度、CI/PL 分流、HTML/Excel 一致性，防止后续把 CI 又接回包装明细。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 语法和契约测试后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，PHP 检查在服务器执行。正式服务器 `php -l quote_order_doc.php`、`php -l quote_order_excel.php`、`php tests/quote_ci_group_by_order_item_contract.php`、`php tests/quote_packing_tail_cartons_contract.php`、`php tests/quote_shipment_split_pack_rows_contract.php`、`php tests/quote_shipment_partial_carton_contract.php` 均通过。
+- 部署：功能提交 `7ed58f93aab5d127e9ce4ceaeaf606bc62c0971d` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM AI获客 Bosnia 任务“搜不到客户”只读诊断
 
