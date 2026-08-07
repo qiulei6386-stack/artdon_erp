@@ -123,7 +123,7 @@ function qd_pl_custom_label($settings){
 }
 
 function qd_doc_terms($type,$order,$ship,$settings){
-  $orderNo=qd_order_no_at($order['order_no']??'',$order['quote_no']??'');
+  $orderNo=qd_s($order['_shipment_order_refs']??''); if($orderNo==='') $orderNo=qd_order_no_at($order['order_no']??'',$order['quote_no']??'');
   if($type==='ci'){
     list($pay1,$pay2)=qd_payment_terms($order);
     $shippingMark=qd_s($ship['shipping_mark']??'');
@@ -188,7 +188,8 @@ function qd_payload_to_doc_row($it,$idx=0){
   $size=qd_item_text($it,['size','dimension','dimensions','quote_display_size','drawing_size','dim_size','product_size']); if($size==='') $size=qd_item_text($p,['quote_display_size','size','dimension','dimensions','dim_size','product_size']); if($size==='') $size=qd_extract_size_from_spec($spec);
   $img=qd_item_text($it,['image','product_image','image_url']); if($img==='') $img=qd_item_text($p,['image','image_display','product_image','main_image','image_url']);
   return [
-    'id'=>$it['id']??0,'order_item_id'=>$it['order_item_id']??($it['id']??0),'item_index'=>(int)($it['item_index']??$idx),
+    'id'=>$it['id']??0,'order_id'=>(int)($it['order_id']??0),'order_no'=>qd_order_no_at($it['order_no']??'',$it['quote_no']??''),'quote_no'=>qd_s($it['quote_no']??''),
+    'order_item_id'=>$it['order_item_id']??($it['id']??0),'item_index'=>(int)($it['item_index']??$idx),
     'customer_code'=>$customerCode,'product_code'=>$productCode,'product_name'=>$productName,'specification'=>$spec,'size'=>$size,
     'color'=>qd_item_text($it,['color']) ?: qd_item_text($p,['color']),
     'qty'=>$qty,'unit_price'=>$price,'amount'=>qd_num($it['amount']??($qty*$price)),'image'=>$img,
@@ -201,11 +202,12 @@ function qd_row_has_order_info($r){
 }
 function qd_order_item_rows(PDO $pdo,$order){
   $orderId=(int)($order['id']??0); $rows=[];
+  $orderRef=qd_order_no_at($order['order_no']??'',$order['quote_no']??'');
   if($orderId>0 && qd_table_exists($pdo,'quote_sales_order_items')){
     $db=qd_rows($pdo,'SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
-    foreach($db as $i=>$r){ $rows[]=qd_payload_to_doc_row($r,$i+1); }
+    foreach($db as $i=>$r){ $r['order_no']=$orderRef; $r['quote_no']=$order['quote_no']??''; $rows[]=qd_payload_to_doc_row($r,$i+1); }
   }
-  if(!$rows){ foreach(qd_order_payload_items($order) as $i=>$it){ $rows[]=qd_payload_to_doc_row($it,$i+1); } }
+  if(!$rows){ foreach(qd_order_payload_items($order) as $i=>$it){ $it['order_id']=$orderId; $it['order_no']=$orderRef; $it['quote_no']=$order['quote_no']??''; $rows[]=qd_payload_to_doc_row($it,$i+1); } }
   return $rows;
 }
 function qd_order_item_maps($orderRows){
@@ -223,6 +225,7 @@ function qd_merge_doc_item($shipRow,$orderRow,$seqIndex=0){
     if(qd_s($shipRow[$k]??'')==='') $shipRow[$k]=$base[$k]??'';
   }
   foreach(['qty','unit_price','amount'] as $k){ if(qd_num($shipRow[$k]??0)<=0 && qd_num($base[$k]??0)>0) $shipRow[$k]=$base[$k]; }
+  foreach(['order_id','order_no','quote_no'] as $k){ if(qd_s($shipRow[$k]??'')==='' && qd_s($base[$k]??'')!=='') $shipRow[$k]=$base[$k]; }
   if((int)($shipRow['item_index']??0)<=0) $shipRow['item_index']=$base['item_index']??($seqIndex+1);
   if((int)($shipRow['order_item_id']??0)<=0) $shipRow['order_item_id']=$base['id']??($base['order_item_id']??0);
   if(qd_s($shipRow['item_json']??'')==='') $shipRow['item_json']=$base['item_json']??'';
@@ -245,10 +248,11 @@ function qd_build_document_items(PDO $pdo,$order,$shipmentItems){
 }
 function qd_ci_item_group_key($row,$seq=0){
   $oid=(int)($row['order_item_id']??0); if($oid>0) return 'order_item:'.$oid;
+  $source=qd_s($row['order_id']??'') ?: qd_s($row['order_no']??'');
   $idx=(int)($row['item_index']??0); $customer=qd_s($row['customer_code']??''); $product=qd_s($row['product_code']??'');
-  if($idx>0 && ($customer!=='' || $product!=='')) return 'item_index:'.$idx.'|customer:'.$customer.'|product:'.$product;
+  if($idx>0 && ($customer!=='' || $product!=='')) return 'source:'.$source.'|item_index:'.$idx.'|customer:'.$customer.'|product:'.$product;
   $name=qd_s($row['product_name']??''); $spec=qd_s($row['specification']??''); $color=qd_s($row['color']??'');
-  if($customer!=='' || $product!=='' || $name!=='' || $spec!=='' || $color!=='') return 'signature:'.$customer.'|'.$product.'|'.$name.'|'.$spec.'|'.$color;
+  if($customer!=='' || $product!=='' || $name!=='' || $spec!=='' || $color!=='') return 'source:'.$source.'|signature:'.$customer.'|'.$product.'|'.$name.'|'.$spec.'|'.$color;
   return 'row:'.$seq;
 }
 function qd_build_ci_items($items){
@@ -267,6 +271,15 @@ function qd_build_ci_items($items){
     if(qd_row_has_order_info($row)) $out[]=$row;
   }
   return $out;
+}
+function qd_shipment_order_refs($items,$order){
+  $seen=[]; $out=[];
+  foreach($items as $it){
+    $ref=qd_s($it['order_no']??''); if($ref==='') $ref=qd_order_no_at($it['order_no']??'',$it['quote_no']??'');
+    if($ref!=='' && empty($seen[$ref])){ $seen[$ref]=1; $out[]=$ref; }
+  }
+  if(!$out){ $ref=qd_order_no_at($order['order_no']??'',$order['quote_no']??''); if($ref!=='') $out[]=$ref; }
+  return implode(', ',$out);
 }
 function qd_total($rows,$key){$s=0;foreach($rows as $r)$s+=qd_num($r[$key]??0);return $s;}
 function qd_carton_has_detail($c){foreach(['carton_no','carton_range','items_text','qty','carton_size','nw','gw','cbm','note'] as $k){if(trim((string)($c[$k]??''))!=='')return true;}return false;}
@@ -358,11 +371,12 @@ if($docStatus==='deleted'){
   exit;
 }
 $order=qd_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$ship['order_id']]);if(!$order){http_response_code(404);echo 'Order not found';exit;}
-$shipmentItems=qd_rows($pdo,'SELECT * FROM quote_shipment_items WHERE shipment_id=? ORDER BY item_index,id',[$shipmentId]);
+$shipmentItems=qd_rows($pdo,'SELECT si.*,o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id WHERE si.shipment_id=? ORDER BY si.order_id,si.item_index,si.id',[$shipmentId]);
 $items=qd_build_document_items($pdo,$order,$shipmentItems);
 $ciItems=qd_build_ci_items($items);
 $cartons=qd_rows($pdo,'SELECT * FROM quote_shipment_cartons WHERE shipment_id=? ORDER BY id',[$shipmentId]);
 $plItems=$type==='pl'?array_merge($items,qd_carton_pl_rows($cartons,$items)):$items;
+$order['_shipment_order_refs']=qd_shipment_order_refs($items,$order);
 $settings=qd_settings($pdo);$customer=qd_customer_from_order($order);list($sellerName,$sellerText)=qd_header_seller($order,$settings);$docTitle=$type==='ci'?'COMMERCIAL INVOICE':'PACKING LIST';$docFileTitle=qd_doc_file_title($type,$order);$docNo=$type==='ci'?($ship['commercial_invoice_no']??''):($ship['packing_list_no']??'');if($docNo==='')$docNo=$docTitle.'-'.$shipmentId;$docVoided=$docStatus==='voided';$voidText='作废人：'.qd_s($ship[$type.'_voided_by']??'').' ｜ 作废时间：'.qd_s($ship[$type.'_voided_at']??'').' ｜ 原因：'.qd_s($ship[$type.'_void_reason']??'');
 if($type==='ci' && qd_col_exists($pdo,'quote_shipments','ci_generated_at')){$pdo->prepare('UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()) WHERE id=?')->execute([$shipmentId]);}else if($type!=='ci' && qd_col_exists($pdo,'quote_shipments','pl_generated_at')){$pdo->prepare('UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()) WHERE id=?')->execute([$shipmentId]);}
 if($format==='xls'||$format==='xlsx'||$format==='excel'){
@@ -383,16 +397,16 @@ if($format==='xls'||$format==='xlsx'||$format==='excel'){
     <div><div class="brandstamp"><?=qd_h(qd_header_stamp($order))?></div><div class="doc-title"><?=qd_h($docTitle)?></div><table class="terms"><?php foreach(qd_doc_terms($type,$order,$ship,$settings) as $r): $field=$r[2]??''; $editable=!empty($r[3]); $labelField=$r[4]??''; $labelEditable=!empty($r[5]); ?><tr><td<?=($labelEditable&&!($format==='xls'||$format==='xlsx'||$format==='excel'))?' class="doc-edit-cell" contenteditable="true" data-doc-edit="'.qd_h($labelField).'" data-placeholder="点击填写"':''?>><?=qd_h($r[0])?></td><td<?=($editable&&!($format==='xls'||$format==='xlsx'||$format==='excel'))?' class="doc-edit-cell" contenteditable="true" data-doc-edit="'.qd_h($field).'" data-placeholder="点击填写"':''?>><?=qd_h($r[1])?></td></tr><?php endforeach; ?></table></div>
   </div>
 <?php if($type==='ci'): ?>
-  <table class="doc-table"><colgroup><col style="width:8%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:33%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:8%"></colgroup><thead><tr><th>Picture</th><th>Size</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>Unit Price<br>(<?=qd_h($order['currency']??'USD')?>)</th><th>Amount<br>(<?=qd_h($order['currency']??'USD')?>)</th><th>HS Code</th></tr></thead><tbody>
-  <?php foreach($ciItems as $i=>$it): $img=qd_img_src($it); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="ci-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['size']??'')?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><td><?=qd_money($it['unit_price']??0)?></td><td><?=qd_money($it['amount']??0)?></td><td<?=($format==='xls'||$format==='xlsx'||$format==='excel')?'':' class="material-edit" contenteditable="true" data-doc-edit="hs_code_'.qd_h($i).'"'?>><?=qd_h($it['hs_code']??'')?></td></tr><?php endforeach; ?>
-  <tr><td colspan="6"></td><td><b><?=qd_qty(qd_total($ciItems,'qty'))?></b></td><td><b>Total:</b></td><td><b><?=qd_money(qd_total($ciItems,'amount'))?></b></td><td></td></tr></tbody></table>
-  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($ciItems,'qty'))?> PCS<br><b>Total Amount:</b> <?=qd_h($order['currency']??'USD')?> <?=qd_money(qd_total($ciItems,'amount'))?><br><b>Currency:</b> <?=qd_h($order['currency']??'USD')?></div><div class="box"><b>Invoice No:</b> <?=qd_h($ship['commercial_invoice_no']??'')?><br><b>PI No.:</b> <?=qd_h(qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
+  <table class="doc-table"><colgroup><col style="width:7%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:30%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:7%"></colgroup><thead><tr><th>Picture</th><th>Order No.</th><th>Size</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>Unit Price<br>(<?=qd_h($order['currency']??'USD')?>)</th><th>Amount<br>(<?=qd_h($order['currency']??'USD')?>)</th><th>HS Code</th></tr></thead><tbody>
+  <?php foreach($ciItems as $i=>$it): $img=qd_img_src($it); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="ci-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['order_no']??'')?></td><td><?=qd_h($it['size']??'')?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><td><?=qd_money($it['unit_price']??0)?></td><td><?=qd_money($it['amount']??0)?></td><td<?=($format==='xls'||$format==='xlsx'||$format==='excel')?'':' class="material-edit" contenteditable="true" data-doc-edit="hs_code_'.qd_h($i).'"'?>><?=qd_h($it['hs_code']??'')?></td></tr><?php endforeach; ?>
+  <tr><td colspan="7"></td><td><b><?=qd_qty(qd_total($ciItems,'qty'))?></b></td><td><b>Total:</b></td><td><b><?=qd_money(qd_total($ciItems,'amount'))?></b></td><td></td></tr></tbody></table>
+  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($ciItems,'qty'))?> PCS<br><b>Total Amount:</b> <?=qd_h($order['currency']??'USD')?> <?=qd_money(qd_total($ciItems,'amount'))?><br><b>Currency:</b> <?=qd_h($order['currency']??'USD')?></div><div class="box"><b>Invoice No:</b> <?=qd_h($ship['commercial_invoice_no']??'')?><br><b>PI No.:</b> <?=qd_h($order['_shipment_order_refs']??qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
   <?php /* V6.8.5.53: CI 不显示银行信息区 */ ?>
 <?php else: ?>
-  <table class="doc-table"><colgroup><col style="width:7%"><col style="width:10%"><col style="width:11%"><col style="width:31%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:4.8%"><col style="width:4.8%"><col style="width:4.8%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5%"></colgroup><thead><tr><th>Picture</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>PCS/<br>CTN</th><th>L<br>(cm)</th><th>W<br>(cm)</th><th>H<br>(cm)</th><th>CTNS</th><th>N.W.<br>(KG)</th><th>G.W.<br>(KG)</th><th>CBM</th></tr></thead><tbody>
-  <?php foreach($plItems as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); $span=max(1,(int)($it['_carton_rowspan']??1)); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><?php if(empty($it['_carton_skip_pack'])): ?><td rowspan="<?=$span?>"><?=qd_qty($it['pcs_per_ctn']??0)?></td><td rowspan="<?=$span?>"><?=qd_h($cl)?></td><td rowspan="<?=$span?>"><?=qd_h($cw)?></td><td rowspan="<?=$span?>"><?=qd_h($ch)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cartons']??0)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['nw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['gw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cbm']??0,4)?></td><?php endif; ?></tr><?php endforeach; ?>
-  <tr><td colspan="5"></td><td><b><?=qd_qty(qd_total($plItems,'qty'))?></b></td><td></td><td colspan="3"><b>Total:</b></td><td><b><?=qd_qty(qd_total($plItems,'cartons'))?></b></td><td><b><?=qd_qty(qd_total($plItems,'nw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'gw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'cbm'),4)?></b></td></tr></tbody></table>
-  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($plItems,'qty'))?> PCS<br><b>Total Cartons:</b> <?=qd_qty(qd_total($plItems,'cartons'))?> CTNS<br><b>Total N.W.:</b> <?=qd_qty(qd_total($plItems,'nw'),3)?> KG<br><b>Total G.W.:</b> <?=qd_qty(qd_total($plItems,'gw'),3)?> KG<br><b>Total CBM:</b> <?=qd_qty(qd_total($plItems,'cbm'),4)?></div><div class="box"><b>Packing List No:</b> <?=qd_h($ship['packing_list_no']??'')?><br><b>PI No.:</b> <?=qd_h(qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
+  <table class="doc-table"><colgroup><col style="width:6%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:27%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5%"></colgroup><thead><tr><th>Picture</th><th>Order No.</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>PCS/<br>CTN</th><th>L<br>(cm)</th><th>W<br>(cm)</th><th>H<br>(cm)</th><th>CTNS</th><th>N.W.<br>(KG)</th><th>G.W.<br>(KG)</th><th>CBM</th></tr></thead><tbody>
+  <?php foreach($plItems as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); $span=max(1,(int)($it['_carton_rowspan']??1)); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['order_no']??'')?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><?php if(empty($it['_carton_skip_pack'])): ?><td rowspan="<?=$span?>"><?=qd_qty($it['pcs_per_ctn']??0)?></td><td rowspan="<?=$span?>"><?=qd_h($cl)?></td><td rowspan="<?=$span?>"><?=qd_h($cw)?></td><td rowspan="<?=$span?>"><?=qd_h($ch)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cartons']??0)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['nw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['gw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cbm']??0,4)?></td><?php endif; ?></tr><?php endforeach; ?>
+  <tr><td colspan="6"></td><td><b><?=qd_qty(qd_total($plItems,'qty'))?></b></td><td></td><td colspan="3"><b>Total:</b></td><td><b><?=qd_qty(qd_total($plItems,'cartons'))?></b></td><td><b><?=qd_qty(qd_total($plItems,'nw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'gw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'cbm'),4)?></b></td></tr></tbody></table>
+  <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($plItems,'qty'))?> PCS<br><b>Total Cartons:</b> <?=qd_qty(qd_total($plItems,'cartons'))?> CTNS<br><b>Total N.W.:</b> <?=qd_qty(qd_total($plItems,'nw'),3)?> KG<br><b>Total G.W.:</b> <?=qd_qty(qd_total($plItems,'gw'),3)?> KG<br><b>Total CBM:</b> <?=qd_qty(qd_total($plItems,'cbm'),4)?></div><div class="box"><b>Packing List No:</b> <?=qd_h($ship['packing_list_no']??'')?><br><b>PI No.:</b> <?=qd_h($order['_shipment_order_refs']??qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
 <?php endif; ?>
 </div>
 

@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：报价系统同客户多订单合并出货
+
+- 用户新增需求：同一客户可能一段时间下多张订单，但需要一起出货；这时 CI 应该是一张，而不是每张订单各出一张。
+- 方案落地：只允许同一客户、同币种订单合并出货；合并后仍生成一个出货批次、一张 PL、一张 CI，但单证明细行保留 `Order No.`，方便客户按订单对账。
+- `quote_order_api.php`：新增 `quote_shipment_orders` 关联表，支持一个出货批次关联多张订单；新增 `prepare_combined_shipment` 接口，自动收集同客户未出货产品；创建/编辑/删除出货批次会按实际订单行写入 `quote_shipment_items.order_id`，并回算所有相关订单的已出/未出状态。
+- `quotation.php`：订单详情增加“合并出货”入口；出货弹窗新增“订单”列；保存时提交 `order_ids` 和行级 `order_id`；单证中心列表优先显示/搜索合并订单号。
+- `quote_order_doc.php` / `quote_order_excel.php`：PL/CI HTML 与 Excel 均新增 `Order No.` 列；CI 分组继续优先按 `order_item_id`，兜底分组加入订单来源，避免不同订单相同型号被误合并。
+- 新增 `tests/quote_combined_shipment_contract.php`，并更新 `tests/quote_ci_group_by_order_item_contract.php`，锁定合并出货关联、同客户限制、前端提交、单证 Order No. 与 CI 分组规则。
+- 待检查/部署：本地 `git diff --check` 已通过；本机无 `php` 命令，提交推送后在正式服务器执行 PHP 语法与契约测试，再更新最终 HEAD。
+
 ## 本次：报价系统 CI 按出货批次内订单明细汇总
 
 - 用户确认开始修复出货资料单证逻辑：Packing List 可以按包装/箱规多行展示；Commercial Invoice 不能按包装资料拆行，必须按“当前出货批次内的订单明细行”汇总；不同出货批次不能跨批次合并。

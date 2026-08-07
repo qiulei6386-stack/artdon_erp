@@ -6,7 +6,7 @@ $excel=file_get_contents($root.'/quote_order_excel.php');
 $checks=[
   'CI grouping helper exists'=>strpos($doc,'function qd_build_ci_items($items)')!==false,
   'CI group key prefers order item id'=>strpos($doc,"return 'order_item:'.\$oid")!==false,
-  'CI fallback keeps shipment batch item identity'=>strpos($doc,"'item_index:'.\$idx.'|customer:'.\$customer.'|product:'.\$product")!==false,
+  'CI fallback keeps shipment batch item identity'=>strpos($doc,"'source:'.\$source.'|item_index:'.\$idx.'|customer:'.\$customer.'|product:'.\$product")!==false,
   'CI grouping sums current shipment quantity'=>strpos($doc,"\$groups[\$key]['qty']=qd_num(\$groups[\$key]['qty']??0)+\$qty")!==false,
   'CI grouping sums current shipment amount'=>strpos($doc,"\$groups[\$key]['amount']=qd_num(\$groups[\$key]['amount']??0)+\$amount")!==false,
   'CI rows clear packing-only fields'=>strpos($doc,"foreach(['pcs_per_ctn','cartons','carton_size','nw','gw','cbm'")!==false,
