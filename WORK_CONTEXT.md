@@ -6,8 +6,8 @@
 - 服务器 `/root/.ssh/artdon_erp_github_deploy` 为本次在服务器生成的专用 Ed25519 deploy key；未复制本机 GitHub 私钥到服务器。
 - 服务器 `/root/.ssh/config` 已配置 `Host github.com` 使用 `/root/.ssh/artdon_erp_github_deploy` 且 `IdentitiesOnly yes`。
 - 验证结果：服务器执行 `ssh -o BatchMode=yes -T git@github.com` 返回 `Hi qiulei6386-stack/artdon_erp! You've successfully authenticated`；`git fetch origin main` 成功；`git push --dry-run origin HEAD:main` 返回 `Everything up-to-date`，说明读写权限链路可用且未产生远端写入。
-- 三方状态：修复前本地、GitHub `origin/main`、服务器 `/www/wwwroot/Artdon/artdon_erp/` 均为 `9264624c1af88316dabd015b03536ad09b409531`；服务器仍保留历史未跟踪备份目录 `material_center_v1/adaptation_backup_*`、`quotation_color_blank_backup_20260731_192138/`，不纳入 Git，属于既有残留。
-- 本记录提交后需用服务器自身 GitHub SSH 能力执行 `git pull --ff-only origin main` 完成闭环，并再次核对本地、GitHub、服务器 HEAD 一致。
+- 闭环验证：本地记录提交并推送 GitHub 后，服务器已使用自身 GitHub SSH 能力执行 `git pull --ff-only origin main`，成功从 `9264624c` 快进到 `a423c6a8`，证明服务器现在可以直接读取 GitHub 并同步部署。
+- 三方状态：首次闭环后本地、GitHub `origin/main`、服务器 `/www/wwwroot/Artdon/artdon_erp/` 均为 `a423c6a89fffabc3b7031a6cda5ca577c20a5696`；本条上下文记录再次提交同步后以最终 Git HEAD 为准。服务器仍保留历史未跟踪备份目录 `material_center_v1/adaptation_backup_*`、`quotation_color_blank_backup_20260731_192138/`，不纳入 Git，属于既有残留。
 
 ## 本次：恢复 artdon-erp SSH 并补齐 CRM AI获客修复上线
 
