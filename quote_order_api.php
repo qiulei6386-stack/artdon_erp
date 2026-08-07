@@ -415,11 +415,15 @@ function qo_prepare_items(PDO $pdo,$orderId){
   return $items;
 }
 function qo_order_ref(array $order): string { return qo_order_no_at($order['order_no']??'',$order['quote_no']??''); }
+function qo_customer_name_key(array $order): string {
+  return strtolower(preg_replace('/\s+/u',' ',qo_s($order['customer_name']??qo_customer_name($order['customer_json']??''),255)));
+}
 function qo_customer_key(array $order): string {
+  $name=qo_customer_name_key($order);
+  if($name!=='') return 'name:'.$name;
   $cid=qo_s($order['customer_id']??'',120);
   if($cid!=='') return 'id:'.$cid;
-  $name=strtolower(preg_replace('/\s+/u',' ',qo_s($order['customer_name']??qo_customer_name($order['customer_json']??''),255)));
-  return $name!=='' ? 'name:'.$name : 'order:'.(int)($order['id']??0);
+  return 'order:'.(int)($order['id']??0);
 }
 function qo_load_orders(PDO $pdo,array $orderIds): array {
   $ids=array_values(array_unique(array_filter(array_map('intval',$orderIds),function($x){return $x>0;})));
@@ -457,11 +461,13 @@ function qo_sync_shipment_orders(PDO $pdo,int $shipmentId,array $orders): void {
 }
 function qo_prepare_combined_shipment(PDO $pdo,$orderId){
   $detail=qo_order_detail($pdo,(int)$orderId);
-  $base=$detail['order']??[]; $key=qo_customer_key($base);
-  if(strpos($key,'id:')===0){
+  $base=$detail['order']??[]; $baseCustomerName=qo_s($base['customer_name']??'',255);
+  if(qo_s($base['customer_id']??'',120)!=='' && $baseCustomerName!==''){
+    $orders=qo_rows($pdo,"SELECT * FROM quote_sales_orders WHERE (customer_id=? OR customer_name=?) AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY COALESCE(order_date,created_at),id",[$base['customer_id']??'',$baseCustomerName]);
+  }elseif(qo_s($base['customer_id']??'',120)!==''){
     $orders=qo_rows($pdo,"SELECT * FROM quote_sales_orders WHERE customer_id=? AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY COALESCE(order_date,created_at),id",[$base['customer_id']??'']);
-  }elseif(qo_s($base['customer_name']??'',255)!==''){
-    $orders=qo_rows($pdo,"SELECT * FROM quote_sales_orders WHERE customer_name=? AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY COALESCE(order_date,created_at),id",[$base['customer_name']??'']);
+  }elseif($baseCustomerName!==''){
+    $orders=qo_rows($pdo,"SELECT * FROM quote_sales_orders WHERE customer_name=? AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY COALESCE(order_date,created_at),id",[$baseCustomerName]);
   }else{
     $orders=[$base];
   }

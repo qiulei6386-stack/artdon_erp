@@ -9,6 +9,7 @@ $checks=[
   'shipment-order relation table is ensured'=>strpos($api,'CREATE TABLE IF NOT EXISTS quote_shipment_orders')!==false,
   'combined shipment prepare action exists'=>strpos($api,"prepare_combined_shipment")!==false && strpos($api,'function qo_prepare_combined_shipment')!==false,
   'combined shipments are limited to same customer'=>strpos($api,'function qo_validate_same_customer_orders')!==false && strpos($api,'只能合并同一客户的订单出货')!==false,
+  'customer name is preferred for mixed empty/customer_id records'=>strpos($api,'function qo_customer_name_key')!==false && strpos($api,"if(\$name!=='') return 'name:'.\$name;")!==false && strpos($api,'customer_id=? OR customer_name=?')!==false,
   'multi-order item validation exists'=>strpos($api,'function qo_shipment_validate_multi_items')!==false,
   'create accepts order_ids'=>strpos($api,'function qo_requested_order_ids')!==false && strpos($api,'order_ids')!==false,
   'create writes shipment order relation'=>strpos($api,'qo_sync_shipment_orders($pdo,$shipmentId,$orders)')!==false,

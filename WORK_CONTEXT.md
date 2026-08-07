@@ -2,6 +2,9 @@
 
 ## 本次：报价系统同客户多订单合并出货
 
+- 追加修复：用户反馈 EX071 合并出货时报“只能合并同一客户”；线上只读查询确认三张 EX071 页面客户均为 `OZONEPLUS`，但订单 `AT-260724EX071-2` 的 `customer_id=986`，另外两张旧订单 `customer_id` 为空，旧同客户判断优先按 customer_id 导致误判。
+- `quote_order_api.php`：同客户判断改为优先使用规范化客户名；只有客户名缺失时才退回 `customer_id`。合并候选查询也改为 `customer_id` 相同或 `customer_name` 相同，兼容旧订单客户 ID 缺失。
+- `tests/quote_combined_shipment_contract.php`：增加契约，锁定客户名相同但 customer_id 有空/有值混合时仍允许合并。
 - 用户新增需求：同一客户可能一段时间下多张订单，但需要一起出货；这时 CI 应该是一张，而不是每张订单各出一张。
 - 方案落地：只允许同一客户、同币种订单合并出货；合并后仍生成一个出货批次、一张 PL、一张 CI，但单证明细行保留 `Order No.`，方便客户按订单对账。
 - `quote_order_api.php`：新增 `quote_shipment_orders` 关联表，支持一个出货批次关联多张订单；新增 `prepare_combined_shipment` 接口，自动收集同客户未出货产品；创建/编辑/删除出货批次会按实际订单行写入 `quote_shipment_items.order_id`，并回算所有相关订单的已出/未出状态。
