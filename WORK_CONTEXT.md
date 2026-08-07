@@ -1,5 +1,13 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客 Bosnia 任务“搜不到客户”只读诊断
+
+- 用户反馈再次查看 Bosnia 搜索任务，页面似乎搜不到客户，询问是否提示词问题。本次只读查询线上数据库与队列，不修改任务、不启动 worker、不调用搜索 API。
+- 最新任务 `id=23`（`复制 - 筛选Bosnia建筑照明客户`）已重新执行成功进入后续流程；查询时从 `fetching_pages` 推进到 `identifying_company`，进度约 67%，`searched_pages=156`，`found_companies=7`，`last_error=NULL`。
+- DataForSEO 搜索已成功：成功调用 22 次，返回 156 条网页结果；仍保留历史失败记录 36 次，错误为旧的 `Invalid Field: 'location_name'.`，这是修复前遗留，不是当前运行阻塞。
+- 结论：不是“提示词完全搜不到”。关键词已能搜出网页，并出现 AL-LUX、Lumenia、Telemax、Elektro Tim、ELLUX 等相关线索；页面看到 0 时主要是因为 `parse_company` 公司识别队列还没消费完。
+- 质量观察：候选中也混入 TRILUX、Anolis、印度/全球制造商、PDF/物流泛页面等不精准结果，说明提示词可用但偏宽。后续优化方向是加强本地经销/工程/lighting showroom/lighting contractor/rasvjeta 等词，并排除 manufacturer、global brand、shipping、PDF、marketplace 等泛结果。
+
 ## 本次：CRM AI获客已取消搜索任务允许重新启动
 
 - 用户反馈“取消的任务，不能重新执行？”。检查确认前端已对 `cancelled` 状态显示“启动搜索任务”，但后端 `radar_task_start()` 仍把 `cancelled` 放在禁止启动列表，导致按钮与接口规则冲突。
