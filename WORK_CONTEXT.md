@@ -2,6 +2,7 @@
 
 ## 本次：报价系统同客户多订单合并出货
 
+- 追加体验修复：用户看到 EX071 左侧 3 张订单，但合并弹窗容易误判“只拉出两张”。线上数据确认实际已拉出 3 张、8 行产品、1630 PCS；`quotation.php` 的合并出货提示文案改为明确显示“共 N 张订单 / M 行产品 / X PCS”，降低误读。
 - 追加修复：用户反馈 EX071 合并出货时报“只能合并同一客户”；线上只读查询确认三张 EX071 页面客户均为 `OZONEPLUS`，但订单 `AT-260724EX071-2` 的 `customer_id=986`，另外两张旧订单 `customer_id` 为空，旧同客户判断优先按 customer_id 导致误判。
 - `quote_order_api.php`：同客户判断改为优先使用规范化客户名；只有客户名缺失时才退回 `customer_id`。合并候选查询也改为 `customer_id` 相同或 `customer_name` 相同，兼容旧订单客户 ID 缺失。
 - `tests/quote_combined_shipment_contract.php`：增加契约，锁定客户名相同但 customer_id 有空/有值混合时仍允许合并。
