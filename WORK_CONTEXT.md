@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客 Bosnia 新任务只读复查
+
+- 用户重新新建/复制 Bosnia 任务后要求检查。本次只做线上只读诊断，未修改任务数据、未启动 worker、未改代码、未手动调用搜索 API。
+- 最新任务为 `id=23`，任务名 `复制 - 筛选Bosnia建筑照明客户`，`country=Bosnia`，`model_key=project_procurement`，`target_candidate_count=20`，当前 `task_status=searching`，`progress_percent=4`。
+- 关键词已正确写入：共 23 条，包括 `Bosnia architectural lighting distributor`、`Bosnia commercial lighting supplier`、`Sarajevo architectural lighting`、`site:.ba architectural lighting projects` 等；这说明用户这次复制/填入关键词已生效，不再是空关键词问题。
+- 队列状态：`generate_keywords` 已 done；已生成 23 个 `search_keyword` 队列，但目前均为 pending 且已尝试 1 次，`last_error=Ok.；Invalid Field: 'location_name'.`。
+- 搜索调用记录：DataForSEO 已被调用 23 次，全部失败，返回 0 条结果；`crm_radar_raw_results` 尚无该任务网页结果。
+- 根因判断：当前 DataForSEO payload 会把任务国家 `Bosnia` 传为 `location_name=Bosnia`；DataForSEO 不接受该 location_name。下一步应修复国家映射，例如将 Bosnia/BiH 映射为官方位置名或在不支持时不传 `location_name`，依赖关键词里的 Bosnia / site:.ba 限定。
+
 ## 本次：CRM AI获客允许复制关键词从提示词内容转入搜索关键词
 
 - 用户追问“不能用我复制进来的关键词么？”。确认现状：第一版提示词区只保存/展示提示词思路，实际搜索只使用“已选关键词”框；如果用户把 ChatGPT 输出关键词粘贴在“提示词内容”框，旧逻辑不会执行这些关键词。
