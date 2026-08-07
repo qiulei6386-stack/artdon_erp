@@ -6,8 +6,8 @@
 - 根因：前端 `assets/crm/crm.js` 的搜索任务编辑器提交时只调用 `radar_task_save`，保存成功后关闭抽屉并刷新列表，没有在 `execute_mode=manual` 时继续调用 `radar_task_start`；而后端启动队列的唯一入口是 `radar_task_start()`。
 - 修复：`assets/crm/crm.js` 在保存任务成功后读取返回的任务 ID；若执行方式为 `manual/手动立即执行`，立即调用 `radar_task_start`，成功后提示“搜索任务已保存并启动”；定时、每日、每周任务仍保持只保存不立即启动。
 - `tests/crm_radar_task_editor_country_language_contract.php` 增加契约标记，锁定手动立即执行必须在保存后调用 `radar_task_start`，防止再次退回只保存。
-- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 语法/合约需同步服务器后执行。
-- 待部署：本记录随修复提交推送 GitHub `main` 后，使用服务器自身 GitHub SSH `git pull --ff-only origin main` 同步正式服务器，再执行 `php -l radar_api.php`、`php -l radar.php`、`php tests/crm_radar_task_editor_country_language_contract.php` 并核对三方 HEAD 一致。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；正式服务器 `php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_task_editor_country_language_contract.php` 通过。
+- 部署：功能提交 `343b0ecb6862fcc6d282f3853c81cefb2c74834b` 已推送 GitHub `main`，并使用服务器自身 GitHub SSH `git pull --ff-only origin main` 快进同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；本地、GitHub、服务器三方一致。最终上下文记录提交后以最终 Git HEAD 为准。
 - 说明：本次不自动启动既有线上草稿任务，避免未经再次确认触发 DataForSEO 付费搜索；修复上线后，用户重新保存“手动立即执行”的任务会自动入队，或手动点击“启动搜索任务”也可立即启动。
 
 ## 本次：CRM AI获客目标数量 10 但显示共 4 次的原因诊断
