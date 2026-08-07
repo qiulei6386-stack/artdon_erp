@@ -6,9 +6,9 @@ $js = file_get_contents($root . '/assets/crm/crm.js');
 foreach ([
     'var targetCount = Number(row.target_candidate_count || 0);',
     "'关键词搜索 ' + esc(searchCurrent) + ' / ' + esc(searchTotal) + ' 次'",
-    "'目标客户 ' + esc(targetCount || '-') + ' 个",
-    "'完成关键词 ' + esc(row.search_done_count || 0)",
-    "'候选公司 ' + esc(row.found_companies || 0)",
+    '目标客户 \' + esc(targetCount || \'-\') + \' 个',
+    '完成关键词 \' + esc(row.search_done_count || 0)',
+    '候选公司 \' + esc(row.found_companies || 0)',
 ] as $marker) {
     if (!str_contains($js, $marker)) {
         throw new RuntimeException("Radar task count display marker missing: {$marker}");
