@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客 DataForSEO Bosnia location_name 失败修复
+
+- 用户取消 Bosnia 搜索任务后要求先改代码，改完再由用户重新开始。本次不启动任务、不手动调用 DataForSEO 搜索 API。
+- 根因：DataForSEO 的 `location_name` 必须是其支持的完整地区名；旧逻辑把未映射国家文本原样传入，导致 `country=Bosnia` 被发成 `location_name=Bosnia`，API 返回 `Invalid Field: 'location_name'.`。
+- `radar.php`：`radar_dataforseo_location_name()` 增加 Bosnia / BiH / BA / 波黑等别名映射到 `Bosnia and Herzegovina`；未知国家不再原样传给 DataForSEO，避免类似错误整批失败。
+- `radar.php`：新增 DataForSEO 请求封装和 location 错误识别；如果 API 返回 `location_name` 无效，自动去掉 `location_name` 再重试一次，继续依赖关键词里的国家/城市/site:.ba 限定搜索地域。
+- `tests/crm_radar_dataforseo_search_contract.php` 补充契约，锁定 Bosnia 映射、payload 可禁用 location、invalid location 自动无地区重试。
+- 待检查/部署：本地语法与契约测试、提交推送、服务器 `git pull --ff-only` 与 PHP 检查后更新最终 HEAD。
+
 ## 本次：CRM AI获客 Bosnia 新任务只读复查
 
 - 用户重新新建/复制 Bosnia 任务后要求检查。本次只做线上只读诊断，未修改任务数据、未启动 worker、未改代码、未手动调用搜索 API。

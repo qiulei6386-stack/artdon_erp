@@ -2549,8 +2549,15 @@ function radar_dataforseo_location_name(array $task): string
         'uk' => 'United Kingdom',
         'united kingdom' => 'United Kingdom',
         '英国' => 'United Kingdom',
+        'bosnia' => 'Bosnia and Herzegovina',
+        'bosnia and herzegovina' => 'Bosnia and Herzegovina',
+        'bih' => 'Bosnia and Herzegovina',
+        'ba' => 'Bosnia and Herzegovina',
+        '波黑' => 'Bosnia and Herzegovina',
+        '波斯尼亚' => 'Bosnia and Herzegovina',
+        '波斯尼亚和黑塞哥维那' => 'Bosnia and Herzegovina',
     ];
-    return $map[$lower] ?? (preg_match('/^[a-z]{2}$/i', $country) ? '' : mb_substr($country, 0, 120));
+    return $map[$lower] ?? '';
 }
 
 function radar_dataforseo_language_code(array $task): string
@@ -2570,16 +2577,27 @@ function radar_dataforseo_auth_header(string $apiKey): string
     return "Authorization: Basic {$token}\r\n";
 }
 
-function radar_dataforseo_payload(array $task, string $keyword, int $limit): array
+function radar_dataforseo_payload(array $task, string $keyword, int $limit, bool $withLocation = true): array
 {
     $row = [
         'keyword' => $keyword,
         'depth' => max(1, min(100, $limit)),
         'language_code' => radar_dataforseo_language_code($task),
     ];
-    $location = radar_dataforseo_location_name($task);
-    if ($location !== '') $row['location_name'] = $location;
+    $location = $withLocation ? radar_dataforseo_location_name($task) : '';
+    if ($withLocation && $location !== '') $row['location_name'] = $location;
     return [$row];
+}
+
+function radar_dataforseo_request(string $apiUrl, string $headers, array $payload, int $timeout): array
+{
+    $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $context = stream_context_create(['http' => ['method' => 'POST', 'timeout' => max(3, $timeout), 'ignore_errors' => true, 'header' => $headers, 'content' => $body]]);
+    $raw = @file_get_contents($apiUrl, false, $context);
+    if ($raw === false || $raw === '') throw new RuntimeException('DataForSEO API请求失败');
+    $json = json_decode($raw, true);
+    if (!is_array($json)) throw new RuntimeException('DataForSEO API返回不是JSON');
+    return $json;
 }
 
 function radar_dataforseo_collect_items(array $items, array &$rows, array &$seen): void
@@ -2630,6 +2648,12 @@ function radar_dataforseo_error(array $json): string
     return trim(implode('；', array_unique($messages))) ?: 'DataForSEO API返回错误';
 }
 
+function radar_dataforseo_error_is_invalid_location(string $message): bool
+{
+    $lower = strtolower($message);
+    return strpos($lower, 'location_name') !== false && strpos($lower, 'invalid') !== false;
+}
+
 function radar_dataforseo_search_service_call(array $task, string $keyword, array $service, int $limit, string $apiKey): array
 {
     $apiUrl = trim((string)($service['api_url'] ?? ''));
@@ -2637,20 +2661,35 @@ function radar_dataforseo_search_service_call(array $task, string $keyword, arra
     $auth = radar_dataforseo_auth_header($apiKey);
     if ($auth === '') throw new RuntimeException('DataForSEO API凭证未配置，请填写 API login:API password。');
     $headers = "Accept: application/json\r\nContent-Type: application/json\r\nUser-Agent: Artdon-CRM-Radar/1.0\r\n" . $auth;
-    $body = json_encode(radar_dataforseo_payload($task, $keyword, $limit), JSON_UNESCAPED_UNICODE);
-    $context = stream_context_create(['http' => ['method' => 'POST', 'timeout' => max(3, (int)$service['timeout_seconds']), 'ignore_errors' => true, 'header' => $headers, 'content' => $body]]);
-    $raw = @file_get_contents($apiUrl, false, $context);
-    if ($raw === false || $raw === '') {
-        radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, (float)$service['cost_per_call'], false, 'DataForSEO API请求失败');
-        throw new RuntimeException('DataForSEO API请求失败');
+    $timeout = max(3, (int)$service['timeout_seconds']);
+    try {
+        $json = radar_dataforseo_request($apiUrl, $headers, radar_dataforseo_payload($task, $keyword, $limit), $timeout);
+    } catch (RuntimeException $e) {
+        radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, (float)$service['cost_per_call'], false, $e->getMessage());
+        throw $e;
     }
-    $json = json_decode($raw, true);
-    if (!is_array($json)) throw new RuntimeException('DataForSEO API返回不是JSON');
     $statusCode = (int)($json['status_code'] ?? 0);
     $tasksError = (int)($json['tasks_error'] ?? 0);
     $cost = isset($json['cost']) ? (float)$json['cost'] : (float)$service['cost_per_call'];
     if ($statusCode >= 40000 || $tasksError > 0) {
         $message = radar_dataforseo_error($json);
+        if (radar_dataforseo_error_is_invalid_location($message)) {
+            try {
+                $json = radar_dataforseo_request($apiUrl, $headers, radar_dataforseo_payload($task, $keyword, $limit, false), $timeout);
+            } catch (RuntimeException $e) {
+                radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, (float)$service['cost_per_call'], false, $e->getMessage());
+                throw $e;
+            }
+            $statusCode = (int)($json['status_code'] ?? 0);
+            $tasksError = (int)($json['tasks_error'] ?? 0);
+            $cost = isset($json['cost']) ? (float)$json['cost'] : (float)$service['cost_per_call'];
+            if ($statusCode < 40000 && $tasksError <= 0) {
+                $rows = radar_dataforseo_rows($json, $limit);
+                radar_record_usage((int)$task['id'], $service, 'search_keyword', count($rows), $cost, true);
+                return ['service' => $service, 'rows' => $rows];
+            }
+            $message = radar_dataforseo_error($json);
+        }
         radar_record_usage((int)$task['id'], $service, 'search_keyword', 0, $cost, false, $message);
         throw new RuntimeException($message);
     }
