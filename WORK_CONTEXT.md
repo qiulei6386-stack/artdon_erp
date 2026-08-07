@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客 Bosnia 任务停在生成关键词只读诊断
+
+- 用户要求检查搜索任务 `筛选Bosnia建筑照明客户`，页面显示处于“生成关键词”。本次只做线上只读诊断，未修改任务数据、未启动 worker、未调用 DataForSEO/Brave 搜索 API。
+- 线上任务 `id=22`：`country=Bosnia`，`model_key=project_procurement`，`target_candidate_count=20`，`task_status=generating_keywords`，`progress_percent=0`，`searched_pages=0`，`found_companies=0`，`last_error=没有可用关键词`。
+- 队列状态：仅有 `generate_keywords` job `id=540`，`job_status=pending`，`attempts=2/3`，`scheduled_at=2026-08-07 15:26:01`，`last_error=没有可用关键词`，payload 为 `{"limit":0}`；尚未生成任何 `search_keyword` 队列，`crm_radar_usage` 无搜索调用记录。
+- 根因：任务自身 `keywords_json=[]`；后端 `radar_task_keywords()` 在任务关键词为空时回退到 `crm_radar_search_keywords` 通用关键词库，但当前关键词库只有 `direct_buyer` 和 `design_influencer` 两类，`project_procurement` 通用关键词为空，因此 worker 抛出“没有可用关键词”。
+- 关联体验问题：新建任务提示词模板第一版只负责把模板/提示词生成并填入“已选关键词”框；如果保存前未点击“从模板生成并替换关键词/追加模板关键词”，任务仍可保存并立即执行，导致空关键词任务进入队列后失败。后续建议增加保存前校验或在选择模板后自动填入关键词。
+- 待用户确认：可选择一是编辑/复制任务，先用模板生成 Bosnia 工程型关键词再保存执行；二是由系统修复为“手动立即执行时关键词为空则禁止启动并提示先生成关键词”；三是增加 `project_procurement` 通用关键词库兜底。
+
 ## 本次：CRM AI获客新建任务接入提示词模板工作流
 
 - 用户确认开始实施“新建搜索任务的关键词可由 ChatGPT 提示词辅助生成；既可手输关键词，也可下拉选择预设提示词”的第一版方案。
