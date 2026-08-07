@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客搜索失败原因只读诊断
+
+- 用户反馈 AI 获客任务好像都搜索失败了。本次只做线上只读诊断，未修改业务代码、未启动/暂停任务、未修改数据库。
+- 线上任务 `印度工程型客户-2`（`id=21`）已因上一轮“手动立即执行”修复正常进入队列：`task_status=searching`，`started_at=2026-08-07 14:44:01`，已生成 1 个 `generate_keywords` 完成任务和 4 个 `search_keyword` 任务。
+- 当前失败根因来自 DataForSEO 账号状态：4 个 `search_keyword` 队列均为 `pending`，`attempts=2/3`，`last_error` 为 `Please verify your account before using the API. You can complete verification in the user panel: https://app.dataforseo.com/ .`；任务级 `last_error` 同样为该内容。
+- 线上搜索服务配置只读核验：`dataforseo` 已启用、已有 API key、`result_limit=10`、优先级 20；`brave` 也启用且有 key，但优先级 100，当前优先走 DataForSEO。因此失败不是没填 API key，而是 DataForSEO 账户未完成验证。
+- 旧任务 `印度工程型客户`（`id=20`）状态为 `waiting_analysis`，10 个 `search_keyword` 已 done，但 `searched_pages=0`、`found_companies=0`；该任务属于旧问题遗留，和当前 DataForSEO 验证错误不是同一表现。
+- 下一步建议：用户先登录 `https://app.dataforseo.com/` 完成账号验证/激活；验证完成后可重新运行任务 21（或让 pending 队列下一轮重试）。若希望在 DataForSEO 未验证期间避免重复重试，可由用户明确授权后暂停任务 21 或临时降低/停用 DataForSEO 改走 Brave。
+
 ## 本次：CRM AI获客“手动立即执行”保存后未启动修复
 
 - 用户反馈搜索任务选择“手动立即执行”并保存后没有执行。线上只读核验任务 `印度工程型客户-2`（`id=21`）：`execute_mode=manual`，但 `task_status=draft` 且 `crm_radar_job_queue` 为空，确认保存后未进入队列。
