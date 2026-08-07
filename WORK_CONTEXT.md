@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客允许复制关键词从提示词内容转入搜索关键词
+
+- 用户追问“不能用我复制进来的关键词么？”。确认现状：第一版提示词区只保存/展示提示词思路，实际搜索只使用“已选关键词”框；如果用户把 ChatGPT 输出关键词粘贴在“提示词内容”框，旧逻辑不会执行这些关键词。
+- `assets/crm/crm.js`：提示词模板区新增“使用提示词内容作为关键词”按钮，可识别每行一个关键词、带序号或项目符号的 ChatGPT 输出，并转入“已选关键词”框；过滤明显的中文提示说明行，避免把整段 prompt 当关键词。
+- `assets/crm/crm.js`：保存并立即执行时，如果“已选关键词”为空但“提示词内容”里能识别出关键词，会自动转入并保存；若仍无关键词，前端拦截并提示“请先填写关键词，或点击使用提示词内容/模板生成关键词”，不再让空任务进入队列。
+- `radar.php`：`radar_task_start()` 增加后端兜底校验；若任务自身和通用关键词库都没有可用关键词，直接拒绝启动并提示先填写/生成关键词，避免再次卡在 `generate_keywords` 队列。
+- `tests/crm_radar_prompt_template_workflow_contract.php` 补充锁定“使用提示词内容作为关键词”、保存前自动转入、空关键词启动拦截和后端启动兜底。
+- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
+- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+
 ## 本次：CRM AI获客 Bosnia 任务停在生成关键词只读诊断
 
 - 用户要求检查搜索任务 `筛选Bosnia建筑照明客户`，页面显示处于“生成关键词”。本次只做线上只读诊断，未修改任务数据、未启动 worker、未调用 DataForSEO/Brave 搜索 API。

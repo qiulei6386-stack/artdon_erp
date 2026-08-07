@@ -19737,7 +19737,7 @@
         '<datalist id="' + uid + '-countries">' + countries.map(function (item) { return '<option value="' + esc(item.country) + '">' + esc(item.code) + '</option>'; }).join('') + '</datalist><datalist id="' + uid + '-cities"></datalist></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>区域预设</h3><span>先点国家，再点城市；输入框仍可手工改</span></div></header><div class="radar-task-country-grid-v2">' + countries.map(function (item, index) { return '<button type="button" data-task-country-preset="' + index + '"><strong>' + esc(item.country) + '</strong><span>' + esc(item.cities.slice(0, 3).join(' / ')) + '</span></button>'; }).join('') + '</div><div class="radar-task-city-strip-v2" data-task-city-chips></div></div>' +
         '<div class="radar-task-editor-card-v2 wide"><header><div><h3>客户模型预设</h3><span>点击后会写入模型、关键词、产品和项目类型</span></div></header><div class="radar-task-model-grid-v2">' + modelPresets.map(function (item, index) { return '<button type="button" data-task-model-preset="' + index + '"><strong>' + esc(item.label) + '</strong><span>' + esc(item.desc) + '</span></button>'; }).join('') + '</div></div></section>' +
-        '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2 wide" data-task-prompt-workbench><header><div><h3>提示词模板</h3><span>可下拉选择预设提示词，也可手写；最终搜索仍以下方关键词为准。</span></div><strong>Prompt</strong></header><div class="radar-task-form-grid-v2"><label><span>预设提示词</span><select name="prompt_template_id" data-task-prompt-template><option value="">读取模板中...</option></select></label><label><span>生成模式</span><select name="prompt_template_mode" data-task-prompt-mode><option value="compact">精简</option><option value="standard" selected>标准</option><option value="deep">深度</option></select></label><label><span>关键词上限</span><input type="number" min="1" max="80" name="prompt_keyword_limit" value="' + esc(Math.max(4, Math.min(80, Number(row.target_candidate_count || 10) || 10))) + '"></label></div><label class="wide"><span>提示词内容（可复制给 ChatGPT，也可人工修改留作思路）</span><textarea name="keyword_prompt" rows="7" placeholder="选择模板后自动填入；也可以直接粘贴你自己的提示词。"></textarea></label><div class="radar-template-keyword-tools"><button type="button" data-task-prompt-replace>从模板生成并替换关键词</button><button type="button" data-task-prompt-append>追加模板关键词</button><button type="button" data-task-prompt-copy>复制提示词</button><span data-task-prompt-status>不会触发搜索 API，只填入任务关键词。</span></div></div></section>' +
+        '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2 wide" data-task-prompt-workbench><header><div><h3>提示词模板</h3><span>可下拉选择预设提示词，也可手写；最终搜索仍以下方关键词为准。</span></div><strong>Prompt</strong></header><div class="radar-task-form-grid-v2"><label><span>预设提示词</span><select name="prompt_template_id" data-task-prompt-template><option value="">读取模板中...</option></select></label><label><span>生成模式</span><select name="prompt_template_mode" data-task-prompt-mode><option value="compact">精简</option><option value="standard" selected>标准</option><option value="deep">深度</option></select></label><label><span>关键词上限</span><input type="number" min="1" max="80" name="prompt_keyword_limit" value="' + esc(Math.max(4, Math.min(80, Number(row.target_candidate_count || 10) || 10))) + '"></label></div><label class="wide"><span>提示词内容（可复制给 ChatGPT，也可人工修改留作思路）</span><textarea name="keyword_prompt" rows="7" placeholder="选择模板后自动填入；也可以直接粘贴你自己的提示词。"></textarea></label><div class="radar-template-keyword-tools"><button type="button" data-task-prompt-replace>从模板生成并替换关键词</button><button type="button" data-task-prompt-append>追加模板关键词</button><button type="button" data-task-prompt-use-lines>使用提示词内容作为关键词</button><button type="button" data-task-prompt-copy>复制提示词</button><span data-task-prompt-status>不会触发搜索 API，只填入任务关键词。</span></div></div></section>' +
         '<section class="radar-task-editor-grid-v2"><div class="radar-task-editor-card-v2"><header><div><h3>关键词</h3><span>多选芯片会自动写入下方，一行一个</span></div></header><div class="radar-task-chip-grid-v2">' + keywordChips.map(function (value) { return renderChip('keywords', value, value); }).join('') + '</div><label class="wide"><span>已选关键词</span><textarea name="keywords" rows="7">' + esc(Array.isArray(row.keywords) ? row.keywords.join('\n') : (row.keywords || '')) + '</textarea></label></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>排除关键词</h3><span>过滤工厂、纯零售、平台和无关行业</span></div></header><div class="radar-task-chip-grid-v2">' + excludeChips.map(function (value) { return renderChip('exclude_keywords', value, value); }).join('') + '</div><label class="wide"><span>已选排除词</span><textarea name="exclude_keywords" rows="7">' + esc(Array.isArray(row.exclude_keywords) ? row.exclude_keywords.join('\n') : (row.exclude_keywords || '')) + '</textarea></label></div>' +
         '<div class="radar-task-editor-card-v2"><header><div><h3>目标产品</h3><span>帮助 AI 聚焦品类</span></div></header><div class="radar-task-chip-grid-v2">' + productChips.map(function (value) { return renderChip('target_products', value, value); }).join('') + '</div><label class="wide"><span>产品清单</span><textarea name="target_products" rows="5">' + esc(row.target_products || '') + '</textarea></label></div>' +
@@ -19781,6 +19781,30 @@
       var promptStatus = function (message) {
         var node = dialog.querySelector('[data-task-prompt-status]');
         if (node) node.textContent = message || '';
+      };
+      var promptKeywordLines = function () {
+        var text = String(getField('keyword_prompt')?.value || '');
+        var forbidden = /^(请|帮我|输出|要求|目标国家|重点城市|客户模型|目标客户|目标产品|项目场景|排除|不要|只输出|生成|search brief)/i;
+        return text.split(/\r?\n/).map(function (line) {
+          return line.replace(/^\s*(?:[-*•·]|[\d一二三四五六七八九十]+[.)、．]|[（(][\d一二三四五六七八九十]+[）)])\s*/u, '').replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+        }).filter(function (line) {
+          if (!line || line.length < 3 || line.length > 120) return false;
+          if (forbidden.test(line)) return false;
+          if (/[:：]\s*$/.test(line)) return false;
+          return /[a-zA-Z]/.test(line) || /[\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F]/.test(line);
+        });
+      };
+      var usePromptContentAsKeywords = function (replace) {
+        var lines = promptKeywordLines();
+        if (!lines.length) {
+          promptStatus('没有识别到可用关键词。请把 ChatGPT 结果整理为每行一个关键词。');
+          return toast('没有识别到可用关键词');
+        }
+        if (replace) replaceLines('keywords', lines);
+        else addLines('keywords', lines);
+        promptStatus('已从提示词内容识别 ' + lines.length + ' 个关键词，可继续手工删改。');
+        toast('已填入关键词 ' + lines.length + ' 个');
+        return lines;
       };
       var renderPromptTemplateOptions = function () {
         var select = getField('prompt_template_id');
@@ -19912,6 +19936,7 @@
       });
       dialog.querySelector('[data-task-prompt-replace]')?.addEventListener('click', function () { applyPromptTemplateKeywords(true); });
       dialog.querySelector('[data-task-prompt-append]')?.addEventListener('click', function () { applyPromptTemplateKeywords(false); });
+      dialog.querySelector('[data-task-prompt-use-lines]')?.addEventListener('click', function () { usePromptContentAsKeywords(true); });
       dialog.querySelector('[data-task-prompt-copy]')?.addEventListener('click', function () {
         var text = String(getField('keyword_prompt')?.value || '').trim();
         if (!text) return toast('提示词为空');
@@ -19959,6 +19984,13 @@
         new FormData(event.currentTarget).forEach(function (value, key) { data[key] = value; });
         ['must_have_website','must_have_email','must_have_contact','allow_design_studio','exclude_factory','exclude_retailer','exclude_decorative','exclude_brand_branch','check_crm_duplicate','enrich_contacts','verify_email'].forEach(function (key) { data[key] = event.currentTarget.querySelector('[name="' + key + '"]')?.checked ? '1' : '0'; });
         data.languages = taskLanguagesForCountry(data.country).join('\n');
+        if (!fieldLines('keywords').length && String(data.keyword_prompt || '').trim() !== '') {
+          var promptLines = usePromptContentAsKeywords(true) || [];
+          data.keywords = promptLines.join('\n');
+        }
+        if (String(data.execute_mode || 'manual') === 'manual' && !String(data.keywords || '').trim()) {
+          return toast('请先填写关键词，或点击“使用提示词内容作为关键词 / 从模板生成关键词”');
+        }
         if (row.id) data.id = row.id;
         radarPost('radar_task_save', data).then(function (json) {
           if (!json.success) throw new Error(json.message || '保存失败');
