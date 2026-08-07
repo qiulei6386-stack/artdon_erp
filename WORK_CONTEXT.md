@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客搜索任务草稿编辑入口修复（服务器同步待恢复 SSH）
+
+- 用户反馈新建“印度工程型客户-2”后不能编辑。浏览器只读核验：任务 `id=21`，任务名 `印度工程型客户-2`，状态 `draft/草稿`，国家 `India`，城市 `Mumbai`，进度 `0%`，尚未启动；旧任务 `id=20` 仍被页面选中，状态 `waiting_analysis`。
+- 根因定位：搜索任务操作面板对单选任务只提供“查看搜索任务 / 启动 / 暂停 / 复制 / 删除”等动作，没有“编辑搜索任务”入口；后端 `radar_task_save()` 实际允许 `draft/paused/failed/cancelled` 状态编辑，因此这是前端操作入口缺失。
+- 修复范围：只改 CRM 客户雷达搜索任务操作面板，不改任务数据、不启动搜索、不改数据库结构。
+- `assets/crm/crm.js`：单选任务状态为 `draft/paused/failed/cancelled` 时，在操作面板加入“编辑搜索任务”；点击后通过 `radar_task_get` 读取完整任务详情，再调用现有 `openTaskEditor(task)` 打开编辑抽屉；若状态不允许编辑，提示“请先复制任务再修改”。
+- `tests/crm_radar_task_editor_country_language_contract.php`：补充锁定编辑入口、`editSearchTask()` 读取详情后打开编辑器、仅可编辑状态显示编辑动作。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；bundled Python 静态标记检查通过；本机无系统 PHP，正式 PHP 合约测试需待服务器 SSH 恢复后执行。
+- Git / 部署状态：本记录随修复提交后以最终 Git HEAD 为准；正式服务器 SSH 当前仍因 `artdon-erp` publickey 拒绝无法同步 `/www/wwwroot/Artdon/artdon_erp/`，因此线上尚未应用本修复。SSH 恢复后需按固定流程快进服务器、运行 PHP 语法/合约测试并核对三方一致。
+- 使用说明：修复上线后，先清空旧任务选择，再勾选 `印度工程型客户-2`，右下“操作”中会出现“编辑搜索任务”。
+
 ## 本次：CRM AI获客搜索任务国家/语言默认值修复（服务器同步待恢复 SSH）
 
 - 用户反馈 AI 获客里新建“印度工程型客户”搜索任务后，好像无法开始、需要编辑。浏览器只读核验后确认搜索任务列表接口登录态恢复，任务 `id=20` 当前已执行完搜索阶段：状态 `waiting_analysis`，`10/10` 个关键词任务完成，失败 0，但 `searched_pages=0`、`found_companies=0`。

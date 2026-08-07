@@ -19594,6 +19594,10 @@
         if (ids.length !== 1) return toast('请选择一个任务查看详情');
         return this.openTaskDetail(ids[0]);
       }
+      if (label === '编辑搜索任务') {
+        if (ids.length !== 1) return toast('请选择一个任务编辑');
+        return this.editSearchTask(ids[0]);
+      }
       if (label === '启动搜索任务') return this.taskActionMany('radar_task_start', ids, '确认启动选中的 {count} 个搜索任务？');
       if (label === '暂停搜索任务') return this.taskActionMany('radar_task_pause', ids, '确认暂停选中的 {count} 个搜索任务？');
       if (label === '继续搜索任务') return this.taskActionMany('radar_task_resume', ids, '确认继续选中的 {count} 个搜索任务？');
@@ -19604,6 +19608,16 @@
         return this.taskAction('radar_task_copy', ids[0]);
       }
       return false;
+    },
+    editSearchTask: function (id) {
+      radarPost('radar_task_get', { id: id }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '读取任务失败');
+        var task = (json.data || {}).task || {};
+        if (['draft', 'paused', 'failed', 'cancelled'].indexOf(String(task.task_status || '')) < 0) {
+          throw new Error('当前状态不能直接编辑，请先复制任务再修改。');
+        }
+        RadarModule.openTaskEditor(task);
+      }).catch(function (error) { toast(error.message || '读取任务失败'); });
     },
     runWorkerOnce: function () {
       radarPost('radar_worker_run', { limit: 10 }).then(function (json) {
@@ -23176,6 +23190,7 @@
         } else if (selectedCount === 1) {
           var selectedStatus = String((selectedRows[0] || {}).task_status || '');
           var singleItems = ['查看搜索任务'];
+          if (['draft', 'paused', 'failed', 'cancelled'].indexOf(selectedStatus) >= 0) singleItems.push('编辑搜索任务');
           if (['draft', 'failed', 'cancelled', 'partial_completed'].indexOf(selectedStatus) >= 0) singleItems.push('启动搜索任务');
           if (selectedStatus === 'paused') singleItems.push('继续搜索任务');
           if (['pending', 'generating_keywords', 'searching', 'fetching_pages', 'identifying_company', 'waiting_analysis'].indexOf(selectedStatus) >= 0) {

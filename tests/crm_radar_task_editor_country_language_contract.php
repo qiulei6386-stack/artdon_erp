@@ -17,6 +17,11 @@ foreach ([
     "replaceLines('keywords', preset.keywords || [])",
     "replaceLines('target_products', preset.products || [])",
     "replaceLines('target_project_types', preset.projects || [])",
+    "if (label === '编辑搜索任务')",
+    'return this.editSearchTask(ids[0])',
+    'editSearchTask: function (id)',
+    "RadarModule.openTaskEditor(task)",
+    "['draft', 'paused', 'failed', 'cancelled'].indexOf(selectedStatus) >= 0) singleItems.push('编辑搜索任务')",
 ] as $marker) {
     if (!str_contains($js, $marker)) {
         throw new RuntimeException("Radar task editor country/language marker missing: {$marker}");
