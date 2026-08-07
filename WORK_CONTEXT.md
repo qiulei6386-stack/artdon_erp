@@ -9,8 +9,8 @@
 - `assets/crm/crm.js`：搜索模板编辑器新增“ChatGPT 提示词模板”输入框，支持 `{country}`、`{city}`、`{model}`、`{products}`、`{projects}`、`{client_types}`、`{exclude_keywords}` 占位符，并保存到现有 `config_json.ai_prompt_template`。
 - `radar.php`：模板配置白名单加入 `ai_prompt_template`，兼容后续从结构化字段保存提示词模板。
 - 新增 `tests/crm_radar_prompt_template_workflow_contract.php`，锁定任务编辑器提示词下拉、提示词复制、模板预览生成关键词、模板编辑器保存提示词模板等关键标记。
-- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
-- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；正式服务器 `php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_prompt_template_workflow_contract.php`、`php tests/crm_radar_task_editor_country_language_contract.php`、`php tests/crm_radar_dataforseo_search_contract.php` 通过。
+- 部署：功能提交 `2fe25ab651328bf8c1b59c6abaaf3cf692a2dfbe` 已推送 GitHub `main`，并使用服务器自身 GitHub SSH 在 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步到同一提交；最终上下文记录提交后以最终 Git HEAD 为准。
 
 ## 本次：CRM AI获客任务列表“第 4 次 / 目标数量 50”文案澄清
 
