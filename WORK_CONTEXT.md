@@ -6,8 +6,8 @@
 - 修复范围：只调整 CRM AI 获客搜索任务列表卡片展示文案，不改任务执行逻辑、不改数据库、不触发搜索任务。
 - `assets/crm/crm.js`：任务卡片从“第 X / 共 Y 次”改为“关键词搜索 X / Y 次”；下一行单独显示“目标客户 N 个”，并把“完成/等待/失败”明确为“完成关键词/等待/失败”，把“公司”改为“候选公司”，把最后的失败改为“队列失败”。
 - 新增 `tests/crm_radar_task_count_display_contract.php`，锁定任务列表必须显示目标客户数量和清晰的关键词搜索进度，同时禁止恢复旧的“第 X / 共 Y 次”模糊文案。
-- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
-- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；正式服务器 `php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_task_count_display_contract.php`、`php tests/crm_radar_task_editor_country_language_contract.php`、`php tests/crm_radar_task_last_error_contract.php` 通过。
+- 部署：功能提交 `984dbe4` 与测试修正提交 `d990ede` 已推送 GitHub `main`，并使用服务器自身 GitHub SSH 在 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步到 `d990ede584ed148daa48aa4c45fe815352ce5199`；最终上下文记录提交后以最终 Git HEAD 为准。
 
 ## 本次：DataForSEO 激活后重试任务并清理旧错误残留
 
