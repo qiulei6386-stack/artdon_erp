@@ -8,8 +8,8 @@
 - 当前解析结果：抓到 9 条 DataForSEO 网页结果，4 条成功抓取、5 条因目标网站/平台反爬或页面抓取限制失败；生成候选客户 2 个，均为低分 D 级且偏制造工厂，需要人工审核或优化关键词/排除词。
 - 发现并修复一个状态残留问题：任务已经搜索/解析成功后，`crm_radar_search_tasks.last_error` 仍残留旧的 DataForSEO 验证错误。`radar.php` 的 `radar_worker_update_task()` 现会读取仍处于 pending/running/failed 队列的有效错误；没有有效队列错误时清空任务级 `last_error`，避免页面误报旧错误。
 - 新增 `tests/crm_radar_task_last_error_contract.php`，锁定 worker 更新任务状态时必须同步清理旧 `last_error`。
-- 检查：本地 `git diff --check` 通过；候选文件已上传服务器 `/tmp/artdon_radar_last_error_candidate/`，正式 PHP 检查 `php -l radar.php` 与新合约 `php tests/crm_radar_task_last_error_contract.php` 通过。
-- 待部署：本记录随修复提交推送 GitHub `main` 后，使用服务器自身 GitHub SSH `git pull --ff-only origin main` 同步正式服务器，再运行 `php -l radar.php` 和相关 CRM radar 合约，并对任务 21 执行一次 `radar_worker_update_task(21)` 清空旧错误残留。
+- 检查：本地 `git diff --check` 通过；候选文件已上传服务器 `/tmp/artdon_radar_last_error_candidate/`，正式服务器 `php -l radar.php`、`php -l radar_api.php`、`php tests/crm_radar_task_last_error_contract.php`、`php tests/crm_radar_task_editor_country_language_contract.php` 通过。
+- 部署：功能提交 `1d4ebb6d2e4ddbe7bd9478f7085c18bebbc306a5` 已推送 GitHub `main`，并使用服务器自身 GitHub SSH `git pull --ff-only origin main` 快进同步正式服务器；已对任务 21 执行 `radar_worker_update_task(21)`，当前 `last_error=NULL`。最终上下文记录提交后以最终 Git HEAD 为准。
 
 ## 本次：CRM AI获客搜索失败原因只读诊断
 
