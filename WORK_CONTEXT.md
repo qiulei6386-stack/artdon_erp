@@ -8,7 +8,8 @@
 - `quotation.php`：订单详情增加“合并出货”入口；出货弹窗新增“订单”列；保存时提交 `order_ids` 和行级 `order_id`；单证中心列表优先显示/搜索合并订单号。
 - `quote_order_doc.php` / `quote_order_excel.php`：PL/CI HTML 与 Excel 均新增 `Order No.` 列；CI 分组继续优先按 `order_item_id`，兜底分组加入订单来源，避免不同订单相同型号被误合并。
 - 新增 `tests/quote_combined_shipment_contract.php`，并更新 `tests/quote_ci_group_by_order_item_contract.php`，锁定合并出货关联、同客户限制、前端提交、单证 Order No. 与 CI 分组规则。
-- 待检查/部署：本地 `git diff --check` 已通过；本机无 `php` 命令，提交推送后在正式服务器执行 PHP 语法与契约测试，再更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，PHP 检查在服务器执行。正式服务器 `php -l quote_order_api.php`、`php -l quote_order_doc.php`、`php -l quote_order_excel.php`、`php tests/quote_combined_shipment_contract.php`、`php tests/quote_ci_group_by_order_item_contract.php`、`php tests/quote_packing_tail_cartons_contract.php`、`php tests/quote_shipment_split_pack_rows_contract.php`、`php tests/quote_shipment_partial_carton_contract.php`、`php tests/quote_shipment_edit_delete_contract.php` 均通过。
+- 部署：功能提交 `0af70b68` 与测试补丁 `db3c94e2` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：报价系统 CI 按出货批次内订单明细汇总
 
