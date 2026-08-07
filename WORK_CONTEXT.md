@@ -8,9 +8,9 @@
 - `radar.php` 增加 DataForSEO 专用适配：识别 `service_key=dataforseo` 或 `api.dataforseo.com`；搜索时改用 `POST` JSON；凭证用 DataForSEO 官方 `API login:API password` 或 Base64 后的 `login:password` 转为 `Authorization: Basic ...`；按任务国家/语言生成 `location_name`、`language_code`；解析 `tasks[].result[].items[]` 中的 `organic` / `featured_snippet` 结果并写入现有 raw results 流程。
 - `assets/crm/crm.js` 的搜索服务配置说明和占位文字增加 DataForSEO 填写方法，保留 Brave 配置提示。
 - 新增 `tests/crm_radar_dataforseo_search_contract.php`，锁定 DataForSEO 默认服务位、POST + Basic Auth、payload 和结果解析，防止以后退回只支持 Brave。
-- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本地环境无 `php`，正式服务器 SSH 当前因 `publickey` 拒绝，暂未能执行服务器 PHP 语法检查、合同测试和部署。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本地 DataForSEO 静态合同扫描通过；本地环境无 `php`，正式服务器 SSH 当前因 `publickey` 拒绝，暂未能执行服务器 PHP 语法检查、合同测试和部署。
 - DataForSEO 注册入口：`https://app.dataforseo.com/register`；注册后在 Dashboard 的 API Access 查看 API login 和 API password。注意 API password 不是登录密码。
-- 部署状态：本地改动完成；需提交推送 GitHub 后，在服务器 SSH 恢复时按固定流程快进同步 `/www/wwwroot/Artdon/artdon_erp/` 并复检。
+- Git / 部署状态：本地提交 `3f362e0 Add DataForSEO radar search provider` 已推送 GitHub `main`；正式服务器 SSH 使用当前 `artdon-erp` 别名及现有 `artdon_hongkong`、`artdon_order`、`artdon_erp_github_write` 私钥均返回 `Permission denied (publickey)`，因此 `/www/wwwroot/Artdon/artdon_erp/` 尚未同步到该提交。服务器 SSH 恢复后需按固定流程快进同步并复检 PHP 语法和 `tests/crm_radar_dataforseo_search_contract.php`。
 
 ## 本次：出货批次支持同一产品多种装箱尺寸（已上线）
 
