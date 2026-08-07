@@ -1,5 +1,13 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客已取消搜索任务允许重新启动
+
+- 用户反馈“取消的任务，不能重新执行？”。检查确认前端已对 `cancelled` 状态显示“启动搜索任务”，但后端 `radar_task_start()` 仍把 `cancelled` 放在禁止启动列表，导致按钮与接口规则冲突。
+- `radar.php`：`radar_task_start()` 移除 `cancelled` 禁止启动限制；已取消任务重新启动时会清空 `cancelled_at`，重新进入 `pending` 并生成新队列。
+- `radar.php`：重新启动前清理旧的 `pending/failed/cancelled` 队列，避免上一次取消遗留的队列继续污染本轮关键词搜索统计；历史已抓取网页/候选客户不删除。
+- 新增 `tests/crm_radar_cancelled_task_restart_contract.php`，锁定已取消任务必须可启动、仍禁止已完成/执行中任务启动、重启时清理旧 cancelled 队列。
+- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+
 ## 本次：CRM AI获客 DataForSEO Bosnia location_name 失败修复
 
 - 用户取消 Bosnia 搜索任务后要求先改代码，改完再由用户重新开始。本次不启动任务、不手动调用 DataForSEO 搜索 API。

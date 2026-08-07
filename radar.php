@@ -1855,11 +1855,11 @@ function radar_task_start(int $id): array
     crm_require('radar_task_run');
     $detail = radar_task_get($id);
     $task = $detail['task'];
-    if (in_array((string)$task['task_status'], ['cancelled','completed','searching','generating_keywords','fetching_pages','identifying_company','waiting_analysis'], true)) {
+    if (in_array((string)$task['task_status'], ['completed','searching','generating_keywords','fetching_pages','identifying_company','waiting_analysis'], true)) {
         throw new RuntimeException('当前状态不能启动：' . (radar_task_status_options()[$task['task_status']] ?? $task['task_status']));
     }
     if (!radar_task_keywords($task)) throw new RuntimeException('请先填写关键词，或从提示词模板生成关键词后再启动。');
-    db()->prepare("DELETE FROM crm_radar_job_queue WHERE task_id=? AND job_status IN ('pending','failed')")->execute([$id]);
+    db()->prepare("DELETE FROM crm_radar_job_queue WHERE task_id=? AND job_status IN ('pending','failed','cancelled')")->execute([$id]);
     radar_queue_job($id, 'generate_keywords', ['limit' => 0]);
     db()->prepare("UPDATE crm_radar_search_tasks SET task_status='pending', progress_percent=0, searched_pages=0, found_companies=0, failed_count=0, started_at=NULL, finished_at=NULL, last_error=NULL, paused_at=NULL, cancelled_at=NULL, updated_at=NOW() WHERE id=?")->execute([$id]);
     radar_log('task_start', ['task_id' => $id]);
