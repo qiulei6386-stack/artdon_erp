@@ -19444,6 +19444,7 @@
         var progress = Number(row.progress_percent || 0);
         var searchTotal = Number(row.search_total_count || 0);
         var searchCurrent = Number(row.search_current_no || 0);
+        var targetCount = Number(row.target_candidate_count || 0);
         var checked = self.selectedTaskIds.has(Number(row.id || 0)) ? ' checked' : '';
         return '<article class="radar-task-card-v2' + (checked ? ' selected' : '') + '" data-radar-task-row="' + esc(row.id) + '">' +
           '<div class="radar-task-select-v2"><span class="radar-drag-handle" draggable="true" data-radar-task-drag="' + esc(row.id) + '" title="拖动调整任务顺序">::</span><input type="checkbox" data-radar-task-check value="' + esc(row.id) + '"' + checked + '></div>' +
@@ -19451,7 +19452,7 @@
           '<div class="radar-task-place-v2"><strong>' + esc(row.country || '-') + '</strong><span>' + esc(row.city || '') + '</span></div>' +
           '<div class="radar-task-status-v2"><em data-status="' + esc(row.task_status || '') + '">' + esc(status) + '</em><span>' + esc(({ manual: '手动', scheduled: '定时', daily: '每日', weekly: '每周' })[row.execute_mode] || row.execute_mode || '-') + '</span></div>' +
           '<div class="radar-task-progress-v2"><div class="radar-progress"><span style="width:' + Math.max(0, Math.min(100, progress)) + '%"></span></div><strong>' + esc(progress) + '%</strong></div>' +
-          '<div class="radar-task-counts-v2"><strong>' + (searchTotal ? '第 ' + esc(searchCurrent) + ' / 共 ' + esc(searchTotal) + ' 次' : '-') + '</strong><span>完成 ' + esc(row.search_done_count || 0) + ' · 等待 ' + esc(row.search_pending_count || 0) + ' · 失败 ' + esc(row.search_failed_count || 0) + '</span><span>网页 ' + esc(row.searched_pages || 0) + ' / 公司 ' + esc(row.found_companies || 0) + ' / 失败 ' + esc(row.failed_count || 0) + '</span></div>' +
+          '<div class="radar-task-counts-v2"><strong>' + (searchTotal ? '关键词搜索 ' + esc(searchCurrent) + ' / ' + esc(searchTotal) + ' 次' : '关键词搜索 -') + '</strong><span>目标客户 ' + esc(targetCount || '-') + ' 个 · 完成关键词 ' + esc(row.search_done_count || 0) + ' · 等待 ' + esc(row.search_pending_count || 0) + ' · 失败 ' + esc(row.search_failed_count || 0) + '</span><span>网页 ' + esc(row.searched_pages || 0) + ' / 候选公司 ' + esc(row.found_companies || 0) + ' / 队列失败 ' + esc(row.failed_count || 0) + '</span></div>' +
           '<div class="radar-task-time-v2"><span>开始 ' + esc(row.started_at || '-') + '</span><span>完成 ' + esc(row.finished_at || '-') + '</span></div>' +
         '</article>';
       };

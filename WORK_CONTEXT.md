@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM AI获客任务列表“第 4 次 / 目标数量 50”文案澄清
+
+- 用户指出 AI 获客任务列表里的“第 4 / 共 4 次”与“目标数量 50”放在一起容易误解。本次确认该 “4/4” 来自 `search_total_count/search_current_no`，表示关键词搜索/API 搜索批次数，不是目标客户数量。
+- 修复范围：只调整 CRM AI 获客搜索任务列表卡片展示文案，不改任务执行逻辑、不改数据库、不触发搜索任务。
+- `assets/crm/crm.js`：任务卡片从“第 X / 共 Y 次”改为“关键词搜索 X / Y 次”；下一行单独显示“目标客户 N 个”，并把“完成/等待/失败”明确为“完成关键词/等待/失败”，把“公司”改为“候选公司”，把最后的失败改为“队列失败”。
+- 新增 `tests/crm_radar_task_count_display_contract.php`，锁定任务列表必须显示目标客户数量和清晰的关键词搜索进度，同时禁止恢复旧的“第 X / 共 Y 次”模糊文案。
+- 本地检查：`git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 合同测试需在服务器部署后执行。
+- 部署：待本次提交推送 GitHub 后，由服务器 `/www/wwwroot/Artdon/artdon_erp/` 执行 `git pull --ff-only origin main` 同步，并在服务器运行 PHP 语法和合同测试；最终提交号和三方一致状态以本次上下文记录提交后的最终 Git HEAD 为准。
+
 ## 本次：DataForSEO 激活后重试任务并清理旧错误残留
 
 - 用户完成 DataForSEO 账号激活后要求“再试一下”。本次对线上任务 `印度工程型客户-2`（`id=21`）执行重试，触发 DataForSEO 实际搜索请求。
