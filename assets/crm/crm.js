@@ -3919,7 +3919,7 @@
       var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
-        customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute">' + this.renderArchiveAttributePanel(data) + '</section>',
+        customer_attribute: '<section class="customer-tab-panel" data-detail-panel="customer_attribute">' + this.renderArchiveAttributePanel(data) + this.renderBusinessCardGallery(data.business_cards || []) + '</section>',
         contacts: '<section class="customer-tab-panel" data-detail-panel="contacts"><div class="customer-tab-stats"><span>联系人 ' + esc((data.contacts || []).length) + '</span><span>主联系人 ' + esc((data.contacts || []).filter(function (ct) { return Number(ct.is_primary); }).length) + '</span><span>有邮箱 ' + esc((data.contacts || []).filter(function (ct) { return ct.email; }).length) + '</span><span>有 WhatsApp ' + esc((data.contacts || []).filter(function (ct) { return ct.whatsapp; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th><th>主联系人</th><th>推广状态</th><th>最近联系时间</th></tr></thead><tbody>' + contacts + '</tbody></table></section>',
         addresses: addressPanel,
         chat_groups: chatGroupPanel,
@@ -4030,92 +4030,33 @@
       var primaryOwner = owners.find(function (row) { return Number(row.is_primary) === 1 || row.role_type === 'primary'; });
       var primaryOwnerId = String((primaryOwner && primaryOwner.user_id) || c.owner_user_id || '');
       if (primaryOwnerId && ownerIds.indexOf(primaryOwnerId) < 0) ownerIds.unshift(primaryOwnerId);
-      var contacts = data.contacts || [];
-      var addresses = data.addresses || [];
-      var chatGroups = data.chat_groups || [];
-      var sourceTags = data.source_tags || [];
-      var promotionChannels = data.promotion_channels || [];
-      var businessCards = data.business_cards || [];
-      var customerTags = String(c.customer_tags || '').split(/[,，;；、]+/).map(function (tag) { return tag.trim(); }).filter(Boolean);
-      var countryText = c.country_display || c.country || '未填';
-      var cityText = c.city || '未填';
-      var lifecycleText = cnStatus(c.lifecycle_key || c.lifecycle || 'lead');
-      var healthScore = Math.max(0, Math.min(100, Number(completeness.score || 0) || 0));
       var field = function (label, name, value, attrs) {
         return '<label class="entity-field" data-attribute-field="' + esc(name) + '"><span>' + esc(label) + '</span><input name="' + esc(name) + '" value="' + esc(value || '') + '"' + disabled + ' ' + (attrs || '') + '></label>';
       };
-      var miniField = function (label, value) {
-        return '<span><b>' + esc(label) + '</b><em>' + esc(value || '未填') + '</em></span>';
+      var readonly = function (label, value) {
+        return '<label class="entity-field is-readonly"><span>' + esc(label) + ' 🔒</span><input value="' + esc(value || '未填') + '" disabled></label>';
       };
-      var tagChip = function (text, cls) {
-        return '<span class="' + esc(cls || '') + '">' + esc(text || '-') + '</span>';
-      };
-      var contactRows = contacts.slice(0, 8).map(function (ct) {
-        return '<tr data-detail-row="contact" data-detail-row-id="' + esc(ct.id || '') + '"><td>' + esc(ct.name || '-') + '</td><td>' + esc(ct.position || ct.role || '-') + '</td><td>' + esc(ct.email || '-') + '</td><td>' + esc(ct.phone || '-') + '</td><td>' + esc(ct.whatsapp || '-') + '</td><td>' + (Number(ct.is_primary) ? '★' : '－') + '</td></tr>';
-      }).join('') || '<tr><td colspan="6">暂无联系人</td></tr>';
-      var addressRows = addresses.slice(0, 6).map(function (addr) {
-        var typeText = ({ HQ: '公司地址', Warehouse: '收货地址', Office: '账单地址', Other: '其他地址', primary: '主地址', shipping: '收货地址', billing: '账单地址', other: '其他地址' })[addr.address_type] || addr.address_type || (Number(addr.is_primary) ? '主地址' : '其他地址');
-        return '<tr data-detail-row="address" data-detail-row-id="' + esc(addr.id || addr.address_type || '') + '"><td>' + esc(typeText) + '</td><td>' + esc(addr.country || c.country || '-') + '</td><td>' + esc(addr.city || c.city || '-') + '</td><td title="' + esc(addr.address || c.address || '') + '">' + esc(addr.address || c.address || '-') + '</td><td>' + (Number(addr.is_primary) ? '✓' : '－') + '</td></tr>';
-      }).join('');
-      if (!addressRows && (c.country || c.city || c.address)) {
-        addressRows = '<tr data-detail-row="address" data-detail-row-id="customer"><td>主地址</td><td>' + esc(c.country || '-') + '</td><td>' + esc(c.city || '-') + '</td><td title="' + esc(c.address || '') + '">' + esc(c.address || '-') + '</td><td>✓</td></tr>';
-      }
-      addressRows = addressRows || '<tr><td colspan="5">暂无地址</td></tr>';
-      var contactNameMap = {};
-      contacts.forEach(function (contact) { contactNameMap[Number(contact.id)] = contact.name || ('联系人 #' + contact.id); });
-      var chatGroupCards = chatGroups.slice(0, 4).map(function (group) {
-        var platform = group.group_platform === 'whatsapp_group' ? 'WhatsApp群' : '微信群';
-        var statusText = group.status === 'paused' ? '暂停' : (group.status === 'invalid' ? '无效' : '活跃');
-        var linkedNames = (Array.isArray(group.linked_contact_ids) ? group.linked_contact_ids : []).map(function (id) {
-          return contactNameMap[Number(id)] || ('联系人 #' + id);
-        });
-        return '<article class="archive-mini-group status-' + esc(group.status || 'active') + '" data-detail-row="chat_group" data-detail-row-id="' + esc(group.id || '') + '">' +
-          '<div><strong>' + esc(group.group_name || '未命名客户群') + '</strong><span>' + esc(platform) + ' · ' + esc(statusText) + ' · 负责人 ' + esc(group.group_owner || '未设置') + '</span><em>' + esc(linkedNames.length ? linkedNames.join('、') : '未关联联系人') + '</em></div>' +
-          '<nav><button type="button" data-chat-group-edit="' + esc(group.id || '') + '">编辑</button><button type="button" data-chat-group-toggle="' + esc(group.id || '') + '">' + (group.status === 'active' ? '停用' : '启用') + '</button><button type="button" class="danger" data-chat-group-delete="' + esc(group.id || '') + '">删除</button></nav>' +
-        '</article>';
-      }).join('') || '<div class="archive-mini-empty"><strong>暂无客户群</strong><span>可新增微信群或 WhatsApp 群。</span></div>';
-      var tagRows = [];
-      customerTags.forEach(function (tag) { tagRows.push({ name: tag, type: '客户标签', source: '客户属性' }); });
-      sourceTags.forEach(function (tag) { tagRows.push({ name: tag, type: '来源标签', source: '来源' }); });
-      promotionChannels.forEach(function (tag) { tagRows.push({ name: tag, type: '推广方式', source: '默认推广' }); });
-      (data.groups || []).forEach(function (group) { tagRows.push({ name: group.group_name || group.name || '-', type: '客户组', source: '客户分组' }); });
-      var tagTableRows = tagRows.slice(0, 10).map(function (tag) {
-        return '<tr data-detail-row="tag" data-detail-row-id="' + esc(tag.type + ':' + tag.name) + '"><td>' + esc(tag.name || '-') + '</td><td>' + esc(tag.type || '-') + '</td><td>' + esc(tag.source || '-') + '</td></tr>';
-      }).join('') || '<tr><td colspan="3">暂无标签</td></tr>';
-      var missingChips = missing.slice(0, 7).map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') || '<span>资料较完整</span>';
-      var headerTags = []
-        .concat(sourceTags.slice(0, 2))
-        .concat(promotionChannels.slice(0, 2))
-        .concat(customerTags.slice(0, 2));
-      var headerTagHtml = headerTags.slice(0, 6).map(function (tag) { return tagChip(tag); }).join('') || tagChip('未设置标签');
       return '<form class="archive-attribute-panel archive-profile-editor" data-archive-attribute-form>' +
-        '<header class="archive-attribute-commandbar archive-crm-commandbar"><div><strong>客户档案</strong><span>基础资料、联系人、客户群、地址、标签和名片集中查看；编辑模式下双击明细行可编辑。</span></div><div class="archive-attribute-toolbar"><button type="button" data-archive-edit>编辑档案</button><button type="button" class="primary" data-archive-save ' + (this.archiveEditMode ? '' : 'disabled') + '>保存档案</button><button type="button" data-archive-cancel ' + (this.archiveEditMode ? '' : 'disabled') + '>取消修改</button><button type="button" data-archive-missing>补全缺失资料</button></div></header>' +
+        '<header class="archive-attribute-commandbar"><div><strong>客户档案</strong><span>基础资料、来源分层、负责人和备注集中维护；双击联系人、地址、客户群行仍进入原编辑流程。</span></div><div class="customer-tab-stats"><span>完整度 ' + esc(completeness.score || 0) + '%</span><span>缺失 ' + esc(missing.length) + '</span><span>' + esc(missing.slice(0, 5).join(' / ') || '资料较完整') + '</span></div><div class="archive-attribute-toolbar"><button type="button" data-archive-edit>编辑档案</button><button type="button" class="primary" data-archive-save ' + (this.archiveEditMode ? '' : 'disabled') + '>保存档案</button><button type="button" data-archive-cancel ' + (this.archiveEditMode ? '' : 'disabled') + '>取消修改</button><button type="button" data-archive-missing>补全缺失资料</button></div></header>' +
         '<input type="hidden" name="customer_id" value="' + esc(this.currentId || c.id || '') + '">' +
-        '<section class="archive-crm-hero">' +
-          '<div class="archive-crm-avatar">' + esc((String(c.customer_name || c.customer_name_en || 'C').match(/[A-Za-z0-9]/) || [String(c.customer_name || 'C').charAt(0) || 'C'])[0].toUpperCase()) + '</div>' +
-          '<div class="archive-crm-title"><h3>' + esc(c.customer_name || c.customer_name_en || '未命名客户') + '</h3><p>代码 ' + esc(c.customer_code || '-') + ' · 国家 / 地区 ' + esc(countryText) + ' · 城市 ' + esc(cityText) + '</p><div class="archive-crm-tags">' + headerTagHtml + '<button type="button" data-archive-tag-create>＋</button></div></div>' +
-          '<div class="archive-crm-metrics"><button type="button" data-summary-jump="contacts"><span>联系人</span><strong>' + esc(contacts.length) + '</strong></button><button type="button" data-summary-jump="chat_groups"><span>客户群</span><strong>' + esc(chatGroups.length) + '</strong></button><button type="button" data-summary-jump="quote"><span>报价</span><strong>' + esc(((data.linkage || {}).quote || {}).total || 0) + '</strong></button><button type="button" data-summary-jump="followups"><span>跟进</span><strong>' + esc((data.followups || []).length) + '</strong></button></div>' +
-        '</section>' +
-        '<div class="archive-attribute-sections archive-profile-layout archive-crm-grid">' +
-          '<section class="archive-attribute-card archive-crm-card primary archive-crm-basic"><header><b>基本信息</b><span>客户身份与分层</span></header><div class="entity-grid archive-attribute-grid">' +
-            field('公司名称 *', 'customer_name', c.customer_name, 'required') +
-            field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
-            field('国家 / 地区', 'country', c.country, 'list="crm-country-options"') +
-            field('城市', 'city', c.city, 'list="crm-address-region-options-filtered"') +
-            field('网站', 'website', c.website, 'placeholder="https://"') +
-            field('来源', 'source_tags', sourceTags.join(','), 'placeholder="website, linkedin, exhibition"') +
-            field('推广方式', 'promotion_channels', promotionChannels.join(','), 'placeholder="email, whatsapp, wechat"') +
-            field('客户等级', 'level', c.level || 'P3') +
-            field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
-          '</div><div class="archive-crm-facts">' + miniField('负责人', ownerText || '未分配') + miniField('状态', cnStatus(c.status || 'lead')) + miniField('生命周期', lifecycleText) + '</div></section>' +
-          '<section class="archive-attribute-card archive-crm-card archive-crm-contacts"><header><b>联系人 (' + esc(contacts.length) + ')</b><span>双击行编辑</span><button type="button" data-archive-contact-create>＋ 添加联系人</button></header><div class="archive-crm-table-wrap"><table class="crm-table customer-detail-table"><thead><tr><th>姓名</th><th>职位</th><th>邮箱</th><th>电话</th><th>WhatsApp</th><th>主</th></tr></thead><tbody>' + contactRows + '</tbody></table></div></section>' +
-          '<section class="archive-attribute-card archive-crm-card archive-crm-address"><header><b>地址 (' + esc(addresses.length || (c.address ? 1 : 0)) + ')</b><span>公司/收货/账单</span><button type="button" data-archive-address-create>＋ 添加地址</button></header><div class="archive-crm-table-wrap"><table class="crm-table customer-detail-table"><thead><tr><th>地址类型</th><th>国家</th><th>城市</th><th>详细地址</th><th>默认</th></tr></thead><tbody>' + addressRows + '</tbody></table></div></section>' +
-          '<section class="archive-attribute-card archive-crm-card archive-crm-groups"><header><b>客户群 (' + esc(chatGroups.length) + ')</b><span>微信群 / WhatsApp群</span><button type="button" data-chat-group-create>＋ 新建客户群</button></header><div class="archive-mini-group-list">' + chatGroupCards + '</div></section>' +
-          '<section class="archive-attribute-card archive-crm-card archive-crm-tags-card"><header><b>标签 (' + esc(tagRows.length) + ')</b><span>来源、推广、分组</span><button type="button" data-archive-tag-create>＋ 添加标签</button></header><div class="archive-crm-table-wrap"><table class="crm-table customer-detail-table"><thead><tr><th>标签</th><th>类型</th><th>来源</th></tr></thead><tbody>' + tagTableRows + '</tbody></table></div></section>' +
-          '<section class="archive-attribute-card archive-crm-card archive-crm-health"><header><b>资料完整度</b><span>' + esc(healthScore) + '%</span></header><div class="archive-crm-health-ring" style="--score:' + esc(healthScore) + '"><strong>' + esc(healthScore) + '%</strong><span>缺失 ' + esc(missing.length) + ' 项</span></div><div class="archive-crm-missing">' + missingChips + '</div><button type="button" data-archive-missing>查看缺失项</button></section>' +
-          '<section class="archive-attribute-card wide archive-crm-card archive-crm-owners"><header><b>负责人</b><span>先勾选第一负责人，后续勾选为协助人</span></header><div class="entity-field" data-attribute-field="owner_user_ids"><div class="entry-checks entry-owner-checks">' + this.customerOwnerChecks(ownerIds, primaryOwnerId, this.archiveEditMode ? '' : 'disabled') + '</div></div></section>' +
-          '<section class="archive-attribute-card wide archive-crm-card archive-crm-note"><header><b>备注</b><span>客户背景、LinkedIn、特殊要求或沟通摘要</span></header><label class="entity-field" data-attribute-field="remark"><textarea name="remark" rows="4"' + disabled + '>' + esc(c.remark || '') + '</textarea></label></section>' +
-          '<section class="archive-attribute-card wide archive-crm-card archive-crm-business-card">' + this.renderBusinessCardGallery(businessCards) + '</section>' +
+        '<div class="archive-attribute-sections archive-profile-layout">' +
+          '<div class="archive-profile-formgrid">' +
+            '<section class="archive-attribute-card primary"><header><b>基础身份</b><span>客户名称、代码与区域</span></header><div class="entity-grid archive-attribute-grid">' +
+              field('客户名称 *', 'customer_name', c.customer_name, 'required') +
+              field('客户代码', 'customer_code', c.customer_code, 'placeholder="例如 EX003"') +
+              field('国家', 'country', c.country, 'list="crm-country-options"') +
+              field('城市', 'city', c.city, 'list="crm-address-region-options-filtered"') +
+            '</div></section>' +
+            '<section class="archive-attribute-card"><header><b>来源与分层</b><span>获客来源、推广方式和生命周期</span></header><div class="entity-grid archive-attribute-grid">' +
+              field('网站', 'website', c.website, 'placeholder="https://"') +
+              field('来源', 'source_tags', (data.source_tags || []).join(','), 'placeholder="website, linkedin"') +
+              field('推广方式', 'promotion_channels', (data.promotion_channels || []).join(','), 'placeholder="email, whatsapp"') +
+              field('客户等级', 'level', c.level || 'P3') +
+              field('生命周期', 'lifecycle_key', c.lifecycle_key || 'lead') +
+            '</div></section>' +
+          '</div>' +
+          '<section class="archive-attribute-card wide"><header><b>负责人</b><span>先勾选第一负责人，后续勾选为协助人</span></header><div class="entity-field" data-attribute-field="owner_user_ids"><div class="entry-checks entry-owner-checks">' + this.customerOwnerChecks(ownerIds, primaryOwnerId, this.archiveEditMode ? '' : 'disabled') + '</div></div></section>' +
+          '<section class="archive-attribute-card wide remark"><header><b>备注</b><span>客户背景、LinkedIn、特殊要求或沟通记录摘要</span></header><label class="entity-field" data-attribute-field="remark"><textarea name="remark" rows="4"' + disabled + '>' + esc(c.remark || '') + '</textarea></label></section>' +
         '</div>' +
       '</form>';
     },
@@ -5362,21 +5303,6 @@
           event.stopPropagation();
           self.openChatGroupDialog();
         });
-      });
-      bindAll('[data-archive-contact-create]', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        self.openContactDialog(0);
-      });
-      bindAll('[data-archive-address-create]', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        self.openAddressDialog();
-      });
-      bindAll('[data-archive-tag-create]', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        self.openTagDialog();
       });
       bindAll('[data-customer-new-followup]', function () { self.openFollowupDialog(); });
       bindAll('[data-customer-ai-analysis]', function () { self.handleAction('AI 分析客户'); });

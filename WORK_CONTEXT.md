@@ -1,14 +1,13 @@
 # Artdon ERP 工作上下文
 
-## 本次：CRM 客户属性按 GlobalCRM 风格重排
+## 本次：还原 CRM 客户属性重排
 
-- 用户确认开始将 CRM 客户属性/档案页按参考图方向改造，要求保留现有功能，不能把编辑、联系人、客户群、地址、标签、名片等入口改没。
-- `assets/crm/crm.js`：重排客户详情“档案 > 客户属性”子页；新增头像档案头、联系人/客户群/报价/跟进 KPI、基本信息、联系人、地址、客户群、标签、资料完整度、负责人、备注、名片图片等卡片区域。
-- `assets/crm/crm.js`：保留原有 `data-archive-edit/save/cancel/missing` 事件；联系人/地址/客户群行仍可在档案编辑模式下双击进入原编辑弹窗；新增卡片内“添加联系人 / 添加地址 / 添加标签”按钮，复用现有弹窗；客户群继续复用原新增/编辑/停用/删除事件。
-- `assets/crm/crm.css`：新增 `archive-crm-*` 样式，按卡片式档案页展示，并补充窄屏响应式，避免右侧属性页撑宽。
-- 新增 `tests/crm_customer_archive_profile_layout_contract.php`，锁定档案页关键布局标记和旧功能事件入口，防止后续 UI 调整误删。
-- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无 PHP。正式服务器 `php -l tests/crm_customer_archive_profile_layout_contract.php` 与 `php tests/crm_customer_archive_profile_layout_contract.php` 均通过。
-- 部署：功能提交 `804ddcc8a576138b9593f85da9e3660ace2391fc` 已推送 GitHub `main`，并同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；本条上下文补丁提交后以最终 HEAD 为准。
+- 用户反馈客户属性按参考图重排“没改好”，要求还原并不再继续改。本次仅回退刚才的客户属性/档案页重排，不影响此前客户中心筛选、排序、国家中文、报价出货、派工等已完成功能。
+- 已回退 `assets/crm/crm.js` 中客户属性页的卡片式重排、KPI/联系人/地址/客户群/标签/完整度/名片合并展示，以及新增的档案卡片按钮绑定。
+- 已回退 `assets/crm/crm.css` 中 `archive-crm-*` 相关样式。
+- 已删除本次重排新增的 `tests/crm_customer_archive_profile_layout_contract.php`。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器同步后执行适用检查。
+- 部署：本条还原记录随还原提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号以本次完成后的 HEAD 为准。
 
 ## 本次：CRM 客户中心新增微信群 / WhatsApp群快捷筛选
 
