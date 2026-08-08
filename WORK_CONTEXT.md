@@ -6,7 +6,8 @@
 - `assets/crm/crm.js`：推广项目卡片改为四行显示：标题、数量指标、开始时间、负责人+更新时间；开始时间单独一行，更新时间改为完整 `YYYY-MM-DD HH:MM`。
 - `assets/crm/crm.css`：推广项目卡片高度由 `88px` 调整为 `108px`，网格改为 `24px 18px 18px 18px` 四行布局；开始时间和负责人/更新时间分别加样式，避免信息挤压。
 - `tests/crm_marketing_task_card_timing_contract.php`：更新契约，锁定四行布局、开始时间单独行、负责人+更新时间单独行。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm_marketing.php`、`php tests/crm_marketing_task_card_timing_contract.php` 均通过。
+- 部署：功能提交 `e540997` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：推广项目卡片补充开始时间详情
 
