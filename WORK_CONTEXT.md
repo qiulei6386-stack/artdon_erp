@@ -6,7 +6,8 @@
 - `crm.php`：移除客户模块顶部 `crm-module-head` 标题长条，不再显示重复的“客户中心 / 客户中心”说明区。
 - `assets/crm/crm.css`：客户筛选条整体压缩；桌面端筛选工具横向紧凑排列，快捷筛选横向滚动兜底；小屏端改为三段布局：第一行搜索框 + 数量，第二行快捷筛选横向滚动，第三行每页/视图/排序/方向/搜索/高级筛选/重置/导入日志/列表全屏等工具横向滚动。
 - 新增 `tests/crm_customer_mobile_filter_layout_contract.php`，锁定客户中心标题长条移除、小屏搜索/工具分行、筛选横向滚动兜底。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_mobile_filter_layout_contract.php` 均通过。
+- 部署：功能提交 `8ddc4fa` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：推广项目卡片日期显示不全修正
 
