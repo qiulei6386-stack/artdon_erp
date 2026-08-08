@@ -8,7 +8,8 @@
 - `quote_order_api.php`：订单出货状态与列表摘要改为只统计可出货产品数量，虚拟费用项不参与 `shippable_qty / shipped_qty`；打开详情重算时也会把订单头 qty 校正为可出货产品数量。
 - `quotation.php`：前端虚拟项识别同步支持旧费用文字；订单详情费用行显示“费用项 / 不出货”，不再显示“建包装”。
 - `tests/quote_virtual_items_contract.php`：扩展契约，锁定旧 Shipping Costs 识别、列表出货状态排除费用项、前端不建包装。
-- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 PHP 检查待部署时执行。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 `php -l quotation.php`、`php -l quote_order_api.php`、`php tests/quote_virtual_items_contract.php` 均通过。
+- 部署：功能提交 `0c9d046` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：订单收款新增应收核销
 
