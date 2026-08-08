@@ -1,5 +1,13 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM 客户属性取消客户档案冻结
+
+- 用户反馈客户属性面板中“客户档案”头部被冻结，占用右侧属性面板空间；希望不要冻结客户档案，整个属性区域统一滚动。
+- `assets/crm/crm.css`：取消客户档案 workbench 的内部冻结/内部滚动结构；`customer-profile-workbench` 改为自适应高度与 `overflow: visible`，`customer-profile-body` 和 `customer-main-content` 不再单独滚动，滚动交回外层 `customer-detail-panel`。
+- 效果：右侧客户属性面板变为一个整体滚动容器，客户档案头、Tab、概览/档案内容一起上下滚动，不再固定占据顶部空间。
+- 新增 `tests/crm_customer_profile_scroll_contract.php`，锁定客户属性整体滚动，防止恢复内部 `overflow:hidden/auto` 造成头部冻结。
+- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+
 ## 本次：CRM 客户中心筛选区改为真正两行
 
 - 用户反馈筛选区虽然不挤压，但又变成三行，占用高度太多，“等于没改”。本次改为真正两行。

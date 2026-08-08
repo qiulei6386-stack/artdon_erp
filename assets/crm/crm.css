@@ -7078,8 +7078,12 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   grid-template-rows: auto minmax(0, 1fr);
 }
 .customer-profile-workbench {
+  height: auto;
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto;
   gap: 10px;
-  overflow: hidden;
+  overflow: visible;
 }
 .customer-profile-head {
   display: grid;
@@ -7210,13 +7214,12 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  overflow: hidden;
+  overflow: visible;
 }
 .customer-profile-main {
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: block;
 }
 .customer-profile-side {
   min-width: 0;
@@ -7346,7 +7349,7 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 }
 .customer-main-content {
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 .customer-detail-tabs { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 0 0 8px; border-bottom: 1px solid var(--crm-border); }
 .customer-main-tabs {
