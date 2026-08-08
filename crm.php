@@ -410,6 +410,29 @@ $prefStyle = sprintf(
                 <input data-customer-search placeholder="客户 / 代码 / 联系人 / 邮箱 / 电话 / WhatsApp / 国家 / 网站 / 备注">
                 <button type="button" data-customer-search-clear>清空</button>
               </div>
+              <div class="customer-search-meta">
+                <span data-customer-search-status>输入即搜，280ms 自动刷新</span>
+                <strong data-customer-count>0 条</strong>
+              </div>
+            </div>
+            <div class="customer-filter-line">
+              <div class="customer-quick-filters" data-customer-quick-filters>
+                <?php foreach ([
+                  'all' => '全部',
+                  'today' => '今天新增',
+                  '7d' => '7天新增',
+                  'mine' => '我的客户',
+                  'public' => '公海客户',
+                  'has_code' => '有客户代码',
+                  'has_quote' => '有报价',
+                  'has_mail' => '有邮件',
+                  'has_material' => '有资料',
+                  'has_wechat_group' => '微信群',
+                  'has_whatsapp_group' => 'WhatsApp群',
+                ] as $filterKey => $filterLabel): ?>
+                <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
+                <?php endforeach; ?>
+              </div>
               <div class="customer-search-tools">
                 <label>每页<select data-customer-page-size><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></label>
                 <label>视图<select data-customer-view title="客户列表排列方式"><option value="table">表格</option><option value="compact">紧凑</option><option value="card">卡片</option></select></label>
@@ -418,34 +441,18 @@ $prefStyle = sprintf(
                 <button type="button" data-customer-search-btn>立即搜索</button>
                 <button type="button" data-customer-advanced-toggle>高级筛选</button>
                 <button type="button" data-customer-reset>重置</button>
-                <button type="button" data-customer-import-log>导入日志</button>
-                <div class="customer-layout-tools customer-center-layout-tools" aria-label="客户中心布局切换">
-                  <button type="button" data-customer-layout="list" title="一键全屏显示客户列表">列表全屏</button>
-                  <button type="button" data-customer-layout="detail" title="一键全屏显示客户属性">属性全屏</button>
-                  <button type="button" data-customer-layout="default" title="还原客户列表和客户属性默认布局">还原</button>
+              </div>
+              <details class="customer-more-tools">
+                <summary>更多</summary>
+                <div class="customer-more-menu">
+                  <button type="button" data-customer-import-log>导入日志</button>
+                  <div class="customer-layout-tools customer-center-layout-tools" aria-label="客户中心布局切换">
+                    <button type="button" data-customer-layout="list" title="一键全屏显示客户列表">列表全屏</button>
+                    <button type="button" data-customer-layout="detail" title="一键全屏显示客户属性">属性全屏</button>
+                    <button type="button" data-customer-layout="default" title="还原客户列表和客户属性默认布局">还原</button>
+                  </div>
                 </div>
-              </div>
-              <div class="customer-search-meta">
-                <span data-customer-search-status>输入即搜，280ms 自动刷新</span>
-                <strong data-customer-count>0 条</strong>
-              </div>
-            </div>
-            <div class="customer-quick-filters" data-customer-quick-filters>
-              <?php foreach ([
-                'all' => '全部',
-                'today' => '今天新增',
-                '7d' => '7天新增',
-                'mine' => '我的客户',
-                'public' => '公海客户',
-                'has_code' => '有客户代码',
-                'has_quote' => '有报价',
-                'has_mail' => '有邮件',
-                'has_material' => '有资料',
-                'has_wechat_group' => '微信群',
-                'has_whatsapp_group' => 'WhatsApp群',
-              ] as $filterKey => $filterLabel): ?>
-              <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
-              <?php endforeach; ?>
+              </details>
             </div>
           </section>
           <aside class="customer-filter-drawer" data-customer-filter-drawer aria-hidden="true" hidden>

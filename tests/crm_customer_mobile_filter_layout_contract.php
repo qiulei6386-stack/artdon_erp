@@ -11,10 +11,15 @@ if ($page === false || $css === false) {
 
 $forbidden = [
     '<div class="crm-module-head"><div><span>客户中心</span><h1>客户中心</h1>',
+    '"tools tools"',
 ];
 foreach ($forbidden as $needle) {
     if (strpos($page, $needle) !== false) {
         fwrite(STDERR, "Forbidden customer center title strip remains\n");
+        exit(1);
+    }
+    if (strpos($css, $needle) !== false) {
+        fwrite(STDERR, "Forbidden third customer filter row remains: {$needle}\n");
         exit(1);
     }
 }
@@ -22,11 +27,13 @@ foreach ($forbidden as $needle) {
 $markers = [
     [$page, '<section class="crm-module" data-crm-module="customers">', '客户模块入口'],
     [$page, '<section class="crm-panel customer-filterbar">', '客户筛选条仍存在'],
+    [$page, '<div class="customer-filter-line">', '快捷筛选和工具在同一横向行'],
+    [$page, '<details class="customer-more-tools">', '低频工具收进更多'],
     [$css, '.customer-search-row {', '客户筛选默认重排'],
     [$css, 'grid-template-areas:', '小屏筛选重排为区域布局'],
     [$css, '"search meta"', '小屏搜索与数量第一行'],
-    [$css, '"tools tools"', '小屏工具独占一行'],
-    [$css, '.customer-search-tools { grid-area: tools;', '默认工具栏独占第二行'],
+    [$css, '.customer-filter-line { display: flex;', '第二行横向筛选工具带'],
+    [$css, '.customer-more-tools[open] .customer-more-menu { display: inline-flex; }', '更多打开不新增竖向行'],
     [$css, '.customer-search-main label { display: none !important; }', '小屏隐藏搜索标签节省宽度'],
     [$css, '.customer-search-tools {', '筛选工具样式存在'],
     [$css, 'overflow-x: auto !important;', '小屏筛选横向滚动兜底'],
