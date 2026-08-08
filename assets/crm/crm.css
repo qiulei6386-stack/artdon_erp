@@ -25754,6 +25754,10 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   font-size: 11px !important;
   line-height: 18px !important;
 }
+.crm-module[data-crm-module="promotion"] .promo-task-card-grid .promo-task-item > span.promo-task-timing {
+  color: #475569 !important;
+  font-weight: 700 !important;
+}
 .crm-module[data-crm-module="promotion"] .promo-task-card-grid .promo-task-check {
   left: 10px !important;
   top: 10px !important;
