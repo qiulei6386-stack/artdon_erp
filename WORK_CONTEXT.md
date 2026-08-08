@@ -7,7 +7,8 @@
 - `assets/crm/crm.js`：新增国家筛选输入联动；输入中文/英文/国家代码时实时隐藏不匹配国家，按 Enter 选择第一项；直接点“应用筛选”时也会自动采用第一条匹配国家；重置/快捷筛选清空时同步恢复全部国家。
 - `assets/crm/crm.css`：高级筛选输入框与下拉保持统一样式，并隐藏不匹配国家选项。
 - 新增 `tests/crm_customer_country_filter_search_contract.php`，锁定高级筛选国家可输入搜索、option 搜索索引、回车选择和状态同步。
-- 待检查/部署：本地静态检查通过，提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_country_filter_search_contract.php` 均通过。
+- 部署：功能提交 `2da868e` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户中心筛选区取消横向拖动
 
