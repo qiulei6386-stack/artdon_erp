@@ -7,8 +7,8 @@
 - `assets/crm/crm.js`：保留原有 `data-archive-edit/save/cancel/missing` 事件；联系人/地址/客户群行仍可在档案编辑模式下双击进入原编辑弹窗；新增卡片内“添加联系人 / 添加地址 / 添加标签”按钮，复用现有弹窗；客户群继续复用原新增/编辑/停用/删除事件。
 - `assets/crm/crm.css`：新增 `archive-crm-*` 样式，按卡片式档案页展示，并补充窄屏响应式，避免右侧属性页撑宽。
 - 新增 `tests/crm_customer_archive_profile_layout_contract.php`，锁定档案页关键布局标记和旧功能事件入口，防止后续 UI 调整误删。
-- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无 PHP，PHP 契约测试待服务器部署后执行。
-- 部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/` 并复检；最终提交号以本次完成后的 HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无 PHP。正式服务器 `php -l tests/crm_customer_archive_profile_layout_contract.php` 与 `php tests/crm_customer_archive_profile_layout_contract.php` 均通过。
+- 部署：功能提交 `804ddcc8a576138b9593f85da9e3660ace2391fc` 已推送 GitHub `main`，并同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；本条上下文补丁提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户中心新增微信群 / WhatsApp群快捷筛选
 
