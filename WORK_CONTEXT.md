@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM 高级筛选国家与城市联动
+
+- 用户反馈客户中心高级筛选选择国家后，城市 / 地区下拉仍显示其它国家城市，例如选择中国香港后仍出现广东、深圳、印度城市。
+- 根因：上一轮只给国家下拉增加了手输模糊搜索；城市下拉仍是全量 `city_region`，没有带所属国家索引，也没有在国家变化时过滤或清空不匹配城市。
+- `crm.php`：高级筛选城市 option 新增 `data-city-country` 与 `data-city-search`，把城市 / 地区与所属国家代码关联起来。
+- `assets/crm/crm.js`：新增城市按国家过滤逻辑；国家下拉 change、国家搜索回车解析、清空国家、重置高级筛选、恢复筛选状态时都会同步刷新城市列表；已选择城市如果不属于当前国家会自动清空。
+- `tests/crm_customer_country_filter_search_contract.php`：扩展契约，锁定高级筛选国家搜索与城市联动，防止后续回退。
+- 待检查/部署：本地 `git diff --check` 与 Codex bundled Node `node -c assets/crm/crm.js` 已通过；待推送后在服务器跑 `php -l crm.php` 与契约测试并同步三方。
+
 ## 本次：订单佣金从报价佣金同步修复
 
 - 用户反馈订单 `AT-260724EX028-01` 报价/佣金中心显示佣金 RMB 1000，但订单详情“佣金结算”显示 RMB 65。

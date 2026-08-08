@@ -479,7 +479,9 @@ $prefStyle = sprintf(
                   <select data-filter-city>
                     <option value="">全部城市/地区</option>
                     <?php foreach (($crmConfig['items']['city_region'] ?? []) as $region): ?>
-                    <option value="<?= h($region['item_key']) ?>"><?= h(($region['name_cn'] ?? '') . ' / ' . ($region['name_en'] ?? '') . ' · ' . ($region['extra_config']['country'] ?? '')) ?></option>
+                    <?php $cityCountry = strtoupper((string)(($region['extra_config']['country'] ?? '') ?: '')); ?>
+                    <?php $citySearch = trim(implode(' ', array_filter([(string)($region['item_key'] ?? ''), (string)($region['name_cn'] ?? ''), (string)($region['name_en'] ?? ''), (string)($region['short_name'] ?? ''), $cityCountry]))); ?>
+                    <option value="<?= h($region['item_key']) ?>" data-city-country="<?= h($cityCountry) ?>" data-city-search="<?= h($citySearch) ?>"><?= h(($region['name_cn'] ?? '') . ' / ' . ($region['name_en'] ?? '') . ' · ' . ($region['extra_config']['country'] ?? '')) ?></option>
                     <?php endforeach; ?>
                   </select>
                 </label>

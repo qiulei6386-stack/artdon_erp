@@ -3076,6 +3076,47 @@
       if (hint) hint.textContent = query ? (visible.length ? ('找到 ' + visible.length + ' 个国家，回车选择第一项。') : '没有匹配国家，请换中文/英文/国家代码。') : '可手输模糊查找，回车选择第一项。';
       return visible;
     },
+    cityOptionCountryKey: function (option) {
+      return String((option && option.getAttribute('data-city-country')) || '').trim().toUpperCase();
+    },
+    filterCityOptionsForCountry: function (countryValue, clearInvalid) {
+      var select = document.querySelector('[data-filter-city]');
+      if (!select) return [];
+      var key = this.countryKeyFromValue(countryValue);
+      key = String(key || '').trim().toUpperCase();
+      var visible = [];
+      Array.prototype.slice.call(select.options).forEach(function (option, index) {
+        if (index === 0) {
+          option.hidden = false;
+          return;
+        }
+        var optionCountry = CustomerModule.cityOptionCountryKey(option);
+        var matched = !key || !optionCountry || optionCountry === key;
+        option.hidden = !matched;
+        if (matched) visible.push(option);
+      });
+      if (clearInvalid && select.value) {
+        var selected = select.options[select.selectedIndex];
+        if (selected && selected.hidden) select.value = '';
+      }
+      return visible;
+    },
+    syncCityFilterForCountry: function (clearInvalid) {
+      var country = document.querySelector('[data-filter-country]');
+      return this.filterCityOptionsForCountry(country ? country.value : '', clearInvalid !== false);
+    },
+    setCityFilterValue: function (value) {
+      var select = document.querySelector('[data-filter-city]');
+      if (!select) return;
+      var wanted = String(value || '');
+      if (!wanted) {
+        select.value = '';
+        return;
+      }
+      select.value = wanted;
+      var selected = select.options[select.selectedIndex];
+      if (!selected || selected.hidden) select.value = '';
+    },
     countryOptionDisplayText: function (option) {
       return option ? String(option.textContent || '').replace(/\s+/g, ' ').trim() : '';
     },
@@ -3096,6 +3137,7 @@
         select.value = '';
         if (input) input.value = '';
         this.filterCountryOptions('');
+        this.filterCityOptionsForCountry('', true);
         return;
       }
       var match = Array.prototype.slice.call(select.options).find(function (option, index) {
@@ -3107,6 +3149,7 @@
         select.value = match.value;
         if (input) input.value = this.countryOptionDisplayText(match);
         this.filterCountryOptions(input ? input.value : match.value);
+        this.syncCityFilterForCountry(true);
       }
     },
     resolveCountrySearchSelection: function () {
@@ -3117,15 +3160,20 @@
       if (!query) {
         select.value = '';
         this.filterCountryOptions('');
+        this.filterCityOptionsForCountry('', true);
         return;
       }
       var selected = select.options[select.selectedIndex];
-      if (select.value && selected && this.countryOptionSearchText(selected).indexOf(query) >= 0) return;
+      if (select.value && selected && this.countryOptionSearchText(selected).indexOf(query) >= 0) {
+        this.syncCityFilterForCountry(true);
+        return;
+      }
       var visible = this.filterCountryOptions(input.value) || [];
       if (visible.length) {
         select.value = visible[0].value;
         input.value = this.countryOptionDisplayText(visible[0]);
         this.filterCountryOptions(input.value);
+        this.syncCityFilterForCountry(true);
       }
     },
     bindCountryFilterSearch: function () {
@@ -3135,7 +3183,10 @@
       input.dataset.bound = '1';
       input.addEventListener('input', function () {
         CustomerModule.filterCountryOptions(input.value);
-        if (!input.value) select.value = '';
+        if (!input.value) {
+          select.value = '';
+          CustomerModule.filterCityOptionsForCountry('', true);
+        }
       });
       input.addEventListener('keydown', function (event) {
         if (event.key === 'Enter') {
@@ -3145,8 +3196,10 @@
       });
       select.addEventListener('change', function () {
         CustomerModule.syncCountrySearchFromSelect();
+        CustomerModule.syncCityFilterForCountry(true);
       });
       this.filterCountryOptions(input.value);
+      this.syncCityFilterForCountry(true);
     },
     readAdvancedFilters: function () {
       var checkedValues = function (selector) {
@@ -3154,6 +3207,7 @@
       };
       var business = document.querySelector('[data-filter-business]:checked');
       this.resolveCountrySearchSelection();
+      this.syncCityFilterForCountry(true);
       return {
         country: document.querySelector('[data-filter-country]')?.value || '',
         city: document.querySelector('[data-filter-city]')?.value || '',
@@ -3176,6 +3230,7 @@
       });
       document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
       this.filterCountryOptions('');
+      this.filterCityOptionsForCountry('', true);
     },
     hasAdvancedFilters: function () {
       var advanced = (this.filterState && this.filterState.advanced) || {};
@@ -3209,6 +3264,8 @@
       if (sort) sort.value = this.filterState.sort || 'updated_at';
       if (dir) dir.value = this.filterState.direction || 'DESC';
       this.setCountryFilterValue((this.filterState.advanced || {}).country || '');
+      this.filterCityOptionsForCountry((this.filterState.advanced || {}).country || '', true);
+      this.setCityFilterValue((this.filterState.advanced || {}).city || '');
       document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
       });
