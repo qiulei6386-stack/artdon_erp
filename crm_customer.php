@@ -1479,6 +1479,23 @@ function crm_customer_country_search_sql(array $terms, string $customerAlias = '
     return $parts ? ['(' . implode(' OR ', $parts) . ')', $params] : ['1 = 0', []];
 }
 
+function crm_customer_last_promotion_expr(string $customerAlias = 'c'): string
+{
+    $sentinel = "'1000-01-01 00:00:00'";
+    $parts = [];
+    if (crm_table_exists_safe('crm_marketing_logs')) {
+        $parts[] = "COALESCE((SELECT MAX(ml.touched_at) FROM crm_marketing_logs ml WHERE ml.customer_id = {$customerAlias}.id), {$sentinel})";
+    }
+    if (crm_table_exists_safe('crm_marketing_task_targets')) {
+        $parts[] = "COALESCE((SELECT MAX(mt.executed_at) FROM crm_marketing_task_targets mt WHERE mt.customer_id = {$customerAlias}.id AND mt.executed_at IS NOT NULL), {$sentinel})";
+    }
+    if (crm_table_exists_safe('crm_customer_chat_groups')) {
+        $parts[] = "COALESCE((SELECT MAX(cg.last_promoted_at) FROM crm_customer_chat_groups cg WHERE cg.customer_id = {$customerAlias}.id AND cg.deleted_at IS NULL AND cg.last_promoted_at IS NOT NULL), {$sentinel})";
+    }
+    if (!$parts) return 'NULL';
+    return 'NULLIF(GREATEST(' . implode(', ', $parts) . "), {$sentinel})";
+}
+
 function crm_customer_apply_graph(int $customerId, array $graph): void
 {
     crm_customer_sync_addresses($customerId, $graph['addresses']);
@@ -1658,6 +1675,7 @@ function crm_customer_list(array $input): array
     }
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
+    $lastPromotionExpr = crm_customer_last_promotion_expr('c');
     $sortMap = [
         'updated_at' => 'c.updated_at',
         'customer_code' => 'c.customer_code',
@@ -1668,6 +1686,7 @@ function crm_customer_list(array $input): array
         'owner_name' => 'COALESCE(u.username, c.owner_department, "")',
         'contact_count' => '(SELECT COUNT(*) FROM crm_contacts ct_sort WHERE ct_sort.customer_id = c.id AND ct_sort.deleted_at IS NULL)',
         'chat_group_names' => '(SELECT GROUP_CONCAT(cg_sort.group_name ORDER BY cg_sort.group_platform, cg_sort.id SEPARATOR ",") FROM crm_customer_chat_groups cg_sort WHERE cg_sort.customer_id = c.id AND cg_sort.deleted_at IS NULL)',
+        'last_promotion_at' => $lastPromotionExpr,
         'status' => 'c.status',
         'created_at' => 'c.created_at',
         'last_followup' => '(SELECT MAX(f.followup_time) FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL)'
@@ -1689,6 +1708,7 @@ function crm_customer_list(array $input): array
         NULL AS last_followup_at,
         '' AS group_names,
         '' AS chat_group_names,
+        {$lastPromotionExpr} AS last_promotion_at,
         '' AS source_tags,
         '' AS promotion_channels,
         COALESCE(ps.status, 'not_promoted') AS promotion_status

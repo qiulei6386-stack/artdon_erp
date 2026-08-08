@@ -2516,6 +2516,7 @@
       { key: 'level', label: '等级', title: '客户等级', width: 72 },
       { key: 'source', label: '来源', title: '客户来源', width: 92 },
       { key: 'chat_group_names', label: '群名', title: '微信群 / WhatsApp群名', width: 168 },
+      { key: 'last_promotion_at', label: '最后推广', title: '最后一次推广时间', width: 124 },
       { key: 'owner_name', label: '负责', title: '负责人', width: 92 },
       { key: 'contact_count', label: '联系', title: '联系人数量', width: 58 },
       { key: 'last_followup_at', label: '跟进', title: '最近跟进', width: 118 },
@@ -2754,6 +2755,7 @@
         level: 'level',
         source: 'source',
         chat_group_names: 'chat_group_names',
+        last_promotion_at: 'last_promotion_at',
         owner_name: 'owner_name',
         contact_count: 'contact_count',
         last_followup_at: 'last_followup',
@@ -3342,6 +3344,7 @@
         if (key === 'level') return '<td data-label="客户等级">' + esc(row.level || '-') + '</td>';
         if (key === 'source') return '<td data-label="客户来源">' + esc(row.source_tags || row.source || '-') + '</td>';
         if (key === 'chat_group_names') return '<td data-label="群名" title="' + esc(row.chat_group_names || '') + '">' + esc(row.chat_group_names || '-') + '</td>';
+        if (key === 'last_promotion_at') return '<td data-label="最后推广" title="' + esc(row.last_promotion_at || '') + '">' + esc(row.last_promotion_at ? String(row.last_promotion_at).slice(0, 16) : '-') + '</td>';
         if (key === 'owner_name') return '<td data-label="负责人" title="' + esc(row.owner_summary || row.owner_name || '') + '">' + esc(row.owner_summary || row.owner_name || '-') + '</td>';
         if (key === 'contact_count') return '<td data-label="联系人数量">' + esc(row.contact_count || 0) + '</td>';
         if (key === 'last_followup_at') return '<td data-label="最近跟进">' + esc(row.last_followup_at || '-') + '</td>';
