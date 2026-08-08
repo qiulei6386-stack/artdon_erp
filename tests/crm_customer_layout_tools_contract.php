@@ -23,7 +23,7 @@ $required = [
     '列表全屏布局类' => "split.classList.toggle('is-list-full', mode === 'list')",
     '属性全屏布局类' => "split.classList.toggle('is-detail-full', mode === 'detail')",
     '初始化应用已保存布局' => 'this.applyLayoutMode(this.layoutMode, false)',
-    '工具条靠右显示' => '.customer-center-layout-tools { width: 100%; justify-content: flex-end;',
+    '工具条内联靠右显示' => '.customer-search-tools .customer-center-layout-tools { flex: 0 0 auto; align-self: center; margin-left: auto;',
 ];
 
 $haystack = $crmPage . "\n" . $crmCss . "\n" . $crmJs;
