@@ -7,7 +7,9 @@
 - `quote_api.php`：新增 `quote_commission_sync_converted_orders()`，保存报价佣金或报价产品佣金后，如报价已转订单，则同步未结算订单的 `rule_id=0` 佣金快照；逐项佣金会汇总成订单固定金额，避免报价 1000 / 订单 65 分裂。
 - 保护规则：已结算或部分结算的订单佣金不自动覆盖，避免改乱历史结算。
 - 新增 `tests/quote_commission_sync_converted_order_contract.php`，锁定报价佣金保存后同步已转订单、按 `source_quote_id` 和 `quote_no` 兜底匹配旧订单、逐项佣金汇总为固定金额。
-- 待检查/部署/数据修复：本地 `git diff --check` 通过；修改后的 `quote_api.php` 已临时上传服务器 `/tmp` 并通过 `php -l`；提交推送、服务器检查后修复订单 `AT-260724EX028-01` 当前快照。
+- 检查：本地 `git diff --check` 通过；修改后的 `quote_api.php` 临时上传服务器 `/tmp` 并通过 `php -l`；服务器 `php -l quote_api.php`、`php tests/quote_commission_sync_converted_order_contract.php` 均通过。
+- 数据修复：正式服务器已精确修复订单 `AT-260724EX028-01` 的佣金快照 `id=6`，从旧的 `percent=1` / `RMB 65` 同步为报价逐项佣金汇总 `fixed_order=1000` / `RMB 1000`；结算状态仍为 `unsettled`，未改其它订单。
+- 部署：功能提交 `6494a10` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 高级筛选国家支持手输模糊查找
 
