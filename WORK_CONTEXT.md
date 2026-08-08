@@ -7,8 +7,8 @@
 - `quote_order_api.php`：`save_payment` 支持 `payment_type='核销'` 且实际到账为 0；核销金额必须大于 0，且不能超过当前可核销未收款；保存后写入 `payment_writeoff_recorded` 日志。
 - `quotation.php`：收款区新增“核销”按钮；收款弹窗新增“核销”类型、核销金额/原因/备注字段；详情汇总新增“应收核销”卡片，流水表新增“应收核销”列。
 - 新增 `tests/order_payment_writeoff_contract.php`，锁定核销字段、余额公式、零实收保存、不能超额核销、前端按钮和提示文案。
-- 待检查：本地 `git diff --check`、Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查；服务器 `php -l quotation.php`、`php -l quote_order_api.php`、`php tests/order_payment_writeoff_contract.php`。
-- 待部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号以本次完成后的 HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 `php -l quotation.php`、`php -l quote_order_api.php`、`php tests/order_payment_writeoff_contract.php` 均通过。
+- 部署：功能提交 `af557d6` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：派工固定待办新增停用按钮
 
