@@ -6,7 +6,8 @@
 - `crm.php`：将每页、视图、排序、方向、搜索、高级筛选、重置和“更多”从第二行快捷筛选带移回搜索行；第二行只保留快捷筛选按钮。
 - `assets/crm/crm.css`：搜索框宽度限制为合理范围，第一行改为“搜索框 / 常用工具 / 数量”三段布局；快捷筛选默认不再开启横向滚动，窄屏规则也不再强制左右拖。
 - `tests/crm_customer_mobile_filter_layout_contract.php`：更新契约，锁定常用工具回到搜索行、快捷筛选独立第二行、搜索框不再占满整行。
-- 待检查/部署：本地静态检查通过，提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_mobile_filter_layout_contract.php` 均通过。
+- 部署：功能提交 `9bf9276` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户属性取消客户档案冻结
 
