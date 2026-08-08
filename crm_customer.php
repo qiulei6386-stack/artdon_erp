@@ -1574,6 +1574,10 @@ function crm_customer_list(array $input): array
         $where[] = "((c.email IS NOT NULL AND c.email <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.email IS NOT NULL AND ct.email <> ''))";
     } elseif ($quick === 'has_material' || $quick === '有资料' || $quick === '有资料包') {
         $where[] = 'EXISTS (SELECT 1 FROM crm_customer_files cf WHERE cf.customer_id = c.id AND cf.deleted_at IS NULL)';
+    } elseif ($quick === 'has_wechat_group' || $quick === '微信群') {
+        $where[] = "EXISTS (SELECT 1 FROM crm_customer_chat_groups cg WHERE cg.customer_id = c.id AND cg.deleted_at IS NULL AND cg.status = 'active' AND cg.group_platform = 'wechat_group')";
+    } elseif ($quick === 'has_whatsapp_group' || $quick === 'WhatsApp群') {
+        $where[] = "EXISTS (SELECT 1 FROM crm_customer_chat_groups cg WHERE cg.customer_id = c.id AND cg.deleted_at IS NULL AND cg.status = 'active' AND cg.group_platform = 'whatsapp_group')";
     } elseif ($quick === 'has_quote' || $quick === '有报价') {
         if (crm_table_exists_safe('quote_orders')) {
             $where[] = crm_customer_quote_exists_condition();

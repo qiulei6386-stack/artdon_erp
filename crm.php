@@ -437,6 +437,8 @@ $prefStyle = sprintf(
                 'has_quote' => '有报价',
                 'has_mail' => '有邮件',
                 'has_material' => '有资料',
+                'has_wechat_group' => '微信群',
+                'has_whatsapp_group' => 'WhatsApp群',
               ] as $filterKey => $filterLabel): ?>
               <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
               <?php endforeach; ?>

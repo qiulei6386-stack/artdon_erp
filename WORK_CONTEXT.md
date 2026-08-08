@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM 客户中心新增微信群 / WhatsApp群快捷筛选
+
+- 用户要求在 CRM 客户中心快捷筛选条增加两个筛选：`微信群`、`WhatsApp群`。
+- `crm.php`：客户中心快捷筛选按钮新增 `has_wechat_group` / `has_whatsapp_group`。
+- `assets/crm/crm.js`：筛选描述文案新增 `微信群` / `WhatsApp群`，确保点击后状态栏显示清晰。
+- `crm_customer.php`：`crm_customer_list()` 的 `quick_filter` 新增微信群 / WhatsApp群条件；按 `crm_customer_chat_groups` 表筛选未删除、`status='active'` 且对应 `group_platform` 的客户。
+- 新增 `tests/crm_customer_chat_group_filter_contract.php`，锁定按钮、前端文案和后端 SQL 条件。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；本机无系统 PHP，PHP 语法和新增契约测试在服务器部署后执行。
+- 部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/` 并复检；最终提交号以本次完成后的 HEAD 为准。
+
 ## 本次：派工待办新增固定待办入口
 
 - 用户要求新增“固定待办”，用于每天、工作日、每周或每月都要检查的固定性工作，例如每天检查工程开发工作。

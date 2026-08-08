@@ -3246,6 +3246,8 @@
         has_quote: '有报价',
         has_mail: '有邮件',
         has_material: '有资料',
+        has_wechat_group: '微信群',
+        has_whatsapp_group: 'WhatsApp群',
         no_owner: '无负责人客户',
         incomplete: '资料不完整客户',
         no_contact: '无联系人客户',
