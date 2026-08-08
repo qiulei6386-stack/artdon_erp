@@ -901,11 +901,11 @@ function renderEditableCell(r,c){
   return renderLinkedText(value);
 }
 function methodValue(r){if(r.task_type==='private')return 'private';if(r.task_type==='personal')return 'personal';return r.dispatch_mode||'single'}
-function methodLabel(v){return {personal:'个人',private:'私人',single:'派工',dispatch:'派工',multi:'多人',group:'多人',planned:'计划',plan:'计划',recurring:'周期',cycle:'周期'}[v]||v||'派工'}
-function methodOptions(selected){return [['personal','个人'],['private','私人'],['single','派工'],['multi','多人'],['plan','计划派工'],['recurring','周期派工']].map(v=>`<option value="${v[0]}" ${v[0]===selected?'selected':''}>${v[1]}</option>`).join('')}
-function tableMethodLabel(v){return ['personal','private'].includes(String(v||''))?'个人':(['multi','group'].includes(String(v||''))?'多派':'派工')}
+function methodLabel(v){return {personal:'个人',private:'私人',single:'派工',dispatch:'派工',multi:'多派',group:'多派',planned:'计派',plan:'计派',recurring:'周派',cycle:'周派'}[v]||v||'派工'}
+function methodOptions(selected){return [['personal','个人'],['private','私人'],['single','派工'],['multi','多派'],['plan','计派'],['recurring','周派']].map(v=>`<option value="${v[0]}" ${v[0]===selected?'selected':''}>${v[1]}</option>`).join('')}
+function tableMethodLabel(v){return {personal:'个人',private:'私人',single:'派工',dispatch:'派工',multi:'多派',group:'多派',plan:'计派',planned:'计派',recurring:'周派',cycle:'周派'}[String(v||'')]||'派工'}
 function tableMethodOptions(selected){return ['personal','private','single','multi','plan','recurring'].map(v=>`<option value="${v}" ${v===selected?'selected':''}>${tableMethodLabel(v)}</option>`).join('')}
-function blankMethodOptions(type,current=''){let selected=current||(type==='personal'?'personal':'single');return [['personal','个人'],['private','个人'],['single','派工']].map(v=>`<option value="${v[0]}" ${v[0]===selected?'selected':''}>${v[1]}</option>`).join('')}
+function blankMethodOptions(type,current=''){let selected=current||(type==='personal'?'personal':'single');return [['personal','个人'],['private','私人'],['single','派工']].map(v=>`<option value="${v[0]}" ${v[0]===selected?'selected':''}>${v[1]}</option>`).join('')}
 function formatDue(v){if(!v)return '—';let s=String(v).trim(),m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/),pad=n=>String(n).padStart(2,'0');if(m)return pad(m[2])+'/'+pad(m[3]);m=s.match(/^(\d{1,2})[\/.-](\d{1,2})/);if(m)return pad(m[1])+'/'+pad(m[2]);let d=new Date(s.replace(' ','T'));if(isNaN(d))return s.replace(/^\d{4}[-\/]/,'');return pad(d.getMonth()+1)+'/'+pad(d.getDate())}
 function monthDayParts(v){let s=formatDue(v);if(s==='—')return {m:'',d:''};let p=s.split('/');return {m:p[0]||'',d:p[1]||''}}
 function monthDayPickerHtml(value='',attrs=''){let p=monthDayParts(value),months=[''].concat(Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))),days=[''].concat(Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0')));return `<span class="monthDayPicker" ${attrs}> <select data-md-month>${months.map(m=>`<option value="${m}" ${m===p.m?'selected':''}>${m||'月'}</option>`).join('')}</select><select data-md-day>${days.map(d=>`<option value="${d}" ${d===p.d?'selected':''}>${d||'日'}</option>`).join('')}</select></span>`}

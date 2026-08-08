@@ -1,5 +1,13 @@
 # Artdon ERP 工作上下文
 
+## 本次：派工待办方式列下拉文案去重
+
+- 用户指出派工待办“方式”列行内下拉里出现重复文案：`个人` 两个、`派工` 三个。本次按用户指定改为清晰短标签：`个人 / 私人 / 派工 / 多派 / 计派 / 周派`。
+- `dispatch_next.php`：更新 `methodLabel()`、`methodOptions()`、`tableMethodLabel()`、`blankMethodOptions()` 的显示文案；仅改前端展示标签，不改底层值 `personal/private/single/multi/plan/recurring`，不迁移数据。
+- 新增 `tests/dispatch_method_label_contract.php`，锁定方式列标签不得再退回重复显示。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `dispatch_next.php` 内嵌脚本语法检查通过；本机无系统 PHP，PHP 语法和新增契约测试在服务器部署后执行。
+- 部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/` 并复检；最终提交号以本次完成后的 HEAD 为准。
+
 ## 本次：报价系统同客户多订单合并出货
 
 - 追加体验修复：用户看到 EX071 左侧 3 张订单，但合并弹窗容易误判“只拉出两张”。线上数据确认实际已拉出 3 张、8 行产品、1630 PCS；`quotation.php` 的合并出货提示文案改为明确显示“共 N 张订单 / M 行产品 / X PCS”，降低误读。
