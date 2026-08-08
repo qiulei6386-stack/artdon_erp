@@ -1496,6 +1496,70 @@ function crm_customer_last_promotion_expr(string $customerAlias = 'c'): string
     return 'NULLIF(GREATEST(' . implode(', ', $parts) . "), {$sentinel})";
 }
 
+function crm_customer_latest_mail_expr(string $customerAlias = 'c'): string
+{
+    if (!crm_table_exists_safe('crm_mails')) return 'NULL';
+    $mailCols = crm_table_columns_safe('crm_mails');
+    $canAll = has_permission('customer.mail_summary') || has_permission('mail.view') || is_super_admin();
+    $canOwn = has_permission('mail.view_own') || has_permission('mail.account_bind_own');
+    if (!$canAll && !$canOwn) return 'NULL';
+
+    $dateParts = array_values(array_filter(['received_at', 'sent_at', 'created_at'], fn($field) => in_array($field, $mailCols, true)));
+    if (!$dateParts) return 'NULL';
+    $dateExpr = 'COALESCE(' . implode(', ', array_map(fn($field) => 'm.`' . $field . '`', $dateParts)) . ')';
+    $match = [];
+    if (in_array('linked_customer_id', $mailCols, true)) {
+        $match[] = "m.linked_customer_id = {$customerAlias}.id";
+    }
+    $emailMatchParts = [];
+    if (in_array('from_email', $mailCols, true)) $emailMatchParts[] = 'LOWER(m.`from_email`) = LOWER({email})';
+    foreach (['to_emails', 'cc_emails', 'bcc_emails'] as $field) {
+        if (in_array($field, $mailCols, true)) $emailMatchParts[] = 'LOWER(m.`' . $field . '`) LIKE CONCAT("%", LOWER({email}), "%")';
+    }
+    if ($emailMatchParts) {
+        $customerEmailParts = array_map(fn($part) => str_replace('{email}', "{$customerAlias}.email", $part), $emailMatchParts);
+        $match[] = "({$customerAlias}.email IS NOT NULL AND {$customerAlias}.email <> '' AND (" . implode(' OR ', $customerEmailParts) . '))';
+        $contactEmailParts = array_map(fn($part) => str_replace('{email}', 'cm.email', $part), $emailMatchParts);
+        $match[] = "EXISTS (SELECT 1 FROM crm_contacts cm WHERE cm.customer_id = {$customerAlias}.id AND cm.deleted_at IS NULL AND cm.email IS NOT NULL AND cm.email <> '' AND (" . implode(' OR ', $contactEmailParts) . '))';
+    }
+    if (!$match) return 'NULL';
+    $scope = [in_array('is_deleted', $mailCols, true) ? 'm.is_deleted = 0' : '1=1', '(' . implode(' OR ', $match) . ')'];
+    if (!$canAll && in_array('user_id', $mailCols, true)) {
+        $scope[] = 'm.user_id = ' . (int)(current_user()['id'] ?? 0);
+    } elseif (!$canAll) {
+        return 'NULL';
+    }
+    return '(SELECT MAX(' . $dateExpr . ') FROM crm_mails m WHERE ' . implode(' AND ', $scope) . ')';
+}
+
+function crm_customer_latest_quote_expr(string $customerAlias = 'c'): string
+{
+    if (!crm_external_can('quote', 'view') && !has_permission('customer.quote_summary') && !is_super_admin()) return 'NULL';
+    if (!crm_table_exists_safe('quote_orders')) return 'NULL';
+    $cols = crm_table_columns_safe('quote_orders');
+    $dateParts = array_values(array_filter(['quote_date', 'created_at', 'submitted_at', 'approved_at'], fn($field) => in_array($field, $cols, true)));
+    if (!$dateParts) return 'NULL';
+    $dateExpr = 'COALESCE(' . implode(', ', array_map(fn($field) => 'q.`' . $field . '`', $dateParts)) . ')';
+    $match = [];
+    if (in_array('customer_id', $cols, true)) {
+        $match[] = "(q.`customer_id` = {$customerAlias}.id OR q.`customer_id` = CONCAT('crm_', {$customerAlias}.id))";
+    }
+    if (in_array('customer_name', $cols, true)) {
+        $match[] = "{$customerAlias}.customer_name IS NOT NULL AND {$customerAlias}.customer_name <> '' AND LOCATE(CONVERT({$customerAlias}.customer_name USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`customer_name` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+    }
+    if (in_array('customer_json', $cols, true)) {
+        $match[] = "{$customerAlias}.customer_name IS NOT NULL AND {$customerAlias}.customer_name <> '' AND LOCATE(CONVERT({$customerAlias}.customer_name USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`customer_json` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+        $match[] = "{$customerAlias}.customer_code IS NOT NULL AND {$customerAlias}.customer_code <> '' AND LOCATE(CONVERT({$customerAlias}.customer_code USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`customer_json` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+        $match[] = "{$customerAlias}.email IS NOT NULL AND {$customerAlias}.email <> '' AND LOCATE(CONVERT({$customerAlias}.email USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`customer_json` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+        $match[] = "{$customerAlias}.website IS NOT NULL AND {$customerAlias}.website <> '' AND LOCATE(CONVERT({$customerAlias}.website USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`customer_json` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+    }
+    if (in_array('quote_no', $cols, true)) {
+        $match[] = "{$customerAlias}.customer_code IS NOT NULL AND {$customerAlias}.customer_code <> '' AND LOCATE(CONVERT({$customerAlias}.customer_code USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(q.`quote_no` USING utf8mb4) COLLATE utf8mb4_unicode_ci) > 0";
+    }
+    if (!$match) return 'NULL';
+    return '(SELECT MAX(' . $dateExpr . ') FROM quote_orders q WHERE ' . implode(' OR ', array_map(fn($part) => '(' . $part . ')', $match)) . ')';
+}
+
 function crm_customer_apply_graph(int $customerId, array $graph): void
 {
     crm_customer_sync_addresses($customerId, $graph['addresses']);
@@ -1676,6 +1740,8 @@ function crm_customer_list(array $input): array
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
     $lastPromotionExpr = crm_customer_last_promotion_expr('c');
+    $latestMailExpr = crm_customer_latest_mail_expr('c');
+    $latestQuoteExpr = crm_customer_latest_quote_expr('c');
     $sortMap = [
         'updated_at' => 'c.updated_at',
         'customer_code' => 'c.customer_code',
@@ -1686,6 +1752,8 @@ function crm_customer_list(array $input): array
         'owner_name' => 'COALESCE(u.username, c.owner_department, "")',
         'contact_count' => '(SELECT COUNT(*) FROM crm_contacts ct_sort WHERE ct_sort.customer_id = c.id AND ct_sort.deleted_at IS NULL)',
         'chat_group_names' => '(SELECT GROUP_CONCAT(cg_sort.group_name ORDER BY cg_sort.group_platform, cg_sort.id SEPARATOR ",") FROM crm_customer_chat_groups cg_sort WHERE cg_sort.customer_id = c.id AND cg_sort.deleted_at IS NULL)',
+        'latest_mail_at' => $latestMailExpr,
+        'latest_quote_at' => $latestQuoteExpr,
         'last_promotion_at' => $lastPromotionExpr,
         'status' => 'c.status',
         'created_at' => 'c.created_at',
@@ -1708,6 +1776,8 @@ function crm_customer_list(array $input): array
         NULL AS last_followup_at,
         '' AS group_names,
         '' AS chat_group_names,
+        {$latestMailExpr} AS latest_mail_at,
+        {$latestQuoteExpr} AS latest_quote_at,
         {$lastPromotionExpr} AS last_promotion_at,
         '' AS source_tags,
         '' AS promotion_channels,

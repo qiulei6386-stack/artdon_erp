@@ -2759,6 +2759,8 @@
         owner_name: 'owner_name',
         contact_count: 'contact_count',
         last_followup_at: 'last_followup',
+        mail: 'latest_mail_at',
+        quote: 'latest_quote_at',
         status: 'status',
         updated_at: 'updated_at'
       };
@@ -3348,8 +3350,8 @@
         if (key === 'owner_name') return '<td data-label="负责人" title="' + esc(row.owner_summary || row.owner_name || '') + '">' + esc(row.owner_summary || row.owner_name || '-') + '</td>';
         if (key === 'contact_count') return '<td data-label="联系人数量">' + esc(row.contact_count || 0) + '</td>';
         if (key === 'last_followup_at') return '<td data-label="最近跟进">' + esc(row.last_followup_at || '-') + '</td>';
-        if (key === 'mail') return '<td data-label="最近邮件">无记录</td>';
-        if (key === 'quote') return '<td data-label="最近报价">无记录</td>';
+        if (key === 'mail') return '<td data-label="最近邮件" title="' + esc(row.latest_mail_at || '') + '">' + esc(row.latest_mail_at ? String(row.latest_mail_at).slice(0, 16) : '-') + '</td>';
+        if (key === 'quote') return '<td data-label="最近报价" title="' + esc(row.latest_quote_at || '') + '">' + esc(row.latest_quote_at ? String(row.latest_quote_at).slice(0, 16) : '-') + '</td>';
         if (key === 'status') return '<td data-label="客户状态">' + esc(row.status || '-') + '</td>';
         if (key === 'updated_at') return '<td data-label="更新时间">' + esc(row.updated_at || '-') + '</td>';
         if (key === 'actions') return '<td data-label="操作"><button type="button" data-row-open="' + row.id + '">详情</button><button type="button" data-row-edit="' + row.id + '">编辑</button></td>';
