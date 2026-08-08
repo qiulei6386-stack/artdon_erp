@@ -7,7 +7,8 @@
 - `quote_order_api.php`：收款重算、出货重算、订单列表摘要都会应用同一规则；如果已完结订单后来删除收款或出货状态回退，会从 `已完结` 自动撤回到对应状态，避免假完结。
 - `quotation.php`：订单状态筛选新增“已完结”；订单列表将“已完结”按完成态绿色样式显示。
 - 新增 `tests/order_auto_complete_contract.php`，锁定自动完结规则、取消/作废保护、列表显示和前端筛选。
-- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 PHP 检查待部署时执行。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 `php -l quotation.php`、`php -l quote_order_api.php`、`php tests/order_auto_complete_contract.php` 均通过。
+- 部署：功能提交 `9f91827` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：Shipping Costs 虚拟费用项不参与出货
 
