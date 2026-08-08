@@ -25689,12 +25689,12 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   width: 320px !important;
   max-width: 320px !important;
   min-width: 320px !important;
-  height: 88px !important;
-  min-height: 88px !important;
-  max-height: 88px !important;
+  height: 108px !important;
+  min-height: 108px !important;
+  max-height: 108px !important;
   display: grid !important;
-  grid-template-rows: 24px 20px 20px !important;
-  gap: 4px !important;
+  grid-template-rows: 24px 18px 18px 18px !important;
+  gap: 3px !important;
   align-content: start !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
@@ -25753,6 +25753,10 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   color: #64748b !important;
   font-size: 11px !important;
   line-height: 18px !important;
+}
+.crm-module[data-crm-module="promotion"] .promo-task-card-grid .promo-task-item > span.promo-task-start {
+  color: #334155 !important;
+  font-weight: 800 !important;
 }
 .crm-module[data-crm-module="promotion"] .promo-task-card-grid .promo-task-item > span.promo-task-timing {
   color: #475569 !important;

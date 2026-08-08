@@ -14909,11 +14909,12 @@
         var statusText = self.taskStatusText(row.task_status);
         var startedAt = String(row.scheduled_at || '').replace('T', ' ').slice(0, 16);
         var createdAt = String(row.created_at || '').replace('T', ' ').slice(0, 16);
-        var updatedAt = String(row.updated_at || '').replace('T', ' ').slice(5, 16);
+        var updatedAt = String(row.updated_at || '').replace('T', ' ').slice(0, 16);
         var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 队列 ' + (row.queue_count || row.target_count || 0) + ' · 失败 ' + (row.failed_count || 0);
-        var timing = '开始 ' + (startedAt || '未设置') + ' · 负责人 ' + (row.created_by_name || '-') + (updatedAt ? ' · 更新 ' + updatedAt : '');
+        var startLine = '开始 ' + (startedAt || '未设置');
+        var timing = '负责人 ' + (row.created_by_name || '-') + (updatedAt ? ' · 更新 ' + updatedAt : '');
         var timingTitle = ['开始：' + (startedAt || '未设置'), '创建：' + (createdAt || '-'), '更新：' + (row.updated_at || '-')].join('\\n');
-        return '<article class="promo-task-item' + active + (isDraft ? ' is-draft' : '') + (checked ? ' selected' : '') + '" data-promo-task-select="' + esc(row.id) + '"><label class="promo-task-check" title="选择推广任务"><input type="checkbox" data-promo-task-check="' + esc(row.id) + '"' + checked + '></label><div class="promo-task-title"><strong>' + esc(name) + '</strong><em>' + esc(statusText) + '</em></div><span title="' + esc(metrics) + '">' + esc(metrics) + '</span><span class="promo-task-timing" title="' + esc(timingTitle) + '">' + esc(timing) + '</span></article>';
+        return '<article class="promo-task-item' + active + (isDraft ? ' is-draft' : '') + (checked ? ' selected' : '') + '" data-promo-task-select="' + esc(row.id) + '"><label class="promo-task-check" title="选择推广任务"><input type="checkbox" data-promo-task-check="' + esc(row.id) + '"' + checked + '></label><div class="promo-task-title"><strong>' + esc(name) + '</strong><em>' + esc(statusText) + '</em></div><span title="' + esc(metrics) + '">' + esc(metrics) + '</span><span class="promo-task-start" title="' + esc(timingTitle) + '">' + esc(startLine) + '</span><span class="promo-task-timing" title="' + esc(timingTitle) + '">' + esc(timing) + '</span></article>';
       }).join('') : '<p class="promo-empty">' + (filter === 'draft' ? '暂无草稿。保存草稿后会自动出现在这里。' : '暂无推广任务。') + '</p>';
       box.innerHTML = toolbar + '<div class="promo-task-card-grid">' + cards + '</div>';
       box.querySelectorAll('[data-promo-task-check]').forEach(function (input) {
