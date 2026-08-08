@@ -402,7 +402,6 @@ $prefStyle = sprintf(
       </section>
 
       <section class="crm-module" data-crm-module="customers">
-        <div class="crm-module-head"><div><span>客户中心</span><h1>客户中心</h1><p>客户列表、详情、联系人、跟进、报价摘要、邮件摘要、资料摘要和联动摘要的统一布局。</p></div></div>
         <div class="crm-customer-page" data-customer-module>
           <section class="crm-panel customer-filterbar">
             <div class="customer-search-row">
