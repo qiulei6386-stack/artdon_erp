@@ -6,7 +6,8 @@
 - `assets/crm/crm.js`：推广项目卡片第二行整合渠道、客户、联系人、队列、失败数；第三行新增 `开始 YYYY-MM-DD HH:MM / 未设置`、负责人、更新时间。鼠标悬停日期行可查看开始、创建、更新完整时间。
 - `assets/crm/crm.css`：为日期详情行 `promo-task-timing` 增加稍重字重，保持原 88px 卡片高度和三行布局，不额外占空间。
 - 新增 `tests/crm_marketing_task_card_timing_contract.php`，锁定推广任务列表接口字段、前端开始时间显示和日期详情样式，防止回退。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm_marketing.php`、`php tests/crm_marketing_task_card_timing_contract.php` 均通过。
+- 部署：功能提交 `8b2e971` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：派工固定待办方式与截止日期修正
 
