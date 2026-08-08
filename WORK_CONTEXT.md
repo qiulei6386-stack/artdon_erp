@@ -6,7 +6,8 @@
 - `assets/crm/crm.css`：取消客户档案 workbench 的内部冻结/内部滚动结构；`customer-profile-workbench` 改为自适应高度与 `overflow: visible`，`customer-profile-body` 和 `customer-main-content` 不再单独滚动，滚动交回外层 `customer-detail-panel`。
 - 效果：右侧客户属性面板变为一个整体滚动容器，客户档案头、Tab、概览/档案内容一起上下滚动，不再固定占据顶部空间。
 - 新增 `tests/crm_customer_profile_scroll_contract.php`，锁定客户属性整体滚动，防止恢复内部 `overflow:hidden/auto` 造成头部冻结。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_profile_scroll_contract.php` 均通过。
+- 部署：功能提交 `20ac8d4` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户中心筛选区改为真正两行
 
