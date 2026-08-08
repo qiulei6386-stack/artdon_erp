@@ -443,6 +443,11 @@ $prefStyle = sprintf(
               <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
               <?php endforeach; ?>
             </div>
+            <div class="customer-layout-tools customer-center-layout-tools" aria-label="客户中心布局切换">
+              <button type="button" data-customer-layout="list" title="一键全屏显示客户列表">列表全屏</button>
+              <button type="button" data-customer-layout="detail" title="一键全屏显示客户属性">属性全屏</button>
+              <button type="button" data-customer-layout="default" title="还原客户列表和客户属性默认布局">还原</button>
+            </div>
           </section>
           <aside class="customer-filter-drawer" data-customer-filter-drawer aria-hidden="true" hidden>
             <header>

@@ -2537,6 +2537,7 @@
       this.renderHeader();
       this.applyListMode();
       this.bindEvents();
+      this.applyLayoutMode(this.layoutMode, false);
       this.renderEmptyOverview();
       this.loadList();
       this.setupAutoSync();

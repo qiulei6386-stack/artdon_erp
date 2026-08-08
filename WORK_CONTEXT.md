@@ -2451,6 +2451,13 @@
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 检查新增测试文件语法。服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_template_page_contract.php` 通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出 `配置模板`、`adaptation-bootstrap` 和 `adaptation-v3.js`，无 Fatal Error。
 - 发布：功能提交 `5e1b9d98e742214770eb68fcae5e274394911b69` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
 
+## 2026-08-08：CRM 客户中心恢复全屏布局按钮
+
+- 问题：客户中心列表/属性/还原的全屏逻辑、CSS 和事件绑定仍存在，但按钮入口在后续客户中心重构中从默认 ACTIONS 移除，只残留在“已删除客户”分支；页面上也没有生成 `data-customer-layout` 按钮，导致用户看不到入口。
+- 修复：在客户中心筛选区新增常驻布局工具条 `列表全屏 / 属性全屏 / 还原`，使用原有 `data-customer-layout` 事件和 `applyLayoutMode()` 逻辑；工具条放在 split 外层，进入属性全屏后仍可点击还原。
+- 细节：初始化时调用 `applyLayoutMode(this.layoutMode, false)`，让上次保存的布局状态刷新后也能恢复，并同步按钮高亮。
+- 回归保护：新增 `tests/crm_customer_layout_tools_contract.php`，锁定常驻按钮、事件绑定、布局类和初始化恢复逻辑。
+
 ## 2026-08-08：CRM 客户中心国家列中文显示
 
 - 问题：客户中心列表“国家”列直接显示客户资料里的原始国家值，导致 `AE`、`QA`、`OM`、`IN` 等 ISO 编码原样露出；同一列里中英文/代码混排，识别成本高。
