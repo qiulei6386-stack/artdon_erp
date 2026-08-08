@@ -6,7 +6,8 @@
 - `crm.php`：保留第一行搜索框 + 状态/数量；将快捷筛选和常用工具放进同一个 `customer-filter-line` 横向工具带。低频操作 `导入日志 / 列表全屏 / 属性全屏 / 还原` 收进原生 `更多` 折叠项，功能保留但不常驻占位。
 - `assets/crm/crm.css`：删除默认 `tools tools` 第三行网格区域；第二行改为单个横向滚动带，快捷筛选、每页/视图/排序/方向/立即搜索/高级筛选/重置和“更多”都在同一行内横向滚动；“更多”展开时以内联横向方式展开，不新增竖向高度。
 - `tests/crm_customer_mobile_filter_layout_contract.php`：禁止恢复 `tools tools` 第三行布局，锁定 `customer-filter-line` 和 `更多` 内联展开行为。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_mobile_filter_layout_contract.php` 均通过。
+- 部署：功能提交 `764e2e3` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户中心筛选工具挤压修复
 
