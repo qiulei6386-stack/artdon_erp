@@ -5864,12 +5864,16 @@ body.is-actionbar-resizing * {
 .customer-filterbar { padding: 8px 10px; position: sticky; top: 0; z-index: 6; display: grid; gap: 7px; }
 .customer-search-row {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(560px, 1.45fr) minmax(128px, auto);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "search meta"
+    "tools tools";
   gap: 7px;
   align-items: center;
   min-width: 0;
 }
 .customer-search-main {
+  grid-area: search;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
@@ -5898,7 +5902,7 @@ body.is-actionbar-resizing * {
 }
 .customer-search-main input:focus { box-shadow: none; border-color: transparent; background: transparent; }
 .customer-search-main button { height: 28px; min-height: 28px; padding: 0 9px; background: transparent; border-color: transparent; }
-.customer-search-tools { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.customer-search-tools { grid-area: tools; display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; min-width: 0; width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .customer-search-tools label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .customer-search-row input, .customer-search-row select, .customer-filter-group select {
   width: 100%;
@@ -5923,7 +5927,7 @@ body.is-actionbar-resizing * {
   font-size: 10px;
   font-weight: 800;
 }
-.customer-search-meta { display: grid; justify-items: end; gap: 2px; color: var(--crm-muted-text); font-size: 11px; white-space: nowrap; }
+.customer-search-meta { grid-area: meta; display: grid; justify-items: end; gap: 2px; color: var(--crm-muted-text); font-size: 11px; white-space: nowrap; }
 .customer-search-meta strong { color: var(--crm-primary); font-size: 13px; }
 .customer-quick-filters { display: flex; flex-wrap: nowrap; gap: 7px; overflow-x: auto; overflow-y: hidden; padding-top: 0; align-items: center; scrollbar-width: thin; }
 .customer-quick-filters button { height: 28px; min-height: 28px; padding: 0 12px; font-size: 12px; border-radius: 999px; flex: 0 0 auto; background: var(--crm-card-bg); border-color: var(--crm-border); }
@@ -28411,30 +28415,18 @@ body.is-workspace-module .workspace-mail-more {
     padding: 7px !important;
   }
   .crm-module[data-crm-module="customers"] .customer-search-row {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-areas:
-      "search meta"
-      "tools tools" !important;
     gap: 6px !important;
-    overflow: visible !important;
   }
   .crm-module[data-crm-module="customers"] .customer-search-row::-webkit-scrollbar,
   .crm-module[data-crm-module="customers"] .customer-quick-filters::-webkit-scrollbar {
     display: none;
   }
   .crm-module[data-crm-module="customers"] .customer-search-main {
-    grid-area: search !important;
-    min-width: 0 !important;
-    width: 100% !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     padding-left: 8px !important;
   }
   .crm-module[data-crm-module="customers"] .customer-search-main label { display: none !important; }
   .crm-module[data-crm-module="customers"] .customer-search-tools {
-    display: flex !important;
-    grid-area: tools !important;
-    width: 100% !important;
     flex-wrap: nowrap !important;
     gap: 6px !important;
     overflow-x: auto !important;
@@ -28454,9 +28446,6 @@ body.is-workspace-module .workspace-mail-more {
     margin-left: 0 !important;
   }
   .crm-module[data-crm-module="customers"] .customer-search-meta {
-    grid-area: meta !important;
-    display: grid !important;
-    justify-items: end !important;
     align-self: center !important;
     min-width: 54px !important;
   }

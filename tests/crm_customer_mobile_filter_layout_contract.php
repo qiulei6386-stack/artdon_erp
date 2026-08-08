@@ -22,9 +22,11 @@ foreach ($forbidden as $needle) {
 $markers = [
     [$page, '<section class="crm-module" data-crm-module="customers">', '客户模块入口'],
     [$page, '<section class="crm-panel customer-filterbar">', '客户筛选条仍存在'],
+    [$css, '.customer-search-row {', '客户筛选默认重排'],
     [$css, 'grid-template-areas:', '小屏筛选重排为区域布局'],
     [$css, '"search meta"', '小屏搜索与数量第一行'],
     [$css, '"tools tools"', '小屏工具独占一行'],
+    [$css, '.customer-search-tools { grid-area: tools;', '默认工具栏独占第二行'],
     [$css, '.customer-search-main label { display: none !important; }', '小屏隐藏搜索标签节省宽度'],
     [$css, '.customer-search-tools {', '筛选工具样式存在'],
     [$css, 'overflow-x: auto !important;', '小屏筛选横向滚动兜底'],
