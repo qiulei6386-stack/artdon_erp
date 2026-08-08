@@ -286,12 +286,45 @@ function qo_nested_item($it){
   }
   return $it;
 }
+function qo_is_virtual_charge_text($text): bool {
+  $t=strtolower(trim((string)$text));
+  if($t==='') return false;
+  $t=preg_replace('/[\s_\-]+/',' ',$t);
+  foreach(['shipping cost','shipping costs','freight','freight cost','freight charge','shipping fee','delivery fee','delivery cost','courier fee','运费','运输费','快递费','物流费','费用项'] as $needle){
+    if($needle!=='' && strpos($t,strtolower($needle))!==false) return true;
+  }
+  return false;
+}
+function qo_virtual_item_text($it): string {
+  $it=is_array($it)?$it:[]; $p=qo_product($it); $parts=[];
+  foreach(['item_type','product_type','virtual_type','product_code','product_name','name','title','specification','description','extra_spec'] as $k){
+    if(isset($it[$k]) && !is_array($it[$k]) && trim((string)$it[$k])!=='') $parts[]=(string)$it[$k];
+  }
+  foreach(['code','model','model_no','product_code','name','product_name','title','specification','description'] as $k){
+    if(isset($p[$k]) && !is_array($p[$k]) && trim((string)$p[$k])!=='') $parts[]=(string)$p[$k];
+  }
+  return implode(' ',$parts);
+}
 function qo_is_virtual_item($it): bool {
   $it=qo_nested_item(is_array($it)?$it:[]);
   return !empty($it['is_virtual_item'])
     || (($it['item_type']??'')==='virtual')
     || (($it['product_type']??'')==='virtual')
-    || (array_key_exists('shippable',$it) && ($it['shippable']===false || $it['shippable']==='false' || $it['shippable']==='0' || $it['shippable']===0));
+    || (array_key_exists('shippable',$it) && ($it['shippable']===false || $it['shippable']==='false' || $it['shippable']==='0' || $it['shippable']===0))
+    || qo_is_virtual_charge_text(qo_virtual_item_text($it));
+}
+function qo_virtual_item_sql_expr($alias=''): string {
+  $p=$alias!==''?rtrim($alias,'.').'.':'';
+  $hay="LOWER(CONCAT_WS(' ',COALESCE({$p}product_code,''),COALESCE({$p}product_name,''),COALESCE({$p}specification,''),COALESCE({$p}item_json,'')))";
+  $json="LOWER(COALESCE({$p}item_json,''))";
+  $likes=[];
+  foreach(['shipping cost','shipping costs','freight','freight cost','freight charge','shipping fee','delivery fee','delivery cost','courier fee','运费','运输费','快递费','物流费','费用项'] as $needle){
+    $likes[]=$hay." LIKE '%".str_replace("'","''",strtolower($needle))."%'";
+  }
+  foreach(['"is_virtual_item":true','"item_type":"virtual"','"product_type":"virtual"','"shippable":false'] as $needle){
+    $likes[]=$json." LIKE '%".str_replace("'","''",strtolower($needle))."%'";
+  }
+  return '('.implode(' OR ',$likes).')';
 }
 function qo_item_qty_for_product_total($it): float {
   $it=qo_nested_item(is_array($it)?$it:[]);
@@ -340,7 +373,7 @@ function qo_recalc_payment(PDO $pdo,$orderId){
   return ['order_amount'=>$amount,'paid_amount'=>$paid,'commission_deduct_amount'=>$deduct,'writeoff_amount'=>$writeoff,'receivable_reduced'=>$receivableReduced,'balance_amount'=>$bal,'payment_status'=>$status,'currency'=>$order['currency']??'USD'];
 }
 function qo_update_item_shipped(PDO $pdo,$orderId){
-  $items=qo_rows($pdo,'SELECT id,qty,item_json FROM quote_sales_order_items WHERE order_id=?',[$orderId]);
+  $items=qo_rows($pdo,'SELECT id,qty,product_code,product_name,specification,item_json FROM quote_sales_order_items WHERE order_id=?',[$orderId]);
   $tailAlloc=qo_tail_carton_allocations_for_order($pdo,(int)$orderId);
   $totalQty=0; $totalShip=0;
   foreach($items as $it){
@@ -356,7 +389,7 @@ function qo_update_item_shipped(PDO $pdo,$orderId){
   $status='未出货';
   if($totalShip>0 && $totalShip+0.00001<$totalQty) $status='部分出货';
   elseif($totalQty>0 && $totalShip+0.00001>=$totalQty) $status='已出货';
-  $pdo->prepare('UPDATE quote_sales_orders SET shipment_status=?,updated_at=NOW() WHERE id=?')->execute([$status,$orderId]);
+  $pdo->prepare('UPDATE quote_sales_orders SET qty=?,shipment_status=?,updated_at=NOW() WHERE id=?')->execute([$totalQty,$status,$orderId]);
   if($status==='已出货'){qo_commission_schema($pdo);$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='shipped' AND settle_status='unsettled'")->execute([$orderId]);}
   return $status;
 }
@@ -782,6 +815,7 @@ function qo_list_orders(PDO $pdo){
   // 旧版每打开一次订单中心，会对每个订单逐个重算出货/收款并 UPDATE 数据库；
   // 订单只有几张也会慢，订单越多越明显。列表页只需要摘要，明细/重算放到“详情”按需执行。
   qo_ensure_schema($pdo);
+  $virtualSql=qo_virtual_item_sql_expr();
   $sql = "SELECT
       o.id,o.order_no,o.quote_no,o.source_quote_id,o.customer_id,o.customer_name,
       o.qty,o.amount,o.currency,o.exchange_rate,o.quote_date,o.order_date,o.status,
@@ -790,10 +824,11 @@ function qo_list_orders(PDO $pdo){
       COALESCE(pay.paid_amount,0) AS paid_calc,
       COALESCE(pay.commission_deduct_amount,0) AS commission_deduct_calc,
       COALESCE(pay.writeoff_amount,0) AS writeoff_calc,
+      COALESCE(ship.shippable_qty,0) AS shippable_qty_calc,
       COALESCE(ship.shipped_qty,0) AS shipped_calc
     FROM quote_sales_orders o
     LEFT JOIN (SELECT order_id, SUM(amount) AS paid_amount, SUM(COALESCE(commission_deduct_amount,0)) AS commission_deduct_amount, SUM(COALESCE(writeoff_amount,0)) AS writeoff_amount FROM quote_order_payments GROUP BY order_id) pay ON pay.order_id=o.id
-    LEFT JOIN (SELECT order_id, SUM(shipped_qty) AS shipped_qty FROM quote_sales_order_items GROUP BY order_id) ship ON ship.order_id=o.id
+    LEFT JOIN (SELECT order_id, SUM(CASE WHEN {$virtualSql} THEN 0 ELSE qty END) AS shippable_qty, SUM(CASE WHEN {$virtualSql} THEN 0 ELSE shipped_qty END) AS shipped_qty FROM quote_sales_order_items GROUP BY order_id) ship ON ship.order_id=o.id
     ORDER BY COALESCE(o.order_date,o.created_at) DESC,o.id DESC
     LIMIT 2000";
   $orders = qo_rows($pdo,$sql);
@@ -806,12 +841,13 @@ function qo_list_orders(PDO $pdo){
     $o['paid_amount']=$paid;
     $o['balance_amount']=$bal;
     $o['payment_status']=$reduced<=0?'未收款':($bal<=0.00001?'已收齐':'部分收款');
-    $ship=qo_num($o['shipped_calc']??0); $qty=qo_num($o['qty']??0);
+    $ship=qo_num($o['shipped_calc']??0); $qty=qo_num($o['shippable_qty_calc']??0);
+    if($qty>0) $o['qty']=$qty;
     if($ship>0 && $ship+0.00001<$qty) $o['shipment_status']='部分出货';
     elseif($qty>0 && $ship+0.00001>=$qty) $o['shipment_status']='已出货';
     elseif(trim((string)($o['shipment_status']??''))==='') $o['shipment_status']='未出货';
     $o['commission_deduct_amount']=$deduct;$o['writeoff_amount']=$writeoff;$o['receivable_reduced']=$reduced;
-    unset($o['paid_calc'],$o['commission_deduct_calc'],$o['writeoff_calc'],$o['shipped_calc']);
+    unset($o['paid_calc'],$o['commission_deduct_calc'],$o['writeoff_calc'],$o['shippable_qty_calc'],$o['shipped_calc']);
   }
   unset($o);
   return $orders;

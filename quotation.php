@@ -2738,7 +2738,9 @@ function quotePartSpecName(k,m,item=null){if(k==='led')return ledSpecText(m,item
 function ledSpecText(m,item=null){let base=quotePartName(m);let cct=item?(item.cct||''):normCct($('cct')?.value||'');let cri=item?(item.cri||''):normCri($('cri')?.value||'');return [base,cct,cri].filter(Boolean).join(' ').trim()}
 function materialSaleName(k,m){return k==='led'?ledSpecText(m):quoteBrandModelOnly(m)}
 function isMaterialSaleItem(it){return !!(it&&(it.is_material_sale||it.product_type==='material'||String(it.product?.id||'').startsWith('mat-')))}
-function isVirtualQuoteItem(it){return !!(it&&(it.item_type==='virtual'||it.product_type==='virtual'||it.is_virtual_item))}
+function isVirtualChargeText(v){let t=String(v||'').toLowerCase().replace(/[\s_-]+/g,' ').trim();return !!t&&['shipping cost','shipping costs','freight','freight cost','freight charge','shipping fee','delivery fee','delivery cost','courier fee','运费','运输费','快递费','物流费','费用项'].some(x=>t.includes(x))}
+function virtualQuoteItemText(it){if(!it)return '';let p=it.product&&typeof it.product==='object'?it.product:{};return [it.item_type,it.product_type,it.virtual_type,it.product_code,it.product_name,it.name,it.title,it.specification,it.description,it.extra_spec,p.code,p.model,p.model_no,p.product_code,p.name,p.product_name,p.title,p.specification,p.description].filter(v=>v!==undefined&&v!==null&&typeof v!=='object'&&String(v).trim()).join(' ')}
+function isVirtualQuoteItem(it){return !!(it&&(it.item_type==='virtual'||it.product_type==='virtual'||it.is_virtual_item||it.shippable===false||it.shippable==='false'||it.shippable===0||it.shippable==='0'||isVirtualChargeText(virtualQuoteItemText(it))))}
 function quoteItemQtyForTotal(it){return isVirtualQuoteItem(it)&&!it.count_in_qty?0:Number(it?.qty||0)}
 function virtualQuoteTypeLabel(v){return {freight:'Freight Charge',fuel:'Fuel Surcharge',handling:'Handling Charge',discount:'Discount',other:'Other Charge'}[String(v||'other')]||'Other Charge'}
 function virtualQuoteSpec(item){

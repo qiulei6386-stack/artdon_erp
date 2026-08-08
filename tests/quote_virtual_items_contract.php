@@ -18,7 +18,15 @@ $checks = [
     'order detail does not allow packaging virtual items' =>
         str_contains($quote, "费用项</span>':`<button class=\"gray\"") && str_contains($quote, "不出货</span>':fmtNum(remain)"),
     'order API skips virtual items for shipment' =>
-        str_contains($orderApi, 'function qo_is_virtual_item') && str_contains($orderApi, 'if(!$it || qo_is_virtual_item($it)) continue'),
+        str_contains($orderApi, 'function qo_is_virtual_item') && str_contains($orderApi, 'if(qo_is_virtual_item($it)){ $it[\'remain_qty\']=0'),
+    'backend detects legacy shipping charge rows as virtual' =>
+        str_contains($orderApi, 'function qo_is_virtual_charge_text') && str_contains($orderApi, 'shipping costs') && str_contains($orderApi, '运费'),
+    'order list shipment status excludes virtual charges' =>
+        str_contains($orderApi, 'function qo_virtual_item_sql_expr') && str_contains($orderApi, 'shippable_qty_calc') && str_contains($orderApi, 'CASE WHEN {$virtualSql} THEN 0 ELSE qty END'),
+    'order shipped recalculation reads item text columns' =>
+        str_contains($orderApi, 'SELECT id,qty,product_code,product_name,specification,item_json FROM quote_sales_order_items'),
+    'frontend detects legacy shipping charge rows as virtual' =>
+        str_contains($quote, 'function isVirtualChargeText') && str_contains($quote, 'shipping costs') && str_contains($quote, '运费'),
     'PDF export supports virtual quantity rule' =>
         str_contains($pdf, 'function quote_pdf_is_virtual_item') && str_contains($pdf, 'quote_pdf_item_qty_for_total'),
     'Excel export uses computed total quantity' =>

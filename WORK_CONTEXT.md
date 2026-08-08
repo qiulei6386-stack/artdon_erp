@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：Shipping Costs 虚拟费用项不参与出货
+
+- 用户反馈订单 `AT-260731EX007` 的产品已全部出货，但 `Shipping Costs` 是虚拟费用项不出货，订单仍显示“部分出货”，且费用行还显示“建包装”。
+- 根因：旧订单的 `Shipping Costs` 行没有 `item_type=virtual / shippable=false` 标记；订单列表又用订单总 qty 与全量 shipped_qty 判断出货，把费用行 qty=1 算入未出货。
+- `quote_order_api.php`：新增费用项文字识别，兼容 `Shipping Costs / Freight / Shipping fee / 运费` 等旧数据；出货重算读取产品编码、名称和规格后再判断虚拟项。
+- `quote_order_api.php`：订单出货状态与列表摘要改为只统计可出货产品数量，虚拟费用项不参与 `shippable_qty / shipped_qty`；打开详情重算时也会把订单头 qty 校正为可出货产品数量。
+- `quotation.php`：前端虚拟项识别同步支持旧费用文字；订单详情费用行显示“费用项 / 不出货”，不再显示“建包装”。
+- `tests/quote_virtual_items_contract.php`：扩展契约，锁定旧 Shipping Costs 识别、列表出货状态排除费用项、前端不建包装。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 PHP 检查待部署时执行。
+
 ## 本次：订单收款新增应收核销
 
 - 用户反馈订单已出货、PL/CI 已出，但有 USD 20 收不回来，希望能把未收数消掉。本次新增“核销”流水，不改订单金额，不改已生成的 PL/CI，不把核销当作实际到账。
