@@ -2150,16 +2150,24 @@ function dn_create_recurring(array $in): array
     dn_require('create_recurring', '没有周期派工权限');
     $ids = array_values(array_filter(array_map('intval', (array)($in['assignee_ids'] ?? [])), fn($v) => $v > 0));
     if (!$ids) dn_fail('请选择执行人');
+    $dueAt = dn_required_due_dt($in['due_at'] ?? null);
+    $startDate = dn_date($in['start_date'] ?? null);
+    $freq = in_array(($in['freq'] ?? 'daily'), ['daily','workdays','weekly','monthly'], true) ? $in['freq'] : 'daily';
+    $weekdays = array_values(array_filter(array_map('intval', (array)($in['weekdays'] ?? [])), fn($v) => $v >= 1 && $v <= 7));
+    $monthdays = array_values(array_filter(array_map('intval', (array)($in['monthdays'] ?? [])), fn($v) => $v >= 1 && $v <= 31));
+    if ($freq === 'weekly' && !$weekdays) $weekdays = [(int)date('N', strtotime($startDate))];
+    if ($freq === 'monthly' && !$monthdays) $monthdays = [(int)date('j', strtotime($startDate))];
     $rule = [
-        'freq' => in_array(($in['freq'] ?? 'daily'), ['daily','weekly','monthly'], true) ? $in['freq'] : 'daily',
-        'weekdays' => array_values(array_map('intval', (array)($in['weekdays'] ?? []))),
-        'monthdays' => array_values(array_map('intval', (array)($in['monthdays'] ?? []))),
-        'start_date' => dn_date($in['start_date'] ?? null),
+        'freq' => $freq,
+        'weekdays' => $weekdays,
+        'monthdays' => $monthdays,
+        'start_date' => $startDate,
         'end_date' => dn_str($in['end_date'] ?? '', 10),
+        'due_time' => substr($dueAt, 11, 5),
+        'kind' => !empty($in['fixed_todo']) ? 'fixed_todo' : 'recurring_dispatch',
     ];
     $title = dn_str($in['title'] ?? '', 240);
-    if ($title === '') dn_fail('请输入周期派工标题');
-    $dueAt = dn_required_due_dt($in['due_at'] ?? null);
+    if ($title === '') dn_fail(!empty($in['fixed_todo']) ? '请输入固定待办标题' : '请输入周期派工标题');
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_groups(group_no,group_type,title,project,description,created_by,assignee_ids_json,total_count,task_date,due_at,recurring_rule_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
         ->execute([dn_task_no('DR'), 'recurring', $title, dn_str($in['project'] ?? '', 8000), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), $rule['start_date'], $dueAt, dn_json($rule)]);
@@ -2179,12 +2187,13 @@ function dn_run_recurring(array $in, bool $return = true): array
         $st = $pdo->prepare("SELECT COUNT(*) FROM dispatch_next_tasks WHERE parent_group_id=? AND task_date=? AND is_deleted=0");
         $st->execute([(int)$g['id'], $date]);
         if ((int)$st->fetchColumn() > 0) continue;
+        $dueAt = dn_recurring_due_at($g, $rule, $date);
         foreach (json_decode((string)$g['assignee_ids_json'], true) ?: [] as $aid) {
             dn_insert_task([
                 'task_type' => 'dispatch', 'dispatch_mode' => 'recurring', 'parent_group_id' => (int)$g['id'],
                 'title' => $g['title'], 'project' => $g['project'], 'description' => $g['description'],
                 'priority' => 'normal', 'status' => (int)$aid === dn_uid() ? 'in_progress' : 'pending_accept',
-                'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$aid, 'task_date' => $date, 'due_at' => $g['due_at'], 'is_read' => 0,
+                'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$aid, 'task_date' => $date, 'due_at' => $dueAt, 'is_read' => 0,
             ]);
             $created++;
         }
@@ -2201,9 +2210,20 @@ function dn_rule_due(array $rule, string $date): bool
     if (!empty($rule['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$rule['end_date']) && $date > $rule['end_date']) return false;
     $ts = strtotime($date);
     if (($rule['freq'] ?? 'daily') === 'daily') return true;
+    if (($rule['freq'] ?? '') === 'workdays') return (int)date('N', $ts) <= 5;
     if (($rule['freq'] ?? '') === 'weekly') return in_array((int)date('N', $ts), array_map('intval', $rule['weekdays'] ?? []), true);
     if (($rule['freq'] ?? '') === 'monthly') return in_array((int)date('j', $ts), array_map('intval', $rule['monthdays'] ?? []), true);
     return false;
+}
+
+function dn_recurring_due_at(array $group, array $rule, string $date): string
+{
+    $time = (string)($rule['due_time'] ?? '');
+    if (!preg_match('/^\d{2}:\d{2}$/', $time)) {
+        $time = substr((string)($group['due_at'] ?? ''), 11, 5);
+    }
+    if (!preg_match('/^\d{2}:\d{2}$/', $time)) $time = '18:00';
+    return dn_required_due_dt($date . ' ' . $time);
 }
 
 function dn_add_comment(array $in): array
