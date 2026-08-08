@@ -2451,6 +2451,13 @@
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 检查新增测试文件语法。服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_template_page_contract.php` 通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出 `配置模板`、`adaptation-bootstrap` 和 `adaptation-v3.js`，无 Fatal Error。
 - 发布：功能提交 `5e1b9d98e742214770eb68fcae5e274394911b69` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
 
+## 2026-08-08：CRM 客户列表表头升降序与群名列
+
+- 需求：客户中心列表需要更直接的升序/降序操作，并在列表中显示客户关联的微信群 / WhatsApp 群名。
+- 修复：完整表格列新增 `群名`，接口从 `crm_customer_chat_groups` 汇总未删除客户群，按 `微信群：群名；WhatsApp群：群名` 格式返回 `chat_group_names`；排序下拉新增等级、来源、负责人、联系人、群名、状态等字段。
+- 交互：表头可排序列增加升降序提示，点击表头切换升序/降序并刷新当前列表；选择框和操作列不参与排序。紧凑默认布局仍保留代码/客户/国家，避免默认列表宽度被群名列撑大。
+- 回归保护：新增 `tests/crm_customer_list_sort_chat_group_contract.php`，锁定群名列、后端群名汇总、表头排序事件、排序图标和后端排序字段。
+
 ## 2026-08-08：CRM 客户中心恢复全屏布局按钮
 
 - 问题：客户中心列表/属性/还原的全屏逻辑、CSS 和事件绑定仍存在，但按钮入口在后续客户中心重构中从默认 ACTIONS 移除，只残留在“已删除客户”分支；页面上也没有生成 `data-customer-layout` 按钮，导致用户看不到入口。

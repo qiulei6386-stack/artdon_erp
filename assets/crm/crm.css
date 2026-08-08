@@ -6645,6 +6645,11 @@ body.is-actionbar-resizing * {
 .customer-table { min-width: 1220px; table-layout: fixed; }
 .customer-table.is-layout-default { min-width: 0; width: auto; }
 .customer-table th { position: relative; user-select: none; }
+.customer-table th.is-sortable { cursor: pointer; }
+.customer-table th.is-sortable:hover { background: var(--crm-hover-bg); color: var(--crm-primary); }
+.customer-table th.is-sort-active { color: var(--crm-primary); }
+.customer-sort-indicator { display: inline-flex; margin-left: 4px; color: var(--crm-muted-text); font-size: 10px; font-style: normal; font-weight: 900; vertical-align: middle; }
+.customer-table th.is-sort-active .customer-sort-indicator { color: var(--crm-primary); }
 .customer-table th:first-child, .customer-table td:first-child { text-align: center; }
 .customer-table th i[data-column-resizer] {
   position: absolute;

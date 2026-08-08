@@ -1658,7 +1658,20 @@ function crm_customer_list(array $input): array
     }
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
-    $sortMap = ['updated_at'=>'c.updated_at','customer_code'=>'c.customer_code','customer_name'=>'c.customer_name','country'=>'c.country','created_at'=>'c.created_at','last_followup'=>'(SELECT MAX(f.followup_time) FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL)'];
+    $sortMap = [
+        'updated_at' => 'c.updated_at',
+        'customer_code' => 'c.customer_code',
+        'customer_name' => 'c.customer_name',
+        'country' => 'c.country',
+        'level' => 'c.level',
+        'source' => 'c.source',
+        'owner_name' => 'COALESCE(u.username, c.owner_department, "")',
+        'contact_count' => '(SELECT COUNT(*) FROM crm_contacts ct_sort WHERE ct_sort.customer_id = c.id AND ct_sort.deleted_at IS NULL)',
+        'chat_group_names' => '(SELECT GROUP_CONCAT(cg_sort.group_name ORDER BY cg_sort.group_platform, cg_sort.id SEPARATOR ",") FROM crm_customer_chat_groups cg_sort WHERE cg_sort.customer_id = c.id AND cg_sort.deleted_at IS NULL)',
+        'status' => 'c.status',
+        'created_at' => 'c.created_at',
+        'last_followup' => '(SELECT MAX(f.followup_time) FROM crm_customer_followups f WHERE f.customer_id = c.id AND f.deleted_at IS NULL)'
+    ];
     $sort = $sortMap[$input['sort'] ?? 'updated_at'] ?? 'c.updated_at';
     $dir = strtoupper((string)($input['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
     $sqlWhere = implode(' AND ', $where);
@@ -1675,6 +1688,7 @@ function crm_customer_list(array $input): array
         0 AS contact_count,
         NULL AS last_followup_at,
         '' AS group_names,
+        '' AS chat_group_names,
         '' AS source_tags,
         '' AS promotion_channels,
         COALESCE(ps.status, 'not_promoted') AS promotion_status
@@ -1716,6 +1730,11 @@ function crm_customer_list(array $input): array
         $groupNames = [];
         foreach ($groupStmt->fetchAll() as $row) $groupNames[(int)$row['customer_id']] = (string)$row['group_names'];
 
+        $chatGroupStmt = db()->prepare("SELECT customer_id, GROUP_CONCAT(CONCAT(CASE WHEN group_platform = 'whatsapp_group' THEN 'WhatsApp群' ELSE '微信群' END, '：', group_name) ORDER BY group_platform, id SEPARATOR '；') AS chat_group_names FROM crm_customer_chat_groups WHERE customer_id IN ({$placeholders}) AND deleted_at IS NULL GROUP BY customer_id");
+        $chatGroupStmt->execute($ids);
+        $chatGroupNames = [];
+        foreach ($chatGroupStmt->fetchAll() as $row) $chatGroupNames[(int)$row['customer_id']] = (string)$row['chat_group_names'];
+
         $sourceStmt = db()->prepare("SELECT customer_id, GROUP_CONCAT(source_key ORDER BY id SEPARATOR ',') AS source_tags FROM crm_customer_source_tags WHERE customer_id IN ({$placeholders}) GROUP BY customer_id");
         $sourceStmt->execute($ids);
         $sourceTags = [];
@@ -1751,6 +1770,7 @@ function crm_customer_list(array $input): array
             $row['contact_count'] = $contactCounts[$customerId] ?? 0;
             $row['last_followup_at'] = $lastFollowups[$customerId] ?? null;
             $row['group_names'] = $groupNames[$customerId] ?? '';
+            $row['chat_group_names'] = $chatGroupNames[$customerId] ?? '';
             $row['source_tags'] = $sourceTags[$customerId] ?? '';
             $row['promotion_channels'] = $promotionChannels[$customerId] ?? '';
             if (isset($ownerMap[$customerId])) {

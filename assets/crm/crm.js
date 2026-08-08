@@ -2515,6 +2515,7 @@
       { key: 'country', label: '国家', title: '国家/地区', width: 92 },
       { key: 'level', label: '等级', title: '客户等级', width: 72 },
       { key: 'source', label: '来源', title: '客户来源', width: 92 },
+      { key: 'chat_group_names', label: '群名', title: '微信群 / WhatsApp群名', width: 168 },
       { key: 'owner_name', label: '负责', title: '负责人', width: 92 },
       { key: 'contact_count', label: '联系', title: '联系人数量', width: 58 },
       { key: 'last_followup_at', label: '跟进', title: '最近跟进', width: 118 },
@@ -2745,6 +2746,22 @@
     visibleColumns: function () {
       return this.layoutMode === 'default' ? this.compactColumns : this.columns;
     },
+    sortableColumnKey: function (key) {
+      var map = {
+        customer_code: 'customer_code',
+        customer_name: 'customer_name',
+        country: 'country',
+        level: 'level',
+        source: 'source',
+        chat_group_names: 'chat_group_names',
+        owner_name: 'owner_name',
+        contact_count: 'contact_count',
+        last_followup_at: 'last_followup',
+        status: 'status',
+        updated_at: 'updated_at'
+      };
+      return map[key] || '';
+    },
     defaultListWidth: function () {
       var columns = this.compactColumns || [];
       var total = columns.reduce(function (sum, col) {
@@ -2768,8 +2785,13 @@
       var head = table.querySelector('thead');
       if (head) {
         head.innerHTML = '<tr>' + columns.map(function (col) {
-          var content = (col.key === 'select' ? '<input type="checkbox" data-customer-check-all>' : '<span>' + esc(col.label) + '</span>') + '<i data-column-resizer="' + esc(col.key) + '"></i>';
-          return '<th data-col="' + esc(col.key) + '" title="' + esc(col.title) + '">' + content + '</th>';
+          var sortKey = CustomerModule.sortableColumnKey(col.key);
+          var active = sortKey && (CustomerModule.filterState.sort || CustomerModule.sort) === sortKey;
+          var direction = active ? ((CustomerModule.filterState.direction || CustomerModule.dir || 'DESC').toUpperCase()) : '';
+          var sortIcon = sortKey ? '<em class="customer-sort-indicator">' + (active ? (direction === 'ASC' ? '↑' : '↓') : '↕') + '</em>' : '';
+          var content = (col.key === 'select' ? '<input type="checkbox" data-customer-check-all>' : '<span>' + esc(col.label) + '</span>' + sortIcon) + '<i data-column-resizer="' + esc(col.key) + '"></i>';
+          var attrs = sortKey ? ' data-customer-sort-col="' + esc(col.key) + '" aria-sort="' + (active ? (direction === 'ASC' ? 'ascending' : 'descending') : 'none') + '"' : '';
+          return '<th data-col="' + esc(col.key) + '"' + attrs + ' class="' + (sortKey ? 'is-sortable' : '') + (active ? ' is-sort-active' : '') + '" title="' + esc(sortKey ? (col.title + ' · 点击切换升序/降序') : col.title) + '">' + content + '</th>';
         }).join('') + '</tr>';
       }
       this.updateTableWidth();
@@ -2887,6 +2909,7 @@
         self.filterState.sort = self.sort;
         self.page = 1;
         self.saveListPrefs();
+        self.renderHeader();
         self.loadList();
       });
       if (dir) dir.addEventListener('change', function () {
@@ -2895,6 +2918,7 @@
         self.filterState.direction = self.dir;
         self.page = 1;
         self.saveListPrefs();
+        self.renderHeader();
         self.loadList();
       });
       if (reset) reset.addEventListener('click', function () {
@@ -2984,6 +3008,11 @@
       document.querySelector('[data-customer-table]')?.addEventListener('mousedown', function (event) {
         var handle = event.target.closest('[data-column-resizer]');
         if (handle) self.startColumnResize(event, handle.getAttribute('data-column-resizer'));
+      });
+      document.querySelector('[data-customer-table]')?.addEventListener('click', function (event) {
+        if (event.target.closest('[data-column-resizer]') || event.target.closest('[data-customer-check-all]')) return;
+        var th = event.target.closest('[data-customer-sort-col]');
+        if (th) self.applyColumnSort(th.getAttribute('data-customer-sort-col') || '');
       });
       document.querySelector('[data-customer-resizer]')?.addEventListener('mousedown', function (event) { self.startPanelResize(event); });
       document.querySelector('[data-customer-form]')?.addEventListener('submit', function (event) {
@@ -3102,6 +3131,22 @@
         sort: this.filterState.sort || this.sort,
         dir: this.filterState.direction || this.dir
       };
+    },
+    applyColumnSort: function (columnKey) {
+      var sortKey = this.sortableColumnKey(columnKey);
+      if (!sortKey) return;
+      this.ensureFilterState();
+      var currentSort = this.filterState.sort || this.sort || 'updated_at';
+      var currentDir = String(this.filterState.direction || this.dir || 'DESC').toUpperCase();
+      this.sort = sortKey;
+      this.dir = currentSort === sortKey && currentDir === 'ASC' ? 'DESC' : 'ASC';
+      this.filterState.sort = this.sort;
+      this.filterState.direction = this.dir;
+      this.page = 1;
+      this.updateFilterControls();
+      this.renderHeader();
+      this.saveListPrefs();
+      this.loadList();
     },
     startColumnResize: function (event, key) {
       event.preventDefault();
@@ -3296,6 +3341,7 @@
         }
         if (key === 'level') return '<td data-label="客户等级">' + esc(row.level || '-') + '</td>';
         if (key === 'source') return '<td data-label="客户来源">' + esc(row.source_tags || row.source || '-') + '</td>';
+        if (key === 'chat_group_names') return '<td data-label="群名" title="' + esc(row.chat_group_names || '') + '">' + esc(row.chat_group_names || '-') + '</td>';
         if (key === 'owner_name') return '<td data-label="负责人" title="' + esc(row.owner_summary || row.owner_name || '') + '">' + esc(row.owner_summary || row.owner_name || '-') + '</td>';
         if (key === 'contact_count') return '<td data-label="联系人数量">' + esc(row.contact_count || 0) + '</td>';
         if (key === 'last_followup_at') return '<td data-label="最近跟进">' + esc(row.last_followup_at || '-') + '</td>';
