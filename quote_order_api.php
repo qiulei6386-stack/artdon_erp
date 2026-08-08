@@ -191,7 +191,7 @@ function qo_save_doc_settings(PDO $pdo,$d){
 }
 function qo_ensure_schema(PDO $pdo){
   static $schemaDone=false;
-  $schemaKey='quote_order_schema_checked_v68554';
+  $schemaKey='quote_order_schema_checked_v68555';
   if($schemaDone || !empty($_SESSION[$schemaKey])){ $schemaDone=true; return; }
   $pdo->exec("CREATE TABLE IF NOT EXISTS quote_sales_orders (id INT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
   $orderCols=[
@@ -224,7 +224,7 @@ function qo_ensure_schema(PDO $pdo){
   try{$pdo->exec('ALTER TABLE quote_packaging_profiles ADD KEY idx_pack_product(product_code,customer_code)');}catch(Throwable $e){}
 
   $pdo->exec("CREATE TABLE IF NOT EXISTS quote_order_payments (id INT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  $payCols=['order_id'=>'INT NOT NULL DEFAULT 0','payment_type'=>'VARCHAR(80) DEFAULT \'\'','payment_date'=>'DATE NULL','amount'=>'DECIMAL(14,2) DEFAULT 0','currency'=>'VARCHAR(20) DEFAULT \'\'','method'=>'VARCHAR(120) DEFAULT \'\'','bank_ref'=>'VARCHAR(160) DEFAULT \'\'','note'=>'TEXT NULL','commission_deduct_amount'=>'DECIMAL(12,4) DEFAULT 0','commission_deduct_snapshot_id'=>'INT DEFAULT 0','commission_deduct_note'=>'TEXT NULL','created_by'=>'VARCHAR(120) DEFAULT \'\'','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP'];
+  $payCols=['order_id'=>'INT NOT NULL DEFAULT 0','payment_type'=>'VARCHAR(80) DEFAULT \'\'','payment_date'=>'DATE NULL','amount'=>'DECIMAL(14,2) DEFAULT 0','currency'=>'VARCHAR(20) DEFAULT \'\'','method'=>'VARCHAR(120) DEFAULT \'\'','bank_ref'=>'VARCHAR(160) DEFAULT \'\'','note'=>'TEXT NULL','commission_deduct_amount'=>'DECIMAL(12,4) DEFAULT 0','commission_deduct_snapshot_id'=>'INT DEFAULT 0','commission_deduct_note'=>'TEXT NULL','writeoff_amount'=>'DECIMAL(12,4) DEFAULT 0','writeoff_reason'=>'VARCHAR(255) DEFAULT \'\'','writeoff_note'=>'TEXT NULL','created_by'=>'VARCHAR(120) DEFAULT \'\'','created_at'=>'DATETIME DEFAULT CURRENT_TIMESTAMP'];
   foreach($payCols as $c=>$ddl) qo_ensure_col($pdo,'quote_order_payments',$c,$ddl);
   try{$pdo->exec('ALTER TABLE quote_order_payments ADD KEY idx_payment_order(order_id)');}catch(Throwable $e){}
 
@@ -332,11 +332,12 @@ function qo_recalc_payment(PDO $pdo,$orderId){
   $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]); if(!$order)return [];
   $paid=(float)qo_row($pdo,'SELECT COALESCE(SUM(amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
   $deduct=(float)qo_row($pdo,'SELECT COALESCE(SUM(commission_deduct_amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
-  $receivableReduced=$paid+$deduct;
+  $writeoff=(float)qo_row($pdo,'SELECT COALESCE(SUM(writeoff_amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
+  $receivableReduced=$paid+$deduct+$writeoff;
   $amount=qo_num($order['amount']??0); $bal=max(0,round($amount-$receivableReduced,2));
   $status=$receivableReduced<=0?'未收款':($bal<=0.00001?'已收齐':'部分收款');
   $pdo->prepare('UPDATE quote_sales_orders SET paid_amount=?,balance_amount=?,payment_status=?,updated_at=NOW() WHERE id=?')->execute([$paid,$bal,$status,$orderId]);
-  return ['order_amount'=>$amount,'paid_amount'=>$paid,'commission_deduct_amount'=>$deduct,'receivable_reduced'=>$receivableReduced,'balance_amount'=>$bal,'payment_status'=>$status,'currency'=>$order['currency']??'USD'];
+  return ['order_amount'=>$amount,'paid_amount'=>$paid,'commission_deduct_amount'=>$deduct,'writeoff_amount'=>$writeoff,'receivable_reduced'=>$receivableReduced,'balance_amount'=>$bal,'payment_status'=>$status,'currency'=>$order['currency']??'USD'];
 }
 function qo_update_item_shipped(PDO $pdo,$orderId){
   $items=qo_rows($pdo,'SELECT id,qty,item_json FROM quote_sales_order_items WHERE order_id=?',[$orderId]);
@@ -788,9 +789,10 @@ function qo_list_orders(PDO $pdo){
       o.user_name,o.created_by,o.updated_by,o.created_at,o.updated_at,
       COALESCE(pay.paid_amount,0) AS paid_calc,
       COALESCE(pay.commission_deduct_amount,0) AS commission_deduct_calc,
+      COALESCE(pay.writeoff_amount,0) AS writeoff_calc,
       COALESCE(ship.shipped_qty,0) AS shipped_calc
     FROM quote_sales_orders o
-    LEFT JOIN (SELECT order_id, SUM(amount) AS paid_amount, SUM(COALESCE(commission_deduct_amount,0)) AS commission_deduct_amount FROM quote_order_payments GROUP BY order_id) pay ON pay.order_id=o.id
+    LEFT JOIN (SELECT order_id, SUM(amount) AS paid_amount, SUM(COALESCE(commission_deduct_amount,0)) AS commission_deduct_amount, SUM(COALESCE(writeoff_amount,0)) AS writeoff_amount FROM quote_order_payments GROUP BY order_id) pay ON pay.order_id=o.id
     LEFT JOIN (SELECT order_id, SUM(shipped_qty) AS shipped_qty FROM quote_sales_order_items GROUP BY order_id) ship ON ship.order_id=o.id
     ORDER BY COALESCE(o.order_date,o.created_at) DESC,o.id DESC
     LIMIT 2000";
@@ -800,16 +802,16 @@ function qo_list_orders(PDO $pdo){
     $amount=qo_num($o['amount']??0);
     $paid=qo_num($o['paid_calc']??0);
     if($paid<=0 && qo_num($o['paid_amount']??0)>0) $paid=qo_num($o['paid_amount']);
-    $deduct=qo_num($o['commission_deduct_calc']??0);$bal=max(0,round($amount-$paid-$deduct,2));
+    $deduct=qo_num($o['commission_deduct_calc']??0);$writeoff=qo_num($o['writeoff_calc']??0);$reduced=$paid+$deduct+$writeoff;$bal=max(0,round($amount-$reduced,2));
     $o['paid_amount']=$paid;
     $o['balance_amount']=$bal;
-    $o['payment_status']=$paid<=0?'未收款':($bal<=0.00001?'已收齐':'部分收款');
+    $o['payment_status']=$reduced<=0?'未收款':($bal<=0.00001?'已收齐':'部分收款');
     $ship=qo_num($o['shipped_calc']??0); $qty=qo_num($o['qty']??0);
     if($ship>0 && $ship+0.00001<$qty) $o['shipment_status']='部分出货';
     elseif($qty>0 && $ship+0.00001>=$qty) $o['shipment_status']='已出货';
     elseif(trim((string)($o['shipment_status']??''))==='') $o['shipment_status']='未出货';
-    $o['commission_deduct_amount']=$deduct;$o['receivable_reduced']=$paid+$deduct;
-    unset($o['paid_calc'],$o['commission_deduct_calc'],$o['shipped_calc']);
+    $o['commission_deduct_amount']=$deduct;$o['writeoff_amount']=$writeoff;$o['receivable_reduced']=$reduced;
+    unset($o['paid_calc'],$o['commission_deduct_calc'],$o['writeoff_calc'],$o['shipped_calc']);
   }
   unset($o);
   return $orders;
@@ -1066,11 +1068,13 @@ try{
   if($action==='packaging_list'){ $d=qo_input(); $kw='%'.qo_s($d['kw']??'',120).'%'; $rows=$kw==='%%'?qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000'):qo_rows($pdo,'SELECT * FROM quote_packaging_profiles WHERE product_code LIKE ? OR product_name LIKE ? OR customer_code LIKE ? OR packing_method LIKE ? ORDER BY id DESC LIMIT 1000',[$kw,$kw,$kw,$kw]); qo_ok(['profiles'=>$rows]); }
   if($action==='save_packaging'){ $d=qo_input(); $id=(int)($d['id']??0); $data=[qo_s($d['product_code']??'',160),qo_s($d['product_name']??'',255),qo_s($d['customer_code']??'',120),qo_num($d['unit_nw']??0),qo_num($d['unit_gw']??0),qo_num($d['pcs_per_ctn']??0),qo_num($d['carton_l']??0),qo_num($d['carton_w']??0),qo_num($d['carton_h']??0),qo_s($d['carton_size']??'',160),qo_num($d['carton_nw']??0),qo_num($d['carton_gw']??0),qo_num($d['carton_cbm']??0),qo_s($d['packing_method']??'',255),qo_s($d['note']??'',5000)]; if($id){ $pdo->prepare('UPDATE quote_packaging_profiles SET product_code=?,product_name=?,customer_code=?,unit_nw=?,unit_gw=?,pcs_per_ctn=?,carton_l=?,carton_w=?,carton_h=?,carton_size=?,carton_nw=?,carton_gw=?,carton_cbm=?,packing_method=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($data,[$id])); } else { $pdo->prepare('INSERT INTO quote_packaging_profiles(product_code,product_name,customer_code,unit_nw,unit_gw,pcs_per_ctn,carton_l,carton_w,carton_h,carton_size,carton_nw,carton_gw,carton_cbm,packing_method,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())')->execute($data); $id=(int)$pdo->lastInsertId(); } qo_ok(['profile'=>qo_row($pdo,'SELECT * FROM quote_packaging_profiles WHERE id=?',[$id]),'profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
   if($action==='delete_packaging'){ $d=qo_input(); $pdo->prepare('DELETE FROM quote_packaging_profiles WHERE id=?')->execute([(int)($d['id']??0)]); qo_ok(['profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
-  if($action==='save_payment'){ $d=qo_input(); $id=(int)($d['order_id']??0); if(!$id) qo_fail('缺少订单ID');qo_commission_schema($pdo);$deduct=max(0,qo_num($d['commission_deduct_amount']??0));$sid=(int)($d['commission_deduct_snapshot_id']??0);$deductNote=qo_s($d['commission_deduct_note']??'',5000);
+  if($action==='save_payment'){ $d=qo_input(); $id=(int)($d['order_id']??0); if(!$id) qo_fail('缺少订单ID');qo_commission_schema($pdo);$amount=max(0,qo_num($d['amount']??0));$deduct=max(0,qo_num($d['commission_deduct_amount']??0));$writeoff=max(0,qo_num($d['writeoff_amount']??0));$sid=(int)($d['commission_deduct_snapshot_id']??0);$deductNote=qo_s($d['commission_deduct_note']??'',5000);$writeoffReason=qo_s($d['writeoff_reason']??'',255);$writeoffNote=qo_s($d['writeoff_note']??'',5000);
+    if($amount<=0 && $deduct<=0 && $writeoff<=0) qo_fail('请填写实际到账、佣金抵扣或核销金额');
     if($deduct>0){$snap=qo_row($pdo,"SELECT * FROM quote_commission_snapshots WHERE id=? AND order_id=? AND receivable_effect='deduct_from_payment' LIMIT 1",[$sid,$id]);if(!$snap)qo_fail('佣金抵扣未确认或该佣金不允许影响应收');$available=max(0,qo_num($snap['commission_amount'])-qo_num($snap['deduct_amount']));if($deduct>$available+0.00001)qo_fail('抵扣金额超过当前可抵扣佣金');}
-    $pdo->prepare('INSERT INTO quote_order_payments(order_id,payment_type,payment_date,amount,currency,method,bank_ref,note,commission_deduct_amount,commission_deduct_snapshot_id,commission_deduct_note,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW())')->execute([$id,qo_s($d['payment_type']??'',80),qo_s($d['payment_date']??qo_today(),20)?:qo_today(),qo_num($d['amount']??0),qo_s($d['currency']??'',20),qo_s($d['method']??'',120),qo_s($d['bank_ref']??'',160),qo_s($d['note']??'',5000),$deduct,$sid,$deductNote,qo_actor()]);
+    if($writeoff>0){$beforePay=qo_recalc_payment($pdo,$id);$available=max(0,qo_num($beforePay['balance_amount']??0)-$amount-$deduct);if($writeoff>$available+0.00001)qo_fail('核销金额超过当前可核销未收款');}
+    $pdo->prepare('INSERT INTO quote_order_payments(order_id,payment_type,payment_date,amount,currency,method,bank_ref,note,commission_deduct_amount,commission_deduct_snapshot_id,commission_deduct_note,writeoff_amount,writeoff_reason,writeoff_note,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())')->execute([$id,qo_s($d['payment_type']??'',80),qo_s($d['payment_date']??qo_today(),20)?:qo_today(),$amount,qo_s($d['currency']??'',20),qo_s($d['method']??'',120),qo_s($d['bank_ref']??'',160),qo_s($d['note']??'',5000),$deduct,$sid,$deductNote,$writeoff,$writeoffReason,$writeoffNote,qo_actor()]);
     if($deduct>0)$pdo->prepare("UPDATE quote_commission_snapshots SET deduct_amount=deduct_amount+?,deduct_confirmed=1,deduct_reason=?,deduct_note=?,settle_status=IF(settle_status='unsettled','pending',settle_status),updated_at=NOW() WHERE id=?")->execute([$deduct,qo_s($d['commission_deduct_reason']??'',255),$deductNote,$sid]);
-    $summary=qo_recalc_payment($pdo,$id);if(qo_s($d['payment_type']??'',80)==='订金')$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='deposit_received' AND settle_status='unsettled'")->execute([$id]);if(qo_num($summary['balance_amount']??1)<=0.00001)$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='payment_received' AND settle_status='unsettled'")->execute([$id]);$ord=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=?',[$id])?:[];qo_commission_log($pdo,$deduct>0?'payment_commission_deduct_confirmed':'payment_commission_deduct_ignored',['event'=>$deduct>0?'收款确认佣金抵扣':'收款未使用佣金抵扣','order_id'=>$id,'order_no'=>$ord['order_no']??'','quote_no'=>$ord['quote_no']??'','customer_id'=>$ord['customer_id']??'','customer_name'=>$ord['customer_name']??'','amount'=>qo_num($d['amount']??0),'commission_deduct_amount'=>$deduct,'commission_snapshot_id'=>$sid,'receivable_reduced'=>$summary['receivable_reduced']??0,'summary'=>($ord['order_no']??'').' 实收 '.qo_num($d['amount']??0).' / 佣金抵扣 '.$deduct]);qo_ok($summary); }
+    $summary=qo_recalc_payment($pdo,$id);if(qo_s($d['payment_type']??'',80)==='订金')$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='deposit_received' AND settle_status='unsettled'")->execute([$id]);if(qo_num($summary['balance_amount']??1)<=0.00001)$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='payment_received' AND settle_status='unsettled'")->execute([$id]);$ord=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=?',[$id])?:[];qo_commission_log($pdo,$writeoff>0?'payment_writeoff_recorded':($deduct>0?'payment_commission_deduct_confirmed':'payment_commission_deduct_ignored'),['event'=>$writeoff>0?'订单应收核销':($deduct>0?'收款确认佣金抵扣':'收款未使用佣金抵扣'),'order_id'=>$id,'order_no'=>$ord['order_no']??'','quote_no'=>$ord['quote_no']??'','customer_id'=>$ord['customer_id']??'','customer_name'=>$ord['customer_name']??'','amount'=>$amount,'commission_deduct_amount'=>$deduct,'writeoff_amount'=>$writeoff,'writeoff_reason'=>$writeoffReason,'commission_snapshot_id'=>$sid,'receivable_reduced'=>$summary['receivable_reduced']??0,'summary'=>($ord['order_no']??'').' 实收 '.$amount.' / 佣金抵扣 '.$deduct.' / 核销 '.$writeoff]);qo_ok($summary); }
   if($action==='delete_payment'){ $d=qo_input(); $pid=(int)($d['id']??0); $r=qo_row($pdo,'SELECT order_id,commission_deduct_amount,commission_deduct_snapshot_id FROM quote_order_payments WHERE id=?',[$pid]);if($r&&qo_num($r['commission_deduct_amount']??0)>0&&(int)($r['commission_deduct_snapshot_id']??0)>0){$pdo->prepare("UPDATE quote_commission_snapshots SET deduct_amount=GREATEST(0,deduct_amount-?),deduct_confirmed=IF(GREATEST(0,deduct_amount-?)>0,1,0),updated_at=NOW() WHERE id=?")->execute([qo_num($r['commission_deduct_amount']),qo_num($r['commission_deduct_amount']),(int)$r['commission_deduct_snapshot_id']]);} $pdo->prepare('DELETE FROM quote_order_payments WHERE id=?')->execute([$pid]); qo_ok($r?qo_recalc_payment($pdo,(int)$r['order_id']):[]); }
   if($action==='clear_quote_order_test_data'){ $d=qo_input(); if(($d['confirm']??'')!=='CLEAR_TEST_DATA') qo_fail('确认码错误'); $tables=['quote_commission_lines','quote_commission_snapshots','quote_shipment_cartons','quote_shipment_items','quote_shipments','quote_order_payments','quote_sales_order_items','quote_sales_orders','quote_orders']; $del=[]; foreach($tables as $t){ if(qo_table_exists($pdo,$t)){ $del[$t]=(int)$pdo->query('SELECT COUNT(*) FROM `'.$t.'`')->fetchColumn(); $pdo->exec('DELETE FROM `'.$t.'`'); } } qo_ok(['deleted'=>$del]); }
   qo_fail('未知订单接口 action：'.$action);
