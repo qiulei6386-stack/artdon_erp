@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：订单佣金从报价佣金同步修复
+
+- 用户反馈订单 `AT-260724EX028-01` 报价/佣金中心显示佣金 RMB 1000，但订单详情“佣金结算”显示 RMB 65。
+- 线上只读核对确认：订单金额 RMB 6500；订单快照 `quote_commission_snapshots.id=6` 仍为 `percent + commission_value=1`，因此订单详情按 `6500 * 1% = 65` 显示；对应报价 `quote_orders.id=124` 的 `commission_json` 已是逐项佣金 `fixed_unit=1 * qty 1000 = RMB 1000`。
+- `quote_api.php`：新增 `quote_commission_sync_converted_orders()`，保存报价佣金或报价产品佣金后，如报价已转订单，则同步未结算订单的 `rule_id=0` 佣金快照；逐项佣金会汇总成订单固定金额，避免报价 1000 / 订单 65 分裂。
+- 保护规则：已结算或部分结算的订单佣金不自动覆盖，避免改乱历史结算。
+- 新增 `tests/quote_commission_sync_converted_order_contract.php`，锁定报价佣金保存后同步已转订单、按 `source_quote_id` 和 `quote_no` 兜底匹配旧订单、逐项佣金汇总为固定金额。
+- 待检查/部署/数据修复：本地 `git diff --check` 通过；修改后的 `quote_api.php` 已临时上传服务器 `/tmp` 并通过 `php -l`；提交推送、服务器检查后修复订单 `AT-260724EX028-01` 当前快照。
+
 ## 本次：CRM 高级筛选国家支持手输模糊查找
 
 - 用户反馈客户中心高级筛选的国家下拉有 200 多个国家，纯下拉查找太慢，希望国家可以手输模糊查找。

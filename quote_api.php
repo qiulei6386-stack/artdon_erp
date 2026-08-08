@@ -2425,6 +2425,46 @@ function quote_commission_option_save($pdo,$d,$user){
   $id=(int)save_row($pdo,'quote_commission_options',$row,['option_group','option_code','option_name','option_value','extra_json','is_system','is_default','is_active','sort_order','note','created_by','updated_by']);$after=row($pdo,'SELECT * FROM quote_commission_options WHERE id=?',[$id]);quote_log_event($pdo,['action'=>'commission_option_save','event'=>'保存佣金设置','user_name'=>$actor,'summary'=>$after['option_name'],'before'=>$before,'after'=>$after]);return ['id'=>$id,'option'=>$after];
 }
 function quote_commission_calc($mode,$value,$base,$qty){$value=(float)$value;$base=(float)$base;$qty=(float)$qty;if($mode==='percent')return round($base*$value/100,2);if($mode==='fixed_order')return round($value,2);if($mode==='fixed_unit')return round($qty*$value,2);return null;}
+function quote_commission_sync_converted_orders($pdo,array $q,array $c,string $actor='system'): array{
+  quote_commission_schema($pdo);
+  $qid=(int)($q['id']??0);$quoteNo=s($q['quote_no']??'',120);$where=[];$args=[];
+  if($qid>0){$where[]='source_quote_id=?';$args[]=$qid;}
+  if($quoteNo!==''){$where[]='quote_no=?';$args[]=$quoteNo;}
+  if(!$where)return ['synced'=>0,'skipped'=>0,'orders'=>[]];
+  $orders=rows($pdo,'SELECT * FROM quote_sales_orders WHERE ('.implode(' OR ',$where).") AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY id",$args);
+  $synced=0;$skipped=0;$ids=[];
+  foreach($orders as $o){
+    $orderId=(int)($o['id']??0);if(!$orderId)continue;
+    $old=row($pdo,'SELECT * FROM quote_commission_snapshots WHERE order_id=? AND rule_id=0 LIMIT 1',[$orderId]);
+    if($old && ((float)($old['settled_amount']??0)>0 || in_array((string)($old['settle_status']??''),['settled','partial'],true))){$skipped++;continue;}
+    $scope=in_array(($c['commission_scope']??''),['order','line','mixed'],true)?(string)$c['commission_scope']:'order';
+    $lineTotal=0.0;foreach(($c['lines']??[]) as $line){if(is_array($line)&&!empty($line['is_commission_enabled']))$lineTotal+=(float)($line['estimated_amount']??0);}
+    $isLineOnly=$scope==='line';$amount=(float)($o['amount']??$q['amount']??0);$qty=(float)($o['qty']??$q['qty']??0);
+    if($isLineOnly){
+      $commission=round($lineTotal>0?$lineTotal:(float)($c['commission_estimated_amount']??0),2);
+      $mode='fixed_order';$value=$commission;$baseCode='order_amount';$ruleName='报价产品佣金汇总';
+    }else{
+      $mode=s($c['commission_mode']??($old['commission_mode']??'percent'),50);
+      $value=max(0,(float)($c['commission_value']??($old['commission_value']??0)));
+      $baseCode=s($c['commission_calc_base']??($old['calc_base']??'order_amount'),50);
+      $base=$baseCode==='received_amount'?(float)($o['paid_amount']??0):$amount;
+      $commission=quote_commission_calc($mode,$value,$base,$qty);
+      if($commission===null)$commission=(float)($c['commission_estimated_amount']??0);
+      $ruleName='报价佣金同步';
+    }
+    if($commission<=0.00001 && empty($c['commission_required'])){$skipped++;continue;}
+    $target=s($c['commission_target_name']??($old['target_name']??''),160);if($target==='')$target='报价佣金';
+    $effect=in_array(($c['commission_receivable_effect']??($old['receivable_effect']??'none')),['none','deduct_from_payment','pending_confirm'],true)?(string)($c['commission_receivable_effect']??($old['receivable_effect']??'none')):'none';
+    $status=$old?s($old['settle_status']??'unsettled',50):'unsettled';
+    $snapshot=['source'=>'quote_commission_sync_to_order','operator'=>$actor,'time'=>date('Y-m-d H:i:s'),'before'=>$old,'quote'=>['id'=>$qid,'quote_no'=>$quoteNo,'commission'=>$c],'order'=>['id'=>$orderId,'order_no'=>$o['order_no']??'','amount'=>$amount,'qty'=>$qty]];
+    $params=[$qid,$quoteNo,s($o['order_no']??'',120),s($c['commission_target_type']??'other',50),$target,$mode,$value,$baseCode,$amount,round($commission,2),s($c['commission_currency']??($q['currency']??$o['currency']??'USD'),20),s($c['commission_settle_node']??($old['settle_node']??'manual'),50),$status,(float)($old['settled_amount']??0),$isLineOnly?'order':$scope,$effect,json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),s($c['commission_note']??($old['note']??'报价佣金同步订单'),5000)];
+    if($old){$pdo->prepare('UPDATE quote_commission_snapshots SET quote_id=?,quote_no=?,order_no=?,target_type=?,target_name=?,commission_mode=?,commission_value=?,calc_base=?,base_amount=?,commission_amount=?,currency=?,settle_node=?,settle_status=?,settled_amount=?,commission_scope=?,receivable_effect=?,snapshot_json=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($params,[(int)$old['id']]));}
+    else{$insertParams=array_merge([$qid,$orderId,$quoteNo,s($o['order_no']??'',120),$ruleName],array_slice($params,3));$pdo->prepare("INSERT INTO quote_commission_snapshots(quote_id,order_id,quote_no,order_no,rule_id,rule_name,target_type,target_name,commission_mode,commission_value,calc_base,base_amount,commission_amount,currency,settle_node,settle_status,settled_amount,commission_scope,receivable_effect,snapshot_json,note) VALUES(?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute($insertParams);}
+    $synced++;$ids[]=$orderId;
+  }
+  if($synced)quote_log_event($pdo,['action'=>'commission_quote_sync_orders','event'=>'报价佣金同步订单快照','quote_id'=>$qid,'quote_no'=>$quoteNo,'user_name'=>$actor,'summary'=>'同步订单佣金 '.$synced.' 张','detail'=>['order_ids'=>$ids,'skipped'=>$skipped]]);
+  return ['synced'=>$synced,'skipped'=>$skipped,'orders'=>$ids];
+}
 function quote_commission_order_list($pdo,$d){
   quote_commission_schema($pdo);$where=[];$args=[];$q=s($d['keyword']??'',160);
   if($q!==''){$where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.user_name LIKE ? OR s.target_name LIKE ? OR s.note LIKE ?)';for($i=0;$i<6;$i++)$args[]='%'.$q.'%';}
@@ -2496,13 +2536,14 @@ function quote_commission_quote_save($pdo,$d,$user){
     'updated_at'=>date('c')
   ]);
   $pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);
-  quote_log_event($pdo,['action'=>'commission_quote_save','event'=>'保存报价佣金','quote_id'=>$id,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'before'=>$before,'after'=>$after]);
-  return ['quote_id'=>$id,'commission'=>$after];
+  $actor=quote_price_policy_actor($user);$sync=quote_commission_sync_converted_orders($pdo,$q,$after,$actor);
+  quote_log_event($pdo,['action'=>'commission_quote_save','event'=>'保存报价佣金','quote_id'=>$id,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>$actor,'before'=>$before,'after'=>$after,'detail'=>['order_sync'=>$sync]]);
+  return ['quote_id'=>$id,'commission'=>$after,'order_sync'=>$sync];
 }
 function quote_commission_quote_lines_save($pdo,$d,$user){
   $group=[];
   foreach(($d['items']??[]) as $x){$qid=(int)($x['quote_id']??0);if(!$qid&&isset($x['order_id']))$qid=abs((int)$x['order_id']);if($qid)$group[$qid][]=$x;}
-  $saved=[];$errors=[];
+  $saved=[];$errors=[];$syncs=[];
   foreach($group as $qid=>$edits){
     try{
       $q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$qid]);
@@ -2530,11 +2571,12 @@ function quote_commission_quote_lines_save($pdo,$d,$user){
         $c['commission_estimated_amount']=$lineTotal;
       }
       $pdo->prepare('UPDATE quote_orders SET commission_json=? WHERE id=?')->execute([json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qid]);
-      quote_log_event($pdo,['action'=>'commission_quote_lines_save','event'=>'保存报价产品佣金','quote_id'=>$qid,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>quote_price_policy_actor($user),'summary'=>'保存报价产品佣金：'.$q['quote_no'].' / '.count($edits).' 行','detail'=>['quote_id'=>$qid,'line_count'=>count($edits)],'before'=>$before,'after'=>$c]);
+      $actor=quote_price_policy_actor($user);$sync=quote_commission_sync_converted_orders($pdo,$q,$c,$actor);$syncs[$qid]=$sync;
+      quote_log_event($pdo,['action'=>'commission_quote_lines_save','event'=>'保存报价产品佣金','quote_id'=>$qid,'quote_no'=>$q['quote_no'],'customer_name'=>$q['customer_name'],'user_name'=>$actor,'summary'=>'保存报价产品佣金：'.$q['quote_no'].' / '.count($edits).' 行','detail'=>['quote_id'=>$qid,'line_count'=>count($edits),'order_sync'=>$sync],'before'=>$before,'after'=>$c]);
       $saved[]=$qid;
     }catch(Throwable $e){$errors[]=['quote_id'=>$qid,'reason'=>$e->getMessage()];}
   }
-  return ['saved'=>$saved,'errors'=>$errors];
+  return ['saved'=>$saved,'errors'=>$errors,'order_sync'=>$syncs];
 }
 function quote_commission_item_save($pdo,$d,$user){
   quote_commission_schema($pdo);$itemId=(int)($d['order_item_id']??0);$it=row($pdo,'SELECT i.*,o.order_no,o.quote_no,o.currency AS order_currency FROM quote_sales_order_items i JOIN quote_sales_orders o ON o.id=i.order_id WHERE i.id=? LIMIT 1',[$itemId]);if(!$it)fail('订单产品不存在');
