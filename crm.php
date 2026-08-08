@@ -410,6 +410,26 @@ $prefStyle = sprintf(
                 <input data-customer-search placeholder="客户 / 代码 / 联系人 / 邮箱 / 电话 / WhatsApp / 国家 / 网站 / 备注">
                 <button type="button" data-customer-search-clear>清空</button>
               </div>
+              <div class="customer-search-tools">
+                <label>每页<select data-customer-page-size><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></label>
+                <label>视图<select data-customer-view title="客户列表排列方式"><option value="table">表格</option><option value="compact">紧凑</option><option value="card">卡片</option></select></label>
+                <label>排序<select data-customer-sort title="排序字段"><option value="updated_at">按更新</option><option value="customer_code">按代码</option><option value="customer_name">按客户</option><option value="country">按国家</option><option value="level">按等级</option><option value="source">按来源</option><option value="owner_name">按负责人</option><option value="contact_count">按联系人</option><option value="chat_group_names">按群名</option><option value="latest_mail_at">按最近邮件</option><option value="latest_quote_at">按最近报价</option><option value="last_promotion_at">按最后推广</option><option value="status">按状态</option><option value="created_at">按创建</option><option value="last_followup">按跟进</option></select></label>
+                <label>方向<select data-customer-dir title="排序方向"><option value="DESC">倒序</option><option value="ASC">正序</option></select></label>
+                <button type="button" data-customer-search-btn>搜索</button>
+                <button type="button" data-customer-advanced-toggle>高级筛选</button>
+                <button type="button" data-customer-reset>重置</button>
+                <details class="customer-more-tools">
+                  <summary>更多</summary>
+                  <div class="customer-more-menu">
+                    <button type="button" data-customer-import-log>导入日志</button>
+                    <div class="customer-layout-tools customer-center-layout-tools" aria-label="客户中心布局切换">
+                      <button type="button" data-customer-layout="list" title="一键全屏显示客户列表">列表全屏</button>
+                      <button type="button" data-customer-layout="detail" title="一键全屏显示客户属性">属性全屏</button>
+                      <button type="button" data-customer-layout="default" title="还原客户列表和客户属性默认布局">还原</button>
+                    </div>
+                  </div>
+                </details>
+              </div>
               <div class="customer-search-meta">
                 <span data-customer-search-status>输入即搜，280ms 自动刷新</span>
                 <strong data-customer-count>0 条</strong>
@@ -433,26 +453,6 @@ $prefStyle = sprintf(
                 <button type="button" data-customer-filter="<?= h($filterKey) ?>" title="<?= h($filterLabel) ?>"><?= h($filterLabel) ?></button>
                 <?php endforeach; ?>
               </div>
-              <div class="customer-search-tools">
-                <label>每页<select data-customer-page-size><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></label>
-                <label>视图<select data-customer-view title="客户列表排列方式"><option value="table">表格</option><option value="compact">紧凑</option><option value="card">卡片</option></select></label>
-                <label>排序<select data-customer-sort title="排序字段"><option value="updated_at">按更新</option><option value="customer_code">按代码</option><option value="customer_name">按客户</option><option value="country">按国家</option><option value="level">按等级</option><option value="source">按来源</option><option value="owner_name">按负责人</option><option value="contact_count">按联系人</option><option value="chat_group_names">按群名</option><option value="latest_mail_at">按最近邮件</option><option value="latest_quote_at">按最近报价</option><option value="last_promotion_at">按最后推广</option><option value="status">按状态</option><option value="created_at">按创建</option><option value="last_followup">按跟进</option></select></label>
-                <label>方向<select data-customer-dir title="排序方向"><option value="DESC">倒序</option><option value="ASC">正序</option></select></label>
-                <button type="button" data-customer-search-btn>立即搜索</button>
-                <button type="button" data-customer-advanced-toggle>高级筛选</button>
-                <button type="button" data-customer-reset>重置</button>
-              </div>
-              <details class="customer-more-tools">
-                <summary>更多</summary>
-                <div class="customer-more-menu">
-                  <button type="button" data-customer-import-log>导入日志</button>
-                  <div class="customer-layout-tools customer-center-layout-tools" aria-label="客户中心布局切换">
-                    <button type="button" data-customer-layout="list" title="一键全屏显示客户列表">列表全屏</button>
-                    <button type="button" data-customer-layout="detail" title="一键全屏显示客户属性">属性全屏</button>
-                    <button type="button" data-customer-layout="default" title="还原客户列表和客户属性默认布局">还原</button>
-                  </div>
-                </div>
-              </details>
             </div>
           </section>
           <aside class="customer-filter-drawer" data-customer-filter-drawer aria-hidden="true" hidden>
