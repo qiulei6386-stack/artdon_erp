@@ -5905,7 +5905,7 @@ body.is-actionbar-resizing * {
 .customer-filter-line::-webkit-scrollbar { height: 0; }
 .customer-search-tools { grid-area: tools; display: flex; justify-content: flex-end; flex: 1 1 auto; flex-wrap: nowrap; gap: 6px; align-items: center; min-width: 0; overflow: visible; }
 .customer-search-tools label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.customer-search-row input, .customer-search-tools select, .customer-filter-group select {
+.customer-search-row input, .customer-search-tools select, .customer-filter-group input, .customer-filter-group select {
   width: 100%;
   height: 34px;
   min-height: 34px;
@@ -6015,6 +6015,8 @@ body.is-actionbar-resizing * {
   font-size: 12px;
 }
 .customer-filter-group label { display: grid; gap: 4px; }
+.customer-filter-group small { color: var(--crm-muted-text); font-size: 10px; line-height: 1.35; }
+.customer-filter-group select option[hidden] { display: none; }
 .customer-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .customer-filter-chips .tag-chip {
   min-height: 26px;

@@ -2834,6 +2834,7 @@
       var leadClose = document.querySelector('[data-lead-pool-close]');
       var leadRefresh = document.querySelector('[data-lead-pool-refresh]');
       var leadStatus = document.querySelector('[data-lead-pool-status]');
+      this.bindCountryFilterSearch();
       var openAdvanced = function () {
         if (!advanced) return;
         advanced.hidden = false;
@@ -3047,11 +3048,112 @@
       if (!this.filterState.quick) this.filterState.quick = 'all';
       if (!this.filterState.advanced) this.filterState.advanced = {};
     },
+    normalizeFilterText: function (value) {
+      return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    },
+    countryOptionSearchText: function (option) {
+      return this.normalizeFilterText([
+        option.value || '',
+        option.textContent || '',
+        option.getAttribute('data-country-search') || ''
+      ].join(' '));
+    },
+    filterCountryOptions: function (keyword) {
+      var select = document.querySelector('[data-filter-country]');
+      var hint = document.querySelector('[data-filter-country-hint]');
+      if (!select) return null;
+      var query = this.normalizeFilterText(keyword);
+      var visible = [];
+      Array.prototype.slice.call(select.options).forEach(function (option, index) {
+        if (index === 0) {
+          option.hidden = false;
+          return;
+        }
+        var matched = !query || CustomerModule.countryOptionSearchText(option).indexOf(query) >= 0;
+        option.hidden = !matched;
+        if (matched) visible.push(option);
+      });
+      if (hint) hint.textContent = query ? (visible.length ? ('找到 ' + visible.length + ' 个国家，回车选择第一项。') : '没有匹配国家，请换中文/英文/国家代码。') : '可手输模糊查找，回车选择第一项。';
+      return visible;
+    },
+    countryOptionDisplayText: function (option) {
+      return option ? String(option.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    },
+    syncCountrySearchFromSelect: function () {
+      var input = document.querySelector('[data-filter-country-search]');
+      var select = document.querySelector('[data-filter-country]');
+      if (!input || !select) return;
+      var selected = select.options[select.selectedIndex];
+      input.value = select.value ? this.countryOptionDisplayText(selected) : '';
+      this.filterCountryOptions(input.value);
+    },
+    setCountryFilterValue: function (value) {
+      var input = document.querySelector('[data-filter-country-search]');
+      var select = document.querySelector('[data-filter-country]');
+      if (!select) return;
+      var wanted = this.normalizeFilterText(value);
+      if (!wanted) {
+        select.value = '';
+        if (input) input.value = '';
+        this.filterCountryOptions('');
+        return;
+      }
+      var match = Array.prototype.slice.call(select.options).find(function (option, index) {
+        return index > 0 && CustomerModule.normalizeFilterText(option.value) === wanted;
+      }) || Array.prototype.slice.call(select.options).find(function (option, index) {
+        return index > 0 && CustomerModule.countryOptionSearchText(option).indexOf(wanted) >= 0;
+      });
+      if (match) {
+        select.value = match.value;
+        if (input) input.value = this.countryOptionDisplayText(match);
+        this.filterCountryOptions(input ? input.value : match.value);
+      }
+    },
+    resolveCountrySearchSelection: function () {
+      var input = document.querySelector('[data-filter-country-search]');
+      var select = document.querySelector('[data-filter-country]');
+      if (!input || !select) return;
+      var query = this.normalizeFilterText(input.value);
+      if (!query) {
+        select.value = '';
+        this.filterCountryOptions('');
+        return;
+      }
+      var selected = select.options[select.selectedIndex];
+      if (select.value && selected && this.countryOptionSearchText(selected).indexOf(query) >= 0) return;
+      var visible = this.filterCountryOptions(input.value) || [];
+      if (visible.length) {
+        select.value = visible[0].value;
+        input.value = this.countryOptionDisplayText(visible[0]);
+        this.filterCountryOptions(input.value);
+      }
+    },
+    bindCountryFilterSearch: function () {
+      var input = document.querySelector('[data-filter-country-search]');
+      var select = document.querySelector('[data-filter-country]');
+      if (!input || !select || input.dataset.bound === '1') return;
+      input.dataset.bound = '1';
+      input.addEventListener('input', function () {
+        CustomerModule.filterCountryOptions(input.value);
+        if (!input.value) select.value = '';
+      });
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          CustomerModule.resolveCountrySearchSelection();
+        }
+      });
+      select.addEventListener('change', function () {
+        CustomerModule.syncCountrySearchFromSelect();
+      });
+      this.filterCountryOptions(input.value);
+    },
     readAdvancedFilters: function () {
       var checkedValues = function (selector) {
         return Array.prototype.slice.call(document.querySelectorAll(selector + ':checked')).map(function (item) { return item.value; });
       };
       var business = document.querySelector('[data-filter-business]:checked');
+      this.resolveCountrySearchSelection();
       return {
         country: document.querySelector('[data-filter-country]')?.value || '',
         city: document.querySelector('[data-filter-city]')?.value || '',
@@ -3073,6 +3175,7 @@
         else input.value = '';
       });
       document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
+      this.filterCountryOptions('');
     },
     hasAdvancedFilters: function () {
       var advanced = (this.filterState && this.filterState.advanced) || {};
@@ -3105,6 +3208,7 @@
       if (view) view.value = this.filterState.view || 'table';
       if (sort) sort.value = this.filterState.sort || 'updated_at';
       if (dir) dir.value = this.filterState.direction || 'DESC';
+      this.setCountryFilterValue((this.filterState.advanced || {}).country || '');
       document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
       });

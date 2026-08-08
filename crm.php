@@ -464,13 +464,16 @@ $prefStyle = sprintf(
               <section class="customer-filter-group">
                 <h3>地理信息</h3>
                 <label>国家 / 地区
+                  <input data-filter-country-search placeholder="输入国家中文 / 英文 / 代码查找，例如 印度、India、IN">
                   <select data-filter-country>
                     <option value="">全部国家</option>
                     <?php foreach (($crmConfig['items']['country_region'] ?? []) as $country): ?>
                     <?php $countryFlag = crm_country_flag((string)($country['item_key'] ?? '')) ?: crm_country_flag((string)($country['name_en'] ?? '')) ?: crm_country_flag((string)($country['name_cn'] ?? '')); ?>
-                    <option value="<?= h($country['item_key']) ?>"><?= h(trim($countryFlag . ' ' . (($country['name_cn'] ?? '') . ' / ' . ($country['name_en'] ?? '') . ' · ' . ($country['item_key'] ?? '')))) ?></option>
+                    <?php $countrySearch = trim(implode(' ', array_filter([(string)($country['item_key'] ?? ''), (string)($country['name_cn'] ?? ''), (string)($country['name_en'] ?? ''), (string)(($country['extra_config']['phone_code'] ?? '') ?: '')]))); ?>
+                    <option value="<?= h($country['item_key']) ?>" data-country-search="<?= h($countrySearch) ?>"><?= h(trim($countryFlag . ' ' . (($country['name_cn'] ?? '') . ' / ' . ($country['name_en'] ?? '') . ' · ' . ($country['item_key'] ?? '')))) ?></option>
                     <?php endforeach; ?>
                   </select>
+                  <small data-filter-country-hint>可手输模糊查找，回车选择第一项。</small>
                 </label>
                 <label>城市 / 地区
                   <select data-filter-city>
