@@ -18,6 +18,8 @@ $pageMarkers = [
     '固定待办默认勾选自己' => "mode==='fixed'&&String(u.id)===String(state.me?.id||'')?' checked':''",
     '固定规则说明' => '系统会自动检查固定规则；当天未生成过才会生成一条新的待办',
     '工作日频率选项' => '<option value="workdays">工作日</option>',
+    '组行方式不再硬编码多派' => 'r.method_label||tableMethodLabel(methodValue(r))',
+    '详情方式使用组标签' => 'function groupMethodText(g={},t={})',
 ];
 
 foreach ($pageMarkers as $label => $needle) {
@@ -32,6 +34,9 @@ $apiMarkers = [
     '工作日仅周一到周五生成' => "(\$rule['freq'] ?? '') === 'workdays') return (int)date('N', \$ts) <= 5",
     '保存固定待办类型标记' => "'kind' => !empty(\$in['fixed_todo']) ? 'fixed_todo' : 'recurring_dispatch'",
     '保存固定截止时刻' => "'due_time' => substr(\$dueAt, 11, 5)",
+    '固定待办组行显示固定' => "return (string)(\$rule['kind'] ?? '') === 'fixed_todo' ? '固定' : '周派'",
+    '组行使用规则截止日期' => 'function dn_group_display_due_at(array $group, array $children = []): string',
+    '新固定待办组截止按开始日保存' => "\$groupDueAt = dn_recurring_due_at(['due_at' => \$dueAt], \$rule, \$startDate)",
     '生成时按当天日期计算截止时间' => '$dueAt = dn_recurring_due_at($g, $rule, $date)',
     '固定截止时间函数' => 'function dn_recurring_due_at(array $group, array $rule, string $date): string',
     '生成任务使用当天截止时间' => "'created_by' => (int)\$g['created_by'], 'assigned_to' => (int)\$aid, 'task_date' => \$date, 'due_at' => \$dueAt",
@@ -47,6 +52,8 @@ foreach ($apiMarkers as $label => $needle) {
 $forbidden = [
     "'due_at' => \$g['due_at'], 'is_read' => 0",
     "in_array((\$in['freq'] ?? 'daily'), ['daily','weekly','monthly'], true)",
+    "if(key==='dispatch_mode')return `<span class=\"tableMethodText\">多派</span>`",
+    "'method_label' => '多派',",
 ];
 
 foreach ($forbidden as $needle) {

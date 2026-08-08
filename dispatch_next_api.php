@@ -1434,6 +1434,43 @@ function dn_method_label(string $type, string $mode): string
     return ['multi' => '多人', 'plan' => '计划派工', 'recurring' => '周期派工', 'single' => '派工'][$mode] ?? '派工';
 }
 
+function dn_group_rule(array $group): array
+{
+    $rule = json_decode((string)($group['recurring_rule_json'] ?? '{}'), true);
+    return is_array($rule) ? $rule : [];
+}
+
+function dn_group_method_label(array $group): string
+{
+    $type = (string)($group['group_type'] ?? '');
+    if ($type === 'recurring') {
+        $rule = dn_group_rule($group);
+        return (string)($rule['kind'] ?? '') === 'fixed_todo' ? '固定' : '周派';
+    }
+    return ['multi' => '多派', 'plan' => '计派'][$type] ?? '多派';
+}
+
+function dn_group_display_due_at(array $group, array $children = []): string
+{
+    if ((string)($group['group_type'] ?? '') === 'recurring') {
+        $activeDue = [];
+        foreach ($children as $child) {
+            if (in_array((string)($child['status'] ?? ''), ['done','cancelled'], true)) continue;
+            $due = (string)($child['due_at'] ?? '');
+            if ($due !== '') $activeDue[] = $due;
+        }
+        if ($activeDue) {
+            sort($activeDue, SORT_STRING);
+            return $activeDue[0];
+        }
+        $rule = dn_group_rule($group);
+        $start = (string)($rule['start_date'] ?? ($group['task_date'] ?? ''));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)) $start = date('Y-m-d');
+        return dn_recurring_due_at($group, $rule, $start);
+    }
+    return (string)($group['due_at'] ?? '');
+}
+
 function dn_group_row(int $gid, array $personIds = []): ?array
 {
     $pdo = dispatch_next_db();
@@ -1443,7 +1480,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     if (!$g) return null;
     // 组已经在列表查询中完成可见性和负责人校验；汇总必须读取全部成员，
     // 否则人员筛选会把 1/2 错算成 1/1，并漏掉已完成成员姓名。
-    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
+    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.due_at,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
     $st->execute([$gid]);
     $children = $st->fetchAll();
     $done = 0;
@@ -1467,8 +1504,10 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     $stepSt->execute([$gid]);
     $stepRow = $stepSt->fetch() ?: ['step_count' => 0, 'step_done_count' => 0];
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
-    $due = dn_due_status($g['due_at'] ?? null, $groupStatus);
-    $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $g['due_at'] ?? '', 'parent_group_id' => $gid];
+    $displayDueAt = dn_group_display_due_at($g, $children);
+    $methodLabel = dn_group_method_label($g);
+    $due = dn_due_status($displayDueAt, $groupStatus);
+    $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $displayDueAt, 'parent_group_id' => $gid];
     $canChangeDueAt = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $g) === null;
     $dueChangeHint = $canChangeDueAt ? '' : (dn_has_due_change_permission($groupPolicyTask) ? (dn_due_change_block_reason($groupPolicyTask, $g) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
     return [
@@ -1481,7 +1520,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'priority' => $children[0]['priority'] ?? 'normal',
         'status' => $groupStatus,
         'task_date' => $g['task_date'],
-        'due_at' => $g['due_at'],
+        'due_at' => $displayDueAt,
         'created_at' => $g['created_at'],
         'updated_at' => $g['updated_at'],
         'highlight_recent_create' => dn_recent_create_highlight((int)$g['created_by'], $g['created_at'] ?? ''),
@@ -1497,7 +1536,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'assignee_names' => $assigneeNames,
         'member_names' => $assigneeNames,
         'dispatch_mode' => $g['group_type'],
-        'method_label' => '多派',
+        'method_label' => $methodLabel,
         'done_count' => $done,
         'total_count' => count($children),
         'progress' => count($children) ? (int)floor($done * 100 / count($children)) : 0,
@@ -1508,7 +1547,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'can_delete' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
         'mail_preview_task_id' => $mailPreviewTaskId,
         'has_mail_body' => $mailPreviewTaskId > 0 ? 1 : 0,
-        'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress']], $children),
+        'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress'],'due_at'=>$c['due_at'] ?? ''], $children),
         'sort_key' => '0-' . $g['title'],
     ];
 }
@@ -1634,6 +1673,9 @@ function dn_multi_group_detail(array $in): array
     $group['running_count'] = $running;
     $group['overdue_count'] = $overdue;
     $group['progress'] = $total > 0 ? (int)floor($done * 100 / $total) : 0;
+    $group['method_label'] = dn_group_method_label($group);
+    $group['dispatch_mode'] = (string)($group['group_type'] ?? '');
+    $group['due_at'] = dn_group_display_due_at($group, $members);
     $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$group['created_by'], 'assigned_to' => (int)$group['created_by'], 'due_at' => $group['due_at'] ?? '', 'parent_group_id' => $groupId];
     $group['can_change_due_at'] = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $group) === null;
     $group['due_change_hint'] = $group['can_change_due_at'] ? '' : (dn_has_due_change_permission($groupPolicyTask) ? (dn_due_change_block_reason($groupPolicyTask, $group) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
@@ -2168,9 +2210,10 @@ function dn_create_recurring(array $in): array
     ];
     $title = dn_str($in['title'] ?? '', 240);
     if ($title === '') dn_fail(!empty($in['fixed_todo']) ? '请输入固定待办标题' : '请输入周期派工标题');
+    $groupDueAt = dn_recurring_due_at(['due_at' => $dueAt], $rule, $startDate);
     $pdo = dispatch_next_db();
     $pdo->prepare("INSERT INTO dispatch_next_groups(group_no,group_type,title,project,description,created_by,assignee_ids_json,total_count,task_date,due_at,recurring_rule_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
-        ->execute([dn_task_no('DR'), 'recurring', $title, dn_str($in['project'] ?? '', 8000), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), $rule['start_date'], $dueAt, dn_json($rule)]);
+        ->execute([dn_task_no('DR'), 'recurring', $title, dn_str($in['project'] ?? '', 8000), dn_str($in['description'] ?? '', 8000), dn_uid(), dn_json($ids), count($ids), $rule['start_date'], $groupDueAt, dn_json($rule)]);
     return ['group_id' => (int)$pdo->lastInsertId(), 'rule' => $rule];
 }
 
