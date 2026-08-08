@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：派工固定待办新增停用按钮
+
+- 用户问固定待办生成后如何结束，要求加一个按钮。
+- 设计：新增“停用固定”按钮，停用的是固定/周期规则本身，不删除已经生成的历史待办；已生成的待办仍可正常完成、删除或保留记录。
+- `dispatch_next_api.php`：新增 `dn_stop_recurring()` 与 `stop_recurring` action；只有管理员或规则创建人可以停用；停用时仅把 `dispatch_next_groups.is_active=0,status='stopped'`，`dn_run_recurring()` 原本只扫描 `is_active=1`，所以后续不会再自动生成。
+- `dispatch_next_api.php`：组行与详情返回 `can_stop_recurring`、`recurring_active`、`is_fixed_todo`，前端按权限决定是否显示按钮。
+- `dispatch_next.php`：固定/周期组在列表操作区、手机横屏更多菜单、详情底部显示“停用固定”；点击后有二次确认，并明确提示“只停止以后自动生成，已经生成的历史待办会保留”。
+- `tests/dispatch_fixed_todo_contract.php`：扩展契约，锁定停用按钮、确认文案、接口路由、权限字段和停用语义。
+- 待检查：本地 `git diff --check`；服务器 `php -l dispatch_next.php`、`php -l dispatch_next_api.php`、`php tests/dispatch_fixed_todo_contract.php`。
+- 待部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号以本次完成后的 HEAD 为准。
+
 ## 本次：CRM 高级筛选国家与城市联动
 
 - 用户反馈客户中心高级筛选选择国家后，城市 / 地区下拉仍显示其它国家城市，例如选择中国香港后仍出现广东、深圳、印度城市。

@@ -1506,6 +1506,12 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
     $displayDueAt = dn_group_display_due_at($g, $children);
     $methodLabel = dn_group_method_label($g);
+    $groupRule = dn_group_rule($g);
+    $isFixedTodo = (string)($groupRule['kind'] ?? '') === 'fixed_todo';
+    $canStopRecurring = (string)($g['group_type'] ?? '') === 'recurring'
+        && $isFixedTodo
+        && (int)($g['is_active'] ?? 0) === 1
+        && (dn_is_admin() || (int)($g['created_by'] ?? 0) === dn_uid());
     $due = dn_due_status($displayDueAt, $groupStatus);
     $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $displayDueAt, 'parent_group_id' => $gid];
     $canChangeDueAt = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $g) === null;
@@ -1537,6 +1543,9 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'member_names' => $assigneeNames,
         'dispatch_mode' => $g['group_type'],
         'method_label' => $methodLabel,
+        'is_fixed_todo' => $isFixedTodo ? 1 : 0,
+        'recurring_active' => (int)($g['is_active'] ?? 0),
+        'can_stop_recurring' => $canStopRecurring ? 1 : 0,
         'done_count' => $done,
         'total_count' => count($children),
         'progress' => count($children) ? (int)floor($done * 100 / count($children)) : 0,
@@ -1675,6 +1684,13 @@ function dn_multi_group_detail(array $in): array
     $group['progress'] = $total > 0 ? (int)floor($done * 100 / $total) : 0;
     $group['method_label'] = dn_group_method_label($group);
     $group['dispatch_mode'] = (string)($group['group_type'] ?? '');
+    $groupRule = dn_group_rule($group);
+    $group['is_fixed_todo'] = (string)($groupRule['kind'] ?? '') === 'fixed_todo' ? 1 : 0;
+    $group['recurring_active'] = (int)($group['is_active'] ?? 0);
+    $group['can_stop_recurring'] = ((string)($group['group_type'] ?? '') === 'recurring'
+        && (int)$group['is_fixed_todo'] === 1
+        && (int)($group['is_active'] ?? 0) === 1
+        && $canManageGroup) ? 1 : 0;
     $group['due_at'] = dn_group_display_due_at($group, $members);
     $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$group['created_by'], 'assigned_to' => (int)$group['created_by'], 'due_at' => $group['due_at'] ?? '', 'parent_group_id' => $groupId];
     $group['can_change_due_at'] = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $group) === null;
@@ -2245,6 +2261,23 @@ function dn_run_recurring(array $in, bool $return = true): array
     $data = ['date' => $date, 'created' => $created];
     if ($return) return $data;
     return $data;
+}
+
+function dn_stop_recurring(array $in): array
+{
+    $gid = (int)($in['group_id'] ?? $in['id'] ?? 0);
+    if ($gid <= 0) dn_fail('缺少固定待办规则 ID', 400);
+    $pdo = dispatch_next_db();
+    $st = $pdo->prepare("SELECT * FROM dispatch_next_groups WHERE id=? LIMIT 1");
+    $st->execute([$gid]);
+    $g = $st->fetch();
+    if (!$g) dn_fail('固定待办规则不存在', 404);
+    if ((string)($g['group_type'] ?? '') !== 'recurring') dn_fail('这不是固定/周期规则', 400);
+    if (!dn_is_admin() && (int)($g['created_by'] ?? 0) !== dn_uid()) dn_fail('只有创建人可以停用固定待办', 403);
+    if ((int)($g['is_active'] ?? 0) === 0) return ['group_id' => $gid, 'is_active' => 0, 'status' => (string)($g['status'] ?? 'stopped')];
+    $pdo->prepare("UPDATE dispatch_next_groups SET is_active=0,status='stopped',updated_at=NOW() WHERE id=?")->execute([$gid]);
+    dn_log(null, 'stop_recurring', 'group_id', $gid, 'stopped', '停用固定/周期规则，历史任务保留');
+    return ['group_id' => $gid, 'is_active' => 0, 'status' => 'stopped'];
 }
 
 function dn_rule_due(array $rule, string $date): bool
@@ -5775,6 +5808,7 @@ try {
         case 'create_plan': dn_ok(dn_create_plan($in));
         case 'create_recurring': dn_ok(dn_create_recurring($in));
         case 'run_recurring': dn_ok(dn_run_recurring($in));
+        case 'stop_recurring': dn_ok(dn_stop_recurring($in));
         case 'add_comment': dn_ok(dn_add_comment($in));
         case 'list_comments': dn_ok(dn_detail($in)['comments']);
         case 'delete_comment': dn_ok(dn_delete_comment($in));

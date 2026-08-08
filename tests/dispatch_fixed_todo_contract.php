@@ -20,6 +20,12 @@ $pageMarkers = [
     '工作日频率选项' => '<option value="workdays">工作日</option>',
     '组行方式不再硬编码多派' => 'r.method_label||tableMethodLabel(methodValue(r))',
     '详情方式使用组标签' => 'function groupMethodText(g={},t={})',
+    '固定待办停用按钮' => 'data-stop-recurring="${esc(gid)}"',
+    '固定待办手机菜单停用按钮' => 'data-can-stop-recurring="${r.can_stop_recurring?1:0}"',
+    '固定待办详情停用按钮' => 'g.can_stop_recurring?`<button class="btn dangerAction" type="button" data-stop-recurring="${esc(g.id)}">停用固定</button>`',
+    '固定待办停用确认' => '只停止以后自动生成，已经生成的历史待办会保留。',
+    '固定待办停用调用' => "api('stop_recurring',{group_id:gid})",
+    '固定待办停用点击监听' => "e.target.closest('[data-stop-recurring]')",
 ];
 
 foreach ($pageMarkers as $label => $needle) {
@@ -40,6 +46,14 @@ $apiMarkers = [
     '生成时按当天日期计算截止时间' => '$dueAt = dn_recurring_due_at($g, $rule, $date)',
     '固定截止时间函数' => 'function dn_recurring_due_at(array $group, array $rule, string $date): string',
     '生成任务使用当天截止时间' => "'created_by' => (int)\$g['created_by'], 'assigned_to' => (int)\$aid, 'task_date' => \$date, 'due_at' => \$dueAt",
+    '停用固定规则接口' => 'function dn_stop_recurring(array $in): array',
+    '停用只改规则不删历史' => "UPDATE dispatch_next_groups SET is_active=0,status='stopped'",
+    '停止后生成器不再扫描' => "WHERE group_type='recurring' AND is_active=1",
+    '停用按钮仅固定待办组行显示' => '&& $isFixedTodo',
+    '停用按钮仅固定待办详情显示' => "&& (int)\$group['is_fixed_todo'] === 1",
+    '停用接口路由' => "case 'stop_recurring': dn_ok(dn_stop_recurring(\$in));",
+    '组行返回停用权限' => "'can_stop_recurring' => \$canStopRecurring ? 1 : 0",
+    '详情返回停用权限' => "\$group['can_stop_recurring']",
 ];
 
 foreach ($apiMarkers as $label => $needle) {
