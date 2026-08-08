@@ -5,7 +5,8 @@
 - 用户反馈客户中心筛选区在右侧 ACTIONS 打开、可用宽度变窄时压到一起，按钮互相覆盖。
 - `assets/crm/crm.css`：客户筛选默认改为分行网格，不再只在小屏断点生效；第一行固定为搜索框 + 客户数量，第二行为每页/视图/排序/方向/搜索/高级筛选/重置/导入日志/列表全屏等工具横向滚动，第三行为快捷筛选横向滚动。
 - `tests/crm_customer_mobile_filter_layout_contract.php`：补充默认工具栏独占第二行的契约，防止筛选工具再被挤回搜索同一行。
-- 待检查/部署：本地静态检查、提交推送、服务器 PHP 检查后更新最终 HEAD。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `assets/crm/crm.js` 语法检查通过；服务器 `php -l crm.php`、`php tests/crm_customer_mobile_filter_layout_contract.php` 均通过。
+- 部署：功能提交 `56cde9e` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 客户中心小屏筛选初步优化
 
