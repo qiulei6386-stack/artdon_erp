@@ -8,8 +8,8 @@
 - `dispatch_next_api.php`：组行与详情返回 `can_stop_recurring`、`recurring_active`、`is_fixed_todo`，前端按权限决定是否显示按钮。
 - `dispatch_next.php`：固定/周期组在列表操作区、手机横屏更多菜单、详情底部显示“停用固定”；点击后有二次确认，并明确提示“只停止以后自动生成，已经生成的历史待办会保留”。
 - `tests/dispatch_fixed_todo_contract.php`：扩展契约，锁定停用按钮、确认文案、接口路由、权限字段和停用语义。
-- 待检查：本地 `git diff --check`；服务器 `php -l dispatch_next.php`、`php -l dispatch_next_api.php`、`php tests/dispatch_fixed_todo_contract.php`。
-- 待部署：本条记录随功能提交推送 GitHub `main` 后，同步正式服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号以本次完成后的 HEAD 为准。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `dispatch_next.php` 内嵌脚本语法检查通过；服务器 `php -l dispatch_next.php`、`php -l dispatch_next_api.php`、`php tests/dispatch_fixed_todo_contract.php` 均通过。
+- 部署：功能提交 `e1bf5a6` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：CRM 高级筛选国家与城市联动
 
