@@ -7,7 +7,8 @@
 - `crm.php`：高级筛选城市 option 新增 `data-city-country` 与 `data-city-search`，把城市 / 地区与所属国家代码关联起来。
 - `assets/crm/crm.js`：新增城市按国家过滤逻辑；国家下拉 change、国家搜索回车解析、清空国家、重置高级筛选、恢复筛选状态时都会同步刷新城市列表；已选择城市如果不属于当前国家会自动清空。
 - `tests/crm_customer_country_filter_search_contract.php`：扩展契约，锁定高级筛选国家搜索与城市联动，防止后续回退。
-- 待检查/部署：本地 `git diff --check` 与 Codex bundled Node `node -c assets/crm/crm.js` 已通过；待推送后在服务器跑 `php -l crm.php` 与契约测试并同步三方。
+- 检查：本地 `git diff --check` 与 Codex bundled Node `node -c assets/crm/crm.js` 通过；服务器 `php -l crm.php`、`php tests/crm_customer_country_filter_search_contract.php` 通过。
+- 部署：功能提交 `2007f1c` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：订单佣金从报价佣金同步修复
 
