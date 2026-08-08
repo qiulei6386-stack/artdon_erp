@@ -370,7 +370,32 @@ function qo_recalc_payment(PDO $pdo,$orderId){
   $amount=qo_num($order['amount']??0); $bal=max(0,round($amount-$receivableReduced,2));
   $status=$receivableReduced<=0?'未收款':($bal<=0.00001?'已收齐':'部分收款');
   $pdo->prepare('UPDATE quote_sales_orders SET paid_amount=?,balance_amount=?,payment_status=?,updated_at=NOW() WHERE id=?')->execute([$paid,$bal,$status,$orderId]);
-  return ['order_amount'=>$amount,'paid_amount'=>$paid,'commission_deduct_amount'=>$deduct,'writeoff_amount'=>$writeoff,'receivable_reduced'=>$receivableReduced,'balance_amount'=>$bal,'payment_status'=>$status,'currency'=>$order['currency']??'USD'];
+  $life=qo_apply_order_completion_status($pdo,(int)$orderId,null,$status);
+  return ['order_amount'=>$amount,'paid_amount'=>$paid,'commission_deduct_amount'=>$deduct,'writeoff_amount'=>$writeoff,'receivable_reduced'=>$receivableReduced,'balance_amount'=>$bal,'payment_status'=>$status,'order_status'=>$life['status']??($order['status']??''),'currency'=>$order['currency']??'USD'];
+}
+function qo_order_lifecycle_status($current,$shipmentStatus,$paymentStatus): string {
+  $current=trim((string)$current); $ship=trim((string)$shipmentStatus); $pay=trim((string)$paymentStatus);
+  if(in_array($current,['取消','已作废'],true)) return $current;
+  if($ship==='已出货' && $pay==='已收齐') return '已完结';
+  if($current==='已完结'){
+    if($ship==='已出货') return '已出货';
+    if($ship==='部分出货') return '部分出货';
+    return '已确认';
+  }
+  return $current!==''?$current:'待确认';
+}
+function qo_apply_order_completion_status(PDO $pdo,int $orderId,$shipmentStatus=null,$paymentStatus=null): array {
+  if($orderId<=0) return [];
+  $o=qo_row($pdo,'SELECT id,status,shipment_status,payment_status FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]);
+  if(!$o) return [];
+  $ship=$shipmentStatus!==null?$shipmentStatus:($o['shipment_status']??'');
+  $pay=$paymentStatus!==null?$paymentStatus:($o['payment_status']??'');
+  $next=qo_order_lifecycle_status($o['status']??'',$ship,$pay);
+  if($next!==($o['status']??'')){
+    $pdo->prepare('UPDATE quote_sales_orders SET status=?,updated_at=NOW() WHERE id=?')->execute([$next,$orderId]);
+    $o['status']=$next;
+  }
+  return $o;
 }
 function qo_update_item_shipped(PDO $pdo,$orderId){
   $items=qo_rows($pdo,'SELECT id,qty,product_code,product_name,specification,item_json FROM quote_sales_order_items WHERE order_id=?',[$orderId]);
@@ -390,6 +415,7 @@ function qo_update_item_shipped(PDO $pdo,$orderId){
   if($totalShip>0 && $totalShip+0.00001<$totalQty) $status='部分出货';
   elseif($totalQty>0 && $totalShip+0.00001>=$totalQty) $status='已出货';
   $pdo->prepare('UPDATE quote_sales_orders SET qty=?,shipment_status=?,updated_at=NOW() WHERE id=?')->execute([$totalQty,$status,$orderId]);
+  qo_apply_order_completion_status($pdo,(int)$orderId,$status,null);
   if($status==='已出货'){qo_commission_schema($pdo);$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='shipped' AND settle_status='unsettled'")->execute([$orderId]);}
   return $status;
 }
@@ -846,6 +872,7 @@ function qo_list_orders(PDO $pdo){
     if($ship>0 && $ship+0.00001<$qty) $o['shipment_status']='部分出货';
     elseif($qty>0 && $ship+0.00001>=$qty) $o['shipment_status']='已出货';
     elseif(trim((string)($o['shipment_status']??''))==='') $o['shipment_status']='未出货';
+    $o['status']=qo_order_lifecycle_status($o['status']??'',$o['shipment_status']??'',$o['payment_status']??'');
     $o['commission_deduct_amount']=$deduct;$o['writeoff_amount']=$writeoff;$o['receivable_reduced']=$reduced;
     unset($o['paid_calc'],$o['commission_deduct_calc'],$o['writeoff_calc'],$o['shippable_qty_calc'],$o['shipped_calc']);
   }

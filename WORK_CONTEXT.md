@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：已出货且已收齐订单自动显示已完结
+
+- 用户要求已出货订单在款收齐后，订单中心要显示“已完结”。
+- `quote_order_api.php`：新增订单生命周期状态规则；当 `shipment_status='已出货'` 且 `payment_status='已收齐'` 时，订单主状态 `status` 自动变为 `已完结`；`取消 / 已作废` 不被自动覆盖。
+- `quote_order_api.php`：收款重算、出货重算、订单列表摘要都会应用同一规则；如果已完结订单后来删除收款或出货状态回退，会从 `已完结` 自动撤回到对应状态，避免假完结。
+- `quotation.php`：订单状态筛选新增“已完结”；订单列表将“已完结”按完成态绿色样式显示。
+- 新增 `tests/order_auto_complete_contract.php`，锁定自动完结规则、取消/作废保护、列表显示和前端筛选。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `quotation.php` 内嵌脚本语法检查通过；服务器 PHP 检查待部署时执行。
+
 ## 本次：Shipping Costs 虚拟费用项不参与出货
 
 - 用户反馈订单 `AT-260731EX007` 的产品已全部出货，但 `Shipping Costs` 是虚拟费用项不出货，订单仍显示“部分出货”，且费用行还显示“建包装”。
