@@ -1304,6 +1304,60 @@ function crm_customer_contains(string $haystack, string $needle): bool
     return function_exists('mb_strpos') ? mb_strpos($haystack, $needle) !== false : strpos($haystack, $needle) !== false;
 }
 
+function crm_customer_country_display_name(string $value): string
+{
+    static $dictionaryRows = null;
+    $raw = trim($value);
+    if ($raw === '') return '未填';
+    $candidates = [$raw];
+    foreach (['/', ',', '，', '、'] as $separator) {
+        if (strpos($raw, $separator) === false) continue;
+        foreach (explode($separator, $raw) as $part) {
+            $part = trim($part);
+            if ($part !== '') $candidates[] = $part;
+        }
+    }
+    $needles = array_values(array_unique(array_map('crm_customer_lower', $candidates)));
+
+    if ($dictionaryRows === null) $dictionaryRows = crm_dictionary_items('country_region', false);
+    foreach ($dictionaryRows as $item) {
+        $extra = $item['extra_config'] ?? [];
+        $aliases = is_array($extra['aliases'] ?? null) ? $extra['aliases'] : [];
+        $fields = array_merge([
+            (string)($item['item_key'] ?? ''),
+            (string)($item['name_cn'] ?? ''),
+            (string)($item['name_en'] ?? ''),
+            (string)($item['short_name'] ?? ''),
+        ], array_map('strval', $aliases));
+        foreach ($fields as $field) {
+            $field = trim((string)$field);
+            if ($field === '') continue;
+            if (in_array(crm_customer_lower($field), $needles, true)) {
+                foreach (['name_cn', 'short_name', 'name_en', 'item_key'] as $key) {
+                    $label = trim((string)($item[$key] ?? ''));
+                    if ($label !== '') return $label;
+                }
+            }
+        }
+    }
+
+    foreach (crm_customer_country_aliases() as $code => $aliases) {
+        $fields = array_merge([(string)$code], array_map('strval', $aliases));
+        foreach ($fields as $field) {
+            $field = trim((string)$field);
+            if ($field === '') continue;
+            if (!in_array(crm_customer_lower($field), $needles, true)) continue;
+            foreach ($aliases as $alias) {
+                $label = trim((string)$alias);
+                if ($label !== '' && preg_match('/[\x{4e00}-\x{9fff}]/u', $label)) return $label;
+            }
+            return (string)$code;
+        }
+    }
+
+    return $raw;
+}
+
 function crm_customer_search_terms(string $term): array
 {
     $term = trim($term);
@@ -1692,6 +1746,8 @@ function crm_customer_list(array $input): array
 
         foreach ($rows as &$row) {
             $customerId = (int)($row['id'] ?? 0);
+            $row['country_raw'] = (string)($row['country'] ?? '');
+            $row['country_display'] = crm_customer_country_display_name((string)($row['country'] ?? ''));
             $row['contact_count'] = $contactCounts[$customerId] ?? 0;
             $row['last_followup_at'] = $lastFollowups[$customerId] ?? null;
             $row['group_names'] = $groupNames[$customerId] ?? '';

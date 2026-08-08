@@ -291,9 +291,10 @@
     return String.fromCodePoint(127397 + code.charCodeAt(0), 127397 + code.charCodeAt(1));
   }
 
-  function countryLabel(value) {
+  function countryLabel(value, rawValue) {
     var text = String(value || '').trim() || '未填';
-    var flag = countryFlag(text);
+    var raw = String(rawValue || value || '').trim();
+    var flag = countryFlag(raw || text) || countryFlag(text);
     return '<span class="customer-country-label">' + (flag ? '<span class="customer-country-flag" aria-hidden="true">' + flag + '</span>' : '') + '<span>' + esc(text) + '</span></span>';
   }
 
@@ -3286,7 +3287,12 @@
         if (key === 'select') return '<td data-label="选择"><input type="checkbox" data-customer-row-check value="' + row.id + '"' + (self.selected.has(Number(row.id)) ? ' checked' : '') + '></td>';
         if (key === 'customer_code') return '<td data-label="客户代码" title="' + esc(row.customer_code || '') + '">' + esc(row.customer_code || '-') + '</td>';
         if (key === 'customer_name') return '<td data-label="客户名称" title="' + esc(row.customer_name) + '">' + esc(row.customer_name) + '</td>';
-        if (key === 'country') return '<td data-label="国家/地区" title="' + esc(row.country || '未填') + '">' + countryLabel(row.country) + '</td>';
+        if (key === 'country') {
+          var rawCountry = row.country_raw || row.country || '';
+          var displayCountry = row.country_display || row.country || '';
+          var countryTitle = rawCountry && displayCountry && rawCountry !== displayCountry ? displayCountry + ' / ' + rawCountry : (displayCountry || rawCountry || '未填');
+          return '<td data-label="国家/地区" title="' + esc(countryTitle) + '">' + countryLabel(displayCountry, rawCountry) + '</td>';
+        }
         if (key === 'level') return '<td data-label="客户等级">' + esc(row.level || '-') + '</td>';
         if (key === 'source') return '<td data-label="客户来源">' + esc(row.source_tags || row.source || '-') + '</td>';
         if (key === 'owner_name') return '<td data-label="负责人" title="' + esc(row.owner_summary || row.owner_name || '') + '">' + esc(row.owner_summary || row.owner_name || '-') + '</td>';

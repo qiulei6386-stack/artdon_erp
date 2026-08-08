@@ -2451,6 +2451,13 @@
 - 检查：本地 `node --check material_center_v1/assets/js/adaptation-v3.js` 与 `git diff --check` 通过；本地无 PHP，已用服务器 `php -l` 检查新增测试文件语法。服务器 `php -l material_center_v1/adaptation/index.php`、`php -l material_center_v1/tests/adaptation_template_page_contract.php` 通过；服务器 `adaptation_template_page_contract.php`、`adaptation_quick_workspace_contract.php`、`adaptation_rollback_contract.php`、`adaptation_visual_upgrade_contract.php` 全部通过；服务器 CLI 渲染 `?view=template&product_id=67` 输出 `配置模板`、`adaptation-bootstrap` 和 `adaptation-v3.js`，无 Fatal Error。
 - 发布：功能提交 `5e1b9d98e742214770eb68fcae5e274394911b69` 已推送 GitHub main，并用 Git bundle 快进腾讯云服务器。文档同步后以最终三方 HEAD 为准。
 
+## 2026-08-08：CRM 客户中心国家列中文显示
+
+- 问题：客户中心列表“国家”列直接显示客户资料里的原始国家值，导致 `AE`、`QA`、`OM`、`IN` 等 ISO 编码原样露出；同一列里中英文/代码混排，识别成本高。
+- 修复：客户列表接口在保留原始值 `country_raw` 的同时新增 `country_display`，优先按 `country_region` 国家字典返回中文名称，并用既有国家别名兜底；前端国家列优先显示中文名，旗帜继续按原始国家代码识别，鼠标标题保留“中文 / 原值”方便追溯。
+- 范围：只改客户中心列表显示和接口返回字段，不修改客户资料数据库原值，不影响搜索筛选、国家统计或客户编辑保存。
+- 回归保护：新增 `tests/crm_customer_country_display_contract.php`，锁定后端中文显示字段、字典/别名兜底以及前端优先显示中文字段。
+
 ## 2026-07-31：产品适配配置模板页逻辑打通
 
 - 问题：配置模板页上一版主要是视觉界面，右侧“自定义分类 / 分类规则”、Tab、保存草稿等动作没有真正串到产品适配业务；服务端直开 `?view=template` 也未作为合法初始视图处理。
