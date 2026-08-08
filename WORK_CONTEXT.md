@@ -8,7 +8,9 @@
 - `dispatch_next_api.php`：新建固定/周期规则时，组表 `due_at` 改为按开始日期和固定截止时刻保存，避免新建后组摘要落在创建当天。
 - `dispatch_next.php`：去掉组行方式列、详情弹窗、成员浮窗、基础信息里的“多派/多人派工”硬编码，统一使用后端 `method_label`。
 - `tests/dispatch_fixed_todo_contract.php`：补充固定待办组显示、截止时间和前端不硬编码的契约检查。
-- 待部署后处理：将线上已存在的固定待办组 `id=49` 的 `due_at` 修正为 `2026-08-10 18:00:00`，并复查列表显示。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 抽取 `dispatch_next.php` 内嵌脚本语法检查通过；服务器 `php -l dispatch_next_api.php`、`php -l dispatch_next.php`、`php tests/dispatch_fixed_todo_contract.php` 均通过。
+- 数据修正：线上已存在固定待办组 `id=49` 的 `due_at` 已从 `2026-08-08 18:00:00` 修正为 `2026-08-10 18:00:00`；子任务 `id=1119` 的 `task_date/due_at` 同为 `2026-08-10 / 2026-08-10 18:00:00`。
+- 部署：功能提交 `e8d6b78` 已推送 GitHub `main` 并同步服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：还原 CRM 客户属性重排
 
