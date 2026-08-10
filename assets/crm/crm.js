@@ -352,7 +352,9 @@
       GB: 'Europe/London', DE: 'Europe/Berlin', FR: 'Europe/Paris', IT: 'Europe/Rome', ES: 'Europe/Madrid',
       NL: 'Europe/Amsterdam', BE: 'Europe/Brussels', CH: 'Europe/Zurich', AT: 'Europe/Vienna', SE: 'Europe/Stockholm',
       NO: 'Europe/Oslo', DK: 'Europe/Copenhagen', FI: 'Europe/Helsinki', PL: 'Europe/Warsaw', CZ: 'Europe/Prague',
-      GR: 'Europe/Athens', HR: 'Europe/Zagreb', IE: 'Europe/Dublin', RO: 'Europe/Bucharest', BG: 'Europe/Sofia',
+      PT: 'Europe/Lisbon', GR: 'Europe/Athens', HR: 'Europe/Zagreb', IE: 'Europe/Dublin', RO: 'Europe/Bucharest', BG: 'Europe/Sofia',
+      SK: 'Europe/Bratislava', HU: 'Europe/Budapest', UA: 'Europe/Kyiv', RU: 'Europe/Moscow', TR: 'Europe/Istanbul',
+      CY: 'Asia/Nicosia', IL: 'Asia/Jerusalem', KZ: 'Asia/Almaty',
       US: 'America/New_York', CA: 'America/Toronto', AU: 'Australia/Sydney', NZ: 'Pacific/Auckland',
       ZA: 'Africa/Johannesburg', EG: 'Africa/Cairo', MA: 'Africa/Casablanca', NG: 'Africa/Lagos',
       BR: 'America/Sao_Paulo', MX: 'America/Mexico_City', AR: 'America/Argentina/Buenos_Aires', CL: 'America/Santiago'
