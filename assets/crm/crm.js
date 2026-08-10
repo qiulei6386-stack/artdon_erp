@@ -15389,7 +15389,7 @@
       this.taskReportLoading[taskId] = true;
       Promise.all([
         post('marketing_task_report', { task_id: taskId }),
-        post('marketing_queue_list', { task_id: taskId }).catch(function () { return { success: false, data: {} }; })
+        post('marketing_queue_list', { task_id: taskId, unfinished_only: 1 }).catch(function () { return { success: false, data: {} }; })
       ]).then(function (results) {
         var json = results[0] || {};
         var queueJson = results[1] || {};
@@ -15397,6 +15397,7 @@
           var report = (json.data && json.data.report) || {};
           report.queue = (queueJson.success && queueJson.data) ? queueJson.data : { rows: [], status: {} };
           self.data.task_reports[taskId] = report;
+          delete self.taskReportLoading[taskId];
           if (Number(self.selectedTaskId || 0) === taskId) self.renderTaskProperties();
           if ((self.currentView || '') === 'execution') self.renderExecutionCenter();
         }
@@ -15646,29 +15647,52 @@
         if (selectedTaskId && reportTaskIds.indexOf(selectedTaskId) < 0) reportTaskIds.unshift(selectedTaskId);
         reportTaskIds.forEach(function (taskId) { self.ensureTaskReport(taskId); });
         var queueRows = [];
+        var reportIdMap = reportTaskIds.reduce(function (acc, taskId) {
+          acc[Number(taskId)] = true;
+          return acc;
+        }, {});
+        var counts = ['pending','scheduled','sending','sent','failed','skipped','cancelled','waiting_retry'].reduce(function (acc, key) {
+          acc[key] = 0;
+          return acc;
+        }, {});
         Object.keys(reports).forEach(function (taskId) {
+          if (!reportIdMap[Number(taskId)]) return;
           var task = self.taskById(taskId) || {};
           var queue = reports[taskId] && reports[taskId].queue;
+          var status = (queue && queue.status) || {};
+          Object.keys(counts).forEach(function (key) {
+            counts[key] += Number(status[key] || 0);
+          });
           (queue && queue.rows || []).forEach(function (row) {
             queueRows.push(Object.assign({}, row, { task_name: task.task_name || row.task_name || ('#' + taskId), task_id: Number(taskId) }));
           });
         });
-        var counts = queueRows.reduce(function (acc, row) {
+        var rowCounts = queueRows.reduce(function (acc, row) {
           var key = String(row.send_status || 'pending');
           acc[key] = (acc[key] || 0) + 1;
           return acc;
         }, {});
+        Object.keys(rowCounts).forEach(function (key) {
+          if (!counts[key]) counts[key] = rowCounts[key];
+        });
+        var unfinishedStatus = { pending: true, scheduled: true, sending: true, waiting_retry: true, failed: true };
+        var visibleQueueRows = queueRows.filter(function (row) { return unfinishedStatus[String(row.send_status || 'pending')]; });
+        var reportLoading = reportTaskIds.some(function (taskId) { return self.taskReportLoading[taskId] || !reports[taskId]; });
         var statHtml = [
-          ['待发送', Number(counts.pending || 0) + Number(counts.scheduled || 0)],
-          ['已发送', counts.sent || 0],
+          ['待发送', Number(counts.pending || 0) + Number(counts.scheduled || 0) + Number(counts.sending || 0)],
           ['失败', counts.failed || 0],
           ['待重试', counts.waiting_retry || 0],
-          ['已跳过', counts.skipped || 0]
+          ['已发送', counts.sent || 0],
+          ['已跳过', Number(counts.skipped || 0) + Number(counts.cancelled || 0)]
         ].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('');
-        var body = queueRows.length ? queueRows.slice(0, 160).map(function (row) {
+        var body = visibleQueueRows.length ? visibleQueueRows.slice(0, 160).map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'mail_queue' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="mail_queue" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.customer_country || row.country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(row.planned_server_time || '-').slice(0, 16) + '</td><td>' + esc(row.planned_customer_time || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
-        }).join('') : '<tr><td colspan="9">暂无邮件发送队列。选中推广项目后可在右侧 ACTIONS 生成队列。</td></tr>';
+        }).join('') : (reportLoading
+          ? '<tr><td colspan="9">正在读取邮件发送队列，请稍候...</td></tr>'
+          : ((Number(counts.sent || 0) + Number(counts.skipped || 0) + Number(counts.cancelled || 0)) > 0
+            ? '<tr><td colspan="9">当前没有未完成邮件队列；已完成记录已隐藏，可从上方统计查看数量。</td></tr>'
+            : '<tr><td colspan="9">暂无未完成邮件发送队列。选中推广项目后可在右侧 ACTIONS 生成队列。</td></tr>'));
         box.innerHTML = '<section class="promo-exec-stat-grid">' + statHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>计划发送时间</th><th>客户当地时间</th><th>状态</th><th>失败原因</th></tr></thead><tbody>' + body + '</tbody></table></div>';
       } else if (tab === 'manual') {
         var manualChannels = ['wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin'];
@@ -18732,7 +18756,7 @@
     openTaskQueueDialog: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      post('marketing_queue_list', { task_id: taskId }).then(function (json) {
+      post('marketing_queue_list', { task_id: taskId, unfinished_only: 1 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '发送队列加载失败');
         var data = json.data || {};
         var rows = data.rows || [];
@@ -18740,7 +18764,7 @@
         var body = '<section class="promo-preview-grid"><article><strong>' + esc((Number(status.pending || 0) + Number(status.scheduled || 0) + Number(status.sending || 0))) + '</strong><span>待发送</span></article><article><strong>' + esc(status.sent || 0) + '</strong><span>已发送</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败</span></article><article><strong>' + esc(status.waiting_retry || 0) + '</strong><span>待重试</span></article></section>';
         body += rows.length ? '<div class="promo-target-list">' + rows.slice(0, 80).map(function (row) {
           return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.contact_name || row.receiver_email || '-') + ' · ' + esc(row.sender_email || '-') + ' → ' + esc(row.receiver_email || '-') + ' · ' + esc(cnStatus(row.send_status || '-')) + ' · ' + esc(row.planned_server_time || '-').slice(0, 16) + '</span>' + (row.last_error ? '<span>错误：' + esc(row.last_error) + '</span>' : '') + '</article>';
-        }).join('') + '</div>' : '<p class="promo-empty">没有邮件发送队列。</p>';
+        }).join('') + '</div>' : '<p class="promo-empty">没有未完成邮件发送队列，已完成记录已隐藏。</p>';
         self.openDialog({
           title: '推广发送队列',
           description: (task ? task.task_name : '推广任务') + ' · 邮件队列状态',

@@ -2890,11 +2890,14 @@ function crm_marketing_queue_list(array $input): array
     if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
     crm_marketing_reconcile_task_targets_from_queue($taskId);
     $status = trim((string)($input['status'] ?? ''));
+    $unfinishedOnly = !empty($input['unfinished_only']);
     $where = ['q.task_id = ?'];
     $params = [$taskId];
     if ($status !== '') {
         $where[] = 'q.send_status = ?';
         $params[] = $status;
+    } elseif ($unfinishedOnly) {
+        $where[] = "q.send_status IN ('pending','scheduled','sending','waiting_retry','failed')";
     }
     $stmt = db()->prepare('SELECT
             q.id, q.task_id, q.campaign_id, q.customer_id, q.contact_id,
