@@ -2891,6 +2891,8 @@ function crm_marketing_queue_list(array $input): array
     crm_marketing_reconcile_task_targets_from_queue($taskId);
     $status = trim((string)($input['status'] ?? ''));
     $unfinishedOnly = !empty($input['unfinished_only']);
+    $limit = (int)($input['limit'] ?? 300);
+    $limit = max(20, min(2000, $limit));
     $where = ['q.task_id = ?'];
     $params = [$taskId];
     if ($status !== '') {
@@ -2911,7 +2913,7 @@ function crm_marketing_queue_list(array $input): array
         LEFT JOIN crm_contacts ct ON ct.id = q.contact_id
         WHERE ' . implode(' AND ', $where) . '
         ORDER BY q.planned_server_time ASC, q.id ASC
-        LIMIT 300');
+        LIMIT ' . $limit);
     $stmt->execute($params);
     return ['rows' => $stmt->fetchAll(), 'status' => crm_marketing_queue_status_counts($taskId)];
 }

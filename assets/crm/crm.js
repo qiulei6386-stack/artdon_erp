@@ -18879,18 +18879,79 @@
     openTaskQueueDialog: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      post('marketing_queue_list', { task_id: taskId, unfinished_only: 1 }).then(function (json) {
+      Promise.all([
+        post('marketing_queue_list', { task_id: taskId, limit: 2000 }),
+        post('marketing_task_targets', { task_id: taskId, limit: 5000 }).catch(function () { return { success: false, data: {} }; })
+      ]).then(function (results) {
+        var json = results[0] || {};
+        var targetsJson = results[1] || {};
         if (!json.success) throw new Error(json.message || '发送队列加载失败');
         var data = json.data || {};
         var rows = data.rows || [];
+        var targets = (targetsJson.success && targetsJson.data && targetsJson.data.targets) || [];
         var status = data.status || {};
-        var body = '<section class="promo-preview-grid"><article><strong>' + esc((Number(status.pending || 0) + Number(status.scheduled || 0) + Number(status.sending || 0))) + '</strong><span>待发送</span></article><article><strong>' + esc(status.sent || 0) + '</strong><span>已发送</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败</span></article><article><strong>' + esc(status.waiting_retry || 0) + '</strong><span>待重试</span></article></section>';
-        body += rows.length ? '<div class="promo-target-list">' + rows.slice(0, 80).map(function (row) {
-          return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.contact_name || row.receiver_email || '-') + ' · ' + esc(row.sender_email || '-') + ' → ' + esc(row.receiver_email || '-') + ' · ' + esc(cnStatus(row.send_status || '-')) + ' · ' + esc(row.planned_server_time || '-').slice(0, 16) + '</span>' + (row.last_error ? '<span>错误：' + esc(row.last_error) + '</span>' : '') + '</article>';
-        }).join('') + '</div>' : '<p class="promo-empty">没有未完成邮件发送队列，已完成记录已隐藏。</p>';
+        var emailChannels = ['email', 'mail', 'edm'];
+        var manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin'];
+        var normalize = self.normalizePromotionChannel.bind(self);
+        var sentRows = rows.filter(function (row) { return String(row.send_status || '').toLowerCase() === 'sent'; });
+        var sentContactKeys = {};
+        sentRows.forEach(function (row) {
+          var key = row.contact_id ? ('contact:' + row.contact_id) : (row.receiver_email ? ('email:' + String(row.receiver_email).toLowerCase()) : ('customer:' + row.customer_id));
+          sentContactKeys[key] = true;
+        });
+        var noEmailTargets = targets.filter(function (row) {
+          var channel = normalize(row.channel_key || '');
+          var reason = String(row.failure_reason || '');
+          var statusText = String(row.target_status || '').toLowerCase();
+          return emailChannels.indexOf(channel) >= 0 && (reason.indexOf('邮箱') >= 0 || reason.toLowerCase().indexOf('email') >= 0 || (!row.email && !row.contact_method && ['skipped','failed','pending'].indexOf(statusText) >= 0));
+        });
+        var manualTargets = targets.filter(function (row) {
+          var channel = normalize(row.channel_key || '');
+          var statusText = String(row.target_status || '').toLowerCase();
+          return manualChannels.indexOf(channel) >= 0 || row.chat_group_id || (emailChannels.indexOf(channel) >= 0 && ['failed','skipped','pending'].indexOf(statusText) >= 0);
+        });
+        manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
+        var sentLocalTime = function (row) {
+          var sentAt = String(row.sent_at || '').trim();
+          var zone = String(row.customer_timezone || '').trim();
+          if (sentAt && zone) {
+            try {
+              var date = new Date(sentAt.replace(' ', 'T') + '+08:00');
+              if (!isNaN(date.getTime())) {
+                return new Intl.DateTimeFormat('zh-CN', {
+                  timeZone: zone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                }).format(date).replace(/\//g, '-');
+              }
+            } catch (error) {}
+          }
+          return row.planned_customer_time || '-';
+        };
+        var queueTable = rows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>失败原因</th></tr></thead><tbody>' + rows.slice(0, 1000).map(function (row) {
+          var systemTime = row.sent_at || row.planned_server_time || '-';
+          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.country || row.customer_country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(String(systemTime || '-').slice(0, 16)) + '</td><td>' + esc(sentLocalTime(row)) + '</td><td>' + esc(row.customer_timezone || '-') + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
+        }).join('') + '</tbody></table>' + (rows.length > 1000 ? '<p class="promo-empty">当前只显示前 1000 条邮件明细，可继续分页扩展。</p>' : '') + '</div>' : '<p class="promo-empty">暂无邮件发送队列。</p>';
+        var noEmailList = noEmailTargets.length ? '<div class="promo-target-list">' + noEmailTargets.slice(0, 120).map(function (row) {
+          return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.contact_name || '客户级目标') + ' · ' + esc(row.country || '-') + ' · ' + esc(cnStatus(row.target_status || '-')) + ' · ' + esc(row.failure_reason || '缺少邮箱') + '</span></article>';
+        }).join('') + (noEmailTargets.length > 120 ? '<p class="promo-empty">另有 ' + esc(noEmailTargets.length - 120) + ' 条未展开。</p>' : '') + '</div>' : '<p class="promo-empty">没有发现无邮箱跳过记录。</p>';
+        var manualTable = manualTargets.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行人</th><th>状态</th><th>计划 / 执行时间</th><th>原因 / 结果</th></tr></thead><tbody>' + manualTargets.slice(0, 300).map(function (row) {
+          var objectName = row.chat_group_name || row.manual_group_name || row.contact_name || '客户级目标';
+          var method = row.contact_method || row.chat_group_name || row.manual_group_name || row.email || row.whatsapp || row.wechat || row.phone || '-';
+          var time = row.executed_at || row.due_at || row.planned_at || '-';
+          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(objectName) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(row.executor_name || row.operator_name || '-') + '</td><td>' + esc(cnStatus(row.manual_status || row.target_status || '-')) + '</td><td>' + esc(String(time || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || row.failure_reason || '-').slice(0, 160) + '</td></tr>';
+        }).join('') + '</tbody></table>' + (manualTargets.length > 300 ? '<p class="promo-empty">人工明细较多，当前显示前 300 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无线下 / 人工执行目标。</p>';
+        var body = '<section class="promo-preview-grid"><article><strong>' + esc(rows.length) + '</strong><span>邮件队列总数</span></article><article><strong>' + esc(status.sent || sentRows.length || 0) + '</strong><span>已发送邮件</span></article><article><strong>' + esc(Object.keys(sentContactKeys).length) + '</strong><span>已发联系人</span></article><article><strong>' + esc(noEmailTargets.length) + '</strong><span>无邮箱未发</span></article><article><strong>' + esc(manualTargets.length) + '</strong><span>线下 / 人工</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败队列</span></article></section>' +
+          '<details class="promo-project-detail-fold" open><summary><span>邮件发送明细</span><em>含系统发送时间与客户当地时间</em></summary><div class="promo-project-detail-content">' + queueTable + '</div></details>' +
+          '<details class="promo-project-detail-fold"><summary><span>无邮箱所以没发</span><em>' + esc(noEmailTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + noEmailList + '</div></details>' +
+          '<details class="promo-project-detail-fold"><summary><span>线下 / 人工执行</span><em>' + esc(manualTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + manualTable + '</div></details>';
         self.openDialog({
-          title: '推广发送队列',
-          description: (task ? task.task_name : '推广任务') + ' · 邮件队列状态',
+          title: '推广执行明细',
+          description: (task ? task.task_name : '推广任务') + ' · 邮件、无邮箱跳过、线下人工执行',
           body: body,
           actions: '<button type="button" data-promo-dialog-close>关闭</button>'
         });
@@ -22668,7 +22729,7 @@
     if (label === '暂停项目') label = '暂停推广任务';
     if (label === '继续项目') label = '继续推广任务';
     if (label === '取消项目') label = '取消任务';
-    if (label === '查看邮件队列') label = '查看发送队列';
+    if (label === '查看邮件队列' || label === '查看完整明细') label = '查看执行明细';
     if (label === '查看执行日志') label = '推广任务日志';
     if (label === '重新生成队列') label = '生成队列';
     if (label === '编辑任务') label = '编辑推广任务';
@@ -22685,7 +22746,7 @@
       document.querySelector('[data-promo-failures]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
     }
-    if (label === '查看发送队列') {
+    if (label === '查看发送队列' || label === '查看执行明细') {
       var queueTask = PromotionModule.taskById(PromotionModule.selectedTaskId);
       if (!queueTask) return toast('请先选择推广任务。');
       return PromotionModule.openTaskQueueDialog(Number(queueTask.id || 0));
@@ -23406,6 +23467,7 @@
         '取消任务': '取消当前推广任务和未发送队列',
         '查看客户目标': '查看当前任务的客户目标名单',
         '查看联系人目标': '查看当前任务的联系人目标名单',
+        '查看执行明细': '查看当前任务邮件、无邮箱跳过、线下人工执行明细',
         '查看发送队列': '查看当前任务邮件发送队列',
         '查看人工执行清单': '查看微信、WhatsApp、电话和群推广人工执行清单',
         '查看失败记录': '查看当前任务失败和异常目标',
@@ -23839,7 +23901,7 @@
         if (status === 'paused') projectItems.push('继续项目');
         if (['completed','cancelled'].indexOf(status) < 0) projectItems.push('取消项目');
         projectItems.push('归档项目');
-        var executionItems = ['查看邮件队列', '查看人工执行清单', '查看失败记录', '查看执行日志', '重新生成队列', '重试失败队列'];
+        var executionItems = ['查看执行明细', '查看人工执行清单', '查看失败记录', '查看执行日志', '重新生成队列', '重试失败队列'];
         var analysisItems = ['查看项目效果', '查看回复客户', '查看转商机', '查看转报价'];
         var aiItems = ['AI 分析项目', 'AI 优化邮件内容', 'AI 生成跟进建议'];
         renderGroup({ title: '项目操作', items: projectItems });
