@@ -1844,7 +1844,7 @@ function qperm_action_perm($action){
     'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
     'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
     'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
-    'save_quote'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage',
+    'save_quote'=>'quote_edit','set_quote_followup_status'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage',
     'quotation_summary_filters'=>'history_view','quotation_summary_overview'=>'history_view','quotation_summary_trend'=>'history_view','quotation_summary_pie'=>'history_view','quotation_summary_rank'=>'history_view','quotation_summary_list'=>'history_view','quotation_summary_export_excel'=>'history_view'
   ];
   return $map[$action]??'can_access';
@@ -3366,6 +3366,16 @@ function quote_approval_schema(PDO $pdo): void {
     try{ $pdo->exec("ALTER TABLE `quote_orders` ADD KEY `idx_quote_approval_status` (`approval_status`,`submitted_at`)"); }catch(Throwable $e){}
   }catch(Throwable $e){}
 }
+function quote_followup_lifecycle_schema(PDO $pdo): void {
+  try{
+    if(!table_exists($pdo,'quote_orders')) return;
+    ensure_col($pdo,'quote_orders','followup_status',"`followup_status` VARCHAR(40) NOT NULL DEFAULT 'active'");
+    ensure_col($pdo,'quote_orders','followup_closed_at',"`followup_closed_at` DATETIME NULL");
+    ensure_col($pdo,'quote_orders','followup_closed_by',"`followup_closed_by` VARCHAR(120) DEFAULT ''");
+    ensure_col($pdo,'quote_orders','followup_closed_reason',"`followup_closed_reason` TEXT NULL");
+    try{ $pdo->exec("ALTER TABLE `quote_orders` ADD KEY `idx_quote_followup_status` (`followup_status`,`followup_closed_at`)"); }catch(Throwable $e){}
+  }catch(Throwable $e){}
+}
 function quote_approval_status_of(array $q): string {
   $s=strtolower(trim((string)($q['approval_status']??'')));
   return in_array($s,['pending','approved','rejected','draft'],true)?$s:'pending';
@@ -3799,6 +3809,7 @@ function quote_ensure_crm_tasks_table(PDO $pdo): void {
 }
 function quote_upsert_crm_quote_followup_task(PDO $pdo, array $q, array $u): void {
   try{
+    if((string)($q['followup_status']??'active')==='closed') return;
     quote_ensure_crm_tasks_table($pdo);
     if(!table_exists($pdo,'crm_tasks')) return;
     $qid=(int)($q['id']??0); if($qid<=0) return;
@@ -3836,6 +3847,45 @@ function quote_complete_crm_quote_followup_task(PDO $pdo, array $order, array $u
     $pdo->prepare("UPDATE crm_tasks SET status='done', result='已转订单', result_note=CONCAT(COALESCE(result_note,''), IF(COALESCE(result_note,'')='', '', '\n'), '报价已转订单：', ?), completed_at=COALESCE(completed_at,NOW()), completed_by=?, updated_at=NOW() WHERE task_type='quote_followup' AND status NOT IN ('done','closed','cancelled') AND deleted_at IS NULL AND (".implode(' OR ',$where).")")
       ->execute(array_merge([(string)($order['order_no']??''), (int)(quote_crm_actor_user_id($u) ?: 0)], $params));
   }catch(Throwable $e){}
+}
+function quote_set_crm_quote_followup_task_status(PDO $pdo, array $q, array $u, string $status, string $result, string $note): void {
+  try{
+    if(!table_exists($pdo,'crm_tasks')) return;
+    $qid=(int)($q['id']??0); if($qid<=0) return;
+    $quoteNo=trim((string)($q['quote_no']??''));
+    $where=["(source_type='quote' AND source_id=?)"];$params=[(string)$qid];
+    if($quoteNo!==''){ $where[]='quote_id=?'; $params[]=$quoteNo; }
+    if($status==='pending'){
+      $pdo->prepare("UPDATE crm_tasks SET status='pending', result=?, result_note=CONCAT(COALESCE(result_note,''), IF(COALESCE(result_note,'')='', '', '\n'), ?), completed_at=NULL, completed_by=NULL, updated_at=NOW() WHERE task_type='quote_followup' AND deleted_at IS NULL AND (".implode(' OR ',$where).")")
+        ->execute(array_merge([$result,$note],$params));
+    }else{
+      $pdo->prepare("UPDATE crm_tasks SET status=?, result=?, result_note=CONCAT(COALESCE(result_note,''), IF(COALESCE(result_note,'')='', '', '\n'), ?), completed_at=COALESCE(completed_at,NOW()), completed_by=?, updated_at=NOW() WHERE task_type='quote_followup' AND status NOT IN ('done','closed','cancelled') AND deleted_at IS NULL AND (".implode(' OR ',$where).")")
+        ->execute(array_merge([$status,$result,$note,(int)(quote_crm_actor_user_id($u) ?: 0)],$params));
+    }
+  }catch(Throwable $e){}
+}
+function quote_followup_status_update(PDO $pdo, array $d, array $u): array {
+  quote_followup_lifecycle_schema($pdo);
+  $id=(int)($d['id']??0); if($id<=0) fail('缺少报价ID');
+  $status=trim((string)($d['status']??'closed'));
+  $closed=in_array($status,['closed','ended','结束','已结束'],true);
+  $q=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]); if(!$q) fail('报价不存在');
+  $reason=s($d['reason']??'',5000);
+  $actor=(string)($u['username']??'');
+  if($closed){
+    $pdo->prepare("UPDATE quote_orders SET followup_status='closed',followup_closed_at=NOW(),followup_closed_by=?,followup_closed_reason=?,updated_at=NOW() WHERE id=?")->execute([$actor,$reason,$id]);
+    quote_set_crm_quote_followup_task_status($pdo,$q,$u,'closed','无需跟进',$reason!==''?('报价结束跟进：'.$reason):'报价已标记为无需继续跟进');
+  }else{
+    $pdo->prepare("UPDATE quote_orders SET followup_status='active',followup_closed_at=NULL,followup_closed_by='',followup_closed_reason='',updated_at=NOW() WHERE id=?")->execute([$id]);
+    quote_set_crm_quote_followup_task_status($pdo,$q,$u,'pending','恢复跟进',$reason!==''?('报价恢复跟进：'.$reason):'报价已恢复跟进');
+  }
+  $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]);
+  quote_append_approval_log($pdo,$id,[
+    'action'=>$closed?'close_followup':'reopen_followup','time'=>date('Y-m-d H:i:s'),'user'=>$actor,'user_name'=>(string)($u['display_name']??$u['real_name']??$actor),
+    'note'=>$reason,'changes'=>[]
+  ]);
+  quote_log_event($pdo,['action'=>$closed?'quote_followup_close':'quote_followup_reopen','event'=>$closed?'报价结束跟进':'报价恢复跟进','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($q),'user_name'=>$actor,'summary'=>($closed?'结束跟进：':'恢复跟进：').($q['quote_no']??('ID '.$id)),'detail'=>$d,'before'=>$q,'after'=>$after]);
+  return ['quote'=>$after,'followup_status'=>$closed?'closed':'active'];
 }
 function quote_push_crm_approved_reminder(PDO $pdo, array $q, array $u): void {
   quote_push_crm_review_message($pdo,$q,$u,'approved',(string)($q['approval_note']??''));
@@ -4105,6 +4155,7 @@ function quote_summary_filters($input){
   return $d;
 }
 function quote_summary_base_sql(PDO $pdo){
+  quote_followup_lifecycle_schema($pdo);
   $hasOrders=table_exists($pdo,'quote_sales_orders');
   $hasPayments=table_exists($pdo,'quote_order_payments');
   $hasShipments=table_exists($pdo,'quote_shipments');
@@ -4118,7 +4169,7 @@ function quote_summary_base_sql(PDO $pdo){
     COALESCE(NULLIF(q.user_name,''),NULLIF(q.submitted_by,''),'未指定') owner,
     COALESCE(NULLIF(q.customer_name,''),'未指定客户') customer_name,$country country,
     UPPER(COALESCE(q.currency,'USD')) quote_currency,COALESCE(q.amount,0) quote_amount,COALESCE(q.qty,0) quote_qty,
-    COALESCE(q.approval_status,'pending') approval_status,
+    COALESCE(q.approval_status,'pending') approval_status,COALESCE(q.followup_status,'active') followup_status,q.followup_closed_at,
     o.id order_id,o.order_no,COALESCE(o.order_date,DATE(o.created_at)) order_date,UPPER(COALESCE(o.currency,q.currency,'USD')) order_currency,COALESCE(o.amount,0) order_amount,COALESCE(o.qty,0) order_qty,
     COALESCE(o.status,'') order_status,COALESCE(o.shipment_status,'') shipment_status,COALESCE(o.payment_status,'') payment_status,
     COALESCE(pay.paid_amount,0) paid_amount,pay.payment_date,COALESCE(ship.shipment_count,0) shipment_count,ship.shipment_date
@@ -4146,6 +4197,7 @@ function quote_summary_rows(PDO $pdo,array $f){
   return rows($pdo,$sql,$params);
 }
 function quote_summary_status(array $r){
+  if(empty($r['order_id']) && ($r['followup_status']??'')==='closed') return '已结束跟进';
   if(empty($r['order_id'])) return ($r['approval_status']??'')==='approved'?'已审核未转单':(($r['approval_status']??'')==='rejected'?'已驳回':'未审核');
   $amount=(float)($r['order_amount']??0);$paid=(float)($r['paid_amount']??0);
   if($amount>0 && $paid>=$amount) return '已收齐';
@@ -4355,6 +4407,7 @@ function quote_history_summary_rows(PDO $pdo): array {
 }
 if($action==='init'){
    $ownerRepairCount=0;
+   quote_followup_lifecycle_schema($pdo);
    ok([
     'me'=>qperm_public_user($pdo,$__quote_user),
     'permissions'=>$__quote_perms,
@@ -4616,6 +4669,9 @@ if($action==='init'){
    quote_push_crm_review_reminder($pdo,$afterUnapprove?:$q,$__quote_user,'unapproved',$note);
    quote_log_event($pdo,['action'=>'unapprove_quote','event'=>'报价反审退回','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($q),'summary'=>'报价反审退回待审核：'.($q['quote_no']??''),'detail'=>$d,'before'=>$q,'after'=>$afterUnapprove]);
    ok(['quote'=>$afterUnapprove,'approval_status'=>'pending']);
+ }
+ if($action==='set_quote_followup_status') {
+   ok(quote_followup_status_update($pdo,input_json(),$__quote_user));
  }
 
  if($action==='save_quote') {
