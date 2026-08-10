@@ -7530,22 +7530,40 @@
           if (!window.confirm('确认合并这 ' + mergeIds.length + ' 个客户？\\n将保留 #' + master + '，其他客户会被软删除并迁移资料。')) return;
           button.disabled = true;
           button.textContent = '合并中...';
-          post('customer_merge_selected', { master_customer_id: master, customer_ids: mergeIds }, { timeoutMs: 30000 }).then(function (json) {
-            if (!json.success) {
-              button.disabled = false;
-              button.textContent = '确认合并';
-              return self.showCustomerError(json.message || '客户合并失败');
-            }
+          var finishMerge = function (message) {
             self.closeDialog();
             self.selected.clear();
             self.allFilteredSelectionCount = 0;
             self.currentId = master;
-            toast(json.message || '客户合并完成');
-            self.loadList().then(function () { return self.loadDetail(master, { keepTab: true }); });
+            toast(message || '客户合并完成');
+            return self.loadList({ silent: true }).then(function () {
+              return self.loadDetail(master, { keepTab: true, silent: true });
+            }).catch(function () {
+              toast('客户合并已完成，列表刷新未完成时请手动刷新。');
+            });
+          };
+          var confirmMergeState = function (fallbackMessage) {
+            return post('customer_merge_status', { master_customer_id: master, customer_ids: mergeIds }, { timeoutMs: 12000 }).then(function (statusJson) {
+              var data = statusJson.data || {};
+              if (statusJson.success && Number(data.merged || 0) === 1) {
+                return finishMerge('客户合并已完成');
+              }
+              button.disabled = false;
+              button.textContent = '确认合并';
+              return self.showCustomerError(fallbackMessage || '客户合并失败，请刷新后重试。');
+            }).catch(function () {
+              button.disabled = false;
+              button.textContent = '确认合并';
+              self.showCustomerError(fallbackMessage || '客户合并状态确认失败，请刷新后查看结果。');
+            });
+          };
+          post('customer_merge_selected', { master_customer_id: master, customer_ids: mergeIds }, { timeoutMs: 30000 }).then(function (json) {
+            if (!json.success) {
+              return confirmMergeState(json.message || '客户合并失败');
+            }
+            return finishMerge(json.message || '客户合并完成');
           }).catch(function (error) {
-            button.disabled = false;
-            button.textContent = '确认合并';
-            self.showCustomerError((error && error.message) || '客户合并失败');
+            return confirmMergeState((error && error.message) || '客户合并失败');
           });
         });
         refresh();

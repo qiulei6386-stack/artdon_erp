@@ -3323,6 +3323,48 @@ function crm_customer_merge_selected(array $input): array
     ];
 }
 
+function crm_customer_merge_status(array $input): array
+{
+    crm_require('customer.merge');
+    crm_customer_ensure_tables();
+    $ids = crm_parse_customer_ids($input['customer_ids'] ?? []);
+    $masterId = (int)($input['master_customer_id'] ?? 0);
+    if (!$masterId || !in_array($masterId, $ids, true)) throw new RuntimeException('缺少合并状态确认参数。');
+    $ids = array_values(array_unique($ids));
+    if (!$ids) return ['merged' => false, 'rows' => []];
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = db()->prepare("SELECT id, customer_name, deleted_at, delete_reason FROM crm_customers WHERE id IN ({$placeholders})");
+    $stmt->execute($ids);
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $id = (int)$row['id'];
+        $deletedAt = (string)($row['deleted_at'] ?? '');
+        $reason = (string)($row['delete_reason'] ?? '');
+        $rows[$id] = [
+            'id' => $id,
+            'customer_name' => (string)($row['customer_name'] ?? ''),
+            'deleted_at' => $deletedAt,
+            'delete_reason' => $reason,
+            'is_master' => $id === $masterId ? 1 : 0,
+            'merged_to_master' => ($id !== $masterId && $deletedAt !== '' && str_contains($reason, '客户 #' . $masterId)) ? 1 : 0,
+        ];
+    }
+    $masterActive = isset($rows[$masterId]) && (string)($rows[$masterId]['deleted_at'] ?? '') === '';
+    $allDuplicatesDone = true;
+    foreach ($ids as $id) {
+        if ((int)$id === $masterId) continue;
+        if (empty($rows[(int)$id]['merged_to_master'])) {
+            $allDuplicatesDone = false;
+            break;
+        }
+    }
+    return [
+        'master_customer_id' => $masterId,
+        'merged' => ($masterActive && $allDuplicatesDone) ? 1 : 0,
+        'rows' => array_values($rows),
+    ];
+}
+
 function crm_customer_relation_create(array $input): array
 {
     crm_require('customer.graph_manage');
