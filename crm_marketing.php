@@ -2524,7 +2524,7 @@ function crm_marketing_country_offset(?string $country): ?float
         'uk' => 0, 'united kingdom' => 0, 'gb' => 0, '英国' => 0,
         'usa' => -5, 'us' => -5, 'united states' => -5, 'america' => -5, '美国' => -5,
         'australia' => 10, 'au' => 10, '澳大利亚' => 10, 'new zealand' => 12,
-        'singapore' => 8, 'malaysia' => 8, 'thailand' => 7, 'vietnam' => 7, 'indonesia' => 7, 'philippines' => 8,
+        'singapore' => 8, '新加坡' => 8, 'malaysia' => 8, '马来西亚' => 8, 'thailand' => 7, '泰国' => 7, 'vietnam' => 7, '越南' => 7, 'indonesia' => 7, '印度尼西亚' => 7, '印尼' => 7, 'philippines' => 8, '菲律宾' => 8,
         'south africa' => 2, 'za' => 2, 'nigeria' => 1, 'egypt' => 2,
     ];
     if (array_key_exists($key, $map)) return (float)$map[$key];

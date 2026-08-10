@@ -340,6 +340,26 @@
     return { raw: raw, code: found[0], name: found[1], english: found[2], searchTerms: Array.from(new Set(searchTerms.filter(Boolean))) };
   }
 
+  function countryTimeZone(value) {
+    var meta = countryMeta(value);
+    var code = String(meta.code || '').toUpperCase();
+    var map = {
+      CN: 'Asia/Shanghai', HK: 'Asia/Hong_Kong', MO: 'Asia/Macau', TW: 'Asia/Taipei',
+      TH: 'Asia/Bangkok', PH: 'Asia/Manila', VN: 'Asia/Ho_Chi_Minh', ID: 'Asia/Jakarta',
+      SG: 'Asia/Singapore', MY: 'Asia/Kuala_Lumpur', IN: 'Asia/Kolkata', JP: 'Asia/Tokyo', KR: 'Asia/Seoul',
+      AE: 'Asia/Dubai', SA: 'Asia/Riyadh', QA: 'Asia/Qatar', KW: 'Asia/Kuwait', OM: 'Asia/Muscat', BH: 'Asia/Bahrain',
+      BD: 'Asia/Dhaka', PK: 'Asia/Karachi', LK: 'Asia/Colombo', NP: 'Asia/Kathmandu',
+      GB: 'Europe/London', DE: 'Europe/Berlin', FR: 'Europe/Paris', IT: 'Europe/Rome', ES: 'Europe/Madrid',
+      NL: 'Europe/Amsterdam', BE: 'Europe/Brussels', CH: 'Europe/Zurich', AT: 'Europe/Vienna', SE: 'Europe/Stockholm',
+      NO: 'Europe/Oslo', DK: 'Europe/Copenhagen', FI: 'Europe/Helsinki', PL: 'Europe/Warsaw', CZ: 'Europe/Prague',
+      GR: 'Europe/Athens', HR: 'Europe/Zagreb', IE: 'Europe/Dublin', RO: 'Europe/Bucharest', BG: 'Europe/Sofia',
+      US: 'America/New_York', CA: 'America/Toronto', AU: 'Australia/Sydney', NZ: 'Pacific/Auckland',
+      ZA: 'Africa/Johannesburg', EG: 'Africa/Cairo', MA: 'Africa/Casablanca', NG: 'Africa/Lagos',
+      BR: 'America/Sao_Paulo', MX: 'America/Mexico_City', AR: 'America/Argentina/Buenos_Aires', CL: 'America/Santiago'
+    };
+    return map[code] || '';
+  }
+
   function cnChannel(value) {
     var key = String(value || '').toLowerCase();
     var map = {
@@ -18911,15 +18931,32 @@
           return manualChannels.indexOf(channel) >= 0 || row.chat_group_id || (emailChannels.indexOf(channel) >= 0 && ['failed','skipped','pending'].indexOf(statusText) >= 0);
         });
         manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
+        var isValidTimeZone = function (zone) {
+          if (!zone) return false;
+          try {
+            new Intl.DateTimeFormat('zh-CN', { timeZone: zone }).format(new Date());
+            return true;
+          } catch (error) {
+            return false;
+          }
+        };
+        var queueTimezoneInfo = function (row) {
+          var raw = String(row.customer_timezone || '').trim();
+          var countryZone = countryTimeZone(row.country || row.customer_country || '');
+          if (isValidTimeZone(raw)) return { zone: raw, label: raw };
+          if (countryZone) return { zone: countryZone, label: countryZone + (raw && raw !== 'unknown' ? '（按国家，原 ' + raw + '）' : '（按国家）') };
+          if (/^UTC[+-]?\d+(\.\d+)?$/i.test(raw)) return { zone: '', label: raw, offset: parseFloat(raw.replace(/^UTC/i, '')) };
+          return { zone: '', label: raw || 'unknown' };
+        };
         var sentLocalTime = function (row) {
-          var sentAt = String(row.sent_at || '').trim();
-          var zone = String(row.customer_timezone || '').trim();
-          if (sentAt && zone) {
+          var sentAt = String(row.sent_at || row.planned_server_time || '').trim();
+          var tz = queueTimezoneInfo(row);
+          if (sentAt && tz.zone) {
             try {
               var date = new Date(sentAt.replace(' ', 'T') + '+08:00');
               if (!isNaN(date.getTime())) {
                 return new Intl.DateTimeFormat('zh-CN', {
-                  timeZone: zone,
+                  timeZone: tz.zone,
                   year: 'numeric',
                   month: '2-digit',
                   day: '2-digit',
@@ -18929,6 +18966,14 @@
                 }).format(date).replace(/\//g, '-');
               }
             } catch (error) {}
+          }
+          if (sentAt && typeof tz.offset === 'number' && !isNaN(tz.offset)) {
+            var base = new Date(sentAt.replace(' ', 'T') + '+08:00');
+            if (!isNaN(base.getTime())) {
+              var local = new Date(base.getTime() + (tz.offset - 8) * 3600000);
+              var pad = function (n) { return String(n).padStart(2, '0'); };
+              return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes());
+            }
           }
           return row.planned_customer_time || '-';
         };
@@ -18986,7 +19031,8 @@
         };
         var queueTable = rows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>失败原因</th></tr></thead><tbody>' + rows.slice(0, 1000).map(function (row) {
           var systemTime = row.sent_at || row.planned_server_time || '-';
-          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.country || row.customer_country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(String(systemTime || '-').slice(0, 16)) + '</td><td>' + esc(sentLocalTime(row)) + '</td><td>' + esc(row.customer_timezone || '-') + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
+          var tz = queueTimezoneInfo(row);
+          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.country || row.customer_country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(String(systemTime || '-').slice(0, 16)) + '</td><td>' + esc(sentLocalTime(row)) + '</td><td>' + esc(tz.label || '-') + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
         }).join('') + '</tbody></table>' + (rows.length > 1000 ? '<p class="promo-empty">当前只显示前 1000 条邮件明细，可继续分页扩展。</p>' : '') + '</div>' : '<p class="promo-empty">暂无邮件发送队列。</p>';
         var noEmailList = noEmailTargets.length ? '<div class="promo-target-list">' + noEmailTargets.slice(0, 120).map(function (row) {
           return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.contact_name || '客户级目标') + ' · ' + esc(row.country || '-') + ' · ' + esc(cnStatus(row.target_status || '-')) + ' · ' + esc(row.failure_reason || '缺少邮箱') + '</span></article>';
