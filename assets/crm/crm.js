@@ -15201,7 +15201,7 @@
         var startedAt = String(row.scheduled_at || '').replace('T', ' ').slice(0, 16);
         var createdAt = String(row.created_at || '').replace('T', ' ').slice(0, 16);
         var updatedAt = String(row.updated_at || '').replace('T', ' ').slice(0, 16);
-        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 队列 ' + (row.queue_count || row.target_count || 0) + ' · 失败 ' + (row.failed_count || 0);
+        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 邮件队列 ' + (row.queue_count || 0) + ' · 人工待办 ' + (row.manual_pending_count || 0) + ' · 失败 ' + (row.failed_count || 0);
         var startLine = '开始 ' + (startedAt || '未设置');
         var timing = '负责人 ' + (row.created_by_name || '-') + (updatedAt ? ' · 更新 ' + updatedAt : '');
         var timingTitle = ['开始：' + (startedAt || '未设置'), '创建：' + (createdAt || '-'), '更新：' + (row.updated_at || '-')].join('\\n');
@@ -15524,6 +15524,11 @@
       var queueRows = queue.rows || [];
       var queueStatus = queue.status || {};
       var executionSummary = report.execution_summary || {};
+      var targetSummary = report.target_summary || {};
+      var summaryEmail = targetSummary.email || {};
+      var summaryManual = targetSummary.manual || {};
+      var summaryQueue = targetSummary.queue || {};
+      var hasSummaryValue = function (obj, key) { return obj && Object.prototype.hasOwnProperty.call(obj, key); };
       var mailExecutionSummary = executionSummary.mail || {};
       var targetTotal = Number(task.customer_count || 0) + Number(task.contact_count || 0);
       var emailChannels = ['email','mail','edm'];
@@ -15538,31 +15543,31 @@
       manualTargets = this.collapseEmailFollowupsWithGroupTargets(manualTargets);
       var hasLoadedTargets = targets.length > 0;
       var taskChannel = normalizeChannel(task.channel_key || task.campaign_type || '');
-      var rawEmailTargetCount = hasLoadedTargets ? emailTargets.length : (emailChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0);
+      var rawEmailTargetCount = hasSummaryValue(summaryEmail, 'total') ? Number(summaryEmail.total || 0) : (hasLoadedTargets ? emailTargets.length : (emailChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0));
       var uniqueEmailMap = {};
       emailTargets.forEach(function (row) {
         var email = String(row.email || row.receiver_email || row.contact_email || row.primary_contact_email || '').trim().toLowerCase();
         if (email) uniqueEmailMap[email] = true;
       });
       var uniqueEmailTargetCount = Object.keys(uniqueEmailMap).length;
-      var manualTargetCount = hasLoadedTargets ? manualTargets.length : (manualChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0);
+      var manualTargetCount = hasSummaryValue(summaryManual, 'target_total') ? Number(summaryManual.target_total || 0) : (hasLoadedTargets ? manualTargets.length : (manualChannels.indexOf(taskChannel) >= 0 ? targetTotal : 0));
       var failedTargets = targets.filter(function (row) { return row.target_status === 'failed'; });
       var skippedTargets = targets.filter(function (row) { return row.target_status === 'skipped'; });
       var blackSkipped = targets.filter(function (row) { return /黑名单|blacklist/i.test(String(row.failure_reason || row.skip_reason || '')); }).length;
-      var noEmailSkipped = targets.filter(function (row) { return /邮箱|email/i.test(String(row.failure_reason || row.skip_reason || '')); }).length;
+      var noEmailSkipped = hasSummaryValue(summaryEmail, 'no_receiver_recorded') ? Number(summaryEmail.no_receiver_recorded || 0) : targets.filter(function (row) { return /邮箱|email/i.test(String(row.failure_reason || row.skip_reason || '')); }).length;
       var mailRuleText = sendRule.mail_account_rule === 'group_by_country' ? '按国家分配邮箱' : (sendRule.mail_account_rule === 'owner_mailbox' ? '按第一负责人邮箱' : (sendRule.mail_account_rule === 'selected_mailbox' ? '按当前勾选邮箱' : '多邮箱平均分配'));
       var scheduleText = this.taskScheduleText(task, schedule);
       var taskSuccessCount = Number(task.success_count || 0) || Number(mailExecutionSummary.success || 0);
       var taskFailedCount = Number(task.failed_count || 0) || Number(mailExecutionSummary.failed || 0);
       var taskPendingCount = Number(mailExecutionSummary.pending || 0);
       var taskCompletedCount = taskSuccessCount + taskFailedCount;
-      var queueTotal = queueRows.length || Object.keys(queueStatus).reduce(function (sum, key) { return ['first_planned_time','last_planned_time'].indexOf(key) >= 0 ? sum : sum + Number(queueStatus[key] || 0); }, 0) || taskCompletedCount || Number(mailExecutionSummary.total || 0);
-      var emailTargetCount = queueTotal > 0 ? queueTotal : (uniqueEmailTargetCount || rawEmailTargetCount);
-      var duplicateEmailSkipped = Math.max(0, rawEmailTargetCount - emailTargetCount, Number(risk.duplicate_email_skipped || 0));
-      var pendingQueue = Number(queueStatus.pending || 0) + Number(queueStatus.scheduled || 0) + Number(queueStatus.sending || 0) || taskPendingCount;
-      var sentQueue = Number(queueStatus.sent || 0) || taskSuccessCount;
-      var failedQueue = Number(queueStatus.failed || 0) || taskFailedCount;
-      var retryQueue = Number(queueStatus.waiting_retry || 0);
+      var queueTotal = hasSummaryValue(summaryQueue, 'total') ? Number(summaryQueue.total || 0) : (queueRows.length || Object.keys(queueStatus).reduce(function (sum, key) { return ['first_planned_time','last_planned_time'].indexOf(key) >= 0 ? sum : sum + Number(queueStatus[key] || 0); }, 0) || taskCompletedCount || Number(mailExecutionSummary.total || 0));
+      var emailTargetCount = rawEmailTargetCount || uniqueEmailTargetCount || queueTotal;
+      var duplicateEmailSkipped = hasSummaryValue(summaryEmail, 'duplicate_skipped') ? Number(summaryEmail.duplicate_skipped || 0) : Math.max(0, rawEmailTargetCount - emailTargetCount, Number(risk.duplicate_email_skipped || 0));
+      var pendingQueue = hasSummaryValue(summaryQueue, 'pending') ? Number(summaryQueue.pending || 0) : (Number(queueStatus.pending || 0) + Number(queueStatus.scheduled || 0) + Number(queueStatus.sending || 0) || taskPendingCount);
+      var sentQueue = hasSummaryValue(summaryQueue, 'sent') ? Number(summaryQueue.sent || 0) : (Number(queueStatus.sent || 0) || taskSuccessCount);
+      var failedQueue = hasSummaryValue(summaryQueue, 'failed') ? Number(summaryQueue.failed || 0) : (Number(queueStatus.failed || 0) || taskFailedCount);
+      var retryQueue = hasSummaryValue(summaryQueue, 'waiting_retry') ? Number(summaryQueue.waiting_retry || 0) : Number(queueStatus.waiting_retry || 0);
       var queueHint = queueTotal > 0 ? ('已生成 ' + queueTotal + ' 条正式发送队列') : (task.task_status === 'draft' ? '草稿未生成正式发送队列' : '尚未生成正式发送队列');
       var countries = {};
       targets.forEach(function (row) {
@@ -15597,15 +15602,20 @@
       var mailAccountCount = (sendRule.mail_account_ids || []).length || (sendRule.mail_account_id ? 1 : 0) || '自动';
       var countryWorkTime = (sendRule.timezone_rule || schedule.timezone_rule || '') === 'business_hours' ? '是' : (sendRule.timezone_rule || schedule.timezone_rule || '未设置');
       var attention = failedQueue ? ('有 ' + failedQueue + ' 条发送失败，需要处理') : (retryQueue ? ('有 ' + retryQueue + ' 条待重试') : (sentQueue ? ('已发送 ' + sentQueue + ' 条邮件') : (queueTotal ? queueHint : '尚未生成执行队列')));
-      var manualPending = manualTargets.filter(function (r) {
+      var manualPending = hasSummaryValue(summaryManual, 'pending') ? Number(summaryManual.pending || 0) : manualTargets.filter(function (r) {
         var channel = normalizeChannel(r.channel_key || task.channel_key || '');
         var status = String(r.target_status || '').toLowerCase();
         return ['pending','failed'].indexOf(status) >= 0 || (emailChannels.indexOf(channel) >= 0 && status === 'skipped');
       }).length;
+      var manualEmailFallbackPending = hasSummaryValue(summaryManual, 'email_fallback_pending') ? Number(summaryManual.email_fallback_pending || 0) : manualTargets.filter(function (r) { return emailChannels.indexOf(normalizeChannel(r.channel_key || '')) >= 0; }).length;
+      var manualGroupDone = hasSummaryValue(summaryManual, 'channel_success') ? Number(summaryManual.channel_success || 0) : manualTargets.filter(function (r) { return (r.chat_group_id || ['wechat_group','whatsapp_group'].indexOf(normalizeChannel(r.channel_key || '')) >= 0) && String(r.target_status || '').toLowerCase() === 'success'; }).length;
+      var manualNoEmailPending = hasSummaryValue(summaryManual, 'no_email_pending') ? Number(summaryManual.no_email_pending || 0) : noEmailSkipped;
+      var manualDuplicatePending = hasSummaryValue(summaryManual, 'duplicate_pending') ? Number(summaryManual.duplicate_pending || 0) : duplicateEmailSkipped;
+      var trueNoEmailCustomers = hasSummaryValue(summaryEmail, 'true_no_email_customers') ? Number(summaryEmail.true_no_email_customers || 0) : 0;
       var targetMetrics = [['客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['国家', countryText], ['已过滤', skippedTargets.length || risk.skipped || 0]];
       var scheduleMetrics = [['执行方式', cnStatus(task.schedule_type || schedule.schedule_type || 'manual')], ['首批时间', queueStatus.first_planned_time || task.scheduled_at || '-'], ['待发送', pendingQueue], ['已发送', sentQueue]];
-      var mailRuleHtml = '<article><header><strong>邮件自动发送</strong><span>邮箱、队列与发送上限</span></header><div class="promo-task-rule-list"><p><span>发件邮箱规则</span><b>' + esc(mailRuleText) + '</b></p><p><span>发件邮箱数量</span><b>' + esc(mailAccountCount) + '</b></p><p><span>邮件目标</span><b>' + esc(emailTargetCount) + '</b></p><p><span>重复跳过</span><b>' + esc(duplicateEmailSkipped) + '</b></p><p><span>每小时 / 每日上限</span><b>' + esc(sendRule.hourly_limit || sendRule.per_hour_limit || '-') + ' / ' + esc(sendRule.daily_limit || sendRule.per_day_limit || '-') + '</b></p></div></article>';
-      var manualRuleHtml = '<article><header><strong>线下人工执行</strong><span>微信、WhatsApp、电话和群执行</span></header><div class="promo-task-rule-list"><p><span>人工目标</span><b>' + esc(manualTargetCount) + '</b></p><p><span>微信 / WhatsApp</span><b>' + esc(manualTargets.filter(function (r) { return ['wechat','weixin','whatsapp'].indexOf(normalizeChannel(r.channel_key)) >= 0; }).length) + '</b></p><p><span>电话 / 群</span><b>' + esc(manualTargets.filter(function (r) { return ['phone','wechat_group','whatsapp_group'].indexOf(normalizeChannel(r.channel_key)) >= 0 || r.chat_group_id; }).length) + '</b></p><p><span>执行人</span><b>' + esc((sendRule.offline_owner_ids || []).length || sendRule.offline_executor_rule || sendRule.executor_rule || '负责人') + '</b></p><p><span>待执行</span><b>' + esc(manualPending) + '</b></p></div></article>';
+      var mailRuleHtml = '<article><header><strong>邮件自动发送</strong><span>邮箱、队列与发送上限</span></header><div class="promo-task-rule-list"><p><span>发件邮箱规则</span><b>' + esc(mailRuleText) + '</b></p><p><span>发件邮箱数量</span><b>' + esc(mailAccountCount) + '</b></p><p><span>邮件目标</span><b>' + esc(emailTargetCount) + '</b></p><p><span>正式队列</span><b>' + esc(queueTotal) + '</b></p><p><span>无邮箱跳过</span><b>' + esc(noEmailSkipped) + '</b></p><p><span>重复跳过</span><b>' + esc(duplicateEmailSkipped) + '</b></p><p><span>真无邮箱客户</span><b>' + esc(trueNoEmailCustomers) + '</b></p><p><span>每小时 / 每日上限</span><b>' + esc(sendRule.hourly_limit || sendRule.per_hour_limit || '-') + ' / ' + esc(sendRule.daily_limit || sendRule.per_day_limit || '-') + '</b></p></div></article>';
+      var manualRuleHtml = '<article><header><strong>线下人工执行</strong><span>只统计还需要人工处理的目标</span></header><div class="promo-task-rule-list"><p><span>人工目标</span><b>' + esc(manualTargetCount) + '</b></p><p><span>邮件转人工</span><b>' + esc(manualEmailFallbackPending) + '</b></p><p><span>无邮箱 / 重复</span><b>' + esc(manualNoEmailPending) + ' / ' + esc(manualDuplicatePending) + '</b></p><p><span>群推广已完成</span><b>' + esc(manualGroupDone) + '</b></p><p><span>执行人</span><b>' + esc((sendRule.offline_owner_ids || []).length || sendRule.offline_executor_rule || sendRule.executor_rule || '负责人') + '</b></p><p><span>人工待办</span><b>' + esc(manualPending) + '</b></p></div></article>';
       box.innerHTML =
         '<section class="promo-project-overview ' + esc(statusClass) + '"><div class="promo-project-overview-main"><span>推广任务 #' + esc(task.id) + '</span><h3>' + esc(task.task_name || '未命名推广任务') + '</h3><p><b>' + esc(this.taskStatusText(task.task_status)) + '</b><em>' + esc(cnChannel(task.channel_key || task.campaign_type || '-')) + '</em><em>' + esc(scheduleText) + '</em></p><small>' + esc(attention) + '</small></div><aside>' +
           [['目标客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['邮件队列', queueTotal], ['人工待办', manualPending]].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') +
@@ -18637,7 +18647,7 @@
         self.openWizard();
       };
       this.ensureTaskDetail(taskId).then(function (task) {
-        return post('marketing_task_targets', { task_id: taskId }).then(function (json) {
+        return post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
           if (!json.success) throw new Error(json.message || '目标名单加载失败');
           open(task, ((json.data || {}).targets || []));
         }).catch(function (error) {
@@ -18702,7 +18712,7 @@
     openTaskTargets: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      post('marketing_task_targets', { task_id: taskId }).then(function (json) {
+      post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '目标名单加载失败');
         var targets = ((json.data || {}).targets || []);
         self.openDialog({
@@ -18736,7 +18746,7 @@
     openExecutionDialog: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      post('marketing_task_targets', { task_id: taskId }).then(function (json) {
+      post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '执行预览加载失败');
         var targets = ((json.data || {}).targets || []);
         var executable = targets.filter(function (row) { return ['pending','failed'].indexOf(row.target_status) >= 0; });
@@ -18757,7 +18767,7 @@
       var self = this;
       var task = this.taskById(taskId || this.selectedTaskId);
       if (!task) return toast('请先选择一个推广任务');
-      post('marketing_task_targets', { task_id: task.id }).then(function (json) {
+      post('marketing_task_targets', { task_id: task.id, limit: 5000 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '手动执行清单加载失败');
         var targets = ((json.data || {}).targets || []);
         var manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin'];

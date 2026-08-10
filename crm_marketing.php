@@ -1051,12 +1051,44 @@ function crm_marketing_tasks(): array
             t.attachment_config_json, t.audience_config_json, t.send_rule_json, t.schedule_config_json,
             t.failure_policy_json, t.risk_summary_json, t.task_status, t.schedule_type, t.scheduled_at,
             t.customer_count, t.contact_count, t.success_count, t.failed_count, t.created_by, t.assigned_to,
+            COALESCE(q.queue_count, 0) AS queue_count,
+            COALESCE(ts.target_count, 0) AS target_count,
+            COALESCE(ts.manual_pending_count, 0) AS manual_pending_count,
+            COALESCE(ts.email_no_receiver_count, 0) AS email_no_receiver_count,
+            COALESCE(ts.duplicate_email_count, 0) AS duplicate_email_count,
             t.remark, t.created_at, t.updated_at,
             CASE WHEN COALESCE(t.mail_body_html, '') <> '' THEN 1 ELSE 0 END AS has_mail_body,
             OCTET_LENGTH(COALESCE(t.mail_body_html, '')) AS mail_body_bytes,
             u.username AS created_by_name
         FROM crm_marketing_tasks t
         LEFT JOIN crm_users u ON u.id = t.created_by
+        LEFT JOIN (
+            SELECT task_id, COUNT(*) AS queue_count
+            FROM crm_marketing_send_queue
+            GROUP BY task_id
+        ) q ON q.task_id = t.id
+        LEFT JOIN (
+            SELECT mt.task_id,
+                COUNT(*) AS target_count,
+                SUM(CASE
+                    WHEN LOWER(COALESCE(mt.channel_key, '')) IN ('wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin')
+                         AND mt.target_status IN ('pending','failed') THEN 1
+                    WHEN LOWER(COALESCE(mt.channel_key, '')) IN ('email','mail','edm')
+                         AND mt.target_status IN ('pending','failed','skipped')
+                         AND gx.customer_id IS NULL THEN 1
+                    ELSE 0
+                END) AS manual_pending_count,
+                SUM(CASE WHEN LOWER(COALESCE(mt.channel_key, '')) IN ('email','mail','edm') AND COALESCE(mt.failure_reason, '') = '收件邮箱为空' THEN 1 ELSE 0 END) AS email_no_receiver_count,
+                SUM(CASE WHEN LOWER(COALESCE(mt.channel_key, '')) IN ('email','mail','edm') AND COALESCE(mt.failure_reason, '') = '重复邮箱' THEN 1 ELSE 0 END) AS duplicate_email_count
+            FROM crm_marketing_task_targets mt
+            LEFT JOIN (
+                SELECT task_id, customer_id
+                FROM crm_marketing_task_targets
+                WHERE chat_group_id IS NOT NULL OR LOWER(COALESCE(channel_key, '')) IN ('wechat_group','whatsapp_group')
+                GROUP BY task_id, customer_id
+            ) gx ON gx.task_id = mt.task_id AND gx.customer_id = mt.customer_id
+            GROUP BY mt.task_id
+        ) ts ON ts.task_id = t.id
         ORDER BY t.id DESC
         LIMIT 80");
     return $stmt->fetchAll();
@@ -1450,7 +1482,9 @@ function crm_marketing_task_targets(array $input = []): array
         $where[] = 'mt.target_status = ?';
         $params[] = $status;
     }
-    $limit = $taskId > 0 ? 1000 : 200;
+    $defaultLimit = $taskId > 0 ? 1000 : 200;
+    $limit = (int)($input['limit'] ?? $defaultLimit);
+    $limit = max(1, min(5000, $limit));
     $stmt = db()->prepare("SELECT mt.*, t.task_name, t.task_status, t.campaign_type, t.mail_subject,
         c.customer_name, c.customer_code, c.country, c.do_not_contact, c.phone AS customer_phone, c.whatsapp AS customer_whatsapp, c.owner_user_id,
         ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, ct.linkedin, ct.position, ct.is_left,
@@ -1528,6 +1562,230 @@ function crm_marketing_task_execution_summary(int $taskId): array
     return $summary;
 }
 
+function crm_marketing_task_target_summary(int $taskId): array
+{
+    crm_marketing_ensure_tables();
+    if ($taskId <= 0) {
+        return [
+            'total_targets' => 0,
+            'customers' => 0,
+            'contacts' => 0,
+            'groups' => 0,
+            'by_channel' => [],
+            'by_status' => [],
+            'failure_reasons' => [],
+            'email' => [],
+            'manual' => [],
+            'queue' => [],
+        ];
+    }
+    crm_marketing_reconcile_task_targets_from_queue($taskId);
+    crm_marketing_reconcile_group_targets($taskId);
+    crm_marketing_reconcile_email_group_followups($taskId);
+
+    $emailSql = "LOWER(COALESCE(mt.channel_key, '')) IN ('email','mail','edm')";
+    $manualSql = "LOWER(COALESCE(mt.channel_key, '')) IN ('wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin')";
+    $emailFallbackSql = "({$emailSql} AND mt.target_status IN ('pending','failed','skipped'))";
+    $groupExistsSql = "EXISTS (
+        SELECT 1
+        FROM crm_marketing_task_targets g
+        WHERE g.task_id = mt.task_id
+          AND g.customer_id = mt.customer_id
+          AND (g.chat_group_id IS NOT NULL OR LOWER(COALESCE(g.channel_key, '')) IN ('wechat_group','whatsapp_group'))
+        LIMIT 1
+    )";
+
+    $stmt = db()->prepare("SELECT
+            COUNT(*) AS total_targets,
+            COUNT(DISTINCT mt.customer_id) AS customers,
+            COUNT(DISTINCT NULLIF(mt.contact_id, 0)) AS contacts,
+            COUNT(DISTINCT NULLIF(mt.chat_group_id, 0)) AS groups,
+            SUM(CASE WHEN {$emailSql} THEN 1 ELSE 0 END) AS email_total,
+            SUM(CASE WHEN {$manualSql} OR mt.chat_group_id IS NOT NULL THEN 1 ELSE 0 END) AS manual_channel_total,
+            SUM(CASE WHEN {$emailSql} AND mt.target_status = 'success' THEN 1 ELSE 0 END) AS email_success,
+            SUM(CASE WHEN {$emailSql} AND mt.target_status = 'failed' THEN 1 ELSE 0 END) AS email_failed,
+            SUM(CASE WHEN {$emailSql} AND mt.target_status = 'skipped' THEN 1 ELSE 0 END) AS email_skipped,
+            SUM(CASE WHEN {$emailSql} AND mt.target_status = 'pending' THEN 1 ELSE 0 END) AS email_pending,
+            SUM(CASE WHEN {$manualSql} AND mt.target_status = 'success' THEN 1 ELSE 0 END) AS manual_success,
+            SUM(CASE WHEN {$manualSql} AND mt.target_status IN ('pending','failed') THEN 1 ELSE 0 END) AS manual_direct_pending,
+            SUM(CASE WHEN {$emailFallbackSql} THEN 1 ELSE 0 END) AS email_fallback_total,
+            SUM(CASE WHEN {$emailFallbackSql} AND {$groupExistsSql} THEN 1 ELSE 0 END) AS email_fallback_collapsed_by_group,
+            SUM(CASE WHEN {$emailFallbackSql} AND NOT {$groupExistsSql} THEN 1 ELSE 0 END) AS email_fallback_manual_pending,
+            SUM(CASE WHEN {$emailFallbackSql} AND NOT {$groupExistsSql} AND COALESCE(mt.failure_reason, '') = '收件邮箱为空' THEN 1 ELSE 0 END) AS manual_no_email_pending,
+            SUM(CASE WHEN {$emailFallbackSql} AND NOT {$groupExistsSql} AND COALESCE(mt.failure_reason, '') = '重复邮箱' THEN 1 ELSE 0 END) AS manual_duplicate_pending,
+            SUM(CASE WHEN {$emailFallbackSql} AND NOT {$groupExistsSql} AND mt.target_status = 'failed' THEN 1 ELSE 0 END) AS manual_failed_pending,
+            SUM(CASE WHEN {$emailSql} AND COALESCE(mt.failure_reason, '') = '收件邮箱为空' THEN 1 ELSE 0 END) AS email_no_receiver_recorded,
+            COUNT(DISTINCT CASE WHEN {$emailSql} AND COALESCE(mt.failure_reason, '') = '收件邮箱为空' THEN mt.customer_id END) AS email_no_receiver_customers_recorded,
+            SUM(CASE WHEN {$emailSql} AND COALESCE(mt.failure_reason, '') = '重复邮箱' THEN 1 ELSE 0 END) AS duplicate_email_skipped
+        FROM crm_marketing_task_targets mt
+        WHERE mt.task_id = ?");
+    $stmt->execute([$taskId]);
+    $row = $stmt->fetch() ?: [];
+
+    $byChannel = [];
+    $stmt = db()->prepare("SELECT COALESCE(NULLIF(channel_key, ''), 'unknown') AS channel_key, COUNT(*) AS total
+        FROM crm_marketing_task_targets
+        WHERE task_id = ?
+        GROUP BY COALESCE(NULLIF(channel_key, ''), 'unknown')");
+    $stmt->execute([$taskId]);
+    foreach ($stmt->fetchAll() as $item) {
+        $byChannel[(string)$item['channel_key']] = (int)$item['total'];
+    }
+
+    $byStatus = [];
+    $stmt = db()->prepare("SELECT COALESCE(NULLIF(target_status, ''), 'unknown') AS target_status, COUNT(*) AS total
+        FROM crm_marketing_task_targets
+        WHERE task_id = ?
+        GROUP BY COALESCE(NULLIF(target_status, ''), 'unknown')");
+    $stmt->execute([$taskId]);
+    foreach ($stmt->fetchAll() as $item) {
+        $byStatus[(string)$item['target_status']] = (int)$item['total'];
+    }
+
+    $failureReasons = [];
+    $stmt = db()->prepare("SELECT COALESCE(NULLIF(failure_reason, ''), '未填写原因') AS failure_reason, COUNT(*) AS total
+        FROM crm_marketing_task_targets
+        WHERE task_id = ? AND target_status IN ('failed','skipped')
+        GROUP BY COALESCE(NULLIF(failure_reason, ''), '未填写原因')
+        ORDER BY total DESC, failure_reason ASC");
+    $stmt->execute([$taskId]);
+    foreach ($stmt->fetchAll() as $item) {
+        $failureReasons[(string)$item['failure_reason']] = (int)$item['total'];
+    }
+
+    $manualReasons = [];
+    $stmt = db()->prepare("SELECT COALESCE(NULLIF(mt.failure_reason, ''), '人工渠道') AS failure_reason, COUNT(*) AS total
+        FROM crm_marketing_task_targets mt
+        WHERE mt.task_id = ?
+          AND (
+            ({$manualSql} AND mt.target_status IN ('pending','failed'))
+            OR ({$emailFallbackSql} AND NOT {$groupExistsSql})
+          )
+        GROUP BY COALESCE(NULLIF(mt.failure_reason, ''), '人工渠道')
+        ORDER BY total DESC, failure_reason ASC");
+    $stmt->execute([$taskId]);
+    foreach ($stmt->fetchAll() as $item) {
+        $manualReasons[(string)$item['failure_reason']] = (int)$item['total'];
+    }
+
+    $stmt = db()->prepare("SELECT
+            COUNT(*) AS queue_total,
+            COUNT(DISTINCT customer_id) AS queue_customers,
+            COUNT(DISTINCT LOWER(receiver_email)) AS queue_unique_receivers,
+            SUM(CASE WHEN send_status = 'sent' THEN 1 ELSE 0 END) AS sent,
+            SUM(CASE WHEN send_status = 'failed' THEN 1 ELSE 0 END) AS failed,
+            SUM(CASE WHEN send_status IN ('pending','scheduled','sending') THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN send_status = 'waiting_retry' THEN 1 ELSE 0 END) AS waiting_retry
+        FROM crm_marketing_send_queue
+        WHERE task_id = ?");
+    $stmt->execute([$taskId]);
+    $queue = $stmt->fetch() ?: [];
+
+    $emailNoReceiverExpr = "TRIM(COALESCE(mt.contact_method, ct.email, c.email, c.backup_email, '')) = ''";
+    $customerHasAnyEmailExpr = "(
+        TRIM(COALESCE(c.email, '')) <> ''
+        OR TRIM(COALESCE(c.backup_email, '')) <> ''
+        OR EXISTS (
+            SELECT 1
+            FROM crm_contacts any_ct
+            WHERE any_ct.customer_id = mt.customer_id
+              AND any_ct.deleted_at IS NULL
+              AND COALESCE(any_ct.is_left, 0) = 0
+              AND TRIM(COALESCE(any_ct.email, '')) <> ''
+            LIMIT 1
+        )
+    )";
+    $stmt = db()->prepare("SELECT
+            SUM(CASE WHEN {$emailNoReceiverExpr} THEN 1 ELSE 0 END) AS no_receiver_current_targets,
+            COUNT(DISTINCT CASE WHEN {$emailNoReceiverExpr} THEN mt.customer_id END) AS no_receiver_current_customers,
+            SUM(CASE WHEN c.id IS NULL THEN 1 ELSE 0 END) AS orphan_target_rows,
+            COUNT(DISTINCT CASE WHEN c.id IS NULL THEN mt.customer_id END) AS orphan_customers,
+            COUNT(DISTINCT CASE WHEN c.id IS NOT NULL THEN mt.customer_id END) AS active_target_customers,
+            COUNT(DISTINCT CASE WHEN c.id IS NOT NULL AND {$customerHasAnyEmailExpr} THEN mt.customer_id END) AS customers_with_any_email,
+            COUNT(DISTINCT CASE WHEN c.id IS NOT NULL AND NOT {$customerHasAnyEmailExpr} THEN mt.customer_id END) AS true_no_email_customers,
+            COUNT(DISTINCT CASE WHEN {$emailNoReceiverExpr} AND {$customerHasAnyEmailExpr} THEN mt.customer_id END) AS empty_target_but_customer_has_other_email
+        FROM crm_marketing_task_targets mt
+        LEFT JOIN crm_customers c ON c.id = mt.customer_id AND c.deleted_at IS NULL
+        LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id AND ct.deleted_at IS NULL
+        WHERE mt.task_id = ? AND {$emailSql}");
+    $stmt->execute([$taskId]);
+    $emailQuality = $stmt->fetch() ?: [];
+
+    $stmt = db()->prepare("SELECT COUNT(*) AS duplicate_email_groups, SUM(row_count) AS duplicate_email_rows, SUM(row_count - 1) AS duplicate_email_extra_rows
+        FROM (
+            SELECT LOWER(TRIM(COALESCE(mt.contact_method, ct.email, ''))) AS receiver_email, COUNT(*) AS row_count
+            FROM crm_marketing_task_targets mt
+            LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id AND ct.deleted_at IS NULL
+            WHERE mt.task_id = ?
+              AND {$emailSql}
+              AND TRIM(COALESCE(mt.contact_method, ct.email, '')) <> ''
+            GROUP BY LOWER(TRIM(COALESCE(mt.contact_method, ct.email, '')))
+            HAVING COUNT(*) > 1
+        ) dup");
+    $stmt->execute([$taskId]);
+    $duplicates = $stmt->fetch() ?: [];
+
+    $manualDirectPending = (int)($row['manual_direct_pending'] ?? 0);
+    $emailFallbackManualPending = (int)($row['email_fallback_manual_pending'] ?? 0);
+    $manualPending = $manualDirectPending + $emailFallbackManualPending;
+    $manualTargetTotal = (int)($row['manual_channel_total'] ?? 0) + $emailFallbackManualPending;
+
+    return [
+        'total_targets' => (int)($row['total_targets'] ?? 0),
+        'customers' => (int)($row['customers'] ?? 0),
+        'contacts' => (int)($row['contacts'] ?? 0),
+        'groups' => (int)($row['groups'] ?? 0),
+        'by_channel' => $byChannel,
+        'by_status' => $byStatus,
+        'failure_reasons' => $failureReasons,
+        'email' => [
+            'total' => (int)($row['email_total'] ?? 0),
+            'success' => (int)($row['email_success'] ?? 0),
+            'failed' => (int)($row['email_failed'] ?? 0),
+            'skipped' => (int)($row['email_skipped'] ?? 0),
+            'pending' => (int)($row['email_pending'] ?? 0),
+            'queue_total' => (int)($queue['queue_total'] ?? 0),
+            'no_receiver_recorded' => (int)($row['email_no_receiver_recorded'] ?? 0),
+            'no_receiver_customers_recorded' => (int)($row['email_no_receiver_customers_recorded'] ?? 0),
+            'no_receiver_current_targets' => (int)($emailQuality['no_receiver_current_targets'] ?? 0),
+            'no_receiver_current_customers' => (int)($emailQuality['no_receiver_current_customers'] ?? 0),
+            'true_no_email_customers' => (int)($emailQuality['true_no_email_customers'] ?? 0),
+            'empty_target_but_customer_has_other_email' => (int)($emailQuality['empty_target_but_customer_has_other_email'] ?? 0),
+            'duplicate_skipped' => (int)($row['duplicate_email_skipped'] ?? 0),
+            'duplicate_current_groups' => (int)($duplicates['duplicate_email_groups'] ?? 0),
+            'duplicate_current_rows' => (int)($duplicates['duplicate_email_rows'] ?? 0),
+            'duplicate_current_extra_rows' => (int)($duplicates['duplicate_email_extra_rows'] ?? 0),
+            'orphan_target_rows' => (int)($emailQuality['orphan_target_rows'] ?? 0),
+            'orphan_customers' => (int)($emailQuality['orphan_customers'] ?? 0),
+            'active_target_customers' => (int)($emailQuality['active_target_customers'] ?? 0),
+            'customers_with_any_email' => (int)($emailQuality['customers_with_any_email'] ?? 0),
+        ],
+        'manual' => [
+            'target_total' => $manualTargetTotal,
+            'channel_total' => (int)($row['manual_channel_total'] ?? 0),
+            'channel_success' => (int)($row['manual_success'] ?? 0),
+            'direct_pending' => $manualDirectPending,
+            'pending' => $manualPending,
+            'email_fallback_total' => (int)($row['email_fallback_total'] ?? 0),
+            'email_fallback_collapsed_by_group' => (int)($row['email_fallback_collapsed_by_group'] ?? 0),
+            'email_fallback_pending' => $emailFallbackManualPending,
+            'no_email_pending' => (int)($row['manual_no_email_pending'] ?? 0),
+            'duplicate_pending' => (int)($row['manual_duplicate_pending'] ?? 0),
+            'failed_pending' => (int)($row['manual_failed_pending'] ?? 0),
+            'reasons' => $manualReasons,
+        ],
+        'queue' => [
+            'total' => (int)($queue['queue_total'] ?? 0),
+            'customers' => (int)($queue['queue_customers'] ?? 0),
+            'unique_receivers' => (int)($queue['queue_unique_receivers'] ?? 0),
+            'sent' => (int)($queue['sent'] ?? 0),
+            'failed' => (int)($queue['failed'] ?? 0),
+            'pending' => (int)($queue['pending'] ?? 0),
+            'waiting_retry' => (int)($queue['waiting_retry'] ?? 0),
+        ],
+    ];
+}
+
 function crm_marketing_task_report(array $input = []): array
 {
     crm_marketing_ensure_tables();
@@ -1540,6 +1798,7 @@ function crm_marketing_task_report(array $input = []): array
         'targets' => crm_marketing_task_targets(['task_id' => $taskId]),
         'logs' => crm_marketing_logs(['task_id' => $taskId]),
         'execution_summary' => crm_marketing_task_execution_summary($taskId),
+        'target_summary' => crm_marketing_task_target_summary($taskId),
     ];
 }
 
