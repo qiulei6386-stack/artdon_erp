@@ -3112,6 +3112,200 @@ function crm_duplicate_merge_scan(): array
     return ['created' => $created, 'cases' => crm_duplicate_merge_cases()];
 }
 
+function crm_parse_customer_ids($value): array
+{
+    if (is_string($value)) {
+        $trimmed = trim($value);
+        if ($trimmed === '') return [];
+        $decoded = json_decode($trimmed, true);
+        $value = is_array($decoded) ? $decoded : preg_split('/[,，\s]+/u', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
+    } elseif (!is_array($value)) {
+        $value = [$value];
+    }
+    $ids = [];
+    foreach ((array)$value as $item) {
+        $id = (int)$item;
+        if ($id > 0 && !in_array($id, $ids, true)) $ids[] = $id;
+    }
+    return $ids;
+}
+
+function crm_sql_ident(string $name): string
+{
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) throw new RuntimeException('非法数据库字段。');
+    return '`' . $name . '`';
+}
+
+function crm_customer_merge_update_customer_id(string $table, int $fromId, int $toId, string $column = 'customer_id'): int
+{
+    if (!crm_table_exists_safe($table)) return 0;
+    $cols = crm_table_columns_safe($table);
+    if (!in_array($column, $cols, true)) return 0;
+    $stmt = db()->prepare('UPDATE ' . crm_sql_ident($table) . ' SET ' . crm_sql_ident($column) . ' = ? WHERE ' . crm_sql_ident($column) . ' = ?');
+    $stmt->execute([$toId, $fromId]);
+    return $stmt->rowCount();
+}
+
+function crm_customer_merge_copy_unique_customer_rows(string $table, int $fromId, int $toId): int
+{
+    if (!crm_table_exists_safe($table)) return 0;
+    $cols = crm_table_columns_safe($table);
+    if (!in_array('customer_id', $cols, true)) return 0;
+    $copyCols = array_values(array_diff($cols, ['id', 'customer_id']));
+    $targetCols = array_merge(['customer_id'], $copyCols);
+    $selectCols = array_merge(['?'], array_map('crm_sql_ident', $copyCols));
+    $sql = 'INSERT IGNORE INTO ' . crm_sql_ident($table) . ' (' . implode(',', array_map('crm_sql_ident', $targetCols)) . ') SELECT ' . implode(',', $selectCols) . ' FROM ' . crm_sql_ident($table) . ' WHERE `customer_id` = ?';
+    $stmt = db()->prepare($sql);
+    $stmt->execute([$toId, $fromId]);
+    $inserted = $stmt->rowCount();
+    db()->prepare('DELETE FROM ' . crm_sql_ident($table) . ' WHERE `customer_id` = ?')->execute([$fromId]);
+    return $inserted;
+}
+
+function crm_customer_merge_copy_owners(int $fromId, int $toId): int
+{
+    if (!crm_table_exists_safe('crm_customer_owners')) return 0;
+    $stmt = db()->prepare("INSERT IGNORE INTO crm_customer_owners (customer_id, user_id, role_type, is_primary, created_by, created_at)
+        SELECT ?, user_id, IF(role_type = 'primary', 'secondary', role_type), 0, created_by, created_at
+        FROM crm_customer_owners
+        WHERE customer_id = ?");
+    $stmt->execute([$toId, $fromId]);
+    $inserted = $stmt->rowCount();
+    db()->prepare('DELETE FROM crm_customer_owners WHERE customer_id = ?')->execute([$fromId]);
+    return $inserted;
+}
+
+function crm_customer_merge_copy_relations(int $fromId, int $toId): int
+{
+    if (!crm_table_exists_safe('crm_customer_relations')) return 0;
+    $count = 0;
+    $stmt = db()->prepare('INSERT IGNORE INTO crm_customer_relations (customer_id, related_customer_id, relation_type, remark, created_by, created_at, updated_at)
+        SELECT ?, related_customer_id, relation_type, remark, created_by, created_at, updated_at
+        FROM crm_customer_relations
+        WHERE customer_id = ? AND related_customer_id <> ?');
+    $stmt->execute([$toId, $fromId, $toId]);
+    $count += $stmt->rowCount();
+    $stmt = db()->prepare('INSERT IGNORE INTO crm_customer_relations (customer_id, related_customer_id, relation_type, remark, created_by, created_at, updated_at)
+        SELECT customer_id, ?, relation_type, remark, created_by, created_at, updated_at
+        FROM crm_customer_relations
+        WHERE related_customer_id = ? AND customer_id <> ?');
+    $stmt->execute([$toId, $fromId, $toId]);
+    $count += $stmt->rowCount();
+    db()->prepare('DELETE FROM crm_customer_relations WHERE customer_id = ? OR related_customer_id = ?')->execute([$fromId, $fromId]);
+    return $count;
+}
+
+function crm_customer_merge_update_external_links(int $fromId, int $toId): array
+{
+    $counts = [];
+    if (crm_table_exists_safe('crm_mails') && in_array('linked_customer_id', crm_table_columns_safe('crm_mails'), true)) {
+        $stmt = db()->prepare('UPDATE crm_mails SET linked_customer_id = ? WHERE linked_customer_id = ?');
+        $stmt->execute([$toId, $fromId]);
+        $counts['crm_mails'] = $stmt->rowCount();
+    }
+    if (crm_table_exists_safe('crm_mail_drafts') && in_array('linked_customer_id', crm_table_columns_safe('crm_mail_drafts'), true)) {
+        $stmt = db()->prepare('UPDATE crm_mail_drafts SET linked_customer_id = ? WHERE linked_customer_id = ?');
+        $stmt->execute([$toId, $fromId]);
+        $counts['crm_mail_drafts'] = $stmt->rowCount();
+    }
+    if (crm_table_exists_safe('crm_lead_pool') && in_array('target_customer_id', crm_table_columns_safe('crm_lead_pool'), true)) {
+        $stmt = db()->prepare('UPDATE crm_lead_pool SET target_customer_id = ?, status = IF(status = "pending", "merged", status), updated_at = NOW() WHERE target_customer_id = ?');
+        $stmt->execute([$toId, $fromId]);
+        $counts['crm_lead_pool'] = $stmt->rowCount();
+    }
+    foreach (['quote_orders', 'quote_sales_orders'] as $table) {
+        if (!crm_table_exists_safe($table)) continue;
+        $cols = crm_table_columns_safe($table);
+        if (!in_array('customer_id', $cols, true)) continue;
+        $stmt = db()->prepare('UPDATE ' . crm_sql_ident($table) . " SET customer_id = ? WHERE customer_id = ? OR customer_id = ?");
+        $stmt->execute([$toId, (string)$fromId, 'crm_' . $fromId]);
+        $counts[$table] = $stmt->rowCount();
+    }
+    if (crm_table_exists_safe('quote_customers') && in_array('crm_customer_id', crm_table_columns_safe('quote_customers'), true)) {
+        $stmt = db()->prepare("UPDATE quote_customers SET crm_customer_id = ? WHERE crm_customer_id = ? OR crm_customer_id = ?");
+        $stmt->execute([$toId, (string)$fromId, 'crm_' . $fromId]);
+        $counts['quote_customers'] = $stmt->rowCount();
+    }
+    return $counts;
+}
+
+function crm_customer_merge_selected(array $input): array
+{
+    crm_require('customer.merge');
+    crm_customer_ensure_tables();
+
+    $ids = crm_parse_customer_ids($input['customer_ids'] ?? []);
+    $masterId = (int)($input['master_customer_id'] ?? 0);
+    if (count($ids) < 2) throw new RuntimeException('请至少选择 2 个客户再合并。');
+    if (!$masterId || !in_array($masterId, $ids, true)) throw new RuntimeException('请选择要保留的主客户。');
+
+    $ids = array_values(array_unique($ids));
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = db()->prepare("SELECT * FROM crm_customers WHERE id IN ({$placeholders}) AND deleted_at IS NULL");
+    $stmt->execute($ids);
+    $rows = $stmt->fetchAll();
+    $customers = [];
+    foreach ($rows as $row) $customers[(int)$row['id']] = $row;
+    if (count($customers) !== count($ids)) throw new RuntimeException('选中的客户中包含不存在或已删除客户，请刷新后重试。');
+    if (empty($customers[$masterId])) throw new RuntimeException('主客户不存在或已删除。');
+
+    $duplicateIds = array_values(array_filter($ids, fn($id) => (int)$id !== $masterId));
+    $master = $customers[$masterId];
+    $masterName = (string)($master['customer_name'] ?? ('#' . $masterId));
+    $user = current_user();
+    $userId = (int)($user['id'] ?? 0);
+    $moved = [];
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        foreach ($duplicateIds as $fromId) {
+            $from = $customers[$fromId];
+            $fromName = (string)($from['customer_name'] ?? ('#' . $fromId));
+
+            foreach (['crm_contacts', 'crm_customer_addresses', 'crm_customer_chat_groups', 'crm_customer_followups', 'crm_customer_files', 'crm_customer_events', 'crm_customer_timeline', 'crm_logs', 'crm_tasks', 'crm_visit_records', 'crm_visit_files', 'crm_opportunities', 'crm_opportunity_logs', 'crm_opportunity_files', 'crm_marketing_send_queue', 'crm_marketing_task_targets', 'crm_marketing_logs', 'crm_marketing_group_customers'] as $table) {
+                $moved[$table] = ($moved[$table] ?? 0) + crm_customer_merge_update_customer_id($table, $fromId, $masterId);
+            }
+            foreach (['crm_customer_source_tags', 'crm_customer_promotion_channels', 'crm_customer_group_relations', 'crm_customer_product_preferences', 'crm_customer_communication_preferences', 'crm_customer_protection', 'crm_customer_promotion_status', 'crm_customer_scores'] as $table) {
+                $moved[$table] = ($moved[$table] ?? 0) + crm_customer_merge_copy_unique_customer_rows($table, $fromId, $masterId);
+            }
+            $moved['crm_customer_owners'] = ($moved['crm_customer_owners'] ?? 0) + crm_customer_merge_copy_owners($fromId, $masterId);
+            $moved['crm_customer_relations'] = ($moved['crm_customer_relations'] ?? 0) + crm_customer_merge_copy_relations($fromId, $masterId);
+            foreach (crm_customer_merge_update_external_links($fromId, $masterId) as $table => $count) {
+                $moved[$table] = ($moved[$table] ?? 0) + $count;
+            }
+
+            $reason = '合并到客户 #' . $masterId . '：' . $masterName;
+            db()->prepare('UPDATE crm_customers SET deleted_at = NOW(), deleted_by = ?, delete_reason = ?, updated_by = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL')
+                ->execute([$userId ?: null, $reason, $userId ?: null, $fromId]);
+            crm_customer_timeline_add($masterId, 'customer_merge', '合并重复客户', '已合并：#' . $fromId . ' ' . $fromName, 'customer', (string)$fromId);
+        }
+
+        if (crm_table_exists_safe('crm_duplicate_merge_cases')) {
+            foreach ($duplicateIds as $fromId) {
+                db()->prepare('UPDATE crm_duplicate_merge_cases SET status = "merged", merged_by = ?, merged_at = NOW(), updated_at = NOW() WHERE master_customer_id = ? OR master_customer_id = ?')
+                    ->execute([$userId ?: null, $masterId, $fromId]);
+            }
+        }
+
+        $after = ['master_customer_id' => $masterId, 'merged_customer_ids' => $duplicateIds, 'moved_counts' => $moved];
+        crm_customer_log('customer_merge', 'customer', $masterId, $masterId, array_values($customers), $after, '合并客户：保留 #' . $masterId . '，合并 ' . count($duplicateIds) . ' 个客户');
+        crm_sensitive_audit('customer_merge', 'customer', $masterId, array_values($customers), $after);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+
+    return [
+        'master_customer_id' => $masterId,
+        'master_customer_name' => $masterName,
+        'merged_customer_ids' => $duplicateIds,
+        'merged_count' => count($duplicateIds),
+        'moved_counts' => $moved,
+    ];
+}
+
 function crm_customer_relation_create(array $input): array
 {
     crm_require('customer.graph_manage');

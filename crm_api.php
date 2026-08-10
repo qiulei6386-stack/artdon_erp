@@ -1255,6 +1255,10 @@ try {
         require_csrf();
         api_response(true, '重复客户扫描完成', crm_duplicate_merge_scan());
     }
+    if ($action === 'customer_merge_selected') {
+        require_csrf();
+        api_response(true, '客户合并完成', crm_customer_merge_selected($_POST));
+    }
     if ($action === 'customer_relation_create') {
         require_csrf();
         api_response(true, '客户关系已保存', crm_customer_relation_create($_POST));

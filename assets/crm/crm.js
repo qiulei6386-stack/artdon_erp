@@ -7422,6 +7422,83 @@
       });
       refreshCount();
     },
+    selectedCustomerRows: function (ids) {
+      var map = {};
+      (this.rows || []).forEach(function (row) { map[Number(row.id || 0)] = row; });
+      if (this.currentDetail && this.currentDetail.customer) {
+        map[Number(this.currentDetail.customer.id || 0)] = this.currentDetail.customer;
+      }
+      return (ids || []).map(function (id) {
+        var row = map[Number(id)] || {};
+        return Object.assign({ id: Number(id) }, row);
+      });
+    },
+    openCustomerMergeDialog: function () {
+      var ids = this.selected.size ? Array.from(this.selected).map(Number).filter(Boolean) : [];
+      if (ids.length < 2) return this.showCustomerError('请至少勾选 2 个相似客户再合并。');
+      var self = this;
+      var rows = this.selectedCustomerRows(ids);
+      var defaultMaster = ids.indexOf(Number(this.currentId || 0)) >= 0 ? Number(this.currentId) : Number(ids[0]);
+      var cards = rows.map(function (row) {
+        var id = Number(row.id || 0);
+        var name = row.customer_name || ('客户 #' + id);
+        var code = row.customer_code || '-';
+        var country = row.country_display || row.country || row.country_raw || '未填';
+        var owner = row.owner_summary || row.owner_name || row.owner_department_name || '';
+        return '<label class="visit-check-pill' + (id === defaultMaster ? ' active' : '') + '" data-merge-master-card>' +
+          '<input type="radio" name="merge_master_customer" value="' + esc(id) + '"' + (id === defaultMaster ? ' checked' : '') + '>' +
+          '<span><b>' + esc(name) + '</b><em>#' + esc(id) + ' · ' + esc(code) + ' · ' + esc(country) + (owner ? ' · ' + esc(owner) : '') + '</em></span>' +
+        '</label>';
+      }).join('');
+      var html = '<div class="visit-workspace-form" data-customer-merge-dialog>' +
+        '<input type="hidden" data-merge-customer-ids value="' + esc(ids.join(',')) + '">' +
+        '<section class="visit-work-section assign-hero-section"><div><span>客户合并</span><strong>选择要保留的主客户</strong><p>联系人、群、标签、分组、跟进、任务、拜访、商机、邮件和报价关联会迁入主客户；其他客户做软删除。</p></div></section>' +
+        '<section class="visit-work-section"><h3>保留哪个客户？</h3><div class="visit-check-grid">' + cards + '</div></section>' +
+        '<section class="visit-work-section"><h3>合并规则</h3><div class="visit-check-grid"><label class="visit-check-pill active"><span>保留主档</span><em>客户名称、国家、等级等主档字段不自动覆盖</em></label><label class="visit-check-pill active"><span>迁移关系</span><em>联系人、群、跟进、负责人、报价/订单关联迁到主客户</em></label><label class="visit-check-pill"><span>可追溯</span><em>重复客户软删除，写入客户日志与敏感审计</em></label></div></section>' +
+        '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-merge-apply>确认合并</button></div>' +
+      '</div>';
+      this.openBusinessDialog('合并客户', html, '请只合并确认为同一客户的记录。合并后重复客户会从正常列表隐藏。', function (dialog) {
+        var box = dialog.querySelector('[data-customer-merge-dialog]');
+        if (!box) return;
+        var refresh = function () {
+          box.querySelectorAll('[data-merge-master-card]').forEach(function (card) {
+            var radio = card.querySelector('input[type="radio"]');
+            card.classList.toggle('active', !!(radio && radio.checked));
+          });
+        };
+        box.querySelectorAll('input[name="merge_master_customer"]').forEach(function (radio) {
+          radio.addEventListener('change', refresh);
+        });
+        dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
+        dialog.querySelector('[data-merge-apply]')?.addEventListener('click', function () {
+          var button = this;
+          var master = Number(box.querySelector('input[name="merge_master_customer"]:checked')?.value || 0);
+          var mergeIds = String(box.querySelector('[data-merge-customer-ids]')?.value || '').split(',').map(Number).filter(Boolean);
+          if (!master || mergeIds.indexOf(master) < 0) return self.showCustomerError('请选择要保留的主客户。');
+          if (!window.confirm('确认合并这 ' + mergeIds.length + ' 个客户？\\n将保留 #' + master + '，其他客户会被软删除并迁移资料。')) return;
+          button.disabled = true;
+          button.textContent = '合并中...';
+          post('customer_merge_selected', { master_customer_id: master, customer_ids: mergeIds }, { timeoutMs: 30000 }).then(function (json) {
+            if (!json.success) {
+              button.disabled = false;
+              button.textContent = '确认合并';
+              return self.showCustomerError(json.message || '客户合并失败');
+            }
+            self.closeDialog();
+            self.selected.clear();
+            self.allFilteredSelectionCount = 0;
+            self.currentId = master;
+            toast(json.message || '客户合并完成');
+            self.loadList().then(function () { return self.loadDetail(master, { keepTab: true }); });
+          }).catch(function (error) {
+            button.disabled = false;
+            button.textContent = '确认合并';
+            self.showCustomerError((error && error.message) || '客户合并失败');
+          });
+        });
+        refresh();
+      });
+    },
     openTransferPublicDialog: function () {
       var ids = this.selected.size ? Array.from(this.selected) : (this.currentId ? [this.currentId] : []);
       if (!ids.length) return this.showCustomerError('请先选择客户。');
@@ -8593,10 +8670,14 @@
         { title: 'AI 辅助', items: ['AI 分析客户', 'AI 生成报价草稿', 'AI 生成资料草稿', 'AI 创建跟进建议', 'AI 创建确认任务'] },
         { title: '系统操作', items: ['分配客户', '加入分组', '管理分组', '公海池', '转入公海'].concat(hasCustomer ? ['批量设置推广方式', '编辑选项卡'] : []).concat(['查看日志']) }
       ];
-      if (this.selected && this.selected.size >= 1) return [
-        { title: '批量管理（已选 ' + this.selected.size + '）', items: ['批量分配', '批量删除', '批量分组', '批量设置推广方式', '导出客户', '清除选择'] },
+      if (this.selected && this.selected.size >= 1) {
+        var batchItems = ['批量分配', '批量删除', '批量分组', '批量设置推广方式', '导出客户', '清除选择'];
+        if (this.selected.size >= 2) batchItems.splice(1, 0, '合并客户');
+        return [
+        { title: '批量管理（已选 ' + this.selected.size + '）', items: batchItems },
         { title: '客户池操作', items: ['转入公海', '批量补全资料', '查看客户日志'] }
-      ];
+        ];
+      }
       if (hasCustomer) {
         var resolvedTarget = this.detailResolveTarget(this.activeDetailTab || 'overview');
         var group = resolvedTarget.group;
@@ -8928,6 +9009,7 @@
       if (label === '加入分组' || label === '移动分组' || label === '批量移动分组' || label === '批量分组') return this.openBatchGroupDialog();
       if (label === '管理分组') return this.openBatchGroupDialog(true);
       if (label === '批量分配' || label === '批量分配客户' || label === '分配客户') return this.openBatchAssignDialog();
+      if (label === '合并客户' || label === '批量合并客户') return this.openCustomerMergeDialog();
       if (label === '批量设置推广方式') return this.openBulkContactPromotionDialog();
       if (label === '公海池') return this.openPublicPoolDialog();
       if (label === '转入公海') return this.openTransferPublicDialog();
@@ -23075,6 +23157,7 @@
         '删除客户': '软删除当前客户，保留历史记录',
         '强制删除': '永久删除已软删除客户及其客户关系数据，操作不可恢复',
         '恢复客户': '恢复已软删除客户',
+        '合并客户': '把勾选的重复客户合并到一个主客户，重复客户软删除并迁移资料',
         '查看客户日志': '查看该客户操作历史',
         '编辑选项卡': '设置当前客户详情页哪些选项卡可见或隐藏',
         '放大客户列表': '收起客户属性，让客户列表整屏显示',

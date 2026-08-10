@@ -116,6 +116,7 @@ $actionPermissions = [
     '加入分组' => crm_can('customer.batch'),
     '管理分组' => crm_can('customer.batch'),
     '转入公海' => crm_can('customer.transfer_public'),
+    '合并客户' => crm_can('customer.merge'),
     '领取公海' => crm_can('customer.claim_public'),
     '公海池' => crm_can('customer.view'),
     '查看日志' => crm_can('customer.view_logs') || crm_can('logs.view_own'),
