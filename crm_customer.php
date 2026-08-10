@@ -3246,10 +3246,27 @@ function crm_customer_merge_selected(array $input): array
     $rows = $stmt->fetchAll();
     $customers = [];
     foreach ($rows as $row) $customers[(int)$row['id']] = $row;
-    if (count($customers) !== count($ids)) throw new RuntimeException('选中的客户中包含不存在或已删除客户，请刷新后重试。');
     if (empty($customers[$masterId])) throw new RuntimeException('主客户不存在或已删除。');
+    $alreadyMergedIds = [];
+    $missingIds = array_values(array_diff($ids, array_map('intval', array_keys($customers))));
+    if ($missingIds) {
+        $missingPlaceholders = implode(',', array_fill(0, count($missingIds), '?'));
+        $missingStmt = db()->prepare("SELECT id, delete_reason FROM crm_customers WHERE id IN ({$missingPlaceholders}) AND deleted_at IS NOT NULL");
+        $missingStmt->execute($missingIds);
+        $deletedRows = [];
+        foreach ($missingStmt->fetchAll() as $row) $deletedRows[(int)$row['id']] = (string)($row['delete_reason'] ?? '');
+        foreach ($missingIds as $missingId) {
+            $reason = $deletedRows[(int)$missingId] ?? '';
+            if ($reason !== '' && str_contains($reason, '客户 #' . $masterId)) {
+                $alreadyMergedIds[] = (int)$missingId;
+                continue;
+            }
+            throw new RuntimeException('选中的客户中包含不存在或已删除客户，请刷新后重试。');
+        }
+    }
 
     $duplicateIds = array_values(array_filter($ids, fn($id) => (int)$id !== $masterId));
+    $duplicateIds = array_values(array_filter($duplicateIds, fn($id) => isset($customers[(int)$id])));
     $master = $customers[$masterId];
     $masterName = (string)($master['customer_name'] ?? ('#' . $masterId));
     $user = current_user();
@@ -3263,10 +3280,10 @@ function crm_customer_merge_selected(array $input): array
             $from = $customers[$fromId];
             $fromName = (string)($from['customer_name'] ?? ('#' . $fromId));
 
-            foreach (['crm_contacts', 'crm_customer_addresses', 'crm_customer_chat_groups', 'crm_customer_followups', 'crm_customer_files', 'crm_customer_events', 'crm_customer_timeline', 'crm_logs', 'crm_tasks', 'crm_visit_records', 'crm_visit_files', 'crm_opportunities', 'crm_opportunity_logs', 'crm_opportunity_files', 'crm_marketing_send_queue', 'crm_marketing_task_targets', 'crm_marketing_logs', 'crm_marketing_group_customers'] as $table) {
+            foreach (['crm_contacts', 'crm_customer_addresses', 'crm_customer_chat_groups', 'crm_customer_followups', 'crm_customer_files', 'crm_customer_events', 'crm_customer_timeline', 'crm_logs', 'crm_tasks', 'crm_visit_records', 'crm_visit_files', 'crm_opportunities', 'crm_opportunity_logs', 'crm_opportunity_files', 'crm_marketing_send_queue', 'crm_marketing_task_targets', 'crm_marketing_logs'] as $table) {
                 $moved[$table] = ($moved[$table] ?? 0) + crm_customer_merge_update_customer_id($table, $fromId, $masterId);
             }
-            foreach (['crm_customer_source_tags', 'crm_customer_promotion_channels', 'crm_customer_group_relations', 'crm_customer_product_preferences', 'crm_customer_communication_preferences', 'crm_customer_protection', 'crm_customer_promotion_status', 'crm_customer_scores'] as $table) {
+            foreach (['crm_customer_source_tags', 'crm_customer_promotion_channels', 'crm_customer_group_relations', 'crm_customer_product_preferences', 'crm_customer_communication_preferences', 'crm_customer_protection', 'crm_customer_promotion_status', 'crm_customer_scores', 'crm_marketing_group_customers'] as $table) {
                 $moved[$table] = ($moved[$table] ?? 0) + crm_customer_merge_copy_unique_customer_rows($table, $fromId, $masterId);
             }
             $moved['crm_customer_owners'] = ($moved['crm_customer_owners'] ?? 0) + crm_customer_merge_copy_owners($fromId, $masterId);
@@ -3300,8 +3317,8 @@ function crm_customer_merge_selected(array $input): array
     return [
         'master_customer_id' => $masterId,
         'master_customer_name' => $masterName,
-        'merged_customer_ids' => $duplicateIds,
-        'merged_count' => count($duplicateIds),
+        'merged_customer_ids' => array_values(array_unique(array_merge($duplicateIds, $alreadyMergedIds))),
+        'merged_count' => count(array_values(array_unique(array_merge($duplicateIds, $alreadyMergedIds)))),
         'moved_counts' => $moved,
     ];
 }
