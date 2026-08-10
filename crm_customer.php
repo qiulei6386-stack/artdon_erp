@@ -2697,6 +2697,8 @@ function crm_customer_initial_contacts(array $input): array
             $contact = is_array($decoded) ? $decoded : [];
         }
         if (!is_array($contact)) continue;
+        $contact = crm_contact_normalize_minimum($contact);
+        if (!crm_contact_has_meaningful_data($contact)) continue;
         if (empty($contact['role_tags']) && !empty($contact['role'])) $contact['role_tags'] = (array)$contact['role'];
         if (empty($contact['contact_sources']) && !empty($contact['source'])) $contact['contact_sources'] = $contact['source'];
         if (!isset($contact['is_primary']) && !empty($contact['primary'])) $contact['is_primary'] = $contact['primary'];
@@ -2715,6 +2717,47 @@ function crm_customer_initial_contacts(array $input): array
     unset($contact);
     if ($contacts && !$primarySeen) $contacts[0]['is_primary'] = 1;
     return $contacts;
+}
+
+function crm_contact_has_meaningful_data(array $contact): bool
+{
+    foreach (['name','name_en','email','phone','whatsapp','wechat','linkedin','position','department','remark'] as $key) {
+        if (trim((string)($contact[$key] ?? '')) !== '') return true;
+    }
+    return false;
+}
+
+function crm_contact_fallback_name(array $contact): string
+{
+    $name = trim((string)($contact['name'] ?? ''));
+    if ($name !== '') return $name;
+    $email = trim((string)($contact['email'] ?? ''));
+    if ($email !== '') {
+        $local = trim((string)preg_replace('/@.*/', '', $email));
+        return $local !== '' ? $local : $email;
+    }
+    foreach (['phone','whatsapp','wechat','linkedin','name_en'] as $key) {
+        $value = trim((string)($contact[$key] ?? ''));
+        if ($value !== '') return $value;
+    }
+    return '未命名联系人';
+}
+
+function crm_contact_normalize_minimum(array $contact): array
+{
+    if (empty($contact['name']) && !empty($contact['contact_name'])) $contact['name'] = $contact['contact_name'];
+    if (empty($contact['name_en']) && !empty($contact['contact_name_en'])) $contact['name_en'] = $contact['contact_name_en'];
+    if (empty($contact['email']) && !empty($contact['contact_email'])) $contact['email'] = $contact['contact_email'];
+    if (empty($contact['phone']) && !empty($contact['contact_phone'])) $contact['phone'] = $contact['contact_phone'];
+    if (empty($contact['whatsapp']) && !empty($contact['contact_whatsapp'])) $contact['whatsapp'] = $contact['contact_whatsapp'];
+    if (empty($contact['position']) && !empty($contact['contact_position'])) $contact['position'] = $contact['contact_position'];
+    foreach (['name','name_en','email','phone','whatsapp','wechat','linkedin','position','department','remark'] as $key) {
+        if (array_key_exists($key, $contact)) $contact[$key] = trim((string)$contact[$key]);
+    }
+    if (crm_contact_has_meaningful_data($contact) && trim((string)($contact['name'] ?? '')) === '') {
+        $contact['name'] = crm_contact_fallback_name($contact);
+    }
+    return $contact;
 }
 
 function crm_customer_duplicate_matches(array $input, int $ignoreId = 0): array
@@ -5338,8 +5381,11 @@ function crm_customer_claim_public(int $customerId): array
 
 function crm_contact_validate(array $input, int $customerId, int $ignoreId = 0): array
 {
-    $name = trim((string)($input['name'] ?? ''));
-    if ($name === '') throw new RuntimeException('联系人姓名不能为空。');
+    $input = crm_contact_normalize_minimum($input);
+    if (!crm_contact_has_meaningful_data($input)) {
+        throw new RuntimeException('联系人至少填写姓名、邮箱、电话、WhatsApp、微信或 LinkedIn 任一项。');
+    }
+    $name = crm_contact_fallback_name($input);
     $email = trim((string)($input['email'] ?? ''));
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('联系人邮箱格式不正确。');
     foreach (['email' => $email, 'phone' => trim((string)($input['phone'] ?? ''))] as $field => $value) {

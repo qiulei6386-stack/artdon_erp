@@ -6301,7 +6301,7 @@
       var phoneDial = this.dialForCountry(customer.country || '');
       return '<article class="entry-contact-editor" data-contact-editor><div class="entity-grid">' +
         '<input type="hidden" data-contact-id value="' + esc(contact.id || '') + '">' +
-        '<label class="entity-field"><span>姓名 *</span><input data-contact-name value="' + esc(contact.name || '') + '"></label>' +
+        '<label class="entity-field"><span>姓名 / 称呼</span><input data-contact-name value="' + esc(contact.name || '') + '" placeholder="可空，系统会按邮箱/电话生成"></label>' +
         '<label class="entity-field"><span>英文名</span><input data-contact-name-en value="' + esc(contact.name_en || '') + '"></label>' +
         '<label class="entity-field"><span>职位</span><input data-contact-position value="' + esc(contact.position || '') + '"></label>' +
         '<label class="entity-field"><span>部门</span><input data-contact-department value="' + esc(contact.department || '') + '"></label>' +
@@ -8207,19 +8207,19 @@
       var channels = Array.prototype.filter.call(editor.querySelectorAll('input[name="contact_promotion_editor"]'), function (input) { return input.checked; }).map(function (input) { return input.value; });
       return {
         id: editor.querySelector('[data-contact-id]')?.value || '',
-        name: editor.querySelector('[data-contact-name]')?.value || '',
-        name_en: editor.querySelector('[data-contact-name-en]')?.value || '',
-        position: editor.querySelector('[data-contact-position]')?.value || '',
-        department: editor.querySelector('[data-contact-department]')?.value || '',
-        email: editor.querySelector('[data-contact-email]')?.value || '',
+        name: String(editor.querySelector('[data-contact-name]')?.value || '').trim(),
+        name_en: String(editor.querySelector('[data-contact-name-en]')?.value || '').trim(),
+        position: String(editor.querySelector('[data-contact-position]')?.value || '').trim(),
+        department: String(editor.querySelector('[data-contact-department]')?.value || '').trim(),
+        email: String(editor.querySelector('[data-contact-email]')?.value || '').trim(),
         phone: this.phoneValueFromInput(editor.querySelector('[data-contact-phone]')),
         whatsapp: this.phoneValueFromInput(editor.querySelector('[data-contact-whatsapp]')),
-        wechat: editor.querySelector('[data-contact-wechat]')?.value || '',
-        linkedin: editor.querySelector('[data-contact-linkedin]')?.value || '',
-        gender: editor.querySelector('[data-contact-gender]')?.value || '',
+        wechat: String(editor.querySelector('[data-contact-wechat]')?.value || '').trim(),
+        linkedin: String(editor.querySelector('[data-contact-linkedin]')?.value || '').trim(),
+        gender: String(editor.querySelector('[data-contact-gender]')?.value || '').trim(),
         birthday: editor.querySelector('[data-contact-birthday]')?.value || '',
-        language: editor.querySelector('[data-contact-language]')?.value || '',
-        remark: editor.querySelector('[data-contact-remark]')?.value || '',
+        language: String(editor.querySelector('[data-contact-language]')?.value || '').trim(),
+        remark: String(editor.querySelector('[data-contact-remark]')?.value || '').trim(),
         contact_sources: editor.querySelector('[data-contact-source]')?.value || 'manual',
         is_primary: editor.querySelector('[data-contact-primary]')?.checked ? 1 : 0,
         is_left: editor.querySelector('[data-contact-left]')?.checked ? 1 : 0,
@@ -8228,11 +8228,26 @@
         promotion_channels: channels
       };
     },
+    contactHasMeaningfulData: function (contact) {
+      contact = contact || {};
+      return ['name', 'name_en', 'email', 'phone', 'whatsapp', 'wechat', 'linkedin', 'position', 'department', 'remark'].some(function (key) {
+        return String(contact[key] || '').trim() !== '';
+      });
+    },
+    contactFallbackName: function (contact) {
+      contact = contact || {};
+      var name = String(contact.name || '').trim();
+      if (name) return name;
+      var email = String(contact.email || '').trim();
+      if (email) return email.indexOf('@') > 0 ? email.split('@')[0] : email;
+      return String(contact.phone || contact.whatsapp || contact.wechat || contact.linkedin || contact.name_en || '').trim() || '未命名联系人';
+    },
     saveContactCardEditor: function (editor) {
       if (!editor) return;
       var box = editor.closest('[data-entry-contacts]');
       var contact = this.contactFromEditor(editor);
-      if (!contact.name.trim()) return this.showCustomerError('联系人姓名不能为空。');
+      if (!this.contactHasMeaningfulData(contact)) return this.showCustomerError('联系人至少填写姓名、邮箱、电话、WhatsApp、微信或 LinkedIn 任一项。');
+      contact.name = this.contactFallbackName(contact);
       if (!box) return this.showCustomerError('联系人区域不存在，请重新打开新建客户窗口。');
       var editIndex = Number(editor.getAttribute('data-contact-edit-index') || -1);
       if (contact.is_primary) this.entryContacts.forEach(function (item) { item.is_primary = 0; });
@@ -8379,8 +8394,8 @@
       }
       var contacts = [];
       (this.entryContacts || []).forEach(function (item) {
-        var name = item.name || '';
-        if (!String(name).trim()) return;
+        if (!CustomerModule.contactHasMeaningfulData(item)) return;
+        var name = CustomerModule.contactFallbackName(item);
         var promote = Number(item.promote) !== 0;
         var channels = item.promotion_channels || [];
         contacts.push({
@@ -8410,7 +8425,8 @@
       });
       root.querySelectorAll('[data-contact-editor]').forEach(function (editor) {
         var contact = CustomerModule.contactFromEditor(editor);
-        if (!contact || !String(contact.name || '').trim()) return;
+        if (!contact || !CustomerModule.contactHasMeaningfulData(contact)) return;
+        contact.name = CustomerModule.contactFallbackName(contact);
         var promote = Number(contact.promote) !== 0;
         contacts.push({
           id: contact.id || '',
