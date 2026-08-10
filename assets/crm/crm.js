@@ -19031,6 +19031,65 @@
           if (noEmail) return noEmail.failure_reason || '无邮箱未发';
           return '未找到邮件队列';
         };
+        var summaryMap = {};
+        var summaryKey = function (row) {
+          var contactId = row.contact_id || '';
+          var email = row.receiver_email || row.email || row.contact_method || '';
+          if (contactId) return 'contact:' + String(contactId).toLowerCase();
+          if (email) return 'email:' + String(email).trim().toLowerCase();
+          return 'customer:' + String(row.customer_id || '').toLowerCase() + ':' + String(row.contact_name || row.customer_name || '').trim().toLowerCase();
+        };
+        var ensureSummary = function (row) {
+          var key = summaryKey(row);
+          summaryMap[key] = summaryMap[key] || {
+            customer: row.customer_name || '-',
+            customerId: row.customer_id || '',
+            contact: row.contact_name || '客户级目标',
+            country: row.country || row.customer_country || '-',
+            email: row.receiver_email || row.email || row.contact_method || '',
+            status: '未生成队列',
+            systemTime: '',
+            localTime: '',
+            timezone: '',
+            reason: row.failure_reason || ''
+          };
+          var item = summaryMap[key];
+          item.customer = item.customer === '-' ? (row.customer_name || item.customer) : item.customer;
+          item.contact = item.contact === '客户级目标' ? (row.contact_name || item.contact) : item.contact;
+          item.country = item.country === '-' ? (row.country || row.customer_country || item.country) : item.country;
+          item.email = item.email || row.receiver_email || row.email || row.contact_method || '';
+          item.reason = item.reason || row.failure_reason || '';
+          return item;
+        };
+        targets.filter(function (row) {
+          return emailChannels.indexOf(normalize(row.channel_key || '')) >= 0;
+        }).forEach(function (row) {
+          var item = ensureSummary(row);
+          var reason = String(row.failure_reason || '');
+          var statusText = String(row.target_status || '').toLowerCase();
+          if (reason.indexOf('邮箱') >= 0 || reason.toLowerCase().indexOf('email') >= 0 || (!item.email && ['skipped','failed','pending'].indexOf(statusText) >= 0)) {
+            item.status = reason || '无邮箱未发';
+            item.reason = reason || item.reason || '缺少邮箱';
+          } else if (statusText && item.status === '未生成队列') {
+            item.status = cnStatus(statusText);
+          }
+        });
+        rows.forEach(function (row) {
+          var item = ensureSummary(row);
+          var systemTime = row.sent_at || row.planned_server_time || '';
+          var tz = queueTimezoneInfo(row);
+          item.status = cnStatus(row.send_status || '-');
+          item.systemTime = String(systemTime || '').slice(0, 16);
+          item.localTime = sentLocalTime(row);
+          item.timezone = tz.label || row.customer_timezone || '';
+          item.reason = row.last_error || item.reason || '';
+        });
+        var contactSummaryRows = Object.keys(summaryMap).map(function (key) { return summaryMap[key]; }).sort(function (a, b) {
+          return String(a.customer || '').localeCompare(String(b.customer || '')) || String(a.contact || '').localeCompare(String(b.contact || ''));
+        });
+        var contactSummaryTable = contactSummaryRows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>邮箱</th><th>发送状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>原因</th></tr></thead><tbody>' + contactSummaryRows.slice(0, 1500).map(function (row) {
+          return '<tr><td>' + esc(row.customer || '-') + '</td><td>' + esc(row.contact || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.systemTime || '-') + '</td><td>' + esc(row.localTime || '-') + '</td><td>' + esc(row.timezone || '-') + '</td><td>' + esc(row.reason || '-').slice(0, 140) + '</td></tr>';
+        }).join('') + '</tbody></table>' + (contactSummaryRows.length > 1500 ? '<p class="promo-empty">联系人汇总较多，当前显示前 1500 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无联系人发送汇总。</p>';
         var queueTable = rows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>失败原因</th></tr></thead><tbody>' + rows.slice(0, 1000).map(function (row) {
           var systemTime = row.sent_at || row.planned_server_time || '-';
           var tz = queueTimezoneInfo(row);
@@ -19048,7 +19107,8 @@
           return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(objectName) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(mailStatusForManual(row)).slice(0, 180) + '</td><td>' + esc(assignedExecutor) + '</td><td>' + esc(actualExecutor) + '</td><td>' + esc(cnStatus(row.manual_status || row.target_status || '-')) + '</td><td>' + esc(String(time || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || row.failure_reason || '-').slice(0, 160) + '</td></tr>';
         }).join('') + '</tbody></table>' + (manualTargets.length > 300 ? '<p class="promo-empty">人工明细较多，当前显示前 300 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无线下 / 人工执行目标。</p>';
         var body = '<section class="promo-preview-grid"><article><strong>' + esc(rows.length) + '</strong><span>邮件队列总数</span></article><article><strong>' + esc(status.sent || sentRows.length || 0) + '</strong><span>已发送邮件</span></article><article><strong>' + esc(Object.keys(sentContactKeys).length) + '</strong><span>已发联系人</span></article><article><strong>' + esc(noEmailTargets.length) + '</strong><span>无邮箱未发</span></article><article><strong>' + esc(manualTargets.length) + '</strong><span>线下 / 人工</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败队列</span></article></section>' +
-          '<details class="promo-project-detail-fold" open><summary><span>邮件发送明细</span><em>含系统发送时间与客户当地时间</em></summary><div class="promo-project-detail-content">' + queueTable + '</div></details>' +
+          '<details class="promo-project-detail-fold" open><summary><span>按客户 / 联系人汇总</span><em>同一客户多个联系人逐行看谁发了、谁没发</em></summary><div class="promo-project-detail-content">' + contactSummaryTable + '</div></details>' +
+          '<details class="promo-project-detail-fold"><summary><span>邮件发送明细</span><em>含系统发送时间与客户当地时间</em></summary><div class="promo-project-detail-content">' + queueTable + '</div></details>' +
           '<details class="promo-project-detail-fold"><summary><span>无邮箱所以没发</span><em>' + esc(noEmailTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + noEmailList + '</div></details>' +
           '<details class="promo-project-detail-fold"><summary><span>线下 / 人工执行</span><em>' + esc(manualTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + manualTable + '</div></details>';
         self.openDialog({
