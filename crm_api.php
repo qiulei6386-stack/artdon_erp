@@ -1526,6 +1526,10 @@ try {
         require_csrf();
         api_response(true, '', crm_quote_followup_context($_POST));
     }
+    if ($action === 'quote_followup_status_set') {
+        require_csrf();
+        api_response(true, '报价跟进状态已更新', crm_quote_followup_status_set($_POST));
+    }
     if ($action === 'quote_followup_save') {
         require_csrf();
         api_response(true, '报价跟进已保存', crm_quote_followup_save($_POST));

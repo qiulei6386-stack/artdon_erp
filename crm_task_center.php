@@ -460,7 +460,15 @@ function crm_task_center_list(array $input = []): array
         $where[] = "(t.title LIKE ? OR t.description LIKE ? OR c.customer_name LIKE ? OR ct.name LIKE ? OR o.opportunity_name LIKE ? OR t.quote_id LIKE ? OR EXISTS (SELECT 1 FROM crm_sample_shipments ss WHERE ss.task_id=t.id AND (ss.tracking_no LIKE ? OR ss.sample_name LIKE ? OR ss.product_model LIKE ?)))";
         for ($i = 0; $i < 9; $i++) $params[] = '%' . $q . '%';
     }
+    $quoteFollowSelect = "NULL AS followup_status, NULL AS followup_closed_at, NULL AS followup_closed_by, NULL AS followup_closed_reason";
+    $quoteFollowJoin = "";
+    if (db_table_exists('quote_orders')) {
+        crm_quote_followup_lifecycle_ensure();
+        $quoteFollowSelect = "qf.followup_status, qf.followup_closed_at, qf.followup_closed_by, qf.followup_closed_reason";
+        $quoteFollowJoin = "LEFT JOIN quote_orders qf ON t.task_type='quote_followup' COLLATE utf8mb4_unicode_ci AND t.source_type='quote' COLLATE utf8mb4_unicode_ci AND qf.id=CAST(t.source_id AS UNSIGNED)";
+    }
     $sql = "SELECT t.*, c.customer_name, c.customer_code, ct.name AS contact_name, o.opportunity_name, u.username AS assigned_name,
+            {$quoteFollowSelect},
             CASE WHEN t.status NOT IN ('done','closed','cancelled') AND t.due_at IS NOT NULL AND t.due_at < NOW() THEN 1 ELSE 0 END AS is_overdue,
             ss.id AS sample_shipment_id, ss.sample_name, ss.courier_company, ss.tracking_no, ss.status AS sample_status
         FROM crm_tasks t
@@ -468,6 +476,7 @@ function crm_task_center_list(array $input = []): array
         LEFT JOIN crm_contacts ct ON ct.id=t.contact_id
         LEFT JOIN crm_opportunities o ON o.id=t.opportunity_id
         LEFT JOIN crm_users u ON u.id=t.assigned_user_id
+        {$quoteFollowJoin}
         LEFT JOIN crm_sample_shipments ss ON ss.task_id=t.id AND ss.deleted_at IS NULL
         WHERE " . implode(' AND ', $where) . "
         ORDER BY is_overdue DESC, COALESCE(t.due_at, t.created_at) ASC, t.id DESC LIMIT 300";
@@ -493,6 +502,42 @@ function crm_task_quote_table_cols(string $table): array
     } catch (Throwable $e) {
         return [];
     }
+}
+
+function crm_quote_followup_lifecycle_ensure(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    if (!db_table_exists('quote_orders')) return;
+    $cols = crm_task_quote_table_cols('quote_orders');
+    $adds = [
+        'followup_status' => "`followup_status` VARCHAR(40) NOT NULL DEFAULT 'active'",
+        'followup_closed_at' => "`followup_closed_at` DATETIME NULL",
+        'followup_closed_by' => "`followup_closed_by` VARCHAR(120) NOT NULL DEFAULT ''",
+        'followup_closed_reason' => "`followup_closed_reason` TEXT NULL",
+        'approval_log_json' => "`approval_log_json` MEDIUMTEXT NULL",
+    ];
+    foreach ($adds as $col => $ddl) {
+        if (in_array($col, $cols, true)) continue;
+        try { db()->exec("ALTER TABLE quote_orders ADD COLUMN {$ddl}"); } catch (Throwable $e) {}
+    }
+}
+
+function crm_quote_followup_append_quote_log(PDO $pdo, int $quoteId, array $entry): void
+{
+    if ($quoteId <= 0) return;
+    try {
+        crm_quote_followup_lifecycle_ensure();
+        $stmt = $pdo->prepare('SELECT approval_log_json FROM quote_orders WHERE id=? LIMIT 1');
+        $stmt->execute([$quoteId]);
+        $logs = json_decode((string)$stmt->fetchColumn(), true);
+        if (!is_array($logs)) $logs = [];
+        $logs[] = $entry;
+        if (count($logs) > 200) $logs = array_slice($logs, -200);
+        $pdo->prepare('UPDATE quote_orders SET approval_log_json=? WHERE id=?')
+            ->execute([json_encode($logs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $quoteId]);
+    } catch (Throwable $e) {}
 }
 
 function crm_task_quote_count(string $sql): int
@@ -564,6 +609,10 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             {$q('approval_note')} AS approval_note,
             {$q('converted_order_id')} AS converted_order_id,
             {$q('converted_order_no')} AS converted_order_no,
+            {$q('followup_status')} AS followup_status,
+            {$q('followup_closed_at')} AS followup_closed_at,
+            {$q('followup_closed_by')} AS followup_closed_by,
+            {$q('followup_closed_reason')} AS followup_closed_reason,
             " . ($orderCols ? "o.id AS order_id, o.order_no, o.order_date, o.status AS order_status, o.shipment_status, o.payment_status, o.paid_amount, o.balance_amount, o.amount AS order_amount, o.currency AS order_currency, o.qty AS order_qty, o.updated_at AS order_updated_at" : "NULL AS order_id, NULL AS order_no, NULL AS order_date, NULL AS order_status, NULL AS shipment_status, NULL AS payment_status, NULL AS paid_amount, NULL AS balance_amount, NULL AS order_amount, NULL AS order_currency, NULL AS order_qty, NULL AS order_updated_at") . ",
             {$shipSelect},
             t.id AS task_id,
@@ -606,7 +655,8 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
         $shippedQty = (float)($r['shipped_qty'] ?? 0);
         $pl = (int)($r['pl_count'] ?? 0);
         $ci = (int)($r['ci_count'] ?? 0);
-        $taskDone = in_array((string)($r['task_status'] ?? ''), ['done','closed'], true);
+        $followupClosed = strtolower((string)($r['followup_status'] ?: 'active')) === 'closed';
+        $taskDone = $followupClosed || in_array((string)($r['task_status'] ?? ''), ['done','closed'], true);
         $days = null;
         $base = $r['approved_at'] ?: $r['quote_updated_at'] ?: $r['quote_created_at'] ?: null;
         if ($base && !$taskDone && !$orderId) {
@@ -617,7 +667,8 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
         if ($approval === 'rejected') $stages[] = 'review_rejected';
         if ($approval === 'approved') {
             $stages[] = 'quote_done';
-            if ($taskDone) $stages[] = 'replied';
+            if ($followupClosed) $stages[] = 'followup_closed';
+            elseif ($taskDone) $stages[] = 'replied';
             elseif (!$orderId) $stages[] = 'unreplied';
         }
         if ($orderId) {
@@ -656,10 +707,10 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
                 }
             }
         }
-        $currentStage = $orderId ? ($balance > 0 ? '尾款/收款' : (($pl > 0 || $ci > 0) ? '单证' : '出货')) : ($approval === 'rejected' ? '审核驳回' : ($approval === 'pending' ? '待审核' : ($taskDone ? '客户已回复' : '客户未回复')));
+        $currentStage = $followupClosed ? '结束跟进' : ($orderId ? ($balance > 0 ? '尾款/收款' : (($pl > 0 || $ci > 0) ? '单证' : '出货')) : ($approval === 'rejected' ? '审核驳回' : ($approval === 'pending' ? '待审核' : ($taskDone ? '客户已回复' : '客户未回复'))));
         $activityRollup = $activityRollups[(int)$r['quote_id']] ?? [];
         $latestActivity = $activityRollup['latest'] ?? [];
-        if (!empty($latestActivity['customer_replied'])) {
+        if (!$followupClosed && !empty($latestActivity['customer_replied'])) {
             $stages = array_values(array_diff($stages, ['unreplied']));
             $stages[] = 'replied';
             $days = null;
@@ -693,6 +744,10 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             'last_followup_result' => (string)($latestActivity['result'] ?? ''),
             'next_followup_at' => (string)($latestActivity['next_followup_at'] ?? $r['task_due_at'] ?? ''),
             'quote_source' => 'legacy',
+            'followup_status' => $followupClosed ? 'closed' : 'active',
+            'followup_closed_at' => (string)($r['followup_closed_at'] ?? ''),
+            'followup_closed_by' => (string)($r['followup_closed_by'] ?? ''),
+            'followup_closed_reason' => (string)($r['followup_closed_reason'] ?? ''),
             'assigned_name' => (string)($r['assigned_name'] ?? ''),
             'order_id' => $orderId,
             'order_no' => (string)($r['order_no'] ?? ''),
@@ -712,8 +767,8 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
             'pl_status' => $pl > 0 ? '已生成 PL' : '待生成 PL',
             'ci_status' => $ci > 0 ? '已生成 CI' : '待生成 CI',
             'current_stage' => $currentStage,
-            'current_status' => $orderId ? ((string)($r['payment_status'] ?: $r['shipment_status'] ?: $r['order_status'] ?: '订单处理中')) : ($approval === 'approved' ? ($taskDone ? '客户已回复' : '客户未回复') : ($approval === 'rejected' ? '审核驳回' : '待审核')),
-            'next_action' => $orderId ? ($balance > 0 ? '跟进收款' : (($pl <= 0 || $ci <= 0) ? '生成单证' : '流程完成')) : ($approval === 'pending' ? '审核报价' : ($approval === 'rejected' ? '修改后重提' : ($taskDone ? '推进转订单' : '跟进客户回复'))),
+            'current_status' => $followupClosed ? '已结束跟进' : ($orderId ? ((string)($r['payment_status'] ?: $r['shipment_status'] ?: $r['order_status'] ?: '订单处理中')) : ($approval === 'approved' ? ($taskDone ? '客户已回复' : '客户未回复') : ($approval === 'rejected' ? '审核驳回' : '待审核'))),
+            'next_action' => $followupClosed ? '已结束，无需继续跟进' : ($orderId ? ($balance > 0 ? '跟进收款' : (($pl <= 0 || $ci <= 0) ? '生成单证' : '流程完成')) : ($approval === 'pending' ? '审核报价' : ($approval === 'rejected' ? '修改后重提' : ($taskDone ? '推进转订单' : '跟进客户回复')))),
             'updated_at' => (string)($r['order_updated_at'] ?: $r['quote_updated_at'] ?: $r['quote_created_at'] ?: ''),
             'stages' => array_values(array_unique($stages)),
         ];
@@ -776,6 +831,10 @@ function crm_task_cc_quote_flow_records(array $recordWhere = [], array $recordPa
             'quote_currency' => (string)($r['quote_currency'] ?? ''),
             'quote_owner' => (string)($r['owner_name'] ?? ''),
             'approval_status' => $rejected ? 'rejected' : ($approved ? 'approved' : 'pending'),
+            'followup_status' => 'active',
+            'followup_closed_at' => '',
+            'followup_closed_by' => '',
+            'followup_closed_reason' => '',
             'sent_at' => $base,
             'no_reply_days' => $approved && !$replied ? max(0, (int)((time() - strtotime($base)) / 86400)) : null,
             'task_id' => (int)($r['task_id'] ?? 0),
@@ -804,6 +863,7 @@ function crm_task_cc_quote_flow_records(array $recordWhere = [], array $recordPa
 
 function crm_task_quote_flow_summary(string $search = ''): array
 {
+    if (db_table_exists('quote_orders')) crm_quote_followup_lifecycle_ensure();
     $quoteCols = crm_task_quote_table_cols('quote_orders');
     $orderCols = crm_task_quote_table_cols('quote_sales_orders');
     $shipCols = crm_task_quote_table_cols('quote_shipments');
@@ -1070,7 +1130,8 @@ function crm_quote_followup_context(array $input): array
         $stmt = db()->prepare("SELECT q.id,q.quote_no,q.legacy_customer_id AS customer_id,q.customer_snapshot,q.currency,q.total_amount,q.current_version,q.status,{$detailSelect} FROM cc_quotes q {$detailJoin} WHERE q.id=? AND q.is_test=0 LIMIT 1");
     } else {
         if (!db_table_exists('quote_orders')) throw new RuntimeException('报价表不存在。');
-        $stmt = db()->prepare("SELECT id,quote_no,customer_id,customer_name,currency,amount AS total_amount,user_name AS owner_name,quote_date,qty,price,product_json,parts_json,items_json,extra_spec,status,quote_status,approval_status,approved_at,converted_order_id,converted_order_no FROM quote_orders WHERE id=? LIMIT 1");
+        crm_quote_followup_lifecycle_ensure();
+        $stmt = db()->prepare("SELECT id,quote_no,customer_id,customer_name,currency,amount AS total_amount,user_name AS owner_name,quote_date,qty,price,product_json,parts_json,items_json,extra_spec,status,quote_status,approval_status,approved_at,converted_order_id,converted_order_no,followup_status,followup_closed_at,followup_closed_by,followup_closed_reason FROM quote_orders WHERE id=? LIMIT 1");
     }
     $stmt->execute([$quoteId]);
     $quote = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1111,6 +1172,77 @@ function crm_quote_followup_context(array $input): array
         $mails = $mailStmt->fetchAll(PDO::FETCH_ASSOC);
     }
     return ['quote' => $quote, 'quote_preview' => $preview, 'quote_source' => $source, 'contacts' => $contacts, 'activities' => $activities, 'mails' => $mails];
+}
+
+function crm_quote_followup_status_set(array $input): array
+{
+    crm_task_center_ensure_tables();
+    crm_require('task.edit');
+    $source = ($input['quote_source'] ?? '') === 'cc' ? 'cc' : 'legacy';
+    if ($source === 'cc') throw new RuntimeException('新版报价暂未接入结束/恢复跟进。');
+    if (!db_table_exists('quote_orders')) throw new RuntimeException('报价表不存在。');
+    crm_quote_followup_lifecycle_ensure();
+    $quoteId = (int)($input['quote_id'] ?? $input['id'] ?? 0);
+    if ($quoteId <= 0) throw new RuntimeException('缺少报价记录。');
+    $status = trim((string)($input['status'] ?? 'closed'));
+    $closing = in_array($status, ['closed','ended','结束','已结束'], true);
+    $reason = trim((string)($input['reason'] ?? ''));
+    if ($closing && $reason === '') throw new RuntimeException('结束跟进需要填写事由。');
+    if (mb_strlen($reason, 'UTF-8') > 5000) $reason = mb_substr($reason, 0, 5000, 'UTF-8');
+
+    $user = current_user() ?: [];
+    $uid = (int)($user['id'] ?? 0);
+    $actor = trim((string)($user['username'] ?? $user['real_name'] ?? $user['english_name'] ?? ''));
+    $displayName = trim((string)($user['real_name'] ?? $user['english_name'] ?? $actor));
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM quote_orders WHERE id=? LIMIT 1 FOR UPDATE');
+        $stmt->execute([$quoteId]);
+        $before = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$before) throw new RuntimeException('报价不存在。');
+        $quoteNo = trim((string)($before['quote_no'] ?? ''));
+        $note = $closing
+            ? ('报价结束跟进：' . $reason)
+            : ($reason !== '' ? ('报价恢复跟进：' . $reason) : '报价已恢复跟进');
+        if ($closing) {
+            $pdo->prepare("UPDATE quote_orders SET followup_status='closed',followup_closed_at=NOW(),followup_closed_by=?,followup_closed_reason=?,updated_at=NOW() WHERE id=?")
+                ->execute([$actor,$reason,$quoteId]);
+            $taskSql = "UPDATE crm_tasks SET status='closed', result='无需跟进', result_note=CONCAT(COALESCE(result_note,''), IF(COALESCE(result_note,'')='', '', '\n'), ?), completed_at=COALESCE(completed_at,NOW()), completed_by=?, updated_at=NOW()
+                WHERE task_type='quote_followup' AND deleted_at IS NULL AND status<>'cancelled' AND (source_type='quote' AND source_id=? " . ($quoteNo !== '' ? "OR quote_id=?" : "") . ")";
+            $params = [$note, $uid ?: null, (string)$quoteId];
+            if ($quoteNo !== '') $params[] = $quoteNo;
+            $pdo->prepare($taskSql)->execute($params);
+        } else {
+            $pdo->prepare("UPDATE quote_orders SET followup_status='active',followup_closed_at=NULL,followup_closed_by='',followup_closed_reason='',updated_at=NOW() WHERE id=?")
+                ->execute([$quoteId]);
+            $taskSql = "UPDATE crm_tasks SET status='pending', result='恢复跟进', result_note=CONCAT(COALESCE(result_note,''), IF(COALESCE(result_note,'')='', '', '\n'), ?), completed_at=NULL, completed_by=NULL, updated_at=NOW()
+                WHERE task_type='quote_followup' AND deleted_at IS NULL AND status<>'cancelled' AND (source_type='quote' AND source_id=? " . ($quoteNo !== '' ? "OR quote_id=?" : "") . ")";
+            $params = [$note, (string)$quoteId];
+            if ($quoteNo !== '') $params[] = $quoteNo;
+            $pdo->prepare($taskSql)->execute($params);
+        }
+        crm_quote_followup_append_quote_log($pdo, $quoteId, [
+            'action' => $closing ? 'close_followup' : 'reopen_followup',
+            'time' => date('Y-m-d H:i:s'),
+            'user' => $actor,
+            'user_name' => $displayName,
+            'note' => $reason,
+            'changes' => [],
+        ]);
+        $afterStmt = $pdo->prepare('SELECT * FROM quote_orders WHERE id=? LIMIT 1');
+        $afterStmt->execute([$quoteId]);
+        $after = $afterStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $pdo->commit();
+        crm_log_event('tasks', $closing ? 'quote_followup_close' : 'quote_followup_reopen', 'quote', (string)$quoteId, $before, $after, true);
+        $result = crm_quote_followup_context(['quote_source' => 'legacy', 'quote_id' => $quoteId]);
+        $result['followup_status'] = $closing ? 'closed' : 'active';
+        return $result;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        crm_log_event('tasks', $closing ? 'quote_followup_close' : 'quote_followup_reopen', 'quote', (string)$quoteId, null, ['reason'=>$reason], false, $e->getMessage());
+        throw $e;
+    }
 }
 
 function crm_quote_followup_channel_labels(): array
