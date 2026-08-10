@@ -18932,6 +18932,55 @@
           }
           return row.planned_customer_time || '-';
         };
+        var byContact = {};
+        var byEmail = {};
+        var byCustomer = {};
+        var pushMap = function (map, key, row) {
+          key = String(key || '').trim().toLowerCase();
+          if (!key) return;
+          map[key] = map[key] || [];
+          map[key].push(row);
+        };
+        rows.forEach(function (row) {
+          pushMap(byContact, row.contact_id, row);
+          pushMap(byEmail, row.receiver_email, row);
+          pushMap(byCustomer, row.customer_id, row);
+        });
+        var noEmailContact = {};
+        var noEmailCustomer = {};
+        noEmailTargets.forEach(function (row) {
+          pushMap(noEmailContact, row.contact_id, row);
+          pushMap(noEmailCustomer, row.customer_id, row);
+        });
+        var latestQueue = function (list) {
+          return (list || []).slice().sort(function (a, b) {
+            return String(b.sent_at || b.planned_server_time || b.updated_at || '').localeCompare(String(a.sent_at || a.planned_server_time || a.updated_at || ''));
+          })[0] || null;
+        };
+        var mailStatusForManual = function (row) {
+          var queues = [];
+          if (row.contact_id && byContact[String(row.contact_id).toLowerCase()]) queues = byContact[String(row.contact_id).toLowerCase()];
+          if (!queues.length && row.email && byEmail[String(row.email).toLowerCase()]) queues = byEmail[String(row.email).toLowerCase()];
+          if (!queues.length && row.contact_method && String(row.contact_method).indexOf('@') >= 0 && byEmail[String(row.contact_method).toLowerCase()]) queues = byEmail[String(row.contact_method).toLowerCase()];
+          if (!queues.length && !row.contact_id && byCustomer[String(row.customer_id || '').toLowerCase()]) queues = byCustomer[String(row.customer_id || '').toLowerCase()];
+          if (queues.length) {
+            var counts = queues.reduce(function (acc, item) {
+              var key = String(item.send_status || 'pending').toLowerCase();
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            }, {});
+            var latest = latestQueue(queues);
+            if (counts.sent) return '已发 ' + counts.sent + ' 封' + (latest ? ' · ' + String(latest.sent_at || latest.planned_server_time || '').slice(0, 16) : '') + (latest ? ' · 当地 ' + sentLocalTime(latest) : '');
+            if (counts.failed) return '邮件失败 ' + counts.failed + ' 条' + (latest && latest.last_error ? ' · ' + latest.last_error : '');
+            if (counts.waiting_retry) return '邮件待重试 ' + counts.waiting_retry + ' 条';
+            if (counts.pending || counts.scheduled || counts.sending) return '邮件待发 ' + ((counts.pending || 0) + (counts.scheduled || 0) + (counts.sending || 0)) + ' 条';
+            return '邮件队列：' + cnStatus(latest ? latest.send_status : '-');
+          }
+          var noEmail = (row.contact_id && noEmailContact[String(row.contact_id).toLowerCase()] && noEmailContact[String(row.contact_id).toLowerCase()][0]) ||
+            (!row.contact_id && noEmailCustomer[String(row.customer_id || '').toLowerCase()] && noEmailCustomer[String(row.customer_id || '').toLowerCase()][0]);
+          if (noEmail) return noEmail.failure_reason || '无邮箱未发';
+          return '未找到邮件队列';
+        };
         var queueTable = rows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>失败原因</th></tr></thead><tbody>' + rows.slice(0, 1000).map(function (row) {
           var systemTime = row.sent_at || row.planned_server_time || '-';
           return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.country || row.customer_country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(String(systemTime || '-').slice(0, 16)) + '</td><td>' + esc(sentLocalTime(row)) + '</td><td>' + esc(row.customer_timezone || '-') + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
@@ -18939,11 +18988,13 @@
         var noEmailList = noEmailTargets.length ? '<div class="promo-target-list">' + noEmailTargets.slice(0, 120).map(function (row) {
           return '<article><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.contact_name || '客户级目标') + ' · ' + esc(row.country || '-') + ' · ' + esc(cnStatus(row.target_status || '-')) + ' · ' + esc(row.failure_reason || '缺少邮箱') + '</span></article>';
         }).join('') + (noEmailTargets.length > 120 ? '<p class="promo-empty">另有 ' + esc(noEmailTargets.length - 120) + ' 条未展开。</p>' : '') + '</div>' : '<p class="promo-empty">没有发现无邮箱跳过记录。</p>';
-        var manualTable = manualTargets.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行人</th><th>状态</th><th>计划 / 执行时间</th><th>原因 / 结果</th></tr></thead><tbody>' + manualTargets.slice(0, 300).map(function (row) {
+        var manualTable = manualTargets.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>联系方式 / 群名</th><th>邮件状态</th><th>分配执行人</th><th>实际执行人</th><th>状态</th><th>计划 / 执行时间</th><th>原因 / 结果</th></tr></thead><tbody>' + manualTargets.slice(0, 300).map(function (row) {
           var objectName = row.chat_group_name || row.manual_group_name || row.contact_name || '客户级目标';
           var method = row.contact_method || row.chat_group_name || row.manual_group_name || row.email || row.whatsapp || row.wechat || row.phone || '-';
           var time = row.executed_at || row.due_at || row.planned_at || '-';
-          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(objectName) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(row.executor_name || row.operator_name || '-') + '</td><td>' + esc(cnStatus(row.manual_status || row.target_status || '-')) + '</td><td>' + esc(String(time || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || row.failure_reason || '-').slice(0, 160) + '</td></tr>';
+          var assignedExecutor = row.executor_name || row.operator_name || '-';
+          var actualExecutor = row.manual_checked_by_name || (row.executed_at ? (row.operator_name || row.executor_name || '-') : '-');
+          return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(objectName) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(mailStatusForManual(row)).slice(0, 180) + '</td><td>' + esc(assignedExecutor) + '</td><td>' + esc(actualExecutor) + '</td><td>' + esc(cnStatus(row.manual_status || row.target_status || '-')) + '</td><td>' + esc(String(time || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || row.failure_reason || '-').slice(0, 160) + '</td></tr>';
         }).join('') + '</tbody></table>' + (manualTargets.length > 300 ? '<p class="promo-empty">人工明细较多，当前显示前 300 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无线下 / 人工执行目标。</p>';
         var body = '<section class="promo-preview-grid"><article><strong>' + esc(rows.length) + '</strong><span>邮件队列总数</span></article><article><strong>' + esc(status.sent || sentRows.length || 0) + '</strong><span>已发送邮件</span></article><article><strong>' + esc(Object.keys(sentContactKeys).length) + '</strong><span>已发联系人</span></article><article><strong>' + esc(noEmailTargets.length) + '</strong><span>无邮箱未发</span></article><article><strong>' + esc(manualTargets.length) + '</strong><span>线下 / 人工</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败队列</span></article></section>' +
           '<details class="promo-project-detail-fold" open><summary><span>邮件发送明细</span><em>含系统发送时间与客户当地时间</em></summary><div class="promo-project-detail-content">' + queueTable + '</div></details>' +
