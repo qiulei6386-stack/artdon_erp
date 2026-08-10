@@ -15744,9 +15744,9 @@
         }) : failed;
         var failureRows = filtered.length ? filtered.slice(0, 160).map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'failure' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
-          return '<tr class="' + active + '" data-promo-exec-select data-exec-type="failure" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || row.chat_group_name || '客户级') + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(cnStatus(row.target_status || '-')) + '</td><td>' + esc(row.failure_reason || '未记录') + '</td></tr>';
-        }).join('') : '<tr><td colspan="5">暂无失败记录。</td></tr>';
-        box.innerHTML = '<section class="promo-failure-reason-grid">' + reasonHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>状态</th><th>失败原因</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>';
+          return '<tr class="' + active + '" data-promo-exec-select data-exec-type="failure" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || row.chat_group_name || '客户级') + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(cnStatus(row.target_status || '-')) + '</td><td>' + esc(row.failure_reason || '未记录') + '</td><td><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="retry">重试</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="skip">跳过</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="manual">转人工</button></td></tr>';
+        }).join('') : '<tr><td colspan="6">暂无失败记录。</td></tr>';
+        box.innerHTML = '<section class="promo-failure-reason-grid">' + reasonHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>状态</th><th>失败原因</th><th>处理</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>';
       } else {
         var logs = (this.data && this.data.logs) || [];
         var logRows = logs.length ? logs.slice(0, 220).map(function (row) {
@@ -15774,6 +15774,12 @@
           self.selectedExecution = null;
           self.renderExecutionCenter();
           if (current === 'promotion') renderActions('promotion');
+        });
+      });
+      box.querySelectorAll('[data-promo-failure]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.stopPropagation();
+          self.handleFailure(Number(button.getAttribute('data-promo-failure') || 0), button.getAttribute('data-promo-failure-mode') || 'resolved');
         });
       });
       box.querySelectorAll('[data-promo-manual-done]').forEach(function (input) {
@@ -15846,8 +15852,8 @@
       if (!box) return;
       var rows = this.data.failed_targets || [];
       box.innerHTML = rows.length ? rows.map(function (row) {
-        return '<article class="promo-failure-item"><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.task_name || '-') + ' · ' + esc(row.contact_name || '客户级目标') + ' · ' + esc(cnChannel(row.channel_key || '-')) + '</span><span>失败原因：' + esc(row.failure_reason || '未记录') + '</span><div class="promo-task-actions"><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="retry">重试</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="followup">生成跟进</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="quote">报价处理</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="material">资料处理</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="dispatch">派工处理</button></div></article>';
-      }).join('') : '<p class="promo-empty">暂无失败目标。任务失败会进入这里，可重试或生成跟进、报价、资料、派工处理记录。</p>';
+        return '<article class="promo-failure-item"><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(row.task_name || '-') + ' · ' + esc(row.contact_name || '客户级目标') + ' · ' + esc(cnChannel(row.channel_key || '-')) + '</span><span>失败原因：' + esc(row.failure_reason || '未记录') + '</span><div class="promo-task-actions"><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="retry">重试</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="skip">跳过</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="manual">转人工执行</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="followup">生成跟进</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="quote">报价处理</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="material">资料处理</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="dispatch">派工处理</button></div></article>';
+      }).join('') : '<p class="promo-empty">暂无失败目标。任务失败会进入这里，可重试、跳过或转人工执行。</p>';
       box.querySelectorAll('[data-promo-failure]').forEach(function (button) {
         button.addEventListener('click', function () {
           self.handleFailure(Number(button.getAttribute('data-promo-failure') || 0), button.getAttribute('data-promo-failure-mode') || 'resolved');
@@ -19002,13 +19008,20 @@
       post('marketing_failure_handle', { target_id: targetId, mode: mode }).then(function (json) {
         if (!json.success) throw new Error(json.message || '失败目标处理失败');
         var data = json.data || {};
+        var taskId = Number(data.task_id || 0);
         self.data.failed_targets = data.failed_targets || [];
+        self.data.targets = data.targets || self.data.targets || [];
         self.data.logs = data.logs || self.data.logs || [];
         self.data.tasks = data.tasks || self.data.tasks || [];
+        if (taskId && self.data.task_reports) delete self.data.task_reports[taskId];
+        self.selectedExecution = null;
         self.renderTasks();
         self.renderFailures();
         self.renderLogs();
-        toast(mode === 'retry' ? '失败目标已放回待执行' : '失败目标已写入处理记录');
+        if (taskId) self.ensureTaskReport(taskId);
+        self.renderTaskProperties();
+        var messageMap = { retry: '失败目标已放回重试队列', skip: '失败目标已跳过', manual: '失败目标已转人工执行' };
+        toast(messageMap[mode] || '失败目标已写入处理记录');
       }).catch(function (error) { self.showError(error.message || '失败目标处理失败'); });
     },
     logTouch: function (customerId, contactId) {
@@ -22390,7 +22403,8 @@
         return foundQueue;
       }
       if (selected.type === 'manual' || selected.type === 'failure') {
-        return ((PromotionModule.data && PromotionModule.data.targets) || []).find(function (row) { return Number(row.id) === Number(selected.id); }) || null;
+        return ((PromotionModule.data && PromotionModule.data.targets) || []).find(function (row) { return Number(row.id) === Number(selected.id); }) ||
+          ((PromotionModule.data && PromotionModule.data.failed_targets) || []).find(function (row) { return Number(row.id) === Number(selected.id); }) || null;
       }
       if (selected.type === 'log') {
         return ((PromotionModule.data && PromotionModule.data.logs) || []).find(function (row) { return Number(row.id) === Number(selected.id); }) || null;
@@ -22428,9 +22442,9 @@
       }
       if (label === '创建跟进') return toast('标记完成后会自动写入客户跟进；单独创建跟进入口待接入。');
       if (label === '查看失败原因') return toast(execRecord.failure_reason || '未记录失败原因。');
-      if (label === '重试' || label === '跳过') {
+      if (label === '重试' || label === '跳过' || label === '转人工执行') {
         if (!execRecord.id) return toast('请选择失败记录。');
-        return PromotionModule.handleFailure(Number(execRecord.id), label === '重试' ? 'retry' : 'skip');
+        return PromotionModule.handleFailure(Number(execRecord.id), label === '重试' ? 'retry' : (label === '跳过' ? 'skip' : 'manual'));
       }
       if (label === '查看客户') {
         if (execRecord.customer_id) {

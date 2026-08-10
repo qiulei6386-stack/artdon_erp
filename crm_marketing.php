@@ -3534,17 +3534,61 @@ function crm_marketing_failure_handle(array $input): array
     $targetId = (int)($input['target_id'] ?? 0);
     $mode = trim((string)($input['mode'] ?? 'resolved'));
     if ($targetId <= 0) throw new RuntimeException('失败目标 ID 无效。');
-    if (!in_array($mode, ['retry','resolved','followup','dispatch','quote','material'], true)) $mode = 'resolved';
+    if (!in_array($mode, ['retry','skip','manual','resolved','followup','dispatch','quote','material'], true)) $mode = 'resolved';
     $stmt = db()->prepare('SELECT * FROM crm_marketing_task_targets WHERE id = ? LIMIT 1');
     $stmt->execute([$targetId]);
     $target = $stmt->fetch();
     if (!$target) throw new RuntimeException('失败目标不存在。');
-    $nextStatus = $mode === 'retry' ? 'pending' : 'handled';
-    $reason = $mode === 'retry' ? '' : ('已处理：' . $mode);
-    db()->prepare('UPDATE crm_marketing_task_targets SET target_status = ?, failure_reason = ?, executed_at = NOW() WHERE id = ?')
-        ->execute([$nextStatus, $reason, $targetId]);
+    $taskId = (int)$target['task_id'];
+    $originalReason = trim((string)($target['failure_reason'] ?? ''));
+    [$manualPlannedAt, $manualDueAt] = crm_marketing_manual_schedule();
+    $nextStatus = 'handled';
+    $reason = '已处理：' . $mode;
+    $executedAtSql = 'NOW()';
+    $extraSets = '';
+    $params = [];
+    if ($mode === 'retry') {
+        $nextStatus = 'pending';
+        $reason = '';
+        $executedAtSql = 'NULL';
+    } elseif ($mode === 'skip') {
+        $nextStatus = 'skipped';
+        $reason = '已跳过' . ($originalReason !== '' ? '：' . $originalReason : '');
+    } elseif ($mode === 'manual') {
+        $nextStatus = 'pending';
+        $reason = '邮件发送失败，转人工执行' . ($originalReason !== '' ? '：' . $originalReason : '');
+        $executedAtSql = 'NULL';
+        $extraSets = ', planned_at = ?, due_at = ?, manual_result = NULL, manual_remark = NULL, manual_attachment_json = NULL, manual_checked_by_user_id = NULL';
+        $params[] = $manualPlannedAt;
+        $params[] = $manualDueAt;
+    }
+    db()->prepare("UPDATE crm_marketing_task_targets SET target_status = ?, failure_reason = ?, executed_at = {$executedAtSql}{$extraSets} WHERE id = ?")
+        ->execute(array_merge([$nextStatus, $reason], $params, [$targetId]));
+    $queueAffected = 0;
+    if (in_array(strtolower((string)$target['channel_key']), ['email','mail','edm'], true)) {
+        $queueStatus = $mode === 'retry' ? 'waiting_retry' : ($mode === 'skip' || $mode === 'manual' ? 'skipped' : '');
+        if ($queueStatus !== '') {
+            $queueSql = "UPDATE crm_marketing_send_queue
+                SET send_status = ?, planned_server_time = IF(? = 'waiting_retry', NOW(), planned_server_time), last_error = ?, updated_at = NOW()
+                WHERE task_id = ? AND customer_id = ? AND (contact_id <=> ?) AND send_status = 'failed'";
+            $queueReason = $mode === 'retry' ? null : $reason;
+            $queueStmt = db()->prepare($queueSql);
+            $queueStmt->execute([$queueStatus, $queueStatus, $queueReason, $taskId, (int)$target['customer_id'], $target['contact_id'] ? (int)$target['contact_id'] : null]);
+            $queueAffected = $queueStmt->rowCount();
+        }
+    }
+    $countStmt = db()->prepare("SELECT
+        SUM(target_status = 'success') success_count,
+        SUM(target_status = 'failed') failed_count,
+        SUM(target_status = 'pending') remaining_count
+        FROM crm_marketing_task_targets WHERE task_id = ?");
+    $countStmt->execute([$taskId]);
+    $counts = $countStmt->fetch() ?: ['success_count' => 0, 'failed_count' => 0, 'remaining_count' => 0];
+    $nextTaskStatus = ((int)($counts['remaining_count'] ?? 0) === 0) ? (((int)($counts['failed_count'] ?? 0) > 0) ? 'partial_failed' : 'completed') : ($mode === 'retry' ? 'running' : 'manual_pending');
+    db()->prepare('UPDATE crm_marketing_tasks SET success_count = ?, failed_count = ?, task_status = ?, updated_at = NOW() WHERE id = ?')
+        ->execute([(int)($counts['success_count'] ?? 0), (int)($counts['failed_count'] ?? 0), $nextTaskStatus, $taskId]);
     db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, ?, ?, "success", ?, ?, ?, NOW(), NOW())')
-        ->execute([(int)$target['task_id'], (int)$target['customer_id'], $target['contact_id'] ? (int)$target['contact_id'] : null, (string)$target['channel_key'], 'failure_' . $mode, $reason, current_user()['id'] ?? null, json_encode(['target' => $target, 'mode' => $mode], JSON_UNESCAPED_UNICODE)]);
-    crm_log_event('promotion', 'failure_handle', 'marketing_target', (string)$targetId, $target, ['mode' => $mode, 'status' => $nextStatus]);
-    return ['targets' => crm_marketing_task_targets(['task_id' => (int)$target['task_id']]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'logs' => crm_marketing_logs(), 'tasks' => crm_marketing_tasks()];
+        ->execute([$taskId, (int)$target['customer_id'], $target['contact_id'] ? (int)$target['contact_id'] : null, (string)$target['channel_key'], 'failure_' . $mode, $reason, current_user()['id'] ?? null, json_encode(['target' => $target, 'mode' => $mode, 'queue_affected' => $queueAffected], JSON_UNESCAPED_UNICODE)]);
+    crm_log_event('promotion', 'failure_handle', 'marketing_target', (string)$targetId, $target, ['mode' => $mode, 'status' => $nextStatus, 'queue_affected' => $queueAffected]);
+    return ['task_id' => $taskId, 'target_id' => $targetId, 'mode' => $mode, 'queue_affected' => $queueAffected, 'targets' => crm_marketing_task_targets(['task_id' => $taskId]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'logs' => crm_marketing_logs(), 'tasks' => crm_marketing_tasks()];
 }
