@@ -19031,6 +19031,51 @@
           if (noEmail) return noEmail.failure_reason || '无邮箱未发';
           return '未找到邮件队列';
         };
+        var cleanText = function (value) {
+          var text = String(value || '').trim();
+          return text && text !== '-' ? text : '';
+        };
+        var emailValue = function (row) {
+          return cleanText(row.receiver_email || row.email || row.contact_method || '').toLowerCase();
+        };
+        var knownCustomerById = {};
+        var knownCustomerByEmail = {};
+        var knownContactByEmail = {};
+        var knownCountryByEmail = {};
+        [].concat(targets || [], rows || []).forEach(function (row) {
+          var customerName = cleanText(row.customer_name || row.company_name || row.customer_full_name);
+          var contactName = cleanText(row.contact_name || row.variable_contact_name || row.name);
+          var countryName = cleanText(row.country || row.customer_country);
+          var email = emailValue(row);
+          var customerId = cleanText(row.customer_id);
+          if (customerName && customerId) knownCustomerById[customerId.toLowerCase()] = customerName;
+          if (customerName && email) knownCustomerByEmail[email] = customerName;
+          if (contactName && email) knownContactByEmail[email] = contactName;
+          if (countryName && email) knownCountryByEmail[email] = countryName;
+        });
+        var resolvedCustomerName = function (row) {
+          var direct = cleanText(row.customer_name || row.company_name || row.customer_full_name);
+          var customerId = cleanText(row.customer_id).toLowerCase();
+          var email = emailValue(row);
+          return direct || (customerId && knownCustomerById[customerId]) || (email && knownCustomerByEmail[email]) || '';
+        };
+        var fallbackCustomerName = function (row) {
+          var email = emailValue(row);
+          var domain = email && email.indexOf('@') >= 0 ? email.split('@').pop() : '';
+          if (domain) return domain + '（邮箱域名）';
+          return cleanText(row.customer_id) ? ('客户 #' + cleanText(row.customer_id)) : '-';
+        };
+        var displayCustomerName = function (row) {
+          return resolvedCustomerName(row) || fallbackCustomerName(row);
+        };
+        var displayContactName = function (row) {
+          var email = emailValue(row);
+          return cleanText(row.contact_name || row.variable_contact_name || row.name) || (email && knownContactByEmail[email]) || '客户级目标';
+        };
+        var displayCountryName = function (row) {
+          var email = emailValue(row);
+          return cleanText(row.country || row.customer_country) || (email && knownCountryByEmail[email]) || '-';
+        };
         var summaryMap = {};
         var summaryKey = function (row) {
           var contactId = row.contact_id || '';
@@ -19041,11 +19086,13 @@
         };
         var ensureSummary = function (row) {
           var key = summaryKey(row);
+          var resolvedName = resolvedCustomerName(row);
           summaryMap[key] = summaryMap[key] || {
-            customer: row.customer_name || '-',
+            customer: displayCustomerName(row),
+            customerResolved: !!resolvedName,
             customerId: row.customer_id || '',
-            contact: row.contact_name || '客户级目标',
-            country: row.country || row.customer_country || '-',
+            contact: displayContactName(row),
+            country: displayCountryName(row),
             email: row.receiver_email || row.email || row.contact_method || '',
             status: '未生成队列',
             systemTime: '',
@@ -19054,9 +19101,14 @@
             reason: row.failure_reason || ''
           };
           var item = summaryMap[key];
-          item.customer = item.customer === '-' ? (row.customer_name || item.customer) : item.customer;
-          item.contact = item.contact === '客户级目标' ? (row.contact_name || item.contact) : item.contact;
-          item.country = item.country === '-' ? (row.country || row.customer_country || item.country) : item.country;
+          if (!item.customerResolved && resolvedName) {
+            item.customer = resolvedName;
+            item.customerResolved = true;
+          } else if (!cleanText(item.customer)) {
+            item.customer = displayCustomerName(row);
+          }
+          item.contact = item.contact === '客户级目标' ? (displayContactName(row) || item.contact) : item.contact;
+          item.country = item.country === '-' ? (displayCountryName(row) || item.country) : item.country;
           item.email = item.email || row.receiver_email || row.email || row.contact_method || '';
           item.reason = item.reason || row.failure_reason || '';
           return item;

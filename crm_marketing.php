@@ -2905,15 +2905,28 @@ function crm_marketing_queue_list(array $input): array
         $where[] = "q.send_status IN ('pending','scheduled','sending','waiting_retry','failed')";
     }
     $stmt = db()->prepare('SELECT
-            q.id, q.task_id, q.campaign_id, q.customer_id, q.contact_id,
+            q.id, q.task_id, q.campaign_id,
+            COALESCE(NULLIF(q.customer_id, 0), ce.id, 0) customer_id,
+            COALESCE(NULLIF(q.contact_id, 0), cte.id, 0) contact_id,
             q.sender_user_id, q.sender_email, q.receiver_email, q.subject,
             q.country, q.customer_timezone, q.planned_customer_time, q.planned_server_time,
             q.send_status, q.send_attempts, q.max_attempts, q.last_error,
             q.sent_at, q.created_at, q.updated_at,
-            c.customer_name, ct.name contact_name
+            COALESCE(c.customer_name, ce.customer_name) customer_name,
+            COALESCE(ct.name, cte.name) contact_name
         FROM crm_marketing_send_queue q
         LEFT JOIN crm_customers c ON c.id = q.customer_id
         LEFT JOIN crm_contacts ct ON ct.id = q.contact_id
+        LEFT JOIN crm_contacts cte ON cte.id = (
+            SELECT ct2.id
+            FROM crm_contacts ct2
+            WHERE ct2.deleted_at IS NULL
+              AND q.receiver_email <> \'\'
+              AND LOWER(ct2.email) = LOWER(q.receiver_email)
+            ORDER BY ct2.is_primary DESC, ct2.id DESC
+            LIMIT 1
+        )
+        LEFT JOIN crm_customers ce ON ce.id = cte.customer_id
         WHERE ' . implode(' AND ', $where) . '
         ORDER BY q.planned_server_time ASC, q.id ASC
         LIMIT ' . $limit);
