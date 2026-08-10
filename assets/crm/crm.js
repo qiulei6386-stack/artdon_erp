@@ -13447,6 +13447,8 @@
     selectedTaskIds: new Set(),
     taskFilter: readLocalJson('crm_promotion_state', {}).taskFilter || 'all',
     executionTab: readLocalJson('crm_promotion_state', {}).executionTab || 'mail_queue',
+    executionPage: readLocalJson('crm_promotion_state', {}).executionPage || {},
+    executionPageSize: Number(readLocalJson('crm_promotion_state', {}).executionPageSize || 30),
     manualFilter: 'all',
     selectedExecution: null,
     autoRefreshTimer: null,
@@ -13555,6 +13557,8 @@
         button.addEventListener('click', function () {
           self.executionTab = button.getAttribute('data-promo-execution-tab') || 'mail_queue';
           self.selectedExecution = null;
+          self.executionPage = (self.executionPage && typeof self.executionPage === 'object') ? self.executionPage : {};
+          if (!self.executionPage[self.executionTab]) self.executionPage[self.executionTab] = 1;
           self.saveState();
           self.renderExecutionCenter();
           if (current === 'promotion') renderActions('promotion');
@@ -13641,6 +13645,8 @@
         poolPageSize: Number(this.poolPageSize || 50),
         taskFilter: this.taskFilter || 'all',
         executionTab: this.executionTab || 'mail_queue'
+        , executionPage: this.executionPage || {}
+        , executionPageSize: Number(this.executionPageSize || 30)
         , groupPage: Number(this.groupPage || 1),
         groupMemberPage: Number(this.groupMemberPage || 1),
         groupMemberPageSize: Number(this.groupMemberPageSize || 100)
@@ -15641,6 +15647,27 @@
       });
       var tasks = (this.data && this.data.tasks) || [];
       var reports = (this.data && this.data.task_reports) || {};
+      this.executionPage = (this.executionPage && typeof this.executionPage === 'object') ? this.executionPage : {};
+      var executionPageSize = Math.max(10, Math.min(100, Number(this.executionPageSize || 30) || 30));
+      this.executionPageSize = executionPageSize;
+      var paginateExecutionRows = function (rows) {
+        rows = rows || [];
+        var total = rows.length;
+        var pages = Math.max(1, Math.ceil(total / Math.max(1, executionPageSize)));
+        var page = Math.min(Math.max(1, Number(self.executionPage[tab] || 1) || 1), pages);
+        self.executionPage[tab] = page;
+        var start = (page - 1) * executionPageSize;
+        return { rows: rows.slice(start, start + executionPageSize), total: total, pages: pages, page: page, start: start, end: Math.min(total, start + executionPageSize) };
+      };
+      var executionPagerHtml = function (pager, label) {
+        pager = pager || { total: 0, pages: 1, page: 1, start: 0, end: 0 };
+        var from = pager.total ? pager.start + 1 : 0;
+        var to = pager.total ? pager.end : 0;
+        var sizeOption = function (value) {
+          return '<option value="' + esc(value) + '"' + (executionPageSize === value ? ' selected' : '') + '>' + esc(value) + '/页</option>';
+        };
+        return '<footer class="promo-pool-pager promo-exec-pager"><div class="promo-pager-info"><strong>' + esc(label) + ' ' + esc(pager.total || 0) + '</strong><span>第 ' + esc(pager.page || 1) + ' / ' + esc(pager.pages || 1) + ' 页 · ' + esc(from) + '-' + esc(to) + '</span></div><div class="promo-pager-actions"><button type="button" data-promo-exec-page="prev" ' + ((pager.page || 1) <= 1 ? 'disabled' : '') + '>上一页</button><select data-promo-exec-page-size>' + [30, 50, 100].map(sizeOption).join('') + '</select><button type="button" data-promo-exec-page="next" ' + ((pager.page || 1) >= (pager.pages || 1) ? 'disabled' : '') + '>下一页</button></div></footer>';
+      };
       if (tab === 'mail_queue') {
         var reportTaskIds = tasks.slice(0, 12).map(function (task) { return Number(task.id || 0); }).filter(Boolean);
         var selectedTaskId = Number(this.selectedTaskId || 0);
@@ -15685,7 +15712,8 @@
           ['已发送', counts.sent || 0],
           ['已跳过', Number(counts.skipped || 0) + Number(counts.cancelled || 0)]
         ].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('');
-        var body = visibleQueueRows.length ? visibleQueueRows.slice(0, 160).map(function (row) {
+        var queuePager = paginateExecutionRows(visibleQueueRows);
+        var body = queuePager.rows.length ? queuePager.rows.map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'mail_queue' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="mail_queue" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.customer_country || row.country || '-') + '</td><td>' + esc(row.receiver_email || '-') + '</td><td>' + esc(row.sender_email || '-') + '</td><td>' + esc(row.planned_server_time || '-').slice(0, 16) + '</td><td>' + esc(row.planned_customer_time || '-') + '</td><td>' + esc(cnStatus(row.send_status || '-')) + '</td><td>' + esc(row.last_error || '-').slice(0, 120) + '</td></tr>';
         }).join('') : (reportLoading
@@ -15693,7 +15721,7 @@
           : ((Number(counts.sent || 0) + Number(counts.skipped || 0) + Number(counts.cancelled || 0)) > 0
             ? '<tr><td colspan="9">当前没有未完成邮件队列；已完成记录已隐藏，可从上方统计查看数量。</td></tr>'
             : '<tr><td colspan="9">暂无未完成邮件发送队列。选中推广项目后可在右侧 ACTIONS 生成队列。</td></tr>'));
-        box.innerHTML = '<section class="promo-exec-stat-grid">' + statHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>计划发送时间</th><th>客户当地时间</th><th>状态</th><th>失败原因</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+        box.innerHTML = '<section class="promo-exec-stat-grid">' + statHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>计划发送时间</th><th>客户当地时间</th><th>状态</th><th>失败原因</th></tr></thead><tbody>' + body + '</tbody></table></div>' + executionPagerHtml(queuePager, '未完成队列');
       } else if (tab === 'manual') {
         var manualChannels = ['wechat','weixin','wechat_group','whatsapp','whatsapp_group','phone','offline','visit','linkedin'];
         var emailChannels = ['email','mail','edm'];
@@ -15738,13 +15766,14 @@
           ['已逾期', manualCounts.overdue],
           ['完成率', manualCounts.total ? Math.round(manualCounts.success * 100 / manualCounts.total) + '%' : '0%']
         ].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('');
-        var manualBody = targets.length ? targets.slice(0, 180).map(function (row) {
+        var manualPager = paginateExecutionRows(targets);
+        var manualBody = manualPager.rows.length ? manualPager.rows.map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'manual' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
           var targetName = row.chat_group_name || row.manual_group_name || row.contact_name || '客户级';
           var statusText = row.failure_reason ? cnStatus(row.manual_status) + ' · ' + row.failure_reason : cnStatus(row.manual_status || row.target_status || '-');
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="manual" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td><input type="checkbox" data-promo-manual-done="' + esc(row.id) + '" ' + (row.target_status === 'success' ? 'checked' : '') + '></td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(targetName) + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(row.contact_method || row.manual_group_name || '-') + '</td><td>' + esc(row.executor_name || row.operator_name || row.owner_name || '-') + '</td><td>' + esc(row.planned_at || row.created_at || '-').slice(0, 16) + '</td><td>' + esc(row.due_at || '-').slice(0, 16) + '</td><td>' + esc(statusText) + '</td><td>' + esc(row.executed_at || '-') + '</td><td>' + esc(row.manual_result || '-') + '</td></tr>';
         }).join('') : '<tr><td colspan="11">暂无人工执行清单。创建推广项目选择电话、微信、WhatsApp、群推广、LinkedIn 或拜访后会生成清单。</td></tr>';
-        box.innerHTML = '<section class="promo-exec-stat-grid">' + manualStats + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>完成</th><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>联系方式</th><th>执行人</th><th>计划时间</th><th>截止时间</th><th>状态</th><th>完成时间</th><th>执行结果</th></tr></thead><tbody>' + manualBody + '</tbody></table></div>';
+        box.innerHTML = '<section class="promo-exec-stat-grid">' + manualStats + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>完成</th><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>联系方式</th><th>执行人</th><th>计划时间</th><th>截止时间</th><th>状态</th><th>完成时间</th><th>执行结果</th></tr></thead><tbody>' + manualBody + '</tbody></table></div>' + executionPagerHtml(manualPager, '人工清单');
       } else if (tab === 'failures') {
         var failed = (this.data && this.data.failed_targets) || [];
         var reasonMap = [
@@ -15766,18 +15795,20 @@
           var found = reasonMap.find(function (item) { return item[0] === activeReason; });
           return found ? found[1].test(String(row.failure_reason || '')) : true;
         }) : failed;
-        var failureRows = filtered.length ? filtered.slice(0, 160).map(function (row) {
+        var failurePager = paginateExecutionRows(filtered);
+        var failureRows = failurePager.rows.length ? failurePager.rows.map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'failure' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="failure" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || row.chat_group_name || '客户级') + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(cnStatus(row.target_status || '-')) + '</td><td>' + esc(row.failure_reason || '未记录') + '</td><td><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="retry">重试</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="skip">跳过</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="manual">转人工</button></td></tr>';
         }).join('') : '<tr><td colspan="6">暂无失败记录。</td></tr>';
-        box.innerHTML = '<section class="promo-failure-reason-grid">' + reasonHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>状态</th><th>失败原因</th><th>处理</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>';
+        box.innerHTML = '<section class="promo-failure-reason-grid">' + reasonHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>状态</th><th>失败原因</th><th>处理</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>' + executionPagerHtml(failurePager, '失败记录');
       } else {
         var logs = (this.data && this.data.logs) || [];
-        var logRows = logs.length ? logs.slice(0, 220).map(function (row) {
+        var logPager = paginateExecutionRows(logs);
+        var logRows = logPager.rows.length ? logPager.rows.map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'log' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="log" data-exec-id="' + esc(row.id || '') + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.touched_at || row.created_at || '-').slice(0, 16) + '</td><td>' + esc(row.task_name || '-') + '</td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '-') + '</td><td>' + esc(row.action_key || cnChannel(row.channel_key || '-')) + '</td><td>' + esc(row.operator_name || '-') + '</td><td>' + esc(cnStatus(row.result_status || '-')) + '</td><td>' + esc(row.failure_reason || '-') + '</td></tr>';
         }).join('') : '<tr><td colspan="8">暂无执行日志。</td></tr>';
-        box.innerHTML = '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>时间</th><th>任务</th><th>客户</th><th>联系人</th><th>动作</th><th>执行人</th><th>结果</th><th>错误原因</th></tr></thead><tbody>' + logRows + '</tbody></table></div>';
+        box.innerHTML = '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>时间</th><th>任务</th><th>客户</th><th>联系人</th><th>动作</th><th>执行人</th><th>结果</th><th>错误原因</th></tr></thead><tbody>' + logRows + '</tbody></table></div>' + executionPagerHtml(logPager, '执行日志');
       }
       box.querySelectorAll('[data-promo-exec-select]').forEach(function (row) {
         row.addEventListener('click', function (event) {
@@ -15791,11 +15822,33 @@
           if (current === 'promotion') renderActions('promotion');
         });
       });
+      box.querySelectorAll('[data-promo-exec-page]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var action = button.getAttribute('data-promo-exec-page') || '';
+          self.executionPage = (self.executionPage && typeof self.executionPage === 'object') ? self.executionPage : {};
+          var page = Number(self.executionPage[tab] || 1) || 1;
+          self.executionPage[tab] = Math.max(1, page + (action === 'next' ? 1 : -1));
+          self.saveState();
+          self.renderExecutionCenter();
+        });
+      });
+      box.querySelectorAll('[data-promo-exec-page-size]').forEach(function (select) {
+        select.addEventListener('change', function () {
+          self.executionPageSize = Math.max(10, Math.min(100, Number(select.value || 30) || 30));
+          self.executionPage = (self.executionPage && typeof self.executionPage === 'object') ? self.executionPage : {};
+          self.executionPage[tab] = 1;
+          self.saveState();
+          self.renderExecutionCenter();
+        });
+      });
       box.querySelectorAll('[data-promo-failure-reason]').forEach(function (button) {
         button.addEventListener('click', function () {
           var value = button.getAttribute('data-promo-failure-reason') || '';
           root.setAttribute('data-promo-failure-reason', root.getAttribute('data-promo-failure-reason') === value ? '' : value);
           self.selectedExecution = null;
+          self.executionPage = (self.executionPage && typeof self.executionPage === 'object') ? self.executionPage : {};
+          self.executionPage.failures = 1;
+          self.saveState();
           self.renderExecutionCenter();
           if (current === 'promotion') renderActions('promotion');
         });

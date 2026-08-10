@@ -25178,6 +25178,9 @@ body.is-promotion-module .action_command {
 .promo-exec-table {
   min-width: 980px;
 }
+.promo-exec-pager {
+  margin-top: 8px;
+}
 .promo-exec-table tbody tr {
   cursor: pointer;
 }
