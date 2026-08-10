@@ -18937,18 +18937,17 @@
           var key = row.contact_id ? ('contact:' + row.contact_id) : (row.receiver_email ? ('email:' + String(row.receiver_email).toLowerCase()) : ('customer:' + row.customer_id));
           sentContactKeys[key] = true;
         });
-        var noEmailTargets = targets.filter(function (row) {
+        var noEmailTargetsRaw = targets.filter(function (row) {
           var channel = normalize(row.channel_key || '');
           var reason = String(row.failure_reason || '');
           var statusText = String(row.target_status || '').toLowerCase();
           return emailChannels.indexOf(channel) >= 0 && (reason.indexOf('邮箱') >= 0 || reason.toLowerCase().indexOf('email') >= 0 || (!row.email && !row.contact_method && ['skipped','failed','pending'].indexOf(statusText) >= 0));
         });
-        var manualTargets = targets.filter(function (row) {
+        var manualTargetsRaw = targets.filter(function (row) {
           var channel = normalize(row.channel_key || '');
           var statusText = String(row.target_status || '').toLowerCase();
           return manualChannels.indexOf(channel) >= 0 || row.chat_group_id || (emailChannels.indexOf(channel) >= 0 && ['failed','skipped','pending'].indexOf(statusText) >= 0);
         });
-        manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
         var isValidTimeZone = function (zone) {
           if (!zone) return false;
           try {
@@ -19009,6 +19008,24 @@
           pushMap(byEmail, row.receiver_email, row);
           pushMap(byCustomer, row.customer_id, row);
         });
+        var customerHasMailQueue = function (customerId) {
+          var list = byCustomer[String(customerId || '').toLowerCase()] || [];
+          return list.some(function (item) {
+            var statusKey = String(item.send_status || '').toLowerCase();
+            return String(item.receiver_email || '').trim() && ['sent','pending','scheduled','sending','waiting_retry'].indexOf(statusKey) >= 0;
+          });
+        };
+        var isCoveredCustomerEmailPlaceholder = function (row) {
+          var channel = normalize(row.channel_key || '');
+          return emailChannels.indexOf(channel) >= 0 && !row.contact_id && !String(row.email || row.contact_method || '').trim() && (Number(row.customer_has_any_email || 0) === 1 || customerHasMailQueue(row.customer_id));
+        };
+        var noEmailTargets = noEmailTargetsRaw.filter(function (row) {
+          return !isCoveredCustomerEmailPlaceholder(row);
+        });
+        var manualTargets = manualTargetsRaw.filter(function (row) {
+          return !isCoveredCustomerEmailPlaceholder(row);
+        });
+        manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
         var noEmailContact = {};
         var noEmailCustomer = {};
         noEmailTargets.forEach(function (row) {

@@ -1492,7 +1492,21 @@ function crm_marketing_task_targets(array $input = []): array
         COALESCE(ex.real_name, ex.username) AS executor_name,
         COALESCE(chk.real_name, chk.username) AS manual_checked_by_name,
         CASE WHEN mt.target_status IN ('pending','failed') AND mt.due_at IS NOT NULL AND mt.due_at < NOW() THEN 'overdue' ELSE mt.target_status END AS manual_status,
-        COALESCE(ps.status, 'not_promoted') customer_promotion_status
+        COALESCE(ps.status, 'not_promoted') customer_promotion_status,
+        CASE WHEN TRIM(COALESCE(c.email, '')) <> ''
+               OR TRIM(COALESCE(c.backup_email, '')) <> ''
+               OR EXISTS (
+                    SELECT 1
+                    FROM crm_contacts any_ct
+                    WHERE any_ct.customer_id = mt.customer_id
+                      AND any_ct.deleted_at IS NULL
+                      AND COALESCE(any_ct.is_left, 0) = 0
+                      AND COALESCE(any_ct.do_not_contact, 0) = 0
+                      AND COALESCE(any_ct.unsubscribe_email, 0) = 0
+                      AND TRIM(COALESCE(any_ct.email, '')) <> ''
+                    LIMIT 1
+               )
+             THEN 1 ELSE 0 END AS customer_has_any_email
         FROM crm_marketing_task_targets mt
         JOIN crm_marketing_tasks t ON t.id = mt.task_id
         JOIN crm_customers c ON c.id = mt.customer_id
@@ -2277,16 +2291,18 @@ function crm_marketing_task_create(array $input): array
                           AND COALESCE(email,'') <> ''
                         ORDER BY is_primary DESC, id DESC");
                     $contactStmt->execute([$customerId]);
+                    $matchedContacts = 0;
                     $expanded = 0;
                     foreach ($contactStmt->fetchAll() as $contact) {
                         $contactId = (int)$contact['id'];
+                        $matchedContacts++;
                         if (isset($insertedContactIds[$contactId])) continue;
                         $insertTarget($customerId, $contactId, null, $targetChannel, $customer, $contact, []);
                         $insertedContactIds[$contactId] = true;
                         $targetCount++;
                         $expanded++;
                     }
-                    if ($expanded > 0) {
+                    if ($matchedContacts > 0) {
                         continue;
                     }
                 }
