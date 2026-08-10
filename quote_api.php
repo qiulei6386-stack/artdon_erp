@@ -196,6 +196,11 @@ function quote_select_columns_except($pdo,$table,array $exclude=[]){
   $use=array_values(array_filter($cols,fn($c)=>!isset($drop[$c])));
   return $use?('`'.implode('`,`',$use).'`'):'*';
 }
+function quote_mutation_response_quote($q){
+  if(!is_array($q)) return $q;
+  unset($q['approved_snapshot_json']);
+  return $q;
+}
 function save_row($pdo,$table,$data,$fields){
   $id = intval($data['id'] ?? 0); $cols=[]; $vals=[]; $real=array_flip(table_columns($pdo,$table));
   foreach($fields as $f){ if(isset($real[$f]) && array_key_exists($f,$data)){ $cols[]=$f; $vals[]=$data[$f]; }}
@@ -3117,7 +3122,8 @@ function qlog_summary($action,$d){
 }
 function quote_log_event($pdo,$arg=[]){
   try{
-    ensure_quote_log_schema($pdo);
+    static $logSchemaReady=false;
+    if(!$logSchemaReady){ ensure_quote_log_schema($pdo); $logSchemaReady=true; }
     $d=$arg['detail']??[];
     $st=$pdo->prepare("INSERT INTO quote_logs(level,module,action,event,quote_id,quote_no,customer_id,customer_name,user_name,ip,user_agent,request_method,request_uri,summary,detail_json,before_json,after_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     $st->execute([
@@ -3341,6 +3347,8 @@ function qbackup_restore($pdo,$actor=null){
 
 /* ===== V6.8.4.45 报价审核流程 START ===== */
 function quote_approval_schema(PDO $pdo): void {
+  static $approvalSchemaReady=false;
+  if($approvalSchemaReady) return;
   try{
     if(!table_exists($pdo,'quote_orders')) return;
     ensure_col($pdo,'quote_orders','approval_status',"`approval_status` VARCHAR(30) NOT NULL DEFAULT 'pending'");
@@ -3364,6 +3372,7 @@ function quote_approval_schema(PDO $pdo): void {
     ensure_col($pdo,'quote_orders','quote_status',"`quote_status` VARCHAR(80) DEFAULT 'Quotation sheet'");
     ensure_col($pdo,'quote_orders','status',"`status` VARCHAR(80) DEFAULT ''");
     try{ $pdo->exec("ALTER TABLE `quote_orders` ADD KEY `idx_quote_approval_status` (`approval_status`,`submitted_at`)"); }catch(Throwable $e){}
+    $approvalSchemaReady=true;
   }catch(Throwable $e){}
 }
 function quote_followup_lifecycle_schema(PDO $pdo): void {
@@ -3497,6 +3506,8 @@ function quote_append_approval_log(PDO $pdo, int $quoteId, array $entry): void {
   }catch(Throwable $e){ try{ quote_log_event($pdo,['level'=>'WARN','action'=>'approval_log_error','event'=>'审核日志写入失败','summary'=>$e->getMessage(),'detail'=>['quote_id'=>$quoteId]]); }catch(Throwable $ignore){} }
 }
 function quote_crm_ensure_reminder_table(PDO $pdo): void {
+  static $reminderSchemaReady=false;
+  if($reminderSchemaReady) return;
   try{
     ensure_table($pdo,"CREATE TABLE IF NOT EXISTS crm_reminders(
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -3551,6 +3562,7 @@ function quote_crm_ensure_reminder_table(PDO $pdo): void {
       ] as $c=>$ddl){ try{ ensure_col($pdo,'crm_reminders',$c,$ddl); }catch(Throwable $e){} }
       try{ $pdo->exec("ALTER TABLE crm_reminders ADD UNIQUE KEY uq_quote_reminder_key (reminder_key)"); }catch(Throwable $e){}
     }
+    $reminderSchemaReady=true;
   }catch(Throwable $e){}
 }
 function quote_review_actor_text(array $u): string {
@@ -3771,6 +3783,8 @@ function quote_push_crm_quote_notification(PDO $pdo, array $q, array $u, string 
   }
 }
 function quote_ensure_crm_tasks_table(PDO $pdo): void {
+  static $taskSchemaReady=false;
+  if($taskSchemaReady) return;
   try{
     $pdo->exec("CREATE TABLE IF NOT EXISTS crm_tasks (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -3805,6 +3819,7 @@ function quote_ensure_crm_tasks_table(PDO $pdo): void {
       KEY idx_task_assignee (assigned_user_id),
       KEY idx_task_deleted (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $taskSchemaReady=true;
   }catch(Throwable $e){}
 }
 function quote_upsert_crm_quote_followup_task(PDO $pdo, array $q, array $u): void {
@@ -4626,7 +4641,7 @@ if($action==='init'){
    if($after){ try{ $pdo->prepare('UPDATE quote_orders SET approved_snapshot_json=?, locked_at=COALESCE(locked_at,NOW()) WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$id]); $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]); }catch(Throwable $e){} }
    quote_push_crm_approved_reminder($pdo,$after?:$q,$__quote_user);
    quote_log_event($pdo,['action'=>'approve_quote','event'=>'报价审核通过','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($after?:$q),'summary'=>'报价审核通过：'.($q['quote_no']??''),'detail'=>array_merge($d,['changes'=>$approvalChanges]),'before'=>$q,'after'=>$after]);
-   ok(['quote'=>$after,'approval_status'=>'approved']);
+   ok(['quote'=>quote_mutation_response_quote($after),'approval_status'=>'approved','approved_at'=>$after['approved_at']??'']);
  }
  if($action==='reject_quote') {
    quote_approval_schema($pdo); quote_require_approver($__quote_user,$__quote_perms);
@@ -4651,7 +4666,7 @@ if($action==='init'){
    $afterReject=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]);
    quote_push_crm_review_reminder($pdo,$afterReject?:$q,$__quote_user,'rejected',$note);
    quote_log_event($pdo,['action'=>'reject_quote','event'=>'报价审核驳回','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($q),'summary'=>'报价审核驳回：'.($q['quote_no']??''),'detail'=>array_merge($d,['approval_note'=>$note,'reason_category'=>$cat,'reason_custom'=>$custom,'reason_detail'=>$detail]),'before'=>$q,'after'=>$afterReject]);
-   ok(['approval_status'=>'rejected','reason_category'=>$cat,'reason_custom'=>$custom,'reason_detail'=>$detail,'note'=>$note]);
+   ok(['quote'=>quote_mutation_response_quote($afterReject),'approval_status'=>'rejected','reason_category'=>$cat,'reason_custom'=>$custom,'reason_detail'=>$detail,'note'=>$note]);
  }
  if($action==='unapprove_quote') {
    quote_approval_schema($pdo); quote_require_approver($__quote_user,$__quote_perms);
@@ -4668,7 +4683,7 @@ if($action==='init'){
    $afterUnapprove=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]);
    quote_push_crm_review_reminder($pdo,$afterUnapprove?:$q,$__quote_user,'unapproved',$note);
    quote_log_event($pdo,['action'=>'unapprove_quote','event'=>'报价反审退回','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($q),'summary'=>'报价反审退回待审核：'.($q['quote_no']??''),'detail'=>$d,'before'=>$q,'after'=>$afterUnapprove]);
-   ok(['quote'=>$afterUnapprove,'approval_status'=>'pending']);
+   ok(['quote'=>quote_mutation_response_quote($afterUnapprove),'approval_status'=>'pending']);
  }
  if($action==='set_quote_followup_status') {
    ok(quote_followup_status_update($pdo,input_json(),$__quote_user));

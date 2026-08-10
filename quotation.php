@@ -1101,6 +1101,27 @@ async function ensureQuoteDetail(id){
   if(!found)DB.quotes.push(full);
   return (DB.quotes||[]).find(x=>String(x.id)===String(id))||full;
 }
+function applyQuoteMutationResult(quote,fallback={}){
+  let patch=Object.assign({},fallback||{},quote||{});
+  let id=patch.id||fallback.id||quote?.id;
+  if(!id)return null;
+  patch.id=id;
+  if(quote&&quote.items_json)patch._detail_loaded=Number(quote._detail_loaded||0)||1;
+  let found=false;
+  DB.quotes=(DB.quotes||[]).map(x=>{
+    if(String(x.id)!==String(id))return x;
+    found=true;
+    return Object.assign({},x,patch);
+  });
+  if(!found)DB.quotes.unshift(patch);
+  let updated=(DB.quotes||[]).find(x=>String(x.id)===String(id))||patch;
+  if(String(S.currentQuoteId||'')===String(id))S.currentApprovalStatus=quoteApprovalStatus(updated);
+  try{renderHistory(true);}catch(e){}
+  try{renderApproval();}catch(e){}
+  try{renderDash();}catch(e){}
+  try{updateQuoteApprovalStrip(String(S.currentQuoteId||'')===String(id)?updated:currentSavedQuote());}catch(e){}
+  return updated;
+}
 function quoteStartupParam(k){try{return new URLSearchParams(location.search).get(k)||''}catch(e){return ''}}
 function quoteStartupHashPage(){let h=String(location.hash||'').replace(/^#/,'');return h==='orders'?'orders':''}
 function quoteStartupRequestedPage(){
@@ -1111,6 +1132,7 @@ function quoteStartupRequestedPage(){
 async function load(){
   if(!(await checkAuth()))return;
   DB=await api('init');
+  QUOTE_RUNTIME_LAST_REFRESH_AT=Date.now();
   if(DB.me){AUTH.user=DB.me;AUTH.permissions=DB.permissions||DB.me.permissions||AUTH.permissions||{};}
   ensureCommissionSummaryPage();
   updateAuthUi();initDefaults();bind();
@@ -1427,7 +1449,7 @@ async function ensureDashOrderData(){if(DASH_ORDERS_LOADED||DASH_LOADING_ORDERS|
 async function ensureDashDocData(){if(DASH_DOCS_LOADED||DASH_LOADING_DOCS||!hasPerm('order_convert'))return;DASH_LOADING_DOCS=true;try{let d=await orderApi('list_documents');DOCUMENTS=d.documents||[];DASH_DOCS_LOADED=true;}catch(e){}finally{DASH_LOADING_DOCS=false;renderDash();}}
 
 /* V6.8.5.9：报价/订单数据变动后自动同步，不再依赖手动刷新 */
-let QUOTE_RUNTIME_REFRESHING=false,QUOTE_RUNTIME_REFRESH_TIMER=null,QUOTE_RUNTIME_SYNC_STARTED=false;
+let QUOTE_RUNTIME_REFRESHING=false,QUOTE_RUNTIME_REFRESH_TIMER=null,QUOTE_RUNTIME_SYNC_STARTED=false,QUOTE_RUNTIME_LAST_REFRESH_AT=0;
 function quoteSyncTimeText(){try{return new Date().toLocaleTimeString('zh-CN',{hour12:false});}catch(e){return ''}}
 async function refreshQuoteRuntime(reason='change',opts={}){
   if(QUOTE_RUNTIME_REFRESHING){scheduleQuoteRuntimeRefresh(reason,500,opts);return;}
@@ -1458,7 +1480,7 @@ async function refreshQuoteRuntime(reason='change',opts={}){
     const note=$('dashOrderNote');
     if(note)note.textContent='自动同步失败，可手动刷新';
     console.warn('quote runtime refresh failed',reason,e);
-  }finally{QUOTE_RUNTIME_REFRESHING=false;}
+  }finally{QUOTE_RUNTIME_REFRESHING=false;QUOTE_RUNTIME_LAST_REFRESH_AT=Date.now();}
 }
 function scheduleQuoteRuntimeRefresh(reason='change',delay=300,opts={}){
   if(QUOTE_RUNTIME_REFRESH_TIMER)clearTimeout(QUOTE_RUNTIME_REFRESH_TIMER);
@@ -1468,9 +1490,14 @@ function markQuoteDataChanged(reason='change',opts={}){scheduleQuoteRuntimeRefre
 function startQuoteRuntimeAutoSync(){
   if(QUOTE_RUNTIME_SYNC_STARTED)return;
   QUOTE_RUNTIME_SYNC_STARTED=true;
-  window.addEventListener('focus',()=>markQuoteDataChanged('window_focus',{orders:true,documents:true}));
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)markQuoteDataChanged('visible',{orders:true,documents:true});});
-  setInterval(()=>{if(!document.hidden)markQuoteDataChanged('interval',{orders:true,documents:true});},30000);
+  const maybe=(reason,minAge=180000)=>{
+    if(QUOTE_RUNTIME_REFRESHING)return;
+    if(Date.now()-QUOTE_RUNTIME_LAST_REFRESH_AT<minAge)return;
+    markQuoteDataChanged(reason,{orders:false,documents:false});
+  };
+  window.addEventListener('focus',()=>maybe('window_focus',180000));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)maybe('visible',180000);});
+  setInterval(()=>{if(!document.hidden)maybe('interval',300000);},300000);
 }
 
 function currentQuotePage(){return localStorage.getItem('artdon_quote_current_page')||'quote'}
@@ -3039,11 +3066,11 @@ async function openQuoteReview(id){if(!hasPerm('quote_approve')&&!hasPerm('quote
 function closeQuoteReview(){let m=$('quoteReviewModal');if(m)m.remove();S.quoteReviewCurrency='';S.quoteReviewRate=0;}
 function reviewRecalc(){let modal=$('quoteReviewModal'),reviewCurrency=String(modal?.dataset.currency||S.quoteReviewCurrency||'USD').toUpperCase(),rows=[...document.querySelectorAll('#quoteReviewRows tr[data-review-row]')];let qty=0,amount=0;rows.forEach(tr=>{let q=Number(tr.querySelector('.review-qty')?.value||0),p=Number(tr.querySelector('.review-price')?.value||0),a=q*p;qty+=q;amount+=a;let am=tr.querySelector('.review-amount');if(am)am.value=a.toFixed(2);});if($('quoteReviewTotal'))$('quoteReviewTotal').textContent='合计：'+fmtNum(qty)+' PCS ｜ '+reviewCurrency+' '+money(amount);}
 function collectReviewItems(baseItems){let modal=$('quoteReviewModal'),reviewCurrency=String(modal?.dataset.currency||S.quoteReviewCurrency||'USD').toUpperCase(),rows=[...document.querySelectorAll('#quoteReviewRows tr[data-review-row]')];return rows.map((tr,i)=>{let it=clone((baseItems||[])[i]||{});let qty=Number(tr.querySelector('.review-qty')?.value||0),price=Number(tr.querySelector('.review-price')?.value||0),mult=reviewRowMultiplier(tr,it),moq=String(tr.querySelector('.review-moq')?.value??'').trim();it.qty=qty;it.price=price;it.unit_price=price;it.amount=qty*price;it.moq=moq;it.approved_moq=moq;it.currency=reviewCurrency;it.manual_price=true;it.approved_price=price;it.approved_qty=qty;it.price_multiplier=mult;it.approved_multiplier=mult;it.specification=buildSpec(it);return it;});}
-async function approveQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;let id=Number(modal.dataset.quoteId||0),q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败，已停止审核：'+(e?.message||e));return;}if(!q)return;let payload=payloadFromSavedQuote(q);let items=collectReviewItems(payload.items||[]);if(!items.length){alert('没有可审核产品');return;}let note=$('quoteReviewNote')?.value||'';if(!confirm('确认审核通过？审核通过后才允许导出。'))return;let r=await api('approve_quote',{id,items,note});closeQuoteReview();S.currentQuoteId=id;S.currentApprovalStatus='approved';await refreshQuoteRuntime('approve_quote',{orders:true,documents:true});updateQuoteApprovalStrip((DB.quotes||[]).find(x=>String(x.id)===String(id)));alert('审核通过，已同步 CRM 提醒。');}
+async function approveQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;let id=Number(modal.dataset.quoteId||0),q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败，已停止审核：'+(e?.message||e));return;}if(!q)return;let payload=payloadFromSavedQuote(q);let items=collectReviewItems(payload.items||[]);if(!items.length){alert('没有可审核产品');return;}let note=$('quoteReviewNote')?.value||'';if(!confirm('确认审核通过？审核通过后才允许导出。'))return;let r=await api('approve_quote',{id,items,note});closeQuoteReview();S.currentQuoteId=id;S.currentApprovalStatus='approved';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'approved',approved_at:r.approved_at||'',approval_note:note});updateQuoteApprovalStrip(updated||currentSavedQuote());alert('审核通过，已同步 CRM 提醒。');}
 async function rejectQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;await rejectQuoteQuick(Number(modal.dataset.quoteId||0),$('quoteReviewNote')?.value||'');closeQuoteReview();}
-async function rejectQuoteQuick(id,note=''){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}if(!id)return;if(note==='')note=prompt('请输入驳回原因，可空：','')||'';if(!confirm('确认驳回这张报价？'))return;await api('reject_quote',{id,note});if(String(S.currentQuoteId)===String(id))S.currentApprovalStatus='rejected';await refreshQuoteRuntime('reject_quote',{orders:true,documents:true});if(String(S.currentQuoteId)===String(id)){updateQuoteApprovalStrip((DB.quotes||[]).find(x=>String(x.id)===String(id)));}alert('已驳回，并已同步 CRM 提醒。');}
+async function rejectQuoteQuick(id,note=''){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}if(!id)return;if(note==='')note=prompt('请输入驳回原因，可空：','')||'';if(!confirm('确认驳回这张报价？'))return;let r=await api('reject_quote',{id,note});if(String(S.currentQuoteId)===String(id))S.currentApprovalStatus='rejected';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'rejected',approval_note:r.note||note,reject_reason_category:r.reason_category||'',reject_reason_custom:r.reason_custom||'',reject_reason_detail:r.reason_detail||''});if(String(S.currentQuoteId)===String(id))updateQuoteApprovalStrip(updated||currentSavedQuote());alert('已驳回，并已同步 CRM 提醒。');}
 async function reverseApproveFromModal(){let modal=$('quoteReviewModal');if(!modal)return;await reverseApproveQuoteQuick(Number(modal.dataset.quoteId||0),$('quoteReviewNote')?.value||'');closeQuoteReview();}
-async function reverseApproveQuoteQuick(id,note=''){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}if(!id)return;if(note==='')note=prompt('请输入反审原因，可空：','')||'';if(!confirm('确认反审？反审后此报价会回到待审核，不能导出和转订单。'))return;await api('unapprove_quote',{id,note});if($('approvalStatus'))$('approvalStatus').value='pending';if(String(S.currentQuoteId)===String(id))S.currentApprovalStatus='pending';await refreshQuoteRuntime('unapprove_quote',{orders:true,documents:true});if(String(S.currentQuoteId)===String(id)){updateQuoteApprovalStrip((DB.quotes||[]).find(x=>String(x.id)===String(id)));}alert('已反审，报价已退回待审核。');}
+async function reverseApproveQuoteQuick(id,note=''){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}if(!id)return;if(note==='')note=prompt('请输入反审原因，可空：','')||'';if(!confirm('确认反审？反审后此报价会回到待审核，不能导出和转订单。'))return;let r=await api('unapprove_quote',{id,note});if($('approvalStatus'))$('approvalStatus').value='pending';if(String(S.currentQuoteId)===String(id))S.currentApprovalStatus='pending';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'pending',approval_note:note,approved_by:'',approved_at:'',rejected_by:'',rejected_at:''});if(String(S.currentQuoteId)===String(id))updateQuoteApprovalStrip(updated||currentSavedQuote());alert('已反审，报价已退回待审核。');}
 
 
 function quoteRemarksFromForm(){return [1,2,3,4].map(i=>String($('remark'+i)?.value||'').trim()).filter(Boolean)}
