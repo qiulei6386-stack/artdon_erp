@@ -455,7 +455,10 @@ function crm_task_center_list(array $input = []): array
     elseif ($view === 'dispatch') $where[] = "t.task_type='dispatch_confirm'";
     elseif ($view === 'promotion') $where[] = "t.task_type IN ('promotion_manual','group_promotion')";
     elseif ($view === 'opportunity') $where[] = "t.task_type='opportunity_followup'";
-    elseif ($view === 'quote') $where[] = "t.task_type='quote_followup'";
+    elseif ($view === 'quote') {
+        $where[] = "t.task_type='quote_followup'";
+        $where[] = crm_task_quote_followup_active_guard_sql('t');
+    }
     if ($q !== '') {
         $where[] = "(t.title LIKE ? OR t.description LIKE ? OR c.customer_name LIKE ? OR ct.name LIKE ? OR o.opportunity_name LIKE ? OR t.quote_id LIKE ? OR EXISTS (SELECT 1 FROM crm_sample_shipments ss WHERE ss.task_id=t.id AND (ss.tracking_no LIKE ? OR ss.sample_name LIKE ? OR ss.product_model LIKE ?)))";
         for ($i = 0; $i < 9; $i++) $params[] = '%' . $q . '%';
@@ -543,6 +546,21 @@ function crm_quote_followup_append_quote_log(PDO $pdo, int $quoteId, array $entr
 function crm_task_quote_count(string $sql): int
 {
     try { return (int)db()->query($sql)->fetchColumn(); } catch (Throwable $e) { return 0; }
+}
+
+function crm_task_quote_followup_active_guard_sql(string $taskAlias = 't'): string
+{
+    if (!db_table_exists('quote_orders')) return '1=1';
+    crm_quote_followup_lifecycle_ensure();
+    $taskAlias = preg_replace('/[^a-zA-Z0-9_]/', '', $taskAlias) ?: 't';
+    return "NOT EXISTS (
+        SELECT 1
+        FROM quote_orders qf_guard
+        WHERE qf_guard.followup_status='closed'
+          AND {$taskAlias}.task_type='quote_followup'
+          AND {$taskAlias}.source_type='quote'
+          AND qf_guard.id=CAST({$taskAlias}.source_id AS UNSIGNED)
+    )";
 }
 
 /** Fetch quote-followup counts and the newest activity in one query per quote source. */
@@ -868,9 +886,10 @@ function crm_task_quote_flow_summary(string $search = ''): array
     $orderCols = crm_task_quote_table_cols('quote_sales_orders');
     $shipCols = crm_task_quote_table_cols('quote_shipments');
     $taskScope = crm_task_scope_sql('t');
-    $unreplied = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$taskScope} AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')");
+    $activeQuoteFollowGuard = crm_task_quote_followup_active_guard_sql('t');
+    $unreplied = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$taskScope} AND {$activeQuoteFollowGuard} AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')");
     if ($unreplied <= 0) {
-        $unreplied = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')");
+        $unreplied = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$activeQuoteFollowGuard} AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')");
     }
     $quoteTotal = $pending = $approved = $rejected = $converted = 0;
     if ($quoteCols) {
@@ -891,13 +910,13 @@ function crm_task_quote_flow_summary(string $search = ''): array
         $rejected += crm_task_quote_count("SELECT COUNT(*) FROM cc_quotes WHERE is_test=0 AND status IN ('rejected','void','cancelled')");
         if (db_table_exists('cc_quote_details')) $converted += crm_task_quote_count("SELECT COUNT(*) FROM cc_quote_details d JOIN cc_quotes q ON q.id=d.quote_id WHERE q.is_test=0 AND COALESCE(d.converted_order_id,0)>0");
     }
-    $replyDone = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.status IN ('done','closed')");
+    $replyDone = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$activeQuoteFollowGuard} AND t.task_type='quote_followup' AND t.status IN ('done','closed')");
     $reviewOverdue = 0;
     if ($quoteCols) {
         $dateExpr = in_array('submitted_at', $quoteCols, true) ? 'submitted_at' : (in_array('updated_at', $quoteCols, true) ? 'updated_at' : 'created_at');
         $reviewOverdue = crm_task_quote_count("SELECT COUNT(*) FROM quote_orders WHERE COALESCE(NULLIF(approval_status,''),'pending')='pending' AND {$dateExpr} IS NOT NULL AND {$dateExpr} < DATE_SUB(NOW(), INTERVAL 1 DAY)");
     }
-    $quoteFollowOverdue = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled') AND t.due_at IS NOT NULL AND t.due_at < NOW()");
+    $quoteFollowOverdue = crm_task_quote_count("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$activeQuoteFollowGuard} AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled') AND t.due_at IS NOT NULL AND t.due_at < NOW()");
 
     $orderCount = $deposit = $unpaid = $balanceDue = $paid = 0;
     if ($orderCols) {
@@ -991,6 +1010,7 @@ function crm_task_quote_flow_summary(string $search = ''): array
 function crm_task_center_stats(): array
 {
     $scope = crm_task_scope_sql('t');
+    $activeQuoteFollowGuard = crm_task_quote_followup_active_guard_sql('t');
     $one = fn($where) => (int)db()->query("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND {$scope} AND {$where}")->fetchColumn();
     $sampleScope = crm_sample_scope_sql('s');
     $sample = fn($where) => (int)db()->query("SELECT COUNT(*) FROM crm_sample_shipments s WHERE s.deleted_at IS NULL AND {$sampleScope} AND {$where}")->fetchColumn();
@@ -1002,7 +1022,7 @@ function crm_task_center_stats(): array
         'done' => $one("t.status='done'"),
         'customer_followup' => $one("t.task_type='customer_followup' AND t.status NOT IN ('done','closed','cancelled')"),
         'ai_pending' => $one("t.task_type='ai_confirm' AND t.status NOT IN ('done','closed','cancelled')"),
-        'quote_unreplied' => $one("t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')"),
+        'quote_unreplied' => $one("{$activeQuoteFollowGuard} AND t.task_type='quote_followup' AND t.status NOT IN ('done','closed','cancelled')"),
         'opportunity_due' => $one("t.task_type='opportunity_followup' AND t.status NOT IN ('done','closed','cancelled')"),
         'dispatch_pending' => $one("t.task_type='dispatch_confirm' AND t.status NOT IN ('done','closed','cancelled')"),
         'promotion_pending' => $one("t.task_type IN ('promotion_manual','group_promotion') AND t.status NOT IN ('done','closed','cancelled')"),

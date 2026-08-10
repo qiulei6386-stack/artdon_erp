@@ -2668,3 +2668,12 @@
 - 范围：只过滤 PDF 产品明细的 Size / Specification 相关产品字段；不全局删除中文，避免误伤公司资料、抬头、银行信息或系统提示。
 - 回归保护：新增 `tests/quote_pdf_product_english_contract.php`，模拟含中文 `product.size` 和含中文 `specification` 的导出 payload，确认 PDF HTML 保留英文产品规格、不输出中文产品 size/spec。
 - 检查：本地 `git diff --check` 通过；服务器 `php -l` 检查 `crm_quote_pdf.php` 和新增测试通过；服务器临时目录执行 `quote_pdf_product_english_contract.php` 通过；用修改后的临时 PDF 文件读取真实 `AT-260731EX133` 审核快照验证，`has_product_cjk=0`、`has_english=1`。
+
+## 2026-08-10：报价任务中心排除已结束跟进
+
+- 问题：CRM 任务中心“报价订单流程”里，已点击“结束跟进”的报价仍会出现在“未跟进 / 客户未回复”等待办筛选中。截图案例 `AT-260721CN010` 的 `followup_status=closed`，但因为前端“未跟进”只看跟进次数和转订单状态，没有判断结束跟进，所以被误筛出来。
+- 修复：`assets/crm/crm.js` 的报价流程筛选新增 `closedFollowup` 判断；已结束跟进的报价不再进入“未跟进、跟进中、客户未回复、客户已回复”这些活动筛选，只保留在“全部”里，便于查看和“恢复跟进”。
+- 修复：报价流程卡片文案同步调整；结束跟进时当前节点显示“已结束跟进”，下一步显示“已结束，无需跟进”，避免再提示“推进转订单”。
+- 后端：`crm_task_center.php` 新增 `crm_task_quote_followup_active_guard_sql()`，任务列表、报价流程统计、任务中心统计统一排除 `quote_orders.followup_status='closed'` 的报价跟进任务，避免前端和数字口径不一致。
+- 检查：本地 `node -c assets/crm/crm.js` 通过；服务器 `php -l crm_task_center.php` 通过；服务器已确认 `AT-260721CN010` 为 `followup_status=closed` 且有结束原因。
+- 发布：服务器当前文件已备份到 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/quote_followup_closed_filter_20260810/`；本节提交推送 GitHub 后同步服务器，三方版本以最终 Git HEAD 为准。

@@ -25082,7 +25082,9 @@
     },
     quoteFlowMatchesFilter: function (row, filter) {
       var stages = row.stages || [], has = function (key) { return stages.indexOf(key) >= 0; }, hasOrder = Number(row.order_id || 0) > 0;
+      var closedFollowup = this.isQuoteFollowupClosed(row) || has('followup_closed');
       if (filter === 'all') return true;
+      if (closedFollowup && ['unfollowed','following','unreplied','replied'].indexOf(filter) >= 0) return false;
       if (filter === 'unfollowed') return Number(row.followup_count || 0) <= 0 && !hasOrder && !has('review') && !has('review_rejected');
       if (filter === 'following') return Number(row.followup_count || 0) > 0 && !hasOrder && !has('review_rejected');
       if (filter === 'unreplied') return has('unreplied');
@@ -25345,6 +25347,7 @@
     quoteCurrentNodeKey: function (row) {
       if (!row) return 'quote';
       var stages = row.stages || [];
+      if (this.isQuoteFollowupClosed(row) || stages.indexOf('followup_closed') >= 0) return 'reply';
       if (stages.indexOf('review_rejected') >= 0) return 'review';
       if (stages.indexOf('review') >= 0) return 'review';
       if (stages.indexOf('unreplied') >= 0) return 'reply';
@@ -25365,7 +25368,8 @@
       var orderQty = Number(row.order_qty || 0), shipped = Number(row.shipped_qty || 0), unshipped = Number(row.unshipped_qty || Math.max(0, orderQty - shipped));
       var current = this.quoteCurrentNodeKey(row);
       var reviewState = approval === 'rejected' ? 'rejected' : (approval === 'pending' || !approval ? 'current' : 'done');
-      var replyState = stages.indexOf('unreplied') >= 0 ? (Number(row.no_reply_days || 0) >= 7 ? 'overdue' : 'current') : (stages.indexOf('replied') >= 0 || hasOrder ? 'done' : 'pending');
+      var closedFollowup = this.isQuoteFollowupClosed(row) || stages.indexOf('followup_closed') >= 0;
+      var replyState = closedFollowup ? 'done' : (stages.indexOf('unreplied') >= 0 ? (Number(row.no_reply_days || 0) >= 7 ? 'overdue' : 'current') : (stages.indexOf('replied') >= 0 || hasOrder ? 'done' : 'pending'));
       var depositState = !hasOrder ? 'interface' : (paid <= 0 && orderAmount > 0 ? 'overdue' : (balance > 0 ? 'current' : 'done'));
       var balanceState = !hasOrder ? 'interface' : (balance > 0 ? 'overdue' : 'done');
       var shipState = !hasOrder ? 'interface' : (shipped <= 0 ? 'pending' : (orderQty > 0 && shipped >= orderQty ? 'done' : 'current'));
@@ -25374,7 +25378,7 @@
       var nodes = [
         { key:'quote', label:'报价', status:row.sent_at ? '已发送' : '已创建', meta:quoteAmount, state:'done', icon:'✓' },
         { key:'review', label:'审核', status:approval === 'rejected' ? '已驳回' : (approval === 'pending' || !approval ? '待审核' : (approval === 'approved' ? '已通过' : '无需审核')), meta:approval === 'rejected' ? (row.reject_reason || '需填写原因') : (row.approved_by || row.rejected_by || ''), state:reviewState, icon:reviewState === 'done' ? '✓' : (reviewState === 'rejected' ? '!' : '•') },
-        { key:'reply', label:'报价跟进', status:stages.indexOf('replied') >= 0 ? '客户已回复' : (Number(row.followup_count || 0) ? '已跟进，等待回复' : (stages.indexOf('unreplied') >= 0 ? '待首次跟进' : '待客户')), meta:row.next_followup_at ? '下次 ' + String(row.next_followup_at).slice(5, 16) : (row.last_followup_at ? '最近 ' + String(row.last_followup_at).slice(5, 16) : ''), state:replyState, icon:replyState === 'done' ? '✓' : '•' },
+        { key:'reply', label:'报价跟进', status:closedFollowup ? '已结束跟进' : (stages.indexOf('replied') >= 0 ? '客户已回复' : (Number(row.followup_count || 0) ? '已跟进，等待回复' : (stages.indexOf('unreplied') >= 0 ? '待首次跟进' : '待客户'))), meta:closedFollowup ? (row.followup_closed_at ? ('结束 ' + String(row.followup_closed_at).slice(5, 16)) : '') : (row.next_followup_at ? '下次 ' + String(row.next_followup_at).slice(5, 16) : (row.last_followup_at ? '最近 ' + String(row.last_followup_at).slice(5, 16) : '')), state:replyState, icon:replyState === 'done' ? '✓' : '•' },
         { key:'order', label:'转订单', status:hasOrder ? (row.order_no || '已转订单') : (approval === 'approved' ? '未转' : '待接入'), meta:hasOrder ? (row.order_date || '') : '订单接口待接入', state:hasOrder ? 'done' : (current === 'order' ? 'current' : 'interface'), icon:hasOrder ? '✓' : '•' },
         { key:'deposit', label:'定金', status:!hasOrder ? '待接入' : (paid <= 0 && orderAmount > 0 ? '未收' : (balance > 0 ? '部分收' : '已收')), meta:!hasOrder ? '收款接口待接入' : ('已收 ' + this.moneyText(orderCurrency, paid)), state:depositState, icon:depositState === 'done' ? '✓' : '•' },
         { key:'balance', label:'尾款', status:!hasOrder ? '待接入' : (balance > 0 ? ('未收 ' + this.moneyText(orderCurrency, balance)) : '已收'), meta:!hasOrder ? '收款接口待接入' : ('未收 ' + this.moneyText(orderCurrency, balance)), state:balanceState, icon:balanceState === 'done' ? '✓' : '•' },
@@ -25402,6 +25406,7 @@
       return rows;
     },
     quoteNextText: function (row) {
+      if (this.isQuoteFollowupClosed(row) || ((row && row.stages) || []).indexOf('followup_closed') >= 0) return '已结束，无需跟进';
       var key = this.quoteCurrentNodeKey(row);
       return ({ review:'审核报价 / 处理驳回', reply:'跟进客户回复', order:'推进转订单', deposit:'跟进定金收款', balance:'跟进尾款收款', shipping:'安排出货 / 更新批次', documents:'创建 PL / CI 单证' })[key] || (row.next_action || '流程完成');
     },
