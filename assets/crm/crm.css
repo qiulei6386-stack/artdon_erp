@@ -8697,6 +8697,125 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .business-dialog-actions { display: flex; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
 .business-dialog-actions .primary { background: var(--crm-primary); border-color: var(--crm-primary); color: #fff; }
 .business-dialog-actions .danger { background: var(--crm-danger); border-color: var(--crm-danger); color: #fff; }
+.merge-customer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 10px;
+}
+.merge-customer-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--crm-border);
+  border-radius: 12px;
+  background: var(--crm-card-bg);
+  padding: 11px;
+  cursor: pointer;
+}
+.merge-customer-card.active {
+  border-color: color-mix(in srgb, var(--crm-primary) 58%, var(--crm-border));
+  background: color-mix(in srgb, var(--crm-primary) 6%, var(--crm-card-bg));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--crm-primary) 12%, transparent);
+}
+.merge-customer-card input {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+}
+.merge-customer-card-main {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+.merge-customer-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.merge-customer-card header div {
+  min-width: 0;
+}
+.merge-customer-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--crm-text);
+  font-size: 15px;
+  font-weight: 950;
+}
+.merge-customer-card small {
+  display: block;
+  margin-top: 2px;
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 850;
+}
+.merge-customer-card mark {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-primary) 12%, var(--crm-card-bg));
+  color: var(--crm-primary);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 950;
+}
+.merge-customer-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.merge-customer-meta span,
+.merge-customer-card section,
+.merge-customer-card footer {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--crm-border) 80%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--crm-card-bg) 95%, var(--crm-hover-bg));
+  padding: 7px 8px;
+}
+.merge-customer-meta b,
+.merge-customer-card section b {
+  display: block;
+  color: var(--crm-muted-text);
+  font-size: 10px;
+  font-weight: 950;
+}
+.merge-customer-meta em,
+.merge-customer-card section p {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 3px 0 0;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+.merge-customer-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: transparent;
+}
+.merge-customer-card footer span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--crm-border);
+  border-radius: 999px;
+  background: var(--crm-card-bg);
+  color: var(--crm-muted-text);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
 .contact-import-box { display: grid; gap: 9px; font-size: 12px; }
 .contact-import-box section {
   border: 1px solid color-mix(in srgb, var(--crm-border) 78%, transparent);

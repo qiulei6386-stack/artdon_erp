@@ -7439,21 +7439,59 @@
       var self = this;
       var rows = this.selectedCustomerRows(ids);
       var defaultMaster = ids.indexOf(Number(this.currentId || 0)) >= 0 ? Number(this.currentId) : Number(ids[0]);
-      var cards = rows.map(function (row) {
+      var mergeCardHtml = function (row, detail, selectedMaster) {
+        detail = detail || {};
+        var customer = Object.assign({}, row || {}, detail.customer || {});
+        var contacts = Array.isArray(detail.contacts) ? detail.contacts : [];
+        var addresses = Array.isArray(detail.addresses) ? detail.addresses : [];
+        var groups = Array.isArray(detail.groups) ? detail.groups : [];
         var id = Number(row.id || 0);
-        var name = row.customer_name || ('客户 #' + id);
-        var code = row.customer_code || '-';
-        var country = row.country_display || row.country || row.country_raw || '未填';
-        var owner = row.owner_summary || row.owner_name || row.owner_department_name || '';
-        return '<label class="visit-check-pill' + (id === defaultMaster ? ' active' : '') + '" data-merge-master-card>' +
-          '<input type="radio" name="merge_master_customer" value="' + esc(id) + '"' + (id === defaultMaster ? ' checked' : '') + '>' +
-          '<span><b>' + esc(name) + '</b><em>#' + esc(id) + ' · ' + esc(code) + ' · ' + esc(country) + (owner ? ' · ' + esc(owner) : '') + '</em></span>' +
+        var name = customer.customer_name || ('客户 #' + id);
+        var code = customer.customer_code || '-';
+        var country = customer.country_display || customer.country || customer.country_raw || '未填';
+        var city = customer.city || customer.city_name || '';
+        var address = customer.address || customer.shipping_address || customer.billing_address || '';
+        if (!address && addresses.length) address = addresses.map(function (item) {
+          return [item.address_type || item.type_name || '', item.country || '', item.city || '', item.address || item.detail_address || ''].filter(Boolean).join(' ');
+        }).filter(Boolean).slice(0, 2).join('；');
+        var owner = customer.owner_summary || customer.primary_owner_name || customer.owner_name || customer.owner_department_name || '';
+        var contactSummary = contacts.length ? contacts.slice(0, 4).map(function (item) {
+          return [item.name || item.contact_name || '联系人', item.title || item.position || '', item.email || '', item.phone || item.mobile || '', item.whatsapp || ''].filter(Boolean).join(' / ');
+        }).join('；') : '暂无联系人';
+        var contactMethods = [
+          customer.email ? ('邮箱 ' + customer.email) : '',
+          customer.backup_email ? ('备用 ' + customer.backup_email) : '',
+          customer.phone ? ('电话 ' + customer.phone) : '',
+          customer.whatsapp ? ('WhatsApp ' + customer.whatsapp) : '',
+          customer.wechat ? ('微信 ' + customer.wechat) : '',
+          customer.website ? ('网站 ' + customer.website) : ''
+        ].filter(Boolean).join(' ｜ ') || '未填联系方式';
+        var groupSummary = groups.length ? groups.map(function (item) { return item.group_name || item.name || ''; }).filter(Boolean).slice(0, 3).join('、') : '';
+        var metaItems = [
+          ['代码', code],
+          ['国家/城市', [country, city].filter(Boolean).join(' / ') || '未填'],
+          ['等级/状态', [customer.level || '-', customer.status || customer.lifecycle_key || '-'].filter(Boolean).join(' / ')],
+          ['来源', customer.source || customer.source_key || '未填'],
+          ['负责人', owner || '未分配'],
+          ['更新时间', String(customer.updated_at || customer.created_at || '-').slice(0, 16)]
+        ].map(function (item) {
+          return '<span><b>' + esc(item[0]) + '</b><em>' + esc(item[1]) + '</em></span>';
+        }).join('');
+        return '<label class="merge-customer-card' + (id === selectedMaster ? ' active' : '') + '" data-merge-master-card data-merge-card-id="' + esc(id) + '">' +
+          '<input type="radio" name="merge_master_customer" value="' + esc(id) + '"' + (id === selectedMaster ? ' checked' : '') + '>' +
+          '<div class="merge-customer-card-main"><header><div><strong>' + esc(name) + '</strong><small>#' + esc(id) + ' · ' + esc(code) + ' · ' + esc(country) + '</small></div><mark>' + (id === selectedMaster ? '保留主客户' : '可合并') + '</mark></header>' +
+          '<div class="merge-customer-meta">' + metaItems + '</div>' +
+          '<section><b>联系人</b><p>' + esc(contactSummary) + '</p></section>' +
+          '<section><b>联系方式</b><p>' + esc(contactMethods) + '</p></section>' +
+          '<section><b>地址</b><p>' + esc(address || '未填地址') + '</p></section>' +
+          '<footer><span>联系人 ' + esc(contacts.length || customer.contact_count || 0) + '</span><span>客户群 ' + esc(groups.length || customer.group_count || 0) + '</span>' + (groupSummary ? '<span>' + esc(groupSummary) + '</span>' : '') + (customer.remark ? '<span>备注：' + esc(String(customer.remark).slice(0, 80)) + '</span>' : '') + '</footer></div>' +
         '</label>';
-      }).join('');
+      };
+      var cards = rows.map(function (row) { return mergeCardHtml(row, null, defaultMaster); }).join('');
       var html = '<div class="visit-workspace-form" data-customer-merge-dialog>' +
         '<input type="hidden" data-merge-customer-ids value="' + esc(ids.join(',')) + '">' +
         '<section class="visit-work-section assign-hero-section"><div><span>客户合并</span><strong>选择要保留的主客户</strong><p>联系人、群、标签、分组、跟进、任务、拜访、商机、邮件和报价关联会迁入主客户；其他客户做软删除。</p></div></section>' +
-        '<section class="visit-work-section"><h3>保留哪个客户？</h3><div class="visit-check-grid">' + cards + '</div></section>' +
+        '<section class="visit-work-section"><h3>保留哪个客户？</h3><div class="merge-customer-grid">' + cards + '</div></section>' +
         '<section class="visit-work-section"><h3>合并规则</h3><div class="visit-check-grid"><label class="visit-check-pill active"><span>保留主档</span><em>客户名称、国家、等级等主档字段不自动覆盖</em></label><label class="visit-check-pill active"><span>迁移关系</span><em>联系人、群、跟进、负责人、报价/订单关联迁到主客户</em></label><label class="visit-check-pill"><span>可追溯</span><em>重复客户软删除，写入客户日志与敏感审计</em></label></div></section>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="danger" data-merge-apply>确认合并</button></div>' +
       '</div>';
@@ -7468,6 +7506,20 @@
         };
         box.querySelectorAll('input[name="merge_master_customer"]').forEach(function (radio) {
           radio.addEventListener('change', refresh);
+        });
+        rows.forEach(function (row) {
+          var id = Number(row.id || 0);
+          if (!id) return;
+          post('customer_get', { customer_id: id, detail: 'overview' }).then(function (json) {
+            if (!json.success) return;
+            var selectedMaster = Number(box.querySelector('input[name="merge_master_customer"]:checked')?.value || defaultMaster);
+            var card = box.querySelector('[data-merge-card-id="' + id + '"]');
+            if (!card) return;
+            card.outerHTML = mergeCardHtml(row, json.data || {}, selectedMaster);
+            var replaced = box.querySelector('[data-merge-card-id="' + id + '"]');
+            replaced?.querySelector('input[name="merge_master_customer"]')?.addEventListener('change', refresh);
+            refresh();
+          }).catch(function () {});
         });
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { self.closeDialog(); });
         dialog.querySelector('[data-merge-apply]')?.addEventListener('click', function () {
