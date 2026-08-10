@@ -28808,6 +28808,48 @@ body.is-tasks-module .action_command {
   max-height: none !important;
 }
 
+/* Promotion execution detail: keep one large modal scrollbar, no nested table scrollbars. */
+.promo-business-dialog.promo-execution-detail-modal {
+  width: min(1760px, calc(100vw - 28px)) !important;
+  height: auto !important;
+  max-height: calc(100vh - 28px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog {
+  display: block !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog > .promo-business-head,
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog > .promo-business-foot {
+  position: static !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog > .promo-business-body {
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog .promo-exec-table-wrap {
+  max-height: none !important;
+  overflow: visible !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog .promo-exec-table {
+  min-width: 0 !important;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog .promo-task-console-table {
+  table-layout: fixed;
+}
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog .promo-task-console-table th,
+.promo-business-shell.promo-visit-style.promo-execution-detail-dialog .promo-task-console-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
 /* AI center home dashboard refresh. */
 body.is-ai-module {
   --crm-actionbar-width: 260px;

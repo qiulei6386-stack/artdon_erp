@@ -13993,7 +13993,7 @@
       var modal = this.ensureDialog();
       var title = options.title || '推广中心';
       var description = options.description || '执行推广业务操作。';
-      modal.classList.remove('promo-manual-execution-modal');
+      modal.classList.remove('promo-manual-execution-modal', 'promo-execution-detail-modal');
       if (options.modalClass) {
         String(options.modalClass).replace(/[^\w\s-]/g, '').trim().split(/\s+/).filter(Boolean).forEach(function (name) {
           modal.classList.add(name);
@@ -18952,6 +18952,8 @@
         self.openDialog({
           title: '推广执行明细',
           description: (task ? task.task_name : '推广任务') + ' · 邮件、无邮箱跳过、线下人工执行',
+          modalClass: 'promo-execution-detail-modal',
+          dialogClass: 'promo-execution-detail-dialog',
           body: body,
           actions: '<button type="button" data-promo-dialog-close>关闭</button>'
         });
