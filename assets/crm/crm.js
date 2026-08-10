@@ -3285,10 +3285,16 @@
       this.ensureFilterState();
       var advanced = this.filterState.advanced || {};
       this.quickFilter = this.filterState.quick || 'all';
+      var listMode = this.layoutMode === 'default' ? 'compact' : 'full';
+      var sortKey = this.filterState.sort || this.sort;
+      if (listMode === 'compact' && ['updated_at', 'customer_code', 'customer_name', 'country', 'created_at'].indexOf(sortKey) < 0) {
+        sortKey = 'updated_at';
+      }
       return {
         q: this.filterState.keyword || '',
         page: this.page,
         page_size: this.filterState.pageSize || this.pageSize,
+        list_mode: listMode,
         country: advanced.country || '',
         city: advanced.city || '',
         level: advanced.level || '',
@@ -3302,7 +3308,7 @@
         created_range: advanced.created_range || '',
         follow_range: advanced.follow_range || '',
         quick_filter: this.quickFilter,
-        sort: this.filterState.sort || this.sort,
+        sort: sortKey,
         dir: this.filterState.direction || this.dir
       };
     },
@@ -3375,6 +3381,7 @@
     },
     applyLayoutMode: function (mode, persist) {
       mode = ['default', 'list', 'detail'].indexOf(mode) >= 0 ? mode : 'default';
+      var previousMode = this.layoutMode;
       this.layoutMode = mode;
       var split = document.querySelector('[data-customer-split]');
       var width = mode === 'default' ? this.defaultListWidth() : (mode === 'list' ? '100%' : '0px');
@@ -3394,6 +3401,9 @@
       if (persist) {
         this.saveListPrefs();
         toast(mode === 'list' ? '客户列表已整屏' : (mode === 'detail' ? '客户属性已整屏' : '已还原默认布局'));
+      }
+      if (persist && previousMode !== mode) {
+        this.loadList({ silent: false });
       }
     },
     startPanelResize: function (event) {

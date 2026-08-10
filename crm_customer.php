@@ -1793,6 +1793,54 @@ function crm_customer_list(array $input): array
     }
     $pageSize = max(20, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
+    $sqlWhere = implode(' AND ', $where);
+    $countJoin = ($input['promotion_status'] ?? '') !== '' ? ' LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id' : '';
+    $listMode = trim((string)($input['list_mode'] ?? 'full'));
+    if ($listMode === 'compact') {
+        $compactSortMap = [
+            'updated_at' => 'c.updated_at',
+            'customer_code' => 'c.customer_code',
+            'customer_name' => 'c.customer_name',
+            'country' => 'COALESCE(pa.country, c.country)',
+            'created_at' => 'c.created_at',
+        ];
+        $compactSortKey = (string)($input['sort'] ?? 'updated_at');
+        $compactSort = $compactSortMap[$compactSortKey] ?? 'c.updated_at';
+        $compactDir = strtoupper((string)($input['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+        $countStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c{$countJoin} WHERE {$sqlWhere}");
+        $countStmt->execute($params);
+        $total = (int)$countStmt->fetchColumn();
+        $offset = ($page - 1) * $pageSize;
+        $sql = "SELECT
+            c.id,
+            c.customer_code,
+            c.customer_name,
+            c.customer_name_en,
+            c.country AS customer_country_raw,
+            COALESCE(pa.country, c.country) AS country,
+            c.updated_at
+            FROM crm_customers c
+            LEFT JOIN crm_customer_addresses pa ON pa.id = (
+                SELECT pa_pick.id FROM crm_customer_addresses pa_pick
+                WHERE pa_pick.customer_id = c.id
+                ORDER BY pa_pick.is_primary DESC, pa_pick.id ASC
+                LIMIT 1
+            )
+            {$countJoin}
+            WHERE {$sqlWhere}
+            ORDER BY {$compactSort} {$compactDir}, c.id DESC LIMIT {$pageSize} OFFSET {$offset}";
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$row) {
+            $rawCountry = (string)($row['country'] ?: ($row['customer_country_raw'] ?? ''));
+            $row['country_raw'] = $rawCountry;
+            $row['country_display'] = crm_customer_country_display_name($rawCountry);
+            unset($row['customer_country_raw']);
+        }
+        unset($row);
+        return ['rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize, 'list_mode' => 'compact'];
+    }
     $lastPromotionExpr = crm_customer_last_promotion_expr('c');
     $latestMailExpr = crm_customer_latest_mail_expr('c');
     $latestQuoteExpr = crm_customer_latest_quote_expr('c');
@@ -1817,8 +1865,6 @@ function crm_customer_list(array $input): array
     ];
     $sort = $sortMap[$input['sort'] ?? 'updated_at'] ?? 'c.updated_at';
     $dir = strtoupper((string)($input['dir'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
-    $sqlWhere = implode(' AND ', $where);
-    $countJoin = ($input['promotion_status'] ?? '') !== '' ? ' LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id' : '';
     $countStmt = db()->prepare("SELECT COUNT(*) FROM crm_customers c{$countJoin} WHERE {$sqlWhere}");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();

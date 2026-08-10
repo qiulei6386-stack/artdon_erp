@@ -41,6 +41,7 @@ register_shutdown_function(static function () use ($crmApiPerfStart, $action): v
         $payload['list_params'] = [
             'sort' => preg_replace('/[^a-zA-Z0-9_\\-]/', '', (string)($_POST['sort'] ?? '')),
             'dir' => preg_replace('/[^a-zA-Z]/', '', (string)($_POST['dir'] ?? $_POST['direction'] ?? '')),
+            'list_mode' => preg_replace('/[^a-zA-Z0-9_\\-]/', '', (string)($_POST['list_mode'] ?? '')),
             'quick' => mb_substr((string)($_POST['quick_filter'] ?? ''), 0, 40),
             'page' => (int)($_POST['page'] ?? 0),
             'page_size' => (int)($_POST['page_size'] ?? 0),
