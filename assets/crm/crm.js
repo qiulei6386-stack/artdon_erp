@@ -8989,7 +8989,8 @@
       if (label === '筛选日志') return this.switchDetailTab('logs');
       if (label === '导出日志') return this.showCustomerError('导出日志接口待接入。');
       if (label === '查看全部日志') return this.switchDetailTab('logs');
-      if (label === '执行查重' || label === '合并客户' || label === '忽略重复' || label === '查看重复详情') return this.showCustomerError(label + '接口待接入。');
+      if (label === '合并客户' || label === '批量合并客户') return this.openCustomerMergeDialog();
+      if (label === '执行查重' || label === '忽略重复' || label === '查看重复详情') return this.showCustomerError(label + '接口待接入。');
       if (label === '刷新时间轴') return this.loadDetail(this.currentId, { keepTab: true });
       if (label === '上传文件' || label === '删除文件' || label === '关联资料') return this.showCustomerError(label + '接口待接入。');
       if (label === '下载文件') {
@@ -9009,7 +9010,6 @@
       if (label === '加入分组' || label === '移动分组' || label === '批量移动分组' || label === '批量分组') return this.openBatchGroupDialog();
       if (label === '管理分组') return this.openBatchGroupDialog(true);
       if (label === '批量分配' || label === '批量分配客户' || label === '分配客户') return this.openBatchAssignDialog();
-      if (label === '合并客户' || label === '批量合并客户') return this.openCustomerMergeDialog();
       if (label === '批量设置推广方式') return this.openBulkContactPromotionDialog();
       if (label === '公海池') return this.openPublicPoolDialog();
       if (label === '转入公海') return this.openTransferPublicDialog();
