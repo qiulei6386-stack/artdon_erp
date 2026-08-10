@@ -18959,10 +18959,12 @@
         };
         var mailStatusForManual = function (row) {
           var queues = [];
+          var channel = normalize(row.channel_key || '');
+          var isEmailManualTarget = emailChannels.indexOf(channel) >= 0;
           if (row.contact_id && byContact[String(row.contact_id).toLowerCase()]) queues = byContact[String(row.contact_id).toLowerCase()];
           if (!queues.length && row.email && byEmail[String(row.email).toLowerCase()]) queues = byEmail[String(row.email).toLowerCase()];
           if (!queues.length && row.contact_method && String(row.contact_method).indexOf('@') >= 0 && byEmail[String(row.contact_method).toLowerCase()]) queues = byEmail[String(row.contact_method).toLowerCase()];
-          if (!queues.length && !row.contact_id && byCustomer[String(row.customer_id || '').toLowerCase()]) queues = byCustomer[String(row.customer_id || '').toLowerCase()];
+          if (!queues.length && isEmailManualTarget && !row.contact_id && byCustomer[String(row.customer_id || '').toLowerCase()]) queues = byCustomer[String(row.customer_id || '').toLowerCase()];
           if (queues.length) {
             var counts = queues.reduce(function (acc, item) {
               var key = String(item.send_status || 'pending').toLowerCase();
@@ -18976,6 +18978,7 @@
             if (counts.pending || counts.scheduled || counts.sending) return '邮件待发 ' + ((counts.pending || 0) + (counts.scheduled || 0) + (counts.sending || 0)) + ' 条';
             return '邮件队列：' + cnStatus(latest ? latest.send_status : '-');
           }
+          if (!isEmailManualTarget) return '非邮件渠道';
           var noEmail = (row.contact_id && noEmailContact[String(row.contact_id).toLowerCase()] && noEmailContact[String(row.contact_id).toLowerCase()][0]) ||
             (!row.contact_id && noEmailCustomer[String(row.customer_id || '').toLowerCase()] && noEmailCustomer[String(row.customer_id || '').toLowerCase()][0]);
           if (noEmail) return noEmail.failure_reason || '无邮箱未发';
