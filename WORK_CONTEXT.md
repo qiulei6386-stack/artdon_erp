@@ -2677,3 +2677,13 @@
 - 后端：`crm_task_center.php` 新增 `crm_task_quote_followup_active_guard_sql()`，任务列表、报价流程统计、任务中心统计统一排除 `quote_orders.followup_status='closed'` 的报价跟进任务，避免前端和数字口径不一致。
 - 检查：本地 `node -c assets/crm/crm.js` 通过；服务器 `php -l crm_task_center.php` 通过；服务器已确认 `AT-260721CN010` 为 `followup_status=closed` 且有结束原因。
 - 发布：服务器当前文件已备份到 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/quote_followup_closed_filter_20260810/`；本节提交推送 GitHub 后同步服务器，三方版本以最终 Git HEAD 为准。
+
+## 2026-08-10：报价系统 MOQ 支持空白
+
+- 问题：报价单工作区 MOQ 输入框清空后会被旧默认值 `200` 回填；新报价、清空当前产品、选择无 MOQ 产品、价格策略刷新或预览行都可能把空 MOQ 又带回 200，导致用户无法保留空白。
+- 修复：`quotation.php` 去掉报价工作区和产品库 MOQ 输入框的 HTML 默认 `value=200`；`newQuote()`、`clearCurrentEditor()` 和产品库清空都改为保留空白。
+- 修复：选择产品、打开历史明细加载编辑器时不再以 `200` 兜底；价格策略匹配只在提示区显示 MOQ，不再自动覆盖用户清空的 MOQ 输入框。
+- 修复：报价预览表格尊重报价行自身的 `moq` 字段；如果报价行明确保存为空白，不再回退显示产品资料里的 MOQ。
+- 后端：`quote_api.php` 从命名中心映射产品时，缺失 MOQ 不再合成 `200`，保持为空白。
+- 回归保护：新增 `tests/quote_moq_blank_contract.php`，锁定报价/产品 MOQ 默认空白、无 200 兜底、价格策略不覆盖空 MOQ、预览不回填产品 MOQ。
+- 检查：本地抽取 `quotation.php` 内 5 段脚本逐段 `node -c` 通过；`git diff --check` 通过；服务器复检和部署后以最终记录为准。

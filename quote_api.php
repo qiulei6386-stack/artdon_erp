@@ -837,7 +837,7 @@ function norm_naming_product($pdo,$table,$r){
     'cri'=>$cri,
     'ip'=>$ip,
     'color'=>$color,
-    'moq'=>first_existing_val($r,['moq','MOQ'],'200'),
+    'moq'=>first_existing_val($r,['moq','MOQ'],''),
     'price_rmb'=>0,
     'price_usd'=>0,
     'cost_rmb'=>0,
