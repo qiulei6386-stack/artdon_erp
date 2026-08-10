@@ -28769,6 +28769,19 @@ body.is-tasks-module .action_command {
 .promo-project-detail-content .promo-task-rule-grid > article > header { display: grid; gap: 2px; margin-bottom: 7px; }
 .promo-project-detail-content .promo-task-rule-grid > article > header strong { color: #0f172a; font-size: 13px; }
 .promo-project-detail-content .promo-task-rule-grid > article > header span { color: #64748b; font-size: 11px; }
+.promo-contact-tree { display: grid; gap: 8px; }
+.promo-contact-tree-item { border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
+.promo-contact-tree-item > summary { display: grid; grid-template-columns: auto minmax(220px, 1fr) minmax(90px, auto) minmax(220px, auto); align-items: center; gap: 10px; min-height: 42px; padding: 0 12px; cursor: pointer; list-style: none; }
+.promo-contact-tree-item > summary::-webkit-details-marker { display: none; }
+.promo-contact-tree-item > summary::before { content: '›'; color: #2563eb; font-size: 20px; line-height: 1; transition: transform .15s ease; }
+.promo-contact-tree-item[open] > summary::before { transform: rotate(90deg); }
+.promo-contact-tree-item > summary strong { min-width: 0; color: #0f172a; font-size: 13px; font-weight: 850; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.promo-contact-tree-item > summary span { color: #475569; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.promo-contact-tree-item > summary em { color: #64748b; font-size: 11px; font-style: normal; text-align: right; white-space: nowrap; }
+.promo-contact-tree-children { display: grid; gap: 6px; border-top: 1px solid #e2e8f0; padding: 8px 10px 10px 28px; background: #fff; }
+.promo-contact-tree-row { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 10px; align-items: start; border-left: 3px solid #dbeafe; border-radius: 8px; background: #f8fafc; padding: 8px 10px; }
+.promo-contact-tree-row strong { color: #0f172a; font-size: 12px; font-weight: 850; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.promo-contact-tree-row span { color: #475569; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 @media (max-width: 1180px) {
   .promo-project-overview { grid-template-columns: 1fr; }
   .promo-project-overview aside { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -28778,6 +28791,10 @@ body.is-tasks-module .action_command {
   .promo-project-progress .promo-task-steps { height: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .promo-project-detail-fold > summary { align-items: flex-start; flex-wrap: wrap; padding: 11px 12px; }
   .promo-project-detail-fold > summary em { width: calc(100% - 30px); margin-left: 30px; text-align: left; }
+  .promo-contact-tree-item > summary,
+  .promo-contact-tree-row { grid-template-columns: 1fr; }
+  .promo-contact-tree-item > summary em { text-align: left; white-space: normal; }
+  .promo-contact-tree-children { padding-left: 12px; }
 }
 
 /* Manual promotion execution uses one outer modal scrollbar. */

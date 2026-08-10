@@ -13546,6 +13546,7 @@
     autoRefreshTimer: null,
     bootstrapLoadingView: '',
     taskReportLoading: {},
+    taskExecutionDetailCache: {},
     taskDetailRequests: {},
     signatureHtmlCache: {},
     wizardStep: 0,
@@ -18901,10 +18902,9 @@
     openTaskQueueDialog: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      Promise.all([
-        post('marketing_queue_list', { task_id: taskId, limit: 2000 }),
-        post('marketing_task_targets', { task_id: taskId, limit: 5000 }).catch(function () { return { success: false, data: {} }; })
-      ]).then(function (results) {
+      this.taskExecutionDetailCache = this.taskExecutionDetailCache || {};
+      var cachedResults = this.taskExecutionDetailCache[taskId];
+      var renderDetail = function (results) {
         var json = results[0] || {};
         var targetsJson = results[1] || {};
         if (!json.success) throw new Error(json.message || '发送队列加载失败');
@@ -19087,9 +19087,56 @@
         var contactSummaryRows = Object.keys(summaryMap).map(function (key) { return summaryMap[key]; }).sort(function (a, b) {
           return String(a.customer || '').localeCompare(String(b.customer || '')) || String(a.contact || '').localeCompare(String(b.contact || ''));
         });
-        var contactSummaryTable = contactSummaryRows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>邮箱</th><th>发送状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>原因</th></tr></thead><tbody>' + contactSummaryRows.slice(0, 1500).map(function (row) {
-          return '<tr><td>' + esc(row.customer || '-') + '</td><td>' + esc(row.contact || '-') + '</td><td>' + esc(row.country || '-') + '</td><td>' + esc(row.email || '-') + '</td><td>' + esc(row.status || '-') + '</td><td>' + esc(row.systemTime || '-') + '</td><td>' + esc(row.localTime || '-') + '</td><td>' + esc(row.timezone || '-') + '</td><td>' + esc(row.reason || '-').slice(0, 140) + '</td></tr>';
-        }).join('') + '</tbody></table>' + (contactSummaryRows.length > 1500 ? '<p class="promo-empty">联系人汇总较多，当前显示前 1500 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无联系人发送汇总。</p>';
+        var customerGroups = {};
+        contactSummaryRows.forEach(function (row) {
+          var customerKey = row.customerId ? ('id:' + row.customerId) : ('name:' + String(row.customer || '-').toLowerCase());
+          customerGroups[customerKey] = customerGroups[customerKey] || {
+            customer: row.customer || '-',
+            country: row.country || '-',
+            rows: []
+          };
+          var item = Object.assign({}, row);
+          item.isPlaceholder = !item.email && (!item.contact || item.contact === '客户级目标');
+          customerGroups[customerKey].country = customerGroups[customerKey].country === '-' ? (row.country || '-') : customerGroups[customerKey].country;
+          customerGroups[customerKey].rows.push(item);
+        });
+        var customerTreeRows = Object.keys(customerGroups).map(function (key) {
+          var group = customerGroups[key];
+          var hasRealContact = group.rows.some(function (row) { return !row.isPlaceholder; });
+          if (hasRealContact) {
+            group.rows = group.rows.filter(function (row) { return !row.isPlaceholder; });
+          }
+          group.sentCount = group.rows.filter(function (row) {
+            var text = String(row.status || '').toLowerCase();
+            return text === 'sent' || text.indexOf('已发') >= 0 || text.indexOf('成功') >= 0;
+          }).length;
+          group.noEmailCount = group.rows.filter(function (row) {
+            var text = String((row.status || '') + ' ' + (row.reason || '')).toLowerCase();
+            return text.indexOf('邮箱') >= 0 || text.indexOf('email') >= 0 || (!row.email && group.sentCount === 0);
+          }).length;
+          group.failedCount = group.rows.filter(function (row) {
+            var text = String(row.status || '').toLowerCase();
+            return text.indexOf('失败') >= 0 || text.indexOf('failed') >= 0;
+          }).length;
+          return group;
+        }).filter(function (group) { return group.rows.length; }).sort(function (a, b) {
+          return String(a.customer || '').localeCompare(String(b.customer || ''));
+        });
+        var contactSummaryTree = customerTreeRows.length ? '<div class="promo-contact-tree">' + customerTreeRows.slice(0, 500).map(function (group) {
+          var customerMeta = '联系人 ' + group.rows.length + ' · 已发 ' + group.sentCount + ' · 未发/无邮箱 ' + group.noEmailCount + (group.failedCount ? ' · 失败 ' + group.failedCount : '');
+          var children = group.rows.slice(0, 80).map(function (row) {
+            var detailBits = [
+              row.email || '无邮箱',
+              row.status || '-',
+              row.systemTime ? ('系统 ' + row.systemTime) : '',
+              row.localTime && row.localTime !== '-' ? ('当地 ' + row.localTime) : '',
+              row.timezone && row.timezone !== 'unknown' ? row.timezone : '',
+              row.reason ? ('原因：' + row.reason) : ''
+            ].filter(Boolean);
+            return '<article class="promo-contact-tree-row"><strong>' + esc(row.contact || '客户级目标') + '</strong><span>' + esc(detailBits.join(' · ')).slice(0, 260) + '</span></article>';
+          }).join('');
+          return '<details class="promo-contact-tree-item" open><summary><strong>' + esc(group.customer || '-') + '</strong><span>' + esc(group.country || '-') + '</span><em>' + esc(customerMeta) + '</em></summary><div class="promo-contact-tree-children">' + children + (group.rows.length > 80 ? '<p class="promo-empty">另有 ' + esc(group.rows.length - 80) + ' 个联系人未展开。</p>' : '') + '</div></details>';
+        }).join('') + (customerTreeRows.length > 500 ? '<p class="promo-empty">客户较多，当前显示前 500 个客户。</p>' : '') + '</div>' : '<p class="promo-empty">暂无联系人发送汇总。</p>';
         var queueTable = rows.length ? '<div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人</th><th>国家</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>系统发送时间</th><th>客户当地时间</th><th>时区</th><th>失败原因</th></tr></thead><tbody>' + rows.slice(0, 1000).map(function (row) {
           var systemTime = row.sent_at || row.planned_server_time || '-';
           var tz = queueTimezoneInfo(row);
@@ -19107,7 +19154,7 @@
           return '<tr><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(objectName) + '</td><td>' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</td><td>' + esc(method) + '</td><td>' + esc(mailStatusForManual(row)).slice(0, 180) + '</td><td>' + esc(assignedExecutor) + '</td><td>' + esc(actualExecutor) + '</td><td>' + esc(cnStatus(row.manual_status || row.target_status || '-')) + '</td><td>' + esc(String(time || '-').slice(0, 16)) + '</td><td>' + esc(row.manual_result || row.failure_reason || '-').slice(0, 160) + '</td></tr>';
         }).join('') + '</tbody></table>' + (manualTargets.length > 300 ? '<p class="promo-empty">人工明细较多，当前显示前 300 条。</p>' : '') + '</div>' : '<p class="promo-empty">暂无线下 / 人工执行目标。</p>';
         var body = '<section class="promo-preview-grid"><article><strong>' + esc(rows.length) + '</strong><span>邮件队列总数</span></article><article><strong>' + esc(status.sent || sentRows.length || 0) + '</strong><span>已发送邮件</span></article><article><strong>' + esc(Object.keys(sentContactKeys).length) + '</strong><span>已发联系人</span></article><article><strong>' + esc(noEmailTargets.length) + '</strong><span>无邮箱未发</span></article><article><strong>' + esc(manualTargets.length) + '</strong><span>线下 / 人工</span></article><article><strong>' + esc(status.failed || 0) + '</strong><span>失败队列</span></article></section>' +
-          '<details class="promo-project-detail-fold" open><summary><span>按客户 / 联系人汇总</span><em>同一客户多个联系人逐行看谁发了、谁没发</em></summary><div class="promo-project-detail-content">' + contactSummaryTable + '</div></details>' +
+          '<details class="promo-project-detail-fold" open><summary><span>按客户树形汇总</span><em>客户为父节点，展开后看每个联系人发/没发</em></summary><div class="promo-project-detail-content">' + contactSummaryTree + '</div></details>' +
           '<details class="promo-project-detail-fold"><summary><span>邮件发送明细</span><em>含系统发送时间与客户当地时间</em></summary><div class="promo-project-detail-content">' + queueTable + '</div></details>' +
           '<details class="promo-project-detail-fold"><summary><span>无邮箱所以没发</span><em>' + esc(noEmailTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + noEmailList + '</div></details>' +
           '<details class="promo-project-detail-fold"><summary><span>线下 / 人工执行</span><em>' + esc(manualTargets.length) + ' 条</em></summary><div class="promo-project-detail-content">' + manualTable + '</div></details>';
@@ -19119,6 +19166,22 @@
           body: body,
           actions: '<button type="button" data-promo-dialog-close>关闭</button>'
         });
+      };
+      if (cachedResults) {
+        try {
+          renderDetail(cachedResults);
+        } catch (error) {
+          delete self.taskExecutionDetailCache[taskId];
+          self.showError(error.message || '发送队列加载失败');
+        }
+        return;
+      }
+      Promise.all([
+        post('marketing_queue_list', { task_id: taskId, limit: 2000 }),
+        post('marketing_task_targets', { task_id: taskId, limit: 5000 }).catch(function () { return { success: false, data: {} }; })
+      ]).then(function (results) {
+        self.taskExecutionDetailCache[taskId] = results;
+        renderDetail(results);
       }).catch(function (error) { self.showError(error.message || '发送队列加载失败'); });
     },
     openExecutionDialog: function (taskId) {
@@ -19386,6 +19449,7 @@
         self.data.logs = data.logs || self.data.logs || [];
         self.data.tasks = data.tasks || self.data.tasks || [];
         if (taskId && self.data.task_reports) delete self.data.task_reports[taskId];
+        if (taskId && self.taskExecutionDetailCache) delete self.taskExecutionDetailCache[taskId];
         self.selectedExecution = null;
         self.renderTasks();
         self.renderFailures();
@@ -22796,6 +22860,7 @@
           if (!json.success) throw new Error(json.message || '重试发送失败');
           toast(json.message || '失败队列已放回重试');
           delete (((PromotionModule.data || {}).task_reports || {})[retryQueueTaskId]);
+          if (PromotionModule.taskExecutionDetailCache) delete PromotionModule.taskExecutionDetailCache[retryQueueTaskId];
           PromotionModule.ensureTaskReport(retryQueueTaskId);
           PromotionModule.load({ silent: true });
         }).catch(function (error) { PromotionModule.showError(error.message || '重试发送失败'); });
@@ -22933,6 +22998,7 @@
         PromotionModule.data = PromotionModule.data || {};
         PromotionModule.data.task_reports = PromotionModule.data.task_reports || {};
         delete PromotionModule.data.task_reports[Number(buildTask.id || 0)];
+        if (PromotionModule.taskExecutionDetailCache) delete PromotionModule.taskExecutionDetailCache[Number(buildTask.id || 0)];
         PromotionModule.ensureTaskReport(Number(buildTask.id || 0));
         PromotionModule.load({ silent: true });
       }).catch(function (error) { PromotionModule.showError(error.message || '生成队列失败'); });
