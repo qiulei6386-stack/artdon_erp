@@ -17,6 +17,22 @@ function crm_add_index_safe(string $table, string $index, string $definition): v
     }
 }
 
+function crm_add_index_if_table_safe(string $table, string $index, string $definition): void
+{
+    if (!crm_table_exists_safe($table)) return;
+    crm_add_index_safe($table, $index, $definition);
+}
+
+function crm_add_index_columns_if_table_safe(string $table, string $index, string $definition, array $columns): void
+{
+    if (!crm_table_exists_safe($table)) return;
+    $existing = crm_table_columns_safe($table);
+    foreach ($columns as $column) {
+        if (!in_array($column, $existing, true)) return;
+    }
+    crm_add_index_safe($table, $index, $definition);
+}
+
 function crm_customer_ensure_tables(): void
 {
     static $done = false;
@@ -497,6 +513,11 @@ function crm_customer_ensure_tables(): void
     crm_add_index_safe('crm_customer_followups', 'idx_follow_customer_deleted_time', '(customer_id, deleted_at, followup_time)');
     try { db()->exec('ALTER TABLE crm_customer_followups ADD UNIQUE KEY uk_followup_request (created_by, request_token)'); } catch (Throwable $e) {}
     crm_add_index_safe('crm_customer_group_relations', 'idx_customer_group_customer_group', '(customer_id, group_id)');
+    crm_add_index_columns_if_table_safe('crm_customer_chat_groups', 'idx_chat_group_customer_status', '(customer_id, deleted_at, status, group_platform)', ['customer_id', 'deleted_at', 'status', 'group_platform']);
+    crm_add_index_columns_if_table_safe('crm_customer_chat_groups', 'idx_chat_group_customer_promo', '(customer_id, deleted_at, last_promoted_at)', ['customer_id', 'deleted_at', 'last_promoted_at']);
+    crm_add_index_columns_if_table_safe('crm_marketing_logs', 'idx_marketing_log_customer_time', '(customer_id, touched_at)', ['customer_id', 'touched_at']);
+    crm_add_index_columns_if_table_safe('crm_marketing_task_targets', 'idx_marketing_target_customer_exec', '(customer_id, executed_at)', ['customer_id', 'executed_at']);
+    crm_add_index_columns_if_table_safe('crm_mails', 'idx_mail_customer_linked_date', '(linked_customer_id, is_deleted, received_at, sent_at, created_at)', ['linked_customer_id', 'is_deleted', 'received_at', 'sent_at', 'created_at']);
 
     db()->exec("CREATE TABLE IF NOT EXISTS crm_logs (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1532,6 +1553,27 @@ function crm_customer_latest_mail_expr(string $customerAlias = 'c'): string
     return '(SELECT MAX(' . $dateExpr . ') FROM crm_mails m WHERE ' . implode(' AND ', $scope) . ')';
 }
 
+function crm_customer_latest_mail_linked_expr(string $customerAlias = 'c'): string
+{
+    if (!crm_table_exists_safe('crm_mails')) return 'NULL';
+    $mailCols = crm_table_columns_safe('crm_mails');
+    if (!in_array('linked_customer_id', $mailCols, true)) return 'NULL';
+    $canAll = has_permission('customer.mail_summary') || has_permission('mail.view') || is_super_admin();
+    $canOwn = has_permission('mail.view_own') || has_permission('mail.account_bind_own');
+    if (!$canAll && !$canOwn) return 'NULL';
+    $dateParts = array_values(array_filter(['received_at', 'sent_at', 'created_at'], fn($field) => in_array($field, $mailCols, true)));
+    if (!$dateParts) return 'NULL';
+    $dateExpr = 'COALESCE(' . implode(', ', array_map(fn($field) => 'm.`' . $field . '`', $dateParts)) . ')';
+    $scope = ["m.linked_customer_id = {$customerAlias}.id"];
+    if (in_array('is_deleted', $mailCols, true)) $scope[] = 'm.is_deleted = 0';
+    if (!$canAll && in_array('user_id', $mailCols, true)) {
+        $scope[] = 'm.user_id = ' . (int)(current_user()['id'] ?? 0);
+    } elseif (!$canAll) {
+        return 'NULL';
+    }
+    return '(SELECT MAX(' . $dateExpr . ') FROM crm_mails m WHERE ' . implode(' AND ', $scope) . ')';
+}
+
 function crm_customer_latest_quote_expr(string $customerAlias = 'c'): string
 {
     if (!crm_external_can('quote', 'view') && !has_permission('customer.quote_summary') && !is_super_admin()) return 'NULL';
@@ -1558,6 +1600,18 @@ function crm_customer_latest_quote_expr(string $customerAlias = 'c'): string
     }
     if (!$match) return 'NULL';
     return '(SELECT MAX(' . $dateExpr . ') FROM quote_orders q WHERE ' . implode(' OR ', array_map(fn($part) => '(' . $part . ')', $match)) . ')';
+}
+
+function crm_customer_latest_quote_linked_expr(string $customerAlias = 'c'): string
+{
+    if (!crm_external_can('quote', 'view') && !has_permission('customer.quote_summary') && !is_super_admin()) return 'NULL';
+    if (!crm_table_exists_safe('quote_orders')) return 'NULL';
+    $cols = crm_table_columns_safe('quote_orders');
+    if (!in_array('customer_id', $cols, true)) return 'NULL';
+    $dateParts = array_values(array_filter(['quote_date', 'created_at', 'submitted_at', 'approved_at'], fn($field) => in_array($field, $cols, true)));
+    if (!$dateParts) return 'NULL';
+    $dateExpr = 'COALESCE(' . implode(', ', array_map(fn($field) => 'q.`' . $field . '`', $dateParts)) . ')';
+    return "(SELECT MAX({$dateExpr}) FROM quote_orders q WHERE q.`customer_id` = {$customerAlias}.id OR q.`customer_id` = CONCAT('crm_', {$customerAlias}.id))";
 }
 
 function crm_customer_apply_graph(int $customerId, array $graph): void
@@ -1742,6 +1796,8 @@ function crm_customer_list(array $input): array
     $lastPromotionExpr = crm_customer_last_promotion_expr('c');
     $latestMailExpr = crm_customer_latest_mail_expr('c');
     $latestQuoteExpr = crm_customer_latest_quote_expr('c');
+    $latestMailSortExpr = crm_customer_latest_mail_linked_expr('c');
+    $latestQuoteSortExpr = crm_customer_latest_quote_linked_expr('c');
     $sortMap = [
         'updated_at' => 'c.updated_at',
         'customer_code' => 'c.customer_code',
@@ -1752,8 +1808,8 @@ function crm_customer_list(array $input): array
         'owner_name' => 'COALESCE(u.username, c.owner_department, "")',
         'contact_count' => '(SELECT COUNT(*) FROM crm_contacts ct_sort WHERE ct_sort.customer_id = c.id AND ct_sort.deleted_at IS NULL)',
         'chat_group_names' => '(SELECT GROUP_CONCAT(cg_sort.group_name ORDER BY cg_sort.group_platform, cg_sort.id SEPARATOR ",") FROM crm_customer_chat_groups cg_sort WHERE cg_sort.customer_id = c.id AND cg_sort.deleted_at IS NULL)',
-        'latest_mail_at' => $latestMailExpr,
-        'latest_quote_at' => $latestQuoteExpr,
+        'latest_mail_at' => $latestMailSortExpr !== 'NULL' ? $latestMailSortExpr : 'c.updated_at',
+        'latest_quote_at' => $latestQuoteSortExpr !== 'NULL' ? $latestQuoteSortExpr : 'c.updated_at',
         'last_promotion_at' => $lastPromotionExpr,
         'status' => 'c.status',
         'created_at' => 'c.created_at',

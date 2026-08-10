@@ -27,7 +27,7 @@ register_shutdown_function(static function () use ($crmApiPerfStart, $action): v
     $safeAction = preg_replace('/[^a-zA-Z0-9_\\-]/', '', (string)$action) ?: 'unknown';
     $logDir = __DIR__ . '/storage';
     $logFile = is_dir($logDir) && is_writable($logDir) ? $logDir . '/crm_api_perf.log' : sys_get_temp_dir() . '/crm_api_perf.log';
-    $line = json_encode([
+    $payload = [
         'time' => date('Y-m-d H:i:s'),
         'action' => $safeAction,
         'elapsed_ms' => $elapsedMs,
@@ -36,7 +36,24 @@ register_shutdown_function(static function () use ($crmApiPerfStart, $action): v
         'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
         'referer' => basename(parse_url((string)($_SERVER['HTTP_REFERER'] ?? ''), PHP_URL_PATH) ?: ''),
         'status' => http_response_code(),
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    if ($safeAction === 'customer_list' && $elapsedMs >= 1000) {
+        $payload['list_params'] = [
+            'sort' => preg_replace('/[^a-zA-Z0-9_\\-]/', '', (string)($_POST['sort'] ?? '')),
+            'dir' => preg_replace('/[^a-zA-Z]/', '', (string)($_POST['dir'] ?? $_POST['direction'] ?? '')),
+            'quick' => mb_substr((string)($_POST['quick_filter'] ?? ''), 0, 40),
+            'page' => (int)($_POST['page'] ?? 0),
+            'page_size' => (int)($_POST['page_size'] ?? 0),
+            'q_len' => mb_strlen(trim((string)($_POST['q'] ?? ''))),
+            'country_set' => trim((string)($_POST['country'] ?? '')) !== '' ? 1 : 0,
+            'city_set' => trim((string)($_POST['city'] ?? '')) !== '' ? 1 : 0,
+            'business_filter' => mb_substr((string)($_POST['business_filter'] ?? ''), 0, 40),
+            'promotion_status' => mb_substr((string)($_POST['promotion_status'] ?? ''), 0, 40),
+            'created_range' => mb_substr((string)($_POST['created_range'] ?? ''), 0, 40),
+            'follow_range' => mb_substr((string)($_POST['follow_range'] ?? ''), 0, 40),
+        ];
+    }
+    $line = json_encode($payload, JSON_UNESCAPED_UNICODE);
     if ($line !== false) {
         @file_put_contents($logFile, $line . PHP_EOL, FILE_APPEND | LOCK_EX);
     }
@@ -1113,6 +1130,7 @@ try {
 
     if ($action === 'customer_list') {
         crm_require('customer.view');
+        crm_api_release_session_lock();
         api_response(true, '', crm_customer_list($_POST));
     }
     if ($action === 'customer_get') {

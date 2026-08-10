@@ -70,15 +70,16 @@
     return normalizeWorldTimeZones(((state.preferences || {}).module_layout || {}).world_time_zones);
   }
 
-  function post(action, data) {
-    return postTo('crm_api.php', action, data);
+  function post(action, data, options) {
+    return postTo('crm_api.php', action, data, options);
   }
 
-  function radarPost(action, data) {
-    return postTo('radar_api.php', action, data);
+  function radarPost(action, data, options) {
+    return postTo('radar_api.php', action, data, options);
   }
 
-  function postTo(endpoint, action, data) {
+  function postTo(endpoint, action, data, options) {
+    options = options || {};
     var body = new URLSearchParams();
     body.set('action', action);
     if (state.csrf) body.set('csrf_token', state.csrf);
@@ -88,8 +89,10 @@
       else if (value && typeof value === 'object') Object.keys(value).forEach(function (subKey) { body.append(key + '[' + subKey + ']', value[subKey]); });
       else body.set(key, value);
     });
+    var timeoutMs = Number(options.timeoutMs || (action === 'customer_list' ? 30000 : 18000));
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 3000) timeoutMs = 18000;
     var controller = window.AbortController ? new AbortController() : null;
-    var timer = window.setTimeout(function () { if (controller) controller.abort(); }, 18000);
+    var timer = window.setTimeout(function () { if (controller) controller.abort(); }, timeoutMs);
     return fetch(endpoint, { method: 'POST', body: body, credentials: 'same-origin', signal: controller ? controller.signal : undefined }).then(function (res) {
       window.clearTimeout(timer);
       return res.text().then(function (text) {
@@ -2494,6 +2497,11 @@
     listWidth: '',
     layoutMode: 'default',
     searchTimer: null,
+    listLoading: false,
+    listRequestSeq: 0,
+    listPromise: null,
+    listReloadQueued: false,
+    queuedListOptions: null,
     leadPage: 1,
     leadPageSize: 80,
     leadTotal: 0,
@@ -2549,7 +2557,8 @@
       var self = this;
       this.autoSyncTimer = window.setInterval(function () {
         if (current !== 'customers') return;
-        self.loadList({ silent: true }).then(function () {
+        if (self.listLoading) return;
+        self.loadList({ silent: true, auto: true }).then(function () {
           if (self.shouldAutoRefreshCurrentDetail()) self.loadDetail(self.currentId, { silent: true });
         });
       }, 60000);
@@ -3419,19 +3428,48 @@
       var self = this;
       var body = document.querySelector('[data-customer-rows]');
       var status = document.querySelector('[data-customer-search-status]');
+      if (this.listLoading) {
+        if (options.silent) return this.listPromise || Promise.resolve();
+        this.listReloadQueued = true;
+        this.queuedListOptions = options;
+        if (status) status.textContent = '上一条筛选还在加载，稍后自动刷新...';
+        return this.listPromise || Promise.resolve();
+      }
+      this.listLoading = true;
+      this.listReloadQueued = false;
+      this.queuedListOptions = null;
+      var requestSeq = ++this.listRequestSeq;
       if (status && !options.silent) status.textContent = '正在筛选...';
       if (body && !options.silent) body.innerHTML = '<tr><td colspan="' + this.visibleColumns().length + '">正在加载...</td></tr>';
-      return post('customer_list', this.filters()).then(function (json) {
+      var finish = function () {
+        self.listLoading = false;
+        self.listPromise = null;
+        if (self.listReloadQueued) {
+          var queued = self.queuedListOptions || {};
+          self.listReloadQueued = false;
+          self.queuedListOptions = null;
+          window.setTimeout(function () { self.loadList(queued); }, 0);
+        }
+      };
+      this.listPromise = post('customer_list', this.filters(), { timeoutMs: 30000 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户列表加载失败');
+        if (requestSeq !== self.listRequestSeq || self.listReloadQueued) return;
         self.total = Number(json.data.total || 0);
         self.rows = json.data.rows || [];
         self.renderRows(self.rows);
         self.updatePageInfo();
         if (status) status.textContent = options.silent ? ('已静默同步 · ' + new Date().toLocaleTimeString('zh-CN', { hour12: false })) : self.describeFilters();
       }).catch(function (error) {
+        if (self.listReloadQueued) return;
         if (body) body.innerHTML = '<tr><td colspan="' + self.visibleColumns().length + '">' + esc(error.message) + '</td></tr>';
         if (status) status.textContent = '筛选失败';
+      }).then(function () {
+        finish();
+      }, function (error) {
+        finish();
+        throw error;
       });
+      return this.listPromise;
     },
     describeFilters: function () {
       var parts = [];
