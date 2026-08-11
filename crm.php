@@ -408,7 +408,7 @@ $prefStyle = sprintf(
             <div class="customer-search-row">
               <div class="customer-search-main">
                 <label>模糊搜索</label>
-                <input data-customer-search placeholder="客户 / 代码 / 联系人 / 邮箱 / 电话 / WhatsApp / 国家 / 网站 / 备注">
+                <input data-customer-search placeholder="客户 / 代码 / 联系人 / 邮箱 / 电话 / WhatsApp / 微信 / 国家 / 网站 / 备注">
                 <button type="button" data-customer-search-clear>清空</button>
               </div>
               <div class="customer-search-tools">
@@ -448,6 +448,8 @@ $prefStyle = sprintf(
                   'has_quote' => '有报价',
                   'has_mail' => '有邮件',
                   'has_material' => '有资料',
+                  'has_wechat_personal' => '微信个人',
+                  'has_whatsapp_personal' => 'WhatsApp个人',
                   'has_wechat_group' => '微信群',
                   'has_whatsapp_group' => 'WhatsApp群',
                 ] as $filterKey => $filterLabel): ?>

@@ -365,7 +365,7 @@
   function cnChannel(value) {
     var key = String(value || '').toLowerCase();
     var map = {
-      email: '邮件', mail: '邮件', edm: '邮件群发', whatsapp: 'WhatsApp', wechat: '微信', weixin: '微信',
+      email: '邮件', mail: '邮件', edm: '邮件群发', whatsapp: 'WhatsApp个人', wechat: '微信个人', weixin: '微信个人',
       wechat_group: '微信群', whatsapp_group: 'WhatsApp群', linkedin: 'LinkedIn', phone: '电话',
       offline: '线下拜访', visit: '线下拜访', manual_sales: '人工销售', automation: '自动化', preference: '按客户偏好',
       customer_preference: '按客户偏好', auto_preference: '按客户偏好', draft: '草稿'
@@ -3528,8 +3528,12 @@
         has_quote: '有报价',
         has_mail: '有邮件',
         has_material: '有资料',
+        has_wechat_personal: '微信个人',
+        has_whatsapp_personal: 'WhatsApp个人',
         has_wechat_group: '微信群',
         has_whatsapp_group: 'WhatsApp群',
+        prefer_personal_contact: '只接受个人',
+        avoid_group_contact: '不喜欢群',
         no_owner: '无负责人客户',
         incomplete: '资料不完整客户',
         no_contact: '无联系人客户',
@@ -4612,7 +4616,7 @@
       });
     },
     markCustomerAttributeMissing: function (missing) {
-      var map = { '客户名称': 'customer_name', '客户代码': 'customer_code', '国家': 'country', '城市': 'city', '地址': 'address', '网站': 'website', '邮箱': 'email', '联系人邮箱': 'email', '电话': 'phone', '联系人电话': 'phone', 'WhatsApp': 'whatsapp', '来源': 'source_tags', '推广方式': 'promotion_channels', '等级': 'level', '生命周期': 'lifecycle_key', '负责人': 'owner_user_id', '分组': 'group_ids' };
+      var map = { '客户名称': 'customer_name', '客户代码': 'customer_code', '国家': 'country', '城市': 'city', '地址': 'address', '网站': 'website', '邮箱': 'email', '联系人邮箱': 'email', '电话': 'phone', '联系人电话': 'phone', 'WhatsApp': 'whatsapp', 'WhatsApp个人': 'whatsapp', '微信': 'wechat', '微信个人': 'wechat', '来源': 'source_tags', '推广方式': 'promotion_channels', '等级': 'level', '生命周期': 'lifecycle_key', '负责人': 'owner_user_id', '分组': 'group_ids' };
       var first = null;
       document.querySelectorAll('[data-attribute-field]').forEach(function (node) { node.classList.remove('is-missing'); });
       (missing || []).forEach(function (label) {
@@ -6086,6 +6090,8 @@
         contact_sources: this.contactSourceValue(contact),
         role_tags: Array.isArray(contact.role_tags) ? contact.role_tags : String(contact.role_tags || '').split(',').filter(Boolean),
         promotion_channels: this.contactPromotionChannels(contact),
+        prefer_personal_contact: Number(contact.prefer_personal_contact) ? 1 : 0,
+        avoid_group_contact: Number(contact.avoid_group_contact) ? 1 : 0,
         promote: Array.isArray(contact.promotions) ? (this.contactPromotionChannels(contact).length ? 1 : 0) : (Number(contact.promote) === 0 ? 0 : 1)
       });
     },
@@ -6291,8 +6297,9 @@
       var roles = contact.role_tags || [];
       var channels = contact.promotion_channels || [];
       var needsCleanup = String(contact.name || '').indexOf('@') >= 0 && !String(contact.email || '').trim();
-      return '<article class="entry-contact-card-item" data-contact-card data-contact-id="' + esc(contact.id || '') + '" data-contact-name="' + esc(contact.name || '') + '" data-contact-name-en="' + esc(contact.name_en || '') + '" data-contact-position="' + esc(contact.position || '') + '" data-contact-department="' + esc(contact.department || '') + '" data-contact-email="' + esc(contact.email || '') + '" data-contact-phone="' + esc(contact.phone || '') + '" data-contact-whatsapp="' + esc(contact.whatsapp || '') + '" data-contact-wechat="' + esc(contact.wechat || '') + '" data-contact-linkedin="' + esc(contact.linkedin || '') + '" data-contact-gender="' + esc(contact.gender || '') + '" data-contact-birthday="' + esc(contact.birthday || '') + '" data-contact-language="' + esc(contact.language || '') + '" data-contact-remark="' + esc(contact.remark || '') + '" data-contact-source="' + esc(this.contactSourceValue(contact)) + '" data-contact-primary="' + (Number(contact.is_primary) ? '1' : '0') + '" data-contact-left="' + (Number(contact.is_left) ? '1' : '0') + '" data-contact-promote="' + (Number(contact.promote) === 0 ? '0' : '1') + '" data-contact-roles="' + esc(JSON.stringify(roles)) + '" data-contact-channels="' + esc(JSON.stringify(channels)) + '">' +
-        '<div><strong>' + esc(contact.name || '未命名联系人') + ' · ' + esc(contact.position || '未填职位') + (Number(contact.is_primary) ? ' <b class="first-contact-badge">第一联系人</b>' : '') + (needsCleanup ? ' <b class="contact-cleanup-badge">待整理</b>' : '') + '</strong><span>' + esc([contact.email, contact.whatsapp, contact.phone].filter(Boolean).join(' / ') || '未填联系方式') + '</span><em>标签：' + esc(roles.join('、') || '未设置') + ' · 推广：' + esc(channels.join('、') || (Number(contact.promote) === 0 ? '不推广' : '未设置')) + '</em></div>' +
+      var preferenceTags = [Number(contact.prefer_personal_contact) ? '只接受个人' : '', Number(contact.avoid_group_contact) ? '不喜欢群' : ''].filter(Boolean);
+      return '<article class="entry-contact-card-item" data-contact-card data-contact-id="' + esc(contact.id || '') + '" data-contact-name="' + esc(contact.name || '') + '" data-contact-name-en="' + esc(contact.name_en || '') + '" data-contact-position="' + esc(contact.position || '') + '" data-contact-department="' + esc(contact.department || '') + '" data-contact-email="' + esc(contact.email || '') + '" data-contact-phone="' + esc(contact.phone || '') + '" data-contact-whatsapp="' + esc(contact.whatsapp || '') + '" data-contact-wechat="' + esc(contact.wechat || '') + '" data-contact-linkedin="' + esc(contact.linkedin || '') + '" data-contact-gender="' + esc(contact.gender || '') + '" data-contact-birthday="' + esc(contact.birthday || '') + '" data-contact-language="' + esc(contact.language || '') + '" data-contact-remark="' + esc(contact.remark || '') + '" data-contact-source="' + esc(this.contactSourceValue(contact)) + '" data-contact-primary="' + (Number(contact.is_primary) ? '1' : '0') + '" data-contact-left="' + (Number(contact.is_left) ? '1' : '0') + '" data-contact-prefer-personal="' + (Number(contact.prefer_personal_contact) ? '1' : '0') + '" data-contact-avoid-group="' + (Number(contact.avoid_group_contact) ? '1' : '0') + '" data-contact-promote="' + (Number(contact.promote) === 0 ? '0' : '1') + '" data-contact-roles="' + esc(JSON.stringify(roles)) + '" data-contact-channels="' + esc(JSON.stringify(channels)) + '">' +
+        '<div><strong>' + esc(contact.name || '未命名联系人') + ' · ' + esc(contact.position || '未填职位') + (Number(contact.is_primary) ? ' <b class="first-contact-badge">第一联系人</b>' : '') + (needsCleanup ? ' <b class="contact-cleanup-badge">待整理</b>' : '') + '</strong><span>' + esc([contact.email, contact.whatsapp ? ('WhatsApp个人 ' + contact.whatsapp) : '', contact.wechat ? ('微信个人 ' + contact.wechat) : '', contact.phone].filter(Boolean).join(' / ') || '未填联系方式') + '</span><em>标签：' + esc(roles.join('、') || '未设置') + ' · 推广：' + esc(channels.map(cnChannel).join('、') || (Number(contact.promote) === 0 ? '不推广' : '未设置')) + (preferenceTags.length ? ' · 偏好：' + esc(preferenceTags.join('、')) : '') + '</em></div>' +
         '<nav><button type="button" data-edit-contact-card>编辑</button><button type="button" data-primary-contact-card>' + (Number(contact.is_primary) ? '已是第一联系人' : '设为第一联系人') + '</button><button type="button" data-delete-contact-card>删除</button></nav></article>';
     },
     entryContactEditor: function (contact) {
@@ -6307,8 +6314,8 @@
         '<label class="entity-field"><span>部门</span><input data-contact-department value="' + esc(contact.department || '') + '"></label>' +
         '<label class="entity-field"><span>邮箱</span><input data-contact-email value="' + esc(contact.email || '') + '"></label>' +
         this.phoneField('电话', contact.phone || '', 'data-contact-phone', phoneDial) +
-        this.phoneField('WhatsApp', contact.whatsapp || '', 'data-contact-whatsapp', phoneDial) +
-        '<label class="entity-field"><span>微信</span><input data-contact-wechat value="' + esc(contact.wechat || '') + '"></label>' +
+        this.phoneField('WhatsApp个人', contact.whatsapp || '', 'data-contact-whatsapp', phoneDial) +
+        '<label class="entity-field"><span>微信个人</span><input data-contact-wechat value="' + esc(contact.wechat || '') + '" placeholder="个人微信号，不是微信群"></label>' +
         '<label class="entity-field"><span>LinkedIn</span><input data-contact-linkedin value="' + esc(contact.linkedin || '') + '"></label>' +
         '<label class="entity-field"><span>性别</span><input data-contact-gender value="' + esc(contact.gender || '') + '"></label>' +
         '<label class="entity-field"><span>生日</span><input type="date" data-contact-birthday value="' + esc(contact.birthday || '') + '"></label>' +
@@ -6316,7 +6323,7 @@
         '<label class="entity-field"><span>联系人来源</span><select data-contact-source>' + this.optionHtml('contact_source', contact.contact_sources || 'manual') + '</select></label>' +
         '</div><div class="entry-checks wide"><strong>角色标签</strong>' + this.checkboxHtml('contact_role', 'contact_role_editor', contact.role_tags || []) + '</div>' +
         '<div class="entry-checks wide"><strong>联系人实际推广方式</strong>' + this.checkboxHtml('promotion_channel', 'contact_promotion_editor', contact.promotion_channels || []) + '<p class="entry-muted">这里是该联系人实际可执行的渠道，会覆盖客户默认推广方式。</p></div>' +
-        '<div class="entry-checks entry-state-chips"><label class="tag-chip"><input type="checkbox" data-contact-primary ' + (Number(contact.is_primary) ? 'checked' : '') + '><span>第一联系人 / 主联系人</span></label><label class="tag-chip"><input type="checkbox" data-contact-left ' + (Number(contact.is_left) ? 'checked' : '') + '><span>已离职</span></label><label class="tag-chip"><input type="checkbox" data-contact-promote ' + (Number(contact.promote) === 0 ? '' : 'checked') + '><span>允许推广</span></label></div>' +
+        '<div class="entry-checks entry-state-chips"><label class="tag-chip"><input type="checkbox" data-contact-primary ' + (Number(contact.is_primary) ? 'checked' : '') + '><span>第一联系人 / 主联系人</span></label><label class="tag-chip"><input type="checkbox" data-contact-left ' + (Number(contact.is_left) ? 'checked' : '') + '><span>已离职</span></label><label class="tag-chip"><input type="checkbox" data-contact-promote ' + (Number(contact.promote) === 0 ? '' : 'checked') + '><span>允许推广</span></label><label class="tag-chip"><input type="checkbox" data-contact-prefer-personal ' + (Number(contact.prefer_personal_contact) ? 'checked' : '') + '><span>只接受个人联系</span></label><label class="tag-chip"><input type="checkbox" data-contact-avoid-group ' + (Number(contact.avoid_group_contact) ? 'checked' : '') + '><span>不喜欢群</span></label></div>' +
         '<label class="entity-field wide"><span>备注</span><textarea data-contact-remark rows="3" maxlength="1000">' + esc(contact.remark || '') + '</textarea></label>' +
         '<div class="entry-editor-actions"><button type="button" data-save-contact-card>保存联系人</button><button type="button" data-cancel-contact-card>取消</button></div></article>';
     },
@@ -6332,15 +6339,15 @@
         ? this.field('客户名称 *', 'customer_name', entity.customer_name, 'required autocomplete="off"') + this.field('客户代码', 'customer_code', entity.customer_code, 'placeholder="EX003"') + this.field('英文名', 'customer_name_en', entity.customer_name_en) + this.countryInput('国家 *', 'country', entity.country, 'required') + this.regionInput('城市 / 地区', 'city', entity.city) + this.field('状态', 'status', entity.status || 'active')
         : this.field('姓名 *', 'name', entity.name, 'required autocomplete="off"') + this.field('英文名', 'name_en', entity.name_en) + this.field('职位', 'position', entity.position) + this.field('部门', 'department', entity.department) + this.field('状态', 'status_display', Number(entity.is_left) ? 'inactive' : 'active', 'disabled');
       var contacts = isCustomer
-        ? this.contactLine('✉', '邮箱', 'email', entity.email, 'name@example.com') + this.phoneLine('☎', '电话', 'phone', entity.phone, '电话号码', '', this.dialForCountry(entity.country || '')) + this.phoneLine('W', 'WhatsApp', 'whatsapp', entity.whatsapp, 'WhatsApp号码', '', this.dialForCountry(entity.country || '')) + this.contactLine('🌐', '网站', 'website', entity.website, 'https://') + this.contactLine('📍', '地址', 'address', entity.address, '客户地址')
-        : this.contactLine('✉', '邮箱', 'email', entity.email, 'name@example.com') + this.phoneLine('☎', '电话', 'phone', entity.phone, '电话号码', '', this.dialForCountry((this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.country) || '')) + this.phoneLine('W', 'WhatsApp', 'whatsapp', entity.whatsapp, 'WhatsApp号码', '', this.dialForCountry((this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.country) || '')) + this.contactLine('微', '微信', 'wechat', entity.wechat, 'WeChat') + this.contactLine('in', 'LinkedIn', 'linkedin', entity.linkedin, 'LinkedIn URL');
+        ? this.contactLine('✉', '邮箱', 'email', entity.email, 'name@example.com') + this.phoneLine('☎', '电话', 'phone', entity.phone, '电话号码', '', this.dialForCountry(entity.country || '')) + this.phoneLine('W', 'WhatsApp个人', 'whatsapp', entity.whatsapp, '个人 WhatsApp 号码', '', this.dialForCountry(entity.country || '')) + this.contactLine('🌐', '网站', 'website', entity.website, 'https://') + this.contactLine('📍', '地址', 'address', entity.address, '客户地址')
+        : this.contactLine('✉', '邮箱', 'email', entity.email, 'name@example.com') + this.phoneLine('☎', '电话', 'phone', entity.phone, '电话号码', '', this.dialForCountry((this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.country) || '')) + this.phoneLine('W', 'WhatsApp个人', 'whatsapp', entity.whatsapp, '个人 WhatsApp 号码', '', this.dialForCountry((this.currentDetail && this.currentDetail.customer && this.currentDetail.customer.country) || '')) + this.contactLine('微', '微信个人', 'wechat', entity.wechat, '个人微信号') + this.contactLine('in', 'LinkedIn', 'linkedin', entity.linkedin, 'LinkedIn URL');
       var relation = isCustomer
         ? this.field('客户等级', 'level', entity.level || 'P3', 'placeholder="P0/P1/P2/P3/P4/P5/Blacklist"') + this.field('生命周期', 'lifecycle_key', entity.lifecycle_key || 'lead', 'placeholder="lead/official/quoting/deal"') + this.field('来源标签', 'source_tags', entity.source_tags || entity.source || 'website', 'placeholder="website,linkedin,manual"') + this.field('推广渠道', 'promotion_channels', entity.promotion_channels || '', 'placeholder="email,whatsapp,linkedin"') + this.field('推广状态', 'promotion_status', entity.promotion_status || 'not_promoted') + this.field('负责人 ID', 'owner_user_id', entity.owner_user_id)
         : '<div class="entry-checks wide"><strong>角色标签</strong>' + this.checkboxHtml('contact_role', 'role_tags', entity.role_tags || []) + '</div>' +
           '<label class="entity-field"><span>联系人来源</span><select name="contact_sources">' + this.optionHtml('contact_source', entity.contact_sources || 'manual') + '</select></label>' +
-          '<div class="entry-checks wide"><strong>联系人实际推广方式</strong>' + this.checkboxHtml('promotion_channel', 'contact_promotion_channels', entity.promotion_channels || []) + '<p class="entry-muted">这里是该联系人实际可执行的渠道，会覆盖客户默认推广方式。</p></div>' +
+          '<div class="entry-checks wide"><strong>联系人实际推广方式</strong>' + this.checkboxHtml('promotion_channel', 'contact_promotion_channels', entity.promotion_channels || []) + '<p class="entry-muted">这里是该联系人实际可执行的渠道，会覆盖客户默认推广方式；微信个人 / WhatsApp个人 与微信群 / WhatsApp群分开保存。</p></div>' +
           this.field('语言', 'language', entity.language) + this.field('性别', 'gender', entity.gender) + '<label class="entity-field"><span>生日</span><input type="date" name="birthday" value="' + esc(entity.birthday || '') + '"></label>' +
-          '<label class="tag-chip"><input type="checkbox" name="is_primary" value="1" ' + (Number(entity.is_primary) ? 'checked' : '') + '><span>主联系人</span></label><label class="tag-chip"><input type="checkbox" name="is_left" value="1" ' + (Number(entity.is_left) ? 'checked' : '') + '><span>已离职</span></label>';
+          '<label class="tag-chip"><input type="checkbox" name="is_primary" value="1" ' + (Number(entity.is_primary) ? 'checked' : '') + '><span>主联系人</span></label><label class="tag-chip"><input type="checkbox" name="is_left" value="1" ' + (Number(entity.is_left) ? 'checked' : '') + '><span>已离职</span></label><label class="tag-chip"><input type="checkbox" name="prefer_personal_contact" value="1" ' + (Number(entity.prefer_personal_contact) ? 'checked' : '') + '><span>只接受个人联系</span></label><label class="tag-chip"><input type="checkbox" name="avoid_group_contact" value="1" ' + (Number(entity.avoid_group_contact) ? 'checked' : '') + '><span>不喜欢群</span></label>';
       return '<div class="entity-editor entity-editor-' + type + '">' + hidden +
         '<section class="entity-section entity-section-primary"><h3>基础信息</h3><div class="entity-grid">' + basics + '</div></section>' +
         '<section class="entity-section entity-section-contact"><h3>联系方式</h3><div class="entity-contact-card">' + contacts + '</div></section>' +
@@ -8189,6 +8196,8 @@
           contact_sources: card.dataset.contactSource || 'manual',
           is_primary: Number(card.dataset.contactPrimary),
           is_left: Number(card.dataset.contactLeft),
+          prefer_personal_contact: Number(card.dataset.contactPreferPersonal),
+          avoid_group_contact: Number(card.dataset.contactAvoidGroup),
           promote: Number(card.dataset.contactPromote),
           role_tags: readJsonFromAttribute(card.dataset.contactRoles),
           promotion_channels: readJsonFromAttribute(card.dataset.contactChannels)
@@ -8223,6 +8232,8 @@
         contact_sources: editor.querySelector('[data-contact-source]')?.value || 'manual',
         is_primary: editor.querySelector('[data-contact-primary]')?.checked ? 1 : 0,
         is_left: editor.querySelector('[data-contact-left]')?.checked ? 1 : 0,
+        prefer_personal_contact: editor.querySelector('[data-contact-prefer-personal]')?.checked ? 1 : 0,
+        avoid_group_contact: editor.querySelector('[data-contact-avoid-group]')?.checked ? 1 : 0,
         promote: editor.querySelector('[data-contact-promote]')?.checked ? 1 : 0,
         role_tags: roles,
         promotion_channels: channels
@@ -8416,6 +8427,8 @@
           remark: item.remark || '',
           role_tags: item.role_tags || [],
           is_primary: Number(item.is_primary) ? 1 : 0,
+          prefer_personal_contact: Number(item.prefer_personal_contact) ? 1 : 0,
+          avoid_group_contact: Number(item.avoid_group_contact) ? 1 : 0,
           promotion_channels: promote ? channels : [],
           promotion_email: promote && channels.indexOf('email') >= 0 ? 'active' : 'no_contact',
           promotion_whatsapp: promote && channels.indexOf('whatsapp') >= 0 ? 'active' : 'no_contact',
@@ -8446,6 +8459,8 @@
           remark: contact.remark || '',
           role_tags: contact.role_tags || [],
           is_primary: Number(contact.is_primary) ? 1 : 0,
+          prefer_personal_contact: Number(contact.prefer_personal_contact) ? 1 : 0,
+          avoid_group_contact: Number(contact.avoid_group_contact) ? 1 : 0,
           promotion_channels: promote ? (contact.promotion_channels || []) : [],
           promotion_email: promote && (contact.promotion_channels || []).indexOf('email') >= 0 ? 'active' : 'no_contact',
           promotion_whatsapp: promote && (contact.promotion_channels || []).indexOf('whatsapp') >= 0 ? 'active' : 'no_contact',

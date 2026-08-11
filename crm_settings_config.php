@@ -93,6 +93,22 @@ function crm_sync_country_region_presets(): void
         ->execute(['crm_country_region_preset_version', 'CRM 全球国家 / 地区预设版本', 'system', json_encode(['version' => $version, 'count' => 249], JSON_UNESCAPED_UNICODE)]);
 }
 
+function crm_sync_promotion_channel_personal_labels(): void
+{
+    $items = crm_dictionary_item_defaults()['promotion_channel'] ?? [];
+    if (!$items) return;
+    $stmt = db()->prepare('INSERT INTO crm_dictionary_items (type_key, item_key, name_cn, name_en, short_name, color, icon, description, extra_config_json, is_default, is_enabled, sort_order, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE name_cn=VALUES(name_cn), name_en=VALUES(name_en), short_name=VALUES(short_name), color=VALUES(color), icon=VALUES(icon), extra_config_json=VALUES(extra_config_json), is_default=VALUES(is_default), sort_order=VALUES(sort_order), updated_at=NOW()');
+    $sort = 10;
+    foreach ($items as $item) {
+        if (!in_array((string)$item[0], ['whatsapp', 'wechat', 'wechat_group', 'whatsapp_group'], true)) {
+            $sort += 10;
+            continue;
+        }
+        $stmt->execute(['promotion_channel', $item[0], $item[1], $item[2], $item[3], $item[4], $item[5], '', json_encode($item[6], JSON_UNESCAPED_UNICODE), $item[7], $sort]);
+        $sort += 10;
+    }
+}
+
 function crm_settings_schema_ready(): bool
 {
     static $ready = null;
@@ -125,6 +141,7 @@ function crm_settings_ensure_tables(): void
     if ($done) return;
     if (crm_settings_schema_ready()) {
         crm_sync_country_region_presets();
+        crm_sync_promotion_channel_personal_labels();
         $done = true;
         return;
     }
@@ -299,8 +316,8 @@ function crm_dictionary_item_defaults(): array
         ],
         'promotion_channel' => [
             ['email','邮件','Email','邮件','#2563eb','@',['bulk'=>1,'auto'=>1,'need_email'=>1,'stats'=>1,'contact_level'=>1,'customer_level'=>1],1],
-            ['whatsapp','WhatsApp','WhatsApp','WA','#059669','WA',['bulk'=>1,'auto'=>0,'need_whatsapp'=>1,'stats'=>1,'contact_level'=>1,'customer_level'=>1],0],
-            ['wechat','微信','WeChat','微信','#16a34a','WX',['bulk'=>0,'auto'=>0,'need_phone'=>0,'stats'=>1,'contact_level'=>1,'customer_level'=>1],0],
+            ['whatsapp','WhatsApp个人','WhatsApp Personal','WA个人','#059669','WA',['bulk'=>1,'auto'=>0,'need_whatsapp'=>1,'stats'=>1,'contact_level'=>1,'customer_level'=>1,'personal_channel'=>1],0],
+            ['wechat','微信个人','WeChat Personal','微信个人','#16a34a','WX',['bulk'=>0,'auto'=>0,'need_wechat'=>1,'stats'=>1,'contact_level'=>1,'customer_level'=>1,'personal_channel'=>1],0],
             ['wechat_group','微信群','WeChat Group','微信群','#15803d','群',['bulk'=>1,'auto'=>0,'manual_only'=>1,'stats'=>1,'contact_level'=>0,'customer_level'=>1],0],
             ['whatsapp_group','WhatsApp群','WhatsApp Group','WA群','#047857','WG',['bulk'=>1,'auto'=>0,'manual_only'=>1,'stats'=>1,'contact_level'=>0,'customer_level'=>1],0],
             ['phone','电话','Phone','电话','#f59e0b','☎',['bulk'=>0,'auto'=>0,'need_phone'=>1,'stats'=>1,'contact_level'=>1,'customer_level'=>1],0],

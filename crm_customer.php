@@ -88,6 +88,8 @@ function crm_customer_ensure_tables(): void
         language VARCHAR(80) NULL,
         is_primary TINYINT(1) NOT NULL DEFAULT 0,
         is_left TINYINT(1) NOT NULL DEFAULT 0,
+        prefer_personal_contact TINYINT(1) NOT NULL DEFAULT 0,
+        avoid_group_contact TINYINT(1) NOT NULL DEFAULT 0,
         remark TEXT NULL,
         created_by INT UNSIGNED NULL,
         updated_by INT UNSIGNED NULL,
@@ -121,6 +123,8 @@ function crm_customer_ensure_tables(): void
         ['crm_contacts', 'do_not_contact', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['crm_contacts', 'unsubscribe_email', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['crm_contacts', 'no_whatsapp', 'TINYINT(1) NOT NULL DEFAULT 0'],
+        ['crm_contacts', 'prefer_personal_contact', 'TINYINT(1) NOT NULL DEFAULT 0'],
+        ['crm_contacts', 'avoid_group_contact', 'TINYINT(1) NOT NULL DEFAULT 0'],
     ] as $columnDef) {
         crm_add_column_safe($columnDef[0], $columnDef[1], $columnDef[2]);
     }
@@ -1635,11 +1639,11 @@ function crm_customer_list(array $input): array
         [$countrySearchSql, $countrySearchParams] = crm_customer_country_search_sql(crm_customer_search_terms($q), 'c');
         [$regionSearchSql, $regionSearchParams] = crm_customer_region_search_sql($q, 'c');
         $locationSql = $regionSearchSql !== '' ? '(' . $regionSearchSql . ' OR ' . $countrySearchSql . ')' : $countrySearchSql;
-        $where[] = '(c.customer_code LIKE ? OR c.customer_name LIKE ? OR c.customer_name_en LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.whatsapp LIKE ? OR c.website LIKE ? OR c.remark LIKE ? OR ' . $locationSql . ' OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND (ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ? OR ct.whatsapp LIKE ?)))';
-        for ($i = 0; $i < 8; $i++) $params[] = '%' . $q . '%';
+        $where[] = '(c.customer_code LIKE ? OR c.customer_name LIKE ? OR c.customer_name_en LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.whatsapp LIKE ? OR c.wechat LIKE ? OR c.website LIKE ? OR c.remark LIKE ? OR ' . $locationSql . ' OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND (ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ? OR ct.whatsapp LIKE ? OR ct.wechat LIKE ?)))';
+        for ($i = 0; $i < 9; $i++) $params[] = '%' . $q . '%';
         foreach ($regionSearchParams as $value) $params[] = $value;
         foreach ($countrySearchParams as $value) $params[] = $value;
-        for ($i = 0; $i < 4; $i++) $params[] = '%' . $q . '%';
+        for ($i = 0; $i < 5; $i++) $params[] = '%' . $q . '%';
     }
     foreach (['level','status'] as $field) {
         if (($input[$field] ?? '') !== '') {
@@ -1763,6 +1767,14 @@ function crm_customer_list(array $input): array
         $where[] = "((c.email IS NOT NULL AND c.email <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.email IS NOT NULL AND ct.email <> ''))";
     } elseif ($quick === 'has_material' || $quick === '有资料' || $quick === '有资料包') {
         $where[] = 'EXISTS (SELECT 1 FROM crm_customer_files cf WHERE cf.customer_id = c.id AND cf.deleted_at IS NULL)';
+    } elseif ($quick === 'has_wechat_personal' || $quick === '微信个人') {
+        $where[] = "((c.wechat IS NOT NULL AND c.wechat <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.wechat IS NOT NULL AND ct.wechat <> ''))";
+    } elseif ($quick === 'has_whatsapp_personal' || $quick === 'WhatsApp个人') {
+        $where[] = "((c.whatsapp IS NOT NULL AND c.whatsapp <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.whatsapp IS NOT NULL AND ct.whatsapp <> ''))";
+    } elseif ($quick === 'prefer_personal_contact' || $quick === '只接受个人') {
+        $where[] = "EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.prefer_personal_contact = 1)";
+    } elseif ($quick === 'avoid_group_contact' || $quick === '不喜欢群') {
+        $where[] = "EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.avoid_group_contact = 1)";
     } elseif ($quick === 'has_wechat_group' || $quick === '微信群') {
         $where[] = "EXISTS (SELECT 1 FROM crm_customer_chat_groups cg WHERE cg.customer_id = c.id AND cg.deleted_at IS NULL AND cg.status = 'active' AND cg.group_platform = 'wechat_group')";
     } elseif ($quick === 'has_whatsapp_group' || $quick === 'WhatsApp群') {
@@ -5427,7 +5439,10 @@ function crm_contact_validate(array $input, int $customerId, int $ignoreId = 0):
         'name' => $name, 'name_en' => trim((string)($input['name_en'] ?? '')), 'position' => trim((string)($input['position'] ?? '')), 'department' => trim((string)($input['department'] ?? '')),
         'email' => $email, 'phone' => trim((string)($input['phone'] ?? '')), 'whatsapp' => trim((string)($input['whatsapp'] ?? '')), 'wechat' => trim((string)($input['wechat'] ?? '')),
         'linkedin' => trim((string)($input['linkedin'] ?? '')), 'gender' => trim((string)($input['gender'] ?? '')), 'birthday' => $birthday,
-        'language' => trim((string)($input['language'] ?? '')), 'is_primary' => !empty($input['is_primary']) ? 1 : 0, 'is_left' => !empty($input['is_left']) ? 1 : 0, 'remark' => trim((string)($input['remark'] ?? '')),
+        'language' => trim((string)($input['language'] ?? '')), 'is_primary' => !empty($input['is_primary']) ? 1 : 0, 'is_left' => !empty($input['is_left']) ? 1 : 0,
+        'prefer_personal_contact' => !empty($input['prefer_personal_contact']) ? 1 : 0,
+        'avoid_group_contact' => !empty($input['avoid_group_contact']) ? 1 : 0,
+        'remark' => trim((string)($input['remark'] ?? '')),
         'graph' => ['role_tags' => $roleTags, 'source_tags' => $sourceTags, 'promotions' => $promotions],
     ];
 }
@@ -5441,7 +5456,7 @@ function crm_contact_key_tags(int $contactId, string $table, string $column): ar
 
 function crm_contact_promotions(int $contactId): array
 {
-    $stmt = db()->prepare('SELECT * FROM crm_contact_promotions WHERE contact_id = ? ORDER BY FIELD(channel, "email","whatsapp","linkedin")');
+    $stmt = db()->prepare('SELECT * FROM crm_contact_promotions WHERE contact_id = ? ORDER BY FIELD(channel, "email","whatsapp","wechat","phone","linkedin","whatsapp_group","wechat_group","offline","edm","google_ads","social","referral","agent_dev","visit","manual_sales","automation","no_promotion","maintenance_only"), id');
     $stmt->execute([$contactId]);
     return $stmt->fetchAll();
 }
@@ -5494,8 +5509,8 @@ function crm_contact_create(array $input, bool $skipPermission = false): array
     crm_customer_get($customerId);
     $data = crm_contact_validate($input, $customerId);
     if ($data['is_primary']) db()->prepare('UPDATE crm_contacts SET is_primary = 0 WHERE customer_id = ?')->execute([$customerId]);
-    db()->prepare('INSERT INTO crm_contacts (customer_id, name, name_en, position, department, email, phone, whatsapp, wechat, linkedin, gender, birthday, language, is_primary, is_left, remark, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
-        ->execute([$customerId, $data['name'], $data['name_en'], $data['position'], $data['department'], $data['email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['gender'], $data['birthday'], $data['language'], $data['is_primary'], $data['is_left'], $data['remark'], current_user()['id'], current_user()['id']]);
+    db()->prepare('INSERT INTO crm_contacts (customer_id, name, name_en, position, department, email, phone, whatsapp, wechat, linkedin, gender, birthday, language, is_primary, is_left, prefer_personal_contact, avoid_group_contact, remark, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())')
+        ->execute([$customerId, $data['name'], $data['name_en'], $data['position'], $data['department'], $data['email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['gender'], $data['birthday'], $data['language'], $data['is_primary'], $data['is_left'], $data['prefer_personal_contact'], $data['avoid_group_contact'], $data['remark'], current_user()['id'], current_user()['id']]);
     $id = (int)db()->lastInsertId();
     crm_contact_apply_graph($id, $data['graph']);
     crm_customer_log('contact_create', 'contact', $id, $customerId, null, $data, '新建联系人');
@@ -5513,8 +5528,8 @@ function crm_contact_update(int $id, array $input, bool $skipPermission = false)
     crm_customer_get((int)$before['customer_id']);
     $data = crm_contact_validate($input, (int)$before['customer_id'], $id);
     if ($data['is_primary']) db()->prepare('UPDATE crm_contacts SET is_primary = 0 WHERE customer_id = ? AND id <> ?')->execute([$before['customer_id'], $id]);
-    db()->prepare('UPDATE crm_contacts SET name=?, name_en=?, position=?, department=?, email=?, phone=?, whatsapp=?, wechat=?, linkedin=?, gender=?, birthday=?, language=?, is_primary=?, is_left=?, remark=?, updated_by=?, updated_at=NOW() WHERE id=?')
-        ->execute([$data['name'], $data['name_en'], $data['position'], $data['department'], $data['email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['gender'], $data['birthday'], $data['language'], $data['is_primary'], $data['is_left'], $data['remark'], current_user()['id'], $id]);
+    db()->prepare('UPDATE crm_contacts SET name=?, name_en=?, position=?, department=?, email=?, phone=?, whatsapp=?, wechat=?, linkedin=?, gender=?, birthday=?, language=?, is_primary=?, is_left=?, prefer_personal_contact=?, avoid_group_contact=?, remark=?, updated_by=?, updated_at=NOW() WHERE id=?')
+        ->execute([$data['name'], $data['name_en'], $data['position'], $data['department'], $data['email'], $data['phone'], $data['whatsapp'], $data['wechat'], $data['linkedin'], $data['gender'], $data['birthday'], $data['language'], $data['is_primary'], $data['is_left'], $data['prefer_personal_contact'], $data['avoid_group_contact'], $data['remark'], current_user()['id'], $id]);
     crm_contact_apply_graph($id, $data['graph']);
     crm_customer_log('contact_update', 'contact', $id, (int)$before['customer_id'], $before, $data, '编辑联系人');
     crm_customer_timeline_add((int)$before['customer_id'], 'contact_update', '编辑联系人', $data['name'], 'contact', (string)$id);

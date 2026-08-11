@@ -2687,3 +2687,13 @@
 - 后端：`quote_api.php` 从命名中心映射产品时，缺失 MOQ 不再合成 `200`，保持为空白。
 - 回归保护：新增 `tests/quote_moq_blank_contract.php`，锁定报价/产品 MOQ 默认空白、无 200 兜底、价格策略不覆盖空 MOQ、预览不回填产品 MOQ。
 - 检查：本地抽取 `quotation.php` 内 5 段脚本逐段 `node -c` 通过；`git diff --check` 通过；服务器复检和部署后以最终记录为准。
+
+## 2026-08-11：CRM 联系人区分个人微信 / WhatsApp 与客户群
+
+- 需求：CRM 客户中心原有 `微信群`、`WhatsApp群` 不能动，但联系人还需要能标记个人微信、个人 WhatsApp；有些客户不喜欢进群，只能走个人联系。
+- 修复：保留原有 `wechat_group` / `whatsapp_group` 群渠道和群快捷筛选；将既有联系人 `wechat` / `whatsapp` 明确显示为 `微信个人` / `WhatsApp个人`，并新增客户列表快捷筛选 `微信个人`、`WhatsApp个人`。
+- 后端：`crm_contacts` 新增 `prefer_personal_contact`、`avoid_group_contact` 两个轻量偏好字段；联系人新增、编辑、客户编辑页内嵌联系人保存都会写入这两个字段；客户列表搜索同时支持客户/联系人微信字段。
+- 字典：`promotion_channel` 默认标签更新为 `微信个人` / `WhatsApp个人`，新增轻量同步函数只修正这几个渠道标签和群渠道，不重置用户字典配置。
+- 前端：联系人编辑和客户编辑内嵌联系人编辑都显示 `WhatsApp个人`、`微信个人`、`只接受个人联系`、`不喜欢群`；联系人卡片会展示个人联系方式和偏好，群渠道标签仍显示 `微信群` / `WhatsApp群`。
+- 回归保护：新增 `tests/crm_contact_personal_channels_contract.php`，锁定个人渠道新增、群渠道保留、联系人偏好字段和保存链路。
+- 检查：本地 bundled Node `node --check assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_customer.php`、`php -l crm_settings_config.php`、`php -l crm.php` 和 `tests/crm_contact_personal_channels_contract.php` 通过，未覆盖线上代码。
