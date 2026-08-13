@@ -7,7 +7,7 @@
 - 状态保护：红色只用于进行中的官网询盘；已完成、已取消任务继续使用原灰色状态样式，日期、负责人和操作按钮颜色不变；深色模式使用更清楚的浅红色。
 - 新增 `tests/website_inquiry_dispatch_red_contract.php`，锁定来源识别、桌面/手机红色样式和状态边界。
 - 检查：本地 `git diff --check` 通过；使用 Codex bundled Node 抽取 `dispatch_next.php` 内嵌脚本，JavaScript 语法通过；候选文件复制到服务器临时目录后，`dispatch_next.php`、新增契约测试 PHP 语法及契约测试均通过。
-- 发布：本节代码与上下文提交推送 GitHub 后，将以同一提交快进服务器并复检；最终三方版本以本节对应 HEAD 为准。
+- 发布：功能提交 `2e7ac46fbcd2396a13649fea2c5f1b4888e19925` 已推送 GitHub `main` 并从 GitHub 快进正式服务器；服务器再次执行 `dispatch_next.php`、契约测试 PHP 语法和契约测试，全部通过。部署前文件备份为 `/tmp/dispatch_next.php.before_2e7ac46_20260813`；最终三方版本以本节上下文提交后的 HEAD 为准。
 
 ## 本次：官网询盘派工列表补齐客户、邮箱与留言
 
