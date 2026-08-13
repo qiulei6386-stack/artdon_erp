@@ -2728,3 +2728,12 @@
 - 前端：联系人编辑和客户编辑内嵌联系人编辑都显示 `WhatsApp个人`、`微信个人`、`只接受个人联系`、`不喜欢群`；联系人卡片会展示个人联系方式和偏好，群渠道标签仍显示 `微信群` / `WhatsApp群`。
 - 回归保护：新增 `tests/crm_contact_personal_channels_contract.php`，锁定个人渠道新增、群渠道保留、联系人偏好字段和保存链路。
 - 检查：本地 bundled Node `node --check assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_customer.php`、`php -l crm_settings_config.php`、`php -l crm.php` 和 `tests/crm_contact_personal_channels_contract.php` 通过，未覆盖线上代码。
+
+## 2026-08-13：型号命名系统嵌入方形开孔拆分为长宽
+
+- 问题：型号命名弹窗在“嵌入方形”尺寸类型下仍只提供一个 `开孔` 字段；方形/矩形嵌入式产品实际需要记录开孔长和开孔宽，只有圆形才应使用单个开孔直径。
+- 修复：`naming_models` 新增 `dim_opening_length`、`dim_opening_width`；编辑弹窗在 `嵌入方形` 时显示 `开孔长 / 开孔宽`，隐藏单个开孔；在 `嵌入圆形` 时继续显示 `开孔直径`。保存嵌入方形型号时强制要求两个开孔值，并将兼容字段 `dim_opening` 保存为 `长x宽`，方便旧接口继续读取。
+- 兼容：列表尺寸、派工说明、官网同步解析、BOM 命名链接、Datasheet 命名同步、报价产品搜索、报价预览、报价 PDF/Excel 的 Cut out 都优先识别两字段；方形 `100×80` 不再被格式化为 `Φ100×80mm`，圆形单值仍显示 `Φ100mm`。
+- 回归保护：新增 `tests/naming_embedded_square_cutout_contract.php`，锁定嵌入方形双开孔字段、弹窗显示/隐藏、保存校验、报价/Datasheet/BOM 输出兼容。
+- 检查：本地 `git diff --check` 通过；本地环境无 PHP/Node，已复制修改文件到服务器 `/tmp/artdon_naming_cutout_check` 临时目录执行 `php -l` 检查 `naming.php`、`quote_api.php`、`quotation.php`、`crm_quote_pdf.php`、`crm_quote_excel.php`、`datasheet_lib.php`、`bom_naming_link_api.php` 和新增契约测试均通过；临时目录执行 `php tests/naming_embedded_square_cutout_contract.php` 通过。
+- 发布：本节提交推送 GitHub 后同步服务器，三方版本以最终 Git HEAD 为准。

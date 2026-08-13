@@ -454,12 +454,15 @@ function ds_type_name(array $row): string { return ds_s($row['item_name']??($row
 function ds_series(array $row): string { foreach(array('web_series','series_name','product_name','website_display_name','series') as $k){ if(isset($row[$k]) && ds_s($row[$k])!=='') return ds_s($row[$k]); } return '未分系列'; }
 function ds_model_prefix(string $modelNo): string { $modelNo=strtoupper(trim($modelNo)); if(preg_match('/^([A-Z0-9]{1,10})[.\-]/',$modelNo,$m)) return $m[1]; if(preg_match('/^([0-9]{2})/',$modelNo,$m)) return $m[1]; return ''; }
 function ds_mm($v): string { $v=ds_s($v); if($v==='') return ''; $v=preg_replace('/\s*mm$/i','',$v); if(preg_match('/^\d+(?:\.\d+)?$/',$v)){ $v=preg_replace('/^0+(?=\d)/','',$v); if($v==='') $v='0'; if(strpos($v,'.')!==false) $v=rtrim(rtrim($v,'0'),'.'); } return $v.'mm'; }
+function ds_dim_pair_from_text(string $v): array { $v=ds_s($v); if($v==='') return array('',''); $v=str_replace(array('×','＊','X'),'x',$v); $v=preg_replace('/\s*mm\s*$/iu','',$v); $parts=preg_split('/\s*[x*\/]\s*/u',$v); return count($parts)>=2 ? array(ds_s($parts[0]),ds_s($parts[1])) : array('',''); }
+function ds_mm_pair($a,$b): string { $a=ds_s($a); $b=ds_s($b); if($a===''||$b==='') return ''; $a=preg_replace('/\s*mm$/i','',ds_mm($a)); $b=preg_replace('/\s*mm$/i','',ds_mm($b)); return $a.'×'.$b.'mm'; }
 function ds_dim_text(array $r): string {
     $model=ds_s($r['model_no']??''); $size=ds_s($r['size_code']??''); if($size==='' && strpos($model,'.')!==false){ $digits=preg_replace('/\D+/','',explode('.',$model,2)[1]??''); if(strlen($digits)>=3) $size=substr($digits,0,3); }
     $cat=ds_s($r['category']??'').' '.ds_s($r['item_name']??'').' '.ds_s($r['lamp_type']??''); $isEmbed=(bool)preg_match('/嵌入|有边|无边|recess/i',$cat);
-    $open=ds_s($r['dim_opening']??''); $od=ds_s($r['dim_outer_d']??''); $l=ds_s($r['dim_length']??''); $w=ds_s($r['dim_width']??''); $h=ds_s($r['dim_height']??'');
-    if($isEmbed && $open==='' && $size!=='') $open=$size;
-    $parts=array(); if($isEmbed && $open!=='') $parts[]='开孔 '.ds_mm($open); if($od!=='') $parts[]='直径 '.ds_mm($od); if($l!=='') $parts[]='长 '.ds_mm($l); if($w!=='') $parts[]='宽 '.ds_mm($w); if($h!=='') $parts[]='高 '.ds_mm($h);
+    $open=ds_s($r['dim_opening']??''); $openL=ds_s($r['dim_opening_length']??''); $openW=ds_s($r['dim_opening_width']??''); if(($openL===''||$openW==='')&&$open!==''){ list($poL,$poW)=ds_dim_pair_from_text($open); if($openL==='')$openL=$poL; if($openW==='')$openW=$poW; } $od=ds_s($r['dim_outer_d']??''); $l=ds_s($r['dim_length']??''); $w=ds_s($r['dim_width']??''); $h=ds_s($r['dim_height']??'');
+    $isEmbeddedSquare=strtolower(ds_s($r['dimension_type']??''))==='embedded_square';
+    if($isEmbed && $open==='' && $size!=='' && !$isEmbeddedSquare) $open=$size;
+    $parts=array(); if($isEmbed && $isEmbeddedSquare && $openL!=='' && $openW!=='') $parts[]='开孔 '.ds_mm_pair($openL,$openW); elseif($isEmbed && $open!=='') $parts[]='开孔 '.ds_mm($open); if($od!=='') $parts[]='直径 '.ds_mm($od); if($l!=='') $parts[]='长 '.ds_mm($l); if($w!=='') $parts[]='宽 '.ds_mm($w); if($h!=='') $parts[]='高 '.ds_mm($h);
     if($parts) return implode(' / ',$parts);
     foreach(array('web_dimensions','dimensions','size_text','dimension') as $k){ if(isset($r[$k]) && ds_s($r[$k])!=='') return ds_s($r[$k]); }
     return $size!=='' ? '尺寸 '.ds_mm($size) : '尺寸未填';
@@ -467,7 +470,7 @@ function ds_dim_text(array $r): string {
 function ds_source_url(array $row): string { $u=ds_s($row['source_url']??''); if($u!=='') return ds_asset_url($u); $slug=ds_s($row['web_slug']??''); return $slug!=='' ? ds_website_base().'/product.php?slug='.rawurlencode($slug) : ''; }
 function ds_naming_cols_select(): array {
     if(!ds_table_exists('naming_models')) return array();
-    $wanted=array('id','model_no','rule_id','category','item_name','lamp_type','prefix','size_code','serial_no','product_name','series_name','customer','status','remark','image_path','drawing_path','dimension_type','dim_opening','dim_outer_d','dim_length','dim_width','dim_height','opening','cutout','diameter','diameter_mm','length','length_mm','width','width_mm','height','height_mm','power','power_text','cct','cri','color','finish','beam_angle','source_system','source_id','source_url','source_synced_at','source_image_url','source_drawing_url','web_series','web_size_name','web_dimensions','web_image_url','web_dimension_url','web_drawing_url','web_size_image_url','web_slug','website_variant_id','created_at','updated_at','created_by','updated_by');
+    $wanted=array('id','model_no','rule_id','category','item_name','lamp_type','prefix','size_code','serial_no','product_name','series_name','customer','status','remark','image_path','drawing_path','dimension_type','dim_opening','dim_opening_length','dim_opening_width','dim_outer_d','dim_length','dim_width','dim_height','opening','cutout','diameter','diameter_mm','length','length_mm','width','width_mm','height','height_mm','power','power_text','cct','cri','color','finish','beam_angle','source_system','source_id','source_url','source_synced_at','source_image_url','source_drawing_url','web_series','web_size_name','web_dimensions','web_image_url','web_dimension_url','web_drawing_url','web_size_image_url','web_slug','website_variant_id','created_at','updated_at','created_by','updated_by');
     $cols=ds_cols('naming_models'); $out=array(); foreach($wanted as $c){ if(in_array($c,$cols,true)) $out[]=$c; } if(!$out) $out=$cols; return $out;
 }
 function ds_naming_row(int $id=0,string $modelNo=''): ?array { if(!ds_table_exists('naming_models')) return null; $cols=ds_naming_cols_select(); if(!$cols) return null; if($id>0){ $st=ds_db()->prepare('SELECT '.implode(',',array_map('ds_qid',$cols)).' FROM naming_models WHERE id=? LIMIT 1'); $st->execute(array($id)); } else { $st=ds_db()->prepare('SELECT '.implode(',',array_map('ds_qid',$cols)).' FROM naming_models WHERE model_no=? LIMIT 1'); $st->execute(array($modelNo)); } $r=$st->fetch(); return $r ?: null; }
@@ -664,7 +667,8 @@ function ds_apply_naming_fields(array &$p, array $row, string $image='', string 
     $p['product_series']=$p['series']??ds_series($row);
     $p['product_image_url']=$image;
     $p['drawing_image_url']=$drawing;
-    $p['cutout']=ds_pick_first($row,array('dim_opening','opening','cutout','cutout_size','opening_size'));
+    $openL=ds_s($row['dim_opening_length']??''); $openW=ds_s($row['dim_opening_width']??'');
+    $p['cutout']=($openL!==''&&$openW!=='') ? ($openL.'x'.$openW) : ds_pick_first($row,array('dim_opening','opening','cutout','cutout_size','opening_size'));
     $p['diameter']=ds_pick_first($row,array('dim_outer_d','diameter','diameter_mm','outer_d','outer_diameter'));
     $p['length']=ds_pick_first($row,array('dim_length','length','length_mm'));
     $p['width']=ds_pick_first($row,array('dim_width','width','width_mm'));

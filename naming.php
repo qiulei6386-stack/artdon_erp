@@ -42,7 +42,7 @@ if (is_file($__artdon_sso_core)) {
     }
 }
 
-const NAMING_VERSION = '3.0.8.33';
+const NAMING_VERSION = '3.0.8.34';
 const NM_UPLOAD_LIMIT = 512000; // 500KB
 const NM_UPLOAD_DIR = __DIR__ . '/uploads/naming';
 const NM_BACKUP_DIR = __DIR__ . '/uploads/naming_backups';
@@ -165,6 +165,8 @@ function nm_ensure_tables(PDO $pdo): void {
     foreach (array(
         'dimension_type'=>"`dimension_type` VARCHAR(30) NOT NULL DEFAULT ''",
         'dim_opening'=>"`dim_opening` VARCHAR(60) NOT NULL DEFAULT ''",
+        'dim_opening_length'=>"`dim_opening_length` VARCHAR(60) NOT NULL DEFAULT ''",
+        'dim_opening_width'=>"`dim_opening_width` VARCHAR(60) NOT NULL DEFAULT ''",
         'dim_outer_d'=>"`dim_outer_d` VARCHAR(60) NOT NULL DEFAULT ''",
         'dim_length'=>"`dim_length` VARCHAR(60) NOT NULL DEFAULT ''",
         'dim_width'=>"`dim_width` VARCHAR(60) NOT NULL DEFAULT ''",
@@ -881,6 +883,32 @@ function nm_mm($v): string {
     }
     return $v.'mm';
 }
+function nm_dim_pair_from_text(string $v): array {
+    $v = nm_s($v);
+    if ($v === '') return array('', '');
+    $v = str_replace(array('×','＊','X'), 'x', $v);
+    $v = preg_replace('/\s*mm\s*$/iu', '', $v);
+    $parts = preg_split('/\s*[x*\/]\s*/u', $v);
+    if (count($parts) >= 2) return array(nm_s($parts[0]), nm_s($parts[1]));
+    return array('', '');
+}
+function nm_mm_pair($a, $b): string {
+    $a = nm_s($a);
+    $b = nm_s($b);
+    if ($a === '' || $b === '') return '';
+    $a = preg_replace('/\s*mm$/i', '', nm_mm($a));
+    $b = preg_replace('/\s*mm$/i', '', nm_mm($b));
+    return $a.'×'.$b.'mm';
+}
+function nm_is_embedded_square_dim(string $type): bool {
+    $type = strtolower(trim($type));
+    return in_array($type, array('embedded_square','square_opening','rect_opening','rectangle_opening'), true);
+}
+function nm_compose_opening_pair(string $len, string $wid): string {
+    $len = nm_s($len, 60);
+    $wid = nm_s($wid, 60);
+    return ($len !== '' && $wid !== '') ? ($len.'x'.$wid) : '';
+}
 function nm_dim_text(array $r): string {
     // V3.0.8.28：尺寸显示去掉前导 0，开孔 035mm 统一显示为开孔 35mm。
     // 这样官网同步来的嵌入式型号也能显示“开孔 xxmm / 直径 xxmm / 高 xxmm”。
@@ -896,6 +924,13 @@ function nm_dim_text(array $r): string {
     $rule = nm_infer_rule_from_row($r);
     $isEmbedded = $rule ? nm_rule_is_embedded($rule) : (bool)preg_match('/嵌入|有边|无边|recess/i', (nm_s($r['category'] ?? '').' '.nm_s($r['item_name'] ?? '').' '.nm_s($r['lamp_type'] ?? '').' '.nm_s($r['product_name'] ?? '').' '.nm_s($r['web_series'] ?? '')));
     $opening = nm_s($r['dim_opening'] ?? '');
+    $openingLength = nm_s($r['dim_opening_length'] ?? '');
+    $openingWidth = nm_s($r['dim_opening_width'] ?? '');
+    if (($openingLength === '' || $openingWidth === '') && $opening !== '') {
+        list($parsedOpenLength, $parsedOpenWidth) = nm_dim_pair_from_text($opening);
+        if ($openingLength === '') $openingLength = $parsedOpenLength;
+        if ($openingWidth === '') $openingWidth = $parsedOpenWidth;
+    }
     $outer = nm_s($r['dim_outer_d'] ?? '');
     $length = nm_s($r['dim_length'] ?? '');
     $width = nm_s($r['dim_width'] ?? '');
@@ -904,14 +939,18 @@ function nm_dim_text(array $r): string {
     if ($opening==='' && $outer==='' && $length==='' && $width==='' && $height==='') {
         $parsed = nm_website_parse_dimensions($r, $rule ?: array(), $sizeCode);
         $opening = nm_s($parsed['dim_opening'] ?? '');
+        $openingLength = nm_s($parsed['dim_opening_length'] ?? '');
+        $openingWidth = nm_s($parsed['dim_opening_width'] ?? '');
         $outer = nm_s($parsed['dim_outer_d'] ?? '');
         $length = nm_s($parsed['dim_length'] ?? '');
         $width = nm_s($parsed['dim_width'] ?? '');
         $height = nm_s($parsed['dim_height'] ?? '');
     }
-    if ($isEmbedded && $opening === '' && $sizeCode !== '') $opening = $sizeCode;
+    $isEmbeddedSquare = nm_is_embedded_square_dim(nm_s($r['dimension_type'] ?? ''));
+    if ($isEmbedded && $opening === '' && $sizeCode !== '' && !$isEmbeddedSquare) $opening = $sizeCode;
     $parts = array();
-    if ($isEmbedded && $opening !== '') $parts[] = '开孔 '.nm_mm($opening);
+    if ($isEmbedded && $isEmbeddedSquare && $openingLength !== '' && $openingWidth !== '') $parts[] = '开孔 '.nm_mm_pair($openingLength, $openingWidth);
+    elseif ($isEmbedded && $opening !== '') $parts[] = '开孔 '.nm_mm($opening);
     if ($outer !== '') $parts[] = '直径 '.nm_mm($outer);
     if ($length !== '') $parts[] = '长 '.nm_mm($length);
     if ($width !== '') $parts[] = '宽 '.nm_mm($width);
@@ -1679,7 +1718,7 @@ function nm_website_rule_by_prefix(PDO $pdo, string $prefix): array {
 }
 function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode): array {
     $txt = nm_any($row, array('web_dimensions','dimensions','dimension','dimension_text','size_text','size','spec','规格','尺寸'));
-    $out = array('dimension_type'=>'','dim_opening'=>'','dim_outer_d'=>'','dim_length'=>'','dim_width'=>'','dim_height'=>'');
+    $out = array('dimension_type'=>'','dim_opening'=>'','dim_opening_length'=>'','dim_opening_width'=>'','dim_outer_d'=>'','dim_length'=>'','dim_width'=>'','dim_height'=>'');
     $out['dim_opening'] = nm_website_num(nm_any($row, array('dim_opening','opening','opening_size','opening_mm','cutout','cutout_size','cutout_mm','cut_out','cut_out_size','hole','hole_size','hole_diameter','aperture','aperture_size','aperture_mm','cut_size','开孔','孔径')));
     $out['dim_outer_d'] = nm_website_num(nm_any($row, array('dim_outer_d','diameter','diameter_mm','outer_d','outer_diameter','outer_dia','outer_d_mm','dia','d','直径','外径')));
     $out['dim_length'] = nm_website_num(nm_any($row, array('dim_length','length','length_mm','len','l','长','长度')));
@@ -1698,7 +1737,12 @@ function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode):
     $isEmbedded = $rule ? nm_rule_is_embedded($rule) : false;
     if ($isEmbedded) {
         if ($out['dim_opening'] === '' && $sizeCode !== '') $out['dim_opening'] = $sizeCode;
-        if ($out['dim_length'] !== '' && $out['dim_width'] !== '') { $out['dimension_type'] = 'embedded_square'; $out['dim_outer_d']=''; }
+        if ($out['dim_length'] !== '' && $out['dim_width'] !== '') {
+            $out['dimension_type'] = 'embedded_square';
+            $out['dim_outer_d']='';
+            list($openL,$openW)=nm_dim_pair_from_text($out['dim_opening']);
+            if($openL!=='' && $openW!==''){ $out['dim_opening_length']=$openL; $out['dim_opening_width']=$openW; }
+        }
         else { $out['dimension_type'] = 'embedded_round'; $out['dim_length']=''; $out['dim_width']=''; }
     } else {
         $out['dim_opening']='';
@@ -2455,17 +2499,30 @@ function nm_api(): void {
             $bomReadyNote = nm_s($_POST['bom_ready_note'] ?? '', 255);
             $dimType = nm_s($_POST['dimension_type'] ?? '', 30);
             $dimOpening = nm_s($_POST['dim_opening'] ?? '', 60);
+            $dimOpeningLength = nm_s($_POST['dim_opening_length'] ?? '', 60);
+            $dimOpeningWidth = nm_s($_POST['dim_opening_width'] ?? '', 60);
+            if (($dimOpeningLength === '' || $dimOpeningWidth === '') && $dimOpening !== '') {
+                list($postOpenL, $postOpenW) = nm_dim_pair_from_text($dimOpening);
+                if ($dimOpeningLength === '') $dimOpeningLength = $postOpenL;
+                if ($dimOpeningWidth === '') $dimOpeningWidth = $postOpenW;
+            }
             $dimOuter = nm_s($_POST['dim_outer_d'] ?? '', 60);
             $dimLength = nm_s($_POST['dim_length'] ?? '', 60);
             $dimWidth = nm_s($_POST['dim_width'] ?? '', 60);
             $dimHeight = nm_s($_POST['dim_height'] ?? '', 60);
             if (nm_rule_is_embedded($r)) {
                 if (!in_array($dimType, array('embedded_round','embedded_square'), true)) $dimType = 'embedded_round';
-                // 嵌入圆形：开孔 + 直径 + 高；嵌入方形：开孔 + 长 + 宽 + 高。
-                if ($dimType === 'embedded_round') { $dimLength = ''; $dimWidth = ''; }
-                if ($dimType === 'embedded_square') { $dimOuter = ''; }
+                // 嵌入圆形：开孔直径 + 外径 + 高；嵌入方形：开孔长 + 开孔宽 + 外部长 + 外部宽 + 高。
+                if ($dimType === 'embedded_round') { $dimLength = ''; $dimWidth = ''; $dimOpeningLength = ''; $dimOpeningWidth = ''; }
+                if ($dimType === 'embedded_square') {
+                    $dimOuter = '';
+                    if ($dimOpeningLength === '' || $dimOpeningWidth === '') throw new RuntimeException('嵌入方形开孔必须填写“开孔长”和“开孔宽”。');
+                    $dimOpening = nm_compose_opening_pair($dimOpeningLength, $dimOpeningWidth);
+                }
             } else {
                 $dimOpening = '';
+                $dimOpeningLength = '';
+                $dimOpeningWidth = '';
                 if (!in_array($dimType, array('diameter','box'), true)) $dimType = 'diameter';
                 // 普通圆形：直径 + 高；普通方形/线性：长 + 宽 + 高。
                 if ($dimType === 'diameter') { $dimLength = ''; $dimWidth = ''; }
@@ -2490,7 +2547,7 @@ function nm_api(): void {
                 $data = array(
                     'model_no'=>$modelNo,'rule_id'=>$ruleId,'category'=>$r['category'],'item_name'=>$r['item_name'],'prefix'=>$r['prefix'],'size_code'=>$size,'serial_no'=>$serial,
                     'product_name'=>$productName,'customer'=>$customer,'status'=>$status,'remark'=>$remark,'image_path'=>$img,'drawing_path'=>$drawing,
-                    'dimension_type'=>$dimType,'dim_opening'=>$dimOpening,'dim_outer_d'=>$dimOuter,'dim_length'=>$dimLength,'dim_width'=>$dimWidth,'dim_height'=>$dimHeight,'bom_template_type'=>$bomTemplateType,'bom_modules_json'=>$bomModulesJson,'bom_allowed'=>$bomAllowed,'bom_unit'=>$bomUnit,'bom_head_count'=>$bomHeadCount,'bom_ready_note'=>$bomReadyNote,'updated_by'=>$user
+                    'dimension_type'=>$dimType,'dim_opening'=>$dimOpening,'dim_opening_length'=>$dimOpeningLength,'dim_opening_width'=>$dimOpeningWidth,'dim_outer_d'=>$dimOuter,'dim_length'=>$dimLength,'dim_width'=>$dimWidth,'dim_height'=>$dimHeight,'bom_template_type'=>$bomTemplateType,'bom_modules_json'=>$bomModulesJson,'bom_allowed'=>$bomAllowed,'bom_unit'=>$bomUnit,'bom_head_count'=>$bomHeadCount,'bom_ready_note'=>$bomReadyNote,'updated_by'=>$user
                 );
                 foreach ($data as $c=>$v) { if (in_array($c,$cols,true)) { $sets[]="`{$c}`=?"; $args[]=$v; } }
                 $args[] = $id;
@@ -2499,7 +2556,7 @@ function nm_api(): void {
                 $data = array(
                     'model_no'=>$modelNo,'rule_id'=>$ruleId,'category'=>$r['category'],'item_name'=>$r['item_name'],'prefix'=>$r['prefix'],'size_code'=>$size,'serial_no'=>$serial,
                     'product_name'=>$productName,'customer'=>$customer,'status'=>$status,'remark'=>$remark,'image_path'=>$img,'drawing_path'=>$drawing,'created_by'=>$user,
-                    'dimension_type'=>$dimType,'dim_opening'=>$dimOpening,'dim_outer_d'=>$dimOuter,'dim_length'=>$dimLength,'dim_width'=>$dimWidth,'dim_height'=>$dimHeight,'bom_template_type'=>$bomTemplateType,'bom_modules_json'=>$bomModulesJson,'bom_allowed'=>$bomAllowed,'bom_unit'=>$bomUnit,'bom_head_count'=>$bomHeadCount,'bom_ready_note'=>$bomReadyNote,'updated_by'=>$user
+                    'dimension_type'=>$dimType,'dim_opening'=>$dimOpening,'dim_opening_length'=>$dimOpeningLength,'dim_opening_width'=>$dimOpeningWidth,'dim_outer_d'=>$dimOuter,'dim_length'=>$dimLength,'dim_width'=>$dimWidth,'dim_height'=>$dimHeight,'bom_template_type'=>$bomTemplateType,'bom_modules_json'=>$bomModulesJson,'bom_allowed'=>$bomAllowed,'bom_unit'=>$bomUnit,'bom_head_count'=>$bomHeadCount,'bom_ready_note'=>$bomReadyNote,'updated_by'=>$user
                 );
                 $insertCols = array(); $marks = array(); $args = array();
                 foreach ($data as $c=>$v) { if (in_array($c,$cols,true)) { $insertCols[]="`{$c}`"; $marks[]='?'; $args[]=$v; } }
@@ -3001,7 +3058,7 @@ body.nm-modal-open .kb-card{z-index:1!important;}
 <?=nm_pager_html($page,$totalPages,'pager-bottom')?>
 </main>
 
-<div class="modal-mask" id="modelModal"><div class="modal"><div class="modal-head"><div><h2 id="modelTitle">新建型号</h2><p style="margin:4px 0 0;color:#64748b;font-size:12px">图片/尺寸图可点击选择、拖入，也可以复制图片后在框内粘贴。</p></div><button type="button" onclick="closeModal('modelModal')">关闭</button></div><div class="modal-body"><div id="modelMsg" class="okmsg"></div><form id="modelForm" enctype="multipart/form-data" class="form-locked"><input type="hidden" name="id" id="m_id"><input type="hidden" name="clone_source_id" id="m_clone_source_id"><input type="hidden" name="inbox_id" id="m_inbox_id"><div class="form-grid"><div class="field span2"><label>命名规则</label><select name="rule_id" id="m_rule" required><option value="">选择规则</option><?php foreach($rules as $r): ?><option value="<?=intval($r['id'])?>" data-size="<?=nm_h($r['default_size'])?>" data-category="<?=nm_h($r['category'])?>" data-item="<?=nm_h($r['item_name'])?>" data-prefix="<?=nm_h($r['prefix'])?>"><?=nm_h($r['category'].' / '.$r['item_name'].' / '.$r['prefix'])?></option><?php endforeach; ?></select><div id="modelRuleHint" class="rule-first-note show">先选择命名规则，再填写尺寸和图片；选择后系统会按已有型号自动流水。</div></div><div class="field model-after-rule"><label>尺寸代码</label><input name="size_code" id="m_size" placeholder="075"></div><div class="field model-after-rule"><label>&nbsp;</label><button type="button" onclick="generateModel()">生成型号</button></div><div class="field span2 model-after-rule"><label>型号</label><input name="model_no" id="m_model" placeholder="选择规则后，填开孔/直径自动生成"><div id="autoModelTip" class="model-step-tip">本地型号按整个型号库已有流水自动生成，例如 D6.04502 后生成 D6.04503。</div></div><div class="field span2 model-after-rule"><label>系列名字 / 产品名称</label><input name="product_name" id="m_product" placeholder="例如 FLEXI RECESSED DOWNLIGHT"></div><div class="field model-after-rule"><label>状态</label><select name="status" id="m_status"><option value="草稿">草稿</option><option value="已确认">已确认</option><option value="已量产">已量产</option><option value="停用">停用</option></select></div><div class="field model-after-rule"><label>客户</label><input name="customer" id="m_customer"></div><div class="field model-after-rule"><label>尺寸类型</label><select name="dimension_type" id="m_dim_type"><option value="embedded_round">嵌入圆形</option><option value="embedded_square">嵌入方形</option><option value="diameter">圆形</option><option value="box">方形/线性</option></select></div><div class="field" id="openingField"><label>开孔</label><input name="dim_opening" id="m_opening"></div><div class="field" id="outerField"><label>直径</label><input name="dim_outer_d" id="m_outer"></div><div class="field" id="lengthField"><label>长</label><input name="dim_length" id="m_length"></div><div class="field" id="widthField"><label>宽</label><input name="dim_width" id="m_width"></div><div class="field" id="heightField"><label>高</label><input name="dim_height" id="m_height"></div><div class="field span4 model-after-rule model-media-block"><label>产品图 / 尺寸图 / 操作日志</label><div class="model-media-log-row"><div class="model-media-left"><div class="upload-paste-grid"><div class="upload-paste" id="imageDrop" tabindex="0" data-input="m_image"><h4>产品图</h4><div class="upload-preview" id="imagePreview">点击 / 拖入 / 粘贴图片</div><p><span class="upload-wysiwyg-tip">所见即所得，保存后按这个方形框居中显示。</span>建议方形图，≤500KB。</p><div class="upload-name" id="imageName">未选择</div><button type="button" class="upload-clear" onclick="clearUpload('m_image',event)">删除产品图</button><input type="hidden" name="clear_image" id="m_clear_image" value="0"><input type="file" name="image_file" id="m_image" accept="image/*" hidden></div><div class="upload-paste" id="drawingDrop" tabindex="0" data-input="m_drawing"><h4>尺寸图</h4><div class="upload-preview" id="drawingPreview">点击 / 拖入 / 粘贴图片</div><p><span class="upload-wysiwyg-tip">所见即所得，上传后会按框内居中显示。</span>支持图片或 PDF，≤500KB。查看倍率可在“显示设置”里统一或分来源调整。</p><div class="upload-name" id="drawingName">未选择</div><button type="button" class="upload-clear" onclick="clearUpload('m_drawing',event)">删除尺寸图</button><input type="hidden" name="clear_drawing" id="m_clear_drawing" value="0"><input type="file" name="drawing_file" id="m_drawing" accept="image/*,.pdf" hidden></div></div></div><div id="modelAudit" class="audit-panel model-media-log" style="display:none"></div></div></div><div class="field span4 model-after-rule"><label>备注</label><textarea name="remark" id="m_remark"></textarea></div><input type="hidden" name="bom_allowed" value="1"><input type="hidden" name="bom_unit" value="PCS"><input type="hidden" name="bom_head_count" value="1"><div class="field span4 model-actionbar"><?php if(!empty($nmPerm['create_model']) || !empty($nmPerm['edit_model'])): ?><button class="primary" type="submit" id="saveModelBtn">保存型号</button><button class="dispatch-save" type="button" id="saveDispatchBtn" onclick="openDispatchPanelFromForm()">派工待办</button><?php else: ?><span class="chip bad">当前账号无新增/编辑型号权限</span><?php endif; ?></div></div><div class="dispatch-panel model-after-rule" id="modelDispatchPanel"><h3>派工待办</h3><div class="dispatch-tip">在这里编辑派工信息并选择负责人。点击“创建派工待办”后，会先保存当前型号，再直接写入派工系统，不跳转页面。</div><div class="dispatch-grid"><div class="field"><label>任务标题</label><input id="d_title" placeholder="命名型号派工：型号"></div><div class="field"><label>负责人</label><select id="d_assignee"><option value="">正在读取负责人……</option></select></div><div class="field"><label>截止时间</label><input id="d_due" type="datetime-local"></div><div class="field"><label>优先级</label><select id="d_priority"><option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option><option value="today">今天必须</option></select></div><div class="field span4"><label>任务说明</label><textarea id="d_description"></textarea></div></div><div class="dispatch-actions"><button class="primary" type="button" onclick="saveModelAndCreateDispatch()">创建派工待办</button><button type="button" onclick="hideDispatchPanel()">取消</button><span class="muted">会写入派工系统待接收列表，并提醒负责人。</span></div><div id="dispatchMsg" class="dispatch-msg"></div></div></form></div></div></div>
+<div class="modal-mask" id="modelModal"><div class="modal"><div class="modal-head"><div><h2 id="modelTitle">新建型号</h2><p style="margin:4px 0 0;color:#64748b;font-size:12px">图片/尺寸图可点击选择、拖入，也可以复制图片后在框内粘贴。</p></div><button type="button" onclick="closeModal('modelModal')">关闭</button></div><div class="modal-body"><div id="modelMsg" class="okmsg"></div><form id="modelForm" enctype="multipart/form-data" class="form-locked"><input type="hidden" name="id" id="m_id"><input type="hidden" name="clone_source_id" id="m_clone_source_id"><input type="hidden" name="inbox_id" id="m_inbox_id"><div class="form-grid"><div class="field span2"><label>命名规则</label><select name="rule_id" id="m_rule" required><option value="">选择规则</option><?php foreach($rules as $r): ?><option value="<?=intval($r['id'])?>" data-size="<?=nm_h($r['default_size'])?>" data-category="<?=nm_h($r['category'])?>" data-item="<?=nm_h($r['item_name'])?>" data-prefix="<?=nm_h($r['prefix'])?>"><?=nm_h($r['category'].' / '.$r['item_name'].' / '.$r['prefix'])?></option><?php endforeach; ?></select><div id="modelRuleHint" class="rule-first-note show">先选择命名规则，再填写尺寸和图片；选择后系统会按已有型号自动流水。</div></div><div class="field model-after-rule"><label>尺寸代码</label><input name="size_code" id="m_size" placeholder="075"></div><div class="field model-after-rule"><label>&nbsp;</label><button type="button" onclick="generateModel()">生成型号</button></div><div class="field span2 model-after-rule"><label>型号</label><input name="model_no" id="m_model" placeholder="选择规则后，填开孔/直径自动生成"><div id="autoModelTip" class="model-step-tip">本地型号按整个型号库已有流水自动生成，例如 D6.04502 后生成 D6.04503。</div></div><div class="field span2 model-after-rule"><label>系列名字 / 产品名称</label><input name="product_name" id="m_product" placeholder="例如 FLEXI RECESSED DOWNLIGHT"></div><div class="field model-after-rule"><label>状态</label><select name="status" id="m_status"><option value="草稿">草稿</option><option value="已确认">已确认</option><option value="已量产">已量产</option><option value="停用">停用</option></select></div><div class="field model-after-rule"><label>客户</label><input name="customer" id="m_customer"></div><div class="field model-after-rule"><label>尺寸类型</label><select name="dimension_type" id="m_dim_type"><option value="embedded_round">嵌入圆形</option><option value="embedded_square">嵌入方形</option><option value="diameter">圆形</option><option value="box">方形/线性</option></select></div><div class="field" id="openingField"><label id="openingLabel">开孔直径</label><input name="dim_opening" id="m_opening"></div><div class="field" id="openingLengthField"><label>开孔长</label><input name="dim_opening_length" id="m_opening_length" placeholder="长"></div><div class="field" id="openingWidthField"><label>开孔宽</label><input name="dim_opening_width" id="m_opening_width" placeholder="宽"></div><div class="field" id="outerField"><label>直径</label><input name="dim_outer_d" id="m_outer"></div><div class="field" id="lengthField"><label>长</label><input name="dim_length" id="m_length"></div><div class="field" id="widthField"><label>宽</label><input name="dim_width" id="m_width"></div><div class="field" id="heightField"><label>高</label><input name="dim_height" id="m_height"></div><div class="field span4 model-after-rule model-media-block"><label>产品图 / 尺寸图 / 操作日志</label><div class="model-media-log-row"><div class="model-media-left"><div class="upload-paste-grid"><div class="upload-paste" id="imageDrop" tabindex="0" data-input="m_image"><h4>产品图</h4><div class="upload-preview" id="imagePreview">点击 / 拖入 / 粘贴图片</div><p><span class="upload-wysiwyg-tip">所见即所得，保存后按这个方形框居中显示。</span>建议方形图，≤500KB。</p><div class="upload-name" id="imageName">未选择</div><button type="button" class="upload-clear" onclick="clearUpload('m_image',event)">删除产品图</button><input type="hidden" name="clear_image" id="m_clear_image" value="0"><input type="file" name="image_file" id="m_image" accept="image/*" hidden></div><div class="upload-paste" id="drawingDrop" tabindex="0" data-input="m_drawing"><h4>尺寸图</h4><div class="upload-preview" id="drawingPreview">点击 / 拖入 / 粘贴图片</div><p><span class="upload-wysiwyg-tip">所见即所得，上传后会按框内居中显示。</span>支持图片或 PDF，≤500KB。查看倍率可在“显示设置”里统一或分来源调整。</p><div class="upload-name" id="drawingName">未选择</div><button type="button" class="upload-clear" onclick="clearUpload('m_drawing',event)">删除尺寸图</button><input type="hidden" name="clear_drawing" id="m_clear_drawing" value="0"><input type="file" name="drawing_file" id="m_drawing" accept="image/*,.pdf" hidden></div></div></div><div id="modelAudit" class="audit-panel model-media-log" style="display:none"></div></div></div><div class="field span4 model-after-rule"><label>备注</label><textarea name="remark" id="m_remark"></textarea></div><input type="hidden" name="bom_allowed" value="1"><input type="hidden" name="bom_unit" value="PCS"><input type="hidden" name="bom_head_count" value="1"><div class="field span4 model-actionbar"><?php if(!empty($nmPerm['create_model']) || !empty($nmPerm['edit_model'])): ?><button class="primary" type="submit" id="saveModelBtn">保存型号</button><button class="dispatch-save" type="button" id="saveDispatchBtn" onclick="openDispatchPanelFromForm()">派工待办</button><?php else: ?><span class="chip bad">当前账号无新增/编辑型号权限</span><?php endif; ?></div></div><div class="dispatch-panel model-after-rule" id="modelDispatchPanel"><h3>派工待办</h3><div class="dispatch-tip">在这里编辑派工信息并选择负责人。点击“创建派工待办”后，会先保存当前型号，再直接写入派工系统，不跳转页面。</div><div class="dispatch-grid"><div class="field"><label>任务标题</label><input id="d_title" placeholder="命名型号派工：型号"></div><div class="field"><label>负责人</label><select id="d_assignee"><option value="">正在读取负责人……</option></select></div><div class="field"><label>截止时间</label><input id="d_due" type="datetime-local"></div><div class="field"><label>优先级</label><select id="d_priority"><option value="normal">普通</option><option value="important">重要</option><option value="urgent">紧急</option><option value="today">今天必须</option></select></div><div class="field span4"><label>任务说明</label><textarea id="d_description"></textarea></div></div><div class="dispatch-actions"><button class="primary" type="button" onclick="saveModelAndCreateDispatch()">创建派工待办</button><button type="button" onclick="hideDispatchPanel()">取消</button><span class="muted">会写入派工系统待接收列表，并提醒负责人。</span></div><div id="dispatchMsg" class="dispatch-msg"></div></div></form></div></div></div>
 
 <div class="modal-mask" id="filterModal"><div class="modal"><div class="modal-head"><h2>全功能筛选</h2><button type="button" onclick="closeModal('filterModal')">关闭</button></div><div class="modal-body"><form method="get" action="<?= $isProductsPage ? 'naming_products.php' : 'naming.php' ?>" class="form-grid"><input type="hidden" name="view" value="<?=nm_h($view)?>"><div class="field span2"><label>关键词</label><input name="kw" value="<?=nm_h($_GET['kw']??'')?>"></div><div class="field"><label>来源</label><select name="source"><option value="">全部</option><option value="local" <?=nm_s($_GET['source']??'')==='local'?'selected':''?>>本地</option><option value="website" <?=nm_s($_GET['source']??'')==='website'?'selected':''?>>官网同步</option></select></div><div class="field"><label>每页</label><select name="per_page"><option value="10" <?=$perPage===10?'selected':''?>>10</option><option value="20" <?=$perPage===20?'selected':''?>>20</option><option value="50" <?=$perPage===50?'selected':''?>>50</option></select></div><div class="field"><label>系列名字</label><input name="series" list="seriesList" value="<?=nm_h($_GET['series']??'')?>"><datalist id="seriesList"><?php foreach($seriesOptions as $x): ?><option value="<?=nm_h($x)?>"><?php endforeach; ?></datalist></div><div class="field"><label>分类</label><select name="category"><option value="">全部</option><?php foreach($categories as $c): ?><option value="<?=nm_h($c)?>" <?=$activeCategory===$c?'selected':''?>><?=nm_h($c)?></option><?php endforeach; ?></select></div><div class="field"><label>灯具类型</label><select name="item_name"><option value="">全部</option><?php foreach($items as $it): ?><option value="<?=nm_h($it)?>" <?=nm_s($_GET['item_name']??'')===$it?'selected':''?>><?=nm_h($it)?></option><?php endforeach; ?></select></div><div class="field model-after-rule"><label>状态</label><select name="status"><option value="">全部</option><?php foreach($statuses as $st): ?><option value="<?=nm_h($st)?>" <?=nm_s($_GET['status']??'')===$st?'selected':''?>><?=nm_h($st)?></option><?php endforeach; ?></select></div><div class="field"><label>前缀</label><input name="prefix" value="<?=nm_h($_GET['prefix']??'')?>" placeholder="51"></div><div class="field"><label>尺寸/开孔</label><input name="size_code" value="<?=nm_h($_GET['size_code']??'')?>" placeholder="075"></div><div class="field"><label>产品图</label><select name="has_image"><option value="">全部</option><option value="yes" <?=nm_s($_GET['has_image']??'')==='yes'?'selected':''?>>有图</option><option value="no" <?=nm_s($_GET['has_image']??'')==='no'?'selected':''?>>无图</option></select></div><div class="field"><label>尺寸图</label><select name="has_drawing"><option value="">全部</option><option value="yes" <?=nm_s($_GET['has_drawing']??'')==='yes'?'selected':''?>>有尺寸图</option><option value="no" <?=nm_s($_GET['has_drawing']??'')==='no'?'selected':''?>>无尺寸图</option></select></div><div class="field"><label>开始日期</label><input type="date" name="date_start" value="<?=nm_h($_GET['date_start']??'')?>"></div><div class="field"><label>结束日期</label><input type="date" name="date_end" value="<?=nm_h($_GET['date_end']??'')?>"></div><div class="field"><label>排序</label><select name="sort"><option value="created_desc" <?=nm_s($_GET['sort']??'created_desc')==='created_desc'?'selected':''?>>建立日期新到旧</option><option value="created_asc" <?=nm_s($_GET['sort']??'')==='created_asc'?'selected':''?>>建立日期旧到新</option><option value="updated_desc" <?=nm_s($_GET['sort']??'')==='updated_desc'?'selected':''?>>更新日期</option><option value="model_asc" <?=nm_s($_GET['sort']??'')==='model_asc'?'selected':''?>>型号 A-Z</option><option value="model_desc" <?=nm_s($_GET['sort']??'')==='model_desc'?'selected':''?>>型号 Z-A</option><option value="category" <?=nm_s($_GET['sort']??'')==='category'?'selected':''?>>分类</option></select></div><div class="field span4"><button class="primary" type="submit">应用筛选</button><a class="btn" href="<?= $isProductsPage ? 'naming_products.php' : 'naming.php' ?>">清空筛选</a></div></form></div></div></div>
 
@@ -3084,19 +3141,27 @@ function selectedRuleMeta(){ const s=$('m_rule'); const o=s&&s.selectedOptions&&
 function isEmbeddedMeta(meta){ const txt=(meta.category+' '+meta.item+' '+meta.prefix); return /嵌入|无边|有边/.test(txt) || ['51','52','53','55','56','57','58','59','60'].includes(String(meta.prefix||'')); }
 function setDimOptions(opts){ const sel=$('m_dim_type'); const old=sel.value; sel.innerHTML=''; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sel.appendChild(op); }); if(opts.some(o=>o[0]===old)) sel.value=old; else sel.value=opts[0][0]; }
 function toggleField(id, show, inputId){ const el=$(id); if(!el)return; el.classList.toggle('field-hidden', !show); if(!show && inputId && $(inputId)) $(inputId).value=''; }
+function splitOpeningPairValue(v){ v=String(v||'').trim().replace(/[×＊X]/g,'x').replace(/\s*mm\s*$/i,''); const m=v.split(/\s*[x*\/]\s*/); return m.length>=2 ? [m[0]||'',m[1]||''] : ['','']; }
+function composeOpeningPairValue(){ const l=$('m_opening_length')&&$('m_opening_length').value.trim(); const w=$('m_opening_width')&&$('m_opening_width').value.trim(); return l&&w ? (l+'x'+w) : ''; }
+function syncOpeningPairFromSingle(){ const pair=splitOpeningPairValue($('m_opening')&&$('m_opening').value); if(pair[0]&&$('m_opening_length')&&!$('m_opening_length').value) $('m_opening_length').value=pair[0]; if(pair[1]&&$('m_opening_width')&&!$('m_opening_width').value) $('m_opening_width').value=pair[1]; }
+function syncSingleOpeningFromPair(){ const v=composeOpeningPairValue(); if(v&&$('m_opening')) $('m_opening').value=v; }
 function updateDimensionFields(){
   const meta=selectedRuleMeta(); const embedded=isEmbeddedMeta(meta);
   setDimOptions(embedded ? [['embedded_round','嵌入圆形'],['embedded_square','嵌入方形']] : [['diameter','圆形'],['box','方形 / 线性']]);
   const t=$('m_dim_type').value;
   const isRound = (t==='embedded_round' || t==='diameter');
+  const isEmbeddedSquare = (t==='embedded_square');
   const isSquare = (t==='embedded_square' || t==='box');
-  toggleField('openingField', embedded, 'm_opening');
+  if(isEmbeddedSquare) syncOpeningPairFromSingle();
+  toggleField('openingField', embedded && !isEmbeddedSquare, 'm_opening');
+  toggleField('openingLengthField', embedded && isEmbeddedSquare, 'm_opening_length');
+  toggleField('openingWidthField', embedded && isEmbeddedSquare, 'm_opening_width');
   toggleField('outerField', isRound, 'm_outer');
   toggleField('lengthField', isSquare, 'm_length');
   toggleField('widthField', isSquare, 'm_width');
   toggleField('heightField', true, 'm_height');
 }
-function lockModelFormUntilRule(){ const form=$('modelForm'); if(!form)return; const hasRule=!!($('m_rule')&&$('m_rule').value); form.classList.toggle('form-locked', !hasRule); const hint=$('modelRuleHint'); if(hint) hint.classList.toggle('show', !hasRule); const save=$('saveModelBtn'); if(save) save.disabled=!hasRule; const saveDispatch=$('saveDispatchBtn'); if(saveDispatch) saveDispatch.disabled=!hasRule; ['m_size','m_model','m_product','m_status','m_customer','m_dim_type','m_opening','m_outer','m_length','m_width','m_height','m_image','m_drawing','m_remark'].forEach(id=>{ const el=$(id); if(el) el.disabled=!hasRule; });}
+function lockModelFormUntilRule(){ const form=$('modelForm'); if(!form)return; const hasRule=!!($('m_rule')&&$('m_rule').value); form.classList.toggle('form-locked', !hasRule); const hint=$('modelRuleHint'); if(hint) hint.classList.toggle('show', !hasRule); const save=$('saveModelBtn'); if(save) save.disabled=!hasRule; const saveDispatch=$('saveDispatchBtn'); if(saveDispatch) saveDispatch.disabled=!hasRule; ['m_size','m_model','m_product','m_status','m_customer','m_dim_type','m_opening','m_opening_length','m_opening_width','m_outer','m_length','m_width','m_height','m_image','m_drawing','m_remark'].forEach(id=>{ const el=$(id); if(el) el.disabled=!hasRule; });}
 function onRuleChanged(){ const meta=selectedRuleMeta(); if(meta.size) $('m_size').value=meta.size; updateDimensionFields(); lockModelFormUntilRule(); autoGenerateModelFromDimensions(true); }
 
 function initPasteUpload(){ ['imageDrop','drawingDrop'].forEach(id=>{ const z=$(id); if(!z||z.dataset.ready)return; z.dataset.ready='1'; const inputId=z.dataset.input; z.addEventListener('click',()=>{ if($(inputId)&&$(inputId).disabled){alert('先选择命名规则');return;} activeUploadInput=inputId; z.focus(); $(inputId).click();}); z.addEventListener('focus',()=>{activeUploadInput=inputId; z.classList.add('active');}); z.addEventListener('blur',()=>{z.classList.remove('active');}); z.addEventListener('dragover',e=>{e.preventDefault(); z.classList.add('active'); activeUploadInput=inputId;}); z.addEventListener('dragleave',()=>z.classList.remove('active')); z.addEventListener('drop',e=>{e.preventDefault(); z.classList.remove('active'); const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f)setUploadFile(inputId,f);}); $(inputId).addEventListener('change',e=>{const f=e.target.files&&e.target.files[0]; if(f) updateUploadPreview(inputId,f);}); }); }
@@ -3148,7 +3213,7 @@ let NM_SAVE_TO_DISPATCH=false; let NM_DISPATCH_PENDING_DATA=null;
 function saveModelAndDispatch(){ openDispatchPanelFromForm(); }
 function hideDispatchPanel(){ const p=$('modelDispatchPanel'); if(p)p.classList.remove('show'); }
 async function loadDispatchUsersInto(selectId){ const sel=$(selectId); if(!sel)return; sel.innerHTML='<option value="">正在读取负责人……</option>'; try{ const j=await api('dispatch_users'); const rows=(j&&j.rows)||[]; sel.innerHTML='<option value="">选择负责人</option>'; rows.forEach(u=>{ const opt=document.createElement('option'); opt.value=u.id; opt.textContent=(u.label||u.name||u.username||('用户#'+u.id))+(u.department?' · '+u.department:''); sel.appendChild(opt); }); if(!rows.length) sel.innerHTML='<option value="">没有可选负责人</option>'; }catch(e){ sel.innerHTML='<option value="">负责人读取失败</option>'; } }
-function dispatchTextFromCurrentForm(){ const no=($('m_model')&&$('m_model').value)||''; const series=($('m_product')&&$('m_product').value)||''; const dimType=($('m_dim_type')&&$('m_dim_type').value)||''; const parts=[]; if($('m_opening')&&$('m_opening').value)parts.push('开孔 '+$('m_opening').value); if($('m_outer')&&$('m_outer').value)parts.push('直径 '+$('m_outer').value); if($('m_length')&&$('m_length').value)parts.push('长 '+$('m_length').value); if($('m_width')&&$('m_width').value)parts.push('宽 '+$('m_width').value); if($('m_height')&&$('m_height').value)parts.push('高 '+$('m_height').value); return ['请处理命名型号相关事项。','型号：'+no,'系列：'+series,'尺寸类型：'+dimType,'尺寸：'+parts.join(' / '),'备注：'+(( $('m_remark')&&$('m_remark').value)||'')].join('\n'); }
+function dispatchTextFromCurrentForm(){ const no=($('m_model')&&$('m_model').value)||''; const series=($('m_product')&&$('m_product').value)||''; const dimType=($('m_dim_type')&&$('m_dim_type').value)||''; const parts=[]; if($('m_opening_length')&&$('m_opening_length').value&&$('m_opening_width')&&$('m_opening_width').value)parts.push('开孔 '+$('m_opening_length').value+'×'+$('m_opening_width').value); else if($('m_opening')&&$('m_opening').value)parts.push('开孔 '+$('m_opening').value); if($('m_outer')&&$('m_outer').value)parts.push('直径 '+$('m_outer').value); if($('m_length')&&$('m_length').value)parts.push('长 '+$('m_length').value); if($('m_width')&&$('m_width').value)parts.push('宽 '+$('m_width').value); if($('m_height')&&$('m_height').value)parts.push('高 '+$('m_height').value); return ['请处理命名型号相关事项。','型号：'+no,'系列：'+series,'尺寸类型：'+dimType,'尺寸：'+parts.join(' / '),'备注：'+(( $('m_remark')&&$('m_remark').value)||'')].join('\n'); }
 async function openDispatchPanelFromForm(){ const p=$('modelDispatchPanel'); if(!p)return; if(!$('m_rule')||!$('m_rule').value){ alert('请先选择命名规则。'); return; } p.classList.add('show'); await loadDispatchUsersInto('d_assignee'); const no=($('m_model')&&$('m_model').value)||''; if($('d_title')) $('d_title').value='命名型号派工：'+(no||'待生成型号'); if($('d_description')) $('d_description').value=dispatchTextFromCurrentForm(); p.scrollIntoView({behavior:'smooth',block:'center'}); }
 function saveModelAndCreateDispatch(){ const assignee=$('d_assignee')&&$('d_assignee').value; if(!assignee){ alert('请选择负责人。'); return; } NM_SAVE_TO_DISPATCH=true; NM_DISPATCH_PENDING_DATA={title:($('d_title')&&$('d_title').value)||'',assigned_to:assignee,due_at:($('d_due')&&$('d_due').value)||'',priority:($('d_priority')&&$('d_priority').value)||'normal',description:($('d_description')&&$('d_description').value)||''}; const f=$('modelForm'); if(!f)return; if(f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit',{cancelable:true})); }
 async function createDispatchTaskForModel(modelId, modelNo, overrides, msgEl){
@@ -3406,7 +3471,7 @@ async function runWebsiteSync(force){
 }
 window.addEventListener('load', function(){ initQuickFuzzySearch(); updateWebsiteSyncChip(); setTimeout(function(){runWebsiteSync(false);}, 2500); setInterval(function(){runWebsiteSync(false);}, 60000); });
 function digits3FromText(v){ v=String(v||'').replace(/[^0-9]/g,''); if(!v)return ''; if(v.length>3)v=v.slice(0,3); while(v.length<3)v='0'+v; return v; }
-function sizeFromDimensionFields(){ const meta=selectedRuleMeta(); const embedded=isEmbeddedMeta(meta); const t=$('m_dim_type')?$('m_dim_type').value:''; let v=''; if(embedded){ v=$('m_opening')&&$('m_opening').value ? $('m_opening').value : (($('m_outer')&&$('m_outer').value)||($('m_length')&&$('m_length').value)||''); } else if(t==='diameter'){ v=($('m_outer')&&$('m_outer').value)||''; } else { v=($('m_length')&&$('m_length').value)||($('m_width')&&$('m_width').value)||''; } return digits3FromText(v) || digits3FromText($('m_size')&&$('m_size').value) || digits3FromText(meta.size); }
+function sizeFromDimensionFields(){ const meta=selectedRuleMeta(); const embedded=isEmbeddedMeta(meta); const t=$('m_dim_type')?$('m_dim_type').value:''; let v=''; if(embedded){ if(t==='embedded_square') v=($('m_opening_length')&&$('m_opening_length').value)||($('m_opening')&&$('m_opening').value)||($('m_length')&&$('m_length').value)||''; else v=$('m_opening')&&$('m_opening').value ? $('m_opening').value : (($('m_outer')&&$('m_outer').value)||''); } else if(t==='diameter'){ v=($('m_outer')&&$('m_outer').value)||''; } else { v=($('m_length')&&$('m_length').value)||($('m_width')&&$('m_width').value)||''; } return digits3FromText(v) || digits3FromText($('m_size')&&$('m_size').value) || digits3FromText(meta.size); }
 let autoModelTimer=null, autoModelBusy=false;
 async function generateModel(silent=false){ if(!NM_PERMS.create_model){if(!silent)alert('当前账号没有生成型号权限');return;} try{ const rid=$('m_rule').value; const size=sizeFromDimensionFields(); if(!rid){if(!silent)alert('先选择命名规则');return;} if(!size){if(!silent)alert('请先填写开孔、直径或尺寸代码');return;} const data=await api('next_model',{qs:'rule_id='+encodeURIComponent(rid)+'&size='+encodeURIComponent(size)}); $('m_model').value=data.model_no; $('m_size').value=data.size_code; const tip=$('autoModelTip'); if(tip) tip.innerHTML='<span class="auto-model-chip">已按现有型号库自动流水：'+esc(data.model_no)+'</span>'; }catch(e){ if(!silent) alert(e.message); }}
 function autoGenerateModelFromDimensions(force=false){ if($('m_id') && $('m_id').value) return; if(!$('m_rule') || !$('m_rule').value) return; const size=sizeFromDimensionFields(); if(!size)return; clearTimeout(autoModelTimer); autoModelTimer=setTimeout(()=>generateModel(true), force?60:360); }
@@ -3441,6 +3506,9 @@ async function editModel(id){
     if($('m_dim_type') && Array.from($('m_dim_type').options).some(o=>o.value===dt)) $('m_dim_type').value=dt;
     updateDimensionFields();
     if($('m_opening')) $('m_opening').value=r.dim_opening||'';
+    if($('m_opening_length')) $('m_opening_length').value=r.dim_opening_length||'';
+    if($('m_opening_width')) $('m_opening_width').value=r.dim_opening_width||'';
+    if((!$('m_opening_length') || !$('m_opening_length').value) || (!$('m_opening_width') || !$('m_opening_width').value)) syncOpeningPairFromSingle();
     if($('m_outer')) $('m_outer').value=r.dim_outer_d||'';
     if($('m_length')) $('m_length').value=r.dim_length||'';
     if($('m_width')) $('m_width').value=r.dim_width||'';
@@ -3490,6 +3558,9 @@ async function copyModel(id){
     if($('m_dim_type') && Array.from($('m_dim_type').options).some(o=>o.value===dt)) $('m_dim_type').value=dt;
     updateDimensionFields();
     if($('m_opening')) $('m_opening').value=r.dim_opening||'';
+    if($('m_opening_length')) $('m_opening_length').value=r.dim_opening_length||'';
+    if($('m_opening_width')) $('m_opening_width').value=r.dim_opening_width||'';
+    if((!$('m_opening_length') || !$('m_opening_length').value) || (!$('m_opening_width') || !$('m_opening_width').value)) syncOpeningPairFromSingle();
     if($('m_outer')) $('m_outer').value=r.dim_outer_d||'';
     if($('m_length')) $('m_length').value=r.dim_length||'';
     if($('m_width')) $('m_width').value=r.dim_width||'';
@@ -3514,7 +3585,7 @@ async function copyModel(id){
     else alert(e.message||e);
   }
 }
-$('modelForm').addEventListener('submit', async (ev)=>{ ev.preventDefault(); const box=$('modelMsg'); const doDispatch=!!NM_SAVE_TO_DISPATCH; const dispatchPayload=NM_DISPATCH_PENDING_DATA||{}; NM_SAVE_TO_DISPATCH=false; NM_DISPATCH_PENDING_DATA=null; try{ if(box){box.textContent=doDispatch?'正在保存型号并创建派工待办……':'正在保存……';box.style.display='block';} const fd=new FormData(ev.target); const res=await fetch('naming.php?action=save_model',{method:'POST',body:fd}); const j=await parseJsonResponse(res); if(!j.ok) throw new Error(j.msg||'保存失败'); if(doDispatch){ const msg=$('dispatchMsg')||box; const task=await createDispatchTaskForModel(j.data&&j.data.id,j.data&&j.data.model_no,dispatchPayload,msg); if(box){box.textContent='型号已保存，并已加入派工待办：#'+(task.task_id||'');box.style.display='block';} } else { if(box){box.textContent=j.msg;box.style.display='block';} setTimeout(()=>{ location.href='naming.php'; },600); } }catch(e){ if(box){box.textContent='保存失败：'+(e.message||e);box.style.display='block';} const dm=$('dispatchMsg'); if(dm&&doDispatch){dm.textContent='创建派工失败：'+(e.message||e);dm.classList.add('err');dm.style.display='block';} else if(!box) alert(e.message||e); } });
+$('modelForm').addEventListener('submit', async (ev)=>{ ev.preventDefault(); const box=$('modelMsg'); const doDispatch=!!NM_SAVE_TO_DISPATCH; const dispatchPayload=NM_DISPATCH_PENDING_DATA||{}; NM_SAVE_TO_DISPATCH=false; NM_DISPATCH_PENDING_DATA=null; try{ if(box){box.textContent=doDispatch?'正在保存型号并创建派工待办……':'正在保存……';box.style.display='block';} if($('m_dim_type')&&$('m_dim_type').value==='embedded_square') syncSingleOpeningFromPair(); const fd=new FormData(ev.target); const res=await fetch('naming.php?action=save_model',{method:'POST',body:fd}); const j=await parseJsonResponse(res); if(!j.ok) throw new Error(j.msg||'保存失败'); if(doDispatch){ const msg=$('dispatchMsg')||box; const task=await createDispatchTaskForModel(j.data&&j.data.id,j.data&&j.data.model_no,dispatchPayload,msg); if(box){box.textContent='型号已保存，并已加入派工待办：#'+(task.task_id||'');box.style.display='block';} } else { if(box){box.textContent=j.msg;box.style.display='block';} setTimeout(()=>{ location.href='naming.php'; },600); } }catch(e){ if(box){box.textContent='保存失败：'+(e.message||e);box.style.display='block';} const dm=$('dispatchMsg'); if(dm&&doDispatch){dm.textContent='创建派工失败：'+(e.message||e);dm.classList.add('err');dm.style.display='block';} else if(!box) alert(e.message||e); } });
 async function openRuleModal(){ if(!NM_PERMS.manage_rules){alert('当前账号没有规则管理权限');return;} openModal('ruleModal'); await loadRules(); }
 async function loadRules(){ if(!NM_PERMS.manage_rules){return;} try{ const data=await api('rules'); const tb=$('ruleTable').querySelector('tbody'); tb.innerHTML=''; (data.rules||[]).forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${esc(r.category)}</td><td>${esc(r.item_name)}</td><td><b>${esc(r.prefix)}</b></td><td>${esc(r.default_size)}</td><td>${esc(r.seq_digits||2)}</td><td>${r.enabled==1?'启用':'停用'}</td><td><button type="button">编辑</button> <button type="button" class="danger">删除</button></td>`; tr.querySelector('button').onclick=()=>fillRule(r); tr.querySelector('.danger').onclick=()=>deleteRule(r.id); tb.appendChild(tr); }); }catch(e){alert(e.message)} }
 function esc(s){ return String(s??'').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -3524,6 +3595,8 @@ $('ruleForm').addEventListener('submit', async (ev)=>{ ev.preventDefault(); try{
 async function deleteRule(id){ if(!confirm('确定删除这个规则？已经生成过型号的规则不能删除。'))return; try{ const res=await fetch('naming.php?action=delete_rule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); const j=await parseJsonResponse(res); if(!j.ok) throw new Error(j.msg||'删除失败'); await loadRules(); }catch(e){alert(e.message)} }
 if($('m_rule')) $('m_rule').addEventListener('change', onRuleChanged);
 if($('m_dim_type')) $('m_dim_type').addEventListener('change', ()=>{updateDimensionFields(); autoGenerateModelFromDimensions(true);});
+['m_opening_length','m_opening_width'].forEach(id=>{ const el=$(id); if(el){ el.addEventListener('input',()=>{syncSingleOpeningFromPair(); autoGenerateModelFromDimensions(false);}); el.addEventListener('blur',()=>{syncSingleOpeningFromPair(); autoGenerateModelFromDimensions(true);}); }});
+if($('m_opening')) $('m_opening').addEventListener('input', ()=>{syncOpeningPairFromSingle();});
 ['m_opening','m_outer','m_length','m_width','m_size'].forEach(id=>{ const el=$(id); if(el){ el.addEventListener('input',()=>autoGenerateModelFromDimensions(false)); el.addEventListener('blur',()=>autoGenerateModelFromDimensions(true)); }});
 updateDimensionFields(); lockModelFormUntilRule();
 applyModalSettings();

@@ -67,14 +67,15 @@ function norm($s){ $s=mb_strtolower(trim((string)$s),'UTF-8'); $s=str_replace(['
 function pick($row,$keys,$default=''){ foreach($keys as $k){ if(isset($row[$k]) && trim((string)$row[$k])!=='') return trim((string)$row[$k]); } return $default; }
 function naming_select_fields($pdo){
     $base=[]; $c=cols($pdo,'naming_models');
-    foreach(['id','model_no','category','item_name','product_name','customer','status','remark','image_path','drawing_path','dimension_type','dim_opening','dim_outer_d','dim_length','dim_width','dim_height','size_code','created_at','updated_at'] as $f){
+    foreach(['id','model_no','category','item_name','product_name','customer','status','remark','image_path','drawing_path','dimension_type','dim_opening','dim_opening_length','dim_opening_width','dim_outer_d','dim_length','dim_width','dim_height','size_code','created_at','updated_at'] as $f){
         $base[] = in_array($f,$c,true) ? qid($f) : "'' AS ".qid($f);
     }
     return implode(',', $base);
 }
 function dim_text($r){
     $parts=[];
-    if(!empty($r['dim_opening'])) $parts[]='开孔 '.$r['dim_opening'];
+    if(!empty($r['dim_opening_length']) && !empty($r['dim_opening_width'])) $parts[]='开孔 '.$r['dim_opening_length'].'×'.$r['dim_opening_width'];
+    elseif(!empty($r['dim_opening'])) $parts[]='开孔 '.$r['dim_opening'];
     if(!empty($r['dim_outer_d'])) $parts[]='直径 '.$r['dim_outer_d'];
     if(!empty($r['dim_length'])) $parts[]='长 '.$r['dim_length'];
     if(!empty($r['dim_width'])) $parts[]='宽 '.$r['dim_width'];

@@ -269,9 +269,17 @@ function quote_format_cutout($v): string {
     $v = preg_replace('/^\s*[ΦφØø]\s*/u', '', $v);
     $v = preg_replace('/\s*mm\s*$/i', '', $v);
     $v = trim($v);
-    return $v !== '' ? 'Φ'.$v.'mm' : '';
+    if ($v === '') return '';
+    $isPair = preg_match('/[xX×*／\/]/u', $v) === 1;
+    if ($isPair) return preg_replace('/[xX*／\/]/u', '×', $v).'mm';
+    return 'Φ'.$v.'mm';
 }
-function quote_display_cutout($p): string { return quote_is_embedded_product($p) ? quote_format_cutout(arr_first($p, ['quote_display_cutout','cutout','dim_opening','hole','opening'])) : ''; }
+function quote_display_cutout($p): string {
+    if (!quote_is_embedded_product($p)) return '';
+    $l = clean_param(arr_get($p, 'dim_opening_length'));
+    $w = clean_param(arr_get($p, 'dim_opening_width'));
+    return quote_format_cutout(($l !== '' && $w !== '') ? ($l.'x'.$w) : arr_first($p, ['quote_display_cutout','cutout','dim_opening','hole','opening']));
+}
 function clean_beam_angle_value($v): string { return trim(preg_replace('/\s*[°º]\s*$/u', '', (string)($v ?? ''))); }
 function format_beam_angle($v): string { $v=clean_beam_angle_value($v); if($v==='') return ''; return preg_match('/^\d+(?:\.\d+)?(?:[X\/\-]\d+(?:\.\d+)?)*$/', $v) ? $v.'°' : $v; }
 function format_power_spec($v): string { $raw=trim((string)($v ?? '')); if($raw==='') return ''; $core=str_replace(['瓦','ｗ','Ｗ'],'W',$raw); $core=preg_replace('/\s+/','',$core); $core=preg_replace('/w$/i','',$core); $core=preg_replace('/[^0-9.\-+xX\/]/','',$core); if($core!=='' && preg_match('/^\d+(?:\.\d+)?(?:[Xx\/\-]\d+(?:\.\d+)?)*$/',$core)) return strtoupper($core).'W'; if(preg_match('/w$/i',$raw)) return preg_replace('/w$/i','W',$raw); return $raw; }

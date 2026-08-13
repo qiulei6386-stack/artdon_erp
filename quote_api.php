@@ -401,6 +401,9 @@ function quote_v642_dimension_size_from_naming($r){
 }
 function quote_v643_cutout_from_naming($r){
   if(!quote_v643_is_embedded_naming($r)) return '';
+  $l=trim((string)first_existing_val($r,['dim_opening_length','opening_length','cutout_length','开孔长'],''));
+  $w=trim((string)first_existing_val($r,['dim_opening_width','opening_width','cutout_width','开孔宽'],''));
+  if($l!=='' && $w!=='') return $l.'x'.$w;
   return trim((string)first_existing_val($r,['dim_opening','cutout','hole','opening','cut_size','aperture','开孔'],''));
 }
 function quote_v643_fix_product_dimensions(&$p){
@@ -825,7 +828,9 @@ function norm_naming_product($pdo,$table,$r){
     'size'=>$size,
     'cutout'=>$cut,
     'dimension_type'=>first_existing_val($r,['dimension_type'],'') ?: (quote_v643_is_round_naming($r)?'diameter':'box'),
-    'dim_opening'=>first_existing_val($r,['dim_opening','cutout','hole','opening','cut_size','aperture','开孔'],''),
+    'dim_opening'=>$cut ?: first_existing_val($r,['dim_opening','cutout','hole','opening','cut_size','aperture','开孔'],''),
+    'dim_opening_length'=>first_existing_val($r,['dim_opening_length','opening_length','cutout_length','开孔长'],''),
+    'dim_opening_width'=>first_existing_val($r,['dim_opening_width','opening_width','cutout_width','开孔宽'],''),
     'dim_outer_d'=>first_existing_val($r,['dim_outer_d','diameter','dia','outer_diameter','直径'],''),
     'dim_length'=>first_existing_val($r,['dim_length','length','长'],''),
     'dim_width'=>first_existing_val($r,['dim_width','width','宽'],''),
