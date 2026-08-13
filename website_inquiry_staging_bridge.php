@@ -335,6 +335,22 @@ function gz_bridge_dispatch_no(string $prefix = 'DN'): string
     return $prefix . date('YmdHis') . strtoupper(bin2hex(random_bytes(2)));
 }
 
+/**
+ * 派工列表默认只展示标题和 project；官网询盘不能只把页面名写进 project，
+ * 否则客户资料虽然存在 description，列表仍会看起来像“没有同步”。
+ */
+function gz_bridge_dispatch_project(array $payload, string $name, string $message, string $product): string
+{
+    $email = trim((string)($payload['email'] ?? ''));
+    $lines = array_filter([
+        $name !== '' ? '客户：' . $name : '',
+        $email !== '' ? '邮箱：' . $email : '',
+        $message !== '' ? '留言：' . $message : '',
+        $product !== '' ? '产品／页面：' . $product : '',
+    ], static fn($v): bool => trim((string)$v) !== '');
+    return gz_bridge_clip(implode("\n", $lines), 5000);
+}
+
 function gz_bridge_lead_pool(PDO $pdo, int $stagingId, array $payload): int
 {
     $name = gz_bridge_clip($payload['company'] ?? $payload['name'] ?? '官网询盘客户', 190);
@@ -448,8 +464,9 @@ function gz_bridge_dispatch_next_tasks(PDO $pdo, int $stagingId, int $leadId, ar
     $company = gz_bridge_clip($payload['company'] ?? '', 120);
     $titleParts = array_values(array_filter(['官网询盘', $product, $name], static fn($v): bool => trim((string)$v) !== ''));
     $title = gz_bridge_clip(implode('｜', $titleParts), 240) ?: '官网询盘';
-    $project = gz_bridge_clip($product !== '' ? $product : (($payload['page_title'] ?? '') ?: '香港官网询盘'), 180);
     $message = trim((string)($payload['message'] ?? $payload['description'] ?? ''));
+    $project = gz_bridge_dispatch_project($payload, $name, $message, $product);
+    if ($project === '') $project = '香港官网询盘';
     $detail = trim((string)($payload['inquiry_detail'] ?? $payload['full_inquiry_detail'] ?? ''));
     $description = trim(implode("\n", array_filter([
         '来源：香港官网询盘',
@@ -475,7 +492,9 @@ function gz_bridge_dispatch_next_tasks(PDO $pdo, int $stagingId, int $leadId, ar
         'staging_id' => $stagingId,
         'lead_pool_id' => $leadId,
         'hk_inquiry_id' => $hkId,
+        'customer_name' => $name,
         'email' => (string)($payload['email'] ?? ''),
+        'message' => $message,
         'product_link' => (string)($payload['product_link'] ?? ''),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
     $extraJson = json_encode(['crm_task_type' => 'dispatch_confirm'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
