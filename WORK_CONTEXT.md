@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：官网已回复同步完成派工待办
+
+- 用户反馈香港官网询盘改为“已回复”后，广州官网询盘任务、CRM 待办和派工待办仍保持未完成。
+- 根因确认：香港原状态操作只更新本地 `web_inquiries.status`；广州桥接原来只接收 `inquiry.created` 与 `inquiry.revoke`，没有询盘完成状态事件。
+- `website_inquiry_staging_bridge.php`：新增签名事件 `inquiry.status_changed`；只接受官网终态 `replied / closed`，按 `staging_id` 或香港询盘 ID 精确定位关联记录。
+- 完成规则：`website_inquiry_tasks` 改为 `done`；未删除的 `crm_tasks` 改为 `done` 并写完成时间；未删除的 `dispatch_next_tasks` 改为 `done`、进度 100% 并写完成时间。查询均限定官网询盘来源与对应暂存池，普通派工、已完成和已取消记录不受影响。
+- 新增 `tests/website_inquiry_status_sync_contract.php`，锁定事件入口、终态限制、三类任务完成规则和来源边界。
+- 候选文件已复制到服务器 `/tmp/artdon_status_candidate_20260813`，桥接文件与测试 PHP 语法通过，契约测试通过。正式发布、现有询盘 `#69 / 暂存池 #51` 状态补同步和三方版本核对将在同一流程后续完成。
+
 ## 本次：官网询盘派工信息改为红色识别
 
 - 用户要求官网联动到派工待办的询盘信息改为红色显示。

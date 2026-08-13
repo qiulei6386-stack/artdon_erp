@@ -673,6 +673,61 @@ function gz_bridge_revoke_inquiry(PDO $pdo, array $payload): array
     return $summary;
 }
 
+function gz_bridge_complete_inquiry(PDO $pdo, array $payload): array
+{
+    $websiteStatus = strtolower(trim((string)($payload['status'] ?? '')));
+    if (!in_array($websiteStatus, ['replied', 'closed'], true)) {
+        throw new InvalidArgumentException('Only replied or closed inquiry status can complete linked tasks.');
+    }
+
+    $stagingId = (int)($payload['staging_id'] ?? $payload['bridge_inquiry_id'] ?? 0);
+    $hkId = (int)($payload['local_inquiry_id'] ?? $payload['hk_inquiry_id'] ?? 0);
+    if ($stagingId <= 0 && $hkId <= 0) {
+        throw new InvalidArgumentException('Missing staging_id or local_inquiry_id for status sync.');
+    }
+    if ($stagingId <= 0 && $hkId > 0) {
+        $find = $pdo->prepare('SELECT id FROM website_inquiry_staging WHERE hk_inquiry_id=? ORDER BY id DESC LIMIT 1');
+        $find->execute([$hkId]);
+        $stagingId = (int)$find->fetchColumn();
+    }
+    if ($stagingId <= 0) {
+        return ['staging_id'=>0, 'website_tasks'=>0, 'crm_tasks'=>0, 'dispatch_tasks'=>0];
+    }
+
+    $summary = ['staging_id'=>$stagingId, 'website_tasks'=>0, 'crm_tasks'=>0, 'dispatch_tasks'=>0];
+
+    $stmt = $pdo->prepare("UPDATE website_inquiry_tasks
+        SET status='done', updated_at=NOW()
+        WHERE staging_id=? AND status NOT IN ('done','cancelled')");
+    $stmt->execute([$stagingId]);
+    $summary['website_tasks'] = $stmt->rowCount();
+
+    if (gz_bridge_table_exists($pdo, 'crm_tasks')) {
+        $stmt = $pdo->prepare("UPDATE crm_tasks
+            SET status='done', completed_at=COALESCE(completed_at,NOW()), result=IF(result='', '官网已回复', result), updated_at=NOW()
+            WHERE source_type='website_inquiry'
+              AND (source_id LIKE ? OR source_id=?)
+              AND status NOT IN ('done','cancelled')
+              AND deleted_at IS NULL");
+        $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId]);
+        $summary['crm_tasks'] = $stmt->rowCount();
+    }
+
+    if (gz_bridge_table_exists($pdo, 'dispatch_next_tasks')) {
+        $stmt = $pdo->prepare("UPDATE dispatch_next_tasks
+            SET status='done', progress=100, completed_at=COALESCE(completed_at,NOW()), updated_at=NOW()
+            WHERE is_deleted=0
+              AND status NOT IN ('done','cancelled')
+              AND linked_system='website_inquiry'
+              AND linked_table='website_inquiry_staging'
+              AND (linked_id LIKE ? OR linked_id=? OR linked_json LIKE ?)");
+        $stmt->execute(['staging:' . $stagingId . ':%', (string)$stagingId, '%\"staging_id\":' . $stagingId . '%']);
+        $summary['dispatch_tasks'] = $stmt->rowCount();
+    }
+
+    return $summary;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     gz_bridge_json(['ok' => false, 'message' => 'POST required.'], 405);
 }
@@ -700,6 +755,22 @@ try {
             'process_status' => 'revoked',
             'data' => $summary,
             'message' => 'Website inquiry records revoked.',
+        ]);
+    }
+    if ((string)($envelope['event_type'] ?? '') === 'inquiry.status_changed') {
+        $payload = $envelope['payload'] ?? [];
+        if (!is_array($payload)) throw new InvalidArgumentException('Invalid payload.');
+        $pdo = gz_bridge_db($config);
+        gz_bridge_migrate($pdo);
+        $pdo->beginTransaction();
+        $summary = gz_bridge_complete_inquiry($pdo, $payload);
+        $pdo->commit();
+        gz_bridge_json([
+            'ok' => true,
+            'reference' => 'status-staging-' . (int)($summary['staging_id'] ?? 0),
+            'process_status' => 'completed',
+            'data' => $summary,
+            'message' => 'Linked website inquiry tasks completed.',
         ]);
     }
     if ((string)($envelope['event_type'] ?? '') !== 'inquiry.created') {
