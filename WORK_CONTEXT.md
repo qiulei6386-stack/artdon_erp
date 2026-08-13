@@ -7,7 +7,8 @@
 - `website_inquiry_staging_bridge.php`：新增签名事件 `inquiry.status_changed`；只接受官网终态 `replied / closed`，按 `staging_id` 或香港询盘 ID 精确定位关联记录。
 - 完成规则：`website_inquiry_tasks` 改为 `done`；未删除的 `crm_tasks` 改为 `done` 并写完成时间；未删除的 `dispatch_next_tasks` 改为 `done`、进度 100% 并写完成时间。查询均限定官网询盘来源与对应暂存池，普通派工、已完成和已取消记录不受影响。
 - 新增 `tests/website_inquiry_status_sync_contract.php`，锁定事件入口、终态限制、三类任务完成规则和来源边界。
-- 候选文件已复制到服务器 `/tmp/artdon_status_candidate_20260813`，桥接文件与测试 PHP 语法通过，契约测试通过。正式发布、现有询盘 `#69 / 暂存池 #51` 状态补同步和三方版本核对将在同一流程后续完成。
+- 候选文件已复制到服务器 `/tmp/artdon_status_candidate_20260813`，桥接文件与测试 PHP 语法通过，契约测试通过；功能提交 `989b8ec07e7241765bcca022f54b43e4c478b1e5` 已推送 GitHub 并从 GitHub 快进正式服务器，服务器复检通过，部署前桥接文件备份为 `/tmp/website_inquiry_staging_bridge.php.before_989b8ec_20260813`。
+- 现有香港询盘 `#69 / 广州暂存池 #51` 已通过正式签名事件完成补同步；变更前任务快照位于 `/tmp/gz_staging_51_tasks_before_status_sync_20260813.json`。回读确认官网询盘任务 `#51` 为 `done`，CRM 待办 `#1019/#1020` 为 `done`，派工待办 `#1354/#1355` 为 `done`、进度 100%，均写入完成时间。最终三方版本以本节上下文提交后的 HEAD 为准。
 
 ## 本次：官网询盘派工信息改为红色识别
 
