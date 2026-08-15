@@ -27349,6 +27349,13 @@
       dialog.querySelector('[data-visit-image-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-visit-local-images]'), 'image'); });
       dialog.querySelector('[data-visit-attachment-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-visit-local-attachments]'), 'attachment'); });
       dialog.addEventListener('click', function (event) {
+        var localRemove = event.target.closest('[data-visit-remove-local-file]');
+        if (localRemove) {
+          var localInput = dialog.querySelector(localRemove.getAttribute('data-input-selector') || '');
+          var localBox = dialog.querySelector(localRemove.getAttribute('data-box-selector') || '');
+          self.removeLocalFile(localInput, Number(localRemove.getAttribute('data-index') || 0), localBox, localRemove.getAttribute('data-kind') || 'image');
+          return;
+        }
         var del = event.target.closest('[data-visit-delete-file]');
         if (del) {
           self.deleteVisitFile(del.getAttribute('data-visit-delete-file'), dialog);
@@ -27454,7 +27461,7 @@
       if (kind === 'image') {
         box.innerHTML = files.map(function (file, index) {
           var tooLarge = file.size > 2097152;
-          return '<article class="visit-thumb is-local' + (tooLarge ? ' is-invalid' : '') + '"><button type="button" data-local-image-index="' + index + '"></button><span>' + esc(file.name) + '</span><em>' + esc(tooLarge ? '超过 2MB，不能上传' : (Math.round(file.size / 1024) + 'KB')) + '</em></article>';
+          return '<article class="visit-thumb is-local' + (tooLarge ? ' is-invalid' : '') + '"><button type="button" data-local-image-index="' + index + '"></button><button type="button" class="visit-thumb-delete" title="移除待上传图片" data-visit-remove-local-file data-input-selector="[data-visit-image-input]" data-box-selector="[data-visit-local-images]" data-kind="image" data-index="' + index + '">×</button><span>' + esc(file.name) + '</span><em>' + esc(tooLarge ? '超过 2MB，不能上传' : (Math.round(file.size / 1024) + 'KB')) + '</em></article>';
         }).join('');
         files.forEach(function (file, index) {
           var reader = new FileReader();
@@ -27469,6 +27476,23 @@
           return '<article><div><strong>' + esc(file.name) + '</strong><span>待上传 · ' + esc(Math.round(file.size / 1024)) + 'KB</span></div></article>';
         }).join('');
       }
+    },
+    removeLocalFile: function (input, index, box, kind) {
+      if (!input || !input.files) return;
+      var files = Array.prototype.slice.call(input.files || []);
+      if (index < 0 || index >= files.length) return;
+      if (typeof DataTransfer === 'undefined') {
+        input.value = '';
+        this.renderLocalFiles(input, box, kind);
+        return toast('浏览器不支持单张移除，已清空待上传文件。');
+      }
+      var transfer = new DataTransfer();
+      files.forEach(function (file, i) {
+        if (i !== index) transfer.items.add(file);
+      });
+      input.files = transfer.files;
+      this.renderLocalFiles(input, box, kind);
+      toast('已移除待上传图片');
     },
     uploadQueuedFiles: function (visitId, dialog) {
       var self = this;

@@ -2760,10 +2760,10 @@
 
 - 需求：CRM 拜访记录图片上传最大允许 2MB；已上传图片缺少明显删除按钮，用户不容易删除错误图片。
 - 修复：`crm_visit.php` 将拜访图片后端限制从 500KB 调整为 2MB，错误提示同步改为“超过 2MB 图片限制”；附件 100MB 规则不变。
-- 前端：`assets/crm/crm.js` 的拜访图片上传提示改为“单张 <= 2MB”，上传前会阻止超过 2MB 的图片；本地待上传预览会标红显示“超过 2MB，不能上传”。
+- 前端：`assets/crm/crm.js` 的拜访图片上传提示改为“单张 <= 2MB”，上传前会阻止超过 2MB 的图片；本地待上传预览会标红显示“超过 2MB，不能上传”，并提供红色 `×` 可从文件选择队列移除超限图片，避免卡在待上传状态。
 - 前端：上传后的拜访图片缩略图右上角新增红色 `×` 删除按钮，同时保留原来的预览/下载/删除操作；删除成功后用接口返回的最新文件列表重绘图片和附件区，避免只删 DOM 导致状态不一致。
 - 样式：`assets/crm/crm.css` 新增缩略图悬浮删除按钮和超限图片标红样式。
-- 回归保护：新增 `tests/crm_visit_image_upload_delete_contract.php`，锁定 2MB 限制、前后端提示、图片删除按钮、删除后刷新列表和超限预览样式。
+- 回归保护：新增 `tests/crm_visit_image_upload_delete_contract.php`，锁定 2MB 限制、前后端提示、本地待上传移除、图片删除按钮、删除后刷新列表和超限预览样式。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l tests/crm_visit_image_upload_delete_contract.php` 和契约测试通过。
 
 ## 2026-08-15：CRM 拜访 / 来访创建派工真实联动
