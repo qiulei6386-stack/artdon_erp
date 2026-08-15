@@ -1205,11 +1205,31 @@ function crm_mail_store_raw_eml(int $userId, string $folder, string $uid, string
     return is_file($path) ? $path : '';
 }
 
+function crm_mail_normalize_file_name_text(string $name): string
+{
+    $name = trim($name);
+    $name = preg_replace('/[\x{00A0}\x{2007}\x{202F}]+/u', ' ', $name) ?? $name;
+    $name = preg_replace('/[ \t\r\n]+/u', ' ', $name) ?? $name;
+    return trim($name);
+}
+
 function crm_mail_safe_file_name(string $name): string
 {
-    $name = trim($name) ?: 'attachment';
+    $name = crm_mail_normalize_file_name_text($name) ?: 'attachment';
     $name = preg_replace('/[\\\\\/:*?"<>|]+/', '_', $name) ?: 'attachment';
     return function_exists('mb_substr') ? mb_substr($name, 0, 180) : substr($name, 0, 180);
+}
+
+function crm_mail_attachment_mime_base(string $mime): string
+{
+    return strtolower(trim(explode(';', $mime, 2)[0]) ?: 'application/octet-stream');
+}
+
+function crm_mail_attachment_should_hide_inline(string $mime, string $contentId = '', bool $inlineDisposition = false): bool
+{
+    $type = crm_mail_attachment_mime_base($mime);
+    if (strpos($type, 'image/') !== 0) return false;
+    return $inlineDisposition || trim($contentId, '<> ') !== '';
 }
 
 function crm_mail_store_attachment_files(int $userId, int $mailId, array $attachments): array
@@ -1224,8 +1244,13 @@ function crm_mail_store_attachment_files(int $userId, int $mailId, array $attach
     }
     $stmt = db()->prepare('INSERT INTO crm_mail_attachments (user_id, mail_id, file_name, filename, original_filename, file_path, file_size, mime_type, attachment_type, message_id, content_id, is_inline, is_signature_image, preview_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW())');
     foreach ($attachments as $index => $attachment) {
-        $originalName = crm_mail_decode_header_value((string)($attachment['original_name'] ?? $attachment['name'] ?? ('attachment-' . ($index + 1))));
+        $originalName = crm_mail_normalize_file_name_text(crm_mail_decode_header_value((string)($attachment['original_name'] ?? $attachment['name'] ?? ('attachment-' . ($index + 1)))));
         $name = crm_mail_safe_file_name($originalName);
+        $mimeType = (string)($attachment['type'] ?? 'application/octet-stream');
+        $contentId = (string)($attachment['content_id'] ?? '');
+        $isInline = !empty($attachment['is_inline']) && crm_mail_attachment_should_hide_inline($mimeType, $contentId, true);
+        $attachmentType = $isInline ? 'inline' : (string)($attachment['attachment_type'] ?? 'normal');
+        if (!$isInline && $attachmentType === 'inline') $attachmentType = 'normal';
         $target = $dir . '/' . date('YmdHis') . '_' . bin2hex(random_bytes(3)) . '_' . $name;
         $content = $attachment['content'] ?? null;
         $source = (string)($attachment['tmp_name'] ?? ($attachment['path'] ?? ''));
@@ -1259,21 +1284,91 @@ function crm_mail_store_attachment_files(int $userId, int $mailId, array $attach
             $originalName,
             $target,
             (int)$size,
-            (string)($attachment['type'] ?? 'application/octet-stream'),
-            (string)($attachment['attachment_type'] ?? 'normal'),
+            $mimeType,
+            $attachmentType,
             (string)($attachment['message_id'] ?? ''),
-            (string)($attachment['content_id'] ?? ''),
-            !empty($attachment['is_inline']) ? 1 : 0,
+            $contentId,
+            $isInline ? 1 : 0,
             'pending',
         ]);
         $result['stored']++;
-        if (!empty($attachment['is_inline']) || !empty($attachment['is_signature_image'])) {
+        if ($isInline || !empty($attachment['is_signature_image'])) {
             $result['inline']++;
         } else {
             $result['visible']++;
         }
     }
     return $result;
+}
+
+function crm_mail_refresh_attachment_count(int $userId, int $mailId): void
+{
+    if ($userId <= 0 || $mailId <= 0) return;
+    $countStmt = db()->prepare('SELECT COUNT(*) FROM crm_mail_attachments WHERE mail_id = ? AND user_id = ? AND COALESCE(is_inline,0) = 0 AND COALESCE(is_signature_image,0) = 0');
+    $countStmt->execute([$mailId, $userId]);
+    $visibleCount = (int)$countStmt->fetchColumn();
+    db()->prepare('UPDATE crm_mails SET has_attachment = ?, attachment_count = ?, updated_at = NOW() WHERE id = ? AND user_id = ?')
+        ->execute([$visibleCount > 0 ? 1 : 0, $visibleCount, $mailId, $userId]);
+}
+
+function crm_mail_repair_non_image_inline_attachments(int $userId = 0, int $mailId = 0): int
+{
+    $where = [
+        'COALESCE(is_inline,0) = 1',
+        'COALESCE(is_signature_image,0) = 0',
+        '(mime_type IS NULL OR mime_type = "" OR LOWER(mime_type) NOT LIKE "image/%")',
+    ];
+    $params = [];
+    if ($userId > 0) {
+        $where[] = 'user_id = ?';
+        $params[] = $userId;
+    }
+    if ($mailId > 0) {
+        $where[] = 'mail_id = ?';
+        $params[] = $mailId;
+    }
+    $whereSql = implode(' AND ', $where);
+    $select = db()->prepare("SELECT DISTINCT user_id, mail_id FROM crm_mail_attachments WHERE {$whereSql}");
+    $select->execute($params);
+    $mails = $select->fetchAll();
+    if (!$mails) return 0;
+    $update = db()->prepare("UPDATE crm_mail_attachments SET is_inline = 0, attachment_type = CASE WHEN attachment_type = 'inline' THEN 'normal' ELSE attachment_type END WHERE {$whereSql}");
+    $update->execute($params);
+    $changed = (int)$update->rowCount();
+    foreach ($mails as $mail) {
+        crm_mail_refresh_attachment_count((int)$mail['user_id'], (int)$mail['mail_id']);
+    }
+    return $changed;
+}
+
+function crm_mail_repair_attachment_filenames(int $userId = 0, int $mailId = 0): int
+{
+    $where = [];
+    $params = [];
+    if ($userId > 0) {
+        $where[] = 'user_id = ?';
+        $params[] = $userId;
+    }
+    if ($mailId > 0) {
+        $where[] = 'mail_id = ?';
+        $params[] = $mailId;
+    }
+    $whereSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
+    $stmt = db()->prepare("SELECT id, file_name, filename, original_filename FROM crm_mail_attachments{$whereSql}");
+    $stmt->execute($params);
+    $update = db()->prepare('UPDATE crm_mail_attachments SET file_name = ?, filename = ?, original_filename = ? WHERE id = ?');
+    $changed = 0;
+    foreach ($stmt->fetchAll() as $row) {
+        $fileName = crm_mail_safe_file_name((string)($row['file_name'] ?? ''));
+        $filename = crm_mail_safe_file_name((string)($row['filename'] ?? $fileName));
+        $original = crm_mail_normalize_file_name_text(crm_mail_decode_header_value((string)($row['original_filename'] ?? $fileName)));
+        if ($original === '') $original = $fileName;
+        if ($fileName !== (string)($row['file_name'] ?? '') || $filename !== (string)($row['filename'] ?? '') || $original !== (string)($row['original_filename'] ?? '')) {
+            $update->execute([$fileName, $filename, $original, (int)$row['id']]);
+            $changed += (int)$update->rowCount();
+        }
+    }
+    return $changed;
 }
 
 function crm_mail_update_inline_body_urls(int $userId, int $mailId, string $bodyHtml = ''): string
@@ -1330,7 +1425,7 @@ function crm_mail_repair_stale_inline_attachment_links(int $userId, int $mailId,
             return $m[0];
         }
         $mime = strtolower((string)($row['mime_type'] ?? ''));
-        $isImage = strpos($mime, 'image/') === 0 || (int)($row['is_inline'] ?? 0) === 1 || (int)($row['is_signature_image'] ?? 0) === 1;
+        $isImage = strpos($mime, 'image/') === 0 || (int)($row['is_signature_image'] ?? 0) === 1;
         $path = (string)($row['file_path'] ?? '');
         if (!$isImage || $path === '' || !is_file($path)) {
             $cache[$oldId] = 0;
@@ -2499,7 +2594,7 @@ function crm_mail_parse_mime_part(string $raw, array &$result): void
         || ($contentId !== '' && preg_match('/^(image|application)\//i', trim(explode(';', $contentType, 2)[0])));
     if ($isFilePart) {
         $typeOnly = trim(explode(';', $contentType, 2)[0]) ?: 'application/octet-stream';
-        $isInline = (!$hasAttachmentDisposition && ($hasInlineDisposition || ($contentId !== '' && stripos($typeOnly, 'image/') === 0))) ? 1 : 0;
+        $isInline = (!$hasAttachmentDisposition && crm_mail_attachment_should_hide_inline($typeOnly, $contentId, $hasInlineDisposition)) ? 1 : 0;
         $name = crm_mail_decode_header_value((string)($dispositionParams['filename'] ?? ($params['name'] ?? ($contentId !== '' ? $contentId : ('attachment-' . ((int)$result['attachment_count'] + 1))))));
         $name = $name !== '' ? $name : ($contentId !== '' ? $contentId : ('attachment-' . ((int)$result['attachment_count'] + 1)));
         $decodedFile = crm_mail_decode_transfer_to_temp($body, $encoding);
@@ -3595,6 +3690,8 @@ function crm_mail_get(int $mailId, bool $includeCrm = true): array
     if (!$mail) throw new RuntimeException('邮件不存在或无权查看。');
     $mimeStart = microtime(true);
     $mail = crm_mail_repair_stored_body($mail);
+    crm_mail_repair_non_image_inline_attachments((int)$account['user_id'], $mailId);
+    crm_mail_repair_attachment_filenames((int)$account['user_id'], $mailId);
     // Keep normal mail opening on cached DB data; IMAP body/attachment repair belongs to sync or repair jobs.
     $timing['mime_parse_ms'] = crm_mail_perf_ms($mimeStart);
     $attachmentStart = microtime(true);
@@ -3696,7 +3793,7 @@ function crm_mail_attachment_for_download(int $attachmentId, bool $inline = fals
     if (!$row && !$account) throw new RuntimeException('请先绑定邮箱。');
     if (!$row) throw new RuntimeException('附件不存在或无权下载。');
     $mime = strtolower((string)($row['mime_type'] ?? ''));
-    $isBodyImage = (int)($row['is_inline'] ?? 0) === 1 || (int)($row['is_signature_image'] ?? 0) === 1 || strpos($mime, 'image/') === 0;
+    $isBodyImage = (strpos($mime, 'image/') === 0 && (int)($row['is_inline'] ?? 0) === 1) || (int)($row['is_signature_image'] ?? 0) === 1 || strpos($mime, 'image/') === 0;
     if (!$inline || !$isBodyImage) crm_require('mail.attachment_download');
     $path = (string)($row['file_path'] ?? '');
     if ($path === '' || !is_file($path)) throw new RuntimeException('附件文件不存在，可能是旧邮件未落地附件。请重新收取该邮件后再下载。');

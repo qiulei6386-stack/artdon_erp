@@ -2746,3 +2746,12 @@
 - 样式：`assets/crm/crm.css` 将正文导航按钮放到操作栏右侧，不挤占回复、转发、返回列表等原有按钮。
 - 回归保护：新增 `tests/crm_mail_reader_navigation_contract.php`，锁定当前列表顺序保存、正文导航渲染、跨页切换、按钮事件绑定和样式标记。
 - 检查：本地 `git diff --check` 和 bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 PHP 契约测试已通过，部署后继续复检生产文件。
+
+## 2026-08-15：CRM 邮件附件误隐藏与文件名空格修复
+
+- 问题：腾讯企业邮显示 `AESOP Project` 有 3 个附件，但 CRM 正文只显示 1 个。线上库确认 3 个文件都已落地，其中两个 PDF 被错误标记为 `is_inline=1`，因此前端按“正文内嵌附件”隐藏了。
+- 修复：`crm_mail.php` 新增附件 inline 可见性判断：只有图片类附件才允许隐藏为 inline；PDF、Excel、Word 等非图片附件即使邮件头写了 `Content-Disposition: inline`，也按普通附件显示。
+- 修复：附件入库前二次规范 inline 状态，防止旧解析或特殊邮件头再次把非图片附件隐藏；打开邮件时会修复当前邮件历史误标的非图片 inline 附件并刷新 `attachment_count`。
+- 修复：附件文件名规范化 NBSP / 窄空格等异常空白，避免 `AESOP PS - ...` 这类文件名看起来像乱码或间距异常；打开邮件时会修复当前邮件历史附件名。
+- 回归保护：新增 `tests/crm_mail_attachment_inline_visibility_contract.php`，锁定非图片 inline 不隐藏、历史误标修复、文件名异常空格规范化和打开邮件触发修复。
+- 检查：本地 `git diff --check` 通过；服务器临时目录 `php -l crm_mail.php`、`php -l tests/crm_mail_attachment_inline_visibility_contract.php` 和契约测试通过。上线后将对现有历史附件执行一次修复。
