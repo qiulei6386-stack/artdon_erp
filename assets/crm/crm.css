@@ -10537,6 +10537,22 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   flex-wrap: wrap;
   gap: 6px;
 }
+.mail-reader-nav {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.mail-reader-nav button {
+  min-width: 72px;
+  border-color: color-mix(in srgb, var(--crm-primary) 28%, var(--crm-border));
+  color: var(--crm-primary);
+  background: color-mix(in srgb, var(--crm-primary) 7%, var(--crm-card-bg));
+}
+.mail-reader-nav button:disabled {
+  color: var(--crm-muted-text);
+  border-color: var(--crm-border);
+  background: var(--crm-subtle-bg);
+}
 .mail-body {
   overflow-wrap: anywhere;
   color: var(--crm-text);

@@ -2737,3 +2737,12 @@
 - 回归保护：新增 `tests/naming_embedded_square_cutout_contract.php`，锁定嵌入方形双开孔字段、弹窗显示/隐藏、保存校验、报价/Datasheet/BOM 输出兼容。
 - 检查：本地 `git diff --check` 通过；本地环境无 PHP/Node，已复制修改文件到服务器 `/tmp/artdon_naming_cutout_check` 临时目录执行 `php -l` 检查 `naming.php`、`quote_api.php`、`quotation.php`、`crm_quote_pdf.php`、`crm_quote_excel.php`、`datasheet_lib.php`、`bom_naming_link_api.php` 和新增契约测试均通过；临时目录执行 `php tests/naming_embedded_square_cutout_contract.php` 通过。
 - 发布：本节提交推送 GitHub 后同步服务器，三方版本以最终 Git HEAD 为准。
+
+## 2026-08-15：CRM 邮件正文增加上一封 / 下一封
+
+- 需求：CRM 邮箱未读正文右上角增加 `上一封`、`下一封`，减少读未读邮件时来回返回列表的操作。
+- 修复：`assets/crm/crm.js` 在邮件列表渲染时保存当前页邮件顺序；正文页右上角新增上一封/下一封按钮，按当前邮箱、当前筛选、当前排序的列表顺序切换邮件。
+- 交互：当前页第一封点击上一封时自动翻到上一页最后一封；当前页最后一封点击下一封时自动翻到下一页第一封；到列表边界时按钮禁用并提示已到第一封/最后一封。
+- 样式：`assets/crm/crm.css` 将正文导航按钮放到操作栏右侧，不挤占回复、转发、返回列表等原有按钮。
+- 回归保护：新增 `tests/crm_mail_reader_navigation_contract.php`，锁定当前列表顺序保存、正文导航渲染、跨页切换、按钮事件绑定和样式标记。
+- 检查：本地 `git diff --check` 和 bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 PHP 契约测试已通过，部署后继续复检生产文件。

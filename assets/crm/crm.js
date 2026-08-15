@@ -9252,6 +9252,7 @@
     mailDetailCache: {},
     mailCrmCache: {},
     currentListById: {},
+    currentListRows: [],
     composing: false,
     account: null,
     accounts: [],
@@ -10747,7 +10748,8 @@
       var box = document.querySelector('[data-mail-list]');
       if (!box) return;
       this.currentListById = {};
-      (rows || []).forEach(function (row) { MailModule.currentListById[Number(row.id || 0)] = row; });
+      this.currentListRows = (rows || []).slice();
+      this.currentListRows.forEach(function (row) { MailModule.currentListById[Number(row.id || 0)] = row; });
       if (!rows.length) {
         box.innerHTML = '<div class="mail-empty-list">没有邮件。可以点击“收取邮件”同步，或先绑定邮箱。</div>';
         return;
@@ -10859,6 +10861,10 @@
       var list = document.querySelector('[data-mail-list]');
       if (list) list.classList.add('mail-list-scrollable');
     },
+    mailPageCount: function () {
+      var size = Number(this.pageSize || 0) || this.effectivePageSize();
+      return Math.max(1, Math.ceil((this.total || 0) / Math.max(1, size)));
+    },
     toggleMailSelection: function (id, checked) {
       if (!id) return;
       if (checked) this.selectedMailIds.add(id);
@@ -10898,6 +10904,65 @@
       if (this.currentMail && Number(this.currentMail.id || 0) === Number(this.currentId || 0)) return this.currentMail;
       if (this.focusedMailId && this.currentListById[this.focusedMailId]) return this.currentListById[this.focusedMailId];
       return null;
+    },
+    mailReaderNavigationState: function (mail) {
+      var id = Number((mail && mail.id) || this.currentId || 0);
+      var rows = (this.currentListRows || []).filter(function (row) { return Number(row.id || 0) > 0; });
+      var ids = rows.map(function (row) { return Number(row.id || 0); });
+      var index = ids.indexOf(id);
+      var pages = this.mailPageCount();
+      return {
+        index: index,
+        totalOnPage: ids.length,
+        hasPrev: (index > 0) || this.page > 1,
+        hasNext: (index >= 0 && index < ids.length - 1) || this.page < pages,
+        page: this.page,
+        pages: pages
+      };
+    },
+    renderMailReaderNavigation: function (mail) {
+      var nav = this.mailReaderNavigationState(mail);
+      var hint = nav.index >= 0
+        ? ('本页第 ' + (nav.index + 1) + ' / ' + nav.totalOnPage + ' 封')
+        : ('第 ' + nav.page + ' / ' + nav.pages + ' 页');
+      return '<span class="mail-reader-nav" title="' + esc(hint) + '">' +
+        '<button type="button" data-mail-reader-prev' + (nav.hasPrev ? '' : ' disabled') + '>上一封</button>' +
+        '<button type="button" data-mail-reader-next' + (nav.hasNext ? '' : ' disabled') + '>下一封</button>' +
+        '</span>';
+    },
+    openAdjacentMail: function (direction) {
+      direction = direction === 'prev' ? 'prev' : 'next';
+      var currentId = Number(this.currentId || 0);
+      if (!currentId) return;
+      var rows = (this.currentListRows || []).filter(function (row) { return Number(row.id || 0) > 0; });
+      var ids = rows.map(function (row) { return Number(row.id || 0); });
+      var index = ids.indexOf(currentId);
+      var nextId = 0;
+      if (direction === 'prev') {
+        if (index > 0) nextId = ids[index - 1];
+        else if (this.page > 1) {
+          this.page -= 1;
+          return this.loadList({ silent: true, preserveReading: true }).then(function () {
+            var prevRows = (MailModule.currentListRows || []).filter(function (row) { return Number(row.id || 0) > 0; });
+            var last = prevRows[prevRows.length - 1];
+            if (last && last.id) MailModule.selectMail(Number(last.id));
+            else toast('已经是第一封。');
+          });
+        }
+      } else {
+        if (index >= 0 && index < ids.length - 1) nextId = ids[index + 1];
+        else if (this.page < this.mailPageCount()) {
+          this.page += 1;
+          return this.loadList({ silent: true, preserveReading: true }).then(function () {
+            var nextRows = (MailModule.currentListRows || []).filter(function (row) { return Number(row.id || 0) > 0; });
+            var first = nextRows[0];
+            if (first && first.id) MailModule.selectMail(Number(first.id));
+            else toast('已经是最后一封。');
+          });
+        }
+      }
+      if (!nextId) return toast(direction === 'prev' ? '已经是第一封。' : '已经是最后一封。');
+      this.selectMail(nextId);
     },
     mailActionState: function () {
       var mail = this.selectedMailForActions();
@@ -11056,6 +11121,7 @@
         : (isDraft ? '' : this.mailSideActionButton('转发', 'data-mail-forward'));
       var resendButton = this.canResendEditMail(mail) ? '<button type="button" data-mail-resend-edit>再次编辑</button>' : '';
       var recallButton = (isSent && !recalled) ? '<button type="button" data-mail-recall>撤回</button>' : '';
+      var readerNav = this.renderMailReaderNavigation(mail);
       var recallNotice = recalled ? '<section class="mail-recall-notice">已撤回：系统已发送撤回通知给原收件人。</section>' : '';
       var isOfficeMail = this.isOutlookOfficeMail(mail);
       var isFullHtml = this.isFullHtmlMail(mail);
@@ -11071,7 +11137,7 @@
         return '<button type="button" title="' + esc(a.file_name) + '" data-mail-attachment="' + esc(a.id) + '" data-mail-attachment-name="' + esc(a.file_name || '附件') + '">' + esc(a.file_name || '附件') + '</button>';
       }).join('') + '</div></section>' : '';
       reader.innerHTML = '<article class="mail-reader">' +
-        '<header><div><span>' + esc(mail.from_name || '') + ' &lt;' + esc(mail.from_email || '') + '&gt;</span><h2>' + esc(mail.subject || '(无主题)') + '</h2><p>收件人：' + esc(mail.to_emails || '-') + '　抄送：' + esc(mail.cc_emails || '-') + '　时间：' + esc(mail.received_at || mail.sent_at || '-') + '</p></div><nav>' + replyButtons + resendButton + recallButton + '<button data-mail-back>返回列表</button></nav></header>' +
+        '<header><div><span>' + esc(mail.from_name || '') + ' &lt;' + esc(mail.from_email || '') + '&gt;</span><h2>' + esc(mail.subject || '(无主题)') + '</h2><p>收件人：' + esc(mail.to_emails || '-') + '　抄送：' + esc(mail.cc_emails || '-') + '　时间：' + esc(mail.received_at || mail.sent_at || '-') + '</p></div><nav>' + replyButtons + resendButton + recallButton + '<button data-mail-back>返回列表</button>' + readerNav + '</nav></header>' +
         '<div class="mail-reader-scroll">' + recallNotice + attachmentHtml + '<section class="mail-body">' + body + '</section>' +
         this.renderMailHeaderSummary(mail) + '</div>' +
         '</article>';
@@ -11296,6 +11362,8 @@
         document.querySelector('.mail-grid')?.classList.toggle('show-crm');
       });
       root.querySelector('[data-mail-reply]')?.addEventListener('click', function () { self.openReplyCompose('reply', mail); });
+      root.querySelector('[data-mail-reader-prev]')?.addEventListener('click', function () { self.openAdjacentMail('prev'); });
+      root.querySelector('[data-mail-reader-next]')?.addEventListener('click', function () { self.openAdjacentMail('next'); });
       root.querySelector('[data-mail-reply-all]')?.addEventListener('click', function () { self.openReplyCompose('reply_all', mail); });
       root.querySelector('[data-mail-forward]')?.addEventListener('click', function () { self.openCompose('forward', mail); });
       root.querySelector('[data-mail-resend-edit]')?.addEventListener('click', function () { self.openCompose('resend_edit', mail); });
