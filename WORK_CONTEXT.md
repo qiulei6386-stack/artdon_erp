@@ -2765,3 +2765,14 @@
 - 样式：`assets/crm/crm.css` 新增缩略图悬浮删除按钮和超限图片标红样式。
 - 回归保护：新增 `tests/crm_visit_image_upload_delete_contract.php`，锁定 2MB 限制、前后端提示、图片删除按钮、删除后刷新列表和超限预览样式。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l tests/crm_visit_image_upload_delete_contract.php` 和契约测试通过。
+
+## 2026-08-15：CRM 拜访 / 来访创建派工真实联动
+
+- 问题：CRM 拜访/来访的“创建派工”入口仍停在 `visit_dispatch_placeholder` 占位逻辑，只写 CRM 日志和客户时间轴，前端也提示“派工接口待接入”；用户点了或保存时勾选后，派工待办不会真的出现。
+- 修复：`crm_visit.php` 将拜访派工接入 `dispatch_next_tasks`，创建真实派工待办，并写入 `dispatch_next_notifications`、`dispatch_next_logs`、CRM 操作日志和客户时间轴。
+- 规则：同一条拜访/来访已创建过派工时，通过 `related_dispatch_id` 和 `linked_table='crm_visit_records'` 防重复，重复点击返回已有派工编号，不再生成第二条。
+- 默认值：派工负责人优先使用拜访负责人，负责人失效时使用当前用户；截止时间优先使用拜访/来访日期时间，填写结果后创建派工优先使用下次跟进时间，缺失或已过期则默认明天 18:00。
+- 联动：保存拜访时勾选“创建派工”、填写结果时勾选“创建派工”、右侧 ACTIONS 点“创建派工/创建接待派工”都会真实生成派工；填写结果时创建派工会反写 `need_dispatch=1` 并保持后续待处理状态。
+- 前端：`assets/crm/crm.js` 去掉拜访派工“接口未接入/不会假创建”的提示，改为“真实生成派工待办，已创建过不会重复”；创建成功后刷新拜访列表和客户详情。
+- 回归保护：新增 `tests/crm_visit_dispatch_linkage_contract.php`，锁定真实写入派工表、通知、日志、反链、去重、默认负责人/截止时间、结果页联动和前端文案。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l tests/crm_visit_dispatch_linkage_contract.php` 和契约测试通过。

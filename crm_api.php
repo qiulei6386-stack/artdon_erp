@@ -1475,7 +1475,7 @@ try {
     }
     if ($action === 'visit_dispatch_placeholder') {
         require_csrf();
-        api_response(true, '派工接口待接入', crm_visit_dispatch_placeholder((int)($_POST['visit_id'] ?? 0), (string)($_POST['kind'] ?? 'visit_prepare')));
+        api_response(true, '派工已生成', crm_visit_dispatch_placeholder((int)($_POST['visit_id'] ?? 0), (string)($_POST['kind'] ?? 'visit_prepare')));
     }
     if ($action === 'visit_files') {
         require_csrf();

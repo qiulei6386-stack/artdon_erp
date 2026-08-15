@@ -23824,8 +23824,8 @@
         '待填写结果': '查看超期未填写结果的记录',
         '填写拜访结果': '填写拜访完成后的客户反馈和后续动作',
         '填写接待结果': '填写来访接待结果和后续动作',
-        '创建接待派工': '为来访接待创建派工，接口未接通时显示待接入',
-        '创建派工': '为当前记录创建派工，接口未接通时显示待接入',
+        '创建接待派工': '为来访接待创建派工待办，已创建过不会重复',
+        '创建派工': '为当前记录创建派工待办，已创建过不会重复',
         '创建跟进': '从当前记录创建客户跟进',
         '导出记录': '导出拜访/来访记录',
         '分配客户': '调整客户负责人或协作人',
@@ -26290,7 +26290,7 @@
       var row = this.selected() || {};
       var html = '<div class="visit-workspace-form" data-task-complete-form>' +
         '<section class="visit-hero-panel"><div><span>完成任务</span><input value="' + esc(row.title || '任务完成') + '" readonly></div><b>Done</b></section>' +
-        '<section class="visit-work-section"><h3>完成结果</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>完成结果 *</span><select name="result"><option value="">请选择</option><option>已完成跟进</option><option>客户已回复</option><option>客户要求报价</option><option>客户要求资料</option><option>客户要求样品</option><option>客户暂无反馈</option><option>快递异常</option><option>内部处理完成</option></select></label><label class="visit-date-card"><span>下次跟进时间</span><input type="datetime-local" name="next_followup_time"></label></div><div class="visit-note-grid"><label class="wide">备注<textarea name="result_note" rows="4" placeholder="填写处理结果、客户反馈或异常原因"></textarea></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建下次跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_opportunity"><span>创建商机</span></label><label class="tag-chip"><input type="checkbox" name="create_quote"><span>创建报价</span></label><label class="tag-chip"><input type="checkbox" name="create_material"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label></div><p class="entry-muted wide">完成会写入任务日志和客户时间轴；报价、资料、派工接口未接入时会提示待接入，不会假创建。</p></section>' +
+        '<section class="visit-work-section"><h3>完成结果</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>完成结果 *</span><select name="result"><option value="">请选择</option><option>已完成跟进</option><option>客户已回复</option><option>客户要求报价</option><option>客户要求资料</option><option>客户要求样品</option><option>客户暂无反馈</option><option>快递异常</option><option>内部处理完成</option></select></label><label class="visit-date-card"><span>下次跟进时间</span><input type="datetime-local" name="next_followup_time"></label></div><div class="visit-note-grid"><label class="wide">备注<textarea name="result_note" rows="4" placeholder="填写处理结果、客户反馈或异常原因"></textarea></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建下次跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_opportunity"><span>创建商机</span></label><label class="tag-chip"><input type="checkbox" name="create_quote"><span>创建报价</span></label><label class="tag-chip"><input type="checkbox" name="create_material"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label></div><p class="entry-muted wide">完成会写入任务日志和客户时间轴；勾选创建派工会真实生成派工待办，已创建过不会重复。</p></section>' +
         '</div><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-task-complete-save>确认完成</button></div>';
       CustomerModule.openBusinessDialog('填写完成结果', html, '标记完成前必须记录结果。', function (dialog) {
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
@@ -27271,7 +27271,7 @@
         '<section class="visit-work-section visit-section-checks"><h3>准备事项</h3>' + this.needChecks(row, isArrival) + '</section>' +
         this.formSection('图片 / 附件', this.fileUploadBlock(row), 'visit-section-files') +
         '<section class="visit-work-section"><h3>备注与准备说明</h3><div class="visit-note-grid"><label>拜访备注<textarea name="planned_note" rows="4">' + esc(row.planned_note || '') + '</textarea></label><label>客户需求<textarea name="customer_needs" rows="4">' + esc(row.customer_needs || '') + '</textarea></label><label class="wide">准备说明<textarea name="preparation_note" rows="3">' + esc(row.preparation_note || '') + '</textarea></label></div></section>' +
-        '<section class="visit-work-section visit-section-checks"><h3>后续联动</h3><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label><label class="tag-chip"><input type="checkbox" name="create_quote_task"><span>创建报价任务</span></label><label class="tag-chip"><input type="checkbox" name="create_material_task"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_sample_task"><span>创建样品任务</span></label></div><label class="visit-follow-time">下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="visit-reminder-panel"><strong>任务跟进提醒</strong><span>按拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div></section>' +
+        '<section class="visit-work-section visit-section-checks"><h3>后续联动</h3><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label><label class="tag-chip"><input type="checkbox" name="create_quote_task"><span>创建报价任务</span></label><label class="tag-chip"><input type="checkbox" name="create_material_task"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_sample_task"><span>创建样品任务</span></label></div><p class="entry-muted wide">创建派工会真实生成派工待办，负责人默认使用拜访负责人，已创建过不会重复。</p><label class="visit-follow-time">下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="visit-reminder-panel"><strong>任务跟进提醒</strong><span>按拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div></section>' +
         '<p class="entry-muted wide" data-visit-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" data-visit-draft>保存草稿</button><button type="button" class="primary" data-visit-save>保存拜访计划</button></div>';
       var self = this;
@@ -27580,7 +27580,12 @@
     formError: function (form, message) { var node = form.querySelector('[data-visit-error]') || form.querySelector('.entry-muted'); if (node) node.textContent = message; toast(message); },
     createDispatchPlaceholder: function (row) {
       row = row || this.selected(); if (!row) return toast('请先选择拜访/来访记录。');
-      post('visit_dispatch_placeholder', { visit_id: row.id, kind: row.visit_type === 'customer_arrival' ? 'arrival_reception' : 'visit_prepare' }).then(function (json) { toast((json.data && json.data.message) || json.message || '派工接口待接入'); });
+      var self = this;
+      post('visit_dispatch_placeholder', { visit_id: row.id, kind: row.visit_type === 'customer_arrival' ? 'arrival_reception' : 'visit_prepare' }).then(function (json) {
+        toast((json.data && json.data.message) || json.message || '派工已生成');
+        self.load();
+        if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+      });
     },
     createFollowupFromVisit: function (row) { row = row || this.selected(); if (!row) return toast('请先选择拜访/来访记录。'); CustomerModule.currentId = Number(row.customer_id || 0); CustomerModule.openFollowupDialog(); },
     deleteVisit: function (row) {

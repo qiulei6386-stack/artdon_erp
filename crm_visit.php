@@ -408,8 +408,15 @@ function crm_visit_handle_linkage_requests(int $id, array $visit, array $input):
         }
     }
     crm_visit_create_followup_reminders($id, $visit, crm_visit_followup_offsets($input['followup_offsets'] ?? ($visit['followup_offsets'] ?? [])));
+    if (!empty($input['create_dispatch'])) {
+        try {
+            crm_visit_dispatch_placeholder($id, ($visit['visit_type'] ?? '') === 'customer_arrival' ? 'arrival_reception' : 'visit_prepare');
+        } catch (Throwable $e) {
+            crm_log_event('visit', 'visit_dispatch_create_failed', 'visit', (string)$id, null, ['error' => $e->getMessage()], false, $e->getMessage());
+            throw $e;
+        }
+    }
     $pending = [
-        'create_dispatch' => ['visit_dispatch_requested', '拜访/来访派工接口待接入'],
         'create_quote_task' => ['visit_quote_requested', '拜访/来访报价接口待接入'],
         'create_material_task' => ['visit_material_requested', '拜访/来访资料接口待接入'],
         'create_sample_task' => ['visit_sample_requested', '拜访/来访样品接口待接入'],
@@ -421,7 +428,6 @@ function crm_visit_handle_linkage_requests(int $id, array $visit, array $input):
         if ($key === 'create_quote_task') crm_task_upsert_visit_action($visit, 'quote_followup', '拜访后报价提醒', $meta[1]);
         if ($key === 'create_material_task') crm_task_upsert_visit_action($visit, 'material_task', '拜访后资料任务', $meta[1]);
         if ($key === 'create_sample_task') crm_task_upsert_visit_action($visit, 'sample_task', '拜访后样品任务', $meta[1]);
-        if ($key === 'create_dispatch') crm_task_upsert_visit_action($visit, 'dispatch_confirm', '拜访后派工确认', $meta[1]);
     }
 }
 
@@ -493,7 +499,7 @@ function crm_visit_result_save(int $id, array $input): array
     crm_visit_ensure_tables();
     crm_require('visit.result');
     $before = crm_visit_row($id);
-    $status = !empty($input['need_quote']) || !empty($input['need_material']) || !empty($input['need_sample']) || !empty($input['need_dispatch']) ? 'followup_pending' : 'completed';
+    $status = !empty($input['need_quote']) || !empty($input['need_material']) || !empty($input['need_sample']) || !empty($input['need_dispatch']) || !empty($input['create_dispatch']) ? 'followup_pending' : 'completed';
     $actualTime = trim((string)($input['actual_time'] ?? '')) ?: date('Y-m-d H:i:s');
     $data = [
         'actual_time' => $actualTime,
@@ -510,7 +516,7 @@ function crm_visit_result_save(int $id, array $input): array
         'need_quote' => !empty($input['need_quote']) ? 1 : (int)$before['need_quote'],
         'need_material' => !empty($input['need_material']) ? 1 : (int)$before['need_material'],
         'need_sample' => !empty($input['need_sample']) ? 1 : (int)$before['need_sample'],
-        'need_dispatch' => !empty($input['need_dispatch']) ? 1 : (int)$before['need_dispatch'],
+        'need_dispatch' => (!empty($input['need_dispatch']) || !empty($input['create_dispatch'])) ? 1 : (int)$before['need_dispatch'],
         'status' => $status,
     ];
     $sets = [];
@@ -548,6 +554,7 @@ function crm_visit_result_save(int $id, array $input): array
     if (!empty($data['need_material'])) crm_task_upsert_visit_action($after, 'material_task', '拜访后资料任务', '客户拜访/来访后需要资料，请准备并发送资料。');
     if (!empty($data['need_sample'])) crm_task_upsert_visit_action($after, 'sample_task', '拜访后样品任务', '客户拜访/来访后需要样品，请创建样品寄送或样品准备任务。');
     if (!empty($data['need_dispatch'])) crm_task_upsert_visit_action($after, 'dispatch_confirm', '拜访后派工确认', '客户拜访/来访后需要派工处理，请确认派工内容。');
+    if (!empty($input['create_dispatch'])) crm_visit_dispatch_placeholder($id, 'visit_result');
     return ['record' => $after, 'linkage' => crm_visit_linkage_actions($after), 'list' => crm_visit_list([])];
 }
 
@@ -557,17 +564,181 @@ function crm_visit_linkage_actions(array $visit): array
     if (!empty($visit['need_quote'])) $actions[] = ['type' => 'quote', 'label' => '创建报价', 'status' => 'pending_integration', 'message' => '报价接口待接入，可从右侧 ACTIONS 跳转报价系统。'];
     if (!empty($visit['need_material'])) $actions[] = ['type' => 'material', 'label' => '生成资料', 'status' => 'pending_integration', 'message' => '资料生成接口待接入，可从资料系统创建资料包。'];
     if (!empty($visit['need_sample'])) $actions[] = ['type' => 'sample', 'label' => '样品/PLM', 'status' => 'pending_integration', 'message' => '样品/PLM 项目接口待接入。'];
-    if (!empty($visit['need_dispatch'])) $actions[] = ['type' => 'dispatch', 'label' => '创建派工', 'status' => 'pending_integration', 'message' => '派工接口待接入，已保留入口。'];
+    if (!empty($visit['need_dispatch'])) $actions[] = ['type' => 'dispatch', 'label' => '创建派工', 'status' => 'ready', 'message' => '可从右侧 ACTIONS 创建派工待办，已创建过不会重复。'];
     return $actions;
+}
+
+function crm_visit_dispatch_task_no(PDO $pdo): string
+{
+    do {
+        $no = 'VD' . date('ymdHis') . mt_rand(100, 999);
+        $st = $pdo->prepare('SELECT COUNT(*) FROM dispatch_next_tasks WHERE task_no = ?');
+        $st->execute([$no]);
+    } while ((int)$st->fetchColumn() > 0);
+    return $no;
+}
+
+function crm_visit_dispatch_existing(array $visit): ?array
+{
+    $pdo = db();
+    $visitId = (int)($visit['id'] ?? 0);
+    $relatedId = (int)($visit['related_dispatch_id'] ?? 0);
+    if ($relatedId > 0) {
+        $stmt = $pdo->prepare('SELECT id, task_no FROM dispatch_next_tasks WHERE id = ? AND is_deleted = 0 LIMIT 1');
+        $stmt->execute([$relatedId]);
+        $row = $stmt->fetch();
+        if ($row) return $row;
+    }
+    if ($visitId > 0) {
+        $stmt = $pdo->prepare("SELECT id, task_no FROM dispatch_next_tasks WHERE linked_system = 'crm' AND linked_table = 'crm_visit_records' AND linked_id = ? AND is_deleted = 0 ORDER BY id DESC LIMIT 1");
+        $stmt->execute([(string)$visitId]);
+        $row = $stmt->fetch();
+        if ($row) {
+            db()->prepare('UPDATE crm_visit_records SET related_dispatch_id = ?, updated_at = NOW() WHERE id = ? AND (related_dispatch_id IS NULL OR related_dispatch_id = 0)')
+                ->execute([(int)$row['id'], $visitId]);
+            return $row;
+        }
+    }
+    return null;
+}
+
+function crm_visit_dispatch_due_at(array $visit, string $kind): string
+{
+    $due = $kind === 'visit_result' ? trim((string)($visit['next_followup_time'] ?? '')) : '';
+    if ($due === '') {
+        $due = crm_task_due_from_visit($visit) ?: '';
+    }
+    $ts = $due !== '' ? strtotime(str_replace('T', ' ', $due)) : false;
+    if (!$ts || $ts <= time()) {
+        $ts = strtotime('tomorrow 18:00');
+    }
+    return date('Y-m-d H:i:s', $ts);
+}
+
+function crm_visit_dispatch_assignee(array $visit): int
+{
+    $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    $owner = (int)($visit['owner_user_id'] ?? 0) ?: $uid;
+    $stmt = db()->prepare("SELECT id FROM crm_users WHERE id = ? AND status = 'active' LIMIT 1");
+    $stmt->execute([$owner]);
+    $valid = (int)$stmt->fetchColumn();
+    if ($valid > 0) return $valid;
+    if ($uid > 0) return $uid;
+    throw new RuntimeException('拜访记录没有可用的派工负责人。');
+}
+
+function crm_visit_dispatch_description(array $visit, string $kind): string
+{
+    $typeLabel = ($visit['visit_type'] ?? '') === 'customer_arrival' ? '来访接待' : '客户拜访';
+    $lines = [
+        '来源：CRM ' . $typeLabel,
+        '联动类型：' . ($kind === 'visit_result' ? '拜访结果后续派工' : '拜访/来访准备派工'),
+        '客户：' . trim((string)($visit['customer_name'] ?? '')),
+        '客户代码：' . trim((string)($visit['customer_code'] ?? '')),
+        '联系人：' . trim((string)($visit['contact_name'] ?? '')),
+        '日期：' . trim((string)($visit['visit_date'] ?? '')) . ' ' . trim((string)($visit['visit_time'] ?? '')),
+        '地点：' . trim(implode(' ', array_filter([
+            trim((string)($visit['country'] ?? '')),
+            trim((string)($visit['city'] ?? '')),
+            trim((string)($visit['location'] ?? '')),
+        ]))),
+        '目的：' . trim((string)($visit['purpose'] ?? '')),
+        '',
+        '计划/准备：',
+        trim((string)($visit['planned_note'] ?? '')),
+        trim((string)($visit['preparation_note'] ?? '')),
+        '',
+        '客户需求/结果：',
+        trim((string)($visit['customer_needs'] ?? '')),
+        trim((string)($visit['result_note'] ?? '')),
+        trim((string)($visit['next_action'] ?? '')),
+    ];
+    $description = trim(implode("\n", array_filter($lines, static fn($line) => $line !== '')));
+    return mb_strlen($description, 'UTF-8') > 8000 ? mb_substr($description, 0, 8000, 'UTF-8') : $description;
 }
 
 function crm_visit_dispatch_placeholder(int $id, string $kind = 'visit_prepare'): array
 {
     $visit = crm_visit_row($id);
-    crm_require('visit.edit');
-    crm_log_event('visit', 'dispatch_placeholder', 'visit', (string)$id, null, ['kind' => $kind, 'status' => 'pending_integration']);
-    crm_customer_timeline_add((int)$visit['customer_id'], 'visit_dispatch_placeholder', '拜访/来访派工接口待接入', $visit['title'] . ' · ' . $kind, 'visit', (string)$id);
-    return ['message' => '派工接口待接入，入口已保留并写入日志。', 'record' => $visit];
+    crm_require('visit.dispatch');
+    require_once __DIR__ . '/dispatch_next_schema.php';
+    dispatch_next_init_schema();
+    $existing = crm_visit_dispatch_existing($visit);
+    if ($existing) {
+        return ['message' => '已存在派工：' . (string)$existing['task_no'], 'record' => $visit, 'dispatch_id' => (int)$existing['id'], 'task_no' => (string)$existing['task_no'], 'existing' => true];
+    }
+    $pdo = db();
+    $uid = (int)((current_user() ?: [])['id'] ?? 0);
+    if ($uid <= 0) throw new RuntimeException('登录状态无效。');
+    $assignee = crm_visit_dispatch_assignee($visit);
+    $dueAt = crm_visit_dispatch_due_at($visit, $kind);
+    $taskDate = date('Y-m-d', strtotime($dueAt));
+    $typeLabel = ($visit['visit_type'] ?? '') === 'customer_arrival' ? '来访接待' : '客户拜访';
+    $titlePrefix = $kind === 'visit_result' ? '拜访后派工' : ($typeLabel . '派工');
+    $title = $titlePrefix . '：' . (trim((string)($visit['title'] ?? '')) ?: ('拜访/来访 #' . $id));
+    if (mb_strlen($title, 'UTF-8') > 240) $title = mb_substr($title, 0, 240, 'UTF-8');
+    $project = trim(implode(' · ', array_filter([
+        trim((string)($visit['customer_name'] ?? '')),
+        trim((string)($visit['customer_code'] ?? '')),
+        trim((string)($visit['title'] ?? '')),
+    ])));
+    if ($project === '') $project = $title;
+    if (mb_strlen($project, 'UTF-8') > 180) $project = mb_substr($project, 0, 180, 'UTF-8');
+    $linked = [
+        'visit_id' => (int)$visit['id'],
+        'visit_type' => (string)($visit['visit_type'] ?? ''),
+        'kind' => $kind,
+        'customer_id' => (int)($visit['customer_id'] ?? 0),
+        'customer_name' => (string)($visit['customer_name'] ?? ''),
+        'contact_id' => (int)($visit['contact_id'] ?? 0),
+        'contact_name' => (string)($visit['contact_name'] ?? ''),
+        'visit_date' => (string)($visit['visit_date'] ?? ''),
+        'visit_time' => (string)($visit['visit_time'] ?? ''),
+    ];
+    $pdo->beginTransaction();
+    try {
+        $taskNo = crm_visit_dispatch_task_no($pdo);
+        $pdo->prepare("INSERT INTO dispatch_next_tasks(task_no,task_type,dispatch_mode,parent_group_id,title,project,description,priority,status,created_by,assigned_to,helper_ids_json,task_date,due_at,progress,is_read,linked_system,linked_table,linked_id,linked_title,linked_json,extra_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")
+            ->execute([
+                $taskNo,
+                'dispatch',
+                'single',
+                null,
+                $title,
+                $project,
+                crm_visit_dispatch_description($visit, $kind),
+                'important',
+                $assignee === $uid ? 'in_progress' : 'pending_accept',
+                $uid,
+                $assignee,
+                json_encode([], JSON_UNESCAPED_UNICODE),
+                $taskDate,
+                $dueAt,
+                0,
+                $assignee === $uid ? 1 : 0,
+                'crm',
+                'crm_visit_records',
+                (string)$id,
+                trim((string)($visit['title'] ?? '')),
+                json_encode($linked, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode(['source' => 'crm_visit_create_dispatch', 'kind' => $kind], JSON_UNESCAPED_UNICODE),
+            ]);
+        $dispatchId = (int)$pdo->lastInsertId();
+        $pdo->prepare('UPDATE crm_visit_records SET related_dispatch_id = ?, need_dispatch = 1, updated_by = ?, updated_at = NOW() WHERE id = ?')
+            ->execute([$dispatchId, $uid, $id]);
+        $pdo->prepare("INSERT INTO dispatch_next_notifications(recipient_id,sender_id,task_id,type,title,message,created_at) VALUES(?,?,?,?,?,?,NOW())")
+            ->execute([$assignee, $uid, $dispatchId, 'new_dispatch', '拜访联动派工待接收', $title]);
+        $pdo->prepare("INSERT INTO dispatch_next_logs(task_id,user_id,action_type,field_name,old_value,new_value,note,ip,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,NOW())")
+            ->execute([$dispatchId, $uid, 'visit_create_dispatch', 'linked_id', '', (string)$id, 'CRM 拜访/来访创建派工', $_SERVER['REMOTE_ADDR'] ?? '', substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+        crm_log_event('visit', 'visit_create_dispatch', 'visit', (string)$id, null, ['dispatch_id' => $dispatchId, 'task_no' => $taskNo, 'assigned_to' => $assignee, 'due_at' => $dueAt, 'kind' => $kind]);
+        crm_customer_timeline_add((int)$visit['customer_id'], 'visit_create_dispatch', '已创建拜访/来访派工', $taskNo . ' · ' . $title, 'visit', (string)$id);
+        $pdo->commit();
+        $visit = crm_visit_row($id);
+        return ['message' => '派工已创建：' . $taskNo, 'record' => $visit, 'dispatch_id' => $dispatchId, 'task_no' => $taskNo, 'existing' => false];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
 }
 
 function crm_visit_files(int $visitId): array
