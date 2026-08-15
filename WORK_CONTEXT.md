@@ -2755,3 +2755,13 @@
 - 修复：附件文件名规范化 NBSP / 窄空格等异常空白，避免 `AESOP PS - ...` 这类文件名看起来像乱码或间距异常；打开邮件时会修复当前邮件历史附件名。
 - 回归保护：新增 `tests/crm_mail_attachment_inline_visibility_contract.php`，锁定非图片 inline 不隐藏、历史误标修复、文件名异常空格规范化和打开邮件触发修复。
 - 检查：本地 `git diff --check` 通过；服务器临时目录 `php -l crm_mail.php`、`php -l tests/crm_mail_attachment_inline_visibility_contract.php` 和契约测试通过。上线后将对现有历史附件执行一次修复。
+
+## 2026-08-15：CRM 拜访图片上传 2MB 与删除按钮
+
+- 需求：CRM 拜访记录图片上传最大允许 2MB；已上传图片缺少明显删除按钮，用户不容易删除错误图片。
+- 修复：`crm_visit.php` 将拜访图片后端限制从 500KB 调整为 2MB，错误提示同步改为“超过 2MB 图片限制”；附件 100MB 规则不变。
+- 前端：`assets/crm/crm.js` 的拜访图片上传提示改为“单张 <= 2MB”，上传前会阻止超过 2MB 的图片；本地待上传预览会标红显示“超过 2MB，不能上传”。
+- 前端：上传后的拜访图片缩略图右上角新增红色 `×` 删除按钮，同时保留原来的预览/下载/删除操作；删除成功后用接口返回的最新文件列表重绘图片和附件区，避免只删 DOM 导致状态不一致。
+- 样式：`assets/crm/crm.css` 新增缩略图悬浮删除按钮和超限图片标红样式。
+- 回归保护：新增 `tests/crm_visit_image_upload_delete_contract.php`，锁定 2MB 限制、前后端提示、图片删除按钮、删除后刷新列表和超限预览样式。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l tests/crm_visit_image_upload_delete_contract.php` 和契约测试通过。

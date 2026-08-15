@@ -27325,7 +27325,7 @@
     fileUploadBlock: function (row) {
       var files = (row && row.files) || [];
       return '<div class="visit-upload-layout">' +
-        '<section class="visit-upload-box"><strong>图片上传</strong><span>jpg / png / webp / gif · 单张 <= 500KB</span><label class="visit-file-drop"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-visit-image-input><b>点击选择图片</b><em>支持多图上传，保存后自动关联记录</em></label><div class="visit-thumb-grid" data-visit-local-images></div><div class="visit-thumb-grid" data-visit-images>' + this.fileListHtml(files, 'image') + '</div></section>' +
+        '<section class="visit-upload-box"><strong>图片上传</strong><span>jpg / png / webp / gif · 单张 <= 2MB</span><label class="visit-file-drop"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple data-visit-image-input><b>点击选择图片</b><em>支持多图上传，保存后自动关联记录</em></label><div class="visit-thumb-grid" data-visit-local-images></div><div class="visit-thumb-grid" data-visit-images>' + this.fileListHtml(files, 'image') + '</div></section>' +
         '<section class="visit-upload-box"><strong>附件上传</strong><span>PDF / Word / Excel / PPT / ZIP 等 · 单个 <= 100MB</span><label class="visit-file-drop"><input type="file" multiple data-visit-attachment-input><b>点击选择附件</b><em>保存后可下载；PDF 支持弹窗预览</em></label><div class="visit-file-list" data-visit-local-attachments></div><div class="visit-file-list" data-visit-attachments>' + this.fileListHtml(files, 'attachment') + '</div></section>' +
         '</div>';
     },
@@ -27336,7 +27336,7 @@
       return list.map(function (file, index) {
         var url = self.fileUrl(file.id, true);
         if (kind === 'image') {
-          return '<article class="visit-thumb" data-visit-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '" data-file-kind="' + esc(file.file_kind || kind) + '"><button type="button" data-visit-preview-file="' + esc(file.id) + '"><img src="' + esc(url) + '" alt="' + esc(file.original_name || file.file_name || '图片') + '"></button><span>' + esc(file.original_name || file.file_name || '图片') + '</span><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
+          return '<article class="visit-thumb" data-visit-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '" data-file-kind="' + esc(file.file_kind || kind) + '"><button type="button" data-visit-preview-file="' + esc(file.id) + '"><img src="' + esc(url) + '" alt="' + esc(file.original_name || file.file_name || '图片') + '"></button><button type="button" class="visit-thumb-delete" title="删除图片" data-visit-delete-file="' + esc(file.id) + '">×</button><span>' + esc(file.original_name || file.file_name || '图片') + '</span><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
         }
         return '<article data-visit-file-id="' + esc(file.id) + '" data-file-name="' + esc(file.original_name || file.file_name || '') + '" data-file-mime="' + esc(file.mime_type || '') + '" data-file-kind="' + esc(file.file_kind || kind) + '"><div><strong>' + esc(file.original_name || file.file_name || '附件') + '</strong><span>' + esc(file.file_size_label || '') + ' · ' + esc(String(file.uploaded_at || file.created_at || '').slice(0, 16)) + '</span></div><nav><button type="button" data-visit-preview-file="' + esc(file.id) + '">预览</button><a href="' + esc(self.fileUrl(file.id, false)) + '">下载</a><button type="button" data-visit-delete-file="' + esc(file.id) + '">删除</button></nav></article>';
       }).join('');
@@ -27453,7 +27453,8 @@
       }
       if (kind === 'image') {
         box.innerHTML = files.map(function (file, index) {
-          return '<article class="visit-thumb is-local"><button type="button" data-local-image-index="' + index + '"></button><span>' + esc(file.name) + '</span><em>' + esc(Math.round(file.size / 1024)) + 'KB</em></article>';
+          var tooLarge = file.size > 2097152;
+          return '<article class="visit-thumb is-local' + (tooLarge ? ' is-invalid' : '') + '"><button type="button" data-local-image-index="' + index + '"></button><span>' + esc(file.name) + '</span><em>' + esc(tooLarge ? '超过 2MB，不能上传' : (Math.round(file.size / 1024) + 'KB')) + '</em></article>';
         }).join('');
         files.forEach(function (file, index) {
           var reader = new FileReader();
@@ -27474,6 +27475,9 @@
       var imageInput = dialog.querySelector('[data-visit-image-input]');
       var attachmentInput = dialog.querySelector('[data-visit-attachment-input]');
       var jobs = [];
+      if (imageInput && imageInput.files && Array.prototype.some.call(imageInput.files, function (file) { return file.size > 2097152; })) {
+        return Promise.reject(new Error('拜访图片单张不能超过 2MB，请压缩后再上传。'));
+      }
       if (imageInput && imageInput.files && imageInput.files.length) jobs.push(self.uploadFileInput(visitId, 'image', imageInput));
       if (attachmentInput && attachmentInput.files && attachmentInput.files.length) jobs.push(self.uploadFileInput(visitId, 'attachment', attachmentInput));
       return Promise.all(jobs);
@@ -27500,7 +27504,15 @@
       var self = this;
       post('visit_file_delete', { file_id: fileId }).then(function (json) {
         if (!json.success) return toast(json.message || '删除失败');
-        dialog.querySelectorAll('[data-visit-file-id="' + fileId + '"]').forEach(function (node) { node.remove(); });
+        var files = (json.data && json.data.files) || [];
+        var images = dialog.querySelector('[data-visit-images]');
+        var attachments = dialog.querySelector('[data-visit-attachments]');
+        if (images || attachments) {
+          if (images) images.innerHTML = self.fileListHtml(files, 'image');
+          if (attachments) attachments.innerHTML = self.fileListHtml(files, 'attachment');
+        } else {
+          dialog.querySelectorAll('[data-visit-file-id="' + fileId + '"]').forEach(function (node) { node.remove(); });
+        }
         toast('文件已删除');
         if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
         self.load();

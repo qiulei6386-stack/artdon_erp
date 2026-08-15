@@ -667,7 +667,7 @@ function crm_visit_upload_files(int $visitId, string $kind, array $files): array
         }
         $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
         if ($kind === 'image') {
-            if ($size > 512000) throw new RuntimeException($original . ' 超过 500KB 图片限制。');
+            if ($size > 2097152) throw new RuntimeException($original . ' 超过 2MB 图片限制。');
             if (!in_array($mime, ['image/jpeg','image/png','image/webp','image/gif'], true) || !in_array($ext, ['jpg','jpeg','png','webp','gif'], true)) {
                 throw new RuntimeException($original . ' 不是支持的图片格式。');
             }
