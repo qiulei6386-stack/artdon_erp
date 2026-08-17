@@ -5060,28 +5060,9 @@ function bindQuotationSummary(){initSummaryColumnResize();setQuotationSummaryRan
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindQuotationSummary);else bindQuotationSummary();
 if($('page-summary')?.classList.contains('active'))loadQuotationSummary();
 </script>
-<style>
-.quote-adjustment-panel{margin-top:10px;border:1px solid #dbe5f3;border-radius:12px;background:#fbfdff;padding:10px}
-.quote-adjustment-panel h4{margin:0 0 8px;font-size:13px;color:#0f172a}
-.quote-adjustment-grid{display:grid;grid-template-columns:120px 110px 120px 1fr;gap:8px;align-items:end}
-.quote-adjustment-grid label{font-size:11px;margin:0;color:#52627a;font-weight:800}
-.quote-adjustment-grid input,.quote-adjustment-grid select{width:100%;font-size:12px!important;padding:7px 8px!important;border-radius:8px!important}
-.quote-adjustment-hint{grid-column:1/-1;font-size:12px;color:#64748b;line-height:1.45}
-@media(max-width:1500px){.quote-adjustment-grid{grid-template-columns:1fr 1fr}.quote-adjustment-hint{grid-column:1/-1}}
-</style>
 <script>
-/* V6.8.5.47：报价整单调整/折扣。只影响总价，不修改产品单价；转订单时写入不出货虚拟行。 */
-(function(){
-  function mountQuoteAdjustmentPanel(){
-    if(document.getElementById('quoteAdjustmentPanel'))return;
-    let anchor=document.querySelector('.quote-work .quote-items');
-    if(!anchor)return;
-    anchor.insertAdjacentHTML('afterend',`<div class="quote-adjustment-panel" id="quoteAdjustmentPanel"><h4>整单调整 / 折扣</h4><div class="quote-adjustment-grid"><div><label>类型</label><select id="quoteAdjustmentType" onchange="quoteSyncAdjustmentFromForm()"><option value="none">无调整</option><option value="discount_amount">折扣金额</option><option value="discount_percent">折扣百分比</option><option value="surcharge_amount">加收金额</option></select></div><div><label>数值</label><input id="quoteAdjustmentValue" type="number" step="0.01" placeholder="0" oninput="quoteSyncAdjustmentFromForm()"></div><div><label>显示名称</label><input id="quoteAdjustmentLabel" placeholder="Discount" oninput="quoteSyncAdjustmentFromForm()"></div><div><label>原因 / 备注</label><input id="quoteAdjustmentReason" placeholder="如 Sample discount / Project discount" oninput="quoteSyncAdjustmentFromForm()"></div><div class="quote-adjustment-hint" id="quoteAdjustmentHint">未设置整单调整</div></div></div>`);
-    if(typeof quoteLoadAdjustmentControls==='function')quoteLoadAdjustmentControls((typeof S!=='undefined'&&S.quoteAdjustment)?S.quoteAdjustment:quoteDefaultAdjustment());
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountQuoteAdjustmentPanel);else mountQuoteAdjustmentPanel();
-  setTimeout(mountQuoteAdjustmentPanel,500);
-})();
+/* V6.8.5.48：整单调整面板已停用；新折扣统一走“添加费用项 → 折扣”。旧报价调整数据仅保留兼容读取/导出。 */
+(function(){let old=document.getElementById('quoteAdjustmentPanel');if(old)old.remove();})();
 </script>
 <!-- V6.8.5.46：历史报价关键词支持客户公司 / 客户联系人 / 报价订单号 / 产品型号 / 系列名字，不匹配业务员/国家/金额。 -->
 </body></html>
