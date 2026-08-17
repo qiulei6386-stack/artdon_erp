@@ -8,7 +8,7 @@
  * - 恢复 naming_inbox / PLM 样品命名回写 / BOM 兼容字段
  * - 不使用实时轮询切换视图，避免大图/中图/小表来回跳
  * - 读取现有 naming_models / naming_rules / naming_inbox 数据
- * - 官网同步型号允许权限内编辑，官网新增/修改/删除仍会回写命名中心
+ * - 官网同步型号在命名中心只读锁定，所有修改必须回到官网完成
  */
 declare(strict_types=1);
 
@@ -42,7 +42,7 @@ if (is_file($__artdon_sso_core)) {
     }
 }
 
-const NAMING_VERSION = '3.0.8.34';
+const NAMING_VERSION = '3.0.8.35';
 const NM_UPLOAD_LIMIT = 512000; // 500KB
 const NM_UPLOAD_DIR = __DIR__ . '/uploads/naming';
 const NM_BACKUP_DIR = __DIR__ . '/uploads/naming_backups';
@@ -2469,7 +2469,7 @@ function nm_api(): void {
                 $st->execute(array($id));
                 $old = $st->fetch();
                 if (!$old) throw new RuntimeException('要编辑的型号不存在。');
-                // V3.0.8.7：官网同步型号允许有 edit_model 权限的账号打开编辑；后续官网同步仍会更新官网字段。
+                if (nm_is_website_row($old)) throw new RuntimeException('官网同步型号已锁定，请在香港官网修改；命名中心会自动同步更新。');
             }
             if ($manual === '') {
                 list($serial,$modelNo) = nm_next_serial($pdo, (string)$r['prefix'], $size, (int)$r['seq_digits'], !empty($r['no_four']));
@@ -2578,6 +2578,7 @@ function nm_api(): void {
             $st->execute(array($id));
             $row = $st->fetch();
             if (!$row) throw new RuntimeException('型号不存在。');
+            if (nm_is_website_row($row)) throw new RuntimeException('官网同步型号已锁定，不能在命名中心停用或恢复；请在香港官网修改。');
             $newStatus = $action === 'disable_model' ? '停用' : '已确认';
             $pdo->prepare('UPDATE naming_models SET status=?, updated_by=?, updated_at=NOW() WHERE id=?')->execute(array($newStatus, nm_current_user(), $id));
             $st = $pdo->prepare('SELECT * FROM naming_models WHERE id=? LIMIT 1');
@@ -2593,7 +2594,7 @@ function nm_api(): void {
             $st = $pdo->prepare('SELECT * FROM naming_models WHERE id=? LIMIT 1');
             $st->execute(array($id));
             $row = $st->fetch();
-            if ($row && nm_is_website_row($row)) throw new RuntimeException('官网同步型号不要本地删除，否则下次官网同步会重新回来。请用“停用”功能。');
+            if ($row && nm_is_website_row($row)) throw new RuntimeException('官网同步型号已锁定，不能在命名中心删除；请在香港官网修改。');
             if ($row) {
                 if (!empty($row['image_path'])) nm_delete_local_upload((string)$row['image_path']);
                 if (!empty($row['drawing_path'])) nm_delete_local_upload((string)$row['drawing_path']);
@@ -3034,7 +3035,7 @@ body.nm-modal-open .kb-card{z-index:1!important;}
 <?php if($view === 'table'): ?>
 <section class="table-wrap"><table class="table"><thead><tr><th>产品图</th><th>型号</th><th>系列名字</th><th>灯具类型</th><th>分类</th><th>尺寸</th><th>尺寸图</th><th>来源</th><th>状态</th><th>创建/修改</th><th>操作</th></tr></thead><tbody>
 <?php foreach($rows as $r): $img=nm_pick_media($r,'image'); $dr=nm_pick_media($r,'drawing'); $web=nm_is_website_row($r); $synced=nm_sync_time($r); ?>
-<tr><td><?= $img!=='' ? '<img class="sqthumb" src="'.nm_h($img).'" loading="lazy">' : '<span class="chip bad">无图</span>' ?></td><td><b><?=nm_h($r['model_no']??'')?></b></td><td><?=nm_h(nm_series($r))?></td><td><?=nm_h(nm_display_lamp_type($r))?></td><td><?=nm_h(nm_display_category($r))?></td><td><?=nm_h(nm_dim_text($r))?></td><td><?= $dr!=='' ? '<button type="button" onclick="openMediaModal('.nm_js(($r['model_no']??'').' 尺寸图').','.nm_js($dr).','.nm_js($web?'website':'local').')">尺寸图</button>' : '<span class="chip">无</span>' ?></td><td><span class="chip <?=$web?'ok':''?>"><?=$web?'官网同步':'本地'?></span></td><td><span class="chip <?=nm_badge_class(nm_s($r['status']??''))?>"><?=nm_h($r['status']??'')?></span></td><td><small>创建：<?=nm_h($r['created_at']??'')?><?=nm_s($r['created_by']??'')!==''?' · '.nm_h($r['created_by']):''?><br>修改：<?=nm_h($r['updated_at']??'')?><?=nm_s($r['updated_by']??'')!==''?' · '.nm_h($r['updated_by']):''?></small></td><td><?php if(!empty($nmPerm['edit_model'])): ?><button type="button" onclick="editModel(<?=intval($r['id']??0)?>)">编辑</button><?php if(!empty($nmPerm['create_model'])): ?> <button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><span class="chip">无编辑权限</span><?php endif; ?> <?php if(!empty($nmPerm['disable_model']) || !empty($nmPerm['edit_model'])): ?><?php if(nm_s($r['status']??'')==='停用'): ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,false)">恢复</button><?php else: ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,true)">停用</button><?php endif; ?><?php endif; ?> <?php if(!empty($nmPerm['delete_model'])): ?><button class="danger" type="button" onclick="deleteModel(<?=intval($r['id']??0)?>,<?=nm_js($r['model_no']??'')?>,<?= $web ? 'true' : 'false' ?>)">删除</button><?php endif; ?></td></tr>
+<tr><td><?= $img!=='' ? '<img class="sqthumb" src="'.nm_h($img).'" loading="lazy">' : '<span class="chip bad">无图</span>' ?></td><td><b><?=nm_h($r['model_no']??'')?></b></td><td><?=nm_h(nm_series($r))?></td><td><?=nm_h(nm_display_lamp_type($r))?></td><td><?=nm_h(nm_display_category($r))?></td><td><?=nm_h(nm_dim_text($r))?></td><td><?= $dr!=='' ? '<button type="button" onclick="openMediaModal('.nm_js(($r['model_no']??'').' 尺寸图').','.nm_js($dr).','.nm_js($web?'website':'local').')">尺寸图</button>' : '<span class="chip">无</span>' ?></td><td><span class="chip <?=$web?'ok':''?>"><?=$web?'官网同步':'本地'?></span></td><td><span class="chip <?=nm_badge_class(nm_s($r['status']??''))?>"><?=nm_h($r['status']??'')?></span></td><td><small>创建：<?=nm_h($r['created_at']??'')?><?=nm_s($r['created_by']??'')!==''?' · '.nm_h($r['created_by']):''?><br>修改：<?=nm_h($r['updated_at']??'')?><?=nm_s($r['updated_by']??'')!==''?' · '.nm_h($r['updated_by']):''?></small></td><td><?php if($web): ?><span class="chip ok">官网锁定</span><?php if(!empty($nmPerm['create_model'])): ?> <button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><?php if(!empty($nmPerm['edit_model'])): ?><button type="button" onclick="editModel(<?=intval($r['id']??0)?>)">编辑</button><?php if(!empty($nmPerm['create_model'])): ?> <button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><span class="chip">无编辑权限</span><?php endif; ?> <?php if(!empty($nmPerm['disable_model']) || !empty($nmPerm['edit_model'])): ?><?php if(nm_s($r['status']??'')==='停用'): ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,false)">恢复</button><?php else: ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,true)">停用</button><?php endif; ?><?php endif; ?> <?php if(!empty($nmPerm['delete_model'])): ?><button class="danger" type="button" onclick="deleteModel(<?=intval($r['id']??0)?>,<?=nm_js($r['model_no']??'')?>,false)">删除</button><?php endif; ?><?php endif; ?></td></tr>
 <?php endforeach; ?>
 </tbody></table></section>
 <?php else: ?>
@@ -3049,7 +3050,7 @@ body.nm-modal-open .kb-card{z-index:1!important;}
     <div class="dim">尺寸：<?=nm_h(nm_dim_text($r))?></div>
     <div class="minirow"><span class="chip <?=nm_badge_class(nm_s($r['status']??''))?>"><?=nm_h($r['status']??'')?></span><?php if($web): ?><span class="chip ok">官网同步<?= $synced ? '：'.nm_h($synced) : '' ?></span><?php endif; ?></div>
     <div class="audit"><b>创建：</b><?=nm_h($r['created_at']??'')?><?=nm_s($r['created_by']??'')!==''?' · '.nm_h($r['created_by']):''?><br><b>最后修改：</b><?=nm_h($r['updated_at']??'')?><?=nm_s($r['updated_by']??'')!==''?' · '.nm_h($r['updated_by']):''?></div>
-    <div class="card-actions"><?php if($dr): ?><button class="draw-btn" type="button" onclick="openMediaModal(<?=nm_js(($r['model_no']??'').' 尺寸图')?>,<?=nm_js($dr)?>,<?=nm_js($web?'website':'local')?>)">尺寸图</button><?php else: ?><span class="chip">无尺寸图</span><?php endif; ?><?php if(!empty($nmPerm['edit_model'])): ?><button type="button" onclick="editModel(<?=intval($r['id']??0)?>)">编辑</button><?php if(!empty($nmPerm['create_model'])): ?> <button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><span class="chip">无编辑权限</span><?php endif; ?><?php if(!empty($nmPerm['disable_model']) || !empty($nmPerm['edit_model'])): ?><?php if(nm_s($r['status']??'')==='停用'): ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,false)">恢复</button><?php else: ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,true)">停用</button><?php endif; ?><?php endif; ?><?php if(!empty($nmPerm['delete_model'])): ?><button class="danger" type="button" onclick="deleteModel(<?=intval($r['id']??0)?>,<?=nm_js($r['model_no']??'')?>,<?= $web ? 'true' : 'false' ?>)">删除</button><?php endif; ?></div>
+    <div class="card-actions"><?php if($dr): ?><button class="draw-btn" type="button" onclick="openMediaModal(<?=nm_js(($r['model_no']??'').' 尺寸图')?>,<?=nm_js($dr)?>,<?=nm_js($web?'website':'local')?>)">尺寸图</button><?php else: ?><span class="chip">无尺寸图</span><?php endif; ?><?php if($web): ?><span class="chip ok">官网锁定</span><?php if(!empty($nmPerm['create_model'])): ?><button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><?php if(!empty($nmPerm['edit_model'])): ?><button type="button" onclick="editModel(<?=intval($r['id']??0)?>)">编辑</button><?php if(!empty($nmPerm['create_model'])): ?> <button type="button" onclick="copyModel(<?=intval($r['id']??0)?>)">复制新增</button><?php endif; ?><?php else: ?><span class="chip">无编辑权限</span><?php endif; ?><?php if(!empty($nmPerm['disable_model']) || !empty($nmPerm['edit_model'])): ?><?php if(nm_s($r['status']??'')==='停用'): ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,false)">恢复</button><?php else: ?><button type="button" onclick="setModelDisabled(<?=intval($r['id']??0)?>,true)">停用</button><?php endif; ?><?php endif; ?><?php if(!empty($nmPerm['delete_model'])): ?><button class="danger" type="button" onclick="deleteModel(<?=intval($r['id']??0)?>,<?=nm_js($r['model_no']??'')?>,false)">删除</button><?php endif; ?><?php endif; ?></div>
   </div>
 </article>
 <?php endforeach; ?>
@@ -3208,7 +3209,7 @@ async function loadLogs(){
   }catch(e){ if(box) box.innerHTML='<div class="err">日志读取失败：'+esc(e.message||e)+'</div>'; else alert(e.message||e); }
 }
 
-function renderModelAudit(r){ const a=$('modelAudit'); if(!a)return; const warn=r.is_website_sync?'<div class="audit-line"><b>提示：</b>这是官网同步型号，允许编辑；官网后续修改仍会实时同步回来。</div>':''; const logs=(r.recent_logs||[]).map(x=>'<div class="audit-line">'+esc(x.created_at||'')+' · '+esc(x.username||'')+' · '+esc(x.action||'')+'</div>').join(''); a.innerHTML='<div class="audit-title">型号日志 / 变更记录</div><b>创建：</b>'+esc(r.created_at||'')+(r.created_by?' · '+esc(r.created_by):'')+'<br><b>最后修改：</b>'+esc(r.updated_at||'')+(r.updated_by?' · '+esc(r.updated_by):'')+'<br><b>来源：</b>'+esc(r.is_website_sync?'官网同步':'本地新建')+(r.sync_time?' · 同步时间：'+esc(r.sync_time):'')+warn+(logs?'<div class="audit-list"><b>最近操作：</b>'+logs+'</div>':''); a.style.display='block'; }
+function renderModelAudit(r){ const a=$('modelAudit'); if(!a)return; const warn=r.is_website_sync?'<div class="audit-line"><b>提示：</b>这是官网同步型号，已在命名中心锁定；请在香港官网修改，保存后会自动同步回来。</div>':''; const logs=(r.recent_logs||[]).map(x=>'<div class="audit-line">'+esc(x.created_at||'')+' · '+esc(x.username||'')+' · '+esc(x.action||'')+'</div>').join(''); a.innerHTML='<div class="audit-title">型号日志 / 变更记录</div><b>创建：</b>'+esc(r.created_at||'')+(r.created_by?' · '+esc(r.created_by):'')+'<br><b>最后修改：</b>'+esc(r.updated_at||'')+(r.updated_by?' · '+esc(r.updated_by):'')+'<br><b>来源：</b>'+esc(r.is_website_sync?'官网同步':'本地新建')+(r.sync_time?' · 同步时间：'+esc(r.sync_time):'')+warn+(logs?'<div class="audit-list"><b>最近操作：</b>'+logs+'</div>':''); a.style.display='block'; }
 let NM_SAVE_TO_DISPATCH=false; let NM_DISPATCH_PENDING_DATA=null;
 function saveModelAndDispatch(){ openDispatchPanelFromForm(); }
 function hideDispatchPanel(){ const p=$('modelDispatchPanel'); if(p)p.classList.remove('show'); }
@@ -3245,7 +3246,7 @@ async function createDispatchFromQuickModal(){
     }catch(e){ if(msg){msg.textContent='创建失败：'+(e.message||e);msg.classList.add('err');msg.style.display='block';} else alert(e.message||e); }
 }
 
-function renderDrafts(rows){ const box=$('draftList'); if(!box)return; box.innerHTML=''; if(!rows.length){box.innerHTML='<div class="empty">暂无草稿型号</div>';return;} rows.forEach(r=>{ const div=document.createElement('div'); div.className='box-item'; div.innerHTML='<div><b>'+esc(r.model_no||'(未命名)')+'</b><small>系列：'+esc(r.product_name||r.series_name||r.web_series||'')+'<br>类型：'+esc(r.item_name||r.lamp_type||'')+'　尺寸：'+esc(r.dim_text||r.web_dimensions||r.size_code||'')+'<br>创建：'+esc(r.created_at||'')+' · '+esc(r.created_by||'')+'</small></div><div class="box-actions"><button type="button" data-act="edit">编辑</button><button type="button" data-act="dispatch">派工待办</button><button type="button" data-act="disable">停用</button></div>'; const e=div.querySelector('[data-act="edit"]'); if(e)e.onclick=()=>{closeModal('draftModal'); editModel(r.id);}; const dp=div.querySelector('[data-act="dispatch"]'); if(dp)dp.onclick=()=>openDispatchFromModel(r.id,r.model_no||''); const dis=div.querySelector('[data-act="disable"]'); if(dis)dis.onclick=()=>setModelDisabled(r.id,true); box.appendChild(div); }); }
+function renderDrafts(rows){ const box=$('draftList'); if(!box)return; box.innerHTML=''; if(!rows.length){box.innerHTML='<div class="empty">暂无草稿型号</div>';return;} rows.forEach(r=>{ const locked=!!r.is_website_sync; const actions=locked?'<span class="chip ok">官网锁定</span>':'<button type="button" data-act="edit">编辑</button><button type="button" data-act="dispatch">派工待办</button><button type="button" data-act="disable">停用</button>'; const div=document.createElement('div'); div.className='box-item'; div.innerHTML='<div><b>'+esc(r.model_no||'(未命名)')+'</b><small>系列：'+esc(r.product_name||r.series_name||r.web_series||'')+'<br>类型：'+esc(r.item_name||r.lamp_type||'')+'　尺寸：'+esc(r.dim_text||r.web_dimensions||r.size_code||'')+'<br>创建：'+esc(r.created_at||'')+' · '+esc(r.created_by||'')+'</small></div><div class="box-actions">'+actions+'</div>'; const e=div.querySelector('[data-act="edit"]'); if(e)e.onclick=()=>{closeModal('draftModal'); editModel(r.id);}; const dp=div.querySelector('[data-act="dispatch"]'); if(dp)dp.onclick=()=>openDispatchFromModel(r.id,r.model_no||''); const dis=div.querySelector('[data-act="disable"]'); if(dis)dis.onclick=()=>setModelDisabled(r.id,true); box.appendChild(div); }); }
 async function openInboxModal(){ if(!NM_PERMS.process_inbox && !NM_PERMS.is_admin){alert('当前账号没有收件箱权限');return;} openModal('inboxModal'); await loadInbox(); }
 async function loadInbox(){ const box=$('inboxList'); if(box) box.innerHTML='<div class="empty">正在读取收件箱……</div>'; try{ const params=new URLSearchParams(); const kw=$('inboxKw')&&$('inboxKw').value; const st=$('inboxStatus')&&$('inboxStatus').value; const per=$('inboxPer')&&$('inboxPer').value; if(kw)params.set('kw',kw); if(st)params.set('status',st); if(per)params.set('per_page',per); const d=await api('inbox_list',{qs:params.toString()}); renderInbox(d.rows||[]); }catch(e){ if(box) box.innerHTML='<div class="err">读取收件箱失败：'+esc(e.message||e)+'</div>'; } }
 function renderInbox(rows){ const box=$('inboxList'); if(!box)return; box.innerHTML=''; if(!rows.length){box.innerHTML='<div class="empty">暂无收件箱任务</div>';return;} rows.forEach(r=>{ const status=r.status||''; const div=document.createElement('div'); div.className='box-item'; div.innerHTML='<div><b>'+esc(r.product_name||r.sample_model||r.sample_no||'命名需求')+'</b><small>状态：'+esc(status)+'　来源：'+esc(r.source_type||'')+' #'+esc(r.source_id||'')+'<br>客户：'+esc(r.customer_name||'')+'　样品：'+esc(r.sample_no||'')+'<br>要求：'+esc(r.requirements||r.note||'')+'<br>提交：'+esc(r.submitted_at||'')+' · '+esc(r.submitted_by||'')+'</small></div><div class="box-actions"><button type="button" data-act="claim">领取</button><button type="button" data-act="new">新建型号</button><button type="button" data-act="return">退回</button></div>'; const claim=div.querySelector('[data-act="claim"]'); if(claim)claim.onclick=async()=>{ try{ await fetch('naming.php?action=inbox_claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id})}).then(parseJsonResponse).then(j=>{if(!j.ok)throw new Error(j.msg||'领取失败')}); await loadInbox(); }catch(e){alert(e.message||e);} }; const nw=div.querySelector('[data-act="new"]'); if(nw)nw.onclick=()=>openModelFromInbox(r); const ret=div.querySelector('[data-act="return"]'); if(ret)ret.onclick=async()=>{ const reason=prompt('退回原因：','资料不完整，请补充产品图/尺寸图/尺寸参数'); if(reason===null)return; try{ await fetch('naming.php?action=inbox_return',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,reason})}).then(parseJsonResponse).then(j=>{if(!j.ok)throw new Error(j.msg||'退回失败')}); await loadInbox(); }catch(e){alert(e.message||e);} }; box.appendChild(div); }); }
@@ -3267,7 +3268,7 @@ async function deleteModel(id, modelNo, isWebsite){
   if(!id){ alert('删除失败：型号 ID 无效'); return; }
   if(!NM_PERMS.delete_model && !NM_PERMS.is_admin){ alert('当前账号没有删除型号权限，请到权限中心授权 delete_model。'); return; }
   if(isWebsite){
-    alert('官网同步型号不建议本地硬删除；如果官网还存在，下次同步会重新回来。请使用“停用”。');
+    alert('官网同步型号已锁定，不能在命名中心删除；请在香港官网修改。');
     return;
   }
   if(!confirm('确认删除型号：'+(modelNo||('#'+id))+'？\n删除后会清理本地产品图/尺寸图，操作会写入日志。')) return;
@@ -3487,6 +3488,7 @@ async function editModel(id){
     openModal('modelModal');
     setTimeout(initPasteUpload,30);
     const r=await api('get_model',{qs:'id='+encodeURIComponent(id)});
+    if(r.is_website_sync){ closeModal('modelModal'); alert('官网同步型号已锁定，请在香港官网修改；命名中心会自动同步更新。'); return; }
     $('modelTitle').textContent=r.is_website_sync?'编辑型号（官网同步）':'编辑型号';
     $('m_id').value=r.id||''; if($('m_clone_source_id')) $('m_clone_source_id').value='';
     if($('m_rule')){

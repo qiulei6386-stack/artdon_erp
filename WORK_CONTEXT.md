@@ -2876,3 +2876,12 @@
 - 修复：`crm.php` 邮箱设置新增“显示 / 发件邮箱”和“登录账号 / 主邮箱”两个明确字段；`crm_mail.php` 增加显示邮箱与登录邮箱 helper，SMTP AUTH/IMAP LOGIN 使用登录邮箱，邮件 From 仍使用显示邮箱，SMTP envelope sender 使用登录邮箱；`crm_marketing.php` 推广队列执行时按 `email_address OR email_username` 反查账号，避免别名/主号不一致时找不到发件账号。
 - 线上处理：同步代码到服务器后，将 jerrie 启用邮箱 id=19 恢复为可登录授权码，`email_username=jerrie@artdon.cn`，清空 `sync_fail_count/sync_backoff_until`；SMTP 和 IMAP 登录测试均通过。
 - 备注：用现有授权码测试 `sales05@artdon.cn` 登录仍失败；CRM 同步成功后全库未发现 `sales05@artdon.cn` 的 To/Cc/Bcc/原始头记录。若客户发给 sales05 仍无法在 jerrie 邮箱看到，需要在腾讯企业邮确认 sales05 是否确实投递到 jerrie 同一邮箱，或为 sales05 单独生成可用授权码后绑定/转发。
+
+## 2026-08-17：官网同步型号在命名中心只读锁定
+
+- 数据纠正：确认命名页面实际使用 `artdon_new_erp`；保留 TLA `91.06215 / 91.08412 / 91.10511` 为卢绮雯维护的本地型号，清除其官网来源标记；从香港官网正式 feed 新增 CLA `91.06012 / 91.08013 / 91.10012`，三条均为官网同步且状态已确认。操作前备份为 `_codex_backups/naming_cla_tla_actual_db_20260817_175710.json`。
+- 只读规则：官网同步型号在大图、中图、小图和小表视图统一显示“官网锁定”，不再提供编辑、停用、恢复或删除；仍允许查看尺寸图及“复制新增”，复制产生新的本地型号，不修改官网原记录。
+- 后端保护：`save_model`、`disable_model`、`enable_model`、`delete_model` 均再次读取数据库并通过 `nm_is_website_row()` 判断，官网同步记录即使绕过前端或使用旧缓存页面也会被拒绝修改。
+- 提示调整：旧的“允许编辑/建议停用”说明改为“请在香港官网修改，命名中心自动同步”；旧页面残留的编辑入口也会在读取详情后立即阻止。
+- 修改文件：`naming.php`、`tests/naming_website_sync_readonly_contract.php`、`WORK_CONTEXT.md`。
+- 检查：`git diff --check` 通过；修改后的 `naming.php` 经服务器 PHP 仅通过标准输入/临时目录检查，语法通过；新增官网同步只读合同 8 项全部通过。正式发布、服务器复检和三方提交号将在发布记录中补齐。
