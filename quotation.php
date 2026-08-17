@@ -1013,7 +1013,7 @@ window.addEventListener('resize', () => { if(localStorage.getItem('artdon_quote_
 
 let AUTH={user:null,permissions:{},logged_in:0},PERM_USERS=[];
 let QUOTE_LAST_CURRENCY='USD';
-let DB={customers:[],products:[],headers:[],banks:[],templates:[],quotes:[],materials:[],orders:[]}, S={customer:null,product:null,header:null,bank:null,template:null,parts:{},items:[],editingIndex:-1,partTab:'led',currentQuoteId:0,currentApprovalStatus:'new'};let CUSTOMER_BATCH=false;let CRM_CUSTOMER_AUTO_SYNC_TIMER=null;let DASH_LOADING_ORDERS=false,DASH_ORDERS_LOADED=false,DASH_LOADING_DOCS=false,DASH_DOCS_LOADED=false;let DOCUMENTS=[];let DOC_SETTINGS=null;let QUOTE_PRICE_POLICY_MATCH=null,QUOTE_PRICE_POLICY_REQUEST=0,QUOTE_PRICE_POLICY_TIMER=null;let productView='gallery', partModalState={k:'',name:'',cats:''};const $=id=>document.getElementById(id), money=n=>(Number(n)||0).toFixed(2), esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'), attr=s=>esc(s).replaceAll('"','&quot;'), jsq=s=>String(s??'').replaceAll('\\','\\\\').replaceAll("'","\\'").replaceAll('<','\\x3C');
+let DB={customers:[],products:[],headers:[],banks:[],templates:[],quotes:[],materials:[],orders:[]}, S={customer:null,product:null,header:null,bank:null,template:null,parts:{},items:[],editingIndex:-1,partTab:'led',currentQuoteId:0,currentApprovalStatus:'new',quoteAdjustment:{type:'none',value:0,label:'Discount',reason:''}};let CUSTOMER_BATCH=false;let CRM_CUSTOMER_AUTO_SYNC_TIMER=null;let DASH_LOADING_ORDERS=false,DASH_ORDERS_LOADED=false,DASH_LOADING_DOCS=false,DASH_DOCS_LOADED=false;let DOCUMENTS=[];let DOC_SETTINGS=null;let QUOTE_PRICE_POLICY_MATCH=null,QUOTE_PRICE_POLICY_REQUEST=0,QUOTE_PRICE_POLICY_TIMER=null;let productView='gallery', partModalState={k:'',name:'',cats:''};const $=id=>document.getElementById(id), money=n=>(Number(n)||0).toFixed(2), esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'), attr=s=>esc(s).replaceAll('"','&quot;'), jsq=s=>String(s??'').replaceAll('\\','\\\\').replaceAll("'","\\'").replaceAll('<','\\x3C');
 function customerDbId(c){
   let candidates=[c?.crm_customer_id,c?.id];
   for(let value of candidates){
@@ -2922,10 +2922,85 @@ function quoteItemsForPreview(){
 }
 function quoteTotal(){
   let arr=quoteItemsForPreview();
-  return {
-    qty:arr.reduce((s,it)=>s+quoteItemQtyForTotal(it),0),
-    amount:arr.reduce((s,it)=>s+Number(it.amount||Number(it.qty||0)*itemUnitPrice(it,cur())),0)
-  };
+  return quoteTotalsForItems(arr);
+}
+function quoteDefaultAdjustment(){return {type:'none',value:0,label:'Discount',reason:''}}
+function quoteNormalizeAdjustment(adj){
+  adj=adj&&typeof adj==='object'?adj:{};
+  let type=String(adj.type||'none');
+  if(!['none','discount_amount','discount_percent','surcharge_amount'].includes(type))type='none';
+  return {type,value:Number(adj.value||0)||0,label:String(adj.label||'Discount').trim()||'Discount',reason:String(adj.reason||adj.note||'').trim()};
+}
+function quoteAdjustmentFromControls(){
+  if(!$('quoteAdjustmentType'))return quoteNormalizeAdjustment(S.quoteAdjustment||quoteDefaultAdjustment());
+  return quoteNormalizeAdjustment({type:$('quoteAdjustmentType').value||'none',value:$('quoteAdjustmentValue').value,label:$('quoteAdjustmentLabel').value,reason:$('quoteAdjustmentReason').value});
+}
+function quoteEffectiveAdjustment(subtotal=0,fromControls=true){
+  let adj=fromControls?quoteAdjustmentFromControls():quoteNormalizeAdjustment(S.quoteAdjustment||quoteDefaultAdjustment());
+  if(adj.type==='none'||!Number(adj.value)){adj.type='none';adj.value=0;}
+  return adj;
+}
+function quoteAdjustmentAmount(subtotal=0,adj=null){
+  subtotal=Number(subtotal||0)||0;adj=quoteNormalizeAdjustment(adj||quoteEffectiveAdjustment(subtotal));
+  let v=Math.abs(Number(adj.value||0)||0), delta=0;
+  if(adj.type==='discount_amount')delta=-v;
+  if(adj.type==='discount_percent')delta=-(subtotal*v/100);
+  if(adj.type==='surcharge_amount')delta=v;
+  if(delta<0)delta=Math.max(delta,-subtotal);
+  return Math.round(delta*100)/100;
+}
+function quoteTotalsForItems(items,fromControls=true){
+  let arr=Array.isArray(items)?items:[];
+  let qty=arr.reduce((s,it)=>s+quoteItemQtyForTotal(it),0);
+  let subtotal=arr.reduce((s,it)=>s+Number(it.amount||Number(it.qty||0)*itemUnitPrice(it,cur())),0);
+  let adj=quoteEffectiveAdjustment(subtotal,fromControls);
+  let adjustment_amount=quoteAdjustmentAmount(subtotal,adj);
+  let amount=Math.max(0,Math.round((subtotal+adjustment_amount)*100)/100);
+  return {qty,subtotal,adjustment_amount,amount,adjustment:adj};
+}
+function quoteAdjustmentVirtualItem(total=null){
+  total=total||quoteTotal();
+  let delta=Number(total.adjustment_amount||0);
+  if(!delta)return null;
+  let adj=quoteNormalizeAdjustment(total.adjustment);
+  let isDiscount=delta<0;
+  let label=adj.label||(isDiscount?'Discount':'Adjustment');
+  let reason=adj.reason||label;
+  return {item_type:'virtual',is_virtual_item:true,virtual_type:isDiscount?'discount':'adjustment',product_type:'virtual',product:{id:'quote-adjustment',code:isDiscount?'DISCOUNT':'ADJUSTMENT',model:isDiscount?'DISCOUNT':'ADJUSTMENT',name:label,title:label},parts:{},qty:1,unit:'lot',price:delta,unit_price:delta,amount:delta,moq:'',customer_code:'',beam_angle:'',power:'',color:'',cct:'',cri:'',ip:'',extra_spec:reason,specification:reason,quote_remarks:reason?[reason]:[],manual_price:true,currency:cur(),count_in_qty:false,shippable:false,include_in_pi:true};
+}
+function quoteItemsWithAdjustment(items,total=null){
+  let arr=(Array.isArray(items)?items:[]).map(x=>clone(x));
+  let v=quoteAdjustmentVirtualItem(total||quoteTotalsForItems(arr));
+  if(v)arr.push(v);
+  return arr;
+}
+function quoteAdjustmentRowsHtml(total){
+  total=total||quoteTotal();
+  if(!total.adjustment_amount)return '';
+  let label=quoteNormalizeAdjustment(total.adjustment).label||'Discount';
+  let subtotalRow=`<tr class="quote-adjustment-row"><td colspan="5"></td><td><b>Subtotal:</b></td><td></td><td><b>${cur()==='RMB'?'¥':'$'}</b></td><td><b>${money(total.subtotal)}</b></td><td></td></tr>`;
+  let adjustRow=`<tr class="quote-adjustment-row"><td colspan="5"></td><td><b>${esc(label)}:</b></td><td></td><td><b>${cur()==='RMB'?'¥':'$'}</b></td><td><b>${money(total.adjustment_amount)}</b></td><td></td></tr>`;
+  return subtotalRow+adjustRow;
+}
+function quoteAdjustmentSummaryText(total=null){
+  total=total||quoteTotal();
+  if(!total.adjustment_amount)return '未设置整单调整';
+  let adj=quoteNormalizeAdjustment(total.adjustment);
+  return `${adj.label||'Discount'}：${cur()} ${money(total.adjustment_amount)}，折后总价 ${cur()} ${money(total.amount)}${adj.reason?' ｜ '+adj.reason:''}`;
+}
+function quoteSyncAdjustmentFromForm(){
+  S.quoteAdjustment=quoteAdjustmentFromControls();
+  if($('quoteAdjustmentHint'))$('quoteAdjustmentHint').textContent=quoteAdjustmentSummaryText();
+  render();
+}
+function quoteLoadAdjustmentControls(adj){
+  adj=quoteNormalizeAdjustment(adj||quoteDefaultAdjustment());
+  S.quoteAdjustment=adj;
+  if($('quoteAdjustmentType'))$('quoteAdjustmentType').value=adj.type;
+  if($('quoteAdjustmentValue'))$('quoteAdjustmentValue').value=adj.value?String(adj.value):'';
+  if($('quoteAdjustmentLabel'))$('quoteAdjustmentLabel').value=adj.label||'Discount';
+  if($('quoteAdjustmentReason'))$('quoteAdjustmentReason').value=adj.reason||'';
+  if($('quoteAdjustmentHint'))$('quoteAdjustmentHint').textContent=quoteAdjustmentSummaryText();
 }
 function quotePartLabelByKey(k){return {led:'芯片 / LED',driver:'电源 / LED Driver',optic:'光学 / Optic',connector:'接头 / Adapter',extra:'配件 / Accessories'}[k]||k}
 function quoteContextRate(){let v=Number(S.quoteReviewRate||0);return v>0?v:rate()}
@@ -3086,11 +3161,11 @@ function renderReviewDocInfo(payload,q){
   let termsHtml=terms.length?`<table class="review-doc-terms">${terms.map(r=>`<tr><td>${esc(r[0]||'')}</td><td>${esc(r[1]||'')}</td></tr>`).join('')}</table>`:'<div class="line">未读取到付款/条款模板。</div>';
   return `<div class="review-doc-box"><div class="review-doc-card"><b>公司抬头</b><div class="line">${esc(headerLines.join('\n'))}</div></div><div class="review-doc-card"><b>付款条件 / 报价条款</b>${termsHtml}</div><div class="review-doc-card"><b>银行信息</b><div class="line">${esc(bankLines.join('\n'))}</div></div></div>`;
 }
-async function openQuoteReview(id){if(!hasPerm('quote_approve')&&!hasPerm('quote_review_view')){alert('当前账号没有查看审核列表权限');return;}let q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败：'+(e?.message||e));return;}if(!q){alert('找不到报价');return;}let payload=payloadFromSavedQuote(q),reviewCurrency=String(q.currency||payload.currency||'USD').toUpperCase();S.quoteReviewCurrency=reviewCurrency;S.quoteReviewRate=Number(q.exchange_rate||payload.exchange_rate||0);let items=(payload.items||[]).map(it=>Object.assign({},it,{currency:String(it.currency||reviewCurrency).toUpperCase()}));let old=$('quoteReviewModal');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div id="quoteReviewModal" class="modal show review-modal" data-quote-id="${Number(q.id)}" data-currency="${esc(reviewCurrency)}"><div class="modal-box"><div class="review-head"><div><h2 style="margin:0">报价审核预览</h2><div class="review-meta">${quoteApprovalBadge(q)}${esc(q.quote_no||'')} ｜ ${esc((payload.customer||{}).company||q.customer_name||'')} ｜ ${esc(reviewCurrency)} ${money(q.amount||0)}<br>审核前可修改数量、倍率、MOQ和最终单价；成本/公式点“公式预览”弹窗查看。</div></div><button class="gray" onclick="closeQuoteReview()">关闭</button></div>${renderApprovalAuditBox(q)}${renderReviewDocInfo(payload,q)}<div style="overflow:auto"><table class="review-table"><thead><tr><th>#</th><th>产品</th><th>数量</th><th>审核单价</th><th>金额</th><th class="review-cost-th">成本公式</th><th class="review-moq-th">MOQ</th><th>Specification</th></tr></thead><tbody id="quoteReviewRows">${reviewItemRows(items)}</tbody></table></div><div class="btns" style="justify-content:space-between"><div class="review-total" id="quoteReviewTotal">合计：0</div><div style="flex:1;max-width:520px"><textarea id="quoteReviewNote" class="review-note" placeholder="审核备注，可空；反审/驳回原因也写这里"></textarea></div>${!hasPerm('quote_approve')?'':(quoteApprovalStatus(q)==='approved'?`<button class="orange" onclick="reverseApproveFromModal()">反审退回</button>`:`<button class="green" onclick="approveQuoteFromModal()">审核通过</button><button class="red" onclick="rejectQuoteFromModal()">驳回</button>`) }</div></div></div>`);reviewRecalc();}
+async function openQuoteReview(id){if(!hasPerm('quote_approve')&&!hasPerm('quote_review_view')){alert('当前账号没有查看审核列表权限');return;}let q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败：'+(e?.message||e));return;}if(!q){alert('找不到报价');return;}let payload=payloadFromSavedQuote(q),reviewCurrency=String(q.currency||payload.currency||'USD').toUpperCase();S.quoteReviewCurrency=reviewCurrency;S.quoteReviewRate=Number(q.exchange_rate||payload.exchange_rate||0);let items=(payload.items||[]).map(it=>Object.assign({},it,{currency:String(it.currency||reviewCurrency).toUpperCase()}));let old=$('quoteReviewModal');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div id="quoteReviewModal" class="modal show review-modal" data-quote-id="${Number(q.id)}" data-currency="${esc(reviewCurrency)}"><div class="modal-box"><div class="review-head"><div><h2 style="margin:0">报价审核预览</h2><div class="review-meta">${quoteApprovalBadge(q)}${esc(q.quote_no||'')} ｜ ${esc((payload.customer||{}).company||q.customer_name||'')} ｜ ${esc(reviewCurrency)} ${money(q.amount||0)}<br>审核前可修改数量、倍率、MOQ和最终单价；成本/公式点“公式预览”弹窗查看。</div></div><button class="gray" onclick="closeQuoteReview()">关闭</button></div>${renderApprovalAuditBox(q)}${renderReviewDocInfo(payload,q)}<div style="overflow:auto"><table class="review-table"><thead><tr><th>#</th><th>产品</th><th>数量</th><th>审核单价</th><th>金额</th><th class="review-cost-th">成本公式</th><th class="review-moq-th">MOQ</th><th>Specification</th></tr></thead><tbody id="quoteReviewRows">${reviewItemRows(items)}</tbody></table></div><div class="btns" style="justify-content:space-between"><div class="review-total" id="quoteReviewTotal">合计：0</div><div style="flex:1;max-width:520px"><textarea id="quoteReviewNote" class="review-note" placeholder="审核备注，可空；反审/驳回原因也写这里"></textarea></div>${!hasPerm('quote_approve')?'':(quoteApprovalStatus(q)==='approved'?`<button class="orange" onclick="reverseApproveFromModal()">反审退回</button>`:`<button class="green" onclick="approveQuoteFromModal()">审核通过</button><button class="red" onclick="rejectQuoteFromModal()">驳回</button>`) }</div></div></div>`);let reviewModal=$('quoteReviewModal');if(reviewModal)reviewModal._quoteAdjustment=payload.quote_adjustment||quoteDefaultAdjustment();reviewRecalc();}
 function closeQuoteReview(){let m=$('quoteReviewModal');if(m)m.remove();S.quoteReviewCurrency='';S.quoteReviewRate=0;}
-function reviewRecalc(){let modal=$('quoteReviewModal'),reviewCurrency=String(modal?.dataset.currency||S.quoteReviewCurrency||'USD').toUpperCase(),rows=[...document.querySelectorAll('#quoteReviewRows tr[data-review-row]')];let qty=0,amount=0;rows.forEach(tr=>{let q=Number(tr.querySelector('.review-qty')?.value||0),p=Number(tr.querySelector('.review-price')?.value||0),a=q*p;qty+=q;amount+=a;let am=tr.querySelector('.review-amount');if(am)am.value=a.toFixed(2);});if($('quoteReviewTotal'))$('quoteReviewTotal').textContent='合计：'+fmtNum(qty)+' PCS ｜ '+reviewCurrency+' '+money(amount);}
+function reviewRecalc(){let modal=$('quoteReviewModal'),reviewCurrency=String(modal?.dataset.currency||S.quoteReviewCurrency||'USD').toUpperCase(),rows=[...document.querySelectorAll('#quoteReviewRows tr[data-review-row]')];let qty=0,amount=0;rows.forEach(tr=>{let q=Number(tr.querySelector('.review-qty')?.value||0),p=Number(tr.querySelector('.review-price')?.value||0),a=q*p;qty+=q;amount+=a;let am=tr.querySelector('.review-amount');if(am)am.value=a.toFixed(2);});let adj=quoteNormalizeAdjustment(modal?._quoteAdjustment||quoteDefaultAdjustment()),delta=quoteAdjustmentAmount(amount,adj),finalAmount=Math.max(0,Math.round((amount+delta)*100)/100);if($('quoteReviewTotal'))$('quoteReviewTotal').textContent='合计：'+fmtNum(qty)+' PCS ｜ 小计 '+reviewCurrency+' '+money(amount)+(delta?' ｜ '+esc(adj.label||'Adjustment')+' '+reviewCurrency+' '+money(delta):'')+' ｜ 最终 '+reviewCurrency+' '+money(finalAmount);}
 function collectReviewItems(baseItems){let modal=$('quoteReviewModal'),reviewCurrency=String(modal?.dataset.currency||S.quoteReviewCurrency||'USD').toUpperCase(),rows=[...document.querySelectorAll('#quoteReviewRows tr[data-review-row]')];return rows.map((tr,i)=>{let it=clone((baseItems||[])[i]||{});let qty=Number(tr.querySelector('.review-qty')?.value||0),price=Number(tr.querySelector('.review-price')?.value||0),mult=reviewRowMultiplier(tr,it),moq=String(tr.querySelector('.review-moq')?.value??'').trim();it.qty=qty;it.price=price;it.unit_price=price;it.amount=qty*price;it.moq=moq;it.approved_moq=moq;it.currency=reviewCurrency;it.manual_price=true;it.approved_price=price;it.approved_qty=qty;it.price_multiplier=mult;it.approved_multiplier=mult;it.specification=buildSpec(it);return it;});}
-async function approveQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;let id=Number(modal.dataset.quoteId||0),q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败，已停止审核：'+(e?.message||e));return;}if(!q)return;let payload=payloadFromSavedQuote(q);let items=collectReviewItems(payload.items||[]);if(!items.length){alert('没有可审核产品');return;}let note=$('quoteReviewNote')?.value||'';if(!confirm('确认审核通过？审核通过后才允许导出。'))return;let r=await api('approve_quote',{id,items,note});closeQuoteReview();S.currentQuoteId=id;S.currentApprovalStatus='approved';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'approved',approved_at:r.approved_at||'',approval_note:note});updateQuoteApprovalStrip(updated||currentSavedQuote());alert('审核通过，已同步 CRM 提醒。');}
+async function approveQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;let id=Number(modal.dataset.quoteId||0),q=null;try{q=await ensureQuoteDetail(id)}catch(e){alert('报价完整明细加载失败，已停止审核：'+(e?.message||e));return;}if(!q)return;let payload=payloadFromSavedQuote(q);let items=collectReviewItems(payload.items||[]);if(!items.length){alert('没有可审核产品');return;}let savedAdj=parseMaybeJson(q.adjustment_json,quoteDefaultAdjustment()),oldAdj=S.quoteAdjustment;S.quoteAdjustment=savedAdj;let totals=quoteTotalsForItems(items,false);S.quoteAdjustment=oldAdj;let note=$('quoteReviewNote')?.value||'';if(!confirm('确认审核通过？审核通过后才允许导出。'))return;let r=await api('approve_quote',{id,items,note,subtotal_amount:totals.subtotal,adjustment_amount:totals.adjustment_amount,adjustment_json:JSON.stringify(totals.adjustment||{}),amount:totals.amount});closeQuoteReview();S.currentQuoteId=id;S.currentApprovalStatus='approved';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'approved',approved_at:r.approved_at||'',approval_note:note,subtotal_amount:totals.subtotal,adjustment_amount:totals.adjustment_amount,adjustment_json:JSON.stringify(totals.adjustment||{}),amount:totals.amount});updateQuoteApprovalStrip(updated||currentSavedQuote());alert('审核通过，已同步 CRM 提醒。');}
 async function rejectQuoteFromModal(){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}let modal=$('quoteReviewModal');if(!modal)return;await rejectQuoteQuick(Number(modal.dataset.quoteId||0),$('quoteReviewNote')?.value||'');closeQuoteReview();}
 async function rejectQuoteQuick(id,note=''){if(!hasPerm('quote_approve')){alert('当前账号没有审核权限');return;}if(!id)return;if(note==='')note=prompt('请输入驳回原因，可空：','')||'';if(!confirm('确认驳回这张报价？'))return;let r=await api('reject_quote',{id,note});if(String(S.currentQuoteId)===String(id))S.currentApprovalStatus='rejected';let updated=applyQuoteMutationResult(r.quote,{id,approval_status:'rejected',approval_note:r.note||note,reject_reason_category:r.reason_category||'',reject_reason_custom:r.reason_custom||'',reject_reason_detail:r.reason_detail||''});if(String(S.currentQuoteId)===String(id))updateQuoteApprovalStrip(updated||currentSavedQuote());alert('已驳回，并已同步 CRM 提醒。');}
 async function reverseApproveFromModal(){let modal=$('quoteReviewModal');if(!modal)return;await reverseApproveQuoteQuick(Number(modal.dataset.quoteId||0),$('quoteReviewNote')?.value||'');closeQuoteReview();}
@@ -3322,6 +3397,7 @@ function render(){let h=S.header||{},b=S.bank||{},c=S.customer;let terms=[];try{
   function rowHtml(it){let p=it.product||{}, qty=Number(it.qty||0), price=itemUnitPrice(it), amt=Number(it.amount||qty*price), isMat=isMaterialSaleItem(it), isVirtual=isVirtualQuoteItem(it);let sizeText=(isMat||isVirtual)?'':quoteDisplaySize(p), moqText=Object.prototype.hasOwnProperty.call(it,'moq')?it.moq:(p.moq||'');return `<tr class="quote-product-row ${isMat?'quote-material-row':''} ${isVirtual?'quote-virtual-row':''}"><td>${(!isVirtual&&p.image)?`<img class="prod-img" src="${p.image}">`:''}</td><td>${esc(sizeText)}</td><td>${esc(isVirtual?'':(it.customer_code||''))}</td><td>${esc(p.code||'')}</td><td class="spec">${esc(buildSpec(it))}</td><td>${esc(isVirtual?'':(it.color||''))}</td><td>${qty}</td><td>${money(price)}</td><td>${money(amt)}</td><td>${esc(isVirtual?'':moqText)}</td></tr>`}
   function emptyRow(){return `<tr><td colspan="10" style="height:35mm;color:#667085">请在左侧点选产品，系统会自动加入报价单。</td></tr>`}
   function fullHeader(){return `<div class="paper-top"><div class="from"><h1>${esc(h.company||'Gallin Industrial (HK) Limited')}</h1><div class="block">${esc(h.from_text||'')}</div><div class="to"><b>To:</b>\n${esc(quoteCustomerToText(c))}</div></div><div><div class="brandstamp">${Number(h.show_stamp||0)?esc(h.stamp||''):''}</div><div class="qt-title">${esc(quoteDocTitle())}</div><table class="terms">${terms.map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('')}</table></div></div>`}
+  const adjustmentRowsHtml=quoteAdjustmentRowsHtml(total);
   const totalRowHtml=`<tr class="quote-total-row"><td colspan="5"></td><td><b>Total:</b></td><td><b>${total.qty}</b></td><td><b>${cur()==='RMB'?'¥':'$'}</b></td><td><b>${money(total.amount)}</b></td><td></td></tr>`;
   const paymentSummaryHtml=quotePaymentSummaryHtml(total.amount, terms);
   const bankTextHtml=String(b.text||'').trim()?`<div class="bank">${esc(b.text||'')}</div>`:'';
@@ -3330,7 +3406,7 @@ function render(){let h=S.header||{},b=S.bank||{},c=S.customer;let terms=[];try{
   const finalTailHtml=`<div class="final-summary"><div class="box"><b>Total Qty:</b> ${total.qty} PCS${paymentSummaryHtml}<br><b>Total Amount:</b> ${cur()} ${money(total.amount)}<br><b>Currency:</b> ${cur()}</div><div class="box"><b>Quotation No:</b> ${esc($('quoteNo').value||'')}<br><b>Status:</b> ${esc(quoteDocTitle())}<br><b>Date:</b> ${esc($('quoteDate').value||'')}</div></div><div class="final-sign"><div>Prepared By</div><div>Approved By</div><div>Customer Signature</div></div>${bankTextHtml}${bankTermsHtml}`;
   let rows=items.length?items.map(rowHtml).join(''):emptyRow();
   const onePageClass=(items.length<=1)?' quote-one-item':'';
-  $('paper').innerHTML=`<div class="paper flow-paper${onePageClass}">${fullHeader()}<table class="quote-table">${tableCols}${tableHead}<tbody>${rows}${totalRowHtml}</tbody></table>${finalTailHtml}</div>`;
+  $('paper').innerHTML=`<div class="paper flow-paper${onePageClass}">${fullHeader()}<table class="quote-table">${tableCols}${tableHead}<tbody>${rows}${adjustmentRowsHtml}${totalRowHtml}</tbody></table>${finalTailHtml}</div>`;
   prepareQuotePreviewPages($('paper'));
   renderQuoteItems();renderQuoteInternalCommission()}
 
@@ -3353,7 +3429,8 @@ function prepareQuotePreviewPages(root){
   let thead=table.querySelector('thead')?.cloneNode(true);
   if(thead) thead.querySelectorAll('.repeat-mini-head').forEach(x=>x.remove());
   let tbody=table.querySelector('tbody'); if(!tbody) return;
-  let dataRows=[...tbody.children].filter(tr=>tr.tagName==='TR'&&!tr.classList.contains('quote-total-row')).map(tr=>tr.cloneNode(true));
+  let dataRows=[...tbody.children].filter(tr=>tr.tagName==='TR'&&!tr.classList.contains('quote-total-row')&&!tr.classList.contains('quote-adjustment-row')).map(tr=>tr.cloneNode(true));
+  let adjustmentRows=[...tbody.querySelectorAll('.quote-adjustment-row')].map(tr=>tr.cloneNode(true));
   let totalRow=tbody.querySelector('.quote-total-row')?.cloneNode(true);
   let tail=[]; let node=table.nextSibling;
   while(node){let next=node.nextSibling; if(node.nodeType===1 && !node.classList.contains('page-footer')) tail.push(node.cloneNode(true)); node=next;}
@@ -3371,7 +3448,7 @@ function prepareQuotePreviewPages(root){
       first.tbody.lastElementChild.remove(); rest=dataRows.slice(i); break;
     }
   }
-  function appendFinal(target){ if(totalRow)target.tbody.appendChild(totalRow.cloneNode(true)); tail.forEach(n=>target.p.appendChild(n.cloneNode(true))); }
+  function appendFinal(target){ adjustmentRows.forEach(tr=>target.tbody.appendChild(tr.cloneNode(true))); if(totalRow)target.tbody.appendChild(totalRow.cloneNode(true)); tail.forEach(n=>target.p.appendChild(n.cloneNode(true))); }
   if(!rest.length){
     appendFinal(first);
     if(first.p.scrollHeight>first.p.clientHeight){
@@ -3487,13 +3564,13 @@ function renderDash(){
   let note=$('dashOrderNote');if(note)note.textContent=DASH_ORDERS_LOADED?'订单数据已同步':'订单数据进入订单/单证页后同步';
   applyDashTemplate();updateDashMiniSummary();
 }
-function newQuote(){QUOTE_OPEN_TOKEN++;S.loadingQuoteId=0;S.currentQuoteId=0;S.currentQuoteOwner='';S.currentApprovalStatus='new';S.quoteCommission=null;CUSTOMER_COMMISSION_CHECK=null;CUSTOMER_COMMISSION_REMINDER_KEYS.clear();updateQuoteApprovalStrip();clearQuoteCustomerSelection(false);$('quoteDate').value=today();$('quoteNo').value=qno();if($('quoteStatus'))$('quoteStatus').value='Quotation sheet';$('qty').value=1;$('manualPrice').value='';$('moq').value='';fillOptionSelect('color',colorItems(),'');if($('beamAngle'))$('beamAngle').value='';if($('power'))$('power').value='';if($('cct'))$('cct').value='';if($('cri'))$('cri').value='';if($('ip'))$('ip').value='';if($('customerCode'))$('customerCode').value='';$('extraSpec').value='';clearQuoteRemarksForm();syncPriceMultiplierFromLevel(false);S.parts={};S.product=null;S.items=[];S.editingIndex=-1;if($('productSelect')){$('productSelect').value='';syncProductSearchFromSelect();}renderParts();render()}
+function newQuote(){QUOTE_OPEN_TOKEN++;S.loadingQuoteId=0;S.currentQuoteId=0;S.currentQuoteOwner='';S.currentApprovalStatus='new';S.quoteCommission=null;quoteLoadAdjustmentControls(quoteDefaultAdjustment());CUSTOMER_COMMISSION_CHECK=null;CUSTOMER_COMMISSION_REMINDER_KEYS.clear();updateQuoteApprovalStrip();clearQuoteCustomerSelection(false);$('quoteDate').value=today();$('quoteNo').value=qno();if($('quoteStatus'))$('quoteStatus').value='Quotation sheet';$('qty').value=1;$('manualPrice').value='';$('moq').value='';fillOptionSelect('color',colorItems(),'');if($('beamAngle'))$('beamAngle').value='';if($('power'))$('power').value='';if($('cct'))$('cct').value='';if($('cri'))$('cri').value='';if($('ip'))$('ip').value='';if($('customerCode'))$('customerCode').value='';$('extraSpec').value='';clearQuoteRemarksForm();syncPriceMultiplierFromLevel(false);S.parts={};S.product=null;S.items=[];S.editingIndex=-1;if($('productSelect')){$('productSelect').value='';syncProductSearchFromSelect();}renderParts();render()}
 function baseQuoteNo(no){return normalizeQuoteNoNoNested(String(no||'').replace(/-V\d+$/i,''))}
 function nextQuoteVersionNo(){let cur=normalizeQuoteNoNoNested($('quoteNo')?.value||''),cm=cur.match(/-V(\d+)$/i);if(cm)return Number(cm[1]||1)||1;let base=baseQuoteNo(cur);let max=1;(DB.quotes||[]).forEach(q=>{let no=String(q.quote_no||'');if(no===base)max=Math.max(max,1);let m=no.match(new RegExp('^'+escReg(base)+'-V(\\d+)$'));if(m)max=Math.max(max,Number(m[1]||1));});return max;}
 function makeNewVersionNo(){let base=baseQuoteNo($('quoteNo')?.value||qno());let max=1;(DB.quotes||[]).forEach(q=>{let no=String(q.quote_no||'');if(no===base)max=Math.max(max,1);let m=no.match(new RegExp('^'+escReg(base)+'-V(\\d+)$'));if(m)max=Math.max(max,Number(m[1]||1));});return base+'-V'+(max+1)}
 function quoteDbIntId(v){if(v===undefined||v===null||v==='')return null;let s=String(v).trim();let m=s.match(/(\d+)$/);return m?Number(m[1]):0}
 async function saveAsNewVersion(){if(!$('quoteNo').value){$('quoteNo').value=qno()}let oldId=S.currentQuoteId||0,oldStatus=S.currentApprovalStatus||'',oldNo=$('quoteNo').value;$('quoteNo').value=makeNewVersionNo();S.currentQuoteId=0;S.currentApprovalStatus='new';updateQuoteApprovalStrip();try{return await saveQuote({saveMode:'new_version',sourceQuoteId:oldId,forceInsert:true})}catch(e){if(!S.currentQuoteId&&oldId){S.currentQuoteId=oldId;S.currentApprovalStatus=oldStatus;$('quoteNo').value=oldNo;updateQuoteApprovalStrip(currentSavedQuote());}throw e}}
-async function saveQuote(opts={}){if(!hasPerm('quote_edit')){alert('当前账号没有权限：quote_edit');return;}if(S.loadingQuoteId){alert('报价完整明细还在读取中，请等打开完成后再保存。');return;}if(!$('quoteNo').value||$('quoteNo').value.startsWith('QT-'))$('quoteNo').value=qno();$('quoteNo').value=normalizeQuoteNoNoNested($('quoteNo').value);let items=(S.items&&S.items.length)?S.items:[currentEditorItem()].filter(it=>it.product&&it.product.id);if(!items.length){alert('请至少添加一个产品到报价单');return;}items=items.map(it=>normalizeQuoteItemCurrency(clone(it),cur(),it.currency||cur()));if(!(await ensureQuoteCommissionBeforeSave(items)))return;let amount=items.reduce((s,it)=>s+Number(it.amount||0),0), qty=items.reduce((s,it)=>s+quoteItemQtyForTotal(it),0);let first=items[0]||{};if(S.quoteCommission&&S.quoteCommission.commission_confirm_status?.startsWith('applied'))S.quoteCommission.commission_estimated_amount=quoteCommissionCalc(S.quoteCommission);let data={id:(opts.forceInsert||opts.saveMode==='new_version')?'':(S.currentQuoteId||''),quote_no:$('quoteNo').value,quote_date:$('quoteDate').value,user_name:quoteCurrentOwnerForSave(),customer_id:customerDbId(S.customer),customer_name:S.customer?.company||S.customer?.name||'',customer_json:JSON.stringify(S.customer||{}),header_id:S.header?.id||null,bank_id:S.bank?.id||null,template_id:S.template?.id||null,header_json:JSON.stringify(S.header||{}),bank_json:JSON.stringify(S.bank||{}),template_json:JSON.stringify(S.template||{}),product_type:first.product_type||'',product_id:quoteDbIntId(first.product?.naming_id||first.product?.product_id||first.product?.id||null),product_json:JSON.stringify(first.product||{}),parts_json:JSON.stringify(first.parts||{}),items_json:JSON.stringify(items),qty,price:items.length===1?Number(items[0].price||0):0,amount,currency:cur(),exchange_rate:rate(),moq:first.moq||'',color:first.color||'',cct:first.cct||'',cri:first.cri||'',ip:first.ip||'',extra_spec:first.extra_spec||'',quote_status:($('quoteStatus')?.value||'Quotation sheet'),version_no:nextQuoteVersionNo(),price_level_id:selectedPriceLevel().id||'',price_level_name:selectedPriceLevel().name||'',price_multiplier:priceMultiplier(),commission_json:S.quoteCommission?JSON.stringify(S.quoteCommission):'',save_mode:opts.saveMode||'',source_quote_id:opts.sourceQuoteId||0};let r=await api('save_quote',data);S.currentQuoteId=Number(r.id||S.currentQuoteId||0);S.currentApprovalStatus=String(r.approval_status||'pending');await refreshQuoteRuntime('save_quote',{orders:true,documents:true});clientLog('save_quote_front','前端保存报价并提交审核',{quote_no:data.quote_no,item_count:items.length,qty,amount,currency:cur(),customer:S.customer,commission:S.quoteCommission,save_mode:data.save_mode,source_quote_id:data.source_quote_id});autoCollapseQuoteConfigAfterSave();updateQuoteApprovalStrip(currentSavedQuote());alert('已保存并提交审核，共 '+items.length+' 条明细。审核通过后才能导出 PDF / Excel 或转订单。')}
+async function saveQuote(opts={}){if(!hasPerm('quote_edit')){alert('当前账号没有权限：quote_edit');return;}if(S.loadingQuoteId){alert('报价完整明细还在读取中，请等打开完成后再保存。');return;}if(!$('quoteNo').value||$('quoteNo').value.startsWith('QT-'))$('quoteNo').value=qno();$('quoteNo').value=normalizeQuoteNoNoNested($('quoteNo').value);let items=(S.items&&S.items.length)?S.items:[currentEditorItem()].filter(it=>it.product&&it.product.id);if(!items.length){alert('请至少添加一个产品到报价单');return;}items=items.map(it=>normalizeQuoteItemCurrency(clone(it),cur(),it.currency||cur()));if(!(await ensureQuoteCommissionBeforeSave(items)))return;let totals=quoteTotalsForItems(items),amount=totals.amount,qty=totals.qty;let first=items[0]||{};if(S.quoteCommission&&S.quoteCommission.commission_confirm_status?.startsWith('applied'))S.quoteCommission.commission_estimated_amount=quoteCommissionCalc(S.quoteCommission);let data={id:(opts.forceInsert||opts.saveMode==='new_version')?'':(S.currentQuoteId||''),quote_no:$('quoteNo').value,quote_date:$('quoteDate').value,user_name:quoteCurrentOwnerForSave(),customer_id:customerDbId(S.customer),customer_name:S.customer?.company||S.customer?.name||'',customer_json:JSON.stringify(S.customer||{}),header_id:S.header?.id||null,bank_id:S.bank?.id||null,template_id:S.template?.id||null,header_json:JSON.stringify(S.header||{}),bank_json:JSON.stringify(S.bank||{}),template_json:JSON.stringify(S.template||{}),product_type:first.product_type||'',product_id:quoteDbIntId(first.product?.naming_id||first.product?.product_id||first.product?.id||null),product_json:JSON.stringify(first.product||{}),parts_json:JSON.stringify(first.parts||{}),items_json:JSON.stringify(items),qty,price:items.length===1?Number(items[0].price||0):0,subtotal_amount:totals.subtotal,adjustment_amount:totals.adjustment_amount,adjustment_json:JSON.stringify(totals.adjustment||{}),amount,currency:cur(),exchange_rate:rate(),moq:first.moq||'',color:first.color||'',cct:first.cct||'',cri:first.cri||'',ip:first.ip||'',extra_spec:first.extra_spec||'',quote_status:($('quoteStatus')?.value||'Quotation sheet'),version_no:nextQuoteVersionNo(),price_level_id:selectedPriceLevel().id||'',price_level_name:selectedPriceLevel().name||'',price_multiplier:priceMultiplier(),commission_json:S.quoteCommission?JSON.stringify(S.quoteCommission):'',save_mode:opts.saveMode||'',source_quote_id:opts.sourceQuoteId||0};let r=await api('save_quote',data);S.currentQuoteId=Number(r.id||S.currentQuoteId||0);S.currentApprovalStatus=String(r.approval_status||'pending');await refreshQuoteRuntime('save_quote',{orders:true,documents:true});clientLog('save_quote_front','前端保存报价并提交审核',{quote_no:data.quote_no,item_count:items.length,qty,subtotal_amount:totals.subtotal,adjustment_amount:totals.adjustment_amount,amount,currency:cur(),customer:S.customer,commission:S.quoteCommission,quote_adjustment:totals.adjustment,save_mode:data.save_mode,source_quote_id:data.source_quote_id});autoCollapseQuoteConfigAfterSave();updateQuoteApprovalStrip(currentSavedQuote());alert('已保存并提交审核，共 '+items.length+' 条明细。审核通过后才能导出 PDF / Excel 或转订单。')}
 function dataURL(file){return new Promise(res=>{let r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(file)})}
 function quoteDirectImageUrl(src){
   src=String(src||'').trim();
@@ -3783,7 +3860,7 @@ async function reopenQuoteFollowup(id){await setQuoteFollowupStatus(id,'active')
 async function loadQuote(id){
   let summary=(DB.quotes||[]).find(x=>x.id==id);if(!summary)return;
   let q=Number(summary._detail_loaded||0)===1?summary:await ensureQuoteDetail(id);if(!q)return;
-  S.currentQuoteId=Number(q.id||0);S.currentApprovalStatus=quoteApprovalStatus(q);try{S.customer=JSON.parse(q.customer_json||'{}');S.items=JSON.parse(q.items_json||'[]');S.quoteCommission=q.commission_json?JSON.parse(q.commission_json):null;if(!Array.isArray(S.items)||!S.items.length){S.product=JSON.parse(q.product_json||'{}');S.parts=JSON.parse(q.parts_json||'{}');S.items=[{product:S.product,parts:S.parts,qty:q.qty,price:q.price,amount:q.amount,moq:q.moq,color:q.color,beam_angle:q.beam_angle||'',cct:q.cct||'',cri:q.cri||'',ip:q.ip||'',extra_spec:q.extra_spec,product_type:q.product_type}]} }catch(e){S.items=[];S.quoteCommission=null}$('quoteNo').value=q.quote_no;$('quoteDate').value=q.quote_date;$('currency').value=q.currency||'USD';$('rate').value=q.exchange_rate||7;QUOTE_LAST_CURRENCY=$('currency').value;if($('topCurrency'))$('topCurrency').value=$('currency').value;if($('topRate'))$('topRate').value=$('rate').value||systemExchangeRate();S.items=(S.items||[]).map(it=>normalizeQuoteItemCurrency(it,$('currency').value,it.currency||$('currency').value));if($('quoteStatus')){let qs=q.quote_status||q.status||'Quotation sheet';$('quoteStatus').value=/proforma|invoice/i.test(qs)?'PROFORMA INVOICE':'Quotation sheet';}try{S.currentQuoteOwner=q.user_name||S.currentQuoteOwner||'';quoteApplySavedDocConfig(q);}catch(e){}$('manualPrice').value='';S.editingIndex=-1;if(S.items.length)loadItemToEditor(S.items[0],0);showPage('quote');clientLog('open_history_quote','打开历史报价',{quote_id:id,quote_no:q.quote_no,amount:q.amount,customer:S.customer,approval_status:S.currentApprovalStatus});renderProductSelect();renderParts();updateQuoteApprovalStrip(q);render();return q;
+  S.currentQuoteId=Number(q.id||0);S.currentApprovalStatus=quoteApprovalStatus(q);try{S.customer=JSON.parse(q.customer_json||'{}');S.items=JSON.parse(q.items_json||'[]');S.quoteCommission=q.commission_json?JSON.parse(q.commission_json):null;quoteLoadAdjustmentControls(q.adjustment_json?JSON.parse(q.adjustment_json):quoteDefaultAdjustment());if(!Array.isArray(S.items)||!S.items.length){S.product=JSON.parse(q.product_json||'{}');S.parts=JSON.parse(q.parts_json||'{}');S.items=[{product:S.product,parts:S.parts,qty:q.qty,price:q.price,amount:q.amount,moq:q.moq,color:q.color,beam_angle:q.beam_angle||'',cct:q.cct||'',cri:q.cri||'',ip:q.ip||'',extra_spec:q.extra_spec,product_type:q.product_type}]} }catch(e){S.items=[];S.quoteCommission=null;quoteLoadAdjustmentControls(quoteDefaultAdjustment())}$('quoteNo').value=q.quote_no;$('quoteDate').value=q.quote_date;$('currency').value=q.currency||'USD';$('rate').value=q.exchange_rate||7;QUOTE_LAST_CURRENCY=$('currency').value;if($('topCurrency'))$('topCurrency').value=$('currency').value;if($('topRate'))$('topRate').value=$('rate').value||systemExchangeRate();S.items=(S.items||[]).map(it=>normalizeQuoteItemCurrency(it,$('currency').value,it.currency||$('currency').value));if($('quoteStatus')){let qs=q.quote_status||q.status||'Quotation sheet';$('quoteStatus').value=/proforma|invoice/i.test(qs)?'PROFORMA INVOICE':'Quotation sheet';}try{S.currentQuoteOwner=q.user_name||S.currentQuoteOwner||'';quoteApplySavedDocConfig(q);}catch(e){}$('manualPrice').value='';S.editingIndex=-1;if(S.items.length)loadItemToEditor(S.items[0],0);showPage('quote');clientLog('open_history_quote','打开历史报价',{quote_id:id,quote_no:q.quote_no,amount:q.amount,customer:S.customer,approval_status:S.currentApprovalStatus,quote_adjustment:S.quoteAdjustment});renderProductSelect();renderParts();updateQuoteApprovalStrip(q);render();return q;
 }
 async function copyQuote(id){let q=await loadQuote(id);if(!q)return;clientLog('copy_quote','复制历史报价',{source_quote_id:id,source_quote_no:q.quote_no});S.currentQuoteId=0;S.currentQuoteOwner='';S.currentApprovalStatus='new';S.quoteCommission=null;CUSTOMER_COMMISSION_CHECK=null;CUSTOMER_COMMISSION_REMINDER_KEYS.clear();$('quoteDate').value=today();$('quoteNo').value=qno();S.editingIndex=-1;updateQuoteApprovalStrip();render()}
 function showSettingsTab(tab){
@@ -3920,7 +3997,8 @@ async function clearAllLogs(){let v=prompt('此操作会清空全部报价日志
 
 function exportQuotePayload(){
   let items=quoteItemsForPreview().map(it=>{let cp=clone(it);cp.price=itemUnitPrice(cp);cp.amount=Number(cp.qty||0)*Number(cp.price||0);return cp});
-  let total={qty:items.reduce((s,it)=>s+quoteItemQtyForTotal(it),0),amount:items.reduce((s,it)=>s+Number(it.amount||0),0)};
+  let total=quoteTotalsForItems(items,true);
+  let exportItems=quoteItemsWithAdjustment(items,total);
   return {
     quote_no:$('quoteNo')?.value||qno(),
     quote_date:$('quoteDate')?.value||today(),
@@ -3931,8 +4009,11 @@ function exportQuotePayload(){
     header:S.header||{},
     bank:S.bank||{},
     template:S.template||{},
-    items:items,
+    items:exportItems,
     total:total,
+    quote_adjustment:total.adjustment,
+    subtotal_amount:total.subtotal,
+    adjustment_amount:total.adjustment_amount,
     approval_status:(currentSavedQuote()?.approval_status||S.currentApprovalStatus||'new'),
     quote_id:(currentSavedQuote()?.id||S.currentQuoteId||0)
   };
@@ -4172,8 +4253,11 @@ function payloadFromSavedQuote(q){
     }
     return cp;
   });
-  let total={qty:items.reduce((s,it)=>s+quoteItemQtyForTotal(it),0),amount:items.reduce((s,it)=>s+Number(it.amount||0),0)};
-  return {quote_no:q.quote_no||qno(),quote_date:q.quote_date||today(),quote_status:q.quote_status||q.status||'Quotation sheet',currency:q.currency||cur(),exchange_rate:Number(q.exchange_rate||1),customer,header,bank,template,items,total};
+  let savedAdj=parseMaybeJson(q.adjustment_json,quoteDefaultAdjustment());
+  let oldAdj=S.quoteAdjustment;S.quoteAdjustment=savedAdj;
+  let total=quoteTotalsForItems(items,false);
+  S.quoteAdjustment=oldAdj;
+  return {quote_no:q.quote_no||qno(),quote_date:q.quote_date||today(),quote_status:q.quote_status||q.status||'Quotation sheet',currency:q.currency||cur(),exchange_rate:Number(q.exchange_rate||1),customer,header,bank,template,items,total,quote_adjustment:savedAdj,subtotal_amount:Number(q.subtotal_amount||total.subtotal||0),adjustment_amount:Number(q.adjustment_amount||total.adjustment_amount||0)};
 }
 let QUOTE_EXPORT_BUSY=false;
 async function approvedSnapshotPayload(id){
@@ -4528,7 +4612,7 @@ function piOrderCollectItems(){let rows=[...document.querySelectorAll('#piOrderR
 function piOrderRecalc(){if(!PI_ORDER_DRAFT)return;let rows=[...document.querySelectorAll('#piOrderRows tr[data-pi-row]')];let qty=0,amount=0;rows.forEach((tr,i)=>{let q=Number(tr.querySelector('.pi-qty')?.value||0),p=Number(tr.querySelector('.pi-price')?.value||0),a=q*p,old=(PI_ORDER_DRAFT.items||[])[i]||{};qty+=isVirtualQuoteItem(old)&&!old.count_in_qty?0:q;amount+=a;let am=tr.querySelector('.pi-amount');if(am)am.value=a.toFixed(2);});if($('piOrderSummary'))$('piOrderSummary').textContent='合计：'+fmtNum(qty)+' PCS ｜ '+($('piOrderCurrency')?.value||cur())+' '+money(amount);}
 async function confirmPiOrderConvert(){if(!PI_ORDER_DRAFT)return;let items=piOrderCollectItems();if(!items.length){alert('订单至少需要一行产品');return;}let amount=items.reduce((s,it)=>s+Number(it.amount||0),0),qty=items.reduce((s,it)=>s+quoteItemQtyForTotal(it),0);let payload=Object.assign({},PI_ORDER_DRAFT.payload);payload.order_no=$('piOrderNo').value||payload.order_no;payload.order_date=$('piOrderDate').value||today();payload.customer_name=$('piOrderCustomer').value||piOrderCustomerName();payload.items_json=JSON.stringify(items);payload.qty=qty;payload.amount=amount;payload.currency=$('piOrderCurrency').value||cur();payload.quote_status='PROFORMA INVOICE';payload.status='待确认';payload.note=$('piOrderNote').value||'Converted from PROFORMA INVOICE';payload.snapshot_json=JSON.stringify(Object.assign(exportQuotePayload(),{quote_status:'PROFORMA INVOICE',order_items:items}));if(!confirm('确认生成 PROFORMA INVOICE 订单？\n'+payload.order_no+'\n合计：'+payload.currency+' '+money(amount)))return;try{let j=await orderApi('convert',payload);clientLog('convert_to_order','PI转订单成功',{payload,response:j});try{await api('push_order_crm_notice',{order_id:j.id||0,order_no:j.order_no||payload.order_no,quote_no:payload.quote_no,customer_name:payload.customer_name,amount:amount,currency:payload.currency});}catch(notifyErr){console.warn('CRM订单通知失败',notifyErr)}closePiOrderModal();alert('已生成订单 / Proforma Invoice：'+j.order_no);await refreshQuoteRuntime('convert_to_order',{orders:true,documents:true});showPage('orders');if(j.id) viewOrder(j.id);}catch(e){alert('转订单失败：'+e.message);}}
 
-function currentQuotePayload(){let items=(S.items&&S.items.length)?S.items:[currentEditorItem()].filter(it=>it.product&&it.product.id);items=items.map(it=>{let cp=normalizeQuoteItemCurrency(clone(it),cur(),it.currency||cur());cp.specification=buildSpec(cp);return cp});let amount=items.reduce((s,it)=>s+Number(it.amount||0),0), qty=items.reduce((s,it)=>s+quoteItemQtyForTotal(it),0);let qn=quoteNoForOrder($('quoteNo').value||qno());return {order_no:qn,quote_no:qn,quote_date:$('quoteDate').value,order_date:today(),quote_status:quoteDocTitle(),customer_id:customerDbId(S.customer),customer_json:JSON.stringify(S.customer||{}),items_json:JSON.stringify(items),qty,amount,currency:cur(),status:'待确认',shipment_status:'未出货',payment_status:'未收款',header_json:JSON.stringify(S.header||{}),bank_json:JSON.stringify(S.bank||{}),template_json:JSON.stringify(S.template||{}),snapshot_json:JSON.stringify(exportQuotePayload()),note:'Converted from quotation'};}
+function currentQuotePayload(){let items=(S.items&&S.items.length)?S.items:[currentEditorItem()].filter(it=>it.product&&it.product.id);items=items.map(it=>{let cp=normalizeQuoteItemCurrency(clone(it),cur(),it.currency||cur());cp.specification=buildSpec(cp);return cp});let totals=quoteTotalsForItems(items,true),amount=totals.amount,qty=totals.qty,orderItems=quoteItemsWithAdjustment(items,totals);let qn=quoteNoForOrder($('quoteNo').value||qno());return {order_no:qn,quote_no:qn,quote_date:$('quoteDate').value,order_date:today(),quote_status:quoteDocTitle(),customer_id:customerDbId(S.customer),customer_json:JSON.stringify(S.customer||{}),items_json:JSON.stringify(orderItems),qty,subtotal_amount:totals.subtotal,adjustment_amount:totals.adjustment_amount,adjustment_json:JSON.stringify(totals.adjustment||{}),amount,currency:cur(),status:'待确认',shipment_status:'未出货',payment_status:'未收款',header_json:JSON.stringify(S.header||{}),bank_json:JSON.stringify(S.bank||{}),template_json:JSON.stringify(S.template||{}),snapshot_json:JSON.stringify(exportQuotePayload()),note:'Converted from quotation'};}
 async function convertToOrder(){openPiOrderModal();}
 // 报价明细改为延迟加载；所有需要完整明细的入口在执行前确保数据已补齐。
 const quoteLoadImmediate=loadQuote;
@@ -4955,6 +5039,29 @@ function exportQuotationSummary(){let q=new URLSearchParams(quotationSummaryPayl
 function bindQuotationSummary(){initSummaryColumnResize();setQuotationSummaryRange('month',true);['summaryDateType','summaryDateFrom','summaryDateTo','summaryCurrency','summaryOwner','summaryCustomer','summaryCountry','summaryStatus'].forEach(id=>$(id)?.addEventListener('change',()=>{QUOTATION_SUMMARY.page=1;loadQuotationSummary()}));$('summaryKeyword')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();QUOTATION_SUMMARY.page=1;loadQuotationSummary()}})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindQuotationSummary);else bindQuotationSummary();
 if($('page-summary')?.classList.contains('active'))loadQuotationSummary();
+</script>
+<style>
+.quote-adjustment-panel{margin-top:10px;border:1px solid #dbe5f3;border-radius:12px;background:#fbfdff;padding:10px}
+.quote-adjustment-panel h4{margin:0 0 8px;font-size:13px;color:#0f172a}
+.quote-adjustment-grid{display:grid;grid-template-columns:120px 110px 120px 1fr;gap:8px;align-items:end}
+.quote-adjustment-grid label{font-size:11px;margin:0;color:#52627a;font-weight:800}
+.quote-adjustment-grid input,.quote-adjustment-grid select{width:100%;font-size:12px!important;padding:7px 8px!important;border-radius:8px!important}
+.quote-adjustment-hint{grid-column:1/-1;font-size:12px;color:#64748b;line-height:1.45}
+@media(max-width:1500px){.quote-adjustment-grid{grid-template-columns:1fr 1fr}.quote-adjustment-hint{grid-column:1/-1}}
+</style>
+<script>
+/* V6.8.5.47：报价整单调整/折扣。只影响总价，不修改产品单价；转订单时写入不出货虚拟行。 */
+(function(){
+  function mountQuoteAdjustmentPanel(){
+    if(document.getElementById('quoteAdjustmentPanel'))return;
+    let anchor=document.querySelector('.quote-work .quote-items');
+    if(!anchor)return;
+    anchor.insertAdjacentHTML('afterend',`<div class="quote-adjustment-panel" id="quoteAdjustmentPanel"><h4>整单调整 / 折扣</h4><div class="quote-adjustment-grid"><div><label>类型</label><select id="quoteAdjustmentType" onchange="quoteSyncAdjustmentFromForm()"><option value="none">无调整</option><option value="discount_amount">折扣金额</option><option value="discount_percent">折扣百分比</option><option value="surcharge_amount">加收金额</option></select></div><div><label>数值</label><input id="quoteAdjustmentValue" type="number" step="0.01" placeholder="0" oninput="quoteSyncAdjustmentFromForm()"></div><div><label>显示名称</label><input id="quoteAdjustmentLabel" placeholder="Discount" oninput="quoteSyncAdjustmentFromForm()"></div><div><label>原因 / 备注</label><input id="quoteAdjustmentReason" placeholder="如 Sample discount / Project discount" oninput="quoteSyncAdjustmentFromForm()"></div><div class="quote-adjustment-hint" id="quoteAdjustmentHint">未设置整单调整</div></div></div>`);
+    if(typeof quoteLoadAdjustmentControls==='function')quoteLoadAdjustmentControls((typeof S!=='undefined'&&S.quoteAdjustment)?S.quoteAdjustment:quoteDefaultAdjustment());
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountQuoteAdjustmentPanel);else mountQuoteAdjustmentPanel();
+  setTimeout(mountQuoteAdjustmentPanel,500);
+})();
 </script>
 <!-- V6.8.5.46：历史报价关键词支持客户公司 / 客户联系人 / 报价订单号 / 产品型号 / 系列名字，不匹配业务员/国家/金额。 -->
 </body></html>

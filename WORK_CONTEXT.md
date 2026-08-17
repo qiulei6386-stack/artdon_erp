@@ -2892,3 +2892,12 @@
 - 提示调整：旧的“允许编辑/建议停用”说明改为“请在香港官网修改，命名中心自动同步”；旧页面残留的编辑入口也会在读取详情后立即阻止。
 - 修改文件：`naming.php`、`tests/naming_website_sync_readonly_contract.php`、`WORK_CONTEXT.md`。
 - 检查与发布：`git diff --check` 通过；部署前修改后的 `naming.php` PHP 语法、官网同步只读合同 8 项、型号去重合同 9 项及嵌入方形尺寸合同均通过。功能提交 `f97ed28b4f667ee55b7332f2711c5b82d85418d1` 已推送 GitHub `main` 并从 GitHub 快进正式服务器；服务器再次执行 `naming.php`、新增合同 PHP 语法和三项命名合同，全部通过。本发布记录提交后以最终本地、GitHub、服务器 HEAD 一致性核对为准。
+
+## 2026-08-17：报价系统增加整单调整 / 折扣
+
+- 需求：报价总价需要能减免部分费用，但不能改产品单价，避免下次报价产品价格被污染。
+- 前端：`quotation.php` 在报价工作区新增“整单调整 / 折扣”面板，支持无调整、折扣金额、折扣百分比、加收金额，并可填写显示名称和原因；报价预览在 Total 前显示 Subtotal 与调整行。
+- 保存/审核：`quote_api.php` 为 `quote_orders` 增加 `subtotal_amount`、`adjustment_amount`、`adjustment_json`，保存与审核通过时同步写入；审核预览显示小计、调整和最终金额。
+- 转订单：转 PI/订单时会把整单调整写成一条 `DISCOUNT/ADJUSTMENT` 虚拟项，标记为不出货、不计数量，订单金额能对齐折后总价，产品单价仍保持原价。
+- 导出：`crm_quote_pdf.php`、`crm_quote_excel.php` 支持折扣/调整显示；新导出 payload 有虚拟调整项时直接展示，审核快照只有调整字段时会补 Subtotal 与调整行，避免总价与明细合计看不明白。
+- 检查：本机无 PHP，已通过服务器 `/tmp` 对 `quote_api.php`、`quotation.php`、`crm_quote_pdf.php`、`crm_quote_excel.php` 执行 `php -l`，全部通过。

@@ -145,6 +145,21 @@ function qe_quote_spec_pairs($p){ $raw=$p['quote_spec']??null; if(!$raw && !empt
 function qe_is_material_sale($it){ $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[]; return !empty($it['is_material_sale']) || (($it['product_type']??'')==='material') || (isset($p['id']) && strpos((string)$p['id'],'mat-')===0); }
 function qe_is_virtual_item($it){ return is_array($it) && (!empty($it['is_virtual_item']) || (($it['item_type']??'')==='virtual') || (($it['product_type']??'')==='virtual') || (array_key_exists('shippable',$it) && ($it['shippable']===false || $it['shippable']===0 || $it['shippable']==='0' || $it['shippable']==='false'))); }
 function qe_item_qty_for_total($it){ return qe_is_virtual_item($it) && empty($it['count_in_qty']) ? 0 : qe_num($it['qty']??0); }
+function qe_has_adjustment_item($items){
+  foreach((array)$items as $it){
+    if(!is_array($it) || !qe_is_virtual_item($it)) continue;
+    $p=(isset($it['product'])&&is_array($it['product']))?$it['product']:[];
+    $vt=strtolower((string)($it['virtual_type']??''));
+    $code=strtoupper((string)($p['code']??$p['model']??$it['product_code']??''));
+    if(in_array($vt,['discount','adjustment'],true) || in_array($code,['DISCOUNT','ADJUSTMENT'],true)) return true;
+  }
+  return false;
+}
+function qe_adjustment_label($payload){
+  $adj=is_array($payload['quote_adjustment']??null)?$payload['quote_adjustment']:qe_json_decode($payload['adjustment_json']??'',[]);
+  $label=trim((string)($adj['label']??''));
+  return $label!==''?$label:'Adjustment';
+}
 function qe_item_spec($it){
   // V6.8.5.21：报价/订单导出 Excel 与 PDF 同步，优先使用订单/报价保存时的完整 Specification。
   $saved=qe_clean_param($it['specification']??'');
@@ -212,7 +227,7 @@ function qe_apply_approved_snapshot($payload){
   if(!$q||strtolower((string)($q['approval_status']??''))!=='approved'){http_response_code(403);die('Quote is not approved.');}
   $snap=qe_json_decode($q['approved_snapshot_json']??'',[]);$items=qe_json_decode($snap['items_json']??'',[]);
   if(!$snap||(int)($snap['id']??0)!==$id||(string)($snap['quote_no']??'')!==(string)$q['quote_no']||!$items){http_response_code(403);die('Approved snapshot is missing or mismatched.');}
-  return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>qe_json_decode($snap['customer_json']??'',[]),'header'=>qe_json_decode($snap['header_json']??'',[]),'bank'=>qe_json_decode($snap['bank_json']??'',[]),'template'=>qe_json_decode($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'approval_status'=>'approved','approved_snapshot_export'=>1];
+  return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>qe_json_decode($snap['customer_json']??'',[]),'header'=>qe_json_decode($snap['header_json']??'',[]),'bank'=>qe_json_decode($snap['bank_json']??'',[]),'template'=>qe_json_decode($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'subtotal_amount'=>$snap['subtotal_amount']??0,'adjustment_amount'=>$snap['adjustment_amount']??0,'quote_adjustment'=>qe_json_decode($snap['adjustment_json']??'',[]),'approval_status'=>'approved','approved_snapshot_export'=>1];
 }
 
 function qe_image_source_to_jpeg($src){
@@ -281,7 +296,7 @@ function qe_zip_files($files){
   $cdOffset=strlen($out); $cdSize=strlen($central); return $out.$central.pack('VvvvvVVv',0x06054b50,0,0,$count,$count,$cdSize,$cdOffset,0);
 }
 function qe_build_xlsx($payload){
-  qe_normalize_order_no($payload); $quoteNo=$payload['quote_no']??'quotation'; $date=$payload['quote_date']??date('Y-m-d'); $currency=$payload['currency']??'USD';
+  qe_normalize_order_no($payload); $quoteNo=$payload['quote_no']??'quotation'; $date=$payload['quote_date']??date('Y-m-d'); $currency=$payload['currency']??'USD'; $symbol=strtoupper((string)$currency)==='RMB'?'¥':'$';
   $h=$payload['header']??[]; $b=$payload['bank']??[]; $c=$payload['customer']??[]; $items=array_values(array_filter($payload['items']??[],'is_array'));
   $company=qe_first($h,['company'],'Gallin Industrial (HK) Limited'); $from=trim(qe_strip_from_label(qe_first($h,['from_text'],''))); $stamp=qe_first($h,['stamp'],''); $bank=qe_first($b,['text'],''); $bankTerms=qe_first($b,['extra_terms','terms_text'],''); $bankTermsFont=qe_terms_font_size($b);
   $to=qe_customer_to_text($c);
@@ -329,7 +344,24 @@ function qe_build_xlsx($payload){
     $contentHeightPt += $itemRowHeight;
   }
   $endItemRow=max($startItemRow,$r-1);
-  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_cell(7,$r,$totalQty,9,true),qe_formula(9,$r,'SUM(I'.$startItemRow.':I'.$endItemRow.')',10,$totalAmt)],18); $totalRow=$r; $r++;
+  $lineSubtotalAmt=$totalAmt;
+  $adjustmentAmount=qe_num($payload['adjustment_amount']??0);
+  $subtotalAmount=qe_num($payload['subtotal_amount']??0) ?: $lineSubtotalAmt;
+  $showAdjustmentRows=abs($adjustmentAmount)>0.004 && !qe_has_adjustment_item($items);
+  if(isset($payload['total']) && is_array($payload['total'])){
+    $totalQty=qe_num($payload['total']['qty']??$totalQty) ?: $totalQty;
+    $totalAmt=qe_num($payload['total']['amount']??$totalAmt) ?: $totalAmt;
+  }
+  $totalFormula='SUM(I'.$startItemRow.':I'.$endItemRow.')';
+  if($showAdjustmentRows){
+    $subtotalRow=$r;
+    $rows[]=qe_row($r,[qe_cell(6,$r,'Subtotal:',9),qe_cell(8,$r,$symbol,9),qe_cell(9,$r,$subtotalAmount,10,true)],18); $r++;
+    $adjustmentRow=$r;
+    $rows[]=qe_row($r,[qe_cell(6,$r,qe_adjustment_label($payload).':',9),qe_cell(8,$r,$symbol,9),qe_cell(9,$r,$adjustmentAmount,10,true)],18); $r++;
+    $totalFormula='I'.$subtotalRow.'+I'.$adjustmentRow;
+    if(!isset($payload['total']) || !is_array($payload['total'])) $totalAmt=$subtotalAmount+$adjustmentAmount;
+  }
+  $rows[]=qe_row($r,[qe_cell(6,$r,'Total:',9),qe_cell(7,$r,$totalQty,9,true),qe_formula(9,$r,$totalFormula,10,$totalAmt)],18); $totalRow=$r; $r++;
   $rows[]=qe_row($r,[],14);$r++;
   $paymentText=qe_payment_amount_text($payload,$totalAmt,$currency);
   $summaryLeft="Total Qty: $totalQty PCS".($paymentText!==''?"\n".$paymentText:'')."\nTotal Amount: $currency ".number_format($totalAmt,2,'.','')."\nCurrency: $currency";

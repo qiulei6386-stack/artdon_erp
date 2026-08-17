@@ -88,7 +88,7 @@ function quote_pdf_apply_approved_snapshot(array $payload): array {
     $snap=json_decode((string)($q['approved_snapshot_json']??''),true);
     if(!is_array($snap)||(int)($snap['id']??0)!==$id||(string)($snap['quote_no']??'')!==(string)$q['quote_no']) quote_pdf_block('审核快照不存在或与报价不一致。');
     $items=json_decode((string)($snap['items_json']??''),true); if(!is_array($items)||!$items) quote_pdf_block('审核快照没有产品明细。');
-    return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>maybe_json($snap['customer_json']??'',[]),'header'=>maybe_json($snap['header_json']??'',[]),'bank'=>maybe_json($snap['bank_json']??'',[]),'template'=>maybe_json($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'approval_status'=>'approved','approved_snapshot_export'=>1];
+    return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>maybe_json($snap['customer_json']??'',[]),'header'=>maybe_json($snap['header_json']??'',[]),'bank'=>maybe_json($snap['bank_json']??'',[]),'template'=>maybe_json($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'subtotal_amount'=>$snap['subtotal_amount']??0,'adjustment_amount'=>$snap['adjustment_amount']??0,'quote_adjustment'=>maybe_json($snap['adjustment_json']??'',[]),'approval_status'=>'approved','approved_snapshot_export'=>1];
 }
 function quote_pdf_approval_guard(array $payload): void {
     if (!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no'] ?? '')) !== '') return;
@@ -432,6 +432,21 @@ function quote_pdf_item_qty_for_total($it): float {
 }
 function item_price($it): float { return num($it['price'] ?? $it['unit_price'] ?? 0); }
 function item_amount($it): float { $qty=num($it['qty'] ?? 0); $p=item_price($it); return num($it['amount'] ?? 0) ?: $qty*$p; }
+function quote_pdf_adjustment_label(array $payload): string {
+    $adj = is_array($payload['quote_adjustment'] ?? null) ? $payload['quote_adjustment'] : maybe_json($payload['adjustment_json'] ?? '', []);
+    $label = s_trim($adj['label'] ?? '');
+    return $label !== '' ? $label : 'Adjustment';
+}
+function quote_pdf_has_adjustment_item(array $items): bool {
+    foreach ($items as $it) {
+        if (!is_array($it) || !quote_pdf_is_virtual_item($it)) continue;
+        $vt = strtolower((string)($it['virtual_type'] ?? ''));
+        $p = is_array($it['product'] ?? null) ? $it['product'] : [];
+        $code = strtoupper((string)($p['code'] ?? $p['model'] ?? $it['product_code'] ?? ''));
+        if (in_array($vt, ['discount','adjustment'], true) || in_array($code, ['DISCOUNT','ADJUSTMENT'], true)) return true;
+    }
+    return false;
+}
 
 $quoteNo = s_trim($payload['quote_no'] ?? 'AT-' . date('ymd'));
 $quoteDate = s_trim($payload['quote_date'] ?? date('Y-m-d'));
@@ -443,6 +458,10 @@ $terms = terms_from_payload($payload);
 $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 $totalQty = 0; $totalAmount = 0;
 foreach ($items as $it) { $totalQty += quote_pdf_item_qty_for_total($it); $totalAmount += item_amount($it); }
+$lineSubtotalAmount = $totalAmount;
+$adjustmentAmount = num($payload['adjustment_amount'] ?? 0);
+$subtotalAmount = num($payload['subtotal_amount'] ?? 0) ?: $lineSubtotalAmount;
+$showAdjustmentRows = abs($adjustmentAmount) > 0.004 && !quote_pdf_has_adjustment_item($items);
 if (isset($payload['total']) && is_array($payload['total'])) {
     $totalQty = num($payload['total']['qty'] ?? $totalQty) ?: $totalQty;
     $totalAmount = num($payload['total']['amount'] ?? $totalAmount) ?: $totalAmount;
@@ -551,6 +570,10 @@ html,body{margin:0;background:#f4f6fa;color:#000;font-family:"ARS MaquetteTr","M
       </tr>
     <?php endforeach; else: ?>
       <tr><td colspan="10" class="empty">Please select product and accessories.</td></tr>
+    <?php endif; ?>
+    <?php if($showAdjustmentRows): ?>
+      <tr class="quote-total-row"><td colspan="5"></td><td><b>Subtotal:</b></td><td></td><td><b><?=h($symbol)?></b></td><td><b><?=h(money_fmt($subtotalAmount))?></b></td><td></td></tr>
+      <tr class="quote-total-row"><td colspan="5"></td><td><b><?=h(quote_pdf_adjustment_label($payload))?>:</b></td><td></td><td><b><?=h($symbol)?></b></td><td><b><?=h(money_fmt($adjustmentAmount))?></b></td><td></td></tr>
     <?php endif; ?>
       <tr class="quote-total-row"><td colspan="5"></td><td><b>Total:</b></td><td><b><?=h($totalQty)?></b></td><td><b><?=h($symbol)?></b></td><td><b><?=h(money_fmt($totalAmount))?></b></td><td></td></tr>
     </tbody>

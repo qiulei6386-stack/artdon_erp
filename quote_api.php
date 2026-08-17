@@ -135,6 +135,9 @@ function ensure_quote_core_schema($pdo){
     'items_json'=>"LONGTEXT NULL",
     'qty'=>"DECIMAL(14,3) DEFAULT 0",
     'price'=>"DECIMAL(14,4) DEFAULT 0",
+    'subtotal_amount'=>"DECIMAL(14,2) DEFAULT 0",
+    'adjustment_amount'=>"DECIMAL(14,2) DEFAULT 0",
+    'adjustment_json'=>"MEDIUMTEXT NULL",
     'amount'=>"DECIMAL(14,2) DEFAULT 0",
     'currency'=>"VARCHAR(20) DEFAULT 'USD'",
     'exchange_rate'=>"DECIMAL(12,4) DEFAULT 1",
@@ -4627,8 +4630,12 @@ if($action==='init'){
      $items=quote_merge_review_items($savedItems,$items);
      $qty=0; $amount=0; foreach($items as $it){ $qty+=(float)($it['qty']??0); $amount+=(float)($it['amount']??0); }
      $first=$items[0]??[];
-     $pdo->prepare("UPDATE quote_orders SET user_name=?,items_json=?,approval_items_json=?,qty=?,price=?,amount=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
-       ->execute([$salesOwner,json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qty,(float)($first['price']??0),$amount,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
+     $subtotal=(float)($d['subtotal_amount']??$amount);
+     $adjustmentAmount=(float)($d['adjustment_amount']??0);
+     $finalAmount=array_key_exists('amount',$d)?(float)$d['amount']:$amount;
+     $adjustmentJson=(string)($d['adjustment_json']??($q['adjustment_json']??''));
+     $pdo->prepare("UPDATE quote_orders SET user_name=?,items_json=?,approval_items_json=?,qty=?,price=?,subtotal_amount=?,adjustment_amount=?,adjustment_json=?,amount=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
+       ->execute([$salesOwner,json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qty,(float)($first['price']??0),$subtotal,$adjustmentAmount,$adjustmentJson,$finalAmount,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
    } else {
      $pdo->prepare("UPDATE quote_orders SET user_name=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
        ->execute([$salesOwner,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
@@ -4752,7 +4759,7 @@ if($action==='init'){
        foreach($commissionLines as $i=>$line){if(!in_array(($line['included_in_price']??''),['included','excluded'],true)||!array_key_exists('value',$line)||$line['value']==='')fail('第 '.($i+1).' 行产品佣金尚未明确填写');}
      }
    }
-   $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
+   $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','subtotal_amount','adjustment_amount','adjustment_json','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
    $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
    $items=json_decode((string)($d['items_json']??'[]'),true); if(!is_array($items)) $items=[];
    foreach($items as $item){
