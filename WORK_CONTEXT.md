@@ -2806,3 +2806,11 @@
 - 范围修正：`visit.view_department` 的数据范围从“本人 + 负责人属于本部门”扩展为“本人 + 负责人属于本部门 + 创建人属于本部门”，更符合业务部协作查看/编辑拜访记录的口径。
 - 回归保护：新增 `tests/crm_visit_business_department_permissions_contract.php`，锁定业务部权限清单、sales/staff 角色授权、业务部部门自动授权、deny 不覆盖策略以及本部门 owner/creator 范围。
 - 检查：本地 `git diff --check` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l tests/crm_visit_business_department_permissions_contract.php` 和契约测试通过。
+
+## 2026-08-17：CRM 再次填写拜访结果不带出旧图片
+
+- 问题：再次点击“填结果”后，文字内容已经默认清空，但“结果图片 / 附件”仍使用拜访主记录 `files` 并调用 `loadVisitFiles()`，导致第一次上传的图片继续显示在第二次结果表单里，视觉上仍像旧结果被回填。
+- 修复：`assets/crm/crm.js` 在 `isAdditionalResult` 为真时，将上传区渲染数据改为 `{ files: [] }`，并跳过 `loadVisitFiles()`；第二次及以后填结果时图片/附件区默认空白，只显示新上传队列。
+- 提示：弹窗新增说明“本次新增结果默认不带出上次图片；需要新图片请重新上传。”旧图片仍可在拜访详情和结果历史里查看，但不会进入本次填写表单。
+- 回归保护：更新 `tests/crm_visit_result_history_contract.php`，锁定再次填写不带出旧文件、不调用旧文件加载，以及弹窗提示文案。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l crm_task_center.php`、`php -l tests/crm_visit_result_history_contract.php` 和契约测试通过。

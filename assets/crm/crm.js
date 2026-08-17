@@ -27366,13 +27366,14 @@
         need_sample: 0,
         need_dispatch: 0
       }) : row;
+      var uploadRow = isAdditionalResult ? Object.assign({}, row, { files: [] }) : row;
       var resultOptions = '<option value="">请选择结果</option>' + this.options(isArrival ? ['客户有兴趣','需要报价','需要资料','需要样品','需要技术方案','需要再次来访','需要老板跟进','需要业务员跟进','暂无需求','拒绝','已成交','其他'] : ['客户有兴趣','需要报价','需要资料','需要样品','需要方案','需要老板跟进','需要技术跟进','暂无需求','拒绝','后续再联系','已成交','其他'], formRow.result);
       var html = '<div class="visit-business-form" data-visit-result-form><input type="hidden" name="visit_id" value="' + esc(row.id) + '">' +
         this.resultReferenceHtml(latestResult) +
         this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(formRow.actual_time || new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(formRow.deal_probability || 0) + '"></label>' +
           '<label class="wide">实际参与人员<input name="actual_people" value="' + esc(formRow.actual_people || '') + '"></label><label>结果<select name="result">' + resultOptions + '</select></label>') +
         this.formSection('沟通记录', '<label class="wide">客户反馈<textarea name="customer_feedback" rows="3">' + esc(formRow.customer_feedback || '') + '</textarea></label><label class="wide">客户需求<textarea name="customer_needs" rows="3">' + esc(formRow.customer_needs || '') + '</textarea></label><label class="wide">沟通产品 / 看样产品<textarea name="products_discussed" rows="3">' + esc(formRow.products_discussed || '') + '</textarea></label>') +
-        this.formSection('结果图片 / 附件', this.fileUploadBlock(row), 'visit-section-files') +
+        this.formSection('结果图片 / 附件', this.fileUploadBlock(uploadRow) + (isAdditionalResult ? '<p class="entry-muted wide">本次新增结果默认不带出上次图片；需要新图片请重新上传。</p>' : ''), 'visit-section-files') +
         this.formSection('后续动作', this.needChecks(formRow, isArrival) + '<label class="wide">下一步计划<textarea name="next_action" rows="3">' + esc(formRow.next_action || '') + '</textarea></label><label>下次跟进时间<input name="next_followup_time" value="' + esc(formRow.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="wide visit-reminder-panel"><strong>任务跟进提醒</strong><span>按实际拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(formRow.followup_offsets || []) + '</div><label class="wide">总结<textarea name="result_note" rows="4">' + esc(formRow.result_note || '') + '</textarea></label><p class="entry-muted wide">保存会新增一条结果记录，并同步更新拜访主记录的最新摘要；再次填写默认清空上次结果，可点击“复制上次结果”沿用内容。</p>') +
         '<p class="entry-muted wide" data-visit-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-visit-result-save>保存结果</button></div>';
@@ -27380,7 +27381,7 @@
       CustomerModule.openBusinessDialog(isArrival ? '填写接待结果' : '填写拜访结果', html, '结果会写入客户时间轴，必要时生成后续跟进。', function (dialog) {
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
         self.bindFileInputs(dialog);
-        if (row.id) self.loadVisitFiles(row.id, dialog);
+        if (row.id && !isAdditionalResult) self.loadVisitFiles(row.id, dialog);
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
         dialog.querySelector('[data-visit-copy-last-result]')?.addEventListener('click', function () { self.copyResultToDialog(dialog, latestResult); });
         dialog.querySelector('[data-visit-result-save]')?.addEventListener('click', function () { self.submitResult(dialog); });
