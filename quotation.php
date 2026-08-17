@@ -3470,7 +3470,7 @@ function prepareQuotePreviewPages(root){
     appendFinal(first);
     if(first.p.scrollHeight>first.p.clientHeight){
       // final area does not fit on first page; move it to a continuation page.
-      [...first.tbody.querySelectorAll('.quote-total-row')].forEach(x=>x.remove());
+      [...first.tbody.querySelectorAll('.quote-adjustment-row,.quote-total-row')].forEach(x=>x.remove());
       tail.forEach(n=>{let cls=n.className; [...first.p.children].forEach(ch=>{if(ch.className===cls) ch.remove();});});
       let cont=makeContinue(); root.appendChild(cont.p); appendFinal(cont);
     }

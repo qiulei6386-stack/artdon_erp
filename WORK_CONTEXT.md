@@ -2908,3 +2908,8 @@
 - 修复：`quotation.php` 新增费用项类型符号规则，`discount` 自动保存为负数减项，`freight`、`fuel`、`handling`、`other` 自动保存为正数加项；弹窗提示改为“折扣输入正数即可，系统保存为负数”。
 - 兼容：打开、预览、保存、审核、导出、转订单时都会统一纠偏旧的正数折扣费用项，避免历史已保存折扣继续按加项计算。
 - 规则：费用项仍保持不进入 BOM、不进入包装、不出货；只有勾选“计入 Total Qty”时才计入数量。
+
+## 2026-08-17：报价预览分页时折扣行不再重复
+
+- 问题：报价预览拆页时，如果第一页放得下产品行但放不下最终汇总，旧逻辑只把 `Total` 行移到下一页，`Subtotal/Discount` 行仍残留在上一页，导致视觉上折扣显示两次；金额实际只计算一次。
+- 修复：`quotation.php` 的 `prepareQuotePreviewPages()` 在移动最终汇总到续页时，同时移走 `.quote-adjustment-row` 和 `.quote-total-row`，保证 Subtotal、Discount、Total 作为一组只出现在最终汇总页。
