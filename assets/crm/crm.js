@@ -27080,7 +27080,7 @@
         var card = event.target.closest('[data-visit-id]');
         if (card) {
           self.selectedId = Number(card.getAttribute('data-visit-id') || 0);
-          document.querySelectorAll('[data-visit-id]').forEach(function (item) { item.classList.toggle('active', item === card); });
+          self.markSelectedCard();
           self.renderDetail();
           self.loadDetail(self.selectedId);
           renderActions('visits');
@@ -27140,7 +27140,16 @@
       }
       box.classList.toggle('is-icon-mode', this.displayMode === 'icon');
       box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">暂无记录。右侧 ACTIONS 可新建拜访或来访。</div>';
+      this.markSelectedCard();
       this.renderDetail();
+    },
+    markSelectedCard: function () {
+      var selectedId = Number(this.selectedId || 0);
+      document.querySelectorAll('[data-visit-id]').forEach(function (item) {
+        var active = selectedId && Number(item.getAttribute('data-visit-id') || 0) === selectedId;
+        item.classList.toggle('active', active);
+        item.classList.toggle('selected', active);
+      });
     },
     loadDetail: function (id) {
       var self = this;

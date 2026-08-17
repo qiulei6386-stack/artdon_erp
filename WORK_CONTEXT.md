@@ -2819,6 +2819,8 @@
 
 - 需求：拜访/来访卡片不要只显示状态，要能直接看到最后一次跟进/填写结果的动态和时间，减少点开详情确认进度的操作。
 - 修复：`assets/crm/crm.js` 新增 `visitLatestActivity()` 和 `visitCompactTime()`；卡片优先显示最近填写结果（`latest_result_at`、完成时间、结果/备注/反馈/需求/下一步），没有结果时显示下次跟进安排，再没有则显示计划时间和计划说明。
+- 修复：卡片点击选中态从只切换 `active` 改为统一调用 `markSelectedCard()`，同时刷新 `active` 和 `selected`；避免右侧属性已切换到新卡片，但左侧深色边框仍停留在第一张旧卡片。
+- 样式：hover 边框和真实选中边框分离，真实选中使用 `active/selected` 加深边框和 inset 阴影，鼠标停留不再误看成已选中。
 - 样式：`assets/crm/crm.css` 新增 `visit-card-activity` 区块；图标卡片高度从 198px 调整为 228px，为最近动态预留一行摘要，同时用 line-clamp 避免撑爆卡片。
-- 回归保护：新增 `tests/crm_visit_card_latest_activity_contract.php`，锁定列表接口最新结果时间、卡片动态计算、时间压缩显示和样式高度。
-- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_card_activity_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。
+- 回归保护：新增 `tests/crm_visit_card_latest_activity_contract.php`，锁定列表接口最新结果时间、卡片动态计算、时间压缩显示、样式高度，以及点击新卡片会清理旧 `selected`。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_select_state_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。

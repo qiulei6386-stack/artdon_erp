@@ -18676,10 +18676,15 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   padding: 0 8px;
   white-space: nowrap;
 }
-.visit-card:hover,
-.visit-card.selected {
+.visit-card:hover {
+  background: var(--crm-hover-bg);
+  border-color: color-mix(in srgb, var(--crm-primary) 34%, var(--crm-border));
+}
+.visit-card.selected,
+.visit-card.active {
   background: var(--crm-hover-bg);
   border-color: var(--crm-text);
+  box-shadow: inset 0 0 0 1px var(--crm-text);
 }
 .visit-card header {
   display: flex;
