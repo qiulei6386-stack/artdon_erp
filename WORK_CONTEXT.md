@@ -2824,3 +2824,10 @@
 - 样式：`assets/crm/crm.css` 新增 `visit-card-activity` 区块；图标卡片高度从 198px 调整为 228px，为最近动态预留一行摘要，同时用 line-clamp 避免撑爆卡片。
 - 回归保护：新增 `tests/crm_visit_card_latest_activity_contract.php`，锁定列表接口最新结果时间、卡片动态计算、时间压缩显示、样式高度，以及点击新卡片会清理旧 `selected`。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_select_state_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。
+
+## 2026-08-17：CRM 拜访 / 来访给启用邮箱账号补个人编辑权限
+
+- 需求：将拜访/来访权限开放给业务使用邮箱账号的人员，确保可以查看和编辑。
+- 线上核查：`crm_users.email` 口径下业务部 active 且邮箱不空只有 Winnie；按启用邮箱账号 `crm_user_mail_accounts.is_enabled=1` 口径，共 7 个 active 用户：qiulei、sukie、Amy、steven、Winnie、jerrie、cherry，其中业务部实际 5 人。
+- 处理：通过线上数据库为这 7 个启用邮箱账号补齐 12 项拜访/来访个人 allow：`visit.view`、`visit.view_department`、`visit.create`、`visit.edit`、`visit.result`、`visit.reception`、`visit.convert_followup`、`visit.dispatch`、`visit.file_upload`、`visit.file_delete`、`visit.file_preview`、`visit.file_download`。
+- 结果：新增/忽略 24 行权限记录；复查 7 个用户每人上述权限 allow 数均为 12，deny 数均为 0。业务部 5 人原本已由前次代码自动补齐，本次主要补齐启用邮箱账号的统一个人授权口径。
