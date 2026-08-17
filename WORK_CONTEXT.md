@@ -2869,3 +2869,10 @@
 - 修复：`assets/crm/crm.js` 新增 `openResultFromAction()`，所有“填结果 / 填写拜访结果 / 填写接待结果”按钮统一调用；若缓存中已有完整详情直接打开，否则先执行 `loadDetail(id)` 拉取完整 `result_history` 再打开结果弹窗。
 - 结果：卡片按钮和属性栏按钮现在走同一套入口，都会优先拿完整详情，上一次结果参考、复制上次结果、再次填写默认清空旧内容的行为保持一致。
 - 回归保护：更新 `tests/crm_visit_result_history_contract.php`，锁定统一入口、完整缓存判断、缺少历史时先拉详情、所有填结果按钮统一调用。
+
+## 2026-08-17：CRM 邮箱别名与登录账号分离
+
+- 问题：`jerrie@artdon.cn` 推广发送失败，线上失败日志为 `535 authentication failed`；启用账号 id=19 的 `email_username` 被保存成 `jerrie@artdon.cn`，历史失败 813 次并进入收信退避。邮箱设置页没有“登录账号 / 主邮箱”输入框，用户只能填显示邮箱，系统默认把别名当登录账号。
+- 修复：`crm.php` 邮箱设置新增“显示 / 发件邮箱”和“登录账号 / 主邮箱”两个明确字段；`crm_mail.php` 增加显示邮箱与登录邮箱 helper，SMTP AUTH/IMAP LOGIN 使用登录邮箱，邮件 From 仍使用显示邮箱，SMTP envelope sender 使用登录邮箱；`crm_marketing.php` 推广队列执行时按 `email_address OR email_username` 反查账号，避免别名/主号不一致时找不到发件账号。
+- 线上处理：同步代码到服务器后，将 jerrie 启用邮箱 id=19 恢复为可登录授权码，`email_username=jerrie@artdon.cn`，清空 `sync_fail_count/sync_backoff_until`；SMTP 和 IMAP 登录测试均通过。
+- 备注：用现有授权码测试 `sales05@artdon.cn` 登录仍失败；CRM 同步成功后全库未发现 `sales05@artdon.cn` 的 To/Cc/Bcc/原始头记录。若客户发给 sales05 仍无法在 jerrie 邮箱看到，需要在腾讯企业邮确认 sales05 是否确实投递到 jerrie 同一邮箱，或为 sales05 单独生成可用授权码后绑定/转发。
