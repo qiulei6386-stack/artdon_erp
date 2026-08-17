@@ -27020,7 +27020,7 @@
   if (current === 'tasks') safeInit('任务中心', function () { TaskCenterModule.init(); });
 
   var VisitModule = {
-    inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [],
+    inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [], detailCache: {},
     displayMode: (function () {
       try { return localStorage.getItem('crm_visit_display_mode') === 'icon' ? 'icon' : 'list'; } catch (error) { return 'list'; }
     })(),
@@ -27082,6 +27082,7 @@
           self.selectedId = Number(card.getAttribute('data-visit-id') || 0);
           document.querySelectorAll('[data-visit-id]').forEach(function (item) { item.classList.toggle('active', item === card); });
           self.renderDetail();
+          self.loadDetail(self.selectedId);
           renderActions('visits');
         }
         var action = event.target.closest('[data-visit-action]');
@@ -27118,6 +27119,7 @@
         if (!json.success) throw new Error(json.message || '加载失败');
         self.rows = (json.data && json.data.rows) || [];
         self.render(json.data || {});
+        if (self.selectedId) self.loadDetail(self.selectedId);
         renderActions('visits');
       }).catch(function (error) {
         if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>';
@@ -27139,6 +27141,28 @@
       box.classList.toggle('is-icon-mode', this.displayMode === 'icon');
       box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">暂无记录。右侧 ACTIONS 可新建拜访或来访。</div>';
       this.renderDetail();
+    },
+    loadDetail: function (id) {
+      var self = this;
+      id = Number(id || this.selectedId || 0);
+      if (!id) return Promise.resolve(null);
+      return post('visit_get', { visit_id: id }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '读取拜访详情失败');
+        var record = (json.data && json.data.record) || null;
+        if (record && Number(record.id) === id) {
+          self.detailCache[id] = record;
+          var index = self.rows.findIndex(function (row) { return Number(row.id) === id; });
+          if (index >= 0) self.rows[index] = Object.assign({}, self.rows[index], record);
+          if (Number(self.selectedId) === id) {
+            self.renderDetail(record);
+            renderActions('visits');
+          }
+        }
+        return record;
+      }).catch(function (error) {
+        toast(error.message || '读取拜访详情失败');
+        return null;
+      });
     },
     renderKpis: function (stats) {
       var box = document.querySelector('[data-visit-kpis]');
@@ -27167,6 +27191,7 @@
       var files = [];
       if (Number(row.image_count)) files.push('图片 ' + row.image_count);
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
+      if (Number(row.result_count)) files.push('结果 ' + row.result_count);
       var schedule = [row.visit_date || '未定日期', String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ');
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
         '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
@@ -27195,6 +27220,7 @@
       var files = [];
       if (Number(row.image_count)) files.push('图片 ' + row.image_count);
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
+      if (Number(row.result_count)) files.push('结果 ' + row.result_count);
       var line = function (label, value) {
         return '<div><dt>' + esc(label) + '</dt><dd>' + esc(value || '-') + '</dd></div>';
       };
@@ -27211,12 +27237,31 @@
         '</dl>' +
         '<section class="visit-detail-tags"><strong>后续需求</strong><div>' + (needs.length ? needs.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div></section>' +
         '<section class="visit-detail-note"><strong>备注</strong><p>' + esc(row.result_note || row.planned_note || row.customer_needs || '暂无备注。') + '</p></section>' +
+        this.resultHistoryHtml(row) +
         '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button><button type="button" data-visit-action="' + esc(row.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访') + '" data-visit-action-id="' + esc(row.id) + '">编辑</button></nav>' +
         '</article>';
     },
+    resultHistoryHtml: function (row) {
+      var history = (row && row.result_history) || [];
+      if (!history.length) return '<section class="visit-result-history"><header><strong>结果记录</strong><span>暂无结果记录</span></header></section>';
+      var needText = function (item) {
+        var needs = [];
+        if (Number(item.need_quote)) needs.push('报价');
+        if (Number(item.need_material)) needs.push('资料');
+        if (Number(item.need_sample)) needs.push('样品');
+        if (Number(item.need_dispatch)) needs.push('派工');
+        return needs.join(' / ') || '无后续需求';
+      };
+      return '<section class="visit-result-history"><header><strong>结果记录</strong><span>' + esc(history.length) + ' 条，按填写时间倒序</span></header><div>' + history.map(function (item, index) {
+        var title = item.result || (item.is_legacy_snapshot ? '历史结果' : '结果 #' + (history.length - index));
+        var meta = [item.actual_time ? ('实际 ' + String(item.actual_time).slice(0, 16)) : '', item.created_at ? ('填写 ' + String(item.created_at).slice(0, 16)) : '', item.created_by_name || '', item.is_legacy_snapshot ? '升级前结果' : '新增记录'].filter(Boolean).join(' · ');
+        var body = [item.result_note, item.customer_feedback, item.customer_needs, item.products_discussed, item.next_action ? ('下一步：' + item.next_action) : ''].filter(Boolean).join('\n');
+        return '<article><h4>' + esc(title) + '</h4><small>' + esc(meta || '-') + '</small><p>' + esc(body || '-') + '</p><em>' + esc(needText(item)) + '</em></article>';
+      }).join('') + '</div></section>';
+    },
     selected: function () {
       var id = this.selectedId;
-      return this.rows.find(function (row) { return Number(row.id) === Number(id); }) || null;
+      return this.detailCache[id] || this.rows.find(function (row) { return Number(row.id) === Number(id); }) || null;
     },
     userOptions: function (selected) {
       selected = Number(selected || 0);
@@ -27297,11 +27342,11 @@
       row = row || this.selected(); if (!row) return toast('请先选择拜访/来访记录。');
       var isArrival = row.visit_type === 'customer_arrival';
       var html = '<div class="visit-business-form" data-visit-result-form><input type="hidden" name="visit_id" value="' + esc(row.id) + '">' +
-        this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(row.deal_probability || 0) + '"></label>' +
+        this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(row.actual_time || new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(row.deal_probability || 0) + '"></label>' +
           '<label class="wide">实际参与人员<input name="actual_people" value="' + esc(row.actual_people || '') + '"></label><label>结果<select name="result">' + this.options(isArrival ? ['客户有兴趣','需要报价','需要资料','需要样品','需要技术方案','需要再次来访','需要老板跟进','需要业务员跟进','暂无需求','拒绝','已成交','其他'] : ['客户有兴趣','需要报价','需要资料','需要样品','需要方案','需要老板跟进','需要技术跟进','暂无需求','拒绝','后续再联系','已成交','其他'], row.result) + '</select></label>') +
         this.formSection('沟通记录', '<label class="wide">客户反馈<textarea name="customer_feedback" rows="3">' + esc(row.customer_feedback || '') + '</textarea></label><label class="wide">客户需求<textarea name="customer_needs" rows="3">' + esc(row.customer_needs || '') + '</textarea></label><label class="wide">沟通产品 / 看样产品<textarea name="products_discussed" rows="3">' + esc(row.products_discussed || '') + '</textarea></label>') +
         this.formSection('结果图片 / 附件', this.fileUploadBlock(row), 'visit-section-files') +
-        this.formSection('后续动作', this.needChecks(row, isArrival) + '<label class="wide">下一步计划<textarea name="next_action" rows="3">' + esc(row.next_action || '') + '</textarea></label><label>下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="wide visit-reminder-panel"><strong>任务跟进提醒</strong><span>按实际拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div><label class="wide">总结<textarea name="result_note" rows="4">' + esc(row.result_note || '') + '</textarea></label><p class="entry-muted wide">勾选报价/资料/样品/派工后会生成待处理入口；未接通接口会显示“待接入”并写日志。</p>') +
+        this.formSection('后续动作', this.needChecks(row, isArrival) + '<label class="wide">下一步计划<textarea name="next_action" rows="3">' + esc(row.next_action || '') + '</textarea></label><label>下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="wide visit-reminder-panel"><strong>任务跟进提醒</strong><span>按实际拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div><label class="wide">总结<textarea name="result_note" rows="4">' + esc(row.result_note || '') + '</textarea></label><p class="entry-muted wide">保存会新增一条结果记录，并同步更新拜访主记录的最新摘要；勾选报价/资料/样品/派工后会生成待处理入口。</p>') +
         '<p class="entry-muted wide" data-visit-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-visit-result-save>保存结果</button></div>';
       var self = this;
@@ -27627,7 +27672,7 @@
       });
     },
     handleAction: function (label, id) {
-      var row = id ? this.rows.find(function (item) { return Number(item.id) === Number(id); }) : this.selected();
+      var row = id ? (this.detailCache[id] || this.rows.find(function (item) { return Number(item.id) === Number(id); })) : this.selected();
       var viewMap = { '跟进任务': 'followups', '拜访计划': 'visits', '来访接待': 'arrivals', '外出记录': 'outside', '拜访报表': 'report' };
       if (viewMap[label]) {
         this.view = viewMap[label];

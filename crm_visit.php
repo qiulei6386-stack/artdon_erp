@@ -84,12 +84,43 @@ function crm_visit_ensure_tables(): void
         KEY idx_visit_file_customer (customer_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    db()->exec("CREATE TABLE IF NOT EXISTS crm_visit_results (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        visit_id INT NOT NULL,
+        customer_id INT NOT NULL,
+        contact_id INT NULL,
+        actual_time DATETIME NULL,
+        actual_people TEXT NULL,
+        customer_feedback TEXT NULL,
+        customer_needs TEXT NULL,
+        products_discussed TEXT NULL,
+        result VARCHAR(120) NOT NULL DEFAULT '',
+        result_note TEXT NULL,
+        next_action TEXT NULL,
+        next_followup_time DATETIME NULL,
+        deal_probability INT NOT NULL DEFAULT 0,
+        need_quote TINYINT(1) NOT NULL DEFAULT 0,
+        need_material TINYINT(1) NOT NULL DEFAULT 0,
+        need_sample TINYINT(1) NOT NULL DEFAULT 0,
+        need_dispatch TINYINT(1) NOT NULL DEFAULT 0,
+        result_source VARCHAR(40) NOT NULL DEFAULT 'manual',
+        created_by INT NULL,
+        updated_by INT NULL,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        deleted_at DATETIME NULL,
+        KEY idx_visit_result_visit (visit_id, deleted_at, created_at),
+        KEY idx_visit_result_customer (customer_id, deleted_at, created_at),
+        KEY idx_visit_result_source (result_source)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
     crm_visit_add_column('crm_visit_records', 'preparation_note', 'preparation_note TEXT NULL AFTER planned_note');
     crm_visit_add_column('crm_visit_records', 'followup_offsets_json', 'followup_offsets_json JSON NULL AFTER next_followup_time');
     crm_visit_add_column('crm_visit_files', 'customer_id', 'customer_id INT NULL AFTER visit_id');
     crm_visit_add_column('crm_visit_files', 'original_name', "original_name VARCHAR(255) NOT NULL DEFAULT '' AFTER file_name");
     crm_visit_add_column('crm_visit_files', 'mime_type', "mime_type VARCHAR(120) NOT NULL DEFAULT '' AFTER file_size");
     crm_visit_add_column('crm_visit_files', 'uploaded_at', 'uploaded_at DATETIME NULL AFTER uploaded_by');
+    crm_visit_add_column('crm_visit_results', 'result_source', "result_source VARCHAR(40) NOT NULL DEFAULT 'manual' AFTER need_dispatch");
     crm_visit_ensure_permissions();
 }
 
@@ -167,6 +198,8 @@ function crm_visit_row(int $id): array
     $row['assistant_user_ids'] = json_decode((string)($row['assistant_user_ids_json'] ?? '[]'), true) ?: [];
     $row['followup_offsets'] = json_decode((string)($row['followup_offsets_json'] ?? '[]'), true) ?: [];
     $row['files'] = crm_visit_files($id);
+    $row['result_history'] = crm_visit_results($id, $row);
+    $row['result_count'] = count($row['result_history']);
     return $row;
 }
 
@@ -207,7 +240,9 @@ function crm_visit_list(array $input = []): array
     }
     $sql = "SELECT v.*, c.customer_name, c.customer_code, ct.name AS contact_name, u.username AS owner_name,
             (SELECT COUNT(*) FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'image') AS image_count,
-            (SELECT COUNT(*) FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'attachment') AS attachment_count
+            (SELECT COUNT(*) FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'attachment') AS attachment_count,
+            (SELECT COUNT(*) FROM crm_visit_results vr WHERE vr.visit_id = v.id AND vr.deleted_at IS NULL) AS result_count,
+            (SELECT MAX(vr.created_at) FROM crm_visit_results vr WHERE vr.visit_id = v.id AND vr.deleted_at IS NULL) AS latest_result_at
         FROM crm_visit_records v
         LEFT JOIN crm_customers c ON c.id = v.customer_id
         LEFT JOIN crm_contacts ct ON ct.id = v.contact_id
@@ -494,13 +529,116 @@ function crm_visit_create_followup_reminders(int $id, array $visit, array $offse
     }
 }
 
+function crm_visit_result_row_public(array $row): array
+{
+    $row['is_legacy_snapshot'] = (string)($row['result_source'] ?? '') === 'legacy_current';
+    $row['created_by_name'] = $row['created_by_name'] ?? $row['creator_name'] ?? '';
+    return $row;
+}
+
+function crm_visit_current_result_has_content(array $visit): bool
+{
+    foreach (['actual_time','actual_people','customer_feedback','customer_needs','products_discussed','result','result_note','next_action','next_followup_time'] as $key) {
+        if (trim((string)($visit[$key] ?? '')) !== '') return true;
+    }
+    return (int)($visit['deal_probability'] ?? 0) > 0
+        || !empty($visit['need_quote'])
+        || !empty($visit['need_material'])
+        || !empty($visit['need_sample'])
+        || !empty($visit['need_dispatch']);
+}
+
+function crm_visit_results(int $visitId, ?array $visit = null): array
+{
+    $stmt = db()->prepare("SELECT r.*, u.username AS created_by_name
+        FROM crm_visit_results r
+        JOIN crm_visit_records v ON v.id = r.visit_id
+        LEFT JOIN crm_users u ON u.id = r.created_by
+        WHERE r.visit_id = ? AND r.deleted_at IS NULL AND v.deleted_at IS NULL AND " . crm_visit_scope_sql('v') . "
+        ORDER BY r.created_at DESC, r.id DESC");
+    $stmt->execute([$visitId]);
+    $rows = array_map('crm_visit_result_row_public', $stmt->fetchAll());
+    if (!$rows && $visit && crm_visit_current_result_has_content($visit)) {
+        $rows[] = crm_visit_result_row_public([
+            'id' => 0,
+            'visit_id' => (int)($visit['id'] ?? $visitId),
+            'customer_id' => (int)($visit['customer_id'] ?? 0),
+            'contact_id' => (int)($visit['contact_id'] ?? 0) ?: null,
+            'actual_time' => $visit['actual_time'] ?? null,
+            'actual_people' => $visit['actual_people'] ?? '',
+            'customer_feedback' => $visit['customer_feedback'] ?? '',
+            'customer_needs' => $visit['customer_needs'] ?? '',
+            'products_discussed' => $visit['products_discussed'] ?? '',
+            'result' => $visit['result'] ?? '',
+            'result_note' => $visit['result_note'] ?? '',
+            'next_action' => $visit['next_action'] ?? '',
+            'next_followup_time' => $visit['next_followup_time'] ?? null,
+            'deal_probability' => (int)($visit['deal_probability'] ?? 0),
+            'need_quote' => (int)($visit['need_quote'] ?? 0),
+            'need_material' => (int)($visit['need_material'] ?? 0),
+            'need_sample' => (int)($visit['need_sample'] ?? 0),
+            'need_dispatch' => (int)($visit['need_dispatch'] ?? 0),
+            'result_source' => 'legacy_current',
+            'created_by' => (int)($visit['completed_by'] ?? $visit['updated_by'] ?? $visit['created_by'] ?? 0) ?: null,
+            'created_by_name' => $visit['completed_by_name'] ?? $visit['owner_name'] ?? '',
+            'created_at' => $visit['completed_at'] ?? $visit['updated_at'] ?? $visit['created_at'] ?? '',
+            'updated_at' => $visit['updated_at'] ?? '',
+            'is_virtual' => true,
+        ]);
+    }
+    return $rows;
+}
+
+function crm_visit_result_history_count(int $visitId): int
+{
+    $stmt = db()->prepare('SELECT COUNT(*) FROM crm_visit_results WHERE visit_id = ? AND deleted_at IS NULL');
+    $stmt->execute([$visitId]);
+    return (int)$stmt->fetchColumn();
+}
+
+function crm_visit_backfill_current_result(array $visit): void
+{
+    $visitId = (int)($visit['id'] ?? 0);
+    if ($visitId <= 0 || !crm_visit_current_result_has_content($visit) || crm_visit_result_history_count($visitId) > 0) return;
+    $uid = (int)($visit['completed_by'] ?? $visit['updated_by'] ?? $visit['created_by'] ?? 0) ?: (int)(current_user()['id'] ?? 0);
+    $createdAt = trim((string)($visit['completed_at'] ?? $visit['updated_at'] ?? $visit['created_at'] ?? '')) ?: date('Y-m-d H:i:s');
+    db()->prepare("INSERT INTO crm_visit_results (
+        visit_id, customer_id, contact_id, actual_time, actual_people, customer_feedback, customer_needs, products_discussed,
+        result, result_note, next_action, next_followup_time, deal_probability, need_quote, need_material, need_sample, need_dispatch,
+        result_source, created_by, updated_by, created_at, updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
+        $visitId,
+        (int)$visit['customer_id'],
+        (int)($visit['contact_id'] ?? 0) ?: null,
+        trim((string)($visit['actual_time'] ?? '')) ?: null,
+        trim((string)($visit['actual_people'] ?? '')),
+        trim((string)($visit['customer_feedback'] ?? '')),
+        trim((string)($visit['customer_needs'] ?? '')),
+        trim((string)($visit['products_discussed'] ?? '')),
+        trim((string)($visit['result'] ?? '')),
+        trim((string)($visit['result_note'] ?? '')),
+        trim((string)($visit['next_action'] ?? '')),
+        trim((string)($visit['next_followup_time'] ?? '')) ?: null,
+        (int)($visit['deal_probability'] ?? 0),
+        (int)($visit['need_quote'] ?? 0),
+        (int)($visit['need_material'] ?? 0),
+        (int)($visit['need_sample'] ?? 0),
+        (int)($visit['need_dispatch'] ?? 0),
+        'legacy_current',
+        $uid ?: null,
+        $uid ?: null,
+        $createdAt,
+        $createdAt,
+    ]);
+}
+
 function crm_visit_result_save(int $id, array $input): array
 {
     crm_visit_ensure_tables();
     crm_require('visit.result');
     $before = crm_visit_row($id);
     $status = !empty($input['need_quote']) || !empty($input['need_material']) || !empty($input['need_sample']) || !empty($input['need_dispatch']) || !empty($input['create_dispatch']) ? 'followup_pending' : 'completed';
-    $actualTime = trim((string)($input['actual_time'] ?? '')) ?: date('Y-m-d H:i:s');
+    $actualTime = trim((string)($input['actual_time'] ?? '')) ?: (trim((string)($before['actual_time'] ?? '')) ?: date('Y-m-d H:i:s'));
     $data = [
         'actual_time' => $actualTime,
         'actual_people' => trim((string)($input['actual_people'] ?? '')),
@@ -513,22 +651,58 @@ function crm_visit_result_save(int $id, array $input): array
         'next_followup_time' => trim((string)($input['next_followup_time'] ?? '')) ?: null,
         'followup_offsets_json' => json_encode(crm_visit_followup_offsets($input['followup_offsets'] ?? []), JSON_UNESCAPED_UNICODE),
         'deal_probability' => (int)($input['deal_probability'] ?? 0),
-        'need_quote' => !empty($input['need_quote']) ? 1 : (int)$before['need_quote'],
-        'need_material' => !empty($input['need_material']) ? 1 : (int)$before['need_material'],
-        'need_sample' => !empty($input['need_sample']) ? 1 : (int)$before['need_sample'],
-        'need_dispatch' => (!empty($input['need_dispatch']) || !empty($input['create_dispatch'])) ? 1 : (int)$before['need_dispatch'],
+        'need_quote' => !empty($input['need_quote']) ? 1 : 0,
+        'need_material' => !empty($input['need_material']) ? 1 : 0,
+        'need_sample' => !empty($input['need_sample']) ? 1 : 0,
+        'need_dispatch' => (!empty($input['need_dispatch']) || !empty($input['create_dispatch'])) ? 1 : 0,
         'status' => $status,
     ];
-    $sets = [];
-    $values = [];
-    foreach ($data as $key => $value) {
-        $sets[] = $key . ' = ?';
-        $values[] = $value;
+    $uid = (int)(current_user()['id'] ?? 0);
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        crm_visit_backfill_current_result($before);
+        $pdo->prepare("INSERT INTO crm_visit_results (
+            visit_id, customer_id, contact_id, actual_time, actual_people, customer_feedback, customer_needs, products_discussed,
+            result, result_note, next_action, next_followup_time, deal_probability, need_quote, need_material, need_sample, need_dispatch,
+            result_source, created_by, updated_by, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())")->execute([
+            $id,
+            (int)$before['customer_id'],
+            (int)($before['contact_id'] ?? 0) ?: null,
+            $data['actual_time'],
+            $data['actual_people'],
+            $data['customer_feedback'],
+            $data['customer_needs'],
+            $data['products_discussed'],
+            $data['result'],
+            $data['result_note'],
+            $data['next_action'],
+            $data['next_followup_time'],
+            $data['deal_probability'],
+            $data['need_quote'],
+            $data['need_material'],
+            $data['need_sample'],
+            $data['need_dispatch'],
+            'manual',
+            $uid ?: null,
+            $uid ?: null,
+        ]);
+        $sets = [];
+        $values = [];
+        foreach ($data as $key => $value) {
+            $sets[] = $key . ' = ?';
+            $values[] = $value;
+        }
+        $values[] = $uid;
+        $values[] = $uid;
+        $values[] = $id;
+        $pdo->prepare('UPDATE crm_visit_records SET ' . implode(', ', $sets) . ', completed_by = ?, updated_by = ?, completed_at = NOW(), updated_at = NOW() WHERE id = ?')->execute($values);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
     }
-    $values[] = (int)(current_user()['id'] ?? 0);
-    $values[] = (int)(current_user()['id'] ?? 0);
-    $values[] = $id;
-    db()->prepare('UPDATE crm_visit_records SET ' . implode(', ', $sets) . ', completed_by = ?, updated_by = ?, completed_at = NOW(), updated_at = NOW() WHERE id = ?')->execute($values);
     $after = crm_visit_row($id);
     crm_log_event('visit', 'visit_result_save', 'visit', (string)$id, $before, $after);
     $title = $before['visit_type'] === 'customer_visit' ? '完成拜访并填写结果' : '完成来访接待并填写结果';

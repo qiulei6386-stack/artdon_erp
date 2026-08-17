@@ -2346,7 +2346,8 @@ function crm_task_upsert_from_followup(array $followup): void
     $ownerId = (int)$ownerStmt->fetchColumn();
     if ($ownerId <= 0) $ownerId = (int)($followup['created_by'] ?? ((current_user() ?: [])['id'] ?? 0));
     $due = crm_task_datetime($followup['next_remind_time'] ?? '') ?: crm_task_datetime($followup['followup_time'] ?? '');
-    $title = '客户跟进：' . substr(trim((string)($followup['content'] ?? '跟进提醒')), 0, 80);
+    $contentTitle = trim((string)($followup['content'] ?? '跟进提醒'));
+    $title = '客户跟进：' . (function_exists('mb_substr') ? mb_substr($contentTitle, 0, 80, 'UTF-8') : substr($contentTitle, 0, 80));
     $description = trim(implode("\n", array_filter([trim((string)($followup['content'] ?? '')), trim((string)($followup['next_plan'] ?? ''))])));
     $status = in_array((string)($followup['status'] ?? 'open'), ['done','completed','closed'], true) ? 'done' : 'pending';
     $stmt = db()->prepare("SELECT id FROM crm_tasks WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'followup' COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND task_type='customer_followup' COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL LIMIT 1");

@@ -1461,6 +1461,11 @@ try {
         require_csrf();
         api_response(true, '', crm_visit_list($_POST));
     }
+    if ($action === 'visit_get') {
+        require_csrf();
+        crm_require('visit.view');
+        api_response(true, '', ['record' => crm_visit_row((int)($_POST['visit_id'] ?? 0))]);
+    }
     if ($action === 'visit_save') {
         require_csrf();
         api_response(true, '拜访/来访已保存', crm_visit_save($_POST));

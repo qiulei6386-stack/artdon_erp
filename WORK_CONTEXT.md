@@ -2776,3 +2776,14 @@
 - 前端：`assets/crm/crm.js` 去掉拜访派工“接口未接入/不会假创建”的提示，改为“真实生成派工待办，已创建过不会重复”；创建成功后刷新拜访列表和客户详情。
 - 回归保护：新增 `tests/crm_visit_dispatch_linkage_contract.php`，锁定真实写入派工表、通知、日志、反链、去重、默认负责人/截止时间、结果页联动和前端文案。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l tests/crm_visit_dispatch_linkage_contract.php` 和契约测试通过。
+
+## 2026-08-17：CRM 拜访 / 来访结果支持多次填写历史
+
+- 问题：拜访计划“填结果”实际是更新 `crm_visit_records` 的同一组结果字段，第二次填写会覆盖第一次结果；EX114/RARO 现场记录能从日志看到两次 `visit_result_save`，但主记录只保留最新摘要。
+- 修复：`crm_visit.php` 新增 `crm_visit_results` 明细表；每次保存结果都会新增一条结果记录，同时继续更新拜访主记录的最新摘要、状态、后续需求，兼顾“历史可查”和“列表仍显示当前状态”。
+- 兼容：老数据如果主记录已有结果但明细表为空，详情页会显示一条“升级前结果”虚拟记录；下次保存新结果前会自动把旧主记录结果回填为 `legacy_current` 明细，避免升级前最新结果被覆盖。
+- 行为：结果弹窗优先带出原 `actual_time`，不再每次打开都强制写当前时间；报价/资料/样品/派工勾选改为按本次表单为准，可以清除旧的后续需求标记。
+- 前端：新增 `visit_get` 按需详情接口；拜访列表仍保持轻量，点击某条拜访后再拉完整详情和结果历史；详情卡片显示“结果记录”时间线，列表卡片显示结果数量。
+- 关联修复：`crm_task_center.php` 中客户跟进任务标题改用 `mb_substr(..., 'UTF-8')` 截断，修复中文内容被字节截断后写入 `crm_tasks.title` 报 `Incorrect string value`，导致填结果后的跟进任务同步失败。
+- 回归保护：新增 `tests/crm_visit_result_history_contract.php`，锁定结果明细表、旧结果回填、每次新增明细、按需详情接口、前端结果历史展示、实际时间保留和中文标题截断。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l crm_task_center.php` 和 `tests/crm_visit_result_history_contract.php` 通过，契约测试通过。

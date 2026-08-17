@@ -18913,6 +18913,69 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   padding: 9px;
   line-height: 1.45;
 }
+.visit-result-history {
+  display: grid;
+  gap: 8px;
+}
+.visit-result-history header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.visit-result-history header strong {
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 950;
+}
+.visit-result-history header span {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 850;
+}
+.visit-result-history > div {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+.visit-result-history article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: var(--crm-bg);
+  padding: 9px;
+}
+.visit-result-history h4 {
+  margin: 0;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 950;
+}
+.visit-result-history small {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+.visit-result-history p {
+  white-space: pre-wrap;
+  margin: 0;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.visit-result-history em {
+  justify-self: start;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 30%, var(--crm-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-primary) 7%, var(--crm-card-bg));
+  color: var(--crm-primary);
+  padding: 2px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
 .visit-detail-card nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
