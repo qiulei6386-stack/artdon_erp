@@ -27193,13 +27193,62 @@
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
       if (Number(row.result_count)) files.push('结果 ' + row.result_count);
       var schedule = [row.visit_date || '未定日期', String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ');
+      var activity = this.visitLatestActivity(row);
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
         '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
         '<div class="visit-card-meta"><span>' + esc(schedule) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b></div>' +
+        '<section class="visit-card-activity"><div><span>' + esc(activity.label) + '</span><b>' + esc(activity.time) + '</b></div><p>' + esc(activity.text) + '</p></section>' +
         '<div class="visit-card-needs">' + (need.length ? need.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div>' +
         '<nav class="visit-card-actions"><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +
         (this.canDelete(row) ? '<button type="button" data-visit-action="delete" data-visit-action-id="' + esc(row.id) + '">删除</button>' : '') +
         '</nav></article>';
+    },
+    visitLatestActivity: function (row) {
+      var clean = function (value) { return String(value || '').trim(); };
+      var first = function (items) {
+        for (var i = 0; i < items.length; i += 1) {
+          if (clean(items[i])) return clean(items[i]);
+        }
+        return '';
+      };
+      var resultTime = clean(row.latest_result_at) || clean(row.completed_at) || clean(row.actual_time);
+      var resultText = first([
+        clean(row.result) ? '结果：' + clean(row.result) : '',
+        clean(row.result_note),
+        clean(row.customer_feedback) ? '反馈：' + clean(row.customer_feedback) : '',
+        clean(row.customer_needs) ? '需求：' + clean(row.customer_needs) : '',
+        clean(row.products_discussed) ? '产品：' + clean(row.products_discussed) : '',
+        clean(row.next_action) ? '下一步：' + clean(row.next_action) : ''
+      ]);
+      if (resultTime || resultText) {
+        return {
+          label: '最近动态',
+          time: this.visitCompactTime(resultTime || row.updated_at),
+          text: resultText || '已填写结果，点开可看完整记录'
+        };
+      }
+      var nextTime = clean(row.next_followup_time);
+      var nextText = first([
+        clean(row.next_action) ? '下一步：' + clean(row.next_action) : '',
+        clean(row.customer_needs) ? '需求：' + clean(row.customer_needs) : ''
+      ]);
+      if (nextTime || nextText) {
+        return {
+          label: '下次跟进',
+          time: this.visitCompactTime(nextTime || row.updated_at),
+          text: nextText || '已有下次跟进安排'
+        };
+      }
+      return {
+        label: '计划时间',
+        time: this.visitCompactTime([row.visit_date || '', String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ')),
+        text: clean(row.planned_note) || clean(row.purpose) || '暂无最新动态'
+      };
+    },
+    visitCompactTime: function (value) {
+      value = String(value || '').trim();
+      if (!value) return '-';
+      return value.replace('T', ' ').slice(0, 16);
     },
     renderDetail: function (row, emptyTitle) {
       var box = document.querySelector('[data-visit-detail]');

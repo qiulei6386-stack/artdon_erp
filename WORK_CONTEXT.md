@@ -2814,3 +2814,11 @@
 - 提示：弹窗新增说明“本次新增结果默认不带出上次图片；需要新图片请重新上传。”旧图片仍可在拜访详情和结果历史里查看，但不会进入本次填写表单。
 - 回归保护：更新 `tests/crm_visit_result_history_contract.php`，锁定再次填写不带出旧文件、不调用旧文件加载，以及弹窗提示文案。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l crm_task_center.php`、`php -l tests/crm_visit_result_history_contract.php` 和契约测试通过。
+
+## 2026-08-17：CRM 拜访 / 来访卡片显示最近动态与时间
+
+- 需求：拜访/来访卡片不要只显示状态，要能直接看到最后一次跟进/填写结果的动态和时间，减少点开详情确认进度的操作。
+- 修复：`assets/crm/crm.js` 新增 `visitLatestActivity()` 和 `visitCompactTime()`；卡片优先显示最近填写结果（`latest_result_at`、完成时间、结果/备注/反馈/需求/下一步），没有结果时显示下次跟进安排，再没有则显示计划时间和计划说明。
+- 样式：`assets/crm/crm.css` 新增 `visit-card-activity` 区块；图标卡片高度从 198px 调整为 228px，为最近动态预留一行摘要，同时用 line-clamp 避免撑爆卡片。
+- 回归保护：新增 `tests/crm_visit_card_latest_activity_contract.php`，锁定列表接口最新结果时间、卡片动态计算、时间压缩显示和样式高度。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_card_activity_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。
