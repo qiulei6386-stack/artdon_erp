@@ -3009,9 +3009,9 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             $accountStmt = db()->prepare("SELECT a.*, COALESCE(u.real_name, u.username, '') owner_name, u.username, u.phone user_phone, u.position user_position
                 FROM crm_user_mail_accounts a
                 LEFT JOIN crm_users u ON u.id = a.user_id
-                WHERE a.email_address=? AND a.user_id=? AND a.deleted_at IS NULL AND a.is_enabled=1
+                WHERE (a.email_address=? OR a.email_username=?) AND a.user_id=? AND a.deleted_at IS NULL AND a.is_enabled=1
                 LIMIT 1");
-            $accountStmt->execute([(string)$row['sender_email'], (int)$row['sender_user_id']]);
+            $accountStmt->execute([(string)$row['sender_email'], (string)$row['sender_email'], (int)$row['sender_user_id']]);
             $account = $accountStmt->fetch();
             if (!$account) throw new RuntimeException('发件邮箱不可用');
             $account['mail_secret'] = crm_mail_decrypt($account['email_password_encrypted'] ?? '');

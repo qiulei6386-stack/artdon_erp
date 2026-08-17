@@ -508,9 +508,24 @@ function crm_mail_render_signature_variables(string $html, ?array $account = nul
     return strtr($html, crm_mail_signature_variables($account));
 }
 
+function crm_mail_display_email(array $account): string
+{
+    $email = trim((string)($account['email_address'] ?? ''));
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) return $email;
+    $login = trim((string)($account['email_username'] ?? ''));
+    return filter_var($login, FILTER_VALIDATE_EMAIL) ? $login : $email;
+}
+
+function crm_mail_login_email(array $account): string
+{
+    $login = trim((string)($account['email_username'] ?? ''));
+    if ($login !== '' && filter_var($login, FILTER_VALIDATE_EMAIL)) return $login;
+    return crm_mail_display_email($account);
+}
+
 function crm_mail_generate_message_id(array $account): string
 {
-    $domain = strtolower(trim((string)substr(strrchr((string)($account['email_address'] ?? ''), '@') ?: '', 1)));
+    $domain = strtolower(trim((string)substr(strrchr(crm_mail_display_email($account), '@') ?: '', 1)));
     if ($domain === '' || !preg_match('/^[a-z0-9.-]+$/i', $domain)) $domain = 'artdon.local';
     return '<crm-' . date('YmdHis') . '-' . bin2hex(random_bytes(8)) . '@' . $domain . '>';
 }
@@ -690,6 +705,8 @@ function crm_mail_account_save_own(array $input): array
     $accountId = (int)($input['mail_account_id'] ?? 0);
     $email = trim((string)($input['email_address'] ?? ''));
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('邮箱地址格式不正确。');
+    $loginEmail = trim((string)($input['email_username'] ?? $email)) ?: $email;
+    if (!filter_var($loginEmail, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('登录账号 / 主邮箱格式不正确。');
     $secret = (string)($input['mail_secret'] ?? '');
     $existing = $accountId > 0 ? crm_mail_current_account(true, $accountId, $userId) : null;
     $encrypted = $secret !== '' ? crm_mail_encrypt($secret) : ($existing ? crm_mail_encrypt((string)($existing['mail_secret'] ?? '')) : '');
@@ -697,7 +714,7 @@ function crm_mail_account_save_own(array $input): array
     $payload = [
         $userId,
         $email,
-        trim((string)($input['email_username'] ?? $email)) ?: $email,
+        $loginEmail,
         $encrypted,
         trim((string)($input['imap_host'] ?? $defaults['imap_host'])) ?: $defaults['imap_host'],
         (int)($input['imap_port'] ?? $defaults['imap_port']),
@@ -957,7 +974,7 @@ function crm_mail_smtp_connect(array $account)
         crm_mail_smtp_cmd($fp, 'EHLO ' . ($_SERVER['SERVER_NAME'] ?? 'artdon.local'), ['250']);
     }
     crm_mail_smtp_cmd($fp, 'AUTH LOGIN', ['334']);
-    crm_mail_smtp_cmd($fp, base64_encode((string)$account['email_username']), ['334']);
+    crm_mail_smtp_cmd($fp, base64_encode(crm_mail_login_email($account)), ['334']);
     crm_mail_smtp_cmd($fp, base64_encode((string)$account['mail_secret']), ['235']);
     return $fp;
 }
@@ -2090,7 +2107,8 @@ function crm_mail_build_message(array $account, array $input, array $to, array $
 {
     $subject = trim((string)($input['subject'] ?? ''));
     $body = crm_mail_render_signature_variables((string)($input['body_html'] ?? ''), $account);
-    $fromName = trim((string)($account['sender_name'] ?: $account['email_address']));
+    $displayEmail = crm_mail_display_email($account);
+    $fromName = trim((string)($account['sender_name'] ?: $displayEmail));
     $messageId = trim((string)($input['_message_id_header'] ?? ''));
     if ($messageId === '') $messageId = crm_mail_generate_message_id($account);
     $replyHeaders = [];
@@ -2112,7 +2130,7 @@ function crm_mail_build_message(array $account, array $input, array $to, array $
         $topBoundary = $hasNormal ? $mixedBoundary : ($hasInline ? $relatedBoundary : $mixedBoundary);
         $topType = $hasNormal ? 'multipart/mixed' : ($hasInline ? 'multipart/related' : 'multipart/mixed');
         $headers = [
-            'From: ' . crm_mail_header_encode($fromName) . ' <' . $account['email_address'] . '>',
+            'From: ' . crm_mail_header_encode($fromName) . ' <' . $displayEmail . '>',
             'To: ' . implode(', ', $to),
             'Subject: ' . crm_mail_header_encode($subject),
             'Date: ' . date(DATE_RFC2822),
@@ -2153,7 +2171,7 @@ function crm_mail_build_message(array $account, array $input, array $to, array $
         return implode("\r\n", $parts);
     }
     $headers = [
-        'From: ' . crm_mail_header_encode($fromName) . ' <' . $account['email_address'] . '>',
+        'From: ' . crm_mail_header_encode($fromName) . ' <' . $displayEmail . '>',
         'To: ' . implode(', ', $to),
         'Subject: ' . crm_mail_header_encode($subject),
         'Date: ' . date(DATE_RFC2822),
@@ -2181,7 +2199,7 @@ function crm_mail_smtp_send(array $account, array $input, array $attachments = [
     $input['_message_id_header'] = $messageId;
     $fp = crm_mail_smtp_connect($account);
     try {
-        crm_mail_smtp_cmd($fp, 'MAIL FROM:<' . $account['email_address'] . '>', ['250']);
+        crm_mail_smtp_cmd($fp, 'MAIL FROM:<' . crm_mail_login_email($account) . '>', ['250']);
         foreach ($recipients as $recipient) {
             crm_mail_smtp_cmd($fp, 'RCPT TO:<' . $recipient . '>', ['250', '251']);
         }

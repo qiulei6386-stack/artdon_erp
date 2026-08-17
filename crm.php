@@ -643,8 +643,9 @@ $prefStyle = sprintf(
                 <div class="mail-settings-intro"><span>Mail Workspace</span><h2>邮箱设置</h2><p>管理发件身份、收信连接、发信连接、签名和连接测试。</p><dl><div><dt>当前邮箱</dt><dd data-mail-settings-current-email>--</dd></div><div><dt>同步状态</dt><dd data-mail-settings-sync-status>--</dd></div></dl></div>
                 <form id="mail-account-form-proxy" data-mail-account-form class="mail-account-form mail-settings-form crm-modal-grid">
                   <input type="hidden" name="mail_account_id" value="">
-                  <section class="mail-settings-card wide"><header><strong>账号身份</strong><span>用于显示发件人和绑定邮箱。</span></header><div class="mail-settings-fields">
-                    <label>邮箱地址<input type="email" name="email_address" required placeholder="name@artdonlighting.com"></label>
+                  <section class="mail-settings-card wide"><header><strong>账号身份</strong><span>显示邮箱可以填别名；登录账号请填企业邮箱主账号。</span></header><div class="mail-settings-fields">
+                    <label>显示 / 发件邮箱<input type="email" name="email_address" required placeholder="jerrie@artdon.cn"></label>
+                    <label>登录账号 / 主邮箱<input type="email" name="email_username" placeholder="sales05@artdon.cn；不填则同显示邮箱"></label>
                     <label>发件人名称<input name="sender_name" placeholder="Artdon Sales"></label>
                     <label>授权码 / 密码<input type="password" name="mail_secret" required autocomplete="new-password" placeholder="首次绑定必填；已绑定后留空表示不修改"></label>
                     <label>延迟发送<input name="delay_send_minutes" type="number" min="0" max="10" value="0" placeholder="0-10 分钟"></label>
