@@ -2831,3 +2831,10 @@
 - 线上核查：`crm_users.email` 口径下业务部 active 且邮箱不空只有 Winnie；按启用邮箱账号 `crm_user_mail_accounts.is_enabled=1` 口径，共 7 个 active 用户：qiulei、sukie、Amy、steven、Winnie、jerrie、cherry，其中业务部实际 5 人。
 - 处理：通过线上数据库为这 7 个启用邮箱账号补齐 12 项拜访/来访个人 allow：`visit.view`、`visit.view_department`、`visit.create`、`visit.edit`、`visit.result`、`visit.reception`、`visit.convert_followup`、`visit.dispatch`、`visit.file_upload`、`visit.file_delete`、`visit.file_preview`、`visit.file_download`。
 - 结果：新增/忽略 24 行权限记录；复查 7 个用户每人上述权限 allow 数均为 12，deny 数均为 0。业务部 5 人原本已由前次代码自动补齐，本次主要补齐启用邮箱账号的统一个人授权口径。
+
+## 2026-08-17：CRM 拜访 / 来访补充全局查看范围
+
+- 问题：Winnie 账号虽然已有 `visit.edit` 等编辑权限，但列表仍只显示 2 条；根因是 `crm_visit_scope_sql()` 对非超管、无 `visit.view_all` 的用户按本部门范围过滤，Winnie 只有 `visit.view_department`，所以无法看到全部拜访/来访记录。
+- 线上处理：已为 7 个启用邮箱账号（qiulei、sukie、Amy、steven、Winnie、jerrie、cherry）补 `visit.view_all=allow`；复查 7 人 `visit.view_all` allow 均为 1，deny 均为 0。
+- 代码固化：`crm_visit_ensure_permissions()` 保持 sales/staff 角色不自动扩大到全局查看；仅对“业务部 + 已启用邮箱账号”的 active 用户自动补 `visit.view_all`，避免把无邮箱人员也扩大数据范围。
+- 回归保护：更新 `tests/crm_visit_business_department_permissions_contract.php`，锁定启用邮箱账号自动补全局查看范围。

@@ -178,6 +178,13 @@ function crm_visit_ensure_permissions(): void
         JOIN crm_departments d ON d.id = u.department_id
         JOIN crm_permissions p ON p.permission_key IN ({$businessVisitPermissionSql})
         WHERE u.status = 'active' AND (d.name = '业务部' OR d.code = 'sales')");
+    db()->exec("INSERT IGNORE INTO crm_user_permissions (user_id, permission_key, effect, created_at)
+        SELECT DISTINCT u.id, p.permission_key, 'allow', NOW()
+        FROM crm_users u
+        JOIN crm_departments d ON d.id = u.department_id
+        JOIN crm_user_mail_accounts ma ON ma.user_id = u.id AND ma.deleted_at IS NULL AND ma.is_enabled = 1
+        JOIN crm_permissions p ON p.permission_key = 'visit.view_all'
+        WHERE u.status = 'active' AND (d.name = '业务部' OR d.code = 'sales')");
 }
 
 function crm_visit_business_department_permission_keys(): array

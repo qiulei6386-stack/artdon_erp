@@ -16,6 +16,8 @@ foreach ([
     ["'visit.file_upload'", '业务部默认可以上传拜访/来访资料'],
     ["r.role_key IN ('sales','staff')", 'sales/staff 角色继承业务部拜访权限'],
     ['INSERT IGNORE INTO crm_user_permissions', '业务部部门成员自动补个人 allow 权限且不覆盖 deny'],
+    ["crm_user_mail_accounts ma", '业务部启用邮箱账号自动补全局查看范围'],
+    ["p.permission_key = 'visit.view_all'", '有邮箱的业务用户可查看全部拜访/来访'],
     ["d.name = '业务部' OR d.code = 'sales'", '只按业务部部门名称或 sales 部门代码自动授权'],
     ['vc.id = {$alias}.created_by', '本部门范围包含本部门创建的拜访/来访记录'],
     ['vu.id = {$alias}.owner_user_id', '本部门范围包含本部门负责的拜访/来访记录'],
