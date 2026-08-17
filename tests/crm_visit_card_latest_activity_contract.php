@@ -28,7 +28,9 @@ foreach ([
     [$css, '.visit-card.active', 'active 与 selected 都会显示真实选中态'],
     [$css, 'box-shadow: inset 0 0 0 1px var(--crm-text)', '真实选中态与 hover 做视觉区分'],
     [$css, '-webkit-line-clamp: 1', '图标卡片动态内容一行截断，避免卡片过高'],
-    [$css, 'grid-auto-rows: 228px', '图标卡片预留最新动态高度'],
+    [$css, 'grid-auto-rows: 252px', '图标卡片预留最新动态高度'],
+    [$css, 'grid-template-rows: 62px 24px 50px minmax(24px, 1fr) 30px', '图标卡片内部行高足够避免动态文字被遮挡'],
+    [$css, '.visit-list.is-icon-mode .visit-card-activity p', '图标卡片动态摘要单行显示'],
 ] as [$source, $needle, $label]) {
     if (!str_contains($source, $needle)) {
         throw new RuntimeException('缺少：' . $label);

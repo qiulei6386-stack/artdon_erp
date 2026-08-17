@@ -2838,3 +2838,10 @@
 - 线上处理：已为 7 个启用邮箱账号（qiulei、sukie、Amy、steven、Winnie、jerrie、cherry）补 `visit.view_all=allow`；复查 7 人 `visit.view_all` allow 均为 1，deny 均为 0。
 - 代码固化：`crm_visit_ensure_permissions()` 保持 sales/staff 角色不自动扩大到全局查看；仅对“业务部 + 已启用邮箱账号”的 active 用户自动补 `visit.view_all`，避免把无邮箱人员也扩大数据范围。
 - 回归保护：更新 `tests/crm_visit_business_department_permissions_contract.php`，锁定启用邮箱账号自动补全局查看范围。
+
+## 2026-08-17：CRM 拜访图标卡片动态区防遮挡
+
+- 问题：图标模式下拜访/来访卡片新增“最近动态”后，卡片固定高度仍为 228px，但内部网格行高、gap 和 padding 合计已经超过可用高度，导致动态摘要被下一行标签/按钮裁切遮挡。
+- 修复：`assets/crm/crm.css` 将图标卡片高度和 grid-auto-rows 调整为 252px；内部行高改为 `62px 24px 50px minmax(24px, 1fr) 30px`，给动态区固定 50px 空间，并让图标模式动态摘要单行显示、溢出省略。
+- 回归保护：更新 `tests/crm_visit_card_latest_activity_contract.php`，锁定卡片高度、内部行高和动态摘要单行样式，避免后续再把内容压住。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_card_clip_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。

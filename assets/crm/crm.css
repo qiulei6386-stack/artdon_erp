@@ -18565,14 +18565,14 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .visit-list.is-icon-mode {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   align-items: stretch;
-  grid-auto-rows: 228px;
+  grid-auto-rows: 252px;
 }
 .visit-list.is-icon-mode .visit-card {
   box-sizing: border-box;
   min-height: 0;
-  height: 228px;
+  height: 252px;
   display: grid;
-  grid-template-rows: 64px 26px 42px minmax(18px, 1fr) 30px;
+  grid-template-rows: 62px 24px 50px minmax(24px, 1fr) 30px;
   align-items: stretch;
   gap: 8px;
   position: relative;
@@ -18659,9 +18659,11 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .visit-list.is-icon-mode .visit-card-activity {
   min-height: 0;
   padding: 6px 8px;
+  overflow: hidden;
 }
 .visit-list.is-icon-mode .visit-card-activity p {
   -webkit-line-clamp: 1;
+  line-height: 1.25;
 }
 .visit-list.is-icon-mode .visit-card-actions {
   display: flex;
