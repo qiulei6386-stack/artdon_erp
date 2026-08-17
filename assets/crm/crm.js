@@ -27202,10 +27202,11 @@
       if (Number(row.attachment_count)) files.push('附件 ' + row.attachment_count);
       if (Number(row.result_count)) files.push('结果 ' + row.result_count);
       var schedule = [row.visit_date || '未定日期', String(row.visit_time || '').slice(0, 5)].filter(Boolean).join(' ');
+      var place = [row.country || '', row.city || row.location || ''].filter(Boolean).join(' / ') || '-';
       var activity = this.visitLatestActivity(row);
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
         '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
-        '<div class="visit-card-meta"><span>' + esc(schedule) + '</span><span>' + esc(row.owner_name || '-') + '</span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b></div>' +
+        '<div class="visit-card-meta"><span class="visit-meta-item"><small>计划</small><b>' + esc(schedule) + '</b></span><span class="visit-meta-item"><small>负责人</small><b>' + esc(row.owner_name || '-') + '</b></span><span class="visit-meta-item visit-meta-place"><small>地点</small><b>' + esc(place) + '</b></span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b></div>' +
         '<section class="visit-card-activity"><div><span>' + esc(activity.label) + '</span><b>' + esc(activity.time) + '</b></div><p>' + esc(activity.text) + '</p></section>' +
         '<div class="visit-card-needs">' + (need.length ? need.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div>' +
         '<nav class="visit-card-actions"><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button>' +

@@ -19,6 +19,9 @@ foreach ([
     [$js, "item.classList.toggle('selected', active)", '点击新卡片时清除旧 selected 选中态'],
     [$js, 'self.markSelectedCard();', '点击卡片后立即刷新高亮'],
     [$js, 'visit-card-activity', '卡片输出最新动态区块'],
+    [$js, 'visit-meta-item', '卡片输出结构化计划/负责人信息'],
+    [$js, 'visit-meta-place', '列表卡片输出地点信息'],
+    [$js, "var place = [row.country || '', row.city || row.location || ''].filter(Boolean).join(' / ') || '-';", '卡片地点优先显示国家城市并回退到地点'],
     [$js, '最近动态', '优先显示最近填写结果动态'],
     [$js, 'latest_result_at', '最近结果优先使用结果历史时间'],
     [$js, 'completed_at', '兼容已完成时间'],
@@ -31,6 +34,13 @@ foreach ([
     [$css, 'grid-auto-rows: 252px', '图标卡片预留最新动态高度'],
     [$css, 'grid-template-rows: 62px 24px 50px minmax(24px, 1fr) 30px', '图标卡片内部行高足够避免动态文字被遮挡'],
     [$css, '.visit-list.is-icon-mode .visit-card-activity p', '图标卡片动态摘要单行显示'],
+    [$css, '.visit-list.is-icon-mode .visit-meta-place', '图标卡片隐藏地点避免压缩溢出'],
+    [$css, '.visit-list:not(.is-icon-mode) .visit-card', '列表视图使用单独横向卡片布局'],
+    [$css, 'grid-template-areas:', '列表视图按区域重排客户、计划、动态、按钮'],
+    [$css, '.visit-list:not(.is-icon-mode) .visit-card-meta', '列表视图计划信息单独成组显示'],
+    [$css, '.visit-list:not(.is-icon-mode) .visit-card-activity', '列表视图最近动态独立显示'],
+    [$css, '.visit-list:not(.is-icon-mode) .visit-card-actions', '列表视图操作按钮固定在右侧'],
+    [$css, '@media (max-width: 1320px)', '窄屏列表视图自动降级为三列布局'],
 ] as [$source, $needle, $label]) {
     if (!str_contains($source, $needle)) {
         throw new RuntimeException('缺少：' . $label);

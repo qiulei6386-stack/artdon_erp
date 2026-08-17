@@ -2845,3 +2845,12 @@
 - 修复：`assets/crm/crm.css` 将图标卡片高度和 grid-auto-rows 调整为 252px；内部行高改为 `62px 24px 50px minmax(24px, 1fr) 30px`，给动态区固定 50px 空间，并让图标模式动态摘要单行显示、溢出省略。
 - 回归保护：更新 `tests/crm_visit_card_latest_activity_contract.php`，锁定卡片高度、内部行高和动态摘要单行样式，避免后续再把内容压住。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `/tmp/artdon_visit_card_clip_20260817` 执行 `php -l crm_visit.php`、`php -l tests/crm_visit_card_latest_activity_contract.php` 和契约测试通过。
+
+## 2026-08-17：CRM 拜访列表视图重排
+
+- 需求：拜访/来访“列表视图”原本只是把卡片横向拉宽，左侧客户信息很小、中间大片空白、状态/负责人/最近动态分散，列表不够清楚。
+- 修复：`assets/crm/crm.js` 的 `visitCard()` 增加结构化计划信息，拆出“计划 / 负责人 / 地点 / 状态”，地点优先显示国家与城市，没有城市时回退地点。
+- 样式：`assets/crm/crm.css` 为非图标模式新增单独横向列表版式，按客户主体、计划信息、最近动态、需求标签、操作按钮分区排列；操作按钮固定在右侧，最近动态独立成块，信息密度更高也更容易扫读。
+- 兼容：图标视图继续使用原卡片逻辑，并隐藏列表专用地点字段，避免新增信息把小卡片挤坏。
+- 响应式：低于 1320px 时列表自动降为三列布局，避免窄屏下内容互相压住。
+- 回归保护：更新 `tests/crm_visit_card_latest_activity_contract.php`，锁定列表视图结构化 meta、地点字段、横向 grid 分区、图标模式隐藏地点和窄屏降级规则。

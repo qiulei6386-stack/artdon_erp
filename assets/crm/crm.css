@@ -18648,6 +18648,14 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   gap: 6px;
   min-width: 0;
 }
+.visit-list.is-icon-mode .visit-meta-place,
+.visit-list.is-icon-mode .visit-meta-item small {
+  display: none;
+}
+.visit-list.is-icon-mode .visit-meta-item b {
+  font-size: 11px;
+  color: var(--crm-muted-text);
+}
 .visit-list.is-icon-mode .visit-card-needs {
   display: flex;
   flex-wrap: wrap;
@@ -18751,6 +18759,25 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.visit-meta-item {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.visit-meta-item small {
+  color: var(--crm-muted-text);
+  font-size: 10px;
+  font-weight: 850;
+}
+.visit-meta-item b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--crm-text);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .visit-card-activity {
   grid-column: 1 / -1;
   min-width: 0;
@@ -18812,6 +18839,113 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
+}
+.visit-list:not(.is-icon-mode) {
+  gap: 10px;
+}
+.visit-list:not(.is-icon-mode) .visit-card {
+  min-height: 124px;
+  padding: 14px;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(300px, 1fr) minmax(320px, 1.2fr) minmax(132px, auto);
+  grid-template-areas:
+    "head meta activity actions"
+    "head needs activity actions";
+  align-items: center;
+  gap: 10px 14px;
+}
+.visit-list:not(.is-icon-mode) .visit-card header {
+  grid-area: head;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: start;
+}
+.visit-list:not(.is-icon-mode) .visit-type-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--crm-primary) 12%, var(--crm-card-bg));
+}
+.visit-list:not(.is-icon-mode) .visit-card header strong {
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.visit-list:not(.is-icon-mode) .visit-customer-line {
+  display: block;
+  overflow: hidden;
+  color: var(--crm-text);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visit-list:not(.is-icon-mode) .visit-customer-line b:first-child {
+  color: var(--crm-primary);
+  margin-right: 5px;
+}
+.visit-list:not(.is-icon-mode) .visit-contact-line {
+  display: block;
+  overflow: hidden;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visit-list:not(.is-icon-mode) .visit-card-meta {
+  grid-area: meta;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(110px, .9fr) minmax(86px, .65fr) minmax(120px, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+}
+.visit-list:not(.is-icon-mode) .visit-meta-item,
+.visit-list:not(.is-icon-mode) .visit-status {
+  min-height: 44px;
+  border: 1px solid var(--crm-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--crm-bg) 70%, var(--crm-card-bg));
+  padding: 6px 8px;
+}
+.visit-list:not(.is-icon-mode) .visit-status {
+  justify-content: center;
+  text-align: center;
+}
+.visit-list:not(.is-icon-mode) .visit-card-activity {
+  grid-area: activity;
+  grid-column: auto;
+  align-self: stretch;
+  padding: 8px 10px;
+}
+.visit-list:not(.is-icon-mode) .visit-card-activity p {
+  -webkit-line-clamp: 2;
+}
+.visit-list:not(.is-icon-mode) .visit-card-needs {
+  grid-area: needs;
+  min-width: 0;
+  align-content: start;
+}
+.visit-list:not(.is-icon-mode) .visit-card-actions {
+  grid-area: actions;
+  align-self: stretch;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+.visit-list:not(.is-icon-mode) .visit-card-actions button {
+  min-width: 72px;
+  justify-content: center;
+}
+@media (max-width: 1320px) {
+  .visit-list:not(.is-icon-mode) .visit-card {
+    grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr) minmax(110px, auto);
+    grid-template-areas:
+      "head meta actions"
+      "activity activity actions"
+      "needs needs actions";
+  }
 }
 .visit-detail-panel {
   min-width: 0;
