@@ -27,9 +27,17 @@ foreach ([
     [$js, 'detailCache', '前端缓存完整拜访详情'],
     [$js, "post('visit_get'", '点击记录后按需拉取结果历史'],
     [$js, 'resultHistoryHtml: function', '前端显示结果记录列表'],
+    [$js, 'resultReferenceHtml: function', '再次填写结果时显示上次结果参考'],
+    [$js, 'isAdditionalResult ? Object.assign', '已有结果时本次填写默认清空旧结果字段'],
+    [$js, 'data-visit-copy-last-result', '支持手动复制上次结果'],
+    [$js, 'copyResultToDialog: function', '复制上次结果只在用户点击时执行'],
+    [$js, 'hasResultSummary', '已有主记录结果或历史数量时直接点填结果会先拉完整历史'],
+    [$js, "this.loadDetail(row.id).then(function (record) { self.openResultDialog(record || row); })", '拉完整历史后再打开填结果弹窗'],
     [$js, '保存会新增一条结果记录', '结果弹窗说明不再暗示覆盖'],
-    [$js, "row.actual_time || new Date().toISOString()", '打开结果弹窗优先带回原实际时间'],
+    [$js, '再次填写默认清空上次结果', '弹窗明确提示再次填写不会默认回填上次内容'],
+    [$js, "formRow.actual_time || new Date().toISOString()", '打开结果弹窗优先带回原实际时间'],
     [$css, '.visit-result-history', '结果历史样式已接入'],
+    [$css, '.visit-result-reference', '上次结果参考样式已接入'],
 ] as [$source, $needle, $label]) {
     if (!str_contains($source, $needle)) {
         throw new RuntimeException('缺少：' . $label);

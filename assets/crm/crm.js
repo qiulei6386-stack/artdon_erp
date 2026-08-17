@@ -27259,6 +27259,13 @@
         return '<article><h4>' + esc(title) + '</h4><small>' + esc(meta || '-') + '</small><p>' + esc(body || '-') + '</p><em>' + esc(needText(item)) + '</em></article>';
       }).join('') + '</div></section>';
     },
+    resultReferenceHtml: function (item) {
+      if (!item) return '';
+      var title = item.result || '上次结果';
+      var meta = [item.actual_time ? ('实际 ' + String(item.actual_time).slice(0, 16)) : '', item.created_at ? ('填写 ' + String(item.created_at).slice(0, 16)) : '', item.created_by_name || ''].filter(Boolean).join(' · ');
+      var body = [item.result_note, item.customer_feedback, item.customer_needs, item.products_discussed, item.next_action ? ('下一步：' + item.next_action) : ''].filter(Boolean).join('\n');
+      return '<section class="visit-form-section visit-result-reference"><h3>上次结果参考</h3><div><strong>' + esc(title) + '</strong><small>' + esc(meta || '-') + '</small><p>' + esc(body || '暂无详细内容') + '</p><button type="button" data-visit-copy-last-result>复制上次结果</button></div><em>本次保存会新增一条结果记录；默认已清空上次的结果内容，避免误以为是在编辑旧记录。</em></section>';
+    },
     selected: function () {
       var id = this.selectedId;
       return this.detailCache[id] || this.rows.find(function (row) { return Number(row.id) === Number(id); }) || null;
@@ -27341,12 +27348,32 @@
     openResultDialog: function (row) {
       row = row || this.selected(); if (!row) return toast('请先选择拜访/来访记录。');
       var isArrival = row.visit_type === 'customer_arrival';
+      var history = row.result_history || [];
+      var latestResult = history.length ? history[0] : null;
+      var isAdditionalResult = !!latestResult;
+      var formRow = isAdditionalResult ? Object.assign({}, row, {
+        deal_probability: 0,
+        customer_feedback: '',
+        customer_needs: '',
+        products_discussed: '',
+        result: '',
+        result_note: '',
+        next_action: '',
+        next_followup_time: '',
+        followup_offsets: [],
+        need_quote: 0,
+        need_material: 0,
+        need_sample: 0,
+        need_dispatch: 0
+      }) : row;
+      var resultOptions = '<option value="">请选择结果</option>' + this.options(isArrival ? ['客户有兴趣','需要报价','需要资料','需要样品','需要技术方案','需要再次来访','需要老板跟进','需要业务员跟进','暂无需求','拒绝','已成交','其他'] : ['客户有兴趣','需要报价','需要资料','需要样品','需要方案','需要老板跟进','需要技术跟进','暂无需求','拒绝','后续再联系','已成交','其他'], formRow.result);
       var html = '<div class="visit-business-form" data-visit-result-form><input type="hidden" name="visit_id" value="' + esc(row.id) + '">' +
-        this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(row.actual_time || new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(row.deal_probability || 0) + '"></label>' +
-          '<label class="wide">实际参与人员<input name="actual_people" value="' + esc(row.actual_people || '') + '"></label><label>结果<select name="result">' + this.options(isArrival ? ['客户有兴趣','需要报价','需要资料','需要样品','需要技术方案','需要再次来访','需要老板跟进','需要业务员跟进','暂无需求','拒绝','已成交','其他'] : ['客户有兴趣','需要报价','需要资料','需要样品','需要方案','需要老板跟进','需要技术跟进','暂无需求','拒绝','后续再联系','已成交','其他'], row.result) + '</select></label>') +
-        this.formSection('沟通记录', '<label class="wide">客户反馈<textarea name="customer_feedback" rows="3">' + esc(row.customer_feedback || '') + '</textarea></label><label class="wide">客户需求<textarea name="customer_needs" rows="3">' + esc(row.customer_needs || '') + '</textarea></label><label class="wide">沟通产品 / 看样产品<textarea name="products_discussed" rows="3">' + esc(row.products_discussed || '') + '</textarea></label>') +
+        this.resultReferenceHtml(latestResult) +
+        this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(formRow.actual_time || new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(formRow.deal_probability || 0) + '"></label>' +
+          '<label class="wide">实际参与人员<input name="actual_people" value="' + esc(formRow.actual_people || '') + '"></label><label>结果<select name="result">' + resultOptions + '</select></label>') +
+        this.formSection('沟通记录', '<label class="wide">客户反馈<textarea name="customer_feedback" rows="3">' + esc(formRow.customer_feedback || '') + '</textarea></label><label class="wide">客户需求<textarea name="customer_needs" rows="3">' + esc(formRow.customer_needs || '') + '</textarea></label><label class="wide">沟通产品 / 看样产品<textarea name="products_discussed" rows="3">' + esc(formRow.products_discussed || '') + '</textarea></label>') +
         this.formSection('结果图片 / 附件', this.fileUploadBlock(row), 'visit-section-files') +
-        this.formSection('后续动作', this.needChecks(row, isArrival) + '<label class="wide">下一步计划<textarea name="next_action" rows="3">' + esc(row.next_action || '') + '</textarea></label><label>下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="wide visit-reminder-panel"><strong>任务跟进提醒</strong><span>按实际拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div><label class="wide">总结<textarea name="result_note" rows="4">' + esc(row.result_note || '') + '</textarea></label><p class="entry-muted wide">保存会新增一条结果记录，并同步更新拜访主记录的最新摘要；勾选报价/资料/样品/派工后会生成待处理入口。</p>') +
+        this.formSection('后续动作', this.needChecks(formRow, isArrival) + '<label class="wide">下一步计划<textarea name="next_action" rows="3">' + esc(formRow.next_action || '') + '</textarea></label><label>下次跟进时间<input name="next_followup_time" value="' + esc(formRow.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="wide visit-reminder-panel"><strong>任务跟进提醒</strong><span>按实际拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(formRow.followup_offsets || []) + '</div><label class="wide">总结<textarea name="result_note" rows="4">' + esc(formRow.result_note || '') + '</textarea></label><p class="entry-muted wide">保存会新增一条结果记录，并同步更新拜访主记录的最新摘要；再次填写默认清空上次结果，可点击“复制上次结果”沿用内容。</p>') +
         '<p class="entry-muted wide" data-visit-error></p></div>' +
         '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-visit-result-save>保存结果</button></div>';
       var self = this;
@@ -27355,8 +27382,31 @@
         self.bindFileInputs(dialog);
         if (row.id) self.loadVisitFiles(row.id, dialog);
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+        dialog.querySelector('[data-visit-copy-last-result]')?.addEventListener('click', function () { self.copyResultToDialog(dialog, latestResult); });
         dialog.querySelector('[data-visit-result-save]')?.addEventListener('click', function () { self.submitResult(dialog); });
       });
+    },
+    copyResultToDialog: function (dialog, item) {
+      if (!dialog || !item) return;
+      var setValue = function (name, value) {
+        var field = dialog.querySelector('[name="' + name + '"]');
+        if (field) field.value = value == null ? '' : value;
+      };
+      setValue('actual_time', item.actual_time || '');
+      setValue('actual_people', item.actual_people || '');
+      setValue('deal_probability', item.deal_probability || 0);
+      setValue('result', item.result || '');
+      setValue('customer_feedback', item.customer_feedback || '');
+      setValue('customer_needs', item.customer_needs || '');
+      setValue('products_discussed', item.products_discussed || '');
+      setValue('next_action', item.next_action || '');
+      setValue('next_followup_time', item.next_followup_time || '');
+      setValue('result_note', item.result_note || '');
+      ['need_quote','need_material','need_sample','need_dispatch'].forEach(function (name) {
+        var field = dialog.querySelector('[name="' + name + '"]');
+        if (field) field.checked = Number(item[name] || 0) > 0;
+      });
+      toast('已复制上次结果，可继续修改后保存为新记录');
     },
     formSection: function (title, html, extraClass) {
       return '<section class="visit-form-section ' + esc(extraClass || '') + '"><h3>' + esc(title) + '</h3><div class="visit-form-grid">' + html + '</div></section>';
@@ -27690,7 +27740,14 @@
       if (label === '查看拜访记录') { activate('visits'); this.view = 'visits'; return this.load(); }
       if (label === '查看来访记录') { activate('visits'); this.view = 'arrivals'; return this.load(); }
       if (label === '查看拜访' || label === '查看来访' || label === '编辑拜访' || label === '编辑来访') return this.openVisitDialog((row || {}).visit_type || 'customer_visit', row);
-      if (label === 'result' || label === '填结果' || label === '填写拜访结果' || label === '填写接待结果') return this.openResultDialog(row);
+      if (label === 'result' || label === '填结果' || label === '填写拜访结果' || label === '填写接待结果') {
+        var hasResultSummary = row && (Number(row.result_count) || row.result || row.result_note || row.customer_feedback || row.customer_needs || row.products_discussed || row.next_action);
+        if (hasResultSummary && !((row.result_history || []).length)) {
+          var self = this;
+          return this.loadDetail(row.id).then(function (record) { self.openResultDialog(record || row); });
+        }
+        return this.openResultDialog(row);
+      }
       if (label === 'dispatch' || label === '派工' || label === '创建派工' || label === '创建接待派工') return this.createDispatchPlaceholder(row);
       if (label === '创建跟进') return this.createFollowupFromVisit(row);
       if (label === 'delete' || label === '删除记录' || label === '删除拜访' || label === '删除来访') return this.deleteVisit(row);

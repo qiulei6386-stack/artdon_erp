@@ -18976,6 +18976,54 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-style: normal;
   font-weight: 900;
 }
+.visit-result-reference {
+  border-color: color-mix(in srgb, var(--crm-primary) 34%, var(--crm-border));
+  background: color-mix(in srgb, var(--crm-primary) 6%, var(--crm-card-bg));
+}
+.visit-result-reference > div {
+  display: grid;
+  gap: 7px;
+}
+.visit-result-reference strong {
+  color: var(--crm-text);
+  font-size: 13px;
+  font-weight: 950;
+}
+.visit-result-reference small {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+.visit-result-reference p {
+  white-space: pre-wrap;
+  margin: 0;
+  max-height: 100px;
+  overflow: auto;
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+  background: var(--crm-card-bg);
+  padding: 9px;
+  color: var(--crm-muted-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.visit-result-reference button {
+  justify-self: start;
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 45%, var(--crm-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--crm-primary) 10%, var(--crm-card-bg));
+  color: var(--crm-primary);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 900;
+}
+.visit-result-reference em {
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
 .visit-detail-card nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -2787,3 +2787,12 @@
 - 关联修复：`crm_task_center.php` 中客户跟进任务标题改用 `mb_substr(..., 'UTF-8')` 截断，修复中文内容被字节截断后写入 `crm_tasks.title` 报 `Incorrect string value`，导致填结果后的跟进任务同步失败。
 - 回归保护：新增 `tests/crm_visit_result_history_contract.php`，锁定结果明细表、旧结果回填、每次新增明细、按需详情接口、前端结果历史展示、实际时间保留和中文标题截断。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l crm_api.php`、`php -l crm_task_center.php` 和 `tests/crm_visit_result_history_contract.php` 通过，契约测试通过。
+
+## 2026-08-17：CRM 再次填写拜访结果默认不回填上次内容
+
+- 问题：拜访/来访结果已改成“每次保存新增一条记录”，但用户第二次点击“填结果”时，弹窗仍回填第一次的结果、反馈、需求和后续动作，体验上像是在编辑旧结果，容易误会会覆盖历史。
+- 修复：`assets/crm/crm.js` 在检测到已有结果历史或主记录已有结果摘要时，先按需拉取完整详情，再打开填结果弹窗；再次填写时结果类字段、成交可能性、后续需求、下次跟进、总结和提醒默认清空，只保留实际时间/参与人员这类现场信息。
+- 交互：弹窗顶部新增“上次结果参考”卡片，展示上次结果摘要；如需沿用旧内容，可点击“复制上次结果”，系统才会把上次内容填入当前表单，保存后仍然是新增一条新结果记录。
+- 样式：`assets/crm/crm.css` 新增 `visit-result-reference` 参考卡片样式，避免和正式填写区混在一起。
+- 回归保护：更新 `tests/crm_visit_result_history_contract.php`，锁定再次填写默认清空、上次结果参考、复制上次结果、直接点按钮先拉完整历史和参考卡片样式。
+- 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l` 检查 `crm_visit.php`、`crm_api.php`、`crm_task_center.php`、`tests/crm_visit_result_history_contract.php` 通过，契约测试通过。
