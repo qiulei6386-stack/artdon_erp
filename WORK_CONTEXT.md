@@ -2796,3 +2796,13 @@
 - 样式：`assets/crm/crm.css` 新增 `visit-result-reference` 参考卡片样式，避免和正式填写区混在一起。
 - 回归保护：更新 `tests/crm_visit_result_history_contract.php`，锁定再次填写默认清空、上次结果参考、复制上次结果、直接点按钮先拉完整历史和参考卡片样式。
 - 检查：本地 `git diff --check`、bundled Node `node -c assets/crm/crm.js` 通过；服务器临时目录 `php -l` 检查 `crm_visit.php`、`crm_api.php`、`crm_task_center.php`、`tests/crm_visit_result_history_contract.php` 通过，契约测试通过。
+
+## 2026-08-17：CRM 拜访 / 来访业务部可看可编辑
+
+- 现状：拜访/来访权限点独立于客户权限，核心包括 `visit.view`、`visit.view_department`、`visit.view_all`、`visit.create`、`visit.edit`、`visit.result` 等；后端编辑时先校验 `visit.edit`，再通过 `crm_visit_scope_sql()` 控制是否能读取该记录，所以“能编辑本部门记录”的前提是既有 `visit.edit` 又有本部门查看范围。
+- 线上核查：生产库部门 `业务部`（code=`sales`）当前 7 个 active 用户；`sales` 角色线上已有 `visit.view_all / visit.view_department / visit.edit` 等权限，`manager` 角色也有 `visit.view_department / visit.edit`，当前业务部成员实际已能查看/编辑对应范围。
+- 固化规则：`crm_visit.php` 新增 `crm_visit_business_department_permission_keys()`，将业务部拜访/来访默认权限集中为查看本部门、新建、编辑、填写结果、来访接待、转跟进、创建派工和文件上传/删除/预览/下载；不默认授予删除、导出、全局查看、报价或资料高风险权限。
+- 自动授权：`crm_visit_ensure_permissions()` 为 `sales/staff` 角色补齐上述拜访/来访权限；同时对部门名称为 `业务部` 或部门 code 为 `sales` 的 active 用户写入个人 allow 权限，使用 `INSERT IGNORE`，不会覆盖已有个人 deny。
+- 范围修正：`visit.view_department` 的数据范围从“本人 + 负责人属于本部门”扩展为“本人 + 负责人属于本部门 + 创建人属于本部门”，更符合业务部协作查看/编辑拜访记录的口径。
+- 回归保护：新增 `tests/crm_visit_business_department_permissions_contract.php`，锁定业务部权限清单、sales/staff 角色授权、业务部部门自动授权、deny 不覆盖策略以及本部门 owner/creator 范围。
+- 检查：本地 `git diff --check` 通过；服务器临时目录 `php -l crm_visit.php`、`php -l tests/crm_visit_business_department_permissions_contract.php` 和契约测试通过。

@@ -166,7 +166,36 @@ function crm_visit_ensure_permissions(): void
     foreach ($permissions as $permission) $stmt->execute($permission);
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key) SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p WHERE r.role_key IN ('super_admin','admin') AND p.module = 'visit'");
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key) SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p WHERE r.role_key = 'manager' AND p.permission_key IN ('visit.view','visit.view_department','visit.create','visit.edit','visit.confirm','visit.result','visit.reception','visit.convert_followup','visit.dispatch','visit.quote','visit.material','visit.export','visit.report','visit.file_upload','visit.file_delete','visit.file_preview','visit.file_download')");
-    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key) SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p WHERE r.role_key IN ('sales','staff') AND p.permission_key IN ('visit.view','visit.create','visit.edit','visit.result','visit.reception','visit.convert_followup','visit.dispatch','visit.file_upload','visit.file_delete','visit.file_preview','visit.file_download')");
+    $businessVisitPermissions = crm_visit_business_department_permission_keys();
+    $businessVisitPermissionSql = "'" . implode("','", array_map(static fn($key) => str_replace("'", "''", $key), $businessVisitPermissions)) . "'";
+    db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
+        SELECT r.id, p.permission_key
+        FROM crm_roles r JOIN crm_permissions p
+        WHERE r.role_key IN ('sales','staff') AND p.permission_key IN ({$businessVisitPermissionSql})");
+    db()->exec("INSERT IGNORE INTO crm_user_permissions (user_id, permission_key, effect, created_at)
+        SELECT u.id, p.permission_key, 'allow', NOW()
+        FROM crm_users u
+        JOIN crm_departments d ON d.id = u.department_id
+        JOIN crm_permissions p ON p.permission_key IN ({$businessVisitPermissionSql})
+        WHERE u.status = 'active' AND (d.name = '业务部' OR d.code = 'sales')");
+}
+
+function crm_visit_business_department_permission_keys(): array
+{
+    return [
+        'visit.view',
+        'visit.view_department',
+        'visit.create',
+        'visit.edit',
+        'visit.result',
+        'visit.reception',
+        'visit.convert_followup',
+        'visit.dispatch',
+        'visit.file_upload',
+        'visit.file_delete',
+        'visit.file_preview',
+        'visit.file_download',
+    ];
 }
 
 function crm_visit_scope_sql(string $alias = 'v'): string
@@ -176,7 +205,7 @@ function crm_visit_scope_sql(string $alias = 'v'): string
     $userId = (int)($user['id'] ?? 0);
     if (has_permission('visit.view_department')) {
         $deptId = (int)($user['department_id'] ?? 0);
-        return "({$alias}.owner_user_id = {$userId} OR {$alias}.created_by = {$userId} OR EXISTS (SELECT 1 FROM crm_users vu WHERE vu.id = {$alias}.owner_user_id AND vu.department_id = {$deptId}))";
+        return "({$alias}.owner_user_id = {$userId} OR {$alias}.created_by = {$userId} OR EXISTS (SELECT 1 FROM crm_users vu WHERE vu.id = {$alias}.owner_user_id AND vu.department_id = {$deptId}) OR EXISTS (SELECT 1 FROM crm_users vc WHERE vc.id = {$alias}.created_by AND vc.department_id = {$deptId}))";
     }
     return "({$alias}.owner_user_id = {$userId} OR {$alias}.created_by = {$userId} OR JSON_CONTAINS(COALESCE({$alias}.assistant_user_ids_json, JSON_ARRAY()), '{$userId}'))";
 }
