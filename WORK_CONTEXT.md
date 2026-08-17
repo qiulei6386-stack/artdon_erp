@@ -2884,4 +2884,4 @@
 - 后端保护：`save_model`、`disable_model`、`enable_model`、`delete_model` 均再次读取数据库并通过 `nm_is_website_row()` 判断，官网同步记录即使绕过前端或使用旧缓存页面也会被拒绝修改。
 - 提示调整：旧的“允许编辑/建议停用”说明改为“请在香港官网修改，命名中心自动同步”；旧页面残留的编辑入口也会在读取详情后立即阻止。
 - 修改文件：`naming.php`、`tests/naming_website_sync_readonly_contract.php`、`WORK_CONTEXT.md`。
-- 检查：`git diff --check` 通过；修改后的 `naming.php` 经服务器 PHP 仅通过标准输入/临时目录检查，语法通过；新增官网同步只读合同 8 项全部通过。正式发布、服务器复检和三方提交号将在发布记录中补齐。
+- 检查与发布：`git diff --check` 通过；部署前修改后的 `naming.php` PHP 语法、官网同步只读合同 8 项、型号去重合同 9 项及嵌入方形尺寸合同均通过。功能提交 `f97ed28b4f667ee55b7332f2711c5b82d85418d1` 已推送 GitHub `main` 并从 GitHub 快进正式服务器；服务器再次执行 `naming.php`、新增合同 PHP 语法和三项命名合同，全部通过。本发布记录提交后以最终本地、GitHub、服务器 HEAD 一致性核对为准。
