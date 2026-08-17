@@ -27806,6 +27806,17 @@
         toast(error.message || '删除失败');
       });
     },
+    openResultFromAction: function (row) {
+      row = row || this.selected();
+      if (!row) return this.openResultDialog(row);
+      var id = Number(row.id || 0);
+      if (!id) return this.openResultDialog(row);
+      var cached = this.detailCache[id];
+      if (cached && Array.isArray(cached.result_history)) return this.openResultDialog(cached);
+      if (Array.isArray(row.result_history)) return this.openResultDialog(row);
+      var self = this;
+      return this.loadDetail(id).then(function (record) { self.openResultDialog(record || row); });
+    },
     handleAction: function (label, id) {
       var row = id ? (this.detailCache[id] || this.rows.find(function (item) { return Number(item.id) === Number(id); })) : this.selected();
       var viewMap = { '跟进任务': 'followups', '拜访计划': 'visits', '来访接待': 'arrivals', '外出记录': 'outside', '拜访报表': 'report' };
@@ -27826,12 +27837,7 @@
       if (label === '查看来访记录') { activate('visits'); this.view = 'arrivals'; return this.load(); }
       if (label === '查看拜访' || label === '查看来访' || label === '编辑拜访' || label === '编辑来访') return this.openVisitDialog((row || {}).visit_type || 'customer_visit', row);
       if (label === 'result' || label === '填结果' || label === '填写拜访结果' || label === '填写接待结果') {
-        var hasResultSummary = row && (Number(row.result_count) || row.result || row.result_note || row.customer_feedback || row.customer_needs || row.products_discussed || row.next_action);
-        if (hasResultSummary && !((row.result_history || []).length)) {
-          var self = this;
-          return this.loadDetail(row.id).then(function (record) { self.openResultDialog(record || row); });
-        }
-        return this.openResultDialog(row);
+        return this.openResultFromAction(row);
       }
       if (label === 'dispatch' || label === '派工' || label === '创建派工' || label === '创建接待派工') return this.createDispatchPlaceholder(row);
       if (label === '创建跟进') return this.createFollowupFromVisit(row);
