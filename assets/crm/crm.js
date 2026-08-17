@@ -27020,7 +27020,7 @@
   if (current === 'tasks') safeInit('任务中心', function () { TaskCenterModule.init(); });
 
   var VisitModule = {
-    inited: false, view: 'visits', range: '', selectedId: 0, rows: [], users: [], detailCache: {},
+    inited: false, view: 'visits', range: '', keyword: '', searchTimer: null, selectedId: 0, rows: [], users: [], detailCache: {},
     displayMode: (function () {
       try { return localStorage.getItem('crm_visit_display_mode') === 'icon' ? 'icon' : 'list'; } catch (error) { return 'list'; }
     })(),
@@ -27053,6 +27053,30 @@
           document.querySelectorAll('[data-visit-filter]').forEach(function (item) { item.classList.toggle('active', item === button); });
           self.load();
         });
+      });
+      var keywordInput = document.querySelector('[data-visit-keyword]');
+      if (keywordInput) {
+        keywordInput.value = self.keyword || '';
+        keywordInput.addEventListener('input', function () {
+          self.keyword = keywordInput.value.trim();
+          if (self.searchTimer) clearTimeout(self.searchTimer);
+          self.searchTimer = setTimeout(function () { self.selectedId = 0; self.load(); }, 350);
+        });
+        keywordInput.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          if (self.searchTimer) clearTimeout(self.searchTimer);
+          self.keyword = keywordInput.value.trim();
+          self.selectedId = 0;
+          self.load();
+        });
+      }
+      document.querySelector('[data-visit-search-clear]')?.addEventListener('click', function () {
+        self.keyword = '';
+        if (self.searchTimer) clearTimeout(self.searchTimer);
+        if (keywordInput) keywordInput.value = '';
+        self.selectedId = 0;
+        self.load();
       });
       document.querySelectorAll('[data-visit-display]').forEach(function (button) {
         button.classList.toggle('active', button.getAttribute('data-visit-display') === self.displayMode);
@@ -27110,7 +27134,7 @@
       var type = this.view === 'arrivals' ? 'customer_arrival' : (this.view === 'visits' || this.view === 'outside' ? 'customer_visit' : '');
       var range = this.range, status = '';
       if (range === 'pending_confirm') { status = 'pending_confirm'; range = ''; }
-      return { visit_type: type, range: range, status: status };
+      return { visit_type: type, range: range, status: status, keyword: this.keyword || '' };
     },
     load: function () {
       var self = this, box = document.querySelector('[data-visit-list]');
@@ -27138,8 +27162,9 @@
       if (this.rows.length && !this.rows.some(function (row) { return Number(row.id) === Number(self.selectedId); })) {
         this.selectedId = Number(this.rows[0].id || 0);
       }
+      if (!this.rows.length) this.selectedId = 0;
       box.classList.toggle('is-icon-mode', this.displayMode === 'icon');
-      box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">暂无记录。右侧 ACTIONS 可新建拜访或来访。</div>';
+      box.innerHTML = this.rows.map(function (row) { return self.visitCard(row); }).join('') || '<div class="visit-empty">' + (this.keyword ? '没有匹配的拜访 / 来访记录，请换个关键词。' : '暂无记录。右侧 ACTIONS 可新建拜访或来访。') + '</div>';
       this.markSelectedCard();
       this.renderDetail();
     },

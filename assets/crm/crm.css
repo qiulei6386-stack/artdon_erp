@@ -18467,7 +18467,47 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 6px;
+}
+.visit-list-search {
+  min-width: min(420px, 42vw);
+  height: 30px;
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--crm-border);
+  border-radius: 8px;
+  background: var(--crm-bg);
+}
+.visit-list-search span {
+  margin: 0;
+  padding: 0 9px;
+  color: var(--crm-muted-text);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.visit-list-search input {
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--crm-border);
+  background: transparent;
+  color: var(--crm-text);
+  outline: none;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.visit-list-search button {
+  height: 100%;
+  min-height: 0;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 9px;
 }
 .visit-toolbar-actions button,
 .visit-tab-head button,
@@ -18485,6 +18525,17 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .visit-toolbar-actions button:hover,
 .visit-tab-head button:hover,
 .visit-card-actions button:hover {
+  background: var(--crm-hover-bg);
+}
+.visit-toolbar-actions .visit-list-search button {
+  height: 100%;
+  min-height: 0;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 9px;
+}
+.visit-toolbar-actions .visit-list-search button:hover {
   background: var(--crm-hover-bg);
 }
 .visit-kpis {

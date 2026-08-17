@@ -255,6 +255,25 @@ function crm_visit_list(array $input = []): array
         $where[] = 'v.customer_id = ?';
         $params[] = $customerId;
     }
+    $keyword = trim((string)($input['keyword'] ?? ''));
+    if ($keyword !== '') {
+        $like = '%' . $keyword . '%';
+        $where[] = "(v.title LIKE ? OR v.purpose LIKE ? OR v.visit_category LIKE ? OR v.location LIKE ? OR v.country LIKE ? OR v.city LIKE ?
+            OR v.planned_note LIKE ? OR v.preparation_note LIKE ? OR v.result LIKE ? OR v.result_note LIKE ? OR v.customer_feedback LIKE ?
+            OR v.customer_needs LIKE ? OR v.products_discussed LIKE ? OR v.next_action LIKE ?
+            OR c.customer_name LIKE ? OR c.customer_name_en LIKE ? OR c.customer_code LIKE ? OR c.country LIKE ? OR c.city LIKE ? OR c.address LIKE ?
+            OR ct.name LIKE ? OR ct.name_en LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ? OR ct.whatsapp LIKE ? OR ct.wechat LIKE ?
+            OR u.username LIKE ? OR u.real_name LIKE ?
+            OR EXISTS (
+                SELECT 1 FROM crm_visit_results vrk
+                WHERE vrk.visit_id = v.id
+                    AND vrk.deleted_at IS NULL
+                    AND (vrk.result LIKE ? OR vrk.result_note LIKE ? OR vrk.customer_feedback LIKE ? OR vrk.customer_needs LIKE ? OR vrk.products_discussed LIKE ? OR vrk.next_action LIKE ? OR vrk.actual_people LIKE ?)
+            ))";
+        for ($i = 0; $i < 35; $i += 1) {
+            $params[] = $like;
+        }
+    }
     $status = trim((string)($input['status'] ?? ''));
     if ($status !== '') {
         $where[] = 'v.status = ?';
