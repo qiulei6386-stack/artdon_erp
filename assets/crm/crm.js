@@ -3082,6 +3082,34 @@
     normalizeFilterText: function (value) {
       return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
     },
+    normalizeFilterValues: function (value) {
+      var values = Array.isArray(value) ? value : String(value || '').split(',');
+      var seen = {};
+      return values.map(function (item) {
+        return String(item || '').trim();
+      }).filter(function (item) {
+        if (!item || seen[item]) return false;
+        seen[item] = true;
+        return true;
+      });
+    },
+    selectedFilterValues: function (selector) {
+      var select = document.querySelector(selector);
+      if (!select) return [];
+      return Array.prototype.slice.call(select.selectedOptions || []).map(function (option) {
+        return String(option.value || '').trim();
+      }).filter(Boolean);
+    },
+    setSelectValues: function (selector, values) {
+      var select = document.querySelector(selector);
+      if (!select) return;
+      var wanted = {};
+      this.normalizeFilterValues(values).forEach(function (value) { wanted[value] = true; });
+      Array.prototype.slice.call(select.options).forEach(function (option) {
+        option.selected = !!wanted[option.value];
+      });
+      if (!Object.keys(wanted).length) select.value = '';
+    },
     countryOptionSearchText: function (option) {
       return this.normalizeFilterText([
         option.value || '',
@@ -3104,8 +3132,19 @@
         option.hidden = !matched;
         if (matched) visible.push(option);
       });
-      if (hint) hint.textContent = query ? (visible.length ? ('找到 ' + visible.length + ' 个国家，回车选择第一项。') : '没有匹配国家，请换中文/英文/国家代码。') : '可手输模糊查找，回车选择第一项。';
+      if (hint) this.updateCountryFilterHint(query, visible.length);
       return visible;
+    },
+    updateCountryFilterHint: function (query, visibleCount) {
+      var select = document.querySelector('[data-filter-country]');
+      var hint = document.querySelector('[data-filter-country-hint]');
+      if (!hint) return;
+      var selectedCount = select ? this.selectedFilterValues('[data-filter-country]').length : 0;
+      if (query) {
+        hint.textContent = visibleCount ? ('找到 ' + visibleCount + ' 个国家，回车追加第一项。已选 ' + selectedCount + ' 个。') : '没有匹配国家，请换中文/英文/国家代码。';
+      } else {
+        hint.textContent = selectedCount ? ('已选 ' + selectedCount + ' 个国家；按 ⌘/Ctrl 可继续多选，选择“全部国家”可清空。') : '可手输模糊查找，回车追加第一项；按 ⌘/Ctrl 可多选。';
+      }
     },
     cityOptionCountryKey: function (option) {
       return String((option && option.getAttribute('data-city-country')) || '').trim().toUpperCase();
@@ -3113,8 +3152,9 @@
     filterCityOptionsForCountry: function (countryValue, clearInvalid) {
       var select = document.querySelector('[data-filter-city]');
       if (!select) return [];
-      var key = this.countryKeyFromValue(countryValue);
-      key = String(key || '').trim().toUpperCase();
+      var keys = this.normalizeFilterValues(countryValue).map(function (value) {
+        return String(CustomerModule.countryKeyFromValue(value) || '').trim().toUpperCase();
+      }).filter(Boolean);
       var visible = [];
       Array.prototype.slice.call(select.options).forEach(function (option, index) {
         if (index === 0) {
@@ -3122,7 +3162,7 @@
           return;
         }
         var optionCountry = CustomerModule.cityOptionCountryKey(option);
-        var matched = !key || !optionCountry || optionCountry === key;
+        var matched = !keys.length || !optionCountry || keys.indexOf(optionCountry) >= 0;
         option.hidden = !matched;
         if (matched) visible.push(option);
       });
@@ -3133,8 +3173,7 @@
       return visible;
     },
     syncCityFilterForCountry: function (clearInvalid) {
-      var country = document.querySelector('[data-filter-country]');
-      return this.filterCityOptionsForCountry(country ? country.value : '', clearInvalid !== false);
+      return this.filterCityOptionsForCountry(this.selectedFilterValues('[data-filter-country]'), clearInvalid !== false);
     },
     setCityFilterValue: function (value) {
       var select = document.querySelector('[data-filter-city]');
@@ -3155,6 +3194,10 @@
       var input = document.querySelector('[data-filter-country-search]');
       var select = document.querySelector('[data-filter-country]');
       if (!input || !select) return;
+      if (select.multiple) {
+        this.updateCountryFilterHint('', null);
+        return;
+      }
       var selected = select.options[select.selectedIndex];
       input.value = select.value ? this.countryOptionDisplayText(selected) : '';
       this.filterCountryOptions(input.value);
@@ -3163,24 +3206,36 @@
       var input = document.querySelector('[data-filter-country-search]');
       var select = document.querySelector('[data-filter-country]');
       if (!select) return;
-      var wanted = this.normalizeFilterText(value);
-      if (!wanted) {
+      var values = this.normalizeFilterValues(value);
+      if (!values.length) {
         select.value = '';
         if (input) input.value = '';
         this.filterCountryOptions('');
         this.filterCityOptionsForCountry('', true);
         return;
       }
-      var match = Array.prototype.slice.call(select.options).find(function (option, index) {
-        return index > 0 && CustomerModule.normalizeFilterText(option.value) === wanted;
-      }) || Array.prototype.slice.call(select.options).find(function (option, index) {
-        return index > 0 && CustomerModule.countryOptionSearchText(option).indexOf(wanted) >= 0;
+      var selectedValues = [];
+      values.forEach(function (valueItem) {
+        var wanted = CustomerModule.normalizeFilterText(valueItem);
+        var match = Array.prototype.slice.call(select.options).find(function (option, index) {
+          return index > 0 && CustomerModule.normalizeFilterText(option.value) === wanted;
+        }) || Array.prototype.slice.call(select.options).find(function (option, index) {
+          return index > 0 && CustomerModule.countryOptionSearchText(option).indexOf(wanted) >= 0;
+        });
+        if (match) selectedValues.push(match.value);
       });
-      if (match) {
-        select.value = match.value;
-        if (input) input.value = this.countryOptionDisplayText(match);
-        this.filterCountryOptions(input ? input.value : match.value);
-        this.syncCityFilterForCountry(true);
+      this.setSelectValues('[data-filter-country]', selectedValues);
+      if (input) input.value = select.multiple ? '' : this.countryOptionDisplayText(select.options[select.selectedIndex]);
+      this.filterCountryOptions('');
+      this.syncCityFilterForCountry(true);
+    },
+    normalizeCountryMultiSelect: function () {
+      var select = document.querySelector('[data-filter-country]');
+      if (!select || !select.multiple) return;
+      var allOption = Array.prototype.slice.call(select.options).find(function (option) { return option.value === ''; });
+      if (allOption && allOption.selected) {
+        Array.prototype.slice.call(select.options).forEach(function (option) { option.selected = false; });
+        allOption.selected = false;
       }
     },
     resolveCountrySearchSelection: function () {
@@ -3189,9 +3244,9 @@
       if (!input || !select) return;
       var query = this.normalizeFilterText(input.value);
       if (!query) {
-        select.value = '';
+        if (!select.multiple) select.value = '';
         this.filterCountryOptions('');
-        this.filterCityOptionsForCountry('', true);
+        this.syncCityFilterForCountry(true);
         return;
       }
       var selected = select.options[select.selectedIndex];
@@ -3201,8 +3256,9 @@
       }
       var visible = this.filterCountryOptions(input.value) || [];
       if (visible.length) {
-        select.value = visible[0].value;
-        input.value = this.countryOptionDisplayText(visible[0]);
+        visible[0].selected = true;
+        if (!select.multiple) input.value = this.countryOptionDisplayText(visible[0]);
+        if (select.multiple) input.value = '';
         this.filterCountryOptions(input.value);
         this.syncCityFilterForCountry(true);
       }
@@ -3214,7 +3270,7 @@
       input.dataset.bound = '1';
       input.addEventListener('input', function () {
         CustomerModule.filterCountryOptions(input.value);
-        if (!input.value) {
+        if (!input.value && !select.multiple) {
           select.value = '';
           CustomerModule.filterCityOptionsForCountry('', true);
         }
@@ -3226,6 +3282,7 @@
         }
       });
       select.addEventListener('change', function () {
+        CustomerModule.normalizeCountryMultiSelect();
         CustomerModule.syncCountrySearchFromSelect();
         CustomerModule.syncCityFilterForCountry(true);
       });
@@ -3239,10 +3296,14 @@
       var business = document.querySelector('[data-filter-business]:checked');
       this.resolveCountrySearchSelection();
       this.syncCityFilterForCountry(true);
+      var countries = this.selectedFilterValues('[data-filter-country]');
+      var levels = this.selectedFilterValues('[data-filter-level]');
       return {
-        country: document.querySelector('[data-filter-country]')?.value || '',
+        country: countries[0] || '',
+        countries: countries,
         city: document.querySelector('[data-filter-city]')?.value || '',
-        level: document.querySelector('[data-filter-level]')?.value || '',
+        level: levels[0] || '',
+        levels: levels,
         lifecycle: document.querySelector('[data-filter-lifecycle]')?.value || '',
         source: checkedValues('[data-filter-source]'),
         status: document.querySelector('[data-filter-status]')?.value || '',
@@ -3259,7 +3320,13 @@
         if (input.type === 'checkbox' || input.type === 'radio') input.checked = false;
         else input.value = '';
       });
-      document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) { select.value = ''; });
+      document.querySelectorAll('[data-customer-filter-drawer] select').forEach(function (select) {
+        if (select.multiple) {
+          Array.prototype.slice.call(select.options).forEach(function (option) { option.selected = false; });
+        } else {
+          select.value = '';
+        }
+      });
       this.filterCountryOptions('');
       this.filterCityOptionsForCountry('', true);
     },
@@ -3294,9 +3361,13 @@
       if (view) view.value = this.filterState.view || 'table';
       if (sort) sort.value = this.filterState.sort || 'updated_at';
       if (dir) dir.value = this.filterState.direction || 'DESC';
-      this.setCountryFilterValue((this.filterState.advanced || {}).country || '');
-      this.filterCityOptionsForCountry((this.filterState.advanced || {}).country || '', true);
-      this.setCityFilterValue((this.filterState.advanced || {}).city || '');
+      var advanced = this.filterState.advanced || {};
+      var countries = this.normalizeFilterValues(advanced.countries || advanced.country || '');
+      var levels = this.normalizeFilterValues(advanced.levels || advanced.level || '');
+      this.setCountryFilterValue(countries);
+      this.filterCityOptionsForCountry(countries, true);
+      this.setCityFilterValue(advanced.city || '');
+      this.setSelectValues('[data-filter-level]', levels);
       document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
       });
@@ -3307,6 +3378,8 @@
       this.ensureFilterState();
       var advanced = this.filterState.advanced || {};
       this.quickFilter = this.filterState.quick || 'all';
+      var countries = this.normalizeFilterValues(advanced.countries || advanced.country || '');
+      var levels = this.normalizeFilterValues(advanced.levels || advanced.level || '');
       var listMode = this.layoutMode === 'default' ? 'compact' : 'full';
       var sortKey = this.filterState.sort || this.sort;
       if (listMode === 'compact' && ['updated_at', 'customer_code', 'customer_name', 'country', 'created_at'].indexOf(sortKey) < 0) {
@@ -3317,9 +3390,11 @@
         page: this.page,
         page_size: this.filterState.pageSize || this.pageSize,
         list_mode: listMode,
-        country: advanced.country || '',
+        country: countries[0] || '',
+        countries: countries,
         city: advanced.city || '',
-        level: advanced.level || '',
+        level: levels[0] || '',
+        levels: levels,
         lifecycle: advanced.lifecycle || '',
         source: advanced.source || [],
         status: advanced.status || '',
@@ -3508,9 +3583,9 @@
       this.ensureFilterState();
       var advanced = this.filterState.advanced || {};
       var q = this.filterState.keyword || '';
-      var country = advanced.country || '';
+      var countries = this.normalizeFilterValues(advanced.countries || advanced.country || '');
       var city = advanced.city || '';
-      var level = advanced.level || '';
+      var levels = this.normalizeFilterValues(advanced.levels || advanced.level || '');
       var lifecycle = advanced.lifecycle || '';
       var sources = advanced.source || [];
       var status = advanced.status || '';
@@ -3542,9 +3617,9 @@
         stale_30d: '30 天未跟进客户'
       };
       if (q) parts.push('关键词：' + q);
-      if (country) parts.push('国家：' + country);
+      if (countries.length) parts.push('国家：' + countries.join(','));
       if (city) parts.push('地区：' + city);
-      if (level) parts.push('等级：' + level);
+      if (levels.length) parts.push('等级：' + levels.join(','));
       if (lifecycle) parts.push('生命周期：' + lifecycle);
       if (sources.length) parts.push('来源：' + sources.join(','));
       if (status) parts.push('状态：' + status);

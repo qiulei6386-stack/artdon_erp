@@ -468,7 +468,7 @@ $prefStyle = sprintf(
                 <h3>地理信息</h3>
                 <label>国家 / 地区
                   <input data-filter-country-search placeholder="输入国家中文 / 英文 / 代码查找，例如 印度、India、IN">
-                  <select data-filter-country>
+                  <select data-filter-country multiple size="8" aria-label="国家 / 地区多选">
                     <option value="">全部国家</option>
                     <?php foreach (($crmConfig['items']['country_region'] ?? []) as $country): ?>
                     <?php $countryFlag = crm_country_flag((string)($country['item_key'] ?? '')) ?: crm_country_flag((string)($country['name_en'] ?? '')) ?: crm_country_flag((string)($country['name_cn'] ?? '')); ?>
@@ -476,7 +476,7 @@ $prefStyle = sprintf(
                     <option value="<?= h($country['item_key']) ?>" data-country-search="<?= h($countrySearch) ?>"><?= h(trim($countryFlag . ' ' . (($country['name_cn'] ?? '') . ' / ' . ($country['name_en'] ?? '') . ' · ' . ($country['item_key'] ?? '')))) ?></option>
                     <?php endforeach; ?>
                   </select>
-                  <small data-filter-country-hint>可手输模糊查找，回车选择第一项。</small>
+                  <small data-filter-country-hint>可手输模糊查找，回车追加第一项；按 ⌘/Ctrl 可多选。</small>
                 </label>
                 <label>城市 / 地区
                   <select data-filter-city>
@@ -492,7 +492,7 @@ $prefStyle = sprintf(
               <section class="customer-filter-group">
                 <h3>客户属性</h3>
                 <label>客户等级
-                  <select data-filter-level>
+                  <select data-filter-level multiple size="5" aria-label="客户等级多选">
                     <option value="">全部等级</option>
                     <?php foreach (($crmConfig['items']['customer_level'] ?? []) as $item): if ((int)($item['is_enabled'] ?? 1) !== 1) continue; ?>
                     <option value="<?= h($item['item_key']) ?>"><?= h(($item['short_name'] ?: $item['name_cn']) . ' · ' . $item['name_cn']) ?></option>

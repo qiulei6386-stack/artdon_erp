@@ -1426,6 +1426,37 @@ function crm_customer_search_terms(string $term): array
     return array_slice(array_values(array_unique(array_filter(array_map('trim', $terms)))), 0, 220);
 }
 
+function crm_customer_filter_values($value): array
+{
+    if ($value === null) return [];
+    $rawValues = [];
+    if (is_array($value)) {
+        array_walk_recursive($value, function ($item) use (&$rawValues): void {
+            $rawValues[] = $item;
+        });
+    } else {
+        $text = trim((string)$value);
+        if ($text !== '' && substr($text, 0, 1) === '[') {
+            $decoded = json_decode($text, true);
+            if (is_array($decoded)) {
+                array_walk_recursive($decoded, function ($item) use (&$rawValues): void {
+                    $rawValues[] = $item;
+                });
+            } else {
+                $rawValues[] = $text;
+            }
+        } else {
+            $rawValues = explode(',', $text);
+        }
+    }
+    $values = [];
+    foreach ($rawValues as $item) {
+        $item = trim((string)$item);
+        if ($item !== '') $values[] = $item;
+    }
+    return array_values(array_unique($values));
+}
+
 function crm_customer_region_search_codes(string $term): array
 {
     $needle = crm_customer_lower(trim($term));
@@ -1645,21 +1676,31 @@ function crm_customer_list(array $input): array
         foreach ($countrySearchParams as $value) $params[] = $value;
         for ($i = 0; $i < 5; $i++) $params[] = '%' . $q . '%';
     }
-    foreach (['level','status'] as $field) {
-        if (($input[$field] ?? '') !== '') {
-            $where[] = 'c.' . $field . ' = ?';
-            $params[] = $input[$field];
-        }
+    $levelValues = crm_customer_filter_values($input['levels'] ?? ($input['level'] ?? ''));
+    if ($levelValues) {
+        $placeholders = implode(',', array_fill(0, count($levelValues), '?'));
+        $where[] = "c.level IN ({$placeholders})";
+        foreach ($levelValues as $levelValue) $params[] = $levelValue;
+    }
+    if (($input['status'] ?? '') !== '') {
+        $where[] = 'c.status = ?';
+        $params[] = $input['status'];
     }
     if (($input['lifecycle'] ?? '') !== '') {
         $where[] = 'c.lifecycle_key = ?';
         $params[] = trim((string)$input['lifecycle']);
     }
-    if (($input['country'] ?? '') !== '') {
-        $countryTerm = trim((string)$input['country']);
-        [$countryWhere, $countryParams] = crm_customer_country_search_sql(crm_customer_search_terms($countryTerm), 'c');
-        foreach ($countryParams as $value) $params[] = $value;
-        $where[] = $countryWhere;
+    $countryValues = crm_customer_filter_values($input['countries'] ?? ($input['country'] ?? ''));
+    if ($countryValues) {
+        $countryParts = [];
+        foreach ($countryValues as $countryTerm) {
+            [$countryWhere, $countryParams] = crm_customer_country_search_sql(crm_customer_search_terms($countryTerm), 'c');
+            if ($countryWhere !== '') {
+                $countryParts[] = $countryWhere;
+                foreach ($countryParams as $value) $params[] = $value;
+            }
+        }
+        if ($countryParts) $where[] = '(' . implode(' OR ', $countryParts) . ')';
     }
     if (($input['city'] ?? '') !== '') {
         $cityTerm = trim((string)$input['city']);

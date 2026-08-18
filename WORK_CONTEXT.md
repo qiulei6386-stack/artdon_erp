@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：CRM 客户中心高级筛选国家与等级支持多选
+
+- 用户要求客户中心高级筛选里的“国家 / 地区”和“客户等级”支持多选。
+- `crm.php`：高级筛选国家与客户等级下拉改为 `multiple`，国家搜索提示改为“回车追加第一项”，保留“全部国家 / 全部等级”空值作为清空语义。
+- `assets/crm/crm.js`：新增多选值读取/回填工具；前端请求同时发送新参数 `countries[] / levels[]` 和旧兼容参数 `country / level`；筛选说明支持显示多个国家、多个等级。
+- `assets/crm/crm.js`：国家手输模糊查找继续可用；多选时回车会追加第一个匹配国家；城市联动调整为：未选国家显示全部城市，选 1 个或多个国家时只显示对应国家/地区城市。
+- `crm_customer.php`：`crm_customer_list()` 支持数组、逗号字符串和 JSON 数组形式的国家/等级筛选；等级多选使用 `IN`，国家多选使用 OR 组合，并保留旧单值参数兼容。
+- `tests/crm_customer_country_filter_search_contract.php`：扩展契约，锁定国家/等级多选 UI、前端数组参数、后端多选兼容和城市联动。
+- 检查：本地 `git diff --check` 通过；Codex Node REPL 对 `assets/crm/crm.js` 语法解析通过；服务器临时目录中 `crm.php`、`crm_customer.php` PHP 语法通过，契约测试通过。最终三方版本以本节上下文提交后的 HEAD 为准。
+
 ## 本次：官网已回复同步完成派工待办
 
 - 用户反馈香港官网询盘改为“已回复”后，广州官网询盘任务、CRM 待办和派工待办仍保持未完成。
