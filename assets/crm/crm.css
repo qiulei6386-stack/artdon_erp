@@ -6017,6 +6017,45 @@ body.is-actionbar-resizing * {
 .customer-filter-group label { display: grid; gap: 4px; }
 .customer-filter-group small { color: var(--crm-muted-text); font-size: 10px; line-height: 1.35; }
 .customer-filter-group select option[hidden] { display: none; }
+.customer-selected-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 24px;
+}
+.customer-selected-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--crm-primary) 40%, var(--crm-border));
+  border-radius: 999px;
+  background: var(--crm-active-bg);
+  color: var(--crm-primary);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+.customer-selected-filter-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.customer-selected-filter-chip i {
+  font-style: normal;
+  color: var(--crm-muted-text);
+}
+.customer-selected-filter-chip:hover {
+  border-color: var(--crm-primary);
+  background: color-mix(in srgb, var(--crm-primary) 12%, var(--crm-card-bg));
+}
+.customer-selected-filter-empty {
+  color: var(--crm-muted-text);
+  font-size: 10px;
+  font-weight: 800;
+}
 .customer-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .customer-filter-chips .tag-chip {
   min-height: 26px;

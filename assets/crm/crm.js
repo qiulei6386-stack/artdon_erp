@@ -2874,6 +2874,7 @@
         });
         advanced.setAttribute('aria-hidden', 'false');
         if (advancedBackdrop) advancedBackdrop.hidden = false;
+        self.renderAdvancedSelectedFilters();
       };
       var closeAdvanced = function () {
         if (!advanced) return;
@@ -2980,6 +2981,19 @@
           if (confirmButton) self.confirmLeadCreate(Number(confirmButton.getAttribute('data-lead-confirm')));
           if (rejectButton) self.rejectLead(Number(rejectButton.getAttribute('data-lead-reject')));
           if (useButton) self.useLeadExisting(Number(useButton.getAttribute('data-lead-use-existing')), useButton.getAttribute('data-customer-id'));
+        });
+      }
+      if (advanced) {
+        advanced.addEventListener('click', function (event) {
+          var chip = event.target.closest('[data-filter-chip-kind][data-filter-chip-value]');
+          if (!chip) return;
+          self.removeSelectedFilterValue(chip.getAttribute('data-filter-chip-kind') || '', chip.getAttribute('data-filter-chip-value') || '');
+        });
+        advanced.addEventListener('change', function (event) {
+          if (event.target && event.target.matches('[data-filter-level]')) {
+            self.normalizeEmptyMultiSelect('[data-filter-level]');
+            self.renderAdvancedSelectedFilters();
+          }
         });
       }
       document.addEventListener('keydown', function (event) {
@@ -3110,6 +3124,46 @@
       });
       if (!Object.keys(wanted).length) select.value = '';
     },
+    normalizeEmptyMultiSelect: function (selector) {
+      var select = document.querySelector(selector);
+      if (!select || !select.multiple) return;
+      var allOption = Array.prototype.slice.call(select.options).find(function (option) { return option.value === ''; });
+      if (allOption && allOption.selected) {
+        Array.prototype.slice.call(select.options).forEach(function (option) { option.selected = false; });
+      }
+    },
+    filterSelectedLabel: function (option) {
+      return String((option && option.textContent) || '').replace(/\s+/g, ' ').trim();
+    },
+    renderSelectedFilterChips: function (kind, selector, containerSelector, emptyText) {
+      var select = document.querySelector(selector);
+      var container = document.querySelector(containerSelector);
+      if (!select || !container) return;
+      var selected = Array.prototype.slice.call(select.selectedOptions || []).filter(function (option) { return option.value; });
+      if (!selected.length) {
+        container.innerHTML = '<span class="customer-selected-filter-empty">' + esc(emptyText || '未选择') + '</span>';
+        return;
+      }
+      container.innerHTML = selected.map(function (option) {
+        var label = CustomerModule.filterSelectedLabel(option);
+        return '<button type="button" class="customer-selected-filter-chip" data-filter-chip-kind="' + esc(kind) + '" data-filter-chip-value="' + esc(option.value) + '" title="点击移除 ' + esc(label) + '"><span>' + esc(label) + '</span><i>×</i></button>';
+      }).join('');
+    },
+    renderAdvancedSelectedFilters: function () {
+      this.renderSelectedFilterChips('country', '[data-filter-country]', '[data-filter-country-selected]', '未限制国家');
+      this.renderSelectedFilterChips('level', '[data-filter-level]', '[data-filter-level-selected]', '未限制等级');
+      this.updateCountryFilterHint('', null);
+    },
+    removeSelectedFilterValue: function (kind, value) {
+      var selector = kind === 'level' ? '[data-filter-level]' : '[data-filter-country]';
+      var select = document.querySelector(selector);
+      if (!select) return;
+      Array.prototype.slice.call(select.options).forEach(function (option) {
+        if (String(option.value) === String(value)) option.selected = false;
+      });
+      if (kind === 'country') this.syncCityFilterForCountry(true);
+      this.renderAdvancedSelectedFilters();
+    },
     countryOptionSearchText: function (option) {
       return this.normalizeFilterText([
         option.value || '',
@@ -3230,13 +3284,7 @@
       this.syncCityFilterForCountry(true);
     },
     normalizeCountryMultiSelect: function () {
-      var select = document.querySelector('[data-filter-country]');
-      if (!select || !select.multiple) return;
-      var allOption = Array.prototype.slice.call(select.options).find(function (option) { return option.value === ''; });
-      if (allOption && allOption.selected) {
-        Array.prototype.slice.call(select.options).forEach(function (option) { option.selected = false; });
-        allOption.selected = false;
-      }
+      this.normalizeEmptyMultiSelect('[data-filter-country]');
     },
     resolveCountrySearchSelection: function () {
       var input = document.querySelector('[data-filter-country-search]');
@@ -3261,6 +3309,7 @@
         if (select.multiple) input.value = '';
         this.filterCountryOptions(input.value);
         this.syncCityFilterForCountry(true);
+        this.renderAdvancedSelectedFilters();
       }
     },
     bindCountryFilterSearch: function () {
@@ -3285,9 +3334,11 @@
         CustomerModule.normalizeCountryMultiSelect();
         CustomerModule.syncCountrySearchFromSelect();
         CustomerModule.syncCityFilterForCountry(true);
+        CustomerModule.renderAdvancedSelectedFilters();
       });
       this.filterCountryOptions(input.value);
       this.syncCityFilterForCountry(true);
+      this.renderAdvancedSelectedFilters();
     },
     readAdvancedFilters: function () {
       var checkedValues = function (selector) {
@@ -3329,6 +3380,7 @@
       });
       this.filterCountryOptions('');
       this.filterCityOptionsForCountry('', true);
+      this.renderAdvancedSelectedFilters();
     },
     hasAdvancedFilters: function () {
       var advanced = (this.filterState && this.filterState.advanced) || {};
@@ -3368,6 +3420,7 @@
       this.filterCityOptionsForCountry(countries, true);
       this.setCityFilterValue(advanced.city || '');
       this.setSelectValues('[data-filter-level]', levels);
+      this.renderAdvancedSelectedFilters();
       document.querySelectorAll('[data-customer-filter]').forEach(function (item) {
         item.classList.toggle('active', item.getAttribute('data-customer-filter') === (CustomerModule.filterState.quick || 'all'));
       });

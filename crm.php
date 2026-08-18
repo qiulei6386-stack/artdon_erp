@@ -476,6 +476,7 @@ $prefStyle = sprintf(
                     <option value="<?= h($country['item_key']) ?>" data-country-search="<?= h($countrySearch) ?>"><?= h(trim($countryFlag . ' ' . (($country['name_cn'] ?? '') . ' / ' . ($country['name_en'] ?? '') . ' · ' . ($country['item_key'] ?? '')))) ?></option>
                     <?php endforeach; ?>
                   </select>
+                  <div class="customer-selected-filter-chips" data-filter-country-selected aria-live="polite"></div>
                   <small data-filter-country-hint>可手输模糊查找，回车追加第一项；按 ⌘/Ctrl 可多选。</small>
                 </label>
                 <label>城市 / 地区
@@ -498,6 +499,7 @@ $prefStyle = sprintf(
                     <option value="<?= h($item['item_key']) ?>"><?= h(($item['short_name'] ?: $item['name_cn']) . ' · ' . $item['name_cn']) ?></option>
                     <?php endforeach; ?>
                   </select>
+                  <div class="customer-selected-filter-chips" data-filter-level-selected aria-live="polite"></div>
                 </label>
                 <label>生命周期
                   <select data-filter-lifecycle>
