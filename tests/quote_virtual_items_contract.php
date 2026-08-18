@@ -38,6 +38,8 @@ $checks = [
         str_contains($quoteApi, 'function quote_review_price_value') && str_contains($quoteApi, "if(\$type==='discount') return -abs(\$raw);"),
     'approval quantity excludes non-shippable virtual items' =>
         str_contains($quoteApi, 'function quote_review_qty_for_total') && str_contains($quoteApi, 'quote_review_qty_for_total($it)'),
+    'approval schema creates amount adjustment columns on old databases' =>
+        str_contains($quoteApi, 'function quote_amount_adjustment_schema') && str_contains($quoteApi, "ensure_col(\$pdo,'quote_orders','subtotal_amount'") && str_contains($quoteApi, 'quote_amount_adjustment_schema($pdo);'),
     'review modal allows negative discount unit price' =>
         str_contains($quote, 'isDiscountVirtual') && str_contains($quote, 'priceMin=isDiscountVirtual'),
 ];

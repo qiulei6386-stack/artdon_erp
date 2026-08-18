@@ -2924,6 +2924,7 @@
 
 - 问题：“添加费用项 → Discount”保存后金额为负数，但审核接口在合并审核明细时对所有单价执行 `max(0, price)`，把折扣行强制改成 0，导致审核通过失败或审核后总价不一致。
 - 修复：`quote_api.php` 新增审核专用虚拟项识别与价格规范化；普通产品仍不允许负价，只有虚拟费用项里的 `discount` 在审核时保留为负数，运费/手续费等其他费用项仍统一为正数加项。
+- 补充修复：线上老库已记录报价运行时 schema ready，新增的 `subtotal_amount`、`adjustment_amount`、`adjustment_json` 没有自动落库，导致 EX076 审核时报 `Unknown column 'subtotal_amount'`；现将这三列抽成 `quote_amount_adjustment_schema()`，审核入口也会自动补列。
 - 数量：审核通过写回 `quote_orders.qty` 时不再把默认不计数量的虚拟费用项计入 PCS，避免 “Discount 1 项” 把订单数量悄悄加 1。
 - 前端：`quotation.php` 的审核预览里 Discount 行允许负单价显示，审核底部合计数量也按真实产品数量统计，不计默认不出货的虚拟费用项。
-- 回归保护：`tests/quote_virtual_items_contract.php` 增加审核接口保留虚拟折扣负数、审核数量排除虚拟项、审核弹窗允许负折扣价的契约检查。
+- 回归保护：`tests/quote_virtual_items_contract.php` 增加审核接口保留虚拟折扣负数、审核数量排除虚拟项、审核入口补整单金额列、审核弹窗允许负折扣价的契约检查。

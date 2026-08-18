@@ -168,6 +168,12 @@ function ensure_quote_core_schema($pdo){
   }
   quote_v640_doc_schema_fix($pdo);
 }
+function quote_amount_adjustment_schema(PDO $pdo): void {
+  if(!table_exists($pdo,'quote_orders')) return;
+  ensure_col($pdo,'quote_orders','subtotal_amount',"`subtotal_amount` DECIMAL(14,2) DEFAULT 0");
+  ensure_col($pdo,'quote_orders','adjustment_amount',"`adjustment_amount` DECIMAL(14,2) DEFAULT 0");
+  ensure_col($pdo,'quote_orders','adjustment_json',"`adjustment_json` MEDIUMTEXT NULL");
+}
 function quote_runtime_schema_ready(PDO $pdo): void {
   static $ready=false;
   if($ready)return;
@@ -177,6 +183,7 @@ function quote_runtime_schema_ready(PDO $pdo): void {
     if((int)($state['schema_version']??0)>=$version){$ready=true;return;}
   }catch(Throwable $e){}
   ensure_quote_core_schema($pdo);
+  quote_amount_adjustment_schema($pdo);
   ensure_quote_settings($pdo);
   ensure_quote_price_policy_schema($pdo);
   ensure_quote_permission_schema($pdo);
@@ -3359,6 +3366,7 @@ function quote_approval_schema(PDO $pdo): void {
   if($approvalSchemaReady) return;
   try{
     if(!table_exists($pdo,'quote_orders')) return;
+    quote_amount_adjustment_schema($pdo);
     ensure_col($pdo,'quote_orders','approval_status',"`approval_status` VARCHAR(30) NOT NULL DEFAULT 'pending'");
     ensure_col($pdo,'quote_orders','submitted_by',"`submitted_by` VARCHAR(120) DEFAULT ''");
     ensure_col($pdo,'quote_orders','submitted_at',"`submitted_at` DATETIME NULL");
