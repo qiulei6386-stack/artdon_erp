@@ -5,6 +5,7 @@ $pdf = file_get_contents($root . '/crm_quote_pdf.php');
 $excel = file_get_contents($root . '/crm_quote_excel.php');
 $orderApi = file_get_contents($root . '/quote_order_api.php');
 $preview = file_get_contents($root . '/crm_quote_preview.php');
+$quoteApi = file_get_contents($root . '/quote_api.php');
 
 $checks = [
     'quotation UI exposes virtual charge button' =>
@@ -33,6 +34,12 @@ $checks = [
         str_contains($excel, 'function qe_is_virtual_item') && str_contains($excel, "qe_cell(7,\$r,\$totalQty,9,true)"),
     'legacy preview supports virtual quantity rule' =>
         str_contains($preview, 'function is_virtual_quote_item') && str_contains($preview, 'quote_item_qty_for_total'),
+    'approval API preserves virtual discount as negative item' =>
+        str_contains($quoteApi, 'function quote_review_price_value') && str_contains($quoteApi, "if(\$type==='discount') return -abs(\$raw);"),
+    'approval quantity excludes non-shippable virtual items' =>
+        str_contains($quoteApi, 'function quote_review_qty_for_total') && str_contains($quoteApi, 'quote_review_qty_for_total($it)'),
+    'review modal allows negative discount unit price' =>
+        str_contains($quote, 'isDiscountVirtual') && str_contains($quote, 'priceMin=isDiscountVirtual'),
 ];
 
 $failed = [];

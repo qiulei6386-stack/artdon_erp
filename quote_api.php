@@ -3419,13 +3419,59 @@ function quote_review_moq_value($v): string {
   }
   return quote_v640_substr($s,0,60);
 }
+function quote_review_boolish_false($v): bool {
+  return $v===false || $v===0 || $v==='0' || strtolower((string)$v)==='false';
+}
+function quote_review_boolish_true($v): bool {
+  return $v===true || $v===1 || $v==='1' || strtolower((string)$v)==='true';
+}
+function quote_review_is_virtual_item(array $it): bool {
+  return !empty($it['is_virtual_item'])
+    || (($it['item_type']??'')==='virtual')
+    || (($it['product_type']??'')==='virtual')
+    || (array_key_exists('shippable',$it) && quote_review_boolish_false($it['shippable']));
+}
+function quote_review_virtual_type(array $it): string {
+  $type=strtolower(trim((string)($it['virtual_type']??'')));
+  $p=is_array($it['product']??null)?$it['product']:[];
+  $code=strtoupper(trim((string)($it['product_code']??($p['code']??''))));
+  if($type!=='') return $type;
+  if($code==='DISCOUNT') return 'discount';
+  if($code==='FREIGHT') return 'freight';
+  if($code==='FUEL') return 'fuel';
+  if($code==='HANDLING') return 'handling';
+  if($code==='ADJUSTMENT') return 'adjustment';
+  return 'other';
+}
+function quote_review_price_value(array $it, float $fallback=0.0): float {
+  $raw=array_key_exists('price',$it) ? (float)$it['price'] : (array_key_exists('unit_price',$it) ? (float)$it['unit_price'] : $fallback);
+  if(!quote_review_is_virtual_item($it)) return max(0,$raw);
+  $type=quote_review_virtual_type($it);
+  if($type==='discount') return -abs($raw);
+  // 费用项里只有 Discount 是减项；其他虚拟费用在审核时统一保持为加项。
+  return abs($raw);
+}
+function quote_review_qty_for_total(array $it): float {
+  if(quote_review_is_virtual_item($it) && !quote_review_boolish_true($it['count_in_qty']??false)) return 0.0;
+  return max(0,(float)($it['qty']??0));
+}
+function quote_review_normalize_virtual_meta(array &$it, float $price): void {
+  if(!quote_review_is_virtual_item($it)) return;
+  $it['item_type']='virtual';
+  $it['product_type']='virtual';
+  $it['is_virtual_item']=true;
+  $it['shippable']=false;
+  if(!array_key_exists('count_in_qty',$it)) $it['count_in_qty']=false;
+  $it['charge_direction']=$price<0?'deduct':'add';
+}
 function quote_apply_review_items(array $items): array {
   $out=[];
   foreach($items as $it){
     if(!is_array($it)) continue;
     $qty=max(0,(float)($it['qty']??0));
-    $price=max(0,(float)($it['price']??$it['unit_price']??0));
+    $price=quote_review_price_value($it,0.0);
     $mult=max(0,(float)($it['price_multiplier']??$it['approved_multiplier']??$it['multiplier']??0));
+    quote_review_normalize_virtual_meta($it,$price);
     $it['qty']=$qty;
     $it['price']=$price;
     $it['unit_price']=$price;
@@ -3448,10 +3494,12 @@ function quote_merge_review_items(array $savedItems, array $reviewItems): array 
     $review=$reviewItems[$idx]??null;
     if(!is_array($review)) fail('审核第'.($idx+1).'项资料异常，已停止审核');
     $qty=max(0,(float)($review['qty']??$saved['qty']??0));
-    $price=max(0,(float)($review['price']??$review['unit_price']??$saved['price']??$saved['unit_price']??0));
+    $reviewBasis=array_replace($saved,$review);
+    $price=quote_review_price_value($reviewBasis,(float)($saved['price']??$saved['unit_price']??0));
     $mult=max(0,(float)($review['price_multiplier']??$review['approved_multiplier']??$review['multiplier']??$saved['price_multiplier']??0));
     // 审核只允许调整数量、单价、倍率及 MOQ；产品、图片、规格和部件始终以已保存报价为准。
     $merged=$saved;
+    quote_review_normalize_virtual_meta($merged,$price);
     $moq=array_key_exists('moq',$review)?quote_review_moq_value($review['moq']):quote_review_moq_value($saved['moq']??'');
     $merged['qty']=$qty;
     $merged['price']=$price;
@@ -4628,7 +4676,7 @@ if($action==='init'){
    if(is_array($items) && count($items)>0){
      $savedItems=quote_decode_items_json($q['items_json']??'[]');
      $items=quote_merge_review_items($savedItems,$items);
-     $qty=0; $amount=0; foreach($items as $it){ $qty+=(float)($it['qty']??0); $amount+=(float)($it['amount']??0); }
+     $qty=0; $amount=0; foreach($items as $it){ if(is_array($it)) $qty+=quote_review_qty_for_total($it); $amount+=(float)($it['amount']??0); }
      $first=$items[0]??[];
      $subtotal=(float)($d['subtotal_amount']??$amount);
      $adjustmentAmount=(float)($d['adjustment_amount']??0);
