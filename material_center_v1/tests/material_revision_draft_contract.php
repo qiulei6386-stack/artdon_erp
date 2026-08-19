@@ -41,7 +41,7 @@ foreach (['revision_draft', '生成修订草稿'] as $marker) {
 }
 
 $layout = file_get_contents($root . '/components/layout_bottom.php');
-foreach (['data-material-revision', 'data-category-revision', '生成修订草稿'] as $marker) {
+foreach (['data-material-revision', 'data-category-revision', 'data-power-revision', '生成修订草稿'] as $marker) {
     if (!str_contains($layout, $marker)) {
         fwrite(STDERR, "layout missing revision marker: {$marker}\n");
         exit(1);
@@ -52,6 +52,7 @@ foreach ([
     '/assets/js/materials.js' => ['revision_draft', '旧正式物料不会被修改'],
     '/assets/js/material-workspace-actions.js' => ['data-material-revision', 'revision_draft'],
     '/assets/js/category-editor.js' => ['data-category-revision', 'revision_draft'],
+    '/assets/js/power-editor.js' => ['data-power-revision', 'revision_draft', '旧正式电源不会被修改'],
 ] as $file => $markers) {
     $text = file_get_contents($root . $file);
     foreach ($markers as $marker) {

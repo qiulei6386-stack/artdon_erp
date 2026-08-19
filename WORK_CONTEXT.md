@@ -2968,3 +2968,12 @@
 - 计数调整：物料中心主页“电源记录待确认”只统计草稿和待审核状态；正式物料缺少功率档/质保不再计入待确认，避免误以为正式物料仍阻断转正式。
 - 线上数据：备份后同步 18 条电源规格状态到主物料状态，备份文件 `/tmp/artdon_power_status_cleanup_backup_20260819_20260819_114422.json`；复查 `mc_materials` 与 `mc_power_supply_specs` 状态 mismatch=0。
 - 回归保护：`tests/power_editor_integration.php` 增加提交后主表/规格表均为 `pending_review`、审核后均为 `official` 的合同检查。
+
+## 2026-08-19：电源正式物料支持生成修订草稿
+
+- 问题：电源专用编辑抽屉打开正式物料时只显示“只读查看/取消”，没有“生成修订草稿”入口，导致正式电源无法按修订流程复制出可编辑草稿。
+- 修复：`material_center_v1/components/layout_bottom.php` 在电源抽屉底部加入 `data-power-revision` 按钮；`material_center_v1/assets/js/power-editor.js` 仅在 `official` 正式电源详情中显示该按钮，点击后调用现有 `revision_draft` 生命周期接口，并直接打开生成的新草稿继续编辑，旧正式电源不被修改。
+- 范围：只补电源抽屉入口和事件；普通物料、分类抽屉、来源整理、电源草稿保存、提交确认、确认转正式流程保持不变。
+- 回归保护：`material_center_v1/tests/material_revision_draft_contract.php` 增加电源修订草稿按钮与 JS 调用契约。
+- 检查：本地执行 `git diff --check` 通过；本机缺少 `php` 与 `node`，PHP/JS 语法及契约测试待服务器同步后复检。
+- 部署：本条记录会随本次提交推送 GitHub，并同步到服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号和三方一致性以本次交付说明为准。

@@ -182,7 +182,7 @@ if($mcCategoryDrawer){
    </section>
   </div>
  </form>
- <div class="mc-drawer__footer mc-power-drawer-footer"><span data-power-save-state>未修改</span><button class="mc-button" type="button" data-power-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-power-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-power-save>保存草稿</button></div>
+ <div class="mc-drawer__footer mc-power-drawer-footer"><span data-power-save-state>未修改</span><button class="mc-button" type="button" data-power-revision hidden>生成修订草稿</button><button class="mc-button" type="button" data-power-submit hidden>提交确认</button><button class="mc-button mc-button--primary" type="button" data-power-approve hidden>确认并转正式</button><button class="mc-button" type="button" data-close-layer>取消</button><button class="mc-button mc-button--primary" type="button" data-power-save>保存草稿</button></div>
 </div>
 <div class="mc-drawer mc-power-drawer" id="power-batch-drawer" data-drawer data-power-batch>
  <div class="mc-drawer__header"><div><strong>批量设置电源</strong><span data-power-batch-count>已选择 0 项</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>

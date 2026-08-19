@@ -255,6 +255,7 @@
     q('[data-power-editor-subtitle]', drawer).textContent = `${data.material_code} · ${data.status === 'draft' ? '草稿可编辑' : '只读查看'}`;
     q('[data-power-source-note]', drawer).hidden = true;
     q('[data-power-save-state]', drawer).textContent = data.editable ? '未修改' : '当前状态只读';
+    q('[data-power-revision]', drawer).hidden = data.status !== 'official';
     q('[data-power-submit]', drawer).hidden = data.status !== 'draft';
     q('[data-power-approve]', drawer).hidden = data.status !== 'pending_review' || !schema.can_approve;
     q('[data-power-error]', drawer).hidden = true;
@@ -283,6 +284,7 @@
     q('[data-power-source-note]', drawer).hidden = true;
     qa('[data-price-field]', form).forEach(field => field.hidden = !schema.can_view_price);
     q('[data-power-save-state]', drawer).textContent = '尚未保存';
+    q('[data-power-revision]', drawer).hidden = true;
     q('[data-power-submit]', drawer).hidden = true;
     q('[data-power-approve]', drawer).hidden = true;
     q('[data-power-error]', drawer).hidden = true;
@@ -365,6 +367,7 @@
     q('[data-power-editor-subtitle]', drawer).textContent = `${record.code} · 待整理`;
     q('[data-power-source-note]', drawer).hidden = false;
     q('[data-power-save-state]', drawer).textContent = '确认字段后保存为草稿';
+    q('[data-power-revision]', drawer).hidden = true;
     q('[data-power-submit]', drawer).hidden = false;
     q('[data-power-approve]', drawer).hidden = !schema.can_approve;
     openDrawer(drawer);
@@ -499,6 +502,53 @@
       error.hidden = false;
       state.textContent = action === 'approve' ? '转正式失败' : '提交失败';
       toast(state.textContent, reason.message);
+      return false;
+    } finally {
+      trigger.disabled = false;
+      trigger.removeAttribute('aria-busy');
+      trigger.textContent = idleLabel;
+    }
+  };
+
+  const createRevisionDraft = async trigger => {
+    const materialId = form.elements.material_id.value || activeRecord?.material_id || activeRecord?.id;
+    const error = q('[data-power-error]', drawer);
+    const state = q('[data-power-save-state]', drawer);
+    if (!materialId || activeRecord?.status !== 'official') {
+      error.textContent = '只有正式电源可以生成修订草稿。';
+      error.hidden = false;
+      state.textContent = '生成失败';
+      return false;
+    }
+    if (!confirm('从当前正式电源生成一份可编辑修订草稿？旧正式电源不会被修改。')) return false;
+    const idleLabel = trigger.textContent;
+    error.hidden = true;
+    trigger.disabled = true;
+    trigger.setAttribute('aria-busy', 'true');
+    trigger.textContent = '正在生成…';
+    state.textContent = '正在生成修订草稿…';
+    try {
+      const response = await lifecycleRequest(materialId, 'revision_draft');
+      const draftId = response?.id;
+      dirty = false;
+      state.textContent = '已生成修订草稿';
+      toast('已生成修订草稿', '旧正式电源不会被修改，已打开新草稿。');
+      if (draftId) {
+        await openMaterial({
+          id: draftId,
+          material_id: draftId,
+          name: activeRecord?.name || '',
+          status: 'draft',
+        });
+      } else {
+        setTimeout(() => location.reload(), 400);
+      }
+      return true;
+    } catch (reason) {
+      error.textContent = reason.message;
+      error.hidden = false;
+      state.textContent = '生成失败';
+      toast('生成失败', reason.message);
       return false;
     } finally {
       trigger.disabled = false;
@@ -749,6 +799,12 @@
     q('[data-power-save-state]', drawer).textContent = '有未保存修改';
   });
   q('[data-power-save]', drawer).addEventListener('click', event => save('draft', event.currentTarget));
+  q('[data-power-revision]', drawer).addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.currentTarget;
+    if (!button.disabled) createRevisionDraft(button);
+  });
   q('[data-power-submit]', drawer).addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
