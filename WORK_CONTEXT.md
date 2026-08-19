@@ -8,8 +8,8 @@
 - `material_center_v1/adaptation_v2/api/index.php`：新增 `product_version_reopen_approval` 接口，并加入 allowed actions。
 - `material_center_v1/adaptation_v2/index.php`：已审批未发布版本在顶部状态旁、底部发布按钮旁显示“撤回审批”按钮；点击有二次确认；发布版本不显示撤回入口。
 - 新增 `material_center_v1/tests/adaptation_v2_reopen_approval_contract.php`，锁定撤回审批入口、接口、权限、状态回草稿和已发布保护。
-- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，已把修改文件临时上传服务器 `/tmp` 执行 `php -l`，`foundation.php`、`api/index.php`、`index.php`、新增契约测试均无语法错误。
-- 部署：功能提交推送 GitHub 后同步正式服务器；服务器正式目录复检结果以本轮最终记录为准。
+- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，已把修改文件临时上传服务器 `/tmp` 执行 `php -l`，`foundation.php`、`api/index.php`、`index.php`、新增契约测试均无语法错误；正式服务器同步后 `php -l` 以上 4 个文件均通过，`php material_center_v1/tests/adaptation_v2_reopen_approval_contract.php` 通过。
+- 部署：功能提交 `f992c90` 已推送 GitHub `main` 并同步正式服务器；本条上下文记录提交后以最终 HEAD 为准。
 
 ## 本次：物料中心新增“芯片 + 透镜角度适配表”
 
