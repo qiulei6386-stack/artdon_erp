@@ -118,6 +118,30 @@ $pa2InheritanceActionLabels = [
     'override' => '覆盖',
     'disable' => '已移除',
 ];
+if (!function_exists('pa2_template_group_action_fields')) {
+    function pa2_template_group_action_fields(array $group, int $templateId, string $action): string
+    {
+        $fields = [
+            'template_id' => $templateId,
+            'group_definition_id' => (int)($group['group_definition_id'] ?? 0),
+            'inheritance_action' => $action,
+            'selection_mode' => (string)($group['selection_mode'] ?? 'single'),
+            'sort_order' => (int)($group['sort_order'] ?? 100),
+            'min_select' => (int)($group['min_select'] ?? 0),
+            'max_select' => (int)($group['max_select'] ?? 1),
+            'is_required' => (int)($group['is_required'] ?? 0),
+            'allow_empty' => (int)($group['allow_empty'] ?? 1),
+            'affects_price' => (int)($group['affects_price'] ?? 0),
+            'affects_lead_time' => (int)($group['affects_lead_time'] ?? 0),
+            'requires_approval' => (int)($group['requires_approval'] ?? 0),
+        ];
+        $html = '';
+        foreach ($fields as $name => $value) {
+            $html .= '<input type="hidden" name="' . mc_h((string)$name) . '" value="' . mc_h((string)$value) . '">';
+        }
+        return $html;
+    }
+}
 $pa2MaterialCategoryLabels = [
     'chip' => '芯片 / 光源',
     'power_supply' => '电源 / 驱动',
@@ -620,7 +644,22 @@ include MC_ROOT . '/components/layout_top.php';
                             <div class="pa2-flow"><?php foreach ($selectedTemplatePreview['chain'] as $node): ?><span><?=mc_h($node['template_name'])?></span><?php endforeach; ?></div>
                             <div class="pa2-group-grid">
                                 <?php foreach ($selectedTemplatePreview['groups'] as $g): ?>
-                                    <article class="pa2-group-card"><div><strong><?=mc_h($g['display_name'])?></strong><br><small><?=mc_h($g['group_code'])?> · <?=mc_h($g['display_type'])?> · 来源：<?=mc_h($g['source_template_name'])?></small></div><div><span class="pa2-badge pa2-badge--<?=mc_h($g['effective_change_type'])?>"><?=mc_h($g['effective_change_type'])?></span></div></article>
+                                    <article class="pa2-group-card">
+                                        <div>
+                                            <strong><?=mc_h($g['display_name'])?></strong><br>
+                                            <small><?=mc_h($g['group_code'])?> · <?=mc_h($g['display_type'])?> · 来源：<?=mc_h($g['source_template_name'])?></small>
+                                        </div>
+                                        <div class="pa2-template-actions">
+                                            <span class="pa2-badge pa2-badge--<?=mc_h($g['effective_change_type'])?>"><?=mc_h($pa2InheritanceActionLabels[$g['effective_change_type']] ?? $g['effective_change_type'])?></span>
+                                            <?php if ($canManageTemplate && $selectedTemplate): ?>
+                                                <a class="mc-button" data-template-group-direct-edit href="<?=mc_h(pa2_view_url('template_editor', ['template_id'=>(int)$selectedTemplate['id'], 'edit_group'=>(int)$g['group_definition_id']]))?>#pa2-template-group-form">编辑</a>
+                                                <form data-pa2-form data-template-group-remove data-confirm="<?=mc_h('确认从当前模板移除「' . (string)$g['display_name'] . '」？继承预览会立即不再显示它。')?>" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
+                                                    <?=pa2_template_group_action_fields($g, (int)$selectedTemplate['id'], 'disable')?>
+                                                    <button class="mc-button" type="submit">移除</button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </div>
+                                    </article>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -664,7 +703,7 @@ include MC_ROOT . '/components/layout_top.php';
                         <label><span>状态</span><select name="is_enabled"><option value="1" <?=((int)$selectedTemplate['is_enabled']===1?'selected':'')?>>启用</option><option value="0" <?=((int)$selectedTemplate['is_enabled']===0?'selected':'')?>>停用</option></select></label>
                         <button class="mc-button" type="submit">保存模板</button>
                     </form>
-                    <form class="pa2-form" data-pa2-form data-template-group-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
+                    <form class="pa2-form" id="pa2-template-group-form" data-pa2-form data-template-group-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
                         <input type="hidden" name="template_id" value="<?=intval($selectedTemplate['id'])?>">
                         <div class="pa2-dialog-hint full"><strong data-template-group-mode>新增或覆盖配置组</strong>：点击下方已有配置组的“编辑”，会把当前设置回填到这里，修改后直接保存。</div>
                         <label><span>配置组</span><select name="group_definition_id" required><?php foreach ($groups as $g): ?><option value="<?=intval($g['id'])?>"><?=mc_h($g['group_name'])?> · <?=mc_h($g['group_code'])?></option><?php endforeach; ?></select></label>
@@ -768,7 +807,23 @@ include MC_ROOT . '/components/layout_top.php';
                 <div class="pa2-panel__body pa2-section-gap">
                     <div class="pa2-flow"><?php foreach ($selectedTemplatePreview['chain'] as $node): ?><span><?=mc_h($node['template_name'])?></span><?php endforeach; ?></div>
                     <div class="pa2-side-note">有效配置组 <?=count($selectedTemplatePreview['groups'])?> 个；版本 <?=mc_h($selectedTemplate['active_version_no'] ?? '未发布')?>。发布会保存当前继承结果快照。</div>
-                    <div class="pa2-group-grid"><?php foreach ($selectedTemplatePreview['groups'] as $g): ?><div class="pa2-group-card"><div><strong><?=mc_h($g['display_name'])?></strong><br><small><?=mc_h($g['source_template_name'])?></small></div><span class="pa2-badge"><?=mc_h($g['group_code'])?></span></div><?php endforeach; ?></div>
+                    <div class="pa2-group-grid">
+                        <?php foreach ($selectedTemplatePreview['groups'] as $g): ?>
+                            <div class="pa2-group-card">
+                                <div><strong><?=mc_h($g['display_name'])?></strong><br><small><?=mc_h($g['source_template_name'])?></small></div>
+                                <div class="pa2-template-actions">
+                                    <span class="pa2-badge"><?=mc_h($g['group_code'])?></span>
+                                    <?php if ($canManageTemplate && $selectedTemplate): ?>
+                                        <a class="mc-button" data-template-group-direct-edit href="<?=mc_h(pa2_view_url('template_editor', ['template_id'=>(int)$selectedTemplate['id'], 'edit_group'=>(int)$g['group_definition_id']]))?>#pa2-template-group-form">编辑</a>
+                                        <form data-pa2-form data-template-group-remove data-confirm="<?=mc_h('确认从当前模板移除「' . (string)$g['display_name'] . '」？右侧继承预览会立即不再显示它。')?>" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=template_group_save'))?>">
+                                            <?=pa2_template_group_action_fields($g, (int)$selectedTemplate['id'], 'disable')?>
+                                            <button class="mc-button" type="submit">移除</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </aside>
         </section>
@@ -1908,6 +1963,18 @@ function pa2ParseJson(raw, fallback={}){
       form.scrollIntoView({behavior:'smooth',block:'center'});
     });
   });
+  const editGroupId=new URLSearchParams(window.location.search).get('edit_group')||'';
+  if(editGroupId){
+    const editButton=Array.from(document.querySelectorAll('[data-template-group-edit]')).find((btn)=>btn.getAttribute('data-group-definition-id')===editGroupId);
+    if(editButton){
+      setTimeout(()=>editButton.click(),80);
+    }else{
+      pa2SetField(form,'group_definition_id',editGroupId);
+      pa2SetField(form,'inheritance_action','override');
+      setMode('正在编辑继承配置组：保存后会覆盖到当前模板');
+      setTimeout(()=>form.scrollIntoView({behavior:'smooth',block:'center'}),80);
+    }
+  }
 })();
 (()=>{
   const dialog=document.getElementById('pa2-category-create-dialog');

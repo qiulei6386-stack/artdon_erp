@@ -51,6 +51,8 @@ pa3_assert_true(str_contains($index, "data-phase=\"3\""), 'V2 index declares pha
 pa3_assert_true(str_contains($index, '模板中心') && str_contains($index, '模板编辑器') && str_contains($index, '继承预览'), 'Template pages are implemented, not placeholders');
 pa3_assert_true(str_contains($index, 'pa2-template-shell') && str_contains($index, 'pa2-template-item'), 'Template UI uses softer workstation layout');
 pa3_assert_true(str_contains($index, "\$view === 'templates'") && str_contains($index, "\$view === 'template_editor'"), 'Templates have dedicated routed views');
+pa3_assert_true(str_contains($index, 'data-template-group-direct-edit') && str_contains($index, 'data-template-group-remove'), 'Template preview cards expose edit and remove entries');
+pa3_assert_true(str_contains($index, 'edit_group') && str_contains($index, 'pa2-template-group-form'), 'Template edit links can prefill the group editor form');
 
 pa3_assert_true(str_contains($doc, '父模板继承') && str_contains($doc, 'mc_pa2_templates'), 'Phase 3 document records inheritance model');
 pa3_assert_true(str_contains($execution, '第 3 阶段：模板中心和继承引擎'), 'Execution log records phase 3');
