@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：物料中心新增“芯片 + 透镜角度适配表”
+
+- 用户提出透镜同一规格可能有多个角度，且同一透镜配不同芯片时实际出光角度不同，希望像芯片色温一样可维护自选，并“一步做成芯片 + 透镜角度适配表”。
+- `material_center_v1/database/migrations/20260819_025_lens_chip_angle_compatibility.php`：新增 `mc_lens_chip_angle_compatibilities`，记录透镜物料、芯片物料或关键词、名义角度、实际角度、LES/备注等；同时给 `mc_material_optical` 增加 `beam_angle_options`，并注册“光束角选项”字段。
+- `material_center_v1/components/layout_bottom.php`、`material_center_v1/assets/js/category-editor.js`、`material_center_v1/assets/css/app.css`：光学/透镜分类编辑抽屉新增“芯片角度适配”页签；草稿可新增/删除适配行，正式/待审只读；保存光学草稿时同步保存适配表。
+- `material_center_v1/api/v1/lens-angle-compatibility.php`、`material_center_v1/app/Services/LensAngleCompatibilityService.php`：新增读取/保存 API；只允许草稿透镜维护适配表；每行必须有实际角度，芯片选择会校验分类。
+- `material_center_v1/app/Services/MaterialMasterService.php`：正式物料生成修订草稿、复制物料时，会把透镜角度适配表一并复制；删除草稿时清理该草稿的适配行。
+- `material_center_v1/app/Services/AdaptationService.php`：产品适配选透镜时，会先读取产品当前已选芯片，再优先用“芯片 + 透镜角度适配表”的实际角度做匹配；如透镜维护了适配表但未覆盖当前芯片，会提示需要审批/补齐，而不是错误地用通用角度放行。
+- 新增 `material_center_v1/tests/lens_angle_compatibility_contract.php`，锁定入口、API、迁移、修订草稿复制、产品适配读取等关键点。最终三方版本以本节上下文提交后的 HEAD 为准。
+
 ## 本次：正式物料支持生成修订草稿
 
 - 用户询问“已经转正式的物料如何编辑”，本次采用修订草稿方案：正式物料不直接编辑，避免破坏已经引用到 BOM、报价、适配方案里的稳定资料。

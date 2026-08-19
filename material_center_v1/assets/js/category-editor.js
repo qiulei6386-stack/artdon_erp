@@ -9,11 +9,22 @@
   const workspace = q(`[data-workspace][data-category-code="${CSS.escape(categoryCode)}"]`);
   const form = q('[data-category-editor-form]', drawer);
   const fieldsRoot = q('[data-category-editor-fields]', drawer);
+  const isOptical = categoryCode === 'optical';
+  const lensAngleRoot = q('[data-lens-angle-list]', drawer);
   const overlay = q('[data-overlay]');
   let active = null;
   let sourceDetail = null;
   let dirty = false;
   let canApprove = false;
+  let lensAngleState = { materialId: 0, rows: [], chips: [], editable: false };
+
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[char]));
 
   const notify = (title, message) => {
     const region = q('[data-toast-region]');
@@ -140,6 +151,105 @@
     }
   };
 
+  const emptyLensAngleRow = () => ({
+    chip_material_id: '',
+    chip_keyword: '',
+    lens_beam_angle_deg: '',
+    actual_beam_angle_deg: '',
+    beam_angle_label: '',
+    les_text: '',
+    note: '',
+  });
+
+  const lensChipLabel = chip => [chip.material_code, chip.brand, chip.model, chip.name, chip.pad_text ? `LES ${chip.pad_text}` : '']
+    .filter(Boolean)
+    .join(' · ');
+
+  const collectLensRows = () => {
+    if (!isOptical || !lensAngleRoot) return [];
+    return qa('[data-lens-angle-row]', lensAngleRoot).map(row => ({
+      chip_material_id: q('[data-lens-chip]', row)?.value || '',
+      chip_keyword: q('[data-lens-chip-keyword]', row)?.value || '',
+      lens_beam_angle_deg: q('[data-lens-nominal-angle]', row)?.value || '',
+      actual_beam_angle_deg: q('[data-lens-actual-angle]', row)?.value || '',
+      beam_angle_label: q('[data-lens-angle-label]', row)?.value || '',
+      les_text: q('[data-lens-les]', row)?.value || '',
+      note: q('[data-lens-note]', row)?.value || '',
+    })).filter(row => Object.values(row).some(value => String(value || '').trim() !== ''));
+  };
+
+  const renderLensAngles = (editable = lensAngleState.editable) => {
+    if (!isOptical || !lensAngleRoot) return;
+    const addButton = q('[data-lens-angle-add]', drawer);
+    if (addButton) addButton.hidden = !editable;
+    if (!lensAngleState.materialId) {
+      lensAngleRoot.innerHTML = '<div class="mc-empty-inline">请先保存光学草稿，再维护芯片角度适配。</div>';
+      return;
+    }
+    const rows = lensAngleState.rows.length ? lensAngleState.rows : [emptyLensAngleRow()];
+    const disabled = editable ? '' : ' disabled';
+    const chipOptions = lensAngleState.chips.map(chip => `<option value="${chip.id}">${escapeHtml(lensChipLabel(chip))}</option>`).join('');
+    lensAngleRoot.innerHTML = `
+      <div class="mc-lens-angle-row mc-lens-angle-row--head">
+        <span>芯片料号</span><span>适配芯片/关键词</span><span>名义角度</span><span>实际角度*</span><span>角度显示</span><span>LES/备注</span><span>说明</span><span></span>
+      </div>
+      ${rows.map((row, index) => `
+        <div class="mc-lens-angle-row" data-lens-angle-row data-index="${index}">
+          <select data-lens-chip${disabled}>
+            <option value="">按关键词/通用</option>
+            ${chipOptions}
+          </select>
+          <input data-lens-chip-keyword value="${escapeHtml(row.chip_keyword || '')}" placeholder="如 CXA1512 / 19mm"${disabled}>
+          <input data-lens-nominal-angle type="number" min="0" max="180" step="0.1" value="${escapeHtml(row.lens_beam_angle_deg || '')}" placeholder="24"${disabled}>
+          <input data-lens-actual-angle type="number" min="0" max="180" step="0.1" value="${escapeHtml(row.actual_beam_angle_deg || '')}" placeholder="28"${disabled}>
+          <input data-lens-angle-label value="${escapeHtml(row.beam_angle_label || '')}" placeholder="24° / narrow"${disabled}>
+          <input data-lens-les value="${escapeHtml(row.les_text || '')}" placeholder="LES 14.8mm"${disabled}>
+          <input data-lens-note value="${escapeHtml(row.note || '')}" placeholder="按实测或供应商资料"${disabled}>
+          <button class="mc-icon-button" type="button" data-lens-angle-remove title="删除" ${editable ? '' : 'disabled'}>×</button>
+        </div>
+      `).join('')}`;
+    qa('[data-lens-chip]', lensAngleRoot).forEach((select, index) => {
+      const value = rows[index]?.chip_material_id || '';
+      if (value) select.value = String(value);
+    });
+  };
+
+  const loadLensAngles = async materialId => {
+    if (!isOptical || !lensAngleRoot) return;
+    lensAngleState = { materialId: Number(materialId || 0), rows: [], chips: [], editable: false };
+    if (!materialId) {
+      renderLensAngles(false);
+      return;
+    }
+    try {
+      const payload = await request(`${window.MC_BASE_URL}/api/v1/lens-angle-compatibility.php?material_id=${encodeURIComponent(materialId)}`);
+      lensAngleState.materialId = Number(payload.data?.material?.id || materialId);
+      lensAngleState.rows = payload.data?.rows || [];
+      lensAngleState.chips = payload.data?.chips || [];
+      lensAngleState.editable = Boolean(payload.data?.editable);
+      renderLensAngles(false);
+    } catch (error) {
+      lensAngleRoot.innerHTML = `<div class="mc-empty-inline">${escapeHtml(error.message)}</div>`;
+    }
+  };
+
+  const setLensReadonly = readonly => {
+    if (!isOptical || !lensAngleRoot) return;
+    lensAngleState.rows = collectLensRows();
+    lensAngleState.editable = !readonly && Boolean(lensAngleState.materialId);
+    renderLensAngles(lensAngleState.editable);
+  };
+
+  const saveLensAngles = async materialId => {
+    if (!isOptical || !materialId || !lensAngleRoot) return;
+    const body = new FormData();
+    body.set('csrf_token', window.MC_CSRF || '');
+    body.set('action', 'save');
+    body.set('material_id', materialId);
+    body.set('rows_json', JSON.stringify(collectLensRows()));
+    await request(`${window.MC_BASE_URL}/api/v1/lens-angle-compatibility.php`, { method: 'POST', body });
+  };
+
   const setValue = (name, value) => {
     const control = form.elements.namedItem(name);
     if (control) control.value = value == null ? '' : String(value);
@@ -235,6 +345,7 @@
     const revisionButton = q('[data-category-revision]', drawer);
     if (revisionButton) revisionButton.hidden = !active?.id || status !== 'official';
     q('[data-category-reference]', drawer).hidden = !active?.id;
+    setLensReadonly(readonly);
   };
 
   const fetchSource = sourceRecordId => request(
@@ -281,6 +392,7 @@
       fillBase(current);
       const materialId = Number(mapped?.id || (record?.read_only ? 0 : record?.id) || 0);
       await loadFields(materialId, sourceDetail?.defaults?.fields || {});
+      await loadLensAngles(materialId);
       const status = mapped?.status || (record?.read_only ? '' : record?.raw_status || '');
       const editable = !record || record.read_only || status === 'draft';
       setReadonly(!editable, status, Boolean(sourceDetail?.can_approve || canApprove) && Boolean(sourceDetail || active?.id));
@@ -316,6 +428,15 @@
   const save = async mode => {
     const error = q('[data-category-editor-error]', drawer);
     if (mode !== 'approve' && !form.reportValidity()) return;
+    if (isOptical && mode === 'draft') {
+      const invalidLensRow = collectLensRows().find(row => !String(row.actual_beam_angle_deg || '').trim());
+      if (invalidLensRow) {
+        error.textContent = '芯片角度适配表每一行都必须填写实际角度。';
+        error.hidden = false;
+        switchTab('lens_angle');
+        return;
+      }
+    }
     error.hidden = true;
     q('[data-category-editor-state]', drawer).textContent = '正在保存…';
     const buttons = qa('[data-category-save],[data-category-submit],[data-category-approve]', drawer);
@@ -333,6 +454,10 @@
         body.set('action', mode === 'submit' ? 'submit' : 'approve');
         body.set('material_id', active?.id || form.elements.id.value);
         result = await postMaterial(body);
+      }
+      if (isOptical && mode === 'draft') {
+        const materialId = Number(result.data?.id || result.data?.material?.id || active?.id || form.elements.id.value || 0);
+        if (materialId) await saveLensAngles(materialId);
       }
       dirty = false;
       q('[data-category-editor-state]', drawer).textContent = '已保存';
@@ -388,6 +513,32 @@
   }, true);
 
   form.addEventListener('input', () => {
+    dirty = true;
+    q('[data-category-editor-state]', drawer).textContent = '有未保存修改';
+  });
+  q('[data-lens-angle-add]', drawer)?.addEventListener('click', () => {
+    lensAngleState.rows = collectLensRows();
+    lensAngleState.rows.push(emptyLensAngleRow());
+    renderLensAngles(lensAngleState.editable);
+    dirty = true;
+    q('[data-category-editor-state]', drawer).textContent = '有未保存修改';
+  });
+  lensAngleRoot?.addEventListener('click', event => {
+    const remove = event.target.closest('[data-lens-angle-remove]');
+    if (!remove || !lensAngleState.editable) return;
+    const row = remove.closest('[data-lens-angle-row]');
+    const index = Number(row?.dataset.index || -1);
+    lensAngleState.rows = collectLensRows();
+    if (index >= 0) lensAngleState.rows.splice(index, 1);
+    renderLensAngles(lensAngleState.editable);
+    dirty = true;
+    q('[data-category-editor-state]', drawer).textContent = '有未保存修改';
+  });
+  lensAngleRoot?.addEventListener('input', () => {
+    dirty = true;
+    q('[data-category-editor-state]', drawer).textContent = '有未保存修改';
+  });
+  lensAngleRoot?.addEventListener('change', () => {
     dirty = true;
     q('[data-category-editor-state]', drawer).textContent = '有未保存修改';
   });

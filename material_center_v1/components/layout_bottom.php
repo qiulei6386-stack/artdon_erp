@@ -21,7 +21,7 @@ if($mcCategoryDrawer){
 <div class="mc-drawer mc-category-editor-drawer" id="category-editor-drawer" data-drawer data-category-editor data-category-code="<?=mc_h($mcCategoryDrawer['code'])?>" data-category-id="<?=intval($mcCategoryDrawer['id'])?>" data-category-title="<?=mc_h($mcCategoryDrawer['title'])?>">
  <div class="mc-drawer__header"><div><strong data-category-editor-title><?=mc_h($mcCategoryDrawer['title'])?>资料</strong><span data-category-editor-subtitle>新建、查看和编辑真实物料字段</span></div><button class="mc-icon-button" type="button" data-close-layer>×</button></div>
  <div class="mc-drawer__body mc-category-editor-body">
-  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><?php if($mcCategoryDrawer['code']==='chip'):?><button type="button" data-category-tab="chip_specs">规格组合</button><button type="button" data-category-tab="chip_templates">模板管理</button><?php endif;?><button type="button" data-category-tab="source">原始来源</button></div>
+  <div class="mc-editor-tabs" role="tablist"><button type="button" class="is-active" data-category-tab="fields">整理字段</button><?php if($mcCategoryDrawer['code']==='chip'):?><button type="button" data-category-tab="chip_specs">规格组合</button><button type="button" data-category-tab="chip_templates">模板管理</button><?php endif;?><?php if($mcCategoryDrawer['code']==='optical'):?><button type="button" data-category-tab="lens_angle">芯片角度适配</button><?php endif;?><button type="button" data-category-tab="source">原始来源</button></div>
   <form data-category-editor-form>
   <input type="hidden" name="id"><input type="hidden" name="lock_version"><input type="hidden" name="category_id">
   <div data-category-pane="fields">
@@ -68,6 +68,15 @@ if($mcCategoryDrawer){
       <button class="mc-button mc-button--primary" type="submit">保存为新版本</button>
      </form>
     </div>
+   </section>
+  </div>
+  <?php endif;?>
+  <?php if($mcCategoryDrawer['code']==='optical'):?>
+  <div data-category-pane="lens_angle" hidden>
+   <section class="mc-form-section mc-lens-angle-pane">
+    <div class="mc-form-section__head"><div><strong>芯片 + 透镜角度适配表</strong><span>同一透镜配不同芯片时，记录名义角度与实际出光角度；产品适配优先读取这里</span></div><button class="mc-button mc-button--primary" type="button" data-lens-angle-add>新增适配行</button></div>
+    <div class="mc-lens-angle-guide">例如：科锐 CXA1512 + 35mm 黑光透镜，名义 24°，实际 28°。未指定芯片时，可用“适配芯片/关键词”记录通用关系。</div>
+    <div class="mc-lens-angle-table" data-lens-angle-list><div class="mc-empty-inline">请先保存光学草稿，再维护芯片角度适配。</div></div>
    </section>
   </div>
   <?php endif;?>

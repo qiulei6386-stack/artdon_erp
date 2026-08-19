@@ -1732,7 +1732,8 @@ final class AdaptationService
             optical.optical_type, optical.compatible_chip optical_compatible_chip,
             optical.compatible_les optical_compatible_les,optical.diameter_mm optical_diameter_mm,
             optical.height_mm optical_height_mm,optical.beam_angle_min optical_beam_angle_min,
-            optical.beam_angle_max optical_beam_angle_max,optical.material_text optical_material_text,
+            optical.beam_angle_max optical_beam_angle_max,optical.beam_angle_options optical_beam_angle_options,
+            optical.material_text optical_material_text,
             optical.mounting_structure optical_mounting_structure,
             accessory.accessory_type,accessory.diameter_mm accessory_diameter_mm,
             accessory.thickness_mm accessory_thickness_mm,accessory.interface_type accessory_interface_type,
@@ -1798,7 +1799,13 @@ final class AdaptationService
         if ($category === 'power_supply' && !$rule && $profile) {
             $rule = $this->powerRuleFromTechnicalProfile($profile);
         }
+        $selectedChip = $category === 'optical' ? $this->selectedChipForProduct((int) $group['product_id']) : null;
         foreach ($rows as &$row) {
+            if ($selectedChip) {
+                $row['selected_chip_material_id'] = $selectedChip['id'];
+                $row['selected_chip_identity'] = $selectedChip['identity'];
+                $row['selected_chip_label'] = $selectedChip['label'];
+            }
             $match = $this->candidateMatch($row, $group, $rule);
             $row += $match;
             $row['key_specs'] = $this->keySpecs($row, $category);
@@ -2609,6 +2616,95 @@ final class AdaptationService
         ];
     }
 
+    private function selectedChipForProduct(int $productId): ?array
+    {
+        if (!$productId || !$this->tableExists('mc_adaptation_options')) return null;
+        $stmt = $this->db->prepare("SELECT m.id,m.material_code,m.name,m.brand,m.model,chip.pad_text
+            FROM mc_adaptation_groups g
+            JOIN mc_adaptation_options o ON o.group_id=g.id AND o.status<>'disabled'
+            JOIN mc_materials m ON m.id=o.material_id AND m.deleted_at IS NULL
+            JOIN mc_material_categories c ON c.id=m.category_id AND c.code='chip'
+            LEFT JOIN mc_material_chip chip ON chip.material_id=m.id
+            WHERE g.product_id=? AND COALESCE(g.is_enabled,1)=1
+              AND (g.material_category_code='chip' OR g.business_type='chip')
+            ORDER BY o.is_default DESC,o.id DESC
+            LIMIT 1");
+        $stmt->execute([$productId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+        $identity = mb_strtolower(trim(implode(' ', array_filter([
+            $row['material_code'] ?? '',
+            $row['brand'] ?? '',
+            $row['model'] ?? '',
+            $row['name'] ?? '',
+            $row['pad_text'] ?? '',
+        ]))));
+        return [
+            'id' => (int) $row['id'],
+            'identity' => $identity,
+            'label' => trim(implode(' · ', array_filter([$row['material_code'] ?? '', $row['brand'] ?? '', $row['model'] ?? '', $row['name'] ?? '']))),
+        ];
+    }
+
+    private function opticalBeamEvidence(array $material): array
+    {
+        $fallbackMin = $material['optical_beam_angle_min'] ?? null;
+        $fallbackMax = $material['optical_beam_angle_max'] ?? null;
+        $lensId = (int) ($material['id'] ?? 0);
+        if (!$lensId || !$this->tableExists('mc_lens_chip_angle_compatibilities')) {
+            return ['min' => $fallbackMin, 'max' => $fallbackMax, 'label' => '透镜通用角度范围'];
+        }
+
+        $selectedChipId = (int) ($material['selected_chip_material_id'] ?? 0);
+        $selectedIdentity = (string) ($material['selected_chip_identity'] ?? '');
+        $rows = $this->lensAngleRowsForSelectedChip($lensId, $selectedChipId, $selectedIdentity);
+        if ($rows) {
+            $angles = array_map(static fn(array $row): float => (float) $row['actual_beam_angle_deg'], $rows);
+            $labels = array_values(array_unique(array_filter(array_map(static fn(array $row): string => trim((string) ($row['beam_angle_label'] ?: $row['actual_beam_angle_deg'].'°')), $rows))));
+            $label = '按芯片适配表'.(!empty($material['selected_chip_label']) ? '（'.$material['selected_chip_label'].'）' : '');
+            if ($labels) $label .= '：'.implode('/', array_slice($labels, 0, 6));
+            return ['min' => min($angles), 'max' => max($angles), 'label' => $label];
+        }
+
+        if ($selectedChipId && $this->lensHasAngleRows($lensId)) {
+            return ['min' => null, 'max' => null, 'label' => '', 'missing' => '透镜已维护芯片角度适配，但未覆盖当前芯片'];
+        }
+
+        return ['min' => $fallbackMin, 'max' => $fallbackMax, 'label' => '透镜通用角度范围'];
+    }
+
+    private function lensAngleRowsForSelectedChip(int $lensId, int $chipId, string $chipIdentity): array
+    {
+        if ($chipId) {
+            $stmt = $this->db->prepare("SELECT * FROM mc_lens_chip_angle_compatibilities WHERE lens_material_id=? AND status='active' AND chip_material_id=? ORDER BY sort_order,id");
+            $stmt->execute([$lensId, $chipId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) return $rows;
+        }
+
+        $stmt = $this->db->prepare("SELECT * FROM mc_lens_chip_angle_compatibilities WHERE lens_material_id=? AND status='active' ORDER BY sort_order,id");
+        $stmt->execute([$lensId]);
+        $generic = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $keyword = mb_strtolower(trim((string) ($row['chip_keyword'] ?? '')));
+            if ($keyword === '' && !$row['chip_material_id']) {
+                $generic[] = $row;
+                continue;
+            }
+            if ($keyword !== '' && $chipIdentity !== '' && str_contains($chipIdentity, $keyword)) {
+                $generic[] = $row;
+            }
+        }
+        return $generic;
+    }
+
+    private function lensHasAngleRows(int $lensId): bool
+    {
+        $stmt = $this->db->prepare("SELECT 1 FROM mc_lens_chip_angle_compatibilities WHERE lens_material_id=? AND status='active' LIMIT 1");
+        $stmt->execute([$lensId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     private function componentCandidateMatch(array $material, array $group, array $rules): array
     {
         $type = (string) ($group['business_type'] ?? '');
@@ -2662,12 +2758,15 @@ final class AdaptationService
             if ($direction === 'max' && $number > $expected) $mismatches[] = $label.$this->number($number).$unit.'，超过上限 '.$this->number($expected).$unit;
         }
         if (array_key_exists('beam_min_deg', $rules) || array_key_exists('beam_max_deg', $rules)) {
-            $actualMin = $material['optical_beam_angle_min'] ?? null;
-            $actualMax = $material['optical_beam_angle_max'] ?? null;
-            if ($actualMin === null && $actualMax === null) {
+            $beamEvidence = $this->opticalBeamEvidence($material);
+            $actualMin = $beamEvidence['min'] ?? null;
+            $actualMax = $beamEvidence['max'] ?? null;
+            if (!empty($beamEvidence['missing'])) {
+                $missing[] = $beamEvidence['missing'];
+            } elseif ($actualMin === null && $actualMax === null) {
                 $missing[] = '光束角未确认';
             } elseif (!$this->rangeOverlaps($rules['beam_min_deg'] ?? null, $rules['beam_max_deg'] ?? null, $actualMin, $actualMax)) {
-                $mismatches[] = '光束角范围不匹配';
+                $mismatches[] = '光束角范围不匹配'.(!empty($beamEvidence['label']) ? '（'.$beamEvidence['label'].'）' : '');
             }
         }
         $textRules = [
@@ -2814,10 +2913,18 @@ final class AdaptationService
             ]));
         }
         if ($category === 'optical') {
+            $angleText = trim((string) ($row['optical_beam_angle_options'] ?? ''));
+            if ($angleText !== '') {
+                $angleText = '角度 '.$angleText;
+            } else {
+                $angleRange = $this->numberRange($row['optical_beam_angle_min'] ?? null, $row['optical_beam_angle_max'] ?? null, '°');
+                $angleText = $angleRange ? '角度 '.$angleRange : null;
+            }
             return implode(' · ', array_filter([
                 $row['optical_type'] ?? null,
                 $row['optical_diameter_mm'] !== null ? 'Φ'.$this->number((float) $row['optical_diameter_mm']).'mm' : null,
                 $row['optical_height_mm'] !== null ? '高/厚 '.$this->number((float) $row['optical_height_mm']).'mm' : null,
+                $angleText,
                 $row['optical_compatible_les'] ?? null,
                 $row['optical_mounting_structure'] ?? null,
             ]));

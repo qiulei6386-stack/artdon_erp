@@ -48,6 +48,7 @@
 
 /* Category material drawers share the power editor's real save workflow. */
 .mc-category-editor-drawer{width:min(620px,calc(100vw - 24px))}
+.mc-category-editor-drawer[data-category-code="optical"]{width:min(980px,calc(100vw - 24px))}
 .mc-category-editor-body{padding:0 0 18px}
 .mc-category-editor-drawer .mc-form-section{margin:14px}
 .mc-category-editor-drawer .mc-field input,.mc-category-editor-drawer .mc-field select{height:38px}
@@ -69,6 +70,7 @@
 .mc-source-parse-log{display:grid;gap:4px;margin-top:12px;padding:10px 12px;border-radius:8px;background:#fff}
 .mc-source-parse-log>div{font-size:11px;color:#64748b;overflow-wrap:anywhere}
 .mc-empty-inline{grid-column:1/-1;padding:18px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);text-align:center}
+.mc-lens-angle-pane{min-height:100%}.mc-lens-angle-guide{margin:10px 0;padding:10px 12px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;color:#475569;font-size:10px;line-height:1.5}.mc-lens-angle-table{overflow:auto;border:1px solid var(--border);border-radius:8px;background:#fff}.mc-lens-angle-row{min-width:1060px;display:grid;grid-template-columns:210px 150px 84px 84px 112px 120px minmax(160px,1fr) 40px;align-items:center;gap:7px;padding:8px;border-bottom:1px solid #edf1f5;font-size:10px}.mc-lens-angle-row:last-child{border-bottom:0}.mc-lens-angle-row--head{position:sticky;top:0;z-index:1;background:#f8fafc;color:var(--muted);font-weight:700}.mc-lens-angle-row input,.mc-lens-angle-row select{min-width:0;width:100%;height:30px;border:1px solid var(--border);border-radius:6px;padding:0 7px;background:#fff;color:var(--text);font:inherit}.mc-lens-angle-row input:disabled,.mc-lens-angle-row select:disabled{background:#f8fafc;color:#64748b}.mc-lens-angle-row .mc-icon-button{width:30px;height:30px;border-radius:6px}.mc-lens-angle-row .mc-icon-button:disabled{opacity:.45;cursor:not-allowed}
 
 /* Product adaptation: one stable three-column business workbench. */
 .mc-page--adaptation-v2{display:flex;flex-direction:column;overflow:hidden;padding:12px 14px 14px}
