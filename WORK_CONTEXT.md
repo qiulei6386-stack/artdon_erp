@@ -2976,4 +2976,4 @@
 - 范围：只补电源抽屉入口和事件；普通物料、分类抽屉、来源整理、电源草稿保存、提交确认、确认转正式流程保持不变。
 - 回归保护：`material_center_v1/tests/material_revision_draft_contract.php` 增加电源修订草稿按钮与 JS 调用契约。
 - 检查：本地执行 `git diff --check` 通过；本机缺少 `php` 与 `node`，PHP/JS 语法及契约测试待服务器同步后复检。
-- 部署：本条记录会随本次提交推送 GitHub，并同步到服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终提交号和三方一致性以本次交付说明为准。
+- 部署：功能提交为 `33bd9f6e754f77bc58896412804e5d17c4adbe91`，本条上下文记录会紧随其后推送 GitHub，并同步到服务器 `/www/wwwroot/Artdon/artdon_erp/`；最终三方一致性以本次交付说明为准。
