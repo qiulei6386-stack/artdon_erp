@@ -76,7 +76,7 @@ final class PowerEditorService
     public function detail(int $materialId, MaterialCenterUserContext $user): array
     {
         $stmt = $this->db->prepare(
-            "SELECT m.id,m.material_code,m.category_id,m.name,m.brand,m.model,m.unit,m.status,m.source,
+            "SELECT m.id,m.material_code,m.category_id,m.name,m.brand,m.model,m.unit,m.status AS material_status,m.source,
                     m.is_official,m.updated_at,md.spec_summary,md.supplier_text,md.remark,md.lock_version,
                     (SELECT MIN(sm.source_record_id) FROM mc_source_mappings sm WHERE sm.material_id=m.id) source_record_id,
                     p.*,b.name AS power_band_name
@@ -95,6 +95,8 @@ final class PowerEditorService
         if (!$user->isSuperAdmin && !$this->canEditSensitive($user)) {
             $row['purchase_price'] = null;
         }
+        $row['power_status'] = $row['status'] ?? null;
+        $row['status'] = $row['material_status'] ?? $row['status'] ?? '';
         $row['currents'] = $this->currents($materialId);
         $row['dimming_modes'] = $this->dimming($materialId);
         $row['editable'] = $row['status'] === 'draft';
@@ -489,7 +491,7 @@ final class PowerEditorService
     {
         $marks = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $this->db->prepare(
-            "SELECT m.id AS target_material_id,m.material_code,m.name,m.status,p.*,
+            "SELECT m.id AS target_material_id,m.material_code,m.name,m.status AS material_status,p.*,
                     (SELECT COUNT(*) FROM mc_power_supply_current_options c WHERE c.material_id=m.id) current_count,
                     (SELECT COUNT(*) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_count
              FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id

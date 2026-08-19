@@ -101,9 +101,14 @@ try {
     }
     $master = new MaterialMasterService($db);
     $master->transition($materialIds[0], 'submit', $context->id);
+    $submittedDetail = $service->detail($materialIds[0], $context);
+    if (($submittedDetail['status'] ?? '') !== 'pending_review' || ($submittedDetail['power_status'] ?? '') !== 'pending_review') {
+        throw new RuntimeException('power submit did not keep material and power statuses aligned');
+    }
     $master->transition($materialIds[0], 'approve', $context->id);
     $official = $db->prepare(
-        'SELECT status,is_official,allow_bom,allow_quote FROM mc_materials WHERE id=?'
+        'SELECT m.status,m.is_official,m.allow_bom,m.allow_quote,p.status AS power_status
+         FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.id=?'
     );
     $official->execute([$materialIds[0]]);
     $official = $official->fetch(PDO::FETCH_ASSOC);
@@ -112,6 +117,7 @@ try {
         || (int)($official['is_official'] ?? 0) !== 1
         || (int)($official['allow_bom'] ?? 0) !== 1
         || (int)($official['allow_quote'] ?? 0) !== 1
+        || ($official['power_status'] ?? '') !== 'official'
     ) {
         throw new RuntimeException('power approval did not enable the official material flags');
     }

@@ -3,7 +3,7 @@ require_once __DIR__.'/bootstrap.php';$dashboard=(new \Artdon\MaterialCenter\Ser
 ?>
 <section class="mc-page"><div class="mc-page-header"><div><h1>物料中心工作台</h1><p>今天需要处理的物料任务和数据变化。</p></div><button class="mc-button mc-button--primary" data-open-modal="new-modal"><?=mc_icon('plus',16)?> 新建</button></div>
 <div class="mc-dashboard-grid"><section class="mc-panel"><div class="mc-panel__header"><div><strong>待处理工作</strong><span>按优先级排序</span></div><a href="<?=mc_h(mc_url('material/power.php'))?>">查看全部</a></div><div class="mc-task-list">
-<a href="<?=mc_h(mc_url('material/power.php?status=pending_review'))?>"><span class="mc-task-dot is-warning"></span><div><strong><?=intval($dashboard['power_pending'])?> 条电源记录待确认</strong><span>草稿、待审或缺少功率档/质保</span></div><em>实时</em></a>
+<a href="<?=mc_h(mc_url('material/power.php?status=pending_review'))?>"><span class="mc-task-dot is-warning"></span><div><strong><?=intval($dashboard['power_pending'])?> 条电源记录待确认</strong><span>仅统计草稿和待审核；正式物料缺资料不阻断转正式</span></div><em>实时</em></a>
 <a href="<?=mc_h(mc_url('material/chip.php?status=pending_review'))?>"><span class="mc-task-dot is-info"></span><div><strong><?=intval($dashboard['chip_pending'])?> 条芯片资料待补齐</strong><span>草稿、待审或缺少显指/色温</span></div><em>实时</em></a>
 <a href="<?=mc_h(mc_url('adaptation_v2/index.php'))?>"><span class="mc-task-dot is-danger"></span><div><strong><?=intval($dashboard['conflicts'])?> 个产品适配存在冲突</strong><span>最近 30 天真实适配结果</span></div><em>30天</em></a>
 <a href="<?=mc_h(mc_url('supplier/index.php'))?>"><span class="mc-task-dot is-neutral"></span><div><strong><?=intval($dashboard['price_changes'])?> 条供应商价格变化</strong><span>最近 7 天价格历史</span></div><em>本周</em></a></div></section>

@@ -2960,3 +2960,11 @@
 - 数量：审核通过写回 `quote_orders.qty` 时不再把默认不计数量的虚拟费用项计入 PCS，避免 “Discount 1 项” 把订单数量悄悄加 1。
 - 前端：`quotation.php` 的审核预览里 Discount 行允许负单价显示，审核底部合计数量也按真实产品数量统计，不计默认不出货的虚拟费用项。
 - 回归保护：`tests/quote_virtual_items_contract.php` 增加审核接口保留虚拟折扣负数、审核数量排除虚拟项、审核入口补整单金额列、审核弹窗允许负折扣价的契约检查。
+
+## 2026-08-19：电源物料待确认状态清理
+
+- 问题：电源主物料 `mc_materials.status` 与电源规格表 `mc_power_supply_specs.status` 历史不同步，导致已经正式或待审核的电源在详情里可能被规格表的 `draft` 覆盖，看起来仍是“待确认/草稿属性”，影响转正式判断和用户理解。
+- 修复：`PowerEditorService::detail()` 明确返回主物料状态为 `status`，同时保留 `power_status` 便于排查；`MaterialLifecycleService` 在提交、审核、停用、恢复、归档时同步电源规格表状态，防止新数据再次不同步。
+- 计数调整：物料中心主页“电源记录待确认”只统计草稿和待审核状态；正式物料缺少功率档/质保不再计入待确认，避免误以为正式物料仍阻断转正式。
+- 线上数据：备份后同步 18 条电源规格状态到主物料状态，备份文件 `/tmp/artdon_power_status_cleanup_backup_20260819_20260819_114422.json`；复查 `mc_materials` 与 `mc_power_supply_specs` 状态 mismatch=0。
+- 回归保护：`tests/power_editor_integration.php` 增加提交后主表/规格表均为 `pending_review`、审核后均为 `official` 的合同检查。
