@@ -336,20 +336,27 @@ final class SourceMaterialOrganizerService
                 $put('power.' . $key, $value, ['high' => 95, 'medium' => 70, 'low' => 40][$result['confidence'] ?? 'low'], (string) ($result['parse_rule'] ?? 'power_parser'));
             }
         } elseif ($category === 'chip') {
-            $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*W\b/iu', fn ($v) => $put('chip.rated_power_w', $v, 82, 'power_w'));
-            $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*mA\b/iu', fn ($v) => $put('chip.current_ma', $v, 88, 'current_ma'));
+            if (preg_match('/(\d+(?:\.\d+)?)\s*[-~至–—]\s*(\d+(?:\.\d+)?)\s*W\b/iu', $text, $match)) {
+                $put('chip.min_power_w', $match[1], 90, 'power_range_w');
+                $put('chip.max_power_w', $match[2], 90, 'power_range_w');
+            } else {
+                $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*W\b/iu', fn ($v) => $put('chip.max_power_w', $v, 82, 'power_w'));
+            }
+            if (preg_match('/(\d+(?:\.\d+)?)\s*[-~至–—]\s*(\d+(?:\.\d+)?)\s*mA\b/iu', $text, $match)) {
+                $put('chip.current_min_ma', $match[1], 92, 'current_range_ma');
+                $put('chip.current_max_ma', $match[2], 92, 'current_range_ma');
+            } else {
+                $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*mA\b/iu', fn ($v) => $put('chip.current_max_ma', $v, 88, 'current_ma'));
+            }
             $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*V\b/iu', fn ($v) => $put('chip.voltage_v', $v, 76, 'voltage_v'));
             $this->matchNumber($text, '/(?:CRI|Ra)\s*[≥>:：]?\s*(\d+(?:\.\d+)?)/iu', fn ($v) => $put('chip.cri', $v, 92, 'cri'));
             $this->matchNumber($text, '/R9\s*[≥>:：]?\s*(\d+(?:\.\d+)?)/iu', fn ($v) => $put('chip.r9', $v, 92, 'r9'));
             $this->matchNumber($text, '/SDCM\s*[≤<:]?\s*(\d+(?:\.\d+)?)/iu', fn ($v) => $put('chip.sdcm', $v, 92, 'sdcm'));
             $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*lm\/W/iu', fn ($v) => $put('chip.efficacy_lm_w', $v, 90, 'efficacy'));
             $this->matchNumber($text, '/(\d+(?:\.\d+)?)\s*lm\b/iu', fn ($v) => $put('chip.luminous_flux_lm', $v, 84, 'flux'));
-            if (preg_match('/(\d{4})\s*[-~至]\s*(\d{4})\s*K/iu', $text, $match)) {
-                $put('chip.cct_min_k', $match[1], 92, 'cct_range');
-                $put('chip.cct_max_k', $match[2], 92, 'cct_range');
-            } elseif (preg_match('/(?<!\d)(\d{4})\s*K/iu', $text, $match)) {
-                $put('chip.cct_min_k', $match[1], 86, 'cct_single');
-                $put('chip.cct_max_k', $match[1], 86, 'cct_single');
+            if (!preg_match('/\d{4}\s*[-~至–—]\s*\d{4}\s*K/iu', $text)
+                && preg_match('/(?<!\d)(\d{4})\s*K/iu', $text, $match)) {
+                $put('chip.cct_k', $match[1], 86, 'cct_single');
             }
             if (preg_match('/\b(2835|3030|3535|5050|COB|SMD)\b/iu', $text, $match)) {
                 $put('chip.package_type', strtoupper($match[1]), 80, 'package_token');

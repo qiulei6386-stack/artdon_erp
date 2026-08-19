@@ -40,7 +40,8 @@ final class AdaptationService
 
     private const CONDITION_FIELDS = [
         'product_power_w' => '产品功率',
-        'chip_current_ma' => '芯片允许电流',
+        'chip_current_min_ma' => '芯片最小电流',
+        'chip_current_max_ma' => '芯片最大电流',
         'chip_voltage_v' => '芯片电压',
         'space_length_mm' => '灯体内部长度',
         'space_width_mm' => '灯体内部宽度',
@@ -1723,8 +1724,10 @@ final class AdaptationService
             ps.output_current_ma,ps.output_current_min_ma,ps.output_current_max_ma,
             ps.output_voltage_min_v,ps.output_voltage_max_v,ps.length_mm,ps.width_mm,ps.height_mm,
             ps.supplier_warranty_years,ps.certification,pb.name power_band,
-            chip.package_type chip_package_type,chip.rated_power_w chip_rated_power_w,
+            chip.package_type chip_package_type,COALESCE(chip.min_power_w,chip.rated_power_w) chip_min_power_w,chip.rated_power_w chip_rated_power_w,
             chip.max_power_w chip_max_power_w,chip.voltage_v chip_voltage_v,
+            COALESCE(chip.current_min_ma,chip.current_ma) chip_current_min_ma,
+            COALESCE(chip.current_max_ma,chip.current_ma) chip_current_max_ma,
             chip.current_ma chip_current_ma,chip.pad_text chip_les_text,chip.size_text chip_size_text,
             optical.optical_type, optical.compatible_chip optical_compatible_chip,
             optical.compatible_les optical_compatible_les,optical.diameter_mm optical_diameter_mm,
@@ -2634,10 +2637,10 @@ final class AdaptationService
         }
 
         $numericRules = [
-            'power_min_w' => ['chip_rated_power_w', '芯片额定功率', 'min', 'W'],
-            'power_max_w' => ['chip_rated_power_w', '芯片额定功率', 'max', 'W'],
-            'current_min_ma' => ['chip_current_ma', '芯片电流', 'min', 'mA'],
-            'current_max_ma' => ['chip_current_ma', '芯片电流', 'max', 'mA'],
+            'power_min_w' => ['chip_min_power_w', '芯片最小功率', 'min', 'W'],
+            'power_max_w' => ['chip_max_power_w', '芯片最大功率', 'max', 'W'],
+            'current_min_ma' => ['chip_current_min_ma', '芯片最小电流', 'min', 'mA'],
+            'current_max_ma' => ['chip_current_max_ma', '芯片最大电流', 'max', 'mA'],
             'voltage_min_v' => ['chip_voltage_v', '芯片电压', 'min', 'V'],
             'voltage_max_v' => ['chip_voltage_v', '芯片电压', 'max', 'V'],
             'diameter_min_mm' => [$type === 'honeycomb' || $type === 'accessory' ? 'accessory_diameter_mm' : 'optical_diameter_mm', '直径', 'min', 'mm'],
@@ -2804,8 +2807,8 @@ final class AdaptationService
         if ($category === 'chip') {
             return implode(' · ', array_filter([
                 $row['chip_package_type'] ?? null,
-                $row['chip_rated_power_w'] !== null ? $this->number((float) $row['chip_rated_power_w']).'W' : null,
-                $row['chip_current_ma'] !== null ? $this->number((float) $row['chip_current_ma']).'mA' : null,
+                $this->numberRange($row['chip_min_power_w'] ?? null, $row['chip_max_power_w'] ?? null, 'W'),
+                $this->numberRange($row['chip_current_min_ma'] ?? null, $row['chip_current_max_ma'] ?? null, 'mA'),
                 $row['chip_voltage_v'] !== null ? $this->number((float) $row['chip_voltage_v']).'V' : null,
                 $row['chip_les_text'] ?? null,
             ]));
@@ -3088,6 +3091,20 @@ final class AdaptationService
     private function number(float $value): string
     {
         return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
+    }
+
+    private function numberRange(mixed $min, mixed $max, string $unit): ?string
+    {
+        $hasMin = $min !== null && $min !== '';
+        $hasMax = $max !== null && $max !== '';
+        if (!$hasMin && !$hasMax) return null;
+        if ($hasMin && $hasMax && abs((float) $min - (float) $max) < 0.0001) {
+            return $this->number((float) $min).$unit;
+        }
+        if ($hasMin && $hasMax) {
+            return $this->number((float) $min).'–'.$this->number((float) $max).$unit;
+        }
+        return $this->number((float) ($hasMin ? $min : $max)).$unit;
     }
 
     private function uuid(): string

@@ -720,6 +720,13 @@
     }
     return '—';
   };
+  const specRange = (row, minKeys, maxKeys, suffix = '') => {
+    const min = specValue(row, minKeys);
+    const max = specValue(row, maxKeys);
+    if (min === '—' && max === '—') return '—';
+    if (min !== '—' && max !== '—' && String(min) !== String(max)) return `${min}–${max}${suffix}`;
+    return `${min !== '—' ? min : max}${suffix}`;
+  };
   const categoryColumns = key => ({
     chip: ['芯片类型 / 封装', '功率', '电流', '电压', '色温', 'CRI', 'LES', '光通量'],
     power: ['功率', '电流', '电压', '输入电压', '长宽高', '安装方式', '调光', '质保'],
@@ -729,8 +736,8 @@
   const candidateCells = (row, key) => {
     if (key === 'chip') return [
       [row.chip_package_type, row.category_code].filter(Boolean).join(' / ') || '—',
-      specValue(row, ['chip_rated_power_w', 'chip_max_power_w', 'nominal_power_w', 'max_output_power_w'], 'W'),
-      specValue(row, ['chip_current_ma', 'output_current_ma'], 'mA'),
+      specRange(row, ['chip_min_power_w', 'chip_rated_power_w'], ['chip_max_power_w', 'max_output_power_w', 'nominal_power_w'], 'W'),
+      specRange(row, ['chip_current_min_ma', 'chip_current_ma'], ['chip_current_max_ma', 'chip_current_ma', 'output_current_ma'], 'mA'),
       specValue(row, ['chip_voltage_v', 'output_voltage_min_v'], 'V'),
       specValue(row, ['cct', 'color_temperature', 'colour_temperature']),
       specValue(row, ['cri', 'cri_text']),
