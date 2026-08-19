@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 本次：正式物料支持生成修订草稿
+
+- 用户询问“已经转正式的物料如何编辑”，本次采用修订草稿方案：正式物料不直接编辑，避免破坏已经引用到 BOM、报价、适配方案里的稳定资料。
+- `material_center_v1/app/Services/MaterialMasterService.php`：新增 `revisionDraft()`，从正式物料复制基础资料、分类字段、规格摘要、供应商、备注及芯片规格组合，生成一份可编辑草稿；旧正式物料保持不变。
+- 修订草稿会写入 `mc_materials.source='material_revision'`，并在 `mc_material_metadata` 记录 `source_type='revision'`、原正式物料 ID、来源表和来源快照，方便以后追溯“这份草稿从哪一个正式物料修订来”。
+- `material_center_v1/api/v1/material-master.php`：新增 `revision_draft` 动作，复用物料复制/新建权限；只有 `official` 状态允许生成修订草稿，非正式物料会提示“只有正式物料可以生成修订草稿”。
+- 界面入口：物料总列表、物料详情抽屉、分类编辑抽屉均新增“生成修订草稿”按钮；详情和分类抽屉里仅正式物料显示/可用。
+- 当前版本不做“审核后自动替换旧正式物料引用”；修订草稿审核通过后会成为新的正式物料，BOM/报价/适配引用迁移后续可按业务规则单独加。
+- 新增 `material_center_v1/tests/material_revision_draft_contract.php`，并扩展 `master_spec_contract_test.php`，防止修订草稿接口、按钮和追溯字段回归丢失。
+
 ## 本次：物料中心芯片属性改为功率/电流上下限
 
 - 用户要求物料中心“芯片规格”字段改为：最小功率、最大功率、最小电流、最大电流；不再显示额定功率、单一电流、色温最小/最大。

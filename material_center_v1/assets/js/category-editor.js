@@ -232,6 +232,8 @@
       : status === 'pending_review';
     q('[data-category-approve]', drawer).hidden = !canApprove || !canDirectApprove;
     q('[data-category-copy]', drawer).hidden = !active?.id;
+    const revisionButton = q('[data-category-revision]', drawer);
+    if (revisionButton) revisionButton.hidden = !active?.id || status !== 'official';
     q('[data-category-reference]', drawer).hidden = !active?.id;
   };
 
@@ -396,6 +398,11 @@
     if (confirm('确认字段无误并将物料转为正式？正式物料不能物理删除。')) save('approve');
   });
   q('[data-category-copy]', drawer)?.addEventListener('click', () => materialAction('copy').catch(error => notify('复制失败', error.message)));
+  q('[data-category-revision]', drawer)?.addEventListener('click', () => {
+    if (!active?.id) return;
+    if (!confirm('从当前正式物料生成一份可编辑修订草稿？旧正式物料不会被修改。')) return;
+    materialAction('revision_draft').catch(error => notify('生成失败', error.message));
+  });
   q('[data-category-reference]', drawer)?.addEventListener('click', async () => {
     try {
       const body = new FormData();
