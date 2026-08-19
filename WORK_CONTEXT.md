@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：产品适配 V2 已审批未发布配置可撤回修改
+
+- 用户反馈产品 `93.05517 SPECTRUM PENDANT LIGHT` 的配置版本显示 `draft-1 / 已审批`，但尚未发布，想知道如何修改；确认后要求改。
+- 设计：只有“已审批但未发布”的当前配置版本可执行“撤回审批”，撤回后回到草稿继续编辑；已经发布的版本仍不可直接修改，继续使用“生成下一版草稿”。
+- `material_center_v1/adaptation_v2/lib/foundation.php`：新增 `pa2_product_version_reopen_approval()`；校验审批权限、版本状态、未发布保护；撤回时把版本状态改回 `draft`，清空 `approved_by/approved_at`，同时写入 `approval_reopened` 版本事件和撤回前快照。
+- `material_center_v1/adaptation_v2/api/index.php`：新增 `product_version_reopen_approval` 接口，并加入 allowed actions。
+- `material_center_v1/adaptation_v2/index.php`：已审批未发布版本在顶部状态旁、底部发布按钮旁显示“撤回审批”按钮；点击有二次确认；发布版本不显示撤回入口。
+- 新增 `material_center_v1/tests/adaptation_v2_reopen_approval_contract.php`，锁定撤回审批入口、接口、权限、状态回草稿和已发布保护。
+- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，已把修改文件临时上传服务器 `/tmp` 执行 `php -l`，`foundation.php`、`api/index.php`、`index.php`、新增契约测试均无语法错误。
+- 部署：功能提交推送 GitHub 后同步正式服务器；服务器正式目录复检结果以本轮最终记录为准。
+
 ## 本次：物料中心新增“芯片 + 透镜角度适配表”
 
 - 用户提出透镜同一规格可能有多个角度，且同一透镜配不同芯片时实际出光角度不同，希望像芯片色温一样可维护自选，并“一步做成芯片 + 透镜角度适配表”。

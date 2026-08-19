@@ -1018,6 +1018,9 @@ include MC_ROOT . '/components/layout_top.php';
                     $wpHasLockedActiveDraft ||
                     (empty($wpConfig['active_draft_version_id']) && !empty($wpConfig['active_published_version_id']))
                 );
+                $wpCanReopenApproval = $canApproveProduct && $wpConfig && $wpVersionStatus === 'approved'
+                    && (int)($wpConfig['active_published_version_id'] ?? 0) !== (int)($wpVersion['id'] ?? 0)
+                    && empty($wpVersion['published_at']);
             ?>
             <section class="pa2-workspace">
                 <div class="pa2-product-hero">
@@ -1036,6 +1039,9 @@ include MC_ROOT . '/components/layout_top.php';
                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成配置草稿</button></form>
                         <?php else: ?>
                             <span class="pa2-pill pa2-pill--ok"><?=mc_h($wpVersionLabel)?></span>
+                            <?php if ($wpCanReopenApproval): ?>
+                                <form data-pa2-form data-confirm="确认撤回审批并回到草稿？撤回后可以继续修改配置，历史审批记录会保留在版本日志里。" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_reopen_approval'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button" type="submit">撤回审批</button></form>
+                            <?php endif; ?>
                             <?php if ($wpCanGenerateNextDraft): ?>
                                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=workspace_prepare'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">生成下一版草稿</button></form>
                             <?php endif; ?>
@@ -1358,6 +1364,9 @@ include MC_ROOT . '/components/layout_top.php';
                                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_reject'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button" type="submit">驳回</button></form>
                             <?php elseif ($wpVersionStatus === 'approved' && $canPublishProduct): ?>
                                 <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_publish'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button mc-button--primary" type="submit">发布版本</button></form>
+                                <?php if ($wpCanReopenApproval): ?>
+                                    <form data-pa2-form data-confirm="确认撤回审批并回到草稿？撤回后可以继续修改配置，历史审批记录会保留在版本日志里。" action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_version_reopen_approval'))?>"><input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>"><button class="mc-button" type="submit">撤回审批</button></form>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span class="pa2-muted">当前状态：<?=mc_h($wpVersionLabel)?></span>
                             <?php endif; ?>

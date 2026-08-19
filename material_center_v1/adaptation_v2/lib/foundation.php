@@ -3041,6 +3041,26 @@ function pa2_product_version_approve(int $productId, string $note = ''): array
     return ['product_id' => $productId, 'version_id' => $versionId, 'status' => 'approved'];
 }
 
+function pa2_product_version_reopen_approval(int $productId, string $note = ''): array
+{
+    pa2_require_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage'], '没有撤回产品配置审批的权限。');
+    $detail = pa2_workspace_detail($productId);
+    $config = (array)($detail['config'] ?? []);
+    $version = (array)($detail['version'] ?? []);
+    $configId = (int)($config['id'] ?? 0);
+    $versionId = (int)($version['id'] ?? 0);
+    if (!$configId || !$versionId) throw new RuntimeException('产品配置版本不存在。');
+    if ((string)($version['status'] ?? '') !== 'approved') throw new RuntimeException('只有已审批且未发布的版本可以撤回审批。');
+    if ((int)($config['active_published_version_id'] ?? 0) === $versionId || !empty($version['published_at'])) {
+        throw new RuntimeException('已发布版本不能撤回审批，请生成下一版草稿。');
+    }
+    pa2_store_version_snapshot($versionId, 'approval_reopened');
+    pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET status="draft",approved_by=NULL,approved_at=NULL WHERE id=?')->execute([$versionId]);
+    pa2_db()->prepare('UPDATE mc_pa2_product_configs SET active_draft_version_id=?,status="draft",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$versionId,pa2_current_user_id(),$configId]);
+    pa2_version_event($configId, $versionId, 'approval_reopened', 'approved', 'draft', $note);
+    return ['product_id' => $productId, 'version_id' => $versionId, 'status' => 'draft'];
+}
+
 function pa2_product_version_reject(int $productId, string $note = ''): array
 {
     pa2_require_any(['adaptation_v2.approve_product', 'material_center.adaptation.manage'], '没有驳回产品配置的权限。');
