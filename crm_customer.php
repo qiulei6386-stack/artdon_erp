@@ -2892,6 +2892,52 @@ function crm_lead_pool_create(array $input): array
 
 function crm_lead_pool_normalize_payload(array $input): array
 {
+    if ((!isset($input['contacts']) || !is_array($input['contacts'])) && !empty($input['contacts_json'])) {
+        $decodedContacts = json_decode((string)$input['contacts_json'], true);
+        if (is_array($decodedContacts)) $input['contacts'] = $decodedContacts;
+    }
+    $hasInlineContact = false;
+    foreach (['contact_name','contact_email','contact_phone','contact_whatsapp','contact_wechat','contact_position','contact_department'] as $contactKey) {
+        if (trim((string)($input[$contactKey] ?? '')) !== '') {
+            $hasInlineContact = true;
+            break;
+        }
+    }
+    if (empty($input['contacts']) && $hasInlineContact) {
+        $input['contacts'] = [[
+            'name' => $input['contact_name'] ?? '',
+            'email' => $input['contact_email'] ?? '',
+            'phone' => $input['contact_phone'] ?? '',
+            'whatsapp' => $input['contact_whatsapp'] ?? '',
+            'wechat' => $input['contact_wechat'] ?? '',
+            'position' => $input['contact_position'] ?? ($input['position'] ?? ''),
+            'department' => $input['contact_department'] ?? ($input['department'] ?? ''),
+            'is_primary' => 1,
+        ]];
+    }
+    $contacts = crm_customer_initial_contacts($input);
+    if ($contacts) {
+        $input['contacts'] = $contacts;
+        $input['contacts_json'] = json_encode($contacts, JSON_UNESCAPED_UNICODE);
+        $primaryContact = $contacts[0];
+        foreach ($contacts as $contact) {
+            if (!empty($contact['is_primary'])) {
+                $primaryContact = $contact;
+                break;
+            }
+        }
+        if (trim((string)($input['email'] ?? $input['raw_email'] ?? '')) === '' && trim((string)($primaryContact['email'] ?? '')) !== '') {
+            $input['email'] = trim((string)$primaryContact['email']);
+            $input['raw_email'] = trim((string)$primaryContact['email']);
+        }
+        if (trim((string)($input['phone'] ?? $input['raw_phone'] ?? '')) === '' && trim((string)($primaryContact['phone'] ?? '')) !== '') {
+            $input['phone'] = trim((string)$primaryContact['phone']);
+            $input['raw_phone'] = trim((string)$primaryContact['phone']);
+        }
+        if (trim((string)($input['whatsapp'] ?? '')) === '' && trim((string)($primaryContact['whatsapp'] ?? '')) !== '') {
+            $input['whatsapp'] = trim((string)$primaryContact['whatsapp']);
+        }
+    }
     if (!empty($input['addresses_json']) && empty($input['addresses'])) {
         $decodedAddresses = json_decode((string)$input['addresses_json'], true);
         if (is_array($decodedAddresses)) $input['addresses'] = $decodedAddresses;
@@ -3494,6 +3540,10 @@ function crm_customer_create_confirmed(array $input): array
     crm_customer_ensure_tables();
     crm_require('customer.create');
     $leadId = (int)($input['lead_id'] ?? 0);
+    $input = crm_lead_pool_normalize_payload($input);
+    if ($leadId) {
+        $input['entry_mode'] = 'force';
+    }
     if (empty($input['lead_id'])) {
         $matches = crm_customer_duplicate_matches($input);
         $hasHighRisk = false;

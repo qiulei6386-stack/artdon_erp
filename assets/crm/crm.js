@@ -7107,6 +7107,7 @@
       if (!this.leadCanProcess) return this.showCustomerError('你只有查看暂存池权限，不能编辑暂存客户。');
       if ((this.selectedLead.status || 'pending') !== 'pending') return this.showCustomerError('只有待确认的暂存客户可以编辑。');
       var payload = this.selectedLeadPayload();
+      this.entryContacts = (Array.isArray(payload.contacts) ? payload.contacts : []).map(this.normalizeContactForEditor.bind(this));
       var html = this.customerEntryEditor(payload).replace('<input type="hidden" name="customer_id" value="">', '<input type="hidden" name="customer_id" value=""><input type="hidden" name="lead_id" value="' + esc(this.selectedLead.id) + '">');
       this.openDialog('编辑暂存客户', html, 'lead_update', '这里只更新暂存池资料，不会加入正式客户库。');
       var submit = document.querySelector('[data-dialog-submit]');

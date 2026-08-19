@@ -3006,3 +3006,11 @@
 - 编辑器：模板编辑器右侧“继承预览”卡片也增加同样入口；继承自父模板的组编辑时默认以 `override` 覆盖到当前模板，移除时在当前模板写禁用覆盖。
 - 回归保护：`material_center_v1/tests/adaptation_v2_phase3_contract.php` 增加模板预览卡片直接编辑/移除入口、`edit_group` 自动回填表单的契约检查；同时修正旧断言不再固定要求 `data-phase="3"`，适配当前 V2 已推进到第 10 阶段。
 - 检查：本地 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation_v2/index.php` 通过，`php material_center_v1/tests/adaptation_v2_phase3_contract.php` 通过。
+
+## 2026-08-19：CRM 暂存池联系人保存与转正式修复
+
+- 问题：暂存池客户打开编辑时，联系人区域会被通用编辑器状态重置，导致联系人看似可填但保存刷新后丢失；暂存客户转正式时如果主客户字段没有邮箱/电话，只在联系人里有，也可能无法稳定保存联系人和主联系方式。
+- 修复：`assets/crm/crm.js` 在打开暂存池编辑弹窗前，先把当前暂存客户 payload 里的联系人写入 `entryContacts`，避免弹窗初始化后被空状态覆盖。
+- 后端兜底：`crm_customer.php` 的暂存池 payload 规范化现在会解析 `contacts_json`、内联联系人字段，并从主联系人回填客户主邮箱、电话和 WhatsApp；从暂存池确认创建正式客户时先规范化 payload，并按人工确认入口绕过普通同名重复拦截，保留客户代码重复校验。
+- 回归保护：`tests/crm_lead_pool_contact_persistence_contract.php` 增加暂存编辑器联系人初始化、后端联系人解析、主联系方式回填和暂存确认创建绕过普通重复拦截的契约检查。
+- 检查：本地 `git diff --check` 与 Node 语法检查通过；服务器 `/tmp` 临时副本 `php -l crm_customer.php` 通过，`php tests/crm_lead_pool_contact_persistence_contract.php` 通过。待提交推送并同步服务器后复检。

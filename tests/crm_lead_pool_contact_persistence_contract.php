@@ -16,6 +16,8 @@ $requiredJs = [
     "contact.name = CustomerModule.contactFallbackName(contact);",
     "if (!CustomerModule.contactHasMeaningfulData(item)) return;",
     "if (!contact || !CustomerModule.contactHasMeaningfulData(contact)) return;",
+    "this.entryContacts = (Array.isArray(payload.contacts) ? payload.contacts : []).map(this.normalizeContactForEditor.bind(this));",
+    "payload.contacts_json = JSON.stringify(contacts);",
 ];
 foreach ($requiredJs as $marker) {
     if (!str_contains($js, $marker)) {
@@ -31,6 +33,10 @@ $requiredPhp = [
     'if (!crm_contact_has_meaningful_data($contact)) continue;',
     '$input = crm_contact_normalize_minimum($input);',
     '联系人至少填写姓名、邮箱、电话、WhatsApp、微信或 LinkedIn 任一项。',
+    'if ((!isset($input[\'contacts\']) || !is_array($input[\'contacts\'])) && !empty($input[\'contacts_json\']))',
+    '$contacts = crm_customer_initial_contacts($input);',
+    '$input[\'raw_email\'] = trim((string)$primaryContact[\'email\']);',
+    '$input[\'entry_mode\'] = \'force\';',
 ];
 foreach ($requiredPhp as $marker) {
     if (!str_contains($php, $marker)) {
