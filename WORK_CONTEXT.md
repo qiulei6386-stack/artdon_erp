@@ -9,6 +9,8 @@
 - 界面入口：物料总列表、物料详情抽屉、分类编辑抽屉均新增“生成修订草稿”按钮；详情和分类抽屉里仅正式物料显示/可用。
 - 当前版本不做“审核后自动替换旧正式物料引用”；修订草稿审核通过后会成为新的正式物料，BOM/报价/适配引用迁移后续可按业务规则单独加。
 - 新增 `material_center_v1/tests/material_revision_draft_contract.php`，并扩展 `master_spec_contract_test.php`，防止修订草稿接口、按钮和追溯字段回归丢失。
+- 检查：本地 `git diff --check` 通过；Codex bundled Node 对 `materials.js`、`material-workspace-actions.js`、`category-editor.js` 语法解析通过；服务器候选目录与正式目录中相关 PHP 语法、`material_revision_draft_contract.php`、`master_spec_contract_test.php` 均通过。
+- 发布：功能提交 `1730d223e1bfb86dc4a1c03d16ce0cce00602237` 已推送 GitHub，并从 GitHub 快进同步到正式服务器；服务器未跟踪历史备份目录保持原样，不纳入 Git。最终三方版本以本节上下文补充提交后的 HEAD 为准。
 
 ## 本次：物料中心芯片属性改为功率/电流上下限
 
