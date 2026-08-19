@@ -47,7 +47,7 @@ foreach (['templates','template_detail','template_save','template_group_save','t
     pa3_assert_true(str_contains($api, $action), "API supports {$action}");
 }
 
-pa3_assert_true(str_contains($index, "data-phase=\"3\""), 'V2 index declares phase 3');
+pa3_assert_true(str_contains($index, 'data-adaptation-v2') && preg_match('/data-phase="\\d+"/', $index) === 1, 'V2 index declares the current adaptation phase');
 pa3_assert_true(str_contains($index, '模板中心') && str_contains($index, '模板编辑器') && str_contains($index, '继承预览'), 'Template pages are implemented, not placeholders');
 pa3_assert_true(str_contains($index, 'pa2-template-shell') && str_contains($index, 'pa2-template-item'), 'Template UI uses softer workstation layout');
 pa3_assert_true(str_contains($index, "\$view === 'templates'") && str_contains($index, "\$view === 'template_editor'"), 'Templates have dedicated routed views');

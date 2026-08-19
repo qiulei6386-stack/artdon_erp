@@ -2983,5 +2983,5 @@
 - 问题：产品适配 V2 的“模板中心”总览页和“继承预览”只展示配置组卡片，用户点击“芯片 / 光源、电源 / 驱动”等卡片没有反应；已加入模板的物料分类/配置组缺少直观的编辑、修改和移除入口。
 - 修复：`material_center_v1/adaptation_v2/index.php` 在模板中心总览页每个有效配置组卡片上增加“编辑 / 移除”；“编辑”会跳转到模板编辑器并通过 `edit_group` 自动回填配置组表单，“移除”调用现有 `template_group_save` 并写入 `disable` 继承动作，属于软移除，不硬删物料分类和历史模板数据。
 - 编辑器：模板编辑器右侧“继承预览”卡片也增加同样入口；继承自父模板的组编辑时默认以 `override` 覆盖到当前模板，移除时在当前模板写禁用覆盖。
-- 回归保护：`material_center_v1/tests/adaptation_v2_phase3_contract.php` 增加模板预览卡片直接编辑/移除入口、`edit_group` 自动回填表单的契约检查。
-- 检查：本地 `git diff --check` 通过；本机缺少 `php`，PHP 语法和 Phase 3 契约待服务器同步后复检。
+- 回归保护：`material_center_v1/tests/adaptation_v2_phase3_contract.php` 增加模板预览卡片直接编辑/移除入口、`edit_group` 自动回填表单的契约检查；同时修正旧断言不再固定要求 `data-phase="3"`，适配当前 V2 已推进到第 10 阶段。
+- 检查：本地 `git diff --check` 通过；服务器 `php -l material_center_v1/adaptation_v2/index.php` 通过，`php material_center_v1/tests/adaptation_v2_phase3_contract.php` 通过。
