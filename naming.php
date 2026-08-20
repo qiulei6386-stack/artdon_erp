@@ -3444,17 +3444,62 @@ function initQuickFuzzySearch(){
     });
     return true;
   }
+  function currentResultNode(){
+    return document.querySelector('main.wrap > section.grid, main.wrap > section.table-wrap');
+  }
+  function restoreQuickSearchFocus(caret){
+    if(!inp) return;
+    inp.focus({preventScroll:true});
+    if(typeof inp.setSelectionRange === 'function'){
+      const pos = Math.max(0, Math.min(Number(caret || inp.value.length), inp.value.length));
+      try{ inp.setSelectionRange(pos, pos); }catch(e){}
+    }
+  }
+  function applyQuickSearchDocument(doc, url, caret){
+    let ok = true;
+    ok = replaceIfFound(doc, '.stats', 'outer') && ok;
+    ok = replaceIfFound(doc, '.folders', 'outer') && ok;
+    ok = replaceIfFound(doc, '.panel.viewbar', 'outer') && ok;
+    const oldResult = currentResultNode();
+    const newResult = doc.querySelector('main.wrap > section.grid, main.wrap > section.table-wrap');
+    if(oldResult && newResult) oldResult.replaceWith(newResult.cloneNode(true)); else ok = false;
+    ok = replaceIfFound(doc, '.pager-bottom', 'outer') && ok;
+    if(ok){
+      history.replaceState(null, '', url);
+      applyStaticWatermarks();
+      restoreQuickSearchFocus(caret);
+      setSearchState('已自动搜索','ok');
+    }
+    return ok;
+  }
   async function runQuickSearch(){
     if(composing) return;
     const url=buildSearchUrl();
     if(url===lastUrl) return;
     lastUrl=url;
     if(aborter) aborter.abort();
+    aborter = new AbortController();
+    const keepFocus = document.activeElement === inp;
+    const caret = keepFocus && typeof inp.selectionStart === 'number' ? inp.selectionStart : inp.value.length;
     setSearchState('正在搜索…','warn');
-    // HTML 局部替换在登录重定向、权限页或代理缓存出现时会静默失败，
-    // 输入框却仍显示“已自动搜索”。直接导航到完整查询地址，确保统计、
-    // 文件夹和型号列表使用同一次服务器查询，不再出现画面仍是全部 161 条。
-    window.location.assign(url);
+    try{
+      const res = await fetch(url, {
+        method:'GET',
+        headers:{'Accept':'text/html','X-Requested-With':'XMLHttpRequest'},
+        credentials:'same-origin',
+        cache:'no-store',
+        signal:aborter.signal
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const text = await res.text();
+      const doc = new DOMParser().parseFromString(text, 'text/html');
+      if(!doc.querySelector('#quickKw') || !applyQuickSearchDocument(doc, url, caret)){
+        throw new Error('页面片段不完整');
+      }
+    }catch(e){
+      if(e && e.name === 'AbortError') return;
+      setSearchState('自动搜索失败，按回车重试','bad');
+    }
   }
   function scheduleQuickSearch(delay){
     if(composing) return;

@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：命名系统搜索输入不再丢光标
+
+- 用户反馈命名系统搜索框输入文字后光标会飞走；截图 URL 带 `kw=LUMI`，属于搜索时页面整页刷新导致焦点丢失。
+- 根因：`naming.php` 的 `initQuickFuzzySearch()` 在自动搜索时直接执行 `window.location.assign(url)`，每次防抖触发都会整页跳转，搜索框焦点和光标位置被浏览器重置。
+- `naming.php`：快速搜索改为 fetch 当前查询页面 HTML，局部替换统计、分类文件夹、视图栏、型号列表和分页；输入框本身不再被替换。
+- `naming.php`：局部刷新成功后使用 `history.replaceState()` 同步地址栏，调用 `restoreQuickSearchFocus()` 恢复搜索框焦点与原光标位置；如果片段异常则只提示“自动搜索失败，按回车重试”，不再在输入过程中跳走。
+- 新增 `tests/naming_quick_search_focus_contract.php`，锁定快速搜索不得再使用 `window.location.assign(url)`，必须局部刷新并恢复焦点/光标。
+- 检查：本地 `git diff --check` 通过；本机无 `php` 命令，已将 `naming.php` 与新增契约临时复制到服务器 `/tmp/codex_naming_focus_check`，执行 `php -l naming.php` 和 `php tests/naming_quick_search_focus_contract.php` 均通过；正式服务器同步与复检状态以本节最终提交后的记录为准。
+
 ## 本次：产品适配 V2 已审批未发布配置可撤回修改
 
 - 用户反馈产品 `93.05517 SPECTRUM PENDANT LIGHT` 的配置版本显示 `draft-1 / 已审批`，但尚未发布，想知道如何修改；确认后要求改。
