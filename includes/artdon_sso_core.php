@@ -197,6 +197,7 @@ function artdon_quote_ensure_permissions(): void
         ['quote.delete', 'quote', 'delete', '报价系统删除', 'dangerous'],
         ['quote.export', 'quote', 'export', '报价 PDF / Excel 导出', 'high'],
         ['quote.approve', 'quote', 'approve', '报价审核', 'dangerous'],
+        ['quote.unapprove', 'quote', 'unapprove', '报价退审', 'dangerous'],
         ['quote.order_convert', 'quote', 'order_convert', '报价转订单', 'dangerous'],
         ['quote.naming_select', 'quote', 'naming_select', '报价选择命名型号', 'medium'],
         ['quote.admin', 'quote', 'admin', '报价系统管理员', 'dangerous'],
@@ -396,6 +397,7 @@ function artdon_sso_can_feature(string $module, string $feature, ?array $user = 
             'export_pdf_excel' => 'export',
             'quote_review_view' => 'approve',
             'quote_approve' => 'approve',
+            'quote_unapprove' => 'unapprove',
             'order_convert' => 'order_convert',
             'product_view' => 'view',
             'customer_view' => 'view',
@@ -411,6 +413,9 @@ function artdon_sso_can_feature(string $module, string $feature, ?array $user = 
             'log_manage' => 'admin',
             'naming_select' => 'naming_select',
         ];
+        if ($feature === 'quote_review_view') {
+            return artdon_sso_can('quote', 'approve', $user) || artdon_sso_can('quote', 'unapprove', $user) || artdon_sso_can('quote', 'admin', $user);
+        }
         return artdon_sso_can('quote', $featureMap[$feature] ?? $feature, $user);
     }
     if ($module === 'bom') {
@@ -781,8 +786,9 @@ function artdon_perm_effective_feature_map(int $userId, string $module, ?array $
         'can_access' => $view,
         'quote_create' => $perm('quote.create'),
         'quote_edit' => $edit,
-        'quote_review_view' => $perm('quote.approve') || $admin,
+        'quote_review_view' => $perm('quote.approve') || $perm('quote.unapprove') || $admin,
         'quote_approve' => $perm('quote.approve'),
+        'quote_unapprove' => $perm('quote.unapprove'),
         'quote_delete' => $perm('quote.delete'),
         'history_view' => $view,
         'customer_view' => $view,

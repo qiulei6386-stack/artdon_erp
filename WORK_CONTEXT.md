@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 本次：报价中心审核与退审权限拆分
+
+- 用户要求报价中心“审核”和“退审/反审”权限分开；此前统一权限中心只有 `quote.approve`，旧报价接口里 `unapprove_quote` 也复用 `quote_approve`。
+- `includes/artdon_sso_core.php`：新增中央权限 `quote.unapprove`，统一权限中心显示为“报价退审”；报价功能映射新增 `quote_unapprove`，同时拥有审核或退审权限都可查看审核列表。
+- `quote_api.php`：旧报价权限表 `quote_user_permissions` 自动补 `quote_unapprove` 字段；权限保存、默认权限、中央权限同步、权限定义接口均加入退审项。
+- `quote_api.php`：`approve_quote / reject_quote` 继续要求 `quote_approve`；`unapprove_quote` 改为要求新的 `quote_unapprove`，后端错误提示也改为“没有退审权限”。
+- `quotation.php`：审核列表、分页审核列表和审核弹窗统一按钮逻辑；待审核/已驳回只在有审核权限时显示“审核/驳回”，已审核只在有退审权限时显示“反审”，只有查看权限则只显示日志。
+- `permissions.php`：权限动作名称补充 `unapprove => 退审`，避免统一权限中心显示英文动作。
+- 新增 `tests/quote_unapprove_permission_contract.php`，锁定中央权限、旧权限字段、接口映射、服务端 guard、前端按钮权限分离，防止退审再次误用审核权限。
+- 检查与部署状态以本节对应提交后的记录为准。
+
 ## 本次：命名系统搜索输入不再丢光标
 
 - 用户反馈命名系统搜索框输入文字后光标会飞走；截图 URL 带 `kw=LUMI`，属于搜索时页面整页刷新导致焦点丢失。

@@ -250,6 +250,7 @@ function permission_action_name(string $action): string
         'auto_send' => '自动发送',
         'amount_view' => '查看金额',
         'approve' => '审批',
+        'unapprove' => '退审',
         'reject' => '驳回',
         'disable' => '禁用',
         'enable' => '启用',

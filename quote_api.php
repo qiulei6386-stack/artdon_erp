@@ -1724,7 +1724,7 @@ function qperm_is_admin($u){
   return str_contains($role,'boss') || str_contains($role,'admin') || str_contains($role,'owner') || str_contains($role,'管理员') || str_contains($role,'老板');
 }
 function qperm_default_perms($u){
-  $keys=['can_access','quote_create','quote_edit','quote_review_view','quote_approve','quote_delete','history_view','customer_view','customer_manage','product_view','product_manage','material_view','doc_settings_manage','rate_manage','settings_manage','permission_manage','export_pdf_excel','order_convert','log_view','log_manage'];
+  $keys=['can_access','quote_create','quote_edit','quote_review_view','quote_approve','quote_unapprove','quote_delete','history_view','customer_view','customer_manage','product_view','product_manage','material_view','doc_settings_manage','rate_manage','settings_manage','permission_manage','export_pdf_excel','order_convert','log_view','log_manage'];
   $all=[]; foreach($keys as $k) $all[$k]=0;
   if(qperm_is_admin($u)){ foreach($keys as $k) $all[$k]=1; return $all; }
   foreach(['can_access','quote_create','quote_edit','history_view','customer_view','customer_manage','product_view','material_view','doc_settings_manage','export_pdf_excel'] as $k) $all[$k]=1;
@@ -1743,6 +1743,7 @@ function ensure_quote_permission_schema($pdo){
     quote_edit TINYINT(1) NOT NULL DEFAULT 1,
     quote_review_view TINYINT(1) NOT NULL DEFAULT 0,
     quote_approve TINYINT(1) NOT NULL DEFAULT 0,
+    quote_unapprove TINYINT(1) NOT NULL DEFAULT 0,
     quote_delete TINYINT(1) NOT NULL DEFAULT 0,
     history_view TINYINT(1) NOT NULL DEFAULT 1,
     customer_view TINYINT(1) NOT NULL DEFAULT 1,
@@ -1763,7 +1764,7 @@ function ensure_quote_permission_schema($pdo){
     UNIQUE KEY uq_quote_perm_user (user_table,user_id,username),
     KEY idx_quote_perm_username (username)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  foreach(['doc_settings_manage'=>"TINYINT(1) NOT NULL DEFAULT 1",'rate_manage'=>"TINYINT(1) NOT NULL DEFAULT 0",'quote_review_view'=>"TINYINT(1) NOT NULL DEFAULT 0",'quote_approve'=>"TINYINT(1) NOT NULL DEFAULT 0"] as $qc=>$qd){ ensure_col($pdo,'quote_user_permissions',$qc,'`'.$qc.'` '.$qd); }
+  foreach(['doc_settings_manage'=>"TINYINT(1) NOT NULL DEFAULT 1",'rate_manage'=>"TINYINT(1) NOT NULL DEFAULT 0",'quote_review_view'=>"TINYINT(1) NOT NULL DEFAULT 0",'quote_approve'=>"TINYINT(1) NOT NULL DEFAULT 0",'quote_unapprove'=>"TINYINT(1) NOT NULL DEFAULT 0"] as $qc=>$qd){ ensure_col($pdo,'quote_user_permissions',$qc,'`'.$qc.'` '.$qd); }
   ensure_table($pdo,"CREATE TABLE IF NOT EXISTS quote_permission_hidden_accounts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_table VARCHAR(80) NOT NULL DEFAULT '',
@@ -1815,11 +1816,13 @@ function qperm_effective($pdo,$u){
       if(!array_key_exists('rate_manage',$fm)) $p['rate_manage']=!empty($p['settings_manage'])?1:0;
       if(!array_key_exists('quote_review_view',$fm)) $p['quote_review_view']=!empty($p['settings_manage'])||!empty($p['permission_manage'])?1:0;
       if(!array_key_exists('quote_approve',$fm)) $p['quote_approve']=!empty($p['settings_manage'])||!empty($p['permission_manage'])?1:0;
+      if(!array_key_exists('quote_unapprove',$fm)) $p['quote_unapprove']=!empty($p['settings_manage'])||!empty($p['permission_manage'])?1:0;
     }
   }catch(Throwable $e){}
   // 银行/抬头/条款属于报价文档配置：有报价修改权或系统设置权时，必须允许保存，避免前端能编辑但接口被挡。
   if(!empty($p['quote_edit']) || !empty($p['settings_manage'])) $p['doc_settings_manage']=1;
   if(!empty($p['settings_manage'])) $p['rate_manage']=1;
+  if(!empty($p['quote_approve']) || !empty($p['quote_unapprove']) || !empty($p['settings_manage']) || !empty($p['permission_manage'])) $p['quote_review_view']=1;
   return $p;
 }
 function qperm_public_user($pdo,$u){ $p=qperm_effective($pdo,$u); return ['user_table'=>$u['user_table']??'','user_id'=>(string)($u['user_id']??''),'username'=>$u['username']??'','display_name'=>$u['display_name']??($u['username']??''),'role'=>$u['role']??'','is_admin'=>qperm_is_admin($u)?1:0,'permissions'=>$p]; }
@@ -1864,7 +1867,7 @@ function qperm_action_perm($action){
     'price_policy_export_excel'=>'product_view','price_policy_import_excel'=>'product_manage',
     'price_policy_save'=>'product_manage','price_policy_batch_save'=>'product_manage','price_stock_adjust'=>'product_manage','price_policy_delete'=>'product_manage','price_policy_sync_naming_products'=>'product_manage','price_policy_sync_bom_costs'=>'product_manage','price_tier_save'=>'product_manage','price_tier_delete'=>'product_manage','price_policy_level_save'=>'product_manage','price_policy_level_delete'=>'product_manage','price_policy_option_save'=>'product_manage','price_policy_option_delete'=>'product_manage','price_policy_option_toggle'=>'product_manage','price_policy_option_sort'=>'product_manage','price_policy_options_init_defaults'=>'product_manage',
     'commission_rule_save'=>'product_manage','commission_rule_batch_save'=>'product_manage','commission_rule_delete'=>'product_manage','commission_rule_toggle'=>'product_manage','commission_rule_import'=>'product_manage','commission_option_save'=>'product_manage','commission_option_delete'=>'product_manage','commission_option_toggle'=>'product_manage','commission_options_init_defaults'=>'product_manage','commission_order_save'=>'product_manage','commission_order_batch_save'=>'product_manage','commission_item_save'=>'product_manage','commission_item_batch_save'=>'product_manage',
-    'save_quote'=>'quote_edit','set_quote_followup_status'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_approve','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage',
+    'save_quote'=>'quote_edit','set_quote_followup_status'=>'quote_edit','get_approved_quote_snapshot'=>'export_pdf_excel','push_order_crm_notice'=>'order_convert','list_pending_quotes'=>'quote_review_view','approve_quote'=>'quote_approve','reject_quote'=>'quote_approve','unapprove_quote'=>'quote_unapprove','delete_quote'=>'quote_delete','list_logs'=>'log_view','log_health'=>'log_view','delete_logs'=>'log_manage','log_event'=>'can_access','list_permission_users'=>'permission_manage','save_user_permission'=>'permission_manage','reset_user_permission'=>'permission_manage','delete_permission_user'=>'permission_manage','void_sales_order'=>'settings_manage','delete_test_order'=>'settings_manage',
     'quotation_summary_filters'=>'history_view','quotation_summary_overview'=>'history_view','quotation_summary_trend'=>'history_view','quotation_summary_pie'=>'history_view','quotation_summary_rank'=>'history_view','quotation_summary_list'=>'history_view','quotation_summary_export_excel'=>'history_view'
   ];
   return $map[$action]??'can_access';
@@ -1967,7 +1970,7 @@ function qperm_list_users($pdo){
 }
 function qperm_save_user_permission($pdo,$d,$actor){
   ensure_quote_permission_schema($pdo);
-  $keys=['can_access','quote_create','quote_edit','quote_review_view','quote_approve','quote_delete','history_view','customer_view','customer_manage','product_view','product_manage','material_view','doc_settings_manage','rate_manage','settings_manage','permission_manage','export_pdf_excel','order_convert','log_view','log_manage'];
+  $keys=['can_access','quote_create','quote_edit','quote_review_view','quote_approve','quote_unapprove','quote_delete','history_view','customer_view','customer_manage','product_view','product_manage','material_view','doc_settings_manage','rate_manage','settings_manage','permission_manage','export_pdf_excel','order_convert','log_view','log_manage'];
   $ut=(string)($d['user_table']??''); $uid=(string)($d['user_id']??''); $un=(string)($d['username']??''); if($un==='') fail('缺少账号');
   $vals=[]; foreach($keys as $k) $vals[$k]=!empty($d[$k])?1:0;
   $cols='user_table,user_id,username,display_name,role,'.implode(',',array_keys($vals)).',updated_by';
@@ -1986,7 +1989,7 @@ function qperm_save_user_permission($pdo,$d,$actor){
           'edit'=>(!empty($vals['quote_edit'])||!empty($vals['customer_manage'])||!empty($vals['product_manage']))?1:0,
           'delete'=>!empty($vals['quote_delete'])?1:0,
           'export'=>!empty($vals['export_pdf_excel'])?1:0,
-          'admin'=>(!empty($vals['quote_review_view'])||!empty($vals['quote_approve'])||!empty($vals['settings_manage'])||!empty($vals['permission_manage'])||!empty($vals['log_manage']))?1:0
+          'admin'=>(!empty($vals['quote_review_view'])||!empty($vals['quote_approve'])||!empty($vals['quote_unapprove'])||!empty($vals['settings_manage'])||!empty($vals['permission_manage'])||!empty($vals['log_manage']))?1:0
         );
         artdon_perm_write_module_row((int)$cu['id'],'quote',$caps,'inherit',array(),(string)($actor['username']??''));
         artdon_perm_write_feature_map((int)$cu['id'],'quote',$vals,(string)($actor['username']??''));
@@ -3415,8 +3418,14 @@ function quote_normalize_doc_status($v): string {
 function quote_can_approve(array $u, array $perms): bool {
   return qperm_is_admin($u) || !empty($perms['quote_approve']);
 }
+function quote_can_unapprove(array $u, array $perms): bool {
+  return qperm_is_admin($u) || !empty($perms['quote_unapprove']);
+}
 function quote_require_approver(array $u, array $perms): void {
   if(!quote_can_approve($u,$perms)) fail('当前账号没有审核权限：请到统一权限中心 → 报价系统 → 勾选“审核报价/驳回/改价”。');
+}
+function quote_require_unapprover(array $u, array $perms): void {
+  if(!quote_can_unapprove($u,$perms)) fail('当前账号没有退审权限：请到统一权限中心 → 报价系统 → 勾选“报价退审/反审”。');
 }
 function quote_review_moq_value($v): string {
   $s=trim((string)$v);
@@ -3802,7 +3811,7 @@ function quote_crm_review_user_ids(PDO $pdo, array $u, string $owner=''): array 
   $ids=[];
   if(table_exists($pdo,'quote_user_permissions')){
     try{
-      $rs=rows($pdo,"SELECT username FROM quote_user_permissions WHERE quote_review_view=1 OR quote_approve=1 OR settings_manage=1 OR permission_manage=1",[]);
+      $rs=rows($pdo,"SELECT username FROM quote_user_permissions WHERE quote_review_view=1 OR quote_approve=1 OR quote_unapprove=1 OR settings_manage=1 OR permission_manage=1",[]);
       $ids=array_merge($ids,quote_crm_user_ids_by_names($pdo,array_column($rs,'username')));
     }catch(Throwable $e){}
   }
@@ -4343,6 +4352,7 @@ try{
      'doc_settings_manage'=>['label'=>'报价资料设置：表头/银行/付款条款','group'=>'资料设置','level'=>'普通'],
      'quote_review_view'=>['label'=>'查看未审核列表','group'=>'报价审核','level'=>'敏感'],
      'quote_approve'=>['label'=>'审核报价/驳回/改价','group'=>'报价审核','level'=>'高危'],
+     'quote_unapprove'=>['label'=>'报价退审/反审','group'=>'报价审核','level'=>'高危'],
      'rate_manage'=>['label'=>'汇率设置','group'=>'系统管理','level'=>'高危']
    ];
    ok(['module'=>'quote','features'=>$defs]);
@@ -4737,7 +4747,7 @@ if($action==='init'){
    ok(['quote'=>quote_mutation_response_quote($afterReject),'approval_status'=>'rejected','reason_category'=>$cat,'reason_custom'=>$custom,'reason_detail'=>$detail,'note'=>$note]);
  }
  if($action==='unapprove_quote') {
-   quote_approval_schema($pdo); quote_require_approver($__quote_user,$__quote_perms);
+   quote_approval_schema($pdo); quote_require_unapprover($__quote_user,$__quote_perms);
    $d=input_json(); $id=(int)($d['id']??0); if($id<=0) fail('缺少报价ID');
    $q=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]); if(!$q) fail('报价不存在');
    $salesOwner=quote_sales_owner_from_quote($q,(string)($q['user_name']??($q['submitted_by']??'')));
