@@ -2038,6 +2038,38 @@ function pa2_first_numeric_spec(array $spec, array $keys): ?float
     return null;
 }
 
+function pa2_power_current_options(array $material, array $spec): array
+{
+    $raw = $material['current_options'] ?? $spec['current_options'] ?? $spec['current_options_ma'] ?? [];
+    $values = [];
+    if (is_array($raw)) {
+        foreach ($raw as $row) {
+            $value = is_array($row) ? ($row['current_ma'] ?? null) : $row;
+            if (is_numeric($value) && (float)$value > 0) $values[] = (float)$value;
+        }
+    } else {
+        foreach (preg_split('/[,，\\/\\s]+/u', (string)$raw) ?: [] as $value) {
+            if (is_numeric($value) && (float)$value > 0) $values[] = (float)$value;
+        }
+    }
+    $values = array_values(array_unique(array_map(static fn(float $value): string => (string)$value, $values)));
+    $values = array_map('floatval', $values);
+    sort($values, SORT_NUMERIC);
+    return $values;
+}
+
+function pa2_format_number(float $value): string
+{
+    return rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.');
+}
+
+function pa2_current_need_text(?float $min, ?float $max): string
+{
+    if ($min === null && $max === null) return '未设置';
+    if ($min === null || $max === null || abs((float)($min ?? $max) - (float)($max ?? $min)) < 0.001) return pa2_format_number((float)($max ?? $min)) . 'mA';
+    return pa2_format_number((float)$min) . '-' . pa2_format_number((float)$max) . 'mA';
+}
+
 function pa2_apply_text_rule(string $text, string $expectedText, string $label, string $fieldKey, string &$status, float &$score, array &$fields, array &$reasons, float $scoreLimit = 74): void
 {
     $expectedText = trim($expectedText);
@@ -2319,12 +2351,30 @@ function pa2_candidate_status_for_group(array $group, ?array $candidate, array $
         $productCurrentMin = $logic['current_min_ma'] ?? null;
         $currentMin = isset($spec['output_current_min_ma']) && $spec['output_current_min_ma'] !== null ? (float)$spec['output_current_min_ma'] : null;
         $currentMax = isset($spec['output_current_max_ma']) && $spec['output_current_max_ma'] !== null ? (float)$spec['output_current_max_ma'] : null;
-        if ($productCurrent !== null && $currentMin !== null && $currentMax !== null) {
-            if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax || ($productCurrentMin !== null && (float)$productCurrentMin < $currentMin)) {
-                $needText = $productCurrentMin !== null ? "{$productCurrentMin}-{$productCurrent}mA" : "{$productCurrent}mA";
-                return pa2_result('incompatible', 30, ["配置逻辑电流 {$needText} 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
+        if ($productCurrent !== null) {
+            $needMin = $productCurrentMin !== null ? (float)$productCurrentMin : (float)$productCurrent;
+            $needMax = (float)$productCurrent;
+            $needText = pa2_current_need_text($needMin, $needMax);
+            $currentOptions = pa2_power_current_options($material, $spec);
+            if ($currentOptions) {
+                $matched = false;
+                foreach ($currentOptions as $option) {
+                    if ($option >= $needMin && $option <= $needMax) {
+                        $matched = true;
+                        break;
+                    }
+                }
+                $optionText = implode('/', array_map(static fn(float $value): string => pa2_format_number($value), $currentOptions)) . 'mA';
+                if (!$matched) {
+                    return pa2_result('incompatible', 30, ["配置逻辑电流 {$needText} 不匹配电源拨码电流 {$optionText}。"], ['current_options_ma','current_ma'], $trace + ['failed' => 'current_options']);
+                }
+                $reasons[] = "输出电流档位符合配置逻辑（{$optionText}，需求 {$needText}）。";
+            } elseif ($currentMin !== null && $currentMax !== null) {
+                if ((float)$productCurrent < $currentMin || (float)$productCurrent > $currentMax || ($productCurrentMin !== null && (float)$productCurrentMin < $currentMin)) {
+                    return pa2_result('incompatible', 30, ["配置逻辑电流 {$needText} 不在电源输出 {$currentMin}-{$currentMax}mA 范围内。"], ['current_ma','output_current_range'], $trace + ['failed' => 'current_range']);
+                }
+                $reasons[] = "输出电流范围符合配置逻辑（{$currentMin}-{$currentMax}mA）。";
             }
-            $reasons[] = "输出电流范围符合配置逻辑（{$currentMin}-{$currentMax}mA）。";
         }
         $needVoltMin = $logic['voltage_min_v'] ?? null;
         $needVoltMax = $logic['voltage_max_v'] ?? null;

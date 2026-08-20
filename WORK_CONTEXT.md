@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 本次：电源可拨码多电流档位修复
+
+- 用户反馈电源 `PS-BOM-000667` 可拨码 `700 / 750 / 800 / 850mA`，但物料中心像只能按单一/范围电流处理，无法正确录入和适配。
+- 根因：电源编辑保存多电流档时未同步 `is_dip_switch`；正式电源生成修订草稿时只复制通用字段，没有复制电源规格表、拨码电流档和调光方式；产品适配判断只看 `output_current_min_ma/max_ma` 范围，没有优先使用真实可选档位。
+- `material_center_v1/app/Services/PowerEditorService.php`：保存多个电流档时自动把电源标记为可拨码，单档则取消可拨码标记。
+- `material_center_v1/app/Services/MaterialMasterService.php`：正式电源生成修订草稿或复制时，会同步复制 `mc_power_supply_specs`、`mc_power_supply_current_options`、`mc_power_supply_dimming_modes`，避免草稿丢失 700/750/800/850 这类档位。
+- `material_center_v1/app/Services/AdaptationService.php` 与 `material_center_v1/adaptation_v2/lib/foundation.php`：电源匹配优先按离散电流档判断，只有没有档位数据时才回退到最小/最大范围；不匹配时提示“产品要求”和“电源可选档位”。
+- 新增 `material_center_v1/tests/power_multi_current_contract.php`，锁定多电流保存、修订草稿复制和适配使用拨码档位，防止后续回归。
+
 ## 本次：报价中心审核与退审权限拆分
 
 - 用户要求报价中心“审核”和“退审/反审”权限分开；此前统一权限中心只有 `quote.approve`，旧报价接口里 `unapprove_quote` 也复用 `quote_approve`。

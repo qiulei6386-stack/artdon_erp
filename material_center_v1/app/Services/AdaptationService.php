@@ -1742,6 +1742,7 @@ final class AdaptationService
             connector.interface_type connector_interface_type,connector.installation_type connector_installation_type,
             connector.load_kg connector_load_kg,
             (SELECT GROUP_CONCAT(DISTINCT d.mode ORDER BY d.mode) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes,
+            (SELECT GROUP_CONCAT(DISTINCT o.current_ma ORDER BY o.current_ma) FROM mc_power_supply_current_options o WHERE o.material_id=m.id) current_options_ma,
             (SELECT GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR '、') FROM mc_supplier_materials sm JOIN mc_suppliers s ON s.id=sm.supplier_id AND s.deleted_at IS NULL WHERE sm.material_id=m.id AND sm.status='active') suppliers
             FROM mc_materials m
             JOIN mc_material_categories c ON c.id=m.category_id
@@ -2809,7 +2810,9 @@ final class AdaptationService
         $lampPowerMin = $rule['lamp_power_min_w'] ?? null;
         if ($lampPowerMin !== null && ($power['min_output_power_w'] === null || (float) $power['min_output_power_w'] > (float) $lampPowerMin)) $reasons[] = '电源最低输出功率高于产品要求的 '. $this->number((float) $lampPowerMin).'W';
         if ($lampPowerMax !== null && ($power['max_output_power_w'] === null || (float) $power['max_output_power_w'] < (float) $lampPowerMax)) $reasons[] = '电源最高功率低于产品要求的 '. $this->number((float) $lampPowerMax).'W';
-        if (!$this->rangeOverlaps($rule['output_current_min_ma'], $rule['output_current_max_ma'], $power['output_current_min_ma'], $power['output_current_max_ma'])) $reasons[] = '输出电流高于芯片允许值或范围不相交';
+        if (!$this->currentRequirementMatches($power, $rule)) {
+            $reasons[] = '输出电流高于芯片允许值或范围不相交：产品要求 '.$this->currentRequirementText($rule).'，电源可选 '.$this->currentOptionsText($power);
+        }
         if (!$this->rangeOverlaps($rule['output_voltage_min_v'], $rule['output_voltage_max_v'], $power['output_voltage_min_v'], $power['output_voltage_max_v'])) $reasons[] = '输出电压范围不匹配';
         foreach (['length' => '长度', 'width' => '宽度', 'height' => '高度'] as $key => $label) {
             $max = $rule['max_'.$key.'_mm'];
@@ -2828,6 +2831,65 @@ final class AdaptationService
         $available = array_filter(explode(',', (string) ($power['dimming_modes'] ?? '')));
         foreach ($required as $mode) if (!in_array($mode, $available, true)) $reasons[] = '调光方式不匹配：产品要求 '.$mode;
         return array_map(static fn(string $reason): string => $code.'：'.$reason, $reasons);
+    }
+
+    private function currentRequirementMatches(array $power, array $rule): bool
+    {
+        $needMin = $rule['output_current_min_ma'] ?? null;
+        $needMax = $rule['output_current_max_ma'] ?? null;
+        if ($needMin === null && $needMax === null) return true;
+        if ($needMin === null) $needMin = $needMax;
+        if ($needMax === null) $needMax = $needMin;
+        $needMin = (float) $needMin;
+        $needMax = (float) $needMax;
+        $options = $this->discreteCurrentOptions($power);
+        if ($options) {
+            foreach ($options as $option) {
+                if ($option >= $needMin && $option <= $needMax) return true;
+            }
+            return false;
+        }
+        return $this->rangeOverlaps($needMin, $needMax, $power['output_current_min_ma'] ?? null, $power['output_current_max_ma'] ?? null);
+    }
+
+    private function discreteCurrentOptions(array $power): array
+    {
+        $raw = $power['current_options_ma'] ?? $power['current_options'] ?? '';
+        $values = [];
+        if (is_array($raw)) {
+            foreach ($raw as $row) {
+                $value = is_array($row) ? ($row['current_ma'] ?? null) : $row;
+                if (is_numeric($value) && (float) $value > 0) $values[] = (float) $value;
+            }
+        } else {
+            foreach (preg_split('/[,，\\/\\s]+/u', (string) $raw) ?: [] as $value) {
+                if (is_numeric($value) && (float) $value > 0) $values[] = (float) $value;
+            }
+        }
+        $values = array_values(array_unique(array_map(static fn(float $value): string => (string) $value, $values)));
+        $values = array_map('floatval', $values);
+        sort($values, SORT_NUMERIC);
+        return $values;
+    }
+
+    private function currentRequirementText(array $rule): string
+    {
+        $min = $rule['output_current_min_ma'] ?? null;
+        $max = $rule['output_current_max_ma'] ?? null;
+        if ($min === null && $max === null) return '未设置';
+        if ($min === null || $max === null || (float) $min === (float) $max) return $this->number((float) ($max ?? $min)).'mA';
+        return $this->number((float) $min).'-'.$this->number((float) $max).'mA';
+    }
+
+    private function currentOptionsText(array $power): string
+    {
+        $options = $this->discreteCurrentOptions($power);
+        if ($options) return implode('/', array_map(fn(float $value): string => $this->number($value), $options)).'mA';
+        $min = $power['output_current_min_ma'] ?? null;
+        $max = $power['output_current_max_ma'] ?? null;
+        if ($min === null && $max === null) return '未确认';
+        if ($min === null || $max === null || (float) $min === (float) $max) return $this->number((float) ($max ?? $min)).'mA';
+        return $this->number((float) $min).'-'.$this->number((float) $max).'mA';
     }
 
     private function productPowerRule(int $legacyProductId): ?array
@@ -2852,7 +2914,7 @@ final class AdaptationService
         $powerIds = array_values(array_unique(array_map('intval', array_column(array_filter($options, static fn(array $row): bool => $row['group_type'] === 'power'), 'material_id'))));
         if (!$powerIds) return [];
         $marks = implode(',', array_fill(0, count($powerIds), '?'));
-        $stmt = $this->db->prepare("SELECT m.id,m.material_code,p.*,(SELECT GROUP_CONCAT(d.mode ORDER BY d.mode) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.id IN($marks)");
+        $stmt = $this->db->prepare("SELECT m.id,m.material_code,p.*,(SELECT GROUP_CONCAT(d.mode ORDER BY d.mode) FROM mc_power_supply_dimming_modes d WHERE d.material_id=m.id) dimming_modes,(SELECT GROUP_CONCAT(o.current_ma ORDER BY o.current_ma) FROM mc_power_supply_current_options o WHERE o.material_id=m.id) current_options_ma FROM mc_materials m JOIN mc_power_supply_specs p ON p.material_id=m.id WHERE m.id IN($marks)");
         $stmt->execute($powerIds);
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $power) {

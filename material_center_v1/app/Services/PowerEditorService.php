@@ -627,11 +627,12 @@ final class PowerEditorService
             $insert->execute([$materialId, $value, $value === $currents['default'] ? 1 : 0]);
         }
         $this->db->prepare(
-            'UPDATE mc_power_supply_specs SET output_current_ma=?,output_current_min_ma=?,output_current_max_ma=? WHERE material_id=?'
+            'UPDATE mc_power_supply_specs SET output_current_ma=?,output_current_min_ma=?,output_current_max_ma=?,is_dip_switch=? WHERE material_id=?'
         )->execute([
             $currents['default'],
             $currents['values'] ? min($currents['values']) : null,
             $currents['values'] ? max($currents['values']) : null,
+            count($currents['values']) > 1 ? 1 : 0,
             $materialId,
         ]);
     }
