@@ -1,6 +1,6 @@
 <?php
 /**
- * Artdon Office - 命名中心 V3.0.8.32
+ * Artdon Office - 命名中心 V3.0.8.36
  * 文件：naming.php
  *
  * 本版目标：接入官网实时同步、统一权限中心，同时保留布局、搜索、弹窗、日志与 PLM/BOM 兼容。
@@ -42,7 +42,7 @@ if (is_file($__artdon_sso_core)) {
     }
 }
 
-const NAMING_VERSION = '3.0.8.35';
+const NAMING_VERSION = '3.0.8.36';
 const NM_UPLOAD_LIMIT = 512000; // 500KB
 const NM_UPLOAD_DIR = __DIR__ . '/uploads/naming';
 const NM_BACKUP_DIR = __DIR__ . '/uploads/naming_backups';
@@ -1717,7 +1717,7 @@ function nm_website_rule_by_prefix(PDO $pdo, string $prefix): array {
     return is_array($r) ? $r : array();
 }
 function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode): array {
-    $txt = nm_any($row, array('web_dimensions','dimensions','dimension','dimension_text','size_text','size','spec','规格','尺寸'));
+    $txt = nm_any($row, array('web_dimensions','dimensions','dimension','dimension_text','size_name','size_text','size','spec','规格','尺寸'));
     $out = array('dimension_type'=>'','dim_opening'=>'','dim_opening_length'=>'','dim_opening_width'=>'','dim_outer_d'=>'','dim_length'=>'','dim_width'=>'','dim_height'=>'');
     $out['dim_opening'] = nm_website_num(nm_any($row, array('dim_opening','opening','opening_size','opening_mm','cutout','cutout_size','cutout_mm','cut_out','cut_out_size','hole','hole_size','hole_diameter','aperture','aperture_size','aperture_mm','cut_size','开孔','孔径')));
     $out['dim_outer_d'] = nm_website_num(nm_any($row, array('dim_outer_d','diameter','diameter_mm','outer_d','outer_diameter','outer_dia','outer_d_mm','dia','d','直径','外径')));
@@ -1725,6 +1725,16 @@ function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode):
     $out['dim_width'] = nm_website_num(nm_any($row, array('dim_width','width','width_mm','w','宽','宽度')));
     $out['dim_height'] = nm_website_num(nm_any($row, array('dim_height','height','height_mm','h','高','高度')));
     if ($txt !== '') {
+        // 官网线性灯具可使用“482/957*13*21mm”表示多个可选长度。
+        // 单值尺寸字段只能保存一个长度，因此保存最大长度，同时在 web_dimensions
+        // 中保留完整原文。官网旧解析曾把 482/957 错误拼成 2957，这里以原文纠正。
+        if (preg_match('/((?:[0-9]+(?:\.[0-9]+)?\s*\/\s*)+[0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $multi)) {
+            $lengths = preg_split('/\s*\/\s*/', (string)$multi[1]) ?: array();
+            $lengths = array_values(array_filter(array_map('floatval', $lengths), static function($v){ return $v > 0; }));
+            if ($lengths) $out['dim_length'] = rtrim(rtrim(number_format(max($lengths), 6, '.', ''), '0'), '.');
+            $out['dim_width'] = (string)$multi[2];
+            if (!empty($multi[3])) $out['dim_height'] = (string)$multi[3];
+        }
         if ($out['dim_opening'] === '' && preg_match('/(?:开孔|孔径|cut\s*out|cutout|hole|aperture|opening)[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_opening']=(string)$m[1];
         if ($out['dim_outer_d'] === '' && preg_match('/(?:直径|外径|diameter|outer|dia|[ΦØ])[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_outer_d']=(string)$m[1];
         if ($out['dim_height'] === '' && preg_match('/(?:高|高度|height|\bH)[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_height']=(string)$m[1];
@@ -1769,7 +1779,7 @@ function nm_website_sync_normalize(PDO $pdo, array $raw, int $idx = 0): array {
     $sourceId = nm_any($raw, array('source_id','size_id','variant_id','sku_id','id','product_id'));
     if ($sourceId === '') $sourceId = $slug !== '' ? $slug.'#'.$model : $model;
     $dims = nm_website_parse_dimensions($raw, $rule, $sizeCode);
-    $dimText = nm_any($raw, array('web_dimensions','dimensions','dimension','dimension_text','size_text','size','spec','规格','尺寸'));
+    $dimText = nm_any($raw, array('web_dimensions','dimensions','dimension','dimension_text','size_name','size_text','size','spec','规格','尺寸'));
     $updated = nm_website_datetime(nm_any($raw, array('updated_at','modified_at','source_updated_at','publish_updated_at','last_modified')));
     $payload = $raw;
     return array_merge(array(
@@ -1850,11 +1860,47 @@ function nm_website_sync_upsert(PDO $pdo, array $item, string $runId): string {
     $model = nm_s($item['model_no'] ?? '', 80); if ($model==='') return 'skip';
     $sourceId = nm_s($item['source_id'] ?? $model, 120);
     $hash = sha1(json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    $old = null;
     $activeCond = nm_active_model_condition_sql($cols);
-    $st = $pdo->prepare("SELECT * FROM naming_models WHERE ".$activeCond." AND ((source_system='artdon_website' AND source_id=?) OR model_no=?) ORDER BY source_system='artdon_website' DESC LIMIT 1");
-    $st->execute(array($sourceId,$model));
-    $old = $st->fetch();
+    $sourceRow = null;
+    $modelRow = null;
+    $st = $pdo->prepare("SELECT * FROM naming_models WHERE ".$activeCond." AND source_system='artdon_website' AND source_id=? ORDER BY id DESC LIMIT 1");
+    $st->execute(array($sourceId));
+    $sourceRow = $st->fetch() ?: null;
+    $st = $pdo->prepare("SELECT * FROM naming_models WHERE ".$activeCond." AND model_no=? ORDER BY source_system='artdon_website' DESC,id DESC LIMIT 1");
+    $st->execute(array($model));
+    $modelRow = $st->fetch() ?: null;
+
+    // 官网同一产品改过型号时，source_id 可能指向旧型号，而新型号已由同事在
+    // 命名中心建立。官网为唯一命名来源：保留新型号现有记录作为主记录，官网
+    // 字段覆盖；旧官网记录只标记为合并历史，不物理删除，也不阻断整批同步。
+    if ($sourceRow && $modelRow && (int)$sourceRow['id'] !== (int)$modelRow['id']) {
+        $archivePayload = json_encode(array(
+            'reason'=>'website_model_conflict_merge',
+            'run_id'=>$runId,
+            'merged_into_id'=>(int)$modelRow['id'],
+            'incoming_model_no'=>$model,
+            'source_row'=>$sourceRow,
+            'target_row_before'=>$modelRow,
+        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        try {
+            $pdo->prepare('INSERT INTO naming_website_deleted_archive(model_id,model_no,source_id,payload_json) VALUES(?,?,?,?)')
+                ->execute(array((int)$sourceRow['id'],nm_s($sourceRow['model_no']??''),nm_s($sourceRow['source_id']??''),$archivePayload));
+        } catch (Throwable $e) {}
+
+        $mergedSourceId = nm_s('merged:'.$sourceId.':'.(int)$sourceRow['id'], 120);
+        $sets = array("source_system='artdon_website_merged'",'source_id=?','website_sync_managed=0','website_deleted=1','website_deleted_at=NOW()','website_sync_run_id=?',"updated_by='官网冲突合并'",'updated_at=NOW()');
+        $pdo->prepare('UPDATE naming_models SET '.implode(',', $sets).' WHERE id=?')
+            ->execute(array($mergedSourceId,$runId,(int)$sourceRow['id']));
+        nm_log($pdo,'website.merge','model',(int)$modelRow['id'],$model,array(
+            'source_id'=>$sourceId,
+            'merged_from_id'=>(int)$sourceRow['id'],
+            'kept_id'=>(int)$modelRow['id'],
+            'policy'=>'website_priority',
+        ));
+        $old = $modelRow;
+    } else {
+        $old = $sourceRow ?: $modelRow;
+    }
     if (!$old) $old = nm_find_duplicate_model_row($pdo, $item);
     $common = $item;
     $common['source_hash']=$hash; $common['source_synced_at']=date('Y-m-d H:i:s'); $common['website_last_seen_at']=date('Y-m-d H:i:s'); $common['website_sync_run_id']=$runId; $common['website_sync_managed']=1; $common['website_deleted']=0; $common['website_deleted_at']=null; $common['updated_by']='官网实时同步';
@@ -1915,13 +1961,32 @@ function nm_website_sync_run(PDO $pdo, bool $force = false, string $mode = 'auto
         $items = nm_website_sync_collect($pdo, $source, $err); $fetched=count($items);
         if (!$items) throw new RuntimeException($err ?: '官网没有返回型号。');
         $seen=array();
-        foreach($items as $it){ $key=nm_s($it['source_id']??''); if($key==='') $key=nm_s($it['model_no']??''); $seen[$key]=1; $res=nm_website_sync_upsert($pdo,$it,$runId); if($res==='create')$created++; elseif($res==='update')$updated++; else $skipped++; }
+        $itemErrors = array();
+        foreach($items as $it){
+            $key=nm_s($it['source_id']??''); if($key==='') $key=nm_s($it['model_no']??'');
+            $seen[$key]=1;
+            try {
+                $res=nm_website_sync_upsert($pdo,$it,$runId);
+                if($res==='create')$created++; elseif($res==='update')$updated++; else $skipped++;
+            } catch(Throwable $itemError) {
+                $skipped++;
+                $itemModel = nm_s($it['model_no'] ?? $key);
+                $itemErrors[] = $itemModel.'：'.$itemError->getMessage();
+                nm_log($pdo,'website.item_error','model',0,$itemModel,array('source_id'=>$key,'run_id'=>$runId,'error'=>$itemError->getMessage()));
+            }
+        }
         $deleted = nm_website_sync_delete_missing($pdo,$seen,$runId);
         nm_repair_website_category_by_model($pdo);
         nm_repair_website_dimensions_by_model($pdo);
         nm_website_state_set($pdo,'last_success_at',date('Y-m-d H:i:s'));
         nm_website_state_set($pdo,'last_error','');
-        nm_website_state_set($pdo,'last_auto_error','');
+        if ($itemErrors) {
+            $status='warn'; $degraded=1;
+            $err='部分型号同步失败（'.count($itemErrors).' 条）：'.implode('；',array_slice($itemErrors,0,5));
+            nm_website_state_set($pdo,'last_auto_error',$err);
+        } else {
+            nm_website_state_set($pdo,'last_auto_error','');
+        }
         nm_website_state_set($pdo,'last_source',$source);
         nm_website_state_set($pdo,'last_count',(string)$fetched);
     } catch(Throwable $e) {
