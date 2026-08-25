@@ -1186,7 +1186,7 @@ function dn_list(array $in): array
         if ((int)$gid > 0) $groupIds[(int)$gid] = true;
     }
     foreach (array_keys($groupIds) as $gid) {
-        $g = dn_group_row($gid, $dispatchPersonIds);
+        $g = dn_group_row($gid, $dispatchPersonIds, $date);
         if ($g) $dispatch[] = $g;
     }
     $sorter = function ($a, $b): int {
@@ -1450,20 +1450,41 @@ function dn_group_method_label(array $group): string
     return ['multi' => '多派', 'plan' => '计派'][$type] ?? '多派';
 }
 
-function dn_group_display_due_at(array $group, array $children = []): string
+function dn_group_display_due_at(array $group, array $children = [], ?string $displayDate = null): string
 {
     if ((string)($group['group_type'] ?? '') === 'recurring') {
+        $rule = dn_group_rule($group);
+        $targetDate = $displayDate ?: '';
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) $targetDate = '';
+        if ($targetDate !== '' && dn_rule_due($rule, $targetDate)) {
+            $sameDateDue = [];
+            foreach ($children as $child) {
+                if ((string)($child['task_date'] ?? '') !== $targetDate) continue;
+                if (in_array((string)($child['status'] ?? ''), ['done','cancelled'], true)) continue;
+                $due = (string)($child['due_at'] ?? '');
+                if ($due === '' || substr($due, 0, 10) < $targetDate) $due = dn_recurring_due_at($group, $rule, $targetDate);
+                $sameDateDue[] = $due;
+            }
+            if ($sameDateDue) {
+                sort($sameDateDue, SORT_STRING);
+                return $sameDateDue[0];
+            }
+            return dn_recurring_due_at($group, $rule, $targetDate);
+        }
         $activeDue = [];
         foreach ($children as $child) {
             if (in_array((string)($child['status'] ?? ''), ['done','cancelled'], true)) continue;
             $due = (string)($child['due_at'] ?? '');
+            $childDate = (string)($child['task_date'] ?? '');
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $childDate) && ($due === '' || substr($due, 0, 10) < $childDate)) {
+                $due = dn_recurring_due_at($group, $rule, $childDate);
+            }
             if ($due !== '') $activeDue[] = $due;
         }
         if ($activeDue) {
             sort($activeDue, SORT_STRING);
             return $activeDue[0];
         }
-        $rule = dn_group_rule($group);
         $start = (string)($rule['start_date'] ?? ($group['task_date'] ?? ''));
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)) $start = date('Y-m-d');
         return dn_recurring_due_at($group, $rule, $start);
@@ -1471,7 +1492,7 @@ function dn_group_display_due_at(array $group, array $children = []): string
     return (string)($group['due_at'] ?? '');
 }
 
-function dn_group_row(int $gid, array $personIds = []): ?array
+function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = null): ?array
 {
     $pdo = dispatch_next_db();
     $st = $pdo->prepare("SELECT * FROM dispatch_next_groups WHERE id=? LIMIT 1");
@@ -1480,7 +1501,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     if (!$g) return null;
     // 组已经在列表查询中完成可见性和负责人校验；汇总必须读取全部成员，
     // 否则人员筛选会把 1/2 错算成 1/1，并漏掉已完成成员姓名。
-    $st = $pdo->prepare("SELECT t.id,t.status,t.priority,t.assigned_to,t.progress,t.due_at,t.is_read,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
+    $st = $pdo->prepare("SELECT t.id,t.title,t.project,t.status,t.priority,t.assigned_to,t.progress,t.task_date,t.due_at,t.is_read,t.updated_at,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
     $st->execute([$gid]);
     $children = $st->fetchAll();
     $done = 0;
@@ -1504,7 +1525,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
     $stepSt->execute([$gid]);
     $stepRow = $stepSt->fetch() ?: ['step_count' => 0, 'step_done_count' => 0];
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
-    $displayDueAt = dn_group_display_due_at($g, $children);
+    $displayDueAt = dn_group_display_due_at($g, $children, $displayDate);
     $methodLabel = dn_group_method_label($g);
     $groupRule = dn_group_rule($g);
     $isFixedTodo = (string)($groupRule['kind'] ?? '') === 'fixed_todo';
@@ -1556,7 +1577,7 @@ function dn_group_row(int $gid, array $personIds = []): ?array
         'can_delete' => dn_is_admin() || (int)$g['created_by'] === dn_uid(),
         'mail_preview_task_id' => $mailPreviewTaskId,
         'has_mail_body' => $mailPreviewTaskId > 0 ? 1 : 0,
-        'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress'],'due_at'=>$c['due_at'] ?? ''], $children),
+        'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'title'=>$c['title'] ?? '','project'=>$c['project'] ?? '','assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress'],'due_at'=>$c['due_at'] ?? '','task_date'=>$c['task_date'] ?? '','updated_at'=>$c['updated_at'] ?? ''], $children),
         'sort_key' => '0-' . $g['title'],
     ];
 }
@@ -1717,8 +1738,9 @@ function dn_multi_group_detail(array $in): array
 function dn_multi_member_task(int $id): array
 {
     $task = dn_task($id);
-    if ((int)($task['parent_group_id'] ?? 0) <= 0 || (string)($task['dispatch_mode'] ?? '') !== 'multi') {
-        dn_fail('这不是多人派工成员任务', 400);
+    $mode = (string)($task['dispatch_mode'] ?? '');
+    if ((int)($task['parent_group_id'] ?? 0) <= 0 || !in_array($mode, ['multi', 'recurring'], true)) {
+        dn_fail('这不是派工组成员任务', 400);
     }
     return $task;
 }
@@ -2178,7 +2200,22 @@ function dn_update_multi(array $in): array
             $sets[] = "due_at=?";
             $params[] = $newDue;
             dn_log(null, 'update_multi', 'due_at', $g['due_at'] ?? '', $newDue, '修改多人组截止时间');
-            $pdo->prepare("UPDATE dispatch_next_tasks SET due_at=?, updated_at=NOW() WHERE parent_group_id=?")->execute([$newDue, $gid]);
+            if ((string)($g['group_type'] ?? '') === 'recurring') {
+                $rule = dn_group_rule($g);
+                $rule['due_time'] = substr($newDue, 11, 5);
+                $sets[] = "recurring_rule_json=?";
+                $params[] = dn_json($rule);
+                $childSt = $pdo->prepare("SELECT id,task_date FROM dispatch_next_tasks WHERE parent_group_id=? AND is_deleted=0 AND status NOT IN ('done','cancelled')");
+                $childSt->execute([$gid]);
+                $childUp = $pdo->prepare("UPDATE dispatch_next_tasks SET due_at=?, updated_at=NOW() WHERE id=?");
+                foreach ($childSt->fetchAll() as $child) {
+                    $childDate = (string)($child['task_date'] ?? '');
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $childDate)) $childDate = substr($newDue, 0, 10);
+                    $childUp->execute([dn_recurring_due_at(['due_at' => $newDue], $rule, $childDate), (int)$child['id']]);
+                }
+            } else {
+                $pdo->prepare("UPDATE dispatch_next_tasks SET due_at=?, updated_at=NOW() WHERE parent_group_id=?")->execute([$newDue, $gid]);
+            }
         }
     }
     if ($sets) {
@@ -2189,7 +2226,10 @@ function dn_update_multi(array $in): array
         dn_record_due_change(['task_type' => 'dispatch', 'parent_group_id' => $gid], $g['due_at'] ?? '', $newDue, 'update_multi', $g);
     }
     dn_refresh_group($gid);
-    return ['group_id' => $gid, 'changed' => count($sets)];
+    $st = $pdo->prepare("SELECT updated_at FROM dispatch_next_groups WHERE id=? LIMIT 1");
+    $st->execute([$gid]);
+    $updatedAt = (string)($st->fetchColumn() ?: ($g['updated_at'] ?? ''));
+    return ['group_id' => $gid, 'changed' => count($sets), 'updated_at' => $updatedAt];
 }
 
 function dn_create_plan(array $in): array
@@ -2243,10 +2283,14 @@ function dn_run_recurring(array $in, bool $return = true): array
     foreach ($groups as $g) {
         $rule = json_decode((string)($g['recurring_rule_json'] ?? '{}'), true) ?: [];
         if (!dn_rule_due($rule, $date)) continue;
+        $dueAt = dn_recurring_due_at($g, $rule, $date);
+        $repairSt = $pdo->prepare("UPDATE dispatch_next_tasks SET due_at=?, updated_at=NOW()
+            WHERE parent_group_id=? AND task_date=? AND is_deleted=0 AND status NOT IN ('done','cancelled')
+              AND (due_at IS NULL OR DATE(due_at)<task_date)");
+        $repairSt->execute([$dueAt, (int)$g['id'], $date]);
         $st = $pdo->prepare("SELECT COUNT(*) FROM dispatch_next_tasks WHERE parent_group_id=? AND task_date=? AND is_deleted=0");
         $st->execute([(int)$g['id'], $date]);
         if ((int)$st->fetchColumn() > 0) continue;
-        $dueAt = dn_recurring_due_at($g, $rule, $date);
         foreach (json_decode((string)$g['assignee_ids_json'], true) ?: [] as $aid) {
             dn_insert_task([
                 'task_type' => 'dispatch', 'dispatch_mode' => 'recurring', 'parent_group_id' => (int)$g['id'],

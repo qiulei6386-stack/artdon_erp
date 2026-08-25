@@ -3043,3 +3043,11 @@
 - 后端兜底：`crm_customer.php` 的暂存池 payload 规范化现在会解析 `contacts_json`、内联联系人字段，并从主联系人回填客户主邮箱、电话和 WhatsApp；从暂存池确认创建正式客户时先规范化 payload，并按人工确认入口绕过普通同名重复拦截，保留客户代码重复校验。
 - 回归保护：`tests/crm_lead_pool_contact_persistence_contract.php` 增加暂存编辑器联系人初始化、后端联系人解析、主联系方式回填和暂存确认创建绕过普通重复拦截的契约检查。
 - 检查：本地 `git diff --check` 与 Node 语法检查通过；服务器 `/tmp` 临时副本 `php -l crm_customer.php` 通过，`php tests/crm_lead_pool_contact_persistence_contract.php` 通过。待提交推送并同步服务器后复检。
+
+## 2026-08-25：固定派工当天实例截止日期纠偏
+
+- 问题：固定派工母板创建于 08/23，23、24 两天已完成后，08/25 当天实例的截止日期仍显示 08/23；原因是组行显示和母板编辑逻辑会沿用母板 `due_at` 日期，未严格按子任务 `task_date` 重算。
+- 修复：`dispatch_next_api.php` 的固定/周期组行显示新增当前日期参数，优先显示当前日期实例的截止时间；若已生成实例的 `due_at` 日期早于 `task_date`，会按规则的 `due_time` 自动纠偏为实例当天。
+- 防复发：编辑固定/周期母板截止时间时，只把时间写入规则 `due_time`，并按每条未完成子任务自己的 `task_date` 重算截止时间，不再把所有子任务统一改成母板日期。
+- 回归保护：`tests/dispatch_fixed_todo_contract.php` 增加当前日期显示、旧错日期自动修复、母板编辑按子任务日期重算的契约检查。
+- 检查：本地 `git diff --check` 通过；本机无 PHP，已用服务器 `/tmp` 临时副本执行 `php -l dispatch_next_api.php` 与 `php tests/dispatch_fixed_todo_contract.php`，均通过。
