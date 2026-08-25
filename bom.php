@@ -383,7 +383,7 @@ body{background:#f6f8fb}
 #editPage .project b{font-size:12px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #editPage .project small{display:block!important;margin-top:3px;font-size:10px!important;line-height:1.2!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .editor-core{border:1px solid #e5eaf1;background:#fbfdff;border-radius:11px;padding:6px 7px;margin-bottom:5px}
-.editor-core-fields{display:grid;grid-template-columns:1.35fr 1.15fr 1fr 1.1fr 74px 142px;gap:6px;align-items:end}
+.editor-core-fields{display:grid;grid-template-columns:1.28fr 1fr .92fr .96fr 78px 118px 74px 142px;gap:6px;align-items:end}
 .editor-core label,.editor-more-panel label{display:grid;gap:2px;min-width:0;color:#64748b;font-size:10px;font-weight:850}
 .editor-core input,.editor-core select,.editor-more-panel input,.editor-more-panel select{width:100%;height:30px!important;min-height:30px!important;padding:4px 7px;border-radius:7px;font-size:12px}
 .compact-type-field{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:3px}.compact-type-field button{width:28px;height:30px;padding:0!important;border-radius:7px!important}
@@ -401,6 +401,11 @@ body{background:#f6f8fb}
 .editor-actions{height:34px;min-height:34px;display:flex!important;flex-wrap:nowrap!important;gap:4px!important;align-items:center;margin:0 0 4px;overflow-x:auto;overflow-y:hidden}
 .editor-actions button{height:28px!important;min-height:28px!important;padding:0 7px!important;border-radius:7px!important;font-size:10px!important;white-space:nowrap}
 .editor-actions .hint{margin-left:auto;min-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
+.bom-review-bar{display:grid;grid-template-columns:minmax(190px,1fr) minmax(160px,.85fr) minmax(180px,1fr) auto;gap:6px;align-items:center;margin:0 0 5px;padding:6px 8px;border:1px solid #dbeafe;border-radius:10px;background:linear-gradient(135deg,#f8fbff,#fff)}
+.bom-review-main{display:flex;align-items:center;gap:7px;min-width:0}.bom-review-title{font-size:12px;font-weight:900;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bom-review-meta{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bom-review-note{font-size:10px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bom-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:10px;font-weight:900;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;white-space:nowrap}.bom-badge.draft{background:#f8fafc;color:#475569}.bom-badge.pending{background:#fff7ed;color:#c2410c;border-color:#fed7aa}.bom-badge.approved{background:#ecfdf5;color:#047857;border-color:#bbf7d0}.bom-badge.rejected{background:#fef2f2;color:#dc2626;border-color:#fecaca}
+.price-status-wrap{display:grid;gap:3px}.price-status{height:23px!important;min-height:23px!important;font-size:10px!important;padding:1px 5px!important;border-radius:6px!important}.price-source{height:22px!important;min-height:22px!important;font-size:10px!important;padding:1px 5px!important;border-radius:6px!important}.price-chip{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:999px;font-size:10px;font-weight:900}.price-chip.estimated{background:#fff7ed;color:#c2410c}.price-chip.confirmed{background:#ecfdf5;color:#047857}.price-chip.pending{background:#fef2f2;color:#dc2626}.price-chip.historical{background:#f1f5f9;color:#475569}
 .editor-card>.table-wrap{margin-top:4px!important;max-height:calc(100vh - 315px);overflow:auto!important}
 .plm-link-notice{margin:3px 0!important;padding:4px 7px!important;border-radius:8px!important;font-size:11px!important;line-height:1.35!important}
 .plm-link-notice .notice-summary{height:24px;display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}
@@ -411,7 +416,7 @@ body{background:#f6f8fb}
 .plm-link-notice .notice-actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px}
 .plm-link-notice .notice-actions button{height:25px!important;padding:0 7px!important;margin:0!important;font-size:10px!important;border-radius:6px!important}
 #editPage .summary{margin-top:6px!important;gap:5px!important}#editPage .sum-box{padding:6px 7px!important;border-radius:8px!important}#editPage .sum-box b{font-size:14px!important}
-@media(max-width:1250px){#editPage{grid-template-columns:235px minmax(0,1fr)!important}.editor-core-fields{grid-template-columns:1.3fr 1fr 1fr 1fr 70px 126px}.editor-meta-strip{grid-template-columns:1fr 1fr 70px 70px 70px 70px auto}.editor-actions .hint{display:none}.editor-more-fields{grid-template-columns:110px 120px 110px minmax(190px,1fr)}}
+@media(max-width:1250px){#editPage{grid-template-columns:235px minmax(0,1fr)!important}.editor-core-fields{grid-template-columns:1.3fr 1fr 1fr 1fr 80px 120px}.editor-meta-strip{grid-template-columns:1fr 1fr 70px 70px 70px 70px auto}.editor-actions .hint{display:none}.editor-more-fields{grid-template-columns:110px 120px 110px minmax(190px,1fr)}.bom-review-bar{grid-template-columns:1fr 1fr}.bom-review-note{grid-column:1/-1}}
 @media(max-width:900px){#editPage{grid-template-columns:1fr!important}#editPage>aside.card{position:static!important;max-height:none!important}.editor-core-fields{grid-template-columns:1fr 1fr 1fr}.editor-meta-strip{grid-template-columns:1fr 1fr 1fr}.editor-card>.table-wrap{max-height:62vh}.editor-more-fields{grid-template-columns:1fr 1fr}.editor-note-label{grid-column:1/-1}}
 @media(max-width:640px){.editor-core-fields{grid-template-columns:1fr 1fr}.editor-meta-strip{grid-template-columns:1fr 1fr}.compact-image-label{grid-column:1/-1}.editor-more-fields{grid-template-columns:1fr}.editor-note-label{grid-column:auto}}
 
@@ -553,6 +558,8 @@ body{background:#f6f8fb}
     <label>客户/项目 <input id="customer" oninput="touch()" placeholder="客户名或项目名"></label>
     <label>产品型号 <input id="model" oninput="touch()" placeholder="型号"></label>
     <label>产品分类 <div class="compact-type-field"><select id="productType" onchange="touch()"></select><button type="button" class="ghost" onclick="addProductType()">+</button></div></label>
+    <label>BOM版本 <input id="versionNo" oninput="touch()" placeholder="V1"></label>
+    <label>客户版本/用途 <input id="variantLabel" oninput="touch()" placeholder="通用版 / 客户名"></label>
     <label>币种 <select id="currency" onchange="touch()"><option value="RMB">RMB</option><option value="USD">USD</option><option value="AED">AED</option></select></label>
     <label class="compact-image-label">成品图 <div class="product-image-box"><img id="productImagePreview" class="product-image-preview"><div class="product-image-actions"><button type="button" class="ghost" onclick="uploadProductImage()">上传</button><button type="button" class="ghost" onclick="removeProductImage()">移除</button><input type="file" id="productImageInput" accept="image/*" style="display:none" onchange="readProductImage(event)"></div></div></label>
   </div>
@@ -564,7 +571,8 @@ body{background:#f6f8fb}
 <div class="editor-more-panel" id="editorMorePanel">
   <div class="editor-more-fields"><label>利润率/加价率 % <input id="profitRate" type="number" step="0.1" oninput="touch();calc()" value="30"></label><label>报价模式 <select id="quoteMode" onchange="touch();calc()"><option value="markup">加价率</option><option value="margin">毛利率</option></select></label><label>汇率/备用 <input id="exchange" type="number" step="0.0001" oninput="touch()" value="1"></label><label class="editor-note-label">备注 <textarea id="note" class="note" oninput="touch()" placeholder="备注"></textarea></label></div>
 </div>
-<div class="actions editor-actions"><button onclick="addRow()">添加材料</button><button class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button class="ok" onclick="saveCurrent()">保存</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button class="ghost" onclick="openExcelImport('bom')">导入</button><button class="danger" onclick="deleteProject()">删除</button><span class="hint">物料名称后点 … 选择共享物料；也可直接输入关键词搜索。</span></div>
+<div class="actions editor-actions"><button onclick="addRow()">添加材料</button><button class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button class="ok" onclick="saveCurrent()">保存草稿</button><button class="ghost" onclick="submitBomReview()">提交审核</button><button class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button class="ghost" onclick="rejectBomProject()">驳回</button><button class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button class="ghost" onclick="openExcelImport('bom')">导入</button><button class="danger" onclick="deleteProject()">删除</button><span class="hint">保存为草稿；审核通过后才封存快照并同步正式成本。</span></div>
+<div id="bomReviewBar" class="bom-review-bar"></div>
 <div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="price">单价</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
 <div class="summary"><div class="sum-box"><span>材料成本</span><b id="matTotal">0.00</b></div><div class="sum-box"><span>人工费</span><b id="laborTotal">0.00</b></div><div class="sum-box"><span>包装/其它</span><b id="otherTotal">0.00</b></div><div class="sum-box"><span>总成本</span><b id="grandTotal">0.00</b></div><div class="sum-box"><span>建议报价</span><b id="suggestPrice">0.00</b></div><div class="sum-box"><span>利润金额</span><b id="profitAmount">0.00</b></div></div>
 </section>
@@ -1009,10 +1017,13 @@ function normalizeBomRows(rows, rawJson){
     finishCost2: Number(r.finishCost2 ?? r.finish_cost2 ?? r.surfaceCost2 ?? r.surface_cost2 ?? 0) || 0,
     finishMode2: !!(r.finishMode2 || r.finish2 || r.surface2 || Number(r.finishCost2 ?? r.finish_cost2 ?? r.surfaceCost2 ?? 0) > 0),
     price: Number(r.price ?? r.unit_price ?? 0) || 0,
-    materialId: r.materialId ?? r.material_id ?? ''
+    materialId: r.materialId ?? r.material_id ?? '',
+    priceStatus: ['estimated','confirmed','pending','historical'].includes(String(r.priceStatus ?? r.price_status ?? '')) ? String(r.priceStatus ?? r.price_status) : 'estimated',
+    priceSource: r.priceSource ?? r.price_source ?? '',
+    priceNote: r.priceNote ?? r.price_note ?? ''
   }));
 }
-function updateAuthUI(){const name=currentUser?(currentUser.display_name||currentUser.username||'已登录'):'未登录';if($('meText'))$('meText').textContent=name+(currentUser&&currentUser.role?' ｜ '+currentUser.role:'');[['tabEdit','edit'],['tabLibrary','library'],['tabMaterials','materials'],['tabUsers','users']].forEach(([id,perm])=>{if($(id))$(id).style.display=hasPerm(perm)?'':'none'});document.querySelectorAll('button[onclick="saveCurrent()"],button[onclick="newProjectFromDashboard()"],button[onclick="newProject()"],button[onclick="addRow()"],button[onclick="duplicateProject()"],button[onclick="deleteProject()"]')?.forEach(b=>{b.disabled=!hasPerm('edit');b.style.opacity=hasPerm('edit')?'':'0.55'});}
+function updateAuthUI(){const name=currentUser?(currentUser.display_name||currentUser.username||'已登录'):'未登录';if($('meText'))$('meText').textContent=name+(currentUser&&currentUser.role?' ｜ '+currentUser.role:'');[['tabEdit','edit'],['tabLibrary','library'],['tabMaterials','materials'],['tabUsers','users']].forEach(([id,perm])=>{if($(id))$(id).style.display=hasPerm(perm)?'':'none'});document.querySelectorAll('button[onclick="saveCurrent()"],button[onclick="newProjectFromDashboard()"],button[onclick="newProject()"],button[onclick="addRow()"],button[onclick="duplicateProject()"],button[onclick="deleteProject()"],button[onclick="submitBomReview()"],button[onclick="approveBomProject()"],button[onclick="rejectBomProject()"]')?.forEach(b=>{b.disabled=!hasPerm('edit');b.style.opacity=hasPerm('edit')?'':'0.55'});}
 async function checkAuth(){const r=await api('me');if(r.ok&&r.login){currentUser=r.user||null;currentCan=r.can||{};showLogin(false);updateAuthUI();await loadAll();return}bomSsoRedirect()}
 function login(){bomSsoRedirect()}
 function logout(){location.href='logout.php'}
@@ -1022,7 +1033,7 @@ async function loadAll(){
     const r=await api('bootstrap');
     if(!r.ok){ if(!r.need_login) alert(r.error||'读取数据库失败'); setStatus('读取失败：'+(r.error||'')); return; }
     currentUser=r.user||currentUser; currentCan=r.can||currentCan; updateAuthUI();
-    projects=(r.projects||[]).map(p=>{const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:normalizeBomRows(p.rows,p.rows_json),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};o.namingType=bomProjectNamingType(o);return o});
+    projects=(r.projects||[]).map(p=>{const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:normalizeBomRows(p.rows,p.rows_json),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};o.namingType=bomProjectNamingType(o);return o});
     materials=r.materials||[]; lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
     renderBaseOptions();
     initResizableTable('bomTable','bom_col_widths_v65'); applyBomColumnVisibility(); updateBomStickyOffsets(); initResizableTable('materialTable','material_col_widths_v65');
@@ -1074,59 +1085,109 @@ function showPage(p){
 }
 function rowSub(r){return Number(r.qty||0)*(Number(r.price||0)+Number(r.process||0)+Number(r.finishCost||0)+Number(r.finishCost2||0))}
 function totals(p){const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
-function collect(){
-  const p=getCurrent(); if(!p) return;
-  const oldRows=Array.isArray(p.rows)?p.rows:[];
-  p.name=$('projectName').value||'未命名BOM';p.customer=$('customer').value;p.model=$('model').value;p.productType=$('productType').value;p.currency=$('currency').value;p.productImage=$('productImagePreview').dataset.src||'';p.labor=+$('labor').value||0;p.other=+$('other').value||0;p.profitRate=+$('profitRate').value||0;p.quoteMode=$('quoteMode').value;p.exchange=+$('exchange').value||1;p.note=$('note').value;
-  const trs=[...document.querySelectorAll('#tbody tr')];
-  // 防止在表格还没渲染完成、或页面隐藏时把已有 BOM 行误保存成空。
-  if(trs.length===0 && oldRows.length>0) return;
-  p.rows=trs.map((tr,i)=>{
-    return {category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,materialId:tr.dataset.materialId||''};
-  });
+function bomReviewLabel(s){return ({draft:'草稿',pending:'待审核',approved:'已审核',rejected:'已驳回'})[s||'draft']||'草稿'}
+function bomPriceStatusLabel(s){return ({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[s||'estimated']||'预估价'}
+function priceStatusOptions(v){return ['estimated','confirmed','pending','historical'].map(x=>`<option value="${x}" ${String(v||'estimated')===x?'selected':''}>${bomPriceStatusLabel(x)}</option>`).join('')}
+function bomPriceSummary(p){const out={total:0,estimated:0,confirmed:0,pending:0,historical:0};(p?.rows||[]).forEach(r=>{out.total++;const s=['estimated','confirmed','pending','historical'].includes(String(r.priceStatus||''))?String(r.priceStatus):'estimated';out[s]++});return out}
+function renderBomReviewBar(){
+  const el=$('bomReviewBar'); if(!el) return;
+  const p=getCurrent(); if(!p){el.innerHTML='';return}
+  const ps=bomPriceSummary(p), status=p.reviewStatus||'draft';
+  const submitted=p.submittedAt?`提交 ${String(p.submittedAt).slice(0,16)} · ${esc(p.submittedBy||'-')}`:'未提交审核';
+  const approved=p.approvedAt?`审核 ${String(p.approvedAt).slice(0,16)} · ${esc(p.approvedBy||'-')}`:'未生成正式快照';
+  el.innerHTML=`<div class="bom-review-main"><span class="bom-badge ${esc(status)}">${esc(bomReviewLabel(status))}</span><div class="bom-review-title">${esc(p.versionNo||'V1')} · ${esc(p.variantLabel||'通用版')} · 快照 ${Number(p.snapshotCount||0)}</div></div><div class="bom-review-meta">${submitted}</div><div class="bom-review-meta">${approved}</div><div class="bom-review-note"><span class="price-chip estimated">预估 ${ps.estimated}</span> <span class="price-chip confirmed">确认 ${ps.confirmed}</span> <span class="price-chip pending">待确认 ${ps.pending}</span> <span class="price-chip historical">历史 ${ps.historical}</span></div>`;
 }
-function getCurrent(){return projects.find(p=>p.id===currentId)}
-function touch(){calc()}
-async function saveCurrent(){
-  if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return}
-  collect();const p=getCurrent();if(!p)return;
+async function saveCurrent(opts={}){
+  if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return false}
+  collect();const p=getCurrent();if(!p)return false;
   p.updatedAt=nowText();
   const keepPage=currentPage, keepId=p.id;
   bomRememberPlace();
-  const r=await api('save_project',{project_uid:p.id,name:p.name,customer:p.customer,model:p.model,product_type:p.productType,currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,created_by:p.createdBy||'',updated_by:(currentUser?.display_name||currentUser?.username||'')});
-  if(!r.ok){alert(r.error);return}
-  setStatus('已保存 '+nowText());
+  const r=await api('save_project',{project_uid:p.id,name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,created_by:p.createdBy||'',updated_by:(currentUser?.display_name||currentUser?.username||'')});
+  if(!r.ok){alert(r.error);return false}
+  if(!opts.silent)setStatus('已保存草稿 '+nowText());
   await loadAll();
   currentId=keepId;
   if(projects.some(x=>x.id===keepId))loadProject(keepId);
   showPage(keepPage);
+  return true;
 }
-function newProject(load=true){const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
+async function submitBomReview(){
+  if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
+  if(!await saveCurrent({silent:true}))return;
+  const p=getCurrent(); if(!p)return;
+  const note=prompt('提交审核备注，可留空：',p.reviewNote||'')||'';
+  const r=await api('submit_review',{project_uid:p.id,review_note:note});
+  if(!r.ok)return alert(r.error||'提交审核失败');
+  setStatus('已提交审核 '+nowText()); await loadAll();
+}
+async function approveBomProject(){
+  if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
+  collect();
+  const p=getCurrent(); if(!p)return;
+  const note=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`)||'';
+  const r=await api('approve_project',{project_uid:p.id,review_note:note,name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,updated_by:(currentUser?.display_name||currentUser?.username||'')});
+  if(!r.ok)return alert(r.error||'审核失败');
+  const s=r.snapshot||{};
+  setStatus(`已审核并生成快照 ${s.snapshot_uid||''} ${nowText()}`);
+  alert(`已审核并生成快照：${s.snapshot_uid||'-'}\n确认价/预估价状态已随快照封存。`);
+  await loadAll();
+}
+async function rejectBomProject(){
+  if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
+  const p=getCurrent(); if(!p)return;
+  const note=prompt('请输入驳回原因：',p.reviewNote||'');
+  if(note===null)return;
+  const r=await api('reject_project',{project_uid:p.id,review_note:note||''});
+  if(!r.ok)return alert(r.error||'驳回失败');
+  setStatus('已驳回 '+nowText()); await loadAll();
+}
+async function openBomSnapshots(){
+  const p=getCurrent(); if(!p)return alert('请先打开一个 BOM');
+  const r=await api('list_snapshots',{project_uid:p.id});
+  if(!r.ok)return alert(r.error||'读取快照失败');
+  const lines=(r.snapshots||[]).slice(0,20).map(s=>{const t=s.totals||{},ps=s.price_summary||{};return `${s.created_at||'-'}｜${s.version_no||'V1'}｜${s.variant_label||''}｜${s.snapshot_uid||''}｜成本 ${money(t.total||0)}｜确认 ${ps.confirmed||0}/预估 ${ps.estimated||0}`});
+  alert(lines.length?lines.join('\n'):'当前 BOM 暂无快照');
+}
+function collect(){
+  const p=getCurrent(); if(!p) return;
+  const oldRows=Array.isArray(p.rows)?p.rows:[];
+  p.name=$('projectName').value||'未命名BOM';p.customer=$('customer').value;p.model=$('model').value;p.productType=$('productType').value;p.versionNo=($('versionNo')?.value||'V1').trim()||'V1';p.variantLabel=($('variantLabel')?.value||'通用版').trim()||'通用版';p.currency=$('currency').value;p.productImage=$('productImagePreview').dataset.src||'';p.labor=+$('labor').value||0;p.other=+$('other').value||0;p.profitRate=+$('profitRate').value||0;p.quoteMode=$('quoteMode').value;p.exchange=+$('exchange').value||1;p.note=$('note').value;
+  const trs=[...document.querySelectorAll('#tbody tr')];
+  // 防止在表格还没渲染完成、或页面隐藏时把已有 BOM 行误保存成空。
+  if(trs.length===0 && oldRows.length>0) return;
+  p.rows=trs.map((tr,i)=>{
+    return {category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.querySelector('.priceSource')?.value||'',priceNote:tr.querySelector('.priceNote')?.value||'',materialId:tr.dataset.materialId||''};
+  });
+}
+function getCurrent(){return projects.find(p=>p.id===currentId)}
+function touch(){calc()}
+function newProject(load=true){const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',versionNo:'V1',variantLabel:'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
 function duplicateProject(){
   collect();const p=getCurrent();if(!p)return;
   const c=JSON.parse(JSON.stringify(p));
-  c.id=uid();c.name+=' - 副本';c.createdAt=nowText();c.updatedAt=nowText();
+  c.id=uid();c.name+=' - 副本';c.createdAt=nowText();c.updatedAt=nowText();c.reviewStatus='draft';c.reviewNote='';c.submittedBy='';c.submittedAt='';c.approvedBy='';c.approvedAt='';c.latestSnapshotId='';c.snapshotCount=0;
   // V77.1：复制 BOM 时清空来源绑定，避免副本仍挂在旧型号；物料明细完全保留，后续可重新“绑定/更换型号”。
   c.linkedSystem='';c.linkedId='';c.linkedTitle='';c.linkedJson='';
   projects.unshift(c);currentId=c.id;loadProject(c.id)
 }
 async function deleteProject(){if(!currentId||!confirm('确定删除当前BOM？'))return;await api('delete_project',{project_uid:currentId});currentId=null;try{localStorage.removeItem(BOM_PLACE_PROJECT_KEY)}catch(e){};await loadAll()}
-function renderProjectList(){const kw=($('search')?.value||'').toLowerCase().trim();let arr=projects.filter(p=>!kw||[p.name,p.model,p.productType,p.customer].join(' ').toLowerCase().includes(kw));arr.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));$('listCount').textContent=`共 ${arr.length}/${projects.length} 个成本单`;$('projectList').innerHTML=arr.map(p=>`<div class="project ${p.id===currentId?'active':''}" onclick="loadProject('${p.id}')"><b title="${esc(p.name||'未命名BOM')}">${esc(p.name||'未命名BOM')}</b><small title="${esc(p.model||'-')} · ${esc(p.updatedAt||'-')}">${esc(p.model||'-')} · ${esc(String(p.updatedAt||'-').slice(0,16))}</small></div>`).join('')}
+function renderProjectList(){const kw=($('search')?.value||'').toLowerCase().trim();let arr=projects.filter(p=>!kw||[p.name,p.model,p.productType,p.customer,p.versionNo,p.variantLabel].join(' ').toLowerCase().includes(kw));arr.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));$('listCount').textContent=`共 ${arr.length}/${projects.length} 个成本单`;$('projectList').innerHTML=arr.map(p=>`<div class="project ${p.id===currentId?'active':''}" onclick="loadProject('${p.id}')"><b title="${esc(p.name||'未命名BOM')}">${esc(p.name||'未命名BOM')}</b><small title="${esc((p.model||'-')+' · '+(p.versionNo||'V1')+' · '+bomReviewLabel(p.reviewStatus||'draft'))}">${esc(p.model||'-')} · ${esc(p.versionNo||'V1')} · ${esc(bomReviewLabel(p.reviewStatus||'draft'))}</small></div>`).join('')}
 function loadProject(id){
   currentId=id; const p=getCurrent(); if(!p)return;
-  renderBaseOptions(); $('projectName').value=p.name||''; $('customer').value=p.customer||''; $('model').value=p.model||''; $('productType').value=p.productType||''; $('currency').value=p.currency||'RMB'; setProductImagePreview(p.productImage||''); $('createdAt').value=p.createdAt||''; $('updatedAt').value=p.updatedAt||''; if($('createdBy'))$('createdBy').value=p.createdBy||''; if($('updatedBy'))$('updatedBy').value=p.updatedBy||''; $('labor').value=p.labor||0; $('other').value=p.other||0; $('profitRate').value=p.profitRate??30; $('quoteMode').value=p.quoteMode||'markup'; $('exchange').value=p.exchange??1; $('note').value=p.note||'';
+  renderBaseOptions(); $('projectName').value=p.name||''; $('customer').value=p.customer||''; $('model').value=p.model||''; $('productType').value=p.productType||''; if($('versionNo'))$('versionNo').value=p.versionNo||'V1'; if($('variantLabel'))$('variantLabel').value=p.variantLabel||'通用版'; $('currency').value=p.currency||'RMB'; setProductImagePreview(p.productImage||''); $('createdAt').value=p.createdAt||''; $('updatedAt').value=p.updatedAt||''; if($('createdBy'))$('createdBy').value=p.createdBy||''; if($('updatedBy'))$('updatedBy').value=p.updatedBy||''; $('labor').value=p.labor||0; $('other').value=p.other||0; $('profitRate').value=p.profitRate??30; $('quoteMode').value=p.quoteMode||'markup'; $('exchange').value=p.exchange??1; $('note').value=p.note||'';
   let linkInfo={fixed:[],missing:[],zeroPrice:[]}; try{ linkInfo=resolvePlmLinkedRows(p); }catch(e){ console.warn('关键物料检查跳过',e); }
   renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} bomRememberPlace();
 }
-function addRow(row={}){const p=getCurrent();if(!p)return;p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,materialId:row.materialId||''});renderRows();calc()}
+function addRow(row={}){const p=getCurrent();if(!p)return;p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
 function removeRow(i){const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}
-function insertRowAfter(i){const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0});renderRows();calc()}
+function insertRowAfter(i){const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0,priceStatus:'estimated',priceSource:'',priceNote:''});renderRows();calc()}
 function renderRows(){
   const p=getCurrent(); if(!p) return;
   $('tbody').innerHTML=(p.rows||[]).map((r,i)=>{
     const has2=!!r.finishMode2 || String(r.finish2||'').trim()!=='' || Number(r.finishCost2||0)>0;
     const finishTitle=has2 ? '当前：2次表面。点击切回1次' : '当前：1次表面。点击切到2次';
-    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
+    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select><input class="priceSource price-source" value="${esc(r.priceSource||'')}" oninput="touch()" placeholder="报价来源/供应商"><input class="priceNote price-source" value="${esc(r.priceNote||'')}" oninput="touch()" placeholder="价格备注"></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
   }).join('');
   initRowDrag();initResizableTable('bomTable','bom_col_widths_v65');applyBomColumnVisibility();updateBomStickyOffsets();autoGrowAll();setTimeout(scheduleBomTableLayout,80);setTimeout(scheduleBomTableLayout,260);
 }
@@ -1179,7 +1240,7 @@ function initRowDrag(){
   });
 }
 
-function calc(){collect();const p=getCurrent();if(!p)return;document.querySelectorAll('#tbody tr').forEach((tr,i)=>tr.querySelector('.subtotal').textContent=money(rowSub(p.rows[i]||{})));const t=totals(p);$('matTotal').textContent=money(t.mat);$('laborTotal').textContent=money(t.labor);$('otherTotal').textContent=money(t.other);$('grandTotal').textContent=money(t.total);$('suggestPrice').textContent=money(t.suggest);$('profitAmount').textContent=money(t.profit)}
+function calc(){collect();const p=getCurrent();if(!p)return;document.querySelectorAll('#tbody tr').forEach((tr,i)=>tr.querySelector('.subtotal').textContent=money(rowSub(p.rows[i]||{})));const t=totals(p);$('matTotal').textContent=money(t.mat);$('laborTotal').textContent=money(t.labor);$('otherTotal').textContent=money(t.other);$('grandTotal').textContent=money(t.total);$('suggestPrice').textContent=money(t.suggest);$('profitAmount').textContent=money(t.profit);renderBomReviewBar()}
 function autoGrow(el){
   if(!el) return;
   // 先清零再读取 scrollHeight，避免列宽变化/换行后高度计算不准。
