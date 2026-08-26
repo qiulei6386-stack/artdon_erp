@@ -1646,6 +1646,7 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
     $displayTitle = (string)($g['title'] ?? '');
     $displayProject = (string)($g['project'] ?? '');
     if ($isFixedTodo && $children) {
+        // 固定待办列表显示优先用当天实例内容；母板只作为生成和空值兜底。
         $targetDate = dn_task_occurrence_date([
             'task_date' => (string)($displayDate ?? ''),
             'due_at' => $displayDueAt,
@@ -1656,13 +1657,16 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
         $displayChildren = $sameDayChildren ?: $children;
         usort($displayChildren, fn($a, $b) => strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')));
         foreach ($displayChildren as $c) {
-            if ($displayTitle === '' && trim((string)($c['title'] ?? '')) !== '') {
+            if (trim((string)($c['title'] ?? '')) !== '') {
                 $displayTitle = (string)$c['title'];
+                break;
             }
-            if ($displayProject === '' && trim((string)($c['project'] ?? '')) !== '') {
+        }
+        foreach ($displayChildren as $c) {
+            if (trim((string)($c['project'] ?? '')) !== '') {
                 $displayProject = (string)$c['project'];
+                break;
             }
-            if ($displayTitle !== '' && $displayProject !== '') break;
         }
     }
     $canStopRecurring = (string)($g['group_type'] ?? '') === 'recurring'

@@ -3061,3 +3061,10 @@
 - 数据修复：线上 `group_id=77`（吴上工作）母板 `project` 已从 08/25 长清单恢复为 `采购暂无安排`；修复前备份保存在服务器 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/fixed_todo_master_77_20260826_084923.json`。08/25、08/26 已生成实例未改动。
 - 回归保护：`tests/dispatch_fixed_todo_contract.php` 增加固定待办组行查找、当天实例保存带日期、专用接口路由和“不改母板”日志的契约检查。
 - 检查：本地 `git diff --check -- dispatch_next_api.php dispatch_next.php tests/dispatch_fixed_todo_contract.php` 通过；本机无 PHP，已在服务器 `/tmp` 临时副本执行 `php -l dispatch_next_api.php`、`php -l dispatch_next.php`，均通过。待本条随代码提交、推送、服务器同步后复检正式路径。
+
+## 2026-08-26：固定派工列表优先显示当天实例内容
+
+- 问题：固定待办母板恢复为默认内容后，列表组行只在母板标题/项目为空时才读取当天子任务；同事当天更新的实例内容会被母板盖住，其他人看到就像空白或未同步。
+- 修复：`dispatch_next_api.php` 的固定待办组行展示优先取当前日期子任务里最新的非空标题和项目；母板只作为未生成当天实例或实例为空时的兜底，不改变母板生成逻辑。
+- 范围：只影响列表显示；当天实例保存、同日多人同步、母板保护、历史实例保持不变。
+- 回归保护：`tests/dispatch_fixed_todo_contract.php` 增加“固定列表优先当天实例显示”契约检查。

@@ -48,6 +48,7 @@ $apiMarkers = [
     '组行可按当前日期显示截止日期' => 'function dn_group_display_due_at(array $group, array $children = [], ?string $displayDate = null): string',
     '列表组行传入当前日期' => '$g = dn_group_row($gid, $dispatchPersonIds, $date)',
     '固定待办旧错日期自动修复' => 'DATE(due_at)<task_date',
+    '固定列表优先当天实例显示' => '固定待办列表显示优先用当天实例内容',
     '固定待办编辑母板只改规则时间' => "\$rule['due_time'] = substr(\$newDue, 11, 5)",
     '固定待办编辑按子任务日期重算截止' => "\$childUp->execute([dn_recurring_due_at(['due_at' => \$newDue], \$rule, \$childDate), (int)\$child['id']])",
     '新固定待办组截止按开始日保存' => "\$groupDueAt = dn_recurring_due_at(['due_at' => \$dueAt], \$rule, \$startDate)",
