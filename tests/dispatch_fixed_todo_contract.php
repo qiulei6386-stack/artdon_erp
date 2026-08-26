@@ -26,6 +26,10 @@ $pageMarkers = [
     '固定待办停用确认' => '只停止以后自动生成，已经生成的历史待办会保留。',
     '固定待办停用调用' => "api('stop_recurring',{group_id:gid})",
     '固定待办停用点击监听' => "e.target.closest('[data-stop-recurring]')",
+    '固定待办组行查找' => 'function findGroupRowById(gid)',
+    '固定待办表格保存带日期' => "payload=fixed?{group_id:gid,date:state.date}:{group_id:gid}",
+    '固定待办表格保存专用接口' => "api(fixed?'update_fixed_occurrence':'update_multi',payload)",
+    '固定待办当天保存提示' => "已保存当天固定待办",
 ];
 
 foreach ($pageMarkers as $label => $needle) {
@@ -58,6 +62,10 @@ $apiMarkers = [
     '停用接口路由' => "case 'stop_recurring': dn_ok(dn_stop_recurring(\$in));",
     '组行返回停用权限' => "'can_stop_recurring' => \$canStopRecurring ? 1 : 0",
     '详情返回停用权限' => "\$group['can_stop_recurring']",
+    '固定当天实例更新接口' => 'function dn_update_fixed_todo_occurrence(array $in): array',
+    '固定当天实例更新不改母板' => "修改当天固定待办实例，不更新母板",
+    '旧更新组接口固定待办兜底' => "return dn_update_fixed_todo_occurrence_for_group(\$g, \$in);",
+    '固定当天实例接口路由' => "case 'update_fixed_occurrence': dn_ok(dn_update_fixed_todo_occurrence(\$in));",
 ];
 
 foreach ($apiMarkers as $label => $needle) {

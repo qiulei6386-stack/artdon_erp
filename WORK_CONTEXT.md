@@ -3051,3 +3051,13 @@
 - 防复发：编辑固定/周期母板截止时间时，只把时间写入规则 `due_time`，并按每条未完成子任务自己的 `task_date` 重算截止时间，不再把所有子任务统一改成母板日期。
 - 回归保护：`tests/dispatch_fixed_todo_contract.php` 增加当前日期显示、旧错日期自动修复、母板编辑按子任务日期重算的契约检查。
 - 检查：本地 `git diff --check` 通过；本机无 PHP，已用服务器 `/tmp` 临时副本执行 `php -l dispatch_next_api.php` 与 `php tests/dispatch_fixed_todo_contract.php`，均通过。
+
+## 2026-08-26：固定派工当天编辑不再污染母板
+
+- 问题：固定派工当天实例在表格内修改标题/项目后，旧入口会把内容写回 `dispatch_next_groups` 母板，导致第二天自动生成时复制昨天的内容，而不是按原始母板生成。
+- 修复：`dispatch_next.php` 固定待办组行优先绑定当前日期、当前执行人的子任务；表格编辑会保存当天实例，并同步同一天其他执行人实例。若当天实例尚未生成，则调用 `update_fixed_occurrence` 专用接口生成/更新当天实例。
+- 后端兜底：`dispatch_next_api.php` 新增 `dn_update_fixed_todo_occurrence()`，只更新指定日期的 `dispatch_next_tasks`，不更新母板；旧 `update_multi` 如果收到固定待办标题/项目保存，也会先转入该兜底逻辑，避免浏览器缓存旧前端继续污染母板。
+- 同步规则：单个执行人在当天实例里修改标题/项目时，会同步同一固定待办、同一天的其他执行人实例；历史日期和未来母板保持不变。
+- 数据修复：线上 `group_id=77`（吴上工作）母板 `project` 已从 08/25 长清单恢复为 `采购暂无安排`；修复前备份保存在服务器 `/www/wwwroot/Artdon/artdon_erp/_codex_backups/fixed_todo_master_77_20260826_084923.json`。08/25、08/26 已生成实例未改动。
+- 回归保护：`tests/dispatch_fixed_todo_contract.php` 增加固定待办组行查找、当天实例保存带日期、专用接口路由和“不改母板”日志的契约检查。
+- 检查：本地 `git diff --check -- dispatch_next_api.php dispatch_next.php tests/dispatch_fixed_todo_contract.php` 通过；本机无 PHP，已在服务器 `/tmp` 临时副本执行 `php -l dispatch_next_api.php`、`php -l dispatch_next.php`，均通过。待本条随代码提交、推送、服务器同步后复检正式路径。

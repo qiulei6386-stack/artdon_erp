@@ -1440,6 +1440,120 @@ function dn_group_rule(array $group): array
     return is_array($rule) ? $rule : [];
 }
 
+function dn_is_fixed_todo_group(array $group): bool
+{
+    return (string)($group['group_type'] ?? '') === 'recurring'
+        && (string)(dn_group_rule($group)['kind'] ?? '') === 'fixed_todo';
+}
+
+function dn_task_occurrence_date(array $task): string
+{
+    $date = (string)($task['task_date'] ?? '');
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return $date;
+    $due = (string)($task['due_at'] ?? '');
+    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $due)) return substr($due, 0, 10);
+    return date('Y-m-d');
+}
+
+function dn_sync_fixed_todo_occurrence_fields(array $sourceTask, array $changes, string $action): int
+{
+    $gid = (int)($sourceTask['parent_group_id'] ?? 0);
+    if ($gid <= 0) return 0;
+    $changes = array_intersect_key($changes, array_flip(['title', 'project']));
+    if (!$changes) return 0;
+    $pdo = dispatch_next_db();
+    $gst = $pdo->prepare("SELECT * FROM dispatch_next_groups WHERE id=? LIMIT 1");
+    $gst->execute([$gid]);
+    $group = $gst->fetch();
+    if (!$group || !dn_is_fixed_todo_group($group)) return 0;
+    $occurrenceDate = dn_task_occurrence_date($sourceTask);
+    $st = $pdo->prepare("SELECT id,title,project FROM dispatch_next_tasks WHERE parent_group_id=? AND task_date=? AND is_deleted=0 AND id<>?");
+    $st->execute([$gid, $occurrenceDate, (int)($sourceTask['id'] ?? 0)]);
+    $siblings = $st->fetchAll();
+    if (!$siblings) return 0;
+    $sets = [];
+    $params = [];
+    foreach ($changes as $field => $value) {
+        $sets[] = "{$field}=?";
+        $params[] = $value;
+    }
+    $params[] = $gid;
+    $params[] = $occurrenceDate;
+    $params[] = (int)($sourceTask['id'] ?? 0);
+    $pdo->prepare("UPDATE dispatch_next_tasks SET " . implode(',', $sets) . ", updated_at=NOW() WHERE parent_group_id=? AND task_date=? AND is_deleted=0 AND id<>?")->execute($params);
+    foreach ($siblings as $sibling) {
+        foreach ($changes as $field => $value) {
+            if ((string)($sibling[$field] ?? '') === (string)$value) continue;
+            dn_log((int)$sibling['id'], $action, $field, $sibling[$field] ?? '', $value, '同步固定待办同一天成员内容');
+        }
+    }
+    return count($siblings);
+}
+
+function dn_update_fixed_todo_occurrence_for_group(array $group, array $in): array
+{
+    $gid = (int)($group['id'] ?? $in['group_id'] ?? 0);
+    if ($gid <= 0) dn_fail('缺少固定待办规则 ID');
+    if (!dn_is_fixed_todo_group($group)) dn_fail('这不是固定待办规则', 400);
+    $uid = dn_uid();
+    $assigneeIds = array_values(array_filter(array_map('intval', json_decode((string)($group['assignee_ids_json'] ?? '[]'), true) ?: []), fn($v) => $v > 0));
+    if (!dn_is_admin() && (int)($group['created_by'] ?? 0) !== $uid && !in_array($uid, $assigneeIds, true)) {
+        dn_fail('只有派工人或执行人可以修改当天固定待办', 403);
+    }
+    $date = dn_date($in['date'] ?? null);
+    $fields = ['title' => 240, 'project' => 8000];
+    $changes = [];
+    foreach ($fields as $field => $max) {
+        if (!array_key_exists($field, $in)) continue;
+        $changes[$field] = dn_str($in[$field], $max);
+    }
+    if (!$changes) dn_fail('没有可保存的固定待办内容', 400);
+
+    $pdo = dispatch_next_db();
+    $st = $pdo->prepare("SELECT id,title,project FROM dispatch_next_tasks WHERE parent_group_id=? AND task_date=? AND is_deleted=0 ORDER BY id");
+    $st->execute([$gid, $date]);
+    $rows = $st->fetchAll();
+    if (!$rows) {
+        dn_run_recurring(['date' => $date], false);
+        $st->execute([$gid, $date]);
+        $rows = $st->fetchAll();
+    }
+    if (!$rows) dn_fail('当天固定待办尚未生成，请先刷新当天列表', 404);
+
+    $sets = [];
+    $params = [];
+    foreach ($changes as $field => $value) {
+        $sets[] = "{$field}=?";
+        $params[] = $value;
+    }
+    $params[] = $gid;
+    $params[] = $date;
+    $pdo->prepare("UPDATE dispatch_next_tasks SET " . implode(',', $sets) . ", updated_at=NOW() WHERE parent_group_id=? AND task_date=? AND is_deleted=0")->execute($params);
+
+    foreach ($rows as $row) {
+        foreach ($changes as $field => $value) {
+            if ((string)($row[$field] ?? '') === (string)$value) continue;
+            dn_log((int)$row['id'], 'update_fixed_occurrence', $field, $row[$field] ?? '', $value, '修改当天固定待办实例，不更新母板');
+        }
+    }
+    dn_refresh_group($gid);
+    $ust = $pdo->prepare("SELECT MAX(updated_at) FROM dispatch_next_tasks WHERE parent_group_id=? AND task_date=? AND is_deleted=0");
+    $ust->execute([$gid, $date]);
+    return ['group_id' => $gid, 'date' => $date, 'changed' => count($rows), 'updated_at' => (string)($ust->fetchColumn() ?: date('Y-m-d H:i:s'))];
+}
+
+function dn_update_fixed_todo_occurrence(array $in): array
+{
+    $gid = (int)($in['group_id'] ?? 0);
+    if ($gid <= 0) dn_fail('缺少固定待办规则 ID');
+    $pdo = dispatch_next_db();
+    $st = $pdo->prepare("SELECT * FROM dispatch_next_groups WHERE id=? LIMIT 1");
+    $st->execute([$gid]);
+    $group = $st->fetch();
+    if (!$group) dn_fail('固定待办规则不存在', 404);
+    return dn_update_fixed_todo_occurrence_for_group($group, $in);
+}
+
 function dn_group_method_label(array $group): string
 {
     $type = (string)($group['group_type'] ?? '');
@@ -1529,6 +1643,28 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
     $methodLabel = dn_group_method_label($g);
     $groupRule = dn_group_rule($g);
     $isFixedTodo = (string)($groupRule['kind'] ?? '') === 'fixed_todo';
+    $displayTitle = (string)($g['title'] ?? '');
+    $displayProject = (string)($g['project'] ?? '');
+    if ($isFixedTodo && $children) {
+        $targetDate = dn_task_occurrence_date([
+            'task_date' => (string)($displayDate ?? ''),
+            'due_at' => $displayDueAt,
+        ]);
+        $sameDayChildren = array_values(array_filter($children, function ($c) use ($targetDate) {
+            return dn_task_occurrence_date($c) === $targetDate;
+        }));
+        $displayChildren = $sameDayChildren ?: $children;
+        usort($displayChildren, fn($a, $b) => strcmp((string)($b['updated_at'] ?? ''), (string)($a['updated_at'] ?? '')));
+        foreach ($displayChildren as $c) {
+            if ($displayTitle === '' && trim((string)($c['title'] ?? '')) !== '') {
+                $displayTitle = (string)$c['title'];
+            }
+            if ($displayProject === '' && trim((string)($c['project'] ?? '')) !== '') {
+                $displayProject = (string)$c['project'];
+            }
+            if ($displayTitle !== '' && $displayProject !== '') break;
+        }
+    }
     $canStopRecurring = (string)($g['group_type'] ?? '') === 'recurring'
         && $isFixedTodo
         && (int)($g['is_active'] ?? 0) === 1
@@ -1541,8 +1677,8 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
         'id' => 'g' . $gid,
         'group_id' => $gid,
         'is_group' => true,
-        'title' => $g['title'],
-        'project' => $g['project'],
+        'title' => $displayTitle,
+        'project' => $displayProject,
         'description' => $g['description'],
         'priority' => $children[0]['priority'] ?? 'normal',
         'status' => $groupStatus,
@@ -1578,7 +1714,7 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
         'mail_preview_task_id' => $mailPreviewTaskId,
         'has_mail_body' => $mailPreviewTaskId > 0 ? 1 : 0,
         'children' => array_map(fn($c) => ['id'=>(int)$c['id'],'title'=>$c['title'] ?? '','project'=>$c['project'] ?? '','assigned_to'=>(int)$c['assigned_to'],'assignee_name'=>dn_user_name((int)$c['assigned_to']),'status'=>$c['status'],'progress'=>(int)$c['progress'],'due_at'=>$c['due_at'] ?? '','task_date'=>$c['task_date'] ?? '','updated_at'=>$c['updated_at'] ?? ''], $children),
-        'sort_key' => '0-' . $g['title'],
+        'sort_key' => '0-' . $displayTitle,
     ];
 }
 
@@ -1929,6 +2065,7 @@ function dn_update_task(array $in): array
     $sets = [];
     $params = [];
     $changes = [];
+    $fixedOccurrenceChanges = [];
     foreach ($allowed as $f) {
         if (!array_key_exists($f, $in)) continue;
         $old = $task[$f] ?? '';
@@ -1948,6 +2085,7 @@ function dn_update_task(array $in): array
         $sets[] = "{$f}=?";
         $params[] = $new;
         $changes[] = [$f, $old, $new];
+        if (in_array($f, ['title', 'project'], true)) $fixedOccurrenceChanges[$f] = $new;
         dn_log($id, 'update', $f, $old, $new, '字段修改');
     }
     if (!$sets) return ['id' => $id, 'changed' => 0, 'updated_at' => (string)($task['updated_at'] ?? '')];
@@ -1971,6 +2109,9 @@ function dn_update_task(array $in): array
     foreach ($changes as $change) {
         if ($change[0] === 'due_at') dn_record_due_change($task, $change[1], $change[2], 'update_task');
         dn_notify_task_change($task, $change[0], $change[1], $change[2]);
+    }
+    if ($fixedOccurrenceChanges) {
+        dn_sync_fixed_todo_occurrence_fields(array_merge($task, ['id' => $id]), $fixedOccurrenceChanges, 'fixed_occurrence_sync');
     }
     dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     return ['id' => $id, 'changed' => count($sets), 'updated_at' => dn_task_updated_at($id)];
@@ -2178,6 +2319,9 @@ function dn_update_multi(array $in): array
     $st->execute([$gid]);
     $g = $st->fetch();
     if (!$g) dn_fail('多人组不存在', 404);
+    if (dn_is_fixed_todo_group($g) && !array_key_exists('due_at', $in) && (array_key_exists('title', $in) || array_key_exists('project', $in))) {
+        return dn_update_fixed_todo_occurrence_for_group($g, $in);
+    }
     if (!dn_is_admin() && (int)$g['created_by'] !== dn_uid()) dn_fail('只有派工人可以修改多人组', 403);
     if (dn_due_dt(array_key_exists('due_at', $in) ? $in['due_at'] : ($g['due_at'] ?? null)) === null) dn_fail('派工待办必须填写截止日期');
     $fields = ['title' => 240, 'project' => 8000, 'description' => 8000];
@@ -3997,6 +4141,9 @@ function dn_update_cell(array $in): array
         dn_log($id, 'update_cell', $field, $old, $new, '表格单元格编辑');
         if ($field === 'due_at') dn_record_due_change($task, $old, $new, 'update_cell');
         dn_notify_task_change($task, $field, $old, $new);
+        if (in_array($field, ['title', 'project'], true)) {
+            dn_sync_fixed_todo_occurrence_fields(array_merge($task, ['id' => $id]), [$field => $new], 'fixed_occurrence_sync');
+        }
         dn_refresh_group((int)($task['parent_group_id'] ?? 0));
     }
     return ['task_id' => $id, 'field' => $field, 'value' => $new, 'updated_at' => dn_task_updated_at($id)];
@@ -5837,6 +5984,7 @@ try {
         case 'transfer_personal_task': dn_ok(dn_transfer_personal_task($in));
         case 'restore_personal_transfer': dn_ok(dn_restore_personal_transfer($in));
         case 'transfer_target': dn_ok(dn_transfer_target($in));
+        case 'update_fixed_occurrence': dn_ok(dn_update_fixed_todo_occurrence($in));
         case 'update_multi': dn_ok(dn_update_multi($in));
         case 'delete_multi':
             $gid = (int)($in['group_id'] ?? 0);
