@@ -1,5 +1,13 @@
 (function () {
   var state = window.CRM_BOOTSTRAP || { modules: {}, actions: {}, preferences: {} };
+  function crmActionContract(module, label) {
+    return ((state.action_contracts || {})[module] || {})[label] || null;
+  }
+  function crmActionAllowed(module, label) {
+    var contract = crmActionContract(module, label);
+    if (contract) return contract.allowed === true;
+    return !state.action_permissions || state.action_permissions[label] !== false;
+  }
   function hashParts() {
     var raw = (window.location.hash || '').replace(/^#/, '');
     var parts = raw.split(':');
@@ -4100,7 +4108,20 @@
       var previousId = Number(this.currentId || 0) || 0;
       var nextId = Number(id || 0) || 0;
       var sameCustomer = previousId && nextId && previousId === nextId;
-      this.currentId = id;
+      var requestSeq = this.detailRequestSeq = Number(this.detailRequestSeq || 0) + 1;
+      this.currentId = nextId;
+      this.detailFullLoading = null;
+      if (!sameCustomer) {
+        this.detailSelectionSeq = Number(this.detailSelectionSeq || 0) + 1;
+        this.currentDetail = null;
+        this.archiveEditMode = false;
+        this.attributeViewMode = false;
+        this.attributeEditMode = false;
+        this.attributeData = null;
+        this.attributeOriginalSnapshot = null;
+        var detailBox = document.querySelector('[data-customer-detail]');
+        if (detailBox) detailBox.innerHTML = '<div class="visit-empty">正在读取客户详情...</div>';
+      }
       if (!options.keepTab && !sameCustomer) {
         this.activeDetailTab = 'overview';
         this.selectedDetailEntity = null;
@@ -4114,16 +4135,25 @@
       } else {
         this.activeDetailTab = this.activeDetailTab || this.restoreDetailTab(id);
       }
-      document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === id); });
-      return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
+      var isCurrentRequest = function () {
+        return self.detailRequestSeq === requestSeq && Number(self.currentId) === nextId;
+      };
+      document.querySelectorAll('[data-customer-row]').forEach(function (row) { row.classList.toggle('active', Number(row.getAttribute('data-customer-row')) === nextId); });
+      return post('customer_get', { customer_id: nextId, detail: options.full ? 'full' : 'overview' }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
+        if (!nextId || Number(((json.data || {}).customer || {}).id) !== nextId) throw new Error('客户详情与当前选择不一致，请重新选择客户。');
+        // A background request may finish after the user has started editing.
+        if (options.silent && (self.archiveEditMode || self.attributeEditMode || (self.attributeViewMode && !options.preserveAttributeView))) return null;
         self.currentDetail = json.data;
         self.attributePromotionFeedback = { loading: true, rows: [], summary: {} };
-        self.renderDetail(json.data, { suppressScroll: !!options.silent });
+        if (!options.preserveAttributeView) self.renderDetail(json.data, { suppressScroll: !!options.silent });
         self.renderSelection();
         self.loadCustomerPromotionFeedback();
         if (!options.silent) renderActions('customers');
+        return json.data;
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         if (options.silent) {
           var status = document.querySelector('[data-customer-search-status]');
           if (status) status.textContent = '静默同步详情失败：' + (error.message || '未知错误');
@@ -4133,28 +4163,44 @@
       });
     },
     ensureFullDetail: function (targetTab) {
-      if (!this.currentId || !(this.currentDetail && Number(this.currentDetail._lazy_detail || 0))) return Promise.resolve(this.currentDetail);
-      if (this.detailFullLoading) return this.detailFullLoading;
+      var customerId = Number(this.currentId || 0);
+      if (!customerId || Number(((this.currentDetail || {}).customer || {}).id) !== customerId) return Promise.resolve(null);
+      if (!Number(this.currentDetail._lazy_detail || 0)) return Promise.resolve(this.currentDetail);
+      var pending = this.detailFullLoading;
+      if (pending && pending.customerId === customerId && pending.requestSeq === this.detailRequestSeq) {
+        pending.targetTab = targetTab || pending.targetTab;
+        return pending.promise;
+      }
       var self = this;
+      var context = { customerId: customerId, requestSeq: Number(this.detailRequestSeq || 0) + 1, targetTab: targetTab };
+      this.detailRequestSeq = context.requestSeq;
+      this.detailFullLoading = context;
+      var isCurrentRequest = function () {
+        return self.detailFullLoading === context && self.detailRequestSeq === context.requestSeq && Number(self.currentId) === customerId;
+      };
       var box = document.querySelector('[data-detail-panel="' + esc(targetTab || '') + '"]');
       if (box) box.innerHTML = '<div class="visit-empty">正在读取该 Tab 的完整数据...</div>';
-      this.detailFullLoading = post('customer_get', { customer_id: this.currentId, detail: 'full' }).then(function (json) {
+      context.promise = post('customer_get', { customer_id: customerId, detail: 'full' }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
+        if (Number(((json.data || {}).customer || {}).id) !== customerId) throw new Error('客户详情与当前选择不一致，请重新选择客户。');
         self.currentDetail = json.data;
         self.renderDetail(json.data);
-        if (targetTab) self.switchDetailTab(targetTab);
-        if (targetTab === 'promotion_feedback') self.loadCustomerPromotionFeedback();
+        if (context.targetTab) self.switchDetailTab(context.targetTab);
+        if (context.targetTab === 'promotion_feedback') self.loadCustomerPromotionFeedback();
         return self.currentDetail;
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         toast(error.message || '客户详情加载失败');
         throw error;
       }).finally(function () {
-        self.detailFullLoading = null;
+        if (self.detailFullLoading === context) self.detailFullLoading = null;
       });
-      return this.detailFullLoading;
+      return context.promise;
     },
     renderDetail: function (data, options) {
       options = options || {};
+      if (!data || !data.customer || Number(data.customer.id) !== Number(this.currentId)) return;
       var box = document.querySelector('[data-customer-detail]');
       if (!box) return;
       var c = data.customer;
@@ -4424,7 +4470,7 @@
       };
       return '<form class="archive-attribute-panel archive-profile-editor" data-archive-attribute-form>' +
         '<header class="archive-attribute-commandbar"><div><strong>客户档案</strong><span>基础资料、来源分层、负责人和备注集中维护；双击联系人、地址、客户群行仍进入原编辑流程。</span></div><div class="customer-tab-stats"><span>完整度 ' + esc(completeness.score || 0) + '%</span><span>缺失 ' + esc(missing.length) + '</span><span>' + esc(missing.slice(0, 5).join(' / ') || '资料较完整') + '</span></div><div class="archive-attribute-toolbar"><button type="button" data-archive-edit>编辑档案</button><button type="button" class="primary" data-archive-save ' + (this.archiveEditMode ? '' : 'disabled') + '>保存档案</button><button type="button" data-archive-cancel ' + (this.archiveEditMode ? '' : 'disabled') + '>取消修改</button><button type="button" data-archive-missing>补全缺失资料</button></div></header>' +
-        '<input type="hidden" name="customer_id" value="' + esc(this.currentId || c.id || '') + '">' +
+        '<input type="hidden" name="customer_id" value="' + esc(c.id || '') + '">' +
         '<div class="archive-attribute-sections archive-profile-layout">' +
           '<div class="archive-profile-formgrid">' +
             '<section class="archive-attribute-card primary"><header><b>基础身份</b><span>客户名称、代码与区域</span></header><div class="entity-grid archive-attribute-grid">' +
@@ -4449,11 +4495,17 @@
     archiveAttributeData: function () {
       var form = document.querySelector('[data-archive-attribute-form]');
       if (!form) throw new Error('档案表单不存在。');
-      var data = { customer_id: this.currentId };
+      var idInput = form.querySelector('[name="customer_id"]');
+      var customerId = Number(idInput && idInput.value || 0);
+      if (!customerId || customerId !== Number(this.currentId) || customerId !== Number(((this.currentDetail || {}).customer || {}).id)) {
+        throw new Error('客户档案与当前选择不一致，请重新加载后再保存。');
+      }
+      var data = { customer_id: customerId };
       Array.prototype.slice.call(form.querySelectorAll('input[name], textarea[name], select[name]')).forEach(function (el) {
         if (el.disabled && el.name !== 'customer_id') return;
         data[el.name] = el.value || '';
       });
+      data.customer_id = customerId;
       ['source_tags','promotion_channels'].forEach(function (key) {
         if (Object.prototype.hasOwnProperty.call(data, key)) data[key] = String(data[key] || '').split(/[,，\s]+/).filter(Boolean);
       });
@@ -4467,6 +4519,8 @@
     saveArchiveAttribute: function () {
       var self = this;
       var data;
+      var form = document.querySelector('[data-archive-attribute-form]');
+      if (form && form.dataset.archiveSaving === '1') return Promise.resolve(null);
       try {
         data = this.archiveAttributeData();
         if (!String(data.customer_name || '').trim()) throw new Error('客户名称不能为空。');
@@ -4474,34 +4528,61 @@
       } catch (error) {
         return this.showCustomerError(error.message || '档案数据无效。');
       }
+      var customerId = Number(data.customer_id);
+      var detail = this.currentDetail;
+      var requestSeq = this.detailRequestSeq;
+      var selectionSeq = this.detailSelectionSeq;
+      var isCurrentSave = function () {
+        return Number(self.currentId) === customerId && self.currentDetail === detail && self.detailRequestSeq === requestSeq && document.querySelector('[data-archive-attribute-form]') === form;
+      };
+      form.dataset.archiveSaving = '1';
+      var saveButton = form.querySelector('[data-archive-save]');
+      if (saveButton) saveButton.disabled = true;
       return post('customer_attribute_save', data).then(function (json) {
         if (!json.success) throw new Error(json.message || '档案保存失败');
+        if (!isCurrentSave()) return null;
         self.archiveEditMode = false;
         toast(json.message || '档案已保存');
-        return self.loadDetail(self.currentId, { keepTab: true }).then(function () {
+        return self.loadDetail(customerId, { keepTab: true }).then(function () {
+          if (Number(self.currentId) !== customerId || self.detailSelectionSeq !== selectionSeq) return;
           self.loadList({ silent: true });
           renderActions('customers');
         });
       }).catch(function (error) {
-        self.showCustomerError(error.message || '档案保存失败');
+        if (isCurrentSave()) self.showCustomerError(error.message || '档案保存失败');
+      }).finally(function () {
+        delete form.dataset.archiveSaving;
+        if (saveButton && document.querySelector('[data-archive-attribute-form]') === form) saveButton.disabled = !self.archiveEditMode;
       });
     },
     openCustomerAttributeView: function (editMode, enlarge) {
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
       if (enlarge) this.applyLayoutMode('detail', false);
       var self = this;
+      var customerId = Number(this.currentId);
+      var requestSeq = this.detailRequestSeq = Number(this.detailRequestSeq || 0) + 1;
+      this.detailFullLoading = null;
       this.attributeViewMode = true;
       this.attributeEditMode = !!editMode;
+      this.attributeData = null;
+      this.attributeOriginalSnapshot = null;
+      var isCurrentRequest = function () {
+        return self.detailRequestSeq === requestSeq && Number(self.currentId) === customerId && self.attributeViewMode;
+      };
       var box = document.querySelector('[data-customer-detail]');
       if (box) box.innerHTML = '<div class="customer-attribute-view"><header><div><span>客户属性</span><strong>客户属性</strong><p>正在读取客户基础属性...</p></div></header><div class="visit-empty">正在加载...</div></div>';
-      return post('customer_attribute_get', { customer_id: this.currentId }).then(function (json) {
+      return post('customer_attribute_get', { customer_id: customerId }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '客户属性读取失败');
+        if (Number(((json.data || {}).customer || {}).id) !== customerId) throw new Error('客户属性与当前选择不一致，请重新选择客户。');
         self.attributeData = json.data || {};
         self.attributePromotionFeedback = { loading: true, rows: [], summary: {} };
         self.renderCustomerAttributeView();
         self.loadCustomerPromotionFeedback();
         renderActions('customers');
+        return json.data;
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         self.attributeViewMode = false;
         self.showCustomerError(error.message || '客户属性读取失败');
         renderActions('customers');
@@ -4512,6 +4593,7 @@
       if (!box) return;
       var data = this.attributeData || {};
       var c = data.customer || ((this.currentDetail || {}).customer || {});
+      if (!c.id || Number(c.id) !== Number(this.currentId)) return;
       var protection = data.protection || {};
       var owners = data.owners || [];
       var groups = data.groups || [];
@@ -4536,7 +4618,7 @@
       };
       box.innerHTML = '<form class="customer-attribute-view" data-customer-attribute-form>' +
         '<header><div><span>客户属性</span><strong>' + esc(c.customer_name || '客户属性') + '</strong><p>' + esc(c.customer_code || '未填代码') + ' · 负责人：' + esc(ownerText) + '</p></div><aside><b>完整度 ' + esc(completeness.score || 0) + '%</b><span>缺失：' + esc((missing || []).slice(0, 5).join(' / ') || '资料较完整') + '</span></aside></header>' +
-        '<input type="hidden" name="customer_id" value="' + esc(this.currentId) + '">' +
+        '<input type="hidden" name="customer_id" value="' + esc(c.id) + '">' +
         '<section class="entity-section entity-section-primary"><h3>客户身份</h3><div class="entity-grid">' +
         field('客户名称 *', 'customer_name', c.customer_name, 'required') +
         field('英文名称', 'customer_name_en', c.customer_name_en) +
@@ -4715,11 +4797,18 @@
       var self = this;
       var customerId = Number(this.currentId || 0);
       if (!customerId) return;
+      var detailSeq = this.detailRequestSeq;
+      var feedbackSeq = this.feedbackRequestSeq = Number(this.feedbackRequestSeq || 0) + 1;
+      var isCurrentRequest = function () {
+        return Number(self.currentId) === customerId && self.detailRequestSeq === detailSeq && self.feedbackRequestSeq === feedbackSeq;
+      };
       return post('marketing_feedback_list', { customer_id: customerId, limit: 50 }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '推广反馈读取失败');
         self.attributePromotionFeedback = json.data || { rows: [], summary: {} };
         self.renderCustomerPromotionFeedbackSection();
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         self.attributePromotionFeedback = { rows: [], summary: {}, error: error.message || '推广反馈读取失败' };
         self.renderCustomerPromotionFeedbackSection();
       });
@@ -4939,9 +5028,14 @@
     collectCustomerAttributeData: function () {
       var form = document.querySelector('[data-customer-attribute-form]');
       if (!form) throw new Error('客户属性表单不存在。');
+      var idInput = form.querySelector('[name="customer_id"]');
+      var customerId = Number(idInput && idInput.value || 0);
+      if (!customerId || customerId !== Number(this.currentId) || customerId !== Number(((this.attributeData || {}).customer || {}).id)) {
+        throw new Error('客户属性与当前选择不一致，请重新加载后再保存。');
+      }
       var original = this.attributeOriginalSnapshot || {};
       var currentData = this.customerAttributeSnapshot(form);
-      var data = { customer_id: this.currentId };
+      var data = { customer_id: customerId };
       var changed = [];
       Object.keys(currentData).forEach(function (key) {
         if (JSON.stringify(currentData[key] || '') !== JSON.stringify(original[key] || '')) {
@@ -5013,31 +5107,48 @@
     saveCustomerAttribute: function () {
       var self = this;
       var data;
+      var form = document.querySelector('[data-customer-attribute-form]');
+      if (form && form.dataset.attributeSaving === '1') return Promise.resolve(null);
       try {
         data = this.validateCustomerAttributeData(this.collectCustomerAttributeData());
       } catch (error) {
         return this.showCustomerError(error.message);
       }
+      var customerId = Number(data.customer_id);
+      var attribute = this.attributeData;
+      var requestSeq = this.detailRequestSeq;
+      var isCurrentSave = function () {
+        return Number(self.currentId) === customerId && self.attributeData === attribute && self.detailRequestSeq === requestSeq && self.attributeViewMode && document.querySelector('[data-customer-attribute-form]') === form;
+      };
+      form.dataset.attributeSaving = '1';
       return post('customer_attribute_save', data).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户属性保存失败');
+        if (!isCurrentSave()) return null;
+        var savedAttribute = (json.data && json.data.attribute) || attribute;
+        if (Number((savedAttribute.customer || {}).id) !== customerId) throw new Error('保存结果与当前客户不一致，请重新加载客户属性。');
         toast(json.message || '客户属性已保存');
         self.attributeEditMode = false;
-        self.attributeData = (json.data && json.data.attribute) || self.attributeData;
-        return self.loadDetail(self.currentId, { silent: true, keepTab: true }).then(function () {
-          self.attributeViewMode = true;
+        self.attributeData = savedAttribute;
+        return self.loadDetail(customerId, { silent: true, keepTab: true, preserveAttributeView: true }).then(function (detail) {
+          if (!detail || Number(self.currentId) !== customerId || self.attributeData !== savedAttribute || !self.attributeViewMode || self.attributeEditMode) return;
           self.renderCustomerAttributeView();
           self.showCustomerAttributeLogs();
           self.loadList({ silent: true });
           renderActions('customers');
         });
       }).catch(function (error) {
-        self.showCustomerError(error.message || '客户属性保存失败');
+        if (isCurrentSave()) self.showCustomerError(error.message || '客户属性保存失败');
+      }).finally(function () {
+        delete form.dataset.attributeSaving;
       });
     },
     showCustomerAttributeMissing: function () {
       var self = this;
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
-      return post('customer_attribute_missing', { customer_id: this.currentId }).then(function (json) {
+      var customerId = Number(this.currentId), requestSeq = this.detailRequestSeq;
+      var isCurrentRequest = function () { return Number(self.currentId) === customerId && self.detailRequestSeq === requestSeq; };
+      return post('customer_attribute_missing', { customer_id: customerId }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '缺失资料读取失败');
         var missing = (json.data && json.data.missing) || [];
         if (!self.attributeViewMode || !self.attributeEditMode) {
@@ -5049,6 +5160,7 @@
         self.markCustomerAttributeMissing(missing);
         toast(missing.length ? ('缺失项：' + missing.join(' / ')) : '资料较完整');
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         self.showCustomerError(error.message || '缺失资料读取失败');
       });
     },
@@ -5074,7 +5186,10 @@
     showCustomerAttributeLogs: function () {
       var self = this;
       if (!this.currentId) return this.showCustomerError('请先选择客户。');
-      return post('customer_attribute_logs', { customer_id: this.currentId }).then(function (json) {
+      var customerId = Number(this.currentId), requestSeq = this.detailRequestSeq;
+      var isCurrentRequest = function () { return Number(self.currentId) === customerId && self.detailRequestSeq === requestSeq; };
+      return post('customer_attribute_logs', { customer_id: customerId }).then(function (json) {
+        if (!isCurrentRequest()) return null;
         if (!json.success) throw new Error(json.message || '客户日志读取失败');
         if (!self.attributeViewMode) {
           self.attributeViewMode = true;
@@ -5086,6 +5201,7 @@
         if (!extra) return;
         extra.innerHTML = '<h3>修改日志</h3><div class="customer-log-list rich">' + (rows.length ? rows.slice(0, 30).map(function (row) { return CustomerModule.logCard(row); }).join('') : '<div class="visit-empty">暂无修改日志</div>') + '</div>';
       }).catch(function (error) {
+        if (!isCurrentRequest()) return null;
         self.showCustomerError(error.message || '客户日志读取失败');
       });
     },
@@ -20242,7 +20358,9 @@
       }).join('');
     },
     openEditTaskDialog: function (taskId) {
-      if (!this.taskById(taskId)) return toast('请选择推广任务');
+      var listedTask = this.taskById(taskId);
+      if (!listedTask) return toast('请选择推广任务');
+      if (Number(listedTask.queue_count || 0) > 0) return toast('项目已有发送队列，不能重建执行目标。请使用“复制项目”；只改名称可用“重命名”。');
       var self = this;
       var open = function (task, targets) {
         targets = targets || [];
@@ -20272,16 +20390,15 @@
         self.wizardStep = 0;
         self.openWizard();
       };
-      this.ensureTaskDetail(taskId).then(function (task) {
+      return this.ensureTaskDetail(taskId).then(function (task) {
+        if (Number(task.queue_count || 0) > 0) throw new Error('项目已有发送队列，请复制为新项目后修改；已有执行记录保持不变。');
         return post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
           if (!json.success) throw new Error(json.message || '目标名单加载失败');
-          open(task, ((json.data || {}).targets || []));
-        }).catch(function (error) {
-          toast(error.message || '目标名单加载失败，将只打开项目基础信息。');
-          open(task, []);
+          if (!json.data || !Array.isArray(json.data.targets)) throw new Error('目标名单不完整，请刷新后重试。');
+          open(task, json.data.targets);
         });
       }).catch(function (error) {
-        self.showError(error.message || '推广任务详情加载失败');
+        self.showError(error.message || '推广任务详情或目标名单加载失败，请重试。');
       });
     },
     openRenameTaskDialog: function (taskId) {
@@ -20703,22 +20820,32 @@
         renderDetail(results);
       }).catch(function (error) { self.showError(error.message || '发送队列加载失败'); });
     },
+    canStartTask: function (task) {
+      return !!task && ['pending','scheduled','running','manual_pending','partial_failed','failed'].indexOf(task.task_status) >= 0;
+    },
+    canPauseTask: function (task) {
+      return !!task && ['pending','scheduled','running','manual_pending','partial_failed'].indexOf(task.task_status) >= 0;
+    },
     openExecutionDialog: function (taskId) {
       var self = this;
       var task = this.taskById(taskId);
-      post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
+      if (!this.canStartTask(task)) return toast('请先将草稿保存为正式项目；暂停项目请使用“继续项目”，已结束项目不能重新启动。');
+      return post('marketing_task_targets', { task_id: taskId, limit: 5000 }).then(function (json) {
         if (!json.success) throw new Error(json.message || '执行预览加载失败');
         var targets = ((json.data || {}).targets || []);
         var executable = targets.filter(function (row) { return ['pending','failed'].indexOf(row.target_status) >= 0; });
-        var hasGroupTargets = executable.some(function (row) { return self.isGroupPromotionChannel(row.channel_key) || row.chat_group_id; });
         self.openDialog({
-          title: '执行推广任务',
-          description: (task ? task.task_name : '推广任务') + ' · 执行前确认目标、规则和联动计划',
-          body: '<section class="promo-preview-grid"><article><strong>' + esc(executable.length) + '</strong><span>本次可执行</span></article><article><strong>' + esc(cnChannel(task ? task.channel_key : '-')) + '</strong><span>渠道</span></article><article><strong>' + esc(cnStatus(task ? task.schedule_type : '-')) + '</strong><span>时间计划</span></article><article><strong>' + esc(self.taskStatusText(task ? task.task_status : '-')) + '</strong><span>当前状态</span></article></section>' + (hasGroupTargets ? '<p class="promo-empty">微信群 / WhatsApp群必须使用右侧“手动执行”逐条勾选，系统不会自动发送。</p>' : '<div class="promo-rule-strip"><span>写入推广日志</span><span>生成失败处理项</span><span>保留资料/报价/派工联动记录</span><span>按客户/联系人策略过滤</span></div>') + self.targetListHtml(executable.slice(0, 30)),
-          actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-run-confirm="' + esc(taskId) + '"' + (executable.length && !hasGroupTargets ? '' : ' disabled') + '>确认执行</button>',
+          title: '启动推广项目',
+          description: (task ? task.task_name : '推广任务') + ' · 确认目标和执行方式',
+          body: '<section class="promo-preview-grid"><article><strong>' + esc(executable.length) + '</strong><span>待处理目标</span></article><article><strong>' + esc(cnChannel(task.channel_key || '-')) + '</strong><span>渠道</span></article><article><strong>' + esc(self.taskStatusText(task.task_status)) + '</strong><span>当前状态</span></article></section><p class="promo-empty">邮件将进入计划发送队列，受理不代表已经发送。已有队列不会重复创建，失败邮件不会在这里自动重发；人工渠道仍需在执行清单中记录真实结果。</p>' + self.targetListHtml(executable.slice(0, 30)),
+          actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-run-confirm="' + esc(taskId) + '"' + (targets.length ? '' : ' disabled') + '>确认启动</button>',
           bind: function (modal) {
             var button = modal.querySelector('[data-promo-run-confirm]');
-            if (button) button.addEventListener('click', function () { self.executeTask(taskId); });
+            if (button) button.addEventListener('click', function () {
+              button.disabled = true;
+              button.textContent = '正在受理...';
+              self.executeTask(taskId).finally(function () { if (button.isConnected) { button.disabled = false; button.textContent = '确认启动'; } });
+            });
           }
         });
       }).catch(function (error) { self.showError(error.message || '执行预览加载失败'); });
@@ -20949,10 +21076,14 @@
       self.openDialog({
         title: statusName + '推广任务',
         description: (task ? task.task_name : '推广任务') + ' · 状态变更确认',
-        body: '<section class="promo-preview-grid"><article><strong>' + esc(this.taskStatusText(task ? task.task_status : '-')) + '</strong><span>当前状态</span></article><article><strong>' + esc(this.taskStatusText(status)) + '</strong><span>目标状态</span></article><article><strong>' + esc(task ? task.success_count || 0 : 0) + '</strong><span>成功</span></article><article><strong>' + esc(task ? task.failed_count || 0 : 0) + '</strong><span>失败</span></article></section><p class="promo-empty">状态变更会写入任务日志，不会删除历史执行记录。</p>',
+        body: '<section class="promo-preview-grid"><article><strong>' + esc(this.taskStatusText(task ? task.task_status : '-')) + '</strong><span>当前状态</span></article><article><strong>' + esc(this.taskStatusText(status)) + '</strong><span>目标状态</span></article></section><p class="promo-empty">' + esc(status === 'paused' ? '暂停后不再领取待发邮件；已经在发送中的邮件可能仍会送达。' : (status === 'cancelled' ? '将取消项目及尚未发送的队列；已经在发送中的邮件不能撤回，历史记录保留。' : '继续后，符合计划时间的待发队列将恢复执行；不会自动重发失败邮件。')) + '</p>',
         actions: '<button type="button" data-promo-dialog-close>取消</button><button type="button" data-promo-status-confirm="' + esc(taskId) + '">确认' + esc(statusName) + '</button>',
         bind: function (modal) {
-          modal.querySelector('[data-promo-status-confirm]').addEventListener('click', function () { self.setTaskStatus(taskId, status); });
+          modal.querySelector('[data-promo-status-confirm]').addEventListener('click', function () {
+            var button = this;
+            button.disabled = true;
+            self.setTaskStatus(taskId, status).finally(function () { if (button.isConnected) button.disabled = false; });
+          });
         }
       });
     },
@@ -21086,40 +21217,39 @@
       });
     },
     executeTask: function (taskId) {
-      if (!taskId) return;
+      if (!taskId) return Promise.resolve();
       var self = this;
-      post('marketing_task_execute', { task_id: taskId }).then(function (json) {
+      this.executionPending = this.executionPending || {};
+      if (this.executionPending[taskId]) return this.executionPending[taskId];
+      this.executionPending[taskId] = post('marketing_task_execute', { task_id: taskId }).then(function (json) {
         if (!json.success) throw new Error(json.message || '推广任务执行失败');
         var data = json.data || {};
+        if (data.accepted !== true || ['queued','manual'].indexOf(data.execution_mode) < 0 || Number(data.task_id) !== Number(taskId)) throw new Error('未返回有效执行受理结果，请查看执行明细确认，勿重复启动。');
         self.closeDialog();
+        self.data = self.data || {};
         self.data.tasks = data.tasks || self.data.tasks || [];
-        self.data.logs = data.logs || self.data.logs || [];
-        self.data.failed_targets = data.failed_targets || self.data.failed_targets || [];
-        self.data.analytics = data.analytics || self.data.analytics || {};
+        if (self.taskExecutionDetailCache) delete self.taskExecutionDetailCache[taskId];
         self.render();
         self.openDialog({
-          title: '推广任务执行结果',
-          description: '成功 ' + (data.success_count || 0) + ' 个，失败 ' + (data.failed_count || 0) + ' 个',
-          body: '<section class="promo-preview-grid"><article><strong>' + esc(data.success_count || 0) + '</strong><span>成功</span></article><article><strong>' + esc(data.failed_count || 0) + '</strong><span>失败</span></article><article><strong>' + esc(((data.targets || []).filter(function (row) { return row.target_status === 'pending'; })).length) + '</strong><span>仍待执行</span></article><article><strong>' + esc((data.logs || []).length) + '</strong><span>推广日志</span></article></section><div class="promo-rule-strip"><span>推广日志已写入</span><span>失败目标进入失败处理中心</span><span>成功目标保留资料/报价/派工联动记录</span></div>' + self.targetListHtml((data.targets || []).slice(0, 30)),
-          actions: '<button type="button" data-promo-dialog-close>关闭</button><button type="button" data-promo-open-failure-center>查看失败处理</button>',
+          title: '推广执行状态',
+          description: data.message || '已受理，请在执行明细中查看实际结果。',
+          body: '<section class="promo-preview-grid"><article><strong>' + esc(data.queue_count || 0) + '</strong><span>待发或在途邮件</span></article><article><strong>' + esc(data.manual_target_count || 0) + '</strong><span>人工待处理</span></article></section><p class="promo-empty">队列受理不是发送成功；人工任务只有记录真实执行结果后才算完成。</p>',
+          actions: '<button type="button" data-promo-dialog-close>关闭</button>' + (data.execution_mode === 'queued' ? '<button type="button" data-promo-accepted-queue>查看发送明细</button>' : '') + (data.execution_mode === 'manual' || Number(data.manual_target_count) > 0 ? '<button type="button" data-promo-accepted-manual>查看人工清单</button>' : ''),
           bind: function (modal) {
-            var button = modal.querySelector('[data-promo-open-failure-center]');
-            if (button) button.addEventListener('click', function () {
-              self.closeDialog();
-              self.switchView('execution');
-              document.querySelector('[data-promo-failures]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            });
+            modal.querySelector('[data-promo-accepted-queue]')?.addEventListener('click', function () { self.closeDialog(); self.openTaskQueueDialog(taskId); });
+            modal.querySelector('[data-promo-accepted-manual]')?.addEventListener('click', function () { self.closeDialog(); self.openManualExecutionDialog(taskId); });
           }
         });
-        toast('推广任务已执行：成功 ' + (data.success_count || 0) + '，失败 ' + (data.failed_count || 0));
-      }).catch(function (error) { self.showError(error.message || '推广任务执行失败'); });
+        toast(data.message || '已受理，请查看实际执行结果。');
+      }).catch(function (error) { self.showError(error.message || '推广任务执行失败'); }).finally(function () { delete self.executionPending[taskId]; });
+      return this.executionPending[taskId];
     },
     setTaskStatus: function (taskId, status) {
-      if (!taskId || !status) return;
+      if (!taskId || !status) return Promise.resolve();
       var self = this;
-      post('marketing_task_status', { task_id: taskId, status: status }).then(function (json) {
+      return post('marketing_task_status', { task_id: taskId, status: status }).then(function (json) {
         if (!json.success) throw new Error(json.message || '推广任务状态更新失败');
-        toast('推广任务状态已更新');
+        toast((json.data && json.data.message) || '推广任务状态已更新');
         self.closeDialog();
         self.load();
       }).catch(function (error) { self.showError(error.message || '推广任务状态更新失败'); });
@@ -24936,13 +25066,13 @@
       '执行推广任务': {
         empty: '当前没有可执行的推广任务。',
         button: '执行',
-        filter: function (row) { return ['pending','running','partial_failed','paused'].indexOf(row.task_status) >= 0; },
+        filter: function (row) { return PromotionModule.canStartTask(row); },
         run: function (taskId) { PromotionModule.openExecutionDialog(taskId); }
       },
       '暂停推广任务': {
         empty: '当前没有可暂停的推广任务。',
         button: '暂停',
-        filter: function (row) { return ['pending','running','partial_failed'].indexOf(row.task_status) >= 0; },
+        filter: function (row) { return PromotionModule.canPauseTask(row); },
         run: function (taskId) { PromotionModule.openStatusDialog(taskId, 'paused'); }
       },
       '继续推广任务': {
@@ -25493,6 +25623,8 @@
       button.textContent = label;
       button.title = label;
       button.setAttribute('data-action-command', label);
+      var contract = crmActionContract(name, label);
+      if (contract) button.setAttribute('data-action-id', contract.id);
       button.setAttribute('data-tooltip', actionDescription(label));
       if (/删除|批量删除|丢弃|批量丢弃|取消任务|取消未发送队列|批量取消未发送队列/.test(label)) button.classList.add('danger');
       if (name === 'tasks' && TaskCenterModule.isViewAction(label)) button.classList.toggle('active', TaskCenterModule.view === TaskCenterModule.viewKeyFromLabel(label));
@@ -25513,7 +25645,8 @@
         if (name === 'mail') {
           return true;
         }
-        return !state.action_permissions || state.action_permissions[label] !== false;
+        if (name === 'tasks' && TaskCenterModule.actionPending(label)) return false;
+        return crmActionAllowed(name, label);
       });
       if (!items.length) return;
       var section = document.createElement('section');
@@ -25527,7 +25660,7 @@
 
     root.addEventListener('click', function (event) {
       var command = event.target.closest('[data-action-command]');
-      if (command) {
+      if (command && !command.disabled && crmActionAllowed(name, command.getAttribute('data-action-command'))) {
         command.classList.add('is-clicked');
         window.setTimeout(function () { command.classList.remove('is-clicked'); }, 120);
         handleCommand(command.getAttribute('data-action-command'));
@@ -25654,8 +25787,8 @@
         if (singleCheckedId && Number(PromotionModule.selectedTaskId || 0) !== singleCheckedId) PromotionModule.selectedTaskId = singleCheckedId;
         var status = selectedPromoTask.task_status || 'draft';
         var projectItems = ['查看项目详情', '编辑项目', '复制项目'];
-        if (['draft','pending','scheduled','manual_pending','partial_failed','failed'].indexOf(status) >= 0) projectItems.push('启动项目');
-        if (['pending','scheduled','running','manual_pending','partial_failed'].indexOf(status) >= 0) projectItems.push('暂停项目');
+        if (status !== 'running' && PromotionModule.canStartTask(selectedPromoTask)) projectItems.push('启动项目');
+        if (PromotionModule.canPauseTask(selectedPromoTask)) projectItems.push('暂停项目');
         if (status === 'paused') projectItems.push('继续项目');
         if (['completed','cancelled'].indexOf(status) < 0) projectItems.push('取消项目');
         projectItems.push('归档项目');
@@ -26480,11 +26613,13 @@
       });
     },
     actionPending: function (label) {
-      return ['审核通过','驳回报价','编辑报价','修改报价','重新提交审核','查看邮件','AI 分析客户回复','AI 分析回复','创建商机','创建报价','导入报价','转订单','创建样品任务','创建资料任务','创建收款提醒','标记已收款','标记已收定金','标记已收尾款','新增出货批次','标记部分出货','标记全部出货','上传出货附件','创建单证任务','创建 Packing List','创建 Commercial Invoice','上传单证附件','标记单证完成','查询物流','创建派工','生成资料'].indexOf(label) >= 0;
+      return ['审核通过','驳回报价','编辑报价','修改报价','重新提交审核','查看邮件','AI 分析客户回复','AI 分析回复','创建商机','创建报价','导入报价','转订单','创建样品任务','创建资料任务','创建收款提醒','标记已收款','标记已收定金','标记已收尾款','新增出货批次','标记部分出货','标记全部出货','上传出货附件','创建单证任务','创建 Packing List','创建 Commercial Invoice','上传单证附件','标记单证完成','查询物流','生成资料','导出任务','批量导出'].indexOf(label) >= 0;
     },
     actionButton: function (label) {
+      if (!crmActionAllowed('tasks', label)) return '';
       var pending = this.actionPending(label);
-      return '<button type="button" data-task-detail-action="' + esc(label) + '"' + (pending ? ' disabled title="该功能尚未接入，不能执行"' : '') + '>' + esc(label) + (pending ? '（待接入）' : '') + '</button>';
+      var contract = crmActionContract('tasks', label);
+      return '<button type="button" data-task-detail-action="' + esc(label) + '"' + (contract ? ' data-action-id="' + esc(contract.id) + '"' : '') + (pending ? ' disabled title="该功能尚未接入，不能执行"' : '') + '>' + esc(label) + (pending ? '（待接入）' : '') + '</button>';
     },
     init: function () {
       if (this.inited || !document.querySelector('[data-task-center]')) return;
@@ -27290,7 +27425,7 @@
     },
     openSampleDialog: function (row) {
       row = row || {};
-      var html = '<div class="visit-workspace-form sample-shipment-form" data-sample-form><input type="hidden" name="shipment_id" value="' + esc(row.id || '') + '"><input type="hidden" name="customer_id" value="' + esc(row.customer_id || '') + '">' +
+      var html = '<div class="visit-workspace-form sample-shipment-form" data-sample-form><input type="hidden" name="shipment_id" value="' + esc(row.id || '') + '"><input type="hidden" name="request_token" value="' + esc(row.id ? '' : this.requestToken('sample')) + '"><input type="hidden" name="customer_id" value="' + esc(row.customer_id || '') + '">' +
         '<section class="visit-hero-panel"><div><span>样品寄送</span><input name="sample_name" value="' + esc(row.sample_name || '') + '" placeholder="输入样品名称"></div><b>Sample</b></section>' +
         '<section class="visit-work-section visit-customer-chooser"><h3>客户与收件人</h3><div class="visit-search-box"><input data-sample-customer-search placeholder="搜索客户名称 / 代码 / 国家"><button type="button" data-sample-customer-search-btn>搜索</button></div><div class="visit-search-results task-customer-results" data-sample-customer-results></div><div class="visit-customer-card task-selected-customer" data-sample-selected-customer><strong>' + esc(row.customer_name || '未选择客户') + '</strong><span>' + esc([row.country,row.city,row.address].filter(Boolean).join(' · ')) + '</span></div><div class="visit-compact-grid"><label>联系人<select name="contact_id" data-sample-contact-select><option value="' + esc(row.contact_id || '') + '">' + esc(row.contact_name || '未选择联系人') + '</option></select></label><label>收件人<input name="recipient_name" value="' + esc(row.recipient_name || '') + '"></label><label>电话<input name="recipient_phone" value="' + esc(row.recipient_phone || '') + '"></label><label>邮箱<input name="recipient_email" value="' + esc(row.recipient_email || '') + '"></label><label>WhatsApp<input name="recipient_whatsapp" value="' + esc(row.recipient_whatsapp || '') + '"></label><label>国家<input name="country" value="' + esc(row.country || '') + '"></label><label>城市<input name="city" value="' + esc(row.city || '') + '"></label><label class="wide">收件地址<input name="address" value="' + esc(row.address || '') + '"></label><label>邮编<input name="postal_code" value="' + esc(row.postal_code || '') + '"></label></div></section>' +
         '<section class="visit-work-section"><h3>样品信息</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>相关型号</span><input name="product_model" value="' + esc(row.product_model || '') + '"></label><label class="visit-pill-field"><span>客户型号</span><input name="customer_model" value="' + esc(row.customer_model || '') + '"></label><label class="visit-pill-field"><span>产品类别</span><input name="product_category" value="' + esc(row.product_category || '') + '"></label><label class="visit-pill-field"><span>数量</span><input type="number" step="0.01" name="quantity" value="' + esc(row.quantity || 1) + '"></label><label class="visit-pill-field"><span>单位</span><input name="unit" value="' + esc(row.unit || 'pcs') + '"></label><label class="visit-pill-field"><span>颜色</span><input name="color" value="' + esc(row.color || '') + '"></label><label class="visit-pill-field"><span>功率</span><input name="power" value="' + esc(row.power || '') + '"></label><label class="visit-pill-field"><span>色温</span><input name="cct" value="' + esc(row.cct || '') + '"></label><label class="visit-pill-field"><span>显指</span><input name="cri" value="' + esc(row.cri || '') + '"></label><label class="visit-pill-field"><span>角度</span><input name="beam_angle" value="' + esc(row.beam_angle || '') + '"></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="is_custom" ' + (Number(row.is_custom) ? 'checked' : '') + '><span>定制样品</span></label></div></section>' +
@@ -27464,9 +27599,6 @@
         });
       });
     },
-    saveSample: function (dialog) {
-      return this.saveSample(dialog, {});
-    },
     validateSampleUploadInputs: function (dialog) {
       var imageInput = dialog.querySelector('[data-sample-image-input]');
       var imageFiles = Array.prototype.slice.call((imageInput && imageInput.files) || []);
@@ -27503,14 +27635,15 @@
       try { this.validateSampleUploadInputs(dialog); } catch (err) { delete dialog.dataset.sampleSaving; toast(err.message || '图片不符合要求'); return Promise.resolve(); }
       if (button) button.disabled = true;
       if (uploadButton) uploadButton.disabled = true;
-      post('sample_shipment_save', data).then(function (json) {
-        if (!json.success) return toast(json.message || '保存失败');
+      return post('sample_shipment_save', data).then(function (json) {
+        if (!json.success) throw new Error(json.message || '保存失败');
         var shipment = json.data && json.data.shipment;
         if (!shipment || !shipment.id) throw new Error('样品寄送保存成功但未返回寄样ID，无法关联上传文件。');
+        // Persist the saved identity before uploads, so an upload failure never creates another shipment.
+        if (form && form.querySelector('[name="shipment_id"]')) form.querySelector('[name="shipment_id"]').value = shipment.id;
         return TaskCenterModule.uploadQueuedFiles(shipment.id, dialog).then(function () {
           return TaskCenterModule.refreshSampleFiles(shipment.id, dialog).catch(function () { return []; }).then(function () {
             TaskCenterModule.clearSampleUploadInputs(dialog);
-            if (form && form.querySelector('[name="shipment_id"]')) form.querySelector('[name="shipment_id"]').value = shipment.id;
             toast(options.uploadOnly ? '样品图片/附件已上传' : '样品寄送已保存');
             TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
             if (!options.uploadOnly) CustomerModule.closeDialog();
@@ -28241,19 +28374,106 @@
         if (!to) toast('已打开写邮件，请填写收件人；发送后会自动绑定本任务。');
       });
     },
+    openTaskFollowup: function (row) {
+      var self = this;
+      if (typeof this.followupIntentCleanup === 'function') this.followupIntentCleanup();
+      var intent = this.followupIntentSeq = Number(this.followupIntentSeq || 0) + 1;
+      var active = true, selectionSequence = 0, trackedDialog = null, trackedBody = null, trackedContent = null, trackedOpen = false, trackedPicker = null, observer = null;
+      var invalidate = function () {
+        active = false;
+        if (observer) observer.disconnect();
+        if (trackedDialog) {
+          trackedDialog.removeEventListener('close', invalidate);
+          trackedDialog.removeEventListener('cancel', invalidate);
+        }
+        if (self.followupIntentCleanup === invalidate) self.followupIntentCleanup = null;
+      };
+      this.followupIntentCleanup = invalidate;
+      var trackDialog = function (dialog, picker) {
+        trackedDialog = dialog || null;
+        trackedPicker = picker || null;
+        if (!trackedDialog) return;
+        trackedBody = trackedDialog.querySelector('[data-dialog-body]');
+        trackedContent = trackedBody && trackedBody.firstChild;
+        trackedOpen = !!trackedDialog.open;
+        trackedDialog.addEventListener('close', invalidate);
+        trackedDialog.addEventListener('cancel', invalidate);
+        if (typeof MutationObserver === 'function') {
+          observer = new MutationObserver(invalidate);
+          observer.observe(trackedDialog, { attributes: true, attributeFilter: ['open'] });
+          if (trackedBody) observer.observe(trackedBody, { childList: true });
+        }
+      };
+      var isCurrent = function () {
+        if (!active || self.followupIntentSeq !== intent) return false;
+        if (document.querySelector('[data-customer-dialog]') !== trackedDialog) return false;
+        if (trackedDialog && (!!trackedDialog.open !== trackedOpen || trackedDialog.querySelector('[data-dialog-body]') !== trackedBody || (trackedBody && trackedBody.firstChild !== trackedContent))) return false;
+        return !trackedPicker || (trackedPicker.isConnected && trackedDialog.open && trackedDialog.querySelector('[data-task-followup-picker]') === trackedPicker);
+      };
+      var openForCustomer = function (customerId) {
+        var selection = ++selectionSequence;
+        return CustomerModule.loadDetail(customerId).then(function () {
+          if (!isCurrent() || selection !== selectionSequence) return;
+          var detailId = Number(((CustomerModule.currentDetail || {}).customer || {}).id || 0);
+          if (Number(CustomerModule.currentId) !== customerId || detailId !== customerId) return;
+          invalidate();
+          CustomerModule.openFollowupDialog();
+        });
+      };
+      if (row && Number(row.customer_id) > 0) {
+        trackDialog(document.querySelector('[data-customer-dialog]'));
+        return openForCustomer(Number(row.customer_id));
+      }
+      var html = '<section class="entity-section" data-task-followup-picker><label class="entity-field"><span>选择跟进客户</span><input data-task-followup-search placeholder="客户名称或代码"></label><button type="button" data-task-followup-search-button>搜索客户</button><div class="task-customer-results" data-task-followup-results>请搜索并选择一个客户。</div></section><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button></div>';
+      CustomerModule.openBusinessDialog('新建跟进', html, '选择有权查看的客户后填写跟进内容。', function (dialog) {
+        var picker = dialog.querySelector('[data-task-followup-picker]');
+        trackDialog(dialog, picker);
+        var input = picker.querySelector('[data-task-followup-search]');
+        var results = picker.querySelector('[data-task-followup-results]');
+        var sequence = 0;
+        var search = function () {
+          var request = ++sequence;
+          var q = input.value.trim();
+          if (!q) { results.textContent = '请输入客户名称或代码。'; return; }
+          results.textContent = '正在搜索...';
+          return post('customer_list', { q: q, page: 1, page_size: 12 }).then(function (json) {
+            if (request !== sequence || !isCurrent()) return;
+            if (!json.success) throw new Error(json.message || '客户搜索失败');
+            var rows = (json.data && json.data.rows) || [];
+            results.innerHTML = rows.length ? rows.map(function (customer) {
+              return '<button type="button" data-task-followup-customer="' + esc(customer.id) + '">' + esc(customer.customer_name || customer.customer_code || ('客户 #' + customer.id)) + '</button>';
+            }).join('') : '未找到可查看的客户，请更换关键词。';
+          }).catch(function (error) { if (request === sequence && isCurrent()) results.textContent = error.message || '搜索失败'; });
+        };
+        picker.querySelector('[data-task-followup-search-button]').addEventListener('click', search);
+        input.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); search(); } });
+        results.addEventListener('click', function (event) {
+          var button = event.target.closest('[data-task-followup-customer]');
+          if (!button) return;
+          TaskCenterModule.runBusy(button, '正在读取...', function () { return openForCustomer(Number(button.getAttribute('data-task-followup-customer'))); });
+        });
+        dialog.querySelector('[data-business-cancel]').addEventListener('click', function () { sequence++; invalidate(); CustomerModule.closeDialog(); });
+        input.focus();
+      });
+    },
     openTaskDispatchDialog: function (row) {
       row = row || this.selected() || {};
-      var crmTaskId = Number(row.task_id || row.id || 0);
-      if (!crmTaskId) return toast('当前报价还没有跟进任务，请先写一次跟进。');
+      var externalRecord = this.selectedType === 'sample' || this.selectedType === 'quote_flow';
+      var crmTaskId = Number(row.task_id || (externalRecord ? 0 : row.id) || 0);
+      if (!crmTaskId) return toast('当前记录没有关联 CRM 任务，请先创建跟进任务。');
       var tomorrow = new Date(Date.now()+86400000); tomorrow = new Date(tomorrow.getTime()-tomorrow.getTimezoneOffset()*60000).toISOString().slice(0,16);
       var html = '<div class="visit-workspace-form" data-task-dispatch-form><input type="hidden" name="task_id" value="' + esc(crmTaskId) + '"><section class="visit-work-section"><h3>生成派工</h3><div class="visit-schedule-grid"><label class="wide">派工标题<input name="title" value="' + esc(row.title || row.quote_no || '') + '"></label><label class="wide">项目内容<input name="project" value="' + esc(row.description || row.title || row.next_action || '') + '"></label><label>执行人<select name="assigned_to">' + TaskCenterModule.userOptions(row.assigned_user_id) + '</select></label><label>截止时间<input type="datetime-local" name="due_at" value="' + esc(tomorrow) + '"></label></div></section></div><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-task-dispatch-save>生成派工</button></div>';
       CustomerModule.openBusinessDialog('任务生成派工',html,'派工会自动关联当前 CRM 任务、报价和客户。',function (dialog) {
         dialog.querySelector('[data-business-cancel]')?.addEventListener('click',function () { CustomerModule.closeDialog(); });
         dialog.querySelector('[data-task-dispatch-save]')?.addEventListener('click',function () {
-          post('task_create_dispatch',TaskCenterModule.collect(dialog.querySelector('[data-task-dispatch-form]'))).then(function (json) {
-            if (!json.success) return toast(json.message || '派工生成失败');
-            CustomerModule.closeDialog(); toast('派工已生成：' + ((json.data && json.data.task_no) || '')); TaskCenterModule.loadSelectedDetail();
-          });
+          var button = this;
+          TaskCenterModule.runBusy(button, '正在生成...', function () {
+            return post('task_create_dispatch',TaskCenterModule.collect(dialog.querySelector('[data-task-dispatch-form]'))).then(function (json) {
+              if (!json.success) throw new Error(json.message || '派工生成失败');
+              if (!(json.data && Number(json.data.dispatch_id) > 0)) throw new Error('未返回有效派工编号，请核查生成结果，不要重复提交。');
+              CustomerModule.closeDialog(); toast('派工已生成：' + (json.data.task_no || json.data.dispatch_id)); TaskCenterModule.loadSelectedDetail();
+            });
+          }).catch(function (error) { toast(error.message || '派工生成失败'); });
         });
       });
     },
@@ -28308,6 +28528,11 @@
     },
     handleAction: function (label) {
       var row = this.selected();
+      if (!crmActionAllowed('tasks', label)) return toast('当前账号没有执行该操作的权限。');
+      if (this.actionPending(label)) return toast('该功能尚未接入，不能执行。');
+      var contract = crmActionContract('tasks', label);
+      if ((contract && contract.id === 'tasks.create_dispatch') || label === '创建派工' || label === '生成派工') return this.openTaskDispatchDialog(row);
+      if (label === '新建跟进') return this.openTaskFollowup(row);
       if (this.isViewAction(label)) return this.switchView(this.viewKeyFromLabel(label));
       var quoteFilter = this.quoteFlowFilterKeyFromLabel(label);
       if (this.view === 'quote' && quoteFilter) return this.applyQuoteFlowFilter(quoteFilter);
@@ -28352,7 +28577,6 @@
       if (label === '删除任务') return this.deleteSelectedTask();
       if (label === '删除样品寄送') return this.deleteSelectedSample();
       if (label === '复制快递单号') { if (row && row.tracking_no) { navigator.clipboard?.writeText(row.tracking_no); toast('快递单号已复制'); } else toast('没有快递单号'); return; }
-      if (label === '创建派工') return post('task_dispatch_placeholder', {}).then(function (json) { toast((json.data && json.data.message) || json.message || '派工接口待接入'); });
       if (label === '查询物流') return post('task_logistics_placeholder', {}).then(function (json) { toast((json.data && json.data.message) || json.message || '物流接口待接入'); });
       if ((this.selectedType === 'sample' || this.isSampleTask(row)) && label === '创建跟进') return this.openSampleFollowupDialog();
       if (row && row.task_type === 'quote_followup' && (label === '结束跟进' || label === '恢复跟进')) return this.setQuoteFollowupStatus(row, label === '结束跟进');
@@ -28367,8 +28591,7 @@
       }
       if (row && row.task_type === 'quote_followup' && label === '写邮件') return this.writeQuoteFollowupMail(row);
       if (row && row.task_type === 'quote_followup' && (label === '查看报价' || label === '预览报价')) return this.openQuotePreview(row);
-      if (label === '生成派工' || label === '创建派工') return this.openTaskDispatchDialog(row);
-      if (label === '创建跟进' || label === '写跟进' || label === '写跟进结果' || label === '设置下次跟进') { if (row && row.customer_id) { CustomerModule.currentId = Number(row.customer_id); return CustomerModule.openFollowupDialog(); } return toast('请先选择有关联客户的任务。'); }
+      if (label === '创建跟进' || label === '写跟进' || label === '写跟进结果' || label === '设置下次跟进') return this.openTaskFollowup(row);
       if (label === '查看客户') { if (row && row.customer_id) { activate('customers'); CustomerModule.loadDetail(Number(row.customer_id)); } else toast('没有关联客户'); return; }
       if (['查看报价','标记客户已回复','AI 分析回复','查看 AI 识别结果','确认通过','修改后通过','驳回','转给别人','创建客户','创建商机','创建报价','生成资料','创建资料任务'].indexOf(label) >= 0) return toast(label + ' 接口待接入');
       if (label === '查看日志') return activate('logs');

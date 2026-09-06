@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/crm_config.php';
 require_once __DIR__ . '/crm_auth.php';
+require_once __DIR__ . '/crm_action_contract.php';
 require_once __DIR__ . '/crm_log.php';
 require_once __DIR__ . '/crm_customer.php';
 require_once __DIR__ . '/crm_visit.php';
@@ -1695,7 +1696,8 @@ $prefStyle = sprintf(
   <script>
     window.CRM_BOOTSTRAP = <?= json_encode(['csrf' => csrf_token(), 'modules' => $allModules, 'top_modules' => $modules, 'actions' => crm_action_map(), 'action_permissions' => $actionPermissions, 'permissions' => $crmPermissionState, 'preferences' => $prefs, 'config' => $crmConfig, 'module_settings' => $moduleSettings, 'users' => $customerFilterUsers, 'user' => ['id' => $user['id'], 'name' => $user['username'], 'real_name' => $user['real_name'] ?? '', 'english_name' => $user['english_name'] ?? '', 'department_name' => $user['department_name'] ?? '', 'role_name' => $user['role_name'] ?? '', 'position' => $user['position'] ?? '', 'email' => $user['email'] ?? '', 'phone' => $user['phone'] ?? '', 'is_super_admin' => is_super_admin()]], JSON_UNESCAPED_UNICODE) ?>;
   </script>
-  <?php $crmAssetBuild = 'radar-task-detail-redesign-20260802-1'; ?>
+  <script>window.CRM_BOOTSTRAP.action_contracts = <?= json_encode(crm_action_contracts(), JSON_UNESCAPED_UNICODE) ?>;</script>
+  <?php $crmAssetBuild = 'crm-phase1-safety-20260906'; ?>
   <script src="assets/crm/modules.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/modules.js') ?>"></script>
   <script src="assets/crm/preferences.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/preferences.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>

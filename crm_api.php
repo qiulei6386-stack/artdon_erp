@@ -37,6 +37,13 @@ register_shutdown_function(static function () use ($crmApiPerfStart, $action): v
         'referer' => basename(parse_url((string)($_SERVER['HTTP_REFERER'] ?? ''), PHP_URL_PATH) ?: ''),
         'status' => http_response_code(),
     ];
+    if ($safeAction === 'mail_list') {
+        $payload['segments_ms'] = [];
+        foreach (['account_prepare','prepare_filters','count','list_query','attachment_counts','row_format','folder_counts','response_prepare'] as $segment) {
+            $value = $GLOBALS['crm_mail_list_segments'][$segment] ?? null;
+            if (is_numeric($value) && is_finite((float)$value)) $payload['segments_ms'][$segment] = round(max(0, (float)$value), 2);
+        }
+    }
     if ($safeAction === 'customer_list' && $elapsedMs >= 1000) {
         $payload['list_params'] = [
             'sort' => preg_replace('/[^a-zA-Z0-9_\\-]/', '', (string)($_POST['sort'] ?? '')),
@@ -1063,7 +1070,7 @@ try {
     }
     if ($action === 'marketing_task_execute') {
         require_csrf();
-        api_response(true, '推广任务已执行', crm_marketing_task_execute($_POST));
+        api_response(true, '推广执行请求已受理', crm_marketing_task_execute($_POST));
     }
     if ($action === 'marketing_manual_execute') {
         require_csrf();

@@ -387,16 +387,31 @@ function crm_mail_current_account(bool $withSecret = false, ?int $accountId = nu
     crm_mail_ensure_tables();
     $userId = $targetUserId ?: crm_mail_target_user_id();
     $sessionKey = crm_mail_session_key($userId);
-    $accountId = $accountId ?: (int)($_POST['mail_account_id'] ?? $_GET['mail_account_id'] ?? $_SESSION[$sessionKey] ?? 0);
+    // null follows the request/session selection; an explicit internal 0 asks
+    // for the default account without re-reading a stale request ID.
+    $explicitSelection = $accountId !== null && $accountId !== 0;
+    if ($accountId === null) {
+        $requested = $_POST['mail_account_id'] ?? $_GET['mail_account_id'] ?? null;
+        if ($requested !== null && $requested !== '') {
+            if (!is_scalar($requested) || !preg_match('/^[1-9][0-9]*$/D', (string)$requested)) throw new RuntimeException('邮箱选择无效，请刷新邮箱列表后重试。');
+            $accountId = (int)$requested;
+            $explicitSelection = true;
+        } else {
+            $accountId = (int)($_SESSION[$sessionKey] ?? 0);
+        }
+    }
+    if ($accountId < 0) throw new RuntimeException('邮箱选择无效，请刷新邮箱列表后重试。');
+    $row = false;
     if ($accountId > 0) {
         $stmt = db()->prepare('SELECT * FROM crm_user_mail_accounts WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1');
         $stmt->execute([$accountId, $userId]);
         $row = $stmt->fetch();
         if (!$row) {
+            if ($explicitSelection) throw new RuntimeException('所选邮箱不存在或无权访问，请刷新邮箱列表后重试。');
             unset($_SESSION[$sessionKey]);
-            return crm_mail_current_account($withSecret, 0, $userId);
         }
-    } else {
+    }
+    if (!$row) {
         $stmt = db()->prepare('SELECT * FROM crm_user_mail_accounts WHERE user_id = ? AND deleted_at IS NULL ORDER BY is_default DESC, id DESC LIMIT 1');
         $stmt->execute([$userId]);
         $row = $stmt->fetch();
@@ -418,13 +433,14 @@ function crm_mail_account_list_own(array $input = []): array
     foreach ($stmt->fetchAll() as $row) {
         $accounts[] = crm_mail_account_payload($row)['account'];
     }
-    $current = crm_mail_current_account(false, null, $userId);
+    $current = crm_mail_current_account(false, crm_mail_input_account_id($input), $userId);
     return ['accounts' => $accounts, 'current_id' => $current ? (int)$current['id'] : 0, 'target_user_id' => $userId, 'target_user' => crm_mail_user_context($userId)];
 }
 
 function crm_mail_account_set_current(int $accountId, array $input = []): array
 {
     crm_require('mail.view');
+    if ($accountId <= 0) throw new RuntimeException('请选择有效的邮箱。');
     $targetUserId = crm_mail_target_user_id($input);
     $account = crm_mail_current_account(false, $accountId, $targetUserId);
     if (!$account) throw new RuntimeException('邮箱不存在或无权访问。');
@@ -613,7 +629,17 @@ function crm_mail_account_get_own(array $input = []): array
 {
     crm_require('mail.view');
     $userId = crm_mail_target_user_id($input);
-    return crm_mail_account_payload(crm_mail_current_account(false, null, $userId)) + crm_mail_account_list_own(['target_user_id' => $userId]);
+    $accountId = crm_mail_input_account_id($input);
+    $account = crm_mail_current_account(false, $accountId, $userId);
+    return crm_mail_account_payload($account) + crm_mail_account_list_own(['target_user_id' => $userId, 'mail_account_id' => $account ? (int)$account['id'] : 0]);
+}
+
+function crm_mail_input_account_id(array $input): ?int
+{
+    if (!array_key_exists('mail_account_id', $input) || $input['mail_account_id'] === '' || $input['mail_account_id'] === null) return null;
+    $id = filter_var($input['mail_account_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+    if ($id === false) throw new RuntimeException('邮箱选择无效，请刷新邮箱列表后重试。');
+    return $id;
 }
 
 function crm_mail_dashboard_summary(): array
@@ -742,7 +768,7 @@ function crm_mail_account_save_own(array $input): array
     }
     $_SESSION[crm_mail_session_key($userId)] = $accountId;
     crm_log_event('mail', 'account_save', 'mail_account', (string)$accountId, null, ['email' => $email, 'target_user_id' => $userId]);
-    return crm_mail_account_payload(crm_mail_current_account(false, $accountId, $userId)) + crm_mail_account_list_own(['target_user_id' => $userId]);
+    return crm_mail_account_payload(crm_mail_current_account(false, $accountId, $userId)) + crm_mail_account_list_own(['target_user_id' => $userId, 'mail_account_id' => $accountId]);
 }
 
 function crm_mail_add_customer_timeline_for_mail(array $mail, string $eventType, string $title, string $detail = ''): void
@@ -826,6 +852,7 @@ function crm_mail_account_delete_own(int $accountId, array $input = []): array
     $userId = crm_mail_target_user_id($input);
     if ($userId === (int)(current_user()['id'] ?? 0)) crm_require('mail.account_bind_own');
     else crm_require('mail.account_manage_all');
+    if ($accountId <= 0) throw new RuntimeException('请选择有效的邮箱。');
     $account = crm_mail_current_account(false, $accountId, $userId);
     if (!$account) throw new RuntimeException('邮箱不存在或无权删除。');
 
@@ -874,7 +901,7 @@ function crm_mail_account_delete_own(int $accountId, array $input = []): array
         }
     }
     crm_log_event('mail', 'account_delete', 'mail_account', (string)$accountId, ['email' => $account['email_address']], ['deleted_mails' => count($mailIds)]);
-    return crm_mail_account_get_own(['target_user_id' => $userId]) + ['deleted_account_id' => $accountId, 'deleted_mail_count' => count($mailIds)];
+    return crm_mail_account_get_own(['target_user_id' => $userId, 'mail_account_id' => $nextId]) + ['deleted_account_id' => $accountId, 'deleted_mail_count' => count($mailIds)];
 }
 
 function crm_mail_signature_template_save(array $input): array
@@ -3355,10 +3382,20 @@ function crm_mail_account_test(string $type, array $input = []): array
     return $result;
 }
 
+function crm_mail_list_perf_mark(string $segment, float &$started): void
+{
+    $now = microtime(true);
+    $GLOBALS['crm_mail_list_segments'][$segment] = round(max(0, $now - $started) * 1000, 2);
+    $started = $now;
+}
+
 function crm_mail_list(array $input): array
 {
+    $segmentStarted = microtime(true);
+    $GLOBALS['crm_mail_list_segments'] = [];
     crm_require('mail.view');
     $account = crm_mail_current_account(false);
+    crm_mail_list_perf_mark('account_prepare', $segmentStarted);
     if (!$account) return ['bound' => false, 'rows' => [], 'total' => 0, 'account' => null, 'folder_counts' => []];
     $folder = trim((string)($input['folder'] ?? 'inbox'));
     if ($folder === 'scheduled') return crm_mail_scheduled_list($account, $input);
@@ -3428,13 +3465,18 @@ function crm_mail_list(array $input): array
     $pageSize = max(1, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
     $sqlWhere = implode(' AND ', $where);
+    crm_mail_list_perf_mark('prepare_filters', $segmentStarted);
     $count = db()->prepare("SELECT COUNT(*) FROM crm_mails m WHERE {$sqlWhere}");
     $count->execute($params);
+    $total = (int)$count->fetchColumn();
+    crm_mail_list_perf_mark('count', $segmentStarted);
     $offset = ($page - 1) * $pageSize;
     $stmt = db()->prepare("SELECT m.id, m.folder, m.message_uid, m.subject, m.from_email, m.from_name, m.to_emails, m.received_at, m.sent_at, LEFT(m.body_text, 240) AS body_text, m.body_status, m.has_body, m.has_attachment, m.attachment_count, 0 AS visible_attachment_count, m.is_read, m.is_replied, m.is_starred, m.is_unreplied, m.linked_customer_id, m.mail_source, m.source_flags_json, m.crm_send_id, m.send_status, m.tags_json, c.customer_name AS linked_customer_name FROM crm_mails m LEFT JOIN crm_customers c ON c.id = m.linked_customer_id WHERE {$sqlWhere} ORDER BY COALESCE(m.received_at, m.sent_at, m.created_at) DESC, m.id DESC LIMIT {$pageSize} OFFSET {$offset}");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    crm_mail_list_perf_mark('list_query', $segmentStarted);
     $visibleCounts = crm_mail_visible_attachment_counts_for_rows($rows);
+    crm_mail_list_perf_mark('attachment_counts', $segmentStarted);
     foreach ($rows as &$row) {
         $row['source_flags'] = json_decode((string)($row['source_flags_json'] ?? '[]'), true) ?: [];
         $source = (string)($row['mail_source'] ?? '');
@@ -3459,7 +3501,12 @@ function crm_mail_list(array $input): array
         unset($row['tags_json'], $row['source_flags_json']);
     }
     $includeCounts = (string)($input['include_counts'] ?? '0') === '1';
-    return ['bound' => true, 'account' => crm_mail_account_payload($account)['account'], 'rows' => $rows, 'total' => (int)$count->fetchColumn(), 'page' => $page, 'page_size' => $pageSize, 'folder_counts' => $includeCounts ? crm_mail_folder_counts($account) : null];
+    crm_mail_list_perf_mark('row_format', $segmentStarted);
+    $folderCounts = $includeCounts ? crm_mail_folder_counts($account) : null;
+    crm_mail_list_perf_mark('folder_counts', $segmentStarted);
+    $result = ['bound' => true, 'account' => crm_mail_account_payload($account)['account'], 'rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize, 'folder_counts' => $folderCounts];
+    crm_mail_list_perf_mark('response_prepare', $segmentStarted);
+    return $result;
 }
 
 function crm_mail_scheduled_list(array $account, array $input): array

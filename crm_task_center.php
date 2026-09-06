@@ -1827,8 +1827,10 @@ function crm_sample_shipments(array $input = []): array
 
 function crm_sample_shipment_save(array $input): array
 {
-    crm_task_center_ensure_tables();
     $id = (int)($input['shipment_id'] ?? 0);
+    $pdo = db();
+    if ($id <= 0 && $pdo->inTransaction()) throw new RuntimeException('样品新建不能在其他保存事务中执行，请单独重试。');
+    crm_task_center_ensure_tables();
     crm_require($id ? 'sample.edit' : 'sample.create');
     $status = preg_replace('/[^a-z_]/', '', (string)($input['status'] ?? 'preparing')) ?: 'preparing';
     $tracking = trim((string)($input['tracking_no'] ?? ''));
@@ -1840,53 +1842,90 @@ function crm_sample_shipment_save(array $input): array
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
     $data = crm_sample_payload($input, $status, $tracking, $customerId, $sampleName);
     $isNew = $id <= 0;
-    if ($id > 0) {
-        $before = crm_sample_shipment_detail($id);
-        crm_sample_update_row($id, $data);
-        crm_log_event('tasks', 'sample_update', 'sample_shipment', (string)$id, $before['shipment'], $data);
-    } else {
-        $duplicateId = crm_sample_recent_duplicate_id($data, $uid);
-        if ($duplicateId > 0) {
-            $id = $duplicateId;
-            $isNew = false;
+    $requestKey = $isNew ? crm_sample_submission_key($input['request_token'] ?? '', $data) : null;
+    $lockName = null;
+    $transactionStarted = false;
+    if ($isNew) {
+        // The detail/log paths ensure schemas too. Do that before
+        // starting the transaction, because MySQL DDL can implicitly commit it.
+        crm_customer_ensure_tables();
+        crm_ensure_tables();
+    }
+    try {
+        if ($id > 0) {
             $before = crm_sample_shipment_detail($id);
             crm_sample_update_row($id, $data);
-            crm_log_event('tasks', 'sample_duplicate_update', 'sample_shipment', (string)$id, $before['shipment'], $data);
+            crm_log_event('tasks', 'sample_update', 'sample_shipment', (string)$id, $before['shipment'], $data);
         } else {
-            $taskId = crm_sample_create_task($data);
+            if ($requestKey !== null) {
+                $name = 'crm_sample:' . substr(hash('sha256', $uid . ':' . substr($requestKey, 0, 35)), 0, 52);
+                $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+                $lock->execute([$name]);
+                if ((int)$lock->fetchColumn() !== 1) throw new RuntimeException('同一次样品提交正在保存，请稍后重试。');
+                $lockName = $name;
+            }
+            $pdo->beginTransaction();
+            $transactionStarted = true;
+            if ($requestKey !== null) {
+                // The prefix identifies the form, while the suffix preserves its
+                // original payload hash even if the shipment is edited later.
+                $repeat = $pdo->prepare("SELECT id, source_id, request_token, deleted_at FROM crm_tasks WHERE created_by=? AND task_type='sample_shipment' AND request_token LIKE ? LIMIT 1 FOR UPDATE");
+                $repeat->execute([$uid, substr($requestKey, 0, 35) . '%']);
+                $existing = $repeat->fetch();
+                if ($existing) {
+                    if (!hash_equals((string)$existing['request_token'], $requestKey)) throw new RuntimeException('本次提交标记已用于不同的样品内容，请重新打开新建表单。');
+                    if (!empty($existing['deleted_at']) || (int)$existing['source_id'] <= 0) throw new RuntimeException('本次提交对应的样品记录已失效，请刷新列表后处理。');
+                    $detail = crm_sample_shipment_detail((int)$existing['source_id']);
+                    if ((int)($detail['shipment']['task_id'] ?? 0) !== (int)$existing['id']) throw new RuntimeException('本次提交的样品关联已变化，请刷新列表后处理。');
+                    $pdo->commit();
+                    $transactionStarted = false;
+                    return $detail + ['idempotent_replay' => true];
+                }
+            }
+            $taskId = crm_sample_create_task($data, $requestKey);
             $data['task_id'] = $taskId;
             crm_sample_insert_row($data, $uid);
-            $id = (int)db()->lastInsertId();
-            db()->prepare("UPDATE crm_tasks SET source_type='sample_shipment', source_id=? WHERE id=?")->execute([(string)$id, $taskId]);
+            $id = (int)$pdo->lastInsertId();
+            $pdo->prepare("UPDATE crm_tasks SET source_type='sample_shipment', source_id=? WHERE id=?")->execute([(string)$id, $taskId]);
             crm_log_event('tasks', 'sample_create', 'sample_shipment', (string)$id, null, $data);
         }
+        $detail = crm_sample_shipment_detail($id);
+        crm_customer_timeline_add($customerId, $isNew ? 'sample_shipment_create' : 'sample_shipment_save', ($isNew ? '创建样品寄送：' : '保存样品寄送：') . $sampleName, ($data['courier_company'] ?: '未填写快递') . ' · ' . ($tracking ?: '未填写单号'), 'sample_shipment', (string)$id);
+        $pendingNotifications = [];
+        if (!empty($data['create_followup_task']) && !empty($data['followup_time'])) {
+            $notificationTask = crm_sample_create_followup_task($detail['shipment'], '寄样后跟进：', '样品寄送后续跟进，请确认客户收样和测试反馈。', !$transactionStarted);
+            if ($transactionStarted && $notificationTask) $pendingNotifications[] = $notificationTask;
+        }
+        if (!empty($data['create_dispatch_task'])) crm_sample_dispatch_placeholder($detail['shipment']);
+        if ($status === 'signed' && !empty($data['followup_time'])) {
+            $notificationTask = crm_sample_create_signed_followup($detail['shipment'], !$transactionStarted);
+            if ($transactionStarted && $notificationTask) $pendingNotifications[] = $notificationTask;
+        }
+        if ($transactionStarted) {
+            $pdo->commit();
+            $transactionStarted = false;
+        }
+        // Notifications may run schema DDL. Only attempt them after the sample
+        // transaction commits; their failure must not turn a saved form into an error.
+        foreach ($pendingNotifications as $notificationTask) crm_sample_notify_followup_task($notificationTask);
+        return $detail;
+    } catch (Throwable $e) {
+        if ($transactionStarted && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    } finally {
+        if ($lockName !== null) {
+            try { $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]); }
+            catch (Throwable $e) { error_log('sample submission lock release failed'); }
+        }
     }
-    $detail = crm_sample_shipment_detail($id);
-    crm_customer_timeline_add($customerId, $isNew ? 'sample_shipment_create' : 'sample_shipment_save', ($isNew ? '创建样品寄送：' : '保存样品寄送：') . $sampleName, ($data['courier_company'] ?: '未填写快递') . ' · ' . ($tracking ?: '未填写单号'), 'sample_shipment', (string)$id);
-    if (!empty($data['create_followup_task']) && !empty($data['followup_time'])) crm_sample_create_followup_task($detail['shipment'], '寄样后跟进：', '样品寄送后续跟进，请确认客户收样和测试反馈。');
-    if (!empty($data['create_dispatch_task'])) crm_sample_dispatch_placeholder($detail['shipment']);
-    if ($status === 'signed' && !empty($data['followup_time'])) crm_sample_create_signed_followup($detail['shipment']);
-    return $detail;
 }
 
-function crm_sample_recent_duplicate_id(array $data, int $uid): int
+function crm_sample_submission_key($token, array $data): ?string
 {
-    $stmt = db()->prepare("SELECT id FROM crm_sample_shipments
-        WHERE deleted_at IS NULL
-          AND created_by=?
-          AND customer_id=?
-          AND sample_name=?
-          AND product_model=?
-          AND created_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
-        ORDER BY id DESC
-        LIMIT 1");
-    $stmt->execute([
-        $uid,
-        (int)($data['customer_id'] ?? 0),
-        (string)($data['sample_name'] ?? ''),
-        (string)($data['product_model'] ?? ''),
-    ]);
-    return (int)($stmt->fetchColumn() ?: 0);
+    if ($token === '' || $token === null) return null; // Older clients always create a new shipment.
+    if (!is_string($token) || !preg_match('/^[a-zA-Z0-9._:-]{16,100}$/D', $token)) throw new RuntimeException('样品提交标记无效，请重新打开新建表单。');
+    // 99 characters, fitting the existing crm_tasks.request_token VARCHAR(100).
+    return 's:' . substr(hash('sha256', $token), 0, 32) . ':' . hash('sha256', json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 }
 
 function crm_sample_payload(array $input, string $status, string $tracking, int $customerId, string $sampleName): array
@@ -1936,9 +1975,9 @@ function crm_sample_payload(array $input, string $status, string $tracking, int 
     ];
 }
 
-function crm_sample_create_task(array $data): int
+function crm_sample_create_task(array $data, ?string $requestKey = null): int
 {
-    db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,created_by,created_at,updated_at) VALUES ('sample_shipment',?,?,?,?,?,?,?,?,?,JSON_ARRAY(),'normal','pending',?,?,?,NOW(),NOW())")
+    db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,request_token,created_by,created_at,updated_at) VALUES ('sample_shipment',?,?,?,?,?,?,?,?,?,JSON_ARRAY(),'normal','pending',?,?,?,?,NOW(),NOW())")
         ->execute([
             '样品寄送：' . $data['sample_name'],
             $data['remark'],
@@ -1951,6 +1990,7 @@ function crm_sample_create_task(array $data): int
             $data['owner_user_id'],
             $data['expected_arrival_date'] ? $data['expected_arrival_date'] . ' 18:00:00' : null,
             $data['followup_time'],
+            $requestKey,
             (int)((current_user() ?: [])['id'] ?? 0),
         ]);
     return (int)db()->lastInsertId();
@@ -2207,17 +2247,17 @@ function crm_sample_shipment_delete(array $input): array
     return ['deleted' => true, 'shipment_id' => $id];
 }
 
-function crm_sample_create_signed_followup(array $shipment): void
+function crm_sample_create_signed_followup(array $shipment, bool $notify = true): ?array
 {
-    if (empty($shipment['followup_time'])) return;
-    crm_sample_create_followup_task($shipment, '样品签收跟进：', '客户已签收样品，请跟进测试反馈。快递单号：' . ($shipment['tracking_no'] ?? ''));
+    if (empty($shipment['followup_time'])) return null;
+    return crm_sample_create_followup_task($shipment, '样品签收跟进：', '客户已签收样品，请跟进测试反馈。快递单号：' . ($shipment['tracking_no'] ?? ''), $notify);
 }
 
-function crm_sample_create_followup_task(array $shipment, string $prefix, string $description): void
+function crm_sample_create_followup_task(array $shipment, string $prefix, string $description, bool $notify = true): ?array
 {
     $exists = db()->prepare("SELECT id FROM crm_tasks WHERE CONVERT(source_type USING utf8mb4) COLLATE utf8mb4_unicode_ci = 'sample_shipment' COLLATE utf8mb4_unicode_ci AND CONVERT(source_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci AND task_type='customer_followup' COLLATE utf8mb4_unicode_ci AND deleted_at IS NULL LIMIT 1");
     $exists->execute([(string)$shipment['id']]);
-    if ($exists->fetchColumn()) return;
+    if ($exists->fetchColumn()) return null;
     db()->prepare("INSERT INTO crm_tasks (task_type,title,description,source_type,source_id,customer_id,contact_id,opportunity_id,quote_id,assigned_user_id,collaborator_user_ids_json,priority,status,due_at,reminder_at,created_by,created_at,updated_at) VALUES ('customer_followup',?,?,?,?,?,?,?,?,?,JSON_ARRAY(),'important','pending',?,?,?,NOW(),NOW())")
         ->execute([
             $prefix . $shipment['sample_name'],
@@ -2234,22 +2274,29 @@ function crm_sample_create_followup_task(array $shipment, string $prefix, string
             (int)((current_user() ?: [])['id'] ?? 0),
         ]);
     $taskId = (int)db()->lastInsertId();
+    $notificationTask = [
+        'id' => $taskId,
+        'assigned_user_id' => (int)($shipment['owner_user_id'] ?? 0),
+        'title' => $prefix . $shipment['sample_name'],
+        'customer_id' => (int)($shipment['customer_id'] ?? 0),
+        'contact_id' => (int)($shipment['contact_id'] ?? 0) ?: null,
+        'opportunity_id' => (int)($shipment['opportunity_id'] ?? 0) ?: null,
+        'quote_id' => (string)($shipment['quote_id'] ?? ''),
+    ];
+    if ($notify) crm_sample_notify_followup_task($notificationTask);
+    crm_customer_timeline_add((int)$shipment['customer_id'], 'sample_followup_task_create', '创建样品跟进任务', $shipment['sample_name'] . ' · ' . $shipment['followup_time'], 'sample_shipment', (string)$shipment['id']);
+    return $notificationTask;
+}
+
+function crm_sample_notify_followup_task(array $task): void
+{
     if (function_exists('notification_create_task_assigned')) {
         try {
-            notification_create_task_assigned([
-                'id' => $taskId,
-                'assigned_user_id' => (int)($shipment['owner_user_id'] ?? 0),
-                'title' => $prefix . $shipment['sample_name'],
-                'customer_id' => (int)($shipment['customer_id'] ?? 0),
-                'contact_id' => (int)($shipment['contact_id'] ?? 0) ?: null,
-                'opportunity_id' => (int)($shipment['opportunity_id'] ?? 0) ?: null,
-                'quote_id' => (string)($shipment['quote_id'] ?? ''),
-            ]);
+            notification_create_task_assigned($task);
         } catch (Throwable $e) {
             error_log('sample followup notification failed: ' . $e->getMessage());
         }
     }
-    crm_customer_timeline_add((int)$shipment['customer_id'], 'sample_followup_task_create', '创建样品跟进任务', $shipment['sample_name'] . ' · ' . $shipment['followup_time'], 'sample_shipment', (string)$shipment['id']);
 }
 
 function crm_sample_dispatch_placeholder(array $shipment): void
