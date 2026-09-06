@@ -113,9 +113,40 @@ function crm_ensure_permissions(): void
 {
     static $done = false;
     if ($done) return;
+    crm_permissions_retry_initialization(db(), 'crm_seed_permissions');
     $done = true;
+}
+
+/** Retry only idempotent initialization outside any caller-owned transaction. */
+function crm_permissions_retry_initialization($pdo, callable $initialize): void
+{
+    $callerTransaction = $pdo->inTransaction();
+    for ($attempt = 0; ; $attempt++) {
+        try {
+            $initialize();
+            return;
+        } catch (PDOException $error) {
+            $driverCode = (int)($error->errorInfo[1] ?? 0);
+            if ($callerTransaction || $pdo->inTransaction() || $attempt >= 2
+                || !in_array($driverCode, [1205, 1213], true)) {
+                throw $error;
+            }
+            // A fresh autocommit attempt; never swallow a failed permission setup.
+            usleep(25000 * ($attempt + 1));
+        }
+    }
+}
+
+function crm_seed_permissions(): void
+{
+    // Normal requests only read unchanged definitions instead of locking every row.
+    $existing = [];
+    foreach (db()->query('SELECT permission_key, module, action, description, risk_level FROM crm_permissions')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $existing[$row['permission_key']] = [$row['permission_key'], $row['module'], $row['action'], $row['description'], $row['risk_level']];
+    }
     $stmt = db()->prepare('INSERT INTO crm_permissions (permission_key, module, action, description, risk_level, created_at) VALUES (?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE module=VALUES(module), action=VALUES(action), description=VALUES(description), risk_level=VALUES(risk_level)');
     foreach (crm_permission_definitions() as $permission) {
+        if (($existing[$permission[0]] ?? null) === $permission) continue;
         $stmt->execute($permission);
     }
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
