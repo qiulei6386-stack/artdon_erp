@@ -1689,6 +1689,12 @@ function crm_task_save(array $input): array
     crm_task_center_ensure_tables();
     $id = (int)($input['task_id'] ?? 0);
     crm_require($id > 0 ? 'task.edit' : 'task.create');
+    $before = $id > 0 ? crm_task_row($id) : [];
+    // The normal edit form does not submit linkage or lifecycle fields.
+    // Omission must not unlink a business task or reopen a completed one.
+    $input = array_replace(array_intersect_key($before, array_flip([
+        'source_type', 'source_id', 'customer_id', 'contact_id', 'opportunity_id', 'quote_id', 'status',
+    ])), $input);
     $data = [
         'task_type' => preg_replace('/[^a-z0-9_]/i', '', (string)($input['task_type'] ?? 'customer_followup')) ?: 'customer_followup',
         'title' => trim((string)($input['title'] ?? '')),
@@ -1700,7 +1706,7 @@ function crm_task_save(array $input): array
         'opportunity_id' => (int)($input['opportunity_id'] ?? 0) ?: null,
         'quote_id' => trim((string)($input['quote_id'] ?? '')),
         'assigned_user_id' => (int)($input['assigned_user_id'] ?? ((current_user() ?: [])['id'] ?? 0)) ?: null,
-        'priority' => in_array(($input['priority'] ?? 'normal'), ['urgent','important','normal','low'], true) ? $input['priority'] : 'normal',
+        'priority' => in_array(($input['priority'] ?? 'normal'), ['urgent','important','normal','low'], true) ? ($input['priority'] ?? 'normal') : 'normal',
         'status' => preg_replace('/[^a-z_]/', '', (string)($input['status'] ?? 'pending')) ?: 'pending',
         'due_at' => crm_task_datetime($input['due_at'] ?? ''),
         'reminder_at' => crm_task_datetime($input['reminder_at'] ?? ''),
@@ -1710,7 +1716,6 @@ function crm_task_save(array $input): array
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
     $requestToken = preg_replace('/[^a-zA-Z0-9._:-]/', '', (string)($input['request_token'] ?? ''));
     if ($id > 0) {
-        $before = crm_task_row($id);
         db()->prepare("UPDATE crm_tasks SET task_type=?, title=?, description=?, source_type=?, source_id=?, customer_id=?, contact_id=?, opportunity_id=?, quote_id=?, assigned_user_id=?, priority=?, status=?, due_at=?, reminder_at=?, updated_at=NOW() WHERE id=?")
             ->execute(array_merge(array_values($data), [$id]));
         crm_log_event('tasks', 'task_update', 'task', (string)$id, $before, $data);

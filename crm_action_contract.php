@@ -8,6 +8,11 @@ function crm_action_contract_definitions(): array
             'customers.delete_many' => ['labels' => ['批量删除'], 'permissions' => ['customer.delete']],
             'customers.create_followup' => ['labels' => ['新建跟进', '创建跟进'], 'permissions' => ['follow.create']],
         ],
+        'opportunities' => [
+            'opportunities.create_followup' => ['labels' => ['创建跟进'], 'permissions' => ['opportunity.view', 'follow.create', 'customer.view']],
+            'opportunities.create_sample_task' => ['labels' => ['创建样品任务'], 'permissions' => ['opportunity.view', 'customer.view', 'task.create', 'task.view']],
+            'opportunities.create_material_task' => ['labels' => ['创建资料任务'], 'permissions' => ['opportunity.view', 'customer.view', 'task.create', 'task.view']],
+        ],
         'tasks' => [
             'tasks.create' => ['labels' => ['新建任务'], 'permissions' => ['task.create']],
             'tasks.edit' => ['labels' => ['编辑任务'], 'permissions' => ['task.edit']],

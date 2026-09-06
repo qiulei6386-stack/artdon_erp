@@ -26241,12 +26241,17 @@
     },
     load: function () {
       var self = this, board = document.querySelector('[data-opportunity-board]');
+      var request = this.listRequestSeq = Number(this.listRequestSeq || 0) + 1;
       if (board) board.innerHTML = '<p>正在加载商机...</p>';
-      post('opportunity_list', { q: this.query, filter: this.filter }).then(function (json) {
+      return post('opportunity_list', { q: this.query, filter: this.filter }).then(function (json) {
+        if (request !== self.listRequestSeq) return;
         if (!json.success) throw new Error(json.message || '加载失败');
         self.rows = (json.data && json.data.rows) || [];
+        if (!self.selected()) self.selectedId = 0;
         self.render(json.data || {});
+        renderActions('opportunities');
       }).catch(function (error) {
+        if (request !== self.listRequestSeq) return;
         if (board) board.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>';
       });
     },
@@ -26320,8 +26325,9 @@
       var self = this;
       return Object.keys(this.stages || {}).map(function (key) { return '<option value="' + esc(key) + '"' + (key === selected ? ' selected' : '') + '>' + esc(self.stageLabel(key)) + '</option>'; }).join('');
     },
-    contactOptions: function (selected) {
-      var contacts = (CustomerModule.currentDetail || {}).contacts || [];
+    contactOptions: function (selected, customerId) {
+      var detail = CustomerModule.currentDetail || {};
+      var contacts = Number((detail.customer || {}).id) === Number(customerId) ? (detail.contacts || []) : [];
       if (!contacts.length && selected) contacts = [{ id: selected, name: '联系人 #' + selected }];
       return '<option value="">未选择</option>' + contacts.map(function (row) {
         return '<option value="' + esc(row.id) + '"' + (Number(row.id) === Number(selected) ? ' selected' : '') + '>' + esc(row.name || '未命名联系人') + '</option>';
@@ -26331,10 +26337,11 @@
       row = row || this.selected() || {};
       var customer = (CustomerModule.currentDetail || {}).customer || {};
       var customerId = row.customer_id || customer.id || CustomerModule.currentId || '';
+      if (Number(customer.id) !== Number(customerId)) customer = {};
       var customerName = row.customer_name || customer.customer_name || (customerId ? ('客户 #' + customerId) : '未选择客户');
       var html = '<div class="opportunity-business-form" data-opportunity-form><input type="hidden" name="opportunity_id" value="' + esc(row.id || '') + '"><input type="hidden" name="customer_id" value="' + esc(customerId) + '">' +
         '<main class="opportunity-form-main">' +
-        this.formSection('客户与项目', '<div class="opportunity-customer-card"><strong>' + esc(customerName) + '</strong><span>' + esc([row.customer_code || customer.customer_code || '', row.country || customer.country || ''].filter(Boolean).join(' · ') || '客户已关联') + '</span></div><label>联系人<select name="contact_id">' + this.contactOptions(row.contact_id) + '</select></label>' +
+        this.formSection('客户与项目', '<div class="opportunity-customer-card"><strong>' + esc(customerName) + '</strong><span>' + esc([row.customer_code || customer.customer_code || '', row.country || customer.country || ''].filter(Boolean).join(' · ') || '客户已关联') + '</span></div><label>联系人<select name="contact_id">' + this.contactOptions(row.contact_id, customerId) + '</select></label>' +
           '<label class="wide">商机名称 *<input name="opportunity_name" required value="' + esc(row.opportunity_name || '') + '" placeholder="例如：印度酒店筒灯项目"></label><label>项目名称<input name="project_name" value="' + esc(row.project_name || '') + '"></label><label>国家<input name="country" value="' + esc(row.country || customer.country || '') + '"></label>' +
           '<label>来源<select name="source_type">' + this.sourceOptions(row.source_type || 'manual') + '</select></label><label>阶段<select name="stage">' + this.stageOptions(row.stage || 'new_need') + '</select></label><label>负责人<select name="owner_user_id">' + this.userOptions(row.owner_user_id || (state.user || {}).id) + '</select></label>' +
           '<label>协作人<input name="collaborator_user_ids" value="' + esc((row.collaborator_user_ids || []).join ? row.collaborator_user_ids.join(',') : '') + '" placeholder="多个员工ID用逗号分隔"></label><label>优先级<select name="priority">' + this.priorityOptions(row.priority || 'normal') + '</select></label><label>预计成交日期<input type="date" name="expected_close_date" value="' + esc(row.expected_close_date || '') + '"></label>') +
@@ -26393,12 +26400,15 @@
       });
       dialog.querySelector('[data-opportunity-image-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-opportunity-local-images]'), 'image'); });
       dialog.querySelector('[data-opportunity-attachment-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-opportunity-local-attachments]'), 'attachment'); });
-      dialog.addEventListener('click', function (event) {
+      if (dialog.opportunityFileClick) dialog.removeEventListener('click', dialog.opportunityFileClick);
+      dialog.opportunityFileClick = function (event) {
+        if (!dialog.querySelector('[data-opportunity-form]')) return;
         var del = event.target.closest('[data-opportunity-delete-file]');
         if (del) return self.deleteOpportunityFile(del.getAttribute('data-opportunity-delete-file'), dialog);
         var preview = event.target.closest('[data-opportunity-preview-file]');
         if (preview) return self.previewOpportunityFile(preview.getAttribute('data-opportunity-preview-file'));
-      });
+      };
+      dialog.addEventListener('click', dialog.opportunityFileClick);
     },
     refreshSummary: function (dialog) {
       var form = dialog.querySelector('[data-opportunity-form]');
@@ -26465,29 +26475,49 @@
       var attachmentInput = dialog.querySelector('[data-opportunity-attachment-input]');
       if (imageInput && imageInput.files && imageInput.files.length) jobs.push(this.uploadFileInput(opportunityId, 'image', imageInput));
       if (attachmentInput && attachmentInput.files && attachmentInput.files.length) jobs.push(this.uploadFileInput(opportunityId, 'attachment', attachmentInput));
-      return Promise.all(jobs);
+      return Promise.allSettled(jobs).then(function (results) {
+        var failed = results.find(function (result) { return result.status === 'rejected'; });
+        if (failed) throw failed.reason;
+        return results;
+      });
     },
     uploadFileInput: function (opportunityId, type, input) {
-      var body = new FormData();
-      body.set('action', 'opportunity_file_upload');
-      body.set('opportunity_id', opportunityId);
-      body.set('file_type', type);
-      if (state.csrf) body.set('csrf_token', state.csrf);
-      Array.prototype.forEach.call(input.files || [], function (file) { body.append('files[]', file); });
-      return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) { return res.json(); }).then(function (json) {
-        if (!json.success) throw new Error(json.message || '商机文件上传失败');
-        return json;
+      var files = Array.prototype.slice.call(input.files || []);
+      var uploaded = input.opportunityUploadedFiles || (input.opportunityUploadedFiles = new WeakSet());
+      // One file per request: a later invalid file must not make a successful
+      // earlier file get submitted again with the entire original selection.
+      return files.reduce(function (chain, file) {
+        return chain.then(function () {
+          if (uploaded.has(file)) return;
+          var body = new FormData();
+          body.set('action', 'opportunity_file_upload');
+          body.set('opportunity_id', opportunityId);
+          body.set('file_type', type);
+          if (state.csrf) body.set('csrf_token', state.csrf);
+          body.append('files[]', file);
+          return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) { return res.json(); }).then(function (json) {
+            if (!json.success) throw new Error(json.message || '商机文件上传失败');
+            uploaded.add(file);
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        var currentFiles = Array.prototype.slice.call(input.files || []);
+        if (currentFiles.length === files.length && currentFiles.every(function (file, index) { return file === files[index]; })) input.value = '';
       });
     },
     loadOpportunityFiles: function (opportunityId, dialog) {
-      var self = this;
-      post('opportunity_files', { opportunity_id: opportunityId }).then(function (json) {
+      var self = this, form = dialog.querySelector('[data-opportunity-form]');
+      var request = form ? (form.filesRequestSeq = Number(form.filesRequestSeq || 0) + 1) : 0;
+      return post('opportunity_files', { opportunity_id: opportunityId }).then(function (json) {
+        if (!self.ownsDialogForm(dialog, form, '[data-opportunity-form]') || request !== form.filesRequestSeq || Number(form.querySelector('[name="opportunity_id"]').value) !== Number(opportunityId)) return;
         if (!json.success) return;
         var files = (json.data && json.data.files) || [];
         var images = dialog.querySelector('[data-opportunity-images]');
         var attachments = dialog.querySelector('[data-opportunity-attachments]');
         if (images) images.innerHTML = self.fileListHtml(files, 'image');
         if (attachments) attachments.innerHTML = self.fileListHtml(files, 'attachment');
+      }).catch(function () {
+        if (self.ownsDialogForm(dialog, form, '[data-opportunity-form]') && request === form.filesRequestSeq) toast('商机附件读取失败，请稍后重新打开。');
       });
     },
     deleteOpportunityFile: function (fileId, dialog) {
@@ -26508,24 +26538,37 @@
       layer.querySelector('[data-op-preview-close]')?.addEventListener('click', function () { layer.remove(); });
     },
     collect: function (root) {
-      var data = {}; root.querySelectorAll('input,select,textarea').forEach(function (input) { if (!input.name) return; data[input.name] = input.type === 'checkbox' ? (input.checked ? '1' : '') : input.value; }); return data;
+      var data = {}; root.querySelectorAll('input,select,textarea').forEach(function (input) { if (!input.name || input.disabled) return; data[input.name] = input.type === 'checkbox' ? (input.checked ? '1' : '') : input.value; }); return data;
+    },
+    ownsDialogForm: function (dialog, form, selector) {
+      return !!(form && form.isConnected && dialog.open && dialog.querySelector(selector) === form);
     },
     save: function (dialog) {
       var form = dialog.querySelector('[data-opportunity-form]'), self = this;
       var button = dialog.querySelector('[data-opportunity-save]');
-      if (button) button.disabled = true;
-      post('opportunity_save', this.collect(form)).then(function (json) {
-        if (!json.success) { var err = form.querySelector('[data-opportunity-error]'); if (err) err.textContent = json.message || '保存失败'; return toast(json.message || '保存失败'); }
+      if (!this.ownsDialogForm(dialog, form, '[data-opportunity-form]')) return Promise.resolve();
+      var payload = this.collect(form), saved = false;
+      return TaskCenterModule.runBusy(button, '正在保存…', function () {
+        return post('opportunity_save', payload).then(function (json) {
+        if (!json.success) throw new Error(json.message || '保存失败');
         var record = (json.data && json.data.opportunity) || {};
-        return self.uploadQueuedFiles(record.id, dialog).then(function () {
-          CustomerModule.closeDialog(); toast('商机已保存'); self.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+        if (!(Number(record.id) > 0)) throw new Error('未返回商机编号，请先核对商机列表，不要重复新建。');
+        saved = true;
+        // Retain the saved identity before attachments: upload retry must edit it.
+        form.querySelector('[name="opportunity_id"]').value = record.id;
+        var followup = form.querySelector('[name="create_followup"]');
+        if (followup && payload.create_followup) followup.checked = false;
+        if (!self.ownsDialogForm(dialog, form, '[data-opportunity-form]')) { self.load(); return toast('商机已保存；原表单已关闭，附件未上传。'); }
+        return self.uploadQueuedFiles(record.id, form).then(function () {
+          if (self.ownsDialogForm(dialog, form, '[data-opportunity-form]')) CustomerModule.closeDialog();
+          toast('商机已保存'); self.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
         });
       }).catch(function (err) {
+        var message = (saved ? '商机已保存，附件未全部上传；可重试剩余附件。' : '') + (err.message || '保存失败');
         var node = form.querySelector('[data-opportunity-error]');
-        if (node) node.textContent = err.message || '保存失败';
-        toast(err.message || '保存失败');
-      }).finally(function () {
-        if (button) button.disabled = false;
+        if (node) node.textContent = message;
+        toast(message);
+      });
       });
     },
     updateStage: function (id, stage) {
@@ -26569,6 +26612,7 @@
       });
     },
     handleAction: function (label) {
+      if (!crmActionAllowed('opportunities', label)) return toast('当前账号无权执行此操作。');
       var row = this.selected();
       if (label === '新建商机') return this.openDialog({});
       if (label === '查看商机' || label === '编辑商机') return this.openDialog(row);
@@ -26580,10 +26624,10 @@
       if (label === '查看我的商机') { this.filter = 'my'; document.querySelector('[data-opportunity-filter]').value = 'my'; return this.load(); }
       if (label === '查看逾期商机') { this.filter = 'overdue_follow'; document.querySelector('[data-opportunity-filter]').value = 'overdue_follow'; return this.load(); }
       if (label === '查看商机报表') { this.view = 'forecast'; return this.render(); }
-      if (label === '创建跟进') { if (!row) return toast('请先选择商机。'); CustomerModule.currentId = Number(row.customer_id || 0); return CustomerModule.openFollowupDialog(); }
+      if (label === '创建跟进') { if (!row) return toast('请先选择商机。'); return TaskCenterModule.openTaskFollowup(row); }
       if (label === '创建报价') return toast('报价接口待接入，可从报价系统创建草稿并关联商机。');
-      if (label === '创建样品任务') return toast('样品/PLM 接口待接入。');
-      if (label === '创建资料任务') return toast('资料接口待接入。');
+      if (label === '创建样品任务') return this.openLinkedTask(row, 'sample_task');
+      if (label === '创建资料任务') return this.openLinkedTask(row, 'material_task');
       if (label === '创建派工') return toast('派工接口待接入。');
       if (/^AI /.test(label)) return AiModule.openFromContext(label, {
         source_type: 'opportunity',
@@ -26596,6 +26640,34 @@
       if (label === '导出商机') return toast('商机导出接口待接入。');
       if (label === '导入商机') return toast('商机导入接口待接入。');
       toast(label + ' 已预留。');
+    },
+    openLinkedTask: function (row, type) {
+      if (!row || !Number(row.id)) return toast('请先选择商机。');
+      var label = type === 'sample_task' ? '样品任务' : '资料任务', self = this;
+      var tomorrow = new Date(Date.now() + 86400000);
+      var due = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      var html = '<div class="crm-modal-form crm-modal-grid" data-opportunity-task-form><input type="hidden" name="opportunity_id" value="' + esc(row.id) + '"><input type="hidden" name="task_type" value="' + esc(type) + '"><input type="hidden" name="request_token" value="' + esc(TaskCenterModule.requestToken('op-task')) + '"><p class="wide">关联商机：' + esc(row.opportunity_name) + ' · ' + esc(row.customer_name || '') + '</p><label class="crm-modal-field wide">标题<input name="title" required value="' + esc(label + '：' + row.opportunity_name) + '"></label><label class="crm-modal-field">负责人<select name="assigned_user_id"><option value="">我自己</option>' + this.userOptions(0) + '</select></label><label class="crm-modal-field">截止时间<input type="datetime-local" name="due_at" required value="' + esc(due) + '"></label><label class="crm-modal-field">优先级<select name="priority">' + this.priorityOptions(row.priority || 'normal') + '</select></label><label class="crm-modal-field wide">任务说明<textarea name="description" rows="4">' + esc([row.next_action, row.parameter_requirement].filter(Boolean).join('\n')) + '</textarea></label><p class="wide crm-modal-error" data-opportunity-task-error></p></div><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-opportunity-task-save>创建' + label + '</button></div>';
+      CustomerModule.openBusinessDialog('创建' + label, html, '保存后进入任务中心，保留商机与客户关联；不会自动寄出样品或生成资料文件。', function (dialog) {
+        dialog.querySelector('[data-business-cancel]').addEventListener('click', function () { CustomerModule.closeDialog(); });
+        dialog.querySelector('[data-opportunity-task-save]').addEventListener('click', function () { self.saveLinkedTask(dialog); });
+      });
+    },
+    saveLinkedTask: function (dialog) {
+      var self = this, form = dialog.querySelector('[data-opportunity-task-form]');
+      if (!this.ownsDialogForm(dialog, form, '[data-opportunity-task-form]')) return Promise.resolve();
+      var payload = this.collect(form);
+      return TaskCenterModule.runBusy(dialog.querySelector('[data-opportunity-task-save]'), '正在创建…', function () {
+        return post('opportunity_create_task', payload).then(function (json) {
+          if (!json.success) throw new Error(json.message || '创建失败');
+          var task = (json.data || {}).task || {};
+          if (!(Number(task.id) > 0)) throw new Error('未返回任务编号，请先核对任务中心。');
+          if (self.ownsDialogForm(dialog, form, '[data-opportunity-task-form]')) CustomerModule.closeDialog();
+          toast('任务 #' + task.id + (json.data.reused ? ' 已存在，未重复创建。' : ' 已创建，可在任务中心查看。'));
+        }).catch(function (error) {
+          if (self.ownsDialogForm(dialog, form, '[data-opportunity-task-form]')) form.querySelector('[data-opportunity-task-error]').textContent = error.message;
+          toast(error.message || '创建失败');
+        });
+      });
     },
     deleteSelected: function () {
       var row = this.selected(), self = this;
@@ -27207,7 +27279,7 @@
     },
     sourceText: function (row) {
       if (!row) return '-';
-      var map = { followup:'客户跟进', visit:'拜访/来访', sample_shipment:'样品寄送', quote:'报价', mail:'邮件', promotion:'推广', ai:'AI', manual_test:'手动测试', manual:'手动' };
+      var map = { opportunity:'商机', followup:'客户跟进', visit:'拜访/来访', sample_shipment:'样品寄送', quote:'报价', mail:'邮件', promotion:'推广', ai:'AI', manual_test:'手动测试', manual:'手动' };
       var type = map[row.source_type] || row.source_type || ((this.options.task_types || {})[row.task_type] || row.task_type || '任务');
       var title = row.opportunity_name || row.quote_id || row.tracking_no || row.customer_name || row.source_id || '';
       if (row.task_type === 'sample_shipment') title = [row.courier_company, row.tracking_no].filter(Boolean).join(' ') || row.sample_name || title;

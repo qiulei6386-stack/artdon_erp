@@ -1665,6 +1665,10 @@ try {
         require_csrf();
         api_response(true, '商机已保存', crm_opportunity_save($_POST));
     }
+    if ($action === 'opportunity_create_task') {
+        require_csrf();
+        api_response(true, '关联任务已保存', crm_opportunity_create_task($_POST));
+    }
     if ($action === 'opportunity_stage_update') {
         require_csrf();
         api_response(true, '商机阶段已更新', crm_opportunity_stage_update((int)($_POST['opportunity_id'] ?? 0), (string)($_POST['stage'] ?? ''), $_POST));

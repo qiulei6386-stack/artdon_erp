@@ -324,6 +324,42 @@ function crm_opportunity_detail(int $id): array
     return ['opportunity' => $row, 'files' => crm_opportunity_files($id), 'logs' => $logs->fetchAll(), 'relations' => $relations->fetchAll(), 'stages' => crm_opportunity_stages()];
 }
 
+/** Create an actionable CRM task, not a shipment, material file or dispatch. */
+function crm_opportunity_create_task(array $input): array
+{
+    crm_require('opportunity.view');
+    crm_require('customer.view');
+    crm_require('task.create');
+    crm_require('task.view');
+    $id = (int)($input['opportunity_id'] ?? 0);
+    $type = (string)($input['task_type'] ?? '');
+    if (!in_array($type, ['sample_task', 'material_task'], true)) throw new RuntimeException('不支持的商机任务类型。');
+    $token = (string)($input['request_token'] ?? '');
+    if (!preg_match('/^[a-zA-Z0-9._:-]{16,100}$/D', $token)) throw new RuntimeException('提交标识无效，请重新打开任务表单。');
+    $row = crm_opportunity_detail($id)['opportunity'];
+    $customerId = (int)$row['customer_id'];
+    crm_customer_get($customerId);
+    $assigned = (int)($input['assigned_user_id'] ?? 0) ?: (int)((current_user() ?: [])['id'] ?? 0);
+    $user = db()->prepare("SELECT id FROM crm_users WHERE id=? AND status='active' LIMIT 1");
+    $user->execute([$assigned]);
+    if (!$user->fetchColumn()) throw new RuntimeException('请选择有效的任务负责人。');
+    $due = str_replace('T', ' ', trim((string)($input['due_at'] ?? '')));
+    $date = DateTime::createFromFormat('!Y-m-d H:i', $due);
+    if (!$date || $date->format('Y-m-d H:i') !== $due) throw new RuntimeException('请填写有效的截止时间。');
+    // Derive all business identities from the scoped opportunity, never caller IDs.
+    // Reuse the task center's creator/token unique key for concurrent retries.
+    return crm_task_save([
+        'task_type' => $type,
+        'title' => trim((string)($input['title'] ?? '')),
+        'description' => trim((string)($input['description'] ?? '')),
+        'source_type' => 'opportunity', 'source_id' => (string)$id,
+        'opportunity_id' => $id, 'customer_id' => $customerId,
+        'assigned_user_id' => $assigned, 'due_at' => $due,
+        'priority' => $input['priority'] ?? 'normal',
+        'request_token' => 'op-task-' . hash('sha256', $id . ':' . $type . ':' . $token),
+    ]);
+}
+
 function crm_opportunity_save(array $input): array
 {
     crm_opportunity_ensure_tables();
@@ -335,6 +371,13 @@ function crm_opportunity_save(array $input): array
     if ($name === '') throw new RuntimeException('商机名称不能为空。');
     if (!$customerId) throw new RuntimeException('客户不能为空。');
     $customer = crm_customer_get($customerId)['customer'];
+    $contactId = (int)($input['contact_id'] ?? 0);
+    if ($contactId > 0) {
+        $contact = db()->prepare('SELECT id FROM crm_contacts WHERE id=? AND customer_id=? AND deleted_at IS NULL LIMIT 1');
+        $contact->execute([$contactId, $customerId]);
+        if (!$contact->fetchColumn()) throw new RuntimeException('联系人不属于当前客户，请重新选择。');
+    }
+    if (!empty($input['create_followup'])) crm_require('follow.create');
     $stage = array_key_exists((string)($input['stage'] ?? ''), crm_opportunity_stages()) ? (string)$input['stage'] : 'new_need';
     $probability = isset($input['probability']) && $input['probability'] !== '' ? (int)$input['probability'] : crm_opportunity_probability($stage);
     $numOrNull = static function (array $source, string $key): ?float {
@@ -417,8 +460,8 @@ function crm_opportunity_handle_linkage_requests(int $id, int $customerId, strin
 {
     $pending = [
         'need_quote' => ['opportunity_quote_requested', '商机报价接口待接入'],
-        'need_sample' => ['opportunity_sample_requested', '商机样品接口待接入'],
-        'need_material' => ['opportunity_material_requested', '商机资料接口待接入'],
+        'need_sample' => ['opportunity_sample_requested', '已记录样品需求，可在商机操作中创建样品任务'],
+        'need_material' => ['opportunity_material_requested', '已记录资料需求，可在商机操作中创建资料任务'],
         'need_technical' => ['opportunity_technical_requested', '商机技术确认待处理'],
         'need_plm' => ['opportunity_plm_requested', '商机 PLM 接口待接入'],
         'need_bom' => ['opportunity_bom_requested', '商机 BOM 接口待接入'],
