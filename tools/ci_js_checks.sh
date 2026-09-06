@@ -25,7 +25,7 @@ while IFS= read -r js_file; do
     syntax_failed=$((syntax_failed + 1))
     printf 'JavaScript syntax failed: %s\n' "$js_file" >&2
   fi
-done < <(git ls-files '*.js')
+done < <(git ls-files '*.js' '*.cjs')
 
 printf 'JavaScript syntax: %s checked, %s failed\n' "$syntax_total" "$syntax_failed"
 if [ "$syntax_total" -eq 0 ]; then
@@ -37,6 +37,7 @@ if [ "$syntax_failed" -ne 0 ]; then
 fi
 
 static_tests=(
+  tests/dispatch_recent_create_runtime_test.cjs
   tests/crm_marketing_mail_preview_runtime_test.js
   material_center_v1/tests/mm_static_test.js
   material_center_v1/tests/ui_static_test.js
