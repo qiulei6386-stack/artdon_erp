@@ -360,13 +360,35 @@ function dn_user_name(int $id): string
     return $map[$id] ?? ('用户#' . $id);
 }
 
+function dn_task_user_relation_sql(string $alias, int $uid): array
+{
+    if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias) || $uid <= 0) {
+        return ['0=1', []];
+    }
+    $sql = "({$alias}.created_by = ?
+        OR {$alias}.assigned_to = ?
+        OR {$alias}.transfer_from_user_id = ?
+        OR JSON_CONTAINS(COALESCE({$alias}.helper_ids_json,'[]'), JSON_ARRAY(CAST(? AS CHAR)))
+        OR JSON_CONTAINS(COALESCE({$alias}.helper_ids_json,'[]'), JSON_ARRAY(CAST(? AS UNSIGNED)))
+        OR EXISTS (
+            SELECT 1
+            FROM dispatch_next_steps current_relation_step
+            WHERE current_relation_step.is_deleted=0
+              AND current_relation_step.owner_id=?
+              AND (
+                  current_relation_step.task_id={$alias}.id
+                  OR ({$alias}.parent_group_id IS NOT NULL AND current_relation_step.group_id={$alias}.parent_group_id)
+              )
+        ))";
+    return [$sql, [$uid, $uid, $uid, $uid, $uid, $uid]];
+}
+
 function dn_visible_sql(string $alias = 't'): array
 {
     $uid = dn_uid();
     $rules = dn_visibility_rule_for($uid);
     $deny = array_values(array_unique(array_map('intval', (array)($rules['deny'] ?? []))));
-    $ownSql = "({$alias}.created_by = ? OR {$alias}.assigned_to = ?)";
-    $ownParams = [$uid, $uid];
+    [$ownSql, $ownParams] = dn_task_user_relation_sql($alias, $uid);
     $privateSql = "({$alias}.task_type <> 'private' OR {$alias}.created_by = ?)";
     if (dn_is_admin()) {
         $scopeSql = $privateSql;
@@ -1124,9 +1146,19 @@ function dn_list(array $in): array
         $dateSql = "((t.status='done' AND DATE(COALESCE(t.completed_at,t.updated_at))=?) OR (t.status='cancelled' AND DATE(COALESCE(t.cancelled_at,t.updated_at))=?))";
         $dateParams = [$date, $date];
     }
+    $currentUid = dn_uid();
     $sql = "SELECT t.*,
         cu.username AS creator_username, COALESCE(NULLIF(cu.real_name,''), cu.username) AS creator_name,
-        au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name
+        au.username AS assignee_username, COALESCE(NULLIF(au.real_name,''), au.username) AS assignee_name,
+        EXISTS (
+            SELECT 1 FROM dispatch_next_steps current_list_step
+            WHERE current_list_step.is_deleted=0
+              AND current_list_step.owner_id={$currentUid}
+              AND (
+                  current_list_step.task_id=t.id
+                  OR (t.parent_group_id IS NOT NULL AND current_list_step.group_id=t.parent_group_id)
+              )
+        ) AS current_user_step_owner
         FROM dispatch_next_tasks t
         LEFT JOIN crm_users cu ON cu.id=t.created_by
         LEFT JOIN crm_users au ON au.id=t.assigned_to
@@ -1168,8 +1200,9 @@ function dn_list(array $in): array
     $groupMemberParams = [];
     if ($dispatchPersonIds) {
         $marks = implode(',', array_fill(0, count($dispatchPersonIds), '?'));
-        $groupMemberWhere = " AND (mt.assigned_to IN ({$marks}) OR mt.created_by = ? OR mt.assigned_to = ?)";
-        $groupMemberParams = array_merge($dispatchPersonIds, [dn_uid(), dn_uid()]);
+        [$currentRelationSql, $currentRelationParams] = dn_task_user_relation_sql('mt', dn_uid());
+        $groupMemberWhere = " AND (mt.assigned_to IN ({$marks}) OR {$currentRelationSql})";
+        $groupMemberParams = array_merge($dispatchPersonIds, $currentRelationParams);
     }
     $groupSt = $pdo->prepare("SELECT DISTINCT mt.parent_group_id
         FROM dispatch_next_tasks mt
@@ -1308,7 +1341,7 @@ function dn_task_owner_sort_key(array $task): string
 function dn_task_matches_people(array $task, array $personIds, bool $includeCreator = true): bool
 {
     if (!$personIds) return true;
-    if (dn_task_has_user_in_primary_columns($task, dn_uid())) return true;
+    if (dn_task_has_current_user_relation($task, dn_uid())) return true;
     $ids = array_map('intval', $personIds);
     if ($includeCreator && in_array((int)($task['created_by'] ?? 0), $ids, true)) return true;
     if (in_array((int)($task['assigned_to'] ?? 0), $ids, true)) return true;
@@ -1319,11 +1352,30 @@ function dn_task_matches_people(array $task, array $personIds, bool $includeCrea
     return false;
 }
 
-function dn_task_has_user_in_primary_columns(array $task, int $uid): bool
+function dn_task_has_current_user_relation(array $task, int $uid): bool
 {
     if ($uid <= 0) return false;
-    return (int)($task['created_by'] ?? 0) === $uid
-        || (int)($task['assigned_to'] ?? 0) === $uid;
+    if ((int)($task['created_by'] ?? 0) === $uid || (int)($task['assigned_to'] ?? 0) === $uid) return true;
+    if ((int)($task['transfer_from_user_id'] ?? 0) === $uid) return true;
+    foreach ((array)(json_decode((string)($task['helper_ids_json'] ?? '[]'), true) ?: []) as $helperId) {
+        if ((int)$helperId === $uid) return true;
+    }
+    return !empty($task['current_user_step_owner']);
+}
+
+function dn_task_current_user_relation_labels(array $task, int $uid): array
+{
+    if ($uid <= 0) return [];
+    if ((int)($task['assigned_to'] ?? 0) === $uid) return ['我负责'];
+    if ((int)($task['created_by'] ?? 0) === $uid) return ['我派出'];
+    $participates = (int)($task['transfer_from_user_id'] ?? 0) === $uid || !empty($task['current_user_step_owner']);
+    foreach ((array)(json_decode((string)($task['helper_ids_json'] ?? '[]'), true) ?: []) as $helperId) {
+        if ((int)$helperId === $uid) {
+            $participates = true;
+            break;
+        }
+    }
+    return $participates ? ['我参与'] : [];
 }
 
 function dn_recent_create_highlight($createdBy, $createdAt): int
@@ -1354,6 +1406,7 @@ function dn_decorate_task(array $r): array
     $r['valid_attachment_count'] = (int)($r['valid_attachment_count'] ?? 0);
     $r['assignee_name'] = (string)($r['assignee_name'] ?? dn_user_name($r['assigned_to']));
     $r['creator_name'] = (string)($r['creator_name'] ?? dn_user_name($r['created_by']));
+    $r['current_user_relation_labels'] = dn_task_current_user_relation_labels($r, dn_uid());
     $r['method_label'] = dn_method_label($r['task_type'], $r['dispatch_mode']);
     if (($r['transfer_type'] ?? '') === 'personal_to_single') $r['method_label'] = '转派';
     if (($r['transfer_type'] ?? '') === 'personal_to_multi') $r['method_label'] = '多人转派';
@@ -1615,7 +1668,7 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
     if (!$g) return null;
     // 组已经在列表查询中完成可见性和负责人校验；汇总必须读取全部成员，
     // 否则人员筛选会把 1/2 错算成 1/1，并漏掉已完成成员姓名。
-    $st = $pdo->prepare("SELECT t.id,t.title,t.project,t.status,t.priority,t.assigned_to,t.progress,t.task_date,t.due_at,t.is_read,t.updated_at,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
+    $st = $pdo->prepare("SELECT t.id,t.title,t.project,t.status,t.priority,t.created_by,t.assigned_to,t.helper_ids_json,t.transfer_from_user_id,t.progress,t.task_date,t.due_at,t.is_read,t.updated_at,t.linked_system,t.linked_id,t.linked_json,t.transfer_type FROM dispatch_next_tasks t WHERE t.parent_group_id=? AND t.is_deleted=0 ORDER BY t.id");
     $st->execute([$gid]);
     $children = $st->fetchAll();
     $done = 0;
@@ -1635,8 +1688,8 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
             break;
         }
     }
-    $stepSt = $pdo->prepare("SELECT COUNT(*) step_count, SUM(status='done') step_done_count FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0");
-    $stepSt->execute([$gid]);
+    $stepSt = $pdo->prepare("SELECT COUNT(*) step_count, SUM(status='done') step_done_count, SUM(owner_id=?) current_owner_count FROM dispatch_next_steps WHERE group_id=? AND is_deleted=0");
+    $stepSt->execute([dn_uid(), $gid]);
     $stepRow = $stepSt->fetch() ?: ['step_count' => 0, 'step_done_count' => 0];
     $groupStatus = count($children) > 0 && $done === count($children) ? 'done' : 'in_progress';
     $displayDueAt = dn_group_display_due_at($g, $children, $displayDate);
@@ -1674,6 +1727,17 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
         && (int)($g['is_active'] ?? 0) === 1
         && (dn_is_admin() || (int)($g['created_by'] ?? 0) === dn_uid());
     $due = dn_due_status($displayDueAt, $groupStatus);
+    $groupRelationLabels = [];
+    if (array_filter($children, fn($c) => (int)($c['assigned_to'] ?? 0) === dn_uid())) $groupRelationLabels = ['我负责'];
+    elseif ((int)($g['created_by'] ?? 0) === dn_uid()) $groupRelationLabels = ['我派出'];
+    $groupParticipates = (int)($stepRow['current_owner_count'] ?? 0) > 0;
+    foreach ($children as $child) {
+        if ((int)($child['transfer_from_user_id'] ?? 0) === dn_uid()) $groupParticipates = true;
+        foreach ((array)(json_decode((string)($child['helper_ids_json'] ?? '[]'), true) ?: []) as $helperId) {
+            if ((int)$helperId === dn_uid()) $groupParticipates = true;
+        }
+    }
+    if ($groupParticipates && !$groupRelationLabels) $groupRelationLabels = ['我参与'];
     $groupPolicyTask = ['task_type' => 'dispatch', 'created_by' => (int)$g['created_by'], 'assigned_to' => (int)$g['created_by'], 'due_at' => $displayDueAt, 'parent_group_id' => $gid];
     $canChangeDueAt = dn_has_due_change_permission($groupPolicyTask) && dn_due_change_block_reason($groupPolicyTask, $g) === null;
     $dueChangeHint = $canChangeDueAt ? '' : (dn_has_due_change_permission($groupPolicyTask) ? (dn_due_change_block_reason($groupPolicyTask, $g) ?: '当前不能修改截止日期。') : '没有修改该派工截止日期的权限。');
@@ -1698,6 +1762,7 @@ function dn_group_row(int $gid, array $personIds = [], ?string $displayDate = nu
         'is_overdue' => $due['state'] === 'overdue',
         'created_by' => (int)$g['created_by'],
         'creator_name' => dn_user_name((int)$g['created_by']),
+        'current_user_relation_labels' => $groupRelationLabels,
         'assigned_to' => 0,
         'assignee_name' => '多人',
         'assignee_names' => $assigneeNames,
