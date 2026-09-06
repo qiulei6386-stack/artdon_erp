@@ -26519,13 +26519,13 @@ body.is-promotion-module .crm-shell.is-actionbar-collapsed {
   margin: 0 0 10px !important;
 }
 .crm-module[data-crm-module="promotion"] .promotion-create-toolbar button {
-  min-height: 36px !important;
+  min-height: 36px;
   border: 0 !important;
-  border-radius: 10px !important;
-  background: #2563eb !important;
+  border-radius: 10px;
+  background: var(--crm-primary, #2563eb) !important;
   color: #ffffff !important;
-  font-size: 14px !important;
-  font-weight: 900 !important;
+  font-size: var(--crm-font-size-base, 14px);
+  font-weight: 600;
   padding: 0 16px !important;
   box-shadow: none !important;
 }
@@ -29253,12 +29253,12 @@ body.is-workspace-module .rank-progress i {
 }
 /* Top navigation visual tuning: keep structure, make hierarchy clearer. */
 .crm-tabbar {
-  height: 44px !important;
+  height: var(--crm-tabbar-height, 44px) !important;
   gap: 4px !important;
   padding: 5px 16px !important;
   border-top: 1px solid #e8edf5 !important;
   border-bottom: 1px solid #dbe3ef !important;
-  background: #ffffff !important;
+  background: var(--crm-tabbar-bg, #ffffff) !important;
   box-shadow: 0 1px 0 rgb(15 23 42 / .03) !important;
 }
 .crm-tabbar button {
@@ -29309,7 +29309,7 @@ body.is-workspace-module .rank-progress i {
   color: #1d4ed8 !important;
 }
 .crm-shell {
-  height: calc(100vh - var(--crm-topbar-height, 48px) - 44px) !important;
+  height: calc(100vh - var(--crm-topbar-height, 48px) - var(--crm-tabbar-height, 44px)) !important;
 }
 .crm-module[data-crm-module="promotion"] .marketing-subtabs {
   height: 48px !important;
@@ -32286,19 +32286,20 @@ body.is-ai-module .crm-actionbar.is-collapsed .crm-actionbar-head {
   width: min(1040px, calc(100vw - 40px)) !important;
   max-height: min(860px, calc(100vh - 40px)) !important;
   border-radius: 18px !important;
-  border-color: #dbeafe !important;
-  background: #ffffff !important;
+  border-color: var(--crm-border, #dbeafe) !important;
+  background: var(--crm-card-bg, #ffffff) !important;
+  color: var(--crm-text, #111827);
   box-shadow: 0 28px 80px rgb(15 23 42 / .24) !important;
 }
 .crm-modal.ai-dialog .crm-modal-header,
 .crm-modal.ai-dialog .crm-modal-footer {
   min-height: 62px !important;
-  background: linear-gradient(180deg, #f8fbff, #ffffff) !important;
+  background: var(--crm-card-bg, #ffffff) !important;
 }
 .crm-modal.ai-dialog .crm-modal-body {
   overflow-x: hidden !important;
   overflow-y: auto !important;
-  background: #f8fafc !important;
+  background: var(--crm-bg, #f8fafc) !important;
   padding: 18px !important;
 }
 .radar-drawer-backdrop {

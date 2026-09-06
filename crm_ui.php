@@ -20,6 +20,7 @@ function crm_add_column_if_missing(string $table, string $column, string $defini
 
 function crm_ui_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;

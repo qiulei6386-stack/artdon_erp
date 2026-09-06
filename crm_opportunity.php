@@ -20,6 +20,7 @@ function crm_opportunity_stages(): array
 
 function crm_opportunity_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;
@@ -328,6 +329,7 @@ function crm_opportunity_save(array $input): array
     crm_opportunity_ensure_tables();
     $id = (int)($input['opportunity_id'] ?? $input['id'] ?? 0);
     crm_require($id ? 'opportunity.edit' : 'opportunity.create');
+    if (!empty($input['create_dispatch'])) throw new RuntimeException('商机自动派工尚未接通，本次未保存。请在任务中心创建关联任务并生成派工。');
     $name = trim((string)($input['opportunity_name'] ?? ''));
     $customerId = (int)($input['customer_id'] ?? 0);
     if ($name === '') throw new RuntimeException('商机名称不能为空。');

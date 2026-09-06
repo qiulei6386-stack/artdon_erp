@@ -35,9 +35,8 @@ foreach (['reuse_templates', 'save_reuse_template', 'preview_reuse_template', 'a
     if (!str_contains($api, "'{$marker}'")) throw new RuntimeException("API action missing: {$marker}");
 }
 
-foreach (['data-reuse-template-open', 'data-selected-reuse-template', 'data-reuse-template-form'] as $marker) {
-    if (!str_contains($page, $marker)) throw new RuntimeException("Template page marker missing: {$marker}");
-}
+require_once __DIR__ . '/adaptation_active_route_contract.php';
+adaptation_active_contract('templates');
 
 foreach (['data-reuse-template-open', 'data-selected-reuse-template', 'data-reuse-template-form', 'data-use-reuse-template', 'data-disable-reuse-template', 'batchReuseTemplate'] as $marker) {
     if (!str_contains($js, $marker)) throw new RuntimeException("Template client marker missing: {$marker}");

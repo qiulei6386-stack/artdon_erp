@@ -5,6 +5,7 @@ require_once __DIR__ . '/crm_opportunity.php';
 
 function crm_ai_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     crm_customer_ensure_tables();
     db()->exec("CREATE TABLE IF NOT EXISTS crm_ai_tasks (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -575,11 +576,9 @@ function crm_ai_confirm_interface_task(array $task): array
     $perm = $task['task_type'] === 'quote_draft' ? 'ai.confirm_quote' : ($task['task_type'] === 'material_draft' ? 'ai.confirm_material' : 'ai.view');
     crm_require($perm);
     $interface = $task['task_type'] === 'quote_draft' ? 'ai_create_quote_draft' : ($task['task_type'] === 'material_draft' ? 'ai_create_material_draft' : 'ai_create_confirm_task');
-    crm_ai_log((int)$task['id'], 'ai_confirm_interface_pending', ['interface' => $interface], 'failed', $interface . ' 接口待接入');
-    if (!empty($task['customer_id'])) {
-        crm_customer_timeline_add((int)$task['customer_id'], 'ai_interface_pending', 'AI 草稿已确认，正式接口待接入', $interface, 'ai_task', (string)$task['id']);
-    }
-    return ['pending_interface' => true, 'interface' => $interface];
+    // A reviewed draft is not a generated business record. Fail before the
+    // caller can persist confirmed or write a misleading success timeline.
+    throw new RuntimeException('该草稿的业务生成接口尚未接通，内容已保留，未生成报价、资料或派工。请在对应业务模块办理。');
 }
 
 function crm_ai_update_confirm(array $input): array

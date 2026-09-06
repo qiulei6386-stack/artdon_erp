@@ -1,0 +1,9 @@
+/* Shared workspace controls; existing module layouts and personal themes stay. */
+.crm-workspace-pager { grid-column:1 / -1; display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; padding:12px; color:var(--crm-text); background:var(--crm-card-bg); border-top:1px solid var(--crm-border); }
+.crm-workspace-pager button { min-height:32px; padding:4px 12px; border:1px solid var(--crm-border); border-radius:6px; color:var(--crm-text); background:var(--crm-card-bg); cursor:pointer; }
+.crm-workspace-pager button:disabled { opacity:.45; cursor:not-allowed; }
+.crm-workspace-more { margin-top:4px; width:100%; }
+.crm-workspace-more summary { padding:8px; color:var(--crm-muted-text); cursor:pointer; font-size:12px; }
+.crm-workspace-more[open] { border-top:1px solid var(--crm-border); }
+.crm-workspace-more .action_command { width:100%; }
+.crm-workspace-pager button:focus-visible,.crm-workspace-more summary:focus-visible { outline:2px solid var(--crm-primary); outline-offset:2px; }

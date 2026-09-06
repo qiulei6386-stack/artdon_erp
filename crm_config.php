@@ -99,7 +99,7 @@ function crm_schema_cache_file(): string
 {
     $dir = __DIR__ . '/storage';
     if (!is_dir($dir) || !is_writable($dir)) {
-        return sys_get_temp_dir() . '/artdon_crm_schema_ensure.json';
+        return sys_get_temp_dir() . '/artdon_crm_schema_ensure_' . sha1(__DIR__) . '.json';
     }
     return $dir . '/crm_schema_ensure.json';
 }
@@ -119,7 +119,9 @@ function crm_schema_cache_signature(): string
         __DIR__ . '/crm_settings_config.php',
         __DIR__ . '/crm_ui.php',
     ];
-    $parts = [];
+    $config = db_config();
+    $database = $config['db'] ?? [];
+    $parts = [__DIR__, (string)($database['host'] ?? ''), (string)($database['port'] ?? ''), (string)($database['name'] ?? '')];
     foreach ($files as $file) {
         $parts[] = basename($file) . ':' . (is_file($file) ? (string)filemtime($file) : '0');
     }
@@ -147,6 +149,7 @@ function crm_run_schema_ensures(bool $force = false): void
     static $done = false;
     if ($done && !$force) return;
     $done = true;
+    $GLOBALS['crm_schema_ready'] = false;
 
     $start = microtime(true);
     $cacheFile = crm_schema_cache_file();
@@ -158,6 +161,7 @@ function crm_run_schema_ensures(bool $force = false): void
         if (is_array($cache)
             && ($cache['signature'] ?? '') === $signature
             && (int)($cache['checked_at'] ?? 0) > $now - $ttl) {
+            $GLOBALS['crm_schema_ready'] = true;
             return;
         }
     }
@@ -173,6 +177,7 @@ function crm_run_schema_ensures(bool $force = false): void
     radar_ensure_permissions();
     crm_settings_ensure_tables();
     crm_ui_ensure_tables();
+    $GLOBALS['crm_schema_ready'] = true;
 
     $payload = json_encode([
         'checked_at' => $now,

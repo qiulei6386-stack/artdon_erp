@@ -30,6 +30,7 @@ function crm_mail_decrypt(?string $value): string
 
 function crm_mail_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;
@@ -3396,6 +3397,9 @@ function crm_mail_list(array $input): array
     crm_require('mail.view');
     $account = crm_mail_current_account(false);
     crm_mail_list_perf_mark('account_prepare', $segmentStarted);
+    // Account selection has updated the session; SQL list reads need not block
+    // another tab's requests behind the PHP session lock.
+    if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
     if (!$account) return ['bound' => false, 'rows' => [], 'total' => 0, 'account' => null, 'folder_counts' => []];
     $folder = trim((string)($input['folder'] ?? 'inbox'));
     if ($folder === 'scheduled') return crm_mail_scheduled_list($account, $input);

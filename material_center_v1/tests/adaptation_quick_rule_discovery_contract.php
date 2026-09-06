@@ -6,18 +6,8 @@ $page = file_get_contents($root.'/adaptation/index.php');
 $script = file_get_contents($root.'/assets/js/adaptation-shell.js');
 $service = file_get_contents($root.'/app/Services/AdaptationService.php');
 
-foreach ([
-    '配置组工作区',
-    '选择一个组后，中间区可维护关键范围、候选物料、默认项和条件。',
-    '关键范围（快速规则）',
-    'data-open-quick-rules',
-    '配置用途 *',
-    '候选物料来源',
-    '页面显示名称 *',
-    '系统会自动关联正式物料库',
-] as $marker) {
-    if (!str_contains($page, $marker)) throw new RuntimeException("adaptation discovery UI missing: {$marker}");
-}
+require_once __DIR__ . '/adaptation_active_route_contract.php';
+adaptation_active_contract('rules');
 
 foreach ([
     "state.tab = 'quick_rules';",

@@ -51,7 +51,9 @@ foreach ([
         throw new RuntimeException("Singapore outbox marker missing: {$marker}");
     }
 }
-if (!str_contains($adapter, 'not_configured') || preg_match('/curl_|file_get_contents\\s*\\(\\s*[\'"]https?:/i', $channelService . $adapter)) {
-    throw new RuntimeException('Singapore adapter must remain explicitly unconfigured and offline.');
+// The adapter now implements an explicit, authenticated publish operation.
+// Inspect source only: never invoke publish or read its private configuration.
+foreach (['not_configured', "\$secret === '' || !function_exists('curl_init')", "hash_hmac('sha256'", 'Idempotency-Key:', 'CURLOPT_TIMEOUT => 30', "\$status < 200 || \$status >= 300", "empty(\$response['ok'])"] as $marker) {
+    if (!str_contains($adapter, $marker)) throw new RuntimeException('Configured publisher safety missing: ' . $marker);
 }
-echo "Quote product types, approved-adaptation passport and Singapore offline outbox contract: OK\n";
+echo "Quote product types, approved-adaptation passport and authenticated Singapore outbox contract: OK\n";

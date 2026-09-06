@@ -4,6 +4,7 @@ require_once __DIR__ . '/crm_customer.php';
 
 function crm_task_center_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;
@@ -438,6 +439,10 @@ function crm_task_center_list(array $input = []): array
     crm_require('task.view');
     $view = trim((string)($input['view'] ?? 'my'));
     $q = trim((string)($input['q'] ?? ''));
+    $page = max(1, (int)($input['page'] ?? 1));
+    $pageSize = max(1, min(300, (int)($input['page_size'] ?? 300)));
+    $limit = $pageSize + 1;
+    $offset = ($page - 1) * $pageSize;
     $where = ['t.deleted_at IS NULL', crm_task_scope_sql('t')];
     $params = [];
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
@@ -482,17 +487,19 @@ function crm_task_center_list(array $input = []): array
         {$quoteFollowJoin}
         LEFT JOIN crm_sample_shipments ss ON ss.task_id=t.id AND ss.deleted_at IS NULL
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY is_overdue DESC, COALESCE(t.due_at, t.created_at) ASC, t.id DESC LIMIT 300";
+        ORDER BY is_overdue DESC, COALESCE(t.due_at, t.created_at) ASC, t.id DESC LIMIT {$limit} OFFSET {$offset}";
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    $hasMore = count($rows) > $pageSize;
+    $rows = array_slice($rows, 0, $pageSize);
     $extra = [];
     if ($view === 'quote') {
         // 报价流程不是 crm_tasks 的附属列表；搜索必须同时传入报价 / 订单来源，
         // 否则输入报价号（例如 EX022）只会过滤普通任务，流程卡仍显示全部记录。
         $extra['quote_flow'] = crm_task_quote_flow_summary($q);
     }
-    return array_merge(['rows' => $rows, 'stats' => crm_task_center_stats(), 'options' => crm_task_center_options()], $extra);
+    return array_merge(['rows' => $rows, 'page' => $page, 'page_size' => $pageSize, 'has_more' => $hasMore, 'stats' => crm_task_center_stats(), 'options' => crm_task_center_options()], $extra);
 }
 
 function crm_task_quote_table_cols(string $table): array
@@ -1800,6 +1807,10 @@ function crm_sample_shipments(array $input = []): array
 {
     crm_task_center_ensure_tables();
     crm_require('sample.view');
+    $page = max(1, (int)($input['page'] ?? 1));
+    $pageSize = max(1, min(300, (int)($input['page_size'] ?? 300)));
+    $limit = $pageSize + 1;
+    $offset = ($page - 1) * $pageSize;
     $where = ['s.deleted_at IS NULL', crm_sample_scope_sql('s')];
     $params = [];
     $status = trim((string)($input['status'] ?? ''));
@@ -1819,10 +1830,11 @@ function crm_sample_shipments(array $input = []): array
         LEFT JOIN crm_contacts ct ON ct.id=s.contact_id
         LEFT JOIN crm_opportunities o ON o.id=s.opportunity_id
         LEFT JOIN crm_users u ON u.id=s.owner_user_id
-        WHERE " . implode(' AND ', $where) . " ORDER BY s.id DESC LIMIT 300";
+        WHERE " . implode(' AND ', $where) . " ORDER BY s.id DESC LIMIT {$limit} OFFSET {$offset}";
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
-    return ['rows' => $stmt->fetchAll(), 'stats' => crm_task_center_stats()];
+    $rows = $stmt->fetchAll();
+    return ['rows' => array_slice($rows, 0, $pageSize), 'page' => $page, 'page_size' => $pageSize, 'has_more' => count($rows) > $pageSize, 'stats' => crm_task_center_stats()];
 }
 
 function crm_sample_shipment_save(array $input): array
@@ -2307,22 +2319,28 @@ function crm_sample_dispatch_placeholder(array $shipment): void
 
 function crm_task_customer_options(array $input): array
 {
+    crm_require('customer.view');
     $q = trim((string)($input['q'] ?? ''));
     if ($q === '') return ['rows' => []];
+    $params = [];
+    $scope = crm_customer_scope_sql($params);
     $stmt = db()->prepare("SELECT c.id, c.customer_name, c.customer_code, c.country, c.city, c.address, c.email, c.phone, c.whatsapp,
             (SELECT COUNT(*) FROM crm_contacts ct WHERE ct.customer_id=c.id AND ct.deleted_at IS NULL) AS contact_count
         FROM crm_customers c
-        WHERE c.deleted_at IS NULL AND (c.customer_name LIKE ? OR c.customer_code LIKE ? OR c.country LIKE ? OR c.city LIKE ?)
-        ORDER BY c.updated_at DESC LIMIT 12");
+        WHERE c.deleted_at IS NULL AND {$scope} AND (c.customer_name LIKE ? OR c.customer_code LIKE ? OR c.country LIKE ? OR c.city LIKE ?)
+        ORDER BY c.updated_at DESC, c.id DESC LIMIT 12");
     $like = '%' . $q . '%';
-    $stmt->execute([$like,$like,$like,$like]);
+    $stmt->execute(array_merge($params, [$like,$like,$like,$like]));
     return ['rows' => $stmt->fetchAll()];
 }
 
 function crm_task_customer_contacts(int $customerId): array
 {
-    $stmt = db()->prepare("SELECT id, name, position, email, phone, whatsapp FROM crm_contacts WHERE customer_id=? AND deleted_at IS NULL ORDER BY is_primary DESC, id ASC");
-    $stmt->execute([$customerId]);
+    crm_require('customer.view');
+    $params = [$customerId];
+    $scope = crm_customer_scope_sql($params);
+    $stmt = db()->prepare("SELECT ct.id, ct.name, ct.position, ct.email, ct.phone, ct.whatsapp FROM crm_contacts ct JOIN crm_customers c ON c.id=ct.customer_id WHERE ct.customer_id=? AND c.deleted_at IS NULL AND {$scope} AND ct.deleted_at IS NULL ORDER BY ct.is_primary DESC, ct.id ASC");
+    $stmt->execute($params);
     return ['contacts' => $stmt->fetchAll()];
 }
 

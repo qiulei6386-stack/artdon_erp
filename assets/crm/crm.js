@@ -5691,6 +5691,10 @@
     bindOrderPreviewShortcuts: function () {
       var self = this;
       document.querySelectorAll('[data-customer-action-shortcut]').forEach(function (button) {
+        if (!CRMWorkspace.actionAvailable('customers', button.getAttribute('data-customer-action-shortcut') || '')) {
+          button.hidden = true;
+          return;
+        }
         if (button.dataset.bound === '1') return;
         button.dataset.bound = '1';
         button.addEventListener('click', function (event) {
@@ -11255,7 +11259,7 @@
           document.querySelector('.mail-grid')?.classList.add('is-reading');
         }
       }).catch(function (error) {
-        if (box) box.innerHTML = '<p class="mail-error">' + esc(error.message) + '</p>';
+        if (serial === self.searchSerial && box) box.innerHTML = '<p class="mail-error">' + esc(error.message) + '</p>';
       });
     },
     groupLabel: function (value) {
@@ -23678,8 +23682,9 @@
       var summary = need.summary || row.ai_summary || '暂无识别摘要。';
       var quoteButton = row.task_type === 'quote_draft' ? '查看报价草稿' : '转为报价草稿';
       var notice = isSearchPrompt ? '<article class="ai-detail-warning-v2"><strong>这不是客户资料</strong><p>当前内容更像“搜索任务提示词”，不能直接审核生成正式客户。请到 AI获客/搜索任务中执行；如果要入库，请先补充具体客户名称、国家、联系人或邮箱。</p></article>' : '';
-      var confirmText = isSearchPrompt ? '不能生成客户' : '通过并生成客户';
-      var confirmDisabled = !canConfirm || actionDisabled || isSearchPrompt;
+      var interfacePending = ['quote_draft','material_draft','confirm_task'].indexOf(String(row.task_type || '')) >= 0;
+      var confirmText = interfacePending ? '仅草稿 · 暂不可生成单据' : (isSearchPrompt ? '不能生成客户' : '通过并生成客户');
+      var confirmDisabled = !canConfirm || actionDisabled || isSearchPrompt || interfacePending;
       return '<section class="ai-task-detail-v2"><header><div><strong>自动识别结果 #' + esc(row.id) + '</strong><span>结构化确认区</span></div><nav><em>' + esc(this.taskTypeLabel(row.task_type)) + '</em><em>识别来源：' + esc(this.sourceLabel(row.source_type)) + '</em></nav></header>' +
         '<div class="ai-detail-fields-v2">' + fields.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + (item[2] ? item[1] : esc(item[1] || '-')) + '</strong></article>'; }).join('') + '</div>' +
         notice +
@@ -25246,6 +25251,7 @@
     root.className = 'action_console_root';
     root.setAttribute('data-action-console-root', '');
     actionList.appendChild(root);
+    var seenActions = new Set();
 
     function actionDescription(label) {
       var map = {
@@ -25642,11 +25648,17 @@
 
     function renderGroup(group) {
       var items = (group.items || []).filter(function (label) {
+        if (!CRMWorkspace.actionAvailable(name, label)) return false;
+        var identity = ((crmActionContract(name, label) || {}).id) || label;
+        if (seenActions.has(identity)) return false;
         if (name === 'mail') {
+          seenActions.add(identity);
           return true;
         }
         if (name === 'tasks' && TaskCenterModule.actionPending(label)) return false;
-        return crmActionAllowed(name, label);
+        if (!crmActionAllowed(name, label)) return false;
+        seenActions.add(identity);
+        return true;
       });
       if (!items.length) return;
       var section = document.createElement('section');
@@ -25654,7 +25666,7 @@
       var title = document.createElement('h3');
       title.textContent = group.title;
       section.appendChild(title);
-      items.forEach(function (label) { section.appendChild(makeActionButton(label)); });
+      CRMWorkspace.actionGroup(section, name, group.title, items.map(makeActionButton));
       root.appendChild(section);
     }
 
@@ -26072,7 +26084,7 @@
     }
     document.querySelector('.crm-shell')?.classList.toggle('is-mail-mode', current === 'mail');
     renderActions(name);
-    post('online_heartbeat', { module: name });
+    sendOnlineHeartbeat();
     post('log_event', { module: name, event: 'module_switch' });
   }
 
@@ -26362,7 +26374,8 @@
     },
     checks: function (row) {
       return [['need_quote','需要报价'],['need_sample','需要样品'],['need_material','需要资料'],['need_technical','技术确认'],['need_plm','PLM'],['need_bom','BOM'],['create_followup','创建跟进'],['create_dispatch','创建派工']].map(function (item) {
-        return '<label class="tag-chip"><input type="checkbox" name="' + item[0] + '"' + (Number(row[item[0]]) ? ' checked' : '') + '><span>' + item[1] + '</span></label>';
+        var pending = item[0] === 'create_dispatch';
+        return '<label class="tag-chip"><input type="checkbox" name="' + item[0] + '"' + (Number(row[item[0]]) ? ' checked' : '') + (pending ? ' disabled' : '') + '><span>' + item[1] + (pending ? '（请在任务中心创建）' : (item[0].indexOf('need_') === 0 ? '（记录需求）' : '')) + '</span></label>';
       }).join('');
     },
     bindDialog: function (dialog) {
@@ -26813,25 +26826,36 @@
     },
     load: function () {
       var self = this, box = document.querySelector('[data-task-list]');
+      var serial = this.listSerial = (this.listSerial || 0) + 1;
+      var key = JSON.stringify([this.view, this.q]);
+      if (key !== this.listFilterKey) { this.page = 1; this.listFilterKey = key; }
+      var page = this.page || 1;
       if (box) box.innerHTML = '<p>正在加载任务...</p>';
-      post('task_center_list', { view: this.view, q: this.q }).then(function (json) {
+      return post('task_center_list', { view: this.view, q: this.q, page: page, page_size: 50 }).then(function (json) {
+        if (serial !== self.listSerial) return;
         if (!json.success) throw new Error(json.message || '任务加载失败');
         self.rows = (json.data && json.data.rows) || [];
         self.options = (json.data && json.data.options) || self.options || {};
         self.quoteFlow = (json.data && json.data.quote_flow) || null;
         self.renderTasks(json.data || {});
+        if (['sample','sample_pending_ship','sample_follow_overdue','quote'].indexOf(self.view) < 0) CRMWorkspace.pager(box, json.data || {}, function (next) { self.page = next; return self.load(); });
         renderActions('tasks');
         if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') self.loadSamples();
-      }).catch(function (error) { if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>'; });
+      }).catch(function (error) { if (serial === self.listSerial && box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>'; });
     },
     loadSamples: function () {
       var self = this, view = this.view === 'sample_follow_overdue' ? 'overdue_follow' : (this.view === 'sample' || this.view === 'sample_pending_ship' ? '' : '');
-      post('sample_shipment_list', { view: view, q: this.q }).then(function (json) {
+      var serial = this.sampleSerial = (this.sampleSerial || 0) + 1, listSerial = this.listSerial;
+      return post('sample_shipment_list', { view: view, q: this.q, page: this.page || 1, page_size: 50 }).then(function (json) {
+        if (serial !== self.sampleSerial || listSerial !== self.listSerial) return;
         if (!json.success) throw new Error(json.message || '样品寄送加载失败');
         self.samples = (json.data && json.data.rows) || [];
-        if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') self.renderTasks(json.data || {});
+        if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') {
+          self.renderTasks(json.data || {});
+          CRMWorkspace.pager(document.querySelector('[data-task-list]'), json.data || {}, function (next) { self.page = next; return self.load(); });
+        }
         self.renderKpis((json.data && json.data.stats) || {});
-      }).catch(function (error) { toast(error.message || '样品寄送加载失败'); });
+      }).catch(function (error) { if (serial === self.sampleSerial && listSerial === self.listSerial) toast(error.message || '样品寄送加载失败'); });
     },
     renderKpis: function (stats) {
       var box = document.querySelector('[data-task-kpis]');
@@ -28725,15 +28749,21 @@
     },
     load: function () {
       var self = this, box = document.querySelector('[data-visit-list]');
+      var serial = this.listSerial = (this.listSerial || 0) + 1;
+      var filters = this.filters(), key = JSON.stringify(filters);
+      if (key !== this.listFilterKey) { this.page = 1; this.listFilterKey = key; }
+      filters.page = this.page || 1; filters.page_size = 50;
       if (box) box.innerHTML = '<p>正在加载拜访 / 来访记录...</p>';
-      post('visit_list', this.filters()).then(function (json) {
+      return post('visit_list', filters).then(function (json) {
+        if (serial !== self.listSerial) return;
         if (!json.success) throw new Error(json.message || '加载失败');
         self.rows = (json.data && json.data.rows) || [];
         self.render(json.data || {});
+        CRMWorkspace.pager(box, json.data || {}, function (next) { self.page = next; return self.load(); });
         if (self.selectedId) self.loadDetail(self.selectedId);
         renderActions('visits');
       }).catch(function (error) {
-        if (box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>';
+        if (serial === self.listSerial && box) box.innerHTML = '<p class="crm-modal-error">' + esc(error.message || '加载失败') + '</p>';
       });
     },
     render: function (data) {
@@ -30377,9 +30407,15 @@
     });
   }
 
+  var onlineHeartbeatAt = 0, onlineHeartbeatModule = '', onlineHeartbeatPending = null;
   function sendOnlineHeartbeat() {
     if (document.hidden) return Promise.resolve();
-    return post('online_heartbeat', { module: current }).catch(function () {});
+    if (onlineHeartbeatPending) return onlineHeartbeatPending;
+    var now = Date.now();
+    if (onlineHeartbeatModule === current && now - onlineHeartbeatAt < 30000) return Promise.resolve();
+    onlineHeartbeatAt = now; onlineHeartbeatModule = current;
+    onlineHeartbeatPending = post('online_heartbeat', { module: current }).catch(function () {}).finally(function () { onlineHeartbeatPending = null; });
+    return onlineHeartbeatPending;
   }
 
   function sendOnlineLeave() {

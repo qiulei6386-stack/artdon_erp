@@ -5,6 +5,7 @@ require_once __DIR__ . '/crm_customer.php';
 
 function crm_visit_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     db()->exec("CREATE TABLE IF NOT EXISTS crm_visit_records (
         id INT AUTO_INCREMENT PRIMARY KEY,
         visit_type VARCHAR(40) NOT NULL DEFAULT 'customer_visit',
@@ -357,6 +358,10 @@ function crm_visit_list(array $input = []): array
 {
     crm_visit_ensure_tables();
     crm_require('visit.view');
+    $page = max(1, (int)($input['page'] ?? 1));
+    $pageSize = max(1, min(300, (int)($input['page_size'] ?? 300)));
+    $limit = $pageSize + 1;
+    $offset = ($page - 1) * $pageSize;
     $where = ['v.deleted_at IS NULL', crm_visit_scope_sql('v')];
     $params = [];
     $type = trim((string)($input['visit_type'] ?? ''));
@@ -418,15 +423,17 @@ function crm_visit_list(array $input = []): array
         LEFT JOIN crm_users u ON u.id = v.owner_user_id
         WHERE " . implode(' AND ', $where) . '
         ORDER BY COALESCE(v.visit_date, DATE(v.created_at)) DESC, COALESCE(v.visit_time, TIME(v.created_at)) DESC, v.id DESC
-        LIMIT 300';
+        LIMIT ' . $limit . ' OFFSET ' . $offset;
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    $hasMore = count($rows) > $pageSize;
+    $rows = array_slice($rows, 0, $pageSize);
     foreach ($rows as &$row) {
         $row['assistant_user_ids'] = json_decode((string)($row['assistant_user_ids_json'] ?? '[]'), true) ?: [];
         $row['followup_offsets'] = json_decode((string)($row['followup_offsets_json'] ?? '[]'), true) ?: [];
     }
-    return ['rows' => $rows, 'stats' => crm_visit_stats()];
+    return ['rows' => $rows, 'page' => $page, 'page_size' => $pageSize, 'has_more' => $hasMore, 'stats' => crm_visit_stats()];
 }
 
 function crm_visit_followup_offsets($value): array

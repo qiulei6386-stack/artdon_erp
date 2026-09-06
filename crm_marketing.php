@@ -58,6 +58,7 @@ function crm_marketing_cache_write_file(string $file, string $content): void
 
 function crm_marketing_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;
@@ -802,11 +803,11 @@ function crm_marketing_pool(array $input = []): array
             FROM crm_customers c
             LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
             WHERE {$sqlWhere}
-            ORDER BY FIELD(COALESCE(ps.status, 'not_promoted'), 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC
+            ORDER BY FIELD(COALESCE(ps.status, 'not_promoted'), 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC, c.id DESC
             LIMIT {$queryLimit} OFFSET {$offset}
         ) c
         LEFT JOIN crm_users owner ON owner.id = c.owner_user_id
-        ORDER BY FIELD(c.promotion_status, 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC");
+        ORDER BY FIELD(c.promotion_status, 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC, c.id DESC");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
     $hasMore = false;
@@ -816,7 +817,7 @@ function crm_marketing_pool(array $input = []): array
             FROM crm_customers c
             LEFT JOIN crm_customer_promotion_status ps ON ps.customer_id = c.id
             WHERE {$sqlWhere}
-            ORDER BY FIELD(COALESCE(ps.status, 'not_promoted'), 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC
+            ORDER BY FIELD(COALESCE(ps.status, 'not_promoted'), 'promoting','not_promoted','paused','stopped','maintenance_only','blacklist'), c.updated_at DESC, c.id DESC
             LIMIT 1 OFFSET {$nextOffset}");
         $moreStmt->execute($params);
         $hasMore = $moreStmt->fetchColumn() !== false;

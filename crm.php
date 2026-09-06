@@ -304,6 +304,7 @@ $prefStyle = sprintf(
   <title><?= h($systemName) ?> CRM - <?= h($companySettings['system_name'] ?? 'Artdon Office V20') ?></title>
   <link rel="stylesheet" href="assets/crm/themes.css?v=<?= filemtime(__DIR__ . '/assets/crm/themes.css') ?>">
   <link rel="stylesheet" href="assets/crm/crm.css?v=<?= filemtime(__DIR__ . '/assets/crm/crm.css') ?>">
+  <link rel="stylesheet" href="assets/crm/workspace.css?v=<?= filemtime(__DIR__ . '/assets/crm/workspace.css') ?>">
 </head>
 <body class="crm-app" style="<?= h($prefStyle) ?>">
   <header class="crm-status-console">
@@ -1700,6 +1701,7 @@ $prefStyle = sprintf(
   <?php $crmAssetBuild = 'crm-phase1-safety-20260906'; ?>
   <script src="assets/crm/modules.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/modules.js') ?>"></script>
   <script src="assets/crm/preferences.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/preferences.js') ?>"></script>
+  <script src="assets/crm/workspace.js?v=<?= filemtime(__DIR__ . '/assets/crm/workspace.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>
 </body>
 </html>

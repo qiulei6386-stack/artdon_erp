@@ -35,6 +35,7 @@ function crm_add_index_columns_if_table_safe(string $table, string $index, strin
 
 function crm_customer_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     $done = true;
@@ -5580,10 +5581,22 @@ function crm_contact_list(array $input): array
     $stmt = db()->prepare('SELECT * FROM crm_contacts WHERE customer_id = ? AND deleted_at IS NULL ORDER BY is_primary DESC, id DESC');
     $stmt->execute([$customerId]);
     $rows = $stmt->fetchAll();
+    $graphs = [];
+    if ($rows) {
+        // Three batch reads replace three extra queries for every contact.
+        foreach (['role_tags' => ['crm_contact_role_tags','role_key'], 'source_tags' => ['crm_contact_sources','source_key'], 'promotions' => ['crm_contact_promotions',null]] as $key => $spec) {
+            [$table, $column] = $spec;
+            $order = $key === 'promotions' ? 'FIELD(g.channel, "email","whatsapp","wechat","phone","linkedin","whatsapp_group","wechat_group","offline","edm","google_ads","social","referral","agent_dev","visit","manual_sales","automation","no_promotion","maintenance_only"), g.id' : 'g.id';
+            $graphStmt = db()->prepare("SELECT g.* FROM {$table} g JOIN crm_contacts ct ON ct.id=g.contact_id WHERE ct.customer_id=? AND ct.deleted_at IS NULL ORDER BY {$order}");
+            $graphStmt->execute([$customerId]);
+            foreach ($graphStmt->fetchAll() as $entry) $graphs[(int)$entry['contact_id']][$key][] = $column === null ? $entry : $entry[$column];
+        }
+    }
     foreach ($rows as &$row) {
-        $row['role_tags'] = crm_contact_key_tags((int)$row['id'], 'crm_contact_role_tags', 'role_key');
-        $row['source_tags'] = crm_contact_key_tags((int)$row['id'], 'crm_contact_sources', 'source_key');
-        $row['promotions'] = crm_contact_promotions((int)$row['id']);
+        $graph = $graphs[(int)$row['id']] ?? [];
+        $row['role_tags'] = $graph['role_tags'] ?? [];
+        $row['source_tags'] = $graph['source_tags'] ?? [];
+        $row['promotions'] = $graph['promotions'] ?? [];
         $row['promotion_channels'] = array_values(array_map(
             static fn($promotion) => (string)$promotion['channel'],
             array_filter($row['promotions'], static fn($promotion) => ($promotion['status'] ?? '') === 'active')
@@ -6811,10 +6824,10 @@ function crm_customer_shipment_rows(array $customer): array
 
 function crm_customer_shipment_items(int $shipmentId, int $orderId): array
 {
+    if ($shipmentId <= 0) return [];
     if (!crm_table_exists_safe('quote_shipment_items')) return [];
     $params = [$shipmentId];
     $where = 'shipment_id = ?';
-    if ($orderId > 0) { $where .= ' OR order_id = ?'; $params[] = $orderId; }
     $stmt = db()->prepare('SELECT * FROM quote_shipment_items WHERE ' . $where . ' ORDER BY item_index ASC, id ASC LIMIT 80');
     $stmt->execute($params);
     $out = [];
@@ -6836,10 +6849,10 @@ function crm_customer_shipment_items(int $shipmentId, int $orderId): array
 
 function crm_customer_shipment_cartons(int $shipmentId, int $orderId): array
 {
+    if ($shipmentId <= 0) return [];
     if (!crm_table_exists_safe('quote_shipment_cartons')) return [];
     $params = [$shipmentId];
     $where = 'shipment_id = ?';
-    if ($orderId > 0) { $where .= ' OR order_id = ?'; $params[] = $orderId; }
     $stmt = db()->prepare('SELECT * FROM quote_shipment_cartons WHERE ' . $where . ' ORDER BY id ASC LIMIT 80');
     $stmt->execute($params);
     $out = [];

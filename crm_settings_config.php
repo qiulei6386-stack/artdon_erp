@@ -150,6 +150,7 @@ function crm_settings_mark_schema_ready(): void
 
 function crm_settings_ensure_tables(): void
 {
+    if (!empty($GLOBALS['crm_schema_ready'])) return;
     static $done = false;
     if ($done) return;
     if (crm_settings_schema_ready()) {
