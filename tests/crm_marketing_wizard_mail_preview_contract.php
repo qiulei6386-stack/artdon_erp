@@ -4,9 +4,10 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $php = file_get_contents($root . '/crm_marketing.php');
 $page = file_get_contents($root . '/crm.php');
+$mail = file_get_contents($root . '/crm_mail.php');
 $js = file_get_contents($root . '/assets/crm/crm.js');
 $css = file_get_contents($root . '/assets/crm/crm.css');
-if ($php === false || $page === false || $js === false || $css === false) {
+if ($php === false || $page === false || $mail === false || $js === false || $css === false) {
     throw new RuntimeException('CRM marketing wizard preview sources are not readable');
 }
 
@@ -133,8 +134,28 @@ foreach ($requiredCss as $marker) {
     }
 }
 
-if (!str_contains($page, "\$crmAssetBuild = 'ai-task-page-layout-20260802-1';")) {
-    throw new RuntimeException('CRM page must explicitly bust the promotion preview asset cache');
+// Verify cache invalidation, not one obsolete release label. Both the release
+// namespace and the actual CRM script modification time must reach the URL.
+$hasVersionedCrmScript = static function (string $source): bool {
+    $buildPattern = <<<'REGEX'
+~\$crmAssetBuild\s*=\s*(['"])[A-Za-z0-9][A-Za-z0-9._-]{5,100}\1\s*;~
+REGEX;
+    $scriptPattern = <<<'REGEX'
+~<script\b[^>]*\bsrc=['"]assets/crm/crm\.js\?v=<\?=\s*\$crmAssetBuild\s*\?>-<\?=\s*filemtime\(\s*__DIR__\s*\.\s*['"]/assets/crm/crm\.js['"]\s*\)\s*\?>['"]~
+REGEX;
+    return preg_match($buildPattern, $source) === 1 && preg_match($scriptPattern, $source) === 1;
+};
+if (!$hasVersionedCrmScript($page)) {
+    throw new RuntimeException('CRM script URL must include a nonempty build label and its own file modification time');
+}
+foreach ([
+    str_replace('filemtime(', 'removed_mtime(', $page),
+    str_replace('?v=<?= $crmAssetBuild ?>', '?v=stale-build', $page),
+    preg_replace('/\$crmAssetBuild\s*=\s*([\'"])[^\'"]*\1\s*;/', '$crmAssetBuild = "";', $page),
+] as $unversionedPage) {
+    if (!is_string($unversionedPage) || $unversionedPage === $page || $hasVersionedCrmScript($unversionedPage)) {
+        throw new RuntimeException('CRM asset cache contract must reject missing mtime, unused build label, and empty label');
+    }
 }
 
 $start = strpos($php, 'function crm_marketing_test_send(array $input): array');
@@ -143,9 +164,25 @@ if ($start === false || $end === false || $end <= $start) {
     throw new RuntimeException('CRM marketing test-send function boundary is missing');
 }
 $testSend = substr($php, $start, $end - $start);
+$hasTestRecipient = static function (string $source): bool {
+    return str_contains($source, 'filter_var($testEmail, FILTER_VALIDATE_EMAIL)')
+        && preg_match('/\$sendInput\s*=\s*\[\s*\'to_emails\'\s*=>\s*\$testEmail\s*,/s', $source) === 1;
+};
+if (!$hasTestRecipient($testSend)) {
+    throw new RuntimeException('preview must validate and send only to the explicit test recipient');
+}
+foreach ([
+    str_replace("'to_emails' => \$testEmail", "'to_emails' => \$unexpectedRecipient", $testSend),
+    str_replace('filter_var($testEmail, FILTER_VALIDATE_EMAIL)', 'true', $testSend),
+] as $unsafeRecipient) {
+    if ($unsafeRecipient === $testSend || $hasTestRecipient($unsafeRecipient)) {
+        throw new RuntimeException('preview recipient contract must reject a substituted recipient or missing validation');
+    }
+}
 foreach ([
     "crm_mail_current_account(true)",
-    "crm_mail_smtp_send(\$account, \$sendInput, [])",
+    'crm_marketing_prepare_mail_inline_images($bodyHtml, $account)',
+    "crm_mail_execute_send_job(\$account, \$sendInput, \$prepared['attachments'], \$jobId, (string)\$prepared['body_original'])",
     "'test_email' => \$testEmail",
 ] as $marker) {
     if (!str_contains($testSend, $marker)) {
@@ -154,6 +191,21 @@ foreach ([
 }
 if (str_contains($testSend, 'crm_marketing_send_queue')) {
     throw new RuntimeException('server test send must remain independent from the formal send queue');
+}
+if (!preg_match('/finally\s*\{\s*crm_mail_cleanup_generated_attachments\(\$prepared\[\'attachments\'\]\);/s', $testSend)) {
+    throw new RuntimeException('preview inline attachments must be cleaned up on success and failure');
+}
+// The shared send job is synchronous and reaches SMTP with prepared attachments;
+// do not force the former empty-attachment direct call back into preview sending.
+$sendJobStart = strpos($mail, 'function crm_mail_execute_send_job(');
+$sendJobEnd = $sendJobStart === false ? false : strpos($mail, "\nfunction ", $sendJobStart + 1);
+if ($sendJobStart === false || $sendJobEnd === false) {
+    throw new RuntimeException('shared mail send-job function boundary is missing');
+}
+$sendJob = substr($mail, $sendJobStart, $sendJobEnd - $sendJobStart);
+if (!str_contains($sendJob, 'crm_mail_smtp_send($account, $input, $attachments)')
+    || str_contains($sendJob, 'crm_marketing_send_queue')) {
+    throw new RuntimeException('preview send job must reach SMTP without using the formal marketing queue');
 }
 
 $queueStart = strpos($php, 'function crm_marketing_queue_build(array $input): array');

@@ -37,6 +37,11 @@ if [ "$lint_failed" -ne 0 ]; then
 fi
 
 contract_tests=(
+  tests/crm_action_contract_test.php
+  tests/crm_sample_submission_isolated.php
+  tests/crm_mail_account_selection_isolated.php
+  tests/crm_marketing_execution_safety_test.php
+  tests/crm_mail_list_timing_isolated.php
   commercial_center_v1/tests/material_center_adaptation_contract.php
   commercial_center_v1/tests/quote_product_channel_contract.php
   commercial_center_v1/tests/quote_center_regression.php
@@ -78,10 +83,16 @@ contract_tests=(
 )
 
 contract_passed=0
+contract_failed=0
 for test_file in "${contract_tests[@]}"; do
   printf 'PHP contract: %s\n' "$test_file"
-  "$php_bin" "$test_file"
-  contract_passed=$((contract_passed + 1))
+  if "$php_bin" "$test_file"; then
+    contract_passed=$((contract_passed + 1))
+  else
+    contract_failed=$((contract_failed + 1))
+    printf 'PHP contract failed: %s\n' "$test_file" >&2
+  fi
 done
 
-printf 'PHP contracts: %s passed\n' "$contract_passed"
+printf 'PHP contracts: %s passed, %s failed\n' "$contract_passed" "$contract_failed"
+[ "$contract_failed" -eq 0 ]

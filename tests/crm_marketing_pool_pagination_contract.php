@@ -36,6 +36,9 @@ $loadPoolSource = substr($js, $loadPoolStart, $loadPoolEnd - $loadPoolStart);
 if (str_contains($loadPoolSource, 'self.renderContacts();')) {
     throw new RuntimeException('customer pool refresh must not render or reload the contact strategy list');
 }
+if (!str_contains($loadPoolSource, 'skip_count: 1') || str_contains($loadPoolSource, 'exact_count: 1')) {
+    throw new RuntimeException('ordinary customer pool refresh must retain the default lightweight count policy');
+}
 
 $poolStart = strpos($php, 'function crm_marketing_pool(array $input = [])');
 $poolEnd = strpos($php, 'function crm_marketing_contacts', $poolStart === false ? 0 : $poolStart);
@@ -44,8 +47,19 @@ if ($poolStart === false || $poolEnd === false) {
 }
 $poolSource = substr($php, $poolStart, $poolEnd - $poolStart);
 foreach ([
+    '$page = max(1, (int)($input[\'page\'] ?? 1));',
+    'if ($pageSize < 20) $pageSize = 20;',
+    'if ($pageSize > 200) $pageSize = 200;',
+    '$offset = ($page - 1) * $pageSize;',
+    '$skipCount = !empty($input[\'skip_count\']);',
+    'if (!$skipCount) {',
+    'SELECT COUNT(*)',
     '$queryLimit = $pageSize;',
+    'LIMIT {$queryLimit} OFFSET {$offset}',
+    'if ($skipCount) {',
+    '$nextOffset = $offset + $pageSize;',
     'LIMIT 1 OFFSET {$nextOffset}',
+    '$hasMore = $moreStmt->fetchColumn() !== false;',
     "'total_is_exact' => \$skipCount ? 0 : 1",
     "'shown_count' => count(\$rows)",
 ] as $marker) {
@@ -58,17 +72,47 @@ if (str_contains($poolSource, '$pageSize + 1')) {
 }
 
 $viewStart = strpos($php, 'function crm_marketing_pool_view');
-$viewEnd = strpos($php, 'function crm_marketing_target_preview', $viewStart === false ? 0 : $viewStart);
+$viewEnd = strpos($php, 'function crm_marketing_audience_filter_input', $viewStart === false ? 0 : $viewStart);
 if ($viewStart === false || $viewEnd === false) {
     throw new RuntimeException('crm_marketing_pool_view function boundaries are missing');
 }
 $viewSource = substr($php, $viewStart, $viewEnd - $viewStart);
-if (!str_contains($viewSource, "\$groupInput['skip_count'] = 1;")
-    || !str_contains($viewSource, "\$allInput['skip_count'] = 1;")) {
-    throw new RuntimeException('both grouped and ungrouped customer pool paths must use bounded pagination');
+function crm_pool_assert_count_policy(string $source): void
+{
+    // Exact totals are an explicit option used by the group-member/picker UI.
+    // Both paths must remain lightweight when that option is absent or false.
+    foreach (['groupInput', 'allInput'] as $inputName) {
+        $assignment = '$' . $inputName . "['skip_count'] = empty(\$input['exact_count']) ? 1 : 0;";
+        if (!str_contains($source, $assignment)
+            || !str_contains($source, 'crm_marketing_pool($' . $inputName . ')')) {
+            throw new RuntimeException('grouped and ungrouped paths must pass the explicit exact-count policy to bounded pagination');
+        }
+    }
+}
+crm_pool_assert_count_policy($viewSource);
+// Ensure the revised assertion still rejects unconditionally expensive counts
+// and the opposite regression (silently ignoring an explicit exact-count request).
+foreach (['groupInput', 'allInput'] as $inputName) {
+    $assignment = '$' . $inputName . "['skip_count'] = empty(\$input['exact_count']) ? 1 : 0;";
+    foreach ([0, 1] as $forcedValue) {
+        $broken = str_replace($assignment, '$' . $inputName . "['skip_count'] = " . $forcedValue . ';', $viewSource);
+        $rejected = false;
+        try { crm_pool_assert_count_policy($broken); }
+        catch (RuntimeException $e) { $rejected = true; }
+        if (!$rejected) throw new RuntimeException('pool count policy contract accepted a forced-count mutation');
+    }
 }
 if (str_contains($viewSource, 'crm_marketing_contacts(')) {
     throw new RuntimeException('customer pool endpoint must not preload the separate contact strategy list');
+}
+foreach (['loadGroupMembers: function', 'openGroupCustomerPickerDialog: function'] as $method) {
+    $start = strpos($js, $method);
+    $end = $start === false ? false : strpos($js, "\n    },", $start);
+    if ($start === false || $end === false) throw new RuntimeException('exact-count consumer boundaries are missing');
+    $consumer = substr($js, $start, $end - $start);
+    if (!str_contains($consumer, "post('marketing_pool_view'") || !str_contains($consumer, 'exact_count: 1')) {
+        throw new RuntimeException('group-member and customer-picker requests must explicitly request their exact totals');
+    }
 }
 
 if (!str_contains($php, "if (\$view === 'customer_pool') \$poolInput['skip_count'] = 1;")) {
