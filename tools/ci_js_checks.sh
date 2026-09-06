@@ -40,6 +40,7 @@ static_tests=(
   tests/crm_customer_detail_race_runtime_test.cjs
   tests/crm_phase1_actions_runtime_test.cjs
   tests/crm_promotion_edit_runtime_test.cjs
+  tests/dispatch_recent_create_runtime_test.cjs
   tests/crm_marketing_mail_preview_runtime_test.js
   material_center_v1/tests/mm_static_test.js
   material_center_v1/tests/ui_static_test.js
