@@ -24,11 +24,12 @@ function fixture() {
     CustomerModule:{currentId:0,currentDetail:null,closeDialog(){calls.push('close');},loadDetail(){},openBusinessDialog(...args){calls.push(args);}},
     FormData:class {set(){} append(){}}, fetch(){return context.response.promise;}
   });
-  const names=['load','selected','contactOptions','collect','ownsDialogForm','save','uploadQueuedFiles','uploadFileInput','loadOpportunityFiles','handleAction','openLinkedTask','saveLinkedTask','userOptions','priorityOptions'];
+  const names=['loadOptions','openDialog','formSection','stageOptions','stageLabel','sourceOptions','options','checks','defaultProbability','fileUploadBlock','load','selected','contactOptions','collect','ownsDialogForm','save','uploadQueuedFiles','uploadFileInput','loadOpportunityFiles','handleAction','openLinkedTask','saveLinkedTask','userOptions','priorityOptions'];
   const op=vm.runInContext('({' + names.map(n=>method('OpportunityModule',n)).join('\n') + '})',context);
   const task=vm.runInContext('({' + ['runBusy','requestToken'].map(n=>method('TaskCenterModule',n)).join('\n') + '})',context);
   task.openTaskFollowup=row=>calls.push(['followup',row]);
   context.TaskCenterModule=task; context.OpportunityModule=op;
+  op.fileListHtml=vm.runInContext('({' + method('OpportunityModule','fileListHtml') + '})',context).fileListHtml;
   Object.assign(op,{users:[],rows:[],render(data){calls.push(['render',data]);}});
   return {op,task,context,requests,messages,calls,board};
 }
@@ -44,6 +45,28 @@ function formDialog(kind='opportunity') {
 async function tick() {await Promise.resolve();await Promise.resolve();}
 async function main() {
   let count=0;
+  {
+    const h=fixture();h.context.CustomerModule.currentId=101;h.context.CustomerModule.currentDetail={customer:{id:101,customer_name:'Acceptance customer',country:'CN'}};
+    h.op.rows=[{id:8,customer_id:99,opportunity_name:'OLD'}];h.op.selectedId=8;
+    const first=h.op.openDialog({}),second=h.op.openDialog({});
+    assert.equal(h.requests.length,1);assert.equal(h.calls.length,0);
+    h.requests[0].resolve({success:true,data:{stages:{new_need:{label:'新需求',probability:10}},users:[{id:7,display_name:'Owner'}]}});
+    await Promise.all([first,second]);assert.equal(h.calls.length,1);
+    assert.equal(h.calls[0][0],'新建商机');assert(h.calls[0][1].includes('name="customer_id" value="101"'));
+    assert(h.calls[0][1].includes('name="collaborator_user_ids" value=""'));assert(h.calls[0][1].includes('Owner'));assert(!h.calls[0][1].includes('OLD'));count++;
+    h.op.openDialog({collaborator_user_ids:[7,9]});assert(h.calls.at(-1)[1].includes('value="7,9"'));count++;
+    h.op.openDialog({collaborator_user_ids:null});assert.equal(h.calls.at(-1)[0],'新建商机');count++;
+  }
+  {
+    const h=fixture();h.context.CustomerModule.currentId=101;
+    const first=h.op.openDialog({});h.context.CustomerModule.currentId=102;
+    h.requests[0].resolve({success:true,data:{stages:{},users:[]}});await first;assert.equal(h.calls.length,0);count++;
+  }
+  {
+    const h=fixture();const first=h.op.openDialog({});h.requests[0].resolve({success:false,message:'Options unavailable'});await first;
+    assert.equal(h.calls.length,0);assert(h.messages.includes('Options unavailable'));assert(!h.op.optionsLoaded);
+    const retry=h.op.openDialog({});assert.equal(h.requests.length,2);h.requests[1].resolve({success:true,data:{stages:{},users:[]}});await retry;assert.equal(h.calls.length,1);count++;
+  }
   {
     const h=fixture();h.op.rows=[{id:2}];h.op.selectedId=2;
     const a=h.op.load(),b=h.op.load();

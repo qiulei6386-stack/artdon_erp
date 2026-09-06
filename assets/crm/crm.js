@@ -5923,7 +5923,7 @@
       var opportunityBtn = root.querySelector('[data-customer-new-opportunity]');
       if (opportunityBtn && opportunityBtn.dataset.portraitBound !== '1') {
         opportunityBtn.dataset.portraitBound = '1';
-        opportunityBtn.addEventListener('click', function () { OpportunityModule.openDialog(); });
+        opportunityBtn.addEventListener('click', function () { OpportunityModule.openDialog({}); });
       }
       var sampleBtn = root.querySelector('[data-customer-new-sample]');
       if (sampleBtn && sampleBtn.dataset.portraitBound !== '1') {
@@ -6159,7 +6159,7 @@
       bindAll('[data-customer-ai-analysis]', function () { self.handleAction('AI 分析客户'); });
       bindAll('[data-customer-new-visit]', function () { VisitModule.openVisitDialog('customer_visit'); });
       bindAll('[data-customer-new-arrival]', function () { VisitModule.openVisitDialog('customer_arrival'); });
-      bindAll('[data-customer-new-opportunity]', function () { OpportunityModule.openDialog(); });
+      bindAll('[data-customer-new-opportunity]', function () { OpportunityModule.openDialog({}); });
       bindAll('[data-customer-new-sample]', function () {
         var detail = self.currentDetail || {}, customer = detail.customer || detail || {};
         TaskCenterModule.openSampleDialog({
@@ -9639,7 +9639,7 @@
       if (label === '强制删除') return this.forceDeleteCustomer();
       if (label === '导入日志') return activate('logs');
       if (label === '新建跟进') return this.openFollowupDialog();
-      if (label === '新建商机') return OpportunityModule.openDialog();
+      if (label === '新建商机') return OpportunityModule.openDialog({});
       if (label === '查看商机') { activate('opportunities'); OpportunityModule.query = (this.currentDetail && this.currentDetail.customer && (this.currentDetail.customer.customer_name || this.currentDetail.customer.customer_code)) || ''; return OpportunityModule.load(); }
       if (label === '编辑商机') {
         var opportunity = this.selectedSalesRow('opportunity');
@@ -26318,7 +26318,7 @@
     inited: false, rows: [], stages: {}, users: [], selectedId: 0, view: 'list', filter: '', query: '',
     init: function () {
       if (this.inited || !document.querySelector('[data-opportunity-module]')) return;
-      this.inited = true; this.bind(); this.loadOptions(); this.load();
+      this.inited = true; this.bind(); this.loadOptions().catch(function (error) { toast(error.message); }); this.load();
     },
     bind: function () {
       var self = this;
@@ -26352,11 +26352,17 @@
     },
     loadOptions: function () {
       var self = this;
-      post('opportunity_options', {}).then(function (json) {
-        if (!json.success) return;
+      if (this.optionsLoaded) return Promise.resolve();
+      if (this.optionsPromise) return this.optionsPromise;
+      this.optionsPromise = post('opportunity_options', {}).then(function (json) {
+        if (!json.success) throw new Error(json.message || '商机选项加载失败，请重试');
         self.stages = (json.data && json.data.stages) || {};
         self.users = (json.data && json.data.users) || [];
+        self.optionsLoaded = true;
+      }).finally(function () {
+        self.optionsPromise = null;
       });
+      return this.optionsPromise;
     },
     load: function () {
       var self = this, board = document.querySelector('[data-opportunity-board]');
@@ -26458,12 +26464,24 @@
       var customerId = row.customer_id || customer.id || CustomerModule.currentId || '';
       if (Number(customer.id) !== Number(customerId)) customer = {};
       var customerName = row.customer_name || customer.customer_name || (customerId ? ('客户 #' + customerId) : '未选择客户');
+      var intent = this.dialogRequestSeq = Number(this.dialogRequestSeq || 0) + 1;
+      if (!this.optionsLoaded) {
+        var self = this, initialCustomerId = Number(CustomerModule.currentId || 0);
+        var snapshot = Object.assign({}, row, {customer_id:customerId, customer_name:customerName, country:row.country || customer.country || ''});
+        toast('正在加载商机表单…');
+        return this.loadOptions().then(function () {
+          if (intent !== self.dialogRequestSeq || Number(CustomerModule.currentId || 0) !== initialCustomerId) return;
+          return self.openDialog(snapshot);
+        }).catch(function (error) {
+          if (intent === self.dialogRequestSeq) toast(error.message || '商机选项加载失败，请重试');
+        });
+      }
       var html = '<div class="opportunity-business-form" data-opportunity-form><input type="hidden" name="opportunity_id" value="' + esc(row.id || '') + '"><input type="hidden" name="customer_id" value="' + esc(customerId) + '">' +
         '<main class="opportunity-form-main">' +
         this.formSection('客户与项目', '<div class="opportunity-customer-card"><strong>' + esc(customerName) + '</strong><span>' + esc([row.customer_code || customer.customer_code || '', row.country || customer.country || ''].filter(Boolean).join(' · ') || '客户已关联') + '</span></div><label>联系人<select name="contact_id">' + this.contactOptions(row.contact_id, customerId) + '</select></label>' +
           '<label class="wide">商机名称 *<input name="opportunity_name" required value="' + esc(row.opportunity_name || '') + '" placeholder="例如：印度酒店筒灯项目"></label><label>项目名称<input name="project_name" value="' + esc(row.project_name || '') + '"></label><label>国家<input name="country" value="' + esc(row.country || customer.country || '') + '"></label>' +
           '<label>来源<select name="source_type">' + this.sourceOptions(row.source_type || 'manual') + '</select></label><label>阶段<select name="stage">' + this.stageOptions(row.stage || 'new_need') + '</select></label><label>负责人<select name="owner_user_id">' + this.userOptions(row.owner_user_id || (state.user || {}).id) + '</select></label>' +
-          '<label>协作人<input name="collaborator_user_ids" value="' + esc((row.collaborator_user_ids || []).join ? row.collaborator_user_ids.join(',') : '') + '" placeholder="多个员工ID用逗号分隔"></label><label>优先级<select name="priority">' + this.priorityOptions(row.priority || 'normal') + '</select></label><label>预计成交日期<input type="date" name="expected_close_date" value="' + esc(row.expected_close_date || '') + '"></label>') +
+          '<label>协作人<input name="collaborator_user_ids" value="' + esc(Array.isArray(row.collaborator_user_ids) ? row.collaborator_user_ids.join(',') : '') + '" placeholder="多个员工ID用逗号分隔"></label><label>优先级<select name="priority">' + this.priorityOptions(row.priority || 'normal') + '</select></label><label>预计成交日期<input type="date" name="expected_close_date" value="' + esc(row.expected_close_date || '') + '"></label>') +
         this.formSection('产品需求', '<label>项目类型<select name="project_type">' + this.options(['酒店项目','商场项目','别墅项目','办公项目','工程项目','经销商备货','样品测试','老客户复购','其他'], row.project_type || '') + '</select></label><label>产品类别<input name="product_category" value="' + esc(row.product_category || '') + '" placeholder="命名分类接口待接入"></label><label>相关型号<input name="related_model" value="' + esc(row.related_model || '') + '" placeholder="命名接口待接入"></label><label>客户型号<input name="customer_model" value="' + esc(row.customer_model || '') + '"></label><label>数量<input type="number" step="0.01" name="quantity" value="' + esc(row.quantity || '') + '"></label><label>单位<input name="unit" value="' + esc(row.unit || 'pcs') + '"></label><label>目标价格<input type="number" step="0.0001" name="target_price" value="' + esc(row.target_price || '') + '"></label><label>币种<input name="currency" value="' + esc(row.currency || 'USD') + '"></label><label class="wide">参数 / 定制要求<textarea name="parameter_requirement" rows="4">' + esc(row.parameter_requirement || row.custom_requirement || '') + '</textarea></label><label class="wide">交期要求<input name="delivery_requirement" value="' + esc(row.delivery_requirement || '') + '"></label>') +
         this.formSection('金额与预测', '<label>预计金额<input type="number" step="0.01" name="expected_amount" value="' + esc(row.expected_amount || '') + '"></label><label>成交概率 %<input type="number" min="0" max="100" name="probability" value="' + esc(row.probability || this.defaultProbability(row.stage || 'new_need')) + '"></label><label>预测金额<input name="forecast_amount_preview" readonly value="' + esc(row.forecast_amount || '') + '"></label><label>报价金额<input readonly value="' + esc(row.quoted_amount || '报价接口待接入') + '"></label><label>毛利预估<input readonly value="预留"></label>') +
         this.formSection('下一步动作', '<label class="wide">下一步动作<textarea name="next_action" rows="3">' + esc(row.next_action || '') + '</textarea></label><label>下次跟进<input name="next_followup_time" placeholder="YYYY-MM-DD HH:MM" value="' + esc(row.next_followup_time || '') + '"></label><div class="opportunity-check-grid">' + this.checks(row) + '</div>') +
