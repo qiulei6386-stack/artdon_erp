@@ -44,6 +44,7 @@ if ($matcherStart === false || $forcedMatch === false || $selectedPeopleMatch ==
 }
 
 $pageForbidden = [
+    '.relationBadge',
     'function relationBadge(r)',
     'current_user_relation_labels',
     '当前账号与此待办的关系',
@@ -53,6 +54,20 @@ foreach ($pageForbidden as $marker) {
     if (str_contains($page, $marker)) {
         throw new RuntimeException("removed relation badge remains in page: {$marker}");
     }
+}
+
+$statusMarkup = '${statusDots(r)}${statusIconTags(r)}';
+$mobileStart = strpos($page, 'function mobileTaskCardHtml(');
+$mobileEnd = strpos($page, 'function bindMobileTaskCards(', $mobileStart ?: 0);
+$desktopStart = strpos($page, 'function renderEditableCell(');
+$desktopEnd = strpos($page, 'function methodValue(', $desktopStart ?: 0);
+if ($mobileStart === false || $mobileEnd === false || $desktopStart === false || $desktopEnd === false) {
+    throw new RuntimeException('task rendering entry points are missing');
+}
+$mobileRenderer = substr($page, $mobileStart, $mobileEnd - $mobileStart);
+$desktopRenderer = substr($page, $desktopStart, $desktopEnd - $desktopStart);
+if (!str_contains($mobileRenderer, $statusMarkup) || substr_count($desktopRenderer, $statusMarkup) < 2) {
+    throw new RuntimeException('due dots and status icons must remain in mobile, group, and ordinary task titles');
 }
 
 echo "Dispatch current-account visibility contract: OK\n";
