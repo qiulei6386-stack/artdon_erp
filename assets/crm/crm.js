@@ -217,11 +217,14 @@
 
   function cnStatus(value) {
     var key = String(value || '').toLowerCase();
+    var visitStatuses = (((state.config || {}).items || {}).visit_status || []);
+    var configuredVisitStatus = visitStatuses.find(function (item) { return String(item.item_key || '').toLowerCase() === key; });
+    if (configuredVisitStatus && configuredVisitStatus.name_cn) return configuredVisitStatus.name_cn;
     var map = {
       active: '有效', inactive: '停用', enabled: '启用', disabled: '停用',
       lead: '线索', official: '正式客户', key_follow: '重点跟进', quoting: '报价中', sampling: '打样中', deal: '已成交', sleeping: '沉睡客户', lost: '流失客户',
       not_promoted: '未推广', promoting: '推广中', paused: '已暂停', stopped: '已停止', blacklist: '黑名单', maintenance_only: '仅维护', no_promotion: '不推广',
-      draft: '草稿', pending: '待执行', pending_accept: '待接收', running: '执行中', completed: '已完成', partial_failed: '部分失败', cancelled: '已取消',
+      draft: '草稿', pending: '待执行', pending_confirm: '待确认', confirmed: '已确认', pending_execute: '待执行', executing: '执行中', running: '执行中', completed: '已完成', partial_failed: '部分失败', cancelled: '已取消', rescheduled: '已改期', overdue_no_record: '超期未记录', followup_pending: '待后续跟进',
       success: '成功', failed: '失败', skipped: '已跳过', overdue: '已逾期', read: '已读', unread: '未读',
       manual: '手动', scheduled: '定时', auto: '自动'
     };
@@ -2538,6 +2541,7 @@
     attributeViewMode: false,
     attributeEditMode: false,
     attributeData: null,
+    attributePromotionFeedback: null,
     columns: [
       { key: 'select', label: '', title: '选择', width: 34 },
       { key: 'customer_code', label: '代码', title: '客户代码', width: 92 },
@@ -2700,6 +2704,7 @@
         visits: 'communication',
         mail: 'communication',
         social_chat: 'communication',
+        promotion_feedback: 'communication',
         whatsapp: 'communication',
         wechat: 'communication',
         opportunities: 'sales',
@@ -2736,7 +2741,8 @@
           { key: 'followups', label: '跟进' },
           { key: 'visits', label: '拜访/来访' },
           { key: 'mail', label: '邮件' },
-          { key: 'social_chat', label: 'WhatsApp/微信' }
+          { key: 'social_chat', label: 'WhatsApp/微信' },
+          { key: 'promotion_feedback', label: '推广反馈' }
         ],
         sales: [
           { key: 'opportunities', label: '商机' },
@@ -4112,8 +4118,10 @@
       return post('customer_get', { customer_id: id, detail: options.full ? 'full' : 'overview' }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户详情加载失败');
         self.currentDetail = json.data;
+        self.attributePromotionFeedback = { loading: true, rows: [], summary: {} };
         self.renderDetail(json.data, { suppressScroll: !!options.silent });
         self.renderSelection();
+        self.loadCustomerPromotionFeedback();
         if (!options.silent) renderActions('customers');
       }).catch(function (error) {
         if (options.silent) {
@@ -4135,6 +4143,7 @@
         self.currentDetail = json.data;
         self.renderDetail(json.data);
         if (targetTab) self.switchDetailTab(targetTab);
+        if (targetTab === 'promotion_feedback') self.loadCustomerPromotionFeedback();
         return self.currentDetail;
       }).catch(function (error) {
         toast(error.message || '客户详情加载失败');
@@ -4253,32 +4262,43 @@
       var tagTableRows = tagRows.map(function (tag) {
         return '<tr data-detail-row="tag" data-detail-row-id="' + esc(tag.type + ':' + tag.name) + '"><td>' + esc(tag.name || '-') + '</td><td>' + esc(tag.type || '-') + '</td><td>' + esc(tag.source || '-') + '</td><td>' + esc(tag.created_by || '-') + '</td><td>' + esc(tag.created_at || '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="5">暂无标签</td></tr>';
+      var communicationPreviewLimit = 5;
       var communicationItems = [];
       (data.followups || []).forEach(function (f) {
-        communicationItems.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-' });
+        communicationItems.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-', rowType: 'followup', rowId: f.id || f.followup_id || '' });
       });
       (data.visits || []).forEach(function (v) {
-        communicationItems.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || '', person: v.owner_name || '-' });
+        communicationItems.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
       });
       if (data.mail_rows && data.mail_rows.length) {
-        data.mail_rows.forEach(function (m) { communicationItems.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || '', detail: m.direction || '', person: m.from_name || m.from_email || '-' }); });
+        data.mail_rows.forEach(function (m) { communicationItems.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || m.created_at || '', detail: m.direction || m.status || '', person: m.from_name || m.from_email || '-', rowType: 'mail', rowId: m.id || m.message_id || m.mail_id || '' }); });
       }
       communicationItems.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
-      var communicationAll = communicationItems.slice(0, 20).map(function (item) {
-        return '<article class="customer-communication-row"><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>客户：' + esc(c.customer_name || '-') + ' · ' + esc(item.detail || '暂无摘要') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
-      }).join('') || '<div class="customer-tab-empty"><strong>暂无数据</strong><span>跟进、拜访、邮件和 WhatsApp/微信记录接入后会在这里汇总。</span></div>';
+      var communicationAll = communicationItems.slice(0, communicationPreviewLimit).map(function (item) {
+        var attr = item.rowType && item.rowId ? ' data-detail-row="' + esc(item.rowType) + '" data-detail-row-id="' + esc(item.rowId) + '"' : '';
+        return '<article class="customer-communication-row"' + attr + '><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title) + '</strong><span>客户：' + esc(c.customer_name || '-') + ' · ' + esc(item.detail || '暂无摘要') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
+      }).join('');
+      if (communicationItems.length > communicationPreviewLimit) {
+        communicationAll += '<button type="button" class="customer-more-records-btn" data-customer-comm-more="all">查看更多沟通记录（' + esc(communicationItems.length) + ' 条）</button>';
+      }
+      communicationAll = communicationAll || '<div class="customer-tab-empty"><strong>暂无数据</strong><span>跟进、拜访、邮件和 WhatsApp/微信记录接入后会在这里汇总。</span></div>';
       var mailRows = data.mail_rows || [];
-      var mailTableRows = mailRows.map(function (m) {
+      var mailTableRows = mailRows.slice(0, communicationPreviewLimit).map(function (m) {
         var when = m.received_at || m.sent_at || m.mail_time || m.created_at || '-';
         var direction = m.direction || m.folder || '-';
         var attachCount = Number(m.attachment_count || m.attach_count || m.attachments_count || 0);
         return '<tr data-detail-row="mail" data-detail-row-id="' + esc(m.id || m.message_id || m.mail_id || '') + '"><td>' + esc(when) + '</td><td>' + esc(m.from_name || m.from_email || m.sender || '-') + '</td><td>' + esc(m.to_emails || m.to_email || m.recipients || m.to_text || '-') + '</td><td title="' + esc(m.subject || '') + '">' + esc(m.subject || '(无主题)') + '</td><td>' + esc(direction) + '</td><td>' + esc(attachCount) + '</td><td>' + esc(m.status || m.read_status || '-') + '</td></tr>';
-      }).join('') || '<tr><td colspan="7">暂无该客户关联邮件。可在邮箱模块关联客户，或通过右侧 ACTIONS 写邮件。</td></tr>';
+      }).join('');
+      if (mailRows.length > communicationPreviewLimit) {
+        mailTableRows += '<tr><td colspan="7"><button type="button" class="customer-more-records-btn" data-customer-comm-more="mail">查看更多邮件（' + esc(mailRows.length) + ' 封）</button></td></tr>';
+      }
+      mailTableRows = mailTableRows || '<tr><td colspan="7">暂无该客户关联邮件。可在邮箱模块关联客户，或通过右侧 ACTIONS 写邮件。</td></tr>';
       var addressPanel = '<section class="customer-tab-panel" data-detail-panel="addresses"><div class="customer-tab-stats"><span>主地址 ' + esc((data.addresses || []).filter(function (a) { return Number(a.is_primary); }).length || (c.address ? 1 : 0)) + '</span><span>地址总数 ' + esc((data.addresses || []).length || (c.address ? 1 : 0)) + '</span><span>国家 ' + esc(c.country || '未填') + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>地址类型</th><th>国家</th><th>城市</th><th>详细地址</th><th>邮编</th><th>联系人</th><th>电话</th><th>默认</th></tr></thead><tbody>' + addressRows + '</tbody></table></section>';
       var tagsPanel = '<section class="customer-tab-panel" data-detail-panel="tags"><div class="customer-tab-stats"><span>客户标签 ' + esc(customerTags.length) + '</span><span>客户组 ' + esc((data.groups || []).length) + '</span><span>推广标签 ' + esc(promotionChannels.length) + '</span><span>风险标签 ' + esc(c.risk_status ? 1 : 0) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>标签名</th><th>类型</th><th>来源</th><th>创建人</th><th>创建时间</th></tr></thead><tbody>' + tagTableRows + '</tbody></table></section>';
       var chatGroupPanel = '<section class="customer-tab-panel" data-detail-panel="chat_groups"><div class="customer-chat-group-head"><div><strong>客户群信息</strong><span>维护该客户的微信群、WhatsApp 群、负责人和关联联系人。</span></div><button type="button" class="primary" data-chat-group-create>新增客户群</button></div><div class="customer-tab-stats"><span>微信群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'wechat_group'; }).length) + '</span><span>WhatsApp群 ' + esc((data.chat_groups || []).filter(function (g) { return g.group_platform === 'whatsapp_group'; }).length) + '</span><span>启用 ' + esc((data.chat_groups || []).filter(function (g) { return (g.status || 'active') === 'active'; }).length) + '</span><span>总数 ' + esc((data.chat_groups || []).length) + '</span></div><div class="customer-chat-group-list">' + chatGroupCards + '</div></section>';
       var mailPanel = '<section class="customer-tab-panel" data-detail-panel="mail"><div class="customer-tab-stats"><span>邮件 ' + esc(mailRows.length) + '</span><span>附件 ' + esc(mailRows.reduce(function (sum, m) { return sum + Number(m.attachment_count || m.attach_count || m.attachments_count || 0); }, 0)) + '</span><span>未回复 ' + esc(mailRows.filter(function (m) { return Number(m.is_unreplied || 0) || String(m.status || '').indexOf('未回复') >= 0; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>发件人</th><th>收件人</th><th>主题</th><th>方向</th><th>附件</th><th>状态</th></tr></thead><tbody>' + mailTableRows + '</tbody></table></section>';
       var socialPanel = '<section class="customer-tab-panel" data-detail-panel="social_chat"><div class="customer-tab-stats"><span>WhatsApp ' + (c.whatsapp ? '1' : '0') + '</span><span>微信 ' + (c.wechat ? '1' : '0') + '</span><span>人工执行记录 0</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>平台</th><th>联系人</th><th>内容摘要</th><th>执行人</th><th>来源</th></tr></thead><tbody><tr><td colspan="6">接口待接入，可通过人工执行记录生成。</td></tr></tbody></table></section>';
+      var promotionFeedbackPanel = '<section class="customer-tab-panel customer-attribute-feedback" data-detail-panel="promotion_feedback" data-customer-promotion-feedback><h3>推广反馈</h3>' + this.customerPromotionFeedbackHtml() + '</section>';
       var opportunitiesPanel = '<section class="customer-tab-panel" data-detail-panel="opportunities"><div class="customer-tab-stats"><span>商机数 ' + esc((data.opportunities || []).length) + '</span><span>进行中 ' + esc((data.opportunities || []).filter(function (op) { return ['won','lost','closed'].indexOf(String(op.stage || '').toLowerCase()) < 0; }).length) + '</span><span>赢单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'won'; }).length) + '</span><span>输单 ' + esc((data.opportunities || []).filter(function (op) { return String(op.stage || '').toLowerCase() === 'lost'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>商机名称</th><th>阶段</th><th>金额</th><th>概率</th><th>预计成交时间</th><th>负责人</th><th>最近跟进</th></tr></thead><tbody>' + opportunityRows + '</tbody></table></section>';
       var panelContent = {
         overview: this.renderCustomerOverviewV2(data),
@@ -4298,6 +4318,7 @@
         preferences: '<section class="customer-tab-panel" data-detail-panel="preferences"><div class="customer-field-grid"><div><span>意向产品分类</span><strong>' + esc(productPref.category || '未填') + '</strong></div><div><span>关注系列</span><strong>' + esc(productPref.series || '未填') + '</strong></div><div><span>常用功率/色温</span><strong>' + esc(productPref.power || '-') + ' / ' + esc(productPref.cct || '-') + '</strong></div><div><span>认证需求</span><strong>' + esc(productPref.certification || '未填') + '</strong></div><div><span>首选沟通</span><strong>' + esc(commPref.preferred_channel || '未填') + '</strong></div><div><span>语言/时区</span><strong>' + esc(commPref.language || '-') + ' / ' + esc(commPref.timezone || '-') + '</strong></div></div></section>',
         mail: mailPanel,
         social_chat: socialPanel,
+        promotion_feedback: promotionFeedbackPanel,
         quote: '<section class="customer-tab-panel" data-detail-panel="quote">' + this.renderQuotePanel(quoteData) + '</section>',
         plm: '<section class="customer-tab-panel" data-detail-panel="plm">' + this.renderPlmPanel((data.linkage && data.linkage.plm) || {}) + '</section>',
         bom: '<section class="customer-tab-panel" data-detail-panel="bom">' + this.renderBomPanel(bomData) + '</section>',
@@ -4319,9 +4340,11 @@
         var html = panelContent[key] || '<section class="customer-tab-panel" data-detail-panel="' + esc(key) + '"><div class="customer-summary-grid"><button type="button"><span>' + esc(label || key) + '</span><strong>0</strong><em>接口待接入</em></button></div></section>';
         var className = 'customer-tab-panel customer-tab-subpanel customer-section' + (active ? ' active' : '');
         var sectionHead = key === 'customer_attribute' ? '' : '<header class="customer-section-head"><strong>' + esc(label || key) + '</strong><span>当前页面目录定位：' + esc(label || key) + '</span></header>';
+        html = html.replace(/<section\b([^>]*)class="([^"]*\bcustomer-tab-panel\b[^"]*)"([^>]*)>/, function (match, before, classes, after) {
+          var extra = String(classes || '').replace(/\bcustomer-tab-panel\b/g, '').replace(/\bcustomer-tab-subpanel\b/g, '').replace(/\bcustomer-section\b/g, '').replace(/\bactive\b/g, '').replace(/\s+/g, ' ').trim();
+          return '<section' + before + 'class="' + className + (extra ? ' ' + extra : '') + '"' + after + '>';
+        });
         return html
-          .replace('customer-tab-panel active"', className + '"')
-          .replace('customer-tab-panel"', className + '"')
           .replace(/(<section\b[^>]*>)/, '$1' + sectionHead);
       }
       function groupPanel(key, title, children, subtabs, activeSub) {
@@ -4379,7 +4402,7 @@
       this.attributeViewMode = false;
       this.attributeEditMode = false;
       this.bindDetailEvents();
-      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeTab, { suppressScroll: !!options.suppressScroll });
+      this.switchDetailTab(activeTab === 'overview' ? 'overview' : activeSubTab, { suppressScroll: !!options.suppressScroll });
     },
     renderArchiveAttributePanel: function (data) {
       data = data || {};
@@ -4474,7 +4497,9 @@
       return post('customer_attribute_get', { customer_id: this.currentId }).then(function (json) {
         if (!json.success) throw new Error(json.message || '客户属性读取失败');
         self.attributeData = json.data || {};
+        self.attributePromotionFeedback = { loading: true, rows: [], summary: {} };
         self.renderCustomerAttributeView();
+        self.loadCustomerPromotionFeedback();
         renderActions('customers');
       }).catch(function (error) {
         self.attributeViewMode = false;
@@ -4570,12 +4595,295 @@
         readonlyField('最近订单时间', 'last_order_at', c.last_order_at || '') +
         '</div></section>' +
         '<section class="entity-section entity-section-note"><h3>备注</h3><textarea name="remark" rows="4" maxlength="1000"' + disabled + '>' + esc(c.remark || '') + '</textarea></section>' +
+        '<section class="entity-section customer-attribute-feedback" data-customer-promotion-feedback><h3>推广反馈</h3>' + this.customerPromotionFeedbackHtml() + '</section>' +
         '<section class="entity-section" data-customer-attribute-extra><h3>修改日志</h3><div class="visit-empty">点击右侧“查看修改日志”读取。</div></section>' +
         '</form>';
       if (!this.attributeEditMode) {
         box.querySelectorAll('[data-customer-attribute-form] input[type="checkbox"]').forEach(function (input) { input.disabled = true; });
       }
       this.bindCustomerAttributeEditEvents();
+    },
+    customerPromotionFeedbackHtml: function () {
+      var data = this.attributePromotionFeedback || { loading: true, rows: [], touches: [], activity_logs: [], summary: {} };
+      if (data.loading) return '<div class="visit-empty">正在读取该客户的推广反馈...</div>';
+      var rows = data.rows || [];
+      var touches = data.touches || [];
+      var activityLogs = data.activity_logs || [];
+      var summary = data.summary || {};
+      if (!rows.length && !touches.length && !activityLogs.length) return '<div class="visit-empty">暂无推广记录或推广反馈。推广任务执行、手工记录、或邮件一键转入后，会显示在这里。</div>';
+      this.customerPromotionDetailRows = {};
+      var channelText = function (key) {
+        return typeof PromotionModule !== 'undefined' && PromotionModule.taskExecutionChannelText
+          ? PromotionModule.taskExecutionChannelText(key || '-')
+          : (key || '-');
+      };
+      var statusText = function (row) {
+        var queueStatus = String(row.queue_status || '');
+        var targetStatus = String(row.target_status || row.result_status || '');
+        var map = {
+          success: '成功',
+          sent: '已发送',
+          pending: '待执行',
+          scheduled: '已排队',
+          sending: '发送中',
+          waiting_retry: '等待重试',
+          failed: '失败',
+          skipped: '已跳过',
+          handled: '已处理'
+        };
+        return map[queueStatus] || map[targetStatus] || queueStatus || targetStatus || '-';
+      };
+      var stat = '<div class="customer-feedback-stat">' +
+        '<article><span>推广触达</span><strong>' + esc(Number(summary.touch_total || touches.length || 0)) + '</strong></article>' +
+        '<article><span>邮件发送</span><strong>' + esc(Number(summary.email_sent || 0)) + '</strong></article>' +
+        '<article><span>线下/人工</span><strong>' + esc(Number(summary.manual_total || 0)) + '</strong></article>' +
+        '<article><span>反馈总数</span><strong>' + esc(Number(summary.total || rows.length || 0)) + '</strong></article>' +
+        '<article><span>待处理</span><strong>' + esc(Number(summary.pending || 0)) + '</strong></article>' +
+        '<article><span>最近</span><strong>' + esc(String(summary.latest_time || summary.latest_touch_time || (rows[0] && rows[0].feedback_time) || '-').slice(0, 16)) + '</strong></article>' +
+      '</div>';
+      var timeline = [];
+      var self = this;
+      var register = function (item) {
+        var key = 'customer-promo-' + timeline.length + '-' + String(item.row && (item.row.id || item.row.log_id || item.row.queue_id || item.row.target_id || item.row.task_id) || item.time || Math.random()).replace(/[^a-z0-9_-]/ig, '_');
+        item.key = key;
+        self.customerPromotionDetailRows[key] = item;
+        timeline.push(item);
+      };
+      touches.forEach(function (row) {
+        var time = String(row.executed_at || row.queue_sent_at || row.planned_at || row.queue_planned_server_time || row.target_created_at || '-').slice(0, 16);
+        var contact = row.contact_name || row.chat_group_name || row.manual_group_name || '客户级';
+        var method = row.queue_receiver_email || row.email || row.contact_method || row.phone || row.whatsapp || row.wechat || '';
+        var failure = row.failure_reason || row.queue_last_error || '';
+        register({
+          kind: 'touch',
+          type: '推广记录',
+          title: row.task_name || '推广任务',
+          time: time,
+          status: statusText(row),
+          channel: channelText(row.channel_key || row.chat_group_platform || '-'),
+          summary: contact + (method ? ' · ' + method : '') + (row.executor_name ? ' · 执行人 ' + row.executor_name : ''),
+          content: failure ? ('失败原因：' + failure) : (row.mail_subject || row.campaign_type || '推广已执行'),
+          row: row
+        });
+      });
+      if (!touches.length) {
+        activityLogs.forEach(function (row) {
+          register({
+            kind: 'touch',
+            type: '推广记录',
+            title: row.task_name || '推广记录',
+            time: String(row.touched_at || row.created_at || '-').slice(0, 16),
+            status: statusText(row),
+            channel: channelText(row.channel_key || '-'),
+            summary: (row.contact_name || '客户级') + (row.email ? ' · ' + row.email : ''),
+            content: row.failure_reason || row.action_key || '-',
+            row: row
+          });
+        });
+      }
+      rows.forEach(function (row) {
+        var content = String(row.feedback_content || row.content || '').trim();
+        register({
+          kind: 'feedback',
+          type: '客户反馈',
+          title: row.feedback_type_label || (typeof PromotionModule !== 'undefined' ? PromotionModule.feedbackTypeText(row.feedback_type || 'other') : row.feedback_type || '反馈'),
+          time: String(row.feedback_time || row.touched_at || row.created_at || '-').slice(0, 16),
+          status: row.is_handled ? '已处理' : '待处理',
+          channel: channelText(row.channel_key || '-'),
+          summary: (row.contact_name || '客户级') + ' · 下一步：' + (row.next_action_label || (typeof PromotionModule !== 'undefined' ? PromotionModule.feedbackNextActionText(row.next_action || 'none') : '-')),
+          content: content || '-',
+          row: row
+        });
+      });
+      timeline.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
+      var itemHtml = timeline.slice(0, 5).map(function (item) {
+        var preview = String(item.content || '').trim();
+        if (preview.length > 160) preview = preview.slice(0, 160).replace(/\s+$/g, '') + '…';
+        return '<article class="customer-feedback-card customer-promotion-timeline-card" data-customer-promo-detail="' + esc(item.key) + '" tabindex="0">' +
+          '<header><div><strong>' + esc(item.title || item.type || '-') + '</strong><span>' + esc(item.type) + ' · ' + esc(item.time || '-') + ' · ' + esc(item.channel || '-') + '</span></div><em>' + esc(item.status || '-') + '</em></header>' +
+          '<p>' + esc(preview || '-') + '</p>' +
+          '<footer><span>' + esc(item.summary || '-') + '</span><button type="button" data-customer-promo-detail-button="' + esc(item.key) + '" onclick="return window.crmOpenCustomerPromotionDetail ? window.crmOpenCustomerPromotionDetail(this) : false;">详情</button></footer>' +
+        '</article>';
+      }).join('');
+      if (timeline.length > 5) {
+        itemHtml += '<button type="button" class="customer-more-records-btn" data-customer-promo-more onclick="return window.crmOpenCustomerPromotionMore ? window.crmOpenCustomerPromotionMore(this) : false;">查看更多推广沟通（' + esc(timeline.length) + ' 条）</button>';
+      }
+      return stat +
+        '<h4 class="customer-feedback-subtitle">推广沟通时间线</h4><div class="customer-feedback-list customer-promotion-timeline">' + (itemHtml || '<div class="visit-empty">暂无推广沟通记录。</div>') + '</div>';
+    },
+    loadCustomerPromotionFeedback: function () {
+      var self = this;
+      var customerId = Number(this.currentId || 0);
+      if (!customerId) return;
+      return post('marketing_feedback_list', { customer_id: customerId, limit: 50 }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '推广反馈读取失败');
+        self.attributePromotionFeedback = json.data || { rows: [], summary: {} };
+        self.renderCustomerPromotionFeedbackSection();
+      }).catch(function (error) {
+        self.attributePromotionFeedback = { rows: [], summary: {}, error: error.message || '推广反馈读取失败' };
+        self.renderCustomerPromotionFeedbackSection();
+      });
+    },
+    renderCustomerPromotionFeedbackSection: function () {
+      var sections = document.querySelectorAll('[data-customer-promotion-feedback]');
+      if (!sections.length) return;
+      var html = this.customerPromotionFeedbackHtml();
+      if (this.attributePromotionFeedback && this.attributePromotionFeedback.error) {
+        html = '<div class="visit-empty">' + esc(this.attributePromotionFeedback.error) + '</div>';
+      }
+      sections.forEach(function (section) {
+        section.innerHTML = '<h3>推广反馈</h3>' + html;
+        if (typeof PromotionModule !== 'undefined' && PromotionModule.bindFeedbackDetailButtons) PromotionModule.bindFeedbackDetailButtons(section);
+        CustomerModule.bindCustomerPromotionDetailEvents(section);
+      });
+    },
+    bindCustomerPromotionDetailEvents: function (root) {
+      root = root || document;
+      var self = this;
+      root.querySelectorAll('[data-customer-promo-detail-button]').forEach(function (button) {
+        if (button.dataset.boundPromoDetail) return;
+        button.dataset.boundPromoDetail = '1';
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.openCustomerPromotionDetailDialog(button.getAttribute('data-customer-promo-detail-button') || '');
+        });
+      });
+      root.querySelectorAll('[data-customer-promo-detail]').forEach(function (card) {
+        if (card.dataset.boundPromoCard) return;
+        card.dataset.boundPromoCard = '1';
+        var open = function () {
+          self.openCustomerPromotionDetailDialog(card.getAttribute('data-customer-promo-detail') || '');
+        };
+        card.addEventListener('dblclick', function (event) {
+          event.preventDefault();
+          open();
+        });
+        card.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          open();
+        });
+      });
+      root.querySelectorAll('[data-customer-promo-more]').forEach(function (button) {
+        if (button.dataset.boundPromoMore) return;
+        button.dataset.boundPromoMore = '1';
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.openCustomerPromotionMoreDialog();
+        });
+      });
+    },
+    customerPromotionDetailHtml: function (item) {
+      if (!item) return '<div class="visit-empty">没有找到这条推广记录。</div>';
+      var row = item.row || {};
+      var meta = [
+        ['类型', item.type || '-'],
+        ['推广任务', item.title || row.task_name || '-'],
+        ['时间', item.time || '-'],
+        ['渠道', item.channel || '-'],
+        ['状态', item.status || '-'],
+        ['联系人/对象', row.contact_name || row.chat_group_name || row.manual_group_name || '客户级'],
+        ['执行/负责人', row.executor_name || row.owner_name || row.created_by_name || row.feedback_owner || '-'],
+        ['下一步', row.next_action_label || (typeof PromotionModule !== 'undefined' && PromotionModule.feedbackNextActionText ? PromotionModule.feedbackNextActionText(row.next_action || 'none') : row.next_action || '-')]
+      ];
+      var metaHtml = meta.map(function (pair) {
+        return '<article><span>' + esc(pair[0]) + '</span><strong>' + esc(pair[1] || '-') + '</strong></article>';
+      }).join('');
+      var content = String(item.content || row.feedback_content || row.content || row.failure_reason || row.queue_last_error || '').trim() || '-';
+      return '<section class="customer-promotion-detail-dialog">' +
+        '<div class="customer-promotion-detail-grid">' + metaHtml + '</div>' +
+        '<div class="customer-promotion-detail-content"><h3>完整内容</h3><div>' + esc(content) + '</div></div>' +
+      '</section>';
+    },
+    openCustomerPromotionDetailDialog: function (key) {
+      var item = (this.customerPromotionDetailRows || {})[key];
+      if (item && item.kind === 'feedback' && typeof PromotionModule !== 'undefined' && PromotionModule.openFeedbackDetailDialog) {
+        PromotionModule.openFeedbackDetailDialog(item.row || {});
+        return;
+      }
+      this.openBusinessDialog(
+        item ? (item.type + '详情') : '推广记录详情',
+        this.customerPromotionDetailHtml(item) + '<div class="business-dialog-actions"><button type="button" data-business-cancel>关闭</button></div>',
+        '双击时间线卡片或点详情，都可以查看完整内容。',
+        function (root) {
+          root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+        }
+      );
+    },
+    openCustomerPromotionMoreDialog: function () {
+      var rows = Object.keys(this.customerPromotionDetailRows || {}).map(function (key) {
+        return CustomerModule.customerPromotionDetailRows[key];
+      }).filter(Boolean).sort(function (a, b) {
+        return String(b.time || '').localeCompare(String(a.time || ''));
+      });
+      var html = rows.map(function (item) {
+        var preview = String(item.content || '').trim();
+        if (preview.length > 120) preview = preview.slice(0, 120).replace(/\s+$/g, '') + '…';
+        return '<article class="customer-feedback-card customer-promotion-timeline-card" data-customer-promo-detail="' + esc(item.key) + '" tabindex="0">' +
+          '<header><div><strong>' + esc(item.title || item.type || '-') + '</strong><span>' + esc(item.type || '-') + ' · ' + esc(item.time || '-') + ' · ' + esc(item.channel || '-') + '</span></div><em>' + esc(item.status || '-') + '</em></header>' +
+          '<p>' + esc(preview || '-') + '</p>' +
+          '<footer><span>' + esc(item.summary || '-') + '</span><button type="button" data-customer-promo-detail-button="' + esc(item.key) + '" onclick="return window.crmOpenCustomerPromotionDetail ? window.crmOpenCustomerPromotionDetail(this) : false;">详情</button></footer>' +
+        '</article>';
+      }).join('') || '<div class="visit-empty">暂无推广沟通记录。</div>';
+      this.openBusinessDialog(
+        '全部推广沟通记录',
+        '<section class="customer-promotion-more-dialog"><div class="customer-feedback-list customer-promotion-timeline">' + html + '</div></section><div class="business-dialog-actions"><button type="button" data-business-cancel>关闭</button></div>',
+        '推广记录与反馈记录已合并，按时间倒序显示。',
+        function (root) {
+          root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+          CustomerModule.bindCustomerPromotionDetailEvents(root);
+        }
+      );
+    },
+    openCustomerCommunicationMore: function (kind) {
+      kind = kind || 'all';
+      var data = this.currentDetail || {};
+      var c = data.customer || {};
+      var rows = [];
+      if (kind === 'mail') {
+        rows = (data.mail_rows || []).map(function (m) {
+          return {
+            type: '邮件',
+            title: m.subject || '(无主题)',
+            time: m.received_at || m.sent_at || m.created_at || '',
+            detail: (m.direction || m.status || '-') + ' · ' + (m.to_emails || m.to_email || m.from_email || '-'),
+            person: m.from_name || m.from_email || '-',
+            rowType: 'mail',
+            rowId: m.id || m.message_id || m.mail_id || ''
+          };
+        });
+      } else {
+        (data.followups || []).forEach(function (f) {
+          rows.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-', rowType: 'followup', rowId: f.id || f.followup_id || '' });
+        });
+        (data.visits || []).forEach(function (v) {
+          rows.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
+        });
+        (data.mail_rows || []).forEach(function (m) {
+          rows.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || m.created_at || '', detail: m.direction || m.status || '', person: m.from_name || m.from_email || '-', rowType: 'mail', rowId: m.id || m.message_id || m.mail_id || '' });
+        });
+      }
+      rows.sort(function (a, b) { return String(b.time || '').localeCompare(String(a.time || '')); });
+      var html = rows.map(function (item) {
+        var attr = item.rowType && item.rowId ? ' data-detail-row="' + esc(item.rowType) + '" data-detail-row-id="' + esc(item.rowId) + '"' : '';
+        return '<article class="customer-communication-row customer-communication-dialog-row"' + attr + '><b>' + esc(item.type) + '</b><div><strong>' + esc(item.title || '-') + '</strong><span>' + esc(item.detail || '暂无摘要') + '</span></div><em>' + esc(item.time || '-') + ' · ' + esc(item.person || '-') + '</em></article>';
+      }).join('') || '<div class="visit-empty">暂无记录。</div>';
+      var title = kind === 'mail' ? '客户邮件记录' : '客户全部沟通记录';
+      this.openBusinessDialog(
+        title,
+        '<section class="customer-communication-dialog"><header><strong>' + esc(c.customer_name || '-') + '</strong><span>共 ' + esc(rows.length) + ' 条，按时间倒序。</span></header><div class="customer-communication-list">' + html + '</div></section><div class="business-dialog-actions"><button type="button" data-business-cancel>关闭</button></div>',
+        '默认页面只显示最新 5 条，完整记录在这里查看。',
+        function (root) {
+          root.querySelector('[data-business-cancel]')?.addEventListener('click', function () { CustomerModule.closeDialog(); });
+          root.querySelectorAll('[data-detail-row="mail"]').forEach(function (row) {
+            row.addEventListener('click', function () {
+              CustomerModule.openCustomerMailPreview(row.getAttribute('data-detail-row-id') || '');
+            });
+          });
+        }
+      );
     },
     customerAttributeSnapshot: function (form) {
       var data = {};
@@ -4625,6 +4933,7 @@
         el.addEventListener('change', updateChanged);
       });
       this.bindOwnerPickEvents(form, updateChanged);
+      if (typeof PromotionModule !== 'undefined' && PromotionModule.bindFeedbackDetailButtons) PromotionModule.bindFeedbackDetailButtons(form);
       updateChanged();
     },
     collectCustomerAttributeData: function () {
@@ -4915,11 +5224,13 @@
       var quoteCount = firstNumber(['quotes', 'quote_count'], quoteData.total || 0);
       var opportunityCount = firstNumber(['opportunities', 'opportunity_count'], opportunities.length);
       var visitCount = firstNumber(['visits', 'visit_count'], visits.length);
+      var promotionCount = firstNumber(['promotion', 'promotion_count', 'promotion_touches', 'promotion_touch_count'], 0);
+      var promotionFeedbackCount = firstNumber(['promotion_feedback', 'promotion_feedback_count', 'feedback', 'feedback_count'], 0);
       var unrepliedCount = firstNumber(['unreplied', 'unreplied_count'], (linkage.mail || {}).unreplied || 0);
       return '<section class="customer-tab-panel active" data-detail-panel="overview"><div class="customer-portrait-overview">' +
         '<section class="customer-portrait-hero"><div class="customer-portrait-avatar">' + esc(initials) + '</div><div class="customer-portrait-main"><h2>' + esc(name) + '</h2><div class="customer-portrait-status"><span>' + esc(valueText(c.level, 'P3')) + '</span><span>' + esc(cnStatus(c.status || lifecycleText || 'lead')) + '</span><span>' + esc(cnStatus(data.promotion_status || c.promotion_status || 'not_promoted')) + '</span></div><p>' + valueHtml(c.customer_code) + '</p><p>' + countryLabel(c.country) + ' / ' + valueHtml(c.city) + ' · ' + valueHtml(sourceText) + ' · ' + valueHtml(promoteText) + '</p><p>负责人：' + valueHtml(ownerText, '未分配') + '</p></div><aside class="customer-portrait-side"><div><span>生命周期</span><b>' + valueHtml(lifecycleText) + '</b></div><div><span>风险</span><b class="' + (riskText !== '未填' && riskText !== '正常' ? 'customer-portrait-risk' : '') + '">' + valueHtml(riskText) + '</b></div><div><span>来源</span><b>' + valueHtml(sourceText) + '</b></div><div><span>推广方式</span><b>' + valueHtml(promoteText) + '</b></div><div><span>禁联状态</span><b class="' + (contactAllowed === '禁止联系' ? 'customer-portrait-risk' : '') + '">' + esc(contactAllowed) + '</b></div><div><span>创建时间</span><b>' + valueHtml(c.created_at) + '</b></div><footer><strong>资料完整度 ' + esc(completenessScore) + '%</strong><i><u style="width:' + completenessScore + '%"></u></i><em>缺失项：' + esc(missing.slice(0, 4).join(' / ') || '资料较完整') + '</em></footer></aside></section>' +
         '<section class="customer-metric-row"><div class="customer-metric-list">' + metrics.map(function (m) { return '<article class="customer-metric-card ' + (m[4] === 'risk' ? 'is-risk' : (m[4] === 'empty' ? 'is-empty' : '')) + '"><span>' + esc(m[0]) + '</span><strong>' + esc(m[1]) + '</strong><b>' + esc(m[2]) + '</b><em>' + esc(m[3]) + '</em></article>'; }).join('') + '</div><aside class="customer-next-actions"><strong>下一步建议</strong>' + suggestions.map(function (item, index) { return '<p><b>' + (index + 1) + '</b>' + esc(item) + '</p>'; }).join('') + '</aside></section>' +
-        '<section class="customer-business-grid"><article class="customer-business-card"><h3>客户关系</h3>' + stat('联系人', (c.contact_count || contacts.length || 0) + ' 个', 'contacts') + stat('客户群', chatGroups.length + ' 个', 'contacts') + '<button type="button" data-summary-jump="relations">关系图谱 查看关系</button></article><article class="customer-business-card"><h3>销售动作</h3>' + stat('跟进', followupCount + ' 次', 'followups') + stat('邮件', mailCount + ' 封', 'mail') + stat('报价', quoteCount + ' 份', 'quote') + stat('商机', opportunityCount + ' 个', 'opportunities') + stat('拜访 / 来访', visitCount + ' 次', 'visits') + stat('未回复', unrepliedCount + ' 封', 'mail') + '</article><article class="customer-business-card"><h3>技术资料</h3>' + stat('PLM', ((linkage.plm || {}).total || 0) + ' 项', 'plm') + stat('BOM', (bomData.total || 0) + ' 条', 'bom') + stat('资料', (documentData.total || 0) + ' 包', 'materials') + '<p>' + esc(technicalHint) + '</p></article><article class="customer-business-card"><h3>快捷操作</h3><div class="customer-business-actions"><button type="button" data-customer-new-followup>新建跟进</button><button type="button" data-customer-new-opportunity>新建商机</button><button type="button" data-summary-jump="quote">创建报价</button><button type="button" data-customer-new-sample>样品寄送</button><button type="button" data-customer-ai-analysis>AI 分析客户</button><button type="button" data-summary-jump="timeline">更多操作</button></div></article></section>' +
+        '<section class="customer-business-grid"><article class="customer-business-card"><h3>客户关系</h3>' + stat('联系人', (c.contact_count || contacts.length || 0) + ' 个', 'contacts') + stat('客户群', chatGroups.length + ' 个', 'contacts') + '<button type="button" data-summary-jump="relations">关系图谱 查看关系</button></article><article class="customer-business-card"><h3>销售动作</h3>' + stat('跟进', followupCount + ' 次', 'followups') + stat('邮件', mailCount + ' 封', 'mail') + stat('报价', quoteCount + ' 份', 'quote') + stat('商机', opportunityCount + ' 个', 'opportunities') + stat('推广', promotionCount + ' 次', 'promotion_feedback') + stat('推广反馈', promotionFeedbackCount + ' 条', 'promotion_feedback') + stat('拜访 / 来访', visitCount + ' 次', 'visits') + stat('未回复', unrepliedCount + ' 封', 'mail') + '</article><article class="customer-business-card"><h3>技术资料</h3>' + stat('PLM', ((linkage.plm || {}).total || 0) + ' 项', 'plm') + stat('BOM', (bomData.total || 0) + ' 条', 'bom') + stat('资料', (documentData.total || 0) + ' 包', 'materials') + '<p>' + esc(technicalHint) + '</p></article><article class="customer-business-card"><h3>快捷操作</h3><div class="customer-business-actions"><button type="button" data-customer-new-followup>新建跟进</button><button type="button" data-customer-new-opportunity>新建商机</button><button type="button" data-summary-jump="quote">创建报价</button><button type="button" data-customer-new-sample>样品寄送</button><button type="button" data-customer-ai-analysis>AI 分析客户</button><button type="button" data-summary-jump="timeline">更多操作</button></div></article></section>' +
         this.renderCustomerFulfillmentStatus(receivableData, orderData, shipmentData, money) +
       '</div></section>';
     },
@@ -5416,7 +5727,7 @@
         button.dataset.portraitBound = '1';
         button.addEventListener('click', function () {
           var key = button.getAttribute('data-summary-jump');
-          var directTabs = ['contacts','followups','visits','samples','opportunities','mail','quote','plm','bom','orders','documents','shipments','receivables','relations','timeline','materials'];
+          var directTabs = ['contacts','followups','visits','samples','opportunities','mail','quote','plm','bom','orders','documents','shipments','receivables','relations','timeline','materials','promotion_feedback'];
           if (directTabs.indexOf(key) >= 0) {
             if (document.querySelector('[data-detail-panel="' + key + '"]')) self.switchDetailTab(key);
             else toast('接口待接入');
@@ -5637,7 +5948,7 @@
       document.querySelectorAll('[data-summary-jump]').forEach(function (button) {
         button.addEventListener('click', function () {
           var key = button.getAttribute('data-summary-jump');
-          var directTabs = ['contacts','followups','visits','samples','opportunities','mail','quote','plm','bom','orders','documents','shipments','receivables','relations','timeline','materials'];
+          var directTabs = ['contacts','followups','visits','samples','opportunities','mail','quote','plm','bom','orders','documents','shipments','receivables','relations','timeline','materials','promotion_feedback'];
           if (directTabs.indexOf(key) >= 0) {
             if (document.querySelector('[data-detail-panel="' + key + '"]')) self.switchDetailTab(key);
             else toast('接口待接入');
@@ -5651,6 +5962,14 @@
           if (key === 'chat_groups') self.switchDetailTab('chat_groups');
         });
       });
+      document.querySelectorAll('[data-customer-comm-more]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.openCustomerCommunicationMore(button.getAttribute('data-customer-comm-more') || 'all');
+        });
+      });
+      this.bindCustomerPromotionDetailEvents(document);
       document.querySelectorAll('[data-shipment-preview]').forEach(function (button) {
         button.addEventListener('click', function (event) {
           event.preventDefault();
@@ -5764,6 +6083,9 @@
       if (activeName !== 'overview' && this.currentDetail && Number(this.currentDetail._lazy_detail || 0)) {
         this.ensureFullDetail(activeSub);
         return;
+      }
+      if (activeSub === 'promotion_feedback' && (!this.attributePromotionFeedback || this.attributePromotionFeedback.loading)) {
+        this.loadCustomerPromotionFeedback();
       }
       if (activeName === 'overview' && this.currentDetail) {
         var oldOverview = document.querySelector('[data-customer-main-content] > [data-detail-panel="overview"], [data-customer-detail] > [data-detail-panel="overview"]');
@@ -8983,7 +9305,10 @@
           { title: 'WhatsApp/微信', items: ['创建人工执行清单', '新建跟进', '刷新记录'] }
         ];
         if (sub === 'communication_all') return [
-          { title: '全部沟通', items: ['新建跟进', '新建拜访', '新建来访', '写邮件', '刷新沟通'] }
+          { title: '全部沟通', items: ['新建跟进', '新建拜访', '新建来访', '写邮件', '查看推广反馈', '刷新沟通'] }
+        ];
+        if (sub === 'promotion_feedback') return [
+          { title: '推广反馈', items: ['刷新推广反馈', '返回全部沟通'] }
         ];
         if (sub === 'opportunities') return selected.type === 'opportunity' ? [
           { title: '商机', items: ['新建商机', '编辑商机', '推进阶段', '转报价', '关闭商机'] }
@@ -9109,6 +9434,9 @@
       if (label === '查看修改日志') return this.showCustomerAttributeLogs();
       if (label === '导出客户资料') return this.exportCustomerAttribute();
       if (label === '返回客户概览') return this.returnCustomerOverview();
+      if (label === '查看推广反馈') return this.switchDetailTab('promotion_feedback');
+      if (label === '刷新推广反馈') return this.loadCustomerPromotionFeedback();
+      if (label === '返回全部沟通') return this.switchDetailTab('communication_all');
       if (label === '新建客户') return this.openCustomerDialog('create');
       if (label === '暂存池') return this.toggleLeadPool();
       if (label === '刷新暂存池') return this.loadLeadPool();
@@ -11250,6 +11578,7 @@
         : (isDraft ? '' : this.mailSideActionButton('转发', 'data-mail-forward'));
       var resendButton = this.canResendEditMail(mail) ? '<button type="button" data-mail-resend-edit>再次编辑</button>' : '';
       var recallButton = (isSent && !recalled) ? '<button type="button" data-mail-recall>撤回</button>' : '';
+      var promotionFeedbackButton = canReply ? '<button type="button" data-mail-promotion-feedback>转为推广反馈</button>' : '';
       var readerNav = this.renderMailReaderNavigation(mail);
       var recallNotice = recalled ? '<section class="mail-recall-notice">已撤回：系统已发送撤回通知给原收件人。</section>' : '';
       var isOfficeMail = this.isOutlookOfficeMail(mail);
@@ -11266,7 +11595,7 @@
         return '<button type="button" title="' + esc(a.file_name) + '" data-mail-attachment="' + esc(a.id) + '" data-mail-attachment-name="' + esc(a.file_name || '附件') + '">' + esc(a.file_name || '附件') + '</button>';
       }).join('') + '</div></section>' : '';
       reader.innerHTML = '<article class="mail-reader">' +
-        '<header><div><span>' + esc(mail.from_name || '') + ' &lt;' + esc(mail.from_email || '') + '&gt;</span><h2>' + esc(mail.subject || '(无主题)') + '</h2><p>收件人：' + esc(mail.to_emails || '-') + '　抄送：' + esc(mail.cc_emails || '-') + '　时间：' + esc(mail.received_at || mail.sent_at || '-') + '</p></div><nav>' + replyButtons + resendButton + recallButton + '<button data-mail-back>返回列表</button>' + readerNav + '</nav></header>' +
+        '<header><div><span>' + esc(mail.from_name || '') + ' &lt;' + esc(mail.from_email || '') + '&gt;</span><h2>' + esc(mail.subject || '(无主题)') + '</h2><p>收件人：' + esc(mail.to_emails || '-') + '　抄送：' + esc(mail.cc_emails || '-') + '　时间：' + esc(mail.received_at || mail.sent_at || '-') + '</p></div><nav>' + replyButtons + resendButton + recallButton + promotionFeedbackButton + '<button data-mail-back>返回列表</button>' + readerNav + '</nav></header>' +
         '<div class="mail-reader-scroll">' + recallNotice + attachmentHtml + '<section class="mail-body">' + body + '</section>' +
         this.renderMailHeaderSummary(mail) + '</div>' +
         '</article>';
@@ -11497,6 +11826,7 @@
       root.querySelector('[data-mail-forward]')?.addEventListener('click', function () { self.openCompose('forward', mail); });
       root.querySelector('[data-mail-resend-edit]')?.addEventListener('click', function () { self.openCompose('resend_edit', mail); });
       root.querySelector('[data-mail-recall]')?.addEventListener('click', function () { self.recallMail(mail); });
+      root.querySelector('[data-mail-promotion-feedback]')?.addEventListener('click', function () { self.openPromotionFeedbackFromMail(mail); });
       root.querySelectorAll('[data-mail-attachment], [data-mail-attach-customer]').forEach(function (button) {
         button.addEventListener('click', function () {
           if (button.hasAttribute('data-mail-attachment')) {
@@ -11505,6 +11835,118 @@
           }
           toast('保存附件到客户文件待接入，当前仅支持下载附件。');
         });
+      });
+    },
+    mailPromotionFeedbackText: function (mail) {
+      var text = String((mail && mail.body_text) || '').trim();
+      if (!text && mail && mail.body_html) text = officeMailToReadableText(mail.body_html || '');
+      text = text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+      var sender = ((mail && mail.from_name) ? mail.from_name + ' ' : '') + '<' + ((mail && mail.from_email) || '-') + '>';
+      var header = [
+        '邮件回复：' + ((mail && mail.subject) || '(无主题)'),
+        '发件人：' + sender,
+        '收件时间：' + ((mail && (mail.received_at || mail.sent_at)) || '-')
+      ].join('\n');
+      return (header + '\n\n' + (text || '（邮件正文为空，请手工补充反馈内容。）')).slice(0, 5000);
+    },
+    mailFeedbackDateTimeValue: function (value) {
+      value = String(value || '').trim().replace(' ', 'T');
+      if (!value) return '';
+      return value.slice(0, 16);
+    },
+    openPromotionFeedbackFromMail: function (mail) {
+      var self = this;
+      var mailId = Number((mail && mail.id) || this.currentId || 0);
+      if (!mailId) return toast('当前邮件 ID 无效。');
+      toast('正在匹配推广任务...');
+      post('marketing_feedback_mail_context', { mail_id: mailId }).then(function (json) {
+        if (!json.success) throw new Error(json.message || '无法匹配推广任务');
+        var data = json.data || {};
+        var candidates = Array.isArray(data.candidates) ? data.candidates : [];
+        if (!candidates.length) {
+          toast('没有匹配到推广任务：请先确认邮件已关联客户，或从推广任务里手工记录反馈。');
+          return;
+        }
+        var openCandidate = function (candidate) {
+          self.openPromotionFeedbackWithCandidate(mail, data.mail || {}, candidate);
+        };
+        if (candidates.length === 1) {
+          openCandidate(candidates[0]);
+          return;
+        }
+        self.openPromotionFeedbackTaskChooser(mail, data.mail || {}, candidates, openCandidate);
+      }).catch(function (error) {
+        toast(error.message || '推广反馈匹配失败');
+      });
+    },
+    openPromotionFeedbackTaskChooser: function (mail, mailContext, candidates, onChoose) {
+      document.querySelector('[data-mail-promo-feedback-chooser]')?.remove();
+      var dialog = document.createElement('dialog');
+      dialog.className = 'crm-modal mail-promo-feedback-chooser';
+      dialog.setAttribute('data-mail-promo-feedback-chooser', '');
+      var rows = candidates.map(function (row, index) {
+        return '<button type="button" data-mail-promo-feedback-choice="' + esc(index) + '">' +
+          '<strong>' + esc(row.task_name || ('推广任务 #' + row.task_id)) + '</strong>' +
+          '<span>' + esc(row.customer_name || mailContext.linked_customer_name || '-') + (row.contact_name ? ' · ' + esc(row.contact_name) : ' · 客户级') + (row.contact_email ? ' · ' + esc(row.contact_email) : '') + '</span>' +
+          '<em>' + esc(row.match_reason || '候选任务') + ' · ' + esc(row.target_status || row.task_status || '-') + '</em>' +
+        '</button>';
+      }).join('');
+      dialog.innerHTML = '<form class="crm-modal-panel mail-promo-feedback-panel">' +
+        '<header class="crm-modal-header"><div><strong class="crm-modal-title">选择推广任务</strong><small class="crm-modal-subtitle">' + esc((mail && mail.subject) || '(无主题)') + '</small></div><button type="button" class="crm-modal-close" data-mail-promo-feedback-close>关闭</button></header>' +
+        '<main class="crm-modal-body mail-promo-feedback-body"><p>这封邮件匹配到多个推广任务，选一个后会自动带入客户、联系人、邮件正文和回复时间。</p><div class="mail-promo-feedback-list">' + rows + '</div></main>' +
+        '<footer class="crm-modal-footer"><span>只会预填，不会直接保存。</span><button type="button" data-mail-promo-feedback-close>取消</button></footer>' +
+      '</form>';
+      document.body.appendChild(dialog);
+      dialog.querySelectorAll('[data-mail-promo-feedback-close]').forEach(function (button) {
+        button.addEventListener('click', function () { if (dialog.close) dialog.close(); dialog.remove(); });
+      });
+      dialog.querySelectorAll('[data-mail-promo-feedback-choice]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var row = candidates[Number(button.getAttribute('data-mail-promo-feedback-choice') || 0)] || null;
+          if (dialog.close) dialog.close();
+          dialog.remove();
+          if (row && typeof onChoose === 'function') onChoose(row);
+        });
+      });
+      this.safeOpenPromotionDialog(dialog);
+    },
+    openPromotionFeedbackWithCandidate: function (mail, mailContext, candidate) {
+      var taskId = Number(candidate.task_id || 0);
+      if (!taskId) return toast('推广任务无效。');
+      if (typeof PromotionModule === 'undefined') return toast('推广模块未加载。');
+      PromotionModule.data = PromotionModule.data || {};
+      PromotionModule.data.tasks = Array.isArray(PromotionModule.data.tasks) ? PromotionModule.data.tasks : [];
+      if (!PromotionModule.taskById(taskId)) {
+        PromotionModule.data.tasks.push({
+          id: taskId,
+          task_name: candidate.task_name || ('推广任务 #' + taskId),
+          channel_key: candidate.channel_key || 'email',
+          task_status: candidate.task_status || ''
+        });
+      }
+      PromotionModule.data.task_reports = PromotionModule.data.task_reports || {};
+      var report = PromotionModule.data.task_reports[taskId] || {};
+      report.targets = Array.isArray(report.targets) && report.targets.length ? report.targets : [candidate];
+      report.feedback_logs = report.feedback_logs || [];
+      report.feedback_summary = report.feedback_summary || {};
+      PromotionModule.data.task_reports[taskId] = report;
+      PromotionModule.openFeedbackDialog(taskId, {
+        task: PromotionModule.taskById(taskId),
+        targets: [candidate],
+        customer_id: candidate.customer_id || mailContext.linked_customer_id || '',
+        customer_name: candidate.customer_name || mailContext.linked_customer_name || '',
+        country: candidate.country || mailContext.linked_customer_country || '',
+        contact_id: candidate.contact_id || mailContext.linked_contact_id || '',
+        contact_name: candidate.contact_name || '',
+        contact_email: candidate.contact_email || '',
+        channel_key: 'email',
+        feedback_type: 'interest',
+        next_action: 'followup',
+        feedback_time: this.mailFeedbackDateTimeValue(mailContext.received_at || (mail && (mail.received_at || mail.sent_at)) || ''),
+        feedback_content: this.mailPromotionFeedbackText(mail),
+        source_mail_id: (mail && mail.id) || mailContext.id || '',
+        source_mail_subject: (mail && mail.subject) || mailContext.subject || '',
+        source_mail_from: (mail && mail.from_email) || mailContext.from_email || ''
       });
     },
     previewAttachment: function (attachmentId, name) {
@@ -11790,7 +12232,26 @@
         });
       });
       this.normalizeRichImages(editor);
+      this.normalizeRichLinks(editor);
+      editor.addEventListener('paste', function () {
+        setTimeout(function () {
+          self.normalizeRichLinks(editor);
+          self.rememberRichSelection(editor);
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
+        }, 0);
+      });
       editor.addEventListener('click', function (event) {
+        var link = event.target.closest('a[href]');
+        if (link) {
+          var href = self.normalizeLinkUrl(link.getAttribute('href') || '');
+          if (href) {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(href, '_blank', 'noopener,noreferrer');
+            self.rememberRichSelection(editor);
+            return;
+          }
+        }
         var button = event.target.closest('[data-mail-image-size]');
         if (button) {
           event.preventDefault();
@@ -12053,6 +12514,96 @@
       img.style.height = 'auto';
       img.setAttribute('width', String(width));
     },
+    normalizeLinkUrl: function (url) {
+      url = String(url || '').trim();
+      if (!url) return '';
+      if (/^www\./i.test(url)) url = 'https://' + url;
+      if (/^(https?:\/\/|mailto:|tel:)/i.test(url)) return url;
+      return '';
+    },
+    styleRichLink: function (anchor) {
+      if (!anchor) return;
+      var href = this.normalizeLinkUrl(anchor.getAttribute('href') || anchor.textContent || '');
+      if (!href) {
+        anchor.removeAttribute('href');
+        return;
+      }
+      anchor.setAttribute('href', href);
+      anchor.setAttribute('target', '_blank');
+      anchor.setAttribute('rel', 'noopener noreferrer');
+      var style = anchor.getAttribute('style') || '';
+      if (!/color\s*:/i.test(style)) style += (style && !/;\s*$/.test(style) ? ';' : '') + 'color:#2563eb';
+      if (!/text-decoration\s*:/i.test(style)) style += (style && !/;\s*$/.test(style) ? ';' : '') + 'text-decoration:underline';
+      anchor.setAttribute('style', style);
+    },
+    linkHtml: function (url, label) {
+      var href = this.normalizeLinkUrl(url);
+      if (!href) return esc(label || url || '');
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">' + esc(label || url) + '</a>';
+    },
+    linkifyPlainUrls: function (root) {
+      if (!root || !window.NodeFilter || !document.createTreeWalker) return;
+      var self = this;
+      var nodes = [];
+      var urlRegex = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/ig;
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          var text = node && node.nodeValue ? node.nodeValue : '';
+          if (!urlRegex.test(text)) return NodeFilter.FILTER_REJECT;
+          urlRegex.lastIndex = 0;
+          var parent = node.parentNode;
+          while (parent && parent !== root) {
+            var tag = String(parent.nodeName || '').toLowerCase();
+            if (tag === 'a' || tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+            parent = parent.parentNode;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(function (node) {
+        var text = node.nodeValue || '';
+        var frag = document.createDocumentFragment();
+        var last = 0;
+        text.replace(urlRegex, function (match, url, offset) {
+          if (offset > last) frag.appendChild(document.createTextNode(text.slice(last, offset)));
+          var visible = String(match || '');
+          var trailing = '';
+          while (/[).,;!?，。；！？）]$/.test(visible)) {
+            trailing = visible.slice(-1) + trailing;
+            visible = visible.slice(0, -1);
+          }
+          if (self.normalizeLinkUrl(visible)) {
+            var a = document.createElement('a');
+            a.textContent = visible;
+            a.setAttribute('href', self.normalizeLinkUrl(visible));
+            self.styleRichLink(a);
+            frag.appendChild(a);
+          } else {
+            frag.appendChild(document.createTextNode(match));
+          }
+          if (trailing) frag.appendChild(document.createTextNode(trailing));
+          last = offset + match.length;
+          return match;
+        });
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        if (node.parentNode) node.parentNode.replaceChild(frag, node);
+      });
+    },
+    normalizeRichLinks: function (root) {
+      if (!root || !root.querySelectorAll) return;
+      var self = this;
+      root.querySelectorAll('a').forEach(function (anchor) {
+        self.styleRichLink(anchor);
+      });
+      this.linkifyPlainUrls(root);
+    },
+    prepareRichHtml: function (html) {
+      var wrap = document.createElement('div');
+      wrap.innerHTML = String(html || '');
+      this.normalizeRichLinks(wrap);
+      return wrap.innerHTML;
+    },
     cleanRichHtml: function (editor) {
       if (!editor) return '';
       var clone = editor.cloneNode(true);
@@ -12076,6 +12627,7 @@
       clone.querySelectorAll('[contenteditable]').forEach(function (node) {
         node.removeAttribute('contenteditable');
       });
+      this.normalizeRichLinks(clone);
       return clone.innerHTML.replace(/\u200b/g, '');
     },
     insertRichLink: function (editor) {
@@ -12089,9 +12641,19 @@
         placeholder: 'https://example.com',
         hint: '链接会插入到当前正文编辑位置。',
         onSubmit: function (url) {
+          url = self.normalizeLinkUrl(url);
+          if (!url) return toast('请输入 http://、https://、www.、mailto: 或 tel: 格式的链接。');
           self.restoreRichSelection(editor);
-          document.execCommand('createLink', false, url);
+          var selection = window.getSelection ? window.getSelection() : null;
+          var collapsed = !selection || !selection.rangeCount || selection.getRangeAt(0).collapsed;
+          if (collapsed) {
+            document.execCommand('insertHTML', false, self.linkHtml(url, url));
+          } else {
+            document.execCommand('createLink', false, url);
+            self.normalizeRichLinks(editor);
+          }
           self.rememberRichSelection(editor);
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
         }
       });
     },
@@ -12156,6 +12718,9 @@
     },
     fileKey: function (file) {
       return [file && file.name, file && file.size, file && file.lastModified].join('|');
+    },
+    clipboardFileKey: function (file) {
+      return [file && file.name, file && file.size, file && file.type].join('|');
     },
     isImageFile: function (file) {
       return !!(file && /^image\//i.test(file.type || ''));
@@ -12227,6 +12792,30 @@
         return false;
       });
     },
+    prepareUniqueRichImages: function (fileList) {
+      var files = Array.prototype.slice.call(fileList || []).filter(Boolean);
+      var self = this;
+      var images = [];
+      var seen = new Set();
+      var duplicateCount = 0;
+      return files.reduce(function (chain, file) {
+        return chain.then(function () {
+          return self.resizeImageDataUrl(file).then(function (image) {
+            var key = String(image && image.src || '');
+            if (key && seen.has(key)) {
+              duplicateCount += 1;
+              return;
+            }
+            if (key) seen.add(key);
+            images.push(image);
+          }).catch(function (error) {
+            toast(error.message || '图片插入失败');
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        return { images: images, duplicateCount: duplicateCount };
+      });
+    },
     handleInlineReplyFiles: function (panel, fileList) {
       var files = Array.prototype.slice.call(fileList || []).filter(Boolean);
       if (!panel || !files.length) return;
@@ -12242,10 +12831,14 @@
         if (added) toast('已加入 ' + added + ' 个附件');
       }
       if (imageFiles.length) {
-        imageFiles.reduce(function (chain, file) {
-          return chain.then(function () { return self.insertInlineReplyImageFile(panel, file); });
-        }, Promise.resolve()).then(function () {
-          toast('已插入 ' + imageFiles.length + ' 张图片');
+        var editor = panel.querySelector('[data-inline-editor]');
+        this.prepareUniqueRichImages(imageFiles).then(function (result) {
+          result.images.forEach(function (image) {
+            self.insertNodeAtRichCursor(editor, self.richImageNode(image));
+          });
+          if (result.images.length) {
+            toast('已插入 ' + result.images.length + ' 张图片' + (result.duplicateCount ? '，已忽略 ' + result.duplicateCount + ' 张重复图片' : ''));
+          }
         });
       }
     },
@@ -12398,22 +12991,33 @@
         var editor = document.querySelector('[data-mail-compose-editor]');
         if (editor) {
           this.rememberRichSelection(editor);
-          imageFiles.reduce(function (chain, file) {
-            return chain.then(function () { return self.insertComposeImageFile(file); });
-          }, Promise.resolve()).then(function () {
-            toast('已插入 ' + imageFiles.length + ' 张图片');
+          this.prepareUniqueRichImages(imageFiles).then(function (result) {
+            result.images.forEach(function (image) {
+              self.insertNodeAtRichCursor(editor, self.richImageNode(image));
+            });
+            if (result.images.length) {
+              toast('已插入 ' + result.images.length + ' 张图片' + (result.duplicateCount ? '，已忽略 ' + result.duplicateCount + ' 张重复图片' : ''));
+            }
           });
         }
       }
     },
     filesFromClipboard: function (clipboardData) {
       var files = [];
+      var seen = {};
       if (!clipboardData) return files;
-      Array.prototype.slice.call(clipboardData.files || []).forEach(function (file) { if (file) files.push(file); });
+      function append(file) {
+        if (!file) return;
+        var key = MailModule.clipboardFileKey(file);
+        if (seen[key]) return;
+        seen[key] = true;
+        files.push(file);
+      }
+      Array.prototype.slice.call(clipboardData.files || []).forEach(append);
       Array.prototype.slice.call(clipboardData.items || []).forEach(function (item) {
         if (!item || item.kind !== 'file') return;
         var file = item.getAsFile && item.getAsFile();
-        if (file && !files.some(function (old) { return MailModule.fileKey(old) === MailModule.fileKey(file); })) files.push(file);
+        append(file);
       });
       return files;
     },
@@ -13775,6 +14379,7 @@
     bootstrapLoadingView: '',
     taskReportLoading: {},
     taskExecutionDetailCache: {},
+    feedbackDetailRows: {},
     taskDetailRequests: {},
     signatureHtmlCache: {},
     wizardStep: 0,
@@ -13814,6 +14419,18 @@
     },
     bindEvents: function () {
       var self = this;
+      if (!this.feedbackMoreDelegated) {
+        this.feedbackMoreDelegated = true;
+        document.addEventListener('click', function (event) {
+          var button = event.target && event.target.closest ? event.target.closest('[data-promo-feedback-more]') : null;
+          if (!button) return;
+          event.preventDefault();
+          event.stopPropagation();
+          var taskId = Number(button.getAttribute('data-promo-feedback-more') || self.selectedTaskId || 0);
+          if (self.openFeedbackMoreDialogFresh) self.openFeedbackMoreDialogFresh(taskId);
+          else self.openFeedbackMoreDialog(taskId);
+        }, true);
+      }
       document.querySelector('[data-promo-refresh]')?.addEventListener('click', function () {
         if (self.currentView === 'customer_pool') {
           self.loadPoolView();
@@ -15709,12 +16326,12 @@
     },
     ensureTaskReport: function (taskId) {
       taskId = Number(taskId || 0);
-      if (!taskId || !this.data) return;
+      if (!taskId || !this.data) return Promise.resolve(null);
       this.data.task_reports = this.data.task_reports || {};
-      if (this.data.task_reports[taskId] || this.taskReportLoading[taskId]) return;
+      if (this.data.task_reports[taskId]) return Promise.resolve(this.data.task_reports[taskId]);
+      if (this.taskReportLoading[taskId]) return this.taskReportLoading[taskId];
       var self = this;
-      this.taskReportLoading[taskId] = true;
-      Promise.all([
+      this.taskReportLoading[taskId] = Promise.all([
         post('marketing_task_report', { task_id: taskId }),
         post('marketing_queue_list', { task_id: taskId, unfinished_only: 1 }).catch(function () { return { success: false, data: {} }; })
       ]).then(function (results) {
@@ -15724,15 +16341,18 @@
           var report = (json.data && json.data.report) || {};
           report.queue = (queueJson.success && queueJson.data) ? queueJson.data : { rows: [], status: {} };
           self.data.task_reports[taskId] = report;
-          delete self.taskReportLoading[taskId];
           if (Number(self.selectedTaskId || 0) === taskId) self.renderTaskProperties();
           if ((self.currentView || '') === 'execution') self.renderExecutionCenter();
+          return report;
         }
+        return null;
       }).catch(function (error) {
         console.warn('marketing task report failed', error);
+        return null;
       }).finally(function () {
         delete self.taskReportLoading[taskId];
       });
+      return this.taskReportLoading[taskId];
     },
     taskExecutionStatusText: function (status) {
       var map = { success: '成功', failed: '失败', pending: '待执行', skipped: '已跳过', running: '执行中' };
@@ -15743,13 +16363,513 @@
       var map = { email: '邮件', wechat_group: '微信群', whatsapp_group: 'WhatsApp群', wechat: '微信', whatsapp: 'WhatsApp', phone: '电话', linkedin: 'LinkedIn', offline: '线下拜访' };
       return map[normalized] || channel || '-';
     },
+    feedbackTypeText: function (type) {
+      var map = {
+        interest: '客户有兴趣',
+        quote_request: '要求报价',
+        material_request: '要求资料',
+        sample_request: '要求样品',
+        question: '客户提问',
+        price_high: '反馈价格高',
+        later_follow: '以后再跟进',
+        no_need: '暂不需要',
+        not_relevant: '产品不匹配',
+        unsubscribe: '要求勿扰',
+        complaint: '投诉/负面反馈',
+        other: '其他反馈'
+      };
+      return map[type] || map.other;
+    },
+    feedbackNextActionText: function (value) {
+      var map = { none: '暂不处理', followup: '后续跟进', quote: '创建报价', material: '发送资料', sample: '寄送样品', visit: '安排拜访', dispatch: '生成派工' };
+      return map[value] || map.none;
+    },
+    feedbackRowKey: function (row, prefix) {
+      row = row || {};
+      prefix = prefix || 'feedback';
+      var raw = row.id || row.log_id || [
+        row.task_id || '',
+        row.customer_id || '',
+        row.contact_id || '',
+        row.feedback_time || row.touched_at || row.created_at || '',
+        String(row.feedback_content || '').slice(0, 32)
+      ].join('-');
+      return prefix + '-' + String(raw || Math.random()).replace(/[^a-z0-9_-]/ig, '_');
+    },
+    feedbackContentPreviewHtml: function (row, maxLen, prefix) {
+      row = row || {};
+      maxLen = Math.max(40, Number(maxLen || 120) || 120);
+      var content = String(row.feedback_content || row.content || '').trim();
+      if (!content) return '<span class="promo-feedback-content-empty">-</span>';
+      var key = this.feedbackRowKey(row, prefix);
+      this.feedbackDetailRows[key] = row;
+      var shortText = content.length > maxLen ? content.slice(0, maxLen).replace(/\s+$/g, '') + '…' : content;
+      var button = '<button type="button" class="promo-feedback-detail-btn" data-promo-feedback-detail="' + esc(key) + '" onclick="return window.crmOpenPromotionFeedbackDetail ? window.crmOpenPromotionFeedbackDetail(this) : false;">详情</button>';
+      return '<span class="promo-feedback-content-preview">' + esc(shortText) + '</span>' + button;
+    },
+    bindFeedbackDetailButtons: function (root) {
+      var self = this;
+      root = root || document;
+      root.querySelectorAll('[data-promo-feedback-detail]').forEach(function (button) {
+        if (button.getAttribute('data-feedback-bound') === '1') return;
+        button.setAttribute('data-feedback-bound', '1');
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          var key = button.getAttribute('data-promo-feedback-detail') || '';
+          self.openFeedbackDetailDialog(self.feedbackDetailRows[key] || {});
+        });
+      });
+      root.querySelectorAll('[data-promo-feedback-detail-card]').forEach(function (card) {
+        if (card.getAttribute('data-feedback-card-bound') === '1') return;
+        card.setAttribute('data-feedback-card-bound', '1');
+        var open = function () {
+          var key = card.getAttribute('data-promo-feedback-detail-card') || '';
+          self.openFeedbackDetailDialog(self.feedbackDetailRows[key] || {});
+        };
+        card.addEventListener('dblclick', function (event) {
+          event.preventDefault();
+          open();
+        });
+        card.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          open();
+        });
+      });
+    },
+    openFeedbackDetailDialog: function (row) {
+      row = row || {};
+      var self = this;
+      var feedbackId = Number(row.id || row.log_id || 0);
+      var dialog = document.querySelector('[data-promo-feedback-detail-dialog]');
+      if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.className = 'crm-modal promo-feedback-detail-dialog';
+        dialog.setAttribute('data-promo-feedback-detail-dialog', '');
+        document.body.appendChild(dialog);
+      }
+      var meta = [
+        ['推广任务', row.task_name || row.task_id || '-'],
+        ['客户', row.customer_name || '-'],
+        ['联系人', row.contact_name || '客户级'],
+        ['渠道', this.taskExecutionChannelText(row.channel_key || '-')],
+        ['反馈类型', row.feedback_type_label || this.feedbackTypeText(row.feedback_type || 'other')],
+        ['下一步', row.next_action_label || this.feedbackNextActionText(row.next_action || 'none')],
+        ['状态', row.is_handled ? '已处理' : '待处理'],
+        ['反馈时间', String(row.feedback_time || row.touched_at || row.created_at || '-').slice(0, 16)],
+        ['记录人', row.operator_name || '-']
+      ].map(function (item) {
+        return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>';
+      }).join('');
+      dialog.innerHTML = '<form class="crm-modal-panel promo-feedback-detail-panel">' +
+        '<header class="crm-modal-header"><div><strong class="crm-modal-title">推广反馈详情</strong><small class="crm-modal-subtitle">' + esc(row.customer_name || '-') + '</small></div><button type="button" class="crm-modal-close" data-promo-feedback-detail-close>关闭</button></header>' +
+        '<main class="crm-modal-body promo-feedback-detail-body">' +
+          '<section class="promo-feedback-detail-grid">' + meta + '</section>' +
+          '<section class="promo-feedback-detail-content"><h3>反馈内容</h3><div>' + esc(row.feedback_content || row.content || '-') + '</div></section>' +
+        '</main>' +
+        '<footer class="crm-modal-footer promo-feedback-detail-actions"><span>可在这里修改或删除这条反馈记录。</span><div>' +
+          (feedbackId ? '<button type="button" data-promo-feedback-edit>修改反馈</button><button type="button" class="danger" data-promo-feedback-delete>删除反馈</button>' : '') +
+          '<button type="button" data-promo-feedback-detail-close>关闭</button>' +
+        '</div></footer>' +
+      '</form>';
+      dialog.querySelectorAll('[data-promo-feedback-detail-close]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+        });
+      });
+      var editButton = dialog.querySelector('[data-promo-feedback-edit]');
+      if (editButton) {
+        editButton.addEventListener('click', function () {
+          if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+          self.openFeedbackDialog(Number(row.task_id || self.selectedTaskId || 0), Object.assign({}, row, {
+            feedback_id: feedbackId,
+            task: { id: Number(row.task_id || self.selectedTaskId || 0), task_name: row.task_name || '' }
+          }));
+        });
+      }
+      var deleteButton = dialog.querySelector('[data-promo-feedback-delete]');
+      if (deleteButton) {
+        deleteButton.addEventListener('click', function () {
+          if (!feedbackId) return toast('反馈记录 ID 无效。');
+          if (!window.confirm('确定删除这条客户反馈吗？删除后不会再显示在推广反馈和客户属性里。')) return;
+          post('marketing_feedback_delete', { feedback_id: feedbackId }).then(function (json) {
+            if (!json.success) throw new Error(json.message || '反馈删除失败');
+            if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+            self.afterFeedbackMutation(json.data || {}, Number(row.task_id || self.selectedTaskId || 0), Number(row.customer_id || 0));
+            toast(json.message || '反馈已删除');
+          }).catch(function (error) {
+            toast(error.message || '反馈删除失败');
+          });
+        });
+      }
+      this.safeOpenPromotionDialog(dialog);
+    },
+    promotionFeedbackHtml: function (task, report) {
+      var self = this;
+      report = report || {};
+      var feedbackLogs = report.feedback_logs || [];
+      var summary = report.feedback_summary || {};
+      var byType = summary.by_type || {};
+      var typeBits = Object.keys(byType).sort(function (a, b) { return Number(byType[b] || 0) - Number(byType[a] || 0); }).slice(0, 4).map(function (key) {
+        return self.feedbackTypeText(key) + ' ' + byType[key];
+      }).join(' / ') || '暂无反馈';
+      var previewLimit = 5;
+      var rows = feedbackLogs.slice(0, previewLimit).map(function (row) {
+        return '<tr><td>' + esc(String(row.feedback_time || row.touched_at || row.created_at || '-').slice(0, 16)) + '</td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '客户级') + '</td><td>' + esc(self.taskExecutionChannelText(row.channel_key || '-')) + '</td><td>' + esc(row.feedback_type_label || self.feedbackTypeText(row.feedback_type || 'other')) + '</td><td>' + self.feedbackContentPreviewHtml(row, 80, 'task-feedback') + '</td><td>' + esc(row.next_action_label || self.feedbackNextActionText(row.next_action || 'none')) + '</td><td>' + esc(row.is_handled ? '已处理' : '待处理') + '</td></tr>';
+      }).join('') || '<tr><td colspan="8">暂无客户反馈记录。微信、WhatsApp、邮件回复都可以点“记录反馈”手工补录。</td></tr>';
+      var moreButtonTaskId = Number((task && task.id) || report.task_id || summary.task_id || this.selectedTaskId || 0);
+      var moreButtonKey = '';
+      if (feedbackLogs.length > previewLimit) {
+        this.promotionFeedbackMoreInlineRows = this.promotionFeedbackMoreInlineRows || {};
+        moreButtonKey = 'task_' + (moreButtonTaskId || this.feedbackRowKey(feedbackLogs[0] || {}, 'inline-more-source'));
+        this.promotionFeedbackMoreInlineRows[moreButtonKey] = {
+          task_id: moreButtonTaskId,
+          task: Object.assign({}, task || {}),
+          report: Object.assign({}, report, {
+            feedback_logs: feedbackLogs.slice(),
+            feedback_summary: Object.assign({}, summary || {})
+          })
+        };
+      }
+      var moreButton = feedbackLogs.length > previewLimit ? '<button type="button" data-promo-feedback-more="' + esc(moreButtonTaskId) + '" data-promo-feedback-more-key="' + esc(moreButtonKey) + '" onclick="return window.crmOpenPromotionFeedbackMore ? window.crmOpenPromotionFeedbackMore(this) : false;">查看更多反馈（' + esc(feedbackLogs.length) + ' 条）</button>' : '';
+      return '<details open class="promo-project-detail-fold promo-feedback-block"><summary><span>客户反馈汇总</span><em>' + esc(Number(summary.total || 0)) + ' 条 · 待处理 ' + esc(Number(summary.pending || 0)) + ' · 最近 ' + esc(summary.latest_time || '-') + '</em></summary><div class="promo-project-detail-content">' +
+        '<div class="promo-exec-report-grid">' +
+          '<article><i>💬</i><div><span>反馈总数</span><strong>' + esc(Number(summary.total || 0)) + ' 条</strong><em>' + esc(typeBits) + '</em></div></article>' +
+          '<article><i>⏳</i><div><span>待处理</span><strong>' + esc(Number(summary.pending || 0)) + ' 条</strong><em>已处理 ' + esc(Number(summary.handled || 0)) + ' 条</em></div></article>' +
+        '</div>' +
+        '<div class="promo-task-action-row"><button type="button" class="primary" data-promo-feedback-open="' + esc(task.id || '') + '">记录反馈</button><button type="button" data-promo-feedback-refresh="' + esc(task.id || '') + '">刷新反馈</button>' + moreButton + '</div>' +
+        '<table class="promo-task-console-table"><thead><tr><th>反馈时间</th><th>客户</th><th>联系人</th><th>渠道</th><th>反馈类型</th><th>内容</th><th>下一步</th><th>状态</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '</div></details>';
+    },
+    openFeedbackMoreDialogFresh: function (taskId) {
+      taskId = Number(taskId || this.selectedTaskId || 0);
+      if (!taskId) {
+        var selectedTask = this.taskById ? this.taskById(this.selectedTaskId) : null;
+        taskId = Number((selectedTask && selectedTask.id) || this.selectedTaskId || 0);
+      }
+      if (!taskId) return toast('请先选择推广任务。');
+      this.data = this.data || {};
+      this.data.task_reports = this.data.task_reports || {};
+      var report = this.data.task_reports[taskId] || {};
+      var rows = report.feedback_logs || [];
+      var self = this;
+      if (rows.length) {
+        this.openFeedbackMoreDialog(taskId);
+        return;
+      }
+      var waitDialog = document.querySelector('[data-promo-feedback-more-dialog]');
+      if (!waitDialog) {
+        waitDialog = document.createElement('dialog');
+        waitDialog.className = 'crm-modal promo-feedback-more-dialog';
+        waitDialog.setAttribute('data-promo-feedback-more-dialog', '');
+        document.body.appendChild(waitDialog);
+      }
+      waitDialog.innerHTML = '<form class="crm-modal-panel promo-feedback-more-panel"><header class="crm-modal-header"><div><strong class="crm-modal-title">全部客户反馈</strong><small class="crm-modal-subtitle">正在读取最新反馈记录…</small></div><button type="button" class="crm-modal-close" data-promo-feedback-more-close>关闭</button></header><main class="crm-modal-body promo-feedback-more-body"><div class="crm-empty">正在加载，请稍等。</div></main></form>';
+      waitDialog.querySelectorAll('[data-promo-feedback-more-close]').forEach(function (button) {
+        button.addEventListener('click', function () { if (waitDialog.close) waitDialog.close(); else waitDialog.removeAttribute('open'); });
+      });
+      this.safeOpenPromotionDialog(waitDialog);
+      delete this.data.task_reports[taskId];
+      this.ensureTaskReport(taskId).then(function () {
+        self.openFeedbackMoreDialog(taskId);
+      }).catch(function (error) {
+        waitDialog.innerHTML = '<form class="crm-modal-panel promo-feedback-more-panel"><header class="crm-modal-header"><div><strong class="crm-modal-title">全部客户反馈</strong><small class="crm-modal-subtitle">读取失败</small></div><button type="button" class="crm-modal-close" data-promo-feedback-more-close>关闭</button></header><main class="crm-modal-body promo-feedback-more-body"><div class="crm-empty">' + esc((error && error.message) || '反馈记录读取失败，请刷新后再试。') + '</div></main></form>';
+        waitDialog.querySelectorAll('[data-promo-feedback-more-close]').forEach(function (button) {
+          button.addEventListener('click', function () { if (waitDialog.close) waitDialog.close(); else waitDialog.removeAttribute('open'); });
+        });
+        self.safeOpenPromotionDialog(waitDialog);
+      });
+    },
+    openFeedbackMoreInlineDialog: function (key, taskId) {
+      key = String(key || '');
+      this.promotionFeedbackMoreInlineRows = this.promotionFeedbackMoreInlineRows || {};
+      var cache = key ? this.promotionFeedbackMoreInlineRows[key] : null;
+      var rows = cache && cache.report ? (cache.report.feedback_logs || []) : [];
+      if (rows.length) {
+        this.openFeedbackMoreDialog(Number((cache && cache.task_id) || taskId || this.selectedTaskId || 0), cache);
+        return;
+      }
+      this.openFeedbackMoreDialogFresh(taskId);
+    },
+    openFeedbackMoreDialog: function (taskId, inlineCache) {
+      taskId = Number(taskId || this.selectedTaskId || 0);
+      var self = this;
+      inlineCache = inlineCache || null;
+      var task = (inlineCache && inlineCache.task) || this.findTask(taskId) || {};
+      var report = (inlineCache && inlineCache.report) || ((this.data || {}).task_reports || {})[taskId] || {};
+      var rows = report.feedback_logs || [];
+      var summary = report.feedback_summary || {};
+      var dialog = document.querySelector('[data-promo-feedback-more-dialog]');
+      if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.className = 'crm-modal promo-feedback-more-dialog';
+        dialog.setAttribute('data-promo-feedback-more-dialog', '');
+        document.body.appendChild(dialog);
+      }
+      var body = rows.map(function (row) {
+        return '<tr><td>' + esc(String(row.feedback_time || row.touched_at || row.created_at || '-').slice(0, 16)) + '</td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '客户级') + '</td><td>' + esc(self.taskExecutionChannelText(row.channel_key || '-')) + '</td><td>' + esc(row.feedback_type_label || self.feedbackTypeText(row.feedback_type || 'other')) + '</td><td>' + self.feedbackContentPreviewHtml(row, 160, 'task-feedback-more') + '</td><td>' + esc(row.next_action_label || self.feedbackNextActionText(row.next_action || 'none')) + '</td><td>' + esc(row.is_handled ? '已处理' : '待处理') + '</td></tr>';
+      }).join('') || '<tr><td colspan="8">暂无客户反馈记录。</td></tr>';
+      dialog.innerHTML = '<form class="crm-modal-panel promo-feedback-more-panel">' +
+        '<header class="crm-modal-header"><div><strong class="crm-modal-title">全部客户反馈</strong><small class="crm-modal-subtitle">' + esc(task.task_name || '推广任务') + ' · ' + esc(Number(summary.total || rows.length || 0)) + ' 条 · 待处理 ' + esc(Number(summary.pending || 0)) + '</small></div><button type="button" class="crm-modal-close" data-promo-feedback-more-close>关闭</button></header>' +
+        '<main class="crm-modal-body promo-feedback-more-body"><div class="promo-feedback-more-table-wrap"><table class="promo-task-console-table"><thead><tr><th>反馈时间</th><th>客户</th><th>联系人</th><th>渠道</th><th>反馈类型</th><th>内容</th><th>下一步</th><th>状态</th></tr></thead><tbody>' + body + '</tbody></table></div></main>' +
+        '<footer class="crm-modal-footer promo-feedback-detail-actions"><span>点击每条内容旁边的“详情”可查看完整内容，也可以修改或删除。</span><div><button type="button" data-promo-feedback-more-close>关闭</button></div></footer>' +
+      '</form>';
+      dialog.querySelectorAll('[data-promo-feedback-more-close]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+        });
+      });
+      this.bindFeedbackDetailButtons(dialog);
+      this.safeOpenPromotionDialog(dialog);
+    },
+    safeOpenPromotionDialog: function (dialog) {
+      if (!dialog) return;
+      try {
+        if (dialog.open) return;
+        if (dialog.showModal) dialog.showModal();
+        else dialog.setAttribute('open', 'open');
+      } catch (error) {
+        dialog.setAttribute('open', 'open');
+        dialog.classList.add('crm-modal-fallback-open');
+        try { dialog.scrollIntoView({ block: 'center' }); } catch (ignore) {}
+      }
+    },
+    afterFeedbackMutation: function (data, taskId, customerId) {
+      data = data || {};
+      taskId = Number(taskId || data.task_id || this.selectedTaskId || 0);
+      customerId = Number(customerId || data.customer_id || 0);
+      this.data = this.data || {};
+      this.data.task_reports = this.data.task_reports || {};
+      if (taskId > 0 && data.report) {
+        var oldReport = this.data.task_reports[taskId] || {};
+        var nextReport = data.report || {};
+        nextReport.queue = nextReport.queue || oldReport.queue || { rows: [], status: {} };
+        this.data.task_reports[taskId] = nextReport;
+      } else if (taskId > 0 && data.feedback_logs) {
+        this.data.task_reports[taskId] = this.data.task_reports[taskId] || {};
+        this.data.task_reports[taskId].feedback_logs = data.feedback_logs || [];
+        this.data.task_reports[taskId].feedback_summary = data.feedback_summary || {};
+      }
+      this.feedbackDetailRows = {};
+      this.renderTaskProperties();
+      if (this.currentView === 'execution') this.renderExecutionCenter();
+      if (typeof CustomerModule !== 'undefined' && Number(CustomerModule.currentId || 0) === customerId && CustomerModule.loadCustomerPromotionFeedback) {
+        CustomerModule.attributePromotionFeedback = { loading: true, rows: [], summary: {} };
+        CustomerModule.renderCustomerPromotionFeedbackSection();
+        CustomerModule.loadCustomerPromotionFeedback();
+      }
+    },
+    openFeedbackDialog: function (taskId, preset) {
+      var self = this;
+      preset = preset || {};
+      taskId = Number(taskId || this.selectedTaskId || 0);
+      var feedbackId = Number(preset.feedback_id || preset.id || preset.log_id || 0);
+      var task = this.taskById(taskId) || preset.task || (taskId ? { id: taskId, task_name: preset.task_name || ('推广任务 #' + taskId) } : null);
+      if (!task) return toast('请先选择推广任务。');
+      var report = (((this.data || {}).task_reports || {})[taskId]) || {};
+      var targets = (report.targets || []).slice();
+      if (Array.isArray(preset.targets)) {
+        preset.targets.forEach(function (row) { targets.push(row); });
+      }
+      if (!targets.length) this.ensureTaskReport(taskId);
+      var customerMap = {};
+      targets.forEach(function (row) {
+        var id = Number(row.customer_id || 0);
+        if (!id) return;
+        customerMap[id] = customerMap[id] || { id: id, name: row.customer_name || ('客户 #' + id), code: row.customer_code || '', country: row.country || row.customer_country || '', contacts: [] };
+        if (Number(row.contact_id || 0)) {
+          customerMap[id].contacts.push({ id: Number(row.contact_id || 0), name: row.contact_name || ('联系人 #' + row.contact_id), email: row.email || row.contact_email || '', channel: row.channel_key || '' });
+        }
+      });
+      if (Number(preset.customer_id || 0)) {
+        var presetCustomerId = Number(preset.customer_id || 0);
+        customerMap[presetCustomerId] = customerMap[presetCustomerId] || { id: presetCustomerId, name: preset.customer_name || ('客户 #' + presetCustomerId), code: preset.customer_code || '', country: preset.country || '', contacts: [] };
+        if (Number(preset.contact_id || 0)) {
+          customerMap[presetCustomerId].contacts.push({
+            id: Number(preset.contact_id || 0),
+            name: preset.contact_name || ('联系人 #' + preset.contact_id),
+            email: preset.contact_email || '',
+            channel: preset.channel_key || ''
+          });
+        }
+      }
+      var customers = Object.keys(customerMap).map(function (id) { return customerMap[id]; });
+      if (!customers.length && preset && preset.customer_id) {
+        customers = [{ id: Number(preset.customer_id), name: preset.customer_name || ('客户 #' + preset.customer_id), country: preset.country || '', contacts: [] }];
+      }
+      if (!customers.length) return toast('任务目标还没加载完成，请稍后再点一次。');
+      var now = new Date();
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      var nowText = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+      var presetTime = String(preset.feedback_time || '').trim().replace(' ', 'T').slice(0, 16);
+      var feedbackTimeValue = presetTime || nowText;
+      var customerOptions = customers.map(function (c) {
+        return '<option value="' + esc(c.id) + '">' + esc(c.name) + (c.code ? ' · ' + esc(c.code) : '') + (c.country ? ' · ' + esc(c.country) : '') + '</option>';
+      }).join('');
+      var dialog = document.querySelector('[data-promo-feedback-dialog]');
+      if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.className = 'crm-modal promo-feedback-dialog';
+        dialog.setAttribute('data-promo-feedback-dialog', '');
+        document.body.appendChild(dialog);
+      }
+      var typeOptions = Object.keys({
+        interest: 1, quote_request: 1, material_request: 1, sample_request: 1, question: 1, price_high: 1, later_follow: 1, no_need: 1, not_relevant: 1, unsubscribe: 1, complaint: 1, other: 1
+      }).map(function (key) { return '<option value="' + esc(key) + '">' + esc(self.feedbackTypeText(key)) + '</option>'; }).join('');
+      var channelOptions = [
+        ['email','邮件'], ['wechat','微信个人'], ['wechat_group','微信群'], ['whatsapp','WhatsApp个人'], ['whatsapp_group','WhatsApp群'], ['phone','电话'], ['linkedin','LinkedIn'], ['offline','线下/拜访'], ['other','其他']
+      ].map(function (item) { return '<option value="' + esc(item[0]) + '">' + esc(item[1]) + '</option>'; }).join('');
+      var nextOptions = ['none','followup','quote','material','sample','visit','dispatch'].map(function (key) { return '<option value="' + esc(key) + '">' + esc(self.feedbackNextActionText(key)) + '</option>'; }).join('');
+      dialog.innerHTML = '<form class="crm-modal-panel promo-feedback-panel" data-promo-feedback-form>' +
+        '<header class="crm-modal-header promo-feedback-head"><div><strong class="crm-modal-title">' + (feedbackId ? '修改客户反馈' : '记录客户反馈') + '</strong><small class="crm-modal-subtitle">' + esc(task.task_name || '-') + '</small></div><button type="button" class="crm-modal-close" data-promo-feedback-close>关闭</button></header>' +
+        '<main class="crm-modal-body promo-feedback-body">' +
+          '<section class="promo-feedback-hero">' +
+            '<div><b>把客户回复沉淀到推广任务</b><span>邮件、微信、WhatsApp、电话和线下反馈都记录在这里，后续可汇总查看。</span></div>' +
+            '<em>推广反馈</em>' +
+          '</section>' +
+          '<section class="promo-feedback-layout">' +
+            '<div class="promo-feedback-card">' +
+              '<h3>客户与联系人</h3>' +
+              '<div class="promo-feedback-grid">' +
+                '<label class="crm-modal-field"><span>国家 / 地区模糊查找</span><input type="search" data-promo-feedback-country-search placeholder="例如：菲律宾 / PH / Saudi"></label>' +
+                '<label class="crm-modal-field"><span>客户模糊查找</span><input type="search" data-promo-feedback-customer-search placeholder="客户名 / 客户代码"></label>' +
+                '<label class="crm-modal-field wide"><span>客户</span><select name="customer_id" data-promo-feedback-customer>' + customerOptions + '</select></label>' +
+                '<div class="promo-feedback-customer-hint wide" data-promo-feedback-customer-hint></div>' +
+                '<label class="crm-modal-field wide"><span>联系人</span><select name="contact_id" data-promo-feedback-contact><option value="">客户级反馈</option></select></label>' +
+                '<label class="crm-modal-field"><span>反馈渠道</span><select name="channel_key">' + channelOptions + '</select></label>' +
+                '<label class="crm-modal-field"><span>反馈时间</span><input type="datetime-local" name="feedback_time" value="' + esc(feedbackTimeValue) + '"></label>' +
+              '</div>' +
+            '</div>' +
+            '<div class="promo-feedback-card">' +
+              '<h3>反馈判断</h3>' +
+              '<div class="promo-feedback-grid">' +
+                '<label class="crm-modal-field"><span>反馈类型</span><select name="feedback_type">' + typeOptions + '</select></label>' +
+                '<label class="crm-modal-field"><span>下一步动作</span><select name="next_action">' + nextOptions + '</select></label>' +
+                '<label class="promo-feedback-check wide"><input type="checkbox" name="is_handled" value="1"><span><b>已处理完成</b><em>勾选后此反馈进入已处理统计</em></span></label>' +
+              '</div>' +
+            '</div>' +
+            '<div class="promo-feedback-card promo-feedback-content-card">' +
+              '<h3>反馈内容</h3>' +
+              '<label class="crm-modal-field wide"><span>客户实际回复 / 业务备注</span><textarea name="feedback_content" rows="6" placeholder="例如：客户微信回复对 24° 版本有兴趣，需要报价和 IES；或客户说目前不需要，三个月后再跟进。"></textarea></label>' +
+            '</div>' +
+          '</section>' +
+        '</main>' +
+        '<footer class="crm-modal-footer promo-feedback-foot"><span>' + (feedbackId ? '保存后会更新这条推广反馈记录。' : '保存后会写入推广反馈、客户日志和客户时间轴。') + '</span><div><button type="button" data-promo-feedback-close>取消</button><button type="submit" class="primary">' + (feedbackId ? '保存修改' : '保存反馈') + '</button></div></footer>' +
+      '</form>';
+      var customerSelect = dialog.querySelector('[data-promo-feedback-customer]');
+      var contactSelect = dialog.querySelector('[data-promo-feedback-contact]');
+      var countrySearch = dialog.querySelector('[data-promo-feedback-country-search]');
+      var customerSearch = dialog.querySelector('[data-promo-feedback-customer-search]');
+      var customerHint = dialog.querySelector('[data-promo-feedback-customer-hint]');
+      var searchNormalize = function (value) {
+        return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      };
+      var customerOptionLabel = function (c) {
+        return (c.name || ('客户 #' + c.id)) + (c.code ? ' · ' + c.code : '') + (c.country ? ' · ' + c.country : '');
+      };
+      var setSelectValueIfExists = function (select, value) {
+        value = String(value || '');
+        var ok = false;
+        Array.prototype.forEach.call(select.options || [], function (option) {
+          if (String(option.value) === value) ok = true;
+        });
+        if (ok) select.value = value;
+        return ok;
+      };
+      var filteredCustomers = customers.slice();
+      var fillContacts = function () {
+        var c = customerMap[Number(customerSelect.value || 0)] || { contacts: [] };
+        var seen = {};
+        var contactRows = (c.contacts || []).filter(function (item) {
+          if (!item.id || seen[item.id]) return false;
+          seen[item.id] = true;
+          return true;
+        });
+        contactSelect.innerHTML = '<option value="">客户级反馈</option>' + contactRows.map(function (item) {
+          return '<option value="' + esc(item.id) + '">' + esc(item.name) + (item.email ? ' · ' + esc(item.email) : '') + '</option>';
+        }).join('');
+      };
+      var renderCustomerOptions = function (preferredId) {
+        var countryTerm = searchNormalize(countrySearch ? countrySearch.value : '');
+        var customerTerm = searchNormalize(customerSearch ? customerSearch.value : '');
+        filteredCustomers = customers.filter(function (c) {
+          var countryText = searchNormalize([c.country || '', c.country_code || ''].join(' '));
+          var customerText = searchNormalize([c.name || '', c.code || '', c.id || ''].join(' '));
+          return (!countryTerm || countryText.indexOf(countryTerm) >= 0) && (!customerTerm || customerText.indexOf(customerTerm) >= 0);
+        });
+        customerSelect.innerHTML = filteredCustomers.map(function (c) {
+          return '<option value="' + esc(c.id) + '">' + esc(customerOptionLabel(c)) + '</option>';
+        }).join('');
+        customerSelect.disabled = !filteredCustomers.length;
+        if (customerHint) {
+          var total = customers.length;
+          customerHint.textContent = filteredCustomers.length
+            ? ('已筛出 ' + filteredCustomers.length + ' / ' + total + ' 个客户；国家和客户名都支持模糊输入。')
+            : ('没有匹配客户；请换一个国家或客户关键词。当前任务共有 ' + total + ' 个客户。');
+        }
+        if (filteredCustomers.length) {
+          if (!setSelectValueIfExists(customerSelect, preferredId || customerSelect.value)) {
+            customerSelect.value = String(filteredCustomers[0].id);
+          }
+        }
+        fillContacts();
+      };
+      customerSelect.addEventListener('change', fillContacts);
+      [countrySearch, customerSearch].forEach(function (input) {
+        if (!input) return;
+        input.addEventListener('input', function () {
+          renderCustomerOptions(customerSelect.value);
+        });
+      });
+      renderCustomerOptions(Number(preset.customer_id || 0) ? String(Number(preset.customer_id || 0)) : '');
+      if (Number(preset.contact_id || 0)) setSelectValueIfExists(contactSelect, String(Number(preset.contact_id || 0)));
+      var formNode = dialog.querySelector('[data-promo-feedback-form]');
+      if (preset.channel_key && formNode.channel_key) formNode.channel_key.value = preset.channel_key;
+      if (preset.feedback_type && formNode.feedback_type) formNode.feedback_type.value = preset.feedback_type;
+      if (preset.next_action && formNode.next_action) formNode.next_action.value = preset.next_action;
+      if ((preset.feedback_content || preset.content) && formNode.feedback_content) formNode.feedback_content.value = preset.feedback_content || preset.content || '';
+      if (preset.is_handled && formNode.is_handled) formNode.is_handled.checked = true;
+      dialog.querySelectorAll('[data-promo-feedback-close]').forEach(function (button) {
+        button.addEventListener('click', function () { if (dialog.close) dialog.close(); else dialog.removeAttribute('open'); });
+      });
+      formNode.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var form = event.currentTarget;
+        var payload = {
+          task_id: taskId,
+          customer_id: form.customer_id.value,
+          contact_id: form.contact_id.value,
+          channel_key: form.channel_key.value,
+          feedback_type: form.feedback_type.value,
+          feedback_time: form.feedback_time.value,
+          next_action: form.next_action.value,
+          feedback_content: form.feedback_content.value,
+          is_handled: form.is_handled.checked ? 1 : 0,
+          source_mail_id: preset.source_mail_id || '',
+          source_mail_subject: preset.source_mail_subject || '',
+          source_mail_from: preset.source_mail_from || ''
+        };
+        var action = feedbackId ? 'marketing_feedback_update' : 'marketing_feedback_save';
+        if (feedbackId) payload.feedback_id = feedbackId;
+        post(action, payload).then(function (json) {
+          if (!json.success) throw new Error(json.message || (feedbackId ? '反馈修改失败' : '反馈保存失败'));
+          if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+          self.afterFeedbackMutation(json.data || {}, taskId, Number(payload.customer_id || 0));
+          toast(json.message || (feedbackId ? '反馈已修改' : '反馈已保存'));
+        }).catch(function (error) {
+          toast(error.message || (feedbackId ? '反馈修改失败' : '反馈保存失败'));
+        });
+      });
+      if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', 'open');
+    },
     taskExecutionReportHtml: function (task) {
       var self = this;
       var taskId = Number(task.id || 0);
       var report = (((this.data || {}).task_reports || {})[taskId]) || {};
       var fallbackLogs = ((this.data && this.data.logs) || []).filter(function (row) { return Number(row.task_id || 0) === taskId; });
       var targets = report.targets || [];
-      var logs = report.logs || fallbackLogs;
+      var logs = (report.logs || fallbackLogs).filter(function (row) { return String(row.action_key || '') !== 'customer_feedback'; });
       var rows = [];
       var logCoverage = {};
       logs.forEach(function (log) {
@@ -15832,6 +16952,7 @@
         '</section>';
     },
     renderTaskProperties: function () {
+      var self = this;
       var box = document.querySelector('[data-promo-task-properties]');
       if (!box) return;
       var task = this.taskById(this.selectedTaskId);
@@ -15847,7 +16968,7 @@
       var risk = this.parseTaskJson(task, 'risk_summary_json');
       var report = (((this.data || {}).task_reports || {})[Number(task.id || 0)]) || {};
       var targets = report.targets || [];
-      var logs = report.logs || ((this.data && this.data.logs) || []).filter(function (row) { return Number(row.task_id || 0) === Number(task.id || 0); });
+      var logs = (report.logs || ((this.data && this.data.logs) || []).filter(function (row) { return Number(row.task_id || 0) === Number(task.id || 0); })).filter(function (row) { return String(row.action_key || '') !== 'customer_feedback'; });
       var queue = report.queue || { rows: [], status: {} };
       var queueRows = queue.rows || [];
       var queueStatus = queue.status || {};
@@ -15944,6 +17065,7 @@
       var scheduleMetrics = [['执行方式', cnStatus(task.schedule_type || schedule.schedule_type || 'manual')], ['首批时间', queueStatus.first_planned_time || task.scheduled_at || '-'], ['待发送', pendingQueue], ['已发送', sentQueue]];
       var mailRuleHtml = '<article><header><strong>邮件自动发送</strong><span>邮箱、队列与发送上限</span></header><div class="promo-task-rule-list"><p><span>发件邮箱规则</span><b>' + esc(mailRuleText) + '</b></p><p><span>发件邮箱数量</span><b>' + esc(mailAccountCount) + '</b></p><p><span>邮件目标</span><b>' + esc(emailTargetCount) + '</b></p><p><span>正式队列</span><b>' + esc(queueTotal) + '</b></p><p><span>无邮箱跳过</span><b>' + esc(noEmailSkipped) + '</b></p><p><span>重复跳过</span><b>' + esc(duplicateEmailSkipped) + '</b></p><p><span>真无邮箱客户</span><b>' + esc(trueNoEmailCustomers) + '</b></p><p><span>每小时 / 每日上限</span><b>' + esc(sendRule.hourly_limit || sendRule.per_hour_limit || '-') + ' / ' + esc(sendRule.daily_limit || sendRule.per_day_limit || '-') + '</b></p></div></article>';
       var manualRuleHtml = '<article><header><strong>线下人工执行</strong><span>只统计还需要人工处理的目标</span></header><div class="promo-task-rule-list"><p><span>人工目标</span><b>' + esc(manualTargetCount) + '</b></p><p><span>邮件转人工</span><b>' + esc(manualEmailFallbackPending) + '</b></p><p><span>无邮箱 / 重复</span><b>' + esc(manualNoEmailPending) + ' / ' + esc(manualDuplicatePending) + '</b></p><p><span>群推广已完成</span><b>' + esc(manualGroupDone) + '</b></p><p><span>执行人</span><b>' + esc((sendRule.offline_owner_ids || []).length || sendRule.offline_executor_rule || sendRule.executor_rule || '负责人') + '</b></p><p><span>人工待办</span><b>' + esc(manualPending) + '</b></p></div></article>';
+      var feedbackHtml = this.promotionFeedbackHtml(task, report);
       box.innerHTML =
         '<section class="promo-project-overview ' + esc(statusClass) + '"><div class="promo-project-overview-main"><span>推广任务 #' + esc(task.id) + '</span><h3>' + esc(task.task_name || '未命名推广任务') + '</h3><p><b>' + esc(this.taskStatusText(task.task_status)) + '</b><em>' + esc(cnChannel(task.channel_key || task.campaign_type || '-')) + '</em><em>' + esc(scheduleText) + '</em></p><small>' + esc(attention) + '</small></div><aside>' +
           [['目标客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['邮件队列', queueTotal], ['人工待办', manualPending]].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') +
@@ -15955,7 +17077,28 @@
         '<details class="promo-project-detail-fold"><summary><span>查看完整时间计划与队列状态</span><em>待发送 ' + esc(pendingQueue) + ' · 失败 ' + esc(failedQueue) + ' · 待重试 ' + esc(retryQueue) + '</em></summary><div class="promo-project-detail-content"><div class="promo-task-queue-grid">' +
           [['执行方式', cnStatus(task.schedule_type || schedule.schedule_type || 'manual')], ['国家工作时间', countryWorkTime], ['第一批计划时间', queueStatus.first_planned_time || task.scheduled_at || '-'], ['最后一批计划时间', queueStatus.last_planned_time || '-'], ['时区未知', queueStatus.unknown_timezone || 0], ['待发送', pendingQueue], ['已发送', sentQueue], ['失败', failedQueue], ['待重试', retryQueue]].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') +
         '</div></div></details>' +
+        feedbackHtml +
         '<details class="promo-project-detail-fold"><summary><span>查看最近执行日志</span><em>最近 5 条</em></summary><div class="promo-project-detail-content"><table class="promo-task-console-table"><thead><tr><th>时间</th><th>动作</th><th>客户</th><th>执行人</th><th>结果</th></tr></thead><tbody>' + recentLogs + '</tbody></table></div></details>';
+      box.querySelectorAll('[data-promo-feedback-open]').forEach(function (button) {
+        button.addEventListener('click', function () { self.openFeedbackDialog(Number(button.getAttribute('data-promo-feedback-open') || task.id || 0)); });
+      });
+      box.querySelectorAll('[data-promo-feedback-refresh]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var id = Number(button.getAttribute('data-promo-feedback-refresh') || task.id || 0);
+          if (!id) return;
+          delete self.data.task_reports[id];
+          self.ensureTaskReport(id);
+          self.renderTaskProperties();
+        });
+      });
+      box.querySelectorAll('[data-promo-feedback-more]').forEach(function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.openFeedbackMoreDialogFresh(Number(button.getAttribute('data-promo-feedback-more') || task.id || self.selectedTaskId || 0));
+        });
+      });
+      this.bindFeedbackDetailButtons(box);
     },
     renderExecutionCenter: function () {
       var self = this;
@@ -16122,8 +17265,63 @@
           return '<tr class="' + active + '" data-promo-exec-select data-exec-type="failure" data-exec-id="' + esc(row.id) + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || row.chat_group_name || '客户级') + '</td><td>' + esc(cnChannel(row.channel_key || '-')) + '</td><td>' + esc(cnStatus(row.target_status || '-')) + '</td><td>' + esc(row.failure_reason || '未记录') + '</td><td><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="retry">重试</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="skip">跳过</button><button type="button" data-promo-failure="' + esc(row.id) + '" data-promo-failure-mode="manual">转人工</button></td></tr>';
         }).join('') : '<tr><td colspan="6">暂无失败记录。</td></tr>';
         box.innerHTML = '<section class="promo-failure-reason-grid">' + reasonHtml + '</section><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>客户</th><th>联系人 / 群名</th><th>渠道</th><th>状态</th><th>失败原因</th><th>处理</th></tr></thead><tbody>' + failureRows + '</tbody></table></div>' + executionPagerHtml(failurePager, '失败记录');
+      } else if (tab === 'feedback') {
+        var feedbackMap = {};
+        var decorateFeedback = function (row) {
+          var detail = {};
+          try { detail = typeof row.detail_json === 'string' ? JSON.parse(row.detail_json || '{}') : (row.detail || {}); } catch (error) { detail = {}; }
+          return Object.assign({}, row, {
+            feedback_time: row.feedback_time || detail.feedback_time || row.touched_at || row.created_at || '',
+            feedback_type: row.feedback_type || detail.feedback_type || 'other',
+            feedback_type_label: row.feedback_type_label || detail.feedback_type_label || self.feedbackTypeText(detail.feedback_type || 'other'),
+            feedback_content: row.feedback_content || detail.feedback_content || detail.content || '',
+            next_action: row.next_action || detail.next_action || 'none',
+            next_action_label: row.next_action_label || detail.next_action_label || self.feedbackNextActionText(detail.next_action || 'none'),
+            is_handled: Number(row.is_handled || detail.is_handled || (row.result_status === 'handled' ? 1 : 0))
+          });
+        };
+        ((this.data && this.data.logs) || []).forEach(function (row) {
+          if (String(row.action_key || '') !== 'customer_feedback') return;
+          feedbackMap['log-' + (row.id || Math.random())] = decorateFeedback(row);
+        });
+        Object.keys(reports).forEach(function (taskId) {
+          ((reports[taskId] && reports[taskId].feedback_logs) || []).forEach(function (row) {
+            feedbackMap['fb-' + (row.id || (taskId + '-' + row.customer_id + '-' + row.touched_at))] = decorateFeedback(row);
+          });
+        });
+        var feedbackRows = Object.keys(feedbackMap).map(function (key) { return feedbackMap[key]; }).sort(function (a, b) {
+          return String(b.feedback_time || '').localeCompare(String(a.feedback_time || ''));
+        });
+        var feedbackCounts = feedbackRows.reduce(function (acc, row) {
+          acc.total += 1;
+          if (row.is_handled) acc.handled += 1; else acc.pending += 1;
+          var type = row.feedback_type || 'other';
+          acc.byType[type] = (acc.byType[type] || 0) + 1;
+          return acc;
+        }, { total: 0, pending: 0, handled: 0, byType: {} });
+        var feedbackStats = [
+          ['反馈总数', feedbackCounts.total],
+          ['待处理', feedbackCounts.pending],
+          ['已处理', feedbackCounts.handled],
+          ['要报价', feedbackCounts.byType.quote_request || 0],
+          ['有兴趣', feedbackCounts.byType.interest || 0]
+        ].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('');
+        var feedbackPager = paginateExecutionRows(feedbackRows);
+        var feedbackBody = feedbackPager.rows.length ? feedbackPager.rows.map(function (row) {
+          var active = self.selectedExecution && self.selectedExecution.type === 'feedback' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
+          return '<tr class="' + active + '" data-promo-exec-select data-exec-type="feedback" data-exec-id="' + esc(row.id || '') + '" data-exec-task="' + esc(row.task_id || '') + '"><td>' + esc(String(row.feedback_time || '-').slice(0, 16)) + '</td><td>' + esc(row.task_name || '-') + '</td><td>' + esc(row.customer_name || '-') + '</td><td>' + esc(row.contact_name || '客户级') + '</td><td>' + esc(self.taskExecutionChannelText(row.channel_key || '-')) + '</td><td>' + esc(row.feedback_type_label || self.feedbackTypeText(row.feedback_type || 'other')) + '</td><td>' + self.feedbackContentPreviewHtml(row, 160, 'exec-feedback') + '</td><td>' + esc(row.next_action_label || self.feedbackNextActionText(row.next_action || 'none')) + '</td><td>' + esc(row.is_handled ? '已处理' : '待处理') + '</td></tr>';
+        }).join('') : '<tr><td colspan="9">暂无客户反馈。选择一个推广任务后，可在任务属性页点击“记录反馈”。</td></tr>';
+        box.innerHTML = '<section class="promo-exec-stat-grid">' + feedbackStats + '</section><div class="promo-task-action-row"><button type="button" class="primary" data-promo-feedback-open="' + esc(this.selectedTaskId || '') + '">记录当前任务反馈</button></div><div class="promo-exec-table-wrap"><table class="promo-task-console-table promo-exec-table"><thead><tr><th>反馈时间</th><th>任务</th><th>客户</th><th>联系人</th><th>渠道</th><th>类型</th><th>反馈内容</th><th>下一步</th><th>状态</th></tr></thead><tbody>' + feedbackBody + '</tbody></table></div>' + executionPagerHtml(feedbackPager, '客户反馈');
+        box.querySelectorAll('[data-promo-feedback-open]').forEach(function (button) {
+          button.addEventListener('click', function () {
+            var taskId = Number(button.getAttribute('data-promo-feedback-open') || self.selectedTaskId || 0);
+            if (!taskId) return toast('请先选择一个推广任务。');
+            self.openFeedbackDialog(taskId);
+          });
+        });
+        self.bindFeedbackDetailButtons(box);
       } else {
-        var logs = (this.data && this.data.logs) || [];
+        var logs = ((this.data && this.data.logs) || []).filter(function (row) { return String(row.action_key || '') !== 'customer_feedback'; });
         var logPager = paginateExecutionRows(logs);
         var logRows = logPager.rows.length ? logPager.rows.map(function (row) {
           var active = self.selectedExecution && self.selectedExecution.type === 'log' && Number(self.selectedExecution.id) === Number(row.id) ? ' active' : '';
@@ -16133,7 +17331,7 @@
       }
       box.querySelectorAll('[data-promo-exec-select]').forEach(function (row) {
         row.addEventListener('click', function (event) {
-          if (event.target && event.target.closest('input')) return;
+          if (event.target && event.target.closest('input, button, a, select, textarea')) return;
           self.selectedExecution = {
             type: row.getAttribute('data-exec-type') || '',
             id: Number(row.getAttribute('data-exec-id') || 0),
@@ -17230,7 +18428,7 @@
 	          '<span class="mail-toolbar-group"><button type="button" data-promo-rich-link title="插入链接">链接</button><button type="button" data-promo-rich-image title="插入图片">图片</button><button type="button" data-promo-rich-signature title="插入签名">签名</button></span>' +
 	          '<span class="mail-toolbar-group promo-toolbar-colors"><button type="button" data-promo-rich-color="#111827" title="黑色"><i style="background:#111827"></i></button><button type="button" data-promo-rich-color="#dc2626" title="红色"><i style="background:#dc2626"></i></button><button type="button" data-promo-rich-color="#2563eb" title="蓝色"><i style="background:#2563eb"></i></button><button type="button" data-promo-rich-color="#059669" title="绿色"><i style="background:#059669"></i></button></span>' +
 	          '<span class="mail-toolbar-group"><label title="字号">字号<select data-promo-font-size><option value="">默认</option><option value="12px">12</option><option value="13px">13</option><option value="14px">14</option><option value="16px">16</option><option value="18px">18</option></select></label></span>' +
-	          '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + (draft.mail_body_html || '<p><br></p>') + '</div><section class="promo-compose-var-block promo-compose-inline-vars"><strong>变量插入</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-mail-test-row promo-mail-test-inline"><label><span>测试收件人</span><input type="email" data-promo-test-email value="' + currentEmail + '" placeholder="输入自己的邮箱"></label><button type="button" class="primary" data-promo-test-send>发送测试邮件</button></section><p class="promo-mail-test-note">测试邮件只发到上面的测试收件人，不会触发正式推广队列。</p></section>' +
+	          '</div><div class="mail-compose-editor mail-rich-editor promo-rich-editor" contenteditable="true" data-promo-wizard-editor>' + MailModule.prepareRichHtml(draft.mail_body_html || '<p><br></p>') + '</div><section class="promo-compose-var-block promo-compose-inline-vars"><strong>变量插入</strong><div class="promo-compose-var-grid">' + variableButtons + '</div></section><section class="promo-mail-test-row promo-mail-test-inline"><label><span>测试收件人</span><input type="email" data-promo-test-email value="' + currentEmail + '" placeholder="输入自己的邮箱"></label><button type="button" class="primary" data-promo-test-send>发送测试邮件</button></section><p class="promo-mail-test-note">测试邮件只发到上面的测试收件人，不会触发正式推广队列。</p></section>' +
 	          '<aside class="promo-compose-tools"><details class="promo-compose-tool-block" open><summary>模板</summary><label><span>模板</span><select data-wizard-field="template_key">' + this.templateOptions(draft) + '</select></label></details><details class="promo-compose-tool-block" open><summary>签名</summary><label><span>签名</span><select data-wizard-field="signature_key"><option value="personal"' + (draft.signature_key === 'personal' ? ' selected' : '') + '>个人签名</option><option value="company"' + (draft.signature_key === 'company' ? ' selected' : '') + '>公司统一签名</option><option value="none"' + (draft.signature_key === 'none' ? ' selected' : '') + '>不插入签名</option></select></label><button type="button" data-promo-rich-signature>插入签名</button></details><details class="promo-compose-tool-block promo-compose-attach-block" open><summary>附件</summary><label><span>附件方式</span><select data-wizard-field="attachment_mode"><option value="none"' + (draft.attachment_mode === 'none' ? ' selected' : '') + '>不添加</option><option value="material"' + (draft.attachment_mode === 'material' ? ' selected' : '') + '>附加资料包</option><option value="quote"' + (draft.attachment_mode === 'quote' ? ' selected' : '') + '>附加报价文件</option><option value="manual"' + (draft.attachment_mode === 'manual' ? ' selected' : '') + '>登记手动附件</option></select></label><label class="visit-file-drop promo-attachment-drop" data-promo-attachment-drop><input type="file" multiple data-promo-attachment-input><b>拖入附件</b><em>或点击选择文件</em></label><div class="promo-compose-list" data-promo-attachment-list></div><button type="button" data-promo-attachment-manual>登记手动附件</button></details><details class="promo-compose-tool-block promo-compose-datasheet-block" open><summary>资料包</summary><label><span>资料包</span><input data-wizard-field="material_package" value="' + esc(draft.material_package || '') + '" placeholder="资料包/报价附件 ID"></label><div class="promo-datasheet-row"><input data-promo-datasheet-model placeholder="输入型号/资料编号"><button type="button" data-promo-datasheet-search>获取</button></div><div class="promo-compose-list" data-promo-datasheet-results></div><div class="promo-compose-list" data-promo-datasheet-picked></div><section class="promo-compose-tool-actions"><button type="button" data-promo-material-attach>使用资料包</button><button type="button" data-promo-material-open>打开资料模块</button></section></details></aside></section>' +
 	          '</section>';
 	      }
@@ -17494,7 +18692,16 @@
       var contactCustomerSet = {};
       targets.contacts.forEach(function (row) { contactCustomerSet[Number(row.customer_id)] = true; });
       var customerFallbacks = targets.customers.filter(function (row) { return !contactCustomerSet[Number(row.id)]; });
-      var sourceItems = (targets.chat_groups || []).concat(targets.contacts).concat(customerFallbacks);
+      var requestedChannel = this.normalizePromotionChannel(draft.channel_key || draft.campaign_type || '');
+      var preferencePlan = ['preference','customer_preference','auto_preference'].indexOf(requestedChannel) >= 0;
+      var sourceItems = [];
+      if (this.isGroupPromotionChannel(requestedChannel)) {
+        sourceItems = (targets.chat_groups || []);
+      } else if (preferencePlan) {
+        sourceItems = targets.customers || [];
+      } else {
+        sourceItems = targets.contacts.concat(customerFallbacks);
+      }
       var self = this;
       var items = sourceItems.map(function (row) {
         var customer = customerMap[Number(row.customer_id || row.id)] || row;
@@ -18250,8 +19457,9 @@
         if (!this.resolveWizardAudienceCustomers(draft).length && !hasSelectedContacts) return '当前客户范围没有可用客户，请重新选择分组或筛选条件。';
       }
       if (step === 3 && !String(draft.channel_key || '').trim()) return '请选择推广渠道。';
-      if (step === 4 && (draft.campaign_type === 'email' || ['email','edm','mail'].indexOf(String(draft.channel_key || '').toLowerCase()) >= 0) && (!String(draft.mail_subject || '').trim() || !String(draft.mail_body_html || '').trim())) return '邮件推广必须填写主题和正文。';
-      if (step === 4 && ['preference','customer_preference','auto_preference'].indexOf(String(draft.channel_key || '').toLowerCase()) >= 0 && !String(draft.mail_body_html || '').trim()) return '按客户偏好推广必须填写邮件正文/人工话术。';
+      var validationChannel = this.normalizePromotionChannel(draft.channel_key || draft.campaign_type || '');
+      if (step === 4 && this.isEmailPromotionChannel(validationChannel) && (!String(draft.mail_subject || '').trim() || !String(draft.mail_body_html || '').trim())) return '邮件推广必须填写主题和正文。';
+      if (step === 4 && ['preference','customer_preference','auto_preference'].indexOf(validationChannel) >= 0 && !String(draft.mail_body_html || '').trim()) return '按客户偏好推广必须填写邮件正文/人工话术。';
       if (step === 6 && (draft.schedule_type === 'scheduled' || draft.schedule_type === 'auto') && !String(draft.scheduled_at || '').trim()) return '定时或自动执行必须设置开始时间。';
       if (step === 7 && draft.blacklist_policy === 'block_task') {
         var blockedTargets = this.resolveWizardTargets(draft).skipped || [];
@@ -18407,7 +19615,7 @@
       this.previewMailIndex = index;
       var item = mailItems[index] || {};
       var subject = this.renderWizardTemplate(draft.mail_subject || '未填写邮件主题', item, draft);
-      var body = this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft);
+      var body = MailModule.prepareRichHtml(this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft));
       var executor = this.mailExecutorLabel(item);
       var currentEmail = this.previewTestEmail || (state.user && state.user.email) || '';
       var previewHint = item._sample_preview ? '当前没有邮件人员，先用示例称呼预览；选定客户后会自动按人员展开。' : '按人员逐封预览，不需要先生成正式队列；到最后一封后可继续回到第一封。';
@@ -18455,7 +19663,7 @@
         test_email: testEmail,
         mail_account_id: item.account_id || '',
         subject: this.renderWizardTemplate(draft.mail_subject || '', item, draft),
-        body_html: this.renderWizardTemplate(draft.mail_body_html || '', item, draft),
+        body_html: MailModule.prepareRichHtml(this.renderWizardTemplate(draft.mail_body_html || '', item, draft)),
         customer_id: item.customer_id || '',
         customer_name: item.customer_name || '',
         contact_id: item.contact_id || '',
@@ -18705,12 +19913,16 @@
 	        self.taskFilter = 'all';
 	        self.saveState();
 	        var afterSave = function () {
-	          toast(options.queue ? '推广项目已生成，执行队列已创建，未自动发送。' : (targetStatus === 'draft' ? '推广项目草稿已保存' : '推广项目已保存为已计划'));
+	          var savedChannel = self.normalizePromotionChannel(draft.channel_key || draft.campaign_type || '');
+	          var mailQueueAllowed = ['email','preference','customer_preference','auto_preference'].indexOf(savedChannel) >= 0;
+	          toast(options.queue ? (mailQueueAllowed ? '推广项目已生成，执行队列已创建，未自动发送。' : '推广项目已生成，非邮件渠道不会创建邮件队列。') : (targetStatus === 'draft' ? '推广项目草稿已保存' : '推广项目已保存为已计划'));
 	          self.closeWizard();
 	          self.switchView('campaigns');
 	          self.load();
 	        };
-	        if (options.queue && savedTaskId) {
+	        var savedChannelForQueue = self.normalizePromotionChannel(draft.channel_key || draft.campaign_type || '');
+	        var shouldBuildMailQueue = Boolean(options.queue && savedTaskId && ['email','preference','customer_preference','auto_preference'].indexOf(savedChannelForQueue) >= 0);
+	        if (shouldBuildMailQueue) {
 	          return post('marketing_queue_build', { task_id: savedTaskId }).then(function (queueJson) {
 	            if (!queueJson.success) throw new Error(queueJson.message || '生成执行队列失败');
 	            afterSave();
@@ -18761,7 +19973,7 @@
 	      var index = Math.max(0, Math.min(Number(this.previewMailIndex || 0), mailItems.length - 1));
 	      var item = mailItems[index] || {};
 	      var subject = this.renderWizardTemplate(draft.mail_subject || '未填写邮件主题', item, draft);
-	      var body = this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft);
+	      var body = MailModule.prepareRichHtml(this.renderWizardTemplate(draft.mail_body_html || '<em>未填写正文/话术</em>', item, draft));
 	      this.openDialog({
 	        title: '完整邮件预览',
 	        description: '第 ' + (index + 1) + ' / ' + mailItems.length + ' 封：内容与生成队列前的当前预览一致。',
@@ -18812,6 +20024,16 @@
 	    },
     wizardTaskPayload: function (draft, targets, status) {
       targets = targets || { customers: [], contacts: [], chat_groups: [], skipped: [] };
+      var payloadChannel = this.normalizePromotionChannel(draft.channel_key || draft.campaign_type || '');
+      var preferencePayload = ['preference','customer_preference','auto_preference'].indexOf(payloadChannel) >= 0;
+      var payloadContacts = targets.contacts || [];
+      var payloadGroups = targets.chat_groups || [];
+      if (this.isGroupPromotionChannel(payloadChannel) || preferencePayload) {
+        payloadContacts = [];
+      }
+      if (!this.isGroupPromotionChannel(payloadChannel)) {
+        payloadGroups = [];
+      }
       return {
         task_id: draft.task_id || '',
 	        task_status: status || (draft.task_id ? (draft.task_status || 'pending') : 'pending'),
@@ -18819,20 +20041,20 @@
         channel_key: draft.channel_key,
         campaign_type: draft.campaign_type,
         mail_subject: draft.mail_subject,
-        mail_body_html: draft.mail_body_html,
+        mail_body_html: MailModule.prepareRichHtml(draft.mail_body_html),
         signature_key: draft.signature_key,
         schedule_type: draft.schedule_type,
         scheduled_at: draft.scheduled_at,
         remark: draft.remark || '',
         customer_ids: JSON.stringify(this.resolveWizardCustomerIds(draft)),
-        contact_ids: JSON.stringify(targets.contacts.map(function (row) { return Number(row.id); })),
-        chat_group_ids: JSON.stringify((targets.chat_groups || []).map(function (row) { return Number(row.id); })),
+        contact_ids: JSON.stringify(payloadContacts.map(function (row) { return Number(row.id); })),
+        chat_group_ids: JSON.stringify(payloadGroups.map(function (row) { return Number(row.id); })),
         audience_config: JSON.stringify({ group_mode: draft.group_mode, group_key: draft.group_key, group_keys: this.wizardGroupKeys(draft), contact_filter: draft.contact_filter, pool_filters: this.poolFilterPayload(), resolved_customer_count: targets.customers.length }),
         send_rule: JSON.stringify({ executor_rule: draft.executor_rule, mail_executor_rule: draft.mail_executor_rule, mail_executor_id: draft.mail_executor_id, offline_executor_rule: draft.offline_executor_rule, mail_account_rule: draft.mail_account_rule, mail_account_id: draft.mail_account_id, mail_account_ids: draft.mail_account_ids || [], country_rule: draft.country_rule, timezone_rule: draft.timezone_rule, offline_owner: draft.offline_owner, offline_owner_id: draft.offline_owner_id, offline_owner_ids: draft.offline_owner_ids || [] }),
         schedule_config: JSON.stringify({ schedule_type: draft.schedule_type, scheduled_at: draft.scheduled_at, timezone_rule: draft.timezone_rule, send_interval_minutes: Number(draft.send_interval_minutes || 3), hourly_limit: Number(draft.hourly_limit || 50), daily_limit: Number(draft.daily_limit || 200) }),
         failure_policy: JSON.stringify({ retry_count: Number(draft.retry_count || 0), retry_interval_minutes: Number(draft.retry_interval_minutes || 30), failure_action: draft.failure_action, blacklist_policy: draft.blacklist_policy, no_contact_policy: draft.no_contact_policy, no_email_policy: draft.no_email_policy, duplicate_email_policy: draft.duplicate_email_policy || 'keep_first', smtp_failure_policy: draft.smtp_failure_policy || 'failure_center', log_backfill_policy: draft.log_backfill_policy || 'all' }),
         attachment_config: JSON.stringify({ attachment_mode: draft.attachment_mode, material_package: draft.material_package, manual_attachments: draft.manual_attachments || [], datasheet_attachments: draft.datasheet_attachments || [] }),
-        risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: targets.contacts.length, selected_chat_groups: (targets.chat_groups || []).length, skipped: targets.skipped.length, duplicate_email_skipped: (this.buildExecutionPlan(draft).duplicateEmailReport || {}).duplicate_email_skipped_count || 0, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'duplicate_email', 'missing_chat_group'], linkage: draft.template_action || '' })
+        risk_summary: JSON.stringify({ selected_customers: targets.customers.length, selected_contacts: payloadContacts.length, selected_chat_groups: payloadGroups.length, skipped: targets.skipped.length, duplicate_email_skipped: (this.buildExecutionPlan(draft).duplicateEmailReport || {}).duplicate_email_skipped_count || 0, filters: ['blacklist', 'do_not_contact', 'left_contact', 'missing_email', 'duplicate_email', 'missing_chat_group'], linkage: draft.template_action || '' })
       };
     },
     taskToWizardDraft: function (task) {
@@ -22296,9 +23518,10 @@
     },
     renderTaskDetailCard: function (row) {
       if (!row) return '<section class="ai-task-detail-v2"><div class="ai-empty-state"><strong>暂无识别结果</strong><span>请选择左侧任务查看结构化结果。</span></div></section>';
+      var result = this.parseTaskResult(row);
       var draft = this.taskDraft(row);
       var need = this.taskNeed(row);
-      var confidence = Number(row.confidence || (this.parseTaskResult(row).confidence || 0));
+      var confidence = Number(row.confidence || (result.confidence || 0));
       var country = this.detailValue(draft, ['country', 'country_code'], '-');
       var city = this.detailValue(draft, ['city'], '-');
       var status = String(row.status || '');
@@ -22306,6 +23529,10 @@
       var canReject = this.canPermission('ai.reject');
       var canQuote = this.canPermission('ai.quote_draft');
       var actionDisabled = ['confirmed', 'rejected', 'sent'].indexOf(status) >= 0;
+      var missingText = JSON.stringify(result.missing_fields || []);
+      var promptText = [row.ai_summary || '', draft.customer_name || '', need.summary || ''].join(' ');
+      var looksLikeSearchPrompt = /(搜索|寻找|筛选|查找|目标客户|当地从事|产品重点|不要只根据|Importer|Distributor|Manufacturer|Project\s+Lighting|Lighting\s+Solution|OEM|采购|外部供应商|多品牌采购|项目定制)/i.test(promptText) && !/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i.test(promptText);
+      var isSearchPrompt = result.task_subtype === 'search_prompt' || (Array.isArray(result.basis) && result.basis.indexOf('search_prompt') >= 0) || /搜索任务提示词|不是单个客户资料/.test(missingText) || looksLikeSearchPrompt;
       var fields = [
         ['客户名称', this.taskObjectName(row)],
         ['英文名', this.detailValue(draft, ['english_name', 'customer_name', 'company_name', 'name'], '-')],
@@ -22320,10 +23547,14 @@
       ];
       var summary = need.summary || row.ai_summary || '暂无识别摘要。';
       var quoteButton = row.task_type === 'quote_draft' ? '查看报价草稿' : '转为报价草稿';
+      var notice = isSearchPrompt ? '<article class="ai-detail-warning-v2"><strong>这不是客户资料</strong><p>当前内容更像“搜索任务提示词”，不能直接审核生成正式客户。请到 AI获客/搜索任务中执行；如果要入库，请先补充具体客户名称、国家、联系人或邮箱。</p></article>' : '';
+      var confirmText = isSearchPrompt ? '不能生成客户' : '通过并生成客户';
+      var confirmDisabled = !canConfirm || actionDisabled || isSearchPrompt;
       return '<section class="ai-task-detail-v2"><header><div><strong>自动识别结果 #' + esc(row.id) + '</strong><span>结构化确认区</span></div><nav><em>' + esc(this.taskTypeLabel(row.task_type)) + '</em><em>识别来源：' + esc(this.sourceLabel(row.source_type)) + '</em></nav></header>' +
         '<div class="ai-detail-fields-v2">' + fields.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + (item[2] ? item[1] : esc(item[1] || '-')) + '</strong></article>'; }).join('') + '</div>' +
+        notice +
         '<article class="ai-detail-summary-v2"><strong>识别摘要</strong><p>' + esc(summary) + '</p></article>' +
-        '<footer><button type="button" data-ai-task-detail="' + esc(row.id) + '">查看识别结果</button><button type="button" class="primary" data-ai-confirm="' + esc(row.id) + '"' + (!canConfirm || actionDisabled ? ' disabled' : '') + '>通过并生成客户</button><button type="button" class="danger" data-ai-reject="' + esc(row.id) + '"' + (!canReject || actionDisabled ? ' disabled' : '') + '>驳回</button><button type="button" data-ai-to-quote="' + esc(row.id) + '"' + (!canQuote ? ' disabled' : '') + '>' + quoteButton + '</button></footer></section>';
+        '<footer><button type="button" data-ai-task-detail="' + esc(row.id) + '">查看识别结果</button><button type="button" class="primary" data-ai-confirm="' + esc(row.id) + '"' + (confirmDisabled ? ' disabled' : '') + '>' + confirmText + '</button><button type="button" class="danger" data-ai-reject="' + esc(row.id) + '"' + (!canReject || actionDisabled ? ' disabled' : '') + '>驳回</button><button type="button" data-ai-to-quote="' + esc(row.id) + '"' + (!canQuote ? ' disabled' : '') + '>' + quoteButton + '</button></footer></section>';
     },
     renderTaskBottomPanels: function () {
       var logs = (this.data.logs || []).slice(0, 3);
@@ -27149,7 +28380,7 @@
   if (current === 'tasks') safeInit('任务中心', function () { TaskCenterModule.init(); });
 
   var VisitModule = {
-    inited: false, view: 'visits', range: '', keyword: '', searchTimer: null, selectedId: 0, rows: [], users: [], detailCache: {},
+    inited: false, view: 'visits', range: '', keyword: '', searchTimer: null, selectedId: 0, rows: [], users: [], statuses: [], detailCache: {},
     displayMode: (function () {
       try { return localStorage.getItem('crm_visit_display_mode') === 'icon' ? 'icon' : 'list'; } catch (error) { return 'list'; }
     })(),
@@ -27257,7 +28488,11 @@
     },
     loadOptions: function () {
       var self = this;
-      post('visit_options', {}).then(function (json) { if (json.success) self.users = (json.data && json.data.users) || []; });
+      post('visit_options', {}).then(function (json) {
+        if (!json.success) return;
+        self.users = (json.data && json.data.users) || [];
+        self.statuses = (json.data && json.data.statuses) || [];
+      });
     },
     filters: function () {
       var type = this.view === 'arrivals' ? 'customer_arrival' : (this.view === 'visits' || this.view === 'outside' ? 'customer_visit' : '');
@@ -27521,7 +28756,8 @@
       var customerName = row.customer_name || customer.customer_name || (customerId ? ('客户 #' + customerId) : '未选择客户');
       var customerCode = row.customer_code || customer.customer_code || '';
       var currentCustomer = Object.assign({}, customer, { id: customerId, customer_name: customerName, customer_code: customerCode, country: row.country || customer.country || '', city: row.city || customer.city || '', address: row.location || customer.address || '', owner_name: row.owner_name || customer.owner_name || '' });
-      var html = '<div class="visit-workspace-form" data-visit-form><input type="hidden" name="visit_id" value="' + esc(row.id || '') + '"><input type="hidden" name="visit_type" value="' + esc(type) + '"><input type="hidden" name="customer_id" value="' + esc(customerId) + '">' +
+      var clientRequestId = row.id ? '' : this.createRequestId();
+      var html = '<div class="visit-workspace-form" data-visit-form><input type="hidden" name="visit_id" value="' + esc(row.id || '') + '"><input type="hidden" name="client_request_id" value="' + esc(clientRequestId) + '"><input type="hidden" name="visit_type" value="' + esc(type) + '"><input type="hidden" name="customer_id" value="' + esc(customerId) + '">' +
         '<section class="visit-hero-panel"><div><span>' + esc(isArrival ? '客户来访' : '外出拜访') + '</span><input name="title" value="' + esc(row.title || (isArrival ? '客户来访接待' : '客户拜访计划')) + '" placeholder="输入拜访主题"></div><b>' + esc(isArrival ? 'Arrival' : 'Visit') + '</b></section>' +
         '<section class="visit-work-section visit-customer-chooser"><h3>客户与联系人</h3><div class="visit-search-box"><input data-visit-customer-search placeholder="搜索客户名称 / 代码 / 国家 / 联系人 / 邮箱"><button type="button" data-visit-customer-search-btn>搜索</button></div><div class="visit-search-results" data-visit-customer-results></div>' +
           this.selectedCustomerCard(currentCustomer, customerName) +
@@ -27655,8 +28891,8 @@
     },
     bindFileInputs: function (dialog) {
       var self = this;
-      dialog.querySelector('[data-visit-image-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-visit-local-images]'), 'image'); });
-      dialog.querySelector('[data-visit-attachment-input]')?.addEventListener('change', function () { self.renderLocalFiles(this, dialog.querySelector('[data-visit-local-attachments]'), 'attachment'); });
+      dialog.querySelector('[data-visit-image-input]')?.addEventListener('change', function () { self.appendLocalFiles(this, dialog.querySelector('[data-visit-local-images]'), 'image'); });
+      dialog.querySelector('[data-visit-attachment-input]')?.addEventListener('change', function () { self.appendLocalFiles(this, dialog.querySelector('[data-visit-local-attachments]'), 'attachment'); });
       dialog.addEventListener('click', function (event) {
         var localRemove = event.target.closest('[data-visit-remove-local-file]');
         if (localRemove) {
@@ -27760,9 +28996,34 @@
         if (attachments) attachments.innerHTML = self.fileListHtml(files, 'attachment');
       });
     },
+    pendingLocalFiles: function (input) {
+      if (!input) return [];
+      if (Array.isArray(input._crmVisitFiles)) return input._crmVisitFiles.slice();
+      return Array.prototype.slice.call(input.files || []);
+    },
+    localFileKey: function (file) {
+      return [file.name || '', file.size || 0, file.lastModified || 0, file.type || ''].join('::');
+    },
+    appendLocalFiles: function (input, box, kind) {
+      if (!input) return;
+      var self = this;
+      var merged = this.pendingLocalFiles(input);
+      var known = {};
+      merged.forEach(function (file) { known[self.localFileKey(file)] = true; });
+      Array.prototype.slice.call(input.files || []).forEach(function (file) {
+        var key = self.localFileKey(file);
+        if (!known[key]) {
+          known[key] = true;
+          merged.push(file);
+        }
+      });
+      input._crmVisitFiles = merged;
+      input.value = '';
+      this.renderLocalFiles(input, box, kind);
+    },
     renderLocalFiles: function (input, box, kind) {
       if (!box) return;
-      var files = Array.prototype.slice.call(input.files || []);
+      var files = this.pendingLocalFiles(input);
       if (!files.length) {
         box.innerHTML = '';
         return;
@@ -27787,41 +29048,36 @@
       }
     },
     removeLocalFile: function (input, index, box, kind) {
-      if (!input || !input.files) return;
-      var files = Array.prototype.slice.call(input.files || []);
+      if (!input) return;
+      var files = this.pendingLocalFiles(input);
       if (index < 0 || index >= files.length) return;
-      if (typeof DataTransfer === 'undefined') {
-        input.value = '';
-        this.renderLocalFiles(input, box, kind);
-        return toast('浏览器不支持单张移除，已清空待上传文件。');
-      }
-      var transfer = new DataTransfer();
-      files.forEach(function (file, i) {
-        if (i !== index) transfer.items.add(file);
-      });
-      input.files = transfer.files;
+      files.splice(index, 1);
+      input._crmVisitFiles = files;
+      input.value = '';
       this.renderLocalFiles(input, box, kind);
-      toast('已移除待上传图片');
+      toast(kind === 'image' ? '已移除待上传图片' : '已移除待上传附件');
     },
     uploadQueuedFiles: function (visitId, dialog) {
       var self = this;
       var imageInput = dialog.querySelector('[data-visit-image-input]');
       var attachmentInput = dialog.querySelector('[data-visit-attachment-input]');
+      var imageFiles = self.pendingLocalFiles(imageInput);
+      var attachmentFiles = self.pendingLocalFiles(attachmentInput);
       var jobs = [];
-      if (imageInput && imageInput.files && Array.prototype.some.call(imageInput.files, function (file) { return file.size > 2097152; })) {
+      if (imageFiles.some(function (file) { return file.size > 2097152; })) {
         return Promise.reject(new Error('拜访图片单张不能超过 2MB，请压缩后再上传。'));
       }
-      if (imageInput && imageInput.files && imageInput.files.length) jobs.push(self.uploadFileInput(visitId, 'image', imageInput));
-      if (attachmentInput && attachmentInput.files && attachmentInput.files.length) jobs.push(self.uploadFileInput(visitId, 'attachment', attachmentInput));
+      if (imageFiles.length) jobs.push(self.uploadFileInput(visitId, 'image', imageFiles));
+      if (attachmentFiles.length) jobs.push(self.uploadFileInput(visitId, 'attachment', attachmentFiles));
       return Promise.all(jobs);
     },
-    uploadFileInput: function (visitId, kind, input) {
+    uploadFileInput: function (visitId, kind, files) {
       var body = new FormData();
       body.set('action', 'visit_file_upload');
       body.set('visit_id', visitId);
       body.set('file_kind', kind);
       if (state.csrf) body.set('csrf_token', state.csrf);
-      Array.prototype.forEach.call(input.files || [], function (file) { body.append('files[]', file); });
+      (files || []).forEach(function (file) { body.append('files[]', file); });
       return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
         return res.text().then(function (text) {
           try { return JSON.parse(text); } catch (error) {
@@ -27880,8 +29136,10 @@
     },
     submitVisit: function (dialog) {
       var form = dialog.querySelector('[data-visit-form]'), self = this;
-      var button = dialog.querySelector('[data-visit-save]');
-      if (button) button.disabled = true;
+      if (!form || form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      var buttons = dialog.querySelectorAll('[data-visit-save],[data-visit-draft]');
+      buttons.forEach(function (button) { button.disabled = true; });
       post('visit_save', this.collectForm(form)).then(function (json) {
         if (!json.success) return self.formError(form, json.message || '保存失败');
         var record = (json.data && json.data.record) || {};
@@ -27891,7 +29149,8 @@
       }).catch(function (err) {
         self.formError(form, err.message || '保存失败');
       }).finally(function () {
-        if (button) button.disabled = false;
+        form.dataset.submitting = '';
+        buttons.forEach(function (button) { button.disabled = false; });
       });
     },
     submitResult: function (dialog) {
@@ -27978,9 +29237,30 @@
       toast(label + ' 已预留，等待接口接入。');
     },
     options: function (items, selected) { return items.map(function (item) { return '<option' + (item === selected ? ' selected' : '') + '>' + esc(item) + '</option>'; }).join(''); },
+    createRequestId: function () {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+      return 'visit_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 14);
+    },
     statusOptions: function (selected) {
-      var map = { draft: '草稿', pending_confirm: '待确认', confirmed: '已确认', pending_execute: '待执行', executing: '执行中', completed: '已完成', cancelled: '已取消', rescheduled: '已改期', overdue_no_record: '超期未记录', followup_pending: '待后续跟进' };
-      return Object.keys(map).map(function (key) { return '<option value="' + key + '"' + (key === selected ? ' selected' : '') + '>' + map[key] + '</option>'; }).join('');
+      var fallback = [
+        { item_key: 'draft', name_cn: '草稿', is_enabled: 1 },
+        { item_key: 'pending_confirm', name_cn: '待确认', is_enabled: 1 },
+        { item_key: 'confirmed', name_cn: '已确认', is_enabled: 1 },
+        { item_key: 'pending_execute', name_cn: '待执行', is_enabled: 1 },
+        { item_key: 'executing', name_cn: '执行中', is_enabled: 1 },
+        { item_key: 'completed', name_cn: '已完成', is_enabled: 1 },
+        { item_key: 'cancelled', name_cn: '已取消', is_enabled: 1 },
+        { item_key: 'rescheduled', name_cn: '已改期', is_enabled: 1 },
+        { item_key: 'overdue_no_record', name_cn: '超期未记录', is_enabled: 1 },
+        { item_key: 'followup_pending', name_cn: '待后续跟进', is_enabled: 1 }
+      ];
+      var configured = (((state.config || {}).items || {}).visit_status || []);
+      var items = configured.length ? configured.slice() : (this.statuses.length ? this.statuses.slice() : fallback);
+      var selectedItem = items.find(function (item) { return item.item_key === selected; });
+      if (!selectedItem && selected) items.push({ item_key: selected, name_cn: cnStatus(selected), is_enabled: 1 });
+      return items.filter(function (item) { return Number(item.is_enabled) || item.item_key === selected; }).map(function (item) {
+        return '<option value="' + esc(item.item_key) + '"' + (item.item_key === selected ? ' selected' : '') + '>' + esc(item.name_cn || item.item_key) + '</option>';
+      }).join('');
     },
     needChecks: function (row, isArrival) {
       var checks = [['need_quote','需要报价'],['need_material','需要资料'],['need_sample','需要样品'],['need_technical','需要技术人员/方案'],['need_boss','需要老板参与'],['need_dispatch','需要派工']];
@@ -28943,6 +30223,117 @@
     }
     if (hash && hash !== current && state.modules[hash]) activate(hash, { silentHash: true });
   });
+  window.CrmPromotionModule = (typeof PromotionModule !== 'undefined') ? PromotionModule : window.CrmPromotionModule;
+  window.CrmCustomerModule = (typeof CustomerModule !== 'undefined') ? CustomerModule : window.CrmCustomerModule;
+  window.crmOpenFallbackDialog = function (title, message) {
+    var dialog = document.querySelector('[data-crm-click-fallback-dialog]');
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.className = 'crm-modal promo-feedback-detail-dialog';
+      dialog.setAttribute('data-crm-click-fallback-dialog', '');
+      document.body.appendChild(dialog);
+    }
+    dialog.innerHTML = '<form class="crm-modal-panel promo-feedback-detail-panel">' +
+      '<header class="crm-modal-header"><div><strong class="crm-modal-title">' + esc(title || '提示') + '</strong><small class="crm-modal-subtitle">如果持续出现，请刷新页面后再试。</small></div><button type="button" class="crm-modal-close" data-crm-click-fallback-close>关闭</button></header>' +
+      '<main class="crm-modal-body promo-feedback-detail-body"><div class="crm-empty">' + esc(message || '页面功能正在加载，请稍后再试。') + '</div></main>' +
+      '<footer class="crm-modal-footer promo-feedback-detail-actions"><span>这不是数据丢失，只是当前页面脚本状态没有准备好。</span><div><button type="button" data-crm-click-fallback-close>关闭</button></div></footer>' +
+    '</form>';
+    dialog.querySelectorAll('[data-crm-click-fallback-close]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+      });
+    });
+    try {
+      if (!dialog.open && dialog.showModal) dialog.showModal();
+      else dialog.setAttribute('open', 'open');
+    } catch (error) {
+      dialog.setAttribute('open', 'open');
+      dialog.classList.add('crm-modal-fallback-open');
+    }
+  };
+  window.crmOpenPromotionFeedbackDetail = function (button) {
+    var promotionModule = window.CrmPromotionModule || ((typeof PromotionModule !== 'undefined') ? PromotionModule : null);
+    if (!promotionModule || !promotionModule.openFeedbackDetailDialog) {
+      window.crmOpenFallbackDialog('推广反馈详情', '详情弹窗模块还没有加载完成。请刷新 CRM 页面后再点一次。');
+      return false;
+    }
+    var key = button && button.getAttribute ? (button.getAttribute('data-promo-feedback-detail') || '') : '';
+    promotionModule.feedbackDetailRows = promotionModule.feedbackDetailRows || {};
+    promotionModule.openFeedbackDetailDialog(promotionModule.feedbackDetailRows[key] || {});
+    return false;
+  };
+  window.crmOpenPromotionFeedbackMore = function (button) {
+    var promotionModule = window.CrmPromotionModule || ((typeof PromotionModule !== 'undefined') ? PromotionModule : null);
+    if (!promotionModule || !promotionModule.openFeedbackMoreDialogFresh) {
+      window.crmOpenFallbackDialog('全部客户反馈', '更多反馈弹窗模块还没有加载完成。请刷新 CRM 页面后再点一次。');
+      return false;
+    }
+    var taskId = Number(button && button.getAttribute ? (button.getAttribute('data-promo-feedback-more') || 0) : 0);
+    var cacheKey = button && button.getAttribute ? (button.getAttribute('data-promo-feedback-more-key') || '') : '';
+    try {
+      if (cacheKey && promotionModule.openFeedbackMoreInlineDialog) {
+        promotionModule.openFeedbackMoreInlineDialog(cacheKey, taskId || promotionModule.selectedTaskId || 0);
+      } else {
+        promotionModule.openFeedbackMoreDialogFresh(taskId || promotionModule.selectedTaskId || 0);
+      }
+    } catch (error) {
+      window.crmOpenFallbackDialog('全部客户反馈', (error && error.message) || '更多反馈弹窗打开失败，请刷新 CRM 页面后再试。');
+    }
+    return false;
+  };
+  window.crmOpenCustomerPromotionDetail = function (button) {
+    var customerModule = window.CrmCustomerModule || ((typeof CustomerModule !== 'undefined') ? CustomerModule : null);
+    if (!customerModule || !customerModule.openCustomerPromotionDetailDialog) {
+      window.crmOpenFallbackDialog('推广沟通详情', '客户推广详情模块还没有加载完成。请刷新 CRM 页面后再点一次。');
+      return false;
+    }
+    var key = button && button.getAttribute ? (button.getAttribute('data-customer-promo-detail-button') || '') : '';
+    customerModule.openCustomerPromotionDetailDialog(key);
+    return false;
+  };
+  window.crmOpenCustomerPromotionMore = function () {
+    var customerModule = window.CrmCustomerModule || ((typeof CustomerModule !== 'undefined') ? CustomerModule : null);
+    if (!customerModule || !customerModule.openCustomerPromotionMoreDialog) {
+      window.crmOpenFallbackDialog('全部推广沟通记录', '客户推广沟通模块还没有加载完成。请刷新 CRM 页面后再点一次。');
+      return false;
+    }
+    customerModule.openCustomerPromotionMoreDialog();
+    return false;
+  };
+  if (!window.__crmPromotionFeedbackDelegatedClick) {
+    window.__crmPromotionFeedbackDelegatedClick = true;
+    document.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var promotionDetailButton = target.closest('[data-promo-feedback-detail]');
+      if (promotionDetailButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.crmOpenPromotionFeedbackDetail(promotionDetailButton);
+        return;
+      }
+      var customerDetailButton = target.closest('[data-customer-promo-detail-button]');
+      if (customerDetailButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.crmOpenCustomerPromotionDetail(customerDetailButton);
+        return;
+      }
+      var promotionMoreButton = target.closest('[data-promo-feedback-more]');
+      if (promotionMoreButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.crmOpenPromotionFeedbackMore(promotionMoreButton);
+        return;
+      }
+      var customerMoreButton = target.closest('[data-customer-promo-more]');
+      if (customerMoreButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.crmOpenCustomerPromotionMore(customerMoreButton);
+      }
+    }, true);
+  }
   activate(current, { silentHash: true });
   loadOnline();
 })();

@@ -583,6 +583,59 @@ function crm_task_quote_followup_rollups(string $source, array $quoteIds): array
     return $rollups;
 }
 
+/** Aggregate shipment quantity and documents by the real order carried in a batch. */
+function crm_task_quote_shipment_rollup_sql(): string
+{
+    if (!db_table_exists('quote_shipments')) return '';
+    $shipmentCols = crm_task_table_columns('quote_shipments');
+    if (!in_array('id', $shipmentCols, true) || !in_array('order_id', $shipmentCols, true)) return '';
+
+    $pairParts = ["SELECT s.id AS shipment_id,s.order_id FROM quote_shipments s WHERE COALESCE(s.order_id,0)>0"];
+    $itemCols = db_table_exists('quote_shipment_items') ? crm_task_table_columns('quote_shipment_items') : [];
+    $hasItemOrders = in_array('shipment_id', $itemCols, true) && in_array('order_id', $itemCols, true) && in_array('qty', $itemCols, true);
+    if ($hasItemOrders) {
+        $pairParts[] = "SELECT si.shipment_id,si.order_id FROM quote_shipment_items si WHERE COALESCE(si.shipment_id,0)>0 AND COALESCE(si.order_id,0)>0";
+    }
+    $linkCols = db_table_exists('quote_shipment_orders') ? crm_task_table_columns('quote_shipment_orders') : [];
+    if (in_array('shipment_id', $linkCols, true) && in_array('order_id', $linkCols, true)) {
+        $pairParts[] = "SELECT so.shipment_id,so.order_id FROM quote_shipment_orders so WHERE COALESCE(so.shipment_id,0)>0 AND COALESCE(so.order_id,0)>0";
+    }
+
+    $pairs = implode("\nUNION\n", $pairParts);
+    $itemJoin = '';
+    $fallbackQty = in_array('total_qty', $shipmentCols, true) ? 'COALESCE(s.total_qty,0)' : '0';
+    $shippedQty = "CASE WHEN s.order_id=p.order_id THEN {$fallbackQty} ELSE 0 END";
+    if ($hasItemOrders) {
+        $itemJoin = "LEFT JOIN (
+                SELECT shipment_id,order_id,SUM(COALESCE(qty,0)) AS shipped_qty
+                FROM quote_shipment_items
+                WHERE COALESCE(shipment_id,0)>0 AND COALESCE(order_id,0)>0
+                GROUP BY shipment_id,order_id
+            ) siq ON siq.shipment_id=p.shipment_id AND siq.order_id=p.order_id";
+        $shippedQty = "CASE WHEN siq.shipped_qty IS NOT NULL THEN siq.shipped_qty WHEN s.order_id=p.order_id THEN {$fallbackQty} ELSE 0 END";
+    }
+    $shipDate = in_array('ship_date', $shipmentCols, true) ? 'MAX(s.ship_date)' : 'NULL';
+    $plCount = in_array('pl_generated_at', $shipmentCols, true)
+        ? 'COUNT(DISTINCT CASE WHEN s.pl_generated_at IS NOT NULL THEN p.shipment_id END)'
+        : '0';
+    $ciCount = in_array('ci_generated_at', $shipmentCols, true)
+        ? 'COUNT(DISTINCT CASE WHEN s.ci_generated_at IS NOT NULL THEN p.shipment_id END)'
+        : '0';
+
+    return "(
+        SELECT p.order_id,
+            COUNT(DISTINCT p.shipment_id) AS shipment_count,
+            COALESCE(SUM({$shippedQty}),0) AS shipped_qty,
+            {$shipDate} AS last_ship_date,
+            {$plCount} AS pl_count,
+            {$ciCount} AS ci_count
+        FROM ({$pairs}) p
+        JOIN quote_shipments s ON s.id=p.shipment_id
+        {$itemJoin}
+        GROUP BY p.order_id
+    )";
+}
+
 function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $shipCols, array $recordWhere = [], array $recordParams = []): array
 {
     if (!$quoteCols) return [];
@@ -594,13 +647,15 @@ function crm_task_quote_flow_records(array $quoteCols, array $orderCols, array $
     };
     $hasOrder = !empty($orderCols);
     $hasShip = $hasOrder && !empty($shipCols);
-    $shipSelect = $hasShip ? "COUNT(s.id) AS shipment_count,
-            COALESCE(SUM(COALESCE(s.total_qty,0)),0) AS shipped_qty,
-            MAX(s.ship_date) AS last_ship_date,
-            SUM(CASE WHEN s.pl_generated_at IS NOT NULL THEN 1 ELSE 0 END) AS pl_count,
-            SUM(CASE WHEN s.ci_generated_at IS NOT NULL THEN 1 ELSE 0 END) AS ci_count" :
+    $shipmentRollup = $hasShip ? crm_task_quote_shipment_rollup_sql() : '';
+    $hasShipmentRollup = $shipmentRollup !== '';
+    $shipSelect = $hasShipmentRollup ? "COALESCE(MAX(sr.shipment_count),0) AS shipment_count,
+            COALESCE(MAX(sr.shipped_qty),0) AS shipped_qty,
+            MAX(sr.last_ship_date) AS last_ship_date,
+            COALESCE(MAX(sr.pl_count),0) AS pl_count,
+            COALESCE(MAX(sr.ci_count),0) AS ci_count" :
         "0 AS shipment_count, 0 AS shipped_qty, NULL AS last_ship_date, 0 AS pl_count, 0 AS ci_count";
-    $shipJoin = $hasShip ? "LEFT JOIN quote_shipments s ON s.order_id=o.id" : "";
+    $shipJoin = $hasShipmentRollup ? "LEFT JOIN {$shipmentRollup} sr ON sr.order_id=o.id" : "";
     $orderJoin = $hasOrder ? "LEFT JOIN quote_sales_orders o ON (o.id=q.converted_order_id OR (COALESCE(q.converted_order_no,'')<>'' AND o.order_no=q.converted_order_no) OR (COALESCE(o.quote_no,'')<>'' AND o.quote_no=q.quote_no))" : "";
     $orderGroup = $hasOrder ? ", o.id, o.order_no, o.order_date, o.status, o.shipment_status, o.payment_status, o.paid_amount, o.balance_amount, o.amount, o.currency, o.qty, o.updated_at" : "";
     $whereSql = $recordWhere ? 'WHERE (' . implode(') AND (', $recordWhere) . ')' : '';
@@ -932,9 +987,10 @@ function crm_task_quote_flow_summary(string $search = ''): array
     $shipment = $partialShipment = $fullShipment = $document = 0;
     if ($shipCols) {
         $shipment = crm_task_quote_count('SELECT COUNT(*) FROM quote_shipments');
-        if ($orderCols && in_array('total_qty', $shipCols, true) && in_array('qty', $orderCols, true)) {
-            $partialShipment = crm_task_quote_count("SELECT COUNT(*) FROM quote_sales_orders o LEFT JOIN (SELECT order_id, SUM(COALESCE(total_qty,0)) shipped_qty FROM quote_shipments GROUP BY order_id) s ON s.order_id=o.id WHERE COALESCE(s.shipped_qty,0)>0 AND COALESCE(s.shipped_qty,0)<COALESCE(o.qty,0)");
-            $fullShipment = crm_task_quote_count("SELECT COUNT(*) FROM quote_sales_orders o LEFT JOIN (SELECT order_id, SUM(COALESCE(total_qty,0)) shipped_qty FROM quote_shipments GROUP BY order_id) s ON s.order_id=o.id WHERE COALESCE(o.qty,0)>0 AND COALESCE(s.shipped_qty,0)>=COALESCE(o.qty,0)");
+        $shipmentRollup = $orderCols ? crm_task_quote_shipment_rollup_sql() : '';
+        if ($shipmentRollup !== '' && in_array('qty', $orderCols, true)) {
+            $partialShipment = crm_task_quote_count("SELECT COUNT(*) FROM quote_sales_orders o LEFT JOIN {$shipmentRollup} sr ON sr.order_id=o.id WHERE COALESCE(sr.shipped_qty,0)>0 AND COALESCE(sr.shipped_qty,0)<COALESCE(o.qty,0)");
+            $fullShipment = crm_task_quote_count("SELECT COUNT(*) FROM quote_sales_orders o LEFT JOIN {$shipmentRollup} sr ON sr.order_id=o.id WHERE COALESCE(o.qty,0)>0 AND COALESCE(sr.shipped_qty,0)>=COALESCE(o.qty,0)");
         }
         $docParts = [];
         if (in_array('pl_generated_at', $shipCols, true)) $docParts[] = 'pl_generated_at IS NOT NULL';

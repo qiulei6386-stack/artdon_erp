@@ -1534,8 +1534,9 @@ function crm_marketing_logs(array $input = []): array
         $params[] = $taskId;
     }
     $limit = $taskId > 0 ? 1000 : 100;
-    $stmt = db()->prepare("SELECT ml.*, c.customer_name, ct.name AS contact_name, u.username AS operator_name
+    $stmt = db()->prepare("SELECT ml.*, t.task_name, c.customer_name, ct.name AS contact_name, COALESCE(u.real_name, u.username) AS operator_name
         FROM crm_marketing_logs ml
+        LEFT JOIN crm_marketing_tasks t ON t.id = ml.task_id
         LEFT JOIN crm_customers c ON c.id = ml.customer_id
         LEFT JOIN crm_contacts ct ON ct.id = ml.contact_id
         LEFT JOIN crm_users u ON u.id = ml.operator_id
@@ -1543,6 +1544,600 @@ function crm_marketing_logs(array $input = []): array
         ORDER BY ml.touched_at DESC, ml.id DESC LIMIT {$limit}");
     $stmt->execute($params);
     return $stmt->fetchAll();
+}
+
+function crm_marketing_feedback_types(): array
+{
+    return [
+        'interest' => '客户有兴趣',
+        'quote_request' => '要求报价',
+        'material_request' => '要求资料',
+        'sample_request' => '要求样品',
+        'question' => '客户提问',
+        'price_high' => '反馈价格高',
+        'later_follow' => '以后再跟进',
+        'no_need' => '暂不需要',
+        'not_relevant' => '产品不匹配',
+        'unsubscribe' => '要求勿扰',
+        'complaint' => '投诉/负面反馈',
+        'other' => '其他反馈',
+    ];
+}
+
+function crm_marketing_feedback_next_actions(): array
+{
+    return [
+        'none' => '暂不处理',
+        'followup' => '后续跟进',
+        'quote' => '创建报价',
+        'material' => '发送资料',
+        'sample' => '寄送样品',
+        'visit' => '安排拜访',
+        'dispatch' => '生成派工',
+    ];
+}
+
+function crm_marketing_feedback_decorate(array $row): array
+{
+    $detail = json_decode((string)($row['detail_json'] ?? ''), true);
+    if (!is_array($detail)) $detail = [];
+    $typeMap = crm_marketing_feedback_types();
+    $nextMap = crm_marketing_feedback_next_actions();
+    $type = (string)($detail['feedback_type'] ?? 'other');
+    $next = (string)($detail['next_action'] ?? 'none');
+    $row['feedback_type'] = $type;
+    $row['feedback_type_label'] = $typeMap[$type] ?? $typeMap['other'];
+    $row['feedback_content'] = (string)($detail['feedback_content'] ?? $detail['content'] ?? '');
+    $row['feedback_time'] = (string)($detail['feedback_time'] ?? $row['touched_at'] ?? $row['created_at'] ?? '');
+    $row['next_action'] = $next;
+    $row['next_action_label'] = $nextMap[$next] ?? $nextMap['none'];
+    $row['is_handled'] = (int)($detail['is_handled'] ?? ((string)($row['result_status'] ?? '') === 'handled' ? 1 : 0));
+    $row['detail'] = $detail;
+    return $row;
+}
+
+function crm_marketing_feedback_list(array $input = []): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.view');
+    $taskId = (int)($input['task_id'] ?? 0);
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $handled = trim((string)($input['handled'] ?? ''));
+    $channel = crm_marketing_normalize_channel((string)($input['channel_key'] ?? ''));
+    $params = [];
+    $where = ["ml.action_key = 'customer_feedback'"];
+    if ($taskId > 0) {
+        $where[] = 'ml.task_id = ?';
+        $params[] = $taskId;
+    }
+    if ($customerId > 0) {
+        $where[] = 'ml.customer_id = ?';
+        $params[] = $customerId;
+    }
+    if ($channel !== '') {
+        $where[] = 'ml.channel_key = ?';
+        $params[] = $channel;
+    }
+    if ($handled === '1' || $handled === 'handled') {
+        $where[] = "ml.result_status = 'handled'";
+    } elseif ($handled === '0' || $handled === 'pending') {
+        $where[] = "ml.result_status <> 'handled'";
+    }
+    $limit = max(1, min(1000, (int)($input['limit'] ?? ($taskId > 0 ? 300 : 120))));
+    $stmt = db()->prepare("SELECT ml.*, t.task_name, c.customer_name, c.country, ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, COALESCE(u.real_name, u.username) AS operator_name
+        FROM crm_marketing_logs ml
+        LEFT JOIN crm_marketing_tasks t ON t.id = ml.task_id
+        LEFT JOIN crm_customers c ON c.id = ml.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = ml.contact_id
+        LEFT JOIN crm_users u ON u.id = ml.operator_id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY ml.touched_at DESC, ml.id DESC
+        LIMIT {$limit}");
+    $stmt->execute($params);
+    $rows = array_map('crm_marketing_feedback_decorate', $stmt->fetchAll());
+    $feedbackSummary = crm_marketing_feedback_summary($taskId, $customerId);
+    $touchRows = $customerId > 0 ? crm_marketing_customer_touch_rows($customerId, 120) : [];
+    $activityLogs = $customerId > 0 ? crm_marketing_customer_activity_logs($customerId, 120) : [];
+    return [
+        'rows' => $rows,
+        'touches' => $touchRows,
+        'activity_logs' => $activityLogs,
+        'summary' => $customerId > 0
+            ? crm_marketing_customer_promotion_summary($feedbackSummary, $touchRows, $activityLogs)
+            : $feedbackSummary,
+    ];
+}
+
+function crm_marketing_feedback_summary(int $taskId = 0, int $customerId = 0): array
+{
+    crm_marketing_ensure_tables();
+    $params = [];
+    $where = ["action_key = 'customer_feedback'"];
+    if ($taskId > 0) {
+        $where[] = 'task_id = ?';
+        $params[] = $taskId;
+    }
+    if ($customerId > 0) {
+        $where[] = 'customer_id = ?';
+        $params[] = $customerId;
+    }
+    $stmt = db()->prepare('SELECT id, channel_key, result_status, detail_json, touched_at FROM crm_marketing_logs WHERE ' . implode(' AND ', $where) . ' ORDER BY touched_at DESC, id DESC LIMIT 2000');
+    $stmt->execute($params);
+    $typeMap = crm_marketing_feedback_types();
+    $summary = [
+        'total' => 0,
+        'pending' => 0,
+        'handled' => 0,
+        'latest_time' => null,
+        'by_type' => [],
+        'by_channel' => [],
+        'type_labels' => $typeMap,
+    ];
+    foreach ($stmt->fetchAll() as $row) {
+        $summary['total']++;
+        $status = (string)($row['result_status'] ?? '');
+        if ($status === 'handled') $summary['handled']++;
+        else $summary['pending']++;
+        $channel = crm_marketing_normalize_channel((string)($row['channel_key'] ?? 'other')) ?: 'other';
+        $summary['by_channel'][$channel] = ($summary['by_channel'][$channel] ?? 0) + 1;
+        $detail = json_decode((string)($row['detail_json'] ?? ''), true);
+        if (!is_array($detail)) $detail = [];
+        $type = (string)($detail['feedback_type'] ?? 'other');
+        if (!isset($typeMap[$type])) $type = 'other';
+        $summary['by_type'][$type] = ($summary['by_type'][$type] ?? 0) + 1;
+        $time = (string)($detail['feedback_time'] ?? $row['touched_at'] ?? '');
+        if ($time !== '' && (!$summary['latest_time'] || $time > $summary['latest_time'])) {
+            $summary['latest_time'] = $time;
+        }
+    }
+    return $summary;
+}
+
+function crm_marketing_customer_touch_rows(int $customerId, int $limit = 80): array
+{
+    crm_marketing_ensure_tables();
+    if ($customerId <= 0) return [];
+    $limit = max(1, min(300, $limit));
+    $stmt = db()->prepare("SELECT mt.id AS target_id, mt.task_id, mt.customer_id, mt.contact_id, mt.chat_group_id,
+            mt.channel_key, mt.contact_method, mt.manual_group_name, mt.target_status, mt.failure_reason,
+            mt.executed_at, mt.planned_at, mt.due_at, mt.manual_result, mt.manual_remark, mt.created_at AS target_created_at,
+            t.task_name, t.task_status, t.campaign_type, t.mail_subject,
+            c.customer_name, c.customer_code, c.country,
+            ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat,
+            cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform,
+            COALESCE(ex.real_name, ex.username) AS executor_name,
+            q.sender_email AS queue_sender_email, q.receiver_email AS queue_receiver_email,
+            q.send_status AS queue_status, q.sent_at AS queue_sent_at, q.last_error AS queue_last_error,
+            q.planned_server_time AS queue_planned_server_time
+        FROM crm_marketing_task_targets mt
+        JOIN crm_marketing_tasks t ON t.id = mt.task_id
+        JOIN crm_customers c ON c.id = mt.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id
+        LEFT JOIN crm_customer_chat_groups cg ON cg.id = mt.chat_group_id
+        LEFT JOIN crm_users ex ON ex.id = mt.executor_user_id
+        LEFT JOIN crm_marketing_send_queue q ON q.id = (
+            SELECT q2.id
+            FROM crm_marketing_send_queue q2
+            WHERE q2.task_id = mt.task_id
+              AND q2.customer_id = mt.customer_id
+              AND (mt.contact_id IS NULL OR mt.contact_id = 0 OR q2.contact_id = mt.contact_id)
+            ORDER BY COALESCE(q2.sent_at, q2.updated_at, q2.created_at) DESC, q2.id DESC
+            LIMIT 1
+        )
+        WHERE mt.customer_id = ?
+        ORDER BY COALESCE(mt.executed_at, q.sent_at, q.updated_at, mt.planned_at, mt.created_at) DESC, mt.id DESC
+        LIMIT {$limit}");
+    $stmt->execute([$customerId]);
+    return $stmt->fetchAll();
+}
+
+function crm_marketing_customer_activity_logs(int $customerId, int $limit = 120): array
+{
+    crm_marketing_ensure_tables();
+    if ($customerId <= 0) return [];
+    $limit = max(1, min(300, $limit));
+    $stmt = db()->prepare("SELECT ml.*, t.task_name, c.customer_name, c.country,
+            ct.name AS contact_name, ct.email, COALESCE(u.real_name, u.username) AS operator_name
+        FROM crm_marketing_logs ml
+        LEFT JOIN crm_marketing_tasks t ON t.id = ml.task_id
+        LEFT JOIN crm_customers c ON c.id = ml.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = ml.contact_id
+        LEFT JOIN crm_users u ON u.id = ml.operator_id
+        WHERE ml.customer_id = ?
+          AND ml.action_key <> 'customer_feedback'
+        ORDER BY ml.touched_at DESC, ml.id DESC
+        LIMIT {$limit}");
+    $stmt->execute([$customerId]);
+    return $stmt->fetchAll();
+}
+
+function crm_marketing_customer_promotion_summary(array $feedbackSummary, array $touchRows, array $activityLogs): array
+{
+    $summary = $feedbackSummary;
+    $summary['touch_total'] = count($touchRows);
+    $summary['activity_total'] = count($activityLogs);
+    $summary['email_sent'] = 0;
+    $summary['manual_total'] = 0;
+    $summary['failed_total'] = 0;
+    $summary['skipped_total'] = 0;
+    $summary['latest_touch_time'] = null;
+    foreach ($touchRows as $row) {
+        $channel = crm_marketing_normalize_channel((string)($row['channel_key'] ?? ''));
+        $status = (string)($row['target_status'] ?? '');
+        $queueStatus = (string)($row['queue_status'] ?? '');
+        if ($channel === 'email' && ($status === 'success' || $queueStatus === 'sent')) $summary['email_sent']++;
+        if (in_array($channel, ['wechat', 'wechat_group', 'whatsapp', 'whatsapp_group', 'offline', 'phone', 'linkedin'], true)) $summary['manual_total']++;
+        if ($status === 'failed' || $queueStatus === 'failed') $summary['failed_total']++;
+        if ($status === 'skipped' || $queueStatus === 'skipped') $summary['skipped_total']++;
+        $time = (string)($row['executed_at'] ?? $row['queue_sent_at'] ?? $row['planned_at'] ?? $row['target_created_at'] ?? '');
+        if ($time !== '' && (!$summary['latest_touch_time'] || $time > $summary['latest_touch_time'])) {
+            $summary['latest_touch_time'] = $time;
+        }
+    }
+    foreach ($activityLogs as $row) {
+        $time = (string)($row['touched_at'] ?? $row['created_at'] ?? '');
+        if ($time !== '' && (!$summary['latest_touch_time'] || $time > $summary['latest_touch_time'])) {
+            $summary['latest_touch_time'] = $time;
+        }
+    }
+    return $summary;
+}
+
+function crm_marketing_feedback_mail_context(array $input): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.view');
+    crm_require('mail.view');
+    $mailId = (int)($input['mail_id'] ?? 0);
+    if ($mailId <= 0) throw new RuntimeException('邮件 ID 无效。');
+    $account = crm_mail_current_account(false);
+    if (!$account) throw new RuntimeException('请先绑定邮箱。');
+    $stmt = db()->prepare('SELECT m.id, m.folder, m.subject, m.from_email, m.from_name, m.to_emails, m.cc_emails, m.received_at, m.sent_at, m.linked_customer_id, m.linked_contact_id, c.customer_name AS linked_customer_name, c.country AS linked_customer_country
+        FROM crm_mails m
+        LEFT JOIN crm_customers c ON c.id = m.linked_customer_id
+        WHERE m.id = ? AND m.user_id = ? AND m.mail_account_id = ? LIMIT 1');
+    $stmt->execute([$mailId, (int)$account['user_id'], (int)$account['id']]);
+    $mail = $stmt->fetch();
+    if (!$mail) throw new RuntimeException('邮件不存在或无权查看。');
+
+    $customerId = (int)($mail['linked_customer_id'] ?? 0);
+    $contactId = (int)($mail['linked_contact_id'] ?? 0);
+    $fromEmail = strtolower(trim((string)($mail['from_email'] ?? '')));
+    $matchedContact = null;
+    if ($contactId <= 0 && $fromEmail !== '') {
+        $stmt = db()->prepare('SELECT ct.id, ct.customer_id, ct.name, ct.email, c.customer_name, c.country
+            FROM crm_contacts ct
+            JOIN crm_customers c ON c.id = ct.customer_id
+            WHERE ct.deleted_at IS NULL
+              AND c.deleted_at IS NULL
+              AND LOWER(TRIM(COALESCE(ct.email, ""))) = ?
+            ORDER BY ct.is_primary DESC, ct.id DESC
+            LIMIT 1');
+        $stmt->execute([$fromEmail]);
+        $matchedContact = $stmt->fetch();
+        if ($matchedContact) {
+            $contactId = (int)$matchedContact['id'];
+            if ($customerId <= 0) $customerId = (int)$matchedContact['customer_id'];
+        }
+    }
+    if ($customerId <= 0 && $fromEmail !== '') {
+        $stmt = db()->prepare('SELECT id, customer_name, country
+            FROM crm_customers
+            WHERE deleted_at IS NULL
+              AND (LOWER(TRIM(COALESCE(email, ""))) = ? OR LOWER(TRIM(COALESCE(backup_email, ""))) = ?)
+            ORDER BY id DESC
+            LIMIT 1');
+        $stmt->execute([$fromEmail, $fromEmail]);
+        $customer = $stmt->fetch();
+        if ($customer) $customerId = (int)$customer['id'];
+    }
+
+    $where = [];
+    $params = [];
+    if ($customerId > 0) {
+        $where[] = 'mt.customer_id = ?';
+        $params[] = $customerId;
+    }
+    if ($fromEmail !== '') {
+        $where[] = '(LOWER(TRIM(COALESCE(ct.email, ""))) = ? OR LOWER(TRIM(COALESCE(mt.contact_method, ""))) = ? OR LOWER(TRIM(COALESCE(c.email, ""))) = ? OR LOWER(TRIM(COALESCE(c.backup_email, ""))) = ?)';
+        array_push($params, $fromEmail, $fromEmail, $fromEmail, $fromEmail);
+    }
+    if (!$where) throw new RuntimeException('当前邮件未关联客户，也没有可识别的发件邮箱。');
+
+    $stmt = db()->prepare("SELECT mt.id AS target_id, mt.task_id, mt.customer_id, mt.contact_id, mt.channel_key, mt.contact_method, mt.target_status, mt.executed_at, mt.created_at AS target_created_at,
+            t.task_name, t.task_status, t.campaign_type, t.mail_subject, t.updated_at AS task_updated_at,
+            c.customer_name, c.customer_code, c.country,
+            ct.name AS contact_name, ct.email AS contact_email, ct.phone AS contact_phone, ct.whatsapp AS contact_whatsapp, ct.wechat AS contact_wechat
+        FROM crm_marketing_task_targets mt
+        JOIN crm_marketing_tasks t ON t.id = mt.task_id
+        JOIN crm_customers c ON c.id = mt.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = mt.contact_id
+        WHERE (" . implode(' OR ', $where) . ")
+          AND c.deleted_at IS NULL
+        ORDER BY COALESCE(mt.executed_at, t.updated_at, mt.created_at) DESC, mt.id DESC
+        LIMIT 80");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    $subject = trim((string)($mail['subject'] ?? ''));
+    $candidates = [];
+    $seen = [];
+    foreach ($rows as $row) {
+        $key = (int)($row['task_id'] ?? 0) . ':' . (int)($row['customer_id'] ?? 0) . ':' . (int)($row['contact_id'] ?? 0);
+        if (isset($seen[$key])) continue;
+        $seen[$key] = true;
+        $score = 0;
+        $reason = [];
+        if ($customerId > 0 && (int)$row['customer_id'] === $customerId) {
+            $score += 30;
+            $reason[] = '同一客户';
+        }
+        if ($contactId > 0 && (int)$row['contact_id'] === $contactId) {
+            $score += 45;
+            $reason[] = '同一联系人';
+        }
+        $rowEmail = strtolower(trim((string)($row['contact_email'] ?? '')));
+        $method = strtolower(trim((string)($row['contact_method'] ?? '')));
+        if ($fromEmail !== '' && ($rowEmail === $fromEmail || $method === $fromEmail)) {
+            $score += 35;
+            $reason[] = '邮箱匹配';
+        }
+        $mailSubject = trim((string)($row['mail_subject'] ?? ''));
+        if ($subject !== '' && $mailSubject !== '') {
+            $a = mb_strtolower($subject, 'UTF-8');
+            $b = mb_strtolower($mailSubject, 'UTF-8');
+            if ($a === $b || mb_strpos($a, $b) !== false || mb_strpos($b, $a) !== false) {
+                $score += 18;
+                $reason[] = '主题接近';
+            }
+        }
+        if ((string)($row['target_status'] ?? '') === 'success') $score += 6;
+        $row['score'] = $score;
+        $row['match_reason'] = $reason ? implode('、', $reason) : '近期推广目标';
+        $candidates[] = $row;
+    }
+    usort($candidates, static function ($a, $b): int {
+        $score = ((int)($b['score'] ?? 0)) <=> ((int)($a['score'] ?? 0));
+        if ($score !== 0) return $score;
+        return strcmp((string)($b['executed_at'] ?? $b['task_updated_at'] ?? ''), (string)($a['executed_at'] ?? $a['task_updated_at'] ?? ''));
+    });
+    $candidates = array_slice($candidates, 0, 12);
+
+    return [
+        'mail' => [
+            'id' => (int)$mail['id'],
+            'subject' => (string)($mail['subject'] ?? ''),
+            'from_name' => (string)($mail['from_name'] ?? ''),
+            'from_email' => (string)($mail['from_email'] ?? ''),
+            'received_at' => (string)($mail['received_at'] ?? $mail['sent_at'] ?? ''),
+            'linked_customer_id' => $customerId ?: null,
+            'linked_contact_id' => $contactId ?: null,
+            'linked_customer_name' => (string)($mail['linked_customer_name'] ?? ($matchedContact['customer_name'] ?? '')),
+            'linked_customer_country' => (string)($mail['linked_customer_country'] ?? ($matchedContact['country'] ?? '')),
+        ],
+        'candidates' => $candidates,
+    ];
+}
+
+function crm_marketing_feedback_save(array $input): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.execute');
+    $taskId = (int)($input['task_id'] ?? 0);
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $contactId = (int)($input['contact_id'] ?? 0);
+    if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
+    if ($customerId <= 0) throw new RuntimeException('请选择反馈客户。');
+    $task = crm_marketing_task_row($taskId);
+    $stmt = db()->prepare('SELECT id, customer_name, customer_code, country FROM crm_customers WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+    $stmt->execute([$customerId]);
+    $customer = $stmt->fetch();
+    if (!$customer) throw new RuntimeException('客户不存在或已删除。');
+    $contact = null;
+    if ($contactId > 0) {
+        $stmt = db()->prepare('SELECT id, name, email, phone, whatsapp, wechat FROM crm_contacts WHERE id = ? AND customer_id = ? AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([$contactId, $customerId]);
+        $contact = $stmt->fetch();
+        if (!$contact) throw new RuntimeException('联系人不属于当前客户。');
+    }
+    $channel = crm_marketing_normalize_channel((string)($input['channel_key'] ?? ''));
+    if ($channel === '') throw new RuntimeException('请选择反馈渠道。');
+    $allowedChannels = ['email','wechat','wechat_group','whatsapp','whatsapp_group','phone','linkedin','offline','other'];
+    if (!in_array($channel, $allowedChannels, true)) $channel = 'other';
+    $typeMap = crm_marketing_feedback_types();
+    $type = (string)($input['feedback_type'] ?? 'other');
+    if (!isset($typeMap[$type])) $type = 'other';
+    $nextMap = crm_marketing_feedback_next_actions();
+    $nextAction = (string)($input['next_action'] ?? 'none');
+    if (!isset($nextMap[$nextAction])) $nextAction = 'none';
+    $content = trim((string)($input['feedback_content'] ?? $input['content'] ?? ''));
+    if ($content === '') throw new RuntimeException('请填写客户反馈内容。');
+    $content = function_exists('mb_substr') ? mb_substr($content, 0, 5000, 'UTF-8') : substr($content, 0, 5000);
+    $feedbackTime = trim((string)($input['feedback_time'] ?? ''));
+    $feedbackTime = str_replace('T', ' ', $feedbackTime);
+    $feedbackTime = $feedbackTime !== '' && strtotime($feedbackTime) ? date('Y-m-d H:i:s', strtotime($feedbackTime)) : date('Y-m-d H:i:s');
+    $handled = !empty($input['is_handled']) && (string)$input['is_handled'] !== '0';
+    $sourceMailId = (int)($input['source_mail_id'] ?? 0);
+    $detail = [
+        'source' => $sourceMailId > 0 ? 'mail_reply' : 'manual',
+        'task_id' => $taskId,
+        'task_name' => (string)($task['task_name'] ?? ''),
+        'customer_id' => $customerId,
+        'customer_name' => (string)($customer['customer_name'] ?? ''),
+        'contact_id' => $contactId ?: null,
+        'contact_name' => $contact ? (string)($contact['name'] ?? '') : '',
+        'source_mail_id' => $sourceMailId > 0 ? $sourceMailId : null,
+        'source_mail_subject' => trim((string)($input['source_mail_subject'] ?? '')),
+        'source_mail_from' => trim((string)($input['source_mail_from'] ?? '')),
+        'feedback_type' => $type,
+        'feedback_type_label' => $typeMap[$type],
+        'feedback_content' => $content,
+        'feedback_time' => $feedbackTime,
+        'next_action' => $nextAction,
+        'next_action_label' => $nextMap[$nextAction],
+        'is_handled' => $handled ? 1 : 0,
+    ];
+    db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, ?, "customer_feedback", ?, "", ?, ?, ?, NOW())')
+        ->execute([$taskId, $customerId, $contactId ?: null, $channel, $handled ? 'handled' : 'pending', current_user()['id'] ?? null, json_encode($detail, JSON_UNESCAPED_UNICODE), $feedbackTime]);
+    $logId = (int)db()->lastInsertId();
+    if (function_exists('crm_customer_log')) {
+        crm_customer_log('promotion_feedback', 'marketing_task', (string)$taskId, $customerId, null, $detail, '推广反馈：' . $typeMap[$type]);
+    }
+    if (function_exists('crm_customer_timeline_add')) {
+        crm_customer_timeline_add($customerId, 'promotion_feedback', '推广反馈 · ' . $typeMap[$type], $content, 'marketing_task', (string)$taskId);
+    }
+    crm_log_event('promotion', 'customer_feedback', 'marketing_task', (string)$taskId, null, $detail);
+    return [
+        'feedback_id' => $logId,
+        'feedback' => crm_marketing_feedback_decorate(array_merge($detail, [
+            'id' => $logId,
+            'task_id' => $taskId,
+            'customer_id' => $customerId,
+            'contact_id' => $contactId,
+            'channel_key' => $channel,
+            'action_key' => 'customer_feedback',
+            'result_status' => $handled ? 'handled' : 'pending',
+            'touched_at' => $feedbackTime,
+            'created_at' => date('Y-m-d H:i:s'),
+            'task_name' => (string)($task['task_name'] ?? ''),
+            'customer_name' => (string)($customer['customer_name'] ?? ''),
+            'contact_name' => $contact ? (string)($contact['name'] ?? '') : '',
+            'operator_name' => current_user()['real_name'] ?? current_user()['username'] ?? '',
+            'detail_json' => json_encode($detail, JSON_UNESCAPED_UNICODE),
+        ])),
+        'feedback_logs' => crm_marketing_feedback_list(['task_id' => $taskId])['rows'],
+        'feedback_summary' => crm_marketing_feedback_summary($taskId),
+        'report' => crm_marketing_task_report(['task_id' => $taskId]),
+    ];
+}
+
+function crm_marketing_feedback_row(int $feedbackId): array
+{
+    crm_marketing_ensure_tables();
+    if ($feedbackId <= 0) throw new RuntimeException('反馈记录 ID 无效。');
+    $stmt = db()->prepare("SELECT ml.*, t.task_name, c.customer_name, c.customer_code, c.country, ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, COALESCE(u.real_name, u.username) AS operator_name
+        FROM crm_marketing_logs ml
+        LEFT JOIN crm_marketing_tasks t ON t.id = ml.task_id
+        LEFT JOIN crm_customers c ON c.id = ml.customer_id
+        LEFT JOIN crm_contacts ct ON ct.id = ml.contact_id
+        LEFT JOIN crm_users u ON u.id = ml.operator_id
+        WHERE ml.id = ? AND ml.action_key = 'customer_feedback'
+        LIMIT 1");
+    $stmt->execute([$feedbackId]);
+    $row = $stmt->fetch();
+    if (!$row) throw new RuntimeException('反馈记录不存在或已删除。');
+    return $row;
+}
+
+function crm_marketing_feedback_update(array $input): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.execute');
+    $feedbackId = (int)($input['feedback_id'] ?? $input['id'] ?? 0);
+    $oldRow = crm_marketing_feedback_row($feedbackId);
+    $oldDetail = json_decode((string)($oldRow['detail_json'] ?? ''), true);
+    if (!is_array($oldDetail)) $oldDetail = [];
+
+    $taskId = (int)($input['task_id'] ?? $oldRow['task_id'] ?? 0);
+    $customerId = (int)($input['customer_id'] ?? $oldRow['customer_id'] ?? 0);
+    $contactId = array_key_exists('contact_id', $input) ? (int)$input['contact_id'] : (int)($oldRow['contact_id'] ?? 0);
+    if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
+    if ($customerId <= 0) throw new RuntimeException('请选择反馈客户。');
+    $task = crm_marketing_task_row($taskId);
+    $stmt = db()->prepare('SELECT id, customer_name, customer_code, country FROM crm_customers WHERE id = ? AND deleted_at IS NULL LIMIT 1');
+    $stmt->execute([$customerId]);
+    $customer = $stmt->fetch();
+    if (!$customer) throw new RuntimeException('客户不存在或已删除。');
+    $contact = null;
+    if ($contactId > 0) {
+        $stmt = db()->prepare('SELECT id, name, email, phone, whatsapp, wechat FROM crm_contacts WHERE id = ? AND customer_id = ? AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([$contactId, $customerId]);
+        $contact = $stmt->fetch();
+        if (!$contact) throw new RuntimeException('联系人不属于当前客户。');
+    }
+
+    $channel = crm_marketing_normalize_channel((string)($input['channel_key'] ?? $oldRow['channel_key'] ?? ''));
+    if ($channel === '') throw new RuntimeException('请选择反馈渠道。');
+    $allowedChannels = ['email','wechat','wechat_group','whatsapp','whatsapp_group','phone','linkedin','offline','other'];
+    if (!in_array($channel, $allowedChannels, true)) $channel = 'other';
+    $typeMap = crm_marketing_feedback_types();
+    $type = (string)($input['feedback_type'] ?? $oldDetail['feedback_type'] ?? 'other');
+    if (!isset($typeMap[$type])) $type = 'other';
+    $nextMap = crm_marketing_feedback_next_actions();
+    $nextAction = (string)($input['next_action'] ?? $oldDetail['next_action'] ?? 'none');
+    if (!isset($nextMap[$nextAction])) $nextAction = 'none';
+    $content = trim((string)($input['feedback_content'] ?? $input['content'] ?? $oldDetail['feedback_content'] ?? $oldDetail['content'] ?? ''));
+    if ($content === '') throw new RuntimeException('请填写客户反馈内容。');
+    $content = function_exists('mb_substr') ? mb_substr($content, 0, 5000, 'UTF-8') : substr($content, 0, 5000);
+    $feedbackTime = trim((string)($input['feedback_time'] ?? $oldDetail['feedback_time'] ?? $oldRow['touched_at'] ?? ''));
+    $feedbackTime = str_replace('T', ' ', $feedbackTime);
+    $feedbackTime = $feedbackTime !== '' && strtotime($feedbackTime) ? date('Y-m-d H:i:s', strtotime($feedbackTime)) : date('Y-m-d H:i:s');
+    $handled = !empty($input['is_handled']) && (string)$input['is_handled'] !== '0';
+    if (!array_key_exists('is_handled', $input)) {
+        $handled = (int)($oldDetail['is_handled'] ?? ((string)($oldRow['result_status'] ?? '') === 'handled' ? 1 : 0)) === 1;
+    }
+    $sourceMailId = (int)($input['source_mail_id'] ?? $oldDetail['source_mail_id'] ?? 0);
+    $detail = array_merge($oldDetail, [
+        'source' => (string)($oldDetail['source'] ?? ($sourceMailId > 0 ? 'mail_reply' : 'manual')),
+        'task_id' => $taskId,
+        'task_name' => (string)($task['task_name'] ?? ''),
+        'customer_id' => $customerId,
+        'customer_name' => (string)($customer['customer_name'] ?? ''),
+        'contact_id' => $contactId ?: null,
+        'contact_name' => $contact ? (string)($contact['name'] ?? '') : '',
+        'source_mail_id' => $sourceMailId > 0 ? $sourceMailId : null,
+        'source_mail_subject' => trim((string)($input['source_mail_subject'] ?? $oldDetail['source_mail_subject'] ?? '')),
+        'source_mail_from' => trim((string)($input['source_mail_from'] ?? $oldDetail['source_mail_from'] ?? '')),
+        'feedback_type' => $type,
+        'feedback_type_label' => $typeMap[$type],
+        'feedback_content' => $content,
+        'feedback_time' => $feedbackTime,
+        'next_action' => $nextAction,
+        'next_action_label' => $nextMap[$nextAction],
+        'is_handled' => $handled ? 1 : 0,
+        'updated_at' => date('Y-m-d H:i:s'),
+        'updated_by' => current_user()['id'] ?? null,
+    ]);
+    db()->prepare('UPDATE crm_marketing_logs SET task_id = ?, customer_id = ?, contact_id = ?, channel_key = ?, result_status = ?, failure_reason = "", operator_id = ?, detail_json = ?, touched_at = ? WHERE id = ? AND action_key = "customer_feedback"')
+        ->execute([$taskId, $customerId, $contactId ?: null, $channel, $handled ? 'handled' : 'pending', current_user()['id'] ?? null, json_encode($detail, JSON_UNESCAPED_UNICODE), $feedbackTime, $feedbackId]);
+    if (function_exists('crm_customer_log')) {
+        crm_customer_log('promotion_feedback_update', 'marketing_task', (string)$taskId, $customerId, null, $detail, '推广反馈修改：' . $typeMap[$type]);
+    }
+    crm_log_event('promotion', 'customer_feedback_update', 'marketing_task', (string)$taskId, null, ['feedback_id' => $feedbackId, 'detail' => $detail]);
+    $fresh = crm_marketing_feedback_decorate(crm_marketing_feedback_row($feedbackId));
+    return [
+        'feedback_id' => $feedbackId,
+        'feedback' => $fresh,
+        'feedback_logs' => crm_marketing_feedback_list(['task_id' => $taskId])['rows'],
+        'feedback_summary' => crm_marketing_feedback_summary($taskId),
+        'customer_feedback' => crm_marketing_feedback_list(['customer_id' => $customerId, 'limit' => 80]),
+        'report' => crm_marketing_task_report(['task_id' => $taskId]),
+    ];
+}
+
+function crm_marketing_feedback_delete(array $input): array
+{
+    crm_marketing_ensure_tables();
+    crm_require('promotion.execute');
+    $feedbackId = (int)($input['feedback_id'] ?? $input['id'] ?? 0);
+    $row = crm_marketing_feedback_row($feedbackId);
+    $taskId = (int)($row['task_id'] ?? 0);
+    $customerId = (int)($row['customer_id'] ?? 0);
+    db()->prepare('DELETE FROM crm_marketing_logs WHERE id = ? AND action_key = "customer_feedback"')->execute([$feedbackId]);
+    crm_log_event('promotion', 'customer_feedback_delete', 'marketing_task', (string)$taskId, null, [
+        'feedback_id' => $feedbackId,
+        'customer_id' => $customerId,
+        'customer_name' => (string)($row['customer_name'] ?? ''),
+        'feedback_content' => crm_marketing_feedback_decorate($row)['feedback_content'] ?? '',
+    ]);
+    return [
+        'feedback_id' => $feedbackId,
+        'deleted' => true,
+        'feedback_logs' => $taskId > 0 ? crm_marketing_feedback_list(['task_id' => $taskId])['rows'] : [],
+        'feedback_summary' => $taskId > 0 ? crm_marketing_feedback_summary($taskId) : crm_marketing_feedback_summary(0, $customerId),
+        'customer_feedback' => $customerId > 0 ? crm_marketing_feedback_list(['customer_id' => $customerId, 'limit' => 80]) : ['rows' => [], 'summary' => []],
+        'report' => $taskId > 0 ? crm_marketing_task_report(['task_id' => $taskId]) : null,
+    ];
 }
 
 function crm_marketing_task_execution_summary(int $taskId): array
@@ -1811,6 +2406,8 @@ function crm_marketing_task_report(array $input = []): array
     return [
         'targets' => crm_marketing_task_targets(['task_id' => $taskId]),
         'logs' => crm_marketing_logs(['task_id' => $taskId]),
+        'feedback_logs' => crm_marketing_feedback_list(['task_id' => $taskId, 'limit' => 300])['rows'],
+        'feedback_summary' => crm_marketing_feedback_summary($taskId),
         'execution_summary' => crm_marketing_task_execution_summary($taskId),
         'target_summary' => crm_marketing_task_target_summary($taskId),
     ];
@@ -2094,16 +2691,17 @@ function crm_marketing_task_create(array $input): array
     $requestedStatus = trim((string)($input['task_status'] ?? 'pending'));
     $isDraft = $requestedStatus === 'draft';
     $name = trim((string)($input['task_name'] ?? ''));
-    $channel = trim((string)($input['channel_key'] ?? ''));
+    $channel = crm_marketing_normalize_channel((string)($input['channel_key'] ?? ''));
     $campaignType = trim((string)($input['campaign_type'] ?? 'email'));
     $subject = trim((string)($input['mail_subject'] ?? ''));
     $bodyHtml = trim((string)($input['mail_body_html'] ?? ''));
+    $bodyHtml = crm_marketing_linkify_mail_html($bodyHtml);
     if ($name === '' && $isDraft) $name = '未命名推广草稿 ' . date('Y-m-d H:i');
     if ($channel === '' && $isDraft) $channel = 'draft';
     if ($name === '') throw new RuntimeException('任务名称不能为空。');
     if ($channel === '') throw new RuntimeException('请选择推广渠道。');
     $preferenceMode = in_array($channel, ['preference','customer_preference','auto_preference'], true);
-    if (!$isDraft && !$preferenceMode && ($campaignType === 'email' || in_array($channel, ['email','edm','mail'], true)) && ($subject === '' || $bodyHtml === '')) {
+    if (!$isDraft && !$preferenceMode && crm_marketing_is_email_channel($channel) && ($subject === '' || $bodyHtml === '')) {
         throw new RuntimeException('邮件推广必须填写邮件主题和正文。');
     }
     if (!$isDraft && $preferenceMode && $bodyHtml === '') {
@@ -2215,8 +2813,14 @@ function crm_marketing_task_create(array $input): array
     $targetCustomerIds = $customerIds;
     $insertedContactIds = [];
     $insertedChatGroupIds = [];
+    $groupOnlyChannel = in_array($channel, ['wechat_group','whatsapp_group'], true);
+    // 客户偏好模式不能直接混用前端提交的联系人/群目标；
+    // 必须按每个客户的首选渠道在下面的 customer fallback 中重新展开。
+    $channelAllowsContactTargets = !$groupOnlyChannel && !$preferenceMode;
+    $channelAllowsChatGroupTargets = $groupOnlyChannel;
     if (!$isDraft || $customerIds || $contactIds || $chatGroupIds) {
         foreach ($contactIds as $contactId) {
+            if (!$channelAllowsContactTargets) continue;
             $stmt = db()->prepare('SELECT ct.*, c.owner_user_id, c.email AS customer_email, c.phone AS customer_phone, c.whatsapp AS customer_whatsapp, c.address AS customer_address
                 FROM crm_contacts ct
                 JOIN crm_customers c ON c.id = ct.customer_id
@@ -2240,6 +2844,7 @@ function crm_marketing_task_create(array $input): array
             }
         }
         foreach ($chatGroupIds as $chatGroupId) {
+            if (!$channelAllowsChatGroupTargets) continue;
             $stmt = db()->prepare('SELECT g.id, g.customer_id, g.group_name, g.group_platform, c.owner_user_id, c.email, c.phone, c.whatsapp, c.address
                 FROM crm_customer_chat_groups g
                 JOIN crm_customers c ON c.id = g.customer_id
@@ -2248,7 +2853,9 @@ function crm_marketing_task_create(array $input): array
             $group = $stmt->fetch();
             if ($group) {
                 $customerId = (int)$group['customer_id'];
-                $targetChannel = in_array($channel, ['wechat_group','whatsapp_group'], true) ? $channel : (string)$group['group_platform'];
+                $groupPlatform = crm_marketing_normalize_channel((string)($group['group_platform'] ?? ''));
+                if ($groupOnlyChannel && $groupPlatform !== $channel) continue;
+                $targetChannel = $groupOnlyChannel ? $channel : $groupPlatform;
                 $insertTarget($customerId, null, (int)$group['id'], $targetChannel, $group, [], $group);
                 $insertedChatGroupIds[(int)$group['id']] = true;
                 $targetCustomerIds[] = $customerId;
@@ -2358,15 +2965,38 @@ function crm_marketing_resolve_target_channel(string $requestedChannel, int $cus
     if (!in_array($requestedChannel, ['preference','customer_preference','auto_preference'], true)) {
         return $requestedChannel !== '' ? $requestedChannel : 'email';
     }
-    $priority = ['email', 'mail', 'edm', 'whatsapp_group', 'wechat_group', 'whatsapp', 'wechat', 'weixin', 'linkedin', 'phone', 'offline'];
     if ($contactId) {
-        $stmt = db()->prepare("SELECT channel FROM crm_contact_promotions WHERE contact_id = ? AND status = 'active' ORDER BY FIELD(channel, 'email','mail','edm','whatsapp','wechat','weixin','linkedin','phone','offline'), id LIMIT 1");
+        $stmt = db()->prepare("SELECT channel
+            FROM crm_contact_promotions
+            WHERE contact_id = ? AND status = 'active'
+            ORDER BY CASE
+                WHEN LOWER(channel) IN ('wechat','weixin','wx','微信','微信线下') THEN 10
+                WHEN LOWER(channel) IN ('whatsapp','whats app') THEN 20
+                WHEN LOWER(channel) IN ('linkedin') THEN 30
+                WHEN LOWER(channel) IN ('phone','tel','call','电话') THEN 40
+                WHEN LOWER(channel) IN ('offline','visit','线下','拜访') THEN 50
+                WHEN LOWER(channel) IN ('email','mail','edm','e-mail','邮件','邮箱','邮件推广','edm推广') THEN 60
+                ELSE 90
+            END, id LIMIT 1");
         $stmt->execute([$contactId]);
         $channel = crm_marketing_normalize_channel((string)$stmt->fetchColumn());
         if ($channel !== '') return $channel;
     }
     if (function_exists('db_table_exists') && db_table_exists('crm_customer_promotion_channels')) {
-        $stmt = db()->prepare("SELECT channel_key FROM crm_customer_promotion_channels WHERE customer_id = ? ORDER BY FIELD(channel_key, 'email','mail','edm','whatsapp_group','wechat_group','whatsapp','wechat','weixin','linkedin','phone','offline'), id LIMIT 1");
+        $stmt = db()->prepare("SELECT channel_key
+            FROM crm_customer_promotion_channels
+            WHERE customer_id = ?
+            ORDER BY CASE
+                WHEN LOWER(channel_key) IN ('wechat_group','weixin_group','wx_group','微信群','微信客户群') THEN 10
+                WHEN LOWER(channel_key) IN ('whatsapp_group','whatsapp群','wa_group') THEN 20
+                WHEN LOWER(channel_key) IN ('wechat','weixin','wx','微信','微信线下') THEN 30
+                WHEN LOWER(channel_key) IN ('whatsapp','whats app') THEN 40
+                WHEN LOWER(channel_key) IN ('linkedin') THEN 50
+                WHEN LOWER(channel_key) IN ('phone','tel','call','电话') THEN 60
+                WHEN LOWER(channel_key) IN ('offline','visit','线下','拜访') THEN 70
+                WHEN LOWER(channel_key) IN ('email','mail','edm','e-mail','邮件','邮箱','邮件推广','edm推广') THEN 80
+                ELSE 90
+            END, id LIMIT 1");
         $stmt->execute([$customerId]);
         $channel = crm_marketing_normalize_channel((string)$stmt->fetchColumn());
         if ($channel !== '') return $channel;
@@ -2439,6 +3069,7 @@ function crm_marketing_task_update(array $input): array
     $bodyHtml = array_key_exists('mail_body_html', $input)
         ? trim((string)$input['mail_body_html'])
         : (string)($before['mail_body_html'] ?? '');
+    $bodyHtml = crm_marketing_linkify_mail_html($bodyHtml);
     $remark = trim((string)($input['remark'] ?? ($before['remark'] ?? '')));
     if ($name === '') throw new RuntimeException('任务名称不能为空。');
     if ($channel === '') throw new RuntimeException('请选择推广渠道。');
@@ -2609,12 +3240,81 @@ function crm_marketing_render_queue_template(string $text, array $row, array $ac
         '{user_name}' => $senderName,
         '{position}' => $senderPosition,
     ];
-    return strtr($text, $vars);
+    return crm_marketing_linkify_mail_html(strtr($text, $vars));
+}
+
+function crm_marketing_linkify_mail_html(string $html): string
+{
+    $html = (string)$html;
+    if ($html === '') return '';
+
+    $styleAnchor = static function (string $tag): string {
+        if (!preg_match('/\bhref\s*=\s*(["\'])(.*?)\1/i', $tag, $hrefMatch)) return $tag;
+        $href = trim(html_entity_decode((string)$hrefMatch[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if (preg_match('/^www\./i', $href)) $href = 'https://' . $href;
+        if (!preg_match('/^(https?:\/\/|mailto:|tel:)/i', $href)) return $tag;
+        $tag = preg_replace('/\bhref\s*=\s*(["\'])(.*?)\1/i', 'href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '"', $tag, 1) ?? $tag;
+        if (!preg_match('/\btarget\s*=/i', $tag)) {
+            $tag = preg_replace('/<a\b/i', '<a target="_blank"', $tag, 1) ?? $tag;
+        }
+        if (!preg_match('/\brel\s*=/i', $tag)) {
+            $tag = preg_replace('/<a\b/i', '<a rel="noopener noreferrer"', $tag, 1) ?? $tag;
+        }
+        if (preg_match('/\bstyle\s*=\s*(["\'])(.*?)\1/i', $tag, $styleMatch)) {
+            $style = (string)$styleMatch[2];
+            $trimmedStyle = trim($style);
+            $styleSuffix = ($trimmedStyle === '' || substr($trimmedStyle, -1) === ';') ? '' : ';';
+            if (!preg_match('/color\s*:/i', $style)) {
+                $style .= $styleSuffix . 'color:#2563eb';
+                $trimmedStyle = trim($style);
+                $styleSuffix = ($trimmedStyle === '' || substr($trimmedStyle, -1) === ';') ? '' : ';';
+            }
+            if (!preg_match('/text-decoration\s*:/i', $style)) $style .= $styleSuffix . 'text-decoration:underline';
+            $tag = preg_replace('/\bstyle\s*=\s*(["\'])(.*?)\1/i', 'style="' . htmlspecialchars($style, ENT_QUOTES, 'UTF-8') . '"', $tag, 1) ?? $tag;
+        } else {
+            $tag = preg_replace('/<a\b/i', '<a style="color:#2563eb;text-decoration:underline"', $tag, 1) ?? $tag;
+        }
+        return $tag;
+    };
+
+    $linkifyText = static function (string $text): string {
+        return preg_replace_callback('/(https?:\/\/[^\s<>"\']+|www\.[^\s<>"\']+)/i', static function (array $match): string {
+            $visible = (string)$match[0];
+            $trailing = '';
+            while ($visible !== '' && preg_match('/[).,;!?，。；！？）]$/u', $visible)) {
+                $trailing = mb_substr($visible, -1, null, 'UTF-8') . $trailing;
+                $visible = mb_substr($visible, 0, mb_strlen($visible, 'UTF-8') - 1, 'UTF-8');
+            }
+            $href = preg_match('/^www\./i', $visible) ? ('https://' . $visible) : $visible;
+            if (!preg_match('/^https?:\/\//i', $href)) return $match[0];
+            return '<a href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">' . htmlspecialchars($visible, ENT_QUOTES, 'UTF-8') . '</a>' . htmlspecialchars($trailing, ENT_QUOTES, 'UTF-8');
+        }, $text) ?? $text;
+    };
+
+    $parts = preg_split('/(<[^>]+>)/', $html, -1, PREG_SPLIT_DELIM_CAPTURE);
+    if (!is_array($parts)) return $html;
+    $insideAnchor = false;
+    $out = '';
+    foreach ($parts as $part) {
+        if ($part === '') continue;
+        if ($part[0] === '<') {
+            if (preg_match('/^<a\b/i', $part)) {
+                $insideAnchor = true;
+                $part = $styleAnchor($part);
+            } elseif (preg_match('/^<\/a\b/i', $part)) {
+                $insideAnchor = false;
+            }
+            $out .= $part;
+            continue;
+        }
+        $out .= $insideAnchor ? $part : $linkifyText($part);
+    }
+    return $out;
 }
 
 function crm_marketing_queue_body_store(int $taskId, string $bodyHtml): int
 {
-    $bodyHtml = (string)$bodyHtml;
+    $bodyHtml = crm_marketing_linkify_mail_html((string)$bodyHtml);
     if ($taskId <= 0 || $bodyHtml === '') return 0;
     $hash = hash('sha256', $bodyHtml);
     db()->prepare('INSERT INTO crm_marketing_queue_bodies (task_id, body_hash, body_html, body_bytes, created_at, updated_at)
@@ -2694,6 +3394,20 @@ function crm_marketing_queue_build(array $input): array
     if ($taskId <= 0) throw new RuntimeException('请选择推广任务。');
     $task = crm_marketing_task_row($taskId);
     if (($task['task_status'] ?? '') === 'draft') throw new RuntimeException('草稿不能生成正式发送队列。');
+    $taskChannel = crm_marketing_normalize_channel((string)($task['channel_key'] ?? ''));
+    $emailCapableTaskChannels = ['email', 'preference', 'customer_preference', 'auto_preference'];
+    if ($taskChannel !== '' && !in_array($taskChannel, $emailCapableTaskChannels, true)) {
+        db()->prepare("UPDATE crm_marketing_send_queue
+            SET send_status = 'cancelled', failure_reason = COALESCE(NULLIF(failure_reason, ''), '非邮件渠道任务，禁止生成邮件队列'), updated_at = NOW()
+            WHERE task_id = ? AND send_status IN ('pending','scheduled','waiting_retry')")
+            ->execute([$taskId]);
+        db()->prepare("UPDATE crm_marketing_tasks SET task_status = 'manual_pending', updated_at = NOW() WHERE id = ?")->execute([$taskId]);
+        crm_log_event('promotion', 'queue_block_non_email_channel', 'marketing_task', (string)$taskId, null, [
+            'channel' => $taskChannel,
+            'message' => '非邮件渠道任务禁止生成邮件发送队列',
+        ]);
+        return ['task_id' => $taskId, 'queue_count' => 0, 'skipped_count' => 0, 'error_count' => 0, 'first_planned_time' => null, 'last_planned_time' => null, 'message' => '当前任务是非邮件渠道，已禁止生成邮件队列'];
+    }
     $subject = trim((string)($task['mail_subject'] ?? ''));
     $body = trim((string)($task['mail_body_html'] ?? ''));
     $sendRule = crm_marketing_json($task['send_rule_json'] ?? '');
@@ -3477,6 +4191,7 @@ function crm_marketing_log_touch(array $input): array
 
 function crm_marketing_prepare_mail_inline_images(string $bodyHtml, array $account): array
 {
+    $bodyHtml = crm_marketing_linkify_mail_html($bodyHtml);
     $bodyOriginal = $bodyHtml;
     $embeddedInlineResult = crm_mail_extract_embedded_attachment_images($bodyHtml, $account);
     $bodyHtml = (string)($embeddedInlineResult['html'] ?? $bodyHtml);

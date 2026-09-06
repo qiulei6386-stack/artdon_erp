@@ -1082,6 +1082,24 @@ try {
     if ($action === 'marketing_task_logs') {
         api_response(true, '', ['logs' => crm_marketing_logs($_POST)]);
     }
+    if ($action === 'marketing_feedback_list') {
+        api_response(true, '', crm_marketing_feedback_list($_POST));
+    }
+    if ($action === 'marketing_feedback_mail_context') {
+        api_response(true, '', crm_marketing_feedback_mail_context($_POST));
+    }
+    if ($action === 'marketing_feedback_save') {
+        require_csrf();
+        api_response(true, '客户反馈已记录', crm_marketing_feedback_save($_POST));
+    }
+    if ($action === 'marketing_feedback_update') {
+        require_csrf();
+        api_response(true, '客户反馈已修改', crm_marketing_feedback_update($_POST));
+    }
+    if ($action === 'marketing_feedback_delete') {
+        require_csrf();
+        api_response(true, '客户反馈已删除', crm_marketing_feedback_delete($_POST));
+    }
     if ($action === 'marketing_failure_handle') {
         require_csrf();
         api_response(true, '失败目标已处理', crm_marketing_failure_handle($_POST));

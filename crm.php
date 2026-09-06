@@ -919,6 +919,7 @@ $prefStyle = sprintf(
                   <button type="button" class="active" data-promo-execution-tab="mail_queue">邮件发送队列</button>
                   <button type="button" data-promo-execution-tab="manual">人工执行清单</button>
                   <button type="button" data-promo-execution-tab="failures">失败处理</button>
+                  <button type="button" data-promo-execution-tab="feedback">客户反馈</button>
                   <button type="button" data-promo-execution-tab="logs">执行日志</button>
                 </nav>
                 <div data-promo-execution-content><p class="promo-empty">正在加载推广执行中心...</p></div>
@@ -1140,7 +1141,7 @@ $prefStyle = sprintf(
             <button type="button" data-settings-nav="ai_settings"><strong>AI 设置</strong><span>获客 / 报价 / 资料 / 安全</span></button>
             <button type="button" data-settings-nav="task_settings"><strong>任务 / 派工</strong><span>状态 / 提醒 / 超期规则</span></button>
             <button type="button" data-settings-nav="permissions"><strong>权限设置</strong><span>用户 / 角色 / 数据范围</span></button>
-            <button type="button" data-settings-nav="dictionary"><strong>字典配置</strong><span>国家 / 渠道 / 阶段 / 原因</span></button>
+            <button type="button" data-settings-nav="dictionary"><strong>字典配置</strong><span>国家 / 渠道 / 拜访状态 / 阶段</span></button>
             <button type="button" data-settings-nav="fields"><strong>字段配置</strong><span>客户 / 联系人 / 商机字段</span></button>
             <button type="button" data-settings-nav="top_menu"><strong>顶部菜单</strong><span>一级入口 / 顺序 / 下沉</span></button>
             <button type="button" data-settings-nav="logs"><strong>日志中心</strong><span>操作 / 安全 / 异常</span></button>
@@ -1169,7 +1170,7 @@ $prefStyle = sprintf(
                   ['ai_settings','AI 设置','获客、报价、资料、确认流和安全规则','AI'],
                   ['task_settings','任务 / 派工','状态、提醒、截止、超期和派工接口','任务'],
                   ['permissions','权限设置','用户、角色、数据范围和字段权限','权限'],
-                  ['dictionary','字典配置','国家、渠道、阶段、原因和业务下拉','配置'],
+                  ['dictionary','字典配置','国家、渠道、拜访/来访状态、阶段和业务下拉','配置'],
                   ['fields','字段配置','客户、联系人、商机和规则 JSON','字段'],
                   ['top_menu','顶部菜单','一级入口、顺序、显示和下沉规则','导航'],
                   ['logs','日志中心','操作、安全、异常和业务对象日志','日志'],
@@ -1456,7 +1457,7 @@ $prefStyle = sprintf(
 
             <section class="crm-panel crm-config-center settings-section" data-settings-section="dictionary" data-config-center>
               <div class="crm-config-head">
-                <div><span>Dictionary Center</span><h2>字典配置</h2><p>客户等级、来源、推广方式、联系人标签、地址类型、负责人角色都从这里维护。</p></div>
+                <div><span>Dictionary Center</span><h2>字典配置</h2><p>客户等级、来源、推广方式、拜访/来访状态、联系人标签、地址类型和负责人角色都从这里维护。</p></div>
                 <button type="button" data-config-reload>刷新配置</button>
               </div>
               <div class="crm-config-grid">
