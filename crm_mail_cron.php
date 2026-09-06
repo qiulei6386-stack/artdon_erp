@@ -26,6 +26,7 @@ foreach (array_slice($argv ?? [], 1) as $arg) {
     }
 }
 
+$sendQueue = crm_mail_send_due_jobs($limit);
 $result = crm_mail_cron_sync_due_accounts($interval, $limit);
-$result['send_queue'] = crm_mail_send_due_jobs($limit);
+$result['send_queue'] = $sendQueue;
 echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . PHP_EOL;

@@ -39,7 +39,7 @@ register_shutdown_function(static function () use ($crmApiPerfStart, $action): v
     ];
     if ($safeAction === 'mail_list') {
         $payload['segments_ms'] = [];
-        foreach (['account_prepare','prepare_filters','count','list_query','attachment_counts','row_format','folder_counts','response_prepare'] as $segment) {
+        foreach (['account_prepare','sent_visibility','prepare_filters','count','list_query','attachment_counts','row_format','folder_counts','response_prepare'] as $segment) {
             $value = $GLOBALS['crm_mail_list_segments'][$segment] ?? null;
             if (is_numeric($value) && is_finite((float)$value)) $payload['segments_ms'][$segment] = round(max(0, (float)$value), 2);
         }
@@ -864,7 +864,19 @@ try {
     }
     if ($action === 'mail_send_start' || $action === 'mail_reply' || $action === 'mail_reply_all' || $action === 'mail_forward') {
         require_csrf();
-        api_response(true, '发送任务已创建', crm_mail_send_start($_POST, $_FILES));
+        $sendJob = crm_mail_send_start($_POST, $_FILES);
+        crm_api_release_session_lock();
+        if (($sendJob['status'] ?? '') === 'scheduled' && strtotime((string)($sendJob['scheduled_at'] ?? '')) <= time() && function_exists('fastcgi_finish_request')) {
+            // Persist first, acknowledge and release the session, then process only
+            // this authorized job. The existing cron recovers unclaimed jobs.
+            register_shutdown_function(static function () use ($sendJob): void {
+                fastcgi_finish_request();
+                ignore_user_abort(true);
+                try { crm_mail_send_due_jobs(1, (string)$sendJob['job_id']); }
+                catch (Throwable $e) { error_log('CRM post-response send worker interrupted; inspect job state before retry.'); }
+            });
+        }
+        api_response(true, '发送任务已创建', $sendJob);
     }
     if ($action === 'mail_send_progress') {
         crm_api_release_session_lock();
@@ -1161,7 +1173,12 @@ try {
     }
     if ($action === 'customer_get') {
         crm_require('customer.view');
+        crm_api_release_session_lock();
         api_response(true, '', crm_customer_get((int)($_POST['customer_id'] ?? 0), (string)($_POST['detail'] ?? 'full')));
+    }
+    if ($action === 'customer_quote_handoff') {
+        crm_api_release_session_lock();
+        api_response(true, '', crm_customer_quote_handoff($_POST + $_GET));
     }
     if ($action === 'customer_mail_preview') {
         crm_require('customer.view');

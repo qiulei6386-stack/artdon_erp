@@ -117,6 +117,7 @@ async function test(name,fn){await fn();count++;console.log('PASS '+name);}
     h.task.handleAction('创建派工');h.task.handleAction('生成派工');assert.equal(calls,2);assert.equal(h.requests.length,0);
     h.state.action_contracts.tasks['创建派工'].allowed=false;h.task.handleAction('创建派工');assert.equal(calls,2);
     assert.equal(h.task.actionPending('创建派工'),false);assert.equal(h.task.actionPending('查询物流'),true);
+    assert.equal(h.task.actionButton('查询物流'),'');
   });
   await test('new follow-up routes even when no task is selected',()=>{
     const h=harness();let row='not-called';h.task.openTaskFollowup=value=>{row=value;};h.task.handleAction('新建跟进');assert.equal(row,null);

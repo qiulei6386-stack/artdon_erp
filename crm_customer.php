@@ -841,7 +841,7 @@ function crm_customer_scores(int $customerId, array $customer, array $context = 
     $activity = max(10, min(100, 100 - min(90, $days * 3)));
     $health = max(10, min(100, (int)round(($completeness['score'] + $activity + (100 - $followRisk)) / 3)));
     $deal = in_array($customer['lifecycle_key'] ?? '', ['quoting','sampling','deal'], true) ? 65 : 30;
-    $scores = ['health_score' => $health, 'activity_score' => $activity, 'deal_probability' => $deal, 'followup_risk' => $followRisk, 'completeness_score' => $completeness['score'], 'completeness' => $completeness];
+    $scores = ['scoring_method'=>'rule_estimate', 'health_score' => $health, 'activity_score' => $activity, 'deal_probability' => $deal, 'followup_risk' => $followRisk, 'completeness_score' => $completeness['score'], 'completeness' => $completeness];
     if ($persist) {
         db()->prepare('INSERT INTO crm_customer_scores (customer_id, health_score, activity_score, deal_probability, followup_risk, completeness_score, score_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE health_score=VALUES(health_score), activity_score=VALUES(activity_score), deal_probability=VALUES(deal_probability), followup_risk=VALUES(followup_risk), completeness_score=VALUES(completeness_score), score_json=VALUES(score_json), updated_at=NOW()')
             ->execute([$customerId, $health, $activity, $deal, $followRisk, $completeness['score'], json_encode($scores, JSON_UNESCAPED_UNICODE)]);
@@ -2295,6 +2295,9 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
     $stmt->execute($params);
     $customer = $stmt->fetch();
     if (!$customer) throw new RuntimeException('客户不存在或无权查看。');
+    if (strpos($detailMode, 'tab:') === 0) {
+        return crm_customer_detail_section($id, $customer, substr($detailMode, 4));
+    }
     $addresses = crm_customer_addresses($id);
     $sourceTags = crm_customer_tags($id, 'crm_customer_source_tags', 'source_key');
     $promotionChannels = crm_customer_tags($id, 'crm_customer_promotion_channels', 'channel_key');
@@ -2327,8 +2330,8 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'last_followup_at' => $lastFollowAt,
     ]);
     $tabConfig = crm_customer_detail_tabs($customer);
-    $linkage = crm_customer_linkage_summary($customer);
-    $salesActions = crm_customer_sales_action_stats($id, $customer, $linkage);
+    $linkage = $light ? [] : crm_customer_linkage_summary($customer);
+    $salesActions = $light ? [] : crm_customer_sales_action_stats($id, $customer, $linkage);
     $base = [
         'customer' => $customer,
         'tab_config' => $tabConfig,
@@ -2344,9 +2347,10 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'groups' => $groups,
         'sales_actions' => $salesActions,
         'business_cards' => crm_customer_business_cards($id),
-        'summary' => crm_customer_summary($id, $linkage),
+        'summary' => $light ? crm_customer_deferred_summary(count($contacts)) : crm_customer_summary($id, $linkage),
         'linkage' => $linkage,
         '_lazy_detail' => $light ? 1 : 0,
+        '_loaded_tabs' => $light ? ['overview', 'customer_attribute', 'contacts', 'addresses', 'tags'] : [],
     ];
     if ($light) {
         return $base + [
@@ -2382,7 +2386,7 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
 
 function crm_customer_attribute_get(int $id): array
 {
-    $detail = crm_customer_get($id, 'full');
+    $detail = crm_customer_get($id, 'overview');
     return [
         'customer' => $detail['customer'] ?? [],
         'scores' => $detail['scores'] ?? [],
@@ -2395,6 +2399,77 @@ function crm_customer_attribute_get(int $id): array
         'addresses' => $detail['addresses'] ?? [],
         'groups' => $detail['groups'] ?? [],
     ];
+}
+
+// Overview never reads cross-system order/quote/shipment bodies. Unknown is not zero.
+function crm_customer_deferred_summary(int $contacts): array
+{
+    $summary = ['contacts' => ['label' => '联系人', 'value' => $contacts . ' 个', 'hint' => '全部联系人']];
+    foreach (['chat_groups'=>'客户群','followups'=>'跟进','mail'=>'邮件','quote'=>'报价','plm'=>'PLM','bom'=>'BOM','dispatch'=>'派工','orders'=>'订单','documents'=>'单证','shipments'=>'出货','receivables'=>'欠款','materials'=>'资料'] as $key=>$label) {
+        $summary[$key] = ['label'=>$label,'value'=>'点击查看','hint'=>'打开后读取关联记录'];
+    }
+    return $summary;
+}
+
+function crm_customer_quote_handoff(array $input): array
+{
+    crm_require('customer.view');
+    if (!crm_external_can('quote', 'create')) throw new RuntimeException('没有创建报价的权限。');
+    $customerId = (int)($input['customer_id'] ?? 0);
+    $opportunityId = (int)($input['opportunity_id'] ?? 0);
+    $opportunity = [];
+    if ($opportunityId > 0) {
+        crm_require('opportunity.view');
+        $opportunity = crm_opportunity_detail($opportunityId)['opportunity'];
+        if ($customerId && $customerId !== (int)$opportunity['customer_id']) throw new RuntimeException('商机与客户不一致。');
+        $customerId = (int)$opportunity['customer_id'];
+    }
+    $detail = crm_customer_get($customerId, 'overview');
+    $customer = array_intersect_key($detail['customer'], array_flip(['id','customer_name','customer_name_en','customer_code','country']));
+    return ['customer'=>$customer, 'opportunity_id'=>$opportunityId,
+        'project_ref'=>$opportunityId ? 'CRM 商机 #' . $opportunityId . ' ' . (string)($opportunity['opportunity_name'] ?? '') : '',
+        'message'=>'已带入客户与商机来源；补充产品并保存后才会生成报价单。'];
+}
+
+// Called only after the same customer scope check as full detail. A tab loads its
+// own records, not every remote business system. Legacy full callers are unchanged.
+function crm_customer_detail_section(int $id, array $customer, string $tab): array
+{
+    $data = ['customer'=>['id'=>$id], '_partial_detail'=>1, '_loaded_tabs'=>[$tab]];
+    switch ($tab) {
+        case 'chat_groups': $data['chat_groups']=crm_customer_chat_groups($id); break;
+        case 'followups': $data['followups']=crm_followup_list(['customer_id'=>$id])['rows']; break;
+        case 'visits': $data['visits']=function_exists('crm_visit_list') && has_permission('visit.view') ? crm_visit_list(['customer_id'=>$id])['rows'] : []; break;
+        case 'opportunities': $data['opportunities']=function_exists('crm_opportunity_list') && has_permission('opportunity.view') ? crm_opportunity_list(['customer_id'=>$id])['rows'] : []; break;
+        case 'mail': $data['mail_rows']=crm_customer_mail_rows($id); break;
+        case 'samples': $data['sample_shipments']=crm_customer_sample_shipments($id); break;
+        case 'timeline': $data['timeline']=crm_customer_timeline($id); break;
+        case 'relations': $data['relations']=crm_customer_relations($id); break;
+        case 'events': $data['events']=crm_customer_events($id); break;
+        case 'logs': $data['logs']=crm_customer_logs($id); break;
+        case 'preferences':
+            $data['product_preferences']=crm_customer_preference_row($id,'crm_customer_product_preferences');
+            $data['communication_preferences']=crm_customer_preference_row($id,'crm_customer_communication_preferences'); break;
+        case 'communication_all':
+            foreach (['followups','visits','mail'] as $section) {
+                $part=crm_customer_detail_section($id,$customer,$section);
+                unset($part['customer'],$part['_partial_detail'],$part['_loaded_tabs']);
+                $data=array_merge($data,$part);
+            }
+            $data['_loaded_tabs']=['communication_all','followups','visits','mail']; break;
+        case 'quote': $data['linkage']['quote']=crm_customer_quote_summary($customer); break;
+        case 'bom': $data['linkage']['bom']=crm_customer_bom_summary($customer); break;
+        case 'orders': $data['linkage']['orders']=crm_customer_order_summary($customer); break;
+        case 'documents': $data['linkage']['documents']=crm_customer_document_summary($customer); break;
+        case 'shipments': $data['linkage']['shipments']=crm_customer_shipment_summary($customer); break;
+        case 'receivables':
+            $data['linkage']['orders']=crm_customer_order_summary($customer);
+            $data['linkage']['receivables']=crm_customer_receivable_summary($data['linkage']['orders']); break;
+        case 'overview': case 'customer_attribute': case 'contacts': case 'addresses': case 'tags':
+        case 'promotion_feedback': case 'social_chat': case 'plm': case 'dispatch': case 'materials': case 'files': case 'duplicate': break;
+        default: throw new RuntimeException('不支持的客户详情页，请刷新后重试。');
+    }
+    return $data;
 }
 
 function crm_customer_attribute_missing(int $id): array

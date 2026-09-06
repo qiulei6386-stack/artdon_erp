@@ -446,7 +446,10 @@ function crm_task_center_list(array $input = []): array
     $where = ['t.deleted_at IS NULL', crm_task_scope_sql('t')];
     $params = [];
     $uid = (int)((current_user() ?: [])['id'] ?? 0);
-    if ($view === 'my') { $where[] = '(t.assigned_user_id=? OR t.created_by=?)'; array_push($params, $uid, $uid); }
+    if ($view === 'my' || $view === 'my_pending') {
+        $where[] = '(t.assigned_user_id=? OR t.created_by=?)'; array_push($params, $uid, $uid);
+        if ($view === 'my_pending') $where[] = "t.status NOT IN ('done','closed','cancelled')";
+    }
     elseif ($view === 'today') $where[] = 'DATE(t.due_at)=CURDATE()';
     elseif ($view === 'tomorrow') $where[] = 'DATE(t.due_at)=DATE_ADD(CURDATE(), INTERVAL 1 DAY)';
     elseif ($view === 'week') $where[] = 'DATE(t.due_at) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)';

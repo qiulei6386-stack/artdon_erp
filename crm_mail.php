@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/crm_settings_config.php';
+require_once __DIR__ . '/crm_mail_sent_visibility.php';
 
 function crm_mail_key(): string
 {
@@ -714,7 +715,7 @@ function crm_mail_folder_counts(?array $account = null): array
     $draftStmt = db()->prepare('SELECT COUNT(*) FROM crm_mail_drafts WHERE user_id = ? AND mail_account_id = ?');
     $draftStmt->execute([$userId, $accountId]);
     $row['drafts'] = (int)$draftStmt->fetchColumn();
-    $scheduledStmt = db()->prepare("SELECT COUNT(*) FROM crm_mail_send_jobs WHERE user_id = ? AND mail_account_id = ? AND status IN ('scheduled','running')");
+    $scheduledStmt = db()->prepare("SELECT COUNT(*) FROM crm_mail_send_jobs WHERE user_id = ? AND mail_account_id = ? AND status IN ('scheduled','running','failed','unknown')");
     $scheduledStmt->execute([$userId, $accountId]);
     $row['scheduled'] = (int)$scheduledStmt->fetchColumn();
     $keys = ['inbox','scheduled','sent','drafts','archive','deleted','unread','starred','unreplied','attachments','linked','unlinked','important','promotion','quote','sample','service'];
@@ -2215,6 +2216,8 @@ function crm_mail_build_message(array $account, array $input, array $to, array $
     return implode("\r\n", $headers);
 }
 
+class CrmMailDeliveryUncertain extends RuntimeException {}
+
 function crm_mail_smtp_send(array $account, array $input, array $attachments = []): array
 {
     $to = crm_mail_parse_addresses((string)($input['to_emails'] ?? ''));
@@ -2226,6 +2229,7 @@ function crm_mail_smtp_send(array $account, array $input, array $attachments = [
     if ($messageId === '') $messageId = crm_mail_generate_message_id($account);
     $input['_message_id_header'] = $messageId;
     $fp = crm_mail_smtp_connect($account);
+    $dataStarted = false;
     try {
         crm_mail_smtp_cmd($fp, 'MAIL FROM:<' . crm_mail_login_email($account) . '>', ['250']);
         foreach ($recipients as $recipient) {
@@ -2233,14 +2237,20 @@ function crm_mail_smtp_send(array $account, array $input, array $attachments = [
         }
         crm_mail_smtp_cmd($fp, 'DATA', ['354']);
         $message = crm_mail_build_message($account, $input, $to, $cc, $bcc, $attachments);
-        fwrite($fp, str_replace("\n.", "\n..", $message) . "\r\n.\r\n");
+        $dataStarted = true;
+        $wire = str_replace("\n.", "\n..", $message) . "\r\n.\r\n";
+        for ($offset = 0, $length = strlen($wire); $offset < $length; $offset += $written) {
+            $written = fwrite($fp, substr($wire, $offset));
+            if ($written === false || $written === 0) throw new RuntimeException('SMTP 正文传输中断。');
+        }
         $response = crm_mail_smtp_expect($fp, ['250']);
-        @crm_mail_smtp_cmd($fp, 'QUIT', ['221', '250']);
+        try { crm_mail_smtp_cmd($fp, 'QUIT', ['221', '250']); } catch (Throwable $ignored) { /* DATA was accepted. QUIT failure does not unsend mail. */ }
         fclose($fp);
         return ['recipients' => $recipients, 'response' => $response, 'attachment_count' => count($attachments), 'message_id_header' => $messageId];
     } catch (Throwable $e) {
-        @fwrite($fp, "QUIT\r\n");
-        @fclose($fp);
+        try { @fwrite($fp, "QUIT\r\n"); } catch (Throwable $ignored) {}
+        try { @fclose($fp); } catch (Throwable $ignored) {}
+        if ($dataStarted) throw new CrmMailDeliveryUncertain('邮件已交付发送通道，但回执未能确认。请核对发件箱或收件端，不要直接重发。', 0, $e);
         throw $e;
     }
 }
@@ -3418,23 +3428,9 @@ function crm_mail_list(array $input): array
     elseif ($folder === 'deleted') $where[] = 'm.is_deleted = 1';
     elseif ($folder !== 'all') { $where[] = 'm.folder = ?'; $params[] = $folder; }
     if ($folder === 'sent') {
-        $where[] = "NOT EXISTS (
-            SELECT 1 FROM crm_mails m2
-            WHERE m2.user_id = m.user_id
-              AND m2.mail_account_id = m.mail_account_id
-              AND m2.folder = 'sent'
-              AND m2.is_deleted = 0
-              AND m2.id <> m.id
-              AND (
-                (m.message_id_header IS NOT NULL AND m.message_id_header <> '' AND m2.message_id_header IS NOT NULL AND m2.message_id_header <> '' AND LOWER(REPLACE(REPLACE(TRIM(m2.message_id_header), '<', ''), '>', '')) = LOWER(REPLACE(REPLACE(TRIM(m.message_id_header), '<', ''), '>', '')) AND m2.id < m.id)
-                OR
-                (m.message_uid NOT LIKE 'send\\_%' AND (m2.message_uid LIKE 'send\\_%' OR m2.crm_send_id IS NOT NULL OR m2.mail_source = 'crm_sent') AND m2.subject = m.subject AND m2.to_emails = m.to_emails AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(m2.sent_at, m2.created_at), COALESCE(m.sent_at, m.created_at))) <= 10)
-                OR
-                (m.message_uid NOT LIKE 'send\\_%' AND (m2.message_uid LIKE 'send\\_%' OR m2.crm_send_id IS NOT NULL OR m2.mail_source = 'crm_sent') AND m2.subject = m.subject AND m.body_hash IS NOT NULL AND m.body_hash <> '' AND m2.body_hash = m.body_hash AND ABS(TIMESTAMPDIFF(MINUTE, COALESCE(m2.sent_at, m2.created_at), COALESCE(m.sent_at, m.created_at))) <= 10)
-                OR
-                (m.message_uid NOT LIKE 'send\\_%' AND (m2.message_uid LIKE 'send\\_%' OR m2.crm_send_id IS NOT NULL OR m2.mail_source = 'crm_sent') AND m.message_id_header IS NOT NULL AND m.message_id_header <> '' AND m2.message_id_header IS NOT NULL AND m2.message_id_header <> '' AND LOCATE(LOWER(REPLACE(REPLACE(TRIM(m2.message_id_header), '<', ''), '>', '')), LOWER(REPLACE(REPLACE(TRIM(m.message_id_header), '<', ''), '>', ''))) > 0)
-              )
-        )";
+        $duplicates = crm_mail_sent_duplicate_ids($account);
+        if ($duplicates) $where[] = 'm.id NOT IN (' . implode(',', $duplicates) . ')';
+        crm_mail_list_perf_mark('sent_visibility', $segmentStarted);
     }
     if ($folder !== 'deleted') $where[] = 'm.is_deleted = 0';
     $q = trim((string)($input['q'] ?? ''));
@@ -3518,7 +3514,7 @@ function crm_mail_scheduled_list(array $account, array $input): array
     $pageSize = max(1, min(200, (int)($input['page_size'] ?? 50)));
     $page = max(1, (int)($input['page'] ?? 1));
     $params = [(int)$account['user_id'], (int)$account['id']];
-    $where = ["user_id = ?", "mail_account_id = ?", "status IN ('scheduled','running')"];
+    $where = ["user_id = ?", "mail_account_id = ?", "status IN ('scheduled','running','failed','unknown')"];
     $q = trim((string)($input['q'] ?? ''));
     if ($q !== '') {
         $where[] = '(subject LIKE ? OR to_emails LIKE ?)';
@@ -3536,9 +3532,14 @@ function crm_mail_scheduled_list(array $account, array $input): array
         $scheduledAt = (string)($row['scheduled_at'] ?? '');
         $remaining = $scheduledAt !== '' ? max(0, strtotime($scheduledAt) - time()) : 0;
         $status = (string)($row['status'] ?? '');
+        if ($status === 'running' && !empty($row['updated_at']) && strtotime((string)$row['updated_at']) < time() - 900) {
+            $status = 'unknown';
+            $row['error_message'] = '发送进程长时间没有更新，请核对收件端，不自动重发。';
+        }
         $summary = $status === 'running'
             ? '正在发送...'
             : ('计划发送：' . ($scheduledAt ?: '-') . ($remaining > 0 ? ' · 剩余约 ' . ceil($remaining / 60) . ' 分钟' : ' · 等待服务器发送'));
+        if (in_array($status, ['failed','unknown'], true)) $summary = ($status === 'unknown' ? '待核对，请勿重发：' : '发送失败：') . (string)($row['error_message'] ?? '请查看详情');
         $rows[] = [
             'id' => (int)$row['id'],
             'job_id' => (string)$row['job_id'],
@@ -3561,7 +3562,7 @@ function crm_mail_scheduled_list(array $account, array $input): array
             'is_unreplied' => 0,
             'linked_customer_id' => null,
             'linked_customer_name' => '',
-            'tags' => [$status === 'running' ? '发送中' : '待发送'],
+            'tags' => [['running'=>'发送中','failed'=>'发送失败','unknown'=>'待核对，请勿重发'][$status] ?? '待发送'],
         ];
     }
     $includeCounts = (string)($input['include_counts'] ?? '0') === '1';
@@ -4692,6 +4693,7 @@ function crm_mail_execute_send_job(array $account, array $input, array $attachme
     $visibleAttachmentCount = crm_mail_visible_attachment_count($attachments);
     if (empty($input['_message_id_header'])) $input['_message_id_header'] = crm_mail_generate_message_id($account);
     $sendResult = crm_mail_smtp_send($account, $input, $attachments);
+    try {
     $messageId = (string)($sendResult['message_id_header'] ?? $input['_message_id_header'] ?? '');
     $linkedCustomerId = (int)($input['customer_id'] ?? 0) ?: null;
     $replyTo = (int)($input['reply_to_mail_id'] ?? 0);
@@ -4753,13 +4755,27 @@ function crm_mail_execute_send_job(array $account, array $input, array $attachme
         }
     }
     return ['sent_mail_id' => $sentMailId, 'smtp_response' => $sendResult['response'], 'store_result' => $storeResult, 'visible_attachment_count' => $visibleAttachmentCount, 'actual_visible_count' => $actualVisibleCount];
+    } catch (Throwable $e) {
+        throw new CrmMailDeliveryUncertain('邮件服务器已接收，但发件记录保存未完成。请先核对，切勿重复发送。', 0, $e);
+    }
+}
+
+function crm_mail_existing_send_result(array $prior, array $input, string $bodyOriginal): array
+{
+    $payload = json_decode((string)($prior['payload_json'] ?? '{}'), true) ?: [];
+    foreach (['to_emails','cc_emails','bcc_emails','subject'] as $field) {
+        if (trim((string)($payload['input'][$field] ?? '')) !== trim((string)($input[$field] ?? ''))) throw new RuntimeException('这个发送请求已受理，内容不能覆盖。请先核对待发送中的原任务。');
+    }
+    if ((string)($payload['body_original'] ?? '') !== $bodyOriginal) throw new RuntimeException('这个发送请求已受理，正文不能覆盖。请先核对待发送中的原任务。');
+    return array_intersect_key($prior, array_flip(['job_id','status','stage','percent','scheduled_at'])) + ['message'=>'此发送请求已受理，请查看发送进度，不会重复投递。'];
 }
 
 function crm_mail_send_start(array $input, array $files = []): array
 {
     cleanupCrmMailTempFiles();
     $mode = (string)($input['mode'] ?? 'compose');
-    crm_require(in_array($mode, ['reply', 'reply_all'], true) ? 'mail.view' : 'mail.send');
+    crm_require('mail.send');
+    if (in_array($mode, ['reply', 'reply_all'], true)) crm_require('mail.view');
     $account = crm_mail_current_account(true);
     if (!$account) throw new RuntimeException('请先绑定邮箱。');
     $to = trim((string)($input['to_emails'] ?? ''));
@@ -4769,6 +4785,12 @@ function crm_mail_send_start(array $input, array $files = []): array
     if ($to === '') throw new RuntimeException('收件人不能为空。');
     if ($subject === '') throw new RuntimeException('主题不能为空。');
     if ($body === '') throw new RuntimeException('正文不能为空。');
+    $token = trim((string)($input['request_token'] ?? ''));
+    if ($token !== '' && !preg_match('/^[A-Za-z0-9_-]{16,128}$/D', $token)) throw new RuntimeException('发送标识无效，请重新打开写信窗口。');
+    $jobId = $token !== '' ? 'send_' . hash('sha256', $account['user_id'] . ':' . $account['id'] . ':' . $token) : 'send_' . bin2hex(random_bytes(24));
+    $existing = db()->prepare('SELECT job_id, status, stage, percent, scheduled_at, payload_json FROM crm_mail_send_jobs WHERE job_id = ? AND user_id = ? AND mail_account_id = ? LIMIT 1');
+    $existing->execute([$jobId, (int)$account['user_id'], (int)$account['id']]);
+    if ($prior = $existing->fetch()) return crm_mail_existing_send_result($prior, $input, $bodyOriginal);
     $replyToMailId = (int)($input['reply_to_mail_id'] ?? 0);
     if ($replyToMailId > 0) {
         $replyStmt = db()->prepare('SELECT message_id_header, raw_headers FROM crm_mails WHERE id = ? AND user_id = ? AND mail_account_id = ? LIMIT 1');
@@ -4798,11 +4820,10 @@ function crm_mail_send_start(array $input, array $files = []): array
     register_shutdown_function(static function (array $trackedAttachments): void {
         crm_mail_cleanup_generated_attachments($trackedAttachments);
     }, $attachments);
-    $jobId = 'send_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
     $sendInput = $input;
     $sendInput['body_html'] = $body;
     $delayMinutes = max(0, min(10, (int)($account['delay_send_minutes'] ?? 0)));
-    if ($delayMinutes > 0) {
+    {
         try {
             $queuedAttachments = crm_mail_queue_attachment_files((int)$account['user_id'], $jobId, $attachments);
         } catch (Throwable $e) {
@@ -4811,27 +4832,18 @@ function crm_mail_send_start(array $input, array $files = []): array
             throw $e;
         }
         $scheduledAt = date('Y-m-d H:i:s', time() + $delayMinutes * 60);
+        try {
         db()->prepare('INSERT INTO crm_mail_send_jobs (user_id, mail_account_id, job_id, to_emails, subject, status, stage, percent, scheduled_at, payload_json, attachments_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, "scheduled", "waiting", 5, ?, ?, ?, NOW(), NOW())')
             ->execute([(int)$account['user_id'], (int)$account['id'], $jobId, $to, $subject, $scheduledAt, json_encode(['input' => $sendInput, 'body_original' => $bodyOriginal], JSON_UNESCAPED_UNICODE), json_encode($queuedAttachments, JSON_UNESCAPED_UNICODE)]);
+        } catch (Throwable $e) {
+            crm_mail_cleanup_queue_files($queuedAttachments);
+            // Same form can race or be retried after a lost response; unique job_id owns the send.
+            $existing->execute([$jobId, (int)$account['user_id'], (int)$account['id']]);
+            if ($prior = $existing->fetch()) return crm_mail_existing_send_result($prior, $input, $bodyOriginal);
+            throw $e;
+        }
         crm_log_event('mail', 'send_scheduled', 'mail', $jobId, null, ['to' => $to, 'subject' => $subject, 'scheduled_at' => $scheduledAt, 'delay_minutes' => $delayMinutes, 'attachments' => count($queuedAttachments)]);
-        return ['job_id' => $jobId, 'status' => 'scheduled', 'stage' => 'waiting', 'percent' => 5, 'scheduled_at' => $scheduledAt, 'message' => '邮件已加入延迟发送队列，将在 ' . $scheduledAt . ' 发送。'];
-    }
-    db()->prepare('INSERT INTO crm_mail_send_jobs (user_id, mail_account_id, job_id, to_emails, subject, status, stage, percent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, "running", "check", 20, NOW(), NOW())')
-        ->execute([(int)$account['user_id'], (int)$account['id'], $jobId, $to, $subject]);
-    try {
-        db()->prepare('UPDATE crm_mail_send_jobs SET stage = "smtp", percent = 55, updated_at = NOW() WHERE job_id = ? AND user_id = ?')->execute([$jobId, (int)$account['user_id']]);
-        $result = crm_mail_execute_send_job($account, $sendInput, $attachments, $jobId, $bodyOriginal);
-        db()->prepare('UPDATE crm_mail_send_jobs SET status = "success", stage = "done", percent = 100, sent_mail_id = ?, finished_at = NOW(), updated_at = NOW() WHERE job_id = ? AND user_id = ?')->execute([(int)$result['sent_mail_id'], $jobId, (int)$account['user_id']]);
-        crm_mail_cleanup_queue_files($attachments);
-        crm_log_event('mail', 'send_success', 'mail', $jobId, null, ['to' => $to, 'subject' => $subject, 'attachments' => count($attachments), 'stored_attachments' => $result['store_result'], 'response' => $result['smtp_response']]);
-        $message = '邮件已通过 SMTP 成功发送。';
-        if ((int)$result['visible_attachment_count'] > 0 && (int)($result['store_result']['visible'] ?? 0) <= 0) $message = '邮件已发送，但发件箱附件保存异常，请不要关闭页面并联系管理员检查。';
-        return ['job_id' => $jobId, 'status' => 'success', 'stage' => 'done', 'percent' => 100, 'message' => $message];
-    } catch (Throwable $e) {
-        crm_mail_cleanup_generated_attachments($attachments);
-        db()->prepare('UPDATE crm_mail_send_jobs SET status = "failed", stage = "failed", percent = 100, error_message = ?, updated_at = NOW() WHERE job_id = ? AND user_id = ?')->execute([$e->getMessage(), $jobId, (int)$account['user_id']]);
-        crm_log_event('mail', 'send_failed', 'mail', $jobId, null, ['to' => $to, 'subject' => $subject, 'error' => $e->getMessage()], false, $e->getMessage());
-        throw new RuntimeException('发送失败：' . $e->getMessage());
+        return ['job_id' => $jobId, 'status' => 'scheduled', 'stage' => 'waiting', 'percent' => 5, 'scheduled_at' => $scheduledAt, 'message' => $delayMinutes > 0 ? '邮件已加入延迟发送队列，将在 ' . $scheduledAt . ' 发送。' : '邮件已加入发送队列，可继续其他操作；实际结果请查看待发送。'];
     }
 }
 
@@ -4840,10 +4852,14 @@ function crm_mail_send_progress(string $jobId): array
     crm_require('mail.view');
     $account = crm_mail_current_account(false);
     if (!$account) throw new RuntimeException('请先绑定邮箱。');
-    $stmt = db()->prepare('SELECT * FROM crm_mail_send_jobs WHERE job_id = ? AND user_id = ? LIMIT 1');
-    $stmt->execute([$jobId, (int)$account['user_id']]);
+    $stmt = db()->prepare('SELECT job_id, status, stage, percent, scheduled_at, sent_mail_id, error_message, subject, to_emails, created_at, updated_at FROM crm_mail_send_jobs WHERE job_id = ? AND user_id = ? AND mail_account_id = ? LIMIT 1');
+    $stmt->execute([$jobId, (int)$account['user_id'], (int)$account['id']]);
     $row = $stmt->fetch();
     if (!$row) throw new RuntimeException('发送任务不存在。');
+    if (($row['status'] ?? '') === 'running' && !empty($row['updated_at']) && strtotime((string)$row['updated_at']) < time() - 900) {
+        $row['status'] = 'unknown';
+        $row['message'] = '发送进程长时间没有更新。请核对发件箱或收件端，不自动重发。';
+    }
     if (($row['status'] ?? '') === 'scheduled' && !empty($row['scheduled_at'])) {
         $remaining = max(0, strtotime((string)$row['scheduled_at']) - time());
         $row['remaining_seconds'] = $remaining;
@@ -4854,12 +4870,13 @@ function crm_mail_send_progress(string $jobId): array
     return $row;
 }
 
-function crm_mail_send_due_jobs(int $limit = 20): array
+function crm_mail_send_due_jobs(int $limit = 20, string $onlyJobId = ''): array
 {
     crm_mail_ensure_tables();
     $tempCleanup = cleanupCrmMailTempFiles();
     $limit = max(1, min(100, $limit));
-    $stmt = db()->query("SELECT * FROM crm_mail_send_jobs WHERE status = 'scheduled' AND scheduled_at <= NOW() ORDER BY scheduled_at ASC, id ASC LIMIT {$limit}");
+    $stmt = db()->prepare("SELECT * FROM crm_mail_send_jobs WHERE status = 'scheduled' AND scheduled_at <= NOW()" . ($onlyJobId !== '' ? ' AND job_id = ?' : '') . " ORDER BY scheduled_at ASC, id ASC LIMIT {$limit}");
+    $stmt->execute($onlyJobId !== '' ? [$onlyJobId] : []);
     $jobs = $stmt->fetchAll();
     $sent = 0;
     $failed = 0;
@@ -4868,6 +4885,7 @@ function crm_mail_send_due_jobs(int $limit = 20): array
         $lock = db()->prepare("UPDATE crm_mail_send_jobs SET status = 'running', stage = 'smtp', percent = 55, updated_at = NOW() WHERE id = ? AND status = 'scheduled'");
         $lock->execute([(int)$job['id']]);
         if ($lock->rowCount() <= 0) continue;
+        $deliveryAccepted = false;
         try {
             $accountStmt = db()->prepare('SELECT * FROM crm_user_mail_accounts WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1');
             $accountStmt->execute([(int)$job['mail_account_id'], (int)$job['user_id']]);
@@ -4881,18 +4899,22 @@ function crm_mail_send_due_jobs(int $limit = 20): array
             $bodyOriginal = (string)($payload['body_original'] ?? '');
             $attachments = json_decode((string)($job['attachments_json'] ?? '[]'), true) ?: [];
             $result = crm_mail_execute_send_job($account, $input, $attachments, (string)$job['job_id'], $bodyOriginal);
+            $deliveryAccepted = true;
             db()->prepare("UPDATE crm_mail_send_jobs SET status = 'success', stage = 'done', percent = 100, sent_mail_id = ?, error_message = NULL, finished_at = NOW(), updated_at = NOW() WHERE id = ?")
                 ->execute([(int)$result['sent_mail_id'], (int)$job['id']]);
-            crm_mail_cleanup_queue_files($attachments);
-            crm_log_event('mail', 'send_scheduled_success', 'mail', (string)$job['job_id'], null, ['sent_mail_id' => (int)$result['sent_mail_id']]);
+            try {
+                crm_mail_cleanup_queue_files($attachments);
+                crm_log_event('mail', 'send_scheduled_success', 'mail', (string)$job['job_id'], null, ['sent_mail_id' => (int)$result['sent_mail_id']]);
+            } catch (Throwable $logError) { error_log('CRM sent mail post-processing needs attention; delivery remains successful.'); }
             $sent++;
             $rows[] = ['job_id' => (string)$job['job_id'], 'status' => 'success'];
         } catch (Throwable $e) {
-            db()->prepare("UPDATE crm_mail_send_jobs SET status = 'failed', stage = 'failed', percent = 100, error_message = ?, finished_at = NOW(), updated_at = NOW() WHERE id = ?")
-                ->execute([$e->getMessage(), (int)$job['id']]);
+            $failureStatus = $deliveryAccepted || $e instanceof CrmMailDeliveryUncertain ? 'unknown' : 'failed';
+            db()->prepare("UPDATE crm_mail_send_jobs SET status = ?, stage = ?, percent = 100, error_message = ?, finished_at = NOW(), updated_at = NOW() WHERE id = ?")
+                ->execute([$failureStatus, $failureStatus, $e->getMessage(), (int)$job['id']]);
             crm_log_event('mail', 'send_scheduled_failed', 'mail', (string)$job['job_id'], null, ['error' => $e->getMessage()], false, $e->getMessage());
             $failed++;
-            $rows[] = ['job_id' => (string)$job['job_id'], 'status' => 'failed', 'message' => $e->getMessage()];
+            $rows[] = ['job_id' => (string)$job['job_id'], 'status' => $failureStatus, 'message' => $e->getMessage()];
         }
     }
     return ['checked_at' => date('Y-m-d H:i:s'), 'due_count' => count($jobs), 'sent' => $sent, 'failed' => $failed, 'temp_cleanup' => $tempCleanup, 'rows' => $rows];

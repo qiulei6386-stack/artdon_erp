@@ -807,7 +807,10 @@
       message(data.message);
       return data.quote;
     };
-    request(null, `?quote_id=${quoteId || ''}`).then((data) => {
+    const incomingCrmContext = !quoteId && /[?&]crm_(?:customer|opportunity)_id=/.test(location.search);
+    const handoffControls = incomingCrmContext ? [...editor.querySelectorAll('input,select,textarea,button')].filter(node => !node.disabled) : [];
+    handoffControls.forEach(node => { node.disabled = true; });
+    request(null, `?quote_id=${quoteId || ''}`).then(async (data) => {
       csrf = data.csrf;
       bootstrap = data.data;
       renderBootstrap();
@@ -817,7 +820,34 @@
         row.dataset.configValues = JSON.stringify(defaultValues());
       });
       recalculate();
-    }).catch((error) => message(error.message, true));
+      // Only a new quote may receive CRM context. Existing quotes are never
+      // overwritten by URL parameters; the CRM endpoint validates both entities.
+      const contextParams = new URLSearchParams(location.search);
+      const crmCustomerId = Number(contextParams.get('crm_customer_id') || 0);
+      const crmOpportunityId = Number(contextParams.get('crm_opportunity_id') || 0);
+      if (!quoteId && !data.quote && (crmCustomerId > 0 || crmOpportunityId > 0)) {
+        const controls = [...editor.querySelectorAll('input,select,textarea,button')].filter(node => !node.disabled);
+        controls.forEach(node => { node.disabled = true; });
+        try {
+          const query = new URLSearchParams({action:'customer_quote_handoff',customer_id:String(crmCustomerId),opportunity_id:String(crmOpportunityId)});
+          const response = await fetch('../crm_api.php?' + query, {credentials:'same-origin',cache:'no-store'});
+          const context = await response.json();
+          if (!context.success) throw new Error(context.message || 'CRM 来源读取失败');
+          const customer = context.data.customer;
+          if (!customer || !(Number(customer.id) > 0)) throw new Error('没有有效的 CRM 客户');
+          const customerSelect = field('customer_id');
+          if (![...customerSelect.options].some(option => Number(option.value) === Number(customer.id))) {
+            const option = document.createElement('option'); option.value = String(customer.id);
+            option.textContent = [customer.customer_code,customer.customer_name || customer.customer_name_en].filter(Boolean).join(' ');
+            option.dataset.customer = JSON.stringify(customer); customerSelect.append(option);
+          }
+          setField('customer_id', customer.id);
+          setField('country', customer.country || '');
+          setField('project_ref', context.data.project_ref || '');
+          message(context.data.message);
+        } finally { controls.forEach(node => { node.disabled = false; }); }
+      }
+    }).catch((error) => message(error.message, true)).finally(() => { handoffControls.forEach(node => { node.disabled = false; }); });
     field('customer_id')?.addEventListener('change', (event) => {
       const selected = event.target.selectedOptions[0];
       const customer = selected?.dataset.customer ? JSON.parse(selected.dataset.customer) : {};

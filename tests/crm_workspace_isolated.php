@@ -22,11 +22,14 @@ class WorkspaceStatement {
         foreach ($this->db->fixtures as $match => $rows) if (str_contains($this->sql, $match)) return $rows;
         return $this->db->rows;
     }
+    public function fetchColumn() { return 4; }
 }
 $GLOBALS['workspaceDb'] = new WorkspaceDb();
 function db() { return $GLOBALS['workspaceDb']; }
 function crm_require(string $permission): void { $GLOBALS['permissions'][]=$permission; }
 function current_user(): array {return ['id'=>9];}
+function has_permission($permission): bool { return in_array($permission,$GLOBALS['granted'] ?? [],true); }
+function crm_mail_current_account($required): ?array { return $GLOBALS['fixtureAccount'] ?? null; }
 function crm_task_scope_sql($alias): string {return 't.assigned_user_id=9';}
 function crm_sample_scope_sql($alias): string {return 's.owner_user_id=9';}
 function crm_visit_scope_sql($alias): string {return 'v.owner_user_id=9';}
@@ -79,4 +82,16 @@ check($contacts[0]['promotion_channels']===['email'] && $contacts[1]['promotion_
 check($contacts[1]['promotions'][0]['status']==='paused' && $contacts[1]['promote']===0,'Paused promotion lost');
 db()->fixtures=['SELECT * FROM crm_contacts'=>[]];db()->queries=[];
 crm_contact_list(['customer_id'=>8]);check(count(db()->queries)===1,'Empty contact graph must not query');
-echo "CRM workspace pagination, scope, shipment and unavailable-result safety: OK\n";
+eval(original('crm_ui.php','crm_workspace_pending_summary'));
+db()->queries=[];$granted=[];
+check(crm_workspace_pending_summary()===[] && db()->queries===[], 'No module permission means no pending-data queries');
+$granted=['task.view','mail.view'];$fixtureAccount=['id'=>23,'user_id'=>9];db()->queries=[];
+$pending=crm_workspace_pending_summary();
+check(array_column($pending,'key')===['tasks','mail_issues','mail_unreplied'], 'Only supported pending routes');
+check(db()->queries[0][1]===[9,9] && str_contains(db()->queries[0][0],'t.assigned_user_id=9') && str_contains(db()->queries[0][0],"NOT IN ('done','closed','cancelled')"), 'Pending tasks retain ownership and visibility scope');
+check(db()->queries[1][1]===[9,23] && db()->queries[2][1]===[9,23], 'Mail pending data stays in current account');
+$fixtureAccount=['id'=>24,'user_id'=>10];db()->queries=[];
+check(count(crm_workspace_pending_summary())===1 && count(db()->queries)===1, 'Foreign account cannot expose mail counts');
+db()->rows=[];db()->queries=[];crm_task_center_list(['view'=>'my_pending']);
+check(str_contains(db()->queries[0][0],"NOT IN ('done','closed','cancelled')") && str_contains(db()->queries[0][0],'t.assigned_user_id=9'), 'Pending card destination preserves same completion and permission filter');
+echo "CRM workspace pagination, pending counts, permissions, scope, shipment and unavailable-result safety: OK\n";

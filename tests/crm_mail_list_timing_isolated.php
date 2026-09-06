@@ -41,6 +41,10 @@ class TimingMemoryStatement
         $folder = strpos($this->sql, 'm.folder = ?') !== false ? $params[2] : null;
         if (strpos($this->sql, "m.folder = 'sent' AND m.is_unreplied = 1") !== false) $folder = 'sent';
         $this->rows = array_values(array_filter($this->db->rows, static fn($row) => $folder === null || $row['folder'] === $folder));
+        if (preg_match('/m\.id NOT IN \(([0-9,]+)\)/', $this->sql, $match)) {
+            $excluded = array_map('intval', explode(',', $match[1]));
+            $this->rows = array_values(array_filter($this->rows, static fn($row) => !in_array($row['id'], $excluded, true)));
+        }
         $this->total = count($this->rows);
         if (preg_match('/LIMIT ([0-9]+) OFFSET ([0-9]+)$/', $this->sql, $match)) {
             $this->rows = array_slice($this->rows, (int)$match[2], (int)$match[1]);
@@ -67,6 +71,12 @@ function crm_mail_visible_attachment_counts_for_rows(array $rows): array
 {
     $GLOBALS['timingCalls'][] = ['attachments', array_column($rows, 'id')];
     return [101 => 0, 102 => 2, 103 => 1, 104 => 0];
+}
+function crm_mail_sent_duplicate_ids(array $account): array
+{
+    timing_assert($account['id'] === 3 && $account['user_id'] === 7, 'Visibility uses current authorized account');
+    $GLOBALS['timingCalls'][] = ['sent_visibility', $account['id']];
+    return [104];
 }
 function crm_mail_source_label(string $source, array $flags): string { return 'source:' . $source; }
 function crm_mail_source_tags(string $source, array $flags, array $tags): array { return $tags; }
@@ -152,6 +162,12 @@ timing_assert($minimum['page_size'] === 1 && $minimum['page'] === 1 && count($mi
 timing_reset();
 crm_mail_list(['q' => 'QUERY_PRIVATE_MARKER']);
 timing_assert(array_slice(db()->queries[0]['params'], 3) === array_fill(0, 6, '%QUERY_PRIVATE_MARKER%'), 'Search parameter binding changed');
+timing_reset();
+$sent = crm_mail_list(['folder' => 'sent']);
+timing_assert($sent['total'] === 1 && array_column($sent['rows'], 'id') === [103], 'Same exclusions must apply to count and page');
+timing_assert(count(array_filter($timingCalls, static fn($c) => $c[0] === 'sent_visibility')) === 1, 'Compute expensive sent visibility once per request');
+timing_assert(isset($GLOBALS['crm_mail_list_segments']['sent_visibility']), 'Sent visibility has its own timing');
+foreach (db()->queries as $query) timing_assert(str_contains($query['sql'], 'm.id NOT IN (104)') && !str_contains($query['sql'], 'SELECT 1 FROM crm_mails m2'), 'Count/page must reuse bounded ID exclusions instead of repeating legacy scan');
 
 timing_reset(); $timingAccount = null;
 timing_assert(crm_mail_list([]) === ['bound' => false, 'rows' => [], 'total' => 0, 'account' => null, 'folder_counts' => []], 'Unbound response changed');
@@ -176,7 +192,7 @@ timing_assert($blockStart !== false && $blockEnd !== false, 'Mail logging block 
 $logBlock = substr($apiSource, $blockStart, $blockEnd - $blockStart);
 timing_assert((bool)preg_match('/foreach \(\[([^\]]+)\] as \$segment\)/', $logBlock, $whitelistMatch), 'Logging must use a literal field allowlist');
 preg_match_all("/'([^']+)'/", $whitelistMatch[1], $keys);
-timing_assert($keys[1] === $segmentNames, 'Logging allowlist expanded beyond numeric segments');
+timing_assert($keys[1] === array_merge(['account_prepare','sent_visibility'], array_slice($segmentNames, 1)), 'Logging allowlist must contain only the reviewed numeric segments');
 foreach (['$_POST', '$_GET', '$_SESSION', 'file_put_contents', 'register_shutdown_function', 'email_address', 'subject', 'body_text', 'body_html', 'mail_account_id'] as $forbidden) {
     timing_assert(strpos($logBlock, $forbidden) === false, 'Mail timing log block reads or writes non-metric content');
 }

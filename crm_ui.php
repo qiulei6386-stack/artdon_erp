@@ -1605,6 +1605,31 @@ function crm_workspace_tool_status(string $key): array
     return ['value' => '待接入', 'hint' => $labels[$key][0], 'status' => 'pending_config', 'desc' => $labels[$key][1]];
 }
 
+function crm_workspace_pending_summary(): array
+{
+    crm_require('dashboard.view');
+    $uid = (int)(current_user()['id'] ?? 0);
+    if ($uid <= 0) return [];
+    $items = [];
+    if (has_permission('task.view') && function_exists('crm_task_scope_sql')) {
+        $stmt = db()->prepare("SELECT COUNT(*) FROM crm_tasks t WHERE t.deleted_at IS NULL AND t.status NOT IN ('done','closed','cancelled') AND (t.assigned_user_id=? OR t.created_by=?) AND " . crm_task_scope_sql('t'));
+        $stmt->execute([$uid,$uid]);
+        $items[] = ['key'=>'tasks','label'=>'我的待处理','count'=>(int)$stmt->fetchColumn(),'hint'=>'我负责或创建的未完成任务'];
+    }
+    if (has_permission('mail.view')) {
+        $account = crm_mail_current_account(false);
+        if ($account && (int)$account['user_id'] === $uid) {
+            $stmt = db()->prepare("SELECT COUNT(*) FROM crm_mail_send_jobs WHERE user_id=? AND mail_account_id=? AND status IN ('failed','unknown')");
+            $stmt->execute([$uid,(int)$account['id']]);
+            $items[] = ['key'=>'mail_issues','label'=>'当前邮箱发送异常','count'=>(int)$stmt->fetchColumn(),'hint'=>'待发送中核对，不自动重发；其他邮箱可切换查看'];
+            $stmt = db()->prepare("SELECT COUNT(*) FROM crm_mails WHERE user_id=? AND mail_account_id=? AND is_deleted=0 AND is_unreplied=1 AND folder='sent'");
+            $stmt->execute([$uid,(int)$account['id']]);
+            $items[] = ['key'=>'mail_unreplied','label'=>'当前邮箱待客户回复','count'=>(int)$stmt->fetchColumn(),'hint'=>'复用已发送邮件的未回复状态'];
+        }
+    }
+    return $items;
+}
+
 function crm_workspace_bootstrap(array $input = []): array
 {
     crm_ui_ensure_tables();
@@ -1693,6 +1718,7 @@ function crm_workspace_bootstrap(array $input = []): array
         'hidden_widgets' => $hiddenKeys,
         'catalog' => array_values($catalog),
         'tool_configured' => false,
+        'pending_items' => crm_workspace_pending_summary(),
     ];
 }
 

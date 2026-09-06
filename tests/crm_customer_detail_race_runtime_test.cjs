@@ -134,6 +134,26 @@ async function test(name, run) {
 }
 
 (async () => {
+  await test('on-demand sections merge without losing basic identity or loaded sections', async () => {
+    const h=harness(); await h.load(101,true);
+    h.m.currentDetail._loaded_tabs=['overview','contacts']; h.m.currentDetail.linkage={quote:{total:3}};
+    const basic=h.m.currentDetail.customer;
+    const p=h.m.ensureFullDetail('orders');
+    h.pending('customer_get',101,'tab:orders').resolve({success:true,data:{customer:{id:101},_partial_detail:1,_loaded_tabs:['orders'],linkage:{orders:{total:2}}}});
+    await p;
+    assert.equal(h.m.currentDetail.customer,basic);
+    assert.equal(h.m.currentDetail.linkage.quote.total,3);
+    assert.equal(h.m.currentDetail.linkage.orders.total,2);
+    const calls=h.calls.length; await h.m.ensureFullDetail('orders'); assert.equal(h.calls.length,calls);
+  });
+  await test('quick section switching discards old section data and errors', async () => {
+    const h=harness(); await h.load(101,true); h.m.currentDetail._loaded_tabs=['overview'];
+    const old=h.m.ensureFullDetail('orders'), latest=h.m.ensureFullDetail('mail');
+    h.pending('customer_get',101,'tab:mail').resolve({success:true,data:{customer:{id:101},_partial_detail:1,_loaded_tabs:['mail'],mail_rows:[{id:8}]}});
+    await latest;
+    h.pending('customer_get',101,'tab:orders').reject(new Error('old failure'));
+    assert.equal(await old,null); assert.equal(h.m.currentDetail.mail_rows[0].id,8); assert.deepEqual(h.ui.toasts,[]);
+  });
   await test('A slow / B fast discards A and returns no entity', async () => {
     const h = harness();
     const a = h.m.loadDetail(101);

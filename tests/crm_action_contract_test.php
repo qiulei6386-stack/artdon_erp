@@ -3,6 +3,8 @@
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once dirname(__DIR__) . '/crm_action_contract.php';
 $granted = [];
+$externalQuote = false;
+function crm_external_can(string $module, string $capability): bool { return $module === 'quote' && $capability === 'create' && $GLOBALS['externalQuote']; }
 function crm_can(string $permission): bool { global $granted; return in_array($permission, $granted, true); }
 function expect_contract(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 $granted = ['task.edit', 'task.complete', 'customer.delete'];
@@ -33,4 +35,15 @@ expect_contract(crm_action_contracts()['opportunities']['创建资料任务']['a
 expect_contract(!crm_action_contracts()['opportunities']['创建跟进']['allowed'], 'Linked followup requires follow.create');
 $granted[] = 'follow.create';
 expect_contract(crm_action_contracts()['opportunities']['创建跟进']['allowed'], 'Linked followup allowed with correct role');
+$granted = ['customer.view','opportunity.view'];
+expect_contract(!crm_action_contracts()['opportunities']['创建报价']['allowed'], 'CRM visibility alone cannot create quotes');
+$externalQuote = true;
+expect_contract(crm_action_contracts()['customers']['转报价']['allowed'] && crm_action_contracts()['opportunities']['创建报价']['allowed'], 'Verified destination quote permission');
+$granted = ['mail.view'];
+expect_contract(!crm_action_contracts()['mail']['回复']['allowed'], 'Read-only mail user cannot send a reply');
+$granted[] = 'mail.send';
+expect_contract(crm_action_contracts()['mail']['回复全部']['allowed'], 'Mail send permission enables reply');
+expect_contract(!crm_action_contracts()['ai']['查看本次候选']['allowed'], 'Mail permission cannot inspect radar candidates');
+$granted = ['radar_candidate_view'];
+expect_contract(crm_action_contracts()['ai']['查看本次候选']['allowed'], 'Radar candidate scope is independent');
 echo "crm_action_contract_test: OK\n";

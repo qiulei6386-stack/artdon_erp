@@ -28,7 +28,7 @@ disk_kb="$(df -Pk /tmp | awk 'NR==2 {print $4}')"
 
 php_args=(-n -d extension=mysqlnd -d extension=pdo -d extension=pdo_mysql)
 "$php_bin" "${php_args[@]}" -r 'exit(extension_loaded("pdo_mysql") && function_exists("pcntl_fork") && function_exists("proc_open") ? 0 : 2);'
-for test in crm_sample_mysql_integration.php crm_marketing_mysql_integration.php; do
+for test in crm_sample_mysql_integration.php crm_marketing_mysql_integration.php crm_mail_sent_mysql_integration.php; do
   [ -f "$repo_root/tests/$test" ] || { echo "Missing isolated test: $test" >&2; exit 2; }
   "$php_bin" "${php_args[@]}" -l "$repo_root/tests/$test"
 done
@@ -80,9 +80,11 @@ suffix="$(openssl rand -hex 6)"
 [[ "$suffix" =~ ^[a-f0-9]{12}$ ]] || exit 2
 sample_schema="crm_phase1_sample_$suffix"
 marketing_schema="crm_phase1_marketing_$suffix"
-"$mysql_bin" --no-defaults --protocol=SOCKET --socket="$socket_path" --user=root -e "CREATE DATABASE $sample_schema CHARACTER SET utf8mb4; CREATE DATABASE $marketing_schema CHARACTER SET utf8mb4;"
+mail_schema="crm_phase1_mail_$suffix"
+"$mysql_bin" --no-defaults --protocol=SOCKET --socket="$socket_path" --user=root -e "CREATE DATABASE $sample_schema CHARACTER SET utf8mb4; CREATE DATABASE $marketing_schema CHARACTER SET utf8mb4; CREATE DATABASE $mail_schema CHARACTER SET utf8mb4;"
 export CRM_PHASE1_MYSQL_TEST=1 CRM_PHASE1_MYSQL_SOCKET="$socket_path" CRM_PHASE1_MYSQL_USER=root CRM_PHASE1_MYSQL_PASSWORD=''
 export CRM_PHASE1_MYSQL_PHP_EXTENSIONS_JSON='["mysqlnd","pdo","pdo_mysql"]'
 CRM_PHASE1_MYSQL_SCHEMA="$sample_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_sample_mysql_integration.php"
 CRM_PHASE1_MYSQL_SCHEMA="$marketing_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_marketing_mysql_integration.php"
+CRM_PHASE1_MYSQL_SCHEMA="$mail_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_mail_sent_mysql_integration.php"
 echo 'Real MySQL isolated suites passed. No production database connection was used.'

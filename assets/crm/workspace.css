@@ -7,3 +7,66 @@
 .crm-workspace-more[open] { border-top:1px solid var(--crm-border); }
 .crm-workspace-more .action_command { width:100%; }
 .crm-workspace-pager button:focus-visible,.crm-workspace-more summary:focus-visible { outline:2px solid var(--crm-primary); outline-offset:2px; }
+
+/* Shared interaction surface: data workbench, mail reader and step forms keep
+   their own useful layouts, but use one control/state/spacing vocabulary. */
+.crm-app {
+  --crm-ui-gap:12px;
+  --crm-ui-control:36px;
+  --crm-ui-field-bg:var(--crm-card-bg);
+}
+html[data-crm-density="compact"] .crm-app { --crm-ui-gap:8px; --crm-ui-control:32px; }
+html[data-crm-density="comfortable"] .crm-app { --crm-ui-gap:16px; --crm-ui-control:40px; }
+.crm-app :is(.crm-modal-grid,.opportunity-form-grid,.visit-schedule-grid,.visit-note-grid) {
+  gap:var(--crm-ui-gap);
+  align-items:start;
+}
+.crm-app :is(.crm-modal-grid,.opportunity-form-grid,.visit-schedule-grid,.visit-note-grid) > label {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  color:var(--crm-muted-text);
+  font-size:var(--crm-font-size-form,13px);
+}
+.crm-app :is(.crm-modal-grid,.opportunity-form-grid,.visit-schedule-grid,.visit-note-grid) :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) {
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  min-height:var(--crm-ui-control);
+  border:1px solid var(--crm-border);
+  border-radius:var(--crm-radius);
+  background:var(--crm-ui-field-bg);
+  color:var(--crm-text);
+  font:inherit;
+  padding:7px 10px;
+}
+.crm-app :is(.crm-modal,.radar-drawer,.crm-shell) :is(button,input,select,textarea,summary):focus-visible {
+  outline:2px solid var(--crm-primary);
+  outline-offset:2px;
+}
+.crm-app :is(.crm-modal-footer,.business-dialog-actions,.radar-drawer footer) {
+  gap:var(--crm-ui-gap);
+  border-top:1px solid var(--crm-border);
+  background:var(--crm-card-bg);
+}
+.crm-app :is(.crm-modal-footer,.business-dialog-actions,.crm-workspace-pager) button {
+  min-height:var(--crm-ui-control);
+  border-radius:var(--crm-radius);
+}
+.crm-app :is(.crm-modal,.crm-shell) button:disabled { cursor:not-allowed; }
+.crm-app :is(.crm-modal-error,.mail-error,.crm-module-error) { color:var(--crm-danger); overflow-wrap:anywhere; }
+.crm-app :is(.visit-empty,.task-empty,.customer-tab-empty,.mail-empty,.radar-empty) { color:var(--crm-muted-text); }
+.crm-pending-work { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--crm-ui-gap); margin:0 0 16px; }
+.crm-pending-work[hidden] { display:none; }
+.crm-pending-work > button { display:grid; gap:6px; text-align:left; min-width:0; padding:16px; border:1px solid var(--crm-border); border-radius:var(--crm-radius); background:var(--crm-card-bg); color:var(--crm-text); cursor:pointer; }
+.crm-pending-work > button:hover { background:var(--crm-hover-bg); }
+.crm-pending-work strong { font-size:26px; line-height:1.2; font-variant-numeric:tabular-nums; }
+.crm-pending-work small { color:var(--crm-muted-text); line-height:1.5; overflow-wrap:anywhere; }
+@media(max-width:700px) {
+  .crm-pending-work { grid-template-columns:1fr; }
+  .crm-app :is(.crm-modal-grid,.opportunity-form-grid,.visit-schedule-grid,.visit-note-grid) { grid-template-columns:minmax(0,1fr); }
+  .crm-app :is(.crm-modal-grid,.opportunity-form-grid,.visit-schedule-grid,.visit-note-grid) .wide { grid-column:1 / -1; }
+  .crm-app :is(.crm-modal-footer,.business-dialog-actions) { flex-wrap:wrap; }
+  .crm-app :is(.crm-modal-footer,.business-dialog-actions) button { min-height:40px; }
+}
