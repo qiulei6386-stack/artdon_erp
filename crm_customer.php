@@ -5884,6 +5884,60 @@ function crm_customer_count_records_for_customer(string $table, int $customerId)
     return (int)$stmt->fetchColumn();
 }
 
+function crm_customer_marketing_action_stats(int $customerId): array
+{
+    $stats = [
+        'promotion' => 0,
+        'promotion_count' => 0,
+        'promotion_feedback' => 0,
+        'promotion_feedback_count' => 0,
+        'latest_promotion_at' => '',
+        'latest_promotion_feedback_at' => '',
+    ];
+    if ($customerId <= 0) return $stats;
+
+    if (crm_table_exists_safe('crm_marketing_task_targets')) {
+        $targetCols = crm_table_columns_safe('crm_marketing_task_targets');
+        if (in_array('customer_id', $targetCols, true)) {
+            $timeCandidates = [];
+            foreach (['executed_at', 'planned_at', 'due_at', 'created_at'] as $col) {
+                if (in_array($col, $targetCols, true)) $timeCandidates[] = $col;
+            }
+            $timeExpr = $timeCandidates ? 'COALESCE(' . implode(', ', $timeCandidates) . ')' : 'id';
+            $stmt = db()->prepare("SELECT COUNT(*) AS total, MAX({$timeExpr}) AS latest_at FROM crm_marketing_task_targets WHERE customer_id = ?");
+            $stmt->execute([$customerId]);
+            $row = $stmt->fetch() ?: [];
+            $stats['promotion'] = (int)($row['total'] ?? 0);
+            $stats['promotion_count'] = $stats['promotion'];
+            $stats['latest_promotion_at'] = (string)($row['latest_at'] ?? '');
+        }
+    }
+
+    if (crm_table_exists_safe('crm_marketing_logs')) {
+        $logCols = crm_table_columns_safe('crm_marketing_logs');
+        if (in_array('customer_id', $logCols, true) && in_array('action_key', $logCols, true)) {
+            $timeExpr = in_array('touched_at', $logCols, true) ? 'touched_at' : (in_array('created_at', $logCols, true) ? 'created_at' : 'id');
+            $stmt = db()->prepare("SELECT COUNT(*) AS total, MAX({$timeExpr}) AS latest_at FROM crm_marketing_logs WHERE customer_id = ? AND action_key = 'customer_feedback'");
+            $stmt->execute([$customerId]);
+            $row = $stmt->fetch() ?: [];
+            $stats['promotion_feedback'] = (int)($row['total'] ?? 0);
+            $stats['promotion_feedback_count'] = $stats['promotion_feedback'];
+            $stats['latest_promotion_feedback_at'] = (string)($row['latest_at'] ?? '');
+
+            if ($stats['promotion'] === 0) {
+                $stmt = db()->prepare("SELECT COUNT(*) AS total, MAX({$timeExpr}) AS latest_at FROM crm_marketing_logs WHERE customer_id = ? AND action_key <> 'customer_feedback'");
+                $stmt->execute([$customerId]);
+                $row = $stmt->fetch() ?: [];
+                $stats['promotion'] = (int)($row['total'] ?? 0);
+                $stats['promotion_count'] = $stats['promotion'];
+                $stats['latest_promotion_at'] = (string)($row['latest_at'] ?? '');
+            }
+        }
+    }
+
+    return $stats;
+}
+
 function crm_customer_sales_action_stats(int $customerId, array $customer, ?array $linkage = null): array
 {
     $mail = crm_customer_mail_summary($customerId);
@@ -5891,11 +5945,12 @@ function crm_customer_sales_action_stats(int $customerId, array $customer, ?arra
     $followups = crm_customer_count_records_for_customer('crm_customer_followups', $customerId);
     $visits = crm_customer_count_records_for_customer('crm_visit_records', $customerId);
     $opportunities = crm_customer_count_records_for_customer('crm_opportunities', $customerId);
+    $marketing = crm_customer_marketing_action_stats($customerId);
     $quotes = (int)($quote['total'] ?? 0);
     $mails = (int)($mail['total'] ?? 0);
     $unreplied = (int)($mail['unreplied'] ?? 0);
 
-    return [
+    return array_merge([
         'followups' => $followups,
         'followup_count' => $followups,
         'mail' => $mails,
@@ -5910,7 +5965,7 @@ function crm_customer_sales_action_stats(int $customerId, array $customer, ?arra
         'unreplied_count' => $unreplied,
         'latest_mail_at' => (string)($mail['latest_at'] ?? ''),
         'latest_quote_at' => (string)($quote['latest_at'] ?? ''),
-    ];
+    ], $marketing);
 }
 
 function crm_customer_mail_summary(int $customerId): array

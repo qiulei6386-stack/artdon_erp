@@ -109,6 +109,19 @@ function crm_sync_promotion_channel_personal_labels(): void
     }
 }
 
+function crm_sync_visit_status_presets(): void
+{
+    db()->prepare('INSERT INTO crm_dictionary_types (type_key, type_name, description, is_system, is_enabled, sort_order, created_at, updated_at) VALUES (?, ?, ?, 1, 1, ?, NOW(), NOW()) ON DUPLICATE KEY UPDATE type_name=VALUES(type_name), description=VALUES(description), is_enabled=1, updated_at=NOW()')
+        ->execute(['visit_status', '拜访 / 来访状态', '拜访计划和来访接待的中文状态及可选项', 180]);
+    $items = crm_dictionary_item_defaults()['visit_status'] ?? [];
+    $stmt = db()->prepare('INSERT IGNORE INTO crm_dictionary_items (type_key, item_key, name_cn, name_en, short_name, color, icon, description, extra_config_json, is_default, is_enabled, sort_order, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, NULL, NOW(), NOW())');
+    $sort = 10;
+    foreach ($items as $item) {
+        $stmt->execute(['visit_status', $item[0], $item[1], $item[2], $item[3], $item[4], $item[5], '', json_encode($item[6], JSON_UNESCAPED_UNICODE), $item[7], $sort]);
+        $sort += 10;
+    }
+}
+
 function crm_settings_schema_ready(): bool
 {
     static $ready = null;
@@ -142,6 +155,7 @@ function crm_settings_ensure_tables(): void
     if (crm_settings_schema_ready()) {
         crm_sync_country_region_presets();
         crm_sync_promotion_channel_personal_labels();
+        crm_sync_visit_status_presets();
         $done = true;
         return;
     }
@@ -260,6 +274,7 @@ function crm_dictionary_type_defaults(): array
         ['customer_relation_type', '客户关系类型', '客户之间的关联关系'],
         ['customer_event_type', '客户重要事件类型', '客户提醒和时间轴事件'],
         ['followup_type', '跟进方式', '客户跟进方式'],
+        ['visit_status', '拜访 / 来访状态', '拜访计划和来访接待的中文状态及可选项'],
         ['country_region', '国家 / 地区预设', '国家、区号和区域'],
         ['city_region', '城市 / 地区预设', '常用城市、省州、商业区域和照明市场地区'],
     ];
@@ -341,6 +356,18 @@ function crm_dictionary_item_defaults(): array
             ['no_promotion','不推广','No Promotion','不推广','#64748b','NO',['enter_promotion'=>0,'email'=>0,'whatsapp'=>0,'stats'=>1],0],
             ['blacklist','黑名单','Blacklist','黑名单','#111827','BL',['enter_promotion'=>0,'email'=>0,'whatsapp'=>0,'stats'=>0],0],
             ['maintenance_only','仅维护','Maintenance Only','维护','#94a3b8','MO',['enter_promotion'=>0,'email'=>0,'whatsapp'=>0,'stats'=>1],0],
+        ],
+        'visit_status' => [
+            ['draft','草稿','Draft','草稿','#64748b','稿',['can_edit'=>1,'terminal'=>0],0],
+            ['pending_confirm','待确认','Pending Confirmation','待确认','#f59e0b','待',['can_edit'=>1,'terminal'=>0],1],
+            ['confirmed','已确认','Confirmed','已确认','#2563eb','确',['can_edit'=>1,'terminal'=>0],0],
+            ['pending_execute','待执行','Pending Execution','待执行','#0ea5e9','执',['can_edit'=>1,'terminal'=>0],0],
+            ['executing','执行中','Executing','执行中','#7c3aed','行',['can_edit'=>1,'terminal'=>0],0],
+            ['completed','已完成','Completed','完成','#059669','完',['can_edit'=>0,'terminal'=>1],0],
+            ['cancelled','已取消','Cancelled','取消','#dc2626','取',['can_edit'=>0,'terminal'=>1],0],
+            ['rescheduled','已改期','Rescheduled','改期','#8b5cf6','改',['can_edit'=>1,'terminal'=>0],0],
+            ['overdue_no_record','超期未记录','Overdue Without Result','超期','#ef4444','超',['can_edit'=>1,'terminal'=>0],0],
+            ['followup_pending','待后续跟进','Follow-up Pending','待跟进','#d97706','跟',['can_edit'=>1,'terminal'=>0],0],
         ],
         'contact_role' => [
             ['decision_maker','决策人','Decision Maker','决策','#dc2626','DM',['key_contact'=>1,'overview'=>1,'promotion_priority'=>100],0],

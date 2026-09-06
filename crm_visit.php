@@ -116,6 +116,8 @@ function crm_visit_ensure_tables(): void
 
     crm_visit_add_column('crm_visit_records', 'preparation_note', 'preparation_note TEXT NULL AFTER planned_note');
     crm_visit_add_column('crm_visit_records', 'followup_offsets_json', 'followup_offsets_json JSON NULL AFTER next_followup_time');
+    crm_visit_add_column('crm_visit_records', 'client_request_id', 'client_request_id VARCHAR(64) NULL AFTER followup_offsets_json');
+    crm_visit_add_index('crm_visit_records', 'uk_visit_client_request', 'UNIQUE KEY uk_visit_client_request (client_request_id)');
     crm_visit_add_column('crm_visit_files', 'customer_id', 'customer_id INT NULL AFTER visit_id');
     crm_visit_add_column('crm_visit_files', 'original_name', "original_name VARCHAR(255) NOT NULL DEFAULT '' AFTER file_name");
     crm_visit_add_column('crm_visit_files', 'mime_type', "mime_type VARCHAR(120) NOT NULL DEFAULT '' AFTER file_size");
@@ -137,6 +139,118 @@ function crm_visit_add_column(string $table, string $column, string $definition)
         $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
         db()->exec("ALTER TABLE `{$safeTable}` ADD COLUMN {$definition}");
     }
+}
+
+function crm_visit_add_index(string $table, string $index, string $definition): void
+{
+    $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    $safeIndex = preg_replace('/[^a-zA-Z0-9_]/', '', $index);
+    $stmt = db()->prepare('SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?');
+    $stmt->execute([$safeTable, $safeIndex]);
+    if ((int)$stmt->fetchColumn() === 0) {
+        db()->exec("ALTER TABLE `{$safeTable}` ADD {$definition}");
+    }
+}
+
+function crm_visit_status_options(bool $enabledOnly = true): array
+{
+    if (function_exists('crm_dictionary_items')) {
+        $items = crm_dictionary_items('visit_status', $enabledOnly);
+        if ($items) return $items;
+    }
+    $labels = [
+        'draft' => '草稿',
+        'pending_confirm' => '待确认',
+        'confirmed' => '已确认',
+        'pending_execute' => '待执行',
+        'executing' => '执行中',
+        'completed' => '已完成',
+        'cancelled' => '已取消',
+        'rescheduled' => '已改期',
+        'overdue_no_record' => '超期未记录',
+        'followup_pending' => '待后续跟进',
+    ];
+    $rows = [];
+    $sort = 10;
+    foreach ($labels as $key => $label) {
+        $rows[] = ['item_key' => $key, 'name_cn' => $label, 'is_enabled' => 1, 'sort_order' => $sort];
+        $sort += 10;
+    }
+    return $rows;
+}
+
+function crm_visit_normalize_status(string $status, string $currentStatus = ''): string
+{
+    $status = trim($status) ?: 'pending_confirm';
+    $allowed = array_map(static fn($item) => (string)($item['item_key'] ?? ''), crm_visit_status_options(true));
+    if ($currentStatus !== '') $allowed[] = $currentStatus;
+    $allowed[] = 'draft';
+    return in_array($status, array_unique($allowed), true) ? $status : 'pending_confirm';
+}
+
+function crm_visit_normalize_request_id(string $value): string
+{
+    return substr(preg_replace('/[^a-zA-Z0-9_-]/', '', trim($value)), 0, 64);
+}
+
+function crm_visit_find_by_request_id(string $requestId, int $userId): array
+{
+    if ($requestId === '') return [];
+    $stmt = db()->prepare('SELECT id FROM crm_visit_records WHERE client_request_id = ? AND created_by = ? AND deleted_at IS NULL LIMIT 1');
+    $stmt->execute([$requestId, $userId]);
+    $id = (int)$stmt->fetchColumn();
+    return $id > 0 ? crm_visit_row($id) : [];
+}
+
+function crm_visit_find_recent_duplicate(array $data, int $userId): array
+{
+    $stmt = db()->prepare("SELECT id FROM crm_visit_records
+        WHERE deleted_at IS NULL
+          AND created_by = ?
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 120 SECOND)
+          AND visit_type = ?
+          AND customer_id = ?
+          AND contact_id <=> ?
+          AND title = ?
+          AND purpose = ?
+          AND visit_category = ?
+          AND owner_user_id <=> ?
+          AND visit_date <=> ?
+          AND visit_time <=> ?
+          AND location = ?
+          AND country = ?
+          AND city = ?
+          AND planned_note <=> ?
+          AND preparation_note <=> ?
+        ORDER BY id DESC LIMIT 1");
+    $stmt->execute([
+        $userId,
+        $data['visit_type'],
+        $data['customer_id'],
+        $data['contact_id'],
+        $data['title'],
+        $data['purpose'],
+        $data['visit_category'],
+        $data['owner_user_id'],
+        $data['visit_date'],
+        $data['visit_time'],
+        $data['location'],
+        $data['country'],
+        $data['city'],
+        $data['planned_note'],
+        $data['preparation_note'],
+    ]);
+    $id = (int)$stmt->fetchColumn();
+    return $id > 0 ? crm_visit_row($id) : [];
+}
+
+function crm_visit_saved_response(array $record, bool $duplicateRequest = false): array
+{
+    return [
+        'record' => $record,
+        'list' => crm_visit_list([]),
+        'duplicate_request' => $duplicateRequest ? 1 : 0,
+    ];
 }
 
 function crm_visit_ensure_permissions(): void
@@ -356,6 +470,12 @@ function crm_visit_save(array $input): array
     crm_visit_ensure_tables();
     $id = (int)($input['visit_id'] ?? $input['id'] ?? 0);
     crm_require($id > 0 ? 'visit.edit' : 'visit.create');
+    $userId = (int)(current_user()['id'] ?? 0);
+    $clientRequestId = crm_visit_normalize_request_id((string)($input['client_request_id'] ?? ''));
+    if ($id <= 0 && $clientRequestId !== '') {
+        $existing = crm_visit_find_by_request_id($clientRequestId, $userId);
+        if ($existing) return crm_visit_saved_response($existing, true);
+    }
     $type = (string)($input['visit_type'] ?? 'customer_visit');
     if (!in_array($type, ['customer_visit', 'customer_arrival'], true)) $type = 'customer_visit';
     $customerId = (int)($input['customer_id'] ?? 0);
@@ -367,6 +487,7 @@ function crm_visit_save(array $input): array
     if (is_string($assistants)) $assistants = array_filter(array_map('intval', preg_split('/[,，\s]+/', $assistants)));
     if (!is_array($assistants)) $assistants = [];
     $followupOffsets = crm_visit_followup_offsets($input['followup_offsets'] ?? []);
+    $before = $id > 0 ? crm_visit_row($id) : null;
     $data = [
         'visit_type' => $type,
         'customer_id' => $customerId,
@@ -383,7 +504,7 @@ function crm_visit_save(array $input): array
         'city' => trim((string)($input['city'] ?? ($customer['city'] ?? ''))),
         'transport_method' => trim((string)($input['transport_method'] ?? '')),
         'visitor_count' => (int)($input['visitor_count'] ?? 0),
-        'status' => trim((string)($input['status'] ?? 'pending_confirm')) ?: 'pending_confirm',
+        'status' => crm_visit_normalize_status((string)($input['status'] ?? 'pending_confirm'), (string)($before['status'] ?? '')),
         'need_sample' => !empty($input['need_sample']) ? 1 : 0,
         'need_material' => !empty($input['need_material']) ? 1 : 0,
         'need_quote' => !empty($input['need_quote']) ? 1 : 0,
@@ -403,7 +524,10 @@ function crm_visit_save(array $input): array
         'next_followup_time' => trim((string)($input['next_followup_time'] ?? '')) ?: null,
         'followup_offsets_json' => json_encode($followupOffsets, JSON_UNESCAPED_UNICODE),
     ];
-    $before = $id > 0 ? crm_visit_row($id) : null;
+    if ($id <= 0 && $clientRequestId === '') {
+        $recentDuplicate = crm_visit_find_recent_duplicate($data, $userId);
+        if ($recentDuplicate) return crm_visit_saved_response($recentDuplicate, true);
+    }
     if ($id > 0) {
         $sets = [];
         $values = [];
@@ -417,12 +541,20 @@ function crm_visit_save(array $input): array
         $action = 'visit_update';
         $message = ($type === 'customer_visit' ? '编辑拜访计划' : '编辑来访接待');
     } else {
-        $keys = array_keys($data);
+        $insertData = $data;
+        $insertData['client_request_id'] = $clientRequestId !== '' ? $clientRequestId : null;
+        $keys = array_keys($insertData);
         $placeholders = implode(',', array_fill(0, count($keys), '?'));
-        $values = array_values($data);
-        $values[] = (int)(current_user()['id'] ?? 0);
-        $values[] = (int)(current_user()['id'] ?? 0);
-        db()->prepare('INSERT INTO crm_visit_records (' . implode(',', $keys) . ', created_by, updated_by, created_at, updated_at) VALUES (' . $placeholders . ', ?, ?, NOW(), NOW())')->execute($values);
+        $values = array_values($insertData);
+        $values[] = $userId;
+        $values[] = $userId;
+        try {
+            db()->prepare('INSERT INTO crm_visit_records (' . implode(',', $keys) . ', created_by, updated_by, created_at, updated_at) VALUES (' . $placeholders . ', ?, ?, NOW(), NOW())')->execute($values);
+        } catch (PDOException $e) {
+            $existing = crm_visit_find_by_request_id($clientRequestId, $userId);
+            if ($existing) return crm_visit_saved_response($existing, true);
+            throw $e;
+        }
         $id = (int)db()->lastInsertId();
         $action = 'visit_create';
         $message = ($type === 'customer_visit' ? '创建拜访计划' : '创建来访接待');
@@ -432,7 +564,7 @@ function crm_visit_save(array $input): array
     crm_customer_timeline_add($customerId, $action, $message, $title . ' · ' . ($data['visit_date'] ?: '未定日期'), 'visit', (string)$id);
     crm_task_upsert_from_visit($after);
     crm_visit_handle_linkage_requests($id, $after, $input);
-    return ['record' => $after, 'list' => crm_visit_list([])];
+    return crm_visit_saved_response($after);
 }
 
 function crm_visit_delete(int $id): array
@@ -1128,5 +1260,5 @@ function crm_visit_stream_file(int $fileId, bool $inline = false): void
 function crm_visit_options(): array
 {
     $users = db()->query("SELECT u.id, u.username, COALESCE(u.real_name, u.username) AS display_name, d.name AS department_name FROM crm_users u LEFT JOIN crm_departments d ON d.id = u.department_id WHERE u.status = 'active' ORDER BY d.sort_order, u.username")->fetchAll();
-    return ['users' => $users];
+    return ['users' => $users, 'statuses' => crm_visit_status_options(false)];
 }

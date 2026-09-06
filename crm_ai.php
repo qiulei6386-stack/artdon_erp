@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/crm_auth.php';
 require_once __DIR__ . '/crm_customer.php';
 require_once __DIR__ . '/crm_opportunity.php';
 
@@ -100,6 +101,39 @@ function crm_ai_decode($value): array
     return json_decode((string)$value, true) ?: [];
 }
 
+function crm_ai_is_search_prompt_text(string $text): bool
+{
+    $plain = trim(strip_tags($text));
+    if ($plain === '' || mb_strlen($plain) < 30) return false;
+    if (preg_match('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $plain)) return false;
+
+    $score = 0;
+    if (preg_match('/^(搜索|寻找|筛选|查找|找|请搜索|帮我搜索|我希望|我们希望|search|find|look\s+for)/iu', $plain)) $score++;
+    if (preg_match('/(当地从事|目标客户|搜索任务|关键词|客户画像|筛选条件|不要只根据|产品重点|包括\s*Importer|包括.*公司)/iu', $plain)) $score++;
+    if (preg_match('/(Commercial|Architectural|Project\s+Lighting|Importer|Distributor|Project\s+Supplier|Lighting\s+Solution|Manufacturer|OEM)/iu', $plain)) $score++;
+    if (preg_match('/(Track\s+Light|Recessed\s+Downlight|Spotlight|Magnetic\s+Track|Linear\/Profile|Surface\s+Mounted|Wall\s+Washer)/iu', $plain)) $score++;
+    if (preg_match('/(采购|供应商|多品牌|项目定制|补充自身产品线|外部供应商|工厂但同时外购)/u', $plain)) $score++;
+
+    return $score >= 3;
+}
+
+function crm_ai_is_search_prompt_task(array $task, array $result): bool
+{
+    if (($result['task_subtype'] ?? '') === 'search_prompt') return true;
+    $draft = $result['customer_draft'] ?? [];
+    $need = $result['need'] ?? [];
+    $summary = (string)($need['summary'] ?? $task['ai_summary'] ?? '');
+    if (crm_ai_is_search_prompt_text($summary)) return true;
+
+    $name = trim((string)($draft['customer_name'] ?? ''));
+    $email = trim((string)($draft['email'] ?? ''));
+    $contact = trim((string)($draft['contact_name'] ?? ''));
+    if ($email === '' && $contact === '' && $name !== '' && preg_match('/(进口灯具|中国采购|OEM|外部供应商|多品牌采购|项目定制|补充自身产品线|Importer|Distributor|Manufacturer|Project\s+Lighting)/iu', $name)) {
+        return true;
+    }
+    return false;
+}
+
 function crm_ai_log(?int $taskId, string $action, array $detail = [], string $status = 'success', string $failure = ''): void
 {
     db()->prepare('INSERT INTO crm_ai_logs (ai_task_id, action_key, result_status, detail_json, operator_id, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())')
@@ -125,6 +159,34 @@ function crm_ai_extract(string $text, string $taskType = 'lead_capture'): array
     $needsMaterial = (bool)preg_match('/catalog|datasheet|spec|资料|规格书|图册|尺寸图|ies/iu', $plain);
     $needsSample = (bool)preg_match('/sample|样品|打样/iu', $plain);
     $needsTechnical = (bool)preg_match('/custom|technical|drawing|定制|技术|图纸|方案/iu', $plain);
+    $basis = [];
+    foreach (['quote' => $needsQuote, 'material' => $needsMaterial, 'sample' => $needsSample, 'technical' => $needsTechnical] as $key => $hit) {
+        if ($hit) $basis[] = $key;
+    }
+    if ($taskType === 'lead_capture' && crm_ai_is_search_prompt_text($plain)) {
+        return [
+            'task_subtype' => 'search_prompt',
+            'customer_draft' => [
+                'customer_name' => '',
+                'contact_name' => '',
+                'email' => '',
+                'country' => '',
+            ],
+            'need' => [
+                'summary' => mb_substr($plain, 0, 300),
+                'product_model' => '',
+                'quantity' => '',
+                'need_quote' => $needsQuote ? 1 : 0,
+                'need_material' => $needsMaterial ? 1 : 0,
+                'need_sample' => $needsSample ? 1 : 0,
+                'need_technical' => $needsTechnical ? 1 : 0,
+            ],
+            'basis' => array_values(array_unique(array_merge(['search_prompt'], $basis))),
+            'missing_fields' => ['这是一段搜索任务提示词，不是单个客户资料', '客户公司名称', '联系人或邮箱'],
+            'suggested_actions' => ['请到 AI获客/搜索任务中执行', '不要直接审核生成正式客户', '如需入库请先补充具体客户资料'],
+            'confidence' => 25,
+        ];
+    }
     $company = '';
     if (preg_match('/(?:company|公司)[:：\s]+([^\n\r,;]{2,80})/iu', $plain, $m)) $company = trim($m[1]);
     elseif (!empty($emailMatch[0])) $company = ucfirst(explode('.', explode('@', $emailMatch[0])[1] ?? '')[0] ?? '');
@@ -135,10 +197,6 @@ function crm_ai_extract(string $text, string $taskType = 'lead_capture'): array
     if (empty($emailMatch[0])) $missing[] = '邮箱';
     if (empty($modelMatch[0]) && in_array($taskType, ['quote_draft','material_draft'], true)) $missing[] = '产品型号';
     if (empty($qtyMatch[1]) && empty($qtyMatch[2]) && $taskType === 'quote_draft') $missing[] = '数量';
-    $basis = [];
-    foreach (['quote' => $needsQuote, 'material' => $needsMaterial, 'sample' => $needsSample, 'technical' => $needsTechnical] as $key => $hit) {
-        if ($hit) $basis[] = $key;
-    }
     $confidence = 35;
     if (!empty($emailMatch[0])) $confidence += 15;
     if ($company) $confidence += 15;
@@ -393,6 +451,9 @@ function crm_ai_customer_from_task(array $task, array $input = []): array
 
     if (!$customerId) {
         $name = trim((string)($draft['customer_name'] ?? ''));
+        if (crm_ai_is_search_prompt_task($task, $result)) {
+            throw new RuntimeException('这条内容是搜索任务提示词，不是单个客户资料，不能通过审核生成客户。请到 AI获客/搜索任务中执行；如要入库，请先补充具体客户名称、国家、联系人或邮箱。');
+        }
         if ($name === '') throw new RuntimeException('AI 客户草稿缺少客户名称，不能创建正式客户。请先补充客户名称。');
         $email = trim((string)($draft['email'] ?? ''));
         $contactName = trim((string)($draft['contact_name'] ?? ''));
