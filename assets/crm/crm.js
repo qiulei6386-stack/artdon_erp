@@ -14828,7 +14828,7 @@
       this.renderPoolFilters();
       if (this.data && view === 'customer_pool' && this.data.loaded_view !== 'customer_pool') this.loadPoolView({ silent: true });
       if (this.data && view === 'contact_strategy' && this.data.loaded_view !== 'contact_strategy') this.loadContactStrategy({ silent: true });
-      if (this.data && (view === 'execution' || view === 'analytics') && this.data.loaded_view !== view && this.bootstrapLoadingView !== view) {
+      if (this.data && (view === 'campaigns' || view === 'execution' || view === 'analytics') && this.data.loaded_view !== view && this.bootstrapLoadingView !== view) {
         this.bootstrapLoadingView = view;
         this.load({ silent: true, view: view, noSwitch: true }).finally(function () {
           PromotionModule.bootstrapLoadingView = '';

@@ -38,5 +38,20 @@ function harness(queueCount = 0) {
   h = harness(); await h.module.openEditTaskDialog(11);
   assert.equal(h.opened(), 1); assert.deepEqual(Array.from(h.module.selectedCustomerIds), [3]);
   assert.deepEqual(Array.from(h.module.selectedContactIds), [5]); assert.equal(h.module.wizardDraft.task_id, 11);
+  const switchStart=source.indexOf('switchView: function (view) {',source.indexOf('  var PromotionModule = {'));
+  const switchEnd=source.indexOf('\n    poolFilterPayload:',switchStart);
+  assert(switchStart>0 && switchEnd>switchStart);
+  const node={classList:{toggle(){}},getAttribute(){return 'campaigns';}};
+  const loads=[];
+  const ctx=vm.createContext({document:{querySelector(){return {querySelector(){return node;},querySelectorAll(){return [];}};}},
+    current:'promotion',window:{location:{hash:'#promotion:customer_pool'}},history:{replaceState(){}},renderActions(){}});
+  const switched=vm.runInContext('({'+source.slice(switchStart,switchEnd)+'})',ctx);
+  ctx.PromotionModule=switched;
+  Object.assign(switched,{data:{loaded_view:'customer_pool'},saveState(){},syncSidebarCard(){},renderPoolFilters(){},load(o){loads.push(o);return Promise.resolve();}});
+  switched.switchView('campaigns');switched.switchView('campaigns');
+  assert.equal(loads.length,1,'Entering campaigns from a pool-only bootstrap must load once');
+  assert.equal(loads[0].view,'campaigns');assert.equal(loads[0].noSwitch,true);
+  await Promise.resolve();switched.data.loaded_view='campaigns';switched.switchView('campaigns');
+  assert.equal(loads.length,1,'Already loaded campaigns must not refetch on each render');
   console.log('crm_promotion_edit_runtime_test: 7 scenarios passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -34,6 +34,14 @@ function crm_delivery_assert_owner(array $task): void
     }
 }
 
+function crm_delivery_attachment_mime(string $content): string
+{
+    // Some deployed PHP builds omit fileinfo. Keep such files as opaque download
+    // attachments; never trust the browser's MIME or place uploads in the webroot.
+    if (!class_exists('finfo')) return 'application/octet-stream';
+    return (new finfo(FILEINFO_MIME_TYPE))->buffer($content) ?: 'application/octet-stream';
+}
+
 function crm_delivery_upload(array $files): array
 {
     crm_require('promotion.task_create');
@@ -51,7 +59,7 @@ function crm_delivery_upload(array $files): array
     }
     $content = file_get_contents($file['tmp_name']);
     if ($content === false) throw new RuntimeException('附件读取失败。');
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->buffer($content) ?: 'application/octet-stream';
+    $mime = crm_delivery_attachment_mime($content);
     $id = bin2hex(random_bytes(16));
     $sha = hash('sha256', $content);
     db()->prepare('INSERT INTO crm_marketing_delivery_assets (id,user_id,file_name,mime_type,file_size,sha256,content) VALUES (?,?,?,?,?,?,?)')

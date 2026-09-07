@@ -4,6 +4,9 @@ if (PHP_SAPI !== 'cli') throw new RuntimeException('CLI only');
 require_once dirname(__DIR__) . '/crm_marketing_delivery.php';
 function delivery_assert($condition, $message) { if (!$condition) throw new RuntimeException($message); }
 function delivery_throws(callable $fn, string $message) { try {$fn();} catch (RuntimeException $e) {return;} throw new RuntimeException($message); }
+$mime=crm_delivery_attachment_mime('Acceptance attachment without business data.');
+delivery_assert(in_array($mime,['text/plain','application/octet-stream'],true),'Attachment MIME must work with and without optional fileinfo');
+if (!class_exists('finfo')) delivery_assert($mime==='application/octet-stream','Missing fileinfo must use opaque download MIME');
 $schedule = ['send_interval_minutes'=>3,'hourly_limit'=>50,'daily_limit'=>200];
 $times=[];
 for($i=0;$i<1000;$i++) crm_delivery_next_time($times,100000,$schedule);
