@@ -125,6 +125,79 @@ assert(start>0 && end>start);
   assert.deepEqual(await page.evaluate(()=>fixturePromotion.collectWizard().customer_ids),[]);
   assert.equal(await page.evaluate(()=>api.validation(1,fixturePromotion.wizardDraft)),'请先选择客户或客户分组。');
   await page.evaluate(()=>{fixturePromotion.refreshWizardAudience=originalRefresh;fixturePromotion.wizardDraft.customer_ids=[1];fixturePromotion.wizardDraft.audience_customer_ids=[1];});
+  // Group selection spans every page, using the real audience refresh/collector.
+  await page.evaluate(()=>{
+    window.beforeGroupDraft=structuredClone(fixturePromotion.wizardDraft);
+    window.groupCalls=[];
+    window.post=async(action,payload)=>{
+      if(action!=='marketing_target_preview')throw new Error('Unexpected group test request: '+action);
+      groupCalls.push(payload);
+      const keys=JSON.parse(payload.group_keys);
+      return {success:true,data:{audience_customer_ids:keys.length?[1]:[],audience_customer_count:keys.length?1:0}};
+    };
+    fixturePromotion.data.groups=Array.from({length:31},(_,i)=>({id:i+1,group_name:(i<17?'东区':'西区')+'分组 '+(i+1)+' · 较长的客户分类名称',customer_count:10,contact_count:12,promotable_contact_count:9}));
+    Object.assign(fixturePromotion.wizardDraft,{group_mode:'group',group_keys:[],group_key:'',audience_customer_ids:[]});
+    api.state.step=1;fixturePromotion.renderWizard();
+  });
+  const allGroups=Array.from({length:31},(_,i)=>i+1);
+  const selectedGroups=()=>page.evaluate(()=>fixturePromotion.wizardGroupKeys(fixturePromotion.collectWizard()).sort((a,b)=>a-b));
+  const settleGroups=()=>page.waitForFunction(()=>!fixturePromotion.wizardAudienceLoading);
+  assert.equal(await page.locator('[data-wizard-group-check]').count(),12);
+  await page.locator('[data-pc-group-select="all"]').click();await settleGroups();
+  assert.deepEqual(await selectedGroups(),allGroups,'All means all pages, not only twelve visible groups');
+  assert.equal(await page.evaluate(()=>groupCalls.length),1,'Bulk selection resolves the audience only once');
+  await page.locator('[data-pc-group-page="1"]').click();
+  assert.equal(await page.locator('[data-wizard-group-check]:checked').count(),12);
+  assert.equal(await page.evaluate(()=>groupCalls.length),1,'Paging does not fetch or mutate the audience');
+  await page.locator('[data-wizard-group-check][value="13"]').uncheck();await settleGroups();
+  assert.deepEqual(await selectedGroups(),allGroups.filter(id=>id!==13),'Single uncheck retains off-page selections');
+  await page.locator('[data-pc-group-query]').fill('东区');
+  assert.equal(await page.locator('[data-wizard-group-check]').count(),12);
+  assert.deepEqual(await selectedGroups(),allGroups.filter(id=>id!==13),'Search must not deselect hidden groups');
+  await page.locator('[data-pc-group-select="clear"]').click();await settleGroups();
+  assert.deepEqual(await selectedGroups(),[]);
+  assert.equal(await page.evaluate(()=>api.validation(1,fixturePromotion.wizardDraft)),'请先选择客户分组。','Old direct-customer IDs cannot bypass an empty group selection');
+  await page.locator('[data-pc-group-select="all"]').click();await settleGroups();
+  assert.deepEqual(await selectedGroups(),allGroups.slice(0,17),'Filtered select-all spans all matching pages only');
+  await page.locator('[data-pc-group-query]').fill('无匹配分组');
+  assert(await page.locator('[data-pc-group-select="all"]').isDisabled());
+  assert.deepEqual(await selectedGroups(),allGroups.slice(0,17));
+  await page.locator('[data-pc-group-query]').fill('西区');
+  await page.locator('[data-pc-group-select="all"]').click();await settleGroups();
+  assert.deepEqual(await selectedGroups(),allGroups,'Filtered selection preserves already selected nonmatches');
+  const persistedGroups=await page.evaluate(()=>{
+    const p=fixturePromotion,d=p.collectWizard();
+    const payload=p.wizardTaskPayload(d,{customers:[],contacts:[],chat_groups:[],skipped:[]},'draft');
+    return p.taskToWizardDraft({id:81,audience_config_json:payload.audience_config}).group_keys;
+  });
+  assert.deepEqual(persistedGroups.sort((a,b)=>a-b),allGroups,'Save/reopen preserves all pages');
+  await page.locator('[data-pc-group-query]').fill('');
+  // Chinese input composition must not replace the composing input mid-word.
+  await page.locator('[data-pc-group-query]').evaluate(el=>{window.composingGroupInput=el;el.value='东';el.dispatchEvent(new InputEvent('input',{bubbles:true,isComposing:true}));});
+  assert(await page.evaluate(()=>composingGroupInput.isConnected));
+  await page.locator('[data-pc-group-query]').evaluate(el=>el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));
+  assert.equal(await page.locator('[data-pc-group-query]').inputValue(),'东');
+  await page.locator('[data-pc-group-query]').fill('');
+  for(const width of [360,390,768,1024,1440]){
+    await page.setViewportSize({width,height:900});
+    await page.evaluate(()=>{fixturePromotion.renderWizard();document.querySelector('.promo-step-details').open=true;});
+    const scrolls=await page.evaluate(()=>[...document.querySelectorAll('.pc-main *')].filter(el=>{const s=getComputedStyle(el);return ((/auto|scroll/.test(s.overflowY)&&el.scrollHeight>el.clientHeight+1)||(/auto|scroll/.test(s.overflowX)&&el.scrollWidth>el.clientWidth+1));}).map(el=>el.className));
+    assert.deepEqual(scrolls,[],`Audience has no nested scrollbars at ${width}`);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Audience fits width ${width}`);
+    await page.evaluate(()=>document.querySelector('.pc-main').scrollTop=0);
+    if(width===390 || width===1440)await page.screenshot({path:path.join(output,`${width}-audience-groups.png`)});
+  }
+  await page.locator('[data-wizard-field="group_mode"]').selectOption('selected');await settleGroups();
+  await page.locator('[data-wizard-field="group_mode"]').selectOption('group');await settleGroups();
+  assert.deepEqual(await selectedGroups(),[],'Changing source clears the old group selection');
+  await page.evaluate(()=>{fixturePromotion.data.groups=[];fixturePromotion.renderWizard();});
+  assert(await page.locator('[data-pc-group-select="all"]').isDisabled(),'Empty available groups cannot be selected');
+  assert.equal(await page.evaluate(()=>{
+    const close=fixturePromotion.closeWizard;let count=0;fixturePromotion.closeWizard=()=>count++;
+    document.querySelector('[data-pc-group-query]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    fixturePromotion.closeWizard=close;return count;
+  }),1,'Repeated search/page renders must not stack close handlers');
+  await page.evaluate(()=>{fixturePromotion.wizardDraft=beforeGroupDraft;fixturePromotion.wizardAudienceLoading=false;fixturePromotion.wizardAudienceError='';});
   // Actual collection, failure recovery and double-click protection, with fake transport only.
   await page.evaluate(()=>{api.state.step=0;api.state.preview=null;fixturePromotion.renderWizard();});
   await page.locator('[data-wizard-field="task_name"]').fill('已修改的推广名称');

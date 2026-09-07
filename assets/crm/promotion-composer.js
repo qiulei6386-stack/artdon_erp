@@ -9,6 +9,41 @@
     var descriptions = ['先选择这次如何触达客户。渠道必须已在客户或联系人资料中维护。','选择客户范围。最终预览会按最新资料列出真实接收对象和排除原因。','邮件正文与账号签名分开维护，附件上传成功后才能加入发送。','只展示可执行的设置。邮件自动发送；其他渠道由负责人手动完成。','此处由服务器生成。正式执行使用这一份内容；资料变化后必须重新核对。'];
     var ui = { step: 0, busy: false, dirty: false, preview: null, selected: 0, error: '', epoch: 0, page: 0, viewport: 'desktop' };
     var customerSearchSerial=0, customerSearchRows=[], customerNames={};
+    var groupQuery='', groupPage=0, groupPageSize=12;
+    function availableGroups() { return (p.data && p.data.groups || []).filter(function(row){return Number(row.id)>0;}); }
+    function matchingGroups() {
+      var query=groupQuery.trim().toLocaleLowerCase();
+      return availableGroups().filter(function(row){return !query || String(row.group_name || '').toLocaleLowerCase().indexOf(query)>=0;});
+    }
+    p.wizardGroupCheckboxes=function(d) {
+      var all=availableGroups(),rows=matchingGroups(),selected=new Set(p.wizardGroupKeys(d));
+      var pages=Math.max(1,Math.ceil(rows.length/groupPageSize));groupPage=Math.min(groupPage,pages-1);
+      var allSelected=rows.length && rows.every(function(row){return selected.has(Number(row.id));});
+      return '<section class="pc-group-picker"><div class="pc-group-toolbar"><strong>客户分组</strong><span role="status">已选 '+selected.size+' 组 · 共 '+all.length+' 组</span><button type="button" data-pc-group-select="all" '+(!rows.length || allSelected?'disabled':'')+'>'+(groupQuery.trim()?'全选匹配分组':'全选全部分组')+'（'+rows.length+'）</button><button type="button" data-pc-group-select="clear" '+(!selected.size?'disabled':'')+'>清空已选</button></div><label class="pc-field"><span>搜索分组</span><input type="search" data-pc-group-query value="'+esc(groupQuery)+'" placeholder="输入分组名称"></label><p class="pc-group-help">全选包含所有匹配页，翻页不会丢失勾选。客户会去重，禁止推广对象仍会排除；最终预览后才能确认执行。</p><div class="pc-group-list">'+rows.slice(groupPage*groupPageSize,(groupPage+1)*groupPageSize).map(function(row){var id=Number(row.id);return '<label class="pc-check pc-group-row"><input type="checkbox" data-wizard-group-check value="'+id+'" '+(selected.has(id)?'checked':'')+'><span><strong>'+esc(row.group_name || ('分组 #'+id))+'</strong><small>客户 '+Number(row.customer_count || 0)+' · 联系人 '+Number(row.contact_count || 0)+' · 可推广 '+Number(row.promotable_contact_count || 0)+'</small></span></label>';}).join('')+(!rows.length?'<p>'+(all.length?'没有匹配分组，请更换关键词。':'暂无可用分组。')+'</p>':'')+'</div><div class="pc-group-pages"><span>第 '+(groupPage+1)+' / '+pages+' 页 · 匹配 '+rows.length+' 组</span><button type="button" data-pc-group-page="-1" '+(!groupPage?'disabled':'')+'>上一页</button><button type="button" data-pc-group-page="1" '+(groupPage+1>=pages?'disabled':'')+'>下一页</button></div></section>';
+    };
+    function selectGroups(action) {
+      if(ui.busy)return;
+      var d=p.collectWizard(),ids=new Set(p.wizardGroupKeys(d));
+      if(action==='clear')ids.clear();else matchingGroups().forEach(function(row){ids.add(Number(row.id));});
+      d.group_keys=Array.from(ids);d.group_key=d.group_keys[0]?String(d.group_keys[0]):'';
+      // Sync visible checks before the legacy collector runs during refresh.
+      document.querySelectorAll('.pc-composer [data-wizard-group-check]').forEach(function(el){el.checked=ids.has(Number(el.value));});
+      invalidate();p.refreshWizardAudience();
+    }
+    function resetGroupSource(e) {
+      if(e.target.dataset.wizardField!=='group_mode')return;
+      p.wizardDraft.group_key='';p.wizardDraft.group_keys=[];groupQuery='';groupPage=0;
+      e.currentTarget.querySelectorAll('[data-wizard-group-check]').forEach(function(el){el.checked=false;});
+    }
+    function composerKeydown(e) {
+      if(e.key==='Escape'){e.preventDefault();p.closeWizard();}
+      if(e.key==='Tab'){
+        var controls=Array.from(e.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[contenteditable="true"],summary')).filter(function(el){return el.getClientRects().length;});
+        var first=controls[0],last=controls[controls.length-1];
+        if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus();}
+        else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();}
+      }
+    }
     function customerPicker(d) {
       if(d.group_mode!=='selected')return '';
       var known=(p.data && p.data.pool || []);
@@ -70,6 +105,7 @@
     p.openWizard = function () {
       if (ui.busy) return;
       ui.step = 0; ui.error = ''; ui.preview = null; ui.dirty = false; ui.epoch++; ui.page = 0;
+      groupQuery='';groupPage=0;
       customerSearchSerial++; p.wizardAudienceRequestSerial++;
       this.wizardAttachmentFiles = []; original.openWizard.call(this);
     };
@@ -89,12 +125,19 @@
     p.collectWizard = function () {
       var before = JSON.stringify(this.wizardDraft);
       var customerIds=this.wizardDraft && this.wizardDraft.customer_ids,contactIds=this.wizardDraft && this.wizardDraft.contact_ids;
+      var groupIds=this.wizardGroupKeys(this.wizardDraft);
       var accountIds=(this.wizardDraft.mail_account_ids || []).slice(),manualIds=(this.wizardDraft.offline_owner_ids || []).slice();
       var d = original.collectWizard.call(this);
       // A saved/editing draft must not silently inherit a stale pool selection.
       if(Array.isArray(customerIds))d.customer_ids=customerIds;
       if(Array.isArray(contactIds))d.contact_ids=contactIds;
       document.querySelectorAll('.pc-composer [data-wizard-field]').forEach(function(el) { d[el.dataset.wizardField] = el.value; });
+      // The old collector sees only the current page; retain off-page selections.
+      if(d.group_mode==='group') {
+        var groupSet=new Set(groupIds);
+        document.querySelectorAll('.pc-composer [data-wizard-group-check]').forEach(function(el){var key=Number(el.value);if(el.checked)groupSet.add(key);else groupSet.delete(key);});
+        d.group_keys=Array.from(groupSet);d.group_key=d.group_keys[0]?String(d.group_keys[0]):'';
+      }
       var accountChecks=document.querySelectorAll('[data-pc-account]'),manualChecks=document.querySelectorAll('[data-pc-executor]');
       d.mail_account_ids=collectChecks(accountChecks,accountIds);
       d.offline_owner_ids=collectChecks(manualChecks,manualIds);
@@ -121,6 +164,7 @@
     function validation(step,d) {
       if (step === 0 && !String(d.task_name || '').trim()) return '请填写推广名称。';
       if (step === 1) {
+        if(d.group_mode==='group' && !p.wizardGroupKeys(d).length)return '请先选择客户分组。';
         if (p.wizardAudienceLoading) return '客户范围还在读取中，请稍候。';
         if (p.wizardAudienceError) return p.wizardAudienceError;
         if (!(d.audience_customer_ids || []).length && !(d.customer_ids || []).length && !(d.contact_ids || []).length) return '请先选择客户或客户分组。';
@@ -264,21 +308,32 @@
       if(ui.step===3)content=renderSchedule(d);
       if(ui.step===4)content=renderPreview();
       host.innerHTML='<section class="pc-composer" role="region" aria-label="新建推广任务"><header class="pc-header"><div><span class="pc-eyebrow">推广工作区</span><h2>'+esc(d.task_name || '新建推广任务')+'</h2></div><span class="pc-save-state">'+(ui.dirty?'有未保存修改':d.task_id?'草稿已保存':'未保存')+'</span><button type="button" data-pc-action="close" aria-label="关闭推广创建">关闭</button></header><div class="pc-workspace"><nav class="pc-steps" aria-label="创建步骤">'+steps.map(function(name,i){return '<button type="button" data-pc-step="'+i+'" aria-current="'+(i===ui.step?'step':'false')+'"><b>'+(i+1)+'</b><span>'+name+'</span></button>';}).join('')+'</nav><main class="pc-main"><div class="pc-heading"><span>第 '+(ui.step+1)+' 步 / 5</span><h3>'+steps[ui.step]+'</h3><p>'+descriptions[ui.step]+'</p></div><div class="pc-error" role="alert" '+(!ui.error?'hidden':'')+'>'+esc(ui.error)+'</div><div class="pc-content">'+content+'</div></main></div><footer class="pc-footer"><button type="button" data-pc-action="save">保存草稿 · 不发送</button><span class="pc-progress" role="status">'+(ui.busy?'处理中，请稍候':'')+'</span><div><button type="button" data-pc-action="prev" '+(ui.step===0?'disabled':'')+'>上一步</button>'+(ui.step<4?'<button type="button" class="primary" data-pc-action="next">'+(ui.step===3?'生成最终预览':'下一步')+'</button>':'<button type="button" class="primary" data-pc-action="confirm" disabled>确认执行</button>')+'</div></footer></section>';
+      host.querySelectorAll('.promo-step-customers .promo-step-table').forEach(function(table){
+        var labels=Array.from(table.querySelectorAll('thead th')).map(function(th){return th.textContent;});
+        table.querySelectorAll('tbody tr').forEach(function(row){Array.from(row.cells).forEach(function(cell,i){if(cell.colSpan===1)cell.dataset.label=labels[i] || '';});});
+      });
       host.querySelectorAll('[data-wizard-field]').forEach(function(el){el.addEventListener('input',function(){p.collectWizard();invalidate();});el.addEventListener('change',function(){p.collectWizard();invalidate();var key=el.dataset.wizardField;if(key==='template_key')p.applyWizardTemplate();if(key==='group_mode'||key==='group_key'||key==='contact_filter'){p.wizardAudienceRequestSerial++;p.refreshWizardAudience();return;}if(['channel_key','template_key','schedule_type','mail_account_rule','offline_executor_rule'].indexOf(key)>=0)p.renderWizard();});});
       host.querySelector('[data-pc-customer-search]')?.addEventListener('click',searchCustomers);
       host.querySelector('[data-pc-customer-query]')?.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();searchCustomers();}});
       host.querySelectorAll('[data-pc-customer-remove]').forEach(function(el){el.onclick=function(){changeCustomer(Number(el.dataset.pcCustomerRemove),false);};});
       host.querySelectorAll('[data-wizard-group-check]').forEach(function(el){el.addEventListener('change',function(){p.collectWizard();invalidate();p.refreshWizardAudience();});});
-      host.addEventListener('change',function(e){if(e.target.dataset.wizardField==='group_mode'){p.wizardDraft.group_key='';p.wizardDraft.group_keys=[];}},true);
-      host.addEventListener('keydown',function(e){
-        if(e.key==='Escape'){e.preventDefault();p.closeWizard();}
-        if(e.key==='Tab'){
-          var controls=Array.from(host.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[contenteditable="true"],summary')).filter(function(el){return el.getClientRects().length;});
-          var first=controls[0],last=controls[controls.length-1];
-          if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus();}
-          else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();}
-        }
-      });
+      host.querySelectorAll('[data-pc-group-select]').forEach(function(el){el.onclick=function(){selectGroups(el.dataset.pcGroupSelect);};});
+      function filterGroups(e) {
+        if(e.isComposing)return;
+        var start=e.target.selectionStart,end=e.target.selectionEnd;
+        p.collectWizard();groupQuery=e.target.value;groupPage=0;p.renderWizard();
+        var input=host.querySelector('[data-pc-group-query]');
+        if(input){input.focus({preventScroll:true});input.setSelectionRange(start,end);}
+      }
+      host.querySelector('[data-pc-group-query]')?.addEventListener('input',filterGroups);
+      host.querySelector('[data-pc-group-query]')?.addEventListener('compositionend',filterGroups);
+      host.querySelectorAll('[data-pc-group-page]').forEach(function(el){el.onclick=function(){
+        p.collectWizard();groupPage+=Number(el.dataset.pcGroupPage);p.renderWizard();
+        host.querySelector('.pc-group-picker')?.scrollIntoView({block:'start'});
+        host.querySelector('[data-pc-group-query]')?.focus({preventScroll:true});
+      };});
+      host.removeEventListener('change',resetGroupSource,true);host.addEventListener('change',resetGroupSource,true);
+      host.removeEventListener('keydown',composerKeydown);host.addEventListener('keydown',composerKeydown);
       host.querySelectorAll('[data-pc-step]').forEach(function(el){el.onclick=function(){move(Number(el.dataset.pcStep));};});
       var actions={close:function(){p.closeWizard();},save:saveDraft,prev:function(){move(ui.step-1);},next:function(){move(ui.step+1);},preview:generatePreview,confirm:confirmDelivery,test:testSend};
       host.querySelectorAll('[data-pc-action]').forEach(function(el){el.onclick=function(){actions[el.dataset.pcAction]();};});
