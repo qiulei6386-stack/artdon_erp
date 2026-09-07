@@ -54,8 +54,15 @@
     function fingerprint() { return JSON.stringify(p.wizardDraft); }
     p.defaultWizardDraft = function () { return Object.assign(original.defaultWizardDraft.call(this), { client_request_id:id(), delivery_version:2, channel_key:'email', timezone_rule:'company_time', assets:[] }); };
     p.taskToWizardDraft = function (task) {
-      var d = original.taskToWizardDraft.call(this,task), attach = {};
+      var d = original.taskToWizardDraft.call(this,task), attach = {}, audience = {};
       try { attach = JSON.parse(task.attachment_config_json || '{}'); } catch (_) {}
+      try { audience = JSON.parse(task.audience_config_json || '{}'); } catch (_) {}
+      if(audience.selection && Array.isArray(audience.selection.customer_ids) && Array.isArray(audience.selection.contact_ids)) {
+        d.customer_ids=audience.selection.customer_ids.map(Number).filter(Boolean);
+        d.contact_ids=audience.selection.contact_ids.map(Number).filter(Boolean);
+      } else if(d.group_mode==='selected' && (audience.excluded_customers || []).length) {
+        d.customer_ids=Array.from(new Set((d.customer_ids || []).concat(audience.excluded_customers.map(function(r){return Number(r.id);})).filter(Boolean)));
+      }
       d.assets = attach.assets || []; d.asset_ids = attach.asset_ids || []; d.delivery_version = 2;
       d.legacyAttachmentWarning = Boolean((attach.manual_attachments || []).length || (attach.datasheet_attachments || []).length || attach.material_package);
       return d;
@@ -142,6 +149,7 @@
     async function saveCore() {
       var d = p.collectWizard(); p.applyWizardTemplate();
       var data = await request('marketing_task_create',p.wizardTaskPayload(d,{customers:[],contacts:[],chat_groups:[],skipped:[]},'draft'));
+      if(Array.isArray(data.tasks)){p.data=p.data || {};p.data.tasks=data.tasks;}
       d.task_id = Number(data.task_id); p.wizardDraft = d; p.selectedTaskId=d.task_id; ui.dirty=false;
       return d;
     }

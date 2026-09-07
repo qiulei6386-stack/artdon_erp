@@ -14980,6 +14980,7 @@
         self.applyBootstrapPoolState();
         self.render();
         if (!options.noSwitch) self.switchView(self.currentView || 'campaigns');
+        if (options.notify) toast('推广中心已刷新');
         if (keepAllPool && !previousAllPool.length && !self.allPoolLoading) {
           self.allPoolLoading = true;
           self.renderPool();
@@ -20500,6 +20501,19 @@
           if (customerId && customerIds.indexOf(customerId) < 0) customerIds.push(customerId);
           if (contactId && contactIds.indexOf(contactId) < 0) contactIds.push(contactId);
         });
+        var audience = {};
+        try { audience = JSON.parse(task.audience_config_json || '{}') || {}; } catch (error) {}
+        var selection = audience.selection;
+        var hasSelection = selection && Array.isArray(selection.customer_ids) && Array.isArray(selection.contact_ids);
+        if (hasSelection) {
+          customerIds = selection.customer_ids.map(Number).filter(Boolean);
+          contactIds = selection.contact_ids.map(Number).filter(Boolean);
+        } else if (!audience.group_mode || audience.group_mode === 'selected') {
+          (audience.excluded_customers || []).forEach(function (row) {
+            var id = Number(row.id || 0);
+            if (id && customerIds.indexOf(id) < 0) customerIds.push(id);
+          });
+        }
         self.closeDialog();
         self.closeWizard();
         self.selectedCustomerIds = new Set(customerIds);
@@ -20508,11 +20522,11 @@
         self.wizardDraft.task_id = Number(task.id || taskId || 0);
         self.wizardDraft.task_status = task.task_status || 'pending';
         if (customerIds.length) {
-          self.wizardDraft.group_mode = 'selected';
+          if (!hasSelection) self.wizardDraft.group_mode = 'selected';
           self.wizardDraft.customer_ids = customerIds;
         }
         if (contactIds.length) {
-          self.wizardDraft.contact_filter = 'selected';
+          if (!hasSelection) self.wizardDraft.contact_filter = 'selected';
           self.wizardDraft.contact_ids = contactIds;
         }
         self.wizardStep = 0;
@@ -24591,8 +24605,8 @@
       });
     }
 	    if (label === '刷新推广中心' || label === '刷新' || label === '刷新项目列表' || label === '刷新人工执行清单') {
-	      PromotionModule.load();
-	      toast('推广中心已刷新');
+	      toast('正在刷新推广中心…');
+	      PromotionModule.load({ notify: true });
 	      return;
 	    }
       if (label === '查看我的待执行' || label === '查看已逾期' || label === '查看已完成') {

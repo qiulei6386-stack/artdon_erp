@@ -2740,6 +2740,9 @@ function crm_marketing_task_create(array $input): array
     $audienceConfig['resolved_customer_count'] = count($customerIds);
     $audienceConfig['blocked_customer_count'] = count($audiencePolicy['blocked_customer_ids'] ?? []);
     if ($deliveryV2) {
+        // Preserve the user's selection separately from the eligible execution targets.
+        // Excluded customers must still be visible when reopening a draft.
+        $audienceConfig['selection'] = ['customer_ids'=>$requestedCustomerIds, 'contact_ids'=>$contactIds];
         $blockedIds = $audiencePolicy['blocked_customer_ids'] ?? [];
         $audienceConfig['excluded_customers'] = array_values(array_map(static fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['customer_name']],array_filter($resolvedAudience['rows'] ?? [],static fn($r)=>in_array((int)$r['id'],$blockedIds,true))));
     }

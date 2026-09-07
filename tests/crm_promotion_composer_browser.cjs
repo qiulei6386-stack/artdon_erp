@@ -96,6 +96,13 @@ assert(start>0 && end>start);
   });
   assert.equal(draftRoundTrip.subject,'For {contact_name}{company_name} now');
   assert.equal(draftRoundTrip.body,body);
+  await page.evaluate(()=>{
+    const p=fixturePromotion;
+    const reopened=p.taskToWizardDraft({id:75,task_status:'draft',audience_config_json:JSON.stringify({group_mode:'selected',contact_filter:'selected',selection:{customer_ids:[9,1],contact_ids:[8]}})});
+    if(JSON.stringify(reopened.customer_ids)!=='[9,1]' || JSON.stringify(reopened.contact_ids)!=='[8]' || reopened.contact_filter!=='selected')throw new Error('Explicit draft selection lost');
+    const old=p.taskToWizardDraft({id:74,task_status:'draft',audience_config_json:JSON.stringify({group_mode:'selected',excluded_customers:[{id:9}]})});
+    if(!old.customer_ids.includes(9))throw new Error('Legacy excluded selection lost');
+  });
   // Formatting buttons still execute the real rich command and persist the change.
   await editor.click();await page.keyboard.press('Meta+a');
   await page.locator('[data-promo-rich-cmd="bold"]').click();

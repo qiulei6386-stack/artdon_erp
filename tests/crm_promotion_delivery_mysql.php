@@ -23,7 +23,6 @@ function crm_marketing_linkify_mail_html($html){return $html;}
 function crm_mail_input_ids($value){return array_map('intval',is_array($value)?$value:(json_decode((string)$value,true) ?: []));}
 function crm_marketing_decode_json_input($value){return is_array($value)?$value:(json_decode((string)$value,true) ?: []);}
 function crm_marketing_resolve_audience_customers($filters,$ids){if(!$ids)return ['rows'=>[]];$s=db()->prepare('SELECT * FROM crm_customers WHERE id IN ('.implode(',',array_fill(0,count($ids),'?')).')');$s->execute($ids);return ['rows'=>$s->fetchAll()];}
-function crm_marketing_apply_audience_policy($rows,$policy){return ['customer_ids'=>array_column($rows,'id')];}
 function crm_marketing_tasks(){return [];}
 function crm_log_event(...$args){}
 function crm_marketing_notify_queue_build(...$args){}
@@ -37,6 +36,7 @@ function crm_mail_decrypt($v){return 'synthetic-no-network';}
 function crm_marketing_update_target_from_queue(...$a){}
 function crm_marketing_queue_update_task_status(...$a){}
 $source=file_get_contents(dirname(__DIR__).'/crm_marketing.php');
+eval(pd_extract($source,'crm_marketing_apply_audience_policy'));
 foreach(['crm_marketing_json','crm_marketing_normalize_channel','crm_marketing_is_email_channel','crm_marketing_is_manual_channel','crm_marketing_pick_first','crm_marketing_manual_target_meta','crm_marketing_manual_schedule','crm_marketing_resolve_target_channel','crm_marketing_with_task_lock','crm_marketing_saved_task_status','crm_marketing_assert_targets_rebuildable','crm_marketing_email_suppression_sql','crm_marketing_task_create','crm_marketing_queue_skip_suppressed','crm_marketing_queue_claim','crm_marketing_queue_run_due'] as $name)eval(pd_extract($source,$name));
 require dirname(__DIR__).'/crm_marketing_delivery.php';
 foreach([
@@ -149,3 +149,18 @@ $qs=db()->query('SELECT * FROM crm_marketing_send_queue WHERE task_id='.(int)$sm
 mit_assert(count($qs)===5,'Balanced confirmation must be idempotent');
 foreach($qs as $i=>$q){$expected=crm_delivery_expand_item($sm,$sm['items'][$i]);mit_assert($q['body']===$expected['body_html'] && $q['sender_email']===$expected['sender_email'],'Every queued body and sender must equal preview');}
 echo "Multi-mailbox queue snapshots and repeated confirmation passed; no additional SMTP call.\n";
+
+// The saved selection is not the executable list: suppressed customers stay excluded.
+db()->exec("INSERT INTO crm_customers (id,customer_name,country,owner_user_id,email,do_not_contact) VALUES (9999,'Suppressed fixture','CN',1,'suppressed@example.invalid',1)");
+$blockedInput=array_merge($input,['client_request_id'=>'synthetic_excluded_selection','customer_ids'=>'[9999]','contact_ids'=>'[]']);
+$blocked=crm_marketing_task_create($blockedInput);
+$blockedTask=crm_marketing_task_row($blocked['task_id']);
+$blockedAudience=json_decode($blockedTask['audience_config_json'],true);
+mit_assert($blockedAudience['selection']['customer_ids']===[9999] && $blockedAudience['selection']['contact_ids']===[],'Preserve original selection for draft reopening');
+mit_assert(count($blockedAudience['excluded_customers'])===1,'Keep suppression explanation');
+$blockedPreview=crm_delivery_preview(['task_id'=>$blocked['task_id']]);
+mit_assert($blockedPreview['manifest']['total']===0 && $blockedPreview['manifest']['excluded_total']===1,'Saved selection cannot bypass suppression');
+mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_task_targets WHERE task_id='.(int)$blocked['task_id'])->fetchColumn()===0,'Suppressed selected customer must not become an execution target');
+$blockedInput['task_id']=$blocked['task_id'];crm_marketing_task_create($blockedInput);
+mit_assert(json_decode(crm_marketing_task_row($blocked['task_id'])['audience_config_json'],true)['selection']===$blockedAudience['selection'],'Selection survives re-saving');
+echo "Excluded draft selection persistence and fail-closed preview passed.\n";
