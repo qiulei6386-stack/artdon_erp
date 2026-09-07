@@ -49,9 +49,46 @@ assert(start>0 && end>start);
       assert(metrics.doc<=width+1,`overflow ${width}/${step}: ${JSON.stringify(metrics)}`);
       assert(metrics.foot<=901 && metrics.main>200,`footer/body ${width}/${step}: ${JSON.stringify(metrics)}`);
       assert(metrics.buttons.every(b=>b.width>=80 && b.height>=40),`compressed buttons ${width}/${step}`);
-      if(step===2 || step===4){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-step${step+1}.png`)});}
+      assert.equal(await page.locator('[data-pc-step]:visible').count(),5,`All five steps remain visible at ${width}/${step}`);
+      assert((await page.locator('[data-pc-guidance]').innerText()).length>0,'Every step has its own filling checklist');
+      await page.locator('.pc-step-help summary').click();
+      assert(await page.locator('.pc-step-help').evaluate(el=>el.open),'Step explanation opens inline');
+      await page.locator('.pc-step-help summary').click();
+      if(step===2 || step===4 || width===390 || width===1440){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-step${step+1}.png`)});}
     }
   }
+  // Missing-field guidance is live, local and never rerenders the active input.
+  await page.evaluate(()=>{window.guidanceDraft=structuredClone(fixturePromotion.wizardDraft);api.state.step=0;fixturePromotion.wizardDraft.task_name='';fixturePromotion.renderWizard();});
+  await page.locator('[data-pc-action="next"]').click();
+  assert.equal(await page.evaluate(()=>api.state.step),0);
+  assert.equal(await page.locator('[data-wizard-field="task_name"]').getAttribute('aria-invalid'),'true');
+  assert((await page.locator('.pc-field-error').innerText()).includes('推广名称'));
+  assert(await page.locator('[data-wizard-field="task_name"]').evaluate(el=>document.activeElement===el));
+  await page.locator('[data-wizard-field="task_name"]').evaluate(el=>window.guidanceInput=el);
+  await page.locator('[data-wizard-field="task_name"]').fill('提示验收任务');
+  assert(await page.evaluate(()=>guidanceInput.isConnected && document.activeElement===guidanceInput));
+  assert.equal(await page.locator('.pc-field-error').count(),0);
+  assert.equal(await page.locator('[data-pc-guidance] .is-pending').count(),0);
+  assert.equal(await page.evaluate(()=>calls.length),0,'Filling guidance does not create requests or save drafts');
+  await page.evaluate(()=>{fixturePromotion.wizardDraft=guidanceDraft;api.state.step=3;fixturePromotion.wizardDraft.hourly_limit=0;fixturePromotion.renderWizard();});
+  await page.locator('[data-pc-action="next"]').click();
+  assert.equal(await page.evaluate(()=>api.state.step),3);
+  assert.equal(await page.locator('[data-wizard-field="hourly_limit"]').getAttribute('aria-invalid'),'true');
+  assert(await page.locator('[data-wizard-field="hourly_limit"]').evaluate(el=>document.activeElement===el));
+  assert.equal(await page.evaluate(()=>calls.length),0,'Invalid schedule never starts final-preview generation');
+  await page.locator('[data-wizard-field="hourly_limit"]').fill('50');
+  assert.equal(await page.locator('.pc-field-error').count(),0);
+  assert.equal(await page.locator('[data-pc-guidance] .is-pending').count(),0);
+  assert.equal(await page.evaluate(()=>api.validation(2,{...fixturePromotion.wizardDraft,signature_key:'obsolete'})),'请选择邮件签名方式。');
+  for(const size of [{width:360,height:640},{width:1024,height:600}]){
+    await page.setViewportSize(size);
+    for(let step=0;step<5;step++){
+      await page.evaluate(step=>{api.state.step=step;api.state.preview=step===4?makePreview():null;fixturePromotion.renderWizard();},step);
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('.pc-footer').getBoundingClientRect().bottom<=innerHeight+1 && document.querySelector('.pc-main').clientHeight>180),'Short screens retain navigation, body and footer');
+    }
+  }
+  await page.setViewportSize({width:1440,height:900});
+  await page.evaluate(()=>{api.state.step=2;api.state.error='';api.state.preview=null;fixturePromotion.renderWizard();});
   // Real editor/selection handlers, not toolbar mocks: click, keyboard, save/reopen.
   await page.evaluate(()=>{
     window.editorDraft=structuredClone(fixturePromotion.wizardDraft);
@@ -185,7 +222,7 @@ assert(start>0 && end>start);
     assert.deepEqual(scrolls,[],`Audience has no nested scrollbars at ${width}`);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Audience fits width ${width}`);
     await page.evaluate(()=>document.querySelector('.pc-main').scrollTop=0);
-    if(width===390 || width===1440)await page.screenshot({path:path.join(output,`${width}-audience-groups.png`)});
+    if(width===390 || width===1440){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-audience-groups.png`)});}
   }
   await page.locator('[data-wizard-field="group_mode"]').selectOption('selected');await settleGroups();
   await page.locator('[data-wizard-field="group_mode"]').selectOption('group');await settleGroups();
@@ -245,7 +282,12 @@ assert(start>0 && end>start);
   });
   for(const width of [360,390,768,1024,1440]){
     await page.setViewportSize({width,height:900});
+    await page.locator('.pc-distribution-details summary').click();
+    assert(await page.locator('.pc-distribution').isVisible(),'Detailed schedule is available on demand');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Paged layout overflow ${width}`);
+    await page.locator('.pc-distribution-details summary').click();
+    await page.evaluate(()=>document.querySelector('.pc-main').scrollTop=0);
+    await page.waitForTimeout(170);
     await page.screenshot({path:path.join(output,`${width}-paged-preview.png`)});
   }
   await page.locator('[data-pc-page="1"]').click();
@@ -256,6 +298,14 @@ assert(start>0 && end>start);
   assert((await page.locator('iframe').getAttribute('srcdoc')).includes('Frozen customer 23'));
   await page.evaluate(async()=>{window.confirm=message=>{window.confirmText=message;return false;};api.state.preview.fingerprint=JSON.stringify(fixturePromotion.collectWizard());await api.confirmDelivery();});
   assert((await page.evaluate(()=>window.confirmText)).includes('3000 封邮件'),'Confirm must use total, not current page size');
+  await page.locator('[data-pc-consent]').check();
+  assert.equal(await page.locator('[data-pc-guidance] .is-pending').count(),0,'Last-step guidance reflects explicit review consent');
+  const callsBeforeStale=await page.evaluate(()=>calls.length);
+  await page.evaluate(async()=>{api.state.preview.fingerprint=JSON.stringify(fixturePromotion.wizardDraft);fixturePromotion.wizardDraft.delivery_version=1;await api.confirmDelivery();});
+  assert.equal(await page.evaluate(()=>api.state.preview),null,'Collection invalidation cannot execute a stale preview');
+  assert((await page.locator('[data-pc-error]').innerText()).includes('重新生成预览'));
+  assert.equal(await page.evaluate(()=>calls.length),callsBeforeStale,'Stale preview sends no confirm request');
+  await page.evaluate(()=>{api.state.preview=makePreview();api.state.error='';fixturePromotion.renderWizard();});
   await page.emulateMedia({reducedMotion:'reduce'});
   assert.equal(await page.locator('.pc-content').evaluate(el=>getComputedStyle(el).animationName),'none');
   await page.setViewportSize({width:1024,height:720});

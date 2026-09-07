@@ -6,7 +6,14 @@
     var original = {};
     ['defaultWizardDraft','openWizard','closeWizard','collectWizard','renderWizardStep','taskToWizardDraft','wizardTaskPayload','applyWizardTemplate'].forEach(function (key) { original[key] = p[key]; });
     var steps = ['推广方式','接收对象','内容与签名','执行安排','最终预览'];
-    var descriptions = ['先选择这次如何触达客户。渠道必须已在客户或联系人资料中维护。','选择客户范围。最终预览会按最新资料列出真实接收对象和排除原因。','邮件正文与账号签名分开维护，附件上传成功后才能加入发送。','只展示可执行的设置。邮件自动发送；其他渠道由负责人手动完成。','此处由服务器生成。正式执行使用这一份内容；资料变化后必须重新核对。'];
+    var descriptions = ['给任务命名，并确定本次联系客户的方式。','先选客户范围，再确认需要联系哪些人。','编辑内容；签名由实际发件账号自动追加。','确定由谁执行、何时开始，以及发送速度。','逐封核对真实接收人、内容和签名，再确认执行。'];
+    var stepHelp = [
+      '邮件渠道自动发送；电话、微信等渠道只生成需要人工处理的待办。客户资料中的渠道必须匹配，保存草稿不会发送。',
+      '全选分组覆盖所有匹配页。重复客户会去重，禁止推广或渠道不符的对象会被排除；最终人数以服务器预览为准。',
+      '先把光标放在主题或正文，再点变量插入。联系人姓名需要真实联系人记录，不能用公司名代替。附件须上传成功；签名不要重复粘贴到正文。',
+      '均分和轮流发送只使用你勾选且有权限的邮箱。默认预览十分钟后开始，未经确认不发送；发送负载或重试可能使完成时间顺延。',
+      '此处展示服务器冻结的发送内容。修改资料、正文或规则后必须重新预览；测试邮件仅发往指定测试邮箱，确认执行才创建正式队列。'
+    ];
     var ui = { step: 0, busy: false, dirty: false, preview: null, selected: 0, error: '', epoch: 0, page: 0, viewport: 'desktop' };
     var customerSearchSerial=0, customerSearchRows=[], customerNames={};
     var groupQuery='', groupPage=0, groupPageSize=12;
@@ -80,7 +87,33 @@
     function request(action, payload) { return env.post(action,payload,{timeoutMs:60000}).then(function (json) { if (!json || !json.success) throw new Error(json && json.message || '操作失败，请重试'); return json.data || {}; }); }
     function field(name,label,value,type,hint) { return '<label class="pc-field"><span>' + esc(label) + '</span><input data-wizard-field="' + name + '" type="' + (type || 'text') + '" value="' + esc(value == null ? '' : value) + '">' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
     function select(name,label,value,options,hint) { if(value && !options.some(function(o){return String(o[0])===String(value);}))options=[[value,'原设置：'+value+'（请明确重新选择）']].concat(options); return '<label class="pc-field"><span>' + esc(label) + '</span><select data-wizard-field="' + name + '">' + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(value) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
-    function invalidate() { ui.dirty = true; ui.preview = null; ui.error = ''; }
+    function invalidate() { ui.dirty = true; ui.preview = null; ui.error = ''; updateGuidance(); }
+    function panel(title,subtitle,body,className) {
+      return '<section class="pc-panel '+(className || '')+'"><header class="pc-panel-head"><h4>'+title+'</h4>'+(subtitle?'<p>'+subtitle+'</p>':'')+'</header>'+body+'</section>';
+    }
+    function stepChecks(d) {
+      var email=d.channel_key==='email'||d.channel_key==='preference';
+      var source=d.group_mode==='group'?p.wizardGroupKeys(d).length:d.group_mode==='country'?String(d.group_key || '').trim():d.group_mode==='all_pool'?true:(d.customer_ids || []).length || (d.contact_ids || []).length;
+      var body=String(d.mail_body_html || '');
+      var check=function(label,done,selector){return {label:label,done:!!done,selector:selector};};
+      if(ui.step===0)return [check('推广名称',String(d.task_name || '').trim(),'[data-wizard-field="task_name"]'),check('推广方式',d.channel_key,'[data-wizard-field="channel_key"]')];
+      if(ui.step===1)return [check('客户范围',source,'[data-wizard-field="group_mode"]'),check('名单已读取',!p.wizardAudienceLoading && !p.wizardAudienceError && (d.audience_customer_ids || []).length,'[data-wizard-field="group_mode"]'),check('联系人范围',d.contact_filter,'[data-wizard-field="contact_filter"]')];
+      if(ui.step===2)return (email?[check('邮件主题',String(d.mail_subject || '').trim(),'[data-wizard-field="mail_subject"]')]:[]).concat([check('正文内容',body.replace(/<[^>]*>/g,'').trim() || /<img\b/i.test(body),'[data-promo-wizard-editor]')],email?[check('签名方式',['personal','company','none'].indexOf(d.signature_key)>=0,'[data-wizard-field="signature_key"]')]:[],d.legacyAttachmentWarning?[check('处理旧附件',false,'[data-pc-legacy-attachments]')]:[]);
+      if(ui.step===3)return (email?[check('发件邮箱',d.mail_account_rule==='owner_mailbox' || (['balanced','selected_mailbox','group_by_country'].indexOf(d.mail_account_rule)>=0 && (d.mail_account_ids || []).length),'[data-wizard-field="mail_account_rule"]')]:[]).concat([check('开始时间',d.schedule_type==='manual' || (['scheduled','auto'].indexOf(d.schedule_type)>=0 && d.scheduled_at),'[data-wizard-field="schedule_type"]'),check('安排已检查',!validation(3,d),'[data-wizard-field="timezone_rule"]')]);
+      var total=ui.preview && (ui.preview.manifest.total ?? ui.preview.manifest.items.length);
+      return [check('服务器预览',ui.preview,'[data-pc-action="preview"]'),check('可执行对象',total>0,'.pc-exclusions summary'),check('勾选最后核对',document.querySelector('[data-pc-consent]')?.checked,'[data-pc-consent]')];
+    }
+    function guidanceHtml(d) {
+      var checks=stepChecks(d),missing=checks.filter(function(c){return !c.done;});
+      return '<div class="pc-guide-status"><strong>'+(ui.busy?'正在处理…':missing.length?'本步待办':'本步已填写')+'</strong><div class="pc-checkpoints">'+checks.map(function(c){return '<span class="'+(c.done?'is-ready':'is-pending')+'"><i aria-hidden="true">'+(c.done?'✓':'○')+'</i>'+c.label+'</span>';}).join('')+'</div></div>';
+    }
+    function updateGuidance() {
+      var host=document.querySelector('.pc-composer');if(!host || !p.wizardDraft)return;
+      var guide=host.querySelector('[data-pc-guidance]');if(guide)guide.innerHTML=guidanceHtml(p.wizardDraft);
+      var badge=host.querySelector('.pc-save-state');if(badge){badge.textContent=ui.dirty?'未保存':p.wizardDraft.task_id?'已保存':'草稿';badge.classList.toggle('is-dirty',ui.dirty);}
+      var error=host.querySelector('[data-pc-error]');if(error){error.hidden=!ui.error;error.textContent=ui.error;}
+      if(!ui.error){host.querySelectorAll('[aria-invalid="true"]').forEach(function(el){el.removeAttribute('aria-invalid');el.removeAttribute('aria-errormessage');});host.querySelectorAll('.pc-field-error').forEach(function(el){el.remove();});}
+    }
     function collectChecks(nodes, previous) {
       if(!nodes.length)return previous;
       var checked=Array.from(nodes).filter(function(el){return el.checked;}).map(function(el){return Number(el.value);});
@@ -160,7 +193,7 @@
     p.saveDraftFromWizard = function () { return saveDraft(); };
     p.wizardNext = function () { return move(ui.step+1); };
     p.wizardPrev = function () { return move(ui.step-1); };
-    p.updateWizardPreview = function () { /* No full-list calculations on each keystroke. */ };
+    p.updateWizardPreview = function () { updateGuidance(); /* Local checks only; no audience fetch on typing. */ };
     function validation(step,d) {
       if (step === 0 && !String(d.task_name || '').trim()) return '请填写推广名称。';
       if (step === 1) {
@@ -170,7 +203,8 @@
         if (!(d.audience_customer_ids || []).length && !(d.customer_ids || []).length && !(d.contact_ids || []).length) return '请先选择客户或客户分组。';
       }
       if (step === 2 && !String(d.mail_body_html || '').replace(/<[^>]*>/g,'').trim() && !/<img\b/i.test(d.mail_body_html || '')) return '请填写邮件正文或人工执行话术。';
-      if (step === 2 && d.channel_key === 'email' && !String(d.mail_subject || '').trim()) return '请填写邮件主题。';
+      if (step === 2 && (d.channel_key === 'email'||d.channel_key === 'preference') && !String(d.mail_subject || '').trim()) return '请填写邮件主题。';
+      if (step === 2 && (d.channel_key === 'email'||d.channel_key === 'preference') && ['personal','company','none'].indexOf(d.signature_key)<0) return '请选择邮件签名方式。';
       if (step === 2 && d.legacyAttachmentWarning) return '旧草稿包含附件登记，请重新上传真实文件并确认旧登记的处理方式。';
       if (step === 3 && ['scheduled','auto'].indexOf(d.schedule_type)>=0 && !d.scheduled_at) return '请选择预约开始时间。';
       if (step === 3) {
@@ -215,8 +249,9 @@
     }
     async function confirmDelivery() {
       if(ui.busy || !ui.preview) return;
+      var checkedPreview=ui.preview;
       p.collectWizard();
-      if(ui.preview.fingerprint!==fingerprint()){ui.preview=null;ui.error='内容已变化，请重新生成预览。';p.renderWizard();return;}
+      if(!ui.preview || checkedPreview.fingerprint!==fingerprint()){ui.preview=null;ui.error='内容已变化，请重新生成预览。';p.renderWizard();return;}
       var manifest=ui.preview.manifest, emails=manifest.email_count ?? manifest.items.filter(function(x){return x.mode==='email';}).length;
       if(!root.confirm('确认执行：'+emails+' 封邮件、'+(manifest.manual_count ?? manifest.items.length-emails)+' 条人工待办。邮件将在预览时间到达后自动发送；排除 '+(manifest.excluded_total ?? manifest.excluded.length)+' 个对象。'))return;
       lock(true);
@@ -243,13 +278,30 @@
       try{await request('marketing_delivery_test',{token:ui.preview.token,index:ui.selected,test_email:email});env.toast('测试邮件已发送，请核对收件内容和附件。');ui.error='';}
       catch(e){ui.error=e.message;}finally{lock(false);p.renderWizard();}
     }
+    function renderBasics(d) {
+      return panel('任务信息','必填项标有 *，其他内容可稍后补充。',
+        '<div class="pc-grid">'+field('task_name','推广名称 *',d.task_name,'text','例如：9月新品介绍 · 印度客户')+
+        select('channel_key','推广方式 *',d.channel_key,[['email','邮件 · 自动发送'],['phone','电话 · 人工执行'],['wechat','微信 · 人工执行'],['whatsapp','WhatsApp · 人工执行'],['linkedin','LinkedIn · 人工执行'],['wechat_group','微信群 · 人工执行'],['whatsapp_group','WhatsApp群 · 人工执行'],['offline','线下跟进 · 人工执行'],['preference','按资料唯一渠道 · 混合执行']],'必须与客户或联系人已维护的渠道匹配。')+
+        '<label class="pc-field"><span>使用模板 <small>可选</small></span><select data-wizard-field="template_key">'+p.templateOptions(d)+'</select><small>只填充空白内容，不覆盖已填写的渠道。</small></label>'+field('remark','内部备注 · 可选',d.remark)+'</div><div class="pc-inline-note"><strong>草稿不会发送</strong><span>选择对象 → 编辑内容 → 安排时间 → 最终核对，确认后才会执行。</span></div>','pc-basic-panel');
+    }
+    function renderAudience(d) {
+      var customers=p.resolveWizardAudienceCustomers(d),count=Number(d.audience_customer_count || 0) || customers.length;
+      var source=select('group_mode','客户来源 *',d.group_mode,[['selected','直接选择客户'],['group','按客户分组'],['all_pool','当前推广池筛选结果'],['country','按国家']]);
+      var contacts=select('contact_filter','联系人范围',d.contact_filter,[['all_valid','全部符合条件的联系人'],['primary','仅主联系人']].concat((d.contact_ids || []).length?[['selected','仅当前选中的联系人']]:[]));
+      var picker=d.group_mode==='group'?p.wizardGroupCheckboxes(d):d.group_mode==='selected'?customerPicker(d):d.group_mode==='country'?field('group_key','国家 *',d.group_key,'text','输入国家，例如 China / India'):'<p class="pc-inline-note">使用进入向导时推广池的筛选条件，最终名单仍会由服务器复核。</p>';
+      var status=p.wizardAudienceLoading?'正在读取客户范围…':p.wizardAudienceError?'读取失败：'+p.wizardAudienceError:'已读取 '+count+' 个客户；可执行数量以最终预览为准。';
+      return panel('选择接收范围','', '<div class="pc-grid">'+source+contacts+'</div>'+picker+'<p class="pc-audience-status" role="status">'+esc(status)+'</p>')+
+        '<section class="promo-step-customers pc-audience-details"><details class="pc-advanced"><summary>查看范围统计</summary><div class="promo-step-dist-grid">'+p.renderWizardDistribution('国家',p.wizardTopCounts(customers,function(r){return r.country;}))+p.renderWizardDistribution('负责人',p.wizardTopCounts(customers,function(r){return r.owner_name || r.primary_owner;}))+p.renderWizardDistribution('来源',p.wizardTopCounts(customers,function(r){return r.source_tags || r.source;}))+'</div></details>'+p.renderWizardCustomerRows(customers)+'</section>';
+    }
     function renderContent(d) {
       var email=d.channel_key==='email'||d.channel_key==='preference';
-      return (email ? field('mail_subject','邮件主题 *',d.mail_subject,'text','可使用下方变量；缺少对应资料时会阻止发送。') : '') +
+      var body=(email ? field('mail_subject','邮件主题 *',d.mail_subject,'text','可插入联系人、公司或发件人变量。') : '') +
         '<label class="pc-field"><span>'+(email?'邮件正文 *':'执行话术 / 资料说明 *')+'</span></label><div class="mail-rich-toolbar" data-promo-rich-toolbar><button type="button" data-promo-rich-cmd="bold" title="加粗">加粗</button><button type="button" data-promo-rich-cmd="italic">斜体</button><button type="button" data-promo-rich-cmd="insertUnorderedList">列表</button><button type="button" data-promo-rich-link>链接</button><button type="button" data-promo-rich-image>图片</button></div><div class="pc-editor mail-rich-editor" role="textbox" aria-label="推广正文" aria-multiline="true" contenteditable="true" data-promo-wizard-editor>'+mail.prepareRichHtml(d.mail_body_html || '<p><br></p>')+'</div>'+
-        '<div class="pc-variables"><span data-promo-variable-target aria-live="polite">插入到正文</span>'+[['contact_name','联系人姓名'],['company_name','公司名称'],['mail_user_name','发件人姓名']].map(function(v){return '<button type="button" data-promo-rich-var="{'+v[0]+'}" title="'+esc('{'+v[0]+'}')+'">'+v[1]+'</button>';}).join('')+'</div><p class="pc-note">先点主题或正文中的插入位置，再点变量。编辑时显示 {变量名}，最终预览替换为真实资料；联系人姓名须有联系人记录，不会用公司名代替。</p>'+
-        (email ? select('signature_key','邮件签名',d.signature_key,[['personal','使用实际发件账号的签名'],['company','公司统一签名（按实际发件人替换）'],['none','明确不使用签名']],'签名在最终预览自动追加，请勿在正文重复插入。') : '')+
-        '<section class="pc-attachments"><h3>附件</h3><p>先上传真实文件；最多 10 个，单个 8MB、合计 15MB。资料包和报价文件请先导出后上传。</p><label class="pc-upload">选择一个附件<input type="file" data-pc-upload accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip"></label><ul>'+(d.assets || []).map(function(a,i){return '<li><span>'+esc(a.name)+' · '+esc(mail.fileSizeText(a.size))+' · 已上传</span><button type="button" data-pc-remove="'+i+'">移除</button></li>';}).join('')+'</ul></section>';
+        '<div class="pc-variables"><span data-promo-variable-target aria-live="polite">插入到正文</span>'+[['contact_name','联系人姓名'],['company_name','公司名称'],['mail_user_name','发件人姓名']].map(function(v){return '<button type="button" data-promo-rich-var="{'+v[0]+'}" title="'+esc('{'+v[0]+'}')+'">'+v[1]+'</button>';}).join('')+'</div><details class="pc-field-help"><summary>变量怎样使用？</summary><p>先点主题或正文的插入位置，再点变量。{变量名} 会在最终预览替换为真实资料；联系人姓名必须有联系人记录。</p></details>';
+      var signature=email?panel('发件签名','与正文分开，避免重复。',select('signature_key','签名方式',d.signature_key,[['personal','实际发件账号签名'],['company','公司统一签名'],['none','不使用签名']])+'<p class="pc-muted">根据实际发件账号自动追加，最终预览可核对完整效果。</p>'):'';
+      var attachments=panel('附件 <span class="pc-count">'+(d.assets || []).length+'/10</span>','单个 8MB，合计 15MB。',
+        '<label class="pc-upload"><span>＋ 上传附件</span><input aria-label="上传推广附件" type="file" data-pc-upload accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip"></label><ul>'+(d.assets || []).map(function(a,i){return '<li><span><strong>'+esc(a.name)+'</strong><small>'+esc(mail.fileSizeText(a.size))+' · 已上传</small></span><button type="button" aria-label="移除 '+esc(a.name)+'" data-pc-remove="'+i+'">移除</button></li>';}).join('')+'</ul><p class="pc-muted">资料包、报价文件请先导出，再上传实际文件。</p>','pc-attachments');
+      return '<div class="pc-compose-grid">'+panel(email?'邮件内容':'执行内容','',body,'pc-message-panel')+'<aside class="pc-content-side">'+signature+attachments+'</aside></div>';
     }
     function renderSchedule(d) {
       var email=d.channel_key==='email'||d.channel_key==='preference';
@@ -260,13 +312,14 @@
       missing.forEach(function(id){pool+='<label class="pc-check"><input type="checkbox" data-pc-account value="'+id+'" checked><span>原邮箱 #'+id+' 当前不可用，请明确取消选择</span></label>';});
       var executorChecks=users.map(function(u){return '<label class="pc-check"><input type="checkbox" data-pc-executor value="'+Number(u.id)+'" '+(manualIds.indexOf(Number(u.id))>=0?'checked':'')+'><span>'+esc(u.display_name || u.real_name || u.username || ('#'+u.id))+'</span></label>';}).join('');
       manualIds.filter(function(id){return !users.some(function(u){return Number(u.id)===id;});}).forEach(function(id){executorChecks+='<label class="pc-check"><input type="checkbox" data-pc-executor value="'+id+'" checked><span>原执行人 #'+id+' 当前不可用，请取消选择</span></label>';});
-      return '<div class="pc-grid">'+(email?select('mail_account_rule','发件邮箱分配',d.mail_account_rule,[['owner_mailbox','按客户负责人邮箱'],['balanced','多邮箱均分发送'],['selected_mailbox','按勾选邮箱轮流发送'],['group_by_country','按国家固定分配邮箱']],'仅使用授权邮箱；均分按邮件数量，国家分配保持同一国家使用同一邮箱。'):'')+
-        select('schedule_type','开始方式',d.schedule_type,[['manual','确认后自动发送（预览后 10 分钟起）'],['scheduled','预约开始时间'],['auto','原自动执行：按预约时间开始']])+
+      var who=(email?select('mail_account_rule','发件邮箱分配 *',d.mail_account_rule,[['owner_mailbox','按客户负责人邮箱'],['balanced','多邮箱均分发送'],['selected_mailbox','按勾选邮箱轮流发送'],['group_by_country','按国家固定分配邮箱']]):'')+
+        (email && d.mail_account_rule!=='owner_mailbox'?'<div class="pc-subheading"><strong>勾选发件邮箱</strong><span>已选 '+ids.length+' 个</span></div><div class="pc-check-grid">'+(pool || '<p>没有可用邮箱，请先配置。</p>')+'</div><p class="pc-muted">仅在所选授权邮箱内分配，各封邮件使用实际账号签名。今日已发为加载时数据。</p>':email?'<div class="pc-inline-note"><span>按每个客户的负责人查找授权邮箱。缺少邮箱时列出原因，不擅自换账号。</span></div>':'')+
+        (d.channel_key!=='email'?select('offline_executor_rule','人工执行人',d.offline_executor_rule,[['owner','客户负责人'],['creator','当前创建人'],['manual_offline_executor','勾选人员轮流分配']],'生成待办，不自动代发微信等消息。')+(d.offline_executor_rule==='manual_offline_executor'?'<div class="pc-check-grid">'+executorChecks+'</div>':''):'');
+      var when='<div class="pc-grid">'+select('schedule_type','开始方式',d.schedule_type,[['manual','预览后 10 分钟起 · 须先确认'],['scheduled','预约开始时间'],['auto','原自动执行 · 按预约时间']])+
+        select('timezone_rule','时间口径',d.timezone_rule,[['company_time','北京时间（UTC+8）']])+'</div>'+
         (['scheduled','auto'].indexOf(d.schedule_type)>=0?field('scheduled_at','预约开始时间 *',d.scheduled_at,'datetime-local','至少在两分钟以后。'):'')+
-        select('timezone_rule','时间口径',d.timezone_rule,[['company_time','北京时间（UTC+8）']],'旧时区规则不会自动替换，须明确确认。')+'</div>'+
-        (email && d.mail_account_rule!=='owner_mailbox'?'<section class="pc-advanced"><h3>发件邮箱池（可多选）</h3><div class="pc-check-grid">'+(pool || '<p>没有可用邮箱，请先配置。</p>')+'</div><p class="pc-note">均分不改变客户渠道。按每个实际发件账号生成签名；最终预览列出分配数量和预计完成时间。今日已发为页面加载时数据，执行时会再次限速。</p></section>':'')+
-        (d.channel_key!=='email'?'<section class="pc-advanced">'+select('offline_executor_rule','人工执行人分配',d.offline_executor_rule,[['owner','客户负责人'],['creator','当前创建人'],['manual_offline_executor','勾选人员轮流分配']],'仅生成待办，不自动代发微信、WhatsApp 等。')+(d.offline_executor_rule==='manual_offline_executor'?'<div class="pc-check-grid">'+executorChecks+'</div>':'')+'</section>':'')+
-        (email?'<section class="pc-advanced"><h3>发送节奏（每个邮箱独立计算）</h3><div class="pc-grid pc-grid-numbers">'+field('send_interval_minutes','每封间隔（分钟）',d.send_interval_minutes,'number')+field('hourly_limit','滚动一小时上限',d.hourly_limit,'number')+field('daily_limit','滚动 24 小时上限',d.daily_limit,'number')+'</div><p>预计结束时间在最终预览生成；已有发件负载、重试或故障可能使实际时间顺延。</p></section><details class="pc-advanced"><summary>失败重试设置</summary><div class="pc-grid">'+field('retry_count','最多重试次数',d.retry_count,'number')+field('retry_interval_minutes','重试间隔（分钟）',d.retry_interval_minutes,'number')+'</div><p>无邮箱、禁用渠道、离职和重复对象不发送；失败不会自动改用其他邮箱。</p></details>':'');
+        (email?'<div class="pc-subheading"><strong>发送节奏</strong><span>每个邮箱独立计算</span></div><div class="pc-grid pc-grid-numbers">'+field('send_interval_minutes','间隔 / 分钟',d.send_interval_minutes,'number')+field('hourly_limit','每小时上限',d.hourly_limit,'number')+field('daily_limit','24 小时上限',d.daily_limit,'number')+'</div><p class="pc-muted">最终预览展示预计完成时间；负载、重试或故障可能使实际时间顺延。</p><details class="pc-field-help"><summary>失败重试设置</summary><div class="pc-grid">'+field('retry_count','最多重试次数',d.retry_count,'number')+field('retry_interval_minutes','重试间隔 / 分钟',d.retry_interval_minutes,'number')+'</div><p>禁止推广、离职或无邮箱对象不发送，失败不自动换账号。</p></details>':'<p class="pc-muted">预约时间用于人工待办的计划安排，不代表已经联系客户。</p>');
+      return '<div class="pc-schedule-grid">'+panel('01 · 谁来执行','选择分配方式，明确执行范围。',who)+panel('02 · 时间与节奏','确认后才按此安排进入执行。',when)+'</div>';
     }
     async function readPreviewPage(values) {
       if(ui.busy || !ui.preview)return;
@@ -280,7 +333,7 @@
     }
     function renderPagedPreview(m) {
       var item=m.current_item;
-      var distribution='<section class="pc-advanced"><h3>执行分配与预计完成时间</h3><div class="pc-table-wrap"><table class="pc-distribution"><thead><tr><th>发件邮箱 / 人工执行人</th><th>数量</th><th>预计开始</th><th>预计完成</th></tr></thead><tbody>'+m.senders.map(function(s){return '<tr><td>'+esc(s.name)+'<small>'+esc(s.mode==='email'?'自动邮件':'人工待办')+'</small></td><td>'+s.count+'</td><td>'+esc(s.first)+'</td><td>'+esc(s.last)+'</td></tr>';}).join('')+'</tbody></table></div><p>北京时间；每邮箱间隔 '+Number(m.schedule.send_interval_minutes || 3)+' 分钟，一小时上限 '+Number(m.schedule.hourly_limit || 50)+'，24 小时上限 '+Number(m.schedule.daily_limit || 200)+'。实际发送可能因已有负载或重试顺延。</p></section>';
+      var distribution='<details class="pc-advanced pc-distribution-details"><summary>查看执行分配与预计完成时间 · '+m.senders.length+' 个发件账号 / 执行人</summary><div class="pc-table-wrap"><table class="pc-distribution"><thead><tr><th>发件邮箱 / 人工执行人</th><th>数量</th><th>预计开始</th><th>预计完成</th></tr></thead><tbody>'+m.senders.map(function(s){return '<tr><td>'+esc(s.name)+'<small>'+esc(s.mode==='email'?'自动邮件':'人工待办')+'</small></td><td>'+s.count+'</td><td>'+esc(s.first)+'</td><td>'+esc(s.last)+'</td></tr>';}).join('')+'</tbody></table></div><p>北京时间；每邮箱间隔 '+Number(m.schedule.send_interval_minutes || 3)+' 分钟，一小时上限 '+Number(m.schedule.hourly_limit || 50)+'，24 小时上限 '+Number(m.schedule.daily_limit || 200)+'。实际发送可能因已有负载或重试顺延。</p></details>';
       var body=item?'<dl><div><dt>接收对象</dt><dd>'+esc(item.receiver_email || item.contact_method)+'</dd></div><div><dt>发件账号 / 执行人</dt><dd>'+esc(item.sender_email || item.executor_name)+'</dd></div><div><dt>预计时间</dt><dd>'+esc(item.planned_at)+'</dd></div><div><dt>主题</dt><dd>'+esc(item.subject || '人工执行话术')+'</dd></div></dl><div class="pc-preview-switch"><button type="button" data-pc-viewport="desktop">电脑预览</button><button type="button" data-pc-viewport="mobile">手机预览</button></div><iframe title="最终正文与签名预览" sandbox="" referrerpolicy="no-referrer" class="pc-preview-frame '+(ui.viewport==='mobile'?'is-mobile':'')+'"></iframe><p>附件：'+esc(m.attachments.map(function(a){return a.name;}).join('、') || '无')+'</p>'+(item.mode==='email'?'<div class="pc-test"><label>测试收件邮箱<input type="email" data-pc-test-email value="'+esc(p.previewTestEmail || '')+'" placeholder="输入自己的测试邮箱"></label><button type="button" data-pc-action="test">仅发送当前测试邮件</button></div>':''):'<p>没有可执行对象，请查看排除原因。</p>';
       return '<div class="pc-preview-summary"><strong>'+m.email_count+' 封邮件</strong><span>'+m.manual_count+' 条人工待办</span><span>'+m.excluded_total+' 个排除对象</span><button type="button" data-pc-action="preview">重新核对</button></div>'+distribution+
         '<div class="pc-preview-layout"><section class="pc-recipient-list" aria-label="执行对象">'+m.items.map(function(r){return '<button type="button" data-pc-recipient="'+r.index+'" class="'+(r.index===ui.selected?'is-selected':'')+'"><strong>'+esc(r.customer_name)+'</strong><span>'+esc(r.receiver_email || r.contact_method || '')+'</span><small>'+esc(r.sender_email || r.executor_name)+'</small></button>';}).join('')+'<div class="pc-pager"><button type="button" data-pc-page="-1" '+(!m.page?'disabled':'')+'>上一页</button><span>'+(m.page+1)+' / '+Math.max(1,Math.ceil(m.total/20))+'</span><button type="button" data-pc-page="1" '+((m.page+1)*20>=m.total?'disabled':'')+'>下一页</button></div></section><section class="pc-mail-preview">'+body+'</section></div>'+
@@ -301,13 +354,13 @@
       var d=this.wizardDraft || this.defaultWizardDraft();this.wizardDraft=d;
       this.wizardStep=[0,1,4,6,8][ui.step];
       var content='';
-      if(ui.step===0)content='<div class="pc-grid">'+field('task_name','推广名称 *',d.task_name,'text','例如：9月新品介绍 · 印度客户')+select('channel_key','本次推广方式',d.channel_key,[['email','邮件推广 · 自动发送'],['phone','电话跟进 · 人工执行'],['wechat','微信 · 人工执行'],['whatsapp','WhatsApp · 人工执行'],['linkedin','LinkedIn · 人工执行'],['wechat_group','微信群 · 人工执行'],['whatsapp_group','WhatsApp群 · 人工执行'],['offline','线下跟进 · 人工执行'],['preference','按资料唯一渠道 · 混合执行']],'不会擅自改变客户资料中的渠道；多渠道不明确时会列为待处理。')+'</div><label class="pc-field"><span>从已有模板开始（可选）</span><select data-wizard-field="template_key">'+this.templateOptions(d)+'</select><small>模板只填充空白内容，不改变客户渠道。</small></label>'+field('remark','内部备注（可选）',d.remark);
-      if(ui.step===1)content=customerPicker(d)+original.renderWizardStep.call(this,1,d)+select('contact_filter','联系人范围',d.contact_filter,[['all_valid','全部符合条件的联系人'],['primary','仅主联系人']].concat((d.contact_ids || []).length?[['selected','仅当前选中的联系人']]:[]),'最终名单以服务器根据最新资料核对的结果为准。');
+      if(ui.step===0)content=renderBasics(d);
+      if(ui.step===1)content=renderAudience(d);
       if(ui.step===2)content=renderContent(d);
       if(ui.step===2 && d.legacyAttachmentWarning)content='<div class="pc-error"><p>原草稿包含旧附件登记，不等于已上传文件。请重新上传需要携带的实际文件。</p><button type="button" data-pc-legacy-attachments>确认已重传，或本次不携带旧附件</button></div>'+content;
       if(ui.step===3)content=renderSchedule(d);
       if(ui.step===4)content=renderPreview();
-      host.innerHTML='<section class="pc-composer" role="region" aria-label="新建推广任务"><header class="pc-header"><div><span class="pc-eyebrow">推广工作区</span><h2>'+esc(d.task_name || '新建推广任务')+'</h2></div><span class="pc-save-state">'+(ui.dirty?'有未保存修改':d.task_id?'草稿已保存':'未保存')+'</span><button type="button" data-pc-action="close" aria-label="关闭推广创建">关闭</button></header><div class="pc-workspace"><nav class="pc-steps" aria-label="创建步骤">'+steps.map(function(name,i){return '<button type="button" data-pc-step="'+i+'" aria-current="'+(i===ui.step?'step':'false')+'"><b>'+(i+1)+'</b><span>'+name+'</span></button>';}).join('')+'</nav><main class="pc-main"><div class="pc-heading"><span>第 '+(ui.step+1)+' 步 / 5</span><h3>'+steps[ui.step]+'</h3><p>'+descriptions[ui.step]+'</p></div><div class="pc-error" role="alert" '+(!ui.error?'hidden':'')+'>'+esc(ui.error)+'</div><div class="pc-content">'+content+'</div></main></div><footer class="pc-footer"><button type="button" data-pc-action="save">保存草稿 · 不发送</button><span class="pc-progress" role="status">'+(ui.busy?'处理中，请稍候':'')+'</span><div><button type="button" data-pc-action="prev" '+(ui.step===0?'disabled':'')+'>上一步</button>'+(ui.step<4?'<button type="button" class="primary" data-pc-action="next">'+(ui.step===3?'生成最终预览':'下一步')+'</button>':'<button type="button" class="primary" data-pc-action="confirm" disabled>确认执行</button>')+'</div></footer></section>';
+      host.innerHTML='<section class="pc-composer" data-step="'+ui.step+'" role="region" aria-label="新建推广任务"><header class="pc-header"><div class="pc-brand-mark" aria-hidden="true">↗</div><div class="pc-title"><span class="pc-eyebrow">客户推广 / 新建任务</span><h2 title="'+esc(d.task_name || '新建推广任务')+'">'+esc(d.task_name || '新建推广任务')+'</h2></div><span class="pc-save-state"></span><button type="button" data-pc-action="close" aria-label="关闭推广创建">关闭</button></header><div class="pc-workspace"><nav class="pc-steps" aria-label="创建步骤">'+steps.map(function(name,i){var done=i<ui.step&&!validation(i,d);return '<button type="button" data-pc-step="'+i+'" aria-label="第 '+(i+1)+' 步：'+name+(done?'，已填写':'')+'" aria-current="'+(i===ui.step?'step':'false')+'" class="'+(done?'is-complete':'')+'"><b aria-hidden="true">'+(done?'✓':i+1)+'</b><span class="pc-step-label">'+name+'</span><span class="pc-step-short">'+['方式','对象','内容','安排','核对'][i]+'</span></button>';}).join('')+'</nav><main class="pc-main"><div class="pc-inner"><div class="pc-heading"><h3>'+steps[ui.step]+'</h3><p>'+descriptions[ui.step]+'</p></div><section class="pc-guide" aria-label="本步操作提示"><div data-pc-guidance aria-live="polite"></div><details class="pc-step-help"><summary>填写说明</summary><p>'+stepHelp[ui.step]+'</p></details></section><div class="pc-error" data-pc-error role="alert" '+(!ui.error?'hidden':'')+'>'+esc(ui.error)+'</div><div class="pc-content">'+content+'</div></div></main></div><footer class="pc-footer"><button type="button" data-pc-action="save">保存草稿</button><span class="pc-progress" role="status">'+(ui.busy?'处理中，请稍候':ui.step<4?'保存不发送 · 下一步：'+steps[ui.step+1]:'确认执行才会创建正式队列')+'</span><div><button type="button" data-pc-action="prev" '+(ui.step===0?'disabled':'')+'>上一步</button>'+(ui.step<4?'<button type="button" class="primary" data-pc-action="next">'+(ui.step===3?'生成最终预览':'下一步 <span aria-hidden="true">→</span>')+'</button>':'<button type="button" class="primary" data-pc-action="confirm" disabled>确认执行</button>')+'</div></footer></section>';
       host.querySelectorAll('.promo-step-customers .promo-step-table').forEach(function(table){
         var labels=Array.from(table.querySelectorAll('thead th')).map(function(th){return th.textContent;});
         table.querySelectorAll('tbody tr').forEach(function(row){Array.from(row.cells).forEach(function(cell,i){if(cell.colSpan===1)cell.dataset.label=labels[i] || '';});});
@@ -338,11 +391,11 @@
       var actions={close:function(){p.closeWizard();},save:saveDraft,prev:function(){move(ui.step-1);},next:function(){move(ui.step+1);},preview:generatePreview,confirm:confirmDelivery,test:testSend};
       host.querySelectorAll('[data-pc-action]').forEach(function(el){el.onclick=function(){actions[el.dataset.pcAction]();};});
       host.querySelectorAll('[data-pc-account],[data-pc-executor]').forEach(function(el){el.addEventListener('change',function(){p.collectWizard();invalidate();});});
-      host.querySelector('[data-pc-consent]')?.addEventListener('change',function(e){host.querySelector('[data-pc-action="confirm"]').disabled=!e.target.checked || !(ui.preview.manifest.total ?? ui.preview.manifest.items.length);});
+      host.querySelector('[data-pc-consent]')?.addEventListener('change',function(e){host.querySelector('[data-pc-action="confirm"]').disabled=!e.target.checked || !(ui.preview.manifest.total ?? ui.preview.manifest.items.length);updateGuidance();});
       host.querySelectorAll('[data-pc-recipient]').forEach(function(el){el.onclick=function(){if(typeof ui.preview.manifest.total==='number')return readPreviewPage({index:Number(el.dataset.pcRecipient)});ui.selected=Number(el.dataset.pcRecipient);p.renderWizard();};});
       host.querySelectorAll('[data-pc-page]').forEach(function(el){el.onclick=function(){var page=ui.page+Number(el.dataset.pcPage);if(typeof ui.preview.manifest.total==='number')return readPreviewPage({page:page,index:page*20});ui.page=page;p.renderWizard();};});
       host.querySelectorAll('[data-pc-excluded-page]').forEach(function(el){el.onclick=function(){return readPreviewPage({excluded_page:ui.preview.manifest.excluded_page+Number(el.dataset.pcExcludedPage)});};});
-      host.querySelectorAll('[data-pc-viewport]').forEach(function(el){el.onclick=function(){ui.viewport=el.dataset.pcViewport;p.renderWizard();};});
+      host.querySelectorAll('[data-pc-viewport]').forEach(function(el){el.setAttribute('aria-pressed',String(el.dataset.pcViewport===ui.viewport));el.onclick=function(){ui.viewport=el.dataset.pcViewport;p.renderWizard();};});
       host.querySelector('[data-pc-upload]')?.addEventListener('change',function(e){if(e.target.files[0])upload(e.target.files[0]);});
       host.querySelector('[data-pc-legacy-attachments]')?.addEventListener('click',function(){if(root.confirm('旧附件登记将不参与本次发送，仅携带当前显示已上传的文件。确定？')){p.collectWizard();p.wizardDraft.legacyAttachmentWarning=false;invalidate();p.renderWizard();}});
       host.querySelectorAll('[data-pc-remove]').forEach(function(el){el.onclick=function(){p.collectWizard();p.wizardDraft.assets.splice(Number(el.dataset.pcRemove),1);invalidate();p.renderWizard();};});
@@ -353,6 +406,13 @@
       host.querySelector('.pc-main').scrollTop = oldScroll;
       var heading=host.querySelector('.pc-heading h3');heading.tabIndex=-1;
       if(document.activeElement===document.body)heading.focus({preventScroll:true});
+      updateGuidance();
+      if(ui.error && ui.error===validation(ui.step,d)) {
+        var issue=stepChecks(d).find(function(c){return !c.done;}),selector=issue && issue.selector;
+        [['发送间隔','send_interval_minutes'],['每小时上限','hourly_limit'],['每日上限','daily_limit'],['重试次数','retry_count'],['重试间隔','retry_interval_minutes'],['预约开始','scheduled_at'],['邮件主题','mail_subject'],['正文','data-promo-wizard-editor']].forEach(function(pair){if(ui.error.indexOf(pair[0])>=0)selector=pair[1]==='data-promo-wizard-editor'?'[data-promo-wizard-editor]':'[data-wizard-field="'+pair[1]+'"]';});
+        var control=selector && host.querySelector(selector);
+        if(control){control.setAttribute('aria-invalid','true');control.setAttribute('aria-errormessage','pc-field-error');control.insertAdjacentHTML('afterend','<small class="pc-field-error" id="pc-field-error">'+esc(ui.error)+'</small>');var detail=control.closest('details');if(detail)detail.open=true;control.focus({preventScroll:true});control.scrollIntoView({block:'center'});}
+      }
     };
     return { state:ui, validation:validation, generatePreview:generatePreview, confirmDelivery:confirmDelivery, move:move };
   }
