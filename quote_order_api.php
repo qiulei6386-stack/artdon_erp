@@ -5,16 +5,17 @@ if (file_exists(__DIR__.'/includes/artdon_sso_core.php')) {
   if (function_exists('artdon_sso_require_api')) artdon_sso_require_api('quote');
 }
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/quote_order_conversion.php';
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 header('Content-Type: application/json; charset=utf-8');
 
 $pdo = db();
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
-function qo_ok($data=[]){ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
+function qo_ok($data=[]){ if(($GLOBALS['action']??'')==='detail'){qo_write_json(['ok'=>true,'data'=>$data]);exit;} echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
 function qo_fail($msg){ echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
 function qo_release_session_lock(){ if(session_status()===PHP_SESSION_ACTIVE) @session_write_close(); }
-function qo_input(){ static $j=null; if($j!==null) return $j; $raw=file_get_contents('php://input'); $a=json_decode((string)$raw,true); $j=is_array($a)?$a:($_POST?:[]); return $j; }
+function qo_input($release=false){ static $j=null; if($release){$j=null;return [];} if($j!==null) return $j; $raw=file_get_contents('php://input'); $a=json_decode((string)$raw,true); $j=is_array($a)?$a:($_POST?:[]); return $j; }
 function qo_s($v,$max=5000){ $s=trim((string)($v ?? '')); if($max>0){ if(function_exists('mb_strlen') && mb_strlen($s,'UTF-8')>$max) $s=mb_substr($s,0,$max,'UTF-8'); elseif(!function_exists('mb_strlen') && strlen($s)>$max) $s=substr($s,0,$max); } return $s; }
 function qo_json($v,$def=[]){ if(is_array($v)) return $v; $a=json_decode((string)$v,true); return is_array($a)?$a:$def; }
 function qo_num($v){ return is_numeric($v)?(float)$v:0.0; }
@@ -257,6 +258,28 @@ function qo_ensure_schema(PDO $pdo){
   qo_ensure_col($pdo,'quote_document_settings','settings_json','LONGTEXT NULL');
   qo_ensure_col($pdo,'quote_document_settings','updated_by',"VARCHAR(120) DEFAULT ''");
   qo_ensure_col($pdo,'quote_document_settings','updated_at','DATETIME NULL');
+
+  $pdo->exec("CREATE TABLE IF NOT EXISTS quote_order_statement_notes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_key VARCHAR(255) NOT NULL DEFAULT '',
+    customer_name VARCHAR(255) DEFAULT '',
+    statement_month CHAR(7) NOT NULL DEFAULT '',
+    currency VARCHAR(20) NOT NULL DEFAULT '',
+    note TEXT NULL,
+    updated_by VARCHAR(120) DEFAULT '',
+    updated_at DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_statement_note(customer_key,statement_month,currency)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  qo_ensure_col($pdo,'quote_order_statement_notes','customer_key',"VARCHAR(255) NOT NULL DEFAULT ''");
+  qo_ensure_col($pdo,'quote_order_statement_notes','customer_name',"VARCHAR(255) DEFAULT ''");
+  qo_ensure_col($pdo,'quote_order_statement_notes','statement_month',"CHAR(7) NOT NULL DEFAULT ''");
+  qo_ensure_col($pdo,'quote_order_statement_notes','currency',"VARCHAR(20) NOT NULL DEFAULT ''");
+  qo_ensure_col($pdo,'quote_order_statement_notes','note','TEXT NULL');
+  qo_ensure_col($pdo,'quote_order_statement_notes','updated_by',"VARCHAR(120) DEFAULT ''");
+  qo_ensure_col($pdo,'quote_order_statement_notes','updated_at','DATETIME NULL');
+  qo_ensure_col($pdo,'quote_order_statement_notes','created_at','DATETIME DEFAULT CURRENT_TIMESTAMP');
+  try{$pdo->exec('ALTER TABLE quote_order_statement_notes ADD UNIQUE KEY uk_statement_note(customer_key,statement_month,currency)');}catch(Throwable $e){}
   $_SESSION[$schemaKey]=time();
   $schemaDone=true;
 }
@@ -362,7 +385,7 @@ function qo_rebuild_order_items_from_snapshot(PDO $pdo,$orderId){
   return qo_rows($pdo,'SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
 }
 function qo_recalc_payment(PDO $pdo,$orderId){
-  $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]); if(!$order)return [];
+  $order=qo_row($pdo,'SELECT id,amount,status,currency FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]); if(!$order)return [];
   $paid=(float)qo_row($pdo,'SELECT COALESCE(SUM(amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
   $deduct=(float)qo_row($pdo,'SELECT COALESCE(SUM(commission_deduct_amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
   $writeoff=(float)qo_row($pdo,'SELECT COALESCE(SUM(writeoff_amount),0) AS s FROM quote_order_payments WHERE order_id=?',[$orderId])['s'];
@@ -637,7 +660,9 @@ function qo_shipment_can_change(array $shipment): bool {
     && empty($shipment['ci_generated_at']);
 }
 function qo_shipment_can_edit(array $shipment): bool {
-  return trim((string)($shipment['status']??'草稿'))==='草稿';
+  return trim((string)($shipment['status']??'草稿'))==='草稿'
+    && empty($shipment['pl_generated_at'])
+    && empty($shipment['ci_generated_at']);
 }
 function qo_shipment_require_editable(array $shipment): void {
   if(!qo_shipment_can_edit($shipment)) qo_fail('该出货批次已生效，不能再修改');
@@ -727,9 +752,9 @@ function qo_doc_status(array $shipment,$type){ $type=qo_doc_type($type); $col=$t
 function qo_mark_document_active(PDO $pdo,int $shipmentId,string $type): void {
   $type=qo_doc_type($type);
   if($type==='ci'){
-    $pdo->prepare("UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()),ci_status='active',ci_voided_at=NULL,ci_voided_by='',ci_void_reason='',ci_deleted_at=NULL,ci_deleted_by='',ci_delete_reason='',updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
+    $pdo->prepare("UPDATE quote_shipments SET ci_generated_at=COALESCE(ci_generated_at,NOW()),ci_status='active',ci_voided_at=NULL,ci_voided_by='',ci_void_reason='',ci_deleted_at=NULL,ci_deleted_by='',ci_delete_reason='',status=CASE WHEN COALESCE(status,'') IN ('','草稿') THEN '已生效' ELSE status END,updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
   }else{
-    $pdo->prepare("UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()),pl_status='active',pl_voided_at=NULL,pl_voided_by='',pl_void_reason='',pl_deleted_at=NULL,pl_deleted_by='',pl_delete_reason='',updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
+    $pdo->prepare("UPDATE quote_shipments SET pl_generated_at=COALESCE(pl_generated_at,NOW()),pl_status='active',pl_voided_at=NULL,pl_voided_by='',pl_void_reason='',pl_deleted_at=NULL,pl_deleted_by='',pl_delete_reason='',status=CASE WHEN COALESCE(status,'') IN ('','草稿') THEN '已生效' ELSE status END,updated_at=NOW() WHERE id=?")->execute([$shipmentId]);
   }
 }
 function qo_manage_document(PDO $pdo,array $d){
@@ -878,6 +903,429 @@ function qo_list_orders(PDO $pdo){
   }
   unset($o);
   return $orders;
+}
+
+function qo_statement_month_value($v): string {
+  $m=qo_s($v,20);
+  if(preg_match('/^\d{4}-\d{2}$/',$m)) return $m;
+  if(preg_match('/^\d{4}\/\d{2}$/',$m)) return str_replace('/','-',$m);
+  return date('Y-m');
+}
+function qo_statement_customer_key(array $o): string {
+  $id=qo_s($o['customer_id']??'',255);
+  if($id!=='') return 'id:'.$id;
+  $name=qo_s($o['customer_name']??'',255);
+  if($name!=='') return 'name:'.(function_exists('mb_strtolower')?mb_strtolower($name,'UTF-8'):strtolower($name));
+  return 'order_customer:unknown';
+}
+function qo_statement_status(float $amount,float $paid,float $deduct,float $writeoff): string {
+  $reduced=$paid+$deduct+$writeoff;
+  if($amount<=0.00001) return '无应收';
+  if($reduced<=0.00001) return '未收款';
+  return ($amount-$reduced)<=0.00001?'已收齐':'部分收款';
+}
+function qo_statement_ship_status(float $shippable,float $shipped): string {
+  if($shippable<=0.00001) return '无实物';
+  if($shipped<=0.00001) return '未出货';
+  return $shipped+0.00001>=$shippable?'已出货':'部分出货';
+}
+function qo_statement_item_row(array $it): array {
+  $n=qo_nested_item($it);
+  $isVirtual=qo_is_virtual_item($n);
+  $qty=qo_num($n['qty']??0);
+  $shipped=$isVirtual?0:qo_num($n['shipped_qty']??0);
+  $unit=qo_num($n['unit_price']??($n['price']??0));
+  $amount=qo_num($n['amount']??($qty*$unit));
+  return [
+    'id'=>(int)($n['id']??0),
+    'item_index'=>(int)($n['item_index']??0),
+    'customer_code'=>qo_s($isVirtual?'':($n['customer_code']??''),120),
+    'product_code'=>qo_s($n['product_code']??($n['model']??($n['code']??'')),160),
+    'product_name'=>qo_s($n['product_name']??($n['name']??($n['title']??'')),255),
+    'specification'=>qo_s($n['specification']??($n['description']??''),20000),
+    'color'=>qo_s($isVirtual?'':($n['color']??''),120),
+    'qty'=>round($qty,3),
+    'unit_price'=>round($unit,4),
+    'amount'=>round($amount,2),
+    'shipped_qty'=>round($shipped,3),
+    'remain_qty'=>round($isVirtual?0:max(0,$qty-$shipped),3),
+    'is_virtual'=>$isVirtual?1:0
+  ];
+}
+function qo_order_statement_summary(PDO $pdo,array $d): array {
+  qo_ensure_schema($pdo);
+  $month=qo_statement_month_value($d['month']??'');
+  $kw=qo_s($d['kw']??'',160);
+  $productKw=qo_s($d['product_kw']??($d['product']??''),160);
+  $currency=qo_s($d['currency']??'',20);
+  $paymentFilter=qo_s($d['payment_status']??'',50);
+  $shipmentFilter=qo_s($d['shipment_status']??'',50);
+  $start=$month.'-01';
+  $next=date('Y-m-d',strtotime($start.' +1 month'));
+  $where=["COALESCE(o.status,'') NOT IN ('已作废','取消')","DATE(COALESCE(o.order_date,o.quote_date,o.created_at))>=?","DATE(COALESCE(o.order_date,o.quote_date,o.created_at))<?"];
+  $args=[$start,$next];
+  if($kw!==''){
+    $where[]='(o.order_no LIKE ? OR o.quote_no LIKE ? OR o.customer_name LIKE ? OR o.customer_id LIKE ? OR o.user_name LIKE ? OR o.note LIKE ?)';
+    for($i=0;$i<6;$i++) $args[]='%'.$kw.'%';
+  }
+  if($productKw!==''){
+    $where[]="(
+      EXISTS (
+        SELECT 1 FROM quote_sales_order_items pi
+        WHERE pi.order_id=o.id AND (
+          pi.product_code LIKE ? OR pi.product_name LIKE ? OR pi.specification LIKE ? OR pi.customer_code LIKE ? OR pi.color LIKE ? OR pi.item_json LIKE ?
+        )
+      ) OR o.items_json LIKE ? OR o.snapshot_json LIKE ?
+    )";
+    for($i=0;$i<8;$i++) $args[]='%'.$productKw.'%';
+  }
+  if($currency!==''){ $where[]='o.currency=?'; $args[]=$currency; }
+  $virtualSql=qo_virtual_item_sql_expr('i');
+  $sql="SELECT
+      o.id,o.order_no,o.quote_no,o.customer_id,o.customer_name,o.amount,o.currency,o.qty,o.order_date,o.quote_date,o.created_at,o.user_name,o.status,o.note,
+      COALESCE(pay.paid_amount,0) AS paid_calc,
+      COALESCE(pay.commission_deduct_amount,0) AS commission_deduct_calc,
+      COALESCE(pay.writeoff_amount,0) AS writeoff_calc,
+      COALESCE(items.shippable_qty,0) AS shippable_qty,
+      COALESCE(items.item_count,0) AS item_count,
+      COALESCE(ship.shipped_qty,0) AS shipped_qty,
+      COALESCE(ship.shipment_count,0) AS shipment_count,
+      COALESCE(ship.cartons,0) AS cartons,
+      COALESCE(ship.last_ship_date,'') AS last_ship_date,
+      COALESCE(ship.shipment_nos,'') AS shipment_nos,
+      COALESCE(ship.pl_nos,'') AS pl_nos,
+      COALESCE(ship.ci_nos,'') AS ci_nos,
+      o.items_json,o.snapshot_json
+    FROM quote_sales_orders o
+    LEFT JOIN (
+      SELECT order_id,
+        SUM(COALESCE(amount,0)) AS paid_amount,
+        SUM(COALESCE(commission_deduct_amount,0)) AS commission_deduct_amount,
+        SUM(COALESCE(writeoff_amount,0)) AS writeoff_amount
+      FROM quote_order_payments GROUP BY order_id
+    ) pay ON pay.order_id=o.id
+    LEFT JOIN (
+      SELECT i.order_id,
+        SUM(CASE WHEN {$virtualSql} THEN 0 ELSE COALESCE(i.qty,0) END) AS shippable_qty,
+        COUNT(*) AS item_count
+      FROM quote_sales_order_items i GROUP BY i.order_id
+    ) items ON items.order_id=o.id
+    LEFT JOIN (
+      SELECT si.order_id,
+        SUM(COALESCE(si.qty,0)) AS shipped_qty,
+        SUM(COALESCE(si.cartons,0)) AS cartons,
+        COUNT(DISTINCT si.shipment_id) AS shipment_count,
+        MAX(s.ship_date) AS last_ship_date,
+        GROUP_CONCAT(DISTINCT NULLIF(s.shipment_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS shipment_nos,
+        GROUP_CONCAT(DISTINCT NULLIF(s.packing_list_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS pl_nos,
+        GROUP_CONCAT(DISTINCT NULLIF(s.commercial_invoice_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS ci_nos
+      FROM quote_shipment_items si
+      JOIN quote_shipments s ON s.id=si.shipment_id
+      WHERE COALESCE(s.status,'') NOT IN ('已作废','取消')
+      GROUP BY si.order_id
+    ) ship ON ship.order_id=o.id
+    WHERE ".implode(' AND ',$where)."
+    ORDER BY o.customer_name ASC,COALESCE(o.order_date,o.quote_date,o.created_at) DESC,o.id DESC";
+  $rows=qo_rows($pdo,$sql,$args);
+  $itemMap=[];
+  $orderIds=array_values(array_unique(array_filter(array_map('intval',array_column($rows,'id')))));
+  if($orderIds){
+    $ph=implode(',',array_fill(0,count($orderIds),'?'));
+    foreach(qo_rows($pdo,"SELECT id,order_id,item_index,customer_code,product_code,product_name,specification,color,qty,unit_price,amount,shipped_qty,item_json FROM quote_sales_order_items WHERE order_id IN ($ph) ORDER BY order_id,item_index,id",$orderIds) as $it){
+      $itemMap[(int)$it['order_id']][]=qo_statement_item_row($it);
+    }
+  }
+  $notes=qo_rows($pdo,'SELECT * FROM quote_order_statement_notes WHERE statement_month=?',[$month]);
+  $noteMap=[];
+  foreach($notes as $n){ $noteMap[($n['customer_key']??'').'|'.($n['statement_month']??'').'|'.($n['currency']??'')]=$n; }
+  $groups=[];$tot=['order_count'=>0,'amount'=>0,'paid'=>0,'commission_deduct'=>0,'writeoff'=>0,'balance'=>0,'shippable_qty'=>0,'shipped_qty'=>0,'remain_qty'=>0,'shipment_count'=>0,'cartons'=>0];$totByCurrency=[];
+  foreach($rows as $r){
+    $amount=qo_num($r['amount']??0);
+    $paid=qo_num($r['paid_calc']??0);
+    $deduct=qo_num($r['commission_deduct_calc']??0);
+    $writeoff=qo_num($r['writeoff_calc']??0);
+    $balance=max(0,round($amount-$paid-$deduct-$writeoff,2));
+    $shipQty=qo_num($r['shippable_qty']??0);
+    $shipped=qo_num($r['shipped_qty']??0);
+    $remain=max(0,round($shipQty-$shipped,3));
+    $payStatus=qo_statement_status($amount,$paid,$deduct,$writeoff);
+    $shipStatus=qo_statement_ship_status($shipQty,$shipped);
+    if($paymentFilter!=='' && $paymentFilter!==$payStatus) continue;
+    if($shipmentFilter!=='' && $shipmentFilter!==$shipStatus) continue;
+    $cur=qo_s($r['currency']??'',20) ?: 'USD';
+    $ck=qo_statement_customer_key($r);
+    $gk=$ck.'|'.$cur;
+    if(!isset($groups[$gk])){
+      $note=$noteMap[$ck.'|'.$month.'|'.$cur]??[];
+      $groups[$gk]=[
+        'customer_key'=>$ck,'customer_id'=>qo_s($r['customer_id']??'',120),'customer_name'=>qo_s($r['customer_name']??'未命名客户',255),'currency'=>$cur,'month'=>$month,
+        'order_count'=>0,'amount'=>0,'paid'=>0,'commission_deduct'=>0,'writeoff'=>0,'balance'=>0,'shippable_qty'=>0,'shipped_qty'=>0,'remain_qty'=>0,'shipment_count'=>0,'cartons'=>0,
+        'payment_status'=>'','shipment_status'=>'','note'=>$note['note']??'','note_updated_at'=>$note['updated_at']??'','note_updated_by'=>$note['updated_by']??'','orders'=>[]
+      ];
+    }
+    $orderItems=$itemMap[(int)$r['id']]??[];
+    if(!$orderItems){
+      foreach(qo_order_items_from_order_record($r) as $i=>$raw){
+        $fallback=qo_item_row($raw,$i+1);
+        if(qo_item_row_has_content($fallback)) $orderItems[]=qo_statement_item_row($fallback);
+      }
+    }
+    $order=[
+      'id'=>(int)$r['id'],'order_no'=>qo_order_no_at($r['order_no']??'',$r['quote_no']??''),'quote_no'=>qo_s($r['quote_no']??'',120),
+      'order_date'=>qo_s($r['order_date']??($r['quote_date']??$r['created_at']??''),30),'user_name'=>qo_s($r['user_name']??'',120),'status'=>qo_s($r['status']??'',80),
+      'amount'=>round($amount,2),'paid'=>round($paid,2),'commission_deduct'=>round($deduct,2),'writeoff'=>round($writeoff,2),'balance'=>round($balance,2),'payment_status'=>$payStatus,
+      'shippable_qty'=>round($shipQty,3),'shipped_qty'=>round($shipped,3),'remain_qty'=>round($remain,3),'shipment_status'=>$shipStatus,'shipment_count'=>(int)($r['shipment_count']??0),'cartons'=>round(qo_num($r['cartons']??0),3),
+      'last_ship_date'=>qo_s($r['last_ship_date']??'',30),'shipment_nos'=>qo_s($r['shipment_nos']??'',2000),'pl_nos'=>qo_s($r['pl_nos']??'',2000),'ci_nos'=>qo_s($r['ci_nos']??'',2000),'note'=>qo_s($r['note']??'',5000),'items'=>$orderItems
+    ];
+    $groups[$gk]['orders'][]=$order;
+    foreach(['amount','paid','commission_deduct','writeoff','balance','shippable_qty','shipped_qty','remain_qty','cartons'] as $k) $groups[$gk][$k]+=$order[$k];
+    $groups[$gk]['shipment_count']+=$order['shipment_count'];
+    $groups[$gk]['order_count']++;
+  }
+  foreach($groups as &$g){
+    $g['amount']=round($g['amount'],2);$g['paid']=round($g['paid'],2);$g['commission_deduct']=round($g['commission_deduct'],2);$g['writeoff']=round($g['writeoff'],2);$g['balance']=round($g['balance'],2);
+    $g['shippable_qty']=round($g['shippable_qty'],3);$g['shipped_qty']=round($g['shipped_qty'],3);$g['remain_qty']=round($g['remain_qty'],3);$g['cartons']=round($g['cartons'],3);
+    $g['payment_status']=qo_statement_status($g['amount'],$g['paid'],$g['commission_deduct'],$g['writeoff']);
+    $g['shipment_status']=qo_statement_ship_status($g['shippable_qty'],$g['shipped_qty']);
+    $tot['order_count']+=$g['order_count'];$tot['shipment_count']+=$g['shipment_count'];
+    foreach(['amount','paid','commission_deduct','writeoff','balance','shippable_qty','shipped_qty','remain_qty','cartons'] as $k) $tot[$k]+=$g[$k];
+    $cur=$g['currency']?:'USD';
+    if(!isset($totByCurrency[$cur])) $totByCurrency[$cur]=['amount'=>0,'paid'=>0,'commission_deduct'=>0,'writeoff'=>0,'balance'=>0,'order_count'=>0];
+    foreach(['amount','paid','commission_deduct','writeoff','balance'] as $k) $totByCurrency[$cur][$k]+=$g[$k];
+    $totByCurrency[$cur]['order_count']+=$g['order_count'];
+  }
+  unset($g);
+  foreach(['amount','paid','commission_deduct','writeoff','balance'] as $k) $tot[$k]=round($tot[$k],2);
+  foreach(['shippable_qty','shipped_qty','remain_qty','cartons'] as $k) $tot[$k]=round($tot[$k],3);
+  foreach($totByCurrency as &$tc){ foreach(['amount','paid','commission_deduct','writeoff','balance'] as $k) $tc[$k]=round($tc[$k],2); }
+  unset($tc);
+  $list=array_values($groups);
+  usort($list,function($a,$b){ if(abs(($b['balance']??0)-($a['balance']??0))>0.00001) return ($b['balance']<=>$a['balance']); return strcmp($a['customer_name']??'',$b['customer_name']??''); });
+  return ['month'=>$month,'groups'=>$list,'totals'=>$tot,'totals_by_currency'=>$totByCurrency,'generated_at'=>qo_now()];
+}
+function qo_statement_export_range(array $d,string $month): array {
+  $range=qo_s($d['range']??'month',20);
+  $from=qo_s($d['date_from']??'',20);
+  $to=qo_s($d['date_to']??'',20);
+  if($range==='all') return ['range'=>'all','label'=>'全部','from'=>'','to'=>'','to_next'=>''];
+  if($range==='week'){
+    $base=qo_s($d['base_date']??'',20);
+    if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$base)) $base=date('Y-m-d');
+    $ts=strtotime($base) ?: time();
+    $dow=(int)date('N',$ts);
+    $start=date('Y-m-d',strtotime(date('Y-m-d',$ts).' -'.($dow-1).' days'));
+    $end=date('Y-m-d',strtotime($start.' +6 days'));
+    return ['range'=>'week','label'=>'本周','from'=>$start,'to'=>$end,'to_next'=>date('Y-m-d',strtotime($end.' +1 day'))];
+  }
+  if($range==='custom'){
+    if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$from)) $from='';
+    if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$to)) $to='';
+    return ['range'=>'custom','label'=>'自定义','from'=>$from,'to'=>$to,'to_next'=>$to!==''?date('Y-m-d',strtotime($to.' +1 day')):''];
+  }
+  $start=$month.'-01';
+  $end=date('Y-m-d',strtotime($start.' +1 month -1 day'));
+  return ['range'=>'month','label'=>'本月','from'=>$start,'to'=>$end,'to_next'=>date('Y-m-d',strtotime($end.' +1 day'))];
+}
+function qo_order_statement_export(PDO $pdo,array $d): array {
+  qo_ensure_schema($pdo);
+  $month=qo_statement_month_value($d['month']??'');
+  $customerKey=qo_s($d['customer_key']??'',255);
+  $customerName=qo_s($d['customer_name']??'',255);
+  if($customerKey==='' && $customerName==='') throw new RuntimeException('缺少客户条件');
+  $currency=qo_s($d['currency']??'',20);
+  $productKw=qo_s($d['product_kw']??($d['product']??''),160);
+  $range=qo_statement_export_range($d,$month);
+  $dateExpr="DATE(COALESCE(o.order_date,o.quote_date,o.created_at))";
+  $where=["COALESCE(o.status,'') NOT IN ('已作废','取消')"];
+  $args=[];
+  if($range['from']!==''){ $where[]="$dateExpr>=?"; $args[]=$range['from']; }
+  if($range['to_next']!==''){ $where[]="$dateExpr<?"; $args[]=$range['to_next']; }
+  if(substr($customerKey,0,3)==='id:'){
+    $where[]='o.customer_id=?';
+    $args[]=substr($customerKey,3);
+  }elseif(substr($customerKey,0,5)==='name:'){
+    $where[]='LOWER(o.customer_name)=?';
+    $args[]=substr($customerKey,5);
+  }elseif($customerName!==''){
+    $where[]='o.customer_name=?';
+    $args[]=$customerName;
+  }
+  if($currency!==''){ $where[]='o.currency=?'; $args[]=$currency; }
+  if($productKw!==''){
+    $where[]="(
+      EXISTS (
+        SELECT 1 FROM quote_sales_order_items pi
+        WHERE pi.order_id=o.id AND (
+          pi.product_code LIKE ? OR pi.product_name LIKE ? OR pi.specification LIKE ? OR pi.customer_code LIKE ? OR pi.color LIKE ? OR pi.item_json LIKE ?
+        )
+      ) OR o.items_json LIKE ? OR o.snapshot_json LIKE ?
+    )";
+    for($i=0;$i<8;$i++) $args[]='%'.$productKw.'%';
+  }
+  $virtualSql=qo_virtual_item_sql_expr('i');
+  $sql="SELECT
+      o.id,o.order_no,o.quote_no,o.customer_id,o.customer_name,o.amount,o.currency,o.qty,o.order_date,o.quote_date,o.created_at,o.user_name,o.status,o.note,
+      COALESCE(pay.paid_amount,0) AS paid_calc,
+      COALESCE(pay.commission_deduct_amount,0) AS commission_deduct_calc,
+      COALESCE(pay.writeoff_amount,0) AS writeoff_calc,
+      COALESCE(items.shippable_qty,0) AS shippable_qty,
+      COALESCE(items.item_count,0) AS item_count,
+      COALESCE(ship.shipped_qty,0) AS shipped_qty,
+      COALESCE(ship.shipment_count,0) AS shipment_count,
+      COALESCE(ship.cartons,0) AS cartons,
+      COALESCE(ship.last_ship_date,'') AS last_ship_date,
+      COALESCE(ship.shipment_nos,'') AS shipment_nos,
+      COALESCE(ship.pl_nos,'') AS pl_nos,
+      COALESCE(ship.ci_nos,'') AS ci_nos,
+      o.items_json,o.snapshot_json
+    FROM quote_sales_orders o
+    LEFT JOIN (
+      SELECT order_id,
+        SUM(COALESCE(amount,0)) AS paid_amount,
+        SUM(COALESCE(commission_deduct_amount,0)) AS commission_deduct_amount,
+        SUM(COALESCE(writeoff_amount,0)) AS writeoff_amount
+      FROM quote_order_payments GROUP BY order_id
+    ) pay ON pay.order_id=o.id
+    LEFT JOIN (
+      SELECT i.order_id,
+        SUM(CASE WHEN {$virtualSql} THEN 0 ELSE COALESCE(i.qty,0) END) AS shippable_qty,
+        COUNT(*) AS item_count
+      FROM quote_sales_order_items i GROUP BY i.order_id
+    ) items ON items.order_id=o.id
+    LEFT JOIN (
+      SELECT si.order_id,
+        SUM(COALESCE(si.qty,0)) AS shipped_qty,
+        SUM(COALESCE(si.cartons,0)) AS cartons,
+        COUNT(DISTINCT si.shipment_id) AS shipment_count,
+        MAX(s.ship_date) AS last_ship_date,
+        GROUP_CONCAT(DISTINCT NULLIF(s.shipment_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS shipment_nos,
+        GROUP_CONCAT(DISTINCT NULLIF(s.packing_list_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS pl_nos,
+        GROUP_CONCAT(DISTINCT NULLIF(s.commercial_invoice_no,'') ORDER BY s.ship_date,s.id SEPARATOR ', ') AS ci_nos
+      FROM quote_shipment_items si
+      JOIN quote_shipments s ON s.id=si.shipment_id
+      WHERE COALESCE(s.status,'') NOT IN ('已作废','取消')
+      GROUP BY si.order_id
+    ) ship ON ship.order_id=o.id
+    WHERE ".implode(' AND ',$where)."
+    ORDER BY $dateExpr DESC,o.id DESC";
+  $orders=qo_rows($pdo,$sql,$args);
+  $itemMap=[];
+  $orderIds=array_values(array_unique(array_filter(array_map('intval',array_column($orders,'id')))));
+  if($orderIds){
+    $ph=implode(',',array_fill(0,count($orderIds),'?'));
+    foreach(qo_rows($pdo,"SELECT id,order_id,item_index,customer_code,product_code,product_name,specification,color,qty,unit_price,amount,shipped_qty,item_json FROM quote_sales_order_items WHERE order_id IN ($ph) ORDER BY order_id,item_index,id",$orderIds) as $it){
+      $itemMap[(int)$it['order_id']][]=qo_statement_item_row($it);
+    }
+  }
+  $flat=[];
+  $tot=['order_count'=>0,'item_count'=>0,'amount'=>0,'paid'=>0,'commission_deduct'=>0,'writeoff'=>0,'balance'=>0,'shippable_qty'=>0,'shipped_qty'=>0,'remain_qty'=>0,'shipment_count'=>0,'cartons'=>0];
+  foreach($orders as $r){
+    $amount=qo_num($r['amount']??0);
+    $paid=qo_num($r['paid_calc']??0);
+    $deduct=qo_num($r['commission_deduct_calc']??0);
+    $writeoff=qo_num($r['writeoff_calc']??0);
+    $balance=max(0,round($amount-$paid-$deduct-$writeoff,2));
+    $shipQty=qo_num($r['shippable_qty']??0);
+    $shipped=qo_num($r['shipped_qty']??0);
+    $remain=max(0,round($shipQty-$shipped,3));
+    $payStatus=qo_statement_status($amount,$paid,$deduct,$writeoff);
+    $shipStatus=qo_statement_ship_status($shipQty,$shipped);
+    $cur=qo_s($r['currency']??'',20) ?: ($currency?:'USD');
+    $orderNo=qo_order_no_at($r['order_no']??'',$r['quote_no']??'');
+    $base=[
+      'customer_id'=>qo_s($r['customer_id']??'',120),
+      'customer_name'=>qo_s($r['customer_name']??'',255),
+      'order_no'=>$orderNo,
+      'quote_no'=>qo_s($r['quote_no']??'',120),
+      'order_date'=>qo_s($r['order_date']??($r['quote_date']??$r['created_at']??''),30),
+      'owner'=>qo_s($r['user_name']??'',120),
+      'currency'=>$cur,
+      'order_amount'=>round($amount,2),
+      'paid'=>round($paid,2),
+      'commission_deduct'=>round($deduct,2),
+      'writeoff'=>round($writeoff,2),
+      'balance'=>round($balance,2),
+      'payment_status'=>$payStatus,
+      'shipment_status'=>$shipStatus,
+      'shipment_count'=>(int)($r['shipment_count']??0),
+      'shipment_nos'=>qo_s($r['shipment_nos']??'',2000),
+      'pl_nos'=>qo_s($r['pl_nos']??'',2000),
+      'ci_nos'=>qo_s($r['ci_nos']??'',2000),
+      'order_note'=>qo_s($r['note']??'',5000)
+    ];
+    $items=$itemMap[(int)$r['id']]??[];
+    if(!$items){
+      foreach(qo_order_items_from_order_record($r) as $i=>$raw){
+        $fallback=qo_item_row($raw,$i+1);
+        if(qo_item_row_has_content($fallback)) $items[]=qo_statement_item_row($fallback);
+      }
+    }
+    if(!$items) $items=[['item_index'=>'','product_code'=>'','product_name'=>'','specification'=>'','customer_code'=>'','color'=>'','qty'=>'','unit_price'=>'','amount'=>'','shipped_qty'=>'','remain_qty'=>'','is_virtual'=>0]];
+    foreach($items as $i=>$it){
+      $flat[]=array_merge($base,[
+        'item_index'=>$it['item_index']?:($i+1),
+        'product_code'=>qo_s($it['product_code']??'',160),
+        'product_name'=>qo_s($it['product_name']??'',255),
+        'specification'=>qo_s($it['specification']??'',20000),
+        'customer_code'=>qo_s($it['customer_code']??'',120),
+        'color'=>qo_s($it['color']??'',120),
+        'qty'=>$it['qty']??'',
+        'unit_price'=>$it['unit_price']??'',
+        'item_amount'=>$it['amount']??'',
+        'shipped_qty'=>$it['shipped_qty']??'',
+        'remain_qty'=>$it['remain_qty']??'',
+        'item_type'=>!empty($it['is_virtual'])?'费用项 / 不出货':'实物'
+      ]);
+      $tot['item_count']++;
+    }
+    $tot['order_count']++;
+    $tot['shipment_count']+=(int)($r['shipment_count']??0);
+    foreach(['amount','paid','commission_deduct','writeoff','balance'] as $k){
+      $src=['amount'=>$amount,'paid'=>$paid,'commission_deduct'=>$deduct,'writeoff'=>$writeoff,'balance'=>$balance][$k];
+      $tot[$k]+=$src;
+    }
+    $tot['shippable_qty']+=$shipQty;
+    $tot['shipped_qty']+=$shipped;
+    $tot['remain_qty']+=$remain;
+    $tot['cartons']+=qo_num($r['cartons']??0);
+  }
+  foreach(['amount','paid','commission_deduct','writeoff','balance'] as $k) $tot[$k]=round($tot[$k],2);
+  foreach(['shippable_qty','shipped_qty','remain_qty','cartons'] as $k) $tot[$k]=round($tot[$k],3);
+  return [
+    'customer_key'=>$customerKey,
+    'customer_name'=>$customerName ?: ($flat[0]['customer_name']??''),
+    'currency'=>$currency ?: ($flat[0]['currency']??''),
+    'range'=>$range,
+    'product_kw'=>$productKw,
+    'totals'=>$tot,
+    'rows'=>$flat,
+    'generated_at'=>qo_now()
+  ];
+}
+function qo_save_statement_note(PDO $pdo,array $d): array {
+  qo_ensure_schema($pdo);
+  $month=qo_statement_month_value($d['month']??'');
+  $customerKey=qo_s($d['customer_key']??'',255);
+  if($customerKey==='') throw new RuntimeException('缺少客户标识');
+  $currency=qo_s($d['currency']??'',20) ?: 'USD';
+  $customerName=qo_s($d['customer_name']??'',255);
+  $note=qo_s($d['note']??'',20000);
+  $pdo->prepare('INSERT INTO quote_order_statement_notes(customer_key,customer_name,statement_month,currency,note,updated_by,updated_at,created_at) VALUES(?,?,?,?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE customer_name=VALUES(customer_name),note=VALUES(note),updated_by=VALUES(updated_by),updated_at=NOW()')
+    ->execute([$customerKey,$customerName,$month,$currency,$note,qo_actor()]);
+  qo_order_log($pdo,'statement_note_saved',['event'=>'保存订单对账备注','customer_id'=>$customerKey,'customer_name'=>$customerName,'summary'=>$customerName.' '.$month.' '.$currency.' 对账备注已保存']);
+  return ['saved'=>1,'note'=>$note,'updated_by'=>qo_actor(),'updated_at'=>qo_now()];
+}
+function qo_save_order_note(PDO $pdo,array $d): array {
+  qo_ensure_schema($pdo);
+  $id=(int)($d['order_id']??$d['id']??0);
+  if(!$id) throw new RuntimeException('缺少订单ID');
+  $note=qo_s($d['note']??'',20000);
+  $before=qo_row($pdo,'SELECT id,order_no,quote_no,customer_id,customer_name,note FROM quote_sales_orders WHERE id=? LIMIT 1',[$id]);
+  if(!$before) throw new RuntimeException('订单不存在');
+  $pdo->prepare('UPDATE quote_sales_orders SET note=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$note,qo_actor(),$id]);
+  $after=qo_row($pdo,'SELECT id,order_no,quote_no,customer_id,customer_name,note FROM quote_sales_orders WHERE id=? LIMIT 1',[$id]);
+  qo_order_log($pdo,'order_note_saved',['event'=>'保存订单备注','order_id'=>$id,'order_no'=>$before['order_no']??'','quote_no'=>$before['quote_no']??'','customer_id'=>$before['customer_id']??'','customer_name'=>$before['customer_name']??'','before'=>$before,'after'=>$after,'summary'=>($before['order_no']??$id).' 订单备注已保存']);
+  return ['saved'=>1,'order'=>$after];
 }
 function qo_commission_schema(PDO $pdo){
   static $done=false;if($done)return;$done=true;
@@ -1057,8 +1505,9 @@ function qo_commission_line_save(PDO $pdo,array $d): array {
   return ['line'=>qo_row($pdo,'SELECT * FROM quote_commission_lines WHERE order_item_id=?',[$itemId]),'deduct_sync'=>$sync];
 }
 function qo_order_detail(PDO $pdo,$id){
-  qo_ensure_schema($pdo); $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id]); if(!$order) qo_fail('订单不存在');
-  $order['order_no']=qo_order_no_at($order['order_no']??'',$order['quote_no']??''); qo_update_item_shipped($pdo,(int)$id); $pay=qo_recalc_payment($pdo,(int)$id); $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id]);
+  qo_ensure_schema($pdo); if(!qo_row($pdo,'SELECT id FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id])) qo_fail('订单不存在');
+  qo_update_item_shipped($pdo,(int)$id); $pay=qo_recalc_payment($pdo,(int)$id); $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id]);
+  $order['order_no']=qo_order_no_at($order['order_no']??'',$order['quote_no']??'');
   $shipments=qo_rows($pdo,'SELECT DISTINCT s.* FROM quote_shipments s LEFT JOIN quote_shipment_orders so ON so.shipment_id=s.id WHERE s.order_id=? OR so.order_id=? ORDER BY s.id DESC',[(int)$id,(int)$id]);
   qo_commission_schema($pdo);return ['order'=>$order,'items'=>qo_rows($pdo,'SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[(int)$id]),'shipments'=>$shipments,'payments'=>qo_rows($pdo,'SELECT * FROM quote_order_payments WHERE order_id=? ORDER BY payment_date DESC,id DESC',[(int)$id]),'payment_summary'=>$pay,'commission_snapshots'=>qo_rows($pdo,"SELECT * FROM quote_commission_snapshots WHERE order_id=? AND COALESCE(settle_status,'')<>'cancelled' ORDER BY id",[(int)$id]),'commission_lines'=>qo_rows($pdo,'SELECT * FROM quote_commission_lines WHERE order_id=? ORDER BY item_index,id',[(int)$id])];
 }
@@ -1071,6 +1520,10 @@ try{
   if($action==='save_document_settings') qo_ok(['settings'=>qo_save_doc_settings($pdo,qo_input())]);
   if($action==='next_doc_numbers'){ $d=qo_input(); qo_ok(qo_next_doc_numbers($pdo,(int)($d['order_id']??0),qo_s($d['ship_date']??'',20))); }
   if($action==='list') qo_ok(['orders'=>qo_list_orders($pdo)]);
+  if($action==='statement_summary') qo_ok(qo_order_statement_summary($pdo,qo_input()));
+  if($action==='statement_export') qo_ok(qo_order_statement_export($pdo,qo_input()));
+  if($action==='save_statement_note') qo_ok(qo_save_statement_note($pdo,qo_input()));
+  if($action==='save_order_note') qo_ok(qo_save_order_note($pdo,qo_input()));
   if($action==='commission_order_list') qo_ok(qo_commission_order_list($pdo,qo_input()));
   if($action==='commission_summary_list') qo_ok(qo_commission_summary_list($pdo,qo_input()));
   if($action==='commission_order_save') qo_ok(qo_commission_order_save($pdo,qo_input()));
@@ -1081,37 +1534,8 @@ try{
   if($action==='commission_history') qo_ok(qo_commission_history($pdo,qo_input()));
   if($action==='detail'){ $d=qo_input(); qo_ok(qo_order_detail($pdo,(int)($d['id']??0))); }
   if($action==='convert'){
-    $d=qo_input(); $orderNo=qo_order_no_at(qo_s($d['order_no']??($d['quote_no']??''),120), qo_s($d['quote_no']??'',120)); if($orderNo==='') qo_fail('缺少订单号');
-    $items=qo_order_items_from_payload($d['items_json']??'[]'); if(!$items) qo_fail('订单没有产品明细');
-    $customerJson=(string)($d['customer_json']??'{}'); $custName=qo_s($d['customer_name']??qo_customer_name($customerJson),255);
-    $qty=0; foreach($items as $it)$qty+=qo_item_qty_for_product_total($it); if($qty<=0) $qty=qo_num($d['qty']??0);
-    $amount=qo_num($d['amount']??0); if($amount<=0){ foreach($items as $it){ $amount+=qo_num($it['amount']??(qo_num($it['qty']??0)*qo_num($it['price']??$it['unit_price']??0))); } }
-    $exist=qo_row($pdo,"SELECT * FROM quote_sales_orders WHERE order_no=? AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY id DESC LIMIT 1",[$orderNo]);$isNewOrder=!$exist;
-    if($exist){ $id=(int)$exist['id']; $pdo->prepare('DELETE FROM quote_sales_order_items WHERE order_id=?')->execute([$id]); $sql='UPDATE quote_sales_orders SET quote_no=?,source_quote_id=?,customer_id=?,customer_name=?,customer_json=?,header_json=?,bank_json=?,template_json=?,items_json=?,snapshot_json=?,qty=?,amount=?,currency=?,exchange_rate=?,quote_date=?,order_date=?,status=?,shipment_status=?,payment_status=?,balance_amount=?,order_doc_title=?,contract_title=?,note=?,user_name=?,updated_by=?,updated_at=NOW() WHERE id=?'; $pdo->prepare($sql)->execute([qo_s($d['quote_no']??'',120),(int)($d['quote_id']??$d['source_quote_id']??0),qo_s($d['customer_id']??'',120),$custName,$customerJson,(string)($d['header_json']??''),(string)($d['bank_json']??''),(string)($d['template_json']??''),json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(string)($d['snapshot_json']??''),$qty,$amount,qo_s($d['currency']??'USD',20),qo_num($d['exchange_rate']??1),qo_s($d['quote_date']??'',20)?:null,qo_s($d['order_date']??qo_today(),20)?:qo_today(),qo_s($d['status']??'待确认',80),'未出货','未收款',$amount,qo_s($d['order_doc_title']??$d['quote_status']??'',120),qo_s($d['contract_title']??$d['quote_status']??'',120),qo_s($d['note']??'',5000),qo_actor(),qo_actor(),$id]); }
-    else { $sql='INSERT INTO quote_sales_orders(order_no,quote_no,source_quote_id,customer_id,customer_name,customer_json,header_json,bank_json,template_json,items_json,snapshot_json,qty,amount,currency,exchange_rate,quote_date,order_date,status,shipment_status,payment_status,paid_amount,balance_amount,order_doc_title,contract_title,note,user_name,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())'; $pdo->prepare($sql)->execute([$orderNo,qo_s($d['quote_no']??'',120),(int)($d['quote_id']??$d['source_quote_id']??0),qo_s($d['customer_id']??'',120),$custName,$customerJson,(string)($d['header_json']??''),(string)($d['bank_json']??''),(string)($d['template_json']??''),json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(string)($d['snapshot_json']??''),$qty,$amount,qo_s($d['currency']??'USD',20),qo_num($d['exchange_rate']??1),qo_s($d['quote_date']??'',20)?:null,qo_s($d['order_date']??qo_today(),20)?:qo_today(),qo_s($d['status']??'待确认',80),'未出货','未收款',0,$amount,qo_s($d['order_doc_title']??$d['quote_status']??'',120),qo_s($d['contract_title']??$d['quote_status']??'',120),qo_s($d['note']??'',5000),qo_actor(),qo_actor()]); $id=(int)$pdo->lastInsertId(); }
-    $ins=$pdo->prepare('INSERT INTO quote_sales_order_items(order_id,item_index,customer_code,product_code,product_name,specification,color,qty,unit_price,amount,shipped_qty,image,item_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
-    foreach($items as $i=>$it){ $row=qo_item_row($it,$i+1); $ins->execute([$id,$row['item_index'],$row['customer_code'],$row['product_code'],$row['product_name'],$row['specification'],$row['color'],$row['qty'],$row['unit_price'],$row['amount'],0,$row['image'],$row['item_json']]); }
-    qo_recalc_payment($pdo,$id);
-    if($isNewOrder&&($d['commission_choice']??'')!=='none'){if(($d['commission_choice']??'')==='apply')qo_apply_conversion_commission($pdo,$id,array_merge($d,['order_no'=>$orderNo,'customer_name'=>$custName]),$amount,$qty);else qo_freeze_commission($pdo,$id,array_merge($d,['order_no'=>$orderNo,'customer_name'=>$custName]),$items,$amount,$qty);}
-    $orderRow=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$id]) ?: [];
-    qo_push_quote_sys_notification($pdo,'quote_order_converted','报价已转订单：'.$orderNo,trim('客户：'.$custName."\n订单号：".$orderNo."\n来源报价：".qo_s($d['quote_no']??'',120)."\n金额：".qo_s($d['currency']??'USD',20).' '.number_format($amount,2)."\n数量：".$qty),[
-      'source_module'=>'quote_sales_orders',
-      'source_id'=>(string)$id,
-      'target_id'=>(string)$id,
-      'target_url'=>'quotation.php?order_id='.$id,
-      'related_quote_id'=>(string)(qo_s($d['quote_no']??'',120) ?: ($d['quote_id']??'')),
-      'related_customer_id'=>(int)($d['customer_id']??0),
-      'order_id'=>$id,
-      'order_no'=>$orderNo,
-      'quote_no'=>qo_s($d['quote_no']??'',120),
-      'customer_name'=>$custName,
-      'currency'=>qo_s($d['currency']??'USD',20),
-      'amount'=>$amount,
-      'dedupe_key'=>'quote:quote_order_converted:'.$id,
-    ],$orderRow);
-    qo_complete_quote_followup_tasks($pdo,$orderRow);
-    if(qo_table_exists($pdo,'quote_orders')){ try{ qo_ensure_col($pdo,'quote_orders','converted_order_id','INT DEFAULT 0'); qo_ensure_col($pdo,'quote_orders','converted_order_no','VARCHAR(120) DEFAULT \'\''); if(!empty($d['quote_no'])) $pdo->prepare('UPDATE quote_orders SET converted_order_id=?,converted_order_no=? WHERE quote_no=?')->execute([$id,$orderNo,qo_s($d['quote_no'],120)]); }catch(Throwable $e){} }
-    qo_ok(['id'=>$id,'order_no'=>$orderNo]);
+    $d=qo_input(); qo_input(true);
+    qo_ok(qo_convert_order($pdo,$d));
   }
   if($action==='update_status'){ $d=qo_input(); $id=(int)($d['id']??0); $status=qo_s($d['status']??'',80); if(!$id||$status==='') qo_fail('缺少订单ID或状态'); $pdo->prepare('UPDATE quote_sales_orders SET status=?,updated_by=?,updated_at=NOW() WHERE id=?')->execute([$status,qo_actor(),$id]);if($status==='已确认'){qo_commission_schema($pdo);$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='pending',updated_at=NOW() WHERE order_id=? AND settle_node='order_confirmed' AND settle_status='unsettled'")->execute([$id]);} qo_ok(['order'=>qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=?',[$id])]); }
   if($action==='commission_snapshot_list'){ $d=qo_input();qo_commission_schema($pdo);qo_ok(['snapshots'=>qo_rows($pdo,"SELECT * FROM quote_commission_snapshots WHERE order_id=? AND COALESCE(settle_status,'')<>'cancelled' ORDER BY id",[(int)($d['order_id']??0)])]); }
@@ -1127,7 +1551,7 @@ try{
   if($action==='shipment_detail'){ $d=qo_input(); qo_ok(qo_shipment_detail($pdo,(int)($d['id']??0))); }
   if($action==='manage_document'){ qo_ok(qo_manage_document($pdo,qo_input())); }
   if($action==='list_documents'){ $sql="SELECT s.*,o.order_no,o.quote_no,o.customer_name,o.currency,o.amount,sox.combined_order_nos,COALESCE(sox.combined_order_count,1) AS combined_order_count FROM quote_shipments s LEFT JOIN quote_sales_orders o ON o.id=s.order_id LEFT JOIN (SELECT shipment_id,GROUP_CONCAT(DISTINCT NULLIF(order_no,'') ORDER BY sort_order SEPARATOR ', ') AS combined_order_nos,COUNT(DISTINCT order_id) AS combined_order_count FROM quote_shipment_orders GROUP BY shipment_id) sox ON sox.shipment_id=s.id ORDER BY s.id DESC LIMIT 1000"; qo_ok(['documents'=>qo_rows($pdo,$sql)]); }
-  if($action==='mark_document_generated'){ $d=qo_input(); $sid=(int)($d['shipment_id']??0); $type=($d['type']??'pl')==='ci'?'ci':'pl'; if($sid){ $col=$type==='ci'?'ci_generated_at':'pl_generated_at'; $pdo->prepare('UPDATE quote_shipments SET '.$col.'=COALESCE('.$col.',NOW()),updated_at=NOW() WHERE id=?')->execute([$sid]); qo_push_document_notification($pdo,$sid,$type); } qo_ok(['marked'=>1]); }
+  if($action==='mark_document_generated'){ $d=qo_input(); $sid=(int)($d['shipment_id']??0); $type=($d['type']??'pl')==='ci'?'ci':'pl'; if($sid){ qo_mark_document_active($pdo,$sid,$type); qo_push_document_notification($pdo,$sid,$type); } qo_ok(['marked'=>1]); }
   if($action==='packaging_list'){ $d=qo_input(); $kw='%'.qo_s($d['kw']??'',120).'%'; $rows=$kw==='%%'?qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000'):qo_rows($pdo,'SELECT * FROM quote_packaging_profiles WHERE product_code LIKE ? OR product_name LIKE ? OR customer_code LIKE ? OR packing_method LIKE ? ORDER BY id DESC LIMIT 1000',[$kw,$kw,$kw,$kw]); qo_ok(['profiles'=>$rows]); }
   if($action==='save_packaging'){ $d=qo_input(); $id=(int)($d['id']??0); $data=[qo_s($d['product_code']??'',160),qo_s($d['product_name']??'',255),qo_s($d['customer_code']??'',120),qo_num($d['unit_nw']??0),qo_num($d['unit_gw']??0),qo_num($d['pcs_per_ctn']??0),qo_num($d['carton_l']??0),qo_num($d['carton_w']??0),qo_num($d['carton_h']??0),qo_s($d['carton_size']??'',160),qo_num($d['carton_nw']??0),qo_num($d['carton_gw']??0),qo_num($d['carton_cbm']??0),qo_s($d['packing_method']??'',255),qo_s($d['note']??'',5000)]; if($id){ $pdo->prepare('UPDATE quote_packaging_profiles SET product_code=?,product_name=?,customer_code=?,unit_nw=?,unit_gw=?,pcs_per_ctn=?,carton_l=?,carton_w=?,carton_h=?,carton_size=?,carton_nw=?,carton_gw=?,carton_cbm=?,packing_method=?,note=?,updated_at=NOW() WHERE id=?')->execute(array_merge($data,[$id])); } else { $pdo->prepare('INSERT INTO quote_packaging_profiles(product_code,product_name,customer_code,unit_nw,unit_gw,pcs_per_ctn,carton_l,carton_w,carton_h,carton_size,carton_nw,carton_gw,carton_cbm,packing_method,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())')->execute($data); $id=(int)$pdo->lastInsertId(); } qo_ok(['profile'=>qo_row($pdo,'SELECT * FROM quote_packaging_profiles WHERE id=?',[$id]),'profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
   if($action==='delete_packaging'){ $d=qo_input(); $pdo->prepare('DELETE FROM quote_packaging_profiles WHERE id=?')->execute([(int)($d['id']??0)]); qo_ok(['profiles'=>qo_rows($pdo,'SELECT * FROM quote_packaging_profiles ORDER BY id DESC LIMIT 1000')]); }
