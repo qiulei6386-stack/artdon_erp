@@ -75,6 +75,7 @@ assert(start>0 && end>start);
   await page.evaluate(async()=>{await Promise.all([api.generatePreview(),api.generatePreview()]);});
   const saved=await page.evaluate(()=>({id:fixturePromotion.wizardDraft.task_id,calls,err:api.state.error}));
   assert.equal(saved.id,123);assert.equal(saved.calls.filter(c=>c.action==='marketing_task_create').length,1);assert.equal(saved.err,'离线模拟失败');
+  assert.equal(saved.calls.find(c=>c.action==='marketing_delivery_preview').payload.preview_format,'paged-v1');
   await page.evaluate(async()=>{await api.generatePreview();});
   assert.equal(await page.evaluate(()=>calls.filter(c=>c.action==='marketing_task_create')[1].payload.task_id),123);
   await page.evaluate(()=>{

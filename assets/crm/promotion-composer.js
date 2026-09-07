@@ -155,7 +155,7 @@
       if (ui.busy) return;
       var d=p.collectWizard(); for(var i=0;i<4;i++) {var message=validation(i,d);if(message){ui.step=i;ui.error=message;p.renderWizard();return;}}
       ui.preview=null;ui.error='';ui.step=4;p.renderWizard();lock(true);
-      try { d=await saveCore(); var result=await request('marketing_delivery_preview',{task_id:d.task_id}); ui.preview=result;ui.preview.fingerprint=fingerprint();ui.selected=0;ui.page=0; }
+      try { d=await saveCore(); var result=await request('marketing_delivery_preview',{task_id:d.task_id,preview_format:'paged-v1'}); ui.preview=result;ui.preview.fingerprint=fingerprint();ui.selected=0;ui.page=0; }
       catch(e){ui.error=e.message;}
       finally{lock(false);p.renderWizard();}
     }
