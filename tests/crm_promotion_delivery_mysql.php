@@ -48,7 +48,7 @@ foreach([
 "CREATE TABLE crm_contact_promotions (id INT AUTO_INCREMENT PRIMARY KEY,contact_id INT,channel VARCHAR(120),status VARCHAR(40)) ENGINE=InnoDB",
 "CREATE TABLE crm_customer_promotion_status (customer_id INT PRIMARY KEY,status VARCHAR(40)) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_task_targets (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,chat_group_id INT,channel_key VARCHAR(120),contact_method VARCHAR(500),manual_group_name VARCHAR(255),executor_user_id INT,planned_at DATETIME,due_at DATETIME,target_status VARCHAR(40),failure_reason VARCHAR(500),executed_at DATETIME,created_at DATETIME) ENGINE=InnoDB",
-"CREATE TABLE crm_users (id INT PRIMARY KEY,real_name VARCHAR(120),username VARCHAR(120),phone VARCHAR(80),position VARCHAR(120)) ENGINE=InnoDB",
+"CREATE TABLE crm_users (id INT PRIMARY KEY,real_name VARCHAR(120),username VARCHAR(120),phone VARCHAR(80),position VARCHAR(120),status VARCHAR(20) DEFAULT 'active') ENGINE=InnoDB",
 "CREATE TABLE crm_user_mail_accounts (id INT PRIMARY KEY,user_id INT,email_address VARCHAR(190),email_username VARCHAR(190),sender_name VARCHAR(120),signature_html MEDIUMTEXT,is_default INT DEFAULT 1,is_enabled INT DEFAULT 1,email_password_encrypted TEXT,deleted_at DATETIME) ENGINE=InnoDB",
 "CREATE TABLE crm_mail_signature_templates (id INT PRIMARY KEY,template_html MEDIUMTEXT,is_default INT) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_send_queue (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,sender_user_id INT,sender_email VARCHAR(190),receiver_email VARCHAR(190),subject VARCHAR(500),body MEDIUMTEXT,body_ref_id BIGINT,attachment_json JSON,planned_server_time DATETIME,send_status VARCHAR(40),send_attempts INT,max_attempts INT,last_error TEXT,failure_reason TEXT,sent_at DATETIME,created_at DATETIME,updated_at DATETIME) ENGINE=InnoDB",
@@ -56,7 +56,7 @@ foreach([
 "CREATE TABLE crm_marketing_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,channel_key VARCHAR(120),action_key VARCHAR(120),result_status VARCHAR(40),failure_reason VARCHAR(500),operator_id INT,detail_json JSON,touched_at DATETIME,created_at DATETIME) ENGINE=InnoDB"
 ] as $sql)db()->exec($sql);
 crm_delivery_ensure();
-db()->exec("INSERT INTO crm_users VALUES (1,'Sender','sender','123','Sales')");
+db()->exec("INSERT INTO crm_users (id,real_name,username,phone,position) VALUES (1,'Sender','sender','123','Sales')");
 db()->exec("INSERT INTO crm_user_mail_accounts (id,user_id,email_address,sender_name,signature_html) VALUES (1,1,'sender@example.invalid','Sender','<p>{mail_user_name} / {send_email}</p>')");
 db()->exec("INSERT INTO crm_customers (id,customer_name,country,owner_user_id,email) VALUES (1,'Example Company','CN',1,'company@example.invalid')");
 db()->exec("INSERT INTO crm_contacts (id,customer_id,name,email,is_primary) VALUES (1,1,'Alice','alice@example.invalid',1),(2,1,'No Email','',0),(3,1,'Other Channel','phone@example.invalid',0),(4,1,'Duplicate','alice@example.invalid',0)");
@@ -71,7 +71,7 @@ mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_tasks')->fetchCo
 $preview=crm_delivery_preview(['task_id'=>$first['task_id']]);
 mit_assert(count($preview['manifest']['items'])===1 && count($preview['manifest']['excluded'])===3,'Exact contacts, no fallback, strict channel, duplicate exclusion');
 mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue')->fetchColumn()===0,'Preview must not queue');
-$item=$preview['manifest']['items'][0];
+$item=$preview['manifest']['current_item'];
 mit_assert(strpos($item['subject'],'Example Company')!==false && strpos($item['body_html'],'Sender / sender@example.invalid')!==false,'Real company name and account signature');
 $GLOBALS['pdUser']=2;
 try {crm_delivery_load_preview(['token'=>$preview['token']]);throw new LogicException('Foreign preview accepted');}catch(RuntimeException $e){}
@@ -114,3 +114,38 @@ try {crm_delivery_confirm(['token'=>$mp['token']]);throw new LogicException('Cha
 $mp=crm_delivery_preview(['task_id'=>$manual['task_id']]);crm_delivery_confirm(['token'=>$mp['token']]);
 mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue WHERE task_id='.(int)$manual['task_id'])->fetchColumn()===0,'Manual confirmation must never queue mail');
 echo "Promotion delivery MySQL: draft identity, read-only preview, recipient policy, stale/foreign preview rejection, confirm retry, exact signature/body/attachment and worker passed; SMTP mocked.\n";
+
+// Real persistence and pagination for a bulk list; no bulk SMTP or queue run.
+$start=microtime(true);$customerIds=[];
+$insertCustomer=db()->prepare('INSERT INTO crm_customers (id,customer_name,country,owner_user_id,email) VALUES (?,?,?,?,?)');
+$insertChannel=db()->prepare("INSERT INTO crm_customer_promotion_channels (customer_id,channel_key) VALUES (?,'email')");
+db()->beginTransaction();
+for($id=2000;$id<5000;$id++){
+    $customerIds[]=$id;$insertCustomer->execute([$id,'Synthetic '.$id,$id%2?'CN':'IN',1,'bulk'.$id.'@example.invalid']);$insertChannel->execute([$id]);
+}
+db()->commit();
+db()->exec("INSERT INTO crm_user_mail_accounts (id,user_id,email_address,sender_name,signature_html) VALUES (2,1,'second@example.invalid','Second','<p>SECOND {send_email}</p>')");
+$bulkInput=array_merge($input,['client_request_id'=>'synthetic_bulk_3000','customer_ids'=>json_encode($customerIds),'mail_body_html'=>'<p>{company_name}</p><p>'.str_repeat('x',100*1024).'</p>','send_rule'=>['delivery_version'=>2,'mail_account_rule'=>'balanced','mail_account_ids'=>[1,2]],'attachment_config'=>[]]);
+$bulk=crm_marketing_task_create($bulkInput);$bp=crm_delivery_preview(['task_id'=>$bulk['task_id']]);
+mit_assert($bp['manifest']['total']===3000 && count($bp['manifest']['items'])===20,'Bulk preview must return only one page');
+mit_assert(array_column($bp['manifest']['senders'],'count')===[1500,1500],'Real target allocation must be even');
+$last=crm_delivery_preview_read(['token'=>$bp['token'],'page'=>149,'index'=>2999]);
+mit_assert($last['manifest']['current_item']['customer_id']===4999 && strpos($last['manifest']['current_item']['body_html'],'SECOND second@example.invalid')!==false,'Final page must expand exact customer and mailbox signature');
+$stored=crm_delivery_load_preview(['token'=>$bp['token']]);
+mit_assert(strlen($stored['manifest'])<4*1024*1024,'Persisted bulk snapshot must share templates');
+mit_assert(strlen(json_encode($bp))<200*1024,'Network response must not contain 3000 bodies');
+mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue WHERE task_id='.(int)$bulk['task_id'])->fetchColumn()===0,'Bulk preview must never start queue');
+db()->exec("UPDATE crm_user_mail_accounts SET is_enabled=0 WHERE id=2");
+try{crm_delivery_confirm(['token'=>$bp['token']]);throw new LogicException('Disabled selected account accepted');}catch(RuntimeException $e){}
+db()->exec("UPDATE crm_user_mail_accounts SET is_enabled=1 WHERE id=2");
+echo 'MySQL bulk preview: 3000 x 100KiB; stored_bytes='.strlen($stored['manifest']).', response_bytes='.strlen(json_encode($bp)).', elapsed_seconds='.round(microtime(true)-$start,3)."; no bulk send.\n";
+
+// Small multi-account confirmation validates queue expansion against every frozen preview.
+$smallInput=array_merge($bulkInput,['client_request_id'=>'synthetic_balanced_confirm','customer_ids'=>'[2000,2001,2002,2003,2004]','mail_body_html'=>'<p>{company_name}</p>']);
+$small=crm_marketing_task_create($smallInput);$sp=crm_delivery_preview(['task_id'=>$small['task_id']]);
+$sm=json_decode(crm_delivery_load_preview(['token'=>$sp['token']])['manifest'],true);
+crm_delivery_confirm(['token'=>$sp['token']]);crm_delivery_confirm(['token'=>$sp['token']]);
+$qs=db()->query('SELECT * FROM crm_marketing_send_queue WHERE task_id='.(int)$small['task_id'].' ORDER BY id')->fetchAll();
+mit_assert(count($qs)===5,'Balanced confirmation must be idempotent');
+foreach($qs as $i=>$q){$expected=crm_delivery_expand_item($sm,$sm['items'][$i]);mit_assert($q['body']===$expected['body_html'] && $q['sender_email']===$expected['sender_email'],'Every queued body and sender must equal preview');}
+echo "Multi-mailbox queue snapshots and repeated confirmation passed; no additional SMTP call.\n";

@@ -148,6 +148,11 @@ function crm_delivery_next_time(array &$times, int $base, array $schedule): int
 
 function crm_delivery_render(string $template, array $row, array $account, bool $html): string
 {
+    return crm_delivery_render_values($template, crm_delivery_variables($row, $account), $html);
+}
+
+function crm_delivery_variables(array $row, array $account): array
+{
     $vars = [
         'customer_name'=>$row['contact_name'] ?: $row['customer_name'], 'contact_name'=>$row['contact_name'],
         'company_name'=>$row['customer_name'], 'country'=>$row['country'] ?? '',
@@ -156,6 +161,11 @@ function crm_delivery_render(string $template, array $row, array $account, bool 
         'send_email'=>$account['email_address'] ?? '',
     ];
     foreach (['name'=>'customer_name','customer_full_name'=>'customer_name','user_name'=>'mail_user_name','position'=>'mail_user_position','email'=>'send_email','mobile'=>'mail_user_mobile','phone'=>'mail_user_mobile'] as $alias=>$key) $vars[$alias] = $vars[$key];
+    return $vars;
+}
+
+function crm_delivery_render_values(string $template, array $vars, bool $html): string
+{
     return preg_replace_callback('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', static function ($match) use ($vars, $html) {
         $value = trim((string)($vars[$match[1]] ?? ''));
         if ($value === '') throw new RuntimeException('变量 {' . $match[1] . '} 缺少资料，请补齐或从内容中移除。');
@@ -163,11 +173,77 @@ function crm_delivery_render(string $template, array $row, array $account, bool 
     }, $template) ?? $template;
 }
 
+/** No credentials or mutable references: content and variable values are frozen. */
+function crm_delivery_pack_content(array &$contents, string $body, string $signature, array $row, array $account): array
+{
+    $key = hash('sha256', $body);
+    $signatureKey = hash('sha256', $signature);
+    $contents[$key] = $body;
+    $contents[$signatureKey] = $signature;
+    $vars = crm_delivery_variables($row, $account);
+    // Retain only values used by the template, avoiding unnecessary personal data.
+    preg_match_all('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', $body . $signature, $matches);
+    $vars = array_intersect_key($vars, array_flip($matches[1]));
+    $rendered = crm_delivery_render_values($body, $vars, true);
+    crm_delivery_render_values($signature, $vars, true);
+    if (trim(html_entity_decode(strip_tags($rendered))) === '' && stripos($rendered, '<img') === false) throw new RuntimeException('邮件正文或人工话术不能为空。');
+    return ['content_ref'=>$key, 'signature_ref'=>$signatureKey, 'content_vars'=>$vars];
+}
+
+function crm_delivery_expand_item(array $manifest, array $item): array
+{
+    if (!isset($item['content_ref'])) return $item; // Already-issued legacy snapshots.
+    $body = $manifest['contents'][$item['content_ref']] ?? null;
+    $signature = $manifest['contents'][$item['signature_ref']] ?? null;
+    if ($body === null || $signature === null) throw new RuntimeException('预览内容不完整，请重新生成。');
+    $vars = $item['content_vars'];
+    $item['body_html'] = crm_delivery_render_values($body, $vars, true);
+    $item['signature_html'] = crm_delivery_render_values($signature, $vars, true);
+    if ($item['signature_html'] !== '') $item['body_html'] .= '<div data-promotion-signature="true">' . $item['signature_html'] . '</div>';
+    unset($item['content_ref'], $item['signature_ref'], $item['content_vars']);
+    return $item;
+}
+
+/** An explicit pool never expands to unselected mailboxes. Stable ordering makes rechecks deterministic. */
+function crm_delivery_account_pool(array $accounts, array $rules): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', $rules['mail_account_ids'] ?? []))));
+    if (!$ids && !empty($rules['mail_account_id'])) $ids = [(int)$rules['mail_account_id']];
+    $pool = [];
+    foreach ($ids as $id) {
+        $matches = array_values(array_filter($accounts, static fn($a)=>(int)$a['id']===$id));
+        if (!$matches) throw new RuntimeException('所选发件邮箱已停用或不存在，请重新选择。');
+        $account = $matches[0];
+        if ((int)$account['user_id'] !== (int)current_user()['id'] && !crm_can('mail.account_manage_all') && !is_super_admin()) throw new RuntimeException('无权使用所选发件邮箱。');
+        $pool[] = $account;
+    }
+    if (!$pool) throw new RuntimeException('请明确勾选发件邮箱池，不能自动使用全部邮箱。');
+    return $pool;
+}
+
+function crm_delivery_pick_account(array $accounts, array $pool, string $rule, array $row, int &$cursor, array &$countries): ?array
+{
+    if ($rule === 'owner_mailbox') {
+        foreach ($accounts as $account) if ((int)$account['user_id'] === (int)$row['owner_user_id']) return $account;
+        return null;
+    }
+    if (!$pool) return null;
+    if ($rule === 'group_by_country') {
+        $country = strtoupper(trim((string)$row['country']));
+        if ($country === '') throw new RuntimeException('按国家分配需要客户填写国家。');
+        if (!isset($countries[$country])) $countries[$country] = count($countries) % count($pool);
+        return $pool[$countries[$country]];
+    }
+    if (in_array($rule, ['balanced','selected_mailbox'], true)) return $pool[$cursor++ % count($pool)];
+    throw new RuntimeException('原发件规则暂不支持，请明确重新选择，未自动更改规则。');
+}
+
 function crm_delivery_manifest(array $task, int $base): array
 {
     if (strlen((string)($task['mail_body_html'] ?? '')) > 1024 * 1024) throw new RuntimeException('正文及内嵌图片超过 1MB，请压缩图片或改为附件。');
     $rules = crm_marketing_json($task['send_rule_json'] ?? '');
     $schedule = crm_marketing_json($task['schedule_config_json'] ?? '');
+    if (($schedule['timezone_rule'] ?? 'company_time') !== 'company_time') throw new RuntimeException('原时区规则尚未确认，请在执行安排中明确选择北京时间；未自动修改。');
     $failure = crm_marketing_json($task['failure_policy_json'] ?? '');
     foreach ([[$schedule,'send_interval_minutes',1,240],[$schedule,'hourly_limit',1,500],[$schedule,'daily_limit',1,3000],[$failure,'retry_count',0,5],[$failure,'retry_interval_minutes',5,1440]] as [$config,$key,$min,$max]) {
         if (isset($config[$key]) && (filter_var($config[$key],FILTER_VALIDATE_INT)===false || (int)$config[$key]<$min || (int)$config[$key]>$max)) throw new RuntimeException('执行规则超出有效范围：'.$key.'（'.$min.'–'.$max.'）。');
@@ -200,7 +276,12 @@ function crm_delivery_manifest(array $task, int $base): array
         COALESCE(u.real_name,u.username,'') owner_name,u.phone user_phone,u.position user_position
         FROM crm_user_mail_accounts a LEFT JOIN crm_users u ON u.id=a.user_id
         WHERE a.deleted_at IS NULL AND a.is_enabled=1 ORDER BY a.is_default DESC,a.id DESC")->fetchAll();
-    $companySignature = null; $times = []; $seen = []; $items = []; $excluded = []; $manifestBytes = 0;
+    $rule = $rules['mail_account_rule'] ?? 'owner_mailbox';
+    $pool = null;
+    $activeUsers = db()->query("SELECT id,COALESCE(real_name,username,'') name FROM crm_users WHERE status='active' ORDER BY id")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $manualRule = $rules['offline_executor_rule'] ?? 'owner';
+    $manualIds = array_values(array_unique(array_filter(array_map('intval', $rules['offline_owner_ids'] ?? []))));
+    $companySignature = null; $times = []; $seen = []; $items = []; $excluded = []; $contents = []; $cursor = 0; $countries = []; $manualCursor = 0;
     $requested = crm_marketing_normalize_channel((string)$task['channel_key']);
     foreach ($targets as $row) {
         $cid = (int)$row['customer_id']; $ctid = (int)($row['contact_id'] ?? 0);
@@ -212,15 +293,20 @@ function crm_delivery_manifest(array $task, int $base): array
             'customer_name'=>$row['customer_name'], 'contact_name'=>$row['contact_name'], 'channel'=>$channel];
         if ($reason !== '') { $excluded[] = $item + ['reason'=>$reason]; continue; }
         if ($channel !== 'email') {
-            $manifestBytes += strlen((string)$task['mail_body_html']) + 2048;
-            if ($manifestBytes > 16 * 1024 * 1024) throw new RuntimeException('人工执行清单过大，请按客户分组拆分。');
+            if (!in_array($manualRule, ['owner','creator','manual_offline_executor'], true)) throw new RuntimeException('原人工执行人规则暂不支持，请明确重新选择。');
             $methodField = ['phone'=>'phone','whatsapp'=>'whatsapp','wechat'=>'wechat','linkedin'=>'linkedin'][$channel] ?? '';
             $contact = $methodField ? trim((string)($row[($ctid?'contact_':'customer_').$methodField] ?? '')) : '';
             if ($channel==='offline') $contact=trim((string)$row['address']);
             if (in_array($channel,['wechat_group','whatsapp_group'],true) && empty($row['group_deleted']) && $row['group_status']==='active' && (int)$row['use_for_promotion']===1 && crm_marketing_normalize_channel((string)$row['group_platform'])===$channel) $contact=trim((string)$row['group_name']);
-            if ($contact === '' || (int)($row['owner_user_id'] ?? 0) <= 0) { $excluded[] = $item + ['reason'=>'人工渠道缺少联系方式或执行人，请补齐客户资料']; continue; }
-            $items[] = $item + ['mode'=>'manual','contact_method'=>$contact,'executor_id'=>(int)$row['owner_user_id'],'executor_name'=>$row['executor_name'],
-                'planned_at'=>date('Y-m-d H:i:s', $base),'body_html'=>crm_delivery_render((string)$task['mail_body_html'], $row, [], true)];
+            $executorId = $manualRule === 'creator' ? (int)current_user()['id'] : (int)($row['owner_user_id'] ?? 0);
+            if ($manualRule === 'manual_offline_executor') {
+                if (!$manualIds) throw new RuntimeException('请明确勾选人工执行人。');
+                foreach ($manualIds as $uid) if (!isset($activeUsers[$uid])) throw new RuntimeException('所选人工执行人已停用，请重新选择。');
+                $executorId = $manualIds[$manualCursor++ % count($manualIds)];
+            }
+            if ($contact === '' || !isset($activeUsers[$executorId])) { $excluded[] = $item + ['reason'=>'人工渠道缺少联系方式或有效执行人，请补齐资料']; continue; }
+            $items[] = $item + ['mode'=>'manual','contact_method'=>$contact,'executor_id'=>$executorId,'executor_name'=>$activeUsers[$executorId],
+                'planned_at'=>date('Y-m-d H:i:s', $base)] + crm_delivery_pack_content($contents, (string)$task['mail_body_html'], '', $row, []);
             continue;
         }
         // A selected contact with no address never falls back to the company address.
@@ -229,13 +315,11 @@ function crm_delivery_manifest(array $task, int $base): array
         $key = strtolower($email);
         if (isset($seen[$key])) { $excluded[] = $item + ['reason'=>'重复邮箱，只保留首个对象：' . $email]; continue; }
         $seen[$key] = true;
-        $account = null;
-        $rule = $rules['mail_account_rule'] ?? 'owner_mailbox';
-        foreach ($accounts as $candidate) {
-            if (($rule === 'owner_mailbox' && (int)$candidate['user_id'] === (int)$row['owner_user_id']) ||
-                ($rule === 'selected_mailbox' && (int)$candidate['id'] === (int)($rules['mail_account_id'] ?? 0))) { $account = $candidate; break; }
-        }
+        if (!in_array($rule, ['owner_mailbox','selected_mailbox','balanced','group_by_country'], true)) throw new RuntimeException('原发件规则暂不支持，请明确重新选择。');
+        if ($pool === null) $pool = $rule === 'owner_mailbox' ? [] : crm_delivery_account_pool($accounts, $rules);
+        $account = crm_delivery_pick_account($accounts, $pool, $rule, $row, $cursor, $countries);
         if (!$account) throw new RuntimeException($row['customer_name'] . '：缺少明确匹配的发件邮箱，不能自动改用其他邮箱。');
+        if (!isset($activeUsers[(int)$account['user_id']])) throw new RuntimeException('发件账号所属人员已停用，请重新选择。');
         if ((int)$account['user_id'] !== (int)current_user()['id'] && !crm_can('mail.account_manage_all') && !is_super_admin()) throw new RuntimeException('无权使用所匹配的发件邮箱，请联系管理员。');
         $signatureKey = $task['signature_key'] ?? 'personal';
         $signature = '';
@@ -246,26 +330,22 @@ function crm_delivery_manifest(array $task, int $base): array
         elseif ($signatureKey !== 'none') throw new RuntimeException('签名类型无效。');
         if ($signatureKey !== 'none' && trim(strip_tags($signature)) === '' && stripos($signature, '<img') === false) throw new RuntimeException($account['email_address'] . '：未配置所选签名，请补齐或明确选择不使用签名。');
         $subject = crm_delivery_render((string)$task['mail_subject'], $row, $account, false);
-        $body = crm_delivery_render((string)$task['mail_body_html'], $row, $account, true);
-        $signature = crm_delivery_render($signature, $row, $account, true);
-        if (trim($subject) === '' || (trim(html_entity_decode(strip_tags($body))) === '' && stripos($body, '<img') === false)) throw new RuntimeException('邮件主题和正文不能为空。');
-        if ($signature !== '') $body .= '<div data-promotion-signature="true">' . $signature . '</div>';
-        $manifestBytes += strlen($body) + strlen($signature) + 2048;
-        if ($manifestBytes > 16 * 1024 * 1024) throw new RuntimeException('本次预览内容较大，请缩小客户分组或压缩正文图片后再试。');
+        if (trim($subject) === '') throw new RuntimeException('邮件主题不能为空。');
+        $content = crm_delivery_pack_content($contents, (string)$task['mail_body_html'], $signature, $row, $account);
         $accountId = (int)$account['id'];
         if (!isset($times[$accountId])) $times[$accountId] = [];
         $sendAt = crm_delivery_next_time($times[$accountId], $base, $schedule);
         $items[] = $item + ['mode'=>'email','receiver_email'=>$email,'account_id'=>$accountId,
             'sender_user_id'=>(int)$account['user_id'],'sender_email'=>$account['email_address'],
             'sender_name'=>$account['sender_name'] ?: $account['owner_name'], 'subject'=>$subject,
-            'body_html'=>$body,'signature_html'=>$signature,'planned_at'=>date('Y-m-d H:i:s',$sendAt)];
+            'planned_at'=>date('Y-m-d H:i:s',$sendAt)] + $content;
     }
     // Include saved inputs so any edit invalidates a previously displayed preview.
     $inputs = array_intersect_key($task, array_flip(['task_name','channel_key','mail_subject','mail_body_html','signature_key','attachment_config_json','audience_config_json','send_rule_json','schedule_config_json','failure_policy_json']));
     $audience=crm_marketing_json($task['audience_config_json'] ?? '');
     foreach ($audience['excluded_customers'] ?? [] as $blocked) $excluded[]=['target_id'=>0,'customer_id'=>$blocked['id'],'customer_name'=>$blocked['name'],'contact_name'=>'','reason'=>'客户资料标记禁止推广，已排除'];
     return ['version'=>2,'task_id'=>(int)$task['id'],'owner_id'=>(int)$task['created_by'],'base'=>$base,
-        'timezone'=>'Asia/Shanghai','items'=>$items,'excluded'=>$excluded,'attachments'=>$assets,'inputs'=>$inputs];
+        'timezone'=>'Asia/Shanghai','format'=>'shared-content-v1','contents'=>$contents,'items'=>$items,'excluded'=>$excluded,'attachments'=>$assets,'inputs'=>$inputs];
 }
 
 function crm_delivery_digest(array $manifest): string
@@ -293,7 +373,7 @@ function crm_delivery_preview(array $input): array
         if (!crm_delivery_version($task) || $task['task_status'] !== 'draft') throw new RuntimeException('请先保存新版草稿，再生成最终预览。');
         $schedule = crm_marketing_json($task['schedule_config_json'] ?? '');
         $base = time() + 600;
-        if (($schedule['schedule_type'] ?? 'manual') === 'scheduled') {
+        if (in_array(($schedule['schedule_type'] ?? 'manual'), ['scheduled','auto'], true)) {
             $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', substr(str_replace(' ', 'T', (string)($schedule['scheduled_at'] ?? '')),0,16), new DateTimeZone('Asia/Shanghai'));
             if (!$date || $date->getTimestamp() < time() + 120) throw new RuntimeException('预约时间至少应在两分钟以后（北京时间）。');
             $base = $date->getTimestamp();
@@ -302,9 +382,51 @@ function crm_delivery_preview(array $input): array
         $token = bin2hex(random_bytes(32));
         db()->prepare('INSERT INTO crm_marketing_delivery_previews (token,task_id,user_id,digest,manifest) VALUES (?,?,?,?,?)')
             ->execute([$token,(int)$task['id'],(int)current_user()['id'],crm_delivery_digest($manifest),json_encode($manifest,JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
-        unset($manifest['inputs']);
-        return ['token'=>$token,'manifest'=>$manifest];
+        return crm_delivery_preview_page($manifest, $token, []);
     });
+}
+
+/** Only one expanded message and one page of metadata cross the network. */
+function crm_delivery_preview_page(array $manifest, string $token, array $input): array
+{
+    $total = count($manifest['items']);
+    $index = max(0, min(max(0,$total-1), (int)($input['index'] ?? 0)));
+    $page = max(0, min(max(0,(int)ceil($total/20)-1), (int)($input['page'] ?? intdiv($index,20))));
+    if ($index < $page*20 || $index >= ($page+1)*20) $index = $page*20;
+    $excludedPage = max(0,min(max(0,(int)ceil(count($manifest['excluded'])/20)-1),(int)($input['excluded_page'] ?? 0)));
+    $senders = []; $emailCount = 0; $first = null; $last = null;
+    foreach ($manifest['items'] as $item) {
+        $first = $first === null ? $item['planned_at'] : min($first,$item['planned_at']);
+        $last = $last === null ? $item['planned_at'] : max($last,$item['planned_at']);
+        $key = $item['mode'] === 'email' ? 'mail_'.$item['account_id'] : 'manual_'.$item['executor_id'];
+        if (!isset($senders[$key])) $senders[$key] = ['name'=>$item['sender_email'] ?? $item['executor_name'],'mode'=>$item['mode'],'count'=>0,'first'=>$item['planned_at'],'last'=>$item['planned_at']];
+        $senders[$key]['count']++;
+        $senders[$key]['first'] = min($senders[$key]['first'],$item['planned_at']);
+        $senders[$key]['last'] = max($senders[$key]['last'],$item['planned_at']);
+        if ($item['mode'] === 'email') $emailCount++;
+    }
+    $rows = [];
+    foreach (array_slice($manifest['items'],$page*20,20) as $offset=>$item) {
+        unset($item['body_html'],$item['signature_html'],$item['content_ref'],$item['signature_ref'],$item['content_vars']);
+        $item['index'] = $page*20+$offset; $rows[] = $item;
+    }
+    return ['token'=>$token,'manifest'=>[
+        'items'=>$rows,'current_item'=>isset($manifest['items'][$index]) ? crm_delivery_expand_item($manifest,$manifest['items'][$index]) : null,
+        'selected_index'=>$index,'page'=>$page,'total'=>$total,'email_count'=>$emailCount,'manual_count'=>$total-$emailCount,
+        'senders'=>array_values($senders),'first_at'=>$first,'last_at'=>$last,
+        'schedule'=>crm_marketing_json($manifest['inputs']['schedule_config_json'] ?? ''),
+        'excluded'=>array_slice($manifest['excluded'],$excludedPage*20,20),'excluded_page'=>$excludedPage,'excluded_total'=>count($manifest['excluded']),
+        'attachments'=>$manifest['attachments'],'timezone'=>$manifest['timezone'],
+    ]];
+}
+
+function crm_delivery_preview_read(array $input): array
+{
+    crm_require('promotion.task_create'); crm_delivery_ensure();
+    $preview = crm_delivery_load_preview($input);
+    crm_delivery_assert_owner(crm_marketing_task_row((int)$preview['task_id']));
+    $manifest = json_decode($preview['manifest'],true,512,JSON_THROW_ON_ERROR);
+    return crm_delivery_preview_page($manifest,$preview['token'],$input);
 }
 
 function crm_delivery_load_preview(array $input, bool $lock = false): array
@@ -333,6 +455,7 @@ function crm_delivery_confirm(array $input): array
         $failure = crm_marketing_json($task['failure_policy_json'] ?? '');
         $mailCount = 0;
         foreach ($current['items'] as $item) {
+            $item = crm_delivery_expand_item($current, $item);
             if ($item['mode'] !== 'email') {
                 db()->prepare("UPDATE crm_marketing_task_targets SET planned_at=?,contact_method=?,executor_user_id=?,channel_key=?,target_status='pending' WHERE id=? AND task_id=?")
                     ->execute([$item['planned_at'],$item['contact_method'],$item['executor_id'],$item['channel'],$item['target_id'],$task['id']]);
@@ -367,6 +490,7 @@ function crm_delivery_test(array $input): array
     if (!hash_equals($preview['digest'],crm_delivery_digest(crm_delivery_manifest($task,(int)$manifest['base'])))) throw new RuntimeException('资料已变化，请重新预览后测试。');
     $item = $manifest['items'][(int)($input['index'] ?? -1)] ?? null;
     if (!$item || $item['mode'] !== 'email') throw new RuntimeException('请选择一封邮件预览后测试。');
+    $item = crm_delivery_expand_item($manifest, $item);
     $email = trim((string)($input['test_email'] ?? ''));
     if (!filter_var($email,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('请填写单个有效的测试收件邮箱。');
     $account = crm_mail_current_account(true,(int)$item['account_id'],(int)$item['sender_user_id']);

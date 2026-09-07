@@ -44,16 +44,20 @@
     function id() { return 'promotion_' + (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2)); }
     function request(action, payload) { return env.post(action,payload,{timeoutMs:60000}).then(function (json) { if (!json || !json.success) throw new Error(json && json.message || '操作失败，请重试'); return json.data || {}; }); }
     function field(name,label,value,type,hint) { return '<label class="pc-field"><span>' + esc(label) + '</span><input data-wizard-field="' + name + '" type="' + (type || 'text') + '" value="' + esc(value == null ? '' : value) + '">' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
-    function select(name,label,value,options,hint) { return '<label class="pc-field"><span>' + esc(label) + '</span><select data-wizard-field="' + name + '">' + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(value) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
+    function select(name,label,value,options,hint) { if(value && !options.some(function(o){return String(o[0])===String(value);}))options=[[value,'原设置：'+value+'（请明确重新选择）']].concat(options); return '<label class="pc-field"><span>' + esc(label) + '</span><select data-wizard-field="' + name + '">' + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(value) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
     function invalidate() { ui.dirty = true; ui.preview = null; ui.error = ''; }
+    function collectChecks(nodes, previous) {
+      if(!nodes.length)return previous;
+      var checked=Array.from(nodes).filter(function(el){return el.checked;}).map(function(el){return Number(el.value);});
+      return previous.map(Number).filter(function(id){return checked.indexOf(id)>=0;}).concat(checked.filter(function(id){return previous.map(Number).indexOf(id)<0;}));
+    }
     function fingerprint() { return JSON.stringify(p.wizardDraft); }
     p.defaultWizardDraft = function () { return Object.assign(original.defaultWizardDraft.call(this), { client_request_id:id(), delivery_version:2, channel_key:'email', timezone_rule:'company_time', assets:[] }); };
     p.taskToWizardDraft = function (task) {
       var d = original.taskToWizardDraft.call(this,task), attach = {};
       try { attach = JSON.parse(task.attachment_config_json || '{}'); } catch (_) {}
-      d.assets = attach.assets || []; d.asset_ids = attach.asset_ids || []; d.delivery_version = 2; d.timezone_rule = 'company_time';
+      d.assets = attach.assets || []; d.asset_ids = attach.asset_ids || []; d.delivery_version = 2;
       d.legacyAttachmentWarning = Boolean((attach.manual_attachments || []).length || (attach.datasheet_attachments || []).length || attach.material_package);
-      d.mail_account_rule = ['owner_mailbox','selected_mailbox'].indexOf(d.mail_account_rule) >= 0 ? d.mail_account_rule : 'owner_mailbox';
       return d;
     };
     p.openWizard = function () {
@@ -76,12 +80,15 @@
     p.collectWizard = function () {
       var before = JSON.stringify(this.wizardDraft);
       var customerIds=this.wizardDraft && this.wizardDraft.customer_ids,contactIds=this.wizardDraft && this.wizardDraft.contact_ids;
+      var accountIds=(this.wizardDraft.mail_account_ids || []).slice(),manualIds=(this.wizardDraft.offline_owner_ids || []).slice();
       var d = original.collectWizard.call(this);
       // A saved/editing draft must not silently inherit a stale pool selection.
       if(Array.isArray(customerIds))d.customer_ids=customerIds;
       if(Array.isArray(contactIds))d.contact_ids=contactIds;
       document.querySelectorAll('.pc-composer [data-wizard-field]').forEach(function(el) { d[el.dataset.wizardField] = el.value; });
-      d.mail_account_ids = d.mail_account_id ? [Number(d.mail_account_id)] : [];
+      var accountChecks=document.querySelectorAll('[data-pc-account]'),manualChecks=document.querySelectorAll('[data-pc-executor]');
+      d.mail_account_ids=collectChecks(accountChecks,accountIds);
+      d.offline_owner_ids=collectChecks(manualChecks,manualIds);
       d.client_request_id = d.client_request_id || id(); d.delivery_version = 2;
       if (before !== JSON.stringify(d)) invalidate();
       return d;
@@ -112,8 +119,13 @@
       if (step === 2 && !String(d.mail_body_html || '').replace(/<[^>]*>/g,'').trim() && !/<img\b/i.test(d.mail_body_html || '')) return '请填写邮件正文或人工执行话术。';
       if (step === 2 && d.channel_key === 'email' && !String(d.mail_subject || '').trim()) return '请填写邮件主题。';
       if (step === 2 && d.legacyAttachmentWarning) return '旧草稿包含附件登记，请重新上传真实文件并确认旧登记的处理方式。';
-      if (step === 3 && d.schedule_type === 'scheduled' && !d.scheduled_at) return '请选择预约开始时间。';
+      if (step === 3 && ['scheduled','auto'].indexOf(d.schedule_type)>=0 && !d.scheduled_at) return '请选择预约开始时间。';
       if (step === 3) {
+        if(d.timezone_rule!=='company_time')return '原时区规则未修改，请明确选择北京时间后重新核对安排。';
+        if(['manual','scheduled','auto'].indexOf(d.schedule_type)<0)return '请明确选择开始方式，原设置未自动替换。';
+        if((d.channel_key==='email'||d.channel_key==='preference') && ['owner_mailbox','selected_mailbox','balanced','group_by_country'].indexOf(d.mail_account_rule)<0)return '请选择当前支持的发件规则，原规则未自动替换。';
+        if((d.channel_key==='email'||d.channel_key==='preference') && d.mail_account_rule!=='owner_mailbox' && !(d.mail_account_ids || []).length)return '请勾选至少一个发件邮箱。';
+        if(d.channel_key!=='email' && d.offline_executor_rule==='manual_offline_executor' && !(d.offline_owner_ids || []).length)return '请勾选人工执行人。';
         var limits=[['send_interval_minutes','发送间隔',1,240],['hourly_limit','每小时上限',1,500],['daily_limit','每日上限',1,3000],['retry_count','重试次数',0,5],['retry_interval_minutes','重试间隔',5,1440]];
         for(var j=0;j<limits.length;j++){var spec=limits[j],value=Number(d[spec[0]]);if(!Number.isInteger(value)||value<spec[2]||value>spec[3])return spec[1]+'须为 '+spec[2]+'–'+spec[3]+' 的整数。';}
       }
@@ -151,8 +163,8 @@
       if(ui.busy || !ui.preview) return;
       p.collectWizard();
       if(ui.preview.fingerprint!==fingerprint()){ui.preview=null;ui.error='内容已变化，请重新生成预览。';p.renderWizard();return;}
-      var manifest=ui.preview.manifest, emails=manifest.items.filter(function(x){return x.mode==='email';}).length;
-      if(!root.confirm('确认执行：'+emails+' 封邮件、'+(manifest.items.length-emails)+' 条人工待办。邮件将在预览时间到达后自动发送；排除 '+manifest.excluded.length+' 个对象。'))return;
+      var manifest=ui.preview.manifest, emails=manifest.email_count ?? manifest.items.filter(function(x){return x.mode==='email';}).length;
+      if(!root.confirm('确认执行：'+emails+' 封邮件、'+(manifest.manual_count ?? manifest.items.length-emails)+' 条人工待办。邮件将在预览时间到达后自动发送；排除 '+(manifest.excluded_total ?? manifest.excluded.length)+' 个对象。'))return;
       lock(true);
       try {var result=await request('marketing_delivery_confirm',{token:ui.preview.token});p.selectedTaskId=result.task_id;ui.dirty=false;lock(false);p.closeWizard(true);p.switchView('campaigns');await p.load();env.toast('已确认执行，请在项目中查看实际发送进度；入队不代表发送成功。');}
       catch(e){ui.error=e.message;lock(false);p.renderWizard();}
@@ -187,15 +199,42 @@
     }
     function renderSchedule(d) {
       var email=d.channel_key==='email'||d.channel_key==='preference';
-      var accounts=(p.data && p.data.mail_accounts || []).map(function(a){return [String(a.id),a.email_address || a.email || ('邮箱 #'+a.id)];});
-      return '<div class="pc-grid">'+(email ? select('mail_account_rule','发件邮箱规则',d.mail_account_rule,[['owner_mailbox','客户负责人自己的邮箱'],['selected_mailbox','明确指定一个发件邮箱']],'匹配不到就停止，不自动换成其他人的邮箱。')+(d.mail_account_rule==='selected_mailbox'?select('mail_account_id','发件邮箱 *',d.mail_account_id,[['','请选择']].concat(accounts)):''):'')+
-        select('schedule_type','开始方式',d.schedule_type,[['manual','预览生成后 10 分钟开始（须先确认）'],['scheduled','预约开始时间']])+
-        (d.schedule_type==='scheduled'?field('scheduled_at','开始时间（北京时间） *',d.scheduled_at,'datetime-local','至少在两分钟以后。'):'')+'</div>'+
-        '<p class="pc-note">人工渠道按客户负责人分配，需本人执行，不会自动代发。时间统一显示北京时间；国家不能唯一决定时区，不再自动猜测。</p>'+
-        (email?'<details class="pc-advanced"><summary>高级发送设置</summary><div class="pc-grid">'+field('send_interval_minutes','同一邮箱发送间隔（分钟）',d.send_interval_minutes,'number')+field('hourly_limit','同一邮箱每小时最多发送',d.hourly_limit,'number')+field('daily_limit','同一邮箱每日最多发送',d.daily_limit,'number')+field('retry_count','失败最多重试次数',d.retry_count,'number')+field('retry_interval_minutes','失败重试间隔（分钟）',d.retry_interval_minutes,'number')+'</div><p>无邮箱、禁用渠道、离职和重复对象不发送；失败不会自动改用其他邮箱。</p></details>':'');
+      var accounts=p.data && p.data.mail_accounts || [],users=p.data && p.data.users || [];
+      var ids=(d.mail_account_ids || []).map(Number),manualIds=(d.offline_owner_ids || []).map(Number);
+      var pool=accounts.map(function(a){return '<label class="pc-check"><input type="checkbox" data-pc-account value="'+Number(a.id)+'" '+(ids.indexOf(Number(a.id))>=0?'checked':'')+'><span>'+esc(a.email_address || a.email)+'<small>'+esc(a.owner_name || '')+' · 今日已发 '+Number(a.today_sent || 0)+'</small></span></label>';}).join('');
+      var missing=ids.filter(function(id){return !accounts.some(function(a){return Number(a.id)===id;});});
+      missing.forEach(function(id){pool+='<label class="pc-check"><input type="checkbox" data-pc-account value="'+id+'" checked><span>原邮箱 #'+id+' 当前不可用，请明确取消选择</span></label>';});
+      var executorChecks=users.map(function(u){return '<label class="pc-check"><input type="checkbox" data-pc-executor value="'+Number(u.id)+'" '+(manualIds.indexOf(Number(u.id))>=0?'checked':'')+'><span>'+esc(u.display_name || u.real_name || u.username || ('#'+u.id))+'</span></label>';}).join('');
+      manualIds.filter(function(id){return !users.some(function(u){return Number(u.id)===id;});}).forEach(function(id){executorChecks+='<label class="pc-check"><input type="checkbox" data-pc-executor value="'+id+'" checked><span>原执行人 #'+id+' 当前不可用，请取消选择</span></label>';});
+      return '<div class="pc-grid">'+(email?select('mail_account_rule','发件邮箱分配',d.mail_account_rule,[['owner_mailbox','按客户负责人邮箱'],['balanced','多邮箱均分发送'],['selected_mailbox','按勾选邮箱轮流发送'],['group_by_country','按国家固定分配邮箱']],'仅使用授权邮箱；均分按邮件数量，国家分配保持同一国家使用同一邮箱。'):'')+
+        select('schedule_type','开始方式',d.schedule_type,[['manual','确认后自动发送（预览后 10 分钟起）'],['scheduled','预约开始时间'],['auto','原自动执行：按预约时间开始']])+
+        (['scheduled','auto'].indexOf(d.schedule_type)>=0?field('scheduled_at','预约开始时间 *',d.scheduled_at,'datetime-local','至少在两分钟以后。'):'')+
+        select('timezone_rule','时间口径',d.timezone_rule,[['company_time','北京时间（UTC+8）']],'旧时区规则不会自动替换，须明确确认。')+'</div>'+
+        (email && d.mail_account_rule!=='owner_mailbox'?'<section class="pc-advanced"><h3>发件邮箱池（可多选）</h3><div class="pc-check-grid">'+(pool || '<p>没有可用邮箱，请先配置。</p>')+'</div><p class="pc-note">均分不改变客户渠道。按每个实际发件账号生成签名；最终预览列出分配数量和预计完成时间。今日已发为页面加载时数据，执行时会再次限速。</p></section>':'')+
+        (d.channel_key!=='email'?'<section class="pc-advanced">'+select('offline_executor_rule','人工执行人分配',d.offline_executor_rule,[['owner','客户负责人'],['creator','当前创建人'],['manual_offline_executor','勾选人员轮流分配']],'仅生成待办，不自动代发微信、WhatsApp 等。')+(d.offline_executor_rule==='manual_offline_executor'?'<div class="pc-check-grid">'+executorChecks+'</div>':'')+'</section>':'')+
+        (email?'<section class="pc-advanced"><h3>发送节奏（每个邮箱独立计算）</h3><div class="pc-grid pc-grid-numbers">'+field('send_interval_minutes','每封间隔（分钟）',d.send_interval_minutes,'number')+field('hourly_limit','滚动一小时上限',d.hourly_limit,'number')+field('daily_limit','滚动 24 小时上限',d.daily_limit,'number')+'</div><p>预计结束时间在最终预览生成；已有发件负载、重试或故障可能使实际时间顺延。</p></section><details class="pc-advanced"><summary>失败重试设置</summary><div class="pc-grid">'+field('retry_count','最多重试次数',d.retry_count,'number')+field('retry_interval_minutes','重试间隔（分钟）',d.retry_interval_minutes,'number')+'</div><p>无邮箱、禁用渠道、离职和重复对象不发送；失败不会自动改用其他邮箱。</p></details>':'');
+    }
+    async function readPreviewPage(values) {
+      if(ui.busy || !ui.preview)return;
+      var preview=ui.preview,epoch=ui.epoch;
+      lock(true);
+      try {
+        var result=await request('marketing_delivery_preview_read',Object.assign({token:preview.token,page:preview.manifest.page,index:ui.selected,excluded_page:preview.manifest.excluded_page},values));
+        if(epoch!==ui.epoch || ui.preview!==preview)return;
+        result.fingerprint=preview.fingerprint;ui.preview=result;ui.selected=result.manifest.selected_index;ui.page=result.manifest.page;ui.error='';
+      }catch(e){ui.error=e.message;}finally{lock(false);p.renderWizard();}
+    }
+    function renderPagedPreview(m) {
+      var item=m.current_item;
+      var distribution='<section class="pc-advanced"><h3>执行分配与预计完成时间</h3><div class="pc-table-wrap"><table class="pc-distribution"><thead><tr><th>发件邮箱 / 人工执行人</th><th>数量</th><th>预计开始</th><th>预计完成</th></tr></thead><tbody>'+m.senders.map(function(s){return '<tr><td>'+esc(s.name)+'<small>'+esc(s.mode==='email'?'自动邮件':'人工待办')+'</small></td><td>'+s.count+'</td><td>'+esc(s.first)+'</td><td>'+esc(s.last)+'</td></tr>';}).join('')+'</tbody></table></div><p>北京时间；每邮箱间隔 '+Number(m.schedule.send_interval_minutes || 3)+' 分钟，一小时上限 '+Number(m.schedule.hourly_limit || 50)+'，24 小时上限 '+Number(m.schedule.daily_limit || 200)+'。实际发送可能因已有负载或重试顺延。</p></section>';
+      var body=item?'<dl><div><dt>接收对象</dt><dd>'+esc(item.receiver_email || item.contact_method)+'</dd></div><div><dt>发件账号 / 执行人</dt><dd>'+esc(item.sender_email || item.executor_name)+'</dd></div><div><dt>预计时间</dt><dd>'+esc(item.planned_at)+'</dd></div><div><dt>主题</dt><dd>'+esc(item.subject || '人工执行话术')+'</dd></div></dl><div class="pc-preview-switch"><button type="button" data-pc-viewport="desktop">电脑预览</button><button type="button" data-pc-viewport="mobile">手机预览</button></div><iframe title="最终正文与签名预览" sandbox="" referrerpolicy="no-referrer" class="pc-preview-frame '+(ui.viewport==='mobile'?'is-mobile':'')+'"></iframe><p>附件：'+esc(m.attachments.map(function(a){return a.name;}).join('、') || '无')+'</p>'+(item.mode==='email'?'<div class="pc-test"><label>测试收件邮箱<input type="email" data-pc-test-email value="'+esc(p.previewTestEmail || '')+'" placeholder="输入自己的测试邮箱"></label><button type="button" data-pc-action="test">仅发送当前测试邮件</button></div>':''):'<p>没有可执行对象，请查看排除原因。</p>';
+      return '<div class="pc-preview-summary"><strong>'+m.email_count+' 封邮件</strong><span>'+m.manual_count+' 条人工待办</span><span>'+m.excluded_total+' 个排除对象</span><button type="button" data-pc-action="preview">重新核对</button></div>'+distribution+
+        '<div class="pc-preview-layout"><section class="pc-recipient-list" aria-label="执行对象">'+m.items.map(function(r){return '<button type="button" data-pc-recipient="'+r.index+'" class="'+(r.index===ui.selected?'is-selected':'')+'"><strong>'+esc(r.customer_name)+'</strong><span>'+esc(r.receiver_email || r.contact_method || '')+'</span><small>'+esc(r.sender_email || r.executor_name)+'</small></button>';}).join('')+'<div class="pc-pager"><button type="button" data-pc-page="-1" '+(!m.page?'disabled':'')+'>上一页</button><span>'+(m.page+1)+' / '+Math.max(1,Math.ceil(m.total/20))+'</span><button type="button" data-pc-page="1" '+((m.page+1)*20>=m.total?'disabled':'')+'>下一页</button></div></section><section class="pc-mail-preview">'+body+'</section></div>'+
+        '<details class="pc-exclusions" '+(!m.total || m.excluded_page?'open':'')+'><summary>排除对象与原因（'+m.excluded_total+'）</summary>'+m.excluded.map(function(r){return '<p><strong>'+esc(r.customer_name)+' / '+esc(r.contact_name || '客户')+'</strong>：'+esc(r.reason)+'</p>';}).join('')+'<div class="pc-pager"><button type="button" data-pc-excluded-page="-1" '+(!m.excluded_page?'disabled':'')+'>上一页</button><span>'+(m.excluded_page+1)+' / '+Math.max(1,Math.ceil(m.excluded_total/20))+'</span><button type="button" data-pc-excluded-page="1" '+((m.excluded_page+1)*20>=m.excluded_total?'disabled':'')+'>下一页</button></div></details><label class="pc-consent"><input type="checkbox" data-pc-consent>已核对对象、渠道、邮箱分配、内容、签名、附件和时间；确认后将自动发送。</label>';
     }
     function renderPreview() {
       if(!ui.preview)return '<section class="pc-empty"><h3>发送前最后核对</h3><p>生成预览会先保存草稿，不发送邮件。请核对每个接收对象、发件账号、正文、签名和附件。</p><button type="button" data-pc-action="preview">'+(ui.busy?'正在生成预览…':'生成最终预览')+'</button></section>';
+      if(typeof ui.preview.manifest.total==='number')return renderPagedPreview(ui.preview.manifest);
       var m=ui.preview.manifest, rows=m.items || [], item=rows[ui.selected], start=ui.page*20;
       return '<div class="pc-preview-summary"><strong>'+rows.filter(function(x){return x.mode==='email';}).length+' 封邮件</strong><span>'+rows.filter(function(x){return x.mode==='manual';}).length+' 条人工待办</span><span>'+m.excluded.length+' 个排除对象</span><button type="button" data-pc-action="preview">重新核对</button></div>'+
         '<p class="pc-note">时间均为北京时间。修改资料或内容后须重新预览；以下名单中的邮件将在确认后按时间自动发送。</p><div class="pc-preview-layout"><section class="pc-recipient-list" aria-label="执行对象">'+rows.slice(start,start+20).map(function(r,i){return '<button type="button" data-pc-recipient="'+(start+i)+'" class="'+(start+i===ui.selected?'is-selected':'')+'"><strong>'+esc(r.customer_name)+'</strong><span>'+esc(r.contact_name || '客户公共联系方式')+'</span><span>'+esc(r.receiver_email || r.contact_method || '')+'</span><small>'+esc(r.mode==='email'?'自动邮件':r.channel+' · 人工执行')+'</small></button>';}).join('')+'<div class="pc-pager"><button type="button" data-pc-page="-1" '+(ui.page<=0?'disabled':'')+'>上一页</button><span>'+(ui.page+1)+' / '+Math.max(1,Math.ceil(rows.length/20))+'</span><button type="button" data-pc-page="1" '+(start+20>=rows.length?'disabled':'')+'>下一页</button></div></section><section class="pc-mail-preview">'+(item ? '<dl><div><dt>接收对象</dt><dd>'+esc(item.receiver_email || item.contact_method)+'</dd></div><div><dt>发件账号 / 执行人</dt><dd>'+esc(item.sender_email || ('负责人 #'+item.executor_id))+'</dd></div><div><dt>开始时间</dt><dd>'+esc(item.planned_at)+'</dd></div><div><dt>主题</dt><dd>'+esc(item.subject || '人工执行话术')+'</dd></div></dl><div class="pc-preview-switch"><button type="button" data-pc-viewport="desktop" aria-pressed="'+(ui.viewport==='desktop')+'">电脑预览</button><button type="button" data-pc-viewport="mobile" aria-pressed="'+(ui.viewport==='mobile')+'">手机预览</button></div><iframe title="最终正文与签名预览" sandbox="" referrerpolicy="no-referrer" class="pc-preview-frame '+(ui.viewport==='mobile'?'is-mobile':'')+'"></iframe><p>附件：'+esc(m.attachments.map(function(a){return a.name;}).join('、') || '无')+'</p>'+(item.mode==='email'?'<div class="pc-test"><label>测试收件邮箱<input type="email" data-pc-test-email value="'+esc(p.previewTestEmail || '')+'" placeholder="输入自己的测试邮箱"></label><button type="button" data-pc-action="test">仅发送当前测试邮件</button></div>':'') : '<p>暂无可执行对象，请处理以下排除原因。</p>')+'</section></div>'+
@@ -215,7 +254,7 @@
       if(ui.step===3)content=renderSchedule(d);
       if(ui.step===4)content=renderPreview();
       host.innerHTML='<section class="pc-composer" role="region" aria-label="新建推广任务"><header class="pc-header"><div><span class="pc-eyebrow">推广工作区</span><h2>'+esc(d.task_name || '新建推广任务')+'</h2></div><span class="pc-save-state">'+(ui.dirty?'有未保存修改':d.task_id?'草稿已保存':'未保存')+'</span><button type="button" data-pc-action="close" aria-label="关闭推广创建">关闭</button></header><div class="pc-workspace"><nav class="pc-steps" aria-label="创建步骤">'+steps.map(function(name,i){return '<button type="button" data-pc-step="'+i+'" aria-current="'+(i===ui.step?'step':'false')+'"><b>'+(i+1)+'</b><span>'+name+'</span></button>';}).join('')+'</nav><main class="pc-main"><div class="pc-heading"><span>第 '+(ui.step+1)+' 步 / 5</span><h3>'+steps[ui.step]+'</h3><p>'+descriptions[ui.step]+'</p></div><div class="pc-error" role="alert" '+(!ui.error?'hidden':'')+'>'+esc(ui.error)+'</div><div class="pc-content">'+content+'</div></main></div><footer class="pc-footer"><button type="button" data-pc-action="save">保存草稿 · 不发送</button><span class="pc-progress" role="status">'+(ui.busy?'处理中，请稍候':'')+'</span><div><button type="button" data-pc-action="prev" '+(ui.step===0?'disabled':'')+'>上一步</button>'+(ui.step<4?'<button type="button" class="primary" data-pc-action="next">'+(ui.step===3?'生成最终预览':'下一步')+'</button>':'<button type="button" class="primary" data-pc-action="confirm" disabled>确认执行</button>')+'</div></footer></section>';
-      host.querySelectorAll('[data-wizard-field]').forEach(function(el){el.addEventListener('input',function(){p.collectWizard();invalidate();});el.addEventListener('change',function(){p.collectWizard();invalidate();var key=el.dataset.wizardField;if(key==='template_key')p.applyWizardTemplate();if(key==='group_mode'||key==='group_key'||key==='contact_filter'){p.wizardAudienceRequestSerial++;p.refreshWizardAudience();return;}if(['channel_key','template_key','schedule_type','mail_account_rule'].indexOf(key)>=0)p.renderWizard();});});
+      host.querySelectorAll('[data-wizard-field]').forEach(function(el){el.addEventListener('input',function(){p.collectWizard();invalidate();});el.addEventListener('change',function(){p.collectWizard();invalidate();var key=el.dataset.wizardField;if(key==='template_key')p.applyWizardTemplate();if(key==='group_mode'||key==='group_key'||key==='contact_filter'){p.wizardAudienceRequestSerial++;p.refreshWizardAudience();return;}if(['channel_key','template_key','schedule_type','mail_account_rule','offline_executor_rule'].indexOf(key)>=0)p.renderWizard();});});
       host.querySelector('[data-pc-customer-search]')?.addEventListener('click',searchCustomers);
       host.querySelector('[data-pc-customer-query]')?.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();searchCustomers();}});
       host.querySelectorAll('[data-pc-customer-remove]').forEach(function(el){el.onclick=function(){changeCustomer(Number(el.dataset.pcCustomerRemove),false);};});
@@ -233,16 +272,18 @@
       host.querySelectorAll('[data-pc-step]').forEach(function(el){el.onclick=function(){move(Number(el.dataset.pcStep));};});
       var actions={close:function(){p.closeWizard();},save:saveDraft,prev:function(){move(ui.step-1);},next:function(){move(ui.step+1);},preview:generatePreview,confirm:confirmDelivery,test:testSend};
       host.querySelectorAll('[data-pc-action]').forEach(function(el){el.onclick=function(){actions[el.dataset.pcAction]();};});
-      host.querySelector('[data-pc-consent]')?.addEventListener('change',function(e){host.querySelector('[data-pc-action="confirm"]').disabled=!e.target.checked || !ui.preview.manifest.items.length;});
-      host.querySelectorAll('[data-pc-recipient]').forEach(function(el){el.onclick=function(){ui.selected=Number(el.dataset.pcRecipient);p.renderWizard();};});
-      host.querySelectorAll('[data-pc-page]').forEach(function(el){el.onclick=function(){ui.page+=Number(el.dataset.pcPage);p.renderWizard();};});
+      host.querySelectorAll('[data-pc-account],[data-pc-executor]').forEach(function(el){el.addEventListener('change',function(){p.collectWizard();invalidate();});});
+      host.querySelector('[data-pc-consent]')?.addEventListener('change',function(e){host.querySelector('[data-pc-action="confirm"]').disabled=!e.target.checked || !(ui.preview.manifest.total ?? ui.preview.manifest.items.length);});
+      host.querySelectorAll('[data-pc-recipient]').forEach(function(el){el.onclick=function(){if(typeof ui.preview.manifest.total==='number')return readPreviewPage({index:Number(el.dataset.pcRecipient)});ui.selected=Number(el.dataset.pcRecipient);p.renderWizard();};});
+      host.querySelectorAll('[data-pc-page]').forEach(function(el){el.onclick=function(){var page=ui.page+Number(el.dataset.pcPage);if(typeof ui.preview.manifest.total==='number')return readPreviewPage({page:page,index:page*20});ui.page=page;p.renderWizard();};});
+      host.querySelectorAll('[data-pc-excluded-page]').forEach(function(el){el.onclick=function(){return readPreviewPage({excluded_page:ui.preview.manifest.excluded_page+Number(el.dataset.pcExcludedPage)});};});
       host.querySelectorAll('[data-pc-viewport]').forEach(function(el){el.onclick=function(){ui.viewport=el.dataset.pcViewport;p.renderWizard();};});
       host.querySelector('[data-pc-upload]')?.addEventListener('change',function(e){if(e.target.files[0])upload(e.target.files[0]);});
       host.querySelector('[data-pc-legacy-attachments]')?.addEventListener('click',function(){if(root.confirm('旧附件登记将不参与本次发送，仅携带当前显示已上传的文件。确定？')){p.collectWizard();p.wizardDraft.legacyAttachmentWarning=false;invalidate();p.renderWizard();}});
       host.querySelectorAll('[data-pc-remove]').forEach(function(el){el.onclick=function(){p.collectWizard();p.wizardDraft.assets.splice(Number(el.dataset.pcRemove),1);invalidate();p.renderWizard();};});
       if(ui.step===2){this.bindWizardContentEditor();host.querySelector('[data-promo-wizard-editor]')?.addEventListener('input',invalidate);}
       var frame=host.querySelector('.pc-preview-frame');
-      if(frame && ui.preview){var item=ui.preview.manifest.items[ui.selected];frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src https: data:; style-src \'unsafe-inline\';"><style>body{margin:16px;font:15px/1.65 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>'+mail.prepareRichHtml(item.body_html || '')+'</body></html>';}
+      if(frame && ui.preview){var item=ui.preview.manifest.current_item || ui.preview.manifest.items[ui.selected];frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src https: data:; style-src \'unsafe-inline\';"><style>body{margin:16px;font:15px/1.65 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>'+mail.prepareRichHtml(item.body_html || '')+'</body></html>';}
       if(ui.busy)lock(true);
       host.querySelector('.pc-main').scrollTop = oldScroll;
       var heading=host.querySelector('.pc-heading h3');heading.tabIndex=-1;
