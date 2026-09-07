@@ -27042,6 +27042,8 @@
     load: function () {
       var self = this, box = document.querySelector('[data-task-list]');
       var serial = this.listSerial = (this.listSerial || 0) + 1;
+      this.detailSerial = (this.detailSerial || 0) + 1;
+      this.currentDetail = null;
       var key = JSON.stringify([this.view, this.q]);
       if (key !== this.listFilterKey) { this.page = 1; this.listFilterKey = key; }
       var page = this.page || 1;
@@ -27053,6 +27055,7 @@
         self.options = (json.data && json.data.options) || self.options || {};
         self.quoteFlow = (json.data && json.data.quote_flow) || null;
         self.renderTasks(json.data || {});
+        if (self.selectedType === 'task') self.loadSelectedDetail();
         if (['sample','sample_pending_ship','sample_follow_overdue','quote'].indexOf(self.view) < 0) CRMWorkspace.pager(box, json.data || {}, function (next) { self.page = next; return self.load(); });
         renderActions('tasks');
         if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') self.loadSamples();
@@ -27065,6 +27068,7 @@
         if (serial !== self.sampleSerial || listSerial !== self.listSerial) return;
         if (!json.success) throw new Error(json.message || '样品寄送加载失败');
         self.samples = (json.data && json.data.rows) || [];
+        if (self.selectedType === 'sample') self.loadSelectedDetail();
         if (self.view === 'sample' || self.view === 'sample_pending_ship' || self.view === 'sample_follow_overdue') {
           self.renderTasks(json.data || {});
           CRMWorkspace.pager(document.querySelector('[data-task-list]'), json.data || {}, function (next) { self.page = next; return self.load(); });
@@ -27404,6 +27408,7 @@
     },
     loadSelectedDetail: function () {
       var row = this.selected(), self = this;
+      var serial = this.detailSerial = (this.detailSerial || 0) + 1;
       var requestKey = String(this.selectedType || '') + ':' + String(this.selectedId || '');
       this.detailRequestKey = requestKey;
       this.currentDetail = null;
@@ -27411,13 +27416,12 @@
       if (!row) return;
       if (this.selectedType === 'quote_flow') return;
       if (this.selectedType === 'sample') {
-        post('sample_shipment_detail', { shipment_id: row.id }).then(function (json) {
-          if (json.success && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
+        return post('sample_shipment_detail', { shipment_id: row.id }).then(function (json) {
+          if (json.success && serial === self.detailSerial && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
         }).catch(function () {});
-        return;
       }
-      post('task_detail', { task_id: row.id }).then(function (json) {
-        if (json.success && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
+      return post('task_detail', { task_id: row.id }).then(function (json) {
+        if (json.success && serial === self.detailSerial && self.detailRequestKey === requestKey) { self.currentDetail = json.data || null; self.renderDetail(); }
       }).catch(function () {});
     },
     sourceText: function (row) {
@@ -28020,9 +28024,11 @@
     },
     openCompleteDialog: function () {
       var row = this.selected() || {};
+      var taskId = Number(row.id || 0);
+      if (!taskId || this.selectedType !== 'task') return toast('请先选择任务。');
       var html = '<div class="visit-workspace-form" data-task-complete-form>' +
         '<section class="visit-hero-panel"><div><span>完成任务</span><input value="' + esc(row.title || '任务完成') + '" readonly></div><b>Done</b></section>' +
-        '<section class="visit-work-section"><h3>完成结果</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>完成结果 *</span><select name="result"><option value="">请选择</option><option>已完成跟进</option><option>客户已回复</option><option>客户要求报价</option><option>客户要求资料</option><option>客户要求样品</option><option>客户暂无反馈</option><option>快递异常</option><option>内部处理完成</option></select></label><label class="visit-date-card"><span>下次跟进时间</span><input type="datetime-local" name="next_followup_time"></label></div><div class="visit-note-grid"><label class="wide">备注<textarea name="result_note" rows="4" placeholder="填写处理结果、客户反馈或异常原因"></textarea></label></div><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建下次跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_opportunity"><span>创建商机</span></label><label class="tag-chip"><input type="checkbox" name="create_quote"><span>创建报价</span></label><label class="tag-chip"><input type="checkbox" name="create_material"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label></div><p class="entry-muted wide">完成会写入任务日志和客户时间轴；勾选创建派工会真实生成派工待办，已创建过不会重复。</p></section>' +
+        '<section class="visit-work-section"><h3>完成结果</h3><div class="visit-schedule-grid"><label class="visit-pill-field"><span>完成结果 *</span><select name="result"><option value="">请选择</option><option>已完成跟进</option><option>客户已回复</option><option>客户要求报价</option><option>客户要求资料</option><option>客户要求样品</option><option>客户暂无反馈</option><option>快递异常</option><option>内部处理完成</option></select></label></div><div class="visit-note-grid"><label class="wide">备注<textarea name="result_note" rows="4" placeholder="填写处理结果、客户反馈或异常原因"></textarea></label></div><p class="entry-muted wide">完成会写入任务日志和客户时间轴。后续跟进或派工请使用任务详情中的独立操作。</p></section>' +
         '</div><div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" class="primary" data-task-complete-save>确认完成</button></div>';
       CustomerModule.openBusinessDialog('填写完成结果', html, '标记完成前必须记录结果。', function (dialog) {
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
@@ -28031,7 +28037,7 @@
           var button = this;
           var result = dialog.querySelector('[name="result"]')?.value || '', note = dialog.querySelector('[name="result_note"]')?.value || '';
           if (!result) return toast('请选择完成结果');
-          TaskCenterModule.runBusy(button, '正在完成…', function () { return post('task_status_update', { task_id: TaskCenterModule.selectedId, status: 'done', result: result, result_note: note }).then(function (json) {
+          TaskCenterModule.runBusy(button, '正在完成…', function () { return post('task_status_update', { task_id: taskId, status: 'done', result: result, result_note: note }).then(function (json) {
             if (!json.success) return toast(json.message || '完成失败');
             CustomerModule.closeDialog(); toast('任务已完成'); TaskCenterModule.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
           }); });

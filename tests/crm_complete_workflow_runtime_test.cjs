@@ -43,5 +43,34 @@ function harness(){
  const availabilityContext={window:{},Set};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../assets/crm/workspace.js'),'utf8'),availabilityContext);
  const available=availabilityContext.window.CRMWorkspace.actionAvailable;
  assert(!available('mail','创建商机'));assert(available('opportunities','创建报价'));assert(available('customers','新建商机'));assert(!available('promotion','通知负责人'));assert(available('promotion','填写结果'));assert(available('promotion','上传截图'));assert(available('promotion','转人工执行'));
- console.log('crm_complete_workflow_runtime_test: radar races/permission, mail reader identity, truthful metrics, visit identity passed');
+ // Reloaded task rows must not be overwritten by cached pre-completion details.
+ h=harness();const task=h.extract('TaskCenterModule',['load','loadSelectedDetail','selected']);h.context.TaskCenterModule=task;
+ h.context.CRMWorkspace={pager(){}};
+ Object.assign(task,{view:'my',q:'',selectedType:'task',selectedId:4338,rows:[{id:4338,status:'pending'}],renderTasks(){},renderDetail(){},currentDetail:{task:{id:4338,status:'pending'}}});
+ first=task.loadSelectedDetail();
+ second=task.load();assert.equal(task.currentDetail,null);
+ h.calls[0].resolve({success:true,data:{task:{id:4338,status:'pending'}}});await first;assert.equal(task.currentDetail,null);
+ h.calls[1].resolve({success:true,data:{rows:[{id:4338,status:'done'}]}});await second;
+ assert.equal(h.calls[2].action,'task_detail');assert.equal(h.calls[2].data.task_id,4338);
+ h.calls[2].resolve({success:true,data:{task:{id:4338,status:'done'},logs:[{action:'task_status_update'}]}});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(task.currentDetail.task.status,'done');assert.equal(task.currentDetail.logs.length,1);
+ first=task.loadSelectedDetail();second=task.loadSelectedDetail();
+ h.calls[4].resolve({success:true,data:{task:{id:4338,status:'done'}}});await second;
+ h.calls[3].resolve({success:true,data:{task:{id:4338,status:'pending'}}});await first;assert.equal(task.currentDetail.task.status,'done');
+ first=task.loadSelectedDetail();task.selectedId=99;task.rows=[{id:99,status:'pending'}];second=task.loadSelectedDetail();
+ h.calls[6].resolve({success:true,data:{task:{id:99,status:'pending'}}});await second;
+ h.calls[5].resolve({success:true,data:{task:{id:4338,status:'done'}}});await first;assert.equal(task.currentDetail.task.id,99);
+ task.selectedType='sample';task.samples=[{id:99}];first=task.loadSelectedDetail();second=task.loadSelectedDetail();
+ h.calls[8].resolve({success:true,data:{shipment:{id:99,status:'signed'}}});await second;
+ h.calls[7].resolve({success:true,data:{shipment:{id:99,status:'shipped'}}});await first;assert.equal(task.currentDetail.shipment.status,'signed');
+ // A completion form submits its captured task, never a later selection.
+ h=harness();const complete=h.extract('TaskCenterModule',['openCompleteDialog']);h.context.TaskCenterModule=complete;
+ let submit,formHtml='',submitted;
+ const button={addEventListener(event,fn){submit=fn;}};
+ h.context.CustomerModule={openBusinessDialog(title,html,help,bind){formHtml=html;bind({querySelector(q){return q==='[data-task-complete-save]'?button:q==='[name="result"]'?{value:'内部处理完成'}:q==='[name="result_note"]'?{value:'验收'}:null;}});},closeDialog(){}};
+ complete.selectedType='task';complete.selectedId=4338;complete.selected=()=>({id:4338,title:'验收'});complete.runBusy=(button,text,work)=>{submitted=work();};complete.load=()=>{};
+ complete.openCompleteDialog();assert(!formHtml.includes('name="create_dispatch"'));assert(!formHtml.includes('name="create_followup"'));assert(!formHtml.includes('name="next_followup_time"'));
+ complete.selectedId=99;submit.call(button);assert.equal(h.calls[0].data.task_id,4338);
+ h.calls[0].resolve({success:true});await submitted;
+ console.log('crm_complete_workflow_runtime_test: radar/mail/visit identity, truthful metrics, task refresh and completion identity passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
