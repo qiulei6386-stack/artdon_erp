@@ -1506,10 +1506,10 @@ function qo_commission_line_save(PDO $pdo,array $d): array {
 }
 function qo_order_detail(PDO $pdo,$id){
   qo_ensure_schema($pdo); if(!qo_row($pdo,'SELECT id FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id])) qo_fail('订单不存在');
-  qo_update_item_shipped($pdo,(int)$id); $pay=qo_recalc_payment($pdo,(int)$id); $order=qo_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$id]);
+  qo_update_item_shipped($pdo,(int)$id); $pay=qo_recalc_payment($pdo,(int)$id); $order=qo_detail_order($pdo,(int)$id);
   $order['order_no']=qo_order_no_at($order['order_no']??'',$order['quote_no']??'');
   $shipments=qo_rows($pdo,'SELECT DISTINCT s.* FROM quote_shipments s LEFT JOIN quote_shipment_orders so ON so.shipment_id=s.id WHERE s.order_id=? OR so.order_id=? ORDER BY s.id DESC',[(int)$id,(int)$id]);
-  qo_commission_schema($pdo);return ['order'=>$order,'items'=>qo_rows($pdo,'SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[(int)$id]),'shipments'=>$shipments,'payments'=>qo_rows($pdo,'SELECT * FROM quote_order_payments WHERE order_id=? ORDER BY payment_date DESC,id DESC',[(int)$id]),'payment_summary'=>$pay,'commission_snapshots'=>qo_rows($pdo,"SELECT * FROM quote_commission_snapshots WHERE order_id=? AND COALESCE(settle_status,'')<>'cancelled' ORDER BY id",[(int)$id]),'commission_lines'=>qo_rows($pdo,'SELECT * FROM quote_commission_lines WHERE order_id=? ORDER BY item_index,id',[(int)$id])];
+  qo_commission_schema($pdo);return ['order'=>$order,'items'=>qo_detail_items($pdo,(int)$id),'shipments'=>$shipments,'payments'=>qo_rows($pdo,'SELECT * FROM quote_order_payments WHERE order_id=? ORDER BY payment_date DESC,id DESC',[(int)$id]),'payment_summary'=>$pay,'commission_snapshots'=>qo_rows($pdo,"SELECT * FROM quote_commission_snapshots WHERE order_id=? AND COALESCE(settle_status,'')<>'cancelled' ORDER BY id",[(int)$id]),'commission_lines'=>qo_rows($pdo,'SELECT * FROM quote_commission_lines WHERE order_id=? ORDER BY item_index,id',[(int)$id])];
 }
 
 try{

@@ -1,4 +1,34 @@
 <?php
+function qo_detail_order(PDO $pdo, int $id): array {
+  $buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+  $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+  $stmt=null;
+  try {
+    $stmt=$pdo->prepare('SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1');
+    $stmt->execute([$id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+  } finally {
+    if($stmt) $stmt->closeCursor();
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);
+  }
+}
+
+/** Avoid buffering the entire image-heavy result a second time inside PDO. */
+function qo_detail_items(PDO $pdo, int $id): array {
+  $buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+  $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+  $stmt=null;
+  try {
+    $stmt=$pdo->prepare('SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id');
+    $stmt->execute([$id]);$items=[];
+    while($row=$stmt->fetch(PDO::FETCH_ASSOC)) $items[]=$row;
+    return $items;
+  } finally {
+    if($stmt) $stmt->closeCursor();
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);
+  }
+}
+
 /** Emit large detail responses without allocating a second full JSON document. */
 function qo_write_json($value, ?callable $emit=null): void {
   if($emit===null) $emit=static function($part){echo $part;};
