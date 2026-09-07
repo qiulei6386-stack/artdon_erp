@@ -15,7 +15,8 @@ assert(start>0 && end>start);
   const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN || undefined});
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/*',route=>route.abort());
+  await page.route('**/*',route=>route.request().url()==='https://crm-fixture.invalid/' ? route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}) : route.abort());
+  await page.goto('https://crm-fixture.invalid/');
   await page.setContent('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="is-promo-task-editor-open"><section class="crm-module active" data-crm-module="promotion"><div data-promo-wizard-host></div></section></body></html>');
   for(const name of ['crm.css','workspace.css','promotion-composer.css'])await page.addStyleTag({content:fs.readFileSync(path.join(root,'assets/crm',name),'utf8')});
   await page.addScriptTag({content:`
@@ -24,7 +25,7 @@ assert(start>0 && end>start);
     var esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     var cnChannel=x=>x,cnStatus=x=>x,renderActions=()=>{},toast=()=>{};
     var debounce=f=>f;
-    var MailModule={prepareRichHtml:x=>String(x||''),cleanRichHtml:e=>e.innerHTML,fileSizeText:n=>n+' bytes',bindRichEditor:()=>{},bindRichToolbar:()=>{},execRichCommand:()=>{},fileKey:f=>f.name};
+    ${source.slice(source.indexOf('  var MailModule = {'),start)}
     ${source.slice(start,end)}
     window.fixturePromotion=PromotionModule;
   `});
@@ -51,6 +52,55 @@ assert(start>0 && end>start);
       if(step===2 || step===4){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-step${step+1}.png`)});}
     }
   }
+  // Real editor/selection handlers, not toolbar mocks: click, keyboard, save/reopen.
+  await page.evaluate(()=>{
+    window.editorDraft=structuredClone(fixturePromotion.wizardDraft);
+    fixturePromotion.wizardDraft.mail_body_html='<p>Hello HERE!</p>';
+    api.state.step=2;api.state.dirty=false;api.state.preview=makePreview();fixturePromotion.renderWizard();
+  });
+  const editor=page.locator('[data-promo-wizard-editor]');
+  const subject=page.locator('[data-wizard-field="mail_subject"]');
+  const variable=key=>page.locator(`[data-promo-rich-var="{${key}}"]`);
+  await editor.click();
+  await editor.evaluate(el=>{
+    const range=document.createRange();range.setStart(el.firstChild.firstChild,6);range.setEnd(el.firstChild.firstChild,10);
+    const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+  });
+  await variable('contact_name').click();
+  assert.equal(await editor.innerText(),'Hello {contact_name}!','Click must replace the selected text at the real body caret');
+  assert(await page.evaluate(()=>api.state.dirty && api.state.preview===null),'Variable edits invalidate the previous preview');
+  // Keyboard activation after focus leaves the editor must use the remembered caret.
+  await editor.evaluate(el=>{
+    const range=document.createRange();range.setStart(el.firstChild.firstChild,6);range.collapse(true);
+    const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+    el.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true}));
+  });
+  await variable('company_name').focus();await page.keyboard.press('Enter');
+  assert.equal(await editor.innerText(),'Hello {company_name}{contact_name}!');
+  await variable('mail_user_name').click();
+  assert.equal(await editor.innerText(),'Hello {company_name}{mail_user_name}{contact_name}!');
+  const body=await editor.innerHTML();
+  await subject.fill('For HERE now');
+  await subject.evaluate(el=>el.setSelectionRange(4,8));
+  await variable('contact_name').click();
+  assert.equal(await subject.inputValue(),'For {contact_name} now');
+  await variable('company_name').focus();await page.keyboard.press('Space');
+  assert.equal(await subject.inputValue(),'For {contact_name}{company_name} now');
+  assert.equal(await editor.innerHTML(),body,'Subject variables must not change the body');
+  assert.equal(await page.locator('[data-promo-variable-target]').innerText(),'插入到主题');
+  const draftRoundTrip=await page.evaluate(()=>{
+    const p=fixturePromotion,d=p.collectWizard(),payload=p.wizardTaskPayload(d,{customers:[],contacts:[],chat_groups:[],skipped:[]},'draft');
+    p.wizardDraft=p.taskToWizardDraft({...payload,id:75,send_rule_json:payload.send_rule,attachment_config_json:payload.attachment_config});
+    p.renderWizard();return {subject:p.wizardDraft.mail_subject,body:p.wizardDraft.mail_body_html};
+  });
+  assert.equal(draftRoundTrip.subject,'For {contact_name}{company_name} now');
+  assert.equal(draftRoundTrip.body,body);
+  // Formatting buttons still execute the real rich command and persist the change.
+  await editor.click();await page.keyboard.press('Meta+a');
+  await page.locator('[data-promo-rich-cmd="bold"]').click();
+  assert(await editor.locator('b,strong').count()>0,'Bold button must operate on the real editor');
+  await page.evaluate(()=>{fixturePromotion.wizardDraft=editorDraft;api.state.preview=null;});
   // Direct customer picking stays within the draft, not the unrelated pool selection.
   await page.evaluate(()=>{
     window.originalRefresh=fixturePromotion.refreshWizardAudience;

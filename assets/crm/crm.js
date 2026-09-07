@@ -12489,12 +12489,15 @@
     },
     restoreRichSelection: function (editor) {
       if (!editor) return;
+      // Focusing fires bindRichEditor's focus listener; preserve the saved range first.
+      var saved = this.richSelection && this.richSelection.editor === editor ? this.richSelection.range.cloneRange() : null;
       editor.focus();
       var selection = window.getSelection ? window.getSelection() : null;
       if (!selection) return;
-      if (this.richSelection && this.richSelection.editor === editor && editor.contains(this.richSelection.range.commonAncestorContainer)) {
+      if (saved && editor.contains(saved.commonAncestorContainer)) {
         selection.removeAllRanges();
-        selection.addRange(this.richSelection.range);
+        selection.addRange(saved);
+        this.richSelection = { editor: editor, range: saved.cloneRange() };
         return;
       }
       var range = document.createRange();
@@ -19357,7 +19360,8 @@
     bindWizardContentEditor: function () {
       var editor = document.querySelector('[data-promo-wizard-editor]');
       if (!editor) return;
-      var toolbar = document.querySelector('[data-promo-rich-toolbar]');
+      var scope = editor.closest('.pc-composer, [data-promo-wizard]') || editor.parentElement;
+      var toolbar = scope.querySelector('[data-promo-rich-toolbar]');
       var self = this;
       MailModule.bindRichEditor(editor);
       MailModule.bindRichToolbar(toolbar, editor);
@@ -19390,9 +19394,30 @@
 	          self.collectWizard();
 	        });
 	      });
-      document.querySelectorAll('[data-promo-wizard] [data-promo-rich-var]').forEach(function (button) {
+      var subject = scope.matches('.pc-composer') ? scope.querySelector('[data-wizard-field="mail_subject"]') : null;
+      var variableTarget = editor;
+      var targetLabel = scope.querySelector('[data-promo-variable-target]');
+      [editor, subject].filter(Boolean).forEach(function (target) {
+        target.addEventListener('focus', function () {
+          variableTarget = target;
+          if (targetLabel) targetLabel.textContent = target === subject ? '插入到主题' : '插入到正文';
+        });
+      });
+      scope.querySelectorAll('[data-promo-rich-var]').forEach(function (button) {
+        button.addEventListener('mousedown', function (event) {
+          event.preventDefault();
+          if (variableTarget === editor) MailModule.rememberRichSelection(editor);
+        });
         button.addEventListener('click', function () {
-          self.insertWizardVariable(editor, button.getAttribute('data-promo-rich-var') || '');
+          var variable = button.getAttribute('data-promo-rich-var') || '';
+          if (subject && variableTarget === subject) {
+            var start = subject.selectionStart, end = subject.selectionEnd;
+            subject.focus();
+            subject.setRangeText(variable, start, end, 'end');
+            subject.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            self.insertWizardVariable(editor, variable);
+          }
           self.collectWizard();
         });
       });

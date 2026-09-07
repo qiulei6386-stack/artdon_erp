@@ -31,6 +31,8 @@ $account=['sender_name'=>'Sender','owner_name'=>'Owner','email_address'=>'sender
 $html=crm_delivery_render('{contact_name} / {company_name} / {send_email}',$row,$account,true);
 delivery_assert(strpos($html,'Alice &amp; Bob')!==false && strpos($html,'Example &lt;Company&gt;')!==false,'HTML-safe customer variables');
 delivery_assert(crm_delivery_render('{company_name}',$row,$account,false)==='Example <Company>','Company variable must not become contact name');
+delivery_assert(crm_delivery_render('{contact_name}',$row,$account,false)==='Alice & Bob','Subject uses the real contact without HTML escaping');
+delivery_throws(fn()=>crm_delivery_render('{contact_name}',['contact_name'=>'','customer_name'=>'Only Company'],$account,true),'Missing contact must not silently become company name');
 delivery_throws(fn()=>crm_delivery_render('{missing}',$row,$account,true),'Unknown variable must block');
 delivery_throws(fn()=>crm_delivery_render('{mail_user_position}',$row,array_merge($account,['user_position'=>'']),true),'Missing signature value must block');
 $m=['items'=>[['receiver'=>'a@example.invalid','body'=>'one']],'attachments'=>[['sha256'=>'a']]];
