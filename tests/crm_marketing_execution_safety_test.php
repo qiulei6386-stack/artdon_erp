@@ -160,7 +160,7 @@ function crm_marketing_queue_build_locked(array $input, array $task): array
 
 $source = file_get_contents(dirname(__DIR__) . '/crm_marketing.php');
 safety_assert(is_string($source), 'Source unavailable');
-$names = ['crm_marketing_queue_build','crm_marketing_with_task_lock','crm_marketing_assert_task_executable','crm_marketing_change_task_status',
+$names = ['crm_marketing_json','crm_marketing_queue_build','crm_marketing_with_task_lock','crm_marketing_assert_task_executable','crm_marketing_change_task_status',
     'crm_marketing_saved_task_status','crm_marketing_task_update','crm_marketing_email_suppression_sql','crm_marketing_queue_skip_suppressed',
     'crm_marketing_assert_targets_rebuildable',
     'crm_marketing_queue_claim','crm_marketing_queue_update_task_status','crm_marketing_queue_run_due',

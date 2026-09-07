@@ -81,9 +81,12 @@ suffix="$(openssl rand -hex 6)"
 sample_schema="crm_phase1_sample_$suffix"
 marketing_schema="crm_phase1_marketing_$suffix"
 mail_schema="crm_phase1_mail_$suffix"
+delivery_schema="crm_phase1_marketing_delivery$suffix"
 "$mysql_bin" --no-defaults --protocol=SOCKET --socket="$socket_path" --user=root -e "CREATE DATABASE $sample_schema CHARACTER SET utf8mb4; CREATE DATABASE $marketing_schema CHARACTER SET utf8mb4; CREATE DATABASE $mail_schema CHARACTER SET utf8mb4;"
 export CRM_PHASE1_MYSQL_TEST=1 CRM_PHASE1_MYSQL_SOCKET="$socket_path" CRM_PHASE1_MYSQL_USER=root CRM_PHASE1_MYSQL_PASSWORD=''
 export CRM_PHASE1_MYSQL_PHP_EXTENSIONS_JSON='["mysqlnd","pdo","pdo_mysql"]'
+"$mysql_bin" --no-defaults --protocol=SOCKET --socket="$socket_path" --user=root -e "CREATE DATABASE $delivery_schema CHARACTER SET utf8mb4;"
+CRM_PHASE1_MYSQL_SCHEMA="$delivery_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_promotion_delivery_mysql.php"
 CRM_PHASE1_MYSQL_SCHEMA="$sample_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_sample_mysql_integration.php"
 CRM_PHASE1_MYSQL_SCHEMA="$marketing_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_marketing_mysql_integration.php"
 CRM_PHASE1_MYSQL_SCHEMA="$mail_schema" timeout 60 "$php_bin" "${php_args[@]}" "$repo_root/tests/crm_mail_sent_mysql_integration.php"

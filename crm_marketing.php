@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/crm_mail.php';
+require_once __DIR__ . '/crm_marketing_delivery.php';
 
 function crm_marketing_column_exists(string $table, string $column): bool
 {
@@ -2713,6 +2714,11 @@ function crm_marketing_task_create(array $input): array
     $chatGroupIds = crm_mail_input_ids($input['chat_group_ids'] ?? '');
     $audienceConfig = crm_marketing_decode_json_input($input['audience_config'] ?? []);
     $sendRule = crm_marketing_decode_json_input($input['send_rule'] ?? []);
+    $deliveryV2 = (int)($sendRule['delivery_version'] ?? 0) === 2;
+    if ($deliveryV2) {
+        crm_delivery_ensure();
+        if (!$isDraft) throw new RuntimeException('新版推广须先保存草稿，在最终预览中确认执行。');
+    }
     $scheduleConfig = crm_marketing_decode_json_input($input['schedule_config'] ?? []);
     $failurePolicy = crm_marketing_decode_json_input($input['failure_policy'] ?? []);
     $attachmentConfig = crm_marketing_decode_json_input($input['attachment_config'] ?? []);
@@ -2733,6 +2739,10 @@ function crm_marketing_task_create(array $input): array
     $customerIds = $audiencePolicy['customer_ids'] ?? [];
     $audienceConfig['resolved_customer_count'] = count($customerIds);
     $audienceConfig['blocked_customer_count'] = count($audiencePolicy['blocked_customer_ids'] ?? []);
+    if ($deliveryV2) {
+        $blockedIds = $audiencePolicy['blocked_customer_ids'] ?? [];
+        $audienceConfig['excluded_customers'] = array_values(array_map(static fn($r)=>['id'=>(int)$r['id'],'name'=>(string)$r['customer_name']],array_filter($resolvedAudience['rows'] ?? [],static fn($r)=>in_array((int)$r['id'],$blockedIds,true))));
+    }
     if (!$isDraft && !$customerIds && !$contactIds && !$chatGroupIds) throw new RuntimeException('请至少选择客户、联系人或客户群。');
     $scheduledAt = trim((string)($input['scheduled_at'] ?? ''));
     if ($scheduledAt === '' && !empty($scheduleConfig['scheduled_at'])) $scheduledAt = (string)$scheduleConfig['scheduled_at'];
@@ -2765,11 +2775,23 @@ function crm_marketing_task_create(array $input): array
     $ownsTransaction = !$pdo->inTransaction();
     if ($ownsTransaction) $pdo->beginTransaction();
     try {
+    $requestId = $deliveryV2 ? trim((string)($input['client_request_id'] ?? '')) : '';
+    if ($deliveryV2 && !preg_match('/^[a-zA-Z0-9_-]{16,80}$/', $requestId)) throw new RuntimeException('创建标识无效，请重新打开创建窗口。');
+    if ($deliveryV2) {
+        $userId = (int)current_user()['id'];
+        db()->prepare('INSERT IGNORE INTO crm_marketing_delivery_requests (request_id,user_id) VALUES (?,?)')->execute([$requestId,$userId]);
+        $request = db()->prepare('SELECT task_id FROM crm_marketing_delivery_requests WHERE request_id=? AND user_id=? FOR UPDATE');
+        $request->execute([$requestId,$userId]);
+        $recordedId = (int)$request->fetchColumn();
+        if ($recordedId && $taskId && $recordedId !== $taskId) throw new RuntimeException('草稿标识不匹配，请重新打开。');
+        if ($recordedId) $taskId = $recordedId;
+    }
     if ($taskId > 0) {
         $stmt = $pdo->prepare('SELECT * FROM crm_marketing_tasks WHERE id=? LIMIT 1 FOR UPDATE');
         $stmt->execute([$taskId]);
         $before = $stmt->fetch() ?: null;
         if (!$before) throw new RuntimeException('推广项目已不存在，请刷新后重试。');
+        if ($deliveryV2) crm_delivery_assert_owner($before);
         $status = crm_marketing_saved_task_status($before, $status);
         $taskPayload[12] = $status;
         crm_marketing_assert_targets_rebuildable($taskId);
@@ -2791,11 +2813,14 @@ function crm_marketing_task_create(array $input): array
             ->execute(array_merge($taskPayload, [current_user()['id'] ?? null, current_user()['id'] ?? null]));
         $taskId = (int)db()->lastInsertId();
     }
+    if ($deliveryV2) db()->prepare('UPDATE crm_marketing_delivery_requests SET task_id=? WHERE request_id=? AND user_id=?')->execute([$taskId,$requestId,(int)current_user()['id']]);
     [$manualPlannedAt, $manualDueAt] = crm_marketing_manual_schedule($scheduledAt ?: null);
     $insert = db()->prepare('INSERT INTO crm_marketing_task_targets (task_id, customer_id, contact_id, chat_group_id, channel_key, contact_method, manual_group_name, executor_user_id, planned_at, due_at, target_status, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
-    $insertTarget = function (int $customerId, ?int $contactId, ?int $chatGroupId, string $targetChannel, array $customer = [], array $contact = [], array $group = []) use ($insert, $taskId, $manualPlannedAt, $manualDueAt): void {
+    $insertTarget = function (int $customerId, ?int $contactId, ?int $chatGroupId, string $targetChannel, array $customer = [], array $contact = [], array $group = []) use ($insert, $taskId, $manualPlannedAt, $manualDueAt, $deliveryV2, $channel): void {
+        if ($deliveryV2) $targetChannel = crm_delivery_channel($channel, crm_delivery_channels($customerId,(int)$contactId));
         $targetChannel = crm_marketing_normalize_channel($targetChannel);
         $executorId = (int)($customer['owner_user_id'] ?? 0) ?: (int)(current_user()['id'] ?? 0) ?: null;
+        if ($deliveryV2) $executorId = (int)($customer['owner_user_id'] ?? 0) ?: null;
         $contactMethod = '';
         $groupName = '';
         $targetStatus = 'pending';
@@ -2820,7 +2845,7 @@ function crm_marketing_task_create(array $input): array
     $groupOnlyChannel = in_array($channel, ['wechat_group','whatsapp_group'], true);
     // 客户偏好模式不能直接混用前端提交的联系人/群目标；
     // 必须按每个客户的首选渠道在下面的 customer fallback 中重新展开。
-    $channelAllowsContactTargets = !$groupOnlyChannel && !$preferenceMode;
+    $channelAllowsContactTargets = !$groupOnlyChannel && (!$preferenceMode || $deliveryV2);
     $channelAllowsChatGroupTargets = $groupOnlyChannel;
     if (!$isDraft || $customerIds || $contactIds || $chatGroupIds) {
         foreach ($contactIds as $contactId) {
@@ -2867,6 +2892,7 @@ function crm_marketing_task_create(array $input): array
             }
         }
         foreach ($customerIds as $customerId) {
+            if ($deliveryV2 && ($audienceConfig['contact_filter'] ?? '') === 'selected') continue;
             $stmt = db()->prepare('SELECT id, owner_user_id, email, phone, whatsapp, address FROM crm_customers WHERE id = ? AND deleted_at IS NULL');
             $stmt->execute([$customerId]);
             $customer = $stmt->fetch();
@@ -2893,13 +2919,11 @@ function crm_marketing_task_create(array $input): array
                         continue;
                     }
                 }
-                if (crm_marketing_is_email_channel($targetChannel)) {
+                if (crm_marketing_is_email_channel($targetChannel) || ($deliveryV2 && !$groupOnlyChannel)) {
+                    $contactEligibilitySql = $deliveryV2 ? '' : " AND COALESCE(is_left,0)=0 AND COALESCE(do_not_contact,0)=0 AND COALESCE(unsubscribe_email,0)=0 AND COALESCE(email,'')<>''";
                     $contactStmt = db()->prepare("SELECT * FROM crm_contacts
                         WHERE customer_id = ? AND deleted_at IS NULL
-                          AND COALESCE(is_left,0) = 0
-                          AND COALESCE(do_not_contact,0) = 0
-                          AND COALESCE(unsubscribe_email,0) = 0
-                          AND COALESCE(email,'') <> ''
+                          {$contactEligibilitySql}
                         ORDER BY is_primary DESC, id DESC");
                     $contactStmt->execute([$customerId]);
                     $matchedContacts = 0;
@@ -2907,6 +2931,7 @@ function crm_marketing_task_create(array $input): array
                     foreach ($contactStmt->fetchAll() as $contact) {
                         $contactId = (int)$contact['id'];
                         $matchedContacts++;
+                        if ($deliveryV2 && ($audienceConfig['contact_filter'] ?? '') === 'primary' && empty($contact['is_primary'])) continue;
                         if (isset($insertedContactIds[$contactId])) continue;
                         $insertTarget($customerId, $contactId, null, $targetChannel, $customer, $contact, []);
                         $insertedContactIds[$contactId] = true;
@@ -3469,6 +3494,7 @@ function crm_marketing_assert_task_executable(array $task): void
 /** Caller holds the parent task lock and has checked its own action permission. */
 function crm_marketing_queue_build_locked(array $input, array $task): array
 {
+    if (function_exists('crm_delivery_version') && crm_delivery_version($task)) throw new RuntimeException('请打开新版推广草稿，通过最终发送预览确认；旧入口不能直接启动。');
     $taskId = (int)$task['id'];
     $taskChannel = crm_marketing_normalize_channel((string)($task['channel_key'] ?? ''));
     $emailCapableTaskChannels = ['email', 'preference', 'customer_preference', 'auto_preference'];
@@ -3874,6 +3900,8 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             continue;
         }
         if (!crm_marketing_queue_claim((int)$row['id'])) continue;
+        $deliveryMeta = crm_marketing_json($row['attachment_json'] ?? '');
+        $deliveryLease = false;
         try {
             $accountStmt = db()->prepare("SELECT a.*, COALESCE(u.real_name, u.username, '') owner_name, u.username, u.phone user_phone, u.position user_position
                 FROM crm_user_mail_accounts a
@@ -3883,6 +3911,13 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             $accountStmt->execute([(string)$row['sender_email'], (string)$row['sender_email'], (int)$row['sender_user_id']]);
             $account = $accountStmt->fetch();
             if (!$account) throw new RuntimeException('发件邮箱不可用');
+            if ((int)($deliveryMeta['delivery_version'] ?? 0) === 2) {
+                if ((int)$account['id'] !== (int)$deliveryMeta['account_id']) throw new RuntimeException('发件账号与已确认预览不一致，已停止本次发送');
+                $account['sender_name'] = (string)$deliveryMeta['sender_name'];
+                crm_delivery_verify_recipient($row,$deliveryMeta);
+                if (!crm_delivery_acquire_send($row,$deliveryMeta)) { $skipped++; continue; }
+                $deliveryLease = true;
+            }
             $account['mail_secret'] = crm_mail_decrypt($account['email_password_encrypted'] ?? '');
             unset($account['email_password_encrypted']);
             if ((string)$account['mail_secret'] === '') throw new RuntimeException('发件邮箱未配置 SMTP 密码');
@@ -3897,7 +3932,7 @@ function crm_marketing_queue_run_due(int $limit = 30): array
                     'subject' => (string)$row['subject'],
                     'body_html' => (string)$prepared['body_html'],
                     'customer_id' => (int)$row['customer_id'],
-                ], $prepared['attachments'], $jobId, (string)$prepared['body_original']);
+                ], array_merge($prepared['attachments'], (int)($deliveryMeta['delivery_version'] ?? 0) === 2 ? crm_delivery_assets($deliveryMeta['asset_ids'] ?? [],(int)$deliveryMeta['owner_id'],true) : []), $jobId, (string)$prepared['body_original']);
             } finally {
                 crm_mail_cleanup_generated_attachments($prepared['attachments']);
             }
@@ -3913,12 +3948,15 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             $sent++;
         } catch (Throwable $e) {
             $next = ((int)$row['send_attempts'] + 1) < (int)$row['max_attempts'] ? 'waiting_retry' : 'failed';
-            $retryAt = $next === 'waiting_retry' ? ", planned_server_time=DATE_ADD(NOW(), INTERVAL 30 MINUTE)" : '';
+            $retryMinutes = max(5,min(1440,(int)($deliveryMeta['retry_interval_minutes'] ?? 30)));
+            $retryAt = $next === 'waiting_retry' ? ", planned_server_time=DATE_ADD(NOW(), INTERVAL {$retryMinutes} MINUTE)" : '';
             db()->prepare("UPDATE crm_marketing_send_queue SET send_status='{$next}', last_error=?, updated_at=NOW() {$retryAt} WHERE id=?")->execute([$e->getMessage(), (int)$row['id']]);
             if ($next === 'failed') crm_marketing_update_target_from_queue($row, 'failed', $e->getMessage());
             db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, "email", "queue_send", "failed", ?, ?, ?, NOW(), NOW())')
                 ->execute([(int)$row['task_id'], (int)$row['customer_id'], (int)($row['contact_id'] ?? 0) ?: null, $e->getMessage(), (int)$row['sender_user_id'], json_encode(['queue_id' => (int)$row['id'], 'sender_email' => $row['sender_email'], 'receiver_email' => $row['receiver_email']], JSON_UNESCAPED_UNICODE)]);
             $failed++;
+        } finally {
+            if ($deliveryLease) crm_delivery_release_send($deliveryMeta);
         }
         crm_marketing_queue_update_task_status((int)$row['task_id']);
     }

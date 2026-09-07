@@ -1025,6 +1025,12 @@ try {
         require_csrf();
         api_response(true, '推广分组客户已更新', crm_marketing_group_customer_update($_POST));
     }
+    if (in_array($action, ['marketing_delivery_upload','marketing_delivery_preview','marketing_delivery_confirm','marketing_delivery_test'], true)) {
+        require_csrf();
+        $handler = ['marketing_delivery_upload'=>'crm_delivery_upload','marketing_delivery_preview'=>'crm_delivery_preview',
+            'marketing_delivery_confirm'=>'crm_delivery_confirm','marketing_delivery_test'=>'crm_delivery_test'][$action];
+        api_response(true, '', $handler($action === 'marketing_delivery_upload' ? $_FILES : $_POST));
+    }
     if ($action === 'marketing_task_create') {
         require_csrf();
         api_response(true, '推广任务已创建', crm_marketing_task_create($_POST));

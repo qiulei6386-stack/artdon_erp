@@ -21346,6 +21346,8 @@
     }
   };
 
+  if (window.CrmPromotionComposer) window.CrmPromotionComposer.install(PromotionModule, { post: post, esc: esc, toast: toast, mail: MailModule, state: state });
+
   window.CRM_OPEN_PROMOTION_WIZARD = function () {
     PromotionModule.switchView('campaigns');
     PromotionModule.openWizard();

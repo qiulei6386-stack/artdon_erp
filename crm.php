@@ -305,6 +305,7 @@ $prefStyle = sprintf(
   <link rel="stylesheet" href="assets/crm/themes.css?v=<?= filemtime(__DIR__ . '/assets/crm/themes.css') ?>">
   <link rel="stylesheet" href="assets/crm/crm.css?v=<?= filemtime(__DIR__ . '/assets/crm/crm.css') ?>">
   <link rel="stylesheet" href="assets/crm/workspace.css?v=<?= filemtime(__DIR__ . '/assets/crm/workspace.css') ?>">
+  <link rel="stylesheet" href="assets/crm/promotion-composer.css?v=<?= filemtime(__DIR__ . '/assets/crm/promotion-composer.css') ?>">
 </head>
 <body class="crm-app" style="<?= h($prefStyle) ?>">
   <header class="crm-status-console">
@@ -1702,6 +1703,7 @@ $prefStyle = sprintf(
   <script src="assets/crm/modules.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/modules.js') ?>"></script>
   <script src="assets/crm/preferences.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/preferences.js') ?>"></script>
   <script src="assets/crm/workspace.js?v=<?= filemtime(__DIR__ . '/assets/crm/workspace.js') ?>"></script>
+  <script src="assets/crm/promotion-composer.js?v=<?= filemtime(__DIR__ . '/assets/crm/promotion-composer.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>
 </body>
 </html>
