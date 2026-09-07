@@ -26110,6 +26110,11 @@
     node: null,
     timer: null,
     target: null,
+    observer: null,
+    targetVisible: function (target) {
+      return !!(target && target.isConnected && target.getClientRects().length &&
+        window.getComputedStyle(target).visibility === 'visible');
+    },
     ensure: function () {
       if (this.node) return this.node;
       this.node = document.createElement('div');
@@ -26119,33 +26124,60 @@
     },
     show: function (target) {
       var text = target.getAttribute('data-tooltip');
-      if (!text) return;
+      if (!text || !this.targetVisible(target) || this.target === target) return;
+      this.hide();
       this.target = target;
-      window.clearTimeout(this.timer);
+      // Only watch while a hint is pending/visible; no permanent polling.
+      this.observer = new MutationObserver(function () {
+        if (!ActionTooltipEngine.targetVisible(ActionTooltipEngine.target)) ActionTooltipEngine.hide();
+      });
+      this.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
       this.timer = window.setTimeout(function () {
+        if (ActionTooltipEngine.target !== target || !ActionTooltipEngine.targetVisible(target)) {
+          ActionTooltipEngine.hide();
+          return;
+        }
         var node = ActionTooltipEngine.ensure();
         var rect = target.getBoundingClientRect();
         node.textContent = text;
-        node.style.left = Math.max(8, rect.left - 8) + 'px';
-        node.style.top = Math.max(8, rect.bottom + 8) + 'px';
+        node.style.left = Math.max(8, Math.min(rect.left - 8, window.innerWidth - node.offsetWidth - 8)) + 'px';
+        node.style.top = Math.max(8, rect.bottom + node.offsetHeight + 16 <= window.innerHeight ? rect.bottom + 8 : rect.top - node.offsetHeight - 8) + 'px';
         node.classList.add('is-visible');
       }, 300);
     },
     hide: function () {
       window.clearTimeout(this.timer);
+      this.timer = null;
+      if (this.observer) this.observer.disconnect();
+      this.observer = null;
       this.target = null;
       if (this.node) this.node.classList.remove('is-visible');
     }
   };
 
   document.addEventListener('pointerenter', function (event) {
+    if (event.pointerType === 'touch') return;
     var target = event.target.closest && event.target.closest('[data-tooltip]');
     if (!target) return;
     ActionTooltipEngine.show(target);
   }, true);
   document.addEventListener('pointerleave', function (event) {
-    if (event.target.closest && event.target.closest('[data-tooltip]')) ActionTooltipEngine.hide();
+    var target = event.target.closest && event.target.closest('[data-tooltip]');
+    if (target && !(event.relatedTarget && target.contains(event.relatedTarget))) ActionTooltipEngine.hide();
   }, true);
+  // Dismiss before actions replace/hide their trigger, including keyboard clicks.
+  ['pointerdown', 'click', 'focusin', 'scroll'].forEach(function (name) {
+    document.addEventListener(name, function () { ActionTooltipEngine.hide(); }, true);
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' || event.key === 'Tab') ActionTooltipEngine.hide();
+  }, true);
+  ['blur', 'resize', 'hashchange', 'pagehide'].forEach(function (name) {
+    window.addEventListener(name, function () { ActionTooltipEngine.hide(); });
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) ActionTooltipEngine.hide();
+  });
 
   function setActionbarCollapsed(collapsed, persist) {
     if (!actionbar) return;

@@ -195,6 +195,56 @@ assert(start>0 && end>start);
     p.closeWizard(true);
     if(!rendered || p.selectedTaskId!==123)throw new Error('Closing a saved draft must redraw and select the saved row');
   });
+  // The shared action hint must not survive entering the promotion workspace.
+  const hints=await browser.newPage({viewport:{width:390,height:720}});
+  await hints.bringToFront();
+  hints.on('pageerror',e=>errors.push(e.message));
+  await hints.route('**/*',route=>route.abort());
+  await hints.setContent('<style>.off{display:none}</style><div id="actions" style="position:fixed;right:8px;bottom:8px"><button data-tooltip="创建一个新的推广项目草稿并进入创建向导"><span>新建推广项目</span></button></div><input aria-label="表单输入">');
+  await hints.addStyleTag({content:fs.readFileSync(path.join(root,'assets/crm/crm.css'),'utf8')});
+  const hintStart=source.indexOf('  var ActionTooltipEngine = {');
+  const hintEnd=source.indexOf('  function setActionbarCollapsed(',hintStart);
+  assert(hintStart>0 && hintEnd>hintStart);
+  await hints.addScriptTag({content:source.slice(hintStart,hintEnd)});
+  const trigger=hints.locator('[data-tooltip]');
+  const hintCount=()=>hints.locator('.action_tooltip.is-visible').count();
+  const hoverHint=async()=>{
+    await hints.mouse.move(1,1);await trigger.hover();await hints.waitForTimeout(360);
+    assert.equal(await hintCount(),1,'Hover still explains the button');
+  };
+  await hoverHint();
+  const hintBox=await hints.locator('.action_tooltip').boundingBox();
+  assert(hintBox.x>=0 && hintBox.x+hintBox.width<=390 && hintBox.y+hintBox.height<=720,'Hint stays in small-screen bounds');
+  await hints.evaluate(()=>document.querySelector('button').addEventListener('click',()=>document.querySelector('#actions').hidden=true,{once:true}));
+  await trigger.click();await hints.waitForTimeout(180);
+  assert.equal(await hintCount(),0,'Click opening a form hides the hint before its button disappears');
+  await hints.evaluate(()=>document.querySelector('#actions').hidden=false);
+  // Fast clicks must cancel the 300 ms pending show, too.
+  await hints.mouse.move(1,1);await trigger.hover();await trigger.click();await hints.waitForTimeout(360);
+  assert.equal(await hintCount(),0,'Pending hint cannot reappear after click');
+  for(const action of ['remove','hide','scroll','escape','blur','hash','focus','keyboardClick']){
+    await hoverHint();
+    await hints.evaluate(action=>{
+      const button=document.querySelector('[data-tooltip]'),parent=document.querySelector('#actions');
+      if(action==='remove'){window.removedHintButton=button;button.remove();}
+      if(action==='hide')parent.classList.add('off');
+      if(action==='scroll')parent.dispatchEvent(new Event('scroll'));
+      if(action==='escape')document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      if(action==='blur')window.dispatchEvent(new Event('blur'));
+      if(action==='hash')window.dispatchEvent(new HashChangeEvent('hashchange'));
+      if(action==='focus')document.querySelector('input').focus();
+      if(action==='keyboardClick')button.click();
+    },action);
+    await hints.waitForTimeout(180);
+    assert.equal(await hintCount(),0,`Hint dismissed on ${action}`);
+    assert(await hints.evaluate(()=>ActionTooltipEngine.target===null && ActionTooltipEngine.observer===null),'Observer released when idle');
+    await hints.evaluate(()=>{document.querySelector('#actions').classList.remove('off');if(window.removedHintButton){document.querySelector('#actions').appendChild(removedHintButton);window.removedHintButton=null;}});
+  }
+  await hints.mouse.move(1,1);await trigger.hover();
+  await hints.evaluate(()=>document.querySelector('#actions').hidden=true);
+  await hints.waitForTimeout(360);
+  assert.equal(await hintCount(),0,'Hidden trigger cannot finish delayed show');
+  await hints.close();
   assert.equal(errors.length,0,errors.join('\n'));
   console.log(JSON.stringify({passed:true,layouts:25,renderMaxMs:Math.max(...timings),output,requests:'all simulated, no live network'}));
   await browser.close();
