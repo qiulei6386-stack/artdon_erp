@@ -53,5 +53,15 @@ function harness(queueCount = 0) {
   assert.equal(loads[0].view,'campaigns');assert.equal(loads[0].noSwitch,true);
   await Promise.resolve();switched.data.loaded_view='campaigns';switched.switchView('campaigns');
   assert.equal(loads.length,1,'Already loaded campaigns must not refetch on each render');
+  const progressStart=source.indexOf('      var hasMailBody =',source.indexOf('    renderTaskProperties:'));
+  const progressEnd=source.indexOf('      var stepHtml =',progressStart);
+  const progressContext=vm.createContext({task:{task_name:'Test',channel_key:'email',campaign_type:'email',customer_count:1,contact_count:0,mail_body_html:'<p>Test</p>',task_status:'draft'},audience:{},schedule:{},failure:{},sendRule:{delivery_version:2},manualTargets:[],confirmedFlow:true});
+  const progress=vm.runInContext(source.slice(progressStart,progressEnd)+';stepDefs',progressContext);
+  assert.equal(progress.length,5);assert.equal(progress[1][1],true,'Customer public email does not require a fabricated contact');
+  assert.equal(progress[4][1],false,'Saved preview is not final execution confirmation');
+  const metricsStart=source.indexOf('        var metrics = cnChannel(row.channel_key)');
+  const metricsEnd=source.indexOf('\n',metricsStart);
+  const metrics=vm.runInContext(source.slice(metricsStart,metricsEnd)+';metrics',vm.createContext({cnChannel:x=>x,row:{channel_key:'email',manual_pending_count:1},isDraft:true}));
+  assert.match(metrics,/人工待办 0/,'Draft targets are not executable manual work');
   console.log('crm_promotion_edit_runtime_test: 7 scenarios passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

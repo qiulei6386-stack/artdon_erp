@@ -16351,7 +16351,7 @@
         var startedAt = String(row.scheduled_at || '').replace('T', ' ').slice(0, 16);
         var createdAt = String(row.created_at || '').replace('T', ' ').slice(0, 16);
         var updatedAt = String(row.updated_at || '').replace('T', ' ').slice(0, 16);
-        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 邮件队列 ' + (row.queue_count || 0) + ' · 人工待办 ' + (row.manual_pending_count || 0) + ' · 失败 ' + (row.failed_count || 0);
+        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 邮件队列 ' + (row.queue_count || 0) + ' · 人工待办 ' + (isDraft ? 0 : (row.manual_pending_count || 0)) + ' · 失败 ' + (row.failed_count || 0);
         var startLine = '开始 ' + (startedAt || '未设置');
         var timing = '负责人 ' + (row.created_by_name || '-') + (updatedAt ? ' · 更新 ' + updatedAt : '');
         var timingTitle = ['开始：' + (startedAt || '未设置'), '创建：' + (createdAt || '-'), '更新：' + (row.updated_at || '-')].join('\\n');
@@ -17212,6 +17212,8 @@
       var noEmailSkipped = hasSummaryValue(summaryEmail, 'no_receiver_recorded') ? Number(summaryEmail.no_receiver_recorded || 0) : targets.filter(function (row) { return /邮箱|email/i.test(String(row.failure_reason || row.skip_reason || '')); }).length;
       var mailRuleText = sendRule.mail_account_rule === 'group_by_country' ? '按国家分配邮箱' : (sendRule.mail_account_rule === 'owner_mailbox' ? '按第一负责人邮箱' : (sendRule.mail_account_rule === 'selected_mailbox' ? '按当前勾选邮箱' : '多邮箱平均分配'));
       var scheduleText = this.taskScheduleText(task, schedule);
+      var confirmedFlow = Number(sendRule.delivery_version || 0) === 2;
+      if (confirmedFlow && task.task_status === 'draft') scheduleText = '草稿不会发送，须重新生成最终预览并确认执行';
       var taskSuccessCount = Number(task.success_count || 0) || Number(mailExecutionSummary.success || 0);
       var taskFailedCount = Number(task.failed_count || 0) || Number(mailExecutionSummary.failed || 0);
       var taskPendingCount = Number(mailExecutionSummary.pending || 0);
@@ -17242,8 +17244,15 @@
         ['失败处理', Object.keys(failure || {}).length],
         ['预览确认', task.task_status && task.task_status !== 'draft']
       ];
+      if (confirmedFlow) stepDefs = [
+        ['推广方式', task.task_name && task.channel_key],
+        ['接收对象', Number(task.customer_count || 0) > 0 || Number(task.contact_count || 0) > 0],
+        ['内容与签名', hasMailBody],
+        ['执行安排', Object.keys(sendRule || {}).length],
+        ['最终预览与确认', task.task_status && task.task_status !== 'draft']
+      ];
       var stepHtml = stepDefs.map(function (step, index) {
-        var abnormal = index === 4 && emailTargets.length && !(task.mail_subject || hasMailBody);
+        var abnormal = index === (confirmedFlow ? 2 : 4) && emailTargets.length && !(task.mail_subject || hasMailBody);
         var cls = abnormal ? 'is-warning' : (step[1] ? 'is-done' : 'is-todo');
         return '<article class="' + cls + '"><i>' + esc(index + 1) + '</i><span>' + esc(step[0]) + '</span><em>' + (abnormal ? '异常' : (step[1] ? '已完成' : '未完成')) + '</em></article>';
       }).join('');
@@ -17276,7 +17285,7 @@
         '<section class="promo-project-overview ' + esc(statusClass) + '"><div class="promo-project-overview-main"><span>推广任务 #' + esc(task.id) + '</span><h3>' + esc(task.task_name || '未命名推广任务') + '</h3><p><b>' + esc(this.taskStatusText(task.task_status)) + '</b><em>' + esc(cnChannel(task.channel_key || task.campaign_type || '-')) + '</em><em>' + esc(scheduleText) + '</em></p><small>' + esc(attention) + '</small></div><aside>' +
           [['目标客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['邮件队列', queueTotal], ['人工待办', manualPending]].map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') +
         '</aside></section>' +
-        '<section class="promo-task-console-card promo-task-step-card promo-project-progress"><header><strong>项目完成进度</strong><span>9 个关键步骤</span></header><div class="promo-task-steps">' + stepHtml + '</div></section>' +
+        '<section class="promo-task-console-card promo-task-step-card promo-project-progress"><header><strong>项目完成进度</strong><span>' + stepDefs.length + ' 个关键步骤</span></header><div class="promo-task-steps">' + stepHtml + '</div></section>' +
         '<section class="promo-project-focus-grid"><article class="promo-project-focus-card"><header><div><span>目标范围</span><strong>客户与联系人</strong></div><em>' + esc(countryText) + '</em></header><div class="promo-project-focus-metrics">' + targetMetrics.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') + '</div></article><article class="promo-project-focus-card"><header><div><span>执行概况</span><strong>计划与队列</strong></div><em class="' + (failedQueue ? 'is-risk' : '') + '">' + esc(attention) + '</em></header><div class="promo-project-focus-metrics">' + scheduleMetrics.map(function (item) { return '<article><span>' + esc(item[0]) + '</span><strong>' + esc(item[1]) + '</strong></article>'; }).join('') + '</div></article></section>' +
         '<details class="promo-project-detail-fold"><summary><span>查看目标客户与联系人</span><em>前 5 个目标 · 黑名单 ' + esc(blackSkipped) + ' · 无邮箱 ' + esc(noEmailSkipped) + '</em></summary><div class="promo-project-detail-content"><table class="promo-task-console-table"><thead><tr><th>客户名</th><th>国家</th><th>联系人</th><th>渠道</th><th>状态</th></tr></thead><tbody>' + targetPreview + '</tbody></table></div></details>' +
         '<details class="promo-project-detail-fold"><summary><span>查看邮件与人工执行规则</span><em>邮件目标 ' + esc(emailTargetCount) + ' · 人工目标 ' + esc(manualTargetCount) + '</em></summary><div class="promo-project-detail-content promo-task-rule-grid">' + mailRuleHtml + manualRuleHtml + '</div></details>' +
