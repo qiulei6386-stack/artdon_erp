@@ -17275,6 +17275,10 @@
       var manualGroupDone = hasSummaryValue(summaryManual, 'channel_success') ? Number(summaryManual.channel_success || 0) : manualTargets.filter(function (r) { return (r.chat_group_id || ['wechat_group','whatsapp_group'].indexOf(normalizeChannel(r.channel_key || '')) >= 0) && String(r.target_status || '').toLowerCase() === 'success'; }).length;
       var manualNoEmailPending = hasSummaryValue(summaryManual, 'no_email_pending') ? Number(summaryManual.no_email_pending || 0) : noEmailSkipped;
       var manualDuplicatePending = hasSummaryValue(summaryManual, 'duplicate_pending') ? Number(summaryManual.duplicate_pending || 0) : duplicateEmailSkipped;
+      if (task.task_status === 'draft') {
+        manualPending = 0; manualEmailFallbackPending = 0; manualNoEmailPending = 0; manualDuplicatePending = 0;
+        if (confirmedFlow) manualTargetCount = 0;
+      }
       var trueNoEmailCustomers = hasSummaryValue(summaryEmail, 'true_no_email_customers') ? Number(summaryEmail.true_no_email_customers || 0) : 0;
       var targetMetrics = [['客户', task.customer_count || 0], ['联系人', task.contact_count || 0], ['国家', countryText], ['已过滤', skippedTargets.length || risk.skipped || 0]];
       var scheduleMetrics = [['执行方式', cnStatus(task.schedule_type || schedule.schedule_type || 'manual')], ['首批时间', queueStatus.first_planned_time || task.scheduled_at || '-'], ['待发送', pendingQueue], ['已发送', sentQueue]];
