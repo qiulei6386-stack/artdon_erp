@@ -76,7 +76,9 @@
     p.closeWizard = function (force) {
       if (ui.busy) return;
       if (!force && ui.dirty && !root.confirm('还有未保存的修改。关闭会丢弃这些修改，确定关闭？')) return;
+      var savedTaskId = Number(this.wizardDraft && this.wizardDraft.task_id || 0);
       ui.epoch++; customerSearchSerial++; this.wizardAudienceRequestSerial++; ui.preview = null; ui.dirty = false; this.wizardAttachmentFiles = []; original.closeWizard.call(this);
+      if(savedTaskId && (this.data && this.data.tasks || []).some(function(task){return Number(task.id)===savedTaskId;}))this.selectTask(savedTaskId);
     };
     root.addEventListener('beforeunload',function (e) { if (p.wizardDraft && (ui.dirty || ui.busy)) { e.preventDefault(); e.returnValue = ''; } });
     p.applyWizardTemplate = function () {

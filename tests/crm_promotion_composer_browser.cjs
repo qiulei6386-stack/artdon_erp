@@ -21,7 +21,7 @@ assert(start>0 && end>start);
   for(const name of ['crm.css','workspace.css','promotion-composer.css'])await page.addStyleTag({content:fs.readFileSync(path.join(root,'assets/crm',name),'utf8')});
   await page.addScriptTag({content:`
     var state={user:{id:1},csrf:'offline'},current='promotion';
-    var readLocalJson=(key,fallback)=>fallback,hashParts=()=>({module:'promotion'});
+    var readLocalJson=(key,fallback)=>fallback,writeLocalJson=()=>{},hashParts=()=>({module:'promotion'});
     var esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     var cnChannel=x=>x,cnStatus=x=>x,renderActions=()=>{},toast=()=>{};
     var debounce=f=>f;
@@ -188,6 +188,13 @@ assert(start>0 && end>start);
   await page.setViewportSize({width:1024,height:720});
   await page.evaluate(()=>{document.documentElement.style.zoom='1.25';api.state.step=4;api.state.preview=makePreview();fixturePromotion.renderWizard();});
   await page.screenshot({path:path.join(output,'zoom125.png')});
+  await page.evaluate(()=>{
+    const p=fixturePromotion,render=p.renderTasks;let rendered=0;
+    p.renderTasks=function(){rendered++;return render.call(this);};
+    p.data.tasks=[{id:123,task_status:'draft'}];p.wizardDraft.task_id=123;
+    p.closeWizard(true);
+    if(!rendered || p.selectedTaskId!==123)throw new Error('Closing a saved draft must redraw and select the saved row');
+  });
   assert.equal(errors.length,0,errors.join('\n'));
   console.log(JSON.stringify({passed:true,layouts:25,renderMaxMs:Math.max(...timings),output,requests:'all simulated, no live network'}));
   await browser.close();
