@@ -8,6 +8,36 @@
     var steps = ['推广方式','接收对象','内容与签名','执行安排','最终预览'];
     var descriptions = ['先选择这次如何触达客户。渠道必须已在客户或联系人资料中维护。','选择客户范围。最终预览会按最新资料列出真实接收对象和排除原因。','邮件正文与账号签名分开维护，附件上传成功后才能加入发送。','只展示可执行的设置。邮件自动发送；其他渠道由负责人手动完成。','此处由服务器生成。正式执行使用这一份内容；资料变化后必须重新核对。'];
     var ui = { step: 0, busy: false, dirty: false, preview: null, selected: 0, error: '', epoch: 0, page: 0, viewport: 'desktop' };
+    var customerSearchSerial=0, customerSearchRows=[], customerNames={};
+    function customerPicker(d) {
+      if(d.group_mode!=='selected')return '';
+      var known=(p.data && p.data.pool || []);
+      known.forEach(function(r){customerNames[Number(r.id)]=r.customer_name;});
+      return '<section class="pc-customer-picker"><h3>直接选择客户</h3><p>无需退出向导。搜索后逐个添加；这里只改变本次推广名单，不修改客户资料。</p><div class="pc-customer-search"><label class="pc-field"><span>客户名称、代码或邮箱</span><input data-pc-customer-query placeholder="输入关键词后搜索"></label><button type="button" data-pc-customer-search>搜索客户</button></div><div data-pc-customer-results aria-live="polite"></div><ul class="pc-selected-customers">'+(d.customer_ids || []).map(function(id){return '<li><span>'+esc(customerNames[Number(id)] || ('客户 #'+id))+'</span><button type="button" data-pc-customer-remove="'+Number(id)+'">移除</button></li>';}).join('')+'</ul></section>';
+    }
+    async function searchCustomers() {
+      var box=document.querySelector('[data-pc-customer-results]'),input=document.querySelector('[data-pc-customer-query]');
+      if(!box || !input || ui.busy)return;
+      var q=input.value.trim(),serial=++customerSearchSerial,epoch=ui.epoch;
+      if(q.length<2){box.textContent='请输入至少两个字符。';return;}
+      box.textContent='正在搜索客户…';
+      try {
+        var data=await request('marketing_pool_view',{q:q,page:1,page_size:20,skip_count:1});
+        if(serial!==customerSearchSerial || epoch!==ui.epoch || !box.isConnected)return;
+        customerSearchRows=data.pool || [];customerSearchRows.forEach(function(r){customerNames[Number(r.id)]=r.customer_name;});
+        var selected=(p.wizardDraft.customer_ids || []).map(Number);
+        box.innerHTML=customerSearchRows.map(function(r){var picked=selected.indexOf(Number(r.id))>=0;return '<button type="button" data-pc-customer-add="'+Number(r.id)+'" '+(picked?'disabled':'')+'><strong>'+esc(r.customer_name || ('客户 #'+r.id))+'</strong><span>'+esc([r.customer_code,r.country,r.owner_name].filter(Boolean).join(' · '))+'</span><span>'+(picked?'已添加':'添加到本次推广')+'</span></button>';}).join('') || '<p>没有匹配客户，请更换关键词。</p>';
+        if(customerSearchRows.length===20)box.insertAdjacentHTML('beforeend','<p>最多显示 20 个结果，请输入更具体的关键词。</p>');
+        box.querySelectorAll('[data-pc-customer-add]').forEach(function(el){el.onclick=function(){changeCustomer(Number(el.dataset.pcCustomerAdd),true);};});
+      }catch(e){if(serial===customerSearchSerial && epoch===ui.epoch && box.isConnected)box.textContent=e.message;}
+    }
+    function changeCustomer(id,add) {
+      if(ui.busy)return;
+      var d=p.collectWizard(),ids=new Set((d.customer_ids || []).map(Number));
+      if(add)ids.add(id);else ids.delete(id);
+      d.customer_ids=Array.from(ids);d.contact_ids=[];invalidate();customerSearchSerial++;
+      p.wizardAudienceRequestSerial++;p.refreshWizardAudience();
+    }
     function fitViewport(){if(root.visualViewport)document.documentElement.style.setProperty('--pc-viewport-height',root.visualViewport.height+'px');}
     if(root.visualViewport)root.visualViewport.addEventListener('resize',fitViewport);
     fitViewport();
@@ -29,12 +59,13 @@
     p.openWizard = function () {
       if (ui.busy) return;
       ui.step = 0; ui.error = ''; ui.preview = null; ui.dirty = false; ui.epoch++; ui.page = 0;
+      customerSearchSerial++; p.wizardAudienceRequestSerial++;
       this.wizardAttachmentFiles = []; original.openWizard.call(this);
     };
     p.closeWizard = function (force) {
       if (ui.busy) return;
       if (!force && ui.dirty && !root.confirm('还有未保存的修改。关闭会丢弃这些修改，确定关闭？')) return;
-      ui.epoch++; ui.preview = null; ui.dirty = false; this.wizardAttachmentFiles = []; original.closeWizard.call(this);
+      ui.epoch++; customerSearchSerial++; this.wizardAudienceRequestSerial++; ui.preview = null; ui.dirty = false; this.wizardAttachmentFiles = []; original.closeWizard.call(this);
     };
     root.addEventListener('beforeunload',function (e) { if (p.wizardDraft && (ui.dirty || ui.busy)) { e.preventDefault(); e.returnValue = ''; } });
     p.applyWizardTemplate = function () {
@@ -44,7 +75,11 @@
     };
     p.collectWizard = function () {
       var before = JSON.stringify(this.wizardDraft);
+      var customerIds=this.wizardDraft && this.wizardDraft.customer_ids,contactIds=this.wizardDraft && this.wizardDraft.contact_ids;
       var d = original.collectWizard.call(this);
+      // A saved/editing draft must not silently inherit a stale pool selection.
+      if(Array.isArray(customerIds))d.customer_ids=customerIds;
+      if(Array.isArray(contactIds))d.contact_ids=contactIds;
       document.querySelectorAll('.pc-composer [data-wizard-field]').forEach(function(el) { d[el.dataset.wizardField] = el.value; });
       d.mail_account_ids = d.mail_account_id ? [Number(d.mail_account_id)] : [];
       d.client_request_id = d.client_request_id || id(); d.delivery_version = 2;
@@ -174,13 +209,16 @@
       this.wizardStep=[0,1,4,6,8][ui.step];
       var content='';
       if(ui.step===0)content='<div class="pc-grid">'+field('task_name','推广名称 *',d.task_name,'text','例如：9月新品介绍 · 印度客户')+select('channel_key','本次推广方式',d.channel_key,[['email','邮件推广 · 自动发送'],['phone','电话跟进 · 人工执行'],['wechat','微信 · 人工执行'],['whatsapp','WhatsApp · 人工执行'],['linkedin','LinkedIn · 人工执行'],['wechat_group','微信群 · 人工执行'],['whatsapp_group','WhatsApp群 · 人工执行'],['offline','线下跟进 · 人工执行'],['preference','按资料唯一渠道 · 混合执行']],'不会擅自改变客户资料中的渠道；多渠道不明确时会列为待处理。')+'</div><label class="pc-field"><span>从已有模板开始（可选）</span><select data-wizard-field="template_key">'+this.templateOptions(d)+'</select><small>模板只填充空白内容，不改变客户渠道。</small></label>'+field('remark','内部备注（可选）',d.remark);
-      if(ui.step===1)content=original.renderWizardStep.call(this,1,d)+select('contact_filter','联系人范围',d.contact_filter,[['all_valid','全部符合条件的联系人'],['primary','仅主联系人'],['selected','仅当前选中的联系人']],'最终名单以服务器根据最新资料核对的结果为准。');
+      if(ui.step===1)content=customerPicker(d)+original.renderWizardStep.call(this,1,d)+select('contact_filter','联系人范围',d.contact_filter,[['all_valid','全部符合条件的联系人'],['primary','仅主联系人']].concat((d.contact_ids || []).length?[['selected','仅当前选中的联系人']]:[]),'最终名单以服务器根据最新资料核对的结果为准。');
       if(ui.step===2)content=renderContent(d);
       if(ui.step===2 && d.legacyAttachmentWarning)content='<div class="pc-error"><p>原草稿包含旧附件登记，不等于已上传文件。请重新上传需要携带的实际文件。</p><button type="button" data-pc-legacy-attachments>确认已重传，或本次不携带旧附件</button></div>'+content;
       if(ui.step===3)content=renderSchedule(d);
       if(ui.step===4)content=renderPreview();
       host.innerHTML='<section class="pc-composer" role="region" aria-label="新建推广任务"><header class="pc-header"><div><span class="pc-eyebrow">推广工作区</span><h2>'+esc(d.task_name || '新建推广任务')+'</h2></div><span class="pc-save-state">'+(ui.dirty?'有未保存修改':d.task_id?'草稿已保存':'未保存')+'</span><button type="button" data-pc-action="close" aria-label="关闭推广创建">关闭</button></header><div class="pc-workspace"><nav class="pc-steps" aria-label="创建步骤">'+steps.map(function(name,i){return '<button type="button" data-pc-step="'+i+'" aria-current="'+(i===ui.step?'step':'false')+'"><b>'+(i+1)+'</b><span>'+name+'</span></button>';}).join('')+'</nav><main class="pc-main"><div class="pc-heading"><span>第 '+(ui.step+1)+' 步 / 5</span><h3>'+steps[ui.step]+'</h3><p>'+descriptions[ui.step]+'</p></div><div class="pc-error" role="alert" '+(!ui.error?'hidden':'')+'>'+esc(ui.error)+'</div><div class="pc-content">'+content+'</div></main></div><footer class="pc-footer"><button type="button" data-pc-action="save">保存草稿 · 不发送</button><span class="pc-progress" role="status">'+(ui.busy?'处理中，请稍候':'')+'</span><div><button type="button" data-pc-action="prev" '+(ui.step===0?'disabled':'')+'>上一步</button>'+(ui.step<4?'<button type="button" class="primary" data-pc-action="next">'+(ui.step===3?'生成最终预览':'下一步')+'</button>':'<button type="button" class="primary" data-pc-action="confirm" disabled>确认执行</button>')+'</div></footer></section>';
-      host.querySelectorAll('[data-wizard-field]').forEach(function(el){el.addEventListener('input',function(){p.collectWizard();invalidate();});el.addEventListener('change',function(){p.collectWizard();invalidate();var key=el.dataset.wizardField;if(key==='template_key')p.applyWizardTemplate();if(key==='group_mode'||key==='group_key'){p.refreshWizardAudience();return;}if(['channel_key','template_key','schedule_type','mail_account_rule'].indexOf(key)>=0)p.renderWizard();});});
+      host.querySelectorAll('[data-wizard-field]').forEach(function(el){el.addEventListener('input',function(){p.collectWizard();invalidate();});el.addEventListener('change',function(){p.collectWizard();invalidate();var key=el.dataset.wizardField;if(key==='template_key')p.applyWizardTemplate();if(key==='group_mode'||key==='group_key'||key==='contact_filter'){p.wizardAudienceRequestSerial++;p.refreshWizardAudience();return;}if(['channel_key','template_key','schedule_type','mail_account_rule'].indexOf(key)>=0)p.renderWizard();});});
+      host.querySelector('[data-pc-customer-search]')?.addEventListener('click',searchCustomers);
+      host.querySelector('[data-pc-customer-query]')?.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();searchCustomers();}});
+      host.querySelectorAll('[data-pc-customer-remove]').forEach(function(el){el.onclick=function(){changeCustomer(Number(el.dataset.pcCustomerRemove),false);};});
       host.querySelectorAll('[data-wizard-group-check]').forEach(function(el){el.addEventListener('change',function(){p.collectWizard();invalidate();p.refreshWizardAudience();});});
       host.addEventListener('change',function(e){if(e.target.dataset.wizardField==='group_mode'){p.wizardDraft.group_key='';p.wizardDraft.group_keys=[];}},true);
       host.addEventListener('keydown',function(e){

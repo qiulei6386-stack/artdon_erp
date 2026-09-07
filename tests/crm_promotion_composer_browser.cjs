@@ -34,7 +34,7 @@ assert(start>0 && end>start);
     p.data={pool:[{id:1,customer_name:'验收示例客户 · 很长的公司名称用于测试换行',country:'CN',owner_user_id:1}],contacts:[],groups:[],channels:[],templates:[],users:[],mail_accounts:[{id:1,email_address:'long-sender-address@example.invalid'}]};
     p.selectedCustomerIds.add(1);
     window.calls=[];
-    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast,post:async(action,payload)=>{calls.push({action,payload});if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
+    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast,post:async(action,payload)=>{calls.push({action,payload});if(action==='marketing_pool_view')return {success:true,data:{pool:[{id:2,customer_name:'搜索验收客户',country:'CN'}]}};if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
     p.wizardDraft=Object.assign(p.defaultWizardDraft(),{task_name:'九月新品推广 · 标题很长也应清晰换行',mail_subject:'新品介绍给 {company_name}',mail_body_html:'<p>尊敬的客户：</p><p>这是一段用于测试显示的正文。</p>',customer_ids:[1],audience_customer_ids:[1],assets:[{id:'a'.repeat(32),name:'这是一个非常长的产品规格及附件文件名称_测试文档.pdf',size:1200}]});
     window.makePreview=()=>({token:'offline',manifest:{items:Array.from({length:52},(_,i)=>({mode:'email',customer_name:'测试公司名称很长 '+i,contact_name:'测试联系人',receiver_email:'very-long-recipient-address-'+i+'@example.invalid',sender_email:'sender@example.invalid',subject:'测试邮件主题',planned_at:'2026-09-08 09:00:00',body_html:'<p>你好，测试联系人。</p><p>这是最终邮件正文。</p><div>测试签名<br>sender@example.invalid</div>'})),excluded:[{customer_name:'排除测试',reason:'渠道未维护'}],attachments:[{name:'附件文件.pdf'}]}});
   });
@@ -51,6 +51,23 @@ assert(start>0 && end>start);
       if(step===2 || step===4){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-step${step+1}.png`)});}
     }
   }
+  // Direct customer picking stays within the draft, not the unrelated pool selection.
+  await page.evaluate(()=>{
+    window.originalRefresh=fixturePromotion.refreshWizardAudience;
+    fixturePromotion.refreshWizardAudience=function(){this.wizardDraft.audience_customer_ids=this.wizardDraft.customer_ids.slice();this.renderWizard();return Promise.resolve();};
+    fixturePromotion.selectedCustomerIds=new Set([999]);
+    api.state.step=1;api.state.error='';fixturePromotion.renderWizard();
+  });
+  assert.deepEqual(await page.evaluate(()=>fixturePromotion.collectWizard().customer_ids),[1]);
+  await page.locator('[data-pc-customer-query]').fill('搜索验收');
+  await page.locator('[data-pc-customer-search]').click();
+  await page.locator('[data-pc-customer-add="2"]').click();
+  assert.deepEqual(await page.evaluate(()=>fixturePromotion.wizardDraft.customer_ids),[1,2]);
+  await page.locator('[data-pc-customer-remove="1"]').click();
+  await page.locator('[data-pc-customer-remove="2"]').click();
+  assert.deepEqual(await page.evaluate(()=>fixturePromotion.collectWizard().customer_ids),[]);
+  assert.equal(await page.evaluate(()=>api.validation(1,fixturePromotion.wizardDraft)),'请先选择客户或客户分组。');
+  await page.evaluate(()=>{fixturePromotion.refreshWizardAudience=originalRefresh;fixturePromotion.wizardDraft.customer_ids=[1];fixturePromotion.wizardDraft.audience_customer_ids=[1];});
   // Actual collection, failure recovery and double-click protection, with fake transport only.
   await page.evaluate(()=>{api.state.step=0;api.state.preview=null;fixturePromotion.renderWizard();});
   await page.locator('[data-wizard-field="task_name"]').fill('已修改的推广名称');
