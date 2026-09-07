@@ -26,7 +26,12 @@ available_kb="$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)"
 disk_kb="$(df -Pk /tmp | awk 'NR==2 {print $4}')"
 [ "${disk_kb:-0}" -ge 1048576 ] || { echo 'Not enough temporary disk space.' >&2; exit 2; }
 
-php_args=(-n -d extension=mysqlnd -d extension=pdo -d extension=pdo_mysql)
+php_args=(-n)
+export CRM_PHASE1_MYSQL_PHP_EXTENSIONS_JSON='[]'
+if ! "$php_bin" -n -r 'exit(class_exists("PDO",false) && in_array("mysql",PDO::getAvailableDrivers(),true) ? 0 : 1);'; then
+  php_args+=(-d extension=mysqlnd -d extension=pdo -d extension=pdo_mysql)
+  export CRM_PHASE1_MYSQL_PHP_EXTENSIONS_JSON='["mysqlnd","pdo","pdo_mysql"]'
+fi
 "$php_bin" "${php_args[@]}" -r 'exit(extension_loaded("pdo_mysql") && function_exists("pcntl_fork") && function_exists("proc_open") ? 0 : 2);'
 for test in quote_conversion_mysql.php; do
   [ -f "$repo_root/tests/$test" ] || { echo "Missing isolated test: $test" >&2; exit 2; }

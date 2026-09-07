@@ -82,7 +82,9 @@ check((int)qo_row($pdo,"SELECT COUNT(*) n FROM quote_sales_orders WHERE order_no
 
 $jobs=[];
 for($i=0;$i<2;$i++){
-  $command=[PHP_BINARY,'-n','-d','extension=mysqlnd','-d','extension=pdo','-d','extension=pdo_mysql',__FILE__,'--worker','AT-TEST-CONCURRENT'];
+  $command=[PHP_BINARY,'-n'];
+  foreach(json_decode(getenv('CRM_PHASE1_MYSQL_PHP_EXTENSIONS_JSON')?:'[]',true) as $extension){$command[]='-d';$command[]='extension='.$extension;}
+  array_push($command,__FILE__,'--worker','AT-TEST-CONCURRENT');
   $pipes=[];$process=proc_open($command,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
   check(is_resource($process),'Worker did not start');fclose($pipes[0]);$jobs[]=[$process,$pipes];
 }
