@@ -58,6 +58,22 @@ foreach([
 crm_delivery_ensure();
 db()->exec("INSERT INTO crm_users (id,real_name,username,phone,position) VALUES (1,'Sender','sender','123','Sales')");
 db()->exec("INSERT INTO crm_user_mail_accounts (id,user_id,email_address,sender_name,signature_html) VALUES (1,1,'sender@example.invalid','Sender','<p>{mail_user_name} / {send_email}</p>')");
+$signature=crm_delivery_signature_inspect('personal',1);
+mit_assert($signature['ready'] && $signature['preview_html']==='<p>Sender / sender@example.invalid</p>','Read-only check renders actual mailbox signature');
+$GLOBALS['pdUser']=9;
+try {crm_delivery_signature_inspect('personal',1);throw new LogicException('Foreign signature exposed');}catch(RuntimeException $e){}
+$GLOBALS['pdUser']=1;
+try {crm_delivery_signature_inspect('personal',0);throw new LogicException('Unspecified account fell back');}catch(RuntimeException $e){}
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='<p>{mail_user_name} {mail_user_position} {mail_user_mobile}</p>' WHERE id=1");
+db()->exec("UPDATE crm_users SET phone='',position='' WHERE id=1");
+$signature=crm_delivery_signature_inspect('personal',1);
+mit_assert(!$signature['ready'] && count($signature['missing'])===2,'Existing blank profile reproduces unusable signature with actionable missing fields');
+db()->exec("UPDATE crm_users SET phone='123',position='Sales' WHERE id=1");
+mit_assert(crm_delivery_signature_inspect('personal',1)['ready'],'Fresh recheck sees repaired profile without stale signature cache');
+db()->exec("INSERT INTO crm_mail_signature_templates (id,template_html,is_default) VALUES (1,'<p>Company {send_email}</p>',1)");
+mit_assert(crm_delivery_signature_inspect('company',1)['preview_html']==='<p>Company sender@example.invalid</p>','Company signature uses selected sender');
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='<p>{mail_user_name} / {send_email}</p>' WHERE id=1");
+mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_tasks')->fetchColumn()===0 && (int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue')->fetchColumn()===0,'Signature check creates no tasks or queue');
 db()->exec("INSERT INTO crm_customers (id,customer_name,country,owner_user_id,email) VALUES (1,'Example Company','CN',1,'company@example.invalid')");
 db()->exec("INSERT INTO crm_contacts (id,customer_id,name,email,is_primary) VALUES (1,1,'Alice','alice@example.invalid',1),(2,1,'No Email','',0),(3,1,'Other Channel','phone@example.invalid',0),(4,1,'Duplicate','alice@example.invalid',0)");
 db()->exec("INSERT INTO crm_customer_promotion_channels (customer_id,channel_key) VALUES (1,'email')");

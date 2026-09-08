@@ -164,6 +164,56 @@ function crm_delivery_variables(array $row, array $account): array
     return $vars;
 }
 
+function crm_delivery_signature_html(string $key, array $account, ?string &$company = null): string
+{
+    if ($key === 'none') return '';
+    if ($key === 'personal') $html = (string)($account['signature_html'] ?? '');
+    elseif ($key === 'company') {
+        if ($company === null) $company = (string)db()->query('SELECT template_html FROM crm_mail_signature_templates WHERE is_default=1 ORDER BY id DESC LIMIT 1')->fetchColumn();
+        $html = $company;
+    } else throw new RuntimeException('签名类型无效，请重新选择。');
+    $visible = preg_replace('/[\s\x{00a0}\x{200b}]+/u', '', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    if ($visible === '' && stripos($html, '<img') === false) {
+        throw new RuntimeException(($account['email_address'] ?? '') . '：未配置所选签名。请在邮箱设置中保存签名，或明确选择不使用签名。');
+    }
+    return $html;
+}
+
+/** Read-only, explicit mailbox check. Never substitute another sender or save a draft. */
+function crm_delivery_signature_inspect(string $key, int $accountId): array
+{
+    if ($key === 'none') return ['preview_html'=>'','missing'=>[],'recipient_variables'=>[],'ready'=>true];
+    if ($accountId <= 0) throw new RuntimeException('请先选择要检查签名的发件邮箱；这里的选择不会改变执行安排。');
+    $stmt = db()->prepare("SELECT a.id,a.user_id,a.email_address,a.sender_name,a.signature_html,
+        COALESCE(u.real_name,u.username,'') owner_name,u.phone user_phone,u.position user_position
+        FROM crm_user_mail_accounts a JOIN crm_users u ON u.id=a.user_id
+        WHERE a.id=? AND a.deleted_at IS NULL AND a.is_enabled=1 AND u.status='active'");
+    $stmt->execute([$accountId]);
+    $account = $stmt->fetch();
+    if (!$account || ((int)$account['user_id'] !== (int)current_user()['id'] && !crm_can('mail.account_manage_all') && !is_super_admin())) {
+        throw new RuntimeException('该邮箱不可用或你无权查看其签名，请选择自己的邮箱或联系管理员。');
+    }
+    $html = crm_delivery_signature_html($key, $account);
+    return ['account_id'=>$accountId,'sender_email'=>$account['email_address']] + crm_delivery_signature_sample($html, $account);
+}
+
+function crm_delivery_signature_sample(string $html, array $account): array
+{
+    $vars = crm_delivery_variables(['contact_name'=>'','customer_name'=>''], $account);
+    $recipientKeys = ['customer_name','contact_name','company_name','country','name','customer_full_name'];
+    $labels = ['mail_user_name'=>'发件人姓名','user_name'=>'发件人姓名','mail_user_mobile'=>'手机号','mobile'=>'手机号','phone'=>'手机号','mail_user_position'=>'职位','position'=>'职位','send_email'=>'发件邮箱','email'=>'发件邮箱'];
+    $missing = []; $recipients = [];
+    $preview = preg_replace_callback('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', static function ($m) use ($vars, $recipientKeys, $labels, &$missing, &$recipients) {
+        $key = $m[1];
+        if (in_array($key, $recipientKeys, true)) { $recipients[$key] = $m[0]; return htmlspecialchars($m[0], ENT_QUOTES, 'UTF-8'); }
+        $value = trim((string)($vars[$key] ?? ''));
+        if ($value === '') { $missing[$key] = ($labels[$key] ?? '不支持的变量') . ' ' . $m[0]; return htmlspecialchars($m[0], ENT_QUOTES, 'UTF-8'); }
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }, $html);
+    if ($preview === null) throw new RuntimeException('签名解析失败，请检查签名格式。');
+    return ['preview_html'=>$preview,'missing'=>array_values($missing),'recipient_variables'=>array_values($recipients),'ready'=>!$missing];
+}
+
 function crm_delivery_render_values(string $template, array $vars, bool $html): string
 {
     return preg_replace_callback('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', static function ($match) use ($vars, $html) {
@@ -185,7 +235,10 @@ function crm_delivery_pack_content(array &$contents, string $body, string $signa
     preg_match_all('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', $body . $signature, $matches);
     $vars = array_intersect_key($vars, array_flip($matches[1]));
     $rendered = crm_delivery_render_values($body, $vars, true);
-    crm_delivery_render_values($signature, $vars, true);
+    try { crm_delivery_render_values($signature, $vars, true); }
+    catch (RuntimeException $e) {
+        throw new RuntimeException(($account['email_address'] ?? '') . ' 的签名无法使用：' . $e->getMessage() . ' 请在“内容与签名”检查签名，并在人员资料补齐手机号/职位，或在邮箱设置修改签名后重新预览。', 0, $e);
+    }
     if (trim(html_entity_decode(strip_tags($rendered))) === '' && stripos($rendered, '<img') === false) throw new RuntimeException('邮件正文或人工话术不能为空。');
     return ['content_ref'=>$key, 'signature_ref'=>$signatureKey, 'content_vars'=>$vars];
 }
@@ -322,13 +375,7 @@ function crm_delivery_manifest(array $task, int $base): array
         if (!isset($activeUsers[(int)$account['user_id']])) throw new RuntimeException('发件账号所属人员已停用，请重新选择。');
         if ((int)$account['user_id'] !== (int)current_user()['id'] && !crm_can('mail.account_manage_all') && !is_super_admin()) throw new RuntimeException('无权使用所匹配的发件邮箱，请联系管理员。');
         $signatureKey = $task['signature_key'] ?? 'personal';
-        $signature = '';
-        if ($signatureKey === 'company') {
-            if ($companySignature === null) $companySignature = (string)db()->query('SELECT template_html FROM crm_mail_signature_templates WHERE is_default=1 ORDER BY id DESC LIMIT 1')->fetchColumn();
-            $signature = $companySignature;
-        } elseif ($signatureKey === 'personal') $signature = (string)($account['signature_html'] ?? '');
-        elseif ($signatureKey !== 'none') throw new RuntimeException('签名类型无效。');
-        if ($signatureKey !== 'none' && trim(strip_tags($signature)) === '' && stripos($signature, '<img') === false) throw new RuntimeException($account['email_address'] . '：未配置所选签名，请补齐或明确选择不使用签名。');
+        $signature = crm_delivery_signature_html($signatureKey, $account, $companySignature);
         $subject = crm_delivery_render((string)$task['mail_subject'], $row, $account, false);
         if (trim($subject) === '') throw new RuntimeException('邮件主题不能为空。');
         $content = crm_delivery_pack_content($contents, (string)$task['mail_body_html'], $signature, $row, $account);

@@ -35,7 +35,7 @@ assert(start>0 && end>start);
     p.data={pool:[{id:1,customer_name:'验收示例客户 · 很长的公司名称用于测试换行',country:'CN',owner_user_id:1}],contacts:[],groups:[],channels:[],templates:[],users:[],mail_accounts:[{id:1,email_address:'long-sender-address@example.invalid'}]};
     p.selectedCustomerIds.add(1);
     window.calls=[];
-    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast,post:async(action,payload)=>{calls.push({action,payload});if(window.pagedReply && action==='marketing_delivery_preview_read')return {success:true,data:pagedReply(payload)};if(action==='marketing_pool_view')return {success:true,data:{pool:[{id:2,customer_name:'搜索验收客户',country:'CN'}]}};if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
+    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast,post:async(action,payload)=>{calls.push({action,payload});if(window.signatureReply && action==='marketing_signature_content')return signatureReply(payload);if(window.pagedReply && action==='marketing_delivery_preview_read')return {success:true,data:pagedReply(payload)};if(action==='marketing_pool_view')return {success:true,data:{pool:[{id:2,customer_name:'搜索验收客户',country:'CN'}]}};if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
     p.wizardDraft=Object.assign(p.defaultWizardDraft(),{task_name:'九月新品推广 · 标题很长也应清晰换行',mail_subject:'新品介绍给 {company_name}',mail_body_html:'<p>尊敬的客户：</p><p>这是一段用于测试显示的正文。</p>',customer_ids:[1],audience_customer_ids:[1],assets:[{id:'a'.repeat(32),name:'这是一个非常长的产品规格及附件文件名称_测试文档.pdf',size:1200}]});
     window.makePreview=()=>({token:'offline',manifest:{items:Array.from({length:52},(_,i)=>({mode:'email',customer_name:'测试公司名称很长 '+i,contact_name:'测试联系人',receiver_email:'very-long-recipient-address-'+i+'@example.invalid',sender_email:'sender@example.invalid',subject:'测试邮件主题',planned_at:'2026-09-08 09:00:00',body_html:'<p>你好，测试联系人。</p><p>这是最终邮件正文。</p><div>测试签名<br>sender@example.invalid</div>'})),excluded:[{customer_name:'排除测试',reason:'渠道未维护'}],attachments:[{name:'附件文件.pdf'}]}});
   });
@@ -57,6 +57,35 @@ assert(start>0 && end>start);
       if(step===2 || step===4 || width===390 || width===1440){await page.waitForTimeout(170);await page.screenshot({path:path.join(output,`${width}-step${step+1}.png`)});}
     }
   }
+  // Signature inspection is lazy/read-only, preserves the draft, and drops stale responses.
+  await page.evaluate(()=>{api.state.step=2;api.state.preview=null;fixturePromotion.renderWizard();window.signatureDraft=structuredClone(fixturePromotion.wizardDraft);});
+  assert.equal(await page.evaluate(()=>calls.length),0,'Opening composer never loads large signature HTML');
+  await page.locator('[data-pc-signature-check]').click();
+  assert((await page.locator('[data-pc-signature-result]').innerText()).includes('请先选择'));
+  await page.locator('[data-pc-signature-account]').selectOption('1');
+  await page.evaluate(()=>{window.signatureReply=async()=>({success:true,data:{ready:true,missing:[],recipient_variables:['{contact_name}'],preview_html:'<p>Sender &amp; Team / {contact_name}</p>'}});});
+  await page.locator('[data-pc-signature-check]').click();
+  await page.locator('.pc-signature-frame').waitFor();
+  assert((await page.frameLocator('.pc-signature-frame').locator('body').innerText()).includes('Sender & Team'));
+  assert.equal(await page.locator('.pc-signature-frame').getAttribute('sandbox'),'');
+  assert.equal(await page.evaluate(()=>fixturePromotion.wizardDraft.mail_body_html),await page.evaluate(()=>signatureDraft.mail_body_html),'Checking never inserts or duplicates signature into body');
+  assert.deepEqual(await page.evaluate(()=>fixturePromotion.wizardDraft.mail_account_ids),await page.evaluate(()=>signatureDraft.mail_account_ids),'Inspection mailbox does not change send allocation');
+  await page.evaluate(()=>{window.signatureReply=()=>new Promise(resolve=>window.resolveSignature=resolve);});
+  await page.locator('[data-pc-signature-check]').click();
+  await page.locator('[data-wizard-field="signature_key"]').selectOption('none');
+  await page.evaluate(()=>resolveSignature({success:true,data:{ready:true,missing:[],preview_html:'STALE'}}));
+  assert.equal(await page.locator('.pc-signature-frame').count(),0,'Late response cannot restore disabled signature');
+  assert((await page.locator('[data-pc-signature-tools]').innerText()).includes('不会自动追加'));
+  await page.locator('[data-wizard-field="signature_key"]').selectOption('company');
+  await page.locator('[data-pc-signature-account]').selectOption('1');
+  await page.evaluate(()=>{window.signatureReply=async()=>({success:true,data:{ready:false,missing:['手机号 {mobile}','职位 {position}'],recipient_variables:[],preview_html:'<p>{position}</p>'}});});
+  await page.locator('[data-pc-signature-check]').click();
+  await page.locator('.pc-signature-frame').waitFor();
+  assert((await page.locator('[data-pc-signature-result]').innerText()).includes('签名尚不能发送'));
+  await page.frameLocator('.pc-signature-frame').locator('body').filter({hasText:'{position}'}).waitFor();
+  assert(await page.evaluate(()=>calls.every(c=>c.action==='marketing_signature_content' && c.payload.preview===1)),'Inspect never saves or sends');
+  await page.screenshot({path:path.join(output,'signature-check.png')});
+  await page.evaluate(()=>{fixturePromotion.wizardDraft=signatureDraft;window.calls=[];window.signatureReply=null;});
   // Missing-field guidance is live, local and never rerenders the active input.
   await page.evaluate(()=>{window.guidanceDraft=structuredClone(fixturePromotion.wizardDraft);api.state.step=0;fixturePromotion.wizardDraft.task_name='';fixturePromotion.renderWizard();});
   await page.locator('[data-pc-action="next"]').click();

@@ -1406,6 +1406,7 @@ function crm_marketing_signature_content(array $input = []): array
     crm_marketing_ensure_tables();
     crm_require('promotion.view');
     $signatureKey = strtolower(trim((string)($input['signature_key'] ?? 'personal')));
+    if (!empty($input['preview'])) return crm_delivery_signature_inspect($signatureKey, (int)($input['mail_account_id'] ?? 0));
     if ($signatureKey === 'none') return ['signature_key' => 'none', 'html' => '', 'has_html' => 0];
     if ($signatureKey === 'company') {
         if (!function_exists('db_table_exists') || !db_table_exists('crm_mail_signature_templates')) {

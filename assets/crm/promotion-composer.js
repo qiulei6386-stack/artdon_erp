@@ -298,10 +298,42 @@
       var body=(email ? field('mail_subject','邮件主题 *',d.mail_subject,'text','可插入联系人、公司或发件人变量。') : '') +
         '<label class="pc-field"><span>'+(email?'邮件正文 *':'执行话术 / 资料说明 *')+'</span></label><div class="mail-rich-toolbar" data-promo-rich-toolbar><button type="button" data-promo-rich-cmd="bold" title="加粗">加粗</button><button type="button" data-promo-rich-cmd="italic">斜体</button><button type="button" data-promo-rich-cmd="insertUnorderedList">列表</button><button type="button" data-promo-rich-link>链接</button><button type="button" data-promo-rich-image>图片</button></div><div class="pc-editor mail-rich-editor" role="textbox" aria-label="推广正文" aria-multiline="true" contenteditable="true" data-promo-wizard-editor>'+mail.prepareRichHtml(d.mail_body_html || '<p><br></p>')+'</div>'+
         '<div class="pc-variables"><span data-promo-variable-target aria-live="polite">插入到正文</span>'+[['contact_name','联系人姓名'],['company_name','公司名称'],['mail_user_name','发件人姓名']].map(function(v){return '<button type="button" data-promo-rich-var="{'+v[0]+'}" title="'+esc('{'+v[0]+'}')+'">'+v[1]+'</button>';}).join('')+'</div><details class="pc-field-help"><summary>变量怎样使用？</summary><p>先点主题或正文的插入位置，再点变量。{变量名} 会在最终预览替换为真实资料；联系人姓名必须有联系人记录。</p></details>';
-      var signature=email?panel('发件签名','与正文分开，避免重复。',select('signature_key','签名方式',d.signature_key,[['personal','实际发件账号签名'],['company','公司统一签名'],['none','不使用签名']])+'<p class="pc-muted">根据实际发件账号自动追加，最终预览可核对完整效果。</p>'):'';
+      var signature=email?panel('发件签名','自动追加在正文末尾，不需要点击插入。',select('signature_key','签名方式',d.signature_key,[['personal','实际发件账号签名'],['company','公司统一签名'],['none','不使用签名']])+'<div data-pc-signature-tools>'+signatureTools(d)+'</div>'):'';
       var attachments=panel('附件 <span class="pc-count">'+(d.assets || []).length+'/10</span>','单个 8MB，合计 15MB。',
         '<label class="pc-upload"><span>＋ 上传附件</span><input aria-label="上传推广附件" type="file" data-pc-upload accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip"></label><ul>'+(d.assets || []).map(function(a,i){return '<li><span><strong>'+esc(a.name)+'</strong><small>'+esc(mail.fileSizeText(a.size))+' · 已上传</small></span><button type="button" aria-label="移除 '+esc(a.name)+'" data-pc-remove="'+i+'">移除</button></li>';}).join('')+'</ul><p class="pc-muted">资料包、报价文件请先导出，再上传实际文件。</p>','pc-attachments');
       return '<div class="pc-compose-grid">'+panel(email?'邮件内容':'执行内容','',body,'pc-message-panel')+'<aside class="pc-content-side">'+signature+attachments+'</aside></div>';
+    }
+    function signatureTools(d) {
+      if(d.signature_key==='none')return '<p class="pc-muted">本次邮件不会自动追加签名；正文保持原样。</p>';
+      var ids=(d.mail_account_ids || []).map(Number),chosen=ids.length===1?ids[0]:0;
+      return '<label class="pc-field"><span>检查哪个邮箱的签名</span><select data-pc-signature-account><option value="">请选择邮箱</option>'+(p.data && p.data.mail_accounts || []).map(function(a){return '<option value="'+Number(a.id)+'" '+(chosen===Number(a.id)?'selected':'')+'>'+esc(a.email_address || '')+'</option>';}).join('')+'</select></label><button type="button" data-pc-signature-check>查看签名并检查资料</button><p class="pc-muted">这里只检查效果，不改变发件安排。多邮箱发送请逐个检查；最终预览按实际账号追加签名。</p><div data-pc-signature-result role="status" aria-live="polite"></div>';
+    }
+    function bindSignatureTools(host) {
+      var tools=host.querySelector('[data-pc-signature-tools]');
+      if(!tools)return;
+      var version=0;
+      function clear(){version++;var box=tools.querySelector('[data-pc-signature-result]');if(box)box.replaceChildren();var button=tools.querySelector('[data-pc-signature-check]');if(button){button.disabled=false;button.textContent='查看签名并检查资料';}}
+      function bind(){
+        tools.querySelector('[data-pc-signature-account]')?.addEventListener('change',clear);
+        tools.querySelector('[data-pc-signature-check]')?.addEventListener('click',async function(){
+          var button=this,box=tools.querySelector('[data-pc-signature-result]'),id=Number(tools.querySelector('[data-pc-signature-account]').value),key=p.collectWizard().signature_key;
+          clear();if(!id){box.textContent='请先选择要检查的邮箱。';return;}
+          var serial=++version,epoch=ui.epoch;button.disabled=true;button.textContent='正在读取签名…';box.textContent='正在检查最新签名及人员资料…';
+          try{
+            var data=await request('marketing_signature_content',{signature_key:key,mail_account_id:id,preview:1});
+            if(serial!==version || epoch!==ui.epoch || !box.isConnected)return;
+            box.innerHTML='<p class="'+(data.ready?'pc-muted':'pc-error')+'">'+esc(data.ready?'签名资料检查通过。':'签名尚不能发送：'+(data.missing || []).join('、')+' 缺失。请在人员资料补齐，或在邮箱设置修改签名后重新检查。')+'</p>'+
+              ((data.recipient_variables || []).length?'<p class="pc-muted">'+esc(data.recipient_variables.join('、'))+' 将在最终预览按收件对象替换。</p>':'')+'<iframe class="pc-signature-frame" title="当前邮箱签名检查预览" sandbox="" referrerpolicy="no-referrer"></iframe>';
+            box.querySelector('iframe').srcdoc=previewDocument(data.preview_html || '');
+          }catch(e){if(serial===version && epoch===ui.epoch && box.isConnected)box.textContent=e.message;}
+          finally{if(serial===version && box.isConnected){button.disabled=false;button.textContent='重新检查签名';}}
+        });
+      }
+      host.querySelector('[data-wizard-field="signature_key"]')?.addEventListener('change',function(){clear();tools.innerHTML=signatureTools(p.collectWizard());bind();});
+      bind();
+    }
+    function previewDocument(html) {
+      return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src https: data:; style-src \'unsafe-inline\';"><style>body{margin:12px;font:14px/1.6 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>'+mail.prepareRichHtml(html)+'</body></html>';
     }
     function renderSchedule(d) {
       var email=d.channel_key==='email'||d.channel_key==='preference';
@@ -399,7 +431,7 @@
       host.querySelector('[data-pc-upload]')?.addEventListener('change',function(e){if(e.target.files[0])upload(e.target.files[0]);});
       host.querySelector('[data-pc-legacy-attachments]')?.addEventListener('click',function(){if(root.confirm('旧附件登记将不参与本次发送，仅携带当前显示已上传的文件。确定？')){p.collectWizard();p.wizardDraft.legacyAttachmentWarning=false;invalidate();p.renderWizard();}});
       host.querySelectorAll('[data-pc-remove]').forEach(function(el){el.onclick=function(){p.collectWizard();p.wizardDraft.assets.splice(Number(el.dataset.pcRemove),1);invalidate();p.renderWizard();};});
-      if(ui.step===2){this.bindWizardContentEditor();host.querySelector('[data-promo-wizard-editor]')?.addEventListener('input',invalidate);}
+      if(ui.step===2){this.bindWizardContentEditor();bindSignatureTools(host);host.querySelector('[data-promo-wizard-editor]')?.addEventListener('input',invalidate);}
       var frame=host.querySelector('.pc-preview-frame');
       if(frame && ui.preview){var item=ui.preview.manifest.current_item || ui.preview.manifest.items[ui.selected];frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src https: data:; style-src \'unsafe-inline\';"><style>body{margin:16px;font:15px/1.65 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>'+mail.prepareRichHtml(item.body_html || '')+'</body></html>';}
       if(ui.busy)lock(true);
