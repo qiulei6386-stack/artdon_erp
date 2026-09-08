@@ -28,9 +28,32 @@
       finally{if(request===serial)dialog.removeAttribute('aria-busy');}
     }
     function value(change,side){const v=change[side];if(change.field==='status')return status[v]||v;if(['priority','task_type','dispatch_mode'].includes(change.field))return labels[v]||v;if(change.field==='progress')return v+'%';if(change.field==='is_deleted')return v==='1'?'已删除':'正常';return v||'未设置';}
+    function dateText(v){return String(v||'未设置').replace('T',' ').replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}(?:\.\d+)?$/,'$1');}
+    function kindText(t){
+      if(t.task_type==='private')return '私人待办';if(t.task_type==='personal')return '个人待办';
+      if(t.dispatch_mode==='recurring')return '周期派工';if(t.dispatch_mode==='plan')return '计划派工';
+      return t.parent_group_id || t.dispatch_mode==='multi'?'多人派工':'单人派工';
+    }
+    function contentBlock(t){
+      const fields=[['项目内容',t.project],['详细说明',t.description]].filter(([,v])=>v&&String(v).trim());
+      if(!fields.length)return '<p class="dd-content-empty">未填写项目内容或详细说明</p>';
+      const excerpt=v=>{const chars=Array.from(String(v));return chars.slice(0,120).join('')+(chars.length>120?'…':'');};
+      const blocks=full=>fields.map(([label,v])=>'<div><strong>'+label+'</strong><p>'+esc(full?v:excerpt(v))+'</p></div>').join('');
+      return '<section class="dd-content" aria-label="任务内容"><div class="dd-content-preview">'+blocks(false)+'</div>'+(fields.some(([,v])=>Array.from(String(v)).length>120)?'<details class="dd-content-full"><summary><span class="dd-expand-label">展开完整内容</span><span class="dd-collapse-label">收起完整内容</span></summary>'+blocks(true)+'</details>':'')+'</section>';
+    }
+    function groupBlock(t){
+      if(t.task_type!=='dispatch' || !t.parent_group_id)return '';
+      const g=t.group_summary;
+      if(!g)return '<p class="dd-meta">多人执行项 · 此变更记录不展开其他人的名单</p>';
+      const period=t.dispatch_mode==='recurring'?' · '+esc(String(t.task_date||'').slice(0,10))+' 批次':'';
+      return '<details class="dd-recipients"><summary>'+esc(g.as_of||'当前')+'派给 <strong>'+Number(g.member_count)+' 人</strong>'+period+' <span>查看名单</span></summary><p>'+esc((g.member_names||[]).join('、'))+(g.names_remaining?'；另 '+Number(g.names_remaining)+' 人':'')+'</p><small>按已记录且未删除的派工执行项统计，人数去重；不含私人任务。'+(g.unassigned_count?'另有 '+Number(g.unassigned_count)+' 项未分配。':'')+' 本卡片仅统计 '+esc(t.owner_name)+' 的执行项。</small></details>';
+    }
     function card(t){
-      const changes=(t.changes||[]).map(c=>'<div class="dd-change"><span>'+esc(c.label)+'</span><del>'+esc(value(c,'before'))+'</del><span aria-hidden="true">→</span><ins>'+esc(value(c,'after'))+'</ins></div>').join('');
-      return '<article class="dd-task"><div class="dd-task-top"><button type="button" data-dd-task="'+Number(t.id)+'">'+esc(t.title||'未命名任务')+'</button><span class="dd-badge '+(t.status==='done'?'is-done':'')+'">'+esc(status[t.status]||t.status)+'</span></div><p class="dd-meta">'+esc(t.owner_name)+' · '+esc(t.task_no||'')+(t.parent_group_id?' · 多人个人任务':' · '+esc(labels[t.task_type]||'待办'))+'</p>'+(changes?'<div class="dd-change-list">'+changes+'</div><p class="dd-meta">'+esc(t.time)+' · 操作人：'+esc(t.actor_name)+'</p>':'<p class="dd-meta">'+(t.overdue_days?'逾期 '+Number(t.overdue_days)+' 天 · ':'')+'截止 '+esc(t.due_at||t.task_date||'未设置')+(t.status==='done'?' · 完成 '+esc(t.completed_at||'时间未记录'):' · 进度 '+Number(t.progress||0)+'%')+'</p>')+'</article>';
+      const changes=(t.changes||[]).map(c=>'<div class="dd-change"><span>'+esc(c.label)+'</span><del>'+esc(['due_at','completed_at'].includes(c.field)?dateText(value(c,'before')):value(c,'before'))+'</del><span aria-hidden="true">→</span><ins>'+esc(['due_at','completed_at'].includes(c.field)?dateText(value(c,'after')):value(c,'after'))+'</ins></div>').join('');
+      const dispatch=t.task_type==='dispatch',ownerLabel=dispatch&&t.parent_group_id?'本项负责人':'负责人';
+      const people='<dl class="dd-people"><div><dt>'+(dispatch?'派工人':'创建人')+'</dt><dd>'+esc(t.creator_name||'未记录')+'</dd></div><div><dt>'+ownerLabel+'</dt><dd>'+esc(t.owner_name||'未分配')+'</dd></div></dl>';
+      const dates='<p class="dd-timing">'+(t.overdue_days?'<strong>逾期 '+Number(t.overdue_days)+' 天</strong> · ':'')+'截止 '+esc(dateText(t.due_at||t.task_date))+(t.status==='done'?' · 完成 '+esc(dateText(t.completed_at)):' · '+(dispatch&&t.parent_group_id?'本项':'')+'进度 '+Number(t.progress||0)+'%')+'</p>';
+      return '<article class="dd-task"><div class="dd-kind-line"><span class="dd-kind">'+kindText(t)+'</span><span class="dd-badge '+(t.status==='done'?'is-done':'')+'">'+esc(status[t.status]||t.status)+'</span></div><div class="dd-task-top"><button type="button" data-dd-task="'+Number(t.id)+'">'+esc(t.title||'未命名任务')+'</button></div>'+contentBlock(t)+people+groupBlock(t)+dates+(changes?'<div class="dd-change-list">'+changes+'</div><p class="dd-meta">'+esc(t.time)+' · 操作人：'+esc(t.actor_name)+'</p>':'')+'<p class="dd-number">任务编号：'+esc(t.task_no||'未记录')+'</p></article>';
     }
     function render(){
       const r=report;$('[data-dd-date]').value=r.date;$('[data-dd-date]').max=r.today;$('[data-dd-date]').min=r.started_at.slice(0,10);

@@ -64,4 +64,29 @@ $pdo->beginTransaction();for($i=0;$i<3000;$i++)$insert->execute(['规模测试 '
 $start=microtime(true);$large=dd_report($pdo,['date'=>$today,'user_id'=>0,'section'=>'pending'],1,true);
 mit_assert($large['counts']['pending']===3044 && count($large['items'])===20,'3000+ tasks retain exact admin totals and bounded response');
 echo 'Daily report 3000+ synthetic tasks: seconds='.round(microtime(true)-$start,3).', response_bytes='.strlen(json_encode($large)).', peak_bytes='.memory_get_peak_usage(true)."\n";
+// Multi-party card enrichment is batched, as-of and membership-scoped, never copied from mutable group totals.
+$insert->execute(['多人项目',1,1,$today,$today.' 18:00:00']);$multiId=(int)$pdo->lastInsertId();
+$insert->execute(['不得向甲导出的其他人正文',1,2,$today,$today.' 18:00:00']);$sibling=(int)$pdo->lastInsertId();
+$pdo->exec("UPDATE dispatch_next_tasks SET task_type='dispatch',dispatch_mode='multi',parent_group_id=99,project='项目内容',description='详细说明' WHERE id={$multiId}");
+$pdo->exec("UPDATE dispatch_next_tasks SET task_type='dispatch',dispatch_mode='multi',parent_group_id=99,project='FOREIGN_SECRET_PROJECT',description='FOREIGN_SECRET_DESCRIPTION' WHERE id={$sibling}");
+$multi=dd_report($pdo,['date'=>$today,'section'=>'changes'],1,false);
+$card=array_values(array_filter($multi['items'],fn($r)=>$r['id']===$multiId))[0];
+mit_assert($card['project']==='项目内容' && $card['description']==='详细说明' && $card['creator_name']==='人员甲','Card content and creator from own fact snapshot');
+mit_assert($card['group_summary']['member_count']===2 && $card['group_summary']['member_names']===['人员甲','人员乙'],'Personal report can count its dispatch group without whole-team access');
+mit_assert(strpos(json_encode($multi),'FOREIGN_SECRET')===false,'Sibling project and description never leak in personal response');
+$pdo->exec("UPDATE dispatch_next_tasks SET assigned_to=2 WHERE id={$multiId}");
+$departed=dd_report($pdo,['date'=>$today,'section'=>'changes'],1,false);
+foreach($departed['items'] as $item)if($item['id']===$multiId)mit_assert($item['group_summary']===null,'Transferred-out events cannot disclose new recipient roster');
+$pdo->exec("UPDATE dispatch_next_tasks SET assigned_to=1 WHERE id={$multiId}");
+// Preserve a same-day cohort, then move only synthetic facts to a past date for exact historical replay.
+$pdo->exec("UPDATE dispatch_next_tasks SET dispatch_mode='recurring' WHERE id IN ({$multiId},{$sibling})");
+$insert->execute(['下一批次',1,2,$tomorrow,$tomorrow.' 18:00:00']);$futureId=(int)$pdo->lastInsertId();
+$pdo->exec("UPDATE dispatch_next_tasks SET task_type='dispatch',dispatch_mode='recurring',parent_group_id=99 WHERE id={$futureId}");
+$pdo->prepare('UPDATE dispatch_daily_events SET occurred_at=? WHERE task_id IN (?,?,?)')->execute([dd_day($yesterday)['start'],$multiId,$sibling,$futureId]);
+$history=dd_report($pdo,['date'=>$yesterday,'section'=>'changes'],1,false);
+$oldCard=array_values(array_filter($history['items'],fn($r)=>$r['id']===$multiId && $r['dispatch_mode']==='recurring'))[0];
+mit_assert($oldCard['group_summary']['member_count']===2 && $oldCard['group_summary']['task_count']===2 && $oldCard['group_summary']['as_of']==='所选日日终','Historical recurring group counts same task-date cohort only');
+$pdo->exec("UPDATE dispatch_next_tasks SET project='NEW_BODY',description='NEW_DESCRIPTION' WHERE id={$multiId}");
+$pdo->exec("UPDATE dispatch_next_tasks SET is_deleted=1 WHERE id={$sibling}");
+mit_assert(dd_report($pdo,['date'=>$yesterday,'section'=>'changes'],1,false)===$history,'Current content and roster edits cannot rewrite historical enrichment');
 echo "Dispatch daily MySQL: atomic triggers, idempotent baseline, privacy/admin, transfer/reopen, read/sort exclusion, notes concurrency, historical replay and pagination passed.\n";

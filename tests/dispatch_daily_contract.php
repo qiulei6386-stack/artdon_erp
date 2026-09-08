@@ -24,6 +24,18 @@ dd_assert(dd_aggregate([array_merge($base,['completed_at'=>'2026-09-08 10:00:00'
 $transfer=['id'=>2,'owner_id'=>8,'previous_owner_id'=>7,'actor_id'=>7,'event_type'=>'update','occurred_at'=>$day['start'],'before'=>array_merge($base,['title'=>'原负责人私人内容']),'after'=>array_merge($base,['assigned_to'=>8,'title'=>'新负责人内容'])];
 $incoming=dd_aggregate([],[$transfer],$day,8);$outgoing=dd_aggregate([],[$transfer],$day,7);
 dd_assert(count($incoming['lists']['changes'][0]['changes'])===1 && $incoming['lists']['changes'][0]['title']==='新负责人内容' && $outgoing['lists']['changes'][0]['title']==='原负责人私人内容','Ownership boundary does not leak other owner private before/after text');
+$content=dd_task_card(array_merge($base,['project'=>'<p>项目第一行</p><div>第二行</div>','description'=>'说明<br>下一行']));
+dd_assert($content['project']==="项目第一行\n第二行" && $content['description']==="说明\n下一行" && $content['created_by']===7,'Project, description and creator retained with safe paragraph breaks');
+$groupBase=array_merge($base,['task_type'=>'dispatch','parent_group_id'=>9,'dispatch_mode'=>'multi','project'=>'SIBLING_SECRET']);
+$groupStates=[$groupBase,array_merge($groupBase,['id'=>2,'assigned_to'=>8]),array_merge($groupBase,['id'=>3,'assigned_to'=>8]),array_merge($groupBase,['id'=>4,'assigned_to'=>9,'is_deleted'=>1]),array_merge($groupBase,['id'=>5,'assigned_to'=>10,'task_type'=>'private']),array_merge($groupBase,['id'=>6,'assigned_to'=>0])];
+$groupStats=dd_group_summaries($groupStates,[7=>'人员甲',8=>'人员乙']);
+dd_assert($groupStats['9:all']['member_count']===2 && $groupStats['9:all']['task_count']===4 && $groupStats['9:all']['unassigned_count']===1,'People deduplicated; deleted/private siblings excluded; unassigned is not assigned to creator');
+dd_assert(strpos(json_encode($groupStats),'SIBLING_SECRET')===false && $groupStats['9:all']['member_names']===['人员甲','人员乙'],'Recipient metadata never exports sibling content');
+$cycle=array_merge($groupBase,['dispatch_mode'=>'recurring']);
+$cycles=dd_group_summaries([$cycle,array_merge($cycle,['id'=>2,'assigned_to'=>8]),array_merge($cycle,['id'=>3,'assigned_to'=>9,'task_date'=>'2026-09-09'])],[7=>'甲',8=>'乙',9=>'丙']);
+dd_assert($cycles['9:2026-09-08']['member_count']===2 && $cycles['9:2026-09-09']['member_count']===1,'Recurring membership is per generated date, never all dates combined');
+$privateTransfer=$transfer;$privateTransfer['before']['project']='OLD_PRIVATE_BODY';$privateTransfer['after']['project']='NEW_PRIVATE_BODY';
+dd_assert(dd_aggregate([],[$privateTransfer],$day,8)['lists']['changes'][0]['project']==='NEW_PRIVATE_BODY' && dd_aggregate([],[$privateTransfer],$day,7)['lists']['changes'][0]['project']==='OLD_PRIVATE_BODY','Enriched transfer card still uses only its owned-side content');
 $api=file_get_contents(dirname(__DIR__).'/dispatch_next_api.php');
 dd_assert(strpos($api,"case 'daily_report':")!==false && strpos($api,'dd_report(dispatch_next_db(),$in,dn_uid(),dn_is_admin())')!==false,'Server identity/role, never client admin');
 dd_assert(strpos($api,"hash_equals(\$_SESSION['dispatch_daily_csrf']")!==false,'Supplement CSRF guard');

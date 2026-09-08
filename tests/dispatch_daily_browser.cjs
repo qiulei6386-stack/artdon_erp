@@ -18,11 +18,19 @@ const vm=require('node:vm');for(const m of source.replace(/<\?php[\s\S]*?\?>|<\?
  await page.evaluate(()=>{
   window.calls=[];window.confirm=()=>false;
   window.reply=p=>{const id=p.user_id??1,section=p.section||'completed';return {date:p.date||'2026-09-08',today:'2026-09-08',historical:p.date==='2026-09-07',started_at:'2026-09-07 09:00:00',partial:false,user_id:id,user_name:id===0?'全员汇总':id===1?'示例人员甲':'示例人员乙',is_admin:!window.normalUser,users:[{id:1,name:'示例人员甲'},{id:2,name:'示例人员乙 · 名称很长也不能挤在一起'}],counts:{completed:23,pending:4,overdue:2,changes:8,tomorrow:3,active:5},items:Array.from({length:section==='changes'?3:5},(_,i)=>({id:i+1,title:'产品目录修订与客户跟进 · 很长的待办标题检查自然换行 '+i,task_no:'DN-SYNTHETIC-'+i,task_type:'personal',owner_name:'示例人员甲',status:section==='completed'?'done':'in_progress',due_at:'2026-09-08 18:00:00',completed_at:'2026-09-08 10:25:00',progress:65,time:'14:20:00',actor_name:'示例人员乙',changes:section==='changes'?[{field:'due_at',label:'截止时间',before:'2026-09-08 18:00:00',after:'2026-09-10 18:00:00'},{field:'status',label:'状态',before:'in_progress',after:'done'}]:[]})),section,page:p.page||1,pages:2,team:[{id:1,name:'示例人员甲',counts:{completed:12,pending:3,overdue:2,changes:4}},{id:2,name:'示例人员乙 · 名称很长也不能挤在一起',counts:{completed:11,pending:1,overdue:0,changes:4}}],note:{note:'',version:0},can_edit_note:id===1&&p.date!=='2026-09-07',csrf:'synthetic'};};
+  const baseReply=window.reply;window.reply=p=>{const r=baseReply(p);r.items=r.items.map((t,i)=>({...t,task_type:i===2?'private':i===3?'personal':'dispatch',dispatch_mode:i===4?'recurring':i===1?'single':'multi',parent_group_id:i===0||i===4?99:null,creator_name:'派工人甲',project:i===1?'':('拜访供应商后整理材料、交期和报价差异。\n确认下一步负责人。'+ '较长项目说明；'.repeat(40)),description:i===1?'':'<img src=x onerror=alert(1)>只作为文字展示\n补充要求：提供对比表。',due_at:'2026-09-08 18:00:00.000000',completed_at:'2026-09-08 10:25:00.000000',task_date:'2026-09-08',group_summary:i===0||i===4?{member_count:3,member_names:['示例人员甲','示例人员乙','示例人员丙 · 较长名字'],task_count:3,unassigned_count:0,names_remaining:0,as_of:'当前'}:null}));return r;};
   window.testDaily=DispatchDaily.install({api:async(action,p)=>{calls.push({action,p});if(window.defer&&action==='daily_report')return new Promise(resolve=>window.deferred.push({p,resolve}));if(action==='daily_note_save'){if(window.failSave)throw Error('模拟保存失败');return {note:p.note,version:p.version+1};}return reply(p);},openTask:async id=>{window.openedTask=id;document.querySelector('#detail').showModal();}});
   document.querySelector('#closeDetail').onclick=()=>document.querySelector('#detail').close();
  });
  assert.equal(await page.evaluate(()=>calls.length),0,'No query on page startup');
  await page.locator('#dailyReportBtn').click();await page.locator('.dd-summary').waitFor();
+ assert((await page.locator('.dd-task').first().innerText()).includes('项目内容'));
+ assert((await page.locator('.dd-task').first().innerText()).includes('多人派工'));
+ assert((await page.locator('.dd-task').nth(1).innerText()).includes('未填写项目内容或详细说明'));
+ assert((await page.locator('.dd-task').nth(2).innerText()).includes('私人待办'));
+ assert((await page.locator('.dd-task').nth(3).innerText()).includes('个人待办'));
+ assert.equal(await page.locator('.dd-task img').count(),0,'Content HTML cannot execute');
+ assert(!(await page.locator('.dd-task').first().innerText()).includes('.000000'),'No database microseconds displayed');
  const layouts=[];
  for(const size of [{width:360,height:640},{width:390,height:844},{width:768,height:900},{width:1280,height:800},{width:1440,height:900}]){
   await page.setViewportSize(size);
@@ -33,6 +41,16 @@ const vm=require('node:vm');for(const m of source.replace(/<\?php[\s\S]*?\?>|<\?
    assert(m.scroll<=m.width+1&&m.bodyScroll<=m.bodyWidth+1,`No horizontal overflow ${JSON.stringify({size,m})}`);assert(m.bodyHeight>200&&m.foot<=size.height+1,'Body and footer visible');
    layouts.push({size,section,m});await page.screenshot({path:path.join(output,`${size.width}-${section}.png`)});
   }
+ }
+ for(const width of [360,1280]){
+  await page.setViewportSize({width,height:800});
+  const requestCount=await page.evaluate(()=>calls.length);
+  await page.locator('.dd-content-full summary').first().click();await page.locator('.dd-recipients summary').first().click();
+  assert((await page.locator('.dd-recipients').first().innerText()).includes('示例人员丙'));
+  assert.equal(await page.evaluate(()=>calls.length),requestCount,'Content and roster expansion has no extra request');
+  assert(await page.locator('.dd-body').evaluate(b=>b.scrollWidth<=b.clientWidth+1),'Expanded card stays inside small screen');
+  await page.locator('.dd-task').first().scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,`${width}-card-expanded.png`)});
+  await page.locator('.dd-content-full summary').first().click();await page.locator('.dd-recipients summary').first().click();
  }
  await page.setViewportSize({width:1280,height:800});
  await page.locator('[data-dd-user]').selectOption('0');await page.locator('.dd-team').waitFor();

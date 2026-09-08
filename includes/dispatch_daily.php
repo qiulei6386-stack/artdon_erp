@@ -107,9 +107,40 @@ function dd_owner(array $task): int { return (int)($task['assigned_to'] ?: $task
 
 function dd_task_card(array $t): array
 {
-    $card=array_intersect_key($t,array_flip(['id','task_no','task_type','dispatch_mode','parent_group_id','status','task_date','due_at','completed_at','progress']));
+    $card=array_intersect_key($t,array_flip(['id','task_no','task_type','dispatch_mode','parent_group_id','status','task_date','due_at','completed_at','progress','created_by']));
     $card['title']=dd_text($t['title']);$card['owner_id']=dd_owner($t);$card['id']=(int)$t['id'];
+    foreach (['project','description'] as $field) {
+        // Keep paragraph breaks, but never return executable markup from task content.
+        $raw=preg_replace('~<br\s*/?>|</(?:p|div|li|tr|h[1-6])\s*>~i',"\n",(string)($t[$field]??''));
+        $card[$field]=dd_text($raw,8000);
+    }
     return $card;
+}
+
+function dd_group_key(array $task): string
+{
+    $id=(int)($task['parent_group_id']??0);
+    return $id>0 && ($task['task_type']??'')==='dispatch' ? $id.':'.(($task['dispatch_mode']??'')==='recurring'?substr((string)($task['task_date']??''),0,10):'all') : '';
+}
+
+/** Recipient metadata only: never export a sibling's title, project, description or private task. */
+function dd_group_summaries(array $states, array $names): array
+{
+    $groups=[];
+    foreach ($states as $task) {
+        $key=dd_group_key($task);if ($key==='' || !empty($task['is_deleted'])) continue;
+        if (!isset($groups[$key])) $groups[$key]=['member_ids'=>[],'task_count'=>0,'unassigned_count'=>0];
+        $groups[$key]['task_count']++;
+        $owner=(int)($task['assigned_to']??0);
+        if ($owner>0) $groups[$key]['member_ids'][$owner]=true;else $groups[$key]['unassigned_count']++;
+    }
+    foreach ($groups as &$g) {
+        $ids=array_keys($g['member_ids']);sort($ids,SORT_NUMERIC);
+        $g['member_count']=count($ids);$g['member_names']=[];
+        foreach (array_slice($ids,0,50) as $id) $g['member_names'][]=$names[$id]??('历史账号 #'.$id);
+        $g['names_remaining']=max(0,count($ids)-50);unset($g['member_ids']);
+    }
+    unset($g);return $groups;
 }
 
 /** Pure aggregation, testable without production data. Counts never depend on client filters. */
@@ -191,7 +222,28 @@ function dd_report_data(PDO $pdo, array $input, int $uid, bool $admin): array
     $section=(string)($input['section']??'completed');if (!isset($result['lists'][$section])) throw new InvalidArgumentException('日报分类无效');
     $pages=max(1,(int)ceil($result['counts'][$section]/20));$page=max(1,min($pages,(int)($input['page']??1)));
     $items=array_slice($result['lists'][$section],($page-1)*20,20);
+    $byId=[];foreach ($states as $state) $byId[(int)$state['id']]=$state;
+    $groupIds=[];$eligible=[];
+    foreach ($items as $item) {
+        $key=dd_group_key($item);$state=$byId[$item['id']]??null;
+        // Deleted/transferred-out activity is not permission to inspect today's new group membership.
+        if ($key!=='' && $state && empty($state['is_deleted']) && dd_group_key($state)===$key && dd_owner($state)===$item['owner_id']) {
+            $eligible[$item['event_id']??('task'.$item['id'])]=true;$groupIds[(int)$item['parent_group_id']]=true;
+        }
+    }
+    $groupStates=$states;
+    if ($target && $groupIds) {
+        $ids=implode(',',array_keys($groupIds));
+        // One bounded-page batch; use the same as-of facts, not mutable group totals or today's task table.
+        $groupSt=$pdo->prepare("SELECT e.after_json FROM dispatch_daily_events e JOIN (SELECT MAX(id) id FROM dispatch_daily_events WHERE occurred_at<? AND event_type IN ('baseline','create','update','delete') GROUP BY task_id) latest ON latest.id=e.id WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(e.after_json,'$.parent_group_id')) AS UNSIGNED) IN ({$ids})");
+        $groupSt->execute([$day['end']]);$groupStates=[];
+        while ($row=$groupSt->fetch()) if ($row['after_json']!==null) $groupStates[]=json_decode($row['after_json'],true,512,JSON_THROW_ON_ERROR);
+    }
+    $groups=dd_group_summaries($groupStates,$names);
     foreach ($items as &$item) {$item['owner_name']=$names[$item['owner_id']]??'未分配';$item['actor_name']=empty($item['actor_id'])?'系统 / 外部联动':($names[$item['actor_id']]??'历史账号');
+        $item['creator_name']=$names[(int)($item['created_by']??0)]??'历史账号';
+        $item['group_summary']=isset($eligible[$item['event_id']??('task'.$item['id'])])?($groups[dd_group_key($item)]??null):null;
+        if ($item['group_summary']!==null) $item['group_summary']['as_of']=$day['historical']?'所选日日终':'当前';
         foreach ($item['changes']??[] as $i=>$change) if ($change['field']==='assigned_to') {foreach (['before','after'] as $side) $item['changes'][$i][$side]=$names[(int)$change[$side]]??'未分配';}}
     unset($item);
     $team=[];if (!$target) {
