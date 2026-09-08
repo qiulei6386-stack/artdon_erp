@@ -91,16 +91,17 @@ function qo_insert_chunked(PDO $pdo, string $table, string $sql, array $params):
 }
 
 function qo_convert_order(PDO $pdo, array &$d): array {
+  require_once __DIR__.'/quote_money.php';
   $orderNo=qo_order_no_at(qo_s($d['order_no']??($d['quote_no']??''),120),qo_s($d['quote_no']??'',120));
   if($orderNo==='') throw new RuntimeException('缺少订单号');
   $items=qo_order_items_from_payload($d['items_json']??'[]');
   if(!$items) throw new RuntimeException('订单没有产品明细');
   $customerJson=(string)($d['customer_json']??'{}');
   $custName=qo_s($d['customer_name']??qo_customer_name($customerJson),255);
-  $qty=0; foreach($items as $it) $qty+=qo_item_qty_for_product_total($it);
-  if($qty<=0) $qty=qo_num($d['qty']??0);
-  $amount=qo_num($d['amount']??0);
-  if($amount<=0) foreach($items as $it) $amount+=qo_num($it['amount']??(qo_num($it['qty']??0)*qo_num($it['price']??$it['unit_price']??0)));
+  $sourceQuoteId=(int)($d['quote_id']??$d['source_quote_id']??0);
+  if($sourceQuoteId<=0 || empty($d['money_revision'])) throw new RuntimeException('缺少来源报价版本，请保留输入并重新打开转订单预览');
+  $money=qm_order_totals($items,$d);
+  $qty=$money['qty']; $amount=$money['amount'];
   unset($it);
   // Schema setup must precede the transaction: MySQL DDL implicitly commits.
   qo_ensure_schema($pdo);
@@ -114,6 +115,11 @@ function qo_convert_order(PDO $pdo, array &$d): array {
   if((int)qo_row($pdo,'SELECT GET_LOCK(?,5) AS acquired',[$lock])['acquired']!==1) throw new RuntimeException('此订单正在生成，请稍后到订单中心核对');
   try {
     $pdo->beginTransaction();
+    $source=qo_row($pdo,'SELECT id,quote_no,customer_id,customer_json,currency,exchange_rate,items_json,qty,price,subtotal_amount,adjustment_amount,adjustment_json,amount,approval_status,approval_log_json,submitted_at,approved_at,rejected_at,header_json,bank_json,template_json,commission_json FROM quote_orders WHERE id=? LIMIT 1 FOR UPDATE',[$sourceQuoteId]);
+    if(!$source || ($source['approval_status']??'')!=='approved') throw new RuntimeException('来源报价未审核或已退审，已停止转单');
+    if((string)$source['quote_no']!==(string)($d['quote_no']??'')) throw new RuntimeException('来源报价编号不一致，已停止转单');
+    qm_require_revision($source,$d['money_revision']);
+    unset($source);
     $exist=qo_row($pdo,"SELECT id FROM quote_sales_orders WHERE order_no=? AND COALESCE(status,'') NOT IN ('已作废','取消') LIMIT 1 FOR UPDATE",[$orderNo]);
     if($exist) throw new RuntimeException('订单号已存在，请在订单中心核对；未覆盖原订单：'.$orderNo);
     $sql='INSERT INTO quote_sales_orders(order_no,quote_no,source_quote_id,customer_id,customer_name,customer_json,header_json,bank_json,template_json,items_json,snapshot_json,qty,amount,currency,exchange_rate,quote_date,order_date,status,shipment_status,payment_status,paid_amount,balance_amount,order_doc_title,contract_title,note,user_name,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())';

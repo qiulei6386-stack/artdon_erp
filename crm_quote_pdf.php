@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/includes/quote_money.php';
 /**
  * Artdon Quotation PDF Export V6.8.5.21 Quote/Order Unified Spec
  * Syncs quotation preview format to PDF/print export:
@@ -88,6 +89,7 @@ function quote_pdf_apply_approved_snapshot(array $payload): array {
     $snap=json_decode((string)($q['approved_snapshot_json']??''),true);
     if(!is_array($snap)||(int)($snap['id']??0)!==$id||(string)($snap['quote_no']??'')!==(string)$q['quote_no']) quote_pdf_block('审核快照不存在或与报价不一致。');
     $items=json_decode((string)($snap['items_json']??''),true); if(!is_array($items)||!$items) quote_pdf_block('审核快照没有产品明细。');
+    try{qm_validate_snapshot($snap);}catch(Throwable $e){quote_pdf_block($e->getMessage());}
     return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>maybe_json($snap['customer_json']??'',[]),'header'=>maybe_json($snap['header_json']??'',[]),'bank'=>maybe_json($snap['bank_json']??'',[]),'template'=>maybe_json($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'subtotal_amount'=>$snap['subtotal_amount']??0,'adjustment_amount'=>$snap['adjustment_amount']??0,'quote_adjustment'=>maybe_json($snap['adjustment_json']??'',[]),'approval_status'=>'approved','approved_snapshot_export'=>1];
 }
 function quote_pdf_approval_guard(array $payload): void {
@@ -463,8 +465,8 @@ $adjustmentAmount = num($payload['adjustment_amount'] ?? 0);
 $subtotalAmount = num($payload['subtotal_amount'] ?? 0) ?: $lineSubtotalAmount;
 $showAdjustmentRows = abs($adjustmentAmount) > 0.004 && !quote_pdf_has_adjustment_item($items);
 if (isset($payload['total']) && is_array($payload['total'])) {
-    $totalQty = num($payload['total']['qty'] ?? $totalQty) ?: $totalQty;
-    $totalAmount = num($payload['total']['amount'] ?? $totalAmount) ?: $totalAmount;
+    $totalQty = num($payload['total']['qty'] ?? $totalQty);
+    $totalAmount = num($payload['total']['amount'] ?? $totalAmount);
 }
 $company = s_trim($header['company'] ?? 'Gallin Industrial (HK) Limited');
 $fromText = s_trim($header['from_text'] ?? '');
@@ -564,7 +566,7 @@ html,body{margin:0;background:#f4f6fa;color:#000;font-family:"ARS MaquetteTr","M
         <td class="spec"><?=h(build_spec($it))?></td>
         <td><?=h($isVirtual ? '' : ($it['color'] ?? ''))?></td>
         <td><?=h($qty)?></td>
-        <td><?=h(money_fmt($price))?></td>
+        <td><?=h(round($price,2)==$price?money_fmt($price):rtrim(number_format($price,4,'.',''),'0'))?></td>
         <td><?=h(money_fmt($amt))?></td>
         <td><?=h($isVirtual ? '' : ($it['moq'] ?? $p['moq'] ?? ''))?></td>
       </tr>

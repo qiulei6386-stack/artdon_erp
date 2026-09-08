@@ -14,9 +14,10 @@ if($start===false || $end===false) throw new RuntimeException('API function boun
 eval(substr($source,$start,$end-$start));
 unset($source);
 require __DIR__.'/../includes/quote_order_conversion.php';
+require_once __DIR__.'/../includes/quote_money.php';
 $_SESSION=['username'=>'验收测试'];
 function check($ok,$why){if(!$ok) throw new RuntimeException($why);}
-function payload($number){return ['order_no'=>$number,'quote_no'=>'验收测试来源','customer_name'=>'验收测试客户','customer_json'=>'{"name":"验收测试客户"}','items_json'=>'[{"product":{"code":"TEST","name":"Test"},"qty":2,"price":3,"amount":6}]','snapshot_json'=>'{"test":true}','currency'=>'USD','amount'=>6,'qty'=>2,'commission_choice'=>'none'];}
+function payload($number){global $pdo;$source=qo_row($pdo,'SELECT * FROM quote_orders WHERE id=1');return ['quote_id'=>1,'money_revision'=>qm_revision($source),'order_no'=>$number,'quote_no'=>'验收测试来源','customer_name'=>'验收测试客户','customer_json'=>'{"name":"验收测试客户"}','items_json'=>'[{"product":{"code":"TEST","name":"Test"},"qty":2,"price":3,"amount":6}]','snapshot_json'=>'{"test":true}','currency'=>'USD','amount'=>6,'qty'=>2,'commission_choice'=>'none'];}
 if(($argv[1]??'')==='--worker'){
   $_SESSION['quote_order_schema_checked_v68555']=time();
   $d=payload($argv[2]);
@@ -25,7 +26,8 @@ if(($argv[1]??'')==='--worker'){
   exit;
 }
 qo_ensure_schema($pdo);qo_commission_schema($pdo);
-$pdo->exec('CREATE TABLE quote_orders(id INT AUTO_INCREMENT PRIMARY KEY,quote_no VARCHAR(120),converted_order_id INT DEFAULT 0,converted_order_no VARCHAR(120) DEFAULT "") ENGINE=InnoDB');
+$extra=[];foreach(['customer_id','customer_json','currency','exchange_rate','items_json','qty','price','subtotal_amount','adjustment_amount','adjustment_json','amount','approval_log_json','submitted_at','approved_at','rejected_at','header_json','bank_json','template_json','commission_json'] as $col)$extra[]='`'.$col.'` LONGTEXT NULL';
+$pdo->exec('CREATE TABLE quote_orders(id INT AUTO_INCREMENT PRIMARY KEY,quote_no VARCHAR(120),converted_order_id INT DEFAULT 0,converted_order_no VARCHAR(120) DEFAULT "",approval_status VARCHAR(30) DEFAULT "approved",'.implode(',',$extra).') ENGINE=InnoDB');
 $pdo->exec("INSERT INTO quote_orders(quote_no) VALUES('验收测试来源')");
 
 // Match the legacy PI shape: images in item_json, row image, original items and order_items.
@@ -97,3 +99,10 @@ $d=payload('AT-TEST-UTF8');$d['snapshot_json']=json_encode(['text'=>str_repeat('
 $expected=hash('sha256',$d['snapshot_json']);$utf=qo_convert_order($pdo,$d);
 check(qo_row($pdo,'SELECT SHA2(snapshot_json,256) h FROM quote_sales_orders WHERE id=?',[$utf['id']])['h']===$expected,'UTF-8 chunk boundary corrupted');
 echo 'Rollback, retry, duplicate preservation, commission and concurrent conversion passed.'.PHP_EOL;
+$guarded=payload('AT-TEST-SOURCE-GUARD');
+$pdo->exec("UPDATE quote_orders SET approval_status='pending' WHERE id=1");
+try{qo_convert_order($pdo,$guarded);throw new RuntimeException('Unapproved source accepted');}catch(RuntimeException $e){check(strpos($e->getMessage(),'未审核')!==false,'Wrong source status error');}
+$pdo->exec("UPDATE quote_orders SET approval_status='approved',amount='1' WHERE id=1");
+try{qo_convert_order($pdo,$guarded);throw new RuntimeException('Stale source accepted');}catch(RuntimeException $e){check(strpos($e->getMessage(),'已变化')!==false,'Wrong source revision error');}
+check((int)qo_row($pdo,"SELECT COUNT(*) n FROM quote_sales_orders WHERE order_no='AT-TEST-SOURCE-GUARD'")['n']===0,'Source failure created order');
+echo 'Unapproved/stale source quotation blocked without order writes.'.PHP_EOL;

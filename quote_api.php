@@ -5,6 +5,7 @@ artdon_sso_require_api('quote');
 /* ARTDON_SSO_GATE_V2_END */
 
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/quote_money.php';
 if (session_status() === PHP_SESSION_NONE) {
     @session_name('ARTDON_SYS');
     @session_set_cookie_params(['lifetime'=>86400*30,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
@@ -34,7 +35,7 @@ if (!in_array($action,['download_backup','price_policy_export_excel','commission
   });
 }
 function ok($data=[]){ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
-function fail($msg){ echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE); exit; }
+function fail($msg){ global $pdo; if($pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack(); echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE); exit; }
 function fail_auth($msg='请先登录'){ echo json_encode(['ok'=>false,'msg'=>$msg,'auth_required'=>true], JSON_UNESCAPED_UNICODE); exit; }
 function quote_release_session_lock(){
   if(session_status()===PHP_SESSION_ACTIVE) @session_write_close();
@@ -208,7 +209,8 @@ function quote_select_columns_except($pdo,$table,array $exclude=[]){
 }
 function quote_mutation_response_quote($q){
   if(!is_array($q)) return $q;
-  unset($q['approved_snapshot_json']);
+  $q['money_revision']=qm_revision($q);
+  unset($q['approved_snapshot_json'],$q['approval_items_json']);
   return $q;
 }
 function save_row($pdo,$table,$data,$fields){
@@ -1553,12 +1555,38 @@ function get_quote_products($pdo){
   foreach($rs as &$p){ $p['source']=$p['source']?:'quote'; $p['source_label']=$p['source_label']??'报价本地'; }
   return $rs;
 }
+function quote_product_exclusion_map($pdo){
+  $map=['models'=>[],'naming_ids'=>[],'local_ids'=>[]];
+  if(!table_exists($pdo,'quote_product_exclusions')) return $map;
+  try{ $rs=rows($pdo,"SELECT source_type,model_no,naming_id FROM quote_product_exclusions"); }
+  catch(Throwable $e){ return $map; }
+  foreach($rs as $r){
+    $source=strtolower(trim((string)($r['source_type']??'')));
+    $model=norm_key($r['model_no']??'');
+    $namingId=(int)($r['naming_id']??0);
+    if($model!=='') $map['models'][$model]=1;
+    if($source==='naming' && $namingId>0) $map['naming_ids'][$namingId]=1;
+  }
+  return $map;
+}
+function quote_product_is_excluded($p,$ex){
+  $source=strtolower(trim((string)($p['source']??'')));
+  $model=norm_key(first_existing_val($p,['code','model','model_no','product_model','product_code','sku','name'],''));
+  if($model!=='' && isset($ex['models'][$model])) return true;
+  if($source==='naming'){
+    $nid=(int)($p['naming_id']??0);
+    if($nid<=0 && isset($p['id']) && preg_match('/_(\d+)$/',(string)$p['id'],$m)) $nid=(int)$m[1];
+    if($nid>0 && isset($ex['naming_ids'][$nid])) return true;
+  }
+  return false;
+}
 function merged_quote_products($pdo){
   $costMap=get_bom_cost_map($pdo);
   $specMap=get_bom_quote_spec_map($pdo);
-  $naming=get_naming_products($pdo);
+  $exclusions=quote_product_exclusion_map($pdo);
+  $naming=array_values(array_filter(get_naming_products($pdo),fn($p)=>!quote_product_is_excluded($p,$exclusions)));
   foreach($naming as &$p){ apply_bom_cost($p,$costMap); apply_bom_quote_spec($p,$specMap); }
-  $local=get_quote_products($pdo);
+  $local=array_values(array_filter(get_quote_products($pdo),fn($p)=>!quote_product_is_excluded($p,$exclusions)));
   foreach($local as &$p){ apply_bom_cost($p,$costMap); apply_bom_quote_spec($p,$specMap); }
   $out=[]; $seen=[];
   foreach(array_merge($naming,$local) as $p){
@@ -3110,8 +3138,15 @@ function qlog_ip(){
 }
 function qlog_json($v,$limit=60000){
   if($v===null || $v==='') return null;
+  if(is_array($v) && (isset($v['items_json']) || isset($v['items']))) $v=qm_audit_summary($v);
   $s=is_string($v)?$v:json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-  if(strlen($s)>$limit) $s=substr($s,0,$limit).'...TRUNCATED';
+  if(strlen($s)>$limit){
+    $decoded=is_array($v)?$v:json_decode($s,true);
+    $brief=is_array($decoded)?qm_audit_summary($decoded):['type'=>'large_text'];
+    $brief['source_bytes']=strlen($s); $brief['source_sha256']=hash('sha256',$s);
+    $s=json_encode($brief,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
+    if(strlen($s)>$limit) $s=json_encode(['source_bytes'=>strlen($s),'source_sha256'=>hash('sha256',$s),'summary'=>'详见结构化审核日志，超大内容未内嵌'],JSON_UNESCAPED_UNICODE);
+  }
   return $s;
 }
 function qlog_customer_name($d){
@@ -3141,7 +3176,7 @@ function qlog_summary($action,$d){
 function quote_log_event($pdo,$arg=[]){
   try{
     static $logSchemaReady=false;
-    if(!$logSchemaReady){ ensure_quote_log_schema($pdo); $logSchemaReady=true; }
+    if(!$logSchemaReady){ if(!$pdo->inTransaction()) ensure_quote_log_schema($pdo); $logSchemaReady=true; }
     $d=$arg['detail']??[];
     $st=$pdo->prepare("INSERT INTO quote_logs(level,module,action,event,quote_id,quote_no,customer_id,customer_name,user_name,ip,user_agent,request_method,request_uri,summary,detail_json,before_json,after_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     $st->execute([
@@ -3510,6 +3545,12 @@ function quote_merge_review_items(array $savedItems, array $reviewItems): array 
     if(!is_array($saved)) fail('原报价第'.($idx+1).'项产品资料异常，已停止审核');
     $review=$reviewItems[$idx]??null;
     if(!is_array($review)) fail('审核第'.($idx+1).'项资料异常，已停止审核');
+    if((string)($review['product']['id']??$review['product_id']??'')!==(string)($saved['product']['id']??$saved['product_id']??'')) fail('审核产品顺序或身份不一致，请重新打开审核');
+    if(qm_currency($review['currency']??$saved['currency']??'')!==qm_currency($saved['currency']??$review['currency']??'')) fail('审核币种已变化，请重新打开审核');
+    if(qm_number($review['qty']??0,'数量')<0) fail('数量不能小于零');
+    foreach(['product','parts','product_type','color','cct','cri','ip','customer_code','virtual_type'] as $identityField){
+      if(($review[$identityField]??null)!=($saved[$identityField]??null)) fail('审核第'.($idx+1).'行身份或配置已变化，请重新打开核对');
+    }
     $qty=max(0,(float)($review['qty']??$saved['qty']??0));
     $reviewBasis=array_replace($saved,$review);
     $price=quote_review_price_value($reviewBasis,(float)($saved['price']??$saved['unit_price']??0));
@@ -3576,7 +3617,7 @@ function quote_append_approval_log(PDO $pdo, int $quoteId, array $entry): void {
     $logs=json_decode((string)$st->fetchColumn(),true); if(!is_array($logs)) $logs=[];
     $logs[]=$entry; if(count($logs)>200) $logs=array_slice($logs,-200);
     $pdo->prepare('UPDATE quote_orders SET approval_log_json=? WHERE id=?')->execute([json_encode($logs,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$quoteId]);
-  }catch(Throwable $e){ try{ quote_log_event($pdo,['level'=>'WARN','action'=>'approval_log_error','event'=>'审核日志写入失败','summary'=>$e->getMessage(),'detail'=>['quote_id'=>$quoteId]]); }catch(Throwable $ignore){} }
+  }catch(Throwable $e){ if($pdo->inTransaction()) throw $e; try{ quote_log_event($pdo,['level'=>'WARN','action'=>'approval_log_error','event'=>'审核日志写入失败','summary'=>$e->getMessage(),'detail'=>['quote_id'=>$quoteId]]); }catch(Throwable $ignore){} }
 }
 function quote_crm_ensure_reminder_table(PDO $pdo): void {
   static $reminderSchemaReady=false;
@@ -4503,6 +4544,7 @@ if($action==='init'){
     'customers'=>merged_customers($pdo),
     'crm_customer_count'=>crm_customer_count($pdo),
     'products'=>merged_quote_products($pdo),
+    'product_exclusions'=>quote_product_exclusion_map($pdo),
     'naming_product_count'=>count(get_naming_products($pdo)),
     'bom_cost_count'=>count(get_bom_cost_map($pdo)),
     'bom_quote_spec_count'=>table_exists($pdo,'bom_quote_specs')?(int)row($pdo,'SELECT COUNT(*) c FROM bom_quote_specs',[])['c']:0,
@@ -4520,14 +4562,14 @@ if($action==='init'){
  }
 
  if($action==='list_quote_details'){
-   ok(['quotes'=>rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000")]);
+   ok(['quotes'=>array_map('quote_mutation_response_quote',rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000"))]);
  }
 
  if($action==='get_quote_detail'){
    $id=(int)($_GET['id']??0); if($id<=0) fail('缺少报价ID');
    $q=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders WHERE id=? LIMIT 1",[$id]);
    if(!$q) fail('报价不存在');
-   ok(['quote'=>$q]);
+   ok(['quote'=>quote_mutation_response_quote($q)]);
  }
 
  if($action==='get_approved_quote_snapshot'){
@@ -4541,6 +4583,7 @@ if($action==='init'){
    if((int)($snap['id']??0)!==$id || (string)($snap['quote_no']??'')!==(string)$q['quote_no']) fail('审核快照与报价不一致，已停止导出');
    $items=json_decode((string)($snap['items_json']??''),true);
    if(!is_array($items) || !$items) fail('审核快照没有产品明细，已停止导出');
+   qm_validate_snapshot($snap);
    unset($snap['approved_snapshot_json']);
    ok(['quote'=>$snap,'item_count'=>count($items)]);
  }
@@ -4688,36 +4731,51 @@ if($action==='init'){
  if($action==='approve_quote') {
    quote_approval_schema($pdo); quote_require_approver($__quote_user,$__quote_perms);
    $d=input_json(); $id=(int)($d['id']??0); if($id<=0) fail('缺少报价ID');
-   $q=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]); if(!$q) fail('报价不存在');
+   $pdo->beginTransaction();
+   $q=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json'])." FROM quote_orders WHERE id=? LIMIT 1 FOR UPDATE",[$id]); if(!$q) fail('报价不存在');
+   qm_require_revision($q,$d['money_revision']??null);
+   if(quote_approval_status_of($q)!=='pending') fail('只有待审核报价可审核，请重新打开最新版本');
    $salesOwner=quote_sales_owner_from_quote($q,(string)($q['user_name']??($q['submitted_by']??'')));
    $items=$d['items']??null;
    if(is_array($items) && count($items)>0){
      $savedItems=quote_decode_items_json($q['items_json']??'[]');
+     qm_calculate($items,$q['currency'],$q['adjustment_json']?:'{}');
      $items=quote_merge_review_items($savedItems,$items);
      $qty=0; $amount=0; foreach($items as $it){ if(is_array($it)) $qty+=quote_review_qty_for_total($it); $amount+=(float)($it['amount']??0); }
      $first=$items[0]??[];
-     $subtotal=(float)($d['subtotal_amount']??$amount);
-     $adjustmentAmount=(float)($d['adjustment_amount']??0);
-     $finalAmount=array_key_exists('amount',$d)?(float)$d['amount']:$amount;
-     $adjustmentJson=(string)($d['adjustment_json']??($q['adjustment_json']??''));
+     $money=qm_calculate($items,$q['currency'],$q['adjustment_json']?:'{}');
+     qm_assert_totals($d,$money);
+     $changes=quote_review_item_changes($savedItems,$money['items']);
+     if(($changes || qm_cents($q['amount'])!==qm_cents($money['amount'])) && (empty($d['confirm_money_change']) || trim((string)($d['note']??''))==='')) fail('审核有数量/单价/倍率/MOQ或金额变化，请填写原因并确认差异');
+     $items=$money['items']; $qty=$money['qty']; $first=$items[0];
+     $subtotal=$money['subtotal_amount'];
+     $adjustmentAmount=$money['adjustment_amount'];
+     $finalAmount=$money['amount'];
+     $adjustmentJson=$money['adjustment_json'];
+     $encodedItems=json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
      $pdo->prepare("UPDATE quote_orders SET user_name=?,items_json=?,approval_items_json=?,qty=?,price=?,subtotal_amount=?,adjustment_amount=?,adjustment_json=?,amount=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
-       ->execute([$salesOwner,json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),json_encode($items,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$qty,(float)($first['price']??0),$subtotal,$adjustmentAmount,$adjustmentJson,$finalAmount,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
+       ->execute([$salesOwner,$encodedItems,$encodedItems,$qty,(float)($first['price']??0),$subtotal,$adjustmentAmount,$adjustmentJson,$finalAmount,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
+     unset($encodedItems);
    } else {
-     $pdo->prepare("UPDATE quote_orders SET user_name=?,approval_status='approved',approved_by=?,approved_at=NOW(),approval_note=?,rejected_by='',rejected_at=NULL WHERE id=?")
-       ->execute([$salesOwner,(string)($__quote_user['username']??''),s($d['note']??'',5000),$id]);
+     fail('缺少已核对的审核明细，请重新打开审核预览');
    }
-   $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]);
+   $after=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json'])." FROM quote_orders WHERE id=? LIMIT 1",[$id]);
    $beforeItems=quote_decode_items_json($q['items_json']??'[]');
    $afterItems=quote_decode_items_json(($after['items_json']??'')!==''?($after['items_json']??'[]'):($q['items_json']??'[]'));
    $approvalChanges=quote_review_item_changes($beforeItems,$afterItems);
    quote_append_approval_log($pdo,$id,[
      'action'=>'approve','time'=>date('Y-m-d H:i:s'),'user'=>(string)($__quote_user['username']??''),'user_name'=>(string)($__quote_user['display_name']??$__quote_user['username']??''),
      'note'=>s($d['note']??'',5000),'changes'=>$approvalChanges,
-     'before_amount'=>quote_money_log((float)($q['amount']??0)),'after_amount'=>quote_money_log((float)($after['amount']??0))
+     'before_amount'=>quote_money_log((float)($q['amount']??0)),'after_amount'=>quote_money_log((float)($after['amount']??0)),
+     'before_money'=>qm_audit_summary($q),'after_money'=>qm_audit_summary($after)
    ]);
-   $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]);
-   if($after){ try{ $pdo->prepare('UPDATE quote_orders SET approved_snapshot_json=?, locked_at=COALESCE(locked_at,NOW()) WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),(int)$id]); $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[$id]); }catch(Throwable $e){} }
-   quote_push_crm_approved_reminder($pdo,$after?:$q,$__quote_user);
+   $after=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json'])." FROM quote_orders WHERE id=? LIMIT 1",[$id]);
+   if(!$after) fail('审核结果读取失败');
+   unset($after['approved_snapshot_json']);
+   qm_validate_snapshot($after);
+   $pdo->prepare('UPDATE quote_orders SET approved_snapshot_json=?, locked_at=COALESCE(locked_at,NOW()) WHERE id=?')->execute([json_encode($after,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),(int)$id]);
+   $pdo->commit();
+   try{quote_push_crm_approved_reminder($pdo,$after,$__quote_user);}catch(Throwable $noticeError){error_log('quote approved; reminder failed for id='.$id);}
    quote_log_event($pdo,['action'=>'approve_quote','event'=>'报价审核通过','quote_id'=>$id,'quote_no'=>$q['quote_no']??'','customer_name'=>qlog_customer_name($after?:$q),'summary'=>'报价审核通过：'.($q['quote_no']??''),'detail'=>array_merge($d,['changes'=>$approvalChanges]),'before'=>$q,'after'=>$after]);
    ok(['quote'=>quote_mutation_response_quote($after),'approval_status'=>'approved','approved_at'=>$after['approved_at']??'']);
  }
@@ -4775,6 +4833,7 @@ if($action==='init'){
    if(empty($d['status']) || preg_match('/Quotation|PROFORMA|invoice|订购合同/i',(string)($d['status']??''))) $d['status']=$d['quote_status'];
    if(isset($d['quote_no'])) $d['quote_no']=quote_no_no_nested($d['quote_no']);
    quote_v682_prepare_quote_save_data($d);
+   qm_prepare_save($d);
    quote_approval_schema($pdo);
    $d['customer_name']=qlog_customer_name($d);
    $d['approval_status']='pending';
@@ -4825,6 +4884,18 @@ if($action==='init'){
        foreach($commissionLines as $i=>$line){if(!in_array(($line['included_in_price']??''),['included','excluded'],true)||!array_key_exists('value',$line)||$line['value']==='')fail('第 '.($i+1).' 行产品佣金尚未明确填写');}
      }
    }
+   $pdo->beginTransaction();
+   if(!$before && !empty($d['quote_no'])){
+     $duplicate=row($pdo,'SELECT id FROM quote_orders WHERE quote_no=? LIMIT 1 FOR UPDATE',[$d['quote_no']]);
+     if($duplicate) fail('同编号报价已存在，请重新打开核对；未覆盖原单');
+   }
+   if($before){
+     $locked=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1 FOR UPDATE',[(int)$d['id']]);
+     if(!$locked) fail('报价已不存在');
+     qm_require_revision($locked,$d['money_revision']??null);
+     if(quote_approval_status_of($locked)==='approved') fail('报价已审核，请另存新版本');
+     $before=$locked;
+   }
    $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','subtotal_amount','adjustment_amount','adjustment_json','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
    $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
    $items=json_decode((string)($d['items_json']??'[]'),true); if(!is_array($items)) $items=[];
@@ -4843,14 +4914,15 @@ if($action==='init'){
    }
    quote_append_approval_log($pdo,(int)$id,[
      'action'=>$before?'resubmit':'submit','time'=>date('Y-m-d H:i:s'),'user'=>(string)($__quote_user['username']??''),'user_name'=>(string)($__quote_user['display_name']??$__quote_user['username']??''),
-     'note'=>$before?'修改报价后重新提交审核':'提交报价审核','changes'=>[],'amount'=>quote_money_log((float)($d['amount']??0))
+     'note'=>$before?'修改报价后重新提交审核':'提交报价审核','changes'=>quote_review_item_changes(quote_decode_items_json($before['items_json']??'[]'),$items),'amount'=>quote_money_log((float)($d['amount']??0)), 'money'=>qm_audit_summary($d)
   ]);
   $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
-  quote_push_crm_review_reminder($pdo,$after?:$d,$__quote_user,$before?'resubmitted':'submitted',$before?'修改报价后重新提交审核':'提交报价审核');
+  $pdo->commit();
+  try{quote_push_crm_review_reminder($pdo,$after?:$d,$__quote_user,$before?'resubmitted':'submitted',$before?'修改报价后重新提交审核':'提交报价审核');}catch(Throwable $noticeError){error_log('quote saved; reminder failed for id='.$id);}
   quote_log_event($pdo,['action'=>'save_quote_done','event'=>'报价保存完成','quote_id'=>$id,'quote_no'=>$d['quote_no']??'','customer_name'=>qlog_customer_name($d),'summary'=>'报价保存完成：'.($d['quote_no']??'').'，产品 '.count($items).' 个，数量 '.($d['qty']??'').'，金额 '.($d['currency']??'').' '.($d['amount']??''),'detail'=>$d,'before'=>$before,'after'=>$after]);
   if(array_key_exists('commission_json',$d))quote_log_event($pdo,['action'=>'quote_commission_confirmation_saved','event'=>'保存报价佣金确认状态','quote_id'=>$id,'quote_no'=>$d['quote_no']??'','customer_name'=>qlog_customer_name($d),'user_name'=>$__quote_user['username']??'','summary'=>'保存报价内部佣金状态','before'=>$before['commission_json']??null,'after'=>$d['commission_json']]);
-  ok(['id'=>$id,'approval_status'=>'pending']);
+  ok(['id'=>$id,'approval_status'=>'pending','money_revision'=>qm_revision($after),'quote'=>quote_mutation_response_quote($after)]);
 }
  if($action==='delete_quote') { $d=input_json(); $before=null; if(!empty($d['id'])) $before=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($d['id'])]); $pdo->prepare("DELETE FROM quote_orders WHERE id=?")->execute([intval($d['id'])]); quote_log_event($pdo,['action'=>'delete_quote_done','event'=>'报价删除完成','quote_id'=>intval($d['id']??0),'quote_no'=>$before['quote_no']??'','customer_name'=>qlog_customer_name($before?:[]),'summary'=>'删除报价：'.($before['quote_no']??('ID '.($d['id']??''))),'detail'=>$d,'before'=>$before]); ok(); }
  fail('unknown action');
-}catch(Throwable $e){ try{ quote_log_event($pdo,['level'=>'ERROR','action'=>$action,'event'=>'接口错误','summary'=>$e->getMessage(),'detail'=>input_json()]); }catch(Throwable $ignore){} fail($e->getMessage()); }
+}catch(Throwable $e){ if($pdo->inTransaction()) $pdo->rollBack(); try{ quote_log_event($pdo,['level'=>'ERROR','action'=>$action,'event'=>'接口错误','summary'=>$e->getMessage(),'detail'=>input_json()]); }catch(Throwable $ignore){} fail($e->getMessage()); }
