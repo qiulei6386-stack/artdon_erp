@@ -19907,8 +19907,9 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
 .visit-result-reference p {
   white-space: pre-wrap;
   margin: 0;
-  max-height: 100px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
+  overflow-wrap: anywhere;
   border: 1px solid var(--crm-border);
   border-radius: 10px;
   background: var(--crm-card-bg);
@@ -19934,6 +19935,18 @@ body.is-panel-resizing { cursor: col-resize; user-select: none; }
   font-style: normal;
   font-weight: 800;
 }
+.visit-result-reference { min-width: 0; display: grid; gap: 12px; }
+.visit-result-reference .visit-reference-entry { min-width: 0; display: grid; gap: 6px; }
+.visit-result-reference details { min-width: 0; }
+.visit-result-reference summary { cursor: pointer; line-height: 1.65; overflow-wrap: anywhere; }
+.visit-reference-excerpt { display: block; white-space: pre-wrap; color: var(--crm-text); font-size: 13px; }
+.visit-reference-open, .visit-reference-close { color: var(--crm-primary); font-size: 12px; font-weight: 700; }
+.visit-reference-full:not([open]) .visit-reference-close,
+.visit-reference-full[open] > summary .visit-reference-open,
+.visit-reference-full[open] > summary .visit-reference-excerpt { display: none; }
+.visit-reference-history, .visit-reference-plan { border-top: 1px solid var(--crm-border); padding-top: 10px; }
+.visit-reference-history .visit-reference-entry { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--crm-border); }
+.visit-reference-plan > small { display: block; margin: 8px 0; }
 .visit-detail-card nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -29290,12 +29290,28 @@
         return '<article><h4>' + esc(title) + '</h4><small>' + esc(meta || '-') + '</small><p>' + esc(body || '-') + '</p><em>' + esc(needText(item)) + '</em></article>';
       }).join('') + '</div></section>';
     },
-    resultReferenceHtml: function (item) {
-      if (!item) return '';
-      var title = item.result || '上次结果';
-      var meta = [item.actual_time ? ('实际 ' + String(item.actual_time).slice(0, 16)) : '', item.created_at ? ('填写 ' + String(item.created_at).slice(0, 16)) : '', item.created_by_name || ''].filter(Boolean).join(' · ');
-      var body = [item.result_note, item.customer_feedback, item.customer_needs, item.products_discussed, item.next_action ? ('下一步：' + item.next_action) : ''].filter(Boolean).join('\n');
-      return '<section class="visit-form-section visit-result-reference"><h3>上次结果参考</h3><div><strong>' + esc(title) + '</strong><small>' + esc(meta || '-') + '</small><p>' + esc(body || '暂无详细内容') + '</p><button type="button" data-visit-copy-last-result>复制上次结果</button></div><em>本次保存会新增一条结果记录；默认已清空上次的结果内容，避免误以为是在编辑旧记录。</em></section>';
+    resultReferenceText: function (value) {
+      var text = String(value || '').trim();
+      if (!text) return '<p>暂无详细内容</p>';
+      if (text.length <= 500) return '<p>' + esc(text) + '</p>';
+      return '<details class="visit-reference-full"><summary><span class="visit-reference-excerpt">' + esc(text.slice(0, 500)) + '…</span><span class="visit-reference-open">展开全文</span><span class="visit-reference-close">收起全文</span></summary><p>' + esc(text) + '</p></details>';
+    },
+    resultReferenceEntry: function (item) {
+      var meta = [item.actual_time ? ('实际 ' + String(item.actual_time).slice(0, 16)) : '', item.created_at ? ('填写 ' + String(item.created_at).slice(0, 16)) : '', item.created_by_name || '', item.is_legacy_snapshot ? '原有结果快照' : ''].filter(Boolean).join(' · ');
+      var fields = [['总结', 'result_note'], ['客户反馈', 'customer_feedback'], ['客户需求', 'customer_needs'], ['沟通产品', 'products_discussed'], ['下一步', 'next_action'], ['下次跟进', 'next_followup_time'], ['实际参与人员', 'actual_people']];
+      var body = fields.filter(function (field) { return String(item[field[1]] || '').trim(); }).map(function (field) { return field[0] + '：' + item[field[1]]; }).join('\n\n');
+      return '<article class="visit-reference-entry"><strong>' + esc(item.result || '历史结果') + '</strong><small>' + esc(meta || '未记录填写时间') + '</small>' + this.resultReferenceText(body) + '</article>';
+    },
+    resultReferenceHtml: function (row) {
+      var history = Array.isArray(row.result_history) ? row.result_history : [], latest = history[0], html = '';
+      if (latest) {
+        html += '<h3>上次结果参考</h3>' + this.resultReferenceEntry(latest) + '<button type="button" data-visit-copy-last-result>复制上次结果到本次填写</button>';
+        if (history.length > 1) html += '<details class="visit-reference-history"><summary>查看更早结果（' + (history.length - 1) + ' 条）</summary>' + history.slice(1).map(this.resultReferenceEntry.bind(this)).join('') + '</details>';
+      }
+      var note = String(row.planned_note || '').trim();
+      if (note) html += '<details class="visit-reference-plan"' + (latest ? '' : ' open') + '><summary>原拜访备注（计划内容）</summary>' + (!latest ? '<small>暂无已保存的结果记录。以下是列表中显示的原拜访备注，供本次填写参考。</small>' : '') + this.resultReferenceText(note) + '</details>';
+      if (!latest && !note) html += '<h3>填写参考</h3><p>暂无历史结果或原拜访备注。</p>';
+      return '<section class="visit-form-section visit-result-reference">' + html + '<em>以上内容只读，不会自动填入本次表单；保存会新增结果记录，保留旧记录。</em></section>';
     },
     selected: function () {
       var id = this.selectedId;
@@ -29401,7 +29417,7 @@
       var uploadRow = isAdditionalResult ? Object.assign({}, row, { files: [] }) : row;
       var resultOptions = '<option value="">请选择结果</option>' + this.options(isArrival ? ['客户有兴趣','需要报价','需要资料','需要样品','需要技术方案','需要再次来访','需要老板跟进','需要业务员跟进','暂无需求','拒绝','已成交','其他'] : ['客户有兴趣','需要报价','需要资料','需要样品','需要方案','需要老板跟进','需要技术跟进','暂无需求','拒绝','后续再联系','已成交','其他'], formRow.result);
       var html = '<div class="visit-business-form" data-visit-result-form><input type="hidden" name="visit_id" value="' + esc(row.id) + '">' +
-        this.resultReferenceHtml(latestResult) +
+        this.resultReferenceHtml(row) +
         this.formSection('结果信息', '<label>实际时间<input name="actual_time" value="' + esc(formRow.actual_time || new Date().toISOString().slice(0, 16).replace('T', ' ')) + '"></label><label>成交可能性<input type="number" min="0" max="100" name="deal_probability" value="' + esc(formRow.deal_probability || 0) + '"></label>' +
           '<label class="wide">实际参与人员<input name="actual_people" value="' + esc(formRow.actual_people || '') + '"></label><label>结果<select name="result">' + resultOptions + '</select></label>') +
         this.formSection('沟通记录', '<label class="wide">客户反馈<textarea name="customer_feedback" rows="3">' + esc(formRow.customer_feedback || '') + '</textarea></label><label class="wide">客户需求<textarea name="customer_needs" rows="3">' + esc(formRow.customer_needs || '') + '</textarea></label><label class="wide">沟通产品 / 看样产品<textarea name="products_discussed" rows="3">' + esc(formRow.products_discussed || '') + '</textarea></label>') +
@@ -29790,11 +29806,12 @@
       if (!row) return this.openResultDialog(row);
       var id = Number(row.id || 0);
       if (!id) return this.openResultDialog(row);
-      var cached = this.detailCache[id];
-      if (cached && Array.isArray(cached.result_history)) return this.openResultDialog(cached);
-      if (Array.isArray(row.result_history)) return this.openResultDialog(row);
-      var self = this;
-      return this.loadDetail(id).then(function (record) { self.openResultDialog(record || row); });
+      var self = this, request = this.resultOpenSerial = (this.resultOpenSerial || 0) + 1;
+      return this.loadDetail(id).then(function (record) {
+        if (request !== self.resultOpenSerial) return;
+        if (!record || Number(record.id) !== id || !Array.isArray(record.result_history)) return toast('未能读取结果记录，请重试；未打开空白表单。');
+        self.openResultDialog(record);
+      });
     },
     handleAction: function (label, id) {
       var row = id ? (this.detailCache[id] || this.rows.find(function (item) { return Number(item.id) === Number(id); })) : this.selected();
