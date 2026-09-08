@@ -37,6 +37,9 @@ if [ "$lint_failed" -ne 0 ]; then
 fi
 
 contract_tests=(
+  tests/issues7_regression.php
+  tests/quote_packing_tail_cartons_contract.php
+  tests/quote_tail_carton_allocation_contract.php
   tests/dispatch_daily_contract.php
   tests/quote_money_contract.php
   tests/quote_money_export_contract.php

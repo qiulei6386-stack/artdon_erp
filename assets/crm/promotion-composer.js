@@ -84,7 +84,9 @@
     if(root.visualViewport)root.visualViewport.addEventListener('resize',fitViewport);
     fitViewport();
     function id() { return 'promotion_' + (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2)); }
-    function request(action, payload) { return env.post(action,payload,{timeoutMs:60000}).then(function (json) { if (!json || !json.success) throw new Error(json && json.message || '操作失败，请重试'); return json.data || {}; }); }
+    function request(action, payload) { return env.post(action,payload,{timeoutMs:60000}).then(function (json) { if (!json || !json.success) { var error=new Error(json && json.message || '操作失败，请重试');error.code=json && json.error_code || 'SERVER_ERROR';throw error; } return json.data || {}; }); }
+    function pendingKey() {return 'crm-delivery-pending:'+Number(env.state.user && env.state.user.id || 0)+':'+Number(p.wizardDraft && p.wizardDraft.task_id || 0);}
+    function rememberPending(token) {ui.pending=token || '';try{if(token)root.sessionStorage.setItem(pendingKey(),token);else root.sessionStorage.removeItem(pendingKey());}catch(e){/* Server token remains idempotent even without browser storage. */}}
     function field(name,label,value,type,hint) { return '<label class="pc-field"><span>' + esc(label) + '</span><input data-wizard-field="' + name + '" type="' + (type || 'text') + '" value="' + esc(value == null ? '' : value) + '">' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
     function select(name,label,value,options,hint) { if(value && !options.some(function(o){return String(o[0])===String(value);}))options=[[value,'原设置：'+value+'（请明确重新选择）']].concat(options); return '<label class="pc-field"><span>' + esc(label) + '</span><select data-wizard-field="' + name + '">' + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(value) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>'; }
     function invalidate() { ui.dirty = true; ui.preview = null; ui.error = ''; updateGuidance(); }
@@ -137,7 +139,7 @@
     };
     p.openWizard = function () {
       if (ui.busy) return;
-      ui.step = 0; ui.error = ''; ui.preview = null; ui.dirty = false; ui.epoch++; ui.page = 0;
+      ui.step = 0; ui.error = ''; ui.preview = null; ui.dirty = false; ui.pending = ''; ui.epoch++; ui.page = 0;
       groupQuery='';groupPage=0;
       customerSearchSerial++; p.wizardAudienceRequestSerial++;
       this.wizardAttachmentFiles = []; original.openWizard.call(this);
@@ -247,16 +249,43 @@
       catch(e){ui.error=e.message;}
       finally{lock(false);p.renderWizard();}
     }
+    async function deliveryConfirmed(result) {
+      rememberPending('');p.selectedTaskId=result.task_id;ui.dirty=false;lock(false);p.closeWizard(true);p.switchView('campaigns');
+      env.toast('已确认执行，请在项目中查看实际发送进度；入队不代表发送成功。');
+      try{await p.load();}catch(e){env.toast('执行已确认，但项目列表刷新失败；请重新打开项目查看。');}
+    }
+    async function checkDelivery() {
+      if(ui.busy || !ui.pending)return;
+      var checking=true;
+      lock(true);
+      try {
+        var result=await request('marketing_delivery_status',{token:ui.pending});
+        if(result.confirmed){await deliveryConfirmed(result);return;}
+        if(!root.confirm('服务器尚未确认完成。是否安全重试同一份确认？同一预览只会创建一次队列，不会重复发送。')){ui.error='执行结果尚未确认，请稍后核实；暂不修改或另建重复推广。';return;}
+        checking=false;result=await request('marketing_delivery_confirm',{token:ui.pending});
+        await deliveryConfirmed(result);
+      } catch(e) {
+        if(!checking && e.code==='SERVER_ERROR')rememberPending('');
+        ui.error=ui.pending?'执行结果仍在核实中，请稍后点击“核实执行结果”，不要重复新建任务。':e.message;
+      } finally {lock(false);if(p.wizardDraft)p.renderWizard();}
+    }
     async function confirmDelivery() {
+      if(ui.pending)return checkDelivery();
       if(ui.busy || !ui.preview) return;
       var checkedPreview=ui.preview;
       p.collectWizard();
       if(!ui.preview || checkedPreview.fingerprint!==fingerprint()){ui.preview=null;ui.error='内容已变化，请重新生成预览。';p.renderWizard();return;}
       var manifest=ui.preview.manifest, emails=manifest.email_count ?? manifest.items.filter(function(x){return x.mode==='email';}).length;
       if(!root.confirm('确认执行：'+emails+' 封邮件、'+(manifest.manual_count ?? manifest.items.length-emails)+' 条人工待办。邮件将在预览时间到达后自动发送；排除 '+(manifest.excluded_total ?? manifest.excluded.length)+' 个对象。'))return;
-      lock(true);
-      try {var result=await request('marketing_delivery_confirm',{token:ui.preview.token});p.selectedTaskId=result.task_id;ui.dirty=false;lock(false);p.closeWizard(true);p.switchView('campaigns');await p.load();env.toast('已确认执行，请在项目中查看实际发送进度；入队不代表发送成功。');}
-      catch(e){ui.error=e.message;lock(false);p.renderWizard();}
+      rememberPending(ui.preview.token);lock(true);
+      try {var result=await request('marketing_delivery_confirm',{token:ui.pending});await deliveryConfirmed(result);}
+      catch(e){
+        if(['REQUEST_TIMEOUT','NETWORK_ERROR','BAD_RESPONSE'].includes(e.code) || !e.code){
+          try{var status=await request('marketing_delivery_status',{token:ui.pending});if(status.confirmed){await deliveryConfirmed(status);return;}}catch(statusError){/* Do not turn unknown outcome into failure. */}
+          ui.error='响应中断，执行结果尚未确认。请核实执行结果，不要重复新建任务。';
+        }else{rememberPending('');ui.error=e.message;}
+        lock(false);p.renderWizard();
+      }
     }
     async function upload(file) {
       if(ui.busy)return;
@@ -384,6 +413,8 @@
       var oldScroll = ui.renderedStep === ui.step ? (host.querySelector('.pc-main')?.scrollTop || 0) : 0;
       ui.renderedStep = ui.step;
       var d=this.wizardDraft || this.defaultWizardDraft();this.wizardDraft=d;
+      try{ui.pending=root.sessionStorage.getItem(pendingKey()) || ui.pending || '';}catch(e){}
+      if(ui.pending)ui.step=4;
       this.wizardStep=[0,1,4,6,8][ui.step];
       var content='';
       if(ui.step===0)content=renderBasics(d);
@@ -439,6 +470,14 @@
       var heading=host.querySelector('.pc-heading h3');heading.tabIndex=-1;
       if(document.activeElement===document.body)heading.focus({preventScroll:true});
       updateGuidance();
+      if(ui.pending){
+        lock(true);ui.busy=false;
+        var statusButton=document.createElement('button');statusButton.type='button';statusButton.className='pc-primary';statusButton.textContent='核实执行结果';statusButton.onclick=checkDelivery;
+        var statusBox=host.querySelector('.pc-main') || host;statusBox.prepend(statusButton);
+        var closeButton=host.querySelector('[data-pc-action="close"]');if(closeButton)closeButton.disabled=false;
+        host.setAttribute('aria-busy','false');
+        var progress=host.querySelector('.pc-progress');if(progress)progress.textContent='已提交确认，等待核实；此时不能修改或重新预览。';
+      }
       if(ui.error && ui.error===validation(ui.step,d)) {
         var issue=stepChecks(d).find(function(c){return !c.done;}),selector=issue && issue.selector;
         [['发送间隔','send_interval_minutes'],['每小时上限','hourly_limit'],['每日上限','daily_limit'],['重试次数','retry_count'],['重试间隔','retry_interval_minutes'],['预约开始','scheduled_at'],['邮件主题','mail_subject'],['正文','data-promo-wizard-editor']].forEach(function(pair){if(ui.error.indexOf(pair[0])>=0)selector=pair[1]==='data-promo-wizard-editor'?'[data-promo-wizard-editor]':'[data-wizard-field="'+pair[1]+'"]';});

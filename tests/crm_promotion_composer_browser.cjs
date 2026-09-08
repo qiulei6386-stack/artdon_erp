@@ -35,7 +35,7 @@ assert(start>0 && end>start);
     p.data={pool:[{id:1,customer_name:'验收示例客户 · 很长的公司名称用于测试换行',country:'CN',owner_user_id:1}],contacts:[],groups:[],channels:[],templates:[],users:[],mail_accounts:[{id:1,email_address:'long-sender-address@example.invalid'}]};
     p.selectedCustomerIds.add(1);
     window.calls=[];
-    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast,post:async(action,payload)=>{calls.push({action,payload});if(window.signatureReply && action==='marketing_signature_content')return signatureReply(payload);if(window.pagedReply && action==='marketing_delivery_preview_read')return {success:true,data:pagedReply(payload)};if(action==='marketing_pool_view')return {success:true,data:{pool:[{id:2,customer_name:'搜索验收客户',country:'CN'}]}};if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
+    window.api=CrmPromotionComposer.install(p,{esc,mail:MailModule,state,toast:message=>{(window.toasts ||= []).push(message);},post:async(action,payload)=>{calls.push({action,payload});if(window.deliveryReply && action.startsWith('marketing_delivery_'))return deliveryReply(action,payload);if(window.signatureReply && action==='marketing_signature_content')return signatureReply(payload);if(window.pagedReply && action==='marketing_delivery_preview_read')return {success:true,data:pagedReply(payload)};if(action==='marketing_pool_view')return {success:true,data:{pool:[{id:2,customer_name:'搜索验收客户',country:'CN'}]}};if(action==='marketing_task_create')return {success:true,data:{task_id:123}};return {success:false,message:'离线模拟失败'};}});
     p.wizardDraft=Object.assign(p.defaultWizardDraft(),{task_name:'九月新品推广 · 标题很长也应清晰换行',mail_subject:'新品介绍给 {company_name}',mail_body_html:'<p>尊敬的客户：</p><p>这是一段用于测试显示的正文。</p>',customer_ids:[1],audience_customer_ids:[1],assets:[{id:'a'.repeat(32),name:'这是一个非常长的产品规格及附件文件名称_测试文档.pdf',size:1200}]});
     window.makePreview=()=>({token:'offline',manifest:{items:Array.from({length:52},(_,i)=>({mode:'email',customer_name:'测试公司名称很长 '+i,contact_name:'测试联系人',receiver_email:'very-long-recipient-address-'+i+'@example.invalid',sender_email:'sender@example.invalid',subject:'测试邮件主题',planned_at:'2026-09-08 09:00:00',body_html:'<p>你好，测试联系人。</p><p>这是最终邮件正文。</p><div>测试签名<br>sender@example.invalid</div>'})),excluded:[{customer_name:'排除测试',reason:'渠道未维护'}],attachments:[{name:'附件文件.pdf'}]}});
   });
@@ -346,6 +346,31 @@ assert(start>0 && end>start);
     p.data.tasks=[{id:123,task_status:'draft'}];p.wizardDraft.task_id=123;
     p.closeWizard(true);
     if(!rendered || p.selectedTaskId!==123)throw new Error('Closing a saved draft must redraw and select the saved row');
+  });
+  // Lost confirmation response must reconcile, not claim failure or resend.
+  await page.evaluate(async()=>{
+    const p=fixturePromotion;window.calls=[];window.toasts=[];window.confirm=()=>true;
+    p.data.tasks=[];p.load=async()=>{throw new Error('Synthetic list refresh failure');};p.switchView=()=>{};
+    window.setupConfirmation=taskId=>{
+      p.wizardDraft=Object.assign(p.defaultWizardDraft(),{task_id:taskId,task_name:'验收确认',mail_subject:'Hello',mail_body_html:'<p>Body</p>',customer_ids:[1],audience_customer_ids:[1]});
+      api.state.step=4;api.state.pending='';api.state.preview=makePreview();api.state.error='';p.renderWizard();p.collectWizard();
+      api.state.preview.fingerprint=JSON.stringify(p.wizardDraft);
+    };
+    setupConfirmation(123);
+    window.deliveryReply=async action=>action==='marketing_delivery_confirm'?{success:false,error_code:'REQUEST_TIMEOUT',message:'timeout'}:{success:true,data:{task_id:123,confirmed:true}};
+    await api.confirmDelivery();
+    if(calls.filter(x=>x.action==='marketing_delivery_confirm').length!==1 || calls.filter(x=>x.action==='marketing_delivery_status').length!==1)throw new Error('Lost response must use status, not another confirmation');
+    if(api.state.pending || api.state.busy || !toasts.some(t=>t.includes('执行已确认，但项目列表刷新失败')))throw new Error('Post-confirm refresh failure misreported');
+    setupConfirmation(124);calls=[];
+    deliveryReply=async()=>({success:false,error_code:'NETWORK_ERROR',message:'offline'});
+    await api.confirmDelivery();
+    if(!api.state.pending || api.state.busy)throw new Error('Unknown result must retain token and offer status');
+    if(!document.querySelector('[data-pc-action="preview"]').disabled)throw new Error('Unknown confirm must prevent new preview');
+    api.state.pending='';p.renderWizard();
+    if(!api.state.pending)throw new Error('Pending token must survive UI restoration');
+    deliveryReply=async()=>({success:true,data:{task_id:124,confirmed:true}});
+    await api.confirmDelivery();
+    if(calls.filter(x=>x.action==='marketing_delivery_confirm').length!==1 || api.state.pending)throw new Error('Reconciliation duplicated confirm');
   });
   // The shared action hint must not survive entering the promotion workspace.
   const hints=await browser.newPage({viewport:{width:390,height:720}});

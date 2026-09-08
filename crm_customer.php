@@ -2346,11 +2346,12 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'contacts' => $contacts,
         'groups' => $groups,
         'sales_actions' => $salesActions,
+        'chat_groups' => crm_customer_chat_groups($id),
         'business_cards' => crm_customer_business_cards($id),
         'summary' => $light ? crm_customer_deferred_summary(count($contacts)) : crm_customer_summary($id, $linkage),
         'linkage' => $linkage,
         '_lazy_detail' => $light ? 1 : 0,
-        '_loaded_tabs' => $light ? ['overview', 'customer_attribute', 'contacts', 'addresses', 'tags'] : [],
+        '_loaded_tabs' => $light ? ['overview', 'customer_attribute', 'contacts', 'addresses', 'tags', 'chat_groups'] : [],
     ];
     if ($light) {
         return $base + [
@@ -2359,7 +2360,6 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
             'events' => [],
             'product_preferences' => [],
             'communication_preferences' => [],
-            'chat_groups' => [],
             'followups' => [],
             'visits' => [],
             'mail_rows' => [],
@@ -2374,7 +2374,6 @@ function crm_customer_get(int $id, string $detailMode = 'full'): array
         'events' => crm_customer_events($id),
         'product_preferences' => crm_customer_preference_row($id, 'crm_customer_product_preferences'),
         'communication_preferences' => crm_customer_preference_row($id, 'crm_customer_communication_preferences'),
-        'chat_groups' => crm_customer_chat_groups($id),
         'followups' => crm_followup_list(['customer_id' => $id])['rows'],
         'visits' => function_exists('crm_visit_list') && has_permission('visit.view') ? crm_visit_list(['customer_id' => $id])['rows'] : [],
         'mail_rows' => crm_customer_mail_rows($id),

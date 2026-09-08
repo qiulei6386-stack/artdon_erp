@@ -2883,13 +2883,30 @@ function crm_mail_is_dbs_eadvice(array $mail): bool
         || stripos($html, 'DBS_eAdvice') !== false;
 }
 
+// Only an actual leading RFC header block is MIME. HTML meta tags and quoted
+// messages in an already decoded body must never be parsed as outer headers.
+function crm_mail_has_mime_header_block(string $raw): bool
+{
+    $parts = preg_split('/\r?\n\r?\n/', ltrim($raw), 2);
+    if (count($parts) !== 2 || strlen($parts[0]) > 65536) return false;
+    $hasMime = false;
+    $hasField = false;
+    foreach (preg_split('/\r?\n/', $parts[0]) as $line) {
+        if (preg_match('/^[ \t]/', $line) && $hasField) continue;
+        if (!preg_match('/^([A-Za-z0-9-]+):[^\r\n]*$/', $line, $match)) return false;
+        $hasField = true;
+        if (in_array(strtolower($match[1]), ['content-type', 'content-transfer-encoding', 'mime-version'], true)) $hasMime = true;
+    }
+    return $hasMime;
+}
+
 function crm_mail_repair_stored_body(array $mail): array
 {
     if (crm_mail_is_dbs_eadvice($mail)) return $mail;
     $html = (string)($mail['body_html'] ?? '');
     $text = (string)($mail['body_text'] ?? '');
     $raw = trim($html) !== '' ? $html : $text;
-    if ($raw !== '' && preg_match('/Content-(Type|Transfer-Encoding)|MIME-Version|boundary=/i', $raw)) {
+    if (crm_mail_has_mime_header_block($raw)) {
         $parsed = ['html' => '', 'text' => '', 'has_attachment' => 0, 'attachment_count' => 0, 'attachments' => []];
         crm_mail_parse_mime_part($raw, $parsed);
         if (trim((string)$parsed['html']) !== '' || trim((string)$parsed['text']) !== '') {
@@ -2898,10 +2915,8 @@ function crm_mail_repair_stored_body(array $mail): array
         }
     }
     if ($html !== '') {
-        if (preg_match('/=\r?\n|=[A-Fa-f0-9]{2}/', $html)) {
-            $decoded = quoted_printable_decode($html);
-            if (is_string($decoded) && trim($decoded) !== '') $html = $decoded;
-        }
+        // MIME parsing already decoded transfer encoding. A literal =20 in an
+        // HTML link or business text is not evidence of quoted-printable.
         $fixed = crm_mail_maybe_decode_base64_text($html, 'UTF-8');
         if ($fixed !== $html) $html = $fixed;
         $html = crm_mail_repair_text($html);
@@ -2910,10 +2925,6 @@ function crm_mail_repair_stored_body(array $mail): array
         }
     }
     if ($text !== '') {
-        if (preg_match('/=\r?\n|=[A-Fa-f0-9]{2}/', $text)) {
-            $decoded = quoted_printable_decode($text);
-            if (is_string($decoded) && trim($decoded) !== '') $text = $decoded;
-        }
         $fixed = crm_mail_maybe_decode_base64_text($text, 'UTF-8');
         if ($fixed !== $text) $text = $fixed;
         $text = crm_mail_repair_text($text);
@@ -3887,7 +3898,20 @@ function crm_mail_preview_file(array $attachment, string $cachePrefix): array
     $mime = strtolower((string)$attachment['mime_type']);
     $name = (string)$attachment['file_name'];
     $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-    if (strpos($mime, 'image/') === 0 || strpos($mime, 'text/') === 0 || in_array($ext, ['txt','csv','log'], true) || $mime === 'application/pdf' || $ext === 'pdf') {
+    if ($mime === 'application/pdf' || $ext === 'pdf') {
+        $prefix = @file_get_contents($attachment['path'], false, null, 0, 1024);
+        if (!is_string($prefix) || strpos($prefix, '%PDF-') === false) {
+            throw new RuntimeException('附件不是有效的 PDF 文件或文件不完整，请下载核对。');
+        }
+        $mime = 'application/pdf';
+    } elseif (strpos($mime, 'text/') === 0 || in_array($ext, ['txt','csv','log'], true)) {
+        $mime = 'text/plain'; // Never execute an HTML attachment in our origin.
+    } elseif (strpos($mime, 'image/') === 0) {
+        $info = @getimagesize($attachment['path']);
+        if (!$info || empty($info['mime'])) throw new RuntimeException('图片格式不支持在线预览，请下载查看。');
+        $mime = $info['mime'];
+    }
+    if (strpos($mime, 'image/') === 0 || $mime === 'text/plain' || $mime === 'application/pdf') {
         return ['path' => $attachment['path'], 'name' => $name, 'mime_type' => $mime ?: 'application/octet-stream', 'file_size' => $attachment['file_size']];
     }
     $officeExts = ['doc','docx','xls','xlsx','ppt','pptx'];

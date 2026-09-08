@@ -485,6 +485,20 @@ function crm_delivery_load_preview(array $input, bool $lock = false): array
     return $preview;
 }
 
+function crm_delivery_status(array $input): array
+{
+    crm_require('promotion.execute');
+    // Status reads no manifest/body and never creates a queue or changes data.
+    $stmt = db()->prepare('SELECT task_id,confirmed_at FROM crm_marketing_delivery_previews WHERE token=? AND user_id=?');
+    $stmt->execute([(string)($input['token'] ?? ''), (int)current_user()['id']]);
+    $preview = $stmt->fetch();
+    if (!$preview) throw new RuntimeException('找不到本账号的执行确认记录，请在项目中核对。');
+    $task = crm_marketing_task_row((int)$preview['task_id']);
+    crm_delivery_assert_owner($task);
+    return ['task_id'=>(int)$task['id'], 'confirmed'=>!empty($preview['confirmed_at']),
+        'confirmed_at'=>$preview['confirmed_at'], 'task_status'=>$task['task_status']];
+}
+
 function crm_delivery_confirm(array $input): array
 {
     crm_require('promotion.execute'); crm_delivery_ensure();
@@ -500,11 +514,14 @@ function crm_delivery_confirm(array $input): array
         if (!hash_equals($preview['digest'],crm_delivery_digest($current))) throw new RuntimeException('客户、渠道、内容、签名或安排已变化，请重新预览确认。');
         if (!$current['items']) throw new RuntimeException('没有可执行对象，请先处理排除原因。');
         $failure = crm_marketing_json($task['failure_policy_json'] ?? '');
+        $schedule = crm_marketing_json($task['schedule_config_json'] ?? '');
+        $manualStmt = db()->prepare("UPDATE crm_marketing_task_targets SET planned_at=?,contact_method=?,executor_user_id=?,channel_key=?,target_status='pending' WHERE id=? AND task_id=?");
+        $queueStmt = db()->prepare("INSERT INTO crm_marketing_send_queue (task_id,customer_id,contact_id,sender_user_id,sender_email,receiver_email,subject,body,attachment_json,planned_server_time,send_status,send_attempts,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'scheduled',0,?,NOW(),NOW())");
         $mailCount = 0;
         foreach ($current['items'] as $item) {
             $item = crm_delivery_expand_item($current, $item);
             if ($item['mode'] !== 'email') {
-                db()->prepare("UPDATE crm_marketing_task_targets SET planned_at=?,contact_method=?,executor_user_id=?,channel_key=?,target_status='pending' WHERE id=? AND task_id=?")
+                $manualStmt
                     ->execute([$item['planned_at'],$item['contact_method'],$item['executor_id'],$item['channel'],$item['target_id'],$task['id']]);
                 continue;
             }
@@ -512,14 +529,14 @@ function crm_delivery_confirm(array $input): array
             $meta = ['delivery_version'=>2,'owner_id'=>$current['owner_id'],'asset_ids'=>array_column($current['attachments'],'id'),
                 'account_id'=>$item['account_id'],'sender_name'=>$item['sender_name'],'channel'=>$item['channel'],
                 'requested_channel'=>$task['channel_key'],'retry_interval_minutes'=>max(5,min(1440,(int)($failure['retry_interval_minutes'] ?? 30)))];
-            $schedule = crm_marketing_json($task['schedule_config_json'] ?? '');
             $meta['send_interval_minutes']=max(1,min(240,(int)($schedule['send_interval_minutes'] ?? 3)));
             $meta['hourly_limit']=max(1,min(500,(int)($schedule['hourly_limit'] ?? 50)));
             $meta['daily_limit']=max(1,min(3000,(int)($schedule['daily_limit'] ?? 200)));
-            db()->prepare("INSERT INTO crm_marketing_send_queue (task_id,customer_id,contact_id,sender_user_id,sender_email,receiver_email,subject,body,attachment_json,planned_server_time,send_status,send_attempts,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'scheduled',0,?,NOW(),NOW())")
+            $queueStmt
                 ->execute([$task['id'],$item['customer_id'],$item['contact_id'] ?: null,$item['sender_user_id'],$item['sender_email'],$item['receiver_email'],$item['subject'],$item['body_html'],json_encode($meta),$item['planned_at'],max(1,min(6,(int)($failure['retry_count'] ?? 1)+1))]);
         }
-        foreach ($current['excluded'] as $item) db()->prepare("UPDATE crm_marketing_task_targets SET target_status='skipped',failure_reason=? WHERE id=? AND task_id=?")->execute([$item['reason'],$item['target_id'],$task['id']]);
+        $excludedStmt = db()->prepare("UPDATE crm_marketing_task_targets SET target_status='skipped',failure_reason=? WHERE id=? AND task_id=?");
+        foreach ($current['excluded'] as $item) $excludedStmt->execute([$item['reason'],$item['target_id'],$task['id']]);
         db()->prepare('UPDATE crm_marketing_tasks SET task_status=?,updated_at=NOW() WHERE id=?')->execute([$mailCount ? 'scheduled' : 'manual_pending',$task['id']]);
         db()->prepare('UPDATE crm_marketing_delivery_previews SET confirmed_at=NOW() WHERE token=?')->execute([$preview['token']]);
         crm_log_event('promotion','confirmed_delivery','marketing_task',(string)$task['id'],null,['mail_count'=>$mailCount,'manual_count'=>count($current['items'])-$mailCount,'digest'=>$preview['digest']]);

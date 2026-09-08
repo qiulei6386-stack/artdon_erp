@@ -104,7 +104,12 @@ db()->prepare('UPDATE crm_marketing_delivery_previews SET manifest=? WHERE token
 crm_delivery_test(['token'=>$preview['token'],'index'=>0,'test_email'=>'test@example.invalid']);
 mit_assert(count($GLOBALS['pdSent'])===1 && $GLOBALS['pdSent'][0][1]['to_emails']==='test@example.invalid','Test recipient only');
 mit_assert($GLOBALS['pdSent'][0][2][0]['content']===$content,'Test attachment bytes');
+mit_assert(!crm_delivery_status(['token'=>$preview['token']])['confirmed'],'Status before confirm is read-only and unconfirmed');
 crm_delivery_confirm(['token'=>$preview['token']]);
+mit_assert(crm_delivery_status(['token'=>$preview['token']])['confirmed'],'A lost response can be reconciled from durable confirmation');
+$GLOBALS['pdUser']=9;
+try{crm_delivery_status(['token'=>$preview['token']]);throw new LogicException('Foreign confirmation exposed');}catch(RuntimeException $e){}
+$GLOBALS['pdUser']=1;
 crm_delivery_confirm(['token'=>$preview['token']]);
 mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue')->fetchColumn()===1,'Confirmation retry must not duplicate queue');
 $queue=db()->query('SELECT * FROM crm_marketing_send_queue')->fetch();

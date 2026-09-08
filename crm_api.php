@@ -1025,13 +1025,15 @@ try {
         require_csrf();
         api_response(true, '推广分组客户已更新', crm_marketing_group_customer_update($_POST));
     }
-    if (in_array($action, ['marketing_delivery_upload','marketing_delivery_preview','marketing_delivery_preview_read','marketing_delivery_confirm','marketing_delivery_test'], true)) {
+    if (in_array($action, ['marketing_delivery_upload','marketing_delivery_preview','marketing_delivery_preview_read','marketing_delivery_confirm','marketing_delivery_status','marketing_delivery_test'], true)) {
         require_csrf();
+        current_user();
+        crm_api_release_session_lock();
         if ($action === 'marketing_delivery_preview' && ($_POST['preview_format'] ?? '') !== 'paged-v1') {
             throw new RuntimeException('推广界面已升级。草稿已保留，请刷新页面并重新打开草稿，再生成最终预览；旧页面不能核对新版分页内容。');
         }
         $handler = ['marketing_delivery_upload'=>'crm_delivery_upload','marketing_delivery_preview'=>'crm_delivery_preview','marketing_delivery_preview_read'=>'crm_delivery_preview_read',
-            'marketing_delivery_confirm'=>'crm_delivery_confirm','marketing_delivery_test'=>'crm_delivery_test'][$action];
+            'marketing_delivery_confirm'=>'crm_delivery_confirm','marketing_delivery_status'=>'crm_delivery_status','marketing_delivery_test'=>'crm_delivery_test'][$action];
         api_response(true, '', $handler($action === 'marketing_delivery_upload' ? $_FILES : $_POST));
     }
     if ($action === 'marketing_task_create') {

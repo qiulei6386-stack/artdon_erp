@@ -224,7 +224,7 @@ function qd_merge_doc_item($shipRow,$orderRow,$seqIndex=0){
   foreach(['customer_code','product_code','product_name','specification','size','color','image'] as $k){
     if(qd_s($shipRow[$k]??'')==='') $shipRow[$k]=$base[$k]??'';
   }
-  foreach(['qty','unit_price','amount'] as $k){ if(qd_num($shipRow[$k]??0)<=0 && qd_num($base[$k]??0)>0) $shipRow[$k]=$base[$k]; }
+  foreach(['qty','unit_price','amount'] as $k){ if(!array_key_exists($k,$shipRow) && array_key_exists($k,$base)) $shipRow[$k]=$base[$k]; }
   foreach(['order_id','order_no','quote_no'] as $k){ if(qd_s($shipRow[$k]??'')==='' && qd_s($base[$k]??'')!=='') $shipRow[$k]=$base[$k]; }
   if((int)($shipRow['item_index']??0)<=0) $shipRow['item_index']=$base['item_index']??($seqIndex+1);
   if((int)($shipRow['order_item_id']??0)<=0) $shipRow['order_item_id']=$base['id']??($base['order_item_id']??0);
@@ -235,15 +235,16 @@ function qd_build_document_items(PDO $pdo,$order,$shipmentItems){
   $orderRows=qd_order_item_rows($pdo,$order); list($byId,$byIndex,$seq)=qd_order_item_maps($orderRows);
   $out=[];
   foreach($shipmentItems as $i=>$sr){
+    if(array_key_exists('qty',$sr) && qd_num($sr['qty'])<=0) continue;
     $oid=(int)($sr['order_item_id']??0); $idx=(int)($sr['item_index']??0);
     $base=$oid>0 && isset($byId[$oid]) ? $byId[$oid] : (($idx>0 && isset($byIndex[$idx])) ? $byIndex[$idx] : ($seq[$i]??[]));
     $row=qd_merge_doc_item($sr,$base,$i);
     if(qd_row_has_order_info($row)) $out[]=$row;
   }
-  if(!$out){ foreach($orderRows as $i=>$r){ $row=qd_merge_doc_item([], $r, $i); if(qd_row_has_order_info($row)) $out[]=$row; } }
+  if(!$out && !$shipmentItems){ foreach($orderRows as $i=>$r){ $row=qd_merge_doc_item([], $r, $i); if(qd_row_has_order_info($row)) $out[]=$row; } }
   // 如果出货批次是旧版本生成的空快照，直接回退订单快照，避免 PL/CI 空表。
   $rich=0; foreach($out as $r){ if(qd_s($r['product_name']??'')!=='' || qd_s($r['product_code']??'')!=='' || qd_s($r['specification']??'')!=='' || qd_s($r['size']??'')!=='' || qd_s($r['image']??'')!=='') $rich++; }
-  if($rich===0 && $orderRows){ $out=[]; foreach($orderRows as $i=>$r){ $out[]=qd_merge_doc_item([], $r, $i); } }
+  if($rich===0 && $orderRows && !$shipmentItems){ $out=[]; foreach($orderRows as $i=>$r){ $out[]=qd_merge_doc_item([], $r, $i); } }
   return $out;
 }
 function qd_ci_item_group_key($row,$seq=0){
@@ -287,7 +288,7 @@ function qd_carton_count($c){$n=qd_num($c['carton_count']??1);return $n>0?$n:1;}
 function qd_carton_count_total($cartons){$s=0;foreach($cartons as $c){if(qd_carton_has_detail($c))$s+=qd_carton_count($c);}return $s;}
 function qd_packing_total($items,$cartons,$key){
   $base=qd_total($items,$key);
-  if($key==='qty') return $base+qd_total($cartons,'qty');
+  if($key==='qty') return $base;
   if($key==='cartons') return $base+qd_carton_count_total($cartons);
   if(in_array($key,['nw','gw','cbm'],true)) return $base+qd_total($cartons,$key);
   return $base;
@@ -304,54 +305,19 @@ function qd_carton_pl_rows($cartons,$items=[]){
   $rows=[];
   foreach($cartons as $ci=>$c){
     if(!qd_carton_has_detail($c)) continue;
-    $text=qd_s($c['items_text']??''); $code=''; $desc=$text;
-    if(preg_match('/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$/u',$text,$m)){ $code=$m[1]; $desc=qd_s($m[2]??''); }
-    if($desc==='') $desc=$text!==''?$text:qd_s($c['note']??'Tail carton');
-    $ctns=qd_carton_count($c); $qty=qd_num($c['qty']??0);
-    $parts=qd_carton_qty_parts($text,$qty);
-    $matched=[];
-    if($code!==''){
-      foreach($items as $it){
-        if(qd_s($it['product_code']??'')===$code || qd_s($it['customer_code']??'')===$code) $matched[]=$it;
-      }
-    }
-    if($matched && count($matched)===count($parts)){
-      foreach($matched as $i=>$src){
-        $row=$src;
-        $row['qty']=qd_num($parts[$i]??0);
-        $row['pcs_per_ctn']=$i===0&&$qty>0&&$ctns>0?($qty/$ctns):0;
-        $row['cartons']=$i===0?$ctns:0;
-        $row['carton_size']=$i===0?qd_s($c['carton_size']??''):'';
-        $row['nw']=$i===0?qd_num($c['nw']??0):0;
-        $row['gw']=$i===0?qd_num($c['gw']??0):0;
-        $row['cbm']=$i===0?qd_num($c['cbm']??0):0;
-        $row['_carton_group']='tail_'.$ci;
-        $row['_carton_rowspan']=count($matched);
-        $row['_carton_first']=$i===0;
-        $row['_carton_skip_pack']=$i>0;
-        $rows[]=$row;
-      }
-      continue;
-    }
+    $ctns=qd_carton_count($c);$qty=qd_num($c['qty']??0);
+    // Free-text carton descriptions cannot identify an order item reliably.
+    // Keep the complete description, and never invent a product/model from its
+    // first word or add its contents to the product quantities a second time.
+    $text=qd_s($c['items_text']??'');
     $rows[]=[
-      'customer_code'=>'',
-      'product_code'=>$code,
-      'product_name'=>'',
-      'specification'=>$desc,
-      'description'=>$desc,
-      'color'=>'',
-      'qty'=>$qty,
-      'pcs_per_ctn'=>($qty>0&&$ctns>0)?($qty/$ctns):0,
-      'cartons'=>$ctns,
-      'carton_size'=>qd_s($c['carton_size']??''),
-      'nw'=>qd_num($c['nw']??0),
-      'gw'=>qd_num($c['gw']??0),
-      'cbm'=>qd_num($c['cbm']??0),
-      'image'=>'',
-      '_carton_group'=>'tail_'.$ci,
-      '_carton_rowspan'=>1,
-      '_carton_first'=>true,
-      '_carton_skip_pack'=>false,
+      'customer_code'=>'','product_code'=>'','product_name'=>'',
+      'specification'=>"Mixed carton — contents included in product rows above\n".$text,
+      'color'=>'','qty'=>0,'pcs_per_ctn'=>$ctns>0?$qty/$ctns:0,
+      'cartons'=>$ctns,'carton_size'=>qd_s($c['carton_size']??''),
+      'nw'=>qd_num($c['nw']??0),'gw'=>qd_num($c['gw']??0),'cbm'=>qd_num($c['cbm']??0),
+      'image'=>'','_carton_group'=>'packing_'.$ci,'_carton_rowspan'=>1,
+      '_carton_first'=>true,'_carton_skip_pack'=>false,'_packing_only'=>true,
     ];
   }
   return $rows;
@@ -404,7 +370,7 @@ if($format==='xls'||$format==='xlsx'||$format==='excel'){
   <?php /* V6.8.5.53: CI 不显示银行信息区 */ ?>
 <?php else: ?>
   <table class="doc-table"><colgroup><col style="width:6%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:27%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5.5%"><col style="width:5%"></colgroup><thead><tr><th>Picture</th><th>Order No.</th><th>Customer<br>Model</th><th>Manufacturer<br>Code</th><th>Description</th><th>Color</th><th>QTY<br>(pcs)</th><th>PCS/<br>CTN</th><th>L<br>(cm)</th><th>W<br>(cm)</th><th>H<br>(cm)</th><th>CTNS</th><th>N.W.<br>(KG)</th><th>G.W.<br>(KG)</th><th>CBM</th></tr></thead><tbody>
-  <?php foreach($plItems as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); $span=max(1,(int)($it['_carton_rowspan']??1)); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['order_no']??'')?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=qd_qty($it['qty']??0)?></td><?php if(empty($it['_carton_skip_pack'])): ?><td rowspan="<?=$span?>"><?=qd_qty($it['pcs_per_ctn']??0)?></td><td rowspan="<?=$span?>"><?=qd_h($cl)?></td><td rowspan="<?=$span?>"><?=qd_h($cw)?></td><td rowspan="<?=$span?>"><?=qd_h($ch)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cartons']??0)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['nw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['gw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cbm']??0,4)?></td><?php endif; ?></tr><?php endforeach; ?>
+  <?php foreach($plItems as $i=>$it): list($cl,$cw,$ch)=qd_carton_dims($it['carton_size']??''); $img=qd_img_src($it); $span=max(1,(int)($it['_carton_rowspan']??1)); ?><tr><td class="pic-cell"><?php if($img!==''): ?><img class="pl-img" src="<?=qd_h($img)?>"><?php endif; ?></td><td><?=qd_h($it['order_no']??'')?></td><td><?=qd_h($it['customer_code']??'')?></td><td><?=qd_h($it['product_code']??'')?></td><td class="desc"><?=qd_h(qd_desc($it))?></td><td><?=qd_h($it['color']??'')?></td><td><?=!empty($it['_packing_only'])?'—':qd_qty($it['qty']??0)?></td><?php if(empty($it['_carton_skip_pack'])): ?><td rowspan="<?=$span?>"><?=qd_qty($it['pcs_per_ctn']??0)?></td><td rowspan="<?=$span?>"><?=qd_h($cl)?></td><td rowspan="<?=$span?>"><?=qd_h($cw)?></td><td rowspan="<?=$span?>"><?=qd_h($ch)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cartons']??0)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['nw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['gw']??0,3)?></td><td rowspan="<?=$span?>"><?=qd_qty($it['cbm']??0,4)?></td><?php endif; ?></tr><?php endforeach; ?>
   <tr><td colspan="6"></td><td><b><?=qd_qty(qd_total($plItems,'qty'))?></b></td><td></td><td colspan="3"><b>Total:</b></td><td><b><?=qd_qty(qd_total($plItems,'cartons'))?></b></td><td><b><?=qd_qty(qd_total($plItems,'nw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'gw'),3)?></b></td><td><b><?=qd_qty(qd_total($plItems,'cbm'),4)?></b></td></tr></tbody></table>
   <div class="summary"><div class="box"><b>Total Qty:</b> <?=qd_qty(qd_total($plItems,'qty'))?> PCS<br><b>Total Cartons:</b> <?=qd_qty(qd_total($plItems,'cartons'))?> CTNS<br><b>Total N.W.:</b> <?=qd_qty(qd_total($plItems,'nw'),3)?> KG<br><b>Total G.W.:</b> <?=qd_qty(qd_total($plItems,'gw'),3)?> KG<br><b>Total CBM:</b> <?=qd_qty(qd_total($plItems,'cbm'),4)?></div><div class="box"><b>Packing List No:</b> <?=qd_h($ship['packing_list_no']??'')?><br><b>PI No.:</b> <?=qd_h($order['_shipment_order_refs']??qd_order_no_at($order['order_no']??'',$order['quote_no']??''))?><br><b>Date:</b> <?=qd_h($ship['ship_date']??date('Y-m-d'))?></div></div>
 <?php endif; ?>

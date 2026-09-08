@@ -1,0 +1,9 @@
+#shipmentOrderPicker{border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;margin:12px 0;min-width:0}
+#shipmentOrderPicker legend{font-weight:700;padding:0 6px}
+#shipmentOrderPicker p,.shipment-packing-note{font-size:13px;line-height:1.6;color:#475569;margin:6px 0}
+.shipment-order-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px}
+.shipment-order-options label{display:flex;gap:8px;align-items:center;padding:8px;border:1px solid #e2e8f0;border-radius:8px;min-width:0}
+.shipment-order-options input{width:18px!important;height:18px;flex:0 0 18px;margin:0}
+.shipment-order-options span{overflow-wrap:anywhere}
+#shipItemRows tr[hidden]{display:none!important}
+.shipment-packing-note{padding:10px 12px;background:#eff6ff;border-radius:8px}

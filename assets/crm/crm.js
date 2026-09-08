@@ -12131,21 +12131,44 @@
     previewAttachment: function (attachmentId, name) {
       if (!attachmentId) return toast('附件 ID 无效。');
       var url = 'crm_api.php?action=mail_attachment_preview&attachment_id=' + encodeURIComponent(attachmentId);
-      document.querySelector('[data-mail-attachment-preview-layer]')?.remove();
+      var previous = document.querySelector('[data-mail-attachment-preview-layer]');
+      if (previous) { if (previous.closePreview) previous.closePreview(); else previous.remove(); }
       var layer = document.createElement('div');
       layer.className = 'mail-attachment-preview-layer';
       layer.setAttribute('data-mail-attachment-preview-layer', '1');
-      layer.innerHTML = '<div><header><strong>' + esc(name || '附件预览') + '</strong><nav><a href="' + esc(this.attachmentDownloadUrl(attachmentId)) + '" target="_blank" rel="noopener noreferrer">下载</a><button type="button" data-mail-attachment-preview-close>关闭</button></nav></header><iframe src="' + esc(url) + '" title="附件预览"></iframe><p>PDF、图片可直接预览；Word / Excel 会转为 PDF 后预览。</p></div>';
+      layer.innerHTML = '<div><header><strong>' + esc(name || '附件预览') + '</strong><nav><a href="' + esc(this.attachmentDownloadUrl(attachmentId)) + '" target="_blank" rel="noopener noreferrer">下载</a><button type="button" data-mail-attachment-preview-close>关闭</button></nav></header><div class="mail-local-preview-loading" role="status">正在读取附件预览…</div><p>PDF、图片可直接预览；Word / Excel 会转为 PDF 后预览。</p></div>';
+      var previewUrl = '', closed = false, controller = new AbortController();
+      var timer = window.setTimeout(function () { controller.abort(); }, 60000);
+      function closeOnEsc(event) { if (event.key === 'Escape') close(); }
+      function close() {
+        closed = true; controller.abort(); window.clearTimeout(timer);
+        document.removeEventListener('keydown', closeOnEsc); layer.remove();
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      }
+      layer.closePreview = close;
       (document.querySelector('[data-mail-compose-dialog][open]') || document.body).appendChild(layer);
       layer.addEventListener('click', function (event) {
-        if (event.target === layer || event.target.hasAttribute('data-mail-attachment-preview-close')) layer.remove();
+        if (event.target === layer || event.target.hasAttribute('data-mail-attachment-preview-close')) close();
       });
-      document.addEventListener('keydown', function closeOnEsc(event) {
-        if (event.key === 'Escape') {
-          layer.remove();
-          document.removeEventListener('keydown', closeOnEsc);
+      document.addEventListener('keydown', closeOnEsc);
+      fetch(url, {credentials:'same-origin', signal:controller.signal}).then(async function (res) {
+        var type = String(res.headers.get('Content-Type') || '').toLowerCase();
+        if (type.indexOf('application/json') >= 0) {
+          var json = await res.json(); throw new Error(json.message || '附件预览失败');
         }
-      });
+        if (!res.ok) throw new Error('读取附件失败（' + res.status + '），请下载查看或稍后重试。');
+        if (!/^(application\/pdf|image\/(png|jpeg|gif|webp|bmp)|text\/plain)(;|$)/.test(type)) throw new Error('服务器返回的内容不能安全预览，请下载查看。');
+        return res.blob();
+      }).then(function (blob) {
+        if (closed || !layer.isConnected) return;
+        previewUrl = URL.createObjectURL(blob);
+        var box = layer.querySelector('.mail-local-preview-loading');
+        box.outerHTML = '<iframe src="' + esc(previewUrl) + '" title="' + esc(name || '附件预览') + '"></iframe>';
+        layer.querySelector('p').innerHTML = '附件已读取。如浏览器仍未显示，可 <a target="_blank" rel="noopener noreferrer" href="'+esc(previewUrl)+'">在新窗口打开预览</a> 或点击下载。';
+      }).catch(function (error) {
+        if (closed || !layer.isConnected) return;
+        layer.querySelector('.mail-local-preview-loading').textContent = error.name === 'AbortError' ? '预览读取超时，请关闭后重试或下载查看。' : error.message;
+      }).finally(function () { window.clearTimeout(timer); });
     },
     previewLocalAttachmentFile: function (file) {
       if (!file) return toast('附件不存在。');

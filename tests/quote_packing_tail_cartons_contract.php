@@ -9,7 +9,7 @@ $files=[
 $checks=[
   'api helper adds carton detail totals'=>strpos($files['api'],'function qo_add_carton_detail_totals')!==false,
   'api create/update uses carton detail totals'=>substr_count($files['api'],'qo_add_carton_detail_totals($tot,$cartons)')>=2,
-  'api carton detail totals include qty'=>strpos($files['api'],"foreach(['qty','cartons','nw','gw','cbm'] as \$k)")!==false,
+  'api carton detail totals exclude already-counted qty'=>strpos($files['api'],"foreach(['cartons','nw','gw','cbm'] as \$k)")!==false,
   'doc converts carton detail into PL rows'=>strpos($files['doc'],'function qd_carton_pl_rows')!==false,
   'doc carton detail reuses shipment item descriptions'=>strpos($files['doc'],'qd_carton_pl_rows($cartons,$items')!==false,
   'doc carton package columns use rowspan'=>strpos($files['doc'],'_carton_skip_pack')!==false && strpos($files['doc'],'rowspan="<?=$span?>"')!==false,
