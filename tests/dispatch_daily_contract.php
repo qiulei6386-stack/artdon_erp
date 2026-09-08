@@ -1,0 +1,30 @@
+<?php
+require_once dirname(__DIR__).'/includes/dispatch_daily.php';
+function dd_assert($ok,$message){if (!$ok) throw new RuntimeException($message);}
+function dd_reject(callable $fn){try{$fn();}catch(Throwable $e){return $e;}throw new RuntimeException('Unexpected acceptance');}
+$day=dd_day('2026-09-08',new DateTimeImmutable('2026-09-09T01:00:00+08:00'));
+dd_assert($day['start']==='2026-09-07 16:00:00.000000' && $day['end']==='2026-09-08 16:00:00.000000','Beijing midnight boundaries');
+dd_reject(fn()=>dd_day('2026-02-30'));dd_reject(fn()=>dd_day('2999-01-01'));
+dd_assert(dd_scope([],7,false)===7 && dd_scope(['user_id'=>0],7,true)===0,'Own default / explicit admin team');
+foreach([0,8,-1,'bad','1 OR 1=1'] as $id)dd_reject(fn()=>dd_scope(['user_id'=>$id],7,false));
+$base=['id'=>1,'task_no'=>'TEST','task_type'=>'personal','dispatch_mode'=>'single','parent_group_id'=>null,'title'=>'<b>示例</b>','project'=>'','description'=>'','priority'=>'normal','status'=>'in_progress','created_by'=>7,'assigned_to'=>7,'task_date'=>'2026-09-08','due_at'=>'2026-09-08 18:00:00','completed_at'=>null,'progress'=>0,'is_deleted'=>0,'created_at'=>'2026-09-01 10:00:00'];
+$states=[$base,array_merge($base,['id'=>2,'status'=>'done','completed_at'=>'2026-09-08 10:00:00']),array_merge($base,['id'=>3,'due_at'=>'2026-09-05 12:00:00']),array_merge($base,['id'=>4,'due_at'=>'2026-09-09 12:00:00']),array_merge($base,['id'=>5,'status'=>'cancelled']),array_merge($base,['id'=>6,'assigned_to'=>8,'task_type'=>'private']),array_merge($base,['id'=>7,'is_deleted'=>1])];
+$before=$base;$after=array_merge($base,['due_at'=>'2026-09-09 18:00:00']);
+$event=['id'=>1,'owner_id'=>7,'previous_owner_id'=>7,'actor_id'=>8,'event_type'=>'update','occurred_at'=>'2026-09-08 02:00:00.000000','before'=>$before,'after'=>$after];
+$out=dd_aggregate($states,[$event],$day,7);
+dd_assert($out['counts']===['completed'=>1,'pending'=>1,'overdue'=>1,'tomorrow'=>1,'active'=>0,'changes'=>1],'Own categories partition correctly, no foreign private/cancelled/deleted leakage');
+dd_assert($out['lists']['overdue'][0]['overdue_days']===3,'Overdue day count');
+dd_assert($out['lists']['changes'][0]['changes'][0]['field']==='due_at' && $out['lists']['changes'][0]['time']==='10:00:00','Readable before/after at Beijing time');
+$event['occurred_at']=$day['end'];dd_assert(dd_aggregate([],[$event],$day,7)['counts']['changes']===0,'Next midnight belongs to next day');
+$event['occurred_at']=$day['start'];dd_assert(dd_aggregate([],[$event],$day,7)['counts']['changes']===1,'First midnight belongs to day');
+$event['event_type']='baseline';dd_assert(dd_aggregate([],[$event],$day,7)['counts']['changes']===0,'Baseline is not invented activity');
+$multi=[array_merge($base,['id'=>10,'parent_group_id'=>2,'dispatch_mode'=>'multi']),array_merge($base,['id'=>11,'parent_group_id'=>2,'dispatch_mode'=>'multi','assigned_to'=>8])];
+dd_assert(dd_aggregate($multi,[],$day,7)['counts']['pending']===1 && dd_aggregate($multi,[],$day,0)['counts']['pending']===2,'Multi child counted once per actual owner, no synthetic parent');
+dd_assert(dd_aggregate([array_merge($base,['completed_at'=>'2026-09-08 10:00:00'])],[],$day,7)['counts']['completed']===0,'Reopened task is unfinished, not double credited');
+$transfer=['id'=>2,'owner_id'=>8,'previous_owner_id'=>7,'actor_id'=>7,'event_type'=>'update','occurred_at'=>$day['start'],'before'=>array_merge($base,['title'=>'原负责人私人内容']),'after'=>array_merge($base,['assigned_to'=>8,'title'=>'新负责人内容'])];
+$incoming=dd_aggregate([],[$transfer],$day,8);$outgoing=dd_aggregate([],[$transfer],$day,7);
+dd_assert(count($incoming['lists']['changes'][0]['changes'])===1 && $incoming['lists']['changes'][0]['title']==='新负责人内容' && $outgoing['lists']['changes'][0]['title']==='原负责人私人内容','Ownership boundary does not leak other owner private before/after text');
+$api=file_get_contents(dirname(__DIR__).'/dispatch_next_api.php');
+dd_assert(strpos($api,"case 'daily_report':")!==false && strpos($api,'dd_report(dispatch_next_db(),$in,dn_uid(),dn_is_admin())')!==false,'Server identity/role, never client admin');
+dd_assert(strpos($api,"hash_equals(\$_SESSION['dispatch_daily_csrf']")!==false,'Supplement CSRF guard');
+echo "Dispatch daily: timezone, date validation, own/admin isolation, categories, old/new, multi children, reopen, baseline and route guards passed.\n";

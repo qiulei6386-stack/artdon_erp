@@ -573,6 +573,7 @@ body.due-row-fill-off .mobileTaskCard.due-soon,body.due-row-fill-off .mobileTask
 .tbl tr.done td[data-field="actions"],.tbl tr.done td[data-field="actions"] .rowActions,.tbl tr.cancelled td[data-field="actions"],.tbl tr.cancelled td[data-field="actions"] .rowActions{text-align:center!important;justify-content:center!important}
 @media(max-width:760px){.tbl td[data-field="actions"] .rowActions{gap:3px!important}}
 </style>
+<link rel="stylesheet" href="assets/dispatch/daily-report.css?v=<?= filemtime(__DIR__.'/assets/dispatch/daily-report.css') ?>">
 </head>
 <body>
 <div class="app">
@@ -661,6 +662,7 @@ body.due-row-fill-off .mobileTaskCard.due-soon,body.due-row-fill-off .mobileTask
 <div class="groupMemberPopover" id="groupMemberPopover"></div>
 <div class="toast" id="toast"></div>
 <script src="assets/dispatch/recent-create.js?v=<?= filemtime(__DIR__ . '/assets/dispatch/recent-create.js') ?>"></script>
+<script src="assets/dispatch/daily-report.js?v=<?= filemtime(__DIR__.'/assets/dispatch/daily-report.js') ?>"></script>
 <script>
 const API='dispatch_next_api.php',SERVER_TODAY="<?= date('Y-m-d') ?>";let state={date:localDateString(),search:'',users:[],data:null,me:null,currentDetail:null,mode:'personal',editMultiGroupId:null,scope:currentTableScope(),mobileView:localStorage.dispatch_next_mobile_view||'card',columns:[],editColumns:null,colorPrefs:{},editColorPrefs:null,saveTimers:{},emptyDeleteTimers:{},dragRow:null,newRows:{},recentCreated:{},recentPinned:{},recentCreateFallback:null,firstOpenMarked:{},localCellEdits:{},cellSaveStatus:{},styleCell:null,focusFilter:'',selectedTasks:new Set(),selectedRowKey:'',groupPopover:{taskId:null,anchor:null,data:null},detailTab:'detail',detailSaveStatus:{},pendingRender:false,noticeFilter:'pending_all',noticeSearch:'',noticePage:1,noticeCenterData:null,selectedNoticeId:'',noticeRules:{},onlinePopup:{people:[],summary:null,query:'',dept:'',collapsed:{away:false,offline:false},selected:''},onlinePopupTimer:null,worldTimeTimer:null,peopleFilter:{personal:[],dispatch:[]},peopleFilterOpen:'',filters:{personal:{status:[],priority:[],overdue:false,collapsed:false},dispatch:{status:[],priority:[],overdue:false,collapsed:false}},lastSilentSync:0,lastVersionCheck:0,lastNoticeSync:0,lastOnlineSync:0,syncVersion:'',versionCheckRunning:false,ticker:null,resizeObserver:null,layoutWatcher:null,layoutSignature:''};
 const defaultColumns=[['row_handle','','handle'],['complete','完成','complete'],['priority','优先级','select'],['title','任务标题','text'],['project','项目','textarea'],['due_at','截止日期','datetime'],['assigned_to','负责人','user'],['dispatch_mode','方式','mode'],['creator_name','派工来自','readonly'],['actions','操作','actions']];
@@ -1314,6 +1316,7 @@ document.addEventListener('change',e=>{if(e.target.id==='attFile'&&e.target.file
 async function doUrge(id){await api('urge_task',{id});toast('已催办');load()}async function doDelete(id,gid){if(gid){if(!confirm('删除整组多人？'))return;await api('delete_multi',{group_id:gid})}else{if(!confirm('确认删除？'))return;await api('delete_task',{id})}toast('已删除');load()}async function quickDone(id,currentStatus){if(String(id).startsWith('g'))return;let next=currentStatus==='done'?'in_progress':'done';let payload=next==='done'?{id,status:'done',progress:100,client_updated_at:taskVersion(id)}:{id,status:'in_progress',client_updated_at:taskVersion(id)};try{let r=await api('update_task',payload);updateTaskVersion(id,r.updated_at);toast(next==='done'?'已完成':'已恢复进行中');load()}catch(e){toast(e.message);if(String(e.message||'').includes('已被别人更新'))load({silent:true})}}
 async function stopRecurringGroup(gid){if(!gid)return toast('缺少固定待办规则 ID');if(!confirm('确认停用这个固定待办？\\n\\n只停止以后自动生成，已经生成的历史待办会保留。'))return;try{await api('stop_recurring',{group_id:gid});toast('固定待办已停用，后续不再自动生成');hideMobileActionMenu();if(state.currentDetail?.group&&Number(state.currentDetail.group.id)===Number(gid))$('#detailModal')?.close();load()}catch(e){toast(e.message||'停用失败')}}
 function openSimple(title,html){$('#formTitle').textContent=title;$('#formHint').textContent='当天同账号只显示一次。';$('#formBody').innerHTML=html;$('#formSave').style.display='none';$('#formModal').showModal()}
+if(window.DispatchDaily){const dailyButton=document.createElement('button');dailyButton.id='dailyReportBtn';dailyButton.className='btn dd-entry';dailyButton.type='button';dailyButton.textContent='◷ 今日总结';document.querySelector('.toolbar').appendChild(dailyButton);DispatchDaily.install({api,openTask:openDetail});}
 init().catch(e=>toast(e.message));
 </script>
 </body>

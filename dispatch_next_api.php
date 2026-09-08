@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/artdon_sso_core.php';
 require_once __DIR__ . '/dispatch_next_schema.php';
 require_once __DIR__ . '/crm_log.php';
+require_once __DIR__ . '/includes/dispatch_daily.php';
 
 @ini_set('display_errors', '0');
 @ini_set('log_errors', '1');
@@ -6024,13 +6025,26 @@ function dn_preview_link_candidate(string $system): ?array
 }
 
 try {
-    dispatch_next_init_schema();
-    dn_cleanup_expired_attachments();
+    dispatch_next_db()->prepare('SET @dispatch_daily_actor=?')->execute([dn_uid()]);
     $in = dn_input();
     $action = dn_str($in['action'] ?? 'me', 80);
     $GLOBALS['DN_INPUT'] = $in;
     $GLOBALS['DN_ACTION'] = $action;
+    if (!in_array($action,['daily_report','daily_note_save'],true)) {
+        dispatch_next_init_schema();
+        dn_cleanup_expired_attachments();
+    }
     switch ($action) {
+        case 'daily_report':
+            try {
+                $report=dd_report(dispatch_next_db(),$in,dn_uid(),dn_is_admin());
+                if (empty($_SESSION['dispatch_daily_csrf'])) $_SESSION['dispatch_daily_csrf']=bin2hex(random_bytes(32));
+                $report['csrf']=$_SESSION['dispatch_daily_csrf'];dn_ok($report);
+            } catch (Throwable $e) {dn_fail($e->getMessage(),in_array($e->getCode(),[401,403,409],true)?$e->getCode():400);}
+        case 'daily_note_save':
+            if (empty($_SESSION['dispatch_daily_csrf']) || !hash_equals($_SESSION['dispatch_daily_csrf'],(string)($in['csrf']??''))) dn_fail('页面校验已失效，请重新打开今日总结',403);
+            try {dn_ok(dd_save_note(dispatch_next_db(),$in,dn_uid()));}
+            catch (Throwable $e) {dn_fail($e->getMessage(),in_array($e->getCode(),[403,409],true)?$e->getCode():400);}
         case 'me': dn_ok(dn_me_data());
         case 'init_schema': dn_require('init_schema', '没有初始化权限'); dn_ok(dispatch_next_init_schema());
         case 'list_tasks': dn_ok(dn_list($in));
