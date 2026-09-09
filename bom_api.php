@@ -10,6 +10,7 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/bom_dashboard_read.php';
+require_once __DIR__ . '/includes/bom_workflow.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? $_POST['action'] : '');
@@ -145,17 +146,21 @@ function bom_sync_quote_cost_snapshot(PDO $pdo, $projectUid, $actor = 'system'){
     if(!table_exists($pdo, 'bom_projects') || !table_exists($pdo, 'quote_price_policies')) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_table');
     $needed = array('bom_cost_rmb','estimated_sale_price_rmb','bom_cost_source','bom_match_key','bom_cost_updated_at');
     foreach($needed as $col){ if(!hascol($pdo, 'quote_price_policies', $col)) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_quote_columns'); }
-    $st = $pdo->prepare('SELECT * FROM bom_projects WHERE project_uid=? LIMIT 1');
+    if(!bw_ready($pdo))return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'publication_not_initialized');
+    $st = $pdo->prepare('SELECT * FROM bom_cost_publications WHERE project_uid=? LIMIT 1');
     $st->execute(array((string)$projectUid));
-    $project = $st->fetch(PDO::FETCH_ASSOC);
-    if(!$project) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_project');
+    $publication = $st->fetch(PDO::FETCH_ASSOC);
+    if(!$publication) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'no_published_cost');
+    $project=json_decode($publication['payload_json'],true,512,JSON_THROW_ON_ERROR);
+    $project['updated_at']=$publication['updated_at'];
     if(hascol($pdo, 'bom_projects', 'is_active') && isset($project['is_active']) && (int)$project['is_active'] !== 1) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'inactive_project');
     $model = trim((string)($project['model'] ?? ''));
     $modelKey = bom_quote_cost_norm_model($model);
     $linkedSystem = strtoupper(trim((string)($project['linked_system'] ?? '')));
     $linkedId = trim((string)($project['linked_id'] ?? ''));
     if($modelKey === '' && $linkedId === '') return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_match_key');
-    $cost = bom_quote_cost_from_project_row($project);
+    $cost = (float)$publication['cost'];
+    $costSource=$publication['source']==='approved_snapshot'?'bom_snapshot:'.$publication['snapshot_id']:'bom_legacy_unreviewed';
     $where = array();
     $args = array();
     if($linkedId !== '' && (strpos($linkedSystem, 'NAMING') !== false || strpos($linkedSystem, '命名') !== false)){
@@ -181,11 +186,11 @@ function bom_sync_quote_cost_snapshot(PDO $pdo, $projectUid, $actor = 'system'){
         $estimated = bom_quote_estimated_sale_rmb($pdo, $policy, $cost);
         $changed = abs(bom_num_zero($policy['bom_cost_rmb'] ?? 0) - $cost) > 0.0001
             || abs(bom_num_zero($policy['estimated_sale_price_rmb'] ?? 0) - $estimated) > 0.0001
-            || (string)($policy['bom_cost_source'] ?? '') !== 'bom_projects.precise'
+            || (string)($policy['bom_cost_source'] ?? '') !== $costSource
             || (string)($policy['bom_match_key'] ?? '') !== $matchKey
             || (string)($policy['bom_cost_updated_at'] ?? '') !== (string)($project['updated_at'] ?? '');
         if(!$changed) continue;
-        $update->execute(array($cost, $estimated, 'bom_projects.precise', $matchKey, (string)($project['updated_at'] ?? ''), (string)$actor, (int)$policy['id']));
+        $update->execute(array($cost, $estimated, $costSource, $matchKey, (string)($project['updated_at'] ?? ''), (string)$actor, (int)$policy['id']));
         $updated++;
     }
     return array('matched'=>count($policies),'updated'=>$updated,'skipped'=>0,'cost_rmb'=>$cost,'model'=>$model,'model_key'=>$modelKey,'linked_id'=>$linkedId);
@@ -222,7 +227,7 @@ function bom_material_public_row($r, $score=null, $reason=''){
 function bom_hide_sensitive_row(array $row, bool $canCost, bool $canSupplier): array
 {
     if(!$canCost){
-        foreach(array('price','cost','unit_price','amount','subtotal','total','labor','other','process','finishCost','finish_cost','material_cost','total_cost','profit','margin') as $k){
+        foreach(array('price','cost','unit_price','unitCost','unit_cost','amount','subtotal','total','labor','other','process','process_cost','finishCost','finish_cost','finishCost2','finish_cost2','surfaceCost','surfaceCost2','surface_cost','surface_cost2','material_cost','total_cost','profit','margin') as $k){
             if(array_key_exists($k,$row)) $row[$k] = '';
         }
     }
@@ -900,19 +905,7 @@ function bom_project_rows($project){
     return is_array($rows) ? $rows : array();
 }
 function bom_project_totals_snapshot($project){
-    $rows = bom_project_rows($project);
-    $mat = 0.0;
-    foreach($rows as $r){
-        if(!is_array($r)) continue;
-        $mat += bom_num_zero($r['qty'] ?? 0) * (bom_num_zero($r['price'] ?? 0) + bom_num_zero($r['process'] ?? 0) + bom_num_zero($r['finishCost'] ?? 0) + bom_num_zero($r['finishCost2'] ?? 0));
-    }
-    $labor = bom_num_zero($project['labor'] ?? 0);
-    $other = bom_num_zero($project['other'] ?? 0);
-    $total = $mat + $labor + $other;
-    $rate = bom_num_zero($project['profit_rate'] ?? 30);
-    $mode = trim((string)($project['quote_mode'] ?? 'markup'));
-    $suggest = ($mode === 'margin') ? ($rate >= 100 ? 0 : $total / (1 - $rate / 100)) : $total * (1 + $rate / 100);
-    return array('material'=>$mat,'labor'=>$labor,'other'=>$other,'total'=>$total,'suggest'=>$suggest,'profit'=>$suggest-$total);
+    return bw_totals($project);
 }
 function bom_price_summary_snapshot($project){
     $rows = bom_project_rows($project);
@@ -963,19 +956,25 @@ function bom_backfill_project_summary_cache(PDO $pdo, $limit=500){
 }
 function bom_project_rows_for_output(PDO $pdo, array $p){
     $rows = bom_project_rows($p);
-    if(!$rows){
+    if(!$rows && (int)($p['workflow_version']??0)===0){
         $recoveredRows = bom_v68_recover_empty_naming_project_rows($pdo, $p);
         if($recoveredRows) $rows = $recoveredRows;
     }
     return is_array($rows) ? $rows : array();
 }
 function bom_project_enrich_detail(PDO $pdo, array $p, bool $canCost, bool $canSupplier){
-    $p = bom_v777_sync_project_image_from_naming($pdo, $p);
+    $p['revision']=bw_revision($p);
+    $p['cost_publication']=null;
+    if(bw_ready($pdo)){
+        $pub=$pdo->prepare('SELECT source,snapshot_id,updated_at FROM bom_cost_publications WHERE project_uid=?');$pub->execute(array($p['project_uid']));$p['cost_publication']=$pub->fetch(PDO::FETCH_ASSOC)?:null;
+    }
+    // Reading a BOM must never synchronize or persist changing naming images.
     $rows = bom_project_rows_for_output($pdo, $p);
     if($rows && trim((string)($p['rows_json'] ?? '')) === '') $p['legacy_rows_recovered'] = 1;
     $p['rows'] = bom_hide_sensitive_list($rows, $canCost, $canSupplier);
     $p['price_summary'] = bom_price_summary_snapshot(array_merge($p, array('rows'=>$rows)));
     $p['totals_summary'] = bom_project_totals_snapshot(array_merge($p, array('rows'=>$rows)));
+    if(!$canCost){$p['totals_summary']=array();unset($p['totals_json']);}
     $p['row_count'] = count($rows);
     $p['review_status_label'] = bom_review_status_label($p['review_status'] ?? 'draft');
     $p['naming_sync'] = bom_v78_naming_sync_summary($p);
@@ -1004,6 +1003,7 @@ function bom_project_light_summary(PDO $pdo, array $p, array $snapshotCounts, bo
     $p['review_status_label'] = bom_review_status_label($p['review_status'] ?? 'draft');
     $p['naming_sync'] = bom_v78_naming_sync_summary($p);
     $p = bom_hide_sensitive_row($p, $canCost, $canSupplier);
+    if(!$canCost)$p['totals_summary']=array();
     unset($p['rows'], $p['rows_json'], $p['linked_json'], $p['naming_snapshot_json'], $p['product_image'], $p['totals_json'], $p['price_summary_json'], $p['summary_updated_at']);
     $p['product_image_display'] = '';
     $p['is_light_summary'] = 1;
@@ -1184,18 +1184,7 @@ function bom_v777_project_display_image(PDO $pdo,array $p){
     return bom_v777_normalize_media_url($raw);
 }
 function bom_v777_sync_project_image_from_naming(PDO $pdo,array $p){
-    if(!table_exists($pdo,'bom_projects') || !hascol($pdo,'bom_projects','product_image')) return $p;
-    $sys=strtoupper(bom_v777_s($p['linked_system']??'')); $hasLink=($sys==='NAMING' && bom_v777_s($p['linked_id']??'')!=='') || bom_v777_s($p['naming_id']??'')!=='';
-    if(!$hasLink) return $p;
-    $live=bom_v777_project_live_naming_image($pdo,$p);
-    if($live==='') return $p;
-    $current=bom_v777_normalize_media_url($p['product_image']??'');
-    if($current===$live){ $p['product_image']=$live; return $p; }
-    try{
-        $st=$pdo->prepare("UPDATE bom_projects SET product_image=? WHERE project_uid=?");
-        $st->execute(array($live,(string)($p['project_uid']??'')));
-        $p['product_image']=$live;
-    }catch(Throwable $e){}
+    // Compatibility shim: image updates require explicit, version-checked naming sync.
     return $p;
 }
 /* ARTDON_BOM_V77_7_IMAGE_DISPLAY_ONLY_END */
@@ -1655,6 +1644,22 @@ try{
     }
 
     $user = bom_require_login($pdo);
+    $workflowPermissions=array('save_project'=>'edit','submit_review'=>'edit','approve_project'=>'approve_bom','reject_project'=>'reject_bom','unapprove_project'=>'unapprove_bom','create_snapshot'=>'approve_bom','delete_project'=>'edit','bind_naming_to_project'=>'edit','unbind_naming_from_project'=>'edit','naming_sync_apply'=>'edit');
+    if(isset($workflowPermissions[$action])){
+        bom_require_perm($user,$workflowPermissions[$action]);
+        $result=null;
+        try{
+            $result=bw_execute($pdo,$action,body_json(),user_label($user)?:'unknown',artdon_sso_can('bom','cost_view'),$user);
+            $raw=bw_get($pdo,$result['project_uid']);
+            $result['project']=bom_project_enrich_detail($pdo,$raw,artdon_sso_can('bom','cost_view'),artdon_sso_can('bom','supplier_view'));
+            $st=$pdo->prepare('SELECT COUNT(*) FROM bom_snapshots WHERE project_uid=?');$st->execute(array($result['project_uid']));$result['project']['snapshot_count']=(int)$st->fetchColumn();
+            json_out($result);
+        }catch(BomWorkflowError $e){json_out(array('ok'=>false,'code'=>$e->reason,'error'=>$e->getMessage()));}
+        catch(Throwable $e){
+            error_log('BOM workflow '.$action.': '.$e->getMessage());
+            json_out(array('ok'=>false,'committed'=>$result!==null,'error'=>$result!==null?'操作已提交，但回执详情暂未加载。请保持当前内容不变，再点同一操作核对结果；不会重复写入。':'操作结果暂未确认，请保持当前内容不变，重试同一操作核对结果。'));
+        }
+    }
 
     if($action === 'dashboard_search' || $action === 'dashboard_images'){
         bom_require_perm($user,'dashboard');
@@ -1814,122 +1819,6 @@ try{
         json_out(array('ok'=>true));
     }
 
-    if($action === 'save_project'){
-        bom_require_perm($user,'edit');
-        $d = body_json();
-        $uid = $d['project_uid'] ?? $d['id'] ?? uid();
-        $existing = bom_fetch_project_for_snapshot($pdo,$uid);
-        $existingStatus = trim((string)($existing['review_status'] ?? ''));
-        if($existingStatus === 'pending') json_out(array('ok'=>false,'error'=>'该 BOM 已提交审核，不能继续保存；请由审核人驳回后再修改'));
-        if($existingStatus === 'approved') json_out(array('ok'=>false,'error'=>'该 BOM 已审核锁定，请先执行退审，再修改并保存'));
-        $normalizedRows = bom_normalize_rows_with_materials($pdo, $d['rows'] ?? array());
-        $rows = json_encode($normalizedRows, JSON_UNESCAPED_UNICODE);
-        $summary = bom_project_summary_cache_payload(array_merge($d, array('rows'=>$normalizedRows)));
-        $who = user_label($user) ?: 'unknown';
-        $createdBy = trim((string)($d['created_by'] ?? '')) ?: $who;
-        $versionNo = trim((string)($d['version_no'] ?? '')) ?: 'V1';
-        $variantLabel = trim((string)($d['variant_label'] ?? '')) ?: '通用版';
-        $stmt = $pdo->prepare("INSERT INTO bom_projects
-          (project_uid,name,customer,model,product_type,version_no,variant_label,currency,product_image,labor,other,profit_rate,quote_mode,exchange_rate,note,review_status,review_note,submitted_by,submitted_at,approved_by,approved_at,rows_json,row_count,totals_json,price_summary_json,summary_updated_at,created_by,updated_by)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',NULL,'',NULL,'',NULL,?,?,?,?,NOW(),?,?)
-          ON DUPLICATE KEY UPDATE
-          name=VALUES(name),customer=VALUES(customer),model=VALUES(model),product_type=VALUES(product_type),version_no=VALUES(version_no),variant_label=VALUES(variant_label),currency=VALUES(currency),
-          product_image=VALUES(product_image),labor=VALUES(labor),other=VALUES(other),profit_rate=VALUES(profit_rate),
-          quote_mode=VALUES(quote_mode),exchange_rate=VALUES(exchange_rate),note=VALUES(note),rows_json=VALUES(rows_json),
-          row_count=VALUES(row_count),totals_json=VALUES(totals_json),price_summary_json=VALUES(price_summary_json),summary_updated_at=NOW(),
-          review_status='draft',review_note=NULL,submitted_by='',submitted_at=NULL,approved_by='',approved_at=NULL,
-          updated_by=VALUES(updated_by),updated_at=NOW()");
-        $stmt->execute(array(
-            $uid, $d['name']??'', $d['customer']??'', $d['model']??'', $d['product_type']??'', $versionNo, $variantLabel, $d['currency']??'RMB',
-            $d['product_image']??'', $d['labor']??0, $d['other']??0, $d['profit_rate']??30, $d['quote_mode']??'markup',
-            $d['exchange_rate']??1, $d['note']??'', $rows, $summary['row_count'], $summary['totals_json'], $summary['price_summary_json'], $createdBy, $who
-        ));
-        $quoteSync = array('ok'=>true,'skipped'=>true,'reason'=>'draft_not_approved','message'=>'草稿已保存，审核通过生成快照后再同步报价成本。');
-        json_out(array('ok'=>true,'project_uid'=>$uid,'quote_cost_sync'=>$quoteSync));
-    }
-
-    if($action === 'submit_review'){
-        bom_require_perm($user,'edit');
-        $d = body_json();
-        $uid = trim((string)($d['project_uid'] ?? $d['id'] ?? ''));
-        if($uid==='') json_out(array('ok'=>false,'error'=>'缺少 BOM ID'));
-        $p = bom_fetch_project_for_snapshot($pdo,$uid);
-        if(!$p) json_out(array('ok'=>false,'error'=>'BOM 不存在，请先保存草稿'));
-        $status = trim((string)($p['review_status'] ?? 'draft')) ?: 'draft';
-        if(!in_array($status,array('draft','rejected'),true)) json_out(array('ok'=>false,'error'=>$status==='pending'?'该 BOM 已在审核中':'该 BOM 已审核，请先退审后再重新提交'));
-        if(count(bom_project_rows($p)) < 1) json_out(array('ok'=>false,'error'=>'BOM 至少需要一条物料明细才能提交审核'));
-        $who = user_label($user) ?: 'unknown';
-        $note = trim((string)($d['review_note'] ?? ''));
-        $stmt = $pdo->prepare("UPDATE bom_projects SET review_status='pending',review_note=?,submitted_by=?,submitted_at=NOW(),updated_by=?,updated_at=NOW() WHERE project_uid=? AND is_active=1");
-        $stmt->execute(array($note,$who,$who,$uid));
-        json_out(array('ok'=>true,'project_uid'=>$uid,'review_status'=>'pending','review_status_label'=>bom_review_status_label('pending')));
-    }
-
-    if($action === 'approve_project'){
-        bom_require_perm($user,'approve_bom');
-        $d = body_json();
-        $uid = trim((string)($d['project_uid'] ?? $d['id'] ?? ''));
-        if($uid==='') json_out(array('ok'=>false,'error'=>'缺少 BOM ID'));
-        $p = bom_fetch_project_for_snapshot($pdo,$uid);
-        if(!$p) json_out(array('ok'=>false,'error'=>'BOM 不存在'));
-        if(trim((string)($p['review_status'] ?? 'draft')) !== 'pending') json_out(array('ok'=>false,'error'=>'只有已提交、待审核的 BOM 才能审核通过'));
-        $who = user_label($user) ?: 'unknown';
-        $note = trim((string)($d['review_note'] ?? ($p['review_note'] ?? '')));
-        $pdo->beginTransaction();
-        try{
-            $pdo->prepare("UPDATE bom_projects SET review_status='approved',review_note=?,approved_by=?,approved_at=NOW(),updated_by=?,updated_at=NOW() WHERE project_uid=?")->execute(array($note,$who,$who,$uid));
-            $p = bom_fetch_project_for_snapshot($pdo,$uid);
-            $snapshot = bom_insert_snapshot($pdo,$p,$who,$note);
-            $pdo->commit();
-        }catch(Exception $e){
-            if($pdo->inTransaction()) $pdo->rollBack();
-            throw $e;
-        }
-        $quoteSync = bom_sync_quote_cost_snapshot($pdo, $uid, $who);
-        json_out(array('ok'=>true,'project_uid'=>$uid,'review_status'=>'approved','review_status_label'=>bom_review_status_label('approved'),'snapshot'=>$snapshot,'quote_cost_sync'=>$quoteSync));
-    }
-
-    if($action === 'reject_project'){
-        bom_require_perm($user,'reject_bom');
-        $d = body_json();
-        $uid = trim((string)($d['project_uid'] ?? $d['id'] ?? ''));
-        if($uid==='') json_out(array('ok'=>false,'error'=>'缺少 BOM ID'));
-        $p = bom_fetch_project_for_snapshot($pdo,$uid);
-        if(!$p) json_out(array('ok'=>false,'error'=>'BOM 不存在'));
-        if(trim((string)($p['review_status'] ?? 'draft')) !== 'pending') json_out(array('ok'=>false,'error'=>'只有待审核 BOM 才能驳回'));
-        $who = user_label($user) ?: 'unknown';
-        $note = trim((string)($d['review_note'] ?? ''));
-        $pdo->prepare("UPDATE bom_projects SET review_status='rejected',review_note=?,updated_by=?,updated_at=NOW() WHERE project_uid=? AND is_active=1")->execute(array($note,$who,$uid));
-        json_out(array('ok'=>true,'project_uid'=>$uid,'review_status'=>'rejected','review_status_label'=>bom_review_status_label('rejected')));
-    }
-
-    if($action === 'unapprove_project'){
-        bom_require_perm($user,'unapprove_bom');
-        $d = body_json();
-        $uid = trim((string)($d['project_uid'] ?? $d['id'] ?? ''));
-        if($uid==='') json_out(array('ok'=>false,'error'=>'缺少 BOM ID'));
-        $p = bom_fetch_project_for_snapshot($pdo,$uid);
-        if(!$p) json_out(array('ok'=>false,'error'=>'BOM 不存在'));
-        if(trim((string)($p['review_status'] ?? 'draft')) !== 'approved') json_out(array('ok'=>false,'error'=>'只有已审核 BOM 才能退审'));
-        $who = user_label($user) ?: 'unknown';
-        $note = trim((string)($d['review_note'] ?? ''));
-        $reviewNote = $note!=='' ? ('退审：'.$note) : '退审';
-        $pdo->prepare("UPDATE bom_projects SET review_status='draft',review_note=?,approved_by='',approved_at=NULL,updated_by=?,updated_at=NOW() WHERE project_uid=? AND is_active=1")->execute(array($reviewNote,$who,$uid));
-        json_out(array('ok'=>true,'project_uid'=>$uid,'review_status'=>'draft','review_status_label'=>bom_review_status_label('draft')));
-    }
-
-    if($action === 'create_snapshot'){
-        bom_require_perm($user,'approve_bom');
-        $d = body_json();
-        $uid = trim((string)($d['project_uid'] ?? $d['id'] ?? ''));
-        if($uid==='') json_out(array('ok'=>false,'error'=>'缺少 BOM ID'));
-        $p = bom_fetch_project_for_snapshot($pdo,$uid);
-        if(!$p) json_out(array('ok'=>false,'error'=>'BOM 不存在'));
-        if(trim((string)($p['review_status'] ?? 'draft')) !== 'approved') json_out(array('ok'=>false,'error'=>'只有已审核 BOM 才能生成快照'));
-        $who = user_label($user) ?: 'unknown';
-        $snapshot = bom_insert_snapshot($pdo,$p,$who,trim((string)($d['review_note'] ?? ($p['review_note'] ?? ''))));
-        json_out(array('ok'=>true,'project_uid'=>$uid,'snapshot'=>$snapshot));
-    }
 
     if($action === 'list_snapshots'){
         bom_require_perm($user,'dashboard');
@@ -1962,7 +1851,8 @@ try{
         $st=$pdo->prepare($sql); $st->execute(array($id>0?$id:$snapshotUid));
         $s=$st->fetch(PDO::FETCH_ASSOC);
         if(!$s) json_out(array('ok'=>false,'error'=>'快照不存在'));
-        $rows=json_decode((string)($s['rows_json'] ?? '[]'),true); if(!is_array($rows))$rows=array();
+        if(isset($d['project_uid'])&&(string)$d['project_uid']!==(string)$s['project_uid'])json_out(array('ok'=>false,'error'=>'快照不属于当前 BOM'));
+        $rows=bw_rows($s['rows_json'] ?? '[]');
         $canCost=artdon_sso_can('bom','cost_view');
         $canSupplier=artdon_sso_can('bom','supplier_view');
         $s['rows']=bom_hide_sensitive_list($rows,$canCost,$canSupplier);
@@ -1974,20 +1864,6 @@ try{
         json_out(array('ok'=>true,'snapshot'=>$s));
     }
 
-    if($action === 'delete_project'){
-        bom_require_perm($user,'edit');
-        $d = body_json();
-        $deleteUid=trim((string)($d['project_uid'] ?? ''));
-        $deleteProject=bom_fetch_project_for_snapshot($pdo,$deleteUid);
-        if($deleteProject && in_array(trim((string)($deleteProject['review_status'] ?? 'draft')),array('pending','approved'),true)) json_out(array('ok'=>false,'error'=>'待审核/已审核 BOM 不能删除；请先驳回或退审'));
-        if(table_exists($pdo,'bom_projects') && hascol($pdo,'bom_projects','is_active')){
-            $stmt = $pdo->prepare("UPDATE bom_projects SET is_active=0,updated_at=NOW() WHERE project_uid=?");
-        }else{
-            $stmt = $pdo->prepare("DELETE FROM bom_projects WHERE project_uid=?");
-        }
-        $stmt->execute(array($deleteUid));
-        json_out(array('ok'=>true));
-    }
 
 
 

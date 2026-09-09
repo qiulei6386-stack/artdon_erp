@@ -1037,17 +1037,18 @@ function normalizeBomRows(rows, rawJson){
   if(out && !Array.isArray(out) && typeof out==='object') out = Object.values(out);
   if(!Array.isArray(out)) return [];
   return out.filter(r=>r && typeof r==='object').map(r=>({
+    ...r,
     category: r.category ?? r.type ?? '',
     name: r.name ?? r.material_name ?? r.materialName ?? '',
     spec: r.spec ?? r.remark ?? r.note ?? '',
-    qty: Number(r.qty ?? r.quantity ?? 0) || 0,
+    qty: Number(r.qty ?? r.quantity ?? r.num ?? r['数量'] ?? 0) || 0,
     process: Number(r.process ?? r.processCost ?? r.process_cost ?? 0) || 0,
     finish: r.finish ?? r.finish1 ?? r.surface ?? r.surface1 ?? '',
     finishCost: Number(r.finishCost ?? r.finish_cost ?? r.surfaceCost ?? r.surface_cost ?? 0) || 0,
     finish2: r.finish2 ?? r.surface2 ?? '',
     finishCost2: Number(r.finishCost2 ?? r.finish_cost2 ?? r.surfaceCost2 ?? r.surface_cost2 ?? 0) || 0,
     finishMode2: !!(r.finishMode2 || r.finish2 || r.surface2 || Number(r.finishCost2 ?? r.finish_cost2 ?? r.surfaceCost2 ?? 0) > 0),
-    price: Number(r.price ?? r.unit_price ?? 0) || 0,
+    price: Number(r.price ?? r.unit_price ?? r.unitCost ?? r.unit_cost ?? r['单价'] ?? 0) || 0,
     materialId: r.materialId ?? r.material_id ?? '',
     priceStatus: ['estimated','confirmed','pending','historical'].includes(String(r.priceStatus ?? r.price_status ?? '')) ? String(r.priceStatus ?? r.price_status) : 'estimated',
     priceSource: r.priceSource ?? r.price_source ?? '',
@@ -1058,7 +1059,7 @@ function mapBomProject(p, detail=false){
   const rows=normalizeBomRows(p.rows,p.rows_json);
   const hasRows=Array.isArray(p.rows);
   const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,totalsSummary:p.totals_summary||null,rowCount:Number(p.row_count ?? rows.length ?? 0)||0,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:hasRows||detail?rows:[],rowsLoaded:!!(detail||hasRows),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};
-  o.namingType=bomProjectNamingType(o);
+  o.revision=String(p.revision||'');o.costPublication=p.cost_publication||null;o.namingType=bomProjectNamingType(o);
   return o;
 }
 function bomProjectRowCount(p){return Number(p?.rowCount ?? (Array.isArray(p?.rows)?p.rows.length:0))||0}
@@ -1069,7 +1070,8 @@ async function ensureProjectDetail(id){
   if(projectDetailLoading[id])return projectDetailLoading[id];
   projectDetailLoading[id]=(async()=>{
     const r=await api('project_detail',{project_uid:id});
-    if(!r.ok){alert(r.error||'读取 BOM 明细失败');return p;}
+    if(!r.ok)throw new Error(r.error||'读取 BOM 明细失败');
+    if(String(r.project?.project_uid||'')!==String(id))throw new Error('明细与当前 BOM 不一致，请重新打开');
     const detail=mapBomProject(r.project||{},true);
     Object.assign(p,detail,{rowsLoaded:true,rowCount:bomProjectRowCount(detail)});
     return p;
@@ -1095,17 +1097,32 @@ function setButtonsByPerm(selector,perm){
   document.querySelectorAll(selector)?.forEach(b=>{const ok=hasPerm(perm);b.disabled=!ok;b.style.opacity=ok?'':'0.55'})
 }
 function bomWorkflowStatus(){return String(getCurrent()?.reviewStatus||'draft')}
-function bomWorkflowLocked(){return ['pending','approved'].includes(bomWorkflowStatus())}
+function bomWorkflowLocked(){return !bomEditorReady()||['pending','approved'].includes(bomWorkflowStatus())}
+let bomEditorId=null,bomWriteBusy=false,bomSnapshotRequest=0,bomSnapshotOpen=false;
+const bomWriteRequests=new Map();
+function bomEditorReady(){return !!getCurrent()?.rowsLoaded&&bomEditorId===currentId&&!bomWriteBusy}
+async function bomWrite(action,payload){
+  const key=JSON.stringify([action,payload]);
+  if(!bomWriteRequests.has(key))bomWriteRequests.set(key,typeof crypto.randomUUID==='function'?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join(''));
+  const r=await api(action,{...payload,request_id:bomWriteRequests.get(key)});
+  if(r.ok||r.code)bomWriteRequests.delete(key);
+  return r;
+}
+function bomApplySavedProject(raw){
+  const p=mapBomProject(raw,true),index=projects.findIndex(x=>x.id===p.id);
+  if(index<0)projects.unshift(p);else projects[index]=p;
+  return p;
+}
 function updateBomWorkflowUI(){
-  const p=getCurrent(), status=String(p?.reviewStatus||'draft'), locked=!!p&&['pending','approved'].includes(status);
+  const p=getCurrent(), status=String(p?.reviewStatus||'draft'), ready=bomEditorReady(), locked=!ready||!!p&&['pending','approved'].includes(status);
   const set=(id,ok)=>{const el=$(id);if(!el)return;el.disabled=!ok;el.style.opacity=ok?'':'0.55'};
-  document.querySelectorAll('#editPage .editor-core input:not([readonly]),#editPage .editor-core select,#editPage .editor-more-panel input,#editPage .editor-more-panel select,#editPage .editor-more-panel textarea,#tbody input,#tbody select,#tbody textarea,#tbody button').forEach(el=>{el.disabled=locked});
+  document.querySelectorAll('#editPage input:not([readonly]),#editPage select,#editPage textarea,#tbody button').forEach(el=>{el.disabled=locked});
   ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
   set('topSaveCurrentBtn',!!p&&hasPerm('edit')&&!locked);
-  set('bomSubmitBtn',!!p&&hasPerm('edit')&&['draft','rejected'].includes(status));
-  set('bomApproveBtn',!!p&&hasPerm('approve_bom')&&status==='pending');
-  set('bomRejectBtn',!!p&&hasPerm('reject_bom')&&status==='pending');
-  set('bomUnapproveBtn',!!p&&hasPerm('unapprove_bom')&&status==='approved');
+  set('bomSubmitBtn',ready&&hasPerm('edit')&&['draft','rejected'].includes(status));
+  set('bomApproveBtn',ready&&hasPerm('approve_bom')&&status==='pending');
+  set('bomRejectBtn',ready&&hasPerm('reject_bom')&&status==='pending');
+  set('bomUnapproveBtn',ready&&hasPerm('unapprove_bom')&&status==='approved');
   set('bomSnapshotsBtn',!!p&&Number(p.snapshotCount||0)>0);
 }
 function updateAuthUI(){
@@ -1123,6 +1140,7 @@ async function checkAuth(){const r=await api('me');if(r.ok&&r.login){currentUser
 function login(){bomSsoRedirect()}
 function logout(){location.href='logout.php'}
 async function loadAll(){
+  if(bomWriteBusy)return;
   try{
     setStatus('正在读取数据库...');
     const r=await api('bootstrap');
@@ -1160,6 +1178,7 @@ async function loadAll(){
 }
 function setStatus(t){$('status').textContent=t}
 function showPage(p){
+  if(bomWriteBusy)return;
   const need={edit:'edit',library:'library',materials:'materials',users:'users'}[p]||'dashboard';
   if(need!=='dashboard'&&!hasPerm(need)){alert('当前账号没有权限访问：'+p);p='dashboard'}
   currentPage=bomValidPage(p)?p:'dashboard';
@@ -1181,7 +1200,7 @@ function showPage(p){
   bomRememberPlace();
 }
 function rowSub(r){return Number(r.qty||0)*(Number(r.price||0)+Number(r.process||0)+Number(r.finishCost||0)+Number(r.finishCost2||0))}
-function totals(p){if(p&&(!p.rowsLoaded||!Array.isArray(p.rows)||!p.rows.length)&&p.totalsSummary){const s=p.totalsSummary;return{mat:+(s.material??s.mat??0)||0,labor:+(s.labor??0)||0,other:+(s.other??0)||0,total:+(s.total??0)||0,suggest:+(s.suggest??0)||0,profit:+(s.profit??0)||0}}const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
+function totals(p){if(p&&!p.rowsLoaded&&p.totalsSummary){const s=p.totalsSummary;return{mat:+(s.material??s.mat??0)||0,labor:+(s.labor??0)||0,other:+(s.other??0)||0,total:+(s.total??0)||0,suggest:+(s.suggest??0)||0,profit:+(s.profit??0)||0}}const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
 function bomReviewLabel(s){return ({draft:'草稿',pending:'待审核',approved:'已审核',rejected:'已驳回'})[s||'draft']||'草稿'}
 function bomPriceStatusLabel(s){return ({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[s||'estimated']||'预估价'}
 function priceStatusOptions(v){return ['estimated','confirmed','pending','historical'].map(x=>`<option value="${x}" ${String(v||'estimated')===x?'selected':''}>${bomPriceStatusLabel(x)}</option>`).join('')}
@@ -1192,46 +1211,54 @@ function renderBomReviewBar(){
   const ps=bomPriceSummary(p), status=p.reviewStatus||'draft';
   const submitted=p.submittedAt?`提交 ${String(p.submittedAt).slice(0,16)} · ${esc(p.submittedBy||'-')}`:'未提交审核';
   const approved=p.approvedAt?`审核 ${String(p.approvedAt).slice(0,16)} · ${esc(p.approvedBy||'-')}`:'未生成正式快照';
+  const publication=p.costPublication?.source==='legacy_unreviewed'?'报价使用：历史未审核成本（已冻结）':p.costPublication?.source==='approved_snapshot'?`报价使用：已审核快照 #${Number(p.costPublication.snapshot_id)}`:'尚未发布报价成本';
   el.innerHTML=`<div class="bom-review-main"><span class="bom-badge ${esc(status)}">${esc(bomReviewLabel(status))}</span><div class="bom-review-title">${esc(p.versionNo||'V1')} · ${esc(p.variantLabel||'通用版')} · 快照 ${Number(p.snapshotCount||0)}</div></div><div class="bom-review-meta">${submitted}</div><div class="bom-review-meta">${approved}</div><div class="bom-review-note"><span class="price-chip estimated">预估 ${ps.estimated}</span> <span class="price-chip confirmed">确认 ${ps.confirmed}</span> <span class="price-chip pending">待确认 ${ps.pending}</span> <span class="price-chip historical">历史 ${ps.historical}</span></div>`;
+  el.innerHTML+=`<div class="bom-review-note">${esc(publication)}</div>`;
   updateBomWorkflowUI();
 }
 async function saveCurrent(opts={}){
+  if(!bomEditorReady()){alert('请等待当前 BOM 明细完整加载，或等待本次保存结束。');return false}
   if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return false}
   if(bomWorkflowStatus()==='pending'){alert('该 BOM 已提交审核，驳回后才能继续修改。');return false}
   if(bomWorkflowStatus()==='approved'){alert('该 BOM 已审核锁定，请先退审再修改。');return false}
   collect();const p=getCurrent();if(!p)return false;
-  p.updatedAt=nowText();
-  const keepPage=currentPage, keepId=p.id;
-  bomRememberPlace();
-  const r=await api('save_project',{project_uid:p.id,name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,created_by:p.createdBy||'',updated_by:(currentUser?.display_name||currentUser?.username||'')});
-  if(!r.ok){alert(r.error);return false}
-  if(!opts.silent)setStatus('已保存草稿 '+nowText());
-  await loadAll();
-  currentId=keepId;
-  if(projects.some(x=>x.id===keepId))await loadProject(keepId);
-  showPage(keepPage);
-  return true;
+  bomWriteBusy=true;updateBomWorkflowUI();setStatus('正在保存，请稍候…');
+  let saved=false;
+  try{
+    const r=await bomWrite('save_project',{project_uid:p.id,expected_revision:p.revision||'',name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows});
+    if(!r.ok){setStatus('保存未完成：'+(r.error||'请重试'));alert(r.error||'保存未完成，请重试；重复请求不会重复写入。');return false}
+    if(!r.project||r.project.project_uid!==p.id)throw new Error('保存回执不匹配，请重新读取核对，勿重复新建');
+    bomApplySavedProject(r.project);saved=true;return true;
+  }catch(e){alert(e.message);return false}
+  finally{bomWriteBusy=false;if(saved&&currentId===p.id){await loadProject(p.id);setStatus('已保存草稿 '+nowText())}updateBomWorkflowUI()}
 }
 async function submitBomReview(){
   if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
+  if(!bomEditorReady())return alert('请先等待明细完整加载');
+  const note=prompt('提交审核备注，可留空：',getCurrent()?.reviewNote||'');
+  if(note===null)return;
   if(!await saveCurrent({silent:true}))return;
-  const p=getCurrent(); if(!p)return;
-  const note=prompt('提交审核备注，可留空：',p.reviewNote||'')||'';
-  const r=await api('submit_review',{project_uid:p.id,review_note:note});
-  if(!r.ok)return alert(r.error||'提交审核失败');
-  setStatus('已提交审核 '+nowText()); await loadAll();
+  await bomReviewAction('submit_review',note);
+}
+async function bomReviewAction(action,note,extra={}){
+  if(!bomEditorReady())return alert('请等待当前操作完成或重新加载明细');
+  const p=getCurrent();bomWriteBusy=true;updateBomWorkflowUI();
+  let saved=false;
+  try{
+    const r=await bomWrite(action,{project_uid:p.id,expected_revision:p.revision||'',review_note:note,...extra});
+    if(!r.ok)return alert(r.error||'操作未完成，请重试；重复请求不会重复审核。');
+    if(!r.project||r.project.project_uid!==p.id)throw new Error('操作回执不匹配，请重新打开核对');
+    bomApplySavedProject(r.project);saved=true;
+    alert(r.message||'操作成功');
+  }catch(e){alert(e.message)}
+  finally{bomWriteBusy=false;if(saved&&currentId===p.id)await loadProject(p.id);updateBomWorkflowUI()}
 }
 async function approveBomProject(){
   if(!hasPerm('approve_bom'))return alert('当前账号没有 BOM 审核权限');
   const p=getCurrent(); if(!p)return;
   if((p.reviewStatus||'draft')!=='pending')return alert('只有已提交、待审核的 BOM 才能审核通过');
   const noteInput=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`);if(noteInput===null)return;const note=noteInput||'';
-  const r=await api('approve_project',{project_uid:p.id,review_note:note});
-  if(!r.ok)return alert(r.error||'审核失败');
-  const s=r.snapshot||{};
-  setStatus(`已审核并生成快照 ${s.snapshot_uid||''} ${nowText()}`);
-  alert(`已审核并生成快照：${s.snapshot_uid||'-'}\n确认价/预估价状态已随快照封存。`);
-  await loadAll();
+  await bomReviewAction('approve_project',note);
 }
 async function rejectBomProject(){
   if(!hasPerm('reject_bom'))return alert('当前账号没有 BOM 驳回权限');
@@ -1239,9 +1266,8 @@ async function rejectBomProject(){
   if((p.reviewStatus||'draft')!=='pending')return alert('只有待审核 BOM 才能驳回');
   const note=prompt('请输入驳回原因：',p.reviewNote||'');
   if(note===null)return;
-  const r=await api('reject_project',{project_uid:p.id,review_note:note||''});
-  if(!r.ok)return alert(r.error||'驳回失败');
-  setStatus('已驳回 '+nowText()); await loadAll();
+  if(!note.trim())return alert('请填写驳回原因');
+  await bomReviewAction('reject_project',note);
 }
 async function unapproveBomProject(){
   if(!hasPerm('unapprove_bom'))return alert('当前账号没有 BOM 退审权限');
@@ -1249,14 +1275,15 @@ async function unapproveBomProject(){
   if((p.reviewStatus||'draft')!=='approved')return alert('只有已审核 BOM 才能退审');
   const note=prompt('请输入退审原因：',p.reviewNote||'');
   if(note===null)return;
-  const r=await api('unapprove_project',{project_uid:p.id,review_note:note||''});
-  if(!r.ok)return alert(r.error||'退审失败');
-  setStatus('已退审，可重新编辑草稿 '+nowText());
-  await loadAll();
+  if(!note.trim())return alert('请填写退审原因');
+  await bomReviewAction('unapprove_project',note);
 }
 async function openBomSnapshots(){
   const p=getCurrent(); if(!p)return alert('请先打开一个 BOM');
+  const request=++bomSnapshotRequest;bomSnapshotOpen=true;bomSnapshotCurrent=null;
+  $('bomSnapshotCopyBtn').disabled=true;
   const r=await api('list_snapshots',{project_uid:p.id});
+  if(request!==bomSnapshotRequest||!bomSnapshotOpen||currentId!==p.id)return;
   if(!r.ok)return alert(r.error||'读取快照失败');
   bomSnapshots=Array.isArray(r.snapshots)?r.snapshots:[];bomSnapshotCurrent=null;
   $('bomSnapshotSub').textContent=`${p.name||'当前 BOM'} · 共 ${bomSnapshots.length} 份审核快照；历史快照只读。`;
@@ -1265,67 +1292,79 @@ async function openBomSnapshots(){
   $('bomSnapshotCopyBtn').disabled=true;
   if(bomSnapshots.length)await showBomSnapshot(Number(bomSnapshots[0].id||0));
 }
-function closeBomSnapshots(){if($('bomSnapshotMask'))$('bomSnapshotMask').style.display='none';bomSnapshotCurrent=null}
+function closeBomSnapshots(){++bomSnapshotRequest;bomSnapshotOpen=false;if($('bomSnapshotMask'))$('bomSnapshotMask').style.display='none';bomSnapshotCurrent=null;if($('bomSnapshotCopyBtn'))$('bomSnapshotCopyBtn').disabled=true}
 function renderBomSnapshotList(){
   const el=$('bomSnapshotList');if(!el)return;
   el.innerHTML=bomSnapshots.length?bomSnapshots.map(s=>{const t=s.totals||{},ps=s.price_summary||{};return `<button type="button" class="${Number(bomSnapshotCurrent?.id||0)===Number(s.id||0)?'active':''}" onclick="showBomSnapshot(${Number(s.id||0)})"><b>${esc(s.version_no||'V1')} · ${esc(s.variant_label||'通用版')}</b><span>${esc(s.snapshot_uid||'')} · ${esc(String(s.created_at||'').slice(0,16))}</span><small>${currentCan.cost_view?`成本 ${money(t.total||0)} · `:''}确认 ${Number(ps.confirmed||0)} / 预估 ${Number(ps.estimated||0)}</small></button>`}).join(''):'<div class="bom-snapshot-empty">暂无快照</div>';
 }
 async function showBomSnapshot(id){
-  if(!id)return;
+  if(!id||!bomSnapshotOpen)return;
+  const request=++bomSnapshotRequest,projectId=currentId;bomSnapshotCurrent=null;
+  $('bomSnapshotCopyBtn').disabled=true;
   $('bomSnapshotDetail').innerHTML='<div class="bom-snapshot-empty">正在读取完整快照…</div>';
-  const r=await api('get_snapshot',{snapshot_id:id});
+  const r=await api('get_snapshot',{snapshot_id:id,project_uid:projectId});
+  if(request!==bomSnapshotRequest||!bomSnapshotOpen||currentId!==projectId)return;
   if(!r.ok){$('bomSnapshotDetail').innerHTML=`<div class="bom-snapshot-empty">${esc(r.error||'读取快照失败')}</div>`;return}
+  if(Number(r.snapshot?.id)!==Number(id)||String(r.snapshot?.project_uid)!==String(projectId)){$('bomSnapshotDetail').textContent='快照归属不匹配，请重新打开';return}
   const s=r.snapshot||{},rows=Array.isArray(s.rows)?s.rows:[],t=s.totals||{},ps=s.price_summary||{};bomSnapshotCurrent=s;renderBomSnapshotList();
   const statusLabel=x=>({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[String(x||'estimated')]||'预估价';
   $('bomSnapshotDetail').innerHTML=`<h3 style="margin:0">${esc(s.snapshot_name||'未命名 BOM')}</h3><p class="hint">${esc(s.snapshot_uid||'')} · 审核人 ${esc(s.approved_by||'-')} · ${esc(s.approved_at||s.created_at||'-')}</p><div class="bom-snapshot-meta"><div><span>型号</span><b>${esc(s.model||'-')}</b></div><div><span>客户/项目</span><b>${esc(s.customer||'-')}</b></div><div><span>分类</span><b>${esc(s.product_type||'-')}</b></div><div><span>BOM 版本</span><b>${esc(s.version_no||'V1')}</b></div><div><span>客户版本/用途</span><b>${esc(s.variant_label||'通用版')}</b></div><div><span>币种</span><b>${esc(s.currency||'RMB')}</b></div></div>${currentCan.cost_view?`<div class="bom-snapshot-summary"><div><span>材料成本</span><b>${money(t.material||0)}</b></div><div><span>人工 + 其它</span><b>${money(Number(t.labor||0)+Number(t.other||0))}</b></div><div><span>总成本</span><b>${money(t.total||0)}</b></div><div><span>建议报价</span><b>${money(t.suggest||0)}</b></div></div>`:''}<div class="bom-snapshot-note">审核/快照说明：${esc(s.review_note||'无')}</div><p class="hint">共 ${rows.length} 行 · 确认价 ${Number(ps.confirmed||0)} · 预估价 ${Number(ps.estimated||0)} · 待确认 ${Number(ps.pending||0)} · 历史价 ${Number(ps.historical||0)}</p><div class="bom-snapshot-table-wrap"><table class="bom-snapshot-table"><thead><tr><th>#</th><th>类别</th><th>物料名称</th><th>规格/备注</th><th>数量</th><th>价格状态</th>${currentCan.cost_view?'<th>单价</th><th>加工/表面</th><th>小计</th>':''}</tr></thead><tbody>${rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(row.category||'')}</td><td>${esc(row.name||'')}</td><td>${esc(row.spec||'')}</td><td class="num">${esc(row.qty??'')}</td><td><span class="bom-snapshot-status ${String(row.priceStatus||row.price_status||'')==='confirmed'?'confirmed':''}">${esc(statusLabel(row.priceStatus||row.price_status))}</span></td>${currentCan.cost_view?`<td class="num">${money(row.price||0)}</td><td class="num">${money(Number(row.process||0)+Number(row.finishCost||0)+Number(row.finishCost2||0))}</td><td class="num">${money(rowSub(row))}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
   $('bomSnapshotCopyBtn').disabled=!(hasPerm('edit')&&currentCan.cost_view);
 }
 function copyBomSnapshotToDraft(){
-  const s=bomSnapshotCurrent;if(!s||!hasPerm('edit')||!currentCan.cost_view)return;
+  const s=bomSnapshotCurrent;if(!s||!bomSnapshotOpen||s.project_uid!==currentId||bomWriteBusy||!hasPerm('edit')||!currentCan.cost_view)return;
   const t=nowText(),rows=JSON.parse(JSON.stringify(Array.isArray(s.rows)?s.rows:[]));
-  const p={id:uid(),name:(s.snapshot_name||'BOM')+' - 快照副本',customer:s.customer||'',model:s.model||'',productType:s.product_type||'',versionNo:s.version_no||'V1',variantLabel:s.variant_label||'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:s.currency||'RMB',productImage:s.product_image||'',labor:+s.labor||0,other:+s.other||0,profitRate:+s.profit_rate||30,quoteMode:s.quote_mode||'markup',exchange:+s.exchange_rate||1,note:s.note||'',rows,rowsLoaded:true,rowCount:rows.length,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};
+  const p={id:uid(),revision:'',name:(s.snapshot_name||'BOM')+' - 快照副本',customer:s.customer||'',model:s.model||'',productType:s.product_type||'',versionNo:s.version_no||'V1',variantLabel:s.variant_label||'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:s.currency||'RMB',productImage:s.product_image||'',labor:+s.labor||0,other:+s.other||0,profitRate:Number(s.profit_rate??30),quoteMode:s.quote_mode||'markup',exchange:+s.exchange_rate||1,note:s.note||'',rows,rowsLoaded:true,rowCount:rows.length,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};
   projects.unshift(p);currentId=p.id;closeBomSnapshots();showPage('edit');loadProject(p.id);setStatus('已从快照生成新草稿，请检查版本号后点击“保存草稿”。');
 }
 function collect(){
+  if(!bomEditorReady()||bomWorkflowLocked())return;
   const p=getCurrent(); if(!p) return;
   const oldRows=Array.isArray(p.rows)?p.rows:[];
   p.name=$('projectName').value||'未命名BOM';p.customer=$('customer').value;p.model=$('model').value;p.productType=$('productType').value;p.versionNo=($('versionNo')?.value||'V1').trim()||'V1';p.variantLabel=($('variantLabel')?.value||'通用版').trim()||'通用版';p.currency=$('currency').value;p.productImage=$('productImagePreview').dataset.src||'';p.labor=+$('labor').value||0;p.other=+$('other').value||0;p.profitRate=+$('profitRate').value||0;p.quoteMode=$('quoteMode').value;p.exchange=+$('exchange').value||1;p.note=$('note').value;
   const trs=[...document.querySelectorAll('#tbody tr')];
-  // 防止在表格还没渲染完成、或页面隐藏时把已有 BOM 行误保存成空。
-  if(trs.length===0 && oldRows.length>0) return;
+  // 已验证表格归属；空表是明确删除全部行，旧摘要立即失效。
+  p.totalsSummary=null;p.priceSummary=null;
   p.rows=trs.map((tr,i)=>{
-    return {category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.dataset.priceSource||'',priceNote:tr.dataset.priceNote||'',materialId:tr.dataset.materialId||''};
+    return {...(oldRows[i]||{}),category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.dataset.priceSource||'',priceNote:tr.dataset.priceNote||'',materialId:tr.dataset.materialId||''};
   });
 }
 function getCurrent(){return projects.find(p=>p.id===currentId)}
 function touch(){calc()}
-function newProject(load=true){const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',versionNo:'V1',variantLabel:'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],rowsLoaded:true,rowCount:0,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
+function newProject(load=true){if(bomWriteBusy)return;const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',versionNo:'V1',variantLabel:'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],rowsLoaded:true,rowCount:0,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
 function duplicateProject(){
+  if(!bomEditorReady())return alert('请等待当前 BOM 明细完整加载');
   collect();const p=getCurrent();if(!p)return;
   const c=JSON.parse(JSON.stringify(p));
+  c.revision='';
   c.id=uid();c.name+=' - 副本';c.createdAt=nowText();c.updatedAt=nowText();c.reviewStatus='draft';c.reviewNote='';c.submittedBy='';c.submittedAt='';c.approvedBy='';c.approvedAt='';c.latestSnapshotId='';c.snapshotCount=0;c.rowsLoaded=true;c.rowCount=(c.rows||[]).length;c.totalsSummary=null;c.priceSummary=null;
   // V77.1：复制 BOM 时清空来源绑定，避免副本仍挂在旧型号；物料明细完全保留，后续可重新“绑定/更换型号”。
   c.linkedSystem='';c.linkedId='';c.linkedTitle='';c.linkedJson='';
   projects.unshift(c);currentId=c.id;loadProject(c.id)
 }
-async function deleteProject(){const p=getCurrent();if(!currentId||!p)return;if(['pending','approved'].includes(String(p.reviewStatus||'draft')))return alert('待审核/已审核 BOM 不能删除；请先驳回或退审。');if(!confirm('确定删除当前BOM？'))return;await api('delete_project',{project_uid:currentId});currentId=null;try{localStorage.removeItem(BOM_PLACE_PROJECT_KEY)}catch(e){};await loadAll()}
+async function deleteProject(){const p=getCurrent();if(!bomEditorReady()||!p)return;if(bomWorkflowLocked())return alert('待审核/已审核 BOM 不能删除；请先驳回或退审。');if(!confirm('确定删除当前BOM？'))return;bomWriteBusy=true;updateBomWorkflowUI();try{const r=await bomWrite('delete_project',{project_uid:p.id,expected_revision:p.revision||''});if(!r.ok)return alert(r.error||'删除未完成');projects=projects.filter(x=>x.id!==p.id);currentId=null;bomEditorId=null;try{localStorage.removeItem(BOM_PLACE_PROJECT_KEY)}catch(e){}}finally{bomWriteBusy=false;updateBomWorkflowUI()}showPage('dashboard');renderProjectList()}
 function renderProjectList(){const kw=($('search')?.value||'').toLowerCase().trim();let arr=projects.filter(p=>!kw||[p.name,p.model,p.productType,p.customer,p.versionNo,p.variantLabel].join(' ').toLowerCase().includes(kw));arr.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));$('listCount').textContent=`共 ${arr.length}/${projects.length} 个成本单`;$('projectList').innerHTML=arr.map(p=>`<div class="project ${p.id===currentId?'active':''}" onclick="loadProject('${p.id}')"><b title="${esc(p.name||'未命名BOM')}">${esc(p.name||'未命名BOM')}</b><small title="${esc((p.model||'-')+' · '+(p.versionNo||'V1')+' · '+bomReviewLabel(p.reviewStatus||'draft'))}">${esc(p.model||'-')} · ${esc(p.versionNo||'V1')} · ${esc(bomReviewLabel(p.reviewStatus||'draft'))}</small></div>`).join('')}
 async function loadProject(id){
+  if(bomWriteBusy)return;
+  if(id!==currentId)closeBomSnapshots();
+  bomEditorId=null;
   currentId=id; let p=getCurrent(); if(!p)return;
+  updateBomWorkflowUI();
   renderProjectList();
   if(!p.rowsLoaded){
     setStatus('正在读取 BOM 明细...');
-    await ensureProjectDetail(id);
+    try{await ensureProjectDetail(id)}catch(e){if(currentId===id){setStatus(e.message);alert(e.message);updateBomWorkflowUI()}return}
     if(currentId!==id)return;
     p=getCurrent(); if(!p)return;
   }
   renderBaseOptions(); $('projectName').value=p.name||''; $('customer').value=p.customer||''; $('model').value=p.model||''; $('productType').value=p.productType||''; if($('versionNo'))$('versionNo').value=p.versionNo||'V1'; if($('variantLabel'))$('variantLabel').value=p.variantLabel||'通用版'; $('currency').value=p.currency||'RMB'; setProductImagePreview(p.productImage||''); $('createdAt').value=p.createdAt||''; $('updatedAt').value=p.updatedAt||''; if($('createdBy'))$('createdBy').value=p.createdBy||''; if($('updatedBy'))$('updatedBy').value=p.updatedBy||''; $('labor').value=p.labor||0; $('other').value=p.other||0; $('profitRate').value=p.profitRate??30; $('quoteMode').value=p.quoteMode||'markup'; $('exchange').value=p.exchange??1; $('note').value=p.note||'';
-  let linkInfo={fixed:[],missing:[],zeroPrice:[]}; try{ linkInfo=resolvePlmLinkedRows(p); }catch(e){ console.warn('关键物料检查跳过',e); }
+  bomEditorId=id;
+  let linkInfo={fixed:[],missing:[],zeroPrice:[]};
   renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} updateBomWorkflowUI();bomRememberPlace();
 }
 function addRow(row={}){const p=getCurrent();if(!p)return;if(bomWorkflowLocked())return alert('待审核/已审核 BOM 已锁定，请先驳回或退审。');p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
-function removeRow(i){const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}
-function insertRowAfter(i){const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0,priceStatus:'estimated',priceSource:'',priceNote:''});renderRows();calc()}
+function removeRow(i){if(bomWorkflowLocked())return;const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}
+function insertRowAfter(i){if(bomWorkflowLocked())return;const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0,priceStatus:'estimated',priceSource:'',priceNote:''});renderRows();calc()}
 function renderRows(){
   const p=getCurrent(); if(!p) return;
   $('tbody').innerHTML=(p.rows||[]).map((r,i)=>{
@@ -1656,6 +1695,7 @@ function shouldCheckKeyMaterialRow(r){
 
 function resolvePlmLinkedRows(p){
   const info={fixed:[],missing:[],zeroPrice:[],changed:false};
+  if(!p||['pending','approved'].includes(p.reviewStatus))return info;
   if(!p||!Array.isArray(p.rows)||!materials.length)return info;
   p.rows.forEach((r,i)=>{
     if(!r||typeof r!=='object')return;
@@ -1692,7 +1732,13 @@ function showPlmLinkNotice(info){
   el.style.display='block';
   setStatus(`关键物料检查：修正 ${info.fixed.length} 行，未找到 ${info.missing.length} 行`);
 }
-function recheckPlmLink(){const p=getCurrent();if(!p)return;const info=resolvePlmLinkedRows(p);renderRows();calc();showPlmLinkNotice(info)}
+function recheckPlmLink(){
+  const p=getCurrent();if(!p||bomWorkflowLocked())return;
+  collect();const proposed=JSON.parse(JSON.stringify(p)),info=resolvePlmLinkedRows(proposed);
+  const changes=proposed.rows.map((r,i)=>({row:r,old:p.rows[i],i})).filter(x=>JSON.stringify(x.row)!==JSON.stringify(x.old));
+  if(changes.length){const text=changes.slice(0,8).map(x=>`第 ${x.i+1} 行：数量 ${x.old.qty} → ${x.row.qty}；单价 ${x.old.price} → ${x.row.price}；${x.row.name}`).join('\n');if(!confirm(`物料库建议更新 ${changes.length} 行：\n${text}\n\n是否明确应用到当前草稿？不会自动保存。`))return;p.rows=proposed.rows;}
+  renderRows();calc();showPlmLinkNotice(info);
+}
 
 
 function matCreatedTime(m){
@@ -1883,28 +1929,21 @@ function selectNamingForBom(id){
   return createBomFromNaming(id);
 }
 async function bindCurrentBomToNaming(id){
+  if(!bomEditorReady()||bomWorkflowLocked())return alert('请先打开可编辑的完整 BOM');
   if(!id)return;
   const p=getCurrent();
   if(!p||!currentId){alert('请先打开要绑定的 BOM。');return;}
   if(!confirm('确定绑定这个命名型号？\n\n只同步型号、图片、尺寸、分类等基础资料；不会改动当前 BOM 的物料明细、数量、价格。'))return;
-  const r=await api('bind_naming_to_project',{project_uid:currentId,naming_id:id,sync_basic:1});
-  if(!r.ok){alert(r.error||'绑定失败');return;}
+  if(!await saveCurrent())return;
+  await bomReviewAction('bind_naming_to_project','',{naming_id:id,sync_basic:1});
   closeNamingBomModal();
-  setStatus('已绑定命名型号：'+(r.model?.model_no||''));
-  await loadAll();
-  currentId=r.project_uid||currentId;
-  showPage('edit');
-  loadProject(currentId);
 }
 async function unbindNamingFromCurrent(){
+  if(!bomEditorReady()||bomWorkflowLocked())return alert('请先打开可编辑的完整 BOM');
   const p=getCurrent(); if(!p||!currentId)return;
   if(!confirm('确定解除当前 BOM 与命名型号的绑定？\n\n只解除来源关系，不删除 BOM，不清空物料。'))return;
-  const r=await api('unbind_naming_from_project',{project_uid:currentId});
-  if(!r.ok){alert(r.error||'解除失败');return;}
-  setStatus('已解除命名型号绑定');
-  await loadAll();
-  currentId=r.project_uid||currentId;
-  loadProject(currentId);
+  if(!await saveCurrent())return;
+  await bomReviewAction('unbind_naming_from_project','');
 }
 async function createBomFromNaming(id){
   if(!id)return;
@@ -1936,12 +1975,11 @@ async function checkCurrentBomNamingSync(){
   }else alert(r.message||'命名基础资料已同步');
 }
 async function applyCurrentBomNamingSync(){
+  if(!bomEditorReady()||bomWorkflowLocked())return alert('请先打开可编辑的完整 BOM');
   const p=getCurrent(); if(!p||!currentId)return;
   if(!confirm('确认同步命名系统基础资料到当前 BOM？\n\n只同步：型号、名称、分类、尺寸、图片、客户等基础资料。\n不会覆盖 BOM 物料行、价格、加工费、表面处理费。'))return;
-  const r=await api('naming_sync_apply',{project_uid:currentId});
-  if(!r.ok){alert(r.error||'同步失败');return;}
-  setStatus(r.message||'已同步命名基础资料');
-  await loadAll(); currentId=r.project_uid||currentId; showPage('edit'); loadProject(currentId);
+  if(!await saveCurrent())return;
+  await bomReviewAction('naming_sync_apply','');
 }
 function renderBomSourceNotice(p){
   let el=$('bomSourceNotice');

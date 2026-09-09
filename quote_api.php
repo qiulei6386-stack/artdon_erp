@@ -7,6 +7,7 @@ artdon_sso_require_api('quote');
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_money.php';
 require_once __DIR__ . '/includes/quote_material_read.php';
+require_once __DIR__ . '/includes/bom_workflow.php';
 if (session_status() === PHP_SESSION_NONE) {
     @session_name('ARTDON_SYS');
     @session_set_cookie_params(['lifetime'=>86400*30,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
@@ -1080,47 +1081,23 @@ function bom_precise_project_total_from_row($r){
   return $sum + $labor + $other;
 }
 function bom_add_precise_projects_to_cost_map($pdo,&$map){
-  if(!table_exists($pdo,'bom_projects')) return;
-  $cols=table_columns($pdo,'bom_projects'); if(!$cols) return;
-  $where=in_array('is_active',$cols,true)?' WHERE (is_active=1 OR is_active IS NULL)':'';
-  $order=in_array('updated_at',$cols,true)?'updated_at':(in_array('id',$cols,true)?'id':$cols[0]);
-  try{ $rs=rows($pdo,"SELECT * FROM `bom_projects`$where ORDER BY `$order` DESC LIMIT 10000"); }catch(Throwable $e){ return; }
-  foreach($rs as $r){
+  // Only frozen legacy publications and approved snapshots; never mutable draft rows.
+  if(!bw_ready($pdo))return;
+  $rs=rows($pdo,"SELECT project_uid,snapshot_id,source,payload_json,cost,updated_at FROM bom_cost_publications ORDER BY updated_at DESC");
+  foreach($rs as $publication){
+    $r=json_decode((string)$publication['payload_json'],true);if(!is_array($r))continue;
     $keys=bom_strict_row_model_keys($r);
     $linkedSystem=strtoupper(trim((string)($r['linked_system']??'')));
     $linkedId=trim((string)($r['linked_id']??''));
-    if($linkedId!=='' && (strpos($linkedSystem,'NAMING')!==false || strpos($linkedSystem,'命名')!==false)){
-      $keys[]='NID'.$linkedId;
-    }
-    if(!$keys) continue;
-    $cost=bom_precise_project_total_from_row($r);
-    if($cost<=0) $cost=bom_cost_from_row_direct($r);
-    bom_add_cost_map($map,$keys,$cost,'bom_projects.precise',first_existing_val($r,['updated_at','modified_at','created_at'],''),120);
+    if($linkedId!=='' && (strpos($linkedSystem,'NAMING')!==false || strpos($linkedSystem,'命名')!==false))$keys[]='NID'.$linkedId;
+    $approved=$publication['source']==='approved_snapshot';
+    $source=$approved?'BOM审核快照 #'.$publication['snapshot_id']:'BOM历史未审核（冻结）';
+    bom_add_cost_map($map,$keys,(float)$publication['cost'],$source,$publication['updated_at'], $approved&&empty($r['initial_freeze'])?130:120);
   }
 }
-
-
 function get_bom_cost_map($pdo){
-  static $cache=null;
-  if($cache!==null) return $cache;
-  // V6.8.5.3：只生成“整灯型号 → 整张 BOM 成本”的映射。
-  // 彻底取消从物料库、物料明细行、rows_json 任意字符串、bom_kv 文本里抓型号做整灯成本。
-  $map=[];
-  bom_add_precise_projects_to_cost_map($pdo,$map);
-  foreach(detect_bom_cost_tables($pdo) as $t){
-    if($t==='bom_projects') continue;
-    $cols=table_columns($pdo,$t); if(!$cols) continue;
-    $order=in_array('updated_at',$cols,true)?'updated_at':(in_array('modified_at',$cols,true)?'modified_at':(in_array('id',$cols,true)?'id':$cols[0]));
-    try{ $rs=rows($pdo,"SELECT * FROM `$t` ORDER BY `$order` DESC LIMIT 8000"); }catch(Throwable $e){ $rs=[]; }
-    foreach($rs as $r){
-      $keys=bom_strict_row_model_keys($r);
-      if(!$keys) continue;
-      $cost=bom_cost_from_row_direct($r);
-      if($cost<=0) $cost=bom_cost_from_json($r);
-      bom_add_cost_map($map,$keys,$cost,$t,first_existing_val($r,['updated_at','modified_at','created_at'],''),85);
-    }
-  }
-  return $cache=$map;
+  static $cache=null;if($cache!==null)return $cache;
+  $map=[];bom_add_precise_projects_to_cost_map($pdo,$map);return $cache=$map;
 }
 
 function bom_debug_report($pdo,$model){
