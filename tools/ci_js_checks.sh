@@ -37,6 +37,7 @@ if [ "$syntax_failed" -ne 0 ]; then
 fi
 
 static_tests=(
+  tests/bom_dashboard_read.cjs
   tests/crm_visit_result_reference.cjs
   tests/quote_money_runtime_test.cjs
   tests/crm_quote_handoff_runtime_test.cjs

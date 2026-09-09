@@ -9,6 +9,7 @@ ini_set('display_errors','0');
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/bom_dashboard_read.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? $_POST['action'] : '');
@@ -16,7 +17,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? 
 // 第三阶段：BOM 细分权限。页面入口仍由统一登录控制，具体 API 再按功能拦截。
 $__bom_perm_map=array(
     'ping'=>null,'login'=>null,'logout'=>null,'me'=>null,
-    'auth_debug'=>'manage_users','bootstrap'=>'view_dashboard','project_detail'=>'view_dashboard','materials_list'=>'view_dashboard','naming_models'=>'view_library',
+    'auth_debug'=>'manage_users','bootstrap'=>'view_dashboard','dashboard_search'=>'view_dashboard','dashboard_images'=>'view_dashboard','project_detail'=>'view_dashboard','materials_list'=>'view_dashboard','naming_models'=>'view_library',
     'create_from_naming'=>'edit_bom','bind_naming_to_project'=>'edit_bom','unbind_naming_from_project'=>'edit_bom','naming_sync_check'=>'view_dashboard','naming_sync_apply'=>'edit_bom',
     'list_users'=>'manage_users','save_user'=>'manage_users','disable_user'=>'manage_users',
     'save_project'=>'edit_bom','submit_review'=>'edit_bom','approve_project'=>'approve_bom','reject_project'=>'reject_bom','unapprove_project'=>'unapprove_bom','create_snapshot'=>'approve_bom','list_snapshots'=>'view_dashboard','get_snapshot'=>'view_dashboard','save_list'=>'edit_bom','delete_project'=>'delete_bom',
@@ -1585,8 +1586,11 @@ function bom_v78_naming_sync_apply(PDO $pdo,array $user,array $p){
 try{
     $pdo = pdo_safe();
     $GLOBALS['pdo_for_perm']=$pdo;
-    ensure_bom_schema($pdo);
-    ensure_bom_user_schema($pdo);
+    // Dashboard enrichment is strictly read-only and must not run schema/backfill work.
+    if(!in_array($action,array('dashboard_search','dashboard_images'),true)){
+        ensure_bom_schema($pdo);
+        ensure_bom_user_schema($pdo);
+    }
 
     if($action === 'ping'){
         json_out(array('ok'=>true,'message'=>'BOM API connected','login'=> bom_current_user($pdo)?true:false));
@@ -1651,6 +1655,14 @@ try{
     }
 
     $user = bom_require_login($pdo);
+
+    if($action === 'dashboard_search' || $action === 'dashboard_images'){
+        bom_require_perm($user,'dashboard');
+        $d=body_json();
+        if(session_status()===PHP_SESSION_ACTIVE) session_write_close();
+        if($action==='dashboard_search') json_out(array('ok'=>true,'project_ids'=>bom_dashboard_search($pdo,$d['keyword']??'')));
+        json_out(array('ok'=>true,'images'=>bom_dashboard_images($pdo,$d['project_ids']??array())));
+    }
 
     if($action === 'bootstrap'){
         bom_require_perm($user,'dashboard');

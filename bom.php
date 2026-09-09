@@ -244,6 +244,13 @@ body{background:#f6f8fb}
 .dashboard-filters{display:flex!important;align-items:center;gap:5px!important;margin:0!important;min-width:900px;flex:1}
 .dashboard-filters input,.dashboard-filters select{height:32px!important;min-width:112px;padding:0 8px;border-radius:8px;font-size:11px}
 .dashboard-filters #dashKeyword{min-width:220px;flex:1}
+@media(max-width:900px){
+  .dashboard-controls{flex-wrap:wrap;overflow:visible}
+  .dashboard-filters{min-width:0;flex-wrap:wrap!important;width:100%}
+  .dashboard-filters #dashKeyword{flex:1 0 100%;min-width:0;width:100%}
+  .dashboard-filters select,.dashboard-filters input[type=date]{flex:1 1 120px;min-width:0!important;max-width:100%}
+  .dashboard-controls .range-pills{min-width:0;flex-wrap:wrap!important}
+}
 .dashboard-filters #dashCustomer,.dashboard-filters #dashType{min-width:135px}
 .dashboard-filters #dashStart,.dashboard-filters #dashEnd{min-width:126px}
 .dash-stats{display:none!important}
@@ -515,7 +522,7 @@ body{background:#f6f8fb}
         <button id="dashRangeCustom" onclick="setDashboardRange('custom')">自定义时间</button>
       </div>
       <div class="dashboard-filters">
-        <input id="dashKeyword" placeholder="搜索 BOM名称 / 客户 / 型号 / 物料" oninput="renderDashboard()">
+        <input id="dashKeyword" type="search" maxlength="120" aria-label="搜索 BOM名称、客户、型号或物料" placeholder="搜索 BOM名称 / 客户 / 型号 / 物料" oninput="renderDashboard()">
         <select id="dashCustomer" onchange="renderDashboard()"></select>
         <select id="dashType" onchange="renderDashboard()"></select>
         <select id="dashTimeField" onchange="renderDashboard()"><option value="updatedAt">按最后保存</option><option value="createdAt">按创建时间</option></select>
@@ -532,6 +539,7 @@ body{background:#f6f8fb}
       <div class="dash-stat"><span>平均成本</span><b id="dashAvgCost">0.00</b></div>
     </div>
     <p class="hint" id="dashHint"></p>
+    <div class="hint" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0"><span id="dashSearchStatus" role="status" aria-live="polite"></span><button id="dashSearchRetry" class="small ghost" hidden onclick="bomDashboardRetrySearch()">重试搜索</button><button id="dashSearchAll" class="small ghost" hidden onclick="setDashboardRange('all')">跨全部时间查找</button></div>
     <div class="dash-pager" id="dashPagerTop"></div>
     <div class="dashboard-table-wrap" id="dashboardTableWrap">
       <table class="dashboard-table">
@@ -1121,6 +1129,7 @@ async function loadAll(){
     if(!r.ok){ if(!r.need_login) alert(r.error||'读取数据库失败'); setStatus('读取失败：'+(r.error||'')); return; }
     currentUser=r.user||currentUser; currentCan=r.can||currentCan; updateAuthUI();
     projects=(r.projects||[]).map(p=>mapBomProject(p,false));
+    bomDashboardResetRead();
     if(Array.isArray(r.materials)){materials=r.materials;materialsLoaded=true}
     lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
     renderBaseOptions();
@@ -1131,7 +1140,7 @@ async function loadAll(){
       const keepPage=bomRememberedPage();
       const keepId=bomRememberedProject();
       if(urlId && projects.some(p=>p.id===urlId)){currentId=urlId;loadProject(urlId);showPage('edit')}
-      else if(keepId && projects.some(p=>p.id===keepId)){currentId=keepId;loadProject(keepId)}
+      else if(keepId && projects.some(p=>p.id===keepId)){currentId=keepId;if(keepPage==='edit')loadProject(keepId)}
       else if(keepPage==='edit' && projects.length){currentId=projects[0].id;loadProject(currentId)}
       if(!urlId){
         if(keepPage==='dashboard'){setDashboardRange(dashboardRange||'month');showPage('dashboard')}
@@ -1974,7 +1983,7 @@ function dashboardRangeStart(){const now=startOfToday();if(dashboardRange==='mon
 function dashboardRangeEnd(){if(dashboardRange==='custom'&&$('dashEnd')?.value)return new Date($('dashEnd').value+'T23:59:59');return null}
 function setDashboardRange(r){dashboardRange=r;dashboardPage=1;['Month','7','3','All','Custom'].forEach(x=>{const el=$('dashRange'+x);if(el)el.classList.remove('active')});const map={month:'Month','7':'7','3':'3',all:'All',custom:'Custom'};const el=$('dashRange'+map[r]);if(el)el.classList.add('active');if(r==='month'){$('dashStart').value=dateInputValue(startOfMonth());$('dashEnd').value=dateInputValue(new Date())}else if(r==='7'){const d=startOfToday();d.setDate(d.getDate()-6);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='3'){const d=startOfToday();d.setDate(d.getDate()-2);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='all'){$('dashStart').value='';$('dashEnd').value=''}renderDashboard()}
 function isBomModelKeyword(value){return /^[a-z0-9]*\d{2,4}(?:[.\-]\d+)+[a-z0-9]*$/i.test(String(value||'').trim().replace(/\s+/g,''))}
-function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),customer=$('dashCustomer')?.value||'',type=$('dashType')?.value||'',timeField=$('dashTimeField')?.value||'updatedAt';let arr=projects.filter(p=>{const dt=dateFromText(p[timeField]);const st=dashboardRangeStart(),ed=dashboardRangeEnd(),pt=p.namingType||bomProjectNamingType(p);if(st&&(!dt||dt<st))return false;if(ed&&(!dt||dt>ed))return false;if(customer&&p.customer!==customer)return false;if(type&&pt!==type)return false;if(kw){const fields=modelKeyword?[p.model,p.name]:[p.name,p.customer,p.model,pt,p.productType,JSON.stringify(p.rows||[])];if(!fields.join(' ').toLowerCase().includes(kw))return false}return true});const sort=$('dashSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer)):sort==='modelAsc'?String(a.model).localeCompare(String(b.model)):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
+function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),customer=$('dashCustomer')?.value||'',type=$('dashType')?.value||'',timeField=$('dashTimeField')?.value||'updatedAt';let arr=projects.filter(p=>{const dt=dateFromText(p[timeField]);const st=dashboardRangeStart(),ed=dashboardRangeEnd(),pt=p.namingType||bomProjectNamingType(p);if(st&&(!dt||dt<st))return false;if(ed&&(!dt||dt>ed))return false;if(customer&&p.customer!==customer)return false;if(type&&pt!==type)return false;if(!bomDashboardKeywordMatch(p,kw))return false;return true});const sort=$('dashSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer)):sort==='modelAsc'?String(a.model).localeCompare(String(b.model)):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
 function setDashboardView(v){dashboardView=['list','grid','grouped'].includes(v)?v:'grid';localStorage.setItem('bom_dashboard_view_v80',dashboardView);renderDashboard()}
 function toggleDashboardGroup(){setDashboardView(dashboardView==='grouped'?'grid':'grouped')}
 function updateDashboardViewButtons(){
@@ -2015,9 +2024,7 @@ function dashboardTableRowHtml(p){
   return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${bomProjectRowCount(p)}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
 }
 function dashboardImageHtml(p){
-  const src=String(p.productImage||'').trim();
-  const label=String(p.model||p.name||'BOM').trim().slice(0,1)||'B';
-  return src?`<img src="${esc(src)}" onerror="bomImageFallback(this,'dash-bom-image','${esc(label)}')">`:`<div class="empty">${esc(label)}</div>`;
+  return bomDashboardImageHtml(p);
 }
 function dashboardCardHtml(p){
   const t=totals(p), rows=p.rows||[], material=rows.slice(0,2).map(r=>r.name).filter(Boolean).join(' / ');
@@ -2026,7 +2033,7 @@ function dashboardCardHtml(p){
     <div class="dash-bom-body">
       <div class="dash-bom-title" title="${esc(p.name||'未命名BOM')}">${esc(p.name||'未命名BOM')}</div>
       <div class="dash-bom-model" title="${esc(p.model||'-')}">${esc(p.model||'-')}</div>
-      <div class="dash-bom-meta"><span title="${esc(p.customer||'-')}">客户 ${esc(p.customer||'-')}</span><span title="${esc(p.namingType||bomProjectNamingType(p))}">${esc(p.namingType||bomProjectNamingType(p))}</span><span>物料 ${rows.length}</span><span title="${esc(p.updatedAt||'')}">更新 ${esc(String(p.updatedAt||'').slice(0,16)||'-')}</span></div>
+      <div class="dash-bom-meta"><span title="${esc(p.customer||'-')}">客户 ${esc(p.customer||'-')}</span><span title="${esc(p.namingType||bomProjectNamingType(p))}">${esc(p.namingType||bomProjectNamingType(p))}</span><span>物料 ${bomProjectRowCount(p)}</span><span title="${esc(p.updatedAt||'')}">更新 ${esc(String(p.updatedAt||'').slice(0,16)||'-')}</span></div>
       <div class="dash-bom-cost"><span>总成本</span><b>${money(t.total)}</b></div>
       <div class="dash-bom-model" title="${esc(material)}">${esc(material||'暂无物料摘要')}</div>
     </div>
@@ -2035,6 +2042,7 @@ function dashboardCardHtml(p){
 }
 function renderDashboard(){
   if(!$('dashboardTbody'))return;
+  bomDashboardSyncSearch();
   renderBaseOptions();updateDashboardViewButtons();
   lastDashboardRows=dashboardFilteredProjects();
   const totalCost=lastDashboardRows.reduce((s,p)=>s+totals(p).total,0),totalQuote=lastDashboardRows.reduce((s,p)=>s+totals(p).suggest,0);
@@ -2044,6 +2052,7 @@ function renderDashboard(){
   const iconBox=$('dashboardIconGrid');
   if(iconBox){iconBox.classList.toggle('dash-icon-groups',dashboardView==='grouped');iconBox.classList.toggle('dash-icon-grid',dashboardView!=='grouped')}
   const pageRows=dashboardPageRows();renderDashboardPagers(pageRows);
+  bomDashboardSearchHint();bomDashboardLoadImages(pageRows);
   $('dashboardTbody').innerHTML='';
   if(iconBox)iconBox.innerHTML='';
   if(!lastDashboardRows.length){
@@ -2156,5 +2165,6 @@ async function executeExcelImport(){if(!excelImportObjects.length)previewExcelIm
 
 window.onload=function(){ applyBomHeaderCollapse(); applyEditorMoreState(); checkAuth(); };
 </script>
+<script src="assets/bom-dashboard-read.js?v=20260909-1"></script>
 </body>
 </html>
