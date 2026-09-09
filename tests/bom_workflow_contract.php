@@ -15,3 +15,6 @@ check(strpos($api,"\$rows=bw_rows(\$s['rows_json'] ?? '[]')")!==false,'legacy sn
 $src=file_get_contents(dirname(__DIR__).'/includes/bom_workflow.php');check(strpos($src,'FOR UPDATE')!==false,'locking');check(strpos($src,'bom_workflow_requests')!==false,'idempotency');
 $quote=file_get_contents(dirname(__DIR__).'/quote_api.php');$start=strpos($quote,'function bom_add_precise_projects_to_cost_map(');$end=strpos($quote,'function bom_debug_report(',$start);$part=substr($quote,$start,$end-$start);check(strpos($part,'bom_cost_publications')!==false&&strpos($part,'SELECT * FROM `bom_projects`')===false,'published costs only');
 echo "BOM workflow canonical money/revision and publication contract: OK\n";
+$bridge=file_get_contents(dirname(__DIR__).'/bom_naming_link_api.php');$plm=file_get_contents(dirname(__DIR__).'/plm.php');
+check(strpos($bridge,'旧联动入口不再直接覆盖已有成本单')!==false,'unversioned legacy binding blocked');
+check(strpos($plm,'UPDATE bom_projects SET name=?,customer=?,model=?')===false&&strpos($plm,'未覆盖任何现有物料、审核或快照')!==false,'PLM cannot overwrite existing draft or approved BOM');

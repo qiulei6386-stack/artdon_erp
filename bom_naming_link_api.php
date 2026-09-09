@@ -13,6 +13,7 @@ ini_set('display_errors','0');
 error_reporting(E_ALL);
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/bom_workflow.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -130,6 +131,8 @@ function naming_row($pdo,$id){
     $st=$pdo->prepare('SELECT '.naming_select_fields($pdo).' FROM `naming_models` WHERE id=? LIMIT 1'); $st->execute([(int)$id]); return $st->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 function create_bom_from_naming($pdo,$naming,$copyExisting=false){
+    if(!bw_ready($pdo))throw new RuntimeException('BOM 成本版本正在初始化，请稍后重试');
+    if($copyExisting&&!artdon_sso_can('bom','cost_view'))throw new RuntimeException('复制成本单需要成本查看权限');
     ensure_schema($pdo);
     if(!table_exists($pdo,'bom_projects')) throw new RuntimeException('未找到 bom_projects 表');
     $model=(string)$naming['model_no']; $title=trim($model.'-'.($naming['product_name'] ?: $naming['item_name']));
@@ -155,6 +158,8 @@ function create_bom_from_naming($pdo,$naming,$copyExisting=false){
         'naming_model_no'=>$model,
         'naming_snapshot_json'=>$snapshot,
         'is_active'=>1,
+        'workflow_version'=>1,
+        'review_status'=>'draft',
     ];
     if($copyExisting){
         $existing=find_existing_bom($pdo,$naming);
@@ -212,6 +217,9 @@ try{
         out_json(['ok'=>true,'mode'=>'created','project'=>$created,'message'=>'已按命名系统产品新建 BOM 成本单']);
     }
     if($action==='bind_existing'){
+        // This legacy caller has no expected_revision or request_id. Do not silently
+        // overwrite a reviewed/submitted or concurrently edited BOM from this endpoint.
+        out_json(['ok'=>false,'error'=>'请打开该 BOM，在编辑器中使用“绑定命名产品”；旧联动入口不再直接覆盖已有成本单。']);
         $d=body_json(); $uid=trim((string)($d['project_uid']??'')); $id=(int)($d['naming_id']??0);
         if($uid===''||$id<=0) out_json(['ok'=>false,'error'=>'缺少 project_uid 或 naming_id']);
         $n=naming_row($pdo,$id); if(!$n) out_json(['ok'=>false,'error'=>'命名产品不存在']);

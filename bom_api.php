@@ -147,53 +147,28 @@ function bom_sync_quote_cost_snapshot(PDO $pdo, $projectUid, $actor = 'system'){
     $needed = array('bom_cost_rmb','estimated_sale_price_rmb','bom_cost_source','bom_match_key','bom_cost_updated_at');
     foreach($needed as $col){ if(!hascol($pdo, 'quote_price_policies', $col)) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_quote_columns'); }
     if(!bw_ready($pdo))return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'publication_not_initialized');
-    $st = $pdo->prepare('SELECT * FROM bom_cost_publications WHERE project_uid=? LIMIT 1');
-    $st->execute(array((string)$projectUid));
-    $publication = $st->fetch(PDO::FETCH_ASSOC);
-    if(!$publication) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'no_published_cost');
-    $project=json_decode($publication['payload_json'],true,512,JSON_THROW_ON_ERROR);
-    $project['updated_at']=$publication['updated_at'];
-    if(hascol($pdo, 'bom_projects', 'is_active') && isset($project['is_active']) && (int)$project['is_active'] !== 1) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'inactive_project');
-    $model = trim((string)($project['model'] ?? ''));
-    $modelKey = bom_quote_cost_norm_model($model);
-    $linkedSystem = strtoupper(trim((string)($project['linked_system'] ?? '')));
-    $linkedId = trim((string)($project['linked_id'] ?? ''));
-    if($modelKey === '' && $linkedId === '') return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'missing_match_key');
-    $cost = (float)$publication['cost'];
-    $costSource=$publication['source']==='approved_snapshot'?'bom_snapshot:'.$publication['snapshot_id']:'bom_legacy_unreviewed';
-    $where = array();
-    $args = array();
-    if($linkedId !== '' && (strpos($linkedSystem, 'NAMING') !== false || strpos($linkedSystem, '命名') !== false)){
-        $where[] = "TRIM(COALESCE(naming_id,''))=?";
-        $args[] = $linkedId;
-    }
-    if($modelKey !== ''){
-        $where[] = "UPPER(REPLACE(COALESCE(product_model,''),' ',''))=?";
-        $args[] = $modelKey;
-    }
-    if(!$where) return array('matched'=>0,'updated'=>0,'skipped'=>1,'reason'=>'no_policy_where');
-    $policies = array();
-    $stmt = $pdo->prepare('SELECT * FROM quote_price_policies WHERE '.implode(' OR ', $where));
-    $stmt->execute($args);
-    $policies = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if(!$policies) return array('matched'=>0,'updated'=>0,'skipped'=>0,'reason'=>'no_policy_match','cost_rmb'=>$cost);
+    // Read the same winning publication as quotation, not just the just-approved project.
+    // Current reads plus the workflow publication lock prevent cross-model approval races.
+    $map=bcp_map($pdo,$pdo->inTransaction());
+    $policies=$pdo->query('SELECT id,product_source,naming_id,product_model,level_id,bom_cost_rmb,estimated_sale_price_rmb,bom_cost_source,bom_match_key,bom_cost_updated_at FROM quote_price_policies ORDER BY id'.($pdo->inTransaction()?' FOR UPDATE':''))->fetchAll(PDO::FETCH_ASSOC);
     $update = $pdo->prepare('UPDATE quote_price_policies SET bom_cost_rmb=?,estimated_sale_price_rmb=?,bom_cost_source=?,bom_match_key=?,bom_cost_updated_at=?,updated_by=?,updated_at=NOW() WHERE id=?');
-    $updated = 0;
+    $updated = 0;$matched=0;
     foreach($policies as $policy){
-        $policySource = strtolower(trim((string)($policy['product_source'] ?? '')));
-        $policyNamingId = trim((string)($policy['naming_id'] ?? ''));
-        $matchKey = ($policySource === 'naming' && $linkedId !== '' && $policyNamingId === $linkedId) ? 'NID'.$linkedId : ($modelKey ?: ('NID'.$linkedId));
+        $keys=bcp_product_keys(array('source'=>$policy['product_source']?:'naming','naming_id'=>$policy['naming_id'],'model'=>$policy['product_model']));
+        [$matchKey,$hit]=bcp_find($keys,$map);
+        if($hit)$matched++;
+        $cost=$hit?(float)$hit['cost_rmb']:0.0;$costSource=$hit['source_table']??'';$costUpdated=$hit['updated_at']??'';$matchKey=$matchKey??'';
         $estimated = bom_quote_estimated_sale_rmb($pdo, $policy, $cost);
         $changed = abs(bom_num_zero($policy['bom_cost_rmb'] ?? 0) - $cost) > 0.0001
             || abs(bom_num_zero($policy['estimated_sale_price_rmb'] ?? 0) - $estimated) > 0.0001
             || (string)($policy['bom_cost_source'] ?? '') !== $costSource
             || (string)($policy['bom_match_key'] ?? '') !== $matchKey
-            || (string)($policy['bom_cost_updated_at'] ?? '') !== (string)($project['updated_at'] ?? '');
+            || (string)($policy['bom_cost_updated_at'] ?? '') !== $costUpdated;
         if(!$changed) continue;
-        $update->execute(array($cost, $estimated, $costSource, $matchKey, (string)($project['updated_at'] ?? ''), (string)$actor, (int)$policy['id']));
+        $update->execute(array($cost, $estimated, $costSource, $matchKey, $costUpdated, (string)$actor, (int)$policy['id']));
         $updated++;
     }
-    return array('matched'=>count($policies),'updated'=>$updated,'skipped'=>0,'cost_rmb'=>$cost,'model'=>$model,'model_key'=>$modelKey,'linked_id'=>$linkedId);
+    return array('matched'=>$matched,'updated'=>$updated,'skipped'=>0);
 }
 function bom_material_select_cols(PDO $pdo){
     $wanted = array('id','category','brand','name','model','spec','price','unit','supplier','keyword','image','created_at','updated_at');

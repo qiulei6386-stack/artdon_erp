@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/bom_cost_publication.php';
 
 // No bootstrap, database connection, migration or external IO on include.
 class BomWorkflowError extends RuntimeException {
@@ -70,13 +71,13 @@ function bw_initial_snapshot_matches(array $p,array $s): bool {
     foreach(array('model','customer','currency','version_no','variant_label','labor','other','profit_rate','quote_mode','exchange_rate') as $key)if((string)($p[$key]??'')!==(string)($s[$key]??''))return false;
     return bw_rows($p['rows_json']??'[]')===bw_rows($s['rows_json']??'[]');
 }
-function bw_freeze_legacy(PDO $pdo): array {
+function bw_freeze_legacy(PDO $pdo,?string $expectedCostHash=null): array {
     // Explicit deployment step; never invoked by ordinary page reads/saves.
     bw_schema($pdo);$pdo->beginTransaction();
     try{
         $pdo->exec("INSERT IGNORE INTO bom_workflow_meta(name,value) VALUES('legacy_costs_frozen','')");
         $done=$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
-        if($done){$pdo->commit();return array('already_initialized'=>true);}
+        if($done){if($expectedCostHash!==null&&!hash_equals($expectedCostHash,bcp_cost_hash(bcp_map($pdo))))throw new RuntimeException('冻结成本校验不一致，未继续部署');$pdo->commit();return array('already_initialized'=>true);}
         $last=0;$count=0;
         do{
             $st=$pdo->prepare("SELECT id,project_uid,name,model,customer,version_no,variant_label,linked_system,linked_id,currency,exchange_rate,rows_json,labor,other,profit_rate,quote_mode,review_status,latest_snapshot_id FROM bom_projects WHERE is_active=1 AND id>? ORDER BY id LIMIT 25 FOR UPDATE");$st->execute(array($last));$batch=$st->fetchAll(PDO::FETCH_ASSOC);
@@ -90,6 +91,7 @@ function bw_freeze_legacy(PDO $pdo): array {
                 $count++;
             }
         }while(count($batch)===25);
+        if($expectedCostHash!==null&&!hash_equals($expectedCostHash,bcp_cost_hash(bcp_map($pdo))))throw new RuntimeException('冻结成本与部署前不一致，已撤回本次初始化');
         $pdo->exec("UPDATE bom_workflow_meta SET value='frozen' WHERE name='legacy_costs_frozen'");$pdo->commit();return array('frozen'=>$count);
     }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
 }
@@ -137,6 +139,9 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         $st=$pdo->prepare('SELECT * FROM bom_workflow_requests WHERE request_id=? FOR UPDATE');$st->execute(array($request));$req=$st->fetch(PDO::FETCH_ASSOC);
         if($req['actor']!==$owner||$req['payload_hash']!==$hash)throw new BomWorkflowError('request_conflict','重复请求内容不一致，请重新读取');
         if($req['result_json']){$result=json_decode($req['result_json'],true,512,JSON_THROW_ON_ERROR);$pdo->commit();return $result;}
+        // Cross-project approvals may share a model and policy. Acquire before project locks
+        // and consistent reads so both the publication and its cache see the same winner.
+        if($action==='approve_project')$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
         $p=bw_get($pdo,$uid,true);$before=$p;$status=$p['review_status']??'draft';
         if($p&&(int)$p['is_active']!==1)throw new BomWorkflowError('deleted','BOM 已删除，请返回总览');
         if(!array_key_exists('expected_revision',$d)||!hash_equals(bw_revision($p),(string)$d['expected_revision']))throw new BomWorkflowError('revision_conflict','这份 BOM 已被修改或审核。本次未覆盖任何内容，请保留当前输入，重新打开最新版本核对后再操作。');
@@ -179,7 +184,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
                 $snapshot=bom_insert_snapshot($pdo,$p,$actor,$note);bw_publish($pdo,$p,(int)$snapshot['id'],'approved_snapshot');
                 // Publication and existing quotation policy cache commit together, or neither does.
                 $policySync=bom_sync_quote_cost_snapshot($pdo,$uid,$actor);
-                $message='审核成功，已封存快照 '.$snapshot['snapshot_uid'].'；报价取价已切换为此审核版本。';
+                $message='审核成功，已封存快照 '.$snapshot['snapshot_uid'].'并发布成本。同型号有多个审核版本时，报价与价格策略统一采用已审核版本中的较高成本。';
                 if(!empty($policySync['skipped']))$message.=' 价格策略缓存未同步，请管理员检查；审核快照已发布。';
             }else $message=array('submit_review'=>'已提交当前版本，等待审核。','reject_project'=>'已驳回，原因已记录。','unapprove_project'=>'已退审，可修改草稿；报价继续使用上一份已发布成本，重新审核后才切换。')[$action];
         }

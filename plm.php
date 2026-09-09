@@ -1983,6 +1983,8 @@ function plm_v85_bom_rows_from_model($m){
     return $rows;
 }
 function plm_v85_create_or_update_bom_from_model($modelId){
+    require_once __DIR__.'/includes/bom_workflow.php';
+    if(!bw_ready(plm_v85_pdo()))return array('ok'=>false,'error'=>'BOM 成本版本正在初始化，请稍后重试');
     $m=plm_v85_row('SELECT * FROM plm_models WHERE id=?',array((int)$modelId));
     if(!$m) return array('ok'=>false,'error'=>'没有找到样品');
     $p=plm_v85_row('SELECT * FROM plm_projects WHERE id=?',array((int)$m['project_id']));
@@ -1996,10 +1998,9 @@ function plm_v85_create_or_update_bom_from_model($modelId){
     $note="由 PLM 样品关键元器件生成/更新。\n项目：".($p['name']??'')."\n样品：".($m['name']??'')."\nBOM备注：".($m['bom_note']??'');
     $exists=plm_v85_row('SELECT id FROM bom_projects WHERE project_uid=? LIMIT 1',array($uid));
     if($exists){
-        $st=plm_v85_pdo()->prepare('UPDATE bom_projects SET name=?,customer=?,model=?,product_type=?,currency=?,rows_json=?,note=?,updated_by=?,updated_at=NOW(),is_active=1 WHERE project_uid=?');
-        $st->execute(array($name,$p['customer']??'',$model,$p['product_type']??'','RMB',json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$note,'PLM',$uid));
+        return array('ok'=>true,'existing'=>true,'project_uid'=>$uid,'bom_url'=>'bom.php#project_uid='.rawurlencode($uid),'message'=>'已有 BOM，已打开原成本单；请在 BOM 编辑器核对并更新，未覆盖任何现有物料、审核或快照。');
     }else{
-        $st=plm_v85_pdo()->prepare('INSERT INTO bom_projects(project_uid,name,customer,model,product_type,currency,labor,other,profit_rate,quote_mode,exchange_rate,note,rows_json,created_by,updated_by,is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)');
+        $st=plm_v85_pdo()->prepare("INSERT INTO bom_projects(project_uid,name,customer,model,product_type,currency,labor,other,profit_rate,quote_mode,exchange_rate,note,rows_json,created_by,updated_by,is_active,workflow_version,review_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,1,'draft')");
         $st->execute(array($uid,$name,$p['customer']??'',$model,$p['product_type']??'','RMB',0,0,30,'markup',1,$note,json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'PLM','PLM'));
     }
     plm_v85_log((int)$p['id'],'bom',(int)$modelId,'生成/更新BOM','BOM项目UID：'.$uid.'，物料行：'.count($rows));
@@ -10969,7 +10970,7 @@ document.addEventListener('click',function(e){
 });
 async function runBomSearch(id,prefix,label,manual){const q=bomInputValue(id,prefix);const box=$('m_'+prefix+'_suggest_'+id);if(!box)return;if(!q&&!manual){box.classList.remove('show');box.innerHTML='';return}box.classList.add('show');box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub">正在模糊查找 BOM 共享物料库...</div></div>';const r=await api('bom_material_search',{q,type:prefix,limit:20,sort:'updated_desc'});if(!r.ok){box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub dangerText">'+esc(r.error||'搜索失败')+'</div></div>';return}const list=r.materials||[];if(!list.length){box.innerHTML='<div class="bom-suggest-item"><div class="bom-suggest-sub">当前分类未匹配到物料。可继续输入，或点右侧 ... 打开全功能筛选。</div></div>';return}box.innerHTML=list.map((m,i)=>{const key=prefix+'_'+id+'_'+i+'_'+Date.now();bomSuggestCache[key]=m;return `<div class="bom-suggest-item" onclick="selectBomMaterial('${key}',${id},'${prefix}')"><div class="bom-suggest-title">${esc((m.brand?m.brand+' / ':'')+(m.name||m.model||'-'))}</div><div class="bom-suggest-sub">${esc(m.model||'')} ｜ ${esc(m.category||label)} ｜ ${esc(m.supplier||'')} ｜ <span class="bom-price">${Number(m.price||0).toFixed(2)}</span> / ${esc(m.unit||'PCS')}</div><div class="bom-suggest-sub">${esc(m.spec||'')}</div></div>`}).join('')}
 function selectBomMaterial(key,id,prefix){const m=bomSuggestCache[key];if(!m)return;selectBomMaterialObject(m,id,prefix);const box=prefix==='accessories' ? $('m_accessories_suggest_'+id) : $('m_'+prefix+'_suggest_'+id);if(box)box.classList.remove('show')}
-async function createBomFromModel(id){const saved=await saveModel(id,true);if(!saved.ok){toast(saved.error||'样品保存失败，不能生成BOM');return}const r=await api('create_bom_from_model',{model_id:id});if(!r.ok){toast(r.error||'生成BOM失败');return}toast('BOM已生成/更新：'+(r.rows_count||0)+' 行');await load();window.open(r.bom_url||'bom.php','_blank')}
+async function createBomFromModel(id){const saved=await saveModel(id,true);if(!saved.ok){toast(saved.error||'样品保存失败，不能生成BOM');return}const r=await api('create_bom_from_model',{model_id:id});if(!r.ok){toast(r.error||'生成BOM失败');return}toast(r.message||('BOM已生成：'+(r.rows_count||0)+' 行'));await load();window.open(r.bom_url||'bom.php','_blank')}
 async function deleteModel(id){const reason=prompt('删除产品/样品会进入回收站。请填写删除原因：','');if(reason===null)return;if(!reason.trim()){toast('删除产品/样品必须填写原因');return}const r=await api('delete_model',{id,reason});toast(r.ok?'产品/样品已移入回收站':r.error);await load()}
 function flowStatusClass(status){const s=String(status||'未开始');if(['已完成','完成','通过','跳过'].includes(s))return 'done';if(['进行中','开发中','测试中'].includes(s))return 'doing';if(['暂停','已暂停'].includes(s))return 'pause';if(['重来','异常','退回','不通过'].includes(s))return 'redo';return 'todo'}
 function flowStatusLabel(status){const cls=flowStatusClass(status);return `<span class="flow-status ${cls}">${esc(status||'未开始')}</span>`}

@@ -943,20 +943,7 @@ function bom_model_candidates_from_row($r){
 }
 
 function bom_add_cost_map(&$map,$keys,$cost,$source,$updated='',$quality=50){
-  $cost=floatval($cost); if($cost<=0) return;
-  $quality=intval($quality);
-  foreach($keys as $k){
-    $k=norm_key($k); if(!$k) continue;
-    $old=$map[$k]??null;
-    $oldCost=floatval($old['cost_rmb']??0);
-    $oldQ=intval($old['quality']??0);
-    // V6.6.4：同一型号可能同时出现在“整张成本单”和“物料明细行”。
-    // 报价要用整张成本单总成本，不能被芯片/透镜等单行成本覆盖。
-    // 因此优先级：整张成本单 > 产品行 > 明细物料行；同级取较大的总成本。
-    if(!$old || $oldCost<=0 || $quality>$oldQ || ($quality===$oldQ && $cost>$oldCost)){
-      $map[$k]=['cost_rmb'=>$cost,'source_table'=>$source,'updated_at'=>$updated,'match_key'=>$k,'quality'=>$quality];
-    }
-  }
+  bcp_add($map,$keys,(float)$cost,(string)$source,(string)$updated,(int)$quality);
 }
 function bom_cost_from_json($node){
   // V6.6.4：先找“整张成本单”的总成本字段；不要把明细行的 amount/price 误当产品总成本。
@@ -1081,19 +1068,9 @@ function bom_precise_project_total_from_row($r){
   return $sum + $labor + $other;
 }
 function bom_add_precise_projects_to_cost_map($pdo,&$map){
-  // Only frozen legacy publications and approved snapshots; never mutable draft rows.
-  if(!bw_ready($pdo))return;
-  $rs=rows($pdo,"SELECT project_uid,snapshot_id,source,payload_json,cost,updated_at FROM bom_cost_publications ORDER BY updated_at DESC");
-  foreach($rs as $publication){
-    $r=json_decode((string)$publication['payload_json'],true);if(!is_array($r))continue;
-    $keys=bom_strict_row_model_keys($r);
-    $linkedSystem=strtoupper(trim((string)($r['linked_system']??'')));
-    $linkedId=trim((string)($r['linked_id']??''));
-    if($linkedId!=='' && (strpos($linkedSystem,'NAMING')!==false || strpos($linkedSystem,'命名')!==false))$keys[]='NID'.$linkedId;
-    $approved=$publication['source']==='approved_snapshot';
-    $source=$approved?'BOM审核快照 #'.$publication['snapshot_id']:'BOM历史未审核（冻结）';
-    bom_add_cost_map($map,$keys,(float)$publication['cost'],$source,$publication['updated_at'], $approved&&empty($r['initial_freeze'])?130:120);
-  }
+  // bom_cost_publications only; fail explicitly rather than silently use stale product costs.
+  if(!bw_ready($pdo))throw new RuntimeException('BOM 成本版本正在初始化，请稍后重新打开报价；当前未生成报价。');
+  $map=bcp_map($pdo);
 }
 function get_bom_cost_map($pdo){
   static $cache=null;if($cache!==null)return $cache;
@@ -1124,24 +1101,7 @@ function bom_debug_report($pdo,$model){
   return ['model'=>$model,'norm'=>$nk,'detected_tables'=>$tables,'table_columns'=>$tableInfo,'cost_hits'=>$hits,'raw_matches'=>$raw,'cost_map_count'=>count($costMap)];
 }
 function find_bom_cost_match($keys,$costMap){
-  // V6.8.5.3：必须完整型号完全相等；不做包含、不做相似、不做名称匹配。
-  $keys=array_values(array_unique(array_filter(array_map('norm_key',$keys))));
-  $best=[null,null,null,-1,0];
-  foreach($keys as $k){
-    if(strlen($k)<5) continue;
-    $isNid=(strpos($k,'NID')===0);
-    if(!$isNid && !preg_match('/\d+\.\d+/', $k)) continue;
-    foreach($costMap as $mk=>$row){
-      $mk=norm_key($mk);
-      if($mk!==$k) continue;
-      $quality=intval($row['quality']??50);
-      $cost=floatval($row['cost_rmb']??0);
-      if($cost>0 && ($quality>$best[3] || ($quality===$best[3] && $cost>$best[4]))){
-        $best=[$mk,$row,$isNid?'exact_naming_bind':'exact_model',$quality,$cost];
-      }
-    }
-  }
-  return [$best[0],$best[1],$best[2]];
+  return bcp_find($keys,$costMap);
 }
 
 function apply_bom_cost(&$p,$costMap){
@@ -1159,8 +1119,8 @@ function apply_bom_cost(&$p,$costMap){
   }
   [$mk,$hit,$mode]=find_bom_cost_match($keys,$costMap);
   if($hit){
-    $c=floatval($hit['cost_rmb']??0); if($c>0){
-      $p['cost_rmb']=$c; $p['price_rmb']=$c; $p['cost_usd']=$c/7; if(empty($p['price_usd'])) $p['price_usd']=$c/7;
+    $c=floatval($hit['cost_rmb']??0); if($c>=0){
+      $p['cost_rmb']=$c; $p['price_rmb']=$c; $p['cost_usd']=$c/7; $p['price_usd']=$c/7;
       $p['bom_match']=1; $p['bom_match_key']=$mk; $p['bom_match_mode']=$mode; $p['bom_cost_source']=$hit['source_table']??''; $p['cost_updated_at']=$hit['updated_at']??''; $p['price_note']='BOM成本：RMB '.number_format($c,2).'；来源：'.($p['bom_cost_source']??'').'；匹配整灯型号：'.$mk;
       return true;
     }
