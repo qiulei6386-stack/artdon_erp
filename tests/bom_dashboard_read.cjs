@@ -56,7 +56,7 @@ if(process.env.BOM_BROWSER_TEST==='1')(async()=>{
     const before=requests.length;await page.waitForTimeout(500);assert.equal(requests.length,before,'No endless image retry loop');
     failImages=false;await page.evaluate(()=>{bomDashboardResetRead();renderDashboard();});await page.waitForFunction(()=>!bomDashboardRead.imageBusy);
     const output=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'bom-dashboard-'));
-    for(const width of [390,768,1600]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(350);assert((await page.locator('.dash-bom-card').count())<=18);assert(await page.locator('#dashKeyword').isVisible());await page.screenshot({path:path.join(output,width+'.png')});}
+    for(const width of [390,768,1600]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(350);assert((await page.locator('.dash-bom-card').count())<=18);assert(await page.locator('#dashKeyword').isVisible());if(width<=900){const box=await page.locator('#dashKeyword').boundingBox();assert(box.width>280&&box.x+box.width<=width,'Small-screen search fits viewport');}await page.screenshot({path:path.join(output,width+'.png')});}
     console.log('Browser screenshots: '+output);
     assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,requests:requests.length,checks:'real page, lazy first page, remembered detail not fetched, material search, page reset, old date, stale response, retry, image failure and 3 widths'}));
   }finally{await browser.close();}

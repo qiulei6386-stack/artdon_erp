@@ -245,11 +245,11 @@ body{background:#f6f8fb}
 .dashboard-filters input,.dashboard-filters select{height:32px!important;min-width:112px;padding:0 8px;border-radius:8px;font-size:11px}
 .dashboard-filters #dashKeyword{min-width:220px;flex:1}
 @media(max-width:900px){
-  .dashboard-controls{flex-wrap:wrap;overflow:visible}
-  .dashboard-filters{min-width:0;flex-wrap:wrap!important;width:100%}
-  .dashboard-filters #dashKeyword{flex:1 0 100%;min-width:0;width:100%}
-  .dashboard-filters select,.dashboard-filters input[type=date]{flex:1 1 120px;min-width:0!important;max-width:100%}
-  .dashboard-controls .range-pills{min-width:0;flex-wrap:wrap!important}
+  .dashboard-controls{display:block;overflow:visible}
+  .dashboard-filters{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;width:100%}
+  .dashboard-filters #dashKeyword{grid-column:1/-1;min-width:0;width:100%}
+  .dashboard-filters select,.dashboard-filters input[type=date]{width:100%;min-width:0!important;max-width:100%}
+  .dashboard-controls .range-pills{min-width:0;flex-wrap:wrap!important;margin-bottom:6px!important}
 }
 .dashboard-filters #dashCustomer,.dashboard-filters #dashType{min-width:135px}
 .dashboard-filters #dashStart,.dashboard-filters #dashEnd{min-width:126px}
