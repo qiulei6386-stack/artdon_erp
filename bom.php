@@ -405,7 +405,7 @@ body{background:#f6f8fb}
 .bom-review-main{display:flex;align-items:center;gap:7px;min-width:0}.bom-review-title{font-size:12px;font-weight:900;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bom-review-meta{font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bom-review-note{font-size:10px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bom-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:10px;font-weight:900;border:1px solid #dbeafe;background:#eff6ff;color:#1d4ed8;white-space:nowrap}.bom-badge.draft{background:#f8fafc;color:#475569}.bom-badge.pending{background:#fff7ed;color:#c2410c;border-color:#fed7aa}.bom-badge.approved{background:#ecfdf5;color:#047857;border-color:#bbf7d0}.bom-badge.rejected{background:#fef2f2;color:#dc2626;border-color:#fecaca}
-.price-status-wrap{display:grid;gap:3px}.price-status{height:23px!important;min-height:23px!important;font-size:10px!important;padding:1px 5px!important;border-radius:6px!important}.price-source{height:22px!important;min-height:22px!important;font-size:10px!important;padding:1px 5px!important;border-radius:6px!important}.price-chip{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:999px;font-size:10px;font-weight:900}.price-chip.estimated{background:#fff7ed;color:#c2410c}.price-chip.confirmed{background:#ecfdf5;color:#047857}.price-chip.pending{background:#fef2f2;color:#dc2626}.price-chip.historical{background:#f1f5f9;color:#475569}
+.price-status-wrap{display:grid;gap:3px}.price-status{height:23px!important;min-height:23px!important;font-size:10px!important;padding:1px 5px!important;border-radius:6px!important}.price-chip{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:999px;font-size:10px;font-weight:900}.price-chip.estimated{background:#fff7ed;color:#c2410c}.price-chip.confirmed{background:#ecfdf5;color:#047857}.price-chip.pending{background:#fef2f2;color:#dc2626}.price-chip.historical{background:#f1f5f9;color:#475569}
 .editor-card>.table-wrap{margin-top:4px!important;max-height:calc(100vh - 315px);overflow:auto!important}
 .plm-link-notice{margin:3px 0!important;padding:4px 7px!important;border-radius:8px!important;font-size:11px!important;line-height:1.35!important}
 .plm-link-notice .notice-summary{height:24px;display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}
@@ -419,6 +419,12 @@ body{background:#f6f8fb}
 @media(max-width:1250px){#editPage{grid-template-columns:235px minmax(0,1fr)!important}.editor-core-fields{grid-template-columns:1.3fr 1fr 1fr 1fr 80px 120px}.editor-meta-strip{grid-template-columns:1fr 1fr 70px 70px 70px 70px auto}.editor-actions .hint{display:none}.editor-more-fields{grid-template-columns:110px 120px 110px minmax(190px,1fr)}.bom-review-bar{grid-template-columns:1fr 1fr}.bom-review-note{grid-column:1/-1}}
 @media(max-width:900px){#editPage{grid-template-columns:1fr!important}#editPage>aside.card{position:static!important;max-height:none!important}.editor-core-fields{grid-template-columns:1fr 1fr 1fr}.editor-meta-strip{grid-template-columns:1fr 1fr 1fr}.editor-card>.table-wrap{max-height:62vh}.editor-more-fields{grid-template-columns:1fr 1fr}.editor-note-label{grid-column:1/-1}}
 @media(max-width:640px){.editor-core-fields{grid-template-columns:1fr 1fr}.editor-meta-strip{grid-template-columns:1fr 1fr}.compact-image-label{grid-column:1/-1}.editor-more-fields{grid-template-columns:1fr}.editor-note-label{grid-column:auto}}
+.bom-snapshot-mask{position:fixed;inset:0;z-index:180;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(15,23,42,.48)}
+.bom-snapshot-box{display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:min(1180px,96vw);height:min(820px,92vh);overflow:hidden;border-radius:16px;background:#fff;box-shadow:0 28px 80px rgba(15,23,42,.3)}
+.bom-snapshot-head,.bom-snapshot-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid #e5e7eb}.bom-snapshot-head h3{margin:0}.bom-snapshot-head p{margin:4px 0 0;color:#64748b;font-size:12px}.bom-snapshot-foot{justify-content:flex-end;border-top:1px solid #e5e7eb;border-bottom:0}
+.bom-snapshot-body{display:grid;grid-template-columns:330px minmax(0,1fr);min-height:0}.bom-snapshot-list{overflow:auto;padding:12px;border-right:1px solid #e5e7eb;background:#f8fafc}.bom-snapshot-list button{display:grid;gap:4px;width:100%;margin-bottom:8px;padding:11px;border:1px solid #dbe3ec;border-radius:10px;background:#fff;text-align:left;cursor:pointer}.bom-snapshot-list button.active{border-color:#0f9e8f;background:#effcf9}.bom-snapshot-list b{font-size:12px}.bom-snapshot-list span,.bom-snapshot-list small{color:#64748b;font-size:10px}
+.bom-snapshot-detail{min-width:0;overflow:auto;padding:16px}.bom-snapshot-empty{display:grid;min-height:240px;place-items:center;color:#94a3b8}.bom-snapshot-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.bom-snapshot-summary>div{padding:10px;border:1px solid #e5e7eb;border-radius:9px;background:#fafcff}.bom-snapshot-summary span{display:block;color:#64748b;font-size:10px}.bom-snapshot-summary b{display:block;margin-top:4px;font-size:14px}.bom-snapshot-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.bom-snapshot-meta>div{padding:8px 10px;border-radius:8px;background:#f8fafc}.bom-snapshot-meta span{display:block;color:#64748b;font-size:10px}.bom-snapshot-meta b{font-size:12px}.bom-snapshot-note{margin:10px 0;padding:10px;border-left:3px solid #0f9e8f;background:#f1fbf9;color:#475569;font-size:12px}.bom-snapshot-table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:10px}.bom-snapshot-table{width:100%;min-width:860px;border-collapse:collapse}.bom-snapshot-table th,.bom-snapshot-table td{padding:8px;border-bottom:1px solid #edf1f5;text-align:left;font-size:11px}.bom-snapshot-table th{position:sticky;top:0;background:#f8fafc}.bom-snapshot-table td.num{text-align:right}.bom-snapshot-status{display:inline-flex;padding:3px 6px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:9px;font-weight:800}.bom-snapshot-status.confirmed{background:#ecfdf5;color:#047857}
+@media(max-width:760px){.bom-snapshot-body{grid-template-columns:1fr}.bom-snapshot-list{max-height:180px;border-right:0;border-bottom:1px solid #e5e7eb}.bom-snapshot-summary,.bom-snapshot-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 </style>
 </head>
@@ -445,7 +451,7 @@ body{background:#f6f8fb}
     </div>
     <div class="header-right">
       <div class="topbar">
-        <button class="ok" onclick="saveCurrent()">保存当前</button>
+        <button id="topSaveCurrentBtn" class="ok" onclick="saveCurrent()">保存当前</button>
         <button class="ghost" onclick="loadAll()">刷新数据</button>
         <button class="ghost" onclick="window.print()">打印/PDF</button>
         <button class="ghost" onclick="goModule('bom_backup_restore.php')">备份/恢复</button>
@@ -571,7 +577,7 @@ body{background:#f6f8fb}
 <div class="editor-more-panel" id="editorMorePanel">
   <div class="editor-more-fields"><label>利润率/加价率 % <input id="profitRate" type="number" step="0.1" oninput="touch();calc()" value="30"></label><label>报价模式 <select id="quoteMode" onchange="touch();calc()"><option value="markup">加价率</option><option value="margin">毛利率</option></select></label><label>汇率/备用 <input id="exchange" type="number" step="0.0001" oninput="touch()" value="1"></label><label class="editor-note-label">备注 <textarea id="note" class="note" oninput="touch()" placeholder="备注"></textarea></label></div>
 </div>
-<div class="actions editor-actions"><button onclick="addRow()">添加材料</button><button class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button class="ok" onclick="saveCurrent()">保存草稿</button><button class="ghost" onclick="submitBomReview()">提交审核</button><button class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button class="ghost" onclick="rejectBomProject()">驳回</button><button class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button class="ghost" onclick="openExcelImport('bom')">导入</button><button class="danger" onclick="deleteProject()">删除</button><span class="hint">保存为草稿；审核通过后才封存快照并同步正式成本。</span></div>
+<div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存草稿</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">提交审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">驳回</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">待审核/已审核自动锁定；退审或驳回后才能继续编辑。</span></div>
 <div id="bomReviewBar" class="bom-review-bar"></div>
 <div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="price">单价</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
 <div class="summary"><div class="sum-box"><span>材料成本</span><b id="matTotal">0.00</b></div><div class="sum-box"><span>人工费</span><b id="laborTotal">0.00</b></div><div class="sum-box"><span>包装/其它</span><b id="otherTotal">0.00</b></div><div class="sum-box"><span>总成本</span><b id="grandTotal">0.00</b></div><div class="sum-box"><span>建议报价</span><b id="suggestPrice">0.00</b></div><div class="sum-box"><span>利润金额</span><b id="profitAmount">0.00</b></div></div>
@@ -824,9 +830,26 @@ body{background:#f6f8fb}
   </div>
 </div>
 
+<div id="bomSnapshotMask" class="bom-snapshot-mask" onclick="if(event.target===this)closeBomSnapshots()">
+  <div class="bom-snapshot-box">
+    <div class="bom-snapshot-head">
+      <div><h3>审核快照</h3><p id="bomSnapshotSub">审核通过时自动封存；退审不会删除历史快照。</p></div>
+      <button class="ghost" type="button" onclick="closeBomSnapshots()">关闭</button>
+    </div>
+    <div class="bom-snapshot-body">
+      <div id="bomSnapshotList" class="bom-snapshot-list"></div>
+      <div id="bomSnapshotDetail" class="bom-snapshot-detail"><div class="bom-snapshot-empty">请选择一份快照查看完整 BOM</div></div>
+    </div>
+    <div class="bom-snapshot-foot">
+      <button id="bomSnapshotCopyBtn" class="ghost" type="button" onclick="copyBomSnapshotToDraft()" disabled>复制为新草稿</button>
+      <button class="ok" type="button" onclick="closeBomSnapshots()">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API='bom_api.php';
-let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=['list','grid','grouped'].includes(localStorage.getItem('bom_dashboard_view_v80'))?localStorage.getItem('bom_dashboard_view_v80'):'grid',dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false;
+let projects=[],materials=[],lists={categories:[],brands:[],suppliers:[],productTypes:[],namingProductTypes:[]},currentId=null,editingMaterialId=null,currentMaterialImage='',currentPage='dashboard',firstBoot=true,dashboardRange='month',dashboardView=['list','grid','grouped'].includes(localStorage.getItem('bom_dashboard_view_v80'))?localStorage.getItem('bom_dashboard_view_v80'):'grid',dashboardPage=1,dashboardPageSize=24,lastDashboardRows=[],currentUser=null,currentCan={},userRows=[],libraryView=localStorage.getItem('bom_library_view_v74')||'list',lastLibraryRows=[],materialPickRowIndex=-1,materialPickMode='same',materialFocusId=null,materialPageSize=Number(localStorage.getItem('bom_material_page_size_v763')||50),materialPage=Number(localStorage.getItem('bom_material_page_v763')||1),materialTotalPages=1,materialPendingPayload=null,materialPendingContinue=false,materialsLoaded=false,materialsLoading=null,projectDetailLoading={},bomSnapshots=[],bomSnapshotCurrent=null;
 const BOM_PLACE_PAGE_KEY='bom_last_page_v762', BOM_PLACE_PROJECT_KEY='bom_last_project_v762';
 function bomValidPage(p){return ['dashboard','edit','library','materials','users'].includes(String(p||''))}
 function bomRememberPlace(){try{localStorage.setItem(BOM_PLACE_PAGE_KEY,bomValidPage(currentPage)?currentPage:'dashboard');if(currentId)localStorage.setItem(BOM_PLACE_PROJECT_KEY,currentId)}catch(e){}}
@@ -1023,7 +1046,71 @@ function normalizeBomRows(rows, rawJson){
     priceNote: r.priceNote ?? r.price_note ?? ''
   }));
 }
-function updateAuthUI(){const name=currentUser?(currentUser.display_name||currentUser.username||'已登录'):'未登录';if($('meText'))$('meText').textContent=name+(currentUser&&currentUser.role?' ｜ '+currentUser.role:'');[['tabEdit','edit'],['tabLibrary','library'],['tabMaterials','materials'],['tabUsers','users']].forEach(([id,perm])=>{if($(id))$(id).style.display=hasPerm(perm)?'':'none'});document.querySelectorAll('button[onclick="saveCurrent()"],button[onclick="newProjectFromDashboard()"],button[onclick="newProject()"],button[onclick="addRow()"],button[onclick="duplicateProject()"],button[onclick="deleteProject()"],button[onclick="submitBomReview()"],button[onclick="approveBomProject()"],button[onclick="rejectBomProject()"]')?.forEach(b=>{b.disabled=!hasPerm('edit');b.style.opacity=hasPerm('edit')?'':'0.55'});}
+function mapBomProject(p, detail=false){
+  const rows=normalizeBomRows(p.rows,p.rows_json);
+  const hasRows=Array.isArray(p.rows);
+  const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,totalsSummary:p.totals_summary||null,rowCount:Number(p.row_count ?? rows.length ?? 0)||0,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:hasRows||detail?rows:[],rowsLoaded:!!(detail||hasRows),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};
+  o.namingType=bomProjectNamingType(o);
+  return o;
+}
+function bomProjectRowCount(p){return Number(p?.rowCount ?? (Array.isArray(p?.rows)?p.rows.length:0))||0}
+async function ensureProjectDetail(id){
+  const p=projects.find(x=>x.id===id);
+  if(!p)return null;
+  if(p.rowsLoaded)return p;
+  if(projectDetailLoading[id])return projectDetailLoading[id];
+  projectDetailLoading[id]=(async()=>{
+    const r=await api('project_detail',{project_uid:id});
+    if(!r.ok){alert(r.error||'读取 BOM 明细失败');return p;}
+    const detail=mapBomProject(r.project||{},true);
+    Object.assign(p,detail,{rowsLoaded:true,rowCount:bomProjectRowCount(detail)});
+    return p;
+  })().finally(()=>{delete projectDetailLoading[id]});
+  return projectDetailLoading[id];
+}
+async function ensureMaterialsLoaded(force=false){
+  if(materialsLoaded&&!force)return materials;
+  if(materialsLoading)return materialsLoading;
+  materialsLoading=(async()=>{
+    setStatus('正在读取共享物料库...');
+    const r=await api('materials_list');
+    if(!r.ok){alert(r.error||'读取物料库失败');return materials;}
+    materials=r.materials||[];
+    materialsLoaded=true;
+    renderBaseOptions();
+    setStatus('共享物料库已读取 '+nowText());
+    return materials;
+  })().finally(()=>{materialsLoading=null});
+  return materialsLoading;
+}
+function setButtonsByPerm(selector,perm){
+  document.querySelectorAll(selector)?.forEach(b=>{const ok=hasPerm(perm);b.disabled=!ok;b.style.opacity=ok?'':'0.55'})
+}
+function bomWorkflowStatus(){return String(getCurrent()?.reviewStatus||'draft')}
+function bomWorkflowLocked(){return ['pending','approved'].includes(bomWorkflowStatus())}
+function updateBomWorkflowUI(){
+  const p=getCurrent(), status=String(p?.reviewStatus||'draft'), locked=!!p&&['pending','approved'].includes(status);
+  const set=(id,ok)=>{const el=$(id);if(!el)return;el.disabled=!ok;el.style.opacity=ok?'':'0.55'};
+  document.querySelectorAll('#editPage .editor-core input:not([readonly]),#editPage .editor-core select,#editPage .editor-more-panel input,#editPage .editor-more-panel select,#editPage .editor-more-panel textarea,#tbody input,#tbody select,#tbody textarea,#tbody button').forEach(el=>{el.disabled=locked});
+  ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
+  set('topSaveCurrentBtn',!!p&&hasPerm('edit')&&!locked);
+  set('bomSubmitBtn',!!p&&hasPerm('edit')&&['draft','rejected'].includes(status));
+  set('bomApproveBtn',!!p&&hasPerm('approve_bom')&&status==='pending');
+  set('bomRejectBtn',!!p&&hasPerm('reject_bom')&&status==='pending');
+  set('bomUnapproveBtn',!!p&&hasPerm('unapprove_bom')&&status==='approved');
+  set('bomSnapshotsBtn',!!p&&Number(p.snapshotCount||0)>0);
+}
+function updateAuthUI(){
+  const name=currentUser?(currentUser.display_name||currentUser.username||'已登录'):'未登录';
+  if($('meText'))$('meText').textContent=name+(currentUser&&currentUser.role?' ｜ '+currentUser.role:'');
+  [['tabEdit','edit'],['tabLibrary','library'],['tabMaterials','materials'],['tabUsers','users']].forEach(([id,perm])=>{if($(id))$(id).style.display=hasPerm(perm)?'':'none'});
+  setButtonsByPerm('button[onclick="saveCurrent()"],button[onclick="newProjectFromDashboard()"],button[onclick="newProject()"],button[onclick="addRow()"],button[onclick="duplicateProject()"],button[onclick="submitBomReview()"]','edit');
+  setButtonsByPerm('button[onclick="deleteProject()"]','edit');
+  setButtonsByPerm('button[onclick="approveBomProject()"]','approve_bom');
+  setButtonsByPerm('button[onclick="rejectBomProject()"]','reject_bom');
+  setButtonsByPerm('button[onclick="unapproveBomProject()"]','unapprove_bom');
+  updateBomWorkflowUI();
+}
 async function checkAuth(){const r=await api('me');if(r.ok&&r.login){currentUser=r.user||null;currentCan=r.can||{};showLogin(false);updateAuthUI();await loadAll();return}bomSsoRedirect()}
 function login(){bomSsoRedirect()}
 function logout(){location.href='logout.php'}
@@ -1033,8 +1120,9 @@ async function loadAll(){
     const r=await api('bootstrap');
     if(!r.ok){ if(!r.need_login) alert(r.error||'读取数据库失败'); setStatus('读取失败：'+(r.error||'')); return; }
     currentUser=r.user||currentUser; currentCan=r.can||currentCan; updateAuthUI();
-    projects=(r.projects||[]).map(p=>{const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:normalizeBomRows(p.rows,p.rows_json),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};o.namingType=bomProjectNamingType(o);return o});
-    materials=r.materials||[]; lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
+    projects=(r.projects||[]).map(p=>mapBomProject(p,false));
+    if(Array.isArray(r.materials)){materials=r.materials;materialsLoaded=true}
+    lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
     renderBaseOptions();
     initResizableTable('bomTable','bom_col_widths_v65'); applyBomColumnVisibility(); updateBomStickyOffsets(); initResizableTable('materialTable','material_col_widths_v65');
     if(firstBoot){
@@ -1055,7 +1143,7 @@ async function loadAll(){
       }
       if(currentPage==='dashboard')renderDashboard();
       if(currentPage==='library')renderLibrary();
-      if(currentPage==='materials')renderMaterials();
+      if(currentPage==='materials')ensureMaterialsLoaded().then(()=>renderMaterials());
       if(currentPage==='users')loadUsers();
     }
     setStatus('已读取数据库 '+nowText());
@@ -1077,18 +1165,18 @@ function showPage(p){
   $('tabMaterials').classList.toggle('active',currentPage==='materials');
   if($('tabUsers'))$('tabUsers').classList.toggle('active',currentPage==='users');
   if(currentPage==='dashboard')renderDashboard();
-  if(currentPage==='materials')renderMaterials();
+  if(currentPage==='materials')ensureMaterialsLoaded().then(()=>renderMaterials());
   if(currentPage==='library')renderLibrary();
   if(currentPage==='users')loadUsers();
   if(currentPage==='edit'&&!currentId&&projects.length)loadProject(projects[0].id);
   bomRememberPlace();
 }
 function rowSub(r){return Number(r.qty||0)*(Number(r.price||0)+Number(r.process||0)+Number(r.finishCost||0)+Number(r.finishCost2||0))}
-function totals(p){const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
+function totals(p){if(p&&(!p.rowsLoaded||!Array.isArray(p.rows)||!p.rows.length)&&p.totalsSummary){const s=p.totalsSummary;return{mat:+(s.material??s.mat??0)||0,labor:+(s.labor??0)||0,other:+(s.other??0)||0,total:+(s.total??0)||0,suggest:+(s.suggest??0)||0,profit:+(s.profit??0)||0}}const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
 function bomReviewLabel(s){return ({draft:'草稿',pending:'待审核',approved:'已审核',rejected:'已驳回'})[s||'draft']||'草稿'}
 function bomPriceStatusLabel(s){return ({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[s||'estimated']||'预估价'}
 function priceStatusOptions(v){return ['estimated','confirmed','pending','historical'].map(x=>`<option value="${x}" ${String(v||'estimated')===x?'selected':''}>${bomPriceStatusLabel(x)}</option>`).join('')}
-function bomPriceSummary(p){const out={total:0,estimated:0,confirmed:0,pending:0,historical:0};(p?.rows||[]).forEach(r=>{out.total++;const s=['estimated','confirmed','pending','historical'].includes(String(r.priceStatus||''))?String(r.priceStatus):'estimated';out[s]++});return out}
+function bomPriceSummary(p){if(p&&(!p.rowsLoaded||!Array.isArray(p.rows)||!p.rows.length)&&p.priceSummary)return{total:+p.priceSummary.total||0,estimated:+p.priceSummary.estimated||0,confirmed:+p.priceSummary.confirmed||0,pending:+p.priceSummary.pending||0,historical:+p.priceSummary.historical||0};const out={total:0,estimated:0,confirmed:0,pending:0,historical:0};(p?.rows||[]).forEach(r=>{out.total++;const s=['estimated','confirmed','pending','historical'].includes(String(r.priceStatus||''))?String(r.priceStatus):'estimated';out[s]++});return out}
 function renderBomReviewBar(){
   const el=$('bomReviewBar'); if(!el) return;
   const p=getCurrent(); if(!p){el.innerHTML='';return}
@@ -1096,9 +1184,12 @@ function renderBomReviewBar(){
   const submitted=p.submittedAt?`提交 ${String(p.submittedAt).slice(0,16)} · ${esc(p.submittedBy||'-')}`:'未提交审核';
   const approved=p.approvedAt?`审核 ${String(p.approvedAt).slice(0,16)} · ${esc(p.approvedBy||'-')}`:'未生成正式快照';
   el.innerHTML=`<div class="bom-review-main"><span class="bom-badge ${esc(status)}">${esc(bomReviewLabel(status))}</span><div class="bom-review-title">${esc(p.versionNo||'V1')} · ${esc(p.variantLabel||'通用版')} · 快照 ${Number(p.snapshotCount||0)}</div></div><div class="bom-review-meta">${submitted}</div><div class="bom-review-meta">${approved}</div><div class="bom-review-note"><span class="price-chip estimated">预估 ${ps.estimated}</span> <span class="price-chip confirmed">确认 ${ps.confirmed}</span> <span class="price-chip pending">待确认 ${ps.pending}</span> <span class="price-chip historical">历史 ${ps.historical}</span></div>`;
+  updateBomWorkflowUI();
 }
 async function saveCurrent(opts={}){
   if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return false}
+  if(bomWorkflowStatus()==='pending'){alert('该 BOM 已提交审核，驳回后才能继续修改。');return false}
+  if(bomWorkflowStatus()==='approved'){alert('该 BOM 已审核锁定，请先退审再修改。');return false}
   collect();const p=getCurrent();if(!p)return false;
   p.updatedAt=nowText();
   const keepPage=currentPage, keepId=p.id;
@@ -1108,7 +1199,7 @@ async function saveCurrent(opts={}){
   if(!opts.silent)setStatus('已保存草稿 '+nowText());
   await loadAll();
   currentId=keepId;
-  if(projects.some(x=>x.id===keepId))loadProject(keepId);
+  if(projects.some(x=>x.id===keepId))await loadProject(keepId);
   showPage(keepPage);
   return true;
 }
@@ -1122,11 +1213,11 @@ async function submitBomReview(){
   setStatus('已提交审核 '+nowText()); await loadAll();
 }
 async function approveBomProject(){
-  if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
-  collect();
+  if(!hasPerm('approve_bom'))return alert('当前账号没有 BOM 审核权限');
   const p=getCurrent(); if(!p)return;
-  const note=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`)||'';
-  const r=await api('approve_project',{project_uid:p.id,review_note:note,name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,updated_by:(currentUser?.display_name||currentUser?.username||'')});
+  if((p.reviewStatus||'draft')!=='pending')return alert('只有已提交、待审核的 BOM 才能审核通过');
+  const noteInput=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`);if(noteInput===null)return;const note=noteInput||'';
+  const r=await api('approve_project',{project_uid:p.id,review_note:note});
   if(!r.ok)return alert(r.error||'审核失败');
   const s=r.snapshot||{};
   setStatus(`已审核并生成快照 ${s.snapshot_uid||''} ${nowText()}`);
@@ -1134,20 +1225,57 @@ async function approveBomProject(){
   await loadAll();
 }
 async function rejectBomProject(){
-  if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
+  if(!hasPerm('reject_bom'))return alert('当前账号没有 BOM 驳回权限');
   const p=getCurrent(); if(!p)return;
+  if((p.reviewStatus||'draft')!=='pending')return alert('只有待审核 BOM 才能驳回');
   const note=prompt('请输入驳回原因：',p.reviewNote||'');
   if(note===null)return;
   const r=await api('reject_project',{project_uid:p.id,review_note:note||''});
   if(!r.ok)return alert(r.error||'驳回失败');
   setStatus('已驳回 '+nowText()); await loadAll();
 }
+async function unapproveBomProject(){
+  if(!hasPerm('unapprove_bom'))return alert('当前账号没有 BOM 退审权限');
+  const p=getCurrent(); if(!p)return;
+  if((p.reviewStatus||'draft')!=='approved')return alert('只有已审核 BOM 才能退审');
+  const note=prompt('请输入退审原因：',p.reviewNote||'');
+  if(note===null)return;
+  const r=await api('unapprove_project',{project_uid:p.id,review_note:note||''});
+  if(!r.ok)return alert(r.error||'退审失败');
+  setStatus('已退审，可重新编辑草稿 '+nowText());
+  await loadAll();
+}
 async function openBomSnapshots(){
   const p=getCurrent(); if(!p)return alert('请先打开一个 BOM');
   const r=await api('list_snapshots',{project_uid:p.id});
   if(!r.ok)return alert(r.error||'读取快照失败');
-  const lines=(r.snapshots||[]).slice(0,20).map(s=>{const t=s.totals||{},ps=s.price_summary||{};return `${s.created_at||'-'}｜${s.version_no||'V1'}｜${s.variant_label||''}｜${s.snapshot_uid||''}｜成本 ${money(t.total||0)}｜确认 ${ps.confirmed||0}/预估 ${ps.estimated||0}`});
-  alert(lines.length?lines.join('\n'):'当前 BOM 暂无快照');
+  bomSnapshots=Array.isArray(r.snapshots)?r.snapshots:[];bomSnapshotCurrent=null;
+  $('bomSnapshotSub').textContent=`${p.name||'当前 BOM'} · 共 ${bomSnapshots.length} 份审核快照；历史快照只读。`;
+  $('bomSnapshotMask').style.display='flex';renderBomSnapshotList();
+  $('bomSnapshotDetail').innerHTML=bomSnapshots.length?'<div class="bom-snapshot-empty">正在读取最新快照…</div>':'<div class="bom-snapshot-empty">当前 BOM 暂无审核快照</div>';
+  $('bomSnapshotCopyBtn').disabled=true;
+  if(bomSnapshots.length)await showBomSnapshot(Number(bomSnapshots[0].id||0));
+}
+function closeBomSnapshots(){if($('bomSnapshotMask'))$('bomSnapshotMask').style.display='none';bomSnapshotCurrent=null}
+function renderBomSnapshotList(){
+  const el=$('bomSnapshotList');if(!el)return;
+  el.innerHTML=bomSnapshots.length?bomSnapshots.map(s=>{const t=s.totals||{},ps=s.price_summary||{};return `<button type="button" class="${Number(bomSnapshotCurrent?.id||0)===Number(s.id||0)?'active':''}" onclick="showBomSnapshot(${Number(s.id||0)})"><b>${esc(s.version_no||'V1')} · ${esc(s.variant_label||'通用版')}</b><span>${esc(s.snapshot_uid||'')} · ${esc(String(s.created_at||'').slice(0,16))}</span><small>${currentCan.cost_view?`成本 ${money(t.total||0)} · `:''}确认 ${Number(ps.confirmed||0)} / 预估 ${Number(ps.estimated||0)}</small></button>`}).join(''):'<div class="bom-snapshot-empty">暂无快照</div>';
+}
+async function showBomSnapshot(id){
+  if(!id)return;
+  $('bomSnapshotDetail').innerHTML='<div class="bom-snapshot-empty">正在读取完整快照…</div>';
+  const r=await api('get_snapshot',{snapshot_id:id});
+  if(!r.ok){$('bomSnapshotDetail').innerHTML=`<div class="bom-snapshot-empty">${esc(r.error||'读取快照失败')}</div>`;return}
+  const s=r.snapshot||{},rows=Array.isArray(s.rows)?s.rows:[],t=s.totals||{},ps=s.price_summary||{};bomSnapshotCurrent=s;renderBomSnapshotList();
+  const statusLabel=x=>({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[String(x||'estimated')]||'预估价';
+  $('bomSnapshotDetail').innerHTML=`<h3 style="margin:0">${esc(s.snapshot_name||'未命名 BOM')}</h3><p class="hint">${esc(s.snapshot_uid||'')} · 审核人 ${esc(s.approved_by||'-')} · ${esc(s.approved_at||s.created_at||'-')}</p><div class="bom-snapshot-meta"><div><span>型号</span><b>${esc(s.model||'-')}</b></div><div><span>客户/项目</span><b>${esc(s.customer||'-')}</b></div><div><span>分类</span><b>${esc(s.product_type||'-')}</b></div><div><span>BOM 版本</span><b>${esc(s.version_no||'V1')}</b></div><div><span>客户版本/用途</span><b>${esc(s.variant_label||'通用版')}</b></div><div><span>币种</span><b>${esc(s.currency||'RMB')}</b></div></div>${currentCan.cost_view?`<div class="bom-snapshot-summary"><div><span>材料成本</span><b>${money(t.material||0)}</b></div><div><span>人工 + 其它</span><b>${money(Number(t.labor||0)+Number(t.other||0))}</b></div><div><span>总成本</span><b>${money(t.total||0)}</b></div><div><span>建议报价</span><b>${money(t.suggest||0)}</b></div></div>`:''}<div class="bom-snapshot-note">审核/快照说明：${esc(s.review_note||'无')}</div><p class="hint">共 ${rows.length} 行 · 确认价 ${Number(ps.confirmed||0)} · 预估价 ${Number(ps.estimated||0)} · 待确认 ${Number(ps.pending||0)} · 历史价 ${Number(ps.historical||0)}</p><div class="bom-snapshot-table-wrap"><table class="bom-snapshot-table"><thead><tr><th>#</th><th>类别</th><th>物料名称</th><th>规格/备注</th><th>数量</th><th>价格状态</th>${currentCan.cost_view?'<th>单价</th><th>加工/表面</th><th>小计</th>':''}</tr></thead><tbody>${rows.map((row,i)=>`<tr><td>${i+1}</td><td>${esc(row.category||'')}</td><td>${esc(row.name||'')}</td><td>${esc(row.spec||'')}</td><td class="num">${esc(row.qty??'')}</td><td><span class="bom-snapshot-status ${String(row.priceStatus||row.price_status||'')==='confirmed'?'confirmed':''}">${esc(statusLabel(row.priceStatus||row.price_status))}</span></td>${currentCan.cost_view?`<td class="num">${money(row.price||0)}</td><td class="num">${money(Number(row.process||0)+Number(row.finishCost||0)+Number(row.finishCost2||0))}</td><td class="num">${money(rowSub(row))}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  $('bomSnapshotCopyBtn').disabled=!(hasPerm('edit')&&currentCan.cost_view);
+}
+function copyBomSnapshotToDraft(){
+  const s=bomSnapshotCurrent;if(!s||!hasPerm('edit')||!currentCan.cost_view)return;
+  const t=nowText(),rows=JSON.parse(JSON.stringify(Array.isArray(s.rows)?s.rows:[]));
+  const p={id:uid(),name:(s.snapshot_name||'BOM')+' - 快照副本',customer:s.customer||'',model:s.model||'',productType:s.product_type||'',versionNo:s.version_no||'V1',variantLabel:s.variant_label||'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:s.currency||'RMB',productImage:s.product_image||'',labor:+s.labor||0,other:+s.other||0,profitRate:+s.profit_rate||30,quoteMode:s.quote_mode||'markup',exchange:+s.exchange_rate||1,note:s.note||'',rows,rowsLoaded:true,rowCount:rows.length,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};
+  projects.unshift(p);currentId=p.id;closeBomSnapshots();showPage('edit');loadProject(p.id);setStatus('已从快照生成新草稿，请检查版本号后点击“保存草稿”。');
 }
 function collect(){
   const p=getCurrent(); if(!p) return;
@@ -1157,29 +1285,36 @@ function collect(){
   // 防止在表格还没渲染完成、或页面隐藏时把已有 BOM 行误保存成空。
   if(trs.length===0 && oldRows.length>0) return;
   p.rows=trs.map((tr,i)=>{
-    return {category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.querySelector('.priceSource')?.value||'',priceNote:tr.querySelector('.priceNote')?.value||'',materialId:tr.dataset.materialId||''};
+    return {category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.dataset.priceSource||'',priceNote:tr.dataset.priceNote||'',materialId:tr.dataset.materialId||''};
   });
 }
 function getCurrent(){return projects.find(p=>p.id===currentId)}
 function touch(){calc()}
-function newProject(load=true){const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',versionNo:'V1',variantLabel:'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
+function newProject(load=true){const t=nowText();const p={id:uid(),name:'新 BOM 成本单',customer:'',model:'',productType:'',versionNo:'V1',variantLabel:'通用版',reviewStatus:'draft',reviewNote:'',snapshotCount:0,currency:'RMB',productImage:'',labor:0,other:0,profitRate:30,quoteMode:'markup',exchange:1,note:'',rows:[],rowsLoaded:true,rowCount:0,createdAt:t,updatedAt:t,createdBy:(currentUser?.display_name||currentUser?.username||''),updatedBy:(currentUser?.display_name||currentUser?.username||'')};projects.unshift(p);currentId=p.id;if(load)loadProject(p.id);renderProjectList();addRow()}
 function duplicateProject(){
   collect();const p=getCurrent();if(!p)return;
   const c=JSON.parse(JSON.stringify(p));
-  c.id=uid();c.name+=' - 副本';c.createdAt=nowText();c.updatedAt=nowText();c.reviewStatus='draft';c.reviewNote='';c.submittedBy='';c.submittedAt='';c.approvedBy='';c.approvedAt='';c.latestSnapshotId='';c.snapshotCount=0;
+  c.id=uid();c.name+=' - 副本';c.createdAt=nowText();c.updatedAt=nowText();c.reviewStatus='draft';c.reviewNote='';c.submittedBy='';c.submittedAt='';c.approvedBy='';c.approvedAt='';c.latestSnapshotId='';c.snapshotCount=0;c.rowsLoaded=true;c.rowCount=(c.rows||[]).length;c.totalsSummary=null;c.priceSummary=null;
   // V77.1：复制 BOM 时清空来源绑定，避免副本仍挂在旧型号；物料明细完全保留，后续可重新“绑定/更换型号”。
   c.linkedSystem='';c.linkedId='';c.linkedTitle='';c.linkedJson='';
   projects.unshift(c);currentId=c.id;loadProject(c.id)
 }
-async function deleteProject(){if(!currentId||!confirm('确定删除当前BOM？'))return;await api('delete_project',{project_uid:currentId});currentId=null;try{localStorage.removeItem(BOM_PLACE_PROJECT_KEY)}catch(e){};await loadAll()}
+async function deleteProject(){const p=getCurrent();if(!currentId||!p)return;if(['pending','approved'].includes(String(p.reviewStatus||'draft')))return alert('待审核/已审核 BOM 不能删除；请先驳回或退审。');if(!confirm('确定删除当前BOM？'))return;await api('delete_project',{project_uid:currentId});currentId=null;try{localStorage.removeItem(BOM_PLACE_PROJECT_KEY)}catch(e){};await loadAll()}
 function renderProjectList(){const kw=($('search')?.value||'').toLowerCase().trim();let arr=projects.filter(p=>!kw||[p.name,p.model,p.productType,p.customer,p.versionNo,p.variantLabel].join(' ').toLowerCase().includes(kw));arr.sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));$('listCount').textContent=`共 ${arr.length}/${projects.length} 个成本单`;$('projectList').innerHTML=arr.map(p=>`<div class="project ${p.id===currentId?'active':''}" onclick="loadProject('${p.id}')"><b title="${esc(p.name||'未命名BOM')}">${esc(p.name||'未命名BOM')}</b><small title="${esc((p.model||'-')+' · '+(p.versionNo||'V1')+' · '+bomReviewLabel(p.reviewStatus||'draft'))}">${esc(p.model||'-')} · ${esc(p.versionNo||'V1')} · ${esc(bomReviewLabel(p.reviewStatus||'draft'))}</small></div>`).join('')}
-function loadProject(id){
-  currentId=id; const p=getCurrent(); if(!p)return;
+async function loadProject(id){
+  currentId=id; let p=getCurrent(); if(!p)return;
+  renderProjectList();
+  if(!p.rowsLoaded){
+    setStatus('正在读取 BOM 明细...');
+    await ensureProjectDetail(id);
+    if(currentId!==id)return;
+    p=getCurrent(); if(!p)return;
+  }
   renderBaseOptions(); $('projectName').value=p.name||''; $('customer').value=p.customer||''; $('model').value=p.model||''; $('productType').value=p.productType||''; if($('versionNo'))$('versionNo').value=p.versionNo||'V1'; if($('variantLabel'))$('variantLabel').value=p.variantLabel||'通用版'; $('currency').value=p.currency||'RMB'; setProductImagePreview(p.productImage||''); $('createdAt').value=p.createdAt||''; $('updatedAt').value=p.updatedAt||''; if($('createdBy'))$('createdBy').value=p.createdBy||''; if($('updatedBy'))$('updatedBy').value=p.updatedBy||''; $('labor').value=p.labor||0; $('other').value=p.other||0; $('profitRate').value=p.profitRate??30; $('quoteMode').value=p.quoteMode||'markup'; $('exchange').value=p.exchange??1; $('note').value=p.note||'';
   let linkInfo={fixed:[],missing:[],zeroPrice:[]}; try{ linkInfo=resolvePlmLinkedRows(p); }catch(e){ console.warn('关键物料检查跳过',e); }
-  renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} bomRememberPlace();
+  renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} updateBomWorkflowUI();bomRememberPlace();
 }
-function addRow(row={}){const p=getCurrent();if(!p)return;p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
+function addRow(row={}){const p=getCurrent();if(!p)return;if(bomWorkflowLocked())return alert('待审核/已审核 BOM 已锁定，请先驳回或退审。');p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
 function removeRow(i){const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}
 function insertRowAfter(i){const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0,priceStatus:'estimated',priceSource:'',priceNote:''});renderRows();calc()}
 function renderRows(){
@@ -1187,9 +1322,9 @@ function renderRows(){
   $('tbody').innerHTML=(p.rows||[]).map((r,i)=>{
     const has2=!!r.finishMode2 || String(r.finish2||'').trim()!=='' || Number(r.finishCost2||0)>0;
     const finishTitle=has2 ? '当前：2次表面。点击切回1次' : '当前：1次表面。点击切到2次';
-    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select><input class="priceSource price-source" value="${esc(r.priceSource||'')}" oninput="touch()" placeholder="报价来源/供应商"><input class="priceNote price-source" value="${esc(r.priceNote||'')}" oninput="touch()" placeholder="价格备注"></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
+    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" data-price-source="${esc(r.priceSource||'')}" data-price-note="${esc(r.priceNote||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
   }).join('');
-  initRowDrag();initResizableTable('bomTable','bom_col_widths_v65');applyBomColumnVisibility();updateBomStickyOffsets();autoGrowAll();setTimeout(scheduleBomTableLayout,80);setTimeout(scheduleBomTableLayout,260);
+  initRowDrag();initResizableTable('bomTable','bom_col_widths_v65');applyBomColumnVisibility();updateBomStickyOffsets();autoGrowAll();updateBomWorkflowUI();setTimeout(scheduleBomTableLayout,80);setTimeout(scheduleBomTableLayout,260);
 }
 
 function toggleFinishMode(i){
@@ -1352,7 +1487,7 @@ async function saveMaterial(continueAdd=false, forcedPayload=null){
 }
 function clearMaterialForm(resetId=true){if(resetId)editingMaterialId=null;currentMaterialImage='';['matName','matModel','matPrice','matSupplier','matSpec','matKeyword'].forEach(id=>{if($(id))$(id).value=''});if($('matUnit'))$('matUnit').value='PCS';if($('matImageFile'))$('matImageFile').value=''}
 async function deleteMaterial(id){if(!confirm('删除这个物料？'))return;await api('delete_material',{id});await loadAll();showPage('materials')}
-async function syncWeightProfilesToBom(){const r=await api('sync_weight_profiles_to_bom',{});if(!r.ok){alert('同步失败：'+(r.message||r.error||'未知错误'));return}await loadAll();showPage('materials');if($('matFilterCategory'))$('matFilterCategory').value='型材';if($('matSearch'))$('matSearch').value='';renderMaterials();alert('已同步重量型材到 BOM 物料库：新增 '+(r.inserted||0)+'，更新 '+(r.updated||0)+'，跳过 '+(r.skipped||0));}
+async function syncWeightProfilesToBom(){const r=await api('sync_weight_profiles_to_bom',{});if(!r.ok){alert('同步失败：'+(r.message||r.error||'未知错误'));return}await loadAll();await ensureMaterialsLoaded(true);showPage('materials');if($('matFilterCategory'))$('matFilterCategory').value='型材';if($('matSearch'))$('matSearch').value='';renderMaterials();alert('已同步重量型材到 BOM 物料库：新增 '+(r.inserted||0)+'，更新 '+(r.updated||0)+'，跳过 '+(r.skipped||0));}
 
 function editMaterial(id){openMaterialEditor(id)}
 function focusMaterialRow(id){
@@ -1565,6 +1700,11 @@ function materialDatePass(m,mode){
   return true;
 }
 function renderMaterials(){
+  if(!materialsLoaded){
+    if($('matCount'))$('matCount').textContent='共享物料库读取中...';
+    if($('materialsTbody'))$('materialsTbody').innerHTML='<tr><td colspan="10" class="hint">正在读取共享物料库，稍等一下...</td></tr>';
+    return;
+  }
   const kw=($('matSearch').value||'').toLowerCase(),cat=$('matFilterCategory').value,brand=$('matFilterBrand').value,sup=$('matFilterSupplier').value,dateMode=$('matDateFilter')?.value||'';
   const arr=materials.filter(m=>(!cat||m.category===cat)&&(!brand||m.brand===brand)&&(!sup||m.supplier===sup)&&materialDatePass(m,dateMode)&&(!kw||[m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)));
   materialPageSize=Number(materialPageSize||50); if(![20,50,100,200,500].includes(materialPageSize))materialPageSize=50;
@@ -1589,6 +1729,14 @@ function showMaterialSuggest(input,rowIndex){
   const box=$('matSuggestFloat');
   if(!box)return;
   if(!kw){box.innerHTML='';box.style.display='none';return}
+  const rect=input.getBoundingClientRect();
+  box.style.left=rect.left+'px';box.style.top=(rect.bottom+4)+'px';box.style.width=Math.max(rect.width,420)+'px';
+  if(!materialsLoaded){
+    box.innerHTML='<div class="mat-option"><div><div class="mat-option-title">正在读取共享物料库...</div><div class="mat-option-sub">首次使用物料联想时按需加载，不影响 BOM 首页打开速度。</div></div></div>';
+    box.style.display='block';
+    ensureMaterialsLoaded().then(()=>{if(document.activeElement===input)showMaterialSuggest(input,rowIndex)});
+    return;
+  }
   const p=getCurrent();const row=p&&p.rows?p.rows[rowIndex]:null;const rowCat=row?row.category:'';
   const nkw=normMaterialText(kw);
   let arr=materials.filter(m=>materialMatchesCategory(m,rowCat)&&([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)||normMaterialText([m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ')).includes(nkw))).slice(0,30);
@@ -1598,8 +1746,6 @@ function showMaterialSuggest(input,rowIndex){
     box.style.display='none';
     return;
   }
-  const rect=input.getBoundingClientRect();
-  box.style.left=rect.left+'px';box.style.top=(rect.bottom+4)+'px';box.style.width=Math.max(rect.width,420)+'px';
   box.innerHTML=arr.map(m=>`<div class="mat-option" onclick="applyMaterial(${rowIndex},${m.id})"><div><div class="mat-option-title">${esc(materialDisplayName(m))}</div><div class="mat-option-sub">${esc(m.category)} ｜ ${esc(materialDisplaySpec(m))} ｜ ${esc(m.supplier)}</div></div><div class="mat-option-price">${money(m.price)}</div></div>`).join('');
   box.style.display='block';
 }
@@ -1634,20 +1780,26 @@ function fillMaterialPickerOptions(row){
   if([...gsel.options].some(o=>o.value===oldg))gsel.value=oldg; else gsel.value=inferGroupFromRow(row);
   if(brands.includes(oldb))bsel.value=oldb; if(sups.includes(olds))ssel.value=olds;
 }
-function openMaterialPicker(rowIndex){
+async function openMaterialPicker(rowIndex){
   collect(); materialPickRowIndex=rowIndex; materialPickMode='same';
   const p=getCurrent(), row=p&&p.rows?p.rows[rowIndex]:null; if(!p||!row)return;
   const mask=$('matPickMask'); if(!mask)return;
   if($('matPickRowHint'))$('matPickRowHint').textContent=`第 ${rowIndex+1} 行｜${row.category||'未分类'}｜${row.name||'未命名'}`;
   if($('mp_kw'))$('mp_kw').value=row.name||row.spec||'';
+  mask.style.display='flex';
+  if(!materialsLoaded){
+    if($('matPickList'))$('matPickList').innerHTML='<div class="mat-pick-empty">正在读取共享物料库...</div>';
+    await ensureMaterialsLoaded();
+  }
   fillMaterialPickerOptions(row);
   const g=inferGroupFromRow(row); if(g&&$('mp_group'))$('mp_group').value=g;
-  mask.style.display='flex'; renderMaterialPicker(); setTimeout(()=>{$('mp_kw')&&$('mp_kw').focus()},50);
+  renderMaterialPicker(); setTimeout(()=>{$('mp_kw')&&$('mp_kw').focus()},50);
 }
 function closeMaterialPicker(){const m=$('matPickMask'); if(m)m.style.display='none'}
 function setMaterialPickerQuick(mode){materialPickMode=mode; if(mode==='all'&&$('mp_group'))$('mp_group').value=''; if(mode==='same'){const p=getCurrent(),row=p&&p.rows?p.rows[materialPickRowIndex]:null;const g=inferGroupFromRow(row);if(g&&$('mp_group'))$('mp_group').value=g} renderMaterialPicker()}
 function renderMaterialPicker(){
   const p=getCurrent(), row=p&&p.rows?p.rows[materialPickRowIndex]:null; const box=$('matPickList'); if(!box)return;
+  if(!materialsLoaded){box.innerHTML='<div class="mat-pick-empty">正在读取共享物料库...</div>';return;}
   ['all','recent','same'].forEach(x=>{const el=$('mp_chip_'+x);if(el)el.classList.toggle('active',materialPickMode===x)});
   const kw=($('mp_kw')?.value||'').trim().toLowerCase(), nkw=normMaterialText(kw), group=$('mp_group')?.value||'', brand=$('mp_brand')?.value||'', sup=$('mp_supplier')?.value||'', sort=$('mp_sort')?.value||'recent', recent=recentMaterialIds();
   let arr=materials.filter(m=>{
@@ -1860,7 +2012,7 @@ function dashboardGroups(arr){
 function dashboardTableRowHtml(p){
   const t=totals(p), pt=p.namingType||bomProjectNamingType(p);
   const summary=(p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / ')||String(p.note||'').split(/\r?\n/)[0]||'暂无摘要';
-  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
+  return `<tr><td class="bom-title-cell"><b>${esc(p.name||'未命名BOM')}</b><small title="${esc(summary)}">${esc(summary)}</small></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(pt||'未分类')}</td><td class="num">${bomProjectRowCount(p)}</td><td class="price num">${money(t.total)}</td><td class="quote-price num">${money(t.suggest)}</td><td>${esc(p.updatedAt||'')}</td><td class="dash-table-actions"><button class="small ok" onclick="openProjectFromDashboard('${p.id}')">编辑</button><button class="small ghost" onclick="quickDuplicateFromDashboard('${p.id}')">复制</button></td></tr>`;
 }
 function dashboardImageHtml(p){
   const src=String(p.productImage||'').trim();
@@ -1910,8 +2062,8 @@ function renderDashboard(){
 function clearDashboardFilters(){$('dashKeyword').value='';$('dashCustomer').value='';$('dashType').value='';$('dashSort').value='updatedDesc';$('dashTimeField').value='updatedAt';setDashboardRange('month')}
 function openProjectFromDashboard(id){showPage('edit');loadProject(id)}
 function newProjectFromDashboard(){showPage('edit');newProject(true)}
-function quickDuplicateFromDashboard(id){loadProject(id);duplicateProject();showPage('edit')}
-function exportDashboardCSV(){const arr=lastDashboardRows.length?lastDashboardRows:dashboardFilteredProjects();let csv='名称,客户,型号,产品分类,物料行数,总成本,建议报价,创建时间,最后保存\n';arr.forEach(p=>{const t=totals(p);csv+=[p.name,p.customer,p.model,p.productType,(p.rows||[]).length,t.total,t.suggest,p.createdAt,p.updatedAt].map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')+'\n'});download('bom_dashboard.csv',csv)}
+async function quickDuplicateFromDashboard(id){showPage('edit');await loadProject(id);duplicateProject()}
+function exportDashboardCSV(){const arr=lastDashboardRows.length?lastDashboardRows:dashboardFilteredProjects();let csv='名称,客户,型号,产品分类,物料行数,总成本,建议报价,创建时间,最后保存\n';arr.forEach(p=>{const t=totals(p);csv+=[p.name,p.customer,p.model,p.productType,bomProjectRowCount(p),t.total,t.suggest,p.createdAt,p.updatedAt].map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')+'\n'});download('bom_dashboard.csv',csv)}
 
 async function loadUsers(){if(!hasPerm('users'))return;const r=await api('list_users');if(!r.ok){alert(r.error);return}userRows=r.users||[];renderUsers()}
 function renderUsers(){if(!$('usersTbody'))return;$('usersTbody').innerHTML=(userRows||[]).map(u=>`<tr class="${+u.is_active?'':'disabled-row'}"><td>${u.id}</td><td><b>${esc(u.username)}</b></td><td>${esc(u.display_name||'')}</td><td>${esc(u.role||'')}</td><td>${esc(u.permissions||'')}</td><td>${+u.is_active?'启用':'停用'}</td><td>${esc(u.last_login||'')}</td><td><button class="small ghost" onclick='editUser(${JSON.stringify(u).replaceAll("'","&#39;")})'>编辑</button> <button class="small danger" onclick="disableUser(${u.id})">停用</button></td></tr>`).join('')||'<tr><td colspan="8" class="dash-empty">暂无用户</td></tr>'}
@@ -1929,13 +2081,13 @@ function applyLibraryQuickRange(){const v=$('libQuickRange')?.value||'all';if(v=
 function clearLibraryFilters(){['libKeyword','libStart','libEnd','libCostMin','libCostMax','libRowsMin','libRowsMax','libModelPrefix','libMaterialKeyword'].forEach(id=>{if($(id))$(id).value=''});['libCustomer','libType','libCurrency','libImageFilter'].forEach(id=>{if($(id))$(id).value=''});if($('libGroup'))$('libGroup').value='customer';if($('libSort'))$('libSort').value='updatedDesc';if($('libTimeField'))$('libTimeField').value='updatedAt';if($('libQuickRange'))$('libQuickRange').value='all';renderLibrary()}
 function libraryProjectText(p){return [p.name,p.customer,p.model,p.productType,p.currency,p.createdAt,p.updatedAt,(p.rows||[]).map(r=>[r.category,r.name,r.spec,r.finish,r.finish2].join(' ')).join(' ')].join(' ').toLowerCase()}
 function libraryRowText(p){return (p.rows||[]).map(r=>[r.category,r.name,r.spec,r.finish,r.finish2].join(' ')).join(' ').toLowerCase()}
-function libraryFilteredProjects(){renderBaseOptions();const kw=($('libKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),lc=$('libCustomer')?.value||'',lt=$('libType')?.value||'',cur=$('libCurrency')?.value||'',img=$('libImageFilter')?.value||'',timeField=$('libTimeField')?.value||'updatedAt',matkw=($('libMaterialKeyword')?.value||'').toLowerCase().trim(),mp=($('libModelPrefix')?.value||'').toLowerCase().trim();const start=$('libStart')?.value?new Date($('libStart').value+'T00:00:00'):null,end=$('libEnd')?.value?new Date($('libEnd').value+'T23:59:59'):null,cmin=$('libCostMin')?.value!==''?Number($('libCostMin').value):null,cmax=$('libCostMax')?.value!==''?Number($('libCostMax').value):null,rmin=$('libRowsMin')?.value!==''?Number($('libRowsMin').value):null,rmax=$('libRowsMax')?.value!==''?Number($('libRowsMax').value):null;let arr=projects.filter(p=>{const t=totals(p),rows=(p.rows||[]).length,dt=libDateObj(p,timeField);if(lc&&p.customer!==lc)return false;if(lt&&p.productType!==lt)return false;if(cur&&p.currency!==cur)return false;if(img==='with'&&!p.productImage)return false;if(img==='without'&&p.productImage)return false;if(start&&(!dt||dt<start))return false;if(end&&(!dt||dt>end))return false;if(cmin!==null&&t.total<cmin)return false;if(cmax!==null&&t.total>cmax)return false;if(rmin!==null&&rows<rmin)return false;if(rmax!==null&&rows>rmax)return false;if(mp&&!String(p.model||'').toLowerCase().startsWith(mp))return false;if(matkw&&!libraryRowText(p).includes(matkw))return false;if(kw){const text=modelKeyword?[p.model,p.name].join(' ').toLowerCase():libraryProjectText(p);if(!text.includes(kw))return false}return true});const sort=$('libSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='createdAsc'?String(a.createdAt).localeCompare(String(b.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer),'zh-CN'):sort==='modelAsc'?String(a.model).localeCompare(String(b.model),'zh-CN'):sort==='rowsDesc'?(b.rows||[]).length-(a.rows||[]).length:String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
+function libraryFilteredProjects(){renderBaseOptions();const kw=($('libKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),lc=$('libCustomer')?.value||'',lt=$('libType')?.value||'',cur=$('libCurrency')?.value||'',img=$('libImageFilter')?.value||'',timeField=$('libTimeField')?.value||'updatedAt',matkw=($('libMaterialKeyword')?.value||'').toLowerCase().trim(),mp=($('libModelPrefix')?.value||'').toLowerCase().trim();const start=$('libStart')?.value?new Date($('libStart').value+'T00:00:00'):null,end=$('libEnd')?.value?new Date($('libEnd').value+'T23:59:59'):null,cmin=$('libCostMin')?.value!==''?Number($('libCostMin').value):null,cmax=$('libCostMax')?.value!==''?Number($('libCostMax').value):null,rmin=$('libRowsMin')?.value!==''?Number($('libRowsMin').value):null,rmax=$('libRowsMax')?.value!==''?Number($('libRowsMax').value):null;let arr=projects.filter(p=>{const t=totals(p),rows=bomProjectRowCount(p),dt=libDateObj(p,timeField);if(lc&&p.customer!==lc)return false;if(lt&&p.productType!==lt)return false;if(cur&&p.currency!==cur)return false;if(img==='with'&&!p.productImage)return false;if(img==='without'&&p.productImage)return false;if(start&&(!dt||dt<start))return false;if(end&&(!dt||dt>end))return false;if(cmin!==null&&t.total<cmin)return false;if(cmax!==null&&t.total>cmax)return false;if(rmin!==null&&rows<rmin)return false;if(rmax!==null&&rows>rmax)return false;if(mp&&!String(p.model||'').toLowerCase().startsWith(mp))return false;if(matkw&&!libraryRowText(p).includes(matkw))return false;if(kw){const text=modelKeyword?[p.model,p.name].join(' ').toLowerCase():libraryProjectText(p);if(!text.includes(kw))return false}return true});const sort=$('libSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='createdAsc'?String(a.createdAt).localeCompare(String(b.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer),'zh-CN'):sort==='modelAsc'?String(a.model).localeCompare(String(b.model),'zh-CN'):sort==='rowsDesc'?bomProjectRowCount(b)-bomProjectRowCount(a):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
 function libGroupKey(p){const group=$('libGroup')?.value||'customer';return group==='none'?'全部成本单':group==='productType'?(p.productType||'未分类'):group==='month'?(String(p.createdAt||p.updatedAt||'').slice(0,7)||'未指定月份'):group==='modelPrefix'?(String(p.model||'').slice(0,3)||'其它'):group==='currency'?(p.currency||'未指定币种'):group==='hasImage'?(p.productImage?'有成品图':'无成品图'):(p.customer||'未指定客户')}
 function libThumbHtml(p,cls='lib-thumb'){return bomImgTag(p.productImage,cls,esc(String(p.model||p.name||'BOM').slice(0,3).toUpperCase()||'BOM'))}
-function libBadges(p){return `<span class="lib-badge">${esc(p.productType||'未分类')}</span><span class="lib-badge">${esc(p.currency||'RMB')}</span><span class="lib-badge">${(p.rows||[]).length}行</span>`}
-function renderLibraryList(groups){return Object.entries(groups).map(([k,items])=>`<div class="lib-group-title"><b>${esc(k)}</b><small>${items.length} 个</small></div><div class="lib-list-table-wrap"><table class="lib-list-table"><thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>分类</th><th>行数</th><th>总成本</th><th>建议报价</th><th>创建</th><th>最后保存</th><th>操作</th></tr></thead><tbody>${items.map(p=>{const t=totals(p);return `<tr><td><div class="lib-imgcell">${libThumbHtml(p)}<div class="lib-title"><b>${esc(p.name||'未命名BOM')}</b><small>${esc((p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / '))}</small></div></div></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(p.productType||'未分类')}</td><td class="num">${(p.rows||[]).length}</td><td class="lib-cost num">${money(t.total)}</td><td class="num">${money(t.suggest)}</td><td>${esc(p.createdAt||'')}</td><td>${esc(p.updatedAt||'')}</td><td><button class="small ghost" onclick="showPage('edit');loadProject('${p.id}')">打开</button></td></tr>`}).join('')}</tbody></table></div>`).join('')}
+function libBadges(p){return `<span class="lib-badge">${esc(p.productType||'未分类')}</span><span class="lib-badge">${esc(p.currency||'RMB')}</span><span class="lib-badge">${bomProjectRowCount(p)}行</span>`}
+function renderLibraryList(groups){return Object.entries(groups).map(([k,items])=>`<div class="lib-group-title"><b>${esc(k)}</b><small>${items.length} 个</small></div><div class="lib-list-table-wrap"><table class="lib-list-table"><thead><tr><th>成本单</th><th>客户</th><th>型号</th><th>分类</th><th>行数</th><th>总成本</th><th>建议报价</th><th>创建</th><th>最后保存</th><th>操作</th></tr></thead><tbody>${items.map(p=>{const t=totals(p);return `<tr><td><div class="lib-imgcell">${libThumbHtml(p)}<div class="lib-title"><b>${esc(p.name||'未命名BOM')}</b><small>${esc((p.rows||[]).slice(0,2).map(r=>r.name).filter(Boolean).join(' / '))}</small></div></div></td><td>${esc(p.customer||'-')}</td><td><b>${esc(p.model||'-')}</b></td><td>${esc(p.productType||'未分类')}</td><td class="num">${bomProjectRowCount(p)}</td><td class="lib-cost num">${money(t.total)}</td><td class="num">${money(t.suggest)}</td><td>${esc(p.createdAt||'')}</td><td>${esc(p.updatedAt||'')}</td><td><button class="small ghost" onclick="showPage('edit');loadProject('${p.id}')">打开</button></td></tr>`}).join('')}</tbody></table></div>`).join('')}
 function renderLibraryCards(groups){const cls=libraryView==='large'?'large':libraryView==='medium'?'medium':'small';return Object.entries(groups).map(([k,items])=>`<div class="lib-group-title"><b>${esc(k)}</b><small>${items.length} 个</small></div><div class="lib-card-grid ${cls}">${items.map(p=>{const t=totals(p),small=libraryView==='small';return `<div class="lib-card ${small?'small-card':''}"><div class="lib-card-img ${p.productImage?'':'empty'}">${p.productImage?bomImgTag(p.productImage,'','BOM'):'BOM'}</div><div class="lib-card-body"><div class="lib-card-name">${esc(p.model||p.name||'未命名')}</div><div class="lib-card-meta">${esc(p.name||'')}<br>${esc(p.customer||'未指定客户')}</div><div class="lib-card-meta">${libBadges(p)}</div><div class="lib-card-foot"><span class="lib-cost">${money(t.total)}</span><button class="small ghost" onclick="showPage('edit');loadProject('${p.id}')">打开</button></div></div></div>`}).join('')}</div>`).join('')}
-function renderLibrary(){if(!$('libraryList'))return;updateLibraryViewButtons();lastLibraryRows=libraryFilteredProjects();const totalCost=lastLibraryRows.reduce((s,p)=>s+totals(p).total,0),totalQuote=lastLibraryRows.reduce((s,p)=>s+totals(p).suggest,0),rowCount=lastLibraryRows.reduce((s,p)=>s+(p.rows||[]).length,0);$('libCount').textContent=`共 ${lastLibraryRows.length}/${projects.length} 个成本单`;if($('libStatCount'))$('libStatCount').textContent=lastLibraryRows.length+'/'+projects.length;if($('libStatCost'))$('libStatCost').textContent=money(totalCost);if($('libStatQuote'))$('libStatQuote').textContent=money(totalQuote);if($('libStatAvg'))$('libStatAvg').textContent=money(lastLibraryRows.length?totalCost/lastLibraryRows.length:0);if($('libStatRows'))$('libStatRows').textContent=rowCount;if(!lastLibraryRows.length){$('libraryList').innerHTML='<div class="lib-empty">当前筛选没有成本单。可以清空筛选或切换到全部时间。</div>';return}const groups={};lastLibraryRows.forEach(p=>{const k=libGroupKey(p);(groups[k]=groups[k]||[]).push(p)});$('libraryList').innerHTML=libraryView==='list'?renderLibraryList(groups):renderLibraryCards(groups)}
+function renderLibrary(){if(!$('libraryList'))return;updateLibraryViewButtons();lastLibraryRows=libraryFilteredProjects();const totalCost=lastLibraryRows.reduce((s,p)=>s+totals(p).total,0),totalQuote=lastLibraryRows.reduce((s,p)=>s+totals(p).suggest,0),rowCount=lastLibraryRows.reduce((s,p)=>s+bomProjectRowCount(p),0);$('libCount').textContent=`共 ${lastLibraryRows.length}/${projects.length} 个成本单`;if($('libStatCount'))$('libStatCount').textContent=lastLibraryRows.length+'/'+projects.length;if($('libStatCost'))$('libStatCost').textContent=money(totalCost);if($('libStatQuote'))$('libStatQuote').textContent=money(totalQuote);if($('libStatAvg'))$('libStatAvg').textContent=money(lastLibraryRows.length?totalCost/lastLibraryRows.length:0);if($('libStatRows'))$('libStatRows').textContent=rowCount;if(!lastLibraryRows.length){$('libraryList').innerHTML='<div class="lib-empty">当前筛选没有成本单。可以清空筛选或切换到全部时间。</div>';return}const groups={};lastLibraryRows.forEach(p=>{const k=libGroupKey(p);(groups[k]=groups[k]||[]).push(p)});$('libraryList').innerHTML=libraryView==='list'?renderLibraryList(groups):renderLibraryCards(groups)}
 /* V77.2 Excel import/export: 修复 Excel XML 空列 ss:Index 导致关键词跑到供应商 */
 function cleanFileName(s){return String(s||'文件').replace(/[\\/:*?"<>|]+/g,'_').slice(0,80)}
 function csvEscape(v){return '"'+String(v??'').replaceAll('"','""')+'"'}
@@ -1949,11 +2101,11 @@ function downloadExcel(name,sheets){const xml='<'+ '?xml version="1.0" encoding=
 function currentMaterialFilteredRows(){const kw=($('matSearch')?.value||'').toLowerCase(),cat=$('matFilterCategory')?.value||'',brand=$('matFilterBrand')?.value||'',sup=$('matFilterSupplier')?.value||'',dateMode=$('matDateFilter')?.value||'';return materials.filter(m=>(!cat||m.category===cat)&&(!brand||m.brand===brand)&&(!sup||m.supplier===sup)&&materialDatePass(m,dateMode)&&(!kw||[m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)))}
 function bomRowsForExcel(p){return [['序号','类别','物料名称','规格/备注','数量','加工费','表面处理1','处理费1','表面处理2','处理费2','单价','小计','物料ID']].concat((p.rows||[]).map((r,i)=>[i+1,r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r),r.materialId||'']))}
 function exportCurrentBomExcel(){collect();const p=getCurrent();if(!p){alert('没有当前 BOM');return}const t=totals(p);const info=[['项目','内容'],['成本单名称',p.name],['客户/项目',p.customer],['产品型号',p.model],['产品分类',p.productType],['币种',p.currency],['材料成本',t.mat],['人工费',t.labor],['包装/其它',t.other],['总成本',t.total],['建议报价',t.suggest],['利润金额',t.profit],['利润率/加价率',p.profitRate],['报价模式',p.quoteMode],['创建时间',p.createdAt],['最后保存',p.updatedAt],['备注',p.note]];downloadExcel(cleanFileName(p.name||p.model||'BOM')+'_BOM.xls',[{name:'BOM明细',rows:bomRowsForExcel(p)},{name:'汇总',rows:info}])}
-function exportLibraryExcel(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();const list=[['名称','客户','型号','产品分类','币种','物料行数','材料成本','总成本','建议报价','创建时间','最后保存']];const detail=[['成本单','客户','型号','序号','类别','物料名称','规格/备注','数量','加工费','表面处理1','处理费1','表面处理2','处理费2','单价','小计']];arr.forEach(p=>{const t=totals(p);list.push([p.name,p.customer,p.model,p.productType,p.currency,(p.rows||[]).length,t.mat,t.total,t.suggest,p.createdAt,p.updatedAt]);(p.rows||[]).forEach((r,i)=>detail.push([p.name,p.customer,p.model,i+1,r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r)]))});downloadExcel('BOM成本总表_'+dateInputValue(new Date())+'.xls',[{name:'成本单列表',rows:list},{name:'物料明细',rows:detail}])}
+function exportLibraryExcel(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();const list=[['名称','客户','型号','产品分类','币种','物料行数','材料成本','总成本','建议报价','创建时间','最后保存']];const detail=[['成本单','客户','型号','序号','类别','物料名称','规格/备注','数量','加工费','表面处理1','处理费1','表面处理2','处理费2','单价','小计']];arr.forEach(p=>{const t=totals(p);list.push([p.name,p.customer,p.model,p.productType,p.currency,bomProjectRowCount(p),t.mat,t.total,t.suggest,p.createdAt,p.updatedAt]);(p.rows||[]).forEach((r,i)=>detail.push([p.name,p.customer,p.model,i+1,r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r)]))});downloadExcel('BOM成本总表_'+dateInputValue(new Date())+'.xls',[{name:'成本单列表',rows:list},{name:'已加载物料明细',rows:detail}])}
 function exportMaterialsExcel(){const arr=currentMaterialFilteredRows();const rows=[['ID','分类','品牌','物料名称','型号/编码','规格/备注','单价','单位','供应商','关键词','创建时间','最后更新','图片']].concat(arr.map(m=>[m.id,m.category,m.brand,m.name,m.model,m.spec,m.price,m.unit,m.supplier,m.keyword,m.created_at||'',m.updated_at||'',m.image||'']));downloadExcel('共享物料库_'+dateInputValue(new Date())+'.xls',[{name:'物料库',rows}])}
 function downloadMaterialTemplateExcel(){const rows=[['分类','品牌','物料名称','型号/编码','规格/备注','单价','单位','供应商','关键词'],['芯片','CREE','CXA1820','CXA1820','3000K CRI90',11.3,'PCS','未指定','CREE CXA'],['电源','Eaglerise','伊戈尔圆形内置','CS-15-250 SI','15W 250mA',8.2,'PCS','伊戈尔','驱动 电源']];downloadExcel('共享物料导入模板.xls',[{name:'物料导入模板',rows}])}
 function exportCSV(){collect();const p=getCurrent();if(!p)return;let csv='类别,物料名称,规格,数量,加工费,表面处理1,处理费1,表面处理2,处理费2,单价,小计\n';(p.rows||[]).forEach(r=>csv+=[r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r)].map(csvEscape).join(',')+'\n');download((p.name||'bom')+'.csv',csv)}
-function exportLibraryCSV(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();let csv='名称,客户,型号,产品分类,币种,物料行数,总成本,建议报价,创建时间,最后保存\n';arr.forEach(p=>{const t=totals(p);csv+=[p.name,p.customer,p.model,p.productType,p.currency,(p.rows||[]).length,t.total,t.suggest,p.createdAt,p.updatedAt].map(csvEscape).join(',')+'\n'});download('bom_library.csv',csv)}
+function exportLibraryCSV(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();let csv='名称,客户,型号,产品分类,币种,物料行数,总成本,建议报价,创建时间,最后保存\n';arr.forEach(p=>{const t=totals(p);csv+=[p.name,p.customer,p.model,p.productType,p.currency,bomProjectRowCount(p),t.total,t.suggest,p.createdAt,p.updatedAt].map(csvEscape).join(',')+'\n'});download('bom_library.csv',csv)}
 function exportMaterialsCSV(){const arr=currentMaterialFilteredRows();let csv='分类,品牌,名称,型号,规格,单价,单位,供应商,关键词\n';arr.forEach(m=>csv+=[m.category,m.brand,m.name,m.model,m.spec,m.price,m.unit,m.supplier,m.keyword].map(csvEscape).join(',')+'\n');download('materials.csv',csv)}
 function downloadMaterialTemplate(){download('materials_template.csv','分类,品牌,名称,型号,规格,单价,单位,供应商,关键词\n芯片,CREE,CXA1820,CXA1820,3000K CRI90,11.3,PCS,未指定,CREE CXA\n')}
 let excelImportKind='materials',excelImportText='',excelImportObjects=[];
