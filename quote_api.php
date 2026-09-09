@@ -6,6 +6,7 @@ artdon_sso_require_api('quote');
 
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_money.php';
+require_once __DIR__ . '/includes/quote_material_read.php';
 if (session_status() === PHP_SESSION_NONE) {
     @session_name('ARTDON_SYS');
     @session_set_cookie_params(['lifetime'=>86400*30,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
@@ -230,11 +231,17 @@ function norm_material($m){
 function get_materials($pdo){
   static $cache=null;
   if($cache!==null) return $cache;
-  if(table_exists($pdo,'bom_materials')){ $where=in_array('is_active',table_columns($pdo,'bom_materials'))?'WHERE is_active=1':''; return $cache=array_map('norm_material', rows($pdo,"SELECT * FROM bom_materials $where ORDER BY id DESC LIMIT 5000")); }
-  if(table_exists($pdo,'materials')) return $cache=array_map('norm_material', rows($pdo,"SELECT * FROM materials ORDER BY id DESC LIMIT 5000"));
+  foreach(['bom_materials','materials'] as $table){
+    if(!table_exists($pdo,$table))continue;
+    $columns=table_columns($pdo,$table);$select=quote_material_light_columns($columns);
+    if($select==='')return $cache=[];
+    $where=in_array('is_active',$columns,true)?'WHERE is_active=1':'';
+    $order=in_array('id',$columns,true)?'id':(in_array('mid',$columns,true)?'mid':'name');
+    return $cache=array_map('quote_material_defer_image',rows($pdo,"SELECT $select FROM `$table` $where ORDER BY `$order` DESC LIMIT 5000"));
+  }
   if(table_exists($pdo,'bom_kv')){
     $r=row($pdo,"SELECT data_json FROM bom_kv WHERE data_key='materials' LIMIT 1");
-    $arr=$r?json_decode($r['data_json'],true):[]; if(!is_array($arr))$arr=[]; return $cache=array_map('norm_material',$arr);
+    $arr=$r?json_decode($r['data_json'],true):[]; if(!is_array($arr))$arr=[]; return $cache=array_map('quote_material_defer_image',$arr);
   }
   return $cache=[];
 }
@@ -1886,6 +1893,7 @@ function qperm_require($pdo,$perm='can_access'){
   return [$u,$p];
 }
 function qperm_action_perm($action){
+  if($action==='get_material_image')return 'can_access';
   $map=[
     'init'=>'can_access','list_bom_quote_specs'=>'product_view','get_bom_quote_spec'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
@@ -4470,7 +4478,7 @@ try{
    quote_push_crm_order_notice($pdo,$order,$__quote_user,'converted');
    ok(['notified'=>1,'order_id'=>(int)($order['id']??0),'order_no'=>$order['order_no']??'']);
  }
- if($action && !in_array($action,['init','list_logs','delete_logs','log_event','log_health'],true)){
+ if($action && !in_array($action,['init','get_material_image','list_logs','delete_logs','log_event','log_health'],true)){
    $d=input_json();
    quote_log_event($pdo,['action'=>$action,'event'=>'接口请求','detail'=>$d]);
  }
@@ -4526,14 +4534,28 @@ function quote_history_preview_items($itemsRaw,$productRaw): array {
   return ['items'=>$out,'count'=>count($items)];
 }
 function quote_history_summary_rows(PDO $pdo): array {
-  $rows=rows($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json','parts_json']).", '{}' AS parts_json, 0 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000");
-  foreach($rows as &$r){
+  $sql="SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json','parts_json']).", '{}' AS parts_json, 0 AS _detail_loaded FROM quote_orders ORDER BY id DESC LIMIT 1000";
+  $buffered=$pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+  $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,false);
+  $st=null;
+  $rows=[];
+  try{
+  $st=$pdo->query($sql);
+  while($r=$st->fetch(PDO::FETCH_ASSOC)){
     $preview=quote_history_preview_items($r['items_json']??'[]',$r['product_json']??'{}');
     $r['items_json']=json_encode($preview['items'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    // Both fields are previews. Full saved product/image remains in get_quote_detail.
+    $r['product_json']=json_encode($preview['items'][0]['product']??new stdClass(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     $r['history_item_count']=(int)($preview['count']?:count($preview['items']));
+    $rows[]=$r;
   }
-  unset($r);
+  }finally{if($st)$st->closeCursor();$pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY,$buffered);}
   return $rows;
+}
+if($action==='get_material_image'){
+  quote_release_session_lock();
+  $d=input_json();$id=$d['id']??($_GET['id']??'');
+  ok(['id'=>(string)$id,'image'=>quote_material_image($pdo,$id)]);
 }
 if($action==='init'){
    $ownerRepairCount=0;

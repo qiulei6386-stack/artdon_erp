@@ -2781,7 +2781,23 @@ function choosePartFromModal(m){choosePart(partModalState.k,m);closePartModal()}
 function addMaterialFromPartModal(m){addMaterialToQuote(partModalState.k,m);closePartModal()}
 function nextPartTabKey(k){let defs=partDefs();let idx=defs.findIndex(d=>d[0]===k);if(idx>=0&&idx<defs.length-1)return defs[idx+1][0];return k}
 function focusActivePartSearch(){setTimeout(()=>{let el=$('s-'+S.partTab);if(el){try{el.focus({preventScroll:true});}catch(e){try{el.focus()}catch(_){}}}},80)}
-function choosePart(k,m){S.parts[k]=m;S.partTab=nextPartTabKey(k);renderParts();focusActivePartSearch();updatePriceLevelHint();syncEditingItemFromForm();renderQuoteItems();render()}function clearPart(k){S.parts[k]={none:true};S.partTab=nextPartTabKey(k);renderParts();focusActivePartSearch();updatePriceLevelHint();syncEditingItemFromForm();renderQuoteItems();render()}function addMaterialToQuote(k,m){let qty=Number($('qty')?.value||1), moq=$('moq')?.value||'', color=$('color')?.value||'', price=Number(m.price||0);if(cur()==='USD'&&rate())price=price/rate();let name=(k==='led'?quotePartName(m):materialSaleName(k,m));let it={is_material_sale:true,product:{id:'mat-'+(m.id||m.model||m.name||Date.now()),name:name,brand:m.brand||'',model:m.model||'',code:m.model||'',category:m.category||'',size:m.spec||'',image:m.image||'',price_rmb:Number(m.price||0),price_usd:rate()?Number(m.price||0)/rate():Number(m.price||0)},parts:{},qty:qty,price:price*priceMultiplier(),amount:qty*price*priceMultiplier(),moq:moq,customer_code:String($('customerCode')?.value||'').trim(),beam_angle:cleanBeamAngleValue($('beamAngle')?.value||''),power:String($('power')?.value||'').trim(),color:color,extra_spec:quoteRemarksFromForm().join('\n'),quote_remarks:quoteRemarksFromForm(),cct:k==='led'?normCct($('cct')?.value||''):'',cri:k==='led'?normCri($('cri')?.value||''):'',product_type:'material',price_level_id:selectedPriceLevel().id||'',price_level_name:selectedPriceLevel().name||'',price_multiplier:priceMultiplier(),cost_price:price,cost_price_currency:cur(),cost_price_rmb:quoteMoneyToRmb(price,cur()),currency:cur(),manual_price:false};S.items.push(it);renderQuoteItems();render();}
+function choosePart(k,m){S.parts[k]=m;S.partTab=nextPartTabKey(k);renderParts();focusActivePartSearch();updatePriceLevelHint();syncEditingItemFromForm();renderQuoteItems();render()}function clearPart(k){S.parts[k]={none:true};S.partTab=nextPartTabKey(k);renderParts();focusActivePartSearch();updatePriceLevelHint();syncEditingItemFromForm();renderQuoteItems();render()}function addMaterialToQuote(k,m){let qty=Number($('qty')?.value||1), moq=$('moq')?.value||'', color=$('color')?.value||'', price=Number(m.price||0);if(cur()==='USD'&&rate())price=price/rate();let name=(k==='led'?quotePartName(m):materialSaleName(k,m));let it={is_material_sale:true,product:{id:'mat-'+(m.id||m.model||m.name||Date.now()),name:name,brand:m.brand||'',model:m.model||'',code:m.model||'',category:m.category||'',size:m.spec||'',image:m.image||'',price_rmb:Number(m.price||0),price_usd:rate()?Number(m.price||0)/rate():Number(m.price||0)},parts:{},qty:qty,price:price*priceMultiplier(),amount:qty*price*priceMultiplier(),moq:moq,customer_code:String($('customerCode')?.value||'').trim(),beam_angle:cleanBeamAngleValue($('beamAngle')?.value||''),power:String($('power')?.value||'').trim(),color:color,extra_spec:quoteRemarksFromForm().join('\n'),quote_remarks:quoteRemarksFromForm(),cct:k==='led'?normCct($('cct')?.value||''):'',cri:k==='led'?normCri($('cri')?.value||''):'',product_type:'material',price_level_id:selectedPriceLevel().id||'',price_level_name:selectedPriceLevel().name||'',price_multiplier:priceMultiplier(),cost_price:price,cost_price_currency:cur(),cost_price_rmb:quoteMoneyToRmb(price,cur()),currency:cur(),manual_price:false};return quoteAppendMaterialItem(it,m);}
+const quoteMaterialPending=new Map();
+async function quoteAppendMaterialItem(item,material){
+  const items=S.items,currency=cur(),exchange=rate(),key=String(material.id||'');
+  if(quoteMaterialPending.get(key)===items)return;
+  quoteMaterialPending.set(key,items);
+  try{
+    if(material.image_deferred&&!material.image){
+      const r=await api('get_material_image',{id:material.id});
+      if(String(r.id)!==key||typeof r.image!=='string')throw new Error('物料图片回执不匹配，请重试');
+      item.product.image=r.image;
+    }
+    if(S.items!==items||cur()!==currency||rate()!==exchange){alert('报价或币种已切换，本次物料未加入，请重新选择。');return;}
+    items.push(item);renderQuoteItems();render();
+  }catch(e){alert('物料未加入：'+(e.message||'图片读取失败，请重试'));}
+  finally{if(quoteMaterialPending.get(key)===items)quoteMaterialPending.delete(key);}
+}
 function clone(o){return JSON.parse(JSON.stringify(o||{}))}
 function normCct(v){v=String(v||'').trim().toUpperCase().replace(/\s+/g,'');if(!v)return '';return /K$/i.test(v)?v:(v+'K')}
 function normCri(v){v=String(v||'').trim().toUpperCase().replace(/^CRI\s*[:：-]?\s*/i,'').replace(/\s+/g,'');if(!v)return '';return 'CRI'+v}
