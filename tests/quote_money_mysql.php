@@ -16,6 +16,7 @@ function mq_function($source,$name){
 }
 foreach(['row','quote_select_columns_except','save_row','quote_mutation_response_quote','quote_review_is_virtual_item','quote_review_virtual_type','quote_review_moq_value','quote_review_price_value','quote_review_qty_for_total','quote_review_normalize_virtual_meta','quote_merge_review_items','quote_decode_items_json','quote_item_name_for_log','quote_money_log','quote_review_item_changes','quote_append_approval_log','qlog_customer_name','quote_save_identity_norm','qlog_json'] as $fn){if(strpos($source,'function '.$fn.'(')!==false)eval(mq_function($source,$fn));}
 class MQResult extends RuntimeException{public $data;function __construct($data){$this->data=$data;}}
+foreach(['quote_review_boolish_false','quote_review_boolish_true'] as $fn)eval(mq_function($source,$fn));
 function ok($data=[]){throw new MQResult($data);}
 function fail($message){global $pdo;if($pdo->inTransaction())$pdo->rollBack();throw new RuntimeException($message);}
 function input_json(){return $GLOBALS['mq_input'];}
@@ -78,4 +79,22 @@ $zero=mq_run('save_quote',mq_payload('SYNTHETIC-ZERO',0));$q=row($pdo,'SELECT * 
 $large=mq_payload('SYNTHETIC-LARGE');$item=json_decode($large['items_json'],true);$item[0]['product']['image']='data:image/png;base64,'.str_repeat('A',7*1024*1024);$large['items_json']=json_encode($item);unset($item);
 ini_set('memory_limit','128M');$result=mq_run('save_quote',$large);$largeQ=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$result['id']]);$review=mq_approval($largeQ);$approvedLarge=mq_run('approve_quote',$review);mq_check((float)$approvedLarge['quote']['amount']===4020.0,'large image approval');unset($large,$largeQ,$review,$approvedLarge,$result);
 echo 'Large-image quote save/approval passed at 128 MiB; peak='.memory_get_peak_usage(true).PHP_EOL;
-echo "Actual quote save/approve routes: save, aliases, totals, reason, snapshot, audit, stale save/review, rollback, concurrent approval, zero passed\n";
+foreach(['fuel','freight','handling','other','discount'] as $type){
+ $d=mq_payload('SYNTHETIC-FEE-'.$type,100);
+ $items=json_decode($d['items_json'],true);$fee=['product'=>['id'=>'virtual-'.$type,'code'=>strtoupper($type)],'item_type'=>'virtual','product_type'=>'virtual','virtual_type'=>$type,'qty'=>1,'price'=>$type==='discount'?-8:8,'currency'=>'RMB','moq'=>''];
+ $items[]=$fee;$m=qm_calculate($items,'RMB');$d['items_json']=json_encode($m['items']);foreach(['amount','qty','subtotal_amount','adjustment_amount'] as $k)$d[$k]=$m[$k];
+ $r=mq_run('save_quote',$d);$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$r['id']]);$a=mq_approval($q);
+ $a['items'][1]['price_multiplier']=1;
+ $r=mq_run('approve_quote',$a);$savedFee=json_decode($r['quote']['items_json'],true)[1];
+ mq_check(!array_key_exists('price_multiplier',$savedFee),'fee multiplier invented');
+ mq_check((float)$r['quote']['amount']===(float)$m['amount'],'fee changed amount');
+ qm_validate_snapshot(json_decode(row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$q['id']])['approved_snapshot_json'],true));
+}
+foreach([null,0,1.35] as $mult){
+ $d=mq_payload('SYNTHETIC-MULT-'.($mult===null?'NONE':$mult),10);$it=json_decode($d['items_json'],true);if($mult===null)unset($it[0]['price_multiplier']);else $it[0]['price_multiplier']=$mult;$d['items_json']=json_encode($it);
+ $r=mq_run('save_quote',$d);$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$r['id']]);$a=mq_approval($q);
+ $bad=$a;$bad['items'][0]['price_multiplier']=-1;mq_reject('approve_quote',$bad,'negative multiplier');
+ $changed=$a;$changed['items'][0]['price_multiplier']=2;mq_reject('approve_quote',$changed,'multiplier change needs reason');
+ $r=mq_run('approve_quote',$a);$it=json_decode($r['quote']['items_json'],true)[0];mq_check($mult===null?!array_key_exists('price_multiplier',$it):(float)$it['price_multiplier']===(float)$mult,'multiplier not preserved');
+}
+echo "Actual quote save/approve routes: save, aliases, totals, reason, snapshot, audit, stale save/review, rollback, concurrent approval, zero, fees and multiplier absence passed\n";

@@ -7,6 +7,7 @@ const ctx={S:{},DB:{},clone:x=>JSON.parse(JSON.stringify(x)),cur:()=> 'RMB',rate
  esc:x=>String(x),reviewProductTitleOnly:()=> 'Synthetic item',buildSpec:()=>'',quoteDirectImageUrl:x=>x,
  quoteItemQtyForTotal:x=>Number(x.qty),$:()=>null,normalizeVirtualQuoteItemSign:x=>x};
 vm.createContext(ctx);
+for(const name of ['reviewSavedMultiplier','reviewRowMultiplier'])vm.runInContext(extract(name),ctx);
 for(const name of ['quoteMoneyRound','quoteMoneyRow','quoteConvertMoney','quoteMoneyToRmb','normalizeQuoteItemCurrency','reviewItemRows','quoteDefaultAdjustment','quoteNormalizeAdjustment','quoteAdjustmentFromControls','quoteEffectiveAdjustment','quoteAdjustmentAmount','quoteTotalsForItems'])vm.runInContext(extract(name),ctx);
 function displayPrice(item){return Number(ctx.reviewItemRows([item]).match(/class="review-price"[^>]*value="([^"]+)"/)[1]);}
 for(const alias of ['unit_price','approved_price']){
@@ -33,6 +34,20 @@ let scripts=0;for(const match of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/sc
 assert(source.includes('source.revision')&&source.includes('S.currentMoneyRevision=q.money_revision'));
 assert(source.includes('确认后锁定本次明细、币种及汇率'));
 console.log('Quote money runtime: aliases, exchange context, zero, saved price freeze, precision, totals, revision wiring; '+scripts+' inline scripts passed');
+vm.runInContext(extract('collectReviewItems'),ctx);
+for(const virtual of [false,true])for(const mult of [undefined,0,1.35]){
+ const item={product:{id:'synthetic'},qty:1,price:80,currency:'RMB',...(virtual?{item_type:'virtual',virtual_type:'fuel'}:{}),...(mult===undefined?{}:{price_multiplier:mult})};
+ const html=ctx.reviewItemRows([item]);
+ assert.equal(html.includes('class="review-multiplier"'),!virtual);
+ const tr={querySelector:sel=>({value:sel==='.review-qty'?'1':sel==='.review-price'?'80':sel==='.review-moq'?'':mult===undefined?'':String(mult)})};
+ ctx.document={querySelectorAll:()=>[tr]};
+ const out=ctx.collectReviewItems([item])[0];
+ assert.equal(out.price_multiplier,mult,'absent/zero/explicit multiplier preserved');
+ assert.equal(out.price,80);
+}
+assert.equal(ctx.reviewRowMultiplier({querySelector:()=>({value:'0'})},{price_multiplier:1.35}),0);
+assert.throws(()=>ctx.reviewRowMultiplier({querySelector:()=>({value:'-1'})},{}));
+assert.throws(()=>ctx.reviewRowMultiplier({querySelector:()=>({value:'Infinity'})},{}));
 (async()=>{
  const base=[{qty:1,price:100,price_multiplier:1,moq:''}],source={id:7,revision:'original-opened-revision',amount:100,items:base,adjustment:{type:'none',value:0}};
  const modal={dataset:{quoteId:'7',currency:'RMB'},_moneySource:source},note={value:'',focus(){}};
