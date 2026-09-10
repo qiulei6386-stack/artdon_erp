@@ -1116,7 +1116,9 @@ function bomApplySavedProject(raw){
 function updateBomWorkflowUI(){
   const p=getCurrent(), status=String(p?.reviewStatus||'draft'), ready=bomEditorReady(), locked=!ready||!!p&&['pending','approved'].includes(status);
   const set=(id,ok)=>{const el=$(id);if(!el)return;el.disabled=!ok;el.style.opacity=ok?'':'0.55'};
-  document.querySelectorAll('#editPage input:not([readonly]),#editPage select,#editPage textarea,#tbody button').forEach(el=>{el.disabled=locked});
+  document.querySelectorAll('#editPage input:not([readonly]):not(#search):not(#modelSearch),#editPage select,#editPage textarea,#tbody button').forEach(el=>{el.disabled=locked});
+  // Navigation is not a document edit. It stays available for locked review versions.
+  ['search','modelSearch'].forEach(id=>set(id,true));
   ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
   set('topSaveCurrentBtn',!!p&&hasPerm('edit')&&!locked);
   set('bomSubmitBtn',ready&&hasPerm('edit')&&['draft','rejected'].includes(status));
@@ -1361,6 +1363,7 @@ async function loadProject(id){
   bomEditorId=id;
   let linkInfo={fixed:[],missing:[],zeroPrice:[]};
   renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} updateBomWorkflowUI();bomRememberPlace();
+  setStatus('BOM 明细已读取');
 }
 function addRow(row={}){const p=getCurrent();if(!p)return;if(bomWorkflowLocked())return alert('待审核/已审核 BOM 已锁定，请先驳回或退审。');p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
 function removeRow(i){if(bomWorkflowLocked())return;const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}

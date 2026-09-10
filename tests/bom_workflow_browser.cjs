@@ -42,6 +42,13 @@ const root=path.resolve(__dirname,'..');
   await page.evaluate(()=>{loadProject('B');newProject();showPage('dashboard')});assert.equal(await page.evaluate(()=>currentId),'A');
   releaseSave();await page.waitForFunction(()=>!bomWriteBusy&&getCurrent().revision==='v1x');assert.equal(data.A.name,'Synthetic A saved');assert.equal(data.B.name,'Synthetic B');
   await page.evaluate(()=>removeRow(0));assert.equal(await page.locator('#grandTotal').textContent(),'0.00');
+  for(const status of ['pending','approved']){
+   await page.evaluate(status=>{getCurrent().reviewStatus=status;updateBomWorkflowUI()},status);
+   assert(await page.locator('#bomSaveBtn').isDisabled());assert(await page.locator('#projectName').isDisabled());
+   assert(await page.locator('#search').isEnabled(),'review lock must not disable navigation search');
+   await page.locator('#search').fill('Synthetic B');assert.equal(await page.locator('#search').inputValue(),'Synthetic B');
+  }
+  await page.evaluate(()=>loadProject('B'));assert((await page.locator('#status').textContent()).includes('BOM 明细已读取'));
   assert.deepEqual(errors,[]);console.log('Real-page BOM workflow: zero profit, correct total, cancel, loading/save lock, cross-BOM guard, success reload, delete-all total OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
