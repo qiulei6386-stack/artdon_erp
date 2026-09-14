@@ -8,6 +8,10 @@ function qfixture(): array {
     return ['id'=>1,'quote_no'=>'QA-MAIL-001','quote_date'=>'2026-09-14','quote_status'=>'Quotation sheet','customer_json'=>json_encode(['company'=>'Acceptance Test Customer','primary_contact'=>'Test Contact','primary_contact_email'=>'acceptance@example.invalid']),'header_json'=>json_encode(['company'=>'Acceptance Lighting','from'=>'Acceptance Team','address'=>'Test Address']),'bank_json'=>'{}','template_json'=>'{}','items_json'=>json_encode($items),'exchange_rate'=>1]+$m;
 }
 $s=qfixture();$p=qmail_safe_images(qmail_payload($s));
+qtest(qmail_options(['mail_kind'=>'test','email'=>' QA@example.invalid ','body_text'=>'Hi'])[1]==='qa@example.invalid','Test destination normalized');
+qreject(fn()=>qmail_options(['mail_kind'=>'test','email'=>'one@example.invalid,two@example.invalid']),'Multiple test recipients rejected');
+qreject(fn()=>qmail_options(['mail_kind'=>'other']),'Invalid kind rejected');
+qreject(fn()=>qmail_options(['body_text'=>str_repeat('字',2001)]),'Compact note length bounded');
 qtest((float)$p['total']['amount']===35.0&&(float)$p['quote_adjustment']['value']===2.5,'Same approved money and adjustment in export');
 qreject(function()use($p){$p['items'][0]['product']['image']='https://evil.example/image.png';qmail_safe_images($p);},'External images fail closed');
 qreject(function()use($p){$p['items'][0]['product']['image']='../../etc/passwd';qmail_safe_images($p);},'Local path traversal blocked');

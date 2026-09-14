@@ -10,16 +10,16 @@
       const form=document.querySelector('[data-mail-compose-form]');
       if(form?.elements.customer_id)form.elements.customer_id.value=message.linked_customer_id||'';
       if(form?.elements.contact_id)form.elements.contact_id.value=message.linked_contact_id||'';
-      const hint=document.querySelector('[data-mail-compose-status]');if(hint)hint.textContent='已审核报价附件已带入。请核对收件人、正文和签名，再点击发送；删除或替换报价附件将阻止发送。';
+      const hint=document.querySelector('[data-mail-compose-status]');if(hint)hint.textContent=meta.quote_mail_kind==='test'?'测试邮件：仅允许发送至 '+meta.quote_test_recipient+'，不可添加抄送/密送。核对后手动点击发送。':'已审核报价附件已带入。请核对收件人、正文和签名，再点击发送；删除或替换报价附件将阻止发送。';
       if(form){
         const bar=document.createElement('div');bar.dataset.quoteMailPreview='1';bar.style.cssText='padding:10px 14px;border:1px solid #dce5f4;border-radius:8px;background:#f3f7ff;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;overflow-wrap:anywhere';
-        const text=document.createElement('span');text.textContent=(meta.quote_no||'已审核报价')+' · 版本 '+(meta.quote_revision||'已锁定');bar.append(text);
+        const text=document.createElement('span');text.textContent=(meta.quote_mail_kind==='test'?'测试邮件 · ':meta.quote_mail_kind==='formal'?'正式邮件 · ':'')+(meta.quote_no||'已审核报价')+' · 版本 '+(meta.quote_revision||'已锁定');bar.append(text);
         (meta.quote_files||[]).forEach((name,index)=>{const link=document.createElement('a');link.href='quote_mail_api.php?action=file&token='+encodeURIComponent(this.quoteMailToken)+'&index='+index;link.target='_blank';link.rel='noopener';link.textContent=/\.pdf$/i.test(name)?'预览 PDF':'下载核对 Excel';bar.append(link);});
         form.prepend(bar);
       }
     }return result;
   };
-  mail.composeData=function(){const data=originalData.call(this);if(this.quoteMailToken){data.quote_mail_token=this.quoteMailToken;const meta=JSON.parse(data.draft_meta_json||'{}');for(const key of ['quote_mail_token','quote_no','quote_revision','quote_files'])meta[key]=this.quoteMailMeta[key];data.draft_meta_json=JSON.stringify(meta);}return data;};
+  mail.composeData=function(){const data=originalData.call(this);if(this.quoteMailToken){data.quote_mail_token=this.quoteMailToken;const meta=JSON.parse(data.draft_meta_json||'{}');for(const key of ['quote_mail_token','quote_no','quote_revision','quote_files','quote_mail_kind','quote_test_recipient'])meta[key]=this.quoteMailMeta[key];data.draft_meta_json=JSON.stringify(meta);}return data;};
   const token=new URLSearchParams(location.search).get('quote_mail');if(!/^[a-f0-9]{48}$/.test(token||''))return;
   let attempts=0;const timer=setInterval(async()=>{
     if(!mail.account){if(++attempts<100)return;clearInterval(timer);window.crmOpenFallbackDialog?.('报价邮件待打开','请先绑定并选择发件邮箱，然后刷新本页；草稿已保留。');return;}

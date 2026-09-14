@@ -18,7 +18,10 @@ try {
     if($action==='info'){
         $id=(int)($_GET['id']??0);$s=qmail_snapshot(db(),$id);$data=qmail_contacts($s['snapshot']);
         $data+=['quote_no'=>$s['snapshot']['quote_no'],'revision'=>substr($s['hash'],0,12),'sender'=>$account['email_address'],'account_id'=>(int)$account['id']];
-        $st=db()->prepare('SELECT quote_no,snapshot_hash,sent_to,sent_at,sent_mail_id FROM quote_mail_packages WHERE quote_id=? AND user_id=? AND status=? ORDER BY sent_at DESC LIMIT 10');$st->execute([$id,$account['user_id'],'sent']);$data['sent_history']=$st->fetchAll(PDO::FETCH_ASSOC);
+        $data['history']=qmail_history(db(),$id,(int)$account['user_id']);
+        $data['test_recipient']=$account['email_address'];
+    } elseif($action==='history'){
+        $id=(int)($_GET['id']??0);$data=qmail_history(db(),$id,(int)$account['user_id'],(int)($_GET['offset']??0));
     } elseif($action==='create'){
         if($_SERVER['REQUEST_METHOD']!=='POST'||!verify_csrf())throw new RuntimeException('安全校验失败，请刷新报价页面。');
         if((int)($input['account_id']??0)!==(int)$account['id'])throw new RuntimeException('当前发件账号已改变，请重新打开发送窗口。');
@@ -39,6 +42,8 @@ try {
         $p=qmail_package(db(),(string)($_GET['token']??''),$account);qmail_assert_current(db(),$p);
         if($p['status']!=='draft')throw new RuntimeException('该报价邮件已发送，请在报价中查看发送记录。');
         $data=crm_mail_draft_get((int)$p['draft_id']);$data['quote_no']=$p['quote_no'];$data['revision']=substr($p['snapshot_hash'],0,12);
+        $context=qmail_context(db(),$p['token']);$meta=json_decode((string)($data['draft']['draft_meta_json']??'{}'),true)?:[];
+        $meta['quote_mail_kind']=$context['mail_kind'];$meta['quote_test_recipient']=$context['test_recipient'];$data['draft']['draft_meta_json']=json_encode($meta,JSON_UNESCAPED_UNICODE);
     } else throw new RuntimeException('未知操作。');
     echo json_encode(['success'=>true,'data'=>$data],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
 } catch(Throwable $e){http_response_code(400);echo json_encode(['success'=>false,'message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);}
