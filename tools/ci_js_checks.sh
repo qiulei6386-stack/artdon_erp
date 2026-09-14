@@ -37,6 +37,7 @@ if [ "$syntax_failed" -ne 0 ]; then
 fi
 
 static_tests=(
+  tests/quote_shipment_batch.cjs
   tests/quote_order_loading.cjs
   tests/bom_workflow.cjs
   tests/quote_init_memory.cjs

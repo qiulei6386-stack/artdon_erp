@@ -8,6 +8,18 @@ require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_read_projection.php';
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 $pdo=db();
+// New adjustable batches always use their immutable signed document version.
+try{
+  $qbId=(int)($_GET['shipment_id']??$_GET['id']??0);
+  if($qbId>0){
+    $qbStmt=$pdo->prepare('SELECT p.id,MAX(d.version) version FROM quote_shipment_plans p JOIN quote_shipment_plan_documents d ON d.plan_id=p.id WHERE p.shipment_id=? GROUP BY p.id');
+    $qbStmt->execute([$qbId]);$qbDoc=$qbStmt->fetch(PDO::FETCH_ASSOC);
+    if($qbDoc){
+      if(!in_array(strtolower((string)($_GET['format']??'')),['xls','xlsx','excel'],true)){header('Location: quote_batch_document.php?id='.(int)$qbDoc['id'].'&version='.(int)$qbDoc['version']);exit;}
+      $qbStmt=$pdo->prepare('SELECT data_json FROM quote_shipment_plan_documents WHERE plan_id=? AND version=?');$qbStmt->execute([$qbDoc['id'],$qbDoc['version']]);$qbFrozen=json_decode((string)$qbStmt->fetchColumn(),true);
+    }
+  }
+}catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;}
 function qd_h($v){return htmlspecialchars((string)($v??''),ENT_QUOTES,'UTF-8');}
 function qd_s($v){return trim((string)($v??''));}
 function qd_num($v){return is_numeric($v)?(float)$v:0.0;}
@@ -347,6 +359,11 @@ if($docStatus==='deleted'){
 $order=qr_document_order($pdo,(int)$ship['order_id']);if(!$order){http_response_code(404);echo 'Order not found';exit;}
 $shipmentItems=qd_rows($pdo,'SELECT '.qr_item_columns($pdo,'quote_shipment_items','si',true).',o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id WHERE si.shipment_id=? ORDER BY si.order_id,si.item_index,si.id',[$shipmentId]);
 $items=qd_build_document_items($pdo,$order,$shipmentItems);
+if(isset($qbFrozen)&&is_array($qbFrozen)){
+  $order['customer_json']=json_encode(['company'=>$qbFrozen['customer_name']??'','address'=>$qbFrozen['consignee']??''],JSON_UNESCAPED_UNICODE);
+  $order['header_json']=json_encode(['company'=>$qbFrozen['seller_name']??'','from_text'=>$qbFrozen['seller_text']??''],JSON_UNESCAPED_UNICODE);
+  $order['bank_json']=json_encode(['text'=>$qbFrozen['bank_text']??''],JSON_UNESCAPED_UNICODE);
+}
 $ciItems=qd_build_ci_items($items);
 $cartons=qd_rows($pdo,'SELECT * FROM quote_shipment_cartons WHERE shipment_id=? ORDER BY id',[$shipmentId]);
 $plItems=$type==='pl'?array_merge($items,qd_carton_pl_rows($cartons,$items)):$items;

@@ -7,6 +7,7 @@ if (file_exists(__DIR__.'/includes/artdon_sso_core.php')) {
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_order_conversion.php';
 require_once __DIR__ . '/includes/quote_read_projection.php';
+require_once __DIR__ . '/includes/quote_shipment_batch.php';
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,7 +15,7 @@ $pdo = db();
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 function qo_ok($data=[]){ if(($GLOBALS['action']??'')==='detail'){qo_write_json(['ok'=>true,'data'=>$data]);exit;} echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
-function qo_fail($msg){ echo json_encode(['ok'=>false,'msg'=>$msg], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit; }
+function qo_fail($msg){ throw new RuntimeException($msg); }
 function qo_release_session_lock(){ if(session_status()===PHP_SESSION_ACTIVE) @session_write_close(); }
 function qo_input($release=false){ static $j=null; if($release){$j=null;return [];} if($j!==null) return $j; $raw=file_get_contents('php://input'); $a=json_decode((string)$raw,true); $j=is_array($a)?$a:($_POST?:[]); return $j; }
 function qo_s($v,$max=5000){ $s=trim((string)($v ?? '')); if($max>0){ if(function_exists('mb_strlen') && mb_strlen($s,'UTF-8')>$max) $s=mb_substr($s,0,$max,'UTF-8'); elseif(!function_exists('mb_strlen') && strlen($s)>$max) $s=substr($s,0,$max); } return $s; }
@@ -499,6 +500,8 @@ function qo_customer_name_key(array $order): string {
   return strtolower(preg_replace('/\s+/u',' ',qo_s($order['customer_name']??qo_customer_name($order['customer_json']??''),255)));
 }
 function qo_customer_key(array $order): string {
+  $stableId=qo_s($order['customer_id']??'',120);
+  if($stableId!=='' && $stableId!=='0') return 'id:'.$stableId;
   $name=qo_customer_name_key($order);
   if($name!=='') return 'name:'.$name;
   $cid=qo_s($order['customer_id']??'',120);
@@ -606,7 +609,8 @@ function qo_shipment_validate_multi_items(PDO $pdo,array $orderIds,$shipmentId,a
   foreach($qtyByItem as $oid=>$qty){
     $it=$orderItems[(int)$oid]??[];
     $other=(float)(qo_row($pdo,'SELECT COALESCE(SUM(qty),0) AS s FROM quote_shipment_items WHERE order_item_id=? AND shipment_id<>?',[(int)$oid,$shipmentId])['s']??0);
-    $available=max(0,qo_num($it['qty']??0)-$other);
+    $reserved=function_exists('qb_reserved')?qb_reserved($pdo,(int)$oid):0;
+    $available=max(0,qo_num($it['qty']??0)-$other-$reserved);
     if($qty>$available+0.00001) qo_fail('出货数量超过订单剩余可出数量：'.($it['product_code']??'产品'));
   }
   $active=[]; foreach($clean as $row) $active[(int)$row['item']['order_id']]=true;
@@ -616,9 +620,10 @@ function qo_shipment_validate_multi_items(PDO $pdo,array $orderIds,$shipmentId,a
 function qo_create_shipment(PDO $pdo,$d,$quick=false){
   return qr_with_order_locks($pdo,qo_requested_order_ids($d,(int)($d['order_id']??0)),static function()use($pdo,$d,$quick){return qo_create_shipment_locked($pdo,$d,$quick);});
 }
-function qo_create_shipment_locked(PDO $pdo,$d,$quick=false){
-  qo_commission_schema($pdo); // Schema work must precede shipment transaction.
-  qo_ensure_schema($pdo); $orderId=(int)($d['order_id']??0); if($orderId<=0) qo_fail('缺少订单ID');
+function qo_create_shipment_locked(PDO $pdo,$d,$quick=false,bool $insideBatchTransaction=false){
+  if(!$insideBatchTransaction){qo_commission_schema($pdo);qo_ensure_schema($pdo);}
+  elseif(!$pdo->inTransaction())throw new RuntimeException('Missing batch transaction');
+  $orderId=(int)($d['order_id']??0); if($orderId<=0) qo_fail('缺少订单ID');
   $orderIds=qo_requested_order_ids($d,$orderId); $orders=qo_load_orders($pdo,$orderIds); if(!$orders) qo_fail('订单不存在');
   qo_validate_same_customer_orders($orders); $order=$orders[0]; $orderId=(int)$order['id'];
   $shipDate=qo_s($d['ship_date']??qo_today(),20) ?: qo_today();
@@ -640,7 +645,7 @@ function qo_create_shipment_locked(PDO $pdo,$d,$quick=false){
   foreach($orders as $o){$pay=qo_recalc_payment($pdo,(int)$o['id']);$balance+=qo_num($pay['balance_amount']??0);}
   if(!$quick && empty($d['force_shipment']) && $balance>0.01) qo_fail((count($orders)>1?'合并出货订单':'订单').'尾款未收齐，当前未收：'.$currency.' '.number_format($balance,2));
   $tot=qo_add_carton_detail_totals($tot,$cartons);
-  $pdo->beginTransaction();
+  if(!$insideBatchTransaction)$pdo->beginTransaction();
   try {
   $st=$pdo->prepare('INSERT INTO quote_shipments(order_id,shipment_no,ship_date,packing_list_no,commercial_invoice_no,shipping_mark,ship_method,port_loading,port_destination,country_origin,status,total_qty,total_cartons,total_nw,total_gw,total_cbm,note,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())');
   $st->execute([$orderId,$shipmentNo,$shipDate,$plNo,$ciNo,qo_s($d['shipping_mark']??($order['customer_name']??''),255),qo_s($d['ship_method']??($settings['ship_method']??''),160),qo_s($d['port_loading']??($settings['port_loading']??'Zhongshan'),160),qo_s($d['port_destination']??'',160),qo_s($d['country_origin']??($settings['country_origin']??'China'),120),qo_s($d['status']??'草稿',80),$tot['qty'],$tot['cartons'],$tot['nw'],$tot['gw'],$tot['cbm'],qo_s($d['note']??'',5000),qo_actor()]);
@@ -650,8 +655,9 @@ function qo_create_shipment_locked(PDO $pdo,$d,$quick=false){
   foreach($rows as $row){ $x=$row['input']; $it=$row['item']; $oid=(int)$it['id']; $rowOrderId=(int)($it['order_id']??$orderId); $qty=qo_num($x['qty']); $unit=qo_num($it['unit_price']??0); $amount=round($qty*$unit,2); $ins->execute([$shipmentId,$rowOrderId,$oid,(int)($it['item_index']??0),$it['customer_code']??'', $it['product_code']??'', $it['product_name']??'', $it['specification']??'', $it['color']??'', $qty, qo_num($x['pcs_per_ctn']??0), qo_num($x['cartons']??0), qo_s($x['carton_size']??'',160), qo_num($x['nw']??0), qo_num($x['gw']??0), qo_num($x['cbm']??0), $unit, $amount, $it['image']??'', qo_s($x['note']??'',5000), $it['item_json']??'']); qr_copy_shipment_payload($pdo,(int)$pdo->lastInsertId(),(int)$it['id']); }
   if($cartons){ $ci=$pdo->prepare('INSERT INTO quote_shipment_cartons(shipment_id,order_id,carton_no,carton_range,items_text,items_json,qty,carton_size,nw,gw,cbm,mark,note,carton_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'); foreach($cartons as $c){ $ci->execute([$shipmentId,$orderId,qo_s($c['carton_no']??'',120),qo_s($c['carton_range']??'',160),qo_s($c['items_text']??'',5000),json_encode($c['items']??[],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),qo_num($c['qty']??0),qo_s($c['carton_size']??'',160),qo_num($c['nw']??0),qo_num($c['gw']??0),qo_num($c['cbm']??0),qo_s($c['mark']??'',255),qo_s($c['note']??'',5000),qo_num($c['carton_count']??1)]); } }
   qo_recalc_orders($pdo,array_map(function($o){return (int)$o['id'];},$orders));
-  $pdo->commit();
-  } catch(Throwable $e) {if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+  if(!$insideBatchTransaction)$pdo->commit();
+  } catch(Throwable $e) {if(!$insideBatchTransaction&&$pdo->inTransaction())$pdo->rollBack();throw $e;}
+  if($insideBatchTransaction)return ['shipment_id'=>$shipmentId,'shipment_no'=>$shipmentNo,'totals'=>$tot];
   $orderRefs=implode(', ',array_map('qo_order_ref',$orders));
   qo_push_quote_sys_notification($pdo,'quote_shipment_created','订单新增出货：'.$shipmentNo,trim('客户：'.($order['customer_name']??'')."\n订单号：".$orderRefs."\n来源报价：".($order['quote_no']??'')."\n出货日期：".$shipDate."\n出货数量：".$tot['qty']."\n单证号：".$plNo.' / '.$ciNo),[
     'source_module'=>'quote_shipments',
@@ -789,6 +795,7 @@ function qo_mark_document_active(PDO $pdo,int $shipmentId,string $type): void {
 function qo_manage_document(PDO $pdo,array $d){
   qo_ensure_schema($pdo);
   $shipmentId=(int)($d['shipment_id']??0); if($shipmentId<=0) qo_fail('缺少出货批次ID');
+  if(qo_table_exists($pdo,'quote_shipment_plans')&&qo_row($pdo,'SELECT id FROM quote_shipment_plans WHERE shipment_id=?',[$shipmentId]))qo_fail('此单证属于新版出货批次，请在装运工作台查看修订版本；不能覆盖已签发记录');
   $type=qo_doc_type($d['type']??'pl'); $mode=qo_s($d['mode']??'update',30); $label=qo_doc_label($type);
   $before=qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[$shipmentId]); if(!$before) qo_fail('出货批次不存在');
   $order=qo_row($pdo,'SELECT '.qr_order_columns($pdo).' FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$before['order_id']]) ?: [];
@@ -881,8 +888,7 @@ function qo_rebuild_shipment_items_locked(PDO $pdo,$shipment){
 function qo_existing_or_quick_shipment(PDO $pdo,$orderId,$type='pl'){
   $r=qo_row($pdo,"SELECT * FROM quote_shipments WHERE order_id=? AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY id DESC LIMIT 1",[$orderId]);
   if($r){ if(!qo_shipment_items_have_content($pdo,(int)$r['id'])) qo_fail('历史出货明细缺失，请先核对该批次；未自动重建或改写历史数据'); return qo_row($pdo,'SELECT * FROM quote_shipments WHERE id=? LIMIT 1',[(int)$r['id']]) ?: $r; }
-  qo_create_shipment($pdo,['order_id'=>$orderId,'ship_date'=>qo_today(),'force_shipment'=>1,'status'=>'草稿'],true);
-  return qo_row($pdo,'SELECT * FROM quote_shipments WHERE order_id=? ORDER BY id DESC LIMIT 1',[$orderId]);
+  qo_fail('请进入装运工作台选择产品并保存计划；预览单证不再自动创建出货记录');
 }
 function qo_shipment_read_totals(PDO $pdo,array $shipments): array {
   $ids=array_values(array_unique(array_filter(array_map(function($s){return (int)$s['id'];},$shipments))));
@@ -1573,6 +1579,30 @@ function qo_order_detail(PDO $pdo,$id,bool $light=false){
 }
 
 try{
+  if(strpos($action,'batch_')===0){
+    $op=substr($action,6);
+    $features=['save'=>'edit','issue'=>'export','dispatch'=>'edit','cancel'=>'delete','reverse'=>'admin'];
+    if(function_exists('artdon_perm_require_action'))artdon_perm_require_action('quote',$op,$features,'view');
+    $input=qo_input();
+    if(!empty($input['force_shipment'])&&function_exists('artdon_perm_require_action'))artdon_perm_require_action('quote','force',[],'admin');
+    if(isset($features[$op])){
+      if(($_SERVER['REQUEST_METHOD']??'')!=='POST')throw new RuntimeException('修改必须通过POST提交');
+      if(!verify_csrf())throw new RuntimeException('安全校验过期，请刷新页面');
+    }
+    qo_ensure_schema($pdo);qb_schema($pdo);qo_release_session_lock();
+    if($op==='candidates')qo_ok(qb_candidates($pdo,$input));
+    if($op==='items')qo_ok(qb_items($pdo,(int)($input['order_id']??0),(int)($input['plan_id']??0)));
+    if($op==='get')qo_ok(qb_get($pdo,(int)($input['id']??0)));
+    if($op==='document'){
+      if(function_exists('artdon_perm_require_action'))artdon_perm_require_action('quote','document',[],'export');
+      $plan=qb_get($pdo,(int)($input['id']??0));$version=(int)($input['version']??0);
+      $document=$version?qo_row($pdo,'SELECT version,data_json,actor,created_at FROM quote_shipment_plan_documents WHERE plan_id=? AND version=?',[$plan['id'],$version]):null;
+      if($version&&!$document)throw new RuntimeException('签发版本不存在');
+      qo_ok(['id'=>$plan['id'],'state'=>$plan['state'],'current_version'=>$plan['version'],'version'=>$version?:$plan['version'],'issued'=>(bool)$document,'actor'=>$document['actor']??'','created_at'=>$document['created_at']??'','data'=>$document?qo_json($document['data_json']):$plan['data']]);
+    }
+    if(isset($features[$op]))qo_ok(qb_mutate($pdo,$op,$input));
+    throw new RuntimeException('未知批次操作');
+  }
   if($action==='item_image'){qo_release_session_lock();qr_send_item_image($pdo,(int)($_GET['id']??0));exit;}
   $commissionActions=['commission_order_list','commission_summary_list','commission_order_save','commission_order_batch_save','commission_line_save','commission_line_batch_save','commission_payment_info','commission_history'];
   if(!in_array($action,$commissionActions,true))qo_ensure_schema($pdo);
@@ -1604,7 +1634,7 @@ try{
   if($action==='commission_unsettle'){ $d=qo_input();qo_commission_schema($pdo);$id=(int)($d['id']??0);$pdo->prepare("UPDATE quote_commission_snapshots SET settle_status='unsettled',settled_amount=0,settled_at=NULL,settled_by='',updated_at=NOW() WHERE id=?")->execute([$id]);qo_ok(['snapshot'=>qo_row($pdo,'SELECT * FROM quote_commission_snapshots WHERE id=?',[$id])]); }
   if($action==='prepare_shipment'){ $d=qo_input(); $id=(int)($d['order_id']??0); $detail=qo_prepare_context($pdo,$id); $items=[]; foreach(qo_prepare_items($pdo,$id) as $x){ if(qo_num($x['remain_qty']??0)<=0) continue; $x['order_id']=$id; $x['order_no']=$detail['order']['order_no']??''; $x['quote_no']=$detail['order']['quote_no']??''; $items[]=$x; } $detail['items']=$items; qo_ok($detail); }
   if($action==='prepare_combined_shipment'){ $d=qo_input(); qo_ok(qo_prepare_combined_shipment($pdo,(int)($d['order_id']??0),!empty($d['summary_only']))); }
-  if($action==='create_shipment'){ qo_ok(qo_create_shipment($pdo,qo_input(),false)); }
+  if($action==='create_shipment'){ qo_fail('出货已升级为待装计划，请刷新页面后进入装运工作台；旧页面提交未创建出货记录'); }
   if($action==='shipment_edit_data'){ $d=qo_input(); qo_ok(qo_shipment_edit_data($pdo,(int)($d['id']??0))); }
   if($action==='update_shipment'){ qo_ok(qo_update_shipment($pdo,qo_input())); }
   if($action==='delete_shipment'){ qo_ok(qo_delete_shipment($pdo,qo_input())); }
@@ -1626,4 +1656,4 @@ try{
   if($action==='delete_payment'){ $d=qo_input(); $pid=(int)($d['id']??0); $r=qo_row($pdo,'SELECT order_id,commission_deduct_amount,commission_deduct_snapshot_id FROM quote_order_payments WHERE id=?',[$pid]);if($r&&qo_num($r['commission_deduct_amount']??0)>0&&(int)($r['commission_deduct_snapshot_id']??0)>0){$pdo->prepare("UPDATE quote_commission_snapshots SET deduct_amount=GREATEST(0,deduct_amount-?),deduct_confirmed=IF(GREATEST(0,deduct_amount-?)>0,1,0),updated_at=NOW() WHERE id=?")->execute([qo_num($r['commission_deduct_amount']),qo_num($r['commission_deduct_amount']),(int)$r['commission_deduct_snapshot_id']]);} $pdo->prepare('DELETE FROM quote_order_payments WHERE id=?')->execute([$pid]); qo_ok($r?qo_recalc_payment($pdo,(int)$r['order_id']):[]); }
   if($action==='clear_quote_order_test_data'){ $d=qo_input(); if(($d['confirm']??'')!=='CLEAR_TEST_DATA') qo_fail('确认码错误'); $tables=['quote_commission_lines','quote_commission_snapshots','quote_shipment_cartons','quote_shipment_items','quote_shipments','quote_order_payments','quote_sales_order_items','quote_sales_orders','quote_orders']; $del=[]; foreach($tables as $t){ if(qo_table_exists($pdo,$t)){ $del[$t]=(int)$pdo->query('SELECT COUNT(*) FROM `'.$t.'`')->fetchColumn(); $pdo->exec('DELETE FROM `'.$t.'`'); } } qo_ok(['deleted'=>$del]); }
   qo_fail('未知订单接口 action：'.$action);
-}catch(Throwable $e){ qo_fail('订单接口异常：'.$e->getMessage()); }
+}catch(Throwable $e){ if($pdo->inTransaction())$pdo->rollBack();echo json_encode(['ok'=>false,'msg'=>'订单接口异常：'.$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); }

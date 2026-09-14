@@ -5440,4 +5440,7 @@ function printOrderStatement(key){
 <!-- V6.8.5.46：历史报价关键词支持客户公司 / 客户联系人 / 报价订单号 / 产品型号 / 系列名字，不匹配业务员/国家/金额。 -->
 <link rel="stylesheet" href="assets/quote-shipment-selection.css?v=20260908-issues7">
 <script src="assets/quote-shipment-selection.js?v=20260908-issues7"></script>
+<meta name="shipment-csrf" content="<?= htmlspecialchars(csrf_token(),ENT_QUOTES,'UTF-8') ?>">
+<link rel="stylesheet" href="assets/quote-shipment-batch.css?v=20260914-1">
+<script src="assets/quote-shipment-batch.js?v=20260914-1"></script>
 </body></html>

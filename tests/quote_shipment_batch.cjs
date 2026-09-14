@@ -1,0 +1,11 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const sandbox={window:{addEventListener(){}},document:{},openCombinedShipmentModal(){},openShipmentModal(){},Map,Set,Number,String,Math,structuredClone,console};
+vm.createContext(sandbox);vm.runInContext(fs.readFileSync('assets/quote-shipment-batch.js','utf8'),sandbox);
+const batch=sandbox.window.QuoteShipmentBatch;
+assert.equal(batch.newState(7).selected.size,0,'No quantities automatically selected');
+assert.equal(batch.allocations([{items:[{order_item_id:1,qty:2},{order_item_id:2,qty:3}]},{items:[{order_item_id:1,qty:4}]}])[1],6);
+const data={seller_name:'<script>bad</script>',ship_date:'2026-09-14',consignee:'Synthetic',currency:'USD',items:[{order_item_id:1,order_no:'A',product_code:'X',qty:2,unit_price:3,amount:6},{order_item_id:2,order_no:'B',product_code:'X',qty:3,unit_price:4,amount:12}],cartons:[{carton_no:'1',items:[{order_item_id:1,qty:2},{order_item_id:2,qty:3}],gw:1,cbm:.1}],totals:{qty:5,gw:1,cbm:.1}};
+const html=batch.documentHtml({id:1,version:2,current_version:3,issued:true,state:'planning',data});
+assert.match(html,/历史版本 · 已替代/);assert.match(html,/USD 18\.00/);assert.doesNotMatch(html,/<script>bad/);assert.match(html,/A \/ X/);assert.match(html,/B \/ X/);
+const source=fs.readFileSync('assets/quote-shipment-batch.js','utf8');assert.match(source,/state\.pending\.body/);assert.match(source,/token!==epoch/);assert.match(source,/X-CSRF-Token/);
+console.log('Shipment batch client: explicit selection, carton allocation, revision labeling, separate order prices and HTML escaping passed.');
