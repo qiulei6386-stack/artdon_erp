@@ -58,7 +58,12 @@ function qmail_safe_images(array $payload): array {
 function qmail_run(array $command, string $input, string $output, string $error): void {
     $process=proc_open($command,[0=>['file',$input,'r'],1=>['file',$output,'w'],2=>['file',$error,'w']],$pipes,dirname(__DIR__));
     if (!is_resource($process)) throw new RuntimeException('附件生成进程无法启动。');
-    $code=proc_close($process);
+    // PHP-FPM may disable proc_close while retaining proc_open/get_status. Do not weaken its policy.
+    $deadline=microtime(true)+40;
+    do {$status=proc_get_status($process);if(!$status['running'])break;usleep(50000);}while(microtime(true)<$deadline);
+    if($status['running']){if(function_exists('proc_terminate'))proc_terminate($process);throw new RuntimeException('附件生成超时，请稍后重试。');}
+    $code=(int)$status['exitcode'];
+    if(function_exists('proc_close')){$closed=proc_close($process);if($code<0)$code=$closed;}
     if ($code!==0) throw new RuntimeException('附件生成失败或超时，请稍后重试；不会创建不完整邮件。');
 }
 function qmail_files(array $snap, array $formats, string $dir): array {
