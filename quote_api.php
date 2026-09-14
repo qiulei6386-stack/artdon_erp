@@ -2427,7 +2427,7 @@ function quote_commission_sync_converted_orders($pdo,array $q,array $c,string $a
   if($qid>0){$where[]='source_quote_id=?';$args[]=$qid;}
   if($quoteNo!==''){$where[]='quote_no=?';$args[]=$quoteNo;}
   if(!$where)return ['synced'=>0,'skipped'=>0,'orders'=>[]];
-  $orders=rows($pdo,'SELECT * FROM quote_sales_orders WHERE ('.implode(' OR ',$where).") AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY id",$args);
+  $orders=rows($pdo,'SELECT id,source_quote_id,order_no,quote_no,customer_id,customer_name,amount,qty,paid_amount,currency,status FROM quote_sales_orders WHERE ('.implode(' OR ',$where).") AND COALESCE(status,'') NOT IN ('已作废','取消') ORDER BY id",$args);
   $synced=0;$skipped=0;$ids=[];
   foreach($orders as $o){
     $orderId=(int)($o['id']??0);if(!$orderId)continue;
@@ -2476,7 +2476,7 @@ function quote_commission_order_list($pdo,$d){
   return ['list'=>$list,'total'=>$total,'page'=>$page,'page_size'=>$size,'total_pages'=>$pages];
 }
 function quote_commission_order_save($pdo,$d,$user){
-  quote_commission_schema($pdo);$orderId=(int)($d['order_id']??0);$o=row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]);if(!$o)fail('订单不存在');
+  quote_commission_schema($pdo);$orderId=(int)($d['order_id']??0);$o=row($pdo,'SELECT id,source_quote_id,order_no,quote_no,customer_id,customer_name,amount,qty,paid_amount,currency,status FROM quote_sales_orders WHERE id=? LIMIT 1',[$orderId]);if(!$o)fail('订单不存在');
   $mode=s($d['commission_mode']??'percent',50);$value=max(0,(float)($d['commission_value']??0));$baseCode=s($d['calc_base']??'order_amount',50);$base=$baseCode==='received_amount'?(float)($o['paid_amount']??0):(float)($o['amount']??0);$commission=quote_commission_calc($mode,$value,$base,(float)($o['qty']??0));if($commission===null)fail('毛利数据不足，暂不能计算');
   $old=row($pdo,'SELECT * FROM quote_commission_snapshots WHERE order_id=? AND rule_id=0 LIMIT 1',[$orderId]);$actor=quote_price_policy_actor($user);$snapshot=['source'=>'manual_order_commission','operator'=>$actor,'time'=>date('Y-m-d H:i:s'),'before'=>$old,'order'=>['id'=>$orderId,'order_no'=>$o['order_no'],'quote_no'=>$o['quote_no'],'amount'=>$o['amount'],'qty'=>$o['qty']]];
   $params=[(int)($o['source_quote_id']??0),$o['quote_no'],$o['order_no'],s($d['target_type']??'other',50),s($d['target_name']??'',160),$mode,$value,$baseCode,$base,$commission,s($d['currency']??$o['currency'],20),s($d['settle_node']??'manual',50),s($d['settle_status']??'unsettled',50),max(0,(float)($d['settled_amount']??0)),json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),s($d['note']??'订单佣金',5000)];

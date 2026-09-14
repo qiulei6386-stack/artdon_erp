@@ -15,7 +15,7 @@ $checks=[
   'create writes shipment order relation'=>strpos($api,'qo_sync_shipment_orders($pdo,$shipmentId,$orders)')!==false,
   'edit/delete recalc all related orders'=>strpos($api,'qo_shipment_order_ids($pdo,$shipmentId,$shipment)')!==false && strpos($api,'qo_recalc_orders($pdo,$orderIds)')!==false,
   'order detail includes joined combined shipments'=>strpos($api,'quote_shipment_orders so ON so.shipment_id=s.id')!==false,
-  'document items join source order no'=>strpos($doc,'SELECT si.*,o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id')!==false,
+  'document items join source order no with light snapshot projection'=>strpos($doc,"qr_item_columns(\$pdo,'quote_shipment_items','si',true)")!==false && strpos($doc,',o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id')!==false,
   'CI fallback key includes order source'=>strpos($doc,"'source:'.\$source.'|signature:'.\$customer")!==false,
   'HTML CI renders Order No column'=>strpos($doc,'<th>Order No.</th>')!==false && strpos($doc,"qd_h(\$it['order_no']??'')")!==false,
   'Excel CI renders Order No column'=>strpos($excel,"['Picture','Order No.','Size'")!==false,

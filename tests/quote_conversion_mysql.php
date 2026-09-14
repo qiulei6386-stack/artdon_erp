@@ -9,11 +9,12 @@ $identity=$pdo->query('SELECT @@socket socket,@@datadir datadir,@@skip_networkin
 if($identity['socket']!==$socket || $identity['datadir']!==dirname($socket).'/data/' || (int)$identity['isolated']!==1) throw new RuntimeException('Sandbox identity mismatch');
 $source=file_get_contents(__DIR__.'/../quote_order_api.php');
 $start=strpos($source,'function qo_ok(');
-$end=strpos($source,"try{\n  \$commissionActions=");
+$end=strpos($source,"\ntry{\n",$start);
 if($start===false || $end===false) throw new RuntimeException('API function boundary missing');
 eval(substr($source,$start,$end-$start));
 unset($source);
 require __DIR__.'/../includes/quote_order_conversion.php';
+require_once __DIR__.'/../includes/quote_read_projection.php';
 require_once __DIR__.'/../includes/quote_money.php';
 $_SESSION=['username'=>'验收测试'];
 function check($ok,$why){if(!$ok) throw new RuntimeException($why);}

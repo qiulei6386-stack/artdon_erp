@@ -5,6 +5,7 @@ if (file_exists(__DIR__.'/includes/artdon_sso_core.php')) {
   if (function_exists('artdon_sso_require_page')) artdon_sso_require_page('quote');
 }
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/quote_read_projection.php';
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 $pdo=db();
 function qd_h($v){return htmlspecialchars((string)($v??''),ENT_QUOTES,'UTF-8');}
@@ -187,6 +188,9 @@ function qd_payload_to_doc_row($it,$idx=0){
   $customerCode=qd_item_text($it,['customer_code','customer_model','customerModel','client_model','clientModel']); if($customerCode==='') $customerCode=qd_item_text($p,['customer_code','customer_model','client_model']);
   $size=qd_item_text($it,['size','dimension','dimensions','quote_display_size','drawing_size','dim_size','product_size']); if($size==='') $size=qd_item_text($p,['quote_display_size','size','dimension','dimensions','dim_size','product_size']); if($size==='') $size=qd_extract_size_from_spec($spec);
   $img=qd_item_text($it,['image','product_image','image_url']); if($img==='') $img=qd_item_text($p,['image','image_display','product_image','main_image','image_url']);
+  // The image has its own output field; never embed it again in nested JSON snapshots.
+  unset($it['item_json'],$it['image'],$it['product_image'],$it['image_url']);
+  if(isset($it['product'])&&is_array($it['product']))foreach(['image','image_display','product_image','main_image','image_url'] as $key)unset($it['product'][$key]);
   return [
     'id'=>$it['id']??0,'order_id'=>(int)($it['order_id']??0),'order_no'=>qd_order_no_at($it['order_no']??'',$it['quote_no']??''),'quote_no'=>qd_s($it['quote_no']??''),
     'order_item_id'=>$it['order_item_id']??($it['id']??0),'item_index'=>(int)($it['item_index']??$idx),
@@ -204,10 +208,14 @@ function qd_order_item_rows(PDO $pdo,$order){
   $orderId=(int)($order['id']??0); $rows=[];
   $orderRef=qd_order_no_at($order['order_no']??'',$order['quote_no']??'');
   if($orderId>0 && qd_table_exists($pdo,'quote_sales_order_items')){
-    $db=qd_rows($pdo,'SELECT * FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
+    $db=qd_rows($pdo,'SELECT '.qr_item_columns($pdo,'quote_sales_order_items','',true).' FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
     foreach($db as $i=>$r){ $r['order_no']=$orderRef; $r['quote_no']=$order['quote_no']??''; $rows[]=qd_payload_to_doc_row($r,$i+1); }
   }
-  if(!$rows){ foreach(qd_order_payload_items($order) as $i=>$it){ $it['order_id']=$orderId; $it['order_no']=$orderRef; $it['quote_no']=$order['quote_no']??''; $rows[]=qd_payload_to_doc_row($it,$i+1); } }
+  if(!$rows){
+    // Only legacy orders without row records need their one original payload.
+    if($orderId>0 && !isset($order['items_json']))$order=array_merge($order,qd_row($pdo,'SELECT items_json,snapshot_json FROM quote_sales_orders WHERE id=?',[$orderId])?:[]);
+    foreach(qd_order_payload_items($order) as $i=>$it){ $it['order_id']=$orderId; $it['order_no']=$orderRef; $it['quote_no']=$order['quote_no']??''; $rows[]=qd_payload_to_doc_row($it,$i+1); }
+  }
   return $rows;
 }
 function qd_order_item_maps($orderRows){
@@ -336,8 +344,8 @@ if($docStatus==='deleted'){
   echo '<!doctype html><html><head><meta charset="utf-8"><title>单证已删除</title><style>body{font-family:Arial,"Microsoft YaHei",sans-serif;background:#f6f8fb;color:#111827}.box{max-width:760px;margin:96px auto;background:#fff;border:1px solid #dbe4f0;border-radius:16px;padding:28px;box-shadow:0 18px 50px rgba(15,23,42,.08)}h1{margin:0 0 12px}.meta{color:#64748b;line-height:1.8}.btn{display:inline-block;margin-top:18px;padding:10px 14px;border-radius:10px;background:#2563eb;color:#fff;text-decoration:none}</style></head><body><div class="box"><h1>该单证已删除</h1><div class="meta">单证类型：'.qd_h($type==='ci'?'Commercial Invoice':'Packing List').'<br>删除人：'.$deletedBy.'<br>删除时间：'.$deletedAt.'<br>原因：'.$deleteReason.'</div><a class="btn" href="javascript:history.back()">返回</a></div></body></html>';
   exit;
 }
-$order=qd_row($pdo,'SELECT * FROM quote_sales_orders WHERE id=? LIMIT 1',[(int)$ship['order_id']]);if(!$order){http_response_code(404);echo 'Order not found';exit;}
-$shipmentItems=qd_rows($pdo,'SELECT si.*,o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id WHERE si.shipment_id=? ORDER BY si.order_id,si.item_index,si.id',[$shipmentId]);
+$order=qr_document_order($pdo,(int)$ship['order_id']);if(!$order){http_response_code(404);echo 'Order not found';exit;}
+$shipmentItems=qd_rows($pdo,'SELECT '.qr_item_columns($pdo,'quote_shipment_items','si',true).',o.order_no,o.quote_no,o.customer_name FROM quote_shipment_items si LEFT JOIN quote_sales_orders o ON o.id=si.order_id WHERE si.shipment_id=? ORDER BY si.order_id,si.item_index,si.id',[$shipmentId]);
 $items=qd_build_document_items($pdo,$order,$shipmentItems);
 $ciItems=qd_build_ci_items($items);
 $cartons=qd_rows($pdo,'SELECT * FROM quote_shipment_cartons WHERE shipment_id=? ORDER BY id',[$shipmentId]);
