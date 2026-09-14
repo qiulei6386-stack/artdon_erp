@@ -121,7 +121,7 @@ function qmail_package(PDO $pdo, string $token, array $account): array {
     if(!$p)throw new RuntimeException('报价邮件不存在或不属于当前发件账号。');return $p;
 }
 function qmail_create(array $input, array $account): array {
-    $pdo=db();qmail_schema($pdo);$id=(int)($input['id']??0);$token=(string)($input['token']??'');
+    $pdo=db();qmail_schema($pdo);crm_ensure_tables();$id=(int)($input['id']??0);$token=(string)($input['token']??'');
     if(!preg_match('/^[a-f0-9]{48}$/D',$token))throw new RuntimeException('请求标识无效，请重新打开发送窗口。');
     $formats=array_values(array_intersect(['pdf','excel'],(array)($input['formats']??[])));if(!$formats)throw new RuntimeException('至少选择一种报价附件。');
     $email=strtolower(trim((string)($input['email']??'')));$request=hash('sha256',json_encode([$id,$formats,$email]));

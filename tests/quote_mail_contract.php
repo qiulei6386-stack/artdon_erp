@@ -18,6 +18,7 @@ qtest(substr_count($mail,'qmail_send_guard(')===2,'Admission and worker both che
 qtest(strpos($mail,'qmail_cancel_to_draft')!==false&&strpos($mail,'qmail_sent')!==false,'Cancellation and successful send preserve tracking');
 qtest(strpos($renderer,"PHP_SAPI !== 'cli'")!==false,'Worker rejects browser requests');
 qtest(strpos(file_get_contents(dirname(__DIR__).'/includes/quote_mail.php'),'is_readable($renderer)')!==false,'Application renderer readability checked before process launch');
+qtest(strpos(file_get_contents(dirname(__DIR__).'/includes/quote_mail.php'),'crm_ensure_tables();')<strpos(file_get_contents(dirname(__DIR__).'/includes/quote_mail.php'),'$pdo->beginTransaction();'),'Log schema initialization precedes atomic draft transaction');
 qtest(strpos(file_get_contents(dirname(__DIR__).'/includes/quote_mail.php'),'--no-sandbox')===false,'PDF renderer retains Chrome sandbox');
 qtest(strpos(file_get_contents(dirname(__DIR__).'/includes/quote_mail.php'),"function_exists('proc_close')")!==false,'Restricted FPM process lifecycle supported');
 echo "Quote mail contract: export snapshot, image boundaries, scoped endpoints, send guards and sandbox passed.\n";

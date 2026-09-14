@@ -13,7 +13,8 @@ function crm_mail_current_account($secret=false){return ['id'=>7,'user_id'=>9,'s
 function crm_mail_render_signature_variables($html,$account=null){return $html;}
 function crm_mail_uploaded_files($files){return [];}
 function crm_mail_is_generated_temp_file($path){return false;}
-function crm_log_event(...$args){if($GLOBALS['qfail']??false)throw new RuntimeException('Injected draft failure');$GLOBALS['qlogs'][]=$args;}
+function crm_ensure_tables(){static $done=false;if($done)return;$done=true;db()->exec('CREATE TABLE IF NOT EXISTS fixture_operation_logs(id INT PRIMARY KEY) ENGINE=InnoDB');}
+function crm_log_event(...$args){crm_ensure_tables();if($GLOBALS['qfail']??false)throw new RuntimeException('Injected draft failure');$GLOBALS['qlogs'][]=$args;}
 function crm_customer_timeline_add(...$args){$GLOBALS['qtimeline'][]=$args;}
 function crm_customer_get($id,$section){if($id!==1)throw new RuntimeException('No scope');}
 function qextract($name){$src=file_get_contents(dirname(__DIR__).'/crm_mail.php');if(!preg_match('/^function '.preg_quote($name,'/').'\b[\s\S]*?(?=^function |\z)/m',$src,$m))throw new RuntimeException('Missing function '.$name);eval(str_replace('__DIR__',var_export(dirname(__DIR__),true),$m[0]));}
