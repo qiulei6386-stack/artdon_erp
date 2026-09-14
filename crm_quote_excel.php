@@ -4,10 +4,11 @@ require_once __DIR__.'/includes/quote_money.php';
 require_once __DIR__.'/includes/artdon_sso_core.php';
 // Excel 是已登录报价页发起的 POST 下载；这里只校验登录，导出权限由下方
 // quote_permissions/export_pdf_excel 单独校验，避免模块页面门禁误拦下载新窗口。
-require_login();
+if (!(PHP_SAPI === 'cli' && defined('QUOTE_MAIL_RENDER') && QUOTE_MAIL_RENDER === true)) require_login();
 /* ARTDON_SSO_GATE_V2_END */
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 function qx_export_allowed(){
+  if (PHP_SAPI === 'cli' && defined('QUOTE_MAIL_RENDER') && QUOTE_MAIL_RENDER === true) return true;
   $p = $_SESSION['quote_permissions'] ?? [];
   $u = $_SESSION['quote_user'] ?? [];
   $name = strtolower((string)($u['username'] ?? ''));
@@ -222,6 +223,7 @@ function qe_get_payload(){
   return qe_load_from_db(intval($_GET['quote_id']??($_GET['id']??0)), trim((string)($_GET['quote_no']??'')));
 }
 function qe_apply_approved_snapshot($payload){
+  if (PHP_SAPI === 'cli' && defined('QUOTE_MAIL_RENDER') && QUOTE_MAIL_RENDER === true) return $payload;
   if(!empty($payload['order_export'])||!empty($payload['is_order'])||trim((string)($payload['order_no']??''))!=='')return $payload;
   $id=(int)($payload['quote_id']??0);if($id<=0){http_response_code(403);die('Missing quote ID; approved snapshot export stopped.');}
   require_once __DIR__.'/includes/db.php';$pdo=db();$st=$pdo->prepare('SELECT id,quote_no,approval_status,approved_snapshot_json FROM quote_orders WHERE id=? LIMIT 1');$st->execute([$id]);$q=$st->fetch(PDO::FETCH_ASSOC);

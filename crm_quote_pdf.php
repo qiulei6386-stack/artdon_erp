@@ -81,6 +81,7 @@ html,body,.paper,.paper *,.quote-table,.quote-table *,.terms,.terms *,.bank,.ban
 function quote_pdf_table_exists(PDO $pdo,string $t): bool { try{$s=$pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1');$s->execute([$t]);return (bool)$s->fetchColumn();}catch(Throwable $e){return false;} }
 function quote_pdf_col_exists(PDO $pdo,string $t,string $c): bool { try{$s=$pdo->prepare('SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1');$s->execute([$t,$c]);return (bool)$s->fetchColumn();}catch(Throwable $e){return false;} }
 function quote_pdf_apply_approved_snapshot(array $payload): array {
+    if (PHP_SAPI === 'cli' && defined('QUOTE_MAIL_RENDER') && QUOTE_MAIL_RENDER === true) return $payload;
     if (!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no'] ?? '')) !== '') return $payload;
     $id=(int)($payload['quote_id']??0); if($id<=0) quote_pdf_block('缺少报价ID，不能读取审核快照。');
     require_once __DIR__.'/includes/db.php'; $pdo=db();
@@ -93,6 +94,7 @@ function quote_pdf_apply_approved_snapshot(array $payload): array {
     return ['quote_id'=>$id,'quote_no'=>$snap['quote_no'],'quote_date'=>$snap['quote_date']??date('Y-m-d'),'quote_status'=>$snap['quote_status']??($snap['status']??'Quotation sheet'),'currency'=>$snap['currency']??'USD','exchange_rate'=>$snap['exchange_rate']??1,'customer'=>maybe_json($snap['customer_json']??'',[]),'header'=>maybe_json($snap['header_json']??'',[]),'bank'=>maybe_json($snap['bank_json']??'',[]),'template'=>maybe_json($snap['template_json']??'',[]),'items'=>$items,'total'=>['qty'=>$snap['qty']??0,'amount'=>$snap['amount']??0],'subtotal_amount'=>$snap['subtotal_amount']??0,'adjustment_amount'=>$snap['adjustment_amount']??0,'quote_adjustment'=>maybe_json($snap['adjustment_json']??'',[]),'approval_status'=>'approved','approved_snapshot_export'=>1];
 }
 function quote_pdf_approval_guard(array $payload): void {
+    if (PHP_SAPI === 'cli' && defined('QUOTE_MAIL_RENDER') && QUOTE_MAIL_RENDER === true) return;
     if (!empty($payload['order_export']) || !empty($payload['is_order']) || trim((string)($payload['order_no'] ?? '')) !== '') return;
     $no = trim((string)($payload['quote_no'] ?? ''));
     if ($no === '') quote_pdf_block('缺少报价编号。');

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/crm_settings_config.php';
 require_once __DIR__ . '/crm_mail_sent_visibility.php';
+require_once __DIR__ . '/includes/quote_mail.php';
 
 function crm_mail_key(): string
 {
@@ -4844,6 +4845,7 @@ function crm_mail_send_start(array $input, array $files = []): array
     register_shutdown_function(static function (array $trackedAttachments): void {
         crm_mail_cleanup_generated_attachments($trackedAttachments);
     }, $attachments);
+    if (function_exists('qmail_send_guard')) $input = qmail_send_guard($account, $input, $attachments);
     $sendInput = $input;
     $sendInput['body_html'] = $body;
     $delayMinutes = max(0, min(10, (int)($account['delay_send_minutes'] ?? 0)));
@@ -4857,9 +4859,12 @@ function crm_mail_send_start(array $input, array $files = []): array
         }
         $scheduledAt = date('Y-m-d H:i:s', time() + $delayMinutes * 60);
         try {
+        if (!empty($sendInput['quote_mail_token'])) { db()->beginTransaction(); qmail_claim($account,$sendInput,$jobId); }
         db()->prepare('INSERT INTO crm_mail_send_jobs (user_id, mail_account_id, job_id, to_emails, subject, status, stage, percent, scheduled_at, payload_json, attachments_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, "scheduled", "waiting", 5, ?, ?, ?, NOW(), NOW())')
             ->execute([(int)$account['user_id'], (int)$account['id'], $jobId, $to, $subject, $scheduledAt, json_encode(['input' => $sendInput, 'body_original' => $bodyOriginal], JSON_UNESCAPED_UNICODE), json_encode($queuedAttachments, JSON_UNESCAPED_UNICODE)]);
+        if (!empty($sendInput['quote_mail_token'])) db()->commit();
         } catch (Throwable $e) {
+            if (!empty($sendInput['quote_mail_token']) && db()->inTransaction()) db()->rollBack();
             crm_mail_cleanup_queue_files($queuedAttachments);
             // Same form can race or be retried after a lost response; unique job_id owns the send.
             $existing->execute([$jobId, (int)$account['user_id'], (int)$account['id']]);
@@ -4922,11 +4927,13 @@ function crm_mail_send_due_jobs(int $limit = 20, string $onlyJobId = ''): array
             $input = is_array($payload['input'] ?? null) ? $payload['input'] : [];
             $bodyOriginal = (string)($payload['body_original'] ?? '');
             $attachments = json_decode((string)($job['attachments_json'] ?? '[]'), true) ?: [];
+            if (function_exists('qmail_send_guard')) $input=qmail_send_guard($account,$input,$attachments);
             $result = crm_mail_execute_send_job($account, $input, $attachments, (string)$job['job_id'], $bodyOriginal);
             $deliveryAccepted = true;
             db()->prepare("UPDATE crm_mail_send_jobs SET status = 'success', stage = 'done', percent = 100, sent_mail_id = ?, error_message = NULL, finished_at = NOW(), updated_at = NOW() WHERE id = ?")
                 ->execute([(int)$result['sent_mail_id'], (int)$job['id']]);
             try {
+                if (function_exists('qmail_sent')) qmail_sent($account,$input,(int)$result['sent_mail_id']);
                 crm_mail_cleanup_queue_files($attachments);
                 crm_log_event('mail', 'send_scheduled_success', 'mail', (string)$job['job_id'], null, ['sent_mail_id' => (int)$result['sent_mail_id']]);
             } catch (Throwable $logError) { error_log('CRM sent mail post-processing needs attention; delivery remains successful.'); }
@@ -4988,6 +4995,7 @@ function crm_mail_send_cancel(string $jobId): array
                 (int)($input['contact_id'] ?? 0) ?: null,
             ]);
         $draftId = (int)db()->lastInsertId();
+        if (!empty($input['quote_mail_token']) && function_exists('qmail_cancel_to_draft')) qmail_cancel_to_draft($account,$input,$jobId,$draftId);
         db()->commit();
     } catch (Throwable $e) {
         if (db()->inTransaction()) db()->rollBack();

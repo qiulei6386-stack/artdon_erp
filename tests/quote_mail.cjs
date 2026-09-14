@@ -1,0 +1,15 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync('assets/quote-mail.js','utf8');
+const context={window:{quoteApprovalActionsHtml:()=>'<button>审核</button>',historyCardHtml:()=>'<div class="history-actions">existing</div>'},document:{createElement:()=>({}),head:{append() {}}},hasPerm:()=>true,quoteApprovalStatus:q=>q.approval_status};
+vm.runInNewContext(source,context);
+assert(context.window.quoteApprovalActionsHtml(1,true).includes('发送报价邮件'));
+assert(!context.window.quoteApprovalActionsHtml(1,false).includes('发送报价邮件'));
+assert(context.window.historyCardHtml({id:1,approval_status:'approved'}).includes('QuoteMail.open(1)'));
+assert(!context.window.historyCardHtml({id:1,approval_status:'pending'}).includes('QuoteMail.open'));
+context.hasPerm=()=>false;assert(!context.window.historyCardHtml({id:1,approval_status:'approved'}).includes('QuoteMail.open'));
+assert(!source.includes('MutationObserver'),'No page-wide observer added');
+const plugin=fs.readFileSync('assets/crm/quote-mail.js','utf8');
+for(const field of ['quote_mail_token','quote_no','quote_revision','quote_files'])assert(plugin.includes(field));
+assert(plugin.includes('action=file')&&plugin.includes("mail.openCompose('draft'"));
+assert(!plugin.includes('send_start'),'Handoff never sends automatically');
+console.log('Quote mail UI contracts: approved/permission entry, existing actions, draft-only route, preview and metadata passed.');
