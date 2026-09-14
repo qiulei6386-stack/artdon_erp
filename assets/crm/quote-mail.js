@@ -15,6 +15,18 @@
         const bar=document.createElement('div');bar.dataset.quoteMailPreview='1';bar.style.cssText='padding:10px 14px;border:1px solid #dce5f4;border-radius:8px;background:#f3f7ff;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;overflow-wrap:anywhere';
         const text=document.createElement('span');text.textContent=(meta.quote_mail_kind==='test'?'测试邮件 · ':meta.quote_mail_kind==='formal'?'正式邮件 · ':'')+(meta.quote_no||'已审核报价')+' · 版本 '+(meta.quote_revision||'已锁定');bar.append(text);
         (meta.quote_files||[]).forEach((name,index)=>{const link=document.createElement('a');link.href='quote_mail_api.php?action=file&token='+encodeURIComponent(this.quoteMailToken)+'&index='+index;link.target='_blank';link.rel='noopener';link.textContent=/\.pdf$/i.test(name)?'预览 PDF':'下载核对 Excel';bar.append(link);});
+        const preview=document.createElement('button');preview.type='button';preview.textContent='发送预览';preview.dataset.quoteComposePreview='1';
+        preview.onclick=async()=>{preview.disabled=true;const token=this.quoteMailToken,current=this.composeData();
+          try{
+            const response=await fetch('quote_mail_api.php?action=preview',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':window.CRM_BOOTSTRAP?.csrf||''},body:JSON.stringify({token,current})});
+            const json=await response.json();if(!response.ok||!json.success)throw new Error(json.message||'预览读取失败');
+            if(!bar.isConnected||this.quoteMailToken!==token)return;
+            const latest=this.composeData();if(['subject','to_emails','cc_emails','bcc_emails','body_html','attachments_json'].some(key=>latest[key]!==current[key]))throw new Error('邮件内容已修改，请重新点击发送预览。');
+            const extra=this.composeUploadFiles?.(true)||[];
+            for(const file of extra)json.data.files.push({name:file.name+'（待上传）',size:file.size});
+            QuoteMailPreview.open(json.data,{note:extra.length?'另有待上传附件，仅列出名称；请先保存草稿后再次预览核对文件。':'当前编辑内容只读预览，没有保存或发送。核对完成后回到写信窗口手动发送。'});
+          }catch(e){if(hint)hint.textContent=e.message;}finally{preview.disabled=false;}
+        };bar.append(preview);
         form.prepend(bar);
       }
     }return result;

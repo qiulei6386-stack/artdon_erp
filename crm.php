@@ -1705,6 +1705,7 @@ $prefStyle = sprintf(
   <script src="assets/crm/workspace.js?v=<?= filemtime(__DIR__ . '/assets/crm/workspace.js') ?>"></script>
   <script src="assets/crm/promotion-composer.js?v=<?= filemtime(__DIR__ . '/assets/crm/promotion-composer.js') ?>"></script>
   <script src="assets/crm/crm.js?v=<?= $crmAssetBuild ?>-<?= filemtime(__DIR__ . '/assets/crm/crm.js') ?>"></script>
+  <script src="assets/quote-mail-preview.js?v=<?= filemtime(__DIR__ . '/assets/quote-mail-preview.js') ?>"></script>
   <script src="assets/crm/quote-mail.js?v=<?= filemtime(__DIR__ . '/assets/crm/quote-mail.js') ?>"></script>
 </body>
 </html>

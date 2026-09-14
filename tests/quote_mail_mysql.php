@@ -18,7 +18,15 @@ function crm_log_event(...$args){crm_ensure_tables();if($GLOBALS['qfail']??false
 function crm_customer_timeline_add(...$args){$GLOBALS['qtimeline'][]=$args;}
 function crm_customer_get($id,$section){if($id!==1)throw new RuntimeException('No scope');}
 function qextract($name){$src=file_get_contents(dirname(__DIR__).'/crm_mail.php');if(!preg_match('/^function '.preg_quote($name,'/').'\b[\s\S]*?(?=^function |\z)/m',$src,$m))throw new RuntimeException('Missing function '.$name);eval(str_replace('__DIR__',var_export(dirname(__DIR__),true),$m[0]));}
-foreach(['crm_mail_save_draft','crm_mail_queue_dir','crm_mail_queue_attachment_files','crm_mail_cleanup_queue_files','crm_mail_normalize_file_name_text','crm_mail_safe_file_name','crm_mail_draft_attachment_files'] as $fn)qextract($fn);
+foreach(['crm_mail_save_draft','crm_mail_draft_get','crm_mail_queue_dir','crm_mail_queue_attachment_files','crm_mail_cleanup_queue_files','crm_mail_normalize_file_name_text','crm_mail_safe_file_name','crm_mail_draft_attachment_files'] as $fn)qextract($fn);
+function verify_csrf(){return !($GLOBALS['qbad_csrf']??false);}
+function qpreview(array $input,array $account): array {
+    $api=file_get_contents(dirname(__DIR__).'/quote_mail_api.php');
+    $start=strpos($api,"} elseif(\$action==='preview'){");$end=strpos($api,"} elseif(\$action==='file'){");
+    if($start===false||$end===false)throw new RuntimeException('Preview branch missing');
+    $code=substr($api,strpos($api,"\n",$start)+1,$end-strpos($api,"\n",$start)-1);
+    $_SERVER['REQUEST_METHOD']='POST';eval($code);return $data;
+}
 $pdo->exec('CREATE TABLE quote_orders(id INT PRIMARY KEY,quote_no VARCHAR(100),approval_status VARCHAR(20),approved_snapshot_json LONGTEXT) ENGINE=InnoDB');
 $pdo->exec('CREATE TABLE crm_mail_drafts(id INT AUTO_INCREMENT PRIMARY KEY,user_id INT,mail_account_id INT,reply_to_mail_id INT,mode VARCHAR(20),to_emails TEXT,cc_emails TEXT,bcc_emails TEXT,subject TEXT,body_html MEDIUMTEXT,attachments_json MEDIUMTEXT,draft_meta_json JSON,linked_customer_id INT,linked_contact_id INT,auto_saved INT,created_at DATETIME,updated_at DATETIME) ENGINE=InnoDB');
 $pdo->exec('CREATE TABLE crm_customers(id INT PRIMARY KEY,customer_name VARCHAR(100),email VARCHAR(100),deleted_at DATETIME)');
@@ -34,6 +42,13 @@ $p=qmail_create($input,$account);$files=json_decode($p['files_json'],true);$draf
 qtest(count($files)===1&&is_file($files[0]['path']),'Genuine Excel copied into scoped draft');
 qtest(strpos($draft['body_html'],'Acceptance Signature')!==false&&$draft['to_emails']===$input['email'],'Draft carries explicit contact and account signature');
 qtest(json_decode($draft['draft_meta_json'],true)['quote_mail_token']===$input['token'],'Draft carries stable metadata');
+$preview=qpreview(['token'=>$input['token'],'current'=>['body_html'=>'<p>Current edited note</p>','subject'=>'Edited subject','to_emails'=>'changed@example.invalid']],$account);
+qtest($preview['subject']==='Edited subject'&&$preview['to_emails']==='changed@example.invalid'&&strpos($preview['body_html'],'Current edited note')!==false,'Preview uses current unsaved fields');
+qtest(count($preview['files'])===1&&strpos($preview['files'][0]['url'],'action=file')!==false,'Preview links to actual approved attachment');
+qtest($pdo->query('SELECT subject FROM crm_mail_drafts WHERE id='.(int)$p['draft_id'])->fetchColumn()===$draft['subject']&&(int)$pdo->query('SELECT COUNT(*) FROM crm_mail_send_jobs')->fetchColumn()===0,'Preview does not save or send');
+qreject(fn()=>qpreview(['token'=>$input['token'],'current'=>['attachments_json'=>'[]']],$account),'Preview rejects missing quotation attachment');
+$GLOBALS['qbad_csrf']=true;qreject(fn()=>qpreview(['token'=>$input['token']],$account),'Preview requires CSRF');$GLOBALS['qbad_csrf']=false;
+qreject(fn()=>qpreview(['token'=>$input['token']],['id'=>8,'user_id'=>9]),'Preview requires matching account');
 qtest(qmail_create($input,$account)['draft_id']===$p['draft_id']&&(int)$pdo->query('SELECT COUNT(*) FROM crm_mail_drafts')->fetchColumn()===1,'Retry same token creates only one draft');
 $changed=$input;$changed['email']='';qreject(fn()=>qmail_create($changed,$account),'Retry cannot alter content');
 qreject(fn()=>qmail_package($pdo,$input['token'],['id'=>8,'user_id'=>9]),'Wrong account blocked');qreject(fn()=>qmail_package($pdo,$input['token'],['id'=>7,'user_id'=>8]),'Wrong owner blocked');

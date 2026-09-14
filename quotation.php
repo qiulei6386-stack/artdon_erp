@@ -5443,5 +5443,6 @@ function printOrderStatement(key){
 <meta name="shipment-csrf" content="<?= htmlspecialchars(csrf_token(),ENT_QUOTES,'UTF-8') ?>">
 <link rel="stylesheet" href="assets/quote-shipment-batch.css?v=20260914-1">
 <script src="assets/quote-shipment-batch.js?v=20260914-1"></script>
-<script src="assets/quote-mail.js?v=20260914-2"></script>
+<script src="assets/quote-mail-preview.js?v=20260914-1"></script>
+<script src="assets/quote-mail.js?v=20260914-3"></script>
 </body></html>
