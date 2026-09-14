@@ -44,7 +44,7 @@ function qmail_history(PDO $pdo,int $id,int $userId,int $offset=0): array {
         j.error_message,p.snapshot_hash,COALESCE(c.mail_kind,'legacy') AS mail_kind
       FROM quote_mail_attempts a JOIN quote_mail_packages p ON p.token=a.token
       LEFT JOIN quote_mail_context c ON c.token=p.token
-      LEFT JOIN crm_mail_send_jobs j ON j.job_id=a.job_id AND j.user_id=p.user_id AND j.mail_account_id=p.account_id
+      LEFT JOIN crm_mail_send_jobs j ON j.job_id=a.job_id COLLATE utf8mb4_unicode_ci AND j.user_id=p.user_id AND j.mail_account_id=p.account_id
       WHERE p.quote_id=? AND p.user_id=?
       UNION ALL
       SELECT NULL,'','',COALESCE(p.sent_to,''),'','','',p.created_at,p.sent_at,p.sent_at,NULL,p.sent_mail_id,'success',NULL,p.snapshot_hash,COALESCE(c.mail_kind,'legacy')

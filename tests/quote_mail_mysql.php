@@ -23,7 +23,7 @@ $pdo->exec('CREATE TABLE quote_orders(id INT PRIMARY KEY,quote_no VARCHAR(100),a
 $pdo->exec('CREATE TABLE crm_mail_drafts(id INT AUTO_INCREMENT PRIMARY KEY,user_id INT,mail_account_id INT,reply_to_mail_id INT,mode VARCHAR(20),to_emails TEXT,cc_emails TEXT,bcc_emails TEXT,subject TEXT,body_html MEDIUMTEXT,attachments_json MEDIUMTEXT,draft_meta_json JSON,linked_customer_id INT,linked_contact_id INT,auto_saved INT,created_at DATETIME,updated_at DATETIME) ENGINE=InnoDB');
 $pdo->exec('CREATE TABLE crm_customers(id INT PRIMARY KEY,customer_name VARCHAR(100),email VARCHAR(100),deleted_at DATETIME)');
 $pdo->exec('CREATE TABLE crm_contacts(id INT PRIMARY KEY,customer_id INT,name VARCHAR(100),email VARCHAR(100),is_primary INT,is_left INT,do_not_contact INT,unsubscribe_email INT,deleted_at DATETIME)');
-$pdo->exec('CREATE TABLE crm_mail_send_jobs(job_id VARCHAR(100) PRIMARY KEY,user_id INT,mail_account_id INT,status VARCHAR(40),finished_at DATETIME,scheduled_at DATETIME,updated_at DATETIME,sent_mail_id INT,error_message VARCHAR(500))');
+$pdo->exec('CREATE TABLE crm_mail_send_jobs(job_id VARCHAR(100) PRIMARY KEY,user_id INT,mail_account_id INT,status VARCHAR(40),finished_at DATETIME,scheduled_at DATETIME,updated_at DATETIME,sent_mail_id INT,error_message VARCHAR(500)) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 $s=qfixture();$raw=json_encode($s);$pdo->prepare('INSERT INTO quote_orders VALUES(1,?,?,?)')->execute([$s['quote_no'],'approved',$raw]);
 qtest(qmail_snapshot($pdo,1)['hash']===hash('sha256',$raw),'Approved snapshot hash exact');
 $pdo->exec("UPDATE quote_orders SET approval_status='pending'");qreject(fn()=>qmail_snapshot($pdo,1),'Pending cannot generate');$pdo->exec("UPDATE quote_orders SET approval_status='approved'");
