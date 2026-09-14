@@ -1,5 +1,6 @@
 <?php
-// Private CLI renderer: stdin is supplied only by the authenticated attachment service.
+// CLI-only renderer in the application-readable directory; tools/ remains operator-private.
+// stdin is supplied only by the authenticated attachment service.
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 if (!in_array($argv[1] ?? '', ['pdf','excel'], true)) exit(2);
 define('QUOTE_MAIL_RENDER', true);

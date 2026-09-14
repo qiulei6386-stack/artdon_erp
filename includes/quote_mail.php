@@ -74,7 +74,9 @@ function qmail_files(array $snap, array $formats, string $dir): array {
     $files=[];$base=preg_replace('/[^\pL\pN._-]/u','_',$snap['quote_no']);
     foreach($formats as $format) {
         $out=$dir.($format==='pdf'?'/quote.html':'/quote.xlsx');
-        qmail_run([$timeout,'35',$php,'-d','memory_limit=128M',dirname(__DIR__).'/tools/quote_mail_render.php',$format],$input,$out,$dir.'/render.err');
+        $renderer=__DIR__.'/quote_mail_render.php';
+        if(!is_readable($renderer))throw new RuntimeException('附件生成脚本不可读，请联系管理员检查发布权限。');
+        qmail_run([$timeout,'35',$php,'-d','memory_limit=128M',$renderer,$format],$input,$out,$dir.'/render.err');
         if ($format==='pdf') {
             $chrome=crm_mail_datasheet_chrome_bin();if($chrome==='')throw new RuntimeException('PDF生成器不可用，请联系管理员。');
             $html=file_get_contents($out);$html=preg_replace('#<script\b[^>]*>.*?</script>#is','',$html);
