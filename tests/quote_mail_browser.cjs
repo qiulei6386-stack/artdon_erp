@@ -64,7 +64,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
  await page.click('[data-quote-compose-preview]');await page.evaluate(()=>{window.fixtureNote='Changed during preview';});await page.waitForFunction(()=>document.querySelector('[data-mail-compose-status]').textContent.includes('重新点击'));assert.equal(await page.locator('.qmp-dialog').count(),0,'Stale preview never opens');
  await page.evaluate(()=>MailModule.openCompose('compose',{}));assert.equal(await page.locator('[data-quote-mail-preview]').count(),0,'Ordinary mail resets quote metadata');
  await page.evaluate(()=>QuoteMailPreview.open({subject:'Image safety',files:[],body_html:'<img src="https://quote-mail.test/preview-pixel" onerror="parent.previewUnsafe=true">'}));await page.frameLocator('.qmp-dialog iframe').locator('img').waitFor();assert.equal(imageRequests,0,'Remote images do not load automatically');
- await Promise.all([page.waitForRequest('**/preview-pixel'),page.click('[data-qmp-images]')]);assert.equal(imageRequests,1,'Explicit action permits external image');assert(!(await page.evaluate(()=>window.previewUnsafe)));await page.click('[data-qmp-close]');
+ await Promise.all([page.waitForResponse('**/preview-pixel'),page.click('[data-qmp-images]')]);assert.equal(imageRequests,1,'Explicit action permits external image');assert(!(await page.evaluate(()=>window.previewUnsafe)));await page.click('[data-qmp-close]');
  await page.close();console.log('Quote mail synthetic browser: 390/768/1280, contact choice, PDF/Excel choice, failed retry, route, draft metadata and preview passed.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
