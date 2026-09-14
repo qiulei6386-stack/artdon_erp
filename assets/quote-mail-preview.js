@@ -13,7 +13,7 @@
     // Inert parsing + an opaque-origin sandbox: email markup cannot operate the application.
     const template=document.createElement('template');template.innerHTML=data.body_html||'';const doc=template.content;
     doc.querySelectorAll('script,iframe,object,embed,base,meta,link,form,input,button,textarea,select,svg,math').forEach(el=>el.remove());
-    doc.querySelectorAll('*').forEach(el=>{for(const attr of Array.from(el.attributes)){if(/^on/i.test(attr.name)||['srcdoc','srcset','formaction'].includes(attr.name))el.removeAttribute(attr.name);}if(el.tagName==='A')el.removeAttribute('href');});
+    doc.querySelectorAll('*').forEach(el=>{for(const attr of Array.from(el.attributes)){if(/^on/i.test(attr.name)||['srcdoc','srcset','formaction','contenteditable','autofocus'].includes(attr.name))el.removeAttribute(attr.name);}if(el.tagName==='A')el.removeAttribute('href');});
     const remote=Array.from(doc.querySelectorAll('img')).some(el=>!/^data:/i.test(el.getAttribute('src')||''));
     const frame=d.querySelector('iframe'),render=allow=>{frame.srcdoc='<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: '+(allow?'https: http:':'')+'; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\';"><meta name="referrer" content="no-referrer"><style>body{font:14px/1.6 Arial,sans-serif;margin:14px;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>'+template.innerHTML+'</body></html>';};render(false);
     const rows=Math.ceil((doc.textContent||'').length/45)+doc.querySelectorAll('p,br,div,tr').length;
