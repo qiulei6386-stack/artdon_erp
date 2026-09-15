@@ -88,5 +88,19 @@ $page1=qmail_history($pdo,1,9);$page2=qmail_history($pdo,1,9,20);qtest(count($pa
 crm_mail_cleanup_queue_files($testFiles);
 $pdo->exec("INSERT INTO crm_customers VALUES(1,'Test','blocked@example.invalid',NULL)");$pdo->exec("INSERT INTO crm_contacts VALUES(1,1,'Blocked','blocked@example.invalid',1,0,1,0,NULL),(2,1,'Left','left@example.invalid',0,1,0,0,NULL),(3,1,'Active','active@example.invalid',0,0,0,0,NULL)");
 $s['customer_json']=json_encode(['crm_customer_id'=>1]);$contacts=qmail_contacts($s);qtest(count($contacts['contacts'])===1&&$contacts['contacts'][0]['id']===3,'Blocked/left contacts not reintroduced through company email');
+$pdo->exec("INSERT INTO crm_contacts VALUES(4,1,'Second','second@example.invalid',0,0,0,0,NULL),(5,1,'Copy','copy@example.invalid',0,0,0,0,NULL),(6,1,'No email','',0,0,0,0,NULL),(7,2,'Other customer','outside@example.invalid',0,0,0,0,NULL),(8,1,'Duplicate','ACTIVE@example.invalid',0,0,0,0,NULL)");
+$contacts=qmail_contacts($s);qtest(count($contacts['contacts'])===3&&count($contacts['unavailable_contacts'])===1,'Duplicate email collapsed; missing email explained; other customer excluded');
+$pdo->prepare('UPDATE quote_orders SET approved_snapshot_json=?')->execute([json_encode($s)]);
+$multiInput=['id'=>1,'token'=>bin2hex(random_bytes(24)),'formats'=>['excel'],'recipients'=>['ACTIVE@example.invalid','active@example.invalid','second@example.invalid'],'cc_recipients'=>['second@example.invalid','copy@example.invalid']];
+$multi=qmail_create($multiInput,$account);$mf=json_decode($multi['files_json'],true);$md=crm_mail_draft_get((int)$multi['draft_id'])['draft'];
+qtest($md['to_emails']==='active@example.invalid, second@example.invalid'&&$md['cc_emails']==='copy@example.invalid'&&empty($md['linked_contact_id']),'Actual draft preserves all deduplicated To/CC without misleading single contact link');
+qtest(qmail_create($multiInput,$account)['draft_id']===$multi['draft_id'],'Multi contact retry reuses one draft');
+$mp=qpreview(['token'=>$multiInput['token']],$account);qtest($mp['to_emails']===$md['to_emails']&&$mp['cc_emails']===$md['cc_emails'],'Actual preview retains every To/CC');
+$ms=['draft_id'=>$multi['draft_id'],'to_emails'=>$md['to_emails'],'cc_emails'=>$md['cc_emails'],'subject'=>$md['subject']];$mg=qmail_send_guard($account,$ms,$mf);qmail_claim($account,$mg,'multiJob');
+$pdo->exec("INSERT INTO crm_mail_send_jobs VALUES('multiJob',9,7,'scheduled',NULL,NOW(),NOW(),NULL,NULL)");
+$mh=array_values(array_filter(qmail_history($pdo,1,9)['rows'],fn($r)=>$r['job_id']==='multiJob'))[0];qtest($mh['to_emails']===$md['to_emails']&&$mh['cc_emails']===$md['cc_emails'],'Send attempt history retains all recipients, no SMTP');
+foreach(['outside@example.invalid','blocked@example.invalid','left@example.invalid'] as $invalid){$badMulti=$multiInput;$badMulti['token']=bin2hex(random_bytes(24));$badMulti['cc_recipients']=[$invalid];qreject(fn()=>qmail_create($badMulti,$account),'Cross-customer or ineligible CC rejected: '.$invalid);}
+$badMulti=$multiInput;$badMulti['cc_recipients']=[];qreject(fn()=>qmail_create($badMulti,$account),'Changed CC cannot reuse token');
+crm_mail_cleanup_queue_files($mf);
 crm_mail_cleanup_queue_files($files);
 echo 'Quote mail isolated MySQL: actual draft/export, idempotency, wrong owner/account, revision, tampering, rollback, cancellation and sent record passed. Peak '.memory_get_peak_usage(true)." bytes\n";

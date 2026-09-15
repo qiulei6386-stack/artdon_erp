@@ -5,7 +5,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
  const record={job_id:'fixture',mail_kind:'test',status:'success',to_emails:'qa@example.invalid',cc_emails:'',bcc_emails:'',sender_email:'sender@example.invalid',sender_name:'Test sender',subject:'[测试] QA',queued_at:'2026-09-14 12:00:00',sent_at:'2026-09-14 12:00:05',snapshot_hash:'abc123'};
  const info={quote_no:'QA-MAIL-001',revision:'abc123',customer_name:'Acceptance customer',sender:'sender@example.invalid',test_recipient:'qa@example.invalid',account_id:7,contacts:[{id:1,name:'First contact',email:'one@example.invalid'},{id:2,name:'Second contact',email:'two@example.invalid'}],history:{rows:[record],offset:0,has_more:true}};
  try{for(const width of [390,768,1280]){
-  const page=await browser.newPage({viewport:{width,height:900}});let requests=[],fail=true;
+  const page=await browser.newPage({viewport:{width,height:900}});let requests=[],fail=true;page.on('pageerror',error=>{throw error;});
   await page.route('https://quote-mail.test/**',async route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/quote_mail_api.php'){
@@ -23,12 +23,17 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   await page.evaluate(()=>QuoteMail.open(1));await page.waitForSelector('[data-create]');
   assert(await page.locator('[name=pdf]').isChecked());assert(!(await page.locator('[name=excel]').isChecked()));
   await page.click('[data-create]');assert.equal(requests.length,0,'Explicit multiple contact required');
-  await page.selectOption('[data-contact]','two@example.invalid');await page.check('[name=excel]');
+  await page.fill('[data-contact-search]','First');await page.click('[data-contact-all]');assert(await page.locator('[data-contact]').nth(0).isChecked());assert(!(await page.locator('[data-contact]').nth(1).isChecked()));
+  await page.fill('[data-contact-search]','Second');await page.click('[data-contact-all]');await page.fill('[data-contact-search]','');assert((await page.locator('[data-contact-count]').textContent()).includes('已选 2'));
+  await page.selectOption('[data-contact-role="1"]','cc');assert((await page.locator('[data-contact-count]').textContent()).includes('抄送 1'));
+  await page.click('[data-contact-clear]');assert.equal(await page.locator('[data-contact]:checked').count(),0);
+  await page.click('[data-contact-all]');await page.check('[name=excel]');
   await page.click('[data-create]');await page.waitForFunction(()=>document.querySelector('[data-status]').textContent.includes('模拟失败'));
-  assert.equal(requests.length,1);assert.deepEqual(requests[0].formats,['pdf','excel']);assert.equal(requests[0].email,'two@example.invalid');
+  assert.equal(requests.length,1);assert.deepEqual(requests[0].formats,['pdf','excel']);assert.deepEqual(requests[0].recipients,['one@example.invalid','two@example.invalid']);assert.deepEqual(requests[0].cc_recipients,[]);
   assert.equal(requests[0].mail_kind,'formal');assert(requests[0].body_text.includes('quotation'));
   assert((await page.locator('[data-body]').boundingBox()).height<=80,'Body stays compact');
-  await page.check('[name="mail-kind"][value="test"]');assert(await page.locator('[data-contact]').isHidden());
+  if(process.env.QUOTE_MAIL_SCREENSHOTS)await page.screenshot({path:process.env.QUOTE_MAIL_SCREENSHOTS+'/contacts-'+width+'.png'});
+  await page.check('[name="mail-kind"][value="test"]');assert(await page.locator('[data-contact]').first().isHidden());
   await page.fill('[data-test-email]','bad-address');await page.click('[data-create]');assert.equal(requests.length,1,'Invalid test address never submitted');
   await page.fill('[data-test-email]','custom@example.invalid');await page.fill('[data-body]','A small note.');await page.click('[data-create]');await page.waitForFunction(()=>document.querySelector('[data-status]').textContent.includes('模拟失败'));
   assert.equal(requests[1].email,'custom@example.invalid');assert.equal(requests[1].mail_kind,'test');assert.equal(requests[1].body_text,'A small note.');assert.notEqual(requests[0].token,requests[1].token,'Changed purpose/text uses a fresh draft token');

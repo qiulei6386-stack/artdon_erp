@@ -31,7 +31,7 @@
       }
     }return result;
   };
-  mail.composeData=function(){const data=originalData.call(this);if(this.quoteMailToken){data.quote_mail_token=this.quoteMailToken;const meta=JSON.parse(data.draft_meta_json||'{}');for(const key of ['quote_mail_token','quote_no','quote_revision','quote_files','quote_mail_kind','quote_test_recipient'])meta[key]=this.quoteMailMeta[key];data.draft_meta_json=JSON.stringify(meta);}return data;};
+  mail.composeData=function(){const data=originalData.call(this);if(this.quoteMailToken){data.quote_mail_token=this.quoteMailToken;const meta=JSON.parse(data.draft_meta_json||'{}');for(const key of ['quote_mail_token','quote_no','quote_revision','quote_files','quote_mail_kind','quote_test_recipient','quote_contact_ids'])meta[key]=this.quoteMailMeta[key];data.draft_meta_json=JSON.stringify(meta);}return data;};
   const token=new URLSearchParams(location.search).get('quote_mail');if(!/^[a-f0-9]{48}$/.test(token||''))return;
   let attempts=0;const timer=setInterval(async()=>{
     if(!mail.account){if(++attempts<100)return;clearInterval(timer);window.crmOpenFallbackDialog?.('报价邮件待打开','请先绑定并选择发件邮箱，然后刷新本页；草稿已保留。');return;}

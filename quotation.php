@@ -5444,5 +5444,5 @@ function printOrderStatement(key){
 <link rel="stylesheet" href="assets/quote-shipment-batch.css?v=20260914-1">
 <script src="assets/quote-shipment-batch.js?v=20260914-1"></script>
 <script src="assets/quote-mail-preview.js?v=20260914-2"></script>
-<script src="assets/quote-mail.js?v=20260914-3"></script>
+<script src="assets/quote-mail.js?v=20260915-1"></script>
 </body></html>

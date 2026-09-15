@@ -156,26 +156,46 @@ function qmail_contacts(array $snap): array {
     } else {
         foreach(['primary_contact_email','email'] as $key)if(!empty($c[$key]))$rows[]=['id'=>0,'name'=>$c['primary_contact']??$c['contact']??'报价联系人','email'=>$c[$key]];
     }
-    $out=[];foreach($rows as $r){$email=strtolower(trim((string)$r['email']));if(filter_var($email,FILTER_VALIDATE_EMAIL)&&!isset($out[$email]))$out[$email]=['id'=>(int)$r['id'],'name'=>$r['name'],'email'=>$email];}
-    return ['customer_id'=>$id,'customer_name'=>$c['company']??$c['customer_name']??'','contacts'=>array_values($out)];
+    $out=[];$unavailable=[];foreach($rows as $r){$email=strtolower(trim((string)$r['email']));if(filter_var($email,FILTER_VALIDATE_EMAIL)){if(!isset($out[$email]))$out[$email]=['id'=>(int)$r['id'],'name'=>$r['name'],'email'=>$email];}elseif((int)$r['id']>0){$unavailable[]=['name'=>$r['name'],'reason'=>$email===''?'未填写邮箱':'邮箱格式无效'];}}
+    return ['customer_id'=>$id,'customer_name'=>$c['company']??$c['customer_name']??'','contacts'=>array_values($out),'unavailable_contacts'=>$unavailable];
 }
 function qmail_package(PDO $pdo, string $token, array $account): array {
     $st=$pdo->prepare('SELECT * FROM quote_mail_packages WHERE token=? AND user_id=? AND account_id=?');$st->execute([$token,$account['user_id'],$account['id']]);$p=$st->fetch(PDO::FETCH_ASSOC);
     if(!$p)throw new RuntimeException('报价邮件不存在或不属于当前发件账号。');return $p;
+}
+function qmail_recipients(array $input,string $kind,string $email): array {
+    // Test mode never carries customer selection into the envelope.
+    if($kind==='test')return [[$email],[]];
+    $parse=function($value){
+        if(!is_array($value)||count($value)>200)throw new RuntimeException('联系人名单格式不正确或超过200个邮箱。');
+        $out=[];foreach($value as $v){if(!is_string($v))throw new RuntimeException('联系人邮箱格式不正确。');$v=strtolower(trim($v));if(!filter_var($v,FILTER_VALIDATE_EMAIL))throw new RuntimeException('联系人邮箱无效，请重新选择。');$out[$v]=$v;}return array_values($out);
+    };
+    $to=$parse($input['recipients']??($email!==''?[$email]:[]));$cc=$parse($input['cc_recipients']??[]);
+    $cc=array_values(array_diff($cc,$to));
+    if(array_key_exists('recipients',$input)&&!$to)throw new RuntimeException('请至少选择一位收件人，不能只有抄送。');
+    if(count($to)+count($cc)>200)throw new RuntimeException('一次最多选择200个邮箱。');
+    return [$to,$cc];
 }
 function qmail_create(array $input, array $account): array {
     $pdo=db();qmail_schema($pdo);crm_ensure_tables();$id=(int)($input['id']??0);$token=(string)($input['token']??'');
     if(!preg_match('/^[a-f0-9]{48}$/D',$token))throw new RuntimeException('请求标识无效，请重新打开发送窗口。');
     $formats=array_values(array_intersect(['pdf','excel'],(array)($input['formats']??[])));if(!$formats)throw new RuntimeException('至少选择一种报价附件。');
     [$kind,$email,$bodyText]=qmail_options($input);
-    $request=hash('sha256',json_encode([$id,$formats,$email,$kind,$bodyText]));
+    [$to,$cc]=qmail_recipients($input,$kind,$email);$email=implode(', ',$to);$ccEmail=implode(', ',$cc);
+    $requestData=[$id,$formats,$email,$kind,$bodyText];if($cc)$requestData[]=$cc;
+    $request=hash('sha256',json_encode($requestData));
     $lock=$pdo->prepare('SELECT GET_LOCK(?,0)');$lock->execute(['quote_mail_render']);if(!(int)$lock->fetchColumn())throw new RuntimeException('附件生成器正在处理其他请求，请稍后重试。');
     $dir='';$queued=[];
     try {
         $st=$pdo->prepare('SELECT token FROM quote_mail_packages WHERE token=?');$st->execute([$token]);if($st->fetchColumn()){$prior=qmail_package($pdo,$token,$account);if(!hash_equals($prior['request_hash'],$request))throw new RuntimeException('同一请求的内容已改变，请重新打开窗口。');return $prior;}
         $s=qmail_snapshot($pdo,$id);$snap=$s['snapshot'];$contacts=qmail_contacts($snap);$chosen=null;
-        foreach($contacts['contacts'] as $contact)if($contact['email']===$email)$chosen=$contact;
-        if($kind==='formal'&&$email!==''&&!$chosen)throw new RuntimeException('所选联系人邮箱已变化，请重新选择。');
+        $selectedIds=[];
+        if($kind==='formal'){
+            $allowed=array_column($contacts['contacts'],null,'email');
+            foreach(array_merge($to,$cc) as $address){if(!isset($allowed[$address]))throw new RuntimeException('所选联系人邮箱已变化、不可联系或不属于本客户，请重新选择。');if($allowed[$address]['id'])$selectedIds[]=$allowed[$address]['id'];}
+            // A multi-contact draft must not pretend to be linked to just one person.
+            if(count($to)===1&&!$cc)$chosen=$allowed[$to[0]]??null;
+        }
         if($kind==='test')$chosen=null;
         $dir=sys_get_temp_dir().'/quote-mail-'.bin2hex(random_bytes(12));if(!mkdir($dir,0700))throw new RuntimeException('无法建立附件临时目录。');
         $files=qmail_files($snap,$formats,$dir);$queued=crm_mail_queue_attachment_files((int)$account['user_id'],'quote_'.$token,$files);
@@ -187,7 +207,7 @@ function qmail_create(array $input, array $account): array {
         $pdo->beginTransaction();
         // Optimistic revision checked again under row lock before publishing the draft.
         $st=$pdo->prepare('SELECT id FROM quote_orders WHERE id=? FOR UPDATE');$st->execute([$id]);qmail_assert_current($pdo,$p);
-        $draft=crm_mail_save_draft(['to_emails'=>$email,'subject'=>($kind==='test'?'[测试] ':'').'Quotation '.$snap['quote_no'],'body_html'=>$body,'attachments_json'=>json_encode($queued),'customer_id'=>$kind==='test'?0:$contacts['customer_id'],'contact_id'=>$chosen['id']??0,'draft_meta_json'=>json_encode(['auto_signature'=>true,'quote_mail_token'=>$token,'quote_no'=>$snap['quote_no'],'quote_revision'=>substr($s['hash'],0,12),'quote_files'=>array_column($queued,'name'),'quote_mail_kind'=>$kind,'quote_test_recipient'=>$kind==='test'?$email:''])]);
+        $draft=crm_mail_save_draft(['to_emails'=>$email,'cc_emails'=>$ccEmail,'subject'=>($kind==='test'?'[测试] ':'').'Quotation '.$snap['quote_no'],'body_html'=>$body,'attachments_json'=>json_encode($queued),'customer_id'=>$kind==='test'?0:$contacts['customer_id'],'contact_id'=>$chosen['id']??0,'draft_meta_json'=>json_encode(['auto_signature'=>true,'quote_mail_token'=>$token,'quote_no'=>$snap['quote_no'],'quote_revision'=>substr($s['hash'],0,12),'quote_files'=>array_column($queued,'name'),'quote_mail_kind'=>$kind,'quote_contact_ids'=>array_values(array_unique($selectedIds)),'quote_test_recipient'=>$kind==='test'?$email:''])]);
         $pdo->prepare('INSERT INTO quote_mail_packages(token,user_id,account_id,quote_id,quote_no,snapshot_hash,request_hash,draft_id,customer_id,files_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,NOW())')->execute([$token,$account['user_id'],$account['id'],$id,$snap['quote_no'],$s['hash'],$request,$draft['draft_id'],$contacts['customer_id']?:null,json_encode($queued,JSON_THROW_ON_ERROR)]);
         $pdo->prepare('INSERT INTO quote_mail_context(token,mail_kind,test_recipient) VALUES(?,?,?)')->execute([$token,$kind,$kind==='test'?$email:'']);
         $pdo->commit();$queued=[];return qmail_package($pdo,$token,$account);
