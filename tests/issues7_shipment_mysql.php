@@ -33,6 +33,8 @@ $pdo->exec("CREATE TABLE quote_order_payments(order_id INT,amount DECIMAL(14,2),
 $pdo->exec("UPDATE quote_sales_orders SET items_json=REPEAT('x',24*1024*1024),snapshot_json=REPEAT('s',24*1024*1024)");
 $pdo->exec("UPDATE quote_sales_order_items SET image=CONCAT('data:image/png;base64,',REPEAT('a',8*1024*1024)),item_json=JSON_OBJECT('product',JSON_OBJECT('image',REPEAT('b',8*1024*1024)),'shippable',true)");
 $api=file_get_contents(dirname(__DIR__).'/quote_order_api.php');
+require_once dirname(__DIR__).'/includes/quote_order_paging.php';
+op_install($pdo); // All actual shipment writes below must work with maintained classification.
 foreach(['quote_shipments','quote_shipment_items','quote_shipment_orders','quote_shipment_cartons'] as $table){
     preg_match('/INSERT INTO '.preg_quote($table,'/').'\(([^)]+)\) VALUES/',$api,$match);
     i7_check(!empty($match[1]),'Schema column extraction '.$table);$cols=[];

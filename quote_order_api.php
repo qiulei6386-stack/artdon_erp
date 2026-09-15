@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_order_conversion.php';
 require_once __DIR__ . '/includes/quote_read_projection.php';
 require_once __DIR__ . '/includes/quote_shipment_batch.php';
+require_once __DIR__ . '/includes/quote_order_paging.php';
 if (session_status() === PHP_SESSION_NONE) { @session_name('ARTDON_SYS'); @session_start(); }
 header('Content-Type: application/json; charset=utf-8');
 
@@ -925,7 +926,8 @@ function qo_list_orders(PDO $pdo){
   // 旧版每打开一次订单中心，会对每个订单逐个重算出货/收款并 UPDATE 数据库；
   // 订单只有几张也会慢，订单越多越明显。列表页只需要摘要，明细/重算放到“详情”按需执行。
   qo_ensure_schema($pdo);
-  $virtualSql=qo_virtual_item_sql_expr();
+  // Keep old tabs/clients compatible while avoiding repeated scans of embedded images.
+  $virtualSql=qo_col_exists($pdo,'quote_sales_order_items','qo_virtual_line_v1')?'qo_virtual_line_v1':qo_virtual_item_sql_expr();
   $sql = "SELECT
       o.id,o.order_no,o.quote_no,o.source_quote_id,o.customer_id,o.customer_name,
       o.qty,o.amount,o.currency,o.exchange_rate,o.quote_date,o.order_date,o.status,
@@ -1579,6 +1581,11 @@ function qo_order_detail(PDO $pdo,$id,bool $light=false){
 }
 
 try{
+  if(in_array($action,['list_page','order_overview'],true)){
+    if(function_exists('artdon_perm_require_action'))artdon_perm_require_action('quote',$action,[],'view');
+    qo_release_session_lock();
+    qo_ok($action==='list_page'?op_page($pdo,qo_input()):['overview'=>op_overview($pdo)]);
+  }
   if(strpos($action,'batch_')===0){
     $op=substr($action,6);
     $features=['save'=>'edit','issue'=>'export','dispatch'=>'edit','cancel'=>'delete','reverse'=>'admin'];

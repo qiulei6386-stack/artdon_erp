@@ -1,0 +1,13 @@
+#page-orders .order-page-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;font-size:13px;color:#475569}
+#page-orders .order-page-controls button,#page-orders .order-page-controls select{min-height:34px;width:auto;padding:6px 10px;font-size:13px}
+#page-orders .order-page-controls label{display:flex;gap:6px;align-items:center;margin:0;font-weight:400}
+#page-orders .order-page-controls button:disabled{opacity:.45;cursor:default}
+#page-orders .order-card{cursor:default;gap:8px}
+#page-orders .order-card small,#page-orders .order-card b{overflow-wrap:anywhere;white-space:normal}
+#page-orders .order-list-actions button{white-space:nowrap}
+#page-orders #orderList[aria-busy=true]{min-height:240px}
+#page-orders .order-toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr))!important;gap:8px}
+#page-orders #orderSearch{grid-column:span 2}
+#page-orders #orderFinance{margin:8px 0 12px}
+#page-orders .order-toolbar>*{min-width:0;max-width:100%;width:100%}
+@media(max-width:760px){#page-orders .order-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))!important}#page-orders .order-grid{display:flex;flex-direction:column}#page-orders .order-grid>*{width:100%;min-width:0}#page-orders .order-card{grid-template-columns:1fr!important}#page-orders .card-head{flex-wrap:wrap;gap:10px}}
