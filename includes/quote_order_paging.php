@@ -71,7 +71,7 @@ function op_page(PDO $pdo,array $in): array {
     $own=!$pdo->inTransaction();if($own)$pdo->exec('START TRANSACTION READ ONLY');
     try{
         $finance=op_finance($pdo,$source,$where,$args);$total=array_sum(array_column($finance,'count'));
-        $size=(int)($in['size']??20);if(!in_array($size,[20,50],true))$size=20;
+        $size=(int)($in['size']??20);if(!in_array($size,[5,10,20,50],true))$size=20;
         $pages=max(1,(int)ceil($total/$size));$page=max(1,min($pages,(int)($in['page']??1)));$offset=($page-1)*$size;
         $sort=['new'=>'COALESCE(order_date,created_at) DESC,id DESC','amountDesc'=>'amount DESC,id DESC','amountAsc'=>'amount ASC,id DESC','customer'=>'customer_name ASC,id DESC'][$in['sort']??'new']??'COALESCE(order_date,created_at) DESC,id DESC';
         $rows=op_query($pdo,"SELECT * FROM ($source) r WHERE $where ORDER BY $sort LIMIT $size OFFSET $offset",$args);

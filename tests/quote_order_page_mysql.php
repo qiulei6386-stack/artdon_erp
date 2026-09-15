@@ -40,6 +40,7 @@ pc(op_page($pdo,['customer'=>'验收 B','owner'=>'Ben'])['total']===53,'Full fil
 pc(op_page($pdo,['status'=>'已收齐'])['total']===4,'Payments, deductions, writeoffs and zero amounts');
 pc(op_page($pdo,['page'=>999])['page']===6,'Clamp out-of-range page');
 pc(count(op_page($pdo,['size'=>50])['orders'])===50,'50-row option');
+foreach([5,10] as $size){$small=op_page($pdo,['size'=>$size]);pc(count($small['orders'])===$size&&$small['pages']===(int)ceil(107/$size),'Compact page size');}
 pc(op_page($pdo,['from'=>'2026-09-16'])['total']===0,'Date boundaries');
 $pdo->rollBack();
 $pdo->exec("UPDATE quote_sales_order_items SET product_name='Shipping fee' WHERE order_id=10");

@@ -2,7 +2,11 @@
 #page-orders .order-page-controls button,#page-orders .order-page-controls select{min-height:34px;width:auto;padding:6px 10px;font-size:13px}
 #page-orders .order-page-controls label{display:flex;gap:6px;align-items:center;margin:0;font-weight:400}
 #page-orders .order-page-controls button:disabled{opacity:.45;cursor:default}
-#page-orders .order-card{cursor:default;gap:8px}
+#page-orders #orderList{max-height:none!important;height:auto!important;overflow:visible!important;gap:6px}
+#page-orders .order-card{cursor:default;gap:6px;padding:8px 10px;border-radius:10px}
+#page-orders .order-card b{font-size:14px}
+#page-orders .order-card small{font-size:12px;line-height:1.4;margin-top:2px}
+#page-orders .order-card .order-status{height:21px;font-size:11px;padding:0 6px}
 #page-orders .order-card small,#page-orders .order-card b{overflow-wrap:anywhere;white-space:normal}
 #page-orders .order-list-actions button{white-space:nowrap}
 #page-orders #orderList[aria-busy=true]{min-height:240px}

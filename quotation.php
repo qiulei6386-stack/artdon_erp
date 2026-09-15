@@ -5429,6 +5429,6 @@ function printOrderStatement(key){
 <script src="assets/quote-shipment-batch.js?v=20260914-1"></script>
 <script src="assets/quote-mail-preview.js?v=20260914-2"></script>
 <script src="assets/quote-mail.js?v=20260915-1"></script>
-<link rel="stylesheet" href="assets/quote-order-page.css?v=20260915-1">
-<script src="assets/quote-order-page.js?v=20260915-1"></script>
+<link rel="stylesheet" href="assets/quote-order-page.css?v=20260915-2">
+<script src="assets/quote-order-page.js?v=20260915-2"></script>
 </body></html>
