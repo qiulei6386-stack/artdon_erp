@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/crm_settings_config.php';
+require_once __DIR__ . '/includes/crm_customer_channel_filter.php';
 
 function crm_add_column_safe(string $table, string $column, string $definition): void
 {
@@ -1810,17 +1811,17 @@ function crm_customer_list(array $input): array
     } elseif ($quick === 'has_material' || $quick === '有资料' || $quick === '有资料包') {
         $where[] = 'EXISTS (SELECT 1 FROM crm_customer_files cf WHERE cf.customer_id = c.id AND cf.deleted_at IS NULL)';
     } elseif ($quick === 'has_wechat_personal' || $quick === '微信个人') {
-        $where[] = "((c.wechat IS NOT NULL AND c.wechat <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.wechat IS NOT NULL AND ct.wechat <> ''))";
+        $where[] = crm_customer_channel_condition('wechat', $params);
     } elseif ($quick === 'has_whatsapp_personal' || $quick === 'WhatsApp个人') {
-        $where[] = "((c.whatsapp IS NOT NULL AND c.whatsapp <> '') OR EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.whatsapp IS NOT NULL AND ct.whatsapp <> ''))";
+        $where[] = crm_customer_channel_condition('whatsapp', $params);
     } elseif ($quick === 'prefer_personal_contact' || $quick === '只接受个人') {
         $where[] = "EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.prefer_personal_contact = 1)";
     } elseif ($quick === 'avoid_group_contact' || $quick === '不喜欢群') {
         $where[] = "EXISTS (SELECT 1 FROM crm_contacts ct WHERE ct.customer_id = c.id AND ct.deleted_at IS NULL AND ct.avoid_group_contact = 1)";
     } elseif ($quick === 'has_wechat_group' || $quick === '微信群') {
-        $where[] = "EXISTS (SELECT 1 FROM crm_customer_chat_groups cg WHERE cg.customer_id = c.id AND cg.deleted_at IS NULL AND cg.status = 'active' AND cg.group_platform = 'wechat_group')";
+        $where[] = crm_customer_channel_condition('wechat_group', $params);
     } elseif ($quick === 'has_whatsapp_group' || $quick === 'WhatsApp群') {
-        $where[] = "EXISTS (SELECT 1 FROM crm_customer_chat_groups cg WHERE cg.customer_id = c.id AND cg.deleted_at IS NULL AND cg.status = 'active' AND cg.group_platform = 'whatsapp_group')";
+        $where[] = crm_customer_channel_condition('whatsapp_group', $params);
     } elseif ($quick === 'has_quote' || $quick === '有报价') {
         if (crm_table_exists_safe('quote_orders')) {
             $where[] = crm_customer_quote_exists_condition();
@@ -1893,6 +1894,7 @@ function crm_customer_list(array $input): array
             unset($row['customer_country_raw']);
         }
         unset($row);
+        $rows = crm_customer_channel_annotate(db(), $rows, crm_customer_filter_channel($quick));
         return ['rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize, 'list_mode' => 'compact'];
     }
     $lastPromotionExpr = crm_customer_last_promotion_expr('c');
@@ -2030,6 +2032,7 @@ function crm_customer_list(array $input): array
         }
         unset($row);
     }
+    $rows = crm_customer_channel_annotate(db(), $rows, crm_customer_filter_channel($quick));
     return ['rows' => $rows, 'total' => $total, 'page' => $page, 'page_size' => $pageSize];
 }
 

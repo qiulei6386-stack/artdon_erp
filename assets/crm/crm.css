@@ -7341,6 +7341,24 @@ body.is-actionbar-resizing * {
 .customer-country-label > span:last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .customer-country-flag { flex:0 0 auto; width:18px; height:18px; display:inline-grid; place-items:center; border-radius:999px; background:#f8fafc; font-size:15px; line-height:1; box-shadow:inset 0 0 0 1px #e2e8f0; }
 .customer-table.is-compact th, .customer-table.is-compact td { height: 24px; padding: 0 6px; font-size: 11px; }
+.customer-table td.customer-channel-cell {
+  height: auto !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.customer-channel-match {
+  display: block;
+  grid-column: 1 / -1;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 4px;
+  color: var(--crm-muted-text, #59687d);
+}
 .customer-table.is-card { min-width: 0; table-layout: auto; border-collapse: separate; border-spacing: 0 7px; }
 .customer-table.is-card colgroup, .customer-table.is-card thead { display: none; }
 .customer-table.is-card tbody, .customer-table.is-card tr { display: block; }

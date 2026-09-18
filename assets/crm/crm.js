@@ -3061,15 +3061,15 @@
         button.addEventListener('click', function () {
           var next = button.getAttribute('data-customer-filter') || 'all';
           self.ensureFilterState();
-          if (next === 'all' || self.filterState.quick === next) {
+          if (next === 'all') {
             self.filterState.keyword = '';
             self.filterState.quick = 'all';
             self.filterState.advanced = {};
             self.quickFilter = 'all';
             self.clearAdvancedControls();
           } else {
-            self.filterState.quick = next;
-            self.quickFilter = next;
+            self.filterState.quick = self.filterState.quick === next ? 'all' : next;
+            self.quickFilter = self.filterState.quick;
           }
           self.updateFilterControls();
           self.page = 1;
@@ -3723,6 +3723,7 @@
       if (created) parts.push('创建：' + created);
       if (follow) parts.push('跟进：' + follow);
       if ((this.filterState.quick || 'all') !== 'all') parts.push('快捷：' + (quickLabels[this.filterState.quick] || this.filterState.quick));
+      if (['has_wechat_personal','has_whatsapp_personal','has_wechat_group','has_whatsapp_group'].indexOf(this.filterState.quick) >= 0) parts.push('按客户/联系人已设推广方式；不代表允许发送');
       return parts.length ? ('已筛选 · ' + parts.join(' · ')) : '输入即搜，280ms 自动刷新';
     },
     renderRows: function (rows) {
@@ -3740,7 +3741,11 @@
       function cell(row, key) {
         if (key === 'select') return '<td data-label="选择"><input type="checkbox" data-customer-row-check value="' + row.id + '"' + (self.selected.has(Number(row.id)) ? ' checked' : '') + '></td>';
         if (key === 'customer_code') return '<td data-label="客户代码" title="' + esc(row.customer_code || '') + '">' + esc(row.customer_code || '-') + '</td>';
-        if (key === 'customer_name') return '<td data-label="客户名称" title="' + esc(row.customer_name) + '">' + esc(row.customer_name) + '</td>';
+        if (key === 'customer_name') {
+          var match = row.channel_match;
+          var channelNote = match ? [match.label, (match.sources || []).join('；'), (match.notes || []).join(' · ')].filter(Boolean).join(' — ') : '';
+          return '<td data-label="客户名称"' + (channelNote ? ' class="customer-channel-cell"' : '') + ' title="' + esc(row.customer_name) + '">' + esc(row.customer_name) + (channelNote ? '<small class="customer-channel-match" title="' + esc(channelNote) + '">' + esc(channelNote) + '</small>' : '') + '</td>';
+        }
         if (key === 'country') {
           var rawCountry = row.country_raw || row.country || '';
           var displayCountry = row.country_display || row.country || '';
