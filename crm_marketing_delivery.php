@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/crm_marketing_execution.php';
 /** Confirmed promotion delivery. No SMTP calls during draft save or preview. */
 function crm_delivery_ensure(): void
 {
@@ -132,6 +133,31 @@ function crm_delivery_channel(string $requested, array $channels): string
     return in_array($requested, $channels, true) ? $requested : 'unresolved';
 }
 
+function crm_delivery_channel_basis(int $customerId, int $contactId, array $map): string
+{
+    if (!$contactId || !array_key_exists($contactId,$map['contacts'])) return '客户主档渠道';
+    $contact=$map['contacts'][$contactId]; $customer=$map['customers'][$customerId] ?? [];
+    sort($contact); sort($customer);
+    return $contact===$customer ? '联系人明确设置（与客户主档一致）' : '联系人明确设置优先，覆盖客户主档渠道：'.(implode(' / ',$customer) ?: '未设置');
+}
+
+/** Per-target frozen variables; never interpolate from later customer/account data. */
+function crm_delivery_queue_body(array $row): string
+{
+    $meta=crm_marketing_json($row['attachment_json'] ?? '');
+    if (!isset($meta['frozen_vars'])) return (string)($row['body'] ?? '');
+    $template=(string)($row['queue_body_template'] ?? '');
+    if (!hash_equals((string)($meta['frozen_template_hash'] ?? ''),hash('sha256',$template))) throw new RuntimeException('冻结内容校验失败，已阻止发送。');
+    return crm_delivery_render_values($template,$meta['frozen_vars'],true);
+}
+
+function crm_delivery_store_template(int $taskId, string $template): int
+{
+    $hash=hash('sha256',$template);
+    db()->prepare('INSERT INTO crm_marketing_queue_bodies (task_id,body_hash,body_html,body_bytes,created_at,updated_at) VALUES (?,?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)')->execute([$taskId,$hash,$template,strlen($template)]);
+    return (int)db()->lastInsertId();
+}
+
 /** Monotonic spacing plus rolling hourly/daily limits, separately per sender. */
 function crm_delivery_next_time(array &$times, int $base, array $schedule): int
 {
@@ -174,7 +200,7 @@ function crm_delivery_signature_html(string $key, array $account, ?string &$comp
     } else throw new RuntimeException('签名类型无效，请重新选择。');
     $visible = preg_replace('/[\s\x{00a0}\x{200b}]+/u', '', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     if ($visible === '' && stripos($html, '<img') === false) {
-        throw new RuntimeException(($account['email_address'] ?? '') . '：未配置所选签名。请在邮箱设置中保存签名，或明确选择不使用签名。');
+        throw new RuntimeException(($account['email_address'] ?? '') . '：未配置所选签名。请在邮箱设置中保存签名，再重新预览核对。');
     }
     return $html;
 }
@@ -340,10 +366,16 @@ function crm_delivery_manifest(array $task, int $base): array
         $cid = (int)$row['customer_id']; $ctid = (int)($row['contact_id'] ?? 0);
         $channel = crm_delivery_channel($requested, $channelMap['contacts'][$ctid] ?? $channelMap['customers'][$cid] ?? []);
         $reason = (string)$row['suppression_reason'];
-        if ($channel!=='email' && $reason==='联系人禁止邮件推广' && !(int)$row['contact_do_not_contact']) $reason='';
+        if ($channel!=='email' && in_array($reason,['联系人禁止邮件推广','联系人渠道策略禁止邮件推广'],true) && !(int)$row['contact_do_not_contact']) {
+            // Email-only opt-out must not block an explicitly active chat/phone channel.
+            $globalStop=db()->prepare("SELECT COUNT(*) FROM crm_contact_promotions WHERE contact_id=? AND channel IN ('no_promotion','maintenance_only') AND status<>'no_contact'");
+            $globalStop->execute([$ctid]);
+            if (!(int)$globalStop->fetchColumn()) $reason='';
+        }
         if ($channel === 'unresolved') $reason = $reason ?: '资料未维护所选渠道，或存在多个渠道需明确选择；未自动改为邮件';
         $item = ['target_id'=>(int)$row['id'], 'customer_id'=>$cid, 'contact_id'=>$ctid,
-            'customer_name'=>$row['customer_name'], 'contact_name'=>$row['contact_name'], 'channel'=>$channel];
+            'customer_name'=>$row['customer_name'], 'contact_name'=>$row['contact_name'], 'channel'=>$channel,
+            'channel_basis'=>crm_delivery_channel_basis($cid,$ctid,$channelMap),'chat_group_id'=>(int)($row['chat_group_id'] ?? 0)];
         if ($reason !== '') { $excluded[] = $item + ['reason'=>$reason]; continue; }
         if ($channel !== 'email') {
             if (!in_array($manualRule, ['owner','creator','manual_offline_executor'], true)) throw new RuntimeException('原人工执行人规则暂不支持，请明确重新选择。');
@@ -357,7 +389,8 @@ function crm_delivery_manifest(array $task, int $base): array
                 foreach ($manualIds as $uid) if (!isset($activeUsers[$uid])) throw new RuntimeException('所选人工执行人已停用，请重新选择。');
                 $executorId = $manualIds[$manualCursor++ % count($manualIds)];
             }
-            if ($contact === '' || !isset($activeUsers[$executorId])) { $excluded[] = $item + ['reason'=>'人工渠道缺少联系方式或有效执行人，请补齐资料']; continue; }
+            if ($contact === '' || !isset($activeUsers[$executorId])) { $excluded[] = $item + ['reason'=>!isset($activeUsers[$executorId])?'未配置有效的人工执行负责人':(in_array($channel,['wechat_group','whatsapp_group'],true)?'未关联有效且允许推广的客户群，请核对群资料':'所选联系人缺少本渠道联系方式')]; continue; }
+            if (in_array($channel,['wechat_group','whatsapp_group'],true)) { $row['contact_name']=$row['group_name']; $item['contact_name']=$row['group_name']; }
             $items[] = $item + ['mode'=>'manual','contact_method'=>$contact,'executor_id'=>$executorId,'executor_name'=>$activeUsers[$executorId],
                 'planned_at'=>date('Y-m-d H:i:s', $base)] + crm_delivery_pack_content($contents, (string)$task['mail_body_html'], '', $row, []);
             continue;
@@ -375,7 +408,9 @@ function crm_delivery_manifest(array $task, int $base): array
         if (!isset($activeUsers[(int)$account['user_id']])) throw new RuntimeException('发件账号所属人员已停用，请重新选择。');
         if ((int)$account['user_id'] !== (int)current_user()['id'] && !crm_can('mail.account_manage_all') && !is_super_admin()) throw new RuntimeException('无权使用所匹配的发件邮箱，请联系管理员。');
         $signatureKey = $task['signature_key'] ?? 'personal';
+        if ($signatureKey!=='personal') throw new RuntimeException('请在内容与签名中选择“实际发件账号签名”，每个邮箱必须使用自己的签名。旧预览不能直接执行。');
         $signature = crm_delivery_signature_html($signatureKey, $account, $companySignature);
+        if (trim(strip_tags($signature))==='' && stripos($signature,'<img')===false) throw new RuntimeException($account['email_address'].' 缺少签名，请在邮箱设置补齐后重新预览。');
         $subject = crm_delivery_render((string)$task['mail_subject'], $row, $account, false);
         if (trim($subject) === '') throw new RuntimeException('邮件主题不能为空。');
         $content = crm_delivery_pack_content($contents, (string)$task['mail_body_html'], $signature, $row, $account);
@@ -502,6 +537,7 @@ function crm_delivery_status(array $input): array
 function crm_delivery_confirm(array $input): array
 {
     crm_require('promotion.execute'); crm_delivery_ensure();
+    if (function_exists('crm_task_center_ensure_tables')) crm_task_center_ensure_tables();
     $preview = crm_delivery_load_preview($input);
     return crm_marketing_with_task_lock((int)$preview['task_id'], static function ($task) use ($input) {
         crm_delivery_assert_owner($task);
@@ -515,14 +551,15 @@ function crm_delivery_confirm(array $input): array
         if (!$current['items']) throw new RuntimeException('没有可执行对象，请先处理排除原因。');
         $failure = crm_marketing_json($task['failure_policy_json'] ?? '');
         $schedule = crm_marketing_json($task['schedule_config_json'] ?? '');
-        $manualStmt = db()->prepare("UPDATE crm_marketing_task_targets SET planned_at=?,contact_method=?,executor_user_id=?,channel_key=?,target_status='pending' WHERE id=? AND task_id=?");
-        $queueStmt = db()->prepare("INSERT INTO crm_marketing_send_queue (task_id,customer_id,contact_id,sender_user_id,sender_email,receiver_email,subject,body,attachment_json,planned_server_time,send_status,send_attempts,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'scheduled',0,?,NOW(),NOW())");
+        $manualStmt = db()->prepare("UPDATE crm_marketing_task_targets SET planned_at=?,due_at=DATE_ADD(?,INTERVAL 1 DAY),contact_method=?,executor_user_id=?,channel_key=?,target_status='pending' WHERE id=? AND task_id=?");
+        $queueStmt = db()->prepare("INSERT INTO crm_marketing_send_queue (task_id,customer_id,contact_id,sender_user_id,sender_email,receiver_email,subject,body,body_ref_id,attachment_json,planned_server_time,send_status,send_attempts,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'scheduled',0,?,NOW(),NOW())");
         $mailCount = 0;
+        $bodyRefs=[];
         foreach ($current['items'] as $item) {
-            $item = crm_delivery_expand_item($current, $item);
             if ($item['mode'] !== 'email') {
                 $manualStmt
-                    ->execute([$item['planned_at'],$item['contact_method'],$item['executor_id'],$item['channel'],$item['target_id'],$task['id']]);
+                    ->execute([$item['planned_at'],$item['planned_at'],$item['contact_method'],$item['executor_id'],$item['channel'],$item['target_id'],$task['id']]);
+                crm_promotion_create_manual_task($task,crm_delivery_expand_item($current,$item));
                 continue;
             }
             $mailCount++;
@@ -532,8 +569,14 @@ function crm_delivery_confirm(array $input): array
             $meta['send_interval_minutes']=max(1,min(240,(int)($schedule['send_interval_minutes'] ?? 3)));
             $meta['hourly_limit']=max(1,min(500,(int)($schedule['hourly_limit'] ?? 50)));
             $meta['daily_limit']=max(1,min(3000,(int)($schedule['daily_limit'] ?? 200)));
+            $template=$current['contents'][$item['content_ref']];
+            $signature=$current['contents'][$item['signature_ref']];
+            if ($signature!=='') $template.='<div data-promotion-signature="true">'.$signature.'</div>';
+            $hash=hash('sha256',$template);
+            if (!isset($bodyRefs[$hash])) $bodyRefs[$hash]=crm_delivery_store_template((int)$task['id'],$template);
+            $meta['frozen_vars']=$item['content_vars']; $meta['frozen_template_hash']=$hash;
             $queueStmt
-                ->execute([$task['id'],$item['customer_id'],$item['contact_id'] ?: null,$item['sender_user_id'],$item['sender_email'],$item['receiver_email'],$item['subject'],$item['body_html'],json_encode($meta),$item['planned_at'],max(1,min(6,(int)($failure['retry_count'] ?? 1)+1))]);
+                ->execute([$task['id'],$item['customer_id'],$item['contact_id'] ?: null,$item['sender_user_id'],$item['sender_email'],$item['receiver_email'],$item['subject'],'',$bodyRefs[$hash],json_encode($meta),$item['planned_at'],max(1,min(6,(int)($failure['retry_count'] ?? 1)+1))]);
         }
         $excludedStmt = db()->prepare("UPDATE crm_marketing_task_targets SET target_status='skipped',failure_reason=? WHERE id=? AND task_id=?");
         foreach ($current['excluded'] as $item) $excludedStmt->execute([$item['reason'],$item['target_id'],$task['id']]);

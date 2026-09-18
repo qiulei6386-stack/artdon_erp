@@ -1095,6 +1095,9 @@ try {
         require_csrf();
         api_response(true, '推广执行请求已受理', crm_marketing_task_execute($_POST));
     }
+    if ($action === 'marketing_manual_content') {
+        api_response(true, '', crm_promotion_manual_content($_POST));
+    }
     if ($action === 'marketing_manual_execute') {
         require_csrf();
         api_response(true, '手动执行已记录', crm_marketing_manual_execute($_POST, $_FILES));

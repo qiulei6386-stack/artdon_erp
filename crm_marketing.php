@@ -1093,7 +1093,7 @@ function crm_marketing_tasks(): array
         ) ts ON ts.task_id = t.id
         ORDER BY t.id DESC
         LIMIT 80");
-    return $stmt->fetchAll();
+    return crm_promotion_execution_summaries($stmt->fetchAll());
 }
 
 function crm_marketing_task_detail(array $input = []): array
@@ -1110,6 +1110,7 @@ function crm_marketing_task_detail(array $input = []): array
     $stmt->execute([$taskId]);
     $task = $stmt->fetch();
     if (!$task) throw new RuntimeException('推广任务不存在。');
+    $task=crm_promotion_execution_summaries([$task])[0];
     $task['_detail_loaded'] = 1;
     $task['has_mail_body'] = trim((string)($task['mail_body_html'] ?? '')) !== '' ? 1 : 0;
     $task['mail_body_bytes'] = strlen((string)($task['mail_body_html'] ?? ''));
@@ -1489,6 +1490,9 @@ function crm_marketing_task_targets(array $input = []): array
     $limit = (int)($input['limit'] ?? $defaultLimit);
     $limit = max(1, min(5000, $limit));
     $stmt = db()->prepare("SELECT mt.*, t.task_name, t.task_status, t.campaign_type, t.mail_subject,
+        CASE WHEN LOWER(mt.channel_key) IN ('email','mail','edm') THEN
+          (SELECT q.send_status FROM crm_marketing_send_queue q WHERE q.task_id=mt.task_id AND q.customer_id=mt.customer_id AND (q.contact_id <=> mt.contact_id) ORDER BY q.id DESC LIMIT 1)
+        ELSE NULL END AS queue_status,
         c.customer_name, c.customer_code, c.country, c.do_not_contact, c.phone AS customer_phone, c.whatsapp AS customer_whatsapp, c.owner_user_id,
         ct.name AS contact_name, ct.email, ct.phone, ct.whatsapp, ct.wechat, ct.linkedin, ct.position, ct.is_left,
         cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform, cg.group_owner AS chat_group_owner,
@@ -2171,6 +2175,14 @@ function crm_marketing_task_execution_summary(int $taskId): array
             $summary[$mode]['latest_time'] = $latest;
         }
     }
+    $queue=db()->prepare('SELECT send_status,COUNT(*) n,MAX(sent_at) last_sent FROM crm_marketing_send_queue WHERE task_id=? GROUP BY send_status');
+    $queue->execute([$taskId]);
+    $summary['mail']['success']=0; $summary['mail']['failed']=0; $summary['mail']['pending']=0; $summary['mail']['latest_time']=null;
+    foreach($queue->fetchAll() as $row) {
+        if($row['send_status']==='sent') { $summary['mail']['success']+=(int)$row['n']; $summary['mail']['latest_time']=$row['last_sent']; }
+        elseif($row['send_status']==='failed') $summary['mail']['failed']+=(int)$row['n'];
+        elseif(in_array($row['send_status'],['pending','scheduled','sending','waiting_retry'],true)) $summary['mail']['pending']+=(int)$row['n'];
+    }
     return $summary;
 }
 
@@ -2219,7 +2231,7 @@ function crm_marketing_task_target_summary(int $taskId): array
             SUM(CASE WHEN {$emailSql} AND mt.target_status = 'skipped' THEN 1 ELSE 0 END) AS email_skipped,
             SUM(CASE WHEN {$emailSql} AND mt.target_status = 'pending' THEN 1 ELSE 0 END) AS email_pending,
             SUM(CASE WHEN {$manualSql} AND mt.target_status = 'success' THEN 1 ELSE 0 END) AS manual_success,
-            SUM(CASE WHEN {$manualSql} AND mt.target_status IN ('pending','failed') THEN 1 ELSE 0 END) AS manual_direct_pending,
+            SUM(CASE WHEN {$manualSql} AND mt.target_status = 'pending' THEN 1 ELSE 0 END) AS manual_direct_pending,
             SUM(CASE WHEN {$emailFallbackSql} THEN 1 ELSE 0 END) AS email_fallback_total,
             SUM(CASE WHEN {$emailFallbackSql} AND {$groupExistsSql} THEN 1 ELSE 0 END) AS email_fallback_collapsed_by_group,
             SUM(CASE WHEN {$emailFallbackSql} AND NOT {$groupExistsSql} THEN 1 ELSE 0 END) AS email_fallback_manual_pending,
@@ -2269,10 +2281,7 @@ function crm_marketing_task_target_summary(int $taskId): array
     $stmt = db()->prepare("SELECT COALESCE(NULLIF(mt.failure_reason, ''), '人工渠道') AS failure_reason, COUNT(*) AS total
         FROM crm_marketing_task_targets mt
         WHERE mt.task_id = ?
-          AND (
-            ({$manualSql} AND mt.target_status IN ('pending','failed'))
-            OR ({$emailFallbackSql} AND NOT {$groupExistsSql})
-          )
+          AND {$manualSql} AND mt.target_status = 'pending'
         GROUP BY COALESCE(NULLIF(mt.failure_reason, ''), '人工渠道')
         ORDER BY total DESC, failure_reason ASC");
     $stmt->execute([$taskId]);
@@ -2338,7 +2347,11 @@ function crm_marketing_task_target_summary(int $taskId): array
     $duplicates = $stmt->fetch() ?: [];
 
     $manualDirectPending = (int)($row['manual_direct_pending'] ?? 0);
-    $emailFallbackManualPending = (int)($row['email_fallback_manual_pending'] ?? 0);
+    // SMTP is authoritative even when a failed email has been manually followed up.
+    $row['email_success']=(int)($queue['sent'] ?? 0);
+    $row['email_failed']=(int)($queue['failed'] ?? 0);
+    $row['email_pending']=(int)($queue['pending'] ?? 0)+(int)($queue['waiting_retry'] ?? 0);
+    $emailFallbackManualPending = 0;
     $manualPending = $manualDirectPending + $emailFallbackManualPending;
     $manualTargetTotal = (int)($row['manual_channel_total'] ?? 0) + $emailFallbackManualPending;
 
@@ -2473,6 +2486,8 @@ function crm_marketing_manual_schedule(?string $scheduledAt = null): array
 function crm_marketing_reconcile_group_targets(int $taskId): void
 {
     if ($taskId <= 0) return;
+    $version=db()->prepare('SELECT send_rule_json FROM crm_marketing_tasks WHERE id=?'); $version->execute([$taskId]);
+    if ((int)(crm_marketing_json($version->fetchColumn() ?: '')['delivery_version'] ?? 0)===2) return;
     $taskStmt = db()->prepare('SELECT channel_key FROM crm_marketing_tasks WHERE id = ? LIMIT 1');
     $taskStmt->execute([$taskId]);
     $taskChannel = crm_marketing_normalize_channel((string)$taskStmt->fetchColumn());
@@ -2538,6 +2553,8 @@ function crm_marketing_reconcile_group_targets(int $taskId): void
 
 function crm_marketing_reconcile_email_group_followups(int $taskId): void
 {
+    $version=db()->prepare('SELECT send_rule_json FROM crm_marketing_tasks WHERE id=?'); $version->execute([$taskId]);
+    if ((int)(crm_marketing_json($version->fetchColumn() ?: '')['delivery_version'] ?? 0)===2) return;
     if ($taskId <= 0) return;
     $taskStmt = db()->prepare('SELECT channel_key, scheduled_at FROM crm_marketing_tasks WHERE id = ? LIMIT 1');
     $taskStmt->execute([$taskId]);
@@ -2820,9 +2837,28 @@ function crm_marketing_task_create(array $input): array
     if ($deliveryV2) db()->prepare('UPDATE crm_marketing_delivery_requests SET task_id=? WHERE request_id=? AND user_id=?')->execute([$taskId,$requestId,(int)current_user()['id']]);
     [$manualPlannedAt, $manualDueAt] = crm_marketing_manual_schedule($scheduledAt ?: null);
     $insert = db()->prepare('INSERT INTO crm_marketing_task_targets (task_id, customer_id, contact_id, chat_group_id, channel_key, contact_method, manual_group_name, executor_user_id, planned_at, due_at, target_status, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
-    $insertTarget = function (int $customerId, ?int $contactId, ?int $chatGroupId, string $targetChannel, array $customer = [], array $contact = [], array $group = []) use ($insert, $taskId, $manualPlannedAt, $manualDueAt, $deliveryV2, $channel): void {
+    $expandedGroupIds=[];
+    $insertTarget = function (int $customerId, ?int $contactId, ?int $chatGroupId, string $targetChannel, array $customer = [], array $contact = [], array $group = []) use ($insert, $taskId, $manualPlannedAt, $manualDueAt, $deliveryV2, $channel, &$insertTarget, &$expandedGroupIds): void {
         if ($deliveryV2) $targetChannel = crm_delivery_channel($channel, crm_delivery_channels($customerId,(int)$contactId));
         $targetChannel = crm_marketing_normalize_channel($targetChannel);
+        $groupBlocked=false;
+        if ($deliveryV2 && $contactId && in_array($targetChannel,['wechat_group','whatsapp_group'],true)) {
+            $block=db()->prepare("SELECT COUNT(*) FROM crm_contact_promotions WHERE contact_id=? AND channel IN ('no_promotion','maintenance_only') AND status<>'no_contact'");
+            $block->execute([$contactId]); $groupBlocked=(int)$block->fetchColumn()>0;
+        }
+        if ($deliveryV2 && !$groupBlocked && empty($contact['is_left']) && empty($contact['do_not_contact']) && in_array($targetChannel,['wechat_group','whatsapp_group'],true)) {
+            if (!$chatGroupId) {
+                $groups=db()->prepare("SELECT * FROM crm_customer_chat_groups WHERE customer_id=? AND group_platform=? AND deleted_at IS NULL AND status='active' AND use_for_promotion=1 ORDER BY id");
+                $groups->execute([$customerId,$targetChannel]); $matches=$groups->fetchAll();
+                if ($matches) {
+                    foreach ($matches as $match) $insertTarget($customerId,$contactId,(int)$match['id'],$targetChannel,$customer,$contact,$match);
+                    return;
+                }
+            } else {
+                if (isset($expandedGroupIds[$chatGroupId])) return;
+                $expandedGroupIds[$chatGroupId]=true;
+            }
+        }
         $executorId = (int)($customer['owner_user_id'] ?? 0) ?: (int)(current_user()['id'] ?? 0) ?: null;
         if ($deliveryV2) $executorId = (int)($customer['owner_user_id'] ?? 0) ?: null;
         $contactMethod = '';
@@ -2902,7 +2938,7 @@ function crm_marketing_task_create(array $input): array
             $customer = $stmt->fetch();
             if ($customer) {
                 $targetChannel = crm_marketing_resolve_target_channel($channel, $customerId, null);
-                if (in_array($targetChannel, ['wechat_group','whatsapp_group'], true)) {
+                if ((!$deliveryV2 || $groupOnlyChannel) && in_array($targetChannel, ['wechat_group','whatsapp_group'], true)) {
                     $groupStmt = db()->prepare('SELECT g.id, g.customer_id, g.group_name, g.group_platform, c.owner_user_id, c.email, c.phone, c.whatsapp, c.address
                         FROM crm_customer_chat_groups g
                         JOIN crm_customers c ON c.id = g.customer_id
@@ -2950,6 +2986,10 @@ function crm_marketing_task_create(array $input): array
                 $targetCount++;
             }
         }
+    }
+    if ($deliveryV2) {
+        $countTargets=db()->prepare('SELECT COUNT(*) FROM crm_marketing_task_targets WHERE task_id=?');
+        $countTargets->execute([$taskId]); $targetCount=(int)$countTargets->fetchColumn();
     }
     db()->prepare('UPDATE crm_marketing_tasks SET customer_count = ?, contact_count = ?, updated_at = NOW() WHERE id = ?')
         ->execute([count(array_unique($targetCustomerIds)), count($insertedContactIds) + count($insertedChatGroupIds), $taskId]);
@@ -3392,6 +3432,8 @@ function crm_marketing_compact_queue_bodies(int $taskId = 0, int $limit = 500): 
     crm_marketing_ensure_tables();
     $limit = max(1, min(2000, $limit));
     $where = ["(COALESCE(q.body, '') <> '' OR (q.send_status = 'sent' AND q.body_ref_id IS NOT NULL AND COALESCE(t.mail_body_html, '') <> ''))"];
+    // Never substitute live task content for confirmed delivery snapshots.
+    $where[]="COALESCE(JSON_UNQUOTE(JSON_EXTRACT(q.attachment_json,'$.delivery_version')),'0') <> '2'";
     $params = [];
     if ($taskId > 0) {
         $where[] = 'q.task_id = ?';
@@ -3884,19 +3926,20 @@ function crm_marketing_queue_run_due(int $limit = 30): array
     crm_marketing_ensure_tables();
     crm_mail_ensure_tables();
     $limit = max(1, min(200, $limit));
-    $stmt = db()->prepare("SELECT q.*, qb.body_html AS queue_body_template, c.customer_name, COALESCE(ct.name, '') contact_name
+    $stmt = db()->prepare("SELECT q.id
         FROM crm_marketing_send_queue q
         INNER JOIN crm_marketing_tasks t ON t.id=q.task_id
-        LEFT JOIN crm_marketing_queue_bodies qb ON qb.id = q.body_ref_id
-        LEFT JOIN crm_customers c ON c.id = q.customer_id
-        LEFT JOIN crm_contacts ct ON ct.id = q.contact_id
         WHERE q.send_status IN ('pending','scheduled','waiting_retry') AND q.planned_server_time <= NOW()
           AND t.task_status IN ('pending','scheduled','running','partial_failed','failed','manual_pending')
         ORDER BY q.planned_server_time ASC, q.id ASC LIMIT {$limit}");
     $stmt->execute();
     $rows = $stmt->fetchAll();
     $sent = 0; $failed = 0; $skipped = 0;
-    foreach ($rows as $row) {
+    foreach ($rows as $queueIdRow) {
+        // One message at a time: a batch must never materialize hundreds of images.
+        $one=db()->prepare("SELECT q.*,qb.body_html AS queue_body_template,c.customer_name,COALESCE(ct.name,'') contact_name FROM crm_marketing_send_queue q LEFT JOIN crm_marketing_queue_bodies qb ON qb.id=q.body_ref_id LEFT JOIN crm_customers c ON c.id=q.customer_id LEFT JOIN crm_contacts ct ON ct.id=q.contact_id WHERE q.id=?");
+        $one->execute([$queueIdRow['id']]); $row=$one->fetch();
+        if (!$row) continue;
         if (crm_marketing_queue_skip_suppressed((int)$row['id'])) {
             crm_marketing_update_target_from_queue($row, 'skipped', '发送前复核：当前客户或联系人策略禁止邮件推广');
             crm_marketing_queue_update_task_status((int)$row['task_id']);
@@ -3926,7 +3969,7 @@ function crm_marketing_queue_run_due(int $limit = 30): array
             unset($account['email_password_encrypted']);
             if ((string)$account['mail_secret'] === '') throw new RuntimeException('发件邮箱未配置 SMTP 密码');
             $bodyTemplate = trim((string)($row['queue_body_template'] ?? ''));
-            $bodyHtml = $bodyTemplate !== '' ? crm_marketing_render_queue_template($bodyTemplate, $row, $account) : (string)$row['body'];
+            $bodyHtml = isset($deliveryMeta['frozen_vars']) ? crm_delivery_queue_body($row) : ($bodyTemplate !== '' ? crm_marketing_render_queue_template($bodyTemplate, $row, $account) : (string)$row['body']);
             if (trim($bodyHtml) === '') throw new RuntimeException('队列邮件正文为空');
             $prepared = crm_marketing_prepare_mail_inline_images($bodyHtml, $account);
             $jobId = 'marketing_queue_' . (int)$row['id'] . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(3));
@@ -4223,6 +4266,13 @@ function crm_marketing_write_manual_followup(array $task, array $target, string 
 function crm_marketing_manual_execute(array $input, array $files = []): array
 {
     crm_marketing_ensure_tables();
+    return crm_marketing_with_task_lock((int)($input['task_id'] ?? 0), static function () use ($input,$files) {
+        return crm_marketing_manual_execute_locked($input,$files);
+    });
+}
+
+function crm_marketing_manual_execute_locked(array $input, array $files = []): array
+{
     crm_require('promotion.execute');
     $taskId = (int)($input['task_id'] ?? 0);
     $targetIds = crm_mail_input_ids($input['target_ids'] ?? []);
@@ -4230,12 +4280,14 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
     if (!in_array($manualStatus, ['success', 'failed', 'skipped'], true)) $manualStatus = 'success';
     $manualResult = trim((string)($input['manual_result'] ?? ''));
     $manualRemark = trim((string)($input['remark'] ?? ($input['manual_remark'] ?? '')));
+    if ($manualResult==='') throw new RuntimeException('请填写实际联系结果；选择对象不会自动发送，也不能代替结果说明。');
     if ($taskId <= 0) throw new RuntimeException('任务 ID 无效。');
     if (!$targetIds) throw new RuntimeException('请选择要标记完成的手动执行目标。');
     $taskStmt = db()->prepare('SELECT * FROM crm_marketing_tasks WHERE id = ? LIMIT 1');
     $taskStmt->execute([$taskId]);
     $task = $taskStmt->fetch();
     if (!$task) throw new RuntimeException('推广任务不存在。');
+    if (in_array($task['task_status'],['draft','paused','cancelled'],true)) throw new RuntimeException('草稿、暂停或取消项目不能登记执行，请先核对项目状态。');
     $placeholders = implode(',', array_fill(0, count($targetIds), '?'));
     $manualChannels = ['wechat', 'weixin', 'wechat_group', 'whatsapp', 'whatsapp_group', 'phone', 'offline', 'visit', 'linkedin', 'email', 'mail', 'edm'];
     $channelPlaceholders = implode(',', array_fill(0, count($manualChannels), '?'));
@@ -4247,12 +4299,22 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
         WHERE mt.task_id = ? AND mt.id IN ({$placeholders}) AND LOWER(mt.channel_key) IN ({$channelPlaceholders})");
     $stmt->execute(array_merge([$taskId], $targetIds, $manualChannels));
     $targets = $stmt->fetchAll();
-    if (!$targets) throw new RuntimeException('没有可执行的手动目标。');
+    if (!$targets || count($targets)!==count($targetIds)) throw new RuntimeException('部分目标不存在或不属于当前项目，请刷新后重新选择。');
+    $actor=(int)(current_user()['id'] ?? 0);
+    foreach ($targets as $target) {
+        if ((int)$target['executor_user_id']!==$actor && (int)$task['created_by']!==$actor && !is_super_admin() && !crm_can('promotion.manage')) throw new RuntimeException('只能登记本人负责的人工目标。');
+        if (crm_marketing_is_email_channel($target['channel_key'])) {
+            $queue=db()->prepare("SELECT COUNT(*) FROM crm_marketing_send_queue WHERE task_id=? AND customer_id=? AND (contact_id <=> ?) AND send_status IN ('sent','sending','pending','scheduled','waiting_retry')");
+            $queue->execute([$taskId,$target['customer_id'],$target['contact_id']]);
+            if ((int)$queue->fetchColumn()>0) throw new RuntimeException('已发送或待发邮件不能改成人工完成；请先核对邮件队列。');
+        } elseif ($target['target_status']==='skipped') throw new RuntimeException('已排除目标须先补齐资料并重新预览，不能直接勾成成功。');
+    }
     $attachment = crm_marketing_manual_upload($files);
     $failureReason = $manualStatus === 'success' ? '' : ($manualResult ?: ($manualStatus === 'skipped' ? '已跳过' : '人工执行失败'));
     $update = db()->prepare('UPDATE crm_marketing_task_targets SET target_status = ?, failure_reason = ?, manual_result = ?, manual_remark = ?, manual_attachment_json = ?, manual_checked_by_user_id = ?, executed_at = NOW() WHERE id = ?');
     $log = db()->prepare('INSERT INTO crm_marketing_logs (task_id, customer_id, contact_id, channel_key, action_key, result_status, failure_reason, operator_id, detail_json, touched_at, created_at) VALUES (?, ?, ?, ?, "manual_execute", ?, ?, ?, ?, NOW(), NOW())');
     foreach ($targets as $target) {
+        if ($target['target_status']===$manualStatus && (string)$target['manual_result']===$manualResult && (string)($target['manual_remark'] ?? '')===$manualRemark) continue;
         $update->execute([
             $manualStatus,
             $failureReason,
@@ -4284,6 +4346,7 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
             current_user()['id'] ?? null,
             json_encode($detail, JSON_UNESCAPED_UNICODE),
         ]);
+        crm_promotion_sync_manual_result((int)$target['id'],$manualStatus,$manualResult,$manualRemark,$actor);
         if ($manualStatus === 'success') {
             crm_marketing_write_manual_followup($task, $target, $manualResult, $manualRemark);
         } else {
@@ -4304,6 +4367,7 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
     $nextStatus = ((int)($counts['remaining_count'] ?? 0) === 0) ? (((int)($counts['failed_count'] ?? 0) > 0) ? 'partial_failed' : 'completed') : 'manual_pending';
     db()->prepare("UPDATE crm_marketing_tasks SET success_count = ?, failed_count = ?, task_status = CASE WHEN task_status IN ('paused','cancelled') THEN task_status ELSE ? END, updated_at = NOW() WHERE id = ?")
         ->execute([(int)($counts['success_count'] ?? 0), (int)($counts['failed_count'] ?? 0), $nextStatus, $taskId]);
+    crm_promotion_refresh_status($taskId);
     crm_log_event('promotion', 'manual_execute', 'marketing_task', (string)$taskId, null, ['target_ids' => $targetIds, 'checked_count' => count($targets), 'manual_status' => $manualStatus, 'manual_result' => $manualResult]);
     return ['checked_count' => count($targets), 'tasks' => crm_marketing_tasks(), 'logs' => crm_marketing_logs(), 'targets' => crm_marketing_task_targets(['task_id' => $taskId]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'analytics' => crm_can('promotion.analytics') ? crm_marketing_analytics() : []];
 }
@@ -4311,11 +4375,16 @@ function crm_marketing_manual_execute(array $input, array $files = []): array
 function crm_marketing_manual_unexecute(array $input): array
 {
     crm_marketing_ensure_tables();
+    return crm_marketing_with_task_lock((int)($input['task_id'] ?? 0), static function () use ($input) { return crm_marketing_manual_unexecute_locked($input); });
+}
+
+function crm_marketing_manual_unexecute_locked(array $input): array
+{
     crm_require('promotion.execute');
     $taskId = (int)($input['task_id'] ?? 0);
     $targetId = (int)($input['target_id'] ?? 0);
     if ($taskId <= 0 || $targetId <= 0) throw new RuntimeException('请选择要取消的人工执行记录。');
-    $stmt = db()->prepare("SELECT mt.*, t.task_name, c.customer_name, ct.name AS contact_name, cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform
+    $stmt = db()->prepare("SELECT mt.*, t.task_name,t.created_by,t.task_status AS project_status, c.customer_name, ct.name AS contact_name, cg.group_name AS chat_group_name, cg.group_platform AS chat_group_platform
         FROM crm_marketing_task_targets mt
         JOIN crm_marketing_tasks t ON t.id = mt.task_id
         JOIN crm_customers c ON c.id = mt.customer_id
@@ -4326,17 +4395,24 @@ function crm_marketing_manual_unexecute(array $input): array
     $stmt->execute([$taskId, $targetId]);
     $target = $stmt->fetch();
     if (!$target) throw new RuntimeException('没有可取消的已执行记录。');
+    if (empty($target['manual_checked_by_user_id'])) throw new RuntimeException('真实发送记录不能通过取消人工执行撤销。');
+    $actor=(int)(current_user()['id'] ?? 0);
+    if ((int)$target['executor_user_id']!==$actor && (int)$target['created_by']!==$actor && !is_super_admin() && !crm_can('promotion.manage')) throw new RuntimeException('无权撤销此人工执行记录。');
+    if (in_array($target['project_status'],['draft','paused','cancelled'],true)) throw new RuntimeException('项目当前状态不允许撤销人工结果。');
     $channel = crm_marketing_normalize_channel((string)($target['channel_key'] ?? ''));
     $failureReason = '';
+    $restoredStatus = 'pending';
     if (in_array($channel, ['email', 'mail', 'edm'], true)) {
-        $failureReason = '邮件无收件邮箱，转人工执行';
-    } elseif (!empty($target['chat_group_id']) || in_array($channel, ['wechat_group', 'whatsapp_group'], true)) {
-        $failureReason = '邮件无收件邮箱，转群人工执行';
+        $queue=db()->prepare('SELECT send_status,last_error FROM crm_marketing_send_queue WHERE task_id=? AND customer_id=? AND (contact_id <=> ?) ORDER BY id DESC LIMIT 1');
+        $queue->execute([$taskId,$target['customer_id'],$target['contact_id']]);
+        $mail=$queue->fetch();
+        $restoredStatus=($mail && $mail['send_status']==='failed')?'failed':'skipped';
+        $failureReason=($mail['last_error'] ?? '') ?: '人工补救已撤销；原邮件未发送成功，请核对队列及排除原因。';
     }
     db()->prepare('UPDATE crm_marketing_task_targets
-        SET target_status = "pending", failure_reason = ?, manual_result = NULL, manual_remark = NULL, manual_attachment_json = NULL, manual_checked_by_user_id = NULL, executed_at = NULL
+        SET target_status = ?, failure_reason = ?, manual_result = NULL, manual_remark = NULL, manual_attachment_json = NULL, manual_checked_by_user_id = NULL, executed_at = NULL
         WHERE id = ?')
-        ->execute([$failureReason, $targetId]);
+        ->execute([$restoredStatus, $failureReason, $targetId]);
     $detail = [
         'target_id' => $targetId,
         'task_name' => $target['task_name'],
@@ -4359,6 +4435,8 @@ function crm_marketing_manual_unexecute(array $input): array
     db()->prepare("UPDATE crm_marketing_tasks SET success_count = ?, failed_count = ?, task_status = CASE WHEN task_status IN ('paused','cancelled') THEN task_status ELSE ? END, updated_at = NOW() WHERE id = ?")
         ->execute([(int)($counts['success_count'] ?? 0), (int)($counts['failed_count'] ?? 0), $nextStatus, $taskId]);
     crm_log_event('promotion', 'manual_execute_cancel', 'marketing_task', (string)$taskId, null, ['target_id' => $targetId]);
+    crm_promotion_sync_manual_result($targetId,'pending','','',(int)(current_user()['id'] ?? 0));
+    crm_promotion_refresh_status($taskId);
     return ['cancelled_id' => $targetId, 'tasks' => crm_marketing_tasks(), 'logs' => crm_marketing_logs(), 'targets' => crm_marketing_task_targets(['task_id' => $taskId]), 'failed_targets' => crm_marketing_task_targets(['status' => 'failed']), 'analytics' => crm_can('promotion.analytics') ? crm_marketing_analytics() : []];
 }
 

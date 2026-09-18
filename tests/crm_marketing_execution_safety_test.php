@@ -79,10 +79,13 @@ class MarketingSafetyStatement
             $this->rows = [[strpos($s, "send_status='sending'") !== false
                 ? count(array_filter($d->queues, static fn($q) => $q['send_status'] === 'sending'))
                 : count($d->queues)]];
-        } elseif (strpos($s, 'SELECT q.*, qb.body_html') === 0) {
+        } elseif (strpos($s, 'SELECT q.id FROM crm_marketing_send_queue') === 0) {
             safety_assert(strpos($s, 'INNER JOIN crm_marketing_tasks t ON t.id=q.task_id') !== false, 'Worker selection must join parent');
             $allowed = $this->sqlStatuses("/t\.task_status IN \(([^)]+)\)/");
             $this->rows = in_array($d->task['task_status'], $allowed, true) ? array_values($d->queues) : [];
+        } elseif (strpos($s, 'SELECT q.*,qb.body_html') === 0) {
+            safety_assert(strpos($s,'WHERE q.id=?')!==false,'Worker body fetch must be bounded to one queue');
+            $this->rows=isset($d->queues[(int)$params[0]])?[$d->queues[(int)$params[0]]]:[];
         } elseif (strpos($s, 'UPDATE crm_marketing_send_queue q INNER JOIN crm_marketing_tasks') === 0) {
             $isSkip = strpos($s, "SET q.send_status='skipped'") !== false;
             if (!$isSkip && $d->beforeClaim) { $callback = $d->beforeClaim; $d->beforeClaim = null; $callback($d); }

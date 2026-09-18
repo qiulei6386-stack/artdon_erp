@@ -15,7 +15,7 @@ date_default_timezone_set('Asia/Shanghai');
 function current_user(){return ['id'=>$GLOBALS['pdUser'] ?? 1];}
 function is_super_admin(){return false;}
 function crm_can($key){return false;}
-function crm_require($key){if(!in_array($key,['promotion.task_create','promotion.execute','mail.send'],true))throw new RuntimeException('Unexpected permission');}
+function crm_require($key){if(!in_array($key,['promotion.task_create','promotion.execute','mail.send','task.complete'],true))throw new RuntimeException('Unexpected permission');}
 function crm_marketing_ensure_tables(){}
 function crm_mail_ensure_tables(){}
 function crm_ensure_tables(){}
@@ -52,9 +52,13 @@ foreach([
 "CREATE TABLE crm_user_mail_accounts (id INT PRIMARY KEY,user_id INT,email_address VARCHAR(190),email_username VARCHAR(190),sender_name VARCHAR(120),signature_html MEDIUMTEXT,is_default INT DEFAULT 1,is_enabled INT DEFAULT 1,email_password_encrypted TEXT,deleted_at DATETIME) ENGINE=InnoDB",
 "CREATE TABLE crm_mail_signature_templates (id INT PRIMARY KEY,template_html MEDIUMTEXT,is_default INT) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_send_queue (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,sender_user_id INT,sender_email VARCHAR(190),receiver_email VARCHAR(190),subject VARCHAR(500),body MEDIUMTEXT,body_ref_id BIGINT,attachment_json JSON,planned_server_time DATETIME,send_status VARCHAR(40),send_attempts INT,max_attempts INT,last_error TEXT,failure_reason TEXT,sent_at DATETIME,created_at DATETIME,updated_at DATETIME) ENGINE=InnoDB",
-"CREATE TABLE crm_marketing_queue_bodies (id BIGINT PRIMARY KEY,body_html MEDIUMTEXT) ENGINE=InnoDB",
+"CREATE TABLE crm_marketing_queue_bodies (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,body_hash CHAR(64),body_html MEDIUMTEXT,body_bytes INT,created_at DATETIME,updated_at DATETIME,UNIQUE KEY uk_body(task_id,body_hash)) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,channel_key VARCHAR(120),action_key VARCHAR(120),result_status VARCHAR(40),failure_reason VARCHAR(500),operator_id INT,detail_json JSON,touched_at DATETIME,created_at DATETIME) ENGINE=InnoDB"
 ] as $sql)db()->exec($sql);
+db()->exec("CREATE TABLE crm_tasks (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_type VARCHAR(60),title VARCHAR(255),description TEXT,source_type VARCHAR(60),source_id VARCHAR(80),customer_id INT,contact_id INT,assigned_user_id INT,priority VARCHAR(30),status VARCHAR(40),due_at DATETIME,reminder_at DATETIME,request_token VARCHAR(100),created_by INT,created_at DATETIME,updated_at DATETIME,completed_at DATETIME,completed_by INT,result VARCHAR(120),result_note TEXT,deleted_at DATETIME,UNIQUE KEY uk_request(created_by,request_token)) ENGINE=InnoDB");
+db()->exec('ALTER TABLE crm_marketing_task_targets ADD manual_result TEXT, ADD manual_remark TEXT, ADD manual_attachment_json JSON, ADD manual_checked_by_user_id INT');
+db()->exec('ALTER TABLE crm_marketing_tasks ADD success_count INT DEFAULT 0, ADD failed_count INT DEFAULT 0');
+if (!function_exists('mb_substr')) { function mb_substr($s,$start,$length){return implode('',array_slice(preg_split('//u',$s,-1,PREG_SPLIT_NO_EMPTY),$start,$length));} }
 crm_delivery_ensure();
 db()->exec("INSERT INTO crm_users (id,real_name,username,phone,position) VALUES (1,'Sender','sender','123','Sales')");
 db()->exec("INSERT INTO crm_user_mail_accounts (id,user_id,email_address,sender_name,signature_html) VALUES (1,1,'sender@example.invalid','Sender','<p>{mail_user_name} / {send_email}</p>')");
@@ -112,8 +116,8 @@ try{crm_delivery_status(['token'=>$preview['token']]);throw new LogicException('
 $GLOBALS['pdUser']=1;
 crm_delivery_confirm(['token'=>$preview['token']]);
 mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_send_queue')->fetchColumn()===1,'Confirmation retry must not duplicate queue');
-$queue=db()->query('SELECT * FROM crm_marketing_send_queue')->fetch();
-mit_assert($queue['body']===$item['body_html'] && $queue['subject']===$item['subject'],'Queue exactly matches preview');
+$queue=db()->query('SELECT q.*,b.body_html queue_body_template FROM crm_marketing_send_queue q LEFT JOIN crm_marketing_queue_bodies b ON b.id=q.body_ref_id')->fetch();
+mit_assert(crm_delivery_queue_body($queue)===$item['body_html'] && $queue['subject']===$item['subject'],'Queue exactly matches preview');
 db()->exec("UPDATE crm_marketing_send_queue SET planned_server_time=DATE_SUB(NOW(),INTERVAL 1 MINUTE)");
 $result=crm_marketing_queue_run_due(10);
 mit_assert($result['sent']===1,'Real worker must process confirmed snapshot using fake SMTP');
@@ -166,9 +170,9 @@ $smallInput=array_merge($bulkInput,['client_request_id'=>'synthetic_balanced_con
 $small=crm_marketing_task_create($smallInput);$sp=crm_delivery_preview(['task_id'=>$small['task_id']]);
 $sm=json_decode(crm_delivery_load_preview(['token'=>$sp['token']])['manifest'],true);
 crm_delivery_confirm(['token'=>$sp['token']]);crm_delivery_confirm(['token'=>$sp['token']]);
-$qs=db()->query('SELECT * FROM crm_marketing_send_queue WHERE task_id='.(int)$small['task_id'].' ORDER BY id')->fetchAll();
+$qs=db()->query('SELECT q.*,b.body_html queue_body_template FROM crm_marketing_send_queue q LEFT JOIN crm_marketing_queue_bodies b ON b.id=q.body_ref_id WHERE q.task_id='.(int)$small['task_id'].' ORDER BY q.id')->fetchAll();
 mit_assert(count($qs)===5,'Balanced confirmation must be idempotent');
-foreach($qs as $i=>$q){$expected=crm_delivery_expand_item($sm,$sm['items'][$i]);mit_assert($q['body']===$expected['body_html'] && $q['sender_email']===$expected['sender_email'],'Every queued body and sender must equal preview');}
+foreach($qs as $i=>$q){$expected=crm_delivery_expand_item($sm,$sm['items'][$i]);mit_assert(crm_delivery_queue_body($q)===$expected['body_html'] && $q['sender_email']===$expected['sender_email'],'Every queued body and sender must equal preview');}
 echo "Multi-mailbox queue snapshots and repeated confirmation passed; no additional SMTP call.\n";
 
 // The saved selection is not the executable list: suppressed customers stay excluded.
@@ -185,3 +189,133 @@ mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_marketing_task_targets WHE
 $blockedInput['task_id']=$blocked['task_id'];crm_marketing_task_create($blockedInput);
 mit_assert(json_decode(crm_marketing_task_row($blocked['task_id'])['audience_config_json'],true)['selection']===$blockedAudience['selection'],'Selection survives re-saving');
 echo "Excluded draft selection persistence and fail-closed preview passed.\n";
+
+// Regression for #30: selected contacts on a group channel expand real groups once.
+db()->exec("INSERT INTO crm_customers (id,customer_name,country,owner_user_id,email) VALUES (6000,'Group customer','CN',1,'group@example.invalid'),(6001,'Missing group','CN',1,'missing@example.invalid')");
+db()->exec("INSERT INTO crm_contacts (id,customer_id,name,email) VALUES (6000,6000,'Group One','one@example.invalid'),(6001,6000,'Group Two','two@example.invalid'),(6002,6000,'Explicit email','override@example.invalid'),(6003,6001,'No Group','nogroup@example.invalid')");
+db()->exec("INSERT INTO crm_customer_promotion_channels(customer_id,channel_key) VALUES(6000,'whatsapp_group'),(6001,'wechat_group')");
+db()->exec("INSERT INTO crm_contact_promotions(contact_id,channel,status) VALUES(6000,'whatsapp_group','active'),(6000,'email','paused'),(6002,'email','active')");
+db()->exec("INSERT INTO crm_customer_chat_groups(id,customer_id,group_name,group_platform,status,use_for_promotion) VALUES(60,6000,'Actual WA Group','whatsapp_group','active',1),(61,6000,'Stopped','whatsapp_group','paused',1),(62,6000,'Not for promotion','whatsapp_group','active',0),(63,6000,'Other platform','wechat_group','active',1)");
+$gi=array_merge($input,['client_request_id'=>'group_preference_regression_30','channel_key'=>'preference','campaign_type'=>'mixed','customer_ids'=>'[6000,6001]','contact_ids'=>'[6000,6001,6002,6003]','audience_config'=>['contact_filter'=>'selected','group_mode'=>'selected'],'attachment_config'=>[]]);
+$g=crm_marketing_task_create($gi);$gp=crm_delivery_preview(['task_id'=>$g['task_id']]);
+mit_assert($gp['manifest']['total']===2 && $gp['manifest']['manual_count']===1 && $gp['manifest']['email_count']===1,'Selected contacts expand exactly one group and one explicitly overriding email');
+mit_assert($gp['manifest']['excluded_total']===1 && strpos($gp['manifest']['excluded'][0]['reason'],'客户群')!==false,'Missing group has specific actionable explanation');
+$gm=json_decode(crm_delivery_load_preview(['token'=>$gp['token']])['manifest'],true);
+$groupItem=array_values(array_filter($gm['items'],fn($i)=>$i['mode']==='manual'))[0];
+mit_assert($groupItem['chat_group_id']===60 && strpos(crm_delivery_expand_item($gm,$groupItem)['body_html'],'Actual WA Group')!==false,'Group is actual valid group, not a contact placeholder; greeting uses group name');
+$emailItem=array_values(array_filter($gm['items'],fn($i)=>$i['mode']==='email'))[0];
+mit_assert(strpos($emailItem['channel_basis'],'覆盖')!==false,'Explicit contact override is explained and frozen');
+crm_delivery_confirm(['token'=>$gp['token']]);crm_delivery_confirm(['token'=>$gp['token']]);
+mit_assert((int)db()->query("SELECT COUNT(*) FROM crm_tasks WHERE source_type='marketing_target' AND source_id=".$groupItem['target_id'])->fetchColumn()===1,'Confirmation creates exactly one deduplicated personal task');
+$personal=db()->query("SELECT * FROM crm_tasks WHERE source_type='marketing_target' AND source_id=".$groupItem['target_id'])->fetch();
+mit_assert((int)$personal['assigned_user_id']===1 && $personal['reminder_at']===$groupItem['planned_at'] && strpos($personal['description'],'Actual WA Group')!==false,'Assignee, reminder and frozen content are present');
+mit_assert(strpos(crm_promotion_manual_content(['target_id'=>$groupItem['target_id']])['content'],'Actual WA Group')!==false,'Manual recipient sees exact confirmed content');
+// Frozen account signatures and recipients cannot be replaced by later profile changes.
+$queue=db()->query('SELECT q.*,b.body_html queue_body_template FROM crm_marketing_send_queue q LEFT JOIN crm_marketing_queue_bodies b ON b.id=q.body_ref_id WHERE q.task_id='.$g['task_id'])->fetch();
+$frozen=crm_delivery_queue_body($queue);
+db()->exec("UPDATE crm_contacts SET name='CHANGED' WHERE id=6002");
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='<p>CHANGED</p>' WHERE id=1");
+mit_assert(crm_delivery_queue_body($queue)===$frozen && strpos($frozen,'Explicit email')!==false,'Frozen vars do not re-read mutable customer/sender');
+$corrupt=$queue;$corrupt['queue_body_template'].='changed';
+try{crm_delivery_queue_body($corrupt);throw new LogicException('Corrupted template accepted');}catch(RuntimeException $e){}
+// Reproduce manually checked failed email: retain SMTP failure and separate human remedy.
+db()->exec("UPDATE crm_marketing_send_queue SET send_status='failed',last_error='synthetic 550' WHERE task_id=".$g['task_id']);
+db()->exec("UPDATE crm_marketing_task_targets SET target_status='success',manual_result='contacted by phone',manual_checked_by_user_id=1 WHERE id=".$emailItem['target_id']);
+$facts=crm_promotion_execution_summaries([crm_marketing_task_row($g['task_id'])])[0];
+mit_assert($facts['mail_sent']===0 && $facts['mail_failed']===1 && $facts['manual_remediated_count']===1 && $facts['manual_pending_count']===1,'SMTP failure remains failure after manual remedy; no skipped email in manual pending');
+crm_promotion_refresh_status($g['task_id']);
+mit_assert((int)crm_marketing_task_row($g['task_id'])['failed_count']===1,'Stored task failure agrees with read facts');
+// A shared big signature is stored once per template, not once per recipient.
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='<p>Sender</p>' WHERE id=1");
+db()->prepare('UPDATE crm_user_mail_accounts SET signature_html=? WHERE id=1')->execute(['<p>Sender</p><img src="data:image/png;base64,'.str_repeat('A',1300000).'">']);
+$big=array_merge($input,['client_request_id'=>'shared_large_signature_30','customer_ids'=>'[2000,2001,2002,2003,2004]','contact_ids'=>'[]','attachment_config'=>[],'mail_body_html'=>'<p>{company_name}</p>']);
+$bigTask=crm_marketing_task_create($big);$bigPreview=crm_delivery_preview(['task_id'=>$bigTask['task_id']]);crm_delivery_confirm(['token'=>$bigPreview['token']]);
+$stored=db()->query('SELECT COUNT(*) n,COUNT(DISTINCT body_ref_id) refs,SUM(OCTET_LENGTH(body)) raw_bytes FROM crm_marketing_send_queue WHERE task_id='.$bigTask['task_id'])->fetch();
+mit_assert((int)$stored['n']===5 && (int)$stored['refs']===1 && (int)$stored['raw_bytes']===0,'Big signature stored once across recipients');
+$bad=$big;$bad['client_request_id']='blocked_company_signature_30';$bad['signature_key']='company';
+$badTask=crm_marketing_task_create($bad);
+try{crm_delivery_preview(['task_id'=>$badTask['task_id']]);throw new LogicException('Company signature allowed for execution');}catch(RuntimeException $e){}
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='' WHERE id=1");
+$bad['client_request_id']='blocked_missing_signature_30';$bad['signature_key']='personal';$bad['send_rule']=['delivery_version'=>2,'mail_account_rule'=>'selected_mailbox','mail_account_ids'=>[1]];$badTask=crm_marketing_task_create($bad);
+try{crm_delivery_preview(['task_id'=>$badTask['task_id']]);throw new LogicException('Missing account signature allowed');}catch(RuntimeException $e){}
+echo "Task30 regressions passed: actual groups, overrides, suppression boundaries, manual task idempotence, frozen content, SMTP/manual separation, shared large signature and missing signature blocking.\n";
+
+// Real manual result handler with isolated DB; only unrelated timeline/upload adapters are fake.
+db()->exec('ALTER TABLE crm_customer_chat_groups ADD last_promoted_at DATETIME NULL, ADD updated_by INT NULL, ADD updated_at DATETIME NULL');
+function crm_marketing_manual_upload($files){return [];}
+function crm_marketing_write_manual_followup(...$args){$GLOBALS['manualFollowups'][]=$args;}
+function crm_customer_timeline_add(...$args){}
+function crm_marketing_logs(...$args){return [];}
+function crm_marketing_task_targets($input){$s=db()->prepare('SELECT * FROM crm_marketing_task_targets WHERE task_id=?');$s->execute([$input['task_id']??0]);return $s->fetchAll();}
+foreach(['crm_marketing_manual_execute','crm_marketing_manual_execute_locked','crm_marketing_manual_unexecute','crm_marketing_manual_unexecute_locked'] as $name)eval(pd_extract($source,$name));
+try{crm_marketing_manual_execute(['task_id'=>$g['task_id'],'target_ids'=>[$groupItem['target_id']]]);throw new LogicException('Blank result accepted');}catch(RuntimeException $e){}
+$done=['task_id'=>$g['task_id'],'target_ids'=>[$groupItem['target_id']],'manual_result'=>'Posted in verified WhatsApp group; customer asks for quote.'];
+$GLOBALS['pdUser']=9;
+try{crm_marketing_manual_execute($done);throw new LogicException('Foreign operator accepted');}catch(RuntimeException $e){}
+$GLOBALS['pdUser']=1;
+crm_marketing_manual_execute($done);crm_marketing_manual_execute($done);
+mit_assert((int)db()->query("SELECT COUNT(*) FROM crm_marketing_logs WHERE task_id=".$g['task_id']." AND action_key='manual_execute'")->fetchColumn()===1,'Duplicate manual submit is idempotent');
+$personal=db()->query('SELECT * FROM crm_tasks WHERE id='.$personal['id'])->fetch();
+mit_assert($personal['status']==='done' && $personal['result']!=='' && (int)$personal['completed_by']===1,'Actual manual result completes linked personal task');
+$facts=crm_promotion_execution_summaries([crm_marketing_task_row($g['task_id'])])[0];
+mit_assert($facts['mail_sent']===0 && $facts['mail_failed']===1 && $facts['manual_success']===1 && $facts['manual_pending_count']===0,'Manual completion cannot convert SMTP failure into success');
+crm_marketing_manual_unexecute(['task_id'=>$g['task_id'],'target_id'=>$groupItem['target_id']]);
+mit_assert(db()->query('SELECT status FROM crm_tasks WHERE id='.$personal['id'])->fetchColumn()==='pending','Explicit undo reopens linked work only');
+$sentTarget=(int)db()->query('SELECT id FROM crm_marketing_task_targets WHERE task_id='.$first['task_id'].' AND contact_id=1')->fetchColumn();
+db()->exec("UPDATE crm_marketing_task_targets SET target_status='success' WHERE id=".$sentTarget);
+try{crm_marketing_manual_unexecute(['task_id'=>$first['task_id'],'target_id'=>$sentTarget]);throw new LogicException('Actual sent mail undone');}catch(RuntimeException $e){}
+echo "Manual completion integration: missing-result and scope rejection, duplicate submit, task-center status sync, explicit undo, SMTP truth preservation passed.\n";
+
+// Repair old confirmed work only, no generated recipients and no queue mutation.
+$queueBefore=db()->query('SELECT id,send_status,send_attempts,body_ref_id FROM crm_marketing_send_queue ORDER BY id')->fetchAll();
+db()->exec('DELETE FROM crm_tasks WHERE id='.(int)$personal['id']);
+$tasksBefore=(int)db()->query('SELECT COUNT(*) FROM crm_tasks')->fetchColumn();
+$dry=crm_promotion_repair_manual_tasks((int)$g['task_id']);
+mit_assert($dry['missing_count']===1 && (int)db()->query('SELECT COUNT(*) FROM crm_tasks')->fetchColumn()===$tasksBefore,'Backfill dry-run never writes');
+$repair=crm_promotion_repair_manual_tasks((int)$g['task_id'],true);
+$again=crm_promotion_repair_manual_tasks((int)$g['task_id'],true);
+mit_assert($repair['missing_count']===1 && $again['missing_count']===0 && $again['existing_count']===1,'Backfill uses confirmed manual items only and is idempotent');
+mit_assert($queueBefore===db()->query('SELECT id,send_status,send_attempts,body_ref_id FROM crm_marketing_send_queue ORDER BY id')->fetchAll(),'Backfill cannot mutate SMTP queue');
+echo "Confirmed-only manual backfill dry-run and retry passed, no queue mutation.\n";
+
+function crm_task_center_ensure_tables(){}
+function crm_task_row($id){$s=db()->prepare('SELECT * FROM crm_tasks WHERE id=?');$s->execute([$id]);return $s->fetch();}
+$taskHandler=pd_extract(file_get_contents(dirname(__DIR__).'/crm_task_center.php'),'crm_task_update_status');
+// The actual marketing handler is already loaded; don't load application/bootstrap in this fixture.
+$taskHandler=str_replace("require_once __DIR__.'/crm_marketing.php';",'',$taskHandler);
+eval($taskHandler);
+$linked=(int)db()->query("SELECT id FROM crm_tasks WHERE source_type='marketing_target' AND source_id=".$groupItem['target_id'])->fetchColumn();
+$taskDone=crm_task_update_status(['task_id'=>$linked,'status'=>'done','result'=>'Posted via task center']);
+mit_assert($taskDone['task']['status']==='done' && db()->query('SELECT manual_result FROM crm_marketing_task_targets WHERE id='.$groupItem['target_id'])->fetchColumn()==='Posted via task center','Task-center completion writes the real promotion result');
+echo "Actual task-center completion routes to promotion result passed.\n";
+
+// Whole-customer selection must also honor contact overrides; a blocked first contact cannot swallow its group.
+db()->exec("UPDATE crm_user_mail_accounts SET signature_html='<p>Sender</p>' WHERE id=1");
+db()->exec("INSERT INTO crm_contacts(id,customer_id,name,email) VALUES(6004,6000,'Blocked first','blocked@example.invalid')");
+db()->exec("INSERT INTO crm_contact_promotions(contact_id,channel,status) VALUES(6004,'whatsapp_group','active'),(6004,'no_promotion','active')");
+$allGroup=$gi;$allGroup['client_request_id']='all_contacts_preference_guard';$allGroup['contact_ids']='[]';$allGroup['customer_ids']='[6000]';$allGroup['audience_config']=['contact_filter'=>'all','group_mode'=>'selected'];
+$allTask=crm_marketing_task_create($allGroup);$allPreview=crm_delivery_preview(['task_id'=>$allTask['task_id']]);
+mit_assert($allPreview['manifest']['email_count']===1 && $allPreview['manifest']['manual_count']===1 && $allPreview['manifest']['excluded_total']===1,'Whole-customer selection respects overrides and blocked first contact cannot deduplicate away eligible group');
+echo "Whole-customer mixed preference and blocked-contact group dedup passed.\n";
+
+// Actual notification selection: due-start reminder, owner scope and paused parent.
+db()->exec('ALTER TABLE crm_tasks ADD opportunity_id INT NULL, ADD quote_id VARCHAR(80) NULL');
+function create_system_notification(...$args){$GLOBALS['pdNotifications'][]=$args;}
+eval(pd_extract(file_get_contents(dirname(__DIR__).'/notification_service.php'),'notification_sync_task_sources'));
+db()->exec("UPDATE crm_tasks SET status='done'");
+db()->exec("UPDATE crm_tasks SET status='pending',reminder_at=DATE_SUB(NOW(),INTERVAL 1 MINUTE),due_at=DATE_ADD(NOW(),INTERVAL 1 DAY) WHERE id=".$linked);
+db()->exec("UPDATE crm_marketing_task_targets SET target_status='pending' WHERE id=".$groupItem['target_id']);
+db()->exec("UPDATE crm_marketing_tasks SET task_status='manual_pending' WHERE id=".$g['task_id']);
+$GLOBALS['pdNotifications']=[];notification_sync_task_sources(1);
+mit_assert(count($GLOBALS['pdNotifications'])===1 && $GLOBALS['pdNotifications'][0][2]==='推广已到执行时间','Plan start generates reminder before next-day deadline');
+$GLOBALS['pdNotifications']=[];notification_sync_task_sources(9);
+mit_assert(!$GLOBALS['pdNotifications'],'No reminder to another owner');
+db()->exec("UPDATE crm_marketing_tasks SET task_status='paused' WHERE id=".$g['task_id']);
+notification_sync_task_sources(1);
+mit_assert(!$GLOBALS['pdNotifications'],'Paused project cannot remind execution');
+echo "Notification start-time, owner and parent-state integration passed.\n";
+function crm_marketing_reconcile_task_targets_from_queue($id){}
+eval(pd_extract($source,'crm_marketing_task_execution_summary'));
+$report=crm_marketing_task_execution_summary((int)$g['task_id']);
+mit_assert($report['mail']['success']===0 && $report['mail']['failed']===1,'Detailed execution report also preserves actual SMTP failure after manual remedy');
+echo "Detailed report SMTP truth passed.\n";

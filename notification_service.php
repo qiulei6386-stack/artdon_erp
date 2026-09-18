@@ -189,17 +189,18 @@ function notification_sync_task_sources(int $userId): void
     $stmt = db()->prepare("SELECT id, task_type, title, source_type, source_id, customer_id, contact_id, opportunity_id, quote_id, due_at, status
         FROM crm_tasks
         WHERE deleted_at IS NULL
+          AND (source_type<>'marketing_target' OR EXISTS (SELECT 1 FROM crm_marketing_task_targets mt JOIN crm_marketing_tasks p ON p.id=mt.task_id WHERE mt.id=crm_tasks.source_id AND p.task_status NOT IN ('draft','paused','cancelled') AND mt.target_status IN ('pending','failed')))
           AND assigned_user_id = ?
           AND status NOT IN ('done','closed','cancelled')
           AND due_at IS NOT NULL
-          AND (due_at < NOW() OR DATE(due_at) = CURDATE())
+          AND (due_at < NOW() OR DATE(due_at) = CURDATE() OR (source_type='marketing_target' AND reminder_at<=NOW()))
         ORDER BY due_at ASC
         LIMIT 80");
     $stmt->execute([$userId]);
     foreach ($stmt->fetchAll() as $task) {
         $overdue = strtotime((string)$task['due_at']) < time();
         $type = $overdue ? 'task_overdue' : 'task_due';
-        $title = $overdue ? '任务已逾期' : '今日任务提醒';
+        $title = $overdue ? '任务已逾期' : (($task['source_type'] ?? '')==='marketing_target' ? '推广已到执行时间' : '今日任务提醒');
         $content = ($task['title'] ?: '未命名任务') . ' · 截止 ' . (string)$task['due_at'];
         create_system_notification($userId, $type, $title, $content, [
             'module' => 'tasks',

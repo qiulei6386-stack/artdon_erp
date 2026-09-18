@@ -16383,7 +16383,7 @@
         var startedAt = String(row.scheduled_at || '').replace('T', ' ').slice(0, 16);
         var createdAt = String(row.created_at || '').replace('T', ' ').slice(0, 16);
         var updatedAt = String(row.updated_at || '').replace('T', ' ').slice(0, 16);
-        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 邮件队列 ' + (row.queue_count || 0) + ' · 人工待办 ' + (isDraft ? 0 : (row.manual_pending_count || 0)) + ' · 失败 ' + (row.failed_count || 0);
+        var metrics = cnChannel(row.channel_key) + ' · 客户 ' + (row.customer_count || 0) + ' · 联系人 ' + (row.contact_count || 0) + ' · 邮件队列 ' + (row.queue_count || 0) + ' · 人工待办 ' + (isDraft ? 0 : (row.manual_pending_count || 0)) + ' · 邮件成功 ' + (row.mail_sent || 0) + ' · 邮件失败 ' + (row.mail_failed || 0) + ' · 人工完成 ' + (row.manual_success || 0) + ' · 邮件人工补救 ' + (row.manual_remediated_count || 0) + ' · 排除 ' + (row.skipped_count || 0);
         var startLine = '开始 ' + (startedAt || '未设置');
         var timing = '负责人 ' + (row.created_by_name || '-') + (updatedAt ? ' · 更新 ' + updatedAt : '');
         var timingTitle = ['开始：' + (startedAt || '未设置'), '创建：' + (createdAt || '-'), '更新：' + (row.updated_at || '-')].join('\\n');
@@ -16502,22 +16502,22 @@
       }).join('') + '</div></section>';
     },
     taskStatusText: function (status) {
-      var map = { draft: '草稿', pending: '待执行', running: '执行中', paused: '已暂停', partial_failed: '部分失败', completed: '已完成', cancelled: '已取消' };
+      var map = { draft: '草稿', pending: '待执行', scheduled: '待开始', running: '执行中', manual_pending: '待人工执行', failed: '失败', paused: '已暂停', partial_failed: '部分失败', completed: '已处理', cancelled: '已取消' };
       return map[status] || status || '-';
     },
     taskScheduleText: function (task, schedule) {
       var type = task.schedule_type || schedule.schedule_type || 'manual';
       var at = task.scheduled_at || schedule.scheduled_at || '';
-      if (type === 'manual') return '手动执行，未设置定时送达';
+      if (type === 'manual') return '确认后开始执行；邮件进度和人工结果分别查看';
       if (!at) return '计划中，但未设置具体时间';
       var time = String(at).replace('T', ' ').slice(0, 16);
       var ts = Date.parse(String(at).replace(' ', 'T'));
       if (Number.isFinite(ts)) {
         var diff = ts - Date.now();
-        if (diff > 0) return '计划 ' + time + ' 送达，还在计划中';
-        return '计划 ' + time + ' 送达，已到执行时间';
+        if (diff > 0) return '计划 ' + time + ' 开始（非保证送达时间）';
+        return '计划开始 ' + time + (task.last_sent_at ? ' · 最后发信 ' + String(task.last_sent_at).slice(0,16) : '') + ' · ' + this.taskStatusText(task.task_status);
       }
-      return '计划 ' + time + ' 送达';
+      return '计划开始 ' + time;
     },
     taskDeliveryTimeLabel: function (task, schedule) {
       var at = task.scheduled_at || schedule.scheduled_at || '';
@@ -21033,9 +21033,11 @@
           var channel = self.normalizePromotionChannel(row.channel_key || '');
           var status = String(row.target_status || '').toLowerCase();
           var isManualCheckedEmail = status === 'success' && (row.manual_checked_by_user_id || row.manual_checked_by_name || row.manual_result);
-          return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && (['pending','failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail));
+          var emailInFlight=['sent','sending','pending','scheduled','waiting_retry'].indexOf(String(row.queue_status || ''))>=0;
+          return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && !emailInFlight && (['failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail));
         });
-        manualTargets = self.collapseEmailFollowupsWithGroupTargets(manualTargets);
+        var excludedManual=manualTargets.filter(function(row){return row.target_status==='skipped' && manualChannels.indexOf(self.normalizePromotionChannel(row.channel_key || ''))>=0;});
+        manualTargets=manualTargets.filter(function(row){return excludedManual.indexOf(row)<0;});
         manualTargets.sort(function (a, b) {
           var aGroup = (a.chat_group_id || self.isGroupPromotionChannel(a.channel_key)) ? 1 : 0;
           var bGroup = (b.chat_group_id || self.isGroupPromotionChannel(b.channel_key)) ? 1 : 0;
@@ -21091,17 +21093,18 @@
           var overdue = row.manual_status === 'overdue' ? ' is-overdue' : '';
           var filterType = isGroupTarget ? 'group' : (isMailFollowup ? 'email' : 'manual');
           var filterPlatform = isGroupTarget ? self.normalizePromotionChannel(row.chat_group_platform || row.channel_key || '') : '';
-          return '<tr class="' + (isGroupTarget ? 'is-group-target' : '') + overdue + '" data-promo-manual-row data-manual-filter-type="' + esc(filterType) + '" data-manual-filter-platform="' + esc(filterPlatform) + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + (isGroupTarget ? '<b class="promo-manual-group-badge">' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</b>' : esc(cnChannel(row.channel_key || '-'))) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '</td><td>' + esc(due) + '</td></tr>';
+          return '<tr class="' + (isGroupTarget ? 'is-group-target' : '') + overdue + '" data-promo-manual-row data-manual-filter-type="' + esc(filterType) + '" data-manual-filter-platform="' + esc(filterPlatform) + '"><td><input type="checkbox" data-promo-manual-target value="' + esc(row.id) + '"></td><td><strong>' + esc(row.customer_name || '-') + '</strong><span>' + esc(renderManualName(row)) + '</span></td><td>' + (isGroupTarget ? '<b class="promo-manual-group-badge">' + esc(cnChannel(row.chat_group_platform || row.channel_key || '-')) + '</b>' : esc(cnChannel(row.channel_key || '-'))) + '</td><td>' + esc(method) + '</td><td>' + esc(executor || '-') + '</td><td>' + esc(reason || cnStatus(row.target_status || '-')) + '<button type="button" data-promo-execution-content="' + esc(row.id) + '">查看执行内容</button></td><td>' + esc(due) + '</td></tr>';
         }).join('') : '<tr><td colspan="7">当前任务没有待勾选的人工执行目标。</td></tr>';
         var doneRows = done.length ? done.slice(0, 80).map(renderManualDoneRow).join('') : '<tr data-promo-manual-done-empty><td colspan="8">暂无已勾选记录。</td></tr>';
         self.openDialog({
           modalClass: 'promo-manual-execution-modal',
           dialogClass: 'promo-manual-execution-dialog',
           title: '手动执行推广',
-          description: task.task_name + ' · 勾选即记录完成时间、执行负责人和打勾账号',
+          description: task.task_name + ' · 选择对象并填写实际联系结果；本窗口不会自动发送',
           body: '<section class="promo-preview-grid promo-manual-summary"><button type="button" class="is-active" data-promo-manual-filter="all"><strong>' + esc(manualTargets.length) + '</strong><span>人工目标</span></button><button type="button" data-promo-manual-filter="group"><strong>' + esc(groupTargets.length) + '</strong><span>群推广</span></button><button type="button" data-promo-manual-filter="wechat_group"><strong>' + esc(wechatGroupCount) + '</strong><span>微信群</span></button><button type="button" data-promo-manual-filter="whatsapp_group"><strong>' + esc(whatsappGroupCount) + '</strong><span>WhatsApp群</span></button><button type="button" data-promo-manual-filter="email"><strong>' + esc(emailFallbackCount) + '</strong><span>邮件转人工</span></button></section>' +
-            '<section class="promo-manual-note"><strong>打勾账号：' + esc(currentUserName) + '</strong><span>勾选后立即写入执行完成时间，并记录由当前账号打勾。</span></section>' +
-            '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 批量勾选当前筛选</label><span data-promo-manual-selected>勾选即记录</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '<tr class="promo-manual-filter-empty" data-promo-manual-empty hidden><td colspan="7">当前筛选没有待勾选目标。</td></tr></tbody></table></div></section>' +
+            (excludedManual.length?'<details class="promo-manual-excluded"><summary>已排除 '+excludedManual.length+' 项（不属于待执行）</summary><p>先补齐客户渠道或群资料，再创建补充推广并重新预览确认。不要重跑原项目已发送对象。</p>'+excludedManual.map(function(row){return '<p>'+esc(row.customer_name)+' · '+esc(cnChannel(row.channel_key))+' · '+esc(row.failure_reason || '资料未完整')+'</p>';}).join('')+'</details>':'')+
+            '<section class="promo-manual-note"><strong>操作账号：' + esc(currentUserName) + '</strong><span>仅选择对象不会改变结果，须填写实际联系结果后提交。</span></section>' +
+            '<section class="promo-manual-table-card"><header><label><input type="checkbox" data-promo-manual-select-all> 批量勾选当前筛选</label><span data-promo-manual-selected>填写结果后提交</span></header><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>勾选</th><th>客户 / 对象</th><th>渠道</th><th>联系方式 / 群名</th><th>执行负责人</th><th>原因</th><th>截止</th></tr></thead><tbody>' + pendingRows + '<tr class="promo-manual-filter-empty" data-promo-manual-empty hidden><td colspan="7">当前筛选没有待勾选目标。</td></tr></tbody></table></div></section>' +
             '<details class="promo-manual-done-table"><summary data-promo-manual-done-summary>已执行记录 ' + esc(done.length) + ' 条</summary><div class="promo-manual-table-wrap"><table class="promo-manual-table"><thead><tr><th>客户</th><th>对象</th><th>渠道</th><th>执行负责人</th><th>打勾人</th><th>打勾时间</th><th>结果</th><th>操作</th></tr></thead><tbody data-promo-manual-done-body>' + doneRows + '</tbody></table></div></details>',
           actions: '<button type="button" data-promo-dialog-close>关闭</button>',
           bind: function (modal) {
@@ -21121,7 +21124,7 @@
             var syncSelection = function () {
               var visible = visibleCheckboxes();
               var visibleChecked = visible.filter(function (input) { return input.checked; }).length;
-              if (selectedText) selectedText.textContent = '当前筛选 ' + visible.length + ' 条 · 勾选即记录';
+              if (selectedText) selectedText.textContent = '当前筛选 ' + visible.length + ' 条 · 已选 '+visibleChecked+' 条 · 填写结果后提交';
               if (selectAll) {
                 selectAll.checked = visible.length > 0 && visibleChecked === visible.length;
                 selectAll.indeterminate = visibleChecked > 0 && visibleChecked < visible.length;
@@ -21176,9 +21179,12 @@
               ids = (ids || []).map(Number).filter(Boolean);
               inputs = inputs || [];
               if (!ids.length) return;
+              var resultInput=modal.querySelector('[data-promo-manual-result]');
+              var actualResult=String(resultInput && resultInput.value || '').trim();
+              if (!actualResult) { if(resultInput) resultInput.focus(); return toast('请填写实际联系结果，不能只勾选完成'); }
               inputs.forEach(function (input) { input.disabled = true; input.checked = true; });
               if (selectAll) selectAll.disabled = true;
-              post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids) }).then(function (result) {
+              post('marketing_manual_execute', { task_id: task.id, target_ids: JSON.stringify(ids), manual_result:actualResult }).then(function (result) {
                 if (!result.success) throw new Error(result.message || '手动执行记录失败');
                 self.data.tasks = (result.data && result.data.tasks) || self.data.tasks;
                 self.data.logs = (result.data && result.data.logs) || self.data.logs;
@@ -21189,7 +21195,7 @@
                 latestTargets.forEach(function (row) { latestById[Number(row.id || 0)] = row; });
                 var doneBody = modal.querySelector('[data-promo-manual-done-body]');
                 var doneSummary = modal.querySelector('[data-promo-manual-done-summary]');
-                var doneCount = latestTargets.filter(function (row) { return String(row.target_status || '').toLowerCase() === 'success'; }).length;
+                var doneCount = latestTargets.filter(function (row) { return String(row.target_status || '').toLowerCase() === 'success' && (manualChannels.indexOf(self.normalizePromotionChannel(row.channel_key))>=0 || row.manual_checked_by_user_id); }).length;
                 inputs.forEach(function (input) {
                   var row = input.closest('[data-promo-manual-row]');
                   if (row) row.remove();
@@ -21219,16 +21225,24 @@
                 self.showError(error.message || '手动执行记录失败');
               });
             };
-            checkboxes.forEach(function (input) {
-              input.addEventListener('change', function () {
-                if (!input.checked) return syncSelection();
-                runImmediateExecute([Number(input.value || 0)], [input]);
-              });
-            });
+            var entry=document.createElement('section');
+            entry.className='promo-manual-result-entry';
+            entry.innerHTML='<label>实际联系结果（必填）<textarea data-promo-manual-result rows="3" maxlength="2000" placeholder="例如：已通过 WhatsApp 联系，客户要求明天提供报价。邮件失败后人工补救请说明实际使用的方式。"></textarea></label><button type="button" data-promo-manual-submit>提交所选对象的执行结果</button><p>人工补救会单独记录，不会把失败邮件改成发送成功。</p>';
+            modal.querySelector('.promo-manual-note').replaceWith(entry);
+            modal.querySelector('[data-promo-manual-submit]').onclick=function(){var selected=visibleCheckboxes().filter(function(x){return x.checked&&!x.disabled;});if(!selected.length)return toast('请先选择执行对象');runImmediateExecute(selected.map(function(x){return Number(x.value);}),selected);};
+            modal.querySelectorAll('[data-promo-execution-content]').forEach(function(button){button.onclick=function(){
+              button.disabled=true;
+              post('marketing_manual_content',{target_id:Number(button.dataset.promoExecutionContent)}).then(function(result){
+                if(!result.success)throw new Error(result.message || '读取执行内容失败');
+                var detail=document.createElement('details');detail.open=true;detail.className='promo-execution-content';
+                detail.innerHTML='<summary>已确认执行内容</summary><p>'+esc(result.data.channel_basis)+' · '+esc(result.data.contact_method)+'</p><pre>'+esc(result.data.content)+'</pre>'+(result.data.has_images?'<p>原内容含图片，请在项目预览中查看图片；此处提供可复制的文字。</p>':'');
+                button.replaceWith(detail);
+              }).catch(function(error){button.disabled=false;self.showError(error.message);});
+            };});
+            checkboxes.forEach(function (input) { input.addEventListener('change',syncSelection); });
             if (selectAll) selectAll.addEventListener('change', function () {
-              if (!selectAll.checked) return syncSelection();
-              var visible = visibleCheckboxes().filter(function (input) { return !input.checked && !input.disabled; });
-              runImmediateExecute(visible.map(function (input) { return Number(input.value || 0); }), visible);
+              visibleCheckboxes().forEach(function(input){if(!input.disabled)input.checked=selectAll.checked;});
+              syncSelection();
             });
             filterButtons.forEach(function (button) {
               button.addEventListener('click', function () { applyFilter(button.getAttribute('data-promo-manual-filter') || 'all'); });

@@ -1693,6 +1693,7 @@ function crm_task_save(array $input): array
     $id = (int)($input['task_id'] ?? 0);
     crm_require($id > 0 ? 'task.edit' : 'task.create');
     $before = $id > 0 ? crm_task_row($id) : [];
+    if (($before['source_type'] ?? '')==='marketing_target' || ($input['source_type'] ?? '')==='marketing_target') throw new RuntimeException('推广关联待办由原项目维护，请使用完成结果入口或打开推广项目。');
     // The normal edit form does not submit linkage or lifecycle fields.
     // Omission must not unlink a business task or reopen a completed one.
     $input = array_replace(array_intersect_key($before, array_flip([
@@ -1778,6 +1779,15 @@ function crm_task_update_status(array $input): array
     $result = trim((string)($input['result'] ?? ''));
     $note = trim((string)($input['result_note'] ?? ''));
     if ($status === 'done' && $result === '') throw new RuntimeException('标记完成时必须填写完成结果。');
+    if (($before['source_type'] ?? '')==='marketing_target') {
+        if ($status!=='done') throw new RuntimeException('推广执行状态请在原推广项目中调整，以免两处记录不一致。');
+        require_once __DIR__.'/crm_marketing.php';
+        $target=db()->prepare('SELECT task_id FROM crm_marketing_task_targets WHERE id=?'); $target->execute([(int)$before['source_id']]);
+        $promotionId=(int)$target->fetchColumn();
+        if (!$promotionId) throw new RuntimeException('原推广对象不存在，请联系管理员核对。');
+        crm_marketing_manual_execute(['task_id'=>$promotionId,'target_ids'=>[(int)$before['source_id']],'manual_status'=>'success','manual_result'=>$result,'remark'=>$note]);
+        return ['task'=>crm_task_row($id)];
+    }
     db()->prepare("UPDATE crm_tasks SET status=?, result=?, result_note=?, completed_at=IF(?='done',NOW(),completed_at), completed_by=IF(?='done',?,completed_by), updated_at=NOW() WHERE id=?")
         ->execute([$status, $result, $note, $status, $status, (int)((current_user() ?: [])['id'] ?? 0), $id]);
     $after = crm_task_row($id);
@@ -1793,6 +1803,7 @@ function crm_task_delay(array $input): array
     $due = crm_task_datetime($input['due_at'] ?? '');
     if (!$id || !$due) throw new RuntimeException('请选择延期时间。');
     $before = crm_task_row($id);
+    if (($before['source_type'] ?? '')==='marketing_target') throw new RuntimeException('推广执行时间请在原推广项目中核对，不能单独更改提醒任务。');
     db()->prepare("UPDATE crm_tasks SET due_at=?, status='delayed', updated_at=NOW() WHERE id=?")->execute([$due, $id]);
     $after = crm_task_row($id);
     crm_log_event('tasks', 'task_delay', 'task', (string)$id, $before, $after);
@@ -1805,6 +1816,7 @@ function crm_task_delete(array $input): array
     $id = (int)($input['task_id'] ?? 0);
     if ($id <= 0) throw new RuntimeException('缺少任务。');
     $before = crm_task_row($id);
+    if (($before['source_type'] ?? '')==='marketing_target') throw new RuntimeException('推广待办不能单独删除，请在原项目处理或取消。');
     db()->prepare("UPDATE crm_tasks SET deleted_at=NOW(), updated_at=NOW() WHERE id=?")->execute([$id]);
     crm_log_event('tasks', 'task_delete', 'task', (string)$id, $before, ['deleted_at' => date('Y-m-d H:i:s')]);
     if ((int)($before['customer_id'] ?? 0) > 0) crm_customer_timeline_add((int)$before['customer_id'], 'task_delete', '删除任务：' . ($before['title'] ?? ''), crm_task_type_map()[$before['task_type']] ?? ($before['task_type'] ?? ''), 'task', (string)$id);

@@ -72,11 +72,10 @@ assert(start>0 && end>start);
   assert.deepEqual(await page.evaluate(()=>fixturePromotion.wizardDraft.mail_account_ids),await page.evaluate(()=>signatureDraft.mail_account_ids),'Inspection mailbox does not change send allocation');
   await page.evaluate(()=>{window.signatureReply=()=>new Promise(resolve=>window.resolveSignature=resolve);});
   await page.locator('[data-pc-signature-check]').click();
-  await page.locator('[data-wizard-field="signature_key"]').selectOption('none');
+  assert.deepEqual(await page.locator('[data-wizard-field="signature_key"] option').evaluateAll(options=>options.map(o=>o.value)),['personal']);
+  await page.locator('[data-pc-signature-account]').selectOption('');
   await page.evaluate(()=>resolveSignature({success:true,data:{ready:true,missing:[],preview_html:'STALE'}}));
-  assert.equal(await page.locator('.pc-signature-frame').count(),0,'Late response cannot restore disabled signature');
-  assert((await page.locator('[data-pc-signature-tools]').innerText()).includes('不会自动追加'));
-  await page.locator('[data-wizard-field="signature_key"]').selectOption('company');
+  assert.equal(await page.locator('.pc-signature-frame').count(),0,'Late response cannot restore an obsolete account signature');
   await page.locator('[data-pc-signature-account]').selectOption('1');
   await page.evaluate(()=>{window.signatureReply=async()=>({success:true,data:{ready:false,missing:['手机号 {mobile}','职位 {position}'],recipient_variables:[],preview_html:'<p>{position}</p>'}});});
   await page.locator('[data-pc-signature-check]').click();
@@ -108,12 +107,14 @@ assert(start>0 && end>start);
   await page.locator('[data-wizard-field="hourly_limit"]').fill('50');
   assert.equal(await page.locator('.pc-field-error').count(),0);
   assert.equal(await page.locator('[data-pc-guidance] .is-pending').count(),0);
-  assert.equal(await page.evaluate(()=>api.validation(2,{...fixturePromotion.wizardDraft,signature_key:'obsolete'})),'请选择邮件签名方式。');
+  for(const key of ['obsolete','none','company'])assert.equal(await page.evaluate(key=>api.validation(2,{...fixturePromotion.wizardDraft,signature_key:key}),key),'请选择实际发件账号签名；缺少签名的邮箱不能执行。');
   for(const size of [{width:360,height:640},{width:1024,height:600}]){
     await page.setViewportSize(size);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     for(let step=0;step<5;step++){
       await page.evaluate(step=>{api.state.step=step;api.state.preview=step===4?makePreview():null;fixturePromotion.renderWizard();},step);
-      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('.pc-footer').getBoundingClientRect().bottom<=innerHeight+1 && document.querySelector('.pc-main').clientHeight>180),'Short screens retain navigation, body and footer');
+      const shortMetrics=await page.evaluate(()=>({width:innerWidth,doc:document.documentElement.scrollWidth,bottom:document.querySelector('.pc-footer').getBoundingClientRect().bottom,height:innerHeight,main:document.querySelector('.pc-main').clientHeight}));
+      assert(shortMetrics.doc<=shortMetrics.width+1 && shortMetrics.bottom<=shortMetrics.height+1 && shortMetrics.main>180,'Short screens retain navigation, body and footer '+JSON.stringify({step,...shortMetrics}));
     }
   }
   await page.setViewportSize({width:1440,height:900});
@@ -422,6 +423,42 @@ assert(start>0 && end>start);
   await hints.waitForTimeout(360);
   assert.equal(await hintCount(),0,'Hidden trigger cannot finish delayed show');
   await hints.close();
+  // Actual manual-dialog binding: selecting is not executing, results are mandatory.
+  await page.evaluate(()=>{
+    document.body.className='';document.body.innerHTML='<main id="manual-fixture"></main>';
+    window.manualCalls=[];window.post=async(action,payload)=>{
+      manualCalls.push({action,payload});
+      if(action==='marketing_task_targets')return {success:true,data:{targets:[
+        {id:1,channel_key:'whatsapp',target_status:'pending',customer_name:'Manual customer',contact_name:'Person',contact_method:'123',executor_name:'Owner'},
+        {id:2,channel_key:'email',target_status:'failed',queue_status:'waiting_retry',customer_name:'Retry should not be manual'},
+        {id:3,channel_key:'wechat_group',target_status:'skipped',customer_name:'Missing group',failure_reason:'未关联有效客户群'},
+        {id:4,channel_key:'email',target_status:'failed',queue_status:'failed',customer_name:'Email remedy'}]}};
+      if(action==='marketing_manual_content')return {success:true,data:{channel_basis:'联系人覆盖主档',contact_method:'123',content:'Confirmed <script>not executable</script>',has_images:false}};
+      if(action==='marketing_manual_execute')return new Promise(resolve=>window.manualResolve=resolve);
+      return {success:false};
+    };
+    const p=fixturePromotion;p.taskById=()=>({id:30,task_name:'Synthetic manual task'});
+    p.showError=message=>{throw Error(message);};p.renderTasks=p.renderTaskProperties=p.renderExecutionCenter=()=>{};
+    p.openDialog=opts=>{const el=document.querySelector('#manual-fixture');el.innerHTML=opts.body+opts.actions;opts.bind(el);};
+    p.openManualExecutionDialog(30);
+  });
+  await page.locator('[data-promo-manual-target][value="1"]').waitFor();
+  assert.equal(await page.locator('[data-promo-manual-target]').count(),2,'Retrying email and excluded group cannot be checked');
+  assert((await page.locator('.promo-manual-excluded').innerText()).includes('已排除 1 项'));
+  await page.locator('[data-promo-manual-target][value="1"]').check();
+  assert.equal(await page.evaluate(()=>manualCalls.filter(c=>c.action==='marketing_manual_execute').length),0,'Selection is read-only');
+  await page.locator('[data-promo-manual-submit]').click();
+  assert.equal(await page.evaluate(()=>manualCalls.filter(c=>c.action==='marketing_manual_execute').length),0,'Blank result rejected locally');
+  await page.locator('[data-promo-execution-content="1"]').click();
+  await page.locator('.promo-execution-content').waitFor();
+  assert.equal(await page.locator('.promo-execution-content script').count(),0,'Confirmed content safely escaped');
+  await page.locator('[data-promo-manual-result]').fill('Called customer; requested quotation.');
+  await page.locator('[data-promo-manual-submit]').dblclick();
+  assert.equal(await page.evaluate(()=>manualCalls.filter(c=>c.action==='marketing_manual_execute').length),1,'Repeated click submits once');
+  assert.equal(await page.evaluate(()=>manualCalls.find(c=>c.action==='marketing_manual_execute').payload.manual_result),'Called customer; requested quotation.');
+  await page.evaluate(()=>manualResolve({success:true,data:{targets:[{id:1,channel_key:'whatsapp',target_status:'success',manual_result:'Called customer',manual_checked_by_user_id:1}]}}));
+  await page.locator('[data-promo-manual-done-row="1"]').waitFor({state:'attached'});
+  assert.equal(await page.locator('[data-promo-manual-target][value="1"]').count(),0,'Successful result removes pending row');
   assert.equal(errors.length,0,errors.join('\n'));
   console.log(JSON.stringify({passed:true,layouts:25,renderMaxMs:Math.max(...timings),output,requests:'all simulated, no live network'}));
   await browser.close();
