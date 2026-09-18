@@ -10,6 +10,7 @@ $guard=file_get_contents(__DIR__.'/crm_marketing_mysql_integration.php');
 foreach(['mit_assert','mit_config','mit_connect'] as $name)eval(pd_extract($guard,$name));
 $GLOBALS['pdDb']=mit_connect(mit_config());
 function db(): PDO {return $GLOBALS['pdDb'];}
+db()->exec("SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'");
 mit_assert((int)db()->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()')->fetchColumn()===0,'Fresh isolated schema required');
 date_default_timezone_set('Asia/Shanghai');
 function current_user(){return ['id'=>$GLOBALS['pdUser'] ?? 1];}
@@ -53,7 +54,7 @@ foreach([
 "CREATE TABLE crm_mail_signature_templates (id INT PRIMARY KEY,template_html MEDIUMTEXT,is_default INT) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_send_queue (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,sender_user_id INT,sender_email VARCHAR(190),receiver_email VARCHAR(190),subject VARCHAR(500),body MEDIUMTEXT,body_ref_id BIGINT,attachment_json JSON,planned_server_time DATETIME,send_status VARCHAR(40),send_attempts INT,max_attempts INT,last_error TEXT,failure_reason TEXT,sent_at DATETIME,created_at DATETIME,updated_at DATETIME) ENGINE=InnoDB",
 "CREATE TABLE crm_marketing_queue_bodies (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,body_hash CHAR(64),body_html MEDIUMTEXT,body_bytes INT,created_at DATETIME,updated_at DATETIME,UNIQUE KEY uk_body(task_id,body_hash)) ENGINE=InnoDB",
-"CREATE TABLE crm_marketing_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,channel_key VARCHAR(120),action_key VARCHAR(120),result_status VARCHAR(40),failure_reason VARCHAR(500),operator_id INT,detail_json JSON,touched_at DATETIME,created_at DATETIME) ENGINE=InnoDB"
+"CREATE TABLE crm_marketing_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_id BIGINT,customer_id INT,contact_id INT,channel_key VARCHAR(120) NOT NULL,action_key VARCHAR(120) NOT NULL DEFAULT 'manual_touch',result_status VARCHAR(40) NOT NULL DEFAULT 'success',failure_reason VARCHAR(500),operator_id INT,detail_json JSON,touched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB"
 ] as $sql)db()->exec($sql);
 db()->exec("CREATE TABLE crm_tasks (id BIGINT AUTO_INCREMENT PRIMARY KEY,task_type VARCHAR(60),title VARCHAR(255),description TEXT,source_type VARCHAR(60),source_id VARCHAR(80),customer_id INT,contact_id INT,assigned_user_id INT,priority VARCHAR(30),status VARCHAR(40),due_at DATETIME,reminder_at DATETIME,request_token VARCHAR(100),created_by INT,created_at DATETIME,updated_at DATETIME,completed_at DATETIME,completed_by INT,result VARCHAR(120),result_note TEXT,deleted_at DATETIME,UNIQUE KEY uk_request(created_by,request_token)) ENGINE=InnoDB");
 db()->exec('ALTER TABLE crm_marketing_task_targets ADD manual_result TEXT, ADD manual_remark TEXT, ADD manual_attachment_json JSON, ADD manual_checked_by_user_id INT');
@@ -272,9 +273,16 @@ db()->exec('DELETE FROM crm_tasks WHERE id='.(int)$personal['id']);
 $tasksBefore=(int)db()->query('SELECT COUNT(*) FROM crm_tasks')->fetchColumn();
 $dry=crm_promotion_repair_manual_tasks((int)$g['task_id']);
 mit_assert($dry['missing_count']===1 && (int)db()->query('SELECT COUNT(*) FROM crm_tasks')->fetchColumn()===$tasksBefore,'Backfill dry-run never writes');
+db()->exec("CREATE TRIGGER pd_reject_backfill BEFORE INSERT ON crm_marketing_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic audit failure'");
+try { crm_promotion_repair_manual_tasks((int)$g['task_id'],true); throw new LogicException('Audit failure must roll back'); } catch (PDOException $e) {
+    mit_assert(strpos($e->getMessage(),'synthetic audit failure')!==false,'Expected injected log failure');
+}
+db()->exec('DROP TRIGGER pd_reject_backfill');
+mit_assert((int)db()->query('SELECT COUNT(*) FROM crm_tasks')->fetchColumn()===$tasksBefore,'Audit failure rolls back all personal tasks');
 $repair=crm_promotion_repair_manual_tasks((int)$g['task_id'],true);
 $again=crm_promotion_repair_manual_tasks((int)$g['task_id'],true);
 mit_assert($repair['missing_count']===1 && $again['missing_count']===0 && $again['existing_count']===1,'Backfill uses confirmed manual items only and is idempotent');
+mit_assert((int)db()->query("SELECT COUNT(*) FROM crm_marketing_logs WHERE action_key='manual_task_backfill' AND channel_key='manual'")->fetchColumn()===1,'Exactly one audit record with required channel');
 mit_assert($queueBefore===db()->query('SELECT id,send_status,send_attempts,body_ref_id FROM crm_marketing_send_queue ORDER BY id')->fetchAll(),'Backfill cannot mutate SMTP queue');
 echo "Confirmed-only manual backfill dry-run and retry passed, no queue mutation.\n";
 

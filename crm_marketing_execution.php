@@ -112,7 +112,7 @@ function crm_promotion_repair_manual_tasks(int $taskId, bool $apply=false): arra
         }
         if ($apply) {
             crm_promotion_refresh_status($taskId);
-            if($missing)db()->prepare("INSERT INTO crm_marketing_logs(task_id,action_key,result_status,detail_json,touched_at,created_at) VALUES(?,'manual_task_backfill','success',?,NOW(),NOW())")->execute([$taskId,json_encode(['target_ids'=>$missing,'source'=>'confirmed_preview','queue_changed'=>false])]);
+            if($missing)db()->prepare("INSERT INTO crm_marketing_logs(task_id,channel_key,action_key,result_status,detail_json,touched_at,created_at) VALUES(?,'manual','manual_task_backfill','success',?,NOW(),NOW())")->execute([$taskId,json_encode(['target_ids'=>$missing,'source'=>'confirmed_preview','queue_changed'=>false])]);
         }
         return ['task_id'=>$taskId,'apply'=>$apply,'missing_count'=>count($missing),'existing_count'=>$unchanged,'mismatch_count'=>$mismatch,'target_ids'=>$missing,'mail_queue_changed'=>false];
     });
