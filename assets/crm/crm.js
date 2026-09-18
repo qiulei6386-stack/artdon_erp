@@ -21036,7 +21036,7 @@
           var emailInFlight=['sent','sending','pending','scheduled','waiting_retry'].indexOf(String(row.queue_status || ''))>=0;
           return manualChannels.indexOf(channel) >= 0 || (emailChannels.indexOf(channel) >= 0 && !emailInFlight && (['failed','skipped'].indexOf(status) >= 0 || isManualCheckedEmail));
         });
-        var excludedManual=manualTargets.filter(function(row){return row.target_status==='skipped' && manualChannels.indexOf(self.normalizePromotionChannel(row.channel_key || ''))>=0;});
+        var excludedManual=targets.filter(function(row){return row.target_status==='skipped';});
         manualTargets=manualTargets.filter(function(row){return excludedManual.indexOf(row)<0;});
         manualTargets.sort(function (a, b) {
           var aGroup = (a.chat_group_id || self.isGroupPromotionChannel(a.channel_key)) ? 1 : 0;
@@ -21051,7 +21051,7 @@
         var pending = manualTargets.filter(function (row) {
           var status = String(row.target_status || '').toLowerCase();
           var channel = self.normalizePromotionChannel(row.channel_key || '');
-          return ['pending','failed'].indexOf(status) >= 0 || (emailChannels.indexOf(channel) >= 0 && status === 'skipped');
+          return ['pending','failed'].indexOf(status) >= 0;
         });
         var done = manualTargets.filter(function (row) { return row.target_status === 'success'; });
         var groupTargets = manualTargets.filter(function (row) { return row.chat_group_id || self.isGroupPromotionChannel(row.channel_key); });

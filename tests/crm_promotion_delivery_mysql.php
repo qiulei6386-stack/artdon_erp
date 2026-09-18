@@ -249,6 +249,13 @@ function crm_customer_timeline_add(...$args){}
 function crm_marketing_logs(...$args){return [];}
 function crm_marketing_task_targets($input){$s=db()->prepare('SELECT * FROM crm_marketing_task_targets WHERE task_id=?');$s->execute([$input['task_id']??0]);return $s->fetchAll();}
 foreach(['crm_marketing_manual_execute','crm_marketing_manual_execute_locked','crm_marketing_manual_unexecute','crm_marketing_manual_unexecute_locked'] as $name)eval(pd_extract($source,$name));
+$excludedMail=db()->query("SELECT * FROM crm_marketing_task_targets WHERE channel_key='email' AND target_status='skipped' LIMIT 1")->fetch();
+mit_assert((bool)$excludedMail,'Fixture has excluded email');
+$excludedTaskStatus=crm_marketing_task_row((int)$excludedMail['task_id'])['task_status'];
+db()->exec("UPDATE crm_marketing_tasks SET task_status='manual_pending' WHERE id=".(int)$excludedMail['task_id']);
+try { crm_marketing_manual_execute(['task_id'=>$excludedMail['task_id'],'target_ids'=>[$excludedMail['id']],'manual_result'=>'Must not bypass preview']); throw new LogicException('Excluded email accepted'); } catch(RuntimeException $e) { mit_assert(strpos($e->getMessage(),'已排除目标')!==false,'Explicit exclusion guard, not unrelated failure'); }
+db()->prepare('UPDATE crm_marketing_tasks SET task_status=? WHERE id=?')->execute([$excludedTaskStatus,$excludedMail['task_id']]);
+mit_assert(db()->query('SELECT target_status FROM crm_marketing_task_targets WHERE id='.(int)$excludedMail['id'])->fetchColumn()==='skipped','Excluded email remains unchanged');
 try{crm_marketing_manual_execute(['task_id'=>$g['task_id'],'target_ids'=>[$groupItem['target_id']]]);throw new LogicException('Blank result accepted');}catch(RuntimeException $e){}
 $done=['task_id'=>$g['task_id'],'target_ids'=>[$groupItem['target_id']],'manual_result'=>'Posted in verified WhatsApp group; customer asks for quote.'];
 $GLOBALS['pdUser']=9;

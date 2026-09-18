@@ -13,6 +13,8 @@ foreach ([
     [$execution,"source_type='marketing_target'"],[$execution,'ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)'],
     [$marketing,'crm_promotion_execution_summaries($stmt->fetchAll())'],[$marketing,'crm_promotion_refresh_status($taskId)'],
     [$marketing,'crm_marketing_manual_execute_locked'],[$marketing,'crm_marketing_with_task_lock'],
+    [$marketing,"mt.target_status <> 'skipped' THEN 1 ELSE 0 END) AS manual_executable_total"],
+    [$js,"var excludedManual=targets.filter(function(row){return row.target_status==='skipped';});"],
     [$marketing,'SELECT q.id'],[$marketing,'WHERE q.id=?'],[$marketing,'$expandedGroupIds[$chatGroupId]'],
     [$delivery,"'channel_basis'=>crm_delivery_channel_basis"],[$delivery,"\$meta['frozen_vars']"],[$delivery,'冻结内容校验失败'],
     [$delivery,"\$signatureKey!=='personal'"],[$delivery,'crm_promotion_create_manual_task'],

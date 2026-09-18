@@ -2226,6 +2226,7 @@ function crm_marketing_task_target_summary(int $taskId): array
             COUNT(DISTINCT NULLIF(mt.chat_group_id, 0)) AS groups,
             SUM(CASE WHEN {$emailSql} THEN 1 ELSE 0 END) AS email_total,
             SUM(CASE WHEN {$manualSql} OR mt.chat_group_id IS NOT NULL THEN 1 ELSE 0 END) AS manual_channel_total,
+            SUM(CASE WHEN {$manualSql} AND mt.target_status <> 'skipped' THEN 1 ELSE 0 END) AS manual_executable_total,
             SUM(CASE WHEN {$emailSql} AND mt.target_status = 'success' THEN 1 ELSE 0 END) AS email_success,
             SUM(CASE WHEN {$emailSql} AND mt.target_status = 'failed' THEN 1 ELSE 0 END) AS email_failed,
             SUM(CASE WHEN {$emailSql} AND mt.target_status = 'skipped' THEN 1 ELSE 0 END) AS email_skipped,
@@ -2353,7 +2354,7 @@ function crm_marketing_task_target_summary(int $taskId): array
     $row['email_pending']=(int)($queue['pending'] ?? 0)+(int)($queue['waiting_retry'] ?? 0);
     $emailFallbackManualPending = 0;
     $manualPending = $manualDirectPending + $emailFallbackManualPending;
-    $manualTargetTotal = (int)($row['manual_channel_total'] ?? 0) + $emailFallbackManualPending;
+    $manualTargetTotal = (int)($row['manual_executable_total'] ?? 0);
 
     return [
         'total_targets' => (int)($row['total_targets'] ?? 0),
@@ -4303,11 +4304,12 @@ function crm_marketing_manual_execute_locked(array $input, array $files = []): a
     $actor=(int)(current_user()['id'] ?? 0);
     foreach ($targets as $target) {
         if ((int)$target['executor_user_id']!==$actor && (int)$task['created_by']!==$actor && !is_super_admin() && !crm_can('promotion.manage')) throw new RuntimeException('只能登记本人负责的人工目标。');
+        if ($target['target_status']==='skipped') throw new RuntimeException('已排除目标须先补齐资料并重新预览，不能直接勾成成功。');
         if (crm_marketing_is_email_channel($target['channel_key'])) {
             $queue=db()->prepare("SELECT COUNT(*) FROM crm_marketing_send_queue WHERE task_id=? AND customer_id=? AND (contact_id <=> ?) AND send_status IN ('sent','sending','pending','scheduled','waiting_retry')");
             $queue->execute([$taskId,$target['customer_id'],$target['contact_id']]);
             if ((int)$queue->fetchColumn()>0) throw new RuntimeException('已发送或待发邮件不能改成人工完成；请先核对邮件队列。');
-        } elseif ($target['target_status']==='skipped') throw new RuntimeException('已排除目标须先补齐资料并重新预览，不能直接勾成成功。');
+        }
     }
     $attachment = crm_marketing_manual_upload($files);
     $failureReason = $manualStatus === 'success' ? '' : ($manualResult ?: ($manualStatus === 'skipped' ? '已跳过' : '人工执行失败'));

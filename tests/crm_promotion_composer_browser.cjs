@@ -432,7 +432,10 @@ assert(start>0 && end>start);
         {id:1,channel_key:'whatsapp',target_status:'pending',customer_name:'Manual customer',contact_name:'Person',contact_method:'123',executor_name:'Owner'},
         {id:2,channel_key:'email',target_status:'failed',queue_status:'waiting_retry',customer_name:'Retry should not be manual'},
         {id:3,channel_key:'wechat_group',target_status:'skipped',customer_name:'Missing group',failure_reason:'未关联有效客户群'},
-        {id:4,channel_key:'email',target_status:'failed',queue_status:'failed',customer_name:'Email remedy'}]}};
+        {id:4,channel_key:'email',target_status:'failed',queue_status:'failed',customer_name:'Email remedy'},
+        {id:5,channel_key:'email',target_status:'skipped',customer_name:'Missing email',failure_reason:'当前对象没有有效邮箱'},
+        {id:6,channel_key:'email',target_status:'skipped',customer_name:'Duplicate email',failure_reason:'重复邮箱'},
+        {id:7,channel_key:'unknown',target_status:'skipped',customer_name:'Unknown channel',failure_reason:'渠道不明确'}]}};
       if(action==='marketing_manual_content')return {success:true,data:{channel_basis:'联系人覆盖主档',contact_method:'123',content:'Confirmed <script>not executable</script>',has_images:false}};
       if(action==='marketing_manual_execute')return new Promise(resolve=>window.manualResolve=resolve);
       return {success:false};
@@ -443,8 +446,8 @@ assert(start>0 && end>start);
     p.openManualExecutionDialog(30);
   });
   await page.locator('[data-promo-manual-target][value="1"]').waitFor();
-  assert.equal(await page.locator('[data-promo-manual-target]').count(),2,'Retrying email and excluded group cannot be checked');
-  assert((await page.locator('.promo-manual-excluded').innerText()).includes('已排除 1 项'));
+  assert.equal(await page.locator('[data-promo-manual-target]').count(),2,'Retrying email, excluded group, missing/duplicate email and unknown channel cannot be checked');
+  assert((await page.locator('.promo-manual-excluded').innerText()).includes('已排除 4 项'));
   await page.locator('[data-promo-manual-target][value="1"]').check();
   assert.equal(await page.evaluate(()=>manualCalls.filter(c=>c.action==='marketing_manual_execute').length),0,'Selection is read-only');
   await page.locator('[data-promo-manual-submit]').click();
