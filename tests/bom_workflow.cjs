@@ -6,6 +6,9 @@ function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {
 (async()=>{
   let saved=0,submitted=0;let c=make(['submitBomReview'],{bomEditorReady:()=>true,getCurrent:()=>({}),saveCurrent:async()=>{saved++;return true},bomReviewAction:async()=>submitted++});await c.submitBomReview();assert.equal(saved,0);assert.equal(submitted,0);
   c=make(['totals']);assert.equal(c.totals({rowsLoaded:true,rows:[],totalsSummary:{total:123}}).total,0);
+  let withdrawals=[];c=make(['withdrawBomReview'],{bomEditorReady:()=>true,getCurrent:()=>({reviewStatus:'pending',canWithdrawReview:true}),prompt:()=>null,bomReviewAction:async(...args)=>withdrawals.push(args)});await c.withdrawBomReview();assert.equal(withdrawals.length,0);
+  c.prompt=()=> '  ';await c.withdrawBomReview();assert.equal(withdrawals.length,0);c.prompt=()=> ' Fix quantity ';await c.withdrawBomReview();assert.deepEqual(withdrawals,[['withdraw_review','Fix quantity']]);
+  c.getCurrent=()=>({reviewStatus:'approved',canWithdrawReview:true});await c.withdrawBomReview();assert.equal(withdrawals.length,1);c.getCurrent=()=>({reviewStatus:'pending',canWithdrawReview:false});await c.withdrawBomReview();assert.equal(withdrawals.length,1);
   c=make(['copyBomSnapshotToDraft'],{bomSnapshotCurrent:{project_uid:'A',profit_rate:0,rows:[]},closeBomSnapshots:()=>{}});c.copyBomSnapshotToDraft();assert.equal(c.projects[0].profitRate,0);
   const a=deferred(),b=deferred();c=make(['showBomSnapshot'],{api:(_,d)=>d.snapshot_id===1?a.promise:b.promise});const pa=c.showBomSnapshot(1),pb=c.showBomSnapshot(2);b.resolve({ok:true,snapshot:{id:2,project_uid:'A',rows:[]}});await pb;a.resolve({ok:true,snapshot:{id:1,project_uid:'A',rows:[]}});await pa;assert.equal(c.bomSnapshotCurrent.id,2);
   c.api=async()=>({ok:false,error:'failure'});await c.showBomSnapshot(3);assert.equal(c.bomSnapshotCurrent,null);assert.equal(c.$('bomSnapshotCopyBtn').disabled,true);

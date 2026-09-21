@@ -585,7 +585,7 @@ body{background:#f6f8fb}
 <div class="editor-more-panel" id="editorMorePanel">
   <div class="editor-more-fields"><label>利润率/加价率 % <input id="profitRate" type="number" step="0.1" oninput="touch();calc()" value="30"></label><label>报价模式 <select id="quoteMode" onchange="touch();calc()"><option value="markup">加价率</option><option value="margin">毛利率</option></select></label><label>汇率/备用 <input id="exchange" type="number" step="0.0001" oninput="touch()" value="1"></label><label class="editor-note-label">备注 <textarea id="note" class="note" oninput="touch()" placeholder="备注"></textarea></label></div>
 </div>
-<div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存草稿</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">提交审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">驳回</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">待审核/已审核自动锁定；退审或驳回后才能继续编辑。</span></div>
+<div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存草稿</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">提交审核</button><button id="bomWithdrawBtn" class="ghost" onclick="withdrawBomReview()" hidden>撤回审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">驳回</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">待审核可由提交人或管理员撤回；已审核须退审后编辑。</span></div>
 <div id="bomReviewBar" class="bom-review-bar"></div>
 <div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="price">单价</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
 <div class="summary"><div class="sum-box"><span>材料成本</span><b id="matTotal">0.00</b></div><div class="sum-box"><span>人工费</span><b id="laborTotal">0.00</b></div><div class="sum-box"><span>包装/其它</span><b id="otherTotal">0.00</b></div><div class="sum-box"><span>总成本</span><b id="grandTotal">0.00</b></div><div class="sum-box"><span>建议报价</span><b id="suggestPrice">0.00</b></div><div class="sum-box"><span>利润金额</span><b id="profitAmount">0.00</b></div></div>
@@ -1059,7 +1059,7 @@ function mapBomProject(p, detail=false){
   const rows=normalizeBomRows(p.rows,p.rows_json);
   const hasRows=Array.isArray(p.rows);
   const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,totalsSummary:p.totals_summary||null,rowCount:Number(p.row_count ?? rows.length ?? 0)||0,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:hasRows||detail?rows:[],rowsLoaded:!!(detail||hasRows),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};
-  o.revision=String(p.revision||'');o.costPublication=p.cost_publication||null;o.namingType=bomProjectNamingType(o);
+  o.revision=String(p.revision||'');o.costPublication=p.cost_publication||null;o.namingType=bomProjectNamingType(o);o.canWithdrawReview=p.can_withdraw_review===true;
   return o;
 }
 function bomProjectRowCount(p){return Number(p?.rowCount ?? (Array.isArray(p?.rows)?p.rows.length:0))||0}
@@ -1122,6 +1122,8 @@ function updateBomWorkflowUI(){
   ['bomAddRowBtn','bomNamingCreateBtn','bomNamingBindBtn','bomSaveBtn','bomImportBtn','bomDeleteBtn'].forEach(id=>set(id,!!p&&hasPerm('edit')&&!locked));
   set('topSaveCurrentBtn',!!p&&hasPerm('edit')&&!locked);
   set('bomSubmitBtn',ready&&hasPerm('edit')&&['draft','rejected'].includes(status));
+  set('bomWithdrawBtn',ready&&hasPerm('edit')&&status==='pending'&&p.canWithdrawReview===true);
+  if($('bomWithdrawBtn'))$('bomWithdrawBtn').hidden=status!=='pending';
   set('bomApproveBtn',ready&&hasPerm('approve_bom')&&status==='pending');
   set('bomRejectBtn',ready&&hasPerm('reject_bom')&&status==='pending');
   set('bomUnapproveBtn',ready&&hasPerm('unapprove_bom')&&status==='approved');
@@ -1221,7 +1223,7 @@ function renderBomReviewBar(){
 async function saveCurrent(opts={}){
   if(!bomEditorReady()){alert('请等待当前 BOM 明细完整加载，或等待本次保存结束。');return false}
   if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return false}
-  if(bomWorkflowStatus()==='pending'){alert('该 BOM 已提交审核，驳回后才能继续修改。');return false}
+  if(bomWorkflowStatus()==='pending'){alert('该 BOM 已提交审核，请先撤回审核或由审核人驳回。');return false}
   if(bomWorkflowStatus()==='approved'){alert('该 BOM 已审核锁定，请先退审再修改。');return false}
   collect();const p=getCurrent();if(!p)return false;
   bomWriteBusy=true;updateBomWorkflowUI();setStatus('正在保存，请稍候…');
@@ -1261,6 +1263,14 @@ async function approveBomProject(){
   if((p.reviewStatus||'draft')!=='pending')return alert('只有已提交、待审核的 BOM 才能审核通过');
   const noteInput=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`);if(noteInput===null)return;const note=noteInput||'';
   await bomReviewAction('approve_project',note);
+}
+async function withdrawBomReview(){
+  if(!bomEditorReady()||!hasPerm('edit'))return alert('请先等待明细加载，并确认具有 BOM 编辑权限');
+  const p=getCurrent();if(!p||p.reviewStatus!=='pending'||!p.canWithdrawReview)return alert('仅提交本人或管理员可以撤回待审核 BOM；已审核请走退审。');
+  const note=prompt('撤回审核后可重新编辑，已有快照和报价成本不变。请填写撤回原因：','');
+  if(note===null)return;
+  if(!note.trim())return alert('请填写撤回原因');
+  await bomReviewAction('withdraw_review',note.trim());
 }
 async function rejectBomProject(){
   if(!hasPerm('reject_bom'))return alert('当前账号没有 BOM 驳回权限');
@@ -1365,7 +1375,7 @@ async function loadProject(id){
   renderRows(); calc(); renderProjectList(); try{showPlmLinkNotice(linkInfo)}catch(e){} try{renderBomSourceNotice(p)}catch(e){} updateBomWorkflowUI();bomRememberPlace();
   setStatus('BOM 明细已读取');
 }
-function addRow(row={}){const p=getCurrent();if(!p)return;if(bomWorkflowLocked())return alert('待审核/已审核 BOM 已锁定，请先驳回或退审。');p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
+function addRow(row={}){const p=getCurrent();if(!p)return;if(bomWorkflowLocked())return alert('待审核请先撤回或驳回；已审核请先退审。');p.rows.push({category:row.category||'',name:row.name||'',spec:row.spec||'',qty:row.qty||1,process:row.process||0,finish:row.finish||'',finishCost:row.finishCost||0,finish2:row.finish2||'',finishCost2:row.finishCost2||0,finishMode2:!!row.finishMode2,price:row.price||0,priceStatus:row.priceStatus||'estimated',priceSource:row.priceSource||'',priceNote:row.priceNote||'',materialId:row.materialId||''});renderRows();calc()}
 function removeRow(i){if(bomWorkflowLocked())return;const p=getCurrent();if(!p)return;p.rows.splice(i,1);renderRows();calc()}
 function insertRowAfter(i){if(bomWorkflowLocked())return;const p=getCurrent();if(!p)return;p.rows.splice(i+1,0,{category:'',name:'',spec:'',qty:1,process:0,finish:'',finishCost:0,finish2:'',finishCost2:0,finishMode2:false,price:0,priceStatus:'estimated',priceSource:'',priceNote:''});renderRows();calc()}
 function renderRows(){

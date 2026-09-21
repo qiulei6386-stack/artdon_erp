@@ -127,11 +127,23 @@ function bw_changes(?array $before,array $after): array {
     if(($before['rows_json']??'')!==($after['rows_json']??''))$out['rows']=array('before_count'=>count(bw_rows($before['rows_json']??'[]')),'after_count'=>count(bw_rows($after['rows_json']??'[]')),'before_total'=>$before?bw_totals($before)['total']:0,'after_total'=>bw_totals($after)['total']);
     return $out;
 }
+function bw_actor_identity(array $user,string $actor): string {
+    return $user?hash('sha256',bw_json(array($user['_user_table']??'', $user['_user_id']??$user['id']??'', $user['username']??''))):$actor;
+}
+function bw_can_withdraw(PDO $pdo,array $p,array $user): bool {
+    if(($p['review_status']??'')!=='pending'||!$user||!bw_ready($pdo))return false;
+    if(function_exists('role_is_admin')&&role_is_admin($user))return true;
+    // Match the authenticated account of the submitted request, never a display name.
+    $st=$pdo->prepare("SELECT after_revision FROM bom_workflow_events WHERE project_uid=? AND action='submit_review' ORDER BY id DESC LIMIT 1");
+    $st->execute(array($p['project_uid']));$revision=$st->fetchColumn();if(!$revision)return false;
+    $st=$pdo->prepare("SELECT 1 FROM bom_workflow_requests WHERE actor=? AND JSON_UNQUOTE(JSON_EXTRACT(result_json,'$.revision'))=? AND JSON_UNQUOTE(JSON_EXTRACT(result_json,'$.project_uid'))=? LIMIT 1");
+    $st->execute(array(bw_actor_identity($user,''),$revision,$p['project_uid']));return (bool)$st->fetchColumn();
+}
 function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost,array $user=array()): array {
     if(!bw_ready($pdo))throw new BomWorkflowError('not_initialized','BOM 版本保护正在初始化，暂不可写入，请联系管理员');
     $uid=trim((string)($d['project_uid']??''));$request=(string)($d['request_id']??'');
     if($uid===''||strlen($uid)>100||!preg_match('/^[a-zA-Z0-9-]{16,64}$/',$request))throw new BomWorkflowError('validation','缺少单据或请求标识，请刷新页面');
-    $owner=$user?hash('sha256',bw_json(array($user['_user_table']??'', $user['_user_id']??$user['id']??'', $user['username']??''))):$actor;
+    $owner=bw_actor_identity($user,$actor);
     $hash=hash('sha256',bw_json(array($action,$d)));$pdo->beginTransaction();
     try{
         // Serialize duplicate request before locking project, including new-document requests.
@@ -171,12 +183,13 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
             if($status!=='approved'||empty($p['latest_snapshot_id']))throw new BomWorkflowError('state','仅已审核 BOM 可查看正式快照');
             $snapshot=array('id'=>(int)$p['latest_snapshot_id']);$message='已返回该审核版本的快照，不重复创建。';
         }else{
-            $allowed=array('submit_review'=>array('draft','rejected'),'approve_project'=>array('pending'),'reject_project'=>array('pending'),'unapprove_project'=>array('approved'));
+            $allowed=array('submit_review'=>array('draft','rejected'),'withdraw_review'=>array('pending'),'approve_project'=>array('pending'),'reject_project'=>array('pending'),'unapprove_project'=>array('approved'));
             if(!isset($allowed[$action])||!in_array($status,$allowed[$action],true))throw new BomWorkflowError('state','状态已变化，当前不能执行此操作，请重新读取');
-            if(in_array($action,array('reject_project','unapprove_project'),true)&&$note==='')throw new BomWorkflowError('validation','请填写驳回/退审原因');
+            if($action==='withdraw_review'&&!bw_can_withdraw($pdo,$p,$user))throw new BomWorkflowError('permission','仅提交本人或管理员可撤回审核；旧记录无法确认提交账号时请联系管理员。');
+            if(in_array($action,array('withdraw_review','reject_project','unapprove_project'),true)&&$note==='')throw new BomWorkflowError('validation','请填写撤回/驳回/退审原因');
             if(in_array($action,array('submit_review','approve_project'),true))bw_validate($p,true);
-            $next=array('submit_review'=>'pending','approve_project'=>'approved','reject_project'=>'rejected','unapprove_project'=>'draft')[$action];
-            $extra=$action==='submit_review'?',submitted_by=?,submitted_at=NOW()':($action==='approve_project'?',approved_by=?,approved_at=NOW()':($action==='unapprove_project'?",approved_by='',approved_at=NULL":''));
+            $next=array('submit_review'=>'pending','withdraw_review'=>'draft','approve_project'=>'approved','reject_project'=>'rejected','unapprove_project'=>'draft')[$action];
+            $extra=$action==='submit_review'?',submitted_by=?,submitted_at=NOW()':($action==='approve_project'?',approved_by=?,approved_at=NOW()':($action==='unapprove_project'?",approved_by='',approved_at=NULL":($action==='withdraw_review'?",submitted_by='',submitted_at=NULL":'')));
             $args=array($next,$note,$actor);if(in_array($action,array('submit_review','approve_project'),true))$args[]=$actor;$args[]=$uid;
             $pdo->prepare("UPDATE bom_projects SET review_status=?,review_note=?,updated_by=?,updated_at=NOW()$extra WHERE project_uid=?")->execute($args);
             $p=bw_get($pdo,$uid);
@@ -186,7 +199,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
                 $policySync=bom_sync_quote_cost_snapshot($pdo,$uid,$actor);
                 $message='审核成功，已封存快照 '.$snapshot['snapshot_uid'].'并发布成本。同型号有多个审核版本时，报价与价格策略统一采用已审核版本中的较高成本。';
                 if(!empty($policySync['skipped']))$message.=' 价格策略缓存未同步，请管理员检查；审核快照已发布。';
-            }else $message=array('submit_review'=>'已提交当前版本，等待审核。','reject_project'=>'已驳回，原因已记录。','unapprove_project'=>'已退审，可修改草稿；报价继续使用上一份已发布成本，重新审核后才切换。')[$action];
+            }else $message=array('submit_review'=>'已提交当前版本，等待审核。','withdraw_review'=>'已撤回审核，可重新编辑并提交；已有快照及报价成本保持不变。','reject_project'=>'已驳回，原因已记录。','unapprove_project'=>'已退审，可修改草稿；报价继续使用上一份已发布成本，重新审核后才切换。')[$action];
         }
         if($action!=='create_snapshot')$pdo->prepare('UPDATE bom_projects SET workflow_version=workflow_version+1 WHERE project_uid=?')->execute(array($uid));
         $p=bw_get($pdo,$uid);$revision=bw_revision($p);

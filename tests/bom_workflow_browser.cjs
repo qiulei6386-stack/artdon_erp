@@ -7,7 +7,8 @@ const root=path.resolve(__dirname,'..');
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN||undefined});
  try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],requests=[];
-  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{await d.dismiss()});
+  let withdrawReason=null;
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{if(d.type()==='prompt'&&withdrawReason!==null)await d.accept(withdrawReason);else await d.dismiss()});
   const base={product_type:'',customer:'',currency:'RMB',product_image:'',labor:0,other:0,profit_rate:0,exchange_rate:1,quote_mode:'markup',version_no:'V1',variant_label:'通用版',review_status:'draft',revision:'v1',created_at:'2026-09-09 00:00:00',updated_at:'2026-09-09 00:00:00'};
   const data={A:{...base,project_uid:'A',name:'Synthetic A',model:'TEST-A',rows:[{name:'Synthetic LED',spec:'A',qty:2,price:12,priceStatus:'confirmed'}]},B:{...base,project_uid:'B',name:'Synthetic B',model:'TEST-B',rows:[{name:'Synthetic B item',qty:1,price:7}]}};
   let delayB=false,saveDelay=false,releaseB,releaseSave;
@@ -27,6 +28,9 @@ const root=path.resolve(__dirname,'..');
     if(saveDelay)await new Promise(resolve=>releaseSave=resolve);
     data[d.project_uid]={...data[d.project_uid],...d,revision:data[d.project_uid].revision+'x'};
     r={ok:true,project:structuredClone(data[d.project_uid])};
+   }else if(action==='withdraw_review'){
+    assert.equal(d.review_note,'Correct quantity');assert.equal(d.expected_revision,data[d.project_uid].revision);
+    data[d.project_uid]={...data[d.project_uid],review_status:'draft',can_withdraw_review:false,revision:data[d.project_uid].revision+'w'};r={ok:true,project:structuredClone(data[d.project_uid])};
    }else throw Error('Unexpected request: '+action);
    await route.fulfill({contentType:'application/json',body:JSON.stringify(r)});
   });
@@ -49,6 +53,13 @@ const root=path.resolve(__dirname,'..');
    await page.locator('#search').fill('Synthetic B');assert.equal(await page.locator('#search').inputValue(),'Synthetic B');
   }
   await page.evaluate(()=>loadProject('B'));assert((await page.locator('#status').textContent()).includes('BOM 明细已读取'));
+  delayB=false;data.B.review_status='pending';data.B.can_withdraw_review=true;
+  await page.evaluate(async()=>{projects.find(p=>p.id==='B').rowsLoaded=false;await loadProject('B')});
+  assert(await page.locator('#bomWithdrawBtn').isEnabled());assert(await page.locator('#bomSaveBtn').isDisabled());
+  await page.locator('#bomWithdrawBtn').click();assert.equal(requests.filter(x=>x.action==='withdraw_review').length,0,'cancel is read-only');
+  withdrawReason='Correct quantity';await page.locator('#bomWithdrawBtn').click();await page.waitForFunction(()=>!bomWriteBusy&&getCurrent().reviewStatus==='draft');
+  assert(await page.locator('#bomSaveBtn').isEnabled());assert(await page.locator('#bomSubmitBtn').isEnabled());assert(await page.locator('#bomWithdrawBtn').isHidden());
+  for(const width of [390,768,1440]){await page.setViewportSize({width,height:900});await page.evaluate(()=>{getCurrent().reviewStatus='pending';getCurrent().canWithdrawReview=true;updateBomWorkflowUI()});await page.locator('#bomWithdrawBtn').scrollIntoViewIfNeeded();assert(await page.locator('#bomWithdrawBtn').isVisible());}
   assert.deepEqual(errors,[]);console.log('Real-page BOM workflow: zero profit, correct total, cancel, loading/save lock, cross-BOM guard, success reload, delete-all total OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

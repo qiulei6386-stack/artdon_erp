@@ -17,11 +17,14 @@ function wfExtract(string $name,string $alias=''): void {
 }
 foreach(array('bom_project_rows','bom_project_totals_snapshot','bom_price_summary_snapshot','bom_snapshot_uid','bom_insert_snapshot') as $f)wfExtract($f);
 foreach(array('table_exists','cols','hascol','bom_num_zero','bom_quote_estimated_sale_rmb') as $f)wfExtract($f);
+wfExtract('role_is_admin');
 wfExtract('bom_sync_quote_cost_snapshot','actual_policy_sync');
 function bom_sync_quote_cost_snapshot($pdo,$uid,$actor){$result=actual_policy_sync($pdo,$uid,$actor);if($GLOBALS['failPolicy']??false)throw new RuntimeException('Injected policy failure');return $result;}
 if(($argv[1]??'')==='worker'){
     $pdo=connectTest();$d=json_decode(base64_decode($argv[2]),true);
-    try{echo bw_json(bw_execute($pdo,'approve_project',$d,'test-reviewer',true));}
+    $action=$argv[3]??'approve_project';$testUser=json_decode($argv[4]??'[]',true);
+    if(!in_array($action,array('approve_project','withdraw_review'),true))throw new RuntimeException('Invalid test action');
+    try{echo bw_json(bw_execute($pdo,$action,$d,'test-reviewer',true,$testUser));}
     catch(BomWorkflowError $e){echo bw_json(array('ok'=>false,'code'=>$e->reason));}
     exit;
 }
@@ -67,3 +70,28 @@ $expected=bcp_find(array('52.12345'),bcp_map($pdo))[1];
 $policy=$pdo->query('SELECT * FROM quote_price_policies WHERE id=1')->fetch();
 wfCheck((float)$policy['bom_cost_rmb']===40.0&&(float)$policy['bom_cost_rmb']===$expected['cost_rmb']&&$policy['bom_cost_source']===$expected['source_table'],'cache resolves all versions not just caller');
 echo "BOM MySQL: freeze, save, stale versions, hidden costs, pending lock, atomic approval/publication/cache rollback, replay, zero, snapshot idempotency, unapprove, two-reviewer concurrency and real multi-version cache OK\n";
+
+$alice=array('id'=>701,'username'=>'alice');$bob=array('id'=>702,'username'=>'bob');$admin=array('id'=>703,'username'=>'admin','role'=>'admin');
+$published=$pdo->query('SELECT * FROM bom_cost_publications ORDER BY project_uid')->fetchAll();$snapshots=$pdo->query('SELECT * FROM bom_snapshots ORDER BY id')->fetchAll();$policyBefore=$pdo->query('SELECT * FROM quote_price_policies ORDER BY id')->fetchAll();
+$new=$d;$new['project_uid']='C';$new['model']='TEST-WITHDRAW';$new['expected_revision']='';$new['request_id']=bin2hex(random_bytes(16));bw_execute($pdo,'save_project',$new,'Same Name',true,$alice);
+bw_execute($pdo,'submit_review',requestData($pdo,'C'),'Same Name',true,$alice);
+wfCheck(bw_can_withdraw($pdo,bw_get($pdo,'C'),$alice)&&!bw_can_withdraw($pdo,bw_get($pdo,'C'),$bob),'Authenticated submitter, not matching display name');
+$withdraw=requestData($pdo,'C',array('review_note'=>'Correct quantities'));
+try{bw_execute($pdo,'withdraw_review',$withdraw,'Same Name',true,$bob);throw new LogicException('foreign withdraw accepted');}catch(BomWorkflowError $e){wfCheck($e->reason==='permission','foreign submitter denied');}
+try{bw_execute($pdo,'withdraw_review',requestData($pdo,'C'),'Same Name',true,$alice);throw new LogicException('empty reason accepted');}catch(BomWorkflowError $e){wfCheck($e->reason==='validation','reason mandatory');}
+$staleApproval=requestData($pdo,'C');$withdrawn=bw_execute($pdo,'withdraw_review',$withdraw,'Same Name',true,$alice);
+wfCheck(bw_execute($pdo,'withdraw_review',$withdraw,'Same Name',true,$alice)===$withdrawn,'withdraw idempotent');
+wfCheck(bw_get($pdo,'C')['review_status']==='draft'&&bw_get($pdo,'C')['submitted_at']===null,'withdraw unlocks and clears current submission');
+try{bw_execute($pdo,'approve_project',$staleApproval,'Reviewer',true);throw new LogicException('stale reviewer accepted');}catch(BomWorkflowError $e){wfCheck($e->reason==='revision_conflict','old approval denied after withdrawal');}
+$edit=$new;$edit['expected_revision']=bw_revision(bw_get($pdo,'C'));$edit['request_id']=bin2hex(random_bytes(16));bw_execute($pdo,'save_project',$edit,'Same Name',true,$alice);
+bw_execute($pdo,'submit_review',requestData($pdo,'C'),'Same Name',true,$alice);
+bw_execute($pdo,'withdraw_review',requestData($pdo,'C',array('review_note'=>'Admin correction')),'Admin',true,$admin);
+wfCheck($published===$pdo->query('SELECT * FROM bom_cost_publications ORDER BY project_uid')->fetchAll()&&$snapshots===$pdo->query('SELECT * FROM bom_snapshots ORDER BY id')->fetchAll()&&$policyBefore===$pdo->query('SELECT * FROM quote_price_policies ORDER BY id')->fetchAll(),'withdraw never changes published costs, policies or snapshots');
+bw_execute($pdo,'submit_review',requestData($pdo,'C'),'Same Name',true,$alice);
+$race=requestData($pdo,'C',array('review_note'=>'Concurrent correction'));$workers=array();
+foreach(array('approve_project','withdraw_review') as $action){$payload=$race;$payload['request_id']=bin2hex(random_bytes(16));$pipes=array();$proc=proc_open(array(PHP_BINARY,'-n',__FILE__,'worker',base64_encode(bw_json($payload)),$action,bw_json($alice)),array(0=>array('pipe','r'),1=>array('pipe','w'),2=>array('pipe','w')),$pipes);fclose($pipes[0]);$workers[]=array($proc,$pipes);}
+$won=0;$conflicts=0;foreach($workers as [$proc,$pipes]){$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);wfCheck(proc_close($proc)===0,'race worker '.$err);$r=json_decode($out,true);if($r['ok']??false)$won++;elseif(($r['code']??'')==='revision_conflict')$conflicts++;}
+wfCheck($won===1&&$conflicts===1,'review and withdrawal have exactly one winner');
+if(bw_get($pdo,'C')['review_status']==='draft'){bw_execute($pdo,'submit_review',requestData($pdo,'C'),'Same Name',true,$alice);bw_execute($pdo,'approve_project',requestData($pdo,'C'),'Reviewer',true);}
+try{bw_execute($pdo,'withdraw_review',requestData($pdo,'C',array('review_note'=>'Too late')),'Admin',true,$admin);throw new LogicException('approved withdrawn');}catch(BomWorkflowError $e){wfCheck($e->reason==='state','approved requires unapprove');}
+echo "BOM withdrawal: submitter/admin, same-name denial, mandatory reason, edit/resubmit, replay, frozen costs and concurrent review passed\n";

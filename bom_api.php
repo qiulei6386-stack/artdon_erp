@@ -25,6 +25,7 @@ $__bom_perm_map=array(
     'sync_weight_profiles_to_bom'=>'manage_materials','import_materials_bulk'=>'import_materials',
     'save_material'=>'manage_materials','delete_material'=>'delete_materials'
 );
+$__bom_perm_map['withdraw_review']='edit_bom';
 artdon_perm_require_action('bom',(string)$action,$__bom_perm_map,'view_dashboard');
 
 function json_out($arr){
@@ -937,7 +938,8 @@ function bom_project_rows_for_output(PDO $pdo, array $p){
     }
     return is_array($rows) ? $rows : array();
 }
-function bom_project_enrich_detail(PDO $pdo, array $p, bool $canCost, bool $canSupplier){
+function bom_project_enrich_detail(PDO $pdo, array $p, bool $canCost, bool $canSupplier, array $user=array()){
+    $p['can_withdraw_review']=user_can($user,'edit')&&bw_can_withdraw($pdo,$p,$user);
     $p['revision']=bw_revision($p);
     $p['cost_publication']=null;
     if(bw_ready($pdo)){
@@ -1620,13 +1622,14 @@ try{
 
     $user = bom_require_login($pdo);
     $workflowPermissions=array('save_project'=>'edit','submit_review'=>'edit','approve_project'=>'approve_bom','reject_project'=>'reject_bom','unapprove_project'=>'unapprove_bom','create_snapshot'=>'approve_bom','delete_project'=>'edit','bind_naming_to_project'=>'edit','unbind_naming_from_project'=>'edit','naming_sync_apply'=>'edit');
+    $workflowPermissions['withdraw_review']='edit';
     if(isset($workflowPermissions[$action])){
         bom_require_perm($user,$workflowPermissions[$action]);
         $result=null;
         try{
             $result=bw_execute($pdo,$action,body_json(),user_label($user)?:'unknown',artdon_sso_can('bom','cost_view'),$user);
             $raw=bw_get($pdo,$result['project_uid']);
-            $result['project']=bom_project_enrich_detail($pdo,$raw,artdon_sso_can('bom','cost_view'),artdon_sso_can('bom','supplier_view'));
+            $result['project']=bom_project_enrich_detail($pdo,$raw,artdon_sso_can('bom','cost_view'),artdon_sso_can('bom','supplier_view'),$user);
             $st=$pdo->prepare('SELECT COUNT(*) FROM bom_snapshots WHERE project_uid=?');$st->execute(array($result['project_uid']));$result['project']['snapshot_count']=(int)$st->fetchColumn();
             json_out($result);
         }catch(BomWorkflowError $e){json_out(array('ok'=>false,'code'=>$e->reason,'error'=>$e->getMessage()));}
@@ -1705,7 +1708,7 @@ try{
         if(!$p) json_out(array('ok'=>false,'error'=>'没有找到这份 BOM'));
         $canCost = artdon_sso_can('bom','cost_view');
         $canSupplier = artdon_sso_can('bom','supplier_view');
-        $p = bom_project_enrich_detail($pdo, $p, $canCost, $canSupplier);
+        $p = bom_project_enrich_detail($pdo, $p, $canCost, $canSupplier, $user);
         if(table_exists($pdo,'bom_snapshots')){
             $ss=$pdo->prepare("SELECT COUNT(*) AS c, MAX(created_at) AS latest_at FROM bom_snapshots WHERE project_uid=?");
             $ss->execute(array($uid));
