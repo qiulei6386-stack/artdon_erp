@@ -2,6 +2,7 @@
 // Runs the actual save/approve route bodies, with a disposable database and no app bootstrap.
 declare(strict_types=1);
 require_once __DIR__.'/../includes/quote_money.php';
+require_once __DIR__.'/../includes/quote_bom_versions.php';
 $socket=(string)getenv('CRM_PHASE1_MYSQL_SOCKET');$schema=(string)getenv('CRM_PHASE1_MYSQL_SCHEMA');
 if(getenv('CRM_PHASE1_MYSQL_TEST')!=='1'||!preg_match('#^/tmp/crm-phase1-mysql-20260906-[A-Za-z0-9]{8}/mysql.sock$#D',$socket)||!preg_match('/^quote_money_[a-f0-9]{12}$/D',$schema))throw new RuntimeException('Refusing non-sandbox database');
 function mq_connect(){global $socket,$schema;$p=new PDO('mysql:unix_socket='.$socket.';dbname='.$schema.';charset=utf8mb4','root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$i=$p->query('SELECT @@socket socket,@@datadir datadir,@@skip_networking isolated')->fetch(PDO::FETCH_ASSOC);if($i['socket']!==$socket||$i['datadir']!==dirname($socket).'/data/'||(int)$i['isolated']!==1)throw new RuntimeException('Instance mismatch');return $p;}

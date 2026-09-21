@@ -95,3 +95,25 @@ wfCheck($won===1&&$conflicts===1,'review and withdrawal have exactly one winner'
 if(bw_get($pdo,'C')['review_status']==='draft'){bw_execute($pdo,'submit_review',requestData($pdo,'C'),'Same Name',true,$alice);bw_execute($pdo,'approve_project',requestData($pdo,'C'),'Reviewer',true);}
 try{bw_execute($pdo,'withdraw_review',requestData($pdo,'C',array('review_note'=>'Too late')),'Admin',true,$admin);throw new LogicException('approved withdrawn');}catch(BomWorkflowError $e){wfCheck($e->reason==='state','approved requires unapprove');}
 echo "BOM withdrawal: submitter/admin, same-name denial, mandatory reason, edit/resubmit, replay, frozen costs and concurrent review passed\n";
+
+require_once dirname(__DIR__).'/includes/quote_bom_versions.php';
+if(!function_exists('mb_strtolower')){function mb_strtolower($s,$encoding='UTF-8'){return strtolower($s);}}
+$qsrc=file_get_contents(dirname(__DIR__).'/quote_api.php');$qa=strpos($qsrc,'function qspec_blank(');$qb=strpos($qsrc,'function qspec_guess_components_from_bom(',$qa);eval(substr($qsrc,$qa,$qb-$qa));
+$vd=$d;$vd['project_uid']='QBV';$vd['name']='Synthetic versioned BOM';$vd['model']='52.98765';$vd['expected_revision']='';$vd['request_id']=bin2hex(random_bytes(16));$vd['rows']=array(array('name'=>'LIFUD LED Driver LF-OLD','brand'=>'LIFUD','model'=>'LF-OLD','qty'=>1,'price'=>50));
+bw_execute($pdo,'save_project',$vd,'Tester',true);bw_execute($pdo,'submit_review',requestData($pdo,'QBV'),'Tester',true);bw_execute($pdo,'approve_project',requestData($pdo,'QBV'),'Reviewer',true);
+$vp=array('code'=>'52.98765');$v1=qbv_resolve($pdo,$vp);wfCheck($v1['patch']['cost_rmb']===50.0,'initial version cost');
+bw_execute($pdo,'unapprove_project',requestData($pdo,'QBV',array('review_note'=>'Revised model')),'Reviewer',true);
+$vd['expected_revision']=bw_revision(bw_get($pdo,'QBV'));$vd['request_id']=bin2hex(random_bytes(16));$vd['rows'][0]['price']=20;$vd['rows'][0]['model']='LF-NEW';$vd['rows'][0]['name']='LIFUD LED Driver LF-NEW';bw_execute($pdo,'save_project',$vd,'Tester',true);
+wfCheck(qbv_resolve($pdo,$vp)['patch']['cost_rmb']===50.0,'draft never leaks');
+bw_execute($pdo,'submit_review',requestData($pdo,'QBV'),'Tester',true);bw_execute($pdo,'approve_project',requestData($pdo,'QBV'),'Reviewer',true);
+$v2=qbv_resolve($pdo,$vp);wfCheck($v2['patch']['cost_rmb']===20.0&&strpos($v2['patch']['quote_spec']['driver']['value'],'LF-NEW')!==false,'lower cost and components from new snapshot');
+$old=qbv_resolve($pdo,$vp,$v1['version']['snapshot_id']);wfCheck(!$old['version']['current']&&$old['patch']['cost_rmb']===50.0&&strpos($old['patch']['quote_spec']['driver']['value'],'LF-OLD')!==false,'historical cost and component immutable');
+$payload=array('items_json'=>bw_json(array(array('product'=>array_merge($vp,$old['patch'])))));qbv_validate_save($pdo,$payload);
+$forged=array_merge($vp,$old['patch']);$forged['cost_rmb']=99;try{qbv_validate_save($pdo,array('items_json'=>bw_json(array(array('product'=>$forged)))));throw new LogicException('forged cost accepted');}catch(RuntimeException $e){}
+try{qbv_resolve($pdo,$vp,$old['version']['snapshot_id'],$old['version']['snapshot_id']);throw new LogicException('stale publication accepted');}catch(RuntimeException $e){}
+try{qbv_resolve($pdo,array('code'=>'52.11111'),$old['version']['snapshot_id']);throw new LogicException('foreign snapshot accepted');}catch(RuntimeException $e){}
+$catalog=qbv_catalog($pdo,$vp);wfCheck($catalog['total']===2&&count($catalog['versions'])===2,'all versions and timestamps');
+$copy=$vd;$copy['project_uid']='QBV2';$copy['expected_revision']='';$copy['request_id']=bin2hex(random_bytes(16));bw_execute($pdo,'save_project',$copy,'Tester',true);bw_execute($pdo,'submit_review',requestData($pdo,'QBV2'),'Tester',true);bw_execute($pdo,'approve_project',requestData($pdo,'QBV2'),'Reviewer',true);
+wfCheck(qbv_resolve($pdo,$vp)['choose']===true,'multiple BOMs require explicit choice');
+wfCheck(qbv_resolve($pdo,$vp,$v2['version']['snapshot_id'])['patch']['cost_rmb']===20.0,'explicit choice not overwritten by other BOM');
+echo "Quote BOM versions MySQL: reapproval/lower price, immutable history, snapshot-aligned components, stale publication, foreign selection, forged cost, catalog and ambiguity passed\n";

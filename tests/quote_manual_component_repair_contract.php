@@ -14,7 +14,7 @@ $requiredApiMarkers = [
     'function qspec_is_internal_fastener_text',
     "if(\$key==='accessories' && qspec_is_internal_fastener_text(\$s)) return true;",
     "if(qspec_is_internal_fastener_text(\$txt)) return '';",
-    'qspec-classifier-v3|',
+    'qbv_resolve($pdo,array(\'model\'=>$model))',
     "'get_bom_quote_spec'=>'product_view'",
     "if(\$action==='get_bom_quote_spec')",
     "SET auto_generated=0,source_hash='',last_sync_at=NULL WHERE id=?",

@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/quote_money.php';
 require_once __DIR__ . '/includes/quote_material_read.php';
 require_once __DIR__ . '/includes/bom_workflow.php';
+require_once __DIR__ . '/includes/quote_bom_versions.php';
 if (session_status() === PHP_SESSION_NONE) {
     @session_name('ARTDON_SYS');
     @session_set_cookie_params(['lifetime'=>86400*30,'path'=>'/','httponly'=>true,'samesite'=>'Lax']);
@@ -1302,43 +1303,11 @@ function qspec_classify_component($txt){
   return '';
 }
 function qspec_guess_components_from_bom($pdo,$model){
-  $nk=norm_key($model);
-  $hits=[]; $sourceHashParts=[];
-  if(!$nk) return ['hits'=>$hits,'source_hash'=>''];
-  foreach(detect_bom_cost_tables($pdo) as $t){
-    $cols=table_columns($pdo,$t); if(!$cols) continue;
-    $order=in_array('updated_at',$cols,true)?'`updated_at` DESC':(in_array('id',$cols,true)?'`id` DESC':'1');
-    try{ $rs=rows($pdo,"SELECT * FROM `$t` ORDER BY $order LIMIT 3000"); }catch(Throwable $e){ continue; }
-    foreach($rs as $r){
-      // 只有整张 BOM 成本单的型号字段等于当前型号，才允许从它的 rows_json 里提取 LED/电源/光学/配件。
-      $rowKeys=bom_strict_row_model_keys($r);
-      if(!in_array($nk,$rowKeys,true)) continue;
-      $blob=json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-      $sourceHashParts[]=$t.':'.substr(sha1($blob),0,12);
-      $nodes=[];
-      foreach(qspec_bom_detail_json_values_from_row($r) as $js){
-        $a=json_decode($js,true);
-        if(is_array($a)) qspec_flatten_nodes($a,$nodes);
-      }
-      $usedValues=[];
-      foreach($nodes as $node){
-        $txt=qspec_text_of_node($node);
-        if($txt==='') continue;
-        $cls=qspec_classify_component($txt);
-        if($cls && empty($hits[$cls])){
-          $val=qspec_quote_name_of_node($node,$txt);
-          $vk=norm_key($val);
-          if($val!=='' && ($vk==='' || empty($usedValues[$vk]))){
-            $hits[$cls]=$val;
-            if($vk!=='') $usedValues[$vk]=$cls;
-          }
-        }
-      }
-    }
-  }
-  return ['hits'=>$hits,'source_hash'=>sha1('qspec-classifier-v3|'.implode('|',array_slice($sourceHashParts,0,50)))];
+  $r=qbv_resolve($pdo,array('model'=>$model));
+  if(!empty($r['choose']))throw new RuntimeException('多份BOM请在报价中选择具体审核版本');
+  $hits=array();foreach(($r['patch']['quote_spec']??array()) as $key=>$v)$hits[$key]=$v['value'];
+  return array('hits'=>$hits,'source_hash'=>$r['patch']['bom_version']['digest']??'');
 }
-
 function qspec_spec_json_from_fields($d){
   $arr=[];
   foreach(['led'=>'LED','driver'=>'LED Driver','optic'=>'Optic','accessories'=>'Accessories','connector'=>'Connector','other'=>'Other'] as $k=>$lab){
@@ -1832,7 +1801,7 @@ function qperm_require($pdo,$perm='can_access'){
 function qperm_action_perm($action){
   if($action==='get_material_image')return 'can_access';
   $map=[
-    'init'=>'can_access','list_bom_quote_specs'=>'product_view','get_bom_quote_spec'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
+    'init'=>'can_access','bom_quote_versions'=>'product_view','bom_quote_version'=>'product_view','list_bom_quote_specs'=>'product_view','get_bom_quote_spec'=>'product_view','ensure_bom_quote_spec'=>'product_view','sync_bom_quote_spec'=>'product_manage','save_bom_quote_spec'=>'product_manage','delete_bom_quote_spec'=>'product_manage',
     'sync_crm_customers'=>'customer_view','align_crm_customers'=>'customer_manage','batch_delete_customers'=>'customer_manage','clean_stale_crm_customers'=>'customer_manage','save_customer'=>'customer_manage','delete_customer'=>'customer_manage','save_product'=>'product_manage','delete_product'=>'product_manage','bom_debug'=>'material_view',
     'create_backup'=>'settings_manage','list_backups'=>'settings_manage','download_backup'=>'settings_manage','restore_backup'=>'settings_manage','save_header'=>'doc_settings_manage','delete_header'=>'doc_settings_manage','save_bank'=>'doc_settings_manage','delete_bank'=>'doc_settings_manage','save_template'=>'doc_settings_manage','delete_template'=>'doc_settings_manage','save_exchange_rate'=>'rate_manage','save_price_level'=>'settings_manage','delete_price_level'=>'settings_manage','save_option'=>'settings_manage','delete_option'=>'settings_manage',
     'price_policy_list'=>'product_view','price_policy_match'=>'product_view','price_tier_list'=>'product_view','price_policy_levels_list'=>'product_view','price_stock_log_list'=>'product_view','price_policy_options_list'=>'product_view',
@@ -4423,11 +4392,17 @@ try{
    quote_push_crm_order_notice($pdo,$order,$__quote_user,'converted');
    ok(['notified'=>1,'order_id'=>(int)($order['id']??0),'order_no'=>$order['order_no']??'']);
  }
- if($action && !in_array($action,['init','get_material_image','list_logs','delete_logs','log_event','log_health'],true)){
+ if($action && !in_array($action,['init','bom_quote_versions','bom_quote_version','get_material_image','list_logs','delete_logs','log_event','log_health'],true)){
    $d=input_json();
    quote_log_event($pdo,['action'=>$action,'event'=>'接口请求','detail'=>$d]);
  }
  if($action==='bom_debug'){ ok(bom_debug_report($pdo, $_GET['model'] ?? $_POST['model'] ?? '')); }
+if($action==='bom_quote_versions'||$action==='bom_quote_version'){
+   $d=input_json();$product=$d['product']??array();if(!is_array($product))fail('产品资料格式错误');
+   if(!bw_ready($pdo))fail('BOM版本保护未初始化，请联系管理员');
+   if($action==='bom_quote_versions')ok(qbv_catalog($pdo,$product,(int)($d['page']??1)));
+   ok(qbv_resolve($pdo,$product,(int)($d['snapshot_id']??0),isset($d['expected_publication'])?(int)$d['expected_publication']:null));
+}
 if($action==='ensure_bom_quote_spec' || $action==='sync_bom_quote_spec'){
    $d=input_json();
    $force=($action==='sync_bom_quote_spec') || !empty($d['force']);
@@ -4797,6 +4772,7 @@ if($action==='init'){
    quote_commission_schema($pdo);
    $d=input_json();
    $d['quote_status']=quote_normalize_doc_status($d['quote_status'] ?? $d['status'] ?? 'Quotation sheet');
+   qbv_validate_save($pdo,$d);
    if(empty($d['status']) || preg_match('/Quotation|PROFORMA|invoice|订购合同/i',(string)($d['status']??''))) $d['status']=$d['quote_status'];
    if(isset($d['quote_no'])) $d['quote_no']=quote_no_no_nested($d['quote_no']);
    quote_v682_prepare_quote_save_data($d);

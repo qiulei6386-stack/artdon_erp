@@ -1347,9 +1347,10 @@ function qspecModelOfProduct(p=null){p=p||S.product||{};return String(p.code||p.
 function bomQuoteSpecUrl(p=null){p=p||S.product||{};let u='bom_quote_spec.php';let qs=[];let model=qspecModelOfProduct(p);if(model)qs.push('model='+encodeURIComponent(model));if(p.naming_id)qs.push('naming_id='+encodeURIComponent(p.naming_id));return u+(qs.length?'?'+qs.join('&'):'')}
 function openBomQuoteSpec(p=null){let u=bomQuoteSpecUrl(p);window.open(u,'artdonQuoteSpecEditor')}
 async function forceSyncBomQuoteSpecForSelectedProduct(){let p=S.product;if(!p){alert('请先选择命名系统产品');return;}let el=$('productLinkHint');if(el)el.innerHTML=productSourceBadge(p)+' <b>'+esc(p.code||p.name||'')+'</b><br>正在从 BOM 手动重新拉取关键件...';try{let res=await api('sync_bom_quote_spec',{force:1,product:{id:p.id,source:p.source,naming_id:p.naming_id,code:p.code,model:p.model,name:p.name,image:p.image,power:p.power,size:p.size,cutout:p.cutout,bom_match:p.bom_match,bom_match_key:p.bom_match_key}});if(res&&res.spec){let spec=res.spec;Object.assign(S.product,{bom_quote_spec_id:spec.id,quote_spec:spec.quote_spec||{},quote_spec_json:JSON.stringify(spec.quote_spec||{}),quote_spec_source:'bom_quote_specs',quote_spec_updated_at:spec.updated_at||'',quote_spec_auto_generated:spec.auto_generated||1});['power','size','cutout'].forEach(k=>{if(spec[k])S.product[k]=spec[k]});let idx=(DB.products||[]).findIndex(x=>String(x.id)===String(S.product.id));if(idx>=0)DB.products[idx]=Object.assign(DB.products[idx],S.product);renderParts();render();updatePriceLevelHint();updateProductLinkHint();alert('已从 BOM 重新拉取并保存关键件。若文字还需调整，请点“手动修正关键件”。')}else{updateProductLinkHint();alert('未从 BOM 提取到关键件，可点“手动修正关键件”自行填写。')}}catch(e){updateProductLinkHint();alert('重新拉取失败：'+e.message)}}
-function updateProductLinkHint(){let el=$('productLinkHint'); if(!el)return;let p=S.product;if(!p){el.innerHTML='产品主数据优先来自命名中心；成本价优先匹配 BOM。';return;}let src=productSourceLabel(p), bom=Number(p.bom_match||0), qn=productQuoteSpec(p).length;let auto=Number(p.quote_spec_auto_generated||0)?'自动同步':'人工维护';let actions=p.source==='naming'?`<div class="quote-spec-actions"><button type="button" class="mini-sync" onclick="forceSyncBomQuoteSpecForSelectedProduct()">重新从BOM拉取关键件</button><button type="button" class="mini-link" onclick="openBomQuoteSpec()">手动修正关键件</button></div>`:'';el.className='hint product-link-hint';el.innerHTML=`${productSourceBadge(p)} <b>${esc(p.code||p.name||'')}</b>${qn?'<span class="quote-spec-badge">已设报价关键件 '+qn+' 项</span>':''}<br>来源：${esc(src)} ｜ ${bom?'已匹配 BOM 成本':'未匹配 BOM，可先按空壳/手动价报价'} ｜ ${esc(productCostText(p))}${p.bom_cost_source?' ｜ 成本源：'+esc(p.bom_cost_source):''}${qn?' ｜ 关键件来自 BOM 报价设置（'+auto+'）':''}${actions}`}
+function updateProductLinkHint(){let el=$('productLinkHint'); if(!el)return;let p=S.product;if(!p){el.innerHTML='产品主数据优先来自命名中心；成本价优先匹配 BOM。';return;}let src=productSourceLabel(p), bom=Number(p.bom_match||0), qn=productQuoteSpec(p).length;let auto=Number(p.quote_spec_auto_generated||0)?'自动同步':'人工维护';let actions=p.source==='naming'?`<div class="quote-spec-actions"><button type="button" class="mini-sync" onclick="forceSyncBomQuoteSpecForSelectedProduct()">重新从BOM拉取关键件</button><button type="button" class="mini-link" onclick="openBomQuoteSpec()">手动修正关键件</button></div>`:'';el.className='hint product-link-hint';el.innerHTML=`${productSourceBadge(p)} <b>${esc(p.code||p.name||'')}</b>${qn?'<span class="quote-spec-badge">已设报价关键件 '+qn+' 项</span>':''}<br>来源：${esc(src)} ｜ ${bom?'已匹配 BOM 成本':'未匹配 BOM，可先按空壳/手动价报价'} ｜ ${esc(productCostText(p))}${p.bom_cost_source?' ｜ 成本源：'+esc(p.bom_cost_source):''}${qn?(p.bom_version?' ｜ 关键件来自所选审核快照':' ｜ 关键件来自 BOM 报价设置（'+auto+'）'):''}${actions}`}
 function quoteSpecMatchesProduct(spec,p){
   if(!spec||!p)return false;
+  if(p.bom_version)return false; // A published snapshot cannot be overwritten by the separate manual-spec editor.
   let specNaming=String(spec.naming_id||''),productNaming=String(p.naming_id||'');
   if(specNaming&&productNaming&&specNaming===productNaming)return true;
   let specModel=String(spec.product_model||'').trim().toLowerCase();
@@ -2534,33 +2535,7 @@ function renderProductSelect(preferredId=''){
   updateProductLinkHint();
 }
 async function ensureBomQuoteSpecForSelectedProduct(){
-  let p=S.product;
-  if(!p || p.source!=='naming') return;
-  if(productQuoteSpec(p).length || p.bom_quote_spec_id) return;
-  let selectedId=String(p.id||'');
-  let el=$('productLinkHint');
-  if(el) el.innerHTML=productSourceBadge(p)+' <b>'+esc(p.code||p.name||'')+'</b><br>正在自动从 BOM 同步整灯报价关键件...';
-  try{
-    let res=await api('ensure_bom_quote_spec',{product:{id:p.id,source:p.source,naming_id:p.naming_id,code:p.code,model:p.model,name:p.name,image:p.image,power:p.power,size:p.size,cutout:p.cutout,bom_match:p.bom_match,bom_match_key:p.bom_match_key}});
-    if(String(S.product?.id||'')!==selectedId) return;
-    if(res&&res.spec){
-      let spec=res.spec;
-      Object.assign(S.product,{
-        bom_quote_spec_id:spec.id,
-        quote_spec:spec.quote_spec||{},
-        quote_spec_json:JSON.stringify(spec.quote_spec||{}),
-        quote_spec_source:'bom_quote_specs',
-        quote_spec_updated_at:spec.updated_at||'',
-        quote_spec_auto_generated:spec.auto_generated||1
-      });
-      ['power','size','cutout'].forEach(k=>{if(spec[k])S.product[k]=spec[k]});
-      let idx=(DB.products||[]).findIndex(x=>String(x.id)===selectedId);
-      if(idx>=0) DB.products[idx]=Object.assign(DB.products[idx],S.product);
-    }
-  }catch(e){
-    console.warn('ensure_bom_quote_spec failed',e);
-    if(el) el.innerHTML=productSourceBadge(p)+' <b>'+esc(p.code||p.name||'')+'</b><br>未能自动同步 BOM 关键件，可先报价或到 bom_quote_spec.php 手动维护。';
-  }
+  return window.QuoteBomVersions ? QuoteBomVersions.prepare(S.product) : false;
 }
 function quotePricePolicyHintElement(){
   let el=$('quotePricePolicyHint');if(el)return el;
@@ -2593,9 +2568,10 @@ function quotePricePolicySnapshot(m){
 async function refreshQuotePricePolicy(applyToEditor=true){
   if(S.currentQuoteId>0||!S.product){QUOTE_PRICE_POLICY_MATCH=null;renderQuotePricePolicyHint();return null;}
   let keys=quoteProductPolicyKeys(S.product),qty=Number($('qty')?.value||0),token=++QUOTE_PRICE_POLICY_REQUEST;
+  const policyProduct=S.product;
   try{
     let m=await api('price_policy_match&product_model='+encodeURIComponent(keys.model)+'&naming_id='+encodeURIComponent(keys.namingId)+'&qty='+encodeURIComponent(qty));
-    if(token!==QUOTE_PRICE_POLICY_REQUEST||S.currentQuoteId>0)return null;
+    if(token!==QUOTE_PRICE_POLICY_REQUEST||S.currentQuoteId>0||S.product!==policyProduct)return null;
     QUOTE_PRICE_POLICY_MATCH=m||null;
     if(applyToEditor&&m?.matched&&$('manualPrice')?.value===''){
       if(S.editingIndex>=0&&S.items[S.editingIndex]){
@@ -2613,7 +2589,11 @@ async function selectProduct(){
   let selectedId=String($('productSelect').value||'');
   let wasEditing=S.editingIndex>=0;
   syncProductSearchFromSelect();
-  S.product=DB.products.find(x=>String(x.id)===selectedId)||null;
+  QuoteBomVersions.close();
+  QUOTE_PRICE_POLICY_REQUEST++;QUOTE_PRICE_POLICY_MATCH=null;
+  const source=DB.products.find(x=>String(x.id)===selectedId);
+  S.product=source?clone(source):null;
+  const selection=S.product,quoteId=S.currentQuoteId;
   if(S.product){
     S.parts={};
     $('manualPrice').value='';
@@ -2626,8 +2606,10 @@ async function selectProduct(){
   renderParts();
   updatePriceLevelHint();
   render();
-  await ensureBomQuoteSpecForSelectedProduct();
+  const ready=await ensureBomQuoteSpecForSelectedProduct();
+  if(!ready||S.product!==selection||S.currentQuoteId!==quoteId)return;
   await refreshQuotePricePolicy(false);
+  if(S.product!==selection||S.currentQuoteId!==quoteId)return;
   updateProductLinkHint();
   renderParts();
   updatePriceLevelHint();
@@ -2883,6 +2865,7 @@ function currentEditorBaseCost(old=null){
     if(Number(old.cost_price||0)>0) return quoteConvertMoney(Number(old.cost_price||0),old.cost_price_currency||old.currency||cur(),cur());
   }
   let fresh=productPrice()+partsPrice(S.parts,cur());
+  if(S.product?.bom_version)return fresh;
   if(fresh>0) return fresh;
   if(old && Number(old.cost_price_rmb||0)>0) return quoteMoneyFromRmb(Number(old.cost_price_rmb||0),cur());
   if(old && Number(old.cost_price||0)>0) return quoteConvertMoney(Number(old.cost_price||0),old.cost_price_currency||old.currency||cur(),cur());
@@ -2950,6 +2933,7 @@ function itemBaseCost(item,c=cur()){
     return Number(item.price||0);
   }
   let fresh=itemProductPrice(item,c)+itemPartsPrice(item,c);
+  if(item?.product?.bom_version)return fresh;
   if(fresh>0) return fresh;
   if(Number(item.cost_price_rmb||0)>0) return quoteMoneyFromRmb(Number(item.cost_price_rmb||0),c);
   if(Number(item.cost_price||0)>0) return quoteConvertMoney(Number(item.cost_price||0),item.cost_price_currency||item.currency||c,c);
@@ -5431,4 +5415,6 @@ function printOrderStatement(key){
 <script src="assets/quote-mail.js?v=20260915-1"></script>
 <link rel="stylesheet" href="assets/quote-order-page.css?v=20260915-2">
 <script src="assets/quote-order-page.js?v=20260915-2"></script>
+<link rel="stylesheet" href="assets/quote-bom-versions.css?v=20260921-1">
+<script src="assets/quote-bom-versions.js?v=20260921-1"></script>
 </body></html>
