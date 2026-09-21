@@ -50,6 +50,11 @@ preg_match_all('/\x27([^\x27]+)\x27/',$match[1]??'',$fields);
 $columns=[];foreach(array_unique(array_merge($fields[1],['approval_items_json','approval_log_json','approved_snapshot_json','locked_at'])) as $field){$columns[]='`'.$field.'` '.(in_array($field,['qty','price','amount','subtotal_amount','adjustment_amount','exchange_rate'],true)?'DECIMAL(18,4)':'LONGTEXT').' NULL';}
 mq_check(count($columns)>40,'Schema extraction');
 $pdo->exec('CREATE TABLE quote_orders(id INT AUTO_INCREMENT PRIMARY KEY,'.implode(',',$columns).') ENGINE=InnoDB');
+// Exercise save validation even after the first snapshot revocation, including large images.
+$pdo->exec('CREATE TABLE bom_projects(project_uid VARCHAR(100) PRIMARY KEY,is_active TINYINT NOT NULL DEFAULT 1) ENGINE=InnoDB');
+bw_schema($pdo);
+$pdo->exec("INSERT INTO bom_workflow_meta VALUES('legacy_costs_frozen','1')");
+$pdo->exec("INSERT INTO bom_workflow_events(project_uid,action,actor,before_revision,after_revision,note,snapshot_id) VALUES('SYNTHETIC-VOID','void_snapshot','acceptance','','','test only',1)");
 $d=mq_payload('SYNTHETIC-ONE');$saved=mq_run('save_quote',$d);$id=$saved['id'];$q=row($pdo,'SELECT * FROM quote_orders WHERE id=?',[$id]);
 mq_check((float)$q['amount']===4020.0 && json_decode($q['items_json'],true)[0]['unit_price']===4020,'Save aliases / amount');
 mq_check($saved['money_revision']===qm_revision($q),'returned revision');

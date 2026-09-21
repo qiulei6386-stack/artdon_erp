@@ -4401,7 +4401,7 @@ if($action==='bom_quote_versions'||$action==='bom_quote_version'){
    $d=input_json();$product=$d['product']??array();if(!is_array($product))fail('产品资料格式错误');
    if(!bw_ready($pdo))fail('BOM版本保护未初始化，请联系管理员');
    if($action==='bom_quote_versions')ok(qbv_catalog($pdo,$product,(int)($d['page']??1)));
-   ok(qbv_resolve($pdo,$product,(int)($d['snapshot_id']??0),isset($d['expected_publication'])?(int)$d['expected_publication']:null));
+   ok(qbv_resolve($pdo,$product,(int)($d['snapshot_id']??0),isset($d['expected_publication'])?(int)$d['expected_publication']:null,!empty($d['history_read'])));
 }
 if($action==='ensure_bom_quote_spec' || $action==='sync_bom_quote_spec'){
    $d=input_json();
@@ -4772,7 +4772,6 @@ if($action==='init'){
    quote_commission_schema($pdo);
    $d=input_json();
    $d['quote_status']=quote_normalize_doc_status($d['quote_status'] ?? $d['status'] ?? 'Quotation sheet');
-   qbv_validate_save($pdo,$d);
    if(empty($d['status']) || preg_match('/Quotation|PROFORMA|invoice|订购合同/i',(string)($d['status']??''))) $d['status']=$d['quote_status'];
    if(isset($d['quote_no'])) $d['quote_no']=quote_no_no_nested($d['quote_no']);
    quote_v682_prepare_quote_save_data($d);
@@ -4827,7 +4826,9 @@ if($action==='init'){
        foreach($commissionLines as $i=>$line){if(!in_array(($line['included_in_price']??''),['included','excluded'],true)||!array_key_exists('value',$line)||$line['value']==='')fail('第 '.($i+1).' 行产品佣金尚未明确填写');}
      }
    }
+   $bomWorkflowReady=bw_ready($pdo);
    $pdo->beginTransaction();
+   if($bomWorkflowReady)$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
    if(!$before && !empty($d['quote_no'])){
      $duplicate=row($pdo,'SELECT id FROM quote_orders WHERE quote_no=? LIMIT 1 FOR UPDATE',[$d['quote_no']]);
      if($duplicate) fail('同编号报价已存在，请重新打开核对；未覆盖原单');
@@ -4839,6 +4840,7 @@ if($action==='init'){
      if(quote_approval_status_of($locked)==='approved') fail('报价已审核，请另存新版本');
      $before=$locked;
    }
+   qbv_validate_save($pdo,$d,$before);
    $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','subtotal_amount','adjustment_amount','adjustment_json','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
    $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);
    $items=json_decode((string)($d['items_json']??'[]'),true); if(!is_array($items)) $items=[];

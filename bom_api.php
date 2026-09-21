@@ -26,6 +26,7 @@ $__bom_perm_map=array(
     'save_material'=>'manage_materials','delete_material'=>'delete_materials'
 );
 $__bom_perm_map['withdraw_review']='edit_bom';
+$__bom_perm_map['void_snapshot']='unapprove_bom';
 artdon_perm_require_action('bom',(string)$action,$__bom_perm_map,'view_dashboard');
 
 function json_out($arr){
@@ -1623,6 +1624,7 @@ try{
     $user = bom_require_login($pdo);
     $workflowPermissions=array('save_project'=>'edit','submit_review'=>'edit','approve_project'=>'approve_bom','reject_project'=>'reject_bom','unapprove_project'=>'unapprove_bom','create_snapshot'=>'approve_bom','delete_project'=>'edit','bind_naming_to_project'=>'edit','unbind_naming_from_project'=>'edit','naming_sync_apply'=>'edit');
     $workflowPermissions['withdraw_review']='edit';
+    $workflowPermissions['void_snapshot']='unapprove_bom';
     if(isset($workflowPermissions[$action])){
         bom_require_perm($user,$workflowPermissions[$action]);
         $result=null;
@@ -1809,7 +1811,10 @@ try{
         $st=$pdo->prepare($sql); $st->execute($params);
         $rows=$st->fetchAll();
         $canCost=artdon_sso_can('bom','cost_view');
+        $voidByProject=array();
         foreach($rows as &$s){
+            $pu=(string)$s['project_uid'];if(!isset($voidByProject[$pu]))$voidByProject[$pu]=bw_snapshot_voids($pdo,$pu);
+            $s=array_merge($s,$voidByProject[$pu][(int)$s['id']]??array('voided'=>false));
             $s['totals'] = json_decode((string)($s['totals_json'] ?? '{}'), true) ?: array();
             $s['price_summary'] = json_decode((string)($s['price_summary_json'] ?? '{}'), true) ?: array();
             if(!$canCost) $s['totals']=array();
@@ -1830,6 +1835,7 @@ try{
         $s=$st->fetch(PDO::FETCH_ASSOC);
         if(!$s) json_out(array('ok'=>false,'error'=>'快照不存在'));
         if(isset($d['project_uid'])&&(string)$d['project_uid']!==(string)$s['project_uid'])json_out(array('ok'=>false,'error'=>'快照不属于当前 BOM'));
+        $s=array_merge($s,bw_snapshot_voids($pdo,(string)$s['project_uid'])[(int)$s['id']]??array('voided'=>false));
         $rows=bw_rows($s['rows_json'] ?? '[]');
         $canCost=artdon_sso_can('bom','cost_view');
         $canSupplier=artdon_sso_can('bom','supplier_view');

@@ -22,6 +22,7 @@ function bcp_add(array &$map,array $keys,float $cost,string $source,string $upda
     }
 }
 function bcp_add_publication(array &$map,array $publication): void {
+    if($publication['source']==='voided')return; // Explicitly paused, never treat as frozen legacy cost.
     $p=json_decode((string)$publication['payload_json'],true,512,JSON_THROW_ON_ERROR);
     $keys=bcp_models($p['model']??'');
     $system=strtoupper(trim((string)($p['linked_system']??'')));$id=trim((string)($p['linked_id']??''));

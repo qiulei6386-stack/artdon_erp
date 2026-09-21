@@ -23,7 +23,7 @@ function bom_sync_quote_cost_snapshot($pdo,$uid,$actor){$result=actual_policy_sy
 if(($argv[1]??'')==='worker'){
     $pdo=connectTest();$d=json_decode(base64_decode($argv[2]),true);
     $action=$argv[3]??'approve_project';$testUser=json_decode($argv[4]??'[]',true);
-    if(!in_array($action,array('approve_project','withdraw_review'),true))throw new RuntimeException('Invalid test action');
+    if(!in_array($action,array('approve_project','withdraw_review','void_snapshot'),true))throw new RuntimeException('Invalid test action');
     try{echo bw_json(bw_execute($pdo,$action,$d,'test-reviewer',true,$testUser));}
     catch(BomWorkflowError $e){echo bw_json(array('ok'=>false,'code'=>$e->reason));}
     exit;
@@ -117,3 +117,4 @@ $copy=$vd;$copy['project_uid']='QBV2';$copy['expected_revision']='';$copy['reque
 wfCheck(qbv_resolve($pdo,$vp)['choose']===true,'multiple BOMs require explicit choice');
 wfCheck(qbv_resolve($pdo,$vp,$v2['version']['snapshot_id'])['patch']['cost_rmb']===20.0,'explicit choice not overwritten by other BOM');
 echo "Quote BOM versions MySQL: reapproval/lower price, immutable history, snapshot-aligned components, stale publication, foreign selection, forged cost, catalog and ambiguity passed\n";
+require __DIR__.'/bom_snapshot_void_mysql.inc.php';

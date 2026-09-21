@@ -47,7 +47,7 @@ window.QuoteBomVersions=(()=>{
       c.catalog=r;c.preview=null;
       const current=c.product.bom_version;
       const note=locked()?'该报价已审核，只能查看；如需换版，请先另存新报价。':!r.total?'尚无正式审核快照；历史成本保持冻结，审核通过后才会出现可选版本。':r.projects>1?'有多份同型号BOM，请按客户/用途明确选择；不自动取最高价。':'新建报价默认采用这份BOM当前有效的审核版本。';
-      $('qbvBody').innerHTML=`<p class="qbv-notice">${esc(note)}</p>${current?`<p>本行当前：<b>${esc(current.version_no)} · ${esc(current.snapshot_uid)}</b> · RMB ${money4(current.cost_rmb)}</p>`:'<p>本行尚未绑定具体审核版本，历史单据不会自动改价。</p>'}<div class="qbv-list">${r.versions.map(v=>`<article><div><b>${esc(v.name||v.model)}</b><span class="qbv-state">${current?.snapshot_id===v.snapshot_id?'本行采用 · ':''}${v.current?'当前有效':'历史快照'}</span></div><div>${esc(v.version_no)} · ${esc(v.variant_label)} · 客户 ${esc(v.customer||'通用/未填写')}</div><div class="qbv-cost"><strong>RMB ${money4(v.cost_rmb)}</strong><span>审核 ${esc(v.approved_at)}${v.published_at?'<br>发布 '+esc(v.published_at):''}</span></div><small>${esc(v.snapshot_uid)}</small><button type="button" data-qbv-pick="${v.snapshot_id}">${locked()?'查看内容':'核对并选择'}</button></article>`).join('')}</div>${r.legacy.map(l=>`<p class="qbv-notice">${esc(l.name)} · ${esc(l.status)} · RMB ${money4(l.cost_rmb)}<br>冻结时间 ${esc(l.updated_at)}。不是正式审核版本，不从未审核草稿更新关键件。</p>`).join('')}${!r.total&&!r.legacy.length?'<p>没有匹配的BOM审核版本，请核对完整型号与命名绑定。</p>':''}`;
+      $('qbvBody').innerHTML=`<p class="qbv-notice">${esc(note)}</p>${current?`<p>本行当前：<b>${esc(current.version_no)} · ${esc(current.snapshot_uid)}</b> · RMB ${money4(current.cost_rmb)}</p>`:'<p>本行尚未绑定具体审核版本，历史单据不会自动改价。</p>'}<div class="qbv-list">${r.versions.map(v=>`<article><div><b>${esc(v.name||v.model)}</b><span class="qbv-state">${current?.snapshot_id===v.snapshot_id?'本行采用 · ':''}${v.voided?'已作废':v.unavailable?'暂停取价':v.current?'当前有效':'历史快照'}</span></div><div>${esc(v.version_no)} · ${esc(v.variant_label)} · 客户 ${esc(v.customer||'通用/未填写')}</div><div class="qbv-cost"><strong>RMB ${money4(v.cost_rmb)}</strong><span>审核 ${esc(v.approved_at)}${v.published_at?'<br>发布 '+esc(v.published_at):''}</span></div><small>${esc(v.snapshot_uid)}</small><button type="button" data-qbv-pick="${v.snapshot_id}">${locked()?'查看内容':'核对并选择'}</button></article>`).join('')}</div>${r.legacy.map(l=>`<p class="qbv-notice">${esc(l.name)} · ${esc(l.status)} · RMB ${money4(l.cost_rmb)}<br>更新时间 ${esc(l.updated_at)}。${l.source==='voided'?'此金额仅供历史追溯，不能作为新报价取价。':'不是正式审核版本，不从未审核草稿更新关键件。'}</p>`).join('')}${!r.total&&!r.legacy.length?'<p>没有匹配的BOM审核版本，请核对完整型号与命名绑定。</p>':''}`;
       $('qbvFooter').innerHTML=`<button data-qbv-page="${Math.max(1,r.page-1)}" ${r.page<=1?'disabled':''}>上一页</button><span>第 ${r.page} / ${r.pages} 页 · ${r.total} 个版本</span><button data-qbv-page="${r.page+1}" ${r.page>=r.pages?'disabled':''}>下一页</button>`;
     }catch(e){if(request===serial&&modal){$('qbvBody').innerHTML=`<p role="alert">${esc(e.message)}</p><button data-qbv-page="${page}">重试</button>`;}}
   }
@@ -55,16 +55,16 @@ window.QuoteBomVersions=(()=>{
     const c=context;if(!same(c))return close();const v=c.catalog.versions.find(v=>v.snapshot_id===id);if(!v)return;
     const request=++serial;$('qbvFooter').textContent='正在按此版本读取成本和关键件…';
     try{
-      const r=await api('bom_quote_version',{product:productInput(c.product),snapshot_id:id,expected_publication:v.publication_snapshot_id});
+      const r=await api('bom_quote_version',{product:productInput(c.product),snapshot_id:id,expected_publication:v.publication_snapshot_id,history_read:1});
       if(request!==serial||!same(c)||!modal)return;c.preview=r;
       const old=c.product.bom_version,from=Number(c.product.cost_rmb??c.product.price_rmb??0),to=r.version.cost_rmb;
       const keys=[...new Set([...Object.keys(c.product.quote_spec||{}),...Object.keys(r.patch.quote_spec||{})])];
-      $('qbvBody').innerHTML=`<p><b>${esc(r.version.name)}</b> · ${esc(r.version.version_no)}<br>${esc(r.version.snapshot_uid)} · 审核 ${esc(r.version.approved_at)}</p><p class="qbv-notice">${r.version.current?'当前有效审核版本。':'注意：这是历史版本，不是当前发布版本。'} ${locked()?'已审核报价仅查看。':'确认只更新本行BOM基础成本及关键件；手工售价、另选部件、数量和备注保留。自动计算的售价可能改变，请核对。'}</p><div class="qbv-diff"><div>项目</div><div>当前报价</div><div>准备采用</div><div>版本</div><div>${esc(old?.snapshot_uid||'未绑定')}</div><div>${esc(r.version.snapshot_uid)}</div><div>基础成本 RMB</div><div>${money4(from)}</div><div>${money4(to)}</div>${keys.map(k=>`<div>${esc(r.patch.quote_spec[k]?.label||c.product.quote_spec?.[k]?.label||k)}</div><div>${esc(c.product.quote_spec?.[k]?.value||'—')}</div><div>${esc(r.patch.quote_spec[k]?.value||'—')}</div>`).join('')}</div>`;
-      $('qbvFooter').innerHTML=`<button data-qbv-page="${c.catalog.page}">返回版本列表</button><button data-qbv-apply ${locked()?'disabled':''}>${r.version.current?'确认采用此版本':'确认使用历史版本'}</button>`;
+      $('qbvBody').innerHTML=`<p><b>${esc(r.version.name)}</b> · ${esc(r.version.version_no)}<br>${esc(r.version.snapshot_uid)} · 审核 ${esc(r.version.approved_at)}</p><p class="qbv-notice">${r.version.voided?'已作废：'+esc(r.version.void_reason||'')+'。仅供追溯。':r.version.unavailable?'此BOM已暂停报价取价。':r.version.current?'当前有效审核版本。':'注意：这是历史版本，不是当前发布版本。'} ${locked()?'已审核报价仅查看。':'确认只更新本行BOM基础成本及关键件；手工售价、另选部件、数量和备注保留。自动计算的售价可能改变，请核对。'}</p><div class="qbv-diff"><div>项目</div><div>当前报价</div><div>准备采用</div><div>版本</div><div>${esc(old?.snapshot_uid||'未绑定')}</div><div>${esc(r.version.snapshot_uid)}</div><div>基础成本 RMB</div><div>${money4(from)}</div><div>${money4(to)}</div>${keys.map(k=>`<div>${esc(r.patch.quote_spec[k]?.label||c.product.quote_spec?.[k]?.label||k)}</div><div>${esc(c.product.quote_spec?.[k]?.value||'—')}</div><div>${esc(r.patch.quote_spec[k]?.value||'—')}</div>`).join('')}</div>`;
+      $('qbvFooter').innerHTML=`<button data-qbv-page="${c.catalog.page}">返回版本列表</button><button data-qbv-apply ${locked()||r.version.voided||r.version.unavailable?'disabled':''}>${r.version.current?'确认采用此版本':'确认使用历史版本'}</button>`;
     }catch(e){if(request===serial&&modal)$('qbvFooter').innerHTML=`<span role="alert">${esc(e.message)}</span><button data-qbv-page="${c.catalog.page}">重新读取</button>`;}
   }
   async function apply(){
-    const c=context;if(!same(c)||locked()||!c.preview)return;
+    const c=context;if(!same(c)||locked()||!c.preview||c.preview.version.voided||c.preview.version.unavailable)return;
     const chosen=c.preview,button=modal.querySelector('[data-qbv-apply]');button.disabled=true;
     const request=++serial;c.product._bomLoading=true;
     try{
@@ -84,6 +84,7 @@ window.QuoteBomVersions=(()=>{
     const p=S.product;if(!p)return;const c={product:p,quoteId:S.currentQuoteId,index:S.editingIndex};
     try{const r=await api('bom_quote_versions',{product:productInput(p),page:1});if(!same(c))return;
       const v=p.bom_version,newer=v&&(r.current_publications||[]).find(x=>x.project_uid===v.project_uid&&x.snapshot_id!==v.snapshot_id);
+      if(v){const detail=await api('bom_quote_version',{product:productInput(p),snapshot_id:v.snapshot_id,history_read:1});if(!same(c))return;if(detail.version?.voided||detail.version?.unavailable){$('productLinkHint')?.insertAdjacentHTML('beforeend',`<p class="qbv-warning">本行引用的快照已作废或暂停取价。原单内容保留，不能复制到新报价。${esc(detail.version.void_reason||'')}</p>`);return;}}
       if(newer)p._bomMessage='有新审核版本可核对，当前报价保持原版本';
       if(newer){const el=$('productLinkHint');el?.insertAdjacentHTML('beforeend','<p class="qbv-warning">有新审核版本，请点“BOM 版本 / 更新”核对；不会自动改价。</p>');}
     }catch(e){if(same(c))$('productLinkHint')?.insertAdjacentHTML('beforeend','<p class="qbv-warning">暂未检查到最新版本，可点击版本按钮重试。现有报价不变。</p>');}

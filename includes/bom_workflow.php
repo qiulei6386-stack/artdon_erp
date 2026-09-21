@@ -153,7 +153,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         if($req['result_json']){$result=json_decode($req['result_json'],true,512,JSON_THROW_ON_ERROR);$pdo->commit();return $result;}
         // Cross-project approvals may share a model and policy. Acquire before project locks
         // and consistent reads so both the publication and its cache see the same winner.
-        if($action==='approve_project')$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
+        if(in_array($action,array('approve_project','void_snapshot'),true))$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
         $p=bw_get($pdo,$uid,true);$before=$p;$status=$p['review_status']??'draft';
         if($p&&(int)$p['is_active']!==1)throw new BomWorkflowError('deleted','BOM 已删除，请返回总览');
         if(!array_key_exists('expected_revision',$d)||!hash_equals(bw_revision($p),(string)$d['expected_revision']))throw new BomWorkflowError('revision_conflict','这份 BOM 已被修改或审核。本次未覆盖任何内容，请保留当前输入，重新打开最新版本核对后再操作。');
@@ -179,6 +179,31 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         }elseif($action==='delete_project'){
             if(in_array($status,array('pending','approved'),true))throw new BomWorkflowError('locked','待审核/已审核 BOM 不能删除');
             $pdo->prepare('UPDATE bom_projects SET is_active=0,updated_by=?,updated_at=NOW() WHERE project_uid=?')->execute(array($actor,$uid));$message='BOM 已移出总览，历史快照保留。';
+        }elseif($action==='void_snapshot'){
+            if(!$canCost)throw new BomWorkflowError('permission','作废快照需要成本查看权限');
+            if($note===''||strlen($note)>2000)throw new BomWorkflowError('validation','请填写作废原因（最多2000字节）');
+            $id=(int)($d['snapshot_id']??0);$replacement=(int)($d['replacement_snapshot_id']??0);
+            $st=$pdo->prepare('SELECT id,model FROM bom_snapshots WHERE id=? AND project_uid=?');$st->execute(array($id,$uid));$target=$st->fetch(PDO::FETCH_ASSOC);
+            if(!$target)throw new BomWorkflowError('not_found','快照不属于当前BOM');
+            $voids=bw_snapshot_voids($pdo,$uid);
+            if(isset($voids[$id]))throw new BomWorkflowError('state','该快照已经作废，请重新读取');
+            $st=$pdo->prepare('SELECT * FROM bom_cost_publications WHERE project_uid=? FOR UPDATE');$st->execute(array($uid));$pub=$st->fetch(PDO::FETCH_ASSOC);
+            $isCurrent=$pub&&$pub['source']==='approved_snapshot'&&(int)$pub['snapshot_id']===$id;
+            if($isCurrent){
+                if($replacement>0){
+                    $st=$pdo->prepare('SELECT id,project_uid,snapshot_name AS name,model,customer,version_no,variant_label,currency,exchange_rate,labor,other,profit_rate,quote_mode,OCTET_LENGTH(rows_json) AS row_bytes FROM bom_snapshots WHERE id=? AND project_uid=?');$st->execute(array($replacement,$uid));$next=$st->fetch(PDO::FETCH_ASSOC);
+                    if(!$next||$replacement===$id||isset($voids[$replacement])||bcp_norm($next['model'])!==bcp_norm($target['model']))throw new BomWorkflowError('validation','替代快照必须是同BOM、同型号且未作废的另一审核版本');
+                    if((int)$next['row_bytes']>8*1024*1024)throw new BomWorkflowError('validation','替代快照明细过大，请先检查');
+                    $st=$pdo->prepare('SELECT rows_json FROM bom_snapshots WHERE id=?');$st->execute(array($replacement));$next['rows_json']=$st->fetchColumn();
+                    $meta=json_decode($pub['payload_json'],true,512,JSON_THROW_ON_ERROR);
+                    bw_publish($pdo,array_merge($meta,$next),$replacement,'approved_snapshot');
+                }elseif(($d['publication_mode']??'')==='pause'){
+                    $pdo->prepare("UPDATE bom_cost_publications SET source='voided',updated_at=NOW() WHERE project_uid=?")->execute(array($uid));
+                }else throw new BomWorkflowError('validation','当前有效版必须指定替代快照，或明确选择暂停报价取价');
+                bom_sync_quote_cost_snapshot($pdo,$uid,$actor);
+            }elseif($replacement>0)throw new BomWorkflowError('validation','历史版本作废不允许更换当前发布版本');
+            $snapshot=array('id'=>$id,'replacement_snapshot_id'=>$isCurrent?$replacement:null,'publication_mode'=>$isCurrent?($replacement?'replace':'pause'):'unchanged');
+            $message='快照已作废，历史内容保留；新报价禁止采用，既有报价和订单未改价。';
         }elseif($action==='create_snapshot'){
             if($status!=='approved'||empty($p['latest_snapshot_id']))throw new BomWorkflowError('state','仅已审核 BOM 可查看正式快照');
             $snapshot=array('id'=>(int)$p['latest_snapshot_id']);$message='已返回该审核版本的快照，不重复创建。';
@@ -203,9 +228,16 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         }
         if($action!=='create_snapshot')$pdo->prepare('UPDATE bom_projects SET workflow_version=workflow_version+1 WHERE project_uid=?')->execute(array($uid));
         $p=bw_get($pdo,$uid);$revision=bw_revision($p);
-        $pdo->prepare('INSERT INTO bom_workflow_events(project_uid,action,actor,before_revision,after_revision,note,changes_json,snapshot_id) VALUES(?,?,?,?,?,?,?,?)')->execute(array($uid,$action,$actor,bw_revision($before),$revision,$note,bw_json(bw_changes($before,$p)),$snapshot['id']??null));
+        $changes=bw_changes($before,$p);if($action==='void_snapshot')$changes['void_snapshot']=$snapshot;
+        $pdo->prepare('INSERT INTO bom_workflow_events(project_uid,action,actor,before_revision,after_revision,note,changes_json,snapshot_id) VALUES(?,?,?,?,?,?,?,?)')->execute(array($uid,$action,$actor,bw_revision($before),$revision,$note,bw_json($changes),$snapshot['id']??null));
         $result=array('ok'=>true,'project_uid'=>$uid,'revision'=>$revision,'snapshot'=>$snapshot,'message'=>$message);
         $pdo->prepare('UPDATE bom_workflow_requests SET result_json=? WHERE request_id=?')->execute(array(bw_json($result),$request));
         $pdo->commit();return $result;
     }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+}
+// Append-only workflow events are the revocation ledger; snapshot bodies never change.
+function bw_snapshot_voids(PDO $pdo,string $uid): array {
+    $st=$pdo->prepare("SELECT snapshot_id,actor,note,created_at,changes_json FROM bom_workflow_events WHERE project_uid=? AND action='void_snapshot' ORDER BY id");$st->execute(array($uid));$out=array();
+    while($r=$st->fetch(PDO::FETCH_ASSOC)){$change=json_decode($r['changes_json']??'{}',true);$out[(int)$r['snapshot_id']]=array('voided'=>true,'voided_by'=>$r['actor'],'voided_at'=>$r['created_at'],'void_reason'=>$r['note'],'replacement_snapshot_id'=>$change['void_snapshot']['replacement_snapshot_id']??null);}
+    return $out;
 }
