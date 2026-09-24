@@ -38,7 +38,7 @@ try{
     i7_check(crm_mail_preview_file($attachment,'offline')['mime_type']==='text/plain','HTML attachment not executable');
 }finally{unlink($path);}
 foreach(['qo_num','qo_carton_count_value','qo_has_carton_detail','qo_carton_detail_totals','qo_add_carton_detail_totals','qo_requested_order_ids'] as $fn)i7_function('quote_order_api.php',$fn);
-foreach(['qd_s','qd_num','qd_total','qd_carton_has_detail','qd_carton_count','qd_carton_count_total','qd_packing_total','qd_carton_pl_rows'] as $fn)i7_function('quote_order_doc.php',$fn);
+require_once dirname(__DIR__).'/includes/quote_document_template.php';
 $items=[['product_code'=>'Chrome black A','qty'=>4],['product_code'=>'White trim B','qty'=>4],['product_code'=>'Chrome black C','qty'=>4]];
 $cartons=[['qty'=>12,'carton_count'=>1,'items_text'=>'Chrome black A 4PCS + White trim B 4PCS + Chrome black C 4PCS','nw'=>0.4,'gw'=>0.6,'cbm'=>0.0069]];
 $tot=qo_add_carton_detail_totals(['qty'=>12],$cartons);

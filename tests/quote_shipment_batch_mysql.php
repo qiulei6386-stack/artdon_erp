@@ -22,6 +22,8 @@ function btest_reject(callable $fn,$label){$rejected=false;try{$fn();}catch(Runt
 $beforeShip=(float)$pdo->query('SELECT SUM(qty) FROM quote_shipment_items')->fetchColumn();
 $data=['base_order_id'=>4,'ship_date'=>'2026-09-14','consignee'=>'验收客户 / 地址','items'=>[btest_item($pdo,4,41,30),btest_item($pdo,5,51,20)],'cartons'=>[]];
 $input=btest_request()+['data'=>$data];$plan=qb_mutate($pdo,'save',$input);$id=(int)$plan['id'];
+i7_check(isset($plan['data']['document_order'],$plan['data']['document_settings']),'Original document metadata frozen with plan, without full product snapshots');
+i7_check(strpos(json_encode($plan['data']),'data:image')===false,'Original format metadata never embeds source image blobs');
 i7_check($plan['state']==='planning'&&qb_reserved($pdo,41)==30,'Plan reserves but is not actual shipment');
 i7_check((float)$pdo->query('SELECT SUM(qty) FROM quote_shipment_items')->fetchColumn()===$beforeShip,'Save does not change actual shipment ledger');
 $replay=qb_mutate($pdo,'save',$input);i7_check($replay['id']==$id&&$replay['version']==1,'Same request is idempotent');
@@ -73,3 +75,14 @@ $peer=new PDO('mysql:unix_socket='.$socket.';dbname='.$schema.';charset=utf8mb4'
 qr_with_order_locks($pdo,[4,5],function()use($peer){i7_check((int)$peer->query("SELECT GET_LOCK('quote-shipment-order:4',0)")->fetchColumn()===0,'Competing connection blocked on same orders');});
 echo 'Shipment batch MySQL: reservations, add/remove/re-add, mixed cartons, per-item checks, revisions, optimistic versions, idempotency, legacy guards, rollback, dispatch and cancellation passed. Peak '.memory_get_peak_usage(true)." bytes\n";
 require __DIR__.'/quote_shipment_links_mysql.inc.php';
+// Renderer reads only the selected revision's quantities/prices; order lookups
+// supply missing historical metadata/images, not today's product catalogue.
+$pdo->exec("UPDATE quote_sales_order_items SET image='',item_json='{}' WHERE id IN (41,51)");
+$testDoc=['id'=>$id,'state'=>'planning','version'=>3,'current_version'=>8,'issued'=>true,'data'=>json_decode($snapshot,true)];
+$docHash=hash('sha256',$snapshot);$enriched=qsd_enrich($pdo,$testDoc);$context=qsd_template_context($enriched,'pl');
+i7_check(qd_total($context['plItems'],'qty')==50&&qd_total($context['plItems'],'cartons')==2,'Original template uses historic issued allocation, not changed draft');
+i7_check(qd_total($context['ciItems'],'amount')==145,'Issued CI retains source-order prices after later changes');
+i7_check($docHash===hash('sha256',$pdo->query('SELECT data_json FROM quote_shipment_plan_documents WHERE plan_id='.$id.' ORDER BY version LIMIT 1')->fetchColumn()),'Preview enrichment never modifies signed source');
+unset($testDoc['data']['document_order'],$testDoc['data']['document_settings']);
+i7_check(qsd_template_context(qsd_enrich($pdo,$testDoc),'ci')['order']['currency']==='USD','Pre-upgrade batches retain original template compatibility');
+echo "Original document adapter: real projected SQL, frozen revisions, historical metadata fallback and read-only preview passed\n";

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/quote_shipment_links.php';
+require_once __DIR__.'/quote_document_template.php';
 // Shipment plans reserve goods without inserting historical shipment/commission rows.
 function qb_json($value): string {
     $json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
@@ -59,7 +60,7 @@ function qb_compatible(array $base,array $order): string {
 }
 function qb_items(PDO $pdo,int $orderId,int $exclude=0): array {
     $order=qr_order($pdo,$orderId);if(!$order)throw new RuntimeException('订单不存在');
-    $items=qo_rows($pdo,'SELECT '.qr_item_columns($pdo).' FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
+    $items=qo_rows($pdo,'SELECT '.qr_item_columns($pdo,'quote_sales_order_items','',true,false).' FROM quote_sales_order_items WHERE order_id=? ORDER BY item_index,id',[$orderId]);
     if(!$items)throw new RuntimeException('订单明细缺失，请核对；未自动重建');
     $shipped=array_column(qo_rows($pdo,'SELECT order_item_id,SUM(qty) qty FROM quote_shipment_items WHERE order_id=? GROUP BY order_item_id',[$orderId]),'qty','order_item_id');
     $reserved=array_column(qo_rows($pdo,"SELECT i.order_item_id,SUM(i.qty) qty FROM quote_shipment_plan_items i JOIN quote_shipment_plans p ON p.id=i.plan_id WHERE i.order_id=? AND p.state='planning' AND p.id<>? GROUP BY i.order_item_id",[$orderId,$exclude]),'qty','order_item_id');
@@ -74,6 +75,8 @@ function qb_items(PDO $pdo,int $orderId,int $exclude=0): array {
         $item['is_virtual']=qo_is_virtual_item($item)?1:0;
         $item['blocked_reason']=$blocked;if($blocked!=='')$item['available_qty']=0;
         $item['packaging_options']=$item['is_virtual']?[]:qsl_pack_options($pdo,$item);
+        $documentRow=qd_payload_to_doc_row($item);
+        foreach(['size','hs_code'] as $field)$item[$field]=$documentRow[$field]??'';
         $item['source_hash']=hash('sha256',json_encode([$item['id'],$item['order_id'],$item['qty'],$item['unit_price'],$item['product_code']??'',$item['product_name']??'',$item['customer_code']??'',$item['specification']??'',$item['color']??'',qb_customer($order),$order['currency']??'',$order['header_json']??'',$order['bank_json']??'',$order['customer_json']??''],JSON_THROW_ON_ERROR));
         unset($item['image'],$item['item_json']);
     }unset($item);
@@ -163,6 +166,12 @@ function qb_validate(PDO $pdo,array $data,int $planId): array {
     if($meta['consignee']==='')throw new RuntimeException('请核对并填写本批统一收货信息');
     $orderSnapshots=[];foreach($orders as $order)$orderSnapshots[]=['id'=>(int)$order['id'],'order_no'=>qo_order_ref($order),'customer_name'=>$order['customer_name']??'','currency'=>$order['currency']??''];
     $header=qo_json($base['header_json']??'');$bank=qo_json($base['bank_json']??'');
+    $sourceDocument=qr_document_order($pdo,(int)$base['id']);
+    $header=qd_order_header($sourceDocument);
+    $meta['document_order']=['order_no'=>qo_order_ref($base),'order_date'=>$base['order_date']??'',
+        'customer_json'=>json_encode(qd_customer_from_order($sourceDocument),JSON_UNESCAPED_UNICODE),
+        'template_json'=>json_encode(['terms_json'=>qd_order_template($sourceDocument)['terms_json']??''],JSON_UNESCAPED_UNICODE)];
+    $meta['document_settings']=array_intersect_key(qd_settings($pdo),qd_default_doc_settings());
     return array_merge($meta,['base_order_id'=>(int)$base['id'],'customer_name'=>$base['customer_name']??'','currency'=>$base['currency']??'','seller_name'=>qo_s($header['company']??'',255),'seller_text'=>qo_s($header['from_text']??'',3000),'bank_text'=>qo_s($bank['text']??'',3000),'orders'=>$orderSnapshots,'items'=>$items,'cartons'=>$packed['cartons'],'totals'=>$packed['totals']]);
 }
 function qb_mutate(PDO $pdo,string $action,array $input): array {

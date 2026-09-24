@@ -1,6 +1,6 @@
 <?php
 $root=dirname(__DIR__);
-$doc=file_get_contents($root.'/quote_order_doc.php');
+$doc=(file_get_contents($root.'/quote_order_doc.php').file_get_contents($root.'/includes/quote_document_template.php').file_get_contents($root.'/includes/quote_document_page.php'));
 $excel=file_get_contents($root.'/quote_order_excel.php');
 
 $checks=[

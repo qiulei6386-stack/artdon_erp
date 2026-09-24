@@ -67,7 +67,7 @@ try{qr_with_order_locks($pdo,[2,1],function()use($peer){
 });}catch(RuntimeException $e){i7_check($e->getMessage()==='Injected lock failure','Unexpected lock failure');}
 i7_check((int)$peer->query("SELECT GET_LOCK('quote-shipment-order:1',0)")->fetchColumn()===1,'Failure releases order lock');
 $peer->query("SELECT RELEASE_LOCK('quote-shipment-order:1')");$peer=null;
-foreach(['qd_json','qd_row','qd_rows','qd_table_exists','qd_order_no_at','qd_order_snapshot','qd_order_payload_items','qd_item_text','qd_product_from_item','qd_extract_size_from_spec','qd_payload_to_doc_row','qd_order_item_rows','qd_parse_item_json','qd_order_item_maps','qd_merge_doc_item','qd_row_has_order_info','qd_build_document_items','qd_ci_item_group_key','qd_build_ci_items'] as $fn)i7_function('quote_order_doc.php',$fn);
+require_once dirname(__DIR__).'/includes/quote_document_template.php';
 $docOrder=qr_document_order($pdo,2);
 $docSource=$pdo->query('SELECT '.qr_item_columns($pdo,'quote_shipment_items','',true).' FROM quote_shipment_items WHERE shipment_id='.$id)->fetchAll();
 $docItems=qd_build_document_items($pdo,$docOrder,$docSource);$ci=qd_build_ci_items($docItems);

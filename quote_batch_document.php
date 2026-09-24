@@ -14,7 +14,8 @@ $doc=['id'=>$id,'state'=>$plan['state'],'current_version'=>(int)$plan['version']
 $type=($_GET['type']??'pl')==='ci'?'ci':'pl';$format=strtolower((string)($_GET['format']??'html'));
 if(session_status()===PHP_SESSION_ACTIVE)session_write_close();
 try{
-    if(in_array($format,['xls','xlsx','excel'],true)){header('Content-Type: application/vnd.ms-excel; charset=utf-8');header('Content-Disposition: attachment; filename="'.qsd_title($doc,$type).'.xls"');echo qsd_excel($doc,$type);exit;}
+    $doc=qsd_enrich($pdo,$doc);
+    if(in_array($format,['xls','xlsx','excel'],true)){$xlsx=qsd_excel($doc,$type);header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');header('Content-Disposition: attachment; filename="'.qsd_title($doc,$type).'.xlsx"');header('Content-Length: '.strlen($xlsx));echo $xlsx;exit;}
     $html=qsd_html($doc,$type);
     if($format==='pdf'){qsd_download_pdf($pdo,$html,qsd_title($doc,$type));exit;}
     $base='quote_batch_document.php?id='.$id.'&version='.$version.'&type='.$type;

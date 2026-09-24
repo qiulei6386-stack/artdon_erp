@@ -6,26 +6,7 @@ function qsd_state(array $doc): string {
     if(empty($doc['issued']))return 'DRAFT / 草稿 - 未签发';
     return (int)$doc['version']!==(int)$doc['current_version']?'SUPERSEDED / 历史签发版 - 已替代':'ISSUED / 已签发';
 }
-function qsd_rows(array $doc,string $type): array {
-    $d=$doc['data'];$out=[];
-    if($type==='ci'){foreach($d['items']??[] as $i)$out[]=[$i['order_no']??'',$i['product_code']??'',trim(($i['product_name']??'')."\n".($i['specification']??'').' '.($i['color']??'').' '.($i['customer_code']??'')),(float)$i['qty'],number_format((float)$i['unit_price'],4,'.',''),number_format((float)$i['amount'],2,'.','')];}
-    else{$map=[];foreach($d['items']??[] as $i)$map[(int)$i['order_item_id']]=$i;foreach($d['cartons']??[] as $c){$names=[];$qty=0;foreach($c['items']??[] as $part){$i=$map[(int)$part['order_item_id']]??[];$qty+=(float)$part['qty'];$names[]=($i['order_no']??'').' / '.($i['product_code']??'').' '.($i['customer_code']??'').' '.($i['color']??'').' : '.$part['qty'].' PCS';}$out[]=[$c['carton_no']??'',implode("\n",$names),(int)($c['carton_count']??1),$qty,$c['carton_size']??'',(float)($c['nw']??0),(float)($c['gw']??0),(float)($c['cbm']??0)];}}
-    return $out;
-}
-function qsd_columns(array $doc,string $type): array{return $type==='ci'?['Order','Model','Description','Qty (PCS)','Price '.($doc['data']['currency']??''),'Amount']:['Carton','Order / Model / Qty','CTNS','PCS','Size (cm)','N.W. kg','G.W. kg','CBM'];}
-function qsd_html(array $doc,string $type): string {
-    $d=$doc['data'];$title=$type==='ci'?'COMMERCIAL INVOICE':'PACKING LIST';$rows=qsd_rows($doc,$type);$widths=$type==='ci'?[14,16,35,10,12,13]:[7,30,6,7,20,10,10,10];$table='<table><colgroup>';foreach($widths as $width)$table.='<col style="width:'.$width.'%">';$table.='</colgroup><thead><tr>';foreach(qsd_columns($doc,$type) as $c)$table.='<th>'.qsd_h($c).'</th>';$table.='</tr></thead><tbody>';foreach($rows as $row){$table.='<tr>';foreach($row as $cell)$table.='<td>'.nl2br(qsd_h($cell)).'</td>';$table.='</tr>';}$table.='</tbody></table>';
-    $total=$type==='ci'?($d['currency']??'').' '.number_format(array_sum(array_column($d['items']??[],'amount')),2,'.',''):($d['totals']['cartons']??0).' CTNS · '.($d['totals']['gw']??0).' KG · '.($d['totals']['cbm']??0).' CBM';
-    return '<!doctype html><html lang="zh"><meta charset="utf-8"><title>'.qsd_h(qsd_title($doc,$type)).'</title><style>@page{size:A4;margin:13mm}body{font:12px/1.5 Arial,"Noto Sans CJK SC",sans-serif;color:#152238;margin:0}h1{font-size:23px;margin:4px 0}h2{font-size:18px}.state{padding:8px;background:#eef3f8;border:1px solid #bacadd}p{white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:10px;margin:18px 0;table-layout:fixed}th,td{border:1px solid #8a9aaf;padding:3px;overflow-wrap:anywhere;vertical-align:top}th{background:#edf2f7}thead{display:table-header-group}tr{break-inside:avoid}.footer{break-inside:avoid}.total{font-size:14px;text-align:right;font-weight:bold}.toolbar{padding:12px;display:flex;gap:12px}@media print{.toolbar{display:none}}</style><body><h1>'.qsd_h($d['seller_name']??'').'</h1><p>'.qsd_h($d['seller_text']??'').'</p><h2>'.$title.'</h2><div class="state">'.qsd_h(qsd_title($doc,$type).' · '.qsd_state($doc)).'</div><p>Date: '.qsd_h($d['ship_date']??'').'<br>Buyer / Consignee: '.qsd_h($d['consignee']??'').'</p><p>Shipping: '.qsd_h(($d['ship_method']??'').' / '.($d['port_loading']??'').' → '.($d['port_destination']??'')).'</p>'.$table.'<section class="footer"><p class="total">Total: '.qsd_h($d['totals']['qty']??0).' PCS / '.qsd_h($total).'</p><p>'.qsd_h($type==='ci'?($d['bank_text']??''):($d['shipping_mark']??'')).'</p><p>'.qsd_h($d['note']??'').'</p></section></body></html>';
-}
-function qsd_excel(array $doc,string $type): string {
-    $rows=[[qsd_title($doc,$type)],[$type==='ci'?'COMMERCIAL INVOICE':'PACKING LIST'],[qsd_state($doc)],[$doc['data']['seller_name']??''],[$doc['data']['consignee']??''],qsd_columns($doc,$type)];$rows=array_merge($rows,qsd_rows($doc,$type));$rows[]=['Total PCS',$doc['data']['totals']['qty']??0];
-    if($type==='ci')$rows[]=['Total '.($doc['data']['currency']??''),array_sum(array_column($doc['data']['items']??[],'amount'))];
-    else foreach(['cartons'=>'Total CTNS','nw'=>'Total N.W. kg','gw'=>'Total G.W. kg','cbm'=>'Total CBM'] as $key=>$label)$rows[]=[$label,$doc['data']['totals'][$key]??0];
-    $rows[]=['Ship date',$doc['data']['ship_date']??''];$rows[]=['Shipping mark',$doc['data']['shipping_mark']??''];$rows[]=['Note',$doc['data']['note']??''];
-    $xml='<?xml version="1.0" encoding="UTF-8"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="'.strtoupper($type).'"><Table>';
-    foreach($rows as $row){$xml.='<Row>';foreach($row as $v)$xml.='<Cell><Data ss:Type="'.(is_int($v)||is_float($v)?'Number':'String').'">'.qsd_h($v).'</Data></Cell>';$xml.='</Row>';}return $xml.'</Table></Worksheet></Workbook>';
-}
+require_once __DIR__.'/quote_batch_template_adapter.php';
 // Export-only thumbnails: load one source at a time, never rewrite archived images.
 function qsd_item_thumbnail(PDO $pdo,int $id,string $table='quote_shipment_items'): string {
     if(!in_array($table,['quote_shipment_items','quote_sales_order_items'],true))throw new InvalidArgumentException('Invalid image source');
@@ -76,6 +57,8 @@ function qsd_pdf(string $html): string {
     try{
         // No scripts, remote requests or credentials are passed to the renderer.
         $html=preg_replace('#<script\b[^>]*>.*?</script>#is','',$html);
+        $font=dirname(__DIR__).'/assets/fonts/ARSMaqLigTr.otf';
+        if(is_file($font)&&filesize($font)<=2097152)$html=str_replace('url("assets/fonts/ARSMaqLigTr.otf")','url("data:font/otf;base64,'.base64_encode(file_get_contents($font)).'")',$html);
         $imageCache=[];$deadline=microtime(true)+15;
         $html=preg_replace_callback('#<img\b[^>]*\bsrc=["\']([^"\']+)["\'][^>]*>#i',function($m)use(&$imageCache,$deadline){$src=html_entity_decode($m[1],ENT_QUOTES,'UTF-8');$key=hash('sha256',$src);if(!isset($imageCache[$key]))$imageCache[$key]=qsd_image($src,$deadline);return '<img style="max-width:12mm;max-height:12mm" src="'.qsd_h($imageCache[$key]).'">';},$html);
         $csp='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; font-src data:;">';$html=preg_replace('#<html\b[^>]*>#i','$0'.$csp,$html,1);

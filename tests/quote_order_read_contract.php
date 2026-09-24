@@ -1,6 +1,6 @@
 <?php
 if(PHP_SAPI!=='cli')exit(2);
-$root=dirname(__DIR__);$api=file_get_contents($root.'/quote_order_api.php');$read=file_get_contents($root.'/includes/quote_read_projection.php');$doc=file_get_contents($root.'/quote_order_doc.php');
+$root=dirname(__DIR__);$api=file_get_contents($root.'/quote_order_api.php');$read=file_get_contents($root.'/includes/quote_read_projection.php');$doc=(file_get_contents($root.'/quote_order_doc.php').file_get_contents($root.'/includes/quote_document_template.php').file_get_contents($root.'/includes/quote_document_page.php'));
 function qr_test_body($source,$name){$start=strpos($source,'function '.$name.'(');$end=strpos($source,"\nfunction ",$start+1);if($start===false||$end===false)throw new RuntimeException('Missing function '.$name);return substr($source,$start,$end-$start);}
 $checks=[
  'order projection excludes both full payloads'=>strpos($read,"['items_json','snapshot_json']")!==false,
