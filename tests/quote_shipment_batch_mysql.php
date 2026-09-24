@@ -6,6 +6,9 @@ if(!function_exists('qo_table_exists'))i7_function('quote_order_api.php','qo_tab
 $GLOBALS['i7FailRecalc']=false;
 qb_schema($pdo);
 $pdo->exec('ALTER TABLE quote_sales_orders ADD customer_json TEXT,ADD header_json TEXT,ADD bank_json TEXT');
+$pdo->exec("ALTER TABLE quote_sales_orders ADD shipment_status VARCHAR(40) DEFAULT '未出货'");
+$pdo->exec("ALTER TABLE quote_shipments ADD pl_status VARCHAR(30) DEFAULT 'active',ADD ci_status VARCHAR(30) DEFAULT 'active'");
+$pdo->exec('CREATE TABLE quote_packaging_profiles(id INT PRIMARY KEY,product_code VARCHAR(100),customer_code VARCHAR(100),pcs_per_ctn DECIMAL(12,4),carton_size VARCHAR(100),carton_nw DECIMAL(12,4),carton_gw DECIMAL(12,4),unit_nw DECIMAL(12,4),unit_gw DECIMAL(12,4),carton_cbm DECIMAL(12,4),packing_method VARCHAR(100))');
 $pdo->exec("INSERT INTO quote_sales_orders(id,order_no,quote_no,customer_id,customer_name,currency,status,amount) VALUES(4,'AT-TEST-C','Q-C','T','验收测试改名','USD','已确认',100),(5,'AT-TEST-D','Q-D','T','验收测试','USD','已确认',100)");
 $pdo->exec("INSERT INTO quote_sales_order_items(id,order_id,item_index,qty,unit_price,product_code,product_name,item_json) VALUES(41,4,1,100,2.50,'SAME','C test','{}'),(51,5,1,100,3.50,'SAME','D test','{}')");
 $pdo->exec("UPDATE quote_sales_orders SET status='已确认'");
@@ -48,6 +51,7 @@ $dispatchRequest=btest_request($id,5);$done=qb_mutate($pdo,'dispatch',$dispatchR
 i7_check($done['state']==='shipped'&&qb_reserved($pdo,41)==0,'Dispatch transfers reservation to actual shipment atomically');
 i7_check(qb_mutate($pdo,'dispatch',$dispatchRequest)['shipment_id']===$done['shipment_id'],'Retry dispatch does not duplicate shipment');
 $shipment=(int)$done['shipment_id'];$totals=$pdo->query('SELECT SUM(qty) q,SUM(amount) a FROM quote_shipment_items WHERE shipment_id='.$shipment)->fetch();
+foreach([4,5] as $member){$linked=qsl_batches($pdo,$member)['batches'];i7_check(count(array_filter($linked,fn($r)=>$r['kind']==='plan'&&(int)$r['id']===$id))===1,'Every participating order sees the merged plan once');i7_check(count(array_filter($linked,fn($r)=>$r['kind']==='legacy'&&(int)$r['id']===$shipment))===0,'Dispatched plan not duplicated as legacy batch');}
 i7_check((float)$totals['q']==22&&(float)$totals['a']==67,'Actual quantities and original distinct prices retained');
 i7_check((int)$pdo->query('SELECT COUNT(*) FROM quote_shipment_items s JOIN quote_sales_order_items i ON i.id=s.order_item_id WHERE s.shipment_id='.$shipment.' AND BINARY s.image=BINARY i.image')->fetchColumn()===2,'New dispatch preserves original large images byte-for-byte');
 btest_reject(fn()=>qb_mutate($pdo,'save',btest_request($id,6)+['data'=>$data]),'Shipped batch cannot be overwritten');
@@ -68,3 +72,4 @@ qb_mutate($pdo,'cancel',btest_request((int)$three['id'],2));
 $peer=new PDO('mysql:unix_socket='.$socket.';dbname='.$schema.';charset=utf8mb4','root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 qr_with_order_locks($pdo,[4,5],function()use($peer){i7_check((int)$peer->query("SELECT GET_LOCK('quote-shipment-order:4',0)")->fetchColumn()===0,'Competing connection blocked on same orders');});
 echo 'Shipment batch MySQL: reservations, add/remove/re-add, mixed cartons, per-item checks, revisions, optimistic versions, idempotency, legacy guards, rollback, dispatch and cancellation passed. Peak '.memory_get_peak_usage(true)." bytes\n";
+require __DIR__.'/quote_shipment_links_mysql.inc.php';

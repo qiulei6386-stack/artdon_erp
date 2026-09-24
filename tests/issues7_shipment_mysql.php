@@ -8,6 +8,7 @@ if($identity['socket']!==$socket||$identity['datadir']!==dirname($socket).'/data
 if((int)$pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()')->fetchColumn()!==0)throw new RuntimeException('Fresh schema required');
 require __DIR__.'/issues7_regression.php';
 require_once dirname(__DIR__).'/includes/quote_read_projection.php';
+require_once dirname(__DIR__).'/includes/quote_shipment_document.php';
 foreach(['qo_create_shipment_locked','qo_update_shipment_locked','qo_prepare_context','qo_prepare_combined_shipment','qo_prepare_items','qo_item_row_has_content','qo_order_items_table_has_content'] as $fn)i7_function('quote_order_api.php',$fn);
 foreach(['qo_s','qo_rows','qo_row','qo_order_no_at','qo_order_ref','qo_customer_name_key','qo_customer_key','qo_load_orders','qo_validate_same_customer_orders','qo_sync_shipment_orders','qo_shipment_validate_multi_items','qo_shipment_order_ids','qo_create_shipment','qo_update_shipment','qo_shipment_can_edit','qo_shipment_require_editable','qo_today','qo_shipment_read_totals'] as $fn)i7_function('quote_order_api.php',$fn);
 function qo_fail($message){throw new RuntimeException($message);}

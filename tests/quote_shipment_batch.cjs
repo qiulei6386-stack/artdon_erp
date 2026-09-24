@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const sandbox={window:{addEventListener(){}},document:{},openCombinedShipmentModal(){},openShipmentModal(){},Map,Set,Number,String,Math,structuredClone,console};
+const sandbox={window:{addEventListener(){}},document:{addEventListener(){}},openCombinedShipmentModal(){},openShipmentModal(){},Map,Set,Number,String,Math,structuredClone,console};
 vm.createContext(sandbox);vm.runInContext(fs.readFileSync('assets/quote-shipment-batch.js','utf8'),sandbox);
 const batch=sandbox.window.QuoteShipmentBatch;
 assert.equal(batch.newState(7).selected.size,0,'No quantities automatically selected');

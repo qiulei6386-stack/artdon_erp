@@ -43,6 +43,7 @@ contract_tests=(
   tests/quote_order_page_contract.php
   tests/quote_mail_contract.php
   tests/quote_shipment_batch_contract.php
+  tests/quote_shipment_document_contract.php
   tests/quote_order_read_contract.php
   tests/bom_cost_publication_contract.php
   tests/bom_workflow_contract.php

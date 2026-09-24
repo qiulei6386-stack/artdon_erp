@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/quote_shipment_links.php';
 // Shipment plans reserve goods without inserting historical shipment/commission rows.
 function qb_json($value): string {
     $json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
@@ -62,6 +63,8 @@ function qb_items(PDO $pdo,int $orderId,int $exclude=0): array {
     if(!$items)throw new RuntimeException('订单明细缺失，请核对；未自动重建');
     $shipped=array_column(qo_rows($pdo,'SELECT order_item_id,SUM(qty) qty FROM quote_shipment_items WHERE order_id=? GROUP BY order_item_id',[$orderId]),'qty','order_item_id');
     $reserved=array_column(qo_rows($pdo,"SELECT i.order_item_id,SUM(i.qty) qty FROM quote_shipment_plan_items i JOIN quote_shipment_plans p ON p.id=i.plan_id WHERE i.order_id=? AND p.state='planning' AND p.id<>? GROUP BY i.order_item_id",[$orderId,$exclude]),'qty','order_item_id');
+    $blocked=qsl_closed($order)?'订单已关闭或标记已出货；如需再次出货，请先核对并按正式流程更正':'';
+    foreach($items as $check)if(!qo_is_virtual_item($check)&&(float)($check['shipped_qty']??0)>(float)($shipped[$check['id']]??0)+0.00001)$blocked='历史已出数量与明细不一致，已暂停再次出货，请核对后留痕更正';
     foreach($items as &$item){
         $item['order_no']=qo_order_ref($order);$item['order_id']=$orderId;
         $item['ordered_qty']=(float)$item['qty'];
@@ -69,10 +72,12 @@ function qb_items(PDO $pdo,int $orderId,int $exclude=0): array {
         $item['reserved_qty']=(float)($reserved[$item['id']]??0);
         $item['available_qty']=qo_is_virtual_item($item)?0:max(0,(float)$item['qty']-$item['legacy_or_shipped_qty']-$item['reserved_qty']);
         $item['is_virtual']=qo_is_virtual_item($item)?1:0;
+        $item['blocked_reason']=$blocked;if($blocked!=='')$item['available_qty']=0;
+        $item['packaging_options']=$item['is_virtual']?[]:qsl_pack_options($pdo,$item);
         $item['source_hash']=hash('sha256',json_encode([$item['id'],$item['order_id'],$item['qty'],$item['unit_price'],$item['product_code']??'',$item['product_name']??'',$item['customer_code']??'',$item['specification']??'',$item['color']??'',qb_customer($order),$order['currency']??'',$order['header_json']??'',$order['bank_json']??'',$order['customer_json']??''],JSON_THROW_ON_ERROR));
         unset($item['image'],$item['item_json']);
     }unset($item);
-    return ['order'=>$order,'items'=>$items];
+    return ['order'=>$order,'items'=>$items,'blocked_reason'=>$blocked];
 }
 function qb_candidates(PDO $pdo,array $input): array {
     $base=qr_order($pdo,(int)($input['order_id']??0));if(!$base)throw new RuntimeException('订单不存在');
@@ -81,7 +86,7 @@ function qb_candidates(PDO $pdo,array $input): array {
     $where=$id!==''&&$id!=='0'?'o.customer_id=?':"COALESCE(o.customer_id,'') IN ('','0') AND o.customer_name=?";
     $args=[$id!==''&&$id!=='0'?$id:($base['customer_name']??''),$kw,$kw];
     $where.=" AND COALESCE(o.status,'') NOT IN ('取消','已作废') AND (o.order_no LIKE ? OR o.quote_no LIKE ?)";
-    $where.=" AND EXISTS(SELECT 1 FROM quote_sales_order_items si WHERE si.order_id=o.id AND si.qty>COALESCE((SELECT SUM(s.qty) FROM quote_shipment_items s WHERE s.order_item_id=si.id),0))";
+    $where.=' AND '.qsl_eligible_sql((int)($input['plan_id']??0));
     // Summary only: never fetch images/snapshot_json for a list.
     $sql=" FROM quote_sales_orders o WHERE $where";
     $total=(int)(qo_row($pdo,'SELECT COUNT(*) n'.$sql,$args)['n']??0);
@@ -115,6 +120,8 @@ function qb_cartons(array $cartons,array $items,bool $complete=false): array {
             $number=(int)$name;foreach($ranges as $range)if($number>=$range[0]&&$number<=$range[1])throw new RuntimeException('箱号重复或范围重叠');$ranges[]=[$number,$number];
         }
         $row=['carton_no'=>$name,'carton_size'=>qo_s($carton['carton_size']??'',100),'note'=>qo_s($carton['note']??'',500),'items'=>[],'qty'=>0,'carton_count'=>$count];
+        $row['packing_profile_id']=(int)($carton['packing_profile_id']??0);$row['weight_estimated']=!empty($carton['weight_estimated']);$row['weight_confirmed']=!empty($carton['weight_confirmed']);
+        if($complete&&$row['weight_estimated']&&!$row['weight_confirmed'])throw new RuntimeException('尾箱重量仍为估算，请核对实际重量并勾选确认');
         foreach(['nw','gw','cbm'] as $field)$row[$field]=qb_quantity($carton[$field]??0,'箱重/体积');
         if($row['gw']<$row['nw'])throw new RuntimeException('毛重不能小于净重');
         foreach(($carton['items']??[]) as $part){
@@ -144,6 +151,7 @@ function qb_validate(PDO $pdo,array $data,int $planId): array {
             $cache[$oid]=array_column($bundle['items'],null,'id');$orders[$oid]=$bundle['order'];
         }
         $item=$cache[$oid][$iid]??null;if(!$item||$item['is_virtual'])throw new RuntimeException('产品不属于此订单或为不可出货费用项');
+        if(!empty($item['blocked_reason']))throw new RuntimeException($item['order_no'].'：'.$item['blocked_reason']);
         if(!hash_equals($item['source_hash'],(string)($input['source_hash']??'')))throw new RuntimeException('订单产品或价格已变化，请重新加载核对，未覆盖当前选择');
         if($qty>$item['available_qty']+0.00001)throw new RuntimeException($item['order_no'].' / '.($item['product_code']??'').' 可出不足，最多 '.$item['available_qty']);
         $item['order_item_id']=$iid;$item['qty']=$qty;$item['amount']=round($qty*(float)$item['unit_price'],2);$items[]=$item;

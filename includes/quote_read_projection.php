@@ -27,7 +27,7 @@ function qr_with_order_locks(PDO $pdo, array $ids, callable $operation) {
     foreach(array_reverse($locked) as $name){$st=$pdo->prepare('SELECT RELEASE_LOCK(?)');$st->execute([$name]);}
   }
 }
-function qr_item_columns(PDO $pdo, string $table='quote_sales_order_items', string $alias='', bool $document=false): string {
+function qr_item_columns(PDO $pdo, string $table='quote_sales_order_items', string $alias='', bool $document=false, bool $documentImages=true): string {
   $columns=qr_columns($pdo,$table,['image','item_json'],$alias);
   $p=$alias!==''?'`'.$alias.'`.':'';
   // Keep the exact flags and text used by virtual-line validation, not product images/BOMs.
@@ -43,7 +43,7 @@ function qr_item_columns(PDO $pdo, string $table='quote_sales_order_items', stri
   $pairs[]="'product',JSON_OBJECT(".implode(',',$product).")";
   $result=$columns.',JSON_OBJECT('.implode(',',$pairs).') AS item_json';
   $result.=",(COALESCE(NULLIF({$p}image,''),NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$json},'$.product.image')),'null'),'')<>'') AS has_image";
-  if($document){
+  if($document&&$documentImages){
     $images=["NULLIF({$p}image,'')"];
     foreach(['image','product_image','image_url','product.image','product.image_display','product.product_image','product.main_image','product.image_url'] as $path)$images[]="NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$json},'$.{$path}')),'null'),'')";
     $result.=',COALESCE('.implode(',',$images).",'') AS image";

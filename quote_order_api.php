@@ -1596,6 +1596,7 @@ try{
       if(($_SERVER['REQUEST_METHOD']??'')!=='POST')throw new RuntimeException('修改必须通过POST提交');
       if(!verify_csrf())throw new RuntimeException('安全校验过期，请刷新页面');
     }
+    if($op==='order_batches'){qo_release_session_lock();qo_ok(qsl_batches($pdo,(int)($input['order_id']??0)));}
     qo_ensure_schema($pdo);qb_schema($pdo);qo_release_session_lock();
     if($op==='candidates')qo_ok(qb_candidates($pdo,$input));
     if($op==='items')qo_ok(qb_items($pdo,(int)($input['order_id']??0),(int)($input['plan_id']??0)));

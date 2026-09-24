@@ -4671,7 +4671,7 @@ function shipmentDocStatus(sh,type){let v=String(sh?.[(type==='ci'?'ci_status':'
 function shipmentDocGenerated(sh,type){return type==='ci'?(sh?.ci_generated_at||''):(sh?.pl_generated_at||'')}
 function docStatusName(status){return status==='voided'?'已作废':(status==='deleted'?'已删除':'有效')}
 function docStatusBadgeHtml(status){return `<span class="order-status ${status==='active'?'done':'warn'}">${esc(docStatusName(status))}</span>`}
-async function openOrderDoc(type,id){type=(type==='ci')?'ci':'pl';id=Number(id||0);if(!id){alert('缺少出货批次ID');return;}let title=orderDocLabel(type);ORDER_DOC_CURRENT={type,id};try{let d=await orderApi('shipment_detail',{id});let st=shipmentDocStatus(d.shipment||{},type);if(st==='deleted'){alert(title+' 已删除。如需重新生成，请先在“管理单证”中恢复，或重新生成该单证。');return;}if($('orderDocHint'))$('orderDocHint').textContent='出货批次 ID：'+id+' ｜ 状态：'+docStatusName(st)+' ｜ PL 与 CI 共用同一个出货批次数量';}catch(e){if($('orderDocHint'))$('orderDocHint').textContent='出货批次 ID：'+id+' ｜ PL 与 CI 共用同一个出货批次数量';}if($('orderDocTitle'))$('orderDocTitle').textContent=title;if($('orderDocExcel'))$('orderDocExcel').href=orderDocUrl(type,id,'xls');if($('orderDocPdf'))$('orderDocPdf').href=orderDocUrl(type,id,'pdf');if($('orderDocFrame'))$('orderDocFrame').src=orderDocUrl(type,id,'html');$('orderDocModal')?.classList.add('show');try{orderApi('mark_document_generated',{shipment_id:id,type})}catch(e){}clientLog('open_order_document','打开订单单证：'+title,{shipment_id:id,doc_type:type});}
+async function openOrderDoc(type,id){type=(type==='ci')?'ci':'pl';id=Number(id||0);if(!id){alert('缺少出货批次ID');return;}let title=orderDocLabel(type);ORDER_DOC_CURRENT={type,id};try{let d=await orderApi('shipment_detail',{id});let st=shipmentDocStatus(d.shipment||{},type);if(st==='deleted'){alert(title+' 已删除。如需重新生成，请先在“管理单证”中恢复，或重新生成该单证。');return;}if($('orderDocHint'))$('orderDocHint').textContent='出货批次 ID：'+id+' ｜ 状态：'+docStatusName(st)+' ｜ PL 与 CI 共用同一个出货批次数量';}catch(e){if($('orderDocHint'))$('orderDocHint').textContent='出货批次 ID：'+id+' ｜ PL 与 CI 共用同一个出货批次数量';}if($('orderDocTitle'))$('orderDocTitle').textContent=title;if($('orderDocExcel'))$('orderDocExcel').href=orderDocUrl(type,id,'xls');if($('orderDocPdf'))$('orderDocPdf').href=orderDocUrl(type,id,'pdf');if($('orderDocFrame'))$('orderDocFrame').src=orderDocUrl(type,id,'html');$('orderDocModal')?.classList.add('show');/* Viewing a document is read-only. */clientLog('open_order_document','打开订单单证：'+title,{shipment_id:id,doc_type:type});}
 function closeOrderDoc(){$('orderDocModal')?.classList.remove('show');if($('orderDocFrame'))$('orderDocFrame').src='about:blank'}
 function printOrderDoc(){let f=$('orderDocFrame');try{f?.contentWindow?.focus();f?.contentWindow?.print();}catch(e){alert('浏览器阻止了打印，请点开预览页后打印。')}}
 function openCurrentOrderDocManage(){if(!ORDER_DOC_CURRENT.id){alert('请先打开一个单证');return;}openOrderDocManage(ORDER_DOC_CURRENT.type,ORDER_DOC_CURRENT.id)}
@@ -5410,7 +5410,9 @@ function printOrderStatement(key){
 <script src="assets/quote-shipment-selection.js?v=20260908-issues7"></script>
 <meta name="shipment-csrf" content="<?= htmlspecialchars(csrf_token(),ENT_QUOTES,'UTF-8') ?>">
 <link rel="stylesheet" href="assets/quote-shipment-batch.css?v=20260914-1">
-<script src="assets/quote-shipment-batch.js?v=20260914-1"></script>
+<script src="assets/quote-shipment-batch.js?v=20260924-1"></script>
+<link rel="stylesheet" href="assets/quote-shipment-links.css?v=20260924-1">
+<script src="assets/quote-shipment-links.js?v=20260924-1"></script>
 <script src="assets/quote-mail-preview.js?v=20260914-2"></script>
 <script src="assets/quote-mail.js?v=20260915-1"></script>
 <link rel="stylesheet" href="assets/quote-order-page.css?v=20260915-2">
