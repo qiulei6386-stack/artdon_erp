@@ -5412,7 +5412,7 @@ function printOrderStatement(key){
 <link rel="stylesheet" href="assets/quote-shipment-batch.css?v=20260914-1">
 <script src="assets/quote-shipment-batch.js?v=20260924-1"></script>
 <link rel="stylesheet" href="assets/quote-shipment-links.css?v=20260924-1">
-<script src="assets/quote-shipment-links.js?v=20260924-1"></script>
+<script src="assets/quote-shipment-links.js?v=20260924-2"></script>
 <script src="assets/quote-mail-preview.js?v=20260914-2"></script>
 <script src="assets/quote-mail.js?v=20260915-1"></script>
 <link rel="stylesheet" href="assets/quote-order-page.css?v=20260915-2">

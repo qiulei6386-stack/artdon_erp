@@ -20,5 +20,6 @@ try{
     $base='quote_batch_document.php?id='.$id.'&version='.$version.'&type='.$type;
     $other='quote_batch_document.php?id='.$id.'&version='.$version.'&type='.($type==='pl'?'ci':'pl');
     $bar='<div class="toolbar"><a href="'.qsd_h($other).'">切换 '.($type==='pl'?'CI 商业发票':'PL 装箱单').'</a><a href="'.qsd_h($base.'&format=pdf').'">下载 PDF</a><a href="'.qsd_h($base.'&format=xls').'">下载 Excel</a><button onclick="window.print()">打印 / 保存PDF</button></div>';
+    $bar=preg_replace('/<a href="([^\"]*&amp;format=(?:pdf|xls))">/','<a download href="$1">',$bar);
     echo str_replace('<body>','<body>'.$bar,$html);
 }catch(Throwable $e){http_response_code(503);header('Content-Type: text/html; charset=utf-8');echo '<meta charset="utf-8"><p>单证生成失败：'.qsd_h($e->getMessage()).'</p><button onclick="history.back()">返回重试</button>';}
