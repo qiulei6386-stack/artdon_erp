@@ -10,6 +10,7 @@ sd_check(strpos(qsd_html($doc,'ci'),'USD 210.00')!==false,'CI uses exact selecte
 sd_check(strpos(qsd_html($doc,'pl'),'28 CTNS')!==false,'PL carton total');
 sd_check(strpos(qsd_html($doc,'pl'),'SUPERSEDED')!==false,'Old issued revision labeled');
 sd_check(strpos(qsd_excel($doc,'pl'),'Total N.W. kg')!==false,'Excel has packing totals');
+foreach(['https://127.0.0.1/uploads/website/products/2026/06/a.jpg','https://artdonlighting.com.evil.test/uploads/website/products/2026/06/a.jpg','https://artdonlighting.com:8443/uploads/website/products/2026/06/a.jpg','https://user:pass@artdonlighting.com/uploads/website/products/2026/06/a.jpg','https://artdonlighting.com/uploads/website/products/2026/06/a.jpg?token=x','https://artdonlighting.com/../../secret.jpg'] as $bad){$rejected=false;try{qsd_remote_bytes($bad,microtime(true)+5);}catch(RuntimeException $e){$rejected=true;}sd_check($rejected,'Unsafe remote image rejected before network');}
 $evil=$doc;$evil['data']['consignee']='<script>unsafe()</script>';
 sd_check(strpos(qsd_html($evil,'ci'),'<script>unsafe()')===false,'HTML escapes customer text');
 $evil['data']['consignee']='=HYPERLINK("x")';sd_check(strpos(qsd_excel($evil,'ci'),'ss:Type="String">=HYPERLINK')!==false,'Excel text not formula');
