@@ -1025,7 +1025,7 @@ function toggleEditorNotice(id){
 }
 
 function bomSsoRedirect(){const back=location.pathname+location.search+location.hash;location.replace('login.php?redirect='+encodeURIComponent(back))}
-async function api(action,data={}){try{const res=await fetch(API+'?action='+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});const text=await res.text();let r;try{r=JSON.parse(text)}catch(e){if(res.status===401){bomSsoRedirect();return{ok:false,need_login:true,error:'登录已失效'}}return{ok:false,error:'接口返回不是JSON：'+text.slice(0,180)}}if(res.status===401||r.need_login||r.login_required||r.auth_required){bomSsoRedirect();return{ok:false,need_login:true,error:r.error||r.msg||'登录已失效'}}return r}catch(e){return{ok:false,error:e.message}}}
+async function api(action,data={}){try{const res=await fetch(API+'?action='+encodeURIComponent(action),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});const text=await res.text();let r;try{r=JSON.parse(text)}catch(e){if(res.status===401){bomSsoRedirect();return{ok:false,need_login:true,error:'登录已失效'}}return{ok:false,error:`服务器读取失败（HTTP ${res.status}），${text.trim()?'返回格式异常':'返回内容为空'}，请重试`}}if(res.status===401||r.need_login||r.login_required||r.auth_required){bomSsoRedirect();return{ok:false,need_login:true,error:r.error||r.msg||'登录已失效'}}if(!res.ok)return{ok:false,error:r.error||`服务器读取失败（HTTP ${res.status}）`};return r}catch(e){return{ok:false,error:'网络读取失败：'+e.message}}}
 function hasPerm(p){return !!(currentCan&&currentCan[p]) || (currentUser&&['boss','admin'].includes(String(currentUser.role||'').toLowerCase()))}
 function showLogin(on){const m=$('loginMask');if(m)m.style.display=on?'flex':'none'}
 
@@ -1082,16 +1082,60 @@ async function ensureMaterialsLoaded(force=false){
   if(materialsLoaded&&!force)return materials;
   if(materialsLoading)return materialsLoading;
   materialsLoading=(async()=>{
-    setStatus('正在读取共享物料库...');
-    const r=await api('materials_list');
-    if(!r.ok){alert(r.error||'读取物料库失败');return materials;}
-    materials=r.materials||[];
-    materialsLoaded=true;
-    renderBaseOptions();
-    setStatus('共享物料库已读取 '+nowText());
-    return materials;
+    const rows=[];let page=1,pages=1;materialsError='';
+    do{
+      const r=await api('materials_list',{page:page++,page_size:500});
+      if(!r.ok){materialsError=r.error||'读取物料库失败';setStatus(materialsError);return [];}
+      rows.push(...(r.materials||[]));pages=r.pages||1;
+    }while(page<=pages);
+    materials=rows;materialsLoaded=true;return materials;
   })().finally(()=>{materialsLoading=null});
   return materialsLoading;
+}
+let materialsError='',materialReadSeq=0,materialReadTimer=null,materialPageRows=[];
+const materialThumbCache=new Map();let materialThumbActive=0;const materialThumbQueue=[];
+function materialFilters(){return{keyword:$('matSearch')?.value||'',category:$('matFilterCategory')?.value||'',brand:$('matFilterBrand')?.value||'',supplier:$('matFilterSupplier')?.value||'',date:$('matDateFilter')?.value||''}}
+function materialImageHtml(m,cls='mini-thumb'){
+  return m.has_image?`<img class="${cls}" data-material-image="${Number(m.id)}" loading="lazy" alt="物料图片">`:'';
+}
+function hydrateMaterialImages(root){
+  root?.querySelectorAll('[data-material-image]').forEach(el=>materialImageObserver.observe(el));
+}
+const materialImageObserver=new IntersectionObserver(entries=>{
+  for(const entry of entries)if(entry.isIntersecting){materialImageObserver.unobserve(entry.target);materialThumbQueue.push(entry.target);}
+  pumpMaterialImages();
+},{rootMargin:'80px'});
+function pumpMaterialImages(){
+  while(materialThumbActive<3&&materialThumbQueue.length){
+    const el=materialThumbQueue.shift();if(!el.isConnected)continue;const id=Number(el.dataset.materialImage);
+    materialThumbActive++;
+    (async()=>{
+      let src=materialThumbCache.get(id);
+      if(src===undefined){const r=await api('material_image',{id});if(!r.ok)throw new Error(r.error||'图片读取失败');src=r.image||'';materialThumbCache.set(id,src);if(materialThumbCache.size>120)materialThumbCache.delete(materialThumbCache.keys().next().value);}
+      if(el.isConnected){if(src)el.src=src;else{el.alt='无图片';el.title='无图片';}}
+    })().catch(e=>{if(el.isConnected){el.alt='图片读取失败';el.title=e.message;}}).finally(()=>{materialThumbActive--;pumpMaterialImages();});
+  }
+}
+async function readMaterialPage(seq){
+  const body=$('materialsTbody');if(!body)return;
+  body.innerHTML='<tr><td colspan="10" class="hint">正在读取当前页物料…</td></tr>';
+  const r=await api('materials_list',{...materialFilters(),page:materialPage,page_size:materialPageSize});
+  if(seq!==materialReadSeq)return;
+  if(!r.ok){body.innerHTML=`<tr><td colspan="10">${esc(r.error||'读取失败')} <button class="ghost small" onclick="renderMaterials()">重试</button></td></tr>`;if($('matCount'))$('matCount').textContent='读取失败';return;}
+  materialPageRows=r.materials||[];materialPage=r.page;materialTotalPages=r.pages;
+  if(r.facets)for(const [field,label] of [['category','分类'],['brand','品牌'],['supplier','供应商']]){
+    const el=$('matFilter'+field[0].toUpperCase()+field.slice(1)),keep=el.value;
+    el.innerHTML=`<option value="">全部${label}</option>`+(r.facets[field]||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');el.value=keep;
+  }
+  if($('matPageSize'))$('matPageSize').value=String(materialPageSize);
+  const start=(materialPage-1)*materialPageSize;
+  if($('matPageInfo'))$('matPageInfo').textContent=`第 ${materialPage} / ${materialTotalPages} 页｜显示 ${r.total?start+1:0}-${start+materialPageRows.length} / ${r.total}`;
+  if($('matPageInput')){$('matPageInput').max=String(materialTotalPages);$('matPageInput').value=String(materialPage);}
+  if($('matCount'))$('matCount').textContent=`共 ${r.total} 个物料`;
+  localStorage.setItem('bom_material_page_size_v763',String(materialPageSize));localStorage.setItem('bom_material_page_v763',String(materialPage));
+  body.innerHTML=materialPageRows.map(m=>`<tr data-id="${m.id}"><td>${materialImageHtml(m)}</td>${['category','brand','name','model','spec','price','unit','supplier'].map(k=>`<td ${hasPerm('materials')?'contenteditable="true"':''} data-field="${k}" onblur="saveMaterialCell(this)">${esc(k==='price'&&m[k]!==''?money(m[k]):m[k])}</td>`).join('')}<td><button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('')||'<tr><td colspan="10" class="hint">没有符合条件的物料。</td></tr>';
+  hydrateMaterialImages(body);initResizableTable('materialTable','material_col_widths_v65');
+  if(materialFocusId&&materialPageRows.some(m=>String(m.id)===String(materialFocusId)))focusMaterialRow(materialFocusId);
 }
 function setButtonsByPerm(selector,perm){
   document.querySelectorAll(selector)?.forEach(b=>{const ok=hasPerm(perm);b.disabled=!ok;b.style.opacity=ok?'':'0.55'})
@@ -1152,6 +1196,7 @@ async function loadAll(){
     currentUser=r.user||currentUser; currentCan=r.can||currentCan; updateAuthUI();
     projects=(r.projects||[]).map(p=>mapBomProject(p,false));
     bomDashboardResetRead();
+    materialsLoaded=false;materialThumbCache.clear();
     if(Array.isArray(r.materials)){materials=r.materials;materialsLoaded=true}
     lists=r.lists||{}; ['categories','brands','suppliers','productTypes','namingProductTypes'].forEach(k=>{if(!Array.isArray(lists[k]))lists[k]=[]});
     renderBaseOptions();
@@ -1174,7 +1219,7 @@ async function loadAll(){
       }
       if(currentPage==='dashboard')renderDashboard();
       if(currentPage==='library')renderLibrary();
-      if(currentPage==='materials')ensureMaterialsLoaded().then(()=>renderMaterials());
+      if(currentPage==='materials')renderMaterials();
       if(currentPage==='users')loadUsers();
     }
     setStatus('已读取数据库 '+nowText());
@@ -1197,7 +1242,7 @@ function showPage(p){
   $('tabMaterials').classList.toggle('active',currentPage==='materials');
   if($('tabUsers'))$('tabUsers').classList.toggle('active',currentPage==='users');
   if(currentPage==='dashboard')renderDashboard();
-  if(currentPage==='materials')ensureMaterialsLoaded().then(()=>renderMaterials());
+  if(currentPage==='materials')renderMaterials();
   if(currentPage==='library')renderLibrary();
   if(currentPage==='users')loadUsers();
   if(currentPage==='edit'&&!currentId&&projects.length)loadProject(projects[0].id);
@@ -1469,17 +1514,19 @@ function uploadProductImage(){$('productImageInput').click()}function readProduc
 function dashboardTypeOptions(){
   return [...new Set([...(lists.namingProductTypes||[]),...projects.map(p=>p.namingType||bomProjectNamingType(p)),...(lists.productTypes||[])].map(x=>String(x||'').trim()).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN'));
 }
-function renderBaseOptions(){const opt=a=>a.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');const dashCustomerVal=$('dashCustomer')?.value||'',dashTypeVal=$('dashType')?.value||'',libCustomerVal=$('libCustomer')?.value||'',libTypeVal=$('libType')?.value||'',libCurrencyVal=$('libCurrency')?.value||'';$('productType').innerHTML='<option value="">未分类</option>'+opt(lists.productTypes.filter(x=>x!=='未分类'));$('matCategory').innerHTML=opt(lists.categories);$('matBrand').innerHTML=opt(lists.brands);$('matFilterCategory').innerHTML='<option value="">全部分类</option>'+opt(lists.categories);$('matFilterBrand').innerHTML='<option value="">全部品牌</option>'+opt(lists.brands);$('matFilterSupplier').innerHTML='<option value="">全部供应商</option>'+opt(lists.suppliers);$('supplierOptions').innerHTML=lists.suppliers.map(s=>`<option value="${esc(s)}">`).join('');if($('libType')){$('libType').innerHTML='<option value="">全部产品分类</option>'+opt(lists.productTypes);$('libType').value=libTypeVal}if($('libCustomer')){$('libCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN')).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');$('libCustomer').value=libCustomerVal}if($('libCurrency'))$('libCurrency').value=libCurrencyVal;if($('dashCustomer')){$('dashCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].map(c=>`<option>${esc(c)}</option>`).join('');$('dashCustomer').value=dashCustomerVal};if($('dashType')){$('dashType').innerHTML='<option value="">全部系列</option>'+opt(dashboardTypeOptions());$('dashType').value=dashTypeVal}}
+function renderBaseOptionsRaw(){const opt=a=>a.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');const dashCustomerVal=$('dashCustomer')?.value||'',dashTypeVal=$('dashType')?.value||'',libCustomerVal=$('libCustomer')?.value||'',libTypeVal=$('libType')?.value||'',libCurrencyVal=$('libCurrency')?.value||'';$('productType').innerHTML='<option value="">未分类</option>'+opt(lists.productTypes.filter(x=>x!=='未分类'));$('matCategory').innerHTML=opt(lists.categories);$('matBrand').innerHTML=opt(lists.brands);$('matFilterCategory').innerHTML='<option value="">全部分类</option>'+opt(lists.categories);$('matFilterBrand').innerHTML='<option value="">全部品牌</option>'+opt(lists.brands);$('matFilterSupplier').innerHTML='<option value="">全部供应商</option>'+opt(lists.suppliers);$('supplierOptions').innerHTML=lists.suppliers.map(s=>`<option value="${esc(s)}">`).join('');if($('libType')){$('libType').innerHTML='<option value="">全部产品分类</option>'+opt(lists.productTypes);$('libType').value=libTypeVal}if($('libCustomer')){$('libCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN')).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');$('libCustomer').value=libCustomerVal}if($('libCurrency'))$('libCurrency').value=libCurrencyVal;if($('dashCustomer')){$('dashCustomer').innerHTML='<option value="">全部客户</option>'+[...new Set(projects.map(p=>p.customer).filter(Boolean))].map(c=>`<option>${esc(c)}</option>`).join('');$('dashCustomer').value=dashCustomerVal};if($('dashType')){$('dashType').innerHTML='<option value="">全部系列</option>'+opt(dashboardTypeOptions());$('dashType').value=dashTypeVal}}
+function renderBaseOptions(){const ids=['matFilterCategory','matFilterBrand','matFilterSupplier'],keep=ids.map(id=>$(id)?.value||'');renderBaseOptionsRaw();ids.forEach((id,i)=>{const el=$(id);if(!el)return;if(keep[i]&&![...el.options].some(o=>o.value===keep[i]))el.add(new Option(keep[i],keep[i]));el.value=keep[i];});}
 async function saveList(key,list){lists[key]=[...new Set(list.filter(Boolean))];await api('save_list',{key,list:lists[key]});renderBaseOptions()}
 function addProductType(){const v=prompt('新增产品分类');if(v)saveList('productTypes',[...lists.productTypes,v])}function addMaterialCategory(){const v=$('newMatCategory').value.trim();if(v)saveList('categories',[...lists.categories,v]);$('newMatCategory').value=''}function addMaterialBrand(){const v=$('newMatBrand').value.trim();if(v)saveList('brands',[...lists.brands,v]);$('newMatBrand').value=''}function addMaterialSupplier(){const v=$('newMatSupplier').value.trim();if(v)saveList('suppliers',[...lists.suppliers,v]);$('newMatSupplier').value=''}
 function readMaterialImage(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>currentMaterialImage=r.result;r.readAsDataURL(f)}
 function openMaterialEditor(id=null){
   editingMaterialId=id?Number(id):null;
-  const m=editingMaterialId?materials.find(x=>+x.id===+editingMaterialId):null;
+  const m=editingMaterialId?[...materialPageRows,...materials].find(x=>+x.id===+editingMaterialId):null;
+  if(editingMaterialId&&!m)return alert('物料已改变，请刷新后再编辑');
   if($('matEditorTitle'))$('matEditorTitle').textContent=m?'编辑物料':'新增物料';
   if($('matEditorSub'))$('matEditorSub').textContent=m?'保存后定位。':'可连续新增。';
   if(m){
-    $('matCategory').value=m.category||'';$('matBrand').value=m.brand||'';$('matName').value=m.name||'';$('matModel').value=m.model||'';$('matSpec').value=m.spec||'';$('matPrice').value=m.price||0;$('matUnit').value=m.unit||'PCS';$('matSupplier').value=m.supplier||'';$('matKeyword').value=m.keyword||'';currentMaterialImage=m.image||'';
+    $('matCategory').value=m.category||'';$('matBrand').value=m.brand||'';$('matName').value=m.name||'';$('matModel').value=m.model||'';$('matSpec').value=m.spec||'';$('matPrice').value=m.price||0;$('matUnit').value=m.unit||'PCS';$('matSupplier').value=m.supplier||'';$('matKeyword').value=m.keyword||'';currentMaterialImage=null;
   }else{
     clearMaterialForm(false);
   }
@@ -1517,6 +1564,7 @@ function confirmSaveMaterialAfterSimilar(){
 }
 async function saveMaterial(continueAdd=false, forcedPayload=null){
   const d=forcedPayload||{id:editingMaterialId,category:$('matCategory').value,brand:$('matBrand').value,name:$('matName').value,model:$('matModel').value,spec:$('matSpec').value,price:Number($('matPrice').value||0)||0,unit:$('matUnit').value,supplier:$('matSupplier').value,keyword:$('matKeyword').value,image:currentMaterialImage};
+  if(currentMaterialImage===null&&!forcedPayload){delete d.image;d.image_unchanged=true;}
   if(!d.name){alert('请输入物料名称');return}
   const keep={category:d.category,brand:d.brand,supplier:d.supplier,unit:d.unit||'PCS'};
   const r=await api('save_material',d);
@@ -1527,8 +1575,10 @@ async function saveMaterial(continueAdd=false, forcedPayload=null){
   }
   materialPendingPayload=null; materialPendingContinue=false; closeMaterialSimilarModal();
   materialFocusId=String(r.id||d.id||'');
+  materialsLoaded=false;materialThumbCache.delete(Number(materialFocusId));materialPage=1;
   if($('matSearch'))$('matSearch').value=d.name||d.model||'';
   if($('matDateFilter'))$('matDateFilter').value='';
+  ['matFilterCategory','matFilterBrand','matFilterSupplier'].forEach(id=>{if($(id))$(id).value='';});
   await loadAll(); showPage('materials');
   if(continueAdd){
     editingMaterialId=null; currentMaterialImage='';
@@ -1547,7 +1597,7 @@ async function saveMaterial(continueAdd=false, forcedPayload=null){
   }
 }
 function clearMaterialForm(resetId=true){if(resetId)editingMaterialId=null;currentMaterialImage='';['matName','matModel','matPrice','matSupplier','matSpec','matKeyword'].forEach(id=>{if($(id))$(id).value=''});if($('matUnit'))$('matUnit').value='PCS';if($('matImageFile'))$('matImageFile').value=''}
-async function deleteMaterial(id){if(!confirm('删除这个物料？'))return;await api('delete_material',{id});await loadAll();showPage('materials')}
+async function deleteMaterial(id){if(!confirm('删除这个物料？'))return;const r=await api('delete_material',{id});if(!r.ok)return alert(r.error||'删除失败');materialsLoaded=false;materialThumbCache.delete(Number(id));materialFocusId=null;renderMaterials();}
 async function syncWeightProfilesToBom(){const r=await api('sync_weight_profiles_to_bom',{});if(!r.ok){alert('同步失败：'+(r.message||r.error||'未知错误'));return}await loadAll();await ensureMaterialsLoaded(true);showPage('materials');if($('matFilterCategory'))$('matFilterCategory').value='型材';if($('matSearch'))$('matSearch').value='';renderMaterials();alert('已同步重量型材到 BOM 物料库：新增 '+(r.inserted||0)+'，更新 '+(r.updated||0)+'，跳过 '+(r.skipped||0));}
 
 function editMaterial(id){openMaterialEditor(id)}
@@ -1555,12 +1605,6 @@ function focusMaterialRow(id){
   if(!id)return; const sid=String(id).replaceAll('\"','');
   const tr=document.querySelector(`#materialsTbody tr[data-id="${sid}" ]`)||document.querySelector(`#materialsTbody tr[data-id="${sid}"]`);
   if(!tr){
-    const ix=materials.findIndex(m=>String(m.id)===sid);
-    if(ix>=0){
-      if($('matSearch'))$('matSearch').value='';
-      materialPage=Math.floor(ix/Number(materialPageSize||50))+1;
-      renderMaterials();
-    }
     return;
   }
   tr.classList.add('mat-row-focus'); tr.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>tr.classList.remove('mat-row-focus'),4200);
@@ -1568,20 +1612,20 @@ function focusMaterialRow(id){
 async function saveMaterialCell(td){
   const tr=td.closest('tr'); if(!tr) return;
   const id=Number(tr.dataset.id||0), field=td.dataset.field; if(!id||!field) return;
-  const m=materials.find(x=>Number(x.id)===id); if(!m) return;
+  const m=materialPageRows.find(x=>Number(x.id)===id); if(!m) return;
   let val=td.textContent.trim(); if(field==='price') val=Number(val||0)||0;
   if(String(m[field]??'')===String(val??'')) return;
-  m[field]=val;
+  const payload={...m,[field]:val,image_unchanged:true};delete payload.image;
   try{
-    const r=await api('save_material',m);
+    const r=await api('save_material',payload);
     if(!r.ok){
-      if(r.duplicate_material){openMaterialSimilarModal('duplicate',r.duplicates||[],m,false,r.error);renderMaterials();return;}
-      alert(r.error||'保存失败');return;
+      if(r.duplicate_material){openMaterialSimilarModal('duplicate',r.duplicates||[],payload,false,r.error);renderMaterials();return;}
+      td.textContent=String(m[field]??'');alert(r.error||'保存失败');return;
     }
-    setStatus('物料已保存 '+nowText());
+    m[field]=val;materialsLoaded=false;setStatus('物料已保存 '+nowText());
     const msg=document.createElement('span'); msg.className='material-status'; msg.textContent='已保存'; td.appendChild(msg); setTimeout(()=>msg.remove(),900);
     renderBaseOptions();
-  }catch(e){alert('保存失败：'+e.message)}
+  }catch(e){td.textContent=String(m[field]??'');alert('保存失败：'+e.message)}
 }
 function initResizableTable(tableId, storageKey){
   const table=$(tableId); if(!table || table.dataset.resizableReady==='1') return;
@@ -1768,27 +1812,9 @@ function materialDatePass(m,mode){
   return true;
 }
 function renderMaterials(){
-  if(!materialsLoaded){
-    if($('matCount'))$('matCount').textContent='共享物料库读取中...';
-    if($('materialsTbody'))$('materialsTbody').innerHTML='<tr><td colspan="10" class="hint">正在读取共享物料库，稍等一下...</td></tr>';
-    return;
-  }
-  const kw=($('matSearch').value||'').toLowerCase(),cat=$('matFilterCategory').value,brand=$('matFilterBrand').value,sup=$('matFilterSupplier').value,dateMode=$('matDateFilter')?.value||'';
-  const arr=materials.filter(m=>(!cat||m.category===cat)&&(!brand||m.brand===brand)&&(!sup||m.supplier===sup)&&materialDatePass(m,dateMode)&&(!kw||[m.category,m.brand,m.name,m.model,m.spec,m.supplier,m.keyword].join(' ').toLowerCase().includes(kw)));
-  materialPageSize=Number(materialPageSize||50); if(![20,50,100,200,500].includes(materialPageSize))materialPageSize=50;
-  materialTotalPages=Math.max(1,Math.ceil(arr.length/materialPageSize));
-  if(materialFocusId){const ix=arr.findIndex(m=>String(m.id)===String(materialFocusId));if(ix>=0)materialPage=Math.floor(ix/materialPageSize)+1;}
-  materialPage=Math.max(1,Math.min(materialTotalPages,Number(materialPage||1)));
-  localStorage.setItem('bom_material_page_size_v763',String(materialPageSize));
-  localStorage.setItem('bom_material_page_v763',String(materialPage));
-  const start=(materialPage-1)*materialPageSize, pageRows=arr.slice(start,start+materialPageSize);
-  if($('matPageSize'))$('matPageSize').value=String(materialPageSize);
-  if($('matPageInfo'))$('matPageInfo').textContent=`第 ${materialPage} / ${materialTotalPages} 页｜显示 ${arr.length?start+1:0}-${Math.min(start+pageRows.length,arr.length)} / ${arr.length}`;
-  if($('matPageInput')){$('matPageInput').max=String(materialTotalPages);$('matPageInput').value=String(materialPage)}
-  $('matCount').textContent=`共 ${arr.length}/${materials.length} 个物料`;
-  $('materialsTbody').innerHTML=pageRows.map(m=>`<tr data-id="${m.id}"><td>${m.image?`<img class="mini-thumb" src="${m.image}">`:''}</td><td contenteditable="true" data-field="category" onblur="saveMaterialCell(this)">${esc(m.category)}</td><td contenteditable="true" data-field="brand" onblur="saveMaterialCell(this)">${esc(m.brand)}</td><td contenteditable="true" data-field="name" onblur="saveMaterialCell(this)"><b>${esc(m.name)}</b></td><td contenteditable="true" data-field="model" onblur="saveMaterialCell(this)">${esc(m.model)}</td><td contenteditable="true" data-field="spec" onblur="saveMaterialCell(this)">${esc(m.spec)}</td><td contenteditable="true" data-field="price" class="num" onblur="saveMaterialCell(this)">${money(m.price)}</td><td contenteditable="true" data-field="unit" onblur="saveMaterialCell(this)">${esc(m.unit)}</td><td contenteditable="true" data-field="supplier" onblur="saveMaterialCell(this)">${esc(m.supplier)}</td><td><button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('');
-  initResizableTable('materialTable','material_col_widths_v65');
-  if(materialFocusId)setTimeout(()=>focusMaterialRow(materialFocusId),80);
+  materialPageSize=Number(materialPageSize||50);if(![20,50,100,200,500].includes(materialPageSize))materialPageSize=50;
+  const seq=++materialReadSeq;clearTimeout(materialReadTimer);
+  materialReadTimer=setTimeout(()=>readMaterialPage(seq).catch(e=>{if(seq===materialReadSeq){$('materialsTbody').innerHTML=`<tr><td colspan="10">${esc(e.message)} <button onclick="renderMaterials()">重试</button></td></tr>`;}}),220);
 }
 function setMaterialPageSize(v){materialPageSize=Number(v||50);materialPage=1;renderMaterials();}
 function setMaterialPage(v){materialPage=Number(v||1);renderMaterials();}
@@ -1802,7 +1828,7 @@ function showMaterialSuggest(input,rowIndex){
   if(!materialsLoaded){
     box.innerHTML='<div class="mat-option"><div><div class="mat-option-title">正在读取共享物料库...</div><div class="mat-option-sub">首次使用物料联想时按需加载，不影响 BOM 首页打开速度。</div></div></div>';
     box.style.display='block';
-    ensureMaterialsLoaded().then(()=>{if(document.activeElement===input)showMaterialSuggest(input,rowIndex)});
+    ensureMaterialsLoaded().then(()=>{if(document.activeElement!==input)return;if(materialsLoaded)showMaterialSuggest(input,rowIndex);else box.innerHTML=`<div class="mat-option">${esc(materialsError||'读取失败')}，请重新输入重试。</div>`;});
     return;
   }
   const p=getCurrent();const row=p&&p.rows?p.rows[rowIndex]:null;const rowCat=row?row.category:'';
@@ -1820,7 +1846,7 @@ function showMaterialSuggest(input,rowIndex){
 document.addEventListener('click',e=>{if(!e.target.closest('.col-name')&&!e.target.closest('#matSuggestFloat')&&!e.target.closest('.mat-pick-btn'))$('matSuggestFloat').style.display='none'})
 function recentMaterialIds(){try{return JSON.parse(localStorage.getItem('bom_recent_material_ids_v75')||'[]').map(x=>String(x))}catch(e){return []}}
 function pushRecentMaterial(id){id=String(id||'');if(!id)return;let arr=recentMaterialIds().filter(x=>x!==id);arr.unshift(id);localStorage.setItem('bom_recent_material_ids_v75',JSON.stringify(arr.slice(0,30)))}
-function materialThumb(m){return m.image?`<div class="mat-pick-thumb"><img src="${esc(m.image)}" onerror="this.parentNode.textContent='料'"></div>`:`<div class="mat-pick-thumb">料</div>`}
+function materialThumb(m){return m.has_image?`<div class="mat-pick-thumb">${materialImageHtml(m,'')}</div>`:`<div class="mat-pick-thumb">料</div>`}
 function standardMaterialGroups(){return [
   {key:'',label:'全部',terms:[]},
   {key:'light',label:'芯片/光源',terms:['芯片','光源','cob','smd','led','灯珠','普瑞','cree','osram','bridgelux']},
@@ -1867,7 +1893,7 @@ function closeMaterialPicker(){const m=$('matPickMask'); if(m)m.style.display='n
 function setMaterialPickerQuick(mode){materialPickMode=mode; if(mode==='all'&&$('mp_group'))$('mp_group').value=''; if(mode==='same'){const p=getCurrent(),row=p&&p.rows?p.rows[materialPickRowIndex]:null;const g=inferGroupFromRow(row);if(g&&$('mp_group'))$('mp_group').value=g} renderMaterialPicker()}
 function renderMaterialPicker(){
   const p=getCurrent(), row=p&&p.rows?p.rows[materialPickRowIndex]:null; const box=$('matPickList'); if(!box)return;
-  if(!materialsLoaded){box.innerHTML='<div class="mat-pick-empty">正在读取共享物料库...</div>';return;}
+  if(!materialsLoaded){box.innerHTML=`<div class="mat-pick-empty">${esc(materialsError||'正在读取共享物料库...')} ${materialsError?'<button onclick="openMaterialPicker(materialPickRowIndex)">重试</button>':''}</div>`;return;}
   ['all','recent','same'].forEach(x=>{const el=$('mp_chip_'+x);if(el)el.classList.toggle('active',materialPickMode===x)});
   const kw=($('mp_kw')?.value||'').trim().toLowerCase(), nkw=normMaterialText(kw), group=$('mp_group')?.value||'', brand=$('mp_brand')?.value||'', sup=$('mp_supplier')?.value||'', sort=$('mp_sort')?.value||'recent', recent=recentMaterialIds();
   let arr=materials.filter(m=>{
@@ -1887,7 +1913,7 @@ function renderMaterialPicker(){
   });
   arr=arr.slice(0,120); if($('mp_summary'))$('mp_summary').textContent=`${arr.length} 个 / 共 ${materials.length} 个物料`;
   if(!arr.length){box.innerHTML='<div class="mat-pick-empty">没有找到物料。可切到“全部”、清空关键词，或去共享物料库新增。</div>';return;}
-  box.innerHTML=arr.map(m=>`<div class="mat-pick-row" onclick="applyMaterial(${materialPickRowIndex},${Number(m.id||0)},true)">${materialThumb(m)}<div><div class="mat-pick-title">${esc(materialDisplayName(m))}</div><div class="mat-pick-sub"><span class="mat-pick-tag">${esc(m.category||'未分类')}</span>${esc(materialDisplaySpec(m)||'无规格')} ｜ ${esc(m.brand||'-')} ｜ ${esc(m.supplier||'-')}</div></div><div class="mat-pick-price">${money(m.price)}</div><button class="small ok" type="button">选</button></div>`).join('')
+  box.innerHTML=arr.map(m=>`<div class="mat-pick-row" onclick="applyMaterial(${materialPickRowIndex},${Number(m.id||0)},true)">${materialThumb(m)}<div><div class="mat-pick-title">${esc(materialDisplayName(m))}</div><div class="mat-pick-sub"><span class="mat-pick-tag">${esc(m.category||'未分类')}</span>${esc(materialDisplaySpec(m)||'无规格')} ｜ ${esc(m.brand||'-')} ｜ ${esc(m.supplier||'-')}</div></div><div class="mat-pick-price">${money(m.price)}</div><button class="small ok" type="button">选</button></div>`).join('');hydrateMaterialImages(box);
 }
 function applyMaterial(rowIndex,id,fromModal=false){
   const p=getCurrent(); const m=materials.find(x=>+x.id===+id); if(!p||!m||!p.rows[rowIndex])return;
@@ -2162,7 +2188,17 @@ function currentMaterialFilteredRows(){const kw=($('matSearch')?.value||'').toLo
 function bomRowsForExcel(p){return [['序号','类别','物料名称','规格/备注','数量','加工费','表面处理1','处理费1','表面处理2','处理费2','单价','小计','物料ID']].concat((p.rows||[]).map((r,i)=>[i+1,r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r),r.materialId||'']))}
 function exportCurrentBomExcel(){collect();const p=getCurrent();if(!p){alert('没有当前 BOM');return}const t=totals(p);const info=[['项目','内容'],['成本单名称',p.name],['客户/项目',p.customer],['产品型号',p.model],['产品分类',p.productType],['币种',p.currency],['材料成本',t.mat],['人工费',t.labor],['包装/其它',t.other],['总成本',t.total],['建议报价',t.suggest],['利润金额',t.profit],['利润率/加价率',p.profitRate],['报价模式',p.quoteMode],['创建时间',p.createdAt],['最后保存',p.updatedAt],['备注',p.note]];downloadExcel(cleanFileName(p.name||p.model||'BOM')+'_BOM.xls',[{name:'BOM明细',rows:bomRowsForExcel(p)},{name:'汇总',rows:info}])}
 function exportLibraryExcel(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();const list=[['名称','客户','型号','产品分类','币种','物料行数','材料成本','总成本','建议报价','创建时间','最后保存']];const detail=[['成本单','客户','型号','序号','类别','物料名称','规格/备注','数量','加工费','表面处理1','处理费1','表面处理2','处理费2','单价','小计']];arr.forEach(p=>{const t=totals(p);list.push([p.name,p.customer,p.model,p.productType,p.currency,bomProjectRowCount(p),t.mat,t.total,t.suggest,p.createdAt,p.updatedAt]);(p.rows||[]).forEach((r,i)=>detail.push([p.name,p.customer,p.model,i+1,r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r)]))});downloadExcel('BOM成本总表_'+dateInputValue(new Date())+'.xls',[{name:'成本单列表',rows:list},{name:'已加载物料明细',rows:detail}])}
-function exportMaterialsExcel(){const arr=currentMaterialFilteredRows();const rows=[['ID','分类','品牌','物料名称','型号/编码','规格/备注','单价','单位','供应商','关键词','创建时间','最后更新','图片']].concat(arr.map(m=>[m.id,m.category,m.brand,m.name,m.model,m.spec,m.price,m.unit,m.supplier,m.keyword,m.created_at||'',m.updated_at||'',m.image||'']));downloadExcel('共享物料库_'+dateInputValue(new Date())+'.xls',[{name:'物料库',rows}])}
+let materialExportBusy=false;
+async function exportMaterialsExcel(){
+  if(materialExportBusy)return;materialExportBusy=true;
+  try{
+    const filters=materialFilters(),arr=[];let page=1,pages=1;
+    do{const r=await api('materials_list',{...filters,page:page++,page_size:500});if(!r.ok)throw new Error(r.error);arr.push(...r.materials);pages=r.pages;}while(page<=pages);
+    // Explicit export only: original images are read individually, never as an all-image response.
+    for(let i=0;i<arr.length;i++)if(arr[i].has_image){setStatus(`导出原图 ${i+1}/${arr.length}…`);const r=await api('material_image',{id:arr[i].id,original:true});if(!r.ok)throw new Error(r.error);arr[i].image=r.image;}
+    const rows=[['ID','分类','品牌','物料名称','型号/编码','规格/备注','单价','单位','供应商','关键词','创建时间','最后更新','图片']].concat(arr.map(m=>[m.id,m.category,m.brand,m.name,m.model,m.spec,m.price,m.unit,m.supplier,m.keyword,m.created_at||'',m.updated_at||'',m.image||'']));downloadExcel('共享物料库_'+dateInputValue(new Date())+'.xls',[{name:'物料库',rows}]);setStatus(`已导出全部筛选结果 ${arr.length} 条`);
+  }catch(e){alert('导出未完成：'+e.message);}finally{materialExportBusy=false;}
+}
 function downloadMaterialTemplateExcel(){const rows=[['分类','品牌','物料名称','型号/编码','规格/备注','单价','单位','供应商','关键词'],['芯片','CREE','CXA1820','CXA1820','3000K CRI90',11.3,'PCS','未指定','CREE CXA'],['电源','Eaglerise','伊戈尔圆形内置','CS-15-250 SI','15W 250mA',8.2,'PCS','伊戈尔','驱动 电源']];downloadExcel('共享物料导入模板.xls',[{name:'物料导入模板',rows}])}
 function exportCSV(){collect();const p=getCurrent();if(!p)return;let csv='类别,物料名称,规格,数量,加工费,表面处理1,处理费1,表面处理2,处理费2,单价,小计\n';(p.rows||[]).forEach(r=>csv+=[r.category,r.name,r.spec,r.qty,r.process,r.finish,r.finishCost,r.finish2||'',r.finishCost2||0,r.price,rowSub(r)].map(csvEscape).join(',')+'\n');download((p.name||'bom')+'.csv',csv)}
 function exportLibraryCSV(){const arr=lastLibraryRows&&lastLibraryRows.length?lastLibraryRows:libraryFilteredProjects();let csv='名称,客户,型号,产品分类,币种,物料行数,总成本,建议报价,创建时间,最后保存\n';arr.forEach(p=>{const t=totals(p);csv+=[p.name,p.customer,p.model,p.productType,p.currency,bomProjectRowCount(p),t.total,t.suggest,p.createdAt,p.updatedAt].map(csvEscape).join(',')+'\n'});download('bom_library.csv',csv)}

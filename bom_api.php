@@ -11,6 +11,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/bom_dashboard_read.php';
 require_once __DIR__ . '/includes/bom_workflow.php';
+require_once __DIR__ . '/includes/bom_material_read.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $action = isset($_GET['action']) ? $_GET['action'] : (isset($_POST['action']) ? $_POST['action'] : '');
@@ -27,11 +28,13 @@ $__bom_perm_map=array(
 );
 $__bom_perm_map['withdraw_review']='edit_bom';
 $__bom_perm_map['void_snapshot']='unapprove_bom';
+$__bom_perm_map['material_image']='view_dashboard';
 artdon_perm_require_action('bom',(string)$action,$__bom_perm_map,'view_dashboard');
 
 function json_out($arr){
     while(ob_get_level()>0){ @ob_end_clean(); }
-    echo json_encode($arr, JSON_UNESCAPED_UNICODE);
+    $json=json_encode($arr, JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
+    if($json===false){http_response_code(500);echo '{"ok":false,"error":"返回数据编码失败，请重试"}';}else echo $json;
     exit;
 }
 function body_json(){
@@ -173,7 +176,7 @@ function bom_sync_quote_cost_snapshot(PDO $pdo, $projectUid, $actor = 'system'){
     return array('matched'=>$matched,'updated'=>$updated,'skipped'=>0);
 }
 function bom_material_select_cols(PDO $pdo){
-    $wanted = array('id','category','brand','name','model','spec','price','unit','supplier','keyword','image','created_at','updated_at');
+    $wanted = array('id','category','brand','name','model','spec','price','unit','supplier','keyword','created_at','updated_at');
     $cols = array();
     foreach($wanted as $c){ if(hascol($pdo,'bom_materials',$c)) $cols[] = $c; }
     return $cols ? implode(',', array_map('qid',$cols)) : '*';
@@ -808,7 +811,7 @@ function bom_bad_plm_text($r){
 function bom_load_materials_for_match($pdo){
     if(!table_exists($pdo,'bom_materials')) return array();
     $where = hascol($pdo,'bom_materials','is_active') ? " WHERE is_active=1" : "";
-    $rows = $pdo->query("SELECT * FROM bom_materials".$where." ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $pdo->query('SELECT '.bom_material_select_cols($pdo).' FROM bom_materials'.$where.' ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
     return is_array($rows) ? $rows : array();
 }
 function bom_best_material_match($row, $materials){
@@ -1554,7 +1557,7 @@ try{
     $pdo = pdo_safe();
     $GLOBALS['pdo_for_perm']=$pdo;
     // Dashboard enrichment is strictly read-only and must not run schema/backfill work.
-    if(!in_array($action,array('dashboard_search','dashboard_images'),true)){
+    if(!in_array($action,array('dashboard_search','dashboard_images','materials_list','material_image'),true)){
         ensure_bom_schema($pdo);
         ensure_bom_user_schema($pdo);
     }
@@ -1725,12 +1728,13 @@ try{
         bom_require_perm($user,'dashboard');
         $canCost = artdon_sso_can('bom','cost_view');
         $canSupplier = artdon_sso_can('bom','supplier_view');
-        // 物料库体量较大，首页不再自动加载；进入物料库或选择物料时才按需加载。
-        bom_sync_weight_profiles_to_materials($pdo);
-        $matWhere = (table_exists($pdo,'bom_materials') && hascol($pdo,'bom_materials','is_active')) ? " WHERE is_active=1" : "";
-        $materials = table_exists($pdo,'bom_materials') ? $pdo->query("SELECT * FROM bom_materials".$matWhere." ORDER BY updated_at DESC, id DESC")->fetchAll() : array();
-        $materials = bom_hide_sensitive_list($materials, $canCost, $canSupplier);
-        json_out(array('ok'=>true,'materials'=>$materials));
+        if(session_status()===PHP_SESSION_ACTIVE)session_write_close();
+        json_out(bmr_read($pdo,body_json(),$canCost,$canSupplier));
+    }
+    if($action === 'material_image'){
+        bom_require_perm($user,'dashboard');$d=body_json();
+        if(session_status()===PHP_SESSION_ACTIVE)session_write_close();
+        json_out(bmr_image($pdo,(int)($d['id']??0),!empty($d['original'])));
     }
 
     if($action === 'naming_models'){
@@ -1943,8 +1947,15 @@ try{
         }
 
         if($id>0){
-            $stmt=$pdo->prepare("UPDATE bom_materials SET category=?,brand=?,name=?,model=?,spec=?,price=?,unit=?,supplier=?,keyword=?,image=?,updated_at=NOW() WHERE id=?");
-            $stmt->execute(array($category, $brand, $name, $model, $spec, $price, $unit, $supplier, $keyword, $image, $id));
+            // Summaries do not contain original images. Absence means preserve, not erase.
+            if(!artdon_sso_can('bom','cost_view')||!artdon_sso_can('bom','supplier_view')){
+                $protected=$pdo->prepare('SELECT price,supplier FROM bom_materials WHERE id=?');$protected->execute([$id]);$old=$protected->fetch(PDO::FETCH_ASSOC);
+                if(!$old)json_out(['ok'=>false,'error'=>'物料已不存在，请刷新']);
+                if(!artdon_sso_can('bom','cost_view'))$price=$old['price'];if(!artdon_sso_can('bom','supplier_view'))$supplier=$old['supplier'];
+            }
+            $replaceImage=array_key_exists('image',$d)&&empty($d['image_unchanged']);
+            $stmt=$pdo->prepare("UPDATE bom_materials SET category=?,brand=?,name=?,model=?,spec=?,price=?,unit=?,supplier=?,keyword=?".($replaceImage?',image=?':'').",updated_at=NOW() WHERE id=?");
+            $values=array($category,$brand,$name,$model,$spec,$price,$unit,$supplier,$keyword);if($replaceImage)$values[]=$image;$values[]=$id;$stmt->execute($values);
         }else{
             $stmt=$pdo->prepare("INSERT INTO bom_materials(category,brand,name,model,spec,price,unit,supplier,keyword,image) VALUES(?,?,?,?,?,?,?,?,?,?)");
             $stmt->execute(array($category, $brand, $name, $model, $spec, $price, $unit, $supplier, $keyword, $image));
