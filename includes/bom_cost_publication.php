@@ -28,7 +28,8 @@ function bcp_add_publication(array &$map,array $publication): void {
     $system=strtoupper(trim((string)($p['linked_system']??'')));$id=trim((string)($p['linked_id']??''));
     if($id!==''&&(strpos($system,'NAMING')!==false||strpos($system,'命名')!==false))$keys[]='NID'.$id;
     $approved=$publication['source']==='approved_snapshot';$released=$approved&&empty($p['initial_freeze']);
-    bcp_add($map,$keys,(float)$publication['cost'],$approved?'BOM审核快照 #'.$publication['snapshot_id']:'BOM历史未审核（冻结）',(string)$publication['updated_at'],$released?130:120,$released);
+    $label=$approved?'BOM审核快照 #'.$publication['snapshot_id']:(!empty($p['unreviewed_sync'])?'BOM未审核（冻结）':'BOM历史未审核（冻结）');
+    bcp_add($map,$keys,(float)$publication['cost'],$label,(string)$publication['updated_at'],$released?130:120,$released);
 }
 function bcp_map(PDO $pdo,bool $lock=false): array {
     $map=array();

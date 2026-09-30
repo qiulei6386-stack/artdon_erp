@@ -153,7 +153,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         if($req['result_json']){$result=json_decode($req['result_json'],true,512,JSON_THROW_ON_ERROR);$pdo->commit();return $result;}
         // Cross-project approvals may share a model and policy. Acquire before project locks
         // and consistent reads so both the publication and its cache see the same winner.
-        if(in_array($action,array('approve_project','void_snapshot'),true))$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
+        if(in_array($action,array('save_project','approve_project','void_snapshot'),true))$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
         $p=bw_get($pdo,$uid,true);$before=$p;$status=$p['review_status']??'draft';
         if($p&&(int)$p['is_active']!==1)throw new BomWorkflowError('deleted','BOM 已删除，请返回总览');
         if(!array_key_exists('expected_revision',$d)||!hash_equals(bw_revision($p),(string)$d['expected_revision']))throw new BomWorkflowError('revision_conflict','这份 BOM 已被修改或审核。本次未覆盖任何内容，请保留当前输入，重新打开最新版本核对后再操作。');
@@ -229,6 +229,14 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         if($action!=='create_snapshot')$pdo->prepare('UPDATE bom_projects SET workflow_version=workflow_version+1 WHERE project_uid=?')->execute(array($uid));
         $p=bw_get($pdo,$uid);$revision=bw_revision($p);
         $changes=bw_changes($before,$p);if($action==='void_snapshot')$changes['void_snapshot']=$snapshot;
+        if($action==='save_project'){
+            require_once __DIR__.'/bom_unreviewed_sync.php';
+            $freeze=bus_freeze_saved($pdo,$p);$changes['initial_cost_freeze']=$freeze;
+            if($freeze['inserted']){
+                bus_sync_policies($pdo,[$p],$actor);
+                $message='草稿已保存；首次成本已同步报价中心，标为未审核冻结成本。之后修改需审核通过才更新报价成本。';
+            }elseif($freeze['reason']!=='existing_publication')$message='草稿已保存；未同步报价成本：'.$freeze['reason'].'。补齐后保存可同步首次成本。';
+        }
         $pdo->prepare('INSERT INTO bom_workflow_events(project_uid,action,actor,before_revision,after_revision,note,changes_json,snapshot_id) VALUES(?,?,?,?,?,?,?,?)')->execute(array($uid,$action,$actor,bw_revision($before),$revision,$note,bw_json($changes),$snapshot['id']??null));
         $result=array('ok'=>true,'project_uid'=>$uid,'revision'=>$revision,'snapshot'=>$snapshot,'message'=>$message);
         $pdo->prepare('UPDATE bom_workflow_requests SET result_json=? WHERE request_id=?')->execute(array(bw_json($result),$request));

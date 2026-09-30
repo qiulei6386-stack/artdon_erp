@@ -37,7 +37,7 @@ function qbv_catalog(PDO $pdo,array $p,int $page=1): array {
     $projects=qbv_projects($pdo,$p);$page=max(1,min(100000,$page));$size=10;
     $result=array('versions'=>array(),'projects'=>count($projects),'total'=>0,'page'=>1,'pages'=>1,'legacy'=>array(),'current_publications'=>array());
     foreach($projects as $pub)if($pub['source']==='approved_snapshot')$result['current_publications'][]=array('project_uid'=>$pub['project_uid'],'snapshot_id'=>(int)$pub['snapshot_id']);
-    foreach($projects as $pub)if($pub['source']!=='approved_snapshot')$result['legacy'][]=array('name'=>$pub['meta']['name']??'','project_uid'=>$pub['project_uid'],'cost_rmb'=>(float)$pub['cost'],'updated_at'=>$pub['updated_at'],'source'=>$pub['source'],'status'=>$pub['source']==='voided'?'当前快照已作废，暂停报价取价':'历史未审核成本（冻结）');
+    foreach($projects as $pub)if($pub['source']!=='approved_snapshot')$result['legacy'][]=array('name'=>$pub['meta']['name']??'','project_uid'=>$pub['project_uid'],'cost_rmb'=>(float)$pub['cost'],'updated_at'=>$pub['updated_at'],'source'=>$pub['source'],'status'=>$pub['source']==='voided'?'当前快照已作废，暂停报价取价':(!empty($pub['meta']['unreviewed_sync'])?'未审核成本（冻结）':'历史未审核成本（冻结）'));
     if(!$projects)return $result;
     $marks=implode(',',array_fill(0,count($projects),'?'));$args=array_keys($projects);
     $where="project_uid IN ($marks)";

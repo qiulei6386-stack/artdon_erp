@@ -1260,7 +1260,7 @@ function renderBomReviewBar(){
   const ps=bomPriceSummary(p), status=p.reviewStatus||'draft';
   const submitted=p.submittedAt?`提交 ${String(p.submittedAt).slice(0,16)} · ${esc(p.submittedBy||'-')}`:'未提交审核';
   const approved=p.approvedAt?`审核 ${String(p.approvedAt).slice(0,16)} · ${esc(p.approvedBy||'-')}`:'未生成正式快照';
-  const publication=p.costPublication?.source==='voided'?'报价取价已暂停：当前快照已作废，须重新审核发布':p.costPublication?.source==='legacy_unreviewed'?'报价使用：历史未审核成本（已冻结）':p.costPublication?.source==='approved_snapshot'?`报价使用：已审核快照 #${Number(p.costPublication.snapshot_id)}`:'尚未发布报价成本';
+  const publication=p.costPublication?.source==='voided'?'报价取价已暂停：当前快照已作废，须重新审核发布':p.costPublication?.source==='legacy_unreviewed'?'报价使用：未审核成本（已冻结；草稿改价须审核后更新）':p.costPublication?.source==='approved_snapshot'?`报价使用：已审核快照 #${Number(p.costPublication.snapshot_id)}`:'尚未发布报价成本';
   el.innerHTML=`<div class="bom-review-main"><span class="bom-badge ${esc(status)}">${esc(bomReviewLabel(status))}</span><div class="bom-review-title">${esc(p.versionNo||'V1')} · ${esc(p.variantLabel||'通用版')} · 快照 ${Number(p.snapshotCount||0)}</div></div><div class="bom-review-meta">${submitted}</div><div class="bom-review-meta">${approved}</div><div class="bom-review-note"><span class="price-chip estimated">预估 ${ps.estimated}</span> <span class="price-chip confirmed">确认 ${ps.confirmed}</span> <span class="price-chip pending">待确认 ${ps.pending}</span> <span class="price-chip historical">历史 ${ps.historical}</span></div>`;
   el.innerHTML+=`<div class="bom-review-note">${esc(publication)}</div>`;
   updateBomWorkflowUI();
