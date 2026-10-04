@@ -16,6 +16,7 @@ const functionNames = [
   'highlightKey', 'markRecentCreated', 'isRecentCreateFallback',
   'recentCreateUntil', 'rowHighlightClass', 'allVisibleRows',
   'escSelector', 'forceRecentCreateMarks', 'editableRichHtml',
+  'pinRecentRowsToCreateLine', 'scrollToHighlight', 'prepareDailyFirstOpenMarks', 'isFirstOpenCandidate',
 ];
 
 function extractFunction(name) {
@@ -78,6 +79,10 @@ function model() {
   };
   const context = vm.createContext({
     state, Date: ClockDate, console,
+    today: () => state.date,
+    localStorage: { getItem() { return null; }, setItem() {} },
+    toast() {},
+    requestAnimationFrame(callback) { callback(); },
     DispatchRecentCreate: animation,
     sanitizeRichHtml(value) {
       calls.push({ kind: 'sanitizeRichHtml', value });
@@ -126,6 +131,9 @@ function model() {
       const classes = new Set();
       return {
         key, kind,
+        visible: kind === 'task-row',
+        getClientRects() { return this.visible ? [{}] : []; },
+        scrollIntoView(options) { calls.push({ kind: 'scroll', key, elementKind: kind, options }); },
         dataset: kind === 'task-row' ? { taskRow: key } : { mobileTask: key },
         classList: {
           add(value) { classes.add(value); },
@@ -159,6 +167,42 @@ function inactive(m, task, message) {
 
 const tests = [];
 function test(name, run) { tests.push({ name, run }); }
+
+test('new personal task stays in server top position across pin/highlight expiry', () => {
+  const m = model(), older = row(1), task = row(2, { task_type: 'personal' });
+  m.context.markRecentCreated({ id: 2 }, task);
+  for (const elapsed of [0, 5_100, 20_000]) {
+    m.advance(elapsed);
+    assert.deepEqual(Array.from(m.context.pinRecentRowsToCreateLine([task, older]), r => r.id), [2, 1]);
+  }
+  assert.equal(m.state.pendingHighlightScroll, '2');
+});
+
+test('creation scroll finds the visible desktop row or mobile card only once', () => {
+  for (const visibleKind of ['task-row', 'mobile-task']) {
+    const m = model(), task = row(10);
+    const elements = m.mount(task);
+    // Hidden representations can precede the visible one in the document.
+    elements.forEach(el => { el.visible = el.kind === visibleKind; });
+    m.state.pendingHighlightScroll = '10';
+    m.context.scrollToHighlight('10'); m.advance(100);
+    const scrolls = m.calls.filter(call => call.kind === 'scroll');
+    assert.equal(scrolls.length, 1);
+    assert.equal(scrolls[0].elementKind, visibleKind);
+    assert.equal(scrolls[0].options.behavior, 'smooth');
+    assert.equal(m.state.pendingHighlightScroll, '');
+    m.context.scrollToHighlight('missing'); m.advance(100);
+    assert.equal(m.calls.filter(call => call.kind === 'scroll').length, 1, 'do not scroll to an unrelated row');
+  }
+});
+
+test('first-open reminder cannot replace the newly created scroll target', () => {
+  const m = model();
+  m.state.data.dispatch = [row(50, { status: 'pending_accept' })];
+  m.context.markRecentCreated({ id: 51 }, row(51, { task_type: 'personal' }));
+  m.context.prepareDailyFirstOpenMarks();
+  assert.equal(m.state.pendingHighlightScroll, '51');
+});
 
 test('five-second repaint keeps the original deadline for desktop and mobile', () => {
   const m = model();

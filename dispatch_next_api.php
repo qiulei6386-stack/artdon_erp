@@ -1237,7 +1237,7 @@ function dn_list(array $in): array
         if ($dueCmp !== 0) return $dueCmp;
         return strcmp((string)($a['sort_key'] ?? $a['title']), (string)($b['sort_key'] ?? $b['title']));
     };
-    usort($personal, $sorter);
+    usort($personal, fn($a, $b) => dn_personal_top_order($a, $b) ?: $sorter($a, $b));
     usort($dispatch, $sorter);
     $pending = dn_pending_accept();
     $unreadDispatch = dn_unread_dispatch();
@@ -1323,6 +1323,16 @@ function dn_task_orders(): array
     $map = [];
     foreach ($st->fetchAll() as $row) $map[(int)$row['task_id']] = (int)$row['sort_order'];
     return $map;
+}
+
+// New personal tasks precede the existing order until the user drags them.
+// A shared rank plus descending IDs also handles simultaneous creations.
+function dn_personal_top_order(array $a, array $b): int
+{
+    $aTop = (int)($a['user_sort_order'] ?? 0) < 0;
+    $bTop = (int)($b['user_sort_order'] ?? 0) < 0;
+    if ($aTop !== $bTop) return $aTop ? -1 : 1;
+    return $aTop ? ((int)$b['id'] <=> (int)$a['id']) : 0;
 }
 
 function dn_task_owner_sort_key(array $task): string
@@ -2044,26 +2054,40 @@ function dn_create_task(array $in): array
     $title = dn_sanitize_rich_text($in['title'] ?? '', 240);
     if (trim(strip_tags(str_replace('<br>', "\n", $title))) === '') dn_fail('请输入任务标题');
     $dueAt = dn_required_due_dt($in['due_at'] ?? null);
-    $id = dn_insert_task([
-        'task_type' => $type,
-        'dispatch_mode' => $type === 'dispatch' ? 'single' : 'single',
-        'title' => $title,
-        'project' => dn_sanitize_rich_text($in['project'] ?? '', 8000),
-        'description' => dn_str($in['description'] ?? '', 8000),
-        'priority' => dn_priority($in['priority'] ?? 'normal'),
-        'status' => $type === 'dispatch' && $assigned !== $uid ? 'pending_accept' : 'in_progress',
-        'created_by' => $uid,
-        'assigned_to' => $assigned,
-        'task_date' => dn_date($in['task_date'] ?? null),
-        'due_at' => $dueAt,
-        'is_read' => $assigned === $uid ? 1 : 0,
-        'linked_system' => dn_str($in['linked_system'] ?? '', 80) ?: null,
-        'linked_table' => dn_str($in['linked_table'] ?? '', 120) ?: null,
-        'linked_id' => dn_str($in['linked_id'] ?? '', 120) ?: null,
-        'linked_title' => dn_str($in['linked_title'] ?? '', 240) ?: null,
-        'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
-        'extra' => $in['extra'] ?? [],
-    ]);
+    $pdo = dispatch_next_db();
+    $personal = in_array($type, ['personal', 'private'], true);
+    $ownsTransaction = $personal && !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
+        $id = dn_insert_task([
+            'task_type' => $type,
+            'dispatch_mode' => $type === 'dispatch' ? 'single' : 'single',
+            'title' => $title,
+            'project' => dn_sanitize_rich_text($in['project'] ?? '', 8000),
+            'description' => dn_str($in['description'] ?? '', 8000),
+            'priority' => dn_priority($in['priority'] ?? 'normal'),
+            'status' => $type === 'dispatch' && $assigned !== $uid ? 'pending_accept' : 'in_progress',
+            'created_by' => $uid,
+            'assigned_to' => $assigned,
+            'task_date' => dn_date($in['task_date'] ?? null),
+            'due_at' => $dueAt,
+            'is_read' => $assigned === $uid ? 1 : 0,
+            'linked_system' => dn_str($in['linked_system'] ?? '', 80) ?: null,
+            'linked_table' => dn_str($in['linked_table'] ?? '', 120) ?: null,
+            'linked_id' => dn_str($in['linked_id'] ?? '', 120) ?: null,
+            'linked_title' => dn_str($in['linked_title'] ?? '', 240) ?: null,
+            'linked' => $in['linked_json'] ?? $in['linked'] ?? [],
+            'extra' => $in['extra'] ?? [],
+        ]);
+        if ($personal) {
+            $pdo->prepare("INSERT INTO dispatch_next_task_orders(user_id, task_id, table_type, sort_order, updated_at) VALUES(?,?,'personal',-1,NOW())")
+                ->execute([$uid, $id]);
+        }
+        if ($ownsTransaction) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
     return ['id' => $id];
 }
 
