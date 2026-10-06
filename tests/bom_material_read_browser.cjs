@@ -1,5 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'bom.php'),'utf8');new vm.Script(source.match(/<script>([\s\S]*?)<\/script>/)[1]);
+assert(source.split('<table id="materialTable">')[1].split('</thead>')[0].includes('data-col="costs"'),'Material fee column owns the wider cost layout');
+assert(source.split('<table id="bomTable">')[1].split('</thead>')[0].includes('data-col="price">单价'),'BOM editor retains the material price input column');
 const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const costContext={window:{},esc:escapeHtml,money:n=>Number(n||0).toFixed(2),hasPerm:()=>true};vm.createContext(costContext);
 vm.runInContext(fs.readFileSync(path.join(root,'assets/bom-lifecycle.js'),'utf8'),costContext);
