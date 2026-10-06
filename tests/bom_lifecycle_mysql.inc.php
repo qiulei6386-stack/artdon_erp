@@ -73,3 +73,27 @@ $pdo->exec("UPDATE bom_material_usages SET binding_status='needs_identity' WHERE
 $ap=bl_alias_plan($pdo);wfCheck(count($ap['entries'])===1,'Alias repair scopes only known exact display');
 $applied=bl_alias_apply($pdo,$ap['hash'],$backup);wfCheck($applied['updated']===1,'Alias repair updates only binding metadata');
 echo "Existing material display aliases: scoped plan and metadata-only repair passed\n";
+
+// Same name is not an identity: dimensions, model, brand, unit and the live indexed row must agree.
+$pdo->prepare("INSERT INTO bom_materials(name,brand,model,spec,price,unit) VALUES(?,?,?,?,?,?)")->execute(['Synthetic screw','Test','SCR','M3×4',2,'PCS']);
+$screw=(int)$pdo->lastInsertId();$component=['materialId'=>$screw,'name'=>'Synthetic screw','model'=>'SCR','spec'=>'M3×4','unit'=>'PCS','qty'=>4,'price'=>2,'process'=>3,'finish'=>'Zinc','finishCost'=>1,'finish2'=>'Coat','finishCost2'=>0.5];
+foreach(['COST-A','COST-B','COST-WRONG-SPEC','COST-WRONG-UNIT','COST-WRONG-BRAND','COST-STALE'] as $uid){
+    $data=$d;$data['project_uid']=$uid;$data['model']='57.99994';$data['rows']=[$component];
+    if($uid==='COST-B'){$data['rows'][0]['process']=4;$data['rows'][0]['qty']=1;}
+    if($uid==='COST-WRONG-SPEC')$data['rows'][0]['spec']='M4×4';
+    if($uid==='COST-WRONG-UNIT')$data['rows'][0]['unit']='KG';
+    if($uid==='COST-WRONG-BRAND')$data['rows'][0]['brand']='Other';
+    bw_execute($pdo,'save_project',requestData($pdo,$uid,$data),'Alice',true,$alice);
+}
+$pdo->exec("UPDATE bom_material_usages SET row_hash=REPEAT('0',64) WHERE project_uid='COST-STALE'");
+$beforeUsageRead=$pdo->query('SELECT project_uid,rows_json FROM bom_projects ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+$uses=bl_where_used($pdo,$screw,true);
+wfCheck($uses['total']===2&&$uses['excluded_count']===4&&$uses['text_candidates']===[],'Wrong dimensions/unit/brand and stale index excluded; no name-only candidates');
+wfCheck($uses['usages'][0]['spec']==='M3×4'&&$uses['usages'][0]['unit_cost']===6.5&&$uses['usages'][0]['subtotal']===26.0,'Material, process and both finishes included; quantity only applies to subtotal');
+wfCheck(count($uses['cost_profiles'])===2,'Different processing costs remain separate BOM variants');
+$hidden=bl_where_used($pdo,$screw,false);
+wfCheck($hidden['total']===2&&$hidden['cost_profiles']===[]&&!isset($hidden['usages'][0]['price'],$hidden['usages'][0]['unit_cost'],$hidden['usages'][0]['process']),'No fee details leak without cost permission');
+$material=bl_material_index($pdo)['ids'][$screw];$costs=bmu_material_costs($pdo,[$material])[$screw];
+wfCheck($costs['profile_count']===2&&$costs['usage_count']===2&&$costs['profiles'][1]['unit_cost']===7.5,'Paged material cost summary agrees with specification-checked BOM detail');
+wfCheck($beforeUsageRead===$pdo->query('SELECT project_uid,rows_json FROM bom_projects ORDER BY id')->fetchAll(PDO::FETCH_ASSOC),'Usage and fee projections never alter BOM rows');
+echo "Material BOM lookup: exact specification/unit/brand, stale exclusion, full per-unit costs, variants and permissions passed\n";

@@ -433,6 +433,17 @@ body{background:#f6f8fb}
 .bom-snapshot-detail{min-width:0;overflow:auto;padding:16px}.bom-snapshot-empty{display:grid;min-height:240px;place-items:center;color:#94a3b8}.bom-snapshot-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.bom-snapshot-summary>div{padding:10px;border:1px solid #e5e7eb;border-radius:9px;background:#fafcff}.bom-snapshot-summary span{display:block;color:#64748b;font-size:10px}.bom-snapshot-summary b{display:block;margin-top:4px;font-size:14px}.bom-snapshot-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.bom-snapshot-meta>div{padding:8px 10px;border-radius:8px;background:#f8fafc}.bom-snapshot-meta span{display:block;color:#64748b;font-size:10px}.bom-snapshot-meta b{font-size:12px}.bom-snapshot-note{margin:10px 0;padding:10px;border-left:3px solid #0f9e8f;background:#f1fbf9;color:#475569;font-size:12px}.bom-snapshot-table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:10px}.bom-snapshot-table{width:100%;min-width:860px;border-collapse:collapse}.bom-snapshot-table th,.bom-snapshot-table td{padding:8px;border-bottom:1px solid #edf1f5;text-align:left;font-size:11px}.bom-snapshot-table th{position:sticky;top:0;background:#f8fafc}.bom-snapshot-table td.num{text-align:right}.bom-snapshot-status{display:inline-flex;padding:3px 6px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:9px;font-weight:800}.bom-snapshot-status.confirmed{background:#ecfdf5;color:#047857}
 @media(max-width:760px){.bom-snapshot-body{grid-template-columns:1fr}.bom-snapshot-list{max-height:180px;border-right:0;border-bottom:1px solid #e5e7eb}.bom-snapshot-summary,.bom-snapshot-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+
+#materialTable{min-width:1760px}
+#materialTable th[data-col="costs"]{width:610px;min-width:610px}
+#materialTable th[data-col="spec"],#materialTable th[data-col="name"]{width:190px}
+.mat-bom-prices{min-width:570px;margin:5px 0;font-size:12px}
+.mat-bom-price-row{display:grid;grid-template-columns:55px 66px minmax(110px,1fr) minmax(110px,1fr) 91px 82px;border-bottom:1px solid #e2e8f0}
+.mat-bom-price-row>span,.mat-bom-price-row>strong{padding:6px 4px;overflow-wrap:anywhere}
+.mat-bom-price-head{background:#f1f5f9;color:#334155;font-weight:600}
+.mat-bom-price-row strong{color:#1d4ed8}
+.mat-master-price{font-size:12px;color:#64748b;margin-top:7px}
+.mat-master-price [contenteditable]{display:inline-block;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;color:#334155}
 </style>
 </head>
 <body>
@@ -587,7 +598,7 @@ body{background:#f6f8fb}
 </div>
 <div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存 BOM</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">转为预审</button><button id="bomWithdrawBtn" class="ghost" onclick="withdrawBomReview()" hidden>撤回审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">终审/锁定快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">退回草稿</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退回预审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">预审可编辑并同步报价；终审锁定物料方案，修改需退回预审。</span></div>
 <div id="bomReviewBar" class="bom-review-bar"></div>
-<div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="price">单价</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
+<div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="costs">BOM费用（单件）</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
 <div class="summary"><div class="sum-box"><span>材料成本</span><b id="matTotal">0.00</b></div><div class="sum-box"><span>人工费</span><b id="laborTotal">0.00</b></div><div class="sum-box"><span>包装/其它</span><b id="otherTotal">0.00</b></div><div class="sum-box"><span>总成本</span><b id="grandTotal">0.00</b></div><div class="sum-box"><span>建议报价</span><b id="suggestPrice">0.00</b></div><div class="sum-box"><span>利润金额</span><b id="profitAmount">0.00</b></div></div>
 </section>
 </section>
@@ -801,7 +812,7 @@ body{background:#f6f8fb}
         <label>供应商<input id="matSupplier" list="supplierOptions" placeholder="供应商"></label>
         <label class="wide2">物料名称<input id="matName" placeholder="物料名称，如 CREE 3030"></label>
         <label>型号/编码<input id="matModel" placeholder="型号/编码"></label>
-        <label>来源/待确认单价<input id="matPrice" type="number" step="0.0001" placeholder="单价"></label><label>价格状态<select id="matPriceStatus"><option value="pending">待确认</option><option value="confirmed">已确认标准价</option><option value="historical">历史价</option><option value="estimated">预估价</option></select></label><label>调价原因<input id="matPriceReason" placeholder="新增或调整价格时必填"></label><label><input type="checkbox" id="matIdentityConfirmed"> 身份与计价单位已核对</label>
+        <label>材料单价（未含加工/表面）<input id="matPrice" type="number" step="0.0001" placeholder="单价"></label><label>价格状态<select id="matPriceStatus"><option value="pending">待确认</option><option value="confirmed">已确认标准价</option><option value="historical">历史价</option><option value="estimated">预估价</option></select></label><label>调价原因<input id="matPriceReason" placeholder="新增或调整价格时必填"></label><label><input type="checkbox" id="matIdentityConfirmed"> 身份与计价单位已核对</label>
         <label>单位<input id="matUnit" placeholder="单位" value="PCS"></label>
         <label>关键词<input id="matKeyword" placeholder="关键词"></label>
         <label class="wide2">规格/备注<textarea id="matSpec" placeholder="规格/备注"></textarea></label>
@@ -1119,7 +1130,7 @@ function pumpMaterialImages(){
 async function readMaterialPage(seq){
   const body=$('materialsTbody');if(!body)return;
   body.innerHTML='<tr><td colspan="10" class="hint">正在读取当前页物料…</td></tr>';
-  const r=await api('materials_list',{...materialFilters(),page:materialPage,page_size:materialPageSize});
+  const r=await api('materials_list',{...materialFilters(),page:materialPage,page_size:materialPageSize,include_bom_costs:true});
   if(seq!==materialReadSeq)return;
   if(!r.ok){body.innerHTML=`<tr><td colspan="10">${esc(r.error||'读取失败')} <button class="ghost small" onclick="renderMaterials()">重试</button></td></tr>`;if($('matCount'))$('matCount').textContent='读取失败';return;}
   materialPageRows=r.materials||[];materialPage=r.page;materialTotalPages=r.pages;
@@ -1133,7 +1144,7 @@ async function readMaterialPage(seq){
   if($('matPageInput')){$('matPageInput').max=String(materialTotalPages);$('matPageInput').value=String(materialPage);}
   if($('matCount'))$('matCount').textContent=`共 ${r.total} 个物料`;
   localStorage.setItem('bom_material_page_size_v763',String(materialPageSize));localStorage.setItem('bom_material_page_v763',String(materialPage));
-  body.innerHTML=materialPageRows.map(m=>`<tr data-id="${m.id}"><td>${materialImageHtml(m)}</td>${['category','brand','name','model','spec','price','unit','supplier'].map(k=>`<td ${hasPerm('materials')?'contenteditable="true"':''} data-field="${k}" onblur="saveMaterialCell(this)">${esc(k==='price'&&m[k]!==''?money(m[k]):m[k])}</td>`).join('')}<td><small>${esc({confirmed:"标准价",pending:"价格待确认",historical:"历史价",estimated:"预估价"}[m.price_status]||"历史价")}${m.unit?"":" · 单位待确认"}${m.confirmed_price!=null?" · 生效标准价 "+money(m.confirmed_price):""}</small> <button class="small ghost" onclick="BomLifecycle.used(${m.id})">使用BOM</button> <button class="small ghost" onclick="BomLifecycle.history(${m.id})">价格记录</button> <button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('')||'<tr><td colspan="10" class="hint">没有符合条件的物料。</td></tr>';
+  body.innerHTML=materialPageRows.map(m=>`<tr data-id="${m.id}"><td>${materialImageHtml(m)}</td>${['category','brand','name','model','spec','costs','unit','supplier'].map(k=>k==='costs'?`<td>${BomLifecycle.materialCell(m)}</td>`:`<td ${hasPerm('materials')?'contenteditable="true"':''} data-field="${k}" onblur="saveMaterialCell(this)">${esc(m[k])}</td>`).join('')}<td><small>${esc({confirmed:"标准价",pending:"价格待确认",historical:"历史价",estimated:"预估价"}[m.price_status]||"历史价")}${m.unit?"":" · 单位待确认"}${m.confirmed_price!=null?" · 生效标准价 "+money(m.confirmed_price):""}</small> <button class="small ghost" onclick="BomLifecycle.used(${m.id})">使用BOM</button> <button class="small ghost" onclick="BomLifecycle.history(${m.id})">价格记录</button> <button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('')||'<tr><td colspan="10" class="hint">没有符合条件的物料。</td></tr>';
   hydrateMaterialImages(body);initResizableTable('materialTable','material_col_widths_v65');
   if(materialFocusId&&materialPageRows.some(m=>String(m.id)===String(materialFocusId)))focusMaterialRow(materialFocusId);
 }
@@ -1630,7 +1641,7 @@ async function saveMaterialCell(td){
     }
     m[field]=val;materialsLoaded=false;setStatus('物料已保存 '+nowText());
     const msg=document.createElement('span'); msg.className='material-status'; msg.textContent='已保存'; td.appendChild(msg); setTimeout(()=>msg.remove(),900);
-    renderBaseOptions();
+    renderBaseOptions();renderMaterials();
   }catch(e){td.textContent=String(m[field]??'');alert('保存失败：'+e.message)}
 }
 function initResizableTable(tableId, storageKey){
@@ -2262,6 +2273,6 @@ window.onload=function(){ applyBomHeaderCollapse(); applyEditorMoreState(); chec
 <script src="assets/bom-dashboard-read.js?v=20260909-1"></script>
 <style>#bomSnapshotVoidPanel details{max-width:100%}#bomSnapshotVoidPanel summary{cursor:pointer;color:#a42222;font-weight:600}#bomSnapshotVoidPanel label{display:block;margin:10px 0}#bomSnapshotVoidPanel textarea,#bomSnapshotVoidPanel select{display:block;width:100%;box-sizing:border-box;margin-top:6px;max-width:100%}#bomSnapshotVoidPanel button{white-space:normal}</style>
 <script src="assets/bom-snapshot-void.js?v=20260921-1"></script>
-<script src="assets/bom-lifecycle.js?v=20261006"></script>
+<script src="assets/bom-lifecycle.js?v=20261006-spec-cost"></script>
 </body>
 </html>

@@ -33,6 +33,9 @@ function bmr_read(PDO $pdo,array $d,bool $canCost,bool $canSupplier): array {
         $ids=array_column($rows,'id');$st=$pdo->prepare('SELECT material_id,identity_status,price_status,confirmed_price,price_version,revision,origin FROM bom_material_state WHERE material_id IN ('.implode(',',array_fill(0,count($ids),'?')).')');$st->execute($ids);$states=[];foreach($st->fetchAll(PDO::FETCH_ASSOC) as $v)$states[(int)$v['material_id']]=$v;
         foreach($rows as &$r){$v=$states[(int)$r['id']]??[];if(!$canCost)unset($v['confirmed_price'],$v['price_version']);$r=array_merge($r,$v);}unset($r);
     }
+    if($canCost&&!empty($d['include_bom_costs'])&&function_exists('bl_ready')&&bl_ready($pdo)&&$rows){
+        $costs=bmu_material_costs($pdo,$rows);foreach($rows as &$r)$r['bom_costs']=$costs[(int)$r['id']];unset($r);
+    }
     $facets=[];foreach(['category','brand','supplier'] as $field){
         $facets[$field]=[];if($field==='supplier'&&!$canSupplier)continue;
         $facets[$field]=$pdo->query("SELECT DISTINCT `$field` FROM bom_materials WHERE is_active=1 AND `$field`<>'' ORDER BY `$field`")->fetchAll(PDO::FETCH_COLUMN);

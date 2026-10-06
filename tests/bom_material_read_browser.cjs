@@ -1,5 +1,16 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'bom.php'),'utf8');new vm.Script(source.match(/<script>([\s\S]*?)<\/script>/)[1]);
+const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const costContext={window:{},esc:escapeHtml,money:n=>Number(n||0).toFixed(2),hasPerm:()=>true};vm.createContext(costContext);
+vm.runInContext(fs.readFileSync(path.join(root,'assets/bom-lifecycle.js'),'utf8'),costContext);
+const fixtureCost={currency:'RMB',process:3,finish:'Zinc <unsafe>',finishCost:1,finish2:'Coat',finishCost2:0.5,price:2,unit_cost:6.5,bom_count:1};
+const costHtml=costContext.window.BomLifecycle.materialCell({id:1,price:2,bom_costs:{profiles:[fixtureCost,{...fixtureCost,process:4,unit_cost:7.5}],profile_count:2,usage_count:2}});
+assert(costHtml.includes('6.5000')&&costHtml.includes('7.5000')&&costHtml.includes('2 种费用方案'));
+assert(costHtml.includes('材料单价')&&costHtml.includes('加工费')&&costHtml.includes('表面处理2 / 费'));
+assert(costHtml.includes('&lt;unsafe&gt;')&&!costHtml.includes('<unsafe>'));
+assert(!costContext.window.BomLifecycle.materialCell({price:'',bom_costs:{profiles:[fixtureCost]}}).includes('6.5000'));
+assert(costContext.window.BomLifecycle.materialCell({id:2,price:4}).includes('费用未配置'));
+console.log('BOM material fee display: full components, separate variants, escaping and hidden-cost permission passed');
 if(process.env.BOM_BROWSER_TEST!=='1'){console.log('BOM material syntax passed; browser opt-in BOM_BROWSER_TEST=1');process.exit(0);}
 const {chromium}=require('playwright');
 (async()=>{
@@ -10,7 +21,7 @@ const {chromium}=require('playwright');
   const data=Array.from({length:53},(_,i)=>({id:i+1,category:'电源',brand:'Test',name:'Synthetic '+(i+1),model:'M-'+(i+1),spec:'test',price:7,unit:'PCS',supplier:'Test',keyword:'',has_image:true}));
   await page.route('**/*',async route=>{
    const u=new URL(route.request().url());if(u.pathname==='/bom.php')return route.fulfill({contentType:'text/html',body:source.replace(/<\?php[\s\S]*?\?>/g,'')});
-   if(u.pathname==='/assets/bom-dashboard-read.js')return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,u.pathname),'utf8')});
+   if(['/assets/bom-dashboard-read.js','/assets/bom-lifecycle.js'].includes(u.pathname))return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,u.pathname),'utf8')});
    if(u.pathname!=='/bom_api.php')return route.abort();const action=u.searchParams.get('action'),d=route.request().postDataJSON();calls.push({action,d});let r={ok:true};
    const can={dashboard:true,edit:true,materials:true,cost_view:true,supplier_view:true};
    if(action==='me')r={ok:true,login:true,user:{username:'test'},can};

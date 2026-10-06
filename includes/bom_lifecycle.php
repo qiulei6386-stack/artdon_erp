@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/bom_material_usage.php';
 // Explicitly installed by the release CLI. Including this file performs no IO.
 function bl_ready(PDO $pdo): bool {
     try{return $pdo->query("SELECT value FROM bom_workflow_meta WHERE name='lifecycle_v2'")->fetchColumn()==='ready';}catch(Throwable $e){return false;}
@@ -167,14 +168,7 @@ function bl_summary(PDO $pdo,array $p): array {
     $now['approval_delta']=$now['approval_cost']===null?null:round($now['cost']-$now['approval_cost'],4);return $now;
 }
 function bl_where_used(PDO $pdo,int $id,bool $canCost): array {
-    $st=$pdo->prepare("SELECT u.project_uid,u.row_no,u.material_id,u.binding_status,p.name,p.model,p.version_no,p.review_status,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].qty'))),JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].quantity'))),0) AS qty,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].price'))),JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].unit_price'))),0) AS price FROM bom_material_usages u JOIN bom_projects p ON p.project_uid=u.project_uid WHERE u.material_id=? AND p.is_active=1 ORDER BY p.model,u.project_uid,u.row_no LIMIT 2000");$st->execute([$id]);$out=[];
-    while($u=$st->fetch(PDO::FETCH_ASSOC)){$u['row_no']=(int)$u['row_no']+1;if(!$canCost)unset($u['price']);$out[]=$u;}
-    $st=$pdo->prepare('SELECT name FROM bom_materials WHERE id=?');$st->execute([$id]);$name=trim((string)$st->fetchColumn());$candidates=[];
-    if(mb_strlen($name)>=2){
-        $sql="SELECT u.project_uid,u.row_no,u.material_id,p.name,p.model,p.version_no,p.review_status FROM bom_material_usages u JOIN bom_projects p ON p.project_uid=u.project_uid WHERE p.is_active=1 AND u.material_id<>? AND LOCATE(?,CONCAT_WS(' ',JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].name'))),JSON_UNQUOTE(JSON_EXTRACT(p.rows_json,CONCAT('$[',u.row_no,'].spec')))))>0 ORDER BY p.model,u.row_no LIMIT 100";
-        $st=$pdo->prepare($sql);$st->execute([$id,$name]);while($u=$st->fetch(PDO::FETCH_ASSOC)){$u['row_no']=(int)$u['row_no']+1;$u['binding_status']='text_candidate';$candidates[]=$u;}
-    }
-    return ['ok'=>true,'usages'=>$out,'text_candidates'=>$candidates,'limit'=>2000];
+    return bmu_where_used($pdo,$id,$canCost);
 }
 function bl_price_history(PDO $pdo,array $d): array {
     $id=(int)($d['material_id']??0);$uid=trim((string)($d['project_uid']??''));if(!$id&&$uid==='')throw new RuntimeException('缺少物料或BOM标识');
