@@ -19,6 +19,17 @@ function bl_identity(array $r): string {
     $parts=[];foreach(['name','model','spec'] as $key)$parts[]=mb_strtolower(preg_replace('/\s+/u',' ',trim((string)($r[$key]??''))),'UTF-8');
     return hash('sha256',bw_json($parts));
 }
+function bl_identity_matches(array $r,array $m): bool {
+    $norm=static fn($v)=>mb_strtolower(preg_replace('/\s+/u',' ',trim((string)$v)),'UTF-8');
+    if(!empty($r['unit'])&&!empty($m['unit'])&&$norm($r['unit'])!==$norm($m['unit']))return false;
+    if(bl_identity($r)===bl_identity($m))return true;
+    // Recognize only the exact display strings emitted by the existing material picker.
+    // Never remove dimensions, infer a model, or merge two different master IDs.
+    if(!empty($r['model'])&&$norm($r['model'])!==$norm($m['model']??''))return false;
+    $names=[$m['name']??''];if(!empty($m['brand']))$names[]=trim($m['brand']).' / '.trim($m['name']??'');
+    $specs=[$m['spec']??''];if(!empty($m['model'])){if(empty($m['spec']))$specs[]=$m['model'];else $specs[]=trim($m['model']).' / '.trim($m['spec']);}
+    return in_array($norm($r['name']??''),array_map($norm,$names),true)&&in_array($norm($r['spec']??''),array_map($norm,$specs),true);
+}
 function bl_row_hash(array $r): string {
     return hash('sha256',bw_json(array_intersect_key($r,array_flip(['name','model','spec','materialId','qty','price','process','finishCost','finishCost2']))));
 }
@@ -29,7 +40,7 @@ function bl_event(PDO $pdo,?int $material,?string $uid,?int $row,string $field,$
     return (int)$pdo->lastInsertId();
 }
 function bl_material_index(PDO $pdo): array {
-    $out=[];$st=$pdo->query('SELECT id,name,model,spec,unit,price,is_active FROM bom_materials ORDER BY id');
+    $out=[];$st=$pdo->query('SELECT id,brand,name,model,spec,unit,price,is_active FROM bom_materials ORDER BY id');
     while($m=$st->fetch(PDO::FETCH_ASSOC)){$out['ids'][(int)$m['id']]=$m;if((int)$m['is_active']===1)$out['keys'][bl_identity($m)][]=(int)$m['id'];}
     return $out;
 }
@@ -40,7 +51,7 @@ function bl_bind(PDO $pdo,array $p,string $actor,array &$index,string $batch): a
         if(trim($r['name'].($r['model']??'').$r['spec'])===''){$counts['empty']++;continue;}
         $key=bl_identity($r);$id=(int)$r['materialId'];$status='exact';
         if($id&&isset($index['ids'][$id])&&(int)$index['ids'][$id]['is_active']===1){
-            if(bl_identity($index['ids'][$id])!==$key&&empty($r['materialBindingConfirmed']))$status='needs_identity';
+            if(!bl_identity_matches($r,$index['ids'][$id])&&empty($r['materialBindingConfirmed']))$status='needs_identity';
         }else{
             $ids=$index['keys'][$key]??[];
             if(count($ids)===1)$id=$ids[0];else{
@@ -57,6 +68,23 @@ function bl_bind(PDO $pdo,array $p,string $actor,array &$index,string $batch): a
         $counts['bound']++;if($status==='needs_identity')$counts['uncertain']++;
     }
     return $counts;
+}
+function bl_alias_plan(PDO $pdo): array {
+    $index=bl_material_index($pdo);$st=$pdo->query("SELECT u.project_uid,u.row_no,u.material_id,u.row_hash,b.rows_json FROM bom_material_usages u JOIN bom_projects b ON b.project_uid=u.project_uid WHERE u.binding_status='needs_identity' AND b.is_active=1 ORDER BY u.project_uid,u.row_no");$entries=[];
+    while($u=$st->fetch(PDO::FETCH_ASSOC)){$r=bw_rows($u['rows_json'])[(int)$u['row_no']]??null;$m=$index['ids'][(int)$u['material_id']]??null;
+        if($r&&$m&&(int)$m['is_active']===1&&bl_identity_matches($r,$m)&&hash_equals($u['row_hash'],bl_row_hash($r))){unset($u['rows_json']);$u['material_identity']=hash('sha256',bw_json($m));$entries[]=$u;}
+    }
+    return ['entries'=>$entries,'hash'=>hash('sha256',bw_json($entries))];
+}
+function bl_alias_apply(PDO $pdo,string $expected,string $backup): array {
+    if(!bl_ready($pdo)||!is_dir($backup)||is_link($backup))throw new RuntimeException('需已初始化版本及私有备份目录');
+    $pdo->beginTransaction();
+    try{bl_lock($pdo);$plan=bl_alias_plan($pdo);if(!hash_equals($expected,$plan['hash']))throw new RuntimeException('显示格式修复计划已变化');
+        $file=$backup.'/alias-bindings-before.json';$f=fopen($file,'x');if(!$f)throw new RuntimeException('不能创建关联恢复记录');chmod($file,0600);$bytes=bw_json($plan);if(fwrite($f,$bytes)!==strlen($bytes))throw new RuntimeException('恢复记录写入不完整');fclose($f);
+        $ids=[];foreach($plan['entries'] as $u){$pdo->prepare("UPDATE bom_material_usages SET binding_status='exact' WHERE project_uid=? AND row_no=? AND material_id=? AND row_hash=? AND binding_status='needs_identity'")->execute([$u['project_uid'],$u['row_no'],$u['material_id'],$u['row_hash']]);$ids[]=(int)$u['material_id'];}
+        $sync=bl_propagate($pdo,array_values(array_unique($ids)),'历史显示格式识别','现有物料ID与页面显示名称/规格精确一致','alias-'.$expected);
+        $pdo->commit();return ['updated'=>count($plan['entries']),'sync'=>$sync,'hash'=>$expected];
+    }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
 }
 function bl_current(PDO $pdo,array $p): array {
     $st=$pdo->prepare('SELECT u.*,s.confirmed_price,s.price_version,s.identity_status FROM bom_material_usages u LEFT JOIN bom_material_state s ON s.material_id=u.material_id WHERE u.project_uid=?');$st->execute([$p['project_uid']]);$bindings=[];foreach($st->fetchAll(PDO::FETCH_ASSOC) as $u)$bindings[(int)$u['row_no']]=$u;

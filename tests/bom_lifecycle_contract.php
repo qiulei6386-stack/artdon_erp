@@ -15,3 +15,11 @@ $p=lifecycle_publication('A',0);$map=[];bcp_add_publication($map,$p);lifecycle_c
 $p['source']='draft_unpublished';$map=[];bcp_add_publication($map,$p);lifecycle_check($map===[],'Draft publication excluded');
 $p=lifecycle_publication('A',10);$m=json_decode($p['payload_json'],true);$m['quote_eligible']=false;$p['payload_json']=bw_json($m);$map=[];bcp_add_publication($map,$p);lifecycle_check($map===[],'Unconverted foreign currency cannot masquerade as RMB');
 echo "Lifecycle cost mapping: explicit choice, exact binding, lower revision, zero, draft and currency exclusion passed\n";
+
+if(!function_exists('mb_strtolower')){function mb_strtolower($v,$encoding='UTF-8'){return strtolower($v);}}
+$m=['name'=>'Driver','brand'=>'Synthetic','model'=>'M10','spec'=>'24V 30W','unit'=>'PCS'];
+lifecycle_check(bl_identity_matches(['name'=>'Synthetic / Driver','spec'=>'M10 / 24V 30W'],$m),'Existing picker display aliases recognized for the same ID');
+lifecycle_check(!bl_identity_matches(['name'=>'Synthetic / Driver','spec'=>'M10 / 24V 20W'],$m),'Different electrical specification is never a display alias');
+lifecycle_check(!bl_identity_matches(['name'=>'Driver','spec'=>'M10'],$m),'Missing detailed specification is not accepted');
+lifecycle_check(!bl_identity_matches(['name'=>'Driver','spec'=>'24V 30W','unit'=>'KG'],$m),'Conflicting units require verification');
+echo "Material display identity: exact picker format recognized; differing spec and units held\n";

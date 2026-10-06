@@ -48,7 +48,9 @@ function bl_migration_apply(PDO $pdo,string $expected,string $backup): array {
 if(realpath($_SERVER['SCRIPT_FILENAME']??'')===__FILE__){
     require_once dirname(__DIR__).'/includes/db.php';$pdo=db();
     try{
-        if(($argv[1]??'plan')==='apply')$out=bl_migration_apply($pdo,$argv[2]??'',$argv[3]??'');
+        if(($argv[1]??'')==='alias-apply')$out=bl_alias_apply($pdo,$argv[2]??'',$argv[3]??'');
+        elseif(($argv[1]??'')==='alias-plan'){$pdo->exec('SET TRANSACTION READ ONLY');$pdo->beginTransaction();$plan=bl_alias_plan($pdo);$out=['hash'=>$plan['hash'],'count'=>count($plan['entries'])];$pdo->rollBack();}
+        elseif(($argv[1]??'plan')==='apply')$out=bl_migration_apply($pdo,$argv[2]??'',$argv[3]??'');
         else{$pdo->exec('SET TRANSACTION READ ONLY');$pdo->beginTransaction();$p=bl_migration_plan($pdo);$out=['hash'=>$p['hash'],'counts'=>$p['counts']];$pdo->rollBack();}
         echo bw_json($out)."\n";
     }catch(Throwable $e){fwrite(STDERR,get_class($e).': '.$e->getMessage()."\n");exit(1);}

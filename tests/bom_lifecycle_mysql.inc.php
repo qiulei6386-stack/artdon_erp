@@ -64,3 +64,12 @@ wfCheck(qbv_resolve($pdo,['model'=>'57.99992'])['choose']===true,'Preliminary ze
 bw_execute($pdo,'approve_project',requestData($pdo,'LIFE-ZERO'),'Reviewer',true);
 wfCheck(qbv_resolve($pdo,['model'=>'57.99992'])['patch']['cost_rmb']===0.0,'Explicit final zero is allowed');
 echo "Zero cost: preliminary blocked, explicit final approval allowed\n";
+
+$alias=$d;$alias['project_uid']='LIFE-ALIAS';$alias['model']='57.99993';$alias['rows']=[['materialId'=>$mid,'name'=>'Synthetic / Synthetic lifecycle material','spec'=>'','qty'=>1,'price'=>12,'priceStatus'=>'confirmed']];
+$pdo->exec("UPDATE bom_materials SET brand='Synthetic' WHERE id=".$mid);
+bw_execute($pdo,'save_project',requestData($pdo,'LIFE-ALIAS',$alias),'Alice',true,$alice);
+wfCheck($pdo->query("SELECT binding_status FROM bom_material_usages WHERE project_uid='LIFE-ALIAS'")->fetchColumn()==='exact','Existing picker display keeps exact ID binding');
+$pdo->exec("UPDATE bom_material_usages SET binding_status='needs_identity' WHERE project_uid='LIFE-ALIAS'");
+$ap=bl_alias_plan($pdo);wfCheck(count($ap['entries'])===1,'Alias repair scopes only known exact display');
+$applied=bl_alias_apply($pdo,$ap['hash'],$backup);wfCheck($applied['updated']===1,'Alias repair updates only binding metadata');
+echo "Existing material display aliases: scoped plan and metadata-only repair passed\n";
