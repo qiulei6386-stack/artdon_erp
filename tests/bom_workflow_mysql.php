@@ -119,3 +119,5 @@ wfCheck(qbv_resolve($pdo,$vp,$v2['version']['snapshot_id'])['patch']['cost_rmb']
 echo "Quote BOM versions MySQL: reapproval/lower price, immutable history, snapshot-aligned components, stale publication, foreign selection, forged cost, catalog and ambiguity passed\n";
 require __DIR__.'/bom_snapshot_void_mysql.inc.php';
 require __DIR__.'/bom_unreviewed_sync_mysql.inc.php';
+
+require __DIR__.'/bom_lifecycle_mysql.inc.php';

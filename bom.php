@@ -521,7 +521,7 @@ body{background:#f6f8fb}
         <button id="dashRangeAll" onclick="setDashboardRange('all')">全部</button>
         <button id="dashRangeCustom" onclick="setDashboardRange('custom')">自定义时间</button>
       </div>
-      <div class="dashboard-filters">
+      <div class="dashboard-filters"><select id="dashStage" onchange="renderDashboard()"><option value="">全部阶段</option><option value="draft">草稿</option><option value="preliminary">预审</option><option value="approved">终审</option></select>
         <input id="dashKeyword" type="search" maxlength="120" aria-label="搜索 BOM名称、客户、型号或物料" placeholder="搜索 BOM名称 / 客户 / 型号 / 物料" oninput="renderDashboard()">
         <select id="dashCustomer" onchange="renderDashboard()"></select>
         <select id="dashType" onchange="renderDashboard()"></select>
@@ -585,7 +585,7 @@ body{background:#f6f8fb}
 <div class="editor-more-panel" id="editorMorePanel">
   <div class="editor-more-fields"><label>利润率/加价率 % <input id="profitRate" type="number" step="0.1" oninput="touch();calc()" value="30"></label><label>报价模式 <select id="quoteMode" onchange="touch();calc()"><option value="markup">加价率</option><option value="margin">毛利率</option></select></label><label>汇率/备用 <input id="exchange" type="number" step="0.0001" oninput="touch()" value="1"></label><label class="editor-note-label">备注 <textarea id="note" class="note" oninput="touch()" placeholder="备注"></textarea></label></div>
 </div>
-<div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存草稿</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">提交审核</button><button id="bomWithdrawBtn" class="ghost" onclick="withdrawBomReview()" hidden>撤回审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">审核通过/生成快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">驳回</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">待审核可由提交人或管理员撤回；已审核须退审后编辑。</span></div>
+<div class="actions editor-actions"><button id="bomAddRowBtn" onclick="addRow()">添加材料</button><button id="bomNamingCreateBtn" class="ghost" onclick="openNamingBomModal('create')">从命名型号新建</button><button id="bomNamingBindBtn" class="ghost" onclick="openNamingBomModal('bind')">绑定/更换型号</button><button id="bomSaveBtn" class="ok" onclick="saveCurrent()">保存 BOM</button><button id="bomSubmitBtn" class="ghost" onclick="submitBomReview()">转为预审</button><button id="bomWithdrawBtn" class="ghost" onclick="withdrawBomReview()" hidden>撤回审核</button><button id="bomApproveBtn" class="ok" onclick="approveBomProject()">终审/锁定快照</button><button id="bomRejectBtn" class="ghost" onclick="rejectBomProject()">退回草稿</button><button id="bomUnapproveBtn" class="ghost" onclick="unapproveBomProject()">退回预审</button><button id="bomSnapshotsBtn" class="ghost" onclick="openBomSnapshots()">快照</button><button class="ghost" onclick="duplicateProject()">复制当前</button><button class="table-tool-btn" type="button" onclick="openColumnPanel()">列</button><button class="table-tool-btn" type="button" onclick="resetBomColumnWidths()">重宽</button><button class="ghost" onclick="exportCurrentBomExcel()">导Excel</button><button id="bomImportBtn" class="ghost" onclick="openExcelImport('bom')">导入</button><button id="bomDeleteBtn" class="danger" onclick="deleteProject()">删除</button><span class="hint">预审可编辑并同步报价；终审锁定物料方案，修改需退回预审。</span></div>
 <div id="bomReviewBar" class="bom-review-bar"></div>
 <div class="table-wrap"><table id="bomTable"><thead><tr><th data-col="no">序号</th><th data-col="category">类别</th><th data-col="name">物料名称</th><th data-col="spec">规格/备注</th><th data-col="qty">数量</th><th data-col="process">加工费</th><th data-col="finish">表面处理 / 处理费</th><th data-col="price">单价</th><th data-col="subtotal">小计</th><th data-col="action">操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
 <div class="summary"><div class="sum-box"><span>材料成本</span><b id="matTotal">0.00</b></div><div class="sum-box"><span>人工费</span><b id="laborTotal">0.00</b></div><div class="sum-box"><span>包装/其它</span><b id="otherTotal">0.00</b></div><div class="sum-box"><span>总成本</span><b id="grandTotal">0.00</b></div><div class="sum-box"><span>建议报价</span><b id="suggestPrice">0.00</b></div><div class="sum-box"><span>利润金额</span><b id="profitAmount">0.00</b></div></div>
@@ -642,7 +642,7 @@ body{background:#f6f8fb}
 
 <section id="materialsPage" class="library hide"><div class="card"><h2 style="margin-top:0">共享物料库</h2><p class="hint">这里建立芯片、电源、透镜、外壳、包装等常用物料。报价系统也会读取这个 MySQL 物料库。</p>
 <div class="material-add-bar"><button class="ok" onclick="openMaterialEditor()">新增物料</button><button class="ghost" onclick="syncWeightProfilesToBom()">同步重量型材</button><button class="ghost" onclick="exportMaterialsExcel()">导Excel</button><button class="ghost" onclick="openExcelImport('materials')">导入</button><button class="ghost" onclick="downloadMaterialTemplateExcel()">模板</button><span class="spacer"></span><span class="hint">Excel导入导出，保存后定位。</span></div>
-<div class="material-search-row"><input id="matSearch" placeholder="搜索物料名称/型号/规格/供应商" oninput="materialPage=1;renderMaterials()"><select id="matDateFilter" class="mat-date-filter" onchange="materialPage=1;renderMaterials()"><option value="">全部时间</option><option value="today">今天新增</option><option value="yesterday">昨天新增</option><option value="3">近 3 天新增</option><option value="7">近 7 天新增</option></select><select id="matFilterCategory" onchange="materialPage=1;renderMaterials()"></select><select id="matFilterBrand" onchange="materialPage=1;renderMaterials()"></select><select id="matFilterSupplier" onchange="materialPage=1;renderMaterials()"></select><input id="newMatCategory" placeholder="新增分类"><input id="newMatBrand" placeholder="新增品牌"><input id="newMatSupplier" placeholder="新增供应商"><button class="ghost" onclick="addMaterialCategory()">新增分类</button><button class="ghost" onclick="addMaterialBrand()">新增品牌</button><button class="ghost" onclick="addMaterialSupplier()">新增供应商</button><span class="hint" id="matCount"></span></div>
+<div class="material-search-row"><input id="matSearch" placeholder="搜索物料名称/型号/规格/供应商" oninput="materialPage=1;renderMaterials()"><select id="matDateFilter" class="mat-date-filter" onchange="materialPage=1;renderMaterials()"><option value="">全部时间</option><option value="today">今天新增</option><option value="yesterday">昨天新增</option><option value="3">近 3 天新增</option><option value="7">近 7 天新增</option></select><select id="matStateFilter" onchange="renderMaterials()"><option value="">全部核对状态</option><option value="needs_unit">单位待确认</option><option value="pending">价格待确认</option><option value="historical">历史价</option><option value="confirmed">已确认标准价</option></select><select id="matFilterCategory" onchange="materialPage=1;renderMaterials()"></select><select id="matFilterBrand" onchange="materialPage=1;renderMaterials()"></select><select id="matFilterSupplier" onchange="materialPage=1;renderMaterials()"></select><input id="newMatCategory" placeholder="新增分类"><input id="newMatBrand" placeholder="新增品牌"><input id="newMatSupplier" placeholder="新增供应商"><button class="ghost" onclick="addMaterialCategory()">新增分类</button><button class="ghost" onclick="addMaterialBrand()">新增品牌</button><button class="ghost" onclick="addMaterialSupplier()">新增供应商</button><span class="hint" id="matCount"></span></div>
 <div class="mat-pagebar"><div class="mat-pagebar-left"><span>每页</span><select id="matPageSize" onchange="setMaterialPageSize(this.value)"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="500">500</option></select><span id="matPageInfo">第 1 / 1 页</span></div><div class="mat-pagebar-right"><button class="ghost small" onclick="setMaterialPage(1)">首页</button><button class="ghost small" onclick="setMaterialPage(materialPage-1)">上页</button><input id="matPageInput" type="number" min="1" value="1" onchange="setMaterialPage(this.value)"><button class="ghost small" onclick="setMaterialPage(materialPage+1)">下页</button><button class="ghost small" onclick="setMaterialPage(materialTotalPages)">末页</button></div></div>
 <div class="material-list"><table id="materialTable"><thead><tr><th data-col="image">图片</th><th data-col="category">分类</th><th data-col="brand">品牌</th><th data-col="name">物料名称</th><th data-col="model">型号</th><th data-col="spec">规格</th><th data-col="price">单价</th><th data-col="unit">单位</th><th data-col="supplier">供应商</th><th data-col="action">操作</th></tr></thead><tbody id="materialsTbody"></tbody></table></div>
 </div></section>
@@ -801,7 +801,7 @@ body{background:#f6f8fb}
         <label>供应商<input id="matSupplier" list="supplierOptions" placeholder="供应商"></label>
         <label class="wide2">物料名称<input id="matName" placeholder="物料名称，如 CREE 3030"></label>
         <label>型号/编码<input id="matModel" placeholder="型号/编码"></label>
-        <label>单价<input id="matPrice" type="number" step="0.0001" placeholder="单价"></label>
+        <label>来源/待确认单价<input id="matPrice" type="number" step="0.0001" placeholder="单价"></label><label>价格状态<select id="matPriceStatus"><option value="pending">待确认</option><option value="confirmed">已确认标准价</option><option value="historical">历史价</option><option value="estimated">预估价</option></select></label><label>调价原因<input id="matPriceReason" placeholder="新增或调整价格时必填"></label><label><input type="checkbox" id="matIdentityConfirmed"> 身份与计价单位已核对</label>
         <label>单位<input id="matUnit" placeholder="单位" value="PCS"></label>
         <label>关键词<input id="matKeyword" placeholder="关键词"></label>
         <label class="wide2">规格/备注<textarea id="matSpec" placeholder="规格/备注"></textarea></label>
@@ -1059,7 +1059,7 @@ function mapBomProject(p, detail=false){
   const rows=normalizeBomRows(p.rows,p.rows_json);
   const hasRows=Array.isArray(p.rows);
   const o={project_uid:p.project_uid,id:p.project_uid,name:p.name,customer:p.customer,model:p.model,productType:p.product_type,versionNo:p.version_no||'V1',variantLabel:p.variant_label||'通用版',reviewStatus:p.review_status||'draft',reviewStatusLabel:p.review_status_label||'',reviewNote:p.review_note||'',submittedBy:p.submitted_by||'',submittedAt:p.submitted_at||'',approvedBy:p.approved_by||'',approvedAt:p.approved_at||'',latestSnapshotId:p.latest_snapshot_id||'',snapshotCount:Number(p.snapshot_count||0)||0,latestSnapshotAt:p.latest_snapshot_at||'',priceSummary:p.price_summary||null,totalsSummary:p.totals_summary||null,rowCount:Number(p.row_count ?? rows.length ?? 0)||0,currency:p.currency,productImage:bomProjectDisplayImage(p),productImageDb:p.product_image||'',labor:+p.labor,other:+p.other,profitRate:+p.profit_rate,quoteMode:p.quote_mode,exchange:+p.exchange_rate,note:p.note,rows:hasRows||detail?rows:[],rowsLoaded:!!(detail||hasRows),createdAt:p.created_at,updatedAt:p.updated_at,createdBy:p.created_by,updatedBy:p.updated_by,linkedSystem:p.linked_system||'',linkedId:p.linked_id||'',linkedTitle:p.linked_title||'',linkedJson:p.linked_json||'',namingSnapshotJson:p.naming_snapshot_json||'',namingSync:p.naming_sync||null};
-  o.revision=String(p.revision||'');o.costPublication=p.cost_publication||null;o.namingType=bomProjectNamingType(o);o.canWithdrawReview=p.can_withdraw_review===true;
+  o.savedPriceSignature=JSON.stringify(o.rows.map(r=>[r.price,r.process,r.finishCost,r.finishCost2,r.priceMode||'library']));o.lifecycleV2=!!p.lifecycle_v2;o.currentReference=p.current_reference||null;o.revision=String(p.revision||'');o.costPublication=p.cost_publication||null;o.namingType=bomProjectNamingType(o);o.canWithdrawReview=p.can_withdraw_review===true;
   return o;
 }
 function bomProjectRowCount(p){return Number(p?.rowCount ?? (Array.isArray(p?.rows)?p.rows.length:0))||0}
@@ -1094,7 +1094,7 @@ async function ensureMaterialsLoaded(force=false){
 }
 let materialsError='',materialReadSeq=0,materialReadTimer=null,materialPageRows=[];
 const materialThumbCache=new Map();let materialThumbActive=0;const materialThumbQueue=[];
-function materialFilters(){return{keyword:$('matSearch')?.value||'',category:$('matFilterCategory')?.value||'',brand:$('matFilterBrand')?.value||'',supplier:$('matFilterSupplier')?.value||'',date:$('matDateFilter')?.value||''}}
+function materialFilters(){return{state:$('matStateFilter')?.value||'',keyword:$('matSearch')?.value||'',category:$('matFilterCategory')?.value||'',brand:$('matFilterBrand')?.value||'',supplier:$('matFilterSupplier')?.value||'',date:$('matDateFilter')?.value||''}}
 function materialImageHtml(m,cls='mini-thumb'){
   return m.has_image?`<img class="${cls}" data-material-image="${Number(m.id)}" loading="lazy" alt="物料图片">`:'';
 }
@@ -1133,7 +1133,7 @@ async function readMaterialPage(seq){
   if($('matPageInput')){$('matPageInput').max=String(materialTotalPages);$('matPageInput').value=String(materialPage);}
   if($('matCount'))$('matCount').textContent=`共 ${r.total} 个物料`;
   localStorage.setItem('bom_material_page_size_v763',String(materialPageSize));localStorage.setItem('bom_material_page_v763',String(materialPage));
-  body.innerHTML=materialPageRows.map(m=>`<tr data-id="${m.id}"><td>${materialImageHtml(m)}</td>${['category','brand','name','model','spec','price','unit','supplier'].map(k=>`<td ${hasPerm('materials')?'contenteditable="true"':''} data-field="${k}" onblur="saveMaterialCell(this)">${esc(k==='price'&&m[k]!==''?money(m[k]):m[k])}</td>`).join('')}<td><button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('')||'<tr><td colspan="10" class="hint">没有符合条件的物料。</td></tr>';
+  body.innerHTML=materialPageRows.map(m=>`<tr data-id="${m.id}"><td>${materialImageHtml(m)}</td>${['category','brand','name','model','spec','price','unit','supplier'].map(k=>`<td ${hasPerm('materials')?'contenteditable="true"':''} data-field="${k}" onblur="saveMaterialCell(this)">${esc(k==='price'&&m[k]!==''?money(m[k]):m[k])}</td>`).join('')}<td><small>${esc({confirmed:"标准价",pending:"价格待确认",historical:"历史价",estimated:"预估价"}[m.price_status]||"历史价")}${m.unit?"":" · 单位待确认"}${m.confirmed_price!=null?" · 生效标准价 "+money(m.confirmed_price):""}</small> <button class="small ghost" onclick="BomLifecycle.used(${m.id})">使用BOM</button> <button class="small ghost" onclick="BomLifecycle.history(${m.id})">价格记录</button> <button class="small ghost" onclick="editMaterial(${m.id})">编辑</button> <button class="small danger" onclick="deleteMaterial(${m.id})">删</button></td></tr>`).join('')||'<tr><td colspan="10" class="hint">没有符合条件的物料。</td></tr>';
   hydrateMaterialImages(body);initResizableTable('materialTable','material_col_widths_v65');
   if(materialFocusId&&materialPageRows.some(m=>String(m.id)===String(materialFocusId)))focusMaterialRow(materialFocusId);
 }
@@ -1168,8 +1168,8 @@ function updateBomWorkflowUI(){
   set('bomSubmitBtn',ready&&hasPerm('edit')&&['draft','rejected'].includes(status));
   set('bomWithdrawBtn',ready&&hasPerm('edit')&&status==='pending'&&p.canWithdrawReview===true);
   if($('bomWithdrawBtn'))$('bomWithdrawBtn').hidden=status!=='pending';
-  set('bomApproveBtn',ready&&hasPerm('approve_bom')&&status==='pending');
-  set('bomRejectBtn',ready&&hasPerm('reject_bom')&&status==='pending');
+  set('bomApproveBtn',ready&&hasPerm('approve_bom')&&['pending','preliminary'].includes(status));
+  set('bomRejectBtn',ready&&hasPerm('reject_bom')&&['pending','preliminary'].includes(status));
   set('bomUnapproveBtn',ready&&hasPerm('unapprove_bom')&&status==='approved');
   set('bomSnapshotsBtn',!!p&&Number(p.snapshotCount||0)>0);
 }
@@ -1250,7 +1250,7 @@ function showPage(p){
 }
 function rowSub(r){return Number(r.qty||0)*(Number(r.price||0)+Number(r.process||0)+Number(r.finishCost||0)+Number(r.finishCost2||0))}
 function totals(p){if(p&&!p.rowsLoaded&&p.totalsSummary){const s=p.totalsSummary;return{mat:+(s.material??s.mat??0)||0,labor:+(s.labor??0)||0,other:+(s.other??0)||0,total:+(s.total??0)||0,suggest:+(s.suggest??0)||0,profit:+(s.profit??0)||0}}const mat=(p.rows||[]).reduce((s,r)=>s+rowSub(r),0),labor=+p.labor||0,other=+p.other||0,total=mat+labor+other,rate=+p.profitRate||0,suggest=p.quoteMode==='margin'?(rate>=100?0:total/(1-rate/100)):total*(1+rate/100);return{mat,labor,other,total,suggest,profit:suggest-total}}
-function bomReviewLabel(s){return ({draft:'草稿',pending:'待审核',approved:'已审核',rejected:'已驳回'})[s||'draft']||'草稿'}
+function bomReviewLabel(s){return ({draft:'草稿',pending:'待审核',preliminary:'预审',approved:'终审',rejected:'已驳回'})[s||'draft']||'草稿'}
 function bomPriceStatusLabel(s){return ({estimated:'预估价',confirmed:'确认价',pending:'待确认',historical:'历史价'})[s||'estimated']||'预估价'}
 function priceStatusOptions(v){return ['estimated','confirmed','pending','historical'].map(x=>`<option value="${x}" ${String(v||'estimated')===x?'selected':''}>${bomPriceStatusLabel(x)}</option>`).join('')}
 function bomPriceSummary(p){if(p&&(!p.rowsLoaded||!Array.isArray(p.rows)||!p.rows.length)&&p.priceSummary)return{total:+p.priceSummary.total||0,estimated:+p.priceSummary.estimated||0,confirmed:+p.priceSummary.confirmed||0,pending:+p.priceSummary.pending||0,historical:+p.priceSummary.historical||0};const out={total:0,estimated:0,confirmed:0,pending:0,historical:0};(p?.rows||[]).forEach(r=>{out.total++;const s=['estimated','confirmed','pending','historical'].includes(String(r.priceStatus||''))?String(r.priceStatus):'estimated';out[s]++});return out}
@@ -1262,7 +1262,9 @@ function renderBomReviewBar(){
   const approved=p.approvedAt?`审核 ${String(p.approvedAt).slice(0,16)} · ${esc(p.approvedBy||'-')}`:'未生成正式快照';
   const publication=p.costPublication?.source==='voided'?'报价取价已暂停：当前快照已作废，须重新审核发布':p.costPublication?.source==='legacy_unreviewed'?'报价使用：未审核成本（已冻结；草稿改价须审核后更新）':p.costPublication?.source==='approved_snapshot'?`报价使用：已审核快照 #${Number(p.costPublication.snapshot_id)}`:'尚未发布报价成本';
   el.innerHTML=`<div class="bom-review-main"><span class="bom-badge ${esc(status)}">${esc(bomReviewLabel(status))}</span><div class="bom-review-title">${esc(p.versionNo||'V1')} · ${esc(p.variantLabel||'通用版')} · 快照 ${Number(p.snapshotCount||0)}</div></div><div class="bom-review-meta">${submitted}</div><div class="bom-review-meta">${approved}</div><div class="bom-review-note"><span class="price-chip estimated">预估 ${ps.estimated}</span> <span class="price-chip confirmed">确认 ${ps.confirmed}</span> <span class="price-chip pending">待确认 ${ps.pending}</span> <span class="price-chip historical">历史 ${ps.historical}</span></div>`;
-  el.innerHTML+=`<div class="bom-review-note">${esc(publication)}</div>`;
+  el.innerHTML+=`<div class="bom-review-note">${p.lifecycleV2?esc(status==='draft'?'草稿：不发布报价成本':status==='preliminary'?'预审：每次保存自动同步当前参考成本':'终审：方案与审核快照锁定，当前参考成本随已确认标准价更新'):esc(publication)}</div>`;
+  if(p.currentReference){const c=p.currentReference;el.innerHTML+=`<div class="bom-review-note">当前参考成本：<b>${money(c.cost)}</b> · 终审快照：${c.approval_cost===null?'—':money(c.approval_cost)} · 差额：${c.approval_delta===null?'—':money(c.approval_delta)} · ${c.pending_prices} 行沿用BOM价格（标准价/身份待确认） <button class="small ghost" onclick="BomLifecycle.costDetails()">成本差异</button> <button class="small ghost" onclick="BomLifecycle.history(null,getCurrent().id)">价格记录</button></div>`;}
+
   updateBomWorkflowUI();
 }
 async function saveCurrent(opts={}){
@@ -1270,21 +1272,23 @@ async function saveCurrent(opts={}){
   if(!currentId){alert('请先从 BOM 总览打开一个成本单，或新建 BOM。');return false}
   if(bomWorkflowStatus()==='pending'){alert('该 BOM 已提交审核，请先撤回审核或由审核人驳回。');return false}
   if(bomWorkflowStatus()==='approved'){alert('该 BOM 已审核锁定，请先退审再修改。');return false}
+  const beforePrices=getCurrent()?.savedPriceSignature||'';
   collect();const p=getCurrent();if(!p)return false;
+  let priceReason='';if(p.lifecycleV2&&beforePrices!==JSON.stringify(p.rows.map(r=>[r.price,r.process,r.finishCost,r.finishCost2,r.priceMode||'library']))){priceReason=prompt('请填写本次BOM行价格/费用调整原因：','');if(!priceReason?.trim())return false;}
   bomWriteBusy=true;updateBomWorkflowUI();setStatus('正在保存，请稍候…');
   let saved=false;
   try{
-    const r=await bomWrite('save_project',{project_uid:p.id,expected_revision:p.revision||'',name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows});
+    const r=await bomWrite('save_project',{project_uid:p.id,expected_revision:p.revision||'',name:p.name,customer:p.customer,model:p.model,product_type:p.productType,version_no:p.versionNo||'V1',variant_label:p.variantLabel||'通用版',currency:p.currency,product_image:p.productImage,labor:p.labor,other:p.other,profit_rate:p.profitRate,quote_mode:p.quoteMode,exchange_rate:p.exchange,note:p.note,rows:p.rows,price_reason:priceReason});
     if(!r.ok){setStatus('保存未完成：'+(r.error||'请重试'));alert(r.error||'保存未完成，请重试；重复请求不会重复写入。');return false}
     if(!r.project||r.project.project_uid!==p.id)throw new Error('保存回执不匹配，请重新读取核对，勿重复新建');
     bomApplySavedProject(r.project);saved=true;return true;
   }catch(e){alert(e.message);return false}
-  finally{bomWriteBusy=false;if(saved&&currentId===p.id){await loadProject(p.id);setStatus('已保存草稿 '+nowText())}updateBomWorkflowUI()}
+  finally{bomWriteBusy=false;if(saved&&currentId===p.id){await loadProject(p.id);setStatus('已保存'+bomReviewLabel(getCurrent()?.reviewStatus)+' '+nowText())}updateBomWorkflowUI()}
 }
 async function submitBomReview(){
   if(!hasPerm('edit'))return alert('当前账号没有 BOM 编辑权限');
   if(!bomEditorReady())return alert('请先等待明细完整加载');
-  const note=prompt('提交审核备注，可留空：',getCurrent()?.reviewNote||'');
+  const note=prompt('预审备注，可留空；预审后保存会自动同步报价：',getCurrent()?.reviewNote||'');
   if(note===null)return;
   if(!await saveCurrent({silent:true}))return;
   await bomReviewAction('submit_review',note);
@@ -1305,7 +1309,7 @@ async function bomReviewAction(action,note,extra={}){
 async function approveBomProject(){
   if(!hasPerm('approve_bom'))return alert('当前账号没有 BOM 审核权限');
   const p=getCurrent(); if(!p)return;
-  if((p.reviewStatus||'draft')!=='pending')return alert('只有已提交、待审核的 BOM 才能审核通过');
+  if(!['pending','preliminary'].includes(p.reviewStatus||'draft'))return alert('只有预审 BOM 才能终审');
   const noteInput=prompt('审核备注 / 快照说明，可留空：',p.reviewNote||`${p.versionNo||'V1'} · ${p.variantLabel||'通用版'}`);if(noteInput===null)return;const note=noteInput||'';
   await bomReviewAction('approve_project',note);
 }
@@ -1320,7 +1324,7 @@ async function withdrawBomReview(){
 async function rejectBomProject(){
   if(!hasPerm('reject_bom'))return alert('当前账号没有 BOM 驳回权限');
   const p=getCurrent(); if(!p)return;
-  if((p.reviewStatus||'draft')!=='pending')return alert('只有待审核 BOM 才能驳回');
+  if(!['pending','preliminary'].includes(p.reviewStatus||'draft'))return alert('只有预审 BOM 才能退回草稿');
   const note=prompt('请输入驳回原因：',p.reviewNote||'');
   if(note===null)return;
   if(!note.trim())return alert('请填写驳回原因');
@@ -1383,7 +1387,7 @@ function collect(){
   // 已验证表格归属；空表是明确删除全部行，旧摘要立即失效。
   p.totalsSummary=null;p.priceSummary=null;
   p.rows=trs.map((tr,i)=>{
-    return {...(oldRows[i]||{}),category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.dataset.priceSource||'',priceNote:tr.dataset.priceNote||'',materialId:tr.dataset.materialId||''};
+    return {...(oldRows[i]||{}),category:tr.querySelector('.category')?.value||'',name:tr.querySelector('.name')?.value||'',spec:tr.querySelector('.spec')?.value||'',qty:+(tr.querySelector('.qty')?.value||0)||0,process:+(tr.querySelector('.process')?.value||0)||0,finish:tr.querySelector('.finish')?.value||'',finishCost:+(tr.querySelector('.finishCost')?.value||0)||0,finish2:tr.querySelector('.finish2')?.value||'',finishCost2:+(tr.querySelector('.finishCost2')?.value||0)||0,finishMode2:!!tr.querySelector('.finish-cell.finish-two'),price:+(tr.querySelector('.price')?.value||0)||0,priceMode:tr.querySelector('.priceMode')?.value||'library',priceStatus:tr.querySelector('.priceStatus')?.value||'estimated',priceSource:tr.dataset.priceSource||'',priceNote:tr.dataset.priceNote||'',materialId:tr.dataset.materialId||''};
   });
 }
 function getCurrent(){return projects.find(p=>p.id===currentId)}
@@ -1428,7 +1432,7 @@ function renderRows(){
   $('tbody').innerHTML=(p.rows||[]).map((r,i)=>{
     const has2=!!r.finishMode2 || String(r.finish2||'').trim()!=='' || Number(r.finishCost2||0)>0;
     const finishTitle=has2 ? '当前：2次表面。点击切回1次' : '当前：1次表面。点击切到2次';
-    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" data-price-source="${esc(r.priceSource||'')}" data-price-note="${esc(r.priceNote||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
+    return `<tr class="${r.__plmMissing?'plm-missing':''}" data-material-id="${esc(r.materialId||'')}" data-price-source="${esc(r.priceSource||'')}" data-price-note="${esc(r.priceNote||'')}" draggable="true" data-row-index="${i}"><td class="col-no"><span class="drag-handle">☰</span> ${i+1}</td><td class="col-category"><textarea class="category cell-text" oninput="touch();autoGrow(this)">${esc(r.category)}</textarea></td><td class="col-name"><div class="name-pick-wrap"><textarea class="name cell-text" data-row-index="${i}" oninput="touch();autoGrow(this);showMaterialSuggest(this,${i})" onfocus="showMaterialSuggest(this,${i})" title="${r.__plmMissing?'共享物料库没有匹配到，请先新增或手动选择':''}">${esc(r.name)}</textarea><button type="button" class="mat-pick-btn" onclick="openMaterialPicker(${i})" title="选择共享物料">…</button></div></td><td class="col-spec"><textarea class="spec cell-text" oninput="touch();autoGrow(this)">${esc(r.spec)}</textarea></td><td class="col-qty"><input class="qty num" type="number" step="0.0001" value="${r.qty}" oninput="touch();calc()"></td><td class="col-process"><input class="process num" type="number" step="0.01" value="${r.process||0}" oninput="touch();calc()"></td><td class="col-finish"><div class="finish-cell ${has2?'finish-two':'finish-one'}"><div class="finish-stack"><div class="finish-row"><input class="finish" list="finishOptions" value="${esc(r.finish||'')}" oninput="touch();calc()" placeholder="面1"><input class="finishCost num" type="number" step="0.01" value="${money(r.finishCost||0)}" oninput="touch();calc()" placeholder="费"></div><div class="finish-row finish2-row"><input class="finish2" list="finishOptions" value="${esc(r.finish2||'')}" oninput="touch();calc()" placeholder="面2"><input class="finishCost2 num" type="number" step="0.01" value="${money(r.finishCost2||0)}" oninput="touch();calc()" placeholder="费"></div></div><button type="button" class="finish-toggle-btn ${has2?'has2':''}" onclick="toggleFinishMode(${i})" title="${esc(finishTitle)}">${has2?'2':'1'}</button></div></td><td class="price-cell col-price"><div class="price-status-wrap"><input class="price num price-input" type="number" step="0.0001" value="${r.price}" oninput="touch();calc()"><select class="priceStatus price-status" onchange="touch();calc()">${priceStatusOptions(r.priceStatus)}</select><select class="priceMode" onchange="touch();calc()" title="标准价待确认时沿用本行价格"><option value="library" ${r.priceMode!=="override"?"selected":""}>随物料标准价</option><option value="override" ${r.priceMode==="override"?"selected":""}>本BOM专用价</option></select></div></td><td class="num subtotal col-subtotal">${money(rowSub(r))}</td><td class="col-action"><div class="row-actions"><button class="row-act" onclick="insertRowAfter(${i})">＋</button><button class="row-act danger" onclick="removeRow(${i})">删</button></div></td></tr>`;
   }).join('');
   initRowDrag();initResizableTable('bomTable','bom_col_widths_v65');applyBomColumnVisibility();updateBomStickyOffsets();autoGrowAll();updateBomWorkflowUI();setTimeout(scheduleBomTableLayout,80);setTimeout(scheduleBomTableLayout,260);
 }
@@ -1526,10 +1530,11 @@ function openMaterialEditor(id=null){
   if($('matEditorTitle'))$('matEditorTitle').textContent=m?'编辑物料':'新增物料';
   if($('matEditorSub'))$('matEditorSub').textContent=m?'保存后定位。':'可连续新增。';
   if(m){
-    $('matCategory').value=m.category||'';$('matBrand').value=m.brand||'';$('matName').value=m.name||'';$('matModel').value=m.model||'';$('matSpec').value=m.spec||'';$('matPrice').value=m.price||0;$('matUnit').value=m.unit||'PCS';$('matSupplier').value=m.supplier||'';$('matKeyword').value=m.keyword||'';currentMaterialImage=null;
+    $('matCategory').value=m.category||'';$('matBrand').value=m.brand||'';$('matName').value=m.name||'';$('matModel').value=m.model||'';$('matSpec').value=m.spec||'';$('matPrice').value=m.price||0;$('matUnit').value=m.unit||'';$('matSupplier').value=m.supplier||'';$('matKeyword').value=m.keyword||'';currentMaterialImage=null;
   }else{
     clearMaterialForm(false);
   }
+  $('matPriceStatus').value=m?.price_status||'pending';$('matPriceReason').value='';$('matIdentityConfirmed').checked=m?.identity_status==='confirmed';
   const mask=$('matEditorMask'); if(mask)mask.style.display='flex'; setTimeout(()=>{$('matName')&&$('matName').focus()},60);
 }
 function closeMaterialEditor(){const mask=$('matEditorMask'); if(mask)mask.style.display='none'; if(materialFocusId)setTimeout(()=>focusMaterialRow(materialFocusId),120)}
@@ -1563,7 +1568,7 @@ function confirmSaveMaterialAfterSimilar(){
   saveMaterial(materialPendingContinue,d);
 }
 async function saveMaterial(continueAdd=false, forcedPayload=null){
-  const d=forcedPayload||{id:editingMaterialId,category:$('matCategory').value,brand:$('matBrand').value,name:$('matName').value,model:$('matModel').value,spec:$('matSpec').value,price:Number($('matPrice').value||0)||0,unit:$('matUnit').value,supplier:$('matSupplier').value,keyword:$('matKeyword').value,image:currentMaterialImage};
+  const d=forcedPayload||{id:editingMaterialId,expected_material_revision:(materialPageRows.find(x=>Number(x.id)===Number(editingMaterialId))||materials.find(x=>Number(x.id)===Number(editingMaterialId)))?.revision??0,category:$('matCategory').value,brand:$('matBrand').value,name:$('matName').value,model:$('matModel').value,spec:$('matSpec').value,price:Number($('matPrice').value||0)||0,price_status:$('matPriceStatus').value,price_reason:$('matPriceReason').value,identity_confirmed:$('matIdentityConfirmed').checked,unit:$('matUnit').value,supplier:$('matSupplier').value,keyword:$('matKeyword').value,image:currentMaterialImage};
   if(currentMaterialImage===null&&!forcedPayload){delete d.image;d.image_unchanged=true;}
   if(!d.name){alert('请输入物料名称');return}
   const keep={category:d.category,brand:d.brand,supplier:d.supplier,unit:d.unit||'PCS'};
@@ -1616,6 +1621,7 @@ async function saveMaterialCell(td){
   let val=td.textContent.trim(); if(field==='price') val=Number(val||0)||0;
   if(String(m[field]??'')===String(val??'')) return;
   const payload={...m,[field]:val,image_unchanged:true};delete payload.image;
+  if(field==='price'){const reason=prompt('请填写调价原因：','');if(!reason?.trim()){td.textContent=String(m[field]??'');return;}payload.price_reason=reason;payload.identity_confirmed=m.identity_status==='confirmed';}
   try{
     const r=await api('save_material',payload);
     if(!r.ok){
@@ -1752,7 +1758,7 @@ function shouldCheckKeyMaterialRow(r){
 
 function resolvePlmLinkedRows(p){
   const info={fixed:[],missing:[],zeroPrice:[],changed:false};
-  if(!p||['pending','approved'].includes(p.reviewStatus))return info;
+  if(!p||p.lifecycleV2||['pending','approved'].includes(p.reviewStatus))return info;
   if(!p||!Array.isArray(p.rows)||!materials.length)return info;
   p.rows.forEach((r,i)=>{
     if(!r||typeof r!=='object')return;
@@ -1917,9 +1923,9 @@ function renderMaterialPicker(){
 }
 function applyMaterial(rowIndex,id,fromModal=false){
   const p=getCurrent(); const m=materials.find(x=>+x.id===+id); if(!p||!m||!p.rows[rowIndex])return;
-  const oldPrice=Number(p.rows[rowIndex].price||0), newPrice=Number(m.price||0);
+  const oldPrice=Number(p.rows[rowIndex].price||0), newPrice=Number(m.confirmed_price??m.price??0);
   if(fromModal && oldPrice>0 && newPrice>0){const high=Math.max(oldPrice,newPrice), low=Math.min(oldPrice,newPrice); if(low>0 && high/low>=3){if(!confirm(`价格变化较大：原 ${money(oldPrice)}，新 ${money(newPrice)}。确定带入？`))return;}}
-  p.rows[rowIndex]={...p.rows[rowIndex],category:p.rows[rowIndex]?.category||m.category,name:materialDisplayName(m),spec:materialDisplaySpec(m),price:newPrice,materialId:String(m.id||'')};
+  p.rows[rowIndex]={...p.rows[rowIndex],category:p.rows[rowIndex]?.category||m.category,name:materialDisplayName(m),spec:materialDisplaySpec(m),price:newPrice,materialId:String(m.id||''),materialBindingConfirmed:true,model:m.model||'',priceMode:'library'};
   pushRecentMaterial(m.id); $('matSuggestFloat').style.display='none'; if(fromModal)closeMaterialPicker(); renderRows(); calc();
   showPlmLinkNotice({fixed:[{index:rowIndex+1,row:p.rows[rowIndex],material:m}],missing:[],zeroPrice:Number(m.price||0)<=0?[{index:rowIndex+1,row:p.rows[rowIndex],material:m}]:[],changed:true})
 }
@@ -2060,7 +2066,7 @@ function dashboardRangeStart(){const now=startOfToday();if(dashboardRange==='mon
 function dashboardRangeEnd(){if(dashboardRange==='custom'&&$('dashEnd')?.value)return new Date($('dashEnd').value+'T23:59:59');return null}
 function setDashboardRange(r){dashboardRange=r;dashboardPage=1;['Month','7','3','All','Custom'].forEach(x=>{const el=$('dashRange'+x);if(el)el.classList.remove('active')});const map={month:'Month','7':'7','3':'3',all:'All',custom:'Custom'};const el=$('dashRange'+map[r]);if(el)el.classList.add('active');if(r==='month'){$('dashStart').value=dateInputValue(startOfMonth());$('dashEnd').value=dateInputValue(new Date())}else if(r==='7'){const d=startOfToday();d.setDate(d.getDate()-6);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='3'){const d=startOfToday();d.setDate(d.getDate()-2);$('dashStart').value=dateInputValue(d);$('dashEnd').value=dateInputValue(new Date())}else if(r==='all'){$('dashStart').value='';$('dashEnd').value=''}renderDashboard()}
 function isBomModelKeyword(value){return /^[a-z0-9]*\d{2,4}(?:[.\-]\d+)+[a-z0-9]*$/i.test(String(value||'').trim().replace(/\s+/g,''))}
-function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),customer=$('dashCustomer')?.value||'',type=$('dashType')?.value||'',timeField=$('dashTimeField')?.value||'updatedAt';let arr=projects.filter(p=>{const dt=dateFromText(p[timeField]);const st=dashboardRangeStart(),ed=dashboardRangeEnd(),pt=p.namingType||bomProjectNamingType(p);if(st&&(!dt||dt<st))return false;if(ed&&(!dt||dt>ed))return false;if(customer&&p.customer!==customer)return false;if(type&&pt!==type)return false;if(!bomDashboardKeywordMatch(p,kw))return false;return true});const sort=$('dashSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer)):sort==='modelAsc'?String(a.model).localeCompare(String(b.model)):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
+function dashboardFilteredProjects(){const kw=($('dashKeyword')?.value||'').toLowerCase().trim(),modelKeyword=isBomModelKeyword(kw),customer=$('dashCustomer')?.value||'',type=$('dashType')?.value||'',timeField=$('dashTimeField')?.value||'updatedAt';let arr=projects.filter(p=>{const stage=$('dashStage')?.value||'';if(stage&&p.reviewStatus!==stage)return false;const dt=dateFromText(p[timeField]);const st=dashboardRangeStart(),ed=dashboardRangeEnd(),pt=p.namingType||bomProjectNamingType(p);if(st&&(!dt||dt<st))return false;if(ed&&(!dt||dt>ed))return false;if(customer&&p.customer!==customer)return false;if(type&&pt!==type)return false;if(!bomDashboardKeywordMatch(p,kw))return false;return true});const sort=$('dashSort')?.value||'updatedDesc';arr.sort((a,b)=>sort==='costDesc'?totals(b).total-totals(a).total:sort==='costAsc'?totals(a).total-totals(b).total:sort==='createdDesc'?String(b.createdAt).localeCompare(String(a.createdAt)):sort==='customerAsc'?String(a.customer).localeCompare(String(b.customer)):sort==='modelAsc'?String(a.model).localeCompare(String(b.model)):String(b.updatedAt).localeCompare(String(a.updatedAt)));return arr}
 function setDashboardView(v){dashboardView=['list','grid','grouped'].includes(v)?v:'grid';localStorage.setItem('bom_dashboard_view_v80',dashboardView);renderDashboard()}
 function toggleDashboardGroup(){setDashboardView(dashboardView==='grouped'?'grid':'grouped')}
 function updateDashboardViewButtons(){
@@ -2248,12 +2254,14 @@ function normHeader(h){return String(h||'').trim().replace(/[\s_\/\\-]/g,'').toL
 function numberClean(v){const s=String(v??'').replace(/[￥¥, ]/g,'');const n=Number(s);return isFinite(n)?n:0}
 function mapRowsToObjects(rows,kind){rows=(rows||[]).filter(r=>r&&r.some(c=>String(c||'').trim()!==''));if(!rows.length)return[];let header=rows[0].map(normHeader),start=1;const known=kind==='bom'?['类别','物料名称','规格','数量','单价'].map(normHeader):['分类','品牌','物料名称','名称','单价'].map(normHeader);if(!$('excelHeaderMode')||$('excelHeaderMode').value==='auto'){const score=header.filter(h=>known.includes(h)).length;if(score<2){start=0;header=[]}}const find=(names)=>{const ns=names.map(normHeader);for(let i=0;i<header.length;i++)if(ns.includes(header[i]))return i;return -1};const get=(r,names,defIx)=>{const ix=find(names);return String((ix>=0?r[ix]:r[defIx])??'').trim()};const out=[];for(let i=start;i<rows.length;i++){const r=rows[i];if(kind==='materials'){const o={category:get(r,['分类','类别','category'],0),brand:get(r,['品牌','brand'],1),name:get(r,['物料名称','名称','name','material'],2),model:get(r,['型号','型号编码','型号/编码','model','code'],3),spec:get(r,['规格','规格备注','规格/备注','备注','spec'],4),price:numberClean(get(r,['单价','价格','price'],5)),unit:get(r,['单位','unit'],6)||'PCS',supplier:get(r,['供应商','supplier'],7),keyword:get(r,['关键词','keyword'],8),image:get(r,['图片','image'],12)};if(o.name||o.model)out.push(o)}else{const o={category:get(r,['类别','分类','category'],0),name:get(r,['物料名称','名称','name'],1),spec:get(r,['规格','规格备注','规格/备注','备注','spec'],2),qty:numberClean(get(r,['数量','qty'],3))||1,process:numberClean(get(r,['加工费','process'],4)),finish:get(r,['表面处理1','表面处理','面1','finish1'],5),finishCost:numberClean(get(r,['处理费1','费1','finishcost1'],6)),finish2:get(r,['表面处理2','面2','finish2'],7),finishCost2:numberClean(get(r,['处理费2','费2','finishcost2'],8)),price:numberClean(get(r,['单价','price'],9)),materialId:get(r,['物料id','materialid'],12)};if(o.name||o.spec||o.category)out.push(o)}}return out}
 function previewExcelImport(){const text=($('excelImportPaste')?.value||'').trim() || excelImportText;if(!text){$('excelImportStatus').textContent='没有内容。';return}const rows=chooseImportRows(parseImportTables(text),excelImportKind);excelImportObjects=mapRowsToObjects(rows,excelImportKind);$('excelImportStatus').textContent=`识别到 ${excelImportObjects.length} 行。`;const keys=excelImportKind==='materials'?['category','brand','name','model','spec','price','unit','supplier','keyword']:['category','name','spec','qty','process','finish','finishCost','finish2','finishCost2','price'];const title=excelImportKind==='materials'?['分类','品牌','名称','型号','规格','单价','单位','供应商','关键词']:['类别','物料名称','规格','数量','加工费','面1','费1','面2','费2','单价'];$('excelPreviewHead').innerHTML='<tr>'+title.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>';$('excelPreviewBody').innerHTML=excelImportObjects.slice(0,30).map(o=>'<tr>'+keys.map(k=>`<td>${esc(o[k])}</td>`).join('')+'</tr>').join('');$('excelImportFoot').textContent=excelImportObjects.length>30?`预览前30行，共${excelImportObjects.length}行。`:`共${excelImportObjects.length}行。`}
-async function executeExcelImport(){if(!excelImportObjects.length)previewExcelImport();if(!excelImportObjects.length){alert('没有可导入数据');return}const mode=$('excelImportMode')?.value||'append';if(excelImportKind==='bom'){collect();const p=getCurrent();if(!p){alert('请先打开一个BOM');return}const rows=excelImportObjects.map(o=>({...o,finishMode2:!!(o.finish2||Number(o.finishCost2)>0)}));if(mode==='replace'){if(!confirm('确定覆盖当前 BOM 明细行？'))return;p.rows=rows}else p.rows=(p.rows||[]).concat(rows);renderRows();calc();touch();closeExcelImport();setStatus('已导入BOM明细，记得保存。');return}const r=await api('import_materials_bulk',{rows:excelImportObjects,mode});if(!r.ok){alert(r.error||'导入失败');return}materialFocusId=(r.last_id||'');await loadAll();showPage('materials');closeExcelImport();setStatus(`物料导入完成：新增 ${r.inserted||0}，更新 ${r.updated||0}，跳过 ${r.skipped||0}，重复 ${r.duplicates||0}`)}
+async function executeExcelImport(){if(!excelImportObjects.length)previewExcelImport();if(!excelImportObjects.length){alert('没有可导入数据');return}const mode=$('excelImportMode')?.value||'append';if(excelImportKind==='bom'){collect();const p=getCurrent();if(!p){alert('请先打开一个BOM');return}const rows=excelImportObjects.map(o=>({...o,finishMode2:!!(o.finish2||Number(o.finishCost2)>0)}));if(mode==='replace'){if(!confirm('确定覆盖当前 BOM 明细行？'))return;p.rows=rows}else p.rows=(p.rows||[]).concat(rows);renderRows();calc();touch();closeExcelImport();setStatus('已导入BOM明细，记得保存。');return}const priceReason=prompt('本批导入价格的原因（必填；导入价先列为待确认）：','');if(!priceReason?.trim())return;
+    const r=await api('import_materials_bulk',{price_reason:priceReason,rows:excelImportObjects,mode});if(!r.ok){alert(r.error||'导入失败');return}materialFocusId=(r.last_id||'');await loadAll();showPage('materials');closeExcelImport();setStatus(`物料导入完成：新增 ${r.inserted||0}，更新 ${r.updated||0}，跳过 ${r.skipped||0}，重复 ${r.duplicates||0}`)}
 
 window.onload=function(){ applyBomHeaderCollapse(); applyEditorMoreState(); checkAuth(); };
 </script>
 <script src="assets/bom-dashboard-read.js?v=20260909-1"></script>
 <style>#bomSnapshotVoidPanel details{max-width:100%}#bomSnapshotVoidPanel summary{cursor:pointer;color:#a42222;font-weight:600}#bomSnapshotVoidPanel label{display:block;margin:10px 0}#bomSnapshotVoidPanel textarea,#bomSnapshotVoidPanel select{display:block;width:100%;box-sizing:border-box;margin-top:6px;max-width:100%}#bomSnapshotVoidPanel button{white-space:normal}</style>
 <script src="assets/bom-snapshot-void.js?v=20260921-1"></script>
+<script src="assets/bom-lifecycle.js?v=20261006"></script>
 </body>
 </html>

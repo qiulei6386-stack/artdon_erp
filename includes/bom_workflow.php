@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/bom_cost_publication.php';
+require_once __DIR__.'/bom_lifecycle.php';
 
 // No bootstrap, database connection, migration or external IO on include.
 class BomWorkflowError extends RuntimeException {
@@ -143,6 +144,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
     if(!bw_ready($pdo))throw new BomWorkflowError('not_initialized','BOM 版本保护正在初始化，暂不可写入，请联系管理员');
     $uid=trim((string)($d['project_uid']??''));$request=(string)($d['request_id']??'');
     if($uid===''||strlen($uid)>100||!preg_match('/^[a-zA-Z0-9-]{16,64}$/',$request))throw new BomWorkflowError('validation','缺少单据或请求标识，请刷新页面');
+    $lifecycle=bl_ready($pdo);
     $owner=bw_actor_identity($user,$actor);
     $hash=hash('sha256',bw_json(array($action,$d)));$pdo->beginTransaction();
     try{
@@ -153,7 +155,8 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         if($req['result_json']){$result=json_decode($req['result_json'],true,512,JSON_THROW_ON_ERROR);$pdo->commit();return $result;}
         // Cross-project approvals may share a model and policy. Acquire before project locks
         // and consistent reads so both the publication and its cache see the same winner.
-        if(in_array($action,array('save_project','approve_project','void_snapshot'),true))$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
+        if($lifecycle||in_array($action,array('save_project','approve_project','void_snapshot'),true))$pdo->query("SELECT value FROM bom_workflow_meta WHERE name='legacy_costs_frozen' FOR UPDATE")->fetchColumn();
+        $lifecycle=bl_ready($pdo);
         $p=bw_get($pdo,$uid,true);$before=$p;$status=$p['review_status']??'draft';
         if($p&&(int)$p['is_active']!==1)throw new BomWorkflowError('deleted','BOM 已删除，请返回总览');
         if(!array_key_exists('expected_revision',$d)||!hash_equals(bw_revision($p),(string)$d['expected_revision']))throw new BomWorkflowError('revision_conflict','这份 BOM 已被修改或审核。本次未覆盖任何内容，请保留当前输入，重新打开最新版本核对后再操作。');
@@ -188,7 +191,7 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
             $voids=bw_snapshot_voids($pdo,$uid);
             if(isset($voids[$id]))throw new BomWorkflowError('state','该快照已经作废，请重新读取');
             $st=$pdo->prepare('SELECT * FROM bom_cost_publications WHERE project_uid=? FOR UPDATE');$st->execute(array($uid));$pub=$st->fetch(PDO::FETCH_ASSOC);
-            $isCurrent=$pub&&$pub['source']==='approved_snapshot'&&(int)$pub['snapshot_id']===$id;
+            $isCurrent=$pub&&in_array($pub['source'],['approved_snapshot','final_reference'],true)&&(int)$pub['snapshot_id']===$id;
             if($isCurrent){
                 if($replacement>0){
                     $st=$pdo->prepare('SELECT id,project_uid,snapshot_name AS name,model,customer,version_no,variant_label,currency,exchange_rate,labor,other,profit_rate,quote_mode,OCTET_LENGTH(rows_json) AS row_bytes FROM bom_snapshots WHERE id=? AND project_uid=?');$st->execute(array($replacement,$uid));$next=$st->fetch(PDO::FETCH_ASSOC);
@@ -209,19 +212,22 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
             $snapshot=array('id'=>(int)$p['latest_snapshot_id']);$message='已返回该审核版本的快照，不重复创建。';
         }else{
             $allowed=array('submit_review'=>array('draft','rejected'),'withdraw_review'=>array('pending'),'approve_project'=>array('pending'),'reject_project'=>array('pending'),'unapprove_project'=>array('approved'));
+            if($lifecycle){$allowed['approve_project']=['preliminary'];$allowed['reject_project']=['preliminary'];}
             if(!isset($allowed[$action])||!in_array($status,$allowed[$action],true))throw new BomWorkflowError('state','状态已变化，当前不能执行此操作，请重新读取');
             if($action==='withdraw_review'&&!bw_can_withdraw($pdo,$p,$user))throw new BomWorkflowError('permission','仅提交本人或管理员可撤回审核；旧记录无法确认提交账号时请联系管理员。');
             if(in_array($action,array('withdraw_review','reject_project','unapprove_project'),true)&&$note==='')throw new BomWorkflowError('validation','请填写撤回/驳回/退审原因');
             if(in_array($action,array('submit_review','approve_project'),true))bw_validate($p,true);
             $next=array('submit_review'=>'pending','withdraw_review'=>'draft','approve_project'=>'approved','reject_project'=>'rejected','unapprove_project'=>'draft')[$action];
+            if($lifecycle)$next=['submit_review'=>'preliminary','withdraw_review'=>'draft','approve_project'=>'approved','reject_project'=>'draft','unapprove_project'=>'preliminary'][$action];
             $extra=$action==='submit_review'?',submitted_by=?,submitted_at=NOW()':($action==='approve_project'?',approved_by=?,approved_at=NOW()':($action==='unapprove_project'?",approved_by='',approved_at=NULL":($action==='withdraw_review'?",submitted_by='',submitted_at=NULL":'')));
             $args=array($next,$note,$actor);if(in_array($action,array('submit_review','approve_project'),true))$args[]=$actor;$args[]=$uid;
             $pdo->prepare("UPDATE bom_projects SET review_status=?,review_note=?,updated_by=?,updated_at=NOW()$extra WHERE project_uid=?")->execute($args);
             $p=bw_get($pdo,$uid);
             if($action==='approve_project'){
-                $snapshot=bom_insert_snapshot($pdo,$p,$actor,$note);bw_publish($pdo,$p,(int)$snapshot['id'],'approved_snapshot');
+                $sealed=$p;if($lifecycle){$index=bl_material_index($pdo);bl_bind($pdo,$p,$actor,$index,$request);$sealed['rows_json']=bw_json(bl_current($pdo,$p)['rows']);}
+                $snapshot=bom_insert_snapshot($pdo,$sealed,$actor,$note);if(!$lifecycle)bw_publish($pdo,$p,(int)$snapshot['id'],'approved_snapshot');
                 // Publication and existing quotation policy cache commit together, or neither does.
-                $policySync=bom_sync_quote_cost_snapshot($pdo,$uid,$actor);
+                $policySync=$lifecycle?[]:bom_sync_quote_cost_snapshot($pdo,$uid,$actor);
                 $message='审核成功，已封存快照 '.$snapshot['snapshot_uid'].'并发布成本。同型号有多个审核版本时，报价与价格策略统一采用已审核版本中的较高成本。';
                 if(!empty($policySync['skipped']))$message.=' 价格策略缓存未同步，请管理员检查；审核快照已发布。';
             }else $message=array('submit_review'=>'已提交当前版本，等待审核。','withdraw_review'=>'已撤回审核，可重新编辑并提交；已有快照及报价成本保持不变。','reject_project'=>'已驳回，原因已记录。','unapprove_project'=>'已退审，可修改草稿；报价继续使用上一份已发布成本，重新审核后才切换。')[$action];
@@ -229,7 +235,16 @@ function bw_execute(PDO $pdo,string $action,array $d,string $actor,bool $canCost
         if($action!=='create_snapshot')$pdo->prepare('UPDATE bom_projects SET workflow_version=workflow_version+1 WHERE project_uid=?')->execute(array($uid));
         $p=bw_get($pdo,$uid);$revision=bw_revision($p);
         $changes=bw_changes($before,$p);if($action==='void_snapshot')$changes['void_snapshot']=$snapshot;
-        if($action==='save_project'){
+        if($lifecycle){
+            if($action==='save_project')bl_audit_rows($pdo,$before,$p,$d,$actor,$user);
+            if(in_array($action,['save_project','submit_review','approve_project','unapprove_project','bind_naming_to_project','unbind_naming_from_project','naming_sync_apply'],true)){
+                $index=bl_material_index($pdo);bl_bind($pdo,$p,$actor,$index,$request);
+                bl_publish($pdo,$p,$actor,$note?:($action==='save_project'?'预审BOM保存自动同步':'BOM阶段变更'),$request,$user,$action==='approve_project');
+            }
+            if(in_array($action,['reject_project','delete_project'],true))$pdo->prepare("UPDATE bom_cost_publications SET source='draft_unpublished',updated_at=NOW() WHERE project_uid=?")->execute([$uid]);
+            bl_policy_sync($pdo,array_values(array_filter([$before,$p])),$actor);
+            $message=$p['review_status']==='preliminary'?'预审BOM已保存，当前参考成本已同步报价。':($p['review_status']==='approved'?'终审完成：物料方案与审核快照已锁定，当前参考成本独立更新。':'草稿已保存，未发布到报价。');
+        }elseif($action==='save_project'){
             require_once __DIR__.'/bom_unreviewed_sync.php';
             $freeze=bus_freeze_saved($pdo,$p);$changes['initial_cost_freeze']=$freeze;
             if($freeze['inserted']){

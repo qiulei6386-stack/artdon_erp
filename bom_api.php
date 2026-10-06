@@ -876,7 +876,7 @@ function bom_normalize_rows_with_materials($pdo, $rows){
 function bom_snapshot_uid(){ return 'BOMS-'.date('YmdHis').'-'.substr(md5(uniqid('', true)),0,6); }
 function bom_review_status_label($s){
     $s = trim((string)$s);
-    $map = array('draft'=>'草稿','pending'=>'待审核','approved'=>'已审核','rejected'=>'已驳回');
+    $map = array('draft'=>'草稿','pending'=>'待审核','preliminary'=>'预审','approved'=>'终审','rejected'=>'已驳回');
     return $map[$s] ?? ($s ?: '草稿');
 }
 function bom_project_rows($project){
@@ -945,6 +945,8 @@ function bom_project_rows_for_output(PDO $pdo, array $p){
 function bom_project_enrich_detail(PDO $pdo, array $p, bool $canCost, bool $canSupplier, array $user=array()){
     $p['can_withdraw_review']=user_can($user,'edit')&&bw_can_withdraw($pdo,$p,$user);
     $p['revision']=bw_revision($p);
+    $p['lifecycle_v2']=bl_ready($pdo);
+    if($p['lifecycle_v2']&&$canCost)$p['current_reference']=bl_summary($pdo,$p);
     $p['cost_publication']=null;
     if(bw_ready($pdo)){
         $pub=$pdo->prepare('SELECT source,snapshot_id,updated_at FROM bom_cost_publications WHERE project_uid=?');$pub->execute(array($p['project_uid']));$p['cost_publication']=$pub->fetch(PDO::FETCH_ASSOC)?:null;
@@ -1557,7 +1559,7 @@ try{
     $pdo = pdo_safe();
     $GLOBALS['pdo_for_perm']=$pdo;
     // Dashboard enrichment is strictly read-only and must not run schema/backfill work.
-    if(!in_array($action,array('dashboard_search','dashboard_images','materials_list','material_image'),true)){
+    if(!in_array($action,array('dashboard_search','dashboard_images','materials_list','material_image','material_where_used','price_history'),true)){
         ensure_bom_schema($pdo);
         ensure_bom_user_schema($pdo);
     }
@@ -1855,6 +1857,35 @@ try{
 
 
 
+    if(in_array($action,['material_where_used','price_history'],true)){
+        bom_require_perm($user,'dashboard');$d=body_json();
+        if(!bl_ready($pdo))throw new RuntimeException('物料版本初始化尚未完成');
+        if($action==='material_where_used')json_out(bl_where_used($pdo,(int)($d['material_id']??0),artdon_sso_can('bom','cost_view')));
+        if(!artdon_sso_can('bom','cost_view'))throw new RuntimeException('没有成本查看权限');
+        json_out(bl_price_history($pdo,$d));
+    }
+    if(in_array($action,['save_material','import_materials_bulk'],true)&&bl_ready($pdo)){
+        bom_require_perm($user,'materials');$d=body_json();$batch=bin2hex(random_bytes(16));$actor=user_label($user)?:'unknown';
+        $items=$action==='save_material'?[$d]:($d['rows']??[]);if(!is_array($items)||count($items)>3000)throw new RuntimeException('一次最多3000条物料');
+        $pdo->beginTransaction();bl_lock($pdo);$ids=[];$inserted=0;$updated=0;$skipped=0;
+        foreach($items as $item){
+            if(!is_array($item))throw new RuntimeException('导入物料格式错误');
+            if($action==='import_materials_bulk'){
+                $dupes=bom_material_exact_duplicates($pdo,$item['name']??'',$item['model']??'',$item['spec']??'',0);
+                if(count($dupes)>1)throw new RuntimeException('导入遇到多个同身份物料，请在物料库核对');
+                if($dupes&&($d['mode']??'upsert')!=='upsert'){$skipped++;continue;}
+                if($dupes)$item['id']=(int)$dupes[0]['id'];
+                $item['price_reason']=$item['price_reason']??$d['price_reason']??'';
+                $item['price_status']=$item['price_status']??'pending';
+                if(empty($item['image']))$item['image_unchanged']=true;
+            }
+            $ids[]=bl_save_material($pdo,$item,$actor,$user,$action,$batch,artdon_sso_can('bom','cost_view'),artdon_sso_can('bom','supplier_view'));
+            if(empty($item['id']))$inserted++;else $updated++;
+        }
+        $sync=bl_propagate($pdo,array_values(array_unique($ids)),$actor,'物料标准价更新：'.($d['price_reason']??'批量逐项原因见价格记录'),$batch,$user);
+        $pdo->commit();json_out(['ok'=>true,'id'=>end($ids)?:0,'last_id'=>end($ids)?:0,'inserted'=>$inserted,'updated'=>$updated,'skipped'=>$skipped,'duplicates'=>$skipped,'sync'=>$sync,'batch_id'=>$batch]);
+    }
+
     if($action === 'sync_weight_profiles_to_bom'){
         bom_require_perm($user,'materials');
         ensure_bom_schema($pdo);
@@ -1967,6 +1998,7 @@ try{
     if($action === 'delete_material'){
         bom_require_perm($user,'materials');
         $d = body_json();
+        if(bl_ready($pdo)){$check=$pdo->prepare('SELECT 1 FROM bom_material_usages u JOIN bom_projects p ON p.project_uid=u.project_uid WHERE u.material_id=? AND p.is_active=1 LIMIT 1');$check->execute([(int)($d['id']??0)]);if($check->fetchColumn())throw new RuntimeException('该物料仍被BOM使用，请先通过使用BOM核对并换料');}
         if(table_exists($pdo,'bom_materials') && hascol($pdo,'bom_materials','is_active')){
             $stmt=$pdo->prepare("UPDATE bom_materials SET is_active=0,updated_at=NOW() WHERE id=?");
         }else{
@@ -1989,6 +2021,7 @@ try{
 
     json_out(array('ok'=>false,'error'=>'unknown action'));
 }catch(Throwable $e){
+    if(isset($pdo)&&$pdo->inTransaction())$pdo->rollBack();
     json_out(array('ok'=>false,'error'=>$e->getMessage()));
 }
 ?>

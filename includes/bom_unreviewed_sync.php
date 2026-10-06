@@ -55,7 +55,7 @@ function bus_sync_policies(PDO $pdo,array $projects,string $actor): int {
     $update=$pdo->prepare('UPDATE quote_price_policies SET bom_cost_rmb=?,estimated_sale_price_rmb=?,bom_cost_source=?,bom_match_key=?,bom_cost_updated_at=?,updated_by=?,updated_at=NOW() WHERE id=?');
     while($p=$st->fetch(PDO::FETCH_ASSOC)){
         $pk=bcp_product_keys(['source'=>$p['product_source']?:'naming','naming_id'=>$p['naming_id'],'model'=>$p['product_model']]);if(!array_intersect($pk,$keys))continue;
-        [$key,$hit]=bcp_find($pk,$map);if(!$hit)continue;
+        [$key,$hit]=bcp_find($pk,$map);if(!$hit){if(!bl_ready($pdo))continue;$key='';$hit=['cost_rmb'=>0,'source_table'=>'BOM未发布，请选择有效版本','updated_at'=>''];}
         $cost=(float)$hit['cost_rmb'];$multiplier=$levels[(int)$p['level_id']]??0;if($multiplier<=0)$multiplier=$default;$sale=round($cost*$multiplier,4);
         if(abs((float)$p['bom_cost_rmb']-$cost)<0.0001&&abs((float)$p['estimated_sale_price_rmb']-$sale)<0.0001&&$p['bom_cost_source']===$hit['source_table']&&$p['bom_match_key']===$key&&$p['bom_cost_updated_at']===$hit['updated_at'])continue;
         $update->execute([$cost,$sale,$hit['source_table'],$key,$hit['updated_at'],$actor,$p['id']]);$updated++;

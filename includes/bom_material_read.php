@@ -21,12 +21,17 @@ function bmr_read(PDO $pdo,array $d,bool $canCost,bool $canSupplier): array {
         $where[]='created_at>=?';$args[]=$start->format('Y-m-d H:i:s');
         if($date==='yesterday'){$where[]='created_at<?';$args[]=$start->modify('+1 day')->format('Y-m-d H:i:s');}
     }
+    $state=(string)($d['state']??'');if($state==='needs_unit')$where[]="TRIM(unit)=''";elseif(in_array($state,['pending','historical','confirmed','estimated'],true)&&function_exists('bl_ready')&&bl_ready($pdo)){$where[]='id IN (SELECT material_id FROM bom_material_state WHERE price_status=?)';$args[]=$state;}
     $sql=implode(' AND ',$where);$st=$pdo->prepare('SELECT COUNT(*) FROM bom_materials WHERE '.$sql);$st->execute($args);$total=(int)$st->fetchColumn();
     $size=max(1,min(500,(int)($d['page_size']??50)));$pages=max(1,(int)ceil($total/$size));$page=max(1,min($pages,(int)($d['page']??1)));
     $st=$pdo->prepare('SELECT '.bmr_columns().' FROM bom_materials WHERE '.$sql.' ORDER BY updated_at DESC,id DESC LIMIT '.$size.' OFFSET '.(($page-1)*$size));$st->execute($args);
     $rows=[];while($r=$st->fetch(PDO::FETCH_ASSOC)){
         if(!$canCost)$r['price']='';if(!$canSupplier)$r['supplier']='';
         $r['has_image']=(bool)$r['has_image'];$rows[]=$r;
+    }
+    if(function_exists('bl_ready')&&bl_ready($pdo)&&$rows){
+        $ids=array_column($rows,'id');$st=$pdo->prepare('SELECT material_id,identity_status,price_status,confirmed_price,price_version,revision,origin FROM bom_material_state WHERE material_id IN ('.implode(',',array_fill(0,count($ids),'?')).')');$st->execute($ids);$states=[];foreach($st->fetchAll(PDO::FETCH_ASSOC) as $v)$states[(int)$v['material_id']]=$v;
+        foreach($rows as &$r){$v=$states[(int)$r['id']]??[];if(!$canCost)unset($v['confirmed_price'],$v['price_version']);$r=array_merge($r,$v);}unset($r);
     }
     $facets=[];foreach(['category','brand','supplier'] as $field){
         $facets[$field]=[];if($field==='supplier'&&!$canSupplier)continue;

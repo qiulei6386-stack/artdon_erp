@@ -22,11 +22,22 @@ function bcp_add(array &$map,array $keys,float $cost,string $source,string $upda
     }
 }
 function bcp_add_publication(array &$map,array $publication): void {
-    if($publication['source']==='voided')return; // Explicitly paused, never treat as frozen legacy cost.
+    if(in_array($publication['source'],['voided','draft_unpublished'],true))return; // Explicitly paused, never treat as frozen legacy cost.
     $p=json_decode((string)$publication['payload_json'],true,512,JSON_THROW_ON_ERROR);
     $keys=bcp_models($p['model']??'');
     $system=strtoupper(trim((string)($p['linked_system']??'')));$id=trim((string)($p['linked_id']??''));
     if($id!==''&&(strpos($system,'NAMING')!==false||strpos($system,'命名')!==false))$keys[]='NID'.$id;
+    if(isset($p['reference_id'])){
+        if(empty($p['quote_eligible']))return;
+        $label=($p['stage']==='approved'?'BOM终审':'BOM预审').' · 当前成本 #'.$p['reference_id'];
+        foreach($keys as $key){$key=bcp_norm($key);if($key==='')continue;
+            $candidate=['project_uid'=>$publication['project_uid'],'reference_id'=>(int)$p['reference_id'],'customer'=>$p['customer']??'','variant_label'=>$p['variant_label']??'','version_no'=>$p['version_no']??''];
+            $old=$map[$key]??null;$candidates=$old['candidates']??[];$candidates[$publication['project_uid']]=$candidate;
+            $ambiguous=count($candidates)>1;
+            $map[$key]=['cost_rmb'=>$ambiguous?0.0:(float)$publication['cost'],'source_table'=>$ambiguous?'多份BOM，请选择客户/用途/版本':$label,'updated_at'=>$publication['updated_at'],'match_key'=>$key,'quality'=>200,'published_zero'=>true,'ambiguous'=>$ambiguous,'candidates'=>$candidates];
+        }
+        return;
+    }
     $approved=$publication['source']==='approved_snapshot';$released=$approved&&empty($p['initial_freeze']);
     $label=$approved?'BOM审核快照 #'.$publication['snapshot_id']:(!empty($p['unreviewed_sync'])?'BOM未审核（冻结）':'BOM历史未审核（冻结）');
     bcp_add($map,$keys,(float)$publication['cost'],$label,(string)$publication['updated_at'],$released?130:120,$released);
@@ -39,6 +50,9 @@ function bcp_map(PDO $pdo,bool $lock=false): array {
     return $map;
 }
 function bcp_find(array $keys,array $map): array {
+    $normalized=array_unique(array_map('bcp_norm',$keys));
+    foreach($normalized as $key)if(strpos($key,'NID')===0&&isset($map[$key])&&isset($map[$key]['candidates']))return [$key,$map[$key],'exact_naming_bind'];
+    foreach($normalized as $key)if(!empty($map[$key]['ambiguous']))return [$key,$map[$key],'explicit_bom_required'];
     $best=array(null,null,null,-1,0);
     foreach(array_unique(array_map('bcp_norm',$keys)) as $key){
         $nid=strpos($key,'NID')===0;

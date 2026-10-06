@@ -15,6 +15,6 @@ bd_check(strpos($helper,'SELECT *')===false,'No full project/naming selects');
 bd_check(strpos($helper,"count(\$ids) > 18")!==false,'Visible page bounded');
 bd_check(strpos($helper,'OCTET_LENGTH(product_image)<=2048')!==false,'Image response bounded before transfer');
 bd_check(strpos($api,"'dashboard_search'=>'view_dashboard'")!==false && strpos($api,"'dashboard_images'=>'view_dashboard'")!==false,'Both endpoints permission mapped');
-bd_check(strpos($api,"if(!in_array(\$action,array('dashboard_search','dashboard_images','materials_list','material_image'),true))")!==false,'Enrichment and material reads skip schema migrations');
+bd_check(strpos($api,"if(!in_array(\$action,array('dashboard_search','dashboard_images','materials_list','material_image','material_where_used','price_history'),true))")!==false,'Enrichment and material reads skip schema migrations');
 bd_check(strpos($helper,'UPDATE ')===false && strpos($helper,'INSERT ')===false,'Read-only helper');
 echo "BOM dashboard validation, permission and query-budget contracts passed.\n";

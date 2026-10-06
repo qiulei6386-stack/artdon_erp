@@ -1122,6 +1122,7 @@ function apply_bom_cost(&$p,$costMap){
   if($hit){
     $c=floatval($hit['cost_rmb']??0); if($c>=0){
       $p['cost_rmb']=$c; $p['price_rmb']=$c; $p['cost_usd']=$c/7; $p['price_usd']=$c/7;
+      $p['bom_requires_choice']=!empty($hit['ambiguous']);
       $p['bom_match']=1; $p['bom_match_key']=$mk; $p['bom_match_mode']=$mode; $p['bom_cost_source']=$hit['source_table']??''; $p['cost_updated_at']=$hit['updated_at']??''; $p['price_note']='BOM成本：RMB '.number_format($c,2).'；来源：'.($p['bom_cost_source']??'').'；匹配整灯型号：'.$mk;
       return true;
     }
@@ -4511,6 +4512,7 @@ if($action==='init'){
    $id=(int)($_GET['id']??0); if($id<=0) fail('缺少报价ID');
    $q=row($pdo,"SELECT ".quote_select_columns_except($pdo,'quote_orders',['approved_snapshot_json','approval_items_json']).", 1 AS _detail_loaded FROM quote_orders WHERE id=? LIMIT 1",[$id]);
    if(!$q) fail('报价不存在');
+   $q['bom_sent_locked']=bl_ready($pdo)&&qbv_sent($pdo,$id);
    ok(['quote'=>quote_mutation_response_quote($q)]);
  }
 
@@ -4840,6 +4842,7 @@ if($action==='init'){
      if(quote_approval_status_of($locked)==='approved') fail('报价已审核，请另存新版本');
      $before=$locked;
    }
+   if(bl_ready($pdo)&&$before&&qbv_sent($pdo,(int)$before['id']))fail('这份报价已发送，请另存新版本后更新成本。');
    qbv_validate_save($pdo,$d,$before);
    $id=save_row($pdo,'quote_orders',$d,['quote_no','quote_date','user_name','customer_id','customer_name','customer_json','header_id','bank_id','template_id','header_json','bank_json','template_json','product_type','product_id','product_json','parts_json','items_json','qty','price','subtotal_amount','adjustment_amount','adjustment_json','amount','currency','exchange_rate','moq','color','cct','cri','ip','extra_spec','status','quote_status','version_no','price_level_id','price_level_name','price_multiplier','commission_json','approval_status','submitted_by','submitted_at','approved_by','approved_at','rejected_by','rejected_at','approval_note']);
    $after=row($pdo,'SELECT * FROM quote_orders WHERE id=? LIMIT 1',[intval($id)]);

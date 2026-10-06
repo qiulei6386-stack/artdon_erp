@@ -16,7 +16,7 @@ const root=path.resolve(__dirname,'..');
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/bom.php')return route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'bom.php'),'utf8').replace(/<\?php[\s\S]*?\?>/g,'')});
-   if(url.pathname==='/assets/bom-dashboard-read.js')return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,'assets/bom-dashboard-read.js'),'utf8')});
+   if(['/assets/bom-dashboard-read.js','/assets/bom-lifecycle.js'].includes(url.pathname))return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,url.pathname),'utf8')});
    if(url.pathname!=='/bom_api.php')return route.abort();
    const action=url.searchParams.get('action'),d=route.request().postDataJSON();requests.push({action,d});let r={ok:true};
    if(action==='me')r={ok:true,login:true,user:{username:'synthetic'},can};
@@ -31,7 +31,9 @@ const root=path.resolve(__dirname,'..');
    }else if(action==='withdraw_review'){
     assert.equal(d.review_note,'Correct quantity');assert.equal(d.expected_revision,data[d.project_uid].revision);
     data[d.project_uid]={...data[d.project_uid],review_status:'draft',can_withdraw_review:false,revision:data[d.project_uid].revision+'w'};r={ok:true,project:structuredClone(data[d.project_uid])};
-   }else throw Error('Unexpected request: '+action);
+   }else if(action==='price_history')r={ok:true,total:1,page:1,pages:1,events:[{created_at:'2026-10-06 10:00:00',actor:'Operator',actor_account:'users:701:alice',field_name:'price',old_price:7,new_price:9,delta:2,reason:'Supplier adjustment <img src=x>',source:'save_material',batch_id:'test',row_no:null}]};
+   else if(action==='material_where_used')r={ok:true,usages:[{project_uid:'B',name:'Synthetic B',model:'TEST-B',review_status:'preliminary',version_no:'V1',row_no:1,qty:1,price:9,binding_status:'exact'}],text_candidates:[{project_uid:'A',name:'Text candidate',model:'TEST-A',review_status:'draft',version_no:'V1',row_no:1,binding_status:'text_candidate'}]};
+   else throw Error('Unexpected request: '+action);
    await route.fulfill({contentType:'application/json',body:JSON.stringify(r)});
   });
   await page.goto('http://bom.test/bom.php');await page.waitForFunction(()=>projects.length===2);
@@ -60,6 +62,18 @@ const root=path.resolve(__dirname,'..');
   withdrawReason='Correct quantity';await page.locator('#bomWithdrawBtn').click();await page.waitForFunction(()=>!bomWriteBusy&&getCurrent().reviewStatus==='draft');
   assert(await page.locator('#bomSaveBtn').isEnabled());assert(await page.locator('#bomSubmitBtn').isEnabled());assert(await page.locator('#bomWithdrawBtn').isHidden());
   for(const width of [390,768,1440]){await page.setViewportSize({width,height:900});await page.evaluate(()=>{getCurrent().reviewStatus='pending';getCurrent().canWithdrawReview=true;updateBomWorkflowUI()});await page.locator('#bomWithdrawBtn').scrollIntoViewIfNeeded();assert(await page.locator('#bomWithdrawBtn').isVisible());}
+  saveDelay=false;withdrawReason='Supplier adjustment';data.B.review_status='preliminary';data.B.lifecycle_v2=true;
+  data.B.current_reference={cost:9,stored_cost:7,approval_cost:null,approval_delta:null,pending_prices:1,material_prices:[{row_no:0,material_id:1,stored_price:7,current_price:9,delta:2,source:'material_standard',price_version:1}]};
+  await page.evaluate(async()=>{projects.find(p=>p.id==='B').rowsLoaded=false;await loadProject('B')});
+  assert(await page.locator('#bomSaveBtn').isEnabled());assert(await page.locator('#bomApproveBtn').isEnabled());assert(await page.locator('#bomSubmitBtn').isDisabled());
+  assert((await page.locator('#bomReviewBar').textContent()).includes('当前参考成本'));
+  await page.locator('#tbody .price').fill('9');await page.evaluate(()=>saveCurrent());await page.waitForFunction(()=>!bomWriteBusy);
+  assert.equal(requests.filter(r=>r.action==='save_project').at(-1).d.price_reason,'Supplier adjustment','Price edits carry a mandatory reason despite collect() on input');
+  await page.evaluate(()=>BomLifecycle.history(1));await page.waitForFunction(()=>document.querySelector('dialog')?.textContent.includes('alice'));
+  assert.equal(await page.locator('dialog img').count(),0,'History text escaped');await page.locator('dialog [data-close]').click();
+  await page.evaluate(()=>BomLifecycle.used(1));await page.waitForFunction(()=>document.querySelector('dialog')?.textContent.includes('文字候选'));
+  assert.equal(await page.locator('dialog [data-bom]').count(),2);await page.locator('dialog [data-close]').click();
+  await page.evaluate(()=>{getCurrent().reviewStatus='approved';updateBomWorkflowUI()});assert(await page.locator('#tbody .price').isDisabled());assert(await page.locator('#bomUnapproveBtn').isEnabled());
   assert.deepEqual(errors,[]);console.log('Real-page BOM workflow: zero profit, correct total, cancel, loading/save lock, cross-BOM guard, success reload, delete-all total OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -6,6 +6,14 @@ require_once __DIR__.'/bom_workflow.php';
 function qbv_keys(array $p): array {
     return bcp_product_keys($p);
 }
+function qbv_sent(PDO $pdo,int $id): bool {
+    if($id<=0||!$pdo->query("SHOW TABLES LIKE 'quote_mail_packages'")->fetchColumn())return false;
+    $st=$pdo->prepare("SELECT 1 FROM quote_mail_packages WHERE quote_id=? AND (status='sent' OR sent_at IS NOT NULL) LIMIT 1");$st->execute([$id]);if($st->fetchColumn())return true;
+    if(!$pdo->query("SHOW TABLES LIKE 'quote_mail_attempts'")->fetchColumn())return false;
+    $st=$pdo->prepare('SELECT 1 FROM quote_mail_attempts a JOIN quote_mail_packages p ON p.token=a.token WHERE p.quote_id=? AND a.sent_at IS NOT NULL LIMIT 1');$st->execute([$id]);if($st->fetchColumn())return true;
+    if(!$pdo->query("SHOW TABLES LIKE 'crm_mail_send_jobs'")->fetchColumn())return false;
+    $st=$pdo->prepare("SELECT 1 FROM quote_mail_attempts a JOIN quote_mail_packages p ON p.token=a.token JOIN crm_mail_send_jobs j ON j.job_id=a.job_id COLLATE utf8mb4_unicode_ci WHERE p.quote_id=? AND j.status='success' LIMIT 1");$st->execute([$id]);return (bool)$st->fetchColumn();
+}
 function qbv_matches(array $p,array $bom): bool {
     return (bool)array_intersect(qbv_keys($p),bcp_models($bom['model']??''));
 }
@@ -46,6 +54,16 @@ function qbv_catalog(PDO $pdo,array $p,int $page=1): array {
     $st=$pdo->prepare("SELECT id,project_uid,snapshot_uid,snapshot_name,model,customer,version_no,variant_label,totals_json,approved_at,created_at FROM bom_snapshots WHERE $where ORDER BY id DESC LIMIT $size OFFSET $offset");$st->execute($args);
     $voids=array();foreach($projects as $uid=>$pub)$voids[$uid]=bw_snapshot_voids($pdo,(string)$uid);
     while($s=$st->fetch(PDO::FETCH_ASSOC))$result['versions'][]=array_merge(qbv_meta($s,$projects[$s['project_uid']]),$voids[$s['project_uid']][(int)$s['id']]??array('voided'=>false),array('unavailable'=>$projects[$s['project_uid']]['source']==='voided'));
+    if(bl_ready($pdo)){
+        $result['legacy']=array_values(array_filter($result['legacy'],static fn($v)=>!in_array($v['source'],['preliminary_reference','final_reference','draft_unpublished'],true)));
+        $current=[];
+        foreach($projects as $pub)if(!empty($pub['meta']['reference_id'])&&!in_array($pub['source'],['voided','draft_unpublished'],true)){
+            $r=qbv_reference($pdo,$p,-(int)$pub['meta']['reference_id'],null,true);
+            $current[]=$r['version'];$result['current_publications'][]=['project_uid'=>$pub['project_uid'],'snapshot_id'=>$r['version']['snapshot_id']];
+        }
+        // Current reference costs stay at the top of every page; approval history remains paged below.
+        $result['versions']=array_merge($current,$result['versions']);$result['total']+=count($current);
+    }
     return $result;
 }
 function qbv_components(array $rows): array {
@@ -60,6 +78,13 @@ function qbv_components(array $rows): array {
 }
 function qbv_resolve(PDO $pdo,array $product,int $id=0,?int $expectedPublication=null,bool $historyRead=false): array {
     $projects=qbv_projects($pdo,$product);
+    if(bl_ready($pdo)&&$id<=0){
+        if($id<0)return qbv_reference($pdo,$product,$id,$expectedPublication,$historyRead);
+        $valid=array_filter($projects,static fn($p)=>in_array($p['source'],['preliminary_reference','final_reference'],true)&&!empty($p['meta']['quote_eligible']));
+        if(count($valid)>1)return ['choose'=>true,'message'=>'同型号有多份BOM，请按客户、用途和版本选择'];
+        if(count($valid)===1){$pub=reset($valid);return qbv_reference($pdo,$product,-(int)$pub['meta']['reference_id'],$expectedPublication,$historyRead);}
+        if($projects)return ['choose'=>true,'message'=>'BOM仍为草稿、暂停取价或币种/型号未就绪，请先核对'];
+    }
     if(!$id){
         foreach($projects as $pub)if($pub['source']==='voided')return array('choose'=>true,'message'=>'匹配BOM含作废暂停项，请明确选择其他有效BOM；没有有效版本时不能新增报价');
         $approved=array_filter($projects,fn($p)=>$p['source']==='approved_snapshot'&&!empty($p['snapshot_id']));
@@ -87,13 +112,29 @@ function qbv_resolve(PDO $pdo,array $product,int $id=0,?int $expectedPublication
         'quote_spec'=>$spec,'quote_spec_json'=>bw_json($spec),'quote_spec_source'=>'bom_snapshot','quote_spec_updated_at'=>$meta['approved_at'],
         'quote_spec_auto_generated'=>1,'bom_quote_spec_id'=>''));
 }
+function qbv_reference(PDO $pdo,array $product,int $id,?int $expectedPublication=null,bool $historyRead=false): array {
+    $st=$pdo->prepare('SELECT id,project_uid,stage,workflow_version,approval_snapshot_id,cost,payload_json,digest,actor,reason,created_at FROM bom_reference_versions WHERE id=?');$st->execute([abs($id)]);$v=$st->fetch(PDO::FETCH_ASSOC);
+    if(!$v)throw new RuntimeException('成本版本不存在');
+    $payload=json_decode($v['payload_json'],true,512,JSON_THROW_ON_ERROR);$projects=qbv_projects($pdo,$product);$pub=$projects[$v['project_uid']]??null;
+    if(!$pub||!qbv_matches($product,$payload))throw new RuntimeException('成本版本不属于此产品');
+    $unavailable=in_array($pub['source'],['voided','draft_unpublished'],true)||empty($pub['meta']['quote_eligible']);
+    $void=(int)$v['approval_snapshot_id']>0?(bw_snapshot_voids($pdo,$v['project_uid'])[(int)$v['approval_snapshot_id']]??['voided'=>false]):['voided'=>false];
+    if(!$historyRead&&($unavailable||$void['voided']))throw new RuntimeException('该BOM已暂停、未发布或关联终审快照已作废');
+    $currentId=-(int)($pub['meta']['reference_id']??0);
+    if($expectedPublication!==null&&$expectedPublication!==$currentId)throw new RuntimeException('参考成本已有新版本，请重新核对');
+    $spec=qbv_components($payload['rows']);$cost=(float)$v['cost'];
+    $reference=['project_uid'=>$v['project_uid'],'snapshot_id'=>-(int)$v['id'],'snapshot_uid'=>'COST-'.$v['id'],'cost_version_id'=>(int)$v['id'],'approval_snapshot_id'=>(int)$v['approval_snapshot_id'],'stage'=>$v['stage'],'workflow_version'=>(int)$v['workflow_version'],'name'=>$payload['name'],'model'=>$payload['model'],'customer'=>$payload['customer'],'version_no'=>$payload['version_no'],'variant_label'=>$payload['variant_label'],'cost_rmb'=>$cost,'approved_at'=>$v['created_at'],'material_price_digest'=>hash('sha256',bw_json($payload['material_prices']))];
+    $reference['digest']=hash('sha256',bw_json([$reference,$spec]));
+    $meta=array_merge($reference,['current'=>$id===$currentId,'published_at'=>$v['created_at'],'publication_snapshot_id'=>$currentId,'voided'=>$void['voided'],'void_reason'=>$void['void_reason']??'','unavailable'=>$unavailable]);
+    return ['version'=>$meta,'patch'=>['bom_version'=>$reference,'bom_match'=>1,'bom_cost_source'=>($v['stage']==='approved'?'终审':'预审').'当前参考成本 #'.$v['id'],'cost_rmb'=>$cost,'price_rmb'=>$cost,'cost_usd'=>$cost/7,'price_usd'=>$cost/7,'cost_updated_at'=>$v['created_at'],'quote_spec'=>$spec,'quote_spec_json'=>bw_json($spec),'quote_spec_source'=>'bom_reference','quote_spec_updated_at'=>$v['created_at'],'quote_spec_auto_generated'=>1,'bom_quote_spec_id'=>'']];
+}
 function qbv_validate_save(PDO $pdo,array $data,?array $before=null): void {
     // Old quotes without a version reference are preserved, never retroactively rewritten.
     $hasVoids=bw_ready($pdo)&&(bool)$pdo->query("SELECT 1 FROM bom_workflow_events WHERE action='void_snapshot' LIMIT 1")->fetchColumn();
     if(!$hasVoids&&strpos((string)($data['items_json']??''),'"bom_version"')===false)return;
     $items=json_decode((string)($data['items_json']??'[]'),true,512,JSON_THROW_ON_ERROR);$cache=array();
     $oldRefs=array();
-    if($hasVoids&&!empty($before['id'])){
+    if(!empty($before['id'])){
         // Project only version references; never decode old embedded images a second time.
         $st=$pdo->prepare("SELECT JSON_EXTRACT(items_json,'$[*].product.bom_version') FROM quote_orders WHERE id=?");$st->execute(array($before['id']));
         foreach(json_decode((string)($st->fetchColumn()?:'[]'),true)?:array() as $ref){$key=(int)($ref['snapshot_id']??0).'|'.($ref['digest']??'');$oldRefs[$key]=($oldRefs[$key]??0)+1;}
