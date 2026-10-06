@@ -57,3 +57,10 @@ $quote=['items_json'=>bw_json([['product'=>array_merge(['model'=>'57.99991'],$fi
 $forged=$quote;$items=json_decode($forged['items_json'],true);$items[0]['product']['cost_rmb']=999;$forged['items_json']=bw_json($items);
 try{qbv_validate_save($pdo,$forged);throw new LogicException('Forged reference accepted');}catch(RuntimeException $e){}
 echo "BOM lifecycle: preliminary publication, audit rollback/retry, confirmed/pending standard propagation, immutable final snapshot, dual costs, historical quote validation, exact where-used and ambiguity passed\n";
+
+$zero=$d;$zero['project_uid']='LIFE-ZERO';$zero['model']='57.99992';$zero['labor']=0;$zero['rows'][0]['price']=0;$zero['rows'][0]['name']='Synthetic zero-priced component';
+bw_execute($pdo,'save_project',requestData($pdo,'LIFE-ZERO',$zero),'Alice',true,$alice);bw_execute($pdo,'submit_review',requestData($pdo,'LIFE-ZERO'),'Alice',true,$alice);
+wfCheck(qbv_resolve($pdo,['model'=>'57.99992'])['choose']===true,'Preliminary zero is held for explicit final review');
+bw_execute($pdo,'approve_project',requestData($pdo,'LIFE-ZERO'),'Reviewer',true);
+wfCheck(qbv_resolve($pdo,['model'=>'57.99992'])['patch']['cost_rmb']===0.0,'Explicit final zero is allowed');
+echo "Zero cost: preliminary blocked, explicit final approval allowed\n";

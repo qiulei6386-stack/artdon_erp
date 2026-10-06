@@ -85,7 +85,7 @@ function bl_publish(PDO $pdo,array $p,string $actor,string $reason,string $batch
     $meta=bw_publication_payload($p);$meta['stage']=$p['review_status'];$meta['reference_id']=$id;$meta['reference_digest']=$digest;$meta['pending_prices']=$current['pending_prices'];$meta['workflow_version']=(int)$p['workflow_version'];
     $source=$p['review_status']==='approved'?'final_reference':'preliminary_reference';
     // Foreign-currency BOMs remain visible for correction but cannot be quoted as RMB.
-    $meta['quote_eligible']=in_array(strtoupper(trim((string)$p['currency'])),['RMB','CNY','人民币'],true)&&(bool)(bcp_models($p['model'])||($p['linked_id']??''));
+    $meta['quote_eligible']=in_array(strtoupper(trim((string)$p['currency'])),['RMB','CNY','人民币'],true)&&(bool)(bcp_models($p['model'])||($p['linked_id']??''))&&($current['cost']>0||$p['review_status']==='approved');
     $pdo->prepare('INSERT INTO bom_cost_publications(project_uid,snapshot_id,source,payload_json,cost) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE snapshot_id=VALUES(snapshot_id),source=VALUES(source),payload_json=VALUES(payload_json),cost=VALUES(cost),updated_at=NOW()')->execute([$p['project_uid'],$payload['approval_snapshot_id']?:null,$source,bw_json($meta),$current['cost']]);
     bl_event($pdo,null,$p['project_uid'],null,'reference_cost',$old?$old['cost']:null,$current['cost'],$reason,$actor,$user,'reference_sync',$batch,['reference_id'=>$id,'stage'=>$p['review_status'],'pending_prices'=>$current['pending_prices']]);
     return $id;
