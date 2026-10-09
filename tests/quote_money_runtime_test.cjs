@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/../quotation.php','utf8');
 function extract(name){const start=source.indexOf('function '+name+'(');assert(start>=0,name);const next=source.slice(start+1).search(/\n(?:async )?function /);assert(next>=0,name+' end');return source.slice(start,start+1+next);}
-const ctx={S:{},DB:{},clone:x=>JSON.parse(JSON.stringify(x)),cur:()=> 'RMB',rate:()=>6.7,quoteContextRate:()=>9,
+const ctx={S:{},DB:{},hasPerm:()=>true,clone:x=>JSON.parse(JSON.stringify(x)),cur:()=> 'RMB',rate:()=>6.7,quoteContextRate:()=>9,
  itemBaseCost:()=>3900,itemAutoPrice:()=>{throw Error('Unexpected repricing');},
  quoteItemBreakdown:()=>({final:999,multiplier:1,subtotal:3900}),quoteReviewImage:()=>'',isVirtualQuoteItem:x=>x.item_type==='virtual',
  esc:x=>String(x),reviewProductTitleOnly:()=> 'Synthetic item',buildSpec:()=>'',quoteDirectImageUrl:x=>x,
@@ -21,7 +21,7 @@ for(const qty of [0,1,1.125])for(const price of [0,2.1234,4355]){
  assert.equal(ctx.normalizeQuoteItemCurrency(it,'RMB').price,price);assert.equal(displayPrice(it),price);
  assert.equal(ctx.quoteTotalsForItems([{...it,amount:99999}],false).amount,ctx.quoteMoneyRow(qty,price));
 }
-vm.runInContext(extract('quoteItemsForPreview'),ctx);
+for(const name of ['quoteDisplayCanEdit','quoteDisplayDescriptionLines','quoteDisplayDescription','quotePrepareDisplayItem','quoteRemarksOfItem','quoteItemsForPreview'])vm.runInContext(extract(name),ctx);
 ctx.S.items=[{qty:3,price:0.335,currency:'RMB',manual_price:false,product:{}}];
 assert.equal(ctx.quoteItemsForPreview()[0].price,0.335);
 assert.equal(ctx.quoteItemsForPreview()[0].amount,1.01);

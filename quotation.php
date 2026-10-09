@@ -1223,7 +1223,7 @@ function bind(){
   if($('qty'))$('qty').max='999999';
   setTimeout(()=>{$('optGroup')?.addEventListener('change',renderOptions)},0);
   ['quoteNo','quoteStatus'].forEach(id=>$(id)?.addEventListener('input',()=>{render()}));
-  ['qty','manualPrice','moq','customerCode','color','beamAngle','cct','cri','ip','extraSpec','remark1','remark2','remark3','remark4','priceMultiplierCustom'].forEach(id=>$(id)?.addEventListener('input',()=>{clampCompactInputs();if(id==='qty')scheduleQuotePricePolicyRefresh();updatePriceLevelHint();syncEditingItemFromForm();render()}));
+  ['qty','manualPrice','moq','customerCode','color','beamAngle','power','cct','cri','ip','extraSpec','remark1','remark2','remark3','remark4','priceMultiplierCustom'].forEach(id=>$(id)?.addEventListener('input',()=>{clampCompactInputs();if(id==='qty')scheduleQuotePricePolicyRefresh();updatePriceLevelHint();syncEditingItemFromForm();render()}));
   $('priceLevel')?.addEventListener('change',()=>{syncPriceMultiplierFromLevel(true);if(S.editingIndex>=0){$('manualPrice').value='';}updatePriceLevelHint();syncEditingItemFromForm();render()});
   $('priceLevel')?.addEventListener('input',()=>{syncPriceMultiplierFromLevel(true);if(S.editingIndex>=0){$('manualPrice').value='';}updatePriceLevelHint();syncEditingItemFromForm();render()});
   $('currency')?.addEventListener('change',()=>{handleCurrencyChange($('currency').value)});
@@ -2593,7 +2593,7 @@ async function selectProduct(){
   QUOTE_PRICE_POLICY_REQUEST++;QUOTE_PRICE_POLICY_MATCH=null;
   const source=DB.products.find(x=>String(x.id)===selectedId);
   S.product=source?clone(source):null;
-  if(S.product)delete S.product.quote_spec_display_override;
+  if(S.product){delete S.product.quote_spec_display_override;delete S.product.quote_spec_display_mode;}
   const selection=S.product,quoteId=S.currentQuoteId;
   if(S.product){
     S.parts={};
@@ -2876,6 +2876,7 @@ function currentAutoUnit(old=null){return currentEditorBaseCost(old)*priceMultip
 function currentEditorItem(){
   clampCompactInputs();
   let qty=Number($('qty').value||1), old=(S.editingIndex>=0&&Array.isArray(S.items))?S.items[S.editingIndex]:null;
+  if(quoteDisplayCanEdit())quotePrepareDisplayItem({...old,product:S.product});
   let remarks=quoteRemarksFromForm();
   let manual=$('manualPrice').value!=='';
   let currency=cur();
@@ -2915,8 +2916,7 @@ function currentEditorItem(){
     it.product_type='material';
     it.parts={};
     if(!it.product)it.product=clone(S.product);
-    if(typeof S.product?.quote_spec_display_override==='string')it.product.quote_spec_display_override=S.product.quote_spec_display_override;
-    else delete it.product.quote_spec_display_override;
+    for(const field of ['quote_spec_display_override','quote_spec_display_mode']){if(typeof S.product?.[field]==='string')it.product[field]=S.product[field];else delete it.product[field];}
     return it;
   }
   return Object.assign({
@@ -2954,6 +2954,7 @@ function itemUnitPrice(item,c=cur()){
 
 function quoteItemsForPreview(){
   let arr=Array.isArray(S.items)?S.items:[];
+  if(quoteDisplayCanEdit())arr.forEach(quotePrepareDisplayItem);
   if(arr.length){
     return arr.map(it=>{
       let cp=normalizeVirtualQuoteItemSign(normalizeQuoteItemCurrency(clone(it),cur(),it.currency||cur()));
@@ -3306,7 +3307,7 @@ function saveVirtualItemFromModal(index=-1){
   S.editingIndex=-1;closeVirtualItemModal();renderQuoteItems();render();
 }
 function clampCompactInputs(){let lim={qty:999999,manualPrice:9999,moq:99999,rate:8.88};Object.entries(lim).forEach(([id,max])=>{let el=$(id);if(!el||el.value==='')return;let v=Number(el.value);if(v>max)el.value=max;if(v<0)el.value=0});['cct','cri','ip'].forEach(id=>{let el=$(id);if(el)el.value=String(el.value||'').trim().toUpperCase()});normalizeBeamAngleField()}
-function loadItemToEditor(it,idx=-1){if(!it)return;if(isVirtualQuoteItem(it)){openVirtualItemModal(idx);return;}S.product=clone(it.product||{});if(!S.product.id)S.product.id=S.product.naming_id?('naming_naming_models_'+S.product.naming_id):('quote_snapshot_'+String(S.product.code||idx));S.parts=clone(it.parts||{});S.editingIndex=idx;let productId=String(S.product.id||'');$('productType').value=it.product_type||S.product?.type||'track';renderProductSelect(productId);$('productSelect').value=productId;syncProductSearchFromSelect();$('qty').value=it.qty??1;$('moq').value=it.moq??S.product?.moq??'';let itemColor=Object.prototype.hasOwnProperty.call(it,'color')?it.color:(S.product?.color??'');fillOptionSelect('color',colorItems(),itemColor);if($('beamAngle'))$('beamAngle').value=cleanBeamAngleValue(it.beam_angle||it.beamAngle||'');if($('power'))$('power').value=it.power||S.product?.power||'';if($('cct'))$('cct').value=it.cct||'';if($('cri'))$('cri').value=it.cri||'';if($('ip'))$('ip').value=it.ip||'';if($('customerCode'))$('customerCode').value=it.customer_code||'';$('extraSpec').value=it.extra_spec||'';setQuoteRemarksToForm(it);if($('priceLevel'))$('priceLevel').value=it.price_level_id||$('priceLevel').value||'';if($('priceMultiplierCustom'))$('priceMultiplierCustom').value=Number(it.price_multiplier||selectedPriceLevel().multiplier||1).toFixed(2);let isManual=it.manual_price===true || it.manual_price===1 || it.manual_price==='1';$('manualPrice').value=isManual?(it.price!==undefined?money(it.price):''):'';updatePriceLevelHint();renderParts();updateProductLinkHint();renderQuoteItems();render()}
+function loadItemToEditor(it,idx=-1){if(!it)return;if(isVirtualQuoteItem(it)){openVirtualItemModal(idx);return;}if(quoteDisplayCanEdit())quotePrepareDisplayItem(it);S.product=clone(it.product||{});if(!S.product.id)S.product.id=S.product.naming_id?('naming_naming_models_'+S.product.naming_id):('quote_snapshot_'+String(S.product.code||idx));S.parts=clone(it.parts||{});S.editingIndex=idx;let productId=String(S.product.id||'');$('productType').value=it.product_type||S.product?.type||'track';renderProductSelect(productId);$('productSelect').value=productId;syncProductSearchFromSelect();$('qty').value=it.qty??1;$('moq').value=it.moq??S.product?.moq??'';let itemColor=Object.prototype.hasOwnProperty.call(it,'color')?it.color:(S.product?.color??'');fillOptionSelect('color',colorItems(),itemColor);if($('beamAngle'))$('beamAngle').value=cleanBeamAngleValue(it.beam_angle||it.beamAngle||'');if($('power'))$('power').value=it.power??S.product?.power??'';if($('cct'))$('cct').value=it.cct||'';if($('cri'))$('cri').value=it.cri||'';if($('ip'))$('ip').value=it.ip||'';if($('customerCode'))$('customerCode').value=it.customer_code||'';$('extraSpec').value=it.extra_spec||'';setQuoteRemarksToForm(it);if($('priceLevel'))$('priceLevel').value=it.price_level_id||$('priceLevel').value||'';if($('priceMultiplierCustom'))$('priceMultiplierCustom').value=Number(it.price_multiplier||selectedPriceLevel().multiplier||1).toFixed(2);let isManual=it.manual_price===true || it.manual_price===1 || it.manual_price==='1';$('manualPrice').value=isManual?(it.price!==undefined?money(it.price):''):'';updatePriceLevelHint();renderParts();updateProductLinkHint();renderQuoteItems();render()}
 function syncEditingItemFromForm(){if(S.editingIndex<0||!Array.isArray(S.items)||!S.items[S.editingIndex]||isVirtualQuoteItem(S.items[S.editingIndex]))return;let it=currentEditorItem();if(!it.product||!it.product.id)return;S.items[S.editingIndex]=it;}
 function addOrUpdateQuoteItem(){let it=currentEditorItem();if(!it.product||!it.product.id){alert('请先选择产品/空壳');return;}it.amount=Number(it.qty||0)*Number(it.price||0);let mode=S.editingIndex>=0?'更新产品行':'新增产品行';if(S.editingIndex>=0){S.items[S.editingIndex]=it;}else{S.items.push(it);}clientLog('quote_item_upsert',mode,{item:it,item_count:S.items.length});S.editingIndex=-1;renderQuoteItems();render();}
 function editQuoteItem(i){let it=S.items[i];if(!it)return;if(isVirtualQuoteItem(it)){openVirtualItemModal(i);return;}loadItemToEditor(it,i)}
@@ -3391,7 +3392,34 @@ function specLabel(label){
 }
 function productQuoteSpec(p){let raw=p?.quote_spec||p?.quoteSpec||null;if(!raw&&p?.quote_spec_json){try{raw=JSON.parse(p.quote_spec_json)}catch(e){raw=null}}let out=[];if(raw&&typeof raw==='object'){for(let [k,v] of Object.entries(raw)){let label=k,val='';if(v&&typeof v==='object'){label=v.label||k;val=v.value||v.text||''}else{val=v}label=specLabel(label);if(['LED','LED Driver','Optic','Adapter','Accessories'].includes(label))val=quoteBrandModelOnly(val,label);if(cleanParam(val))out.push([label,cleanParam(val)])}}return out}
 function ledLineValue(val,item=null){let cct=item?(item.cct||''):normCct($('cct')?.value||'');let cri=item?(item.cri||''):normCri($('cri')?.value||'');return [cleanParam(val),cct,cri].filter(Boolean).join(' ').trim()}
-function buildSpec(item=null){const displayProduct=(item?item.product:S.product)||{};if(typeof displayProduct.quote_spec_display_override==='string')return item?.is_order_snapshot&&typeof item.specification==='string'?item.specification:displayProduct.quote_spec_display_override;if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
+function quoteDisplayCanEdit(){return hasPerm('quote_edit')&&S.currentApprovalStatus!=='approved'&&!(S.currentQuoteId>0&&S.bomSentLocked)}
+function quoteDisplayDescriptionLines(text){
+  return String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.\s*/,'').trim()).filter(x=>x&&!/^(?:Power|Beam\s*Angle|CCT|CRI|IP|功率|角度|色温|显指)\s*[:：]/i.test(x)&&!/^(?:IP\s*[0-9][A-Z0-9]*|[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3})$/i.test(x)).map(x=>/^LED\s*[:：]/i.test(x)?x.replace(/(?:\s+(?:[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3}))+$/i,'').trim():x);
+}
+function quoteDisplayDescription(text,item){
+  let lines=String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.\s*/,'').trim()).filter(Boolean);
+  // Remove only the known trailing form remarks when separating an old full specification.
+  for(const remark of quoteRemarksOfItem(item).slice().reverse()){if(lines.at(-1)===remark)lines.pop();else break;}
+  return quoteDisplayDescriptionLines(lines.join('\n')).join('\n');
+}
+function quotePrepareDisplayItem(item){
+  const p=item?.product;if(!p||item.is_order_snapshot||typeof p.quote_spec_display_override!=='string'||p.quote_spec_display_mode==='live_parameters')return;
+  p.quote_spec_display_override=quoteDisplayDescription(p.quote_spec_display_override,item);
+  p.quote_spec_display_mode='live_parameters';
+}
+function quoteDisplayManualSpec(item){
+  const p=item?.product||{};if(typeof p.quote_spec_display_override!=='string')return null;
+  if(item.is_order_snapshot&&typeof item.specification==='string')return item.specification;
+  if(p.quote_spec_display_mode!=='live_parameters')return p.quote_spec_display_override;
+  const lines=quoteDisplayDescriptionLines(p.quote_spec_display_override),cct=normCct(item.cct||''),cri=normCri(item.cri||'');let led=false;
+  for(let i=0;i<lines.length;i++){if(/^LED\s*[:：]/i.test(lines[i])){lines[i]=[lines[i],cct,cri].filter(Boolean).join(' ');led=true;}}
+  const power=formatPowerForSpec(item.power??p.power??''),beam=formatBeamAngleForSpec(item.beam_angle??item.beamAngle??'');
+  if(power)lines.push('Power: '+power);if(beam)lines.push('Beam Angle: '+beam);
+  if(!led&&cct)lines.push('CCT: '+cct);if(!led&&cri)lines.push('CRI: '+cri.replace(/^CRI/i,''));
+  const ip=normIp(item.ip||'');if(ip)lines.push(ip);
+  lines.push(...quoteRemarksOfItem(item));return lines.map((x,i)=>(i+1)+'. '+x).join('\n');
+}
+function buildSpec(item=null){const displayItem=item||{product:S.product,power:$('power')?.value??'',beam_angle:$('beamAngle')?.value||'',cct:$('cct')?.value||'',cri:$('cri')?.value||'',ip:$('ip')?.value||'',quote_remarks:quoteRemarksFromForm()};const manualSpec=quoteDisplayManualSpec(displayItem);if(manualSpec!==null)return manualSpec;if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
 if(isVirtualQuoteItem(item))return virtualQuoteSpec(item);
 let seriesLine=productSeriesLine(p);if(seriesLine)lines.push((n++)+'. '+seriesLine);
 add('Power', formatPowerForSpec(item?(item.power||p.power):(($('power')?.value||p.power)||'')));
@@ -5424,5 +5452,5 @@ function printOrderStatement(key){
 <link rel="stylesheet" href="assets/quote-bom-versions.css?v=20260921-1">
 <script src="assets/quote-bom-versions.js?v=20260921-3"></script>
 <link rel="stylesheet" href="assets/quote-display-text.css?v=20261009-1">
-<script src="assets/quote-display-text.js?v=20261009-1"></script>
+<script src="assets/quote-display-text.js?v=20261009-2"></script>
 </body></html>

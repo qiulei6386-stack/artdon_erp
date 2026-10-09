@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/includes/quote_money.php';
+require_once __DIR__.'/includes/quote_display_text.php';
 /* ARTDON_SSO_GATE_V2_START */
 require_once __DIR__.'/includes/artdon_sso_core.php';
 // Excel 是已登录报价页发起的 POST 下载；这里只校验登录，导出权限由下方
@@ -163,10 +164,7 @@ function qe_adjustment_label($payload){
   return $label!==''?$label:'Adjustment';
 }
 function qe_item_spec($it){
-  $displayProduct=$it['product']??[];
-  if(is_array($displayProduct) && is_string($displayProduct['quote_spec_display_override']??null)){
-    return !empty($it['is_order_snapshot']) && is_string($it['specification']??null) ? $it['specification'] : $displayProduct['quote_spec_display_override'];
-  }
+  if(is_string($it['product']['quote_spec_display_override']??null))return qdt_render_manual($it);
   // V6.8.5.21：报价/订单导出 Excel 与 PDF 同步，优先使用订单/报价保存时的完整 Specification。
   $saved=qe_clean_param($it['specification']??'');
   if($saved!=='') return qe_sanitize_saved_spec($saved,$it);

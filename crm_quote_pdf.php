@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/includes/quote_money.php';
+require_once __DIR__.'/includes/quote_display_text.php';
 /**
  * Artdon Quotation PDF Export V6.8.5.21 Quote/Order Unified Spec
  * Syncs quotation preview format to PDF/print export:
@@ -389,11 +390,7 @@ function product_quote_spec($p): array {
     return $out;
 }
 function build_spec($item): string {
-    // Explicit empty text hides the specification; source BOM fields remain untouched.
-    $displayProduct = arr_get($item, 'product', []);
-    if (is_array($displayProduct) && is_string($displayProduct['quote_spec_display_override'] ?? null)) {
-        return !empty($item['is_order_snapshot']) && is_string($item['specification'] ?? null) ? $item['specification'] : $displayProduct['quote_spec_display_override'];
-    }
+    if(is_string($item['product']['quote_spec_display_override']??null))return qdt_render_manual($item);
     // V6.8.5.21：已保存报价/已转订单如果带有完整 Specification，导出时优先原样使用。
     // 避免订单导出只剩产品、功率、尺寸、开孔，丢失 LED / Driver / Optic / IP 等原报价参数。
     $savedSpec = clean_param(arr_get($item, 'specification', ''));
