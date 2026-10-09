@@ -37,6 +37,7 @@ if [ "$lint_failed" -ne 0 ]; then
 fi
 
 contract_tests=(
+  tests/quote_display_text_export_contract.php
   tests/bom_lifecycle_contract.php
   tests/bom_unreviewed_sync_contract.php
   tests/bom_material_read_contract.php

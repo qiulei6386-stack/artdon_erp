@@ -163,6 +163,10 @@ function qe_adjustment_label($payload){
   return $label!==''?$label:'Adjustment';
 }
 function qe_item_spec($it){
+  $displayProduct=$it['product']??[];
+  if(is_array($displayProduct) && is_string($displayProduct['quote_spec_display_override']??null)){
+    return !empty($it['is_order_snapshot']) && is_string($it['specification']??null) ? $it['specification'] : $displayProduct['quote_spec_display_override'];
+  }
   // V6.8.5.21：报价/订单导出 Excel 与 PDF 同步，优先使用订单/报价保存时的完整 Specification。
   $saved=qe_clean_param($it['specification']??'');
   if($saved!=='') return qe_sanitize_saved_spec($saved,$it);

@@ -1347,7 +1347,7 @@ function qspecModelOfProduct(p=null){p=p||S.product||{};return String(p.code||p.
 function bomQuoteSpecUrl(p=null){p=p||S.product||{};let u='bom_quote_spec.php';let qs=[];let model=qspecModelOfProduct(p);if(model)qs.push('model='+encodeURIComponent(model));if(p.naming_id)qs.push('naming_id='+encodeURIComponent(p.naming_id));return u+(qs.length?'?'+qs.join('&'):'')}
 function openBomQuoteSpec(p=null){let u=bomQuoteSpecUrl(p);window.open(u,'artdonQuoteSpecEditor')}
 async function forceSyncBomQuoteSpecForSelectedProduct(){let p=S.product;if(!p){alert('请先选择命名系统产品');return;}let el=$('productLinkHint');if(el)el.innerHTML=productSourceBadge(p)+' <b>'+esc(p.code||p.name||'')+'</b><br>正在从 BOM 手动重新拉取关键件...';try{let res=await api('sync_bom_quote_spec',{force:1,product:{id:p.id,source:p.source,naming_id:p.naming_id,code:p.code,model:p.model,name:p.name,image:p.image,power:p.power,size:p.size,cutout:p.cutout,bom_match:p.bom_match,bom_match_key:p.bom_match_key}});if(res&&res.spec){let spec=res.spec;Object.assign(S.product,{bom_quote_spec_id:spec.id,quote_spec:spec.quote_spec||{},quote_spec_json:JSON.stringify(spec.quote_spec||{}),quote_spec_source:'bom_quote_specs',quote_spec_updated_at:spec.updated_at||'',quote_spec_auto_generated:spec.auto_generated||1});['power','size','cutout'].forEach(k=>{if(spec[k])S.product[k]=spec[k]});let idx=(DB.products||[]).findIndex(x=>String(x.id)===String(S.product.id));if(idx>=0)DB.products[idx]=Object.assign(DB.products[idx],S.product);renderParts();render();updatePriceLevelHint();updateProductLinkHint();alert('已从 BOM 重新拉取并保存关键件。若文字还需调整，请点“手动修正关键件”。')}else{updateProductLinkHint();alert('未从 BOM 提取到关键件，可点“手动修正关键件”自行填写。')}}catch(e){updateProductLinkHint();alert('重新拉取失败：'+e.message)}}
-function updateProductLinkHint(){let el=$('productLinkHint'); if(!el)return;let p=S.product;if(!p){el.innerHTML='产品主数据优先来自命名中心；成本价优先匹配 BOM。';return;}let src=productSourceLabel(p), bom=Number(p.bom_match||0), qn=productQuoteSpec(p).length;let auto=Number(p.quote_spec_auto_generated||0)?'自动同步':'人工维护';let actions=p.source==='naming'?`<div class="quote-spec-actions"><button type="button" class="mini-sync" onclick="forceSyncBomQuoteSpecForSelectedProduct()">重新从BOM拉取关键件</button><button type="button" class="mini-link" onclick="openBomQuoteSpec()">手动修正关键件</button></div>`:'';el.className='hint product-link-hint';el.innerHTML=`${productSourceBadge(p)} <b>${esc(p.code||p.name||'')}</b>${qn?'<span class="quote-spec-badge">已设报价关键件 '+qn+' 项</span>':''}<br>来源：${esc(src)} ｜ ${bom?'已匹配 BOM 成本':'未匹配 BOM，可先按空壳/手动价报价'} ｜ ${esc(productCostText(p))}${p.bom_cost_source?' ｜ 成本源：'+esc(p.bom_cost_source):''}${qn?(p.bom_version?' ｜ 关键件来自所选审核快照':' ｜ 关键件来自 BOM 报价设置（'+auto+'）'):''}${actions}`}
+function updateProductLinkHint(){let el=$('productLinkHint'); if(!el)return;let p=S.product;if(!p){el.innerHTML='产品主数据优先来自命名中心；成本价优先匹配 BOM。';return;}let src=productSourceLabel(p), bom=Number(p.bom_match||0), qn=productQuoteSpec(p).length;let auto=Number(p.quote_spec_auto_generated||0)?'自动同步':'人工维护';let actions=p.source==='naming'?`<div class="quote-spec-actions"><button type="button" class="mini-sync" onclick="forceSyncBomQuoteSpecForSelectedProduct()">重新从BOM拉取关键件</button><button type="button" class="mini-link" onclick="openBomQuoteSpec()">手动修正关键件</button></div>`:'';el.className='hint product-link-hint';el.innerHTML=`${productSourceBadge(p)} <b>${esc(p.code||p.name||'')}</b>${qn?'<span class="quote-spec-badge">已设报价关键件 '+qn+' 项</span>':''}<br>来源：${esc(src)} ｜ ${bom?'已匹配 BOM 成本':'未匹配 BOM，可先按空壳/手动价报价'} ｜ ${esc(productCostText(p))}${p.bom_cost_source?' ｜ 成本源：'+esc(p.bom_cost_source):''}${qn?(p.bom_version?' ｜ 关键件来自所选审核快照':' ｜ 关键件来自 BOM 报价设置（'+auto+'）'):''}${actions}<div class="quote-display-actions"><button type="button" class="mini-link" onclick="QuoteDisplayText.open()">修改报价文字</button>${typeof p.quote_spec_display_override==='string'?'<span> 本行已手动修改</span>':''}</div>`}
 function quoteSpecMatchesProduct(spec,p){
   if(!spec||!p)return false;
   if(p.bom_version)return false; // A published snapshot cannot be overwritten by the separate manual-spec editor.
@@ -2593,6 +2593,7 @@ async function selectProduct(){
   QUOTE_PRICE_POLICY_REQUEST++;QUOTE_PRICE_POLICY_MATCH=null;
   const source=DB.products.find(x=>String(x.id)===selectedId);
   S.product=source?clone(source):null;
+  if(S.product)delete S.product.quote_spec_display_override;
   const selection=S.product,quoteId=S.currentQuoteId;
   if(S.product){
     S.parts={};
@@ -2914,6 +2915,8 @@ function currentEditorItem(){
     it.product_type='material';
     it.parts={};
     if(!it.product)it.product=clone(S.product);
+    if(typeof S.product?.quote_spec_display_override==='string')it.product.quote_spec_display_override=S.product.quote_spec_display_override;
+    else delete it.product.quote_spec_display_override;
     return it;
   }
   return Object.assign({
@@ -3388,7 +3391,7 @@ function specLabel(label){
 }
 function productQuoteSpec(p){let raw=p?.quote_spec||p?.quoteSpec||null;if(!raw&&p?.quote_spec_json){try{raw=JSON.parse(p.quote_spec_json)}catch(e){raw=null}}let out=[];if(raw&&typeof raw==='object'){for(let [k,v] of Object.entries(raw)){let label=k,val='';if(v&&typeof v==='object'){label=v.label||k;val=v.value||v.text||''}else{val=v}label=specLabel(label);if(['LED','LED Driver','Optic','Adapter','Accessories'].includes(label))val=quoteBrandModelOnly(val,label);if(cleanParam(val))out.push([label,cleanParam(val)])}}return out}
 function ledLineValue(val,item=null){let cct=item?(item.cct||''):normCct($('cct')?.value||'');let cri=item?(item.cri||''):normCri($('cri')?.value||'');return [cleanParam(val),cct,cri].filter(Boolean).join(' ').trim()}
-function buildSpec(item=null){if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
+function buildSpec(item=null){const displayProduct=(item?item.product:S.product)||{};if(typeof displayProduct.quote_spec_display_override==='string')return item?.is_order_snapshot&&typeof item.specification==='string'?item.specification:displayProduct.quote_spec_display_override;if(isMaterialSaleItem(item))return materialSaleSpec(item);let p=(item?item.product:S.product)||{}, parts=(item?item.parts:S.parts)||{}, lines=[], n=1, usedLabels=new Set();let add=(label,val)=>{label=specLabel(label);val=cleanParam(val);if(val){lines.push((n++)+'. '+label+': '+val);usedLabels.add(label)}};
 if(isVirtualQuoteItem(item))return virtualQuoteSpec(item);
 let seriesLine=productSeriesLine(p);if(seriesLine)lines.push((n++)+'. '+seriesLine);
 add('Power', formatPowerForSpec(item?(item.power||p.power):(($('power')?.value||p.power)||'')));
@@ -4221,7 +4224,8 @@ function mergeOrderItemWithQuoteSnapshot(orderItem,baseItem,index){
   out.amount=Number(flat.amount||(out.qty*out.price)||base.amount||0);
   let rowSpec=String(flat.specification||'').trim();
   let baseSpec=String(base.specification||'').trim();
-  if(orderSpecLooksComplete(rowSpec)) out.specification=rowSpec;
+  if(typeof out.product.quote_spec_display_override==='string' && typeof flat.specification==='string') out.specification=flat.specification;
+  else if(orderSpecLooksComplete(rowSpec)) out.specification=rowSpec;
   else if(orderSpecLooksComplete(baseSpec)) out.specification=baseSpec;
   else { try{ out.specification=buildSpec(out); }catch(e){ out.specification=rowSpec||baseSpec||''; } }
   // 不把完整 specification 塞进 extra_spec，避免导出时重复或截断成备注。
@@ -4715,7 +4719,7 @@ function renderDocuments(){
 
 let PI_ORDER_DRAFT=null;
 function piOrderCustomerName(){let c=S.customer||{};return c.company||c.name||c.customer_name||c.contact||''}
-function piOrderItemFromQuote(it){it=clone(it||{});let p=it.product||{};let qty=Number(it.qty||0), price=Number(it.price??it.unit_price??0);let amount=quoteMoneyRow(qty,price);let virtual=isVirtualQuoteItem(it);return {customer_code:virtual?'':(it.customer_code||p.customer_code||''),product_code:it.product_code||p.code||p.model||(virtual?String(it.virtual_type||'FEE').toUpperCase():''),product_name:it.product_name||p.name||p.title||(virtual?virtualQuoteTypeLabel(it.virtual_type):''),specification:it.specification||buildSpec(it)||it.extra_spec||'',color:virtual?'':(it.color||''),qty:qty,unit_price:price,amount:amount,item_json:JSON.stringify(Object.assign({},it,{item_type:virtual?'virtual':it.item_type,product_type:virtual?'virtual':it.product_type,shippable:virtual?false:it.shippable,count_in_qty:virtual?!!it.count_in_qty:it.count_in_qty})),image:virtual?'':(p.image||it.image||''),item_type:virtual?'virtual':(it.item_type||''),product_type:virtual?'virtual':(it.product_type||''),shippable:virtual?false:(it.shippable!==false),count_in_qty:virtual?!!it.count_in_qty:(it.count_in_qty!==false),unit:it.unit||''};}
+function piOrderItemFromQuote(it){it=clone(it||{});let p=it.product||{};let qty=Number(it.qty||0), price=Number(it.price??it.unit_price??0);let amount=quoteMoneyRow(qty,price);let virtual=isVirtualQuoteItem(it);return {customer_code:virtual?'':(it.customer_code||p.customer_code||''),product_code:it.product_code||p.code||p.model||(virtual?String(it.virtual_type||'FEE').toUpperCase():''),product_name:it.product_name||p.name||p.title||(virtual?virtualQuoteTypeLabel(it.virtual_type):''),specification:typeof p.quote_spec_display_override==='string'?buildSpec(it):(it.specification||buildSpec(it)||it.extra_spec||''),color:virtual?'':(it.color||''),qty:qty,unit_price:price,amount:amount,item_json:JSON.stringify(Object.assign({},it,{item_type:virtual?'virtual':it.item_type,product_type:virtual?'virtual':it.product_type,shippable:virtual?false:it.shippable,count_in_qty:virtual?!!it.count_in_qty:it.count_in_qty})),image:virtual?'':(p.image||it.image||''),item_type:virtual?'virtual':(it.item_type||''),product_type:virtual?'virtual':(it.product_type||''),shippable:virtual?false:(it.shippable!==false),count_in_qty:virtual?!!it.count_in_qty:(it.count_in_qty!==false),unit:it.unit||''};}
 async function openPiOrderModal(){if(!hasPerm('order_convert')){alert('当前账号没有转订单权限');return;}let approved=requireApprovedForOutput('转订单');if(!approved)return;if(!(await loadQuote(approved.id)))return;let payload=currentQuotePayload();if(!payload.items_json||payload.items_json==='[]'){alert('请先添加产品');return;}if($('quoteStatus')){$('quoteStatus').value='PROFORMA INVOICE';render();}
   payload=currentQuotePayload();payload.quote_status='PROFORMA INVOICE';payload.note='Converted from PROFORMA INVOICE';
   let items=[];try{items=JSON.parse(payload.items_json||'[]')}catch(e){items=[]}items=items.map(piOrderItemFromQuote);
@@ -5419,4 +5423,6 @@ function printOrderStatement(key){
 <script src="assets/quote-order-page.js?v=20260915-2"></script>
 <link rel="stylesheet" href="assets/quote-bom-versions.css?v=20260921-1">
 <script src="assets/quote-bom-versions.js?v=20260921-3"></script>
+<link rel="stylesheet" href="assets/quote-display-text.css?v=20261009-1">
+<script src="assets/quote-display-text.js?v=20261009-1"></script>
 </body></html>

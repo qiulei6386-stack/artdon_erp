@@ -1,0 +1,8 @@
+.qdt-overlay{position:fixed;inset:0;z-index:10080;background:#0f172a80;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+.qdt-dialog{background:#fff;color:#172338;width:760px;max-width:100%;max-height:calc(100dvh - 32px);overflow:auto;border-radius:14px;padding:20px;box-sizing:border-box;box-shadow:0 20px 60px #0003}
+.qdt-dialog header,.qdt-dialog footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.qdt-dialog header{justify-content:space-between}.qdt-dialog h3{margin:0}.qdt-dialog p{overflow-wrap:anywhere;line-height:1.6}.qdt-help{color:#596579;font-size:13px}
+.qdt-dialog label{display:block;font-weight:700;margin-bottom:8px}.qdt-dialog textarea{width:100%;min-height:260px;resize:vertical;box-sizing:border-box;font:14px/1.65 Arial,sans-serif;border:1px solid #b6c4d9;border-radius:8px;padding:12px}
+.qdt-dialog footer{justify-content:flex-end;margin-top:14px}.qdt-dialog button{cursor:pointer;border:1px solid #cbd5e1;border-radius:7px;background:#f1f5f9;color:#172338;padding:9px 13px;font:inherit}.qdt-dialog button.blue{background:#2563eb;color:#fff}.qdt-dialog button:disabled{opacity:.5;cursor:default}
+@media(max-width:480px){.qdt-overlay{padding:8px}.qdt-dialog{padding:14px;max-height:calc(100dvh - 16px)}.qdt-dialog textarea{min-height:220px}.qdt-dialog footer button{flex:1;padding:9px 6px;font-size:13px;white-space:nowrap}}
+@media print{.qdt-overlay{display:none!important}}
