@@ -3394,10 +3394,10 @@ function productQuoteSpec(p){let raw=p?.quote_spec||p?.quoteSpec||null;if(!raw&&
 function ledLineValue(val,item=null){let cct=item?(item.cct||''):normCct($('cct')?.value||'');let cri=item?(item.cri||''):normCri($('cri')?.value||'');return [cleanParam(val),cct,cri].filter(Boolean).join(' ').trim()}
 function quoteDisplayCanEdit(){return hasPerm('quote_edit')&&S.currentApprovalStatus!=='approved'&&!(S.currentQuoteId>0&&S.bomSentLocked)}
 function quoteDisplayDescriptionLines(text){
-  return String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.\s*/,'').trim()).filter(x=>x&&!/^(?:Power|Beam\s*Angle|CCT|CRI|IP|功率|角度|色温|显指)\s*[:：]/i.test(x)&&!/^(?:IP\s*[0-9][A-Z0-9]*|[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3})$/i.test(x)).map(x=>/^LED\s*[:：]/i.test(x)?x.replace(/(?:\s+(?:[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3}))+$/i,'').trim():x);
+  return String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.(?:\s+|$)/,'').trim()).filter(x=>x&&!/^(?:Power|Beam\s*Angle|CCT|CRI|IP|功率|角度|色温|显指)\s*[:：]/i.test(x)&&!/^(?:IP\s*[0-9][A-Z0-9]*|[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3})$/i.test(x)).map(x=>/^LED\s*[:：]/i.test(x)?x.replace(/(?:\s+(?:[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3}))+$/i,'').trim():x);
 }
 function quoteDisplayDescription(text,item){
-  let lines=String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.\s*/,'').trim()).filter(Boolean);
+  let lines=String(text??'').replace(/\r\n?/g,'\n').split('\n').map(x=>x.replace(/^\s*\d+\.(?:\s+|$)/,'').trim()).filter(Boolean);
   // Remove only the known trailing form remarks when separating an old full specification.
   for(const remark of quoteRemarksOfItem(item).slice().reverse()){if(lines.at(-1)===remark)lines.pop();else break;}
   return quoteDisplayDescriptionLines(lines.join('\n')).join('\n');

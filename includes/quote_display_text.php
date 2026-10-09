@@ -3,7 +3,7 @@
 function qdt_description_lines(string $text): array {
     $lines=[];
     foreach(preg_split('/\R/u',$text) as $line){
-        $line=trim(preg_replace('/^\s*\d+\.\s*/u','',$line));
+        $line=trim(preg_replace('/^\s*\d+\.(?:\s+|$)/u','',$line));
         if($line===''||preg_match('/^(?:Power|Beam\s*Angle|CCT|CRI|IP|功率|角度|色温|显指)\s*[:：]/iu',$line)||preg_match('/^(?:IP\s*[0-9][A-Z0-9]*|[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3})$/iu',$line))continue;
         if(preg_match('/^LED\s*[:：]/iu',$line))$line=preg_replace('/(?:\s+(?:[0-9]{3,5}\s*K|CRI\s*[0-9]{1,3}))+$/iu','',$line);
         $lines[]=trim($line);
