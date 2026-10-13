@@ -8,7 +8,7 @@
 - 检查：`bash tools/ci_php_checks.sh` 为 619 项 PHP 语法、74 套契约通过；`bash tools/ci_js_checks.sh` 为 96 项 JavaScript 语法、26 套契约通过。
 - 修改文件：`AGENTS.md`、`WORK_CONTEXT.md`。未改业务代码。`includes/config.php` 与 `includes/install.lock` 仍被忽略。
 - 服务器部署：未同步 `/www/wwwroot/Artdon/artdon_erp/`。本次是云端开发环境，不把本地库或开发账号发布到正式服务器。
-- Git：分支 `cursor/cloud-env-setup-9fc2`，提交号在推送后写入下一笔记录。环境配置由 Cursor 环境面板保存，不提交 `.cursor/environment.json`。
+- Git：分支 `cursor/cloud-env-setup-9fc2`，环境说明提交 `fc1db6483553c4307e2cacb2adf2d639579e24db`。环境配置由 Cursor 环境面板保存，不提交 `.cursor/environment.json`。推送后本记录与 GitHub 该分支一致；未同步正式服务器。
 - 下一步：在环境面板保存已验证的 install/start。正式业务改动仍走原有 GitHub 与服务器同步流程。
 
 ## 2026-10-09：手动报价说明与表单参数联动修正
