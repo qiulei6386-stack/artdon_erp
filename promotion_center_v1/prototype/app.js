@@ -102,6 +102,7 @@
     var nav = [
       ['home', '工作台', 0, 'M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
       ['list', '推广', 0, 'M4 6h16M4 12h16M4 18h10'],
+      ['board', '执行看板', 0, 'M4 20V10M10 20V4M16 20v-7M22 20H2'],
       ['groups', '客户分组', 0, 'M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm8.5 0a3 3 0 1 0 0-6M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6m2-6c2.8.3 5 2.7 5 6'],
       ['approvals', isManager() ? '待我审批' : '审批记录', isManager() ? approvals : 0, 'M9 12l2 2 4-4M5 4h14v16H5z'],
       ['tasks', '人工待办', tasks, 'M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01'],
@@ -179,10 +180,10 @@
       '<div class="seg" data-seg="listSource">' + [['all', '全部来源'], ['pm', '新推广'], ['crm', 'CRM 历史']].map(function (f) { return '<button class="' + (state.listSource === f[0] ? 'on' : '') + '" data-v="' + f[0] + '">' + f[1] + '</button>'; }).join('') + '</div>' +
       (me().scope !== 'self' ? '<select class="select" style="width:140px"><option>全部创建人</option>' + D.users.slice(0, 4).map(function (u) { return '<option>' + u.name + '</option>'; }).join('') + '</select>' : '') +
       '<input class="input" style="width:200px" placeholder="搜索推广名称"></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>推广</th><th>状态</th><th>渠道</th><th style="width:220px">进度</th><th>开始时间</th><th>创建人</th></tr></thead><tbody>' +
+      '<div class="table-wrap"><table><thead><tr><th>推广</th><th>状态</th><th>渠道</th><th style="width:220px">进度</th><th>开始时间</th><th>创建人</th><th></th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (c) {
-        return '<tr class="click" data-go="#/detail/' + c.id + '"><td><div class="cell-title">' + esc(c.name) + (c.source === 'crm' ? '<span class="tag">CRM 历史</span>' : '') + '</div><div class="cell-sub num">' + c.id + ' · ' + c.createdAt + '</div></td><td>' + chip(c.status, c) + '</td><td>' + CHANNEL[c.channel] + '</td><td>' + (c.status === 'draft' || c.status === 'pending_approval' || c.status === 'rejected' ? '<span class="small muted num">计划 ' + c.counts.planned + ' 封</span>' : progress(c)) + '</td><td class="num small">' + (c.startAt || '—') + '</td><td>' + user(c.createdBy).name + '</td></tr>';
-      }).join('') : '<tr><td colspan="6"><div class="empty">没有符合条件的推广</div></td></tr>') +
+        return '<tr class="click" data-go="#/detail/' + c.id + '"><td><div class="cell-title">' + esc(c.name) + (c.source === 'crm' ? '<span class="tag">CRM 历史</span>' : '') + '</div><div class="cell-sub num">' + c.id + ' · ' + c.createdAt + '</div></td><td>' + chip(c.status, c) + '</td><td>' + CHANNEL[c.channel] + '</td><td>' + (c.status === 'draft' || c.status === 'pending_approval' || c.status === 'rejected' ? '<span class="small muted num">计划 ' + c.counts.planned + ' 封</span>' : progress(c)) + '</td><td class="num small">' + (c.startAt || '—') + '</td><td>' + user(c.createdBy).name + '</td><td style="text-align:right">' + (window.PM_BOARD.hasData(c) ? '<a class="btn sm" href="#/board/' + c.id + '">查看执行</a>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="7"><div class="empty">没有符合条件的推广</div></td></tr>') +
       '</tbody></table></div></div>';
   }
 
@@ -194,6 +195,13 @@
 
   /* 推广详情 */
   function recipients(c) {
+    if (c.exec) {
+      var map = { sent: 'sent', failed: 'failed', uncertain: 'uncertain', skip: 'skipped' };
+      return window.PM_BOARD.viewRows(c).filter(function (e) { return e.st !== 'offline'; }).map(function (e) {
+        var t = e.sentAt || (e.st !== 'skip' && e.at);
+        return { company: e.c.company, email: e.p.email || '（无邮箱）', status: map[e.st] || 'pending', extra: e.st === 'skip' ? e.reason : e.error || '', mbox: e.box ? e.box.email : '—', time: t ? '2026-' + window.PM_WIZARD.fmt(t, 8) : '', ref: c.exec.rows.indexOf(e) };
+      });
+    }
     var names = ['Lichtwerk GmbH', 'Brightline Supply Inc.', 'Lumen Polska', 'Nordic Lumen AB', 'Luce Italia SRL', 'Sol Iluminación S.L.', 'Gulf Lighting Trading', 'Kanto Light KK', 'Maple Fixtures Ltd.', 'Andes Electric SAC'];
     var rows = [], k = c.counts, i = 0;
     function add(n, st, extra) { for (var j = 0; j < n && rows.length < 14; j++, i++) rows.push({ company: names[i % names.length], email: 'buyer' + (i + 1) + '@' + names[i % names.length].split(' ')[0].toLowerCase() + '.example', status: st, extra: extra || '', mbox: (mailbox(c.mailboxes[i % Math.max(1, c.mailboxes.length)]) || {}).email || '—', time: st === 'sent' ? '2026-10-13 ' + (9 + Math.floor(i / 6)) + ':' + String(30 + i % 6 * 5).slice(-2) : '' }); }
@@ -212,7 +220,7 @@
     if (visibleCampaigns().indexOf(c) < 0) return '<div class="card"><div class="empty">你没有权限查看这个推广：业务员只能查看自己创建或自己负责客户的推广。</div></div>';
     crumbs(['推广中心', '推广', c.name]);
     var u = me(), creator = c.createdBy === u.id, k = c.counts;
-    var acts = [];
+    var acts = ['<a class="btn" href="#/board/' + c.id + '">查看执行</a>'];
     if (c.source === 'crm') acts.push('<a class="btn" href="#/list">在 CRM 中打开</a>', canCreate() ? '<a class="btn primary" href="#/new/' + c.id + '">复制为新推广</a>' : '');
     else if (can('execute')) {
       if (c.status === 'draft' && creator) acts.push('<button class="btn danger" data-do="delete">删除</button>', '<a class="btn primary" href="#/new/' + c.id + '">继续编辑</a>');
@@ -235,7 +243,7 @@
       var rows = recipients(c).filter(function (r) { return state.recipientFilter === 'all' || r.status === state.recipientFilter; });
       body = '<div class="toolbar"><div class="seg" data-seg="recipientFilter">' + [['all', '全部'], ['sent', '已发送'], ['pending', '待发送'], ['failed', '失败'], ['uncertain', '不确定'], ['skipped', '已跳过']].map(function (f) { return '<button class="' + (state.recipientFilter === f[0] ? 'on' : '') + '" data-v="' + f[0] + '">' + f[1] + '</button>'; }).join('') + '</div><div class="spacer"></div><button class="btn sm">导出 Excel</button></div>' +
         '<div class="table-wrap"><table><thead><tr><th>客户</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>' +
-        (rows.length ? rows.map(function (r) { var s = RSTATUS[r.status]; return '<tr><td class="cell-title">' + esc(r.company) + '</td><td class="small">' + esc(r.email) + '</td><td class="small muted">' + esc(r.mbox) + '</td><td><span class="chip ' + s[1] + '">' + s[0] + '</span>' + (r.extra ? '<div class="cell-sub">' + esc(r.extra) + '</div>' : '') + '</td><td class="small num muted">' + (r.time || '—') + '</td><td style="text-align:right">' + (r.status === 'uncertain' && c.source === 'pm' && can('execute') ? '<button class="btn sm" data-verify>核对</button>' : '') + '</td></tr>'; }).join('') : '<tr><td colspan="6"><div class="empty">' + (c.manualOnly ? '这个推广只有人工渠道，请查看人工待办。' : '没有符合条件的对象') + '</div></td></tr>') + '</tbody></table></div>';
+        (rows.length ? rows.map(function (r) { var s = RSTATUS[r.status]; return '<tr><td class="cell-title">' + esc(r.company) + '</td><td class="small">' + esc(r.email) + '</td><td class="small muted">' + esc(r.mbox) + '</td><td><span class="chip ' + s[1] + '">' + s[0] + '</span>' + (r.extra ? '<div class="cell-sub">' + esc(r.extra) + '</div>' : '') + '</td><td class="small num muted">' + (r.time || '—') + '</td><td style="text-align:right">' + (r.status === 'uncertain' && c.source === 'pm' && can('execute') ? '<button class="btn sm" data-verify="' + (r.ref == null ? '' : r.ref) + '">核对</button>' : '') + '</td></tr>'; }).join('') : '<tr><td colspan="6"><div class="empty">' + (c.manualOnly ? '这个推广只有人工渠道，请查看人工待办。' : '没有符合条件的对象') + '</div></td></tr>') + '</tbody></table></div>';
     } else if (state.detailTab === 'manual') {
       var mt = D.manualTasks.filter(function (t) { return t.campaign === c.id; });
       body = mt.length ? taskTable(mt, c.source === 'crm') : '<div class="empty">这个推广没有人工待办。</div>';
@@ -265,7 +273,13 @@
     $all('[data-tab]').forEach(function (b) { b.addEventListener('click', function () { state.detailTab = b.getAttribute('data-tab'); route(); }); });
     $all('[data-verify]').forEach(function (b) { b.addEventListener('click', function () {
       modal({ title: '核对结果不确定的邮件', ok: '保存', body: '<p class="small">请到发件邮箱的“已发送”中查找这封邮件，再选择结果：</p><div class="check-list"><label><input type="radio" name="v" value="sent"> 已在已发送中找到，标记为已发送</label><label><input type="radio" name="v" value="requeue"> 没有找到，重新排队发送</label></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
-        onOk: function (w) { var v = $('input[name=v]:checked', w); if (!v) return '请选择核对结果'; c.counts.uncertain--; if (v.value === 'sent') c.counts.sent++; route(); toast('已保存核对结果'); } });
+        onOk: function (w) {
+          var v = $('input[name=v]:checked', w); if (!v) return '请选择核对结果';
+          var e = c.exec && c.exec.rows[+b.getAttribute('data-verify')];
+          if (e) { e.error = ''; if (v.value === 'sent') { e.st = 'sent'; e.sentAt = e.at; } else { e.st = 'pending'; e.at = window.PM_WIZARD.NOW + 10 * 60e3; } window.PM_BOARD.recount(c); }
+          else { c.counts.uncertain--; if (v.value === 'sent') c.counts.sent++; }
+          route(); toast('已保存核对结果');
+        } });
     }); });
     var map = {
       pause: ['暂停发送', '暂停后不再领取新邮件；正在发送的那一封可能仍会发出。', '暂停', function () { c.status = 'paused'; }],
@@ -324,7 +338,7 @@
     $all('[data-task]').forEach(function (b) { b.addEventListener('click', function () {
       var t = D.manualTasks.filter(function (x) { return x.id === +b.getAttribute('data-task'); })[0];
       modal({ title: '登记结果：' + t.company, ok: '保存', body: '<p class="small muted">' + esc(t.channel) + ' · ' + esc(t.handle) + '</p><div class="field"><label>联系结果</label><select class="select"><option value="">请选择</option><option>已联系-有意向</option><option>已联系-暂无回复</option><option>已联系-无兴趣</option><option>无法联系（号码无效等）</option></select></div><div class="field"><label>截图（必传）</label><div style="display:flex;gap:8px;align-items:center"><button type="button" class="btn sm" data-shot>上传截图</button><span class="small muted" data-shot-name>未上传</span></div><span class="hint">聊天、群消息或通话记录截图。原型中点击即模拟上传。</span></div><div class="field"><label>备注</label><textarea class="textarea" placeholder="客户说了什么、下一步计划"></textarea></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
-        onOk: function (w) { var v = $('select', w).value; if (!v) return '请选择联系结果；不能只勾选完成'; if (!w.getAttribute('data-shot-ok')) return '请上传截图'; t.status = 'done'; t.result = v; var c = campaign(t.campaign); c.counts.manualPending--; c.counts.manualDone++; route(); toast('结果已登记'); } });
+        onOk: function (w) { var v = $('select', w).value; if (!v) return '请选择联系结果；不能只勾选完成'; if (!w.getAttribute('data-shot-ok')) return '请上传截图'; t.status = 'done'; t.result = v; t.shot = 'screenshot-' + t.id + '.png'; t.doneAt = '2026-10-13 14:10'; t.overdue = false; var c = campaign(t.campaign); c.counts.manualPending--; c.counts.manualDone++; route(); toast('结果已登记'); } });
       var mk = $all('.mask').pop();
       $('[data-shot]', mk).addEventListener('click', function () { mk.setAttribute('data-shot-ok', '1'); $('[data-shot-name]', mk).textContent = 'screenshot-' + t.id + '.png'; });
     }); });
@@ -500,6 +514,7 @@
     var view = $('#view'), html;
     if (name === 'new') html = window.PM_WIZARD.page(arg);
     else if (name === 'detail') html = pageDetail(arg);
+    else if (name === 'board') html = window.PM_BOARD.page(arg);
     else if (name === 'list') html = pageList();
     else if (name === 'approvals') html = pageApprovals(arg);
     else if (name === 'tasks') html = pageTasks();
@@ -509,19 +524,20 @@
     renderShell(name);
     view.innerHTML = html;
     document.body.classList.toggle('has-dock', name === 'new');
-    $all('[data-go]').forEach(function (el) { el.addEventListener('click', function () { location.hash = el.getAttribute('data-go'); }); });
+    $all('[data-go]').forEach(function (el) { el.addEventListener('click', function (e) { if (e.target.closest('a, button')) return; location.hash = el.getAttribute('data-go'); }); });
     $all('[data-seg]').forEach(function (seg) { $all('button', seg).forEach(function (b) { b.addEventListener('click', function () { state[seg.getAttribute('data-seg')] = b.getAttribute('data-v'); route(); }); }); });
     if (name === 'new') window.PM_WIZARD.bind();
     if (name === 'detail') bindDetail(arg);
+    if (name === 'board') window.PM_BOARD.bind();
     if (name === 'approvals') bindApprovals(arg);
     if (name === 'tasks' || name === 'detail') bindTasks();
     if (name === 'groups') bindGroups();
   }
-  window.PM_APP = { D: D, state: state, $: $, $all: $all, esc: esc, me: me, user: user, mailbox: mailbox, campaign: campaign, can: can, allScope: allScope, canCreate: canCreate, visibleCustomer: visibleCustomer, visibleGroups: visibleGroups, visibleMembers: visibleMembers, group: group, customer: customer, approvalReasons: approvalReasons, crumbs: crumbs, toast: toast, modal: modal, radioCard: radioCard, route: route, CHANNEL: CHANNEL };
+  window.PM_APP = { D: D, state: state, $: $, $all: $all, esc: esc, me: me, user: user, mailbox: mailbox, campaign: campaign, can: can, allScope: allScope, canCreate: canCreate, visibleCustomer: visibleCustomer, visibleGroups: visibleGroups, visibleMembers: visibleMembers, group: group, customer: customer, approvalReasons: approvalReasons, crumbs: crumbs, toast: toast, modal: modal, radioCard: radioCard, route: route, CHANNEL: CHANNEL, STATUS: STATUS, chip: chip, visibleCampaigns: visibleCampaigns };
 
   var lastHash = location.hash;
   window.addEventListener('hashchange', function () {
-    if (lastHash.split('/')[1] !== location.hash.split('/')[1]) { state.detailTab = 'recipients'; state.recipientFilter = 'all'; state.memberSel = {}; state.memberQ = ''; state.memberCountry = ''; }
+    if (lastHash.split('/')[1] !== location.hash.split('/')[1]) { state.boardReason = ''; state.detailTab = 'recipients'; state.recipientFilter = 'all'; state.memberSel = {}; state.memberQ = ''; state.memberCountry = ''; }
     if (lastHash.split('/')[0] !== location.hash.split('/')[0]) state.pickerOpen = false;
     lastHash = location.hash;
     route();

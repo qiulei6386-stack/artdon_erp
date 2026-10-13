@@ -83,7 +83,8 @@
       { company: 'Al Noor Projects LLC', contact: '', email: 'info@alnoor.example', country: '阿联酋' }
     ],
     campaigns: [
-      { id: 'pm-1012', source: 'pm', name: '法兰克福展后跟进', channel: 'email', status: 'sending', createdBy: 3, owners: [3], createdAt: '2026-10-12 15:20', startAt: '2026-10-13 09:30', subject: 'Nice meeting you at Light + Building, {公司名称}', mailboxes: [14], counts: { planned: 18, sent: 11, failed: 1, uncertain: 1, skipped: 2, manualPending: 0, manualDone: 0 } },
+      { id: 'pm-1011', source: 'pm', name: '10 月新品目录（全员）', channel: 'preference', status: 'sending', createdBy: 2, owners: [2, 3, 4], createdAt: '2026-10-12 17:30', startAt: '2026-10-13 10:00', subject: 'October catalogue for {公司名称}', mailboxes: [12, 13], counts: { planned: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0, manualPending: 0, manualDone: 0 } },
+      { id: 'pm-1012', source: 'pm', name: '法兰克福展后跟进', channel: 'email', status: 'sending', createdBy: 3, owners: [3], createdAt: '2026-10-12 15:20', startAt: '2026-10-13 08:00', subject: 'Nice meeting you at Light + Building, {公司名称}', mailboxes: [14], counts: { planned: 18, sent: 11, failed: 1, uncertain: 1, skipped: 2, manualPending: 0, manualDone: 0 } },
       { id: 'pm-1013', source: 'pm', name: '2026 秋季新品轨道灯', channel: 'email', status: 'pending_approval', createdBy: 2, owners: [2, 3, 4], createdAt: '2026-10-13 10:05', startAt: '2026-10-14 09:00', subject: 'New 2026 track light series for {公司名称}', mailboxes: [12, 13], counts: { planned: 240, sent: 0, failed: 0, uncertain: 0, skipped: 21, manualPending: 0, manualDone: 0 }, approvalReasons: ['没有“小批量免审”权限，所有推广都需要审批'] },
       { id: 'pm-1017', source: 'pm', name: '中东工程项目案例分享', channel: 'preference', status: 'pending_approval', createdBy: 4, owners: [4], createdAt: '2026-10-13 11:40', startAt: '2026-10-14 10:00', subject: 'Project references in the GCC region', mailboxes: [15, 13], counts: { planned: 36, sent: 0, failed: 0, uncertain: 0, skipped: 4, manualPending: 6, manualDone: 0 }, approvalReasons: ['使用了公司邮箱 marketing@example-led.com', '邮件数 36 超过免审额度 20'] },
       { id: 'pm-1014', source: 'pm', name: '中东项目报价回访', channel: 'email', status: 'rejected', createdBy: 4, owners: [4], createdAt: '2026-10-11 16:12', startAt: '2026-10-12 10:00', subject: 'Follow-up on your lighting quotation', mailboxes: [15, 13], counts: { planned: 28, sent: 0, failed: 0, uncertain: 0, skipped: 3, manualPending: 0, manualDone: 0 }, rejectReason: '正文里直接写了单价，请删掉价格，改为附报价单 PDF。' },
@@ -101,8 +102,20 @@
       { id: 3, campaign: 'crm-861', company: 'Luce Italia SRL', contact: 'Marco Rossi', channel: 'WhatsApp', handle: '+39 3** *** 441', executor: 3, due: '2026-10-12', status: 'pending', overdue: true },
       { id: 4, campaign: 'pm-1017', company: 'Gulf Lighting Trading', contact: 'Omar Khalid', channel: '微信', handle: 'omar_gl***', executor: 4, due: '2026-10-14', status: 'waiting' },
       { id: 5, campaign: 'pm-1017', company: 'Doha Build Co.', contact: 'Ahmed Saleh', channel: 'WhatsApp', handle: '+974 5** *** 120', executor: 4, due: '2026-10-14', status: 'waiting' },
-      { id: 6, campaign: 'crm-861', company: 'Lumen Polska', contact: 'Piotr Nowak', channel: 'WhatsApp', handle: '+48 5** *** 377', executor: 3, due: '2026-10-11', status: 'done', result: '已联系-有意向' }
+      { id: 6, campaign: 'crm-861', company: 'Lumen Polska', contact: 'Piotr Nowak', channel: 'WhatsApp', handle: '+48 5** *** 377', executor: 3, due: '2026-10-11', status: 'done', result: '已联系-有意向', shot: 'screenshot-6.png', doneAt: '2026-10-10 16:42' }
     ],
+    /* 执行看板演示：已开始（或已排期）推广提交时冻结的参数。看板据此重算名单，并按“现在”模拟发送结果。
+       now = 提交/开始时刻（北京时间）；usedBase = 当时各邮箱当天已用量，'today' 表示按今日实际用量倒推；
+       fault = 某邮箱从某时刻起出错；pausedAt = 推广暂停时刻；uncertain = 第 N 封已发出的改为“结果不确定”。 */
+    executions: {
+      'pm-1011': { groups: [21, 24], method: 'split', splitBoxes: [12, 13], timing: 'now', now: '2026-10-13 10:00', usedBase: 'today', noOwner: 'company',
+        fault: { box: 12, from: '2026-10-13 10:12', error: 'SMTP 登录失败：535 认证未通过（邮箱密码可能已修改），该邮箱已自动暂停' } },
+      'pm-1012': { groups: [21, 23, 24], method: 'owner', timing: 'local', localTime: '09:00', now: '2026-10-12 16:00', usedBase: {}, noOwner: 'exclude', uncertain: 1 },
+      'pm-1010': { groups: [24], method: 'split', splitBoxes: [12], timing: 'at', at: '2026-10-09 09:00', now: '2026-10-09 08:30', usedBase: { 12: 292 }, noOwner: 'company' },
+      'pm-1015': { groups: [22], method: 'split', splitBoxes: [11, 13], timing: 'local', localTime: '09:00', now: '2026-10-15 20:00', usedBase: {}, noOwner: 'company' },
+      'crm-890': { groups: [21, 23], method: 'owner', timing: 'at', at: '2026-10-07 09:00', now: '2026-10-07 08:50', usedBase: {}, noOwner: 'exclude', pausedAt: '2026-10-07 09:01' },
+      'crm-882': { groups: [21, 22, 23], method: 'split', splitBoxes: [12, 13], timing: 'at', at: '2026-09-21 09:00', now: '2026-09-21 08:50', usedBase: {}, noOwner: 'company' }
+    },
     settings: { exempt: 20, freqDays: 7, windowStart: '09:00', windowEnd: '18:00', interval: 45, defaultTz: 8, quotaWarn: 0.8, offlineDueDays: 2, attachMaxMB: 10, attachMaxCount: 5, imageMaxKB: 1024, imageTotalMB: 3, testMaxTo: 5 },
     suppress: { crmDnc: 186, contactUnsub: 52, legacyUnsub: 73, legacyBlack: 41 }
   };

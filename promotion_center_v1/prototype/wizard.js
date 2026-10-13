@@ -60,10 +60,15 @@
     return d;
   }
 
+  /* d.asUser / d.now / d.usedBase：执行看板按创建人、提交时刻和当时邮箱用量重算冻结名单时使用。 */
+  function actor(d) { return d.asUser ? A.user(d.asUser) : A.me(); }
+  function nowOf(d) { return d.now || NOW; }
+  function inScope(c, d) { if (!d.asUser) return A.visibleCustomer(c); var u = actor(d); return u.scope !== 'self' || c.owner === u.id; }
+
   /* 选中的客户：分组成员与直接勾选的并集，只含当前用户客户数据范围内的客户。 */
   function selected(d) {
     var seen = {}, list = [];
-    function add(c) { if (c && A.visibleCustomer(c) && !seen[c.id]) { seen[c.id] = 1; list.push(c); } }
+    function add(c) { if (c && inScope(c, d) && !seen[c.id]) { seen[c.id] = 1; list.push(c); } }
     d.groups.forEach(function (gid) { var g = A.group(gid); if (g && !g.deleted) g.members.forEach(function (id) { add(A.customer(id)); }); });
     Object.keys(d.picks).forEach(function (id) { if (d.picks[id]) add(A.customer(+id)); });
     return list;
@@ -80,12 +85,12 @@
   function unowned(d) { return selected(d).filter(function (c) { return !c.owner && !blockAll(c, { noOwner: null }); }); }
 
   function localDesired(c, d) {
-    var z = zone(c), hm = (d.localTime || '09:30').split(':'), base = new Date(NOW + z.off * H);
+    var now = nowOf(d), z = zone(c), hm = (d.localTime || '09:30').split(':'), base = new Date(now + z.off * H);
     for (var i = 0; i < 9; i++) {
       var t = Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + i, +hm[0] || 0, +hm[1] || 0) - z.off * H;
-      if (t >= NOW + 10 * MIN && z.weekend.indexOf(new Date(t + z.off * H).getUTCDay()) < 0) return t;
+      if (t >= now + 10 * MIN && z.weekend.indexOf(new Date(t + z.off * H).getUTCDay()) < 0) return t;
     }
-    return NOW + 10 * MIN;
+    return now + 10 * MIN;
   }
   function nextDay(t, r, d) {
     if (d.timing === 'local') {
@@ -100,7 +105,7 @@
 
   /* 计划：每个邮件对象一行（含发不了的），线下每个渠道一行。 */
   function plan(d) {
-    var u = A.me(), custs = selected(d), rows = [], offline = [], seenEmail = {};
+    var u = actor(d), now = nowOf(d), custs = selected(d), rows = [], offline = [], seenEmail = {};
     var usesName = /\{联系人姓名\}/.test(d.subject + d.html), usesCountry = /\{国家\}/.test(d.subject + d.html);
     custs.forEach(function (c) {
       var b = blockAll(c, d);
@@ -155,12 +160,12 @@
     }
     ok = rows.filter(function (r) { return r.kind === 'ok'; });
 
-    ok.forEach(function (r) { r.desired = d.timing === 'now' ? NOW + 10 * MIN : d.timing === 'at' ? (parseBj(d.at) || NOW + 10 * MIN) : localDesired(r.c, d); });
-    var byBox = {};
+    ok.forEach(function (r) { r.desired = d.timing === 'now' ? now + 10 * MIN : d.timing === 'at' ? (parseBj(d.at) || now + 10 * MIN) : localDesired(r.c, d); });
+    var byBox = {}, quota = {};
     ok.forEach(function (r) { if (r.box) (byBox[r.box.id] = byBox[r.box.id] || []).push(r); else r.at = r.desired; });
     Object.keys(byBox).forEach(function (id) {
-      var m = A.mailbox(+id), list = byBox[id].sort(function (a, b) { return a.desired - b.desired; }), last = 0, count = {};
-      count[dayKey(NOW)] = m.used;
+      var m = A.mailbox(+id), list = byBox[id].sort(function (a, b) { return a.desired - b.desired; }), last = 0, count = quota[id] = {};
+      count[dayKey(now)] = d.usedBase ? d.usedBase[id] || 0 : m.used;
       list.forEach(function (r) {
         var t = Math.max(r.desired, last + D.settings.interval * 1000), guard = 0;
         while ((count[dayKey(t)] || 0) >= m.limit && guard++ < 10) t = nextDay(t, r, d);
@@ -172,10 +177,10 @@
 
     var used = {};
     ok.forEach(function (r) { if (r.box) used[r.box.id] = r.box; });
-    var start = ok.reduce(function (s, r) { return r.at && (!s || r.at < s) ? r.at : s; }, 0) || NOW + 10 * MIN;
+    var start = ok.reduce(function (s, r) { return r.at && (!s || r.at < s) ? r.at : s; }, 0) || now + 10 * MIN;
     var due = start; for (var k = 0; k < D.settings.offlineDueDays; k++) { due += 24 * H; while ([0, 6].indexOf(new Date(due + 8 * H).getUTCDay()) >= 0) due += 24 * H; }
     offline.forEach(function (o) { o.executor = d.executors[o.ch === 'wechat_group' ? 'g:' + o.handle : o.ch + ':' + o.c.id] || o.c.owner || u.id; });
-    return { custs: custs, rows: rows, ok: ok, offline: offline, boxes: Object.keys(used).map(function (id) { return used[id]; }), start: start, due: due };
+    return { custs: custs, rows: rows, ok: ok, offline: offline, boxes: Object.keys(used).map(function (id) { return used[id]; }), start: start, due: due, quota: quota };
   }
   function splitShares(boxes, n) {
     var share = {}, k = boxes.length; if (!k) return share;
@@ -612,5 +617,5 @@
     }); });
   }
 
-  window.PM_WIZARD = { page: page, bind: bind, plan: plan, newDraft: newDraft };
+  window.PM_WIZARD = { page: page, bind: bind, plan: plan, newDraft: newDraft, offlineGroups: offlineGroups, zone: zone, dayKey: dayKey, parseBj: parseBj, fmt: fmt, bj: bj, NOW: NOW, OFFLINE: OFFLINE };
 })();
