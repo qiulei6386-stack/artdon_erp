@@ -1,5 +1,16 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-13：Cloud Agent 开发环境
+
+- 为仓库准备 Cursor Cloud Agent 环境：Ubuntu 24.04 安装 PHP 8.3.6（pdo_mysql、mysqli、mbstring、xml、zip、gd、curl、intl、bcmath）与 MySQL 8.0.46，使用镜像已有的 Node.js 22。安装脚本连续执行两次，结果一致。
+- 启动脚本拉起 MySQL 与 `php -S 0.0.0.0:8080`，必要时按安装器创建库 `artdon_new_erp`、本地用户和管理员 `dev`，并调用 `notification_ensure_schema()`。配置被删后重跑启动脚本可以重新锁定安装器。
+- 端到端：安装器环境检查通过，创建超级管理员，登录后首页显示“本地开发”，权限中心 HTTP 200。浏览器实点完成登录、进入权限中心、返回首页。
+- 检查：`bash tools/ci_php_checks.sh` 为 619 项 PHP 语法、74 套契约通过；`bash tools/ci_js_checks.sh` 为 96 项 JavaScript 语法、26 套契约通过。
+- 修改文件：`AGENTS.md`、`WORK_CONTEXT.md`。未改业务代码。`includes/config.php` 与 `includes/install.lock` 仍被忽略。
+- 服务器部署：未同步 `/www/wwwroot/Artdon/artdon_erp/`。本次是云端开发环境，不把本地库或开发账号发布到正式服务器。
+- Git：分支 `cursor/cloud-env-setup-9fc2`，提交号在推送后写入下一笔记录。环境配置由 Cursor 环境面板保存，不提交 `.cursor/environment.json`。
+- 下一步：在环境面板保存已验证的 install/start。正式业务改动仍走原有 GitHub 与服务器同步流程。
+
 ## 2026-10-09：手动报价说明与表单参数联动修正
 
 - 用户反馈手动修正说明后，左侧填写的参数不再显示。原因是上一版完整Specification覆盖了后续参数生成，Power输入另缺实时刷新事件。本轮把手动产品说明与功率、角度、色温、显指、IP及四项备注分开，参数按当前行输入实时生成，已删改说明保留；清空参数不恢复产品默认值。
