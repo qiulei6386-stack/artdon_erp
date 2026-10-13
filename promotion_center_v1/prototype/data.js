@@ -3,21 +3,45 @@
   var companies = ['Lichtwerk GmbH', 'Brightline Supply Inc.', 'Al Noor Projects LLC', 'Lumen Polska', 'Nordic Lumen AB', 'Luce Italia SRL', 'Sol Iluminación S.L.', 'Gulf Lighting Trading', 'Kanto Light KK', 'Maple Fixtures Ltd.', 'Andes Electric SAC', 'Doha Build Co.', 'Helios Retail BV', 'Beacon Lighting Pty', 'Orion Electrical FZE', 'Lux Partners SARL', 'Northstar Lighting LLC', 'Atlas Projects Kft', 'Prisma Iluminação', 'Vega Light s.r.o.', 'Riverside Electric Co.', 'Zenith Lamps GmbH', 'Coral Bay Trading', 'Summit Lighting Inc.', 'Aurora Luminaires', 'Desert Rose Contracting', 'Pacific Glow Ltd.', 'Kestrel Lighting UK', 'Granite Electrical', 'Lumiere Distribution', 'Harbor Light Supply', 'Evergreen Fixtures', 'Polaris Projects AS', 'Crescent Lighting LLC', 'Sahara Electric', 'Baltic Lumen OÜ', 'Ironwood Lighting', 'Solstice Lighting BV', 'Meridian Electric', 'Cobalt Light Systems', 'Falcon Trading WLL', 'Redwood Lighting Co.', 'Silverline Electric', 'Tundra Lights Oy', 'Amber Lighting SRL', 'Highland Fixtures', 'Bluewater Lighting', 'Cedar Electric Ltd.'];
   var contacts = ['Jonas Weber', 'Emily Carter', '', 'Piotr Nowak', 'Elin Berg', 'Marco Rossi', 'Carlos Ruiz', 'Omar Khalid', 'Kenji Sato', 'Liam Brown', 'Diego Torres', 'Ahmed Saleh', 'Sanne de Vries', 'Chloe Wilson', 'Rami Haddad', 'Claire Martin', 'Noah Miller', 'Bence Kovács', 'Ana Souza', 'Tomáš Novák', 'Grace Lee', 'Felix Bauer', '', 'Olivia Davis', 'Léa Bernard', 'Yousef Ali', 'Mia Chen', 'Oliver Smith', 'Ethan Clark', 'Camille Petit', 'Lucas White', 'Sophie Hall', 'Erik Hansen', 'Hassan Noor', '', 'Kristjan Tamm', 'James King', 'Daan Bakker', 'Anna Fischer', 'Ryan Scott', 'Khalid Saeed', 'Henry Young', 'Ella Wright', 'Mikko Virtanen', 'Ioana Popescu', 'Jack Turner', 'Zoe Adams', 'Owen Hill'];
   var countries = ['德国', '美国', '阿联酋', '波兰', '瑞典', '意大利', '西班牙', '沙特', '日本', '加拿大', '秘鲁', '卡塔尔', '荷兰', '澳大利亚', '阿联酋', '法国'];
+  var middleEast = ['阿联酋', '沙特', '卡塔尔'];
   var customers = companies.map(function (name, i) {
     var domain = name.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
-    return {
+    var first = contacts[i] ? contacts[i].split(' ')[0].toLowerCase().replace(/[^a-z]/g, '') : 'info';
+    var country = i % 20 === 19 ? '' : countries[i % countries.length];
+    /* 客户推广偏好，对应 crm_customer_promotion_channels；phone 来自联系人推广渠道。 */
+    var channels = ['email'];
+    if (i % 8 === 5) channels = ['email', 'whatsapp'];
+    if (i % 7 === 6) channels = ['email', 'wechat'];
+    if (i % 9 === 8) channels = ['wechat'];
+    if (i % 11 === 3) channels = ['email', 'wechat_group'];
+    if (i % 15 === 14) channels = ['phone'];
+    if (i % 23 === 10) channels = ['no_promotion'];
+    var c = {
       id: 100 + i,
       company: name,
       contact: contacts[i],
-      email: i % 13 === 7 ? '' : (contacts[i] ? contacts[i].split(' ')[0].toLowerCase() : 'info') + '@' + domain + '.example',
-      country: countries[i % countries.length],
+      email: i % 13 === 7 ? '' : (i === 31 ? first + '@' + domain : first + '@' + domain + '.example'),
+      country: country,
       level: ['A', 'B', 'B', 'C'][i % 4],
-      owner: [3, 4, 2, 3, 4, 2][i % 6],
+      owner: i % 10 === 9 ? 0 : (i % 16 === 13 ? 6 : [3, 4, 2, 3, 4, 2][i % 6]),
       dnc: i % 17 === 5,
       unsub: i % 19 === 11,
       recent: i % 11 === 4,
-      prefer: i % 7 === 6 ? 'WhatsApp' : (i % 9 === 8 ? '微信' : '邮件')
+      left: i % 14 === 12,
+      pstatus: i === 42 ? 'blacklist' : (i % 18 === 16 ? 'paused' : ''),
+      noMx: i % 21 === 20,
+      legacyBlack: i === 28,
+      channels: channels,
+      wechat: channels.indexOf('wechat') >= 0 && i !== 27 ? 'wx_' + first : '',
+      whatsapp: channels.indexOf('whatsapp') >= 0 ? '+' + (40 + i) + ' 7** *** ' + (100 + i * 7) : '',
+      phone: channels.indexOf('phone') >= 0 ? '+' + (30 + i) + ' 5** *** ' + (200 + i * 3) : '',
+      chatGroup: channels.indexOf('wechat_group') >= 0 ? (middleEast.indexOf(country) >= 0 ? 'Artdon 中东项目群' : 'Artdon 欧洲渠道群') : '',
+      avoidGroup: i === 47
     };
+    if (i === 17) { c.tz = -7; c.tzLabel = '美西（客户时区）'; }
+    if (i % 12 === 2) c.c2 = { name: 'Purchasing Dept.', email: c.email };
+    if (i % 12 === 5) c.c2 = { name: 'Anna Ko', email: 'anna@' + domain + '.example' };
+    return c;
   });
   function ids(pred) { return customers.filter(pred).map(function (c) { return c.id; }); }
 
@@ -27,16 +51,24 @@
       { id: 2, name: '陈晓', role: '市场', scope: 'all', perms: ['view', 'task_create', 'execute', 'create_group', 'edit_group', 'delete_group', 'move_customer', 'export', 'use_any_mailbox'] },
       { id: 3, name: '李强', role: '业务员', scope: 'self', perms: ['view', 'task_create', 'execute', 'create_group', 'edit_group', 'move_customer', 'exempt_small'] },
       { id: 4, name: '赵婷', role: '业务员', scope: 'self', perms: ['view', 'task_create', 'execute', 'create_group', 'edit_group', 'move_customer', 'exempt_small', 'use_any_mailbox'] },
-      { id: 5, name: '孙悦', role: '只读', scope: 'all', perms: ['view'] }
+      { id: 5, name: '孙悦', role: '只读', scope: 'all', perms: ['view'] },
+      { id: 6, name: '刘洋', role: '业务员（未绑定邮箱）', scope: 'self', perms: ['view', 'task_create', 'execute', 'create_group', 'edit_group', 'move_customer', 'exempt_small'] }
     ],
     permLabels: { view: '查看', task_create: '创建推广', execute: '执行', approve: '审批', manage: '设置', create_group: '建分组', edit_group: '改分组', delete_group: '删分组', move_customer: '移动客户', export: '导出', use_any_mailbox: '用他人/公司邮箱', exempt_small: '小批量免审' },
     mailboxes: [
-      { id: 11, email: 'wangmin@example-led.com', owner: 1, limit: 300, used: 42 },
-      { id: 12, email: 'chenxiao@example-led.com', owner: 2, limit: 300, used: 188 },
-      { id: 13, email: 'marketing@example-led.com', owner: 0, limit: 500, used: 260 },
-      { id: 14, email: 'liqiang@example-led.com', owner: 3, limit: 200, used: 11 },
-      { id: 15, email: 'zhaoting@example-led.com', owner: 4, limit: 200, used: 0 }
+      { id: 11, email: 'wangmin@example-led.com', owner: 1, limit: 300, used: 42, sign: 'Wang Min\nGeneral Manager\nExample LED Lighting Co., Ltd.' },
+      { id: 12, email: 'chenxiao@example-led.com', owner: 2, limit: 300, used: 236, sign: 'Chen Xiao\nMarketing Manager\nExample LED Lighting Co., Ltd.' },
+      { id: 13, email: 'marketing@example-led.com', owner: 0, limit: 500, used: 476, sign: 'Marketing Team\nExample LED Lighting Co., Ltd.\nwww.example-led.com' },
+      { id: 14, email: 'liqiang@example-led.com', owner: 3, limit: 200, used: 11, sign: 'Li Qiang\nSales Manager\nExample LED Lighting Co., Ltd.\nTel: +86 20 0000 0001' },
+      { id: 15, email: 'zhaoting@example-led.com', owner: 4, limit: 200, used: 0, sign: 'Zhao Ting\nSales Manager\nExample LED Lighting Co., Ltd.\nTel: +86 20 0000 0002' }
     ],
+    /* 国家 → 主要营业时区（2026-10-13 当天的 UTC 偏移，含夏令时）与周末。多时区国家优先用客户自己的 timezone 字段。 */
+    countries: {
+      德国: { tz: 2, weekend: [0, 6] }, 美国: { tz: -4, weekend: [0, 6], label: '美东' }, 阿联酋: { tz: 4, weekend: [0, 6] }, 波兰: { tz: 2, weekend: [0, 6] },
+      瑞典: { tz: 2, weekend: [0, 6] }, 意大利: { tz: 2, weekend: [0, 6] }, 西班牙: { tz: 2, weekend: [0, 6] }, 沙特: { tz: 3, weekend: [5, 6] },
+      日本: { tz: 9, weekend: [0, 6] }, 加拿大: { tz: -4, weekend: [0, 6], label: '多伦多' }, 秘鲁: { tz: -5, weekend: [0, 6] }, 卡塔尔: { tz: 3, weekend: [5, 6] },
+      荷兰: { tz: 2, weekend: [0, 6] }, 澳大利亚: { tz: 11, weekend: [0, 6], label: '悉尼' }, 法国: { tz: 2, weekend: [0, 6] }
+    },
     customers: customers,
     groups: [
       { id: 21, name: '2026 法兰克福展会客户', color: '#3b4fd8', visibility: 'public', createdBy: 2, members: ids(function (c) { return (c.id - 100) % 4 === 0 || (c.id - 100) % 5 === 1; }) },
@@ -71,7 +103,7 @@
       { id: 5, campaign: 'pm-1017', company: 'Doha Build Co.', contact: 'Ahmed Saleh', channel: 'WhatsApp', handle: '+974 5** *** 120', executor: 4, due: '2026-10-14', status: 'waiting' },
       { id: 6, campaign: 'crm-861', company: 'Lumen Polska', contact: 'Piotr Nowak', channel: 'WhatsApp', handle: '+48 5** *** 377', executor: 3, due: '2026-10-11', status: 'done', result: '已联系-有意向' }
     ],
-    settings: { exempt: 20, freqDays: 7, windowStart: '09:00', windowEnd: '18:00', interval: 45 },
+    settings: { exempt: 20, freqDays: 7, windowStart: '09:00', windowEnd: '18:00', interval: 45, defaultTz: 8, quotaWarn: 0.8, offlineDueDays: 2, attachMaxMB: 10, attachMaxCount: 5, imageMaxKB: 1024, imageTotalMB: 3, testMaxTo: 5 },
     suppress: { crmDnc: 186, contactUnsub: 52, legacyUnsub: 73, legacyBlack: 41 }
   };
 })();

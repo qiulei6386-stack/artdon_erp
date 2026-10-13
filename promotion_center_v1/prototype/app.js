@@ -186,160 +186,11 @@
       '</tbody></table></div></div>';
   }
 
-  /* 新建/编辑推广 */
-  function newDraft(from) {
-    var u = me();
-    var own = D.mailboxes.filter(function (m) { return m.owner === u.id; }).map(function (m) { return m.id; });
-    var d = { id: from ? from.id : null, name: from ? from.name : '', channel: from && from.channel !== 'whatsapp' ? from.channel : 'email', groups: [], mailboxes: from && from.mailboxes.length ? from.mailboxes.slice() : own.slice(0, 1), rule: 'owner', start: 'later', startAt: '2026-10-14 09:00', subject: from ? from.subject : '', body: from && from.subject ? 'Dear {联系人姓名},\n\nThank you for your continued interest in our lighting products. We would like to share our latest updates with {公司名称}.\n\nPlease let me know if you need the catalogue or samples.\n' : '', signature: 'personal', attachments: [], version: 1, tested: 0, sample: 0 };
-    if (from && from.status === 'rejected') d.rejectReason = from.rejectReason;
-    if (from) d.groups = [21];
-    return d;
-  }
-  /* 受众：所选分组成员去重，只计当前用户数据范围内的客户；跳过原因与正式规则一致。 */
-  function audience(d) {
-    var seen = {}, list = [];
-    d.groups.forEach(function (gid) { var g = group(gid); if (g && !g.deleted) visibleMembers(g).forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; list.push(c); } }); });
-    var skip = { 禁联: 0, 已退订: 0, 无有效邮箱: 0 }, emails = 0, manual = 0;
-    skip[D.settings.freqDays + ' 天内已推广'] = 0;
-    list.forEach(function (c) {
-      if (c.dnc) skip.禁联++;
-      else if (c.unsub) skip.已退订++;
-      else if (d.channel === 'preference' && c.prefer !== '邮件') manual++;
-      else if (!c.email) skip.无有效邮箱++;
-      else if (c.recent) skip[D.settings.freqDays + ' 天内已推广']++;
-      else emails++;
-    });
-    var skipped = Object.keys(skip).reduce(function (s, k) { return s + skip[k]; }, 0);
-    return { customers: list.length, skip: skip, skipped: skipped, emails: emails, manual: manual };
-  }
-  function draftChecks(d, a) {
-    return [
-      ['推广名称', !!d.name.trim()],
-      ['接收对象', a.emails + a.manual > 0],
-      ['主题与正文', !!d.subject.trim() && !!d.body.trim()],
-      ['发件邮箱', d.rule === 'owner' || d.mailboxes.length > 0],
-      ['开始时间', d.start === 'now' || !!d.startAt],
-      ['测试信（当前内容）', d.tested === d.version]
-    ];
-  }
-  function render(text, s, d) {
+  function render(text, s) {
     var u = me();
     return esc(text).replace(/\{公司名称\}/g, '<span class="var">' + esc(s.company) + '</span>').replace(/\{联系人姓名\}/g, s.contact ? '<span class="var">' + esc(s.contact) + '</span>' : '<span class="var" style="background:var(--bad-soft);color:var(--bad)">缺少联系人姓名</span>').replace(/\{发件人姓名\}/g, '<span class="var">' + esc(u.name) + '</span>');
   }
-  function pageNew(id) {
-    var src = id ? campaign(id) : null;
-    if (!state.draft || state.draft._for !== (id || 'new')) { state.draft = newDraft(src); state.draft._for = id || 'new'; }
-    var d = state.draft, u = me();
-    crumbs(['推广中心', '推广', d.id ? '编辑 ' + d.id : '新建推广']);
-    if (!canCreate()) return '<div class="card"><div class="empty">你没有“创建推广”权限（promotion.task_create）。请在统一权限中心申请。</div></div>';
-    var a = audience(d);
-    var checks = draftChecks(d, a);
-    var reasons = approvalReasons(u, d.rule === 'owner' ? D.mailboxes.filter(function (m) { return m.owner === u.id; }).map(function (m) { return m.id; }) : d.mailboxes, a.emails);
-    var ready = checks.every(function (c) { return c[1]; });
-    var s = D.samples[d.sample];
-    var allowedBoxes = D.mailboxes.filter(function (m) { return m.owner === u.id || can('use_any_mailbox'); });
-    var sign = d.signature === 'none' ? '' : (u.name + '\nSales Manager\nExample LED Lighting Co., Ltd.\nTel: +86 20 0000 0000');
-    var senderEmail = d.rule === 'owner' ? '客户负责人的邮箱' : (mailbox(d.mailboxes[0]) || {}).email || '未选择';
-
-    var html = (d.rejectReason ? '<div class="banner bad"><b>审批退回</b><span>' + esc(d.rejectReason) + '</span></div>' : '') +
-      '<div class="page-head"><div><h1>' + (d.id ? '编辑推广' : '新建推广') + '</h1><p>保存草稿和预览都不会发送邮件。提交后内容冻结，直到审批完成或撤回。</p></div></div>' +
-      '<div class="composer"><div>' +
-      section(1, '基本信息', !!d.name.trim(), '',
-        '<div class="field"><label for="f-name">推广名称</label><input id="f-name" class="input" data-bind="name" value="' + esc(d.name) + '" placeholder="例如：法兰克福展后跟进"><span class="hint">只在内部显示，客户看不到。</span></div>' +
-        '<div class="field"><label>推广方式</label><div class="radio-cards">' +
-        radioCard('channel', 'email', d.channel, '只发邮件', '没有有效邮箱的客户会被跳过') +
-        radioCard('channel', 'preference', d.channel, '按客户偏好', '偏好微信、WhatsApp 等的客户生成人工待办') + '</div></div>') +
-      section(2, '接收对象', a.emails + a.manual > 0, a.customers ? a.customers + ' 个客户' : '',
-        '<div class="field"><label>推广分组 <a class="small" href="#/groups" style="font-weight:400;margin-left:6px">管理分组</a></label><div class="check-list">' + visibleGroups().map(function (g) {
-          return '<label><span class="dot" style="background:' + g.color + '"></span><input type="checkbox" data-group="' + g.id + '"' + (d.groups.indexOf(g.id) >= 0 ? ' checked' : '') + '> <span style="flex:1">' + esc(g.name) + '</span><span class="muted small num">' + visibleMembers(g).length + ' 个客户</span></label>';
-        }).join('') + '</div>' + (u.scope === 'self' ? '<span class="hint">你的数据范围是“本人”，只计算你负责的客户。</span>' : '') + '</div>' +
-        (d.groups.length ? '<div class="audience-sum"><div><b class="num">' + a.emails + '</b><span>封邮件</span></div>' + (d.channel === 'preference' ? '<div><b class="num">' + a.manual + '</b><span>个人工待办</span></div>' : '') + '<div><b class="num">' + a.skipped + '</b><span>个跳过</span></div></div>' +
-          '<ul class="skip-list">' + Object.keys(a.skip).filter(function (k) { return a.skip[k]; }).map(function (k) { return '<li>' + k + '：<span class="num">' + a.skip[k] + '</span> 个</li>'; }).join('') + '</ul><span class="hint">跳过的客户在最终预览中逐个列出，可以导出核对。</span>' : '<span class="hint">至少选择一个分组。</span>')) +
-      section(3, '内容', !!d.subject.trim() && !!d.body.trim(), 'v' + d.version,
-        '<div class="field"><label for="f-subject">邮件主题</label><input id="f-subject" class="input" data-bind="subject" value="' + esc(d.subject) + '"></div>' +
-        '<div class="field"><label>正文</label><div class="var-bar">' + ['{联系人姓名}', '{公司名称}', '{发件人姓名}'].map(function (v) { return '<button class="btn sm ghost" data-insert="' + v + '">插入 ' + v.slice(1, -1) + '</button>'; }).join('') + '</div><textarea class="textarea" data-bind="body" style="min-height:200px">' + esc(d.body) + '</textarea><span class="hint">修改主题或正文后，之前发的测试信失效，需要重新发送。</span></div>' +
-        '<div class="row"><div class="field"><label>签名</label><select class="select" data-bind="signature"><option value="personal"' + (d.signature === 'personal' ? ' selected' : '') + '>发件邮箱的个人签名</option><option value="none"' + (d.signature === 'none' ? ' selected' : '') + '>不使用签名</option></select></div>' +
-        '<div class="field"><label>附件</label><button class="btn" data-act="attach">上传附件</button><span class="hint">' + (d.attachments.length ? d.attachments.join('、') : '单个 8MB 以内，最多 10 个') + '</span></div></div>') +
-      section(4, '发件与时间', (d.rule === 'owner' || d.mailboxes.length > 0) && (d.start === 'now' || !!d.startAt), '',
-        '<div class="field"><label>发件邮箱</label><div class="radio-cards">' +
-        radioCard('rule', 'owner', d.rule, '客户负责人的邮箱', '每个客户由自己的负责人发出') +
-        radioCard('rule', 'pool', d.rule, '指定邮箱轮流发', '在选中的邮箱之间平均分配') + '</div></div>' +
-        (d.rule === 'pool' ? '<div class="field"><div class="check-list">' + allowedBoxes.map(function (m) { return '<label><input type="checkbox" data-mbox="' + m.id + '"' + (d.mailboxes.indexOf(m.id) >= 0 ? ' checked' : '') + '> <span style="flex:1">' + esc(m.email) + '</span><span class="muted small num">今日剩余 ' + (m.limit - m.used) + '</span></label>'; }).join('') + '</div></div>' : '') +
-        '<div class="row"><div class="field"><label>开始时间（北京时间）</label><select class="select" data-bind="start"><option value="later"' + (d.start === 'later' ? ' selected' : '') + '>指定时间</option><option value="now"' + (d.start === 'now' ? ' selected' : '') + '>审批通过或确认后 10 分钟</option></select></div>' +
-        (d.start === 'later' ? '<div class="field"><label for="f-at">时间</label><input id="f-at" class="input num" data-bind="startAt" value="' + esc(d.startAt) + '"></div>' : '<div></div>') + '</div>' +
-        '<span class="hint">每个邮箱每封间隔 ' + D.settings.interval + ' 秒，并受日上限限制；预计 ' + Math.max(1, Math.ceil(a.emails * D.settings.interval / 3600)) + ' 小时内发完。</span>') +
-      '</div><div class="preview"><div class="card"><div class="card-head"><h2>预览</h2><select class="select" style="width:auto;height:30px" data-bind-sample>' + D.samples.map(function (x, i) { return '<option value="' + i + '"' + (i === d.sample ? ' selected' : '') + '>' + esc(x.company) + '</option>'; }).join('') + '</select></div><div class="card-body">' +
-      '<div class="mail"><div class="mail-meta"><div><b>发件人</b>' + esc(senderEmail) + '</div><div><b>收件人</b>' + esc(s.contact || s.company) + ' &lt;' + esc(s.email) + '&gt;</div></div>' +
-      '<div class="mail-subject">' + (d.subject ? render(d.subject, s, d) : '<span class="muted">（未填写主题）</span>') + '</div>' +
-      '<div class="mail-body">' + (d.body ? render(d.body, s, d) : '<span class="muted">（未填写正文）</span>') + '</div>' +
-      (sign ? '<div class="mail-sign">' + esc(sign) + '</div>' : '') +
-      '<div class="mail-foot">If you no longer wish to receive these emails, unsubscribe here.</div></div>' +
-      (!s.contact && /\{联系人姓名\}/.test(d.subject + d.body) ? '<div class="banner warn" style="margin:12px 0 0">这个客户没有联系人姓名。最终预览会把它列为“需处理”，不会用公司名代替。</div>' : '') +
-      '</div></div></div></div>' +
-      '<div class="dock"><div class="checks">' + checks.map(function (c) { return '<span class="' + (c[1] ? 'y' : 'n') + '">' + (c[1] ? '✓' : '○') + ' ' + c[0] + '</span>'; }).join('') + '</div><div class="spacer"></div>' +
-      '<span class="approval-note ' + (reasons.length ? 'need' : 'free') + '" title="' + esc(reasons.join('；')) + '">' + (reasons.length ? '需要审批：' + esc(reasons[0]) + (reasons.length > 1 ? ' 等 ' + reasons.length + ' 项' : '') : '无需审批') + '</span>' +
-      '<button class="btn" data-act="save">保存草稿</button><button class="btn" data-act="test">发送测试信</button>' +
-      '<button class="btn primary" data-act="submit"' + (ready ? '' : ' disabled title="还有未完成的检查项"') + '>' + (reasons.length ? '提交审批' : '确认并排期') + '</button></div>';
-    return html;
-  }
-  function section(no, title, done, side, body) {
-    return '<div class="card section"><div class="section-head"><span class="section-no' + (done ? ' done' : '') + '">' + (done ? '✓' : no) + '</span><h2>' + title + '</h2>' + (side ? '<span class="muted num">' + side + '</span>' : '') + '</div><div class="card-body">' + body + '</div></div>';
-  }
   function radioCard(key, val, cur, title, sub) { return '<button type="button" class="radio-card' + (cur === val ? ' on' : '') + '" data-radio="' + key + '" data-v="' + val + '"><b>' + title + '</b><span>' + sub + '</span></button>'; }
-
-  function bindNew() {
-    var d = state.draft;
-    if (!d) return;
-    $all('[data-bind]').forEach(function (el) {
-      var key = el.getAttribute('data-bind');
-      var ev = el.tagName === 'SELECT' ? 'change' : 'input';
-      el.addEventListener(ev, function () {
-        d[key] = el.value;
-        if (key === 'subject' || key === 'body') d.version = d.tested === d.version ? d.version + 1 : d.version;
-        if (ev === 'input') { softRefresh(); } else route();
-      });
-    });
-    var sampleSel = $('[data-bind-sample]'); if (sampleSel) sampleSel.addEventListener('change', function () { d.sample = +sampleSel.value; route(); });
-    $all('[data-radio]').forEach(function (el) { el.addEventListener('click', function () { d[el.getAttribute('data-radio')] = el.getAttribute('data-v'); route(); }); });
-    $all('[data-group]').forEach(function (el) { el.addEventListener('change', function () { var id = +el.getAttribute('data-group'); d.groups = el.checked ? d.groups.concat(id) : d.groups.filter(function (x) { return x !== id; }); route(); }); });
-    $all('[data-mbox]').forEach(function (el) { el.addEventListener('change', function () { var id = +el.getAttribute('data-mbox'); d.mailboxes = el.checked ? d.mailboxes.concat(id) : d.mailboxes.filter(function (x) { return x !== id; }); route(); }); });
-    $all('[data-insert]').forEach(function (el) { el.addEventListener('click', function () {
-      var ta = $('[data-bind="body"]'); var v = el.getAttribute('data-insert');
-      var st = ta.selectionStart || ta.value.length; ta.value = ta.value.slice(0, st) + v + ta.value.slice(ta.selectionEnd || st);
-      d.body = ta.value; if (d.tested === d.version) d.version++; route();
-    }); });
-    var act = function (name, fn) { var b = $('[data-act="' + name + '"]'); if (b) b.addEventListener('click', fn); };
-    act('attach', function () { d.attachments.push('产品目录-2026.pdf'); route(); });
-    act('save', function () { toast('草稿已保存（原型不写入数据库）'); });
-    act('test', function () {
-      modal({ title: '发送测试信', ok: '发送', body: '<div class="field"><label>测试收件邮箱</label><input class="input" value="' + esc(me().name === '王敏' ? 'wangmin@example-led.com' : 'test@example-led.com') + '"></div><p class="small muted">使用当前内容 v' + d.version + '，按“' + esc(D.samples[d.sample].company) + '”替换变量，主题前加 [测试]。不计入推广发送量。</p><p class="form-error small hidden" style="color:var(--bad)"></p>',
-        onOk: function (w) { if (!/@/.test($('input', w).value)) return '请输入有效的邮箱地址'; d.tested = d.version; route(); toast('测试信已发送（原型演示）'); } });
-    });
-    act('submit', function () {
-      var u = me(), a = audience(d);
-      var reasons = approvalReasons(u, d.rule === 'owner' ? D.mailboxes.filter(function (m) { return m.owner === u.id; }).map(function (m) { return m.id; }) : d.mailboxes, a.emails);
-      modal({ title: reasons.length ? '提交审批' : '确认并排期', ok: reasons.length ? '提交审批' : '确认排期',
-        body: '<p>将向 <b class="num">' + a.emails + '</b> 个邮箱发送' + (a.manual ? '，并生成 <b class="num">' + a.manual + '</b> 个人工待办' : '') + '。开始时间：' + esc(d.start === 'now' ? '确认后 10 分钟' : d.startAt) + '（北京时间）。</p>' + (reasons.length ? '<p class="small">需要审批的原因：</p><ul class="reason-list small">' + reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul><p class="small muted">提交后内容冻结；审批人看到的就是你现在的预览。</p>' : '<p class="small muted">确认后生成发送队列。开始前可以取消；已交给邮件服务器的邮件无法撤回。</p>'),
-        onOk: function () {
-          var id = d.id && campaign(d.id) ? d.id : 'pm-' + (1018 + D.campaigns.length);
-          var c = campaign(id);
-          var fields = { id: id, source: 'pm', name: d.name, channel: d.channel, status: reasons.length ? 'pending_approval' : 'scheduled', createdBy: u.id, owners: [u.id], createdAt: '2026-10-13 14:00', startAt: d.start === 'now' ? '2026-10-13 14:10' : d.startAt, subject: d.subject, mailboxes: d.mailboxes, counts: { planned: a.emails, sent: 0, failed: 0, uncertain: 0, skipped: a.skipped, manualPending: a.manual, manualDone: 0 }, approvalReasons: reasons };
-          if (c) { Object.keys(fields).forEach(function (k) { c[k] = fields[k]; }); delete c.rejectReason; } else D.campaigns.unshift(fields);
-          state.draft = null;
-          location.hash = '#/detail/' + id;
-          toast(reasons.length ? '已提交审批' : '已确认，等待开始时间');
-        } });
-    });
-  }
-  function softRefresh() {
-    var d = state.draft; var a = audience(d);
-    var checks = draftChecks(d, a);
-    var dock = $('.checks'); if (dock) dock.innerHTML = checks.map(function (c) { return '<span class="' + (c[1] ? 'y' : 'n') + '">' + (c[1] ? '✓' : '○') + ' ' + c[0] + '</span>'; }).join('');
-    var btn = $('[data-act="submit"]'); if (btn) btn.disabled = !checks.every(function (c) { return c[1]; });
-    var s = D.samples[d.sample];
-    var subj = $('.mail-subject'); if (subj) subj.innerHTML = d.subject ? render(d.subject, s, d) : '<span class="muted">（未填写主题）</span>';
-    var body = $('.mail-body'); if (body) body.innerHTML = d.body ? render(d.body, s, d) : '<span class="muted">（未填写正文）</span>';
-  }
 
   /* 推广详情 */
   function recipients(c) {
@@ -472,14 +323,19 @@
   function bindTasks() {
     $all('[data-task]').forEach(function (b) { b.addEventListener('click', function () {
       var t = D.manualTasks.filter(function (x) { return x.id === +b.getAttribute('data-task'); })[0];
-      modal({ title: '登记结果：' + t.company, ok: '保存', body: '<div class="field"><label>联系结果</label><select class="select"><option value="">请选择</option><option>已联系-有意向</option><option>已联系-暂无回复</option><option>已联系-无兴趣</option><option>无法联系（号码无效等）</option></select></div><div class="field"><label>备注</label><textarea class="textarea" placeholder="客户说了什么、下一步计划"></textarea></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
-        onOk: function (w) { var v = $('select', w).value; if (!v) return '请选择联系结果；不能只勾选完成'; t.status = 'done'; t.result = v; var c = campaign(t.campaign); c.counts.manualPending--; c.counts.manualDone++; route(); toast('结果已登记'); } });
+      modal({ title: '登记结果：' + t.company, ok: '保存', body: '<p class="small muted">' + esc(t.channel) + ' · ' + esc(t.handle) + '</p><div class="field"><label>联系结果</label><select class="select"><option value="">请选择</option><option>已联系-有意向</option><option>已联系-暂无回复</option><option>已联系-无兴趣</option><option>无法联系（号码无效等）</option></select></div><div class="field"><label>截图（必传）</label><div style="display:flex;gap:8px;align-items:center"><button type="button" class="btn sm" data-shot>上传截图</button><span class="small muted" data-shot-name>未上传</span></div><span class="hint">聊天、群消息或通话记录截图。原型中点击即模拟上传。</span></div><div class="field"><label>备注</label><textarea class="textarea" placeholder="客户说了什么、下一步计划"></textarea></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
+        onOk: function (w) { var v = $('select', w).value; if (!v) return '请选择联系结果；不能只勾选完成'; if (!w.getAttribute('data-shot-ok')) return '请上传截图'; t.status = 'done'; t.result = v; var c = campaign(t.campaign); c.counts.manualPending--; c.counts.manualDone++; route(); toast('结果已登记'); } });
+      var mk = $all('.mask').pop();
+      $('[data-shot]', mk).addEventListener('click', function () { mk.setAttribute('data-shot-ok', '1'); $('[data-shot-name]', mk).textContent = 'screenshot-' + t.id + '.png'; });
     }); });
   }
 
   /* 客户分组 */
   function customerChip(c) {
     if (c.dnc) return '<span class="chip bad">禁联</span>';
+    if (c.channels.indexOf('no_promotion') >= 0) return '<span class="chip bad">拒推广</span>';
+    if (c.pstatus === 'blacklist') return '<span class="chip bad">黑名单</span>';
+    if (c.pstatus === 'paused') return '<span class="chip warn">推广暂停</span>';
     if (c.unsub) return '<span class="chip warn">已退订</span>';
     if (!c.email) return '<span class="chip">无邮箱</span>';
     return '<span class="chip ok">可推广</span>';
@@ -642,7 +498,7 @@
     var parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
     var name = parts[0], arg = parts[1];
     var view = $('#view'), html;
-    if (name === 'new') html = pageNew(arg);
+    if (name === 'new') html = window.PM_WIZARD.page(arg);
     else if (name === 'detail') html = pageDetail(arg);
     else if (name === 'list') html = pageList();
     else if (name === 'approvals') html = pageApprovals(arg);
@@ -655,12 +511,14 @@
     document.body.classList.toggle('has-dock', name === 'new');
     $all('[data-go]').forEach(function (el) { el.addEventListener('click', function () { location.hash = el.getAttribute('data-go'); }); });
     $all('[data-seg]').forEach(function (seg) { $all('button', seg).forEach(function (b) { b.addEventListener('click', function () { state[seg.getAttribute('data-seg')] = b.getAttribute('data-v'); route(); }); }); });
-    if (name === 'new') bindNew();
+    if (name === 'new') window.PM_WIZARD.bind();
     if (name === 'detail') bindDetail(arg);
     if (name === 'approvals') bindApprovals(arg);
     if (name === 'tasks' || name === 'detail') bindTasks();
     if (name === 'groups') bindGroups();
   }
+  window.PM_APP = { D: D, state: state, $: $, $all: $all, esc: esc, me: me, user: user, mailbox: mailbox, campaign: campaign, can: can, allScope: allScope, canCreate: canCreate, visibleCustomer: visibleCustomer, visibleGroups: visibleGroups, visibleMembers: visibleMembers, group: group, customer: customer, approvalReasons: approvalReasons, crumbs: crumbs, toast: toast, modal: modal, radioCard: radioCard, route: route, CHANNEL: CHANNEL };
+
   var lastHash = location.hash;
   window.addEventListener('hashchange', function () {
     if (lastHash.split('/')[1] !== location.hash.split('/')[1]) { state.detailTab = 'recipients'; state.recipientFilter = 'all'; state.memberSel = {}; state.memberQ = ''; state.memberCountry = ''; }
