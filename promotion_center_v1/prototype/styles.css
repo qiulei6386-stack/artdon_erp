@@ -331,8 +331,8 @@ table.plan td.num { white-space: nowrap; }
 .bstat.bad .stat-value { color: var(--bad); }
 .bstat.warn .stat-value { color: var(--warn); }
 .board-bar { margin: 10px 0 12px; height: 8px; }
-.board-filter { margin-bottom: 12px; }
-.board-filter .toolbar { border-bottom: 0; }
+.board-filter { margin-bottom: 10px; }
+.board-filter .toolbar { border-bottom: 0; padding: 0; }
 .chip-x { border: 0; background: none; cursor: pointer; color: inherit; padding: 0 0 0 2px; font-size: 14px; line-height: 1; }
 .board-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr); gap: 12px; align-items: start; }
 .board-col { display: grid; gap: 12px; min-width: 0; }

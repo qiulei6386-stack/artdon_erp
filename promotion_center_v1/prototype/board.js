@@ -178,8 +178,8 @@
     if (c.source === 'crm') banners.push('<div class="banner info">CRM 历史推广，只读显示。暂停、继续、登记结果请在 CRM 中操作。</div>');
     if (!fullView(c)) banners.push('<div class="banner info">这场推广不是你创建的，只显示你负责的客户和分给你的线下待办。</div>');
     if (x && x.fault) {
-      var held = viewRows(c).filter(function (e) { return e.st === 'held'; }).length;
-      banners.push('<div class="banner bad"><b>' + esc(A.mailbox(x.fault.box).email) + ' 从 ' + t8(x.fault.from) + ' 起出错</b><span>' + esc(x.fault.error) + '。' + held + ' 封等待处理，其他邮箱照常发送。</span></div>');
+      var held = x.rows.filter(function (e) { return e.st === 'held'; }).length, mine = viewRows(c).filter(function (e) { return e.st === 'held'; }).length;
+      banners.push('<div class="banner bad"><b>' + esc(A.mailbox(x.fault.box).email) + ' 从 ' + t8(x.fault.from) + ' 起出错</b><span>' + esc(x.fault.error) + '。本场 ' + held + ' 封等待处理' + (fullView(c) ? '' : '（其中你负责的 ' + mine + ' 封）') + '，其他邮箱照常发送。</span></div>');
     }
     if (x && (c.status === 'paused')) banners.push('<div class="banner warn"><b>推广已暂停</b><span>' + (x.pausedAt ? t8(x.pausedAt) + ' 暂停，' : '') + viewRows(c).filter(function (e) { return e.st === 'paused'; }).length + ' 封未发。继续后按原计划顺序发送。</span></div>');
     return banners.join('') + '<div class="card board-sum"><div class="bs-main"><h2>' + esc(c.name) + ' ' + A.chip(c.status, c) + (c.source === 'crm' ? '<span class="tag">CRM 历史</span>' : '') + '</h2><div class="meta"><span class="num">' + c.id + '</span><span>创建人 ' + esc(A.user(c.createdBy).name) + '</span><span class="num">' + esc(range) + '</span>' +
@@ -189,21 +189,21 @@
   function body(c) {
     var rows = viewRows(c).filter(function (e) { return e.st !== 'skip' && e.st !== 'offline'; }), tasks = viewTasks(c), list = issues(c), f = A.state.boardFilter || 'all';
     var n = function (st) { return rows.filter(function (e) { return st.indexOf(e.st) >= 0; }).length; };
-    var sent = n(['sent']), failed = n(['failed']), unc = n(['uncertain']), pend = n(['pending', 'deferred', 'held', 'paused']), stop = n(['stopped']);
+    var sent = n(['sent']), failed = n(['failed']), unc = n(['uncertain']), pend = n(['pending', 'deferred', 'held', 'paused']);
     var skip = viewRows(c).filter(function (e) { return e.st === 'skip'; }).length + viewOffSkip(c).length;
     var done = tasks.filter(function (t) { return t.status === 'done'; }).length, open = tasks.length - done, late = tasks.filter(function (t) { return t.overdue && t.status !== 'done'; }).length;
     var total = rows.length + tasks.length, rate = total ? Math.round((sent + done) / total * 100) : 0;
     var pct = function (a, b) { return b ? Math.round(a / b * 100) + '%' : '—'; };
     var stats = '<div class="board-stats">' +
       bstat('邮件已发', sent, '共 ' + rows.length + ' 封 · ' + pct(sent, rows.length)) +
-      bstat('邮件待发', pend, (n(['deferred']) ? '额度顺延 ' + n(['deferred']) + ' · ' : '') + (n(['held']) ? '邮箱暂停 ' + n(['held']) + ' · ' : '') + (n(['paused']) ? '推广暂停 ' + n(['paused']) + ' · ' : '') + (stop ? '已停止 ' + stop + ' · ' : '') + '按计划发送', n(['held']) ? 'warn' : '') +
+      bstat('邮件待发', pend, [['deferred', '额度顺延'], ['held', '邮箱暂停'], ['paused', '推广暂停'], ['stopped', '已停止未发']].filter(function (s) { return n([s[0]]); }).map(function (s) { return s[1] + ' ' + n([s[0]]); }).join(' · ') || (pend ? '按计划发送' : '没有待发'), n(['held']) ? 'warn' : '') +
       bstat('邮件失败', failed + unc, unc ? '含结果不确定 ' + unc : '退信、拒收等', failed + unc ? 'bad' : '') +
       bstat('跳过（发不了）', skip, '原因见“发不了 / 异常”') +
       bstat('线下已完成', done, '共 ' + tasks.length + ' 条 · ' + pct(done, tasks.length)) +
       bstat('线下未完成', open, late ? '其中逾期 ' + late : '无逾期', late ? 'bad' : '') +
       bstat('完成率', total ? rate + '%' : '—', '邮件 ' + pct(sent, rows.length) + ' · 线下 ' + pct(done, tasks.length)) + '</div>' +
       (rows.length ? '<div class="progress board-bar" title="绿：已发出 红：失败 黄：不确定"><span class="p-ok" style="width:' + sent / rows.length * 100 + '%"></span><span class="p-bad" style="width:' + failed / rows.length * 100 + '%"></span><span class="p-warn" style="width:' + unc / rows.length * 100 + '%"></span></div>' : '');
-    var bar = '<div class="card board-filter"><div class="toolbar"><div class="seg" data-seg="boardFilter">' + FILTERS.map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+    var bar = '<div class="board-filter"><div class="toolbar"><div class="seg" data-seg="boardFilter">' + FILTERS.map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       (A.state.boardReason ? '<span class="chip info">原因：' + esc(A.state.boardReason) + ' <button class="chip-x" data-breason="" aria-label="清除原因筛选">×</button></span>' : '') +
       '<div class="spacer"></div><span class="small muted">数据截至 ' + t8(NOW) + '（北京时间）</span></div></div>';
     var left = issueCard(c, list, f) + (f === 'offline' ? '' : timelineCard(c, rows, f));
@@ -268,7 +268,7 @@
       var chip = fault ? '<span class="chip bad">登录失败，已暂停</span>' : b.deferred ? '<span class="chip bad">触顶日额度 · 顺延 ' + b.deferred + ' 封</span>' : p >= D.settings.quotaWarn ? '<span class="chip warn">接近日额度</span>' : '<span class="chip ok">正常</span>';
       return '<div class="bbox' + (fault || b.deferred ? ' bad' : '') + '"><div class="bbox-head"><span class="cell-title small">' + esc(m.email) + '</span>' + chip + '</div>' +
         '<div class="bbox-nums num small"><span>本场 <b>' + b.n + '</b></span><span class="ok-text">已发 <b>' + b.sent + '</b></span><span class="' + (b.fail ? 'bad-text' : '') + '">失败 <b>' + b.fail + '</b></span><span>待发 <b>' + b.pend + '</b></span></div>' +
-        '<div class="progress"><span class="' + (p >= 1 ? 'p-bad' : p >= D.settings.quotaWarn ? 'p-warn' : 'p-ok') + '" style="width:' + p * 100 + '%"></span></div><div class="progress-label num">' + label + ' 用量 ' + used + ' / ' + m.limit + (label !== '今日' && label !== '—' ? '（发送当日）' : '') + '</div>' +
+        '<div class="progress"><span class="' + (p >= 1 ? 'p-bad' : p >= D.settings.quotaWarn ? 'p-warn' : 'p-ok') + '" style="width:' + p * 100 + '%"></span></div><div class="progress-label num">' + label + ' 用量 ' + used + ' / ' + m.limit + (label === '今日' || label === '—' ? '' : W.dayKey(NOW).slice(5) < label ? '（计划当日）' : '（发送当日）') + '</div>' +
         (fault ? '<div class="cell-sub bad-text">' + esc(x.fault.error) + '</div>' : '') + '</div>';
     }).join('') + '</div></div>';
   }
