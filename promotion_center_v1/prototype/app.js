@@ -15,7 +15,6 @@
     stopped: ['已停止', ''],
     cancelled: ['已取消', '']
   };
-  var ROLE = { admin: '管理员', marketing: '市场', sales: '业务员', viewer: '只读' };
   var CHANNEL = { email: '邮件', preference: '按客户偏好', whatsapp: 'WhatsApp', wechat: '微信' };
 
   function $(sel, root) { return (root || document).querySelector(sel); }
@@ -25,8 +24,15 @@
   function user(id) { return D.users.filter(function (u) { return u.id === id; })[0] || { name: '—' }; }
   function mailbox(id) { return D.mailboxes.filter(function (m) { return m.id === id; })[0]; }
   function campaign(id) { return D.campaigns.filter(function (c) { return c.id === id; })[0]; }
-  function isManager() { return me().role === 'admin'; }
-  function canCreate() { return me().role !== 'viewer'; }
+  function can(p) { return me().perms.indexOf(p) >= 0; }
+  function allScope() { return me().scope !== 'self'; }
+  function isManager() { return can('approve'); }
+  function canCreate() { return can('task_create'); }
+  function visibleCustomer(c) { return allScope() || c.owner === state.userId; }
+  function group(id) { return D.groups.filter(function (g) { return g.id === id; })[0]; }
+  function customer(id) { return D.customers.filter(function (c) { return c.id === id; })[0]; }
+  function visibleGroups() { return D.groups.filter(function (g) { return !g.deleted && (g.visibility === 'public' || g.createdBy === state.userId); }); }
+  function visibleMembers(g) { return g.members.map(customer).filter(function (c) { return c && visibleCustomer(c); }); }
   function chip(status, c) {
     var s = STATUS[status] || [status, ''];
     var label = s[0];
@@ -36,19 +42,27 @@
   function visibleCampaigns() {
     var u = me();
     return D.campaigns.filter(function (c) {
-      if (u.role !== 'sales') return true;
+      if (u.scope !== 'self') return true;
       return c.createdBy === u.id || c.owners.indexOf(u.id) >= 0;
     });
   }
   function pendingApprovals() { return D.campaigns.filter(function (c) { return c.status === 'pending_approval'; }); }
   function myManualTasks() {
-    return D.manualTasks.filter(function (t) { return t.status === 'pending' && (isManager() || t.executor === state.userId); });
+    return D.manualTasks.filter(function (t) { return t.status === 'pending' && (allScope() || t.executor === state.userId); });
   }
-  function toast(msg) {
+  function toast(msg, undo) {
+    $all('.toast').forEach(function (t) { t.remove(); });
     var el = document.createElement('div');
-    el.className = 'toast'; el.textContent = msg;
+    el.className = 'toast'; el.setAttribute('role', 'status');
+    el.appendChild(document.createTextNode(msg));
+    if (undo) {
+      var b = document.createElement('button');
+      b.className = 'toast-undo'; b.textContent = '撤销';
+      b.addEventListener('click', function () { el.remove(); undo(); });
+      el.appendChild(b);
+    }
     document.body.appendChild(el);
-    setTimeout(function () { el.remove(); }, 2600);
+    setTimeout(function () { el.remove(); }, undo ? 10000 : 2600);
   }
   function modal(opts) {
     var wrap = document.createElement('div');
@@ -69,8 +83,8 @@
 
   /* 审批规则：与 docs/DESIGN.md 第 4 节一致；正式实现由服务端判定。 */
   function approvalReasons(u, mailboxIds, emailCount) {
-    if (u.role === 'admin') return [];
-    if (u.role === 'marketing') return ['市场创建的推广始终需要审批'];
+    if (u.perms.indexOf('approve') >= 0) return [];
+    if (u.perms.indexOf('exempt_small') < 0) return ['没有“小批量免审”权限，所有推广都需要审批'];
     var reasons = [];
     mailboxIds.forEach(function (id) {
       var m = mailbox(id);
@@ -86,17 +100,19 @@
     var approvals = pendingApprovals().length;
     var tasks = myManualTasks().length;
     var nav = [
-      ['home', '工作台', 0],
-      ['list', '推广', 0],
-      ['approvals', isManager() ? '待我审批' : '审批记录', isManager() ? approvals : 0],
-      ['tasks', '人工待办', tasks],
-      ['settings', '设置', 0]
+      ['home', '工作台', 0, 'M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'],
+      ['list', '推广', 0, 'M4 6h16M4 12h16M4 18h10'],
+      ['groups', '客户分组', 0, 'M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm8.5 0a3 3 0 1 0 0-6M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6m2-6c2.8.3 5 2.7 5 6'],
+      ['approvals', isManager() ? '待我审批' : '审批记录', isManager() ? approvals : 0, 'M9 12l2 2 4-4M5 4h14v16H5z'],
+      ['tasks', '人工待办', tasks, 'M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01'],
+      ['settings', '设置', 0, 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z']
     ];
     $('#side-nav').innerHTML = nav.map(function (n) {
       var active = route === n[0] || (n[0] === 'list' && (route === 'detail' || route === 'new'));
-      return '<a class="nav-item' + (active ? ' active' : '') + '" href="#/' + n[0] + '"><span>' + n[1] + '</span>' + (n[2] ? '<span class="nav-count num">' + n[2] + '</span>' : '') + '</a>';
+      return '<a class="nav-item' + (active ? ' active' : '') + '" href="#/' + n[0] + '" title="' + n[1] + '"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + n[3] + '"/></svg><span class="nav-label">' + n[1] + '</span>' + (n[2] ? '<span class="nav-count num">' + n[2] + '</span>' : '') + '</a>';
     }).join('');
-    $('#role-select').innerHTML = D.users.map(function (x) { return '<option value="' + x.id + '"' + (x.id === u.id ? ' selected' : '') + '>' + x.name + '（' + ROLE[x.role] + '）</option>'; }).join('');
+    $('#role-select').innerHTML = D.users.map(function (x) { return '<option value="' + x.id + '"' + (x.id === u.id ? ' selected' : '') + '>' + x.name + '（' + x.role + '）</option>'; }).join('');
+    $('#perm-info').innerHTML = '数据范围：' + (u.scope === 'self' ? '本人' : '全部') + '<br>权限：' + u.perms.map(function (p) { return D.permLabels[p]; }).join('、');
   }
 
   function crumbs(parts) { $('#crumbs').innerHTML = parts.map(function (p, i) { return i === parts.length - 1 ? '<b>' + esc(p) + '</b>' : esc(p); }).join(' / '); }
@@ -109,7 +125,7 @@
     var issues = list.filter(function (c) { return c.counts.failed || c.counts.uncertain; });
     var running = list.filter(function (c) { return ['sending', 'scheduled', 'paused'].indexOf(c.status) >= 0; });
     var mine = list.filter(function (c) { return c.createdBy === u.id && ['pending_approval', 'rejected', 'draft'].indexOf(c.status) >= 0; });
-    var sentToday = D.mailboxes.filter(function (m) { return isManager() || m.owner === u.id; }).reduce(function (s, m) { return s + m.used; }, 0);
+    var sentToday = D.mailboxes.filter(function (m) { return allScope() || m.owner === u.id; }).reduce(function (s, m) { return s + m.used; }, 0);
     var todo = [];
     if (isManager()) pendingApprovals().forEach(function (c) { todo.push(['审批', c.name, user(c.createdBy).name + ' 提交，' + c.counts.planned + ' 封邮件', '#/approvals/' + c.id, '去审批']); });
     mine.forEach(function (c) {
@@ -119,18 +135,18 @@
     issues.forEach(function (c) { if (c.counts.uncertain) todo.push(['需核对', c.name, c.counts.uncertain + ' 封邮件结果不确定，不会自动重发', '#/detail/' + c.id, '核对']); });
     if (myManualTasks().length) todo.push(['人工待办', myManualTasks().length + ' 个客户待联系', '其中 ' + myManualTasks().filter(function (t) { return t.overdue; }).length + ' 个已逾期', '#/tasks', '去处理']);
 
-    return '<div class="page-head"><div><h1>' + esc(u.name) + '，今天要处理 ' + todo.length + ' 件事</h1><p>' + ROLE[u.role] + (u.role === 'sales' ? ' · 只显示你创建或你负责客户的推广' : ' · 显示全部推广') + '</p></div><div class="actions">' + (canCreate() ? '<a class="btn primary" href="#/new">新建推广</a>' : '') + '</div></div>' +
+    return '<div class="page-head"><div><h1>' + esc(u.name) + '，今天要处理 ' + todo.length + ' 件事</h1><p>' + u.role + (u.scope === 'self' ? ' · 只显示你创建或你负责客户的推广' : ' · 显示全部推广') + '</p></div><div class="actions">' + (canCreate() ? '<a class="btn primary" href="#/new">新建推广</a>' : '') + '</div></div>' +
       '<div class="grid g-4" style="margin-bottom:16px">' +
       stat(isManager() ? '待我审批' : '我的待审批', isManager() ? pendingApprovals().length : list.filter(function (c) { return c.createdBy === u.id && c.status === 'pending_approval'; }).length, '个推广') +
       stat('人工待办', myManualTasks().length, '个客户', myManualTasks().some(function (t) { return t.overdue; })) +
       stat('发送异常', issues.reduce(function (s, c) { return s + c.counts.failed + c.counts.uncertain; }, 0), '封失败或结果不确定', issues.length > 0) +
-      stat('今日已发送', sentToday, isManager() ? '全部邮箱' : '你的邮箱') + '</div>' +
-      '<div class="grid g-main"><div class="card"><div class="card-head"><h2>需要处理</h2></div>' +
+      stat('今日已发送', sentToday, allScope() ? '全部邮箱' : '你的邮箱') + '</div>' +
+      '<div class="grid g-main home-grid"><div class="card"><div class="card-head"><h2>需要处理</h2></div>' +
       (todo.length ? '<div class="table-wrap"><table><tbody>' + todo.map(function (t) { return '<tr><td style="width:96px"><span class="chip ' + (t[0] === '已退回' || t[0] === '需核对' ? 'bad' : 'warn') + '">' + t[0] + '</span></td><td><div class="cell-title">' + esc(t[1]) + '</div><div class="cell-sub">' + esc(t[2]) + '</div></td><td style="text-align:right"><a class="btn sm" href="' + t[3] + '">' + t[4] + '</a></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">没有需要处理的事项</div>') +
       '</div><div class="grid"><div class="card"><div class="card-head"><h2>进行中</h2><a class="small" href="#/list">全部推广</a></div><div class="card-body" style="padding-top:4px;padding-bottom:4px">' +
       (running.length ? running.map(function (c) { return '<a href="#/detail/' + c.id + '" style="display:block;color:inherit;text-decoration:none;padding:10px 0;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><span class="cell-title">' + esc(c.name) + '</span>' + chip(c.status) + '</div>' + progress(c) + '</a>'; }).join('') : '<div class="empty">没有进行中的推广</div>') +
       '</div></div><div class="card"><div class="card-head"><h2>邮箱今日用量</h2><span class="small muted">北京时间 0 点重置</span></div><div class="card-body">' +
-      D.mailboxes.filter(function (m) { return isManager() || m.owner === u.id || m.owner === 0; }).map(function (m) {
+      D.mailboxes.filter(function (m) { return allScope() || m.owner === u.id || (m.owner === 0 && can('use_any_mailbox')); }).map(function (m) {
         var pct = Math.round(m.used / m.limit * 100);
         return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between" class="small"><span>' + esc(m.email) + '</span><span class="num muted">' + m.used + ' / ' + m.limit + '</span></div><div class="progress" style="margin-top:4px"><span class="' + (pct > 80 ? 'p-warn' : 'p-ok') + '" style="width:' + pct + '%"></span></div></div>';
       }).join('') + '</div></div></div></div>';
@@ -161,7 +177,7 @@
     return '<div class="page-head"><div><h1>推广</h1><p>新建的推广与 CRM 历史推广合并显示；CRM 历史只读。</p></div><div class="actions">' + (canCreate() ? '<a class="btn primary" href="#/new">新建推广</a>' : '') + '</div></div>' +
       '<div class="card"><div class="toolbar"><div class="seg" data-seg="listFilter">' + filters.map(function (f) { return '<button class="' + (state.listFilter === f[0] ? 'on' : '') + '" data-v="' + f[0] + '">' + f[1] + '</button>'; }).join('') + '</div><div class="spacer"></div>' +
       '<div class="seg" data-seg="listSource">' + [['all', '全部来源'], ['pm', '新推广'], ['crm', 'CRM 历史']].map(function (f) { return '<button class="' + (state.listSource === f[0] ? 'on' : '') + '" data-v="' + f[0] + '">' + f[1] + '</button>'; }).join('') + '</div>' +
-      (me().role !== 'sales' ? '<select class="select" style="width:140px"><option>全部创建人</option>' + D.users.slice(0, 4).map(function (u) { return '<option>' + u.name + '</option>'; }).join('') + '</select>' : '') +
+      (me().scope !== 'self' ? '<select class="select" style="width:140px"><option>全部创建人</option>' + D.users.slice(0, 4).map(function (u) { return '<option>' + u.name + '</option>'; }).join('') + '</select>' : '') +
       '<input class="input" style="width:200px" placeholder="搜索推广名称"></div>' +
       '<div class="table-wrap"><table><thead><tr><th>推广</th><th>状态</th><th>渠道</th><th style="width:220px">进度</th><th>开始时间</th><th>创建人</th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (c) {
@@ -179,20 +195,22 @@
     if (from) d.groups = [21];
     return d;
   }
+  /* 受众：所选分组成员去重，只计当前用户数据范围内的客户；跳过原因与正式规则一致。 */
   function audience(d) {
-    var u = me();
-    var customers = 0, skip = {};
-    d.groups.forEach(function (gid) {
-      var g = D.groups.filter(function (x) { return x.id === gid; })[0];
-      var n = 0;
-      Object.keys(g.byOwner).forEach(function (o) { if (u.role !== 'sales' || +o === u.id) n += g.byOwner[o]; });
-      customers += n;
-      Object.keys(g.skip).forEach(function (k) { var v = u.role === 'sales' ? Math.round(g.skip[k] / 3) : g.skip[k]; skip[k] = (skip[k] || 0) + v; });
+    var seen = {}, list = [];
+    d.groups.forEach(function (gid) { var g = group(gid); if (g && !g.deleted) visibleMembers(g).forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; list.push(c); } }); });
+    var skip = { 禁联: 0, 已退订: 0, 无有效邮箱: 0 }, emails = 0, manual = 0;
+    skip[D.settings.freqDays + ' 天内已推广'] = 0;
+    list.forEach(function (c) {
+      if (c.dnc) skip.禁联++;
+      else if (c.unsub) skip.已退订++;
+      else if (d.channel === 'preference' && c.prefer !== '邮件') manual++;
+      else if (!c.email) skip.无有效邮箱++;
+      else if (c.recent) skip[D.settings.freqDays + ' 天内已推广']++;
+      else emails++;
     });
     var skipped = Object.keys(skip).reduce(function (s, k) { return s + skip[k]; }, 0);
-    var send = Math.max(0, customers - skipped);
-    var manual = d.channel === 'preference' ? Math.round(send * 0.15) : 0;
-    return { customers: customers, skip: skip, skipped: skipped, emails: send - manual, manual: manual };
+    return { customers: list.length, skip: skip, skipped: skipped, emails: emails, manual: manual };
   }
   function draftChecks(d, a) {
     return [
@@ -213,13 +231,13 @@
     if (!state.draft || state.draft._for !== (id || 'new')) { state.draft = newDraft(src); state.draft._for = id || 'new'; }
     var d = state.draft, u = me();
     crumbs(['推广中心', '推广', d.id ? '编辑 ' + d.id : '新建推广']);
-    if (!canCreate()) return '<div class="card"><div class="empty">你的角色（只读）不能创建推广。</div></div>';
+    if (!canCreate()) return '<div class="card"><div class="empty">你没有“创建推广”权限（promotion.task_create）。请在统一权限中心申请。</div></div>';
     var a = audience(d);
     var checks = draftChecks(d, a);
     var reasons = approvalReasons(u, d.rule === 'owner' ? D.mailboxes.filter(function (m) { return m.owner === u.id; }).map(function (m) { return m.id; }) : d.mailboxes, a.emails);
     var ready = checks.every(function (c) { return c[1]; });
     var s = D.samples[d.sample];
-    var allowedBoxes = D.mailboxes.filter(function (m) { return isManager() || m.owner === u.id || m.owner === 0 || u.role === 'marketing'; });
+    var allowedBoxes = D.mailboxes.filter(function (m) { return m.owner === u.id || can('use_any_mailbox'); });
     var sign = d.signature === 'none' ? '' : (u.name + '\nSales Manager\nExample LED Lighting Co., Ltd.\nTel: +86 20 0000 0000');
     var senderEmail = d.rule === 'owner' ? '客户负责人的邮箱' : (mailbox(d.mailboxes[0]) || {}).email || '未选择';
 
@@ -232,10 +250,9 @@
         radioCard('channel', 'email', d.channel, '只发邮件', '没有有效邮箱的客户会被跳过') +
         radioCard('channel', 'preference', d.channel, '按客户偏好', '偏好微信、WhatsApp 等的客户生成人工待办') + '</div></div>') +
       section(2, '接收对象', a.emails + a.manual > 0, a.customers ? a.customers + ' 个客户' : '',
-        '<div class="field"><label>推广分组</label><div class="check-list">' + D.groups.map(function (g) {
-          var n = 0; Object.keys(g.byOwner).forEach(function (o) { if (u.role !== 'sales' || +o === u.id) n += g.byOwner[o]; });
-          return '<label><input type="checkbox" data-group="' + g.id + '"' + (d.groups.indexOf(g.id) >= 0 ? ' checked' : '') + '> <span style="flex:1">' + esc(g.name) + '</span><span class="muted small num">' + n + ' 个客户</span></label>';
-        }).join('') + '</div>' + (u.role === 'sales' ? '<span class="hint">业务员只能选择自己负责的客户，数量已按你的客户计算。</span>' : '') + '</div>' +
+        '<div class="field"><label>推广分组 <a class="small" href="#/groups" style="font-weight:400;margin-left:6px">管理分组</a></label><div class="check-list">' + visibleGroups().map(function (g) {
+          return '<label><span class="dot" style="background:' + g.color + '"></span><input type="checkbox" data-group="' + g.id + '"' + (d.groups.indexOf(g.id) >= 0 ? ' checked' : '') + '> <span style="flex:1">' + esc(g.name) + '</span><span class="muted small num">' + visibleMembers(g).length + ' 个客户</span></label>';
+        }).join('') + '</div>' + (u.scope === 'self' ? '<span class="hint">你的数据范围是“本人”，只计算你负责的客户。</span>' : '') + '</div>' +
         (d.groups.length ? '<div class="audience-sum"><div><b class="num">' + a.emails + '</b><span>封邮件</span></div>' + (d.channel === 'preference' ? '<div><b class="num">' + a.manual + '</b><span>个人工待办</span></div>' : '') + '<div><b class="num">' + a.skipped + '</b><span>个跳过</span></div></div>' +
           '<ul class="skip-list">' + Object.keys(a.skip).filter(function (k) { return a.skip[k]; }).map(function (k) { return '<li>' + k + '：<span class="num">' + a.skip[k] + '</span> 个</li>'; }).join('') + '</ul><span class="hint">跳过的客户在最终预览中逐个列出，可以导出核对。</span>' : '<span class="hint">至少选择一个分组。</span>')) +
       section(3, '内容', !!d.subject.trim() && !!d.body.trim(), 'v' + d.version,
@@ -346,7 +363,7 @@
     var u = me(), creator = c.createdBy === u.id, k = c.counts;
     var acts = [];
     if (c.source === 'crm') acts.push('<a class="btn" href="#/list">在 CRM 中打开</a>', canCreate() ? '<a class="btn primary" href="#/new/' + c.id + '">复制为新推广</a>' : '');
-    else if (u.role !== 'viewer') {
+    else if (can('execute')) {
       if (c.status === 'draft' && creator) acts.push('<button class="btn danger" data-do="delete">删除</button>', '<a class="btn primary" href="#/new/' + c.id + '">继续编辑</a>');
       if (c.status === 'pending_approval') { if (creator) acts.push('<button class="btn" data-do="withdraw">撤回</button>'); if (isManager()) acts.push('<a class="btn primary" href="#/approvals/' + c.id + '">去审批</a>'); }
       if (c.status === 'rejected' && creator) acts.push('<a class="btn primary" href="#/new/' + c.id + '">修改后重新提交</a>');
@@ -367,7 +384,7 @@
       var rows = recipients(c).filter(function (r) { return state.recipientFilter === 'all' || r.status === state.recipientFilter; });
       body = '<div class="toolbar"><div class="seg" data-seg="recipientFilter">' + [['all', '全部'], ['sent', '已发送'], ['pending', '待发送'], ['failed', '失败'], ['uncertain', '不确定'], ['skipped', '已跳过']].map(function (f) { return '<button class="' + (state.recipientFilter === f[0] ? 'on' : '') + '" data-v="' + f[0] + '">' + f[1] + '</button>'; }).join('') + '</div><div class="spacer"></div><button class="btn sm">导出 Excel</button></div>' +
         '<div class="table-wrap"><table><thead><tr><th>客户</th><th>收件邮箱</th><th>发件邮箱</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>' +
-        (rows.length ? rows.map(function (r) { var s = RSTATUS[r.status]; return '<tr><td class="cell-title">' + esc(r.company) + '</td><td class="small">' + esc(r.email) + '</td><td class="small muted">' + esc(r.mbox) + '</td><td><span class="chip ' + s[1] + '">' + s[0] + '</span>' + (r.extra ? '<div class="cell-sub">' + esc(r.extra) + '</div>' : '') + '</td><td class="small num muted">' + (r.time || '—') + '</td><td style="text-align:right">' + (r.status === 'uncertain' && c.source === 'pm' && u.role !== 'viewer' ? '<button class="btn sm" data-verify>核对</button>' : '') + '</td></tr>'; }).join('') : '<tr><td colspan="6"><div class="empty">' + (c.manualOnly ? '这个推广只有人工渠道，请查看人工待办。' : '没有符合条件的对象') + '</div></td></tr>') + '</tbody></table></div>';
+        (rows.length ? rows.map(function (r) { var s = RSTATUS[r.status]; return '<tr><td class="cell-title">' + esc(r.company) + '</td><td class="small">' + esc(r.email) + '</td><td class="small muted">' + esc(r.mbox) + '</td><td><span class="chip ' + s[1] + '">' + s[0] + '</span>' + (r.extra ? '<div class="cell-sub">' + esc(r.extra) + '</div>' : '') + '</td><td class="small num muted">' + (r.time || '—') + '</td><td style="text-align:right">' + (r.status === 'uncertain' && c.source === 'pm' && can('execute') ? '<button class="btn sm" data-verify>核对</button>' : '') + '</td></tr>'; }).join('') : '<tr><td colspan="6"><div class="empty">' + (c.manualOnly ? '这个推广只有人工渠道，请查看人工待办。' : '没有符合条件的对象') + '</div></td></tr>') + '</tbody></table></div>';
     } else if (state.detailTab === 'manual') {
       var mt = D.manualTasks.filter(function (t) { return t.campaign === c.id; });
       body = mt.length ? taskTable(mt, c.source === 'crm') : '<div class="empty">这个推广没有人工待办。</div>';
@@ -421,7 +438,7 @@
     if (!list.length) return '<div class="page-head"><div><h1>' + (isManager() ? '待我审批' : '审批记录') + '</h1></div></div><div class="card"><div class="empty">' + (isManager() ? '没有待审批的推广' : '你还没有提交过需要审批的推广') + '</div></div>';
     var cur = campaign(id) && list.indexOf(campaign(id)) >= 0 ? campaign(id) : list[0];
     var s = D.samples[0];
-    return '<div class="page-head"><div><h1>' + (isManager() ? '待我审批' : '审批记录') + '</h1><p>' + (isManager() ? '审批看到的是提交时冻结的内容，批准后按原计划时间开始。' : '只有管理员可以审批。这里显示你提交的推广的审批进度。') + '</p></div></div>' +
+    return '<div class="page-head"><div><h1>' + (isManager() ? '待我审批' : '审批记录') + '</h1><p>' + (isManager() ? '审批看到的是提交时冻结的内容，批准后按原计划时间开始。' : '审批需要“审批推广”权限（promotion.approve）。这里显示你提交的推广的审批进度。') + '</p></div></div>' +
       '<div class="split"><div class="card">' + list.map(function (c) { return '<div class="list-item' + (c === cur ? ' on' : '') + '" data-go="#/approvals/' + c.id + '"><div style="display:flex;justify-content:space-between;gap:8px"><span class="cell-title">' + esc(c.name) + '</span>' + chip(c.status) + '</div><div class="cell-sub">' + user(c.createdBy).name + ' · ' + c.counts.planned + ' 封 · ' + c.createdAt + '</div></div>'; }).join('') + '</div>' +
       '<div class="card"><div class="card-head"><h2>' + esc(cur.name) + '</h2><div class="actions">' + (isManager() && cur.status === 'pending_approval' ? '<button class="btn danger" data-ap="reject">退回</button><button class="btn primary" data-ap="approve">批准</button>' : chip(cur.status)) + '</div></div><div class="card-body">' +
       '<div class="grid g-2" style="margin-bottom:16px"><div><div class="stat-label">为什么需要审批</div><ul class="reason-list" style="margin-top:6px">' + (cur.approvalReasons || ['—']).map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul></div>' +
@@ -443,13 +460,13 @@
     return '<div class="table-wrap"><table><thead><tr><th>客户</th><th>渠道</th><th>推广</th><th>执行人</th><th>截止</th><th>状态</th><th></th></tr></thead><tbody>' + rows.map(function (t) {
       var c = campaign(t.campaign);
       var st = t.status === 'done' ? '<span class="chip ok">已完成</span><div class="cell-sub">' + esc(t.result) + '</div>' : t.status === 'waiting' ? '<span class="chip">等待推广开始</span>' : t.overdue ? '<span class="chip bad">已逾期</span>' : '<span class="chip warn">待执行</span>';
-      var can = !readOnly && t.status === 'pending' && (t.executor === state.userId || isManager());
-      return '<tr><td><div class="cell-title">' + esc(t.company) + '</div><div class="cell-sub">' + esc(t.contact) + ' · ' + esc(t.handle) + '</div></td><td>' + t.channel + '</td><td><a href="#/detail/' + c.id + '">' + esc(c.name) + '</a>' + (c.source === 'crm' ? '<span class="tag">CRM</span>' : '') + '</td><td>' + user(t.executor).name + '</td><td class="num small">' + t.due + '</td><td>' + st + '</td><td style="text-align:right">' + (can ? '<button class="btn sm" data-task="' + t.id + '">登记结果</button>' : (c.source === 'crm' && t.status === 'pending' ? '<span class="small muted">在 CRM 登记</span>' : '')) + '</td></tr>';
+      var canDo = !readOnly && can('execute') && t.status === 'pending' && (t.executor === state.userId || allScope());
+      return '<tr><td><div class="cell-title">' + esc(t.company) + '</div><div class="cell-sub">' + esc(t.contact) + ' · ' + esc(t.handle) + '</div></td><td>' + t.channel + '</td><td><a href="#/detail/' + c.id + '">' + esc(c.name) + '</a>' + (c.source === 'crm' ? '<span class="tag">CRM</span>' : '') + '</td><td>' + user(t.executor).name + '</td><td class="num small">' + t.due + '</td><td>' + st + '</td><td style="text-align:right">' + (canDo ? '<button class="btn sm" data-task="' + t.id + '">登记结果</button>' : (c.source === 'crm' && t.status === 'pending' ? '<span class="small muted">在 CRM 登记</span>' : '')) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
   }
   function pageTasks() {
     crumbs(['推广中心', '人工待办']);
-    var rows = D.manualTasks.filter(function (t) { return isManager() || t.executor === state.userId; });
+    var rows = D.manualTasks.filter(function (t) { return allScope() || t.executor === state.userId; });
     return '<div class="page-head"><div><h1>人工待办</h1><p>微信、WhatsApp、电话等渠道由负责人执行，系统不代发；完成后必须登记实际结果。</p></div></div><div class="card">' + (rows.length ? taskTable(rows, false) : '<div class="empty">没有分配给你的人工待办</div>') + '</div>';
   }
   function bindTasks() {
@@ -460,20 +477,164 @@
     }); });
   }
 
+  /* 客户分组 */
+  function customerChip(c) {
+    if (c.dnc) return '<span class="chip bad">禁联</span>';
+    if (c.unsub) return '<span class="chip warn">已退订</span>';
+    if (!c.email) return '<span class="chip">无邮箱</span>';
+    return '<span class="chip ok">可推广</span>';
+  }
+  function canEditGroup(g) { return can('edit_group') && (g.visibility === 'public' || g.createdBy === state.userId); }
+  function canDeleteGroup(g) { return can('delete_group') && (g.createdBy === state.userId || allScope()); }
+  function pageGroups(arg) {
+    crumbs(['推广中心', '客户分组']);
+    var groups = visibleGroups();
+    var q = (state.groupQ || '').toLowerCase();
+    var listed = groups.filter(function (g) { return !q || g.name.toLowerCase().indexOf(q) >= 0; });
+    var cur = group(+arg);
+    if (!cur || groups.indexOf(cur) < 0) cur = groups[0];
+    state.groupId = cur ? cur.id : null;
+    var head = '<div class="page-head"><div><h1>客户分组</h1><p>一个客户可以同时在多个分组里。删除分组或移出客户不会删除客户资料；已提交的推广使用提交时冻结的名单，不受分组变动影响。</p></div><div class="actions">' + (can('create_group') ? '<button class="btn primary" data-g="create">新建分组</button>' : '') + '</div></div>';
+    if (!cur) return head + '<div class="card"><div class="empty">还没有分组。' + (can('create_group') ? '点击“新建分组”开始。' : '') + '</div></div>';
+
+    var members = visibleMembers(cur);
+    var mq = (state.memberQ || '').toLowerCase();
+    var country = state.memberCountry || '';
+    var shown = members.filter(function (c) { return (!mq || (c.company + ' ' + c.contact + ' ' + c.email).toLowerCase().indexOf(mq) >= 0) && (!country || c.country === country); });
+    var sel = state.memberSel || {};
+    var selCount = shown.filter(function (c) { return sel[c.id]; }).length;
+    var editable = canEditGroup(cur);
+    var countries = members.map(function (c) { return c.country; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+
+    var left = '<div class="card groups-list"><div class="toolbar"><input class="input" data-gq placeholder="搜索分组" value="' + esc(state.groupQ || '') + '"></div>' +
+      listed.map(function (g) {
+        return '<div class="list-item' + (g === cur ? ' on' : '') + '" data-go="#/groups/' + g.id + '"><div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + g.color + '"></span><span class="cell-title" style="flex:1">' + esc(g.name) + '</span><span class="num small muted">' + visibleMembers(g).length + '</span></div><div class="cell-sub">' + (g.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + user(g.createdBy).name + ' 创建</div></div>';
+      }).join('') + (listed.length ? '' : '<div class="empty">没有匹配的分组</div>') + '</div>';
+
+    var bulk = selCount ? '<div class="bulk-bar"><b class="num">已选 ' + selCount + ' 个</b>' +
+      (can('move_customer') ? '<button class="btn sm" data-g="move">移到其他分组</button><button class="btn sm" data-g="copy">复制到其他分组</button>' : '') +
+      (editable ? '<button class="btn sm danger" data-g="remove-sel">从本组移出</button>' : '') + '<button class="btn sm ghost" data-g="clear">取消选择</button></div>' : '';
+
+    var middle = '<div class="card groups-main"><div class="card-head"><div><h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:' + cur.color + '"></span>' + esc(cur.name) + '</h2><div class="cell-sub">' + (cur.visibility === 'private' ? '仅自己可见' : '团队共用') + ' · ' + user(cur.createdBy).name + ' 创建 · ' + (allScope() ? '共 ' + cur.members.length + ' 个客户' : '你负责的 ' + members.length + ' 个（分组共 ' + cur.members.length + ' 个）') + '</div></div><div class="actions">' +
+      (canDeleteGroup(cur) ? '<button class="btn sm danger" data-g="delete">删除分组</button>' : '') +
+      (editable ? '<button class="btn sm" data-g="rename">重命名</button><button class="btn sm primary" data-g="add">添加客户</button>' : '') + '</div></div>' +
+      '<div class="toolbar"><input class="input" style="max-width:260px" data-mq placeholder="搜索公司、联系人、邮箱" value="' + esc(state.memberQ || '') + '"><select class="select" style="width:140px" data-mc><option value="">全部国家</option>' + countries.map(function (v) { return '<option' + (v === country ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select><div class="spacer"></div><span class="small muted num">显示 ' + shown.length + ' 个</span></div>' + bulk +
+      '<div class="table-wrap"><table class="members"><thead><tr><th style="width:36px"><input type="checkbox" data-selall' + (shown.length && selCount === shown.length ? ' checked' : '') + ' aria-label="全选"></th><th>客户</th><th>国家</th><th class="col-wide">等级</th><th>负责人</th><th>推广状态</th><th class="col-wide">其他分组</th><th></th></tr></thead><tbody>' +
+      (shown.length ? shown.map(function (c) {
+        var others = visibleGroups().filter(function (g) { return g !== cur && g.members.indexOf(c.id) >= 0; });
+        return '<tr' + (sel[c.id] ? ' class="selected"' : '') + '><td><input type="checkbox" data-sel="' + c.id + '"' + (sel[c.id] ? ' checked' : '') + ' aria-label="选择 ' + esc(c.company) + '"></td><td><div class="cell-title">' + esc(c.company) + '</div><div class="cell-sub">' + esc(c.contact || '（无联系人姓名）') + ' · ' + esc(c.email || '无邮箱') + '</div></td><td>' + esc(c.country) + '</td><td class="col-wide">' + c.level + '</td><td>' + user(c.owner).name + '</td><td>' + customerChip(c) + '</td><td class="col-wide">' + (others.length ? others.map(function (g) { return '<span class="gtag"><span class="dot" style="background:' + g.color + '"></span>' + esc(g.name) + '</span>'; }).join('') : '<span class="muted small">—</span>') + '</td><td style="text-align:right">' + (editable ? '<button class="btn sm ghost" data-rm="' + c.id + '">移出</button>' : '') + '</td></tr>';
+      }).join('') : '<tr><td colspan="8"><div class="empty">' + (members.length ? '没有符合筛选条件的客户' : (cur.members.length ? '分组里有 ' + cur.members.length + ' 个客户，但没有你负责的。' : '这个分组还没有客户。') + (editable ? '点击“添加客户”。' : '')) + '</div></td></tr>') + '</tbody></table></div></div>';
+
+    var picker = '';
+    if (state.pickerOpen && editable) {
+      var pq = (state.pickQ || '').toLowerCase(), pc = state.pickCountry || '';
+      var pool = D.customers.filter(visibleCustomer).filter(function (c) { return (!pq || (c.company + ' ' + c.contact + ' ' + c.email).toLowerCase().indexOf(pq) >= 0) && (!pc || c.country === pc); });
+      var pick = state.pickSel || {};
+      var pickCount = Object.keys(pick).filter(function (k) { return pick[k]; }).length;
+      var allCountries = D.customers.filter(visibleCustomer).map(function (c) { return c.country; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      picker = '<div class="card picker"><div class="card-head"><h2>添加到「' + esc(cur.name) + '」</h2><button class="btn sm ghost" data-g="close-picker" aria-label="关闭">关闭</button></div>' +
+        '<div class="toolbar"><input class="input" data-pq placeholder="搜索客户" value="' + esc(state.pickQ || '') + '"><select class="select" data-pc><option value="">全部国家</option>' + allCountries.map(function (v) { return '<option' + (v === pc ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="picker-list">' + pool.map(function (c) {
+          var inGroup = cur.members.indexOf(c.id) >= 0;
+          return '<label class="pick' + (inGroup ? ' disabled' : '') + '"><input type="checkbox" data-pick="' + c.id + '"' + (inGroup ? ' disabled checked' : (pick[c.id] ? ' checked' : '')) + '><span style="flex:1;min-width:0"><span class="cell-title">' + esc(c.company) + '</span><span class="cell-sub" style="display:block">' + esc(c.country) + ' · ' + user(c.owner).name + (inGroup ? ' · 已在组内' : '') + '</span></span>' + customerChip(c) + '</label>';
+        }).join('') + '</div><div class="picker-foot"><button class="btn sm" data-g="pick-all">全选当前结果</button><div class="spacer"></div><button class="btn primary" data-g="add-confirm"' + (pickCount ? '' : ' disabled') + '>加入 ' + pickCount + ' 个</button></div></div>';
+    }
+    return head + '<div class="groups' + (picker ? ' with-picker' : '') + '">' + left + middle + picker + '</div>';
+  }
+  function groupPickModal(title, cur, onPick) {
+    var targets = visibleGroups().filter(function (g) { return g !== cur && canEditGroup(g); });
+    modal({ title: title, ok: '确定', body: (targets.length ? '<div class="check-list">' + targets.map(function (g) { return '<label><input type="radio" name="tg" value="' + g.id + '"><span class="dot" style="background:' + g.color + '"></span><span style="flex:1">' + esc(g.name) + '</span><span class="small muted num">' + visibleMembers(g).length + '</span></label>'; }).join('') + '</div>' : '<p class="muted">没有可以写入的其他分组，请先新建分组。</p>') + '<p class="form-error small hidden" style="color:var(--bad)"></p>',
+      onOk: function (w) { var r = $('input[name=tg]:checked', w); if (!r) return '请选择目标分组'; onPick(group(+r.value)); } });
+  }
+  function bindGroups() {
+    var cur = group(state.groupId);
+    function sel() { return Object.keys(state.memberSel || {}).filter(function (k) { return state.memberSel[k]; }).map(Number); }
+    function snapshot() { return D.groups.map(function (g) { return { g: g, members: g.members.slice(), deleted: g.deleted, name: g.name }; }); }
+    function restore(snap) { snap.forEach(function (s) { s.g.members = s.members; s.g.deleted = s.deleted; s.g.name = s.name; }); }
+    function undoable(msg, snap, after) { toast(msg, function () { restore(snap); if (after) after(); route(); toast('已撤销'); }); }
+    function on(selr, ev, fn) { $all(selr).forEach(function (el) { el.addEventListener(ev, function (e) { fn(el, e); }); }); }
+    var keepFocus = function (selector, el) { route(); var n = $(selector); if (n) { n.focus(); n.setSelectionRange(el.value.length, el.value.length); } };
+    on('[data-gq]', 'input', function (el) { state.groupQ = el.value; keepFocus('[data-gq]', el); });
+    on('[data-mq]', 'input', function (el) { state.memberQ = el.value; keepFocus('[data-mq]', el); });
+    on('[data-pq]', 'input', function (el) { state.pickQ = el.value; keepFocus('[data-pq]', el); });
+    on('[data-mc]', 'change', function (el) { state.memberCountry = el.value; route(); });
+    on('[data-pc]', 'change', function (el) { state.pickCountry = el.value; route(); });
+    on('[data-sel]', 'change', function (el) { state.memberSel = state.memberSel || {}; state.memberSel[el.getAttribute('data-sel')] = el.checked; route(); });
+    on('[data-selall]', 'change', function (el) {
+      state.memberSel = {};
+      if (el.checked) $all('[data-sel]').forEach(function (x) { state.memberSel[x.getAttribute('data-sel')] = true; });
+      route();
+    });
+    on('[data-pick]', 'change', function (el) { state.pickSel = state.pickSel || {}; state.pickSel[el.getAttribute('data-pick')] = el.checked; route(); });
+    on('[data-rm]', 'click', function (el) {
+      var id = +el.getAttribute('data-rm'), snap = snapshot(), c = customer(id);
+      cur.members = cur.members.filter(function (x) { return x !== id; });
+      route(); undoable('已将 ' + c.company + ' 移出「' + cur.name + '」', snap);
+    });
+    var acts = {
+      create: function () {
+        modal({ title: '新建分组', ok: '创建', body: '<div class="field"><label>分组名称</label><input class="input" data-n placeholder="例如：2027 迪拜展潜在客户"></div><div class="field"><label>谁可以使用</label><div class="check-list"><label><input type="radio" name="vis" value="public" checked> 团队共用（其他人只能看到自己负责的客户）</label><label><input type="radio" name="vis" value="private"> 仅自己</label></div></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
+          onOk: function (w) {
+            var name = $('[data-n]', w).value.trim();
+            if (!name) return '请填写分组名称';
+            if (visibleGroups().some(function (g) { return g.name === name; })) return '已有同名分组';
+            var g = { id: 30 + D.groups.length, name: name, color: ['#3b4fd8', '#19794b', '#a35c00', '#b3261e', '#6b4fd8'][D.groups.length % 5], visibility: $('input[name=vis]:checked', w).value, createdBy: state.userId, members: [] };
+            D.groups.push(g); state.pickerOpen = true; state.pickSel = {}; location.hash = '#/groups/' + g.id; toast('分组已创建，现在可以添加客户');
+          } });
+      },
+      rename: function () {
+        modal({ title: '重命名分组', ok: '保存', body: '<div class="field"><label>分组名称</label><input class="input" data-n value="' + esc(cur.name) + '"></div><p class="form-error small hidden" style="color:var(--bad)"></p>',
+          onOk: function (w) { var name = $('[data-n]', w).value.trim(); if (!name) return '请填写分组名称'; if (visibleGroups().some(function (g) { return g !== cur && g.name === name; })) return '已有同名分组'; cur.name = name; route(); toast('已重命名'); } });
+      },
+      delete: function () {
+        var using = D.campaigns.filter(function (c) { return c.source === 'pm' && ['draft', 'rejected'].indexOf(c.status) >= 0; }).length;
+        modal({ title: '删除分组「' + cur.name + '」', ok: '删除分组', danger: true, body: '<p>分组里的 <b class="num">' + cur.members.length + '</b> 个客户不会被删除，只是不再属于这个分组。</p><p class="small muted">已提交的推广使用冻结名单，不受影响；还在编辑的 ' + using + ' 个草稿如果选了这个分组，需要重新选择。删除后 10 秒内可以撤销。</p>',
+          onOk: function () { var snap = snapshot(), id = cur.id; cur.deleted = true; location.hash = '#/groups'; undoable('分组已删除', snap, function () { location.hash = '#/groups/' + id; }); } });
+      },
+      add: function () { state.pickerOpen = true; state.pickSel = {}; route(); },
+      'close-picker': function () { state.pickerOpen = false; route(); },
+      'pick-all': function () { state.pickSel = state.pickSel || {}; $all('[data-pick]:not([disabled])').forEach(function (x) { state.pickSel[x.getAttribute('data-pick')] = true; }); route(); },
+      'add-confirm': function () {
+        var ids = Object.keys(state.pickSel || {}).filter(function (k) { return state.pickSel[k]; }).map(Number), snap = snapshot();
+        ids.forEach(function (id) { if (cur.members.indexOf(id) < 0) cur.members.push(id); });
+        state.pickSel = {}; route(); undoable('已加入 ' + ids.length + ' 个客户到「' + cur.name + '」', snap);
+      },
+      clear: function () { state.memberSel = {}; route(); },
+      'remove-sel': function () {
+        var ids = sel(), snap = snapshot();
+        cur.members = cur.members.filter(function (x) { return ids.indexOf(x) < 0; });
+        state.memberSel = {}; route(); undoable('已将 ' + ids.length + ' 个客户移出「' + cur.name + '」', snap);
+      },
+      move: function () { transfer(true); },
+      copy: function () { transfer(false); }
+    };
+    function transfer(isMove) {
+      var ids = sel();
+      groupPickModal((isMove ? '移动 ' : '复制 ') + ids.length + ' 个客户到', cur, function (target) {
+        var snap = snapshot(), already = 0;
+        ids.forEach(function (id) { if (target.members.indexOf(id) >= 0) already++; else target.members.push(id); });
+        if (isMove) cur.members = cur.members.filter(function (x) { return ids.indexOf(x) < 0; });
+        state.memberSel = {}; route();
+        undoable((isMove ? '已移动 ' : '已复制 ') + ids.length + ' 个客户到「' + target.name + '」' + (already ? '（其中 ' + already + ' 个原本就在）' : ''), snap);
+      });
+    }
+    on('[data-g]', 'click', function (el) { acts[el.getAttribute('data-g')](); });
+  }
+
   /* 设置 */
   function pageSettings() {
     crumbs(['推广中心', '设置']);
-    if (!isManager()) return '<div class="page-head"><div><h1>设置</h1></div></div><div class="card"><div class="empty">只有管理员可以查看和修改推广设置。</div></div>';
+    if (!can('manage')) return '<div class="page-head"><div><h1>设置</h1></div></div><div class="card"><div class="empty">需要“推广设置”权限（promotion.manage）。请在统一权限中心申请。</div></div>';
     var s = D.settings, x = D.suppress;
     return '<div class="page-head"><div><h1>设置</h1><p>修改只影响之后提交的推广；已排期的推广按提交时的规则执行。</p></div><div class="actions"><button class="btn primary" data-save>保存设置</button></div></div>' +
       '<div class="grid g-2"><div class="card"><div class="card-head"><h2>审批与频控</h2></div><div class="card-body">' +
-      '<div class="field"><label>业务员免审额度（封）</label><input class="input num" value="' + s.exempt + '"><span class="hint">业务员只用自己的邮箱、且邮件数不超过此值时无需审批。管理员始终免审，市场始终需审批。</span></div>' +
+      '<div class="field"><label>小批量免审额度（封）</label><input class="input num" value="' + s.exempt + '"><span class="hint">有“小批量免审”权限的人只用自己的邮箱、且邮件数不超过此值时无需审批；有“审批推广”权限的人始终免审；其他人始终需要审批。权限在统一权限中心分配。</span></div>' +
       '<div class="field"><label>同一客户最短间隔（天）</label><input class="input num" value="' + s.freqDays + '"><span class="hint">同时检查本模块、CRM 推广和旧推广中心的发送记录。</span></div>' +
       '<div class="row"><div class="field"><label>每日发送开始</label><input class="input num" value="' + s.windowStart + '"></div><div class="field"><label>每日发送结束</label><input class="input num" value="' + s.windowEnd + '"></div></div>' +
       '<div class="field"><label>同一邮箱每封间隔（秒）</label><input class="input num" value="' + s.interval + '"></div></div></div>' +
       '<div class="grid"><div class="card"><div class="card-head"><h2>邮箱日上限</h2></div><div class="table-wrap"><table><thead><tr><th>邮箱</th><th>归属</th><th>日上限</th></tr></thead><tbody>' + D.mailboxes.map(function (m) { return '<tr><td class="small">' + esc(m.email) + '</td><td>' + (m.owner ? user(m.owner).name : '公司') + '</td><td style="width:110px"><input class="input num" style="height:30px" value="' + m.limit + '"></td></tr>'; }).join('') + '</tbody></table></div></div>' +
       '<div class="card"><div class="card-head"><h2>屏蔽名单</h2><span class="small muted">任一来源命中即不发送</span></div><div class="table-wrap"><table><tbody>' +
-      '<tr><td>本模块退订</td><td class="num" style="text-align:right">' + x.pm + '</td></tr><tr><td>CRM 客户禁联</td><td class="num" style="text-align:right">' + x.crmDnc + '</td></tr><tr><td>旧推广中心退订</td><td class="num" style="text-align:right">' + x.legacyUnsub + '</td></tr><tr><td>旧推广中心黑名单</td><td class="num" style="text-align:right">' + x.legacyBlack + '</td></tr></tbody></table></div></div></div></div>';
+      '<tr><td>联系人邮件退订（CRM 联系人）</td><td class="num" style="text-align:right">' + x.contactUnsub + '</td></tr><tr><td>CRM 客户禁联</td><td class="num" style="text-align:right">' + x.crmDnc + '</td></tr><tr><td>旧推广中心退订</td><td class="num" style="text-align:right">' + x.legacyUnsub + '</td></tr><tr><td>旧推广中心黑名单</td><td class="num" style="text-align:right">' + x.legacyBlack + '</td></tr></tbody></table></div></div></div></div>';
   }
 
   /* 路由 */
@@ -486,6 +647,7 @@
     else if (name === 'list') html = pageList();
     else if (name === 'approvals') html = pageApprovals(arg);
     else if (name === 'tasks') html = pageTasks();
+    else if (name === 'groups') html = pageGroups(arg);
     else if (name === 'settings') html = pageSettings();
     else { name = 'home'; html = pageHome(); }
     renderShell(name);
@@ -497,10 +659,12 @@
     if (name === 'detail') bindDetail(arg);
     if (name === 'approvals') bindApprovals(arg);
     if (name === 'tasks' || name === 'detail') bindTasks();
+    if (name === 'groups') bindGroups();
   }
   var lastHash = location.hash;
   window.addEventListener('hashchange', function () {
-    if (lastHash.split('/')[1] !== location.hash.split('/')[1]) { state.detailTab = 'recipients'; state.recipientFilter = 'all'; }
+    if (lastHash.split('/')[1] !== location.hash.split('/')[1]) { state.detailTab = 'recipients'; state.recipientFilter = 'all'; state.memberSel = {}; state.memberQ = ''; state.memberCountry = ''; }
+    if (lastHash.split('/')[0] !== location.hash.split('/')[0]) state.pickerOpen = false;
     lastHash = location.hash;
     route();
     window.scrollTo(0, 0);
@@ -508,7 +672,13 @@
   document.addEventListener('DOMContentLoaded', function () {
     var params = new URLSearchParams(location.search);
     if (params.get('user')) state.userId = +params.get('user');
-    $('#role-select').addEventListener('change', function (e) { state.userId = +e.target.value; state.draft = null; route(); toast('已切换为 ' + me().name + '（' + ROLE[me().role] + '）'); });
+    if (params.get('picker')) state.pickerOpen = true;
+    if (localStorage.getItem('pm-side') === 'collapsed') document.body.classList.add('side-collapsed');
+    $('#side-toggle').addEventListener('click', function () {
+      var c = document.body.classList.toggle('side-collapsed');
+      localStorage.setItem('pm-side', c ? 'collapsed' : 'open');
+    });
+    $('#role-select').addEventListener('change', function (e) { state.userId = +e.target.value; state.draft = null; state.memberSel = {}; state.pickerOpen = false; route(); toast('已切换为 ' + me().name + '（' + me().role + '）'); });
     route();
   });
 })();
