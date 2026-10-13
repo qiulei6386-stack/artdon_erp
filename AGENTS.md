@@ -28,3 +28,13 @@
    - 尚未完成、待确认或下一步事项
 3. 新一轮工作开始时先读取 `WORK_CONTEXT.md`，在现有成果上继续，不重复或回退已经完成的修改。
 4. 更新后的 `WORK_CONTEXT.md` 必须与本次修改一起提交并推送 GitHub，再将同一提交同步服务器；工作结束时本地、GitHub、服务器中的上下文记录必须一致。
+
+## Cursor Cloud specific instructions
+
+云端代理使用 Ubuntu 24.04 自带的 PHP 8.3 与 MySQL 8.0。GitHub Actions 固定 PHP 8.0 与 Node.js 20；本环境已用 PHP 8.3.6 和镜像自带的 Node.js 22 跑通 `bash tools/ci_php_checks.sh` 与 `bash tools/ci_js_checks.sh`。下面的库和账号只存在于云端虚拟机，不要同步到正式服务器。
+
+- 应用地址是 `http://127.0.0.1:8080`。MySQL 用 `sudo service mysql start` 启动，因为这里没有作为 PID 1 的 systemd。
+- 本地库名 `artdon_new_erp`，用户 `artdon`，密码 `artdon_local`，只监听本机。
+- 超级管理员用户名 `dev`，密码 `ArtdonDev1`，邮箱 `dev@localhost`。
+- `includes/config.php` 和 `includes/install.lock` 由安装器生成，已在 `.gitignore` 中，不要提交。
+- 配置丢失时打开 `install.php`。环境启动脚本会按安装器补齐数据库和管理员，并调用 `notification_ensure_schema()`。不调用时，权限中心等页面会因 `sys_notifications.is_archived` 不存在而返回 500；首页本身不受影响。
