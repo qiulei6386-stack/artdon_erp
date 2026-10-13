@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>推广中心 V1 · 界面原型</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><span class="brand-mark">推</span>推广中心</div>
+      <nav id="side-nav"></nav>
+      <div class="side-foot">界面原型 · 演示数据<br>不连接数据库，不发送邮件</div>
+    </aside>
+    <div class="main">
+      <header class="top">
+        <div class="crumbs" id="crumbs"></div>
+        <div class="who"><span class="proto-tag">原型</span><label for="role-select" class="muted">查看身份</label><select id="role-select" class="select" style="width:auto;height:32px"></select></div>
+      </header>
+      <main class="page" id="view"></main>
+    </div>
+  </div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
