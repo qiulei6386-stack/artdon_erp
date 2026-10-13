@@ -174,14 +174,35 @@
     `${window.MC_BASE_URL}/api/v1/source-material.php?source_record_id=${encodeURIComponent(sourceRecordId)}&category=power_supply`
   );
 
+  const currentRows = () => qa('.mc-current-row', q('[data-current-list]', form));
+
+  const refreshCurrentDefaults = () => {
+    const rows = currentRows();
+    let defaultRow = rows.find(row => row.dataset.defaultCurrent === '1' && q('[data-current-value]', row)?.value !== '');
+    if (!defaultRow) defaultRow = rows.find(row => q('[data-current-value]', row)?.value !== '') || rows[0] || null;
+    rows.forEach(row => {
+      const isDefault = row === defaultRow;
+      row.dataset.defaultCurrent = isDefault ? '1' : '0';
+      const button = q('[data-set-default-current]', row);
+      if (button) {
+        button.textContent = isDefault ? '默认' : '设为默认';
+        button.classList.toggle('is-active', isDefault);
+        button.setAttribute('aria-pressed', isDefault ? 'true' : 'false');
+      }
+      const marker = q('[data-default-current-marker]', row);
+      if (marker) marker.value = isDefault ? '1' : '0';
+    });
+  };
+
   const addCurrent = (value = '', isDefault = false) => {
+    const list = q('[data-current-list]', form);
     const row = document.createElement('div');
     row.className = 'mc-current-row';
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'default_current';
-    radio.title = '设为默认电流';
-    radio.checked = isDefault;
+    row.dataset.defaultCurrent = (isDefault || !currentRows().length) ? '1' : '0';
+    const marker = document.createElement('input');
+    marker.type = 'hidden';
+    marker.name = 'default_current';
+    marker.dataset.defaultCurrentMarker = '';
     const input = document.createElement('input');
     input.type = 'number';
     input.step = '0.01';
@@ -190,18 +211,35 @@
     input.placeholder = '例如 350';
     input.value = value;
     input.dataset.currentValue = '';
+    input.addEventListener('input', () => {
+      refreshCurrentDefaults();
+      dirty = true;
+    });
     const unit = document.createElement('span');
     unit.textContent = 'mA';
+    const defaultButton = document.createElement('button');
+    defaultButton.type = 'button';
+    defaultButton.className = 'mc-current-default-button';
+    defaultButton.dataset.setDefaultCurrent = '';
+    defaultButton.title = '只作为默认/优先匹配电流；所有已填写电流都会保存';
+    defaultButton.addEventListener('click', () => {
+      currentRows().forEach(item => { item.dataset.defaultCurrent = '0'; });
+      row.dataset.defaultCurrent = '1';
+      refreshCurrentDefaults();
+      dirty = true;
+    });
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'mc-icon-button';
     remove.textContent = '×';
     remove.addEventListener('click', () => {
       row.remove();
+      refreshCurrentDefaults();
       dirty = true;
     });
-    row.append(radio, input, unit, remove);
-    q('[data-current-list]', form).append(row);
+    row.append(marker, input, unit, defaultButton, remove);
+    list.append(row);
+    refreshCurrentDefaults();
   };
 
   const syncPrimaryDimming = () => {
@@ -388,12 +426,16 @@
       const field = form.elements.namedItem(name);
       if (field && !field.disabled) payload[name] = field.value;
     });
-    payload.currents = qa('[data-current-value]', form)
-      .filter(input => input.value !== '')
-      .map(input => ({
-        value: input.value,
-        is_default: q('input[type="radio"]', input.closest('.mc-current-row'))?.checked || false,
-      }));
+    const currentItems = currentRows()
+      .map(row => ({ row, input: q('[data-current-value]', row) }))
+      .filter(item => item.input?.value !== '');
+    const defaultCurrentRow = currentItems.find(item => item.row.dataset.defaultCurrent === '1')?.row
+      || currentItems[0]?.row
+      || null;
+    payload.currents = currentItems.map(item => ({
+      value: item.input.value,
+      is_default: item.row === defaultCurrentRow,
+    }));
     payload.dimming_modes = qa('input[name="dimming_modes"]:checked', form).map(input => input.value);
     return payload;
   };

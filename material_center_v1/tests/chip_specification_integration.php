@@ -62,7 +62,12 @@ try {
     $version2 = $chip->saveTemplate([
         'template_id' => $templateId,
         'template_name' => 'CODEX 规格模板 '.$stamp,
-        'selection' => ['cct' => [3000, 4000], 'cri' => [90], 'sdcm' => [3]],
+        'selection' => [
+            'cct' => [3000, 4000],
+            'cri' => [90, 97],
+            'sdcm' => [3],
+            'hidden' => ['cct' => [], 'cri' => [98], 'sdcm' => []],
+        ],
         'combinations' => [
             ['cct_k' => 3000, 'cri' => 90, 'sdcm' => 3],
             ['cct_k' => 4000, 'cri' => 90, 'sdcm' => 3],
@@ -70,6 +75,9 @@ try {
         'change_note' => 'integration v2',
     ], 1);
     $assert($version2['version_no'] === 2, 'template edit did not create a new version');
+    $savedTemplate = array_values(array_filter($chip->templates(), static fn(array $row): bool => (int) $row['id'] === $templateId))[0] ?? null;
+    $assert($savedTemplate !== null && in_array(97, $savedTemplate['selection']['cri'], true), 'custom CRI 97 was not saved');
+    $assert(in_array(98, $savedTemplate['selection']['hidden']['cri'] ?? [], true), 'removed CRI value was not saved');
     $assert((int) $db->query("SELECT COUNT(*) FROM mc_chip_spec_variants WHERE material_id={$materialId}")->fetchColumn() === 0, 'template edit silently mutated a chip');
 
     $preview = $chip->previewApply([$templateId], [$materialId], 'fill_missing');

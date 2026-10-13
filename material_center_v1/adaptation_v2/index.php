@@ -232,10 +232,11 @@ include MC_ROOT . '/components/layout_top.php';
 .pa2-alert{border:1px solid #fedf89;background:#fffaeb;color:#93370d;border-radius:14px;padding:14px}.pa2-muted{color:var(--pa2-muted)}.pa2-section-gap{display:grid;gap:16px}.pa2-placeholder{padding:34px;text-align:center;color:var(--pa2-muted)}
 .pa2-template-shell{display:grid;grid-template-columns:280px minmax(0,1fr) 360px;gap:16px;align-items:start}.pa2-template-list{display:grid;gap:10px}.pa2-template-item{display:block;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-template-item.is-active{border-color:var(--pa2-teal);box-shadow:0 12px 30px rgba(15,159,154,.12)}.pa2-template-item strong{display:block}.pa2-template-item span{color:var(--pa2-muted);font-size:13px}.pa2-flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pa2-flow span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:6px 10px}.pa2-group-grid{display:grid;gap:10px}.pa2-group-card{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid var(--pa2-border);border-radius:16px;padding:13px;background:#fff}.pa2-group-card small{color:var(--pa2-muted)}.pa2-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;background:#eef4ff;color:#1d4ed8}.pa2-badge--add{background:#ecfdf3;color:#067647}.pa2-badge--override{background:#fff7ed;color:#c2410c}.pa2-badge--disable{background:#fef2f2;color:#b42318}.pa2-badge--match{background:#ecfdf3;color:#067647}.pa2-badge--condition{background:#fffaeb;color:#b54708}.pa2-badge--approval{background:#eef4ff;color:#1d4ed8}.pa2-badge--block{background:#fef2f2;color:#b42318}.pa2-side-note{background:var(--pa2-soft);border:1px dashed #c9d8e8;border-radius:16px;padding:14px;color:#344054}.pa2-two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-template-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.pa2-result-note{display:grid;gap:5px;border-top:1px dashed #dbe7f3;padding-top:8px}.pa2-result-note small{color:var(--pa2-muted)}.pa2-engine-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.pa2-engine-summary span{font-size:12px;color:#344054}
 .pa2-rule-board{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:16px;align-items:start}.pa2-rule-card{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);display:grid;gap:8px}.pa2-rule-card.is-cycle{border-color:#fda29b;background:#fff7f7}.pa2-rule-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pa2-chip{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#f2f4f7;color:#344054;font-size:12px}.pa2-chip--show{background:#ecfdf3;color:#067647}.pa2-chip--hide{background:#fef3f2;color:#b42318}.pa2-chip--filter{background:#eff8ff;color:#175cd3}.pa2-behavior{display:grid;gap:8px}.pa2-behavior summary{cursor:pointer;color:#0b7773;font-weight:800}.pa2-json{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e6edf5;border-radius:10px;padding:8px;max-width:360px}
-.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card.is-blocked{border-color:#fecdca;background:#fff7f5}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center;background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-selected-row small{grid-column:1/-1;color:#667085;line-height:1.45}.pa2-selected-main{min-width:0;overflow-wrap:anywhere}.pa2-selected-empty{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;box-shadow:none}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
+.pa2-workspace{display:grid;gap:16px}.pa2-product-hero{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;align-items:center;background:#fff;border:1px solid var(--pa2-border);border-radius:20px;padding:18px}.pa2-product-hero img{width:88px;height:88px;object-fit:contain;border:1px solid #e6edf5;border-radius:14px;background:#f8fafc}.pa2-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-step{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff}.pa2-step b{display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:#e6fffb;color:#0b7773;margin-right:8px}.pa2-work-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-config-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px;display:grid;gap:10px;min-height:190px}.pa2-config-card.is-missing{border-color:#fedf89;background:#fffdf7}.pa2-config-card.is-done{border-color:#abefc6}.pa2-config-card.is-blocked{border-color:#fecdca;background:#fff7f5}.pa2-config-card__head{display:flex;justify-content:space-between;gap:8px}.pa2-selected{display:grid;gap:6px}.pa2-selected-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:center;background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-selected-row small{grid-column:1/-1;color:#667085;line-height:1.45}.pa2-selected-main{min-width:0;overflow-wrap:anywhere}.pa2-selected-empty{background:#f2f4f7;border-radius:10px;padding:7px 9px}.pa2-scheme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-scheme-card{border:1px solid var(--pa2-border);border-radius:16px;background:#fff;padding:14px;display:grid;gap:10px}.pa2-scheme-card[data-open-scheme-editor]{cursor:pointer}.pa2-scheme-card[data-open-scheme-editor]:hover{border-color:#9dd8d6;box-shadow:0 14px 32px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-scheme-card.is-selected{border-color:#d92d20;background:#fff7f5;box-shadow:inset 0 0 0 2px #d92d20}.pa2-scheme-card__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-scheme-card__head strong{font-size:18px;color:#d92d20}.pa2-scheme-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.pa2-scheme-lines{display:grid;gap:6px}.pa2-scheme-lines div{line-height:1.5;color:#667085}.pa2-scheme-lines b{color:#667085}.pa2-scheme-lines small{display:block;margin-top:3px;color:#0b7773;font-size:12px;line-height:1.45;overflow-wrap:anywhere}.pa2-scheme-lines small.is-warn{color:#b54708}.pa2-scheme-line--chip{border:1px solid #d6e9e8;border-radius:10px;background:#f6fffe;padding:7px 9px}.pa2-scheme-placeholder{border:1px dashed #d6e3f0;border-radius:12px;background:#fbfdff;color:#667085;padding:12px;line-height:1.6}.pa2-footerbar{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:14px 16px;box-shadow:none}.pa2-dialog{border:0;border-radius:20px;padding:0;width:min(980px,92vw);box-shadow:0 24px 80px rgba(16,24,40,.28)}.pa2-dialog--narrow{width:min(580px,92vw);overflow:hidden}.pa2-dialog::backdrop{background:rgba(15,23,42,.32)}.pa2-dialog__head,.pa2-dialog__foot{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--pa2-border)}.pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#f8fbff 55%,#fff)}.pa2-dialog__head h3{margin:0;font-size:19px;color:#122033}.pa2-dialog__head p{margin:4px 0 0;color:var(--pa2-muted);font-size:13px}.pa2-dialog__foot{border-top:1px solid var(--pa2-border);border-bottom:0;background:#fbfdff}.pa2-dialog__body{padding:16px 18px;max-height:62vh;overflow:auto}.pa2-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pa2-dialog-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-dialog-form input,.pa2-dialog-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-dialog-form .full{grid-column:1/-1}.pa2-dialog-hint{border:1px dashed #b7e4e2;background:#f0fdfa;border-radius:14px;padding:11px;color:#0b7773}.pa2-chip-variant-picker{grid-column:1/-1;border:1px solid #d6e9e8;border-radius:14px;background:#fbfffe;padding:12px;display:grid;gap:10px}.pa2-chip-variant-picker[hidden],.pa2-chip-variant-option[hidden]{display:none!important}.pa2-chip-variant-picker p{margin:4px 0 0;color:#667085;font-size:12px;line-height:1.5}.pa2-chip-variant-option{display:grid;gap:8px}.pa2-chip-variant-option>strong{color:#0b7773}.pa2-chip-variant-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e6edf5;border-radius:12px;background:#fff;padding:9px 10px;font-weight:800!important;color:#344054!important}.pa2-chip-variant-row span{display:flex;align-items:center;gap:8px;min-width:0}.pa2-chip-variant-row em{font-style:normal;color:#b42318;font-size:12px}.pa2-chip-variant-row.is-disabled{opacity:.55}.pa2-chip-default{color:#0b7773;white-space:nowrap}.pa2-candidate-list{display:grid;gap:10px}.pa2-candidate{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid #e6edf5;border-radius:14px;padding:12px}.pa2-candidate.is-selected{border-color:#0f9f9a;background:#f0fdfa}.pa2-candidate small{color:var(--pa2-muted)}.pa2-candidate-check{display:flex;align-items:center;gap:8px;font-weight:800;color:#0b7773}.pa2-candidate-check input{width:18px;height:18px}.pa2-picker-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.pa2-picker-summary{color:var(--pa2-muted);font-size:13px}
 .pa2-package-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}.pa2-package-list{display:grid;gap:12px}.pa2-package-item{display:grid;gap:8px;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;padding:14px;background:#fff}.pa2-package-item.is-active{border-color:var(--pa2-teal);box-shadow:0 14px 32px rgba(15,159,154,.12)}.pa2-package-item__meta{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.pa2-package-stat{border:1px solid #e6edf5;border-radius:14px;background:#f8fafc;padding:11px}.pa2-package-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pa2-package-check{border:1px solid #e6edf5;border-radius:14px;padding:12px;background:#fff}.pa2-package-check.is-pass{border-color:#abefc6;background:#f6fef9}.pa2-package-check.is-fail{border-color:#fda29b;background:#fff7f7}.pa2-package-group{border:1px solid var(--pa2-border);border-radius:16px;padding:14px;background:#fff;display:grid;gap:10px}.pa2-package-group__head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.pa2-package-rule-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pa2-package-rule-row code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-package-options{display:flex;gap:8px;flex-wrap:wrap}.pa2-package-options span{background:#eef4ff;color:#1d4ed8;border-radius:999px;padding:5px 9px;font-size:12px}.pa2-package-options span.is-locked{background:#fef3f2;color:#b42318}.pa2-package-options span.is-default{background:#ecfdf3;color:#067647}.pa2-channel-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pa2-channel-card{border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:15px;display:grid;gap:8px}.pa2-endpoint{border:1px dashed #c9d8e8;border-radius:14px;background:#f8fafc;padding:12px}.pa2-endpoint code{display:block;white-space:normal}.pa2-redline{border:1px solid #fda29b;background:#fff7f7;color:#b42318;border-radius:14px;padding:12px}.pa2-cutover-banner{border:1px solid #fedf89;background:#fffaeb;border-radius:18px;padding:16px;display:flex;justify-content:space-between;gap:12px;align-items:center}.pa2-cutover-banner.is-ready{border-color:#abefc6;background:#f6fef9}.pa2-check-list{display:grid;gap:10px}.pa2-check-item{display:grid;grid-template-columns:1fr auto;gap:10px;border:1px solid #e6edf5;border-radius:14px;background:#fff;padding:12px}.pa2-check-item.is-blocked{border-color:#fda29b;background:#fff7f7}.pa2-check-item.is-passed{border-color:#abefc6;background:#f6fef9}
 .pa2-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa2-logic-tags{display:flex;gap:6px;flex-wrap:wrap}.pa2-logic-tags span{background:#eef8f8;color:#0b7773;border:1px solid #c9eeeb;border-radius:999px;padding:4px 8px;font-size:12px}.pa2-dialog--logic{width:min(960px,94vw)}.pa2-dialog--logic[data-logic-kind="chip"] .pa2-dialog__head{background:linear-gradient(135deg,#eef4ff,#fff)}.pa2-dialog--logic[data-logic-kind="driver"] .pa2-dialog__head{background:linear-gradient(135deg,#fff7ed,#fff)}.pa2-dialog--logic[data-logic-kind="optical"] .pa2-dialog__head{background:linear-gradient(135deg,#f0fdfa,#fff)}.pa2-logic-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pa2-logic-form label{display:grid;gap:6px;font-weight:800;color:#344054}.pa2-logic-form input,.pa2-logic-form select{border:1px solid #cfd8e6;border-radius:12px;padding:10px 11px;background:#fff}.pa2-logic-form .wide{grid-column:span 2}.pa2-logic-form .full{grid-column:1/-1}.pa2-logic-section{grid-column:1/-1;border-top:1px dashed #dbe7f3;padding-top:10px;font-weight:900;color:#0b7773}.pa2-logic-section small{display:block;color:var(--pa2-muted);font-weight:600;margin-top:3px}.pa2-logic-zone.is-hidden,[data-logic-zone].is-hidden{display:none!important}.pa2-logic-type-chip{background:#eef4ff;color:#1d4ed8}.pa2-logic-type-driver{background:#fff7ed;color:#c2410c}.pa2-logic-type-optical{background:#f0fdfa;color:#0b7773}.pa2-logic-help{grid-column:1/-1;border:1px solid #e6edf5;background:#fbfdff;border-radius:12px;padding:10px;color:#667085}
 .pa2-product-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.pa2-view-switch{display:flex;gap:8px;align-items:center}.pa2-view-switch a{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--pa2-border);background:#fff;border-radius:12px;padding:8px 11px;text-decoration:none;color:#344054;font-weight:800}.pa2-view-switch a.is-active{background:#e6fffb;border-color:#9dd8d6;color:#0b7773}.pa2-product-grid-select{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.pa2-product-tile{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;align-items:center;text-decoration:none;color:inherit;border:1px solid var(--pa2-border);border-radius:18px;background:#fff;padding:12px;box-shadow:0 10px 26px rgba(16,24,40,.04);min-height:122px}.pa2-product-tile:hover{border-color:#9dd8d6;box-shadow:0 16px 38px rgba(15,159,154,.10);transform:translateY(-1px)}.pa2-product-thumb{width:92px;height:92px;border:1px solid #e6edf5;border-radius:16px;background:linear-gradient(135deg,#f8fafc,#eef4ff);display:grid;place-items:center;overflow:hidden;color:#94a3b8;font-size:28px;font-weight:900;position:relative}.pa2-product-thumb img{width:100%;height:100%;object-fit:contain;background:#fff}.pa2-product-thumb span{position:absolute;inset:0;display:grid;place-items:center}.pa2-product-thumb:has(img) span{display:none}.pa2-product-thumb.is-broken span{display:grid}.pa2-product-info{min-width:0}.pa2-product-info strong{display:block;font-size:15px;color:#122033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pa2-product-info p{margin:4px 0 8px;color:#344054;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pa2-product-meta{display:flex;gap:6px;flex-wrap:wrap}.pa2-product-meta span{border-radius:999px;background:#f2f4f7;color:#667085;padding:4px 8px;font-size:12px}.pa2-product-meta .is-mapped{background:#ecfdf3;color:#067647}.pa2-table-product{display:flex;gap:10px;align-items:center}.pa2-table-product .pa2-product-thumb{width:56px;height:56px;border-radius:12px;font-size:18px;flex:0 0 auto}.pa2-table-product strong{display:block}.pa2-table-product span{color:#667085}
+.pa2-candidate{grid-template-columns:minmax(0,1fr) auto;align-items:start}.pa2-candidate-check{padding-top:2px}.pa2-chip-candidate-options{grid-column:1/-1;display:grid;gap:7px;border-top:1px dashed #c9dad9;padding-top:10px}.pa2-chip-candidate-options>strong{color:#0b7773;font-size:13px}.pa2-chip-candidate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}.pa2-chip-candidate-choice{display:flex;align-items:center;gap:8px;border:1px solid #dbe7e6;border-radius:10px;background:#fff;padding:8px 10px;color:#344054;font-weight:700;cursor:pointer}.pa2-chip-candidate-choice:has(input:checked){border-color:#0f9f9a;background:#e9fbf9;color:#087d78}.pa2-chip-candidate-choice input{width:17px;height:17px;flex:0 0 auto}.pa2-selected-row small.is-warn{color:#b54708}
 @media(max-width:1100px){.pa2-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-form{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-hero{display:grid}}@media(max-width:700px){.pa2-grid,.pa2-form{grid-template-columns:1fr}.pa2-form .wide{grid-column:auto}}
 @media(max-width:1280px){.pa2-template-shell,.pa2-rule-board,.pa2-package-shell{grid-template-columns:1fr}.pa2-work-grid,.pa2-scheme-grid,.pa2-product-grid-select{grid-template-columns:repeat(2,minmax(0,1fr))}.pa2-template-actions{justify-content:flex-start}}@media(max-width:760px){.pa2-product-hero,.pa2-footerbar{display:grid}.pa2-steps,.pa2-work-grid,.pa2-scheme-grid,.pa2-product-grid-select,.pa2-package-stats,.pa2-package-checks,.pa2-package-rule-row,.pa2-channel-grid{grid-template-columns:1fr}}
 </style>
@@ -980,6 +981,8 @@ include MC_ROOT . '/components/layout_top.php';
                 $wpSchemes = $workspace['schemes'] ?? [];
                 $wpSchemeEditableGroups = [];
                 foreach ($wpGroups as $schemeGroup) {
+                    $schemeGroupCode = (string)($schemeGroup['group_code'] ?? '');
+                    $schemeGroupIsChip = $schemeGroupCode === 'chip' || (string)($schemeGroup['material_category_code'] ?? '') === 'chip';
                     $schemeOptions = [];
                     foreach ((array)($schemeGroup['selected_options'] ?? []) as $schemeOption) {
                         if (!is_array($schemeOption)) continue;
@@ -990,12 +993,15 @@ include MC_ROOT . '/components/layout_top.php';
                         $schemeOptions[] = [
                             'id' => $schemeOptionId,
                             'label' => $schemeLabel,
+                            'material_id' => (int)($schemeOption['material_id'] ?? 0),
+                            'chip_variants' => $schemeGroupIsChip ? array_values(array_filter((array)($schemeOption['chip_variants'] ?? []), static fn($variant) => is_array($variant))) : [],
                         ];
                     }
                     if ($schemeOptions) {
                         $wpSchemeEditableGroups[] = [
-                            'code' => (string)($schemeGroup['group_code'] ?? ''),
+                            'code' => $schemeGroupCode,
                             'name' => (string)($schemeGroup['display_name'] ?? $schemeGroup['group_name'] ?? $schemeGroup['group_code'] ?? '配置组'),
+                            'is_chip' => $schemeGroupIsChip,
                             'options' => $schemeOptions,
                         ];
                     }
@@ -1118,6 +1124,13 @@ include MC_ROOT . '/components/layout_top.php';
                             $required = !empty($settings['is_required']) || !empty($settings['is_required_default']);
                             $selected = $g['selected_options'] ?? [];
                             $selectedMaterialIds = array_values(array_filter(array_map(static fn($s) => (int)($s['material_id'] ?? 0), $selected)));
+                            $selectedChipVariantIds = [];
+                            foreach ($selected as $selectedRow) {
+                                $selectedMaterialId = (int)($selectedRow['material_id'] ?? 0);
+                                if ($selectedMaterialId <= 0) continue;
+                                $variantIds = array_values(array_unique(array_filter(array_map('intval', (array)($selectedRow['selected_chip_variant_ids'] ?? [])))));
+                                if ($variantIds) $selectedChipVariantIds[$selectedMaterialId] = $variantIds;
+                            }
                             $selectedLogicMaterials = [];
                             foreach ($selected as $selectedRow) {
                                 if ((int)($selectedRow['material_id'] ?? 0) <= 0) continue;
@@ -1208,6 +1221,12 @@ include MC_ROOT . '/components/layout_top.php';
                                     <div class="pa2-selected-row">
                                         <span class="pa2-selected-main"><?=mc_h($s['material_code'] ?: $s['option_name'] ?: $s['numeric_value'] ?: $s['text_value'] ?: (($s['boolean_value'] ?? null) === null ? '已选择' : ((int)$s['boolean_value'] ? '是' : '否')))?> <?=mc_h($s['material_name'] ? ' · '.$s['material_name'] : '')?></span>
                                         <?php if ($selectedResult): ?><span class="pa2-badge <?=mc_h($selectedStatusClass)?>"><?=mc_h($selectedStatusLabel)?><?= $selectedScore !== null ? ' '.mc_h((string)$selectedScore).'%' : '' ?></span><?php endif; ?>
+                                        <?php if (!empty($s['chip_variants'])): ?>
+                                            <?php $selectedChipLabels = array_values(array_filter(array_map(static fn($variant) => is_array($variant) ? pa2_chip_variant_label($variant) : '', (array)$s['chip_variants']))); ?>
+                                            <?php if ($selectedChipLabels): ?><small>官网可选：<?=mc_h(implode(' / ', $selectedChipLabels))?></small><?php endif; ?>
+                                        <?php elseif (!empty($s['available_chip_variants'])): ?>
+                                            <small class="is-warn">官网可选规格未设置，请重新选择芯片规格。</small>
+                                        <?php endif; ?>
                                         <?php if ($selectedReasons): ?><small><?=mc_h((string)$selectedReasons[0])?></small><?php endif; ?>
                                     </div>
                                 <?php endforeach; else: ?>
@@ -1230,7 +1249,7 @@ include MC_ROOT . '/components/layout_top.php';
                             <?php elseif (in_array($selectionKind, ['material','hybrid'], true) || in_array($g['definition_type'], ['material_select','hybrid_select'], true)): ?>
                                 <div class="pa2-card-actions">
                                     <button class="mc-button" type="button" data-open-group-logic data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-is-required="<?=intval($required ? 1 : 0)?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-min-select="<?=intval($settings['min_select'] ?? 0)?>" data-max-select="<?=intval($maxSelect)?>" data-allow-empty="<?=intval($allowEmpty)?>" data-material-category-code="<?=mc_h((string)($behavior['material_category_code'] ?? $g['material_category_code'] ?? ''))?>" data-material-filter="<?=mc_h(pa2_json_encode($materialFilter))?>" data-product-logic="<?=mc_h(pa2_json_encode($productLogic))?>" data-template-logic="<?=mc_h(pa2_json_encode($templateLogic))?>" data-product-technical="<?=mc_h(pa2_json_encode($wpTechnicalRange))?>" data-selected-materials="<?=mc_h(pa2_json_encode($selectedLogicMaterials))?>" data-logic-source="<?=mc_h($logicSource)?>">设置逻辑</button>
-                                    <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>">添加/调整正式物料</button>
+                                    <button class="mc-button mc-button--primary" type="button" data-open-material-picker data-group-id="<?=intval($g['id'])?>" data-group-code="<?=mc_h($g['group_code'])?>" data-group-name="<?=mc_h($g['display_name'])?>" data-selection-mode="<?=mc_h($selectionMode)?>" data-max-select="<?=intval($materialPickerMax)?>" data-selected-material-ids="<?=mc_h(pa2_json_encode($selectedMaterialIds))?>" data-selected-chip-variant-ids="<?=mc_h(pa2_json_encode($selectedChipVariantIds))?>">添加/调整正式物料</button>
                                 </div>
                             <?php elseif (($definition['options'] ?? [])): ?>
                                 <form class="pa2-mini-form" data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>">
@@ -1267,12 +1286,12 @@ include MC_ROOT . '/components/layout_top.php';
                         <div class="pa2-panel__body">
                             <div class="pa2-scheme-grid">
                                 <?php foreach ($wpSchemes as $scheme): ?>
-                                <article class="pa2-scheme-card <?=!empty($scheme['is_default'])?'is-selected':''?>" <?php if ($canConfigureProduct): ?>data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>" title="双击编辑这个配置方案"<?php endif; ?>>
+                                <article class="pa2-scheme-card <?=!empty($scheme['is_default'])?'is-selected':''?>" <?php if ($canConfigureProduct): ?>data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-chip-variants="<?=mc_h(pa2_json_encode($scheme['chip_variant_ids'] ?? []))?>" data-scheme-chip-defaults="<?=mc_h(pa2_json_encode($scheme['default_chip_variant_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>" title="双击编辑这个配置方案"<?php endif; ?>>
                                     <div class="pa2-scheme-card__head">
                                         <strong><?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?><?=!empty($scheme['is_default'])?' · 已选择':''?></strong>
                                         <?php if ($canConfigureProduct): ?>
                                         <div class="pa2-scheme-actions">
-                                            <button class="mc-button" type="button" data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>"><?= $wpCanEditVersion ? '编辑方案' : '查看方案' ?></button>
+                                            <button class="mc-button" type="button" data-open-scheme-editor data-scheme-code="<?=mc_h($scheme['code'])?>" data-scheme-name="<?=mc_h($scheme['name'] ?? ('配置 '.$scheme['code']))?>" data-scheme-selections="<?=mc_h(pa2_json_encode($scheme['selection_ids'] ?? []))?>" data-scheme-chip-variants="<?=mc_h(pa2_json_encode($scheme['chip_variant_ids'] ?? []))?>" data-scheme-chip-defaults="<?=mc_h(pa2_json_encode($scheme['default_chip_variant_ids'] ?? []))?>" data-scheme-can-save="<?=intval($wpCanEditVersion ? 1 : 0)?>"><?= $wpCanEditVersion ? '编辑方案' : '查看方案' ?></button>
                                             <?php if ($wpCanEditVersion): ?>
                                             <form data-pa2-form action="<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_scheme_select'))?>">
                                                 <input type="hidden" name="product_id" value="<?=intval($workspaceProductId)?>">
@@ -1285,7 +1304,23 @@ include MC_ROOT . '/components/layout_top.php';
                                     </div>
                                     <div class="pa2-scheme-lines">
                                         <?php if (!empty($scheme['selections'])): foreach ((array)($scheme['selections'] ?? []) as $selection): ?>
-                                            <div><b><?=mc_h($selection['group'])?>：</b><span><?=mc_h($selection['value'])?></span></div>
+                                            <div class="<?=!empty($selection['chip_variants']) ? 'pa2-scheme-line--chip' : ''?>">
+                                                <b><?=mc_h($selection['group'])?>：</b><span><?=mc_h($selection['value'])?></span>
+                                                <?php if (!empty($selection['selected_chip_variants'])): ?>
+                                                    <?php
+                                                        $schemeVariantLabels = [];
+                                                        foreach ((array)$selection['selected_chip_variants'] as $schemeVariant) {
+                                                            if (!is_array($schemeVariant)) continue;
+                                                            $schemeVariantLabel = pa2_chip_variant_label($schemeVariant);
+                                                            if (!empty($schemeVariant['is_scheme_default'])) $schemeVariantLabel .= '（默认）';
+                                                            if ($schemeVariantLabel !== '') $schemeVariantLabels[] = $schemeVariantLabel;
+                                                        }
+                                                    ?>
+                                                    <?php if ($schemeVariantLabels): ?><small>官网可选：<?=mc_h(implode(' / ', $schemeVariantLabels))?></small><?php endif; ?>
+                                                <?php elseif (!empty($selection['chip_variants'])): ?>
+                                                    <small class="is-warn">官网可选规格未设置</small>
+                                                <?php endif; ?>
+                                            </div>
                                         <?php endforeach; else: ?>
                                             <div class="pa2-scheme-placeholder">空白方案。点击“编辑方案”，自己加入芯片、电源、光学或其他已选项。</div>
                                         <?php endif; ?>
@@ -1320,13 +1355,51 @@ include MC_ROOT . '/components/layout_top.php';
                                                 <?php endforeach; ?>
                                             </select>
                                         </label>
+                                        <?php if (!empty($schemeGroup['is_chip'])): ?>
+                                            <div class="pa2-chip-variant-picker full" data-scheme-chip-group="<?=mc_h($schemeGroup['code'])?>" hidden>
+                                                <div>
+                                                    <strong>官网可选规格</strong>
+                                                    <p>勾选这个产品方案在官网可选的色温 / 显指 / SDCM，并指定默认项。只保存到当前方案，不会生成新的芯片料号，也不会改公共芯片模板。</p>
+                                                </div>
+                                                <?php foreach ($schemeGroup['options'] as $schemeOption): ?>
+                                                    <?php $schemeOptionKey = (string)$schemeGroup['code'] . ':' . (int)$schemeOption['id']; ?>
+                                                    <div class="pa2-chip-variant-option" data-scheme-chip-option="<?=mc_h($schemeOptionKey)?>" hidden>
+                                                        <strong><?=mc_h($schemeOption['label'])?></strong>
+                                                        <?php if (!empty($schemeOption['chip_variants'])): ?>
+                                                            <?php foreach ((array)$schemeOption['chip_variants'] as $variant): ?>
+                                                                <?php
+                                                                    if (!is_array($variant)) continue;
+                                                                    $variantId = (int)($variant['id'] ?? 0);
+                                                                    if ($variantId <= 0) continue;
+                                                                    $variantActive = (string)($variant['status'] ?? '') === 'active';
+                                                                    $variantLabel = pa2_chip_variant_label($variant);
+                                                                ?>
+                                                                <label class="pa2-chip-variant-row <?=$variantActive ? '' : 'is-disabled'?>">
+                                                                    <span>
+                                                                        <input type="checkbox" name="scheme_chip_variants[<?=mc_h($schemeGroup['code'])?>][]" value="<?=intval($variantId)?>" data-scheme-chip-variant="<?=mc_h($schemeGroup['code'])?>" data-scheme-chip-option-id="<?=intval($schemeOption['id'])?>" data-chip-active="<?=intval($variantActive ? 1 : 0)?>">
+                                                                        <?=mc_h($variantLabel ?: ('规格 #' . $variantId))?>
+                                                                        <?php if (!$variantActive): ?><em>停用</em><?php endif; ?>
+                                                                    </span>
+                                                                    <span class="pa2-chip-default">
+                                                                        <input type="radio" name="scheme_default_chip_variant[<?=mc_h($schemeGroup['code'])?>]" value="<?=intval($variantId)?>" data-scheme-chip-default="<?=mc_h($schemeGroup['code'])?>" data-scheme-chip-option-id="<?=intval($schemeOption['id'])?>" data-chip-active="<?=intval($variantActive ? 1 : 0)?>">
+                                                                        默认
+                                                                    </span>
+                                                                </label>
+                                                            <?php endforeach; ?>
+                                                        <?php else: ?>
+                                                            <div class="pa2-alert">这个芯片还没有官网可选规格。请先到芯片物料详情里维护色温 / 显指 / SDCM。</div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php endforeach; else: ?>
                                         <div class="pa2-alert full">当前还没有可搭配的已选物料。请先在芯片、电源、光学等配置卡片里添加正式物料，再回来编辑 A/B/C 方案。</div>
                                     <?php endif; ?>
                                 </div>
                             </div>
                             <div class="pa2-dialog__foot">
-                                <span class="pa2-muted">保存只影响当前 V2 草稿，不修改旧版适配或旧 BOM。</span>
+                                <span class="pa2-muted">保存只影响当前 V2 草稿/当前方案，不修改公共芯片模板、旧版适配或旧 BOM。</span>
                                 <div class="pa2-template-actions">
                                     <button class="mc-button" type="button" data-close-scheme-editor>取消</button>
                                     <?php if ($wpCanEditVersion): ?>
@@ -1890,28 +1963,132 @@ function pa2ParseJson(raw, fallback={}){
   const title=document.getElementById('pa2-scheme-dialog-title');
   const codeInput=form?.elements['scheme_code'];
   const nameInput=form?.elements['scheme_name'];
+  let schemeCanSave=true;
+  function schemeSelectByGroup(groupCode){
+    let found=null;
+    dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
+      if(!found && select.getAttribute('data-scheme-select')===groupCode) found=select;
+    });
+    return found;
+  }
+  function updateChipDefaultRadios(){
+    dialog.querySelectorAll('[data-scheme-chip-default]').forEach((radio)=>{
+      if(!(radio instanceof HTMLInputElement))return;
+      const groupCode=radio.getAttribute('data-scheme-chip-default')||'';
+      const optionId=radio.getAttribute('data-scheme-chip-option-id')||'';
+      const checkbox=dialog.querySelector('input[type="checkbox"][data-scheme-chip-variant="'+groupCode+'"][data-scheme-chip-option-id="'+optionId+'"][value="'+radio.value+'"]');
+      const active=(radio.getAttribute('data-chip-active')||'0')==='1';
+      const validDefault=active && checkbox instanceof HTMLInputElement && checkbox.checked;
+      radio.disabled=!schemeCanSave || !validDefault;
+      if(!validDefault) radio.checked=false;
+    });
+  }
+  function syncSchemeChipPickers(){
+    dialog.querySelectorAll('[data-scheme-chip-group]').forEach((picker)=>{
+      if(!(picker instanceof HTMLElement))return;
+      const groupCode=picker.getAttribute('data-scheme-chip-group')||'';
+      const select=schemeSelectByGroup(groupCode);
+      const optionId=select instanceof HTMLSelectElement ? select.value : '';
+      picker.hidden=!optionId;
+      let hasVisibleOption=false;
+      picker.querySelectorAll('[data-scheme-chip-option]').forEach((box)=>{
+        if(!(box instanceof HTMLElement))return;
+        const active=box.getAttribute('data-scheme-chip-option')===(groupCode+':'+optionId);
+        box.hidden=!active;
+        if(active) hasVisibleOption=true;
+        box.querySelectorAll('input').forEach((input)=>{
+          if(!(input instanceof HTMLInputElement))return;
+          const inputActive=(input.getAttribute('data-chip-active')||'0')==='1';
+          input.disabled=!schemeCanSave || !active || !inputActive;
+          if(!active) input.checked=false;
+        });
+      });
+      picker.hidden=!optionId || !hasVisibleOption;
+    });
+    updateChipDefaultRadios();
+  }
   function setSchemeFormEnabled(canSave){
+    schemeCanSave=!!canSave;
     dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
       if(select instanceof HTMLSelectElement) select.disabled=!canSave;
     });
+    dialog.querySelectorAll('[data-scheme-chip-variant],[data-scheme-chip-default]').forEach((input)=>{
+      if(input instanceof HTMLInputElement) input.disabled=!canSave;
+    });
     if(nameInput) nameInput.disabled=!canSave;
+    syncSchemeChipPickers();
   }
   function openSchemeEditor(source){
       const code=source.getAttribute('data-scheme-code')||'A';
       const name=source.getAttribute('data-scheme-name')||('配置 '+code);
       const selections=pa2ParseJson(source.getAttribute('data-scheme-selections')||'{}',{});
+      const chipVariants=pa2ParseJson(source.getAttribute('data-scheme-chip-variants')||'{}',{});
+      const chipDefaults=pa2ParseJson(source.getAttribute('data-scheme-chip-defaults')||'{}',{});
       const canSave=(source.getAttribute('data-scheme-can-save')||'1')==='1';
       if(title) title.textContent='编辑配置方案 · '+code;
       if(codeInput) codeInput.value=code;
       if(nameInput) nameInput.value=name;
-      setSchemeFormEnabled(canSave);
+      schemeCanSave=canSave;
       dialog.querySelectorAll('[data-scheme-select]').forEach((select)=>{
         if(!(select instanceof HTMLSelectElement))return;
         const groupCode=select.getAttribute('data-scheme-select')||'';
         select.value=selections[groupCode] ? String(selections[groupCode]) : '';
       });
+      dialog.querySelectorAll('[data-scheme-chip-variant]').forEach((checkbox)=>{
+        if(!(checkbox instanceof HTMLInputElement))return;
+        checkbox.checked=false;
+        const groupCode=checkbox.getAttribute('data-scheme-chip-variant')||'';
+        const ids=Array.isArray(chipVariants[groupCode]) ? chipVariants[groupCode].map(String) : [];
+        if(ids.includes(String(checkbox.value))) checkbox.checked=true;
+      });
+      dialog.querySelectorAll('[data-scheme-chip-default]').forEach((radio)=>{
+        if(!(radio instanceof HTMLInputElement))return;
+        radio.checked=false;
+        const groupCode=radio.getAttribute('data-scheme-chip-default')||'';
+        if(chipDefaults[groupCode] && String(chipDefaults[groupCode])===String(radio.value)) radio.checked=true;
+      });
+      setSchemeFormEnabled(canSave);
+      dialog.querySelectorAll('[data-scheme-chip-group]').forEach((picker)=>{
+        if(!(picker instanceof HTMLElement))return;
+        const groupCode=picker.getAttribute('data-scheme-chip-group')||'';
+        const select=schemeSelectByGroup(groupCode);
+        if(!(select instanceof HTMLSelectElement) || !select.value) return;
+        const hasChecked=picker.querySelector('input[type="checkbox"][data-scheme-chip-variant="'+groupCode+'"]:checked');
+        if(hasChecked) return;
+        const firstActive=picker.querySelector('[data-scheme-chip-option="'+groupCode+':'+select.value+'"] input[type="checkbox"][data-chip-active="1"]');
+        if(firstActive instanceof HTMLInputElement && canSave) firstActive.checked=true;
+        syncSchemeChipPickers();
+        const firstDefault=picker.querySelector('[data-scheme-chip-option="'+groupCode+':'+select.value+'"] input[type="radio"][data-chip-active="1"]:not(:disabled)');
+        if(firstDefault instanceof HTMLInputElement && canSave) firstDefault.checked=true;
+      });
       pa2OpenDialog(dialog);
   }
+  dialog.addEventListener('change',(event)=>{
+    const target=event.target;
+    if(!(target instanceof Element))return;
+    const select=target.closest('[data-scheme-select]');
+    if(select instanceof HTMLSelectElement){
+      const groupCode=select.getAttribute('data-scheme-select')||'';
+      dialog.querySelectorAll('[data-scheme-chip-variant="'+groupCode+'"],[data-scheme-chip-default="'+groupCode+'"]').forEach((input)=>{
+        if(input instanceof HTMLInputElement) input.checked=false;
+      });
+      syncSchemeChipPickers();
+      return;
+    }
+    if(target.matches('[data-scheme-chip-variant]')){
+      updateChipDefaultRadios();
+      const checkbox=target instanceof HTMLInputElement ? target : null;
+      if(checkbox && checkbox.checked){
+        const groupCode=checkbox.getAttribute('data-scheme-chip-variant')||'';
+        const anyDefault=dialog.querySelector('[data-scheme-chip-default="'+groupCode+'"]:checked');
+        if(!anyDefault){
+          const optionId=checkbox.getAttribute('data-scheme-chip-option-id')||'';
+          const radio=dialog.querySelector('input[type="radio"][data-scheme-chip-default="'+groupCode+'"][data-scheme-chip-option-id="'+optionId+'"][value="'+checkbox.value+'"]');
+          if(radio instanceof HTMLInputElement && !radio.disabled) radio.checked=true;
+        }
+      }
+    }
+  });
   document.addEventListener('click',(event)=>{
     const button=event.target instanceof Element ? event.target.closest('button[data-open-scheme-editor]') : null;
     if(!button)return;
@@ -2362,6 +2539,7 @@ function pa2ParseJson(raw, fallback={}){
   let currentGroupCode='';
   let currentMaxSelect=99;
   let selectedMaterialIds=new Set();
+  let selectedChipVariantIds=new Map();
   function updateSummary(){
     if(!summary)return;
     const count=selectedMaterialIds.size;
@@ -2390,6 +2568,21 @@ function pa2ParseJson(raw, fallback={}){
         const reason=(Array.isArray(r.reasons)&&r.reasons.length)?r.reasons[0]:'暂无原因，请重新计算或补充规格。';
         const id=String(m.id);
         const checked=selectedMaterialIds.has(id);
+        const activeChipVariants=Array.isArray(m.chip_variants)
+          ? m.chip_variants.filter((v)=>v&&String(v.status||'')==='active'&&parseInt(v.id||'0',10)>0)
+          : [];
+        const selectedVariants=selectedChipVariantIds.get(id)||new Set();
+        const chipVariantChoices=activeChipVariants.length?`
+          <div class="pa2-chip-candidate-options">
+            <strong>当前产品开放的官网规格（可复选）</strong>
+            <div class="pa2-chip-candidate-grid">
+              ${activeChipVariants.map((v)=>{
+                const variantId=String(parseInt(v.id||'0',10));
+                const variantLabel=v.label||[v.cct_k?`${v.cct_k}K`:'',v.cri?`CRI${v.cri}`:'',v.sdcm?`SDCM≤${v.sdcm}`:''].filter(Boolean).join(' / ');
+                return `<label class="pa2-chip-candidate-choice"><input type="checkbox" data-pa2-picker-chip-variant data-material-id="${escapeHtml(id)}" value="${escapeHtml(variantId)}" ${selectedVariants.has(variantId)?'checked':''}> <span>${escapeHtml(variantLabel||('规格 #'+variantId))}</span></label>`;
+              }).join('')}
+            </div>
+          </div>`:'';
         return `
         <div class="pa2-candidate ${checked?'is-selected':''}">
           <div><strong>${escapeHtml(m.material_code||('#'+m.id))} ${escapeHtml(m.name||'')}</strong><br><small>${escapeHtml([m.brand,m.model,m.category_name,m.status].filter(Boolean).join(' · '))}</small><br><small>${escapeHtml(m.spec_summary||'')}</small><br><span class="pa2-badge ${cls}">${label}${score}</span> <small>${escapeHtml(reason)}</small></div>
@@ -2397,6 +2590,7 @@ function pa2ParseJson(raw, fallback={}){
             <input type="checkbox" data-pa2-picker-check value="${escapeHtml(id)}" ${checked?'checked':''}>
             <span>${checked?'已选':'选择'}</span>
           </label>
+          ${chipVariantChoices}
         </div>`}).join('');
       updateSummary();
     }catch(err){
@@ -2412,9 +2606,17 @@ function pa2ParseJson(raw, fallback={}){
       currentGroupCode=btn.getAttribute('data-group-code')||'';
       currentMaxSelect=parseInt(btn.getAttribute('data-max-select')||'99',10)||99;
       selectedMaterialIds=new Set();
+      selectedChipVariantIds=new Map();
       try{
         const ids=JSON.parse(btn.getAttribute('data-selected-material-ids')||'[]');
         if(Array.isArray(ids)) ids.forEach((id)=>{if(parseInt(id,10)>0) selectedMaterialIds.add(String(parseInt(id,10)));});
+      }catch(err){}
+      try{
+        const variants=JSON.parse(btn.getAttribute('data-selected-chip-variant-ids')||'{}');
+        if(variants&&typeof variants==='object') Object.entries(variants).forEach(([materialId,ids])=>{
+          if(!Array.isArray(ids))return;
+          selectedChipVariantIds.set(String(parseInt(materialId,10)),new Set(ids.map((id)=>String(parseInt(id,10))).filter((id)=>id!=='0')));
+        });
       }catch(err){}
       if(title) title.textContent='选择正式物料 · '+(btn.getAttribute('data-group-name')||currentGroupCode);
       updateSummary();
@@ -2431,7 +2633,37 @@ function pa2ParseJson(raw, fallback={}){
   }
   document.addEventListener('change',(event)=>{
     const input=event.target;
-    if(!(input instanceof HTMLInputElement)||!input.matches('[data-pa2-picker-check]'))return;
+    if(!(input instanceof HTMLInputElement))return;
+    if(input.matches('[data-pa2-picker-chip-variant]')){
+      const materialId=String(parseInt(input.getAttribute('data-material-id')||'0',10));
+      const variantId=String(parseInt(input.value||'0',10));
+      if(materialId==='0'||variantId==='0')return;
+      const variants=selectedChipVariantIds.get(materialId)||new Set();
+      if(input.checked){
+        variants.add(variantId);
+        selectedChipVariantIds.set(materialId,variants);
+        const materialCheck=input.closest('.pa2-candidate')?.querySelector('[data-pa2-picker-check]');
+        if(materialCheck instanceof HTMLInputElement&&!materialCheck.checked){
+          if(currentMaxSelect>0&&currentMaxSelect<99&&selectedMaterialIds.size>=currentMaxSelect){
+            input.checked=false;
+            variants.delete(variantId);
+            alert('当前配置组最多可选择 '+currentMaxSelect+' 个物料。');
+            return;
+          }
+          materialCheck.checked=true;
+          selectedMaterialIds.add(materialId);
+          input.closest('.pa2-candidate')?.classList.add('is-selected');
+          const text=materialCheck.parentElement?.querySelector('span');
+          if(text)text.textContent='已选';
+        }
+      }else{
+        variants.delete(variantId);
+        if(variants.size)selectedChipVariantIds.set(materialId,variants);else selectedChipVariantIds.delete(materialId);
+      }
+      updateSummary();
+      return;
+    }
+    if(!input.matches('[data-pa2-picker-check]'))return;
     const id=String(parseInt(input.value||'0',10));
     if(input.checked){
       if(currentMaxSelect>0&&currentMaxSelect<99&&selectedMaterialIds.size>=currentMaxSelect&&!selectedMaterialIds.has(id)){
@@ -2445,6 +2677,10 @@ function pa2ParseJson(raw, fallback={}){
       if(text) text.textContent='已选';
     }else{
       selectedMaterialIds.delete(id);
+      selectedChipVariantIds.delete(id);
+      input.closest('.pa2-candidate')?.querySelectorAll('[data-pa2-picker-chip-variant]').forEach((variantInput)=>{
+        if(variantInput instanceof HTMLInputElement)variantInput.checked=false;
+      });
       input.closest('.pa2-candidate')?.classList.remove('is-selected');
       const text=input.parentElement?.querySelector('span');
       if(text) text.textContent='选择';
@@ -2456,12 +2692,22 @@ function pa2ParseJson(raw, fallback={}){
       if(!currentGroupId)return;
       if(!selectedMaterialIds.size){alert('请至少选择一个正式物料。');return;}
       if(currentMaxSelect>0&&currentMaxSelect<99&&selectedMaterialIds.size>currentMaxSelect){alert('当前配置组最多可选择 '+currentMaxSelect+' 个物料。');return;}
+      const missingChipMaterial=Array.from(selectedMaterialIds).find((id)=>{
+        const materialCheck=list?.querySelector('[data-pa2-picker-check][value="'+id+'"]');
+        const candidate=materialCheck?.closest('.pa2-candidate');
+        return candidate?.querySelector('[data-pa2-picker-chip-variant]')&&!selectedChipVariantIds.get(id)?.size;
+      });
+      if(missingChipMaterial){alert('每个已选芯片至少要勾选一个当前产品开放的官网规格。');return;}
       confirmBtn.disabled=true;
       const formData=new FormData();
       formData.set('product_group_config_id', currentGroupId);
       formData.set('option_type', 'material');
       formData.set('replace', '1');
       Array.from(selectedMaterialIds).forEach((id)=>formData.append('material_ids[]', id));
+      selectedChipVariantIds.forEach((variantIds,materialId)=>{
+        if(!selectedMaterialIds.has(materialId))return;
+        variantIds.forEach((variantId)=>formData.append(`material_chip_variants[${materialId}][]`,variantId));
+      });
     try{
       const res=await fetch('<?=mc_h(mc_url('adaptation_v2/api/index.php?action=product_group_save'))?>',{method:'POST',body:formData,credentials:'same-origin'});
       const data=await res.json();

@@ -197,7 +197,7 @@ final class LegacyCatalogReadRepository
 
     private function productWhere(string $search, string $category): array
     {
-        $where = ['n.website_deleted=0'];
+        $where = ['n.website_deleted=0', "NOT EXISTS (SELECT 1 FROM quote_product_exclusions qpe WHERE qpe.source_type='naming' AND (qpe.naming_id=n.id OR qpe.model_no COLLATE utf8mb4_general_ci=n.model_no))"];
         $params = [];
         $search = trim($search);
         if ($search !== '') {
@@ -247,7 +247,27 @@ final class LegacyCatalogReadRepository
                 if (!is_array($selection)) continue;
                 $groupName = trim((string)($selection['group'] ?? $selection['group_name'] ?? ''));
                 $value = trim((string)($selection['value'] ?? ''));
-                if ($groupName !== '' && $value !== '') $selections[] = ['group' => $groupName, 'value' => $value];
+                if ($groupName === '' || $value === '') continue;
+                $publishedSelection = ['group' => $groupName, 'value' => $value];
+                $chipVariants = [];
+                foreach ((array)($selection['selected_chip_variants'] ?? []) as $variant) {
+                    if (!is_array($variant) || (int)($variant['id'] ?? 0) <= 0) continue;
+                    $chipVariants[] = [
+                        'id' => (int)$variant['id'],
+                        'variant_code' => trim((string)($variant['variant_code'] ?? '')),
+                        'spec_key' => trim((string)($variant['spec_key'] ?? '')),
+                        'label' => trim((string)($variant['label'] ?? '')),
+                        'cct_k' => isset($variant['cct_k']) && $variant['cct_k'] !== '' ? (int)$variant['cct_k'] : null,
+                        'cct_min_k' => isset($variant['cct_min_k']) && $variant['cct_min_k'] !== '' ? (int)$variant['cct_min_k'] : null,
+                        'cct_max_k' => isset($variant['cct_max_k']) && $variant['cct_max_k'] !== '' ? (int)$variant['cct_max_k'] : null,
+                        'cri' => isset($variant['cri']) && $variant['cri'] !== '' ? (float)$variant['cri'] : null,
+                        'sdcm' => isset($variant['sdcm']) && $variant['sdcm'] !== '' ? (float)$variant['sdcm'] : null,
+                        'r9' => isset($variant['r9']) && $variant['r9'] !== '' ? (float)$variant['r9'] : null,
+                        'is_default' => !empty($variant['is_scheme_default']),
+                    ];
+                }
+                if ($chipVariants !== []) $publishedSelection['chip_variants'] = $chipVariants;
+                $selections[] = $publishedSelection;
             }
             if ($selections !== []) {
                 $schemes[] = [

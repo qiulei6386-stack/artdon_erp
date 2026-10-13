@@ -504,14 +504,32 @@ final class ChipSpecificationService
     private function normalizeSelection(array $selection): array
     {
         $out = [];
-        foreach (['cct', 'cri', 'sdcm'] as $key) {
-            $values = array_values(array_unique(array_map(
-                static fn(mixed $value): float|int => (float) $value == (int) $value ? (int) $value : round((float) $value, 2),
-                array_filter((array) ($selection[$key] ?? []), static fn(mixed $value): bool => is_numeric($value))
-            )));
-            sort($values, SORT_NUMERIC);
-            $out[$key] = $values;
+        $hidden = [];
+        $limits = [
+            'cct' => ['色温', 1000, 20000, true],
+            'cri' => ['显指', 0, 100, false],
+            'sdcm' => ['色容差', 0, 20, false],
+        ];
+        foreach ($limits as $key => [$label, $min, $max, $integer]) {
+            $normalize = function (array $rawValues) use ($label, $min, $max, $integer): array {
+                $values = [];
+                foreach ($rawValues as $rawValue) {
+                    $value = $this->requiredNumber($rawValue, $label, $min, $max);
+                    if ($integer && $value !== round($value)) throw new RuntimeException($label.'必须填写整数。');
+                    $normalized = $integer ? (int) $value : ((float) $value == (int) $value ? (int) $value : round($value, 2));
+                    $values[(string) $normalized] = $normalized;
+                }
+                $values = array_values($values);
+                sort($values, SORT_NUMERIC);
+                return $values;
+            };
+            $out[$key] = $normalize((array) ($selection[$key] ?? []));
+            $hidden[$key] = array_values(array_diff(
+                $normalize((array) ($selection['hidden'][$key] ?? [])),
+                $out[$key]
+            ));
         }
+        $out['hidden'] = $hidden;
         return $out;
     }
 

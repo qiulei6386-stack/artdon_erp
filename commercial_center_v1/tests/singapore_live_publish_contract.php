@@ -23,6 +23,8 @@ $checks = [
     'material parameters payload' => str_contains($service, 'material_center_parameters') && str_contains($service, 'technical_parameters') && str_contains($service, 'packageParameters'),
     'published material parameters display' => str_contains($service, 'publishedProductTechnicalParameters') && str_contains($service, 'fallbackTechnicalFromProduct') && str_contains($service, 'appendCustomParameters') && str_contains($service, 'productDimensionText'),
     'material parameters UI' => str_contains($js, 'parameterSummary') && str_contains($js, "technical[key]"),
+    'chip variants preserved' => str_contains(file_get_contents($root . '/app/Repositories/LegacyCatalogReadRepository.php'), "selected_chip_variants")
+        && str_contains(file_get_contents($root . '/app/Repositories/LegacyCatalogReadRepository.php'), "'chip_variants'"),
 ];
 foreach ($checks as $label => $passed) {
     if (!$passed) { fwrite(STDERR, "FAIL: {$label}\n"); exit(1); }

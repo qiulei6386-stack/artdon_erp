@@ -412,7 +412,42 @@ function crm_visit_list(array $input = []): array
         $params[] = (int)(current_user()['id'] ?? 0);
         $params[] = (int)(current_user()['id'] ?? 0);
     }
-    $sql = "SELECT v.*, c.customer_name, c.customer_code, ct.name AS contact_name, u.username AS owner_name,
+    // Mini program / optional filters (backward compatible)
+    $recentDays = (int)($input['recent_days'] ?? 0);
+    if ($recentDays < 0) $recentDays = 0;
+    if ($recentDays > 90) $recentDays = 90;
+    if ($recentDays > 0) {
+        $where[] = 'v.visit_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+        $params[] = $recentDays;
+    }
+    $location = trim((string)($input['location'] ?? ''));
+    if ($location !== '') {
+        $where[] = 'v.location = ?';
+        $params[] = $location;
+    }
+    $country = trim((string)($input['country'] ?? ''));
+    $countryKeys = $input['country_keys'] ?? null;
+    if (is_array($countryKeys)) {
+        $ckeys = array_values(array_unique(array_filter(array_map(static function ($x) {
+            return trim((string)$x);
+        }, $countryKeys), 'strlen')));
+    } else {
+        $ckeys = [];
+    }
+    if (!$ckeys && $country !== '') $ckeys = [$country];
+    if ($ckeys) {
+        // visit.country utf8mb4_general_ci vs customer.country utf8mb4_unicode_ci
+        $cexpr = "COALESCE(NULLIF(TRIM(CONVERT(v.country USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''), NULLIF(TRIM(CONVERT(c.country USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''), '')";
+        $ph = implode(',', array_fill(0, count($ckeys), '?'));
+        $where[] = "{$cexpr} IN ($ph)";
+        array_push($params, ...$ckeys);
+    }
+    $hasPhotoRaw = $input['has_photo'] ?? $input['has_image'] ?? '';
+    $hasPhoto = ($hasPhotoRaw === 1 || $hasPhotoRaw === '1' || $hasPhotoRaw === true || $hasPhotoRaw === 'true');
+    if ($hasPhoto) {
+        $where[] = "EXISTS (SELECT 1 FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'image')";
+    }
+    $sql = "SELECT v.*, c.customer_name, c.customer_code, c.country AS customer_country, ct.name AS contact_name, u.username AS owner_name,
             (SELECT COUNT(*) FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'image') AS image_count,
             (SELECT COUNT(*) FROM crm_visit_files vf WHERE vf.visit_id = v.id AND vf.deleted_at IS NULL AND vf.file_kind = 'attachment') AS attachment_count,
             (SELECT COUNT(*) FROM crm_visit_results vr WHERE vr.visit_id = v.id AND vr.deleted_at IS NULL) AS result_count,
@@ -1040,7 +1075,8 @@ function crm_visit_dispatch_placeholder(int $id, string $kind = 'visit_prepare')
     if ($uid <= 0) throw new RuntimeException('登录状态无效。');
     $assignee = crm_visit_dispatch_assignee($visit);
     $dueAt = crm_visit_dispatch_due_at($visit, $kind);
-    $taskDate = date('Y-m-d', strtotime($dueAt));
+    // 与网站派工中心一致：task_date 用当天看板日，due_at 才是截止
+    $taskDate = date('Y-m-d');
     $typeLabel = ($visit['visit_type'] ?? '') === 'customer_arrival' ? '来访接待' : '客户拜访';
     $titlePrefix = $kind === 'visit_result' ? '拜访后派工' : ($typeLabel . '派工');
     $title = $titlePrefix . '：' . (trim((string)($visit['title'] ?? '')) ?: ('拜访/来访 #' . $id));

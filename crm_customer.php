@@ -3769,6 +3769,71 @@ function crm_customer_business_card_city_guess(string $address): string
     return '';
 }
 
+
+function crm_customer_business_card_compress_upload(array &$file, int $maxBytes = 1048576): void
+{
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_file($tmp)) {
+        throw new RuntimeException('请选择需要识别的名片图片。');
+    }
+    $size = (int)($file['size'] ?? @filesize($tmp));
+    if ($size > 0 && $size <= $maxBytes) return;
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+        if ($size > 5 * 1024 * 1024) throw new RuntimeException('名片图片须小于 5MB。');
+        return;
+    }
+    $bin = @file_get_contents($tmp);
+    if ($bin === false || $bin === '') throw new RuntimeException('读取名片图片失败。');
+    $src = @imagecreatefromstring($bin);
+    unset($bin);
+    if (!$src) throw new RuntimeException('名片图片格式无法处理。');
+    $w = imagesx($src); $h = imagesy($src);
+    if ($w < 1 || $h < 1) { imagedestroy($src); throw new RuntimeException('名片图片尺寸无效。'); }
+    $maxEdge = 1920;
+    $edgeScale = min(1.0, $maxEdge / max($w, $h));
+    $scales = array_values(array_unique(array_filter([
+        $edgeScale,
+        $size > 0 ? min($edgeScale, sqrt($maxBytes / $size) * 0.95) : $edgeScale,
+        $size > 0 ? min($edgeScale, sqrt($maxBytes / $size) * 0.7) : $edgeScale,
+        $size > 0 ? min($edgeScale, sqrt($maxBytes / $size) * 0.5) : $edgeScale,
+    ], static fn($s) => $s >= 0.05)));
+    rsort($scales);
+    $ok = null;
+    foreach ($scales as $scale) {
+        $nw = max(1, (int)round($w * $scale));
+        $nh = max(1, (int)round($h * $scale));
+        if ($nw === $w && $nh === $h) { $img = $src; $owned = false; }
+        else {
+            $img = imagecreatetruecolor($nw, $nh);
+            if (!$img) continue;
+            $white = imagecolorallocate($img, 255, 255, 255);
+            imagefill($img, 0, 0, $white);
+            imagecopyresampled($img, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            $owned = true;
+        }
+        foreach ([85, 75, 65, 55, 45, 35, 25, 18] as $q) {
+            ob_start();
+            imagejpeg($img, null, $q);
+            $jpeg = ob_get_clean();
+            if ($jpeg === false || $jpeg === '') continue;
+            if ($ok === null || strlen($jpeg) < strlen($ok)) $ok = $jpeg;
+            if (strlen($jpeg) <= $maxBytes) { $ok = $jpeg; break 2; }
+        }
+        if ($owned) imagedestroy($img);
+    }
+    imagedestroy($src);
+    if ($ok === null || strlen($ok) > $maxBytes) {
+        throw new RuntimeException('名片图片压缩后仍超过 1MB，请换一张清晰照片。');
+    }
+    if (@file_put_contents($tmp, $ok) === false) {
+        throw new RuntimeException('名片图片压缩写入失败。');
+    }
+    clearstatcache(true, $tmp);
+    $file['size'] = strlen($ok);
+    $file['type'] = 'image/jpeg';
+    $file['name'] = preg_replace('/\.[^.]+$/', '', (string)($file['name'] ?? 'business_card')) . '.jpg';
+}
+
 function crm_customer_business_card_ocr(array $file): array
 {
     crm_require('customer.create');
@@ -3777,9 +3842,11 @@ function crm_customer_business_card_ocr(array $file): array
     }
     $error = (int)($file['error'] ?? UPLOAD_ERR_OK);
     if ($error !== UPLOAD_ERR_OK) throw new RuntimeException('名片图片上传失败，错误码：' . $error);
+    // 上传/识别前压到约 1MB（与拜访照片、小程序一致）
+    crm_customer_business_card_compress_upload($file, 1024 * 1024);
     $size = (int)($file['size'] ?? 0);
-    if ($size <= 0 || $size > 5 * 1024 * 1024) {
-        throw new RuntimeException('名片图片须小于 5MB。');
+    if ($size <= 0 || $size > 1024 * 1024) {
+        throw new RuntimeException('名片图片压缩后仍超过 1MB。');
     }
     $imageInfo = @getimagesize((string)$file['tmp_name']);
     $mime = strtolower((string)($imageInfo['mime'] ?? ''));
@@ -3958,9 +4025,9 @@ function crm_customer_business_card_store_pending(string $source): string
     }
     imagedestroy($image);
     clearstatcache(true, $path);
-    if (!is_file($path) || (int)filesize($path) > 500 * 1024) {
+    if (!is_file($path) || (int)filesize($path) > 1024 * 1024) {
         @unlink($path);
-        throw new RuntimeException('名片图片压缩后仍超过 500KB，请换一张尺寸较小的图片。');
+        throw new RuntimeException('名片图片压缩后仍超过 1MB，请换一张尺寸较小的图片。');
     }
     return $token;
 }

@@ -237,6 +237,9 @@ function artdon_bom_ensure_permissions(): void
         ['bom.cost_view', 'bom', 'cost_view', '查看 BOM 成本', 'dangerous'],
         ['bom.supplier_view', 'bom', 'supplier_view', '查看 BOM 供应商', 'dangerous'],
         ['bom.naming_link', 'bom', 'naming_link', 'BOM 联动型号命名', 'high'],
+        ['bom.approve', 'bom', 'approve', 'BOM 审核通过/生成快照', 'dangerous'],
+        ['bom.reject', 'bom', 'reject', 'BOM 驳回', 'high'],
+        ['bom.unapprove', 'bom', 'unapprove', 'BOM 退审', 'dangerous'],
         ['bom.admin', 'bom', 'admin', 'BOM 管理员', 'dangerous'],
     ];
     $stmt = db()->prepare('INSERT IGNORE INTO crm_permissions (permission_key, module, action, description, risk_level, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
@@ -251,7 +254,7 @@ function artdon_bom_ensure_permissions(): void
         WHERE r.role_key = 'admin' AND p.module = 'bom'");
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
         SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
-        WHERE r.role_key IN ('manager') AND p.permission_key IN ('bom.view','bom.create','bom.edit','bom.import','bom.export','bom.cost_view','bom.supplier_view','bom.naming_link')");
+        WHERE r.role_key IN ('manager') AND p.permission_key IN ('bom.view','bom.create','bom.edit','bom.import','bom.export','bom.cost_view','bom.supplier_view','bom.naming_link','bom.approve','bom.reject')");
     db()->exec("INSERT IGNORE INTO crm_role_permissions (role_id, permission_key)
         SELECT r.id, p.permission_key FROM crm_roles r JOIN crm_permissions p
         WHERE r.role_key IN ('sales','marketing') AND p.permission_key IN ('bom.view','bom.naming_link')");
@@ -429,6 +432,13 @@ function artdon_sso_can_feature(string $module, string $feature, ?array $user = 
             'create_project' => 'create',
             'edit_bom' => 'edit',
             'manage_materials' => 'edit',
+            'approve_bom' => 'approve',
+            'approve_project' => 'approve',
+            'create_snapshot' => 'approve',
+            'reject_bom' => 'reject',
+            'reject_project' => 'reject',
+            'unapprove_bom' => 'unapprove',
+            'unapprove_project' => 'unapprove',
             'delete_bom' => 'delete',
             'delete_materials' => 'delete',
             'import_materials' => 'import',
@@ -688,6 +698,9 @@ function artdon_perm_effective_feature_map(int $userId, string $module, ?array $
             'view_library' => $view,
             'edit_bom' => $edit,
             'manage_materials' => $edit,
+            'approve_bom' => $perm('bom.approve'),
+            'reject_bom' => $perm('bom.reject'),
+            'unapprove_bom' => $perm('bom.unapprove'),
             'delete_bom' => $perm('bom.delete'),
             'import_materials' => $perm('bom.import'),
             'export_bom' => $perm('bom.export'),

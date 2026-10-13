@@ -1402,6 +1402,7 @@ function pa2_workspace_detail(int $productId): array
     if ($version) {
         pa2_db()->prepare('UPDATE mc_pa2_product_config_versions SET check_summary_json=? WHERE id=?')->execute([pa2_json_encode($summary),$versionId]);
     }
+    pa2_attach_chip_variants_to_groups($groups);
     $configurationSnapshot = $version ? pa2_json_decode_array($version['configuration_snapshot_json'] ?? '') : [];
     $selectedSchemeCode = trim((string)($configurationSnapshot['selected_scheme'] ?? 'A')) ?: 'A';
     $manualSchemes = isset($configurationSnapshot['manual_schemes']) && is_array($configurationSnapshot['manual_schemes'])
@@ -1429,6 +1430,87 @@ function pa2_option_display_label(array $option): string
     if ($name === '' && $code === '' && isset($option['numeric_value']) && $option['numeric_value'] !== null) $name = (string)$option['numeric_value'];
     if ($name === '' && $code === '' && isset($option['boolean_value']) && $option['boolean_value'] !== null) $name = (int)$option['boolean_value'] === 1 ? '是' : '否';
     return trim($code . ($code !== '' && $name !== '' ? ' · ' : '') . $name);
+}
+
+function pa2_chip_variant_label(array $variant): string
+{
+    if (($variant['cct_k'] ?? null) !== null && $variant['cct_k'] !== '') {
+        $cct = (int)$variant['cct_k'] . 'K';
+    } elseif (($variant['cct_min_k'] ?? null) !== null || ($variant['cct_max_k'] ?? null) !== null) {
+        $min = ($variant['cct_min_k'] ?? null) !== null ? (int)$variant['cct_min_k'] : '?';
+        $max = ($variant['cct_max_k'] ?? null) !== null ? (int)$variant['cct_max_k'] : '?';
+        $cct = $min . '–' . $max . 'K';
+    } else {
+        $cct = '色温待确认';
+    }
+    $parts = [$cct];
+    if (($variant['cri'] ?? null) !== null && $variant['cri'] !== '') $parts[] = 'CRI' . rtrim(rtrim(number_format((float)$variant['cri'], 2, '.', ''), '0'), '.');
+    if (($variant['sdcm'] ?? null) !== null && $variant['sdcm'] !== '') $parts[] = 'SDCM≤' . rtrim(rtrim(number_format((float)$variant['sdcm'], 2, '.', ''), '0'), '.');
+    if (($variant['r9'] ?? null) !== null && $variant['r9'] !== '') $parts[] = 'R9 ' . rtrim(rtrim(number_format((float)$variant['r9'], 2, '.', ''), '0'), '.');
+    return implode(' / ', $parts);
+}
+
+function pa2_chip_variants_by_material_ids(array $materialIds): array
+{
+    $materialIds = array_values(array_unique(array_filter(array_map('intval', $materialIds))));
+    if (!$materialIds || !pa2_table_exists('mc_chip_spec_variants')) return [];
+    $marks = implode(',', array_fill(0, count($materialIds), '?'));
+    $stmt = pa2_db()->prepare(
+        "SELECT id,material_id,variant_code,spec_key,cct_k,cct_min_k,cct_max_k,cri,sdcm,r9,status,is_default,needs_confirmation,sort_order
+         FROM mc_chip_spec_variants
+         WHERE material_id IN ($marks)
+         ORDER BY material_id,status,is_default DESC,sort_order,cct_k,cri,sdcm,id"
+    );
+    $stmt->execute($materialIds);
+    $byMaterial = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $row['id'] = (int)$row['id'];
+        $row['material_id'] = (int)$row['material_id'];
+        $row['is_default'] = (int)$row['is_default'];
+        $row['needs_confirmation'] = (int)$row['needs_confirmation'];
+        $row['label'] = pa2_chip_variant_label($row);
+        $byMaterial[(int)$row['material_id']][] = $row;
+    }
+    return $byMaterial;
+}
+
+function pa2_attach_chip_variants_to_groups(array &$groups): void
+{
+    $materialIds = [];
+    foreach ($groups as $group) {
+        $isChipGroup = (string)($group['material_category_code'] ?? '') === 'chip' || (string)($group['group_code'] ?? '') === 'chip';
+        if (!$isChipGroup) continue;
+        foreach ((array)($group['selected_options'] ?? []) as $option) {
+            $materialId = (int)($option['material_id'] ?? 0);
+            if ($materialId > 0) $materialIds[] = $materialId;
+        }
+    }
+    if (!$materialIds) return;
+    $variantsByMaterial = pa2_chip_variants_by_material_ids($materialIds);
+    foreach ($groups as &$group) {
+        $isChipGroup = (string)($group['material_category_code'] ?? '') === 'chip' || (string)($group['group_code'] ?? '') === 'chip';
+        if (!$isChipGroup) continue;
+        foreach ($group['selected_options'] as &$option) {
+            $materialId = (int)($option['material_id'] ?? 0);
+            $availableVariants = $materialId > 0 ? ($variantsByMaterial[$materialId] ?? []) : [];
+            $value = pa2_json_decode_array($option['value_json'] ?? '');
+            $requestedIds = array_values(array_unique(array_filter(array_map('intval', (array)($value['chip_variant_ids'] ?? [])))));
+            $selectedVariantIds = [];
+            $selectedVariants = [];
+            foreach ($availableVariants as $variant) {
+                $variantId = (int)($variant['id'] ?? 0);
+                if ($variantId <= 0 || (string)($variant['status'] ?? '') !== 'active' || !in_array($variantId, $requestedIds, true)) continue;
+                $selectedVariantIds[] = $variantId;
+                $selectedVariants[] = $variant;
+            }
+            $option['available_chip_variants'] = $availableVariants;
+            $option['selected_chip_variant_ids'] = $selectedVariantIds;
+            // Only variants enabled for this product may flow into its schemes and channel output.
+            $option['chip_variants'] = $selectedVariants;
+        }
+        unset($option);
+    }
+    unset($group);
 }
 
 function pa2_build_configuration_schemes(array $groups, string $selectedSchemeCode = 'A', array $manualSchemes = []): array
@@ -1459,6 +1541,7 @@ function pa2_build_configuration_schemes(array $groups, string $selectedSchemeCo
                 'numeric_value' => $option['numeric_value'] ?? null,
                 'text_value' => $option['text_value'] ?? null,
                 'boolean_value' => $option['boolean_value'] ?? null,
+                'chip_variants' => $option['chip_variants'] ?? [],
             ];
         }
     }
@@ -1468,14 +1551,55 @@ function pa2_build_configuration_schemes(array $groups, string $selectedSchemeCo
     foreach (['A','B','C'] as $code) {
         $manual = isset($manualSchemes[$code]) && is_array($manualSchemes[$code]) ? $manualSchemes[$code] : [];
         $selectionIds = isset($manual['selection_ids']) && is_array($manual['selection_ids']) ? $manual['selection_ids'] : [];
+        $manualChipVariantIds = isset($manual['chip_variant_ids']) && is_array($manual['chip_variant_ids']) ? $manual['chip_variant_ids'] : [];
+        $manualDefaultChipVariantIds = isset($manual['default_chip_variant_ids']) && is_array($manual['default_chip_variant_ids']) ? $manual['default_chip_variant_ids'] : [];
         $selections = [];
         $validSelectionIds = [];
+        $validChipVariantIds = [];
+        $validDefaultChipVariantIds = [];
         foreach ($selectionIds as $groupCode => $selectedOptionId) {
             $groupCode = (string)$groupCode;
             $selectedOptionId = (int)$selectedOptionId;
             if ($selectedOptionId <= 0 || empty($optionMap[$groupCode][$selectedOptionId])) continue;
-            $selections[] = $optionMap[$groupCode][$selectedOptionId];
+            $selection = $optionMap[$groupCode][$selectedOptionId];
             $validSelectionIds[$groupCode] = $selectedOptionId;
+            $variants = (array)($selection['chip_variants'] ?? []);
+            if ($variants) {
+                $variantMap = [];
+                foreach ($variants as $variant) $variantMap[(int)($variant['id'] ?? 0)] = $variant;
+                $requestedIds = array_values(array_unique(array_filter(array_map('intval', (array)($manualChipVariantIds[$groupCode] ?? [])))));
+                $selectedVariantIds = [];
+                $selectedVariants = [];
+                foreach ($requestedIds as $variantId) {
+                    if (empty($variantMap[$variantId])) continue;
+                    $selectedVariantIds[] = $variantId;
+                    $selectedVariants[] = $variantMap[$variantId];
+                }
+                if (!$selectedVariantIds) {
+                    foreach ($variants as $variant) {
+                        if ((string)($variant['status'] ?? '') !== 'active') continue;
+                        $selectedVariantIds[] = (int)$variant['id'];
+                        $selectedVariants[] = $variant;
+                        if ((int)($variant['is_default'] ?? 0) === 1) break;
+                    }
+                    if (!$selectedVariantIds && $variants) {
+                        $selectedVariantIds[] = (int)$variants[0]['id'];
+                        $selectedVariants[] = $variants[0];
+                    }
+                }
+                $defaultVariantId = (int)($manualDefaultChipVariantIds[$groupCode] ?? 0);
+                if (!in_array($defaultVariantId, $selectedVariantIds, true)) $defaultVariantId = $selectedVariantIds[0] ?? 0;
+                foreach ($selectedVariants as &$variant) $variant['is_scheme_default'] = (int)$variant['id'] === $defaultVariantId ? 1 : 0;
+                unset($variant);
+                $selection['selected_chip_variant_ids'] = $selectedVariantIds;
+                $selection['selected_chip_variants'] = $selectedVariants;
+                $selection['default_chip_variant_id'] = $defaultVariantId ?: null;
+                if ($selectedVariantIds) {
+                    $validChipVariantIds[$groupCode] = $selectedVariantIds;
+                    if ($defaultVariantId > 0) $validDefaultChipVariantIds[$groupCode] = $defaultVariantId;
+                }
+            }
+            $selections[] = $selection;
         }
         $schemes[] = [
             'code' => $code,
@@ -1483,6 +1607,8 @@ function pa2_build_configuration_schemes(array $groups, string $selectedSchemeCo
             'is_default' => $code === $selectedSchemeCode,
             'is_blank' => !$selections,
             'selection_ids' => $validSelectionIds,
+            'chip_variant_ids' => $validChipVariantIds,
+            'default_chip_variant_ids' => $validDefaultChipVariantIds,
             'selections' => $selections,
             'updated_at' => (string)($manual['updated_at'] ?? ''),
         ];
@@ -1529,23 +1655,61 @@ function pa2_save_product_scheme(array $input): array
                 'numeric_value' => $option['numeric_value'] ?? null,
                 'text_value' => $option['text_value'] ?? null,
                 'boolean_value' => $option['boolean_value'] ?? null,
+                'chip_variants' => $option['chip_variants'] ?? [],
             ];
         }
     }
 
     $rawSelections = $input['scheme_selection'] ?? [];
     if (!is_array($rawSelections)) $rawSelections = [];
+    $rawChipVariantIds = $input['scheme_chip_variants'] ?? [];
+    if (!is_array($rawChipVariantIds)) $rawChipVariantIds = [];
+    $rawDefaultChipVariantIds = $input['scheme_default_chip_variant'] ?? [];
+    if (!is_array($rawDefaultChipVariantIds)) $rawDefaultChipVariantIds = [];
     $selectionIds = [];
+    $chipVariantIds = [];
+    $defaultChipVariantIds = [];
     $selections = [];
     foreach ($rawSelections as $groupCode => $selectedOptionId) {
         $groupCode = (string)$groupCode;
         $selectedOptionId = (int)$selectedOptionId;
         if ($selectedOptionId <= 0) continue;
         if (empty($allowed[$groupCode][$selectedOptionId])) {
-            throw new RuntimeException('配置方案中包含不属于当前草稿的选项，请刷新后重试。');
+                throw new RuntimeException('配置方案中包含不属于当前草稿的选项，请刷新后重试。');
         }
         $selectionIds[$groupCode] = $selectedOptionId;
-        $selections[] = $allowed[$groupCode][$selectedOptionId];
+        $entry = $allowed[$groupCode][$selectedOptionId];
+        $variants = (array)($entry['chip_variants'] ?? []);
+        if ($variants) {
+            $variantMap = [];
+            foreach ($variants as $variant) {
+                if (!is_array($variant)) continue;
+                if ((string)($variant['status'] ?? '') !== 'active') continue;
+                $variantId = (int)($variant['id'] ?? 0);
+                if ($variantId <= 0) continue;
+                $variantMap[$variantId] = $variant;
+            }
+            $requestedIds = array_values(array_unique(array_filter(array_map('intval', (array)($rawChipVariantIds[$groupCode] ?? [])))));
+            $selectedVariantIds = [];
+            $selectedVariants = [];
+            foreach ($requestedIds as $variantId) {
+                if (empty($variantMap[$variantId])) continue;
+                $selectedVariantIds[] = $variantId;
+                $selectedVariants[] = $variantMap[$variantId];
+            }
+            $defaultVariantId = (int)($rawDefaultChipVariantIds[$groupCode] ?? 0);
+            if (!in_array($defaultVariantId, $selectedVariantIds, true)) $defaultVariantId = $selectedVariantIds[0] ?? 0;
+            foreach ($selectedVariants as &$variant) $variant['is_scheme_default'] = (int)($variant['id'] ?? 0) === $defaultVariantId ? 1 : 0;
+            unset($variant);
+            $entry['selected_chip_variant_ids'] = $selectedVariantIds;
+            $entry['selected_chip_variants'] = $selectedVariants;
+            $entry['default_chip_variant_id'] = $defaultVariantId ?: null;
+            if ($selectedVariantIds) {
+                $chipVariantIds[$groupCode] = $selectedVariantIds;
+                if ($defaultVariantId > 0) $defaultChipVariantIds[$groupCode] = $defaultVariantId;
+            }
+        }
+        $selections[] = $entry;
     }
 
     $snapshot = pa2_json_decode_array($version['configuration_snapshot_json'] ?? '');
@@ -1556,6 +1720,8 @@ function pa2_save_product_scheme(array $input): array
         'code' => $schemeCode,
         'name' => $schemeName !== '' ? $schemeName : ('配置 ' . $schemeCode),
         'selection_ids' => $selectionIds,
+        'chip_variant_ids' => $chipVariantIds,
+        'default_chip_variant_ids' => $defaultChipVariantIds,
         'selections' => $selections,
         'updated_at' => date('Y-m-d H:i:s'),
         'updated_by' => pa2_current_user_id(),
@@ -1637,13 +1803,22 @@ function pa2_material_candidates(string $groupCode, string $keyword = '', int $l
     $stmt = pa2_db()->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $variantsByMaterial = [];
+    if ($category === 'chip' && $rows) {
+        $materialIds = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $rows)));
+        $variantsByMaterial = pa2_chip_variants_by_material_ids($materialIds);
+    }
     foreach ($rows as &$row) {
         $row['id'] = (int)$row['id'];
         $row['is_official'] = (int)$row['is_official'];
+        if ($category === 'chip') {
+            $row['chip_variants'] = $variantsByMaterial[(int)$row['id']] ?? [];
+        }
         if ($productId > 0 && $productGroupConfigId > 0) {
             $row['adaptation_result'] = pa2_evaluate_material_candidate_for_group($productId, $productGroupConfigId, $row);
         }
     }
+    unset($row);
     return $rows;
 }
 
@@ -1917,6 +2092,28 @@ function pa2_save_product_group_selection(array $input): array
             return ['product_group_config_id' => $groupConfigId, 'saved_option_id' => 0, 'selected_count' => 0];
         }
     }
+    $chipVariantIdsByMaterial = [];
+    if ($optionType === 'material') {
+        $rawChipVariantIds = $input['material_chip_variants'] ?? [];
+        if (!is_array($rawChipVariantIds)) $rawChipVariantIds = [];
+        $availableVariantsByMaterial = pa2_chip_variants_by_material_ids($materialIds);
+        foreach ($materialIds as $selectedMaterialId) {
+            $availableVariants = array_values(array_filter(
+                (array)($availableVariantsByMaterial[$selectedMaterialId] ?? []),
+                static fn($variant) => is_array($variant) && (string)($variant['status'] ?? '') === 'active'
+            ));
+            if (!$availableVariants) continue;
+            $validIds = array_values(array_filter(array_map(static fn($variant) => (int)($variant['id'] ?? 0), $availableVariants)));
+            $requestedIds = array_values(array_unique(array_filter(array_map('intval', (array)($rawChipVariantIds[$selectedMaterialId] ?? [])))));
+            if (array_diff($requestedIds, $validIds)) {
+                throw new RuntimeException('所选芯片规格已失效或不属于当前芯片，请刷新后重试。');
+            }
+            if (!$requestedIds) {
+                throw new RuntimeException('每个已选芯片至少要勾选一个当前产品开放的官网规格。');
+            }
+            $chipVariantIdsByMaterial[$selectedMaterialId] = $requestedIds;
+        }
+    }
     if ($replace === 1) {
         pa2_db()->prepare('DELETE FROM mc_pa2_product_selected_options WHERE product_group_config_id=?')->execute([$groupConfigId]);
     }
@@ -1928,6 +2125,10 @@ function pa2_save_product_group_selection(array $input): array
     $baseSortOrder = (int)($input['sort_order'] ?? 100);
     $insertMaterialIds = $optionType === 'material' ? $materialIds : [$materialId];
     foreach ($insertMaterialIds as $idx => $insertMaterialId) {
+        $optionValue = ['source' => 'workspace', 'saved_at' => date('Y-m-d H:i:s')];
+        if (!empty($chipVariantIdsByMaterial[$insertMaterialId])) {
+            $optionValue['chip_variant_ids'] = $chipVariantIdsByMaterial[$insertMaterialId];
+        }
         $stmt->execute([
             $groupConfigId,
             $optionType,
@@ -1936,7 +2137,7 @@ function pa2_save_product_group_selection(array $input): array
             $numeric !== '' ? (float)$numeric : null,
             $text !== '' ? $text : null,
             $boolean,
-            pa2_json_encode(['source' => 'workspace', 'saved_at' => date('Y-m-d H:i:s')]),
+            pa2_json_encode($optionValue),
             !empty($input['is_default']) && $idx === 0 ? 1 : 0,
             !empty($input['is_alternative']) ? 1 : 0,
             $baseSortOrder + $idx,
@@ -1946,7 +2147,7 @@ function pa2_save_product_group_selection(array $input): array
         $savedOptionId = (int)pa2_db()->lastInsertId();
     }
     pa2_db()->prepare('UPDATE mc_pa2_product_group_configs SET status="configured",updated_by=?,updated_at=NOW() WHERE id=?')->execute([$userId,$groupConfigId]);
-    pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'material_ids' => $materialIds, 'option_definition_id' => $optionDefinitionId]);
+    pa2_log('workspace_group_save', 'product_group_config', $groupConfigId, [], ['option_type' => $optionType, 'material_id' => $materialId, 'material_ids' => $materialIds, 'chip_variant_ids' => $chipVariantIdsByMaterial, 'option_definition_id' => $optionDefinitionId]);
     if (pa2_engine_tables_ready()) {
         try {
             $productStmt = pa2_db()->prepare(
@@ -2839,6 +3040,7 @@ function pa2_build_version_snapshot(int $versionId): array
                 'numeric_value' => $row['numeric_value'] === null ? null : (float)$row['numeric_value'],
                 'text_value' => $row['text_value'] ?? null,
                 'boolean_value' => $row['boolean_value'] === null ? null : (int)$row['boolean_value'],
+                'value_json' => $row['value_json'] ?? null,
                 'is_default' => (int)$row['is_default'],
                 'is_alternative' => (int)$row['is_alternative'],
             ];
@@ -2855,6 +3057,7 @@ function pa2_build_version_snapshot(int $versionId): array
             'selected_options' => $selectedByGroup[(int)$group['id']] ?? [],
         ];
     }
+    pa2_attach_chip_variants_to_groups($snapshotGroups);
     $configurationSnapshot = pa2_json_decode_array($version['configuration_snapshot_json'] ?? '');
     $selectedSchemeCode = trim((string)($configurationSnapshot['selected_scheme'] ?? 'A')) ?: 'A';
     $manualSchemes = isset($configurationSnapshot['manual_schemes']) && is_array($configurationSnapshot['manual_schemes'])

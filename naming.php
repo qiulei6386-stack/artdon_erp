@@ -48,7 +48,7 @@ const NM_UPLOAD_DIR = __DIR__ . '/uploads/naming';
 const NM_BACKUP_DIR = __DIR__ . '/uploads/naming_backups';
 const NM_WEBSITE_BASE = 'https://artdonlighting.com';
 if (!defined('NM_WEBSITE_SYNC_API')) {
-    define('NM_WEBSITE_SYNC_API', 'http://43.132.210.162/api/naming_product_feed.php');
+    define('NM_WEBSITE_SYNC_API', 'https://artdonlighting.com/api/naming_product_feed.php');
 }
 const NM_WEBSITE_SYNC_INTERVAL = 60; // 页面实时同步最短间隔，避免官网/API被频繁打爆。
 const NM_WEBSITE_SYNC_HTTP_TIMEOUT = 6;
@@ -258,6 +258,17 @@ function nm_rule_is_embedded(array $rule): bool {
     if (preg_match('/嵌入|无边|有边/u', $txt)) return true;
     return in_array($prefix, array('51','52','53','55','56','57','58','59','60'), true);
 }
+function nm_rule_preferred_dimension_shape(array $rule, string $prefix = ''): string {
+    $prefix = strtoupper(nm_s($prefix !== '' ? $prefix : ($rule['prefix'] ?? '')));
+    $txt = nm_s($rule['category'] ?? '').' '.nm_s($rule['item_name'] ?? '').' '.nm_s($rule['size_label'] ?? '');
+    if (preg_match('/方形|方孔|矩形|长方形|线性/u', $txt)) return 'box';
+    if (preg_match('/圆形|圆孔|圆筒|直径/u', $txt)) return 'round';
+    // 官网尺寸如 Ø61*100mm 是“直径×高度”，不能按长宽误判成方形。
+    // 命名规则库里 51/52/53/56/57/58/60 是嵌入圆形类；55/59 才偏线性/长条。
+    if (in_array($prefix, array('51','52','53','56','57','58','60'), true)) return 'round';
+    if (in_array($prefix, array('55','59'), true)) return 'box';
+    return '';
+}
 function nm_rule_map_from_globals(): array {
     $map = array();
     $rules = $GLOBALS['rules'] ?? array();
@@ -338,14 +349,20 @@ function nm_repair_website_dimensions_by_model(PDO $pdo): void {
             $raw = $row;
             if (!empty($row['source_payload_json'])) {
                 $payload = json_decode((string)$row['source_payload_json'], true);
-                if (is_array($payload)) $raw = array_merge($payload, $raw);
+                if (is_array($payload)) $raw = array_merge($raw, $payload);
             }
             $dims = nm_website_parse_dimensions($raw, $rule, $sizeCode);
+            $preferredShape = nm_rule_preferred_dimension_shape($rule, $prefix);
             $sets = array(); $args = array();
             foreach ($dims as $c=>$v) {
                 if (!in_array($c, $cols, true)) continue;
-                // 只补空值，避免覆盖手工已经修好的本地编辑。
-                if (nm_s($row[$c] ?? '') === '' && nm_s($v) !== '') { $sets[] = "`{$c}`=?"; $args[] = $v; }
+                // 默认只补空值；但官网同步的嵌入圆形规则如果曾被误判成长/宽，
+                // 必须覆盖纠正，否则 52/57 这类圆形型号会一直显示成方形。
+                $mustFixRound = ($preferredShape === 'round' && nm_s($dims['dimension_type'] ?? '') === 'embedded_round' && in_array($c, array('dimension_type','dim_opening','dim_opening_length','dim_opening_width','dim_outer_d','dim_length','dim_width','dim_height'), true));
+                if (($mustFixRound && nm_s($row[$c] ?? '') !== nm_s($v)) || (!$mustFixRound && nm_s($row[$c] ?? '') === '' && nm_s($v) !== '')) {
+                    $sets[] = "`{$c}`=?";
+                    $args[] = $v;
+                }
             }
             if (in_array('size_code', $cols, true) && nm_s($row['size_code'] ?? '') === '' && $sizeCode !== '') { $sets[]='`size_code`=?'; $args[]=$sizeCode; }
             if (in_array('prefix', $cols, true) && nm_s($row['prefix'] ?? '') === '' && $prefix !== '') { $sets[]='`prefix`=?'; $args[]=$prefix; }
@@ -382,12 +399,13 @@ function nm_key_num($v): string {
 }
 
 function nm_model_duplicate_key(array $row): string {
+    $model = nm_model_clean(nm_s($row['model_no'] ?? ''));
+    if ($model !== '') return 'MODEL|' . $model;
     $name = '';
     foreach (array('product_name','series_name','web_series','website_display_name') as $c) {
         if (isset($row[$c]) && nm_s($row[$c]) !== '') { $name = nm_key_text($row[$c]); break; }
     }
     if ($name === '') return '';
-    $model = nm_s($row['model_no'] ?? '');
     $prefix = nm_key_text($row['prefix'] ?? '');
     if ($prefix === '') $prefix = nm_key_text(nm_model_prefix($model));
     $type = '';
@@ -724,7 +742,9 @@ function nm_get_rule(PDO $pdo, int $id): array {
 function nm_next_serial(PDO $pdo, string $prefix, string $size, int $digits = 2, bool $noFour = true): array {
     $base = strtoupper(trim($prefix)) . '.' . $size;
     $maxAllowed = (int)pow(10, max(1,$digits)) - 1;
-    $st = $pdo->prepare('SELECT model_no FROM naming_models WHERE UPPER(model_no) LIKE ?');
+    $cols = nm_cols($pdo, 'naming_models');
+    $activeCond = nm_active_model_condition_sql($cols);
+    $st = $pdo->prepare('SELECT model_no FROM naming_models WHERE '.$activeCond.' AND UPPER(model_no) LIKE ?');
     $st->execute(array($base.'%'));
     $maxUsed = -1;
     $used = array();
@@ -738,7 +758,7 @@ function nm_next_serial(PDO $pdo, string $prefix, string $size, int $digits = 2,
         if ($noFour && nm_has_four($serial)) continue;
         if (isset($used[$i])) continue;
         $model = $base.$serial;
-        $ck = $pdo->prepare('SELECT id FROM naming_models WHERE model_no=? LIMIT 1');
+        $ck = $pdo->prepare('SELECT id FROM naming_models WHERE '.$activeCond.' AND model_no=? LIMIT 1');
         $ck->execute(array($model));
         if ($ck->fetch()) continue;
         return array($serial, $model);
@@ -747,14 +767,46 @@ function nm_next_serial(PDO $pdo, string $prefix, string $size, int $digits = 2,
 }
 function nm_validate_unique_model(PDO $pdo, string $modelNo, int $ignoreId = 0): void {
     if (!preg_match('/^[A-Z0-9]+\.[A-Z0-9]+$/', $modelNo)) throw new RuntimeException('型号格式不正确，必须类似 51.07500。');
+    $cols = nm_cols($pdo, 'naming_models');
+    $activeCond = nm_active_model_condition_sql($cols);
     if ($ignoreId > 0) {
-        $st = $pdo->prepare('SELECT id FROM naming_models WHERE model_no=? AND id<>? LIMIT 1');
+        $st = $pdo->prepare('SELECT id FROM naming_models WHERE '.$activeCond.' AND model_no=? AND id<>? LIMIT 1');
         $st->execute(array($modelNo,$ignoreId));
     } else {
-        $st = $pdo->prepare('SELECT id FROM naming_models WHERE model_no=? LIMIT 1');
+        $st = $pdo->prepare('SELECT id FROM naming_models WHERE '.$activeCond.' AND model_no=? LIMIT 1');
         $st->execute(array($modelNo));
     }
     if ($st->fetch()) throw new RuntimeException('型号已存在，不允许重复：'.$modelNo);
+}
+
+function nm_find_deleted_model_id(PDO $pdo, string $modelNo): int {
+    $cols = nm_cols($pdo, 'naming_models');
+    if (!in_array('website_deleted', $cols, true)) return 0;
+    $st = $pdo->prepare('SELECT id FROM naming_models WHERE model_no=? AND COALESCE(`website_deleted`,0)<>0 ORDER BY id DESC LIMIT 1');
+    $st->execute(array($modelNo));
+    return (int)$st->fetchColumn();
+}
+
+function nm_restore_deleted_model_fields(array &$data, array $cols): void {
+    if (in_array('website_deleted', $cols, true)) $data['website_deleted'] = 0;
+    if (in_array('website_deleted_at', $cols, true)) $data['website_deleted_at'] = null;
+    if (in_array('website_sync_managed', $cols, true)) $data['website_sync_managed'] = 0;
+    if (in_array('website_last_seen_at', $cols, true)) $data['website_last_seen_at'] = null;
+    if (in_array('source_synced_at', $cols, true)) $data['source_synced_at'] = null;
+    if (in_array('source_updated_at', $cols, true)) $data['source_updated_at'] = null;
+    if (in_array('website_sync_run_id', $cols, true)) $data['website_sync_run_id'] = '';
+    if (in_array('source_system', $cols, true)) $data['source_system'] = 'local';
+    if (in_array('source_id', $cols, true)) $data['source_id'] = '';
+    if (in_array('source_url', $cols, true)) $data['source_url'] = '';
+    if (in_array('source_image_url', $cols, true)) $data['source_image_url'] = '';
+    if (in_array('source_drawing_url', $cols, true)) $data['source_drawing_url'] = '';
+    if (in_array('web_image_url', $cols, true)) $data['web_image_url'] = '';
+    if (in_array('web_dimension_url', $cols, true)) $data['web_dimension_url'] = '';
+    if (in_array('web_series', $cols, true)) $data['web_series'] = '';
+    if (in_array('web_size_name', $cols, true)) $data['web_size_name'] = '';
+    if (in_array('web_dimensions', $cols, true)) $data['web_dimensions'] = '';
+    if (in_array('source_hash', $cols, true)) $data['source_hash'] = '';
+    if (in_array('source_payload_json', $cols, true)) $data['source_payload_json'] = null;
 }
 
 function nm_upload(string $field, string $oldPath = ''): string {
@@ -808,6 +860,11 @@ function nm_file_is_image(string $url): bool { return (bool)preg_match('/\.(jpg|
 
 function nm_is_website_row(array $row): bool {
     $source = strtolower(nm_s($row['source_system'] ?? ''));
+    if ($source === 'local'
+        && (int)($row['website_sync_managed'] ?? 0) === 0
+        && (int)($row['website_deleted'] ?? 0) === 0) {
+        return false;
+    }
     if (in_array($source, array('website','web','hongkong_web','hk_web','official_website','artdon_website'), true)) return true;
     foreach (array('web_series','web_size_name','web_dimensions','web_image_url','web_dimension_url','source_url','source_synced_at') as $k) {
         if (isset($row[$k]) && nm_s($row[$k]) !== '') return true;
@@ -947,11 +1004,21 @@ function nm_dim_text(array $r): string {
         $height = nm_s($parsed['dim_height'] ?? '');
     }
     $isEmbeddedSquare = nm_is_embedded_square_dim(nm_s($r['dimension_type'] ?? ''));
+    $preferredShape = nm_rule_preferred_dimension_shape($rule ?: array(), $prefix);
+    if ($preferredShape === 'round' && !($length !== '' && $width !== '')) {
+        $isEmbeddedSquare = false;
+        $length = '';
+        $width = '';
+    }
     if ($isEmbedded && $opening === '' && $sizeCode !== '' && !$isEmbeddedSquare) $opening = $sizeCode;
+    $diameterMm = static function($v): string {
+        $txt = nm_mm($v);
+        return $txt !== '' && !preg_match('/^[ØΦφø]/u', $txt) ? 'Ø'.$txt : $txt;
+    };
     $parts = array();
-    if ($isEmbedded && $isEmbeddedSquare && $openingLength !== '' && $openingWidth !== '') $parts[] = '开孔 '.nm_mm_pair($openingLength, $openingWidth);
-    elseif ($isEmbedded && $opening !== '') $parts[] = '开孔 '.nm_mm($opening);
-    if ($outer !== '') $parts[] = '直径 '.nm_mm($outer);
+    if ($isEmbedded && $openingLength !== '' && $openingWidth !== '') $parts[] = '开孔 '.nm_mm_pair($openingLength, $openingWidth);
+    elseif ($isEmbedded && $opening !== '') $parts[] = '开孔 '.($outer !== '' || $preferredShape === 'round' ? $diameterMm($opening) : nm_mm($opening));
+    if ($outer !== '') $parts[] = '直径 '.$diameterMm($outer);
     if ($length !== '') $parts[] = '长 '.nm_mm($length);
     if ($width !== '') $parts[] = '宽 '.nm_mm($width);
     if ($height !== '') $parts[] = '高 '.nm_mm($height);
@@ -1397,14 +1464,62 @@ function nm_backup_dir(): string {
 function nm_backup_tables(): array {
     return array('naming_rules','naming_models','naming_settings','naming_inbox','naming_logs','naming_website_sync_runs','naming_website_deleted_archive');
 }
-function nm_backup_payload(PDO $pdo): array {
+function nm_backup_ident(string $name): string {
+    return '`'.str_replace('`', '``', $name).'`';
+}
+function nm_backup_omitted_columns(string $table, array $cols): array {
+    $omit = array();
+    $map = array(
+        // 官网同步原始包、删除归档原始包、日志详情会快速膨胀；自动备份不应因这些大字段拖垮页面。
+        'naming_models' => array('source_payload_json'),
+        'naming_inbox' => array('payload_json'),
+        'naming_logs' => array('detail_json'),
+        'naming_website_sync_runs' => array('error_text'),
+        'naming_website_deleted_archive' => array('payload_json'),
+    );
+    $wanted = $map[$table] ?? array();
+    foreach ($wanted as $c) if (in_array($c, $cols, true)) $omit[] = $c;
+    return $omit;
+}
+function nm_backup_table_limit(string $table): int {
+    if ($table === 'naming_logs') return 2000;
+    if ($table === 'naming_website_sync_runs') return 500;
+    if ($table === 'naming_website_deleted_archive') return 1000;
+    return 0;
+}
+function nm_backup_payload(PDO $pdo, bool $lightweight = true): array {
     nm_ensure_tables($pdo);
     nm_ensure_settings($pdo);
-    $payload = array('version'=>NAMING_VERSION,'exported_at'=>date('Y-m-d H:i:s'),'exported_by'=>nm_current_user(),'type'=>'full','tables'=>array());
+    $payload = array(
+        'version'=>NAMING_VERSION,
+        'exported_at'=>date('Y-m-d H:i:s'),
+        'exported_by'=>nm_current_user(),
+        'type'=>$lightweight ? 'lightweight' : 'full',
+        '_backup_meta'=>array(
+            'lightweight'=>$lightweight ? 1 : 0,
+            'note'=>$lightweight ? '轻量备份：省略图片/原始抓取包/日志详情等大字段，避免打开命名系统时内存溢出；仅支持合并恢复，不支持替换恢复。' : '',
+            'omitted_columns'=>array(),
+            'limited_tables'=>array()
+        ),
+        'tables'=>array()
+    );
     foreach (nm_backup_tables() as $t) {
         if (!nm_table_exists($pdo, $t)) continue;
-        $order = nm_col_exists($pdo,$t,'id') ? 'id ASC' : (nm_col_exists($pdo,$t,'k') ? 'k ASC' : '1');
-        $payload['tables'][$t] = $pdo->query('SELECT * FROM `'.$t.'` ORDER BY '.$order)->fetchAll() ?: array();
+        $cols = nm_cols($pdo, $t);
+        if (!$cols) continue;
+        $omit = $lightweight ? nm_backup_omitted_columns($t, $cols) : array();
+        $select = array();
+        foreach ($cols as $c) {
+            if (in_array($c, $omit, true)) continue;
+            $select[] = nm_backup_ident($c);
+        }
+        if (!$select) continue;
+        $limit = $lightweight ? nm_backup_table_limit($t) : 0;
+        $order = nm_col_exists($pdo,$t,'id') ? ('id '.($limit > 0 ? 'DESC' : 'ASC')) : (nm_col_exists($pdo,$t,'k') ? 'k ASC' : '1');
+        $sql = 'SELECT '.implode(',', $select).' FROM '.nm_backup_ident($t).' ORDER BY '.$order.($limit > 0 ? ' LIMIT '.$limit : '');
+        $payload['tables'][$t] = $pdo->query($sql)->fetchAll() ?: array();
+        if ($omit) $payload['_backup_meta']['omitted_columns'][$t] = $omit;
+        if ($limit > 0) $payload['_backup_meta']['limited_tables'][$t] = $limit;
     }
     $payload['models'] = $payload['tables']['naming_models'] ?? array();
     $payload['rules'] = $payload['tables']['naming_rules'] ?? array();
@@ -1443,11 +1558,12 @@ function nm_backup_prune(PDO $pdo, ?array $settings = null): void {
 }
 function nm_backup_write(PDO $pdo, string $type='manual'): array {
     $dir = nm_backup_dir();
-    $payload = nm_backup_payload($pdo);
+    $payload = nm_backup_payload($pdo, true);
     $payload['backup_type'] = $type;
     $file = nm_backup_filename($type);
     $path = $dir.'/'.$file;
-    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) throw new RuntimeException('生成备份 JSON 失败：'.json_last_error_msg());
     if (@file_put_contents($path.'.tmp', $json, LOCK_EX) === false) throw new RuntimeException('写入备份失败，请检查 uploads/naming_backups 权限。');
     @rename($path.'.tmp', $path);
     nm_backup_prune($pdo);
@@ -1554,6 +1670,8 @@ function nm_backup_restore_payload(PDO $pdo, array $payload, string $mode='merge
     }
     $allowed = nm_backup_tables();
     $stats = array();
+    $meta = $payload['_backup_meta'] ?? array();
+    if ($mode === 'replace' && !empty($meta['omitted_columns'])) throw new RuntimeException('该文件是轻量备份，省略了部分大字段。为避免清空图片/原始同步/日志详情字段，只能选择“合并导入”，不能替换恢复。');
     if ($mode === 'replace') nm_backup_write($pdo, 'safety');
     $pdo->beginTransaction();
     try {
@@ -1718,27 +1836,51 @@ function nm_website_rule_by_prefix(PDO $pdo, string $prefix): array {
 }
 function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode): array {
     $txt = nm_any($row, array('web_dimensions','dimensions','dimension','dimension_text','size_name','size_text','size','spec','规格','尺寸'));
+    $prefix = nm_s($row['prefix'] ?? '');
+    if ($prefix === '') $prefix = nm_model_prefix(nm_s($row['model_no'] ?? ''));
+    $preferredShape = nm_rule_preferred_dimension_shape($rule, $prefix);
     $out = array('dimension_type'=>'','dim_opening'=>'','dim_opening_length'=>'','dim_opening_width'=>'','dim_outer_d'=>'','dim_length'=>'','dim_width'=>'','dim_height'=>'');
-    $out['dim_opening'] = nm_website_num(nm_any($row, array('dim_opening','opening','opening_size','opening_mm','cutout','cutout_size','cutout_mm','cut_out','cut_out_size','hole','hole_size','hole_diameter','aperture','aperture_size','aperture_mm','cut_size','开孔','孔径')));
+    $openingRaw = nm_any($row, array('dim_opening','opening','opening_size','opening_mm','cutout_text','cutout','cutout_size','cutout_mm','cut_out','cut_out_size','hole','hole_size','hole_diameter','aperture','aperture_size','aperture_mm','cut_size','开孔','孔径'));
+    list($openingPairL, $openingPairW) = nm_dim_pair_from_text($openingRaw);
+    if ($openingPairL !== '' && $openingPairW !== '') {
+        $out['dim_opening'] = nm_compose_opening_pair($openingPairL, $openingPairW);
+        $out['dim_opening_length'] = $openingPairL;
+        $out['dim_opening_width'] = $openingPairW;
+    } else {
+        $out['dim_opening'] = nm_website_num($openingRaw);
+    }
     $out['dim_outer_d'] = nm_website_num(nm_any($row, array('dim_outer_d','diameter','diameter_mm','outer_d','outer_diameter','outer_dia','outer_d_mm','dia','d','直径','外径')));
     $out['dim_length'] = nm_website_num(nm_any($row, array('dim_length','length','length_mm','len','l','长','长度')));
     $out['dim_width'] = nm_website_num(nm_any($row, array('dim_width','width','width_mm','w','宽','宽度')));
     $out['dim_height'] = nm_website_num(nm_any($row, array('dim_height','height','height_mm','h','高','高度')));
+    $roundDiameterFromText = '';
+    $roundHeightFromText = '';
     if ($txt !== '') {
+        if (preg_match('/[ΦØφø]\s*([0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $roundDim)) {
+            $roundDiameterFromText = (string)$roundDim[1];
+            $roundHeightFromText = !empty($roundDim[3]) ? (string)$roundDim[3] : (string)$roundDim[2];
+            if ($out['dim_outer_d'] === '') $out['dim_outer_d'] = $roundDiameterFromText;
+            if ($out['dim_height'] === '') $out['dim_height'] = $roundHeightFromText;
+        }
         // 官网线性灯具可使用“482/957*13*21mm”表示多个可选长度。
         // 单值尺寸字段只能保存一个长度，因此保存最大长度，同时在 web_dimensions
         // 中保留完整原文。官网旧解析曾把 482/957 错误拼成 2957，这里以原文纠正。
-        if (preg_match('/((?:[0-9]+(?:\.[0-9]+)?\s*\/\s*)+[0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $multi)) {
+        if ($preferredShape !== 'round' && preg_match('/((?:[0-9]+(?:\.[0-9]+)?\s*\/\s*)+[0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $multi)) {
             $lengths = preg_split('/\s*\/\s*/', (string)$multi[1]) ?: array();
             $lengths = array_values(array_filter(array_map('floatval', $lengths), static function($v){ return $v > 0; }));
             if ($lengths) $out['dim_length'] = rtrim(rtrim(number_format(max($lengths), 6, '.', ''), '0'), '.');
             $out['dim_width'] = (string)$multi[2];
             if (!empty($multi[3])) $out['dim_height'] = (string)$multi[3];
         }
+        if ($out['dim_opening'] === '' && preg_match('/(?:开孔|孔径|cut\s*out|cutout|hole|aperture|opening)[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)[\s]*(?:x|X|×|\*)[\s]*([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) {
+            $out['dim_opening'] = nm_compose_opening_pair((string)$m[1], (string)$m[2]);
+            $out['dim_opening_length'] = (string)$m[1];
+            $out['dim_opening_width'] = (string)$m[2];
+        }
         if ($out['dim_opening'] === '' && preg_match('/(?:开孔|孔径|cut\s*out|cutout|hole|aperture|opening)[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_opening']=(string)$m[1];
         if ($out['dim_outer_d'] === '' && preg_match('/(?:直径|外径|diameter|outer|dia|[ΦØ])[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_outer_d']=(string)$m[1];
         if ($out['dim_height'] === '' && preg_match('/(?:高|高度|height|\bH)[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)/iu', $txt, $m)) $out['dim_height']=(string)$m[1];
-        if (preg_match('/([0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $m)) {
+        if ($roundDiameterFromText === '' && preg_match('/([0-9]+(?:\.[0-9]+)?)\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?)(?:\s*[x×X\*]\s*([0-9]+(?:\.[0-9]+)?))?/u', $txt, $m)) {
             if ($out['dim_length'] === '') $out['dim_length'] = (string)$m[1];
             if ($out['dim_width'] === '') $out['dim_width'] = (string)$m[2];
             if ($out['dim_height'] === '' && !empty($m[3])) $out['dim_height'] = (string)$m[3];
@@ -1747,7 +1889,14 @@ function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode):
     $isEmbedded = $rule ? nm_rule_is_embedded($rule) : false;
     if ($isEmbedded) {
         if ($out['dim_opening'] === '' && $sizeCode !== '') $out['dim_opening'] = $sizeCode;
-        if ($out['dim_length'] !== '' && $out['dim_width'] !== '') {
+        if (($roundDiameterFromText !== '') || ($preferredShape === 'round' && !($out['dim_length'] !== '' && $out['dim_width'] !== ''))) {
+            $out['dimension_type'] = 'embedded_round';
+            if ($out['dim_outer_d'] === '' && $roundDiameterFromText !== '') $out['dim_outer_d'] = $roundDiameterFromText;
+            if ($out['dim_height'] === '' && $roundHeightFromText !== '') $out['dim_height'] = $roundHeightFromText;
+            $out['dim_length']='';
+            $out['dim_width']='';
+        }
+        elseif ($out['dim_length'] !== '' && $out['dim_width'] !== '') {
             $out['dimension_type'] = 'embedded_square';
             $out['dim_outer_d']='';
             list($openL,$openW)=nm_dim_pair_from_text($out['dim_opening']);
@@ -1762,7 +1911,7 @@ function nm_website_parse_dimensions(array $row, array $rule, string $sizeCode):
     return $out;
 }
 function nm_website_sync_normalize(PDO $pdo, array $raw, int $idx = 0): array {
-    $model = nm_model_clean(nm_any($raw, array('model_no','model','sku','code','product_model','product_code','item_model','型号','modelName')));
+    $model = nm_model_clean(nm_any($raw, array('model_no','model_code','model','sku','code','product_model','product_code','item_model','型号','modelName')));
     if ($model === '') return array();
     $prefix = nm_model_prefix($model);
     $sizeCode = '';
@@ -1871,8 +2020,8 @@ function nm_website_sync_upsert(PDO $pdo, array $item, string $runId): string {
     $modelRow = $st->fetch() ?: null;
 
     // 官网同一产品改过型号时，source_id 可能指向旧型号，而新型号已由同事在
-    // 命名中心建立。官网为唯一命名来源：保留新型号现有记录作为主记录，官网
-    // 字段覆盖；旧官网记录只标记为合并历史，不物理删除，也不阻断整批同步。
+    // 命名中心建立。官网为唯一命名来源：保留同型号目标记录作为主记录，并用官网
+    // 字段直接覆盖；旧 source_id 冲突记录不再保留，避免页面继续显示旧同步卡片。
     if ($sourceRow && $modelRow && (int)$sourceRow['id'] !== (int)$modelRow['id']) {
         $archivePayload = json_encode(array(
             'reason'=>'website_model_conflict_merge',
@@ -1887,13 +2036,10 @@ function nm_website_sync_upsert(PDO $pdo, array $item, string $runId): string {
                 ->execute(array((int)$sourceRow['id'],nm_s($sourceRow['model_no']??''),nm_s($sourceRow['source_id']??''),$archivePayload));
         } catch (Throwable $e) {}
 
-        $mergedSourceId = nm_s('merged:'.$sourceId.':'.(int)$sourceRow['id'], 120);
-        $sets = array("source_system='artdon_website_merged'",'source_id=?','website_sync_managed=0','website_deleted=1','website_deleted_at=NOW()','website_sync_run_id=?',"updated_by='官网冲突合并'",'updated_at=NOW()');
-        $pdo->prepare('UPDATE naming_models SET '.implode(',', $sets).' WHERE id=?')
-            ->execute(array($mergedSourceId,$runId,(int)$sourceRow['id']));
+        $pdo->prepare('DELETE FROM naming_models WHERE id=?')->execute(array((int)$sourceRow['id']));
         nm_log($pdo,'website.merge','model',(int)$modelRow['id'],$model,array(
             'source_id'=>$sourceId,
-            'merged_from_id'=>(int)$sourceRow['id'],
+            'deleted_conflict_id'=>(int)$sourceRow['id'],
             'kept_id'=>(int)$modelRow['id'],
             'policy'=>'website_priority',
         ));
@@ -1905,13 +2051,31 @@ function nm_website_sync_upsert(PDO $pdo, array $item, string $runId): string {
     $common = $item;
     $common['source_hash']=$hash; $common['source_synced_at']=date('Y-m-d H:i:s'); $common['website_last_seen_at']=date('Y-m-d H:i:s'); $common['website_sync_run_id']=$runId; $common['website_sync_managed']=1; $common['website_deleted']=0; $common['website_deleted_at']=null; $common['updated_by']='官网实时同步';
     if ($old) {
-        if (nm_s($old['source_hash'] ?? '') === $hash && (int)($old['website_deleted'] ?? 0) === 0) {
+        $alreadyManaged = nm_s($old['source_system'] ?? '') === 'artdon_website'
+            && (int)($old['website_sync_managed'] ?? 0) === 1
+            && nm_s($old['source_id'] ?? '') === $sourceId;
+        $dimensionChanged = false;
+        foreach (array('dimension_type','dim_opening','dim_opening_length','dim_opening_width','dim_outer_d','dim_length','dim_width','dim_height','web_dimensions') as $dc) {
+            if (in_array($dc, $cols, true) && nm_s($old[$dc] ?? '') !== nm_s($common[$dc] ?? '')) {
+                $dimensionChanged = true;
+                break;
+            }
+        }
+        if (!$dimensionChanged && $alreadyManaged && nm_s($old['source_hash'] ?? '') === $hash && (int)($old['website_deleted'] ?? 0) === 0) {
             $sets=array(); $args=array(); foreach(array('source_synced_at','website_last_seen_at','website_sync_run_id') as $c){ if(in_array($c,$cols,true)){ $sets[]="`{$c}`=?"; $args[]=$common[$c]; } }
+            if (in_array('created_by',$cols,true) && strpos(nm_s($old['created_by'] ?? ''), '官网') === false) {
+                $sets[]='`created_by`=?';
+                $args[]='官网实时同步';
+            }
             if($sets){ $args[]=(int)$old['id']; $pdo->prepare('UPDATE naming_models SET '.implode(',',$sets).' WHERE id=?')->execute($args); }
             return 'skip';
         }
         $sets=array(); $args=array();
         foreach($common as $c=>$v){ if(in_array($c,$cols,true) && $c!=='id' && $c!=='created_at' && $c!=='created_by'){ $sets[]="`{$c}`=?"; $args[]=$v; } }
+        if (!$alreadyManaged && in_array('created_by',$cols,true)) {
+            $sets[]='`created_by`=?';
+            $args[]='官网实时同步';
+        }
         if(in_array('updated_at',$cols,true)) $sets[]='updated_at=NOW()';
         $args[]=(int)$old['id'];
         $pdo->prepare('UPDATE naming_models SET '.implode(',',$sets).' WHERE id=?')->execute($args);
@@ -2623,10 +2787,21 @@ function nm_api(): void {
                     'product_name'=>$productName,'customer'=>$customer,'status'=>$status,'remark'=>$remark,'image_path'=>$img,'drawing_path'=>$drawing,'created_by'=>$user,
                     'dimension_type'=>$dimType,'dim_opening'=>$dimOpening,'dim_opening_length'=>$dimOpeningLength,'dim_opening_width'=>$dimOpeningWidth,'dim_outer_d'=>$dimOuter,'dim_length'=>$dimLength,'dim_width'=>$dimWidth,'dim_height'=>$dimHeight,'bom_template_type'=>$bomTemplateType,'bom_modules_json'=>$bomModulesJson,'bom_allowed'=>$bomAllowed,'bom_unit'=>$bomUnit,'bom_head_count'=>$bomHeadCount,'bom_ready_note'=>$bomReadyNote,'updated_by'=>$user
                 );
-                $insertCols = array(); $marks = array(); $args = array();
-                foreach ($data as $c=>$v) { if (in_array($c,$cols,true)) { $insertCols[]="`{$c}`"; $marks[]='?'; $args[]=$v; } }
-                $pdo->prepare('INSERT INTO naming_models('.implode(',', $insertCols).') VALUES('.implode(',', $marks).')')->execute($args);
-                $id = (int)$pdo->lastInsertId();
+                $restoreId = nm_find_deleted_model_id($pdo, $modelNo);
+                if ($restoreId > 0) {
+                    nm_restore_deleted_model_fields($data, $cols);
+                    $sets = array(); $args = array();
+                    foreach ($data as $c=>$v) { if (in_array($c,$cols,true) && $c !== 'id') { $sets[]="`{$c}`=?"; $args[]=$v; } }
+                    if (in_array('updated_at',$cols,true)) $sets[]='updated_at=NOW()';
+                    $args[] = $restoreId;
+                    $pdo->prepare('UPDATE naming_models SET '.implode(',', $sets).' WHERE id=?')->execute($args);
+                    $id = $restoreId;
+                } else {
+                    $insertCols = array(); $marks = array(); $args = array();
+                    foreach ($data as $c=>$v) { if (in_array($c,$cols,true)) { $insertCols[]="`{$c}`"; $marks[]='?'; $args[]=$v; } }
+                    $pdo->prepare('INSERT INTO naming_models('.implode(',', $insertCols).') VALUES('.implode(',', $marks).')')->execute($args);
+                    $id = (int)$pdo->lastInsertId();
+                }
             }
             $st = $pdo->prepare('SELECT * FROM naming_models WHERE id=? LIMIT 1');
             $st->execute(array($id));
@@ -2670,8 +2845,8 @@ function nm_api(): void {
         }
         if (in_array($action, array('backup_json','export_json'), true)) {
             header('Content-Type: application/json; charset=utf-8');
-            header('Content-Disposition: attachment; filename="artdon_naming_full_backup_'.date('Ymd_His').'.json"');
-            echo json_encode(nm_backup_payload($pdo), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+            header('Content-Disposition: attachment; filename="artdon_naming_light_backup_'.date('Ymd_His').'.json"');
+            echo json_encode(nm_backup_payload($pdo, true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
         }
         if ($action === 'export_csv') {
@@ -3140,7 +3315,7 @@ body.nm-modal-open .kb-card{z-index:1!important;}
 
 <div class="modal-mask" id="inboxModal"><div class="modal"><div class="modal-head"><h2>命名收件箱</h2><button type="button" onclick="closeModal('inboxModal')">关闭</button></div><div class="modal-body"><div class="setting-note">收件箱用于承接 PLM / CRM / BOM 传来的命名需求。领取后可新建型号，保存时会自动回写收件箱关联。</div><div class="log-toolbar"><input id="inboxKw" placeholder="搜索客户 / 样品 / 产品 / 要求"><select id="inboxStatus"><option value="">全部状态</option><option value="待处理">待处理</option><option value="处理中">处理中</option><option value="已确认">已确认</option><option value="已退回">已退回</option></select><select id="inboxPer"><option value="20">20条</option><option value="50">50条</option><option value="10">10条</option></select><button type="button" onclick="loadInbox()">查询</button></div><div id="inboxList" class="box-list"><div class="empty">正在读取收件箱……</div></div></div></div></div>
 
-<div class="modal-mask" id="backupModal"><div class="modal"><div class="modal-head"><h2>备份管理</h2><button type="button" onclick="closeModal('backupModal')">关闭</button></div><div class="modal-body"><div id="backupMsg" class="okmsg"></div><div class="setting-note">备份包含型号、规则、显示设置、收件箱、日志、官网同步记录。自动备份保存到 uploads/naming_backups，可设置保留数量，超过后自动替换最旧自动备份。</div><div class="backup-grid"><div class="setting-block"><h3>导出 / 自动备份</h3><div class="check-grid" style="margin-bottom:10px"><label class="check-pill"><input type="checkbox" id="b_auto_enabled"> 开启自动备份</label><label class="check-pill"><input type="checkbox" id="b_auto_replace"> 超出数量自动替换旧备份</label></div><div class="setting-grid"><div class="field"><label>自动备份间隔（小时）</label><input id="b_interval" type="number" min="1" max="720" value="24"></div><div class="field"><label>自动备份保留数量</label><input id="b_keep" type="number" min="1" max="30" value="7"></div></div><div class="backup-actions" style="justify-content:flex-start;margin-top:10px"><button class="primary" type="button" onclick="createBackupNow()">立即生成备份</button><a class="btn" href="naming.php?action=backup_json">导出完整 JSON</a><button type="button" onclick="saveBackupSettings()">保存自动备份设置</button></div><p class="muted" id="backupLast" style="margin:10px 0 0"></p></div><div class="setting-block"><h3>导入备份</h3><form id="backupImportForm"><div class="field"><label>选择 JSON 备份文件</label><input type="file" id="backupFile" name="backup_file" accept="application/json,.json"></div><div class="field"><label>导入方式</label><select id="backupImportMode"><option value="merge">合并导入：同型号更新，不清空现有数据</option><option value="replace">替换恢复：先自动做安全备份，再清空后恢复</option></select></div><button class="primary" type="submit">导入备份</button></form></div></div><div class="setting-block" style="margin-top:12px"><h3>服务器备份列表</h3><div id="backupFiles" class="backup-file-list"><div class="empty">正在读取备份列表……</div></div></div></div></div></div>
+<div class="modal-mask" id="backupModal"><div class="modal"><div class="modal-head"><h2>备份管理</h2><button type="button" onclick="closeModal('backupModal')">关闭</button></div><div class="modal-body"><div id="backupMsg" class="okmsg"></div><div class="setting-note">备份包含型号、规则、显示设置、收件箱、日志、官网同步记录。为避免命名系统打开时内存溢出，自动备份会省略原始抓取包、日志详情等大字段；轻量备份仅支持合并导入。</div><div class="backup-grid"><div class="setting-block"><h3>导出 / 自动备份</h3><div class="check-grid" style="margin-bottom:10px"><label class="check-pill"><input type="checkbox" id="b_auto_enabled"> 开启自动备份</label><label class="check-pill"><input type="checkbox" id="b_auto_replace"> 超出数量自动替换旧备份</label></div><div class="setting-grid"><div class="field"><label>自动备份间隔（小时）</label><input id="b_interval" type="number" min="1" max="720" value="24"></div><div class="field"><label>自动备份保留数量</label><input id="b_keep" type="number" min="1" max="30" value="7"></div></div><div class="backup-actions" style="justify-content:flex-start;margin-top:10px"><button class="primary" type="button" onclick="createBackupNow()">立即生成轻量备份</button><a class="btn" href="naming.php?action=backup_json">导出轻量 JSON</a><button type="button" onclick="saveBackupSettings()">保存自动备份设置</button></div><p class="muted" id="backupLast" style="margin:10px 0 0"></p></div><div class="setting-block"><h3>导入备份</h3><form id="backupImportForm"><div class="field"><label>选择 JSON 备份文件</label><input type="file" id="backupFile" name="backup_file" accept="application/json,.json"></div><div class="field"><label>导入方式</label><select id="backupImportMode"><option value="merge">合并导入：同型号更新，不清空现有数据</option><option value="replace">替换恢复：先自动做安全备份，再清空后恢复</option></select></div><button class="primary" type="submit">导入备份</button></form></div></div><div class="setting-block" style="margin-top:12px"><h3>服务器备份列表</h3><div id="backupFiles" class="backup-file-list"><div class="empty">正在读取备份列表……</div></div></div></div></div></div>
 <div class="modal-mask" id="settingModal"><div class="modal"><div class="modal-head"><h2>显示设置</h2><button type="button" onclick="closeModal('settingModal')">关闭</button></div><div class="modal-body"><div id="settingMsg" class="okmsg"></div><div class="setting-note">这里统一管理公司名、水印和“卡片上点尺寸图按钮后”的查看倍率。设置保存到 naming_settings，不改原图文件。</div><form id="settingForm" class="form-grid"><div class="field span4 setting-block"><h3>公司名</h3><div class="setting-grid"><div class="field"><label>中文公司名</label><input id="s_company_cn" name="company_cn"></div><div class="field"><label>英文公司名</label><input id="s_company_en" name="company_en"></div></div><div class="check-grid"><label class="check-pill"><input type="checkbox" id="s_show_company_header" name="show_company_header"> 页眉显示中英文公司名</label></div></div><div class="field span4 setting-block"><h3>水印</h3><div class="setting-grid"><div class="field"><label>水印中文</label><input id="s_watermark_text_cn" name="watermark_text_cn"></div><div class="field"><label>水印英文</label><input id="s_watermark_text_en" name="watermark_text_en"></div></div><div class="range-row" style="margin:8px 0 10px"><span>透明度</span><input type="range" min="0" max="35" step="1" id="s_watermark_opacity" name="watermark_opacity"><output id="o_watermark_opacity"></output></div><div class="check-grid"><label class="check-pill"><input type="checkbox" id="s_watermark_enabled" name="watermark_enabled"> 开启水印</label><label class="check-pill"><input type="checkbox" id="s_watermark_scope_preview" name="watermark_scope_preview"> 产品图/尺寸图查看弹窗</label><label class="check-pill"><input type="checkbox" id="s_watermark_scope_edit" name="watermark_scope_edit"> 新建/编辑图片预览</label><label class="check-pill"><input type="checkbox" id="s_watermark_scope_card" name="watermark_scope_card"> 型号卡片缩略图</label></div></div><div class="field span4 setting-block"><h3>尺寸图查看倍率</h3><label>尺寸图倍率模式</label><select id="s_scale_mode" name="drawing_scale_mode" onchange="toggleScaleMode()"><option value="separate">分开调整：本地 / 官网 / 其它来源</option><option value="same">统一调整：所有尺寸图同一个倍率</option></select><div id="scaleAllBox" style="margin-top:10px"><label>统一倍率</label><div class="range-row"><span>全部来源</span><input type="range" min="50" max="300" step="5" id="s_scale_all" name="drawing_scale_all"><output id="o_scale_all"></output></div></div><div id="scaleSeparateBox" style="margin-top:10px"><label>分来源倍率</label><div class="setting-grid"><div class="range-row"><span>本地新建</span><input type="range" min="50" max="300" step="5" id="s_scale_local" name="drawing_scale_local"><output id="o_scale_local"></output></div><div class="range-row"><span>官网同步</span><input type="range" min="50" max="300" step="5" id="s_scale_website" name="drawing_scale_website"><output id="o_scale_website"></output></div><div class="range-row"><span>其它来源</span><input type="range" min="50" max="300" step="5" id="s_scale_other" name="drawing_scale_other"><output id="o_scale_other"></output></div></div></div></div><div class="field span4 setting-block"><h3>弹窗尺寸 / 分区调整</h3><div class="setting-note">这些设置只改变弹窗和查看框大小，不改原图文件。调整后所有弹窗按区域统一生效，后面不用再反复改代码。</div><div class="setting-grid"><div class="range-row"><span>尺寸图弹窗宽度</span><input type="range" min="45" max="95" step="1" id="s_modal_media_width" name="modal_media_width"><output id="o_modal_media_width"></output></div><div class="range-row"><span>尺寸图窗口高度</span><input type="range" min="35" max="90" step="1" id="s_modal_media_height" name="modal_media_height"><output id="o_modal_media_height"></output></div><div class="range-row"><span>新建/编辑宽度</span><input type="range" min="50" max="95" step="1" id="s_modal_model_width" name="modal_model_width"><output id="o_modal_model_width"></output></div><div class="range-row"><span>新建/编辑高度</span><input type="range" min="60" max="94" step="1" id="s_modal_model_height" name="modal_model_height"><output id="o_modal_model_height"></output></div><div class="range-row"><span>上传方框大小</span><input type="range" min="240" max="380" step="10" id="s_model_upload_size" name="model_upload_size"><output id="o_model_upload_size"></output></div><div class="range-row"><span>规则/筛选/设置</span><input type="range" min="50" max="95" step="1" id="s_modal_config_width" name="modal_config_width"><output id="o_modal_config_width"></output></div><div class="range-row"><span>日志/备份/收件箱</span><input type="range" min="50" max="95" step="1" id="s_modal_data_width" name="modal_data_width"><output id="o_modal_data_width"></output></div></div></div><div class="field span4"><button class="primary" type="submit">保存显示设置</button></div></form></div></div></div>
 
 <script>

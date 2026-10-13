@@ -40,8 +40,8 @@ if($mcCategoryDrawer){
   <?php if($mcCategoryDrawer['code']==='chip'):?>
   <div data-category-pane="chip_specs" hidden>
    <section class="mc-form-section mc-chip-spec-pane">
-    <div class="mc-form-section__head"><div><strong>芯片规格组合</strong><span>一个芯片料号维护多个色温、显指和色容差；产品适配时再选择允许的子集</span></div><button class="mc-button mc-button--primary" type="button" data-chip-apply-open>套用模板</button></div>
-    <div class="mc-chip-spec-guide">模板只生成当前芯片能提供的规格，不会自动改动已经审批的产品配置。默认出货规格只能选择一个。</div>
+    <div class="mc-form-section__head"><div><strong>当前芯片规格组合</strong><span>一个芯片料号维护多个色温、显指和色容差；产品适配时再选择允许的子集</span></div><button class="mc-button mc-button--primary" type="button" data-chip-apply-open>套用模板</button></div>
+    <div class="mc-chip-spec-guide">这里维护的是当前芯片自己的可选规格；适配中心和官网同步读取这里。不会创建新的芯片料号，默认出货规格只能选择一个。</div>
     <div data-chip-applied-templates></div>
     <div class="mc-chip-variant-toolbar"><button class="mc-button" type="button" data-chip-manual-open>手工添加组合</button><button class="mc-button mc-button--primary" type="button" data-chip-variant-save>保存启用状态和默认规格</button></div>
     <div data-chip-variant-list><div class="mc-empty-inline">请先保存芯片草稿，再维护规格组合。</div></div>
@@ -49,14 +49,15 @@ if($mcCategoryDrawer){
   </div>
   <div data-category-pane="chip_templates" hidden>
    <section class="mc-form-section mc-chip-template-pane">
-    <div class="mc-form-section__head"><div><strong>规格模板</strong><span>勾选色温、显指和色容差后自动生成组合；可逐个取消无效组合</span></div><button class="mc-button mc-button--primary" type="button" data-chip-template-new>新建模板</button></div>
+    <div class="mc-form-section__head"><div><strong>公共规格模板</strong><span>模板只用于以后套用/批量生成；不会直接改变当前芯片</span></div><button class="mc-button mc-button--primary" type="button" data-chip-template-new>新建模板</button></div>
     <div class="mc-chip-template-layout">
      <div class="mc-chip-template-list" data-chip-template-list></div>
      <form class="mc-chip-template-editor" data-chip-template-form>
       <input type="hidden" name="template_id">
+      <div class="mc-chip-spec-guide mc-chip-spec-guide--warning">这里是公共模板区。保存模板会影响后续默认推荐/批量套用，但不会把组合写入当前芯片。要只给当前芯片增加色温规格，请点击下方“生成到当前芯片规格”。</div>
       <label class="mc-field"><span>模板名称 *</span><input name="template_name" maxlength="160" required></label>
       <label class="mc-field"><span>用途说明</span><input name="description" maxlength="500"></label>
-      <label class="mc-chip-default-toggle"><input type="checkbox" name="is_system_default" value="1"><span>设为系统默认模板</span></label>
+      <label class="mc-chip-default-toggle"><input type="checkbox" name="is_system_default" value="1"><span>设为系统默认模板（只影响以后新建/推荐，不覆盖已有芯片）</span></label>
       <div class="mc-chip-template-values">
        <fieldset><legend>色温（K，可复选）</legend><div data-chip-template-values="cct"></div><label>自定义 <input type="number" min="1000" max="20000" data-chip-template-custom="cct"><button type="button" data-chip-template-add="cct">加入</button></label></fieldset>
        <fieldset><legend>显指 CRI（可复选）</legend><div data-chip-template-values="cri"></div><label>自定义 <input type="number" min="0" max="100" step="0.1" data-chip-template-custom="cri"><button type="button" data-chip-template-add="cri">加入</button></label></fieldset>
@@ -65,7 +66,10 @@ if($mcCategoryDrawer){
       <div class="mc-chip-combination-head"><strong>生成的有效组合</strong><span data-chip-combination-count>0 个</span></div>
       <div class="mc-chip-combination-list" data-chip-combination-list></div>
       <label class="mc-field"><span>本次版本说明</span><input name="change_note" maxlength="500" placeholder="例如：增加 3000K CRI90 SDCM≤3"></label>
-      <button class="mc-button mc-button--primary" type="submit">保存为新版本</button>
+      <div class="mc-chip-template-actions">
+       <button class="mc-button" type="button" data-chip-template-apply-current>生成到当前芯片规格</button>
+       <button class="mc-button mc-button--primary" type="submit">保存为公共模板新版本</button>
+      </div>
      </form>
     </div>
    </section>
@@ -160,7 +164,7 @@ if($mcCategoryDrawer){
    <label class="mc-field"><span>输出电压最小（V）</span><input type="number" step="0.01" min="0" name="output_voltage_min_v"></label>
    <label class="mc-field"><span>输出电压最大（V）</span><input type="number" step="0.01" min="0" name="output_voltage_max_v"></label>
   </div>
-  <div class="mc-current-editor"><div class="mc-inline-heading"><strong>输出电流（mA）</strong><button class="mc-link-button" type="button" data-add-current>＋ 添加电流</button></div><div data-current-list></div><p class="mc-field-hint">选择一个默认电流；保存后自动计算最小和最大输出电流。</p></div>
+  <div class="mc-current-editor"><div class="mc-inline-heading"><strong>输出电流（mA）</strong><button class="mc-link-button" type="button" data-add-current>＋ 添加电流</button></div><div data-current-list></div><p class="mc-field-hint">每一行都会保存为一个可用拨码电流；“默认”只作为显示和优先匹配电流，系统会自动计算最小/最大输出电流。</p></div>
   </section>
   <section class="mc-form-section"><div class="mc-form-section__head"><div><strong>安装与尺寸</strong><span>内置、外置等安装属性与物理空间</span></div></div><div class="mc-form-grid">
    <label class="mc-field mc-field--wide"><span>安装方式</span><select name="installation_type" data-installation-type></select></label>

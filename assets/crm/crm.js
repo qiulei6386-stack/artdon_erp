@@ -8506,6 +8506,68 @@
         if (command.matches('[data-primary-contact-card]')) return self.setPrimaryContactCard(command.closest('[data-contact-card]'));
       });
     },
+    compressBusinessCardImage: function (file) {
+      var maxBytes = 1024 * 1024;
+      if (!file) return Promise.reject(new Error('请先拍摄或选择名片图片。'));
+      if (file.size <= maxBytes && /^image\/(jpeg|png)$/i.test(file.type || '')) return Promise.resolve(file);
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type || '')) {
+        return Promise.reject(new Error('请选择 JPG 或 PNG 名片图片。'));
+      }
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var image = new Image();
+        image.onload = function () {
+          var tryEncode = function (scale, quality) {
+            var canvas = document.createElement('canvas');
+            var w = Math.max(1, Math.round((image.naturalWidth || 1) * scale));
+            var h = Math.max(1, Math.round((image.naturalHeight || 1) * scale));
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(image, 0, 0, w, h);
+            return new Promise(function (res) {
+              canvas.toBlob(function (blob) { res(blob); }, 'image/jpeg', quality);
+            });
+          };
+          var edge = Math.max(image.naturalWidth || 1, image.naturalHeight || 1);
+          var scales = [Math.min(1, 1920 / edge), Math.min(1, 1600 / edge), Math.min(1, 1280 / edge), Math.min(1, 960 / edge)];
+          scales = scales.filter(function (s, i, arr) { return s > 0.05 && arr.indexOf(s) === i; });
+          var qualities = [0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
+          var chain = Promise.resolve(null);
+          scales.forEach(function (scale) {
+            qualities.forEach(function (q) {
+              chain = chain.then(function (best) {
+                if (best && best.size <= maxBytes) return best;
+                return tryEncode(scale, q).then(function (blob) {
+                  if (!blob) return best;
+                  if (!best || blob.size < best.size) best = blob;
+                  return best;
+                });
+              });
+            });
+          });
+          chain.then(function (best) {
+            URL.revokeObjectURL(url);
+            if (!best || best.size > maxBytes) {
+              reject(new Error('名片压缩后仍超过 1MB，请换一张清晰照片。'));
+              return;
+            }
+            var base = String(file.name || 'business_card').replace(/\.[^.]+$/, '');
+            resolve(new File([best], base + '.jpg', { type: 'image/jpeg' }));
+          }).catch(function () {
+            URL.revokeObjectURL(url);
+            reject(new Error('名片图片压缩失败，请换一张后再试。'));
+          });
+        };
+        image.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error('无法读取名片图片。'));
+        };
+        image.src = url;
+      });
+    },
     bindBusinessCardScan: function (root) {
       var input = root.querySelector('[data-business-card-file]');
       var button = root.querySelector('[data-business-card-recognize]');
@@ -8576,15 +8638,23 @@
         if (button) button.disabled = true;
         return;
       }
-      if (!/^image\/(jpeg|png)$/i.test(file.type || '') || file.size > 5 * 1024 * 1024) {
+      if (!/^image\/(jpeg|png|webp)$/i.test(file.type || '')) {
         if (input) input.value = '';
         if (button) button.disabled = true;
-        return this.showCustomerError('请选择小于 5MB 的 JPG 或 PNG 名片图片。');
+        return this.showCustomerError('请选择 JPG 或 PNG 名片图片。');
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        if (input) input.value = '';
+        if (button) button.disabled = true;
+        return this.showCustomerError('名片原图太大（超过 20MB），请换一张后再试。');
       }
       this.businessCardSelectedFile = file;
       if (this.businessCardPreviewUrl) URL.revokeObjectURL(this.businessCardPreviewUrl);
       this.businessCardPreviewUrl = URL.createObjectURL(file);
-      if (preview) preview.innerHTML = '<img src="' + esc(this.businessCardPreviewUrl) + '" alt="名片预览"><span><strong>' + esc(file.name || '名片图片') + '</strong><em>' + esc(source || '图片') + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB · 点击可重新选择</em></span>';
+      var sizeHint = file.size > 1024 * 1024
+        ? (Math.round(file.size / 1024 / 1024 * 10) / 10 + ' MB，识别前将压缩到约 1MB')
+        : (Math.max(1, Math.round(file.size / 1024)) + ' KB');
+      if (preview) preview.innerHTML = '<img src="' + esc(this.businessCardPreviewUrl) + '" alt="名片预览"><span><strong>' + esc(file.name || '名片图片') + '</strong><em>' + esc(source || '图片') + ' · ' + esc(sizeHint) + ' · 点击可重新选择</em></span>';
       if (button) button.disabled = false;
       this.setBusinessCardStatus(root, '图片已准备', '来源：' + (source || '图片') + '。点击“开始识别”，通常数秒内完成。', '');
     },
@@ -8599,17 +8669,21 @@
       var button = root.querySelector('[data-business-card-recognize]');
       var file = this.businessCardSelectedFile || (input && input.files ? input.files[0] : null);
       if (!file) return this.showCustomerError('请先拍摄或选择名片图片。');
-      var body = new FormData();
-      body.set('action', 'customer_business_card_ocr');
-      if (state.csrf) body.set('csrf_token', state.csrf);
-      body.set('image', file);
       button.disabled = true;
-      button.textContent = '正在识别…';
-      this.setBusinessCardStatus(root, '腾讯 OCR 正在识别', '正在校正图片并提取公司、联系人和联系方式。', 'loading');
+      button.textContent = '压缩中…';
+      this.setBusinessCardStatus(root, '正在压缩名片', '识别前压缩到约 1MB，与拜访照片一致。', 'loading');
       var self = this;
-      fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
-        return res.text().then(function (text) {
-          try { return JSON.parse(text); } catch (error) { throw new Error((text || '接口返回格式错误').slice(0, 240)); }
+      this.compressBusinessCardImage(file).then(function (prepared) {
+        var body = new FormData();
+        body.set('action', 'customer_business_card_ocr');
+        if (state.csrf) body.set('csrf_token', state.csrf);
+        body.set('image', prepared);
+        button.textContent = '正在识别…';
+        self.setBusinessCardStatus(root, '腾讯 OCR 正在识别', '正在校正图片并提取公司、联系人和联系方式。', 'loading');
+        return fetch('crm_api.php', { method: 'POST', body: body, credentials: 'same-origin' }).then(function (res) {
+          return res.text().then(function (text) {
+            try { return JSON.parse(text); } catch (error) { throw new Error((text || '接口返回格式错误').slice(0, 240)); }
+          });
         });
       }).then(function (json) {
         if (!json.success) throw new Error(json.message || '名片识别失败');

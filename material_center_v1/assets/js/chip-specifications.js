@@ -10,6 +10,7 @@
     catalog: { templates: [], suggestions: { cct: [], cri: [], sdcm: [] } },
     activeTemplateId: 0,
     enabledCombinations: new Set(),
+    hiddenValues: { cct: new Set(), cri: new Set(), sdcm: new Set() },
     applyMaterialIds: [],
     applyPreview: null,
   };
@@ -20,7 +21,10 @@
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
-  const number = value => Number.parseFloat(value || 0);
+  const number = value => {
+    const parsed = Number.parseFloat(String(value ?? '').trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
   const integer = value => Number.parseInt(value || 0, 10) || 0;
   const comboKey = combo => `${number(combo.cct_k)}|${number(combo.cri)}|${number(combo.sdcm)}`;
 
@@ -103,10 +107,10 @@
       state.material = null;
       q('[data-chip-applied-templates]').innerHTML = '';
       q('[data-chip-variant-list]').innerHTML = '<div class="mc-empty-inline">请先保存芯片草稿，再维护规格组合。</div>';
-      qa('[data-chip-apply-open],[data-chip-manual-open],[data-chip-variant-save]', drawer).forEach(button => { button.disabled = true; });
+      qa('[data-chip-apply-open],[data-chip-manual-open],[data-chip-variant-save],[data-chip-template-apply-current]', drawer).forEach(button => { button.disabled = true; });
       return;
     }
-    qa('[data-chip-apply-open],[data-chip-manual-open],[data-chip-variant-save]', drawer).forEach(button => { button.disabled = false; });
+    qa('[data-chip-apply-open],[data-chip-manual-open],[data-chip-variant-save],[data-chip-template-apply-current]', drawer).forEach(button => { button.disabled = false; });
     state.material = await get('material', { material_id: state.materialId });
     renderMaterial();
   };
@@ -148,11 +152,32 @@
   };
 
   const renderValueChoices = (key, selectedValues) => {
-    const suggestions = [...new Set([...(state.catalog.suggestions?.[key] || []), ...selectedValues.map(number)])].sort((a, b) => a - b);
-    q(`[data-chip-template-values="${key}"]`).innerHTML = suggestions.map(value => `<label>
-      <input type="checkbox" data-chip-template-value="${key}" value="${escapeHtml(value)}" ${selectedValues.map(number).includes(number(value)) ? 'checked' : ''}>
-      <span>${escapeHtml(value)}${key === 'cct' ? 'K' : ''}</span>
-    </label>`).join('');
+    const selected = selectedValues.map(number);
+    const hidden = state.hiddenValues[key] || new Set();
+    const suggestions = [...new Set([...(state.catalog.suggestions?.[key] || []).map(number), ...selected])]
+      .filter(value => !hidden.has(value) || selected.includes(value))
+      .sort((a, b) => a - b);
+    q(`[data-chip-template-values="${key}"]`).innerHTML = suggestions.map(value => `<span class="mc-chip-template-choice">
+      <label>
+        <input type="checkbox" data-chip-template-value="${key}" value="${escapeHtml(value)}" ${selected.includes(number(value)) ? 'checked' : ''}>
+        <span>${escapeHtml(value)}${key === 'cct' ? 'K' : ''}</span>
+      </label>
+      <button type="button" title="从当前模板移除" aria-label="移除 ${escapeHtml(value)}${key === 'cct' ? 'K' : ''}" data-chip-template-remove="${key}" data-value="${escapeHtml(value)}">×</button>
+    </span>`).join('');
+  };
+
+  const customValue = (key, input) => {
+    const labels = { cct: '色温', cri: '显指', sdcm: '色容差' };
+    const ranges = { cct: [1000, 20000], cri: [0, 100], sdcm: [0, 20] };
+    const value = input.valueAsNumber;
+    const [min, max] = ranges[key] || [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY];
+    if (!Number.isFinite(value) || value < min || value > max || (key === 'cct' && !Number.isInteger(value))) {
+      notify('无法加入规格', `${labels[key] || '数值'}请输入 ${min}–${max}${key === 'cct' ? ' 之间的整数' : ' 之间的数字'}。`);
+      input.focus();
+      input.select();
+      return null;
+    }
+    return key === 'cct' ? value : Math.round(value * 100) / 100;
   };
 
   const selectTemplate = templateId => {
@@ -166,7 +191,10 @@
     form.elements.description.value = template.description || '';
     form.elements.is_system_default.checked = Boolean(integer(template.is_system_default));
     form.elements.change_note.value = '';
-    ['cct', 'cri', 'sdcm'].forEach(key => renderValueChoices(key, template.selection?.[key] || []));
+    ['cct', 'cri', 'sdcm'].forEach(key => {
+      state.hiddenValues[key] = new Set((template.selection?.hidden?.[key] || []).map(number));
+      renderValueChoices(key, template.selection?.[key] || []);
+    });
     renderCombinations(false);
     renderTemplateList();
   };
@@ -177,7 +205,10 @@
     const form = q('[data-chip-template-form]');
     form.reset();
     form.elements.template_id.value = '';
-    ['cct', 'cri', 'sdcm'].forEach(key => renderValueChoices(key, []));
+    ['cct', 'cri', 'sdcm'].forEach(key => {
+      state.hiddenValues[key] = new Set();
+      renderValueChoices(key, []);
+    });
     renderCombinations(true);
     renderTemplateList();
   };
@@ -195,6 +226,13 @@
       sdcm: sdcmValue,
     }))));
     return combinations;
+  };
+
+  const activeTemplateCombinations = () => generatedCombinations().filter(combo => state.enabledCombinations.has(comboKey(combo)));
+
+  const switchChipPane = pane => {
+    const tab = q(`[data-category-tab="${pane}"]`);
+    if (tab) tab.click();
   };
 
   const renderCombinations = resetEnabled => {
@@ -270,13 +308,53 @@
     if (addValue) {
       const key = addValue.dataset.chipTemplateAdd;
       const input = q(`[data-chip-template-custom="${key}"]`);
-      const value = number(input.value);
-      if (!value) return;
+      const value = customValue(key, input);
+      if (value === null) return;
       const selected = selectedValues(key);
       if (!selected.includes(value)) selected.push(value);
+      state.hiddenValues[key]?.delete(value);
       renderValueChoices(key, selected);
       input.value = '';
       renderCombinations(true);
+      return;
+    }
+    const removeValue = event.target.closest('[data-chip-template-remove]');
+    if (removeValue) {
+      const key = removeValue.dataset.chipTemplateRemove;
+      const value = number(removeValue.dataset.value);
+      const selected = selectedValues(key).filter(selectedValue => selectedValue !== value);
+      state.hiddenValues[key]?.add(value);
+      renderValueChoices(key, selected);
+      renderCombinations(true);
+      return;
+    }
+    if (event.target.closest('[data-chip-template-apply-current]')) {
+      if (!state.materialId) {
+        notify('请先保存芯片', '保存芯片后才能把规格生成到当前芯片。');
+        return;
+      }
+      const combinations = activeTemplateCombinations();
+      if (!combinations.length) {
+        notify('没有可生成的组合', '请至少勾选一个有效组合。');
+        return;
+      }
+      const button = event.target.closest('[data-chip-template-apply-current]');
+      button.disabled = true;
+      try {
+        const result = await post('add_manual_variants', {
+          material_id: state.materialId,
+          combinations,
+        });
+        state.material = result.material;
+        renderMaterial();
+        switchChipPane('chip_specs');
+        const count = state.material && Array.isArray(state.material.variants) ? state.material.variants.length : 0;
+        notify('已生成到当前芯片规格', `新增 ${integer(result.created)} 个，当前芯片共 ${integer(count)} 个规格；不会新建料号，也不会影响其他芯片。`);
+      } catch (error) {
+        notify('生成失败', error.message);
+      } finally {
+        button.disabled = false;
+      }
       return;
     }
     if (event.target.closest('[data-chip-apply-open]')) {
@@ -367,10 +445,20 @@
     }
   });
 
+  document.addEventListener('focusin', event => {
+    if (event.target.matches('[data-chip-template-custom]')) event.target.select();
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || !event.target.matches('[data-chip-template-custom]')) return;
+    event.preventDefault();
+    q(`[data-chip-template-add="${event.target.dataset.chipTemplateCustom}"]`)?.click();
+  });
+
   q('[data-chip-template-form]').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
-    const combinations = generatedCombinations().filter(combo => state.enabledCombinations.has(comboKey(combo)));
+    const combinations = activeTemplateCombinations();
     const values = {
       template_id: integer(form.elements.template_id.value),
       template_name: form.elements.template_name.value,
@@ -381,6 +469,7 @@
         cct: selectedValues('cct'),
         cri: selectedValues('cri'),
         sdcm: selectedValues('sdcm'),
+        hidden: Object.fromEntries(['cct', 'cri', 'sdcm'].map(key => [key, [...state.hiddenValues[key]].sort((a, b) => a - b)])),
       },
       combinations,
     };
@@ -394,7 +483,7 @@
       const result = await post('save_template', values);
       await loadCatalog();
       selectTemplate(integer(result.template_id));
-      notify('模板版本已保存', `已保存 v${integer(result.version_no)}，包含 ${integer(result.combination_count)} 个有效组合；现有芯片不会自动变化。`);
+      notify('公共模板版本已保存', `已保存 v${integer(result.version_no)}，包含 ${integer(result.combination_count)} 个有效组合；如需写入当前芯片，请点“生成到当前芯片规格”。`);
     } catch (error) {
       notify('模板保存失败', error.message);
     } finally {

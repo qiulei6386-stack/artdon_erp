@@ -1,15 +1,20 @@
 # Runtime data
 storage/
 uploads/
+**/uploads/
 backup/
 backups/
 _codex_backups/
 _local_sync_backups/
+**/adaptation_*_backup_*/
+**/*_backup_*/
+quotation_color_blank_backup_*/
 
 # Local and generated files
 *.log
 *.bak
 *.bak_*
+*.bak.*
 *.tmp
 tmp_*.php
 .DS_Store
@@ -24,9 +29,19 @@ includes/install.lock
 .env
 .env.*
 /*.pem
+**/*.pem
+website_bridge_config.php
+miniapp/api/wx_config.php
+**/wx_config.php
+id_rsa*
+id_ed25519*
+*.sql
+*.sql.gz
 
 # Archive artifacts
 *.tar
 *.tar.gz
 *.zip
-*.sql.gz
+
+# Nested junk / test assets copies
+**/test-assets/
