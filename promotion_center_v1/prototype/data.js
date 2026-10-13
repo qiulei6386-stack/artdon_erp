@@ -15,21 +15,21 @@
     if (i % 9 === 8) channels = ['wechat'];
     if (i % 11 === 3) channels = ['email', 'wechat_group'];
     if (i % 15 === 14) channels = ['phone'];
-    if (i % 23 === 10) channels = ['no_promotion'];
+    if (i === 10) channels = ['no_promotion'];
     var c = {
       id: 100 + i,
       company: name,
       contact: contacts[i],
-      email: i % 13 === 7 ? '' : (i === 31 ? first + '@' + domain : first + '@' + domain + '.example'),
+      email: [7, 33].indexOf(i) >= 0 ? '' : (i === 31 ? first + '@' + domain : first + '@' + domain + '.example'),
       country: country,
       level: ['A', 'B', 'B', 'C'][i % 4],
       owner: i % 10 === 9 ? 0 : (i % 16 === 13 ? 6 : [3, 4, 2, 3, 4, 2][i % 6]),
-      dnc: i % 17 === 5,
-      unsub: i % 19 === 11,
-      recent: i % 11 === 4,
-      left: i % 14 === 12,
-      pstatus: i === 42 ? 'blacklist' : (i % 18 === 16 ? 'paused' : ''),
-      noMx: i % 21 === 20,
+      dnc: [5, 39].indexOf(i) >= 0,
+      unsub: [11, 36].indexOf(i) >= 0,
+      recent: [4, 30, 43].indexOf(i) >= 0,
+      left: [12, 44].indexOf(i) >= 0,
+      pstatus: i === 42 ? 'blacklist' : (i === 16 ? 'paused' : ''),
+      noMx: i === 20,
       legacyBlack: i === 28,
       channels: channels,
       wechat: channels.indexOf('wechat') >= 0 && i !== 27 ? 'wx_' + first : '',
