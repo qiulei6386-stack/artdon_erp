@@ -9,10 +9,11 @@
 - 随后 `main` 上的部署脚本改为先处理这两项。run [38487919147](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38487919147)（`fefe519`）把未入库副本备份到 `/tmp/artdon-predeploy-20261014080436` 后清掉工作区中的这两项，接着更新 `refs/remotes/deploy/main` 失败：`unable to append to '.git/logs/refs/remotes/deploy/main': Permission denied`。
 - run [38488124152](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488124152)（`0a91e58`）再次快进时，文件已写入，HEAD 没跟上：`fatal: update_ref failed for ref 'HEAD': unable to append to '.git/logs/HEAD': Permission denied`，同时输出 `Updating a30a2fef..0a91e586`。当时服务器 HEAD 仍是 `a30a2fe`，索引已是待发布内容。
 - run [38488476539](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488476539)（`5850ee4`）把 HEAD 对齐到该提交。紧接着的 run [38488503566](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488503566) 日志为 `Updating 5850ee41..e6979c9d` 且 `Fast-forward` 只改了 `.github/workflows/deploy.yml`。脚本在语法检查之前会核对 `git rev-parse HEAD` 与 GitHub 提交一致，检查已开始，因此服务器 HEAD 已是 `e6979c9de0bde1e8c302aee36dd477f299d2fd8a`。作业结论仍是失败。
-- 服务器 PHP 8.0 复检：632 个文件里 8 个 `php -l` 非零：`miniapp/migrate.php`、`promotion/api.php`、`promotion/api_live.php`、`promotion/cron.php`、`promotion/index.php`、`promotion/migrate_v2.php`、`promotion/promo_lib.php`、`promotion/track.php`。这 8 个文件相对 `a30a2fe` 没有差异。检查脚本当时丢弃了 `php -l` 原文。本机 PHP 8.3 对这 8 个文件 `php -l` 通过。公开登录页校验步骤没有执行。
-- 官网已可看执行看板。核对 `https://novlight.com/artdon_erp/promotion_center_v1/prototype/board.js` 与 `index.html` 的 sha256，和仓库 `e6979c9` 中的文件一致；页面已引用 `board.js`。地址：https://novlight.com/artdon_erp/promotion_center_v1/prototype/index.html#/board （演示数据，不登录也能看）。登录后的门户首页「推广中心」卡片带「执行看板」标签。
-- 本提交让语法失败时打印 `php -l` 原文，并记下上述结果。若服务器复检仍因那 8 个既有文件失败，作业会标红，但不表示执行看板没上传。
-- 尚未完成：确认这 8 个文件在服务器上是语法问题还是无法读取；`/tmp/artdon-predeploy-20261014080436` 中的未入库副本是否与仓库版本不同。执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
+- 服务器 PHP 8.0 复检：632 个文件里 8 个 `php -l` 非零：`miniapp/migrate.php`、`promotion/api.php`、`promotion/api_live.php`、`promotion/cron.php`、`promotion/index.php`、`promotion/migrate_v2.php`、`promotion/promo_lib.php`、`promotion/track.php`。原文都是 `Could not open input file`。这 8 个文件相对 `a30a2fe` 没有差异。本机 PHP 8.3 和 GitHub Actions 的 PHP 8.0 都能解析它们，所以不是这批推广改动引入的语法错误，是部署用户打不开服务器上的这 8 个既有文件。公开登录页校验步骤没有执行。未登录访问 `https://novlight.com/artdon_erp/` 会转到登录页，HTTP 200。
+- 官网静态原型已可打开。`board.js` 与 `index.html` 的 sha256 与本仓库一致（`board.js` 为 `fa8fbc62d6ef78352a8e531d9133276b7877763719f3421c9a07a8a88b719602`）。地址：https://novlight.com/artdon_erp/promotion_center_v1/prototype/index.html#/board （演示数据，不登录也能看）。
+- run [38488939780](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488939780) 把 `b5b0f12` 快进到服务器。run [38488965085](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488965085) 日志为 `Updating b5b0f1216..023521f7c` 且 Fast-forward 只改了 `WORK_CONTEXT.md`。复检在 HEAD 核对之后才开始，因此当时服务器 HEAD 是 `023521f7c7a61ed1f3849488329549944b652865`。作业因上述 8 个文件打不开而失败。
+- 本记录提交继续按同一快进同步。若这 8 个文件仍打不开，作业会再次标红，HEAD 仍可与 GitHub 对齐。未入库副本留在 `/tmp/artdon-predeploy-20261014080436`，没有用它覆盖仓库文件。
+- 尚未完成：部署用户为何打不开那 8 个文件；未入库副本是否与仓库版本不同。执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
 
 ## 2026-10-13：推广中心 V1 执行看板
 
