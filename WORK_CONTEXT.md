@@ -6,7 +6,7 @@
 - 修改文件：`promotion_center_v1/api.php`、`bootstrap.php`、`migrate.php`、`app/`、`database/migrations/20261014_001_pm_groups.sql`、`tests/phase1_isolated.php`、`prototype/index.php`、`prototype/index.html`、`prototype/live.js`、`prototype/app.js`、`prototype/wizard.js`、`index.html`、`docs/DESIGN.md`、本文件。未改门户根 `index.php`、现网 `promotion/`、`crm_marketing_*`、`includes/permission.php`。
 - 检查结果：`php promotion_center_v1/tests/phase1_isolated.php` 输出「阶段 1 验收全部通过」（含越权客户不可见、联系人姓名和邮箱可搜、未登录与无 `promotion.view` 被拒绝、不写邮件队列表、上述禁止文件无 diff）。新增与改动 PHP 经 `php -l`。`node --check` 通过 `prototype/app.js`、`live.js`、`wizard.js`。本机 `php -S`：未登录 `prototype/` 与 `prototype/index.php` 302 到 `/login.php`；`api.php?action=customers` 与分组写入均为 401 `请先登录`；`index.html` 只跳到 `index.php`，不含客户数据。用模拟接口渲染原型：`#/groups` 能搜到范围内客户并显示「加入本组」，客户列表和详情显示接口数据，向导仍是演示名单。未录屏，未用浏览器登录正式账号。
 - 服务器部署情况：本环境无法 SSH 正式机（此前为 `Permission denied (publickey)`），未把本分支检出到 `/www/wwwroot/Artdon/artdon_erp/`。正式目录只在本分支合并进 `main` 后由 GitHub Actions 快进。分组表由第一次分组接口里的 `PmSchema::apply` 或 CLI `php promotion_center_v1/migrate.php` 创建（`CREATE TABLE IF NOT EXISTS`）。若正式库按上一节执行过 DROP，合并后再进分组页会重建空表。三方 HEAD 一致留到那次快进之后。
-- Git 提交号及推送状态：功能提交 `84467861c144f1f9b2b410093f521d607149f67d`，分支 `cursor/promotion-live-customers-39ae`。本记录的提交号补在其后。推送状态见该提交之后。
+- Git 提交号及推送状态：功能提交 `84467861c144f1f9b2b410093f521d607149f67d`，本记录提交 `c7dd74af4c45911598c9dfe346616a5c2827a978`。分支 `cursor/promotion-live-customers-39ae` 已推送 `origin`。正式目录未快进。
 - 尚未完成：合并后 Actions 快进；用正式账号打开 `prototype/#/groups`，确认能搜到自己范围内的真实客户，另一位业务员的客户不出现。执行看板待确认项仍是 `EXECUTION_BOARD.md` 第 7 节。部署用户打不开既有 8 个 PHP 文件的问题未在本次处理。
 
 ## 2026-10-14：撤销推广中心阶段 1 独立 PHP 模块
