@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：门户推广中心改打开 V1 原型
+
+- 正式部署快进时清掉了服务器上未入库的 `index.php`（备份在 `/tmp/artdon-predeploy-20261014080436`，并复制到 `artdon_erp/_codex_backups/`）。门户「推广中心」因此又指回旧 `promotion.php`。本轮把同一入口写入仓库，之后的快进会保留它。
+- `index.php` 快捷入口和业务经营卡片的推广 `href` 改为 `promotion_center_v1/prototype/`。说明和标签里的「执行看板」保持不变。未改 `promotion/` 发送引擎、`crm.php` 及其他模块入口。
+- `promotion_center_v1/` 增加静态 `index.html`，说明这是演示原型，并链接到 `prototype/`。
+- 检查：`php -l index.php` 通过；源码确认两处推广入口都是 `promotion_center_v1/prototype/`，且不再出现 `'href' => 'promotion.php'`。
+- 本轮不直接部署。合并进 `main` 后，现有 GitHub Actions 会在校验通过后快进正式目录。提交号即包含本记录的提交。
+- 尚未完成：部署用户打不开 8 个既有 PHP 文件的原因仍未查清；执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
+
 ## 2026-10-14：同步推广中心 V1 到正式服务器
 
 - 用户要求按固定顺序同步。本机复检：`node --check` 通过 `promotion_center_v1/prototype/app.js`、`board.js`、`data.js`、`wizard.js`；`php -l index.php` 通过（本机 PHP 8.3.6）。未改业务逻辑。
