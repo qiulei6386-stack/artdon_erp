@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：撤销推广中心阶段 1 独立 PHP 模块
+
+- 用户明确：阶段 1 做成的独立登录 PHP 模块是错的，必须删掉，不要在服务器上留垃圾。真正要改的是静态原型 `promotion_center_v1/prototype/`（例如 `#/groups`）。门户首页卡片继续进 prototype，不改门户 `index.php`。
+- 本次完成：从仓库删除 `promotion_center_v1/api.php`、`bootstrap.php`、`index.php`（保留落地页 `index.html`）、`migrate.php`、`config.php`，以及整目录 `app/`、`assets/`、`database/`、`tests/` 和 `docs/PHASE1.md`。`DESIGN.md` 状态改回「设计与原型」，并注明独立 PHP 壳已撤销。保留 `prototype/` 全部、`index.html`，以及 `DESIGN.md`、`CREATE_FLOW.md`、`EXECUTION_BOARD.md`、`UI_GUIDELINES.md`。紧接本节的「阶段 1（登录、只读客户、自有分组）」是已撤销工作的历史记录，对应代码已不在仓库里。
+- 修改文件：上述删除项、`promotion_center_v1/docs/DESIGN.md`、本文件。未改门户 `index.php`（快捷入口和业务经营卡片的推广 `href` 仍是 `promotion_center_v1/prototype/`）、现网 `promotion/`、任何 `crm_marketing_*`、`includes/permission.php`。
+- 检查结果：误做路径已不在工作树。`node --check` 通过 `prototype/app.js`、`board.js`、`data.js`、`wizard.js`。`php -l index.php` 通过。相对 `origin/main` 的差异不含门户 `index.php`、`prototype/`、`promotion/`、`crm_marketing_*`、`includes/permission.php`。
+- 服务器部署情况：本环境无法 SSH 正式机，未连库，未猜数据库密码。误做提交 `f5269b9bca41908a75c8391b3b5111841c3ab20a` 的部署 run [38506212861](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38506212861) 已把这些 PHP 文件 Fast-forward 进正式目录（日志 `Updating f5a25c5b3..f5269b9bc`），作业随后仍因既有 8 个 PHP「Could not open input file」失败。该作业没有执行 `migrate.php`。合并本清理后，正式机需再快进同一提交，Git 才会从运行目录删掉这些文件。协调者还需在正式库执行 `DROP TABLE IF EXISTS pm_undo, pm_audit_logs, pm_group_members, pm_groups;`（仅当有人跑过迁移时这些表才存在）。
+- Git 提交号及推送状态：删除与本文在同一提交，分支 `cursor/revert-promotion-phase1-php-3875`。提交号在推送后写入下一行记录。正式目录在合并进 `main` 并快进之前仍是误做提交 `f5269b9`。
+- 尚未完成：合并后正式机快进以删除误做文件，并执行上面的 DROP。真实客户中心对接改在 prototype，本任务不实现。门户「禁止部署清掉未入库入口」的记录保留在下方，未删。执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
+
 ## 2026-10-14：推广中心 V1 阶段 1（登录、只读客户、自有分组）
 
 - 本次完成：按阶段 1 清单只改 `promotion_center_v1/`。登录复用现网会话；无 `promotion.view` 不能进。客户只经 `LegacyCustomerAdapter`，范围是 `get_user_scope('customer')` 与客户中心规则的交集。分组写入 `pm_groups` / `pm_group_members`，支持新建、重命名、软删、加入、移出、移动、复制和 10 秒撤销。历史页只读 CRM 任务和旧中心活动。不发送邮件，不建 `crm_mail_send_jobs`。
