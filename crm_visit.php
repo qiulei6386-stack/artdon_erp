@@ -442,6 +442,16 @@ function crm_visit_list(array $input = []): array
         $where[] = "{$cexpr} IN ($ph)";
         array_push($params, ...$ckeys);
     }
+    $visitCategory = trim((string)($input['visit_category'] ?? ''));
+    if ($visitCategory !== '') {
+        $where[] = 'v.visit_category = ?';
+        $params[] = $visitCategory;
+    }
+    $excludeCategories = crm_visit_category_terms($input['exclude_visit_category'] ?? '');
+    if ($excludeCategories) {
+        $where[] = 'v.visit_category NOT IN (' . implode(',', array_fill(0, count($excludeCategories), '?')) . ')';
+        array_push($params, ...$excludeCategories);
+    }
     $hasPhotoRaw = $input['has_photo'] ?? $input['has_image'] ?? '';
     $hasPhoto = ($hasPhotoRaw === 1 || $hasPhotoRaw === '1' || $hasPhotoRaw === true || $hasPhotoRaw === 'true');
     if ($hasPhoto) {
@@ -471,6 +481,47 @@ function crm_visit_list(array $input = []): array
     return ['rows' => $rows, 'page' => $page, 'page_size' => $pageSize, 'has_more' => $hasMore, 'stats' => crm_visit_stats()];
 }
 
+function crm_visit_followup_category(): string
+{
+    return '跟进记录';
+}
+
+function crm_visit_followup_purposes(): array
+{
+    return ['电话', '视频电话', '视频会议', '当面', '其他'];
+}
+
+function crm_visit_is_followup_record(array $row): bool
+{
+    return trim((string)($row['visit_category'] ?? '')) === crm_visit_followup_category();
+}
+
+function crm_visit_followup_title(string $customerName, string $purpose): string
+{
+    $who = trim($customerName) !== '' ? trim($customerName) : '客户';
+    $title = '跟进记录：' . $who;
+    if (trim($purpose) !== '') $title .= '（' . trim($purpose) . '）';
+    return $title;
+}
+
+/** Exact category terms from a string or list. Empty input matches nothing. */
+function crm_visit_category_terms($value): array
+{
+    if (is_array($value)) {
+        $items = $value;
+    } else {
+        $text = trim((string)$value);
+        if ($text === '') return [];
+        $items = preg_split('/[,，]/u', $text) ?: [];
+    }
+    $out = [];
+    foreach ($items as $item) {
+        $item = trim((string)$item);
+        if ($item !== '') $out[$item] = $item;
+    }
+    return array_values($out);
+}
+
 function crm_visit_followup_offsets($value): array
 {
     if (is_string($value)) {
@@ -494,9 +545,10 @@ function crm_visit_stats(): array
 {
     crm_visit_ensure_tables();
     $scope = crm_visit_scope_sql('v');
+    $notFollowup = "v.visit_category <> '" . str_replace("'", '', crm_visit_followup_category()) . "'";
     $sql = "SELECT
-        SUM(v.visit_type='customer_visit' AND v.visit_date = CURDATE()) AS today_visits,
-        SUM(v.visit_type='customer_arrival' AND v.visit_date = CURDATE()) AS today_arrivals,
+        SUM(v.visit_type='customer_visit' AND {$notFollowup} AND v.visit_date = CURDATE()) AS today_visits,
+        SUM(v.visit_type='customer_arrival' AND {$notFollowup} AND v.visit_date = CURDATE()) AS today_arrivals,
         SUM(v.status='pending_confirm') AS pending_confirm,
         SUM(v.visit_date < CURDATE() AND v.status IN ('confirmed','pending_execute','executing','overdue_no_record')) AS overdue_result,
         SUM(v.need_quote = 1 AND v.status IN ('completed','followup_pending')) AS need_quote,
@@ -523,8 +575,22 @@ function crm_visit_save(array $input): array
     $customerId = (int)($input['customer_id'] ?? 0);
     if ($customerId <= 0) throw new RuntimeException('请选择客户。');
     $customer = crm_customer_get($customerId)['customer'] ?? null;
+    $customerName = (string)($customer['customer_name'] ?? ('#' . $customerId));
+    $category = trim((string)($input['visit_category'] ?? ''));
+    $purpose = trim((string)($input['purpose'] ?? ''));
+    if ($category === crm_visit_followup_category()) {
+        $type = 'customer_visit';
+        if (!in_array($purpose, crm_visit_followup_purposes(), true)) throw new RuntimeException('请选择跟进方式');
+    }
     $title = trim((string)($input['title'] ?? ''));
-    if ($title === '') $title = ($type === 'customer_visit' ? '客户拜访：' : '客户来访：') . ($customer['customer_name'] ?? ('#' . $customerId));
+    $genericVisitTitle = ($type === 'customer_visit' ? '客户拜访：' : '客户来访：') . $customerName;
+    if ($category === crm_visit_followup_category()) {
+        if ($title === '' || $title === '客户拜访计划' || $title === $genericVisitTitle || $title === '客户拜访：' . $customerName) {
+            $title = crm_visit_followup_title($customerName, $purpose);
+        }
+    } elseif ($title === '') {
+        $title = $genericVisitTitle;
+    }
     $assistants = $input['assistant_user_ids'] ?? [];
     if (is_string($assistants)) $assistants = array_filter(array_map('intval', preg_split('/[,，\s]+/', $assistants)));
     if (!is_array($assistants)) $assistants = [];
@@ -535,8 +601,8 @@ function crm_visit_save(array $input): array
         'customer_id' => $customerId,
         'contact_id' => (int)($input['contact_id'] ?? 0) ?: null,
         'title' => $title,
-        'purpose' => trim((string)($input['purpose'] ?? '')),
-        'visit_category' => trim((string)($input['visit_category'] ?? '')),
+        'purpose' => $purpose,
+        'visit_category' => $category,
         'owner_user_id' => (int)($input['owner_user_id'] ?? 0) ?: (int)(current_user()['id'] ?? 0),
         'assistant_user_ids_json' => json_encode(array_values(array_unique(array_map('intval', $assistants))), JSON_UNESCAPED_UNICODE),
         'visit_date' => trim((string)($input['visit_date'] ?? '')) ?: null,
@@ -581,7 +647,7 @@ function crm_visit_save(array $input): array
         $values[] = $id;
         db()->prepare('UPDATE crm_visit_records SET ' . implode(', ', $sets) . ', updated_by = ?, updated_at = NOW() WHERE id = ?')->execute($values);
         $action = 'visit_update';
-        $message = ($type === 'customer_visit' ? '编辑拜访计划' : '编辑来访接待');
+        $message = $category === crm_visit_followup_category() ? '编辑跟进记录' : ($type === 'customer_visit' ? '编辑拜访计划' : '编辑来访接待');
     } else {
         $insertData = $data;
         $insertData['client_request_id'] = $clientRequestId !== '' ? $clientRequestId : null;
@@ -599,7 +665,7 @@ function crm_visit_save(array $input): array
         }
         $id = (int)db()->lastInsertId();
         $action = 'visit_create';
-        $message = ($type === 'customer_visit' ? '创建拜访计划' : '创建来访接待');
+        $message = $category === crm_visit_followup_category() ? '创建跟进记录' : ($type === 'customer_visit' ? '创建拜访计划' : '创建来访接待');
     }
     $after = crm_visit_row($id);
     crm_log_event('visit', $action, 'visit', (string)$id, $before, $after);
