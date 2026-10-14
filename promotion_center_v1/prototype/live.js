@@ -204,18 +204,33 @@
     });
   }
 
-  function loadCenter() {
+  function centerFilter() {
     var s = st();
     var q = s.centerQ || '';
     var country = s.centerCountry || '';
-    var key = q + '|' + country;
+    return {
+      q: q,
+      country: country,
+      active: !!(String(q).trim() || String(country).trim()),
+      key: q + '|' + country
+    };
+  }
+
+  function loadCenter() {
+    var filter = centerFilter();
     live._centerSeq = (live._centerSeq || 0) + 1;
     var seq = live._centerSeq;
-    return api('customers', { q: q, country: country, page_size: 30 }).then(function (data) {
+    if (!filter.active) {
+      live.centerRows = [];
+      live.centerTotal = 0;
+      live.centerKey = filter.key;
+      return Promise.resolve();
+    }
+    return api('customers', { q: filter.q, country: filter.country, page_size: 30 }).then(function (data) {
       if (seq !== live._centerSeq) return;
       live.centerRows = (data.rows || []).map(toCustomer);
       live.centerTotal = data.total || 0;
-      live.centerKey = key;
+      live.centerKey = filter.key;
     });
   }
 
@@ -247,8 +262,8 @@
       if (!live.groupsLoaded) return true;
       var memberId = arg || (live.groups[0] && live.groups[0].id);
       if (memberId && live.memberKey[memberId] !== '1') return true;
-      var ckey = (s.centerQ || '') + '|' + (s.centerCountry || '');
-      if ((s.centerQ || '').trim() && live.centerKey !== ckey) return true;
+      var filter = centerFilter();
+      if (filter.active && live.centerKey !== filter.key) return true;
     }
     if (name === 'customers' && !arg) {
       var lkey = (s.customerQ || '') + '|' + (s.customerCountry || '');
@@ -266,7 +281,7 @@
       var more = [];
       if (name === 'groups' && arg) more.push(loadMembers(arg));
       if (name === 'groups' && !arg && live.groups[0]) more.push(loadMembers(live.groups[0].id));
-      if (name === 'groups' && (st().centerQ || '').trim()) more.push(loadCenter());
+      if (name === 'groups' && centerFilter().active) more.push(loadCenter());
       if (name === 'customers' && arg) more.push(loadDetail(arg));
       if (name === 'customers' && !arg) more.push(loadList());
       return Promise.all(more);

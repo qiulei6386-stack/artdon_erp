@@ -404,7 +404,8 @@
     var L = window.PM_LIVE;
     var q = state.centerQ || '';
     var pc = state.centerCountry || '';
-    var rows = q.trim() ? (L.centerRows || []) : [];
+    var active = !!(String(q).trim() || String(pc).trim());
+    var rows = active ? (L.centerRows || []) : [];
     var countries = L.countries || [];
     var list = rows.map(function (c) {
       var inGroup = !!(cur && cur.members.indexOf(c.id) >= 0);
@@ -413,8 +414,8 @@
       else if (editable && cur) action = '<button class="btn sm" data-add="' + c.id + '">加入本组</button>';
       return '<div class="pick"><a href="#/customers/' + c.id + '" style="flex:1;min-width:0;color:inherit;text-decoration:none"><span class="cell-title">' + esc(c.company) + '</span><span class="cell-sub" style="display:block">' + esc(c.code ? c.code + ' · ' : '') + esc(c.country || '未填') + ' · ' + esc(ownerLabel(c)) + '</span></a>' + customerChip(c) + action + '</div>';
     }).join('');
-    var hint = !q.trim() ? '<div class="empty">输入公司、客户代码、联系人或邮箱。只显示你权限范围内的客户。</div>' : (rows.length ? '' : '<div class="empty">没有符合条件的客户。超出你客户范围的客户不会出现。</div>');
-    var totalHint = q.trim() && L.centerTotal > rows.length ? '<p class="hint" style="padding:0 14px 12px">共 ' + L.centerTotal + ' 个，这里显示前 ' + rows.length + ' 个。</p>' : '';
+    var hint = !active ? '<div class="empty">输入公司、客户代码、联系人或邮箱，或选择国家。只显示你权限范围内的客户。</div>' : (rows.length ? '' : '<div class="empty">没有符合条件的客户。超出你客户范围的客户不会出现。</div>');
+    var totalHint = active && L.centerTotal > rows.length ? '<p class="hint" style="padding:0 14px 12px">共 ' + L.centerTotal + ' 个，这里显示前 ' + rows.length + ' 个。</p>' : '';
     return '<div class="card picker"><div class="card-head"><h2>搜索客户中心</h2></div><div class="toolbar"><input class="input" data-cq placeholder="搜索客户中心（公司、代码、联系人、邮箱）" value="' + esc(q) + '"><select class="select" data-cc><option value="">全部国家</option>' + countries.map(function (v) { return '<option value="' + esc(v.value) + '"' + (v.value === pc ? ' selected' : '') + '>' + esc(v.label) + '</option>'; }).join('') + '</select></div><div class="picker-list">' + (list || hint) + '</div>' + totalHint + '</div>';
   }
   function pageCustomers(arg) {
