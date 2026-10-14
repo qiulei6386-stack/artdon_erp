@@ -4291,8 +4291,11 @@
       var follows = (data.followups || []).map(function (f) {
         return '<tr data-detail-row="followup" data-detail-row-id="' + esc(f.id) + '"><td>' + esc(f.followup_time || '-') + '</td><td>' + esc(f.creator_name || f.owner_name || '-') + '</td><td>' + esc(f.contact_name || '-') + '</td><td>' + esc(f.followup_type || '-') + '</td><td title="' + esc(f.content || '') + '">' + esc(f.content || '-') + '</td><td>' + esc(f.next_remind_time || '-') + '</td><td>' + esc(cnStatus(f.status || 'open')) + '</td></tr>';
       }).join('') || '<tr><td colspan="7">暂无跟进</td></tr>';
+      var visitRecordKind = function (v) {
+        return String((v || {}).visit_category || '') === '跟进记录' ? '跟进' : ((v || {}).visit_type === 'customer_arrival' ? '来访' : '拜访');
+      };
       var visits = (data.visits || []).map(function (v) {
-        var type = v.visit_type === 'customer_arrival' ? '来访' : '拜访';
+        var type = visitRecordKind(v);
         var need = [];
         if (Number(v.need_quote)) need.push('报价');
         if (Number(v.need_material)) need.push('资料');
@@ -4356,7 +4359,7 @@
         communicationItems.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-', rowType: 'followup', rowId: f.id || f.followup_id || '' });
       });
       (data.visits || []).forEach(function (v) {
-        communicationItems.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
+        communicationItems.push({ type: visitRecordKind(v), title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
       });
       if (data.mail_rows && data.mail_rows.length) {
         data.mail_rows.forEach(function (m) { communicationItems.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || m.created_at || '', detail: m.direction || m.status || '', person: m.from_name || m.from_email || '-', rowType: 'mail', rowId: m.id || m.message_id || m.mail_id || '' }); });
@@ -4397,7 +4400,7 @@
         tags: tagsPanel,
         communication_all: '<section class="customer-tab-panel" data-detail-panel="communication_all"><div class="customer-tab-stats"><span>全部沟通 ' + esc(communicationItems.length) + '</span><span>跟进 ' + esc((data.followups || []).length) + '</span><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>邮件 ' + esc(mailRows.length) + '</span></div><div class="customer-communication-list">' + communicationAll + '</div></section>',
         followups: '<section class="customer-tab-panel" data-detail-panel="followups"><div class="customer-tab-stats"><span>跟进 ' + esc((data.followups || []).length) + '</span><span>待继续 ' + esc((data.followups || []).filter(function (f) { return (f.status || 'open') === 'open'; }).length) + '</span><span>有提醒 ' + esc((data.followups || []).filter(function (f) { return f.next_remind_time; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>时间</th><th>跟进人</th><th>联系人</th><th>跟进方式</th><th>跟进内容</th><th>下次提醒</th><th>状态</th></tr></thead><tbody>' + follows + '</tbody></table></section>',
-        visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type !== 'customer_arrival'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return v.visit_type === 'customer_arrival'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
+        visits: '<section class="customer-tab-panel" data-detail-panel="visits"><div class="customer-tab-stats"><span>拜访/来访 ' + esc((data.visits || []).filter(function (v) { return visitRecordKind(v) !== '跟进'; }).length) + '</span><span>拜访 ' + esc((data.visits || []).filter(function (v) { return visitRecordKind(v) === '拜访'; }).length) + '</span><span>来访 ' + esc((data.visits || []).filter(function (v) { return visitRecordKind(v) === '来访'; }).length) + '</span><span>跟进 ' + esc((data.visits || []).filter(function (v) { return visitRecordKind(v) === '跟进'; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>类型</th><th>时间</th><th>地点</th><th>参与人</th><th>客户联系人</th><th>内容摘要</th><th>后续动作</th></tr></thead><tbody>' + visits + '</tbody></table></section>',
         samples: '<section class="customer-tab-panel" data-detail-panel="samples"><div class="customer-tab-stats"><span>样品数量 ' + esc((data.sample_shipments || []).length) + '</span><span>已寄出 ' + esc((data.sample_shipments || []).filter(function (s) { return ['sent','shipped','delivered','signed'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.sent_at || s.shipped_at; }).length) + '</span><span>已签收 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 || s.signed_at || s.received_at; }).length) + '</span><span>待跟进 ' + esc((data.sample_shipments || []).filter(function (s) { return ['signed','received'].indexOf(String(s.status || '').toLowerCase()) >= 0 && !s.followup_id; }).length) + '</span></div><table class="crm-table customer-detail-table"><thead><tr><th>样品名称</th><th>快递公司</th><th>快递单号</th><th>状态</th><th>寄出时间</th><th>签收时间</th><th>负责人</th></tr></thead><tbody>' + sampleShipments + '</tbody></table></section>',
         opportunities: opportunitiesPanel,
         timeline: '<section class="customer-tab-panel" data-detail-panel="timeline"><div class="customer-tab-stats"><span>时间轴 ' + esc((data.timeline || []).length) + '</span><span>最近记录 ' + esc(((data.timeline || [])[0] || {}).event_time || '暂无') + '</span></div><div class="customer-timeline">' + timeline + '</div></section>',
@@ -4990,7 +4993,7 @@
           rows.push({ type: '跟进', title: f.followup_type || '跟进', time: f.followup_time || '', detail: f.content || '', person: f.creator_name || '-', rowType: 'followup', rowId: f.id || f.followup_id || '' });
         });
         (data.visits || []).forEach(function (v) {
-          rows.push({ type: v.visit_type === 'customer_arrival' ? '来访' : '拜访', title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
+          rows.push({ type: String(v.visit_category || '') === '跟进记录' ? '跟进' : (v.visit_type === 'customer_arrival' ? '来访' : '拜访'), title: v.title || '拜访 / 来访', time: v.visit_date || '', detail: v.status || v.result_summary || v.content || '', person: v.owner_name || '-', rowType: 'visit', rowId: v.id || v.visit_id || '' });
         });
         (data.mail_rows || []).forEach(function (m) {
           rows.push({ type: '邮件', title: m.subject || '(无主题)', time: m.received_at || m.sent_at || m.created_at || '', detail: m.direction || m.status || '', person: m.from_name || m.from_email || '-', rowType: 'mail', rowId: m.id || m.message_id || m.mail_id || '' });
@@ -29168,7 +29171,9 @@
       var type = this.view === 'arrivals' ? 'customer_arrival' : (this.view === 'visits' || this.view === 'outside' ? 'customer_visit' : '');
       var range = this.range, status = '';
       if (range === 'pending_confirm') { status = 'pending_confirm'; range = ''; }
-      return { visit_type: type, range: range, status: status, keyword: this.keyword || '' };
+      var filters = { visit_type: type, range: range, status: status, keyword: this.keyword || '' };
+      if (this.view === 'visits' || this.view === 'arrivals' || this.view === 'outside') filters.exclude_visit_category = '跟进记录';
+      return filters;
     },
     load: function () {
       var self = this, box = document.querySelector('[data-visit-list]');
@@ -29259,7 +29264,7 @@
       this.renderDetail(null, '拜访报表');
     },
     visitCard: function (row) {
-      var type = row.visit_type === 'customer_arrival' ? '来访' : '拜访';
+      var type = String(row.visit_category || '') === '跟进记录' ? '跟进' : (row.visit_type === 'customer_arrival' ? '来访' : '拜访');
       var need = [];
       if (Number(row.need_quote)) need.push('报价'); if (Number(row.need_material)) need.push('资料'); if (Number(row.need_sample)) need.push('样品'); if (Number(row.need_dispatch)) need.push('派工');
       var files = [];
@@ -29270,7 +29275,7 @@
       var place = [row.country || '', row.city || row.location || ''].filter(Boolean).join(' / ') || '-';
       var activity = this.visitLatestActivity(row);
       return '<article class="visit-card ' + (Number(row.id) === Number(this.selectedId) ? 'active selected' : '') + '" data-visit-id="' + esc(row.id) + '">' +
-        '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '来访' ? '来' : '访') + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
+        '<header><i class="visit-type-icon" aria-hidden="true">' + esc(type === '跟进' ? '跟' : (type === '来访' ? '来' : '访')) + '</i><div><strong>' + esc(row.title || type) + '</strong><span class="visit-customer-line"><b>' + esc(row.customer_code || '-') + '</b><b>' + esc(row.customer_name || '-') + '</b></span><span class="visit-contact-line">' + esc(row.contact_name || '未选联系人') + '</span></div><em>' + esc(type) + '</em></header>' +
         '<div class="visit-card-meta"><span class="visit-meta-item"><small>计划</small><b>' + esc(schedule) + '</b></span><span class="visit-meta-item"><small>负责人</small><b>' + esc(row.owner_name || '-') + '</b></span><span class="visit-meta-item visit-meta-place"><small>地点</small><b>' + esc(place) + '</b></span><b class="visit-status">' + esc(cnStatus(row.status || 'pending_confirm')) + '</b></div>' +
         '<section class="visit-card-activity"><div><span>' + esc(activity.label) + '</span><b>' + esc(activity.time) + '</b></div><p>' + esc(activity.text) + '</p></section>' +
         '<div class="visit-card-needs">' + (need.length ? need.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div>' +
@@ -29333,7 +29338,7 @@
         box.innerHTML = '<div class="visit-detail-empty"><strong>' + esc(emptyTitle || '拜访属性') + '</strong><span>请选择左侧一条拜访 / 来访记录。</span></div>';
         return;
       }
-      var type = row.visit_type === 'customer_arrival' ? '来访' : '拜访';
+      var type = String(row.visit_category || '') === '跟进记录' ? '跟进' : (row.visit_type === 'customer_arrival' ? '来访' : '拜访');
       var needs = [];
       if (Number(row.need_quote)) needs.push('报价');
       if (Number(row.need_material)) needs.push('资料');
@@ -29362,7 +29367,7 @@
         '<section class="visit-detail-tags"><strong>后续需求</strong><div>' + (needs.length ? needs.map(function (item) { return '<span>' + esc(item) + '</span>'; }).join('') : '<span>无后续需求</span>') + (files.length ? files.map(function (item) { return '<span class="visit-file-badge">' + esc(item) + '</span>'; }).join('') : '') + '</div></section>' +
         '<section class="visit-detail-note"><strong>备注</strong><p>' + esc(row.result_note || row.planned_note || row.customer_needs || '暂无备注。') + '</p></section>' +
         this.resultHistoryHtml(row) +
-        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button><button type="button" data-visit-action="' + esc(row.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访') + '" data-visit-action-id="' + esc(row.id) + '">编辑</button></nav>' +
+        '<nav><button type="button" data-visit-action="result" data-visit-action-id="' + esc(row.id) + '">填结果</button><button type="button" data-visit-action="dispatch" data-visit-action-id="' + esc(row.id) + '">派工</button><button type="button" data-visit-action="' + esc(type === '跟进' ? '编辑跟进' : (row.visit_type === 'customer_arrival' ? '编辑来访' : '编辑拜访')) + '" data-visit-action-id="' + esc(row.id) + '">编辑</button></nav>' +
         '</article>';
     },
     resultHistoryHtml: function (row) {
@@ -29443,20 +29448,24 @@
     },
     openVisitDialog: function (type, row) {
       row = row || {}; type = type || row.visit_type || 'customer_visit';
+      var isFollowup = String(row.visit_category || '') === '跟进记录';
+      if (isFollowup) type = 'customer_visit';
       var isArrival = type === 'customer_arrival', customer = (CustomerModule.currentDetail || {}).customer || {};
+      var purposeItems = isFollowup ? ['电话', '视频电话', '视频会议', '当面', '其他'] : (isArrival ? ['工厂参观','产品看样','项目沟通','报价谈判','代理洽谈','样品确认','售后沟通','验厂','签约','其他'] : ['了解需求','推广产品','沟通报价','样品确认','项目推进','售后处理','签约洽谈','客户维护','收款沟通','其他']);
+      var categoryItems = isFollowup ? ['跟进记录'] : (isArrival ? ['重点客户来访','工厂参观','项目来访','报价沟通','样品确认','验厂','签约','其他'] : ['初次拜访','老客户拜访','项目拜访','报价跟进','样品沟通','售后拜访','展会后拜访','代理商拜访','工程项目拜访','其他']);
       var customerId = row.customer_id || customer.id || CustomerModule.currentId || '';
       var customerName = row.customer_name || customer.customer_name || (customerId ? ('客户 #' + customerId) : '未选择客户');
       var customerCode = row.customer_code || customer.customer_code || '';
       var currentCustomer = Object.assign({}, customer, { id: customerId, customer_name: customerName, customer_code: customerCode, country: row.country || customer.country || '', city: row.city || customer.city || '', address: row.location || customer.address || '', owner_name: row.owner_name || customer.owner_name || '' });
       var clientRequestId = row.id ? '' : this.createRequestId();
       var html = '<div class="visit-workspace-form" data-visit-form><input type="hidden" name="visit_id" value="' + esc(row.id || '') + '"><input type="hidden" name="client_request_id" value="' + esc(clientRequestId) + '"><input type="hidden" name="visit_type" value="' + esc(type) + '"><input type="hidden" name="customer_id" value="' + esc(customerId) + '">' +
-        '<section class="visit-hero-panel"><div><span>' + esc(isArrival ? '客户来访' : '外出拜访') + '</span><input name="title" value="' + esc(row.title || (isArrival ? '客户来访接待' : '客户拜访计划')) + '" placeholder="输入拜访主题"></div><b>' + esc(isArrival ? 'Arrival' : 'Visit') + '</b></section>' +
+        '<section class="visit-hero-panel"><div><span>' + esc(isFollowup ? '跟进记录' : (isArrival ? '客户来访' : '外出拜访')) + '</span><input name="title" value="' + esc(row.title || (isFollowup ? ('跟进记录：' + (customerName || '客户')) : (isArrival ? '客户来访接待' : '客户拜访计划'))) + '" placeholder="' + esc(isFollowup ? '跟进记录标题' : '输入拜访主题') + '"></div><b>' + esc(isFollowup ? 'Follow-up' : (isArrival ? 'Arrival' : 'Visit')) + '</b></section>' +
         '<section class="visit-work-section visit-customer-chooser"><h3>客户与联系人</h3><div class="visit-search-box"><input data-visit-customer-search placeholder="搜索客户名称 / 代码 / 国家 / 联系人 / 邮箱"><button type="button" data-visit-customer-search-btn>搜索</button></div><div class="visit-search-results" data-visit-customer-results></div>' +
           this.selectedCustomerCard(currentCustomer, customerName) +
-          '<div class="visit-compact-grid"><label>联系人<select name="contact_id" data-visit-contact-select>' + this.contactOptions(row.contact_id, row) + '</select></label><label>国家<input name="country" data-visit-country value="' + esc(row.country || customer.country || '') + '"></label><label>城市<input name="city" data-visit-city value="' + esc(row.city || customer.city || '') + '"></label><label class="wide">地址<input name="location" data-visit-location value="' + esc(row.location || customer.address || '') + '"></label></div></section>' +
-        '<section class="visit-work-section"><h3>拜访安排</h3><div class="visit-schedule-grid">' +
-          '<label class="visit-pill-field"><span>目的</span><select name="purpose">' + this.options(isArrival ? ['工厂参观','产品看样','项目沟通','报价谈判','代理洽谈','样品确认','售后沟通','验厂','签约','其他'] : ['了解需求','推广产品','沟通报价','样品确认','项目推进','售后处理','签约洽谈','客户维护','收款沟通','其他'], row.purpose) + '</select></label>' +
-          '<label class="visit-pill-field"><span>类型</span><select name="visit_category">' + this.options(isArrival ? ['重点客户来访','工厂参观','项目来访','报价沟通','样品确认','验厂','签约','其他'] : ['初次拜访','老客户拜访','项目拜访','报价跟进','样品沟通','售后拜访','展会后拜访','代理商拜访','工程项目拜访','其他'], row.visit_category) + '</select></label>' +
+          '<div class="visit-compact-grid"><label>联系人<select name="contact_id" data-visit-contact-select>' + this.contactOptions(row.contact_id, row) + '</select></label><label>国家<input name="country" data-visit-country value="' + esc(row.country || customer.country || '') + '"></label><label>城市<input name="city" data-visit-city value="' + esc(row.city || customer.city || '') + '"></label><label class="wide">' + (isFollowup ? '地点（选填）' : '地址') + '<input name="location" data-visit-location value="' + esc(row.location || (isFollowup ? '' : (customer.address || ''))) + '" placeholder="' + esc(isFollowup ? '可以不填' : '') + '"></label></div></section>' +
+        '<section class="visit-work-section"><h3>' + (isFollowup ? '跟进安排' : '拜访安排') + '</h3><div class="visit-schedule-grid">' +
+          '<label class="visit-pill-field"><span>' + (isFollowup ? '跟进方式' : '目的') + '</span><select name="purpose">' + this.options(purposeItems, row.purpose) + '</select></label>' +
+          '<label class="visit-pill-field"><span>类型</span><select name="visit_category">' + this.options(categoryItems, row.visit_category || (isFollowup ? '跟进记录' : '')) + '</select></label>' +
           '<label class="visit-date-card"><span>日期</span><input type="date" name="visit_date" value="' + esc(row.visit_date || new Date().toISOString().slice(0, 10)) + '"></label><label class="visit-date-card"><span>时间</span><input type="time" name="visit_time" value="' + esc(String(row.visit_time || '').slice(0, 5)) + '"></label>' +
           '<label class="visit-pill-field"><span>负责人</span><select name="owner_user_id">' + this.userOptions(row.owner_user_id || (state.user || {}).id) + '</select></label><label class="visit-pill-field"><span>状态</span><select name="status">' + this.statusOptions(row.status || 'pending_confirm') + '</select></label>' +
           (isArrival ? '<label class="visit-pill-field"><span>来访人数</span><input type="number" name="visitor_count" value="' + esc(row.visitor_count || 1) + '"></label>' : '<label class="visit-pill-field"><span>交通方式</span><input name="transport_method" value="' + esc(row.transport_method || '') + '"></label>') +
@@ -29466,9 +29475,9 @@
         '<section class="visit-work-section"><h3>备注与准备说明</h3><div class="visit-note-grid"><label>拜访备注<textarea name="planned_note" rows="4">' + esc(row.planned_note || '') + '</textarea></label><label>客户需求<textarea name="customer_needs" rows="4">' + esc(row.customer_needs || '') + '</textarea></label><label class="wide">准备说明<textarea name="preparation_note" rows="3">' + esc(row.preparation_note || '') + '</textarea></label></div></section>' +
         '<section class="visit-work-section visit-section-checks"><h3>后续联动</h3><div class="visit-check-grid"><label class="tag-chip"><input type="checkbox" name="create_followup"><span>创建跟进</span></label><label class="tag-chip"><input type="checkbox" name="create_dispatch"><span>创建派工</span></label><label class="tag-chip"><input type="checkbox" name="create_quote_task"><span>创建报价任务</span></label><label class="tag-chip"><input type="checkbox" name="create_material_task"><span>创建资料任务</span></label><label class="tag-chip"><input type="checkbox" name="create_sample_task"><span>创建样品任务</span></label></div><p class="entry-muted wide">创建派工会真实生成派工待办，负责人默认使用拜访负责人，已创建过不会重复。</p><label class="visit-follow-time">下次跟进时间<input name="next_followup_time" value="' + esc(row.next_followup_time || '') + '" placeholder="YYYY-MM-DD HH:MM"></label><div class="visit-reminder-panel"><strong>任务跟进提醒</strong><span>按拜访/来访日期生成任务中心提醒</span>' + this.followupOffsetChecks(row.followup_offsets || []) + '</div></section>' +
         '<p class="entry-muted wide" data-visit-error></p></div>' +
-        '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" data-visit-draft>保存草稿</button><button type="button" class="primary" data-visit-save>保存拜访计划</button></div>';
+        '<div class="business-dialog-actions"><button type="button" data-business-cancel>取消</button><button type="button" data-visit-draft>保存草稿</button><button type="button" class="primary" data-visit-save>' + (isFollowup ? '保存跟进记录' : '保存拜访计划') + '</button></div>';
       var self = this;
-      CustomerModule.openBusinessDialog(isArrival ? '新建来访接待' : '新建拜访计划', html, '保存后会进入客户时间轴和拜访/来访列表。', function (dialog) {
+      CustomerModule.openBusinessDialog(isFollowup ? (row.id ? '编辑跟进记录' : '跟进记录') : (isArrival ? '新建来访接待' : '新建拜访计划'), html, isFollowup ? '跟进方式必填，地点可以不填。照片、事项和待办与拜访相同。' : '保存后会进入客户时间轴和拜访/来访列表。', function (dialog) {
         document.querySelector('[data-customer-dialog]')?.classList.add('visit-modal-large');
         self.bindFileInputs(dialog);
         self.bindVisitWorkspace(dialog);
@@ -29663,7 +29672,7 @@
       var location = dialog.querySelector('[data-visit-location]');
       if (country && !country.value) country.value = customer.country || '';
       if (city && !city.value) city.value = customer.city || '';
-      if (location && !location.value) location.value = customer.address || '';
+      if (location && !location.value && String(form.querySelector('[name="visit_category"]')?.value || '') !== '跟进记录') location.value = customer.address || '';
       var results = dialog.querySelector('[data-visit-customer-results]');
       if (results) results.innerHTML = '';
       post('customer_get', { customer_id: customer.id }).then(function (json) {
@@ -29836,7 +29845,7 @@
         if (!json.success) return self.formError(form, json.message || '保存失败');
         var record = (json.data && json.data.record) || {};
         return self.uploadQueuedFiles(record.id, dialog).then(function () {
-          CustomerModule.closeDialog(); toast('拜访/来访已保存'); self.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
+          CustomerModule.closeDialog(); toast(String((record && record.visit_category) || form.querySelector('[name="visit_category"]')?.value || '') === '跟进记录' ? '跟进记录已保存' : '拜访/来访已保存'); self.load(); if (CustomerModule.currentId) CustomerModule.loadDetail(CustomerModule.currentId, { silent: true });
         });
       }).catch(function (err) {
         self.formError(form, err.message || '保存失败');
@@ -29924,7 +29933,7 @@
       if (label === '待填写结果') { this.range = 'overdue_result'; return this.load(); }
       if (label === '查看拜访记录') { activate('visits'); this.view = 'visits'; return this.load(); }
       if (label === '查看来访记录') { activate('visits'); this.view = 'arrivals'; return this.load(); }
-      if (label === '查看拜访' || label === '查看来访' || label === '编辑拜访' || label === '编辑来访') return this.openVisitDialog((row || {}).visit_type || 'customer_visit', row);
+      if (label === '查看拜访' || label === '查看来访' || label === '编辑拜访' || label === '编辑来访' || label === '编辑跟进') return this.openVisitDialog((row || {}).visit_type || 'customer_visit', row);
       if (label === 'result' || label === '填结果' || label === '填写拜访结果' || label === '填写接待结果') {
         return this.openResultFromAction(row);
       }

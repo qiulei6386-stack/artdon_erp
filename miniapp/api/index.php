@@ -1017,6 +1017,33 @@ function mx_todo_query(array $f): array {
     $st = db()->prepare($sql); $st->execute($p);
     return array_map('mx_todo_public', $st->fetchAll(PDO::FETCH_ASSOC));
 }
+function mx_visit_kind(array $row): array {
+    if (function_exists('crm_visit_is_followup_record') && crm_visit_is_followup_record($row)) {
+        return ['record_kind' => 'followup', 'type_label' => '跟进'];
+    }
+    if (($row['visit_type'] ?? '') === 'customer_arrival') {
+        return ['record_kind' => 'arrival', 'type_label' => '来访'];
+    }
+    return ['record_kind' => 'visit', 'type_label' => '拜访'];
+}
+
+/** 拜访/来访列表默认排除跟进记录；传 visit_category=跟进记录 时只返回跟进。 */
+function mx_visit_list_args(array $input, array $base): array {
+    $category = trim((string)($input['visit_category'] ?? ''));
+    if ($category !== '') {
+        $base['visit_category'] = $category;
+        if ($category === crm_visit_followup_category()) $base['visit_type'] = 'customer_visit';
+        return $base;
+    }
+    if (array_key_exists('exclude_visit_category', $input)) {
+        $exclude = $input['exclude_visit_category'];
+        if (is_array($exclude) || trim((string)$exclude) !== '') $base['exclude_visit_category'] = $exclude;
+        return $base;
+    }
+    $base['exclude_visit_category'] = crm_visit_followup_category();
+    return $base;
+}
+
 function mx_visit_extra(array $row): array {
     $id = (int)$row['id'];
     $st = db()->prepare("SELECT * FROM miniapp_visit_meta WHERE visit_id=?"); $st->execute([$id]);
@@ -1088,7 +1115,9 @@ function mx_visit_extra(array $row): array {
         $c = $st->fetch(PDO::FETCH_ASSOC) ?: [];
         $row['customer_country'] = $c['country'] ?? ''; $row['customer_level'] = $c['level'] ?? '';
     }
-    $row['type_label'] = ($row['visit_type'] ?? '') === 'customer_arrival' ? '来访' : '拜访';
+    $kind = mx_visit_kind($row);
+    $row['record_kind'] = $kind['record_kind'];
+    $row['type_label'] = $kind['type_label'];
     unset($row['result_history']);
     return $row;
 }
@@ -2021,14 +2050,17 @@ function mx_translate_zh_en(array $texts): array {
             $hasPhotoRaw = $input['has_photo'] ?? $input['has_image'] ?? '';
             $hasPhoto = ($hasPhotoRaw === 1 || $hasPhotoRaw === '1' || $hasPhotoRaw === true || $hasPhotoRaw === 'true');
             $withMeta = !empty($input['with_meta']);
-            $listArgs = [
+            $listArgs = mx_visit_list_args($input, [
                 'visit_type' => $visitType,
                 'status' => trim((string)($input['status'] ?? '')),
                 'range' => trim((string)($input['range'] ?? '')),
                 'keyword' => trim((string)($input['keyword'] ?? '')),
                 'page' => (int)($input['page'] ?? 1),
                 'page_size' => min(50, max(1, (int)($input['page_size'] ?? 20))),
-            ];
+            ]);
+            if ($visitType !== '' && ($listArgs['visit_category'] ?? '') !== crm_visit_followup_category()) {
+                $listArgs['visit_type'] = $visitType;
+            }
             if ($recentDays > 0) $listArgs['recent_days'] = $recentDays;
             if ($location !== '') $listArgs['location'] = $location;
             if ($country !== '') {
@@ -2054,12 +2086,15 @@ function mx_translate_zh_en(array $texts): array {
                 if ($cty === '') $cty = trim((string)($r['customer_country'] ?? ''));
                 $ctyDisp = mx_country_display($cty);
                 if ($ctyDisp === '') $ctyDisp = $cty;
+                $kind = mx_visit_kind($r);
                 return [
                     'id' => $id, 'visit_type' => $r['visit_type'], 'title' => $r['title'],
+                    'record_kind' => $kind['record_kind'], 'type_label' => $kind['type_label'],
                     'customer_id' => (int)($r['customer_id'] ?? 0),
                     'customer_name' => $r['customer_name'] ?? '',
                     'customer_code' => trim((string)($r['customer_code'] ?? '')),
                     'visit_category' => $r['visit_category'] ?? '',
+                    'purpose' => $r['purpose'] ?? '',
                     'visit_date' => $r['visit_date'], 'visit_time' => $r['visit_time'],
                     'status' => $r['status'], 'owner_name' => $r['owner_name'] ?? '',
                     'location' => $loc, 'country' => $ctyDisp,
@@ -2067,14 +2102,33 @@ function mx_translate_zh_en(array $texts): array {
                     'cover_url' => $coverId > 0 ? mx_photo_url($coverId) : '',
                 ];
             }, $list['rows']);
-            $out = ['rows' => $rows, 'has_more' => $list['has_more'], 'stats' => $list['stats']];
+            $out = [
+                'rows' => $rows,
+                'has_more' => $list['has_more'],
+                'stats' => $list['stats'],
+                'followup' => [
+                    'visit_type' => 'customer_visit',
+                    'visit_category' => crm_visit_followup_category(),
+                    'purposes' => crm_visit_followup_purposes(),
+                    'location_required' => false,
+                ],
+            ];
             if ($withMeta) {
                 $scope = crm_visit_scope_sql('v');
                 $metaWhere = "v.deleted_at IS NULL AND {$scope}";
                 $metaParams = [];
-                if ($visitType !== '') {
+                $metaType = trim((string)($listArgs['visit_type'] ?? ''));
+                if ($metaType !== '') {
                     $metaWhere .= ' AND v.visit_type = ?';
-                    $metaParams[] = $visitType;
+                    $metaParams[] = $metaType;
+                }
+                if (!empty($listArgs['visit_category'])) {
+                    $metaWhere .= ' AND v.visit_category = ?';
+                    $metaParams[] = $listArgs['visit_category'];
+                }
+                foreach (crm_visit_category_terms($listArgs['exclude_visit_category'] ?? '') as $excludedCategory) {
+                    $metaWhere .= ' AND v.visit_category <> ?';
+                    $metaParams[] = $excludedCategory;
                 }
                 $lst = db()->prepare("SELECT v.location AS name, COUNT(*) AS cnt FROM crm_visit_records v WHERE {$metaWhere} AND v.location IS NOT NULL AND TRIM(v.location) <> '' GROUP BY v.location ORDER BY cnt DESC, v.location ASC LIMIT 80");
                 $lst->execute($metaParams);
@@ -2143,7 +2197,8 @@ function mx_translate_zh_en(array $texts): array {
                     $row['related_dispatch_id'] = 0;
                 }
             }
-            mx_audit_log('view_visit', '查看拜访详情', 'visit', $id, (string)($row['customer_name'] ?? $row['title'] ?? mx_audit_visit_name($id)));
+            $viewLabel = (($row['record_kind'] ?? '') === 'followup') ? '查看跟进详情' : '查看拜访详情';
+            mx_audit_log('view_visit', $viewLabel, 'visit', $id, (string)($row['customer_name'] ?? $row['title'] ?? mx_audit_visit_name($id)));
             mapi_out(true, '', $row);
             break;
         }
@@ -2151,6 +2206,17 @@ function mx_translate_zh_en(array $texts): array {
         // ===== 新建/编辑（移动端简化版） =====
         case 'visit_save': {
             mapi_auth($input);
+            $category = trim((string)($input['visit_category'] ?? ''));
+            $recordKind = trim((string)($input['record_kind'] ?? $input['type'] ?? ''));
+            $isFollowup = $category === crm_visit_followup_category() || $recordKind === 'followup';
+            if ($isFollowup) {
+                $purpose = trim((string)($input['purpose'] ?? ''));
+                if (!in_array($purpose, crm_visit_followup_purposes(), true)) mapi_out(false, '请选择跟进方式');
+                $input['visit_type'] = 'customer_visit';
+                $input['visit_category'] = crm_visit_followup_category();
+                $input['purpose'] = $purpose;
+                $category = crm_visit_followup_category();
+            }
             $type = ($input['visit_type'] ?? 'customer_visit') === 'customer_arrival' ? 'customer_arrival' : 'customer_visit';
             $data = [
                 'visit_id' => (int)($input['id'] ?? 0),
@@ -2182,6 +2248,10 @@ function mx_translate_zh_en(array $texts): array {
             if ($vidSaved > 0) mx_meta_save($vidSaved, $input);
             $r = ['id' => $vidSaved, 'duplicate_request' => $r['duplicate_request'] ?? 0];
             $vname = mx_audit_visit_name($vidSaved);
+            if ($isFollowup) {
+                mx_audit_log($isEdit ? 'visit_edit' : 'visit_create', $isEdit ? '编辑跟进' : '新建跟进', 'visit', $vidSaved, $vname);
+                mapi_out(true, $isEdit ? '跟进记录已保存' : '跟进记录已创建', $r);
+            }
             if ($isEdit) mx_audit_log('visit_edit', '编辑拜访', 'visit', $vidSaved, $vname);
             else mx_audit_log('visit_create', $type === 'customer_visit' ? '新建拜访' : '新建来访', 'visit', $vidSaved, $vname);
             mapi_out(true, $type === 'customer_visit' ? '拜访计划已创建' : '来访接待单已创建', $r);
@@ -2195,6 +2265,7 @@ function mx_translate_zh_en(array $texts): array {
             $lat = (float)($input['lat'] ?? 0); $lng = (float)($input['lng'] ?? 0);
             if ($id <= 0 || $lat == 0 || $lng == 0) mapi_out(false, '参数错误');
             $row = crm_visit_row($id); // 顺带鉴权
+            if (crm_visit_is_followup_record($row)) mapi_out(false, '跟进记录不需要签到');
             if ($row['visit_type'] !== 'customer_visit') mapi_out(false, '来访不需要签到');
             db()->prepare("INSERT INTO miniapp_checkins (visit_id, user_id, lat, lng, address) VALUES (?, ?, ?, ?, ?)")
                 ->execute([$id, (int)$me['user_id'], $lat, $lng, substr(trim((string)($input['address'] ?? '')), 0, 255)]);
@@ -2568,15 +2639,21 @@ function mx_translate_zh_en(array $texts): array {
                 $st = db()->prepare("SELECT start_time, end_time FROM miniapp_visit_meta WHERE visit_id=?"); $st->execute([(int)$r['id']]);
                 $m = $st->fetch(PDO::FETCH_ASSOC) ?: [];
                 $s = mx_hm($m['start_time'] ?? $r['visit_time'] ?? ''); $e = mx_hm($m['end_time'] ?? '');
-                $visits[] = ['id' => (int)$r['id'], 'visit_type' => $r['visit_type'], 'type_label' => $r['visit_type'] === 'customer_arrival' ? '来访' : '拜访',
+                $kind = mx_visit_kind($r);
+                $visits[] = ['id' => (int)$r['id'], 'visit_type' => $r['visit_type'], 'type_label' => $kind['type_label'], 'record_kind' => $kind['record_kind'],
+                    'visit_category' => $r['visit_category'] ?? '', 'purpose' => $r['purpose'] ?? '',
                     'customer_name' => $r['customer_name'] ?? '', 'customer_id' => (int)$r['customer_id'], 'location' => $r['location'] ?? '',
                     'owner_name' => $r['owner_name'] ?? '', 'status' => $r['status'], 'start_time' => $s, 'end_time' => $e,
                     'time_range' => $s . ($e ? '–' . $e : ''), 'duration' => mx_duration($s, $e)];
             }
             usort($visits, fn($a, $b) => strcmp($a['start_time'], $b['start_time']));
             $todos = mx_todo_query(['range' => 'today']);
-            $stats = ['visit' => 0, 'arrival' => 0, 'due' => 0, 'overdue' => 0];
-            foreach ($visits as $v) $stats[$v['visit_type'] === 'customer_arrival' ? 'arrival' : 'visit']++;
+            $stats = ['visit' => 0, 'arrival' => 0, 'followup' => 0, 'due' => 0, 'overdue' => 0];
+            foreach ($visits as $v) {
+                if (($v['record_kind'] ?? '') === 'followup') $stats['followup']++;
+                elseif (($v['record_kind'] ?? '') === 'arrival') $stats['arrival']++;
+                else $stats['visit']++;
+            }
             foreach ($todos as $t) { if ($t['status'] === 'open') { $stats['due']++; if ($t['is_overdue']) $stats['overdue']++; } }
             mapi_out(true, '', ['date' => date('Y-m-d'), 'visits' => $visits, 'todos' => $todos, 'stats' => $stats]);
         }
@@ -3309,13 +3386,21 @@ function mx_translate_zh_en(array $texts): array {
             }
 
             $vl = crm_visit_list(['customer_id' => $cid, 'page_size' => 20]);
-            $visits = array_map(fn($r) => [
-                'id' => (int)$r['id'],
-                'type_label' => $r['visit_type'] === 'customer_arrival' ? '来访' : '拜访',
-                'visit_date' => $r['visit_date'],
-                'visit_time' => mx_hm($r['visit_time']),
-                'title' => $r['title'],
-            ], $vl['rows'] ?? []);
+            $visits = array_map(function ($r) {
+                $kind = mx_visit_kind($r);
+                return [
+                    'id' => (int)$r['id'],
+                    'visit_type' => $r['visit_type'] ?? '',
+                    'visit_category' => $r['visit_category'] ?? '',
+                    'purpose' => $r['purpose'] ?? '',
+                    'record_kind' => $kind['record_kind'],
+                    'type_label' => $kind['type_label'],
+                    'visit_date' => $r['visit_date'],
+                    'visit_time' => mx_hm($r['visit_time']),
+                    'title' => $r['title'],
+                    'location' => $r['location'] ?? '',
+                ];
+            }, $vl['rows'] ?? []);
 
             // 名片原图（crm_customer_files.category=business_card）
             $businessCards = [];

@@ -1,5 +1,18 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：小程序跟进记录 P1（仍走拜访接口）
+
+- 本次完成：跟进记录与拜访/来访共用 `crm_visit_records`。`visit_type` 固定 `customer_visit`，`visit_category` 固定 `跟进记录`，`purpose` 只能是电话、视频电话、视频会议、当面、其他。标题空着时写成 `跟进记录：{客户}（{方式}）`。不新建跟进接口，不写 `crm_customer_followups`。照片、事项、待办仍用原来的拜访单接口。地点可以不填。跟进记录不能签到。
+- 列表：`crm_visit_list` 增加可选的 `visit_category` 精确条件，以及 `exclude_visit_category`。小程序 `visits` 在没有传入分类时默认排除 `跟进记录`，所以现有拜访/来访列表不会混进跟进。传 `visit_category=跟进记录` 时只返回跟进，并强制 `visit_type=customer_visit`。客户详情和今日列表会带 `record_kind=followup`、`type_label=跟进`。今日拜访计数不含跟进。
+- 小程序前端：本仓库只有 `miniapp/api/index.php`、`miniapp/migrate.php`、`miniapp/api/wx_config.example.php`。没有 `app.json`、`wxml`，也没有 `wechat-miniprogram` 目录或子模块。第三页签「跟进」、编辑页 `type=followup`、客户详情「新建跟进」要改在小程序工程里，本环境没有那份源码，也没有微信开发者工具或 `miniprogram-ci`，不能上传体验版。
+- 小程序工程接上后：拜访页加第三页签，请求 `action=visits` 且 `visit_category=跟进记录`。新建/编辑走现有 `visit_save`，带 `visit_category=跟进记录`（或 `record_kind=followup` / `type=followup`）、`purpose` 为上面五项之一、`customer_id`、日期。地点可空。照片、事项、待办继续用这条拜访单的 id。客户详情用返回的 `record_kind` 显示「跟进」，新建按钮提交同一套 `visit_save`。`visits` 返回的 `followup.purposes` 是方式列表。
+- 网站：拜访/来访/外出列表请求带 `exclude_visit_category=跟进记录`。客户详情里这类记录标成「跟进」，编辑时跟进方式必填、地点选填，类型保持「跟进记录」。没有改网站客户跟进页，也没有把「跟进记录」放进新建拜访的类型下拉。
+- 修改文件：`crm_visit.php`、`miniapp/api/index.php`、`assets/crm/crm.js`、`tests/crm_visit_followup_category_contract.php`、`tools/ci_php_checks.sh`、本文件。
+- 检查结果：`php -l` 通过 `crm_visit.php`、`miniapp/api/index.php`、`tests/crm_visit_followup_category_contract.php`。`php tests/crm_visit_followup_category_contract.php` 与 `php tests/crm_visit_list_search_contract.php` 通过。`node --check assets/crm/crm.js` 通过。另外跑过既有拜访契约：权限、卡片动态、去重状态、图片上传通过；派工联动和结果历史两条在 `origin/main` 上就已经对不上现有文案，不是这次改动引入的。未连正式库，未用正式账号登录。
+- 服务器部署情况：本环境无法 SSH 正式机，未把本分支检出到 `/www/wwwroot/Artdon/artdon_erp/`。正式目录只在本分支合并进 `main` 后由 GitHub Actions 快进。三方 HEAD 一致留到那次快进之后。
+- Git 提交号及推送状态：见本分支提交。正式目录未快进。
+- 尚未完成：小程序工程加上「跟进」页签和「新建跟进」后，用体验版走一遍新建、列表、详情、照片、事项、待办。合并后网站拜访列表不应出现分类为跟进记录的行；客户详情里这些行应显示为跟进。
+
 ## 2026-10-14：分组页只选国家也列出客户
 
 - 本次完成：`#/groups` 右侧「搜索客户中心」在关键词为空、但已选择国家时，列出该国家里当前登录用户可见的客户中心客户。可见范围仍是 `promotion.view` 与 `get_user_scope('customer')` 的交集，没有放宽。只输入关键词时行为与原来相同。关键词和国家同时有时，两个条件一起生效。关键词为空且国家为「全部国家」时不请求客户列表，仍显示空状态。
