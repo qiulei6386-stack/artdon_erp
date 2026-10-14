@@ -177,7 +177,7 @@ jobs:
             rm -rf promotion_center_v1
           elif [ "${#dirty_lines[@]}" -gt 0 ]; then
             echo "Worktree differs from HEAD. Continuing only if HEAD can fast-forward to the tested commit." >&2
-            git status --short | head -50
+            git status --short | head -50 || true
             force_ff=1
           fi
           force_ff="${force_ff:-0}"
