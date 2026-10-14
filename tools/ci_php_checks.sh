@@ -21,9 +21,10 @@ lint_total=0
 lint_failed=0
 while IFS= read -r php_file; do
   lint_total=$((lint_total + 1))
-  if ! "$php_bin" -l "$php_file" >/dev/null 2>&1; then
+  lint_output=""
+  if ! lint_output="$("$php_bin" -l "$php_file" 2>&1)"; then
     lint_failed=$((lint_failed + 1))
-    printf 'PHP syntax failed: %s\n' "$php_file" >&2
+    printf 'PHP syntax failed: %s\n%s\n' "$php_file" "$lint_output" >&2
   fi
 done < <(git ls-files '*.php')
 

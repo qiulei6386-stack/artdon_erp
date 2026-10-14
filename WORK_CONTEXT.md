@@ -1,5 +1,18 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：同步推广中心 V1 到正式服务器
+
+- 用户要求按固定顺序同步。本机复检：`node --check` 通过 `promotion_center_v1/prototype/app.js`、`board.js`、`data.js`、`wizard.js`；`php -l index.php` 通过（本机 PHP 8.3.6）。未改业务逻辑。
+- 开始时本分支与 GitHub 均为 `c3708e7e8dfe9d2c4b125cab03e64bbb480491af`。PR #2 已于 2026-10-14T00:00:18Z 快进合并进 `main`，合并结果就是该提交。合并前 `origin/main` 为 `a30a2fef4d3477fc9c3d17f4c5595d2a6b96c315`，是本分支祖先。正式目录按 GitHub Actions 只快进 `main`，没有把功能分支单独检出到服务器。
+- 本机没有部署私钥。`119.91.27.19:22` 可以连通，主机密钥与 `.github/known_hosts` 一致；`ssh ubuntu@119.91.27.19` 的结果是 `Permission denied (publickey)`。实际连接由 GitHub Actions 的部署密钥完成。
+- 部署 run [38487613052](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38487613052)（`c3708e7`）在服务器停止：工作区不干净，仅有 ` M index.php` 和 `?? promotion_center_v1/`。这次没有移动 HEAD。
+- 随后 `main` 上的部署脚本改为先处理这两项。run [38487919147](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38487919147)（`fefe519`）把未入库副本备份到 `/tmp/artdon-predeploy-20261014080436` 后清掉工作区中的这两项，接着更新 `refs/remotes/deploy/main` 失败：`unable to append to '.git/logs/refs/remotes/deploy/main': Permission denied`。
+- run [38488124152](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488124152)（`0a91e58`）再次快进时，文件已写入，HEAD 没跟上：`fatal: update_ref failed for ref 'HEAD': unable to append to '.git/logs/HEAD': Permission denied`，同时输出 `Updating a30a2fef..0a91e586`。当时服务器 HEAD 仍是 `a30a2fe`，索引已是待发布内容。
+- run [38488476539](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488476539)（`5850ee4`）把 HEAD 对齐到该提交。紧接着的 run [38488503566](https://github.com/qiulei6386-stack/artdon_erp/actions/runs/38488503566) 日志为 `Updating 5850ee41..e6979c9d` 且 `Fast-forward` 只改了 `.github/workflows/deploy.yml`。脚本在语法检查之前会核对 `git rev-parse HEAD` 与 GitHub 提交一致，检查已开始，因此服务器 HEAD 已是 `e6979c9de0bde1e8c302aee36dd477f299d2fd8a`。作业结论仍是失败。
+- 服务器 PHP 8.0 复检：632 个文件里 8 个 `php -l` 非零：`miniapp/migrate.php`、`promotion/api.php`、`promotion/api_live.php`、`promotion/cron.php`、`promotion/index.php`、`promotion/migrate_v2.php`、`promotion/promo_lib.php`、`promotion/track.php`。这 8 个文件相对 `a30a2fe` 没有差异。检查脚本当时丢弃了 `php -l` 原文。本机 PHP 8.3 对这 8 个文件 `php -l` 通过。公开登录页校验步骤没有执行。
+- 本提交让语法失败时打印 `php -l` 原文，并记下上述结果。推送后的部署是否三方一致，以该次作业日志为准；若服务器复检仍失败，不把作业标成成功。
+- 尚未完成：确认这 8 个文件在服务器上是语法问题还是无法读取；`/tmp/artdon-predeploy-20261014080436` 中的未入库副本是否与仓库版本不同。执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
+
 ## 2026-10-13：推广中心 V1 执行看板
 
 - 用户要求：推广中心增加“执行看板”，一场推广发完/跑完后一页看全执行情况（场次摘要、总进度、发不了/异常及原因、发送时间线、发信箱维度、线下执行、效果粗览）；可按场次切换，默认进行中或最近一场；筛选仅异常/仅线下未清/仅失败；空状态写“还没有执行数据”；只做 promotion_center_v1，不改 CRM 内部旧推广。
@@ -7,7 +20,7 @@
 - 原型：新增 prototype/board.js（独立页 #/board、#/board/<编号>）；左侧导航“执行看板”；推广详情与推广列表增加“查看执行”；看板用新建向导同一套规则按冻结参数重算名单，再按原型“现在”模拟发送结果（含邮箱 SMTP 登录失败自动暂停、日额度触顶顺延、推广暂停、结果不确定）；线下待办与“人工待办”共用数据，登记结果后看板同步；推广详情“收件对象”和“核对”改用同一份执行数据；业务员看非自己创建的推广只显示自己负责的客户。wizard.js 的 plan() 增加可选参数（按创建人、提交时刻、当时邮箱用量计算），不传时行为不变。data.js 新增演示推广 pm-1011 与各场执行参数。styles.css 增加看板样式及 1280/1366/1920/2560 与矮屏适配。
 - 门户 index.php“推广中心”卡片标签与说明增加“执行看板”（门户入口仍指向旧 promotion.php，第5阶段切换）。未改 crm_* 文件。
 - 检查：node --check 通过；php -l index.php 通过；本地开发服务器登录门户确认标签显示；无头浏览器看板自测58项、向导自测56项、分组自测15项全部通过；1280×720、1366×768、1440×900、1920×1080、2560×1440 截图核对；浏览器实测13步（门户标签、列表/详情进入看板、默认场次、原因筛选、四种筛选、线下明细弹窗、登记结果后同步、切换场次含CRM暂停与草稿空状态、业务员视角、1280宽）通过。
-- 未执行服务器同步：云端环境无法访问服务器运行目录；需在本地电脑拉取本分支提交后按 GitHub→同提交服务器流程同步并核对三方提交号。
+- 服务器同步结果见文首「2026-10-14：同步推广中心 V1 到正式服务器」。
 - 待用户确认：EXECUTION_BOARD.md 第7节（邮箱出错自动暂停还是转其他邮箱、打开/点击追踪、看板是否导出），以及此前 CREATE_FLOW.md 第3节、DESIGN.md 第13节事项。
 
 ## 2026-10-13：推广中心 V1 新建推广主流程（九步向导）
