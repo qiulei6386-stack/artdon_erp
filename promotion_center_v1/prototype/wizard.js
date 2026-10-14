@@ -327,7 +327,8 @@
       var why = er.concat(off).filter(function (r) { return r.reason && r.kind !== 'offline'; }).map(function (r) { return r.reason; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
       return '<tr><td><div class="cell-title">' + esc(c.company) + '</div><div class="cell-sub">' + esc(c.contact || '（无联系人姓名）') + ' · ' + esc(c.country || '无国家') + '</div></td><td>' + (c.owner ? A.user(c.owner).name : '<span style="color:var(--warn)">无负责人</span>') + '</td><td class="col-wide small">' + c.channels.map(function (k) { return CH_LABEL[k]; }).join('、') + '</td><td>' + res + (why.length ? '<div class="cell-sub" style="color:var(--bad)">' + esc(why.join('；')) + '</div>' : '') + '</td></tr>';
     }).join('');
-    return '<div class="wz-two">' + card('从哪里选', '', left + src + chans + unBox) +
+    var demoNote = window.PM_LIVE ? '<div class="banner info"><span>这里仍是演示名单，不会读取客户中心，也不会发信。真实客户在「客户」和「客户分组」。</span><a class="btn sm" href="#/customers">去看真实客户</a></div>' : '';
+    return demoNote + '<div class="wz-two">' + card('从哪里选', '', left + src + chans + unBox) +
       '<div class="card wz-list"><div class="card-head"><h2>已选客户</h2><span class="muted small num">' + p.custs.length + ' 个客户</span></div>' +
         '<div class="card-body" style="padding-bottom:12px"><div class="audience-sum"><div><b class="num">' + mail + '</b><span>封邮件</span></div><div><b class="num">' + offOk + '</b><span>条线下</span></div><div><b class="num" style="color:var(--bad)">' + skip + '</b><span>封发不了</span></div></div>' +
         (A.allScope() ? '' : '<p class="hint" style="margin:8px 0 0">你的客户数据范围是“本人”，只列出你负责的客户。</p>') + '</div>' +
