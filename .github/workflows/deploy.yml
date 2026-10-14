@@ -183,25 +183,19 @@ jobs:
 
           printf '%s  %s\n' "$expected_sha" "$bundle_file" | sha256sum -c -
           git bundle verify "$bundle_file"
-          git -c core.logAllRefUpdates=false fetch "$bundle_file" HEAD:refs/remotes/deploy/main
+          # 不写入 refs/remotes/deploy/main。该引用的日志文件属主不同，追加会 Permission denied。
+          git bundle unbundle "$bundle_file" >/dev/null
+          git cat-file -e "${expected_commit}^{commit}"
 
-          if [ "$(git rev-parse refs/remotes/deploy/main)" != "$expected_commit" ]; then
-            echo "Bundle commit does not match GitHub commit." >&2
-            exit 1
-          fi
-
-          git merge --ff-only refs/remotes/deploy/main
+          git merge --ff-only "$expected_commit"
 
           if [ "$(git rev-parse HEAD)" != "$expected_commit" ]; then
             echo "Server HEAD does not match the tested commit." >&2
             exit 1
           fi
 
-          git -c core.logAllRefUpdates=false update-ref refs/remotes/origin/main "$expected_commit"
-
-          if [ "$(git rev-parse refs/remotes/origin/main)" != "$expected_commit" ]; then
-            echo "Server origin/main does not match the tested commit." >&2
-            exit 1
+          if ! git -c core.logAllRefUpdates=false update-ref refs/remotes/origin/main "$expected_commit"; then
+            echo "Could not update refs/remotes/origin/main; server HEAD is still the tested commit." >&2
           fi
 
           PHP_BIN=/www/server/php/80/bin/php bash tools/ci_php_checks.sh
