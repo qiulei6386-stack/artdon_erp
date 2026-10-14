@@ -153,34 +153,13 @@ jobs:
           trap 'rm -f "$bundle_file"' EXIT
           cd "$repository"
 
-          # 服务器上若只有先前拷上去、尚未纳入 Git 的推广中心原型，先备份再清掉，让已推送的提交快进。
-          # 出现任何其他改动则停止，不覆盖。
-          mapfile -t dirty_lines < <(git status --porcelain)
-          preview_only=1
-          if [ "${#dirty_lines[@]}" -eq 0 ]; then
-            preview_only=0
+          # 工作区只要有未提交改动就停止。不备份、不丢弃，避免再次清掉未入库的门户入口或原型目录。
+          dirty_status="$(git status --short)"
+          if [ -n "$dirty_status" ]; then
+            echo "Server worktree is dirty. Aborting deploy without changing local files." >&2
+            printf '%s\n' "$dirty_status" >&2
+            exit 1
           fi
-          for line in "${dirty_lines[@]}"; do
-            case "$line" in
-              " M index.php"|"?? promotion_center_v1/") ;;
-              *) preview_only=0 ;;
-            esac
-          done
-          if [ "${#dirty_lines[@]}" -gt 0 ] && [ "$preview_only" -eq 1 ]; then
-            backup="/tmp/artdon-predeploy-$(date +%Y%m%d%H%M%S)"
-            mkdir -p "$backup"
-            cp -a index.php "$backup/index.php"
-            git diff -- index.php > "$backup/index.php.diff" || true
-            cp -a promotion_center_v1 "$backup/promotion_center_v1"
-            echo "Backed up uncommitted promotion preview to $backup"
-            git checkout -- index.php
-            rm -rf promotion_center_v1
-          elif [ "${#dirty_lines[@]}" -gt 0 ]; then
-            echo "Worktree differs from HEAD. Continuing only if HEAD can fast-forward to the tested commit." >&2
-            git status --short | head -50 || true
-            force_ff=1
-          fi
-          force_ff="${force_ff:-0}"
 
           printf '%s  %s\n' "$expected_sha" "$bundle_file" | sha256sum -c -
           git bundle verify "$bundle_file"
@@ -195,21 +174,39 @@ jobs:
             fi
           done
 
-          if [ "$force_ff" -eq 1 ]; then
-            if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" "$expected_commit"; then
-              echo "Server worktree is not clean and HEAD is not an ancestor of the tested commit." >&2
-              exit 1
-            fi
-            git read-tree -u --reset "$expected_commit"
-            git -c core.logAllRefUpdates=false update-ref HEAD "$expected_commit"
-          else
-            git merge --ff-only "$expected_commit"
-          fi
+          git merge --ff-only "$expected_commit"
 
           if [ "$(git rev-parse HEAD)" != "$expected_commit" ]; then
             echo "Server HEAD does not match the tested commit." >&2
             exit 1
           fi
+
+          if ! grep -F -q 'promotion_center_v1/prototype/' index.php; then
+            echo "index.php does not contain promotion_center_v1/prototype/." >&2
+            exit 1
+          fi
+          mapfile -t promotion_entries < <(grep -F "['key' => 'promotion'" index.php || true)
+          if [ "${#promotion_entries[@]}" -lt 2 ]; then
+            echo "index.php is missing the two promotion portal entries." >&2
+            exit 1
+          fi
+          for entry in "${promotion_entries[@]}"; do
+            case "$entry" in
+              *promotion_center_v1/prototype/*) ;;
+              *)
+                echo "Promotion portal entry does not open promotion_center_v1/prototype/." >&2
+                printf '%s\n' "$entry" >&2
+                exit 1
+                ;;
+            esac
+            case "$entry" in
+              *"href' => 'promotion.php'"*)
+                echo "Promotion portal entry still points at promotion.php." >&2
+                printf '%s\n' "$entry" >&2
+                exit 1
+                ;;
+            esac
+          done
 
           if ! git -c core.logAllRefUpdates=false update-ref refs/remotes/origin/main "$expected_commit"; then
             echo "Could not update refs/remotes/origin/main; server HEAD is still the tested commit." >&2

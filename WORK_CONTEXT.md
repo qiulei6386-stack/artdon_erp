@@ -1,5 +1,15 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：门户推广中心改打开 V1 原型，并禁止部署清掉未入库入口
+
+- 正式部署快进时清掉了服务器上未入库的 `index.php`（备份在 `/tmp/artdon-predeploy-20261014080436`，并复制到 `artdon_erp/_codex_backups/`）。门户「推广中心」因此又指回旧 `promotion.php`。
+- `index.php` 快捷入口和业务经营卡片的推广 `href` 改为 `promotion_center_v1/prototype/`。说明和标签里的「执行看板」保持不变。未改 `promotion/` 发送引擎、`crm.php` 及其他模块入口。
+- `promotion_center_v1/` 增加静态 `index.html`，说明这是演示原型，并链接到 `prototype/`。
+- `.github/workflows/deploy.yml` 去掉「只脏了 index.php 和未跟踪的 promotion_center_v1 就备份后 `git checkout` / `rm -rf`」以及脏工作区仍 `read-tree --reset` 的路径。工作区只要不干净，打印 `git status --short` 后以非零退出，不改本地文件。快进成功后检查两处 `['key' => 'promotion'` 入口都包含 `promotion_center_v1/prototype/`，仍指向 `promotion.php` 则部署失败。
+- 检查：`php -l index.php` 通过；源码确认两处推广入口都是 `promotion_center_v1/prototype/`。部署脚本用临时仓库复现：脏的门户文件和未跟踪原型目录会中止部署且文件还在；干净仓库可以快进；旧 `promotion.php` 入口会在快进后被拒绝。
+- 本轮不直接部署。合并进 `main` 后，现有 GitHub Actions 会在校验通过后快进正式目录。门户入口提交 `c262c858047d93ab3acf00e5de1ae21b51693fec`；禁止清掉未入库入口的部署脚本与本记录在同一提交。
+- 尚未完成：部署用户打不开 8 个既有 PHP 文件的原因仍未查清；执行看板待确认项仍是 EXECUTION_BOARD.md 第7节。
+
 ## 2026-10-14：同步推广中心 V1 到正式服务器
 
 - 用户要求按固定顺序同步。本机复检：`node --check` 通过 `promotion_center_v1/prototype/app.js`、`board.js`、`data.js`、`wizard.js`；`php -l index.php` 通过（本机 PHP 8.3.6）。未改业务逻辑。
