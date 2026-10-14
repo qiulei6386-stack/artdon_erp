@@ -1,5 +1,14 @@
 # Artdon ERP 工作上下文
 
+## 2026-10-14：推广中心 V1 阶段 1（登录、只读客户、自有分组）
+
+- 本次完成：按阶段 1 清单只改 `promotion_center_v1/`。登录复用现网会话；无 `promotion.view` 不能进。客户只经 `LegacyCustomerAdapter`，范围是 `get_user_scope('customer')` 与客户中心规则的交集。分组写入 `pm_groups` / `pm_group_members`，支持新建、重命名、软删、加入、移出、移动、复制和 10 秒撤销。历史页只读 CRM 任务和旧中心活动。不发送邮件，不建 `crm_mail_send_jobs`。
+- 修改文件：`promotion_center_v1/config.php`、`bootstrap.php`、`index.php`、`api.php`、`migrate.php`、`app/`、`assets/app.css`、`assets/app.js`、`database/migrations/20261014_001_pm_groups.sql`、`tests/phase1_isolated.php`、`docs/PHASE1.md`、`docs/DESIGN.md`（状态一行）、本文件。未改 `crm_marketing_*`、CRM 内推广界面、`promotion/`、`includes/permission.php`。
+- 检查结果：`php promotion_center_v1/tests/phase1_isolated.php` 输出「阶段 1 验收全部通过」。新增 PHP 经 `php -l`。`node --check promotion_center_v1/assets/app.js` 通过。本机浏览器截图核对列表、德国筛选、北欧灯饰详情（多邮箱、离职、退订、三条渠道、可推广群）、分组搜不到乙的客户、历史只读，以及无 `promotion.view` 的拒绝页。按用户要求不录屏。验收以该测试和截图为准。细节写在 `docs/PHASE1.md`。
+- 服务器部署情况：未同步正式目录 `/www/wwwroot/Artdon/artdon_erp/`。云端没有部署私钥，不能把功能分支检出到服务器。正式目录只在合并进 `main` 后由 GitHub Actions 快进。三方 HEAD 一致留到那次快进之后。现网 `promotion.php` 本机未登录仍 302 到登录页，源文件未改。
+- Git 提交号及推送状态：分支 `cursor/promotion-center-phase1-1b2a`，基于 `21ebc4f0c9f8598d647c75ce9eeb3f378c9eb0ce`。提交号在推送后写入下一节；推送目标为 GitHub `origin` 该分支。
+- 尚未完成：合并后 Actions 快进；正式登录后用 5 家客户对照 `crm_api` 客户列表；点开正式 `promotion.php` 做发送页回归。执行看板待确认项仍是 `EXECUTION_BOARD.md` 第 7 节。阶段 2 才处理时区、无归属弹窗和排除规则。
+
 ## 2026-10-14：门户推广中心改打开 V1 原型，并禁止部署清掉未入库入口
 
 - 正式部署快进时清掉了服务器上未入库的 `index.php`（备份在 `/tmp/artdon-predeploy-20261014080436`，并复制到 `artdon_erp/_codex_backups/`）。门户「推广中心」因此又指回旧 `promotion.php`。
